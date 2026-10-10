@@ -23,7 +23,7 @@ fn (mut b Builder) register_native_string_format_helpers() {
 	])
 	b.generate_native_rpad_zero_body(rpad_id)
 	char_id := b.register_synthetic_function('v3_char_string', b.str_type, [b.i32_type])
-	b.generate_native_char_string_body(char_id)
+	b.generate_char_string_body(char_id)
 	b.register_native_float_format_helpers()
 }
 

@@ -108,6 +108,21 @@ pub fn Gen.new(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool)
 	}
 }
 
+// WasmImport is a host function that V source declared with
+// `@[wasm_import_namespace]` on a body-less fn in a `.wasm.v` file. To the
+// checker and to SSA it is an ordinary C extern; resolving it into a real wasm
+// module import happens here, because this is the only layer that still sees the
+// signature spelled in V types. A pointer parameter or result is an offset into
+// the module's linear memory, which is the only representation wasm32 has.
+pub struct WasmImport {
+pub:
+	namespace string
+	name      string // the name the host exports
+	qualified string // the SSA name of the extern declaration behind it
+	params    []u8
+	results   []u8
+}
+
 // SSAConfiguration carries source-level entry points and export names into SSA code generation.
 pub struct SSAConfiguration {
 pub:
@@ -117,12 +132,14 @@ pub:
 	used_fns       map[string]bool
 	source_modules map[string]string
 	source_imports map[string]map[string]string
+	imports        []WasmImport
 }
 
 // ssa_configuration collects export and initialization metadata without emitting instructions.
-pub fn (mut g Gen) ssa_configuration() SSAConfiguration {
+pub fn (mut g Gen) ssa_configuration() !SSAConfiguration {
 	g.collect_imports()
 	fns := g.collect_user_fns()
+	imports := g.collect_wasm_imports()!
 	mut exports := map[string]string{}
 	// SSA supplies its own runtime helpers. AST reachability includes C runtime
 	// implementations that are not dependencies of the selected WASM functions.
@@ -167,7 +184,93 @@ pub fn (mut g Gen) ssa_configuration() SSAConfiguration {
 		used_fns:       used
 		source_modules: source_modules
 		source_imports: source_imports
+		imports:        imports
 	}
+}
+
+// collect_wasm_imports resolves every `@[wasm_import_namespace]` declaration
+// into a wasm import. The attribute is read from the `directive` node the parser
+// emits directly after the declaration it names, rather than from the checker's
+// own index of them, because that index is keyed by pre-transform ids and this
+// runs on the transformed tree the backend lowers.
+fn (mut g Gen) collect_wasm_imports() ![]WasmImport {
+	mut imports := []WasmImport{}
+	for node in g.a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		namespace := declaration_import_namespace(node) or { continue }
+		id := node.value['@attributes:'.len..].int()
+		if id < 0 || id >= g.a.nodes.len {
+			continue
+		}
+		decl := g.a.nodes[id]
+		if decl.kind != .c_fn_decl {
+			continue
+		}
+		imports << g.wasm_import(namespace, decl)!
+	}
+	return imports
+}
+
+// wasm_import maps one declaration's V signature onto wasm value types.
+fn (mut g Gen) wasm_import(namespace string, decl flat.Node) !WasmImport {
+	// A body-less `fn Mod.f()` reaches here as `Mod@static@f`, so the name the
+	// host exports is the part after the marker.
+	name := decl.value.all_after_last('@static@')
+	imp := '${namespace}.${name}'
+	mut params := []u8{}
+	for ci in 0 .. decl.children_count {
+		p := g.a.child_node(&decl, ci)
+		if p.kind != .param || p.value.len == 0 {
+			continue
+		}
+		params << g.import_valtype(imp, p.value, p.typ)!
+	}
+	mut results := []u8{}
+	if decl.typ.len > 0 && decl.typ != 'void' {
+		results << g.import_valtype(imp, '', decl.typ)!
+	}
+	return WasmImport{
+		namespace: namespace
+		name:      name
+		qualified: 'C.${decl.value}'
+		params:    params
+		results:   results
+	}
+}
+
+// import_valtype is the wasm value type of one parameter, or of the result when
+// `param` is empty. Anything the backend cannot represent as a single wasm value
+// is refused here rather than widened, so a signature the host cannot satisfy is
+// never emitted.
+fn (mut g Gen) import_valtype(imp string, param string, text string) !u8 {
+	t := unalias(g.tc.parse_type(text))
+	if t is types.Pointer {
+		return valtype_i32
+	}
+	role := if param.len == 0 { 'result' } else { 'parameter `${param}`' }
+	w := prim_wtype(t) or {
+		return error('wasm: import `${imp}`: ${role} type `${text}` is not a value type')
+	}
+	return wt_valtype(w)
+}
+
+// declaration_import_namespace reads the namespace an `@[wasm_import_namespace]`
+// attribute names, or none when it names another one.
+fn declaration_import_namespace(node flat.Node) ?string {
+	for raw in node.generic_params() {
+		if raw.all_before(':').trim_space() != 'wasm_import_namespace' || !raw.contains(':') {
+			continue
+		}
+		value := raw.all_after(':').trim_space()
+		if value.len >= 2 && ((value[0] == `'` && value[value.len - 1] == `'`)
+			|| (value[0] == `"` && value[value.len - 1] == `"`)) {
+			return value[1..value.len - 1]
+		}
+		return value
+	}
+	return none
 }
 
 fn (g &Gen) ssa_init_order(mod string, module_init map[string]string, mut visited map[string]bool, mut order []string) {
@@ -2644,6 +2747,17 @@ fn wt_valtype(w WType) u8 {
 		.i64 { valtype_i64 }
 		.f32 { valtype_f32 }
 		.f64 { valtype_f64 }
+	}
+}
+
+// valtype_wtype is the inverse of wt_valtype, for the one place that works from
+// a declared wasm value type back to the value the backend emits.
+fn valtype_wtype(v u8) WType {
+	return match v {
+		valtype_i64 { WType.i64 }
+		valtype_f32 { WType.f32 }
+		valtype_f64 { WType.f64 }
+		else { WType.i32 }
 	}
 }
 

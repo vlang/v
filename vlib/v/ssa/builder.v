@@ -2453,7 +2453,7 @@ fn (mut b Builder) register_v3_string_format_stubs() {
 		mut p_char := []TypeID{}
 		p_char << b.i32_type
 		if char_id := b.register_runtime_function('v3_char_string', b.str_type, p_char) {
-			b.generate_const_string_body(char_id, '?')
+			b.generate_char_string_body(char_id)
 		}
 
 		mut p_f64 := []TypeID{}
@@ -2467,21 +2467,21 @@ fn (mut b Builder) register_v3_string_format_stubs() {
 		p_int << b.i32_type
 		p_int << b.i32_type
 		if int_zpad_id := b.register_runtime_function('v3_int_zpad', b.str_type, p_int) {
-			b.generate_int_zpad_passthrough_body(int_zpad_id, b.i32_type)
+			b.generate_int_zpad_body(int_zpad_id, b.i32_type, false)
 		}
 
 		mut p_i64 := []TypeID{}
 		p_i64 << b.i64_type
 		p_i64 << b.i32_type
 		if i64_zpad_id := b.register_runtime_function('v3_i64_zpad', b.str_type, p_i64) {
-			b.generate_int_zpad_passthrough_body(i64_zpad_id, b.i64_type)
+			b.generate_int_zpad_body(i64_zpad_id, b.i64_type, false)
 		}
 
 		mut p_u64 := []TypeID{}
 		p_u64 << b.u64_type
 		p_u64 << b.i32_type
 		if u64_zpad_id := b.register_runtime_function('v3_u64_zpad', b.str_type, p_u64) {
-			b.generate_const_string_body(u64_zpad_id, '0')
+			b.generate_int_zpad_body(u64_zpad_id, b.u64_type, true)
 		}
 	} else {
 		pad_id := b.register_synthetic_function('v3_string_pad', b.str_type, p_pad)
@@ -2651,6 +2651,13 @@ fn (mut b Builder) generate_int_format_body(func_id int, is_signed bool, has_rad
 }
 
 // generate_string_int_body supports generate string int body handling for Builder.
+//
+// It mirrors strconv.common_parse_int as driven by builtin.string_int_base, so a
+// wasm build parses what a native `s.int()` does: an optional sign, a base chosen
+// from a 0x/0b/0o prefix, digits validated against that base, and the 2^31-1 clamp.
+// A byte the base cannot use stops the parse and keeps the value accumulated so far,
+// which is the partial result common_parse_uint2 returns on a bad digit. An illicit
+// underscore instead yields 0, matching the same rule in the reference.
 fn (mut b Builder) generate_string_int_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
@@ -2660,7 +2667,9 @@ fn (mut b Builder) generate_string_int_body(func_id int) {
 	s_slot := b.block_instr0(.alloca, entry, ptr_string)
 	result_slot := b.block_instr0(.alloca, entry, ptr_i64)
 	i_slot := b.block_instr0(.alloca, entry, ptr_i64)
+	base_slot := b.block_instr0(.alloca, entry, ptr_i64)
 	sign_slot := b.block_instr0(.alloca, entry, ptr_i64)
+	digits_slot := b.block_instr0(.alloca, entry, ptr_i64)
 	b.block_instr2(.store, entry, b.void_type, s, s_slot)
 
 	data_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 0)
@@ -2671,51 +2680,198 @@ fn (mut b Builder) generate_string_int_body(func_id int) {
 
 	zero64 := b.m.get_or_add_const(b.i64_type, '0')
 	one64 := b.m.get_or_add_const(b.i64_type, '1')
-	minus_one := b.m.get_or_add_const(b.i64_type, '-1')
+	two64 := b.m.get_or_add_const(b.i64_type, '2')
+	three64 := b.m.get_or_add_const(b.i64_type, '3')
+	eight64 := b.m.get_or_add_const(b.i64_type, '8')
+	nine64 := b.m.get_or_add_const(b.i64_type, '9')
 	ten64 := b.m.get_or_add_const(b.i64_type, '10')
-	ascii_zero := b.m.get_or_add_const(b.i64_type, '48')
+	sixteen64 := b.m.get_or_add_const(b.i64_type, '16')
+	minus_one := b.m.get_or_add_const(b.i64_type, '-1')
+	upper_adjust := b.m.get_or_add_const(b.i64_type, '55')
+	lower_adjust := b.m.get_or_add_const(b.i64_type, '87')
+	ascii_zero_i64 := b.m.get_or_add_const(b.i64_type, '48')
+	max_i32 := b.m.get_or_add_const(b.i64_type, '2147483647')
+	min_i32 := b.m.get_or_add_const(b.i64_type, '-2147483648')
 	ascii_minus := b.m.get_or_add_const(b.i8_type, '45')
+	ascii_plus := b.m.get_or_add_const(b.i8_type, '43')
+	ascii_underscore := b.m.get_or_add_const(b.i8_type, '95')
+	// The folded prefix letters are upper case, so they compare against the uppercase
+	// codes; clearing bit 5 with the mask above is what gets the input there.
+	ascii_zero8 := b.m.get_or_add_const(b.i8_type, '48')
+	ascii_x8 := b.m.get_or_add_const(b.i8_type, '88')
+	ascii_b8 := b.m.get_or_add_const(b.i8_type, '66')
+	ascii_o8 := b.m.get_or_add_const(b.i8_type, '79')
+	// Clearing bit 5 folds lower case onto upper, so one comparison covers `x`, `b`
+	// and `o` however the input spells them.
+	case_mask := b.m.get_or_add_const(b.i8_type, '223')
+
 	b.block_instr2(.store, entry, b.void_type, zero64, result_slot)
 	b.block_instr2(.store, entry, b.void_type, zero64, i_slot)
+	b.block_instr2(.store, entry, b.void_type, zero64, digits_slot)
+	b.block_instr2(.store, entry, b.void_type, ten64, base_slot)
 	b.block_instr2(.store, entry, b.void_type, one64, sign_slot)
 
 	check_sign := b.m.add_block(func_id, 'string_int_check_sign')
-	sign_body := b.m.add_block(func_id, 'string_int_sign_body')
+	prefix := b.m.add_block(func_id, 'string_int_prefix')
+	prefix_read := b.m.add_block(func_id, 'string_int_prefix_read')
+	prefix_take := b.m.add_block(func_id, 'string_int_prefix_take')
+	prefix_base := b.m.add_block(func_id, 'string_int_prefix_base')
+	prefix_octal := b.m.add_block(func_id, 'string_int_prefix_octal')
 	loop := b.m.add_block(func_id, 'string_int_loop')
 	body := b.m.add_block(func_id, 'string_int_body')
-	done := b.m.add_block(func_id, 'string_int_done')
-	has_chars := b.block_instr2(.gt, entry, b.i1_type, len, zero64)
-	b.block_instr3(.br, entry, b.void_type, has_chars, ValueID(check_sign), ValueID(done))
+	underscore := b.m.add_block(func_id, 'string_int_underscore')
+	underscore_pair := b.m.add_block(func_id, 'string_int_underscore_pair')
+	digit := b.m.add_block(func_id, 'string_int_digit')
+	accumulate := b.m.add_block(func_id, 'string_int_accumulate')
+	step := b.m.add_block(func_id, 'string_int_step')
+	stop_zero := b.m.add_block(func_id, 'string_int_stop_zero')
+	stop := b.m.add_block(func_id, 'string_int_stop')
 
+	has_chars := b.block_instr2(.gt, entry, b.i1_type, len, zero64)
+	b.block_instr3(.br, entry, b.void_type, has_chars, ValueID(check_sign), ValueID(stop))
+
+	// A sign is skipped for the prefix scan as well as the digits, so the parse never
+	// has to remember which of the two it started at.
 	first_ch := b.block_instr1(.load, check_sign, b.i8_type, data)
 	is_minus := b.block_instr2(.eq, check_sign, b.i1_type, first_ch, ascii_minus)
-	b.block_instr3(.br, check_sign, b.void_type, is_minus, ValueID(sign_body), ValueID(loop))
+	is_plus := b.block_instr2(.eq, check_sign, b.i1_type, first_ch, ascii_plus)
+	signed := b.block_instr2(.or_, check_sign, b.i1_type, is_minus, is_plus)
+	negative := b.block_instr3(.select, check_sign, b.i64_type, is_minus, minus_one,
+		one64)
+	start_one := b.block_instr3(.select, check_sign, b.i64_type, signed, one64,
+		zero64)
+	b.block_instr2(.store, check_sign, b.void_type, start_one, i_slot)
+	b.block_instr2(.store, check_sign, b.void_type, negative, sign_slot)
+	b.block_instr1(.jmp, check_sign, b.void_type, ValueID(prefix))
 
-	b.block_instr2(.store, sign_body, b.void_type, minus_one, sign_slot)
-	b.block_instr2(.store, sign_body, b.void_type, one64, i_slot)
-	b.block_instr1(.jmp, sign_body, b.void_type, ValueID(loop))
+	// string_int_base only reports a prefix when two bytes follow the sign, so a
+	// shorter tail is a plain decimal number.
+	start := b.block_instr1(.load, prefix, b.i64_type, i_slot)
+	rest := b.block_instr2(.sub, prefix, b.i64_type, len, start)
+	has_rest2 := b.block_instr2(.ge, prefix, b.i1_type, rest, two64)
+	b.block_instr3(.br, prefix, b.void_type, has_rest2, ValueID(prefix_read), ValueID(loop))
+
+	start_ptr := b.block_instr2(.add, prefix_read, ptr_i8, data, start)
+	zero_ch := b.block_instr1(.load, prefix_read, b.i8_type, start_ptr)
+	is_zero := b.block_instr2(.eq, prefix_read, b.i1_type, zero_ch, ascii_zero8)
+	one_later := b.block_instr2(.add, prefix_read, b.i64_type, start, one64)
+	second_ptr := b.block_instr2(.add, prefix_read, ptr_i8, data, one_later)
+	second_ch := b.block_instr1(.load, prefix_read, b.i8_type, second_ptr)
+	folded_ch := b.block_instr2(.and_, prefix_read, b.i8_type, second_ch, case_mask)
+	is_hex := b.block_instr2(.eq, prefix_read, b.i1_type, folded_ch, ascii_x8)
+	is_bin := b.block_instr2(.eq, prefix_read, b.i1_type, folded_ch, ascii_b8)
+	is_oct := b.block_instr2(.eq, prefix_read, b.i1_type, folded_ch, ascii_o8)
+	hex_or_bin := b.block_instr2(.or_, prefix_read, b.i1_type, is_hex, is_bin)
+	hex_or_oct := b.block_instr2(.or_, prefix_read, b.i1_type, hex_or_bin, is_oct)
+	has_prefix := b.block_instr2(.and_, prefix_read, b.i1_type, is_zero, hex_or_oct)
+	b.block_instr3(.br, prefix_read, b.void_type, has_prefix, ValueID(prefix_take),
+		ValueID(loop))
+
+	// common_parse_uint2 needs three bytes to read a prefix, so "0x" on its own falls
+	// back to base 8 and stops on the `x` as a bad digit.
+	has_rest3 := b.block_instr2(.ge, prefix_take, b.i1_type, rest, three64)
+	b.block_instr3(.br, prefix_take, b.void_type, has_rest3, ValueID(prefix_base),
+		ValueID(prefix_octal))
+
+	b.block_instr2(.store, prefix_octal, b.void_type, eight64, base_slot)
+	b.block_instr2(.store, prefix_octal, b.void_type, start, digits_slot)
+	b.block_instr1(.jmp, prefix_octal, b.void_type, ValueID(loop))
+
+	// Two nested selects cover the three prefixes: the inner one splits 0b from 0o,
+	// and the outer one lifts 0x out of both.
+	other_base := b.block_instr3(.select, prefix_base, b.i64_type, is_bin, two64, eight64)
+	chosen_base := b.block_instr3(.select, prefix_base, b.i64_type, is_hex, sixteen64,
+		other_base)
+	b.block_instr2(.store, prefix_base, b.void_type, chosen_base, base_slot)
+	prefix_end := b.block_instr2(.add, prefix_base, b.i64_type, start, two64)
+	end_ptr := b.block_instr2(.add, prefix_base, ptr_i8, data, prefix_end)
+	end_ch := b.block_instr1(.load, prefix_base, b.i8_type, end_ptr)
+	after_us := b.block_instr2(.eq, prefix_base, b.i1_type, end_ch, ascii_underscore)
+	skipped := b.block_instr2(.add, prefix_base, b.i64_type, prefix_end, one64)
+	digits := b.block_instr3(.select, prefix_base, b.i64_type, after_us, skipped,
+		prefix_end)
+	b.block_instr2(.store, prefix_base, b.void_type, digits, i_slot)
+	b.block_instr2(.store, prefix_base, b.void_type, digits, digits_slot)
+	b.block_instr1(.jmp, prefix_base, b.void_type, ValueID(loop))
 
 	i := b.block_instr1(.load, loop, b.i64_type, i_slot)
 	more := b.block_instr2(.lt, loop, b.i1_type, i, len)
-	b.block_instr3(.br, loop, b.void_type, more, ValueID(body), ValueID(done))
+	b.block_instr3(.br, loop, b.void_type, more, ValueID(body), ValueID(stop))
 
 	body_i := b.block_instr1(.load, body, b.i64_type, i_slot)
 	ch_ptr := b.block_instr2(.add, body, ptr_i8, data, body_i)
 	ch := b.block_instr1(.load, body, b.i8_type, ch_ptr)
-	ch64 := b.block_instr1(.zext, body, b.i64_type, ch)
-	digit := b.block_instr2(.sub, body, b.i64_type, ch64, ascii_zero)
-	cur := b.block_instr1(.load, body, b.i64_type, result_slot)
-	scaled := b.block_instr2(.mul, body, b.i64_type, cur, ten64)
-	next := b.block_instr2(.add, body, b.i64_type, scaled, digit)
-	b.block_instr2(.store, body, b.void_type, next, result_slot)
-	next_i := b.block_instr2(.add, body, b.i64_type, body_i, one64)
-	b.block_instr2(.store, body, b.void_type, next_i, i_slot)
-	b.block_instr1(.jmp, body, b.void_type, ValueID(loop))
+	is_us := b.block_instr2(.eq, body, b.i1_type, ch, ascii_underscore)
+	b.block_instr3(.br, body, b.void_type, is_us, ValueID(underscore), ValueID(digit))
 
-	parsed := b.block_instr1(.load, done, b.i64_type, result_slot)
-	sign := b.block_instr1(.load, done, b.i64_type, sign_slot)
-	signed := b.block_instr2(.mul, done, b.i64_type, parsed, sign)
-	b.block_instr1(.ret, done, b.void_type, signed)
+	// A `_` separates digits but may not lead or trail the number, sit directly
+	// after the prefix, or double up; each of those is a syntax error, so the whole
+	// value collapses to 0 rather than to a partial parse.
+	digits_start := b.block_instr1(.load, underscore, b.i64_type, digits_slot)
+	at_start := b.block_instr2(.eq, underscore, b.i1_type, body_i, digits_start)
+	last := b.block_instr2(.sub, underscore, b.i64_type, len, one64)
+	at_end := b.block_instr2(.ge, underscore, b.i1_type, body_i, last)
+	at_edge := b.block_instr2(.or_, underscore, b.i1_type, at_start, at_end)
+	b.block_instr3(.br, underscore, b.void_type, at_edge, ValueID(stop_zero), ValueID(underscore_pair))
+
+	prev_i := b.block_instr2(.sub, underscore_pair, b.i64_type, body_i, one64)
+	prev_ptr := b.block_instr2(.add, underscore_pair, ptr_i8, data, prev_i)
+	prev_ch := b.block_instr1(.load, underscore_pair, b.i8_type, prev_ptr)
+	prev_us := b.block_instr2(.eq, underscore_pair, b.i1_type, prev_ch, ascii_underscore)
+	next_i := b.block_instr2(.add, underscore_pair, b.i64_type, body_i, one64)
+	next_ptr := b.block_instr2(.add, underscore_pair, ptr_i8, data, next_i)
+	next_ch := b.block_instr1(.load, underscore_pair, b.i8_type, next_ptr)
+	next_us := b.block_instr2(.eq, underscore_pair, b.i1_type, next_ch, ascii_underscore)
+	doubled := b.block_instr2(.or_, underscore_pair, b.i1_type, prev_us, next_us)
+	b.block_instr3(.br, underscore_pair, b.void_type, doubled, ValueID(stop_zero),
+		ValueID(step))
+
+	// Fold the byte onto its digit value before comparing it with the base, because
+	// `A`-`F` sit 7 above the decimal digits and `a`-`f` 32 above those.
+	ch64 := b.block_instr1(.zext, digit, b.i64_type, ch)
+	is_upper_af := b.u8_in_range(digit, ch, `A`, `F`)
+	is_lower_af := b.u8_in_range(digit, ch, `a`, `f`)
+	is_letter := b.block_instr2(.or_, digit, b.i1_type, is_upper_af, is_lower_af)
+	letter_adjust := b.block_instr3(.select, digit, b.i64_type, is_upper_af, upper_adjust,
+		lower_adjust)
+	digit_adjust := b.block_instr3(.select, digit, b.i64_type, is_letter, letter_adjust,
+		ascii_zero_i64)
+	folded := b.block_instr2(.sub, digit, b.i64_type, ch64, digit_adjust)
+	base := b.block_instr1(.load, digit, b.i64_type, base_slot)
+	below_base := b.block_instr2(.lt, digit, b.i1_type, folded, base)
+	not_negative := b.block_instr2(.ge, digit, b.i1_type, folded, zero64)
+	in_base := b.block_instr2(.and_, digit, b.i1_type, below_base, not_negative)
+	// common_parse_uint2 rejects a bare 10-15, which is what `:` through `?` fold to,
+	// unless it came from a letter.
+	small := b.block_instr2(.le, digit, b.i1_type, folded, nine64)
+	letter_or_small := b.block_instr2(.or_, digit, b.i1_type, is_letter, small)
+	valid := b.block_instr2(.and_, digit, b.i1_type, in_base, letter_or_small)
+	b.block_instr3(.br, digit, b.void_type, valid, ValueID(accumulate), ValueID(stop))
+
+	cur := b.block_instr1(.load, accumulate, b.i64_type, result_slot)
+	scale_base := b.block_instr1(.load, accumulate, b.i64_type, base_slot)
+	scaled := b.block_instr2(.mul, accumulate, b.i64_type, cur, scale_base)
+	accumulated := b.block_instr2(.add, accumulate, b.i64_type, scaled, folded)
+	b.block_instr2(.store, accumulate, b.void_type, accumulated, result_slot)
+	b.block_instr1(.jmp, accumulate, b.void_type, ValueID(step))
+
+	step_next_i := b.block_instr2(.add, step, b.i64_type, body_i, one64)
+	b.block_instr2(.store, step, b.void_type, step_next_i, i_slot)
+	b.block_instr1(.jmp, step, b.void_type, ValueID(loop))
+
+	b.block_instr2(.store, stop_zero, b.void_type, zero64, result_slot)
+	b.block_instr1(.jmp, stop_zero, b.void_type, ValueID(stop))
+
+	// common_parse_int clamps at 2^31 rather than wrapping or erroring, so the range
+	// check happens on the signed value.
+	parsed := b.block_instr1(.load, stop, b.i64_type, result_slot)
+	sign := b.block_instr1(.load, stop, b.i64_type, sign_slot)
+	signed_val := b.block_instr2(.mul, stop, b.i64_type, parsed, sign)
+	too_big := b.block_instr2(.gt, stop, b.i1_type, signed_val, max_i32)
+	too_small := b.block_instr2(.lt, stop, b.i1_type, signed_val, min_i32)
+	high := b.block_instr3(.select, stop, b.i64_type, too_big, max_i32, signed_val)
+	clamped := b.block_instr3(.select, stop, b.i64_type, too_small, min_i32, high)
+	b.block_instr1(.ret, stop, b.void_type, clamped)
 }
 
 // generate_string_pad_body implements the v3 string-interpolation padding helper for SSA.
@@ -2798,19 +2954,101 @@ fn (mut b Builder) generate_string_pad_body(func_id int) {
 	b.block_instr1(.ret, done, b.void_type, result)
 }
 
-// generate_int_zpad_passthrough_body keeps zero-padded helper calls buildable on the
-// SSA/native path. C output still uses the full helper implementation.
-fn (mut b Builder) generate_int_zpad_passthrough_body(func_id int, value_type TypeID) {
+// generate_int_zpad_body zero-pads an integer's decimal text to `width`, keeping a
+// leading sign outside the zeros the way `${x:05}` does natively: `-7` at width 6
+// prints `-00007`. The width was previously discarded, so the helper returned the
+// unpadded text, and the unsigned spelling returned the constant `0`.
+fn (mut b Builder) generate_int_zpad_body(func_id int, value_type TypeID, is_unsigned bool) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	ptr_string := b.m.type_store.get_ptr(b.str_type)
+
 	entry := b.m.add_block(func_id, 'int_zpad_entry')
 	value := b.func_add_argument(func_id, value_type, 'value')
-	_ := b.func_add_argument(func_id, b.i32_type, 'width')
-	mut widened := value
-	if value_type != b.i64_type {
-		widened = b.block_instr1(.sext, entry, b.i64_type, value)
+	width_arg := b.func_add_argument(func_id, b.i32_type, 'width')
+	text_slot := b.block_instr0(.alloca, entry, ptr_string)
+	width_slot := b.block_instr0(.alloca, entry, ptr_i32)
+	sign_slot := b.block_instr0(.alloca, entry, ptr_i64)
+
+	zero32 := b.m.get_or_add_const(b.i32_type, '0')
+	zero64 := b.m.get_or_add_const(b.i64_type, '0')
+	one64 := b.m.get_or_add_const(b.i64_type, '1')
+	radix := b.m.get_or_add_const(b.i64_type, '10')
+	b.block_instr2(.store, entry, b.void_type, width_arg, width_slot)
+	b.block_instr2(.store, entry, b.void_type, zero64, sign_slot)
+
+	widened := if value_type == b.i32_type {
+		b.block_instr1(.sext, entry, b.i64_type, value)
+	} else {
+		value
 	}
-	int_str_ref := b.m.add_value(.func_ref, b.str_type, 'int_str', b.runtime_fn_id('int_str'))
-	result := b.block_instr2(.call, entry, b.str_type, int_str_ref, widened)
-	b.block_instr1(.ret, entry, b.void_type, result)
+	// The unsigned spelling must read its bits as bits: `strconv__format_uint`
+	// formats without a sign, so `u64::MAX` prints as twenty digits, not a negative.
+	text := if is_unsigned {
+		uint_ref := b.m.add_value(.func_ref, b.str_type, 'strconv__format_uint',
+			b.runtime_fn_id('strconv__format_uint'))
+		b.block_instr3(.call, entry, b.str_type, uint_ref, widened, radix)
+	} else {
+		int_str_ref := b.m.add_value(.func_ref, b.str_type, 'int_str', b.runtime_fn_id('int_str'))
+		b.block_instr2(.call, entry, b.str_type, int_str_ref, widened)
+	}
+	b.block_instr2(.store, entry, b.void_type, text, text_slot)
+
+	prepare := b.m.add_block(func_id, 'int_zpad_prepare')
+	return_original := b.m.add_block(func_id, 'int_zpad_original')
+	sign_check := b.m.add_block(func_id, 'int_zpad_check_sign')
+	read_sign := b.m.add_block(func_id, 'int_zpad_read_sign')
+	pad := b.m.add_block(func_id, 'int_zpad_allocate')
+	b.block_instr1(.jmp, entry, b.void_type, ValueID(prepare))
+
+	data_ptr := b.block_struct_field_ptr(prepare, text_slot, b.str_type, 0)
+	len_ptr := b.block_struct_field_ptr(prepare, text_slot, b.str_type, 1)
+	data := b.block_instr1(.load, prepare, ptr_i8, data_ptr)
+	len32 := b.block_instr1(.load, prepare, b.i32_type, len_ptr)
+	width32 := b.block_instr1(.load, prepare, b.i32_type, width_slot)
+	already_wide := b.block_instr2(.ge, prepare, b.i1_type, len32, width32)
+	b.block_instr3(.br, prepare, b.void_type, already_wide, ValueID(return_original),
+		ValueID(sign_check))
+	b.block_instr1(.ret, return_original, b.void_type, text)
+
+	nonempty := b.block_instr2(.gt, sign_check, b.i1_type, len32, zero32)
+	b.block_instr3(.br, sign_check, b.void_type, nonempty, ValueID(read_sign), ValueID(pad))
+	minus := b.m.get_or_add_const(b.i8_type, '45')
+	plus := b.m.get_or_add_const(b.i8_type, '43')
+	first := b.block_instr1(.load, read_sign, b.i8_type, data)
+	is_minus := b.block_instr2(.eq, read_sign, b.i1_type, first, minus)
+	is_plus := b.block_instr2(.eq, read_sign, b.i1_type, first, plus)
+	has_sign := b.block_instr2(.or_, read_sign, b.i1_type, is_minus, is_plus)
+	sign_len := b.block_instr1(.zext, read_sign, b.i64_type, has_sign)
+	b.block_instr2(.store, read_sign, b.void_type, sign_len, sign_slot)
+	b.block_instr1(.jmp, read_sign, b.void_type, ValueID(pad))
+
+	sign64 := b.block_instr1(.load, pad, b.i64_type, sign_slot)
+	len64 := b.block_instr1(.zext, pad, b.i64_type, len32)
+	width64 := b.block_instr1(.zext, pad, b.i64_type, width32)
+	pad_len64 := b.block_instr1(.zext, pad, b.i64_type,
+		b.block_instr2(.sub, pad, b.i32_type, width32, len32))
+	alloc_len := b.block_instr2(.add, pad, b.i64_type, width64, one64)
+	malloc_ref := b.m.add_value(.func_ref, b.void_type, 'malloc', b.runtime_fn_id('malloc'))
+	out := b.block_instr2(.call, pad, ptr_i8, malloc_ref, alloc_len)
+	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
+	b.block_instr4(.call, pad, ptr_i8, memcpy_ref, out, data, sign64)
+
+	zero_char := b.m.get_or_add_const(b.i64_type, '48')
+	pad_dest := b.block_instr2(.add, pad, ptr_i8, out, sign64)
+	memset_ref := b.m.add_value(.func_ref, b.void_type, 'memset', b.runtime_fn_id('memset'))
+	b.block_instr4(.call, pad, ptr_i8, memset_ref, pad_dest, zero_char, pad_len64)
+	text_dest := b.block_instr2(.add, pad, ptr_i8, pad_dest, pad_len64)
+	text_src := b.block_instr2(.add, pad, ptr_i8, data, sign64)
+	text_len := b.block_instr2(.sub, pad, b.i64_type, len64, sign64)
+	b.block_instr4(.call, pad, ptr_i8, memcpy_ref, text_dest, text_src, text_len)
+
+	zero8 := b.m.get_or_add_const(b.i8_type, '0')
+	term := b.block_instr2(.add, pad, ptr_i8, out, width64)
+	b.block_instr2(.store, pad, b.void_type, zero8, term)
+	result := b.emit_make_string(pad, out, width64, 0)
+	b.block_instr1(.ret, pad, b.void_type, result)
 }
 
 // register_bench_runtime_stubs updates register bench runtime stubs state for ssa.
@@ -3053,6 +3291,18 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	p3 << b.i64_type
 	if array_new_id := b.register_runtime_function('array_new', b.array_type, p3) {
 		b.generate_array_new_body(array_new_id)
+	}
+
+	// `__new_array_noscan(len, cap, size)` is what the transformer emits for
+	// `[]T{}` with scalar elements. It takes len/cap/size where array_new
+	// takes size/len/cap, so delegate with reordered arguments.
+	mut p_noscan := []TypeID{}
+	p_noscan << b.i64_type
+	p_noscan << b.i64_type
+	p_noscan << b.i64_type
+	if array_noscan_id := b.register_runtime_function('__new_array_noscan', b.array_type,
+		p_noscan) {
+		b.generate_array_noscan_body(array_noscan_id)
 	}
 
 	mut p2 := []TypeID{}
@@ -3440,7 +3690,6 @@ fn (mut b Builder) generate_builder_write_string_body(func_id int, add_newline b
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_builder := b.m.type_store.get_ptr(b.array_type)
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
-	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
 	entry := b.m.add_block(func_id, 'entry')
 	builder_ptr := b.func_add_argument(func_id, ptr_builder, 'builder')
 	s := b.func_add_argument(func_id, b.str_type, 's')
@@ -3448,9 +3697,10 @@ fn (mut b Builder) generate_builder_write_string_body(func_id int, add_newline b
 	alloca_s := b.block_instr0(.alloca, entry, ptr_string)
 	b.block_instr2(.store, entry, b.void_type, s, alloca_s)
 	zero := b.m.get_or_add_const(b.i64_type, '0')
-	len_off := b.m.get_or_add_const(b.i64_type, '8')
 	str_ptr_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i8, alloca_s, zero)
-	len_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i32, alloca_s, len_off)
+	// The length's offset belongs to the target layout: 8 is where a 64-bit
+	// pointer puts it, and on a 4-byte pointer target that word is `is_lit`.
+	len_ptr := b.block_struct_field_ptr(entry, alloca_s, b.str_type, 1)
 	str_ptr := b.block_instr1(.load, entry, ptr_i8, str_ptr_ptr)
 	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
 	len64 := b.block_instr1(.zext, entry, b.i64_type, len32)
@@ -5664,6 +5914,18 @@ fn (mut b Builder) generate_array_new_body(func_id int) {
 	b.block_instr1(.ret, blk_fields, b.void_type, arr)
 }
 
+// generate_array_noscan_body delegates `__new_array_noscan(len, cap, size)`
+// to array_new, which takes (size, len, cap).
+fn (mut b Builder) generate_array_noscan_body(func_id int) {
+	entry := b.m.add_block(func_id, 'entry')
+	len := b.func_add_argument(func_id, b.i64_type, 'len')
+	cap := b.func_add_argument(func_id, b.i64_type, 'cap')
+	size := b.func_add_argument(func_id, b.i64_type, 'size')
+	new_ref := b.m.add_value(.func_ref, b.array_type, 'array_new', b.runtime_fn_id('array_new'))
+	res := b.block_instr4(.call, entry, b.array_type, new_ref, size, len, cap)
+	b.block_instr1(.ret, entry, b.array_type, res)
+}
+
 // generate_array_get_body supports generate array get body handling for Builder.
 fn (mut b Builder) generate_array_get_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -6451,7 +6713,6 @@ fn (mut b Builder) generate_string_all_last_body(func_id int, before bool) {
 fn (mut b Builder) generate_string_eq_body(func_id int) {
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
-	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
 	entry := b.m.add_block(func_id, 'entry')
 	param_a := b.func_add_argument(func_id, b.str_type, 'a')
 	param_b := b.func_add_argument(func_id, b.str_type, 'b')
@@ -6462,11 +6723,12 @@ fn (mut b Builder) generate_string_eq_body(func_id int) {
 	b.block_instr2(.store, entry, b.void_type, param_b, alloca_b)
 
 	zero_64 := b.m.get_or_add_const(b.i64_type, '0')
-	len_off := b.m.get_or_add_const(b.i64_type, '8')
 	a_str_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i8, alloca_a, zero_64)
 	b_str_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i8, alloca_b, zero_64)
-	a_len_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i32, alloca_a, len_off)
-	b_len_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i32, alloca_b, len_off)
+	// The length's offset belongs to the target layout: 8 is where a 64-bit
+	// pointer puts it, and on a 4-byte pointer target that word is `is_lit`.
+	a_len_ptr := b.block_struct_field_ptr(entry, alloca_a, b.str_type, 1)
+	b_len_ptr := b.block_struct_field_ptr(entry, alloca_b, b.str_type, 1)
 	a_str := b.block_instr1(.load, entry, ptr_i8, a_str_ptr)
 	b_str := b.block_instr1(.load, entry, ptr_i8, b_str_ptr)
 	a_len := b.block_instr1(.load, entry, b.i32_type, a_len_ptr)
@@ -6503,11 +6765,12 @@ fn (mut b Builder) generate_string_lt_body(func_id int) {
 	b.block_instr2(.store, entry, b.void_type, param_b, alloca_b)
 
 	zero_64 := b.m.get_or_add_const(b.i64_type, '0')
-	len_off := b.m.get_or_add_const(b.i64_type, '8')
 	a_str_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i8, alloca_a, zero_64)
 	b_str_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i8, alloca_b, zero_64)
-	a_len_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i32, alloca_a, len_off)
-	b_len_ptr := b.block_instr2(.get_element_ptr, entry, ptr_i32, alloca_b, len_off)
+	// The length's offset belongs to the target layout: 8 is where a 64-bit
+	// pointer puts it, and on a 4-byte pointer target that word is `is_lit`.
+	a_len_ptr := b.block_struct_field_ptr(entry, alloca_a, b.str_type, 1)
+	b_len_ptr := b.block_struct_field_ptr(entry, alloca_b, b.str_type, 1)
 	a_str := b.block_instr1(.load, entry, ptr_i8, a_str_ptr)
 	b_str := b.block_instr1(.load, entry, ptr_i8, b_str_ptr)
 	a_len := b.block_instr1(.load, entry, b.i32_type, a_len_ptr)
@@ -7849,7 +8112,11 @@ fn (mut b Builder) build_array_for_in(node flat.Node, key_id flat.NodeId, val_id
 
 	elem_type_name := b.for_in_array_elem_type_name(container_id, container_type)
 	elem_type := b.resolve_type(elem_type_name)
-	has_value_var := b.valid_node_id(val_id)
+	// A single loop variable takes the element, not the index: the parser
+	// leaves an `.empty` placeholder where the value variable would be, and
+	// valid_node_id accepts it, so check the kind explicitly. Without this,
+	// `for x in arr` binds x to the key and sums indices instead of elements.
+	has_value_var := b.valid_node_id(val_id) && b.a.nodes[int(val_id)].kind == .ident
 	key_name := b.ident_name(key_id)
 	val_name := if has_value_var { b.ident_name(val_id) } else { key_name }
 	old_key := b.save_var_binding(key_name)
@@ -8724,7 +8991,7 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			return b.build_struct_init(node)
 		}
 		.array_literal {
-			return b.build_array_literal(node)
+			return b.build_array_literal(id, node)
 		}
 		.array_init {
 			return b.build_array_init(node)
@@ -9044,7 +9311,7 @@ fn (mut b Builder) build_block_expr(node flat.Node) ValueID {
 	return b.build_expr(last_id)
 }
 
-fn (mut b Builder) build_array_literal(node flat.Node) ValueID {
+fn (mut b Builder) build_array_literal(id flat.NodeId, node flat.Node) ValueID {
 	if b.is_fixed_array_type_name(node.typ) {
 		mut fixed_node := node
 		fixed_node.value = node.typ
@@ -9060,6 +9327,14 @@ fn (mut b Builder) build_array_literal(node flat.Node) ValueID {
 			elem_type = b.value_type(value)
 		}
 		values << value
+	}
+	// Integer literals type wider than the array element: an untyped `1` is
+	// i64 while `[]int` holds i32. Take the width from the array type when the
+	// checker knows it, or the header stride disagrees with every reader,
+	// which all use the element type, and elements read back shifted.
+	arr_type := b.checked_expr_type_name(id)
+	if arr_type.starts_with('[]') && arr_type.len > 2 {
+		elem_type = b.resolve_type(indexed_elem_type_name(arr_type))
 	}
 	elem_size := b.m.type_size(elem_type)
 	actual_elem_size := if elem_size > 0 { elem_size } else { 8 }
@@ -11495,6 +11770,12 @@ fn (mut b Builder) build_scalar_str_call(node flat.Node, resolved_name string, b
 		b.build_expr(value_id)
 	} else {
 		b.coerce_numeric_value(b.build_expr(value_id), b.resolve_type(primitive_name))
+	}
+	// A rune's ordinary str() prints the character, not its code point, so it cannot
+	// share the integer branch: stringify_scalar would hand the codepoint to int_str
+	// and `${r}` would print `90` for `Z`.
+	if primitive_name == 'rune' {
+		return b.emit_runtime_call('v3_char_string', b.str_type, [value])
 	}
 	return b.stringify_scalar(value)
 }

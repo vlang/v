@@ -11228,8 +11228,8 @@ pub fn run(args []string) {
 	if ownership_mode && 'ownership' !in builtin_defines {
 		builtin_defines << 'ownership'
 	}
-	mut builtin_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(builtin_dir,
-		builtin_defines, prefs.target))
+	mut builtin_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(builtin_dir,
+		builtin_defines, prefs.backend, prefs.target))
 	// `map.v` retains the regular-backend layout so the stable V1 fallback can
 	// compile tools against the current tree. V3 selects its pointer-sized map
 	// implementation through the internal backend define above.
@@ -13376,7 +13376,10 @@ pub fn run(args []string) {
 			// branches. output_file is the exact path requested via -o (or the
 			// <name>.wasm default).
 			mut metadata := wasmgen.Gen.new(a, pre_tc, used_fns)
-			config := metadata.ssa_configuration()
+			config := metadata.ssa_configuration() or {
+				eprintln(err.msg())
+				exit(1)
+			}
 			mut m := ssa.build_with_options(a, config.used_fns, pre_tc, ssa.BuildOptions{
 				target:         ssa.TargetData{ ptr_size: 4 }
 				track_uses:     is_prod
@@ -13404,6 +13407,7 @@ pub fn run(args []string) {
 				}
 			}
 			g.configure(exports, config.init_fns, main_fn)
+			g.declare_imports(config.imports)
 			g.gen() or {
 				eprintln(err.msg())
 				exit(1)
@@ -15614,8 +15618,8 @@ fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, buil
 		if !os.is_dir(dir) {
 			continue
 		}
-		for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
-			prefs.target)) {
+		for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir, prefs.user_defines,
+			prefs.backend, prefs.target)) {
 			key := a.record_source_path(file)
 			if seen[key] {
 				continue
@@ -17732,8 +17736,8 @@ fn collect_v3_directory_user_files_rec(mut a flat.FlatAst, module_root string, d
 }
 
 fn append_v3_directory_user_files(mut a flat.FlatAst, dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
-	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines,
-		prefs.target)) {
+	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir, prefs.user_defines,
+		prefs.backend, prefs.target)) {
 		append_unique_file(mut a, mut files, mut seen, file)
 	}
 	if is_test_command {
@@ -17796,8 +17800,8 @@ fn expand_single_test_file_inputs(mut a flat.FlatAst, user_files []string, prefs
 
 fn same_dir_module_source_files(mut a flat.FlatAst, test_file string, module_name string, prefs &pref.Preferences) []string {
 	dir := os.dir(test_file)
-	mut all_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir,
-		prefs.user_defines, prefs.target))
+	mut all_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir,
+		prefs.user_defines, prefs.backend, prefs.target))
 	// A `subdirs` manifest makes several directories one source module. When a
 	// test file sits in one of those virtual directories, include
 	// the complete module instead of only its physical-directory siblings.
@@ -18524,13 +18528,6 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 		diagnose_aggregates := tc.diagnostic_files.len == 0 || root_file in tc.diagnostic_files
 		fallback_location := backend_fn_location(a, node)
 		if backend == 'wasm' && diagnose_aggregates {
-			return_type := tc.parse_resolution_type(node.typ)
-			if return_type is types.OptionType {
-				return '${fallback_location}error: option types are not implemented by the V wasm backend'
-			}
-			if return_type is types.ResultType {
-				return '${fallback_location}error: result types are not implemented by the V wasm backend'
-			}
 			mut infix_visited := []bool{len: a.nodes.len}
 			if msg := unsupported_wasm_struct_infix_error(a, tc, flat.NodeId(idx), fallback_location, mut infix_visited) {
 				return msg
@@ -18617,7 +18614,8 @@ fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, i
 		rhs_type := tc.resolve_type(a.child(&node, 1))
 		lhs_name := lhs_type.name().trim_string_left('main.')
 		rhs_name := rhs_type.name().trim_string_left('main.')
-		if lhs_name == rhs_name && lhs_name.len > 0 && lhs_name in tc.structs {
+		if lhs_name == rhs_name && lhs_name.len > 0 && lhs_name in tc.structs
+			&& !wasm_supported_struct(tc, lhs_name) {
 			operator := if node.op == .eq { '==' } else { '!=' }
 			return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${lhs_name}` yet'
 		}
@@ -18627,7 +18625,8 @@ fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, i
 		// first lowered struct literal.
 		lhs_origin := wasm_struct_origin_type(a, a.child(&node, 0))
 		rhs_origin := wasm_struct_origin_type(a, a.child(&node, 1))
-		if lhs_origin.len > 0 && lhs_origin == rhs_origin {
+		if lhs_origin.len > 0 && lhs_origin == rhs_origin
+			&& !wasm_supported_struct(tc, lhs_origin) {
 			operator := if node.op == .eq { '==' } else { '!=' }
 			return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${lhs_origin}` yet'
 		}
@@ -18737,6 +18736,68 @@ fn msvc_inline_asm_node_error(a &flat.FlatAst, id flat.NodeId, top_level bool, m
 	return none
 }
 
+// wasm_supported_array_elem reports whether a resolved array type name has
+// primitive elements the wasm backend lowers today. Single dimension only:
+// nested arrays need inner-header handling that does not exist yet.
+fn wasm_supported_array_elem(type_name string) bool {
+	if !type_name.starts_with('[]') || type_name.len <= 2 {
+		return false
+	}
+	elem := type_name[2..]
+	return elem in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
+		'f32', 'f64', 'bool', 'char', 'rune']
+}
+
+// wasm_supported_struct reports whether every field of the named struct has a
+// wasm lowering: a primitive, a string, a pointer (an i32 on this target), or
+// another struct that satisfies the same rule. Structs are walked recursively
+// with a depth bound, because a self-referential type through a pointer field
+// would otherwise loop the walk for ever.
+fn wasm_supported_struct(tc &types.TypeChecker, type_name string) bool {
+	return wasm_struct_fields_supported(tc, type_name, 0)
+}
+
+fn wasm_struct_fields_supported(tc &types.TypeChecker, type_name string, depth int) bool {
+	if depth > 8 {
+		return false
+	}
+	name := type_name.trim_string_left('main.@')
+	if name == '' {
+		return false
+	}
+	st := tc.structs[name] or { return false }
+	for f in st {
+		if !wasm_struct_field_supported(tc, f.typ, depth) {
+			return false
+		}
+	}
+	return true
+}
+
+fn wasm_struct_field_supported(tc &types.TypeChecker, typ types.Type, depth int) bool {
+	match typ {
+		types.Alias {
+			return wasm_struct_field_supported(tc, typ.base_type, depth)
+		}
+		types.Primitive, types.Char, types.Rune, types.ISize, types.USize, types.Enum,
+		types.String {
+			return true
+		}
+		types.Struct {
+			return wasm_struct_fields_supported(tc, typ.name, depth + 1)
+		}
+		types.Pointer {
+			// A pointer is only an i32 on this target, but the pointee still
+			// has to lower, or reading through the field would miscompile. The
+			// depth bound stops a self-referential type from looping here.
+			return wasm_struct_fields_supported(tc, typ.base_type.name(), depth + 1)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, backend string, diagnose_aggregates bool, fallback_location string, mut visited []bool) ?string {
 	idx := int(id)
 	if idx < 0 || idx >= a.nodes.len || visited[idx] {
@@ -18748,6 +18809,23 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 		mut unsupported_type := ''
 		if node.kind in [.array_literal, .array_init, .map_init, .struct_init] {
 			unsupported_type = tc.resolve_type(id).name()
+			// Dynamic arrays of primitive elements lower in the wasm backend
+			// (literals, init, index, push, slices, for-in). Anything else
+			// stays gated: maps, fixed arrays, and nested arrays have no wasm
+			// lowering yet, and a silent miscompile would be worse than this
+			// error.
+			if (node.kind == .array_literal || node.kind == .array_init)
+				&& wasm_supported_array_elem(unsupported_type) {
+				unsupported_type = ''
+			}
+			// Struct literals lower too, when every field has a lowering: the
+			// backend already copies aggregates through pointers and returns
+			// them through the sret slot. Nested structs, strings and pointers
+			// are accepted; arrays, maps, options and results as fields are
+			// not, so a struct holding one stays rejected.
+			if node.kind == .struct_init && wasm_supported_struct(tc, unsupported_type) {
+				unsupported_type = ''
+			}
 		} else if node.kind == .call && node.children_count > 0 {
 			callee := a.child_node(&node, 0)
 			if callee.kind == .ident && callee.value == 'new_map' {
@@ -21364,8 +21442,8 @@ fn eager_selfhost_resolve_thread(arg voidptr) voidptr {
 	result.dir = resolve_project_or_pref_module_path(prefs, result.path, result.importing_file, result.project_root, mut local_cache)
 	if result.dir.len > 0 && os.is_dir(result.dir) {
 		result.real_dir = os.real_path(result.dir)
-		result.files = prefs.without_excluded(pref.get_v_files_from_dir_for_target(result.dir,
-			prefs.user_defines, prefs.target))
+		result.files = prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(result.dir,
+			prefs.user_defines, prefs.backend, prefs.target))
 		if result.files.len > 0 {
 			result.identity = import_module_identity_with_path_cache(prefs, result.path, result.importing_file, result.project_root, result.dir, mut local_cache)
 		}
@@ -22069,8 +22147,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			if is_bundle_warmup_import && cache_state.bundle_valid {
 				warmup_dir := prefs.get_vlib_module_path(mod_name)
-				warmup_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(warmup_dir,
-					prefs.user_defines, prefs.target))
+				warmup_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(warmup_dir,
+					prefs.user_defines, prefs.backend, prefs.target))
 				if cache_state.manager.valid_header(mod_name, warmup_files) == none {
 					// The cached bundle may have been built while a project module
 					// shadowed this optional warmup import. An actual user import was
@@ -22159,8 +22237,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
 			mod_files := if mod_dir_exists {
 				v3_directory_user_files(mut a, mod_dir, prefs, false, false) or {
-					prefs.without_excluded(pref.get_v_files_from_dir_for_target(mod_dir,
-						prefs.user_defines, prefs.target))
+					prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(mod_dir,
+						prefs.user_defines, prefs.backend, prefs.target))
 				}
 			} else {
 				[]string{}
@@ -22743,8 +22821,8 @@ fn aliased_import_module_identity(prefs &pref.Preferences, import_path string, i
 	if os.real_path(requested_dir) == os.real_path(import_dir) {
 		return none
 	}
-	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(import_dir,
-		prefs.user_defines, prefs.target)) {
+	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(import_dir,
+		prefs.user_defines, prefs.backend, prefs.target)) {
 		module_name := declared_module_in_file(file)
 		if module_name.len > 0 {
 			return module_name
@@ -23130,8 +23208,8 @@ fn module_path_has_v_sources(path string, prefs &pref.Preferences) bool {
 		return false
 	}
 	source_root := v3_directory_source_root(path)
-	if prefs.without_excluded(pref.get_v_files_from_dir_for_target(source_root, prefs.user_defines,
-		prefs.target)).len > 0 {
+	if prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(source_root, prefs.user_defines,
+		prefs.backend, prefs.target)).len > 0 {
 		return true
 	}
 	// A v.mod can expose one logical module from source-only subdirectories. The
@@ -23159,8 +23237,8 @@ fn module_subdir_has_v_sources(module_root string, dir string, prefs &pref.Prefe
 	if real_dir != module_root && os.is_file(os.join_path_single(real_dir, 'v.mod')) {
 		return false
 	}
-	if prefs.without_excluded(pref.get_v_files_from_dir_for_target(real_dir, prefs.user_defines,
-		prefs.target)).len > 0 {
+	if prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(real_dir, prefs.user_defines,
+		prefs.backend, prefs.target)).len > 0 {
 		return true
 	}
 	entries := os.ls(real_dir) or { return false }

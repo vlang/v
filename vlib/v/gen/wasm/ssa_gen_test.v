@@ -5,6 +5,7 @@ import v.parser
 import v.pref
 import v.ssa
 import v.ssa.optimize
+import v.transform
 import v.types
 
 fn ssa_wasm_test_dir(name string) string {
@@ -528,7 +529,7 @@ pub fn get() int {
 	assert tc.errors.len == 0, tc.errors.str()
 	tc.annotate_types()
 	mut metadata := Gen.new(a, &tc, map[string]bool{})
-	config := metadata.ssa_configuration()
+	config := metadata.ssa_configuration() or { panic(err) }
 	assert metadata.import_paths == ['foo'], metadata.import_paths.str()
 	assert config.used_fns['foo.bump'], config.used_fns.str()
 	assert config.used_fns['foo.get'], config.used_fns.str()
@@ -639,7 +640,7 @@ pub fn add(value int) int {
 	assert tc.errors.len == 0, tc.errors.str()
 	tc.annotate_types()
 	mut metadata := Gen.new(a, &tc, map[string]bool{})
-	config := metadata.ssa_configuration()
+	config := metadata.ssa_configuration() or { panic(err) }
 	assert config.used_fns['foo.add'], config.used_fns.str()
 	for production in [false, true] {
 		mut m := ssa.build_with_options(a, config.used_fns, &tc, ssa.BuildOptions{
@@ -661,4 +662,702 @@ assert.equal(e.invoke(3), 10);
 assert.equal(e.invoke(-7), 0);
 ')
 	}
+}
+
+// Arrays of primitive elements lower end to end on wasm: literals, init,
+// index load/store, push, slice, and for-in. The pipeline below matches the
+// driver's wasm path, including the transform pass that rewrites `<<` into a
+// push call and `[]int{}` into `__new_array_noscan`; without both, the
+// construct silently miscompiles instead of failing.
+fn test_ssa_wasm_primitive_arrays() {
+	dir := ssa_wasm_test_dir('arrays')
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'arrays.v')
+	os.write_file(source, '
+module main
+
+pub fn arr_sum() int {
+	mut total := 0
+	a := [1, 2, 3]
+	for x in a {
+		total += x
+	}
+	return total
+}
+
+pub fn arr_push_len() int {
+	mut b := []int{}
+	b << 4
+	b << 5
+	return b.len * 100 + b[0] * 10 + b[1]
+}
+
+pub fn arr_index_assign() int {
+	mut c := [10, 20, 30]
+	c[1] = 99
+	return c[0] + c[1] + c[2]
+}
+
+pub fn arr_slice_sum() int {
+	a := [1, 2, 3, 4]
+	s := a[1..3]
+	return s.len * 100 + s[0] * 10 + s[1]
+}
+
+pub fn arr_init_fill() int {
+	z := []int{len: 4, init: 7}
+	return z.len * 100 + z[0] * 10 + z[3]
+}
+
+pub fn arr_floats() int {
+	a := [1.5, 2.5]
+	mut t := 0.0
+	for x in a {
+		t += x
+	}
+	return int(t * 10)
+}
+
+pub fn arr_bools() int {
+	a := [true, false, true]
+	mut n := 0
+	for x in a {
+		if x {
+			n++
+		}
+	}
+	return n
+}
+
+pub fn arr_bytes() int {
+	a := [u8(7), u8(8)]
+	return int(a[0]) * 10 + int(a[1])
+}
+') or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	mut ta := a
+	transform.transform(mut ta, &tc)
+	exports := {
+		'arr_sum':          'arr_sum'
+		'arr_push_len':     'arr_push_len'
+		'arr_index_assign': 'arr_index_assign'
+		'arr_slice_sum':    'arr_slice_sum'
+		'arr_init_fill':    'arr_init_fill'
+		'arr_floats':       'arr_floats'
+		'arr_bools':        'arr_bools'
+		'arr_bytes':        'arr_bytes'
+	}
+	checks := '
+assert.equal(e.arr_sum(), 6);
+assert.equal(e.arr_push_len(), 245);
+assert.equal(e.arr_index_assign(), 139);
+assert.equal(e.arr_slice_sum(), 223);
+assert.equal(e.arr_init_fill(), 477);
+assert.equal(e.arr_floats(), 40);
+assert.equal(e.arr_bools(), 2);
+assert.equal(e.arr_bytes(), 78);
+'
+	for production in [false, true] {
+		mut m := ssa.build_with_options(ta, map[string]bool{}, &tc, ssa.BuildOptions{
+			target: ssa.TargetData{ ptr_size: 4 }
+		})
+		if production {
+			optimize.optimize(mut m)
+		}
+		mut g := SSAGen.new(m)
+		g.configure(exports, []string{}, '')
+		g.gen() or { panic(err) }
+		path := os.join_path(dir, 'arrays_${production}.wasm')
+		g.write(path) or { panic(err) }
+		assert_ssa_wasm_execution(path, checks)
+	}
+}
+
+fn test_ssa_wasm_structs_options_results() {
+	dir := ssa_wasm_test_dir('aggregates')
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'aggregates.v')
+	os.write_file(source, '
+module main
+
+struct Point {
+mut:
+	x int
+	y int
+}
+
+struct Name {
+	text string
+}
+
+struct Labelled {
+	name Name
+	id   int
+}
+
+fn make_point(a int, b int) Point {
+	return Point{
+		x: a,
+		y: b
+	}
+}
+
+fn (mut p Point) shift(dx int) {
+	p.x += dx
+}
+
+fn label() Labelled {
+	return Labelled{
+		name: Name{
+			text: "v"
+		},
+		id:   7
+	}
+}
+
+fn find(ok bool) ?int {
+	if ok {
+		return 42
+	}
+	return none
+}
+
+fn find_point(ok bool) ?Point {
+	if ok {
+		return Point{
+			x: 42,
+			y: 0
+		}
+	}
+	return none
+}
+
+fn parse(s string) !int {
+	n := s.len
+	if n == 0 {
+		return error("empty")
+	}
+	return n
+}
+
+pub fn struct_literal() int {
+	p := Point{
+		x: 3,
+		y: 4
+	}
+	return p.x * 10 + p.y
+}
+
+pub fn struct_param_and_return() int {
+	q := make_point(5, 6)
+	return q.x + q.y
+}
+
+pub fn struct_mut_method() int {
+	mut p := Point{
+		x: 1,
+		y: 0
+	}
+	p.shift(4)
+	return p.x * 10 + p.y
+}
+
+pub fn struct_equality() int {
+	a := make_point(1, 2)
+	b := make_point(1, 2)
+	c := make_point(1, 3)
+	mut r := 0
+	if a == b {
+		r += 10
+	}
+	if a == c {
+		r += 1
+	}
+	return r
+}
+
+pub fn nested_struct_and_string() int {
+	l := label()
+	return l.id * 10 + l.name.text.len
+}
+
+pub fn option_or() int {
+	a := find(true) or { -1 }
+	b := find(false) or { -2 }
+	return a * 10 + b
+}
+
+pub fn option_struct() int {
+	p := find_point(true) or { Point{
+		x: 0,
+		y: 0
+	} }
+	return p.x
+}
+
+pub fn result_ok() int {
+	return parse("abcd") or { -1 }
+}
+
+pub fn result_err() int {
+	return parse("") or { -9 }
+}
+
+pub fn option_in_and_guard() int {
+	mut total := 0
+	for i in 0 .. 3 {
+		if v := find(i > 0) {
+			total += v
+		}
+	}
+	return total
+}
+') or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	mut ta := a
+	transform.transform(mut ta, &tc)
+	exports := {
+		'struct_literal':           'struct_literal'
+		'struct_param_and_return':  'struct_param_and_return'
+		'struct_mut_method':        'struct_mut_method'
+		'struct_equality':          'struct_equality'
+		'nested_struct_and_string': 'nested_struct_and_string'
+		'option_or':                'option_or'
+		'option_struct':            'option_struct'
+		'result_ok':                'result_ok'
+		'result_err':               'result_err'
+		'option_in_and_guard':      'option_in_and_guard'
+	}
+	checks := '
+assert.equal(e.struct_literal(), 34);
+assert.equal(e.struct_param_and_return(), 11);
+assert.equal(e.struct_mut_method(), 50);
+assert.equal(e.struct_equality(), 10);
+assert.equal(e.nested_struct_and_string(), 71);
+assert.equal(e.option_or(), 418);
+assert.equal(e.option_struct(), 42);
+assert.equal(e.result_ok(), 4);
+assert.equal(e.result_err(), -9);
+assert.equal(e.option_in_and_guard(), 84);
+'
+	for production in [false, true] {
+		mut m := ssa.build_with_options(ta, map[string]bool{}, &tc, ssa.BuildOptions{
+			target: ssa.TargetData{ ptr_size: 4 }
+		})
+		if production {
+			optimize.optimize(mut m)
+		}
+		mut g := SSAGen.new(m)
+		g.configure(exports, []string{}, '')
+		g.gen() or { panic(err) }
+		path := os.join_path(dir, 'aggregates_${production}.wasm')
+		g.write(path) or { panic(err) }
+		assert_ssa_wasm_execution(path, checks)
+	}
+}
+
+// Each expectation is a value measured from a native build of the same
+// expression, because `string.int()` is defined by strconv.common_parse_int and
+// the wasm stub the builder generates for it has to reproduce it.
+fn test_ssa_wasm_string_int_table() {
+	for production in [false, true] {
+		dir := ssa_wasm_test_dir('strint_table_${production}')
+		defer {
+			os.rmdir_all(dir) or {}
+		}
+		cases := ['', 'a', 'ab', '12', '42', '-7', '007', '0x', '0xg', '0xff', '0b101', '0o17',
+			'+9', '1a', 'a1', '9999999999']
+		expected := [0, 0, 0, 12, 42, -7, 7, 0, 0, 255, 5, 15, 9, 1, 0, 2147483647]
+		mut src := ['module main', '']
+		mut exports := map[string]string{}
+		mut checks := []string{}
+		for i, c in cases {
+			name := 'case_${i}'
+			src << 'pub fn ${name}() int {'
+			src << "\treturn '${c}'.int()"
+			src << '}'
+			src << ''
+			exports[name] = name
+			checks << 'assert.equal(e.${name}(), ${expected[i]});'
+		}
+		path := os.join_path(dir, 'table.v')
+		os.write_file(path, src.join('\n')) or { panic(err) }
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := types.TypeChecker.new(a)
+		tc.collect(a)
+		_ = tc.check_semantics_opt(false)
+		assert tc.errors.len == 0, tc.errors.str()
+		tc.annotate_types()
+		mut ta := a
+		transform.transform(mut ta, &tc)
+		mut m := ssa.build_with_options(ta, map[string]bool{}, &tc, ssa.BuildOptions{
+			target: ssa.TargetData{ ptr_size: 4 }
+		})
+		if production {
+			optimize.optimize(mut m)
+		}
+		mut g := SSAGen.new(m)
+		g.configure(exports, []string{}, '')
+		g.gen() or { panic(err) }
+		wasm := os.join_path(dir, 'table.wasm')
+		g.write(wasm) or { panic(err) }
+		assert_ssa_wasm_execution(wasm, checks.join('\n'))
+	}
+}
+
+// Regression: string.int() on an unparseable input must yield 0, the documented
+// V behaviour. On wasm the builder generates its own body for string.int, so the
+// real builtin.string.int() is never materialised and this used to return 540.
+fn test_ssa_wasm_string_int_rejects_non_numeric() {
+	dir := ssa_wasm_test_dir('strint')
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'strint.v')
+	// The literals must sit in this module: the builder's own stub is what
+	// lowers `.int()`, so a test driven only from JS would pass green.
+	os.write_file(source, '
+module main
+
+pub fn literal_int() int {
+	return "ab".int()
+}
+
+pub fn literal_valid() int {
+	return "42".int()
+}
+') or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	mut ta := a
+	transform.transform(mut ta, &tc)
+	mut m := ssa.build_with_options(ta, map[string]bool{}, &tc, ssa.BuildOptions{
+		target: ssa.TargetData{ ptr_size: 4 }
+	})
+	mut g := SSAGen.new(m)
+	g.configure({
+		'literal_int':   'literal_int'
+		'literal_valid': 'literal_valid'
+	}, []string{}, '')
+	g.gen() or { panic(err) }
+	path := os.join_path(dir, 'strint.wasm')
+	g.write(path) or { panic(err) }
+	assert_ssa_wasm_execution(path, '
+assert.equal(e.literal_valid(), 42);
+// "ab" must parse as 0.
+assert.equal(e.literal_int(), 0);
+')
+}
+
+// ssa_wasm_emit runs the driver's wasm pipeline for `source`: parse, check,
+// annotate, transform, then the backend's own metadata pass and SSA. It returns
+// the module and its configuration together, so a test can assert on what the
+// frontend resolved and on the bytes the backend emitted for it.
+fn ssa_wasm_emit(name string, source string, production bool) (&ssa.Module, SSAConfiguration) {
+	dir := ssa_wasm_test_dir(name)
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, '${name}.v')
+	os.write_file(path, source) or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	transform.transform(mut a, &tc)
+	mut metadata := Gen.new(a, &tc, map[string]bool{})
+	config := metadata.ssa_configuration() or { panic(err) }
+	mut m := ssa.build_with_options(a, map[string]bool{}, &tc, ssa.BuildOptions{
+		target: ssa.TargetData{ ptr_size: 4 }
+	})
+	if production {
+		optimize.optimize(mut m)
+	}
+	return m, config
+}
+
+// WasmReader walks the sections of an emitted `.wasm` module. There is no wasm
+// runtime on this host, so the import tests assert on the module's own bytes
+// rather than on an instantiated module.
+struct WasmReader {
+mut:
+	bytes []u8
+	pos   int
+}
+
+fn (mut r WasmReader) leb() int {
+	mut n := 0
+	mut shift := 0
+	for {
+		b := r.bytes[r.pos]
+		r.pos++
+		n |= (int(b) & 0x7f) << shift
+		shift += 7
+		if b & 0x80 == 0 {
+			break
+		}
+	}
+	return n
+}
+
+fn (mut r WasmReader) name() string {
+	len := r.leb()
+	mut out := ''
+	for _ in 0 .. len {
+		out += r.bytes[r.pos].ascii_str()
+		r.pos++
+	}
+	return out
+}
+
+// wasm_imports maps every `module.name` the import section declares to its type
+// index.
+fn wasm_imports(bytes []u8) map[string]int {
+	mut out := map[string]int{}
+	mut r := WasmReader{
+		bytes: bytes
+		pos:   8
+	}
+	for r.pos + 2 <= bytes.len {
+		id := bytes[r.pos]
+		r.pos++
+		end := r.pos + r.leb()
+		if id == 2 {
+			mut count := r.leb()
+			for _ in 0 .. count {
+				module := r.name()
+				name := r.name()
+				kind := r.bytes[r.pos]
+				r.pos++
+				if kind != 0 {
+					continue
+				}
+				out['${module}.${name}'] = r.leb()
+			}
+		}
+		r.pos = end
+	}
+	return out
+}
+
+// wasm_type_at decodes the `(params) -> (results)` signature registered at
+// `index`, so a test can check the shape of an import rather than only its name.
+fn wasm_type_at(bytes []u8, index int) ([]u8, []u8) {
+	mut params := []u8{}
+	mut results := []u8{}
+	mut r := WasmReader{
+		bytes: bytes
+		pos:   8
+	}
+	for r.pos + 2 <= bytes.len {
+		id := bytes[r.pos]
+		r.pos++
+		end := r.pos + r.leb()
+		if id == 1 {
+			mut count := r.leb()
+			for idx in 0 .. count {
+				if r.bytes[r.pos] != 0x60 {
+					break
+				}
+				r.pos++
+				nparams := r.leb()
+				mut ps := []u8{}
+				for _ in 0 .. nparams {
+					ps << r.bytes[r.pos]
+					r.pos++
+				}
+				nresults := r.leb()
+				mut rs := []u8{}
+				for _ in 0 .. nresults {
+					rs << r.bytes[r.pos]
+					r.pos++
+				}
+				if idx == index {
+					params = ps.clone()
+					results = rs.clone()
+				}
+			}
+		}
+		r.pos = end
+	}
+	return params, results
+}
+
+// A `@[wasm_import_namespace]` declaration becomes a real module import, and the
+// signature it spells in V types is the one the host sees. The module carries no
+// other import here, which also shows an unused declaration is not emitted.
+fn test_ssa_wasm_declared_import_becomes_a_module_import() {
+	// The attribute value is double quoted so the source can stay a plain literal.
+	source := '
+@[wasm_import_namespace: "wasi_snapshot_preview1"]
+fn WASM.random_get(buf &u8, buf_len i64) int
+
+@[wasm_import_namespace: "test"]
+fn WASM.unused(buf &u8) int
+
+pub fn seeded(n int) int {
+	mut first := u8(0)
+	WASM.random_get(&first, i64(n) * 8)
+	return int(first)
+}
+'
+	for production in [false, true] {
+		m, config := ssa_wasm_emit('declared_import', source, production)
+		assert config.imports.len == 2, config.imports.str()
+		mut found := false
+		for imp in config.imports {
+			if imp.name != 'random_get' {
+				assert imp.namespace == 'test', imp.namespace
+				assert imp.params == [valtype_i32], imp.params.str()
+				continue
+			}
+			assert imp.namespace == 'wasi_snapshot_preview1', imp.namespace
+			assert imp.params == [valtype_i32, valtype_i64], imp.params.str()
+			assert imp.results == [valtype_i32], imp.results.str()
+			found = true
+		}
+		assert found, config.imports.str()
+		mut g := SSAGen.new(m)
+		g.configure(config.exports, config.init_fns, config.main_fn)
+		g.declare_imports(config.imports)
+		g.gen() or { panic(err) }
+		imports := wasm_imports(g.mod.compile())
+		type_idx := imports['wasi_snapshot_preview1.random_get'] or {
+			assert false, 'import section: ${imports}'
+			-1
+		}
+		params, results := wasm_type_at(g.mod.compile(), type_idx)
+		assert params == [u8(0x7f), 0x7e], params.str()
+		assert results == [u8(0x7f)], results.str()
+		// The host sees only what the compiled code calls.
+		assert imports.len == 1, imports.str()
+	}
+}
+
+// The mapping is a single value per parameter, so a signature the backend cannot
+// express is refused instead of silently producing an import the host cannot
+// satisfy.
+fn test_ssa_wasm_refuses_an_unmappable_import_signature() {
+	source := '
+@[wasm_import_namespace: "wasi_snapshot_preview1"]
+fn WASM.fd_write(fd int, iovs [4]u8, iovs_len usize, ret &usize) int
+
+pub fn report() int {
+	mut n := usize(0)
+	chunk := [u8(1), 2, 3, 4]!
+	return WASM.fd_write(1, chunk, 4, &n) + int(n)
+}
+'
+	dir := ssa_wasm_test_dir('unmappable_import')
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'unmappable_import.v')
+	os.write_file(path, source) or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.annotate_types()
+	transform.transform(mut a, &tc)
+	mut metadata := Gen.new(a, &tc, map[string]bool{})
+	metadata.ssa_configuration() or {
+		// The message names the declaration the way source spells it.
+		assert err.msg().contains('wasi_snapshot_preview1.fd_write'), err.msg()
+		assert err.msg().contains('iovs'), err.msg()
+		assert err.msg().contains('[4]u8'), err.msg()
+		return
+	}
+	assert false, 'an import parameter with no wasm value type must be refused'
+}
+
+// fd_write and proc_exit have no V declaration at all: the backend synthesises
+// print bodies that call C.write and exit, so those two imports must keep coming
+// out exactly as they did before declared imports existed.
+fn test_ssa_wasm_keeps_the_synthesised_wasi_imports() {
+	source := '
+fn main() {
+	println("hello")
+	exit(3)
+}
+'
+	m, config := ssa_wasm_emit('synthesised_imports', source, false)
+	mut g := SSAGen.new(m)
+	g.configure(config.exports, config.init_fns, config.main_fn)
+	g.gen() or { panic(err) }
+	bytes := g.mod.compile()
+	imports := wasm_imports(bytes)
+	write_idx := imports['wasi_snapshot_preview1.fd_write'] or {
+		assert false, 'fd_write: ${imports}'
+		-1
+	}
+	exit_idx := imports['wasi_snapshot_preview1.proc_exit'] or {
+		assert false, 'proc_exit: ${imports}'
+		-1
+	}
+	params, results := wasm_type_at(bytes, write_idx)
+	assert params == [u8(0x7f), 0x7f, 0x7f, 0x7f], params.str()
+	assert results == [u8(0x7f)], results.str()
+	exit_params, exit_results := wasm_type_at(bytes, exit_idx)
+	assert exit_params == [u8(0x7f)], exit_params.str()
+	assert exit_results.len == 0, exit_results.str()
+	assert imports.len == 2, imports.str()
+}
+
+// A call to a declared import keeps the whole module valid alongside the
+// synthesised WASI pair, so both imports coexist in one module.
+fn test_ssa_wasm_declared_import_and_synthesised_imports_coexist() {
+	source := '
+@[wasm_import_namespace: "wasi_snapshot_preview1"]
+fn WASM.random_get(buf &u8, buf_len i64) int
+
+pub fn seeded(n int) int {
+	mut first := u8(0)
+	WASM.random_get(&first, i64(n) * 8)
+	println(int(first))
+	return int(first)
+}
+'
+	m, config := ssa_wasm_emit('mixed_imports', source, true)
+	mut g := SSAGen.new(m)
+	g.configure(config.exports, config.init_fns, config.main_fn)
+	g.declare_imports(config.imports)
+	g.gen() or { panic(err) }
+	imports := wasm_imports(g.mod.compile())
+	assert 'wasi_snapshot_preview1.random_get' in imports, imports.str()
+	assert 'wasi_snapshot_preview1.fd_write' in imports, imports.str()
+	assert imports.len == 2, imports.str()
 }
