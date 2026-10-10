@@ -360,6 +360,18 @@ fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
 	}
 }
 
+fn test_manual_stdlib_header_problem_accepts_the_embedded_header() {
+	assert manual_stdlib_header_problem(manual_c_headers_source) == ''
+	assert manual_stdlib_c_headers_error() == none
+}
+
+fn test_manual_stdlib_header_problem_reports_truncated_headers() {
+	cut := manual_c_headers_source.index('};\n#endif') or { panic('no RAND_MAX enum close') }
+	assert manual_stdlib_header_problem(manual_c_headers_source[..cut]).contains('unterminated `#ifndef RAND_MAX`')
+	assert manual_stdlib_header_problem(manual_c_headers_source[..manual_c_headers_source.len - 1]).contains('newline')
+	assert manual_stdlib_header_problem('#endif\n').contains('unmatched `#endif`')
+}
+
 fn test_manual_stdlib_headers_identify_gcc_without_matching_clang_or_tcc() {
 	headers := manual_stdlib_c_headers()
 	assert headers.contains('#if defined(__GNUC__) && !defined(__TINYC__) && !defined(__cplusplus) && !defined(__clang__)')

@@ -50,6 +50,53 @@ fn manual_stdlib_c_headers() string {
 	return '#ifdef sprintf\n#undef sprintf\n#endif\n#ifdef snprintf\n#undef snprintf\n#endif\n#ifdef vsnprintf\n#undef vsnprintf\n#endif\n#ifdef memcpy\n#undef memcpy\n#endif\n#ifdef memmove\n#undef memmove\n#endif\n#ifdef memset\n#undef memset\n#endif\n' + manual_c_headers_source
 }
 
+// manual_stdlib_c_headers_error reports why the embedded manual_stdlib_c_headers.h cannot be
+// used, or returns none. A truncated copy leaves a conditional directive open, which malforms
+// the C preamble of every program that uses the system libc, so the driver checks it before
+// generating any C.
+pub fn manual_stdlib_c_headers_error() ?string {
+	problem := manual_stdlib_header_problem(manual_c_headers_source)
+	if problem.len == 0 {
+		return none
+	}
+	return 'this V executable was built from an incomplete vlib/v/gen/c/manual_stdlib_c_headers.h: ${problem}.\nRestore that file with `git restore vlib/v/gen/c/manual_stdlib_c_headers.h`, then rebuild V with `make`.'
+}
+
+// manual_stdlib_header_problem describes why `text` is not a complete C header, or returns ''
+// when it ends with a newline and every conditional directive it opens is closed.
+fn manual_stdlib_header_problem(text string) string {
+	if !text.ends_with('\n') {
+		return 'the file does not end with a newline'
+	}
+	mut pending := []string{}
+	for raw_line in text.split_into_lines() {
+		line := raw_line.trim_space()
+		if !line.starts_with('#') {
+			continue
+		}
+		fields := line[1..].trim_space().fields()
+		if fields.len == 0 {
+			continue
+		}
+		match fields[0] {
+			'if', 'ifdef', 'ifndef' {
+				pending << line
+			}
+			'endif' {
+				if pending.len == 0 {
+					return 'unmatched `${line}`'
+				}
+				pending.delete_last()
+			}
+			else {}
+		}
+	}
+	if pending.len > 0 {
+		return 'unterminated `${pending.last()}`'
+	}
+	return ''
+}
+
 // cached_file_import returns the module that `alias` names through the imports
 // of `file`. The checker's import tables are complete before C generation, so
 // answers, including misses, are memoized by the parts of the table's key.
