@@ -959,9 +959,13 @@ pub fn (s string) split_into_lines() []string {
 }
 
 // replace_once replaces the first occurrence of `rep` with the string passed in `with`.
+// An empty `rep` inserts `with_` at the start of `s`.
 pub fn (s string) replace_once(rep string, with_ string) string {
+	if rep.len == 0 {
+		return with_ + s
+	}
 	s2 := ''
-	#s2.val = s.str.replace(rep.str,with_.str)
+	#s2.str = s.str.replace(rep.str,with_.str)
 
 	return s2
 }
