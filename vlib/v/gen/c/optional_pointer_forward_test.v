@@ -75,3 +75,28 @@ fn test_thread_pointer_wrappers_keep_the_existing_runtime_typedef() {
 	assert emitted.contains('__v_thread* value;'), emitted
 	assert !emitted.contains('typedef struct __v_thread __v_thread;'), emitted
 }
+
+fn test_optional_pointer_union_aliases_forward_the_union_tag() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.unions['payload.Missing'] = true
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	pointee := types.Type(types.Struct{ name: 'payload.Missing' })
+	alias := types.Type(types.Alias{
+		name:      'UnionPointer'
+		base_type: types.Type(types.Pointer{ base_type: pointee })
+	})
+	g.optional_type_name(types.Type(types.ResultType{ base_type: alias }))
+	g.optional_type_name(types.Type(types.OptionType{
+		base_type: types.Type(types.Pointer{ base_type: pointee })
+	}))
+	g.optional_typedefs()
+	emitted := g.sb.str()
+	declaration := 'typedef union payload__Missing payload__Missing;'
+	assert emitted.count(declaration) == 1, emitted
+	assert emitted.index(declaration)? < emitted.index('payload__Missing* value;')?, emitted
+	assert !emitted.contains('typedef struct payload__Missing'), emitted
+	assert !emitted.contains('typedef union UnionPointer'), emitted
+}
