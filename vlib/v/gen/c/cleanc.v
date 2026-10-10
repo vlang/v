@@ -15327,6 +15327,14 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 
 // const_ident_c_name converts const ident c name data for c.
 fn (g &FlatGen) const_ident_c_name(name string) string {
+	if value_id := g.const_vals[name] {
+		value := g.a.node(value_id)
+		// Translated declarations without an initializer refer to C header names.
+		if value.kind == .const_field && value.children_count == 0
+			&& g.expr_is_in_translated_file(value_id) {
+			return g.cname('C.${value.value}')
+		}
+	}
 	mod := g.const_modules[name] or { '' }
 	qualified := if name.contains('.') || mod.len == 0 {
 		name
