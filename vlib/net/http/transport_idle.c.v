@@ -28,7 +28,7 @@ fn (c &H1PooledConn) idle_tcp_closed() bool {
 	mut byte := u8(0)
 	// MSG_PEEK is 0x02 in both POSIX sockets and Winsock. A readable idle
 	// socket with EOF stays readable; no request bytes have been written yet.
-	result := C.recv(handle, &byte, 1, 0x02 | net.msg_dontwait)
+	result := C.recv(handle, voidptr(&byte), 1, 0x02 | net.msg_dontwait)
 	if result >= 0 {
 		return result == 0
 	}
