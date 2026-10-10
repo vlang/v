@@ -1,6 +1,7 @@
 module main
 
 import json2
+import net.urllib
 
 // RegistryModule is one version of a module as the registry protocol describes
 // it: what `registry.v` encodes as `ModuleInfo` and serves from the `@latest` and
@@ -112,4 +113,47 @@ pub fn fetch_registry_latest(url string, name string) !RegistryModule {
 // tell a version that was never published from one whose metadata is empty.
 pub fn fetch_registry_info(url string, name string, version string) !RegistryModule {
 	return decode_registry_module(url, name, registry_get(url, '/${name}/@v/${version}.info')!)
+}
+
+// fetch_registry_config returns the configuration document the registry at `url`
+// serves at its root, which is where it publishes the base its archives are
+// served from. A registry that does not serve the document is an error: without
+// it nothing says where the sources of a module are.
+pub fn fetch_registry_config(url string) !RegistryConfig {
+	return json2.decode[RegistryConfig](registry_get(url, '/config.json')!) or {
+		return error('the registry at `${url}` did not describe its configuration as JSON: ${err.msg()}')
+	}
+}
+
+// registry_archive_base returns the base url the registry at `url` serves its
+// module archives from.
+//
+// `registry.v` still answers `/config.json` with the fixed
+// `https://example.com/downloads`, and RFC 2606 reserves that host for
+// documentation, so a base on it names no host that ever served a module. It is
+// reported as an error rather than returned, because an install pointed at a
+// placeholder would look for an archive that was never published, and no later
+// step could tell that from one that had gone missing.
+pub fn registry_archive_base(url string) !string {
+	base := fetch_registry_config(url)!.dl.trim_space().trim_string_right('/')
+	if base == '' {
+		return error('the registry at `${url}` names no archive base in its configuration.')
+	}
+	parsed := urllib.parse(base) or {
+		return error('the registry at `${url}` names the archive base `${base}`, which is not a url.')
+	}
+	host := parsed.hostname().to_lower()
+	if registry_placeholder_host(host) {
+		return error('the registry at `${url}` names the placeholder archive base `${base}`.')
+	}
+	return base
+}
+
+// registry_placeholder_host reports whether `host` is one of the RFC 2606
+// documentation domains, or a subdomain of one. Those hosts exist so that an
+// example can name a url without naming a server, which is the opposite of what
+// a registry naming its archive base needs.
+fn registry_placeholder_host(host string) bool {
+	return host == '' || ['example.com', 'example.net', 'example.org'].any(host == it
+		|| host.ends_with('.' + it))
 }
