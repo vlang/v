@@ -135,9 +135,22 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 }
 
 // f64_to_str_lnd1 formats a f64 to a `string` with `dec_digit` digits after the dot.
+// A `f` of 2^52 or more is an integer, and gets all of its digits, like C's `printf("%.*f")`
+// prints them. A smaller `f` gets the digits of the shortest decimal number that converts back
+// to `f` plus half a unit of the last digit, cut after `dec_digit` digits after the dot and
+// padded with zeros: it is rounded half up, and `f64_to_str_lnd1(0.1, 20)` is
+// `0.10000000000000000000` (and not `0.10000000000000000555`).
+// Example: assert strconv.f64_to_str_lnd1(1234.5678, 2) == '1234.57'
+// Example: assert strconv.f64_to_str_lnd1(1e23, 1) == '99999999999999991611392.0'
 @[direct_array_access; manualfree]
 pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 	unsafe {
+		mut u1 := Uf64{}
+		u1.f = f
+		if f64_is_exact_int(u1.u) {
+			// nothing to round, and more digits than the shortest decimal number has
+			return f64_exact_int_to_str(u1.u, dec_digit)
+		}
 		// we add the rounding value
 		clamped_dec := if dec_digit >= dec_round.len { dec_round.len - 1 } else { dec_digit }
 		s := f64_to_str(f + dec_round[clamped_dec], 18)
@@ -275,7 +288,9 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 		if dec_digit <= 0 {
 			// C.printf(c'f: %f, i: %d, res.data: %p | dot_res_sp: %d | *(res.data): %s \n', f, i, res.data, dot_res_sp, res.data)
 			if dot_res_sp < 0 {
-				dot_res_sp = i + 1
+				// no dot was written: the number is an integer that ends at `r_i`,
+				// after the zeros that follow its `i` digits (100 has one digit and two zeros)
+				dot_res_sp = r_i
 			}
 			tmp_res := tos(res.data, dot_res_sp).clone()
 			res.free()
