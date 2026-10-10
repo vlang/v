@@ -206,8 +206,9 @@ fn (tc &TypeChecker) diagnostic_qualified_name(name string) ?string {
 }
 
 fn (tc &TypeChecker) diagnostic_module_name(module_name string, declaration_file string) string {
-	root := os.real_path(tc.module_diagnostic_root).replace('\\', '/').trim_right('/')
-	directory := os.real_path(os.dir(declaration_file)).replace('\\', '/').trim_right('/')
+	// The directories of the parsed sources are in the table of resolved paths.
+	root := tc.a.real_source_path(tc.module_diagnostic_root).replace('\\', '/').trim_right('/')
+	directory := tc.a.real_source_path(os.dir(declaration_file)).replace('\\', '/').trim_right('/')
 	if root == '' || directory == '' || directory == root || !directory.starts_with(root + '/') {
 		return module_name
 	}
@@ -8348,6 +8349,16 @@ pub fn (mut r ShadowFileResolver) owns_file(file string, diagnostic_root string,
 		explicit_roots, dependency_roots)
 }
 
+// owns_resolved_file is owns_file for a file whose resolved path (os.real_path)
+// the caller already has.
+pub fn (r &ShadowFileResolver) owns_resolved_file(file string, real_file string, diagnostic_root string, explicit_roots []string, dependency_roots []string) bool {
+	if file == '' {
+		return false
+	}
+	return shadow_roots_own_resolved_file(r.abs_path(file), real_file, diagnostic_root,
+		explicit_roots, dependency_roots)
+}
+
 // abs_path matches os.abs_path for the working directory captured by the resolver.
 fn (r &ShadowFileResolver) abs_path(path string) string {
 	npath := os.norm_path(path)
@@ -8705,9 +8716,13 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 			continue
 		}
 		tc.import_line_indexed_files[file_id] = true
+		// The parser may have kept the text it read (flat.FlatAst.source_texts).
+		has_source := file_id in a.source_texts
 		scans << ImportLineScan{
-			file_id: file_id
-			name:    file.name
+			file_id:    file_id
+			name:       file.name
+			has_source: has_source
+			source:     if has_source { a.source_texts[file_id] } else { '' }
 		}
 	}
 	// Reading and scanning one file does not depend on the others. The pool's
@@ -8754,6 +8769,8 @@ fn (mut tc TypeChecker) index_module_import_lines_of_new_files(a &flat.FlatAst) 
 struct ImportLineScan {
 	file_id int
 	name    string
+	// Set when `source` already holds the text of the file, so run does not read it.
+	has_source bool
 mut:
 	read   bool
 	source string
@@ -8761,7 +8778,9 @@ mut:
 }
 
 fn (mut scan ImportLineScan) run() {
-	scan.source = os.read_file(scan.name) or { return }
+	if !scan.has_source {
+		scan.source = os.read_file(scan.name) or { return }
+	}
 	scan.read = true
 	scan.lines = module_import_lines(scan.source)
 }

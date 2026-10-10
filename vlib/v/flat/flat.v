@@ -591,6 +591,11 @@ pub mut:
 	// by AST nodes. Keeping the buffers on the AST makes the lifetime boundary
 	// explicit and lets parser workers transfer ownership with their nodes.
 	source_buffers []string
+	// source_texts holds, by file id, the text of the sources that the parser read
+	// and was asked to keep (parser.Parser.keep_source_texts). A stage that needs
+	// the text of a parsed file takes it from here instead of reading the file
+	// again; a file that is not in the table is read from disk as before.
+	source_texts map[int]string
 	// text_values/text_ids own one canonical copy of every non-empty string
 	// stored in a node payload. Nodes keep string compatibility views while
 	// semantic/compiler caches can use compact TextId identities.
