@@ -2453,7 +2453,7 @@ fn (mut b Builder) register_v3_string_format_stubs() {
 		mut p_char := []TypeID{}
 		p_char << b.i32_type
 		if char_id := b.register_runtime_function('v3_char_string', b.str_type, p_char) {
-			b.generate_const_string_body(char_id, '?')
+			b.generate_char_string_body(char_id)
 		}
 
 		mut p_f64 := []TypeID{}
@@ -2467,21 +2467,21 @@ fn (mut b Builder) register_v3_string_format_stubs() {
 		p_int << b.i32_type
 		p_int << b.i32_type
 		if int_zpad_id := b.register_runtime_function('v3_int_zpad', b.str_type, p_int) {
-			b.generate_int_zpad_passthrough_body(int_zpad_id, b.i32_type)
+			b.generate_int_zpad_body(int_zpad_id, b.i32_type, false)
 		}
 
 		mut p_i64 := []TypeID{}
 		p_i64 << b.i64_type
 		p_i64 << b.i32_type
 		if i64_zpad_id := b.register_runtime_function('v3_i64_zpad', b.str_type, p_i64) {
-			b.generate_int_zpad_passthrough_body(i64_zpad_id, b.i64_type)
+			b.generate_int_zpad_body(i64_zpad_id, b.i64_type, false)
 		}
 
 		mut p_u64 := []TypeID{}
 		p_u64 << b.u64_type
 		p_u64 << b.i32_type
 		if u64_zpad_id := b.register_runtime_function('v3_u64_zpad', b.str_type, p_u64) {
-			b.generate_const_string_body(u64_zpad_id, '0')
+			b.generate_int_zpad_body(u64_zpad_id, b.u64_type, true)
 		}
 	} else {
 		pad_id := b.register_synthetic_function('v3_string_pad', b.str_type, p_pad)
@@ -2954,19 +2954,101 @@ fn (mut b Builder) generate_string_pad_body(func_id int) {
 	b.block_instr1(.ret, done, b.void_type, result)
 }
 
-// generate_int_zpad_passthrough_body keeps zero-padded helper calls buildable on the
-// SSA/native path. C output still uses the full helper implementation.
-fn (mut b Builder) generate_int_zpad_passthrough_body(func_id int, value_type TypeID) {
+// generate_int_zpad_body zero-pads an integer's decimal text to `width`, keeping a
+// leading sign outside the zeros the way `${x:05}` does natively: `-7` at width 6
+// prints `-00007`. The width was previously discarded, so the helper returned the
+// unpadded text, and the unsigned spelling returned the constant `0`.
+fn (mut b Builder) generate_int_zpad_body(func_id int, value_type TypeID, is_unsigned bool) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	ptr_string := b.m.type_store.get_ptr(b.str_type)
+
 	entry := b.m.add_block(func_id, 'int_zpad_entry')
 	value := b.func_add_argument(func_id, value_type, 'value')
-	_ := b.func_add_argument(func_id, b.i32_type, 'width')
-	mut widened := value
-	if value_type != b.i64_type {
-		widened = b.block_instr1(.sext, entry, b.i64_type, value)
+	width_arg := b.func_add_argument(func_id, b.i32_type, 'width')
+	text_slot := b.block_instr0(.alloca, entry, ptr_string)
+	width_slot := b.block_instr0(.alloca, entry, ptr_i32)
+	sign_slot := b.block_instr0(.alloca, entry, ptr_i64)
+
+	zero32 := b.m.get_or_add_const(b.i32_type, '0')
+	zero64 := b.m.get_or_add_const(b.i64_type, '0')
+	one64 := b.m.get_or_add_const(b.i64_type, '1')
+	radix := b.m.get_or_add_const(b.i64_type, '10')
+	b.block_instr2(.store, entry, b.void_type, width_arg, width_slot)
+	b.block_instr2(.store, entry, b.void_type, zero64, sign_slot)
+
+	widened := if value_type == b.i32_type {
+		b.block_instr1(.sext, entry, b.i64_type, value)
+	} else {
+		value
 	}
-	int_str_ref := b.m.add_value(.func_ref, b.str_type, 'int_str', b.runtime_fn_id('int_str'))
-	result := b.block_instr2(.call, entry, b.str_type, int_str_ref, widened)
-	b.block_instr1(.ret, entry, b.void_type, result)
+	// The unsigned spelling must read its bits as bits: `strconv__format_uint`
+	// formats without a sign, so `u64::MAX` prints as twenty digits, not a negative.
+	text := if is_unsigned {
+		uint_ref := b.m.add_value(.func_ref, b.str_type, 'strconv__format_uint',
+			b.runtime_fn_id('strconv__format_uint'))
+		b.block_instr3(.call, entry, b.str_type, uint_ref, widened, radix)
+	} else {
+		int_str_ref := b.m.add_value(.func_ref, b.str_type, 'int_str', b.runtime_fn_id('int_str'))
+		b.block_instr2(.call, entry, b.str_type, int_str_ref, widened)
+	}
+	b.block_instr2(.store, entry, b.void_type, text, text_slot)
+
+	prepare := b.m.add_block(func_id, 'int_zpad_prepare')
+	return_original := b.m.add_block(func_id, 'int_zpad_original')
+	sign_check := b.m.add_block(func_id, 'int_zpad_check_sign')
+	read_sign := b.m.add_block(func_id, 'int_zpad_read_sign')
+	pad := b.m.add_block(func_id, 'int_zpad_allocate')
+	b.block_instr1(.jmp, entry, b.void_type, ValueID(prepare))
+
+	data_ptr := b.block_struct_field_ptr(prepare, text_slot, b.str_type, 0)
+	len_ptr := b.block_struct_field_ptr(prepare, text_slot, b.str_type, 1)
+	data := b.block_instr1(.load, prepare, ptr_i8, data_ptr)
+	len32 := b.block_instr1(.load, prepare, b.i32_type, len_ptr)
+	width32 := b.block_instr1(.load, prepare, b.i32_type, width_slot)
+	already_wide := b.block_instr2(.ge, prepare, b.i1_type, len32, width32)
+	b.block_instr3(.br, prepare, b.void_type, already_wide, ValueID(return_original),
+		ValueID(sign_check))
+	b.block_instr1(.ret, return_original, b.void_type, text)
+
+	nonempty := b.block_instr2(.gt, sign_check, b.i1_type, len32, zero32)
+	b.block_instr3(.br, sign_check, b.void_type, nonempty, ValueID(read_sign), ValueID(pad))
+	minus := b.m.get_or_add_const(b.i8_type, '45')
+	plus := b.m.get_or_add_const(b.i8_type, '43')
+	first := b.block_instr1(.load, read_sign, b.i8_type, data)
+	is_minus := b.block_instr2(.eq, read_sign, b.i1_type, first, minus)
+	is_plus := b.block_instr2(.eq, read_sign, b.i1_type, first, plus)
+	has_sign := b.block_instr2(.or_, read_sign, b.i1_type, is_minus, is_plus)
+	sign_len := b.block_instr1(.zext, read_sign, b.i64_type, has_sign)
+	b.block_instr2(.store, read_sign, b.void_type, sign_len, sign_slot)
+	b.block_instr1(.jmp, read_sign, b.void_type, ValueID(pad))
+
+	sign64 := b.block_instr1(.load, pad, b.i64_type, sign_slot)
+	len64 := b.block_instr1(.zext, pad, b.i64_type, len32)
+	width64 := b.block_instr1(.zext, pad, b.i64_type, width32)
+	pad_len64 := b.block_instr1(.zext, pad, b.i64_type,
+		b.block_instr2(.sub, pad, b.i32_type, width32, len32))
+	alloc_len := b.block_instr2(.add, pad, b.i64_type, width64, one64)
+	malloc_ref := b.m.add_value(.func_ref, b.void_type, 'malloc', b.runtime_fn_id('malloc'))
+	out := b.block_instr2(.call, pad, ptr_i8, malloc_ref, alloc_len)
+	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
+	b.block_instr4(.call, pad, ptr_i8, memcpy_ref, out, data, sign64)
+
+	zero_char := b.m.get_or_add_const(b.i64_type, '48')
+	pad_dest := b.block_instr2(.add, pad, ptr_i8, out, sign64)
+	memset_ref := b.m.add_value(.func_ref, b.void_type, 'memset', b.runtime_fn_id('memset'))
+	b.block_instr4(.call, pad, ptr_i8, memset_ref, pad_dest, zero_char, pad_len64)
+	text_dest := b.block_instr2(.add, pad, ptr_i8, pad_dest, pad_len64)
+	text_src := b.block_instr2(.add, pad, ptr_i8, data, sign64)
+	text_len := b.block_instr2(.sub, pad, b.i64_type, len64, sign64)
+	b.block_instr4(.call, pad, ptr_i8, memcpy_ref, text_dest, text_src, text_len)
+
+	zero8 := b.m.get_or_add_const(b.i8_type, '0')
+	term := b.block_instr2(.add, pad, ptr_i8, out, width64)
+	b.block_instr2(.store, pad, b.void_type, zero8, term)
+	result := b.emit_make_string(pad, out, width64, 0)
+	b.block_instr1(.ret, pad, b.void_type, result)
 }
 
 // register_bench_runtime_stubs updates register bench runtime stubs state for ssa.
@@ -11688,6 +11770,12 @@ fn (mut b Builder) build_scalar_str_call(node flat.Node, resolved_name string, b
 		b.build_expr(value_id)
 	} else {
 		b.coerce_numeric_value(b.build_expr(value_id), b.resolve_type(primitive_name))
+	}
+	// A rune's ordinary str() prints the character, not its code point, so it cannot
+	// share the integer branch: stringify_scalar would hand the codepoint to int_str
+	// and `${r}` would print `90` for `Z`.
+	if primitive_name == 'rune' {
+		return b.emit_runtime_call('v3_char_string', b.str_type, [value])
 	}
 	return b.stringify_scalar(value)
 }
