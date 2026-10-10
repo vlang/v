@@ -151,16 +151,24 @@ pub fn (mut s Sessions[T]) save[X](mut ctx X, data T) ! {
 	}
 }
 
-// resave saves `data` for the current session and reset the session id.
+// resave saves `data` for the current session and resets the session id.
 // You should use this function when the authentication or authorization status changes
 // e.g. when a user signs in or switches between accounts/permissions.
 // This function also destroys the data associated to the old session id.
 pub fn (mut s Sessions[T]) resave[X](mut ctx X, data T) ! {
 	if sid := s.get_session_id(ctx) {
-		s.store.destroy(sid)!
+		if _ := s.store.destroy(sid) {
+		} else {
+			return err
+		}
 	}
 
-	s.save(mut ctx, data)
+	sid := s.set_session_id(mut ctx)
+	if _ := s.store.set(sid, data) {
+		ctx.CurrentSession.session_data = data
+	} else {
+		return err
+	}
 }
 
 // get_session_id retrieves the current session id, if it is set.

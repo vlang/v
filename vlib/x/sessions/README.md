@@ -159,14 +159,16 @@ You can use the `save` method to update and save any session data.
 When the user logs in, the `save` method is called and a new session id is generated
 and set as cookie. Assuming there wasn't already a session going on. If you want to
 be sure that a new session id is generated when you save data, you can use the `resave`
-method. This method will save the data and *always* set a new session id.
+method. This method will save the data and *always* set a new session id. It destroys the
+old session data and sends the new signed id in a cookie, so the previous id cannot retrieve
+the saved data. Use `resave` when authentication or authorization changes.
 
 **Example:**
 
 ```v ignore
 pub fn (mut app App) login(mut ctx Context) veb.Result {
-	// set a session id cookie and save data for the new user
-	app.sessions.save(mut ctx, User{
+	// rotate the session id cookie and save data for the authenticated user
+	app.sessions.resave(mut ctx, User{
 		name: '[no name provided]'
 	}) or { return ctx.server_error('could not save session data, please try again') }
 	return ctx.text('You are now logged in!')
