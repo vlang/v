@@ -15,6 +15,7 @@ import v.util
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
+const array_accessor_index_marker = '__v3_array_accessor_index'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const manual_c_headers_source = $embed_file('manual_stdlib_c_headers.h').to_string()
 const c_objective_c_bridge_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer']
@@ -17087,14 +17088,23 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 							g.write(')))')
 							return
 						}
-						g.write('(*(${c_elem}*)array_get(')
+						// An lvalue `first()`/`last()` calls the builtin method, which reports an
+						// empty array under its own name, in place of `array.get`.
+						accessor := g.array_accessor_index_method(node)
+						if accessor.len > 0 {
+							g.write('(*(${c_elem}*)array__${accessor}(')
+						} else {
+							g.write('(*(${c_elem}*)array_get(')
+						}
 						base_node := g.a.nodes[int(base_id)]
 						if is_ptr && !(base_node.kind == .ident && g.local_ident_is_shared_wrapper(base_node.value)) {
 							g.write('*')
 						}
 						g.gen_expr(base_id)
-						g.write(', ')
-						g.gen_expr(g.a.child(node, 1))
+						if accessor.len == 0 {
+							g.write(', ')
+							g.gen_expr(g.a.child(node, 1))
+						}
 						g.write('))')
 					} else {
 						is_runtime_array, runtime_is_ptr := runtime_array_struct_index_info(index_base_type)

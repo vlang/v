@@ -50,6 +50,7 @@ const prefix_scope_drops_block_value = '__v3_prefix_scope_drops'
 const generated_variant_access_marker = '__v3_generated_variant_access'
 const optional_wrapper_access_marker = '__v3_optional_wrapper_access'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
+const array_accessor_index_marker = '__v3_array_accessor_index'
 const transformed_option_unwrap_access_marker = '__v3_transformed_option_unwrap_access'
 const debugger_smartcast_marker = '__v3_debugger_smartcasts'
 const non_aliasing_allocation_call_marker = '__v3_non_aliasing_allocation_call'
@@ -12830,7 +12831,8 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 						} else {
 							t.make_infix(.minus, t.make_selector(base, 'len', 'int'), t.make_int_literal(1))
 						}
-						return t.make_index(base, index, clean_base_type[2..])
+						return t.make_array_accessor_index(base, index, clean_base_type[2..],
+							callee.value)
 					}
 				}
 			}
@@ -12840,6 +12842,17 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 			return t.transform_expr(id)
 		}
 	}
+}
+
+// make_array_accessor_index builds the element access `base[index]` that an lvalue use of
+// `first()`/`last()` lowers to (`arr.last().field = x`), and marks it with that method. The
+// C generator emits a marked index as a call of the builtin method, so that an empty array
+// is reported by the guard of `array.first`/`array.last` and not as an index out of range.
+fn (mut t Transformer) make_array_accessor_index(base flat.NodeId, index flat.NodeId, elem_type string, method string) flat.NodeId {
+	id := t.make_index(base, index, elem_type)
+	t.set_node_generic_params(int(id), [array_accessor_index_marker, method])
+	t.mark_fn_used('array__${method}')
+	return id
 }
 
 // --- stmt handlers (skeleton - identity transforms with child recursion) ---
@@ -14627,6 +14640,8 @@ fn (mut t Transformer) rebuild_transformed_lvalue(node flat.Node, children []fla
 		value:          node.value
 		typ:            node.typ
 		is_mut:         node.is_mut
+		// An index stays marked as a lowered `first()`/`last()` (make_array_accessor_index).
+		payload:        if node.kind == .index { node.payload } else { 0 }
 	})
 }
 

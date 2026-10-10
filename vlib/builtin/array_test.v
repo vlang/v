@@ -1491,6 +1491,61 @@ fn test_array_last() {
 	assert s.last().val == 'a'
 }
 
+struct FirstLastCell {
+mut:
+	n    int
+	tags []string
+}
+
+fn first_last_cells() []FirstLastCell {
+	return [FirstLastCell{
+		n: 1
+	}, FirstLastCell{
+		n: 2
+	}]
+}
+
+fn first_last_bump(mut cell FirstLastCell) {
+	cell.n += 100
+}
+
+// A store through `first()`/`last()` writes the element of the array, not a copy.
+fn test_array_first_last_as_assignment_target() {
+	mut cells := first_last_cells()
+	cells.first().n = 10
+	cells.last().n += 20
+	cells.last().tags << 'last'
+	cells.first().tags << if cells.len == 2 { 'first' } else { 'none' }
+	first_last_bump(mut cells.last())
+	assert cells.map(it.n) == [10, 122]
+	assert cells.map(it.tags) == [['first'], ['last']]
+	mut rows := [[1], [2, 3]]
+	rows.first() << 0
+	rows.last() << [4, 5]
+	rows.last()[0] = 20
+	assert rows == [[1, 0], [20, 3, 4, 5]]
+	mut grid := [[FirstLastCell{}], [FirstLastCell{}, FirstLastCell{}]]
+	grid.last().last().n = 7
+	grid.first().first().n += 3
+	assert grid.map(it.map(it.n)) == [[3], [0, 7]]
+	assert first_last_cells().first().n == 1
+	assert first_last_cells().last().n == 2
+}
+
+@[direct_array_access]
+fn test_array_first_last_with_direct_array_access() {
+	mut cells := first_last_cells()
+	cells.first().n = 10
+	cells.last().n += 20
+	unsafe {
+		cells.last().n += 1
+	}
+	assert cells.first().n == 10
+	assert cells.last().n == 23
+	assert [4, 5, 6].first() == 4
+	assert [4, 5, 6].last() == 6
+}
+
 @[direct_array_access]
 fn test_direct_array_access() {
 	mut a := [11, 22, 33, 44]
