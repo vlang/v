@@ -2897,6 +2897,51 @@ fn main() {
 	assert ok.exit_code == 0, ok.output
 }
 
+fn test_ownership_defer_in_unsafe_block_stays_unsafe_at_scope_exits() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'defer_in_unsafe_block', '
+fn fill(n int) u8 {
+	mut last := u8(0)
+	unsafe {
+		p := malloc_noscan(16)
+		defer {
+			free(p)
+		}
+		if n > 8 {
+			return last
+		}
+		defer {
+			mut q := p + n
+			q[0] = 7
+			last = q[0]
+		}
+	}
+	return last
+}
+
+fn fill_at_fn_end(n int) {
+	p := unsafe { malloc_noscan(16) }
+	if n > 0 {
+		unsafe {
+			defer(fn) {
+				q := p + n
+				q[0] = 7
+				free(p)
+			}
+		}
+	}
+	println(n)
+}
+
+fn main() {
+	println(fill(2))
+	fill_at_fn_end(2)
+}
+')
+	assert ok.exit_code == 0, ok.output
+	assert !ok.output.contains('unsafe'), ok.output
+}
+
 fn test_ownership_returned_pointer_moves_aggregate_drop_state() {
 	v3_bin := ownership_build_v3()
 	ok := run_autofree_check(v3_bin, 'returned_pointer_aggregate_drop', '

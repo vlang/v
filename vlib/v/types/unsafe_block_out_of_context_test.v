@@ -80,3 +80,54 @@ fn main() {
 	assert !tc.notices.any(it.msg.contains('casting voidptr')), tc.notices.str()
 	assert !tc.errors.any(it.msg.contains('casting voidptr')), tc.errors.str()
 }
+
+// The same through a `defer`: its body stays inside the `unsafe` block that holds it,
+// while a `defer` outside of `unsafe` is still reported.
+fn test_union_field_inside_defer_in_unsafe_block_checked_out_of_context() {
+	path := os.join_path(os.vtmp_dir(), 'v3_union_unsafe_defer_${os.getpid()}.v')
+	os.write_file(path, 'module main
+union Num {
+mut:
+	inside  int
+	outside f32
+}
+__global num = Num{}
+fn main() {
+	unsafe {
+		for _ in 0 .. 1 {
+			defer {
+				println(num.inside)
+			}
+		}
+	}
+	defer {
+		println(num.outside)
+	}
+}
+')!
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	mut found := 0
+	for i, node in a.nodes {
+		if node.kind == .selector && node.value == 'inside' {
+			found++
+			tc.check_node(flat.NodeId(i))
+		}
+	}
+	assert found == 1
+	assert !tc.notices.any(it.msg.contains('reading a union field')), tc.notices.str()
+	assert !tc.errors.any(it.msg.contains('reading a union field')), tc.errors.str()
+	for i, node in a.nodes {
+		if node.kind == .selector && node.value == 'outside' {
+			found++
+			tc.check_node(flat.NodeId(i))
+		}
+	}
+	assert found == 2
+	assert tc.notices.any(it.msg.contains('reading a union field')), tc.notices.str()
+}
