@@ -124,9 +124,13 @@ fn test_imported_library_resolves_symbols_from_later_native_object() {
 	built := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-gc', 'none', '-cc', compiler, '-showcc',
 		'-o', output, source])
 	assert built.exit_code == 0, built.output
-	link_line := built.output.split_into_lines().filter(it.contains('-lv3_order')).last()
-	assert (link_line.index(consumer_object) or { -1 }) >= 0, link_line
-	assert (link_line.index(consumer_object) or { -1 }) < (link_line.index('-lv3_order') or { -1 }), link_line
+	// On Windows `#flag @DIR/consumer.o` joins a `\` separated `@DIR` with `/`, so the link
+	// line and the expected object are compared with `/` only.
+	normalized_output := built.output.replace('\\', '/')
+	link_object := consumer_object.replace('\\', '/')
+	link_line := normalized_output.split_into_lines().filter(it.contains('-lv3_order')).last()
+	assert (link_line.index(link_object) or { -1 }) >= 0, link_line
+	assert (link_line.index(link_object) or { -1 }) < (link_line.index('-lv3_order') or { -1 }), link_line
 	ran := cmdexec.run(output, [])
 	assert ran.exit_code == 0, ran.output
 }

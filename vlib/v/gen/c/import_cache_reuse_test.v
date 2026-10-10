@@ -47,7 +47,9 @@ fn test_import_caches_do_not_survive_into_the_next_generation() {
 	assert g.file_selective_import_candidates('shared.v', 'Item') == none
 
 	c_source := generate_import_cache_reuse_source(mut g)
-	assert c_source.contains('int main('), c_source
+	// A Windows target has a wide entry point, see windows_entry_point_test.v.
+	entry_point := if g.target.os == 'windows' { 'int wmain(' } else { 'int main(' }
+	assert c_source.contains(entry_point), c_source
 	// The same file/alias keys now resolve through the new program's checker.
 	g.tc.file_imports['shared.v\nmodel'] = 'second.model'
 	g.tc.file_selective_imports['shared.v\nItem'] = ['second.Item']
