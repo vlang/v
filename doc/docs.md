@@ -280,6 +280,7 @@ argument, e.g. `v new abc`.
     * [v shader](#v-shader)
     * [v tool](#v-tool)
     * [Profiling](#profiling)
+        * [Profiling the compiler](#profiling-the-compiler)
 * [Package Management](#package-management)
     * [v mod why](#v-mod-why)
     * [Package commands](#package-commands)
@@ -7543,6 +7544,45 @@ fn main() {
 	println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
 }
 ```
+
+#### Profiling the compiler
+
+The compiler is a V program too, so `-profile` works on it. `-profile` instruments the program that
+is being *built*, and the report is written when that program exits. To profile the compiler, build
+an instrumented copy of it under another name, and then use that copy to compile something:
+
+```shell
+v -cc gcc -profile compiler_profile.txt -o vprof cmd/v
+./vprof -o v2 cmd/v
+```
+
+`compiler_profile.txt` is written when `./vprof` exits. Compiling the compiler itself, as above, is
+a good workload, but any program works.
+
+Do not use `v -profile compiler_profile.txt self` for this. `v self` replaces your `v` with the
+instrumented build, and from then on every `v` command, even `v version`, rewrites the profile
+file.
+
+The compiler runs several of its stages on multiple threads, so build the instrumented copy with a
+C compiler other than tcc, such as `-cc gcc` (used above) or `-cc clang`. With those, the profiler
+measures the time a function took on its own (the third column) separately for each thread. With
+tcc that measurement is shared by all threads, and the column then contains wrong values, including
+negative ones. Whatever the C compiler is, the counters themselves are plain variables that are not
+synchronized between threads, so the numbers for functions that several threads call at the same
+time are approximate.
+
+Some tips for reading the report of the compiler:
+
+- Run `v -show-timings` on the same input first. It prints the time of each compiler stage, such as
+  parse, check, transform, cgen and the C compiler, and the total, which tells you where to look.
+- Functions where worker threads wait while they have nothing to do, such as
+  `sync__Semaphore__wait` and `sync__Semaphore__timed_wait`, can rank high when you sort on the
+  third column. That is idle time, not work.
+- Every profiled call reads the clock twice, so for very short functions the numbers are mostly the
+  cost of profiling.
+- The call counts of two profiles of the same compiler are close, but they are rarely identical.
+  When you compare two profiles, for example before and after a change, compare the average time
+  per call instead of the total times.
 
 ## Package management
 
