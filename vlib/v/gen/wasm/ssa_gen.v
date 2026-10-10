@@ -14,6 +14,7 @@ mut:
 	mod           &Module     = unsafe { nil }
 	configured    bool
 	exports       map[string]string
+	imports       map[string]WasmImport
 	init_fns      []string
 	main_fn       string
 	fn_index      map[string]int
@@ -54,6 +55,16 @@ pub fn (mut g SSAGen) configure(exports map[string]string, init_fns []string, ma
 	g.main_fn = main_fn
 }
 
+// declare_imports supplies the host functions the frontend resolved from
+// `@[wasm_import_namespace]` declarations. gen() emits only the ones the
+// reachable functions actually call, so an unused declaration does not force the
+// host to provide it.
+pub fn (mut g SSAGen) declare_imports(imports []WasmImport) {
+	for imp in imports {
+		g.imports[imp.qualified] = imp
+	}
+}
+
 // gen emits only functions reachable from the selected SSA entry points.
 pub fn (mut g SSAGen) gen() ! {
 	functions := g.reachable_functions()!
@@ -68,14 +79,23 @@ pub fn (mut g SSAGen) gen() ! {
 	g.mod.set_mem_min((stack_top + 65535) / 65536 + 1)
 	mut uses_write := false
 	mut uses_exit := false
+	mut used_imports := []WasmImport{}
 	for fid in functions {
 		for bid in g.m.funcs[fid].blocks {
 			for vid in g.m.blocks[bid].instrs {
 				instr := g.m.instrs[g.m.values[vid].index]
-				if instr.op == .call && instr.operands.len > 0 {
-					if name := g.intrinsic_name(g.m.values[instr.operands[0]]) {
-						uses_write = uses_write || name == 'write'
-						uses_exit = uses_exit || name in ['exit', 'abort']
+				if instr.op != .call || instr.operands.len == 0 {
+					continue
+				}
+				callee := g.m.values[instr.operands[0]]
+				if name := g.intrinsic_name(callee) {
+					uses_write = uses_write || name == 'write'
+					uses_exit = uses_exit || name in ['exit', 'abort']
+					continue
+				}
+				if imp := g.declared_import(callee) {
+					if !used_imports.any(it.qualified == imp.qualified) {
+						used_imports << imp
 					}
 				}
 			}
@@ -90,6 +110,12 @@ pub fn (mut g SSAGen) gen() ! {
 	if uses_exit {
 		exit_type := g.mod.add_type([valtype_i32], [])
 		g.exit_index = g.mod.add_import_func('wasi_snapshot_preview1', 'proc_exit', exit_type)
+	}
+	// Declared imports occupy function indices too, so every import has to be
+	// registered before the first one is reserved below.
+	for imp in used_imports {
+		type_idx := g.mod.add_type(imp.params, imp.results)
+		g.fn_index[imp.qualified] = g.mod.add_import_func(imp.namespace, imp.name, type_idx)
 	}
 	if uses_write {
 		g.write_index = g.mod.reserve_func_index(0)
@@ -197,6 +223,11 @@ fn (mut g SSAGen) reachable_functions() ![]int {
 		}
 		f := g.m.funcs[fid]
 		if f.is_c_extern || f.blocks.len == 0 {
+			// A declared import's body is the host's: it is neither a root to
+			// lower nor an unsupported extern.
+			if f.name in g.imports {
+				continue
+			}
 			return error('wasm: unsupported external function `${name}`')
 		}
 		reached[fid] = true
@@ -853,12 +884,54 @@ fn (g &SSAGen) intrinsic_name(value ssa.Value) ?string {
 	return none
 }
 
+// declared_import resolves a call target to the host function that a
+// `@[wasm_import_namespace]` declaration named, or none for anything else.
+fn (g &SSAGen) declared_import(value ssa.Value) ?WasmImport {
+	if value.kind != .func_ref || value.index < 0 || value.index >= g.m.funcs.len {
+		return none
+	}
+	return g.imports[g.function_name(value)] or { return none }
+}
+
+// emit_import_call calls a host function. The declared signature is the ABI the
+// host sees, so every argument is coerced to it: an SSA call records no parameter
+// types for an extern, and emitting the argument at the caller's own width would
+// leave a malformed stack whenever the two disagree.
+fn (mut g SSAGen) emit_import_call(id int, instr ssa.Instruction, imp WasmImport) ! {
+	ops := instr.operands
+	for oi in 1 .. ops.len {
+		g.value(ops[oi])!
+		if oi - 1 >= imp.params.len {
+			continue
+		}
+		from := g.wtype(g.m.values[ops[oi]].typ)
+		signed := !g.m.type_store.types[g.m.values[ops[oi]].typ].is_unsigned
+		g.convert(from, valtype_wtype(imp.params[oi - 1]), signed)
+	}
+	index := g.fn_index[imp.qualified] or { return error('wasm: missing import `${imp.name}`') }
+	g.cur.call(index)
+	if imp.results.len == 0 {
+		return
+	}
+	to := g.wtype(instr.typ)
+	if to == .void {
+		g.cur.drop()
+		return
+	}
+	g.convert(valtype_wtype(imp.results[0]), to, !g.m.type_store.types[instr.typ].is_unsigned)
+	g.result(id)
+}
+
 fn (mut g SSAGen) emit_call(id int, instr ssa.Instruction) ! {
 	ops := instr.operands
 	callee := g.m.values[ops[0]]
 	if instr.op != .call_indirect {
 		if name := g.intrinsic_name(callee) {
 			g.emit_intrinsic(id, instr, name)!
+			return
+		}
+		if imp := g.declared_import(callee) {
+			g.emit_import_call(id, instr, imp)!
 			return
 		}
 	}

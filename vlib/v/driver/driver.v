@@ -13097,7 +13097,10 @@ pub fn run(args []string) {
 			// branches. output_file is the exact path requested via -o (or the
 			// <name>.wasm default).
 			mut metadata := wasmgen.Gen.new(a, pre_tc, used_fns)
-			config := metadata.ssa_configuration()
+			config := metadata.ssa_configuration() or {
+				eprintln(err.msg())
+				exit(1)
+			}
 			mut m := ssa.build_with_options(a, config.used_fns, pre_tc, ssa.BuildOptions{
 				target:         ssa.TargetData{ ptr_size: 4 }
 				track_uses:     is_prod
@@ -13125,6 +13128,7 @@ pub fn run(args []string) {
 				}
 			}
 			g.configure(exports, config.init_fns, main_fn)
+			g.declare_imports(config.imports)
 			g.gen() or {
 				eprintln(err.msg())
 				exit(1)

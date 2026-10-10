@@ -35,7 +35,7 @@ fn init() { prepare() }
 	assert tc.errors.len == 0, tc.errors.str()
 	tc.annotate_types()
 	mut metadata := Gen.new(a, &tc, map[string]bool{})
-	config := metadata.ssa_configuration()
+	config := metadata.ssa_configuration() or { panic(err) }
 	assert config.main_fn == ''
 	assert config.used_fns['foo.answer'], config.used_fns.str()
 	assert config.used_fns['foo.callback_value'], config.used_fns.str()
