@@ -2,6 +2,7 @@ module json2
 
 import strconv
 import time
+import math
 
 const null_in_string = 'null'
 
@@ -1809,22 +1810,24 @@ fn parse_int_number(str string) !int {
 }
 
 fn parse_float_number[T](str string) !T {
-	$if js {
-		$if T.unaliased_typ is f32 {
-			return T(f32(strconv.atof64(str)!))
-		} $else $if T.unaliased_typ is f64 {
-			return T(strconv.atof64(str)!)
-		} $else {
-			return error('`parse_float_number` cannot decode ${T.name} type')
-		}
+	value := $if js {
+		strconv.atof64(str)!
 	} $else {
-		$if T.unaliased_typ is f32 {
-			return T(f32(strconv.atof64(str, allow_extra_chars: false)!))
-		} $else $if T.unaliased_typ is f64 {
-			return T(strconv.atof64(str, allow_extra_chars: false)!)
-		} $else {
-			return error('`parse_float_number` cannot decode ${T.name} type')
+		strconv.atof64(str, allow_extra_chars: false)!
+	}
+	$if T.unaliased_typ is f32 {
+		narrowed := f32(value)
+		if math.is_inf(f64(narrowed), 0) {
+			return error('number `${str}` exceeds ${T.name} range')
 		}
+		return T(narrowed)
+	} $else $if T.unaliased_typ is f64 {
+		if math.is_inf(value, 0) {
+			return error('number `${str}` exceeds ${T.name} range')
+		}
+		return T(value)
+	} $else {
+		return error('`parse_float_number` cannot decode ${T.name} type')
 	}
 }
 
