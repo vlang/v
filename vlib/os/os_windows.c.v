@@ -468,16 +468,8 @@ pub fn get_module_filename(handle HANDLE) !string {
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-FormatMessageWa#parameters
 const format_message_allocate_buffer = 0x00000100
-const format_message_argument_array = 0x00002000
-const format_message_from_hmodule = 0x00000800
-const format_message_from_string = 0x00000400
 const format_message_from_system = 0x00001000
 const format_message_ignore_inserts = 0x00000200
-
-// Ref - winnt.h
-const sublang_neutral = 0x00
-const sublang_default = 0x01
-const lang_neutral = sublang_neutral
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes--12000-15999-
 const max_error_code = 15841
