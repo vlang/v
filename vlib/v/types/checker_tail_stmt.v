@@ -6638,6 +6638,12 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		return
 	}
 	method_receiver := unalias_and_unwrap_pointer_type(base_type)
+	if method_receiver is Struct && method_receiver.name.all_after_last('.') == 'struct' {
+		if field_type := tc.inferred_anonymous_struct_field_type(base_id, node.value) {
+			tc.register_synth_type(id, field_type)
+			return
+		}
+	}
 	// A method value resolved as a C receiver method has its privacy checked here already.
 	mut c_receiver_method_value := ''
 	if method_receiver is Struct && tc.struct_field_type(method_receiver.name, node.value) == none {
@@ -18711,6 +18717,11 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				}
 			}
 			if clean is Struct {
+				if clean.name.all_after_last('.') == 'struct' {
+					if typ := tc.inferred_anonymous_struct_field_type(tc.a.child(node, 0), node.value) {
+						return typ
+					}
+				}
 				if typ := tc.struct_field_type(clean.name, node.value) {
 					return typ
 				}
