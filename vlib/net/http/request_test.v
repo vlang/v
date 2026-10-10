@@ -341,6 +341,53 @@ fn test_parse_request_head_str_multiple_same_header() {
 	assert req.header.custom_values('Set-Cookie') == ['session=abc', 'user=xyz']
 }
 
+// request_with_header_fields returns a raw request that has `n` header fields.
+fn request_with_header_fields(n int) string {
+	mut lines := ['GET / HTTP/1.1']
+	for i in 0 .. n {
+		lines << 'X-Field-${i}: v${i}'
+	}
+	return lines.join('\r\n') + '\r\n\r\n'
+}
+
+fn test_parse_request_accepts_max_headers_fields() {
+	s := request_with_header_fields(http.max_headers)
+	last := 'X-Field-${http.max_headers - 1}'
+	req := http.parse_request_head_str(s) or { panic('did not parse: ${err}') }
+	assert req.header.keys().len == http.max_headers
+	assert req.header.custom_values(last) == ['v${http.max_headers - 1}']
+	mut reader_ := reader(s)
+	req2 := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
+	assert req2.header.keys().len == http.max_headers
+	assert req2.header.custom_values(last) == ['v${http.max_headers - 1}']
+}
+
+fn test_parse_request_with_too_many_header_fields_fails() {
+	s := request_with_header_fields(http.max_headers + 1)
+	if req := http.parse_request_head_str(s) {
+		assert false, 'should not have parsed ${req.header.keys().len} fields'
+	} else {
+		assert err is http.HeaderLimitError
+	}
+	if req := http.parse_request_str(s) {
+		assert false, 'should not have parsed ${req.header.keys().len} fields'
+	} else {
+		assert err is http.HeaderLimitError
+	}
+	mut head_reader := reader(s)
+	if req := http.parse_request_head(mut head_reader) {
+		assert false, 'should not have parsed ${req.header.keys().len} fields'
+	} else {
+		assert err is http.HeaderLimitError
+	}
+	mut reader_ := reader(s)
+	if req := http.parse_request(mut reader_) {
+		assert false, 'should not have parsed ${req.header.keys().len} fields'
+	} else {
+		assert err is http.HeaderLimitError
+	}
+}
+
 fn test_get_does_not_wait_for_timeout_when_content_length_is_complete() {
 	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
 	port := listener.addr()!.port()!

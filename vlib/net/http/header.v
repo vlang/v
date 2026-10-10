@@ -11,9 +11,15 @@ struct HeaderKV {
 	value string
 }
 
+// max_headers is the number of fields that a `Header` can hold.
 pub const max_headers = 50
 
-// Header represents the key-value pairs in an HTTP header
+// Header represents the key-value pairs in an HTTP header.
+// It holds at most `max_headers` fields. A field that does not fit is never
+// stored: the writers that return a Result (`add_custom`, `set_custom`,
+// `add_custom_map`, `new_custom_header_from_map`) fail with a
+// `HeaderLimitError`, the others (`add`, `set`, `add_map`, `new_header`,
+// `new_header_from_map`, `join`) drop it.
 pub struct Header {
 pub mut:
 	// data map[string][]string
@@ -378,16 +384,15 @@ fn header_key_eq(a string, b string) bool {
 	return true
 }
 
-// Create a new Header object
+// new_header creates a new Header object.
+// Only the first `max_headers` entries of `kvs` are stored.
 pub fn new_header(kvs ...HeaderConfig) Header {
 	mut h := Header{
 		// data: map[string][]string{}
 	}
-	for i, kv in kvs {
-		h.data[i] = HeaderKV{kv.key.str(), kv.value}
-		// h.add(kv.key, kv.value)
+	for kv in kvs {
+		h.add(kv.key, kv.value)
 	}
-	h.cur_pos = kvs.len
 	return h
 }
 
@@ -405,22 +410,35 @@ pub fn new_custom_header_from_map(kvs map[string]string) !Header {
 	return h
 }
 
+// append stores one more field, and returns false, leaving the header
+// unchanged, when it already holds `max_headers` fields.
+fn (mut h Header) append(key string, value string) bool {
+	if h.cur_pos >= max_headers {
+		return false
+	}
+	h.data[h.cur_pos] = HeaderKV{key, value}
+	h.cur_pos++
+	return true
+}
+
 // add appends a value to the header key.
+// The value is dropped if the header already holds `max_headers` fields.
 pub fn (mut h Header) add(key CommonHeader, value string) {
 	k := key.str()
 	// h.data[k] << value
-	h.data[h.cur_pos] = HeaderKV{k, value}
-	h.cur_pos++
+	h.append(k, value)
 	// h.add_key(k)
 }
 
 // add_custom appends a value to a custom header key. This function will
-// return an error if the key contains invalid header characters.
+// return an error if the key contains invalid header characters, and a
+// `HeaderLimitError` if the header already holds `max_headers` fields.
 pub fn (mut h Header) add_custom(key string, value string) ! {
 	is_valid(key)!
 	// h.data[key] << value
-	h.data[h.cur_pos] = HeaderKV{key, value}
-	h.cur_pos++
+	if !h.append(key, value) {
+		return HeaderLimitError{}
+	}
 	// h.add_key(key)
 }
 
@@ -440,6 +458,8 @@ pub fn (mut h Header) add_custom_map(kvs map[string]string) ! {
 
 // set sets the key-value pair. This function will clear any other values
 // that exist for the CommonHeader.
+// A key that is not present yet is dropped if the header already holds
+// `max_headers` fields.
 pub fn (mut h Header) set(key CommonHeader, value string) {
 	key_str := key.str()
 
@@ -451,8 +471,7 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 		}
 	}
 	// Not updated, add a new one
-	h.data[h.cur_pos] = HeaderKV{key_str, value}
-	h.cur_pos++
+	h.append(key_str, value)
 
 	// h.data[k] = [value]
 	// h.add_key(k)
@@ -461,7 +480,8 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 // set_custom sets the key-value pair for a custom header key. This
 // function will clear any other values that exist for the header. This
 // function will return an error if the key contains invalid header
-// characters.
+// characters, and a `HeaderLimitError` if the key is not present yet and
+// the header already holds `max_headers` fields.
 pub fn (mut h Header) set_custom(key string, value string) ! {
 	is_valid(key)!
 	mut set := false
@@ -483,8 +503,9 @@ pub fn (mut h Header) set_custom(key string, value string) ! {
 		return
 	}
 	// Not updated, add a new one
-	h.data[h.cur_pos] = HeaderKV{key, value}
-	h.cur_pos++
+	if !h.append(key, value) {
+		return HeaderLimitError{}
+	}
 	// h.data[key] = [value]
 	// h.add_key(key)
 }
@@ -751,7 +772,8 @@ pub fn (h Header) render_into_sb(mut sb strings.Builder, flags HeaderRenderConfi
 	//}
 }
 
-// join combines two Header structs into a new Header struct
+// join combines two Header structs into a new Header struct.
+// The fields of `other` that do not fit in `max_headers` are dropped.
 pub fn (h Header) join(other Header) Header {
 	mut combined := Header{
 		data:    h.data // h.data.clone()
@@ -760,6 +782,9 @@ pub fn (h Header) join(other Header) Header {
 	for k in other.keys() {
 		for v in other.custom_values(k, exact: true) {
 			combined.add_custom(k, v) or {
+				if err is HeaderLimitError {
+					return combined
+				}
 				// panic because this should never fail
 				panic('unexpected error: ' + err.str())
 			}
@@ -804,6 +829,18 @@ pub fn (err HeaderKeyError) msg() string {
 
 pub fn (err HeaderKeyError) code() int {
 	return err.code
+}
+
+// HeaderLimitError is the error for a field that does not fit in a `Header`,
+// which holds at most `max_headers` fields. The request and response parsers
+// return it for a message that has more header fields than that.
+pub struct HeaderLimitError {
+	Error
+}
+
+// msg returns the description of the error.
+pub fn (err HeaderLimitError) msg() string {
+	return 'too many header fields: http.Header holds at most ${max_headers}'
 }
 
 // is_valid checks if the header token contains all valid bytes

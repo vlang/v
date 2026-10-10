@@ -57,3 +57,26 @@ fn test_veb_serves_https_requests() ! {
 	assert res.status_code == 200
 	assert res.body == 'secure'
 }
+
+fn test_veb_answers_431_to_an_https_request_with_too_many_header_fields() ! {
+	// net.http sends its own Host, User-Agent and Content-Length fields too
+	mut header := http.new_header()
+	for i in 0 .. http.max_headers {
+		header.add_custom('X-Field-${i}', 'v')!
+	}
+	rejected := http.fetch(
+		url:                      'https://127.0.0.1:${https_port}/'
+		validate:                 false
+		header:                   header
+		disable_connection_reuse: true
+	)!
+	assert rejected.status_code == 431
+	// the next client is still answered
+	res := http.fetch(
+		url:                      'https://127.0.0.1:${https_port}/'
+		validate:                 false
+		disable_connection_reuse: true
+	)!
+	assert res.status_code == 200
+	assert res.body == 'secure'
+}

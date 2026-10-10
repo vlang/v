@@ -1143,6 +1143,9 @@ pub fn (app &App) index(mut ctx Context) veb.Result {
 }
 ```
 
+A request can have up to `http.max_headers` (50) header fields. veb answers a request
+that has more with `431 Request Header Fields Too Large`, and closes the connection.
+
 #### Get a cookie
 
 **Example:**
