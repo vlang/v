@@ -199,3 +199,39 @@ fn main() {
 	run := os.exec([os.join_path(directory, 'receiver')])
 	assert run.exit_code == 0, run.output
 }
+
+fn test_translated_generic_numeric_fields_keep_source_conversion_rules() {
+	directory := os.join_path(os.vtmp_dir(), 'translated_generic_numeric_${os.getpid()}')
+	os.mkdir_all(directory) or { panic(err) }
+	defer { os.rmdir_all(directory) or {} }
+	source := '@[translated]
+module main
+struct Number { width f64 }
+struct Integer { value int }
+fn direct[T](value T) f64 { return Number{width: value}.width }
+fn captured[T](value T) f64 {
+    read := fn [value] [T] () f64 { return Number{width: value}.width }
+    return read()
+}
+fn integer[T](value T) int { return Integer{value: value}.value }
+fn main() {
+    assert direct(true) == 1.0
+    assert direct(false) == 0.0
+    assert captured(true) == 1.0
+    assert captured(false) == 0.0
+    assert integer(true) == 1
+    assert integer(false) == 0
+}'
+	for check in [false, true] {
+		result := generic_numeric_field_program(directory, 'translated', source, check)
+		assert result.exit_code == 0, result.output
+	}
+	run := os.exec([os.join_path(directory, 'translated')])
+	assert run.exit_code == 0, run.output
+	invalid := source.all_before('fn main()') + "fn main() { _ = direct('12') }\n"
+	for check in [false, true] {
+		result := generic_numeric_field_program(directory, 'translated_string', invalid, check)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('not `string`'), result.output
+	}
+}
