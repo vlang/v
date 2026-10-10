@@ -1475,8 +1475,13 @@ fn test_program_executable_follows_the_program_and_keeps_one_copy() {
 	assert os.read_file(restored)! == 'second executable'
 	assert os.walk_ext(manager.dir, '.exe').len == 1
 
-	// A copy that is not the file that was recorded is not used.
-	os.write_file(second.path, 'second executable')!
+	// A copy that is not the file that was recorded is not used. Another build
+	// puts a new file in its place, as here: bytes of the same length that are
+	// written into the file within one step of the file system's clock would
+	// leave its metadata as it was.
+	replacement := second.path + '.replacement'
+	os.write_file(replacement, 'second executable')!
+	os.mv(replacement, second.path)!
 	assert !second.restore(restored)
 	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') == none
 }
