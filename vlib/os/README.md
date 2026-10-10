@@ -151,6 +151,20 @@ To accumulate state across calls, pass a method of a `mut` local, as in
 closure that captures `[mut n]` only updates its own copy, see
 [Closures](https://github.com/vlang/v/blob/master/doc/docs.md#closures).
 
+Only `os.walk_dir()` and `os.glob()` sort. `os.ls()` returns the entries of a directory
+in the order the operating system reports them, and `os.walk()`, `os.walk_ext()` and
+`os.walk_with_context()` visit each directory in that order. It differs between platforms
+and filesystems: NTFS usually lists names alphabetically without regard to case, while on
+APFS or ext4 the order looks arbitrary. Sort the result when a stable order is needed:
+
+```v
+import os
+
+mut entries := os.ls('.')!
+entries.sort()
+println(entries)
+```
+
 ### Running commands
 
 Use `os.exec(['program', 'arg 1', 'arg 2'])` when the command and its arguments

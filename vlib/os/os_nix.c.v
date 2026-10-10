@@ -294,6 +294,9 @@ pub fn loginname() !string {
 }
 
 // ls returns ![]string of the files and dirs in the given `path` ( os.ls uses C.readdir ). Symbolic links are returned to be files. For recursive list see os.walk functions.
+// The entries come in the order the operating system reports them, which os.ls does not sort.
+// That order differs between platforms and filesystems, so call `.sort()` on the result when
+// a stable order is needed.
 // See also: `os.walk`, `os.walk_ext`, `os.is_dir`, `os.is_file`
 // Example:
 // ```
