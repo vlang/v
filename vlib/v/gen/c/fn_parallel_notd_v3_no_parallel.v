@@ -515,6 +515,7 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 		metadata.c_name_cache = &CNameCache{}
 		metadata.generic_app_cache = &GenericAppCache{}
 		metadata.needed_optional_types = map[string]string{}
+		metadata.optional_pointer_struct_tags = map[string]string{}
 		metadata_thread := spawn checker_signature_support_thread(voidptr(metadata))
 		w.fn_gen_items = <-a.items
 		w.collect_selected_declaration_signature_types()
@@ -523,6 +524,9 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 		// signatures, then checker metadata. Tuple emission deduplicates names.
 		for name, payload in metadata.needed_optional_types {
 			w.needed_optional_types[name] = payload
+		}
+		for name, payload in metadata.optional_pointer_struct_tags {
+			w.optional_pointer_struct_tags[name] = payload
 		}
 		w.multi_return_types << metadata.multi_return_types
 		for name, enabled in metadata.multi_return_type_names {
@@ -1384,6 +1388,11 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 			g.needed_optional_types[opt_name.clone()] = val_type.clone()
 		}
 	}
+	for opt_name, val_type in batch.optional_pointer_struct_tags {
+		if opt_name !in g.optional_pointer_struct_tags {
+			g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
+		}
+	}
 	for encoded, name in batch.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded.clone()] = name.clone()
@@ -1630,8 +1639,11 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	for opt_name, val_type in fs_worker.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
 	}
+	for opt_name, val_type in fs_worker.optional_pointer_struct_tags {
+		g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
+	}
 	if fs_worker.worker_scope != unsafe { nil } {
-		// The whole-AST scan leaves far more scratch behind than its three result
+		// The whole-AST scan leaves far more scratch behind than its result
 		// tables hold. Publish owned copies into the enclosing cgen arena and
 		// release the helper arena before the function workers start, instead of
 		// keeping it resident through emission.
@@ -1690,9 +1702,10 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 	g.parallel_worker_scopes << worker.parallel_worker_scopes
 	worker.parallel_worker_scopes = []voidptr{}
 	if worker.worker_scope != unsafe { nil } {
-		// Publish owned copies of the three result tables and release the
+		// Publish owned copies of the result tables and release the
 		// signature scan's arena instead of keeping it resident through emission.
 		g.needed_optional_types = clone_cgen_string_map(worker.needed_optional_types)
+		g.optional_pointer_struct_tags = clone_cgen_string_map(worker.optional_pointer_struct_tags)
 		g.multi_return_types = types.clone_owned_types(worker.multi_return_types)
 		g.multi_return_type_names = clone_cgen_string_bool_map(worker.multi_return_type_names)
 		cgen_worker_scope_free(worker.worker_scope)
@@ -1700,6 +1713,7 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 		return
 	}
 	g.needed_optional_types = worker.needed_optional_types.move()
+	g.optional_pointer_struct_tags = worker.optional_pointer_struct_tags.move()
 	g.multi_return_types = worker.multi_return_types
 	g.multi_return_type_names = worker.multi_return_type_names.move()
 }
@@ -1709,6 +1723,9 @@ fn (mut g FlatGen) publish_unresolved_call_optional_types(mut worker FlatGen) {
 		// This scan follows declarations in the serial pipeline, including when
 		// two payload spellings map to the same optional typedef name.
 		g.needed_optional_types[name.clone()] = payload.clone()
+	}
+	for name, payload in worker.optional_pointer_struct_tags {
+		g.optional_pointer_struct_tags[name.clone()] = payload.clone()
 	}
 	// Only the typedef spellings escape this scan; release its parsing scratch.
 	cgen_worker_scope_free(worker.worker_scope)
@@ -2710,6 +2727,11 @@ fn (mut g FlatGen) publish_c_extern_type_discoveries(worker &FlatGen) {
 			g.needed_optional_types[opt_name.clone()] = val_type.clone()
 		}
 	}
+	for opt_name, val_type in worker.optional_pointer_struct_tags {
+		if opt_name !in g.optional_pointer_struct_tags {
+			g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
+		}
+	}
 	for encoded, name in worker.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded.clone()] = name.clone()
@@ -2985,6 +3007,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		expected_expr_type:                 g.expected_expr_type
 		expected_enum:                      g.expected_enum
 		needed_optional_types:              g.needed_optional_types.clone()
+		optional_pointer_struct_tags:       g.optional_pointer_struct_tags.clone()
 		optional_types_ready:               g.optional_types_ready
 		emitted_optional_types:             if result_only {
 			g.emitted_optional_types
@@ -3343,6 +3366,9 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 	for opt_name, val_type in w.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
+	}
+	for opt_name, val_type in w.optional_pointer_struct_tags {
+		g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
 	}
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
