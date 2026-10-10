@@ -170,6 +170,38 @@ fn main() {
 }
 '
 
+fn test_cached_module_keeps_c_macro_constants_in_the_header() {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	root := new_project('module_cache_c_macro')
+	saved := pin_module_cache(os.join_path(root, 'cache'))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	// stdatomic declares C.memory_order_* constants supplied by its headers.
+	program := 'import sync.stdatomic
+fn main() {
+	mut value := u64(40)
+	assert stdatomic.add_u64(&value, 2) == 42
+	println(stdatomic.load_u64(&value))
+}
+'
+	os.write_file(main_file, program)!
+	cold := build(root, ['-cc', 'cc'], main_file, 'cold')
+	assert cold.contains('Caching module sync.stdatomic...'), cold
+	assert run_built(root, 'cold') == '42'
+	os.write_file(main_file, program + '\nfn added() {}\n')!
+	warm := build(root, ['-cc', 'cc'], main_file, 'warm')
+	assert_reused_modules(warm)
+	assert run_built(root, 'warm') == '42'
+}
+
 fn test_changed_program_reuses_the_modules_cached_by_the_system_cc() {
 	$if windows {
 		return

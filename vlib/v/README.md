@@ -478,7 +478,8 @@ standard error, including during `run`. Warm builds print no cache creation noti
 `-silent` suppresses them. This applies to SHA3 and other imported modules with TinyCC too.
 Stored constants are defined and initialized by their owning module object. Cached interfaces
 declare constant tables and other stored values by type, so a warm build does not parse or lower
-their initializers again. Module startup preserves constant dependency order and initializes
+their initializers again. C constants keep their declarations in native headers.
+Module startup preserves constant dependency order and initializes
 implicit global defaults read by constants before those constants. After the program changes,
 its C unit emits the cached function prototypes and type declarations reached by its generated
 code, including the payload types of fields, options, tuples, and function pointers.

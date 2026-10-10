@@ -24577,7 +24577,10 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		ct = g.resolve_fn_ptr_type(ct)
 	}
 	qname := g.const_ident_c_name(name)
-	if g.cache_const_modules[const_owner] && qname != 'builtin__error_sentinel'
+	// C constants can be header macros, so their declarations never acquire
+	// storage in a cached V module.
+	if g.cache_const_modules[const_owner] && !name.starts_with('C.')
+		&& qname != 'builtin__error_sentinel'
 		&& default_init_unalias_type(v_type) !is types.FnType
 		&& ((v_type !is types.Primitive && v_type !is types.Enum && v_type !is types.Char
 			&& v_type !is types.Rune && v_type !is types.ISize && v_type !is types.USize)
