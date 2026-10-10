@@ -568,10 +568,13 @@ in a string literal (`cached_runtime_function_names`, which a test keeps complet
 checks the result: when the generated C names a function that was left out, or the C compiler
 reports an error in the program unit, the build starts again with every declaration, and records
 the function in `kept_cached_functions` of the module cache, so that later builds keep it. TinyCC
-and the system compiler get `-Werror=implicit-function-declaration` for such a unit. The same
-executable comes out either way. Builds that keep the plans of a development build on macOS
-(`-cc cc` without `-prod`), tests, and `-autofree` builds keep every declaration, and so does any
-build with `V3_CACHE_ALL_DECLARATIONS=1`; `V3_CACHE_TRACE=1` prints how many were left out.
+and the system compiler get `-Werror=implicit-function-declaration` for such a unit. A build
+whose checker or transformer reports errors starts again as well, before it prints them: what an
+error says, the names that it suggests for one, can depend on the declarations that are known.
+The same executable comes out either way. Builds that keep the plans of a development build on
+macOS (`-cc cc` without `-prod`), tests, `-autofree` builds and Windows targets keep every
+declaration, and so does any build with `V3_CACHE_ALL_DECLARATIONS=1`. `V3_CACHE_TRACE=1` prints
+how many were left out, and `V3_CACHE_KEEP_PROGRAM_C=<file>` keeps the unit that TinyCC compiled.
 With `-usecache`, TinyCC used to read the headers of the C library for every program unit: 3.7 MB
 for a unit of 113 KB. The part of the unit that includes them, up to the last `#include`, is now
 kept in the module cache in preprocessed form with its macro definitions (`tcc -E -dD`), and the
