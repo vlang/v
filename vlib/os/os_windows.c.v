@@ -354,16 +354,24 @@ pub fn utime(path string, actime i64, modtime i64) ! {
 	defer {
 		C.CloseHandle(handle)
 	}
-	atime_filetime := unix_seconds_to_filetime(actime)
-	mtime_filetime := unix_seconds_to_filetime(modtime)
+	atime_filetime := unix_seconds_to_filetime(actime)!
+	mtime_filetime := unix_seconds_to_filetime(modtime)!
 	if C.SetFileTime(handle, nil, &atime_filetime, &mtime_filetime) == 0 {
 		error_num := int(C.GetLastError())
 		return error_with_code(get_error_msg(error_num), error_num)
 	}
 }
 
-fn unix_seconds_to_filetime(seconds i64) Filetime {
+fn unix_seconds_to_filetime(seconds i64) !Filetime {
 	ticks := (u64(seconds) + u64(windows_filetime_unix_epoch_seconds)) * windows_filetime_ticks_per_second
+	// A zero FILETIME means "unspecified", so Windows would accept the write and then
+	// leave the previous time in place. An input far enough out of range wraps the tick
+	// count back to a plausible-looking value, which would write the wrong time without
+	// failing. Converting back and comparing rejects both.
+	if ticks == 0
+		|| i64(ticks / windows_filetime_ticks_per_second) - windows_filetime_unix_epoch_seconds != seconds {
+		return error('os.utime: ${seconds} is outside the range a Windows timestamp can represent')
+	}
 	return Filetime{
 		dw_low_date_time:  u32(ticks & 0xFFFFFFFF)
 		dw_high_date_time: u32(ticks >> 32)
