@@ -6,7 +6,7 @@ module binary
 // big_endian_u16 creates a u16 from the first two bytes in the array b in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_u16(b []u8) u16 {
-	_ = b[1] // bounds check
+	check_bounds(b, 0, 2)
 	unsafe {
 		mut u := U16{}
 		$if big_endian {
@@ -21,8 +21,7 @@ pub fn big_endian_u16(b []u8) u16 {
 // big_endian_u16_at creates a u16 from two bytes in the array b at the specified offset in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_u16_at(b []u8, o int) u16 {
-	_ = b[o] // bounds check
-	_ = b[o + 1] // bounds check
+	check_bounds(b, o, 2)
 	unsafe {
 		mut u := U16{}
 		$if big_endian {
@@ -43,7 +42,7 @@ pub fn big_endian_u16_end(b []u8) u16 {
 // big_endian_put_u16 writes a u16 to the first two bytes in the array b in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_put_u16(mut b []u8, v u16) {
-	_ = b[1] // bounds check
+	check_bounds(b, 0, 2)
 	unsafe {
 		mut u := U16{
 			u: v
@@ -59,8 +58,7 @@ pub fn big_endian_put_u16(mut b []u8, v u16) {
 // big_endian_put_u16_at writes a u16 to the two bytes in the array b at the specified offset in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_put_u16_at(mut b []u8, v u16, o int) {
-	_ = b[o] // bounds check
-	_ = b[o + 1] // bounds check
+	check_bounds(b, o, 2)
 	unsafe {
 		mut u := U16{
 			u: v
@@ -96,7 +94,7 @@ pub fn big_endian_get_u16(v u16) []u8 {
 // big_endian_u32 creates a u32 from four bytes in the array b in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_u32(b []u8) u32 {
-	_ = b[3] // bounds check
+	check_bounds(b, 0, 4)
 	unsafe {
 		mut u := U32{}
 		$if big_endian {
@@ -111,8 +109,7 @@ pub fn big_endian_u32(b []u8) u32 {
 // big_endian_u32_at creates a u32 from four bytes in the array b at the specified offset in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_u32_at(b []u8, o int) u32 {
-	_ = b[o] // bounds check
-	_ = b[o + 3] // bounds check
+	check_bounds(b, o, 4)
 	unsafe {
 		mut u := U32{}
 		$if big_endian {
@@ -133,7 +130,7 @@ pub fn big_endian_u32_end(b []u8) u32 {
 // big_endian_put_u32 writes a u32 to the first four bytes in the array b in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_put_u32(mut b []u8, v u32) {
-	_ = b[3] // bounds check
+	check_bounds(b, 0, 4)
 	unsafe {
 		mut u := U32{
 			u: v
@@ -149,8 +146,7 @@ pub fn big_endian_put_u32(mut b []u8, v u32) {
 // big_endian_put_u32_at writes a u32 to four bytes in the array b at the specified offset in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_put_u32_at(mut b []u8, v u32, o int) {
-	_ = b[o] // bounds check
-	_ = b[o + 3] // bounds check
+	check_bounds(b, o, 4)
 	unsafe {
 		mut u := U32{
 			u: v
@@ -186,7 +182,7 @@ pub fn big_endian_get_u32(v u32) []u8 {
 // big_endian_u64 creates a u64 from the first eight bytes in the array b in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_u64(b []u8) u64 {
-	_ = b[7] // bounds check
+	check_bounds(b, 0, 8)
 	unsafe {
 		mut u := U64{}
 		$if big_endian {
@@ -201,8 +197,7 @@ pub fn big_endian_u64(b []u8) u64 {
 // big_endian_u64_at creates a u64 from eight bytes in the array b at the specified offset in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_u64_at(b []u8, o int) u64 {
-	_ = b[o] // bounds check
-	_ = b[o + 7] // bounds check
+	check_bounds(b, o, 8)
 	unsafe {
 		mut u := U64{}
 		$if big_endian {
@@ -223,7 +218,7 @@ pub fn big_endian_u64_end(b []u8) u64 {
 // big_endian_put_u64 writes a u64 to the first eight bytes in the array b in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_put_u64(mut b []u8, v u64) {
-	_ = b[7] // bounds check
+	check_bounds(b, 0, 8)
 	unsafe {
 		mut u := U64{
 			u: v
@@ -239,8 +234,7 @@ pub fn big_endian_put_u64(mut b []u8, v u64) {
 // big_endian_put_u64_at writes a u64 to eight bytes in the array b at the specified offset in big endian order.
 @[direct_array_access; inline]
 pub fn big_endian_put_u64_at(mut b []u8, v u64, o int) {
-	_ = b[o] // bounds check
-	_ = b[o + 7] // bounds check
+	check_bounds(b, o, 8)
 	unsafe {
 		mut u := U64{
 			u: v
