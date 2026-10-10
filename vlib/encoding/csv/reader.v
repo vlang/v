@@ -30,14 +30,6 @@ fn (err EndOfFileError) msg() string {
 	return 'encoding.csv: end of file'
 }
 
-struct InvalidLineEndingError {
-	Error
-}
-
-fn (err InvalidLineEndingError) msg() string {
-	return 'encoding.csv: could not find any valid line endings'
-}
-
 struct Reader {
 	// not used yet
 	// has_header        bool
@@ -58,7 +50,7 @@ pub:
 }
 
 // new_reader initializes a Reader with string data to parse and,
-// optionally, a custom delimiter.
+// optionally, a custom delimiter. The final record may omit its line ending.
 pub fn new_reader(data string, config ReaderConfig) &Reader {
 	return &Reader{
 		data:      data
@@ -103,12 +95,10 @@ fn (mut r Reader) read_line() !string {
 			i = r.data.index_after('\r', r.row_pos) or { -1 }
 			if i != -1 {
 				r.is_mac_pre_osx_le = true
-			} else {
-				// no valid line endings found
-				return &InvalidLineEndingError{}
 			}
-		} else {
-			// No line ending on file
+		}
+		if i == -1 {
+			// The final record does not need a line ending.
 			i = r.data.len
 		}
 	}
