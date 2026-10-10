@@ -14,10 +14,17 @@ fn is_continuation(b u8) bool {
 	return (b & 0xc0) == 0x80
 }
 
+// decode_rune_at decodes the UTF-8 sequence that starts at the byte offset index of s.
+// It returns the rune and the number of bytes that encode it, like Go's
+// utf8.DecodeRuneInString(s[index:]):
+// a valid sequence returns its rune and a size from 1 to 4;
+// an invalid or truncated sequence returns U+FFFD and a size of 1;
+// an index outside of s, which is any index when s is empty, returns U+FFFD and a size of 0.
+// A U+FFFD that is really in s has a size of 3, so the size tells the three cases apart.
 @[direct_array_access]
-fn decode_rune_at(s string, index int) (rune, int) {
+pub fn decode_rune_at(s string, index int) (rune, int) {
 	if s.len == 0 || index < 0 || index >= s.len {
-		return 0, 0
+		return replacement_rune, 0
 	}
 	b0 := s[index]
 	if b0 < 0x80 {
@@ -87,7 +94,10 @@ pub fn len(s string) int {
 	return count
 }
 
-// get_rune convert a UTF-8 unicode codepoint in string[index] into a UTF-32 encoded rune
+// get_rune convert a UTF-8 unicode codepoint in string[index] into a UTF-32 encoded rune.
+// It returns U+FFFD, the Unicode replacement character, for an invalid sequence and for an
+// index outside of s, which is any index when s is empty. A NUL byte in s returns rune(0).
+// Use decode_rune_at to also get the size, which tells these cases apart.
 pub fn get_rune(s string, index int) rune {
 	r, _ := decode_rune_at(s, index)
 	return r

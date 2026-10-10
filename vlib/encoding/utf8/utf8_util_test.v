@@ -59,6 +59,83 @@ fn test_get_rune_invalid_utf8() {
 	assert utf8.get_rune(invalid, 7) == replacement
 }
 
+fn test_get_rune_out_of_range_is_not_nul() {
+	replacement := rune(0xfffd)
+	assert utf8.get_rune('', 0) == replacement
+	assert utf8.get_rune('', 1) == replacement
+	assert utf8.get_rune('a', -1) == replacement
+	assert utf8.get_rune('a', 1) == replacement // index == len
+	assert utf8.get_rune('a', 999) == replacement
+	assert utf8.get_rune('a★', 4) == replacement // index == len
+	// a NUL that is in the string is still a NUL
+	assert utf8.get_rune('\x00', 0) == rune(0)
+	assert utf8.get_rune('a\x00b', 1) == rune(0)
+	assert utf8.get_rune('\x00', 1) == replacement
+	// the predicates that take an index see no punctuation outside of the string
+	assert utf8.is_punct('', 0) == false
+	assert utf8.is_punct('.', 1) == false
+	assert utf8.is_global_punct('', 0) == false
+	assert utf8.is_global_punct('.', 1) == false
+}
+
+fn check_decode_rune_at(s string, index int, expected_rune rune, expected_size int) {
+	r, size := utf8.decode_rune_at(s, index)
+	assert r == expected_rune, 'rune at index ${index} of ${s.bytes().hex()}'
+	assert size == expected_size, 'size at index ${index} of ${s.bytes().hex()}'
+	assert utf8.get_rune(s, index) == r
+}
+
+fn test_decode_rune_at() {
+	replacement := rune(0xfffd)
+	// valid sequences return the rune and its length in bytes
+	c := 'a©★🚀'
+	check_decode_rune_at(c, 0, `a`, 1)
+	check_decode_rune_at(c, 1, `©`, 2)
+	check_decode_rune_at(c, 3, `★`, 3)
+	check_decode_rune_at(c, 6, `🚀`, 4)
+	check_decode_rune_at('\x00', 0, rune(0), 1)
+	// outside of the string: the replacement rune with a size of 0
+	check_decode_rune_at('', 0, replacement, 0)
+	check_decode_rune_at('', -1, replacement, 0)
+	check_decode_rune_at('a', -1, replacement, 0)
+	check_decode_rune_at('a', 1, replacement, 0)
+	check_decode_rune_at('a', 999, replacement, 0)
+	check_decode_rune_at(c, c.len, replacement, 0)
+	check_decode_rune_at('\x00', 1, replacement, 0)
+	// invalid sequences: the replacement rune with a size of 1
+	check_decode_rune_at(c, 2, replacement, 1) // second byte of ©
+	check_decode_rune_at(c, 4, replacement, 1) // second byte of ★
+	check_decode_rune_at(c, 9, replacement, 1) // last byte of 🚀
+	check_decode_rune_at([u8(0xff)].bytestr(), 0, replacement, 1)
+	check_decode_rune_at([u8(0xf5), `a`].bytestr(), 0, replacement, 1)
+	check_decode_rune_at([u8(0xe2), 0x98].bytestr(), 0, replacement, 1) // truncated ★
+	check_decode_rune_at([u8(0xc1), 0xa1].bytestr(), 0, replacement, 1) // overlong
+	check_decode_rune_at([u8(0xed), 0xa0, 0x80].bytestr(), 0, replacement, 1) // surrogate
+	// a replacement rune that is really in the string has its own size of 3
+	check_decode_rune_at('�', 0, replacement, 3)
+	check_decode_rune_at('a�', 1, replacement, 3)
+}
+
+fn test_decode_rune_at_walks_a_string() {
+	s := 'a©' + [u8(0xff)].bytestr() + '★\x00🚀'
+	mut runes := []rune{}
+	mut sizes := []int{}
+	mut i := 0
+	for {
+		r, size := utf8.decode_rune_at(s, i)
+		if size == 0 {
+			break
+		}
+		runes << r
+		sizes << size
+		i += size
+	}
+	assert i == s.len
+	assert runes == [`a`, `©`, rune(0xfffd), `★`, rune(0), `🚀`]
+	assert sizes == [1, 2, 1, 3, 1, 4]
+	assert runes.len == utf8.len(s)
+}
+
 fn test_invalid_utf8_indexing_advances_one_byte() {
 	replacement := rune(0xfffd).str()
 	invalid := [u8(0xf5), `a`].bytestr()
