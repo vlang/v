@@ -67,6 +67,25 @@ assert strconv.format_int(min_i64, 16) == '-8000000000000000'
 assert strconv.format_uint(max_u64, 16) == 'ffffffffffffffff'
 ```
 
+## Scientific floating-point formatting
+
+On the C backend, `f32_to_str_pad` and `f64_to_str_pad` format a value in scientific notation
+with the requested number of digits after the decimal point. A zero or negative precision
+omits the decimal point, while preserving the exponent. Zero values receive the requested
+padding, and a rounding carry adjusts the exponent.
+
+```v
+import strconv
+
+assert strconv.f64_to_str_pad(9.5, 0) == '1e+01'
+assert strconv.f64_to_str_pad(0.0, 3) == '0.000e+00'
+assert strconv.f32_to_str_pad(999984.0, 1) == '1.0e+06'
+```
+
+These functions round the shortest decimal representation half up, then append zeros as
+needed. They do not round the exact binary value like C's `printf`: for example,
+`f64_to_str_pad(0.1, 20)` gives `1.00000000000000000000e-01`.
+
 ## Buffer formatting
 
 `write_dec` and `write_dec_u` write a decimal integer into a caller-provided `[]u8`
