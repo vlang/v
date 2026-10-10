@@ -8004,8 +8004,9 @@ fn v3_cache_compiler_executable_identity(vexe string) string {
 }
 
 // v3_cache_compiler_runtime_inputs lists the `$embed_file` targets of the C backend, which
-// copies them into the generated C code. Outside of -prod, the compiler executable keeps only
-// their paths and reads the files at run time.
+// copies them into the generated C code. A build of the compiler carries their bytes. A
+// development build of another program that runs the backend keeps only their paths and
+// reads the files at run time, and so does a compiler that was built by an older V.
 const v3_cache_compiler_runtime_inputs = ['manual_stdlib_c_headers.h', 'int128_helpers.h',
 	'int128_string.h']
 
@@ -11157,6 +11158,9 @@ pub fn run(args []string) {
 		'shared=${is_shared}',
 		'subsystem=${prefs.subsystem}',
 		'selfhost=${is_selfhost}',
+		// A build of the compiler embeds the bytes of its `$embed_file`s, so its
+		// modules are not the ones that an ordinary program parses and links.
+		'building_v=${prefs.building_v}',
 		'c99=${c99}',
 		'target_libc_headers=${prefs.target_libc_headers}',
 		'thread_stack_size=${prefs.thread_stack_size}',
@@ -13502,12 +13506,13 @@ pub fn run(args []string) {
 		// `.incbin` when the link allows it and an assembler is at hand; cgen then
 		// refers to those objects instead of spelling out the bytes, see
 		// cgen.embed_incbin_payloads. The payloads are known before cgen runs, so
-		// a build without any pays nothing here.
+		// a build without any pays nothing here. A development build of the compiler
+		// embeds its C headers too (see parser.embed_file_uncompressed_data); those
+		// stay arrays, so that rebuilding V does not come to need an assembler.
 		mut embed_incbin_payloads := []cgen.EmbedIncbinPayload{}
 		mut embed_incbin_assembler := ''
-		if v3_embed_incbin_supported(prefs.normalized_target_os(), host_os, effective_c_compiler,
-			backend, c_only, is_o, macos_linux_cross_compile, reusable_c_output,
-			prefs.user_defines) {
+		if (is_prod || prefs.output_cross_c)
+			&& v3_embed_incbin_supported(prefs.normalized_target_os(), host_os, effective_c_compiler, backend, c_only, is_o, macos_linux_cross_compile, reusable_c_output, prefs.user_defines) {
 			candidates := cgen.embed_incbin_payloads(a, cgen.cache_program_file_set(a, user_files),
 				cache_state.manager.enabled)
 			if candidates.len > 0 {

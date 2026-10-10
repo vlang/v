@@ -8444,8 +8444,11 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 // Portable `-os cross` output cannot do that: `apath` names a directory on the machine
 // that generated the snapshot, and the snapshot is compiled and run somewhere else. That
 // is how `vc/v.c` bootstraps V, so a portable snapshot always embeds the bytes.
+// A build of the compiler embeds them too. The files it embeds are the C headers that it
+// copies into every program, and its source tree changes under it: after a `git pull`,
+// the executable that has to rebuild V would otherwise generate C from the new headers.
 fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
-	if !p.prefs.is_prod && !p.prefs.output_cross_c {
+	if !p.prefs.is_prod && !p.prefs.output_cross_c && !p.prefs.building_v {
 		return none
 	}
 	if apath.len == 0 || !os.is_file(apath) {
