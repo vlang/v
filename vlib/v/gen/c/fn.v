@@ -18689,8 +18689,14 @@ fn (mut g FlatGen) fn_ptr_typedefs() {
 			break
 		}
 		pending_encoded.sort()
+		before := g.emitted_fn_ptr_typedefs.len
 		for encoded in pending_encoded {
 			g.emit_fn_ptr_typedef(encoded, g.fn_ptr_types[encoded], mut g.emitted_fn_ptr_typedefs)
+		}
+		// A multidimensional fixed-array parameter still needs its inner array
+		// typedef, whose element struct may be emitted later by struct_decls.
+		if g.emitted_fn_ptr_typedefs.len == before {
+			break
 		}
 	}
 	if g.emitted_fn_ptr_typedefs.len > start_len {
@@ -18726,6 +18732,9 @@ fn (mut g FlatGen) emit_fn_ptr_typedef(encoded string, name string, mut emitted 
 		emitted[encoded] = true
 		return
 	}
+	if !g.fn_ptr_typedef_ready(encoded) {
+		return
+	}
 	emitted[encoded] = true
 	if !encoded.starts_with('fn_ptr:') {
 		return
@@ -18750,9 +18759,65 @@ fn (mut g FlatGen) fn_ptr_typedef_params(params string, mut emitted map[string]b
 	}
 	mut out := []string{}
 	for param in param_cts {
-		out << g.fn_ptr_typedef_type(param, mut emitted)
+		out << g.fn_ptr_typedef_type(g.fn_ptr_parameter_ct(param), mut emitted)
 	}
 	return out.join(', ')
+}
+
+// C adjusts a fixed-array function parameter to a pointer to its element.
+// Naming the outer array typedef here requires a complete element struct even
+// for a one-dimensional callback declared inside that same struct.
+fn (mut g FlatGen) fn_ptr_parameter_ct(param string) string {
+	clean := trimmed_space(param)
+	if info := g.fixed_array_typedefs_needed[clean] {
+		old_module := g.tc.cur_module
+		g.tc.cur_module = info.module
+		ct := g.fixed_array_elem_c_type(info.arr.elem_type) + '*'
+		g.tc.cur_module = old_module
+		return ct
+	}
+	return clean
+}
+
+fn (mut g FlatGen) fn_ptr_typedef_ready(encoded string) bool {
+	if !encoded.starts_with('fn_ptr:') { return true }
+	ret, params := fn_ptr_typedef_parts(encoded)
+	if !g.fn_ptr_nested_typedef_ready(ret) { return false }
+	for param in naming.fn_ptr_encoded_params(params) {
+		ct := g.fn_ptr_parameter_ct(param)
+		if !g.fn_ptr_nested_typedef_ready(ct) { return false }
+		bare := ct.trim_right('*')
+		if bare.starts_with('Array_fixed_') && !g.emitted_fixed_array_typedefs[bare] {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut g FlatGen) fn_ptr_nested_typedef_ready(ct string) bool {
+	if ct.starts_with('fn_ptr:') { return g.fn_ptr_typedef_ready(fn_ptr_typedef_normalized(ct)) }
+	if ct.starts_with('_fn_ptr_') {
+		for encoded, name in g.fn_ptr_types {
+			if name == ct.trim_right('*') { return g.fn_ptr_typedef_ready(encoded) }
+		}
+	}
+	return true
+}
+
+fn (mut g FlatGen) fn_ptr_field_typedef_ready(typ types.Type) bool {
+	match typ {
+		types.Alias { return g.fn_ptr_field_typedef_ready(typ.base_type) }
+		types.Pointer { return g.fn_ptr_field_typedef_ready(typ.base_type) }
+		types.ArrayFixed { return g.fn_ptr_field_typedef_ready(typ.elem_type) }
+		types.FnType {
+			encoded := g.fn_ptr_type_key(typ)
+			if !g.fn_ptr_typedef_ready(encoded) { return false }
+			name := g.resolve_fn_ptr_type(encoded)
+			g.emit_fn_ptr_typedef(encoded, name, mut g.emitted_fn_ptr_typedefs)
+			return true
+		}
+		else { return true }
+	}
 }
 
 fn (mut g FlatGen) fn_ptr_typedef_type(typ string, mut emitted map[string]bool) string {
