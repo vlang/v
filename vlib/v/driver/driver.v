@@ -167,6 +167,7 @@ struct V3CachedObjectCompiler {
 
 struct V3ModuleCacheState {
 	manager             modulecache.Manager
+	silent              bool
 	bundle_sources      []string
 	bundle_source_paths map[string]bool
 mut:
@@ -2603,6 +2604,10 @@ fn v3_include_directive_argument(line string) ?string {
 	if !directive.starts_with('include') {
 		return none
 	}
+	if directive.len > 'include'.len && (directive['include'.len].is_letter()
+		|| directive['include'.len] == `_`) {
+		return none
+	}
 	return directive['include'.len..].trim_left(' \t')
 }
 
@@ -2685,8 +2690,12 @@ fn v3_expand_shipped_native_file(path string, include_dirs []string, vroot strin
 			if v3_line_is_quoted_include(line) {
 				complete = false
 			}
-		} else if v3_line_is_quoted_include(line) {
-			complete = false
+		} else if argument := v3_include_directive_argument(line) {
+			// A macro-expanded include cannot be resolved by this literal scanner.
+			// Leave it to the C compiler and reject an incomplete cache key.
+			if !argument.starts_with('<') {
+				complete = false
+			}
 		}
 		expanded.writeln(line)
 	}
@@ -4293,7 +4302,7 @@ fn v3_native_input_expansion_record(cache_dir string, path string, include_dirs 
 		return ''
 	}
 	mut hash := u64(1469598103934665603)
-	for part in ['v3-native-expansion-3', os.real_path(path), include_dirs.join('\x00'), vroot,
+	for part in ['v3-native-expansion-4', os.real_path(path), include_dirs.join('\x00'), vroot,
 		check_replication.str()] {
 		hash = c_hash_bytes(hash, part.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
@@ -4435,15 +4444,16 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 		mut closure := map[string]bool{}
 		for path in paths {
 			closure[path] = true
-			if !native_inputs.native_paths[path] {
+			if !native_inputs.native_paths[path] && !native_inputs.macro_paths[path] {
 				continue
 			}
+			requires_replication := check_replication && native_inputs.native_paths[path]
 			if path !in expansions {
 				// Reading a header with the headers it includes, and deciding whether
 				// its declarations can be replicated, costs more than the rest of the
 				// cache validation of a small program: keep the answer between builds.
 				record := v3_native_input_expansion_record(cache_dir, path, native_inputs.include_dirs,
-					vroot, check_replication)
+					vroot, requires_replication)
 				if recorded := v3_recorded_native_input_expansion(record) {
 					expansions[path] = recorded.paths
 					replicable[path] = recorded.replicable
@@ -4453,10 +4463,10 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 					text, complete := v3_expand_shipped_native_file(path, native_inputs.include_dirs,
 						vroot, true, mut active, mut expanded_paths)
 					expansions[path] = expanded_paths.keys()
-					replicable[path] = !check_replication || (complete
-						&& !cgen.cache_native_input_is_source(path)
-						&& (modulecache.c_source_is_replicable(text)
-							|| v3_cache_native_input_has_program_owner(path, text, vroot)))
+					replicable[path] = complete && (!requires_replication
+						|| (!cgen.cache_native_input_is_source(path)
+							&& (modulecache.c_source_is_replicable(text)
+								|| v3_cache_native_input_has_program_owner(path, text, vroot))))
 					if complete {
 						v3_record_native_input_expansion(record, V3NativeInputExpansion{
 							paths:      expansions[path]
@@ -7994,8 +8004,9 @@ fn v3_cache_compiler_executable_identity(vexe string) string {
 }
 
 // v3_cache_compiler_runtime_inputs lists the `$embed_file` targets of the C backend, which
-// copies them into the generated C code. Outside of -prod, the compiler executable keeps only
-// their paths and reads the files at run time.
+// copies them into the generated C code. A build of the compiler carries their bytes. A
+// development build of another program that runs the backend keeps only their paths and
+// reads the files at run time, and so does a compiler that was built by an older V.
 const v3_cache_compiler_runtime_inputs = ['manual_stdlib_c_headers.h', 'int128_helpers.h',
 	'int128_string.h']
 
@@ -11147,6 +11158,9 @@ pub fn run(args []string) {
 		'shared=${is_shared}',
 		'subsystem=${prefs.subsystem}',
 		'selfhost=${is_selfhost}',
+		// A build of the compiler embeds the bytes of its `$embed_file`s, so its
+		// modules are not the ones that an ordinary program parses and links.
+		'building_v=${prefs.building_v}',
 		'c99=${c99}',
 		'target_libc_headers=${prefs.target_libc_headers}',
 		'thread_stack_size=${prefs.thread_stack_size}',
@@ -11229,6 +11243,7 @@ pub fn run(args []string) {
 	bundle_sources := builtin_bundle_source_files(mut p.a, prefs, builtin_files)
 	mut cache_state := V3ModuleCacheState{
 		manager:                   cache_manager
+		silent:                    silent
 		bundle_sources:            bundle_sources
 		bundle_source_paths:       module_cache_source_path_set(p.a, bundle_sources)
 		force_source:              force_cache_source
@@ -13491,12 +13506,13 @@ pub fn run(args []string) {
 		// `.incbin` when the link allows it and an assembler is at hand; cgen then
 		// refers to those objects instead of spelling out the bytes, see
 		// cgen.embed_incbin_payloads. The payloads are known before cgen runs, so
-		// a build without any pays nothing here.
+		// a build without any pays nothing here. A development build of the compiler
+		// embeds its C headers too (see parser.embed_file_uncompressed_data); those
+		// stay arrays, so that rebuilding V does not come to need an assembler.
 		mut embed_incbin_payloads := []cgen.EmbedIncbinPayload{}
 		mut embed_incbin_assembler := ''
-		if v3_embed_incbin_supported(prefs.normalized_target_os(), host_os, effective_c_compiler,
-			backend, c_only, is_o, macos_linux_cross_compile, reusable_c_output,
-			prefs.user_defines) {
+		if (is_prod || prefs.output_cross_c)
+			&& v3_embed_incbin_supported(prefs.normalized_target_os(), host_os, effective_c_compiler, backend, c_only, is_o, macos_linux_cross_compile, reusable_c_output, prefs.user_defines) {
 			candidates := cgen.embed_incbin_payloads(a, cgen.cache_program_file_set(a, user_files),
 				cache_state.manager.enabled)
 			if candidates.len > 0 {
@@ -13631,6 +13647,7 @@ pub fn run(args []string) {
 			g.set_cache_stable_symbols(cache_state.manager.enabled)
 			if cache_state.manager.enabled {
 				g.set_program_uses_recover(program_used_fns['recover'] || cache_state.calls_recover)
+				g.set_cache_const_modules(cache_state.module_sources.keys(), cache_state.parsed_from_source.keys())
 			}
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_embed_incbin(use_embed_incbin)
@@ -13708,6 +13725,7 @@ pub fn run(args []string) {
 			g.set_cache_stable_symbols(cache_state.manager.enabled)
 			if cache_state.manager.enabled {
 				g.set_program_uses_recover(program_used_fns['recover'] || cache_state.calls_recover)
+				g.set_cache_const_modules(cache_state.module_sources.keys(), cache_state.parsed_from_source.keys())
 			}
 			g.set_parallel_cc(use_parallel_c_compilation)
 			g.set_embed_incbin(use_embed_incbin)
@@ -15763,6 +15781,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			false
 		}
 		if !bundle_is_compiled {
+			state.print_module_cache_notice('builtin')
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
@@ -15844,6 +15863,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			false
 		}
 		if !module_is_compiled {
+			state.print_module_cache_notice(module_name)
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
@@ -17467,6 +17487,13 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 		}
 	}
 	return false
+}
+
+fn (state &V3ModuleCacheState) print_module_cache_notice(module_name string) {
+	if !state.silent {
+		name := state.module_import_paths[module_name] or { module_name }
+		eprintln('Caching module ${name}...')
+	}
 }
 
 fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool) ! {

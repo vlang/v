@@ -21,6 +21,11 @@ Digits must be valid for the selected base, so `08` and `09` fail with base 0.
 An explicit prefix, with its optional underscore separator, must be followed by digits.
 V integer literal analysis keeps bare leading zeros decimal; octal literals use `0o`.
 
+Bit size 0 uses the width of `int` in the selected target and backend, as given by
+`sizeof(int) * 8`. Explicit bit sizes from 1 to 64 select that many bits regardless of the target.
+`parse_int` saturates at the signed limits; `parse_uint` reports overflow as an error.
+`atoi` and `string.int()` retain their 32-bit range even on targets with a 64-bit `int`.
+
 String numeric conveniences such as `.int()`, `.i64()`, `.u64()`, and their narrower variants
 also keep bare leading zeros decimal. Explicit `0b`, `0o`, and `0x` prefixes still select a base.
 Use `.parse_int(0, bits)` or `.parse_uint(0, bits)` for base-zero inference on a string.
@@ -66,6 +71,25 @@ import strconv
 assert strconv.format_int(min_i64, 16) == '-8000000000000000'
 assert strconv.format_uint(max_u64, 16) == 'ffffffffffffffff'
 ```
+
+## Scientific floating-point formatting
+
+On the C backend, `f32_to_str_pad` and `f64_to_str_pad` format a value in scientific notation
+with the requested number of digits after the decimal point. A zero or negative precision
+omits the decimal point, while preserving the exponent. Zero values receive the requested
+padding, and a rounding carry adjusts the exponent.
+
+```v
+import strconv
+
+assert strconv.f64_to_str_pad(9.5, 0) == '1e+01'
+assert strconv.f64_to_str_pad(0.0, 3) == '0.000e+00'
+assert strconv.f32_to_str_pad(999984.0, 1) == '1.0e+06'
+```
+
+These functions round the shortest decimal representation half up, then append zeros as
+needed. They do not round the exact binary value like C's `printf`: for example,
+`f64_to_str_pad(0.1, 20)` gives `1.00000000000000000000e-01`.
 
 ## Buffer formatting
 

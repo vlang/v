@@ -57,15 +57,15 @@ pub fn decode(s string) ![]u8 {
 }
 
 // encode converts an array of bytes into a string of ASCII hex bytes. The
-// output will always be a string whose length will be a multiple of 2.
+// hex portion has two characters per input byte.
 // If `EncodeParams.uppercase` is set, the output hex characters are emitted in
 // uppercase.
 // If `EncodeParams.with_prefix` is non-empty, the output string is prefixed
-// with the provided string.
+// with the provided string, including when the input is empty.
 @[direct_array_access]
 pub fn encode(bytes []u8, params EncodeParams) string {
 	if bytes.len == 0 {
-		return ''
+		return params.with_prefix
 	}
 	mut res := []u8{}
 	if params.with_prefix != '' {

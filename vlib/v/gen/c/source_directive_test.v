@@ -601,3 +601,27 @@ fn test_cross_os_target_include_is_guarded_for_the_c_compiler() {
 		'#if ${condition}\n#include <target_only.h>\n#endif',
 	], 'unexpected directives: ${directives}'
 }
+
+fn test_portable_output_keeps_other_target_linkage_metadata() {
+	source := '/project/bindings.c.v'
+	for flag in ['windows @DIR/helper.o', 'windows -lhelper', 'amd64 @DIR/libhelper.a'] {
+		mut ast := &flat.FlatAst{}
+		ast.add_val(.file, source)
+		ast.add_val(.module_decl, 'bindings')
+		ast.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flag })
+		mut g := FlatGen.new()
+		g.a = ast
+		g.set_target(pref.target_from('linux', 'arm64') or { panic(err) })
+		g.set_output_cross_c(true)
+		g.collect_c_flags_from_directives()
+		assert g.c_flags.len == 0, flag
+		assert g.should_emit_c_extern_decl_from_file('native_api', source, 'bindings'), flag
+		g.note_c_include_directive('bindings', source)
+		assert !g.should_emit_c_extern_decl_from_file('native_api', source, 'bindings'), flag
+		mut selected := FlatGen.new()
+		selected.a = ast
+		selected.set_target(pref.target_from('linux', 'arm64') or { panic(err) })
+		selected.collect_c_flags_from_directives()
+		assert !selected.should_emit_c_extern_decl_from_file('native_api', source, 'bindings'), flag
+	}
+}

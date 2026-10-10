@@ -744,3 +744,15 @@ fn test_system_libc_headers_do_not_depend_on_the_c_compiler_v_was_generated_for(
 		assert only_here.len == 0 && only_there.len == 0, '-cc ${ccompiler} emits ${only_here} but the msvc spelling emits ${only_there} instead'
 	}
 }
+
+fn test_manual_windows_crt_declares_compiler_environment_setup() {
+	headers := manual_stdlib_c_headers()
+	declaration := 'V_CRT_LINKAGE int V_CRT_CALL _putenv_s(const char *name, const char *value);'
+	assert headers.contains(declaration)
+	mut g := windows_preamble_test_gen()
+	g.compiler_vexe_env_setup = true
+	g.compiler_vexe = 'C:/v/v.exe'
+	g.compiler_vroot = 'C:/v'
+	g.gen_compiler_vexe_env_setup()
+	assert g.sb.str().contains('_putenv_s("VEXE", v3_vexe);')
+}

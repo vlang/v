@@ -23,8 +23,11 @@ this sequence in little endian format, we get the integer `0x78563412`. If we en
 sequence in big endian, we get `0x12345678`.
 
 > **Note**
-> The functions in this module assume appropriately sized u8 arrays. If the sizes
-> are not valid, the functions will panic.
+> The endian decode and put functions require enough bytes within the supplied slice for the
+> requested integer width (2, 4, or 8 bytes). The `_at` variants also require a nonnegative
+> offset and enough bytes after it; the `_end` variants use the final bytes of the slice.
+> Invalid lengths or offsets panic before any read or write, even when the slice has a larger
+> backing array. `little_endian_f32_at` follows the same rule for its 4-byte value.
 
 For generic `T` data encoding/decoding, you can use `encode_binary[T]()` and `decode_binary[T]()`:
 

@@ -1092,6 +1092,9 @@ fn (mut g FlatGen) finish_declaration_signature_types() {
 fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 	mut seen := &PreseedTypeSeen{}
 	for name, ret in g.tc.fn_ret_types {
+		if g.cache_decl_demand && !g.cache_function_declaration_needed(name) {
+			continue
+		}
 		// Generic template signatures keep unspecialized placeholder types
 		// (`!&Tls[T]`); their typedefs would reference C types that are never
 		// emitted. Specializations register concrete signatures under their
@@ -1105,6 +1108,9 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 		g.collect_declaration_signature_type(ret)
 	}
 	for name, params in g.tc.fn_param_types {
+		if g.cache_decl_demand && !g.cache_function_declaration_needed(name) {
+			continue
+		}
 		if name in g.tc.fn_generic_params {
 			continue
 		}
@@ -1115,7 +1121,10 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 			g.collect_declaration_signature_type(param)
 		}
 	}
-	for _, fields in g.tc.structs {
+	for name, fields in g.tc.structs {
+		if g.cache_decl_demand && !g.cache_struct_declaration_needed(name) {
+			continue
+		}
 		for field in fields {
 			if !cgen_type_first_seen(field.typ, mut seen) {
 				continue
@@ -1137,7 +1146,10 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 		}
 		g.collect_declaration_signature_type(typ)
 	}
-	for _, typ in g.tc.const_types {
+	for name, typ in g.tc.const_types {
+		if g.cache_decl_demand && !g.cache_decl_refs[g.const_ident_c_name(name)] {
+			continue
+		}
 		if !cgen_type_first_seen(typ, mut seen) {
 			continue
 		}

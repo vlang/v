@@ -473,6 +473,19 @@ it: `-cc clang`, `-prod`, and every build where the bundled TinyCC is not the de
 TinyCC compiles a whole small program faster than a build validates and links its cached modules;
 pass `-usecache` to let the bundled TinyCC build and link the module objects itself on macOS and
 Linux, which pays off for programs with larger imports.
+Before compiling a new module object, the compiler prints `Caching module <name>...` to
+standard error, including during `run`. Warm builds print no cache creation notices;
+`-silent` suppresses them. This applies to SHA3 and other imported modules with TinyCC too.
+Stored constants are defined and initialized by their owning module object. Cached interfaces
+declare constant tables and other stored values by type, so a warm build does not parse or lower
+their initializers again. C constants keep their declarations in native headers.
+Module startup preserves constant dependency order and initializes
+implicit global defaults read by constants before those constants. These defaults follow module
+import dependency order in both cold and warm builds. After the program changes,
+its C unit emits the cached function prototypes and type declarations reached by its generated
+code, including the payload types of fields, options, tuples, and function pointers.
+Unused generated inline arithmetic, sorting, and formatting helpers and string literal storage
+are omitted from warm program units as well, so TinyCC does not compile them again.
 The interface of a module does not depend on the program that was built first: a module that
 imports others is cached like one that does not, a program that only prints literals still checks
 the whole modules it publishes, and the methods of array and map receivers do not pass for generic
