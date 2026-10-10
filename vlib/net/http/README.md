@@ -192,6 +192,15 @@ including control characters, quotes, semicolons and backslashes. Spaces and com
 inside the value are preserved; the sanitized value is quoted when it begins or ends
 with a space or comma.
 
+`add_custom` and `set_custom` return an error for a name that is not a valid HTTP field
+name: an empty one, or one with a space, a colon, a control character or any other byte
+that is not an RFC 9110 token character. The name is checked when it is added, because it
+is not checked again when the header is sent.
+
+`http.canonical_header_key(name)` returns the canonical spelling of a header name in any
+case, for example `Accept-Encoding` for `accept-ENCODING`. It never fails: like Go's
+`http.CanonicalHeaderKey`, it returns a name that is not valid unchanged.
+
 ### Windows TLS handshake compatibility
 
 On Windows, HTTPS uses Schannel first. If its handshake returns `SEC_E_INVALID_TOKEN`
