@@ -333,6 +333,25 @@ fn (mut g FlatGen) cache_collect_support_declaration_refs() {
 		g.cache_collect_declaration_refs(init)
 	}
 	unsafe { g.sb.free() }
+	// These bodies are emitted after the declaration prefix. Collect their calls
+	// before filtering cached prototypes, and retain the bodies for final output.
+	g.sb = strings.new_builder(4096)
+	if !g.skip_enum_autostr {
+		if g.parallel_enum_str_defs.len == 0 {
+			g.enum_str_defs()
+			g.parallel_enum_str_defs = g.sb.str()
+		}
+		g.cache_collect_declaration_refs(g.parallel_enum_str_defs)
+	}
+	unsafe { g.sb.free() }
+	g.sb = strings.new_builder(4096)
+	if g.parallel_init_defs.len == 0 {
+		g.gen_vinit()
+		g.gen_vcleanup()
+		g.parallel_init_defs = g.sb.str()
+	}
+	g.cache_collect_declaration_refs(g.parallel_init_defs)
+	unsafe { g.sb.free() }
 	g.sb = strings.new_builder(4096)
 	g.forward_decls()
 	g.parallel_forward_decls = g.sb.str()

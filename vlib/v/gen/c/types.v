@@ -1146,7 +1146,10 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 		}
 		g.collect_declaration_signature_type(typ)
 	}
-	for _, typ in g.tc.const_types {
+	for name, typ in g.tc.const_types {
+		if g.cache_decl_demand && !g.cache_decl_refs[g.const_ident_c_name(name)] {
+			continue
+		}
 		if !cgen_type_first_seen(typ, mut seen) {
 			continue
 		}

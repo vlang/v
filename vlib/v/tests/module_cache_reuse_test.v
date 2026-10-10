@@ -611,6 +611,138 @@ fn test_ambient_c_flags_keep_a_usecache_build_out_of_the_module_cache() {
 	assert module_objects(root) == published
 }
 
+fn test_cached_enum_strings_and_lifecycle_functions_survive_warm_rebuilds() {
+	$if windows {
+		return
+	}
+	for flags in [['-cc', 'cc'], ['-cc', 'tcc', '-usecache']] {
+		root := new_project('module_cache_late_support_${flags[1]}')
+		mut saved := pin_module_cache(os.join_path(root, 'cache'))
+		saved << save_env('VMODULES')
+		os.setenv('VMODULES', os.join_path(root, 'modules'), true)
+		defer {
+			for env in saved { env.restore() }
+			os.rmdir_all(root) or {}
+		}
+		os.mkdir_all(os.join_path(root, 'modules', 'cachelate'))!
+		os.write_file(os.join_path(root, 'modules', 'cachelate', 'cachelate.v'), 'module cachelate
+pub enum Mode { ready }
+pub enum Wide as u64 { ready = 1 }
+@[flag]
+pub enum Permission { read write }
+fn init() { println("module init") }
+fn cleanup() { println("module cleanup") }
+pub fn marker() {}
+')!
+		main_file := os.join_path(root, 'main.v')
+		program := 'import cachelate
+fn main() {
+	cachelate.marker()
+	println(cachelate.Mode.ready)
+	println(cachelate.Wide.ready)
+	println(cachelate.Permission.read | cachelate.Permission.write)
+	println("body")
+}
+'
+		expected := 'module init\nready\nready\nPermission{.read | .write}\nbody\nmodule cleanup'
+		os.write_file(main_file, program)!
+		build(root, flags, main_file, 'cold')
+		assert run_built(root, 'cold') == expected
+		published := module_objects(root)
+		assert published.filter(os.file_name(it).starts_with('cachelate_')).len == 1
+		for i in 0 .. 2 {
+			os.write_file(main_file, program + '\nfn added_${i}() {}\n')!
+			mut warm_flags := flags.clone()
+			if i == 1 { warm_flags << '-no-parallel' }
+			warm := build(root, warm_flags, main_file, 'warm')
+			assert_reused_modules(warm)
+			assert module_objects(root) == published
+			assert run_built(root, 'warm') == expected
+		}
+	}
+}
+
+// capture_cached_program_c intercepts the system compiler's input before cleanup.
+fn capture_cached_program_c(root string) []SavedEnv {
+	cc := os.find_abs_path_of_executable('cc') or { panic(err) }
+	dir := os.join_path(root, 'ccbin')
+	os.mkdir_all(dir) or { panic(err) }
+	wrapper := os.join_path(dir, 'cc')
+	os.write_file(wrapper, '#!/bin/sh
+for arg in "$@"; do
+	case "$arg" in *.c|*.c.tmp.*) cp "$arg" "$V_CACHE_DECLARATION_TEST_C";; esac
+done
+exec ${os.quoted_path(cc)} "$@"
+') or { panic(err) }
+	os.chmod(wrapper, 0o755) or { panic(err) }
+	saved := [save_env('PATH'), save_env('V_CACHE_DECLARATION_TEST_C')]
+	os.setenv('PATH', dir + os.path_delimiter + os.getenv('PATH'), true)
+	os.setenv('V_CACHE_DECLARATION_TEST_C', os.join_path(root, 'program.c'), true)
+	return saved
+}
+
+fn test_unused_cached_option_and_result_constants_do_not_pull_in_payload_declarations() {
+	$if windows {
+		return
+	}
+	for flags in [['-cc', 'cc'], ['-cc', 'tcc', '-usecache']] {
+		root := new_project('module_cache_unused_wrappers_${flags[1]}')
+		mut saved := pin_module_cache(os.join_path(root, 'cache'))
+		saved << save_env('VMODULES')
+		if flags[1] == 'cc' { saved << capture_cached_program_c(root) }
+		os.setenv('VMODULES', os.join_path(root, 'modules'), true)
+		defer {
+			for env in saved { env.restore() }
+			os.rmdir_all(root) or {}
+		}
+		os.mkdir_all(os.join_path(root, 'modules', 'cachepayloads'))!
+		os.write_file(os.join_path(root, 'modules', 'cachepayloads', 'cachepayloads.v'), 'module cachepayloads
+struct UnusedLeaf { value int }
+struct UnusedMiddle { leaf UnusedLeaf }
+pub struct OptionLarge { child UnusedMiddle }
+pub struct ResultLarge { child UnusedMiddle }
+pub struct Used {
+pub:
+	value int
+}
+pub const unused_option = ?OptionLarge(none)
+pub const unused_result = make_unused_result()
+pub const kept_option = ?Used(none)
+pub const kept_result = make_used_result()
+fn make_unused_result() !ResultLarge { return ResultLarge{} }
+fn make_used_result() !Used { return Used{ value: 7 } }
+pub fn value() int { return 42 }
+')!
+		main_file := os.join_path(root, 'main.v')
+		program := 'import cachepayloads
+fn main() {
+	assert cachepayloads.kept_option == none
+	kept_result := cachepayloads.kept_result or { panic(err) }
+	assert kept_result.value == 7
+	println(cachepayloads.value())
+}
+'
+		os.write_file(main_file, program)!
+		build(root, flags, main_file, 'cold')
+		assert run_built(root, 'cold') == '42'
+		published := module_objects(root)
+		assert published.filter(os.file_name(it).starts_with('cachepayloads_')).len == 1
+		if flags[1] == 'cc' { os.rm(os.join_path(root, 'program.c'))! }
+		os.write_file(main_file, program + '\nfn added() {}\n')!
+		warm := build(root, flags, main_file, 'warm')
+		assert_reused_modules(warm)
+		assert module_objects(root) == published
+		assert run_built(root, 'warm') == '42'
+		if flags[1] == 'cc' {
+			c_source := os.read_file(os.join_path(root, 'program.c'))!
+			assert c_source.contains('cachepayloads__Used'), c_source
+			for name in ['OptionLarge', 'ResultLarge', 'UnusedMiddle', 'UnusedLeaf'] {
+				assert !c_source.contains('cachepayloads__${name}'), name
+			}
+		}
+	}
+}
+
 fn test_cached_constant_initializers_do_not_collide_with_user_functions() {
 	$if windows {
 		return
