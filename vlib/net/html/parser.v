@@ -5,18 +5,19 @@ import strings
 
 struct LexicalAttributes {
 mut:
-	current_tag      &Tag = unsafe { nil }
-	open_tag         bool
-	open_code        bool
-	open_string      int
-	open_comment     bool
-	is_attribute     bool
-	opened_code_type string
-	line_count       int
-	outside_tag      bool
-	text_after_tag   bool
-	lexeme_builder   strings.Builder = strings.new_builder(100)
-	code_tags        map[string]bool = {
+	current_tag        &Tag = unsafe { nil }
+	open_tag           bool
+	open_code          bool
+	open_string        int
+	open_comment       bool
+	is_attribute       bool
+	opened_code_type   string
+	line_count         int
+	outside_tag        bool
+	text_after_tag     bool
+	text_after_comment bool
+	lexeme_builder     strings.Builder = strings.new_builder(100)
+	code_tags          map[string]bool = {
 		'script': true
 		'style':  true
 	}
@@ -100,10 +101,17 @@ fn (mut parser Parser) generate_tag() {
 	if parser.lexical_attributes.open_tag {
 		return
 	}
-	if parser.lexical_attributes.current_tag.name != ''
+	if parser.lexical_attributes.text_after_comment
+		&& parser.lexical_attributes.lexeme_builder.len > 0 {
+		parser.lexical_attributes.current_tag.content = parser.builder_str()
+		parser.lexical_attributes.lexeme_builder.go_back_to(0)
+	}
+	if (parser.lexical_attributes.current_tag.name != ''
+		&& !parser.lexical_attributes.text_after_comment)
 		|| parser.lexical_attributes.current_tag.content.len > 0 {
 		parser.tags << parser.lexical_attributes.current_tag
 	}
+	parser.lexical_attributes.text_after_comment = false
 	parser.lexical_attributes.current_tag = &Tag{}
 }
 
@@ -139,6 +147,11 @@ pub fn (mut parser Parser) split_parse(data string) {
 				parser.lexical_attributes.lexeme_builder.go_back_to(0)
 				parser.lexical_attributes.open_comment = false
 				parser.lexical_attributes.open_tag = false
+				parser.lexical_attributes.current_tag = &Tag{
+					name:   'text'
+					closed: true
+				}
+				parser.lexical_attributes.text_after_comment = true
 			} else {
 				parser.lexical_attributes.lexeme_builder.write_u8(chr)
 			}
