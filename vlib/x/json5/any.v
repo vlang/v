@@ -111,7 +111,7 @@ pub fn (a Any) f64() f64 {
 		bool {
 			if a { 1.0 } else { 0.0 }
 		}
-		string { strconv.atof64(a, strconv.AtoF64Param{}) or { 0.0 } }
+		string { strconv.atof64(a, strconv.AtoF64Param{ allow_overflow: true }) or { 0.0 } }
 		else { 0.0 }
 	}
 }

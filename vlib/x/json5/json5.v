@@ -340,7 +340,7 @@ fn decode_float[T](value Any) !T {
 			if value { T(1.0) } else { T(0.0) }
 		}
 		string {
-			parsed := strconv.atof64(value, strconv.AtoF64Param{}) or {
+			parsed := strconv.atof64(value, strconv.AtoF64Param{ allow_overflow: true }) or {
 				return type_error(value, 'a number')
 			}
 			T(parsed)

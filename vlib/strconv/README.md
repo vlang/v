@@ -59,6 +59,27 @@ On the C backend, `allow_extra_chars: true` permits trailing characters after a 
 for example `atof64('1.5units', allow_extra_chars: true)` returns `1.5`.
 A mantissa and any exponent must still contain digits.
 
+On the C backend, a number whose magnitude is too large for an `f64`, such as `1e400`,
+returns a `value out of range` error, so that it cannot be mistaken for an `inf` in the input.
+Pass `allow_overflow: true` to get `+inf` or `-inf` for such a number instead; `string.f64()`
+and `string.f32()`, which have no error to return, do that. The `inf` and `infinity` spellings
+never return this error. A number too small for an `f64`, such as `1e-400`, is not an error:
+it rounds to a subnormal value or to a signed zero.
+
+```v
+import strconv
+import math
+
+if value := strconv.atof64('1e400') {
+	assert false, 'parsed as ${value}'
+} else {
+	assert err.msg() == 'strconv.atof64: parsing "1e400": value out of range'
+}
+assert math.is_inf(strconv.atof64('-1e400', allow_overflow: true)!, -1)
+assert strconv.atof64('1.7976931348623157e308')! == math.max_f64
+assert strconv.atof64('1e-400')! == 0.0
+```
+
 ## Integer formatting
 
 `format_int` and `format_uint` represent signed and unsigned integers in any radix
