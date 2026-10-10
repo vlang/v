@@ -111,7 +111,7 @@ const write_set_cookie_tests = [
 			value:     'samesite-default'
 			same_site: .same_site_default_mode
 		}
-		raw:    'cookie-12=samesite-default; SameSite'
+		raw:    'cookie-12=samesite-default'
 	},
 	SetCookieTestCase{
 		cookie: &http.Cookie{

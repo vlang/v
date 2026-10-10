@@ -145,7 +145,7 @@ pub fn (c &Cookie) str() string {
 	match c.same_site {
 		.same_site_not_set {}
 		.same_site_default_mode {
-			b.write_string('; SameSite')
+			// Skip, the default mode is obtained by not emitting the attribute.
 		}
 		.same_site_none_mode {
 			b.write_string('; SameSite=None')
