@@ -303,13 +303,11 @@ pub mut:
 }
 
 fn test_nested_pointer_smartcast() {
+	first := Sum1(Foo1{ a: 1 })
+	second := Sum2(Bar1{ a: 3 })
 	mut s := All_in_one{
-		ptr:  &Sum1(Foo1{
-			a: 1
-		})
-		ptrs: [&SumAll(Sum2(Bar1{
-			a: 3
-		}))]
+		ptr:  &SumAll(first)
+		ptrs: [&SumAll(second)]
 	}
 
 	if mut s.ptr is Sum1 {
@@ -319,8 +317,10 @@ fn test_nested_pointer_smartcast() {
 	}
 
 	a := s.ptrs[0]
-	if a is Sum1 {
-		if a is Foo1 {
+	assert a is Sum2
+	if a is Sum2 {
+		assert a is Bar1
+		if a is Bar1 {
 			assert a.a == 3
 		}
 	}

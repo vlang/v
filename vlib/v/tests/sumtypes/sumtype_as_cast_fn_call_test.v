@@ -8,7 +8,7 @@ struct Expression {
 
 struct BoolCondition {
 mut:
-	con_simple AstNode
+	con_simple &AstNode
 	is_simple  bool
 }
 
@@ -19,10 +19,8 @@ fn parse_expression() Expression {
 }
 
 fn parse_simple_boolean_expr() BoolCondition {
-	mut final_expr := BoolCondition{}
-	final_expr.is_simple = true
-	final_expr.con_simple = parse_expression() as Expression
-	return final_expr
+	mut value := AstNode(parse_expression() as Expression)
+	return BoolCondition{ con_simple: &value, is_simple: true }
 }
 
 fn test_sumtype_as_cast_of_fn_call() {

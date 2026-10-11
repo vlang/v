@@ -18,5 +18,5 @@ fn test_generic_heap_pointer_can_be_stored_safely() {
 		"@[heap]\nstruct Cell[T] {\n\tvalue T\n}\n\nstruct Holder[T] {\n\tcell &Cell[T]\n}\n\nfn hold[T](cell &Cell[T]) int {\n\tholder := Holder[T]{\n\t\tcell: cell\n\t}\n\treturn holder.cell.value\n}\n\nfn main() {\n\tcell := &Cell[int]{\n\t\tvalue: 41\n\t}\n\tassert hold[int](cell) == 41\n\tprintln('ok')\n}\n")!
 	out := os.exec([v3_bin, '-no-parallel', 'run', source])
 	assert out.exit_code == 0, out.output
-	assert out.output.contains('\nok\n'), out.output
+	assert out.output.trim_space() == 'ok', out.output
 }

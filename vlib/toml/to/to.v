@@ -116,13 +116,14 @@ pub fn json_any(a toml.Any) json2.Any {
 		}
 		map[string]toml.Any {
 			mut jmap := map[string]json2.Any{}
+			jmap.reserve(u32(a.len))
 			for key, val in a {
 				jmap[key] = json_any(val)
 			}
 			return jmap
 		}
 		[]toml.Any {
-			mut jarr := []json2.Any{}
+			mut jarr := []json2.Any{cap: a.len}
 
 			for val in a {
 				jarr << json_any(val)

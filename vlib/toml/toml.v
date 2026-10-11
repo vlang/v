@@ -827,10 +827,6 @@ fn (d Doc) value_(value ast.Value, key []string) Any {
 
 // ast_to_any converts `from` ast.Value to toml.Any value.
 pub fn ast_to_any(value ast.Value) Any {
-	return ast_to_any_(value)
-}
-
-fn ast_to_any_(value ast.Value) Any {
 	match value {
 		ast.Date {
 			return Any(Date{value.text.clone()})
@@ -860,7 +856,7 @@ fn ast_to_any_(value ast.Value) Any {
 				return Any('nan')
 			}
 			if !val_text.starts_with('0x')
-				&& (val_text.contains('.') || val_text.to_lower().contains('e')) {
+				&& (val_text.contains('.') || val_text.contains_any('eE')) {
 				return Any(value.f64())
 			}
 			return Any(value.i64())
@@ -873,20 +869,18 @@ fn ast_to_any_(value ast.Value) Any {
 			return Any(false)
 		}
 		map[string]ast.Value {
-			m := (value as map[string]ast.Value)
 			mut am := map[string]Any{}
-			for k, v in m {
-				converted := ast_to_any_(v)
+			am.reserve(u32(value.len))
+			for k, v in value {
+				converted := ast_to_any(v)
 				am[k] = converted
 			}
 			return am
-			// return d.get_map_value(m, key_split[1..].join('.'))
 		}
 		[]ast.Value {
-			a := (value as []ast.Value)
-			mut aa := []Any{cap: a.len}
-			for val in a {
-				converted := ast_to_any_(val)
+			mut aa := []Any{cap: value.len}
+			for val in value {
+				converted := ast_to_any(val)
 				aa << converted
 			}
 			return aa

@@ -16,7 +16,7 @@ struct BAnd {
 type BUnary = BNot | BExpr | BFact | BDefine
 
 struct BNot {
-	expr BUnary
+	expr &BUnary
 }
 
 type BFact = string

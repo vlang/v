@@ -1,7 +1,7 @@
 module transform
 
 import v.flat
-import v.types
+import v.types { unalias_type }
 
 const direct_optional_forward_return_value = '__direct_optional_forward'
 const optional_success_return_value = '__optional_success_return'
@@ -567,8 +567,8 @@ fn (mut t Transformer) transform_forwarded_return_slot_inner(value_id flat.NodeI
 		value := t.transform_expr(value_id)
 		return t.clone_forwarded_return_value(value, actual, clone_borrowed)
 	}
-	actual_base := forwarded_return_unalias_type(actual)
-	expected_base := forwarded_return_unalias_type(expected)
+	actual_base := unalias_type(actual)
+	expected_base := unalias_type(expected)
 	if actual_base is types.OptionType && expected_base is types.OptionType
 		&& t.semantic_type_name(actual_base.base_type) != t.semantic_type_name(expected_base.base_type) {
 		return t.convert_forwarded_optional_result(value_id, actual, actual_base.base_type, expected, expected_base, expected_base.base_type, clone_borrowed)
@@ -620,8 +620,8 @@ fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expec
 	if forwarded_return_type_is_unresolved(actual) || forwarded_return_type_is_unresolved(expected) {
 		return false
 	}
-	actual_base := forwarded_return_unalias_type(actual)
-	expected_base := forwarded_return_unalias_type(expected)
+	actual_base := unalias_type(actual)
+	expected_base := unalias_type(expected)
 	if t.semantic_type_name(actual_base) == t.semantic_type_name(expected_base) {
 		return false
 	}
@@ -674,7 +674,7 @@ fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expec
 }
 
 fn forwarded_return_type_is_unresolved(typ types.Type) bool {
-	base := forwarded_return_unalias_type(typ)
+	base := unalias_type(typ)
 	name := base.name().trim_space()
 	if name == 'unknown' || name.ends_with('.unknown') || is_generic_placeholder_type_name(name) {
 		return true
@@ -726,13 +726,6 @@ fn (mut t Transformer) convert_forwarded_optional_result(value_id flat.NodeId, a
 	return result
 }
 
-fn forwarded_return_unalias_type(typ types.Type) types.Type {
-	if typ is types.Alias {
-		return forwarded_return_unalias_type(typ.base_type)
-	}
-	return typ
-}
-
 // forwarded_integer_storage_matches reports whether two integer types share the
 // same C storage (width and signedness), regardless of their spellings.
 fn forwarded_integer_storage_matches(a types.Type, b types.Type) bool {
@@ -757,8 +750,8 @@ fn forwarded_integer_storage_matches(a types.Type, b types.Type) bool {
 // capacity (which broke the self-host transform arena reserves and, from
 // there, the whole gen-2 bootstrap).
 fn forwarded_array_elems_storage_identical(actual_elem types.Type, expected_elem types.Type) bool {
-	actual_base := forwarded_return_unalias_type(actual_elem)
-	expected_base := forwarded_return_unalias_type(expected_elem)
+	actual_base := unalias_type(actual_elem)
+	expected_base := unalias_type(expected_elem)
 	if actual_base.name() == expected_base.name() {
 		return true
 	}
@@ -781,7 +774,7 @@ fn (mut t Transformer) convert_forwarded_array_to_dynamic_with_borrowed(value_id
 	out_name := t.new_temp('return_array')
 	idx_name := t.new_temp('return_array_idx')
 	len_expr := if actual_is_fixed {
-		t.make_fixed_array_len_expr(t.semantic_type_name(forwarded_return_unalias_type(actual_type)))
+		t.make_fixed_array_len_expr(t.semantic_type_name(unalias_type(actual_type)))
 	} else {
 		t.make_selector(base, 'len', 'int')
 	}

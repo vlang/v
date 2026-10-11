@@ -252,7 +252,7 @@ fn (tc &TypeChecker) inline_asm_enum_backing_type(name string) Type {
 			continue
 		}
 		if decl.generic_params().len > 0 && decl.generic_params()[0].len > 0 {
-			return tc.parse_type(decl.generic_params()[0])
+			return *tc.parse_type(decl.generic_params()[0])
 		}
 		break
 	}

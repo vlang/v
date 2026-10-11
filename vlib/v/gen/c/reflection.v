@@ -1,6 +1,7 @@
 module c
 
 import v.flat
+import v.types
 
 const reflection_c_prefix = 'reflection__'
 
@@ -64,8 +65,8 @@ fn reflection_split_types(text string) []string {
 
 fn reflection_type_key(raw_type string, module_name string) string {
 	mut typ := raw_type.trim_space()
-	for typ.starts_with('?') || typ.starts_with('!') || typ.starts_with('&') {
-		typ = typ[1..].trim_space()
+	if typ.starts_with('?') || typ.starts_with('!') || typ.starts_with('&') {
+		return typ[..1] + reflection_type_key(typ[1..], module_name)
 	}
 	for prefix in ['mut ', 'shared ', 'atomic ', '...'] {
 		if typ.starts_with(prefix) {
@@ -98,27 +99,15 @@ fn reflection_type_key(raw_type string, module_name string) string {
 			return '${base}[${args.map(reflection_type_key(it, module_name)).join(', ')}]'
 		}
 	}
-	if reflection_builtin_type_id(typ) != none || typ.contains('.') || module_name in ['', 'builtin'] {
+	if types.builtin_type_index(typ) > 0 || typ.contains('.') || module_name in ['', 'builtin'] {
 		return typ
 	}
 	return '${module_name}.${typ}'
 }
 
-// reflection_type_id reproduces the stable ids used by V3 comptime typeof metadata.
-fn reflection_type_id(type_name string, module_name string) int {
-	if builtin_idx := reflection_builtin_type_id(type_name) {
-		return builtin_idx
-	}
+fn (g &FlatGen) reflection_type_id(type_name string, module_name string) int {
 	key := reflection_type_key(type_name, module_name)
-	mut hash := u64(1469598103934665603)
-	for i in 0 .. key.len {
-		hash = ((hash ^ u64(key[i])) * 1099511628211) % 2147418111
-	}
-	mut idx := (int(hash) + 65536) & ~(0xff << 16)
-	if idx < 65536 {
-		idx |= 1 << 24
-	}
-	return idx
+	return g.tc.type_index(key)
 }
 
 fn reflection_builtin_type_kind(name string) int {
@@ -149,38 +138,6 @@ fn reflection_builtin_type_kind(name string) int {
 		'int literal' { 37 }
 		'thread' { 39 }
 		else { 0 }
-	}
-}
-
-fn reflection_builtin_type_id(name string) ?int {
-	return match name {
-		'void' { 1 }
-		'voidptr' { 2 }
-		'byteptr' { 3 }
-		'charptr' { 4 }
-		'i8' { 5 }
-		'i16' { 6 }
-		'i32' { 7 }
-		'int' { 8 }
-		'i64' { 9 }
-		'isize' { 10 }
-		'u8' { 11 }
-		'u16' { 12 }
-		'u32' { 13 }
-		'u64' { 14 }
-		'usize' { 15 }
-		'f32' { 16 }
-		'f64' { 17 }
-		'char' { 18 }
-		'bool' { 19 }
-		'none' { 20 }
-		'string' { 21 }
-		'rune' { 22 }
-		'float literal' { 27 }
-		'int literal' { 28 }
-		'thread' { 29 }
-		'nil' { 31 }
-		else { none }
 	}
 }
 
@@ -273,12 +230,12 @@ fn reflection_string_array(values []string) string {
 	return 'new_array_from_c_array(${items.len}, ${items.len}, sizeof(string), (string[]){${items.join(', ')}})'
 }
 
-fn reflection_type_array(values []string, module_name string) string {
+fn (g &FlatGen) reflection_type_array(values []string, module_name string) string {
 	if values.len == 0 {
-		return reflection_empty_array('u32')
+		return reflection_empty_array('u64')
 	}
-	items := values.map(reflection_field_type_id(it, module_name).str())
-	return 'new_array_from_c_array(${items.len}, ${items.len}, sizeof(u32), (u32[]){${items.join(', ')}})'
+	items := values.map(g.reflection_field_type_id(it, module_name).str())
+	return 'new_array_from_c_array(${items.len}, ${items.len}, sizeof(u64), (u64[]){${items.join(', ')}})'
 }
 
 fn reflection_attributes_array(raw_attrs []string) string {
@@ -293,21 +250,21 @@ fn reflection_attributes_array(raw_attrs []string) string {
 	return 'new_array_from_c_array(${items.len}, ${items.len}, sizeof(VAttribute), (VAttribute[]){${items.join(', ')}})'
 }
 
-fn reflection_field_type_id(raw_type string, module_name string) int {
+fn (g &FlatGen) reflection_field_type_id(raw_type string, module_name string) u64 {
 	mut typ := raw_type.trim_space()
-	mut flags := 0
+	mut flags := u64(0)
 	if typ.starts_with('?') {
-		flags |= 1 << 24
+		flags |= u64(1) << 32
 		typ = typ[1..].trim_space()
 	} else if typ.starts_with('!') {
-		flags |= 1 << 25
+		flags |= u64(1) << 33
 		typ = typ[1..].trim_space()
 	}
 	if typ.starts_with('shared ') {
-		flags |= 1 << 28
+		flags |= u64(1) << 36
 		typ = typ[7..].trim_space()
 	} else if typ.starts_with('atomic ') {
-		flags |= 1 << 29
+		flags |= u64(1) << 37
 		typ = typ[7..].trim_space()
 	}
 	mut indirections := 0
@@ -315,7 +272,7 @@ fn reflection_field_type_id(raw_type string, module_name string) int {
 		indirections++
 		typ = typ[1..].trim_space()
 	}
-	return (reflection_type_id(typ, module_name) & 0xffff) | flags | (indirections * 0x10000)
+	return u64(g.reflection_type_id(typ, module_name)) | flags | (u64(indirections) << 16)
 }
 
 fn (g &FlatGen) reflection_struct_fields(info StructDeclInfo) string {
@@ -328,7 +285,7 @@ fn (g &FlatGen) reflection_struct_fields(info StructDeclInfo) string {
 		params := field.generic_params()
 		flags := if params.len > 0 { params[0] } else { '' }
 		attrs := if params.len > 1 { params[1..] } else { []string{} }
-		fields << '(reflection__StructField){.name = _S("${reflection_c_string(field.value)}"), .typ = ${reflection_field_type_id(field.typ, info.module)}, .attrs = ${reflection_attributes_array(attrs)}, .is_pub = ${flags.contains('p')}, .is_mut = ${flags.contains('m')}}'
+		fields << '(reflection__StructField){.name = _S("${reflection_c_string(field.value)}"), .typ = ${g.reflection_field_type_id(field.typ, info.module)}, .attrs = ${reflection_attributes_array(attrs)}, .is_pub = ${flags.contains('p')}, .is_mut = ${flags.contains('m')}}'
 	}
 	if fields.len == 0 {
 		return reflection_empty_array('reflection__StructField')
@@ -339,7 +296,7 @@ fn (g &FlatGen) reflection_struct_fields(info StructDeclInfo) string {
 fn (g &FlatGen) reflection_struct_info(info StructDeclInfo) string {
 	attrs := g.decl_attrs[info.node_id] or { []string{} }
 	value := '(reflection__Struct){.parent_idx = 0, .attrs = ${reflection_attributes_array(attrs)}, .fields = ${g.reflection_struct_fields(info)}}'
-	return '(reflection__TypeInfo){.typ = 10, ._pointer_variant_is_owned = 1, .reflection__Struct = (reflection__Struct*)memdup(&${value}, sizeof(reflection__Struct))}'
+	return '(reflection__TypeInfo){.typ = 10, .reflection__Struct = ${value}}'
 }
 
 fn (g &FlatGen) reflection_function_args(node flat.Node, is_method bool, module_name string) string {
@@ -354,7 +311,7 @@ fn (g &FlatGen) reflection_function_args(node flat.Node, is_method bool, module_
 			param_idx++
 			continue
 		}
-		args << '(reflection__FunctionArg){.name = _S("${reflection_c_string(param.value)}"), .typ = ${reflection_field_type_id(param.typ, module_name)}, .is_mut = ${param.is_mut}}'
+		args << '(reflection__FunctionArg){.name = _S("${reflection_c_string(param.value)}"), .typ = ${g.reflection_field_type_id(param.typ, module_name)}, .is_mut = ${param.is_mut}}'
 		param_idx++
 	}
 	if args.len == 0 {
@@ -368,7 +325,7 @@ fn (g &FlatGen) reflection_function(node_id int, node flat.Node) string {
 	file_name := if isnil(file) { '' } else { file.name }
 	module_name := g.tc.file_modules[file_name] or { 'main' }
 	is_method := node.value.contains('.')
-	mut receiver_type := 0
+	mut receiver_type := u64(0)
 	mut is_variadic := false
 	mut param_idx := 0
 	for i in 0 .. node.children_count {
@@ -377,7 +334,7 @@ fn (g &FlatGen) reflection_function(node_id int, node flat.Node) string {
 			continue
 		}
 		if is_method && param_idx == 0 {
-			receiver_type = reflection_field_type_id(param.typ, module_name)
+			receiver_type = g.reflection_field_type_id(param.typ, module_name)
 		}
 		if param.typ.starts_with('...') {
 			is_variadic = true
@@ -387,11 +344,11 @@ fn (g &FlatGen) reflection_function(node_id int, node flat.Node) string {
 	pos := g.a.source_position(node.pos) or {
 		return '(reflection__Function){.mod_name = _S("${reflection_c_string(module_name)}"), .name = _S("${reflection_c_string(node.value.all_after_last('.'))}"), .attrs = ${reflection_attributes_array(g.decl_attrs[node_id] or {
 			[]string{}
-		})}, .args = ${g.reflection_function_args(node, is_method, module_name)}, .file_idx = ${node.pos.id}, .is_variadic = ${is_variadic}, .return_typ = ${reflection_field_type_id(node.typ, module_name)}, .receiver_typ = ${receiver_type}, .is_pub = ${node.op == .arrow}}'
+		})}, .args = ${g.reflection_function_args(node, is_method, module_name)}, .file_idx = ${node.pos.id}, .is_variadic = ${is_variadic}, .return_typ = ${g.reflection_field_type_id(node.typ, module_name)}, .receiver_typ = ${receiver_type}, .is_pub = ${node.op == .arrow}}'
 	}
 	return '(reflection__Function){.mod_name = _S("${reflection_c_string(module_name)}"), .name = _S("${reflection_c_string(node.value.all_after_last('.'))}"), .attrs = ${reflection_attributes_array(g.decl_attrs[node_id] or {
 		[]string{}
-	})}, .args = ${g.reflection_function_args(node, is_method, module_name)}, .file_idx = ${node.pos.id}, .line_start = ${pos.line}, .line_end = ${pos.line}, .is_variadic = ${is_variadic}, .return_typ = ${reflection_field_type_id(node.typ, module_name)}, .receiver_typ = ${receiver_type}, .is_pub = ${node.op == .arrow}}'
+	})}, .args = ${g.reflection_function_args(node, is_method, module_name)}, .file_idx = ${node.pos.id}, .line_start = ${pos.line}, .line_end = ${pos.line}, .is_variadic = ${is_variadic}, .return_typ = ${g.reflection_field_type_id(node.typ, module_name)}, .receiver_typ = ${receiver_type}, .is_pub = ${node.op == .arrow}}'
 }
 
 fn (g &FlatGen) reflection_method_receiver_key(node flat.Node) string {
@@ -405,7 +362,7 @@ fn (g &FlatGen) reflection_method_receiver_key(node flat.Node) string {
 		}
 		file := g.a.source_files[node.pos.id] or { return '' }
 		module_name := g.tc.file_modules[file.name] or { 'main' }
-		return reflection_type_key(param.typ, module_name)
+		return reflection_type_key(reflection_base_type(param.typ), module_name)
 	}
 	return ''
 }
@@ -433,47 +390,47 @@ fn (g &FlatGen) reflection_methods(type_key string) string {
 
 fn reflection_none_info() string {
 	value := '(reflection__None){.parent_idx = 0}'
-	return '(reflection__TypeInfo){.typ = 9, ._pointer_variant_is_owned = 1, .reflection__None = (reflection__None*)memdup(&${value}, sizeof(reflection__None))}'
+	return '(reflection__TypeInfo){.typ = 9, .reflection__None = ${value}}'
 }
 
-fn reflection_array_info(type_key string) string {
+fn (g &FlatGen) reflection_array_info(type_key string) string {
 	mut elem := type_key
 	mut dims := 0
 	for elem.starts_with('[]') {
 		dims++
 		elem = elem[2..]
 	}
-	value := '(reflection__Array){.nr_dims = ${dims}, .elem_type = ${reflection_field_type_id(elem, '')}}'
-	return '(reflection__TypeInfo){.typ = 2, ._pointer_variant_is_owned = 1, .reflection__Array = (reflection__Array*)memdup(&${value}, sizeof(reflection__Array))}'
+	value := '(reflection__Array){.nr_dims = ${dims}, .elem_type = ${g.reflection_field_type_id(elem, '')}}'
+	return '(reflection__TypeInfo){.typ = 2, .reflection__Array = ${value}}'
 }
 
-fn reflection_map_info(type_key string) string {
+fn (g &FlatGen) reflection_map_info(type_key string) string {
 	close := reflection_matching_bracket(type_key, 3)
 	key := if close > 3 { type_key[4..close] } else { '' }
 	value_type := if close > 0 && close + 1 < type_key.len { type_key[close + 1..] } else { '' }
-	value := '(reflection__Map){.key_type = ${reflection_field_type_id(key, '')}, .value_type = ${reflection_field_type_id(value_type, '')}}'
-	return '(reflection__TypeInfo){.typ = 7, ._pointer_variant_is_owned = 1, .reflection__Map = (reflection__Map*)memdup(&${value}, sizeof(reflection__Map))}'
+	value := '(reflection__Map){.key_type = ${g.reflection_field_type_id(key, '')}, .value_type = ${g.reflection_field_type_id(value_type, '')}}'
+	return '(reflection__TypeInfo){.typ = 7, .reflection__Map = ${value}}'
 }
 
-fn reflection_multi_return_info(type_key string) string {
+fn (g &FlatGen) reflection_multi_return_info(type_key string) string {
 	values := reflection_split_types(type_key[1..type_key.len - 1])
-	value := '(reflection__MultiReturn){.types = ${reflection_type_array(values, '')}}'
-	return '(reflection__TypeInfo){.typ = 8, ._pointer_variant_is_owned = 1, .reflection__MultiReturn = (reflection__MultiReturn*)memdup(&${value}, sizeof(reflection__MultiReturn))}'
+	value := '(reflection__MultiReturn){.types = ${g.reflection_type_array(values, '')}}'
+	return '(reflection__TypeInfo){.typ = 8, .reflection__MultiReturn = ${value}}'
 }
 
-fn reflection_alias_info(target string, module_name string) string {
-	value := '(reflection__Alias){.parent_idx = ${reflection_field_type_id(target, module_name)}, .language = 0}'
-	return '(reflection__TypeInfo){.typ = 1, ._pointer_variant_is_owned = 1, .reflection__Alias = (reflection__Alias*)memdup(&${value}, sizeof(reflection__Alias))}'
+fn (g &FlatGen) reflection_alias_info(target string, module_name string) string {
+	value := '(reflection__Alias){.parent_idx = ${g.reflection_field_type_id(target, module_name)}, .language = 0}'
+	return '(reflection__TypeInfo){.typ = 1, .reflection__Alias = ${value}}'
 }
 
 fn reflection_enum_info(values []string, is_flag bool) string {
 	value := '(reflection__Enum){.vals = ${reflection_string_array(values)}, .is_flag = ${is_flag}}'
-	return '(reflection__TypeInfo){.typ = 4, ._pointer_variant_is_owned = 1, .reflection__Enum = (reflection__Enum*)memdup(&${value}, sizeof(reflection__Enum))}'
+	return '(reflection__TypeInfo){.typ = 4, .reflection__Enum = ${value}}'
 }
 
-fn reflection_sum_type_info(variants []string, module_name string) string {
-	value := '(reflection__SumType){.parent_idx = 0, .variants = ${reflection_type_array(variants, module_name)}}'
-	return '(reflection__TypeInfo){.typ = 11, ._pointer_variant_is_owned = 1, .reflection__SumType = (reflection__SumType*)memdup(&${value}, sizeof(reflection__SumType))}'
+fn (g &FlatGen) reflection_sum_type_info(variants []string, module_name string) string {
+	value := '(reflection__SumType){.parent_idx = 0, .variants = ${g.reflection_type_array(variants, module_name)}}'
+	return '(reflection__TypeInfo){.typ = 11, .reflection__SumType = ${value}}'
 }
 
 fn (g &FlatGen) reflection_interface_methods(name string, module_name string) string {
@@ -491,7 +448,7 @@ fn (g &FlatGen) reflection_interface_methods(name string, module_name string) st
 fn (g &FlatGen) reflection_interface_info(name string, module_name string) string {
 	short_name := reflection_short_type_name(name)
 	value := '(reflection__Interface){.name = _S("${reflection_c_string(short_name)}"), .methods = ${g.reflection_interface_methods(name, module_name)}, .fields = ${reflection_empty_array('reflection__StructField')}, .is_generic = ${name in g.tc.interface_generic_params}}'
-	return '(reflection__TypeInfo){.typ = 6, ._pointer_variant_is_owned = 1, .reflection__Interface = (reflection__Interface*)memdup(&${value}, sizeof(reflection__Interface))}'
+	return '(reflection__TypeInfo){.typ = 6, .reflection__Interface = ${value}}'
 }
 
 fn (g &FlatGen) reflection_decl_module(name string, kind flat.NodeKind) string {
@@ -544,12 +501,11 @@ fn reflection_collect_composite_type(raw_type string, module_name string, mut co
 }
 
 fn (mut g FlatGen) gen_reflection_type(name string, module_name string, kind int, info string, methods string, mut seen_ids map[int]bool) {
-	full_idx := reflection_type_id(name, module_name)
-	mut indexes := [full_idx]
-	short_idx := full_idx & 0xffff
-	if short_idx != full_idx {
-		indexes << short_idx
+	idx := g.reflection_type_id(name, module_name)
+	if idx == 0 || seen_ids[idx] {
+		return
 	}
+	seen_ids[idx] = true
 	display_name := if name.starts_with('main.') {
 		name[5..]
 	} else if module_name !in ['', 'builtin'] && name.starts_with('${module_name}.') {
@@ -557,14 +513,8 @@ fn (mut g FlatGen) gen_reflection_type(name string, module_name string, kind int
 	} else {
 		name
 	}
-	for idx in indexes {
-		if idx == 0 || seen_ids[idx] {
-			continue
-		}
-		seen_ids[idx] = true
-		g.writeln('\t${reflection_c_prefix}add_type_symbol((${reflection_c_prefix}TypeSymbol){.name = _S("${reflection_c_string(display_name)}"), .mod = _S("${reflection_c_string(module_name)}"), .idx = ${idx}, .parent_idx = 0, .language = 0, .kind = ${kind}, .info = ${info}, .methods = ${methods}});')
-		g.writeln('\t${reflection_c_prefix}add_type((${reflection_c_prefix}Type){.name = _S("${reflection_c_string(display_name)}"), .idx = ${idx}});')
-	}
+	g.writeln('\t${reflection_c_prefix}add_type_symbol((${reflection_c_prefix}TypeSymbol){.name = _S("${reflection_c_string(display_name)}"), .mod = _S("${reflection_c_string(module_name)}"), .idx = ${idx}, .parent_idx = 0, .language = 0, .kind = ${kind}, .info = ${info}, .methods = ${methods}});')
+	g.writeln('\t${reflection_c_prefix}add_type((${reflection_c_prefix}Type){.name = _S("${reflection_c_string(display_name)}"), .idx = ${idx}});')
 }
 
 fn (mut g FlatGen) gen_reflection_functions() {
@@ -624,7 +574,7 @@ fn (mut g FlatGen) gen_reflection_data() {
 	names.sort()
 	for name in names {
 		info := g.struct_decl_infos[name]
-		if reflection_builtin_type_id(info.full_name) != none {
+		if types.builtin_type_index(info.full_name) > 0 {
 			continue
 		}
 		key := reflection_type_key(info.full_name, info.module)
@@ -649,7 +599,7 @@ fn (mut g FlatGen) gen_reflection_data() {
 			if name.contains('.') { name.all_before_last('.') } else { 'main' }
 		}
 		module_name := if raw_module_name.len > 0 { raw_module_name } else { 'main' }
-		g.gen_reflection_type(name, module_name, 32, reflection_alias_info(g.tc.type_aliases[name],
+		g.gen_reflection_type(name, module_name, 32, g.reflection_alias_info(g.tc.type_aliases[name],
 			module_name), g.reflection_methods(reflection_type_key(name, module_name)), mut seen_ids)
 	}
 
@@ -657,7 +607,7 @@ fn (mut g FlatGen) gen_reflection_data() {
 	sum_names.sort()
 	for name in sum_names {
 		module_name := g.reflection_decl_module(name, .type_decl)
-		g.gen_reflection_type(name, module_name, 31, reflection_sum_type_info(g.tc.sum_types[name] or {
+		g.gen_reflection_type(name, module_name, 31, g.reflection_sum_type_info(g.tc.sum_types[name] or {
 			[]string{}
 		}, module_name), g.reflection_methods(reflection_type_key(name, module_name)), mut seen_ids)
 	}
@@ -708,13 +658,13 @@ fn (mut g FlatGen) gen_reflection_data() {
 	composite_names.sort()
 	for name in composite_names {
 		if name.starts_with('[]') {
-			g.gen_reflection_type(name, '', 23, reflection_array_info(name), g.reflection_methods(name),
+			g.gen_reflection_type(name, '', 23, g.reflection_array_info(name), g.reflection_methods(name),
 				mut seen_ids)
 		} else if name.starts_with('map[') {
-			g.gen_reflection_type(name, '', 25, reflection_map_info(name), g.reflection_methods(name),
+			g.gen_reflection_type(name, '', 25, g.reflection_map_info(name), g.reflection_methods(name),
 				mut seen_ids)
 		} else if name.starts_with('(') && name.ends_with(')') {
-			g.gen_reflection_type(name, '', 30, reflection_multi_return_info(name),
+			g.gen_reflection_type(name, '', 30, g.reflection_multi_return_info(name),
 				g.reflection_methods(name), mut seen_ids)
 		}
 	}

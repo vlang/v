@@ -18,10 +18,10 @@ fn run_driver_review_process(program string, args []string, environment map[stri
 	mut process := os.new_process(program)
 	process.set_args(args)
 	process.set_environment(environment)
-	process.set_redirect_stdio()
+	process.set_redirect_stdio_merged()
 	process.run()
+	output := process.stdout_slurp()
 	process.wait()
-	output := process.stdout_slurp() + process.stderr_slurp()
 	result := os.Result{
 		exit_code: process.code
 		output:    output

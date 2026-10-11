@@ -17,9 +17,9 @@ fn escaped_c_field_test_node(mut a flat.FlatAst, kind flat.NodeKind, value strin
 fn test_escaped_c_field_names_follow_the_resolved_owner() {
 	g := FlatGen.new()
 	c_struct := types.Type(types.Struct{ name: 'C.EscapedFields' })
-	alias := types.Type(types.Alias{ name: 'Fields', base_type: c_struct })
-	pointer := types.Type(types.Pointer{ base_type: alias })
-	pointer_alias := types.Type(types.Alias{ name: 'FieldsPtr', base_type: pointer })
+	alias := types.Type(types.Alias{ name: 'Fields', base_type: &types.Type(c_struct) })
+	pointer := types.Type(types.Pointer{ base_type: &types.Type(alias) })
+	pointer_alias := types.Type(types.Alias{ name: 'FieldsPtr', base_type: &types.Type(pointer) })
 	for owner in [c_struct, alias, pointer, pointer_alias] {
 		assert g.field_c_name(owner, '@type') == 'type'
 		assert g.field_c_name(owner, '@module') == 'module'
@@ -32,8 +32,8 @@ fn test_escaped_c_field_names_follow_the_resolved_owner() {
 fn test_escaped_v_field_names_keep_their_existing_spelling() {
 	g := FlatGen.new()
 	v_struct := types.Type(types.Struct{ name: 'EscapedFields' })
-	alias := types.Type(types.Alias{ name: 'Fields', base_type: v_struct })
-	pointer := types.Type(types.Pointer{ base_type: alias })
+	alias := types.Type(types.Alias{ name: 'Fields', base_type: &types.Type(v_struct) })
+	pointer := types.Type(types.Pointer{ base_type: &types.Type(alias) })
 	for owner in [v_struct, alias, pointer] {
 		for field in ['@type', '@struct', '@select', '_v_type', 'type'] {
 			assert g.field_c_name(owner, field) == c_name(field)
@@ -62,10 +62,7 @@ fn test_escaped_c_callback_selector_assignment_keeps_c_abi_adapter() {
 	for owner_name in ['C.CallbackHolder', 'CallbackAlias', 'CallbackPointerAlias'] {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
-		callback_type := types.Type(types.FnType{
-			params:      [types.Type(types.int_)]
-			return_type: types.Type(types.int_)
-		})
+		callback_type := types.Type(tc.fn_type([types.Type(types.int_)], &types.Type(types.int_), []bool{}))
 		tc.cur_module = 'main'
 		tc.structs['C.CallbackHolder'] = [types.StructField{ name: 'type', typ: callback_type, is_mut: true }]
 		tc.type_aliases['CallbackAlias'] = 'C.CallbackHolder'

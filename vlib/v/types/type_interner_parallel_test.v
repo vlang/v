@@ -40,11 +40,14 @@ fn test_interner_probe_during_parallel_growth() {
 	}
 	mut interner := new_type_interner()
 	interner.canonicalize(Type(string_))
+	integer := Type(int_)
+	interner.canonicalize(integer)
+	initial_count := interner.len()
 	// Keep semantic payloads owned by the parent until every thread has joined.
 	mut input := []Type{cap: 9000}
 	for n in 0 .. 9000 {
 		input << Type(ArrayFixed{
-			elem_type: Type(int_)
+			elem_type: &integer
 			len:       n
 		})
 	}
@@ -71,7 +74,7 @@ fn test_interner_probe_during_parallel_growth() {
 		stop <- true
 	}
 	readers.wait()
-	assert interner.len() == 9001
+	assert interner.len() == initial_count + input.len
 	if _ := interner.probe(Type(bool_)) {
 		assert false, 'a missing type must not be returned'
 	}

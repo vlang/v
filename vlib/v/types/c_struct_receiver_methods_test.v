@@ -93,9 +93,9 @@ pub fn (c C.Counter) @select[T](marker T) int { return c.value }
 fn test_c_backed_alias_inherits_nearest_alias_method() {
 	mut tc := TypeChecker.new(&flat.FlatAst{})
 	base := Type(Struct{ name: 'C.Counter' })
-	inner := Type(Alias{ name: 'Base', base_type: base })
-	middle := Type(Alias{ name: 'Middle', base_type: inner })
-	outer := Type(Alias{ name: 'Wrapped', base_type: middle })
+	inner := Type(Alias{ name: 'Base', base_type: &Type(base) })
+	middle := Type(Alias{ name: 'Middle', base_type: &Type(inner) })
+	outer := Type(Alias{ name: 'Wrapped', base_type: &Type(middle) })
 	tc.fn_ret_types['C.Counter.read'] = Type(int_)
 	tc.fn_ret_types['Base.read'] = Type(int_)
 	tc.fn_ret_types['Middle.read'] = Type(int_)
@@ -104,7 +104,7 @@ fn test_c_backed_alias_inherits_nearest_alias_method() {
 	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'Base.read'
 	tc.fn_ret_types['Wrapped.read'] = Type(int_)
 	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'Wrapped.read'
-	assert tc.c_struct_receiver_method_name(Type(Pointer{ base_type: outer }), 'read') or { '' } == 'Wrapped.read'
+	assert tc.c_struct_receiver_method_name(Type(Pointer{ base_type: &Type(outer) }), 'read') or { '' } == 'Wrapped.read'
 	tc.fn_ret_types.delete('Wrapped.read')
 	tc.fn_ret_types.delete('Base.read')
 	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'C.Counter.read'
@@ -113,9 +113,9 @@ fn test_c_backed_alias_inherits_nearest_alias_method() {
 fn test_c_pointer_alias_inherits_methods_without_losing_pointer_eligibility() {
 	mut tc := TypeChecker.new(&flat.FlatAst{})
 	base := Type(Struct{ name: 'C.Counter' })
-	pointer := Type(Pointer{ base_type: base })
-	inner := Type(Alias{ name: 'CounterRef', base_type: pointer })
-	outer := Type(Alias{ name: 'OuterRef', base_type: inner })
+	pointer := Type(Pointer{ base_type: &Type(base) })
+	inner := Type(Alias{ name: 'CounterRef', base_type: &Type(pointer) })
+	outer := Type(Alias{ name: 'OuterRef', base_type: &Type(inner) })
 	tc.fn_ret_types['C.Counter.read'] = Type(int_)
 	assert tc.c_struct_receiver_method_name(outer, 'read') or { '' } == 'C.Counter.read'
 	tc.fn_ret_types['CounterRef.read'] = Type(int_)

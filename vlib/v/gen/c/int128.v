@@ -1,7 +1,7 @@
 module c
 
 import v.flat
-import v.types
+import v.types { unalias_type }
 
 // Preamble and expression lowering for the `u128` / `i128` primitives.
 //
@@ -41,8 +41,8 @@ fn (mut g FlatGen) emit_int128_preamble() {
 
 // int128_signedness returns none unless t is one of the 128-bit integer
 // primitives. `true` means signed (`i128`), `false` means `u128`.
-fn int128_signedness(t types.Type) ?bool {
-	clean := cgen_unalias_type(t)
+fn int128_signedness(t &types.Type) ?bool {
+	clean := unalias_type(t)
 	if clean is types.Primitive {
 		if clean.props.has(.integer) && clean.size == 128 {
 			return !clean.props.has(.unsigned)
@@ -411,7 +411,7 @@ fn (mut g FlatGen) gen_int128_cast(target_type types.Type, source_id flat.NodeId
 // are types of their own in V rather than primitives, so they need naming here
 // too, or the cast falls through to a C cast the struct representation rejects.
 fn (mut g FlatGen) int128_narrow_c_type(t types.Type) ?string {
-	clean := cgen_unalias_type(t)
+	clean := unalias_type(t)
 	match clean {
 		types.Primitive {
 			if clean.props.has(.integer) && clean.size > 0 && clean.size < 128 {
@@ -572,8 +572,8 @@ fn (g &FlatGen) int128_source_is_plain_literal(id flat.NodeId) bool {
 // source_signedness_known reports whether the cast source is an integer whose
 // signedness can be read, which is what decides between the from_i64 and
 // from_u64 widening helpers.
-fn source_signedness_known(t types.Type) bool {
-	clean := cgen_unalias_type(t)
+fn source_signedness_known(t &types.Type) bool {
+	clean := unalias_type(t)
 	if clean is types.Primitive {
 		return clean.props.has(.integer)
 	}
@@ -582,8 +582,8 @@ fn source_signedness_known(t types.Type) bool {
 
 // int128_source_is_signed reports whether an integer source casts with a sign
 // extension. `isize` is signed, `usize` and the unsigned primitives are not.
-fn int128_source_is_signed(t types.Type) bool {
-	clean := cgen_unalias_type(t)
+fn int128_source_is_signed(t &types.Type) bool {
+	clean := unalias_type(t)
 	if clean is types.Primitive {
 		return !clean.props.has(.unsigned)
 	}

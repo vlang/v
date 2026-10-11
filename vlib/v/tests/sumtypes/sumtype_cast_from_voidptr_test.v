@@ -9,9 +9,7 @@ struct EventB {
 type Event = EventA | EventB
 
 fn test_main() {
-	some_ptr := voidptr(&EventA{
-		a: 1234
-	})
+	some_ptr := voidptr(&Event(EventA{ a: 1234 }))
 	event := unsafe { &Event(some_ptr) }
 
 	d1 := unsafe { &EventA(event) }

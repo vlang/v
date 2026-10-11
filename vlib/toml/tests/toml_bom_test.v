@@ -51,3 +51,15 @@ fn test_toml_with_bom() {
 	}
 	_ = bad_toml_doc
 }
+
+fn test_bom_is_only_a_header_at_document_start() {
+	bom := '\xef\xbb\xbf'
+	document := toml.parse_text('${bom}value = "${bom}"')!
+	assert document.value('value').string() == bom
+	invalid := ['value=1\n${bom}next=2', ' ${bom}value=1']
+	for text in invalid {
+		if _ := toml.parse_text(text) {
+			assert false, text
+		}
+	}
+}

@@ -28,9 +28,8 @@ pub enum VLanguage {
 	wasm32
 }
 
-type VType = u32
+type VType = u64
 
-// max of 8
 pub enum VTypeFlag {
 	option
 	result
@@ -86,16 +85,16 @@ pub enum VKind {
 // return true if `flag` is set on `t`
 @[inline]
 pub fn (t VType) has_flag(flag VTypeFlag) bool {
-	return int(t) & (1 << (int(flag) + 24)) > 0
+	return u64(t) & (u64(1) << (int(flag) + 32)) > 0
 }
 
 @[inline]
 pub fn (t VType) idx() int {
-	return u16(t) & 0xffff
+	return int(u32(t) & 0xff00ffff)
 }
 
 pub fn (t VType) str() string {
-	return 'VType(0x${t.hex()} = ${u32(t)})'
+	return 'VType(0x${t.hex()} = ${u64(t)})'
 }
 
 // return true if `t` is a pointer (nr_muls>0)

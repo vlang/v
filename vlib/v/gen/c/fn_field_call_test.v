@@ -14,16 +14,13 @@ fn fn_field_call_test_output(pointer_storage bool, pointer_type bool, pointer_fi
 
 	value_type := types.Type(types.Struct{ name: 'FnFieldHolder' })
 	base_type := if pointer_type {
-		types.Type(types.Pointer{ base_type: value_type })
+		types.Type(types.Pointer{ base_type: &types.Type(value_type) })
 	} else {
 		value_type
 	}
-	callback_type := types.Type(types.FnType{
-		params:      [types.Type(types.int_)]
-		return_type: types.Type(types.int_)
-	})
+	callback_type := types.Type(tc.fn_type([types.Type(types.int_)], &types.Type(types.int_), []bool{}))
 	field_type := if pointer_field {
-		types.Type(types.Pointer{ base_type: callback_type })
+		types.Type(types.Pointer{ base_type: &types.Type(callback_type) })
 	} else {
 		callback_type
 	}

@@ -7,7 +7,7 @@ struct Foo {
 	field ?&Bar
 }
 
-fn t(mut opt ?Bar) {
+fn t(mut opt ?&Bar) {
 	v := Foo{
 		field: opt
 	}

@@ -729,11 +729,10 @@ fn run_driver_with_stdin_file(v3_bin string, args []string, stdin_path string) o
 }
 
 fn collect_driver_process_result(mut process os.Process) os.Result {
-	process.set_redirect_stdio()
+	process.set_redirect_stdio_merged()
 	process.run()
-	process.wait()
 	mut output := process.stdout_slurp()
-	output += process.stderr_slurp()
+	process.wait()
 	if process.err.len > 0 {
 		output += process.err
 	}

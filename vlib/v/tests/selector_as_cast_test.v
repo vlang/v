@@ -1,9 +1,9 @@
 struct Foo {
-	expr SumType
+	expr &SumType
 }
 
 struct Bar {
-	expr SumType
+	expr &SumType
 }
 
 type SumType = Foo | string | Bar
@@ -16,11 +16,9 @@ fn (g Gen) t(arg SumType2) {
 
 fn test_main() {
 	gen := Gen{}
-	s := Bar{
-		expr: Foo{
-			expr: 'foobar'
-		}
-	}
+	text := SumType('foobar')
+	foo := SumType(Foo{ expr: &text })
+	s := Bar{ expr: &foo }
 	gen.t((s.expr as Foo).expr)
 	assert true
 }

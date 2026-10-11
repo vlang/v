@@ -25,7 +25,7 @@ fn test_pointer_valued_receiver_can_mutate_pointee_without_mutable_binding() {
 	mut tc := TypeChecker.new(&a)
 	tc.cur_scope = new_scope(tc.file_scope)
 	owner := tc.cur_scope.insert_with_owner('p', Type(Pointer{
-		base_type: Type(int_)
+		base_type: &Type(int_)
 	}))
 	assert tc.mut_receiver_expr_is_mutable_lvalue(p_id)
 	assert tc.mut_receiver_expr_is_mutable_lvalue(amp_id)
@@ -43,7 +43,7 @@ fn test_global_and_local_pointer_receivers_can_mutate_their_pointees() {
 	mut tc := TypeChecker.new(&a)
 	mut global_scope := tc.file_scope
 	global_scope.insert('g', Type(Pointer{
-		base_type: Type(int_)
+		base_type: &Type(int_)
 	}))
 	// Match the extra private file scope installed by a parallel checker.
 	tc.file_scope = new_scope(global_scope)
@@ -51,7 +51,7 @@ fn test_global_and_local_pointer_receivers_can_mutate_their_pointees() {
 	assert tc.mut_receiver_expr_is_mutable_lvalue(g_id)
 
 	tc.cur_scope.insert('g', Type(Pointer{
-		base_type: Type(int_)
+		base_type: &Type(int_)
 	}))
 	assert tc.mut_receiver_expr_is_mutable_lvalue(g_id)
 }

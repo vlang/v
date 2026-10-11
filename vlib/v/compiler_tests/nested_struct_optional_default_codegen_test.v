@@ -19,5 +19,5 @@ fn test_nested_struct_array_default_keeps_optional_wrapper() {
 		"enum PayloadKind {\n\tother\n}\n\nstruct Payload {\n\tkind PayloadKind = .other\n\ttext string\n\titems []int\n\tnested []Payload\n}\n\nstruct Middle {\n\tpayload ?Payload\n}\n\nstruct Outer {\n\tmiddle Middle\n}\n\nfn main() {\n\tvalues := []Outer{len: 2}\n\tassert values[0].middle.payload == none\n\tassert values[1].middle.payload == none\n\treserved := []Outer{cap: 2}\n\tassert reserved.len == 0\n\tassert reserved.cap >= 2\n\tprintln('ok')\n}\n")!
 	out := os.exec([v3_bin, '-no-parallel', 'run', source])
 	assert out.exit_code == 0, out.output
-	assert out.output.contains('\nok\n'), out.output
+	assert out.output.trim_space() == 'ok', out.output
 }

@@ -2,8 +2,8 @@ struct Empty {}
 
 struct Node {
 	value f64
-	left  Tree
-	right Tree
+	left  &Tree
+	right &Tree
 }
 
 type Tree = Empty | Node
@@ -20,7 +20,7 @@ fn size(tree Tree) int {
 fn insert(tree Tree, x f64) Tree {
 	return match tree {
 		Empty {
-			Node{x, tree, tree}
+			Node{x, &Tree(tree), &Tree(tree)}
 		}
 		Node {
 			if x == tree.value {
@@ -28,12 +28,12 @@ fn insert(tree Tree, x f64) Tree {
 			} else if x < tree.value {
 				Node{
 					...tree
-					left: insert(tree.left, x)
+					left: &Tree(insert(tree.left, x))
 				}
 			} else {
 				Node{
 					...tree
-					right: insert(tree.right, x)
+					right: &Tree(insert(tree.right, x))
 				}
 			}
 		}
@@ -86,19 +86,19 @@ fn delete(tree Tree, x f64) Tree {
 					println(x)
 					Node{
 						...tree
-						left: delete(tree.left, x)
+						left: &Tree(delete(tree.left, x))
 					}
 				} else if x > tree.value {
 					println(x)
 					Node{
 						...tree
-						right: delete(tree.right, x)
+						right: &Tree(delete(tree.right, x))
 					}
 				} else {
 					Node{
 						...tree
 						value: min(tree.right)
-						right: delete(tree.right, min(tree.right))
+						right: &Tree(delete(tree.right, min(tree.right)))
 					}
 				}
 			} else if tree.left is Node {
@@ -107,16 +107,16 @@ fn delete(tree Tree, x f64) Tree {
 				} else {
 					Node{
 						...tree
-						left: delete(tree.left, x)
+						left: &Tree(delete(tree.left, x))
 					}
 				}
 			} else {
 				if x == tree.value {
-					tree.right
+					*tree.right
 				} else {
 					Node{
 						...tree
-						right: delete(tree.right, x)
+						right: &Tree(delete(tree.right, x))
 					}
 				}
 			}

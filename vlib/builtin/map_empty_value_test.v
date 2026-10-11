@@ -38,7 +38,12 @@ fn test_empty_map_values_survive_growth_reserve_and_deletion() {
 
 fn test_dense_array_zero_value_size_with_every_c_compiler() {
 	// TinyCC assigns empty structs one byte, so exercise zero-sized storage explicitly too.
-	mut dense := new_dense_array(int(sizeof(int)), 0)
+	mut dense := DenseArray{}
+	$if v3_backend ? {
+		dense = new_dense_array(int(sizeof(int)), 0, data_alignment_exponent(sizeof(int)), 0)
+	} $else {
+		dense = new_dense_array(int(sizeof(int)), 0)
+	}
 	// DenseArray stores raw key bytes; fill and inspect its integer slots directly.
 	for i in 0 .. 100 {
 		index := dense.expand()

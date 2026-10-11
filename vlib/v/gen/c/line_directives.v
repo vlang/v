@@ -113,7 +113,7 @@ fn (mut g FlatGen) gen_race_blank_read(rhs_id flat.NodeId) bool {
 		return false
 	}
 	rhs := g.a.nodes[int(rhs_id)]
-	mut typ := g.usable_expr_type(rhs_id)
+	mut typ := *g.usable_expr_type(rhs_id)
 	// The value of a `mut` parameter, also in parentheses, is behind the pointer that C passes.
 	mut inner := rhs
 	for inner.kind == .paren && inner.children_count > 0 {

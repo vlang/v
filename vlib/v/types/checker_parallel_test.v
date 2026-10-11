@@ -260,16 +260,14 @@ fn test_checker_type_promotion_survives_batch_arena_release() {
 			if compatibility { tc.type_interner = unsafe { nil } }
 			scope := unsafe { prealloc_scope_begin() }
 			borrowed := Type(FnType{
-				params:      [Type(Struct{ name: 'ScopedItem'.clone() })]
-				params_mut:  [true]
-				return_type: Type(Array{ elem_type: Type(string_) })
+				params:      [FnParam{ typ: &Type(Struct{ name: 'ScopedItem'.clone() }), is_mut: true }]
+				return_type: &Type(Array{ elem_type: &Type(string_) })
 			})
 			unsafe { prealloc_scope_leave(scope) }
 			first := tc.promote_check_type(borrowed)
 			second := tc.promote_check_type(borrowed)
 			if first is FnType && second is FnType {
 				assert !unsafe { prealloc_scope_owns(scope, first.params.data) }
-				assert !unsafe { prealloc_scope_owns(scope, first.params_mut.data) }
 				if !compatibility {
 					assert first.params.data == second.params.data
 				}

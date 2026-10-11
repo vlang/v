@@ -42,7 +42,7 @@ type RecursiveDefaultSum = RecursiveDefaultBranch | RecursiveDefaultLeaf
 
 struct RecursiveDefaultBranch {
 	x     int
-	child RecursiveDefaultSum
+	child ?&RecursiveDefaultSum
 }
 
 struct RecursiveDefaultLeaf {
@@ -59,7 +59,7 @@ type RecursiveNestedDefaultInner = RecursiveNestedDefaultBranch | RecursiveNeste
 
 struct RecursiveNestedDefaultBranch {
 	x     int
-	child RecursiveNestedDefaultSum
+	child ?&RecursiveNestedDefaultSum
 }
 
 struct RecursiveNestedDefaultOther {
@@ -90,8 +90,7 @@ fn test_recursive_default_sumtype_common_field_is_accessible() {
 	assert node is RecursiveDefaultBranch
 	assert node.x == 0
 	if node is RecursiveDefaultBranch {
-		assert node.child is RecursiveDefaultBranch
-		assert node.child.x == 0
+		assert node.child == none
 	}
 }
 
@@ -103,8 +102,7 @@ fn test_nested_recursive_default_sumtype_common_field_is_accessible() {
 	if node is RecursiveNestedDefaultInner {
 		assert node is RecursiveNestedDefaultBranch
 		if node is RecursiveNestedDefaultBranch {
-			assert node.child is RecursiveNestedDefaultInner
-			assert node.child.x == 0
+			assert node.child == none
 		}
 	}
 }

@@ -387,23 +387,8 @@ fn main() {
 	assert out == '7'
 }
 
-fn test_sum_type_rejects_pointer_variants() {
+fn test_sum_type_checks_pointer_variant_identity() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'pointer_sum_variant', 'struct Foo {
-	value int
-}
-
-type Item = &Foo | int
-
-fn main() {}
-', 'sum type cannot hold a reference type')
-	run_bad(v3_bin, 'pointer_alias_sum_variant', 'struct Foo {}
-
-type FooPointer = &Foo
-type Item = FooPointer | int
-
-fn main() {}
-', 'sum type cannot hold a reference type')
 	run_bad(v3_bin, 'is_pointer_value_variant_rejected', 'struct Foo {}
 
 type Item = Foo | int
@@ -3877,7 +3862,11 @@ fn make_alias() &Bare {
 	assert c_source.contains('v3_aligned_free(d)')
 	assert c_source.contains('v3_aligned_free(pa)')
 	assert c_source.contains('v3_aligned_free(ha)')
-	assert c_source.contains('v3_aligned_memdup(&x, sizeof(main__Bare), __alignof__(main__Bare))')
+	param_signature := 'main__Bare* make_param_alias(main__Bare x) {'
+	param_body := c_fn_body(c_source, param_signature)
+	assert param_body.contains('v3_aligned_memdup(&x,')
+	assert param_body.contains('sizeof(main__Bare)')
+	assert param_body.contains('__alignof__(*(main__Bare*)(NULL))')
 	make_direct_body := c_fn_body(c_source, 'main__Bare* make_direct(void) {')
 	assert make_direct_body.contains('v3_aligned_memdup(&(main__Bare){.x = 5}, sizeof(main__Bare), __alignof__(main__Bare))'), make_direct_body
 	assert !c_source.contains('__alignof__(Bare)')

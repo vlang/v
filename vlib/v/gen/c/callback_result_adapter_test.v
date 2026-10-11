@@ -10,12 +10,12 @@ fn test_void_callback_result_adapter_returns_success() {
 	g.a = &a
 	g.tc = &tc
 	actual := types.FnType{
-		params:      [types.Type(types.int_)]
-		return_type: types.Type(types.void_)
+		params:      [types.FnParam{ typ: tc.intern_type_reference(types.Type(types.int_)) }]
+		return_type: types.empty_type
 	}
 	expected := types.FnType{
 		params:      actual.params
-		return_type: types.Type(types.ResultType{ base_type: types.Type(types.void_) })
+		return_type: tc.intern_type_reference(types.Type(types.ResultType{}))
 	}
 	adapter := g.ensure_callback_userdata_wrapper('record', actual, expected, '') or {
 		assert false, 'a void callback needs a successful Result adapter'
@@ -36,9 +36,9 @@ fn test_void_callback_does_not_supply_nonvoid_result() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	actual := types.FnType{ return_type: types.Type(types.void_) }
+	actual := types.FnType{ return_type: types.empty_type }
 	expected := types.FnType{
-		return_type: types.Type(types.ResultType{ base_type: types.Type(types.int_) })
+		return_type: tc.intern_type_reference(types.Type(types.ResultType{ base_type: tc.intern_type_reference(types.Type(types.int_)) }))
 	}
 	assert g.ensure_callback_userdata_wrapper('record', actual, expected, '') == none
 }

@@ -641,7 +641,9 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 	}
 	mut actual_result_type := result_type
 	branch_type := t.if_expr_branch_result_type(node)
-	if t.if_expr_branch_overrides_sum_target(branch_type, result_type) {
+	borrowed_result := result_type.starts_with('&')
+		&& t.normalize_type_alias(result_type[1..]) == t.normalize_type_alias(branch_type)
+	if borrowed_result || t.if_expr_branch_overrides_sum_target(branch_type, result_type) {
 		actual_result_type = branch_type
 	} else if actual_result_type == 'int' && branch_type != '' && branch_type != 'int'
 		&& branch_type != 'unknown' && branch_type != 'void' {
@@ -667,6 +669,9 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 	}
 	tmp := t.make_ident(tmp_name)
 	t.set_node_typ(int(tmp), actual_result_type)
+	if borrowed_result {
+		return t.coerce_transformed_expr_to_type(tmp, id, result_type)
+	}
 	return tmp
 }
 
@@ -1669,7 +1674,7 @@ fn (mut t Transformer) transform_if_guard_condition(node flat.Node) flat.NodeId 
 		if i == 1 {
 			new_children << t.transform_expr(child_id)
 		} else {
-			new_children << t.transform_lvalue(child_id)
+			new_children << child_id
 		}
 	}
 	start := t.a.children.len
@@ -2214,8 +2219,8 @@ fn (t &Transformer) extract_is_expr(cond_id flat.NodeId) IsExprInfo {
 // sum_type_for_is_expr supports sum type for is expr handling for Transformer.
 fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) string {
 	clean_expr_type := t.trim_all_pointer_type(expr_type)
-	clean_variant := t.trim_pointer_type(variant)
 	if t.is_interface_type_name(clean_expr_type) {
+		clean_variant := t.trim_pointer_type(variant)
 		if _ := t.resolve_interface_pattern(clean_variant, clean_expr_type) {
 			return clean_expr_type
 		}
@@ -2223,25 +2228,25 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) strin
 			return clean_expr_type
 		}
 	}
-	if _ := t.resolve_sum_variant_pattern_for_subject(clean_expr_type, clean_variant) {
+	if _ := t.resolve_sum_variant_pattern_for_subject(clean_expr_type, variant) {
 		return clean_expr_type
 	}
 	// Preserve the fully scoped concrete application selected for the pattern.
 	// A declaration in `client` can spell `maybe.Maybe[Local]`, while its union
 	// field is the qualified `client.Local` (or a selectively imported type).
 	for candidate in t.sum_subject_type_candidates(clean_expr_type) {
-		if _ := t.sum_variant_name(candidate, clean_variant) {
+		if _ := t.sum_variant_name(candidate, variant) {
 			return candidate
 		}
 		if !isnil(t.tc) {
-			if _ := t.tc.sum_variant_type_for_pattern(candidate, clean_variant) {
+			if _ := t.tc.sum_variant_type_for_pattern(candidate, variant) {
 				return candidate
 			}
 		}
 	}
 	resolved_expr_sum := t.resolve_sum_name(clean_expr_type)
 	if resolved_expr_sum in t.sum_types {
-		if _ := t.sum_variant_name(resolved_expr_sum, clean_variant) {
+		if _ := t.sum_variant_name(resolved_expr_sum, variant) {
 			return clean_expr_type
 		}
 		// `x is V` tests a variant of the sum type of `x`, also one that is
@@ -2249,7 +2254,7 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) strin
 		// another sum type with the same name, `int` of `strconv.Numeric`.
 		return clean_expr_type
 	}
-	return t.find_sum_type_for_variant(clean_variant)
+	return t.find_sum_type_for_variant(variant)
 }
 
 // find_sum_type_for_variant returns the sum type name that contains

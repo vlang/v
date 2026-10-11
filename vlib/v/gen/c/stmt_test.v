@@ -115,7 +115,7 @@ fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
 	g.a = &a
 	g.tc = &tc
 	pointer_type := types.Type(types.Pointer{
-		base_type: types.Type(types.int_)
+		base_type: &types.Type(types.int_)
 	})
 	value_id := stmt_test_node(mut a, .ident, 'value', [])
 	tc.register_synth_type(value_id, pointer_type)
@@ -132,7 +132,7 @@ fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
 	actual := g.usable_expr_type(deref_id)
 	assert actual is types.Pointer
 	if actual is types.Pointer {
-		assert actual.base_type == types.Type(types.int_)
+		assert *actual.base_type == types.Type(types.int_)
 	}
 }
 
@@ -144,14 +144,14 @@ fn test_primitive_fixed_array_zero_initializer_is_compact() {
 	g.tc = &tc
 
 	large := types.ArrayFixed{
-		elem_type: types.Type(types.u8_)
+		elem_type: &types.Type(types.u8_)
 		len:       65536
 	}
 	assert g.empty_fixed_array_initializer_string(large) == '{0}'
 
 	nested := types.ArrayFixed{
-		elem_type: types.Type(types.ArrayFixed{
-			elem_type: types.Type(types.i32_)
+		elem_type: &types.Type(types.ArrayFixed{
+			elem_type: &types.Type(types.i32_)
 			len:       32
 		})
 		len:       32
@@ -159,18 +159,18 @@ fn test_primitive_fixed_array_zero_initializer_is_compact() {
 	assert g.empty_fixed_array_initializer_string(nested) == '{0}'
 
 	dynamic_arrays := types.ArrayFixed{
-		elem_type: types.Type(types.Array{
-			elem_type: types.Type(types.int_)
+		elem_type: &types.Type(types.Array{
+			elem_type: &types.Type(types.int_)
 		})
 		len:       2
 	}
 	dynamic_init := g.empty_fixed_array_initializer_string(dynamic_arrays)
-	assert dynamic_init.count('array_new(') == 2
+	assert dynamic_init.count('__new_array_noscan(') == 2
 }
 
 fn test_fixed_array_optional_abi_conversions_use_memcpy() {
 	fixed := types.Type(types.ArrayFixed{
-		elem_type: types.Type(types.int_)
+		elem_type: &types.Type(types.int_)
 		len:       2
 	})
 	mut forward_gen := FlatGen.new()
@@ -226,11 +226,11 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	g.a = &a
 	g.tc = &tc
 	fixed_type := types.Type(types.ArrayFixed{
-		elem_type: types.Type(types.u8_)
+		elem_type: &types.Type(types.u8_)
 		len:       2
 	})
 	byte_pointer := types.Type(types.Pointer{
-		base_type: types.Type(types.u8_)
+		base_type: &types.Type(types.u8_)
 	})
 	tc.push_scope()
 	tc.cur_scope.insert('buf', fixed_type)
@@ -239,7 +239,7 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	g.gen_decl_init_expr(rhs_id, a.nodes[int(rhs_id)], byte_pointer, 'u8*', true)
 	assert g.sb.str() == '((u8*)(buf))'
 	fixed_pointer := types.Type(types.Pointer{
-		base_type: fixed_type
+		base_type: &types.Type(fixed_type)
 	})
 	mut assign_gen := FlatGen.new()
 	assign_gen.a = &a
@@ -248,14 +248,14 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	assert assign_gen.gen_fixed_array_address_to_byte_pointer_assign(p_id, rhs_id, byte_pointer, fixed_pointer)
 	assert assign_gen.sb.str() == 'p = ((u8*)(buf));\n'
 	int_fixed_type := types.Type(types.ArrayFixed{
-		elem_type: types.Type(types.i32_)
+		elem_type: &types.Type(types.i32_)
 		len:       2
 	})
 	tc.cur_scope.insert('int_buf', int_fixed_type)
 	int_buf_id := stmt_test_node(mut a, .ident, 'int_buf', [])
 	int_rhs_id := stmt_test_prefix(mut a, .amp, int_buf_id)
 	int_fixed_pointer := types.Type(types.Pointer{
-		base_type: int_fixed_type
+		base_type: &types.Type(int_fixed_type)
 	})
 	mut rejected_gen := FlatGen.new()
 	rejected_gen.a = &a
@@ -273,12 +273,12 @@ fn test_mut_parameter_power_assign_uses_scalar_result_type() {
 	g.tc = &tc
 	int_type := types.Type(types.int_)
 	ptr_type := types.Type(types.Pointer{
-		base_type: int_type
+		base_type: &types.Type(int_type)
 	})
 
 	tc.push_scope()
 	arg_owner := tc.cur_scope.insert_with_owner('arg', ptr_type)
-	g.cur_param_types['arg'] = ptr_type
+	g.cur_param_types['arg'] = tc.intern_type_reference(ptr_type)
 	g.cur_mut_params['arg'] = true
 	g.cur_mut_param_owners['arg'] = arg_owner
 	arg_id := stmt_test_node(mut a, .ident, 'arg', [])
@@ -304,7 +304,7 @@ fn test_local_pointer_alias_clear_preserves_outer_branch_markers() {
 	mut g := FlatGen.new()
 	g.tc = &tc
 	ptr_type := types.Type(types.Pointer{
-		base_type: types.Type(types.int_)
+		base_type: &types.Type(types.int_)
 	})
 
 	tc.push_scope()
@@ -359,13 +359,54 @@ fn test_fn_decl_signature_registration_preserves_call_name_aliases() {
 	]
 	for alias in aliases {
 		assert g.fn_decl_param_types[alias] == params
-		assert g.fn_decl_ret_types[alias] or { types.Type(types.void_) } == types.Type(types.int_)
+		result := g.fn_decl_ret_types[alias] or { types.empty_type }
+		assert voidptr(result) == voidptr(tc.parse_type('int'))
 		assert g.fn_decl_variadic[alias]
 		if alias != fn_decl_module_key(tc.cur_module, name) {
 			assert g.fn_decl_shared_params[alias] == shared_flags
 			assert g.fn_decl_mut_receivers[alias]
 		}
 	}
+}
+
+fn test_signature_preparation_shares_unchanged_parameter_storage() {
+	mut a := flat.FlatAst.new()
+	parameter := a.add_node(flat.Node{
+		kind:  .param
+		value: 'value'
+		typ:   'int'
+	})
+	body := a.add_node(flat.Node{ kind: .empty })
+	a.children << parameter
+	for _ in 0 .. 128 {
+		a.children << body
+	}
+	node := flat.Node{
+		kind:           .fn_decl
+		value:          'work'
+		typ:            'void'
+		children_count: 129
+	}
+	mut tc := types.TypeChecker.new(&a)
+	params := [types.Type(types.int_)]
+	tc.fn_param_types['work'] = params
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	first := g.compute_collect_gen_fn_prep(node, 'main', '')
+	assert first.ptypes == params
+	assert first.ptypes.data == params.data
+
+	a.nodes[int(parameter)].typ = '&int'
+	a.nodes[int(parameter)].is_mut = true
+	a.nodes[int(parameter)].op = .amp
+	pointers := [*tc.parse_type('&int')]
+	tc.fn_param_types['work'] = pointers
+	changed := g.compute_collect_gen_fn_prep(node, 'main', '')
+	assert changed.ptypes.len == 1
+	assert changed.ptypes[0].name() == '&&int'
+	assert pointers[0].name() == '&int'
+	assert changed.ptypes.data != pointers.data
 }
 
 fn test_same_named_fn_signatures_are_resolved_in_the_current_module() {
@@ -398,7 +439,7 @@ fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	g.tc = &tc
 	int_type := types.Type(types.int_)
 	ptr_type := types.Type(types.Pointer{
-		base_type: int_type
+		base_type: &types.Type(int_type)
 	})
 
 	tc.push_scope()
@@ -458,7 +499,7 @@ fn test_local_pointer_alias_branch_assignment_without_outer_marker_stays_conditi
 	g.tc = &tc
 	int_type := types.Type(types.int_)
 	ptr_type := types.Type(types.Pointer{
-		base_type: int_type
+		base_type: &types.Type(int_type)
 	})
 
 	tc.push_scope()
@@ -487,7 +528,7 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	g.tc = &tc
 	int_type := types.Type(types.int_)
 	ptr_type := types.Type(types.Pointer{
-		base_type: int_type
+		base_type: &types.Type(int_type)
 	})
 
 	tc.push_scope()
@@ -534,20 +575,21 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 
 fn test_heap_local_memdup_expr_uses_aligned_memdup_for_aligned_structs() {
 	mut a := flat.FlatAst.new()
+	decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'Aligned' })
 	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	tc.declaration_attributes[int(decl)] = ['aligned: 64']
 	mut g := FlatGen.new()
 	g.tc = &tc
-	g.register_struct_decl_info('Aligned', 'Aligned', 'main', '', flat.Node{
-		value: 'Aligned'
-		typ:   'aligned=64'
-	})
 	aligned_type := types.Type(types.Struct{
 		name: 'Aligned'
 	})
 	pointer_copy := g.heap_local_memdup_expr('p', aligned_type, 'Aligned', true)
-	assert pointer_copy == '(Aligned*)v3_aligned_memdup(p, sizeof(Aligned), 64)'
+	pointer_expected := '(Aligned*)v3_aligned_memdup(p, sizeof(Aligned), __alignof__(Aligned))'
+	assert pointer_copy == pointer_expected
 	value_copy := g.heap_local_memdup_expr('x', aligned_type, 'Aligned', false)
-	assert value_copy == '(Aligned*)v3_aligned_memdup(&x, sizeof(Aligned), 64)'
+	value_expected := '(Aligned*)v3_aligned_memdup(&x, sizeof(Aligned), __alignof__(Aligned))'
+	assert value_copy == value_expected
 	plain_type := types.Type(types.Struct{
 		name: 'Plain'
 	})
@@ -569,10 +611,10 @@ fn test_heap_local_address_expr_copies_pointer_local_slot() {
 	g.a = &a
 	g.tc = &tc
 	int_ptr := types.Type(types.Pointer{
-		base_type: types.Type(types.int_)
+		base_type: &types.Type(types.int_)
 	})
 	int_ptr_ptr := types.Type(types.Pointer{
-		base_type: int_ptr
+		base_type: &types.Type(int_ptr)
 	})
 	tc.push_scope()
 	tc.cur_scope.insert_with_owner('p', int_ptr)
@@ -597,10 +639,10 @@ fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
 		name: 'S'
 	})
 	struct_ptr := types.Type(types.Pointer{
-		base_type: struct_type
+		base_type: &types.Type(struct_type)
 	})
 	int_ptr := types.Type(types.Pointer{
-		base_type: int_type
+		base_type: &types.Type(int_type)
 	})
 	tc.structs['S'] = [types.StructField{
 		name: 'x'
@@ -759,7 +801,7 @@ fn test_unsafe_value_block_scopes_direct_array_access() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	array_type := types.Type(types.Array{ elem_type: types.Type(types.int_) })
+	array_type := types.Type(types.Array{ elem_type: &types.Type(types.int_) })
 	values := stmt_test_node(mut a, .ident, 'values', [])
 	index := stmt_test_node(mut a, .int_literal, '1', [])
 	element := stmt_test_node(mut a, .index, '', [values, index])
@@ -791,5 +833,99 @@ fn test_lowered_ident_annotation_precedes_outer_checker_binding() {
 		value: 'err'
 		typ:   'int'
 	})
-	assert g.usable_expr_type(value) == types.Type(types.int_)
+	assert types.semantic_types_equal(g.usable_expr_type(value), types.Type(types.int_))
+}
+
+fn test_expression_type_references_survive_memo_generations() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.memo_usable_expr_types = true
+	value := a.add_node(flat.Node{ kind: .ident, value: 'value', typ: 'int' })
+	g.begin_usable_expr_type_memo()
+	first := g.usable_expr_type(value)
+	assert voidptr(first) == voidptr(tc.parse_type('int'))
+	assert voidptr(first) == voidptr(g.usable_expr_type(value))
+	g.end_usable_expr_type_memo()
+	a.nodes[int(value)].typ = 'string'
+	g.begin_usable_expr_type_memo()
+	second := g.usable_expr_type(value)
+	assert second.name() == 'string'
+	assert first.name() == 'int'
+	assert voidptr(second) == voidptr(tc.parse_type('string'))
+	g.end_usable_expr_type_memo()
+}
+
+fn test_staging_declarations_do_not_evaluate_default_initializers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types['Value'] = ['int', 'string']
+	tc.type_aliases['Mapping'] = 'map[string]int'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	type_names := [
+		'int',
+		'&int',
+		'[]int',
+		'map[string]int',
+		'[2]map[string]int',
+		'fn (int) int',
+		'?int',
+		'!int',
+		'Value',
+		'Mapping',
+	]
+	for i, typ in type_names {
+		lhs := a.add_node(flat.Node{
+			kind:  .ident
+			value: 'staging_${i}'
+			typ:   typ
+		})
+		rhs := stmt_test_node(mut a, .call, 'unused_default', [])
+		decl := stmt_test_node(mut a, .decl_assign,
+			'__v3_zeroed_stack_value_decl', [lhs, rhs])
+		a.nodes[int(decl)].typ = typ
+		a.nodes[int(decl)].is_mut = true
+		g.gen_decl_assign(a.nodes[int(decl)])
+		assert g.local_storage_is_mutable('staging_${i}')
+		assert !g.current_decl_is_mut
+	}
+	generated := g.sb.str()
+	for call in ['unused_default', 'new_map(', 'array_new(', 'memdup('] {
+		assert !generated.contains(call), generated
+	}
+	assert generated.count(' = {0};') == type_names.len
+	assert generated.contains('map staging_4[2]')
+}
+
+fn test_staging_declarations_preserve_explicit_stack_alignment() {
+	mut a := flat.FlatAst.new()
+	node := flat.Node{ kind: .struct_decl, value: 'Aligned', typ: 'aligned=64' }
+	decl := a.add_node(node)
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Aligned'] = []types.StructField{}
+	tc.type_declaration_ids['Aligned'] = [int(decl)]
+	tc.declaration_attributes[int(decl)] = ['aligned: 64']
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.set_ccompiler('tcc')
+	g.register_struct_decl_info_at(int(decl), node.value, node.value,
+		'main', 'aligned.v', node)
+	lhs := stmt_test_node(mut a, .ident, 'staging', [])
+	rhs := stmt_test_node(mut a, .struct_init, 'Aligned', [])
+	staging := stmt_test_node(mut a, .decl_assign,
+		'__v3_zeroed_stack_value_decl', [lhs, rhs])
+	a.nodes[int(staging)].typ = 'Aligned'
+	g.gen_decl_assign(a.nodes[int(staging)])
+	generated := g.sb.str()
+	assert generated.contains('__builtin_alloca(sizeof(Aligned)'), generated
+	assert generated.contains('(size_t)(64)')
+	assert generated.contains('Aligned* staging')
+	assert generated.contains('memset(staging, 0, sizeof(Aligned))')
+	assert !generated.contains('memdup')
+	assert g.local_storage_c_type('staging') or { '' } == 'Aligned*'
 }

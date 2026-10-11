@@ -18,21 +18,23 @@ fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['sample.Parent'] = [types.StructField{
 		name: 'callback'
-		typ:  types.FnType{
-			params:      [types.Type(types.Map{
-				key_type:   types.Type(types.string_)
-				value_type: types.Type(types.OptionType{
-					base_type: types.Type(types.Struct{ name: 'sample.Child' })
+		typ:  tc.intern_type_reference(types.Type(types.FnType{
+			params:      [types.FnParam{
+				typ: &types.Type(types.Map{
+					key_type:   &types.Type(types.string_)
+					value_type: &types.Type(types.OptionType{
+						base_type: &types.Type(types.Struct{ name: 'sample.Child' })
+					})
 				})
-			})]
-			return_type: types.Type(types.void_)
-		}
+			}]
+			return_type: &types.Type(types.void_)
+		}))
 	}]
 	tc.structs['sample.Child'] = [types.StructField{
 		name: 'parent'
-		typ:  types.Pointer{
-			base_type: types.Type(types.Struct{ name: 'sample.Parent' })
-		}
+		typ:  tc.intern_type_reference(types.Type(types.Pointer{
+			base_type: &types.Type(types.Struct{ name: 'sample.Parent' })
+		}))
 	}]
 	tc.structs['sample.Unused'] = []types.StructField{}
 	mut g := FlatGen.new()
@@ -53,10 +55,10 @@ fn test_cache_signature_collection_omits_unused_function_payloads() {
 	tc.structs['sample.Used'] = []types.StructField{}
 	tc.structs['sample.Unused'] = []types.StructField{}
 	tc.fn_ret_types['sample.used'] = types.OptionType{
-		base_type: types.Type(types.Struct{ name: 'sample.Used' })
+		base_type: &types.Type(types.Struct{ name: 'sample.Used' })
 	}
 	tc.fn_ret_types['sample.unused'] = types.OptionType{
-		base_type: types.Type(types.Struct{ name: 'sample.Unused' })
+		base_type: &types.Type(types.Struct{ name: 'sample.Unused' })
 	}
 	tc.fn_type_modules['sample.used'] = 'sample'
 	tc.fn_type_modules['sample.unused'] = 'sample'
@@ -118,16 +120,16 @@ fn test_cache_demand_keeps_unused_constant_wrappers_and_their_field_graph_out() 
 	}]
 	tc.structs['sample.UnusedChild'] = [types.StructField{
 		name: 'parent'
-		typ:  types.Pointer{ base_type: types.Type(types.Struct{ name: 'sample.Unused' }) }
+		typ:  types.Pointer{ base_type: &types.Type(types.Struct{ name: 'sample.Unused' }) }
 	}]
 	tc.const_types['sample.used'] = types.OptionType{
-		base_type: types.Type(types.Struct{ name: 'sample.Used' })
+		base_type: &types.Type(types.Struct{ name: 'sample.Used' })
 	}
 	tc.const_types['sample.unused'] = types.OptionType{
-		base_type: types.Type(types.Struct{ name: 'sample.Unused' })
+		base_type: &types.Type(types.Struct{ name: 'sample.Unused' })
 	}
 	tc.const_types['sample.unused_result'] = types.ResultType{
-		base_type: types.Type(types.Struct{ name: 'sample.Unused' })
+		base_type: &types.Type(types.Struct{ name: 'sample.Unused' })
 	}
 	// A constant and a function can share a V name but use different C symbols.
 	tc.fn_ret_types['sample.used'] = types.int_
