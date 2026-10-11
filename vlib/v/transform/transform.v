@@ -21342,7 +21342,19 @@ fn (mut t Transformer) snapshot_mut_pointer_slot_arg(id flat.NodeId, node flat.N
 	param_type := t.normalize_type_alias(t.semantic_type_name(param))
 	if param_type != t.normalize_type_alias(storage_type) {
 		// Function values keep mutability separately from their source parameter type.
-		fn_type := t.call_callee_fn_type(t.a.child(&node, 0)) or { return none }
+		callee_id := t.unwrap_parens(t.a.child(&node, 0))
+		callee := t.a.node(callee_id)
+		if callee.kind == .ident && t.raw_var_type(callee.value).len == 0 {
+			return none
+		}
+		if callee.kind == .selector {
+			field_type := t.raw_selector_field_type(callee_id) or { return none }
+			if _ := transform_fn_type(t.tc.parse_type(field_type)) {
+			} else {
+				return none
+			}
+		}
+		fn_type := t.call_callee_fn_type(callee_id) or { return none }
 		param_index := child_index - 1
 		if param_index < 0 || param_index >= fn_type.params.len
 			|| param_index >= fn_type.params_mut.len || !fn_type.params_mut[param_index]
