@@ -607,7 +607,7 @@ fn test_name_patterns_fit_the_names_that_they_stand_for() {
 	patterns := ['*_str', 'map_hash_int_*', 'new_*_noscan', '*_key_*', 'overflow.*_i8', '*.free',
 		'sync__*_st', 'exact_name*', 'builtin__overflow__*_u8', '__new_*', '*__clone'].map(v3_name_pattern(it))
 	fits := fn [patterns] (module_name string, name string) bool {
-		return patterns.any(it.fits(module_name, name))
+		return v3_name_fits_a_pattern(patterns, module_name, name)
 	}
 	for function in [
 		['builtin', 'ptr_str'],

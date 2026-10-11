@@ -157,6 +157,10 @@ struct V3NamePattern {
 	// Whether a name has to start with the first part and end with the last.
 	from_start bool
 	to_end     bool
+	// The byte that a name has to start with, and the one that it has to end
+	// with, or 0 for any: most names are told apart from a pattern by those.
+	first u8
+	last  u8
 }
 
 // v3_name_pattern takes the pattern `text` apart. `module.name` and the C name
@@ -178,13 +182,42 @@ fn v3_name_pattern(text string) V3NamePattern {
 			name = text[separator + 2..]
 		}
 	}
+	parts := name.split('*').filter(it.len > 0)
+	from_start := !name.starts_with('*')
+	to_end := !name.ends_with('*')
 	return V3NamePattern{
 		// A module that the stage fills in is any module.
 		module_name: if module_name.contains('*') { '' } else { module_name }
-		parts:       name.split('*').filter(it.len > 0)
-		from_start:  !name.starts_with('*')
-		to_end:      !name.ends_with('*')
+		parts:       parts
+		from_start:  from_start
+		to_end:      to_end
+		first:       if from_start && parts.len > 0 { parts[0][0] } else { u8(0) }
+		last:        if to_end && parts.len > 0 {
+			parts.last()[parts.last().len - 1]
+		} else {
+			u8(0)
+		}
 	}
+}
+
+// v3_name_fits_a_pattern reports whether one of `patterns` stands for the function
+// `name` of the module `module_name`.
+fn v3_name_fits_a_pattern(patterns []V3NamePattern, module_name string, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	first := name[0]
+	last := name[name.len - 1]
+	for pattern in patterns {
+		if (pattern.first != 0 && pattern.first != first)
+			|| (pattern.last != 0 && pattern.last != last) {
+			continue
+		}
+		if pattern.fits(module_name, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // fits reports whether the function `name` of the module `module_name` is one
@@ -301,7 +334,7 @@ fn prune_unreferenced_cached_functions(mut a flat.FlatAst, keep []string, keep_i
 		short := node.value.all_after_last('.')
 		module_name := candidate_modules[i].all_after_last('.')
 		if named[node.value] || named[short] || kept_in_module['${module_name}.${short}']
-			|| patterns.any(it.fits(module_name, short)) {
+			|| v3_name_fits_a_pattern(patterns, module_name, short) {
 			continue
 		}
 		a.nodes[id].kind = .empty
