@@ -107,17 +107,17 @@ fn started_again(output string) bool {
 	return output.contains('V3 cached declarations: starting again')
 }
 
-// usecache_builds_with_tcc reports whether `-usecache` makes the bundled TinyCC
+// default_cache_builds_with_tcc reports whether the default cache makes the bundled TinyCC
 // build and link module objects on this host. The first call builds a program to
 // find out.
-fn usecache_builds_with_tcc() bool {
+fn default_cache_builds_with_tcc() bool {
 	answer := os.join_path(suite_dir, 'usecache_with_tcc')
 	if !os.exists(answer) {
 		root := new_project('probe')
 		probe := os.join_path(root, 'probe.v')
 		os.write_file(probe, 'fn main() {}\n') or { panic(err) }
-		saved := pin_module_cache(cache_dir(['-usecache']))
-		cold := build(root, ['-usecache'], probe, 'probe')
+		saved := pin_module_cache(cache_dir([]string{}))
+		cold := build(root, []string{}, probe, 'probe')
 		for env in saved {
 			env.restore()
 		}
@@ -134,8 +134,8 @@ fn cache_modes() [][]string {
 	if _ := os.find_abs_path_of_executable('cc') {
 		modes << ['-cc', 'cc']
 	}
-	if usecache_builds_with_tcc() {
-		modes << ['-usecache']
+	if default_cache_builds_with_tcc() {
+		modes << []string{}
 	}
 	return modes
 }
@@ -200,7 +200,7 @@ fn test_a_build_without_the_functions_it_cannot_name_makes_the_same_program() {
 			os.unsetenv('V3_CACHE_ALL_DECLARATIONS')
 			assert left_out(all) == -1, all
 			assert run_built(root, 'all') == program_output
-			if flags == ['-usecache'] {
+			if flags == []string{} {
 				// TinyCC makes one executable of one program unit.
 				assert os.read_bytes(os.join_path(root, 'warm'))! == os.read_bytes(os.join_path(root,
 					'all'))!
@@ -317,10 +317,10 @@ fn test_tcc_compiles_the_headers_of_a_program_from_their_preprocessed_form() {
 	$if windows {
 		return
 	}
-	if !usecache_builds_with_tcc() {
+	if !default_cache_builds_with_tcc() {
 		return
 	}
-	flags := ['-usecache']
+	flags := []string{}
 	root := new_project('prelude')
 	saved := pin_module_cache(cache_dir(flags))
 	defer {
@@ -400,10 +400,10 @@ fn test_preprocessed_headers_are_the_c_that_the_preprocessor_made_of_them() {
 	$if windows {
 		return
 	}
-	if !usecache_builds_with_tcc() {
+	if !default_cache_builds_with_tcc() {
 		return
 	}
-	flags := ['-usecache']
+	flags := []string{}
 	root := new_project('prelude_macros')
 	saved := pin_module_cache(cache_dir(flags))
 	defer {
@@ -470,10 +470,10 @@ fn test_preprocessed_headers_keep_what_the_preprocessor_does_not_print() {
 	$if windows {
 		return
 	}
-	if !usecache_builds_with_tcc() {
+	if !default_cache_builds_with_tcc() {
 		return
 	}
-	flags := ['-usecache']
+	flags := []string{}
 	root := new_project('prelude_lossy')
 	saved := pin_module_cache(cache_dir(flags))
 	defer {
@@ -594,10 +594,10 @@ fn test_preprocessed_headers_follow_a_header_that_appears_earlier_in_the_search(
 	$if windows {
 		return
 	}
-	if !usecache_builds_with_tcc() {
+	if !default_cache_builds_with_tcc() {
 		return
 	}
-	flags := ['-usecache']
+	flags := []string{}
 	root := new_project('prelude_search')
 	saved := pin_module_cache(cache_dir(flags))
 	defer {

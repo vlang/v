@@ -121,6 +121,17 @@ fn main() {
 		return
 	}
 	command_index, command := find_command(args)
+	// Tool arguments belong to the tool, including a completion query for the removed flag.
+	compiler_args := if command in external_commands || command == 'help' {
+		args[..command_index]
+	} else {
+		args
+	}
+	// Reject the removed flag before compatibility fallback or tool dispatch can accept it.
+	if compiler_option_requested(compiler_args, '-usecache') {
+		eprintln('unknown option `-usecache`; caching is enabled by default, use `-nocache` to disable it')
+		exit(1)
+	}
 	if command in ['version', '-version', '--version'] {
 		println('V ${v_version} ${@VCURRENTHASH}')
 		return
