@@ -67,5 +67,10 @@ jpeg.encode(mut output, thumbnail, quality: 85)!
 output.close()
 ```
 
+Pure-V decoders for JPEG, PNG, BMP, WEBP, TIFF, and GIF also live in the
+`image.decoders` packages; see `decoders/README.md` and `decoders/CODEC.md`.
+They produce their own RGBA buffers and are not wired into this module's
+`register_format` hooks.
+
 Sub-images share their pixel storage with the parent image, including the Y, Cb, Cr,
 and alpha planes of `YCbCr` and `NYCbCrA`. Changes through either image are visible in both.
