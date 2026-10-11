@@ -731,6 +731,18 @@ fn test_program_executable_link_signature_tells_builds_apart() {
 	assert base != v3_program_executable_link_signature(['-lm'], false, ['strict=true'])
 }
 
+fn test_a_command_that_names_the_time_of_the_compilation_is_asked_about_it() {
+	named := v3_program_link_inputs(['-o', 'out', 'src.c', '-DBUILT=__TIME__'], '', []string{},
+		'/build')
+	assert named.unknown == '' && named.reason().contains('names a macro for the time')
+	part := v3_program_link_inputs(['-o', 'out', 'src.c', '-DHEAD=__TI', '-DTEXT="ME__"'],
+		'', []string{}, '/build')
+	assert part.reason() == '' && part.time_parts == ['__TI']
+	plain := v3_program_link_inputs(['-o', 'out', 'src.c', '-DTIMEOUT=3'], '', []string{},
+		'/build')
+	assert plain.reason() == '' && plain.time_parts == []
+}
+
 fn test_library_search_of_a_compiler_is_asked_again_in_another_environment() {
 	$if windows {
 		return

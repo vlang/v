@@ -566,10 +566,15 @@ the preprocessed headers described below takes theirs. A header that appears whe
 `#include` would find it first counts as a change: in a directory that is searched earlier, or,
 for a name in quotation marks, next to the file that includes it. A compiler driver is asked
 once for a module cache, a set of arguments and an environment where it searches (`-E -v`, with
-its messages in English). No executable is kept when a header is as new as the build that read
-it, when a header appeared in an earlier place while the compiler ran, when the C or a header
-spells `__DATE__`, `__TIME__` or `__TIMESTAMP__`, or when one command compiles more than one
-source with a compiler driver, which then tells the headers of the last one only. What the
+its messages in English). No executable is kept when a header is as new as the build that read it,
+when a header appeared in an earlier place while the compiler ran, when the C asks for the time of
+its compilation, or when one command compiles more than one source with a compiler driver, which
+then tells the headers of the last one only. A C may ask for the time when the unit, a header or
+the command spells `__DATE__`, `__TIME__` or `__TIMESTAMP__`, or when they hold, as words of their
+own, parts that `##` can paste to such a name, as in `JOIN(__TI, ME__)` or `-DHEAD=__TI`. Whether
+it does is then told by one more run of the preprocessor: a string with a date or a time of day in
+what comes out is what such a macro leaves. A C that only names the macro, in a comment or in a
+macro that it does not use, keeps its executable. What the
 headers of a compilation make its inputs is kept in the module cache too, so a build that read
 the same files, each the file that it was, does not read them once more to find that out. An
 object that the compiler itself keeps of the program, as the development builds on macOS below

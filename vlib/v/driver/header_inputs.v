@@ -28,23 +28,128 @@ mut:
 // that is not there would be read instead of, or in addition to, one of them.
 // `mentions_time` says that the unit or a header spells `__DATE__`, `__TIME__` or
 // `__TIMESTAMP__`, so that the compilation may give another result at another
-// time. `unknown` says why the inputs cannot all be told, or is '' when they can.
+// time, and `time_parts` holds the parts of those names that the unit or a header
+// has as words of their own: `##` can put a name together of them. `unknown` says
+// why the inputs cannot all be told, or is '' when they can.
 struct V3HeaderInputs {
 mut:
 	files         []string
 	identities    []string
 	missing       []string
 	mentions_time bool
+	time_parts    []string
 	// Whether a file is named by a path that is relative to the directory of the
 	// build and leaves it: what it names depends on where the output goes.
 	relative_paths bool
 	unknown        string
 }
 
+// v3_time_macro_names are the macros whose value is that of the moment of the
+// compilation, or of the last change of the file that is compiled.
+const v3_time_macro_names = ['__DATE__', '__TIME__', '__TIMESTAMP__']
+
 // v3_c_mentions_compile_time reports whether `text` spells a macro whose value is
 // that of the moment of the compilation.
 fn v3_c_mentions_compile_time(text string) bool {
 	return text.contains('__DATE__') || text.contains('__TIME__') || text.contains('__TIMESTAMP__')
+}
+
+// v3_c_time_name_parts returns the identifiers of the C `text` that are a part of
+// one of v3_time_macro_names and not the whole of it, such as `__TI` and `ME__`,
+// in the order of their bytes. The preprocessor makes one name of two with `##`,
+// so a text that spells none of the names can still ask for the time: with
+// `JOIN(__TI, ME__)`, or with a macro that the command defines as `__TI`. What is
+// in a comment, in a string or in a character literal is no identifier.
+fn v3_c_time_name_parts(text string) []string {
+	mut parts := []string{}
+	mut i := 0
+	for i < text.len {
+		c := text[i]
+		if c == `/` && i + 1 < text.len && text[i + 1] == `*` {
+			end := text.index_after_('*/', i + 2)
+			i = if end < 0 { text.len } else { end + 2 }
+			continue
+		}
+		if c == `/` && i + 1 < text.len && text[i + 1] == `/` {
+			end := text.index_after_('\n', i + 2)
+			i = if end < 0 { text.len } else { end }
+			continue
+		}
+		if c == `"` || c == `'` {
+			i++
+			for i < text.len && text[i] != c && text[i] != `\n` {
+				i += if text[i] == `\\` { 2 } else { 1 }
+			}
+			i++
+			continue
+		}
+		if c.is_digit() {
+			// A number takes letters, and a `'` between two of its digits.
+			for i < text.len && (text[i].is_alnum() || text[i] in [`_`, `.`]
+				|| (text[i] == `'` && i + 1 < text.len && text[i + 1].is_alnum())) {
+				i++
+			}
+			continue
+		}
+		if c != `_` && !c.is_letter() {
+			i++
+			continue
+		}
+		start := i
+		mut of_a_name := true
+		for i < text.len && (text[i] == `_` || text[i].is_alnum()) {
+			if of_a_name && text[i] !in [`_`, `A`, `D`, `E`, `I`, `M`, `P`, `S`, `T`] {
+				of_a_name = false
+			}
+			i++
+		}
+		if !of_a_name || i - start > 12 {
+			continue
+		}
+		word := text[start..i]
+		if word !in parts && v3_time_macro_names.any(it != word && it.contains(word)) {
+			parts << word
+		}
+	}
+	parts.sort()
+	return parts
+}
+
+// v3_time_names_can_be_built reports whether one of v3_time_macro_names is `parts`
+// written one after another: whether a C that has those identifiers can paste the
+// name together.
+fn v3_time_names_can_be_built(parts []string) bool {
+	for name in v3_time_macro_names {
+		// built[n] says that the first n bytes of the name are parts.
+		mut built := []bool{len: name.len + 1}
+		built[0] = true
+		for end in 1 .. name.len + 1 {
+			for part in parts {
+				if part.len <= end && built[end - part.len] && name[end - part.len..end] == part {
+					built[end] = true
+					break
+				}
+			}
+		}
+		if built[name.len] {
+			return true
+		}
+	}
+	return false
+}
+
+// add_time_of takes what `text`, the C of a unit or the words of a command, says
+// of the time of the compilation into `inputs`.
+fn (mut inputs V3HeaderInputs) add_time_of(text string) {
+	if v3_c_mentions_compile_time(text) {
+		inputs.mentions_time = true
+	}
+	for part in v3_c_time_name_parts(text) {
+		if part !in inputs.time_parts {
+			inputs.time_parts << part
+		}
+	}
+	inputs.time_parts.sort()
 }
 
 // v3_quoted_include_names returns the names that `source` includes in quotation
@@ -182,9 +287,16 @@ fn v3_include_path_below(name string, framework bool) ?string {
 // known then. One that was there all along is one that the compiler passed over,
 // as `#include_next` does.
 fn v3_header_inputs(read []string, unit string, search V3IncludeSearch, before i64) V3HeaderInputs {
-	mut inputs := V3HeaderInputs{
-		mentions_time: v3_c_mentions_compile_time(unit)
-	}
+	mut inputs := v3_inputs_of_headers(read, v3_has_include_names(unit), search, before)
+	inputs.add_time_of(unit)
+	return inputs
+}
+
+// v3_inputs_of_headers is v3_header_inputs for the files alone: `unit_asks` are the
+// names that the unit asks `__has_include` about, and what the unit says of the
+// time is left out.
+fn v3_inputs_of_headers(read []string, unit_asks []string, search V3IncludeSearch, before i64) V3HeaderInputs {
+	mut inputs := V3HeaderInputs{}
 	// The compiler and its own answer can spell one directory in two ways, and a
 	// directory below one of the search can be a link to another place: a file is
 	// matched as the compiler names it, and as the file system does.
@@ -196,12 +308,10 @@ fn v3_header_inputs(read []string, unit string, search V3IncludeSearch, before i
 		files[path] = true
 	}
 	mut missing := map[string]bool{}
-	mut asked := v3_has_include_names(unit)
+	mut asked := unit_asks.clone()
 	for path in read {
 		text := os.read_file(path) or { '' }
-		if !inputs.mentions_time && v3_c_mentions_compile_time(text) {
-			inputs.mentions_time = true
-		}
+		inputs.add_time_of(text)
 		own_dir := os.dir(path)
 		mut beside := []string{}
 		if text.contains('__has_include') {
@@ -314,6 +424,9 @@ fn v3_header_inputs_text(inputs &V3HeaderInputs) string {
 	if inputs.mentions_time {
 		out.writeln('mentions_time=1')
 	}
+	for part in inputs.time_parts {
+		out.writeln('time_part=${part}')
+	}
 	if inputs.relative_paths {
 		out.writeln('relative_paths=1')
 	}
@@ -331,6 +444,8 @@ fn v3_header_inputs_text(inputs &V3HeaderInputs) string {
 fn (mut inputs V3HeaderInputs) read_line(line string) bool {
 	if line == 'mentions_time=1' {
 		inputs.mentions_time = true
+	} else if line.starts_with('time_part=') {
+		inputs.time_parts << line['time_part='.len..]
 	} else if line == 'relative_paths=1' {
 		inputs.relative_paths = true
 	} else if line.starts_with('file=') {
@@ -357,30 +472,29 @@ fn v3_kept_header_inputs(manager &modulecache.Manager, read []string, unit strin
 	mut sorted := read.clone()
 	sorted.sort()
 	asked := v3_has_include_names(unit)
-	unit_mentions_time := v3_c_mentions_compile_time(unit)
-	key := c_hash_bytes(u64(1469598103934665603), ['v3-header-inputs-1', sorted.join('\n'),
+	key := c_hash_bytes(u64(1469598103934665603), ['v3-header-inputs-2', sorted.join('\n'),
 		search.dirs.join('\n'), search.frameworks.join('\n'), search.absent.join('\n'),
 		asked.join('\n')].join('\x00').bytes()).hex()
 	record := os.join_path_single(manager.dir, 'header_inputs_${key}_${sorted.len}')
 	if kept := os.read_file(record) {
-		if inputs := v3_header_inputs_of_record(kept, sorted, before) {
-			return V3HeaderInputs{
-				...inputs
-				mentions_time: inputs.mentions_time || unit_mentions_time
-			}
-		}
-	}
-	inputs := v3_header_inputs(sorted, unit, search, before)
-	// What a unit says of the time is no fact of its headers: the record is of a
-	// unit that says nothing of it.
-	if inputs.unknown.len == 0 && !unit_mentions_time && manager.ensure_dir() {
-		tmp := '${record}.tmp.${tempname.unique_token()}'
-		os.write_file(tmp, v3_header_inputs_text(&inputs) + 'complete=1\n') or {
-			os.rm(tmp) or {}
+		if of_record := v3_header_inputs_of_record(kept, sorted, before) {
+			mut inputs := of_record
+			inputs.add_time_of(unit)
 			return inputs
 		}
-		os.mv(tmp, record) or { os.rm(tmp) or {} }
 	}
+	mut inputs := v3_inputs_of_headers(sorted, asked, search, before)
+	// What a unit says of the time is no fact of its headers: the record is of
+	// the headers alone.
+	if inputs.unknown.len == 0 && manager.ensure_dir() {
+		tmp := '${record}.tmp.${tempname.unique_token()}'
+		if _ := os.write_file(tmp, v3_header_inputs_text(&inputs) + 'complete=1\n') {
+			os.mv(tmp, record) or { os.rm(tmp) or {} }
+		} else {
+			os.rm(tmp) or {}
+		}
+	}
+	inputs.add_time_of(unit)
 	return inputs
 }
 

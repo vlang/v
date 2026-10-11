@@ -1,6 +1,7 @@
 module driver
 
 import os
+import v.cmdexec
 import v.modulecache
 
 // The executable of a program is kept for the next build of the same inputs (see
@@ -251,9 +252,19 @@ fn (mut inputs V3ProgramLinkInputs) add_header_inputs(headers &V3HeaderInputs) {
 		inputs.unknown = headers.unknown
 		return
 	}
-	if headers.mentions_time {
-		inputs.unknown = 'the C of the program asks for the time of its compilation'
-		return
+	// Whether a C that names a macro for the time of its compilation asks for
+	// it is told by what the preprocessor makes of it: see settle_time. A part of
+	// such a name can come from the command, from a header and from the unit.
+	if headers.mentions_time && inputs.time_question.len == 0 {
+		inputs.time_question = 'the C of the program names a macro for the time of its compilation'
+	}
+	for part in headers.time_parts {
+		if part !in inputs.time_parts {
+			inputs.time_parts << part
+		}
+	}
+	if inputs.time_question.len == 0 && v3_time_names_can_be_built(inputs.time_parts) {
+		inputs.time_question = 'the C of the program can put the name of a macro for the time of its compilation together of ${inputs.time_parts.join(', ')}'
 	}
 	if headers.relative_paths {
 		inputs.relative_paths = true
@@ -269,6 +280,48 @@ fn (mut inputs V3ProgramLinkInputs) add_header_inputs(headers &V3HeaderInputs) {
 			inputs.missing << path
 		}
 	}
+}
+
+// v3_program_time_file is where the unit of a program is preprocessed to, in the
+// directory of the build, to tell whether it asks for the time.
+const v3_program_time_file = 'v3_program_unit.time.i'
+
+// v3_time_question_args returns the command `args`, which compiles and links the
+// unit of a program, as one that preprocesses the unit to v3_program_time_file.
+fn v3_time_question_args(args []string) []string {
+	mut question := []string{cap: args.len + 3}
+	mut i := 0
+	for i < args.len {
+		arg := args[i].trim_space()
+		if arg in ['-o', '-MF', '-MT', '-MQ'] {
+			i += 2
+		} else if arg in ['-MD', '-MMD'] {
+			i++
+		} else {
+			question << args[i]
+			i++
+		}
+	}
+	question << ['-E', '-o', v3_program_time_file]
+	return question
+}
+
+// v3_preprocessed_c_asks_for_time reports whether the C that the command `args`
+// of `compiler` preprocesses to v3_program_time_file, in `cc_dir`, holds what a
+// macro for the time of the compilation expands to: a string with a date or a
+// time of day in it. A string that the C spells out so looks the same, and a
+// command that fails tells nothing: the C is taken to ask for the time then.
+fn v3_preprocessed_c_asks_for_time(compiler string, args []string, cc_dir string) bool {
+	output := os.join_path_single(cc_dir, v3_program_time_file)
+	os.rm(output) or {}
+	defer {
+		os.rm(output) or {}
+	}
+	if cmdexec.run_in(compiler, args, cc_dir).exit_code != 0 {
+		return true
+	}
+	preprocessed := os.read_file(output) or { return true }
+	return v3_c_has_time_literal(preprocessed)
 }
 
 // add_compiled_headers adds the headers that a C compiler read when it ran a

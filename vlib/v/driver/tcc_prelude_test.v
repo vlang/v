@@ -281,3 +281,10 @@ fn test_include_directories_of_the_environment_come_after_those_of_the_command()
 	assert search.frameworks == []
 	assert search.absent == []
 }
+
+fn test_a_date_or_a_time_of_day_in_a_string_is_what_a_time_macro_leaves() {
+	assert v3_c_has_time_literal('const char *s = "\\"Oct 11 2026\\"";')
+	assert v3_c_has_time_literal('const char *s = "built Jan  1 2026";')
+	assert v3_c_has_time_literal('const char *s = "Sun Oct 11 08:11:38 2026";')
+	assert !v3_c_has_time_literal('const char *s = "October 11, 2026 at 8:11"; int t = 12:34:56;')
+}

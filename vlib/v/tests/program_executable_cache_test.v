@@ -855,5 +855,27 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 			assert timed.contains('V3 program executable not cached: the C of the program asks for the time of its compilation'), timed
 			assert !restored(build(root, flags, main_file, 'timed_again'))
 		}
+
+		// The name of such a macro can be pasted together where no text spells it:
+		// what the preprocessor makes of the C tells that it asks for the time.
+		os.write_file(os.join_path(later, name), '#define HEADER_JOIN_(a, b) a##b\n#define HEADER_JOIN(a, b) HEADER_JOIN_(a, b)\nstatic inline const char *header_answer(void) { return HEADER_JOIN(__TI, ME__); }\n')!
+		time.sleep(2200 * time.millisecond)
+		pasted := build(root, flags, main_file, 'pasted')
+		if compiles_each_time {
+			assert run_built(root, 'pasted').len == '00:00:00'.len
+			assert pasted.contains('V3 program executable not cached: the C of the program asks for the time of its compilation'), pasted
+			assert !restored(build(root, flags, main_file, 'pasted_again'))
+		}
+
+		// A header that names the macro and does not use it leaves a program that
+		// is the same at any time: its executable is kept.
+		os.write_file(os.join_path(later, name), '#define HEADER_BUILT __DATE__ " " __TIME__\nstatic inline const char *header_answer(void) { return "always"; }\n')!
+		time.sleep(2200 * time.millisecond)
+		named := build(root, flags, main_file, 'named')
+		if compiles_each_time {
+			assert run_built(root, 'named') == 'always'
+			assert !named.contains('V3 program executable not cached'), named
+			assert restored(build(root, flags, main_file, 'named_again'))
+		}
 	}
 }

@@ -15011,6 +15011,13 @@ pub fn run(args []string) {
 						program_link_inputs.add_compiled_headers(&cache_state.manager, cc_dir,
 							unit, search, before_tcc)
 					}
+					if program_link_inputs.time_question.len > 0
+						&& program_link_inputs.unknown.len == 0 {
+						mut time_args := v3_tcc_preprocess_args(tcc_args, tcc_source)
+						time_args << ['-E', '-o', v3_program_time_file, tcc_source]
+						program_link_inputs.settle_time(v3_preprocessed_c_asks_for_time(tcc_path,
+							time_args, cc_dir))
+					}
 				}
 				linked
 			}
@@ -15168,6 +15175,11 @@ pub fn run(args []string) {
 							os.read_file(cc_src) or { '' }, search, before_cc)
 					} else {
 						program_link_inputs.unknown = 'the compiler did not tell where it looks for headers'
+					}
+					if program_link_inputs.time_question.len > 0
+						&& program_link_inputs.unknown.len == 0 {
+						program_link_inputs.settle_time(v3_preprocessed_c_asks_for_time(c_compiler,
+							v3_time_question_args(cc_args), cc_dir))
 					}
 				}
 			}

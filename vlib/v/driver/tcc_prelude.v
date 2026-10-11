@@ -21,7 +21,7 @@ import v.tempname
 // it must come out as it went in. A prelude that does not, or whose headers ask
 // for the moment or the place of a compilation, is compiled as it is.
 
-const v3_tcc_prelude_format = 'v3-tcc-prelude-3'
+const v3_tcc_prelude_format = 'v3-tcc-prelude-4'
 
 // v3_tcc_prelude_input_name is the name under which the preprocessor reads a
 // prelude: where it shows in what comes out, a header asked for the name of the
@@ -450,9 +450,9 @@ fn v3_tcc_split_preprocessed(preprocessed string) V3TccPreprocessed {
 	return result
 }
 
-// v3_c_has_time_literal reports whether `code` has a string literal that looks
-// like what `__DATE__`, `__TIME__` or `__TIMESTAMP__` expand to: `"Jan  1 2026"`,
-// or one with `12:34:56` in it.
+// v3_c_has_time_literal reports whether `code` has a string literal with what
+// `__DATE__`, `__TIME__` or `__TIMESTAMP__` expand to in it: a date such as
+// `Jan  1 2026`, or a time of day such as `12:34:56`.
 fn v3_c_has_time_literal(code string) bool {
 	mut i := 0
 	for i < code.len {
@@ -479,15 +479,18 @@ fn v3_c_has_time_literal(code string) bool {
 		}
 		literal := code[start..i]
 		i++
-		if literal.len == 11 && literal[0].is_capital() && literal[1].is_letter()
-			&& literal[2].is_letter() && literal[3] == ` ` && literal[6] == ` `
-			&& literal[5].is_digit() && literal[7..].bytes().all(it.is_digit()) {
-			return true
-		}
 		for j := 0; j + 8 <= literal.len; j++ {
 			if literal[j].is_digit() && literal[j + 1].is_digit() && literal[j + 2] == `:`
 				&& literal[j + 3].is_digit() && literal[j + 4].is_digit() && literal[j + 5] == `:`
 				&& literal[j + 6].is_digit() && literal[j + 7].is_digit() {
+				return true
+			}
+		}
+		for j := 0; j + 11 <= literal.len; j++ {
+			if literal[j].is_capital() && literal[j + 1].is_letter() && literal[j + 2].is_letter()
+				&& literal[j + 3] == ` ` && (literal[j + 4] == ` ` || literal[j + 4].is_digit())
+				&& literal[j + 5].is_digit() && literal[j + 6] == ` ` && literal[j + 7].is_digit()
+				&& literal[j + 8].is_digit() && literal[j + 9].is_digit() && literal[j + 10].is_digit() {
 				return true
 			}
 		}

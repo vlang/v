@@ -280,7 +280,7 @@ fn test_headers_that_a_compiler_read_are_inputs_of_its_executable() {
 	}
 	timed.add_compiled_headers(&manager, build_dir, unit + 'const char *t = __TIME__;\n',
 		search, later)
-	assert timed.unknown.contains('time of its compilation')
+	assert timed.unknown == '' && timed.reason().contains('names a macro for the time of its compilation')
 	// A header that was written when the compiler had started may not be the one
 	// that it read, whatever is kept of it.
 	mut early := V3ProgramLinkInputs{
@@ -321,7 +321,34 @@ fn test_an_executable_is_not_kept_of_a_compilation_that_cannot_be_repeated() {
 		identities:    ['identity']
 		mentions_time: true
 	})
-	assert timed.unknown.contains('time of its compilation') && timed.files == []
+	// Whether a C that names such a macro asks for the time is a question until
+	// the preprocessor has answered it, and no executable is kept of a question.
+	assert timed.unknown == '' && timed.reason().contains('names a macro for the time')
+	timed.settle_time(true)
+	assert timed.reason() == 'the C of the program asks for the time of its compilation'
+	mut named_only := V3ProgramLinkInputs{
+		taken: true
+	}
+	named_only.add_header_inputs(&V3HeaderInputs{
+		mentions_time: true
+	})
+	named_only.settle_time(false)
+	assert named_only.reason() == ''
+	// The parts of a name can come from the command and from a header.
+	mut pasted := V3ProgramLinkInputs{
+		taken:      true
+		time_parts: ['__TI']
+	}
+	pasted.add_header_inputs(&V3HeaderInputs{
+		time_parts: ['E', 'T']
+	})
+	assert pasted.reason() == ''
+	pasted.add_header_inputs(&V3HeaderInputs{
+		time_parts: ['ME__']
+	})
+	assert pasted.reason().contains('can put the name of a macro for the time')
+	pasted.settle_time(false)
+	assert pasted.reason() == ''
 	mut unknown := V3ProgramLinkInputs{
 		taken: true
 	}
@@ -343,4 +370,42 @@ fn test_an_executable_is_not_kept_of_a_compilation_that_cannot_be_repeated() {
 	assert known.files == ['/lib/libm.a', '/usr/include/stdio.h']
 	assert known.identities == ['m', 'identity of stdio']
 	assert known.missing == ['/first/stdio.h']
+}
+
+fn test_parts_of_the_name_of_a_time_macro_are_the_words_that_can_be_pasted_to_it() {
+	assert v3_c_time_name_parts('const char *t = JOIN(__TI, ME__);') == ['ME__', '__TI']
+	// A comment, a literal and a number hold no identifier, and a longer word
+	// is no part of a name.
+	assert v3_c_time_name_parts('/* __TI ME__ */ // __DA\nconst char *t = "__TI"; char c = \'_\'; int __TIMER, x__TI, n = 0x__TI, m = 1\'000;') == []
+	assert v3_c_time_name_parts('int _ = 1, T, I, M, E;') == ['E', 'I', 'M', 'T', '_']
+	// A line that a backslash continues is two words here, and one name there.
+	assert v3_c_time_name_parts('__TI\\\nME__') == ['ME__', '__TI']
+	assert v3_c_time_name_parts('__TIME__ __DATE__') == []
+	assert v3_time_names_can_be_built(['ME__', '__TI'])
+	assert v3_time_names_can_be_built(['E', 'I', 'M', 'T', '_'])
+	assert v3_time_names_can_be_built(['DATE', '__'])
+	assert v3_time_names_can_be_built(['STAMP__', '__TIME'])
+	// What the headers of a C library hold as words of their own makes no name.
+	assert !v3_time_names_can_be_built(['A', 'T', '__', '__T'])
+	assert !v3_time_names_can_be_built(['E', 'P', 'S', 'T', '_D', '_T'])
+	assert !v3_time_names_can_be_built(['__TI'])
+	assert !v3_time_names_can_be_built([]string{})
+	mut inputs := V3HeaderInputs{}
+	inputs.add_time_of('#define HEAD __TI\n')
+	inputs.add_time_of('const char *t = JOIN(HEAD, ME__);\n')
+	assert inputs.time_parts == ['ME__', '__TI'] && !inputs.mentions_time
+	inputs.add_time_of('const char *d = __DATE__;\n')
+	assert inputs.mentions_time
+	// The parts are written down with the headers, and read back.
+	mut read_back := V3HeaderInputs{}
+	for line in v3_header_inputs_text(&inputs).split_into_lines() {
+		assert read_back.read_line(line)
+	}
+	assert read_back.time_parts == inputs.time_parts && read_back.mentions_time
+}
+
+fn test_a_command_that_compiles_is_turned_into_one_that_preprocesses() {
+	assert v3_time_question_args(['-O2', '-o', 'out', 'src.c', '-MD', '-MF', 'v3_program_unit.d',
+		'/cache/module.o', '-lm']) == ['-O2', 'src.c', '/cache/module.o', '-lm', '-E', '-o',
+		v3_program_time_file]
 }

@@ -29,6 +29,12 @@ mut:
 	// Whether an input is named by a path that is relative to the directory of the
 	// build and leaves it: what it names depends on where the output goes.
 	relative_paths bool
+	// The parts of the name of a macro for the time of the compilation that the
+	// command, a header or the unit has: see v3_c_time_name_parts.
+	time_parts []string
+	// Why the C of the program may ask for the time of its compilation, for as
+	// long as nothing has told whether it does, or ''.
+	time_question string
 }
 
 // reason returns why no executable can be kept of a link with these inputs, or ''.
@@ -36,7 +42,20 @@ fn (inputs &V3ProgramLinkInputs) reason() string {
 	if inputs.unknown.len > 0 {
 		return inputs.unknown
 	}
+	if inputs.time_question.len > 0 {
+		return inputs.time_question
+	}
 	return inputs.unknown_option
+}
+
+// settle_time takes the answer to `time_question`: whether the C of the program
+// asks for the time of its compilation. An executable of a C that does is good
+// for the moment in which it was compiled.
+fn (mut inputs V3ProgramLinkInputs) settle_time(asks bool) {
+	if asks && inputs.unknown.len == 0 {
+		inputs.unknown = 'the C of the program asks for the time of its compilation'
+	}
+	inputs.time_question = ''
 }
 
 // V3LinkCommand is the part of a link command that names files and libraries.
@@ -827,6 +846,15 @@ fn v3_program_link_inputs(args []string, linker_dir string, default_library_dirs
 	}
 	inputs.files.sort()
 	inputs.missing.sort()
+	// A command can define a macro as the time of the compilation, or as a part
+	// of the name of such a macro: `-DBUILT=__TIME__`.
+	mut words := args.clone()
+	words << os.getenv('CCC_OVERRIDE_OPTIONS')
+	definitions := words.join('\n')
+	if v3_c_mentions_compile_time(definitions) {
+		inputs.time_question = 'the command names a macro for the time of the compilation'
+	}
+	inputs.time_parts = v3_c_time_name_parts(definitions)
 	for path in inputs.files {
 		identity := modulecache.file_metadata_signature(path)
 		if identity.len == 0 && inputs.unknown.len == 0 {
