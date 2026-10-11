@@ -169,8 +169,10 @@ out-of-range values are rejected before the server binds a socket.
   for the server. `registry_token` in `common.v` builds the scoped name from the
   host, replacing `.` and `-` with `_` and uppercasing it, so
   `https://vpm.example.com/a` reads `VPM_TOKEN_VPM_EXAMPLE_COM`, and falls back
-  to `VPM_TOKEN` when that is unset. The registry server reads neither: it
-  authenticates nothing.
+  to `VPM_TOKEN` when that is unset and the request matches the configured
+  `VPM_REGISTRY` origin (scheme, host, and port). Tokens are attached only to
+  registry protocol requests; public package metadata requests receive none. The registry server
+  reads neither variable and does not authenticate requests.
 
 ## Publishing
 
@@ -249,6 +251,7 @@ Two details:
 - Archive transports verify the exact bytes sent against indexed metadata, even if the file
   changes after routing. Unknown metadata and missing or mismatched checksums refuse the archive.
 - Request paths retain their percent-encoded spelling; routing removes trailing slashes.
+  Query parameter names and values are URL-decoded.
 
 ## SPDX output
 
@@ -257,6 +260,8 @@ The SBOM uses the [SPDX 2.3 JSON field names][spdx-schema], including `SPDXID`, 
 Metadata-only packages have `filesAnalyzed: false`; an unspecified license is `NOASSERTION`.
 Checksums of successfully published archives appear in the document regardless of the submitted
 checksum spelling.
+Package download locations use `<dl>/<module>/@v/<version>.zip`, matching the archive route.
+Trailing slashes on `dl` are removed before appending the route.
 
 [spdx-schema]: https://raw.githubusercontent.com/spdx/spdx-spec/v2.3.1/schemas/spdx-schema.json
 
@@ -284,8 +289,6 @@ checksum spelling.
   notice when the tool is built.
 - `search` compares the query against the module name only, although its doc
   comment says name or description.
-- The SPDX `downloadLocation` is `<dl>/<name>/<version>.zip`, which is not the
-  shape of the archive route `/<module>/@v/<version>.zip`.
 - The registry server enforces no authentication whatsoever.
 - Nothing consumes the change feed. `changes_since` exists for a mirror to call,
   and no mirror is implemented.

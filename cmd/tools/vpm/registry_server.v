@@ -5,6 +5,7 @@ module main
 // protocol exists only as in-process functions and no registry can be stood up.
 
 import net.http
+import net.urllib
 import strconv
 
 const default_registry_port = 9090
@@ -24,7 +25,9 @@ fn (mut h RegistryHandler) handle(req http.Request) http.Response {
 	if req.url.contains('?') {
 		for pair in req.url.all_after('?').split('&') {
 			key, value := pair.split_once('=') or { continue }
-			query[key] = value
+			decoded_key := urllib.query_unescape(key) or { continue }
+			decoded_value := urllib.query_unescape(value) or { continue }
+			query[decoded_key] = decoded_value
 		}
 	}
 	// The routing only reads `If-None-Match`, so only that one is passed on.

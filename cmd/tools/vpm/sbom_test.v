@@ -125,8 +125,10 @@ fn test_a_normal_version_carries_both_external_refs() {
 
 fn test_the_download_location_points_at_the_artifact() {
 	r := new_sbom_demo_registry()
-	doc := r.spdx_document(sbom_namespace, sbom_download_base)
-	assert doc.packages[0].download_location == '${sbom_download_base}/serde/1.0.0.zip'
+	for base in [sbom_download_base, sbom_download_base + '/', sbom_download_base + '///'] {
+		doc := r.spdx_document(sbom_namespace, base)
+		assert doc.packages[0].download_location == '${sbom_download_base}/serde/@v/1.0.0.zip'
+	}
 }
 
 fn test_the_json_round_trips_through_a_decoder() {

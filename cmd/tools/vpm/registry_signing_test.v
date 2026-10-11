@@ -94,5 +94,3 @@ fn test_malformed_hex_is_rejected_rather_than_trusted() {
 	// verification must fail rather than panic.
 	assert !r.verify_signature('0'.repeat(ed25519.public_key_size * 2), '0'.repeat(ed25519.signature_size * 2)), 'an all-zero key and signature were accepted'
 }
-
-}

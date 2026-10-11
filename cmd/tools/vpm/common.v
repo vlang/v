@@ -79,15 +79,15 @@ fn preferred_server_urls(preferred_url string, fallback_urls []string) []string 
 }
 
 fn vpm_http_get(url string) !http.Response {
-	return vpm_http_request(.get, url, '')
+	return vpm_http_request(.get, url, '', false)
 }
 
 fn vpm_http_head(url string) !http.Response {
-	return vpm_http_request(.head, url, '')
+	return vpm_http_request(.head, url, '', false)
 }
 
 fn vpm_http_post(url string, data string) !http.Response {
-	return vpm_http_request(.post, url, data)
+	return vpm_http_request(.post, url, data, false)
 }
 
 // A token is read from the registry-scoped `VPM_TOKEN_<HOST>` first, so that a
@@ -95,9 +95,14 @@ fn vpm_http_post(url string, data string) !http.Response {
 // another, and from the unqualified `VPM_TOKEN` when only one is configured.
 const vpm_token_env_prefix = 'VPM_TOKEN_'
 
-fn vpm_http_request(method http.Method, url string, data string) !http.Response {
+// registry_http_get is the authenticated transport for registry protocol requests.
+fn registry_http_get(url string) !http.Response {
+	return vpm_http_request(.get, url, '', true)
+}
+
+fn vpm_http_request(method http.Method, url string, data string, authenticate bool) !http.Response {
 	mut header := http.Header{}
-	token := registry_token(url)
+	token := if authenticate { registry_token(url) } else { '' }
 	if token != '' {
 		header.add_custom('Authorization', 'Bearer ${token}') or {}
 	}
@@ -113,7 +118,9 @@ fn vpm_http_request(method http.Method, url string, data string) !http.Response 
 		disable_connection_reuse: true
 		on_redirect:              vpm_registry_redirect
 	)!
-	require_registry_token(url, resp.status_code)!
+	if authenticate {
+		require_registry_token(url, resp.status_code)!
+	}
 	return resp
 }
 
@@ -145,17 +152,24 @@ fn vpm_registry_redirect(request &http.Request, _ int, next_url string) ! {
 // registry_token returns the bearer token configured for the registry that
 // serves `url`, or '' when it needs none. The host part of the url gives the
 // name of the scoped variable, so `https://vpm.example.com/a` reads
-// `VPM_TOKEN_VPM_EXAMPLE_COM`.
+// `VPM_TOKEN_VPM_EXAMPLE_COM`. The unqualified token is only used for the
+// configured VPM_REGISTRY origin, including its scheme and port.
 fn registry_token(url string) string {
 	parsed := urllib.parse(url) or { return '' }
 	host := parsed.hostname()
-	if host == '' {
-		return os.getenv_opt('VPM_TOKEN') or { '' }
+	if host == '' || parsed.scheme.to_lower() !in ['http', 'https'] {
+		return ''
 	}
 	// An environment name may not hold `.` or `-`, so both become `_`.
 	scoped_name := '${vpm_token_env_prefix}${host.replace('.', '_').replace('-', '_').to_upper()}'
 	if scoped := os.getenv_opt(scoped_name) {
 		return scoped
+	}
+	configured := urllib.parse(registry_url()) or { return '' }
+	if parsed.scheme.to_lower() != configured.scheme.to_lower()
+		|| parsed.hostname().to_lower() != configured.hostname().to_lower()
+		|| registry_http_port(parsed) != registry_http_port(configured) {
+		return ''
 	}
 	return os.getenv_opt('VPM_TOKEN') or { '' }
 }

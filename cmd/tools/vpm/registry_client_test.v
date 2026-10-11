@@ -143,7 +143,7 @@ fn test_an_empty_version_list_is_not_an_error() {
 // credential, so nothing has yet observed the one hop that matters for a private
 // registry: the header `vpm_http_request` builds from `registry_token` leaving
 // the process. These tests bind a real port, send a real request through
-// `vpm_http_get` and read back the header the server received, so the assertion
+// `registry_http_get` and read back the header the server received, so the assertion
 // is about bytes on a socket rather than about which variable was parsed.
 //
 // The handler answers with the `Authorization` header it was sent instead of
@@ -195,6 +195,7 @@ const wire_other_host_token_var = 'VPM_TOKEN_VPM_EXAMPLE_COM'
 // environment the suite started with cannot decide a case and one case cannot
 // leak its token into the next.
 fn clear_wire_tokens() {
+	os.unsetenv('VPM_REGISTRY')
 	os.unsetenv(wire_scoped_token_var)
 	os.unsetenv(wire_fallback_token_var)
 	os.unsetenv(wire_other_host_token_var)
@@ -203,7 +204,7 @@ fn clear_wire_tokens() {
 // authorization_on_the_wire asks the echo server for a protocol route and
 // returns the `Authorization` header it received, or '' when it received none.
 fn authorization_on_the_wire(base string) !string {
-	resp := vpm_http_get('${base}/alpha/@v/list')!
+	resp := registry_http_get('${base}/alpha/@v/list')!
 	return resp.body.trim_space()
 }
 
@@ -236,6 +237,7 @@ fn test_the_fallback_token_reaches_the_server() {
 		return
 	}
 	os.setenv(wire_fallback_token_var, 'tok-fallback', true)
+	os.setenv('VPM_REGISTRY', running.base, true)
 	defer {
 		running.server.close()
 		clear_wire_tokens()
@@ -284,4 +286,31 @@ fn test_a_token_scoped_to_another_host_is_not_sent() {
 		return
 	}
 	assert seen == '', 'the server received `${seen}`, a token scoped to another host'
+}
+
+fn test_public_metadata_requests_do_not_send_registry_tokens() {
+	clear_wire_tokens()
+	mut running := start_token_echo()!
+	os.setenv(wire_fallback_token_var, 'private-secret', true)
+	os.setenv(wire_scoped_token_var, 'scoped-secret', true)
+	os.setenv('VPM_REGISTRY', running.base, true)
+	defer {
+		running.server.close()
+		clear_wire_tokens()
+	}
+	// Even metadata served on the registry's own host must not inherit its token.
+	response := vpm_http_get('${running.base}/api/packages/alpha')!
+	assert response.body == ''
+}
+
+fn test_unqualified_token_is_not_sent_to_another_registry_port() {
+	clear_wire_tokens()
+	mut running := start_token_echo()!
+	os.setenv(wire_fallback_token_var, 'private-secret', true)
+	os.setenv('VPM_REGISTRY', 'http://127.0.0.1:1', true)
+	defer {
+		running.server.close()
+		clear_wire_tokens()
+	}
+	assert authorization_on_the_wire(running.base)! == ''
 }
