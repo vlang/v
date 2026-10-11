@@ -103,6 +103,105 @@ fn test_inventory_preserves_compiler_modes_and_flags_and_excludes_project_module
 	assert !requests.any(it.module == 'local')
 }
 
+fn test_inventory_skips_unreadable_truncated_and_future_records() ! {
+	root := os.join_path(os.vtmp_dir(), 'vup_invalid_records_${os.getpid()}')
+	vroot := os.join_path(root, 'checkout')
+	source := os.join_path(vroot, 'vlib', 'sample', 'sample.v')
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	defer {
+		if value := previous { os.setenv('V3CACHE', value, true) } else { os.unsetenv('V3CACHE') }
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.dir(source))!
+	os.write_file(source, 'module sample\n')!
+	dir := os.join_path(root_dir(vroot, @VEXE), 'config')
+	os.mkdir_all(dir)!
+	record(dir, vroot, ['-cc', 'cc'], false, {
+		'sample': [source]
+	}, [], '', false)!
+	// A directory reliably makes read_file fail on every supported platform.
+	os.mkdir(os.join_path(dir, '${record_prefix}unreadable'))!
+	os.write_file(os.join_path(dir, '${record_prefix}truncated'), '${record_format}\nsample\nprogram\n100\nshort')!
+	os.write_file(os.join_path(dir, '${record_prefix}future'), 'vup-cache-refresh-99\nsample\nprogram\n')!
+	assert collect(vroot, @VEXE)! == [Request{
+		args:    ['-cc', 'cc']
+		module:  'sample'
+		imports: ['sample']
+	}]
+}
+
+fn test_live_inventory_retires_changed_sources_and_preserves_current_variants() ! {
+	root := os.join_path(os.vtmp_dir(), 'vup_entry_identity_${os.getpid()}')
+	vroot := os.join_path(root, 'checkout')
+	source := os.join_path(vroot, 'vlib', 'sample', 'sample.v')
+	entry := os.join_path(root, 'project', 'main.v')
+	local := os.join_path(root, 'old modules', 'local', 'local.v')
+	new_local := os.join_path(root, 'new modules', 'new_local', 'local.v')
+	listed := os.join_path(root, 'listed')
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	defer {
+		if value := previous { os.setenv('V3CACHE', value, true) } else { os.unsetenv('V3CACHE') }
+		os.rmdir_all(root) or {}
+	}
+	for path in [source, entry, local] { os.mkdir_all(os.dir(path))! }
+	os.mkdir_all(listed)!
+	os.write_file(source, 'module sample\n')!
+	os.write_file(entry, 'module main\nimport local\nfn main() { local.run() }\n')!
+	os.write_file(local, 'module local\npub fn run() {}\n')!
+	modules := {
+		'sample': [source]
+		'local':  [local]
+	}
+	old_dir := os.join_path(root_dir(vroot, @VEXE), 'old-config')
+	os.mkdir_all(old_dir)!
+	record(old_dir, vroot, ['-path', os.dir(os.dir(local)), '-file-list', listed], false,
+		modules, [], entry, false)!
+	// The stale inventory still owns this header and must not generate a legacy matrix.
+	os.write_file(os.join_path(old_dir, 'sample_${hash_text(os.real_path(os.dir(source)))}.vh'), '')!
+	old := collect(vroot, @VEXE)!
+	assert old.len == 1 && old[0].entry_sources.len == 3, old.str()
+	os.write_file(entry, 'module main\nimport new_local\nfn main() { new_local.run() }\n')!
+	assert collect(vroot, @VEXE)!.len == 0
+	// Saved snapshots must be checked again before their child is started.
+	refresh(os.join_path(vroot, 'missing-v'), old)!
+	os.mkdir_all(os.dir(new_local))!
+	os.write_file(new_local, 'module new_local\npub fn run() {}\n')!
+	current_modules := {
+		'sample':    [source]
+		'new_local': [new_local]
+	}
+	for compiler in ['cc', 'clang', 'tcc'] {
+		for prod in [false, true] {
+			mut args := ['-cc', compiler, '-path', os.join_path(root, 'new modules'), '-file-list',
+				listed]
+			if prod { args << '-prod' }
+			dir := os.join_path(root_dir(vroot, @VEXE), '${compiler}_${prod}')
+			os.mkdir_all(dir)!
+			record(dir, vroot, args, false, current_modules, [], entry, false)!
+		}
+	}
+	current := collect(vroot, @VEXE)!
+	assert current.len == 6 && current.all(it.args[0] == '-cc'), current.str()
+	// Changing an imported project source can invalidate the configuration even
+	// when the entry file itself is unchanged.
+	os.write_file(new_local, 'module new_local\nimport new_dependency\npub fn run() {}\n')!
+	assert collect(vroot, @VEXE)!.len == 0
+	refresh(os.join_path(vroot, 'missing-v'), current)!
+	os.write_file(new_local, 'module new_local\npub fn run() {}\n')!
+	assert collect(vroot, @VEXE)!.len == 6
+	// A new file in the same imported module can require a new search path too.
+	added_import := os.join_path(os.dir(new_local), 'added.v')
+	os.write_file(added_import, 'module new_local\nimport new_dependency\n')!
+	assert collect(vroot, @VEXE)!.len == 0
+	refresh(os.join_path(vroot, 'missing-v'), current)!
+	os.rm(added_import)!
+	assert collect(vroot, @VEXE)!.len == 6
+	os.write_file(os.join_path(listed, 'added.v'), 'module main\nstruct Added {}\n')!
+	assert collect(vroot, @VEXE)!.len == 0
+}
+
 fn test_inventory_handles_legacy_headers_and_partly_recorded_configurations() ! {
 	root := os.join_path(os.vtmp_dir(), 'vup_legacy_inventory_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -284,15 +383,23 @@ fn test_inventory_argument_encoding_preserves_newlines_and_empty_values() ! {
 		entry:           os.join_path(os.getwd(), 'project with spaces', 'main.v')
 		show_test_stats: true
 		compile_inputs:  ['/path with spaces/header.h']
+		entry_sources:   {
+			os.abs_path('project with spaces/main.v'): 'file:1234abcd'
+		}
 	}
 	assert decode_request(encode_request(request))! == request
 	assert !encode_project_flags(request.project_flags).contains('\x00')
 	assert decode_request('${project_record_format}\n${request.module}\ntest\n' +
 		encode_arguments([request.cwd, encode_project_flags(request.project_flags),
-			encode_arguments(request.imports), ...request.args]))! == Request{ ...request, entry: '', show_test_stats: false, compile_inputs: []string{} }
+			encode_arguments(request.imports), ...request.args]))! == Request{ ...request, entry: '', show_test_stats: false, compile_inputs: []string{}, entry_sources: map[string]string{} }
 	assert decode_request('${entry_record_format}\n${request.module}\ntest\n' +
 		encode_arguments([request.cwd, encode_project_flags(request.project_flags),
-			encode_arguments(request.imports), request.entry, ...request.args]))! == Request{ ...request, show_test_stats: false, compile_inputs: []string{} }
+			encode_arguments(request.imports), request.entry, ...request.args]))! == Request{ ...request, show_test_stats: false, compile_inputs: []string{}, entry_sources: map[string]string{} }
+	assert decode_request('${input_record_format}\n${request.module}\ntest\n' +
+		encode_arguments([request.cwd, encode_project_flags(request.project_flags),
+			encode_arguments(request.imports), request.entry, request.show_test_stats.str(),
+			encode_arguments(request.compile_inputs), ...request.args]))! == Request{ ...request, entry_sources: map[string]string{} }
+	assert !entry_sources_unchanged(Request{ ...request, entry_sources: map[string]string{} })
 	assert decode_request('${object_record_format}\ncrypto.sha3\nprogram\n0\n4\ntrue1\n17\n-DSTALE3\n-cc2\ncc')! == Request{
 		args:   ['-cc', 'cc']
 		module: 'crypto.sha3'
@@ -366,6 +473,9 @@ fn test_refresh_uses_live_entries_once_and_never_runs_or_links_them() ! {
 	mut requests := ['sample', 'other'].map(Request{
 		module:        it
 		entry:         entry
+		entry_sources: {
+			entry: entry_source_signature(entry)!
+		}
 		project_flags: [FlagGroup{ flags: ['-DOLD'], in_main: true }]
 	})
 	requests << Request{
@@ -387,7 +497,13 @@ fn test_refresh_uses_live_entries_once_and_never_runs_or_links_them() ! {
 	refresh(vexe, [
 		Request{ ...requests[0], args: ['-prod'] },
 		Request{ ...requests[0], cwd: root },
-		Request{ ...requests[0], entry: other_entry },
+		Request{
+			...requests[0]
+			entry:         other_entry
+			entry_sources: {
+				other_entry: entry_source_signature(other_entry)!
+			}
+		},
 		Request{ ...requests[0], show_test_stats: true },
 	])!
 	assert os.read_file(log)!.split_into_lines().len == 5
@@ -657,18 +773,32 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	os.unsetenv('VTEST_SHOW_ASSERTS')
 	// Keep the initial records, then extend the listed directory and make the
 	// current entry require its new declaration. A source flag edit also leaves
-	// historical records which must share one effective live refresh command.
+	// historical records whose obsolete source identities must be retired.
 	initial := collect(vroot, @VEXE)!.filter(it.module.starts_with(import_root + '.') && !it.is_test)
+	old_flags := builds[0].clone()
+	new_search := os.join_path(root, 'updated modules')
+	new_module := 'current_support_${os.getpid()}'
+	new_module_source := os.join_path(new_search, new_module, 'support.v')
+	os.mkdir_all(os.dir(new_module_source))!
+	os.write_file(new_module_source, 'module ${new_module}\npub fn extra() int { return 0 }\n')!
 	added_file := os.join_path(root, 'implementers', 'nested', 'added.v')
 	os.write_file(added_file, 'module main\nfn newly_listed_reader() Sink { return Sink{} }\n')!
 	os.write_file(main_file, '#flag -DREFRESH_CHANGED_PROJECT\n' +
-		os.read_file(main_file)!.replace('probe.read(Sink{})', 'probe.read(newly_listed_reader())'))!
-	for flags in builds {
+		os.read_file(main_file)!.replace('import ${import_root}.probe', 'import ${import_root}.probe\nimport ${new_module}')
+			.replace('probe.read(Sink{})', 'probe.read(newly_listed_reader()) + ${new_module}.extra()'))!
+	// The historical configuration cannot compile the current entry: its search
+	// path cannot find the new project import. It must not be replayed by v up.
+	old_build := os.exec([@VEXE, ...old_flags, '-check', main_file])
+	assert old_build.exit_code != 0 && old_build.output.contains(new_module), old_build.output
+	for index in 0 .. builds.len {
+		mut flags := builds[index].clone()
+		flags[flags.index('-path') + 1] = '${new_search}|@vlib'
+		builds[index] = flags
 		result := os.exec([@VEXE, ...flags, '-o', os.join_path(root, 'program'), main_file])
 		assert result.exit_code == 0, result.output
 	}
 	requests := collect(vroot, @VEXE)!.filter(it.module.starts_with(import_root + '.'))
-	assert initial.len > 0 && initial.all(it in requests), requests.str()
+	assert initial.len > 0 && initial.all(it !in requests), requests.str()
 	assert requests.len > 0
 	assert collect(vroot, os.executable())!.filter(it.module.starts_with(import_root + '.')).len == 0
 	// Compiler aliases can share a configuration and restore its program before
@@ -703,8 +833,13 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		assert '-ldflags' !in request.args, request.str()
 		path_index := request.args.index('-path')
 		assert path_index >= 0, request.str()
-		assert request.args[path_index + 1] == [os.join_path(project, 'modules'),
-			os.join_path(vroot, 'vlib')].join('|'), request.str()
+		assert request.args[path_index + 1] == [
+			if request.is_test { os.join_path(project, 'modules') } else { new_search },
+			os.join_path(vroot, 'vlib'),
+		].join('|'), request.str()
+		if !request.is_test {
+			assert os.dir(new_module_source) in request.entry_sources, request.str()
+		}
 		cc_index := request.args.index('-cc')
 		assert cc_index >= 0 && os.is_abs_path(request.args[cc_index + 1]), request.str()
 		assert !request.args.any(it.contains('../libs') || it.contains('-lanswer')), request.str()
@@ -770,7 +905,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		assert !result.output.contains('V3 module cache fallback'), result.output
 		if '-silent' !in flags {
 			parsed := result.output.split_into_lines().filter(it.contains('parsed .v files'))
-			assert parsed.len == 1 && parsed[0].all_after('parsed .v files').trim_space().all_before(' ').int() == 4, result.output
+			assert parsed.len == 1 && parsed[0].all_after('parsed .v files').trim_space().all_before(' ').int() == 5, result.output
 		}
 		run := os.exec([os.join_path(root, 'program')])
 		assert run.exit_code == 0, run.output

@@ -79,6 +79,10 @@ are skipped. Historical records sharing the same live command, working directory
 entry and assertion display mode refresh once. Synthetic refreshes
 also replay source C driver options such as sanitizers at link time. Records for
 unavailable C compilers are skipped.
+Unreadable, truncated, and unsupported inventory files are skipped. Live entries
+retain their project source identity; after the project input changes, obsolete
+configurations are skipped until a successful build records the current inputs.
+Older live records without source identities require rebuilding the project once.
 Isolated test caches use the primary V compiler executable, including when
 `v up` runs through the fallback compiler or as a separate tool, or a build uses
 the delegated ownership compiler. Ownership dispatch preserves the primary path

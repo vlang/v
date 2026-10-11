@@ -10,6 +10,7 @@ so `v up` can refresh them after replacing the compiler or updating their source
 - `record` saves a separate atomic inventory entry for each module and build configuration.
   Project modules outside the checkout's vlib are excluded.
 - `collect(vroot, vexe)` snapshots the compiler's recorded configurations before an update.
+  Unreadable, truncated, and unsupported inventory files are skipped.
   For older caches, it identifies vlib modules from their headers and chooses the
   available C compilers in both normal and production mode, for programs and tests.
   Successful migrations mark the old headers, so later updates use the new inventory
@@ -19,6 +20,9 @@ so `v up` can refresh them after replacing the compiler or updating their source
   It stops before linking or running the program, and refreshes each entry/configuration once.
   Live requests sharing a command, working directory, entry and test display mode run once,
   even when historical project directives or imports differ.
+  Source identities bind live entries to their recorded configurations. Changed project
+  inputs retire old records until a successful build records the current source/configuration pair.
+  Unchanged entries retain all recorded compiler, production, and test variants.
   Absolute `-file-list` files and directories accompany live entries. Directory operands
   recursively include their current sources, so newly added files are included during refresh.
   Otherwise it compiles a temporary importer with the recorded project directives.
@@ -49,7 +53,10 @@ vlib directives. `cache_directive_flags_with_project` and
 CLI C flags retain their position after source directives. Original vlib imports
 preserve flags contributed by modules outside the refreshed module's dependencies.
 
-Inventory version 6 adds effective assertion display modes and required compile inputs.
+Inventory version 7 adds live-entry source identities, including project imports and
+directory contents. Older live records without these identities are skipped until rebuilt;
+their source/configuration pairs cannot be validated. Older synthetic records remain usable.
+Version 6 adds effective assertion display modes and required compile inputs.
 Absolute `-file-list` operands are saved as arguments and checked before refresh.
 Explicit files are tracked as required inputs; directory operands retain directory semantics.
 Legacy header provenance is temporary collection metadata and is not part of record identity.
