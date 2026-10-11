@@ -291,6 +291,63 @@ fn test_cached_reflection_preserves_original_source_file_metadata() {
 	}
 }
 
+fn test_cached_reflection_preserves_caller_environment() {
+	$if !linux && !macos {
+		return
+	}
+	root := new_project('module_cache_reflection_environment')
+	saved := pin_module_cache(os.join_path(root, 'cache'))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+		os.rmdir_all(root) or {}
+	}
+	os.unsetenv('V3_CACHE_TRACE')
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'import os
+import v.reflection
+fn main() {
+	assert reflection.get_funcs().len > 0
+	assert os.args[1..] == ["program-argument"]
+	println("compile:" + $env("V3_CACHE_FORCE_SOURCE"))
+	if value := os.getenv_opt("V3_CACHE_FORCE_SOURCE") {
+		println("runtime:set:" + value)
+	} else {
+		println("runtime:unset")
+	}
+}
+')!
+	for i, flags in [([]string{}), ['-cc', 'cc']] {
+		os.setenv('V3CACHE', os.join_path(root, 'cache${i}'), true)
+		for caller in [SavedEnv{ name: 'V3_CACHE_FORCE_SOURCE' },
+			SavedEnv{ name: 'V3_CACHE_FORCE_SOURCE', present: true },
+			SavedEnv{ name: 'V3_CACHE_FORCE_SOURCE', present: true, value: 'caller-value' },
+			SavedEnv{ name: 'V3_CACHE_FORCE_SOURCE', present: true, value: '1' }] {
+			caller.restore()
+			expected := 'compile:${caller.value}\nruntime:' + if caller.present {
+				'set:${caller.value}'
+			} else {
+				'unset'
+			}
+			mut uncached_args := [@VEXE]
+			uncached_args << flags
+			uncached_args << ['-nocache', 'run', main_file, 'program-argument']
+			uncached := os.exec(uncached_args)
+			assert uncached.exit_code == 0, uncached.output
+			assert uncached.output.trim_space() == expected, uncached.output
+			mut cached_args := [@VEXE]
+			cached_args << flags
+			cached_args << ['run', main_file, 'program-argument']
+			for _ in 0 .. 2 {
+				cached := os.exec(cached_args)
+				assert cached.exit_code == 0, cached.output
+				assert cached.output.trim_space() == expected, cached.output
+			}
+		}
+	}
+}
+
 fn test_cached_module_keeps_c_macro_constants_in_the_header() {
 	$if windows {
 		return

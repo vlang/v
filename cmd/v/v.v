@@ -791,7 +791,7 @@ fn v1_fallback_args(args []string) []string {
 			continue
 		}
 		if arg in ['-macos-v3-internal-quiet', '-macos-v3-compat-c99',
-			'-v3-internal-parser-diagnostics-printed']
+			'-v3-internal-parser-diagnostics-printed', '-v3-internal-force-cache-source']
 			|| arg.starts_with('-v3-internal-implicit-tcc-warning=') {
 			continue
 		}

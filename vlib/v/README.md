@@ -480,7 +480,8 @@ This applies to SHA3 and other imported modules with TinyCC too.
 If TinyCC cannot compile or link a cached program unit, V retries the original sources
 without module caching before changing C compilers or reporting a compilation failure.
 Programs importing `v.reflection` parse original module sources to preserve source-file
-metadata, while still reusing compatible module objects.
+metadata, while still reusing compatible module objects. This restart preserves the caller's
+environment for compile-time `$env` and programs launched with `v run`.
 Stored constants are defined and initialized by their owning module object. Cached interfaces
 declare constant tables and other stored values by type, so a warm build does not parse or lower
 their initializers again. C constants keep their declarations in native headers.

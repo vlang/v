@@ -143,6 +143,7 @@ const v3_vvmrc_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
 const v3_crun_build_identity_env = 'V3_CRUN_BUILD_IDENTITY'
 const v3_internal_restart_env = 'V3_INTERNAL_RESTART'
 const v3_internal_parser_diagnostics_printed_flag = '-v3-internal-parser-diagnostics-printed'
+const v3_internal_force_cache_source_flag = '-v3-internal-force-cache-source'
 const v3_internal_implicit_tcc_warning_prefix = '-v3-internal-implicit-tcc-warning='
 const v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
 
@@ -9594,6 +9595,7 @@ pub fn run(args []string) {
 	mut parallel_cc := false
 	mut no_prealloc := false
 	mut no_cache := false
+	mut force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
 	mut no_skip_unused := false
 	mut is_o := false
 	mut no_memory_limit := false
@@ -10037,6 +10039,9 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == v3_internal_parser_diagnostics_printed_flag {
 			parser_diagnostics_already_printed = true
+			i++
+		} else if args[i] == v3_internal_force_cache_source_flag {
+			force_cache_source = true
 			i++
 		} else if args[i] == v3_internal_all_cached_declarations_flag {
 			keep_all_cached_declarations = true
@@ -11333,7 +11338,6 @@ pub fn run(args []string) {
 	// validated, so its builds keep only the objects and interfaces of modules, and
 	// the executable of the program for a build that changes nothing.
 	program_cache_enabled := !cache_with_tcc && persistent_program_cache
-	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
 	mut cache_no_parallel_cgen := current_no_parallel
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
 	mut p := parser.Parser.new(prefs)
@@ -11656,8 +11660,8 @@ pub fn run(args []string) {
 	if cache_state.manager.enabled && !cache_state.force_source {
 		if _ := cache_state_module_name(&cache_state, 'v.reflection') {
 			trace_v3_cache_fallback('runtime reflection needs the original source-file metadata')
-			os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
-			restart_v3_with_args([])
+			// Keep the caller's environment visible to compile-time `$env` and `v run`.
+			restart_v3_with_args([v3_internal_force_cache_source_flag])
 		}
 	}
 	if !no_builtin && v3_builtin_arena_define !in prefs.user_defines
