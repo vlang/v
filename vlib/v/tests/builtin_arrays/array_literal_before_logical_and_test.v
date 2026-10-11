@@ -89,3 +89,17 @@ fn test_arrays_of_references_are_still_array_inits() {
 	assert nested.len == 1 && nested[0][0].id == 7
 	assert []&Item{} == [] && []&&Item{} == []
 }
+
+fn test_comments_separate_logical_and_after_array_literals() {
+	a := []int{}
+	flag := true
+	assert a == [] && /* separator */
+	flag
+	assert a == [] && // separator
+	flag
+	assert a == [] /* separator */
+	 && flag
+	fixed := [1]!
+	assert fixed == [1]! /* separator */
+	 && flag
+}

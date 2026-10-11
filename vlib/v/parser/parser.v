@@ -14982,7 +14982,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 
 // amp_after_array_brackets_is_infix reports whether the `&`/`&&` after the `]` of `[]` or
 // `[N]` is a binary operator (`a == [] && b == []`, `x == [1] & mask`), and not the
-// reference prefix of an element type (`[]&Foo{}`, `[3]&&Foo{}`). Only the whitespace tells
+// reference prefix of an element type (`[]&Foo{}`, `[3]&&Foo{}`). Token separators tell
 // the two apart, like it does for `[1 - 2]` and `[1 -2]`.
 // `&&` is the logical operator unless it is attached on both sides: after an array literal
 // it is far more common than a pointer to a pointer.
@@ -14992,7 +14992,9 @@ fn (p &Parser) amp_after_array_brackets_is_infix() bool {
 		return false
 	}
 	detached_left := p.tok_pos > p.prev_tok_end
-	detached_right := p.tok_end < p.s.src.len && p.s.src[p.tok_end] in [` `, `\t`, `\r`, `\n`]
+	detached_right := (p.tok_end < p.s.src.len && p.s.src[p.tok_end] in [` `, `\t`, `\r`, `\n`])
+		|| (p.tok_end + 1 < p.s.src.len && p.s.src[p.tok_end] == `/`
+			&& p.s.src[p.tok_end + 1] in [`/`, `*`])
 	if p.tok == .and {
 		return detached_left || detached_right
 	}
