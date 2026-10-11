@@ -465,19 +465,19 @@ fn make_aligned() AlignedHolder {
 }
 fn plain_scope() {
 	holder := make_plain()
-	assert retain(holder.values)[0].value == 1
+	assert inspect(retain(holder.values)) == 1
 }
 fn aligned_call_scope() {
 	holder := make_aligned()
-	assert retain_aligned(holder.values)[0].value == 1
+	assert inspect_aligned(retain_aligned(holder.values)) == 1
 }
 fn aligned_literal_scope() {
 	holder := AlignedHolder{[AlignedCell{1}, AlignedCell{2}]!, "label".repeat(4)}
-	assert retain_aligned(holder.values)[0].value == 1
+	assert inspect_aligned(retain_aligned(holder.values)) == 1
 }
 fn nested_literal_scope() {
 	holder := NestedHolder{make_aligned()}
-	assert retain_aligned(holder.inner.values)[0].value == 1
+	assert inspect_aligned(retain_aligned(holder.inner.values)) == 1
 }
 fn plain_borrow_scope() {
 	holder := make_plain()
