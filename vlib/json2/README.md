@@ -80,6 +80,8 @@ All Unicode space separators are accepted between tokens, including U+1680 and U
 Escaped digits `\1` through `\9` are rejected, and `\0` cannot precede another decimal digit.
 Typed decoding errors report their location and context in the original JSON5 input.
 Columns count Unicode code points, excluding an initial BOM; tabs occupy eight columns.
+Error previews keep complete runes, limit their prefix and highlighted span to 50 columns,
+and expand tabs to spaces so the underline aligns with the displayed text.
 CR, LF, CRLF, U+2028 and U+2029 are counted as JSON5 line terminators.
 Raw LF and CR in strings are rejected; use a backslash line continuation or a string escape.
 Unescaped U+2028 and U+2029 are allowed in strings, as specified by

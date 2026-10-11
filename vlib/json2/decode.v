@@ -336,31 +336,31 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 	}
 
 	start := error_info.position
+	if decoder.json5 {
+		line, column, line_start := json5_source_location(json, start)
+		return JsonDecodeError{
+			context:   json5_decode_context(json, start, error_info.length, line_start, column)
+			message:   'Data: ${message}'
+			line:      line + 1
+			character: column + 1
+		}
+	}
 	end := start + int_min(error_info.length, max_context_length)
-
 	mut line_number := 0
 	mut character_number := 0
 	mut last_newline := 0
-
-	if decoder.json5 {
-		line, column, line_start := json5_source_location(json, start)
-		line_number = line
-		character_number = column
-		last_newline = line_start
-	} else {
-		for i := start - 1; i >= 0; i-- {
-			if last_newline == 0 {
-				if json[i] == `\n` {
-					last_newline = i + 1
-				} else if json[i] == `\t` {
-					character_number += tab_width
-				} else {
-					character_number++
-				}
-			}
+	for i := start - 1; i >= 0; i-- {
+		if last_newline == 0 {
 			if json[i] == `\n` {
-				line_number++
+				last_newline = i + 1
+			} else if json[i] == `\t` {
+				character_number += tab_width
+			} else {
+				character_number++
 			}
+		}
+		if json[i] == `\n` {
+			line_number++
 		}
 	}
 
@@ -376,13 +376,9 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 
 	// print some extra characters
 	mut context_end := int_min(json.len, end + max_extra_characters)
-	if decoder.json5 {
-		context_end = json5_context_end(json, end, context_end)
-	} else {
-		context_end_newline := json[end..context_end].index_u8(`\n`)
-		if context_end_newline != -1 {
-			context_end = end + context_end_newline
-		}
+	context_end_newline := json[end..context_end].index_u8(`\n`)
+	if context_end_newline != -1 {
+		context_end = end + context_end_newline
 	}
 
 	mut context := ''

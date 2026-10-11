@@ -3,6 +3,7 @@ module json2
 import math
 import os
 import strconv
+import strings
 
 struct Json5SourceSpan {
 mut:
@@ -242,13 +243,71 @@ fn json5_source_location(text string, position int) (int, int, int) {
 	return line, column, line_start
 }
 
-fn json5_context_end(text string, start int, end int) int {
-	for i in start .. end {
-		if json5_line_terminator_length(text, i) > 0 {
-			return i
+// json5_context_end limits a source span by display columns without splitting runes.
+fn json5_context_end(text string, start int, end int, max_columns int) (int, int) {
+	mut position := start
+	mut columns := 0
+	for position < end {
+		ch, width := utf8_rune_at(text, position)
+		display_width := if int(ch) == r_tab { tab_width } else { 1 }
+		if json5_is_line_terminator(int(ch)) || columns + display_width > max_columns {
+			break
 		}
+		position += width
+		columns += display_width
 	}
-	return end
+	return position, columns
+}
+
+@[manualfree]
+fn json5_write_context(mut output strings.Builder, text string, start int, end int) {
+	mut position := start
+	for position < end {
+		ch, width := utf8_rune_at(text, position)
+		if int(ch) == r_tab {
+			for _ in 0 .. tab_width {
+				output.write_u8(` `)
+			}
+		} else {
+			output.write_string(text.substr_unsafe(position, position + width))
+		}
+		position += width
+	}
+}
+
+// json5_decode_context keeps the preview and underline in the same display columns.
+@[manualfree]
+fn json5_decode_context(text string, start int, length int, line_start int, column int) string {
+	mut context_start := if line_start == 0 && text.starts_with('\uFEFF') { 3 } else { line_start }
+	mut removed_columns := 0
+	for column - removed_columns > max_context_length {
+		ch, width := utf8_rune_at(text, context_start)
+		removed_columns += if int(ch) == r_tab { tab_width } else { 1 }
+		context_start += width
+	}
+	end, highlighted_columns := json5_context_end(text, start, start + length, max_context_length)
+	context_end, _ := json5_context_end(text, end, text.len, max_extra_characters)
+	cutoff := removed_columns > 0
+	mut output := strings.new_builder(512)
+	defer { unsafe { output.free() } }
+	if cutoff {
+		output.write_string('...')
+	}
+	json5_write_context(mut output, text, context_start, start)
+	output.write_string('\\e[31m')
+	json5_write_context(mut output, text, start, end)
+	output.write_string('\\e[0m')
+	json5_write_context(mut output, text, end, context_end)
+	output.write_u8(`\n`)
+	for _ in 0 .. column - removed_columns + if cutoff { 3 } else { 0 } {
+		output.write_u8(` `)
+	}
+	output.write_string('\\e[31m')
+	for _ in 0 .. highlighted_columns {
+		output.write_u8(`~`)
+	}
+	output.write_string('\\e[0m')
+	return output.str()
 }
 
 // normalize_json5_number converts hexadecimal integers and leading/trailing dots
