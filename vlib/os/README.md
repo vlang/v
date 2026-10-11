@@ -16,6 +16,10 @@ It returns an empty string when the standard input handle is invalid.
 
 ### Path helpers
 
+`os.base()` removes all trailing separators before returning the final path element.
+For example, `os.base('a///')` returns `a`. An empty path returns `.`, and a path made
+entirely of separators returns one separator (`/` for `///`, or `\` for `\\`).
+
 `is_abs_path` follows the host operating system's path conventions. On Unix,
 a leading `/` identifies an absolute path. On Windows, it accepts drive-rooted
 paths (`C:/x`), UNC paths containing a server and share (`//Host/share`), and
@@ -292,3 +296,5 @@ The following functions should be used with care and only when used correctly.
 - os.is_writable()
 - os.is_executable()
 - os.is_link()
+
+`get_line()` removes CRLF and LF line endings from standard input on every platform.
