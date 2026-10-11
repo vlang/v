@@ -7,6 +7,8 @@ a failed source comparison, or -prod, -skip_v_self or -skip_current forces rebui
 
 It then refreshes previously cached vlib modules with their original C compiler
 and build flags, including normal and -prod builds. Unchanged modules are reused.
+Object flags include source #flag directives. Records from project directories
+that no longer exist are skipped.
 Each module being cached is printed to stdout as `Caching module <name>...`.
 This also runs when the compiler itself is already updated. A cache refresh
 failure makes the update fail. Older caches without recorded settings are

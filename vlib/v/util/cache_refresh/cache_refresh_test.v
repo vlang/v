@@ -31,11 +31,17 @@ fn test_inventory_preserves_compiler_modes_and_flags_and_excludes_project_module
 			if prod { flags << '-prod' }
 			dir := os.join_path(root_dir(vroot, @VEXE), '${compiler}_${prod}')
 			os.mkdir_all(dir)!
-			record(dir, vroot, flags, false, sources)!
+			record(dir, vroot, flags, false, sources, ['-DSAMPLE=value with spaces'])!
 			// Recording the same build twice must not duplicate or lose modules.
-			record(dir, vroot, flags, false, sources)!
+			record(dir, vroot, flags, false, sources, ['-DSAMPLE=value with spaces'])!
 			for name in ['builtin', 'crypto.sample'] {
-				expected << Request{ args: flags, module: name, cwd: os.getwd() }
+				expected << Request{
+					args:             flags
+					module:           name
+					cwd:              os.getwd()
+					object_flags:     ['-DSAMPLE=value with spaces']
+					has_object_flags: true
+				}
 			}
 		}
 	}
@@ -68,11 +74,11 @@ fn test_inventory_handles_legacy_headers_and_partly_recorded_configurations() ! 
 		if config == 'new' {
 			record(dir, vroot, ['-cc', 'custom-cc'], false, {
 				'sample': [source]
-			})!
+			}, [])!
 		}
 	}
 	requests := collect(vroot, @VEXE)!
-	assert Request{ args: ['-cc', 'custom-cc'], module: 'crypto.sample', cwd: os.getwd() } in requests
+	assert Request{ args: ['-cc', 'custom-cc'], module: 'crypto.sample', cwd: os.getwd(), has_object_flags: true } in requests
 	if _ := os.find_abs_path_of_executable('cc') {
 		assert Request{ args: ['-cc', 'cc'], module: 'crypto.sample' } in requests
 		assert Request{ args: ['-cc', 'cc', '-prod'], module: 'crypto.sample' } in requests
@@ -90,12 +96,19 @@ fn test_module_names_do_not_allow_source_injection() {
 
 fn test_inventory_argument_encoding_preserves_newlines_and_empty_values() ! {
 	request := Request{
-		args:    ['-cc', 'cc', '-cflags', '-DNAME="value with spaces"\n-DSECOND', '', '-prod']
-		module:  'crypto.sha3'
-		is_test: true
-		cwd:     os.join_path(os.getwd(), 'directory with spaces\nand newlines')
+		args:             ['-cc', 'cc', '-cflags', '-DNAME="value with spaces"\n-DSECOND', '',
+			'-prod']
+		module:           'crypto.sha3'
+		is_test:          true
+		cwd:              os.join_path(os.getwd(), 'directory with spaces\nand newlines')
+		object_flags:     ['-DNAME=value with spaces\nand newlines', '-I', 'include path', '']
+		has_object_flags: true
 	}
 	assert decode_request(encode_request(request))! == request
+	assert decode_request('${cwd_record_format}\ncrypto.sha3\nprogram\n0\n3\n-cc2\ncc')! == Request{
+		args:   ['-cc', 'cc']
+		module: 'crypto.sha3'
+	}
 	assert decode_request('${legacy_record_format}\ncrypto.sha3\nprogram\n3\n-cc2\ncc')! == Request{
 		args:   [
 			'-cc',
@@ -117,6 +130,54 @@ fn test_refresh_skips_removed_modules_without_starting_the_compiler() ! {
 	defer { os.rmdir_all(root) or {} }
 	// There is no compiler here: attempting to compile the retired import fails.
 	refresh(os.join_path(root, 'v'), [Request{ args: ['-cc', 'cc'], module: 'retired' }])!
+}
+
+fn test_inventory_and_refresh_skip_vanished_working_directories() ! {
+	root := os.join_path(os.vtmp_dir(), 'vup_vanished_directory_${os.getpid()}')
+	source := os.join_path(root, 'vlib', 'sample', 'sample.v')
+	project := os.join_path(root, 'project')
+	previous_cache := os.getenv_opt('V3CACHE')
+	previous_dir := os.getwd()
+	os.mkdir_all(os.dir(source))!
+	os.mkdir_all(project)!
+	os.write_file(source, 'module sample\n')!
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	defer {
+		os.chdir(previous_dir) or {}
+		if value := previous_cache {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rmdir_all(root) or {}
+	}
+	dir := os.join_path(root_dir(root, @VEXE), 'config')
+	os.mkdir_all(dir)!
+	// A stale record still owns its header; it must not fall back to legacy refreshes.
+	os.write_file(os.join_path(dir, 'sample_${hash_text(os.real_path(os.dir(source)))}.vh'), '')!
+	os.chdir(project)!
+	record(dir, root, ['-cflags', '-include config.h -I include'], false, {
+		'sample': [source]
+	}, [])!
+	os.chdir(previous_dir)!
+	requests := collect(root, @VEXE)!
+	assert requests.len == 1 && requests[0].cwd == project
+	os.mv(project, '${project}_moved')!
+	assert collect(root, @VEXE)!.len == 0
+	// There is no compiler: a failed child chdir or attempted compile would fail.
+	refresh(os.join_path(root, 'v'), requests)!
+	os.rmdir_all('${project}_moved')!
+	refresh(os.join_path(root, 'v'), requests)!
+	// Live records in the same configuration remain refreshable.
+	record(dir, root, ['-cc', 'cc'], false, {
+		'sample': [source]
+	}, [])!
+	assert collect(root, @VEXE)! == [Request{
+		args:             ['-cc', 'cc']
+		module:           'sample'
+		cwd:              previous_dir
+		has_object_flags: true
+	}]
 }
 
 fn test_refresh_uses_recorded_directory_for_relative_compile_inputs() ! {
@@ -141,7 +202,7 @@ fn test_refresh_uses_recorded_directory_for_relative_compile_inputs() ! {
 	os.chdir(project)!
 	record(dir, root, ['-cflags', '-include config.h -I "include path"'], false, {
 		'sample': [source]
-	})!
+	}, ['-include', 'config.h', '-I', 'include path'])!
 	entries := os.ls(dir)!.filter(it.starts_with(record_prefix))
 	assert entries.len == 1
 	request := decode_request(os.read_file(os.join_path(dir, entries[0]))!)!
@@ -152,6 +213,7 @@ fn test_refresh_uses_recorded_directory_for_relative_compile_inputs() ! {
 		'test "\$1" = "-cflags" || exit 2\n' +
 		'test "\$2" = \'-include config.h -I "include path"\' || exit 3\n' +
 		'test -f config.h && test -f "include path/refresh_input.h" || exit 4\n' +
+		'test "\$V3_CACHE_REFRESH_OBJECT_FLAGS" = \'"-include" "config.h" "-I" "include path"\' || exit 5\n' +
 		'printf "%s" "\$PWD" > ' + os.quoted_path(log) + '\n')!
 	os.chmod(compiler, 0o755)!
 	os.chdir(root)!
@@ -190,7 +252,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	os.mkdir_all(os.join_path(module_root, 'include'))!
 	os.symlink(os.join_path(module_root, 'include'), os.join_path(root, 'include path'))!
 	os.symlink(os.join_path(module_root, 'include'), os.join_path(root, 'include'))!
-	os.write_file(dependency, 'module dependency\npub fn value() int { return 40 }\n')!
+	os.write_file(dependency, 'module dependency\n#flag -DREFRESH_DEPENDENCY\npub fn value() int { return 40 }\n')!
 	os.write_file(probe, 'module probe\nimport ${import_root}.dependency\n' +
 		'pub fn value() int {\n\t\$if prod { return dependency.value() + 2 }\n' +
 		'\treturn dependency.value()\n}\n')!
@@ -219,7 +281,10 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		os.rmdir_all(root) or {}
 	}
 	main_file := os.join_path(project, 'main.v')
-	os.write_file(main_file, 'import ${import_root}.probe\nfn main() { println(probe.value()) }\n')!
+	forced_header := os.join_path(module_root, 'include', 'config.h')
+	os.write_file(forced_header, '#define REFRESH_SOURCE_INPUT 1\n')!
+	source_flags := '#flag -DREFRESH_PROJECT\n#flag -include "${forced_header}"\n'
+	os.write_file(main_file, source_flags + 'import ${import_root}.probe\nfn main() { println(probe.value()) }\n')!
 	mut supported_modes := ['-no-std', '-strict']
 	$if linux {
 		libc := os.exec(['ldd', '--version'])
@@ -270,7 +335,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	}
 	// Cover both direct selectors and vtest's transient VTEST_ONLY_FN transport.
 	test_file := os.join_path(project, 'selected_test.v')
-	os.write_file(test_file, 'import ${import_root}.probe\n' +
+	os.write_file(test_file, source_flags + 'import ${import_root}.probe\n' +
 		'fn test_selected_one() { assert probe.value() > 0 }\n' +
 		'fn test_selected_two() { assert probe.value() > 0 }\n' +
 		'fn test_unselected() { panic("unselected test ran") }\n')!
@@ -317,6 +382,11 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		assert requests.any(mode in it.args), mode
 	}
 	for request in requests {
+		assert request.has_object_flags, request.str()
+		assert '-DREFRESH_PROJECT' in request.object_flags, request.str()
+		assert '-DREFRESH_DEPENDENCY' in request.object_flags, request.str()
+		assert forced_header in request.object_flags, request.str()
+		assert !request.object_flags.any(it.contains('../libs') || it.contains('-lanswer')), request.str()
 		assert request.cwd == project, request.str()
 		assert '-ldflags' !in request.args, request.str()
 		path_index := request.args.index('-path')
@@ -353,7 +423,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	os.setenv('VTEST_ONLY_FN', 'ambient_selector_must_not_override_inventory', true)
 	// Change only an imported vlib dependency. Refresh its implementation while
 	// reusing the unchanged dependent object; original programs must not recache.
-	os.write_file(dependency, 'module dependency\npub fn value() int { return 43 }\n')!
+	os.write_file(dependency, 'module dependency\n#flag -DREFRESH_DEPENDENCY\npub fn value() int { return 43 }\n')!
 	mut refresher := os.new_process(refresh_exe)
 	refresher.set_redirect_stdio()
 	refresher.run()

@@ -98,6 +98,28 @@ fn test_module_cache_refresh_preserves_supported_modes_and_aliases() {
 	}
 }
 
+fn test_module_cache_refresh_replays_effective_object_flags_without_duplicate_directives() ! {
+	previous := os.environ()
+	defer {
+		for name in ['V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_OBJECT_FLAGS'] {
+			if name in previous { os.setenv(name, previous[name], true) } else { os.unsetenv(name) }
+		}
+	}
+	original := ['-DPROJECT', '-include', 'config.h', '-I', 'include path', '-g',
+		'-DNAME=value with spaces', '-L', '../libs', '-lanswer']
+	encoded := original.map(v3_cache_refresh_c_flag(it)).join(' ')
+	os.setenv('V3_CACHE_REFRESH_OBJECT_FLAGS', encoded, true)
+	os.unsetenv('V3_CACHE_REFRESH')
+	assert v3_cache_refresh_object_flags(['-DMODULE', '-lmodule'])! == ['-DMODULE']
+	os.setenv('V3_CACHE_REFRESH', '1', true)
+	assert v3_cache_refresh_object_flags(['-DMODULE', '-g'])! == c_object_compile_flags(original)
+	// An empty effective argv is distinct from an older record with no override.
+	os.setenv('V3_CACHE_REFRESH_OBJECT_FLAGS', '', true)
+	assert v3_cache_refresh_object_flags(['-DMODULE'])! == []string{}
+	os.unsetenv('V3_CACHE_REFRESH_OBJECT_FLAGS')
+	assert v3_cache_refresh_object_flags(['-DMODULE', '-lmodule'])! == ['-DMODULE']
+}
+
 fn test_module_cache_refresh_preserves_effective_run_only_selectors() {
 	previous := os.getenv_opt('VTEST_ONLY_FN')
 	defer {

@@ -135,7 +135,7 @@ fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
 			os.mkdir_all(dir)!
 			cache_refresh.record(dir, root, flags, false, {
 				'sample': [source]
-			})!
+			}, [])!
 		}
 	}
 	cache_log := os.join_path(root, 'cache_calls.log')
@@ -210,7 +210,7 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 		os.mkdir_all(dir)!
 		cache_refresh.record(dir, root, ['-cc', 'cc'], false, {
 			'sample': [source]
-		})!
+		}, [])!
 		os.write_file(log, '')!
 		result := run_vup(root, home, tool, bin_dir)!
 		assert result.exit_code == 0, result.output
@@ -247,15 +247,20 @@ fn test_vup_collects_isolated_cache_for_the_compiler_instead_of_the_tool() ! {
 	os.mkdir_all(dir)!
 	cache_refresh.record(dir, root, ['-cc', 'cc'], false, {
 		'sample': [source]
-	})!
+	}, [])!
 	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
 	write_executable(compiler, '#!/bin/sh\n' +
 		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
 		'    echo "Caching module crypto.sample..."\n    exit 0;;\nesac\n' +
 		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
-	result := run_vup(root, home, tool, bin_dir)!
-	assert result.exit_code == 0, result.output
-	assert result.output.count('Caching module crypto.sample...') == 1, result.output
+	fallback := os.join_path(root, 'v1_fallback')
+	write_executable(fallback, '#!/bin/sh\necho fallback must not refresh >&2\nexit 1\n')!
+	assert cache != cache_refresh.root_dir(root, fallback)
+	for launcher in [compiler, fallback] {
+		result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=${launcher}', tool])
+		assert result.exit_code == 0, result.output
+		assert result.output.count('Caching module crypto.sample...') == 1, result.output
+	}
 }
 
 fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! {

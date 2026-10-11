@@ -9209,6 +9209,15 @@ fn v3_cache_refresh_c_flag(flag string) string {
 	return '"' + flag.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
 
+fn v3_cache_refresh_object_flags(flags []string) ![]string {
+	if os.getenv('V3_CACHE_REFRESH') == '1' {
+		if recorded := os.getenv_opt('V3_CACHE_REFRESH_OBJECT_FLAGS') {
+			return c_object_compile_flags(cmdexec.split_args(recorded)!)
+		}
+	}
+	return c_object_compile_flags(flags)
+}
+
 fn apply_v3_diagnostic_color_option(option string) {
 	ansi.set_colors_enabled(option == '-color')
 }
@@ -11972,8 +11981,20 @@ pub fn run(args []string) {
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
 
 	crun_may_reuse := (is_crun || is_direct_vsh) && should_run && !explicit_output
+	refresh_has_object_flags := os.getenv('V3_CACHE_REFRESH') == '1'
+		&& 'V3_CACHE_REFRESH_OBJECT_FLAGS' in os.environ()
+	// Forced headers and macro probes must see the same flags as the object
+	// compiler, even when those flags came from the original program's source.
+	native_c_flags := if refresh_has_object_flags {
+		v3_cache_refresh_object_flags(user_c_flags) or {
+			eprintln('error reading module cache refresh flags: ${err}')
+			exit(1)
+		}
+	} else {
+		user_c_flags
+	}
 	native_inputs := if cache_state.manager.enabled || crun_may_reuse {
-		v3_native_inputs(a, prefs, user_files, user_c_flags)
+		v3_native_inputs(a, prefs, user_files, native_c_flags)
 	} else {
 		cgen.CacheNativeInputs{}
 	}
@@ -12038,8 +12059,8 @@ pub fn run(args []string) {
 	mut cached_monomorph_specs := []transform.MonomorphCacheSpec{}
 	mut cached_program_used_fns := map[string]bool{}
 	mut generated_monomorph_specs := []transform.MonomorphCacheSpec{}
-	mut cache_c_flags := user_c_flags.clone()
-	if backend == 'c' && cache_state.manager.enabled {
+	mut cache_c_flags := native_c_flags.clone()
+	if backend == 'c' && cache_state.manager.enabled && !refresh_has_object_flags {
 		cache_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 	}
 	use_macos_dev_program_cache := backend == 'c' && program_cache_enabled && !is_prod && !is_shared
@@ -14296,6 +14317,13 @@ pub fn run(args []string) {
 		}
 		resolved_c_flags = v3_shared_object_compile_flags(resolved_c_flags, prefs.normalized_target_os(),
 			is_shared, is_liveshared)
+		// A refresh importer does not read the entry file's #flag directives.
+		// Replay its complete object argv without adding imported directives twice.
+		cached_object_c_flags := v3_cache_refresh_object_flags(resolved_c_flags) or {
+			eprintln('error reading module cache refresh flags: ${err}')
+			cleanup_c_build_dir(cc_dir)
+			exit(1)
+		}
 		if !c_only && !is_o {
 			if missing_gc := v3_missing_bundled_gc_library(resolved_c_flags, prefs.vroot) {
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
@@ -14498,8 +14526,8 @@ pub fn run(args []string) {
 			warning_flags := warn_args.join(' ')
 			// A plan of the program is kept for the implementers of the whole
 			// program; the object of a module, for those that its code can reach.
-			object_flags_signature := v3_cached_object_compile_signature(cache_state.object_compiler, c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags, needs_objective_c, '')
-			mut compile_signature := v3_cached_object_compile_signature(cache_state.object_compiler, c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature)
+			object_flags_signature := v3_cached_object_compile_signature(cache_state.object_compiler, c_standard, opt_flag, pic_flag, warning_flags, cached_object_c_flags, needs_objective_c, '')
+			mut compile_signature := v3_cached_object_compile_signature(cache_state.object_compiler, c_standard, opt_flag, pic_flag, warning_flags, cached_object_c_flags, needs_objective_c, interface_impl_signature)
 			mut prepared_plan_entry := cgen_cache_entry
 			mut prepared_cache := V3PreparedModuleCache{}
 			if cgen_prepared_hit {
@@ -14633,7 +14661,7 @@ pub fn run(args []string) {
 						}
 					}
 				} else {
-					prepared_cache = prepare_v3_module_cache(generated_source, &cgen_used_fns, &program_used_fns, &pre_tc, c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature, object_flags_signature + generated_suffix, mut cache_state) or {
+					prepared_cache = prepare_v3_module_cache(generated_source, &cgen_used_fns, &program_used_fns, &pre_tc, c_standard, opt_flag, pic_flag, warning_flags, cached_object_c_flags, needs_objective_c, interface_impl_signature, object_flags_signature + generated_suffix, mut cache_state) or {
 						message := err.msg()
 						if cache_with_tcc {
 							// TinyCC does not compile every module on its own. The build
@@ -14748,7 +14776,7 @@ pub fn run(args []string) {
 			cache_refresh.record(cache_state.manager.dir, prefs.vroot,
 				v3_module_cache_refresh_args(args, c_compiler, prefs.module_search_paths, run_only),
 				is_test_command || is_v3_test_file(input_file, backend, target),
-				cache_state.module_sources) or {
+				cache_state.module_sources, cached_object_c_flags) or {
 				trace_v3_cache_fallback('could not record the v up cache inventory: ${err}')
 			}
 			if use_cached_dev_dylib {
@@ -14771,7 +14799,7 @@ pub fn run(args []string) {
 				if prefix_source_identity.len == 0 {
 					prefix_source_identity = v3_program_prefix_source_identity(prepared_cache.program_prefix_source, prepared_cache.objects)
 				}
-				prefix_object := compile_v3_program_object('prefix', prepared_cache.program_prefix_source, prefix_source_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
+				prefix_object := compile_v3_program_object('prefix', prepared_cache.program_prefix_source, prefix_source_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, opt_flag, pic_flag, warning_flags, cached_object_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
 					message := err.msg()
 					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 						published_c_source,
@@ -14842,7 +14870,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			program_main_identity := modulecache.file_signature(published_c_source)
-			cached_program_main_object = compile_v3_program_object('main', program_main_source, program_main_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, '', pic_flag, warn_args.join(' '), resolved_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
+			cached_program_main_object = compile_v3_program_object('main', program_main_source, program_main_identity, v3_program_external_input_paths(&cache_state), &cache_state.manager, c_standard, '', pic_flag, warn_args.join(' '), cached_object_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
 				message := err.msg()
 				if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 					published_c_source,
