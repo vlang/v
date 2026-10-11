@@ -380,9 +380,15 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 	$if veb_livereload ? {
 		if url.path.starts_with('/veb_livereload/') {
-			if url.path.ends_with('current') {
-				user_context.handle_veb_livereload_current()
+			if url.path.ends_with('/events') {
+				user_context.handle_veb_livereload_events()
 				return
+			}
+			$if veb_livereload_polling ? {
+				if url.path.ends_with('current') {
+					user_context.handle_veb_livereload_current()
+					return
+				}
 			}
 			if url.path.ends_with('script.js') {
 				user_context.handle_veb_livereload_script()

@@ -1056,7 +1056,13 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 	if t.in_const_init {
 		return none
 	}
-	target_array_type := t.normalize_type_alias(target_type)
+	mut target_array_type := t.normalize_type_alias(target_type)
+	if t.generic_arg_is_unresolved(target_array_type) {
+		resolved_type := t.node_type(id)
+		if resolved_type.starts_with('[]') && !t.generic_arg_is_unresolved(resolved_type) {
+			target_array_type = resolved_type
+		}
+	}
 	checker_array_type := t.normalize_type_alias(t.raw_checker_node_type(id))
 	array_type := if target_array_type.starts_with('[]')
 		&& t.is_sum_type_name(target_array_type[2..]) {
@@ -3321,6 +3327,15 @@ fn (t &Transformer) array_receiver_raw_elem_type(fn_node flat.Node, elem_type st
 	}
 	receiver := t.a.child(&fn_node, 0)
 	mut raw := t.raw_var_type_for_expr(receiver) or { '' }
+	source_id := t.array_literal_alias_expr_id(receiver)
+	source := t.a.nodes[int(source_id)]
+	if source.kind == .array_literal {
+		// Literal receivers may already have a lowered []int/[]u8 annotation.
+		// Recover their declared alias before selecting its methods/operators.
+		raw = t.array_literal_checker_alias_type(source_id) or {
+			t.array_literal_alias_type(source) or { raw }
+		}
+	}
 	if !raw.starts_with('[') {
 		raw = t.raw_checker_node_type(receiver)
 	}

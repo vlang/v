@@ -62,13 +62,14 @@ const zeroed_stack_value_decl_marker = '__v3_zeroed_stack_value_decl'
 // sequence of disposable scoped-worker forks. Larger sets keep bounded scratch.
 const direct_late_transform_max_names = 64
 
-// SumEqRequest records where a sum type's equality helper was first requested,
+// SumEqRequest records where a sum or recursive struct equality helper was first requested,
 // so the helper body is built under that module/file resolution context. The
 // helper module can differ for program-specific generic specializations, whose
 // generated functions and helpers must stay in the main cache segment.
 pub struct SumEqRequest {
 pub:
 	sum_name      string
+	struct_name   string
 	module        string
 	file          string
 	helper_module string
@@ -326,8 +327,8 @@ mut:
 	used_fns_parent               &map[string]bool = unsafe { nil }
 	used_fns_root                 &map[string]bool = unsafe { nil }
 	comptime_reflected_params     map[string][]ParamMeta
-	// sum_eq_types records sum types whose deep-equality helper fn
-	// (__v3_sum_eq_<name>) is called somewhere, keyed by the concrete helper name with the
+	// sum_eq_types records sum and recursive struct deep-equality helpers,
+	// keyed by the concrete helper name with the
 	// module/file context of the requesting call site (type resolution inside
 	// the helper body needs that context). The helpers are synthesized
 	// serially after the (possibly parallel) transform completes.
@@ -1239,6 +1240,7 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 		// The AST arena is unchanged during this scan.
 		node := unsafe { &t.a.nodes[idx] }
 		if node.kind == .fn_decl && (node.value.starts_with('__v3_sum_eq_')
+			|| node.value.starts_with('__v3_struct_eq_')
 			|| node.value.starts_with('__v3_default_clone_')) {
 			synthesized_helpers << node.value
 		}
@@ -4745,6 +4747,7 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 			if scoped {
 				t.sum_eq_types[name.clone()] = SumEqRequest{
 					sum_name:      req.sum_name.clone()
+					struct_name:   req.struct_name.clone()
 					module:        req.module.clone()
 					file:          req.file.clone()
 					helper_module: req.helper_module.clone()
@@ -4906,6 +4909,7 @@ fn (mut t Transformer) clone_sum_eq_types_owned() {
 	for name, req in t.sum_eq_types {
 		cloned[name.clone()] = SumEqRequest{
 			sum_name:      req.sum_name.clone()
+			struct_name:   req.struct_name.clone()
 			module:        req.module.clone()
 			file:          req.file.clone()
 			helper_module: req.helper_module.clone()
@@ -6577,6 +6581,13 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	}
 	if typ.len == 0 {
 		typ = t.node_type(expr_id)
+	}
+	if t.stringify_type_has_generic_placeholder(typ) {
+		// The declared return type of a generic function names its type parameter
+		// until the call is specialized; the checker has the type of this part.
+		if checked_typ := t.concrete_checker_node_type(expr_id) {
+			typ = checked_typ
+		}
 	}
 	if ref_typ := t.string_interp_interface_smartcast_ref_type(expr_id) {
 		if !t.node_type(transformed).starts_with('&') {
@@ -10035,6 +10046,23 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escape(arg_id flat.No
 		value_id = t.a.child(&value, 0)
 	}
 	mut value_type := types.unalias_type(t.tc.resolve_type(value_id))
+	if value_type is types.Pointer {
+		pointer_expr := t.a.nodes[int(value_id)]
+		// Direct local references still need conservative escape metadata when a
+		// generic call infers their type without recording an address source.
+		direct_local := pointer_expr.kind == .ident
+			&& t.escape_ident_is_stack_local(pointer_expr.value, local_stack_names)
+		// Dereferencing the address of a pointer local, such as *(&p), keeps
+		// that local's recorded fixed-array owner even though the result is a pointer.
+		stack_deref := pointer_expr.kind == .prefix && pointer_expr.op == .mul
+			&& t.escape_address_expr_is_stack_local(value_id, local_stack_names, amp_ptrs, ptr_aliases)
+		if !direct_local && !stack_deref
+			&& !t.escape_address_indirect_base_is_stack_backed(value_id, amp_ptrs, ptr_aliases, local_stack_names) {
+			// A pointer field's referent is not inline storage owned by its containing
+			// value. Only follow pointers known to reference this frame's stack data.
+			return
+		}
+	}
 	for value_type is types.Pointer {
 		value_type = types.unalias_type(value_type.base_type)
 	}
@@ -10425,6 +10453,9 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 			if int(value_id) >= 0 {
 				binding := t.a.nodes[int(value_id)]
 				if binding.kind == .ident && binding.value.len > 0 && binding.value != '_' {
+					// Mutable fixed-array iteration binds a pointer into its backing,
+					// rather than an independently allocated pointer value.
+					amp_ptrs[binding.value] = true
 					for source in t.escape_address_sources(backing_id, amp_sources, ptr_aliases) {
 						add_escape_amp_source(mut reference_backing_sources, binding.value, source)
 					}
@@ -22281,10 +22312,64 @@ fn (t &Transformer) string_interp_child_has_unresolved_generic_part(id flat.Node
 	candidates << t.reliable_stringify_type(id)
 	for typ in candidates {
 		if t.stringify_type_has_generic_placeholder(typ) {
+			return !t.string_interp_part_is_checked_call(id)
+		}
+	}
+	return false
+}
+
+// string_interp_part_is_checked_call reports whether the interpolation part `id` is a
+// call, possibly parenthesised or with an `or` block, whose concrete type the checker
+// recorded. A call to a generic function keeps its declared return type (`T`) until
+// the monomorphization pass specializes it, so the transformer's own type of such a
+// part still names the type parameter. The part is lowered like any other: leaving
+// the interpolation to cgen would skip the lowering of every part's sub-expressions.
+fn (t &Transformer) string_interp_part_is_checked_call(id flat.NodeId) bool {
+	mut node := t.a.nodes[int(id)]
+	for node.kind in [.paren, .or_expr] && node.children_count > 0 {
+		inner_id := t.a.child(&node, 0)
+		if int(inner_id) < 0 {
+			return false
+		}
+		node = t.a.nodes[int(inner_id)]
+	}
+	return node.kind == .call && t.concrete_checker_node_type(id) != none
+		&& !t.has_generic_value_branch(id)
+}
+
+// has_generic_value_branch reports whether the expression `id` contains a value `if`
+// or `match` whose own type still names a generic parameter, as it does when its
+// branches are calls to generic functions. Lowering one binds it to a temporary of
+// that type, so cgen keeps an interpolation that has one.
+fn (t &Transformer) has_generic_value_branch(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .spawn_expr] {
+		return false
+	}
+	if node.kind in [.match_stmt, .if_expr]
+		&& t.stringify_type_has_generic_placeholder(t.node_type(id)) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.has_generic_value_branch(t.a.child(&node, i)) {
 			return true
 		}
 	}
 	return false
+}
+
+// concrete_checker_node_type returns the type the checker recorded for the expression
+// `id`, unless that type is unknown or still names a generic parameter.
+fn (t &Transformer) concrete_checker_node_type(id flat.NodeId) ?string {
+	typ := t.raw_checker_node_type(id)
+	if typ.len == 0 || typ == 'unknown' || t.generic_arg_is_unresolved(typ)
+		|| t.stringify_type_has_generic_placeholder(typ) {
+		return none
+	}
+	return typ
 }
 
 fn (mut t Transformer) ensure_stringify_generic_instances_for_type(typ string) {
@@ -24971,6 +25056,14 @@ fn (mut t Transformer) transform_array_literal(id flat.NodeId, node flat.Node) f
 			return lowered
 		}
 	}
+	// Inferred anonymous elements acquire their nominal type in the shared
+	// materialization prepass. Publish the resolved container type as well;
+	// the checker annotation can still describe its earlier `struct` placeholder.
+	resolved_array_type := t.node_type(id)
+	if resolved_array_type.starts_with('[]') && !t.generic_arg_is_unresolved(resolved_array_type)
+		&& t.generic_arg_is_unresolved(node.typ) {
+		t.set_node_typ(int(id), resolved_array_type)
+	}
 	lowered := t.lower_array_literal_to_runtime(id, node)
 	if lowered != id {
 		return lowered
@@ -27007,7 +27100,7 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 		// before the transformer has installed the new local binding (`copy := ...`).
 		if lhs_semantic_type := t.tc.expr_type(t.a.child(node, 0)) {
 			lhs_type := t.tc.type_name(lhs_semantic_type)
-			if decl_type_is_usable(lhs_type) {
+			if decl_type_is_usable(lhs_type) && !t.generic_arg_is_unresolved(lhs_type) {
 				// The declaration type can intentionally differ from the visible
 				// smartcast of the rhs after an exiting guard or assertion.
 				return lhs_type
@@ -27042,7 +27135,7 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 			return rhs_authority
 		}
 	}
-	if decl_type_is_usable(node.typ) {
+	if decl_type_is_usable(node.typ) && !t.generic_arg_is_unresolved(node.typ) {
 		return node.typ
 	}
 	if node.children_count >= 2 {

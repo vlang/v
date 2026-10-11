@@ -3992,6 +3992,17 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	return result
 }
 
+// call_arg_is_undeclared_c_identifier reports whether the argument is `C.<name>`,
+// a C variable that V has no type for (see c_identifier_is_undeclared). A `mut`
+// argument names the object whose address its parameter takes.
+fn (t &Transformer) call_arg_is_undeclared_c_identifier(arg_node &flat.Node) bool {
+	if isnil(t.tc) || arg_node.is_mut || arg_node.kind != .selector || arg_node.children_count == 0 {
+		return false
+	}
+	base := t.a.child_node(arg_node, 0)
+	return base.kind == .ident && base.value == 'C' && t.tc.c_identifier_is_undeclared(arg_node.value)
+}
+
 @[direct_array_access]
 fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId, param_type string) flat.NodeId {
 	if int(arg_id) < 0 {
@@ -4020,6 +4031,14 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		value := t.transform_expr(arg_id)
 		t.set_node_typ(int(value), param_type)
 		return value
+	}
+	if (param_type.starts_with('&') || transform_param_type_is_void_pointer(param_type))
+		&& t.call_arg_is_undeclared_c_identifier(arg_node) {
+		// The checker gives a C variable that V does not declare the type that its
+		// first use expects, but the body of a generic instance is not checked. Its
+		// argument takes the type of the parameter here, so that no later pass
+		// takes it for a value whose address the pointer parameter needs.
+		return t.make_cast(param_type, t.transform_expr(arg_id), param_type)
 	}
 	if t.in_spawn_expr && t.call_arg_has_shared_marker(arg_id) {
 		return t.transform_expr(arg_id)
@@ -18340,6 +18359,25 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	// The expression cache can contain a parser-inferred multi-return tail such as
 	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
 	// is authoritative, before falling back to that provisional expression type.
+	if params := t.tc.fn_generic_params[name] {
+		if params == ['T'] {
+			if ret_text := t.tc.fn_ret_type_texts[name] {
+				base, _, applied_alias := generic_app_parts(ret_text)
+				if applied_alias && (base in t.tc.type_aliases
+					|| '${decl_module}.${base}' in t.tc.type_aliases) {
+					if args := t.explicit_generic_call_args(node, t.cur_module) {
+						if args.len == params.len {
+							candidate := t.call_return_type_name_in_module(ret_text, node, decl_module)
+							if decl_type_is_usable(candidate)
+								&& !generic_text_contains_param(candidate, params) {
+								return candidate
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	if ret := t.tc.fn_ret_types[name] {
 		if ret !is types.Unknown && ret !is types.Void {
 			candidate := t.call_return_type_name_in_module(t.semantic_type_name(ret), node, decl_module)
@@ -18369,8 +18407,14 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 
 fn (t &Transformer) call_return_type_name_in_module(ret_name string, node flat.Node, module_name string) string {
 	mut typ := ret_name
-	if node.value.len > 0 {
-		generic_arg := t.normalize_type_in_module(node.value, t.cur_module)
+	if explicit := t.explicit_generic_call_args(node, t.cur_module) {
+		// This helper substitutes one T slot. Multiple parameters need the
+		// checker's concrete expression type, rather than a comma-joined type.
+		if explicit.len != 1 {
+			return ''
+		}
+		caller_arg := t.normalize_type_in_module(explicit.join(', '), t.cur_module)
+		generic_arg := t.lock_colliding_main_generic_type_text(caller_arg, module_name)
 		if generic_arg.len > 0 {
 			typ = t.specialize_generic_type_name(typ, generic_arg)
 		}
@@ -18426,6 +18470,12 @@ fn (t &Transformer) specialize_generic_type_name(typ string, generic_arg string)
 	if clean.starts_with('[') {
 		bracket_end := clean.index(']') or { return typ }
 		return clean[..bracket_end + 1] + t.specialize_generic_type_name(clean[bracket_end + 1..], generic_arg)
+	}
+	base, args, is_generic_app := generic_app_parts(clean)
+	if is_generic_app {
+		mut specialized_args := []string{cap: args.len}
+		for arg in args { specialized_args << t.specialize_generic_type_name(arg, generic_arg) }
+		return '${base}[${specialized_args.join(', ')}]'
 	}
 	return typ
 }

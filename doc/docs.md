@@ -280,6 +280,7 @@ argument, e.g. `v new abc`.
     * [v shader](#v-shader)
     * [v tool](#v-tool)
     * [Profiling](#profiling)
+        * [Profiling the compiler](#profiling-the-compiler)
 * [Package Management](#package-management)
     * [v mod why](#v-mod-why)
     * [Package commands](#package-commands)
@@ -1532,6 +1533,9 @@ numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
 ```
 
+`sorted()` returns a sorted copy. Alias element types keep their overloaded `<` operator,
+including when the receiver is an array literal or a parenthesized array literal.
+
 ```v
 struct User {
 	age  int
@@ -1580,6 +1584,9 @@ users.sort_with_compare(custom_sort_fn)
 ```
 
 #### Array Slices
+
+Iteration over an array slice keeps the array's element type: iterating `[]string` yields
+strings, including when the containing function is reached through generic calls.
 
 A slice is a part of a parent array. Initially it refers to the elements
 between two indices separated by a `..` operator. The right-side index must
@@ -5455,6 +5462,10 @@ fn main() {
 
 ### Generics
 
+Cross-module privacy violations that do not depend on type parameters are diagnosed even
+in the program's unused generic functions and methods. Accesses that depend on type parameters
+are checked in concrete instances.
+
 Generic method calls retain the declaring modules of their type arguments when selecting
 the concrete method, including methods returning Result or Option values.
 
@@ -6600,6 +6611,11 @@ There are 4 ways to manage memory in V.
 
 The default is a minimal and a well performing tracing GC.
 
+With Boehm GC, `-d no_gc_thread_local_alloc` builds the bundled collector without thread-local
+allocation, so allocation counters also observe warmed small-object allocations. It uses the
+platform C compiler unless `-cc` selects one explicitly. This option preserves compiler selection
+when GC is disabled or `-d dynamic_boehm` is enabled; an empty define value does not enable a flag.
+
 The second way is autofree, it can be enabled with `-autofree`. It takes care of most objects
 (~90-100%): the compiler inserts necessary free calls automatically during compilation.
 Remaining small percentage of objects is freed via GC. The developer doesn't need to change
@@ -7525,7 +7541,8 @@ has lines with 5 columns:
 1. How many times a function was called.
 2. How much time in total a function took (in ms).
 3. How much time a function took (in ms), on its own, without the calls inside it.
-   It is reliable for multithreaded programs, when tcc is not used.
+   Its nesting measurements use thread-local state when tcc is not used, but the aggregate
+   counters remain unsynchronized, so multithreaded results are approximate.
 4. How much time on average, a call to a function took (in ns).
 5. The name of the v function.
 
@@ -7543,6 +7560,46 @@ fn main() {
 	println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
 }
 ```
+
+#### Profiling the compiler
+
+The compiler is a V program too, so `-profile` works on it. `-profile` instruments the program that
+is being *built*, and the report is written when that program exits. To profile the compiler, build
+an instrumented copy of it under another name, and then use that copy to compile something:
+
+```shell
+v -cc gcc -profile compiler_profile.txt -o vprof cmd/v
+./vprof -o v2 cmd/v
+```
+
+`compiler_profile.txt` is written when `./vprof` exits. Compiling the compiler itself, as above, is
+a good workload, but any program works.
+
+Do not use `v -profile compiler_profile.txt self` for this. `v self` replaces your `v` with the
+instrumented build, and from then on every `v` command, even `v version`, rewrites the profile
+file.
+
+The compiler runs several of its stages on multiple threads, so build the instrumented copy with a
+C compiler other than tcc, such as `-cc gcc` (used above) or `-cc clang`. With those, the profiler
+measures the time a function took on its own (the third column) separately for each thread. With
+tcc that measurement is shared by all threads, and the column then contains wrong values, including
+negative ones. Whatever the C compiler is, the counters themselves are plain variables that are not
+synchronized between threads, so the numbers for functions that several threads call at the same
+time are approximate.
+
+Some tips for reading the report of the compiler:
+
+- Run `v -show-timings` on the same input first. It prints the time of each compiler stage, such as
+  parse, check, transform, cgen and the C compiler, and the total, which tells you where to look.
+- Functions where worker threads wait while they have nothing to do, such as
+  `sync__Semaphore__wait` and `sync__Semaphore__timed_wait`, can rank high when you sort on the
+  third column. That is idle time, not work.
+- Every profiled call reads the clock twice, so for very short functions the numbers are mostly the
+  cost of profiling.
+- Compare profiles with the same input, compiler flags and C compiler. Read total time, call count
+  and average time per call together: reducing the number of calls can itself be an optimization,
+  which an average alone would miss. Unsynchronized counters limit comparisons of multithreaded
+  code; use a matched benchmark to verify performance changes.
 
 ## Package management
 
@@ -10530,6 +10587,8 @@ In the console build command, you can use:
 
 Parallel C builds keep the signal-handler runtime and its saved signal actions in one unit.
 Module-cache builds keep that runtime in the program prefix; cached objects use its declarations.
+Exports in builds without a V `main` also share one guarded runtime initializer across
+cached modules, including the backtrace stubs used on musl systems.
 Native headers that cannot safely share state across units use a single compilation unit.
 
 To select C23 with a compiler that supports it, use
