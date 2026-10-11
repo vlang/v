@@ -2103,11 +2103,7 @@ fn run_v_inline_source(args []string, option_index int, consumed int, source str
 	mut child_args := args[..option_index].clone()
 	child_args << ['run', temporary_source]
 	child_args << args[option_index + consumed..]
-	mut process := os.new_process(os.executable())
-	process.set_args(child_args)
-	process.wait()
-	exit_code := if process.code >= 0 { process.code } else { 1 }
-	process.close()
+	exit_code := run_binary(os.executable(), child_args)
 	os.rm(temporary_source) or {
 		eprintln('cannot remove temporary inline source file: ${err.msg()}')
 		if exit_code == 0 {
@@ -9427,6 +9423,9 @@ pub fn run(args []string) {
 		if skip_option_value {
 			skip_option_value = false
 			continue
+		}
+		if arg == '-e' || arg.starts_with('-e=') || arg == '-http' {
+			break
 		}
 		if v3_driver_option_consumes_value(arg) {
 			skip_option_value = true
