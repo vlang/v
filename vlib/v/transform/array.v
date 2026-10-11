@@ -3327,6 +3327,15 @@ fn (t &Transformer) array_receiver_raw_elem_type(fn_node flat.Node, elem_type st
 	}
 	receiver := t.a.child(&fn_node, 0)
 	mut raw := t.raw_var_type_for_expr(receiver) or { '' }
+	source_id := t.array_literal_alias_expr_id(receiver)
+	source := t.a.nodes[int(source_id)]
+	if source.kind == .array_literal {
+		// Literal receivers may already have a lowered []int/[]u8 annotation.
+		// Recover their declared alias before selecting its methods/operators.
+		raw = t.array_literal_checker_alias_type(source_id) or {
+			t.array_literal_alias_type(source) or { raw }
+		}
+	}
 	if !raw.starts_with('[') {
 		raw = t.raw_checker_node_type(receiver)
 	}

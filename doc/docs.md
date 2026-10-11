@@ -1533,6 +1533,9 @@ numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
 ```
 
+`sorted()` returns a sorted copy. Alias element types keep their overloaded `<` operator,
+including when the receiver is an array literal or a parenthesized array literal.
+
 ```v
 struct User {
 	age  int
@@ -1581,6 +1584,9 @@ users.sort_with_compare(custom_sort_fn)
 ```
 
 #### Array Slices
+
+Iteration over an array slice keeps the array's element type: iterating `[]string` yields
+strings, including when the containing function is reached through generic calls.
 
 A slice is a part of a parent array. Initially it refers to the elements
 between two indices separated by a `..` operator. The right-side index must
@@ -5456,6 +5462,10 @@ fn main() {
 
 ### Generics
 
+Cross-module privacy violations that do not depend on type parameters are diagnosed even
+in the program's unused generic functions and methods. Accesses that depend on type parameters
+are checked in concrete instances.
+
 Generic method calls retain the declaring modules of their type arguments when selecting
 the concrete method, including methods returning Result or Option values.
 
@@ -6600,6 +6610,11 @@ string buffers, promoting a simple abstraction-free code style.
 There are 4 ways to manage memory in V.
 
 The default is a minimal and a well performing tracing GC.
+
+With Boehm GC, `-d no_gc_thread_local_alloc` builds the bundled collector without thread-local
+allocation, so allocation counters also observe warmed small-object allocations. It uses the
+platform C compiler unless `-cc` selects one explicitly. This option preserves compiler selection
+when GC is disabled or `-d dynamic_boehm` is enabled; an empty define value does not enable a flag.
 
 The second way is autofree, it can be enabled with `-autofree`. It takes care of most objects
 (~90-100%): the compiler inserts necessary free calls automatically during compilation.
@@ -10572,6 +10587,8 @@ In the console build command, you can use:
 
 Parallel C builds keep the signal-handler runtime and its saved signal actions in one unit.
 Module-cache builds keep that runtime in the program prefix; cached objects use its declarations.
+Exports in builds without a V `main` also share one guarded runtime initializer across
+cached modules, including the backtrace stubs used on musl systems.
 Native headers that cannot safely share state across units use a single compilation unit.
 
 To select C23 with a compiler that supports it, use

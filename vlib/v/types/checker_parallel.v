@@ -3159,7 +3159,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	}
 	// A check tells what the body of a generic function does wrong without its
 	// type parameters (see check_generic_fn_body).
-	if has_body && generic_params.len > 0 && tc.check_generic_bodies && !fast_valid_build
+	if has_body && generic_params.len > 0 && !fast_valid_build
 		&& !signature_has_bare_generic_type && tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.check_generic_fn_body(node, fn_idx, generic_params)
 	}
@@ -4907,6 +4907,16 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 			clone_parallel_call_info(info)
 		} else {
 			info
+		}
+	}
+	for inferred in w.inferred_c_globals {
+		if inferred.name in tc.c_globals {
+			continue
+		}
+		if scoped {
+			tc.remember_inferred_c_global(inferred.name.clone(), clone_owned_type(inferred.typ))
+		} else {
+			tc.remember_inferred_c_global(inferred.name, inferred.typ)
 		}
 	}
 }

@@ -201,25 +201,42 @@ pub fn decompress_zlib(data []u8) ![]u8 {
 	return decoded
 }
 
-// decompress_gzip decompresses a gzip stream (RFC 1952).
-// It returns the decompressed bytes in a new array.
+// decompress_gzip decompresses all members of a gzip stream (RFC 1952).
+// It returns the concatenated decompressed bytes in a new array.
 pub fn decompress_gzip(data []u8) ![]u8 {
-	header := validate_gzip_header(data)!
-	payload := data[header.payload_start..data.len - 8]
-	expected_crc := binary.little_endian_u32_at(data, data.len - 8)
-	expected_size := binary.little_endian_u32_at(data, data.len - 4)
-	res := inflate_with_consumed(payload)!
-	if res.consumed != payload.len {
+	mut output := []u8{}
+	mut offset := 0
+	for {
+		member := data[offset..]
+		header := validate_gzip_header(member)!
+		res := inflate_with_consumed(member[header.payload_start..member.len - 8])!
+		offset += validate_gzip_trailer(member, header.payload_start + res.consumed, res.decoded)!
+		output << res.decoded
+		if offset == data.len {
+			return output
+		}
+	}
+	return output
+}
+
+fn validate_gzip_trailer(member []u8, trailer_start int, decoded []u8) !int {
+	member_end := trailer_start + 8
+	if member_end > member.len {
+		return error('invalid gzip stream: truncated trailer')
+	}
+	if member_end < member.len && (member[member_end] != 0x1f
+		|| (member_end + 1 < member.len && member[member_end + 1] != 0x8b)) {
 		return error('invalid gzip stream: trailing data before trailer')
 	}
-	decoded := res.decoded
+	expected_crc := binary.little_endian_u32_at(member, trailer_start)
+	expected_size := binary.little_endian_u32_at(member, trailer_start + 4)
 	if crc32.sum(decoded) != expected_crc {
 		return error('invalid gzip stream: crc32 mismatch')
 	}
 	if u32(decoded.len) != expected_size {
 		return error('invalid gzip stream: size mismatch')
 	}
-	return decoded
+	return member_end
 }
 
 // decompress_raw_with_consumed decompresses raw RFC 1951 DEFLATE data and tracks consumed bytes.
@@ -268,24 +285,22 @@ fn decompress_zlib_with_callback(data []u8, cb ChunkCallback, userdata voidptr) 
 }
 
 fn decompress_gzip_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !int {
-	header := validate_gzip_header(data)!
-	payload := data[header.payload_start..data.len - 8]
-	expected_crc := binary.little_endian_u32_at(data, data.len - 8)
-	expected_size := binary.little_endian_u32_at(data, data.len - 4)
-	res := inflate_with_callback(payload, cb, userdata)!
-	if res.aborted {
-		return res.delivered
+	mut offset := 0
+	mut delivered := 0
+	for {
+		member := data[offset..]
+		header := validate_gzip_header(member)!
+		res := inflate_with_callback(member[header.payload_start..member.len - 8], cb, userdata)!
+		delivered += res.delivered
+		if res.aborted {
+			return delivered
+		}
+		offset += validate_gzip_trailer(member, header.payload_start + res.consumed, res.decoded)!
+		if offset == data.len {
+			return delivered
+		}
 	}
-	if res.consumed != payload.len {
-		return error('invalid gzip stream: trailing data before trailer')
-	}
-	if crc32.sum(res.decoded) != expected_crc {
-		return error('invalid gzip stream: crc32 mismatch')
-	}
-	if u32(res.decoded.len) != expected_size {
-		return error('invalid gzip stream: size mismatch')
-	}
-	return res.delivered
+	return delivered
 }
 
 fn bit_reverse(v u32, n int) u32 {
