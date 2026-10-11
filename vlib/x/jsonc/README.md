@@ -113,6 +113,7 @@ the whole offending text: the token, the character that is not whitespace, the
 escape sequence from its backslash, or the single-quoted string from quote to
 quote. It never ends inside a multi-byte character, so slicing the original text
 with it is safe. A byte that is not valid UTF-8 counts as one character.
+CR, LF, U+2028 and U+2029 advance the line and reset the column; CRLF counts once.
 
 When several violations are present, the one reported is the first in the
 document.
@@ -177,6 +178,7 @@ Accepted, because they are JSONC:
 - `//` line comments and `/* */` block comments;
 - a leading byte order mark;
 - every escape in RFC 8259, including `\uXXXX`;
+- unescaped U+2028 and U+2029 inside quoted strings;
 - the four characters RFC 8259 allows between tokens: space, tab, CR and LF;
 - a trailing comma, when `allow_trailing_comma` is set.
 
@@ -197,7 +199,7 @@ Refused, because they are JSON5 extensions rather than JSONC:
 | `\'`, `\v`, `\0`, `\xNN` | `"\v"` |
 | ES6 `\u{...}` escape | `"\u{1F600}"` |
 | escaped line break | `"a\<newline>b"` |
-| unescaped control character | a raw newline inside a string |
+| unescaped control character | a raw tab inside a string |
 
 Refused, because RFC 8259 does not allow them between tokens even though the
 JSON5 scanner skips them as whitespace:
@@ -222,6 +224,7 @@ It is the `ParseError` above, with a position.
 Anything else is malformed input, and the error comes from the JSON5 parser
 as a `json2.JsonScanError`. That happens before the dialect is considered, so
 a syntax error is never reported as a dialect problem.
+Raw LF and CR inside a quoted string are syntax errors in the shared JSON5 parser.
 
 Decoding errors come from `json2` and describe the value that does not fit the target type.
 The decoder is shared with JSON and JSON5.

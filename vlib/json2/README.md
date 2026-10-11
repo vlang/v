@@ -69,6 +69,9 @@ and `NaN`. Strings support JSON5 escapes and escaped line continuations, includi
 UTF-16 surrogate pairs. Malformed escapes return a `JsonScanError` with a line and column.
 Typed decoding errors report their location and context in the original JSON5 input.
 CR, LF, CRLF, U+2028 and U+2029 are counted as JSON5 line terminators.
+Raw LF and CR in strings are rejected; use a backslash line continuation or a string escape.
+Unescaped U+2028 and U+2029 are allowed in strings, as specified by
+[JSON5 section 5.2](https://spec.json5.org/#paragraph-and-line-separators).
 Decoded strings and raw fields own their text; normalized decoding buffers are released.
 
 `single_quotes`, `unquoted_keys` and `trailing_commas` only affect encoding when

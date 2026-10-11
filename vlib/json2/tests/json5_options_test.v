@@ -18,6 +18,36 @@ fn test_json5_syntax_is_opt_in() {
 	}
 }
 
+fn test_json5_decode_rejects_unescaped_newlines() {
+	for quote in ['"', "'"] {
+		for separator in ['\n', '\r', '\r\n'] {
+			literal := quote + 'a' + separator + 'b' + quote
+			for text in [literal, '{name:' + literal + '}', '{' + literal + ':1}'] {
+				json2.decode[json2.Any](text, json5: true) or {
+					assert err is json2.JsonScanError
+					assert err.msg().contains('unescaped line terminator')
+					continue
+				}
+				assert false, 'expected an unescaped line terminator error'
+			}
+		}
+	}
+}
+
+fn test_json5_decode_accepts_unescaped_unicode_line_separators() {
+	for quote in ['"', "'"] {
+		for separator in ['\u2028', '\u2029'] {
+			value := 'a' + separator + 'b'
+			literal := quote + value + quote
+			assert json2.decode[string](literal, json5: true)! == value
+			fields := json2.decode[map[string]string]('{name:' + literal + '}', json5: true)!
+			assert fields['name'] == value
+			keys := json2.decode[map[string]int]('{' + literal + ':1}', json5: true)!
+			assert keys[value] == 1
+		}
+	}
+}
+
 fn test_json5_formatting_is_opt_in() {
 	value := DialectFields{ name: "it's V" }
 	plain := json2.encode(value)

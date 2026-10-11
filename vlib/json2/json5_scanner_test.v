@@ -134,8 +134,48 @@ fn test_scan_escape_sequences() {
 }
 
 fn test_scan_line_continuation() {
-	mut s := new_json5_scanner('"a\\\nb"')
-	assert s.next()!.lit == 'ab'
+	for quote in ['"', "'"] {
+		for separator in ['\n', '\r', '\r\n', '\u2028', '\u2029'] {
+			mut s := new_json5_scanner('// heading\n  ' + quote + 'a\\' + separator + 'b' + quote + ' true')
+			assert s.next()!.lit == 'ab'
+			next := s.next()!
+			assert next.kind == .bool
+			assert next.pos.line == 3
+			assert next.pos.col == 4
+		}
+	}
+}
+
+fn test_scan_rejects_unescaped_newlines_in_strings() {
+	for quote in ['"', "'"] {
+		for separator in ['\n', '\r', '\r\n'] {
+			mut s := new_json5_scanner('// heading\n  ' + quote + 'a' + separator + 'b' + quote)
+			s.next() or {
+				if err is JsonScanError {
+					assert err.message == 'unescaped line terminator in string'
+					assert err.line == 2
+					assert err.character == 5
+				} else {
+					assert false, err.msg()
+				}
+				continue
+			}
+			assert false, 'expected an unescaped line terminator error'
+		}
+	}
+}
+
+fn test_scan_accepts_unescaped_unicode_line_separators_in_strings() {
+	for quote in ['"', "'"] {
+		for separator in ['\u2028', '\u2029'] {
+			mut s := new_json5_scanner(quote + 'a' + separator + 'b' + quote + ' true')
+			assert s.next()!.lit == 'a' + separator + 'b'
+			next := s.next()!
+			assert next.kind == .bool
+			assert next.pos.line == 2
+			assert next.pos.col == 4
+		}
+	}
 }
 
 fn test_scan_unterminated_string() {

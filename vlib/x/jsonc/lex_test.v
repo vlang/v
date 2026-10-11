@@ -84,10 +84,25 @@ fn test_lex_rejects_escaped_line_break() {
 }
 
 fn test_lex_rejects_raw_control_character() {
-	assert rejected('{"a": "x\ny"}').contains('control character')
+	// The rune pass reports controls; the JSON5 scanner owns raw line terminators.
+	assert first_violation('{"a": "x\ny"}').contains('control character')
 	assert rejected('{"a": "x\ty"}').contains('control character')
 	// A tab inside a string is a control character, unlike a tab between tokens.
 	assert first_violation('{\t"a": 1}') == ''
+}
+
+fn test_lex_positions_after_all_json5_line_terminators() {
+	for separator in ['\n', '\r', '\r\n', '\u2028', '\u2029'] {
+		text := '/* heading' + separator + separator + ' */{"a":"\\v"}'
+		v := lex_violation(text)
+		start := text.index('\\v') or { panic('missing escape') }
+		assert v.message.contains('not a valid JSONC escape')
+		assert v.pos.line == 3
+		assert v.pos.col == 10
+		assert v.pos.offset == start
+		assert v.pos.end_offset == start + 2
+		assert text[v.pos.offset..v.pos.end_offset] == '\\v'
+	}
 }
 
 fn test_lex_ignores_comment_contents() {

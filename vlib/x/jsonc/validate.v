@@ -183,7 +183,10 @@ fn validate(text string, opts ParseOpts) &ParseError {
 // with the source even across bytes that are not valid UTF-8.
 fn locate(text string, tok json2.Json5Token) Pos {
 	mut c := new_cursor(text)
-	for !c.done() && (c.line != tok.pos.line || c.col != tok.pos.col) {
+	// The LF in CRLF shares the next token's line and column when that column is one.
+	// A token never starts on a line terminator; finish the break before matching it.
+	for !c.done()
+		&& (c.line != tok.pos.line || c.col != tok.pos.col || is_line_terminator(c.at())) {
 		c.next()
 	}
 	return Pos{

@@ -41,6 +41,36 @@ fn test_is_valid_rejects_malformed_json() {
 	assert !is_valid('/* unterminated')
 }
 
+fn test_public_api_rejects_unescaped_newlines_as_syntax_errors() {
+	for quote in ['"', "'"] {
+		for separator in ['\n', '\r', '\r\n'] {
+			text := '{"name":' + quote + 'a' + separator + 'b' + quote + '}'
+			assert !is_valid(text)
+			assert violation(text) == none
+			parse_text(text) or {
+				assert err is json2.JsonScanError
+				assert err.msg().contains('unescaped line terminator')
+				continue
+			}
+			assert false, 'expected a syntax error'
+		}
+	}
+}
+
+fn test_public_api_accepts_unescaped_unicode_line_separators_in_strings() {
+	for separator in ['\u2028', '\u2029'] {
+		text := '{"name":"a' + separator + 'b"}'
+		assert is_valid(text)
+		assert violation(text) == none
+		assert parse_text(text)!.value('name').str() == 'a' + separator + 'b'
+		bad := '{"name":"a' + separator + 'b",clé:1}'
+		v := violation(bad) or { panic('expected an unquoted key violation') }
+		assert v.pos.line == 2
+		assert v.pos.col == 4
+		assert bad[v.pos.offset..v.pos.end_offset] == 'clé'
+	}
+}
+
 fn test_is_valid_opts_honours_trailing_comma() {
 	opts := ParseOpts{
 		allow_trailing_comma: true
@@ -187,6 +217,28 @@ fn test_public_api_byte_range_is_a_usable_slice() {
 		return
 	}
 	assert false, 'expected an unquoted multibyte key to be reported'
+}
+
+fn test_public_api_token_positions_after_carriage_returns() {
+	for separator in ['\n', '\r', '\r\n'] {
+		for indent in ['', '  '] {
+			text := '// heading' + separator + '{' + separator + indent + 'clé: 1}'
+			start := text.index('clé') or { panic('missing key') }
+			v := violation(text) or { panic('expected an unquoted key violation') }
+			assert v.pos.line == 3
+			assert v.pos.col == indent.len + 1
+			assert v.pos.offset == start
+			assert v.pos.end_offset == start + 'clé'.len
+			assert v.pos.end_offset <= text.len
+			assert text[v.pos.offset..v.pos.end_offset] == 'clé'
+			parse_text(text) or {
+				assert err is ParseError
+				assert err.msg() == v.msg()
+				continue
+			}
+			assert false, 'expected a JSONC dialect violation'
+		}
+	}
 }
 
 // slice_of returns the bytes the violation in `text` covers.

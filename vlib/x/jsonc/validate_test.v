@@ -146,6 +146,23 @@ fn test_validate_positions_recover_byte_offsets() {
 	assert v.pos.end_offset == 15
 }
 
+fn test_validate_positions_after_all_json5_line_terminators() {
+	for separator in ['\n', '\r', '\r\n', '\u2028', '\u2029'] {
+		// Unicode line separators are legal inside comments, which the rune pass ignores.
+		text := '\uFEFF{/* heading' + separator + separator + ' */\tclé: 1}'
+		v := violation_in(text)
+		start := text.index('clé') or { panic('missing key') }
+		assert v != nil
+		assert v.message.contains('not quoted')
+		assert v.pos.line == 3
+		assert v.pos.col == 5
+		assert v.pos.offset == start
+		assert v.pos.end_offset == start + 'clé'.len
+		assert v.pos.end_offset <= text.len
+		assert text[v.pos.offset..v.pos.end_offset] == 'clé'
+	}
+}
+
 fn test_validate_positions_account_for_a_byte_order_mark() {
 	// The JSON5 scanner drops a leading mark before counting, so the column is
 	// one less than the byte offset would suggest.

@@ -90,7 +90,7 @@ fn (c &Cursor) end() int {
 }
 
 // next consumes the current character and returns its code point, or -1 at the
-// end of the input. A line feed restarts the column.
+// end of the input. JSON5 line terminators restart the column; CRLF counts once.
 fn (mut c Cursor) next() int {
 	if c.i >= c.text.len {
 		return -1
@@ -98,8 +98,10 @@ fn (mut c Cursor) next() int {
 	code := int(c.text[c.i])
 	c.offset += c.width()
 	c.i++
-	if code == 0x0A {
-		c.line++
+	if is_line_terminator(code) {
+		if code != 0x0A || c.i < 2 || int(c.text[c.i - 2]) != 0x0D {
+			c.line++
+		}
 		c.col = 1
 	} else {
 		c.col++

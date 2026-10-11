@@ -355,6 +355,10 @@ fn (mut s Json5Scanner) scan_string(start Json5Pos, quote_code int) !Json5Token 
 				}
 			}
 		} else {
+			// JSON5 permits literal U+2028/U+2029 in strings (specification section 5.2).
+			if code == r_lf || code == r_cr {
+				return json5_syntax_error('unescaped line terminator in string', s.line, s.col)
+			}
 			character = s.advance()
 		}
 		// This view borrows only the local UTF-8 buffer and is copied immediately.
