@@ -113,7 +113,16 @@ fn retry_state(value &RetryState) &RetryState {
 }
 
 fn main() {
-	os.setenv('VEXE', os.real_path(os.executable()), true)
+	vexe := os.real_path(os.executable())
+	// Ownership helpers reset VEXE for their own tool dispatch, but module cache
+	// isolation must keep identifying the primary compiler that launched them.
+	primary := os.getenv('V3_PRIMARY_VEXE')
+	os.setenv('V3_PRIMARY_VEXE', if ownership_checker_is_compiled() && primary != '' {
+		primary
+	} else {
+		vexe
+	}, true)
+	os.setenv('VEXE', vexe, true)
 	os.setenv('VCHILD', 'true', true)
 	mut args := merged_v_args()
 	if args.len == 0 {

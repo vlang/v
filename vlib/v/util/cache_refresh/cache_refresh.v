@@ -191,7 +191,7 @@ pub fn decode_project_flags(content string) ![]FlagGroup {
 // entry identifies the original source input for project interface scopes.
 // show_test_stats preserves the effective test assertion display mode.
 // Cwd-independent builds share records across projects; required compile inputs
-// and resolved -file-list sources are tracked so their removal retires the obsolete configuration.
+// and explicit -file-list files are tracked so their removal retires the obsolete configuration.
 pub fn record(dir string, vroot string, args []string, is_test bool, sources map[string][]string, project_flags []FlagGroup, entry string, show_test_stats bool) ! {
 	vlib := os.real_path(os.join_path(vroot, 'vlib'))
 	inputs := required_compile_inputs(args, project_flags, os.getwd())
@@ -321,6 +321,17 @@ fn required_compile_inputs(args []string, project []FlagGroup, cwd string) []str
 	return inputs
 }
 
+fn listed_sources_available(request Request) bool {
+	index := request.args.index('-file-list')
+	if index < 0 { return true }
+	if index + 1 >= request.args.len { return false }
+	for input in request.args[index + 1].split(',') {
+		path := if os.is_abs_path(input) { input } else { os.join_path(request.cwd, input) }
+		if !os.is_file(path) && !os.is_dir(path) { return false }
+	}
+	return true
+}
+
 // collect snapshots vexe's inventory before `v up` replaces the compiler. Old
 // caches predate these records: their header filenames still identify vlib
 // source directories, so warm those modules for the available C compilers in
@@ -356,6 +367,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 			recorded[request.module] = true
 			if request.cwd != '' && !os.is_dir(request.cwd) { continue }
 			if request.compile_inputs.any(!os.is_file(it)) { continue }
+			if !listed_sources_available(request) { continue }
 			key := encode_request(request)
 			if key !in seen {
 				seen[key] = requests.len
@@ -497,6 +509,7 @@ pub fn refresh(vexe string, requests []Request) ! {
 		for path, signature in request.legacy_headers { migrated_headers[path] = signature }
 		if (request.cwd != '' && !os.is_dir(request.cwd))
 			|| request.compile_inputs.any(!os.is_file(it))
+			|| !listed_sources_available(request)
 			|| !compiler_available(os.dir(vexe), request) {
 			for path in request.legacy_headers.keys() { incomplete_headers[path] = true }
 			continue
@@ -510,7 +523,10 @@ pub fn refresh(vexe string, requests []Request) ! {
 		}
 		use_entry := request.entry != '' && os.exists(request.entry)
 		if use_entry {
-			key := encode_request(Request{ ...request, module: 'builtin' })
+			// The current entry supplies directives and imports; their historical
+			// inventory values do not change the live child's command or environment.
+			key := encode_arguments([request.cwd, request.entry, request.show_test_stats.str(),
+				...request.args])
 			if key in refreshed_entries { continue }
 			refreshed_entries[key] = true
 		}

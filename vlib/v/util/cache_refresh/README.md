@@ -5,7 +5,8 @@ so `v up` can refresh them after replacing the compiler or updating their source
 
 - `root_dir(vroot, vexe)` locates the checkout's cache and respects `V3CACHE` and test isolation.
   Isolated cache lookup uses the supplied V compiler executable, rather than the helper process.
-  Delegated ownership compilers use the inherited primary `VEXE` for the same root.
+  Delegated ownership compilers retain `V3_PRIMARY_VEXE` for the same root,
+  even when their launcher resets `VEXE` to the helper executable.
 - `record` saves a separate atomic inventory entry for each module and build configuration.
   Project modules outside the checkout's vlib are excluded.
 - `collect(vroot, vexe)` snapshots the compiler's recorded configurations before an update.
@@ -16,7 +17,10 @@ so `v up` can refresh them after replacing the compiler or updating their source
 - `refresh` uses the updated compiler to rebuild cached objects from the original
   program input when project interface implementers require it and it still exists.
   It stops before linking or running the program, and refreshes each entry/configuration once.
-  Resolved sources from `-file-list`, including expanded directories, accompany live entries.
+  Live requests sharing a command, working directory, entry and test display mode run once,
+  even when historical project directives or imports differ.
+  Absolute `-file-list` files and directories accompany live entries. Directory operands
+  recursively include their current sources, so newly added files are included during refresh.
   Otherwise it compiles a temporary importer with the recorded project directives.
   It uses the compiler's default caching mode and preserves build modes,
   resolved compiler commands, and absolute search paths.
@@ -27,7 +31,7 @@ so `v up` can refresh them after replacing the compiler or updating their source
   It validates dependencies, reuses unchanged objects, and
   reports newly cached modules on stdout. It never runs the generated programs.
   Removed modules and records with vanished working directories, required compile inputs,
-  listed source files, or unavailable C compilers are skipped.
+  listed files or directories, or unavailable C compilers are skipped.
   A compilation failure is returned to `v up`.
 
 Inventory records use length-prefixed arguments and working directories to preserve
@@ -46,7 +50,8 @@ CLI C flags retain their position after source directives. Original vlib imports
 preserve flags contributed by modules outside the refreshed module's dependencies.
 
 Inventory version 6 adds effective assertion display modes and required compile inputs.
-Resolved `-file-list` sources are saved as arguments and tracked as required inputs.
+Absolute `-file-list` operands are saved as arguments and checked before refresh.
+Explicit files are tracked as required inputs; directory operands retain directory semantics.
 Legacy header provenance is temporary collection metadata and is not part of record identity.
 Version 5 adds the original entry path to version 4's project groups and imports.
 Older inventories remain readable. Version 3 did not distinguish project and module flags;

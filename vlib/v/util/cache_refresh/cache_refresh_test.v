@@ -363,16 +363,34 @@ fn test_refresh_uses_live_entries_once_and_never_runs_or_links_them() ! {
 		'test -z "\$V3_CACHE_REFRESH_PROJECT_FLAGS" || exit 3\n' +
 		'printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n')!
 	os.chmod(vexe, 0o755)!
-	requests := ['sample', 'other'].map(Request{
+	mut requests := ['sample', 'other'].map(Request{
 		module:        it
 		entry:         entry
 		project_flags: [FlagGroup{ flags: ['-DOLD'], in_main: true }]
 	})
+	requests << Request{
+		...requests[0]
+		project_flags:  [FlagGroup{ flags: ['-DNEW'], in_main: true }]
+		imports:        ['other']
+		compile_inputs: [entry]
+		is_test:        true // Also unused: the live entry and arguments select test mode.
+	}
 	refresh(vexe, requests)!
 	lines := os.read_file(log)!.split_into_lines()
 	assert lines.len == 1, lines.str()
 	assert lines[0].contains('-skip-running'), lines[0]
 	assert lines[0].ends_with(entry), lines[0]
+	// Distinct child arguments, working directories, entries and environment
+	// settings must still execute separately.
+	other_entry := os.join_path(root, 'other.v')
+	os.write_file(other_entry, 'fn main() {}\n')!
+	refresh(vexe, [
+		Request{ ...requests[0], args: ['-prod'] },
+		Request{ ...requests[0], cwd: root },
+		Request{ ...requests[0], entry: other_entry },
+		Request{ ...requests[0], show_test_stats: true },
+	])!
+	assert os.read_file(log)!.split_into_lines().len == 5
 }
 
 fn test_inventory_and_refresh_skip_vanished_working_directories() ! {
@@ -637,12 +655,25 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		}
 	}
 	os.unsetenv('VTEST_SHOW_ASSERTS')
+	// Keep the initial records, then extend the listed directory and make the
+	// current entry require its new declaration. A source flag edit also leaves
+	// historical records which must share one effective live refresh command.
+	initial := collect(vroot, @VEXE)!.filter(it.module.starts_with(import_root + '.') && !it.is_test)
+	added_file := os.join_path(root, 'implementers', 'nested', 'added.v')
+	os.write_file(added_file, 'module main\nfn newly_listed_reader() Sink { return Sink{} }\n')!
+	os.write_file(main_file, '#flag -DREFRESH_CHANGED_PROJECT\n' +
+		os.read_file(main_file)!.replace('probe.read(Sink{})', 'probe.read(newly_listed_reader())'))!
+	for flags in builds {
+		result := os.exec([@VEXE, ...flags, '-o', os.join_path(root, 'program'), main_file])
+		assert result.exit_code == 0, result.output
+	}
 	requests := collect(vroot, @VEXE)!.filter(it.module.starts_with(import_root + '.'))
+	assert initial.len > 0 && initial.all(it in requests), requests.str()
 	assert requests.len > 0
 	assert collect(vroot, os.executable())!.filter(it.module.starts_with(import_root + '.')).len == 0
 	// Compiler aliases can share a configuration and restore its program before
 	// reaching the inventory writer; its existing record already covers the cache.
-	assert requests.len >= 2 && requests.len <= (builds.len + test_builds.len) * 2, requests.str()
+	assert requests.len >= 2 && requests.len <= (builds.len * 2 + test_builds.len) * 2, requests.str()
 	for index, flags in test_builds {
 		selector := flags[flags.index('-run-only') + 1]
 		assert requests.any(it.is_test && it.show_test_stats == assert_modes[index] && selector in it.args && ('-prod' in flags) == ('-prod' in it.args)), flags.str()
@@ -657,8 +688,9 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 			assert list_index < 0, request.str()
 		} else {
 			assert list_index >= 0, request.str()
-			assert request.args[list_index + 1].split(',') == [support_file, sink_file], request.str()
-			assert support_file in request.compile_inputs && sink_file in request.compile_inputs, request.str()
+			assert request.args[list_index + 1].split(',') == [support_file,
+				os.join_path(root, 'implementers')], request.str()
+			assert support_file in request.compile_inputs && sink_file !in request.compile_inputs, request.str()
 		}
 		mut project_flags := []string{}
 		for group in request.project_flags { project_flags << group.flags }
@@ -738,7 +770,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		assert !result.output.contains('V3 module cache fallback'), result.output
 		if '-silent' !in flags {
 			parsed := result.output.split_into_lines().filter(it.contains('parsed .v files'))
-			assert parsed.len == 1 && parsed[0].all_after('parsed .v files').trim_space().all_before(' ').int() == 3, result.output
+			assert parsed.len == 1 && parsed[0].all_after('parsed .v files').trim_space().all_before(' ').int() == 4, result.output
 		}
 		run := os.exec([os.join_path(root, 'program')])
 		assert run.exit_code == 0, run.output
@@ -761,7 +793,12 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	}
 	// A vanished listed source retires the live-entry record both at collection
 	// and when replaying a snapshot taken before the file was removed.
+	support_content := os.read_file(support_file)!
 	os.rm(support_file)!
+	assert !collect(vroot, @VEXE)!.any(it.module.starts_with(import_root + '.') && !it.is_test)
+	refresh(@VEXE, requests.filter(!it.is_test))!
+	os.write_file(support_file, support_content)!
+	os.rmdir_all(os.join_path(root, 'implementers'))!
 	assert !collect(vroot, @VEXE)!.any(it.module.starts_with(import_root + '.') && !it.is_test)
 	refresh(@VEXE, requests.filter(!it.is_test))!
 }
