@@ -83,3 +83,13 @@ fn test_fails() ! {
 		return error(@MOD + '.' + @FN + ': expected new_alphabet to fail, got ${abc}')
 	}
 }
+
+fn test_alphabet_rejects_non_ascii_bytes() {
+	mut input := btc_alphabet.str().bytes()
+	input[0] = 0x80
+	if alphabet := new_alphabet(input.bytestr()) {
+		assert false, 'accepted non-ASCII alphabet: ${alphabet}'
+	} else {
+		assert err.msg() == 'base58.new_alphabet: alphabet must contain only ASCII characters'
+	}
+}
