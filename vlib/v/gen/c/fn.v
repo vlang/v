@@ -16030,6 +16030,25 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 }
 
 fn (mut g FlatGen) gen_lowered_mut_value_storage_arg(arg_id flat.NodeId, arg_node flat.Node, expected types.Type) bool {
+	mut binding := arg_node
+	if arg_node.kind == .prefix && arg_node.op in [.amp, .mul]
+		&& arg_node.children_count == 1 {
+		binding = g.a.child_node(&arg_node, 0)
+	}
+	if binding.kind == .ident {
+		if value_type := g.local_indirect_value_type(binding.value) {
+			clean_value := cgen_unalias_type(value_type)
+			clean_expected := cgen_unalias_type(expected)
+			if clean_value is types.Pointer && clean_expected is types.Pointer
+				&& g.tc.c_type(clean_value) == g.tc.c_type(clean_expected) {
+				// Borrowed loop bindings retain a pointer to the entry slot. A
+				// pointer-valued entry passed as T* needs its stored pointer,
+				// rather than the T** that permits replacing the map entry.
+				g.write('(*${g.local_decl_cname(binding.value)})')
+				return true
+			}
+		}
+	}
 	if arg_node.kind != .prefix || arg_node.op != .mul || arg_node.children_count != 1 {
 		return false
 	}

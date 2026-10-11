@@ -2689,6 +2689,8 @@ Parentheses around a mutable map container do not change whether assigning the l
 its entry.
 Mutable map parameters, including explicit pointer parameters (`mut m &map[K]V`),
 keep ordinary value iteration. A mutable loop value writes through to the map entry.
+A mutable pointer-valued loop argument can rebind the stored pointer, including through
+parentheses, while a mutable struct argument updates the pointed-to struct.
 
 Either key or value can be ignored by using a single underscore as the identifier.
 
