@@ -215,6 +215,7 @@ mut:
 	ticks                       int // for ui mode only
 	last_bg_overlay_frame       u64
 	translucent_bg_seed_pending bool
+	frame_pass                  gfx.Pass
 pub:
 	native_rendering bool
 pub mut:
@@ -865,26 +866,13 @@ pub fn (ctx &Context) end(options EndOptions) {
 			ctx.show_fps()
 		}
 	}
-	pass := match options.how {
-		.clear {
-			if ctx.bg_color.a < 255 {
-				if ctx.translucent_bg_seed_pending {
-					mut ctx_mut := unsafe { &Context(ctx) }
-					ctx_mut.translucent_bg_seed_pending = false
-					create_default_pass(ctx.clear_pass)
-				} else {
-					create_default_pass(load_pass)
-				}
-			} else {
-				create_default_pass(ctx.clear_pass)
-			}
-		}
-		.passthru {
-			create_default_pass(dontcare_pass)
-		}
-	}
-
-	gfx.begin_pass(pass)
+	// Rendering uses this Context serially on the render thread. Only internal pass state
+	// is mutated, and Sokol consumes its descriptor before this call returns.
+	mut frame_ctx := unsafe { &Context(ctx) }
+	frame_ctx.prepare_end_pass(options, sapp.glue_swapchain())
+	// sg_begin_pass copies its descriptor synchronously. The next pass can
+	// reuse this Context-owned storage without retaining a frame-local value.
+	gfx.begin_pass(&frame_ctx.frame_pass)
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
@@ -894,6 +882,27 @@ pub fn (ctx &Context) end(options EndOptions) {
 		wait_events()
 	}
 	*/
+}
+
+fn (mut ctx Context) prepare_end_pass(options EndOptions, swapchain gfx.Swapchain) {
+	action := match options.how {
+		.clear {
+			if ctx.bg_color.a < 255 {
+				if ctx.translucent_bg_seed_pending {
+					ctx.translucent_bg_seed_pending = false
+					ctx.clear_pass
+				} else {
+					load_pass
+				}
+			} else {
+				ctx.clear_pass
+			}
+		}
+		.passthru {
+			dontcare_pass
+		}
+	}
+	ctx.frame_pass = gfx.Pass{ action: action, swapchain: swapchain }
 }
 
 pub struct FPSConfig {
