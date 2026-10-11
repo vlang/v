@@ -321,26 +321,58 @@ fn always_loaded_plain_functions() []string {
 	return sorted
 }
 
-// module_functions_that_stages_name returns the plain functions of the other
-// modules of vlib that a stage spells with the name of their module, as
-// `module.function` or as the C name `module__function`.
-fn module_functions_that_stages_name() []string {
-	words, names := stage_literal_words_and_names()
+// runtime_modules_of_the_compiler are the modules below `vlib/v` whose functions
+// a program can call when it runs. The others are the compiler: a stage does not
+// write a call of one of their functions into a program.
+const runtime_modules_of_the_compiler = ['v/reflection', 'v/debug', 'v/embed_file', 'v/live',
+	'v/profile', 'v/trace_calls']
+
+// V3LibraryFunctions are the plain functions that one directory of vlib declares.
+struct V3LibraryFunctions {
+	// The directory below vlib, and the name of its module with dots.
+	dir         string
+	module_name string
+	names       []string
+}
+
+// library_plain_functions returns the plain functions of every module of vlib
+// that a program can link, a directory at a time.
+fn library_plain_functions() []V3LibraryFunctions {
 	vlib := os.join_path(@VMODROOT, 'vlib')
 	mut dirs := map[string]bool{}
 	for file in os.walk_ext(vlib, '.v') {
 		dirs[os.dir(file)] = true
 	}
-	mut found := map[string]bool{}
+	mut modules := []V3LibraryFunctions{}
 	for dir, _ in dirs {
 		relative := dir[vlib.len + 1..]
-		if relative in always_loaded_module_dirs || relative.contains('tests')
-			|| relative.contains('testdata') {
+		if relative.contains('tests') || relative.contains('testdata')
+			|| (relative == 'v' || relative.starts_with('v/'))
+				&& !runtime_modules_of_the_compiler.any(relative == it || relative.starts_with(it + '/')) {
 			continue
 		}
-		module_name := relative.replace('/', '.')
+		modules << V3LibraryFunctions{
+			dir:         relative
+			module_name: relative.replace('/', '.')
+			names:       plain_functions_of(dir)
+		}
+	}
+	return modules
+}
+
+// module_functions_that_stages_name returns the plain functions of the other
+// modules of vlib that a stage spells with the name of their module, as
+// `module.function` or as the C name `module__function`.
+fn module_functions_that_stages_name() []string {
+	words, names := stage_literal_words_and_names()
+	mut found := map[string]bool{}
+	for library in library_plain_functions() {
+		if library.dir in always_loaded_module_dirs {
+			continue
+		}
+		module_name := library.module_name
 		short_module := module_name.all_after_last('.')
-		for name in plain_functions_of(dir) {
+		for name in library.names {
 			if names['${short_module}.${name}'] || names['${module_name}.${name}']
 				|| words['${short_module}__${name}']
 				|| words['${module_name.replace('.', '__')}__${name}'] {
@@ -526,39 +558,17 @@ fn stage_built_name_patterns() []string {
 	return sorted
 }
 
-// plain_functions_of_vlib returns the plain functions of every module of vlib,
-// each with the last part of the name of its module, but for the directories in
-// `except`.
-fn plain_functions_of_vlib(except []string) [][]string {
-	vlib := os.join_path(@VMODROOT, 'vlib')
-	mut dirs := map[string]bool{}
-	for file in os.walk_ext(vlib, '.v') {
-		dirs[os.dir(file)] = true
-	}
-	mut functions := [][]string{}
-	for dir, _ in dirs {
-		relative := dir[vlib.len + 1..]
-		if relative in except || relative.contains('tests') || relative.contains('testdata') {
-			continue
-		}
-		module_name := relative.all_after_last('/')
-		for name in plain_functions_of(dir) {
-			functions << [module_name, name]
-		}
-	}
-	return functions
-}
-
 // stage_built_function_name_patterns returns the names that the stages put
-// together and that a plain function of vlib has: the others are names of
-// something else.
+// together and that a plain function of a library module has: the others are
+// names of something else.
 fn stage_built_function_name_patterns() []string {
-	functions := plain_functions_of_vlib([]string{})
+	libraries := library_plain_functions()
 	mut fitting := []string{}
 	for text in stage_built_name_patterns() {
 		pattern := v3_name_pattern(text)
-		for function in functions {
-			if pattern.fits(function[0], function[1]) {
+		for library in libraries {
+			module_name := library.module_name.all_after_last('.')
+			if library.names.any(pattern.fits(module_name, it)) {
 				fitting << text
 				break
 			}
@@ -636,6 +646,14 @@ fn test_name_patterns_fit_the_names_that_they_stand_for() {
 	assert v3_name_pattern('*.len').module_name == ''
 	assert v3_name_pattern('*_str').module_name == ''
 	assert v3_name_pattern('__new_array*').module_name == ''
+	// The name of a function can start with `__` after the name of its module.
+	for text in ['builtin.__new_*', 'builtin____new_*', 'builtin__overflow____new_*'] {
+		pattern := v3_name_pattern(text)
+		assert pattern.module_name in ['builtin', 'overflow'], text
+		assert pattern.parts == ['__new_'], text
+		assert pattern.fits(pattern.module_name, '__new_array'), text
+		assert !pattern.fits(pattern.module_name, 'new_array'), text
+	}
 	// A pattern of one part with nothing to fill in is the whole name.
 	assert v3_name_pattern('abc').fits('m', 'abc')
 	assert !v3_name_pattern('abc').fits('m', 'abcd')

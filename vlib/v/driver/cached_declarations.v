@@ -161,19 +161,22 @@ struct V3NamePattern {
 
 // v3_name_pattern takes the pattern `text` apart. `module.name` and the C name
 // `module__name` both tell the module of a function; of a module with a longer
-// name its last part is what counts, as it is what an interface declares.
+// name its last part is what counts, as it is what an interface declares. The
+// name of a function can start with `__` itself: `builtin.__new_array` is
+// `builtin____new_array` in C.
 fn v3_name_pattern(text string) V3NamePattern {
 	mut module_name := ''
 	mut name := text
-	if c_separator := text.last_index('__') {
-		// A name of a function can start with `__` itself.
-		if c_separator > 0 {
-			module_name = text[..c_separator].all_after_last('__')
-			name = text[c_separator + 2..]
-		}
-	} else if dot := text.last_index('.') {
+	if dot := text.last_index('.') {
 		module_name = text[..dot].all_after_last('.')
 		name = text[dot + 1..]
+	} else if last := text.last_index('__') {
+		// Of four underscores the first two part the module from the name.
+		separator := if last >= 2 && text[last - 2..last] == '__' { last - 2 } else { last }
+		if separator > 0 {
+			module_name = text[..separator].all_after_last('__')
+			name = text[separator + 2..]
+		}
 	}
 	return V3NamePattern{
 		// A module that the stage fills in is any module.
