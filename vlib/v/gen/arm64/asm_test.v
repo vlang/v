@@ -26,14 +26,12 @@ fn test_double_precision_encoders_match_reference() {
 	// fsqrt d0, d1 / fsqrt d5, d6
 	assert asm_fsqrt_d(0, 1) == 0x1E61C020
 	assert asm_fsqrt_d(5, 6) == 0x1E61C0C5
-	// fadd d0, d0, d1 / fsub d0, d0, d1 / fmul d0, d0, d1 / fdiv d0, d0, d1
+	// fadd d0, d0, d1 (kept for gen_test.v, which asserts on this word)
 	assert asm_fadd_d0_d0_d1() == 0x1E612800
-	assert asm_fsub_d0_d0_d1() == 0x1E613800
-	assert asm_fmul_d0_d0_d1() == 0x1E610800
-	assert asm_fdiv_d0_d0_d1() == 0x1E611800
-	// fdiv d2, d0, d1 / fmsub d0, d2, d1, d0 / fcmp d0, d1
-	assert asm_fdiv_d2_d0_d1() == 0x1E611802
-	assert asm_fmsub_d0_d2_d1_d0() == 0x1F418040
+	// frintz d2, d2 / fmsub d0, d2, d1, d0 — the frem sequence, now written
+	// through the general encoders rather than a fixed form each.
+	assert asm_frintz_d(2, 2) == 0x1E65C042
+	assert asm_fmsub_d(0, 2, 1, 0) == 0x1F418040
 	assert asm_fcmp_d(Reg(0), Reg(1)) == 0x1E612000
 }
 
@@ -113,6 +111,28 @@ fn test_vector_load_store_encoders_match_reference() {
 	// of 16; anything else is truncated rather than trapped.
 	assert ((asm_ldr_q_imm(3, Reg(2), 1) >> 10) & 0xFFF) == 1
 	assert ((asm_str_q_imm(3, Reg(2), 2) >> 10) & 0xFFF) == 2
+}
+
+fn test_scalar_f64_memory_encoders_match_reference() {
+	// ldr d0, [x1] / ldr d5, [x8, #8] / str d0, [x1] / str d5, [x8, #8]
+	assert asm_ldr_d_imm(0, Reg(1), 0) == 0xFD400020
+	assert asm_ldr_d_imm(5, Reg(8), 1) == 0xFD400505
+	assert asm_str_d_imm(0, Reg(1), 0) == 0xFD000020
+	assert asm_str_d_imm(5, Reg(8), 1) == 0xFD000505
+	// ldur d3, [x29, #-16] / stur d3, [x29, #-16] / ldur s3, [x29, #-16]
+	assert asm_ldur_d(3, Reg(29), -16) == 0xFC5F03A3
+	assert asm_stur_d(3, Reg(29), -16) == 0xFC1F03A3
+	assert asm_ldur_s(3, Reg(29), -16) == asm_ldur_w(Reg(3), Reg(29), -16) | 0x04000000
+	// Each f64 word is the integer 64-bit one with the SIMD flag set, the same
+	// relationship `ldr s` has to `ldr w` above, so the register fields cannot
+	// have drifted between the two widths.
+	assert asm_ldr_d_imm(0, Reg(1), 0) == asm_ldr_imm(Reg(0), Reg(1), 0) | 0x04000000
+	assert asm_str_d_imm(0, Reg(1), 0) == asm_str(Reg(0), Reg(1)) | 0x04000000
+	assert asm_ldur_d(3, Reg(29), -16) == asm_ldur(Reg(3), Reg(29), -16) | 0x04000000
+	assert asm_stur_d(3, Reg(29), -16) == asm_stur(Reg(3), Reg(29), -16) | 0x04000000
+	// The immediate counts 8-byte units for the double form and 4-byte units
+	// for the single one.
+	assert ((asm_ldr_d_imm(3, Reg(2), 2) >> 10) & 0xFFF) == 2
 }
 
 fn test_vector_registers_occupy_the_same_bits_as_scalar_ones() {

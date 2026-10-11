@@ -594,39 +594,22 @@ fn asm_frintz_s(dd int, dn int) u32 {
 	return 0x1E25C000 | (u32(dn) << 5) | u32(dd)
 }
 
+// frintz dd, dn (truncate toward zero)
+fn asm_frintz_d(dd int, dn int) u32 {
+	return 0x1E65C000 | (u32(dn) << 5) | u32(dd)
+}
+
 // fadd d0, d0, d1 (common case)
+// Kept because gen_test.v asserts on this word; the general encoder above
+// emits the same one for the same registers.
 fn asm_fadd_d0_d0_d1() u32 {
 	return 0x1E612800
 }
 
-// fsub d0, d0, d1
-fn asm_fsub_d0_d0_d1() u32 {
-	return 0x1E613800
-}
-
-// fmul d0, d0, d1
-fn asm_fmul_d0_d0_d1() u32 {
-	return 0x1E610800
-}
-
-// fdiv d0, d0, d1
-fn asm_fdiv_d0_d0_d1() u32 {
-	return 0x1E611800
-}
-
-// fdiv d2, d0, d1
-fn asm_fdiv_d2_d0_d1() u32 {
-	return 0x1E611802
-}
-
-// frintz d2, d2 (truncate to integer)
-fn asm_frintz_d2() u32 {
-	return 0x1E65C042
-}
-
-// fmsub d0, d2, d1, d0 (d0 = d0 - d2*d1) — used for fmod: a - trunc(a/b)*b
-fn asm_fmsub_d0_d2_d1_d0() u32 {
-	return 0x1F418040
+// fmsub dd, dn, dm, da (dd = da - dn * dm) — the double-precision frem
+// sequence: d - trunc(d/n)*m.
+fn asm_fmsub_d(sd int, sn int, sm int, sa int) u32 {
+	return 0x1F418000 | (u32(sm) << 16) | (u32(sa) << 10) | (u32(sn) << 5) | u32(sd)
 }
 
 // fmsub sd, sn, sm, sa (sd = sa - sn * sm) — the single-precision frem sequence
@@ -739,6 +722,35 @@ fn asm_ldr_s_imm(vd int, xn Reg, imm12 u32) u32 {
 // imm12 is the byte offset divided by 16; range 0..65520 step 16
 fn asm_str_q_imm(vd int, xn Reg, imm12 u32) u32 {
 	return 0x3D800000 | ((imm12 & 0xFFF) << 10) | (u32(xn) << 5) | u32(vd)
+}
+
+// The scalar f64 forms of the loads and stores above. They are the integer
+// 64-bit forms with the SIMD flag (V) set, which is the same step that turns
+// `ldr w` into `ldr s`, so a value in a stack slot moves into the register the
+// instruction names in one word instead of an integer load plus an `fmov`.
+// imm12 is the byte offset divided by 8; range 0..32760 step 8
+fn asm_ldr_d_imm(vd int, xn Reg, imm12 u32) u32 {
+	return 0xFD400000 | ((imm12 & 0xFFF) << 10) | (u32(xn) << 5) | u32(vd)
+}
+
+fn asm_str_d_imm(vd int, xn Reg, imm12 u32) u32 {
+	return 0xFD000000 | ((imm12 & 0xFFF) << 10) | (u32(xn) << 5) | u32(vd)
+}
+
+// ldur dd, [xn, #simm9] / stur dd, [xn, #simm9] (unscaled f64 load/store).
+// The unscaled immediate reaches negative offsets the scaled form cannot, so
+// the frames too small for an sp-relative slot still take one instruction.
+fn asm_ldur_d(vd int, xn Reg, simm9 i32) u32 {
+	return 0xFC400000 | (u32(simm9 & 0x1FF) << 12) | (u32(xn) << 5) | u32(vd)
+}
+
+fn asm_stur_d(vd int, xn Reg, simm9 i32) u32 {
+	return 0xFC000000 | (u32(simm9 & 0x1FF) << 12) | (u32(xn) << 5) | u32(vd)
+}
+
+// ldur sd, [xn, #simm9] (unscaled f32 load), for the same frames.
+fn asm_ldur_s(vd int, xn Reg, simm9 i32) u32 {
+	return 0xBC400000 | (u32(simm9 & 0x1FF) << 12) | (u32(xn) << 5) | u32(vd)
 }
 
 // === Special ===

@@ -1071,14 +1071,19 @@ fn (mut g Gen) gen_instr(val_id int) {
 				// for signed integers give the expected ordered results (matching
 				// the v2 backend). Comparing at the operands' own width avoids
 				// widening two f32 values to f64 just to throw the difference away.
+				lhs_reg, rhs_reg := float_operand_regs(instr.operands[0], instr.operands[1])
 				if g.is_f32_type(lhs_typ) {
-					g.load_f32_operand(instr.operands[0], 0)
-					g.load_f32_operand(instr.operands[1], 1)
-					g.emit32(asm_fcmp_s(Reg(0), Reg(1)))
+					g.load_f32_operand(instr.operands[0], lhs_reg)
+					if rhs_reg != lhs_reg {
+						g.load_f32_operand(instr.operands[1], rhs_reg)
+					}
+					g.emit32(asm_fcmp_s(Reg(lhs_reg), Reg(rhs_reg)))
 				} else {
-					g.load_float_operand(instr.operands[0], 0)
-					g.load_float_operand(instr.operands[1], 1)
-					g.emit32(asm_fcmp_d(Reg(0), Reg(1)))
+					g.load_float_operand(instr.operands[0], lhs_reg)
+					if rhs_reg != lhs_reg {
+						g.load_float_operand(instr.operands[1], rhs_reg)
+					}
+					g.emit32(asm_fcmp_d(Reg(lhs_reg), Reg(rhs_reg)))
 				}
 			} else {
 				lhs_reg := g.load_val(instr.operands[0], 8)
@@ -2581,6 +2586,75 @@ fn (g &Gen) is_f32_type(typ_id ssa.TypeID) bool {
 // traffic and rounds twice, so only the conversions that genuinely need f64 go
 // through `fcvt`.
 
+// load_d_from_slot loads value `val_id` out of its stack slot into the double
+// register `dreg` with one SIMD&FP load, and reports whether it did. The
+// addressing forms are emit_load_fp's, for the same reason: locals sit below fp,
+// and a frame big enough to need the hi/lo split is not rare in the self-hosted
+// compiler. A slot these forms do not cover falls back to an integer load plus
+// an `fmov`, so the caller keeps one correct path for every frame size.
+fn (mut g Gen) load_d_from_slot(val_id int, dreg int) bool {
+	off := g.stack_slot(val_id) or { return false }
+	sp_offset := g.stack_size + g.transient_stack_size + off
+	if off < 0 && sp_offset >= 0 && sp_offset < 32768 && sp_offset % 8 == 0 {
+		g.emit32(asm_ldr_d_imm(dreg, sp, u32(sp_offset / 8)))
+		return true
+	}
+	if off < 0 && sp_offset >= 32768 && sp_offset < 0x1000000 && sp_offset % 8 == 0 {
+		g.emit32(asm_add_imm_lsl12(Reg(11), sp, u32(sp_offset >> 12)))
+		g.emit32(asm_ldr_d_imm(dreg, Reg(11), u32((sp_offset & 0xFFF) / 8)))
+		return true
+	}
+	if off >= -255 && off < 0 {
+		g.emit32(asm_ldur_d(dreg, fp, i32(off)))
+		return true
+	}
+	return false
+}
+
+// load_s_from_slot is load_d_from_slot at f32 width: the value's four bytes go
+// into the `s` register the instruction names, with no widening.
+fn (mut g Gen) load_s_from_slot(val_id int, sreg int) bool {
+	off := g.stack_slot(val_id) or { return false }
+	sp_offset := g.stack_size + g.transient_stack_size + off
+	if off < 0 && sp_offset >= 0 && sp_offset < 32768 && sp_offset % 8 == 0 {
+		g.emit32(asm_ldr_s_imm(sreg, sp, u32(sp_offset / 4)))
+		return true
+	}
+	if off < 0 && sp_offset >= 32768 && sp_offset < 0x1000000 && sp_offset % 8 == 0 {
+		g.emit32(asm_add_imm_lsl12(Reg(11), sp, u32(sp_offset >> 12)))
+		g.emit32(asm_ldr_s_imm(sreg, Reg(11), u32((sp_offset & 0xFFF) / 4)))
+		return true
+	}
+	if off >= -255 && off < 0 {
+		g.emit32(asm_ldur_s(sreg, fp, i32(off)))
+		return true
+	}
+	return false
+}
+
+// store_d_to_slot writes the double in `dreg` into `val_id`'s slot with one
+// SIMD&FP store, and reports whether it did. It covers emit_store_fp's forms
+// and leaves the rest to that path, so the slot is written exactly as before,
+// only without the `fmov` that copies the bits through x8 first.
+fn (mut g Gen) store_d_to_slot(dreg int, val_id int) bool {
+	off := g.stack_slot(val_id) or { return false }
+	sp_offset := g.stack_size + g.transient_stack_size + off
+	if off < 0 && sp_offset >= 0 && sp_offset < 32768 && sp_offset % 8 == 0 {
+		g.emit32(asm_str_d_imm(dreg, sp, u32(sp_offset / 8)))
+		return true
+	}
+	if off < 0 && sp_offset >= 32768 && sp_offset < 0x1000000 && sp_offset % 8 == 0 {
+		g.emit32(asm_add_imm_lsl12(Reg(11), sp, u32(sp_offset >> 12)))
+		g.emit32(asm_str_d_imm(dreg, Reg(11), u32((sp_offset & 0xFFF) / 8)))
+		return true
+	}
+	if off >= -255 && off < 0 {
+		g.emit32(asm_stur_d(dreg, fp, i32(off)))
+		return true
+	}
+	return false
+}
+
 // load_float_operand materializes value `val_id` into the scalar float register
 // `dreg` (as a double), using x8 as a scratch integer register.
 fn (mut g Gen) load_float_operand(val_id int, dreg int) {
@@ -2604,14 +2678,20 @@ fn (mut g Gen) load_float_operand(val_id int, dreg int) {
 			g.emit_mov_imm(8, i64(bits))
 			g.emit32(asm_fmov_d_x(dreg, Reg(8)))
 		}
+		return
+	}
+	// A double already stored as eight bytes goes straight into the register
+	// the instruction will name; only an f32 source still needs the round trip
+	// through x8, because this load widens it.
+	if !is_f32 && g.load_d_from_slot(val_id, dreg) {
+		return
+	}
+	reg := g.load_val(val_id, 8)
+	if is_f32 {
+		g.emit32(asm_fmov_s_w(dreg, Reg(reg)))
+		g.emit32(asm_fcvt_d_s(dreg, dreg))
 	} else {
-		reg := g.load_val(val_id, 8)
-		if is_f32 {
-			g.emit32(asm_fmov_s_w(dreg, Reg(reg)))
-			g.emit32(asm_fcvt_d_s(dreg, dreg))
-		} else {
-			g.emit32(asm_fmov_d_x(dreg, Reg(reg)))
-		}
+		g.emit32(asm_fmov_d_x(dreg, Reg(reg)))
 	}
 }
 
@@ -2622,6 +2702,9 @@ fn (mut g Gen) store_float_result(val_id int) {
 		g.emit32(asm_fcvt_s_d(0, 0))
 		g.emit32(asm_fmov_w_s(Reg(8), 0))
 	} else {
+		if g.store_d_to_slot(0, val_id) {
+			return
+		}
 		g.emit32(asm_fmov_x_d(Reg(8), 0))
 	}
 	g.store_val(8, val_id)
@@ -2643,6 +2726,9 @@ fn (mut g Gen) load_f32_operand(val_id int, sreg int) {
 		g.emit32(asm_fmov_s_w(sreg, Reg(8)))
 		return
 	}
+	if g.load_s_from_slot(val_id, sreg) {
+		return
+	}
 	reg := g.load_val(val_id, 8)
 	if reg != 8 {
 		g.emit32(asm_mov_reg(Reg(8), Reg(reg)))
@@ -2651,30 +2737,50 @@ fn (mut g Gen) load_f32_operand(val_id int, sreg int) {
 }
 
 // store_f32_result writes the f32 in s0 back to `val_id`'s slot.
+// The store stays a whole-word one: readers of that slot move all eight bytes,
+// not four — load_float_bits_to_reg for a C argument and emit_phi_copy_value for
+// a phi both do — and a `str s` would leave the upper half undefined.
 fn (mut g Gen) store_f32_result(val_id int) {
 	g.emit32(asm_fmov_w_s(Reg(8), 0))
 	g.store_val(8, val_id)
 }
 
-// gen_float_binop emits a binary float op. Both operands are loaded into
-// register 0 and 1 at the width of the result, the instruction is the
-// matching single- or double-precision one, and the result is stored to
-// `val_id`.
+// float_operand_regs picks the two scalar float registers a float instruction
+// names for `lhs_id` and `rhs_id`, so the loads fill exactly the registers the
+// instruction reads. Both operands being the same SSA value yields one register:
+// the value is loaded once and the three-register form reads it twice, which is
+// what makes `x - x` and `x * x` one load cheaper than they were.
+fn float_operand_regs(lhs_id int, rhs_id int) (int, int) {
+	if lhs_id == rhs_id {
+		return 0, 0
+	}
+	return 0, 1
+}
+
+// gen_float_binop emits a binary float op. The operands are loaded into the
+// registers the instruction names at the width of the result, the instruction is
+// the matching single- or double-precision one, and the result is stored to
+// `val_id`. Nothing is funnelled through a fixed pair: `asm_fadd_d` and friends
+// take the registers, so a value already in a register the instruction names is
+// never moved first.
 fn (mut g Gen) gen_float_binop(fop ssa.OpCode, lhs_id int, rhs_id int, val_id int) {
 	is_f32 := g.is_f32_type(g.m.values[val_id].typ)
 	if is_f32 {
-		g.load_f32_operand(lhs_id, 0) // s0
-		g.load_f32_operand(rhs_id, 1) // s1
+		lhs_reg, rhs_reg := float_operand_regs(lhs_id, rhs_id)
+		g.load_f32_operand(lhs_id, lhs_reg) // s0
+		if rhs_reg != lhs_reg {
+			g.load_f32_operand(rhs_id, rhs_reg) // s1
+		}
 		match fop {
-			.fadd { g.emit32(asm_fadd_s(0, 0, 1)) }
-			.fsub { g.emit32(asm_fsub_s(0, 0, 1)) }
-			.fmul { g.emit32(asm_fmul_s(0, 0, 1)) }
-			.fdiv { g.emit32(asm_fdiv_s(0, 0, 1)) }
+			.fadd { g.emit32(asm_fadd_s(0, lhs_reg, rhs_reg)) }
+			.fsub { g.emit32(asm_fsub_s(0, lhs_reg, rhs_reg)) }
+			.fmul { g.emit32(asm_fmul_s(0, lhs_reg, rhs_reg)) }
+			.fdiv { g.emit32(asm_fdiv_s(0, lhs_reg, rhs_reg)) }
 			.frem {
 				// No single frem instruction: s0 = s0 - trunc(s0/s1) * s1
-				g.emit32(asm_fdiv_s(2, 0, 1))
+				g.emit32(asm_fdiv_s(2, lhs_reg, rhs_reg))
 				g.emit32(asm_frintz_s(2, 2))
-				g.emit32(asm_fmsub_s(0, 2, 1, 0))
+				g.emit32(asm_fmsub_s(0, 2, rhs_reg, lhs_reg))
 			}
 			else {}
 		}
@@ -2682,26 +2788,29 @@ fn (mut g Gen) gen_float_binop(fop ssa.OpCode, lhs_id int, rhs_id int, val_id in
 		return
 	}
 
-	g.load_float_operand(lhs_id, 0) // d0
-	g.load_float_operand(rhs_id, 1) // d1
+	lhs_reg, rhs_reg := float_operand_regs(lhs_id, rhs_id)
+	g.load_float_operand(lhs_id, lhs_reg) // d0
+	if rhs_reg != lhs_reg {
+		g.load_float_operand(rhs_id, rhs_reg) // d1
+	}
 	match fop {
 		.fadd {
-			g.emit32(asm_fadd_d0_d0_d1())
+			g.emit32(asm_fadd_d(0, lhs_reg, rhs_reg))
 		}
 		.fsub {
-			g.emit32(asm_fsub_d0_d0_d1())
+			g.emit32(asm_fsub_d(0, lhs_reg, rhs_reg))
 		}
 		.fmul {
-			g.emit32(asm_fmul_d0_d0_d1())
+			g.emit32(asm_fmul_d(0, lhs_reg, rhs_reg))
 		}
 		.fdiv {
-			g.emit32(asm_fdiv_d0_d0_d1())
+			g.emit32(asm_fdiv_d(0, lhs_reg, rhs_reg))
 		}
 		.frem {
 			// No single frem instruction: d0 = d0 - trunc(d0/d1) * d1
-			g.emit32(asm_fdiv_d2_d0_d1())
-			g.emit32(asm_frintz_d2())
-			g.emit32(asm_fmsub_d0_d2_d1_d0())
+			g.emit32(asm_fdiv_d(2, lhs_reg, rhs_reg))
+			g.emit32(asm_frintz_d(2, 2))
+			g.emit32(asm_fmsub_d(0, 2, rhs_reg, lhs_reg))
 		}
 		else {}
 	}
