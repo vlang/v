@@ -23,7 +23,7 @@
 //
 // Run it:
 //
-//	v -prod run . -- --export     # writes dist/
+//	v -prod run . --export     # writes dist/
 //	v run .                       # previews at http://localhost:8023
 //
 // `-prod` is not for speed here: it compiles veb's templates into the binary, so
