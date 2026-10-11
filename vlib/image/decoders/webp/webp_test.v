@@ -862,3 +862,17 @@ fn test_output_options_reject_unrepresentable_buffers() ! {
 		assert false, 'unrepresentable output options must return an error'
 	}
 }
+
+fn test_arena_keeps_owned_headers_across_growth() {
+	mut arena := Arena{}
+	for i in 0 .. 1025 {
+		values := [i]
+		arena.track(values)
+		assert arena.blocks[i].data == values.data
+		assert arena.blocks[i].element_size == sizeof(int)
+	}
+	arena.free_all()
+	arena.free_all()
+	assert arena.n == 0
+	assert arena.blocks.len == 0
+}

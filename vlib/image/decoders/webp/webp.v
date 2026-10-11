@@ -3970,9 +3970,8 @@ const distance_map_dy = [
 // TRACKS every owned allocation and releases them all in one `free_all()` at the
 // end of each public decode call, on both the success and the error path.
 //
-// Tracking stores the managed-block base pointer (`data - header`), which is the
-// exact pointer V's own `array.free()` hands to the allocator, so a tracked array
-// frees cleanly. Only OWNED arrays (created with `[]T{len: n}`, array literals,
+// Tracking retains each owned array header and delegates release to `array.free()`,
+// which handles the current managed allocation layout and alignment. Only OWNED arrays (created with `[]T{len: n}`, array literals,
 // or `.clone()`) are tracked; slices that view into `d.data` or into another
 // buffer are never tracked (freeing a slice base would corrupt the parent block).
 //
@@ -3983,40 +3982,40 @@ const distance_map_dy = [
 // in decode()) is allocated OUTSIDE the arena and owned by the caller.
 struct Arena {
 mut:
-	ptrs    []usize // managed-block base pointers of tracked arrays
-	n       int     // number of tracked pointers in `ptrs`
-	scratch []int   // per-macroblock bump region
-	spos    int     // bump cursor into `scratch`
+	blocks  [][]u8 // owned array headers, released with the builtin array method
+	n       int    // number of tracked arrays in `blocks`
+	scratch []int  // per-macroblock bump region
+	spos    int    // bump cursor into `scratch`
 }
 
-// push_ptr appends a base pointer, growing the tracking array and freeing the old
+// push_block appends an owned array header, growing the tracking array and freeing the old
 // backing block so the growth itself never leaks (a plain `<<` on a growing
-// `[]usize` would leak each intermediate block under `-gc none`).
-fn (mut a Arena) push_ptr(p usize) {
-	if a.n >= a.ptrs.len {
-		mut newcap := if a.ptrs.len == 0 { 1024 } else { a.ptrs.len * 2 }
+// `[][]u8` would leak each intermediate block under `-gc none`).
+fn (mut a Arena) push_block(block []u8) {
+	if a.n >= a.blocks.len {
+		mut newcap := if a.blocks.len == 0 { 1024 } else { a.blocks.len * 2 }
 		if newcap <= a.n {
 			newcap = a.n + 1
 		}
-		mut np := []usize{len: newcap}
+		mut np := [][]u8{len: newcap}
 		for i in 0 .. a.n {
-			np[i] = a.ptrs[i]
+			unsafe { np[i] = a.blocks[i] }
 		}
-		unsafe { a.ptrs.free() }
-		a.ptrs = np
+		unsafe { a.blocks.free() }
+		unsafe { a.blocks = np }
 	}
-	a.ptrs[a.n] = p
+	unsafe { a.blocks[a.n] = block }
 	a.n++
 }
 
 // track registers an owned array so its backing block is freed in free_all().
-// The stored pointer is the managed-block base (`data - header`), matching what
-// V's `array.free()` releases. Never call this on a slice view.
+// Retain the header without copying the elements. Never call this on a slice view.
 fn (mut a Arena) track[T](arr []T) {
-	if arr.len == 0 {
+	if arr.data == unsafe { nil } {
 		return
 	}
-	a.push_ptr(usize(arr.data) - sizeof(voidptr))
+	// Generic arrays share the builtin header layout; the arena owns this copy.
+	a.push_block(unsafe { *(&[]u8(voidptr(&arr))) })
 }
 
 // push appends `val` to `arr`, growing it by allocating a fresh backing block and
@@ -4092,13 +4091,13 @@ fn (mut a Arena) free_all() {
 		eprintln('arena free_all: tracked=${a.n}')
 	}
 	for i in 0 .. a.n {
-		unsafe { free(voidptr(a.ptrs[i])) }
+		unsafe { a.blocks[i].free() }
 	}
 	unsafe {
-		a.ptrs.free()
+		a.blocks.free()
 		a.scratch.free()
 	}
-	a.ptrs = []usize{}
+	a.blocks = [][]u8{}
 	a.scratch = []int{}
 	a.n = 0
 	a.spos = 0
