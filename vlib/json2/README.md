@@ -97,7 +97,10 @@ JSON5 strings escape U+2028 and U+2029 with either quote style, even without `es
 
 JSON5 encodes non-finite floats as `Infinity`, `-Infinity` and `NaN`; ordinary JSON
 continues to encode them as `null`. Typed integer decoding preserves 64-bit values,
-including hexadecimal integers. Dynamic `Any` values use json2's existing native
+including hexadecimal integers, and rejects values outside the target's range.
+Floating-point decoding accepts hexadecimal integers beyond 64 bits, rounding to
+floating-point precision; values exceeding the float range become signed infinity,
+as with decimal JSON5 numbers. Dynamic `Any` values use json2's existing native
 numeric types, so re-encoding normalizes number spelling and its default `f64`
 numbers have the usual floating-point precision limits.
 

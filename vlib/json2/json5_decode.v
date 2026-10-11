@@ -284,6 +284,32 @@ fn normalize_json5_number(text string) !string {
 	return bytes.bytestr()
 }
 
+// parse_json5_hex_float converts a scanner-validated hexadecimal integer without
+// imposing the integer decoder's u64 limit or repeatedly rounding each digit.
+fn parse_json5_hex_float(digits string) f64 {
+	mut start := 2
+	for start < digits.len && digits[start] == `0` {
+		start++
+	}
+	if digits.len - start > 256 {
+		return math.inf(1)
+	}
+	end := start + int_min(digits.len - start, 15)
+	mut mantissa := u64(0)
+	for i in start .. end {
+		mantissa = (mantissa << 4) | u64(json5_hex_digit_value(int(digits[i])))
+	}
+	// Fifteen significant digits retain at least four bits beyond f64 precision.
+	// Fold the remaining digits into a sticky bit so halfway cases round correctly.
+	for i in end .. digits.len {
+		if digits[i] != `0` {
+			mantissa |= 1
+			break
+		}
+	}
+	return math.ldexp(f64(mantissa), 4 * (digits.len - end))
+}
+
 @[manualfree]
 fn parse_json5_float(text string) !f64 {
 	digits := text.substr_unsafe(if text.starts_with('-') || text.starts_with('+') { 1 } else { 0 }, text.len)
@@ -292,6 +318,10 @@ fn parse_json5_float(text string) !f64 {
 	}
 	if digits == 'NaN' {
 		return math.nan()
+	}
+	if digits.starts_with('0x') || digits.starts_with('0X') {
+		value := parse_json5_hex_float(digits)
+		return if text.starts_with('-') { -value } else { value }
 	}
 	normalized := normalize_json5_number(text)!
 	defer { unsafe { normalized.free() } }

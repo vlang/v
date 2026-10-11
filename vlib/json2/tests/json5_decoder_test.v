@@ -1,5 +1,6 @@
 import os
 import json2
+import math
 
 struct Inner {
 	label string
@@ -271,6 +272,62 @@ fn test_decode_hex_and_floats() {
 	got := json2.decode[Simple]('{ count: 0x10, ratio: .5 }', json5: true)!
 	assert got.count == 16
 	assert got.ratio == 0.5
+}
+
+fn test_decode_large_hexadecimal_floats() {
+	// Check exact bits at rounding ties, including nonzero discarded digits.
+	cases := {
+		'0x10000000000000000':                   u64(0x43f0000000000000)
+		'0x100000000000007ff':                   u64(0x43f0000000000000)
+		'0x10000000000000800':                   u64(0x43f0000000000000)
+		'0x10000000000000801':                   u64(0x43f0000000000001)
+		'0x10000000000001800':                   u64(0x43f0000000000002)
+		'0x20000000000001001':                   u64(0x4400000000000001)
+		'0x40000000000002001':                   u64(0x4410000000000001)
+		'0x80000000000004001':                   u64(0x4420000000000001)
+		'0xabcdefabcdefabcdef':                  u64(0x446579bdf579bdf5)
+		'+0X10000000000000000':                  u64(0x43f0000000000000)
+		'-0x10000000000000801':                  u64(0xc3f0000000000001)
+		'0x00000000000000000010000000000000000': u64(0x43f0000000000000)
+		'0xffffffffffffffff':                    u64(0x43f0000000000000)
+		'0x0':                                   u64(0)
+		'-0x000':                                u64(0x8000000000000000)
+	}
+	for text, expected in cases {
+		assert math.f64_bits(json2.decode[f64](text, json5: true)!) == expected, text
+		assert math.f64_bits(json2.parse(text, json5: true)!.f64()) == expected, text
+	}
+	assert json2.decode[f32]('0x10000000000000000', json5: true)! == f32(18446744073709551616.0)
+	got := json2.decode[Simple]('{ratio: 0x10000000000000000}', json5: true)!
+	assert got.ratio == 18446744073709551616.0
+	doc := json2.parse_text('{values: [0x10000000000000000]}', json5: true)!
+	assert doc.value('values[0]').f64() == 18446744073709551616.0
+}
+
+fn test_decode_hexadecimal_float_overflow() {
+	// At 2^1024 - 2^970, nearest-even rounding overflows to infinity.
+	below := '0x' + 'f'.repeat(13) + 'b' + 'f'.repeat(242)
+	tie := '0x' + 'f'.repeat(13) + 'c' + '0'.repeat(242)
+	assert math.f64_bits(json2.decode[f64](below, json5: true)!) == u64(0x7fefffffffffffff)
+	for text in [tie, '0x1' + '0'.repeat(256), '0x' + 'f'.repeat(1024)] {
+		assert math.is_inf(json2.decode[f64](text, json5: true)!, 1)
+		assert math.is_inf(json2.decode[f64]('-' + text, json5: true)!, -1)
+		assert math.is_inf(json2.parse(text, json5: true)!.f64(), 1)
+	}
+	assert json2.decode[f64]('0x' + '0'.repeat(1024), json5: true)! == 0.0
+}
+
+fn test_decode_hexadecimal_integer_range_checks() {
+	assert json2.decode[u64]('0xffffffffffffffff', json5: true)! == u64(0xffffffffffffffff)
+	assert json2.decode[i64]('-0x8000000000000000', json5: true)! == i64(-9223372036854775807 - 1)
+	for text in ['0x10000000000000000', '-0x10000000000000000'] {
+		json2.decode[u64](text, json5: true) or { continue }
+		assert false, 'expected unsigned integer overflow: ${text}'
+	}
+	for text in ['0x8000000000000000', '-0x8000000000000001', '0x10000000000000000'] {
+		json2.decode[i64](text, json5: true) or { continue }
+		assert false, 'expected signed integer overflow: ${text}'
+	}
 }
 
 fn test_decode_infinity_to_float() {

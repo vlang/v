@@ -76,6 +76,24 @@ fn test_json5_integer_decoding_releases_temporary_storage() {
 }
 
 @[manualfree]
+fn test_json5_large_hexadecimal_float_decoding_releases_temporary_storage() {
+	for input in ['0x10000000000000000', '-0x10000000000000000',
+		'0x' + '0'.repeat(1024) + '10000000000000000'] {
+		expected := if input.starts_with('-') {
+			-18446744073709551616.0
+		} else {
+			18446744073709551616.0
+		}
+		assert decode[f64](input, json5: true)! == expected
+		before := C.json5_heap_live_bytes()
+		for _ in 0 .. 100 {
+			assert decode[f64](input, json5: true)! == expected
+		}
+		assert C.json5_heap_live_bytes() == before
+	}
+}
+
+@[manualfree]
 fn test_json5_reuse_releases_normalized_text_of_ignored_fields() {
 	for prefix in ["{port:123,ignored:'", r"{\u0070ort:123,ig\u006eored:'"] {
 		input := prefix + 'x'.repeat(8192) + "'}"
