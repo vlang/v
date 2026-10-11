@@ -59,3 +59,19 @@ fn test_bmp_goldens() {
 		}
 	}
 }
+
+fn test_dimensions_do_not_overflow_decode_buffers() ! {
+	for name in ['rgb24', 'rle8'] {
+		mut data := os.read_bytes(os.join_path(fixture_dir(), name + '.bmp'))!
+		for start in [18, 22] {
+			for i in 0 .. 4 {
+				data[start + i] = u8(u32(0x7fffffff) >> (i * 8))
+			}
+		}
+		decode(data) or {
+			assert err.msg().contains('supported buffer size'), err.msg()
+			continue
+		}
+		assert false, 'oversized dimensions must return a decode error'
+	}
+}

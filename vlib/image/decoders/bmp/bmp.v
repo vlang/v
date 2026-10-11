@@ -410,12 +410,20 @@ fn (mut d BmpDecoder) validate() !void {
 	if d.height <= 0 {
 		return error('Invalid BMP height: ${d.height}')
 	}
+	// Bound both the RGBA bytes and the integer scratch used by RLE.
+	limit := max_int / int(sizeof(int)) - 2
+	if d.width > limit / d.height || d.width > max_int / d.height / 4 {
+		return error('BMP dimensions exceed the supported buffer size')
+	}
 	if d.planes < 1 {
 		return error('Invalid BMP planes: ${d.planes}')
 	}
 	if d.bit_count != 1 && d.bit_count != 4 && d.bit_count != 8 && d.bit_count != 16
 		&& d.bit_count != 24 && d.bit_count != 32 {
 		return error('Unsupported BMP bit count: ${d.bit_count}')
+	}
+	if d.width > (max_int - 31) / d.bit_count {
+		return error('BMP scanline exceeds the supported buffer size')
 	}
 	if d.compression != bi_rgb && d.compression != bi_rle8 && d.compression != bi_rle4
 		&& d.compression != bi_bitfields {
@@ -485,8 +493,7 @@ fn (mut d BmpDecoder) decode_rgba() ![]u8 {
 
 fn (mut d BmpDecoder) decode_uncompressed() ![]u8 {
 	stride := d.row_stride()
-	expected := stride * d.height
-	if d.pixel_data_offset + expected > d.data.len {
+	if stride > (d.data.len - d.pixel_data_offset) / d.height {
 		return error('BMP pixel data is truncated')
 	}
 	mut rgba := []u8{len: d.width * d.height * 4}

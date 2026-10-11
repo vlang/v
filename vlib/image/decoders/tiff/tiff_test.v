@@ -229,3 +229,55 @@ fn test_malformed_bad_bit_depth() ! {
 	data << build_ifd(entries, 0)
 	expect_fail('bad_bit_depth', data)!
 }
+
+// Use one-pixel blocks so invalid vector lengths fail before pixel allocation.
+fn test_malformed_block_vectors() ! {
+	for tiled in [false, true] {
+		for planar in [1, 2] {
+			for counts in [0, 1] {
+				mut entries := [entry_short(256, 2), entry_short(257, 2), entry_short(258, 8),
+					entry_short(277, 1), entry_short(262, 1), entry_short(284, planar)]
+				offset_tag := if tiled { 324 } else { 273 }
+				count_tag := if tiled { 325 } else { 279 }
+				entries << entry_short(offset_tag, 0)
+				mut count_entry := entry_short(count_tag, 1)
+				count_entry[4] = u8(counts)
+				entries << count_entry
+				if tiled {
+					entries << entry_short(322, 1)
+					entries << entry_short(323, 1)
+				} else {
+					entries << entry_short(278, 1)
+				}
+				mut data := [u8(0x49), 0x49]
+				data << le16(42)
+				data << le32(8)
+				data << build_ifd(entries, 0)
+				decode(data) or {
+					assert err.msg().contains('arrays do not match'), err.msg()
+					continue
+				}
+				assert false, 'incomplete block vectors must return a decode error'
+			}
+		}
+	}
+}
+
+fn test_dimensions_do_not_overflow_decode_buffers() ! {
+	mut entries := [entry_short(256, 1), entry_short(257, 1), entry_short(262, 1)]
+	for i in 0 .. 2 {
+		entries[i][2] = 4 // LONG dimensions, stored inline
+		for b in 0 .. 4 {
+			entries[i][8 + b] = u8(u32(0x7fffffff) >> (b * 8))
+		}
+	}
+	mut data := [u8(0x49), 0x49]
+	data << le16(42)
+	data << le32(8)
+	data << build_ifd(entries, 0)
+	decode(data) or {
+		assert err.msg().contains('supported buffer size'), err.msg()
+		return
+	}
+	assert false, 'oversized dimensions must return a decode error'
+}

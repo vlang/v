@@ -253,7 +253,7 @@ fn expect_fail(name string, data []u8) ! {
 }
 
 fn test_malformed_bad_signature() ! {
-	expect_fail('bad_signature', [u8(0), 0, 0, 0, 0, 0, 0, 0, ])!
+	expect_fail('bad_signature', [u8(0), 0, 0, 0, 0, 0, 0, 0])!
 }
 
 fn test_malformed_truncated_header() ! {
@@ -314,4 +314,16 @@ fn test_malformed_missing_idat() ! {
 		data << b
 	}
 	expect_fail('missing_idat', data)!
+}
+
+fn test_malformed_dimensions_do_not_overflow_decode_buffers() ! {
+	mut data := png_sig()
+	data << make_chunk('IHDR', ihdr_payload(0x7fffffff, 0x7fffffff, 8, 6, 0))
+	data << make_chunk('IDAT', [u8(0x78), 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01])
+	data << make_chunk('IEND', []u8{})
+	decode(data) or {
+		assert err.msg().contains('supported buffer size'), err.msg()
+		return
+	}
+	assert false, 'oversized dimensions must return a decode error'
 }

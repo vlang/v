@@ -381,9 +381,22 @@ fn (mut a Arena) free_all() {
 // holds the full-canvas native buffer; `bytes` holds two scanline rows;
 // `scratch` holds one line's sample + rgba buffers; `frame_scratch` holds
 // one APNG frame's native buffer (only sized when the image is animated).
-fn (mut d PngDecoder) init_arena() {
+fn (mut d PngDecoder) init_arena() ! {
+	// Check products and backing-buffer byte counts before performing arithmetic.
+	// PNG dimensions can be valid individually while their RGBA product overflows.
+	limit := max_int / int(sizeof(int)) - 16
+	if d.width <= 0 || d.height <= 0 || d.width > limit / d.height / 4 {
+		return error('PNG dimensions exceed the supported buffer size')
+	}
+	if d.width > (max_int - 7) / d.channels() / d.bit_depth
+		|| d.width > limit / (d.channels() + 4) {
+		return error('PNG scanline exceeds the supported buffer size')
+	}
 	native := d.width * d.height * 4
 	max_scan := d.scan_bytes_for_width(d.width)
+	if max_scan > (max_int - 16) / 2 {
+		return error('PNG scanline exceeds the supported buffer size')
+	}
 	mut frame_cap := 0
 	if d.animation {
 		frame_cap = native + 16
@@ -2001,7 +2014,7 @@ fn (mut d PngDecoder) cleanup() {
 // decode_first decodes and returns a single 8-bit RGBA image (the first
 // frame for an APNG), freeing any extra frames it produced.
 fn (mut d PngDecoder) decode_first(apply_cc bool, target_gamma f64) !common.Image {
-	d.init_arena()
+	d.init_arena()!
 	mut frames := d.decode_animation(apply_cc, target_gamma)!
 	if frames.len == 0 {
 		return error('decode produced no frames')
@@ -2062,7 +2075,7 @@ pub fn decode_animation(data []u8) !common.Animation {
 // parse_and_decode_all runs parse + full animation decode.
 fn (mut d PngDecoder) parse_and_decode_all() !common.Animation {
 	d.parse()!
-	d.init_arena()
+	d.init_arena()!
 	frames := d.decode_animation(false, 2.2)!
 	return common.Animation{
 		frames:     frames

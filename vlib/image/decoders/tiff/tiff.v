@@ -482,6 +482,11 @@ fn (d &TiffDecoder) validate_page(page []IfdEntry) ! {
 	if spp < 1 || spp > 4 {
 		return error('Unsupported TIFF SamplesPerPixel: ${spp}')
 	}
+	// Check the byte size of both planar samples and the native RGBA arena.
+	limit := max_int / int(sizeof(int)) - 16
+	if width > limit / height / (spp + 4) {
+		return error('TIFF dimensions exceed the supported buffer size')
+	}
 	bps := get_tag(page, tag_bits_per_sample) or { []int{} }
 	eff_len := if bps.len == 0 { 1 } else { bps.len }
 	if !(eff_len == 1 || eff_len == spp) {
@@ -527,6 +532,34 @@ fn (d &TiffDecoder) validate_page(page []IfdEntry) ! {
 	}
 	if photometric == photometric_rgb && spp < 3 {
 		return error('RGB TIFF requires at least 3 samples per pixel')
+	}
+
+	planes := if planar == planar_separate { spp } else { 1 }
+	if has_tag(page, tag_tile_width) {
+		tile_w := get_short(page, tag_tile_width, 0)
+		tile_h := get_short(page, tag_tile_length, 0)
+		if tile_w <= 0 || tile_h <= 0 {
+			return error('Invalid TIFF tile size: ${tile_w}x${tile_h}')
+		}
+		if tile_w > limit / tile_h / spp {
+			return error('TIFF tile exceeds the supported buffer size')
+		}
+		across := (width - 1) / tile_w + 1
+		down := (height - 1) / tile_h + 1
+		offsets := get_tag(page, tag_tile_offsets) or { return error('TIFF tile page is missing offsets') }
+		counts := get_tag(page, tag_tile_byte_counts) or { return error('TIFF tile page is missing byte counts') }
+		if offsets.len != counts.len || offsets.len != across * down * planes {
+			return error('TIFF tile offset and byte count arrays do not match the page layout')
+		}
+	} else {
+		rows := get_short(page, tag_rows_per_strip, height)
+		rows_per_strip := if rows > 0 { rows } else { height }
+		strips := (height - 1) / rows_per_strip + 1
+		offsets := get_tag(page, tag_strip_offsets) or { return error('TIFF strip page is missing offsets') }
+		counts := get_tag(page, tag_strip_byte_counts) or { return error('TIFF strip page is missing byte counts') }
+		if offsets.len != counts.len || offsets.len != strips * planes {
+			return error('TIFF strip offset and byte count arrays do not match the page layout')
+		}
 	}
 }
 
