@@ -101,10 +101,28 @@
 		ui.toast("Styles updated");
 	};
 
-	const sameKind = (a, b) =>
-		a.nodeType === b.nodeType &&
-		a.nodeName === b.nodeName &&
-		(a.nodeType !== 1 || (a.id || "") === (b.id || ""));
+	const sameKind = (a, b) => {
+		if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName) {
+			return false;
+		}
+		if (a.nodeType !== 1) {
+			return true;
+		}
+		if ((a.id || "") !== (b.id || "")) {
+			return false;
+		}
+		// Typed values belong to a particular field. Reusing a node for a newly
+		// inserted field with a different name would move the user's input to it.
+		if (["INPUT", "TEXTAREA", "SELECT"].includes(a.nodeName)) {
+			if ((a.getAttribute("name") || "") !== (b.getAttribute("name") || "")) {
+				return false;
+			}
+			if (a.nodeName === "INPUT" && (a.getAttribute("type") || "text").toLowerCase() !== (b.getAttribute("type") || "text").toLowerCase()) {
+				return false;
+			}
+		}
+		return true;
+	};
 
 	const syncAttributes = (oldEl, newEl) => {
 		for (const attr of [...oldEl.attributes]) {
@@ -174,7 +192,7 @@
 			let match = null;
 			if (next.nodeType === 1 && next.id) {
 				const found = byId.get(next.id);
-				if (found && found.nodeName === next.nodeName) {
+				if (found && sameKind(found, next)) {
 					match = found;
 					byId.delete(next.id);
 				}

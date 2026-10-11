@@ -68,3 +68,64 @@ test("unchanged resources morph without navigation and ignore the injected scrip
 	assert.equal(c.fetches, 1);
 	assert.equal(c.reloads, 0);
 });
+
+// This small DOM model exercises node reuse and field values, including sibling
+// insertion. Resource comparisons above need only immutable element markup.
+class FormElement {
+	constructor(nodeName, attrs = {}, value = "") {
+		this.nodeType = 1; this.nodeName = nodeName; this.attrs = { ...attrs };
+		this.value = value; this.childNodes = [];
+	}
+	get attributes() { return Object.entries(this.attrs).map(([name, value]) => ({ name, value })); }
+	get children() { return this.childNodes; }
+	get firstChild() { return this.childNodes[0] || null; }
+	get id() { return this.attrs.id || ""; }
+	get nextSibling() { return this.parentNode?.childNodes[this.parentNode.childNodes.indexOf(this) + 1] || null; }
+	hasAttribute(name) { return name in this.attrs; }
+	getAttribute(name) { return this.attrs[name] ?? null; }
+	setAttribute(name, value) { this.attrs[name] = value; }
+	removeAttribute(name) { delete this.attrs[name]; }
+	insertBefore(child, cursor) {
+		child.remove();
+		const index = cursor ? this.childNodes.indexOf(cursor) : this.childNodes.length;
+		this.childNodes.splice(index, 0, child); child.parentNode = this;
+	}
+	remove() {
+		if (this.parentNode) {
+			const siblings = this.parentNode.childNodes;
+			siblings.splice(siblings.indexOf(this), 1); this.parentNode = null;
+		}
+	}
+	cloneNode() { return new FormElement(this.nodeName, this.attrs); }
+}
+
+function formPage(inputs) {
+	const doc = page();
+	doc.body = new FormElement("BODY");
+	for (const input of inputs) doc.body.insertBefore(input, null);
+	doc.importNode = (node) => node.cloneNode(true);
+	return doc;
+}
+
+test("inserting a named field keeps typed input attached to the original field", async () => {
+	const username = new FormElement("INPUT", { name: "username", type: "text" }, "Alex");
+	const oldPage = formPage([username]);
+	const newPage = formPage([new FormElement("INPUT", { name: "email", type: "text" }), new FormElement("INPUT", { name: "username", type: "text" })]);
+	const c = client(oldPage, newPage);
+	await c.change("page");
+	assert.equal(c.reloads, 0);
+	assert.equal(oldPage.body.children[0].getAttribute("name"), "email");
+	assert.equal(oldPage.body.children[0].value, "");
+	assert.equal(oldPage.body.children[1], username);
+	assert.equal(username.value, "Alex");
+});
+
+test("a keyed field with a changed name or type does not inherit a typed value", async () => {
+	for (const attrs of [{ id: "field", name: "email", type: "text" }, { id: "field", name: "username", type: "password" }]) {
+		const oldPage = formPage([new FormElement("INPUT", { id: "field", name: "username", type: "text" }, "Alex")]);
+		const c = client(oldPage, formPage([new FormElement("INPUT", attrs)]));
+		await c.change("page");
+		assert.equal(c.reloads, 0);
+		assert.equal(oldPage.body.children[0].value, "");
+	}
+});
