@@ -31,9 +31,10 @@ assert img.bounds().dx() == 2
 assert img.rgba_at(0, 0).r == 255
 ```
 
-The codec packages from Go's image tree, such as PNG, JPEG, and GIF, are not
-part of this module yet. They can be added later by registering decode
-callbacks with this module.
+Decoders for common formats (JPEG, PNG, BMP, WEBP, TIFF, GIF) live in the
+`image.decoders` packages; see `decoders/README.md` and `decoders/CODEC.md`
+for details. They decode to their own RGBA buffers and are not yet wired
+into the `register_format` hooks of this module.
 
 Sub-images share their pixel storage with the parent image, including the Y, Cb, Cr,
 and alpha planes of `YCbCr` and `NYCbCrA`. Changes through either image are visible in both.
