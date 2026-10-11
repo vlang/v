@@ -211,18 +211,38 @@ fn json5_is_line_terminator(code int) bool {
 
 // json5_is_ident_start reports whether `code` may start an unquoted key.
 fn json5_is_ident_start(code int) bool {
+	if code < 0 || code > 0x10ffff {
+		return false
+	}
 	return code == r_dollar || code == r_underscr || utf8.is_letter(rune(code))
+		|| json5_in_unicode_ranges(code, json5_letter_number_ranges)
 }
 
 // json5_is_ident_part reports whether `code` may continue an unquoted key. On top of
-// `json5_is_ident_start` it allows digits, combining marks and the two joiner runes
-// used by non-latin scripts.
+// `json5_is_ident_start` it allows Mn/Mc marks, Nd digits, Pc connectors and joiners.
 fn json5_is_ident_part(code int) bool {
 	if json5_is_ident_start(code) || json5_is_digit(code) {
 		return true
 	}
-	return (code >= 0x0300 && code <= 0x036F) // combining diacritical marks
-		|| code == r_zwnj || code == r_zwj || utf8.is_number(rune(code))
+	return code == r_zwnj || code == r_zwj
+		|| json5_in_unicode_ranges(code, json5_identifier_part_ranges)
+}
+
+// json5_in_unicode_ranges searches sorted inclusive start/end pairs.
+fn json5_in_unicode_ranges(code int, ranges [][2]int) bool {
+	mut low := 0
+	mut high := ranges.len
+	for low < high {
+		middle := low + (high - low) / 2
+		if code < ranges[middle][0] {
+			high = middle
+		} else if code > ranges[middle][1] {
+			low = middle + 1
+		} else {
+			return true
+		}
+	}
+	return false
 }
 
 // skip_trivia consumes whitespace and comments.

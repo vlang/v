@@ -102,6 +102,11 @@ fn test_scan_unicode_escapes_in_identifiers_keep_source_positions() {
 		r'\u00e9clair':         'éclair'
 		r'clé\u0031':           'clé1'
 		r'a\u0301\u200c\u200d': 'a\u0301\u200c\u200d'
+		r'\u2165':              '\u2165'
+		r'a\u0903':             'a\u0903'
+		r'a\u1ab0':             'a\u1ab0'
+		r'a\u0660':             'a\u0660'
+		r'a\u203f':             'a\u203f'
 		r'\u0074rue':           'true'
 		r'f\u0061lse':          'false'
 		r'\u006eull':           'null'
@@ -125,9 +130,9 @@ fn test_scan_unicode_escapes_in_identifiers_keep_source_positions() {
 }
 
 fn test_scan_rejects_invalid_identifier_escapes() {
-	for source in [r'\u0030', r'\u0301', r'\u200c', r'\u0020', r'\uD800', r'\uDC00', r'a\u0020',
-		r'a\u000a', r'a\u002f', r'a\u005c', r'\x61', r'a\x62', r'\U0061', r'\u12', r'a\u00ZZ',
-		r'\u{61}', r'a\', r'\'] {
+	for source in [r'\u0030', r'\u0301', r'\u0903', r'\u203f', r'\u0660', r'\u200c', r'\u0020',
+		r'\uD800', r'\uDC00', r'a\u00b2', r'a\u0488', r'a\u0020', r'a\u000a', r'a\u002f', r'a\u005c',
+		r'\x61', r'a\x62', r'\U0061', r'\u12', r'a\u00ZZ', r'\u{61}', r'a\', r'\'] {
 		mut s := new_json5_scanner(source)
 		s.next() or {
 			assert err is JsonScanError

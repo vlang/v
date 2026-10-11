@@ -135,6 +135,30 @@ fn test_encode_unquoted_keys() {
 	assert got == '{a:1,"b c":2}'
 }
 
+fn test_encode_and_decode_unicode_identifier_categories() {
+	// Nl may start an identifier; Mn, Mc, Nd and Pc may continue it.
+	for key in ['\u2165', '\U00010341', 'a\u1ab0', 'a\u0903', 'a\u0660', 'a\u203f', 'a\U0001d165',
+		'a\U0001d7ce', 'a\u200c', 'a\u200d'] {
+		value := {
+			key: 1
+		}
+		text := json2.encode(value, json5: true, unquoted_keys: true)
+		assert text == '{' + key + ':1}'
+		assert json2.decode[map[string]int](text, json5: true)! == value
+	}
+	// No and Me are excluded; marks, digits and other connectors cannot start keys.
+	for key in ['a\u00b2', 'a\u0488', 'a\U0001f100', '\u0903a', '\u203fa', '\u0660a', 'a-'] {
+		value := {
+			key: 1
+		}
+		text := json2.encode(value, json5: true, unquoted_keys: true)
+		assert text == '{"' + key + '":1}'
+		assert json2.decode[map[string]int](text, json5: true)! == value
+		json2.decode[map[string]int]('{' + key + ':1}', json5: true) or { continue }
+		assert false, 'invalid bare key was accepted: ${key}'
+	}
+}
+
 fn test_encode_single_quotes() {
 	got := json2.encode(json2.parse('{ "it\'s": 1 }', json5: true) or { panic(err) },
 		json2.EncoderOptions{

@@ -68,6 +68,11 @@ trailing commas, hexadecimal numbers, leading `+`, leading or trailing decimal p
 and `NaN`. Strings support JSON5 escapes and escaped line continuations, including
 UTF-16 surrogate pairs. Malformed escapes return a `JsonScanError` with a line and column.
 Decimal integer parts cannot have leading zeros: `01` and `00.5` are rejected.
+Bare keys follow [ECMAScript `IdentifierName`](https://262.ecma-international.org/5.1/#sec-7.6)
+categories using Unicode 15.0.0:
+letters (Lu, Ll, Lt, Lm, Lo, Nl), `$` and `_` may start a key; Mn and Mc marks,
+Nd decimal digits, Pc connectors, U+200C and U+200D may also continue it.
+Other numbers (No) and enclosing marks (Me) require quoted keys.
 All Unicode space separators are accepted between tokens, including U+1680 and U+2000.
 Escaped digits `\1` through `\9` are rejected, and `\0` cannot precede another decimal digit.
 Typed decoding errors report their location and context in the original JSON5 input.
