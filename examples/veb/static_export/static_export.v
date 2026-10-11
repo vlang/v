@@ -68,13 +68,11 @@ fn (app &App) index(mut ctx Context) veb.Result {
 // reach it: a template alone has no URL, and the export loop only knows how to
 // GET.
 //
-// Note what this does NOT fix: the status. `$veb.html(...)` builds its own
-// response object, so `ctx.res.set_status(.not_found)` beforehand is discarded
-// and an unknown path answers 200 in the preview. GitHub Pages supplies the
-// real status for `dist/404.html`, so the artifact is correct either way.
 @['/404']
 fn (mut ctx Context) not_found() veb.Result {
-	return $veb.html('404.html')
+	result := $veb.html('404.html')
+	ctx.res.set_status(.not_found)
+	return result
 }
 
 @['/docs/getting-started']
@@ -88,7 +86,7 @@ fn main() {
 		export(mut app) or { panic('export: ' + err.msg()) }
 		return
 	}
-	app.handle_static('static', true)!
+	app.handle_static(os.join_path(site_root, 'static'), true)!
 	veb.run[App, Context](mut app, port)
 }
 
@@ -121,7 +119,7 @@ fn render(mut app &App, path string) string {
 	ctx := veb.render_request[App, Context](mut app, http.Request{
 		method: .get
 		url:    path
-	})
+	}) or { panic(err) }
 	return ctx.res.body
 }
 

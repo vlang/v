@@ -88,39 +88,21 @@ struct SslRequestParams {
 	max_request_buffer_size   int
 }
 
-// render_request renders one request against `app` and returns the resulting
-// context, without starting a listener.
-//
-// It is the same code path veb's own tests take: the route table is generated
-// from the app's methods, and the request is dispatched through the same
-// `handle_request_and_route` the server loop uses. `Context.conn` stays nil and
-// `takeover_mode` stays `.none`, so nothing is written to a socket - the result
-// is read from `ctx.res` by the caller.
-//
-// Why it exists as one function rather than by making `generate_routes` and
-// `handle_request_and_route` public: those take a `RequestParams` whose fields
-// are veb internals (`routes: &map[string]Route`), and publishing that struct
-// would freeze a shape nobody should depend on. The public surface of `veb` is
-// deliberately tiny and this adds one entry to it.
-//
-// The use case it is written for is a static export: a caller that wants the
-// HTML a browser would receive, in order to write it to a file, without running
-// a process, holding a port, or maintaining a second rendering implementation.
-// It is also the cheapest way to unit-test a route without a server, which is
-// why `vlib/veb`'s own tests already do this by hand.
-pub fn render_request[A, X](mut app A, req http.Request) &X {
-	routes := generate_routes[A, X](app) or {
-		// A route that cannot be generated is a programming error, not a request
-		// error. An empty context answers nothing, and the caller sees it:
-		// rendering a route that does not exist is the other half of this
-		// function's contract.
-		return &X{}
-	}
+// render_request dispatches one request without starting a listener and returns
+// the completed base context. Read the response from `ctx.res`; fields added to
+// the application's context type are only available inside its handlers.
+// Static file responses retain `return_type` and `return_file`, as on the server.
+// Route and controller configuration errors are returned to the caller.
+pub fn render_request[A, X](mut app A, req http.Request) !&Context {
+	routes := generate_routes[A, X](app)!
+	controllers_sorted := check_duplicate_routes_in_controllers[A](app, routes)!
 	params := RequestParams{
-		routes: &routes
+		controllers_sorted: controllers_sorted
+		routes:             &routes
 	}
 	return handle_request_and_route[A, X](mut app, req, -1, params)
 }
+
 fn ssl_enabled(params RunParams) bool {
 	return params.ssl_config.cert != '' || params.ssl_config.cert_key != ''
 }

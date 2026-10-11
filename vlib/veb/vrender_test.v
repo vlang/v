@@ -35,12 +35,12 @@ fn (mut app VrenderApp) getting_started(mut ctx VrenderContext) Result {
 }
 
 // vrender_request renders one URL through the same path a server request takes.
-fn vrender_request(url string) &VrenderContext {
+fn vrender_request(url string) &Context {
 	mut app := VrenderApp{}
 	return render_request[VrenderApp, VrenderContext](mut app, http.Request{
 		method: .get
 		url:    url
-	})
+	}) or { panic(err) }
 }
 
 fn test_render_request_answers_the_route_body() {
@@ -84,7 +84,73 @@ fn test_render_request_is_repeatable() {
 		method: .get
 		url:    '/'
 	}
-	first := render_request[VrenderApp, VrenderContext](mut app, req)
-	second := render_request[VrenderApp, VrenderContext](mut app, req)
+	first := render_request[VrenderApp, VrenderContext](mut app, req) or { panic(err) }
+	second := render_request[VrenderApp, VrenderContext](mut app, req) or { panic(err) }
 	assert first.res.body == second.res.body
+}
+
+struct VrenderInvalidApp {}
+
+@['/invalid']
+fn (app &VrenderInvalidApp) invalid(mut ctx VrenderContext) string {
+	return 'invalid handler'
+}
+
+fn test_render_request_reports_invalid_route_configuration() {
+	mut app := VrenderInvalidApp{}
+	render_request[VrenderInvalidApp, VrenderContext](mut app, http.Request{ url: '/invalid' }) or {
+		assert err.msg().contains('invalid return type')
+		return
+	}
+	assert false, 'invalid routes must not produce an empty successful context'
+}
+
+struct VrenderControllerApp {
+	Controller
+}
+
+struct VrenderController {}
+
+struct VrenderExtendedContext {
+	Context
+mut:
+	message string
+}
+
+fn (app &VrenderController) index(mut ctx VrenderExtendedContext) Result {
+	ctx.message = 'controller response'
+	return ctx.text(ctx.message)
+}
+
+fn test_render_request_dispatches_registered_controllers() {
+	mut app := VrenderControllerApp{}
+	mut ctrl := VrenderController{}
+	app.register_controller[VrenderController, VrenderExtendedContext]('/nested', mut ctrl) or {
+		panic(err)
+	}
+	ctx := render_request[VrenderControllerApp, VrenderExtendedContext](mut app, http.Request{
+		url: '/nested/'
+	}) or { panic(err) }
+	assert ctx.res.body == 'controller response'
+	assert ctx.res.status_code == int(http.Status.ok)
+	assert ctx.conn == unsafe { nil }
+}
+
+fn test_render_request_rejects_duplicate_controllers() {
+	mut app := VrenderControllerApp{}
+	mut first := VrenderController{}
+	mut second := VrenderController{}
+	app.register_controller[VrenderController, VrenderExtendedContext]('/nested', mut first) or {
+		panic(err)
+	}
+	app.register_controller[VrenderController, VrenderExtendedContext]('/nested', mut second) or {
+		panic(err)
+	}
+	render_request[VrenderControllerApp, VrenderExtendedContext](mut app, http.Request{
+		url: '/nested/'
+	}) or {
+		assert err.msg().contains('duplicate controller')
+		return
+	}
+	assert false, 'conflicting controllers must be reported'
 }
