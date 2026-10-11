@@ -154,9 +154,9 @@ fn main() {
 The option relaxes that one rule and nothing else.
 
 ## Stripping comments
-`strip_comments` replaces every comment with spaces. The replacement is byte for
-byte and keeps the line terminators inside a comment, so every remaining
-character keeps the offset it had in the input and the result still parses.
+`strip_comments` replaces comment contents with spaces, byte for byte, preserving
+CR, LF, U+2028 and U+2029 exactly. Remaining characters keep their original byte offsets
+and line numbers, including after Unicode line separators inside block comments.
 
 ```v
 import x.jsonc
@@ -168,9 +168,10 @@ fn main() {
 }
 ```
 
-Use it when the comments have to go before the text reaches something that only
-speaks strict JSON. `json2` rejects comments by default; pass `json5: true` to
-accept comments, or strip them first when JSON5 syntax should remain disabled.
+`json2` rejects comments by default. Strip them first to parse the remaining text
+as ordinary JSON, or pass `json5: true` to accept the comments directly.
+Unicode separators retained from comments are not RFC 8259 whitespace between tokens;
+parse stripped output containing them with `json5: true`.
 
 ## What is accepted and what is refused
 Accepted, because they are JSONC:
