@@ -178,4 +178,6 @@ Now if you want to include `main.css` you would write
 
 The lightweight minifiers trim lines and join non-empty lines with a space. CSS preserves
 whitespace between selectors split across lines, and JavaScript has no trailing space.
+CSS containing backslash-newline continuations keeps its line breaks and indentation, with
+only outer whitespace trimmed, so quoted string values stay unchanged.
 These helpers do not parse CSS or JavaScript syntax.
