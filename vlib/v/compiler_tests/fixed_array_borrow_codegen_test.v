@@ -305,3 +305,38 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'OK', run.output
 }
+
+fn test_an_index_through_a_method_is_a_call_that_receives_the_storage() {
+	root := os.join_path(os.vtmp_dir(), 'fixed_array_borrow_index_method_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	c_path := os.join_path(root, 'main.c')
+	os.write_file(source_path, 'type Gf = [4]i64
+__global kept_gf = &Gf(unsafe { nil })
+fn (g &Gf) [] (_ int) i64 { kept_gf = unsafe { g }; return 7 }
+fn take(x i64) i64 { return x }
+fn gf_copy(mut p Gf) i64 { return take(p[1]) }
+fn copy_retained() i64 { mut g := Gf{}; return gf_copy(mut g) }
+fn gf_scalar(mut p Gf) i64 { return p[1] + 1 }
+fn scalar_retained() i64 { mut g := Gf{}; return gf_scalar(mut g) }
+fn main() {
+ assert copy_retained() == 7
+ assert scalar_retained() == 8
+ println("OK")
+}
+')!
+	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
+		'none', '-o', c_path, source_path])
+	assert generated.exit_code == 0, generated.output
+	source := os.read_file(c_path)!
+	// `p[1]` calls the method, which keeps its receiver: the caller's array must outlive the frame
+	for name in ['copy_retained', 'scalar_retained'] {
+		body := fixed_array_borrow_body(source, name)
+		assert body.contains('memdup('), body
+	}
+	run := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
+		'none', 'run', source_path])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'OK', run.output
+}

@@ -174,6 +174,10 @@ fn (t &Transformer) fixed_array_arg_hands_param_storage(arg_id flat.NodeId, para
 			|| node.value == 'range' {
 			return false
 		}
+		// an index through a `[]` method is a call that receives the base, not storage
+		if node.kind == .index && t.expr_is_overloaded_index_result(cur) {
+			return false
+		}
 		base_id := t.a.child(node, 0)
 		base := t.a.node(base_id)
 		// the parameter's own referent, or storage held by value inside it
@@ -284,6 +288,9 @@ fn (mut t Transformer) fixed_array_param_use_borrows(id flat.NodeId, param strin
 			return false
 		}
 		if node.kind == .index {
+			if t.expr_is_overloaded_index_result(id) {
+				return false
+			}
 			base_id := t.a.child(node, 0)
 			base_expr_type := t.fixed_array_borrow_type(base_id) or { return false }
 			raw_base := types.unalias_type(base_expr_type)
