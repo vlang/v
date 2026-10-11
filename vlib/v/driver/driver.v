@@ -9144,7 +9144,7 @@ fn v3_driver_option_consumes_value(option string) bool {
 
 // v3_module_cache_refresh_args keeps the configuration of module objects without
 // replaying a program, its output path, or diagnostic-only compiler switches.
-fn v3_module_cache_refresh_args(args []string, compiler string, module_search_paths []string) []string {
+fn v3_module_cache_refresh_args(args []string, compiler string, module_search_paths []string, run_only []string) []string {
 	mut flags := []string{}
 	mut c_flags := []string{}
 	mut c_flag_origins := []int{}
@@ -9199,6 +9199,7 @@ fn v3_module_cache_refresh_args(args []string, compiler string, module_search_pa
 	if module_search_paths.len > 0 {
 		flags << ['-path', module_search_paths.join('|')]
 	}
+	if run_only.len > 0 { flags << ['-run-only', run_only.join(',')] }
 	resolved_compiler := os.find_abs_path_of_executable(compiler) or { os.abs_path(compiler) }
 	flags << ['-cc', resolved_compiler]
 	return flags
@@ -14745,7 +14746,7 @@ pub fn run(args []string) {
 			cached_objects = clone_string_list(prepared_cache.objects)
 			newly_cached_module_count = prepared_cache.newly_cached_modules
 			cache_refresh.record(cache_state.manager.dir, prefs.vroot,
-				v3_module_cache_refresh_args(args, c_compiler, prefs.module_search_paths),
+				v3_module_cache_refresh_args(args, c_compiler, prefs.module_search_paths, run_only),
 				is_test_command || is_v3_test_file(input_file, backend, target),
 				cache_state.module_sources) or {
 				trace_v3_cache_fallback('could not record the v up cache inventory: ${err}')

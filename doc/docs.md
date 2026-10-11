@@ -63,6 +63,9 @@ Ordinary builds report cache progress on standard error. Refreshes retain absolu
 module search paths, resolved C compiler commands, and build modes. They omit
 linker-only flags, including operands embedded in `-cflags`. Relative `V3CACHE`
 and `VTMP` paths are resolved against the directory where `v up` was invoked.
+Refreshes retain each build's working directory for relative C compilation inputs
+and its effective `-run-only` test selectors. Isolated test caches are located
+using the V compiler executable, including when `v up` runs as a separate tool.
 
 For caches created before V recorded their build settings, `v up` identifies the
 cached vlib modules and refreshes them in both modes for the available C compilers.

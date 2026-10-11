@@ -6,7 +6,8 @@ import strings
 import v.tempname
 
 const record_prefix = '.vup_refresh_'
-const record_format = 'vup-cache-refresh-1'
+const record_format = 'vup-cache-refresh-2'
+const legacy_record_format = 'vup-cache-refresh-1'
 
 // Request describes how to rebuild one previously cached standard-library module.
 pub struct Request {
@@ -14,14 +15,16 @@ pub:
 	args    []string
 	module  string
 	is_test bool
+	cwd     string // Original directory for caller-relative compilation inputs.
 }
 
-// root_dir returns the cache shared by the configurations of this V checkout.
-pub fn root_dir(vroot string) string {
+// root_dir returns the cache shared by the configurations of this V checkout,
+// using vexe to identify the compiler's isolated cache rather than its helpers.
+pub fn root_dir(vroot string, vexe string) string {
 	base := os.abs_path(os.getenv_opt('V3CACHE') or {
 		default_dir := os.vtmp_dir()
 		if os.getenv('V3_TEST_ISOLATE_CACHE') == '1' {
-			os.join_path(default_dir, 'v3_test_cache_${hash_text(os.real_path(os.executable()))}')
+			os.join_path(default_dir, 'v3_test_cache_${hash_text(os.real_path(vexe))}')
 		} else {
 			default_dir
 		}
@@ -43,7 +46,7 @@ fn encode_request(request Request) string {
 	out.writeln(request.module)
 	out.writeln(if request.is_test { 'test' } else { 'program' })
 	// Length prefixes preserve spaces, quoting and newlines in C flag values.
-	for arg in request.args {
+	for arg in [request.cwd, ...request.args] {
 		out.writeln(arg.len.str())
 		out.write_string(arg)
 	}
@@ -52,7 +55,7 @@ fn encode_request(request Request) string {
 
 fn decode_request(content string) !Request {
 	parts := content.split_nth('\n', 4)
-	if parts.len != 4 || parts[0] != record_format || !valid_module(parts[1])
+	if parts.len != 4 || parts[0] !in [record_format, legacy_record_format] || !valid_module(parts[1])
 		|| parts[2] !in ['test', 'program'] {
 		return error('invalid module cache refresh record')
 	}
@@ -66,12 +69,17 @@ fn decode_request(content string) !Request {
 		args << rest[..len]
 		rest = rest[len..]
 	}
-	return Request{ args: args, module: parts[1], is_test: parts[2] == 'test' }
+	if parts[0] == legacy_record_format {
+		return Request{ args: args, module: parts[1], is_test: parts[2] == 'test' }
+	}
+	if args.len == 0 { return error('missing working directory') }
+	return Request{ args: args[1..].clone(), module: parts[1], is_test: parts[2] == 'test', cwd: args[0] }
 }
 
 // record remembers only modules resolved to this checkout's vlib. Each module
 // and flag set has its own atomic record, so concurrent programs cannot lose
 // one another's inventories and C-flag variants survive in the same cache.
+// The caller's directory preserves relative compilation inputs during refresh.
 pub fn record(dir string, vroot string, args []string, is_test bool, sources map[string][]string) ! {
 	vlib := os.real_path(os.join_path(vroot, 'vlib'))
 	for _, files in sources {
@@ -86,7 +94,7 @@ pub fn record(dir string, vroot string, args []string, is_test bool, sources map
 		if !valid_module(name) {
 			continue
 		}
-		request := Request{ args: args, module: name, is_test: is_test }
+		request := Request{ args: args, module: name, is_test: is_test, cwd: os.getwd() }
 		content := encode_request(request)
 		path := os.join_path(dir, '${record_prefix}${hash_text(content)}')
 		if os.exists(path) {
@@ -107,12 +115,12 @@ fn valid_module(name string) bool {
 		&& it.bytes().all(it.is_letter() || it.is_digit() || it == `_`))
 }
 
-// collect snapshots the inventory before `v up` replaces the compiler. Old
+// collect snapshots vexe's inventory before `v up` replaces the compiler. Old
 // caches predate these records: their header filenames still identify vlib
 // source directories, so warm those modules for the available C compilers in
 // both normal and production mode.
-pub fn collect(vroot string) ![]Request {
-	root := root_dir(vroot)
+pub fn collect(vroot string, vexe string) ![]Request {
+	root := root_dir(vroot, vexe)
 	if !os.is_dir(root) {
 		return []
 	}
@@ -205,8 +213,8 @@ pub fn collect(vroot string) ![]Request {
 }
 
 // refresh asks the updated compiler to validate and rebuild each inventoried
-// module with its original flags. Compiler validation also covers transitive
-// imports, headers, embedded files and compiler changes. Unchanged entries are
+// module with its original flags and working directory. Compiler validation also
+// covers transitive imports, headers, embedded files and compiler changes. Unchanged entries are
 // reused, and each newly compiled module is announced on inherited stdout.
 pub fn refresh(vexe string, requests []Request) ! {
 	if requests.len == 0 { return }
@@ -218,6 +226,7 @@ pub fn refresh(vexe string, requests []Request) ! {
 	environment.delete('CFLAGS')
 	environment.delete('LDFLAGS')
 	environment.delete('V3_CACHE_FORCE_SOURCE')
+	environment.delete('VTEST_ONLY_FN')
 	environment['VEXE'] = vexe
 	environment['V3_CACHE_REFRESH'] = '1'
 	environment['V_SKIP_VVMRC'] = '1'
@@ -227,8 +236,8 @@ pub fn refresh(vexe string, requests []Request) ! {
 		// Process started without explicit standard handles. Give it the same
 		// environment as the Unix child, and restore the caller's afterwards.
 		previous := os.environ()
-		names := ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_FORCE_SOURCE', 'VEXE', 'V3_CACHE_REFRESH',
-			'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
+		names := ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_FORCE_SOURCE', 'VTEST_ONLY_FN', 'VEXE',
+			'V3_CACHE_REFRESH', 'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
 		for name in names {
 			if name in environment {
 				os.setenv(name, environment[name], true)
@@ -258,13 +267,31 @@ pub fn refresh(vexe string, requests []Request) ! {
 		body := if request.is_test { 'fn test_cache_refresh() {}' } else { 'fn main() {}' }
 		os.write_file(source, 'module main\nimport ${name} as _\n${body}\n')!
 		mut command := request.args.clone()
+		// CLI parsing trims selectors, while VTEST_ONLY_FN preserves the effective
+		// patterns from vtest. Replay them through the same environment path.
+		selector := command.index('-run-only')
+		if selector >= 0 && selector + 1 < command.len {
+			environment['VTEST_ONLY_FN'] = command[selector + 1]
+			command.delete_many(selector, 2)
+		} else {
+			environment.delete('VTEST_ONLY_FN')
+		}
 		command << ['-usecache', '-skip-running', '-o', os.join_path(dir, 'refresh'), source]
 		mut code := -1
 		$if windows {
+			if value := environment['VTEST_ONLY_FN'] {
+				os.setenv('VTEST_ONLY_FN', value, true)
+			} else {
+				os.unsetenv('VTEST_ONLY_FN')
+			}
+			previous_dir := os.getwd()
+			if request.cwd != '' { os.chdir(request.cwd)! }
 			code = os.system_args([vexe, ...command])
+			if request.cwd != '' { os.chdir(previous_dir)! }
 		} $else {
 			mut process := os.new_process(vexe)
 			process.set_args(command)
+			if request.cwd != '' { process.set_work_folder(request.cwd) }
 			process.set_environment(environment)
 			process.wait()
 			code = process.code

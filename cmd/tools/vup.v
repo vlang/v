@@ -96,7 +96,7 @@ fn main() {
 	os.setenv('VTMP', os.abs_path(os.vtmp_dir()), true)
 	// Save the old compiler's cache inventory before replacing it. Its cache
 	// configuration includes the executable identity, which changes on rebuild.
-	cached_modules := cache_refresh.collect(app.vroot) or {
+	cached_modules := cache_refresh.collect(app.vroot, app.vexe) or {
 		eprintln('v up: could not read the module cache: ${err}')
 		exit(1)
 	}

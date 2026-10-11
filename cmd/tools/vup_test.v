@@ -131,7 +131,7 @@ fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
 		for prod in [false, true] {
 			mut flags := ['-cc', compiler]
 			if prod { flags << '-prod' }
-			dir := os.join_path(cache_refresh.root_dir(root), '${compiler}_${prod}')
+			dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), '${compiler}_${prod}')
 			os.mkdir_all(dir)!
 			cache_refresh.record(dir, root, flags, false, {
 				'sample': [source]
@@ -206,7 +206,7 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 		os.unsetenv('V3CACHE')
 		os.setenv('VTMP', os.join_path(root, 'default_tmp'), true)
 		os.setenv(variable, '.cache with spaces', true)
-		dir := os.join_path(cache_refresh.root_dir(root), variable)
+		dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), variable)
 		os.mkdir_all(dir)!
 		cache_refresh.record(dir, root, ['-cc', 'cc'], false, {
 			'sample': [source]
@@ -220,6 +220,42 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 		assert paths[if variable == 'V3CACHE' { 0 } else { 1 }] == os.join_path(project, '.cache with spaces'), paths.str()
 		assert os.is_abs_path(paths[1]), paths.str()
 	}
+}
+
+fn test_vup_collects_isolated_cache_for_the_compiler_instead_of_the_tool() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	previous := os.environ()
+	defer {
+		for name in ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE'] {
+			if name in previous { os.setenv(name, previous[name], true) } else { os.unsetenv(name) }
+		}
+		os.rmdir_all(root) or {}
+	}
+	os.unsetenv('V3CACHE')
+	os.setenv('VTMP', os.join_path(root, 'tmp'), true)
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
+	compiler := os.join_path(root, 'v')
+	cache := cache_refresh.root_dir(root, compiler)
+	assert cache != cache_refresh.root_dir(root, tool)
+	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
+	os.mkdir_all(os.dir(source))!
+	os.write_file(source, 'module sample\n')!
+	dir := os.join_path(cache, 'config')
+	os.mkdir_all(dir)!
+	cache_refresh.record(dir, root, ['-cc', 'cc'], false, {
+		'sample': [source]
+	})!
+	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
+	write_executable(compiler, '#!/bin/sh\n' +
+		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
+		'    echo "Caching module crypto.sample..."\n    exit 0;;\nesac\n' +
+		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+	result := run_vup(root, home, tool, bin_dir)!
+	assert result.exit_code == 0, result.output
+	assert result.output.count('Caching module crypto.sample...') == 1, result.output
 }
 
 fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! {

@@ -52,14 +52,14 @@ fn test_module_cache_refresh_keeps_build_flags_and_discards_program_arguments() 
 		'my program', '-ldflags', '-L../libs -lanswer', '-show-timings', 'run', 'main.v', '-prod',
 		'program argument']
 	compiler := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
-	flags := v3_module_cache_refresh_args(args, compiler, [])
+	flags := v3_module_cache_refresh_args(args, compiler, [], [])
 	assert flags == ['-prod', '-g', '-cflags', '"-DVALUE=a b"', '-d', 'feature', '-cc', compiler]
 }
 
 fn test_module_cache_refresh_preserves_expanded_absolute_search_paths() {
 	paths := pref.expand_module_search_paths('modules/../modules|@vlib|@vmodules', @VEXEROOT).map(os.abs_path(it))
 	compiler := os.find_abs_path_of_executable('cc') or { os.abs_path('cc') }
-	flags := v3_module_cache_refresh_args(['-path', 'ignored|@vlib', 'main.v'], 'cc', paths)
+	flags := v3_module_cache_refresh_args(['-path', 'ignored|@vlib', 'main.v'], 'cc', paths, [])
 	assert flags == ['-path', paths.join('|'), '-cc', compiler]
 	assert paths[0] == os.join_path(os.getwd(), 'modules')
 	assert paths[1] == os.join_path(@VEXEROOT, 'vlib')
@@ -69,7 +69,7 @@ fn test_module_cache_refresh_filters_link_operands_across_cflags_and_keeps_debug
 	args := ['-cflags', '-L', '-cflags', '../libs -l answer -I "include path" -D NAME=foo.o', '-g',
 		'-cflags', '-DVALUE="a b" -Wl,-rpath,../libs extra.o -framework Cocoa -O2', '-cflags',
 		'-U', '-cflags', 'REMOVED', 'main.v']
-	flags := v3_module_cache_refresh_args(args, 'cc', [])
+	flags := v3_module_cache_refresh_args(args, 'cc', [], [])
 	mut compiled := []string{}
 	mut i := 0
 	for i < flags.len {
@@ -93,9 +93,28 @@ fn test_module_cache_refresh_preserves_supported_modes_and_aliases() {
 	modes := ['-musl', '-glibc', '-ownership', '--ownership', '-no-std', '--no-std', '-strict',
 		'-cstrict', '--c99', '-dfeature=value', '-building-v', '-building_v', macos_v3_compat_c99_flag]
 	for mode in modes {
-		flags := v3_module_cache_refresh_args([mode, 'main.v'], 'cc', [])
+		flags := v3_module_cache_refresh_args([mode, 'main.v'], 'cc', [], [])
 		assert flags[0] == mode, flags.str()
 	}
+}
+
+fn test_module_cache_refresh_preserves_effective_run_only_selectors() {
+	previous := os.getenv_opt('VTEST_ONLY_FN')
+	defer {
+		if value := previous {
+			os.setenv('VTEST_ONLY_FN', value, true)
+		} else {
+			os.unsetenv('VTEST_ONLY_FN')
+		}
+	}
+	os.setenv('VTEST_ONLY_FN', 'test_first,test_last*', true)
+	effective := v3_environment_run_only()
+	flags := v3_module_cache_refresh_args(['main_test.v'], 'cc', [], effective)
+	index := flags.index('-run-only')
+	assert index >= 0 && flags[index + 1] == 'test_first,test_last*', flags.str()
+	// The effective selector overrides the raw option after environment/CLI parsing.
+	assert v3_module_cache_refresh_args(['-run-only', 'ignored', 'main_test.v'], 'cc', [], effective) == flags
+	assert '-run-only' !in v3_module_cache_refresh_args(['-run-only', 'ignored', 'main_test.v'], 'cc', [], [])
 }
 
 fn test_module_cache_refresh_pins_the_compiler_before_path_changes() ! {
@@ -116,7 +135,7 @@ fn test_module_cache_refresh_pins_the_compiler_before_path_changes() ! {
 		os.chmod(path, 0o755)!
 	}
 	os.setenv('PATH', os.join_path(root, 'first'), true)
-	flags := v3_module_cache_refresh_args(['-cc', 'clang', 'main.v'], 'clang', [])
+	flags := v3_module_cache_refresh_args(['-cc', 'clang', 'main.v'], 'clang', [], [])
 	os.setenv('PATH', os.join_path(root, 'second'), true)
 	assert flags == ['-cc', os.join_path(root, 'first', 'clang')]
 	result := os.exec([flags[1], '--version'])

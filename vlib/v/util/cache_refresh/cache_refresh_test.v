@@ -29,17 +29,17 @@ fn test_inventory_preserves_compiler_modes_and_flags_and_excludes_project_module
 		for prod in [false, true] {
 			mut flags := ['-cc', compiler, '-cflags', '-DSAMPLE="value with spaces"']
 			if prod { flags << '-prod' }
-			dir := os.join_path(root_dir(vroot), '${compiler}_${prod}')
+			dir := os.join_path(root_dir(vroot, @VEXE), '${compiler}_${prod}')
 			os.mkdir_all(dir)!
 			record(dir, vroot, flags, false, sources)!
 			// Recording the same build twice must not duplicate or lose modules.
 			record(dir, vroot, flags, false, sources)!
 			for name in ['builtin', 'crypto.sample'] {
-				expected << Request{ args: flags, module: name }
+				expected << Request{ args: flags, module: name, cwd: os.getwd() }
 			}
 		}
 	}
-	requests := collect(vroot)!
+	requests := collect(vroot, @VEXE)!
 	assert requests.len == expected.len
 	for request in expected {
 		assert request in requests, request.str()
@@ -61,7 +61,7 @@ fn test_inventory_handles_legacy_headers_and_partly_recorded_configurations() ! 
 	os.mkdir_all(os.dir(source))!
 	os.write_file(source, 'module sample\n')!
 	for config in ['old', 'new'] {
-		dir := os.join_path(root_dir(vroot), config)
+		dir := os.join_path(root_dir(vroot, @VEXE), config)
 		os.mkdir_all(dir)!
 		os.write_file(os.join_path(dir, 'sample_${hash_text(os.real_path(os.dir(source)))}.vh'), '')!
 		// A module recorded in another configuration must not hide this old one.
@@ -71,8 +71,8 @@ fn test_inventory_handles_legacy_headers_and_partly_recorded_configurations() ! 
 			})!
 		}
 	}
-	requests := collect(vroot)!
-	assert Request{ args: ['-cc', 'custom-cc'], module: 'crypto.sample' } in requests
+	requests := collect(vroot, @VEXE)!
+	assert Request{ args: ['-cc', 'custom-cc'], module: 'crypto.sample', cwd: os.getwd() } in requests
 	if _ := os.find_abs_path_of_executable('cc') {
 		assert Request{ args: ['-cc', 'cc'], module: 'crypto.sample' } in requests
 		assert Request{ args: ['-cc', 'cc', '-prod'], module: 'crypto.sample' } in requests
@@ -93,8 +93,16 @@ fn test_inventory_argument_encoding_preserves_newlines_and_empty_values() ! {
 		args:    ['-cc', 'cc', '-cflags', '-DNAME="value with spaces"\n-DSECOND', '', '-prod']
 		module:  'crypto.sha3'
 		is_test: true
+		cwd:     os.join_path(os.getwd(), 'directory with spaces\nand newlines')
 	}
 	assert decode_request(encode_request(request))! == request
+	assert decode_request('${legacy_record_format}\ncrypto.sha3\nprogram\n3\n-cc2\ncc')! == Request{
+		args:   [
+			'-cc',
+			'cc',
+		]
+		module: 'crypto.sha3'
+	}
 	for content in ['', 'old-format\ncrypto.sha3\nprogram\n',
 		'${record_format}\ncrypto.sha3\nprogram\n100\nshort'] {
 		if _ := decode_request(content) {
@@ -111,6 +119,47 @@ fn test_refresh_skips_removed_modules_without_starting_the_compiler() ! {
 	refresh(os.join_path(root, 'v'), [Request{ args: ['-cc', 'cc'], module: 'retired' }])!
 }
 
+fn test_refresh_uses_recorded_directory_for_relative_compile_inputs() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vup_relative_inputs_${os.getpid()}')
+	project := os.join_path(root, 'project with spaces')
+	os.mkdir_all(os.join_path(project, 'include path'))!
+	os.write_file(os.join_path(project, 'config.h'), '#include <refresh_input.h>\n')!
+	os.write_file(os.join_path(project, 'include path', 'refresh_input.h'), '#define REFRESH_INPUT 1\n')!
+	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
+	os.mkdir_all(os.dir(source))!
+	os.write_file(source, 'module sample\n')!
+	previous_dir := os.getwd()
+	defer {
+		os.chdir(previous_dir) or {}
+		os.rmdir_all(root) or {}
+	}
+	dir := os.join_path(root, 'config')
+	os.mkdir_all(dir)!
+	os.chdir(project)!
+	record(dir, root, ['-cflags', '-include config.h -I "include path"'], false, {
+		'sample': [source]
+	})!
+	entries := os.ls(dir)!.filter(it.starts_with(record_prefix))
+	assert entries.len == 1
+	request := decode_request(os.read_file(os.join_path(dir, entries[0]))!)!
+	assert request.cwd == project
+	compiler := os.join_path(root, 'v')
+	log := os.join_path(root, 'cwd.log')
+	os.write_file(compiler, '#!/bin/sh\n' +
+		'test "\$1" = "-cflags" || exit 2\n' +
+		'test "\$2" = \'-include config.h -I "include path"\' || exit 3\n' +
+		'test -f config.h && test -f "include path/refresh_input.h" || exit 4\n' +
+		'printf "%s" "\$PWD" > ' + os.quoted_path(log) + '\n')!
+	os.chmod(compiler, 0o755)!
+	os.chdir(root)!
+	refresh(compiler, [request])!
+	assert os.read_file(log)! == project
+	assert os.getwd() == root
+}
+
 fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() ! {
 	$if windows {
 		return
@@ -118,7 +167,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	vroot := os.dir(@VEXE)
 	root := os.join_path(os.vtmp_dir(), 'vup_cache_integration_${os.getpid()}')
 	os.mkdir_all(root)!
-	project := os.join_path(root, 'project')
+	project := os.join_path(root, 'project with spaces')
 	os.mkdir_all(os.join_path(project, 'modules'))!
 	library_dir := os.join_path(root, 'libs')
 	os.mkdir_all(library_dir)!
@@ -136,12 +185,19 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	dependency := os.join_path(module_root, 'dependency', 'dependency.v')
 	probe := os.join_path(module_root, 'probe', 'probe.v')
 	for file in [dependency, probe] { os.mkdir_all(os.dir(file))! }
+	// Native search paths inside vlib support module caching. A relative link
+	// reaches this directory from the project, but not from the updater's cwd.
+	os.mkdir_all(os.join_path(module_root, 'include'))!
+	os.symlink(os.join_path(module_root, 'include'), os.join_path(root, 'include path'))!
+	os.symlink(os.join_path(module_root, 'include'), os.join_path(root, 'include'))!
 	os.write_file(dependency, 'module dependency\npub fn value() int { return 40 }\n')!
 	os.write_file(probe, 'module probe\nimport ${import_root}.dependency\n' +
 		'pub fn value() int {\n\t\$if prod { return dependency.value() + 2 }\n' +
 		'\treturn dependency.value()\n}\n')!
 	saved := os.environ()
-	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	os.unsetenv('V3CACHE')
+	os.setenv('VTMP', os.join_path(root, 'cache'), true)
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
 	os.setenv('VEXE', @VEXE, true)
 	os.setenv('V_SKIP_VVMRC', '1', true)
 	os.unsetenv('VFLAGS')
@@ -150,10 +206,12 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	os.unsetenv('V3_CACHE_FORCE_SOURCE')
 	os.unsetenv('V3_CACHE_TRACE')
 	os.unsetenv('V3_CACHE_REFRESH')
+	os.unsetenv('VTEST_ONLY_FN')
 	previous_dir := os.getwd()
 	defer {
-		for name in ['V3CACHE', 'VEXE', 'V_SKIP_VVMRC', 'VFLAGS', 'CFLAGS', 'LDFLAGS', 'PATH',
-			'V3_CACHE_FORCE_SOURCE', 'V3_CACHE_TRACE', 'V3_CACHE_REFRESH'] {
+		for name in ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE', 'VEXE', 'V_SKIP_VVMRC', 'VFLAGS',
+			'CFLAGS', 'LDFLAGS', 'PATH', 'V3_CACHE_FORCE_SOURCE', 'V3_CACHE_TRACE', 'V3_CACHE_REFRESH',
+			'VTEST_ONLY_FN'] {
 			if name in saved { os.setenv(name, saved[name], true) } else { os.unsetenv(name) }
 		}
 		os.chdir(previous_dir) or {}
@@ -189,6 +247,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 				if compiler == 'cc' {
 					flags << ['-cflags', '-L../libs -lanswer -DREFRESH_LABEL="a b"']
 				}
+				flags << ['-cflags', '-I "../include path"']
 				if compiler == 'gcc' && prod { flags << '-silent' }
 				mut process := os.new_process(@VEXE)
 				process.set_args([...flags, '-o', os.join_path(root, 'program'), 'run', main_file])
@@ -209,14 +268,56 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 			}
 		}
 	}
-	requests := collect(vroot)!.filter(it.module.starts_with(import_root + '.'))
+	// Cover both direct selectors and vtest's transient VTEST_ONLY_FN transport.
+	test_file := os.join_path(project, 'selected_test.v')
+	os.write_file(test_file, 'import ${import_root}.probe\n' +
+		'fn test_selected_one() { assert probe.value() > 0 }\n' +
+		'fn test_selected_two() { assert probe.value() > 0 }\n' +
+		'fn test_unselected() { panic("unselected test ran") }\n')!
+	mut test_builds := [][]string{}
+	for through_vtest in [false, true] {
+		if through_vtest {
+			// vtest replaces VTMP with a disposable session directory. Pin its
+			// cache to the existing isolated compiler cache instead.
+			os.setenv('V3CACHE', os.dir(root_dir(vroot, @VEXE)), true)
+		}
+		selector := if through_vtest {
+			'test_selected_one, test_selected_two'
+		} else {
+			'test_selected_*'
+		}
+		for prod in [false, true] {
+			mut flags := ['-cc', 'cc', '-gc', 'none', '-usecache', '-path', 'modules/../modules|@vlib',
+				'-cflags', '-I../include']
+			if prod { flags << '-prod' }
+			command := if through_vtest {
+				[@VEXE, ...flags, 'test', '-run-only', selector, test_file]
+			} else {
+				[@VEXE, ...flags, '-run-only', selector, '-o', os.join_path(root, 'test_program'),
+					test_file]
+			}
+			result := os.exec(command)
+			assert result.exit_code == 0, result.output
+			flags << ['-run-only', selector]
+			test_builds << flags
+		}
+		os.unsetenv('V3CACHE')
+	}
+	requests := collect(vroot, @VEXE)!.filter(it.module.starts_with(import_root + '.'))
+	assert requests.len > 0
+	assert collect(vroot, os.executable())!.filter(it.module.starts_with(import_root + '.')).len == 0
 	// Compiler aliases can share a configuration and restore its program before
 	// reaching the inventory writer; its existing record already covers the cache.
-	assert requests.len >= 2 && requests.len <= builds.len * 2, requests.str()
+	assert requests.len >= 2 && requests.len <= (builds.len + test_builds.len) * 2, requests.str()
+	for flags in test_builds {
+		selector := flags[flags.index('-run-only') + 1]
+		assert requests.any(it.is_test && selector in it.args && ('-prod' in flags) == ('-prod' in it.args)), flags.str()
+	}
 	for mode in supported_modes {
 		assert requests.any(mode in it.args), mode
 	}
 	for request in requests {
+		assert request.cwd == project, request.str()
 		assert '-ldflags' !in request.args, request.str()
 		path_index := request.args.index('-path')
 		assert path_index >= 0, request.str()
@@ -234,7 +335,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	refresh_exe := os.join_path(root, 'refresh_helper')
 	os.write_file(refresh_source, 'import os\nimport v.util.cache_refresh\n' +
 		'fn main() {\n' +
-		'\trequests := cache_refresh.collect(os.dir(@VEXE))!.filter(it.module.starts_with("${import_root}."))\n' +
+		'\trequests := cache_refresh.collect(os.dir(@VEXE), @VEXE)!.filter(it.module.starts_with("${import_root}."))\n' +
 		'\tcache_refresh.refresh(@VEXE, requests)!\n}\n')!
 	helper := os.exec([@VEXE, '-cc', 'cc', '-gc', 'none', '-nocache', '-o', refresh_exe,
 		refresh_source])
@@ -249,6 +350,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		os.chmod(path, 0o755)!
 	}
 	os.setenv('PATH', changed_path + os.path_delimiter + saved['PATH'], true)
+	os.setenv('VTEST_ONLY_FN', 'ambient_selector_must_not_override_inventory', true)
 	// Change only an imported vlib dependency. Refresh its implementation while
 	// reusing the unchanged dependent object; original programs must not recache.
 	os.write_file(dependency, 'module dependency\npub fn value() int { return 43 }\n')!
@@ -263,6 +365,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	assert stdout.contains('Caching module ${import_root}.dependency...'), stdout
 	assert !stderr.contains('Caching module '), stderr
 	os.setenv('PATH', saved['PATH'], true)
+	os.unsetenv('VTEST_ONLY_FN')
 	os.chdir(project)!
 	for flags in builds {
 		result := os.exec([@VEXE, ...flags, '-o', os.join_path(root, 'program'), main_file])
@@ -271,5 +374,13 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		run := os.exec([os.join_path(root, 'program')])
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == if '-prod' in flags { '45' } else { '43' }, run.output
+	}
+	for flags in test_builds {
+		selector := flags.index('-run-only')
+		os.setenv('VTEST_ONLY_FN', flags[selector + 1], true)
+		result := os.exec([@VEXE, ...flags[..selector], '-skip-running', '-o',
+			os.join_path(root, 'test_program'), test_file])
+		assert result.exit_code == 0, result.output
+		assert !result.output.contains('Caching module ${import_root}.'), result.output
 	}
 }

@@ -328,7 +328,7 @@ pub:
 pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values string, version_pseudo_values string) Manager {
 	config_key := hash_text(cache_format + '\n' + salt)
 	return Manager{
-		dir:                   os.join_path(cache_refresh.root_dir(vroot), config_key)
+		dir:                   os.join_path(cache_refresh.root_dir(vroot, os.executable()), config_key)
 		enabled:               enabled
 		salt:                  salt
 		build_pseudo_values:   build_pseudo_values
