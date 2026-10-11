@@ -218,6 +218,21 @@
 		}
 	};
 
+	// Scripts are intentionally not executed during a morph. A changed script or
+	// head element therefore requires navigation, so the browser applies it.
+	const pageResources = (doc) => JSON.stringify([
+		[...doc.querySelectorAll("script")].filter((node) => !isOurs(node)).map((node) => node.outerHTML),
+		[...doc.head.children].filter((node) => !isOurs(node) && node.nodeName !== "TITLE" && node.nodeName !== "SCRIPT").map((node) => {
+			const copy = node.cloneNode(true);
+			if (copy.nodeName === "LINK" && copy.hasAttribute("href")) {
+				const url = new URL(copy.getAttribute("href"), window.location.href);
+				url.searchParams.delete("veb_livereload");
+				copy.setAttribute("href", url.href);
+			}
+			return copy.outerHTML;
+		}),
+	]);
+
 	// refreshPage fetches the current URL again and morphs the page into it.
 	// Pages that came from a POST, failed fetches, and non-HTML answers reload.
 	const refreshPage = async () => {
@@ -242,6 +257,10 @@
 				return;
 			}
 			const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+			if (pageResources(document) !== pageResources(doc)) {
+				reload();
+				return;
+			}
 			if (document.title !== doc.title) {
 				document.title = doc.title;
 			}

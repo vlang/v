@@ -16,8 +16,7 @@ import time
 //   fetches the current page again and morphs the DOM in place, so scroll
 //   position, focus and typed form values survive;
 // * when a file served by a `veb.StaticHandler` changes, the server pushes the
-//   change without a rebuild: stylesheets are swapped in place, anything else
-//   morphs the page.
+//   change without a rebuild: stylesheets are swapped in place, other assets reload the page.
 //
 // Compile with `-d veb_livereload_polling` as well to use the older polling
 // script instead. Apps served over HTTPS need it: the stream is written to the
@@ -98,7 +97,7 @@ fn livereload_stream_head() string {
 
 // livereload_change_kind maps a changed static file to the change the page should apply.
 fn livereload_change_kind(path string) string {
-	return if os.file_ext(path).to_lower() == '.css' { 'css' } else { 'page' }
+	return if os.file_ext(path).to_lower() == '.css' { 'css' } else { 'full' }
 }
 
 // livereload_script returns the client script for the current build.
@@ -247,7 +246,7 @@ fn livereload_watch(mut hub LivereloadHub, paths []string) {
 				continue
 			}
 			states[path] = now
-			if kind != 'page' {
+			if kind != 'full' {
 				kind = livereload_change_kind(path)
 			}
 		}

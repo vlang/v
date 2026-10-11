@@ -159,8 +159,8 @@ fn test_static_file_changes_are_pushed() {
 	got := read_until(mut conn, 'data: css', '')
 	assert got.contains('event: change\ndata: css\n\n'), got
 	os.write_file(os.join_path(static_dir, 'app.js'), 'console.log(22);\n')!
-	got2 := read_until(mut conn, 'data: page', '')
-	assert got2.contains('event: change\ndata: page\n\n'), got2
+	got2 := read_until(mut conn, 'data: full', '')
+	assert got2.contains('event: change\ndata: full\n\n'), got2
 }
 
 fn test_build_status_is_relayed() {

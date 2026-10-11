@@ -19,8 +19,8 @@ fn test_status_state_is_the_first_line() {
 fn test_change_kind() {
 	assert livereload_change_kind('static/css/main.css') == 'css'
 	assert livereload_change_kind('static/css/MAIN.CSS') == 'css'
-	assert livereload_change_kind('static/js/app.js') == 'page'
-	assert livereload_change_kind('static/img/logo.png') == 'page'
+	assert livereload_change_kind('static/js/app.js') == 'full'
+	assert livereload_change_kind('static/img/logo.png') == 'full'
 }
 
 fn test_script_tag_carries_the_client_settings() {

@@ -20,8 +20,13 @@ features.
 
 Run your veb app with a live reload via `v watch -d veb_livereload run .`
 
-Now modifying any file in your web app updates the page in the browser, without
-losing its state: scroll position, focus and what you typed into forms stay as they were.
+Stylesheet changes are applied in place. Changes to other static assets trigger a
+full reload so updated scripts and images are fetched. Page or template changes
+preserve the DOM state unless scripts or head elements changed; those changes
+also reload the page so the browser applies them.
+
+Page and template edits update the browser while preserving scroll position, focus,
+and typed form values when scripts and head elements stay the same.
 No need to quit the app, rebuild it, and refresh the page in the browser!
 
 * A `.v` file or a template (anywhere under `templates/`): `v watch` rebuilds and
@@ -31,7 +36,7 @@ No need to quit the app, rebuild it, and refresh the page in the browser!
   `v watch --no-build-first` stops the app before each build instead.
 * A file served by a `veb.StaticHandler` (for example `static/css/main.css`): the
   running app notices the change itself, with no rebuild. Stylesheets are swapped in
-  place; other files update the page.
+  place; other files reload the page.
 
 Note: this works by injecting a small `<script>` tag before the ending `</html>` tag of the page,
 that keeps one Server-Sent Events connection open to the app. In other words, it works for
