@@ -4,6 +4,34 @@ fn test_scan_bom_is_skipped() {
 	mut s := new_json5_scanner('\uFEFF{ a: 1 }')
 	tok := s.next()!
 	assert tok.kind == .lcbr
+	assert tok.pos.offset == 3
+}
+
+fn test_scan_source_offsets_include_unicode_and_original_escape_lengths() {
+	input := "\uFEFF/* 🎼 */ {ключ: '\\x41', other: false}"
+	mut s := new_json5_scanner(input)
+	for {
+		tok := s.next()!
+		if tok.kind == .eof {
+			assert tok.pos.offset == input.len
+			break
+		}
+		if tok.kind == .str {
+			assert tok.lit == 'A'
+			assert input[tok.pos.offset..s.offset] == "'\\x41'"
+		}
+		if tok.kind == .bool {
+			position := input.index('false') or { panic('missing value') }
+			assert tok.pos.offset == position
+		}
+	}
+}
+
+fn test_scan_source_offsets_preserve_invalid_utf8_width() {
+	input := [u8(`'`), 0xff, `'`, ` `, `1`].bytestr()
+	mut s := new_json5_scanner(input)
+	assert s.next()!.kind == .str
+	assert s.next()!.pos.offset == 4
 }
 
 fn test_scan_punctuation() {

@@ -67,6 +67,7 @@ JSON5 decoding accepts comments, bare object keys, single quotes, trailing comma
 hexadecimal numbers, leading `+`, leading or trailing decimal points, `Infinity`
 and `NaN`. Strings support JSON5 escapes and escaped line continuations, including
 UTF-16 surrogate pairs. Malformed escapes return a `JsonScanError` with a line and column.
+Typed decoding errors report their location and context in the original JSON5 input.
 
 `single_quotes`, `unquoted_keys` and `trailing_commas` only affect encoding when
 `json5: true`. Otherwise the existing JSON output is unchanged. Bare keys are used

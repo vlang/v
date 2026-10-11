@@ -83,6 +83,7 @@ pub enum Json5TokenKind {
 
 // Json5Pos is a location inside the scanned text.
 pub struct Json5Pos {
+	offset int // Byte offset in the original input, including a leading BOM.
 pub:
 	line int
 	col  int
@@ -99,12 +100,14 @@ pub:
 // Json5Scanner tokenizes JSON5 text. Whitespace and comments are treated as trivia
 // and skipped; every other token is reported to the caller.
 pub struct Json5Scanner {
+	source string
 pub:
 	text []rune
 mut:
-	pos  int
-	line int = 1
-	col  int = 1
+	pos    int
+	offset int
+	line   int = 1
+	col    int = 1
 }
 
 // new_json5_scanner creates a Json5Scanner over `text`, dropping a leading byte order mark.
@@ -114,7 +117,9 @@ pub fn new_json5_scanner(text string) &Json5Scanner {
 		runes.delete(0)
 	}
 	return &Json5Scanner{
-		text: runes
+		source: text
+		text:   runes
+		offset: if text.starts_with('\uFEFF') { 3 } else { 0 }
 	}
 }
 
@@ -140,6 +145,12 @@ fn (mut s Json5Scanner) advance() rune {
 		return -1
 	}
 	ch := s.text[s.pos]
+	if int(ch) == 0xfffd && !s.source[s.offset..].starts_with('\uFFFD') {
+		// string.runes replaces each invalid source byte with a replacement rune.
+		s.offset++
+	} else {
+		s.offset += ch.length_in_bytes()
+	}
 	s.pos++
 	if int(ch) == r_lf {
 		s.line++
@@ -153,8 +164,9 @@ fn (mut s Json5Scanner) advance() rune {
 // position returns the current position.
 fn (s &Json5Scanner) position() Json5Pos {
 	return Json5Pos{
-		line: s.line
-		col:  s.col
+		offset: s.offset
+		line:   s.line
+		col:    s.col
 	}
 }
 

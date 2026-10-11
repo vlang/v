@@ -109,9 +109,11 @@ mut:
 // Decoder is the internal decoding state.
 @[markused]
 struct Decoder {
-	json   string // json is the JSON data to be decoded.
-	json5  bool
-	strict bool // strict mode rejects quoted strings as numbers, fixed arrays of another length, and null values
+	json               string // json is the JSON data to be decoded.
+	json5              bool
+	source_json        string // Original JSON5 input, used only for decoding diagnostics.
+	source_values_info []Json5SourceSpan
+	strict             bool // strict mode rejects quoted strings as numbers, fixed arrays of another length, and null values
 mut:
 	// Scratch result of check_string, copied to the corresponding ValueInfo.
 	string_has_escape bool
@@ -318,10 +320,19 @@ fn (mut checker Decoder) checker_error(message string) ! {
 @[markused]
 fn (mut decoder Decoder) decode_error(message string) ! {
 	mut error_info := ValueInfo{}
+	mut error_idx := -1
 	if decoder.current_idx < decoder.values_info.len {
+		error_idx = decoder.current_idx
 		error_info = decoder.current_value()
 	} else if decoder.values_info.len > 0 {
+		error_idx = decoder.values_info.len - 1
 		error_info = decoder.values_info.last()
+	}
+	json := if decoder.json5 { decoder.source_json } else { decoder.json }
+	if decoder.json5 && error_idx >= 0 {
+		source_info := decoder.source_values_info[error_idx]
+		error_info.position = source_info.position
+		error_info.length = source_info.length
 	}
 
 	start := error_info.position
@@ -333,15 +344,15 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 
 	for i := start - 1; i >= 0; i-- {
 		if last_newline == 0 {
-			if decoder.json[i] == `\n` {
+			if json[i] == `\n` {
 				last_newline = i + 1
-			} else if decoder.json[i] == `\t` {
+			} else if json[i] == `\t` {
 				character_number += tab_width
 			} else {
 				character_number++
 			}
 		}
-		if decoder.json[i] == `\n` {
+		if json[i] == `\n` {
 			line_number++
 		}
 	}
@@ -357,8 +368,8 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 	}
 
 	// print some extra characters
-	mut context_end := int_min(decoder.json.len, end + max_extra_characters)
-	context_end_newline := decoder.json[end..context_end].index_u8(`\n`)
+	mut context_end := int_min(json.len, end + max_extra_characters)
+	context_end_newline := json[end..context_end].index_u8(`\n`)
 
 	if context_end_newline != -1 {
 		context_end = end + context_end_newline
@@ -369,9 +380,9 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 	if cutoff {
 		context += '...'
 	}
-	context += decoder.json[context_start..start]
-	context += '\\e[31m${decoder.json[start..end]}\\e[0m'
-	context += decoder.json[end..context_end]
+	context += json[context_start..start]
+	context += '\\e[31m${json[start..end]}\\e[0m'
+	context += json[end..context_end]
 	context += '\n'
 
 	if cutoff {

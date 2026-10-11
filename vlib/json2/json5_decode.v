@@ -4,15 +4,22 @@ import math
 import os
 import strconv
 
+struct Json5SourceSpan {
+mut:
+	position int
+	length   int
+}
+
 // Json5Parser writes decoded strings and bare keys as JSON strings, while keeping
 // number literals intact for custom decoders. It builds the same flat token list
 // as the JSON checker, so both dialects use the existing typed decoder.
 struct Json5Parser {
 mut:
-	scanner     &Json5Scanner
-	tok         Json5Token
-	output      Encoder
-	values_info []ValueInfo
+	scanner            &Json5Scanner
+	tok                Json5Token
+	output             Encoder
+	values_info        []ValueInfo
+	source_values_info []Json5SourceSpan
 }
 
 fn json5_syntax_error(message string, line int, col int) &JsonScanError {
@@ -54,6 +61,10 @@ fn (mut p Json5Parser) write_string_value(text string) {
 		value_kind: .string
 		has_escape: p.output.output[start..end].contains(`\\`)
 	}
+	p.source_values_info << Json5SourceSpan{
+		position: p.tok.pos.offset
+		length:   p.scanner.offset - p.tok.pos.offset
+	}
 }
 
 fn (mut p Json5Parser) parse_value() ! {
@@ -66,8 +77,10 @@ fn (mut p Json5Parser) parse_value() ! {
 				position:   start
 				value_kind: if is_object { .object } else { .array }
 			}
-			p.parse_container(is_object)!
+			p.source_values_info << Json5SourceSpan{ position: p.tok.pos.offset }
+			source_end := p.parse_container(is_object)!
 			p.values_info[index].length = p.output.output.len - start
+			p.source_values_info[index].length = source_end - p.source_values_info[index].position
 		}
 		.str {
 			p.write_string_value(p.tok.lit)
@@ -85,6 +98,10 @@ fn (mut p Json5Parser) parse_value() ! {
 				length:     p.tok.lit.len
 				value_kind: kind
 			}
+			p.source_values_info << Json5SourceSpan{
+				position: p.tok.pos.offset
+				length:   p.scanner.offset - p.tok.pos.offset
+			}
 			p.advance()!
 		}
 		else {
@@ -93,7 +110,7 @@ fn (mut p Json5Parser) parse_value() ! {
 	}
 }
 
-fn (mut p Json5Parser) parse_container(is_object bool) ! {
+fn (mut p Json5Parser) parse_container(is_object bool) !int {
 	closing := if is_object { Json5TokenKind.rcbr } else { Json5TokenKind.rsbr }
 	p.output.output << if is_object { `{` } else { `[` }
 	p.advance()!
@@ -125,7 +142,9 @@ fn (mut p Json5Parser) parse_container(is_object bool) ! {
 		}
 	}
 	p.output.output << if is_object { `}` } else { `]` }
+	source_end := p.scanner.offset
 	p.advance()!
+	return source_end
 }
 
 @[manualfree]
@@ -137,20 +156,26 @@ fn decode_json5[T](text string, mut buffer DecodeBuffer, params DecoderOptions) 
 	parser.values_info.clear()
 	defer {
 		buffer.values_info = unsafe { parser.values_info }
-		// The parser owns the normalized output and its private rune scanner.
+		// These are parser scratch allocations; decoded strings borrow a separate copy.
 		unsafe {
 			parser.output.output.free()
+			parser.source_values_info.free()
 			parser.scanner.text.free()
 			free(parser.scanner)
 		}
 	}
 	parser.parse()!
+	// bytestr copies the scratch bytes. Keep that string allocation alive because
+	// decoded strings, map keys and raw fields can borrow slices of it.
+	normalized := parser.output.output.bytestr()
 	mut decoder := Decoder{
-		json:        parser.output.output.bytestr()
-		json5:       true
-		strict:      params.strict
-		values_info: unsafe { parser.values_info }
-		values_len:  parser.values_info.len
+		json:               normalized
+		json5:              true
+		source_json:        text
+		source_values_info: unsafe { parser.source_values_info }
+		strict:             params.strict
+		values_info:        unsafe { parser.values_info }
+		values_len:         parser.values_info.len
 	}
 	return decoder.decode_root[T]()
 }
