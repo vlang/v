@@ -656,7 +656,7 @@ fn lzw_read_bits(raw []u8, bitpos int, nbits int) int {
 	for i in 0 .. nbits {
 		byte := int(raw[(bitpos + i) >> 3])
 		bit := (byte >> (7 - ((bitpos + i) & 7))) & 1
-		value = (value << 1) | bit
+		value = (value * 2) | bit
 	}
 	return value
 }

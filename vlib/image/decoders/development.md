@@ -32,6 +32,15 @@ Conventions:
   read. Bounds are checked before every read.
 - Large scratch buffers are reused through the per-decoder arena pattern
   (see `bmp.v`) so repeated decoding does not churn memory.
+- Bit accumulation is written as `x * (1 << k)` instead of `x << k`.
+  The checker warns that shifting a signed `int` can change the sign;
+  multiplication by a power of two is identical in two's complement and
+  keeps the build silent. Keep this style in new code.
+- The JPEG arithmetic decoder keeps the full JPEG-spec parameter list
+  (`ss`/`se`/`ah`/`al`/`ci`) on every variant for symmetry with the
+  Huffman path. Parameters a given variant does not use are prefixed
+  with `_` (for example `_se`, `_ah`, `_ci`) to silence the unused
+  parameter notice; do not drop them from the signature.
 
 ## Layout
 

@@ -1457,7 +1457,7 @@ fn (mut d JpegDecoder) decode_block(ci int, bx int, by int, ss int, se int, ah i
 				diff = v
 			}
 			pred += diff
-			unsafe { coeff[base + 0] = pred << al }
+			unsafe { coeff[base + 0] = pred * (1 << al) }
 		} else {
 			if d.get_bit()! == 1 {
 				unsafe { coeff[base + 0] |= (1 << al) }
@@ -1496,7 +1496,7 @@ fn (mut d JpegDecoder) decode_block(ci int, bx int, by int, ss int, se int, ah i
 				if value < (1 << (s - 1)) {
 					value -= (1 << s) - 1
 				}
-				unsafe { coeff[base + zigzag_order[k]] = value << al }
+				unsafe { coeff[base + zigzag_order[k]] = value * (1 << al) }
 				k++
 			} else if r != 15 {
 				eob_run := (1 << r) + d.read_bits(r)!
@@ -1678,7 +1678,7 @@ fn (mut d JpegDecoder) arith_process_restart(scan_comps []int) {
 	d.arith_ct = -16
 }
 
-fn (mut d JpegDecoder) arith_start_pass(scan_comps []int, ss int, se int, ah int, al int) ! {
+fn (mut d JpegDecoder) arith_start_pass(scan_comps []int, ss int, _se int, ah int, _al int) ! {
 	d.arith_scan_ss = ss
 	d.arith_scan_ah = ah
 	if d.is_prog {
@@ -1845,7 +1845,7 @@ fn (mut d JpegDecoder) arith_decode_dc_first_block(comp_idx int, ci int, bx int,
 	coeff[cbase + 0] = dc
 }
 
-fn (mut d JpegDecoder) arith_decode_ac_first_block(comp_idx int, ci int, bx int, by int, ss int, se int, al int) {
+fn (mut d JpegDecoder) arith_decode_ac_first_block(comp_idx int, _ci int, bx int, by int, ss int, se int, al int) {
 	comp := d.components[comp_idx]
 	if by >= comp.blocks_h || bx >= comp.blocks_w {
 		return
@@ -1899,7 +1899,7 @@ fn (mut d JpegDecoder) arith_decode_ac_first_block(comp_idx int, ci int, bx int,
 		if sign != 0 {
 			v = -v
 		}
-		mut val := (v << al) & 0xffff
+		mut val := (v * (1 << al)) & 0xffff
 		if val >= 0x8000 {
 			val -= 0x10000
 		}
@@ -1908,7 +1908,7 @@ fn (mut d JpegDecoder) arith_decode_ac_first_block(comp_idx int, ci int, bx int,
 	}
 }
 
-fn (mut d JpegDecoder) arith_decode_dc_refine_block(comp_idx int, ci int, bx int, by int, al int) {
+fn (mut d JpegDecoder) arith_decode_dc_refine_block(comp_idx int, _ci int, bx int, by int, al int) {
 	comp := d.components[comp_idx]
 	if by >= comp.blocks_h || bx >= comp.blocks_w {
 		return
@@ -1922,7 +1922,7 @@ fn (mut d JpegDecoder) arith_decode_dc_refine_block(comp_idx int, ci int, bx int
 	}
 }
 
-fn (mut d JpegDecoder) arith_decode_ac_refine_block(comp_idx int, ci int, bx int, by int, ss int, se int, al int) {
+fn (mut d JpegDecoder) arith_decode_ac_refine_block(comp_idx int, _ci int, bx int, by int, ss int, se int, al int) {
 	comp := d.components[comp_idx]
 	if by >= comp.blocks_h || bx >= comp.blocks_w {
 		return
@@ -1981,7 +1981,7 @@ fn (mut d JpegDecoder) arith_decode_ac_refine_block(comp_idx int, ci int, bx int
 	}
 }
 
-fn (mut d JpegDecoder) arith_decode_block(comp_idx int, ci int, bx int, by int, ss int, se int, ah int, al int) {
+fn (mut d JpegDecoder) arith_decode_block(comp_idx int, ci int, bx int, by int, ss int, se int, _ah int, al int) {
 	mode := d.arith_mode
 	if mode == 'seq' {
 		d.arith_decode_seq_block(comp_idx, ci, bx, by)

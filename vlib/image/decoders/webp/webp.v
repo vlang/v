@@ -4351,7 +4351,7 @@ fn (mut br BooleanDecoder) get_bit(prob int) int {
 fn (mut br BooleanDecoder) get_value(n int) int {
 	mut v := 0
 	for _ in 0 .. n {
-		v = (v << 1) | br.get_bit(0x80)
+		v = (v * 2) | br.get_bit(0x80)
 	}
 	return v
 }
@@ -4451,7 +4451,7 @@ fn huff_decode(t &HuffmanTree, mut br common.BitReader) !int {
 	mut index := 0
 	mut length := 0
 	for {
-		code = (code << 1) | int(br.read_bits(1)!)
+		code = (code * 2) | int(br.read_bits(1)!)
 		length++
 		if length > t.max_len {
 			return error('Invalid Huffman code: overlong code')
@@ -6096,11 +6096,11 @@ fn (mut d WebpDecoder) decode_vp8_residuals(mut br BooleanDecoder, block &MbBloc
 			} else {
 				l = 0
 			}
-			tnz = (tnz >> 1) | (l << 7)
+			tnz = (tnz >> 1) | (l * 128)
 			dst += 16
 		}
 		tnz >>= 4
-		lnz = (lnz >> 1) | (l << 7)
+		lnz = (lnz >> 1) | (l * 128)
 	}
 	mut out_t_nz := tnz
 	mut out_l_nz := lnz >> 4
@@ -6122,14 +6122,14 @@ fn (mut d WebpDecoder) decode_vp8_residuals(mut br BooleanDecoder, block &MbBloc
 				} else {
 					l = 0
 				}
-				tnz = (tnz >> 1) | (l << 3)
+				tnz = (tnz >> 1) | (l * 8)
 				dst += 16
 			}
 			tnz >>= 2
-			lnz = (lnz >> 1) | (l << 5)
+			lnz = (lnz >> 1) | (l * 32)
 		}
-		out_t_nz |= (tnz << 4) << ch
-		out_l_nz |= (lnz & 0xf0) << ch
+		out_t_nz |= (tnz * 16) * (1 << ch)
+		out_l_nz |= (lnz & 0xf0) * (1 << ch)
 	}
 	above_nz[mb_x] = out_t_nz
 	if block.is_i4x4 == 0 {
@@ -6696,7 +6696,7 @@ fn (mut d WebpDecoder) filter_mb(mut y_plane []int, mut u_plane []int, mut v_pla
 		return
 	}
 	ilevel := f_info.f_ilevel
-	hev := f_info.hev_thresh
+	hev_thr := f_info.hev_thresh
 	f_inner := f_info.f_inner
 	yb := oy * y_stride + ox
 	if filter_type == 1 {
@@ -6720,28 +6720,28 @@ fn (mut d WebpDecoder) filter_mb(mut y_plane []int, mut u_plane []int, mut v_pla
 		ub := cuy * uv_stride + cux
 		vb := ub
 		if mb_x > 0 {
-			filter_loop_26(mut y_plane, yb, 1, y_stride, 16, limit + 4, ilevel, hev)
-			filter_loop_26(mut u_plane, ub, 1, uv_stride, 8, limit + 4, ilevel, hev)
-			filter_loop_26(mut v_plane, vb, 1, uv_stride, 8, limit + 4, ilevel, hev)
+			filter_loop_26(mut y_plane, yb, 1, y_stride, 16, limit + 4, ilevel, hev_thr)
+			filter_loop_26(mut u_plane, ub, 1, uv_stride, 8, limit + 4, ilevel, hev_thr)
+			filter_loop_26(mut v_plane, vb, 1, uv_stride, 8, limit + 4, ilevel, hev_thr)
 		}
 		if f_inner != 0 {
 			for k in 1 .. 4 {
-				filter_loop_24(mut y_plane, yb + 4 * k, 1, y_stride, 16, limit, ilevel, hev)
+				filter_loop_24(mut y_plane, yb + 4 * k, 1, y_stride, 16, limit, ilevel, hev_thr)
 			}
-			filter_loop_24(mut u_plane, ub + 4, 1, uv_stride, 8, limit, ilevel, hev)
-			filter_loop_24(mut v_plane, vb + 4, 1, uv_stride, 8, limit, ilevel, hev)
+			filter_loop_24(mut u_plane, ub + 4, 1, uv_stride, 8, limit, ilevel, hev_thr)
+			filter_loop_24(mut v_plane, vb + 4, 1, uv_stride, 8, limit, ilevel, hev_thr)
 		}
 		if mb_y > 0 {
-			filter_loop_26(mut y_plane, yb, y_stride, 1, 16, limit + 4, ilevel, hev)
-			filter_loop_26(mut u_plane, ub, uv_stride, 1, 8, limit + 4, ilevel, hev)
-			filter_loop_26(mut v_plane, vb, uv_stride, 1, 8, limit + 4, ilevel, hev)
+			filter_loop_26(mut y_plane, yb, y_stride, 1, 16, limit + 4, ilevel, hev_thr)
+			filter_loop_26(mut u_plane, ub, uv_stride, 1, 8, limit + 4, ilevel, hev_thr)
+			filter_loop_26(mut v_plane, vb, uv_stride, 1, 8, limit + 4, ilevel, hev_thr)
 		}
 		if f_inner != 0 {
 			for k in 1 .. 4 {
-				filter_loop_24(mut y_plane, yb + 4 * k * y_stride, y_stride, 1, 16, limit, ilevel, hev)
+				filter_loop_24(mut y_plane, yb + 4 * k * y_stride, y_stride, 1, 16, limit, ilevel, hev_thr)
 			}
-			filter_loop_24(mut u_plane, ub + 4 * uv_stride, uv_stride, 1, 8, limit, ilevel, hev)
-			filter_loop_24(mut v_plane, vb + 4 * uv_stride, uv_stride, 1, 8, limit, ilevel, hev)
+			filter_loop_24(mut u_plane, ub + 4 * uv_stride, uv_stride, 1, 8, limit, ilevel, hev_thr)
+			filter_loop_24(mut v_plane, vb + 4 * uv_stride, uv_stride, 1, 8, limit, ilevel, hev_thr)
 		}
 	}
 }
@@ -7424,12 +7424,12 @@ fn (mut d WebpDecoder) scale_rgba(rgba []int, src_w int, src_h int, dst_w int, d
 		return error('WEBP rescaler: invalid destination dimensions')
 	}
 	if src_w == dst_w && src_h == dst_h {
-		mut copy := []int{len: rgba.len}
+		mut copied := []int{len: rgba.len}
 		for i, v in rgba {
-			copy[i] = v
+			copied[i] = v
 		}
-		d.arena.track(copy)
-		return copy
+		d.arena.track(copied)
+		return copied
 	}
 	x_expand := src_w < dst_w
 	y_expand := src_h < dst_h
