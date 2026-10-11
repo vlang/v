@@ -1249,6 +1249,11 @@ names := ['John', 'Peter', 'Sam']
 println('Alex' in names) // "false"
 ```
 
+Use `<< ...array` to explicitly append the array's elements. For an interface array,
+`<< array` can append the whole array as one interface value, while `<< ...array`
+converts each element separately. `array.insert(index, ...values)` and
+`array.prepend(...values)` also convert each source element to the destination element type.
+
 #### Array Fields
 
 There are two fields that control the "size" of an array:
