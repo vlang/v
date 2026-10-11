@@ -26,15 +26,17 @@ fn test_json5_integer_decoding_releases_temporary_storage() {
 
 @[manualfree]
 fn test_json5_reuse_releases_normalized_text_of_ignored_fields() {
-	input := "{port:123,ignored:'" + 'x'.repeat(8192) + "'}"
-	mut buffer := DecodeBuffer{}
-	assert decode_reuse[Json5PortOnly](input, mut buffer, json5: true)!.port == 123
-	before := C.json5_heap_live_bytes()
-	for _ in 0 .. 100 {
+	for prefix in ["{port:123,ignored:'", r"{\u0070ort:123,ig\u006eored:'"] {
+		input := prefix + 'x'.repeat(8192) + "'}"
+		mut buffer := DecodeBuffer{}
 		assert decode_reuse[Json5PortOnly](input, mut buffer, json5: true)!.port == 123
+		before := C.json5_heap_live_bytes()
+		for _ in 0 .. 100 {
+			assert decode_reuse[Json5PortOnly](input, mut buffer, json5: true)!.port == 123
+		}
+		assert C.json5_heap_live_bytes() == before
+		unsafe { buffer.values_info.free() }
 	}
-	assert C.json5_heap_live_bytes() == before
-	unsafe { buffer.values_info.free() }
 }
 
 @[manualfree]

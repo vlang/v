@@ -92,9 +92,10 @@ pub:
 // Json5Token is a single lexical unit produced by the Json5Scanner.
 pub struct Json5Token {
 pub:
-	kind Json5TokenKind
-	lit  string // decoded value for strings, raw source text otherwise
-	pos  Json5Pos
+	kind   Json5TokenKind
+	lit    string // Decoded value for strings and identifiers, raw source text otherwise.
+	pos    Json5Pos
+	length int // Token length in source bytes, before decoding escapes.
 }
 
 // Json5Scanner tokenizes JSON5 text. Whitespace and comments are treated as trivia
@@ -263,7 +264,7 @@ fn (mut s Json5Scanner) skip_trivia() ! {
 	}
 }
 
-// next returns the next token, skipping whitespace and comments.
+// next returns the next token, decoding string and identifier escapes and skipping trivia.
 @[manualfree]
 pub fn (mut s Json5Scanner) next() !Json5Token {
 	s.skip_trivia()!
@@ -279,9 +280,10 @@ pub fn (mut s Json5Scanner) next() !Json5Token {
 		r_lcbr, r_rcbr, r_lbkt, r_rbkt, r_comma, r_colon {
 			ch := s.advance()
 			return Json5Token{
-				kind: unsafe { Json5TokenKind(code) }
-				lit:  ch.str()
-				pos:  start
+				kind:   unsafe { Json5TokenKind(code) }
+				lit:    ch.str()
+				pos:    start
+				length: s.offset - start.offset
 			}
 		}
 		r_quote_dbl {
@@ -295,7 +297,7 @@ pub fn (mut s Json5Scanner) next() !Json5Token {
 	if json5_is_digit(code) || code == r_minus || code == r_plus || code == r_dot {
 		return s.scan_number(start)
 	}
-	if json5_is_ident_start(code) {
+	if json5_is_ident_start(code) || code == r_backslash {
 		return s.scan_ident(start)
 	}
 	return json5_syntax_error('unexpected token `${s.text[s.pos].str()}`', start.line, start.col)
@@ -370,9 +372,10 @@ fn (mut s Json5Scanner) scan_string(start Json5Pos, quote_code int) !Json5Token 
 		}
 	}
 	return Json5Token{
-		kind: .str
-		lit:  out.bytestr()
-		pos:  start
+		kind:   .str
+		lit:    out.bytestr()
+		pos:    start
+		length: s.offset - start.offset
 	}
 }
 
@@ -449,21 +452,75 @@ fn (mut s Json5Scanner) scan_unicode_escape(start Json5Pos) !rune {
 // `null`, `Infinity` and `NaN`.
 @[manualfree]
 fn (mut s Json5Scanner) scan_ident(start Json5Pos) !Json5Token {
-	for s.pos < s.text.len && json5_is_ident_part(int(s.text[s.pos])) {
-		s.advance()
+	mut out := []u8{}
+	unsafe { out.flags |= .noslices }
+	mut utf8_buffer := [5]u8{}
+	mut has_escape := false
+	defer {
+		unsafe { out.free() }
 	}
-	lit := s.source.substr(start.offset, s.offset)
-	kind := match lit {
-		'true', 'false' { Json5TokenKind.bool }
-		'null' { Json5TokenKind.null }
-		'Infinity' { Json5TokenKind.infinity }
-		'NaN' { Json5TokenKind.nan }
-		else { Json5TokenKind.ident }
+	for s.pos < s.text.len {
+		code := int(s.text[s.pos])
+		if code == r_backslash {
+			escape := s.position()
+			is_start := s.offset == start.offset
+			if !has_escape {
+				for i in start.offset .. s.offset {
+					out << s.source[i]
+				}
+				has_escape = true
+			}
+			s.advance()
+			if s.peek_code(0) != r_lower_u {
+				return json5_syntax_error('identifier escape must use `\\uXXXX`', escape.line,
+					escape.col)
+			}
+			s.advance()
+			character := s.scan_hex_digits(4, escape)!
+			valid := if is_start {
+				json5_is_ident_start(int(character))
+			} else {
+				json5_is_ident_part(int(character))
+			}
+			if !valid {
+				return json5_syntax_error('invalid character in identifier escape', escape.line,
+					escape.col)
+			}
+			// This view borrows only the local UTF-8 buffer and is copied immediately.
+			encoded := unsafe { utf32_to_str_no_malloc(u32(character), mut &utf8_buffer[0]) }
+			for byte in encoded {
+				out << byte
+			}
+		} else if json5_is_ident_part(code) {
+			offset := s.offset
+			s.advance()
+			if has_escape {
+				for i in offset .. s.offset {
+					out << s.source[i]
+				}
+			}
+		} else {
+			break
+		}
+	}
+	lit := if has_escape { out.bytestr() } else { s.source.substr(start.offset, s.offset) }
+	// Escaped keywords are IdentifierNames for keys, rather than value literals.
+	kind := if has_escape {
+		Json5TokenKind.ident
+	} else {
+		match lit {
+			'true', 'false' { Json5TokenKind.bool }
+			'null' { Json5TokenKind.null }
+			'Infinity' { Json5TokenKind.infinity }
+			'NaN' { Json5TokenKind.nan }
+			else { Json5TokenKind.ident }
+		}
 	}
 	return Json5Token{
-		kind: kind
-		lit:  lit
-		pos:  start
+		kind:   kind
+		lit:    lit
+		pos:    start
+		length: s.offset - start.offset
 	}
 }
 
@@ -488,9 +545,10 @@ fn (mut s Json5Scanner) scan_number(start Json5Pos) !Json5Token {
 			unsafe { tok.lit.free() }
 		}
 		return Json5Token{
-			kind: tok.kind
-			lit:  s.source.substr(start.offset, s.offset)
-			pos:  start
+			kind:   tok.kind
+			lit:    s.source.substr(start.offset, s.offset)
+			pos:    start
+			length: s.offset - start.offset
 		}
 	}
 	if int(s.text[s.pos]) == r_zero && (s.peek_code(1) == r_lower_x || s.peek_code(1) == r_upper_x) {
@@ -505,10 +563,14 @@ fn (mut s Json5Scanner) scan_number(start Json5Pos) !Json5Token {
 			return json5_syntax_error('hexadecimal literal has no digits', start.line, start.col)
 		}
 		return Json5Token{
-			kind: .number
-			lit:  s.source.substr(start.offset, s.offset)
-			pos:  start
+			kind:   .number
+			lit:    s.source.substr(start.offset, s.offset)
+			pos:    start
+			length: s.offset - start.offset
 		}
+	}
+	if first == r_zero && json5_is_digit(s.peek_code(1)) {
+		return json5_syntax_error('decimal literal has a leading zero', start.line, start.col)
 	}
 	mut int_digits := 0
 	for s.pos < s.text.len && json5_is_digit(int(s.text[s.pos])) {
@@ -542,8 +604,9 @@ fn (mut s Json5Scanner) scan_number(start Json5Pos) !Json5Token {
 		}
 	}
 	return Json5Token{
-		kind: .number
-		lit:  s.source.substr(start.offset, s.offset)
-		pos:  start
+		kind:   .number
+		lit:    s.source.substr(start.offset, s.offset)
+		pos:    start
+		length: s.offset - start.offset
 	}
 }

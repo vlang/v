@@ -94,6 +94,60 @@ fn test_scan_unicode_ident() {
 	assert tok.lit == 'ключ'
 }
 
+fn test_scan_unicode_escapes_in_identifiers_keep_source_positions() {
+	cases := {
+		r'\u0061':              'a'
+		r'a\u0062':             'ab'
+		r'\u0024\u005f\u0030':  '$_0'
+		r'\u00e9clair':         'éclair'
+		r'clé\u0031':           'clé1'
+		r'a\u0301\u200c\u200d': 'a\u0301\u200c\u200d'
+		r'\u0074rue':           'true'
+		r'f\u0061lse':          'false'
+		r'\u006eull':           'null'
+		r'Inf\u0069nity':       'Infinity'
+		r'N\u0061N':            'NaN'
+	}
+	for source, expected in cases {
+		mut s := new_json5_scanner(source + ': false')
+		tok := s.next()!
+		assert tok.kind == .ident
+		assert tok.lit == expected
+		assert tok.pos.offset == 0
+		assert tok.pos.col == 1
+		assert tok.length == source.len
+		colon := s.next()!
+		assert colon.kind == .colon
+		assert colon.pos.offset == source.len
+		assert colon.pos.col == source.runes().len + 1
+		assert colon.length == 1
+	}
+}
+
+fn test_scan_rejects_invalid_identifier_escapes() {
+	for source in [r'\u0030', r'\u0301', r'\u200c', r'\u0020', r'\uD800', r'\uDC00', r'a\u0020',
+		r'a\u000a', r'a\u002f', r'a\u005c', r'\x61', r'a\x62', r'\U0061', r'\u12', r'a\u00ZZ',
+		r'\u{61}', r'a\', r'\'] {
+		mut s := new_json5_scanner(source)
+		s.next() or {
+			assert err is JsonScanError
+			continue
+		}
+		assert false, 'expected invalid identifier escape to fail: ${source}'
+	}
+	mut s := new_json5_scanner('// heading\n  a' + r'\u0020')
+	s.next() or {
+		if err is JsonScanError {
+			assert err.line == 2
+			assert err.character == 4
+		} else {
+			assert false, err.msg()
+		}
+		return
+	}
+	assert false, 'expected an invalid identifier escape error'
+}
+
 fn test_scan_line_comment() {
 	mut s := new_json5_scanner('// skip me\n42')
 	tok := s.next()!
@@ -224,19 +278,35 @@ fn test_scan_unterminated_string() {
 }
 
 fn test_scan_numbers() {
-	cases := ['0', '-1', '+1', '.5', '5.', '1.5', '1e3', '1E+3', '1e-3', '0x1f', '0XFF', '0xAB',
-		'0XCD', '+0xAD', '-0xBC']
+	cases := ['0', '-0', '+0', '0.', '0.5', '0.05', '0e01', '0.e+02', '.05', '-1', '+1', '.5',
+		'5.', '1.5', '1e3', '1E+3', '1e-3', '0x1f', '0XFF', '0xAB', '0XCD', '+0xAD', '-0xBC', '0x00',
+		'-0X01']
 	for source in cases {
 		mut s := new_json5_scanner(source)
 		tok := s.next()!
 		assert tok.kind == .number, 'source ${source} scanned as ${tok.kind}'
 		assert tok.lit == source
+		assert tok.length == source.len
 	}
 }
 
-fn test_scan_leading_zero_is_allowed() {
-	mut s := new_json5_scanner('007')
-	assert s.next()!.lit == '007'
+fn test_scan_rejects_leading_zero_decimals() {
+	for sign in ['', '+', '-'] {
+		for digits in ['00', '01', '007', '08', '09', '00.5', '01.5', '00e1', '01e+2'] {
+			mut s := new_json5_scanner('// heading\n  ' + sign + digits)
+			s.next() or {
+				if err is JsonScanError {
+					assert err.message.contains('leading zero')
+					assert err.line == 2
+					assert err.character == 3
+				} else {
+					assert false, err.msg()
+				}
+				continue
+			}
+			assert false, 'expected leading-zero decimal to fail: ${sign}${digits}'
+		}
+	}
 }
 
 fn test_scan_signed_infinity() {

@@ -63,13 +63,15 @@ fn main() {
 }
 ```
 
-JSON5 decoding accepts comments, bare object keys, single quotes, trailing commas,
-hexadecimal numbers, leading `+`, leading or trailing decimal points, `Infinity`
+JSON5 decoding accepts comments, bare object keys (including `\uXXXX` escapes), single quotes,
+trailing commas, hexadecimal numbers, leading `+`, leading or trailing decimal points, `Infinity`
 and `NaN`. Strings support JSON5 escapes and escaped line continuations, including
 UTF-16 surrogate pairs. Malformed escapes return a `JsonScanError` with a line and column.
+Decimal integer parts cannot have leading zeros: `01` and `00.5` are rejected.
 All Unicode space separators are accepted between tokens, including U+1680 and U+2000.
 Escaped digits `\1` through `\9` are rejected, and `\0` cannot precede another decimal digit.
 Typed decoding errors report their location and context in the original JSON5 input.
+Columns count Unicode code points, excluding an initial BOM; tabs occupy eight columns.
 CR, LF, CRLF, U+2028 and U+2029 are counted as JSON5 line terminators.
 Raw LF and CR in strings are rejected; use a backslash line continuation or a string escape.
 Unescaped U+2028 and U+2029 are allowed in strings, as specified by
@@ -120,7 +122,8 @@ missing or incompatible fields at their defaults.
 Use `encode(text)` instead of `quote_string(text)`. To reindent a document, decode
 or parse it and call `encode(value, prettify: true, indent_string: '  ')`.
 For iterative JSON5 scanning, use `new_json5_scanner`; its tokens are `Json5Token`
-with `Json5TokenKind` and `Json5Pos` source positions.
+with `Json5TokenKind` and `Json5Pos` source positions. String and identifier literals
+contain their decoded values; `length` preserves the original token's byte length.
 
 ## Usage
 

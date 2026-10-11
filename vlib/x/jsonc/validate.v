@@ -171,11 +171,8 @@ fn validate(text string, opts ParseOpts) &ParseError {
 // locate converts the line and column of a JSON5 token into a Pos, recovering
 // the byte offsets from `text`.
 //
-// The extent is the token's own source text. Every token this module reports on
-// carries its raw spelling in `lit` — an unquoted key, a number, a keyword, or
-// the comma itself — so its byte length is the width to underline. A token whose
-// `lit` has been decoded, such as a string, is never reported here, because the
-// rune pass owns string literals and measures them as it walks.
+// The extent is the token's source byte length, which includes any Unicode
+// escapes in an unquoted key even though `lit` contains its decoded value.
 //
 // The walk uses the rune pass's Cursor, which counts lines and columns the way
 // the JSON5 scanner does, including stepping over a leading byte order mark
@@ -193,6 +190,6 @@ fn locate(text string, tok json2.Json5Token) Pos {
 		line:       tok.pos.line
 		col:        tok.pos.col
 		offset:     c.offset
-		end_offset: c.offset + tok.lit.len
+		end_offset: c.offset + tok.length
 	}
 }

@@ -53,9 +53,25 @@ fn test_json5_typed_error_preserves_container_source_span() {
 fn test_json5_typed_error_preserves_unicode_and_bom_byte_offsets() {
 	input := "\uFEFF{ 'ключ': '🎼', count: false, }"
 	position := input.index('false') or { panic('missing value') }
-	assert_json5_decode_error[Json5ErrorFields](input, 1, position + 1, 'false')
-	assert_json5_decode_error[int]('\uFEFF\u00A0false', 1, 6, 'false')
+	assert_json5_decode_error[Json5ErrorFields](input, 1, input[3..position].runes().len + 1,
+		'false')
+	assert_json5_decode_error[int]('\uFEFF\u00A0false', 1, 2, 'false')
 	assert_json5_decode_error[int]('// heading\r\n\tfalse', 2, 9, 'false')
+}
+
+fn test_json5_typed_error_columns_count_code_points() {
+	assert_json5_decode_error[map[string]int]('{é: false}', 1, 5, 'false')
+	assert_json5_decode_error[map[string]int]('{界: false}', 1, 5, 'false')
+	assert_json5_decode_error[map[string]int]('{e\u0301: false}', 1, 6, 'false')
+	assert_json5_decode_error[map[string]int]("{'🎼': false}", 1, 7, 'false')
+	assert_json5_decode_error[map[string]int]('{"é🎼": false}', 1, 8, 'false')
+	assert_json5_decode_error[int]('/* 🎼 é */ false', 1, 11, 'false')
+	assert_json5_decode_error[map[string]int](r'{\u00e9: false}', 1, 10, 'false')
+	assert_json5_decode_error[map[string]int]('{\té:\tfalse}', 1, 20, 'false')
+	for separator in ['\n', '\r', '\r\n', '\u2028', '\u2029'] {
+		input := '// 🎼 é' + separator + '{é: false}'
+		assert_json5_decode_error[map[string]int](input, 2, 5, 'false')
+	}
 }
 
 fn test_json5_error_source_mapping_is_independent_of_reused_token_storage() {

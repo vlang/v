@@ -8,13 +8,68 @@ struct DialectFields {
 }
 
 fn test_json5_syntax_is_opt_in() {
-	for text in ['{a: 1}', "'value'", '[1,]', '// comment\n1', '0x10', '+1', '.5', '5.', 'Infinity',
-		'NaN'] {
+	for text in ['{a: 1}', r'{\u0061: 1}', "'value'", '[1,]', '// comment\n1', '0x10', '+1', '.5',
+		'5.', 'Infinity', 'NaN'] {
 		json2.decode[json2.Any](text) or {
 			_ = json2.decode[json2.Any](text, json5: true)!
 			continue
 		}
 		assert false, 'JSON accepted JSON5-only syntax: ${text}'
+	}
+}
+
+fn test_json5_decode_unicode_escapes_in_unquoted_keys() {
+	fields := json2.decode[DialectFields](r'{\u0064isplay\u004eame: "V", \u0070ort: 42}',
+		json5: true
+	)!
+	assert fields.name == 'V'
+	assert fields.port == 42
+	values := json2.decode[map[string]int](r'{\u0061:1, a\u0030:2, \u00e9:3, \u0024:4,
+		\u005f:5, \u0074rue:6, f\u0061lse:7, \u006eull:8, \u0049nfinity:9, N\u0061N:10,
+		a\u0301:11, a\u200c:12, a\u200d:13}', json5: true)!
+	assert values == {
+		'a':        1
+		'a0':       2
+		'é':        3
+		'$':        4
+		'_':        5
+		'true':     6
+		'false':    7
+		'null':     8
+		'Infinity': 9
+		'NaN':      10
+		'a\u0301':  11
+		'a\u200c':  12
+		'a\u200d':  13
+	}
+	doc := json2.parse_text(r'{a: 1, \u0061: 2}', json5: true)!
+	assert doc.value('a').int() == 2
+}
+
+fn test_json5_decode_rejects_escaped_value_keywords() {
+	for text in [r'\u0074rue', r'f\u0061lse', r'\u006eull', r'Inf\u0069nity', r'+Inf\u0069nity',
+		r'N\u0061N', r'-N\u0061N'] {
+		json2.decode[json2.Any](text, json5: true) or {
+			assert err is json2.JsonScanError
+			continue
+		}
+		assert false, 'expected an escaped value keyword to fail: ${text}'
+	}
+}
+
+fn test_json5_decode_rejects_leading_zero_decimals() {
+	for sign in ['', '+', '-'] {
+		for digits in ['00', '01', '007', '08', '09', '00.5', '01.5', '00e1', '01e+2'] {
+			literal := sign + digits
+			for text in [literal, '[' + literal + ']', '{a:' + literal + '}'] {
+				json2.decode[json2.Any](text, json5: true) or {
+					assert err is json2.JsonScanError
+					assert err.msg().contains('leading zero')
+					continue
+				}
+				assert false, 'expected leading-zero decimal to fail: ${text}'
+			}
+		}
 	}
 }
 

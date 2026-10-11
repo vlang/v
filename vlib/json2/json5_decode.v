@@ -219,7 +219,8 @@ fn json5_source_location(text string, position int) (int, int, int) {
 	mut line := 0
 	mut column := 0
 	mut line_start := 0
-	mut i := 0
+	// The scanner skips an initial BOM without advancing its column.
+	mut i := if text.starts_with('\uFEFF') { 3 } else { 0 }
 	for i < position {
 		width := json5_line_terminator_length(text, i)
 		if width > 0 {
@@ -228,8 +229,9 @@ fn json5_source_location(text string, position int) (int, int, int) {
 			column = 0
 			line_start = i
 		} else {
-			column += if text[i] == `\t` { tab_width } else { 1 }
-			i++
+			ch, rune_width := utf8_rune_at(text, i)
+			column += if int(ch) == r_tab { tab_width } else { 1 }
+			i += rune_width
 		}
 	}
 	return line, column, line_start
