@@ -468,14 +468,20 @@ declaration-only `.vh` file and a compiled `.o` file. A module object is rebuilt
 when its source content, compiler implementation, target, or relevant build
 configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
 `math.bits` share one `builtin.o`, matching the v2 core-cache layout.
-The system C compiler builds and links these objects, so the cache serves the builds that use
-it: `-cc clang`, `-prod`, and every build where the bundled TinyCC is not the default compiler.
-A first build with the bundled TinyCC is faster without the cache, as it compiles no module on
-its own; pass `-usecache` to let the bundled TinyCC build and link the module objects itself on
-macOS and Linux, which pays off from the second build on.
-Before compiling a new module object, the compiler prints `Caching module <name>...` to
-standard error, including during `run`. Warm builds print no cache creation notices;
-`-silent` suppresses them. This applies to SHA3 and other imported modules with TinyCC too.
+Module caching is enabled by default for supported builds, including `-cc clang`, `-prod`,
+and builds with bundled TinyCC on macOS and Linux. TinyCC builds and links its own module
+objects. Pass `-nocache` or `--no-cache` to disable caching. A first TinyCC build can be
+faster without the cache, while later builds reuse the cached modules and executable.
+The former `-usecache` flag is no longer accepted.
+With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
+before compiling a new module object, including during `run`. Ordinary builds and warm builds
+print no cache creation notices; `-silent` suppresses them too.
+This applies to SHA3 and other imported modules with TinyCC too.
+If TinyCC cannot compile or link a cached program unit, V retries the original sources
+without module caching before changing C compilers or reporting a compilation failure.
+Programs importing `v.reflection` parse original module sources to preserve source-file
+metadata, while still reusing compatible module objects. This restart preserves the caller's
+environment for compile-time `$env` and programs launched with `v run`.
 Stored constants are defined and initialized by their owning module object. Cached interfaces
 declare constant tables and other stored values by type, so a warm build does not parse or lower
 their initializers again. C constants keep their declarations in native headers.
@@ -509,7 +515,7 @@ does), which headers a V-shipped C header includes and whether it can be replica
 module object (until one of those headers changes, or one of their includes would find another
 file, be it through a symbolic link that points elsewhere now), and that the bundled TinyCC runs
 and links the libraries of the program.
-`CFLAGS` and `LDFLAGS` turn the module cache off, with `-usecache` too: no object records them.
+`CFLAGS` and `LDFLAGS` turn the module cache off for all C compilers: no object records them.
 Cache files live under
 the V temporary directory by default; set `V3CACHE` to select another root, or pass
 `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c` builds do not use the
@@ -524,8 +530,8 @@ on one line. Paths below the current home directory use `~` as a prefix. A nonze
 shows how many cached module interfaces were parsed by that build. Required compile-time bodies
 are embedded in the `.vh` interface, so a warm cached build parses `.v` files only from the input
 program's directory; the `.v` list makes an unexpected module-cache miss visible. After
-successfully populating module objects, a cold build prints a hint that unchanged modules will not
-be recompiled on the next run.
+successfully populating module objects, a cold build with timings enabled prints a hint that
+unchanged modules will not be recompiled on the next run.
 Third-party C objects retain dependency manifests, so warm builds verify each unique source or
 header once without launching a dependency-scanner process per object. Unchanged inputs use
 nanosecond-resolution file metadata; a metadata change falls back to the recorded content hash.
@@ -545,7 +551,7 @@ whose program sources, module interfaces, native inputs, configuration and linke
 same, in the same environment of the compiler and the linker (`LIBRARY_PATH`, `CPATH`,
 `C_INCLUDE_PATH`, `LD_RUN_PATH`, `SDKROOT`, `MACOSX_DEPLOYMENT_TARGET` and the like), restores
 that executable instead of checking, generating, compiling and linking again, with
-the system C compiler and with `-usecache` alike. It prints the warnings and notices of the
+the system C compiler and with bundled TinyCC alike. It prints the warnings and notices of the
 program again and reports the stages as cached, the last one as `cc (cached)` or `tcc (cached)`.
 The files that the link read are compared by their metadata first: the objects, archives,
 libraries and other files that the command names, and every name that a linker gives a library
@@ -642,7 +648,7 @@ macOS (`-cc cc` without `-prod`), tests, `-autofree` builds and Windows targets 
 declaration, and so do a program that imports `v.reflection`, which can list its functions when
 it runs, and any build with `V3_CACHE_ALL_DECLARATIONS=1`. `V3_CACHE_TRACE=1` prints
 how many were left out, and `V3_CACHE_KEEP_PROGRAM_C=<file>` keeps the unit that TinyCC compiled.
-With `-usecache`, TinyCC used to read the headers of the C library for every program unit: 3.7 MB
+With module caching, TinyCC used to read the headers of the C library for every program unit: 3.7 MB
 for a unit of 113 KB. The part of the unit that includes them, up to the last `#include`, is now
 kept in the module cache in preprocessed form (`tcc -E -dD`), and the unit includes that file
 instead. The form is the C that the preprocessor made of the headers, followed by the macro

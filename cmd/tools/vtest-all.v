@@ -373,17 +373,17 @@ fn get_all_commands() []Command {
 		v3_compatible: false
 	}
 	res << Command{
-		line:          '${vexe} -usecache -cg examples/hello_world.v'
-		okmsg:         '`v -usecache -cg` works.'
+		line:          '${vexe} -cg examples/hello_world.v'
+		okmsg:         '`v -cg` works.'
 		rmfile:        'examples/hello_world'
 		v3_compatible: false
 	}
 	// Note: test that a program that depends on thirdparty libraries with its
 	// own #flags (tetris depends on gg, which uses sokol) can be compiled
-	// with -usecache:
+	// with default caching:
 	res << Command{
-		line:   '${vexe} -usecache examples/tetris/tetris.v'
-		okmsg:  '`v -usecache` works.'
+		line:   '${vexe} examples/tetris/tetris.v'
+		okmsg:  '`v` with default caching works.'
 		rmfile: 'examples/tetris/tetris'
 	}
 	$if macos || linux {

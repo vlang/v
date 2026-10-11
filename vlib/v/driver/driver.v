@@ -143,6 +143,7 @@ const v3_vvmrc_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
 const v3_crun_build_identity_env = 'V3_CRUN_BUILD_IDENTITY'
 const v3_internal_restart_env = 'V3_INTERNAL_RESTART'
 const v3_internal_parser_diagnostics_printed_flag = '-v3-internal-parser-diagnostics-printed'
+const v3_internal_force_cache_source_flag = '-v3-internal-force-cache-source'
 const v3_internal_implicit_tcc_warning_prefix = '-v3-internal-implicit-tcc-warning='
 const v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
 
@@ -9594,7 +9595,7 @@ pub fn run(args []string) {
 	mut parallel_cc := false
 	mut no_prealloc := false
 	mut no_cache := false
-	mut use_cache := false
+	mut force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
 	mut no_skip_unused := false
 	mut is_o := false
 	mut no_memory_limit := false
@@ -10039,6 +10040,9 @@ pub fn run(args []string) {
 		} else if args[i] == v3_internal_parser_diagnostics_printed_flag {
 			parser_diagnostics_already_printed = true
 			i++
+		} else if args[i] == v3_internal_force_cache_source_flag {
+			force_cache_source = true
+			i++
 		} else if args[i] == v3_internal_all_cached_declarations_flag {
 			keep_all_cached_declarations = true
 			i++
@@ -10162,12 +10166,6 @@ pub fn run(args []string) {
 			i += 2
 		} else if args[i] == '-show-timings' {
 			show_timings = true
-			i++
-		} else if args[i] == '-usecache' {
-			// The system C compiler caches modules without being asked. The bundled
-			// TinyCC, which compiles a whole program faster than a build validates
-			// and links its cached modules, does so on request (see cache_with_tcc).
-			use_cache = true
 			i++
 		} else if args[i] in ['-new-generic-solver', '-progress', '-use-os-system-to-run'] {
 			// v3 uses its current generic solver without a legacy selection switch.
@@ -11211,10 +11209,10 @@ pub fn run(args []string) {
 			return
 		}
 	}
-	// With `-usecache` the bundled TinyCC builds the objects of the module cache and
+	// The bundled TinyCC builds the objects of the module cache by default and
 	// links them itself. TinyCC reads only the objects that it wrote, so the build
 	// has to be one that TinyCC completes; the compiler builds itself without them.
-	cache_with_tcc := use_cache && effective_tcc && bundled_tcc_available
+	cache_with_tcc := effective_tcc && bundled_tcc_available
 		&& c_compiler == bundled_tcc && !is_o && !is_shared && !is_liveshared && !is_livemain
 		&& backend == 'c' && !c_only && !no_cache && !no_skip_unused && !no_builtin
 		&& !parallel_cc && !keep_c && !backend_explicit && !building_v && !cmd_v_build
@@ -11340,7 +11338,6 @@ pub fn run(args []string) {
 	// validated, so its builds keep only the objects and interfaces of modules, and
 	// the executable of the program for a build that changes nothing.
 	program_cache_enabled := !cache_with_tcc && persistent_program_cache
-	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
 	mut cache_no_parallel_cgen := current_no_parallel
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
 	mut p := parser.Parser.new(prefs)
@@ -11385,7 +11382,8 @@ pub fn run(args []string) {
 	}
 	mut cache_state := V3ModuleCacheState{
 		manager:                   cache_manager
-		silent:                    silent
+		// Default caching must preserve program output; show cache progress with timings.
+		silent:                    silent || (!verbose && !show_timings)
 		bundle_sources:            bundle_sources
 		bundle_source_paths:       module_cache_source_path_set(p.a, bundle_sources)
 		force_source:              force_cache_source
@@ -11635,6 +11633,19 @@ pub fn run(args []string) {
 			seed_implicit_imports(mut a, skip_closure_runtime, check_overflow || check_casts)
 		}
 	}
+	// TinyCC needs the closure runtime referenced by unused functions in cached objects.
+	// Cached interfaces omit the bodies that originally pulled that runtime in.
+	if cache_with_tcc && !skip_closure_runtime && !implicit_imports.has_closure {
+		closure_files := pref.get_v_files_from_dir_for_target(prefs.get_vlib_module_path('builtin.closure'),
+			prefs.user_defines, prefs.target)
+		for module_name in ['closure', 'builtin.closure'] {
+			if _ := cache_state.manager.valid_header(module_name, closure_files) {
+				a.add_node(closure_import_node())
+				implicit_imports.has_closure = true
+				break
+			}
+		}
+	}
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
 	// Resolve imports recursively
@@ -11644,6 +11655,14 @@ pub fn run(args []string) {
 		check_overflow || check_casts, mut cache_state, mut parse_timing, mut implicit_imports, mut prepared_imports)
 	if prepared_imports.diverged != '' {
 		rerun_as_one_shot_check(prepared_imports.diverged, served.question)
+	}
+	// Reflection exposes source-file indices, which declaration headers cannot preserve.
+	if cache_state.manager.enabled && !cache_state.force_source {
+		if _ := cache_state_module_name(&cache_state, 'v.reflection') {
+			trace_v3_cache_fallback('runtime reflection needs the original source-file metadata')
+			// Keep the caller's environment visible to compile-time `$env` and `v run`.
+			restart_v3_with_args([v3_internal_force_cache_source_flag])
+		}
 	}
 	if !no_builtin && v3_builtin_arena_define !in prefs.user_defines
 		&& v3_program_uses_arena(a, prefs.vroot) {
@@ -14566,7 +14585,7 @@ pub fn run(args []string) {
 						if cache_with_tcc {
 							// TinyCC does not compile every module on its own. The build
 							// without module objects decides what becomes of the program,
-							// as it does without `-usecache`.
+							// as it does with `-nocache`.
 							trace_v3_cache_fallback('the bundled TinyCC could not build a module object: ${message.all_before('\n')}')
 							cleanup_c_build_dir(cc_dir)
 							restart_v3_without_cache()
@@ -15083,6 +15102,17 @@ pub fn run(args []string) {
 			&& v3_recover_from_cache_failure(result.output, cc_dir) {
 			return
 		}
+		if cache_with_tcc && cache_state.manager.enabled && tried_tcc && result.exit_code != 0 {
+			// A cached program unit can omit types or runtime helpers needed by its bodies.
+			// Retry the original sources before changing C compilers or reporting a failure.
+			trace_v3_cache_fallback('the bundled TinyCC could not compile or link the cached program')
+			cleanup_c_build_dir(cc_dir)
+			mut restart_args := ['-nocache']
+			if checker_notices_printed {
+				restart_args << v3_internal_checker_notices_printed_flag
+			}
+			restart_v3_with_args(restart_args)
+		}
 		if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, tried_tcc, result.exit_code) {
 			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, silent,
 				if !tried_tcc {
@@ -15462,7 +15492,7 @@ Please install the corresponding development package/libraries and make sure the
 		println('checker summary: 0 V errors, ${checker_warning_count} V warnings, ${checker_notice_count} V notices')
 	}
 	b.print_report()
-	if newly_cached_module_count > 0 && !silent && !should_run {
+	if newly_cached_module_count > 0 && !cache_state.silent && !should_run {
 		println('Hint: cached ${newly_cached_module_count} modules. They will not be recompiled on the next run unless they change.')
 	}
 }
@@ -16466,9 +16496,13 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 fn cache_used_object_paths(object_paths map[string]string, program_used_fns &map[string]bool, program_generated_support string, tc &types.TypeChecker, state &V3ModuleCacheState) []string {
 	mut selected := map[string]string{}
 	mut runtime_roots := []string{}
+	// Cached objects retain functions that can reference implicitly imported runtimes,
+	// even when the current program never calls those functions.
+	common_modules := cache_common_visible_modules(state, tc.a)
 	for module_name, object_path in object_paths {
-		if module_is_builtin_bundle(state, tc.a, module_name) {
+		if module_name in common_modules {
 			selected[module_name] = object_path
+			runtime_roots << module_name
 			continue
 		}
 		if cache_module_has_used_runtime(module_name, program_used_fns, program_generated_support, tc) {
