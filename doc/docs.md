@@ -1533,6 +1533,9 @@ numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
 ```
 
+`sorted()` returns a sorted copy. Alias element types keep their overloaded `<` operator,
+including when the receiver is an array literal or a parenthesized array literal.
+
 ```v
 struct User {
 	age  int
