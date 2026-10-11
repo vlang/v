@@ -3998,13 +3998,21 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 	for stmt in body {
 		t.a.children << stmt
 	}
+	mut flags := flat.node_flag_skip_ownership_drops
+	// Aggregate equality can call user operators that delete the current map key.
+	// Keep its owned copy across those callbacks and the final existence lookup.
+	clean_value_type := t.membership_container_type(value_type)
+	if (clean_value_type == 'string' || !t.type_needs_semantic_eq(value_type))
+		&& !(t.membership_type_is_pointer(value_type) && t.is_sum_type_name(clean_value_type)) {
+		flags |= flat.node_flag_borrowed_map_key
+	}
 	t.pending_stmts << t.a.add_node(flat.Node{
 		kind:           .for_in_stmt
 		children_start: start
 		children_count: flat.child_count(3 + body.len)
 		pos:            src.pos
 		value:          '3'
-		flags:          flat.node_flag_skip_ownership_drops
+		flags:          flags
 	})
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), 'bool')

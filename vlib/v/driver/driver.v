@@ -3170,9 +3170,11 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 	}
 	mut link_inputs := objects.clone()
 	link_inputs << native_support_inputs
-	link_inputs << cached_objects
 	if cached_dev_dylib.len > 0 {
+		// The dev dylib already holds `cached_objects`; see the clang link below for why.
 		link_inputs << cached_dev_dylib
+	} else {
+		link_inputs << cached_objects
 	}
 	link_args := c_flag_plan.compiler_args(output_name, link_inputs, [])
 	if show_command {
@@ -7272,6 +7274,7 @@ struct V3BundledTccProbeOptions {
 	target              pref.Target
 	bundled_tcc         string
 	host_rejects_tcc    bool // see pref.host_rejects_tcc_executables; only an explicit `-cc tcc` selects TCC
+	prefer_platform_cc  bool // Source-built precise Boehm needs the platform compiler by default.
 }
 
 fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
@@ -7288,7 +7291,7 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 		}
 		return os.real_path(compiler_path) == os.real_path(options.bundled_tcc)
 	}
-	if options.host_rejects_tcc {
+	if options.host_rejects_tcc || options.prefer_platform_cc {
 		return false
 	}
 	if options.is_shared && !options.is_liveshared && options.target.os == 'linux' {
@@ -7438,7 +7441,7 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	bundled_tcc_available := v3_bundled_tcc_available(options)
 	allow_system_tcc := options.backend == 'c' && !options.c_only && !options.is_prod
 		&& !options.is_c_debug && !options.race && !options.c_compiler_explicit
-		&& !options.host_rejects_tcc
+		&& !options.host_rejects_tcc && !options.prefer_platform_cc
 		&& !(options.is_shared && !options.is_liveshared && options.target.os == 'linux')
 		&& (!options.parallel_cc || options.target.os == 'windows')
 		&& options.target.os == options.host_target.os
@@ -7448,6 +7451,9 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 		allow_system_tcc, options.dump_c_flags, options.host_os)
 	mut c_compiler := v3_select_implicit_c_compiler(options.c_compiler, options.c_compiler_explicit,
 		implicit_tcc)
+	if options.prefer_platform_cc && !options.c_compiler_explicit && options.c_compiler == 'cc' {
+		c_compiler = v3_platform_c_compiler(options.host_os)
+	}
 	if v3_windows_prod_needs_default_c_compiler(options) {
 		c_compiler = v3_windows_prod_default_c_compiler(options.target.arch, options.is_o)
 	}
@@ -7632,9 +7638,6 @@ fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string) ?stri
 // program symbols can still reveal failures later; those need a fresh compiler
 // pass because parsing has already selected compiler-specific `$if` branches.
 fn v3_implicit_tcc_preflight(vroot string, tcc_path string, bundled_tcc string, bundled_tcc_available bool, target pref.Target, flags []string, mut sdk_cache V3MacosSdkRootCache) ?string {
-	if reason := v3_implicit_tcc_flags_incompatibility(flags, target.os) {
-		return reason
-	}
 	link_flags := v3_tcc_preflight_link_flags(flags)
 	if link_flags.len == 0 {
 		return none
@@ -10285,9 +10288,8 @@ pub fn run(args []string) {
 	}
 	if user_defines.any(it.all_before('=').trim_space() == 'no_gc_thread_local_alloc')
 		&& '-D GC_THREADS=1' !in user_c_flags {
-		// Keep `-dump-c-flags` compatible with V1 even though V3 currently uses
-		// its no-GC runtime. Projects use this define to inspect the portable
-		// Boehm thread flags without selecting or linking the collector.
+		// Preserve the portable thread flag spelling for tools inspecting
+		// `-dump-c-flags`; the builtin also supplies it when Boehm is enabled.
 		user_c_flags << '-D GC_THREADS=1'
 	}
 	if is_test_command && fixturetest.is_diagnostic_fixture_dir(input_file) {
@@ -10707,6 +10709,7 @@ pub fn run(args []string) {
 		target:              target
 		bundled_tcc:         bundled_tcc
 		host_rejects_tcc:    pref.host_rejects_tcc_executables()
+		prefer_platform_cc:  v3_gc_prefers_platform_cc(user_defines)
 	})
 	bundled_tcc_available := selection.bundled_tcc_available
 	implicit_tcc := selection.implicit_tcc
@@ -11675,6 +11678,13 @@ pub fn run(args []string) {
 		preflight_flags << link_ld_flags
 		preflight_flags << cgen.preflight_directive_flags(a, prefs.vroot, prefs.target,
 			prefs.compile_values)
+		if reason := v3_implicit_tcc_flags_incompatibility(preflight_flags, prefs.target.os) {
+			// Selecting a compiler for known native input requirements is expected.
+			// Keep the explanation for verbose builds; actual TCC failures still warn.
+			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, '', silent || !verbose,
+				reason)
+			return
+		}
 		if reason := v3_implicit_tcc_preflight(prefs.vroot, implicit_tcc, bundled_tcc,
 			bundled_tcc_available, prefs.target, preflight_flags, mut macos_sdk_root_cache) {
 			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, '', silent, reason)
@@ -14720,9 +14730,14 @@ pub fn run(args []string) {
 			}
 			if !is_o {
 				compiler_inputs << native_support_inputs
-				compiler_inputs << cached_objects
 				if cached_dev_dylib.len > 0 {
+					// The dev dylib already holds `cached_objects`. Linking them into the
+					// program too gives module globals such as `g_main_argc` and `os__args`
+					// two copies, and `main` writes one copy while the dylib's init reads the
+					// other, so `os.args` came back empty.
 					compiler_inputs << cached_dev_dylib
+				} else {
+					compiler_inputs << cached_objects
 				}
 			}
 			if macos_linux_cross_compile && !is_o {

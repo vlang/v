@@ -374,16 +374,16 @@ pub fn base(path string) string {
 		return '.'
 	}
 	detected_path_separator := if path.contains('/') { '/' } else { '\\' }
-	if path == detected_path_separator {
+	mut end := path.len
+	for end > 0 && path[end - 1] == detected_path_separator[0] {
+		end--
+	}
+	if end == 0 {
 		return detected_path_separator
 	}
-	if path.ends_with(detected_path_separator) {
-		path2 := path[..path.len - 1]
-		pos := path2.last_index(detected_path_separator) or { return path2.clone() }
-		return path2[pos + 1..]
-	}
-	pos := path.last_index(detected_path_separator) or { return path.clone() }
-	return path[pos + 1..]
+	trimmed := path[..end]
+	pos := trimmed.last_index(detected_path_separator) or { return trimmed.clone() }
+	return trimmed[pos + 1..]
 }
 
 // file_name will return all characters found after the last occurrence of `path_separator`.
