@@ -969,6 +969,56 @@ fn test_record_monomorph_cache_spec_replaces_existing_entry() {
 	assert spec.module == 'main'
 }
 
+fn test_serial_monomorph_batches_share_source_reflected_loop_index() {
+	$if !v3_no_parallel ? {
+		path := os.join_path(os.vtmp_dir(), 'monomorph_reflected_loop_${os.getpid()}.v')
+		os.write_file(path, 'struct Item {
+	items []string
+}
+fn count[T](value T) int {
+	mut result := 0
+	\$for field in T.fields {
+		\$if field.typ is []string {
+			for key, text in value.\$(field.name) {
+				result += key + text.len
+			}
+		}
+	}
+	return result
+}
+fn main() {
+	assert count[Item](Item{items: ["a", "bb"]}) == 4
+}
+') or { panic(err) }
+		defer { os.rm(path) or {} }
+		mut p := parser.Parser.new(pref.new_preferences())
+		mut a := p.parse_file(path)
+		mut tc := types.TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_semantics()
+		assert tc.errors.len == 0, tc.errors.str()
+		mut t := new_transformer(mut a, &tc, {
+			'main': true
+		})
+		t.prepare()
+		decl := t.cached_generic_fn_decls()['count'] or { panic('missing count declaration') }
+		args := ['Item']
+		mut emitted := map[string]bool{}
+		mut generated := []string{}
+		assert t.run_scoped_monomorphize_specs([PendingGenericFnSpec{
+			decl: decl
+			args: args
+			key:  generic_fn_spec_key(decl.key, args)
+		}], mut emitted, mut generated)
+		assert t.comptime_reflected_for_ready
+		assert t.comptime_reflected_for_roles['key'] == 1
+		assert t.comptime_reflected_for_roles['text'] == 2
+		worker := t.fork_scoped_batch_worker(a, &tc)
+		assert worker.comptime_reflected_for_ready
+		assert worker.comptime_reflected_for_roles == t.comptime_reflected_for_roles
+	}
+}
+
 fn test_generic_unresolved_function_type_checks_parameters_and_return() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
