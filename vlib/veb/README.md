@@ -485,6 +485,31 @@ pub fn (mut ctx Context) not_found() veb.Result {
 }
 ```
 
+## Rendering without a server
+
+`veb.render_request[A, X](mut app, req)` dispatches an `http.Request` through the
+same routes, middleware, and registered controllers as the server, without opening
+a listener. It returns `!&veb.Context`: read the completed response from `ctx.res`.
+`X` must embed `veb.Context`.
+Context, route, and controller configuration errors are returned to the caller. Custom
+fields on `X` remain local to the handler; they are not part of the returned context.
+
+```v ignore
+ctx := veb.render_request[App, Context](mut app, http.Request{
+	method: .get
+	url: '/'
+})!
+os.write_file('index.html', ctx.res.body)!
+```
+
+Initialize static handlers and controllers before rendering, as before `veb.run`.
+Static file responses expose `ctx.return_file` and `ctx.return_type` instead of
+reading the file into `ctx.res.body`. Handlers that take over a connection require
+a real server connection and are unsuitable for this helper.
+
+See `examples/veb/static_export/` for an HTML export using the same page handlers
+as its preview server.
+
 ## Static files and website
 
 veb also provides a way of handling static files. We can mount a folder at the root
