@@ -1772,8 +1772,10 @@ Pointer fields and indexed pointers retain the original fixed-array roots record
 Borrowing does not clone elements or require a `clone()` method.
 
 Passing a local struct's fixed-array storage by reference keeps the local on the stack when
-the called function only reads or writes scalar fields and array elements. Calls that may retain
-the storage still move it to the heap; `-warn-about-allocs` reports these moves.
+the called function only reads or writes scalar fields and array elements, or passes the
+reference, or the address of an element (`&buf[i]`), straight on to a function that does the
+same. Calls that may retain the storage still move it to the heap; `-warn-about-allocs` reports
+these moves.
 Calls through local function values remain conservative, including values that shadow
 function names.
 Explicitly destroying owned source elements invalidates views of those elements, as with other

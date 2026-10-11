@@ -151,3 +151,102 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'OK', run.output
 }
+
+fn test_element_addresses_handed_to_borrowing_pointer_params_stay_on_the_stack() {
+	root := os.join_path(os.vtmp_dir(), 'fixed_array_borrow_elem_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	c_path := os.join_path(root, 'main.c')
+	os.write_file(source_path, 'struct Slice { start int; len int }
+struct Params {
+mut:
+ n int
+ vals [8]Slice
+}
+__global retained_byte = &u8(unsafe { nil })
+fn read_byte(data &u8, i int) u8 { return unsafe { data[i] } }
+fn sum_bytes(data &u8, n int) int {
+ mut s := 0
+ for i in 0 .. n { s += int(read_byte(data, i)) }
+ return s
+}
+fn fill_and_sum(mut rec [16]u8) int { rec[1] = 7; return sum_bytes(&rec[0], 16) }
+fn fill_forward(mut rec [16]u8) int { return fill_and_sum(mut rec) }
+fn elem_borrowed() int { mut rec := [16]u8{}; return fill_forward(mut rec) }
+fn keep_byte(data &u8) { retained_byte = unsafe { data } }
+fn store_elem(mut rec [16]u8) { keep_byte(&rec[0]) }
+fn elem_stored() u8 { mut rec := [16]u8{}; store_elem(mut rec); return rec[0] }
+fn give_back(data &u8) &u8 { return unsafe { data } }
+fn return_elem(mut rec [16]u8) &u8 { return give_back(&rec[0]) }
+fn elem_returned() &u8 { mut rec := [16]u8{}; return return_elem(mut rec) }
+fn retain_slice(mut p Params) []Slice { return p.vals[..] }
+fn forward_to_retainer(mut p Params) []Slice { return retain_slice(mut p) }
+fn forwarded_retained(i int) []Slice {
+ mut p := Params{}
+ p.vals[0] = Slice{i, 1}
+ return forward_to_retainer(mut p)
+}
+fn recurse(mut rec [16]u8, depth int) int {
+ if depth == 0 { return int(rec[0]) }
+ return recurse(mut rec, depth - 1)
+}
+fn recursive_caller() int { mut rec := [16]u8{}; return recurse(mut rec, 3) }
+fn main() {
+ assert elem_borrowed() == 7
+ assert elem_stored() == 0
+ assert unsafe { *elem_returned() } == 0
+ assert forwarded_retained(5)[0].start == 5
+ assert recursive_caller() == 0
+ println("OK")
+}
+')!
+	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
+		'none', '-o', c_path, source_path])
+	assert generated.exit_code == 0, generated.output
+	source := os.read_file(c_path)!
+	// the element address reaches only callees that read through it, two calls deep
+	assert !fixed_array_borrow_body(source, 'elem_borrowed').contains('memdup(')
+	// stored, returned, forwarded to a retainer, or through a recursion not yet known to borrow
+	for name in ['elem_stored', 'elem_returned', 'forwarded_retained', 'recursive_caller'] {
+		body := fixed_array_borrow_body(source, name)
+		assert body.contains('memdup('), body
+	}
+	run := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
+		'none', 'run', source_path])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'OK', run.output
+}
+
+fn test_a_generic_caller_uses_the_summary_of_a_callee_it_reaches_first() {
+	root := os.join_path(os.vtmp_dir(), 'fixed_array_borrow_generic_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	c_path := os.join_path(root, 'main.c')
+	os.write_file(source_path, 'struct Frame {
+mut:
+ id u32
+ data [8]u8
+}
+fn fill(mut f Frame, id u32) { f.id = id; f.data[0] = u8(id) }
+fn keep(mut f Frame) []u8 { return f.data[..] }
+fn generic_borrowed[T](x T) u32 { _ = x; mut f := Frame{}; fill(mut f, 3); return f.id + u32(f.data[0]) }
+fn generic_retained[T](x T) []u8 { _ = x; mut f := Frame{}; fill(mut f, 4); return keep(mut f) }
+fn main() {
+ assert generic_borrowed(1) == 6
+ assert generic_retained(1)[0] == 4
+ println("OK")
+}
+')!
+	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-o',
+		c_path, source_path])
+	assert generated.exit_code == 0, generated.output
+	source := os.read_file(c_path)!
+	// specialized during monomorphization, before the callee's body is transformed
+	assert !fixed_array_borrow_body(source, 'generic_borrowed_T_v_int').contains('memdup(')
+	assert fixed_array_borrow_body(source, 'generic_retained_T_v_int').contains('memdup(')
+	run := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', 'run', source_path])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'OK', run.output
+}
