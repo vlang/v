@@ -144,8 +144,9 @@ fn test_lex_rejects_json5_only_whitespace() {
 	// The shared scanner skips all of these as trivia, so the token pass never
 	// sees them and the raw walk is the only place they can be caught. Vertical
 	// tab and form feed are the ASCII pair and U+00A0 is named in the shared
-	// `is_whitespace`; the rest are Unicode spaces above U+2000.
-	for code in [0x0B, 0x0C, 0xA0, 0x2028, 0x2029, 0x202F, 0x205F] {
+	// `is_whitespace`; the rest are Unicode space separators and line terminators.
+	for code in [0x0B, 0x0C, 0xA0, 0x1680, 0x2000, 0x2001, 0x200A, 0x2028, 0x2029, 0x202F, 0x205F,
+		0x3000] {
 		assert first_violation('{"a"' + ch(code) + ': 1}').contains('not whitespace between JSON tokens')
 	}
 }

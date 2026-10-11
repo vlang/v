@@ -436,7 +436,10 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 	}
 	// Nothing that is decoded refers to values_info, so it is released right away.
 	defer {
-		unsafe { decoder.values_info.free() }
+		unsafe {
+			decoder.values_info.free()
+			decoder.source_values_info.free()
+		}
 	}
 
 	decoder.check_json_format()!
@@ -468,6 +471,7 @@ pub fn decode_reuse[T](val string, mut buffer DecodeBuffer, params DecoderOption
 	}
 	defer {
 		buffer.values_info = unsafe { decoder.values_info }
+		unsafe { decoder.source_values_info.free() }
 	}
 	decoder.check_json_format()!
 	decoder.values_info.trim(decoder.values_len)
@@ -1021,10 +1025,10 @@ fn (mut decoder Decoder) decode_raw_value() string {
 	return raw
 }
 
-// retained_text clones JSON5 slices before their normalized document is freed.
+// retained_text copies text that may outlive the decoder's input buffer.
 @[manualfree]
 fn (decoder &Decoder) retained_text(start int, end int) string {
-	return if decoder.json5 { decoder.json.substr(start, end) } else { decoder.json[start..end] }
+	return decoder.json.substr(start, end)
 }
 
 // decode_value decodes a value from the JSON nodes.

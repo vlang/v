@@ -218,6 +218,7 @@ fn next_string_escape(val string, start int, escape_unicode bool) int {
 	return i
 }
 
+@[manualfree]
 fn (mut encoder Encoder) encode_string(val string) {
 	if encoder.json5 {
 		encoder.encode_json5_string(val)
@@ -285,12 +286,7 @@ fn (mut encoder Encoder) encode_string(val string) {
 					buffer_end++
 					buffer_start = buffer_end
 
-					encoder.output << `\\`
-					encoder.output << `u`
-
-					hex_string := '${character:04x}'
-
-					unsafe { encoder.output.push_many(hex_string.str, 4) }
+					encoder.encode_unicode_escape(u32(character), false)
 
 					continue
 				}
@@ -299,16 +295,15 @@ fn (mut encoder Encoder) encode_string(val string) {
 						encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start)
 					}
 					code_point, width := utf8_rune_at(val, buffer_end)
-					hex_string := if code_point > 0xffff {
+					if code_point > 0xffff {
 						unicode_point_low := u32(code_point) - 0x10000
-						'\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${0xDC00 + (unicode_point_low & 0x3FF):04x}'
+						encoder.encode_unicode_escape(0xD800 + ((unicode_point_low >> 10) & 0x3FF), true)
+						encoder.encode_unicode_escape(0xDC00 + (unicode_point_low & 0x3FF), false)
 					} else {
-						'\\u${u32(code_point):04x}'
+						encoder.encode_unicode_escape(u32(code_point), false)
 					}
 					buffer_end += width
 					buffer_start = buffer_end
-
-					unsafe { encoder.output.push_many(hex_string.str, hex_string.len) }
 
 					continue
 				}
@@ -320,6 +315,16 @@ fn (mut encoder Encoder) encode_string(val string) {
 	unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
 
 	encoder.output << `"`
+}
+
+// encode_unicode_escape writes a UTF-16 code unit without allocating formatted text.
+fn (mut encoder Encoder) encode_unicode_escape(code u32, uppercase bool) {
+	hex := if uppercase { '0123456789ABCDEF' } else { '0123456789abcdef' }
+	encoder.output << `\\`
+	encoder.output << `u`
+	for shift := 12; shift >= 0; shift -= 4 {
+		encoder.output << hex[int((code >> shift) & 0xf)]
+	}
 }
 
 // utf8_rune_at decodes the UTF-8 sequence at `val[i]` like `string.runes()` does: an
@@ -390,6 +395,7 @@ fn (mut encoder Encoder) encode_boolean(val bool) {
 	}
 }
 
+@[manualfree]
 fn (mut encoder Encoder) encode_number[T](val T) {
 	mut integer_val := ''
 	$if T is u8 {
@@ -417,21 +423,23 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 	} $else $if T is f64 {
 		integer_val = f64(val).str()
 	}
+	defer { unsafe { integer_val.free() } }
 	$if T is $float {
 		// JSON has no NaN or infinity, which V formats as `nan`, `+inf` and `-inf`.
 		if integer_val == 'nan' || integer_val.ends_with('inf') {
 			if encoder.json5 {
-				integer_val = if integer_val == 'nan' {
+				special := if integer_val == 'nan' {
 					'NaN'
 				} else if integer_val.starts_with('-') {
 					'-Infinity'
 				} else {
 					'Infinity'
 				}
+				unsafe { encoder.output.push_many(special.str, special.len) }
 			} else {
 				encoder.encode_null()
-				return
 			}
+			return
 		}
 		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
 			&& integer_val[integer_val.len - 1] == `0` { // ends in .0
@@ -481,12 +489,33 @@ struct EncoderMapKey[K] {
 	key  K
 }
 
+@[manualfree]
 fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
+	source_keys := val.keys()
+	defer {
+		$if K.unaliased_typ is string {
+			for i in 0 .. source_keys.len {
+				unsafe { source_keys[i].free() }
+			}
+		}
+		unsafe { source_keys.free() }
+	}
 	mut keys := []EncoderMapKey[K]{cap: val.len}
-	for key, _ in val {
+	defer {
+		$if K.unaliased_typ is string {
+			// Names borrow the owned source keys.
+		} $else {
+			for i in 0 .. keys.len {
+				unsafe { keys[i].name.free() }
+			}
+		}
+		unsafe { keys.free() }
+	}
+	for i in 0 .. source_keys.len {
+		key := &source_keys[i]
 		keys << EncoderMapKey[K]{
-			name: '${key}'
-			key:  key
+			name: '${*key}'
+			key:  *key
 		}
 	}
 	// Compare the converted object names: integer keys also sort lexically.
@@ -499,7 +528,13 @@ fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 		}
 		encoder.encode_key(entry.name)
 		encoder.write_key_separator()
-		encoder.encode_value[T](val[entry.key])
+		$if T is $option {
+			// `or` would unwrap the payload and discard a present none-valued entry.
+			encoder.encode_value[T](val[entry.key])
+		} $else {
+			item := val[entry.key] or { continue }
+			encoder.encode_value[T](item)
+		}
 	}
 	encoder.close_items(val.len, false)
 	encoder.output << `}`

@@ -208,7 +208,7 @@ JSON5 scanner skips them as whitespace:
 | --- | --- |
 | vertical tab, form feed | `U+000B`, `U+000C` |
 | no-break space | `U+00A0` |
-| Unicode space above U+2000 | `U+202F`, `U+205F`, `U+2028` |
+| Unicode space separators and line terminators | `U+1680`, `U+2000`, `U+202F`, `U+2028` |
 | an interior byte order mark | `{"a": 1<FEFF>}` |
 
 A byte order mark is accepted only at the very start of the document. These

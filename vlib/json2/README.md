@@ -67,12 +67,16 @@ JSON5 decoding accepts comments, bare object keys, single quotes, trailing comma
 hexadecimal numbers, leading `+`, leading or trailing decimal points, `Infinity`
 and `NaN`. Strings support JSON5 escapes and escaped line continuations, including
 UTF-16 surrogate pairs. Malformed escapes return a `JsonScanError` with a line and column.
+All Unicode space separators are accepted between tokens, including U+1680 and U+2000.
+Escaped digits `\1` through `\9` are rejected, and `\0` cannot precede another decimal digit.
 Typed decoding errors report their location and context in the original JSON5 input.
 CR, LF, CRLF, U+2028 and U+2029 are counted as JSON5 line terminators.
 Raw LF and CR in strings are rejected; use a backslash line continuation or a string escape.
 Unescaped U+2028 and U+2029 are allowed in strings, as specified by
 [JSON5 section 5.2](https://spec.json5.org/#separators).
-Decoded strings and raw fields own their text; normalized decoding buffers are released.
+Decoded strings, raw fields and retained scalar-hook inputs own their text in both dialects.
+File contents, normalized decoding buffers and `decode_any` serialization buffers are released
+after decoding; returned values remain valid independently of those buffers.
 
 `single_quotes`, `unquoted_keys` and `trailing_commas` only affect encoding when
 `json5: true`. Otherwise the existing JSON output is unchanged. Bare keys are used

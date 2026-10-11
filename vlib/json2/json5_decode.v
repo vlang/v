@@ -305,18 +305,30 @@ pub fn parse_text(text string, params DecoderOptions) !Doc {
 }
 
 // parse_file reads a JSON or JSON5 document with path lookup.
+@[manualfree]
 pub fn parse_file(path string, params DecoderOptions) !Doc {
-	return parse_text(os.read_file(path)!, params)
+	text := os.read_file(path)!
+	defer { unsafe { text.free() } }
+	return parse_text(text, params)
 }
 
 // decode_file reads and decodes a JSON or JSON5 document into T.
+@[manualfree]
 pub fn decode_file[T](path string, params DecoderOptions) !T {
-	return decode[T](os.read_file(path)!, params)
+	text := os.read_file(path)!
+	defer { unsafe { text.free() } }
+	return decode[T](text, params)
 }
 
 // decode_any converts a dynamic value into T using the existing JSON decoder.
-// Decoded strings can borrow the encoded text, so autofree must retain it.
 @[manualfree]
 pub fn decode_any[T](value Any, params DecoderOptions) !T {
-	return decode[T](encode(value, json5: params.json5), params)
+	mut bytes := []u8{cap: 2048}
+	// No slices escape this scratch buffer, so growth can release its old storage.
+	unsafe { bytes.flags |= .noslices }
+	defer { unsafe { bytes.free() } }
+	encode_append(value, mut bytes, json5: params.json5)
+	text := bytes.bytestr()
+	defer { unsafe { text.free() } }
+	return decode[T](text, params)
 }

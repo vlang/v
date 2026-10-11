@@ -44,6 +44,24 @@ fn test_scan_counts_all_json5_line_terminators() {
 	}
 }
 
+fn test_scan_accepts_all_unicode_space_separators() {
+	for code in [0x20, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007,
+		0x2008, 0x2009, 0x200a, 0x202f, 0x205f, 0x3000] {
+		space := rune(code).str()
+		assert decode[int](space + '1' + space, json5: true)! == 1
+		mut s := new_json5_scanner(space + '1' + space + 'true' + space)
+		assert s.next()!.lit == '1'
+		assert s.next()!.kind == .bool
+		assert s.next()!.kind == .eof
+	}
+	mut s := new_json5_scanner('\u00851')
+	s.next() or {
+		assert err is JsonScanError
+		return
+	}
+	assert false, 'U+0085 is not JSON5 whitespace'
+}
+
 fn test_scan_punctuation() {
 	mut s := new_json5_scanner('{}[]:,')
 	expected := [Json5TokenKind.lcbr, .rcbr, .lsbr, .rsbr, .colon, .comma, .eof]
@@ -130,6 +148,24 @@ fn test_scan_escape_sequences() {
 		tok := s.next()!
 		assert tok.kind == .str, 'escape ${escape}: got kind ${tok.kind}'
 		assert tok.lit == expected, 'escape ${escape}: got `${tok.lit}`'
+	}
+}
+
+fn test_scan_rejects_decimal_digit_escapes() {
+	for quote in ['"', "'"] {
+		for digit in 0 .. 10 {
+			for escape in [if digit == 0 { '\\00' } else { '\\' + digit.str() }, '\\0' + digit.str()] {
+				mut s := new_json5_scanner(quote + escape + quote)
+				s.next() or {
+					assert err is JsonScanError
+					assert err.msg().contains('digit')
+					continue
+				}
+				assert false, 'expected digit escape ${escape} to fail'
+			}
+		}
+		mut s := new_json5_scanner(quote + '\\0q\\x31\\u0032' + quote)
+		assert s.next()!.lit == '\x00q12'
 	}
 }
 

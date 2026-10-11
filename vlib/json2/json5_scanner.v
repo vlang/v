@@ -199,7 +199,7 @@ fn json5_hex_digit_value(code int) int {
 fn json5_is_whitespace(code int) bool {
 	return code == r_space || code == r_tab || code == r_lf || code == r_cr
 		|| code == r_vt || code == r_ff || code == r_nbsp || code == r_bom
-		|| (code > 0x2000 && utf8.is_space(rune(code)))
+		|| (code > 0xff && utf8.is_space(rune(code)))
 }
 
 // json5_is_line_terminator reports whether `code` ends a line for the purposes of `//`
@@ -328,6 +328,9 @@ fn (mut s Json5Scanner) scan_string(start Json5Pos, quote_code int) !Json5Token 
 				return json5_syntax_error('unterminated escape sequence', start.line, start.col)
 			}
 			esc := int(s.text[s.pos])
+			if json5_is_digit(esc) && (esc != r_zero || json5_is_digit(s.peek_code(1))) {
+				return json5_syntax_error('invalid decimal digit in string escape', s.line, s.col)
+			}
 			if json5_is_line_terminator(esc) {
 				// A backslash before a line terminator is a line continuation: it
 				// and the terminator contribute nothing to the value.
@@ -349,8 +352,7 @@ fn (mut s Json5Scanner) scan_string(start Json5Pos, quote_code int) !Json5Token 
 				r_lower_x { character = s.scan_hex_digits(2, start)! }
 				r_lower_u { character = s.scan_unicode_escape(start)! }
 				else {
-					// JSON5 lets any character be escaped, and the escape yields
-					// the escaped character itself.
+					// Other non-digit characters yield the escaped character itself.
 					character = rune(esc)
 				}
 			}
