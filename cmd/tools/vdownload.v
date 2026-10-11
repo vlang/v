@@ -33,7 +33,6 @@ fn main() {
 	fp.version('0.0.1')
 	fp.description('Download files from http/https servers, given their URLs.')
 	fp.arguments_description('URL1 URL2 ...')
-	fp.skip_executable()
 	fp.limit_free_args_to_at_least(1)!
 	ctx.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	ctx.target_folder = fp.string('target-folder', `t`, '.',
