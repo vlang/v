@@ -3934,7 +3934,7 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 		children_count: flat.child_count(3 + body.len)
 		pos:            src.pos
 		value:          '3'
-		flags:          flat.node_flag_skip_ownership_drops
+		flags:          flat.node_flag_skip_ownership_drops | flat.node_flag_borrowed_map_key
 	})
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), 'bool')
