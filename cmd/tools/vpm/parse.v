@@ -378,7 +378,12 @@ fn (m Module) existing_checkout_matches_source() bool {
 
 fn normalized_clone_source(raw_source string) string {
 	raw := raw_source.trim_space()
-	local_path := os.expand_tilde_to_home(raw.trim_string_left('file://'))
+	mut local_path := os.expand_tilde_to_home(raw.trim_string_left('file://'))
+	// `file:///S:/x` keeps a slash before the drive letter. Drop it, or os.real_path
+	// resolves `/S:/x` against the current drive and gives `S:\S:\x`.
+	if local_path.len > 2 && local_path[0] == `/` && local_path[2] == `:` {
+		local_path = local_path[1..]
+	}
 	if raw.starts_with('file://') || os.is_abs_path(local_path) || raw.starts_with('./')
 		|| raw.starts_with('../') || raw.starts_with('~/') || os.exists(local_path) {
 		return 'file://' + os.real_path(local_path)
