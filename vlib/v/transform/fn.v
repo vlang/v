@@ -18203,6 +18203,7 @@ fn (t &Transformer) generic_call_declared_return_type(id flat.NodeId, node flat.
 	if ret_text.len == 0 {
 		return none
 	}
+	decl_module := t.tc.fn_type_modules[name] or { t.cur_module }
 	mut inferred := map[string]string{}
 	for i, param_text in param_texts {
 		arg_idx := i + 1
@@ -18221,14 +18222,17 @@ fn (t &Transformer) generic_call_declared_return_type(id flat.NodeId, node flat.
 		if inferred_arg.len == 0 || inferred_arg in ['unknown', 'generic', 'void'] {
 			return none
 		}
-		args << inferred_arg
+		caller_arg := t.normalize_type_in_module(inferred_arg, t.cur_module)
+		args << t.lock_colliding_main_generic_type_text(caller_arg, decl_module)
 	}
 	resolved := substitute_generic_type_text_with_params(ret_text, args, params)
 	if resolved.len == 0 || resolved in ['unknown', 'generic', 'void']
 		|| is_generic_fn_placeholder_name(resolved) {
 		return none
 	}
-	return resolved
+	// Signature-owned names keep their declaring module; inferred arguments
+	// above keep the caller's authority before that qualification happens.
+	return t.normalize_type_in_module(resolved, decl_module)
 }
 
 fn (t &Transformer) current_generic_receiver_call_return_type(node flat.Node) ?string {
