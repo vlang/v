@@ -2482,6 +2482,8 @@ fn (mut t Transformer) collect_interface_append_boxes(node flat.Node) {
 	lhs_type := t.tc.expr_type(lhs_id) or { t.tc.resolve_type(lhs_id) }
 	expected := t.interface_box_append_expected_type(lhs_type, lhs_id, rhs_id)
 	if interface_box_expected_type(expected) {
+		actual := t.tc.expr_type(rhs_id) or { t.tc.resolve_type(rhs_id) }
+		t.collect_interface_boxed_type(actual, expected)
 		t.collect_interface_boxed_value(rhs_id, expected)
 	}
 }

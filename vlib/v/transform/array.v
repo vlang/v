@@ -2750,6 +2750,10 @@ fn (t &Transformer) push_many_count_is_type_name(id flat.NodeId) bool {
 // array_append_rhs_is_push_many supports array append rhs is push many handling for Transformer.
 fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
 	rhs_node := t.a.nodes[int(rhs_id)]
+	if rhs_node.kind == .prefix && rhs_node.value == '...' && rhs_node.children_count > 0 {
+		// Explicit spread appends elements even when the whole array can be boxed as one value.
+		return true
+	}
 	if rhs_node.kind == .spawn_expr {
 		return false
 	}
