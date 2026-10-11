@@ -52,6 +52,8 @@ const reserved_words = {
 	'void':     true
 	'volatile': true
 	'while':    true
+	// The C99 header <complex.h> defines this as the keyword _Complex.
+	'complex':  true
 	// GNU C modes predefine these as macros (`linux` on Linux, `unix` on Unix).
 	'unix':     true
 	'linux':    true
