@@ -21341,7 +21341,15 @@ fn (mut t Transformer) snapshot_mut_pointer_slot_arg(id flat.NodeId, node flat.N
 	param := t.resolved_call_argument_param_type(id, node, child_index)?
 	param_type := t.normalize_type_alias(t.semantic_type_name(param))
 	if param_type != t.normalize_type_alias(storage_type) {
-		return none
+		// Function values keep mutability separately from their source parameter type.
+		fn_type := t.call_callee_fn_type(t.a.child(&node, 0)) or { return none }
+		param_index := child_index - 1
+		if param_index < 0 || param_index >= fn_type.params.len
+			|| param_index >= fn_type.params_mut.len || !fn_type.params_mut[param_index]
+			|| t.normalize_type_alias(t.semantic_type_name(fn_type.params[param_index])) !=
+				t.normalize_type_alias(storage_type[1..]) {
+			return none
+		}
 	}
 	storage := t.transform_expr_preserving_pointer_value(binding_id)
 	return t.snapshot_transformed_expr_for_reuse(storage, storage_type, 'order_snapshot')

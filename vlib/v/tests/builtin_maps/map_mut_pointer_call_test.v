@@ -327,3 +327,38 @@ fn test_mut_array_pointer_argument_captures_pointee_before_entry_replacement_in_
 	assert items[0] == replacement
 }
 // vfmt on
+
+fn rebind_map_pointer_callback(mut target &MapMutPointerItem, replacement &MapMutPointerItem, marker int) {
+	target = replacement
+	assert marker == 1
+}
+
+// vfmt off
+fn test_mut_array_pointer_callback_keeps_entry_slot_before_match_argument() {
+	original := &MapMutPointerItem{ value: 3 }
+	replacement := &MapMutPointerItem{ value: 99 }
+	mut items := [original]
+	callback := rebind_map_pointer_callback
+	for mut item in items {
+		callback(mut ((item)), replacement, match items.len {
+			1 { 1 }
+			else { 2 }
+		})
+	}
+	assert items[0] == replacement
+	assert original.value == 3
+}
+
+fn test_mut_map_pointer_callback_keeps_entry_slot_before_if_argument() {
+	original := &MapMutPointerItem{ value: 3 }
+	replacement := &MapMutPointerItem{ value: 99 }
+	mut items := { 'one': original }
+	callback := rebind_map_pointer_callback
+	for name, mut item in items {
+		callback(mut ((item)), replacement, if name == 'one' { 1 } else { 2 })
+	}
+	stored := items['one'] or { panic('missing item') }
+	assert stored == replacement
+	assert original.value == 3
+}
+// vfmt on
