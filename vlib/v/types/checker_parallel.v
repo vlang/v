@@ -4909,6 +4909,16 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 			info
 		}
 	}
+	for inferred in w.inferred_c_globals {
+		if inferred.name in tc.c_globals {
+			continue
+		}
+		if scoped {
+			tc.remember_inferred_c_global(inferred.name.clone(), clone_owned_type(inferred.typ))
+		} else {
+			tc.remember_inferred_c_global(inferred.name, inferred.typ)
+		}
+	}
 }
 
 fn (mut tc TypeChecker) free_parallel_check_worker_cache() {
