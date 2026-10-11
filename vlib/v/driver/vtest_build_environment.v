@@ -98,6 +98,7 @@ pub fn vtest_build_environment(vroot string, args []string) TestBuildEnvironment
 	target := pref.target_from(target_os, target_arch) or { pref.host_target() }
 	host_target := pref.host_target()
 	selection := v3_select_c_compiler(vroot, V3BundledTccProbeOptions{
+		prefer_platform_cc:  v3_gc_prefers_platform_cc(user_defines)
 		backend:             backend
 		is_prod:             is_prod
 		is_c_debug:          is_c_debug
