@@ -5,6 +5,23 @@ sources and dependencies have not changed since the executable's recorded revisi
 Documentation and test-only changes do not trigger a rebuild. An unknown revision,
 a failed source comparison, or -prod, -skip_v_self or -skip_current forces rebuilding.
 
+It then refreshes previously cached vlib modules with their original C compiler
+and build flags, including normal and -prod builds. Unchanged modules are reused.
+Object flags include source #flag directives. Records with vanished project
+directories, required compile inputs, or C compilers are skipped. Test selectors
+and assertion display modes are retained. Builds without relative inputs or
+project interface scopes share refresh records across projects.
+Project directives are merged with flags read from the updated vlib modules.
+The original entry preserves project interface implementers when needed; only its
+module objects are rebuilt. Isolated ownership caches use the primary V compiler.
+Live entries replay resolved -file-list sources, including expanded directories;
+records with vanished listed sources are skipped.
+Each module being cached is printed to stdout as `Caching module <name>...`.
+This also runs when the compiler itself is already updated. A cache refresh
+failure makes the update fail. Older caches without recorded settings are
+refreshed in both modes for the available C compilers, for programs and tests.
+Successful legacy migrations mark the old headers to avoid repeating that matrix.
+
 It also reports the agent skills installed for this user, in ~/.agents/skills,
 that the new revision left behind. Skills with local changes, and skills
 installed before V recorded what it installed, are reported but left alone;

@@ -8,6 +8,7 @@ import v.pref
 import v.tempname
 import v.types
 import v.util
+import v.util.cache_refresh
 
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
@@ -324,19 +325,11 @@ pub:
 }
 
 // new_manager creates a configuration-scoped persistent module cache manager.
+// Delegated compilers retain the primary VEXE for isolated cache lookup.
 pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values string, version_pseudo_values string) Manager {
-	root_key := hash_text(os.real_path(vroot))
 	config_key := hash_text(cache_format + '\n' + salt)
-	base_dir := os.abs_path(os.getenv_opt('V3CACHE') or {
-		default_dir := os.vtmp_dir()
-		if os.getenv('V3_TEST_ISOLATE_CACHE') == '1' {
-			os.join_path(default_dir, 'v3_test_cache_${hash_text(os.real_path(os.executable()))}')
-		} else {
-			default_dir
-		}
-	})
 	return Manager{
-		dir:                   os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
+		dir:                   os.join_path(cache_refresh.root_dir(vroot, os.getenv_opt('VEXE') or { os.executable() }), config_key)
 		enabled:               enabled
 		salt:                  salt
 		build_pseudo_values:   build_pseudo_values

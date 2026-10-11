@@ -7,6 +7,29 @@ import v.flat
 import v.parser
 import v.pref
 import v.types as vtypes
+import v.util.cache_refresh
+
+fn test_delegated_compilers_share_the_primary_isolated_cache() {
+	root := os.join_path(os.vtmp_dir(), 'v3_primary_isolated_cache_${os.getpid()}')
+	previous := os.environ()
+	defer {
+		for name in ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE', 'VEXE'] {
+			if name in previous { os.setenv(name, previous[name], true) } else { os.unsetenv(name) }
+		}
+	}
+	os.unsetenv('V3CACHE')
+	os.setenv('VTMP', root, true)
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
+	primary := os.join_path(root, 'checkout', 'v')
+	vroot := os.dir(primary)
+	os.setenv('VEXE', primary, true)
+	manager := new_manager(vroot, 'ownership', true, '', '')
+	assert os.dir(manager.dir) == cache_refresh.root_dir(vroot, primary)
+	assert os.dir(manager.dir) != cache_refresh.root_dir(vroot, os.executable())
+	os.unsetenv('VEXE')
+	fallback := new_manager(vroot, 'ownership', true, '', '')
+	assert os.dir(fallback.dir) == cache_refresh.root_dir(vroot, os.executable())
+}
 
 fn test_cached_vmod_roots_stop_at_project_boundaries() {
 	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vmod_boundary_${os.getpid()}')

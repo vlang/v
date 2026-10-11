@@ -55,6 +55,37 @@ by using the V's built-in self-updater.
 To do so, run the command `v up`.
 This also refreshes the bundled TCC binaries used for fast C compilation.
 
+After updating, `v up` refreshes previously cached vlib modules with the compiler
+and flags used to cache them, including normal and `-prod` builds. Unchanged
+modules are reused. Each module being cached is printed to standard output as
+`Caching module <name>...`. A failed cache refresh makes `v up` fail.
+Ordinary builds report cache progress on standard error. Refreshes retain absolute
+module search paths, resolved C compiler commands, and build modes. They omit
+linker-only flags, including operands embedded in `-cflags`. Relative `V3CACHE`
+and `VTMP` paths are resolved against the directory where `v up` was invoked.
+Refreshes retain each build's working directory for relative C compilation inputs
+and its effective `-run-only` test selectors and assertion display mode.
+Object flags include source `#flag` directives. Records with vanished project
+directories or required compile inputs are skipped. Builds without relative inputs
+or project interface scopes share refresh records across projects.
+Project directives are merged with flags from the updated modules, so changes to
+vlib `#flag` directives take effect during refresh. Cached TCC production builds
+apply the production optimization flags to both module objects and the program.
+Refreshes use the original entry when needed to preserve project interface
+implementers, stopping before linking or running the program. Refreshes
+retain resolved `-file-list` sources for live entries, including expanded directories;
+records whose listed sources vanished are skipped. Synthetic refreshes
+also replay source C driver options such as sanitizers at link time. Records for
+unavailable C compilers are skipped.
+Isolated test caches use the primary V compiler executable, including when
+`v up` runs through the fallback compiler or as a separate tool, or a build uses
+the delegated ownership compiler.
+
+For caches created before V recorded their build settings, `v up` identifies the
+cached vlib modules and refreshes them in both modes for the available C compilers,
+for programs and tests. Successful migrations mark the old headers so subsequent
+updates use the new inventory without repeating the fallback matrix.
+
 `v up` reports the agent skills that the new revision left behind, since a new
 revision may ship updated copies of them. It writes nothing: the skills belong to
 the user, and updating the compiler is not consent to overwrite them. Pass
