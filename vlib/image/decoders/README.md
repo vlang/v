@@ -57,8 +57,8 @@ Incremental playback (used by `examples/viewer`): `gif.GifPlayer` and
 full-canvas RGBA buffer, plus `delay_ms()`, `loop_count()`, `reset()`,
 and `free()`.
 
-PNG, BMP, and TIFF reject dimensions and scanlines whose decode buffers exceed
-the supported integer size, returning an error before allocating those buffers.
+Decode dimensions, scratch buffers, and WEBP output geometry are checked against
+the supported integer size before buffer allocation.
 TIFF requires complete, matching strip or tile offset and byte count arrays.
 
 ## Testing

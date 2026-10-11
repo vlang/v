@@ -389,6 +389,9 @@ fn (mut d GifDecoder) parse_logical_screen_descriptor() ! {
 	if d.height <= 0 {
 		return error('Invalid GIF height: ${d.height}')
 	}
+	if d.width > max_int / d.height / 4 {
+		return error('GIF dimensions exceed the supported buffer size')
+	}
 	if has_gct {
 		d.gct = d.color_table_view(gct_entries)!
 	}
@@ -649,6 +652,10 @@ fn (mut d GifDecoder) prepare_scratch() ! {
 	mut max_lzw := 0
 	mut max_fh := 0
 	for f in d.frames {
+		if f.width <= 0 || f.height <= 0 || f.lzw_len > max_int - 1024
+			|| f.width > (max_int - f.lzw_len - 1024) / f.height {
+			return error('GIF frame exceeds the supported buffer size')
+		}
 		if f.width * f.height > max_idx {
 			max_idx = f.width * f.height
 		}
@@ -658,6 +665,9 @@ fn (mut d GifDecoder) prepare_scratch() ! {
 		if f.height > max_fh {
 			max_fh = f.height
 		}
+	}
+	if max_idx > max_int - max_lzw - 1024 {
+		return error('GIF frame exceeds the supported buffer size')
 	}
 	bytes_cap := max_idx + max_lzw + 1024
 	ints_cap := 4 * max_lzw_code + max_fh + 1024

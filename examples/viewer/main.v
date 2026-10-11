@@ -77,14 +77,21 @@ mut:
 // be initialized.
 struct NullPlayer {}
 
-fn (NullPlayer) frame_count() int { return 0 }
-fn (NullPlayer) loop_count() int { return 0 }
-fn (NullPlayer) delay_ms(_ int) int { return 0 }
-fn (mut NullPlayer) reset() void {}
-fn (mut NullPlayer) step() ![]u8 { return error('no animation is playing') }
-fn (mut NullPlayer) free() void {}
-fn (NullPlayer) canvas_width() int { return 0 }
-fn (NullPlayer) canvas_height() int { return 0 }
+fn (_ NullPlayer) frame_count() int { return 0 }
+
+fn (_ NullPlayer) loop_count() int { return 0 }
+
+fn (_ NullPlayer) delay_ms(_ int) int { return 0 }
+
+fn (mut _ NullPlayer) reset() {}
+
+fn (mut _ NullPlayer) step() ![]u8 { return error('no animation is playing') }
+
+fn (mut _ NullPlayer) free() {}
+
+fn (_ NullPlayer) canvas_width() int { return 0 }
+
+fn (_ NullPlayer) canvas_height() int { return 0 }
 
 // App holds the window context, the current image texture, the navigation
 // list, and the view transform state.
@@ -108,6 +115,7 @@ mut:
 	// `is_anim` doubles as the "player is live" flag (V interfaces cannot
 	// be compared to nil).
 	player        AnimPlayer
+	anim_bytes    []u8 // encoded bytes borrowed by the active GIF player
 	anim_frame    int
 	anim_accum_ms f64
 	anim_paused   bool
@@ -166,6 +174,20 @@ fn make_rgba_texture(w int, h int, rgba []u8) gfx.Image {
 	return gfx.make_image(&desc)
 }
 
+// release_player releases the buffers and the heap-allocated concrete player.
+fn release_player(mut player AnimPlayer) {
+	player.free()
+	match mut player {
+		gif.GifPlayer {
+			unsafe { free(player) }
+		}
+		webp.WebpPlayer {
+			unsafe { free(player) }
+		}
+		else {}
+	}
+}
+
 // clear_image destroys the current GPU texture, if any, and resets the
 // animation playback state.
 fn (mut app App) clear_image() {
@@ -176,8 +198,10 @@ fn (mut app App) clear_image() {
 		app.img_h = 0
 	}
 	if app.is_anim {
-		app.player.free()
+		release_player(mut app.player)
 	}
+	unsafe { app.anim_bytes.free() }
+	app.anim_bytes = []u8{}
 	app.anim_frame = 0
 	app.anim_accum_ms = 0
 	app.anim_paused = false
@@ -191,10 +215,8 @@ fn (mut app App) clear_image() {
 fn (mut app App) start_anim(mut player AnimPlayer, bytes []u8, free_bytes bool) {
 	player.reset()
 	rgba := player.step() or {
-		player.free()
-		if free_bytes {
-			unsafe { bytes.free() }
-		}
+		release_player(mut player)
+		unsafe { bytes.free() }
 		app.status = 'decode error: ${err}'
 		return
 	}
@@ -207,6 +229,9 @@ fn (mut app App) start_anim(mut player AnimPlayer, bytes []u8, free_bytes bool) 
 	app.reset_view()
 	if free_bytes {
 		unsafe { bytes.free() }
+	} else {
+		// Retain the owned input until the borrowing GIF player is released.
+		app.anim_bytes = bytes
 	}
 }
 
@@ -300,6 +325,8 @@ fn (mut app App) load_current_image() {
 					app.start_anim(mut player, bytes, false)
 					return
 				}
+				player.free()
+				unsafe { free(player) }
 			}
 		}
 		'webp' {
@@ -310,11 +337,14 @@ fn (mut app App) load_current_image() {
 					app.start_anim(mut player, bytes, true)
 					return
 				}
+				player.free()
+				unsafe { free(player) }
 			}
 		}
 		else {}
 	}
 	img := decoder.decode(bytes) or {
+		unsafe { bytes.free() }
 		app.status = 'decode error: ${err}'
 		return
 	}

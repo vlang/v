@@ -4731,6 +4731,7 @@ fn (mut d WebpDecoder) decode_vp8l(payload []u8) ![]int {
 }
 
 fn (mut d WebpDecoder) decode_vp8l_body(mut br common.BitReader, width int, height int) ![]int {
+	check_rgba_dimensions(width, height)!
 	mut cur_w := width
 	mut transforms := []Transform{}
 	for int(br.read_bits(1)!) != 0 {
@@ -5061,6 +5062,13 @@ fn (mut d WebpDecoder) parse_container() ! {
 	d.chunks = chunks
 }
 
+// check_rgba_dimensions bounds both integer samples and their backing byte size.
+fn check_rgba_dimensions(width int, height int) ! {
+	if width <= 0 || height <= 0 || width > max_int / int(sizeof(int)) / height / 4 {
+		return error('WEBP dimensions exceed the supported buffer size')
+	}
+}
+
 fn (mut d WebpDecoder) parse_vp8x(payload []u8) ! {
 	if payload.len < vp8x_chunk_size {
 		return error('VP8X chunk too small: ${payload.len} bytes')
@@ -5075,6 +5083,7 @@ fn (mut d WebpDecoder) parse_vp8x(payload []u8) ! {
 	d.vp8x_flags = flags
 	d.width = (int(payload[4]) | (int(payload[5]) << 8) | (int(payload[6]) << 16)) + 1
 	d.height = (int(payload[7]) | (int(payload[8]) << 8) | (int(payload[9]) << 16)) + 1
+	check_rgba_dimensions(d.width, d.height)!
 	d.has_alpha = (flags & vp8x_flag_alpha) != 0
 }
 
@@ -6856,6 +6865,7 @@ fn (mut d WebpDecoder) setup_token_partitions(after []u8, num_parts_minus_one in
 
 fn (mut d WebpDecoder) decode_vp8(payload []u8) ![]int {
 	fh := d.parse_vp8_frame_header(payload)!
+	check_rgba_dimensions(fh.width, fh.height)!
 	if !fh.key_frame {
 		return error('Only keyframe VP8 decoding is supported')
 	}
@@ -7381,7 +7391,7 @@ fn (mut d WebpDecoder) crop_rgba(rgba []int, src_w int, src_h int, left int, top
 	if crop_w <= 0 || crop_h <= 0 {
 		return error('WEBP crop size must be positive')
 	}
-	if left + crop_w > src_w || top + crop_h > src_h {
+	if left > src_w || top > src_h || crop_w > src_w - left || crop_h > src_h - top {
 		return error('WEBP crop rectangle ${left},${top},${crop_w}x${crop_h} exceeds image ${src_w}x${src_h}')
 	}
 	mut out := []int{len: crop_w * crop_h * 4}
@@ -7403,9 +7413,15 @@ fn resolve_scale(src_w int, src_h int, w int, h int) !(int, int) {
 	mut ww := w
 	mut hh := h
 	if ww == 0 && src_h > 0 {
+		if hh < 0 || src_w <= 0 || hh > (max_int - src_h + 1) / src_w {
+			return error('WEBP scale exceeds the supported buffer size')
+		}
 		ww = (src_w * hh + src_h - 1) / src_h
 	}
 	if hh == 0 && src_w > 0 {
+		if ww < 0 || src_h <= 0 || ww > (max_int - src_w + 1) / src_h {
+			return error('WEBP scale exceeds the supported buffer size')
+		}
 		hh = (src_h * ww + src_w - 1) / src_w
 	}
 	if ww <= 0 || hh <= 0 {
@@ -7422,6 +7438,10 @@ fn (mut d WebpDecoder) scale_rgba(rgba []int, src_w int, src_h int, dst_w int, d
 	}
 	if dst_w <= 0 || dst_h <= 0 {
 		return error('WEBP rescaler: invalid destination dimensions')
+	}
+	check_rgba_dimensions(dst_w, dst_h)!
+	if dst_w > max_int / int(sizeof(u32)) / 8 {
+		return error('WEBP scale scanline exceeds the supported buffer size')
 	}
 	if src_w == dst_w && src_h == dst_h {
 		mut copied := []int{len: rgba.len}

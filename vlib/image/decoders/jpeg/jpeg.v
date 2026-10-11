@@ -1098,6 +1098,9 @@ fn (mut d JpegDecoder) parse_sof(marker int) ! {
 	}
 	d.height = d.read_word()!
 	d.width = d.read_word()!
+	if d.width <= 0 || d.height <= 0 || d.width > max_int / d.height / 4 {
+		return error('JPEG dimensions exceed the supported buffer size')
+	}
 	d.ch_count = d.read_byte()!
 	if d.ch_count < 1 || d.ch_count > 4 {
 		return error('Unsupported component count: ${d.ch_count}')
@@ -1137,19 +1140,19 @@ fn (mut d JpegDecoder) parse_sof(marker int) ! {
 	// drop the previous frame (dead) and lay out: YCC tables, then one
 	// flat coeff buffer per component. Render scratch is bump-allocated
 	// from the same frame later, after coeff is placed.
-	mut coeff_total := 0
-	mut render_need := 0
+	mut coeff_total := i64(0)
+	mut render_need := i64(0)
 	mut cs_max := 0
 	for c in comps {
 		bw := mcus_x * c.h_samp
 		bh := mcus_y * c.v_samp
-		coeff_total += bw * bh * 64
+		coeff_total += i64(bw) * bh * 64
 		aw := (d.width * c.h_samp + max_h - 1) / max_h
 		ah := (d.height * c.v_samp + max_v - 1) / max_v
-		render_need += (bw * 8) * (bh * 8) + aw * ah
+		render_need += i64(bw) * 8 * bh * 8 + i64(aw) * ah
 		hf := max_h / c.h_samp
 		vf := max_v / c.v_samp
-		render_need += (aw * hf) * (ah * vf)
+		render_need += i64(aw) * hf * ah * vf
 		if aw > cs_max {
 			cs_max = aw
 		}
@@ -1159,7 +1162,11 @@ fn (mut d JpegDecoder) parse_sof(marker int) ! {
 	// i16 region; the int frame region now only holds the YCC tables.
 	int_cap := ycc_need + 128
 	i16_cap := render_need + cs_max + 128
-	d.arena.reset_frame(int_cap, coeff_total, i16_cap)
+	if coeff_total > max_int / int(sizeof(i32))
+		|| i16_cap > max_int / int(sizeof(i16)) {
+		return error('JPEG frame exceeds the supported buffer size')
+	}
+	d.arena.reset_frame(int_cap, int(coeff_total), int(i16_cap))
 	d.build_ycc_tables(d.max_sample)!
 	for i in 0 .. d.ch_count {
 		mut c := comps[i]

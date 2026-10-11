@@ -51,6 +51,9 @@ Accepted extensions: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.gif`, `.webp`,
 | Right mouse button (hold)| Zoom                          |
 | Middle mouse button      | Reset view / fill window      |
 
+Animation players and their encoded input are released when switching images,
+including builds with `-gc none`.
+
 ## Limitations
 
 - Animated GIF and animated WEBP are played back frame by frame. APNG

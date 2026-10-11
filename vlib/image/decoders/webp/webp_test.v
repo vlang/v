@@ -853,3 +853,12 @@ fn test_malformed_animation_rejected() ! {
 	vp8l << [u8(0x2f), 0, 0, 0]
 	expect_fail(riff_wrap('WEBP', [anmf, vp8l]), 'animation rejected')!
 }
+
+fn test_output_options_reject_unrepresentable_buffers() ! {
+	data := os.read_bytes(golden_path('test', 'webp'))!
+	for opts in [Options{ scale_w: max_int, scale_h: 1 }, Options{ scale_h: max_int },
+		Options{ crop: true, crop_x: 1, crop_w: max_int, crop_h: 1 }] {
+		decode_with(data, opts) or { continue }
+		assert false, 'unrepresentable output options must return an error'
+	}
+}
