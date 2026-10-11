@@ -88,6 +88,27 @@ struct SslRequestParams {
 	max_request_buffer_size   int
 }
 
+// render_request dispatches one request without starting a listener and returns
+// the completed base context. Read the response from `ctx.res`; fields added to
+// the application's context type are only available inside its handlers.
+// Static file responses retain `return_type` and `return_file`, as on the server.
+// X must embed veb.Context. Context, route, and controller configuration errors
+// are returned to the caller.
+pub fn render_request[A, X](mut app A, req http.Request) !&Context {
+	$for field in X.fields {
+		$if field.name == 'Context' && field.is_embed {
+			routes := generate_routes[A, X](app)!
+			controllers_sorted := check_duplicate_routes_in_controllers[A](app, routes)!
+			params := RequestParams{
+				controllers_sorted: controllers_sorted
+				routes:             &routes
+			}
+			return handle_request_and_route[A, X](mut app, req, -1, params)
+		}
+	}
+	return error('the application context type must embed veb.Context')
+}
+
 fn ssl_enabled(params RunParams) bool {
 	return params.ssl_config.cert != '' || params.ssl_config.cert_key != ''
 }
@@ -380,9 +401,15 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 	$if veb_livereload ? {
 		if url.path.starts_with('/veb_livereload/') {
-			if url.path.ends_with('current') {
-				user_context.handle_veb_livereload_current()
+			if url.path.ends_with('/events') {
+				user_context.handle_veb_livereload_events()
 				return
+			}
+			$if veb_livereload_polling ? {
+				if url.path.ends_with('current') {
+					user_context.handle_veb_livereload_current()
+					return
+				}
 			}
 			if url.path.ends_with('script.js') {
 				user_context.handle_veb_livereload_script()
