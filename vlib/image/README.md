@@ -34,7 +34,9 @@ assert img.rgba_at(0, 0).r == 255
 Import `image.png` or `image.jpeg` to register those formats for `image.decode` and
 `image.decode_config`. Both codecs use the existing bundled stb implementation and return
 independent eight-bit `NRGBA` images; sixteen-bit PNG channels are reduced to eight bits.
-JPEG encoding drops alpha. GIF is not registered.
+Apple optimized PNGs containing a `CgBI` chunk are rejected by decoding and configuration
+inspection because their premultiplied BGRA pixels are unsupported. JPEG encoding drops alpha.
+GIF is not registered.
 
 `png.encode(mut writer, img)` and `jpeg.encode(mut writer, img, quality: 85)` write to any
 `io.Writer`, including files. `encode_to_bytes` returns encoded bytes for HTTP responses.

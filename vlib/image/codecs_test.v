@@ -177,6 +177,47 @@ fn test_png_external_fixture_and_registration() {
 	assert config.height == 1
 }
 
+fn test_png_rejects_apple_cgbi_images() {
+	// Independently encoded premultiplied BGRA fixtures: opaque and half-alpha red.
+	for fixture in [
+		'89504e470d0a1a0a0000000443674249500020022bd5b37f0000000d49484452000000010000000108060000001f15c4890000000749444154636060f8ff1f0052def1700000000049454e44ae426082',
+		'89504e470d0a1a0a0000000443674249500020022bd5b37f0000000d49484452000000010000000108060000001f15c489000000074944415463606068680000da98b03f0000000049454e44ae426082',
+	] {
+		bytes := hex.decode(fixture)!
+		if _ := png.decode(CodecReader{ bytes: bytes }) {
+			assert false, 'PNG decoder accepted premultiplied BGRA pixels'
+		} else {
+			assert err.msg() == 'image: Apple CgBI PNG is not supported'
+		}
+		if _ := png.decode_config(CodecReader{ bytes: bytes }) {
+			assert false, 'PNG configuration accepted an unsupported format'
+		} else {
+			assert err.msg() == 'image: Apple CgBI PNG is not supported'
+		}
+		if _, _ := image.decode(CodecReader{ bytes: bytes }) {
+			assert false, 'registered PNG decoder accepted premultiplied BGRA pixels'
+		} else {
+			assert err.msg() == 'image: Apple CgBI PNG is not supported'
+		}
+		if _, _ := image.decode_config(CodecReader{ bytes: bytes }) {
+			assert false, 'registered PNG configuration accepted an unsupported format'
+		} else {
+			assert err.msg() == 'image: Apple CgBI PNG is not supported'
+		}
+	}
+}
+
+fn test_png_accepts_cgbi_text_in_ordinary_chunk_data() {
+	// "CgBI" in ancillary data is not a CgBI chunk. stb does not check chunk CRCs.
+	bytes := hex.decode('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c48900000009744558746e6f74650043674249000000000000000d49444154789c63f8cfc0f01f00050001ff89993d1d0000000049454e44ae426082')!
+	img, format := image.decode(CodecReader{ bytes: bytes })!
+	assert format == 'png'
+	assert color.to_nrgba(img.at(0, 0)) == color.NRGBA{255, 0, 0, 255}
+	config := png.decode_config(CodecReader{ bytes: bytes })!
+	assert config.width == 1
+	assert config.height == 1
+}
+
 fn test_png_preserves_alpha_and_source_bounds() {
 	mut src := image.new_nrgba(image.rect(5, 7, 7, 8))
 	src.set_nrgba(5, 7, color.NRGBA{120, 60, 30, 128})

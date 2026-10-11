@@ -47,7 +47,30 @@ fn read_encoded(reader io.Reader, magic string) ![]u8 {
 	if bytes.len < magic.len || bytes[..magic.len].bytestr() != magic {
 		return error('image: invalid image signature')
 	}
+	if magic == '\x89PNG\r\n\x1a\n' {
+		reject_cgbi(bytes)!
+	}
 	return bytes
+}
+
+fn reject_cgbi(bytes []u8) ! {
+	mut offset := 8
+	for offset <= bytes.len - 12 {
+		length := (u32(bytes[offset]) << 24) | (u32(bytes[offset + 1]) << 16) | (u32(bytes[offset + 2]) << 8) | u32(bytes[offset + 3])
+		// Check the complete chunk before converting its unsigned length or advancing.
+		if length > u32(bytes.len - offset - 12) {
+			return
+		}
+		chunk_type := bytes[offset + 4..offset + 8].bytestr()
+		if chunk_type == 'CgBI' {
+			// stb can return premultiplied BGRA for this Apple extension.
+			return error('image: Apple CgBI PNG is not supported')
+		}
+		if chunk_type == 'IEND' {
+			return
+		}
+		offset += int(length) + 12
+	}
 }
 
 fn checked_info(bytes []u8) !stbi.ImageInfo {
