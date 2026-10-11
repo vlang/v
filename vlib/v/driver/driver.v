@@ -3170,9 +3170,11 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 	}
 	mut link_inputs := objects.clone()
 	link_inputs << native_support_inputs
-	link_inputs << cached_objects
 	if cached_dev_dylib.len > 0 {
+		// The dev dylib already holds `cached_objects`; see the clang link below for why.
 		link_inputs << cached_dev_dylib
+	} else {
+		link_inputs << cached_objects
 	}
 	link_args := c_flag_plan.compiler_args(output_name, link_inputs, [])
 	if show_command {
@@ -14728,9 +14730,14 @@ pub fn run(args []string) {
 			}
 			if !is_o {
 				compiler_inputs << native_support_inputs
-				compiler_inputs << cached_objects
 				if cached_dev_dylib.len > 0 {
+					// The dev dylib already holds `cached_objects`. Linking them into the
+					// program too gives module globals such as `g_main_argc` and `os__args`
+					// two copies, and `main` writes one copy while the dylib's init reads the
+					// other, so `os.args` came back empty.
 					compiler_inputs << cached_dev_dylib
+				} else {
+					compiler_inputs << cached_objects
 				}
 			}
 			if macos_linux_cross_compile && !is_o {
