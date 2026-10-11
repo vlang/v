@@ -2802,18 +2802,27 @@ fn (t &Transformer) node_type_is_array(id flat.NodeId) bool {
 	return clean.starts_with('[]') || t.is_fixed_array_type(clean)
 }
 
-// array_append_rhs_is_push_many supports array append rhs is push many handling for Transformer.
+// array_append_rhs_is_push_many honors explicit array spread for append, insert and prepend.
 fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
+	rhs_node := t.a.nodes[int(rhs_id)]
+	if rhs_node.kind == .prefix && rhs_node.value == '...' && rhs_node.children_count > 0
+		&& !isnil(t.tc) {
+		value_id := t.a.child(&rhs_node, 0)
+		value_type := t.tc.expr_type(value_id) or { t.tc.resolve_type(value_id) }
+		if array_append_semantic_type_is_array(value_type)
+			|| (value_type is types.Unknown && t.array_append_rhs_is_array_spread(rhs_id)) {
+			// Explicit spread appends elements even when the whole array can be boxed as one value.
+			return true
+		}
+	}
+	return t.array_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
+}
+
+// array_rhs_is_push_many selects bulk insertion when the source element types match.
+fn (t &Transformer) array_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
 	rhs_node := t.a.nodes[int(rhs_id)]
 	if rhs_node.kind == .spawn_expr {
 		return false
-	}
-	if t.array_append_rhs_is_array_spread(rhs_id) {
-		// A `...src` RHS appends every element of `src`, so it stays a bulk append even
-		// when those elements have to be boxed or widened into the destination's
-		// element type. Without this, `[]Iface << ...[]Concrete` pushed the whole
-		// source array as one element.
-		return true
 	}
 	clean_rhs_type := rhs_type.trim_space()
 	lhs_elem_is_interface := t.array_append_elem_is_interface(elem_type)

@@ -1266,6 +1266,14 @@ nums << [5, 6, 7]
 println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
 ```
 
+Use `<< ...array` to explicitly append the array's elements. When appending an array of
+concrete values to an empty interface array, `<< array` appends the whole array as one
+interface value, while `<< ...array` converts and appends each element separately.
+For example, with `interface Value {}`, appending `['IT']` to `[]Value{}` produces
+`[Value(['IT'])]` with `<<` and `[Value('IT')]` with `<< ...`.
+`insert(index, ...array)` and `prepend(...array)` also convert each source element to the
+destination element type before inserting it.
+
 ```v
 mut names := ['John']
 names << 'Peter'
