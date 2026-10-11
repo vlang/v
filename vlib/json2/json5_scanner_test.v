@@ -34,6 +34,16 @@ fn test_scan_source_offsets_preserve_invalid_utf8_width() {
 	assert s.next()!.pos.offset == 4
 }
 
+fn test_scan_counts_all_json5_line_terminators() {
+	for separator in ['\n', '\r', '\r\n', '\u2028', '\u2029'] {
+		mut s := new_json5_scanner('// heading' + separator + separator + '  false')
+		tok := s.next()!
+		assert tok.kind == .bool
+		assert tok.pos.line == 3
+		assert tok.pos.col == 3
+	}
+}
+
 fn test_scan_punctuation() {
 	mut s := new_json5_scanner('{}[]:,')
 	expected := [Json5TokenKind.lcbr, .rcbr, .lsbr, .rsbr, .colon, .comma, .eof]

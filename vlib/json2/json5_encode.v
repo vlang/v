@@ -25,13 +25,15 @@ fn json5_is_identifier(key string) bool {
 }
 
 fn (mut encoder Encoder) encode_json5_string(value string) {
-	encoder.output << `'`
+	quote := if encoder.single_quotes { u8(`'`) } else { u8(`"`) }
+	encoder.output << quote
 	for ch in value.runes() {
+		if int(ch) == int(quote) || int(ch) == r_backslash {
+			encoder.output << `\\`
+			encoder.output << u8(ch)
+			continue
+		}
 		match ch {
-			`\\`, `'` {
-				encoder.output << `\\`
-				encoder.output << u8(ch)
-			}
 			`\n` { encoder.output << '\\n'.bytes() }
 			`\r` { encoder.output << '\\r'.bytes() }
 			`\t` { encoder.output << '\\t'.bytes() }
@@ -52,5 +54,5 @@ fn (mut encoder Encoder) encode_json5_string(value string) {
 			}
 		}
 	}
-	encoder.output << `'`
+	encoder.output << quote
 }

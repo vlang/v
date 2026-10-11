@@ -7,6 +7,24 @@ struct Json5BorrowedStrings {
 	raw         string @[raw]
 }
 
+struct Json5RetainedStringHook {
+mut:
+	text string
+}
+
+fn (mut value Json5RetainedStringHook) from_json_string(text string) ! {
+	value.text = text
+}
+
+struct Json5RetainedNumberHook {
+mut:
+	text string
+}
+
+fn (mut value Json5RetainedNumberHook) from_json_number(text string) ! {
+	value.text = text
+}
+
 fn test_json5_returned_strings_survive_allocations_and_buffer_reuse() {
 	mut buffer := DecodeBuffer{}
 	root := decode[string]("'root string'", json5: true)!
@@ -17,6 +35,9 @@ fn test_json5_returned_strings_survive_allocations_and_buffer_reuse() {
 	values := decode[map[string]string]("{'map key':'map value'}", json5: true)!
 	dynamic := decode[Any]("{bareKey:'dynamic string'}", json5: true)!
 	dynamic_root := decode[Any]("'dynamic root string'", json5: true)!
+	escaped := decode[string]("'escaped\\nstring'", json5: true)!
+	string_hook := decode[Json5RetainedStringHook]("'hook string'", json5: true)!
+	number_hook := decode[Json5RetainedNumberHook]('0x1234', json5: true)!
 	mut allocations := [][]u8{}
 	for i in 0 .. 256 {
 		// Occupy freed parser allocations of different sizes and repeatedly reuse tokens.
@@ -38,4 +59,7 @@ fn test_json5_returned_strings_survive_allocations_and_buffer_reuse() {
 	assert dynamic.as_map().keys() == ['bareKey']
 	assert (dynamic.as_map()['bareKey'] or { panic('missing key') }).str() == 'dynamic string'
 	assert dynamic_root.str() == 'dynamic root string'
+	assert escaped == 'escaped\nstring'
+	assert string_hook.text == 'hook string'
+	assert number_hook.text == '0x1234'
 }

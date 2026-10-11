@@ -68,12 +68,15 @@ hexadecimal numbers, leading `+`, leading or trailing decimal points, `Infinity`
 and `NaN`. Strings support JSON5 escapes and escaped line continuations, including
 UTF-16 surrogate pairs. Malformed escapes return a `JsonScanError` with a line and column.
 Typed decoding errors report their location and context in the original JSON5 input.
+CR, LF, CRLF, U+2028 and U+2029 are counted as JSON5 line terminators.
+Decoded strings and raw fields own their text; normalized decoding buffers are released.
 
 `single_quotes`, `unquoted_keys` and `trailing_commas` only affect encoding when
 `json5: true`. Otherwise the existing JSON output is unchanged. Bare keys are used
 only for valid identifiers; other keys are quoted and escaped. `prettify`,
 `indent_string`, `newline_string`, `escape_unicode` and the other encoding options
 work in either dialect. Trailing commas also work in compact output.
+JSON5 strings escape U+2028 and U+2029 with either quote style, even without `escape_unicode`.
 
 JSON5 encodes non-finite floats as `Infinity`, `-Infinity` and `NaN`; ordinary JSON
 continues to encode them as `null`. Typed integer decoding preserves 64-bit values,

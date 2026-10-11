@@ -76,3 +76,25 @@ fn test_json5_error_source_mapping_is_independent_of_reused_token_storage() {
 		assert false, 'expected a typed JSON5 decoding error'
 	}
 }
+
+fn test_json5_typed_error_counts_each_line_terminator_and_limits_context() {
+	for separator in ['\n', '\r', '\r\n', '\u2028', '\u2029'] {
+		input := '// heading' + separator + '/* another line */' + separator +
+			'\tfalse' + separator + '/* following line */'
+		decode[int](input, json5: true) or {
+			if err is JsonDecodeError {
+				assert err.line == 3
+				assert err.character == 9
+				assert err.context.starts_with('\t\\e[31mfalse\\e[0m\n')
+				assert !err.context.contains('heading')
+				assert !err.context.contains('another line')
+				assert !err.context.contains('following line')
+			} else {
+				assert false, err.msg()
+			}
+			continue
+		}
+		assert false, 'expected a typed JSON5 decoding error'
+	}
+	assert_json5_decode_error[int]('// heading\r\n\r\u2028\u2029false', 5, 1, 'false')
+}

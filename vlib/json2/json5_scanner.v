@@ -152,8 +152,10 @@ fn (mut s Json5Scanner) advance() rune {
 		s.offset += ch.length_in_bytes()
 	}
 	s.pos++
-	if int(ch) == r_lf {
-		s.line++
+	if json5_is_line_terminator(int(ch)) {
+		if int(ch) != r_lf || s.pos < 2 || int(s.text[s.pos - 2]) != r_cr {
+			s.line++
+		}
 		s.col = 1
 	} else {
 		s.col++
@@ -262,6 +264,7 @@ fn (mut s Json5Scanner) skip_trivia() ! {
 }
 
 // next returns the next token, skipping whitespace and comments.
+@[manualfree]
 pub fn (mut s Json5Scanner) next() !Json5Token {
 	s.skip_trivia()!
 	start := s.position()
@@ -300,14 +303,21 @@ pub fn (mut s Json5Scanner) next() !Json5Token {
 
 // scan_string scans a single- or double-quoted string and returns its decoded
 // value.
+@[manualfree]
 fn (mut s Json5Scanner) scan_string(start Json5Pos, quote_code int) !Json5Token {
 	s.advance() // opening quote
-	mut out := []rune{}
+	mut out := []u8{cap: 32}
+	unsafe { out.flags |= .noslices }
+	mut utf8_buffer := [5]u8{}
+	defer {
+		unsafe { out.free() }
+	}
 	for {
 		if s.pos >= s.text.len {
 			return json5_syntax_error('unterminated string', start.line, start.col)
 		}
 		code := int(s.text[s.pos])
+		mut character := rune(code)
 		if code == quote_code {
 			s.advance()
 			break
@@ -329,28 +339,33 @@ fn (mut s Json5Scanner) scan_string(start Json5Pos, quote_code int) !Json5Token 
 			}
 			s.advance()
 			match esc {
-				r_lower_n { out << rune(0x0A) }
-				r_lower_t { out << rune(0x09) }
-				r_lower_r { out << rune(0x0D) }
-				r_lower_b { out << rune(0x08) }
-				r_lower_f { out << rune(0x0C) }
-				r_lower_v { out << rune(0x0B) }
-				r_zero { out << rune(0x00) }
-				r_lower_x { out << s.scan_hex_digits(2, start)! }
-				r_lower_u { out << s.scan_unicode_escape(start)! }
+				r_lower_n { character = rune(0x0A) }
+				r_lower_t { character = rune(0x09) }
+				r_lower_r { character = rune(0x0D) }
+				r_lower_b { character = rune(0x08) }
+				r_lower_f { character = rune(0x0C) }
+				r_lower_v { character = rune(0x0B) }
+				r_zero { character = rune(0x00) }
+				r_lower_x { character = s.scan_hex_digits(2, start)! }
+				r_lower_u { character = s.scan_unicode_escape(start)! }
 				else {
 					// JSON5 lets any character be escaped, and the escape yields
 					// the escaped character itself.
-					out << rune(esc)
+					character = rune(esc)
 				}
 			}
-			continue
+		} else {
+			character = s.advance()
 		}
-		out << s.advance()
+		// This view borrows only the local UTF-8 buffer and is copied immediately.
+		encoded := unsafe { utf32_to_str_no_malloc(u32(character), mut &utf8_buffer[0]) }
+		for byte in encoded {
+			out << byte
+		}
 	}
 	return Json5Token{
 		kind: .str
-		lit:  out.string()
+		lit:  out.bytestr()
 		pos:  start
 	}
 }
@@ -426,12 +441,12 @@ fn (mut s Json5Scanner) scan_unicode_escape(start Json5Pos) !rune {
 
 // scan_ident scans an unquoted key, or one of the keywords `true`, `false`,
 // `null`, `Infinity` and `NaN`.
+@[manualfree]
 fn (mut s Json5Scanner) scan_ident(start Json5Pos) !Json5Token {
-	mut out := []rune{}
 	for s.pos < s.text.len && json5_is_ident_part(int(s.text[s.pos])) {
-		out << s.advance()
+		s.advance()
 	}
-	lit := out.string()
+	lit := s.source.substr(start.offset, s.offset)
 	kind := match lit {
 		'true', 'false' { Json5TokenKind.bool }
 		'null' { Json5TokenKind.null }
@@ -449,11 +464,11 @@ fn (mut s Json5Scanner) scan_ident(start Json5Pos) !Json5Token {
 // scan_number scans a JSON5 number: an optional sign, then either `Infinity`,
 // `NaN`, a hexadecimal integer, or a decimal value with an optional leading or
 // trailing dot and an optional exponent.
+@[manualfree]
 fn (mut s Json5Scanner) scan_number(start Json5Pos) !Json5Token {
-	mut out := []rune{}
 	code := int(s.text[s.pos])
 	if code == r_plus || code == r_minus {
-		out << s.advance()
+		s.advance()
 	}
 	// `Infinity` and `NaN` may carry a sign; they are scanned as identifiers so
 	// that a bare occurrence in key position still lexes as a key.
@@ -462,20 +477,22 @@ fn (mut s Json5Scanner) scan_number(start Json5Pos) !Json5Token {
 	}
 	first := int(s.text[s.pos])
 	if first == r_upper_i || first == r_upper_n {
-		tok := s.scan_ident(start)!
-		out << tok.lit.runes()
+		tok := s.scan_ident(s.position())!
+		defer {
+			unsafe { tok.lit.free() }
+		}
 		return Json5Token{
 			kind: tok.kind
-			lit:  out.string()
+			lit:  s.source.substr(start.offset, s.offset)
 			pos:  start
 		}
 	}
 	if int(s.text[s.pos]) == r_zero && (s.peek_code(1) == r_lower_x || s.peek_code(1) == r_upper_x) {
-		out << s.advance()
-		out << s.advance()
+		s.advance()
+		s.advance()
 		mut digits := 0
 		for s.pos < s.text.len && json5_is_hex_digit(int(s.text[s.pos])) {
-			out << s.advance()
+			s.advance()
 			digits++
 		}
 		if digits == 0 {
@@ -483,21 +500,21 @@ fn (mut s Json5Scanner) scan_number(start Json5Pos) !Json5Token {
 		}
 		return Json5Token{
 			kind: .number
-			lit:  out.string()
+			lit:  s.source.substr(start.offset, s.offset)
 			pos:  start
 		}
 	}
 	mut int_digits := 0
 	for s.pos < s.text.len && json5_is_digit(int(s.text[s.pos])) {
-		out << s.advance()
+		s.advance()
 		int_digits++
 	}
 	// A dot is part of the number both as a decimal separator and as a leading
 	// dot (`.5`), and it may also be trailing (`5.`).
 	if s.pos < s.text.len && int(s.text[s.pos]) == r_dot {
-		out << s.advance()
+		s.advance()
 		for s.pos < s.text.len && json5_is_digit(int(s.text[s.pos])) {
-			out << s.advance()
+			s.advance()
 			int_digits++
 		}
 	}
@@ -505,13 +522,13 @@ fn (mut s Json5Scanner) scan_number(start Json5Pos) !Json5Token {
 		return json5_syntax_error('number has no digits', start.line, start.col)
 	}
 	if s.pos < s.text.len && (int(s.text[s.pos]) == r_lower_e || int(s.text[s.pos]) == r_upper_e) {
-		out << s.advance()
+		s.advance()
 		if s.pos < s.text.len && (int(s.text[s.pos]) == r_minus || int(s.text[s.pos]) == r_plus) {
-			out << s.advance()
+			s.advance()
 		}
 		mut exp_digits := 0
 		for s.pos < s.text.len && json5_is_digit(int(s.text[s.pos])) {
-			out << s.advance()
+			s.advance()
 			exp_digits++
 		}
 		if exp_digits == 0 {
@@ -520,7 +537,7 @@ fn (mut s Json5Scanner) scan_number(start Json5Pos) !Json5Token {
 	}
 	return Json5Token{
 		kind: .number
-		lit:  out.string()
+		lit:  s.source.substr(start.offset, s.offset)
 		pos:  start
 	}
 }

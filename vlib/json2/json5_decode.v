@@ -30,8 +30,12 @@ fn json5_syntax_error(message string, line int, col int) &JsonScanError {
 	}
 }
 
+@[manualfree]
 fn (mut p Json5Parser) advance() ! {
-	p.tok = p.scanner.next()!
+	next := p.scanner.next()!
+	// Token literals are private scanner allocations; normalization has copied them.
+	unsafe { p.tok.lit.free() }
+	p.tok = next
 }
 
 fn (p &Json5Parser) unexpected(expected string) &JsonScanError {
@@ -55,11 +59,18 @@ fn (mut p Json5Parser) write_string_value(text string) {
 	start := p.output.output.len
 	p.output.encode_string(text)
 	end := p.output.output.len
+	mut has_escape := false
+	for i in start .. end {
+		if p.output.output[i] == `\\` {
+			has_escape = true
+			break
+		}
+	}
 	p.values_info << ValueInfo{
 		position:   start
 		length:     end - start
 		value_kind: .string
-		has_escape: p.output.output[start..end].contains(`\\`)
+		has_escape: has_escape
 	}
 	p.source_values_info << Json5SourceSpan{
 		position: p.tok.pos.offset
@@ -92,7 +103,9 @@ fn (mut p Json5Parser) parse_value() ! {
 				.null { ValueKind.null }
 				else { ValueKind.number }
 			}
-			p.output.output << p.tok.lit.bytes()
+			for ch in p.tok.lit {
+				p.output.output << ch
+			}
 			p.values_info << ValueInfo{
 				position:   start
 				length:     p.tok.lit.len
@@ -154,10 +167,17 @@ fn decode_json5[T](text string, mut buffer DecodeBuffer, params DecoderOptions) 
 		values_info: unsafe { buffer.values_info }
 	}
 	parser.values_info.clear()
+	// Parsing keeps no array slices; growth can release each previous allocation.
+	unsafe {
+		parser.values_info.flags |= .noslices
+		parser.source_values_info.flags |= .noslices
+		parser.output.output.flags |= .noslices
+	}
 	defer {
 		buffer.values_info = unsafe { parser.values_info }
-		// These are parser scratch allocations; decoded strings borrow a separate copy.
+		// Only cloned strings escape the decoder; all parser storage is scratch.
 		unsafe {
+			parser.tok.lit.free()
 			parser.output.output.free()
 			parser.source_values_info.free()
 			parser.scanner.text.free()
@@ -165,9 +185,11 @@ fn decode_json5[T](text string, mut buffer DecodeBuffer, params DecoderOptions) 
 		}
 	}
 	parser.parse()!
-	// bytestr copies the scratch bytes. Keep that string allocation alive because
-	// decoded strings, map keys and raw fields can borrow slices of it.
+	// JSON5 decoding clones text that escapes, so this document can always be freed.
 	normalized := parser.output.output.bytestr()
+	defer {
+		unsafe { normalized.free() }
+	}
 	mut decoder := Decoder{
 		json:               normalized
 		json5:              true
@@ -180,35 +202,93 @@ fn decode_json5[T](text string, mut buffer DecodeBuffer, params DecoderOptions) 
 	return decoder.decode_root[T]()
 }
 
-// normalize_json5_number converts hexadecimal integers and leading/trailing dots
-// without going through a float, preserving the full range of 64-bit integers.
-fn normalize_json5_number(text string) !string {
-	negative := text.starts_with('-')
-	mut digits := text.trim_left('+-')
-	if digits.starts_with('0x') || digits.starts_with('0X') {
-		value := strconv.parse_uint(digits[2..], 16, 64)!
-		return if negative { '-' + value.str() } else { value.str() }
+// json5_line_terminator_length treats CRLF as one terminator.
+fn json5_line_terminator_length(text string, position int) int {
+	ch, width := utf8_rune_at(text, position)
+	if !json5_is_line_terminator(int(ch)) {
+		return 0
 	}
-	if digits.starts_with('.') {
-		digits = '0' + digits
+	if int(ch) == r_cr && position + 1 < text.len && text[position + 1] == `\n` {
+		return 2
 	}
-	exponent := digits.index_any('eE')
-	mantissa_end := if exponent >= 0 { exponent } else { digits.len }
-	if mantissa_end > 0 && digits[mantissa_end - 1] == `.` {
-		digits = digits[..mantissa_end] + '0' + digits[mantissa_end..]
-	}
-	return if negative { '-' + digits } else { digits }
+	return width
 }
 
+// json5_source_location returns the zero based line, display column and line start.
+fn json5_source_location(text string, position int) (int, int, int) {
+	mut line := 0
+	mut column := 0
+	mut line_start := 0
+	mut i := 0
+	for i < position {
+		width := json5_line_terminator_length(text, i)
+		if width > 0 {
+			i += width
+			line++
+			column = 0
+			line_start = i
+		} else {
+			column += if text[i] == `\t` { tab_width } else { 1 }
+			i++
+		}
+	}
+	return line, column, line_start
+}
+
+fn json5_context_end(text string, start int, end int) int {
+	for i in start .. end {
+		if json5_line_terminator_length(text, i) > 0 {
+			return i
+		}
+	}
+	return end
+}
+
+// normalize_json5_number converts hexadecimal integers and leading/trailing dots
+// without going through a float, preserving the full range of 64-bit integers.
+// Its result owns its storage and must be released after number conversion.
+@[manualfree]
+fn normalize_json5_number(text string) !string {
+	negative := text.starts_with('-')
+	digits := text.substr_unsafe(if text.starts_with('-') || text.starts_with('+') { 1 } else { 0 }, text.len)
+	if digits.starts_with('0x') || digits.starts_with('0X') {
+		value := strconv.parse_uint(digits.substr_unsafe(2, digits.len), 16, 64)!
+		decimal := value.str()
+		if negative {
+			defer { unsafe { decimal.free() } }
+			return '-' + decimal
+		}
+		return decimal
+	}
+	mut bytes := []u8{cap: text.len + 2}
+	defer { unsafe { bytes.free() } }
+	if negative {
+		bytes << `-`
+	}
+	if digits.starts_with('.') {
+		bytes << `0`
+	}
+	for i, ch in digits {
+		bytes << ch
+		if ch == `.` && (i + 1 == digits.len || digits[i + 1] in [`e`, `E`]) {
+			bytes << `0`
+		}
+	}
+	return bytes.bytestr()
+}
+
+@[manualfree]
 fn parse_json5_float(text string) !f64 {
-	digits := text.trim_left('+-')
+	digits := text.substr_unsafe(if text.starts_with('-') || text.starts_with('+') { 1 } else { 0 }, text.len)
 	if digits == 'Infinity' {
 		return math.inf(if text.starts_with('-') { -1 } else { 1 })
 	}
 	if digits == 'NaN' {
 		return math.nan()
 	}
-	return strconv.atof64(normalize_json5_number(text)!,
+	normalized := normalize_json5_number(text)!
+	defer { unsafe { normalized.free() } }
+	return strconv.atof64(normalized,
 		allow_extra_chars: false
 		allow_overflow:    true
 	)

@@ -219,7 +219,7 @@ fn next_string_escape(val string, start int, escape_unicode bool) int {
 }
 
 fn (mut encoder Encoder) encode_string(val string) {
-	if encoder.json5 && encoder.single_quotes {
+	if encoder.json5 {
 		encoder.encode_json5_string(val)
 		return
 	}

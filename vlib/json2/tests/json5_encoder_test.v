@@ -177,6 +177,37 @@ fn test_encode_escapes_only_the_chosen_quote() {
 	assert got == "'a\\'b'"
 }
 
+fn test_encode_line_separators_with_each_quote_style() {
+	value := 'V\'s "quoted" 🎼\u2028next\u2029line'
+	for single_quotes in [false, true] {
+		for escape_unicode in [false, true] {
+			text := json2.encode(value,
+				json5:          true
+				single_quotes:  single_quotes
+				escape_unicode: escape_unicode
+			)
+			assert text.contains(r'\u2028')
+			assert text.contains(r'\u2029')
+			assert !text.contains('\u2028')
+			assert !text.contains('\u2029')
+			assert text[0] == if single_quotes { `'` } else { `"` }
+			assert json2.decode[string](text, json5: true)! == value
+		}
+	}
+	assert json2.encode('a\u2028b\u2029c', json5: true) == r'"a\u2028b\u2029c"'
+	// Ordinary JSON permits these code points literally.
+	assert json2.encode('a\u2028b\u2029c') == '"a\u2028b\u2029c"'
+	keys := {
+		'key\u2028\u2029': 'value\u2028\u2029'
+	}
+	text := json2.encode(keys, json5: true, unquoted_keys: true)
+	assert text == r'{"key\u2028\u2029":"value\u2028\u2029"}'
+	assert json2.decode[map[string]string](text, json5: true)! == keys
+	mut appended := 'prefix:'.bytes()
+	json2.encode_append('a\u2028b', mut appended, json5: true)
+	assert appended.bytestr() == r'prefix:"a\u2028b"'
+}
+
 fn test_encode_control_character_escape() {
 	got := json2.encode(json2.parse(r'"\u0001"', json5: true) or { panic(err) },
 		json5: true
