@@ -10,6 +10,12 @@ fn C.dup2(int, int) int
 fn C.close(int) int
 
 fn stop_stdin_test_server(mut server Server) {
+	assert server.listener.sock.handle != 0
+	server.stop()
+}
+
+fn stop_explicit_stdin_test_server(mut server Server) {
+	assert server.listener.sock.handle == 0
 	server.stop()
 }
 
@@ -33,7 +39,7 @@ fn test_server_does_not_use_a_socket_on_stdin() {
 	}
 	server.listen_and_serve()
 	assert server.addr != other_addr
-	assert server.listener.sock.handle != 0
+	assert server.listener.sock.handle == -1
 	assert server.status() == .closed
 }
 
@@ -60,10 +66,10 @@ fn test_server_accepts_an_explicit_listener_on_stdin() {
 		worker_num:           1
 		accept_timeout:       10 * time.millisecond
 		show_startup_message: false
-		on_running:           stop_stdin_test_server
+		on_running:           stop_explicit_stdin_test_server
 	}
 	server.listen_and_serve()
 	assert server.addr == other_addr
-	assert server.listener.sock.handle == 0
+	assert server.listener.sock.handle == -1
 	assert server.status() == .closed
 }
