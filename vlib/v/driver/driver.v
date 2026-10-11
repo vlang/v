@@ -7632,9 +7632,6 @@ fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string) ?stri
 // program symbols can still reveal failures later; those need a fresh compiler
 // pass because parsing has already selected compiler-specific `$if` branches.
 fn v3_implicit_tcc_preflight(vroot string, tcc_path string, bundled_tcc string, bundled_tcc_available bool, target pref.Target, flags []string, mut sdk_cache V3MacosSdkRootCache) ?string {
-	if reason := v3_implicit_tcc_flags_incompatibility(flags, target.os) {
-		return reason
-	}
 	link_flags := v3_tcc_preflight_link_flags(flags)
 	if link_flags.len == 0 {
 		return none
@@ -11675,6 +11672,13 @@ pub fn run(args []string) {
 		preflight_flags << link_ld_flags
 		preflight_flags << cgen.preflight_directive_flags(a, prefs.vroot, prefs.target,
 			prefs.compile_values)
+		if reason := v3_implicit_tcc_flags_incompatibility(preflight_flags, prefs.target.os) {
+			// Selecting a compiler for known native input requirements is expected.
+			// Keep the explanation for verbose builds; actual TCC failures still warn.
+			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, '', silent || !verbose,
+				reason)
+			return
+		}
 		if reason := v3_implicit_tcc_preflight(prefs.vroot, implicit_tcc, bundled_tcc,
 			bundled_tcc_available, prefs.target, preflight_flags, mut macos_sdk_root_cache) {
 			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, '', silent, reason)
