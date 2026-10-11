@@ -1,16 +1,18 @@
-module json5
+module json2
 
-// Doc is a parsed JSON5 document. Use `value`, `value_opt` or `decode` to read
+// Doc is a parsed JSON document. Use `value`, `value_opt` or `decode` to read
 // from it.
 pub struct Doc {
+	params DecoderOptions
 pub:
 	root Any
 }
 
 // new_doc wraps an already parsed `Any` tree.
-pub fn new_doc(root Any) Doc {
+pub fn new_doc(root Any, params DecoderOptions) Doc {
 	return Doc{
-		root: root
+		root:   root
+		params: params
 	}
 }
 
@@ -19,9 +21,9 @@ pub fn (d Doc) to_any() Any {
 	return d.root
 }
 
-// str returns the document rendered as JSON5 text.
+// str returns the document rendered in the dialect it was parsed with.
 pub fn (d Doc) str() string {
-	return d.root.str()
+	return encode(d.root, json5: d.params.json5)
 }
 
 // value queries a value with a small path syntax: dots separate object keys,
@@ -35,36 +37,30 @@ pub fn (d Doc) value(key string) Any {
 // resolve, instead of `Null`.
 pub fn (d Doc) value_opt(key string) !Any {
 	steps := parse_path(key) or { return error('invalid path `${key}`') }
-	v := resolve_path(d.root, steps)
-	if v is Null {
-		return &NameError{
-			key: key
-		}
-	}
-	return v
+	return resolve_path_opt(d.root, steps) or { return error('json2: no key `${key}`') }
 }
 
 // get queries a value and returns an option, so `none` distinguishes a missing
 // key from an explicit `null`.
 pub fn (d Doc) get(key string) ?Any {
 	steps := parse_path(key) or { return none }
-	return resolve_path(d.root, steps)
+	return resolve_path_opt(d.root, steps)
 }
 
 // decode decodes the document into `T`. It is the method form of the
 // package-level `decode` and shares its attribute and hook support.
 pub fn (d Doc) decode[T]() !T {
-	return decode_any[T](d.root)
+	return decode_any[T](d.root, d.params)
 }
 
 // reflect sets the fields of `T` from the matching document keys, leaving
 // absent fields at their default value. Fields are matched by name or by a
-// `@[json5: 'name']` attribute. Unlike `decode`, a key that cannot be decoded
+// `@[json: 'name']` attribute. Unlike `decode`, a key that cannot be decoded
 // into its field is silently skipped instead of reported, so a partially
 // matching document still fills in what it can.
 pub fn (d Doc) reflect[T]() T {
 	mut out := T{}
-	reflect_into(d.root, mut out)
+	reflect_into(d.root, mut out, d.params)
 	return out
 }
 
@@ -112,7 +108,7 @@ pub fn parse_path(path string) ![]PathStep {
 				has_key = false
 				mut j := i + 1
 				mut digits := []rune{}
-				for j < runes.len && is_digit(int(runes[j])) {
+				for j < runes.len && json5_is_digit(int(runes[j])) {
 					digits << runes[j]
 					j++
 				}
@@ -170,34 +166,39 @@ fn push_key(mut steps []PathStep, key []rune, has_key bool) {
 	}
 }
 
-// resolve_path walks `steps` through `value`, returning `Null` when a step does
-// not resolve.
+// resolve_path walks steps through value, returning null when a step does not resolve.
 pub fn resolve_path(value Any, steps []PathStep) Any {
+	return resolve_path_opt(value, steps) or { null }
+}
+
+// The traversal borrows containers from the document; autofree must not release them.
+@[manualfree]
+fn resolve_path_opt(value Any, steps []PathStep) ?Any {
 	mut current := value
 	for step in steps {
 		if step.is_index() {
-			items := match current {
-				[]Any { current }
-				else { return null }
+			if current is []Any {
+				if step.index >= current.len {
+					return none
+				}
+				current = current[step.index]
+				continue
 			}
-			if step.index >= items.len {
-				return null
-			}
-			current = items[step.index]
-			continue
+			return none
 		}
-		obj := match current {
-			map[string]Any { current }
-			else { return null }
+		if current is map[string]Any {
+			current = current[step.key] or { return none }
+		} else {
+			return none
 		}
-		current = obj[step.key] or { return null }
 	}
 	return current
 }
 
 // reflect_into fills the fields of `mut out` from `value`, skipping any key it
 // cannot decode.
-fn reflect_into[T](value Any, mut out T) {
+@[manualfree]
+fn reflect_into[T](value Any, mut out T, params DecoderOptions) {
 	$if T is $struct {
 		obj := match value {
 			map[string]Any { value }
@@ -210,8 +211,8 @@ fn reflect_into[T](value Any, mut out T) {
 			if key != '' {
 				$if field.is_embed {
 					$if field.unaliased_typ is $struct {
-						mut embedded := $zero(field.typ)
-						reflect_into(value, mut embedded)
+						mut embedded := out.$(field.name)
+						reflect_into(value, mut embedded, params)
 						out.$(field.name) = embedded
 					}
 				} $else {
@@ -219,8 +220,8 @@ fn reflect_into[T](value Any, mut out T) {
 					// hold leaves the field at its default.
 					if item := obj[key] {
 						if item !is Null {
-							mut slot := $zero(field.typ)
-							decode_into(item, mut slot) or { return }
+							mut slot := out.$(field.name)
+							reflect_value(item, mut slot, params)
 							out.$(field.name) = slot
 						}
 					}
@@ -228,36 +229,18 @@ fn reflect_into[T](value Any, mut out T) {
 			}
 		}
 	} $else {
-		decode_into(value, mut out) or { return }
+		reflect_value(value, mut out, params)
 	}
 }
 
-// field_key_name returns the document key a field is read from, honouring
-// `@[json5: 'name']` and returning an empty string for `@[skip]`.
-//
-// Unlike `toml`, the returned name is the bare key: the attribute value keeps
-// its quotes (`'count'`), which are stripped here because lookups go straight
-// into the member map rather than through the dotted-path parser.
+@[manualfree]
+fn reflect_value[T](value Any, mut out T, params DecoderOptions) {
+	if decoded := decode_any[T](value, params) {
+		out = decoded
+	}
+}
+
 fn field_key_name(name string, attrs []string) string {
-	for attr in attrs {
-		if attr == 'skip' {
-			return ''
-		}
-		if attr.starts_with('json5:') {
-			return unquote(attr.all_after(':').trim_space())
-		}
-	}
-	return name
-}
-
-// unquote removes one layer of matching quotes from `text`.
-fn unquote(text string) string {
-	if text.len >= 2 {
-		first := text[0]
-		last := text[text.len - 1]
-		if (first == `'` || first == `"`) && first == last {
-			return text[1..text.len - 1]
-		}
-	}
-	return text
+	info := encoder_field_info(name, attrs)
+	return if info.is_skip { '' } else { info.key_name }
 }

@@ -1,5 +1,7 @@
 module jsonc
 
+import json2
+
 // accepted asserts that `text` parses as JSONC.
 fn accepted(text string) {
 	parse_text(text) or {
@@ -84,10 +86,25 @@ fn test_lex_rejects_escaped_line_break() {
 }
 
 fn test_lex_rejects_raw_control_character() {
-	assert rejected('{"a": "x\ny"}').contains('control character')
+	// The rune pass reports controls; the JSON5 scanner owns raw line terminators.
+	assert first_violation('{"a": "x\ny"}').contains('control character')
 	assert rejected('{"a": "x\ty"}').contains('control character')
 	// A tab inside a string is a control character, unlike a tab between tokens.
 	assert first_violation('{\t"a": 1}') == ''
+}
+
+fn test_lex_positions_after_all_json5_line_terminators() {
+	for separator in ['\n', '\r', '\r\n', '\u2028', '\u2029'] {
+		text := '/* heading' + separator + separator + ' */{"a":"\\v"}'
+		v := lex_violation(text)
+		start := text.index('\\v') or { panic('missing escape') }
+		assert v.message.contains('not a valid JSONC escape')
+		assert v.pos.line == 3
+		assert v.pos.col == 10
+		assert v.pos.offset == start
+		assert v.pos.end_offset == start + 2
+		assert text[v.pos.offset..v.pos.end_offset] == '\\v'
+	}
 }
 
 fn test_lex_ignores_comment_contents() {
@@ -129,8 +146,9 @@ fn test_lex_rejects_json5_only_whitespace() {
 	// The shared scanner skips all of these as trivia, so the token pass never
 	// sees them and the raw walk is the only place they can be caught. Vertical
 	// tab and form feed are the ASCII pair and U+00A0 is named in the shared
-	// `is_whitespace`; the rest are Unicode spaces above U+2000.
-	for code in [0x0B, 0x0C, 0xA0, 0x2028, 0x2029, 0x202F, 0x205F] {
+	// `is_whitespace`; the rest are Unicode space separators and line terminators.
+	for code in [0x0B, 0x0C, 0xA0, 0x1680, 0x2000, 0x2001, 0x200A, 0x2028, 0x2029, 0x202F, 0x205F,
+		0x3000] {
 		assert first_violation('{"a"' + ch(code) + ': 1}').contains('not whitespace between JSON tokens')
 	}
 }
@@ -181,6 +199,47 @@ fn test_strip_comments_preserves_byte_offsets() {
 	assert parse_text(out) or { panic(err) }.str() == '{"a":1,"b":2}'
 }
 
+fn test_strip_comments_preserves_all_line_terminator_bytes() {
+	for separator in ['\n', '\r', '\r\n', '\u2028', '\u2029'] {
+		prefix := '/* é🎼'
+		text := prefix + separator + ' note' + separator + '*/{"a":1}'
+		expected := ' '.repeat(prefix.len) + separator + ' '.repeat(5) + separator +
+			'  {"a":1}'
+		assert strip_comments(text) == expected
+		assert strip_comments(text).len == text.len
+		// Unterminated comments retain line boundaries through the end of input.
+		unterminated := prefix + separator + ' tail'
+		assert strip_comments(unterminated) == ' '.repeat(prefix.len) + separator + ' '.repeat(5)
+	}
+}
+
+fn stripped_comment_decode_error_location(text string) (int, int) {
+	json2.decode[map[string]int](text, json5: true, strict: true) or {
+		assert err is json2.JsonDecodeError
+		decode_error := err as json2.JsonDecodeError
+		return decode_error.line, decode_error.character
+	}
+	assert false, 'expected a typed decoding error'
+	return 0, 0
+}
+
+fn test_strip_comments_keeps_following_decode_error_positions() {
+	for separator in ['\n', '\r', '\r\n', '\u2028', '\u2029'] {
+		text := '\uFEFF/* heading' + separator + separator + ' */{"clé":false}'
+		stripped := strip_comments(text)
+		assert stripped.len == text.len
+		original_offset := text.index('false') or { panic('missing value') }
+		stripped_offset := stripped.index('false') or { panic('missing value') }
+		assert stripped_offset == original_offset
+		line, column := stripped_comment_decode_error_location(text)
+		stripped_line, stripped_column := stripped_comment_decode_error_location(stripped)
+		assert line == 3
+		assert column == 11
+		assert stripped_line == line
+		assert stripped_column == column
+	}
+}
+
 fn test_strip_comments_leaves_strings_alone() {
 	assert strip_comments('{"u": "http://a//b"}') == '{"u": "http://a//b"}'
 	assert strip_comments('{"a": "/* not */"}') == '{"a": "/* not */"}'
@@ -196,6 +255,10 @@ fn test_strip_comments_handles_unterminated_block_comment() {
 	assert !out.contains('e')
 	assert !out.contains('s')
 	assert !out.contains('t')
+	for suffix in [[u8(0xe2)], [u8(0xe2), 0x80]] {
+		text := '/* tail' + suffix.bytestr()
+		assert strip_comments(text) == ' '.repeat(text.len)
+	}
 }
 
 fn test_strip_comments_handles_bom() {
