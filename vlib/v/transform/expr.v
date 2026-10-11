@@ -4350,8 +4350,9 @@ fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
 	if t.is_ordering_snapshot_temp(id) {
 		return id
 	}
-	pointer_type := t.lvalue_type(id)
-	source := t.a.nodes[int(id)]
+	source_id := t.unwrap_parens(id)
+	pointer_type := t.lvalue_type(source_id)
+	source := t.a.nodes[int(source_id)]
 	borrowed_pointer_value := source.kind == .ident && t.pointer_value_rvalues[source.value]
 		&& !t.mut_param_values[source.value] && pointer_type.starts_with('&&')
 	preserve_pointer_value := pointer_type.starts_with('&')

@@ -21327,12 +21327,14 @@ fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node fl
 // struct parameter borrows its pointee. Preserve the slot only for the former.
 fn (mut t Transformer) snapshot_mut_pointer_slot_arg(id flat.NodeId, node flat.Node, child_index int) ?flat.NodeId {
 	arg_id := t.a.child(&node, child_index)
-	arg := t.a.nodes[int(arg_id)]
-	if !arg.is_mut || arg.kind != .ident || !t.pointer_value_rvalues[arg.value]
+	binding_id := t.unwrap_parens(arg_id)
+	arg := t.a.nodes[int(binding_id)]
+	if (!t.a.nodes[int(arg_id)].is_mut && !arg.is_mut)
+		|| arg.kind != .ident || !t.pointer_value_rvalues[arg.value]
 		|| t.mut_param_values[arg.value] {
 		return none
 	}
-	storage_type := t.lvalue_type(arg_id)
+	storage_type := t.lvalue_type(binding_id)
 	if !storage_type.starts_with('&&') {
 		return none
 	}
@@ -21341,7 +21343,7 @@ fn (mut t Transformer) snapshot_mut_pointer_slot_arg(id flat.NodeId, node flat.N
 	if param_type != t.normalize_type_alias(storage_type) {
 		return none
 	}
-	storage := t.transform_expr_preserving_pointer_value(arg_id)
+	storage := t.transform_expr_preserving_pointer_value(binding_id)
 	return t.snapshot_transformed_expr_for_reuse(storage, storage_type, 'order_snapshot')
 }
 
