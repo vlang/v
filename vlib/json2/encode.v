@@ -7,9 +7,15 @@ import sync.stdatomic
 @[params]
 pub struct EncoderOptions {
 pub:
-	prettify       bool
-	indent_string  string = '    '
-	newline_string string = '\n'
+	// json5 permits JSON5 output, including Infinity and NaN.
+	json5 bool
+	// These formatting options apply only when json5 is true.
+	single_quotes   bool
+	unquoted_keys   bool
+	trailing_commas bool
+	prettify        bool
+	indent_string   string = '    '
+	newline_string  string = '\n'
 
 	enum_as_int bool
 
@@ -32,7 +38,7 @@ mut:
 	output []u8 = []u8{cap: 2048}
 }
 
-// encode is a generic function that encodes a type into a JSON string.
+// encode encodes a value as JSON, or JSON5 with `json5: true`.
 pub fn encode[T](val T, config EncoderOptions) string {
 	mut encoder := Encoder{
 		EncoderOptions: config
@@ -112,8 +118,8 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		}
 	} $else $if T.unaliased_typ is $array_fixed {
 		encoder.output << `[`
-		// Only the legacy layout spreads a fixed size array like a dynamic one.
-		spread := encoder.prettify && encoder.legacy_layout
+		// JSON5 and the legacy layout spread fixed size arrays like dynamic arrays.
+		spread := encoder.prettify && (encoder.legacy_layout || encoder.json5)
 		if spread {
 			encoder.open_items(val.len, true)
 		}
@@ -127,7 +133,7 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 			}
 			encoder.encode_value(val[i])
 		}
-		if spread {
+		if spread || encoder.json5 {
 			encoder.close_items(val.len, true)
 		}
 		encoder.output << `]`
@@ -213,6 +219,10 @@ fn next_string_escape(val string, start int, escape_unicode bool) int {
 }
 
 fn (mut encoder Encoder) encode_string(val string) {
+	if encoder.json5 && encoder.single_quotes {
+		encoder.encode_json5_string(val)
+		return
+	}
 	encoder.output << `"`
 	mut buffer_start := 0
 	mut buffer_end := 0
@@ -410,8 +420,18 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 	$if T is $float {
 		// JSON has no NaN or infinity, which V formats as `nan`, `+inf` and `-inf`.
 		if integer_val == 'nan' || integer_val.ends_with('inf') {
-			encoder.encode_null()
-			return
+			if encoder.json5 {
+				integer_val = if integer_val == 'nan' {
+					'NaN'
+				} else if integer_val.starts_with('-') {
+					'-Infinity'
+				} else {
+					'Infinity'
+				}
+			} else {
+				encoder.encode_null()
+				return
+			}
 		}
 		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
 			&& integer_val[integer_val.len - 1] == `0` { // ends in .0
@@ -477,7 +497,7 @@ fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 		if i > 0 {
 			encoder.separate_items(false)
 		}
-		encoder.encode_string(entry.name)
+		encoder.encode_key(entry.name)
 		encoder.write_key_separator()
 		encoder.encode_value[T](val[entry.key])
 	}
@@ -597,7 +617,7 @@ fn (mut encoder Encoder) encode_object_key(is_first bool, key string) bool {
 	if encoder.prettify {
 		encoder.add_indent()
 	}
-	encoder.encode_string(key)
+	encoder.encode_key(key)
 	encoder.write_key_separator()
 	return false
 }
@@ -636,8 +656,8 @@ fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
 // variant, laid out like `encode_value` lays out other fixed size arrays.
 fn (mut encoder Encoder) encode_fixed_array_of_sumtype_variants[A](val A) {
 	encoder.output << `[`
-	// Only the legacy layout spreads a fixed size array like a dynamic one.
-	spread := encoder.prettify && encoder.legacy_layout
+	// JSON5 and the legacy layout spread fixed size arrays like dynamic arrays.
+	spread := encoder.prettify && (encoder.legacy_layout || encoder.json5)
 	if spread {
 		encoder.open_items(val.len, true)
 	}
@@ -651,7 +671,7 @@ fn (mut encoder Encoder) encode_fixed_array_of_sumtype_variants[A](val A) {
 		}
 		encoder.encode_sumtype_array_item(val[i])
 	}
-	if spread {
+	if spread || encoder.json5 {
 		encoder.close_items(val.len, true)
 	}
 	encoder.output << `]`
@@ -910,7 +930,7 @@ fn struct_field_should_encode[T](field_info EncoderFieldInfo, val T) bool {
 // encode_cached_struct_key copies ordinary compact keys from immutable metadata.
 // Pretty layouts and keys requiring escaping use the existing encoder.
 fn (mut encoder Encoder) encode_cached_struct_key(is_first bool, field_info EncoderFieldInfo) bool {
-	if !encoder.prettify && field_info.compact_key.len > 0 {
+	if !encoder.prettify && !encoder.json5 && field_info.compact_key.len > 0 {
 		start := if is_first { 1 } else { 0 }
 		// The cached string always contains a comma, quotes, the key, and a colon.
 		unsafe {
@@ -1136,6 +1156,9 @@ fn (mut encoder Encoder) separate_items(is_array bool) {
 // close_items ends the members or elements started by open_items, before the `}`
 // or `]`.
 fn (mut encoder Encoder) close_items(count int, is_array bool) {
+	if encoder.json5 && encoder.trailing_commas && count > 0 {
+		encoder.output << `,`
+	}
 	if !encoder.prettify {
 		return
 	}

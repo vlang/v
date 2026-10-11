@@ -37,6 +37,80 @@
 
 `json2` is an experimental JSON parser written from scratch on V.
 
+## JSON5
+
+Set `json5: true` on the existing encoding or decoding options to use JSON5:
+
+```v
+import json2
+
+struct Config {
+	name string @[json: 'displayName']
+	port int = 8080
+}
+
+fn main() {
+	cfg := json2.decode[Config]("{displayName: 'V', port: 0x1F90,}", json5: true)!
+	text := json2.encode(cfg,
+		json5:           true
+		single_quotes:   true
+		unquoted_keys:   true
+		trailing_commas: true
+		prettify:        true
+		indent_string:   '  '
+	)
+	println(text)
+}
+```
+
+JSON5 decoding accepts comments, bare object keys, single quotes, trailing commas,
+hexadecimal numbers, leading `+`, leading or trailing decimal points, `Infinity`
+and `NaN`. Strings support JSON5 escapes and escaped line continuations, including
+UTF-16 surrogate pairs. Malformed escapes return a `JsonScanError` with a line and column.
+
+`single_quotes`, `unquoted_keys` and `trailing_commas` only affect encoding when
+`json5: true`. Otherwise the existing JSON output is unchanged. Bare keys are used
+only for valid identifiers; other keys are quoted and escaped. `prettify`,
+`indent_string`, `newline_string`, `escape_unicode` and the other encoding options
+work in either dialect. Trailing commas also work in compact output.
+
+JSON5 encodes non-finite floats as `Infinity`, `-Infinity` and `NaN`; ordinary JSON
+continues to encode them as `null`. Typed integer decoding preserves 64-bit values,
+including hexadecimal integers. Dynamic `Any` values use json2's existing native
+numeric types, so re-encoding normalizes number spelling and its default `f64`
+numbers have the usual floating-point precision limits.
+
+`strict: true` controls type conversion independently of `json5`: it still rejects
+quoted numbers, non-optional `null` values and fixed arrays of the wrong length.
+`encode_append` and `decode_reuse` accept the same JSON5 options as `encode` and `decode`.
+
+### Migrating from x.json5
+
+The `x.json5` module has been removed. Import `json2` and add `json5: true` to
+`encode`, `decode`, `parse`, `parse_text`, `parse_file` and `decode_file` calls.
+Replace `encode_with_opts` with `encode` and use `EncoderOptions`: `indent` becomes
+`prettify: true, indent_string: ...`. Replace `@[json5: 'name']` with `@[json: 'name']`.
+
+Use `to_json` for custom encoding and `from_json_string`, `from_json_number`,
+`from_json_boolean` or `from_json_null` for scalar decoding. A `from_json(value Any)`
+method decodes a whole value. Number hooks receive the original JSON5 literal,
+including hexadecimal spelling. String hooks follow json2's convention: escaped
+JSON string content without its quotes. Custom encoders return text verbatim.
+For JSON5, `@[raw]` fields contain normalized text: comments and trailing commas
+are removed, keys and strings use JSON quoting, and number literals retain their spelling.
+
+`parse` returns `json2.Any`; use `str()` and `as_array()` instead of `string()` and
+`array()`. `parse_text` returns a `Doc` with `value`, `value_opt`, `get`, `decode` and
+`reflect`. `get` distinguishes missing paths (`none`) from explicit `null` values.
+`decode_any` converts a dynamic tree with the same options as `decode`.
+`Doc.decode` keeps the options used to parse the document. `Doc.reflect` leaves
+missing or incompatible fields at their defaults.
+
+Use `encode(text)` instead of `quote_string(text)`. To reindent a document, decode
+or parse it and call `encode(value, prettify: true, indent_string: '  ')`.
+For iterative JSON5 scanning, use `new_json5_scanner`; its tokens are `Json5Token`
+with `Json5TokenKind` and `Json5Pos` source positions.
+
 ## Usage
 
 #### encode_append[T]

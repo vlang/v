@@ -76,10 +76,13 @@ struct StructKeyDecodeResult[T] {
 }
 
 // DecoderOptions provides options for JSON decoding.
-// By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
+// By default, decoding is lenient. Use `strict: true` for strict type conversion
+// and `json5: true` to accept JSON5 syntax.
 @[markused; params]
 pub struct DecoderOptions {
 pub:
+	// json5 accepts JSON5 comments, keys, strings, trailing commas and numbers.
+	json5 bool
 	// In strict mode, quoted strings are not accepted as numbers.
 	// For example, '"123"' will fail to decode as int in strict mode,
 	// but will succeed in default mode.
@@ -107,7 +110,8 @@ mut:
 @[markused]
 struct Decoder {
 	json   string // json is the JSON data to be decoded.
-	strict bool   // strict mode rejects quoted strings as numbers, fixed arrays of another length, and null values
+	json5  bool
+	strict bool // strict mode rejects quoted strings as numbers, fixed arrays of another length, and null values
 mut:
 	// Scratch result of check_string, copied to the corresponding ValueInfo.
 	string_has_escape bool
@@ -386,9 +390,17 @@ fn (mut decoder Decoder) decode_error(message string) ! {
 }
 
 // decode decodes a JSON string into a specified type.
-// By default, decoding is lenient. Use `strict: true` for strict JSON spec compliance.
+// By default, decoding is lenient. Use `strict: true` for strict type conversion
+// and `json5: true` to accept JSON5 syntax.
 @[manualfree]
 pub fn decode[T](val string, params DecoderOptions) !T {
+	if params.json5 {
+		mut buffer := DecodeBuffer{}
+		defer {
+			unsafe { buffer.values_info.free() }
+		}
+		return decode_json5[T](val, mut buffer, params)
+	}
 	if val == '' {
 		return JsonDecodeError{
 			message:   'empty string'
@@ -417,6 +429,9 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 // including after an error. The caller must provide exclusive access to buffer.
 @[manualfree]
 pub fn decode_reuse[T](val string, mut buffer DecodeBuffer, params DecoderOptions) !T {
+	if params.json5 {
+		return decode_json5[T](val, mut buffer, params)
+	}
 	if val == '' {
 		return JsonDecodeError{
 			message:   'empty string'
@@ -1006,6 +1021,12 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		return
 	} $else {
 		// Custom Decoders
+		$if val is ValueDecoder {
+			mut value := Any(null)
+			decoder.decode_sumtype(mut value)!
+			val.from_json(value)
+			return
+		}
 		$if val is StringDecoder {
 			struct_info := decoder.current_value()
 
@@ -1833,7 +1854,14 @@ fn parse_float_number[T](str string) !T {
 fn (mut decoder Decoder) decode_number[T](val &T) ! {
 	_ = val
 	number_info := decoder.current_value()
-	str := decoder.json[number_info.position..number_info.position + number_info.length]
+	raw := decoder.json[number_info.position..number_info.position + number_info.length]
+	$if T.unaliased_typ is $float {
+		if decoder.json5 {
+			*val = T(parse_json5_float(raw)!)
+			return
+		}
+	}
+	str := if decoder.json5 { normalize_json5_number(raw)! } else { raw }
 	$match T.unaliased_typ {
 		i8 { *val = parse_integer_number[T](str)! }
 		i16 { *val = parse_integer_number[T](str)! }

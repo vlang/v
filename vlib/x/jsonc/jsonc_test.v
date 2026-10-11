@@ -1,6 +1,7 @@
 module jsonc
 
 import os
+import json2
 
 struct Server {
 	host string
@@ -51,7 +52,7 @@ fn test_is_valid_opts_honours_trailing_comma() {
 fn test_parse_text_returns_a_document() {
 	doc := parse_text('{"name": "srv", "port": 1}') or { panic(err) }
 	assert doc.str() == '{"name":"srv","port":1}'
-	assert doc.value('name').string() == 'srv'
+	assert doc.value('name').str() == 'srv'
 }
 
 fn test_parse_text_supports_path_lookup() {
@@ -66,12 +67,12 @@ fn test_parse_text_accepts_comments() {
 	"host": "localhost"
 }') or { panic(err) }
 	assert doc.value('port').int() == 8080
-	assert doc.value('host').string() == 'localhost'
+	assert doc.value('host').str() == 'localhost'
 }
 
 fn test_parse_returns_the_root_value() {
 	value := parse('{"a": [1, 2]}') or { panic(err) }
-	assert value.as_map()['a'] or { panic('no a') }.array().len == 2
+	assert value.as_map()['a'] or { panic('no a') }.as_array().len == 2
 }
 
 fn test_parse_opts_accepts_trailing_comma() {
@@ -79,7 +80,7 @@ fn test_parse_opts_accepts_trailing_comma() {
 		allow_trailing_comma: true
 	}
 	value := parse_opts('{"a": [1, 2,],}', opts) or { panic(err) }
-	assert value.as_map()['a'] or { panic('no a') }.array().len == 2
+	assert value.as_map()['a'] or { panic('no a') }.as_array().len == 2
 }
 
 fn test_decode_reads_a_struct_through_comments() {
@@ -122,16 +123,16 @@ fn test_decode_any_converts_a_parsed_tree() {
 	assert server.port == 1
 }
 
-fn test_errors_from_the_decoder_carry_the_json5_prefix() {
-	// The decoder belongs to x.json5 and its type errors are returned unchanged,
-	// so a value that does not fit is reported as `json5:` while a dialect
-	// violation is reported as `jsonc:`.
-	server := decode[Server]('{"port": "abc"}') or {
-		assert err.msg().contains('json5:')
-		assert err.msg().contains('integer')
+fn test_errors_from_the_decoder_come_from_json2() {
+	text := '{"port": "abc"}'
+	mut expected := ''
+	json2.decode[Server](text) or { expected = err.msg() }
+	assert expected != ''
+	decode[Server](text) or {
+		assert err.msg() == expected
 		return
 	}
-	assert false, 'expected a type error, got ${server.port}'
+	assert false, 'expected a type error'
 }
 
 // ch returns `code` as a one-character string, so a test can name a code point
@@ -342,7 +343,7 @@ fn test_strip_comments_output_parses() {
 	stripped := strip_comments(text)
 	assert stripped.len == text.len
 	value := parse(stripped) or { panic(err) }
-	assert value.as_map()['host'] or { panic('no host') }.string() == 'h'
+	assert value.as_map()['host'] or { panic('no host') }.str() == 'h'
 }
 
 fn test_parse_file_and_decode_file() {
@@ -356,7 +357,7 @@ fn test_parse_file_and_decode_file() {
 		os.rm(path) or { panic(err) }
 	}
 	doc := parse_file(path) or { panic(err) }
-	assert doc.value('host').string() == 'from-disk'
+	assert doc.value('host').str() == 'from-disk'
 	server := decode_file[Server](path) or { panic(err) }
 	assert server.port == 3
 }
@@ -376,4 +377,9 @@ fn test_parse_error_reports_a_dialect_violation() {
 		return
 	}
 	assert false, 'expected an unquoted key to be rejected'
+}
+
+fn test_decode_preserves_64_bit_integer_precision() {
+	assert decode[u64]('18446744073709551615')! == u64(18446744073709551615)
+	assert decode[i64]('9007199254740993')! == i64(9007199254740993)
 }

@@ -64,12 +64,12 @@ fn main() {
 
 ## Decode into V types
 `decode` reads a document into a struct. The rules are the ones
-[`x.json5`](https://github.com/vlang/v/tree/master/vlib/x/json5) uses, because
+[`json2`](https://github.com/vlang/v/tree/master/vlib/json2) uses, because
 the same decoder does the work: structs with embedded structs flattened into the
 parent, enums by name or by value, `map[string]T`, arrays, options, and every
 scalar width.
 
-A field is matched by name, or by an `@[json5: 'name']` attribute when the
+A field is matched by name, or by an `@[json: 'name']` attribute when the
 document spells it differently, which is the usual case for a camelCase config
 key. A missing key leaves the field at its default, and an explicit `null` clears
 an option field.
@@ -78,12 +78,12 @@ an option field.
 import x.jsonc
 
 struct CompilerOptions {
-	out_dir string @[json5: 'outDir']
+	out_dir string @[json: 'outDir']
 	strict  bool
 }
 
 struct TsConfig {
-	compiler_opts CompilerOptions @[json5: 'compilerOptions']
+	compiler_opts CompilerOptions @[json: 'compilerOptions']
 	include       []string
 }
 
@@ -99,7 +99,9 @@ fn main() {
 ```
 
 `decode_file` reads the document from disk, and `decode_any` converts a tree
-that was parsed already.
+that was parsed already. Typed decoding preserves 64-bit integers; dynamic trees
+use `json2.Any`, whose default numeric variant is `f64` and has floating-point
+precision limits. Use `str()` and `as_array()` to read strings and arrays.
 
 The dialect is checked before the decoder runs, so a document with a JSON5-only
 construct is refused even when the target struct has a field for it.
@@ -166,8 +168,8 @@ fn main() {
 ```
 
 Use it when the comments have to go before the text reaches something that only
-speaks strict JSON. Note that `vlib/json2` rejects comments outright, so a
-JSONC document has to be stripped before it is handed to it.
+speaks strict JSON. `json2` rejects comments by default; pass `json5: true` to
+accept comments, or strip them first when JSON5 syntax should remain disabled.
 
 ## What is accepted and what is refused
 Accepted, because they are JSONC:
@@ -212,18 +214,17 @@ characters remain legal inside a comment, which is opaque, and inside a string,
 where the string rules decide.
 
 ## Errors
-Two kinds of problem are reported, and they are told apart by their prefix.
+Dialect violations and malformed input use different error types.
 
 A `ParseError`, prefixed `jsonc:`, is well formed JSON5 that is not valid JSONC.
 It is the `ParseError` above, with a position.
 
 Anything else is malformed input, and the error comes from the JSON5 parser
-unchanged, prefixed `json5:`. That happens before the dialect is considered, so
+as a `json2.JsonScanError`. That happens before the dialect is considered, so
 a syntax error is never reported as a dialect problem.
 
-Decoding errors are the JSON5 decoder's own, also prefixed `json5:`: they are
-about the shape of a value rather than the dialect, and the decoder is shared
-with `x.json5` rather than duplicated here.
+Decoding errors come from `json2` and describe the value that does not fit the target type.
+The decoder is shared with JSON and JSON5.
 
 ## Examples
 See the [examples](examples/) directory for a complete runnable program.

@@ -1,21 +1,21 @@
-module json5
+module json2
 
 fn test_scan_bom_is_skipped() {
-	mut s := new_scanner('\uFEFF{ a: 1 }')
+	mut s := new_json5_scanner('\uFEFF{ a: 1 }')
 	tok := s.next()!
 	assert tok.kind == .lcbr
 }
 
 fn test_scan_punctuation() {
-	mut s := new_scanner('{}[]:,')
-	expected := [TokenKind.lcbr, .rcbr, .lsbr, .rsbr, .colon, .comma, .eof]
+	mut s := new_json5_scanner('{}[]:,')
+	expected := [Json5TokenKind.lcbr, .rcbr, .lsbr, .rsbr, .colon, .comma, .eof]
 	for kind in expected {
 		assert s.next()!.kind == kind
 	}
 }
 
 fn test_scan_keywords() {
-	mut s := new_scanner('true false null Infinity NaN')
+	mut s := new_json5_scanner('true false null Infinity NaN')
 	assert s.next()!.kind == .bool
 	assert s.next()!.kind == .bool
 	assert s.next()!.kind == .null
@@ -25,21 +25,21 @@ fn test_scan_keywords() {
 }
 
 fn test_scan_bare_ident() {
-	mut s := new_scanner('someKey $_x key9')
+	mut s := new_json5_scanner('someKey $_x key9')
 	assert s.next()!.kind == .ident
 	assert s.next()!.lit == '$_x'
 	assert s.next()!.lit == 'key9'
 }
 
 fn test_scan_unicode_ident() {
-	mut s := new_scanner('ключ')
+	mut s := new_json5_scanner('ключ')
 	tok := s.next()!
 	assert tok.kind == .ident
 	assert tok.lit == 'ключ'
 }
 
 fn test_scan_line_comment() {
-	mut s := new_scanner('// skip me\n42')
+	mut s := new_json5_scanner('// skip me\n42')
 	tok := s.next()!
 	assert tok.kind == .number
 	assert tok.lit == '42'
@@ -47,16 +47,16 @@ fn test_scan_line_comment() {
 }
 
 fn test_scan_block_comment() {
-	mut s := new_scanner('/* a\nb */ 7')
+	mut s := new_json5_scanner('/* a\nb */ 7')
 	tok := s.next()!
 	assert tok.lit == '7'
 	assert tok.pos.line == 2
 }
 
 fn test_scan_unterminated_block_comment() {
-	mut s := new_scanner('/* never closed')
+	mut s := new_json5_scanner('/* never closed')
 	s.next() or {
-		assert err is ParseError
+		assert err is JsonScanError
 		assert err.msg().contains('unterminated block comment')
 		return
 	}
@@ -64,7 +64,7 @@ fn test_scan_unterminated_block_comment() {
 }
 
 fn test_scan_single_quoted_string() {
-	mut s := new_scanner("'it\\'s'")
+	mut s := new_json5_scanner("'it\\'s'")
 	assert s.next()!.lit == "it's"
 }
 
@@ -88,7 +88,7 @@ fn test_scan_escape_sequences() {
 		'\\q':        'q'
 	}
 	for escape, expected in cases {
-		mut s := new_scanner('"' + escape + '"')
+		mut s := new_json5_scanner('"' + escape + '"')
 		tok := s.next()!
 		assert tok.kind == .str, 'escape ${escape}: got kind ${tok.kind}'
 		assert tok.lit == expected, 'escape ${escape}: got `${tok.lit}`'
@@ -96,12 +96,12 @@ fn test_scan_escape_sequences() {
 }
 
 fn test_scan_line_continuation() {
-	mut s := new_scanner('"a\\\nb"')
+	mut s := new_json5_scanner('"a\\\nb"')
 	assert s.next()!.lit == 'ab'
 }
 
 fn test_scan_unterminated_string() {
-	mut s := new_scanner('"abc')
+	mut s := new_json5_scanner('"abc')
 	s.next() or {
 		assert err.msg().contains('unterminated string')
 		return
@@ -113,7 +113,7 @@ fn test_scan_numbers() {
 	cases := ['0', '-1', '+1', '.5', '5.', '1.5', '1e3', '1E+3', '1e-3', '0x1f', '0XFF', '0xAB',
 		'0XCD', '+0xAD', '-0xBC']
 	for source in cases {
-		mut s := new_scanner(source)
+		mut s := new_json5_scanner(source)
 		tok := s.next()!
 		assert tok.kind == .number, 'source ${source} scanned as ${tok.kind}'
 		assert tok.lit == source
@@ -121,19 +121,19 @@ fn test_scan_numbers() {
 }
 
 fn test_scan_leading_zero_is_allowed() {
-	mut s := new_scanner('007')
+	mut s := new_json5_scanner('007')
 	assert s.next()!.lit == '007'
 }
 
 fn test_scan_signed_infinity() {
-	mut s := new_scanner('-Infinity')
+	mut s := new_json5_scanner('-Infinity')
 	tok := s.next()!
 	assert tok.kind == .infinity
 	assert tok.lit == '-Infinity'
 }
 
 fn test_scan_hex_without_digits() {
-	mut s := new_scanner('0x')
+	mut s := new_json5_scanner('0x')
 	s.next() or {
 		assert err.msg().contains('hexadecimal literal has no digits')
 		return
@@ -142,7 +142,7 @@ fn test_scan_hex_without_digits() {
 }
 
 fn test_scan_number_without_digits() {
-	mut s := new_scanner('-')
+	mut s := new_json5_scanner('-')
 	s.next() or {
 		assert err.msg().contains('number has no digits')
 		return
@@ -151,7 +151,7 @@ fn test_scan_number_without_digits() {
 }
 
 fn test_scan_exponent_without_digits() {
-	mut s := new_scanner('1e')
+	mut s := new_json5_scanner('1e')
 	s.next() or {
 		assert err.msg().contains('exponent has no digits')
 		return
@@ -160,9 +160,9 @@ fn test_scan_exponent_without_digits() {
 }
 
 fn test_scan_unexpected_token() {
-	mut s := new_scanner('@')
+	mut s := new_json5_scanner('@')
 	s.next() or {
-		assert err is ParseError
+		assert err is JsonScanError
 		return
 	}
 	assert false, 'expected an unexpected token error'
@@ -171,6 +171,6 @@ fn test_scan_unexpected_token() {
 fn test_scan_unicode_whitespace() {
 	// A no-break space and a zero-width no-break space (BOM) are JSON5
 	// whitespace, and both may appear between tokens.
-	mut s := new_scanner('\u00A0\uFEFF 1')
+	mut s := new_json5_scanner('\u00A0\uFEFF 1')
 	assert s.next()!.lit == '1'
 }

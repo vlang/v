@@ -1,7 +1,7 @@
 // Copyright (c) 2026 The V Language. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-module json5
+module json2
 
 import encoding.utf8
 
@@ -60,8 +60,8 @@ const r_line_sep = 0x2028
 const r_para_sep = 0x2029
 const r_bom = 0xFEFF
 
-// TokenKind identifies the kind of a JSON5 token.
-pub enum TokenKind {
+// Json5TokenKind identifies the kind of a JSON5 token.
+pub enum Json5TokenKind {
 	none
 	error
 	comment
@@ -81,24 +81,24 @@ pub enum TokenKind {
 	eof
 }
 
-// Pos is a location inside the scanned text.
-pub struct Pos {
+// Json5Pos is a location inside the scanned text.
+pub struct Json5Pos {
 pub:
 	line int
 	col  int
 }
 
-// Token is a single lexical unit produced by the Scanner.
-pub struct Token {
+// Json5Token is a single lexical unit produced by the Json5Scanner.
+pub struct Json5Token {
 pub:
-	kind TokenKind
+	kind Json5TokenKind
 	lit  string // decoded value for strings, raw source text otherwise
-	pos  Pos
+	pos  Json5Pos
 }
 
-// Scanner tokenizes JSON5 text. Whitespace and comments are treated as trivia
+// Json5Scanner tokenizes JSON5 text. Whitespace and comments are treated as trivia
 // and skipped; every other token is reported to the caller.
-pub struct Scanner {
+pub struct Json5Scanner {
 pub:
 	text []rune
 mut:
@@ -107,19 +107,19 @@ mut:
 	col  int = 1
 }
 
-// new_scanner creates a Scanner over `text`, dropping a leading byte order mark.
-pub fn new_scanner(text string) &Scanner {
+// new_json5_scanner creates a Json5Scanner over `text`, dropping a leading byte order mark.
+pub fn new_json5_scanner(text string) &Json5Scanner {
 	mut runes := text.runes()
 	if runes.len > 0 && int(runes[0]) == r_bom {
-		runes = runes[1..]
+		runes.delete(0)
 	}
-	return &Scanner{
+	return &Json5Scanner{
 		text: runes
 	}
 }
 
 // peek returns the rune `offset` positions ahead, or -1 at the end of the input.
-fn (s &Scanner) peek(offset int) rune {
+fn (s &Json5Scanner) peek(offset int) rune {
 	i := s.pos + offset
 	if i < 0 || i >= s.text.len {
 		return -1
@@ -129,13 +129,13 @@ fn (s &Scanner) peek(offset int) rune {
 
 // peek_code returns the code point `offset` positions ahead, or -1 at the end of
 // the input.
-fn (s &Scanner) peek_code(offset int) int {
+fn (s &Json5Scanner) peek_code(offset int) int {
 	r := s.peek(offset)
 	return if r == -1 { -1 } else { int(r) }
 }
 
 // advance consumes the current rune and keeps the line/column counters in sync.
-fn (mut s Scanner) advance() rune {
+fn (mut s Json5Scanner) advance() rune {
 	if s.pos >= s.text.len {
 		return -1
 	}
@@ -151,26 +151,26 @@ fn (mut s Scanner) advance() rune {
 }
 
 // position returns the current position.
-fn (s &Scanner) position() Pos {
-	return Pos{
+fn (s &Json5Scanner) position() Json5Pos {
+	return Json5Pos{
 		line: s.line
 		col:  s.col
 	}
 }
 
-// is_digit reports whether `code` is an ASCII decimal digit.
-fn is_digit(code int) bool {
+// json5_is_digit reports whether `code` is an ASCII decimal digit.
+fn json5_is_digit(code int) bool {
 	return code >= r_zero && code <= r_nine
 }
 
-// is_hex_digit reports whether `code` is an ASCII hexadecimal digit.
-fn is_hex_digit(code int) bool {
+// json5_is_hex_digit reports whether `code` is an ASCII hexadecimal digit.
+fn json5_is_hex_digit(code int) bool {
 	return (code >= r_zero && code <= r_nine) || (code >= r_lower_a && code <= r_lower_f)
 		|| (code >= r_upper_a && code <= r_upper_f)
 }
 
-// hex_digit_value returns the numeric value of an ASCII hexadecimal digit.
-fn hex_digit_value(code int) int {
+// json5_hex_digit_value returns the numeric value of an ASCII hexadecimal digit.
+fn json5_hex_digit_value(code int) int {
 	if code <= r_nine {
 		return code - r_zero
 	}
@@ -180,30 +180,30 @@ fn hex_digit_value(code int) int {
 	return code - r_lower_a + 10
 }
 
-// is_whitespace reports whether `code` is JSON5 whitespace: the ASCII space
+// json5_is_whitespace reports whether `code` is JSON5 whitespace: the ASCII space
 // characters, the no-break space, and any unicode space separator.
-fn is_whitespace(code int) bool {
+fn json5_is_whitespace(code int) bool {
 	return code == r_space || code == r_tab || code == r_lf || code == r_cr
 		|| code == r_vt || code == r_ff || code == r_nbsp || code == r_bom
 		|| (code > 0x2000 && utf8.is_space(rune(code)))
 }
 
-// is_line_terminator reports whether `code` ends a line for the purposes of `//`
+// json5_is_line_terminator reports whether `code` ends a line for the purposes of `//`
 // comments and escaped newlines in strings.
-fn is_line_terminator(code int) bool {
+fn json5_is_line_terminator(code int) bool {
 	return code == r_lf || code == r_cr || code == r_line_sep || code == r_para_sep
 }
 
-// is_ident_start reports whether `code` may start an unquoted key.
-fn is_ident_start(code int) bool {
+// json5_is_ident_start reports whether `code` may start an unquoted key.
+fn json5_is_ident_start(code int) bool {
 	return code == r_dollar || code == r_underscr || utf8.is_letter(rune(code))
 }
 
-// is_ident_part reports whether `code` may continue an unquoted key. On top of
-// `is_ident_start` it allows digits, combining marks and the two joiner runes
+// json5_is_ident_part reports whether `code` may continue an unquoted key. On top of
+// `json5_is_ident_start` it allows digits, combining marks and the two joiner runes
 // used by non-latin scripts.
-fn is_ident_part(code int) bool {
-	if is_ident_start(code) || is_digit(code) {
+fn json5_is_ident_part(code int) bool {
+	if json5_is_ident_start(code) || json5_is_digit(code) {
 		return true
 	}
 	return (code >= 0x0300 && code <= 0x036F) // combining diacritical marks
@@ -211,17 +211,17 @@ fn is_ident_part(code int) bool {
 }
 
 // skip_trivia consumes whitespace and comments.
-fn (mut s Scanner) skip_trivia() ! {
+fn (mut s Json5Scanner) skip_trivia() ! {
 	for s.pos < s.text.len {
 		code := int(s.text[s.pos])
-		if is_whitespace(code) {
+		if json5_is_whitespace(code) {
 			s.advance()
 			continue
 		}
 		if code == r_slash && s.peek_code(1) == r_slash {
 			s.advance()
 			s.advance()
-			for s.pos < s.text.len && !is_line_terminator(int(s.text[s.pos])) {
+			for s.pos < s.text.len && !json5_is_line_terminator(int(s.text[s.pos])) {
 				s.advance()
 			}
 			continue
@@ -241,7 +241,7 @@ fn (mut s Scanner) skip_trivia() ! {
 				s.advance()
 			}
 			if !closed {
-				return syntax_error('unterminated block comment', start.line, start.col)
+				return json5_syntax_error('unterminated block comment', start.line, start.col)
 			}
 			continue
 		}
@@ -250,11 +250,11 @@ fn (mut s Scanner) skip_trivia() ! {
 }
 
 // next returns the next token, skipping whitespace and comments.
-pub fn (mut s Scanner) next() !Token {
+pub fn (mut s Json5Scanner) next() !Json5Token {
 	s.skip_trivia()!
 	start := s.position()
 	if s.pos >= s.text.len {
-		return Token{
+		return Json5Token{
 			kind: .eof
 			pos:  start
 		}
@@ -263,8 +263,8 @@ pub fn (mut s Scanner) next() !Token {
 	match code {
 		r_lcbr, r_rcbr, r_lbkt, r_rbkt, r_comma, r_colon {
 			ch := s.advance()
-			return Token{
-				kind: unsafe { TokenKind(code) }
+			return Json5Token{
+				kind: unsafe { Json5TokenKind(code) }
 				lit:  ch.str()
 				pos:  start
 			}
@@ -277,23 +277,23 @@ pub fn (mut s Scanner) next() !Token {
 		}
 		else {}
 	}
-	if is_digit(code) || code == r_minus || code == r_plus || code == r_dot {
+	if json5_is_digit(code) || code == r_minus || code == r_plus || code == r_dot {
 		return s.scan_number(start)
 	}
-	if is_ident_start(code) {
+	if json5_is_ident_start(code) {
 		return s.scan_ident(start)
 	}
-	return syntax_error('unexpected token `${s.text[s.pos].str()}`', start.line, start.col)
+	return json5_syntax_error('unexpected token `${s.text[s.pos].str()}`', start.line, start.col)
 }
 
 // scan_string scans a single- or double-quoted string and returns its decoded
 // value.
-fn (mut s Scanner) scan_string(start Pos, quote_code int) !Token {
+fn (mut s Json5Scanner) scan_string(start Json5Pos, quote_code int) !Json5Token {
 	s.advance() // opening quote
 	mut out := []rune{}
 	for {
 		if s.pos >= s.text.len {
-			return syntax_error('unterminated string', start.line, start.col)
+			return json5_syntax_error('unterminated string', start.line, start.col)
 		}
 		code := int(s.text[s.pos])
 		if code == quote_code {
@@ -303,10 +303,10 @@ fn (mut s Scanner) scan_string(start Pos, quote_code int) !Token {
 		if code == r_backslash {
 			s.advance()
 			if s.pos >= s.text.len {
-				return syntax_error('unterminated escape sequence', start.line, start.col)
+				return json5_syntax_error('unterminated escape sequence', start.line, start.col)
 			}
 			esc := int(s.text[s.pos])
-			if is_line_terminator(esc) {
+			if json5_is_line_terminator(esc) {
 				// A backslash before a line terminator is a line continuation: it
 				// and the terminator contribute nothing to the value.
 				if esc == r_cr && s.peek_code(1) == r_lf {
@@ -336,7 +336,7 @@ fn (mut s Scanner) scan_string(start Pos, quote_code int) !Token {
 		}
 		out << s.advance()
 	}
-	return Token{
+	return Json5Token{
 		kind: .str
 		lit:  out.string()
 		pos:  start
@@ -344,48 +344,48 @@ fn (mut s Scanner) scan_string(start Pos, quote_code int) !Token {
 }
 
 // scan_hex_digits reads `count` hexadecimal digits and returns them as a rune.
-fn (mut s Scanner) scan_hex_digits(count int, start Pos) !rune {
+fn (mut s Json5Scanner) scan_hex_digits(count int, start Json5Pos) !rune {
 	mut value := u32(0)
 	for _ in 0 .. count {
 		if s.pos >= s.text.len {
-			return syntax_error('incomplete hexadecimal escape', start.line, start.col)
+			return json5_syntax_error('incomplete hexadecimal escape', start.line, start.col)
 		}
 		code := int(s.text[s.pos])
-		if !is_hex_digit(code) {
-			return syntax_error('`${s.text[s.pos].str()}` is not a hexadecimal digit',
+		if !json5_is_hex_digit(code) {
+			return json5_syntax_error('`${s.text[s.pos].str()}` is not a hexadecimal digit',
 				s.line, s.col)
 		}
-		value = value << 4 | u32(hex_digit_value(code))
+		value = value << 4 | u32(json5_hex_digit_value(code))
 		s.advance()
 	}
 	return rune(value)
 }
 
 // scan_unicode_escape reads either `\uXXXX` or the ES6 `\u{...}` form.
-fn (mut s Scanner) scan_unicode_escape(start Pos) !rune {
+fn (mut s Json5Scanner) scan_unicode_escape(start Json5Pos) !rune {
 	if s.peek_code(0) == r_lcbr {
 		s.advance()
 		mut value := u32(0)
 		mut digits := 0
 		for s.pos < s.text.len && int(s.text[s.pos]) != r_rcbr {
 			code := int(s.text[s.pos])
-			if !is_hex_digit(code) {
-				return syntax_error('`${s.text[s.pos].str()}` is not a hexadecimal digit',
+			if !json5_is_hex_digit(code) {
+				return json5_syntax_error('`${s.text[s.pos].str()}` is not a hexadecimal digit',
 					s.line, s.col)
 			}
-			value = value << 4 | u32(hex_digit_value(code))
+			value = value << 4 | u32(json5_hex_digit_value(code))
 			digits++
 			s.advance()
 		}
 		if s.pos >= s.text.len {
-			return syntax_error('unterminated `\\u{...}` escape', start.line, start.col)
+			return json5_syntax_error('unterminated `\\u{...}` escape', start.line, start.col)
 		}
 		s.advance() // `}`
 		if digits == 0 {
-			return syntax_error('empty `\\u{...}` escape', start.line, start.col)
+			return json5_syntax_error('empty `\\u{...}` escape', start.line, start.col)
 		}
 		if value > 0x10FFFF || value >= 0xD800 && value <= 0xDFFF {
-			return syntax_error('`\\u{...}` escape is out of the unicode range', start.line,
+			return json5_syntax_error('`\\u{...}` escape is out of the unicode range', start.line,
 				start.col)
 		}
 		return rune(value)
@@ -393,20 +393,20 @@ fn (mut s Scanner) scan_unicode_escape(start Pos) !rune {
 	first := s.scan_hex_digits(4, start)!
 	if first >= 0xD800 && first <= 0xDBFF {
 		if s.peek_code(0) != r_backslash || s.peek_code(1) != r_lower_u {
-			return syntax_error('high surrogate requires a low surrogate escape', start.line,
+			return json5_syntax_error('high surrogate requires a low surrogate escape', start.line,
 				start.col)
 		}
 		s.advance()
 		s.advance()
 		second := s.scan_hex_digits(4, start)!
 		if second < 0xDC00 || second > 0xDFFF {
-			return syntax_error('high surrogate requires a low surrogate escape', start.line,
+			return json5_syntax_error('high surrogate requires a low surrogate escape', start.line,
 				start.col)
 		}
 		return rune(0x10000 + (u32(first) - 0xD800) * 0x400 + u32(second) - 0xDC00)
 	}
 	if first >= 0xDC00 && first <= 0xDFFF {
-		return syntax_error('low surrogate requires a preceding high surrogate', start.line,
+		return json5_syntax_error('low surrogate requires a preceding high surrogate', start.line,
 			start.col)
 	}
 	return first
@@ -414,20 +414,20 @@ fn (mut s Scanner) scan_unicode_escape(start Pos) !rune {
 
 // scan_ident scans an unquoted key, or one of the keywords `true`, `false`,
 // `null`, `Infinity` and `NaN`.
-fn (mut s Scanner) scan_ident(start Pos) !Token {
+fn (mut s Json5Scanner) scan_ident(start Json5Pos) !Json5Token {
 	mut out := []rune{}
-	for s.pos < s.text.len && is_ident_part(int(s.text[s.pos])) {
+	for s.pos < s.text.len && json5_is_ident_part(int(s.text[s.pos])) {
 		out << s.advance()
 	}
 	lit := out.string()
 	kind := match lit {
-		'true', 'false' { TokenKind.bool }
-		'null' { TokenKind.null }
-		'Infinity' { TokenKind.infinity }
-		'NaN' { TokenKind.nan }
-		else { TokenKind.ident }
+		'true', 'false' { Json5TokenKind.bool }
+		'null' { Json5TokenKind.null }
+		'Infinity' { Json5TokenKind.infinity }
+		'NaN' { Json5TokenKind.nan }
+		else { Json5TokenKind.ident }
 	}
-	return Token{
+	return Json5Token{
 		kind: kind
 		lit:  lit
 		pos:  start
@@ -437,7 +437,7 @@ fn (mut s Scanner) scan_ident(start Pos) !Token {
 // scan_number scans a JSON5 number: an optional sign, then either `Infinity`,
 // `NaN`, a hexadecimal integer, or a decimal value with an optional leading or
 // trailing dot and an optional exponent.
-fn (mut s Scanner) scan_number(start Pos) !Token {
+fn (mut s Json5Scanner) scan_number(start Json5Pos) !Json5Token {
 	mut out := []rune{}
 	code := int(s.text[s.pos])
 	if code == r_plus || code == r_minus {
@@ -446,13 +446,13 @@ fn (mut s Scanner) scan_number(start Pos) !Token {
 	// `Infinity` and `NaN` may carry a sign; they are scanned as identifiers so
 	// that a bare occurrence in key position still lexes as a key.
 	if s.pos >= s.text.len {
-		return syntax_error('number has no digits', start.line, start.col)
+		return json5_syntax_error('number has no digits', start.line, start.col)
 	}
 	first := int(s.text[s.pos])
 	if first == r_upper_i || first == r_upper_n {
 		tok := s.scan_ident(start)!
 		out << tok.lit.runes()
-		return Token{
+		return Json5Token{
 			kind: tok.kind
 			lit:  out.string()
 			pos:  start
@@ -462,21 +462,21 @@ fn (mut s Scanner) scan_number(start Pos) !Token {
 		out << s.advance()
 		out << s.advance()
 		mut digits := 0
-		for s.pos < s.text.len && is_hex_digit(int(s.text[s.pos])) {
+		for s.pos < s.text.len && json5_is_hex_digit(int(s.text[s.pos])) {
 			out << s.advance()
 			digits++
 		}
 		if digits == 0 {
-			return syntax_error('hexadecimal literal has no digits', start.line, start.col)
+			return json5_syntax_error('hexadecimal literal has no digits', start.line, start.col)
 		}
-		return Token{
+		return Json5Token{
 			kind: .number
 			lit:  out.string()
 			pos:  start
 		}
 	}
 	mut int_digits := 0
-	for s.pos < s.text.len && is_digit(int(s.text[s.pos])) {
+	for s.pos < s.text.len && json5_is_digit(int(s.text[s.pos])) {
 		out << s.advance()
 		int_digits++
 	}
@@ -484,13 +484,13 @@ fn (mut s Scanner) scan_number(start Pos) !Token {
 	// dot (`.5`), and it may also be trailing (`5.`).
 	if s.pos < s.text.len && int(s.text[s.pos]) == r_dot {
 		out << s.advance()
-		for s.pos < s.text.len && is_digit(int(s.text[s.pos])) {
+		for s.pos < s.text.len && json5_is_digit(int(s.text[s.pos])) {
 			out << s.advance()
 			int_digits++
 		}
 	}
 	if int_digits == 0 {
-		return syntax_error('number has no digits', start.line, start.col)
+		return json5_syntax_error('number has no digits', start.line, start.col)
 	}
 	if s.pos < s.text.len && (int(s.text[s.pos]) == r_lower_e || int(s.text[s.pos]) == r_upper_e) {
 		out << s.advance()
@@ -498,15 +498,15 @@ fn (mut s Scanner) scan_number(start Pos) !Token {
 			out << s.advance()
 		}
 		mut exp_digits := 0
-		for s.pos < s.text.len && is_digit(int(s.text[s.pos])) {
+		for s.pos < s.text.len && json5_is_digit(int(s.text[s.pos])) {
 			out << s.advance()
 			exp_digits++
 		}
 		if exp_digits == 0 {
-			return syntax_error('exponent has no digits', start.line, start.col)
+			return json5_syntax_error('exponent has no digits', start.line, start.col)
 		}
 	}
-	return Token{
+	return Json5Token{
 		kind: .number
 		lit:  out.string()
 		pos:  start
