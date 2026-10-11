@@ -963,7 +963,8 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			// so branch types (e.g. an if-expression whose branch is `math.min[T]`)
 			// keep the called function's real type.
 			mut call_ret := t.get_call_return_type(id, node)
-			if call_ret.len == 0 || call_ret in ['unknown', 'void'] {
+			if call_ret.len == 0 || call_ret in ['unknown', 'void']
+				|| t.generic_arg_is_unresolved(call_ret) {
 				call_ret = t.generic_call_declared_return_type(id, node) or { '' }
 			}
 			if call_ret.len > 0 && call_ret !in ['unknown', 'void'] {
