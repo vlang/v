@@ -18,8 +18,59 @@ pub:
 // Any is the dynamic tree a parsed document produces, shared with json2.
 pub type Any = json2.Any
 
-// Doc is a parsed document with path lookup, shared with json2.
+// Doc is a parsed document with json2's path lookup and JSONC rendering.
 pub type Doc = json2.Doc
+
+// str renders the document as JSONC, using overflowing decimal numbers for infinity.
+// NaN values in manually wrapped trees render as null.
+@[manualfree]
+pub fn (d Doc) str() string {
+	mut encoded := []u8{cap: 2048}
+	// No views of the scratch buffers escape, so growth can release old storage.
+	unsafe { encoded.flags.set(.noslices) }
+	defer { unsafe { encoded.free() } }
+	json2.encode_append(d.root, mut encoded, json5: true)
+	mut output := []u8{cap: encoded.len}
+	unsafe { output.flags.set(.noslices) }
+	defer { unsafe { output.free() } }
+	mut i := 0
+	for i < encoded.len {
+		current := encoded[i]
+		if current == `"` {
+			output << current
+			i++
+			// Copy quoted keys and values intact, including escaped quotes and backslashes.
+			for i < encoded.len {
+				byte := encoded[i]
+				output << byte
+				i++
+				if byte == `\\` && i < encoded.len {
+					output << encoded[i]
+					i++
+				} else if byte == `"` {
+					break
+				}
+			}
+			continue
+		}
+		// With quoted keys, these are the only uppercase tokens the encoder emits.
+		if current == `I` {
+			for byte in '1e999' {
+				output << byte
+			}
+			i += 'Infinity'.len
+		} else if current == `N` {
+			for byte in 'null' {
+				output << byte
+			}
+			i += 'NaN'.len
+		} else {
+			output << current
+			i++
+		}
+	}
+	return output.bytestr()
+}
 
 // violation returns the first JSONC strictness violation in `text`, or none when
 // the document is valid.
@@ -155,8 +206,9 @@ pub fn decode_file[T](path string) !T {
 }
 
 // decode_any converts an already parsed tree into `T` using the json2 decoder.
+// Decimal overflow retained as infinity is preserved during conversion.
 pub fn decode_any[T](value Any) !T {
-	return json2.decode_any[T](value)
+	return json2.decode_any[T](value, json5: true)
 }
 
 // read returns the contents of `path`, naming the file in any error.

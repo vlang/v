@@ -45,6 +45,9 @@ fn main() {
 ```
 
 `parse_file` reads the document from disk.
+`Doc.str()` renders compact JSONC without comments or trailing commas. Valid decimal numbers
+that overflow `f64`, such as `1e400`, remain signed infinity in the dynamic tree and render as
+`1e999` or `-1e999`, so the rendered document can be parsed again without losing the overflow.
 
 ## Validate
 `is_valid` answers whether a document is JSONC, and `violation` returns the first
@@ -102,6 +105,7 @@ fn main() {
 that was parsed already. Typed decoding preserves 64-bit integers; dynamic trees
 use `json2.Any`, whose default numeric variant is `f64` and has floating-point
 precision limits. Use `str()` and `as_array()` to read strings and arrays.
+`decode_any` preserves overflowing numbers as signed infinity, consistently with `decode`.
 
 The dialect is checked before the decoder runs, so a document with a JSON5-only
 construct is refused even when the target struct has a field for it.

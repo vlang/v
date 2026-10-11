@@ -2,6 +2,7 @@ module jsonc
 
 import os
 import json2
+import math
 
 struct Server {
 	host string
@@ -15,6 +16,13 @@ struct Options {
 		strict  bool
 	}
 	include  []string
+}
+
+struct OverflowingNumbers {
+	positive f64
+	negative f64
+	finite   f64
+	values   []f64
 }
 
 fn test_is_valid_accepts_jsonc() {
@@ -83,6 +91,75 @@ fn test_parse_text_returns_a_document() {
 	doc := parse_text('{"name": "srv", "port": 1}') or { panic(err) }
 	assert doc.str() == '{"name":"srv","port":1}'
 	assert doc.value('name').str() == 'srv'
+}
+
+fn test_parse_text_rendering_round_trips_overflowing_numbers() {
+	for literal in ['1e400', '-1e400', '1E+400', '-1E+400'] {
+		sign := if literal.starts_with('-') { -1 } else { 1 }
+		assert is_valid(literal)
+		assert violation(literal) == none
+		doc := parse_text(literal)!
+		assert math.is_inf(doc.root.f64(), sign)
+		rendered := doc.str()
+		assert is_valid(rendered), rendered
+		assert math.is_inf(parse(rendered)!.f64(), sign)
+		shared := json2.Doc(doc)
+		assert math.is_inf(shared.decode[f64]()!, sign)
+	}
+}
+
+fn test_decode_any_preserves_overflowing_numbers() {
+	for literal in ['1e400', '-1e400'] {
+		sign := if literal.starts_with('-') { -1 } else { 1 }
+		value := parse(literal)!
+		assert math.is_inf(decode[f64](literal)!, sign)
+		assert math.is_inf(decode_any[f64](value)!, sign)
+		assert math.is_inf(decode_any[f32](value)!, sign)
+		decode_any[i64](value) or { continue }
+		assert false, 'expected integer decoding to reject infinity'
+	}
+}
+
+fn test_nested_overflow_survives_rendering_and_typed_tree_decoding() {
+	input := r'{"positive":1e400,"negative":-1e400,"finite":42.5,"values":[1e400,-1e400,1e-400],"Infinity":"Infinity \"NaN\" \\ -Infinity","NaN":"NaN","nested":{"value":1e400}}'
+	doc := parse_text(input)!
+	rendered := doc.str()
+	assert is_valid(rendered), rendered
+	again := parse_text(rendered)!
+	assert math.is_inf(again.value('positive').f64(), 1)
+	assert math.is_inf(again.value('negative').f64(), -1)
+	assert math.is_inf(again.value('nested.value').f64(), 1)
+	assert again.value('Infinity').str() == 'Infinity "NaN" \\ -Infinity'
+	assert again.value('NaN').str() == 'NaN'
+	numbers := decode_any[OverflowingNumbers](doc.to_any())!
+	assert math.is_inf(numbers.positive, 1)
+	assert math.is_inf(numbers.negative, -1)
+	assert numbers.finite == 42.5
+	assert math.is_inf(numbers.values[0], 1)
+	assert math.is_inf(numbers.values[1], -1)
+	assert numbers.values[2] == 0.0
+	shared := json2.Doc(doc)
+	assert math.is_inf(shared.decode[OverflowingNumbers]()!.positive, 1)
+	assert math.is_inf(shared.reflect[OverflowingNumbers]().negative, -1)
+}
+
+fn test_overflow_rendering_with_trailing_comma_option() {
+	doc := parse_text_opts('{"values":[1e400,-1e400,],}', ParseOpts{
+		allow_trailing_comma: true
+	})!
+	assert doc.str() == '{"values":[1e999,-1e999]}'
+	assert is_valid(doc.str())
+	assert math.is_inf(parse_text(doc.str())!.value('values[1]').f64(), -1)
+}
+
+fn test_document_rendering_of_wrapped_nonfinite_values() {
+	root := json2.Any([json2.Any(math.inf(1)), json2.Any(math.inf(-1)), json2.Any(math.nan()),
+		json2.Any('Infinity NaN')])
+	doc := Doc(json2.new_doc(root, json5: true))
+	assert doc.str() == '[1e999,-1e999,null,"Infinity NaN"]'
+	assert is_valid(doc.str())
+	// JSON5 document rendering retains its own dialect.
+	assert json2.Doc(doc).str() == '[Infinity,-Infinity,NaN,"Infinity NaN"]'
 }
 
 fn test_parse_text_supports_path_lookup() {
