@@ -236,6 +236,33 @@ fn test_fixed_array_reference_pointer_field_does_not_promote_its_containing_valu
 	assert 'p' !in t.escaping_fixed_array_view_sources
 }
 
+fn test_fixed_array_reference_pointer_address_roundtrip_keeps_its_original_owner() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 3 })
+	pointer := types.Type(types.Pointer{ base_type: fixed })
+	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
+	tc.trust_checked_expr_types = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('p', '&[3]int')
+	p := t.make_ident('p')
+	tc.register_synth_type(p, pointer)
+	address := t.make_prefix(.amp, p)
+	tc.register_synth_type(address, types.Type(types.Pointer{ base_type: pointer }))
+	deref := t.make_prefix(.mul, t.make_paren(address))
+	tc.register_synth_type(deref, pointer)
+	t.mark_fixed_array_reference_argument_escape(deref, array_ref, {
+		'p': true
+	}, {
+		'p': ['values']
+	}, map[string]string{}, {
+		'p':      true
+		'values': true
+	})
+	assert 'values' in t.escaping_fixed_array_view_sources
+	assert 'p' !in t.escaping_fixed_array_view_sources
+}
+
 fn test_fixed_array_reference_mutable_iteration_pointer_keeps_its_backing() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

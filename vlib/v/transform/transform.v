@@ -10035,11 +10035,18 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escape(arg_id flat.No
 		value_id = t.a.child(&value, 0)
 	}
 	mut value_type := types.unalias_type(t.tc.resolve_type(value_id))
-	if value_type is types.Pointer
-		&& !t.escape_address_indirect_base_is_stack_backed(value_id, amp_ptrs, ptr_aliases, local_stack_names) {
-		// A pointer field's referent is not inline storage owned by its containing
-		// value. Only follow pointers known to reference this frame's stack data.
-		return
+	if value_type is types.Pointer {
+		pointer_expr := t.a.nodes[int(value_id)]
+		// Dereferencing the address of a pointer local, such as *(&p), keeps
+		// that local's recorded fixed-array owner even though the result is a pointer.
+		stack_deref := pointer_expr.kind == .prefix && pointer_expr.op == .mul
+			&& t.escape_address_expr_is_stack_local(value_id, local_stack_names, amp_ptrs, ptr_aliases)
+		if !stack_deref
+			&& !t.escape_address_indirect_base_is_stack_backed(value_id, amp_ptrs, ptr_aliases, local_stack_names) {
+			// A pointer field's referent is not inline storage owned by its containing
+			// value. Only follow pointers known to reference this frame's stack data.
+			return
+		}
 	}
 	for value_type is types.Pointer {
 		value_type = types.unalias_type(value_type.base_type)
