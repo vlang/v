@@ -93,8 +93,9 @@ fn test_v3_gc_mode_rejects_unknown_mode() {
 
 fn test_v3_gc_without_thread_local_allocation_uses_source_collector() {
 	for define in ['no_gc_thread_local_alloc', 'no_gc_thread_local_alloc=true'] {
-		mut defines := [define]
+		mut defines := []string{}
 		mut values := map[string]string{}
+		record_user_define(mut defines, mut values, define)
 		apply_v3_gc_mode('boehm', false, mut defines, mut values)!
 		assert 'use_bundled_libgc' in defines
 		assert values['use_bundled_libgc'] == 'true'
@@ -117,10 +118,26 @@ fn test_v3_gc_precise_flag_preserves_dynamic_and_disabled_collector_modes() {
 }
 
 fn test_precise_gc_prefers_platform_cc_except_for_dynamic_boehm() {
-	assert v3_gc_prefers_platform_cc(['no_gc_thread_local_alloc'])
-	assert v3_gc_prefers_platform_cc(['no_gc_thread_local_alloc=true'])
+	assert v3_gc_prefers_platform_cc(['gcboehm', 'no_gc_thread_local_alloc'])
+	assert v3_gc_prefers_platform_cc(['gcboehm', 'no_gc_thread_local_alloc',
+		'no_gc_thread_local_alloc=true'])
 	assert !v3_gc_prefers_platform_cc([])
-	assert !v3_gc_prefers_platform_cc(['no_gc_thread_local_alloc', 'dynamic_boehm'])
+	assert !v3_gc_prefers_platform_cc(['no_gc_thread_local_alloc'])
+	assert !v3_gc_prefers_platform_cc(['gcboehm', 'no_gc_thread_local_alloc', 'dynamic_boehm'])
+}
+
+fn test_precise_gc_respects_empty_define_values() {
+	for empty in ['no_gc_thread_local_alloc', 'dynamic_boehm'] {
+		mut defines := []string{}
+		mut values := map[string]string{}
+		if empty == 'dynamic_boehm' {
+			record_user_define(mut defines, mut values, 'no_gc_thread_local_alloc')
+		}
+		record_user_define(mut defines, mut values, '${empty}=')
+		apply_v3_gc_mode('boehm', false, mut defines, mut values)!
+		assert v3_gc_prefers_platform_cc(defines) == (empty == 'dynamic_boehm')
+		assert ('use_bundled_libgc' in defines) == (empty == 'dynamic_boehm')
+	}
 }
 
 fn test_precise_gc_keeps_explicit_c_compiler_selection() {

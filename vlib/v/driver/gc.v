@@ -38,7 +38,7 @@ fn apply_v3_gc_mode(gc_mode string, disable_gc bool, mut user_defines []string, 
 	for define in v3_gc_mode_defines(gc_mode, disable_gc)! {
 		record_user_define(mut user_defines, mut compile_values, define)
 	}
-	if 'gcboehm' in user_defines && v3_gc_prefers_platform_cc(user_defines) {
+	if v3_gc_prefers_platform_cc(user_defines) {
 		// The prebuilt archives already enable thread-local allocation. Omitting
 		// THREAD_LOCAL_ALLOC only affects a collector compiled from source.
 		record_user_define(mut user_defines, mut compile_values, 'use_bundled_libgc')
@@ -46,8 +46,8 @@ fn apply_v3_gc_mode(gc_mode string, disable_gc bool, mut user_defines []string, 
 }
 
 fn v3_gc_prefers_platform_cc(user_defines []string) bool {
-	return user_defines.any(it.all_before('=').trim_space() == 'no_gc_thread_local_alloc')
-		&& !user_defines.any(it.all_before('=').trim_space() == 'dynamic_boehm')
+	return 'gcboehm' in user_defines && 'no_gc_thread_local_alloc' in user_defines
+		&& 'dynamic_boehm' !in user_defines
 }
 
 fn v3_missing_bundled_gc_library(flags []string, vroot string) ?string {
