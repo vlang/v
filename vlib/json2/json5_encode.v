@@ -2,7 +2,9 @@ module json2
 
 fn (mut encoder Encoder) encode_key(key string) {
 	if encoder.json5 && encoder.unquoted_keys && json5_is_identifier(key) {
-		encoder.output << key.bytes()
+		for byte in key {
+			encoder.output << byte
+		}
 	} else {
 		encoder.encode_string(key)
 	}
@@ -12,7 +14,7 @@ fn json5_is_identifier(key string) bool {
 	if key.len == 0 {
 		return false
 	}
-	for i, ch in key.runes() {
+	for i, ch in key.runes_iterator() {
 		if i == 0 {
 			if !json5_is_ident_start(int(ch)) {
 				return false

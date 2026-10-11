@@ -11,6 +11,57 @@ struct Json5PortOnly {
 	port int
 }
 
+struct Json5KeyEncodingRecord {
+	enabled bool
+	unicode bool @[json: 'clé']
+	quoted  bool @[json: 'with space']
+}
+
+@[manualfree]
+fn assert_json5_unquoted_encoding_releases_temporaries[T](value T, expected string) {
+	// Reuse caller-owned storage so the measurement isolates per-call scratch.
+	mut output := []u8{cap: 4096}
+	encode_append(value, mut output, json5: true, unquoted_keys: true)
+	first := output.bytestr()
+	assert first == expected
+	unsafe { first.free() }
+	before := C.json5_heap_live_bytes()
+	for _ in 0 .. 100 {
+		output.clear()
+		encode_append(value, mut output, json5: true, unquoted_keys: true)
+		result := output.bytestr()
+		assert result == expected
+		unsafe { result.free() }
+	}
+	assert C.json5_heap_live_bytes() == before
+	unsafe { output.free() }
+}
+
+@[manualfree]
+fn test_json5_unquoted_map_keys_release_encoding_temporaries() {
+	value := {
+		'$key0':      true
+		'a\u0903':    true
+		'a\u203f':    false
+		'a\u00b2':    false
+		'clé':        true
+		'with space': false
+		'\U00010341': true
+	}
+	assert_json5_unquoted_encoding_releases_temporaries(value,
+		'{$key0:true,"a\u00b2":false,a\u0903:true,a\u203f:false,clé:true,"with space":false,\U00010341:true}')
+}
+
+@[manualfree]
+fn test_json5_unquoted_struct_keys_release_encoding_temporaries() {
+	value := Json5KeyEncodingRecord{
+		enabled: true
+		quoted:  true
+	}
+	assert_json5_unquoted_encoding_releases_temporaries(value,
+		'{enabled:true,clé:false,"with space":true}')
+}
+
 @[manualfree]
 fn test_json5_integer_decoding_releases_temporary_storage() {
 	for input in ['123', "'123'", '0x7b', '+123', '-123'] {
