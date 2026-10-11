@@ -16,9 +16,19 @@ fn first_key(values map[string]int) string {
 	for map_eq_key_0, _ in values { return map_eq_key_0 }
 	return ""
 }
+struct Entry {
+	value int
+}
+fn (left Entry) == (right Entry) bool {
+	return left.value == right.value
+}
+fn compare_entries(left map[string][]Entry, right map[string][]Entry) bool {
+	return left == right
+}
 fn main() {
 	assert compare_maps({"one": f64(1)}, {"one": f64(1)})
 	assert first_key({"one": 1}) == "one"
+	assert compare_entries({"one": [Entry{1}]}, {"one": [Entry{1}]})
 }
 ')!
 	defer { os.rm(path) or {} }
@@ -39,4 +49,6 @@ fn main() {
 	assert !equality.contains('string__clone'), equality
 	iteration := generated.all_after_last('string first_key(').all_after('{').all_before('\n}')
 	assert iteration.contains('string__clone(map_eq_key_0)'), iteration
+	custom := generated.all_after_last('bool compare_entries(').all_after('{').all_before('\n}')
+	assert custom.contains('string__clone'), custom
 }
