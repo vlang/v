@@ -2437,6 +2437,50 @@ fn (mut b Builder) register_basic_format_stubs() {
 	}
 }
 
+// generate_plus_sign_body prepends '+' to a numeric string that carries no sign yet,
+// satisfying the `+` interpolation flag. It mirrors generate_native_plus_sign_body but
+// builds the concatenation itself, because the wasm stub set registers `string__plus`
+// only after this fragment runs.
+fn (mut b Builder) generate_plus_sign_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	entry := b.m.add_block(func_id, 'plus_sign_entry')
+	s := b.func_add_argument(func_id, b.str_type, 's')
+	s_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.str_type))
+	b.block_instr2(.store, entry, b.void_type, s, s_slot)
+	len_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 1)
+	data_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 0)
+	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
+	len := b.block_instr1(.zext, entry, b.i64_type, len32)
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	nonempty := b.block_instr2(.gt, entry, b.i1_type, len, zero)
+	check_sign := b.m.add_block(func_id, 'plus_sign_check')
+	append := b.m.add_block(func_id, 'plus_sign_add')
+	b.block_instr3(.br, entry, b.void_type, nonempty, ValueID(check_sign), ValueID(append))
+	first := b.block_instr1(.load, check_sign, b.i8_type, data)
+	minus := b.m.get_or_add_const(b.i8_type, '45')
+	plus := b.m.get_or_add_const(b.i8_type, '43')
+	is_minus := b.block_instr2(.eq, check_sign, b.i1_type, first, minus)
+	is_plus := b.block_instr2(.eq, check_sign, b.i1_type, first, plus)
+	has_sign := b.block_instr2(.or_, check_sign, b.i1_type, is_minus, is_plus)
+	original := b.m.add_block(func_id, 'plus_sign_original')
+	b.block_instr3(.br, check_sign, b.void_type, has_sign, ValueID(original), ValueID(append))
+	b.block_instr1(.ret, original, b.void_type, s)
+	size := b.block_instr2(.add, append, b.i64_type, len, one)
+	malloc_ref := b.m.add_value(.func_ref, b.void_type, 'malloc', b.runtime_fn_id('malloc'))
+	out := b.block_instr2(.call, append, ptr_i8, malloc_ref, size)
+	b.block_instr2(.store, append, b.void_type, plus, out)
+	dest := b.block_instr2(.add, append, ptr_i8, out, one)
+	memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
+	b.block_instr4(.call, append, ptr_i8, memcpy_ref, dest, data, len)
+	nul := b.m.get_or_add_const(b.i8_type, '0')
+	term := b.block_instr2(.add, append, ptr_i8, out, size)
+	b.block_instr2(.store, append, b.void_type, nul, term)
+	result := b.emit_make_string(append, out, size, 0)
+	b.block_instr1(.ret, append, b.void_type, result)
+}
+
 // register_v3_string_format_stubs registers helper calls emitted by the string-interpolation
 // transformer. The C backend provides these as inline C helpers; the SSA/native path needs
 // synthetic functions so self-hosted ARM64 builds can lower the transformed calls.
@@ -2454,6 +2498,12 @@ fn (mut b Builder) register_v3_string_format_stubs() {
 		p_char << b.i32_type
 		if char_id := b.register_runtime_function('v3_char_string', b.str_type, p_char) {
 			b.generate_char_string_body(char_id)
+		}
+
+		if plus_id := b.register_runtime_function('v3_string_plus_sign', b.str_type, [
+			b.str_type,
+		]) {
+			b.generate_plus_sign_body(plus_id)
 		}
 
 		mut p_f64 := []TypeID{}

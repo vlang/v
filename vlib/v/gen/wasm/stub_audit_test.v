@@ -679,17 +679,6 @@ fn main() {
 			refuses: 'ssa: unknown function `strg`'
 		},
 		StubCase{
-			tag:     'interp_plus_sign'
-			stub:    'v3_string_plus_sign - not registered for wasm'
-			source:  '
-fn main() {
-	println("[\${42:+5}]")
-}
-'
-			native:  '[  +42]\n'
-			refuses: 'ssa: unknown function `v3_string_plus_sign`'
-		},
-		StubCase{
 			tag:     'interp_float_exp'
 			stub:    'v3_f64_exp - not registered for wasm'
 			source:  '
@@ -813,6 +802,16 @@ fn stub_cases() []StubCase {
 			native: '  HELLO WORLD  \n  hello world  \nHello World\nHello World  \n' +
 				'  Hello World\ntrue\nfalse\ntrue\ntrue\na-b-c\n15\n3\n0\n32\n32\n' +
 				'1532\n1532\n1172\n1372\n1332\n597\n'
+		},
+		StubCase{
+			tag:    'interp_plus_sign'
+			stub:   'v3_string_plus_sign (generate_plus_sign_body)'
+			source: '
+fn main() {
+	println("[\${42:+5}]")
+}
+'
+			native: '[  +42]\n'
 		},
 	]
 }
