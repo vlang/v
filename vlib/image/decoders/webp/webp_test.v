@@ -395,9 +395,9 @@ fn fnv1a64(b []u8) u64 {
 	return fnv1a64_from(0xcbf29ce484222325, b)
 }
 
-// test_real_4webp checks the real-world 100-frame animated WEBP (the
-// sub-canvas lossy frames with ALPH planes exposed the canvas-sized ALPH
-// bug). Frame contents are pinned with FNV-1a checksums from the reference implementation.
+// test_real_4webp checks a resized (64x48) real-world 100-frame animated
+// WEBP. Frame contents are pinned with FNV-1a checksums from the
+// reference implementation.
 fn test_real_4webp() ! {
 	data := read_golden('4', 'webp')!
 	mut anim := decode_animation(data) or {
@@ -415,14 +415,14 @@ fn test_real_4webp() ! {
 		free_anim(mut anim)
 		return error('4.webp: total duration got ${anim.total_duration_ms()} want 10000')
 	}
-	if anim.width != 300 || anim.height != 225 {
+	if anim.width != 64 || anim.height != 48 {
 		free_anim(mut anim)
-		return error('4.webp: canvas got ${anim.width}x${anim.height} want 300x225')
+		return error('4.webp: canvas got ${anim.width}x${anim.height} want 64x48')
 	}
 	mut all := u64(0xcbf29ce484222325)
 	for i in 0 .. anim.frames.len {
 		f := anim.frames[i]
-		if f.width != 300 || f.height != 225 {
+		if f.width != 64 || f.height != 48 {
 			free_anim(mut anim)
 			return error('4.webp frame ${i}: size mismatch')
 		}
@@ -430,19 +430,19 @@ fn test_real_4webp() ! {
 		all = fnv1a64_from(all, f.rgba)
 		match i {
 			0 {
-				if h != u64(5170800702416075988) {
+				if h != u64(12416567360893434606) {
 					free_anim(mut anim)
 					return error('4.webp frame 0 fnv got ${h}')
 				}
 			}
 			33 {
-				if h != u64(530344397852209879) {
+				if h != u64(5734615764875973948) {
 					free_anim(mut anim)
 					return error('4.webp frame 33 fnv got ${h}')
 				}
 			}
 			99 {
-				if h != u64(1298046287993316536) {
+				if h != u64(8193788520280428117) {
 					free_anim(mut anim)
 					return error('4.webp frame 99 fnv got ${h}')
 				}
@@ -450,7 +450,7 @@ fn test_real_4webp() ! {
 			else {}
 		}
 	}
-	if all != u64(7048358611383390266) {
+	if all != u64(5598144098817850334) {
 		free_anim(mut anim)
 		return error('4.webp all-frame fnv got ${all}')
 	}
@@ -463,8 +463,8 @@ fn test_webp_player_4webp() ! {
 	data := read_golden('4', 'webp')!
 	mut anim := decode_animation(data)!
 	mut player := new_webp_player(data)!
-	if player.frame_count() != 100 || player.canvas_width() != 300
-		|| player.canvas_height() != 225 || player.loop_count() != 0 {
+	if player.frame_count() != 100 || player.canvas_width() != 64
+		|| player.canvas_height() != 48 || player.loop_count() != 0 {
 		return error('4.webp player: header mismatch')
 	}
 	if player.delay_ms(0) != 100 {
