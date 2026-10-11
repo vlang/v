@@ -2,6 +2,8 @@ interface Value {}
 
 type Codes = []string
 
+type FixedCodes = [2]string
+
 struct ValueHolder {
 mut:
 	values ?[]Value
@@ -35,6 +37,39 @@ fn test_array_append_spread_array_alias() {
 	mut params := []Value{}
 	params << ...codes
 	assert '${params}' == "[Value('IT'), Value('US')]"
+}
+
+fn test_array_append_spread_fixed_array_slice() {
+	codes := ['IT', 'US']!
+	more := ['DE']!
+	mut params := []Value{}
+	params << ...codes[..]
+	params << ...more[..]
+	assert params.len == 3
+	assert '${params}' == "[Value('IT'), Value('US'), Value('DE')]"
+	assert params[0] is string
+}
+
+fn test_array_append_spread_fixed_array_alias_slice() {
+	codes := FixedCodes(['IT', 'US']!)
+	mut params := []Value{}
+	params << ...codes[..]
+	assert '${params}' == "[Value('IT'), Value('US')]"
+}
+
+fn test_array_append_spread_scalar_uses_single_value_lowering() {
+	count := 8
+	mut params := []Value{}
+	params << ...7
+	params << ...count
+	params << ...'IT'
+	assert params.len == 3
+	assert '${params}' == "[Value(7), Value(8), Value('IT')]"
+	assert params[0] is int
+	assert params[0] == 7
+	assert params[1] is int
+	assert params[1] == count
+	assert params[2] is string
 }
 
 fn test_array_append_spread_nested_arrays() {

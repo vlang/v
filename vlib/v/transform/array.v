@@ -2750,9 +2750,14 @@ fn (t &Transformer) push_many_count_is_type_name(id flat.NodeId) bool {
 // array_append_rhs_is_push_many honors explicit spread for infix array appends.
 fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
 	rhs_node := t.a.nodes[int(rhs_id)]
-	if rhs_node.kind == .prefix && rhs_node.value == '...' && rhs_node.children_count > 0 {
-		// Explicit spread appends elements even when the whole array can be boxed as one value.
-		return true
+	if rhs_node.kind == .prefix && rhs_node.value == '...' && rhs_node.children_count > 0
+		&& !isnil(t.tc) {
+		value_id := t.a.child(&rhs_node, 0)
+		value_type := t.tc.expr_type(value_id) or { t.tc.resolve_type(value_id) }
+		if array_append_semantic_type_is_array(value_type) {
+			// Explicit spread appends elements even when the whole array can be boxed as one value.
+			return true
+		}
 	}
 	return t.array_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
 }
