@@ -462,7 +462,8 @@ pub fn (mut ctx Context) not_found() veb.Result {
 `veb.render_request[A, X](mut app, req)` dispatches an `http.Request` through the
 same routes, middleware, and registered controllers as the server, without opening
 a listener. It returns `!&veb.Context`: read the completed response from `ctx.res`.
-Route and controller configuration errors are returned to the caller. Custom
+`X` must embed `veb.Context`.
+Context, route, and controller configuration errors are returned to the caller. Custom
 fields on `X` remain local to the handler; they are not part of the returned context.
 
 ```v ignore

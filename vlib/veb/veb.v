@@ -92,15 +92,21 @@ struct SslRequestParams {
 // the completed base context. Read the response from `ctx.res`; fields added to
 // the application's context type are only available inside its handlers.
 // Static file responses retain `return_type` and `return_file`, as on the server.
-// Route and controller configuration errors are returned to the caller.
+// X must embed veb.Context. Context, route, and controller configuration errors
+// are returned to the caller.
 pub fn render_request[A, X](mut app A, req http.Request) !&Context {
-	routes := generate_routes[A, X](app)!
-	controllers_sorted := check_duplicate_routes_in_controllers[A](app, routes)!
-	params := RequestParams{
-		controllers_sorted: controllers_sorted
-		routes:             &routes
+	$for field in X.fields {
+		$if field.name == 'Context' && field.is_embed {
+			routes := generate_routes[A, X](app)!
+			controllers_sorted := check_duplicate_routes_in_controllers[A](app, routes)!
+			params := RequestParams{
+				controllers_sorted: controllers_sorted
+				routes:             &routes
+			}
+			return handle_request_and_route[A, X](mut app, req, -1, params)
+		}
 	}
-	return handle_request_and_route[A, X](mut app, req, -1, params)
+	return error('the application context type must embed veb.Context')
 }
 
 fn ssl_enabled(params RunParams) bool {
