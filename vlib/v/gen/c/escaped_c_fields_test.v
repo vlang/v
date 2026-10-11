@@ -26,6 +26,7 @@ fn test_escaped_c_field_names_follow_the_resolved_owner() {
 		assert g.field_c_name(owner, '@select') == 'select'
 		assert g.field_c_name(owner, '_v_type') == '_v_type'
 		assert g.field_c_name(owner, 'type') == 'type'
+		assert g.field_c_name(owner, 'complex') == 'complex'
 	}
 }
 
@@ -35,7 +36,7 @@ fn test_escaped_v_field_names_keep_their_existing_spelling() {
 	alias := types.Type(types.Alias{ name: 'Fields', base_type: v_struct })
 	pointer := types.Type(types.Pointer{ base_type: alias })
 	for owner in [v_struct, alias, pointer] {
-		for field in ['@type', '@struct', '@select', '_v_type', 'type'] {
+		for field in ['@type', '@struct', '@select', '_v_type', 'type', 'complex'] {
 			assert g.field_c_name(owner, field) == c_name(field)
 		}
 	}
@@ -56,6 +57,9 @@ fn test_escaped_c_initializer_field_names_resolve_aliases() {
 	assert g.init_field_c_name('Fields', '@type') == 'type'
 	assert g.init_field_c_name('EscapedFields', '@type') == '_v_type'
 	assert g.init_field_c_name('EscapedFields', '@struct') == '_v_struct'
+	assert g.init_field_c_name('C.EscapedFields', 'complex') == 'complex'
+	assert g.init_field_c_name('Fields', 'complex') == 'complex'
+	assert g.init_field_c_name('EscapedFields', 'complex') == c_name('complex')
 }
 
 fn test_escaped_c_callback_selector_assignment_keeps_c_abi_adapter() {
