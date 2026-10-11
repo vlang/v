@@ -14952,6 +14952,7 @@ pub fn run(args []string) {
 				// preprocessed form that the cache keeps.
 				mut generated_unit := ''
 				mut prelude_inputs := V3HeaderInputs{}
+				mut used_prelude := V3TccPrelude{}
 				if cache_with_tcc && cache_state.manager.enabled && tcc_source == 'src.c'
 					&& cache_state.parsed_from_source.len == 0 && !is_debug
 					&& os.getenv('V3_TCC_NO_PRELUDE_CACHE') != '1' {
@@ -14967,6 +14968,7 @@ pub fn run(args []string) {
 						os.write_file(cc_src, prelude.unit) or {}
 						generated_unit = unit
 						prelude_inputs = prelude.inputs
+						used_prelude = prelude
 					}
 				}
 				if keep_unit := os.getenv_opt('V3_CACHE_KEEP_PROGRAM_C') {
@@ -14985,10 +14987,16 @@ pub fn run(args []string) {
 				if linked.exit_code != 0 && generated_unit.len > 0
 					&& v3_c_output_reports_source_error(linked.output) {
 					// The unit as it was generated decides what becomes of the build.
-					v3_trace_tcc_prelude('not used: ${linked.output.all_before('\n')}')
+					first_error := linked.output.all_before('\n')
+					v3_trace_tcc_prelude('not used: ${first_error}')
 					os.write_file(cc_src, generated_unit) or {}
 					read_preprocessed_headers = false
 					linked = run_v3_tcc_executable_link(tcc_path, link_args, cc_dir, cc_out)
+					if linked.exit_code == 0 {
+						// The unit compiles as it was generated, and not with the
+						// preprocessed headers: they do not stand for the others.
+						used_prelude.reject('TinyCC does not compile a unit that reads it: ${first_error}')
+					}
 				}
 				if program_link_inputs.taken && linked.exit_code == 0
 					&& program_link_inputs.reason().len == 0 {

@@ -466,6 +466,111 @@ static inline int review_value(void) { return __STDC_HOSTED__(); }
 	assert run_built(root, 'recorded') == '7'
 }
 
+fn test_preprocessed_headers_keep_what_the_preprocessor_does_not_print() {
+	$if windows {
+		return
+	}
+	if !usecache_builds_with_tcc() {
+		return
+	}
+	flags := ['-usecache']
+	root := new_project('prelude_lossy')
+	saved := pin_module_cache(cache_dir(flags))
+	defer {
+		for env in saved {
+			env.restore()
+		}
+	}
+	headers := os.join_path(root, 'headers')
+	os.mkdir_all(headers)!
+	saved_cpath := cpath_headers([headers])
+	defer {
+		restore_cpath(saved_cpath)
+	}
+	// TinyCC prints the definition of a macro without what says that it takes any
+	// number of arguments, and the rest of a unit follows its headers at the line
+	// where it was.
+	header := os.join_path(headers, 'v_prelude_lossy_test.h')
+	os.write_file(header, 'static inline int review_sum3(int a, int b, int c) { return a + b + c; }
+#define REVIEW_SUM(first, ...) review_sum3(first, __VA_ARGS__)
+#define REVIEW_NAMED(first, rest...) review_sum3(first, rest)
+#define REVIEW_LINE() __LINE__
+')!
+	source := '#include <v_prelude_lossy_test.h>\n\nfn C.REVIEW_SUM(a int, b int, c int) int\n\nfn C.REVIEW_NAMED(a int, b int, c int) int\n\nfn C.REVIEW_LINE() int\n\nfn main() {\n\tprintln(C.REVIEW_SUM(1, 2, 3) + C.REVIEW_NAMED(10, 20, 30))\n\tprintln(C.REVIEW_LINE())\n}\n'
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, source)!
+	build(root, flags, main_file, 'cold')
+	assert run_built(root, 'cold').starts_with('66\n')
+	settle_headers()
+	mut preprocessed := 0
+	for i in 0 .. 2 {
+		os.write_file(main_file, source + '\nfn added_${i}() {}\n')!
+		warm := build(root, flags, main_file, 'warm')
+		assert !warm.contains('V3 TinyCC prelude: not'), warm
+		if warm.contains('V3 TinyCC prelude: preprocessed') {
+			preprocessed++
+		}
+		os.setenv('V3_TCC_NO_PRELUDE_CACHE', '1', true)
+		build(root, flags, main_file, 'plain')
+		os.unsetenv('V3_TCC_NO_PRELUDE_CACHE')
+		assert run_built(root, 'warm') == run_built(root, 'plain')
+		assert run_built(root, 'warm').starts_with('66\n')
+	}
+	assert preprocessed == 1
+
+	// A unit that does not compile with the preprocessed headers, and does with
+	// the headers themselves, is the last one that reads them preprocessed.
+	mut broken_forms := 0
+	for form in os.walk_ext(cache_dir(flags), '.i') {
+		if (os.read_file(form + '.stamp') or { '' }).contains('v_prelude_lossy_test.h') {
+			os.write_file(form, 'this is no C\n')!
+			broken_forms++
+		}
+	}
+	assert broken_forms == 1
+	os.write_file(main_file, source + '\nfn added_after() {}\n')!
+	broken := build(root, flags, main_file, 'broken')
+	assert broken.contains('V3 TinyCC prelude: not used from now on: TinyCC does not compile a unit that reads it'), broken
+	assert run_built(root, 'broken').starts_with('66\n')
+	os.write_file(main_file, source + '\nfn added_later() {}\n')!
+	rejected := build(root, flags, main_file, 'rejected')
+	assert rejected.contains('V3 TinyCC prelude: not used: TinyCC does not compile a unit that reads it'), rejected
+	assert !rejected.contains('from now on'), rejected
+	assert run_built(root, 'rejected').starts_with('66\n')
+
+	// TinyCC defines some macros when it compiles and not when it preprocesses: a
+	// header that asks about one is read as the compiler reads it.
+	os.write_file(header, '#ifdef __builtin_offsetof
+static inline int review_value(void) { return 1; }
+#else
+static inline int review_value(void) { return 2; }
+#endif
+')!
+	settle_headers()
+	value_source := '#include <v_prelude_lossy_test.h>\n\nfn C.review_value() int\n\nfn main() {\n\tprintln(C.review_value())\n}\n'
+	os.write_file(main_file, value_source)!
+	asked := build(root, flags, main_file, 'asked')
+	os.setenv('V3_TCC_NO_PRELUDE_CACHE', '1', true)
+	build(root, flags, main_file, 'asked_plain')
+	os.unsetenv('V3_TCC_NO_PRELUDE_CACHE')
+	assert run_built(root, 'asked') == run_built(root, 'asked_plain')
+	if run_built(root, 'asked_plain') == '1' {
+		assert asked.contains('V3 TinyCC prelude: not used: its headers ask about `__builtin_offsetof`'), asked
+	}
+
+	// A macro that the headers define with and without a variable number of
+	// arguments cannot be told from what TinyCC prints.
+	os.write_file(header, '#define REVIEW_NAMED(rest...) review_count(rest)
+#undef REVIEW_NAMED
+#define REVIEW_NAMED(rest) (rest)
+')!
+	settle_headers()
+	os.write_file(main_file, '#include <v_prelude_lossy_test.h>\n\nfn C.REVIEW_NAMED(a int) int\n\nfn main() {\n\tprintln(C.REVIEW_NAMED(5))\n}\n')!
+	both := build(root, flags, main_file, 'both')
+	assert both.contains('V3 TinyCC prelude: not used: the macro `REVIEW_NAMED` is defined with and without'), both
+	assert run_built(root, 'both') == '5'
+}
+
 fn test_preprocessed_headers_follow_a_header_that_appears_earlier_in_the_search() {
 	$if windows {
 		return

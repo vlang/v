@@ -16,12 +16,23 @@ import v.tempname
 // The preprocessed form is the C that the preprocessor made of the headers,
 // followed by every definition of a macro that it met. The C comes first, where
 // none of those macros is defined: it is expanded already, and a macro that names
-// itself in what it expands to would be expanded in it again. Whether a compiler
-// that reads the form sees the same C in it is checked by preprocessing the form:
-// it must come out as it went in. A prelude that does not, or whose headers ask
-// for the moment or the place of a compilation, is compiled as it is.
+// itself in what it expands to would be expanded in it again. The rest of the
+// unit follows it under the numbers that its lines had.
+//
+// A form stands for its prelude when a compiler that reads it sees what it would
+// see in the prelude. That is checked when the form is made, in three ways:
+//
+// - The form is preprocessed, and must come out as it went in.
+// - What `tcc -E -dD` does not tell is taken from the text of the headers, or the
+//   form is not used: see tcc_prelude_macros.v.
+// - The unit that asked for the form is compiled with it and without it, and
+//   both must give the same object.
+//
+// A prelude whose form fails one of them, or whose headers ask for the moment or
+// the place of a compilation, is compiled as it is. So is, from then on, one with
+// whose form a unit does not compile that compiles without it.
 
-const v3_tcc_prelude_format = 'v3-tcc-prelude-4'
+const v3_tcc_prelude_format = 'v3-tcc-prelude-5'
 
 // v3_tcc_prelude_input_name is the name under which the preprocessor reads a
 // prelude: where it shows in what comes out, a header asked for the name of the
@@ -366,6 +377,8 @@ mut:
 	code        string
 	definitions string
 	unusable    string
+	// The numbers that follow v3_tcc_prelude_defined_probe in the output.
+	defined []int
 }
 
 // text returns the form in which a unit includes the preprocessed prelude.
@@ -421,6 +434,10 @@ fn v3_tcc_split_preprocessed(preprocessed string) V3TccPreprocessed {
 				if text[v3_tcc_prelude_counter_probe.len..].trim_space() != '0' {
 					result.unusable = 'its headers count with __COUNTER__'
 				}
+				continue
+			}
+			if text.starts_with(v3_tcc_prelude_defined_probe) {
+				result.defined << text[v3_tcc_prelude_defined_probe.len..].trim_space().int()
 				continue
 			}
 			code.write_string(line)
@@ -650,6 +667,48 @@ fn v3_tcc_prelude_key(prelude string, tcc_path string, preprocess_args []string,
 struct V3TccPrelude {
 	unit   string
 	inputs V3HeaderInputs
+	// The preprocessed form, the record of it, and the key of both.
+	form  string
+	stamp string
+	key   string
+}
+
+// v3_tcc_prelude_unit returns the unit `source`, whose prelude is its first `end`
+// bytes, with the prelude replaced by its preprocessed form in the file `form`.
+// The lines after the prelude keep their numbers: `__LINE__` and what TinyCC says
+// of a line are those of `source`.
+fn v3_tcc_prelude_unit(form string, source string, end int) string {
+	return '#include "${c_include_path(form)}"\n#line ${source[..end].count('\n') + 1}\n' +
+		source[end..]
+}
+
+// v3_write_tcc_prelude_stamp puts `stamp` in place of the record at `path`.
+fn v3_write_tcc_prelude_stamp(path string, stamp string) bool {
+	tmp := '${path}.tmp.${tempname.unique_token()}'
+	os.write_file(tmp, stamp) or {
+		os.rm(tmp) or {}
+		return false
+	}
+	os.mv(tmp, path) or {
+		os.rm(tmp) or {}
+		return false
+	}
+	return true
+}
+
+// reject records that the preprocessed form of the prelude cannot stand for it,
+// and why: a unit did not compile with it that compiles without it. No build
+// reads the form after that, for as long as the headers stay what they are.
+fn (p &V3TccPrelude) reject(reason string) {
+	// A form that is gone is one that a unit could not read, whatever it holds.
+	if p.stamp.len == 0 || !os.is_file(p.form) {
+		return
+	}
+	stamp := v3_tcc_prelude_stamp(p.key, p.inputs, reason) or { return }
+	if v3_write_tcc_prelude_stamp(p.stamp, stamp) {
+		os.rm(p.form) or {}
+		v3_trace_tcc_prelude('not used from now on: ${reason}')
+	}
 }
 
 // v3_tcc_prelude returns `source`, the unit of a program, with the part that
@@ -685,8 +744,11 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 				}
 				if os.is_file(cached) {
 					return V3TccPrelude{
-						unit:   '#include "${c_include_path(cached)}"\n' + source[end..]
+						unit:   v3_tcc_prelude_unit(cached, source, end)
 						inputs: record.inputs
+						form:   cached
+						stamp:  stamp_path
+						key:    key
 					}
 				}
 			}
@@ -698,11 +760,15 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 	prelude_file := os.join_path_single(cc_dir, v3_tcc_prelude_input_name)
 	output_file := os.join_path_single(cc_dir, 'v3_tcc_prelude_output.i')
 	verify_file := os.join_path_single(cc_dir, 'v3_tcc_prelude_verify.c')
+	probe_file := os.join_path_single(cc_dir, 'v3_tcc_prelude_probe.c')
+	probe_object := os.join_path_single(cc_dir, 'v3_tcc_prelude_probe.o')
 	tmp := '${cached}.tmp.${tempname.unique_token()}'
 	defer {
 		os.rm(prelude_file) or {}
 		os.rm(output_file) or {}
 		os.rm(verify_file) or {}
+		os.rm(probe_file) or {}
+		os.rm(probe_object) or {}
 		os.rm(tmp) or {}
 	}
 	// The line after the prelude tells how far its headers counted.
@@ -730,6 +796,12 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 			return none
 		}
 	}
+	if inputs.unknown.len > 0 {
+		// Nothing can be recorded of headers that cannot all be told: what the
+		// form is worth need not be found out.
+		v3_trace_tcc_prelude('not kept: ${inputs.unknown}')
+		return none
+	}
 	mut form := v3_tcc_split_preprocessed(preprocessed)
 	if form.unusable.len == 0 && v3_tcc_source_has_build_time_macros(prelude) {
 		form.unusable = 'it asks for the time or the count of the compilation'
@@ -737,13 +809,27 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 	if form.unusable.len == 0 && of_the_build.len > 0 {
 		form.unusable = 'it includes a file that the build made: ${os.file_name(of_the_build)}'
 	}
+	mut macros := V3PreludeMacros{}
+	if form.unusable.len == 0 {
+		// What the preprocessor does not print of the macros is in the text.
+		macros.add(prelude)
+		for path in read {
+			macros.add(os.read_file(path) or { '' })
+		}
+		form.definitions, form.unusable = macros.with_variable_arguments(form.definitions)
+	}
 	if form.unusable.len == 0 {
 		// A compiler that reads the form must see the C that the preprocessor made
 		// of the prelude: so it does when the form comes out of the preprocessor as
 		// it went in. A form that TinyCC reports an error in is one that it cannot
-		// use.
+		// use. The same run tells which of the names that the headers ask about
+		// are macros before the preprocessor has read anything.
+		mut tested := macros.tested.keys()
+		tested.sort()
 		os.write_file(tmp, form.text()) or { return none }
-		os.write_file(verify_file, '#include "${c_include_path(tmp)}"\n') or { return none }
+		os.write_file(verify_file, '${v3_tcc_preprocessor_probe(tested)}#include "${c_include_path(tmp)}"\n') or {
+			return none
+		}
 		mut verify_args := preprocess_args.clone()
 		verify_args << ['-E', '-dD', '-o', os.file_name(output_file), os.file_name(verify_file)]
 		verified := cmdexec.run_in(tcc_path, verify_args, cc_dir)
@@ -756,18 +842,51 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 			}
 			form.unusable = 'TinyCC does not read its preprocessed form: ${verified.output.all_before('\n')}'
 		} else {
-			again := os.read_file(output_file) or { return none }
-			if !v3_tcc_preprocessed_forms_match(&form, v3_tcc_split_preprocessed(again)) {
+			again_text := os.read_file(output_file) or { return none }
+			mut again := v3_tcc_split_preprocessed(again_text)
+			again.definitions, _ = macros.with_variable_arguments(again.definitions)
+			if !v3_tcc_preprocessed_forms_match(&form, &again) {
 				form.unusable = 'its macros change the C that they expanded to'
+			} else {
+				// The compiler must find the same of those names defined: it
+				// defines some macros that the preprocessor does not.
+				os.write_file(probe_file, v3_tcc_compiler_probe(tested, again.defined)) or {
+					return none
+				}
+				mut probe_args := preprocess_args.clone()
+				probe_args << ['-c', '-o', os.file_name(probe_object), os.file_name(probe_file)]
+				probed := cmdexec.run_in(tcc_path, probe_args, cc_dir)
+				if probed.exit_code != 0 {
+					name := v3_tcc_probe_difference(probed.output) or {
+						v3_trace_tcc_prelude('not verified: ${probed.output.all_before('\n')}')
+						return none
+					}
+					form.unusable = 'its headers ask about `${name}`, which TinyCC defines for a compilation and not for the preprocessor, or the other way round'
+				}
+			}
+		}
+	}
+	if form.unusable.len == 0 && !v3_tcc_source_has_build_time_macros(source[end..])
+		&& !v3_time_names_can_be_built(v3_c_time_name_parts(source[end..])) {
+		// The unit that asks for the form is what there is to compile: with the
+		// form and without it, it must give the same object. A unit that asks for
+		// the time gives another one every second.
+		match v3_tcc_compare_units(tcc_path, tcc_args, source_name, cc_dir, source, v3_tcc_prelude_unit(tmp,
+			source, end)) {
+			.alike {}
+			.differ {
+				form.unusable = 'TinyCC makes another object of a unit that reads it'
+			}
+			.unknown {
+				// The unit does not compile as it is, or TinyCC did not run: that
+				// says nothing of the form, and the next build asks again.
+				v3_trace_tcc_prelude('not verified: the unit was not compiled')
+				return none
 			}
 		}
 	}
 	stamp := v3_tcc_prelude_stamp(key, inputs, form.unusable) or {
-		v3_trace_tcc_prelude('not kept: ${if inputs.unknown.len > 0 {
-			inputs.unknown
-		} else {
-			'a header cannot be told apart from a changed one'
-		}}')
+		v3_trace_tcc_prelude('not kept: a header cannot be told apart from a changed one')
 		return none
 	}
 	// The stamp commits the text: remove the old one before the text is replaced.
@@ -777,13 +896,7 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 	} else {
 		os.rm(cached) or {}
 	}
-	stamp_tmp := '${stamp_path}.tmp.${tempname.unique_token()}'
-	os.write_file(stamp_tmp, stamp) or {
-		os.rm(stamp_tmp) or {}
-		return none
-	}
-	os.mv(stamp_tmp, stamp_path) or {
-		os.rm(stamp_tmp) or {}
+	if !v3_write_tcc_prelude_stamp(stamp_path, stamp) {
 		return none
 	}
 	if form.unusable.len > 0 {
@@ -792,15 +905,26 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 	}
 	v3_trace_tcc_prelude('preprocessed ${prelude.len} bytes into ${cached}')
 	return V3TccPrelude{
-		unit:   '#include "${c_include_path(cached)}"\n' + source[end..]
+		unit:   v3_tcc_prelude_unit(cached, source, end)
 		inputs: inputs
+		form:   cached
+		stamp:  stamp_path
+		key:    key
 	}
 }
 
-// v3_tcc_units_compile_alike reports whether TinyCC makes the same object of two
-// forms of a program unit. The check costs two more compilations, and is there for
-// tests and for looking into a difference: V3_TCC_PRELUDE_VERIFY=1 asks for it.
-fn v3_tcc_units_compile_alike(tcc_path string, tcc_args []string, source_name string, cc_dir string, first string, second string) bool {
+// V3UnitsCompared is what compiling a unit in two forms tells of them.
+enum V3UnitsCompared {
+	alike
+	differ
+	unknown
+}
+
+// v3_tcc_compare_units tells whether TinyCC makes the same object of `second` as
+// of `first`, two forms of a program unit. Nothing is known of them when `first`
+// does not compile, or when TinyCC did not get to compile `second`; a `second`
+// that it finds an error in differs from a `first` that it compiles.
+fn v3_tcc_compare_units(tcc_path string, tcc_args []string, source_name string, cc_dir string, first string, second string) V3UnitsCompared {
 	mut args := v3_tcc_preprocess_args(tcc_args, source_name)
 	args << ['-c', '-o', 'verify.o', 'verify.c']
 	source := os.join_path_single(cc_dir, 'verify.c')
@@ -810,13 +934,25 @@ fn v3_tcc_units_compile_alike(tcc_path string, tcc_args []string, source_name st
 		os.rm(object) or {}
 	}
 	mut objects := [][]u8{}
-	for unit in [first, second] {
-		os.write_file(source, unit) or { return false }
+	for i, unit in [first, second] {
+		os.write_file(source, unit) or { return .unknown }
 		os.rm(object) or {}
-		if cmdexec.run_in(tcc_path, args, cc_dir).exit_code != 0 {
-			return false
+		compiled := cmdexec.run_in(tcc_path, args, cc_dir)
+		if compiled.exit_code != 0 {
+			return if i == 1 && v3_c_output_reports_source_error(compiled.output) {
+				V3UnitsCompared.differ
+			} else {
+				V3UnitsCompared.unknown
+			}
 		}
-		objects << os.read_bytes(object) or { return false }
+		objects << os.read_bytes(object) or { return .unknown }
 	}
-	return objects[0] == objects[1]
+	return if objects[0] == objects[1] { V3UnitsCompared.alike } else { V3UnitsCompared.differ }
+}
+
+// v3_tcc_units_compile_alike reports whether TinyCC makes the same object of two
+// forms of a program unit. V3_TCC_PRELUDE_VERIFY=1 asks for it in every build, for
+// tests and for looking into a difference.
+fn v3_tcc_units_compile_alike(tcc_path string, tcc_args []string, source_name string, cc_dir string, first string, second string) bool {
+	return v3_tcc_compare_units(tcc_path, tcc_args, source_name, cc_dir, first, second) == .alike
 }

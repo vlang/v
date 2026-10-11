@@ -282,6 +282,38 @@ fn test_include_directories_of_the_environment_come_after_those_of_the_command()
 	assert search.absent == []
 }
 
+fn test_the_rest_of_a_unit_keeps_its_lines_after_the_preprocessed_prelude() {
+	source := '#include <a.h>\n#define ONE 1\n#include <b.h>\nint line = __LINE__;\n'
+	end := v3_tcc_prelude_end(source)
+	assert source[end..] == 'int line = __LINE__;\n'
+	assert v3_tcc_prelude_unit('/cache/form.i', source, end) == '#include "/cache/form.i"\n#line 4\nint line = __LINE__;\n'
+}
+
+fn test_a_prelude_that_a_unit_does_not_compile_with_is_not_used_again() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_tcc_prelude_reject_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	form := os.join_path(dir, 'tcc_prelude_key.i')
+	stamp := form + '.stamp'
+	os.write_file(form, 'int x;\n')!
+	prelude := V3TccPrelude{
+		form:  form
+		stamp: stamp
+		key:   'key'
+	}
+	prelude.reject('TinyCC does not compile a unit that reads it: src.c:9: error')
+	record := v3_read_tcc_prelude_stamp(os.read_file(stamp)!, 'key') or { panic('no record') }
+	assert record.unusable.contains('does not compile a unit')
+	assert !os.exists(form)
+	// A form that is gone was not read: nothing is said of it.
+	os.rm(stamp)!
+	prelude.reject('again')
+	assert !os.exists(stamp)
+}
+
 fn test_a_date_or_a_time_of_day_in_a_string_is_what_a_time_macro_leaves() {
 	assert v3_c_has_time_literal('const char *s = "\\"Oct 11 2026\\"";')
 	assert v3_c_has_time_literal('const char *s = "built Jan  1 2026";')

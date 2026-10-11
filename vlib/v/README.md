@@ -646,18 +646,30 @@ kept in the module cache in preprocessed form (`tcc -E -dD`), and the unit inclu
 instead. The form is the C that the preprocessor made of the headers, followed by the macro
 definitions that it met: the C is expanded already, and must not be read with those macros
 defined, or one that names itself in what it expands to would be expanded in it again. TinyCC
-then preprocesses the form itself, and the form is used only when it comes out as it went in.
-It is not used either when the headers take a value of `__COUNTER__`, ask for the name of the
-file that is compiled or for the time, push or pop a macro, or include a file that the build
-made; the cache records that, so that the next build does not find it out again. The form is
-valid while the unit starts with the same text, for the same TinyCC, arguments, `CPATH` and
-`C_INCLUDE_PATH`, for the same directory of the output when one of those holds a relative
-path that leaves the directory of the build (and none is kept when a header turns up through
-such a path that none of them showed), while every header that the preprocessor read is the file
-it was, and while no header has appeared where an `#include` or a `__has_include` would find it
-first: in a directory of `-I`, or of `CPATH`, which TinyCC searches right after those.
-Nothing is kept when a header was written after the preprocessor had started. If TinyCC reports an
-error in a unit that uses the form, the unit is compiled as it was generated.
+then preprocesses the form itself, and the form is used only when it comes out as it went in. `tcc
+-E -dD` does not print all that TinyCC knows of the macros when it compiles the headers
+themselves, so two things are taken from their text. A macro that takes any number of arguments is
+printed without what says so, `f(x, ...)` as `f(x,__VA_ARGS__)` and `f(x, rest...)` as
+`f(x,rest)`: the form gets it back, and is not used when the headers define one macro in both
+ways. And TinyCC defines some macros for a compilation that it does not define for `-E`
+(`__builtin_offsetof` among them): the form is not used when the headers ask whether one of those
+is defined, define it or take its definition away, which a second small compilation tells for
+every name that they ask about. Last, the unit that asks for a new form is compiled with it and
+without it, and the form is kept only when both give the same object; those are two more
+compilations, once for a set of headers. The rest of the unit follows the form under a `#line`
+that gives its lines the numbers that they had, for `__LINE__` and for what TinyCC says of them.
+It is not used either when the headers take a value of `__COUNTER__`, ask for the name of the file
+that is compiled or for the time, push or pop a macro, or include a file that the build made; the
+cache records that, so that the next build does not find it out again. The form is valid while the
+unit starts with the same text, for the same TinyCC, arguments, `CPATH` and `C_INCLUDE_PATH`, for
+the same directory of the output when one of those holds a relative path that leaves the directory
+of the build (and none is kept when a header turns up through such a path that none of them
+showed), while every header that the preprocessor read is the file it was, and while no header has
+appeared where an `#include` or a `__has_include` would find it first: in a directory of `-I`, or
+of `CPATH`, which TinyCC searches right after those. Nothing is kept when a header was written
+after the preprocessor had started. If TinyCC reports an error in a unit that uses the form, the
+unit is compiled as it was generated; when it compiles so, the form is recorded as one that is not
+used again.
 `V3_TCC_NO_PRELUDE_CACHE=1` turns this off, and `V3_TCC_PRELUDE_VERIFY=1` compiles both forms and
 stops when their objects differ.
 On macOS, TinyCC starts Apple's `codesign` for each executable that it links, which takes longer
