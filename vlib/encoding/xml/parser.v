@@ -458,10 +458,65 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	}, ch
 }
 
+fn append_text_run(mut children []XMLNodeContents, mut pending []XMLNodeContents, mut contents strings.Builder, entities map[string]string) ! {
+	text := contents.str()
+	if text.len > 0 {
+		pending << text
+	}
+	// Comments split text fragments, but only element boundaries trim the whole text run.
+	for i in 0 .. pending.len {
+		item := pending[i]
+		match item {
+			string {
+				trimmed := item.trim_space_left()
+				pending[i] = trimmed
+				if trimmed.len > 0 {
+					break
+				}
+			}
+			XMLCData {
+				if item.text.len > 0 {
+					break
+				}
+			}
+			else {}
+		}
+	}
+	for i := pending.len - 1; i >= 0; i-- {
+		item := pending[i]
+		match item {
+			string {
+				trimmed := item.trim_space_right()
+				pending[i] = trimmed
+				if trimmed.len > 0 {
+					break
+				}
+			}
+			XMLCData {
+				if item.text.len > 0 {
+					break
+				}
+			}
+			else {}
+		}
+	}
+	for item in pending {
+		if item is string {
+			if item.len > 0 {
+				children << unescape_text(item.replace('\r\n', '\n'), entities: entities)!
+			}
+		} else {
+			children << item
+		}
+	}
+	pending.clear()
+}
+
 fn parse_children(name string, attributes map[string]string, entities map[string]string, mut reader io.Reader) !XMLNode {
 	mut inner_contents := strings.new_builder(default_string_builder_cap)
 
 	mut children := []XMLNodeContents{}
+	mut pending := []XMLNodeContents{}
 	mut local_buf := [u8(0)]
 
 	for {
@@ -471,11 +526,9 @@ fn parse_children(name string, attributes map[string]string, entities map[string
 				second_char := next_char(mut reader, mut local_buf)!
 				match second_char {
 					`!` {
-						text := inner_contents.str().trim_space()
+						text := inner_contents.str()
 						if text.len > 0 {
-							children << unescape_text(text.replace('\r\n', '\n'),
-								entities: entities
-							)!
+							pending << text
 						}
 						// Comment, CDATA
 						mut next_two := [u8(0), 0]
@@ -485,7 +538,7 @@ fn parse_children(name string, attributes map[string]string, entities map[string
 						if next_two == double_dash {
 							// Comment
 							comment := parse_comment(mut reader)!
-							children << comment
+							pending << comment
 						} else if next_two == c_tag {
 							// <![CDATA -> DATA
 							mut cdata_buf := []u8{len: 4}
@@ -496,7 +549,7 @@ fn parse_children(name string, attributes map[string]string, entities map[string
 								return error('Invalid XML. Expected "CDATA" after "<![C".')
 							}
 							cdata := parse_cdata(mut reader)!
-							children << cdata
+							pending << cdata
 						} else {
 							return error('Invalid XML. Unknown control sequence: ${next_two.bytestr()}')
 						}
@@ -515,13 +568,7 @@ fn parse_children(name string, attributes map[string]string, entities map[string
 							return error('XML node <${name}> not closed.')
 						}
 
-						collected_contents := inner_contents.str().trim_space()
-						if collected_contents.len > 0 {
-							// We have some inner text
-							children << unescape_text(collected_contents.replace('\r\n', '\n'),
-								entities: entities
-							)!
-						}
+						append_text_run(mut children, mut pending, mut inner_contents, entities)!
 						return XMLNode{
 							name:       name
 							attributes: attributes
@@ -537,12 +584,7 @@ fn parse_children(name string, attributes map[string]string, entities map[string
 								return err
 							}
 						}
-						text := inner_contents.str().trim_space()
-						if text.len > 0 {
-							children << unescape_text(text.replace('\r\n', '\n'),
-								entities: entities
-							)!
-						}
+						append_text_run(mut children, mut pending, mut inner_contents, entities)!
 						children << child
 					}
 				}

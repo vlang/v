@@ -42,10 +42,15 @@ Parsing decodes predefined entities, decimal and hexadecimal character reference
 entities declared in the document's internal DTD in text and attribute values. Unknown entities
 and references to invalid XML characters produce an error. Numeric references to whitespace
 are preserved, including at the edges of text nodes. CDATA is left unchanged.
+Literal formatting whitespace is trimmed at element boundaries. Comments and CDATA split
+text fragments without removing separator whitespace inside the same text run.
 
 `validate` checks the parsed tree without decoding its text again.
 
 When the XML document is serialized (using `str` or `pretty_str`), text and attributes are escaped.
+Significant whitespace at text edges and carriage returns are written as character references
+so parsing the serialized document preserves them. Adjacent text, comments, and CDATA are kept
+together to avoid adding formatting whitespace inside text runs.
 
 The escaping and un-escaping can also be done manually using the `escape_text` and
 `unescape_text` methods.

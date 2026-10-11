@@ -163,6 +163,57 @@ fn test_parser_preserves_cdata_and_decodes_separate_text_runs() {
 		XMLCData{ text: '&amp;' }, 'c>']
 }
 
+fn test_parser_preserves_whitespace_inside_text_runs_split_by_comments_and_cdata() {
+	for input in ['<r>a <!--c-->b</r>', '<r>a<!--c--> b</r>', '<r>a <!--c--> b</r>',
+		'<r>a<!--c--> <!--d-->b</r>', '<r> a <!--c--> b </r>'] {
+		doc := XMLDocument.from_string(input)!
+		mut text := ''
+		for child in doc.root.children {
+			if child is string {
+				text += child
+			}
+		}
+		assert text == if input.contains('a <!--c--> b') { 'a  b' } else { 'a b' }
+		assert XMLDocument.from_string(doc.str())!.root == doc.root
+		assert XMLDocument.from_string(doc.pretty_str('\t'))!.root == doc.root
+	}
+	for input in ['<r>a <![CDATA[b]]> c</r>', '<r>a <!--c--><![CDATA[b]]> c</r>',
+		'<r>a <![CDATA[]]><!--c--> b</r>'] {
+		doc := XMLDocument.from_string(input)!
+		assert doc.root.children[0] == XMLNodeContents('a ')
+		assert doc.root.children.last() == XMLNodeContents(' c')
+			|| doc.root.children.last() == XMLNodeContents(' b')
+		assert XMLDocument.from_string(doc.str())!.root == doc.root
+		assert XMLDocument.from_string(doc.pretty_str('\t'))!.root == doc.root
+	}
+}
+
+fn test_parser_still_trims_text_run_edges_and_formatting_whitespace() {
+	for input in ['<r> \n<!--c--> \nhello \n<!--d--> \n</r>', '<r><!--c--> hello <!--d--></r>'] {
+		doc := XMLDocument.from_string(input)!
+		assert doc.root.children == [XMLNodeContents(XMLComment{ text: 'c' }), 'hello',
+			XMLComment{ text: 'd' }]
+	}
+	doc := XMLDocument.from_string('<r> \n<!--c--> \n<c/> \n<![CDATA[x]]> \n</r>')!
+	assert doc.root.children == [XMLNodeContents(XMLComment{ text: 'c' }), XMLNode{ name: 'c' },
+		XMLCData{ text: 'x' }]
+}
+
+fn test_serialization_preserves_numeric_whitespace_in_text() {
+	for input in ['<r>&#32;<c/>&#x20;</r>', '<r>&#32;hello&#32;</r>', '<r>&#9;&#10;&#13;</r>',
+		'<r>&#x9;&#xA;&#xD;hello&#xD;&#xA;&#x9;</r>', '<r>a&#13;&#10;b</r>',
+		'<r>&#32;<!--c-->&#9;<![CDATA[x]]>&#10;&#13;</r>',
+		'<r a="&#9;&#10;&#13;">&#32;&amp;&lt;😀&#32;</r>'] {
+		doc := XMLDocument.from_string(input)!
+		for rendered in [doc.str(), doc.pretty_str('\t'), doc.root.pretty_str('  ', 0,
+			default_entities_reverse)] {
+			reparsed := XMLDocument.from_string(rendered)!
+			assert reparsed.root == doc.root
+			assert XMLDocument.from_string(reparsed.str())!.root == doc.root
+		}
+	}
+}
+
 fn test_validation_does_not_decode_entities_twice() {
 	doc := XMLDocument.from_string('<?xml version="1.0"?><!DOCTYPE r [<!ELEMENT r (#PCDATA)>]><r>&amp;amp;</r>')!
 	assert doc.root.children == [XMLNodeContents('&amp;')]
