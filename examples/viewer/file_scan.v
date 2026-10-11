@@ -308,25 +308,6 @@ fn (mut il Item_list) rotate(in_inc int) {
 	il.lst[il.item_index].rotation = r
 }
 
-// ci_less compares two strings case-insensitively (ASCII) without allocating.
-fn ci_less(a string, b string) bool {
-	n := if a.len < b.len { a.len } else { b.len }
-	for i in 0 .. n {
-		mut ca := a[i]
-		mut cb := b[i]
-		if ca >= u8(`A`) && ca <= u8(`Z`) {
-			ca += 32
-		}
-		if cb >= u8(`A`) && cb <= u8(`Z`) {
-			cb += 32
-		}
-		if ca != cb {
-			return ca < cb
-		}
-	}
-	return a.len < b.len
-}
-
 // resort_merge is a merge sort of `order` by the string key `keys[order[i]]`.
 // `tmp` is a pre-allocated scratch buffer of the same length. A hand-written
 // sort is used because V 0.5.2's `.sort()` sugar cannot compare through an

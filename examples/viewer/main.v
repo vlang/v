@@ -71,6 +71,21 @@ mut:
 	canvas_height() int
 }
 
+// NullPlayer is the idle AnimPlayer App.player starts with. Every use of
+// App.player is guarded by App.is_anim, so its methods never run while it
+// is the active player; it exists because V requires interface fields to
+// be initialized.
+struct NullPlayer {}
+
+fn (NullPlayer) frame_count() int { return 0 }
+fn (NullPlayer) loop_count() int { return 0 }
+fn (NullPlayer) delay_ms(_ int) int { return 0 }
+fn (mut NullPlayer) reset() void {}
+fn (mut NullPlayer) step() ![]u8 { return error('no animation is playing') }
+fn (mut NullPlayer) free() void {}
+fn (NullPlayer) canvas_width() int { return 0 }
+fn (NullPlayer) canvas_height() int { return 0 }
+
 // App holds the window context, the current image texture, the navigation
 // list, and the view transform state.
 struct App {
@@ -676,7 +691,7 @@ fn my_event(mut ev gg.Event, mut app App) {
 }
 
 fn main() {
-	mut app := &App{}
+	mut app := &App{ player: NullPlayer{} }
 	app.item_list.get_items_list(os.args[1..])
 
 	app.gg = gg.new_context(
