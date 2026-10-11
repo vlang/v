@@ -106,8 +106,13 @@ fn test_simd_unknown_callee_is_left_alone() {
 	left := m.add_instr(.struct_init, block_id, vec4, [])
 	right := m.add_instr(.struct_init, block_id, vec4, [])
 	words := simd_call_words(mut m, 'simd.mystery', [left, right], vec4)
-	assert asm_fmul_v4s(0, 0, 1) !in words
-	assert asm_bl(0) in words
+	// A callee that is not one of the helpers must not produce four-lane
+	// arithmetic, whatever else it is compiled to. The lookup returns none for
+	// this name; if it ever returned the enum's zero value instead, `vadd` would
+	// be emitted for every unrelated callee.
+	assert simd_intrinsic_op('simd.mystery') == none
+	assert asm_fadd_v4s(0, 0, 1) !in words
+	assert asm_ldr_q_imm(0, Reg(8), 0) !in words
 }
 
 fn math_call_words(mut m ssa.Module, callee string, arg_type ssa.TypeID, ret_type ssa.TypeID,

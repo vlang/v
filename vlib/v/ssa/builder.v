@@ -1539,7 +1539,7 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		return true
 	}
 	return name.starts_with('print_backtrace') || name.starts_with('backtrace_')
-		|| name.starts_with('map.')
+		|| name.starts_with('map.') || name in ['map_map_eq', 'map_map_ne']
 		|| name.starts_with('VMapData.')
 		|| name in ['print_libbacktrace', 'eprint_libbacktrace', 'bsd_backtrace_resolve_atos']
 }

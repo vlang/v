@@ -106,26 +106,34 @@ pub fn (v F32x4) sum() f32 {
 // substitution is invisible from here, and the body is what runs wherever it
 // does not apply.
 $if @BACKEND != 'c' {
+	// Each helper is the one operation a backend lowers to a single vector
+	// instruction, so they are marked `noinline`: an inlined copy is four scalar
+	// lane operations that no backend can recognize any more.
+	@[noinline]
 	fn add_native(a F32x4, b F32x4) F32x4 {
 		return f32x4(a.values[0] + b.values[0], a.values[1] + b.values[1],
 			a.values[2] + b.values[2], a.values[3] + b.values[3])
 	}
 
+	@[noinline]
 	fn sub_native(a F32x4, b F32x4) F32x4 {
 		return f32x4(a.values[0] - b.values[0], a.values[1] - b.values[1],
 			a.values[2] - b.values[2], a.values[3] - b.values[3])
 	}
 
+	@[noinline]
 	fn mul_native(a F32x4, b F32x4) F32x4 {
 		return f32x4(a.values[0] * b.values[0], a.values[1] * b.values[1],
 			a.values[2] * b.values[2], a.values[3] * b.values[3])
 	}
 
+	@[noinline]
 	fn div_native(a F32x4, b F32x4) F32x4 {
 		return f32x4(a.values[0] / b.values[0], a.values[1] / b.values[1],
 			a.values[2] / b.values[2], a.values[3] / b.values[3])
 	}
 
+	@[noinline]
 	fn sqrt_native(a F32x4) F32x4 {
 		return f32x4(f32(math.sqrt(a.values[0])), f32(math.sqrt(a.values[1])),
 			f32(math.sqrt(a.values[2])), f32(math.sqrt(a.values[3])))

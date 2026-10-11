@@ -726,6 +726,15 @@ fn asm_ldr_q_imm(vd int, xn Reg, imm12 u32) u32 {
 	return 0x3DC00000 | ((imm12 & 0xFFF) << 10) | (u32(xn) << 5) | u32(vd)
 }
 
+// ldr sd, [xn, #imm12] (load one f32 lane, unsigned offset scaled by 4)
+// imm12 is the byte offset divided by 4; range 0..16380 step 4. Four of these
+// fill four consecutive FP registers, which is how a four-lane f32 aggregate is
+// passed to a C function under the AAPCS64 HFA rules: one `ldr q` fills one
+// register's lanes, not the four registers the callee reads.
+fn asm_ldr_s_imm(vd int, xn Reg, imm12 u32) u32 {
+	return 0xBD400000 | ((imm12 & 0xFFF) << 10) | (u32(xn) << 5) | u32(vd)
+}
+
 // str qd, [xn, #imm12] (store 128-bit, unsigned offset scaled by 16)
 // imm12 is the byte offset divided by 16; range 0..65520 step 16
 fn asm_str_q_imm(vd int, xn Reg, imm12 u32) u32 {

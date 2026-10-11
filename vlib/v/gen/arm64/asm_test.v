@@ -101,6 +101,10 @@ fn test_vector_load_store_encoders_match_reference() {
 	assert asm_ldr_q_imm(0, Reg(1), 0) == 0x3DC00020
 	assert asm_ldr_q_imm(7, Reg(8), 1) == 0x3DC00507
 	assert asm_ldr_q_imm(7, Reg(8), 7) == 0x3DC01D07
+	// ldr s0, [x1] / ldr s5, [x8, #4] / ldr s3, [x8, #12]
+	assert asm_ldr_s_imm(0, Reg(1), 0) == 0xBD400020
+	assert asm_ldr_s_imm(5, Reg(8), 1) == 0xBD400505
+	assert asm_ldr_s_imm(3, Reg(8), 3) == 0xBD400D03
 	// str q0, [x1] / str q7, [x8, #16] / str q7, [x8, #112]
 	assert asm_str_q_imm(0, Reg(1), 0) == 0x3D800020
 	assert asm_str_q_imm(7, Reg(8), 1) == 0x3D800507

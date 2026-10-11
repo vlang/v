@@ -1367,6 +1367,25 @@ const simd_intrinsics = {
 	'simd.sqrt_native': SimdIntrinsicOp.vsqrt
 }
 
+// simd_intrinsic_op looks up the four-lane operation a callee means, or none.
+// A call built from source can carry either spelling of a module-qualified
+// name — `a.b` or `a__b` — and the SSA builder picks one per call site, so both
+// have to resolve. The lookup must be an existence test: indexing a map with a
+// missing key yields the zero value, which here is `vadd`, so `map[name] or {}`
+// would quietly return it for every unrelated callee.
+fn simd_intrinsic_op(fn_name string) ?SimdIntrinsicOp {
+	if op := simd_intrinsics[fn_name] {
+		return op
+	}
+	normalized := fn_name.replace('__', '.')
+	if normalized != fn_name {
+		if op := simd_intrinsics[normalized] {
+			return op
+		}
+	}
+	return none
+}
+
 // is_f32x4_layout reports whether a homogeneous float aggregate is exactly four
 // f32 lanes at four-byte strides, which is the shape one `q` register holds.
 fn (g &Gen) is_f32x4_layout(layout Arm64HfaLayout) bool {
@@ -1398,7 +1417,7 @@ fn (op SimdIntrinsicOp) operand_count() int {
 // must be four-lane f32 values with stack slots; anything else is left to the
 // ordinary call path.
 fn (mut g Gen) gen_simd_intrinsic(val_id int, instr ssa.Instruction, fn_name string) bool {
-	op := simd_intrinsics[fn_name] or { return false }
+	op := simd_intrinsic_op(fn_name) or { return false }
 	operand_count := op.operand_count()
 	if instr.operands.len < operand_count + 1 {
 		return false
@@ -1757,6 +1776,15 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 
 fn (mut g Gen) emit_homogeneous_float_aggregate(arg_id int, layout Arm64HfaLayout, first_reg int) {
 	if !g.emit_value_address(arg_id, 8) {
+		return
+	}
+	if g.is_f32x4_layout(layout) && first_reg + layout.elements.len <= 8 {
+		// A four-lane f32 aggregate is one member per consecutive FP register, so
+		// it takes four single-register loads rather than one 128-bit load: `ldr q0`
+		// fills the lanes of V0, and the callee reads V0..V3.
+		for i, element in layout.elements {
+			g.emit32(asm_ldr_s_imm(first_reg + i, Reg(8), u32(element.offset / 4)))
+		}
 		return
 	}
 	for i, element in layout.elements {

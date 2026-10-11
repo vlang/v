@@ -50,7 +50,18 @@ const cs_page_size_arm64 = 16384 // Code signing page size for ARM64 macOS
 
 const cs_page_shift_arm64 = 14 // log2(16384)
 
-const o_wronly_creat_trunc = $if linux { 0x241 } $else { 0x601 }
+// The output file is created through the C library's open(), and the create and
+// truncate bits are laid out differently per platform: the BSD family (and so
+// macOS, the only target this linker was built for) uses 0x200/0x400, Linux
+// 0x40/0x200 and MSVCRT 0x100/0x200. One constant only ever suits one of them;
+// the others silently fail to create the file.
+const o_wronly_creat_trunc = $if windows {
+	0x301
+} $else $if linux {
+	0x241
+} $else {
+	0x601
+}
 
 // ARM64 page size on macOS
 const page_size = 0x4000 // 16KB
@@ -554,7 +565,14 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	if C.chmod(&char(tmp_output_path.str), 0o755) != 0 {
 		panic('failed to chmod output file')
 	}
-	if C.rename(&char(tmp_output_path.str), &char(output_path.str)) != 0 {
+	mut renamed := C.rename(&char(tmp_output_path.str), &char(output_path.str)) == 0
+	if !renamed {
+		// POSIX rename replaces an existing destination; MSVCRT's rename does
+		// not. Remove the old file first so both platforms behave alike.
+		C.remove(&char(output_path.str))
+		renamed = C.rename(&char(tmp_output_path.str), &char(output_path.str)) == 0
+	}
+	if !renamed {
 		panic('failed to rename output file')
 	}
 
