@@ -64,13 +64,24 @@ module search paths, resolved C compiler commands, and build modes. They omit
 linker-only flags, including operands embedded in `-cflags`. Relative `V3CACHE`
 and `VTMP` paths are resolved against the directory where `v up` was invoked.
 Refreshes retain each build's working directory for relative C compilation inputs
-and its effective `-run-only` test selectors. Object flags include source `#flag`
-directives. Records from project directories that no longer exist are skipped.
+and its effective `-run-only` test selectors and assertion display mode.
+Object flags include source `#flag` directives. Records with vanished project
+directories or required compile inputs are skipped. Builds without relative inputs
+or project interface scopes share refresh records across projects.
+Project directives are merged with flags from the updated modules, so changes to
+vlib `#flag` directives take effect during refresh. Cached TCC production builds
+apply the production optimization flags to both module objects and the program.
+Refreshes use the original entry when needed to preserve project interface
+implementers, stopping before linking or running the program. Synthetic refreshes
+also replay source C driver options such as sanitizers at link time. Records for
+unavailable C compilers are skipped.
 Isolated test caches use the primary V compiler executable, including when
-`v up` runs through the fallback compiler or as a separate tool.
+`v up` runs through the fallback compiler or as a separate tool, or a build uses
+the delegated ownership compiler.
 
 For caches created before V recorded their build settings, `v up` identifies the
-cached vlib modules and refreshes them in both modes for the available C compilers.
+cached vlib modules and refreshes them in both modes for the available C compilers,
+for programs and tests.
 
 `v up` reports the agent skills that the new revision left behind, since a new
 revision may ship updated copies of them. It writes nothing: the skills belong to

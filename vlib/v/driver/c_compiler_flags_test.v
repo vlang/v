@@ -4,6 +4,23 @@ import os
 import time
 import v.cmdexec
 import v.pref
+import v.util.cache_refresh
+
+fn test_refresh_records_entry_only_for_project_interface_scopes() {
+	vroot := os.dir(@VEXE)
+	state := V3ModuleCacheState{
+		module_sources: {
+			'io':    [os.join_path(vroot, 'vlib', 'io', 'io.v')]
+			'os':    [os.join_path(vroot, 'vlib', 'os', 'os.v')]
+			'local': [os.join_path(os.vtmp_dir(), 'project', 'local', 'local.v')]
+		}
+	}
+	standard := 'IError=Error,MessageError,io.Eof\nio.Writer=os.File\n#module IError=builtin\n#module Error=builtin\n#module MessageError=builtin'
+	assert !v3_cache_refresh_needs_entry(standard, &state, vroot)
+	assert !v3_cache_refresh_needs_entry(standard + '\nShape=Circle\n#module Shape=main\n#module Circle=main', &state, vroot)
+	assert v3_cache_refresh_needs_entry(standard.replace('io.Writer=os.File', 'io.Writer=os.File,Sink') + '\n#module Sink=main', &state, vroot)
+	assert v3_cache_refresh_needs_entry(standard.replace('io.Writer=os.File', 'io.Writer=os.File,local.Sink'), &state, vroot)
+}
 
 fn v3_driver_test_executable() string {
 	if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
@@ -98,26 +115,57 @@ fn test_module_cache_refresh_preserves_supported_modes_and_aliases() {
 	}
 }
 
-fn test_module_cache_refresh_replays_effective_object_flags_without_duplicate_directives() ! {
+fn test_module_cache_refresh_reads_only_project_flags_in_refresh_children() ! {
 	previous := os.environ()
 	defer {
-		for name in ['V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_OBJECT_FLAGS'] {
+		for name in ['V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_PROJECT_FLAGS'] {
 			if name in previous { os.setenv(name, previous[name], true) } else { os.unsetenv(name) }
 		}
 	}
-	original := ['-DPROJECT', '-include', 'config.h', '-I', 'include path', '-g',
-		'-DNAME=value with spaces', '-L', '../libs', '-lanswer']
-	encoded := original.map(v3_cache_refresh_c_flag(it)).join(' ')
-	os.setenv('V3_CACHE_REFRESH_OBJECT_FLAGS', encoded, true)
+	groups := [cache_refresh.FlagGroup{
+		flags:   ['-DPROJECT', '-include', 'config.h', '-I', 'include path']
+		in_main: true
+	}]
+	os.setenv('V3_CACHE_REFRESH_PROJECT_FLAGS', cache_refresh.encode_project_flags(groups), true)
 	os.unsetenv('V3_CACHE_REFRESH')
-	assert v3_cache_refresh_object_flags(['-DMODULE', '-lmodule'])! == ['-DMODULE']
+	assert v3_cache_refresh_project_flags()! == []cache_refresh.FlagGroup{}
 	os.setenv('V3_CACHE_REFRESH', '1', true)
-	assert v3_cache_refresh_object_flags(['-DMODULE', '-g'])! == c_object_compile_flags(original)
-	// An empty effective argv is distinct from an older record with no override.
-	os.setenv('V3_CACHE_REFRESH_OBJECT_FLAGS', '', true)
-	assert v3_cache_refresh_object_flags(['-DMODULE'])! == []string{}
-	os.unsetenv('V3_CACHE_REFRESH_OBJECT_FLAGS')
-	assert v3_cache_refresh_object_flags(['-DMODULE', '-lmodule'])! == ['-DMODULE']
+	assert v3_cache_refresh_project_flags()! == groups
+	os.unsetenv('V3_CACHE_REFRESH_PROJECT_FLAGS')
+	assert v3_cache_refresh_project_flags()! == []cache_refresh.FlagGroup{}
+}
+
+fn test_cached_tcc_main_command_preserves_production_optimization() ! {
+	compiler := v3_driver_test_executable()
+	if !os.is_executable(os.join_path(os.dir(compiler), 'thirdparty', 'tcc', 'tcc.exe')) { return }
+	root := os.join_path(os.vtmp_dir(), 'vup_tcc_optimization_${os.getpid()}')
+	os.mkdir_all(root)!
+	saved := os.environ()
+	defer {
+		for name in ['V3CACHE', 'VEXE', 'VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH',
+			'V_SKIP_VVMRC'] {
+			if name in saved { os.setenv(name, saved[name], true) } else { os.unsetenv(name) }
+		}
+		os.rmdir_all(root) or {}
+	}
+	os.setenv('VEXE', compiler, true)
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	os.setenv('V_SKIP_VVMRC', '1', true)
+	for name in ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH'] { os.unsetenv(name) }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'import math\nfn main() { println(math.abs(-3.0)) }\n')!
+	for mode in [[]string{}, ['-prod'], ['-prod', '-no-prod-options']] {
+		result := os.exec([compiler, '-cc', 'tcc', '-gc', 'none', '-usecache', '-showcc', ...mode,
+			'-o', os.join_path(root, 'program'), source])
+		assert result.exit_code == 0, result.output
+		commands := result.output.split_into_lines().filter(it.trim_space().starts_with('> ')
+			&& it.contains('src.c') && it.contains('tcc'))
+		assert commands.len == 1, result.output
+		command := cmdexec.split_args(commands[0].trim_space()[2..])!
+		assert command.any(it.contains('v3_module_cache_') && it.ends_with('.o')), commands[0]
+		assert ('-O3' in command) == ('-prod' in mode && '-no-prod-options' !in mode), commands[0]
+		assert '-flto' !in command, commands[0]
+	}
 }
 
 fn test_module_cache_refresh_preserves_effective_run_only_selectors() {

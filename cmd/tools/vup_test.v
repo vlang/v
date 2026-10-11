@@ -135,11 +135,13 @@ fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
 			os.mkdir_all(dir)!
 			cache_refresh.record(dir, root, flags, false, {
 				'sample': [source]
-			}, [])!
+			}, [], '', false)!
 		}
 	}
 	cache_log := os.join_path(root, 'cache_calls.log')
-	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
+	for name in ['cc', 'clang', 'gcc', 'tcc'] {
+		write_executable(os.join_path(bin_dir, name), '#!/bin/sh\nexit 0\n')!
+	}
 	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
 		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
 		'    printf "%s\\n" "\$*" >> ' + os.quoted_path(cache_log) + '\n' +
@@ -195,7 +197,9 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 	os.mkdir_all(os.dir(source))!
 	os.write_file(source, 'module sample\n')!
 	log := os.join_path(root, 'cache_paths.log')
-	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
+	for name in ['cc', 'clang', 'gcc', 'tcc'] {
+		write_executable(os.join_path(bin_dir, name), '#!/bin/sh\nexit 0\n')!
+	}
 	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
 		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
 		'    printf "%s\\n%s\\n" "\$V3CACHE" "\$VTMP" >> ' + os.quoted_path(log) + '\n' +
@@ -210,7 +214,7 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 		os.mkdir_all(dir)!
 		cache_refresh.record(dir, root, ['-cc', 'cc'], false, {
 			'sample': [source]
-		}, [])!
+		}, [], '', false)!
 		os.write_file(log, '')!
 		result := run_vup(root, home, tool, bin_dir)!
 		assert result.exit_code == 0, result.output
@@ -247,8 +251,10 @@ fn test_vup_collects_isolated_cache_for_the_compiler_instead_of_the_tool() ! {
 	os.mkdir_all(dir)!
 	cache_refresh.record(dir, root, ['-cc', 'cc'], false, {
 		'sample': [source]
-	}, [])!
-	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
+	}, [], '', false)!
+	for name in ['cc', 'clang', 'gcc', 'tcc'] {
+		write_executable(os.join_path(bin_dir, name), '#!/bin/sh\nexit 0\n')!
+	}
 	write_executable(compiler, '#!/bin/sh\n' +
 		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
 		'    echo "Caching module crypto.sample..."\n    exit 0;;\nesac\n' +
@@ -272,7 +278,9 @@ fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! 
 		os.rmdir_all(root) or {}
 	}
 	git := os.find_abs_path_of_executable('git')!
-	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
+	for name in ['cc', 'clang', 'gcc', 'tcc'] {
+		write_executable(os.join_path(bin_dir, name), '#!/bin/sh\nexit 0\n')!
+	}
 	sources := os.join_path(root, 'source comparison')
 	os.mkdir_all(sources)!
 	paths := ['cmd/v/v.v', 'vlib/crypto/sha256/sha256.v', 'vlib/runtime/runtime.v', 'vlib/sync/sync.v',

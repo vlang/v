@@ -1,24 +1,41 @@
 module cache_refresh
 
 import os
+import encoding.hex
 import strconv
 import strings
+import v.cmdexec
 import v.tempname
 
 const record_prefix = '.vup_refresh_'
-const record_format = 'vup-cache-refresh-3'
+const record_format = 'vup-cache-refresh-6'
+const entry_record_format = 'vup-cache-refresh-5'
+const project_record_format = 'vup-cache-refresh-4'
+const object_record_format = 'vup-cache-refresh-3'
 const cwd_record_format = 'vup-cache-refresh-2'
 const legacy_record_format = 'vup-cache-refresh-1'
+
+// FlagGroup preserves the ordering and deduplication of a project's C directives.
+pub struct FlagGroup {
+pub:
+	flags    []string
+	at_start bool
+	in_main  bool
+	identity string // Unfiltered group key, for deduplication against module directives.
+}
 
 // Request describes how to rebuild one previously cached standard-library module.
 pub struct Request {
 pub:
-	args             []string
-	module           string
-	is_test          bool
-	cwd              string   // Original directory for caller-relative compilation inputs.
-	object_flags     []string // Effective flags passed to module-object compilation.
-	has_object_flags bool     // Older records contain only CLI options.
+	args            []string
+	module          string
+	is_test         bool
+	cwd             string      // Original directory for caller-relative compilation inputs.
+	project_flags   []FlagGroup // Directives from sources outside the refreshed vlib modules.
+	imports         []string    // Original vlib imports contributing module-wide C flags.
+	entry           string      // Original program input, for interface-specific module aliases.
+	show_test_stats bool        // Effective VTEST_SHOW_ASSERTS configuration.
+	compile_inputs  []string    // Required caller-supplied files that existed when recorded.
 }
 
 // root_dir returns the cache shared by the configurations of this V checkout,
@@ -48,9 +65,16 @@ fn encode_request(request Request) string {
 	out.writeln(record_format)
 	out.writeln(request.module)
 	out.writeln(if request.is_test { 'test' } else { 'program' })
+	out.write_string(encode_arguments([request.cwd, encode_project_flags(request.project_flags),
+		encode_arguments(request.imports), request.entry, request.show_test_stats.str(),
+		encode_arguments(request.compile_inputs), ...request.args]))
+	return out.str()
+}
+
+fn encode_arguments(args []string) string {
+	mut out := strings.new_builder(128)
 	// Length prefixes preserve spaces, quoting and newlines in C flag values.
-	for arg in [request.cwd, request.has_object_flags.str(), request.object_flags.len.str(),
-		...request.object_flags, ...request.args] {
+	for arg in args {
 		out.writeln(arg.len.str())
 		out.write_string(arg)
 	}
@@ -59,12 +83,60 @@ fn encode_request(request Request) string {
 
 fn decode_request(content string) !Request {
 	parts := content.split_nth('\n', 4)
-	if parts.len != 4 || parts[0] !in [record_format, cwd_record_format, legacy_record_format] || !valid_module(parts[1])
+	if parts.len != 4 || parts[0] !in [record_format, entry_record_format, project_record_format,
+		object_record_format, cwd_record_format, legacy_record_format] || !valid_module(parts[1])
 		|| parts[2] !in ['test', 'program'] {
 		return error('invalid module cache refresh record')
 	}
+	args := decode_arguments(parts[3])!
+	if parts[0] == legacy_record_format {
+		return Request{ args: args, module: parts[1], is_test: parts[2] == 'test' }
+	}
+	if args.len == 0 { return error('missing working directory') }
+	if parts[0] == cwd_record_format {
+		return Request{ args: args[1..].clone(), module: parts[1], is_test: parts[2] == 'test', cwd: args[0] }
+	}
+	if args.len < 3 { return error('missing project flags') }
+	if parts[0] == object_record_format {
+		if args[1] !in ['true', 'false'] { return error('invalid object flags') }
+		count := strconv.atoi(args[2])!
+		if count < 0 || count > args.len - 3 { return error('invalid object flag count') }
+		// These records have no provenance: replaying their full flag vector can
+		// override updated module directives. Retain their CLI configuration only.
+		return Request{ args: args[3 + count..].clone(), module: parts[1], is_test: parts[2] == 'test', cwd: args[0] }
+	}
+	has_entry := parts[0] in [record_format, entry_record_format]
+	if has_entry && args.len < 4 { return error('missing program entry') }
+	if parts[0] == record_format && (args.len < 6 || args[4] !in ['true', 'false']) {
+		return error('invalid test display configuration')
+	}
+	arg_offset := if parts[0] == record_format {
+		6
+	} else if has_entry {
+		4
+	} else {
+		3
+	}
+	return Request{
+		args:            args[arg_offset..].clone()
+		module:          parts[1]
+		is_test:         parts[2] == 'test'
+		cwd:             args[0]
+		project_flags:   decode_project_flags(args[1])!
+		imports:         decode_arguments(args[2])!
+		entry:           if has_entry { args[3] } else { '' }
+		show_test_stats: parts[0] == record_format && args[4] == 'true'
+		compile_inputs:  if parts[0] == record_format {
+			decode_arguments(args[5])!
+		} else {
+			[]string{}
+		}
+	}
+}
+
+fn decode_arguments(content string) ![]string {
 	mut args := []string{}
-	mut rest := parts[3]
+	mut rest := content
 	for rest.len > 0 {
 		end := rest.index('\n') or { return error('missing argument length') }
 		len := strconv.atoi(rest[..end])!
@@ -73,52 +145,75 @@ fn decode_request(content string) !Request {
 		args << rest[..len]
 		rest = rest[len..]
 	}
-	if parts[0] == legacy_record_format {
-		return Request{ args: args, module: parts[1], is_test: parts[2] == 'test' }
+	return args
+}
+
+// encode_project_flags serializes project directives for inventory and refresh children.
+pub fn encode_project_flags(groups []FlagGroup) string {
+	mut args := []string{}
+	for group in groups {
+		// Group identities contain NUL separators, which environment values cannot carry.
+		args << [group.at_start.str(), group.in_main.str(), group.identity.bytes().hex(),
+			group.flags.len.str()]
+		args << group.flags
 	}
-	if args.len == 0 { return error('missing working directory') }
-	if parts[0] == cwd_record_format {
-		return Request{ args: args[1..].clone(), module: parts[1], is_test: parts[2] == 'test', cwd: args[0] }
+	return encode_arguments(args)
+}
+
+// decode_project_flags restores ordered project directives from a refresh record.
+pub fn decode_project_flags(content string) ![]FlagGroup {
+	args := decode_arguments(content)!
+	mut groups := []FlagGroup{}
+	mut i := 0
+	for i < args.len {
+		if args.len - i < 4 || args[i] !in ['true', 'false'] || args[i + 1] !in ['true', 'false'] {
+			return error('invalid project flag group')
+		}
+		count := strconv.atoi(args[i + 3])!
+		if count < 0 || count > args.len - i - 4 { return error('invalid project flag count') }
+		groups << FlagGroup{
+			flags:    args[i + 4..i + 4 + count].clone()
+			at_start: args[i] == 'true'
+			in_main:  args[i + 1] == 'true'
+			identity: hex.decode(args[i + 2])!.bytestr()
+		}
+		i += 4 + count
 	}
-	if args.len < 3 || args[1] !in ['true', 'false'] { return error('missing object flags') }
-	count := strconv.atoi(args[2])!
-	if count < 0 || count > args.len - 3 { return error('invalid object flag count') }
-	return Request{
-		args:             args[3 + count..].clone()
-		module:           parts[1]
-		is_test:          parts[2] == 'test'
-		cwd:              args[0]
-		object_flags:     args[3..3 + count].clone()
-		has_object_flags: args[1] == 'true'
-	}
+	return groups
 }
 
 // record remembers only modules resolved to this checkout's vlib. Each module
 // and flag set has its own atomic record, so concurrent programs cannot lose
 // one another's inventories and C-flag variants survive in the same cache.
 // The caller's directory preserves relative compilation inputs during refresh.
-// object_flags includes source directives after filtering out linker-only operands.
-pub fn record(dir string, vroot string, args []string, is_test bool, sources map[string][]string, object_flags []string) ! {
+// project_flags preserves project directives without freezing the vlib's flags.
+// entry identifies the original source input for project interface scopes.
+// show_test_stats preserves the effective test assertion display mode.
+// Cwd-independent builds share records across projects; required compile inputs
+// are tracked so their removal retires the obsolete configuration.
+pub fn record(dir string, vroot string, args []string, is_test bool, sources map[string][]string, project_flags []FlagGroup, entry string, show_test_stats bool) ! {
 	vlib := os.real_path(os.join_path(vroot, 'vlib'))
+	inputs := required_compile_inputs(args, project_flags, os.getwd())
+	cwd := if entry != '' || flags_need_cwd(args, project_flags) { os.getwd() } else { '' }
+	mut modules := []string{}
 	for _, files in sources {
-		if files.len == 0 {
-			continue
-		}
+		if files.len == 0 { continue }
 		source_dir := os.dir(os.real_path(files[0]))
-		if !source_dir.starts_with(vlib + os.path_separator) {
-			continue
-		}
+		if !source_dir.starts_with(vlib + os.path_separator) { continue }
 		name := source_dir[vlib.len + 1..].replace(os.path_separator, '.')
-		if !valid_module(name) {
-			continue
-		}
+		if valid_module(name) && name !in modules { modules << name }
+	}
+	for name in modules {
 		request := Request{
-			args:             args
-			module:           name
-			is_test:          is_test
-			cwd:              os.getwd()
-			object_flags:     object_flags
-			has_object_flags: true
+			args:            args
+			module:          name
+			is_test:         is_test
+			cwd:             cwd
+			project_flags:   project_flags
+			imports:         modules.filter(it != 'builtin')
+			entry:           entry
+			show_test_stats: show_test_stats
+			compile_inputs:  inputs
 		}
 		content := encode_request(request)
 		path := os.join_path(dir, '${record_prefix}${hash_text(content)}')
@@ -140,10 +235,85 @@ fn valid_module(name string) bool {
 		&& it.bytes().all(it.is_letter() || it.is_digit() || it == `_`))
 }
 
+fn compiler_available(vroot string, request Request) bool {
+	index := request.args.index('-cc')
+	if index < 0 { return true }
+	if index + 1 >= request.args.len { return false }
+	compiler := request.args[index + 1]
+	if os.is_abs_path(compiler) || compiler.contains('/') || compiler.contains('\\') {
+		path := if os.is_abs_path(compiler) || request.cwd == '' {
+			compiler
+		} else {
+			os.join_path(request.cwd, compiler)
+		}
+		return os.is_file(path) && os.is_executable(path)
+	}
+
+	if compiler in ['tcc', 'tinyc'] && os.is_executable(os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')) {
+		return true
+	}
+	os.find_abs_path_of_executable(compiler) or { return false }
+	return true
+}
+
+fn required_compile_inputs(args []string, project []FlagGroup, cwd string) []string {
+	mut flags := []string{}
+	for group in project { flags << group.flags }
+	mut i := 0
+	for i < args.len {
+		if args[i] == '-cflags' && i + 1 < args.len {
+			flags << cmdexec.split_args(args[i + 1]) or { []string{} }
+			i += 2
+		} else {
+			i++
+		}
+	}
+	mut dirs := [cwd]
+	mut files := []string{}
+	mut expected := ''
+	for flag in flags {
+		mut option := expected
+		mut path := flag
+		expected = ''
+		if option == '' {
+			for candidate in ['-include-pch', '-include-pth', '--include-directory', '--imacros',
+				'-imacros', '--include', '-include', '-isystem', '-iquote', '-idirafter', '-I'] {
+				if flag == candidate {
+					expected = candidate
+					break
+				}
+				if flag.starts_with(candidate) {
+					option = candidate
+					path = flag[candidate.len..]
+					if candidate.starts_with('--') { path = path.trim_left('=') }
+					break
+				}
+			}
+		}
+		if option == '' || path == '' { continue }
+		if option in ['-I', '-isystem', '-iquote', '-idirafter', '--include-directory'] {
+			dirs << if os.is_abs_path(path) { path } else { os.abs_path(os.join_path(cwd, path)) }
+		} else {
+			files << path
+		}
+	}
+	mut inputs := []string{}
+	for file in files {
+		for dir in dirs {
+			path := if os.is_abs_path(file) { file } else { os.abs_path(os.join_path(dir, file)) }
+			if os.is_file(path) {
+				if path !in inputs { inputs << path }
+				break
+			}
+		}
+	}
+	return inputs
+}
+
 // collect snapshots vexe's inventory before `v up` replaces the compiler. Old
 // caches predate these records: their header filenames still identify vlib
 // source directories, so warm those modules for the available C compilers in
-// both normal and production mode.
+// both normal and production mode, for programs and tests.
 pub fn collect(vroot string, vexe string) ![]Request {
 	root := root_dir(vroot, vexe)
 	if !os.is_dir(root) {
@@ -173,6 +343,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 			}
 			recorded[request.module] = true
 			if request.cwd != '' && !os.is_dir(request.cwd) { continue }
+			if request.compile_inputs.any(!os.is_file(it)) { continue }
 			key := encode_request(request)
 			if key !in seen {
 				seen[key] = true
@@ -226,11 +397,13 @@ pub fn collect(vroot string, vexe string) ![]Request {
 			mut flags := ['-cc', compiler]
 			if prod { flags << '-prod' }
 			for name in modules {
-				request := Request{ args: flags, module: name }
-				key := encode_request(request)
-				if key !in seen {
-					seen[key] = true
-					requests << request
+				for is_test in [false, true] {
+					request := Request{ args: flags, module: name, is_test: is_test }
+					key := encode_request(request)
+					if key !in seen {
+						seen[key] = true
+						requests << request
+					}
 				}
 			}
 		}
@@ -242,7 +415,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // module with its original flags and working directory. Compiler validation also
 // covers transitive imports, headers, embedded files and compiler changes. Unchanged entries are
 // reused, and each newly compiled module is announced on inherited stdout.
-// Records whose original working directory no longer exists are skipped.
+// Records with vanished working directories, required inputs or compilers are skipped.
 pub fn refresh(vexe string, requests []Request) ! {
 	if requests.len == 0 { return }
 	dir := os.join_path(os.vtmp_dir(), 'vup_cache_refresh_${tempname.unique_token()}')
@@ -254,7 +427,10 @@ pub fn refresh(vexe string, requests []Request) ! {
 	environment.delete('LDFLAGS')
 	environment.delete('V3_CACHE_FORCE_SOURCE')
 	environment.delete('V3_CACHE_REFRESH_OBJECT_FLAGS')
+	environment.delete('V3_CACHE_REFRESH_PROJECT_FLAGS')
+	environment.delete('V3_CACHE_REFRESH_ENTRY')
 	environment.delete('VTEST_ONLY_FN')
+	environment.delete('VTEST_SHOW_ASSERTS')
 	environment['VEXE'] = vexe
 	environment['V3_CACHE_REFRESH'] = '1'
 	environment['V_SKIP_VVMRC'] = '1'
@@ -265,7 +441,8 @@ pub fn refresh(vexe string, requests []Request) ! {
 		// environment as the Unix child, and restore the caller's afterwards.
 		previous := os.environ()
 		names := ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_FORCE_SOURCE',
-			'V3_CACHE_REFRESH_OBJECT_FLAGS', 'VTEST_ONLY_FN', 'VEXE', 'V3_CACHE_REFRESH', 'V_SKIP_VVMRC',
+			'V3_CACHE_REFRESH_OBJECT_FLAGS', 'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V3_CACHE_REFRESH_ENTRY',
+			'VTEST_ONLY_FN', 'VTEST_SHOW_ASSERTS', 'VEXE', 'V3_CACHE_REFRESH', 'V_SKIP_VVMRC',
 			'V_MACOS_V3_NO_FALLBACK']
 		for name in names {
 			if name in environment {
@@ -285,24 +462,51 @@ pub fn refresh(vexe string, requests []Request) ! {
 		}
 	}
 	mut failures := []string{}
+	mut refreshed_entries := map[string]bool{}
 	for request in requests {
 		if !valid_module(request.module) { return error('invalid module ${request.module}') }
 		if request.cwd != '' && !os.is_dir(request.cwd) { continue }
+		if request.compile_inputs.any(!os.is_file(it)) { continue }
+		if !compiler_available(os.dir(vexe), request) { continue }
 		// An upstream removal leaves no module to warm. The compiler's source
 		// validation already makes its old objects unusable.
 		module_dir := os.join_path(os.dir(vexe), 'vlib', request.module.replace('.', os.path_separator))
 		if !os.is_dir(module_dir) { continue }
+		use_entry := request.entry != '' && os.exists(request.entry)
+		if use_entry {
+			key := encode_request(Request{ ...request, module: 'builtin' })
+			if key in refreshed_entries { continue }
+			refreshed_entries[key] = true
+		}
 		name := if request.module == 'builtin' { 'strconv' } else { request.module }
-		source := os.join_path(dir, if request.is_test { 'refresh_test.v' } else { 'refresh.v' })
-		body := if request.is_test { 'fn test_cache_refresh() {}' } else { 'fn main() {}' }
-		os.write_file(source, 'module main\nimport ${name} as _\n${body}\n')!
-		mut command := request.args.clone()
-		if request.has_object_flags {
-			// Quote argv tokens for the compiler's parser, without invoking a shell.
-			environment['V3_CACHE_REFRESH_OBJECT_FLAGS'] = request.object_flags.map('"' +
-				it.replace('\\', '\\\\').replace('"', '\\"') + '"').join(' ')
+		mut imports := 'import ${name} as _\n'
+		for module_name in request.imports {
+			if !valid_module(module_name) { return error('invalid module ${module_name}') }
+			if module_name == name || module_name == 'builtin' { continue }
+			if os.is_dir(os.join_path(os.dir(vexe), 'vlib', module_name.replace('.', os.path_separator))) {
+				imports += 'import ${module_name} as _\n'
+			}
+		}
+		source := if use_entry {
+			request.entry
 		} else {
-			environment.delete('V3_CACHE_REFRESH_OBJECT_FLAGS')
+			os.join_path(dir, if request.is_test { 'refresh_test.v' } else { 'refresh.v' })
+		}
+		body := if request.is_test { 'fn test_cache_refresh() {}' } else { 'fn main() {}' }
+		if !use_entry { os.write_file(source, 'module main\n${imports}${body}\n')! }
+		mut command := request.args.clone()
+		// A live entry supplies current directives and project implementers. Only
+		// cache its module objects: project linker inputs are deliberately omitted.
+		environment['V3_CACHE_REFRESH_ENTRY'] = if use_entry { '1' } else { '' }
+		environment['V3_CACHE_REFRESH_PROJECT_FLAGS'] = if use_entry {
+			''
+		} else {
+			encode_project_flags(request.project_flags)
+		}
+		if request.show_test_stats {
+			environment['VTEST_SHOW_ASSERTS'] = '1'
+		} else {
+			environment.delete('VTEST_SHOW_ASSERTS')
 		}
 		// CLI parsing trims selectors, while VTEST_ONLY_FN preserves the effective
 		// patterns from vtest. Replay them through the same environment path.
@@ -316,11 +520,13 @@ pub fn refresh(vexe string, requests []Request) ! {
 		command << ['-usecache', '-skip-running', '-o', os.join_path(dir, 'refresh'), source]
 		mut code := -1
 		$if windows {
-			if value := environment['V3_CACHE_REFRESH_OBJECT_FLAGS'] {
-				os.setenv('V3_CACHE_REFRESH_OBJECT_FLAGS', value, true)
+			if request.show_test_stats {
+				os.setenv('VTEST_SHOW_ASSERTS', '1', true)
 			} else {
-				os.unsetenv('V3_CACHE_REFRESH_OBJECT_FLAGS')
+				os.unsetenv('VTEST_SHOW_ASSERTS')
 			}
+			os.setenv('V3_CACHE_REFRESH_ENTRY', environment['V3_CACHE_REFRESH_ENTRY'], true)
+			os.setenv('V3_CACHE_REFRESH_PROJECT_FLAGS', environment['V3_CACHE_REFRESH_PROJECT_FLAGS'], true)
 			if value := environment['VTEST_ONLY_FN'] {
 				os.setenv('VTEST_ONLY_FN', value, true)
 			} else {
@@ -344,4 +550,36 @@ pub fn refresh(vexe string, requests []Request) ! {
 		}
 	}
 	if failures.len > 0 { return error(failures.join(', ')) }
+}
+
+fn flags_need_cwd(args []string, project []FlagGroup) bool {
+	mut flags := []string{}
+	for group in project { flags << group.flags }
+	for i, arg in args {
+		if arg == '-cflags' && i + 1 < args.len {
+			flags << cmdexec.split_args(args[i + 1]) or { []string{} }
+		}
+	}
+	mut expected := false
+	for flag in flags {
+		if expected {
+			if !os.is_abs_path(flag) { return true }
+			expected = false
+			continue
+		}
+		for option in ['-include-pch', '-include-pth', '--include-directory', '--imacros', '-imacros',
+			'--include', '-include', '-isystem', '-iquote', '-idirafter', '-iframework', '--sysroot',
+			'-isysroot', '-I', '-F'] {
+			if flag == option {
+				expected = true
+				break
+			}
+			if flag.starts_with(option) {
+				if !os.is_abs_path(flag[option.len..].trim_left('=')) { return true }
+				break
+			}
+		}
+		if !flag.starts_with('-') && flag.ends_with('.c') && !os.is_abs_path(flag) { return true }
+	}
+	return false
 }

@@ -9209,13 +9209,13 @@ fn v3_cache_refresh_c_flag(flag string) string {
 	return '"' + flag.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
 
-fn v3_cache_refresh_object_flags(flags []string) ![]string {
+fn v3_cache_refresh_project_flags() ![]cache_refresh.FlagGroup {
 	if os.getenv('V3_CACHE_REFRESH') == '1' {
-		if recorded := os.getenv_opt('V3_CACHE_REFRESH_OBJECT_FLAGS') {
-			return c_object_compile_flags(cmdexec.split_args(recorded)!)
+		if recorded := os.getenv_opt('V3_CACHE_REFRESH_PROJECT_FLAGS') {
+			return cache_refresh.decode_project_flags(recorded)!
 		}
 	}
-	return c_object_compile_flags(flags)
+	return []
 }
 
 fn apply_v3_diagnostic_color_option(option string) {
@@ -11981,18 +11981,14 @@ pub fn run(args []string) {
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
 
 	crun_may_reuse := (is_crun || is_direct_vsh) && should_run && !explicit_output
-	refresh_has_object_flags := os.getenv('V3_CACHE_REFRESH') == '1'
-		&& 'V3_CACHE_REFRESH_OBJECT_FLAGS' in os.environ()
+	refresh_project_flags := v3_cache_refresh_project_flags() or {
+		eprintln('error reading module cache refresh flags: ${err}')
+		exit(1)
+	}
 	// Forced headers and macro probes must see the same flags as the object
 	// compiler, even when those flags came from the original program's source.
-	native_c_flags := if refresh_has_object_flags {
-		v3_cache_refresh_object_flags(user_c_flags) or {
-			eprintln('error reading module cache refresh flags: ${err}')
-			exit(1)
-		}
-	} else {
-		user_c_flags
-	}
+	mut native_c_flags := user_c_flags.clone()
+	for group in refresh_project_flags { native_c_flags << group.flags }
 	native_inputs := if cache_state.manager.enabled || crun_may_reuse {
 		v3_native_inputs(a, prefs, user_files, native_c_flags)
 	} else {
@@ -12059,9 +12055,9 @@ pub fn run(args []string) {
 	mut cached_monomorph_specs := []transform.MonomorphCacheSpec{}
 	mut cached_program_used_fns := map[string]bool{}
 	mut generated_monomorph_specs := []transform.MonomorphCacheSpec{}
-	mut cache_c_flags := native_c_flags.clone()
-	if backend == 'c' && cache_state.manager.enabled && !refresh_has_object_flags {
-		cache_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
+	mut cache_c_flags := user_c_flags.clone()
+	if backend == 'c' && cache_state.manager.enabled {
+		cache_c_flags << cgen.cache_directive_flags_with_project(a, prefs.vroot, prefs.target, prefs.compile_values, refresh_project_flags)
 	}
 	use_macos_dev_program_cache := backend == 'c' && program_cache_enabled && !is_prod && !is_shared
 		&& !is_selfhost && prefs.normalized_target_os() == 'macos'
@@ -14011,6 +14007,7 @@ pub fn run(args []string) {
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
 			mut g := cgen.FlatGen.new()
 			g.set_initial_c_flags(user_c_flags)
+			g.set_cache_refresh_project_flags(refresh_project_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
@@ -14097,6 +14094,7 @@ pub fn run(args []string) {
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
 			mut g := cgen.FlatGen.new()
 			g.set_initial_c_flags(user_c_flags)
+			g.set_cache_refresh_project_flags(refresh_project_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
@@ -14317,13 +14315,7 @@ pub fn run(args []string) {
 		}
 		resolved_c_flags = v3_shared_object_compile_flags(resolved_c_flags, prefs.normalized_target_os(),
 			is_shared, is_liveshared)
-		// A refresh importer does not read the entry file's #flag directives.
-		// Replay its complete object argv without adding imported directives twice.
-		cached_object_c_flags := v3_cache_refresh_object_flags(resolved_c_flags) or {
-			eprintln('error reading module cache refresh flags: ${err}')
-			cleanup_c_build_dir(cc_dir)
-			exit(1)
-		}
+		cached_object_c_flags := c_object_compile_flags(resolved_c_flags)
 		if !c_only && !is_o {
 			if missing_gc := v3_missing_bundled_gc_library(resolved_c_flags, prefs.vroot) {
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
@@ -14773,11 +14765,31 @@ pub fn run(args []string) {
 			b.step(if cgen_prepared_hit { 'C module plan (cached)' } else { 'C module plan' })
 			cached_objects = clone_string_list(prepared_cache.objects)
 			newly_cached_module_count = prepared_cache.newly_cached_modules
+			mut project_flags := refresh_project_flags.clone()
+			for group in cgen.cache_project_flag_groups(a, prefs.vroot, prefs.target, prefs.compile_values,
+				cgen.cache_program_file_set(a, user_files)) {
+				project_flags << cache_refresh.FlagGroup{
+					...group
+					flags:    c_object_compile_flags(group.flags)
+					identity: group.flags.join('\x00')
+				}
+			}
 			cache_refresh.record(cache_state.manager.dir, prefs.vroot,
 				v3_module_cache_refresh_args(args, c_compiler, prefs.module_search_paths, run_only),
 				is_test_command || is_v3_test_file(input_file, backend, target),
-				cache_state.module_sources, cached_object_c_flags) or {
+				cache_state.module_sources, project_flags,
+				if v3_cache_refresh_needs_entry(interface_impl_signature, &cache_state, prefs.vroot) && os.exists(input_file) {
+					os.real_path(input_file)
+				} else {
+					''
+				}, show_test_stats) or {
 				trace_v3_cache_fallback('could not record the v up cache inventory: ${err}')
+			}
+			if os.getenv('V3_CACHE_REFRESH') == '1' && os.getenv('V3_CACHE_REFRESH_ENTRY') == '1' {
+				prealloc_scope_free_for_v3(cache_prepare_scope)
+				os.rm(cache_plan_file) or {}
+				cleanup_c_build_dir(cc_dir)
+				return
 			}
 			if use_cached_dev_dylib {
 				tcc_main_file = os.join_path_single(cc_dir, 'main.c')
@@ -14833,6 +14845,10 @@ pub fn run(args []string) {
 			}
 			prealloc_scope_free_for_v3(cache_prepare_scope)
 			os.rm(cache_plan_file) or {}
+		}
+		if os.getenv('V3_CACHE_REFRESH') == '1' && os.getenv('V3_CACHE_REFRESH_ENTRY') == '1' {
+			cleanup_c_build_dir(cc_dir)
+			return
 		}
 		if use_cached_dev_dylib {
 			b.step('C dylib cache')
@@ -15015,6 +15031,8 @@ pub fn run(args []string) {
 			}
 			tcc_resources := v3_tcc_resource_flags_for_compiler(prefs.vroot, tcc_path, bundled_tcc, bundled_tcc_available)
 			mut tcc_args := environment_c_flags.clone()
+			tcc_args << v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc,
+				large_prod_c_unit, limit_large_unit_inlining, true)
 			if link_c_standard.len > 0 {
 				tcc_args << link_c_standard
 			}
@@ -17642,6 +17660,23 @@ fn parse_v3_interface_scopes(signature string) V3InterfaceScopes {
 		}
 	}
 	return scopes
+}
+
+fn v3_cache_refresh_needs_entry(signature string, state &V3ModuleCacheState, vroot string) bool {
+	scopes := parse_v3_interface_scopes(signature)
+	vlib := os.real_path(os.join_path(vroot, 'vlib')) + os.path_separator
+	for name in scopes.names {
+		if scopes.declaring_module(name) == 'main' { continue }
+		for impl in scopes.impls[name] or { []string{} } {
+			owner := scopes.declaring_module(impl)
+			if owner == 'main' { return true }
+			if owner == 'builtin' { continue }
+			module_name := cache_state_module_name(state, owner) or { return true }
+			files := state.module_sources[module_name] or { return true }
+			if files.len == 0 || !os.real_path(files[0]).starts_with(vlib) { return true }
+		}
+	}
+	return false
 }
 
 // v3_interface_line_name returns the interface of a `name=impl,impl` line. The
