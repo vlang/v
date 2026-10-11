@@ -423,6 +423,7 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 			g.cache_require_declaration_type(types.SumType{ name: name }, mut seen)
 		}
 	}
+	g.collect_referenced_pruned_cache_functions()
 }
 
 fn (g &FlatGen) demanded_cache_constant_declarations() string {
@@ -565,5 +566,31 @@ fn (mut g FlatGen) emit_cache_module_constants() {
 			}
 		}
 		g.writeln('}')
+	}
+}
+
+// set_cache_pruned_functions names the functions of cached modules whose
+// declarations the build took out of the AST before its stages ran: `names[i]` is
+// declared in `modules[i]`. The generator has no prototype to give for them.
+pub fn (mut g FlatGen) set_cache_pruned_functions(names []string, modules []string) {
+	g.cache_pruned_fn_names = names
+	g.cache_pruned_fn_modules = modules
+}
+
+// referenced_pruned_cache_functions returns the functions of
+// set_cache_pruned_functions that the generated C names, and whether the generator
+// could tell: it can when it emitted the declarations of cached modules on demand.
+// A build with such a function has to be made again with its declaration.
+pub fn (g &FlatGen) referenced_pruned_cache_functions() ([]string, bool) {
+	return g.cache_pruned_fn_refs, g.cache_pruned_fn_names.len == 0 || g.cache_decl_demand
+}
+
+fn (mut g FlatGen) collect_referenced_pruned_cache_functions() {
+	for i, name in g.cache_pruned_fn_names {
+		module_name := g.cache_pruned_fn_modules[i]
+		if g.cache_decl_refs[g.fn_c_name_in_module(module_name, name)]
+			|| g.cache_decl_refs['${module_name}__${name}'] {
+			g.cache_pruned_fn_refs << name
+		}
 	}
 }
