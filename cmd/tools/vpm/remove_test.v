@@ -3,7 +3,7 @@ import os
 import rand
 import test_utils
 
-const vexe = os.quoted_path(@VEXE)
+const vexe = @VEXE
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_remove_test_${rand.ulid()}')
 
 fn testsuite_begin() {

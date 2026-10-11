@@ -4,7 +4,7 @@ import os
 import rand
 import test_utils { cmd_fail_args, cmd_ok_args }
 
-const v = os.quoted_path(@VEXE)
+const v = @VEXE
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_update_test_${rand.ulid()}')
 
 fn testsuite_begin() {
