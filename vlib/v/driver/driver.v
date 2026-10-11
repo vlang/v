@@ -24,6 +24,7 @@ import v.token as compiler_token
 import v.transform
 import v.types
 import v.util
+import v.util.cache_refresh
 import v.util.vtest
 import v.workers
 import v.build_constraint
@@ -7303,13 +7304,11 @@ fn v3_same_c_compiler_executable(first string, second string) bool {
 		&& first_stat.inode == second_stat.inode
 }
 
-// default_cc_identity returns a precise identity for the resolved default `cc`.
-// Only compiler spellings that resolve to the same executable as `cc` are
-// cacheable, so a changed binary or retargeted symlink must invalidate module
-// objects. The version probe also identifies the selected backend behind stable
-// compiler shims and wrappers.
-fn default_cc_identity() string {
-	cc_path := os.real_path(os.find_abs_path_of_executable('cc') or { 'cc' })
+// v3_c_compiler_identity identifies the compiler that builds the module objects.
+// A changed binary or retargeted symlink invalidates them; the version probe
+// also identifies the selected backend behind compiler shims and wrappers.
+fn v3_c_compiler_identity(compiler string) string {
+	cc_path := os.real_path(os.find_abs_path_of_executable(compiler) or { compiler })
 	identity := v3_cache_file_identity(cc_path)
 	version := cmdexec.run(cc_path, ['--version'])
 	return '${cc_path}\t${identity}\t${version.exit_code}\t${version.output.replace('\n', ' ')}'
@@ -9139,6 +9138,37 @@ fn v3_driver_option_consumes_value(option string) bool {
 		|| option in ['-cflags', '-ldflags', '-dump-c-flags']
 }
 
+// v3_module_cache_refresh_args keeps the configuration of module objects without
+// replaying a program, its output path, or diagnostic-only compiler switches.
+fn v3_module_cache_refresh_args(args []string, compiler string, bundled_tcc string) []string {
+	mut flags := []string{}
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if v3_driver_option_consumes_value(arg) {
+			if i + 1 < args.len && arg in ['-d', '-define', '-gc', '-cflags', '-ldflags', '-exclude',
+				'-subsystem', '-thread-stack-size', '-memory-limit', '--memory-limit'] {
+				flags << [arg, args[i + 1]]
+			}
+			i += 2
+			continue
+		}
+		if arg in ['-prod', '-no-prod-options', '-no-closures', '-g', '-cg', '-cdebug', '-shared',
+			'--shared', '-selfhost', '-c99', '-target-libc-headers', '-translated', '-enable-globals',
+			'-check-overflow', '-check-casts', '-force-bounds-checking', '-no-bounds-checking',
+			'-nofloat', '-autofree', '-manualfree', '-prealloc', '-no-prealloc', '--no-prealloc',
+			'-no-preludes', '-silent', '-W', '-w', '-N', '-Wfatal-errors', '-no-memory-limit',
+			'--no-memory-limit'] {
+			flags << arg
+		} else if !arg.starts_with('-') && arg !in ['run', 'crun', 'test'] {
+			break
+		}
+		i++
+	}
+	flags << ['-cc', if compiler == bundled_tcc { 'tcc' } else { compiler }]
+	return flags
+}
+
 fn apply_v3_diagnostic_color_option(option string) {
 	ansi.set_colors_enabled(option == '-color')
 }
@@ -9508,6 +9538,7 @@ fn v3_parallel_transform_allowed(parallel_transform bool, no_parallel bool) bool
 }
 
 // run executes the V3 compiler driver with `args`.
+// run compiles the input selected by args using the requested backend and flags.
 @[markused]
 pub fn run(args []string) {
 	apply_v3_default_diagnostic_color()
@@ -11254,7 +11285,7 @@ pub fn run(args []string) {
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
 		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
 		&& !minimal_literal_output
-		&& (cache_with_tcc || v3_c_compiler_matches_default_cc(c_compiler))
+		&& (cache_with_tcc || effective_c_compiler in ['clang', 'gcc', 'mingw'])
 		&& target.os == host_target.os
 		&& target.arch == host_target.arch
 		&& 'track_heap' !in prefs.user_defines
@@ -11264,7 +11295,7 @@ pub fn run(args []string) {
 	} else if cache_with_tcc {
 		'${bundled_tcc}\t${v3_cache_file_identity(bundled_tcc)}'
 	} else {
-		default_cc_identity()
+		v3_c_compiler_identity(c_compiler)
 	}
 	compiler_executable_identity := if cache_candidate_enabled {
 		v3_cache_compiler_executable_identity(prefs.vexe)
@@ -11385,6 +11416,7 @@ pub fn run(args []string) {
 	}
 	mut cache_state := V3ModuleCacheState{
 		manager:                   cache_manager
+		object_compiler:           V3CachedObjectCompiler{ path: c_compiler }
 		silent:                    silent
 		bundle_sources:            bundle_sources
 		bundle_source_paths:       module_cache_source_path_set(p.a, bundle_sources)
@@ -14396,7 +14428,7 @@ pub fn run(args []string) {
 			// TinyCC cannot build every program: Objective-C, another language in the
 			// link, or objects of another compiler. Such a build goes the way it went
 			// before there was a module cache for TinyCC.
-			if is_prod || needs_objective_c || link_uses_non_c_language
+			if needs_objective_c || link_uses_non_c_language
 				|| tcc_link_has_incompatible_objects || target_args.len > 0 || is_c_debug
 				|| dump_c_flags.len > 0 {
 				trace_v3_cache_fallback('the bundled TinyCC cannot build and link the module objects of this program')
@@ -14673,6 +14705,12 @@ pub fn run(args []string) {
 			b.step(if cgen_prepared_hit { 'C module plan (cached)' } else { 'C module plan' })
 			cached_objects = clone_string_list(prepared_cache.objects)
 			newly_cached_module_count = prepared_cache.newly_cached_modules
+			cache_refresh.record(cache_state.manager.dir, prefs.vroot,
+				v3_module_cache_refresh_args(args, c_compiler, bundled_tcc),
+				is_test_command || is_v3_test_file(input_file, backend, target),
+				cache_state.module_sources) or {
+				trace_v3_cache_fallback('could not record the v up cache inventory: ${err}')
+			}
 			if use_cached_dev_dylib {
 				tcc_main_file = os.join_path_single(cc_dir, 'main.c')
 				if cgen_prepared_hit {
@@ -14894,7 +14932,7 @@ pub fn run(args []string) {
 		// complete C unit has no native-source flags, compile that unit instead of
 		// linking the cached objects. Otherwise use the system compiler for the
 		// smaller cached main unit.
-		if !tried_tcc && !is_prod && !needs_objective_c && !link_uses_non_c_language
+		if !tried_tcc && (!is_prod || cache_with_tcc) && !needs_objective_c && !link_uses_non_c_language
 			&& (!tcc_link_has_incompatible_objects || cache_full_tcc_source.len > 0)
 			&& target_args.len == 0 && (!c_compiler_explicit || explicit_tcc)
 			&& (!cache_state.manager.enabled || cache_full_tcc_source.len > 0 || cache_with_tcc)
@@ -15105,7 +15143,7 @@ pub fn run(args []string) {
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
-		if is_prod || !tried_tcc || result.exit_code != 0 {
+		if (is_prod && !cache_with_tcc) || !tried_tcc || result.exit_code != 0 {
 			used_tcc = false
 			if !os.is_file(cc_src) {
 				os.cp(published_c_source, cc_src) or {
@@ -18034,9 +18072,9 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 }
 
 fn (state &V3ModuleCacheState) print_module_cache_notice(module_name string) {
-	if !state.silent {
+	if !state.silent || os.getenv('V3_CACHE_REFRESH') == '1' {
 		name := state.module_import_paths[module_name] or { module_name }
-		eprintln('Caching module ${name}...')
+		println('Caching module ${name}...')
 	}
 }
 

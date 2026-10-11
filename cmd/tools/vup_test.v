@@ -1,5 +1,6 @@
 import os
 import v.skills
+import v.util.cache_refresh
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
@@ -110,6 +111,64 @@ fn run_vup(root string, home string, tool string, bin_dir string, extra ...strin
 	mut args := ['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'), tool]
 	args << extra
 	return os.exec(args)
+}
+
+fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	defer {
+		if value := previous { os.setenv('V3CACHE', value, true) } else { os.unsetenv('V3CACHE') }
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
+	os.mkdir_all(os.dir(source))!
+	os.write_file(source, 'module sample\n')!
+	for compiler in ['tcc', 'cc', 'clang', 'gcc'] {
+		for prod in [false, true] {
+			mut flags := ['-cc', compiler]
+			if prod { flags << '-prod' }
+			dir := os.join_path(cache_refresh.root_dir(root), '${compiler}_${prod}')
+			os.mkdir_all(dir)!
+			cache_refresh.record(dir, root, flags, false, {
+				'sample': [source]
+			})!
+		}
+	}
+	cache_log := os.join_path(root, 'cache_calls.log')
+	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
+		'    printf "%s\\n" "\$*" >> ' + os.quoted_path(cache_log) + '\n' +
+		'    echo "Caching module crypto.sample..."\n    exit 0;;\nesac\n' +
+		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+	// Cache refresh must run on both the early-return and compiler-rebuild paths.
+	for options in [[]string{}, ['-skip_current'], ['-prod']] {
+		os.write_file(cache_log, '')!
+		result := run_vup(root, home, tool, bin_dir, ...options)!
+		assert result.exit_code == 0, result.output
+		assert result.output.count('Caching module crypto.sample...') == 8, result.output
+		calls := os.read_file(cache_log)!.split_into_lines()
+		assert calls.len == 8, calls.str()
+		for compiler in ['tcc', 'cc', 'clang', 'gcc'] {
+			assert calls.any(it.starts_with('-cc ${compiler} -usecache -skip-running ')), calls.str()
+			assert calls.any(it.starts_with('-cc ${compiler} -prod -usecache -skip-running ')), calls.str()
+		}
+		assert !calls.any(it.contains(' run ')), calls.str()
+	}
+	// A failed refresh is visible and fails v up, while other modules still refresh.
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
+		'    printf "%s\\n" "\$*" >> ' + os.quoted_path(cache_log) + '\n' +
+		'    exit 1;;\nesac\necho "V 0.5.2 abcdef0"\nexit 0\n')!
+	os.write_file(cache_log, '')!
+	failure := run_vup(root, home, tool, bin_dir)!
+	assert failure.exit_code != 0, failure.output
+	assert failure.output.contains('refreshing cached vlib modules failed'), failure.output
+	assert os.read_file(cache_log)!.split_into_lines().len == 8
 }
 
 fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! {

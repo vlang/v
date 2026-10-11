@@ -47,6 +47,14 @@ fn test_v3_cache_accepts_default_cc_alias() {
 	}
 }
 
+fn test_module_cache_refresh_keeps_build_flags_and_discards_program_arguments() {
+	args := ['-cc', 'tcc', '-prod', '-g', '-cflags', '-DVALUE="a b"', '-d', 'feature', '-o',
+		'my program', '-show-timings', 'run', 'main.v', '-prod', 'program argument']
+	flags := v3_module_cache_refresh_args(args, '/v/thirdparty/tcc/tcc.exe',
+		'/v/thirdparty/tcc/tcc.exe')
+	assert flags == ['-prod', '-g', '-cflags', '-DVALUE="a b"', '-d', 'feature', '-cc', 'tcc']
+}
+
 fn test_v3_cache_rejects_a_different_compiler_than_cc() {
 	// The bundled TCC is never the same program as a `cc` found on PATH. Windows
 	// reports no inode, so an identity based on `os.stat` alone equated them.
