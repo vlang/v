@@ -17,7 +17,6 @@ fn main() {
 	fp.version('0.0.1')
 	fp.description('Start a command, and report how much time it took to run, and what its exit code was.')
 	fp.arguments_description('CMD [ARGS]')
-	fp.skip_executable()
 	fp.limit_free_args_to_at_least(1)!
 	ctx.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	if ctx.show_help {
