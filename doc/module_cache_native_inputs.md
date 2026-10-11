@@ -7,8 +7,9 @@ use the public declarations embedded in the bundled amalgamation. Changes to the
 native source remain cache inputs and invalidate affected entries. Bundled mbedTLS
 headers are checked with the selected C preprocessor, using the generated units' C
 or Objective-C language, and their active dependencies are tracked. C++ contexts,
-custom native configuration directives, renamed SDK bindings, and forced
+custom native configuration directives, SDK macro overrides, renamed SDK bindings, and forced
 headers keep the conservative fallback when their original context cannot be reconstructed.
+Compiler response files and config/spec files also retain the fallback.
 Production, shared, and GNU89 inline modes retain this fallback for bundled mbedTLS headers.
 
 Set `V3_CACHE_TRACE=1` to inspect cache decisions, and use `-show-timings` to see

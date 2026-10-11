@@ -4508,10 +4508,40 @@ fn v3_is_bundled_mbedtls_header(path string, vroot string) bool {
 	return path.starts_with(root + os.path_separator) && path.ends_with('.h')
 }
 
+const v3_mbedtls_protected_header_macros = ['__sputc', 'inline', '__inline', '__inline__',
+	'__attribute__', '__attribute', '__always_inline__', 'always_inline', 'gnu_inline', '__gnu_inline__']
+
+fn v3_mbedtls_flag_overrides_header_context(flag string) bool {
+	clean := flag.trim_space().trim('\'"')
+	// Opaque compiler inputs can hide macros and dependencies from the cache key.
+	if clean.starts_with('@') || clean.starts_with('--config')
+		|| clean in ['-specs', '--specs'] || clean.starts_with('-specs=')
+		|| clean.starts_with('--specs=') {
+		return true
+	}
+	if clean.starts_with('-Wp,') {
+		for operand in clean.split(',')[1..] {
+			if operand.starts_with('@') { return true }
+		}
+	}
+	macro_option := clean.starts_with('-D') || clean.starts_with('-U')
+		|| clean.starts_with('/D') || clean.starts_with('/U') || clean.starts_with('-Wp,')
+		|| clean.starts_with('--define-macro') || clean.starts_with('--undefine-macro')
+	for name in v3_mbedtls_protected_header_macros {
+		// Separate operands also cover -Xpreprocessor and -Xclang forwarding.
+		if (macro_option && clean.contains(name)) || clean == name
+			|| clean.starts_with(name + '=') || clean.starts_with(name + '(') {
+			return true
+		}
+	}
+	return false
+}
+
 // Native configuration overrides require their original preprocessing context.
 // Keep those on the existing conservative fallback instead of guessing that context.
 fn v3_mbedtls_default_header_context(a &flat.FlatAst, flags []string) bool {
 	for i, flag in flags {
+		if v3_mbedtls_flag_overrides_header_context(flag) { return false }
 		language := c_joined_source_language(flag.trim_space())
 		if (language.len > 0 && language !in ['c', 'objective-c', 'none'])
 			|| (flag.trim_space() == '-x' && (i + 1 == flags.len
@@ -4646,8 +4676,7 @@ fn v3_native_text_overrides_mbedtls(source string) bool {
 		if parts.len >= 2 && parts[0] in ['define', 'undef'] {
 			name := parts[1].all_before('(')
 			if name.starts_with('MBEDTLS_') || name.starts_with('PSA_')
-				|| name in ['__sputc', 'inline', '__inline', '__inline__', '__attribute__',
-					'__attribute', '__always_inline__', 'always_inline', 'gnu_inline', '__gnu_inline__'] {
+				|| name in v3_mbedtls_protected_header_macros {
 				return true
 			}
 		}

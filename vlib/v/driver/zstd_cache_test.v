@@ -86,6 +86,26 @@ fn test_native_config_override_logical_directives() {
 	assert !v3_mbedtls_default_header_context(&ast, [])
 }
 
+fn test_native_header_macro_flags_and_opaque_inputs_keep_fallback() {
+	mut ast := flat.FlatAst.new()
+	// Together these flags hide an SDK inline helper's name and annotation. A
+	// later V C-binding prototype can then make it define an external symbol.
+	ast.add_node(flat.Node{ kind: .c_fn_decl, value: 'custom_sputc' })
+	assert !v3_mbedtls_default_header_context(&ast, ['-D__sputc=custom_sputc', '-D__attribute__(x)='])
+	for flags in [['-Dinline=extern inline'], ['-D', '__inline__=extern inline'], ['-U__attribute__'],
+		['-U', '__attribute__'], ['-Wp,-D__sputc=custom_sputc'], ['-Wp,-D,__attribute__(x)='],
+		['-Xpreprocessor', '-D__sputc=custom_sputc'],
+		['-Xpreprocessor', '-D', '-Xpreprocessor', '__attribute__(x)='],
+		['-Xclang', '-U', '-Xclang', '__always_inline__'], ['--define-macro=__sputc=custom_sputc'],
+		['--undefine-macro', 'inline'], ['/D__sputc=custom_sputc'], ['@overrides.rsp'],
+		['-Wp,@overrides.rsp'], ['-Xpreprocessor', '@overrides.rsp'], ['--config=compiler.cfg'],
+		['--config', 'compiler.cfg'], ['-specs=compiler.specs'], ['--specs', 'compiler.specs']] {
+		assert !v3_mbedtls_default_header_context(&ast, flags)
+	}
+	assert v3_mbedtls_default_header_context(&ast, ['-I/vendor/inline', '-Winline', '-DGC_THREADS=1',
+		'-D', 'OTHER=1', '-U', 'OTHER'])
+}
+
 fn test_preprocessed_sdk_inline_annotation_preserves_replication_guards() {
 	helper := 'inline __attribute__ ((__always_inline__)) int __sputc(int value) { return value + 1; }'
 	assert !modulecache.c_source_is_replicable(helper)
