@@ -130,7 +130,12 @@ fn (mut p Json5Parser) parse_container(is_object bool) !int {
 	for p.tok.kind != closing {
 		if is_object {
 			match p.tok.kind {
-				.str, .ident, .number, .bool, .null, .infinity, .nan {
+				.str, .ident, .bool, .null, .infinity, .nan {
+					// Signed literals share keyword token kinds but are not IdentifierNames.
+					if p.tok.kind != .str
+						&& (p.tok.lit.starts_with('+') || p.tok.lit.starts_with('-')) {
+						return p.unexpected('an object key')
+					}
 					p.write_string_value(p.tok.lit)
 					p.advance()!
 				}

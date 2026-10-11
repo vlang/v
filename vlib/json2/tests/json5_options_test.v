@@ -57,6 +57,28 @@ fn test_json5_decode_rejects_escaped_value_keywords() {
 	}
 }
 
+fn test_json5_decode_rejects_numeric_and_signed_object_keys() {
+	for key in ['0', '42', '0x10', '0XAB', '1.25', '.5', '5.', '1e2', '+42', '-42', '+0x10', '-0x10',
+		'+.5', '-.5', '+Infinity', '-Infinity', '+NaN', '-NaN', '+Invalid', '-NaNother'] {
+		for text in ['{' + key + ':1}', '{before:0,' + key + ':1}', '{nested:{' + key + ':1}}',
+			'[{' + key + ':1}]'] {
+			json2.decode[json2.Any](text, json5: true) or {
+				assert err is json2.JsonScanError
+				assert err.msg().contains('expected an object key')
+				continue
+			}
+			assert false, 'expected invalid object key to fail: ${text}'
+		}
+		// Quoted numeric and signed keys remain ordinary strings.
+		for quote in ['"', "'"] {
+			values := json2.decode[map[string]int]('{' + quote + key + quote + ':1}', json5: true)!
+			assert values[key] == 1
+		}
+		json2.decode[map[string]int]('{' + key + ':1}', json5: true) or { continue }
+		assert false, 'typed decoding accepted an invalid object key: ${key}'
+	}
+}
+
 fn test_json5_decode_rejects_leading_zero_decimals() {
 	for sign in ['', '+', '-'] {
 		for digits in ['00', '01', '007', '08', '09', '00.5', '01.5', '00e1', '01e+2'] {

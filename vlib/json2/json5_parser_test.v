@@ -60,13 +60,30 @@ fn test_parse_quoted_key() {
 	assert doc.value('a b').int() == 1
 }
 
-fn test_parse_numeric_looking_keys() {
-	doc := parse_json5_doc_test('{ 0x10: 1, 42: 2, null: 3, true: 4, Infinity: 5 }')!
+fn test_parse_quoted_numeric_keys_and_bare_keyword_keys() {
+	doc := parse_json5_doc_test('{ "0x10": 1, \'42\': 2, null: 3, true: 4, Infinity: 5,
+		false: 6, NaN: 7 }')!
 	assert doc.value('0x10').int() == 1
 	assert doc.value('42').int() == 2
 	assert doc.value('null').int() == 3
 	assert doc.value('true').int() == 4
 	assert doc.value('Infinity').int() == 5
+	assert doc.value('false').int() == 6
+	assert doc.value('NaN').int() == 7
+}
+
+fn test_parse_numeric_key_errors_keep_original_positions() {
+	for key in ['42', '0x10', '.5', '-42', '+Infinity', '-NaN'] {
+		parse_json5_doc_test('// heading\r\n{\n  ' + key + ': 1}') or {
+			assert err is JsonScanError
+			perr := err as JsonScanError
+			assert perr.message == 'unexpected `${key}`, expected an object key'
+			assert perr.line == 3
+			assert perr.character == 3
+			continue
+		}
+		assert false, 'expected numeric object key to fail: ${key}'
+	}
 }
 
 fn test_parse_trailing_comma_in_object() {

@@ -73,6 +73,9 @@ categories using Unicode 15.0.0:
 letters (Lu, Ll, Lt, Lm, Lo, Nl), `$` and `_` may start a key; Mn and Mc marks,
 Nd decimal digits, Pc connectors, U+200C and U+200D may also continue it.
 Other numbers (No) and enclosing marks (Me) require quoted keys.
+Numeric literal keys such as `{42: 1}` and `{0x10: 1}` are rejected; quote the keys instead.
+Bare `null`, `true`, `false`, `Infinity` and `NaN` are valid identifier keys, while
+signed forms such as `+Infinity` and `-NaN` require quotes.
 All Unicode space separators are accepted between tokens, including U+1680 and U+2000.
 Escaped digits `\1` through `\9` are rejected, and `\0` cannot precede another decimal digit.
 Typed decoding errors report their location and context in the original JSON5 input.
