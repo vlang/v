@@ -376,7 +376,9 @@ fn test_refresh_uses_live_entries_once_and_never_runs_or_links_them() ! {
 }
 
 fn test_inventory_and_refresh_skip_vanished_working_directories() ! {
-	root := os.join_path(os.vtmp_dir(), 'vup_vanished_directory_${os.getpid()}')
+	root_path := os.join_path(os.vtmp_dir(), 'vup_vanished_directory_${os.getpid()}')
+	os.mkdir_all(root_path)!
+	root := os.real_path(root_path)
 	source := os.join_path(root, 'vlib', 'sample', 'sample.v')
 	project := os.join_path(root, 'project')
 	previous_cache := os.getenv_opt('V3CACHE')
@@ -768,7 +770,9 @@ fn test_inventory_and_refresh_skip_replaced_compile_inputs() ! {
 	$if windows {
 		return
 	}
-	root := os.join_path(os.vtmp_dir(), 'vup_replaced_inputs_${os.getpid()}')
+	root_path := os.join_path(os.vtmp_dir(), 'vup_replaced_inputs_${os.getpid()}')
+	os.mkdir_all(root_path)!
+	root := os.real_path(root_path)
 	project := os.join_path(root, 'project')
 	include_dir := os.join_path(project, 'include path')
 	source := os.join_path(root, 'vlib', 'sample', 'sample.v')
