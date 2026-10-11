@@ -1540,6 +1540,7 @@ fn (b &Builder) skip_source_fn(name string) bool {
 	}
 	return name.starts_with('print_backtrace') || name.starts_with('backtrace_')
 		|| name.starts_with('map.')
+		|| name.starts_with('VMapData.')
 		|| name in ['print_libbacktrace', 'eprint_libbacktrace', 'bsd_backtrace_resolve_atos']
 }
 
@@ -9760,7 +9761,15 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		} else if fn_node.kind == .selector && b.is_function_value_expr(fn_node_id) {
 			return b.build_indirect_call(id, node, fn_node_id)
 		}
-		panic('ssa: unknown function `${actual_name}`')
+		// Name the caller as well as the callee: when the missing callee is a
+		// skipped runtime function, the interesting half is which body still
+		// mentions it.
+		caller := if b.cur_func >= 0 && b.cur_func < b.m.funcs.len {
+			b.m.funcs[b.cur_func].name
+		} else {
+			'<none>'
+		}
+		panic('ssa: unknown function `${actual_name}` (called from `${caller}` in module `${b.cur_module}`)')
 	}
 	fn_ref := b.m.add_value(.func_ref, b.void_type, resolved_name, fn_idx)
 	ret_type := b.m.funcs[fn_idx].typ

@@ -3,7 +3,9 @@
 The `simd` module provides `F32x4`, a fixed vector of four `f32` values. Its arithmetic
 operators work on corresponding lanes. On the C backend, the module uses SSE on x86 when
 available and NEON on AArch64. TCC and C targets without these extensions use scalar
-operations with the same API. The non-C backend implementation is also scalar.
+operations with the same API. On V's native backend (`-b native`) the operators are lowered
+to single NEON instructions on the four lanes at once. Every other backend runs the scalar
+bodies in `simd.v`.
 
 ```v
 import simd
@@ -29,3 +31,22 @@ The fixed width follows the four-lane layout used by projects such as Viper. Go'
 [portable SIMD design](https://go.dev/blog/simd-experiment) provides a reference for a
 future size-independent API; this module does not yet offer runtime vector widths or
 feature dispatch.
+
+## How each backend gets its implementation
+
+The operators name a helper function rather than inlining an implementation, because the
+helper has one definition per backend family:
+
+| backend | file | what runs |
+| --- | --- | --- |
+| `c` | `simd.c.v` + `simd.h` | the C functions, compiled by the C compiler with SSE or NEON |
+| `native` (`-b native`) | `simd.v` | the native backend replaces the call with one NEON instruction |
+| everything else | `simd.v` | the scalar body in `simd.v` |
+
+`simd.c.v` is only compiled by the C backend, so the two files never compete for the same
+name. The native substitution happens in `vlib/v/gen/arm64/gen.v`, where a call to one of
+these helpers is matched by name and lowered to `fadd`/`fsub`/`fmul`/`fdiv`/`fsqrt` on four
+`f32` lanes; every argument and result that is not exactly four `f32` values falls through
+to the ordinary call, so the helper's own body remains the fallback rather than an
+assumption. That also means the C and native paths are not both in play for one program:
+each build takes exactly one of them.

@@ -64,52 +64,27 @@ pub fn (v F32x4) store_part(mut dst []f32) ! {
 
 // + adds corresponding lanes.
 pub fn (v F32x4) + (other F32x4) F32x4 {
-	$if @BACKEND == 'c' {
-		return add_native(v, other)
-	} $else {
-		return f32x4(v.values[0] + other.values[0], v.values[1] + other.values[1],
-			v.values[2] + other.values[2], v.values[3] + other.values[3])
-	}
+	return add_native(v, other)
 }
 
 // - subtracts corresponding lanes.
 pub fn (v F32x4) - (other F32x4) F32x4 {
-	$if @BACKEND == 'c' {
-		return sub_native(v, other)
-	} $else {
-		return f32x4(v.values[0] - other.values[0], v.values[1] - other.values[1],
-			v.values[2] - other.values[2], v.values[3] - other.values[3])
-	}
+	return sub_native(v, other)
 }
 
 // * multiplies corresponding lanes.
 pub fn (v F32x4) * (other F32x4) F32x4 {
-	$if @BACKEND == 'c' {
-		return mul_native(v, other)
-	} $else {
-		return f32x4(v.values[0] * other.values[0], v.values[1] * other.values[1],
-			v.values[2] * other.values[2], v.values[3] * other.values[3])
-	}
+	return mul_native(v, other)
 }
 
 // / divides corresponding lanes.
 pub fn (v F32x4) / (other F32x4) F32x4 {
-	$if @BACKEND == 'c' {
-		return div_native(v, other)
-	} $else {
-		return f32x4(v.values[0] / other.values[0], v.values[1] / other.values[1],
-			v.values[2] / other.values[2], v.values[3] / other.values[3])
-	}
+	return div_native(v, other)
 }
 
 // sqrt returns the square root of each lane.
 pub fn (v F32x4) sqrt() F32x4 {
-	$if @BACKEND == 'c' {
-		return sqrt_native(v)
-	} $else {
-		return f32x4(f32(math.sqrt(v.values[0])), f32(math.sqrt(v.values[1])),
-			f32(math.sqrt(v.values[2])), f32(math.sqrt(v.values[3])))
-	}
+	return sqrt_native(v)
 }
 
 // mul_add returns v * multiplier + addend for each lane.
@@ -121,4 +96,38 @@ pub fn (v F32x4) mul_add(multiplier F32x4, addend F32x4) F32x4 {
 // sum adds the four lanes in lane order.
 pub fn (v F32x4) sum() f32 {
 	return v.values[0] + v.values[1] + v.values[2] + v.values[3]
+}
+
+// The four-lane helpers come in two flavours by backend, which is why the
+// operators above name them instead of inlining an implementation. `simd.c.v`
+// holds the versions that call the C header, and is only compiled by the C
+// backend; the bodies below serve every other backend. V's ARM64 backend also
+// replaces a call to one of these with a single NEON instruction — that
+// substitution is invisible from here, and the body is what runs wherever it
+// does not apply.
+$if @BACKEND != 'c' {
+	fn add_native(a F32x4, b F32x4) F32x4 {
+		return f32x4(a.values[0] + b.values[0], a.values[1] + b.values[1],
+			a.values[2] + b.values[2], a.values[3] + b.values[3])
+	}
+
+	fn sub_native(a F32x4, b F32x4) F32x4 {
+		return f32x4(a.values[0] - b.values[0], a.values[1] - b.values[1],
+			a.values[2] - b.values[2], a.values[3] - b.values[3])
+	}
+
+	fn mul_native(a F32x4, b F32x4) F32x4 {
+		return f32x4(a.values[0] * b.values[0], a.values[1] * b.values[1],
+			a.values[2] * b.values[2], a.values[3] * b.values[3])
+	}
+
+	fn div_native(a F32x4, b F32x4) F32x4 {
+		return f32x4(a.values[0] / b.values[0], a.values[1] / b.values[1],
+			a.values[2] / b.values[2], a.values[3] / b.values[3])
+	}
+
+	fn sqrt_native(a F32x4) F32x4 {
+		return f32x4(f32(math.sqrt(a.values[0])), f32(math.sqrt(a.values[1])),
+			f32(math.sqrt(a.values[2])), f32(math.sqrt(a.values[3])))
+	}
 }
