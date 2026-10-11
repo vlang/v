@@ -88,13 +88,19 @@ fn main() {
 	}
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
-	os.chdir(app.vroot)!
+	// Keep caller-relative cache locations stable for both collection and the
+	// updated compiler's refresh children after entering the checkout.
+	if cache := os.getenv_opt('V3CACHE') {
+		os.setenv('V3CACHE', os.abs_path(cache), true)
+	}
+	os.setenv('VTMP', os.abs_path(os.vtmp_dir()), true)
 	// Save the old compiler's cache inventory before replacing it. Its cache
 	// configuration includes the executable identity, which changes on rebuild.
 	cached_modules := cache_refresh.collect(app.vroot) or {
 		eprintln('v up: could not read the module cache: ${err}')
 		exit(1)
 	}
+	os.chdir(app.vroot)!
 	println('Updating V...')
 	app.update_from_master()
 	if !app.update_tcc() {

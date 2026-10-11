@@ -51,17 +51,77 @@ fn test_module_cache_refresh_keeps_build_flags_and_discards_program_arguments() 
 	args := ['-cc', 'tcc', '-prod', '-g', '-cflags', '-DVALUE="a b"', '-d', 'feature', '-o',
 		'my program', '-ldflags', '-L../libs -lanswer', '-show-timings', 'run', 'main.v', '-prod',
 		'program argument']
-	flags := v3_module_cache_refresh_args(args, '/v/thirdparty/tcc/tcc.exe',
-		'/v/thirdparty/tcc/tcc.exe', [])
-	assert flags == ['-prod', '-g', '-cflags', '-DVALUE="a b"', '-d', 'feature', '-cc', 'tcc']
+	compiler := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	flags := v3_module_cache_refresh_args(args, compiler, [])
+	assert flags == ['-prod', '-g', '-cflags', '"-DVALUE=a b"', '-d', 'feature', '-cc', compiler]
 }
 
 fn test_module_cache_refresh_preserves_expanded_absolute_search_paths() {
 	paths := pref.expand_module_search_paths('modules/../modules|@vlib|@vmodules', @VEXEROOT).map(os.abs_path(it))
-	flags := v3_module_cache_refresh_args(['-path', 'ignored|@vlib', 'main.v'], 'cc', '', paths)
-	assert flags == ['-path', paths.join('|'), '-cc', 'cc']
+	compiler := os.find_abs_path_of_executable('cc') or { os.abs_path('cc') }
+	flags := v3_module_cache_refresh_args(['-path', 'ignored|@vlib', 'main.v'], 'cc', paths)
+	assert flags == ['-path', paths.join('|'), '-cc', compiler]
 	assert paths[0] == os.join_path(os.getwd(), 'modules')
 	assert paths[1] == os.join_path(@VEXEROOT, 'vlib')
+}
+
+fn test_module_cache_refresh_filters_link_operands_across_cflags_and_keeps_debug_order() ! {
+	args := ['-cflags', '-L', '-cflags', '../libs -l answer -I "include path" -D NAME=foo.o', '-g',
+		'-cflags', '-DVALUE="a b" -Wl,-rpath,../libs extra.o -framework Cocoa -O2', '-cflags',
+		'-U', '-cflags', 'REMOVED', 'main.v']
+	flags := v3_module_cache_refresh_args(args, 'cc', [])
+	mut compiled := []string{}
+	mut i := 0
+	for i < flags.len {
+		if flags[i] == '-cflags' {
+			compiled << cmdexec.split_args(flags[i + 1])!
+			i += 2
+			continue
+		}
+		if flags[i] == '-g' { compiled << '-g' }
+		i++
+	}
+	assert compiled == ['-I', 'include path', '-D', 'NAME=foo.o', '-g', '-DVALUE=a b', '-O2', '-U',
+		'REMOVED']
+	for value in ['-DNAME="quoted value"', "-DNAME=it's fine", '-IC:\\Program Files\\SDK',
+		'-DNAME=first\nsecond', ''] {
+		assert cmdexec.split_args(v3_cache_refresh_c_flag(value))! == [value]
+	}
+}
+
+fn test_module_cache_refresh_preserves_supported_modes_and_aliases() {
+	modes := ['-musl', '-glibc', '-ownership', '--ownership', '-no-std', '--no-std', '-strict',
+		'-cstrict', '--c99', '-dfeature=value', '-building-v', '-building_v', macos_v3_compat_c99_flag]
+	for mode in modes {
+		flags := v3_module_cache_refresh_args([mode, 'main.v'], 'cc', [])
+		assert flags[0] == mode, flags.str()
+	}
+}
+
+fn test_module_cache_refresh_pins_the_compiler_before_path_changes() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vup_compiler_path_${os.getpid()}')
+	previous := os.getenv('PATH')
+	defer {
+		os.setenv('PATH', previous, true)
+		os.rmdir_all(root) or {}
+	}
+	for name in ['first', 'second'] {
+		dir := os.join_path(root, name)
+		os.mkdir_all(dir)!
+		path := os.join_path(dir, 'clang')
+		os.write_file(path, '#!/bin/sh\nprintf "${name}\\n"\n')!
+		os.chmod(path, 0o755)!
+	}
+	os.setenv('PATH', os.join_path(root, 'first'), true)
+	flags := v3_module_cache_refresh_args(['-cc', 'clang', 'main.v'], 'clang', [])
+	os.setenv('PATH', os.join_path(root, 'second'), true)
+	assert flags == ['-cc', os.join_path(root, 'first', 'clang')]
+	result := os.exec([flags[1], '--version'])
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == 'first', result.output
 }
 
 fn test_v3_cache_rejects_a_different_compiler_than_cc() {

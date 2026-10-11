@@ -171,6 +171,57 @@ fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
 	assert os.read_file(cache_log)!.split_into_lines().len == 8
 }
 
+fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	previous_cache := os.getenv_opt('V3CACHE')
+	previous_tmp := os.getenv_opt('VTMP')
+	previous_dir := os.getwd()
+	defer {
+		if value := previous_cache {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		if value := previous_tmp { os.setenv('VTMP', value, true) } else { os.unsetenv('VTMP') }
+		os.chdir(previous_dir) or {}
+		os.rmdir_all(root) or {}
+	}
+	project := os.join_path(root, 'project')
+	os.mkdir_all(project)!
+	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
+	os.mkdir_all(os.dir(source))!
+	os.write_file(source, 'module sample\n')!
+	log := os.join_path(root, 'cache_paths.log')
+	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
+		'    printf "%s\\n%s\\n" "\$V3CACHE" "\$VTMP" >> ' + os.quoted_path(log) + '\n' +
+		'    echo "Caching module crypto.sample..."\n    exit 0;;\nesac\n' +
+		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+	for variable in ['V3CACHE', 'VTMP'] {
+		os.chdir(project)!
+		os.unsetenv('V3CACHE')
+		os.setenv('VTMP', os.join_path(root, 'default_tmp'), true)
+		os.setenv(variable, '.cache with spaces', true)
+		dir := os.join_path(cache_refresh.root_dir(root), variable)
+		os.mkdir_all(dir)!
+		cache_refresh.record(dir, root, ['-cc', 'cc'], false, {
+			'sample': [source]
+		})!
+		os.write_file(log, '')!
+		result := run_vup(root, home, tool, bin_dir)!
+		assert result.exit_code == 0, result.output
+		assert result.output.count('Caching module crypto.sample...') == 1, result.output
+		paths := os.read_file(log)!.split_into_lines()
+		assert paths.len == 2, paths.str()
+		assert paths[if variable == 'V3CACHE' { 0 } else { 1 }] == os.join_path(project, '.cache with spaces'), paths.str()
+		assert os.is_abs_path(paths[1]), paths.str()
+	}
+}
+
 fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! {
 	$if windows {
 		return

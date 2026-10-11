@@ -932,8 +932,8 @@ fn c_flag_is_existing_file(flag string) bool {
 	return clean.len > 0 && clean[0] != `-` && os.is_file(clean)
 }
 
-fn c_object_compile_flags(flags []string) []string {
-	mut compile_flags := []string{}
+fn c_object_compile_flag_positions(flags []string) []int {
+	mut positions := []int{}
 	mut skip_link_operand := false
 	mut preserve_operand := false
 	mut i := 0
@@ -946,7 +946,7 @@ fn c_object_compile_flags(flags []string) []string {
 			continue
 		}
 		if preserve_operand {
-			compile_flags << flag
+			positions << i
 			preserve_operand = false
 			i++
 			continue
@@ -966,7 +966,7 @@ fn c_object_compile_flags(flags []string) []string {
 			continue
 		}
 		if c_flag_consumes_next_operand(part) {
-			compile_flags << flag
+			positions << i
 			preserve_operand = true
 			i++
 			continue
@@ -976,10 +976,14 @@ fn c_object_compile_flags(flags []string) []string {
 			i++
 			continue
 		}
-		compile_flags << flag
+		positions << i
 		i++
 	}
-	return compile_flags
+	return positions
+}
+
+fn c_object_compile_flags(flags []string) []string {
+	return c_object_compile_flag_positions(flags).map(flags[it])
 }
 
 fn c_object_compile_support_flags(flags []string) []string {
@@ -9140,13 +9144,25 @@ fn v3_driver_option_consumes_value(option string) bool {
 
 // v3_module_cache_refresh_args keeps the configuration of module objects without
 // replaying a program, its output path, or diagnostic-only compiler switches.
-fn v3_module_cache_refresh_args(args []string, compiler string, bundled_tcc string, module_search_paths []string) []string {
+fn v3_module_cache_refresh_args(args []string, compiler string, module_search_paths []string) []string {
 	mut flags := []string{}
+	mut c_flags := []string{}
+	mut c_flag_origins := []int{}
+	mut c_flag_values := []int{}
 	mut i := 0
 	for i < args.len {
 		arg := args[i]
 		if v3_driver_option_consumes_value(arg) {
-			if i + 1 < args.len && arg in ['-d', '-define', '-gc', '-cflags', '-exclude', '-subsystem',
+			if i + 1 < args.len && arg == '-cflags' {
+				// Filter the complete C argv: operands can span repeated -cflags,
+				// and debug switches contribute -g at their original positions.
+				parsed := cmdexec.split_args(args[i + 1]) or { []string{} }
+				value_position := flags.len + 1
+				c_flags << parsed
+				for _ in parsed { c_flag_origins << value_position }
+				c_flag_values << value_position
+				flags << ['-cflags', '']
+			} else if i + 1 < args.len && arg in ['-d', '-define', '-gc', '-exclude', '-subsystem',
 				'-thread-stack-size', '-memory-limit', '--memory-limit'] {
 				flags << [arg, args[i + 1]]
 			}
@@ -9154,22 +9170,42 @@ fn v3_module_cache_refresh_args(args []string, compiler string, bundled_tcc stri
 			continue
 		}
 		if arg in ['-prod', '-no-prod-options', '-no-closures', '-g', '-cg', '-cdebug', '-shared',
-			'--shared', '-selfhost', '-c99', '-target-libc-headers', '-translated', '-enable-globals',
-			'-check-overflow', '-check-casts', '-force-bounds-checking', '-no-bounds-checking',
-			'-nofloat', '-autofree', '-manualfree', '-prealloc', '-no-prealloc', '--no-prealloc',
-			'-no-preludes', '-silent', '-W', '-w', '-N', '-Wfatal-errors', '-no-memory-limit',
-			'--no-memory-limit'] {
+			'--shared', '-selfhost', '-c99', '--c99', '-target-libc-headers', '-translated',
+			'-enable-globals', '-check-overflow', '-check-casts', '-force-bounds-checking',
+			'-no-bounds-checking', '-nofloat', '-autofree', '-manualfree', '-prealloc', '-no-prealloc',
+			'--no-prealloc', '-no-preludes', '-silent', '-W', '-w', '-N', '-Wfatal-errors',
+			'-no-memory-limit', '--no-memory-limit', '-musl', '-glibc', '-ownership', '--ownership',
+			'-no-std', '--no-std', '-strict', '-cstrict', '-building-v', '-building_v',
+			macos_v3_compat_c99_flag] || (arg.starts_with('-d') && arg.len > 2) {
 			flags << arg
+			if arg in ['-g', '-cg', '-cdebug'] {
+				c_flags << '-g'
+				c_flag_origins << -1
+			}
 		} else if !arg.starts_with('-') && arg !in ['run', 'crun', 'test'] {
 			break
 		}
 		i++
 	}
+	mut kept_c_flags := map[int][]string{}
+	for position in c_object_compile_flag_positions(c_flags) {
+		origin := c_flag_origins[position]
+		if origin >= 0 { kept_c_flags[origin] << c_flags[position] }
+	}
+	for position in c_flag_values {
+		// os.split_args understands these quotes on every host; no shell is used.
+		flags[position] = kept_c_flags[position].map(v3_cache_refresh_c_flag(it)).join(' ')
+	}
 	if module_search_paths.len > 0 {
 		flags << ['-path', module_search_paths.join('|')]
 	}
-	flags << ['-cc', if compiler == bundled_tcc { 'tcc' } else { compiler }]
+	resolved_compiler := os.find_abs_path_of_executable(compiler) or { os.abs_path(compiler) }
+	flags << ['-cc', resolved_compiler]
 	return flags
+}
+
+fn v3_cache_refresh_c_flag(flag string) string {
+	return '"' + flag.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
 
 fn apply_v3_diagnostic_color_option(option string) {
@@ -14709,7 +14745,7 @@ pub fn run(args []string) {
 			cached_objects = clone_string_list(prepared_cache.objects)
 			newly_cached_module_count = prepared_cache.newly_cached_modules
 			cache_refresh.record(cache_state.manager.dir, prefs.vroot,
-				v3_module_cache_refresh_args(args, c_compiler, bundled_tcc, prefs.module_search_paths),
+				v3_module_cache_refresh_args(args, c_compiler, prefs.module_search_paths),
 				is_test_command || is_v3_test_file(input_file, backend, target),
 				cache_state.module_sources) or {
 				trace_v3_cache_fallback('could not record the v up cache inventory: ${err}')

@@ -152,7 +152,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	os.unsetenv('V3_CACHE_REFRESH')
 	previous_dir := os.getwd()
 	defer {
-		for name in ['V3CACHE', 'VEXE', 'V_SKIP_VVMRC', 'VFLAGS', 'CFLAGS', 'LDFLAGS',
+		for name in ['V3CACHE', 'VEXE', 'V_SKIP_VVMRC', 'VFLAGS', 'CFLAGS', 'LDFLAGS', 'PATH',
 			'V3_CACHE_FORCE_SOURCE', 'V3_CACHE_TRACE', 'V3_CACHE_REFRESH'] {
 			if name in saved { os.setenv(name, saved[name], true) } else { os.unsetenv(name) }
 		}
@@ -162,6 +162,11 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	}
 	main_file := os.join_path(project, 'main.v')
 	os.write_file(main_file, 'import ${import_root}.probe\nfn main() { println(probe.value()) }\n')!
+	mut supported_modes := ['-no-std', '-strict']
+	$if linux {
+		libc := os.exec(['ldd', '--version'])
+		supported_modes << if libc.output.contains('musl') { '-musl' } else { '-glibc' }
+	}
 	os.chdir(project)!
 	mut builds := [][]string{}
 	for compiler in ['cc', 'clang', 'gcc', 'tcc'] {
@@ -170,38 +175,56 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		} else {
 			os.find_abs_path_of_executable(compiler) or { continue }
 		}
-		for prod in [false, true] {
-			mut flags := ['-cc', compiler, '-gc', 'none', '-usecache', '-path',
-				'modules/../modules|@vlib']
-			if prod { flags << '-prod' }
-			if compiler == 'cc' && !prod { flags << ['-ldflags', '-L../libs -lanswer'] }
-			if compiler == 'gcc' && prod { flags << '-silent' }
-			mut process := os.new_process(@VEXE)
-			process.set_args([...flags, '-o', os.join_path(root, 'program'), 'run', main_file])
-			process.set_redirect_stdio()
-			process.run()
-			stdout := process.stdout_slurp()
-			stderr := process.stderr_slurp()
-			process.wait()
-			assert process.code == 0, '${flags}: ${stdout}\n${stderr}'
-			process.close()
-			assert stdout.trim_space() == if prod { '42' } else { '40' }, '${flags}: ${stdout}\n${stderr}'
-			if '-silent' in flags {
-				assert !stderr.contains('Caching module '), stderr
-			} else {
-				assert stderr.contains('Caching module ${import_root}.probe...'), stderr
+		mut modes := [][]string{len: 1}
+		if compiler == 'cc' {
+			for mode in supported_modes { modes << [mode] }
+		}
+		for mode in modes {
+			for prod in [false, true] {
+				mut flags := ['-cc', compiler, '-gc', 'none', '-usecache', '-path',
+					'modules/../modules|@vlib']
+				if prod { flags << '-prod' }
+				flags << mode
+				if compiler == 'cc' && !prod { flags << ['-ldflags', '-L../libs -lanswer'] }
+				if compiler == 'cc' {
+					flags << ['-cflags', '-L../libs -lanswer -DREFRESH_LABEL="a b"']
+				}
+				if compiler == 'gcc' && prod { flags << '-silent' }
+				mut process := os.new_process(@VEXE)
+				process.set_args([...flags, '-o', os.join_path(root, 'program'), 'run', main_file])
+				process.set_redirect_stdio()
+				process.run()
+				stdout := process.stdout_slurp()
+				stderr := process.stderr_slurp()
+				process.wait()
+				assert process.code == 0, '${flags}: ${stdout}\n${stderr}'
+				process.close()
+				assert stdout.trim_space() == if prod { '42' } else { '40' }, '${flags}: ${stdout}\n${stderr}'
+				if '-silent' in flags {
+					assert !stderr.contains('Caching module '), stderr
+				} else if builds.len == 0 {
+					assert stderr.contains('Caching module ${import_root}.probe...'), stderr
+				}
+				builds << flags
 			}
-			builds << flags
 		}
 	}
 	requests := collect(vroot)!.filter(it.module.starts_with(import_root + '.'))
-	assert requests.len == builds.len * 2, requests.str()
+	// Compiler aliases can share a configuration and restore its program before
+	// reaching the inventory writer; its existing record already covers the cache.
+	assert requests.len >= 2 && requests.len <= builds.len * 2, requests.str()
+	for mode in supported_modes {
+		assert requests.any(mode in it.args), mode
+	}
 	for request in requests {
 		assert '-ldflags' !in request.args, request.str()
 		path_index := request.args.index('-path')
 		assert path_index >= 0, request.str()
 		assert request.args[path_index + 1] == [os.join_path(project, 'modules'),
 			os.join_path(vroot, 'vlib')].join('|'), request.str()
+		cc_index := request.args.index('-cc')
+		assert cc_index >= 0 && os.is_abs_path(request.args[cc_index + 1]), request.str()
+		assert !request.args.any(it.contains('../libs') || it.contains('-lanswer')), request.str()
 	}
 	// Run the refresh in another directory and capture its streams separately.
 	// Its importers must warm the same absolute-path cache configuration, and
@@ -216,6 +239,16 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	helper := os.exec([@VEXE, '-cc', 'cc', '-gc', 'none', '-nocache', '-o', refresh_exe,
 		refresh_source])
 	assert helper.exit_code == 0, helper.output
+	// Change PATH after creating the inventory: compiler names now point at
+	// unusable stand-ins, while the recorded absolute commands still work.
+	changed_path := os.join_path(root, 'changed_path')
+	os.mkdir_all(changed_path)!
+	for name in ['cc', 'clang', 'gcc'] {
+		path := os.join_path(changed_path, name)
+		os.write_file(path, '#!/bin/sh\necho wrong compiler >&2\nexit 1\n')!
+		os.chmod(path, 0o755)!
+	}
+	os.setenv('PATH', changed_path + os.path_delimiter + saved['PATH'], true)
 	// Change only an imported vlib dependency. Refresh its implementation while
 	// reusing the unchanged dependent object; original programs must not recache.
 	os.write_file(dependency, 'module dependency\npub fn value() int { return 43 }\n')!
@@ -227,8 +260,9 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	refresher.wait()
 	assert refresher.code == 0, '${stdout}\n${stderr}'
 	refresher.close()
-	assert stdout.count('Caching module ${import_root}.dependency...') == builds.len, stdout
+	assert stdout.contains('Caching module ${import_root}.dependency...'), stdout
 	assert !stderr.contains('Caching module '), stderr
+	os.setenv('PATH', saved['PATH'], true)
 	os.chdir(project)!
 	for flags in builds {
 		result := os.exec([@VEXE, ...flags, '-o', os.join_path(root, 'program'), main_file])
