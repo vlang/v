@@ -877,5 +877,16 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 			assert !named.contains('V3 program executable not cached'), named
 			assert restored(build(root, flags, main_file, 'named_again'))
 		}
+
+		// So does a command that defines a macro as the time for a C that does
+		// not use it.
+		mut with_definition := flags.clone()
+		with_definition << ['-cflags', '-DHEADER_UNUSED=__TIME__']
+		defined := build(root, with_definition, main_file, 'defined')
+		if compiles_each_time {
+			assert run_built(root, 'defined') == 'always'
+			assert !defined.contains('V3 program executable not cached'), defined
+			assert restored(build(root, with_definition, main_file, 'defined_again'))
+		}
 	}
 }

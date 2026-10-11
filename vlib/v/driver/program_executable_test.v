@@ -488,12 +488,19 @@ fn test_linker_report_is_read_in_both_of_its_forms() {
 		'-save-temps=obj',
 		'-ftime-trace',
 		'-fdump-tree-all',
+		'-Wp,-MD,/tmp/deps.d',
+		'-Wp,-DX,-MMD,/tmp/deps.d',
+		'-index-store-path /tmp/index',
+		'-fsave-optimization-record',
+		'-foptimization-record-file=/tmp/out.opt.yaml',
+		'-Wl,--reproduce=/tmp/link.tar',
+		'-Wl,--pdb=/tmp/out.pdb',
 	] {
 		mut command := ['-o', 'out', 'src.c']
 		command << args.split(' ')
 		assert v3_program_link_inputs(command, '', []string{}, '/build').unknown.contains('writes a file'), args
 	}
-	for args in ['-Wl,--as-needed -L/tmp -lm', '-O2 -MT x -o dependency_info'] {
+	for args in ['-Wl,--as-needed -L/tmp -lm', '-O2 -MT x -o dependency_info', '-Wp,-DMD=1,-I/tmp'] {
 		mut command := ['-o', 'out', 'src.c']
 		command << args.split(' ')
 		assert v3_program_link_inputs(command, '', []string{}, '/build').unknown == '', args
@@ -741,6 +748,26 @@ fn test_a_command_that_names_the_time_of_the_compilation_is_asked_about_it() {
 	plain := v3_program_link_inputs(['-o', 'out', 'src.c', '-DTIMEOUT=3'], '', []string{},
 		'/build')
 	assert plain.reason() == '' && plain.time_parts == []
+	// An argument is a text of its own: what opens a comment in one hides nothing
+	// of the next.
+	apart := v3_program_link_inputs(['-o', 'out', 'src.c', '-DNOTE=/*x', '-DHEAD=__TI', '-DTAIL=ME__'],
+		'', []string{}, '/build')
+	assert apart.time_parts == ['ME__', '__TI']
+}
+
+fn test_a_variable_that_makes_the_compiler_write_a_file_leaves_no_executable() {
+	saved := os.getenv_opt('DEPENDENCIES_OUTPUT')
+	defer {
+		if value := saved {
+			os.setenv('DEPENDENCIES_OUTPUT', value, true)
+		} else {
+			os.unsetenv('DEPENDENCIES_OUTPUT')
+		}
+	}
+	os.unsetenv('DEPENDENCIES_OUTPUT')
+	assert v3_program_link_inputs(['-o', 'out', 'src.c'], '', []string{}, '/build').unknown == ''
+	os.setenv('DEPENDENCIES_OUTPUT', '/tmp/deps.d', true)
+	assert v3_program_link_inputs(['-o', 'out', 'src.c'], '', []string{}, '/build').unknown.contains('`DEPENDENCIES_OUTPUT` makes the compiler write a file')
 }
 
 fn test_library_search_of_a_compiler_is_asked_again_in_another_environment() {

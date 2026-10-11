@@ -574,11 +574,12 @@ the command spells `__DATE__`, `__TIME__` or `__TIMESTAMP__`, or when they hold,
 own, parts that `##` can paste to such a name, as in `JOIN(__TI, ME__)` or `-DHEAD=__TI`. Whether
 it does is then told by one more run of the preprocessor: a string with a date or a time of day in
 what comes out is what such a macro leaves. A C that only names the macro, in a comment or in a
-macro that it does not use, keeps its executable. What the
-headers of a compilation make its inputs is kept in the module cache too, so a build that read
+macro that it does not use, keeps its executable. None is kept when that run fails, or when the
+command that names the macro compiles nothing itself and only links an object of the program. What
+the headers of a compilation make its inputs is kept in the module cache too, so a build that read
 the same files, each the file that it was, does not read them once more to find that out. An
-object that the compiler itself keeps of the program, as the development builds on macOS below
-do, is not compiled again by a build that links either.
+object that the compiler itself keeps of the program, as the development builds on macOS below do,
+is not compiled again by a build that links either.
 None is kept either when the command has an input that cannot be followed: a thin archive, whose
 members are other files, a response file, a file list, a linker script that does more than name
 its inputs, or an option for the linker that is not among those whose inputs are known
@@ -590,13 +591,14 @@ The libraries and start files that a compiler driver adds by itself (`libc`, `li
 for a file in vain: with that, and with the files that the command gives an option, an option
 that is not known is no reason to keep no executable there. What the linker takes from deep
 inside an SDK, and where it finds nothing in one, is not recorded file by file. A linker that
-turns out not to know the option is run again without it. A command that asks its compiler or
-its linker for a file besides the executable (`-MD`, `--coverage`, `-Wl,-map,<file>`, a report
-of the linker itself) gets that file from a build that compiles and links: no executable is
-kept of such a command. The command of the
-linker is read in the order of the compiler's: an option takes the value that follows it,
-however the two were given (`-Wl,-rpath /dir`). A relative path is one of the directory in which
-the command runs, which the build makes for itself; one that leaves that directory (`-L../libs`,
+turns out not to know the option is run again without it. A command that asks its compiler or its
+linker for a file besides the executable (`-MD`, `-Wp,-MD,<file>`, `--coverage`,
+`-Wl,-map,<file>`, a report of the linker itself, the variable `DEPENDENCIES_OUTPUT`) gets that
+file from a build that compiles and links: no executable is kept of such a command, as far as
+`program_link_inputs.v` knows the option. The command of the linker is read in the order of the
+compiler's: an option takes the value that follows it, however the two were given
+(`-Wl,-rpath /dir`). A relative path is one of the directory in which the command runs, which the
+build makes for itself; one that leaves that directory (`-L../libs`,
 `-fprofile-use=../default.profdata`) is followed like an absolute one. That directory is
 beside the output, so such a path names another file for another output: an executable is
 kept for the directory of its output when a flag or the environment holds one, and none is

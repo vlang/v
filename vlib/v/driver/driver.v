@@ -14999,7 +14999,7 @@ pub fn run(args []string) {
 					}
 				}
 				if program_link_inputs.taken && linked.exit_code == 0
-					&& program_link_inputs.reason().len == 0 {
+					&& program_link_inputs.inputs_can_be_told() {
 					unit := if read_preprocessed_headers {
 						generated_unit
 					} else {

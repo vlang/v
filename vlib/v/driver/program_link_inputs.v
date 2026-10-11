@@ -49,13 +49,24 @@ fn (inputs &V3ProgramLinkInputs) reason() string {
 }
 
 // settle_time takes the answer to `time_question`: whether the C of the program
-// asks for the time of its compilation. An executable of a C that does is good
-// for the moment in which it was compiled.
-fn (mut inputs V3ProgramLinkInputs) settle_time(asks bool) {
-	if asks && inputs.unknown.len == 0 {
-		inputs.unknown = 'the C of the program asks for the time of its compilation'
+// asks for the time of its compilation, or none when the preprocessor did not
+// tell. An executable of a C that does is good for the moment in which it was
+// compiled, and none is kept of a C of which that is not known.
+fn (mut inputs V3ProgramLinkInputs) settle_time(asks ?bool) {
+	if answer := asks {
+		if answer && inputs.unknown.len == 0 {
+			inputs.unknown = 'the C of the program asks for the time of its compilation'
+		}
+	} else if inputs.unknown.len == 0 {
+		inputs.unknown = 'the preprocessor did not tell whether the C of the program asks for the time of its compilation'
 	}
 	inputs.time_question = ''
+}
+
+// inputs_can_be_told reports whether nothing of the command stands in the way of
+// telling what it reads: what the compiler read is worth finding out then.
+fn (inputs &V3ProgramLinkInputs) inputs_can_be_told() bool {
+	return inputs.unknown.len == 0 && inputs.unknown_option.len == 0
 }
 
 // V3LinkCommand is the part of a link command that names files and libraries.
@@ -231,16 +242,48 @@ const v3_linker_value_options = {
 }
 
 // v3_linker_output_options make the linker write a file besides the executable: a
-// map, a list of what it read, an object. A build that takes a kept executable
-// links nothing, and would not write it.
+// map, a list of what it read, an object, an import library, a trace. A build
+// that takes a kept executable links nothing, and would not write it. The list
+// holds the options that are known to do so; a linker has more than anyone lists.
 const v3_linker_output_options = ['Map', 'map', 'dependency-file', 'dependency_info', 'object_path_lto',
-	'out-implib', 'print-map-to-file']
+	'out-implib', 'output-def', 'pdb', 'reproduce', 'time-trace', 'print-archive-stats',
+	'print-symbol-order', 'lto-obj-path', 'thinlto-index-only', 'save-temps', 'dot', 'debug_snapshot',
+	'snapshot_dir', 'bitcode_symbol_map']
 
 // v3_compiler_output_options make a compiler driver write a file besides what it
 // compiles: the headers that it read, its temporaries, data for a profile.
 const v3_compiler_output_options = ['-MD', '-MMD', '-MF', '-MJ', '-M', '-MM', '-save-temps',
 	'--coverage', '-ftest-coverage', '-fprofile-arcs', '-gsplit-dwarf', '-ftime-trace', '-fstack-usage',
-	'-fcallgraph-info', '-aux-info', '--serialize-diagnostics', '-serialize-diagnostics']
+	'-fcallgraph-info', '-aux-info', '--serialize-diagnostics', '-serialize-diagnostics',
+	'-index-store-path', '-fsave-optimization-record', '-save-stats']
+
+// v3_compiler_output_option_prefixes start the options of v3_compiler_output_options
+// that hold their value.
+const v3_compiler_output_option_prefixes = ['-save-temps=', '-ftime-trace=', '-fdump-',
+	'-fsave-optimization-record=', '-foptimization-record-file=', '-fopt-info', '-save-stats=',
+	'-fcallgraph-info=']
+
+// v3_output_environment_names are the variables that make a compiler driver write a
+// file besides what it compiles, as an option of v3_compiler_output_options does.
+const v3_output_environment_names = ['DEPENDENCIES_OUTPUT', 'SUNPRO_DEPENDENCIES', 'CC_PRINT_OPTIONS',
+	'CC_PRINT_HEADERS', 'CC_LOG_DIAGNOSTICS']
+
+// v3_option_writes_a_file reports whether `arg`, an argument of a compiler driver,
+// is known to make it write a file besides what it compiles. `-Wp,` hands the
+// preprocessor its options: `-Wp,-MD,<file>` writes what it read.
+fn v3_option_writes_a_file(arg string) bool {
+	if arg in v3_compiler_output_options || v3_compiler_output_option_prefixes.any(arg.starts_with(it)) {
+		return true
+	}
+	if arg.starts_with('-Wp,') {
+		for option in arg[4..].split(',') {
+			if option in ['-MD', '-MMD', '-MF', '-M', '-MM', '-MJ'] {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // v3_linker_plain_file_options take a file that the linker reads as it is: a list
 // of symbols, an order, a plugin.
@@ -588,8 +631,7 @@ fn v3_parse_link_command(args []string, build_dir string) V3LinkCommand {
 			}
 			continue
 		}
-		if arg in v3_compiler_output_options || arg.starts_with('-save-temps=')
-			|| arg.starts_with('-ftime-trace=') || arg.starts_with('-fdump-') {
+		if v3_option_writes_a_file(arg) {
 			// A build that takes a kept executable compiles nothing, and would
 			// not write it.
 			command.unknown = 'the option `${arg}` writes a file besides the executable'
@@ -846,15 +888,27 @@ fn v3_program_link_inputs(args []string, linker_dir string, default_library_dirs
 	}
 	inputs.files.sort()
 	inputs.missing.sort()
+	for name in v3_output_environment_names {
+		if os.getenv(name).len > 0 && inputs.unknown.len == 0 {
+			inputs.unknown = 'the variable `${name}` makes the compiler write a file besides the executable'
+		}
+	}
 	// A command can define a macro as the time of the compilation, or as a part
-	// of the name of such a macro: `-DBUILT=__TIME__`.
+	// of the name of such a macro: `-DBUILT=__TIME__`. Each argument is a text of
+	// its own.
 	mut words := args.clone()
 	words << os.getenv('CCC_OVERRIDE_OPTIONS')
-	definitions := words.join('\n')
-	if v3_c_mentions_compile_time(definitions) {
-		inputs.time_question = 'the command names a macro for the time of the compilation'
+	for word in words {
+		if v3_c_mentions_compile_time(word) {
+			inputs.time_question = 'the command names a macro for the time of the compilation'
+		}
+		for part in v3_c_time_name_parts(word) {
+			if part !in inputs.time_parts {
+				inputs.time_parts << part
+			}
+		}
 	}
-	inputs.time_parts = v3_c_time_name_parts(definitions)
+	inputs.time_parts.sort()
 	for path in inputs.files {
 		identity := modulecache.file_metadata_signature(path)
 		if identity.len == 0 && inputs.unknown.len == 0 {
@@ -1084,13 +1138,16 @@ fn v3_output_names_linker_report(report V3LinkerReport, output string) bool {
 
 // v3_linker_report_record returns the file of the module cache that keeps which
 // report the linker of `compiler` gives. What chooses the linker is part of its
-// name: the compiler, the arguments that choose one, and the variables that GCC
-// finds its programs by. A linker that is another one all the same is found out
-// by the link that fails over the option: see v3_forget_linker_report.
+// name: the compiler, the arguments that choose one, the variables that GCC finds
+// its programs by, and those by which the compiler of an Apple toolchain, which
+// is one file for all of them, finds the toolchain to run. A linker that is
+// another one all the same is found out by the link that fails over the option:
+// see v3_forget_linker_report.
 fn v3_linker_report_record(manager &modulecache.Manager, compiler string, search_args []string, target_os string) string {
-	identity := ['v3-linker-report-3', os.real_path(compiler), v3_cache_file_identity(compiler),
+	identity := ['v3-linker-report-4', os.real_path(compiler), v3_cache_file_identity(compiler),
 		target_os, v3_linker_probe_args(search_args).join('\n'), os.getenv('COMPILER_PATH'),
-		os.getenv('GCC_EXEC_PREFIX')]
+		os.getenv('GCC_EXEC_PREFIX'), os.getenv('DEVELOPER_DIR'), os.getenv('TOOLCHAINS'),
+		os.getenv('SDKROOT')]
 	return os.join_path_single(manager.dir, 'linker_report_${c_hash_bytes(u64(1469598103934665603), identity.join('\x00').bytes()).hex()}')
 }
 
