@@ -250,3 +250,58 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'OK', run.output
 }
+
+fn test_elements_passed_by_mut_or_copied_by_value_stay_on_the_stack() {
+	root := os.join_path(os.vtmp_dir(), 'fixed_array_borrow_elem_mut_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	c_path := os.join_path(root, 'main.c')
+	os.write_file(source_path, 'type Gf = [4]i64
+interface Sizer { size() int }
+struct Box { g Gf }
+fn (b Box) size() int { return int(b.g[0]) }
+__global kept_ptr = voidptr(unsafe { nil })
+__global kept_gf = &Gf(unsafe { nil })
+__global kept_sizer = Sizer(Box{})
+fn set_gf(mut r Gf, v i64) { for i in 0 .. 4 { r[i] = v } }
+fn sum_gf(a Gf) i64 { return a[0] + a[1] + a[2] + a[3] }
+fn keep_gf(mut r Gf) { kept_gf = unsafe { &r } }
+fn keep_ptr(p voidptr) { kept_ptr = p }
+fn keep_sizer(s Sizer) { kept_sizer = s }
+fn pt_fill(mut p [2]Gf) i64 {
+ set_gf(mut p[0], 1)
+ set_gf(mut p[1], 2)
+ return sum_gf(p[0]) + sum_gf(p[1])
+}
+fn by_elem_and_copy() i64 { mut p := [2]Gf{}; return pt_fill(mut p) }
+fn pt_keep(mut p [2]Gf) { keep_gf(mut p[0]) }
+fn elem_retained() i64 { mut p := [2]Gf{}; pt_keep(mut p); return p[0][0] }
+fn rec_keep_ptr(mut rec [8]u8) { keep_ptr(rec) }
+fn voidptr_retained() u8 { mut rec := [8]u8{}; rec_keep_ptr(mut rec); return rec[0] }
+fn box_keep(mut b Box) { keep_sizer(b) }
+fn interface_retained() int { mut b := Box{}; box_keep(mut b); return b.size() }
+fn main() {
+ assert by_elem_and_copy() == 12
+ assert elem_retained() == 0
+ assert voidptr_retained() == 0
+ assert interface_retained() == 0
+ println("OK")
+}
+')!
+	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
+		'none', '-o', c_path, source_path])
+	assert generated.exit_code == 0, generated.output
+	source := os.read_file(c_path)!
+	// an element handed by mut to a borrowing callee, and elements copied into value parameters
+	assert !fixed_array_borrow_body(source, 'by_elem_and_copy').contains('memdup(')
+	// kept by the callee, or passed where the parameter takes the address (voidptr, interface)
+	for name in ['elem_retained', 'voidptr_retained', 'interface_retained'] {
+		body := fixed_array_borrow_body(source, name)
+		assert body.contains('memdup('), body
+	}
+	run := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-enable-globals', '-gc',
+		'none', 'run', source_path])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'OK', run.output
+}

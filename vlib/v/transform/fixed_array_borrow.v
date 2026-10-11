@@ -152,19 +152,19 @@ fn (t &Transformer) fixed_array_unwrap_arg(id flat.NodeId) flat.NodeId {
 	return cur
 }
 
-// fixed_array_arg_hands_param_storage reports whether a call argument is the parameter itself,
-// or the address of storage that belongs to it — `&p[i]`, `&p.buf[i]`, `&p.field` — reached
-// through fixed arrays and struct fields held by value, never through another pointer or a
-// dynamic array. Index expressions along the way must not mention the parameter.
+// fixed_array_arg_hands_param_storage reports whether a call argument is the parameter itself, or
+// storage that belongs to it — `p[i]`, `p.buf[i]`, `p.field`, with or without `&`, as `mut p[i]` is
+// — reached through fixed arrays and struct fields held by value, never through another pointer or
+// a dynamic array. Index expressions along the way must not mention the parameter.
 fn (t &Transformer) fixed_array_arg_hands_param_storage(arg_id flat.NodeId, param string) bool {
 	arg := t.a.node(t.fixed_array_unwrap_arg(arg_id))
 	if arg.kind == .ident {
 		return arg.value == param
 	}
-	if arg.kind != .prefix || arg.op != .amp || arg.children_count != 1 {
-		return false
+	mut cur := t.fixed_array_unwrap_arg(arg_id)
+	if arg.kind == .prefix && arg.op == .amp && arg.children_count == 1 {
+		cur = t.fixed_array_unwrap_arg(t.a.child(arg, 0))
 	}
-	mut cur := t.fixed_array_unwrap_arg(t.a.child(arg, 0))
 	for {
 		node := t.a.node(cur)
 		if node.kind == .ident {
@@ -213,7 +213,7 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 	if t.fixed_array_expr_mentions_param(callee_id, param) {
 		receiver_borrows := offset == 1 && callee.kind == .selector && callee.children_count > 0
 			&& t.fixed_array_arg_hands_param_storage(t.a.child(callee, 0), param)
-			&& t.fixed_array_call_param_borrows(name, node, 0)
+			&& t.fixed_array_storage_arg_borrows(name, node, params, 0, t.a.child(callee, 0))
 		if !receiver_borrows && !t.fixed_array_param_use_borrows(callee_id, param, false) {
 			return false
 		}
@@ -224,7 +224,7 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 			continue
 		}
 		if t.fixed_array_arg_hands_param_storage(arg_id, param)
-			&& t.fixed_array_call_param_borrows(name, node, i - 1 + offset) {
+			&& t.fixed_array_storage_arg_borrows(name, node, params, i - 1 + offset, arg_id) {
 			continue
 		}
 		if !t.fixed_array_param_use_borrows(arg_id, param, false) {
@@ -232,6 +232,26 @@ fn (mut t Transformer) fixed_array_call_uses_borrow(id flat.NodeId, node flat.No
 		}
 	}
 	return true
+}
+
+// fixed_array_storage_arg_borrows: storage of the parameter, handed to callee parameter `index`,
+// leaves no reference behind — passed BY VALUE into a fixed array, a struct or a scalar it is a copy
+// (an explicit `&` never is, and a voidptr, pointer or interface parameter takes the address), and
+// passed by reference the callee's parameter must borrow. A callee whose parameters are unknown
+// borrows nothing.
+fn (t &Transformer) fixed_array_storage_arg_borrows(name string, call flat.Node, params []types.Type, index int, arg_id flat.NodeId) bool {
+	if index < 0 || index >= params.len {
+		return false
+	}
+	arg := t.a.node(t.fixed_array_unwrap_arg(arg_id))
+	explicit_address := arg.kind == .prefix && arg.op == .amp
+	param_type := types.unalias_type(params[index])
+	copied := param_type is types.ArrayFixed || param_type is types.Struct
+		|| escape_type_is_scalar_value(param_type)
+	if !explicit_address && !arg.is_mut && copied {
+		return true
+	}
+	return t.fixed_array_call_param_borrows(name, call, index)
 }
 
 fn (mut t Transformer) fixed_array_param_use_borrows(id flat.NodeId, param string, storage_use bool) bool {
