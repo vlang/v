@@ -31,9 +31,41 @@ assert img.bounds().dx() == 2
 assert img.rgba_at(0, 0).r == 255
 ```
 
-The codec packages from Go's image tree, such as PNG, JPEG, and GIF, are not
-part of this module yet. They can be added later by registering decode
-callbacks with this module.
+Import `image.png` or `image.jpeg` to register those formats for `image.decode` and
+`image.decode_config`. Both codecs use the existing bundled stb implementation and return
+independent eight-bit `NRGBA` images; sixteen-bit PNG channels are reduced to eight bits.
+Apple optimized PNGs containing a `CgBI` chunk are rejected by decoding and configuration
+inspection because their premultiplied BGRA pixels are unsupported. JPEG encoding drops alpha.
+GIF is not registered.
+
+`png.encode(mut writer, img)` and `jpeg.encode(mut writer, img, quality: 85)` write to any
+`io.Writer`, including files. `encode_to_bytes` returns encoded bytes for HTTP responses.
+JPEG quality must be in `1 .. 100` and defaults to 75. PNG uses lossless RGBA encoding.
+The decoders buffer encoded input in memory and propagate reader errors.
+The stb backend does not validate PNG chunk CRCs. Its global vertical-flip settings also
+affect these codecs, so applications using `stbi.set_flip_vertically_on_load` or
+`stbi.set_flip_vertically_on_write` control their orientation through those settings.
+
+`image.draw.resize(img, width, height)` produces an `NRGBA` image using bilinear sampling.
+Pass `interpolation: .nearest_neighbor` for pixel art. Source bounds can start at any coordinate,
+and bilinear interpolation uses premultiplied channels to preserve transparent edges.
+Empty or oversized image dimensions return an error.
+
+```v ignore
+import image
+import image.draw
+import image.jpeg
+import image.png
+import os
+
+mut input := os.open('input.png')!
+img, _ := image.decode(input)!
+input.close()
+thumbnail := draw.resize(img, 320, 240)!
+mut output := os.create('thumbnail.jpg')!
+jpeg.encode(mut output, thumbnail, quality: 85)!
+output.close()
+```
 
 Sub-images share their pixel storage with the parent image, including the Y, Cb, Cr,
 and alpha planes of `YCbCr` and `NYCbCrA`. Changes through either image are visible in both.

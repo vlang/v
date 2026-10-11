@@ -296,3 +296,5 @@ The following functions should be used with care and only when used correctly.
 - os.is_writable()
 - os.is_executable()
 - os.is_link()
+
+`get_line()` removes CRLF and LF line endings from standard input on every platform.

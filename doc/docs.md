@@ -1240,6 +1240,8 @@ concrete values to an empty interface array, `<< array` appends the whole array 
 interface value, while `<< ...array` converts and appends each element separately.
 For example, with `interface Value {}`, appending `['IT']` to `[]Value{}` produces
 `[Value(['IT'])]` with `<<` and `[Value('IT')]` with `<< ...`.
+`insert(index, ...array)` and `prepend(...array)` also convert each source element to the
+destination element type before inserting it.
 
 ```v
 mut names := ['John']
@@ -1254,6 +1256,11 @@ names << 'Sam'
 names := ['John', 'Peter', 'Sam']
 println('Alex' in names) // "false"
 ```
+
+Use `<< ...array` to explicitly append the array's elements. For an interface array,
+`<< array` can append the whole array as one interface value, while `<< ...array`
+converts each element separately. `array.insert(index, ...values)` and
+`array.prepend(...values)` also convert each source element to the destination element type.
 
 #### Array Fields
 
@@ -1778,8 +1785,10 @@ Pointer fields and indexed pointers retain the original fixed-array roots record
 Borrowing does not clone elements or require a `clone()` method.
 
 Passing a local struct's fixed-array storage by reference keeps the local on the stack when
-the called function only reads or writes scalar fields and array elements. Calls that may retain
-the storage still move it to the heap; `-warn-about-allocs` reports these moves.
+the called function only reads or writes scalar fields and array elements, or passes the
+reference, or the address of an element (`&buf[i]`), straight on to a function that does the
+same. Calls that may retain the storage still move it to the heap; `-warn-about-allocs` reports
+these moves.
 Calls through local function values remain conservative, including values that shadow
 function names.
 Explicitly destroying owned source elements invalidates views of those elements, as with other
@@ -2690,6 +2699,8 @@ Parentheses around a mutable map container do not change whether assigning the l
 its entry.
 Mutable map parameters, including explicit pointer parameters (`mut m &map[K]V`),
 keep ordinary value iteration. A mutable loop value writes through to the map entry.
+A mutable pointer-valued loop argument can rebind the stored pointer, including through
+parentheses, while a mutable struct argument updates the pointed-to struct.
 
 Either key or value can be ignored by using a single underscore as the identifier.
 

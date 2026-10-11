@@ -21295,11 +21295,7 @@ fn checked_small_numeric_type(typ types.Type) bool {
 		&& (clean.props.has(.integer) || clean.props.has(.float))
 }
 
-fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node flat.Node, child_index int) bool {
-	arg_id := t.a.child(&node, child_index)
-	if !t.is_fixed_array_type(t.normalize_type_alias(t.node_type(arg_id))) {
-		return false
-	}
+fn (mut t Transformer) resolved_call_argument_param_type(id flat.NodeId, node flat.Node, child_index int) ?types.Type {
 	call_name := t.call_name_for_node(id, node)
 	mut params := t.call_param_types_for_node(call_name, node)
 	if concrete_params := t.concrete_generic_call_param_types(id, node) {
@@ -21312,10 +21308,63 @@ fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node fl
 	}
 	param_index := child_index - 1 + offset
 	if param_index < 0 || param_index >= params.len {
+		return none
+	}
+	return params[param_index]
+}
+
+fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node flat.Node, child_index int) bool {
+	arg_id := t.a.child(&node, child_index)
+	if !t.is_fixed_array_type(t.normalize_type_alias(t.node_type(arg_id))) {
 		return false
 	}
-	param_type := t.normalize_type_alias(t.semantic_type_name(params[param_index]))
+	param := t.resolved_call_argument_param_type(id, node, child_index) or { return false }
+	param_type := t.normalize_type_alias(t.semantic_type_name(param))
 	return param_type.starts_with('&') || param_type in ['voidptr', 'byteptr', 'charptr']
+}
+
+// A mutable pointer parameter borrows the loop entry's slot, while a mutable
+// struct parameter borrows its pointee. Preserve the slot only for the former.
+fn (mut t Transformer) snapshot_mut_pointer_slot_arg(id flat.NodeId, node flat.Node, child_index int) ?flat.NodeId {
+	arg_id := t.a.child(&node, child_index)
+	binding_id := t.unwrap_parens(arg_id)
+	arg := t.a.nodes[int(binding_id)]
+	if (!t.a.nodes[int(arg_id)].is_mut && !arg.is_mut)
+		|| arg.kind != .ident || !t.pointer_value_rvalues[arg.value]
+		|| t.mut_param_values[arg.value] {
+		return none
+	}
+	storage_type := t.lvalue_type(binding_id)
+	if !storage_type.starts_with('&&') {
+		return none
+	}
+	param := t.resolved_call_argument_param_type(id, node, child_index)?
+	param_type := t.normalize_type_alias(t.semantic_type_name(param))
+	if param_type != t.normalize_type_alias(storage_type) {
+		// Function values keep mutability separately from their source parameter type.
+		callee_id := t.unwrap_parens(t.a.child(&node, 0))
+		callee := t.a.node(callee_id)
+		if callee.kind == .ident && t.raw_var_type(callee.value).len == 0 {
+			return none
+		}
+		if callee.kind == .selector {
+			field_type := t.raw_selector_field_type(callee_id) or { return none }
+			if _ := transform_fn_type(t.tc.parse_type(field_type)) {
+			} else {
+				return none
+			}
+		}
+		fn_type := t.call_callee_fn_type(callee_id) or { return none }
+		param_index := child_index - 1
+		if param_index < 0 || param_index >= fn_type.params.len
+			|| param_index >= fn_type.params_mut.len || !fn_type.params_mut[param_index]
+			|| t.normalize_type_alias(t.semantic_type_name(fn_type.params[param_index])) !=
+				t.normalize_type_alias(storage_type[1..]) {
+			return none
+		}
+	}
+	storage := t.transform_expr_preserving_pointer_value(binding_id)
+	return t.snapshot_transformed_expr_for_reuse(storage, storage_type, 'order_snapshot')
 }
 
 // transform_call_expr lowers a checked call and its argument conversions.
@@ -21490,7 +21539,9 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 					// not standalone call operands. Keep their wrappers intact: the struct lowering
 					// pass snapshots preceding field values before materializing a later branch.
 					// Fixed arrays decaying to pointers also borrow their original storage.
-					if t.a.nodes[int(arg_id)].is_mut
+					if slot := t.snapshot_mut_pointer_slot_arg(id, node, i) {
+						slot
+					} else if t.a.nodes[int(arg_id)].is_mut
 						|| t.call_argument_borrows_fixed_array(id, node, i) {
 						if stabilized := t.stabilize_original_lvalue_receiver(arg_id) {
 							stabilized

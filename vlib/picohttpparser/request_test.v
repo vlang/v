@@ -61,3 +61,26 @@ pub fn test_handles_incomplete_requests() {
 	assert req.method == ''
 	assert req.path == ''
 }
+
+fn test_request_with_one_leading_crlf() {
+	mut req := Request{}
+	input := '\r\nPOST /data HTTP/1.1\r\nContent-Length: 4\r\n\r\nbody'
+	parsed := req.parse_request(input)!
+	assert parsed == input.len - 4
+	assert req.method == 'POST'
+	assert req.path == '/data'
+	assert req.body == 'body'
+}
+
+fn test_incomplete_leading_crlf() {
+	for input in ['\r', '\r\n'] {
+		mut req := Request{}
+		assert req.parse_request(input)! == -2
+	}
+	mut req := Request{}
+	if parsed := req.parse_request('\rXGET / HTTP/1.1\r\n\r\n') {
+		assert false, 'accepted invalid leading CRLF: ${parsed}'
+	} else {
+		assert err.msg().contains('expected "\n" after "\r"')
+	}
+}

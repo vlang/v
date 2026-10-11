@@ -32,6 +32,12 @@ Options:
   --after <string>       A command to execute *after* each re-run.
                          Example: --after 'rm -rf /tmp/v/'
 
+  --no-build-first       For veb apps, `v watch` builds the new version while
+                         the old one keeps serving, and swaps them only when
+                         the build succeeds; a change during a build cancels
+                         it and starts a new one. This restores the old
+                         behaviour: stop the app, then build and run it.
+
 You can also customise the timeout, after which `v watch` will re-start a
 monitored program automatically, even if it was not changed by setting the
 environment variable VWATCH_TIMEOUT (in seconds). By default, it is 5 min
