@@ -49,10 +49,19 @@ fn test_v3_cache_accepts_default_cc_alias() {
 
 fn test_module_cache_refresh_keeps_build_flags_and_discards_program_arguments() {
 	args := ['-cc', 'tcc', '-prod', '-g', '-cflags', '-DVALUE="a b"', '-d', 'feature', '-o',
-		'my program', '-show-timings', 'run', 'main.v', '-prod', 'program argument']
+		'my program', '-ldflags', '-L../libs -lanswer', '-show-timings', 'run', 'main.v', '-prod',
+		'program argument']
 	flags := v3_module_cache_refresh_args(args, '/v/thirdparty/tcc/tcc.exe',
-		'/v/thirdparty/tcc/tcc.exe')
+		'/v/thirdparty/tcc/tcc.exe', [])
 	assert flags == ['-prod', '-g', '-cflags', '-DVALUE="a b"', '-d', 'feature', '-cc', 'tcc']
+}
+
+fn test_module_cache_refresh_preserves_expanded_absolute_search_paths() {
+	paths := pref.expand_module_search_paths('modules/../modules|@vlib|@vmodules', @VEXEROOT).map(os.abs_path(it))
+	flags := v3_module_cache_refresh_args(['-path', 'ignored|@vlib', 'main.v'], 'cc', '', paths)
+	assert flags == ['-path', paths.join('|'), '-cc', 'cc']
+	assert paths[0] == os.join_path(os.getwd(), 'modules')
+	assert paths[1] == os.join_path(@VEXEROOT, 'vlib')
 }
 
 fn test_v3_cache_rejects_a_different_compiler_than_cc() {

@@ -9140,14 +9140,14 @@ fn v3_driver_option_consumes_value(option string) bool {
 
 // v3_module_cache_refresh_args keeps the configuration of module objects without
 // replaying a program, its output path, or diagnostic-only compiler switches.
-fn v3_module_cache_refresh_args(args []string, compiler string, bundled_tcc string) []string {
+fn v3_module_cache_refresh_args(args []string, compiler string, bundled_tcc string, module_search_paths []string) []string {
 	mut flags := []string{}
 	mut i := 0
 	for i < args.len {
 		arg := args[i]
 		if v3_driver_option_consumes_value(arg) {
-			if i + 1 < args.len && arg in ['-d', '-define', '-gc', '-cflags', '-ldflags', '-exclude',
-				'-subsystem', '-thread-stack-size', '-memory-limit', '--memory-limit'] {
+			if i + 1 < args.len && arg in ['-d', '-define', '-gc', '-cflags', '-exclude', '-subsystem',
+				'-thread-stack-size', '-memory-limit', '--memory-limit'] {
 				flags << [arg, args[i + 1]]
 			}
 			i += 2
@@ -9164,6 +9164,9 @@ fn v3_module_cache_refresh_args(args []string, compiler string, bundled_tcc stri
 			break
 		}
 		i++
+	}
+	if module_search_paths.len > 0 {
+		flags << ['-path', module_search_paths.join('|')]
 	}
 	flags << ['-cc', if compiler == bundled_tcc { 'tcc' } else { compiler }]
 	return flags
@@ -10922,7 +10925,7 @@ pub fn run(args []string) {
 	}
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
-	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot)
+	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot).map(os.abs_path(it))
 	if is_checker_fixture {
 		fixture_modules := os.join_path(os.dir(os.real_path(input_file)), 'modules')
 		if os.is_dir(fixture_modules) {
@@ -14706,7 +14709,7 @@ pub fn run(args []string) {
 			cached_objects = clone_string_list(prepared_cache.objects)
 			newly_cached_module_count = prepared_cache.newly_cached_modules
 			cache_refresh.record(cache_state.manager.dir, prefs.vroot,
-				v3_module_cache_refresh_args(args, c_compiler, bundled_tcc),
+				v3_module_cache_refresh_args(args, c_compiler, bundled_tcc, prefs.module_search_paths),
 				is_test_command || is_v3_test_file(input_file, backend, target),
 				cache_state.module_sources) or {
 				trace_v3_cache_fallback('could not record the v up cache inventory: ${err}')
@@ -18072,9 +18075,11 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, a &flat.Fla
 }
 
 fn (state &V3ModuleCacheState) print_module_cache_notice(module_name string) {
-	if !state.silent || os.getenv('V3_CACHE_REFRESH') == '1' {
-		name := state.module_import_paths[module_name] or { module_name }
+	name := state.module_import_paths[module_name] or { module_name }
+	if os.getenv('V3_CACHE_REFRESH') == '1' {
 		println('Caching module ${name}...')
+	} else if !state.silent {
+		eprintln('Caching module ${name}...')
 	}
 }
 

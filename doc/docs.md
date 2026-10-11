@@ -59,6 +59,8 @@ After updating, `v up` refreshes previously cached vlib modules with the compile
 and flags used to cache them, including normal and `-prod` builds. Unchanged
 modules are reused. Each module being cached is printed to standard output as
 `Caching module <name>...`. A failed cache refresh makes `v up` fail.
+Ordinary builds report cache progress on standard error. Refreshes retain absolute
+module search paths and omit linker-only flags such as `-ldflags`.
 
 For caches created before V recorded their build settings, `v up` identifies the
 cached vlib modules and refreshes them in both modes for the available C compilers.

@@ -118,6 +118,18 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	vroot := os.dir(@VEXE)
 	root := os.join_path(os.vtmp_dir(), 'vup_cache_integration_${os.getpid()}')
 	os.mkdir_all(root)!
+	project := os.join_path(root, 'project')
+	os.mkdir_all(os.join_path(project, 'modules'))!
+	library_dir := os.join_path(root, 'libs')
+	os.mkdir_all(library_dir)!
+	c_source := os.join_path(library_dir, 'answer.c')
+	c_object := os.join_path(library_dir, 'answer.o')
+	os.write_file(c_source, 'int answer(void) { return 42; }\n')!
+	for command in [['cc', '-c', c_source, '-o', c_object],
+		['ar', 'rcs', os.join_path(library_dir, 'libanswer.a'), c_object]] {
+		result := os.exec(command)
+		assert result.exit_code == 0, result.output
+	}
 	module_root := os.join_path(vroot, 'vlib', 'v', 'util', 'cache_refresh', 'testdata',
 		'refresh_${os.getpid()}')
 	import_root := 'v.util.cache_refresh.testdata.refresh_${os.getpid()}'
@@ -137,16 +149,20 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	os.unsetenv('LDFLAGS')
 	os.unsetenv('V3_CACHE_FORCE_SOURCE')
 	os.unsetenv('V3_CACHE_TRACE')
+	os.unsetenv('V3_CACHE_REFRESH')
+	previous_dir := os.getwd()
 	defer {
 		for name in ['V3CACHE', 'VEXE', 'V_SKIP_VVMRC', 'VFLAGS', 'CFLAGS', 'LDFLAGS',
-			'V3_CACHE_FORCE_SOURCE', 'V3_CACHE_TRACE'] {
+			'V3_CACHE_FORCE_SOURCE', 'V3_CACHE_TRACE', 'V3_CACHE_REFRESH'] {
 			if name in saved { os.setenv(name, saved[name], true) } else { os.unsetenv(name) }
 		}
+		os.chdir(previous_dir) or {}
 		os.rmdir_all(module_root) or {}
 		os.rmdir_all(root) or {}
 	}
-	main_file := os.join_path(root, 'main.v')
+	main_file := os.join_path(project, 'main.v')
 	os.write_file(main_file, 'import ${import_root}.probe\nfn main() { println(probe.value()) }\n')!
+	os.chdir(project)!
 	mut builds := [][]string{}
 	for compiler in ['cc', 'clang', 'gcc', 'tcc'] {
 		if compiler == 'tcc' {
@@ -155,10 +171,13 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 			os.find_abs_path_of_executable(compiler) or { continue }
 		}
 		for prod in [false, true] {
-			mut flags := ['-cc', compiler, '-gc', 'none', '-usecache']
+			mut flags := ['-cc', compiler, '-gc', 'none', '-usecache', '-path',
+				'modules/../modules|@vlib']
 			if prod { flags << '-prod' }
+			if compiler == 'cc' && !prod { flags << ['-ldflags', '-L../libs -lanswer'] }
+			if compiler == 'gcc' && prod { flags << '-silent' }
 			mut process := os.new_process(@VEXE)
-			process.set_args([...flags, '-o', os.join_path(root, 'program'), main_file])
+			process.set_args([...flags, '-o', os.join_path(root, 'program'), 'run', main_file])
 			process.set_redirect_stdio()
 			process.run()
 			stdout := process.stdout_slurp()
@@ -166,17 +185,51 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 			process.wait()
 			assert process.code == 0, '${flags}: ${stdout}\n${stderr}'
 			process.close()
-			assert stdout.contains('Caching module ${import_root}.probe...'), '${flags}: ${stdout}\n${stderr}'
-			assert !stderr.contains('Caching module '), stderr
+			assert stdout.trim_space() == if prod { '42' } else { '40' }, '${flags}: ${stdout}\n${stderr}'
+			if '-silent' in flags {
+				assert !stderr.contains('Caching module '), stderr
+			} else {
+				assert stderr.contains('Caching module ${import_root}.probe...'), stderr
+			}
 			builds << flags
 		}
 	}
 	requests := collect(vroot)!.filter(it.module.starts_with(import_root + '.'))
 	assert requests.len == builds.len * 2, requests.str()
-	// Change only an imported vlib dependency. Both it and its dependent object
-	// must be refreshed; the original programs then use them without recaching.
+	for request in requests {
+		assert '-ldflags' !in request.args, request.str()
+		path_index := request.args.index('-path')
+		assert path_index >= 0, request.str()
+		assert request.args[path_index + 1] == [os.join_path(project, 'modules'),
+			os.join_path(vroot, 'vlib')].join('|'), request.str()
+	}
+	// Run the refresh in another directory and capture its streams separately.
+	// Its importers must warm the same absolute-path cache configuration, and
+	// cannot link against this project's output-relative library.
+	os.chdir(previous_dir)!
+	refresh_source := os.join_path(root, 'refresh_helper.v')
+	refresh_exe := os.join_path(root, 'refresh_helper')
+	os.write_file(refresh_source, 'import os\nimport v.util.cache_refresh\n' +
+		'fn main() {\n' +
+		'\trequests := cache_refresh.collect(os.dir(@VEXE))!.filter(it.module.starts_with("${import_root}."))\n' +
+		'\tcache_refresh.refresh(@VEXE, requests)!\n}\n')!
+	helper := os.exec([@VEXE, '-cc', 'cc', '-gc', 'none', '-nocache', '-o', refresh_exe,
+		refresh_source])
+	assert helper.exit_code == 0, helper.output
+	// Change only an imported vlib dependency. Refresh its implementation while
+	// reusing the unchanged dependent object; original programs must not recache.
 	os.write_file(dependency, 'module dependency\npub fn value() int { return 43 }\n')!
-	refresh(@VEXE, requests)!
+	mut refresher := os.new_process(refresh_exe)
+	refresher.set_redirect_stdio()
+	refresher.run()
+	stdout := refresher.stdout_slurp()
+	stderr := refresher.stderr_slurp()
+	refresher.wait()
+	assert refresher.code == 0, '${stdout}\n${stderr}'
+	refresher.close()
+	assert stdout.count('Caching module ${import_root}.dependency...') == builds.len, stdout
+	assert !stderr.contains('Caching module '), stderr
+	os.chdir(project)!
 	for flags in builds {
 		result := os.exec([@VEXE, ...flags, '-o', os.join_path(root, 'program'), main_file])
 		assert result.exit_code == 0, result.output

@@ -10,7 +10,8 @@ so `v up` can refresh them after replacing the compiler or updating their source
   it identifies vlib modules from their headers and chooses the available C compilers
   in both normal and production mode.
 - `refresh` compiles a temporary importer for each entry using the updated compiler.
-  It preserves build flags, validates dependencies, reuses unchanged objects, and
+  It preserves module build flags and absolute search paths, excluding linker-only flags.
+  It validates dependencies, reuses unchanged objects, and
   reports newly cached modules on stdout. It never runs the generated programs.
   Removed modules are skipped, and a compilation failure is returned to `v up`.
 
