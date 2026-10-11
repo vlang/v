@@ -3,8 +3,8 @@ import os
 const vexe = @VEXE
 const vroot = os.dir(vexe)
 
-// `v <name>` gives a tool its own name in front of its arguments, but a direct run of the
-// compiled tool does not. The first argument has to reach the flag parser either way, so
+// The launcher and a direct run of the compiled tool give the flag parser the same arguments.
+// The first argument has to reach the flag parser either way, so
 // `--version` must print the version rather than fail because it was dropped.
 fn test_tools_keep_their_first_argument_on_a_direct_run() {
 	tpath := os.join_path(os.vtmp_dir(), 'vtools direct argv ${os.getpid()}')
