@@ -5462,6 +5462,10 @@ fn main() {
 
 ### Generics
 
+Cross-module privacy violations that do not depend on type parameters are diagnosed even
+in the program's unused generic functions and methods. Accesses that depend on type parameters
+are checked in concrete instances.
+
 Generic method calls retain the declaring modules of their type arguments when selecting
 the concrete method, including methods returning Result or Option values.
 
