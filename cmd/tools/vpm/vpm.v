@@ -21,6 +21,7 @@ const excluded_dirs = ['.cache', 'vlib']
 fn main() {
 	unbuffer_stdout()
 	os.setenv(selected_server_url_env, '', true)
+	enable_git_longpaths()
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names

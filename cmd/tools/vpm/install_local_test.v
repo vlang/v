@@ -21,7 +21,7 @@ fn testsuite_end() {
 	os.rmdir_all(test_path) or {}
 }
 
-fn test_install_from_local_git_repository_variants() {
+fn test_install_from_local_git_repository_variants() ! {
 	repo_path := os.join_path(test_path, 'local_repo')
 	repo_dot_git_path := os.join_path(test_path, 'local_repo.git')
 	create_local_git_module(repo_path, 'local_repo_pkg')
@@ -29,7 +29,7 @@ fn test_install_from_local_git_repository_variants() {
 
 	cases := [
 		LocalInstallCase{
-			args:        os.quoted_path(repo_path)
+			args:        repo_path
 			module_name: 'local_repo_pkg'
 		},
 		LocalInstallCase{
@@ -37,7 +37,7 @@ fn test_install_from_local_git_repository_variants() {
 			module_name: 'local_repo_pkg'
 		},
 		LocalInstallCase{
-			args:        '--git ${os.quoted_path(repo_path)}'
+			args:        '--git ${repo_path}'
 			module_name: 'local_repo_pkg'
 		},
 		LocalInstallCase{
@@ -50,7 +50,7 @@ fn test_install_from_local_git_repository_variants() {
 			workdir:     test_path
 		},
 		LocalInstallCase{
-			args:        os.quoted_path(repo_dot_git_path)
+			args:        repo_dot_git_path
 			module_name: 'local_repo_dot_git_pkg'
 		},
 		LocalInstallCase{
@@ -58,7 +58,7 @@ fn test_install_from_local_git_repository_variants() {
 			module_name: 'local_repo_dot_git_pkg'
 		},
 		LocalInstallCase{
-			args:        '--git ${os.quoted_path(repo_dot_git_path)}'
+			args:        '--git ${repo_dot_git_path}'
 			module_name: 'local_repo_dot_git_pkg'
 		},
 		LocalInstallCase{
@@ -79,7 +79,9 @@ fn test_install_from_local_git_repository_variants() {
 		if c.workdir != '' {
 			os.chdir(c.workdir) or { panic(err) }
 		}
-		res := cmd_ok_args(@LOCATION, [vexe, 'install', '${c.args}'])
+		mut argv := [vexe, 'install']
+		argv << os.split_args(c.args)!
+		res := cmd_ok_args(@LOCATION, argv)
 		if c.workdir != '' {
 			os.chdir(old_dir) or {}
 		}

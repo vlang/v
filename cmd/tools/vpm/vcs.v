@@ -74,6 +74,17 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 	}
 }
 
+// enable_git_longpaths sets core.longpaths for every git process vpm starts.
+// Windows git keeps the 260-character path limit unless that setting is on, and
+// vpm's module cache is deep enough to exceed it. Existing GIT_CONFIG_COUNT
+// entries are kept, and the new setting is appended after them.
+fn enable_git_longpaths() {
+	count := os.getenv('GIT_CONFIG_COUNT').int()
+	os.setenv('GIT_CONFIG_KEY_${count}', 'core.longpaths', true)
+	os.setenv('GIT_CONFIG_VALUE_${count}', 'true', true)
+	os.setenv('GIT_CONFIG_COUNT', '${count + 1}', true)
+}
+
 fn (vcs VCS) clone_args(url string, version string, path string) ![]string {
 	if version.contains('\0') || version.contains('\r') || version.contains('\n') {
 		return error('version contains NUL, CR, or LF')
