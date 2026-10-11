@@ -6582,6 +6582,13 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	if typ.len == 0 {
 		typ = t.node_type(expr_id)
 	}
+	if t.stringify_type_has_generic_placeholder(typ) {
+		// The declared return type of a generic function names its type parameter
+		// until the call is specialized; the checker has the type of this part.
+		if checked_typ := t.concrete_checker_node_type(expr_id) {
+			typ = checked_typ
+		}
+	}
 	if ref_typ := t.string_interp_interface_smartcast_ref_type(expr_id) {
 		if !t.node_type(transformed).starts_with('&') {
 			transformed = t.make_prefix(.amp, transformed)
@@ -22305,10 +22312,64 @@ fn (t &Transformer) string_interp_child_has_unresolved_generic_part(id flat.Node
 	candidates << t.reliable_stringify_type(id)
 	for typ in candidates {
 		if t.stringify_type_has_generic_placeholder(typ) {
+			return !t.string_interp_part_is_checked_call(id)
+		}
+	}
+	return false
+}
+
+// string_interp_part_is_checked_call reports whether the interpolation part `id` is a
+// call, possibly parenthesised or with an `or` block, whose concrete type the checker
+// recorded. A call to a generic function keeps its declared return type (`T`) until
+// the monomorphization pass specializes it, so the transformer's own type of such a
+// part still names the type parameter. The part is lowered like any other: leaving
+// the interpolation to cgen would skip the lowering of every part's sub-expressions.
+fn (t &Transformer) string_interp_part_is_checked_call(id flat.NodeId) bool {
+	mut node := t.a.nodes[int(id)]
+	for node.kind in [.paren, .or_expr] && node.children_count > 0 {
+		inner_id := t.a.child(&node, 0)
+		if int(inner_id) < 0 {
+			return false
+		}
+		node = t.a.nodes[int(inner_id)]
+	}
+	return node.kind == .call && t.concrete_checker_node_type(id) != none
+		&& !t.has_generic_value_branch(id)
+}
+
+// has_generic_value_branch reports whether the expression `id` contains a value `if`
+// or `match` whose own type still names a generic parameter, as it does when its
+// branches are calls to generic functions. Lowering one binds it to a temporary of
+// that type, so cgen keeps an interpolation that has one.
+fn (t &Transformer) has_generic_value_branch(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .spawn_expr] {
+		return false
+	}
+	if node.kind in [.match_stmt, .if_expr]
+		&& t.stringify_type_has_generic_placeholder(t.node_type(id)) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.has_generic_value_branch(t.a.child(&node, i)) {
 			return true
 		}
 	}
 	return false
+}
+
+// concrete_checker_node_type returns the type the checker recorded for the expression
+// `id`, unless that type is unknown or still names a generic parameter.
+fn (t &Transformer) concrete_checker_node_type(id flat.NodeId) ?string {
+	typ := t.raw_checker_node_type(id)
+	if typ.len == 0 || typ == 'unknown' || t.generic_arg_is_unresolved(typ)
+		|| t.stringify_type_has_generic_placeholder(typ) {
+		return none
+	}
+	return typ
 }
 
 fn (mut t Transformer) ensure_stringify_generic_instances_for_type(typ string) {
