@@ -626,6 +626,31 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 	assert t.lock_colliding_main_substitution_type_text('other.Box[map[other.Key]T]', 'other.Box[map[other.Key]Context]', 'arc', [
 		'T',
 	]) == 'other.Box[map[other.Key]main.Context]'
+	// A locked argument makes the spelling qualified, so the decl-module base must be too.
+	assert t.lock_colliding_main_substitution_type_text('&Arc[T]', '&Arc[Context]', 'arc', [
+		'T',
+	]) == '&arc.Arc[main.Context]'
+}
+
+fn test_collision_locked_signature_keeps_interface_and_alias_declaration_modules() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Item'] = StructInfo{}
+	t.structs['callee.Item'] = StructInfo{}
+	t.active_specialization_main_types['Item'] = true
+	tc.interface_names['callee.Reader'] = true
+	tc.interface_generic_params['callee.Reader'] = ['T']
+	tc.type_aliases['callee.Mapper'] = 'fn (T) int'
+	tc.type_alias_generic_params['callee.Mapper'] = ['T']
+	decl := GenericFnDecl{ module: 'callee' }
+	for base in ['Reader', 'Mapper'] {
+		for prefix in ['', '&', '[]', '?'] {
+			assert t.specialized_signature_type_text(decl, '${prefix}${base}[T]', ['Item'], ['T']) == '${prefix}callee.${base}[main.Item]'
+		}
+		assert t.specialized_signature_type_text(decl, 'other.${base}[T]', ['Item'], ['T']) == 'other.${base}[main.Item]'
+		assert t.specialized_signature_type_text(decl, '${base}[T]', ['int'], ['T']).contains('main.') == false
+	}
 }
 
 fn test_generic_fn_type_param_mode_payload_preserves_mutability() {

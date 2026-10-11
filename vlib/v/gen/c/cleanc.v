@@ -50,6 +50,157 @@ fn manual_stdlib_c_headers() string {
 	return '#ifdef sprintf\n#undef sprintf\n#endif\n#ifdef snprintf\n#undef snprintf\n#endif\n#ifdef vsnprintf\n#undef vsnprintf\n#endif\n#ifdef memcpy\n#undef memcpy\n#endif\n#ifdef memmove\n#undef memmove\n#endif\n#ifdef memset\n#undef memset\n#endif\n' + manual_c_headers_source
 }
 
+// manual_stdlib_c_headers_error reports why the embedded manual_stdlib_c_headers.h cannot be
+// used, or returns none. A truncated copy leaves a conditional directive open, which malforms
+// the C preamble of every program that uses the system libc, so the driver checks it before
+// generating any C.
+pub fn manual_stdlib_c_headers_error() ?string {
+	problem := manual_stdlib_header_problem(manual_c_headers_source)
+	if problem.len == 0 {
+		return none
+	}
+	return 'this V executable was built from an incomplete vlib/v/gen/c/manual_stdlib_c_headers.h: ${problem}.\nRestore that file with `git restore vlib/v/gen/c/manual_stdlib_c_headers.h`, then rebuild V with `make`.'
+}
+
+// uses_manual_stdlib_c_headers reports whether this program needs the embedded libc preamble.
+// It is only needed when the embedded header is damaged, before the driver starts C generation.
+pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, prefs &pref.Preferences, initial_c_flags []string) bool {
+	if prefs.target_libc_headers {
+		return false
+	}
+	mut g := FlatGen.new()
+	g.a = a
+	g.tc = tc
+	g.target = prefs.target
+	g.output_cross_c = prefs.output_cross_c
+	g.compiler_vroot = prefs.vroot
+	g.compile_values = prefs.compile_values
+	g.c99_mode = prefs.c99
+	g.c_flags = cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
+	g.c_flags << initial_c_flags
+	if g.output_cross_c {
+		g.index_cross_directive_guards()
+	}
+	mut module_name := 'main'
+	mut source_file := ''
+	mut before_import := true
+	for node_idx, node in a.nodes {
+		if node.kind == .file {
+			source_file = node.value
+			module_name = 'main'
+			before_import = true
+		} else if node.kind == .module_decl {
+			module_name = node.value
+		} else if node.kind == .import_decl {
+			before_import = false
+		} else if node.kind == .directive {
+			g.collect_c_directive_at(node_idx, module_name, node, source_file, before_import)
+		}
+	}
+	return g.c_directives_use_system_libc()
+}
+
+// manual_stdlib_header_problem checks the final newline and conditional directive nesting.
+// Comments and continued physical lines follow C preprocessing rules; this is not a C parser.
+fn manual_stdlib_header_problem(text string) string {
+	if !text.ends_with('\n') {
+		return 'the file does not end with a newline'
+	}
+	// Line splicing precedes comment removal in the C preprocessor.
+	spliced := text.replace('\\\r\n', '').replace('\\\n', '')
+	mut clean := strings.new_builder(spliced.len)
+	mut in_comment := false
+	mut in_line_comment := false
+	mut quote := u8(0)
+	mut idx := 0
+	for idx < spliced.len {
+		ch := spliced[idx]
+		next := if idx + 1 < spliced.len { spliced[idx + 1] } else { u8(0) }
+		if in_comment {
+			if ch == `*` && next == `/` {
+				in_comment = false
+				idx += 2
+				continue
+			}
+			if ch == `\n` {
+				clean.write_u8(ch)
+			}
+		} else if in_line_comment {
+			if ch == `\n` {
+				in_line_comment = false
+				clean.write_u8(ch)
+			}
+		} else if quote != 0 {
+			clean.write_u8(ch)
+			if ch == `\\` && next != 0 {
+				clean.write_u8(next)
+				idx += 2
+				continue
+			}
+			if ch == quote {
+				quote = 0
+			}
+		} else if ch == `/` && next in [`*`, `/`] {
+			clean.write_u8(` `)
+			in_comment = next == `*`
+			in_line_comment = next == `/`
+			idx += 2
+			continue
+		} else {
+			clean.write_u8(ch)
+			if ch in [`"`, `'`] {
+				quote = ch
+			}
+		}
+		idx++
+	}
+	if in_comment {
+		return 'unterminated block comment'
+	}
+	mut pending := []string{}
+	mut seen_else := []bool{}
+	for raw_line in clean.str().split_into_lines() {
+		line := raw_line.trim_space()
+		if !line.starts_with('#') {
+			continue
+		}
+		directive := line[1..].trim_space()
+		mut end := 0
+		for end < directive.len && (directive[end].is_letter() || directive[end] == `_`) {
+			end++
+		}
+		match directive[..end] {
+			'if', 'ifdef', 'ifndef' {
+				pending << line
+				seen_else << false
+			}
+			'else', 'elif' {
+				if pending.len == 0 {
+					return 'unmatched `${line}`'
+				}
+				if seen_else.last() {
+					return '`${line}` after `#else`'
+				}
+				if directive[..end] == 'else' {
+					seen_else[seen_else.len - 1] = true
+				}
+			}
+			'endif' {
+				if pending.len == 0 {
+					return 'unmatched `${line}`'
+				}
+				pending.delete_last()
+				seen_else.delete_last()
+			}
+			else {}
+		}
+	}
+	if pending.len > 0 {
+		return 'unterminated `${pending.last()}`'
+	}
+	return ''
+}
+
 // cached_file_import returns the module that `alias` names through the imports
 // of `file`. The checker's import tables are complete before C generation, so
 // answers, including misses, are memoized by the parts of the table's key.
@@ -696,6 +847,7 @@ mut:
 	import_key_cache               &util.KeyRecentCache = unsafe { nil }
 	selective_import_key_cache     &util.KeyRecentCache = unsafe { nil }
 	needed_optional_types          map[string]string
+	optional_pointer_struct_tags   map[string]string
 	// cabi_int_out_args maps a C-call argument node to the C spelling to emit in its
 	// place (the address of a temporary C `int`), while a `&int` out-parameter is
 	// bridged by a temporary + copy-back around the wrapped call. Keyed by node id so
@@ -3315,6 +3467,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.goto_label_lock_scopes.clear()
 	g.pending_loop_label = ''
 	g.needed_optional_types.clear()
+	g.optional_pointer_struct_tags.clear()
 	g.emitted_optional_types.clear()
 	g.array_method_cache.clear()
 	g.param_types_cache.clear()
@@ -3957,6 +4110,7 @@ fn (mut g FlatGen) gen_type_declaration_block() {
 	g.type_alias_decls(true)
 	g.struct_decls()
 	g.fixed_array_typedefs()
+	g.fn_ptr_typedefs()
 	g.multi_return_typedefs()
 	g.optional_typedefs()
 	g.gen_ownership_recursive_drop_helper_forward_decls()
@@ -15327,6 +15481,14 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 
 // const_ident_c_name converts const ident c name data for c.
 fn (g &FlatGen) const_ident_c_name(name string) string {
+	if value_id := g.const_vals[name] {
+		value := g.a.node(value_id)
+		// Translated declarations without an initializer refer to C header names.
+		if value.kind == .const_field && value.children_count == 0
+			&& g.expr_is_in_translated_file(value_id) {
+			return g.cname('C.${value.value}')
+		}
+	}
 	mod := g.const_modules[name] or { '' }
 	qualified := if name.contains('.') || mod.len == 0 {
 		name
@@ -16688,8 +16850,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					imported_selector_module
 				}
 				full_qname := g.const_storage_name(imported_selector_module, node.value)
+				global := qualify_name_in_module(imported_selector_module, node.value)
 				if full_qname in g.const_vals {
 					g.write(g.const_ident_c_name(full_qname))
+				} else if global in g.global_types {
+					g.write(g.global_c_name(global))
 				} else {
 					g.write(g.cname('${short_mod}.${node.value}'))
 				}
@@ -16819,8 +16984,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.const_storage_name(mod, node.value)
 				}
+				global := qualify_name_in_module(mod, node.value)
 				if full_qname in g.const_vals {
 					g.write(g.const_ident_c_name(full_qname))
+				} else if global in g.global_types {
+					g.write(g.global_c_name(global))
 				} else {
 					g.write(g.cname('${short_mod}.${node.value}'))
 				}
@@ -17623,7 +17791,7 @@ fn (mut g FlatGen) gen_struct_default_global_selector(base flat.Node, field stri
 	} else {
 		qname
 	}
-	g.write(g.cname(global_name))
+	g.write(g.global_c_name(global_name))
 	if op == .arrow {
 		g.write('->')
 	} else {
@@ -23551,6 +23719,20 @@ fn (g &FlatGen) global_c_name(name string) string {
 	}
 	if name == 'byte' {
 		return g.cname('main.byte')
+	}
+	canonical := if name.starts_with('main.') { name[5..] } else { name }
+	modules := if canonical.contains('.') {
+		[canonical.all_before_last('.')]
+	} else {
+		['main', 'builtin']
+	}
+	for module_name in modules {
+		if fn_decl_module_key(module_name, canonical.all_after_last('.')) in g.fn_decl_ret_types
+			|| fn_decl_module_key(module_name, canonical) in g.fn_decl_ret_types {
+			// V permits a global value and a callable declaration with the same
+			// name. C has one namespace for both, so their storage must differ.
+			return naming.global_rename(g.cname(canonical))
+		}
 	}
 	return g.cname(name)
 }

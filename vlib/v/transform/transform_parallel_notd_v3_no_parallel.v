@@ -2379,6 +2379,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		if name !in t.sum_eq_types {
 			t.sum_eq_types[t.promote_scoped_result_text(name)] = SumEqRequest{
 				sum_name:      t.promote_scoped_result_text(req.sum_name)
+				struct_name:   t.promote_scoped_result_text(req.struct_name)
 				module:        t.promote_scoped_result_text(req.module)
 				file:          t.promote_scoped_result_text(req.file)
 				helper_module: t.promote_scoped_result_text(req.helper_module)

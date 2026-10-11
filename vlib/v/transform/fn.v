@@ -18340,6 +18340,25 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	// The expression cache can contain a parser-inferred multi-return tail such as
 	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
 	// is authoritative, before falling back to that provisional expression type.
+	if params := t.tc.fn_generic_params[name] {
+		if params == ['T'] {
+			if ret_text := t.tc.fn_ret_type_texts[name] {
+				base, _, applied_alias := generic_app_parts(ret_text)
+				if applied_alias && (base in t.tc.type_aliases
+					|| '${decl_module}.${base}' in t.tc.type_aliases) {
+					if args := t.explicit_generic_call_args(node, t.cur_module) {
+						if args.len == params.len {
+							candidate := t.call_return_type_name_in_module(ret_text, node, decl_module)
+							if decl_type_is_usable(candidate)
+								&& !generic_text_contains_param(candidate, params) {
+								return candidate
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	if ret := t.tc.fn_ret_types[name] {
 		if ret !is types.Unknown && ret !is types.Void {
 			candidate := t.call_return_type_name_in_module(t.semantic_type_name(ret), node, decl_module)
@@ -18369,8 +18388,14 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 
 fn (t &Transformer) call_return_type_name_in_module(ret_name string, node flat.Node, module_name string) string {
 	mut typ := ret_name
-	if node.value.len > 0 {
-		generic_arg := t.normalize_type_in_module(node.value, t.cur_module)
+	if explicit := t.explicit_generic_call_args(node, t.cur_module) {
+		// This helper substitutes one T slot. Multiple parameters need the
+		// checker's concrete expression type, rather than a comma-joined type.
+		if explicit.len != 1 {
+			return ''
+		}
+		caller_arg := t.normalize_type_in_module(explicit.join(', '), t.cur_module)
+		generic_arg := t.lock_colliding_main_generic_type_text(caller_arg, module_name)
 		if generic_arg.len > 0 {
 			typ = t.specialize_generic_type_name(typ, generic_arg)
 		}
@@ -18426,6 +18451,12 @@ fn (t &Transformer) specialize_generic_type_name(typ string, generic_arg string)
 	if clean.starts_with('[') {
 		bracket_end := clean.index(']') or { return typ }
 		return clean[..bracket_end + 1] + t.specialize_generic_type_name(clean[bracket_end + 1..], generic_arg)
+	}
+	base, args, is_generic_app := generic_app_parts(clean)
+	if is_generic_app {
+		mut specialized_args := []string{cap: args.len}
+		for arg in args { specialized_args << t.specialize_generic_type_name(arg, generic_arg) }
+		return '${base}[${specialized_args.join(', ')}]'
 	}
 	return typ
 }

@@ -2315,11 +2315,15 @@ fn input_owns_builtin_bundle_module(input_file string, vroot string) bool {
 }
 
 fn input_is_legacy_diagnostic_fixture(input_file string) bool {
-	if !input_file.ends_with('.vv') {
+	resolved := os.real_path(input_file)
+	normalized := resolved.replace('\\', '/')
+	if !['/vlib/v/checker/tests/', '/vlib/v/parser/tests/', '/vlib/v/scanner/tests/'].any(normalized.contains(it)) {
 		return false
 	}
-	normalized := os.real_path(input_file).replace('\\', '/')
-	if !['/vlib/v/checker/tests/', '/vlib/v/parser/tests/', '/vlib/v/scanner/tests/'].any(normalized.contains(it)) {
+	if os.is_dir(input_file) {
+		return os.is_file(resolved + '.out')
+	}
+	if !input_file.ends_with('.vv') {
 		return false
 	}
 	base := input_file.all_before_last('.vv')
@@ -10191,8 +10195,8 @@ pub fn run(args []string) {
 	}
 	if !is_checker_fixture && input_is_legacy_diagnostic_fixture(input_file) {
 		// v/compiler_errors_test.v predates `-checker-fixture` and invokes every
-		// adjacent `.vv`/`.out` fixture directly. Keep those subprocesses on the
-		// same stable diagnostic path as the V3 fixture runner.
+		// adjacent `.vv`/`.out` or module-directory fixture directly. Keep those
+		// subprocesses on the same stable diagnostic path as the V3 fixture runner.
 		is_checker_fixture = true
 		no_cache = true
 	}
@@ -13495,6 +13499,15 @@ pub fn run(args []string) {
 		}
 	} else {
 		// C backend (default)
+		if msg := cgen.manual_stdlib_c_headers_error() {
+			if cgen.uses_manual_stdlib_c_headers(a, &pre_tc, prefs, user_c_flags) {
+				// The message is the whole diagnosis. Clear the V3 failure marker first, or the
+				// parent process replays this compile and prints the message a second time.
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				eprintln(msg)
+				exit(1)
+			}
+		}
 		if effective_c_compiler == 'msvc' && !c_only && !output_cross_c {
 			if msg := msvc_inline_asm_error(a, used_fns) {
 				eprintln(msg)

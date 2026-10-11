@@ -6958,6 +6958,10 @@ fn (mut g FlatGen) struct_decls() {
 				if interface_field_type_contains_self_by_value(field.typ, name) {
 					continue
 				}
+				if !g.fn_ptr_field_typedef_ready(field.typ) {
+					can_emit = false
+					break
+				}
 				if field.typ is types.Pointer {
 					continue
 				}
@@ -6992,6 +6996,10 @@ fn (mut g FlatGen) struct_decls() {
 			mut can_emit := true
 			if name in g.tc.structs {
 				for f in g.tc.structs[name] {
+					if !g.fn_ptr_field_typedef_ready(f.typ) {
+						can_emit = false
+						break
+					}
 					if f.typ is types.Pointer {
 						continue
 					}

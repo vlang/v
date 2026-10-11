@@ -6638,6 +6638,12 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		return
 	}
 	method_receiver := unalias_and_unwrap_pointer_type(base_type)
+	if method_receiver is Struct && method_receiver.name.all_after_last('.') == 'struct' {
+		if field_type := tc.inferred_anonymous_struct_field_type(base_id, node.value) {
+			tc.register_synth_type(id, field_type)
+			return
+		}
+	}
 	// A method value resolved as a C receiver method has its privacy checked here already.
 	mut c_receiver_method_value := ''
 	if method_receiver is Struct && tc.struct_field_type(method_receiver.name, node.value) == none {
@@ -7250,8 +7256,13 @@ fn (tc &TypeChecker) is_namespace_selector(node flat.Node, base flat.Node) bool 
 	if base.value == 'C' || tc.has_active_import(base.value) {
 		return true
 	}
-	if base.value == 'main' || base.value == tc.cur_module {
+	if base.value == 'main' || base.value == tc.cur_module
+		|| base.value == tc.cur_module.all_after_last('.') {
 		if node.value in tc.const_types || '${base.value}.${node.value}' in tc.const_types {
+			return true
+		}
+		if tc.global_type_for_selector(node) != none
+			|| tc.local_bare_fn_signature_key(node.value) != none {
 			return true
 		}
 	}
@@ -9393,6 +9404,9 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 				return key
 			}
 			return none
+		}
+		if base.value == tc.cur_module || base.value == tc.cur_module.all_after_last('.') {
+			return tc.local_bare_fn_signature_key(node.value)
 		}
 		if key := tc.static_assoc_fn_key_for_base(base.value, node.value) {
 			return key
@@ -18711,6 +18725,11 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				}
 			}
 			if clean is Struct {
+				if clean.name.all_after_last('.') == 'struct' {
+					if typ := tc.inferred_anonymous_struct_field_type(tc.a.child(node, 0), node.value) {
+						return typ
+					}
+				}
 				if typ := tc.struct_field_type(clean.name, node.value) {
 					return typ
 				}

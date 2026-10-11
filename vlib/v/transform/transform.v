@@ -62,13 +62,14 @@ const zeroed_stack_value_decl_marker = '__v3_zeroed_stack_value_decl'
 // sequence of disposable scoped-worker forks. Larger sets keep bounded scratch.
 const direct_late_transform_max_names = 64
 
-// SumEqRequest records where a sum type's equality helper was first requested,
+// SumEqRequest records where a sum or recursive struct equality helper was first requested,
 // so the helper body is built under that module/file resolution context. The
 // helper module can differ for program-specific generic specializations, whose
 // generated functions and helpers must stay in the main cache segment.
 pub struct SumEqRequest {
 pub:
 	sum_name      string
+	struct_name   string
 	module        string
 	file          string
 	helper_module string
@@ -326,8 +327,8 @@ mut:
 	used_fns_parent               &map[string]bool = unsafe { nil }
 	used_fns_root                 &map[string]bool = unsafe { nil }
 	comptime_reflected_params     map[string][]ParamMeta
-	// sum_eq_types records sum types whose deep-equality helper fn
-	// (__v3_sum_eq_<name>) is called somewhere, keyed by the concrete helper name with the
+	// sum_eq_types records sum and recursive struct deep-equality helpers,
+	// keyed by the concrete helper name with the
 	// module/file context of the requesting call site (type resolution inside
 	// the helper body needs that context). The helpers are synthesized
 	// serially after the (possibly parallel) transform completes.
@@ -1239,6 +1240,7 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 		// The AST arena is unchanged during this scan.
 		node := unsafe { &t.a.nodes[idx] }
 		if node.kind == .fn_decl && (node.value.starts_with('__v3_sum_eq_')
+			|| node.value.starts_with('__v3_struct_eq_')
 			|| node.value.starts_with('__v3_default_clone_')) {
 			synthesized_helpers << node.value
 		}
@@ -4745,6 +4747,7 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 			if scoped {
 				t.sum_eq_types[name.clone()] = SumEqRequest{
 					sum_name:      req.sum_name.clone()
+					struct_name:   req.struct_name.clone()
 					module:        req.module.clone()
 					file:          req.file.clone()
 					helper_module: req.helper_module.clone()
@@ -4906,6 +4909,7 @@ fn (mut t Transformer) clone_sum_eq_types_owned() {
 	for name, req in t.sum_eq_types {
 		cloned[name.clone()] = SumEqRequest{
 			sum_name:      req.sum_name.clone()
+			struct_name:   req.struct_name.clone()
 			module:        req.module.clone()
 			file:          req.file.clone()
 			helper_module: req.helper_module.clone()
@@ -24971,6 +24975,14 @@ fn (mut t Transformer) transform_array_literal(id flat.NodeId, node flat.Node) f
 			return lowered
 		}
 	}
+	// Inferred anonymous elements acquire their nominal type in the shared
+	// materialization prepass. Publish the resolved container type as well;
+	// the checker annotation can still describe its earlier `struct` placeholder.
+	resolved_array_type := t.node_type(id)
+	if resolved_array_type.starts_with('[]') && !t.generic_arg_is_unresolved(resolved_array_type)
+		&& t.generic_arg_is_unresolved(node.typ) {
+		t.set_node_typ(int(id), resolved_array_type)
+	}
 	lowered := t.lower_array_literal_to_runtime(id, node)
 	if lowered != id {
 		return lowered
@@ -27007,7 +27019,7 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 		// before the transformer has installed the new local binding (`copy := ...`).
 		if lhs_semantic_type := t.tc.expr_type(t.a.child(node, 0)) {
 			lhs_type := t.tc.type_name(lhs_semantic_type)
-			if decl_type_is_usable(lhs_type) {
+			if decl_type_is_usable(lhs_type) && !t.generic_arg_is_unresolved(lhs_type) {
 				// The declaration type can intentionally differ from the visible
 				// smartcast of the rhs after an exiting guard or assertion.
 				return lhs_type
@@ -27042,7 +27054,7 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 			return rhs_authority
 		}
 	}
-	if decl_type_is_usable(node.typ) {
+	if decl_type_is_usable(node.typ) && !t.generic_arg_is_unresolved(node.typ) {
 		return node.typ
 	}
 	if node.children_count >= 2 {
