@@ -19,6 +19,11 @@ for compatibility. Their standard phrases are `Early Hints` (103) and `Too Early
 Status 203 uses `Non-Authoritative Information`, 207 uses `Multi-Status`, and 418 uses
 `I'm a teapot`.
 
+A server without an explicit `listener` opens a socket on its configured `addr`, even when
+standard input is a socket. An explicitly supplied listener may use descriptor zero. Closing
+the server clears the closed listener, so a later `listen_and_serve()` binds a new socket on
+the server's address. Failed accepts other than timeouts pause briefly before retrying.
+
 ## Making requests
 
 ```v ignore
@@ -180,6 +185,12 @@ invalid domains are omitted.
 `Header` provides both `CommonHeader` enum access (`get`, `set`, `add`) and
 string access (`get_custom`, `set_custom`, `add_custom`). `http.parse_form`,
 `http.parse_multipart_form` and `http.post_multipart_form` cover form bodies.
+
+A `Header` holds at most `http.max_headers` (50) fields. `add_custom` and `set_custom`
+return an `http.HeaderLimitError` for a field that does not fit, and so do
+`http.parse_request`, `http.parse_response` and the other parsers for a message that has
+more header fields. `add`, `set`, `new_header` and `join` have no error to return: they
+drop such a field.
 
 `Cookie.str()` and `sanitize_cookie_value` remove invalid bytes from cookie values,
 including control characters, quotes, semicolons and backslashes. Spaces and commas

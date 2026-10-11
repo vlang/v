@@ -918,6 +918,7 @@ pub mut:
 	interface_query_indexes_ready         bool
 
 	c_globals              map[string]Type
+	inferred_c_globals     []InferredCGlobal // the entries of c_globals that this checker added, for its merge
 	global_names           map[string]bool
 	shared_global_names    map[string]bool
 	const_types            map[string]Type
@@ -2743,6 +2744,19 @@ pub fn (mut tc TypeChecker) rebuild_scoped_transform_signature_maps() {
 	tc.transform_signature_names_log = []string{}
 	tc.transform_signature_maps_shared = false
 	tc.transform_signature_maps_changed = false
+}
+
+// promote_scoped_declaration_visibility moves declaration ownership into the
+// current arena before the scoped transform metadata is released.
+pub fn (mut tc TypeChecker) promote_scoped_declaration_visibility() {
+	mut declarations := map[string]DeclarationVisibility{}
+	for name, visibility in tc.declaration_visibility {
+		declarations[name.clone()] = DeclarationVisibility{
+			...visibility
+			module_name: visibility.module_name.clone()
+		}
+	}
+	tc.declaration_visibility = declarations.move()
 }
 
 // begin_sparse_transform_node_caches keeps source-node entries in their dense
@@ -5589,7 +5603,13 @@ fn (tc &TypeChecker) global_type_for_selector(node flat.Node) ?Type {
 	if base_node.kind != .ident {
 		return none
 	}
-	resolved := tc.resolve_import_alias(base_node.value) or { base_node.value }
+	resolved := tc.resolve_import_alias(base_node.value) or {
+		if base_node.value == tc.cur_module.all_after_last('.') {
+			tc.cur_module
+		} else {
+			base_node.value
+		}
+	}
 	qname := '${resolved}.${node.value}'
 	if qname in tc.global_names {
 		return tc.file_scope.lookup(qname)

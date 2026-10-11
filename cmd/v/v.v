@@ -120,12 +120,24 @@ fn main() {
 		run_external_tool(args, -1, 'repl')
 		return
 	}
+	compiler_args := compiler_args_before_program(args)
 	command_index, command := find_command(args)
+	// Tool arguments belong to the tool, including a completion query for the removed flag.
+	option_args := if command in external_commands || command == 'help' {
+		args[..command_index]
+	} else {
+		compiler_args
+	}
+	// Reject the removed flag before compatibility fallback or tool dispatch can accept it.
+	if compiler_option_requested(option_args, '-usecache') {
+		eprintln('unknown option `-usecache`; caching is enabled by default, use `-nocache` to disable it')
+		exit(1)
+	}
 	if command in ['version', '-version', '--version'] {
 		println('V ${v_version} ${@VCURRENTHASH}')
 		return
 	}
-	if '-old-compiler' in args {
+	if '-old-compiler' in compiler_args {
 		launch_v1(clean_compiler_selection_flags(args), '`-old-compiler` was requested', RetryState{})
 	}
 	if command == 'build-module' {
@@ -136,11 +148,11 @@ fn main() {
 	// parser and checker. Select it before entering V3 instead of treating the
 	// request as a failed V3 compilation; `V_MACOS_V3_NO_FALLBACK` must continue
 	// to disable only retries, not explicit compatibility command modes.
-	if '-vls-mode' in args && '-new-compiler' !in args {
+	if '-vls-mode' in compiler_args && '-new-compiler' !in compiler_args {
 		launch_v1(clean_compiler_selection_flags(args), '`-vls-mode` requires the compatibility compiler',
 			RetryState{})
 	}
-	if '-new-compiler' in args {
+	if '-new-compiler' in compiler_args {
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
 	if race_build_requested(args) {
@@ -153,7 +165,7 @@ fn main() {
 		// mix its own text into them.
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
-	if '-new-compiler' !in args && v3_fixture_requires_compatibility_compiler(args) {
+	if '-new-compiler' !in compiler_args && v3_fixture_requires_compatibility_compiler(compiler_args) {
 		launch_v1(clean_compiler_selection_flags(args), 'legacy diagnostic fixture', RetryState{})
 	}
 	if command in ['help', '-h', '--help'] {
@@ -169,8 +181,8 @@ fn main() {
 		exit(1)
 	}
 	if command in external_commands
-		|| command in ['new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search',
-			'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
+		|| command in ['new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'registry',
+			'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
 		run_external_tool(args, command_index, command)
 		return
 	}
@@ -178,7 +190,8 @@ fn main() {
 	if v3_exact_output_fixture_args(args) && '-nocache' !in args {
 		args.prepend('-nocache')
 	}
-	if ownership_compiler_is_required(args) && !ownership_checker_is_compiled() {
+	if ownership_compiler_is_required(compiler_args_before_program(args))
+		&& !ownership_checker_is_compiled() {
 		launch_ownership_compiler(args)
 	}
 	run_with_fallback(args, args)
@@ -202,6 +215,9 @@ fn compiler_option_requested(args []string, option string) bool {
 		if option_value_follows {
 			option_value_follows = false
 			continue
+		}
+		if is_inline_source_option(arg) {
+			return false
 		}
 		if arg == option {
 			return true
@@ -353,14 +369,21 @@ fn find_command(args []string) (int, string) {
 			option_value_follows = false
 			continue
 		}
+		if is_inline_source_option(arg) {
+			break
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
+		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {
 			option_value_follows = true
 			continue
 		}
 		if arg in external_commands
 			|| arg in ['version', '-version', '--version', 'help', '-h', '--help', 'get', 'interpret',
-				'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search', 'show',
-				'unlink', 'update', 'upgrade', 'vlib-docs', 'build-module'] {
+				'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'registry', 'search',
+				'show', 'unlink', 'update', 'upgrade', 'vlib-docs', 'build-module'] {
 			return i, arg
 		}
 		if !arg.starts_with('-') {
@@ -384,8 +407,8 @@ fn run_external_tool(args []string, command_index int, command string) {
 		'new', 'init' {
 			'vcreate'
 		}
-		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade', 'why', 'vendor' {
+		'install', 'link', 'list', 'outdated', 'remove', 'registry', 'search', 'show', 'unlink',
+		'update', 'upgrade', 'why', 'vendor' {
 			'vpm'
 		}
 		'vlib-docs' {
@@ -431,6 +454,11 @@ fn export_vtest_build_environment(vroot string, prefix_args []string) {
 }
 
 fn external_tool_runtime_args(command string, prefix_args []string, command_args []string) []string {
+	// These tools consume the same argv as their standalone executable. The launcher owns
+	// the subcommand name, so remove it here without guessing from user arguments.
+	if command in ['diff', 'download', 'repeat', 'retry', 'time', 'timeout'] {
+		return command_args[1..].clone()
+	}
 	mut tool_args := []string{}
 	// `v build-tools` consumes compiler options itself and applies them to every
 	// tool in its inventory. `v self` likewise treats prefix compiler options as
@@ -639,8 +667,54 @@ fn merged_v_args() []string {
 	return args
 }
 
+fn is_inline_source_option(arg string) bool {
+	return arg == '-e' || arg.starts_with('-e=') || arg == '-http'
+}
+
+// compiler_args_before_program excludes inline source and program arguments
+// from launcher-only compiler selection and option cleanup. Inline execution
+// starts a nested `run` invocation, so both boundaries must be preserved.
+fn compiler_args_before_program(args []string) []string {
+	mut option_value_follows := false
+	mut runs_input := false
+	for i, arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if is_inline_source_option(arg) {
+			return args[..i]
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
+		}
+		if arg == '-raw-vsh-tmp-prefix' {
+			runs_input = true
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
+		}
+		if !runs_input && arg in ['run', 'crun'] {
+			runs_input = true
+			continue
+		}
+		if !arg.starts_with('-') || arg == '-' {
+			if runs_input || arg.ends_with('.vsh') {
+				return args[..i + 1]
+			}
+			break
+		}
+	}
+	return args
+}
+
 fn clean_compiler_selection_flags(args []string) []string {
-	return args.filter(it !in ['-old-compiler', '-new-compiler'])
+	compiler_args := compiler_args_before_program(args)
+	mut result := compiler_args.filter(it !in ['-old-compiler', '-new-compiler'])
+	result << args[compiler_args.len..]
+	return result
 }
 
 fn retry_with_v1_at_exit() {
@@ -775,7 +849,7 @@ fn v1_fallback_args(args []string) []string {
 			continue
 		}
 		if arg in ['-macos-v3-internal-quiet', '-macos-v3-compat-c99',
-			'-v3-internal-parser-diagnostics-printed']
+			'-v3-internal-parser-diagnostics-printed', '-v3-internal-force-cache-source']
 			|| arg.starts_with('-v3-internal-implicit-tcc-warning=') {
 			continue
 		}

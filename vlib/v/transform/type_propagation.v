@@ -1818,6 +1818,19 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 	}
 	base, args, is_generic_app := generic_app_parts(clean)
 	if is_generic_app {
+		// Expand the applied alias before its base: expanding only `Values` in
+		// `Values[Item]` would leave the arguments attached to its `[]T` target.
+		alias_type := if !base.contains('.') && mod.len > 0
+			&& t.type_authority_has('${mod}.${base}') {
+			'${mod}.${clean}'
+		} else {
+			clean
+		}
+		if !isnil(t.tc) {
+			if expanded := t.expand_generic_type_alias(alias_type) {
+				return t.normalize_type_alias(expanded)
+			}
+		}
 		mut normalized_args := []string{cap: args.len}
 		for arg in args {
 			normalized_args << t.normalize_type_in_module(arg, mod)
@@ -2002,6 +2015,9 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) string {
 		if node.kind == .array_literal && t.generic_arg_is_unresolved(resolved) {
 			elem_type := t.array_literal_elem_type(node)
 			if decl_type_is_usable(elem_type) && !t.generic_arg_is_unresolved(elem_type) {
+				if t.is_fixed_array_type(resolved) {
+					return '[${fixed_array_len_text(resolved)}]${elem_type}'
+				}
 				return '[]${elem_type}'
 			}
 		}
