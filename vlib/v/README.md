@@ -583,9 +583,11 @@ The libraries and start files that a compiler driver adds by itself (`libc`, `li
 `crt1.o`, `libSystem`) are inputs then. Apple's linker also tells every path where it looked
 for a file in vain: with that, and with the files that the command gives an option, an option
 that is not known is no reason to keep no executable there. What the linker takes from deep
-inside an SDK, and where it finds nothing in one, is not recorded file by file. A command that
-asks its linker for such a report already gets the one that it asks for, and the driver reads
-that; a linker that turns out not to know the option is run again without it. The command of the
+inside an SDK, and where it finds nothing in one, is not recorded file by file. A linker that
+turns out not to know the option is run again without it. A command that asks its compiler or
+its linker for a file besides the executable (`-MD`, `--coverage`, `-Wl,-map,<file>`, a report
+of the linker itself) gets that file from a build that compiles and links: no executable is
+kept of such a command. The command of the
 linker is read in the order of the compiler's: an option takes the value that follows it,
 however the two were given (`-Wl,-rpath /dir`). A relative path is one of the directory in which
 the command runs, which the build makes for itself; one that leaves that directory (`-L../libs`,
@@ -643,9 +645,11 @@ It is not used either when the headers take a value of `__COUNTER__`, ask for th
 file that is compiled or for the time, push or pop a macro, or include a file that the build
 made; the cache records that, so that the next build does not find it out again. The form is
 valid while the unit starts with the same text, for the same TinyCC, arguments, `CPATH` and
-`C_INCLUDE_PATH`, while every header that the preprocessor read is the file it was, and while
-no header has appeared where an `#include` or a `__has_include` would find it first: in a
-directory of `-I`, or of `CPATH`, which TinyCC searches right after those.
+`C_INCLUDE_PATH`, for the same directory of the output when one of those holds a relative
+path that leaves the directory of the build (and none is kept when a header turns up through
+such a path that none of them showed), while every header that the preprocessor read is the file
+it was, and while no header has appeared where an `#include` or a `__has_include` would find it
+first: in a directory of `-I`, or of `CPATH`, which TinyCC searches right after those.
 Nothing is kept when a header was written after the preprocessor had started. If TinyCC reports an
 error in a unit that uses the form, the unit is compiled as it was generated.
 `V3_TCC_NO_PRELUDE_CACHE=1` turns this off, and `V3_TCC_PRELUDE_VERIFY=1` compiles both forms and

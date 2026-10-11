@@ -127,7 +127,6 @@ const v3_linker_value_options = {
 	'soname':                      1
 	'rpath':                       1
 	'rpath-link':                  1
-	'Map':                         1
 	'defsym':                      1
 	'hash-style':                  1
 	'sort-section':                1
@@ -166,7 +165,6 @@ const v3_linker_value_options = {
 	'filter':                      1
 	'audit':                       1
 	'depaudit':                    1
-	'dependency-file':             1
 	'pack-dyn-relocs':             1
 	'export-dynamic-symbol':       1
 	'orphan-handling':             1
@@ -205,9 +203,6 @@ const v3_linker_value_options = {
 	'commons':                     1
 	'weak_reference_mismatches':   1
 	'objc_abi_version':            1
-	'map':                         1
-	'dependency_info':             1
-	'object_path_lto':             1
 	'final_output':                1
 	'oso_prefix':                  1
 	'add_empty_section':           2
@@ -215,6 +210,18 @@ const v3_linker_value_options = {
 	'mllvm':                       1
 	'mcpu':                        1
 }
+
+// v3_linker_output_options make the linker write a file besides the executable: a
+// map, a list of what it read, an object. A build that takes a kept executable
+// links nothing, and would not write it.
+const v3_linker_output_options = ['Map', 'map', 'dependency-file', 'dependency_info', 'object_path_lto',
+	'out-implib', 'print-map-to-file']
+
+// v3_compiler_output_options make a compiler driver write a file besides what it
+// compiles: the headers that it read, its temporaries, data for a profile.
+const v3_compiler_output_options = ['-MD', '-MMD', '-MF', '-MJ', '-M', '-MM', '-save-temps',
+	'--coverage', '-ftest-coverage', '-fprofile-arcs', '-gsplit-dwarf', '-ftime-trace', '-fstack-usage',
+	'-fcallgraph-info', '-aux-info', '--serialize-diagnostics', '-serialize-diagnostics']
 
 // v3_linker_plain_file_options take a file that the linker reads as it is: a list
 // of symbols, an order, a plugin.
@@ -336,6 +343,10 @@ fn (mut c V3LinkCommand) add_linker_option(name string, value string, has_value 
 	}
 	if name in v3_linker_flag_options {
 		return 0
+	}
+	if name in v3_linker_output_options {
+		c.unknown = 'the linker option `-${name}` writes a file besides the executable'
+		return taken
 	}
 	if name in v3_linker_value_options {
 		return if has_value { 0 } else { v3_linker_value_options[name] }
@@ -556,6 +567,14 @@ fn v3_parse_link_command(args []string, build_dir string) V3LinkCommand {
 			} else {
 				linker_args << V3LinkerArgument{arg, false}
 			}
+			continue
+		}
+		if arg in v3_compiler_output_options || arg.starts_with('-save-temps=')
+			|| arg.starts_with('-ftime-trace=') || arg.starts_with('-fdump-') {
+			// A build that takes a kept executable compiles nothing, and would
+			// not write it.
+			command.unknown = 'the option `${arg}` writes a file besides the executable'
+			i += v3_compiler_option_values(arg)
 			continue
 		}
 		if arg == '-specs' || arg.starts_with('-specs=') || arg.starts_with('--specs=') {
@@ -850,10 +869,16 @@ fn v3_parse_library_search_dirs(output string) []string {
 // for a module cache, which belongs to one compiler: the answer is kept in it.
 // Only directories with an absolute path are of use: TinyCC gives its own relative
 // to the directory that it runs in.
-fn v3_default_link_library_dirs(manager &modulecache.Manager, linker string, base_args []string, sdk_root string) []string {
+fn v3_default_link_library_dirs(manager &modulecache.Manager, linker string, base_args []string, sdk_root string, build_dir string) []string {
 	mut candidates := []string{}
 	for dir in os.getenv('LIBRARY_PATH').split(os.path_delimiter) {
-		candidates << dir
+		// A relative directory is one of the directory that the linker runs in.
+		if dir.len > 0 && !os.is_abs_path(dir) && build_dir.len > 0
+			&& v3_relative_path_leaves_its_directory(dir) {
+			candidates << os.norm_path(os.join_path(build_dir, dir))
+		} else {
+			candidates << dir
+		}
 	}
 	record := os.join_path_single(manager.dir, 'link_library_dirs_${c_hash_bytes(u64(1469598103934665603), 'v3-link-library-dirs-2\n${os.real_path(linker)}\n${v3_cache_file_identity(linker)}\n${base_args.join('\n')}'.bytes()).hex()}')
 	reported := os.read_file(record) or {
@@ -985,45 +1010,6 @@ fn v3_linker_report_args(report V3LinkerReport) []string {
 	}
 }
 
-// v3_requested_linker_report returns the report that the command `args` asks its
-// linker for already, and the file that it names for it, or `.no_report`. A
-// linker writes one report: the one that the user asked for is read then, and no
-// other is asked for.
-fn v3_requested_linker_report(args []string) (V3LinkerReport, string) {
-	mut forwarded := []string{}
-	mut i := 0
-	for i < args.len {
-		arg := args[i].trim_space()
-		i++
-		if arg == '-Xlinker' {
-			if i < args.len {
-				forwarded << args[i].trim_space()
-				i++
-			}
-		} else if arg.starts_with('-Wl,') {
-			forwarded << arg[4..].split(',')
-		} else {
-			i += v3_compiler_option_values(arg)
-		}
-	}
-	mut report := V3LinkerReport.no_report
-	mut file := ''
-	for j, option in forwarded {
-		name := option.trim_left('-')
-		if name == 'dependency_info' && j + 1 < forwarded.len {
-			report = .dependency_info
-			file = forwarded[j + 1]
-		} else if name == 'dependency-file' && j + 1 < forwarded.len {
-			report = .dependency_file
-			file = forwarded[j + 1]
-		} else if name.starts_with('dependency-file=') {
-			report = .dependency_file
-			file = name['dependency-file='.len..]
-		}
-	}
-	return report, file
-}
-
 // v3_linker_probe_args returns the arguments among `search_args` that choose a
 // linker: an empty program is linked with those, and not with the ones that
 // take its libraries or its start files away.
@@ -1048,16 +1034,26 @@ fn v3_output_names_unknown_option(report V3LinkerReport, output string) bool {
 	return false
 }
 
+// v3_output_names_linker_report reports whether `output`, what a command that
+// links printed, names the option of `report` at all. A linker that fails over an
+// option names it, in whatever language it speaks.
+fn v3_output_names_linker_report(report V3LinkerReport, output string) bool {
+	return match report {
+		.no_report { false }
+		.dependency_info { output.contains('dependency_info') }
+		.dependency_file { output.contains('dependency-file') }
+	}
+}
+
 // v3_linker_report_record returns the file of the module cache that keeps which
 // report the linker of `compiler` gives. What chooses the linker is part of its
-// name: the compiler, the arguments that choose one, and the variables of the
-// environment that a compiler driver finds its linker by.
+// name: the compiler, the arguments that choose one, and the variables that GCC
+// finds its programs by. A linker that is another one all the same is found out
+// by the link that fails over the option: see v3_forget_linker_report.
 fn v3_linker_report_record(manager &modulecache.Manager, compiler string, search_args []string, target_os string) string {
-	mut identity := ['v3-linker-report-2', os.real_path(compiler), v3_cache_file_identity(compiler),
-		target_os, v3_linker_probe_args(search_args).join('\n'), os.getenv('PATH')]
-	for name in v3_link_environment_names {
-		identity << '${name}=${os.getenv(name)}'
-	}
+	identity := ['v3-linker-report-3', os.real_path(compiler), v3_cache_file_identity(compiler),
+		target_os, v3_linker_probe_args(search_args).join('\n'), os.getenv('COMPILER_PATH'),
+		os.getenv('GCC_EXEC_PREFIX')]
 	return os.join_path_single(manager.dir, 'linker_report_${c_hash_bytes(u64(1469598103934665603), identity.join('\x00').bytes()).hex()}')
 }
 

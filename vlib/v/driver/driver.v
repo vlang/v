@@ -4306,13 +4306,31 @@ fn v3_program_executable_link_signature(link_ld_flags []string, links_with_tcc b
 		build_options.join('\x00'), v3_link_environment_signature()].join('\x01')
 }
 
+// v3_output_dir returns the directory of the output `bin_file`: the C compiler
+// runs in a directory that the build makes in it.
+fn v3_output_dir(bin_file string) string {
+	return if os.dir(bin_file).len > 0 { os.real_path(os.dir(bin_file)) } else { os.getwd() }
+}
+
 // v3_flags_name_relative_paths reports whether one of `flags` holds a relative
-// path that leaves the directory that it is relative to, as `-L../libs` does. The
-// C compiler runs in a directory beside the output, so such a path names another
-// file for another output.
+// path that leaves the directory that it is relative to, as `-L../libs`, `-I..`
+// or `..:/usr/include` do: a `..` that ends a part of a path. The C compiler runs
+// in a directory beside the output, so such a path names another file for another
+// output.
 fn v3_flags_name_relative_paths(flags []string) bool {
 	for flag in flags {
-		if flag.contains('../') || flag.ends_with('..') {
+		mut pos := 0
+		for {
+			found := flag.index_after_('..', pos)
+			if found < 0 {
+				break
+			}
+			pos = found + 2
+			// `...` and `1..2` are no directories.
+			if (found > 0 && flag[found - 1] == `.`) || (pos < flag.len
+				&& flag[pos] !in [`/`, `\\`, `:`, `;`, `,`, ` `, `"`, `'`]) {
+				continue
+			}
 			return true
 		}
 	}
@@ -11970,7 +11988,7 @@ pub fn run(args []string) {
 	program_executable_output_dir := if v3_flags_name_relative_paths(link_ld_flags)
 		|| v3_flags_name_relative_paths(cache_c_flags)
 		|| v3_flags_name_relative_paths(v3_link_environment_names.map(os.getenv(it))) {
-		os.real_path(if os.dir(bin_file).len > 0 { os.dir(bin_file) } else { os.getwd() })
+		v3_output_dir(bin_file)
 	} else {
 		''
 	}
@@ -13788,12 +13806,7 @@ pub fn run(args []string) {
 		cc_output_name := c_compiler_output_name_for_target(prefs.normalized_target_os(), is_shared,
 			is_o)
 		if !c_only {
-			bin_dir := if os.dir(bin_file).len > 0 {
-				os.real_path(os.dir(bin_file))
-			} else {
-				os.getwd()
-			}
-			cc_dir = os.join_path_single(bin_dir, '.${os.base(bin_file)}.v3cc.${tempname.unique_token()}')
+			cc_dir = os.join_path_single(v3_output_dir(bin_file), '.${os.base(bin_file)}.v3cc.${tempname.unique_token()}')
 			os.mkdir(cc_dir) or {
 				eprintln('failed to create C build directory ${cc_dir}: ${err}')
 				exit(1)
@@ -14925,7 +14938,7 @@ pub fn run(args []string) {
 			if program_executable_enabled && !is_shared && !is_o {
 				program_link_inputs = v3_program_link_inputs(tcc_args, tcc_resources.install_dir,
 					v3_default_link_library_dirs(&cache_state.manager, tcc_path, tcc_args.filter(it.trim_space().starts_with('-B')),
-						tcc_sdk_root), cc_dir)
+						tcc_sdk_root, cc_dir), cc_dir)
 			}
 			result = if injected_failure := os.getenv_opt('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE') {
 				os.Result{
@@ -14962,7 +14975,7 @@ pub fn run(args []string) {
 				// An executable that is kept is one of the headers that its C reads:
 				// TinyCC writes down the ones that it reads itself.
 				mut link_args := tcc_args.clone()
-				if program_link_inputs.taken {
+				if program_link_inputs.taken && program_link_inputs.unknown.len == 0 {
 					link_args << ['-MD', '-MF', v3_program_dependency_file]
 				}
 				// Whole seconds, and one to spare for a file system that rounds them.
@@ -15084,7 +15097,21 @@ pub fn run(args []string) {
 				if effective_c_compiler == 'msvc' {
 					cc_args = msvc_cl_args(cc_args, prefs.normalized_target_os())
 				}
-				cc_sources := if program_executable_enabled {
+				// What the command reads is taken from it before anything is added to
+				// it: an option of the user that makes the compiler or the linker
+				// write a file of its own leaves no executable to keep.
+				// Whole seconds, and one to spare for a file system that rounds them.
+				before_cc := time.utc().unix() - 1
+				if program_executable_enabled {
+					program_link_inputs = v3_program_link_inputs(cc_args, '', v3_default_link_library_dirs(&cache_state.manager,
+						c_compiler, v3_link_search_args(cc_args), if prefs.normalized_target_os() == 'macos' {
+							macos_sdk_root_cache.get()
+						} else {
+							''
+						}, cc_dir), cc_dir)
+				}
+				keeps_executable := program_link_inputs.taken && program_link_inputs.unknown.len == 0
+				cc_sources := if keeps_executable {
 					v3_compiled_sources(cc_args)
 				} else {
 					[]string{}
@@ -15095,56 +15122,43 @@ pub fn run(args []string) {
 					// those of one source only.
 					cc_args << ['-MD', '-MF', v3_program_dependency_file]
 				}
-				// The linker tells what it read, where it can. A command that asks its
-				// linker for a report already gets the one that it asks for.
+				// The linker tells what it read, where it can.
 				mut linker_report := V3LinkerReport.no_report
-				mut linker_report_file := v3_linker_report_file
 				mut asked_for_linker_report := []string{}
-				if program_executable_enabled && !is_o && !is_shared {
-					linker_report, linker_report_file = v3_requested_linker_report(cc_args)
-					if linker_report == .no_report {
-						linker_report = v3_linker_report(&cache_state.manager, c_compiler, v3_link_search_args(cc_args),
-							prefs.normalized_target_os(), cc_dir)
-						linker_report_file = v3_linker_report_file
-						asked_for_linker_report = v3_linker_report_args(linker_report)
-						cc_args << asked_for_linker_report
-					}
+				if keeps_executable && !is_o && !is_shared {
+					linker_report = v3_linker_report(&cache_state.manager, c_compiler, v3_link_search_args(cc_args),
+						prefs.normalized_target_os(), cc_dir)
+					asked_for_linker_report = v3_linker_report_args(linker_report)
+					cc_args << asked_for_linker_report
 				}
 				if verbose || show_cc {
 					println('  > ${cmdexec.display(c_compiler, cc_args)}')
 				}
-				// Whole seconds, and one to spare for a file system that rounds them.
-				before_cc := time.utc().unix() - 1
-				if program_executable_enabled {
-					program_link_inputs = v3_program_link_inputs(cc_args, '', v3_default_link_library_dirs(&cache_state.manager,
-						c_compiler, v3_link_search_args(cc_args), if prefs.normalized_target_os() == 'macos' {
-							macos_sdk_root_cache.get()
-						} else {
-							''
-						}), cc_dir)
-				}
 				result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
 				if result.exit_code != 0 && asked_for_linker_report.len > 0
-					&& v3_output_names_unknown_option(linker_report, result.output) {
-					// The linker of this command is another one than the one that was
-					// asked which report it gives: the command runs without the option,
-					// and the answer is taken back.
-					v3_forget_linker_report(&cache_state.manager, c_compiler, v3_link_search_args(cc_args),
-						prefs.normalized_target_os())
-					cc_args = cc_args.filter(it !in asked_for_linker_report)
+					&& v3_output_names_linker_report(linker_report, result.output) {
+					// A linker that fails over an option names it, in whatever language
+					// it speaks. If the command links without the report, the linker of
+					// this command is another one than the one that was asked which
+					// report it gives, and the answer is taken back; if it fails all
+					// the same, that is what the build has to say.
+					without_report := cc_args.filter(it !in asked_for_linker_report)
+					again := cmdexec.run_in(c_compiler, without_report, cc_dir)
+					if again.exit_code == 0 {
+						v3_forget_linker_report(&cache_state.manager, c_compiler, v3_link_search_args(cc_args),
+							prefs.normalized_target_os())
+					}
+					cc_args = without_report.clone()
 					linker_report = .no_report
-					result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
+					result = again
 				}
 				if result.exit_code == 0 && program_link_inputs.taken {
-					program_link_inputs.add_linker_report(linker_report, if os.is_abs_path(linker_report_file) {
-						linker_report_file
-					} else {
-						os.join_path(cc_dir, linker_report_file)
-					}, cc_dir, before_cc, if prefs.normalized_target_os() == 'macos' {
-						[macos_sdk_root_cache.get()].filter(it.len > 0)
-					} else {
-						[]string{}
-					})
+					program_link_inputs.add_linker_report(linker_report, os.join_path(cc_dir, v3_linker_report_file),
+						cc_dir, before_cc, if prefs.normalized_target_os() == 'macos' {
+							[macos_sdk_root_cache.get()].filter(it.len > 0)
+						} else {
+							[]string{}
+						})
 				}
 				// A command that links what earlier commands compiled reads no header.
 				if result.exit_code == 0 && cc_sources.len > 0

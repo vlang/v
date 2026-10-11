@@ -282,7 +282,13 @@ fn test_program_link_inputs_tell_what_only_the_place_of_the_output_names() {
 	assert v3_flags_name_relative_paths(['-O2', '-L../libs'])
 	assert v3_flags_name_relative_paths(['-fprofile-use=../../p.profdata', '-lm'])
 	assert v3_flags_name_relative_paths(['-I', '..'])
-	assert !v3_flags_name_relative_paths(['-L/abs/libs', '-lm', '-Wl,-rpath,/x', '-DV=1..2x'])
+	// A `..` that ends a part of a path, wherever it is in a list.
+	assert v3_flags_name_relative_paths(['..:/usr/include'])
+	assert v3_flags_name_relative_paths(['/usr/include:..:/opt/include'])
+	assert v3_flags_name_relative_paths(['-Wp,-I..,-DX'])
+	assert v3_flags_name_relative_paths(['-I..'])
+	assert !v3_flags_name_relative_paths(['-L/abs/libs', '-lm', '-Wl,-rpath,/x', '-DV=1..2x',
+		'-DE=a...b', '-DR=0..9'])
 	// A specs file tells the driver what to link with: nothing is kept of that.
 	for args in [['-specs', '/abs/my.specs'], ['-specs=/abs/my.specs'], ['--specs=/abs/my.specs']] {
 		mut command := ['-o', 'out', 'src.c']
@@ -466,28 +472,31 @@ fn test_linker_report_is_read_in_both_of_its_forms() {
 		'-Wl,--dependency-file=${v3_linker_report_file}',
 	]
 	assert v3_linker_report_args(.no_report) == []
-	// The arguments that ask for the report name no input themselves.
-	for report in [V3LinkerReport.dependency_info, .dependency_file] {
+	// A command that asks its compiler or its linker for a file besides the
+	// executable gets it from a build that compiles and links: no executable is
+	// kept of it. The driver reads what a command names before it adds anything.
+	for args in [
+		'-Wl,-dependency_info,/tmp/user.bin',
+		'-Xlinker -dependency_info -Xlinker /tmp/user.bin',
+		'-Wl,--dependency-file=/tmp/user.bin',
+		'-Wl,--dependency-file,/tmp/user.bin',
+		'-Wl,-map,/tmp/out.map',
+		'-Wl,-Map=/tmp/out.map',
+		'-MD -MF /tmp/deps.d',
+		'-MMD',
+		'--coverage',
+		'-save-temps=obj',
+		'-ftime-trace',
+		'-fdump-tree-all',
+	] {
 		mut command := ['-o', 'out', 'src.c']
-		command << v3_linker_report_args(report)
-		asked := v3_program_link_inputs(command, '', []string{}, '/build')
-		assert asked.reason() == ''
-		assert asked.files == []
-		// A command that asks for a report is not asked for another.
-		requested, file := v3_requested_linker_report(command)
-		assert requested == report && file == v3_linker_report_file
+		command << args.split(' ')
+		assert v3_program_link_inputs(command, '', []string{}, '/build').unknown.contains('writes a file'), args
 	}
-	for args, expected in {
-		'-Wl,-dependency_info,/tmp/user.bin':               V3LinkerReport.dependency_info
-		'-Xlinker -dependency_info -Xlinker /tmp/user.bin': V3LinkerReport.dependency_info
-		'-Wl,--dependency-file=/tmp/user.bin':              V3LinkerReport.dependency_file
-		'-Wl,--dependency-file,/tmp/user.bin':              V3LinkerReport.dependency_file
-		'-Wl,--as-needed -L/tmp -lm':                       V3LinkerReport.no_report
-		'-MF dependency-file=x -o dependency_info':         V3LinkerReport.no_report
-	} {
-		requested, file := v3_requested_linker_report(args.split(' '))
-		assert requested == expected, args
-		assert file == if expected == .no_report { '' } else { '/tmp/user.bin' }, args
+	for args in ['-Wl,--as-needed -L/tmp -lm', '-O2 -MT x -o dependency_info'] {
+		mut command := ['-o', 'out', 'src.c']
+		command << args.split(' ')
+		assert v3_program_link_inputs(command, '', []string{}, '/build').unknown == '', args
 	}
 	// A linker that does not know the option says which one.
 	assert v3_output_names_unknown_option(.dependency_file, "/usr/bin/ld: unrecognized option '--dependency-file=x'\ncollect2: error: ld returned 1")
@@ -495,6 +504,12 @@ fn test_linker_report_is_read_in_both_of_its_forms() {
 	assert !v3_output_names_unknown_option(.dependency_file, 'ld: cannot open dependency file x: No space left on device')
 	assert !v3_output_names_unknown_option(.dependency_file, 'ld: unknown options: -dependency_info')
 	assert !v3_output_names_unknown_option(.no_report, 'ld: unknown options: -dependency_info')
+	// The link of a build runs in the language of the user: a linker that fails
+	// over the option names it in any of them.
+	assert v3_output_names_linker_report(.dependency_file, "/usr/bin/ld: nicht erkannte Option '--dependency-file=x'")
+	assert v3_output_names_linker_report(.dependency_info, 'ld: unknown options: -dependency_info')
+	assert !v3_output_names_linker_report(.dependency_file, 'ld: undefined reference to `answer`')
+	assert !v3_output_names_linker_report(.no_report, 'ld: unknown options: -dependency_info')
 	// What takes the libraries of a program away is no part of the question.
 	assert v3_linker_probe_args(['-fuse-ld=lld', '-static', '-nostdlib', '-m64']) == [
 		'-fuse-ld=lld',

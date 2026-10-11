@@ -721,8 +721,10 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 		cc_dir), before_preprocessing)
 	if relative_paths {
 		inputs.relative_paths = true
-		if output_dir.len == 0 && inputs.unknown.len == 0 {
-			inputs.unknown = 'a header is named relative to the directory of the output'
+		if output_dir.len == 0 {
+			// Nothing is kept of such a prelude: there is no form to make of it.
+			v3_trace_tcc_prelude('not kept: a header is named relative to the directory of the output')
+			return none
 		}
 	}
 	mut form := v3_tcc_split_preprocessed(preprocessed)

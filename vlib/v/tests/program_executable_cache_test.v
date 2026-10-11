@@ -582,8 +582,10 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 	os.mkdir_all(os.join_path(root, 'with,comma'))!
 	assert_rebuilt(build(root, with_option, main_file, 'with,comma/out'))
 	assert run_built(root, 'with,comma/out') == '42'
+	assert_restored(build(root, with_option, main_file, 'with,comma/out'))
 
-	// A command that asks its linker for a report gets the one that it asks for.
+	// A command that asks its linker for a file of its own gets it from every
+	// build: one that took a kept executable would link nothing and write none.
 	own_report := os.join_path(root, 'own_report')
 	own_option := if os.user_os() == 'macos' {
 		'-Wl,-dependency_info,${own_report}'
@@ -595,10 +597,14 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 		os.rm(own_report) or {}
 		mut with_report := with_option.clone()
 		with_report[with_report.len - 1] += ' ${own_option}'
-		assert_rebuilt(build(root, with_report, main_file, 'own_report_build'))
+		own_first := build(root, with_report, main_file, 'own_report_build')
+		assert_rebuilt(own_first)
+		assert own_first.contains('writes a file besides the executable'), own_first
 		assert run_built(root, 'own_report_build') == '42'
 		assert os.file_size(own_report) > 0
-		assert_restored(build(root, with_report, main_file, 'own_report_same'))
+		os.rm(own_report)!
+		assert_rebuilt(build(root, with_report, main_file, 'own_report_same'))
+		assert os.file_size(own_report) > 0
 	}
 
 	// A thin archive names its members: what the link reads is another file.
