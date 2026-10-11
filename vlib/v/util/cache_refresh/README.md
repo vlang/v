@@ -18,7 +18,8 @@ so `v up` can refresh them after replacing the compiler or updating their source
   It stops before linking or running the program, and refreshes each entry/configuration once.
   Resolved sources from `-file-list`, including expanded directories, accompany live entries.
   Otherwise it compiles a temporary importer with the recorded project directives.
-  It preserves build modes, resolved compiler commands, and absolute search paths.
+  It uses the compiler's default caching mode and preserves build modes,
+  resolved compiler commands, and absolute search paths.
   A recorded working directory keeps relative C compilation inputs valid.
   Builds without relative inputs or project interface scopes share records across projects.
   Effective `-run-only` selectors and assertion display modes preserve test configurations.

@@ -156,8 +156,8 @@ fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
 		calls := os.read_file(cache_log)!.split_into_lines()
 		assert calls.len == 8, calls.str()
 		for compiler in ['tcc', 'cc', 'clang', 'gcc'] {
-			assert calls.any(it.starts_with('-cc ${compiler} -usecache -skip-running ')), calls.str()
-			assert calls.any(it.starts_with('-cc ${compiler} -prod -usecache -skip-running ')), calls.str()
+			assert calls.any(it.starts_with('-cc ${compiler} -skip-running ')), calls.str()
+			assert calls.any(it.starts_with('-cc ${compiler} -prod -skip-running ')), calls.str()
 		}
 		assert !calls.any(it.contains(' run ')), calls.str()
 	}

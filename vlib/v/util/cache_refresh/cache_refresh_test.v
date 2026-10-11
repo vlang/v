@@ -37,7 +37,7 @@ fn test_synthetic_refresh_links_source_driver_flags() ! {
 	os.write_file(module_file, 'module ${name}\npub fn value() int { return 1 }\n')!
 	entry := os.join_path(root, 'main.v')
 	os.write_file(entry, '#flag -fsanitize=address\nimport ${name}\nfn main() { println(${name}.value()) }\n')!
-	args := ['-cc', 'clang', '-gc', 'none', '-usecache', '-o', os.join_path(root, 'program'), entry]
+	args := ['-cc', 'clang', '-gc', 'none', '-o', os.join_path(root, 'program'), entry]
 	cold := os.exec([@VEXE, ...args])
 	assert cold.exit_code == 0, cold.output
 	requests := collect(vroot, @VEXE)!.filter(it.module == name)
@@ -565,8 +565,8 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		}
 		for mode in modes {
 			for prod in [false, true] {
-				mut flags := ['-cc', compiler, '-gc', 'none', '-usecache', '-path',
-					'modules/../modules|@vlib', '-file-list', '../shared support.v,../implementers']
+				mut flags := ['-cc', compiler, '-gc', 'none', '-path', 'modules/../modules|@vlib',
+					'-file-list', '../shared support.v,../implementers']
 				if prod { flags << '-prod' }
 				flags << mode
 				if compiler == 'cc' && !prod { flags << ['-ldflags', '-L../libs -lanswer'] }
@@ -585,11 +585,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 				assert process.code == 0, '${flags}: ${stdout}\n${stderr}'
 				process.close()
 				assert stdout.trim_space() == if prod { '42' } else { '40' }, '${flags}: ${stdout}\n${stderr}'
-				if '-silent' in flags {
-					assert !stderr.contains('Caching module '), stderr
-				} else if builds.len == 0 {
-					assert stderr.contains('Caching module ${import_root}.probe...'), stderr
-				}
+				assert !stderr.contains('Caching module '), stderr
 				builds << flags
 			}
 		}
@@ -620,8 +616,8 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 				'test_selected_*'
 			}
 			for prod in [false, true] {
-				mut flags := ['-cc', 'cc', '-gc', 'none', '-usecache', '-path',
-					'modules/../modules|@vlib', '-cflags', '-I../include']
+				mut flags := ['-cc', 'cc', '-gc', 'none', '-path', 'modules/../modules|@vlib',
+					'-cflags', '-I../include']
 				if prod { flags << '-prod' }
 				command := if through_vtest {
 					[@VEXE, ...flags, 'test', '-run-only', selector, test_file]

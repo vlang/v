@@ -455,13 +455,10 @@ pub fn input(prompt string) string {
 	return res
 }
 
-// get_line returns a one-line string from stdin.
+// get_line returns a one-line string from stdin, removing its CRLF or LF line ending.
 pub fn get_line() string {
 	str := get_raw_line()
-	$if windows {
-		return str.trim_right('\r\n')
-	}
-	return str.trim_right('\n')
+	return str.trim_right('\r\n')
 }
 
 // get_lines returns an array of strings read from stdin.

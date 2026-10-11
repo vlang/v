@@ -155,8 +155,8 @@ fn test_cached_tcc_main_command_preserves_production_optimization() ! {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'import math\nfn main() { println(math.abs(-3.0)) }\n')!
 	for mode in [[]string{}, ['-prod'], ['-prod', '-no-prod-options']] {
-		result := os.exec([compiler, '-cc', 'tcc', '-gc', 'none', '-usecache', '-showcc', ...mode,
-			'-o', os.join_path(root, 'program'), source])
+		result := os.exec([compiler, '-cc', 'tcc', '-gc', 'none', '-showcc', ...mode, '-o',
+			os.join_path(root, 'program'), source])
 		assert result.exit_code == 0, result.output
 		commands := result.output.split_into_lines().filter(it.trim_space().starts_with('> ')
 			&& it.contains('src.c') && it.contains('tcc'))

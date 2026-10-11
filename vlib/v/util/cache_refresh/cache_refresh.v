@@ -557,7 +557,7 @@ pub fn refresh(vexe string, requests []Request) ! {
 		} else {
 			environment.delete('VTEST_ONLY_FN')
 		}
-		command << ['-usecache', '-skip-running', '-o', os.join_path(dir, 'refresh'), source]
+		command << ['-skip-running', '-o', os.join_path(dir, 'refresh'), source]
 		mut code := -1
 		$if windows {
 			if request.show_test_stats {
