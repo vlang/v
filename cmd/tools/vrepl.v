@@ -345,10 +345,10 @@ fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	defer {
 		os.rm(check_file) or {}
 	}
-	// -usecache keeps repeated REPL checks responsive by reusing cached modules.
+	// Default module caching keeps repeated REPL checks responsive by reusing cached modules.
 	// -w suppresses warnings from this synthetic println probe.
 	// -check just does syntax and checker analysis without generating/running code.
-	os_response := execute_repl_v_command(vexe, ['-usecache', '-w', '-check', check_file]) or {
+	os_response := execute_repl_v_command(vexe, ['-w', '-check', check_file]) or {
 		return FnType.none
 	}
 	str_response := convert_output(os_response.output)
@@ -1232,7 +1232,7 @@ fn repl_check_vfile(file string) !os.Result {
 	// Declaration-only REPL lines do not need code generation or execution.
 	// Cached checks keep repeated imports and definitions responsive.
 	s :=
-		execute_repl_v_command(vexe, ['-usecache', '-message-limit', '1', '-repl', '-check', file])!
+		execute_repl_v_command(vexe, ['-message-limit', '1', '-repl', '-check', file])!
 	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)

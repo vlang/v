@@ -36,6 +36,10 @@ enum AttributeParserState {
 }
 
 fn parse_attributes(attribute_contents string) !map[string]string {
+	return parse_attributes_with_entities(attribute_contents, default_entities)
+}
+
+fn parse_attributes_with_entities(attribute_contents string, entities map[string]string) !map[string]string {
 	if attribute_contents.contains_u8(`<`) {
 		return error('Malformed XML. Found "<" in attribute string: "${attribute_contents}"')
 	}
@@ -79,7 +83,9 @@ fn parse_attributes(attribute_contents string) !map[string]string {
 						if key in attributes {
 							return error('Duplicate XML attribute: ${key}')
 						}
-						attributes[key] = attribute_contents[value_span.start..value_span.end]
+						attributes[key] = unescape_text(attribute_contents[value_span.start..value_span.end],
+							entities: entities
+						)!
 
 						key_span.start = index + 1
 						key_span.end = index + 1
@@ -532,10 +538,65 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	}, root_char
 }
 
-fn parse_children(name string, attributes map[string]string, mut reader io.Reader) !XMLNode {
+fn append_text_run(mut children []XMLNodeContents, mut pending []XMLNodeContents, mut contents strings.Builder, entities map[string]string) ! {
+	text := contents.str()
+	if text.len > 0 {
+		pending << text
+	}
+	// Comments split text fragments, but only element boundaries trim the whole text run.
+	for i in 0 .. pending.len {
+		item := pending[i]
+		match item {
+			string {
+				trimmed := item.trim_space_left()
+				pending[i] = trimmed
+				if trimmed.len > 0 {
+					break
+				}
+			}
+			XMLCData {
+				if item.text.len > 0 {
+					break
+				}
+			}
+			else {}
+		}
+	}
+	for i := pending.len - 1; i >= 0; i-- {
+		item := pending[i]
+		match item {
+			string {
+				trimmed := item.trim_space_right()
+				pending[i] = trimmed
+				if trimmed.len > 0 {
+					break
+				}
+			}
+			XMLCData {
+				if item.text.len > 0 {
+					break
+				}
+			}
+			else {}
+		}
+	}
+	for item in pending {
+		if item is string {
+			if item.len > 0 {
+				children << unescape_text(item.replace('\r\n', '\n'), entities: entities)!
+			}
+		} else {
+			children << item
+		}
+	}
+	pending.clear()
+}
+
+fn parse_children(name string, attributes map[string]string, entities map[string]string, mut reader io.Reader) !XMLNode {
 	mut inner_contents := strings.new_builder(default_string_builder_cap)
 
 	mut children := []XMLNodeContents{}
+	mut pending := []XMLNodeContents{}
 	mut local_buf := [u8(0)]
 
 	for {
@@ -545,6 +606,10 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 				second_char := next_char(mut reader, mut local_buf)!
 				match second_char {
 					`!` {
+						text := inner_contents.str()
+						if text.len > 0 {
+							pending << text
+						}
 						// Comment, CDATA
 						mut next_two := [u8(0), 0]
 						if reader.read(mut next_two)! != 2 {
@@ -553,7 +618,7 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 						if next_two == double_dash {
 							// Comment
 							comment := parse_comment(mut reader)!
-							children << comment
+							pending << comment
 						} else if next_two == c_tag {
 							// <![CDATA -> DATA
 							mut cdata_buf := []u8{len: 4}
@@ -564,7 +629,7 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 								return error('Invalid XML. Expected "CDATA" after "<![C".')
 							}
 							cdata := parse_cdata(mut reader)!
-							children << cdata
+							pending << cdata
 						} else {
 							return error('Invalid XML. Unknown control sequence: ${next_two.bytestr()}')
 						}
@@ -583,11 +648,7 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 							return error('XML node <${name}> not closed.')
 						}
 
-						collected_contents := inner_contents.str().trim_space()
-						if collected_contents.len > 0 {
-							// We have some inner text
-							children << collected_contents.replace('\r\n', '\n')
-						}
+						append_text_run(mut children, mut pending, mut inner_contents, entities)!
 						return XMLNode{
 							name:       name
 							attributes: attributes
@@ -596,17 +657,14 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 					}
 					else {
 						// Start of child node
-						child := parse_single_node(second_char, mut reader) or {
+						child := parse_node_with_entities(second_char, entities, mut reader) or {
 							if err.msg() == 'XML node cannot start with "</".' {
 								return error('XML node <${name}> not closed.')
 							} else {
 								return err
 							}
 						}
-						text := inner_contents.str().trim_space()
-						if text.len > 0 {
-							children << text.replace('\r\n', '\n')
-						}
+						append_text_run(mut children, mut pending, mut inner_contents, entities)!
 						children << child
 					}
 				}
@@ -620,11 +678,15 @@ fn parse_children(name string, attributes map[string]string, mut reader io.Reade
 }
 
 // parse_single_node parses a single XML node from the reader. The first character of the tag is passed
-// in as the first_char parameter.
+// in as the first_char parameter. Predefined entities and character references are decoded.
 // This function is meant to assist in parsing nested nodes one at a time. Using this function as
 // opposed to the recommended static functions makes it easier to parse smaller nodes in extremely large
 // XML documents without running out of memory.
 pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
+	return parse_node_with_entities(first_char, default_entities, mut reader)
+}
+
+fn parse_node_with_entities(first_char u8, entities map[string]string, mut reader io.Reader) !XMLNode {
 	mut contents := strings.new_builder(default_string_builder_cap)
 	contents.write_u8(first_char)
 
@@ -647,17 +709,17 @@ pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 		// We're not looking for children and inner text
 		return XMLNode{
 			name:       name
-			attributes: parse_attributes(tag_contents[name.len..tag_contents.len - 1].trim_space())!
+			attributes: parse_attributes_with_entities(tag_contents[name.len..tag_contents.len - 1].trim_space(), entities)!
 		}
 	}
 
 	attribute_string := tag_contents[name.len..].trim_space()
-	attributes := parse_attributes(attribute_string)!
+	attributes := parse_attributes_with_entities(attribute_string, entities)!
 
-	return parse_children(name, attributes, mut reader)
+	return parse_children(name, attributes, entities, mut reader)
 }
 
-// XMLDocument.from_string parses an XML document from a string.
+// XMLDocument.from_string parses an XML document and decodes entities in text and attributes.
 pub fn XMLDocument.from_string(raw_contents string) !XMLDocument {
 	mut reader := FullBufferReader{
 		contents: raw_contents.bytes()
@@ -674,7 +736,7 @@ pub fn XMLDocument.from_file(path string) !XMLDocument {
 	return XMLDocument.from_reader(mut reader)!
 }
 
-// XMLDocument.from_reader parses an XML document from a reader. This is the most generic way to parse
+// XMLDocument.from_reader parses an XML document and decodes entities in text and attributes. This is the most generic way to parse
 // an XML document from any arbitrary source that implements that io.Reader interface.
 pub fn XMLDocument.from_reader(mut reader io.Reader) !XMLDocument {
 	prolog, first_char := parse_prolog(mut reader) or {
@@ -685,7 +747,15 @@ pub fn XMLDocument.from_reader(mut reader io.Reader) !XMLDocument {
 		}
 	}
 
-	root := parse_single_node(first_char, mut reader)!
+	mut entities := default_entities.clone()
+	if prolog.doctype.dtd is DocumentTypeDefinition {
+		for item in prolog.doctype.dtd.list {
+			if item is DTDEntity {
+				entities[item.name] = item.value
+			}
+		}
+	}
+	root := parse_node_with_entities(first_char, entities, mut reader)!
 
 	return XMLDocument{
 		version:  prolog.version
