@@ -2538,7 +2538,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	raw_rhs_type := if short_struct_value != none { elem_type } else { t.node_type(value_id) }
 	mut rhs_type := t.normalize_type_alias(raw_rhs_type)
 	transformed_value_node := t.a.nodes[int(value_id)]
-	mut prepend_many := t.array_append_rhs_is_push_many(base_id, value_id, rhs_type, elem_type)
+	mut prepend_many := t.array_rhs_is_push_many(base_id, value_id, rhs_type, elem_type)
 	if prepend_many && t.array_append_rhs_is_sum_variant_value(value_id, raw_rhs_type, elem_type) {
 		prepend_many = false
 	}
@@ -2623,7 +2623,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	raw_rhs_type := if short_struct_value != none { elem_type } else { t.node_type(value_id) }
 	mut rhs_type := t.normalize_type_alias(raw_rhs_type)
 	transformed_value_node := t.a.nodes[int(value_id)]
-	mut insert_many := t.array_append_rhs_is_push_many(base_id, value_id, rhs_type, elem_type)
+	mut insert_many := t.array_rhs_is_push_many(base_id, value_id, rhs_type, elem_type)
 	if insert_many && t.array_append_rhs_is_sum_variant_value(value_id, raw_rhs_type, elem_type) {
 		insert_many = false
 	}
@@ -2747,13 +2747,19 @@ fn (t &Transformer) push_many_count_is_type_name(id flat.NodeId) bool {
 	return node.kind == .ident && node.value.len > 0 && node.value[0] >= `A` && node.value[0] <= `Z`
 }
 
-// array_append_rhs_is_push_many supports array append rhs is push many handling for Transformer.
+// array_append_rhs_is_push_many honors explicit spread for infix array appends.
 fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
 	rhs_node := t.a.nodes[int(rhs_id)]
 	if rhs_node.kind == .prefix && rhs_node.value == '...' && rhs_node.children_count > 0 {
 		// Explicit spread appends elements even when the whole array can be boxed as one value.
 		return true
 	}
+	return t.array_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
+}
+
+// array_rhs_is_push_many selects bulk insertion when the source element types match.
+fn (t &Transformer) array_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
+	rhs_node := t.a.nodes[int(rhs_id)]
 	if rhs_node.kind == .spawn_expr {
 		return false
 	}
