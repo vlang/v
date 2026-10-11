@@ -11,9 +11,12 @@ so `v up` can refresh them after replacing the compiler or updating their source
 - `collect(vroot, vexe)` snapshots the compiler's recorded configurations before an update.
   For older caches, it identifies vlib modules from their headers and chooses the
   available C compilers in both normal and production mode, for programs and tests.
+  Successful migrations mark the old headers, so later updates use the new inventory
+  without repeating the fallback matrix. Failed or skipped migrations remain retryable.
 - `refresh` uses the updated compiler to rebuild cached objects from the original
   program input when project interface implementers require it and it still exists.
   It stops before linking or running the program, and refreshes each entry/configuration once.
+  Resolved sources from `-file-list`, including expanded directories, accompany live entries.
   Otherwise it compiles a temporary importer with the recorded project directives.
   It preserves build modes, resolved compiler commands, and absolute search paths.
   A recorded working directory keeps relative C compilation inputs valid.
@@ -23,7 +26,7 @@ so `v up` can refresh them after replacing the compiler or updating their source
   It validates dependencies, reuses unchanged objects, and
   reports newly cached modules on stdout. It never runs the generated programs.
   Removed modules and records with vanished working directories, required compile inputs,
-  or unavailable C compilers are skipped.
+  listed source files, or unavailable C compilers are skipped.
   A compilation failure is returned to `v up`.
 
 Inventory records use length-prefixed arguments and working directories to preserve
@@ -42,6 +45,8 @@ CLI C flags retain their position after source directives. Original vlib imports
 preserve flags contributed by modules outside the refreshed module's dependencies.
 
 Inventory version 6 adds effective assertion display modes and required compile inputs.
+Resolved `-file-list` sources are saved as arguments and tracked as required inputs.
+Legacy header provenance is temporary collection metadata and is not part of record identity.
 Version 5 adds the original entry path to version 4's project groups and imports.
 Older inventories remain readable. Version 3 did not distinguish project and module flags;
 its full flag vector is discarded and its CLI options are retained to avoid replaying

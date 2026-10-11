@@ -72,7 +72,9 @@ Project directives are merged with flags from the updated modules, so changes to
 vlib `#flag` directives take effect during refresh. Cached TCC production builds
 apply the production optimization flags to both module objects and the program.
 Refreshes use the original entry when needed to preserve project interface
-implementers, stopping before linking or running the program. Synthetic refreshes
+implementers, stopping before linking or running the program. Refreshes
+retain resolved `-file-list` sources for live entries, including expanded directories;
+records whose listed sources vanished are skipped. Synthetic refreshes
 also replay source C driver options such as sanitizers at link time. Records for
 unavailable C compilers are skipped.
 Isolated test caches use the primary V compiler executable, including when
@@ -81,7 +83,8 @@ the delegated ownership compiler.
 
 For caches created before V recorded their build settings, `v up` identifies the
 cached vlib modules and refreshes them in both modes for the available C compilers,
-for programs and tests.
+for programs and tests. Successful migrations mark the old headers so subsequent
+updates use the new inventory without repeating the fallback matrix.
 
 `v up` reports the agent skills that the new revision left behind, since a new
 revision may ship updated copies of them. It writes nothing: the skills belong to

@@ -11654,6 +11654,7 @@ pub fn run(args []string) {
 	} else {
 		user_files << input_file
 	}
+	listed_file_start := user_files.len
 	for listed_path in file_list {
 		if os.is_dir(listed_path) {
 			user_files << v3_directory_user_files(mut a, listed_path, prefs, is_test_command, true) or {
@@ -11667,6 +11668,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
+	resolved_listed_files := user_files[listed_file_start..].map(os.abs_path(it))
 	if is_prof {
 		user_files << os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'profiled_program.v')
 	}
@@ -14774,15 +14776,18 @@ pub fn run(args []string) {
 					identity: group.flags.join('\x00')
 				}
 			}
-			cache_refresh.record(cache_state.manager.dir, prefs.vroot,
-				v3_module_cache_refresh_args(args, c_compiler, prefs.module_search_paths, run_only),
+			refresh_entry := if v3_cache_refresh_needs_entry(interface_impl_signature, &cache_state, prefs.vroot) && os.exists(input_file) {
+				os.real_path(input_file)
+			} else {
+				''
+			}
+			mut refresh_args := v3_module_cache_refresh_args(args, c_compiler, prefs.module_search_paths, run_only)
+			if refresh_entry != '' && resolved_listed_files.len > 0 {
+				refresh_args << ['-file-list', resolved_listed_files.join(',')]
+			}
+			cache_refresh.record(cache_state.manager.dir, prefs.vroot, refresh_args,
 				is_test_command || is_v3_test_file(input_file, backend, target),
-				cache_state.module_sources, project_flags,
-				if v3_cache_refresh_needs_entry(interface_impl_signature, &cache_state, prefs.vroot) && os.exists(input_file) {
-					os.real_path(input_file)
-				} else {
-					''
-				}, show_test_stats) or {
+				cache_state.module_sources, project_flags, refresh_entry, show_test_stats) or {
 				trace_v3_cache_fallback('could not record the v up cache inventory: ${err}')
 			}
 			if os.getenv('V3_CACHE_REFRESH') == '1' && os.getenv('V3_CACHE_REFRESH_ENTRY') == '1' {

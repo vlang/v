@@ -14,10 +14,13 @@ project interface scopes share refresh records across projects.
 Project directives are merged with flags read from the updated vlib modules.
 The original entry preserves project interface implementers when needed; only its
 module objects are rebuilt. Isolated ownership caches use the primary V compiler.
+Live entries replay resolved -file-list sources, including expanded directories;
+records with vanished listed sources are skipped.
 Each module being cached is printed to stdout as `Caching module <name>...`.
 This also runs when the compiler itself is already updated. A cache refresh
 failure makes the update fail. Older caches without recorded settings are
 refreshed in both modes for the available C compilers, for programs and tests.
+Successful legacy migrations mark the old headers to avoid repeating that matrix.
 
 It also reports the agent skills installed for this user, in ~/.agents/skills,
 that the new revision left behind. Skills with local changes, and skills

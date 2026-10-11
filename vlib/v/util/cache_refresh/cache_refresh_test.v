@@ -129,13 +129,99 @@ fn test_inventory_handles_legacy_headers_and_partly_recorded_configurations() ! 
 	}
 	requests := collect(vroot, @VEXE)!
 	assert Request{ args: ['-cc', 'custom-cc'], module: 'crypto.sample', imports: ['crypto.sample'] } in requests
+	legacy := requests.filter(it.legacy_headers.len > 0)
+	assert legacy.all(it.legacy_headers.len == 1)
+	plain := legacy.map(Request{ ...it, legacy_headers: map[string]string{} })
 	if _ := os.find_abs_path_of_executable('cc') {
 		for is_test in [false, true] {
-			assert Request{ args: ['-cc', 'cc'], module: 'crypto.sample', is_test: is_test } in requests
-			assert Request{ args: ['-cc', 'cc', '-prod'], module: 'crypto.sample', is_test: is_test } in requests
+			assert Request{ args: ['-cc', 'cc'], module: 'crypto.sample', is_test: is_test } in plain
+			assert Request{ args: ['-cc', 'cc', '-prod'], module: 'crypto.sample', is_test: is_test } in plain
 		}
 	}
 	assert requests.all(it.module == 'crypto.sample')
+}
+
+fn test_legacy_migration_retires_only_successfully_refreshed_headers() ! {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('cc') or { return }
+	root := os.join_path(os.vtmp_dir(), 'vup_legacy_migration_${os.getpid()}')
+	vroot := os.join_path(root, 'checkout')
+	vexe := os.join_path(vroot, 'v')
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', root, true)
+	defer {
+		if value := previous { os.setenv('V3CACHE', value, true) } else { os.unsetenv('V3CACHE') }
+		os.rmdir_all(root) or {}
+	}
+	mut headers := []string{}
+	mut sources := map[string][]string{}
+	for name in ['sample', 'other'] {
+		source := os.join_path(vroot, 'vlib', name, '${name}.v')
+		os.mkdir_all(os.dir(source))!
+		os.write_file(source, 'module ${name}\n')!
+		sources[name] = [source]
+		for config in ['old-compiler-a', 'old-compiler-b'] {
+			dir := os.join_path(root_dir(vroot, vexe), config)
+			os.mkdir_all(dir)!
+			header := os.join_path(dir, '${name}_${hash_text(os.real_path(os.dir(source)))}.vh')
+			os.write_file(header, 'legacy ${name}\n')!
+			if name == 'sample' { headers << header }
+		}
+	}
+	failure := os.join_path(root, 'fail')
+	os.write_file(failure, '')!
+	os.write_file(vexe, '#!/bin/sh\nif test -f ' + os.quoted_path(failure) + '; then exit 1; fi\nexit 0\n')!
+	os.chmod(vexe, 0o755)!
+	requests := collect(vroot, vexe)!.filter(it.module == 'sample')
+	assert requests.len > 0
+	assert requests.all(it.legacy_headers.len == 2), requests.str()
+	if _ := refresh(vexe, requests) {
+		assert false, 'failed migrations must remain retryable'
+	}
+	assert headers.all(!os.exists('${it}.vup_migrated'))
+	assert collect(vroot, vexe)!.filter(it.module == 'sample') == requests
+	os.rm(failure)!
+	// Rebuilding V creates records in another configuration, leaving the old
+	// headers behind. Those headers must stop generating fallback requests.
+	new_dir := os.join_path(root_dir(vroot, vexe), 'updated-compiler')
+	os.mkdir_all(new_dir)!
+	record(new_dir, vroot, ['-cc', 'cc'], false, {
+		'sample': sources['sample']
+	}, [], '', false)!
+	refresh(vexe, requests)!
+	assert headers.all(os.exists('${it}.vup_migrated'))
+	after := collect(vroot, vexe)!
+	assert after.filter(it.module == 'sample') == [Request{
+		args:    ['-cc', 'cc']
+		module:  'sample'
+		imports: ['sample']
+	}]
+	assert after.any(it.module == 'other' && it.legacy_headers.len == 2)
+	// A subsequently rewritten legacy header needs a new successful migration.
+	os.write_file(headers[0], 'different legacy contents\n')!
+	changed := collect(vroot, vexe)!.filter(it.module == 'sample' && it.legacy_headers.len > 0)
+	assert changed.len == requests.len
+	assert changed.all(it.legacy_headers.len == 1)
+	refresh(vexe, changed)!
+	assert !collect(vroot, vexe)!.any(it.module == 'sample' && it.legacy_headers.len > 0)
+}
+
+fn test_legacy_migration_does_not_retire_skipped_variants() ! {
+	root := os.join_path(os.vtmp_dir(), 'vup_skipped_migration_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'vlib', 'sample'))!
+	defer { os.rmdir_all(root) or {} }
+	header := os.join_path(root, 'sample.vh')
+	os.write_file(header, 'legacy\n')!
+	refresh(os.join_path(root, 'v'), [Request{
+		args:           ['-cc', os.join_path(root, 'missing-cc')]
+		module:         'sample'
+		legacy_headers: {
+			header: hash_text('legacy\n')
+		}
+	}])!
+	assert !os.exists('${header}.vup_migrated')
 }
 
 fn test_inventory_shares_cwd_independent_requests_between_projects() ! {
@@ -448,11 +534,17 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		os.rmdir_all(root) or {}
 	}
 	main_file := os.join_path(project, 'main.v')
+	support_file := os.join_path(root, 'shared support.v')
+	sink_file := os.join_path(root, 'implementers', 'nested', 'sink.v')
+	os.mkdir_all(os.dir(sink_file))!
+	os.write_file(support_file, 'module main\nimport ${import_root}.probe\n' +
+		'fn listed_value() int { return probe.value() }\n')!
+	os.write_file(sink_file, 'module main\nstruct Sink {}\n' +
+		'fn (Sink) read() int { return listed_value() }\n')!
 	forced_header := os.join_path(module_root, 'include', 'config.h')
 	os.write_file(forced_header, '#define REFRESH_SOURCE_INPUT 1\n')!
 	source_flags := '#flag -DREFRESH_PROJECT\n#flag -include "${forced_header}"\n'
 	os.write_file(main_file, source_flags + 'import ${import_root}.probe\n' +
-		'struct Sink {}\nfn (Sink) read() int { return probe.value() }\n' +
 		'fn main() { println(probe.read(Sink{})) }\n')!
 	mut supported_modes := ['-no-std', '-strict']
 	$if linux {
@@ -474,7 +566,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		for mode in modes {
 			for prod in [false, true] {
 				mut flags := ['-cc', compiler, '-gc', 'none', '-usecache', '-path',
-					'modules/../modules|@vlib']
+					'modules/../modules|@vlib', '-file-list', '../shared support.v,../implementers']
 				if prod { flags << '-prod' }
 				flags << mode
 				if compiler == 'cc' && !prod { flags << ['-ldflags', '-L../libs -lanswer'] }
@@ -562,6 +654,14 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	}
 	for request in requests {
 		assert request.entry == if request.is_test { '' } else { main_file }, request.str()
+		list_index := request.args.index('-file-list')
+		if request.is_test {
+			assert list_index < 0, request.str()
+		} else {
+			assert list_index >= 0, request.str()
+			assert request.args[list_index + 1].split(',') == [support_file, sink_file], request.str()
+			assert support_file in request.compile_inputs && sink_file in request.compile_inputs, request.str()
+		}
 		mut project_flags := []string{}
 		for group in request.project_flags { project_flags << group.flags }
 		assert '-DREFRESH_PROJECT' in project_flags, request.str()
@@ -640,7 +740,7 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		assert !result.output.contains('V3 module cache fallback'), result.output
 		if '-silent' !in flags {
 			parsed := result.output.split_into_lines().filter(it.contains('parsed .v files'))
-			assert parsed.len == 1 && parsed[0].all_after('parsed .v files').trim_space().all_before(' ').int() == 1, result.output
+			assert parsed.len == 1 && parsed[0].all_after('parsed .v files').trim_space().all_before(' ').int() == 3, result.output
 		}
 		run := os.exec([os.join_path(root, 'program')])
 		assert run.exit_code == 0, run.output
@@ -661,6 +761,11 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		assert !result.output.contains('V3 module cache object miss'), result.output
 		assert !result.output.contains('V3 module cache fallback'), result.output
 	}
+	// A vanished listed source retires the live-entry record both at collection
+	// and when replaying a snapshot taken before the file was removed.
+	os.rm(support_file)!
+	assert !collect(vroot, @VEXE)!.any(it.module.starts_with(import_root + '.') && !it.is_test)
+	refresh(@VEXE, requests.filter(!it.is_test))!
 }
 
 fn test_inventory_and_refresh_skip_replaced_compile_inputs() ! {

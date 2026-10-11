@@ -30,12 +30,13 @@ pub:
 	args            []string
 	module          string
 	is_test         bool
-	cwd             string      // Original directory for caller-relative compilation inputs.
-	project_flags   []FlagGroup // Directives from sources outside the refreshed vlib modules.
-	imports         []string    // Original vlib imports contributing module-wide C flags.
-	entry           string      // Original program input, for interface-specific module aliases.
-	show_test_stats bool        // Effective VTEST_SHOW_ASSERTS configuration.
-	compile_inputs  []string    // Required caller-supplied files that existed when recorded.
+	cwd             string            // Original directory for caller-relative compilation inputs.
+	project_flags   []FlagGroup       // Directives from sources outside the refreshed vlib modules.
+	imports         []string          // Original vlib imports contributing module-wide C flags.
+	entry           string            // Original program input, for interface-specific module aliases.
+	show_test_stats bool              // Effective VTEST_SHOW_ASSERTS configuration.
+	compile_inputs  []string          // Required caller-supplied files that existed when recorded.
+	legacy_headers  map[string]string // Legacy header paths and content signatures awaiting migration.
 }
 
 // root_dir returns the cache shared by the configurations of this V checkout,
@@ -190,7 +191,7 @@ pub fn decode_project_flags(content string) ![]FlagGroup {
 // entry identifies the original source input for project interface scopes.
 // show_test_stats preserves the effective test assertion display mode.
 // Cwd-independent builds share records across projects; required compile inputs
-// are tracked so their removal retires the obsolete configuration.
+// and resolved -file-list sources are tracked so their removal retires the obsolete configuration.
 pub fn record(dir string, vroot string, args []string, is_test bool, sources map[string][]string, project_flags []FlagGroup, entry string, show_test_stats bool) ! {
 	vlib := os.real_path(os.join_path(vroot, 'vlib'))
 	inputs := required_compile_inputs(args, project_flags, os.getwd())
@@ -258,11 +259,22 @@ fn compiler_available(vroot string, request Request) bool {
 
 fn required_compile_inputs(args []string, project []FlagGroup, cwd string) []string {
 	mut flags := []string{}
+	mut inputs := []string{}
 	for group in project { flags << group.flags }
 	mut i := 0
 	for i < args.len {
 		if args[i] == '-cflags' && i + 1 < args.len {
 			flags << cmdexec.split_args(args[i + 1]) or { []string{} }
+			i += 2
+		} else if args[i] == '-file-list' && i + 1 < args.len {
+			for file in args[i + 1].split(',') {
+				path := if os.is_abs_path(file) {
+					file
+				} else {
+					os.abs_path(os.join_path(cwd, file))
+				}
+				if os.is_file(path) && path !in inputs { inputs << path }
+			}
 			i += 2
 		} else {
 			i++
@@ -297,7 +309,6 @@ fn required_compile_inputs(args []string, project []FlagGroup, cwd string) []str
 			files << path
 		}
 	}
-	mut inputs := []string{}
 	for file in files {
 		for dir in dirs {
 			path := if os.is_abs_path(file) { file } else { os.abs_path(os.join_path(dir, file)) }
@@ -313,14 +324,15 @@ fn required_compile_inputs(args []string, project []FlagGroup, cwd string) []str
 // collect snapshots vexe's inventory before `v up` replaces the compiler. Old
 // caches predate these records: their header filenames still identify vlib
 // source directories, so warm those modules for the available C compilers in
-// both normal and production mode, for programs and tests.
+// both normal and production mode, for programs and tests. Successfully migrated
+// legacy headers are excluded from subsequent snapshots.
 pub fn collect(vroot string, vexe string) ![]Request {
 	root := root_dir(vroot, vexe)
 	if !os.is_dir(root) {
 		return []
 	}
 	mut requests := []Request{}
-	mut seen := map[string]bool{}
+	mut seen := map[string]int{}
 	mut legacy_headers := []string{}
 	mut configs := os.ls(root)!
 	configs.sort()
@@ -346,7 +358,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 			if request.compile_inputs.any(!os.is_file(it)) { continue }
 			key := encode_request(request)
 			if key !in seen {
-				seen[key] = true
+				seen[key] = requests.len
 				requests << request
 			}
 		}
@@ -360,13 +372,19 @@ pub fn collect(vroot string, vexe string) ![]Request {
 				config_headers = config_headers.filter(!it.ends_with(suffix))
 			}
 		}
-		legacy_headers << config_headers
+		for header in config_headers {
+			path := os.join_path(dir, header)
+			signature := hash_text(os.read_file(path)!)
+			if (os.read_file('${path}.vup_migrated') or { '' }) != signature {
+				legacy_headers << path
+			}
+		}
 	}
 	if legacy_headers.len == 0 {
 		return requests
 	}
 	vlib := os.real_path(os.join_path(vroot, 'vlib'))
-	mut legacy_modules := map[string]bool{}
+	mut legacy_modules := map[string][]string{}
 	for file in os.walk_ext(vlib, '.v') {
 		dir := os.dir(file)
 		if dir == vlib { continue }
@@ -376,7 +394,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 		}
 		name := dir[vlib.len + 1..].replace(os.path_separator, '.')
 		if valid_module(name) {
-			legacy_modules[name] = true
+			legacy_modules[name] = legacy_headers.filter(it.ends_with(suffix))
 		}
 	}
 	mut modules := legacy_modules.keys()
@@ -397,11 +415,19 @@ pub fn collect(vroot string, vexe string) ![]Request {
 			mut flags := ['-cc', compiler]
 			if prod { flags << '-prod' }
 			for name in modules {
+				mut headers := map[string]string{}
+				for path in legacy_modules[name] {
+					headers[path] = hash_text(os.read_file(path)!)
+				}
 				for is_test in [false, true] {
-					request := Request{ args: flags, module: name, is_test: is_test }
+					request := Request{ args: flags, module: name, is_test: is_test, legacy_headers: headers }
 					key := encode_request(request)
-					if key !in seen {
-						seen[key] = true
+					if index := seen[key] {
+						mut merged := requests[index].legacy_headers.clone()
+						for path, signature in headers { merged[path] = signature }
+						requests[index] = Request{ ...requests[index], legacy_headers: merged }
+					} else {
+						seen[key] = requests.len
 						requests << request
 					}
 				}
@@ -416,6 +442,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // covers transitive imports, headers, embedded files and compiler changes. Unchanged entries are
 // reused, and each newly compiled module is announced on inherited stdout.
 // Records with vanished working directories, required inputs or compilers are skipped.
+// Legacy headers are marked migrated only after successful refreshes of their variants.
 pub fn refresh(vexe string, requests []Request) ! {
 	if requests.len == 0 { return }
 	dir := os.join_path(os.vtmp_dir(), 'vup_cache_refresh_${tempname.unique_token()}')
@@ -463,15 +490,24 @@ pub fn refresh(vexe string, requests []Request) ! {
 	}
 	mut failures := []string{}
 	mut refreshed_entries := map[string]bool{}
+	mut migrated_headers := map[string]string{}
+	mut incomplete_headers := map[string]bool{}
 	for request in requests {
 		if !valid_module(request.module) { return error('invalid module ${request.module}') }
-		if request.cwd != '' && !os.is_dir(request.cwd) { continue }
-		if request.compile_inputs.any(!os.is_file(it)) { continue }
-		if !compiler_available(os.dir(vexe), request) { continue }
+		for path, signature in request.legacy_headers { migrated_headers[path] = signature }
+		if (request.cwd != '' && !os.is_dir(request.cwd))
+			|| request.compile_inputs.any(!os.is_file(it))
+			|| !compiler_available(os.dir(vexe), request) {
+			for path in request.legacy_headers.keys() { incomplete_headers[path] = true }
+			continue
+		}
 		// An upstream removal leaves no module to warm. The compiler's source
 		// validation already makes its old objects unusable.
 		module_dir := os.join_path(os.dir(vexe), 'vlib', request.module.replace('.', os.path_separator))
-		if !os.is_dir(module_dir) { continue }
+		if !os.is_dir(module_dir) {
+			for path in request.legacy_headers.keys() { incomplete_headers[path] = true }
+			continue
+		}
 		use_entry := request.entry != '' && os.exists(request.entry)
 		if use_entry {
 			key := encode_request(Request{ ...request, module: 'builtin' })
@@ -495,6 +531,10 @@ pub fn refresh(vexe string, requests []Request) ! {
 		body := if request.is_test { 'fn test_cache_refresh() {}' } else { 'fn main() {}' }
 		if !use_entry { os.write_file(source, 'module main\n${imports}${body}\n')! }
 		mut command := request.args.clone()
+		if !use_entry {
+			listed := command.index('-file-list')
+			if listed >= 0 && listed + 1 < command.len { command.delete_many(listed, 2) }
+		}
 		// A live entry supplies current directives and project implementers. Only
 		// cache its module objects: project linker inputs are deliberately omitted.
 		environment['V3_CACHE_REFRESH_ENTRY'] = if use_entry { '1' } else { '' }
@@ -550,6 +590,18 @@ pub fn refresh(vexe string, requests []Request) ! {
 		}
 	}
 	if failures.len > 0 { return error(failures.join(', ')) }
+	for path, signature in migrated_headers {
+		if path in incomplete_headers || !os.is_file(path) { continue }
+		// Do not retire a header rewritten while the migration was in progress.
+		if hash_text(os.read_file(path)!) != signature { continue }
+		marker := '${path}.vup_migrated'
+		tmp := '${marker}.${tempname.unique_token()}'
+		os.write_file(tmp, signature)!
+		os.mv(tmp, marker) or {
+			os.rm(tmp) or {}
+			return err
+		}
+	}
 }
 
 fn flags_need_cwd(args []string, project []FlagGroup) bool {
