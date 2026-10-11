@@ -2135,7 +2135,46 @@ fn interface_box_fn_type_return_type(typ types.Type) ?types.Type {
 	return none
 }
 
+// collect_interface_array_insert_boxes records concrete elements before array mutation lowering.
+fn (mut t Transformer) collect_interface_array_insert_boxes(node flat.Node) {
+	if node.children_count < 2 {
+		return
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0
+		|| callee.value !in ['insert', 'prepend'] {
+		return
+	}
+	value_index := if callee.value == 'insert' { 2 } else { 1 }
+	if node.children_count != value_index + 1 {
+		return
+	}
+	receiver_id := t.a.child(callee, 0)
+	receiver_type := interface_box_unalias_type(types.unwrap_all_pointers(t.tc.expr_type(receiver_id) or {
+		t.tc.resolve_type(receiver_id)
+	}))
+	if receiver_type !is types.Array {
+		return
+	}
+	value_id := t.a.child(&node, value_index)
+	expected := t.interface_box_append_expected_type(receiver_type, receiver_id, value_id)
+	if !interface_box_expected_type(expected) {
+		return
+	}
+	value := t.a.node(value_id)
+	source_id := if value.kind == .prefix && value.value == '...' && value.children_count > 0 {
+		t.a.child(value, 0)
+	} else {
+		value_id
+	}
+	actual := t.tc.expr_type(source_id) or { t.tc.resolve_type(source_id) }
+	t.collect_interface_boxed_type(actual, expected)
+	t.collect_interface_boxed_value(source_id, expected)
+}
+
 fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node flat.Node) {
+	// Builtin array mutations have no ordinary function parameter signature to scan.
+	t.collect_interface_array_insert_boxes(node)
 	mut call_name := t.tc.resolved_call_name(call_id) or { '' }
 	callee := t.a.child_node(&node, 0)
 	if call_name.len == 0 {
@@ -2482,6 +2521,8 @@ fn (mut t Transformer) collect_interface_append_boxes(node flat.Node) {
 	lhs_type := t.tc.expr_type(lhs_id) or { t.tc.resolve_type(lhs_id) }
 	expected := t.interface_box_append_expected_type(lhs_type, lhs_id, rhs_id)
 	if interface_box_expected_type(expected) {
+		actual := t.tc.expr_type(rhs_id) or { t.tc.resolve_type(rhs_id) }
+		t.collect_interface_boxed_type(actual, expected)
 		t.collect_interface_boxed_value(rhs_id, expected)
 	}
 }
