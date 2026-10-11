@@ -57,19 +57,17 @@ const cached_runtime_function_names = ['__as_cast', '__new_array', '__new_array_
 // calls where a program can load a shared library, and leaves out without a word
 // where it is not declared. `cached_declarations_test.v` works this list out again
 // as well.
-const cached_module_function_names = ['c.gen_expr_lvalue', 'debug.after_call_hook',
-	'debug.before_call_hook', 'dl.interface_export_find', 'driver.compare_print_notices',
-	'embed_file.join_chunks', 'json2.decode', 'json2.encode', 'math.abs', 'math.fmod', 'math.min',
-	'naming.type_name_part', 'orm.v_sql_query_data_add', 'orm.v_sql_query_data_parentheses', 'os.exists',
+const cached_module_function_names = ['debug.after_call_hook', 'debug.before_call_hook',
+	'dl.interface_export_find', 'embed_file.join_chunks', 'json2.decode', 'json2.encode', 'math.abs',
+	'math.fmod', 'math.min', 'orm.v_sql_query_data_add', 'orm.v_sql_query_data_parentheses', 'os.exists',
 	'os.exists_in_system_path', 'os.file_ext', 'os.file_name', 'os.find_abs_path_of_executable',
 	'os.getpid', 'os.is_abs_path', 'os.is_dir', 'os.is_drive_rooted', 'os.is_executable', 'os.is_file',
 	'os.is_normal_path', 'os.is_unc_path', 'os.join_path', 'os.join_path_single',
 	'os.kind_of_existing_path', 'os.ls', 'os.mkdir', 'os.mkdir_all', 'os.posix_get_error_msg',
 	'os.read_bytes', 'os.read_file', 'os.real_path', 'os.walk', 'os.win_volume_len', 'overflow.add_i8',
-	'pref.detect_vexe', 'pref.detect_vroot', 'rand.init', 'sync.channel_select',
-	'sync.channel_select_lang', 'sync.cpanic', 'sync.cpanic_errno', 'sync.new_channel_st',
-	'sync.should_be_zero', 'time.now', 'time.sleep', 'time.ticks', 'time.vpc_now', 'time.vpc_now_darwin',
-	'types.compare_type_errors', 'types.compare_type_notices', 'veb.run_at']
+	'rand.init', 'sync.channel_select', 'sync.channel_select_lang', 'sync.cpanic', 'sync.cpanic_errno',
+	'sync.new_channel_st', 'sync.should_be_zero', 'time.now', 'time.sleep', 'time.ticks', 'time.vpc_now',
+	'time.vpc_now_darwin', 'veb.run_at']
 
 // cached_function_name_patterns are the names that a stage of the compiler puts
 // together when it runs, as far as its string literals show them: a name with
@@ -81,13 +79,10 @@ const cached_module_function_names = ['c.gen_expr_lvalue', 'debug.after_call_hoo
 // among them; neither is one that fits no function of vlib, which is the name of
 // something else: a temporary, a type, a keyword. `cached_declarations_test.v`
 // works this list out again too.
-const cached_function_name_patterns = ['*.arg*', '*.free', '*.json', '*.len', '*__array_insert_*',
-	'*__fn_literal_*', '*__param_*', '*__return_*', '*_break', '*_callback', '*_calls', '*_clone',
-	'*_continue', '*_ctx', '*_free', '*_hash', '*_idx', '*_key_*', '*_lhs', '*_map_key', '*_object',
-	'*_source', '*_str', '*_thread_args', '*_value_*', '*data', '*defined', '*implements', '*import',
-	'*nil', '*sizeof', '*typedef', '*typeof', '*void', '.arg*', 'arg*', 'array_contains_*',
-	'array_index_*', 'array_last_index_*', 'main*', 'map_clone_int_*', 'map_eq_int_*', 'map_hash_int_*',
-	'multi_return_*', 'ptr_*', 'voidptr*', 'vpc_*_*']
+const cached_function_name_patterns = ['*.arg*', '*.free', '*.json', '*.len', '*_break', '*_callback',
+	'*_clone', '*_ctx', '*_free', '*_hash', '*_idx', '*_key_*', '*_map_key', '*_object', '*_source',
+	'*_str', '*_thread_args', '*_value_*', '*data', '*defined', '*nil', '*void', '.arg*', 'arg*',
+	'main*', 'map_clone_int_*', 'map_eq_int_*', 'map_hash_int_*', 'ptr_*', 'voidptr*', 'vpc_*_*']
 
 // module_lifecycle_function_names are the functions that a program calls for each
 // of its modules that has them, without a call in its source.

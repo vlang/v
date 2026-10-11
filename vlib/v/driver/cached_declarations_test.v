@@ -416,6 +416,9 @@ fn test_module_function_names_cover_what_the_stages_spell() {
 	// declaration, and do something else without a word where there is none. Add
 	// the names to cached_module_function_names in cached_declarations.v.
 	assert missing == [], 'functions of modules that a stage names: ${missing}'
+	// A name that no stage spells any more keeps a declaration for nothing.
+	stale := cached_module_function_names.filter(it !in functions)
+	assert stale == [], 'functions of modules that no stage names: ${stale}'
 }
 
 fn test_a_program_that_lists_its_functions_keeps_every_declaration() {
@@ -601,6 +604,10 @@ fn test_function_name_patterns_cover_what_the_stages_build() {
 	// declaration, and do something else without a word where there is none. Add
 	// the names to cached_function_name_patterns in cached_declarations.v.
 	assert missing == [], 'names of functions that a stage builds: ${missing}'
+	// A pattern that fits no function of a library keeps nothing, and is tried
+	// against every function all the same.
+	stale := cached_function_name_patterns.filter(it !in patterns)
+	assert stale == [], 'names that no stage builds of a function of vlib: ${stale}'
 }
 
 fn test_name_patterns_fit_the_names_that_they_stand_for() {
