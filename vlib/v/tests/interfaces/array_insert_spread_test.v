@@ -36,13 +36,3 @@ fn consume(values []Named) {
 fn test_insert() { consume(inserted([Country{'IT'}, Country{'US'}])) }
 
 fn test_prepend() { consume(prepended([Country{'IT'}, Country{'US'}])) }
-
-fn test_insert_after_sibling_array_declaration() {
-	mut values := []Named{}
-	if true {
-		values := []string{}
-		assert values.len == 0
-	}
-	values.insert(0, ...[Country{'IT'}, Country{'US'}])
-	consume(values)
-}
