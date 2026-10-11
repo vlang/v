@@ -1,5 +1,6 @@
 import os
 import v.skills
+import v.util.cache_refresh
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
@@ -112,6 +113,162 @@ fn run_vup(root string, home string, tool string, bin_dir string, extra ...strin
 	return os.exec(args)
 }
 
+fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	previous := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	defer {
+		if value := previous { os.setenv('V3CACHE', value, true) } else { os.unsetenv('V3CACHE') }
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
+	os.mkdir_all(os.dir(source))!
+	os.write_file(source, 'module sample\n')!
+	for compiler in ['tcc', 'cc', 'clang', 'gcc'] {
+		for prod in [false, true] {
+			mut flags := ['-cc', compiler]
+			if prod { flags << '-prod' }
+			dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), '${compiler}_${prod}')
+			os.mkdir_all(dir)!
+			cache_refresh.record(dir, root, flags, false, {
+				'sample': [source]
+			}, [], '', false)!
+		}
+	}
+	cache_log := os.join_path(root, 'cache_calls.log')
+	for name in ['cc', 'clang', 'gcc', 'tcc'] {
+		write_executable(os.join_path(bin_dir, name), '#!/bin/sh\nexit 0\n')!
+	}
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
+		'    printf "%s\\n" "\$*" >> ' + os.quoted_path(cache_log) + '\n' +
+		'    echo "Caching module crypto.sample..."\n    exit 0;;\nesac\n' +
+		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+	// Cache refresh must run on both the early-return and compiler-rebuild paths.
+	for options in [[]string{}, ['-skip_current'], ['-prod']] {
+		os.write_file(cache_log, '')!
+		result := run_vup(root, home, tool, bin_dir, ...options)!
+		assert result.exit_code == 0, result.output
+		assert result.output.count('Caching module crypto.sample...') == 8, result.output
+		calls := os.read_file(cache_log)!.split_into_lines()
+		assert calls.len == 8, calls.str()
+		for compiler in ['tcc', 'cc', 'clang', 'gcc'] {
+			assert calls.any(it.starts_with('-cc ${compiler} -skip-running ')), calls.str()
+			assert calls.any(it.starts_with('-cc ${compiler} -prod -skip-running ')), calls.str()
+		}
+		assert !calls.any(it.contains(' run ')), calls.str()
+	}
+	// A failed refresh is visible and fails v up, while other modules still refresh.
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
+		'    printf "%s\\n" "\$*" >> ' + os.quoted_path(cache_log) + '\n' +
+		'    exit 1;;\nesac\necho "V 0.5.2 abcdef0"\nexit 0\n')!
+	os.write_file(cache_log, '')!
+	failure := run_vup(root, home, tool, bin_dir)!
+	assert failure.exit_code != 0, failure.output
+	assert failure.output.contains('refreshing cached vlib modules failed'), failure.output
+	assert os.read_file(cache_log)!.split_into_lines().len == 8
+}
+
+fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	previous_cache := os.getenv_opt('V3CACHE')
+	previous_tmp := os.getenv_opt('VTMP')
+	previous_dir := os.getwd()
+	defer {
+		if value := previous_cache {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		if value := previous_tmp { os.setenv('VTMP', value, true) } else { os.unsetenv('VTMP') }
+		os.chdir(previous_dir) or {}
+		os.rmdir_all(root) or {}
+	}
+	project := os.join_path(root, 'project')
+	os.mkdir_all(project)!
+	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
+	os.mkdir_all(os.dir(source))!
+	os.write_file(source, 'module sample\n')!
+	log := os.join_path(root, 'cache_paths.log')
+	for name in ['cc', 'clang', 'gcc', 'tcc'] {
+		write_executable(os.join_path(bin_dir, name), '#!/bin/sh\nexit 0\n')!
+	}
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
+		'    printf "%s\\n%s\\n" "\$V3CACHE" "\$VTMP" >> ' + os.quoted_path(log) + '\n' +
+		'    echo "Caching module crypto.sample..."\n    exit 0;;\nesac\n' +
+		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+	for variable in ['V3CACHE', 'VTMP'] {
+		os.chdir(project)!
+		os.unsetenv('V3CACHE')
+		os.setenv('VTMP', os.join_path(root, 'default_tmp'), true)
+		os.setenv(variable, '.cache with spaces', true)
+		dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), variable)
+		os.mkdir_all(dir)!
+		cache_refresh.record(dir, root, ['-cc', 'cc'], false, {
+			'sample': [source]
+		}, [], '', false)!
+		os.write_file(log, '')!
+		result := run_vup(root, home, tool, bin_dir)!
+		assert result.exit_code == 0, result.output
+		assert result.output.count('Caching module crypto.sample...') == 1, result.output
+		paths := os.read_file(log)!.split_into_lines()
+		assert paths.len == 2, paths.str()
+		assert paths[if variable == 'V3CACHE' { 0 } else { 1 }] == os.join_path(project, '.cache with spaces'), paths.str()
+		assert os.is_abs_path(paths[1]), paths.str()
+	}
+}
+
+fn test_vup_collects_isolated_cache_for_the_compiler_instead_of_the_tool() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	previous := os.environ()
+	defer {
+		for name in ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE'] {
+			if name in previous { os.setenv(name, previous[name], true) } else { os.unsetenv(name) }
+		}
+		os.rmdir_all(root) or {}
+	}
+	os.unsetenv('V3CACHE')
+	os.setenv('VTMP', os.join_path(root, 'tmp'), true)
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
+	compiler := os.join_path(root, 'v')
+	cache := cache_refresh.root_dir(root, compiler)
+	assert cache != cache_refresh.root_dir(root, tool)
+	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
+	os.mkdir_all(os.dir(source))!
+	os.write_file(source, 'module sample\n')!
+	dir := os.join_path(cache, 'config')
+	os.mkdir_all(dir)!
+	cache_refresh.record(dir, root, ['-cc', 'cc'], false, {
+		'sample': [source]
+	}, [], '', false)!
+	for name in ['cc', 'clang', 'gcc', 'tcc'] {
+		write_executable(os.join_path(bin_dir, name), '#!/bin/sh\nexit 0\n')!
+	}
+	write_executable(compiler, '#!/bin/sh\n' +
+		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
+		'    echo "Caching module crypto.sample..."\n    exit 0;;\nesac\n' +
+		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+	fallback := os.join_path(root, 'v1_fallback')
+	write_executable(fallback, '#!/bin/sh\necho fallback must not refresh >&2\nexit 1\n')!
+	assert cache != cache_refresh.root_dir(root, fallback)
+	for launcher in [compiler, fallback] {
+		result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=${launcher}', tool])
+		assert result.exit_code == 0, result.output
+		assert result.output.count('Caching module crypto.sample...') == 1, result.output
+	}
+}
+
 fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! {
 	$if windows {
 		return
@@ -121,7 +278,9 @@ fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! 
 		os.rmdir_all(root) or {}
 	}
 	git := os.find_abs_path_of_executable('git')!
-	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
+	for name in ['cc', 'clang', 'gcc', 'tcc'] {
+		write_executable(os.join_path(bin_dir, name), '#!/bin/sh\nexit 0\n')!
+	}
 	sources := os.join_path(root, 'source comparison')
 	os.mkdir_all(sources)!
 	paths := ['cmd/v/v.v', 'vlib/crypto/sha256/sha256.v', 'vlib/runtime/runtime.v', 'vlib/sync/sync.v',

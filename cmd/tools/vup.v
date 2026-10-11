@@ -4,6 +4,7 @@ import os
 import v.skills
 import v.util.version
 import v.util.recompilation
+import v.util.cache_refresh
 
 const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
@@ -87,6 +88,18 @@ fn main() {
 	}
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
+	// Keep caller-relative cache locations stable for both collection and the
+	// updated compiler's refresh children after entering the checkout.
+	if cache := os.getenv_opt('V3CACHE') {
+		os.setenv('V3CACHE', os.abs_path(cache), true)
+	}
+	os.setenv('VTMP', os.abs_path(os.vtmp_dir()), true)
+	// Save the old compiler's cache inventory before replacing it. Its cache
+	// configuration includes the executable identity, which changes on rebuild.
+	cached_modules := cache_refresh.collect(app.vroot, app.current_vexe_path()) or {
+		eprintln('v up: could not read the module cache: ${err}')
+		exit(1)
+	}
 	os.chdir(app.vroot)!
 	println('Updating V...')
 	app.update_from_master()
@@ -117,6 +130,7 @@ fn main() {
 			}
 		}
 		app.show_current_v_version()
+		app.refresh_cached_modules(cached_modules)
 		app.report_skills()
 		return
 	}
@@ -140,7 +154,15 @@ fn main() {
 		exit(1)
 	}
 	app.show_current_v_version()
+	app.refresh_cached_modules(cached_modules)
 	app.report_skills()
+}
+
+fn (app App) refresh_cached_modules(requests []cache_refresh.Request) {
+	cache_refresh.refresh(app.current_vexe_path(), requests) or {
+		eprintln('v up: refreshing cached vlib modules failed: ${err}')
+		exit(1)
+	}
 }
 
 // skills_refresh_hint is what the report tells the user to run.
