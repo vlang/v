@@ -1891,7 +1891,7 @@ fn test_stateless_request_requires_client_capabilities_in_meta() {
 
 	// With the key present the same request is served normally.
 	ok_params := '{"_meta":{"${meta_protocol_version_key}":"${protocol_version_2026_07_28}",' +
-		'"${meta_client_capabilities_key}":{}}'
+		'"${meta_client_capabilities_key}":{}}}'
 	ok := server.dispatch_message(Request{
 		id:     encode_id(2)
 		method: 'tools/list'

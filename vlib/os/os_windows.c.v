@@ -250,7 +250,7 @@ pub struct C._utimbuf {
 	modtime i64
 }
 
-fn C._utime(&char, voidptr) i32
+fn C.SetFileTime(voidptr, voidptr, voidptr, voidptr) i32
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
 	$if debug {
@@ -340,10 +340,45 @@ pub fn short_path(path string) string {
 	return join_path_single(short_parent, file_name(normalized))
 }
 
+// utime changes the access and modification times of the file or directory at path.
+// Times are Unix timestamps in seconds. Failures preserve the Win32 error code.
 pub fn utime(path string, actime i64, modtime i64) ! {
-	mut u := C._utimbuf{actime, modtime}
-	if C._utime(&char(path.str), voidptr(&u)) != 0 {
-		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	access_time := windows_filetime_from_unix_seconds(actime)!
+	write_time := windows_filetime_from_unix_seconds(modtime)!
+	wide_path := path.to_wide()
+	defer {
+		// to_wide allocates the UTF-16 buffer used by CreateFileW.
+		unsafe { free(wide_path) }
+	}
+	share_mode := C.FILE_SHARE_READ | C.FILE_SHARE_WRITE | C.FILE_SHARE_DELETE
+	handle := C.CreateFileW(wide_path, C.FILE_WRITE_ATTRIBUTES, share_mode, 0,
+		C.OPEN_EXISTING, C.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if handle == voidptr(-1) {
+		code := int(C.GetLastError())
+		return error_with_code(get_error_msg(code), code)
+	}
+	defer {
+		C.CloseHandle(handle)
+	}
+	if C.SetFileTime(handle, 0, voidptr(&access_time), voidptr(&write_time)) == 0 {
+		code := int(C.GetLastError())
+		return error_with_code(get_error_msg(code), code)
+	}
+}
+
+fn windows_filetime_from_unix_seconds(seconds i64) !Filetime {
+	// Windows absolute system times use positive signed 64-bit tick counts.
+	max_seconds := i64(u64(0x7fff_ffff_ffff_ffff) / windows_filetime_ticks_per_second) -
+		windows_filetime_unix_epoch_seconds
+	// A zero FILETIME means "leave unchanged" to SetFileTime, not the 1601 epoch.
+	if seconds <= -windows_filetime_unix_epoch_seconds || seconds > max_seconds {
+		code := int(C.ERROR_INVALID_PARAMETER)
+		return error_with_code(get_error_msg(code), code)
+	}
+	ticks := u64(seconds + windows_filetime_unix_epoch_seconds) * windows_filetime_ticks_per_second
+	return Filetime{
+		dw_low_date_time:  u32(ticks)
+		dw_high_date_time: u32(ticks >> 32)
 	}
 }
 

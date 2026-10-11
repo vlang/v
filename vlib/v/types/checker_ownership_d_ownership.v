@@ -396,7 +396,11 @@ fn ownership_clone_return_descs(src map[string][]OwnershipReturnDescendant) map[
 fn ownership_clone_return_param_descs(src map[string][]OwnershipReturnParamDescendant) map[string][]OwnershipReturnParamDescendant {
 	mut out := map[string][]OwnershipReturnParamDescendant{}
 	for key, values in src {
-		out[key] = values.clone()
+		mut copied := []OwnershipReturnParamDescendant{cap: values.len}
+		for value in values {
+			copied << OwnershipReturnParamDescendant{ ...value, via: value.via.clone() }
+		}
+		out[key] = copied
 	}
 	return out
 }
@@ -482,6 +486,98 @@ fn (mut tc TypeChecker) ownership_fork_for_parallel_check(src &TypeChecker) {
 		return
 	}
 	tc.ownership = ownership_clone_state_for_parallel(src.ownership)
+}
+
+fn ownership_clone_borrows(src map[string][]BorrowInfo) map[string][]BorrowInfo {
+	mut result := map[string][]BorrowInfo{}
+	for key, values in src { result[key] = values.clone() }
+	return result
+}
+
+fn ownership_clone_drop_lists(src map[string][]OwnershipDropEntry) map[string][]OwnershipDropEntry {
+	mut result := map[string][]OwnershipDropEntry{}
+	for key, values in src { result[key] = values.clone() }
+	return result
+}
+
+fn ownership_clone_frame(frame OwnershipFrame) OwnershipFrame {
+	return OwnershipFrame{
+		...frame
+		owned_vars:      frame.owned_vars.clone()
+		owned_var_types: frame.owned_var_types.clone()
+		moved_vars:      frame.moved_vars.clone()
+		borrowed_vars:   ownership_clone_borrows(frame.borrowed_vars)
+		array_lengths:   frame.array_lengths.clone()
+		fn_value_vars:   frame.fn_value_vars.clone()
+		pointer_aliases: frame.pointer_aliases.clone()
+		scope_frames:    ownership_clone_scope_frames(frame.scope_frames)
+	}
+}
+
+fn ownership_clone_frames(frames []OwnershipFrame) []OwnershipFrame {
+	mut result := []OwnershipFrame{cap: frames.len}
+	for frame in frames { result << ownership_clone_frame(frame) }
+	return result
+}
+
+fn ownership_clone_branch_groups(groups []OwnershipBranchGroup) []OwnershipBranchGroup {
+	mut result := []OwnershipBranchGroup{cap: groups.len}
+	for group in groups {
+		result << OwnershipBranchGroup{
+			...group
+			base:      ownership_clone_frame(group.base)
+			branches:  ownership_clone_frames(group.branches)
+			continues: ownership_clone_frames(group.continues)
+		}
+	}
+	return result
+}
+
+// Ownership observation may resolve a chained call and recheck its receiver. Retain the
+// complete current context while isolating every mutable payload from speculative effects.
+fn ownership_clone_state_for_observation(src &OwnershipState) &OwnershipState {
+	mut result := ownership_clone_state_for_parallel(src)
+	result.owned_vars = src.owned_vars.clone()
+	result.owned_var_types = src.owned_var_types.clone()
+	result.moved_vars = src.moved_vars.clone()
+	result.borrowed_vars = ownership_clone_borrows(src.borrowed_vars)
+	result.ownership_fn_literal_ret_types = src.ownership_fn_literal_ret_types.clone()
+	for key, values in src.ownership_fn_literal_param_types {
+		result.ownership_fn_literal_param_types[key] = values.clone()
+	}
+	result.drop_requirements = src.drop_requirements.clone()
+	result.drop_at_fn_exit = ownership_clone_drop_lists(src.drop_at_fn_exit)
+	result.drop_at_returns = ownership_clone_drop_lists(src.drop_at_returns)
+	result.drop_at_return_nodes = ownership_clone_drop_lists(src.drop_at_return_nodes)
+	result.drop_at_propagations = ownership_clone_drop_lists(src.drop_at_propagations)
+	result.drop_at_loop_controls = ownership_clone_drop_lists(src.drop_at_loop_controls)
+	result.drop_at_loop_iterations = ownership_clone_drop_lists(src.drop_at_loop_iterations)
+	result.drop_at_scope_exit = ownership_clone_drop_lists(src.drop_at_scope_exit)
+	result.drop_return_counts = src.drop_return_counts.clone()
+	result.drop_propagation_counts = src.drop_propagation_counts.clone()
+	result.drop_loop_control_counts = src.drop_loop_control_counts.clone()
+	result.drop_loop_iteration_counts = src.drop_loop_iteration_counts.clone()
+	result.drop_scope_counts = src.drop_scope_counts.clone()
+	result.drop_type_names = src.drop_type_names.clone()
+	result.array_lengths = src.array_lengths.clone()
+	result.ownership_fn_value_vars = src.ownership_fn_value_vars.clone()
+	result.cur_fn = src.cur_fn
+	result.frames = ownership_clone_frames(src.frames)
+	result.branch_groups = ownership_clone_branch_groups(src.branch_groups)
+	result.pending_value_branch_groups = ownership_clone_branch_groups(src.pending_value_branch_groups)
+	result.pending_loop_label = src.pending_loop_label
+	result.deferred_aggregate_consumption = src.deferred_aggregate_consumption.clone()
+	result.index_move_reads = src.index_move_reads.clone()
+	result.receiver_alias_clone_reads = src.receiver_alias_clone_reads.clone()
+	result.borrowed_projection_actions = src.borrowed_projection_actions.clone()
+	result.pointer_index_aliases = src.pointer_index_aliases.clone()
+	result.borrowed_storage_clone_reads = src.borrowed_storage_clone_reads.clone()
+	result.guard_move_reads = src.guard_move_reads.clone()
+	result.skip_drop_before_assign = src.skip_drop_before_assign.clone()
+	result.scope_frames = ownership_clone_scope_frames(src.scope_frames)
+	result.suppressed_checks = src.suppressed_checks
+	result.path_active = src.path_active
+	return result
 }
 
 // Ownership results outlive a checker batch: promote nested payloads while
@@ -9791,6 +9887,9 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 	}
 	for i in 0 .. node.children_count {
 		expr_id := tc.a.child(&node, i)
+		if returned_value_is_scalar_copy(tc.resolve_type(expr_id)) {
+			continue
+		}
 		if tc.unsafe_depth == 0 {
 			if local := tc.returned_receiver_local_storage_in_value(expr_id, []flat.NodeId{}, map[string]flat.NodeId{}) {
 				tc.record_error_at(.return_mismatch, 'cannot return a reference to local storage `${local}`', expr_id, tc.a.node(expr_id).pos)

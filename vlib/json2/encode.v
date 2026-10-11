@@ -134,20 +134,7 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 	} $else $if T.unaliased_typ is $array {
 		encoder.encode_array(val)
 	} $else $if T.unaliased_typ is $map {
-		encoder.output << `{`
-		encoder.open_items(val.len, false)
-		mut mi := 0
-		for key, value in val {
-			if mi > 0 {
-				encoder.separate_items(false)
-			}
-			encoder.encode_string('${key}')
-			encoder.write_key_separator()
-			encoder.encode_value(value)
-			mi++
-		}
-		encoder.close_items(val.len, false)
-		encoder.output << `}`
+		encoder.encode_map(val)
 	} $else $if T.unaliased_typ is $enum {
 		if encoder.enum_as_int || enum_uses_json_as_number[T]() {
 			encoder.encode_enum_number(val)
@@ -469,18 +456,30 @@ fn (mut encoder Encoder) encode_pointer_array_item[T](item T) {
 	encoder.encode_value(*item)
 }
 
+struct EncoderMapKey[K] {
+	name string
+	key  K
+}
+
 fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
+	mut keys := []EncoderMapKey[K]{cap: val.len}
+	for key, _ in val {
+		keys << EncoderMapKey[K]{
+			name: '${key}'
+			key:  key
+		}
+	}
+	// Compare the converted object names: integer keys also sort lexically.
+	keys.sort(a.name < b.name)
 	encoder.output << `{`
 	encoder.open_items(val.len, false)
-	mut i := 0
-	for key, value in val {
+	for i, entry in keys {
 		if i > 0 {
 			encoder.separate_items(false)
 		}
-		encoder.encode_string('${key}')
+		encoder.encode_string(entry.name)
 		encoder.write_key_separator()
-		encoder.encode_value[T](value)
-		i++
+		encoder.encode_value[T](val[entry.key])
 	}
 	encoder.close_items(val.len, false)
 	encoder.output << `}`

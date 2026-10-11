@@ -19,7 +19,7 @@ fn vendor_project() ! {
 	project := vmod.get_cache().get_by_folder(os.getwd())
 	if project.vmod_file == '' { return error('no v.mod found at or above `${os.getwd()}`') }
 	root := vmod.from_file(project.vmod_file)!
-	if root.dependencies.len == 0 {
+	if project_dependencies(root).len == 0 {
 		println('No dependencies to vendor.')
 		return
 	}

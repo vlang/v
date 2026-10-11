@@ -1,5 +1,11 @@
 module types
 
+import v.flat
+
+const storage_query_probe_max_observations = 65536
+const storage_query_probe_max_history_entries = 4096
+const storage_query_probe_max_history_bytes = 4 * 1024 * 1024
+
 struct StorageQueryResult {
 	writes map[string][]int
 	guards StorageQueryGuards
@@ -15,6 +21,218 @@ struct StorageQueryUnion {
 	guard_id  u64
 	incoming  bool
 	existing  bool
+}
+
+@[heap]
+struct StorageQueryProbe {
+	read_base              &TypeChecker = unsafe { nil }
+	initial_error_count    int
+	initial_node_count     int
+	initial_children_count int
+mut:
+	recheck_requested                bool
+	uncertain                        bool
+	value_observations               int
+	unguarded_reference_observations int
+	// Positive prune stamps let nested and cached proofs pass ancestor dependencies to parents.
+	prune_observations u64
+	pruned_ancestors   map[int]u64
+	history_no_local   map[int][]StorageQueryHistoryProof
+	history_count      int
+	history_bytes      int
+}
+
+struct StorageQueryHistoryProof {
+	key                          string
+	ancestors                    []int
+	unguarded_reference_observed bool
+}
+
+fn (tc &TypeChecker) storage_query_probe_note_unguarded_reference() {
+	if !isnil(tc.storage_query_probe) {
+		mut probe := tc.storage_query_probe
+		probe.unguarded_reference_observations++
+	}
+}
+
+fn (tc &TypeChecker) storage_query_probe_record_pruned_ancestors(ids []int) {
+	mut probe := tc.storage_query_probe
+	if probe.prune_observations == max_u64 {
+		probe.uncertain = true
+		return
+	}
+	probe.prune_observations++
+	for id in ids {
+		if id !in probe.pruned_ancestors && probe.pruned_ancestors.len >= storage_query_probe_max_observations {
+			probe.uncertain = true
+			return
+		}
+		probe.pruned_ancestors[id] = probe.prune_observations
+	}
+}
+
+fn (tc &TypeChecker) storage_query_probe_note_pruned_ancestors(ids []int) {
+	if isnil(tc.storage_query_probe) || ids.len == 0 { return }
+	mut probe := tc.storage_query_probe
+	$if prealloc {
+		if tc.storage_query_probe_scopes.len == 0 {
+			probe.uncertain = true
+			return
+		}
+		mut states := []voidptr{len: tc.storage_query_probe_scopes.len - 1, init: voidptr(0)}
+		suspend_storage_query_scopes(tc.storage_query_probe_scopes, mut states)
+		tc.storage_query_probe_record_pruned_ancestors(ids)
+		resume_storage_query_scopes(tc.storage_query_probe_scopes, states)
+	} $else {
+		tc.storage_query_probe_record_pruned_ancestors(ids)
+	}
+}
+
+fn (tc &TypeChecker) storage_query_probe_facts_unchanged() bool {
+	probe := tc.storage_query_probe
+	if isnil(probe) || probe.uncertain || probe.recheck_requested {
+		return false
+	}
+	base := probe.read_base
+	if isnil(base) || tc.errors.len != probe.initial_error_count
+		|| tc.a.nodes.len != probe.initial_node_count || tc.a.children.len != probe.initial_children_count
+		|| tc.fn_context.node_id != base.fn_context.node_id || voidptr(tc.cur_scope) != voidptr(base.cur_scope)
+		|| tc.cur_file != base.cur_file || tc.cur_module != base.cur_module
+		|| tc.smartcasts != base.smartcasts || tc.expected_expr_id != base.expected_expr_id
+		|| tc.trust_checked_expr_types != base.trust_checked_expr_types
+		|| tc.expected_expr_type != base.expected_expr_type || tc.cur_fn_ret_type != base.cur_fn_ret_type
+		|| tc.channel_send_or_expr_id != base.channel_send_or_expr_id
+		|| tc.fn_context.generic_params != base.fn_context.generic_params || tc.fn_context.return_type != base.fn_context.return_type
+		|| tc.placeholder_types != base.placeholder_types || tc.type_param_texts != base.type_param_texts
+		|| tc.type_params_expanding != base.type_params_expanding || tc.generic_decl_file != base.generic_decl_file {
+		return false
+	}
+	// Sibling forks can discard private annotations. Cache only the unchanged checked facts.
+	if tc.sparse_expr_type_values.len > 0 || tc.sparse_resolved_call_names.len > 0
+		|| tc.sparse_resolved_fn_values.len > 0 || tc.fork_fn_value_writes.len > 0
+		|| tc.sparse_statement_nodes.len > 0 {
+		return false
+	}
+	if !isnil(tc.fork_overlay) && (tc.fork_overlay.resolved_call_names.len > 0
+		|| tc.fork_overlay.resolved_fn_values.len > 0) {
+		return false
+	}
+	return true
+}
+
+fn (tc &TypeChecker) storage_query_probe_checked_call_info(id flat.NodeId) ?CallInfo {
+	if !tc.storage_query_probe_facts_unchanged() { return none }
+	base := tc.storage_query_probe.read_base
+	memo := base.body_resolve_memo
+	idx := int(id)
+	if !tc.memo_call_info || !base.memo_call_info || isnil(memo) || !memo.active
+		|| idx < memo.lo || idx > memo.hi {
+		return none
+	}
+	slot := idx & 2047
+	if memo.call_generations[slot] != memo.call_generation || memo.call_ids[slot] != idx {
+		return none
+	}
+	info := memo.call_infos[slot]
+	// Keep mutable array descriptors private while borrowing the completed checked result.
+	return CallInfo{ ...info, params: info.params.clone(), shared_params: info.shared_params.clone() }
+}
+
+fn (tc &TypeChecker) storage_query_probe_checked_type(id flat.NodeId) ?Type {
+	if !tc.storage_query_probe_facts_unchanged() { return none }
+	memo := tc.storage_query_probe.read_base.body_resolve_memo
+	idx := int(id)
+	if isnil(memo) || !memo.active || idx < memo.lo || idx > memo.hi {
+		return none
+	}
+	mi := idx - memo.lo
+	if memo.filled[mi] == 0 { return none }
+	return memo.types[mi]
+}
+
+fn (tc &TypeChecker) storage_query_probe_history_key(id flat.NodeId, visited []flat.NodeId, local_sources map[string]flat.NodeId) ?string {
+	if local_sources.len > 0 || !tc.storage_query_probe_facts_unchanged() { return none }
+	mut ancestors := []int{cap: visited.len}
+	for ancestor in visited {
+		if int(ancestor) !in ancestors { ancestors << int(ancestor) }
+	}
+	ancestors.sort()
+	return '${int(id)}:${ancestors}'
+}
+
+fn (tc &TypeChecker) storage_query_probe_cached_history(id flat.NodeId, visited []flat.NodeId, local_sources map[string]flat.NodeId) bool {
+	key := tc.storage_query_probe_history_key(id, visited, local_sources) or { return false }
+	mut probe := tc.storage_query_probe
+	for proof in probe.history_no_local[int(id)] {
+		if proof.key == key {
+			// A cached child must not hide reference observations from its parent certificate.
+			if proof.unguarded_reference_observed {
+				probe.unguarded_reference_observations++
+			} else {
+				tc.storage_query_probe_note_pruned_ancestors(proof.ancestors)
+			}
+			return !probe.uncertain && !probe.recheck_requested
+		}
+		if !proof.unguarded_reference_observed && proof.ancestors.all(flat.NodeId(it) in visited) {
+			// Keep only incoming ancestors that actually pruned this completed proof.
+			tc.storage_query_probe_note_pruned_ancestors(proof.ancestors)
+			return !probe.uncertain && !probe.recheck_requested
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) storage_query_probe_store_history(id flat.NodeId, key string, ancestors []int, unguarded_reference_observed bool, estimated_bytes int) {
+	mut probe := tc.storage_query_probe
+	mut entries := unsafe { probe.history_no_local[int(id)] }
+	entries << StorageQueryHistoryProof{ key: key.clone(), ancestors: ancestors.clone(), unguarded_reference_observed: unguarded_reference_observed }
+	probe.history_no_local[int(id)] = entries
+	probe.history_count++
+	probe.history_bytes += estimated_bytes
+}
+
+fn (tc &TypeChecker) storage_query_probe_remember_history(id flat.NodeId, visited []flat.NodeId, local_sources map[string]flat.NodeId, unguarded_reference_observed bool, prunes_before u64) {
+	key := tc.storage_query_probe_history_key(id, visited, local_sources) or { return }
+	mut probe := tc.storage_query_probe
+	for proof in probe.history_no_local[int(id)] {
+		if proof.key == key { return }
+	}
+	mut ancestors := []int{cap: visited.len}
+	for ancestor in visited {
+		if (unguarded_reference_observed || probe.pruned_ancestors[int(ancestor)] > prunes_before)
+			&& int(ancestor) !in ancestors {
+			ancestors << int(ancestor)
+		}
+	}
+	ancestors.sort()
+	estimated_bytes := key.len + ancestors.len * int(sizeof(int)) + 2 * int(sizeof(StorageQueryHistoryProof)) + 4 * int(sizeof(voidptr))
+	if probe.history_count >= storage_query_probe_max_history_entries
+		|| estimated_bytes > storage_query_probe_max_history_bytes - probe.history_bytes {
+		return
+	}
+	$if prealloc {
+		if tc.storage_query_probe_scopes.len == 0 { return }
+		mut states := []voidptr{len: tc.storage_query_probe_scopes.len - 1, init: voidptr(0)}
+		// Retained keys and map growth must outlive every nested disposable observer.
+		suspend_storage_query_scopes(tc.storage_query_probe_scopes, mut states)
+		tc.storage_query_probe_store_history(id, key, ancestors, unguarded_reference_observed, estimated_bytes)
+		resume_storage_query_scopes(tc.storage_query_probe_scopes, states)
+	} $else {
+		tc.storage_query_probe_store_history(id, key, ancestors, unguarded_reference_observed, estimated_bytes)
+	}
+}
+
+fn (tc &TypeChecker) storage_query_probe_can_observe() bool {
+	if isnil(tc.storage_query_probe) { return true }
+	mut probe := tc.storage_query_probe
+	if probe.recheck_requested || probe.uncertain { return false }
+	if probe.value_observations >= storage_query_probe_max_observations {
+		// Abandon the optional proof, never the original storage-source analysis.
+		probe.uncertain = true
+		return false
+	}
+	probe.value_observations++
+	return true
 }
 
 @[heap]
@@ -317,11 +535,11 @@ fn (cache &VisibleMutationCache) storage_query_union(key string, result map[stri
 		if paths.len == 0 { return proof }
 		$if prealloc {
 			scope := unsafe { prealloc_scope_begin() }
-			equal := storage_query_ordered_results_equal(paths, result, entry.writes)
+			equal := storage_query_results_equal(paths, result, entry.writes)
 			unsafe { prealloc_scope_end(scope) }
 			if equal { return proof }
 		} $else {
-			if storage_query_ordered_results_equal(paths, result, entry.writes) {
+			if storage_query_results_equal(paths, result, entry.writes) {
 				return proof
 			}
 		}
@@ -344,11 +562,11 @@ fn (cache &VisibleMutationCache) storage_query_forward_union(key string, result 
 			if paths.len > 0 {
 				$if prealloc {
 					scope := unsafe { prealloc_scope_begin() }
-					equal := storage_query_ordered_results_equal(paths, result, entry.writes)
+					equal := storage_query_results_equal(paths, result, entry.writes)
 					unsafe { prealloc_scope_end(scope) }
 					if !equal { continue }
 				} $else {
-					if !storage_query_ordered_results_equal(paths, result, entry.writes) {
+					if !storage_query_results_equal(paths, result, entry.writes) {
 						continue
 					}
 				}
@@ -496,16 +714,15 @@ fn storage_query_entry_bytes(key string, guards StorageQueryGuards) int {
 		(guards.present.len + guards.absent.len) * int(sizeof(u64))
 }
 
-fn storage_query_ordered_results_equal(paths []string, result map[string][]int, candidate map[string][]int) bool {
+fn storage_query_results_equal(paths []string, result map[string][]int, candidate map[string][]int) bool {
 	if paths.len != candidate.len { return false }
-	candidate_paths := candidate.keys()
-	for i, path in paths {
-		if path != candidate_paths[i] { return false }
+	// Storage paths map to deduplicated source sets; traversal order is not provenance.
+	for path in paths {
 		sources := result[path]
-		candidate_sources := candidate[path]
+		candidate_sources := candidate[path] or { return false }
 		if sources.len != candidate_sources.len { return false }
-		for j, source in sources {
-			if source != candidate_sources[j] { return false }
+		for source in sources {
+			if source !in candidate_sources { return false }
 		}
 	}
 	return true
@@ -516,14 +733,14 @@ fn (cache &VisibleMutationCache) storage_query_shared_result(key string, result 
 	for entry in cache.storage_query_results[key] {
 		if result.len != entry.writes.len { continue }
 		if paths.len == 0 { return entry.writes }
-		// Key copies for each comparison are scratch, even when many variants share a payload.
+		// Comparisons remain scratch-scoped when many variants share a payload.
 		$if prealloc {
 			scope := unsafe { prealloc_scope_begin() }
-			equal := storage_query_ordered_results_equal(paths, result, entry.writes)
+			equal := storage_query_results_equal(paths, result, entry.writes)
 			unsafe { prealloc_scope_end(scope) }
 			if equal { return entry.writes }
 		} $else {
-			if storage_query_ordered_results_equal(paths, result, entry.writes) {
+			if storage_query_results_equal(paths, result, entry.writes) {
 				return entry.writes
 			}
 		}
@@ -557,6 +774,10 @@ fn (mut cache VisibleMutationCache) cache_storage_query_result(key string, resul
 }
 
 fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {
+	return tc.fork_storage_query_view_with_annotations(true)
+}
+
+fn (tc &TypeChecker) fork_storage_query_view_with_annotations(copy_annotations bool) &TypeChecker {
 	mut view := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	view.transform_signature_maps_shared = true
 	view.transform_struct_maps_shared = true
@@ -565,12 +786,16 @@ fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {
 	view.fork_overlay = &TransformForkOverlay{
 		base_node_count: -1
 	}
-	if !isnil(tc.fork_overlay) {
-		view.fork_overlay.resolved_call_names = tc.fork_overlay.resolved_call_names.clone()
-		view.fork_overlay.resolved_fn_values = tc.fork_overlay.resolved_fn_values.clone()
+	if copy_annotations {
+		if !isnil(tc.fork_overlay) {
+			view.fork_overlay.resolved_call_names = tc.fork_overlay.resolved_call_names.clone()
+			view.fork_overlay.resolved_fn_values = tc.fork_overlay.resolved_fn_values.clone()
+		}
+		view.sparse_resolved_fn_values = tc.sparse_resolved_fn_values.clone()
+		view.fork_fn_value_writes = tc.fork_fn_value_writes.clone()
+		view.sparse_expr_type_values = tc.sparse_expr_type_values.clone()
+		view.sparse_resolved_call_names = tc.sparse_resolved_call_names.clone()
 	}
-	view.sparse_resolved_fn_values = tc.sparse_resolved_fn_values.clone()
-	view.fork_fn_value_writes = tc.fork_fn_value_writes.clone()
 	view.v_fn_semantic_names = tc.v_fn_semantic_names
 	view.verbose = tc.verbose
 	view.file_scope = tc.file_scope
@@ -588,8 +813,6 @@ fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {
 	view.parallel_check_sparse = tc.parallel_check_sparse
 	view.check_range_lo = tc.check_range_lo
 	view.check_range_hi = tc.check_range_hi
-	view.sparse_expr_type_values = tc.sparse_expr_type_values.clone()
-	view.sparse_resolved_call_names = tc.sparse_resolved_call_names.clone()
 	mut base := tc.type_cache
 	if !isnil(base) && isnil(base.base) && base.local_fn_decl_indexed_len < tc.a.nodes.len {
 		// A base cache freezes the declaration index. Keep cold-query AST scans.
@@ -600,6 +823,47 @@ fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {
 	view.visible_mutation_cache = &VisibleMutationCache{
 		base:          tc.visible_mutation_cache
 		storage_query: true
+	}
+	return view
+}
+
+// Observation keeps the checked cache as a read-only base while new annotations stay private.
+// Any request to check a node invalidates the proof before it can change the live checker.
+fn (tc &TypeChecker) fork_storage_observation_view() &TypeChecker {
+	// The outer observer reads original annotations through read_base; cloning
+	// them here would only allocate maps that the private write sets replace.
+	mut view := tc.fork_storage_query_view_with_annotations(!isnil(tc.storage_query_probe))
+	view.storage_query_probe = if isnil(tc.storage_query_probe) {
+		&StorageQueryProbe{
+			read_base:              tc
+			initial_error_count:    tc.errors.len
+			initial_node_count:     tc.a.nodes.len
+			initial_children_count: tc.a.children.len
+		}
+	} else {
+		tc.storage_query_probe
+	}
+	view.parallel_check_sparse = true
+	view.check_range_lo = -1
+	view.check_range_hi = -1
+	view.placeholder_types = tc.placeholder_types.clone()
+	if isnil(tc.storage_query_probe) {
+		// The base readers retain the caller's precedence and dense readable range.
+		// Only annotations made during observation belong in these private maps.
+		view.sparse_expr_type_values = map[int]Type{}
+		view.sparse_resolved_call_names = map[int]string{}
+		view.sparse_statement_nodes = map[int]bool{}
+		view.fork_overlay.resolved_call_names = map[int]string{}
+		view.sparse_resolved_fn_values = map[int]string{}
+		view.fork_fn_value_writes = map[int]string{}
+		view.fork_overlay.resolved_fn_values = map[int]string{}
+	} else {
+		view.sparse_statement_nodes = tc.sparse_statement_nodes.clone()
+	}
+	$if ownership ? {
+		if isnil(tc.storage_query_probe) {
+			view.ownership = ownership_clone_state_for_observation(tc.ownership)
+		}
 	}
 	return view
 }

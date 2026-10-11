@@ -79,6 +79,10 @@ Use `@[omitempty]` to omit empty struct fields. For boolean fields, including op
 booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects encoding:
 `decode` still assigns an explicit empty value such as `0` or `""` from the input.
 
+Maps encode with keys sorted lexically by their string representation, before JSON
+escaping. Integer keys therefore place `"10"` before `"2"`. This applies to nested
+maps and maps held in `Any`, and to compact, pretty, and appended output.
+
 #### decode[T]
 
 `decode_reuse[T](text, mut buffer, options)` accepts a `DecodeBuffer` and retains its

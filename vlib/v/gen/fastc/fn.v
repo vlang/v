@@ -1430,7 +1430,7 @@ fn fastc_expression_tokens_contain(tokens []FastcExpressionToken, wanted token.T
 
 fn fastc_expression_tokens_contain_boolean_operator(tokens []FastcExpressionToken) bool {
 	for item in tokens {
-		if item.tok in [.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .not] {
+		if item.tok in [.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .not, .key_in, .not_in] {
 			return true
 		}
 	}

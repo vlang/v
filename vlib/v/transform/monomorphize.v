@@ -5127,6 +5127,18 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 		substituted
 	}
 	qualified := t.qualify_specialized_signature_type_text(locked, decl)
+	if !isnil(t.tc) {
+		alias_base, _, applied_alias := generic_app_parts(qualified)
+		if applied_alias && (alias_base in t.tc.type_aliases
+			|| '${decl.module}.${alias_base}' in t.tc.type_aliases) {
+			expanded := t.normalize_type_in_module(qualified, decl.module)
+			// Array indexing needs the expanded element type. Callback aliases keep
+			// their nominal signature for the remaining specialization steps.
+			if expanded.starts_with('[]') {
+				return expanded
+			}
+		}
+	}
 	// A composite that carries a collision-locked `main.` type (e.g. `fn (main.Context)`
 	// from `fn wrap[T](cb fn (T))` specialized with a main `Context`) must not go through
 	// the parse + name() round-trip below: name() renders `main.Context` back to a bare
@@ -7303,6 +7315,14 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		if t.raw_var_type(callee.value).len > 0 {
 			return none
 		}
+	}
+	// Non-generic helpers cannot be specialized. Resolve a candidate before looking
+	// up lexical bindings: synthesized callees have no source-parent index entry,
+	// so an unnecessary lookup can scan the entire AST for every cloned helper call.
+	key := t.unshadowed_generic_call_decl_key(id, node, callee, module_name, decls) or {
+		return none
+	}
+	if callee.kind == .ident && !callee.value.contains('.') {
 		// Collection, cloning and body pre-passes run before locals enter var_types.
 		// During declaration-ordered specialization lowering, the live scope resolves
 		// shadows without repeatedly scanning the whole AST for synthesized ancestors.
@@ -7315,6 +7335,10 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 			}
 		}
 	}
+	return key
+}
+
+fn (mut t Transformer) unshadowed_generic_call_decl_key(id flat.NodeId, node flat.Node, callee flat.Node, module_name string, decls map[string]GenericFnDecl) ?string {
 	if !isnil(t.tc) {
 		if resolved := t.tc.resolved_call_name(id) {
 			if key := t.generic_resolved_call_decl_key(resolved, callee, node, module_name, decls) {
@@ -11939,6 +11963,12 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			value_arg := t.a.nodes[int(value_arg_id)]
 			is_forwarded_mut_value := value_arg.kind == .ident
 				&& t.mut_value_ident_nodes[int(value_arg_id)]
+			if is_receiver && param_idx == 0 && raw_arg_type.starts_with('&')
+				&& !child.typ.starts_with('&') && !child.typ.starts_with('mut ') {
+				// A by-value receiver auto-dereferences the captured pointer. Infer
+				// its inner arguments from `Box[int]`, rather than `&Box[int]`.
+				raw_arg_type = raw_arg_type[1..]
+			}
 			if (child.is_mut || child.typ.starts_with('mut ')) && raw_arg_type.starts_with('&')
 				&& !is_forwarded_mut_value {
 				// An ordinary pointer local passed to `mut T` has V's source-level
@@ -13849,12 +13879,43 @@ fn (t &Transformer) lock_colliding_main_substitution_type_text(original string, 
 	if source_is_app && concrete_is_app && source_base == concrete_base
 		&& source_args.len == concrete_args.len {
 		mut locked_args := []string{cap: concrete_args.len}
+		mut args_locked := false
 		for i, concrete_arg in concrete_args {
-			locked_args << t.lock_colliding_main_substitution_type_text(source_args[i], concrete_arg, module_name, generic_params)
+			locked := t.lock_colliding_main_substitution_type_text(source_args[i], concrete_arg, module_name, generic_params)
+			if locked != concrete_arg.trim_space() {
+				args_locked = true
+			}
+			locked_args << locked
 		}
-		return '${concrete_base}[${locked_args.join(', ')}]'
+		// Once an argument is locked (`main.Item`), the text is a qualified semantic
+		// spelling, which codegen parses without the decl module context. A bare
+		// decl-module base (`List`) would then lose its module (`List[Item]` instead of
+		// `lib.List[Item]`), so qualify it too.
+		base := if args_locked {
+			t.qualify_decl_module_generic_base(concrete_base, module_name)
+		} else {
+			concrete_base
+		}
+		return '${base}[${locked_args.join(', ')}]'
 	}
 	return t.lock_colliding_main_generic_type_text(concrete, module_name)
+}
+
+// qualify_decl_module_generic_base qualifies a bare generic base declared in
+// `module_name` (e.g. `List` -> `lib.List`); other bases are returned unchanged.
+fn (t &Transformer) qualify_decl_module_generic_base(base string, module_name string) string {
+	clean := base.trim_space()
+	if clean.contains('.') || module_name in ['', 'main', 'builtin'] {
+		return clean
+	}
+	qname := '${module_name}.${clean}'
+	if qname in t.structs || qname in t.sum_types || (!isnil(t.tc)
+		&& (qname in t.tc.struct_generic_params || qname in t.tc.sum_generic_params
+			|| qname in t.tc.interface_names || qname in t.tc.interface_generic_params
+			|| qname in t.tc.type_aliases || qname in t.tc.type_alias_generic_params)) {
+		return qname
+	}
+	return clean
 }
 
 // lock_colliding_main_generic_type_text rewrites a bare program-module (main)
@@ -15264,7 +15325,10 @@ fn (t &Transformer) generic_args_have_placeholders(args []string) bool {
 
 fn (t &Transformer) generic_arg_is_unresolved(arg string) bool {
 	if t.skip_generics {
-		return false
+		// Anonymous literals still need materialization in nongeneric programs.
+		// Skipping generic specialization must not make their provisional storage
+		// type authoritative over the concrete literal type.
+		return inferred_anonymous_struct_placeholder(arg)
 	}
 	// Hot: called for every call/assign type text during body transforms, with
 	// heavy repetition (a few thousand distinct texts per build). The result is
@@ -15291,9 +15355,33 @@ fn (t &Transformer) generic_arg_is_unresolved(arg string) bool {
 	return t.generic_arg_is_unresolved_uncached(arg)
 }
 
+fn inferred_anonymous_struct_placeholder(typ string) bool {
+	clean := typ.trim_space()
+	if clean.starts_with('[]') {
+		return inferred_anonymous_struct_placeholder(clean[2..])
+	}
+	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
+		return inferred_anonymous_struct_placeholder(clean[1..])
+	}
+	if clean.starts_with('map[') {
+		end := generic_matching_bracket(clean, 3)
+		if end < clean.len {
+			return inferred_anonymous_struct_placeholder(clean[4..end])
+				|| inferred_anonymous_struct_placeholder(clean[end + 1..])
+		}
+	}
+	if clean.starts_with('[') {
+		end := generic_matching_bracket(clean, 0)
+		if end < clean.len {
+			return inferred_anonymous_struct_placeholder(clean[end + 1..])
+		}
+	}
+	return clean.all_after_last('.') == 'struct'
+}
+
 fn (t &Transformer) generic_arg_is_unresolved_uncached(arg string) bool {
 	clean := arg.trim_space()
-	if clean.len == 0 || clean.all_after_last('.') in ['unknown', 'void', 'generic'] {
+	if clean.len == 0 || clean.all_after_last('.') in ['unknown', 'void', 'generic', 'struct'] {
 		return true
 	}
 	if clean.starts_with('(') && clean.ends_with(')') {

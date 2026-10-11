@@ -12,6 +12,8 @@ import v.workers
 const comptime_unsupported_late_generic_call = '__v3_comptime_unsupported_late_generic_call'
 const comptime_method_selector_marker = '__v3_comptime_method_selector'
 const comptime_method_selector_fn_type_prefix = '__v3_comptime_method_selector_fn_type:'
+const comptime_clone_syntax_flags = flat.node_flag_freed_assignment |
+	flat.node_flag_literal_interpolation_text
 
 // vmod_root supports vmod root handling for Transformer.
 fn (t &Transformer) vmod_root() string {
@@ -999,7 +1001,7 @@ fn (mut t Transformer) clone_attribute_subst_children_with_value(node flat.Node,
 		typ:            node.typ
 		payload:        flat.node_payload(node.generic_params().clone())
 		is_mut:         node.is_mut
-		flags:          node.flags & flat.node_flag_freed_assignment
+		flags:          node.flags & comptime_clone_syntax_flags
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
@@ -1263,7 +1265,7 @@ fn (mut t Transformer) clone_param_subst_children_with_value(node flat.Node, var
 		typ:            node.typ
 		payload:        flat.node_payload(node.generic_params().clone())
 		is_mut:         node.is_mut
-		flags:          node.flags & flat.node_flag_freed_assignment
+		flags:          node.flags & comptime_clone_syntax_flags
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
@@ -2234,7 +2236,7 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 		typ:            typ
 		payload:        flat.node_payload(node.generic_params().clone())
 		is_mut:         node.is_mut
-		flags:          node.flags & flat.node_flag_freed_assignment
+		flags:          node.flags & comptime_clone_syntax_flags
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
@@ -3027,7 +3029,7 @@ fn (mut t Transformer) clone_value_subst_scoped(id flat.NodeId, var_name string,
 		value:          value
 		typ:            node.typ
 		is_mut:         node.is_mut
-		flags:          node.flags & flat.node_flag_freed_assignment
+		flags:          node.flags & comptime_clone_syntax_flags
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
@@ -3586,7 +3588,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		}
 		typ:            typ
 		is_mut:         node.is_mut
-		flags:          node.flags & flat.node_flag_freed_assignment
+		flags:          node.flags & comptime_clone_syntax_flags
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
@@ -3757,7 +3759,7 @@ fn (mut t Transformer) clone_node_preserving_children_with_type(node flat.Node, 
 		value:          node.value
 		typ:            typ
 		is_mut:         node.is_mut
-		flags:          node.flags & flat.node_flag_freed_assignment
+		flags:          node.flags & comptime_clone_syntax_flags
 		children_start: start
 		children_count: node.children_count
 	})
@@ -4594,7 +4596,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 			value:          node.value
 			typ:            node.typ
 			is_mut:         node.is_mut
-			flags:          node.flags & flat.node_flag_freed_assignment
+			flags:          node.flags & comptime_clone_syntax_flags
 			children_start: start
 			children_count: flat.child_count(children.len)
 		})
@@ -5066,7 +5068,7 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 		value:          cloned_value
 		typ:            typ
 		is_mut:         node.is_mut
-		flags:          node.flags & flat.node_flag_freed_assignment
+		flags:          node.flags & comptime_clone_syntax_flags
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})

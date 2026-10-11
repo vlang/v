@@ -194,6 +194,10 @@ deferred_tinycc_build_failed() {
   exit 2
 }
 
+## --config-new_macho=no: write the older LC_DYLD_INFO_ONLY rebase/bind info instead of
+## chained fixups. TCC's chained fixups also list the zero-fill __bss pages, which macOS 27
+## then maps from the file, so programs can start with garbage in their globals.
+## See https://github.com/vlang/v/issues/29744 .
 configure_tinycc() {
   ./configure \
         --prefix=$TCC_FOLDER \
@@ -203,7 +207,7 @@ configure_tinycc() {
         --crtprefix=$TCC_FOLDER/lib:/usr/lib \
         --sysincludepaths=$TCC_FOLDER/include:$TCC_FOLDER/lib/include:/usr/local/include:/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include:/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include \
         --libpaths=$TCC_FOLDER/lib:/usr/local/lib:/usr/lib:/lib \
-	    --config-new_macho=yes \
+	    --config-new_macho=no \
 	    --config-codesign \
         --cc="$CC" \
         --extra-cflags="$CFLAGS" \

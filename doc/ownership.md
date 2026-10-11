@@ -39,11 +39,12 @@ temporary query state are released when the outer query finishes.
 Membership conditions are stored as exact lists of present and absent declaration IDs. The
 estimate covers cache keys, paths, source indexes, entry and array headers, and eight bytes per
 membership condition; it is separate from the compiler's process-memory limit.
-Entries for the same declaration and parameter share a retained result when its path order and
-ordered source indexes match exactly. Each entry still retains its own membership conditions;
+Entries for the same declaration and parameter share a retained result when their storage paths
+and source-parameter sets match, regardless of traversal order.
+Each entry still retains its own membership conditions;
 shared paths and source indexes are charged once. Previously retained allocations stay charged
 until the query finishes.
-If a completed query and a retained entry prove the same ordered result under complementary
+If a completed query and a retained entry prove the same result under complementary
 conditions for one declaration ID, a certificate can omit it when its other conditions include
 the partner's conditions. An existing certificate can be updated even after the cache reaches
 its limits, without allocating another buffer or refunding its original charge. Retained results
@@ -60,6 +61,13 @@ otherwise the original one-condition update remains available.
 Serial ownership checks reuse resolved call information during return analysis, as parallel
 checks do. This avoids false moved-value diagnostics from rechecking an earlier chained-call
 initializer after its receiver has moved in a return.
+Return analysis can first prove a superset of binding sources harmless in an isolated observer.
+This optional proof stops after 65,536 observer steps. Its history cache retains at most 4,096
+entries, with an estimated 4 MiB allocation charge. Completed proofs retain the incoming ancestor
+conditions they used; reference checks preserve their cycle diagnostics.
+The observer reads completed call and type information only while its checked context is unchanged,
+leaving the original caches intact. Any uncertainty, diagnostic, or request to recheck a node falls
+back to the original storage-source analysis.
 
 If the compiler memory limit is exceeded,
 it reports the limit and exits with status 1, without running cleanup against active workers.
@@ -69,6 +77,12 @@ it reports the limit and exits with status 1, without running cleanup against ac
 Call `.to_owned()` on a string to create an owned copy. Copies made with `.clone()` also
 participate in ownership tracking. Regular string literals and primitive types
 (int, f64, bool, ...) are unaffected.
+Returning a scalar field or scalar array element copies its value, including when accessed through
+a pointer to local storage. Scalar copies do not keep a reference to that storage.
+Interpolation with multiple parts copies their storage. A sole string part can pass through
+unchanged, and closures retain their captured references.
+Escaped interpolation text stays literal through compile-time reflection and promoted defaults.
+Literal text supplied by reflected attributes or source-location variables follows the same rule.
 
 ```v okfmt
 s := 'hello'.to_owned() // s is owned

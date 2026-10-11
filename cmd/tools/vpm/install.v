@@ -32,7 +32,7 @@ fn vpm_install(query []string) {
 			// - without additional module arguments.
 			println('Detected v.mod file inside the project directory. Using it...')
 			manifest := vmod.from_file('./v.mod') or { panic(err) }
-			manifest.dependencies
+			project_dependencies(manifest)
 		} else {
 			vpm_error('specify at least one module for installation.',
 				details: 'example: `v install publisher.package` or `v install https://github.com/owner/repository`'

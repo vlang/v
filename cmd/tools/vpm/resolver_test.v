@@ -20,7 +20,7 @@ fn testsuite_begin() {
 	os.setenv('VEXE', joint_vexe, true)
 	os.unsetenv('CI')
 	cmd_ok_args(@LOCATION, [joint_vexe, '-cc', @CCOMPILER, '-gc', 'none', '-o', joint_tool,
-		os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
+		os.dir(@FILE)])
 }
 
 fn testsuite_end() {
@@ -540,4 +540,289 @@ fn test_joint_range_and_exact_branch_alias_can_share_a_tagged_commit() {
 	joint_project('branch_range', [repo + '@^1', repo + '@release'])!
 	joint_cli(['install'])
 	assert joint_head('branch_range', 'shared') == head
+}
+
+fn joint_set_dev_dependencies(dir string, dependencies []string) ! {
+	path := os.join_path(dir, 'v.mod')
+	mut manifest := vmod.from_file(path)!
+	manifest.unknown['dev_dependencies'] = dependencies
+	os.write_file(path, vmod.encode(manifest))!
+}
+
+fn test_joint_root_dev_dependencies_install_explain_and_vendor_only_runtime_transitives() {
+	child := joint_repo('dev_graph', 'child')!
+	child_head := joint_tag(child, 'child', 'v1.0.0', [])!
+	tool := joint_repo('dev_graph', 'devtool')!
+	joint_tag(tool, 'devtool', 'v1.0.0', [child + '@^1'])!
+	joint_set_dev_dependencies(tool, [os.join_path(joint_root, 'missing_dev_dependency') + '@^1'])!
+	joint_git(tool, ['add', 'v.mod'])
+	joint_git(tool, ['commit', '-m', 'development requirements'])
+	joint_git(tool, ['tag', '-f', 'v1.0.0'])
+	project := joint_project('dev_graph', [])!
+	joint_set_dev_dependencies(project, [tool + '@^1'])!
+	joint_cli(['install'])
+	assert joint_head('dev_graph', 'devtool') == joint_git(tool, ['rev-parse', 'v1.0.0'])
+	assert joint_head('dev_graph', 'child') == child_head
+	assert read_lockfile(project)!.modules.len == 2
+	why := joint_cli(['why', 'devtool'])
+	assert why.contains('devtool (requires ^1, installed v1.0.0)'), why
+	graph := joint_cli(['why', '--graph'])
+	assert graph.contains('joint_app -> devtool@v1.0.0 (requires ^1)'), graph
+	assert graph.contains('devtool@v1.0.0 -> child@v1.0.0 (requires ^1)'), graph
+	assert !graph.contains('missing_dev_dependency'), graph
+	joint_cli(['vendor'])
+	assert os.is_file(os.join_path(project, 'vendor', 'devtool', 'v.mod'))
+	assert os.is_file(os.join_path(project, 'vendor', 'child', 'v.mod'))
+	assert !os.exists(os.join_path(project, 'vendor', 'missing_dev_dependency'))
+}
+
+fn test_joint_root_dev_dependencies_honor_locked_frozen_and_precise_updates() {
+	repo := joint_repo('dev_locked', 'devtool')!
+	old := joint_tag(repo, 'devtool', 'v1.0.0', [])!
+	project := joint_project('dev_locked', [])!
+	joint_set_dev_dependencies(project, [repo + '@^1'])!
+	joint_cli(['install'])
+	before := os.read_file(lockfile_path(project))!
+	new := joint_tag(repo, 'devtool', 'v1.1.0', [])!
+	joint_cli(['install', '--locked'])
+	joint_cli(['install', '--frozen'])
+	assert joint_head('dev_locked', 'devtool') == old
+	assert os.read_file(lockfile_path(project))! == before
+	joint_cli(['update', '-p', 'devtool', '--precise', '1.1.0'])
+	assert joint_head('dev_locked', 'devtool') == new
+	assert read_lockfile(project)!.modules[repo].requested == repo + '@^1'
+	joint_set_dev_dependencies(project, [repo + '@^2'])!
+	locked := os.read_file(lockfile_path(project))!
+	cmd_fail_args(@LOCATION, [joint_tool, 'install', '--frozen'])
+	assert os.read_file(lockfile_path(project))! == locked
+	assert joint_head('dev_locked', 'devtool') == new
+}
+
+fn test_joint_root_dev_dependencies_report_outdated_and_widen_their_own_field() {
+	repo := joint_repo('dev_latest', 'devtool')!
+	old := joint_tag(repo, 'devtool', 'v1.0.0', [])!
+	runtime := joint_repo('dev_latest', 'runtime')!
+	runtime_old := joint_tag(runtime, 'runtime', 'v1.0.0', [])!
+	project := joint_project('dev_latest', [runtime + '@^1'])!
+	joint_set_dev_dependencies(project, [repo + '@^1'])!
+	joint_cli(['install'])
+	minor := joint_tag(repo, 'devtool', 'v1.1.0', [])!
+	major := joint_tag(repo, 'devtool', 'v2.0.0', [])!
+	joint_tag(runtime, 'runtime', 'v2.0.0', [])!
+	lock_before := os.read_file(lockfile_path(project))!
+	outdated := joint_cli(['outdated'])
+	assert outdated.contains('devtool\tv1.0.0\tv1.1.0\tv1.1.0\tv2.0.0'), outdated
+	assert joint_head('dev_latest', 'devtool') == old
+	assert os.read_file(lockfile_path(project))! == lock_before
+	joint_cli(['update', '-p', 'devtool'])
+	assert joint_head('dev_latest', 'devtool') == minor
+	manifest_before := os.read_file(os.join_path(project, 'v.mod'))!
+	updated_lock := os.read_file(lockfile_path(project))!
+	joint_cli(['update', '-p', 'devtool', '--latest', '--dry-run'])
+	assert os.read_file(os.join_path(project, 'v.mod'))! == manifest_before
+	assert os.read_file(lockfile_path(project))! == updated_lock
+	assert joint_head('dev_latest', 'devtool') == minor
+	joint_cli(['update', '-p', 'devtool', '--latest'])
+	assert joint_head('dev_latest', 'devtool') == major
+	assert joint_head('dev_latest', 'runtime') == runtime_old
+	manifest := vmod.from_file(os.join_path(project, 'v.mod'))!
+	assert manifest.dependencies == [runtime + '@^1']
+	assert manifest.unknown['dev_dependencies'] == [repo + '@^2.0.0']
+	assert read_lockfile(project)!.modules[repo].requested == repo + '@^2.0.0'
+	joint_cli(['install', '--locked'])
+}
+
+fn test_joint_regular_and_dev_constraints_are_resolved_together() {
+	repo := joint_repo('dev_conflict', 'shared')!
+	joint_tag(repo, 'shared', 'v1.0.0', [])!
+	joint_tag(repo, 'shared', 'v2.0.0', [])!
+	project := joint_project('dev_conflict', [repo + '@^1'])!
+	joint_set_dev_dependencies(project, [repo + '@^2'])!
+	output := cmd_fail_args(@LOCATION, [joint_tool, 'install']).output
+	assert output.contains('@^1') && output.contains('@^2'), output
+	assert !os.exists(os.join_path(joint_root, 'dev_conflict', 'store', 'shared'))
+	assert !os.exists(lockfile_path(project))
+}
+
+fn test_joint_targeted_update_accepts_dev_repository_alias_and_all_constraints() {
+	repo := joint_repo('dev_update_alias', 'shared')!
+	old := joint_tag(repo, 'shared', 'v1.0.0', [])!
+	alias := 'file://' + repo
+	project := joint_project('dev_update_alias', [repo + '@^1'])!
+	joint_set_dev_dependencies(project, [alias + '@>=1.0.0 <1.5.0'])!
+	joint_cli(['install'])
+	minor := joint_tag(repo, 'shared', 'v1.1.0', [])!
+	joint_tag(repo, 'shared', 'v1.8.0', [])!
+	joint_tag(repo, 'shared', 'v2.0.0', [])!
+	joint_cli(['update', alias])
+	assert joint_head('dev_update_alias', 'shared') == minor
+	// A retained lock must not make targeting depend on the installed checkout.
+	os.rmdir_all(os.join_path(joint_root, 'dev_update_alias', 'store', 'shared'))!
+	joint_cli(['update', '-p', alias, '--precise', '1.0.0'])
+	assert joint_head('dev_update_alias', 'shared') == old
+	joint_cli(['update', alias, '--precise', '1.1.0'])
+	assert joint_head('dev_update_alias', 'shared') == minor
+	manifest_before := os.read_file(os.join_path(project, 'v.mod'))!
+	lock_before := os.read_file(lockfile_path(project))!
+	for version in ['1.8.0', '2.0.0'] {
+		failed := cmd_fail_args(@LOCATION, [joint_tool, 'update', alias, '--precise', version]).output
+		assert failed.contains('no semantic-version tag satisfies all requirements'), failed
+		assert joint_head('dev_update_alias', 'shared') == minor
+		assert os.read_file(lockfile_path(project))! == lock_before
+	}
+	for flags in [['--precise', '1.1.0'], ['--latest']] {
+		failed := cmd_fail_args(@LOCATION, [joint_tool, 'update', '-p', 'unknown', ...flags]).output
+		assert failed.contains('`unknown` is not a dependency of this project.'), failed
+		assert joint_head('dev_update_alias', 'shared') == minor
+		assert os.read_file(lockfile_path(project))! == lock_before
+		assert os.read_file(os.join_path(project, 'v.mod'))! == manifest_before
+	}
+}
+
+fn test_joint_targeted_latest_widens_runtime_and_dev_repository_aliases() {
+	repo := joint_repo('dev_latest_alias', 'shared')!
+	old := joint_tag(repo, 'shared', 'v1.0.0', [])!
+	alias := 'file://' + repo
+	unrelated := joint_repo('dev_latest_alias', 'unrelated')!
+	unrelated_old := joint_tag(unrelated, 'unrelated', 'v1.0.0', [])!
+	project := joint_project('dev_latest_alias', [repo + '@^1', unrelated + '@^1'])!
+	joint_set_dev_dependencies(project, [alias + '@>=1.0.0 <2.0.0'])!
+	joint_cli(['install'])
+	new := joint_tag(repo, 'shared', 'v2.0.0', [])!
+	joint_tag(unrelated, 'unrelated', 'v2.0.0', [])!
+	manifest_before := os.read_file(os.join_path(project, 'v.mod'))!
+	lock_before := os.read_file(lockfile_path(project))!
+	proposed := joint_cli(['update', '-p', alias, '--latest', '--dry-run'])
+	assert proposed.contains('shared: would select v2.0.0'), proposed
+	assert joint_head('dev_latest_alias', 'shared') == old
+	assert joint_head('dev_latest_alias', 'unrelated') == unrelated_old
+	assert os.read_file(os.join_path(project, 'v.mod'))! == manifest_before
+	assert os.read_file(lockfile_path(project))! == lock_before
+	joint_cli(['update', alias, '--latest'])
+	assert joint_head('dev_latest_alias', 'shared') == new
+	assert joint_head('dev_latest_alias', 'unrelated') == unrelated_old
+	manifest := vmod.from_file(os.join_path(project, 'v.mod'))!
+	assert manifest.dependencies == [repo + '@^2.0.0', unrelated + '@^1']
+	assert manifest.unknown['dev_dependencies'] == [alias + '@^2.0.0']
+	assert read_lockfile(project)!.modules[repo].requested == repo + '@^2.0.0'
+	joint_cli(['install', '--locked'])
+}
+
+fn test_joint_update_expands_equivalent_remote_aliases_without_a_checkout() {
+	joint_project('remote_update_alias', [])!
+	runtime := 'https://example.test/Owner/Repo'
+	development := 'git@example.test:Owner/Repo.git'
+	distinct := ['https://example.test/Other/Repo', 'https://other.test/Owner/Repo',
+		'https://example.test:8443/Owner/Repo', 'https://example.test/owner/repo']
+	mut requirements := [runtime + '@^1', development + '@>=1.0.0 <2.0.0']
+	requirements << distinct.map(it + '@^1')
+	changes := project_update_changes(requirements, [development], '1.1.0')
+	assert changes[runtime] == '1.1.0'
+	assert changes[development] == '1.1.0'
+	for source in distinct {
+		assert source !in changes
+	}
+}
+
+fn test_joint_update_does_not_join_same_leaf_repositories_through_a_decoy_checkout() {
+	case := 'same_leaf_changes'
+	alpha := joint_repo(case + '/left', 'shared')!
+	beta := joint_repo(case + '/right', 'shared')!
+	joint_tag(alpha, 'alpha', 'v1.0.0', [])!
+	joint_tag(beta, 'beta', 'v1.0.0', [])!
+	alias := 'file://' + beta
+	requirements := [alpha + '@^1', beta + '@^1', alias + '@>=1.0.0 <2.0.0']
+	joint_project(case, requirements)!
+	joint_cli(['install'])
+	decoy := os.join_path(joint_root, case, 'store', 'shared_repo')
+	cmd_ok_args(@LOCATION, ['git', 'clone', alpha, decoy])
+	_, alpha_path := resolve_existing_module(module_roots(), alpha) or { '', '' }
+	_, beta_path := resolve_existing_module(module_roots(), beta) or { '', '' }
+	assert alpha_path == os.real_path(decoy)
+	assert beta_path == alpha_path
+	assert normalized_clone_source(checkout_origin_url(decoy)) == normalized_clone_source(alpha)
+	changes := project_update_changes(requirements, [beta], '1.1.0')
+	assert changes.len == 2
+	assert changes[beta] == '1.1.0'
+	assert changes[alias] == '1.1.0'
+	assert alpha !in changes
+	// Installed-name targets still use the verified origin of their checkout.
+	named := project_update_changes(requirements, ['beta'], '1.1.0')
+	assert named.len == 3
+	assert named['beta'] == '1.1.0'
+	assert named[beta] == '1.1.0'
+	assert named[alias] == '1.1.0'
+	assert alpha !in named
+}
+
+fn test_joint_targeted_latest_preserves_a_distinct_same_leaf_repository() {
+	case := 'same_leaf_latest'
+	alpha := joint_repo(case + '/left', 'shared')!
+	beta := joint_repo(case + '/right', 'shared')!
+	alpha_old := joint_tag(alpha, 'alpha', 'v1.0.0', [])!
+	beta_old := joint_tag(beta, 'beta', 'v1.0.0', [])!
+	project := joint_project(case, [alpha + '@^1', beta + '@^1'])!
+	joint_cli(['install'])
+	before := read_lockfile(project)!
+	joint_tag(alpha, 'alpha', 'v2.0.0', [])!
+	beta_new := joint_tag(beta, 'beta', 'v2.0.0', [])!
+	decoy := os.join_path(joint_root, case, 'store', 'shared_repo')
+	cmd_ok_args(@LOCATION, ['git', 'clone', alpha, decoy])
+	manifest_before := os.read_file(os.join_path(project, 'v.mod'))!
+	lock_before := os.read_file(lockfile_path(project))!
+	joint_cli(['update', beta, '--latest', '--dry-run'])
+	assert joint_head(case, 'alpha') == alpha_old
+	assert joint_head(case, 'beta') == beta_old
+	assert os.read_file(os.join_path(project, 'v.mod'))! == manifest_before
+	assert os.read_file(lockfile_path(project))! == lock_before
+	joint_cli(['update', beta, '--latest'])
+	assert joint_head(case, 'alpha') == alpha_old
+	assert joint_head(case, 'beta') == beta_new
+	manifest := vmod.from_file(os.join_path(project, 'v.mod'))!
+	assert manifest.dependencies == [alpha + '@^1', beta + '@^2.0.0']
+	after := read_lockfile(project)!
+	assert after.modules[alpha] == before.modules[alpha]
+	assert after.modules[beta].revision == beta_new
+	assert after.modules[beta].requested == beta + '@^2.0.0'
+	joint_cli(['install', '--locked'])
+}
+
+fn test_joint_precise_update_does_not_force_a_distinct_same_leaf_repository() {
+	case := 'same_leaf_precise'
+	alpha := joint_repo(case + '/left', 'shared')!
+	beta := joint_repo(case + '/right', 'shared')!
+	alpha_old := joint_tag(alpha, 'alpha', 'v1.0.0', [])!
+	joint_tag(beta, 'beta', 'v1.0.0', [])!
+	project := joint_project(case, [alpha + '@=1.0.0', beta + '@^1'])!
+	joint_cli(['install'])
+	before := read_lockfile(project)!
+	manifest_before := os.read_file(os.join_path(project, 'v.mod'))!
+	beta_new := joint_tag(beta, 'beta', 'v1.1.0', [])!
+	decoy := os.join_path(joint_root, case, 'store', 'shared_repo')
+	cmd_ok_args(@LOCATION, ['git', 'clone', alpha, decoy])
+	joint_cli(['update', beta, '--precise', '1.1.0'])
+	assert joint_head(case, 'alpha') == alpha_old
+	assert joint_head(case, 'beta') == beta_new
+	assert os.read_file(os.join_path(project, 'v.mod'))! == manifest_before
+	after := read_lockfile(project)!
+	assert after.modules[alpha] == before.modules[alpha]
+	assert after.modules[beta].revision == beta_new
+	joint_cli(['install', '--locked'])
+}
+
+fn test_joint_removed_dev_dependencies_are_pruned_from_the_lockfile() {
+	runtime := joint_repo('dev_prune', 'runtime')!
+	joint_tag(runtime, 'runtime', 'v1.0.0', [])!
+	tool := joint_repo('dev_prune', 'devtool')!
+	joint_tag(tool, 'devtool', 'v1.0.0', [])!
+	project := joint_project('dev_prune', [runtime + '@^1'])!
+	joint_set_dev_dependencies(project, [tool + '@^1'])!
+	joint_cli(['install'])
+	assert read_lockfile(project)!.modules.len == 2
+	joint_set_dev_dependencies(project, [])!
+	joint_cli(['install'])
+	lockfile := read_lockfile(project)!
+	assert lockfile.modules.len == 1
+	assert runtime in lockfile.modules
+	assert !joint_cli(['why', '--graph']).contains('devtool')
 }

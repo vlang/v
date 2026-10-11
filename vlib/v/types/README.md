@@ -37,6 +37,9 @@ AST or an unindexed declaration returns `none`, so integrations can fall back to
 `check_reached_library_bodies` with the complete used-function map.
 
 Verbose builds include bodies checked by reachability frontiers in the `checked late` count.
+The initial pass also checks the library methods that a generic body names in a member
+access, and what their bodies name. A call on a value of a type parameter has no receiver
+type for reachability to resolve before the generic instances exist.
 
 An `or` block in a struct field initializer must provide the unwrapped payload type.
 For a `?bool` field, use `input.value or { false }`; an optional fallback value is rejected.
@@ -46,3 +49,13 @@ Variadic function types keep their variadic tail when used as parameters or fiel
 For `fn (int, ...string) bool`, a call must supply the fixed `int` argument and may supply
 zero or more strings. A `fn (int, []string) bool` still requires an explicit array argument.
 Restoring transformed function values and reconstructing callback signatures also keep this tail.
+
+An interface narrowed by `if mut value is T` can be passed to a function accepting `mut T`.
+The function mutates the same concrete object stored in the interface.
+A `mut &T` parameter still needs a mutable pointer variable; narrowing an interface does not
+create a pointer slot that the function can reassign.
+
+Each `_test.v` file must contain at least one active `test_` function. A file whose tests
+are all excluded by conditional compilation reports a missing-test error. When the file
+has no active function declarations, this diagnostic points to the start of the file;
+a helper-only file points to its helper function.

@@ -351,7 +351,8 @@ fn (mut t Transformer) clone_promoted_default_in_decl_scope(id flat.NodeId, modu
 		is_mut:         node.is_mut
 		children_start: start
 		children_count: flat.child_count(children.len)
-		flags:          flat.node_flags(node.skip_ownership_drops(), false)
+		flags:          flat.node_flags(node.skip_ownership_drops(), false) |
+			(node.flags & flat.node_flag_literal_interpolation_text)
 	})
 }
 

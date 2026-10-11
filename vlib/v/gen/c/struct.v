@@ -6958,6 +6958,10 @@ fn (mut g FlatGen) struct_decls() {
 				if interface_field_type_contains_self_by_value(field.typ, name) {
 					continue
 				}
+				if !g.fn_ptr_field_typedef_ready(field.typ) {
+					can_emit = false
+					break
+				}
 				if field.typ is types.Pointer {
 					continue
 				}
@@ -6992,6 +6996,10 @@ fn (mut g FlatGen) struct_decls() {
 			mut can_emit := true
 			if name in g.tc.structs {
 				for f in g.tc.structs[name] {
+					if !g.fn_ptr_field_typedef_ready(f.typ) {
+						can_emit = false
+						break
+					}
 					if f.typ is types.Pointer {
 						continue
 					}
@@ -7205,6 +7213,9 @@ fn (mut g FlatGen) type_forward_decls() {
 
 fn (g &FlatGen) c_struct_decl_names() []string {
 	mut names := g.tc.structs.keys()
+	if g.cache_decl_demand {
+		names = names.filter(g.cache_struct_declaration_needed(it))
+	}
 	if g.skip_generics {
 		names = names.filter(!g.is_generic_struct(it))
 	}
@@ -7214,6 +7225,9 @@ fn (g &FlatGen) c_struct_decl_names() []string {
 
 fn (g &FlatGen) c_sum_decl_names() []string {
 	mut names := g.tc.sum_types.keys()
+	if g.cache_decl_demand {
+		names = names.filter(g.cache_decl_refs[g.cname(it)])
+	}
 	if g.skip_generics {
 		names = names.filter((g.tc.sum_generic_params[it] or { []string{} }).len == 0)
 	}

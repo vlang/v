@@ -101,6 +101,69 @@ fn test_pool_reuses_driver_but_never_revives_released_handle() {
 	assert pool.stats().open_connections == 0
 }
 
+fn test_pool_copied_released_handles_cannot_reach_the_next_checkout() {
+	state := &TestPoolState{}
+	mut pool := new_pool(TestPoolFactory{state}, max_open_conns: 1)
+	mut first := pool.acquire()!
+	mut copied := *first
+	mut another_copy := copied
+	first.close()!
+	mut current := pool.acquire()!
+	assert current.exec_one('id')!.val(0) == '1'
+	if _ := copied.exec('id') {
+		assert false, 'a released copy reached the reused physical connection'
+	} else {
+		assert err.msg() == 'db: connection is released'
+	}
+	if _ := another_copy.validate() {
+		assert false, 'a second copy remained active after release'
+	} else {
+		assert err.msg() == 'db: connection is released'
+	}
+	copied.close()!
+	another_copy.close()!
+	first.close()!
+	assert state.resets == 1
+	assert pool.stats().in_use == 1
+	assert pool.stats().idle == 0
+	assert current.exec_one('id')!.val(0) == '1'
+	current.close()!
+	assert state.resets == 2
+	pool.close()
+	assert state.opened == 1
+	assert state.closed == 1
+}
+
+fn close_pool_conn_copy(mut conn Conn) {
+	conn.close() or { panic(err) }
+}
+
+fn test_pool_concurrent_copies_release_the_physical_connection_once() {
+	state := &TestPoolState{}
+	mut pool := new_pool(TestPoolFactory{state}, max_open_conns: 1)
+	mut first := pool.acquire()!
+	mut copied := *first
+	mut another_copy := copied
+	mut copied_ref := &copied
+	mut another_copy_ref := &another_copy
+	worker := spawn close_pool_conn_copy(mut copied_ref)
+	another_worker := spawn close_pool_conn_copy(mut another_copy_ref)
+	first.close()!
+	worker.wait()
+	another_worker.wait()
+	assert state.resets == 1
+	assert pool.stats().open_connections == 1
+	assert pool.stats().idle == 1
+	assert pool.stats().in_use == 0
+	if _ := first.exec('id') {
+		assert false, 'closing a copy did not invalidate the original handle'
+	} else {
+		assert err.msg() == 'db: connection is released'
+	}
+	pool.close()
+	assert state.closed == 1
+}
+
 fn test_pool_discard_reset_failure_and_invalid_idle_connection() {
 	mut state := &TestPoolState{}
 	mut pool := new_pool(TestPoolFactory{state}, max_open_conns: 1)

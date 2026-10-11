@@ -154,6 +154,114 @@ fn test_atof_special_values() {
 	}
 }
 
+// Numbers whose magnitude exceeds the f64 range, with and without an exponent.
+const atof_overflow_inputs = ['1.7976931348623159e308', '1.8e308', '2e308', '1e309', '1e310', '1e400',
+	'0.001e312', '1_0e3_99', '1e2147483647', '1e99999999999999999999', '1' + '0'.repeat(309),
+	'17976931348623159' + '0'.repeat(292), '1' + '0'.repeat(400) + '.5']
+
+fn test_atof_overflow_is_an_error() {
+	// The largest finite f64, and the values that still round to it, are in range.
+	max_f64_bits := u64(0x7fefffffffffffff)
+	for input in ['1.7976931348623157e308', '1.7976931348623158e308',
+		'17976931348623157' + '0'.repeat(292)] {
+		assert math.f64_bits(strconv.atof64(input)!) == max_f64_bits, input
+		assert math.f64_bits(strconv.atof64('-' + input)!) == max_f64_bits | (u64(1) << 63), input
+	}
+	assert strconv.atof64('1' + '0'.repeat(308))! == 1e308
+	for input in atof_overflow_inputs {
+		for s in [input, '+' + input, '-' + input] {
+			if value := strconv.atof64(s) {
+				assert false, '${s} parsed as ${value}'
+			} else {
+				assert err.msg() == 'strconv.atof64: parsing "${s}": value out of range'
+			}
+		}
+	}
+	// Trailing characters do not hide the overflow of the number before them.
+	if value := strconv.atof64('1e400 units', allow_extra_chars: true) {
+		assert false, 'parsed as ${value}'
+	} else {
+		assert err.msg() == 'strconv.atof64: parsing "1e400 units": value out of range'
+	}
+}
+
+fn test_atof_allow_overflow_returns_infinity() {
+	for input in atof_overflow_inputs {
+		unsigned := strconv.atof64(input, allow_overflow: true)!
+		positive := strconv.atof64('+' + input, allow_overflow: true)!
+		negative := strconv.atof64('-' + input, allow_overflow: true)!
+		assert math.f64_bits(unsigned) == strconv.double_plus_infinity, input
+		assert math.f64_bits(positive) == strconv.double_plus_infinity, input
+		assert math.f64_bits(negative) == strconv.double_minus_infinity, input
+	}
+	with_unit := strconv.atof64('1e400 units', allow_extra_chars: true, allow_overflow: true)!
+	assert math.is_inf(with_unit, 1)
+	// allow_overflow changes nothing else: finite values, and the other errors.
+	assert strconv.atof64('1.5', allow_overflow: true)! == 1.5
+	largest := strconv.atof64('1.7976931348623157e308', allow_overflow: true)!
+	assert math.f64_bits(largest) == u64(0x7fefffffffffffff)
+	for input in ['', '1e', 'x', '1e400 units'] {
+		if value := strconv.atof64(input, allow_overflow: true) {
+			assert false, '${input} parsed as ${value}'
+		}
+	}
+}
+
+fn test_atof_extra_chars_with_extreme_exponents() {
+	for input in ['1e99999999999999999999 units', '-1e99999999999999999999 units'] {
+		if value := strconv.atof64(input, allow_extra_chars: true) {
+			assert false, '${input} parsed as ${value}'
+		} else {
+			assert err.msg() == 'strconv.atof64: parsing "${input}": value out of range'
+		}
+		value := strconv.atof64(input, allow_extra_chars: true, allow_overflow: true)!
+		assert math.is_inf(value, if input[0] == `-` { -1 } else { 1 })
+	}
+	for input in ['1e-99999999999999999999 units', '0e99999999999999999999 units',
+		'0e-99999999999999999999 units'] {
+		assert math.f64_bits(strconv.atof64(input, allow_extra_chars: true)!) == strconv.double_plus_zero
+		assert math.f64_bits(strconv.atof64('-' + input, allow_extra_chars: true)!) == strconv.double_minus_zero
+	}
+}
+
+fn test_atof_infinity_spellings_are_not_an_overflow() {
+	for param in [strconv.AtoF64Param{}, strconv.AtoF64Param{
+		allow_overflow: true
+	}] {
+		for input in ['inf', '+inf', 'Inf', 'INF', 'infinity', '+Infinity'] {
+			value := strconv.atof64(input, param)!
+			assert math.f64_bits(value) == strconv.double_plus_infinity, input
+		}
+		for input in ['-inf', '-INF', '-infinity', '-Infinity'] {
+			value := strconv.atof64(input, param)!
+			assert math.f64_bits(value) == strconv.double_minus_infinity, input
+		}
+	}
+}
+
+fn test_atof_underflow_is_not_an_error() {
+	// A number too small for an f64 rounds to a signed zero, without an error.
+	for input in ['1e-400', '2e-324', '1e-2147483647', '1e-99999999999999999999',
+		'0.' + '0'.repeat(400) + '1'] {
+		assert math.f64_bits(strconv.atof64(input)!) == strconv.double_plus_zero, input
+		assert math.f64_bits(strconv.atof64('-' + input)!) == strconv.double_minus_zero, input
+	}
+	// The smallest subnormal is still reached.
+	assert math.f64_bits(strconv.atof64('5e-324')!) == u64(1)
+	// A zero mantissa is zero, whatever the exponent is.
+	assert math.f64_bits(strconv.atof64('0e400')!) == strconv.double_plus_zero
+	assert math.f64_bits(strconv.atof64('-0.0e999999')!) == strconv.double_minus_zero
+}
+
+fn test_string_f64_and_f32_keep_infinity_on_overflow() {
+	// `string.f64()` and `string.f32()` have no error to return.
+	assert math.is_inf('1e400'.f64(), 1)
+	assert math.is_inf('-1e400'.f64(), -1)
+	assert math.is_inf('1e400 units'.f64(), 1)
+	assert math.is_inf(f64('1e400'.f32()), 1)
+	assert math.is_inf(f64('-1e400'.f32()), -1)
+}
+
 fn test_atof_digit_separators() {
 	assert strconv.atof64('1_000')! == 1000
 	assert strconv.atof64('-1_234.5_6')! == -1234.56

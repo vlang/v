@@ -117,6 +117,15 @@ fn listen_addr(params RunParams) string {
 	return '${params.host}:${params.port}'
 }
 
+// request_read_error_response returns the response for a request that
+// `read_request_from_buffered_reader` could not read.
+fn request_read_error_response(err IError) http.Response {
+	if err is http.HeaderLimitError {
+		return http_431
+	}
+	return http_400
+}
+
 fn read_request_from_buffered_reader(mut reader io.BufferedReader) !http.Request {
 	mut req := http.parse_request_head(mut reader)!
 	if transfer_encoding_is_chunked(req.header) {

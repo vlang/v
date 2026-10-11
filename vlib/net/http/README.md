@@ -170,10 +170,27 @@ fn client_ip(req http.Request) string {
 
 ## Cookies, headers and multipart
 
-`Request.add_cookie`/`Request.cookie` and `Response.cookies` handle cookies;
+`Request.add_cookie`/`Request.cookie` and `Response.cookies` handle cookies.
+`Response.cookies` parses `Expires` with `time.parse_http_header_string`. Invalid dates
+and years before 1601 remain in `Cookie.unparsed`; they do not replace a valid expiry.
+`Cookie.raw_expires` retains date text even when it cannot be parsed.
+When serializing `Cookie`, IPv4 literals such as `127.0.0.1` are accepted as domains;
+invalid domains are omitted.
+
 `Header` provides both `CommonHeader` enum access (`get`, `set`, `add`) and
 string access (`get_custom`, `set_custom`, `add_custom`). `http.parse_form`,
 `http.parse_multipart_form` and `http.post_multipart_form` cover form bodies.
+
+A `Header` holds at most `http.max_headers` (50) fields. `add_custom` and `set_custom`
+return an `http.HeaderLimitError` for a field that does not fit, and so do
+`http.parse_request`, `http.parse_response` and the other parsers for a message that has
+more header fields. `add`, `set`, `new_header` and `join` have no error to return: they
+drop such a field.
+
+`Cookie.str()` and `sanitize_cookie_value` remove invalid bytes from cookie values,
+including control characters, quotes, semicolons and backslashes. Spaces and commas
+inside the value are preserved; the sanitized value is quoted when it begins or ends
+with a space or comma.
 
 ### Windows TLS handshake compatibility
 

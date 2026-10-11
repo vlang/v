@@ -4,6 +4,12 @@ import term
 import v.util.version
 import runtime
 
+// compiled_vroot is the V root folder that the compiler resolved, when it compiled this tool:
+// `builtin`, `os` and the other modules in this executable come from its `vlib` folder.
+// Root selection depends on the compiler mode: source/cwd resolution and the macOS
+// dispatcher's executable/built-in root can select different checkouts.
+const compiled_vroot = @VEXEROOT
+
 struct App {
 mut:
 	report_lines   []string
@@ -119,9 +125,15 @@ fn (mut a App) collect_info() {
 	a.line('V last modified time', time.unix(os.file_last_mod_unix(vexe)).str())
 	a.line('', '')
 	a.line2('V home dir', diagnose_dir(vroot), vroot)
+	a.report_vlib('V', vroot, compiled_vroot, vcurrent_hash())
 	a.line2('VMODULES', diagnose_dir(vmodules), vmodules)
 	a.line2('VTMP', diagnose_dir(vtmp_dir), vtmp_dir)
 	a.line2('Current working dir', diagnose_dir(getwd), getwd)
+	cwd_vroot := vroot_of(getwd)
+	if cwd_vroot != '' && !is_same_dir(cwd_vroot, compiled_vroot) {
+		// Also inspect a checkout that source/cwd module resolution can select.
+		a.report_vlib('cwd', vroot, cwd_vroot, vcurrent_hash())
+	}
 	a.line('', '')
 
 	a.line_env('VFLAGS')
@@ -159,8 +171,7 @@ struct CmdConfig {
 
 fn (mut a App) cmd(c CmdConfig) string {
 	x := os.exec(c.command)
-	os_kind := os.user_os()
-	if x.exit_code < 0 || x.exit_code == 127 || (os_kind == 'windows' && x.exit_code == 1) {
+	if doctor_command_is_unavailable(x, os.user_os()) {
 		return 'N/A'
 	}
 	if x.exit_code == 0 {
@@ -173,6 +184,16 @@ fn (mut a App) cmd(c CmdConfig) string {
 		}
 	}
 	return 'Error: ${x.output}'
+}
+
+fn doctor_command_is_unavailable(x os.Result, os_kind string) bool {
+	if x.exit_code < 0 || x.exit_code == 127 || (os_kind == 'windows' && x.exit_code == 1) {
+		return true
+	}
+	// Windows reports missing executables and paths as CreateProcess errors.
+	// A tool that started successfully can also exit with 2 or 3, so keep its errors.
+	return os_kind == 'windows' && x.exit_code in [2, 3]
+		&& x.output.starts_with('exec failed (CreateProcess) with code ${x.exit_code}:')
 }
 
 fn (mut a App) line(label string, value string) {
@@ -309,6 +330,69 @@ fn diagnose_dir(path string) string {
 		diagnostics << 'OK'
 	}
 	return diagnostics.join(', ')
+}
+
+// report_vlib adds the rows about a `vlib` that the compiler pairs itself with: where it is,
+// and whether its checkout is at the commit that the compiler was built from. A compiler that
+// is older or newer than its `vlib` still runs, but it can behave differently, silently.
+fn (mut a App) report_vlib(label string, vexe_dir string, vlib_root string, build_commit string) {
+	vlib_dir := os.join_path(vlib_root, 'vlib')
+	vlib_commit := version.githash(vlib_root) or { '' }
+	a.line2('${label} vlib dir', diagnose_vlib_dir(vlib_root, vexe_dir), vlib_dir)
+	a.line('${label} vlib commit', diagnose_vlib_commit(build_commit, vlib_commit))
+}
+
+// vroot_of returns the V root folder that `dir` is in: the nearest folder upwards that has
+// `vlib/builtin`. It returns '' when there is none. The compiler finds the `vlib` for the
+// sources that it compiles this way in source/cwd resolution modes; the macOS dispatcher
+// can instead retain the invoking compiler's root. See `nearest_vroot_for_path` in `v.driver`.
+fn vroot_of(dir string) string {
+	mut current := os.real_path(dir)
+	for _ in 0 .. 8 {
+		if os.is_dir(os.join_path(current, 'vlib', 'builtin')) {
+			return current
+		}
+		current = os.parent_dir(current)
+		if current == '' {
+			break
+		}
+	}
+	return ''
+}
+
+// diagnose_vlib_dir tells whether `vlib_root`, the V root folder whose `vlib` the compiler
+// uses, is the folder of the V executable. A copied or moved executable can use
+// the `vlib` of the checkout that it was built in.
+fn diagnose_vlib_dir(vlib_root string, vexe_dir string) string {
+	if is_same_dir(vlib_root, vexe_dir) {
+		return 'OK'
+	}
+	return 'NOT in the folder of the V executable'
+}
+
+// diagnose_vlib_commit compares the commit that the compiler was built from, with the commit
+// that the checkout of its `vlib` is at now. They differ when that checkout was updated without
+// rebuilding V, and when the executable comes from another checkout. Uncommitted changes do
+// not count. An empty commit is one that could not be read, like outside of a Git checkout.
+fn diagnose_vlib_commit(build_commit string, vlib_commit string) string {
+	if build_commit == '' || vlib_commit == '' {
+		return 'N/A'
+	}
+	if build_commit == vlib_commit {
+		return 'OK, value: ${vlib_commit}'
+	}
+	return 'MISMATCH: V was built from commit ${build_commit}, but this vlib is at commit ${vlib_commit}'
+}
+
+// is_same_dir tells whether both paths name the same folder.
+fn is_same_dir(a string, b string) bool {
+	mut real_a := os.real_path(a).replace('\\', '/').trim_right('/')
+	mut real_b := os.real_path(b).replace('\\', '/').trim_right('/')
+	$if windows {
+		real_a = real_a.to_lower()
+		real_b = real_b.to_lower()
+	}
+	return real_a == real_b
 }
 
 fn main() {

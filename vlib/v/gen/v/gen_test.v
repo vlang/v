@@ -860,6 +860,39 @@ fn test_formatter_preserves_anonymous_aggregate_types() {
 	assert vfmt('anonymous_aggregate_types_twice', out) == out
 }
 
+fn test_formatter_fixes_indented_anonymous_union() {
+	source := 'struct LaborUnion {\n\trespect_workers bool\n\tcontent         union {\nworkers []string\n\t}\n}\n'
+	out := vfmt('indented_union', source)
+	expected := 'struct LaborUnion {\n\trespect_workers bool\n\tcontent         union {\n\t\tworkers []string\n\t}\n}\n'
+	assert out == expected, out
+	assert vfmt('indented_union_twice', out) == out
+}
+
+fn test_formatter_indents_nested_anonymous_aggregates() {
+	source := 'struct Holder {\nitem union {\nrecord struct {\nvalue int\n}\nother int\n}\n}\n'
+	out := vfmt('nested_anonymous_aggregates', source)
+	expected := 'struct Holder {\n\titem union {\n\t\trecord struct {\n\t\t\tvalue int\n\t\t}\n\t\tother int\n\t}\n}\n'
+	assert out == expected, out
+	assert vfmt('nested_anonymous_aggregates_twice', out) == out
+}
+
+fn test_formatter_preserves_anonymous_aggregate_literal_and_comment_continuations() {
+	source := "struct Holder {\nitem struct {\ntext string = 'first {\n  second }\nthird'\n/* comment {\n  preserved }\n*/\n\ncount int\n}\n}\n"
+	out := vfmt('anonymous_aggregate_continuations', source)
+	assert out.contains("'first {\n  second }\nthird'"), out
+	assert out.contains('\t\t/* comment {\n  preserved }\n*/\n\n\t\tcount int'), out
+	assert !out.contains('\n\t\t\n'), out
+	assert vfmt('anonymous_aggregate_continuations_twice', out) == out
+}
+
+fn test_formatter_indents_anonymous_aggregate_access_sections() {
+	source := 'struct Holder {\nitem union {\npub:\nvalue int\nmut :\nother int\nmodule:\nprivate_value int\npub  mut:\nmutable_value int\npub module_mut :\nlegacy_value int\n}\n}\n'
+	out := vfmt('anonymous_aggregate_access_sections', source)
+	expected := 'struct Holder {\n\titem union {\n\tpub:\n\t\tvalue int\n\tmut :\n\t\tother int\n\tmodule:\n\t\tprivate_value int\n\tpub  mut:\n\t\tmutable_value int\n\tpub module_mut :\n\t\tlegacy_value int\n\t}\n}\n'
+	assert out == expected, out
+	assert vfmt('anonymous_aggregate_access_sections_twice', out) == out
+}
+
 fn test_formatter_preserves_mutable_match_subjects() {
 	source := 'fn update(mut value int) {\n\tmatch mut value {\n\t\tint {\n\t\t\tvalue++\n\t\t}\n\t}\n}\n'
 	out := vfmt('mutable_match_subject', source)
@@ -2483,4 +2516,83 @@ fn test_formatter_keeps_comptime_string_expression_sources() {
 	assert out.contains("\$for part in 'a,b;c'.split_any(',;') {")
 	assert out.contains("path[1..].starts_with('users')"), out
 	assert vfmt('comptime_string_sources_twice', out) == out
+}
+
+// format_text must produce byte-identical output to the file path, or a
+// filesystem-less caller (like the Emscripten build) silently diverges from
+// `v fmt`.
+fn test_format_text_matches_file_path() {
+	src := 'module main\nfn main() {\nprintln(  1+2  )\n}\n'
+	assert format_text(src)! == vfmt('text_matches_file', src)
+}
+
+fn test_format_text_is_idempotent() {
+	src := 'module main\nfn main() {\nprintln(1 + 2)\n}\n'
+	once := format_text(src)!
+	assert format_text(once)! == once
+}
+
+fn test_format_text_reports_parser_errors() {
+	format_text('module main\nfn broken( {') or {
+		assert err.msg().contains('main.v:2:12'), err.msg()
+		return
+	}
+	assert false, 'expected a parser error'
+}
+
+fn test_parse_text_matches_parse_file() {
+	src := 'module main\nfn main() {\nprintln(1)\n}\n'
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = true
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_text('main.v', src)
+	assert format(a) == vfmt('text_matches_file_ast', src)
+}
+
+fn test_format_text_honors_options() {
+	source := "fn main() {\n\ts := 'abc'.str\n}\n"
+	assert format_text(source)! == vfmt_with_options('text_default_options', source, FormatOptions{})
+	assert format_text_with_options(source, backend: 'js')! == source
+	assert format_text_with_options(source, backend: 'js')! == vfmt_with_options('text_js_options',
+		source,
+		backend: 'js'
+	)
+	assert format_text(source)! != source
+	c_source := 'fn C.convert(value int) int\n'
+	assert format_text_with_options(c_source, is_new_int: true)! == 'fn C.convert(value i32) i32\n'
+	assert format_text_with_options(c_source, is_new_int: true)! == vfmt_with_options('text_int_options',
+		c_source,
+		is_new_int: true
+	)
+}
+
+fn test_format_text_preserves_comments_and_comptime_branches() {
+	source := 'module main\n// keep this comment\n\$if windows {\nfn selected() { println( 1 ) }\n} \$else {\nfn selected() { println( 2 ) }\n}\n'
+	output := format_text(source)!
+	assert output == vfmt('text_comptime_comments', source)
+	assert output.contains('// keep this comment')
+	assert output.contains('println(1)')
+	assert output.contains('println(2)')
+	assert format_text(output)! == output
+}
+
+fn test_format_text_recovers_after_invalid_input() {
+	format_text_with_options('fn broken( {', backend: 'js') or {
+		assert err.msg().starts_with('main.v:'), err.msg()
+		valid := 'fn main() {}\n'
+		assert format_text(valid)! == valid
+		assert format_text_with_options(valid, backend: 'js')! == valid
+		return
+	}
+	assert false, 'expected a parser error'
+}
+
+fn test_formatter_multiline_parenthesized_condition_with_comments() {
+	source := "fn main() {\n one := 1\n two := 2\n three := 3\n if (one == 1 // one is one\n || two == 2) // two is two\n && three == 3 { // three is three\n println('hello')\n }\n}\n"
+	formatted := vfmt('commented_parenthesized_condition', source)
+	assert reparse_diagnostics('commented_parenthesized_condition', formatted) == 0
+	for comment in ['one is one', 'two is two', 'three is three'] {
+		assert formatted.count('// ' + comment) == 1
+	}
+	assert vfmt('commented_parenthesized_condition_again', formatted) == formatted
 }

@@ -202,11 +202,77 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 		// Generated staging locals can be assigned later despite lacking `mut` flags.
 		if node.pos.is_valid() && !lhs.is_mut && !node.is_mut {
 			if scalar := value {
-				t.comptime_scalar_locals[lhs.value] = scalar
+				// So can a source local of a generic function, whose body is not checked
+				// for assignments to immutable names.
+				if !t.later_stmts_assign_local(id, lhs.value) {
+					t.comptime_scalar_locals[lhs.value] = scalar
+				}
 			}
 		}
 	}
 	return result
+}
+
+// later_stmts_assign_local reports whether a statement that follows the declaration
+// `decl_id` in its statement list assigns to the declared local `name`, increments it, or
+// passes it as a mutable argument. Only those statements can see the binding: the same name
+// in an earlier statement belongs to another one. Reading it, as on the right of an
+// assignment, does not count: a compile-time construct may still need its value.
+fn (t &Transformer) later_stmts_assign_local(decl_id flat.NodeId, name string) bool {
+	ids := t.cur_stmt_list
+	mut first := 0
+	for i, id in ids {
+		if id == decl_id {
+			first = i + 1
+			break
+		}
+	}
+	for i in first .. ids.len {
+		if t.node_assigns_local(ids[i], name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) node_assigns_local(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	// A function literal has its own scope. A name declared there is another binding,
+	// and a captured scalar is a copy that belongs to the closure.
+	if node.kind == .fn_literal {
+		return false
+	}
+	if node.kind == .ident && node.is_mut && node.value == name {
+		return true
+	}
+	if node.kind == .assign {
+		for i in 0 .. t.multi_assign_lhs_count(node) {
+			if t.node_is_local_ident(t.multi_assign_lhs_id(node, i), name) {
+				return true
+			}
+		}
+	} else if node.kind == .postfix && (node.op == .inc || node.op == .dec) {
+		if node.children_count > 0 && t.node_is_local_ident(t.a.child(&node, 0), name) {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.node_assigns_local(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) node_is_local_ident(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	return node.kind == .ident && node.value == name
 }
 
 // subst_comptime_scalar_locals substitutes bare value names, leaving members, quotes and type tests alone.

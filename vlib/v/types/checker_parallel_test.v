@@ -6,6 +6,73 @@ import v.flat
 import v.parser
 import v.pref
 
+fn test_diagnostic_comparators_preserve_priority_and_interface_order() {
+	first := TypeError{
+		msg:     "`Item` doesn't implement method `read` of interface `Alpha`"
+		node:    flat.NodeId(4)
+		file:    'diagnostics.v'
+		details: ['first detail']
+	}
+	second := TypeError{
+		msg:     "`Item` doesn't implement method `read` of interface `Beta`"
+		node:    first.node
+		file:    first.file
+		details: ['second detail']
+	}
+	assert compare_type_errors(&first, &second) == -1
+	assert compare_type_errors(&second, &first) == 1
+	assert compare_type_errors(&first, &first) == 0
+	// Notices without their own priority use the error comparator in a nested scope.
+	assert compare_type_notices(&first, &second) == -1
+	assert compare_type_notices(&second, &first) == 1
+	ordered := TypeError{ ...first, diagnostic_order: 1 }
+	later := TypeError{ ...second, diagnostic_order: 3 }
+	assert compare_type_errors(&ordered, &later) == -2
+	unused := TypeError{ ...first, msg: 'unused parameter: value' }
+	assert compare_type_notices(&unused, &first) == 1
+	assert compare_type_notices(&first, &unused) == -1
+	assert first.msg == "`Item` doesn't implement method `read` of interface `Alpha`"
+	assert second.msg == "`Item` doesn't implement method `read` of interface `Beta`"
+	assert first.details == ['first detail']
+	assert second.details == ['second detail']
+}
+
+fn test_diagnostic_comparators_release_searches_before_returning_to_parent_arena() {
+	$if prealloc {
+		first := TypeError{
+			msg:  "`Item` doesn't implement method `read` of interface `Alpha`"
+			node: flat.NodeId(4)
+			file: 'diagnostics.v'
+		}
+		second := TypeError{
+			msg:  "`Item` doesn't implement method `read` of interface `Beta`"
+			node: first.node
+			file: first.file
+		}
+		parent := unsafe { prealloc_scope_begin() }
+		defer { unsafe { prealloc_scope_end(parent) } }
+		payload := 'parent payload'.clone()
+		before := unsafe { prealloc_scope_allocated_size(parent) }
+		mut errors_result := 0
+		mut notices_result := 0
+		// These late comparisons allocate temporary substring searches. Repeating
+		// them must not grow the caller arena, including notices' nested fallback.
+		for _ in 0 .. 4096 {
+			errors_result += compare_type_errors(&first, &second)
+			errors_result += compare_type_errors(&second, &first)
+			notices_result += compare_type_notices(&first, &second)
+			notices_result += compare_type_notices(&second, &first)
+		}
+		after := unsafe { prealloc_scope_allocated_size(parent) }
+		assert after == before
+		assert errors_result == 0
+		assert notices_result == 0
+		assert payload == 'parent payload'
+		assert first.file == 'diagnostics.v'
+		assert second.msg.ends_with('`Beta`')
+	}
+}
+
 fn test_parallel_fn_prep_recognizes_source_embedded_veb_context() {
 	mut a := flat.FlatAst.new()
 	a.add_val(.file, 'context.v')
@@ -187,25 +254,32 @@ fn test_visibility_index_preserves_file_context_and_builtin_aliases() {
 
 fn test_checker_type_promotion_survives_batch_arena_release() {
 	$if prealloc {
-		a := flat.FlatAst.new()
-		tc := TypeChecker.new(&a)
-		scope := unsafe { prealloc_scope_begin() }
-		borrowed := Type(FnType{
-			params:      [Type(Struct{ name: 'ScopedItem'.clone() })]
-			return_type: Type(Array{ elem_type: Type(string_) })
-		})
-		unsafe { prealloc_scope_leave(scope) }
-		first := tc.promote_check_type(borrowed)
-		second := tc.promote_check_type(borrowed)
-		if first is FnType && second is FnType {
-			assert !unsafe { prealloc_scope_owns(scope, first.params.data) }
-			assert first.params.data == second.params.data
-		} else {
-			assert false
+		for compatibility in [false, true] {
+			a := flat.FlatAst.new()
+			mut tc := TypeChecker.new(&a)
+			if compatibility { tc.type_interner = unsafe { nil } }
+			scope := unsafe { prealloc_scope_begin() }
+			borrowed := Type(FnType{
+				params:      [Type(Struct{ name: 'ScopedItem'.clone() })]
+				params_mut:  [true]
+				return_type: Type(Array{ elem_type: Type(string_) })
+			})
+			unsafe { prealloc_scope_leave(scope) }
+			first := tc.promote_check_type(borrowed)
+			second := tc.promote_check_type(borrowed)
+			if first is FnType && second is FnType {
+				assert !unsafe { prealloc_scope_owns(scope, first.params.data) }
+				assert !unsafe { prealloc_scope_owns(scope, first.params_mut.data) }
+				if !compatibility {
+					assert first.params.data == second.params.data
+				}
+			} else {
+				assert false
+			}
+			unsafe { prealloc_scope_free_after(scope) }
+			assert first.name() == 'fn(mut ScopedItem) []string'
+			assert second.name() == first.name()
 		}
-		unsafe { prealloc_scope_free_after(scope) }
-		assert first.name() == 'fn(ScopedItem) []string'
-		assert second.name() == first.name()
 	}
 }
 
@@ -294,9 +368,12 @@ fn test_fast_file_index_collects_translated_module_attribute() {
 }
 
 fn test_parent_metadata_replay_matches_full_scan() {
-	path := os.join_path(os.vtmp_dir(), 'v3_parent_metadata_${os.getpid()}.v')
+	fixture_dir := os.join_path(os.vtmp_dir(), 'v3_parent_metadata_${os.getpid()}')
+	defer { os.rmdir_all(fixture_dir) or {} }
+	os.mkdir_all(os.join_path(fixture_dir, 'v3_parent_headers')) or { panic(err) }
+	os.mkdir_all(os.join_path(fixture_dir, 'v3_parent_system')) or { panic(err) }
+	path := os.join_path(fixture_dir, 'main.v')
 	os.write_file(path, '@[translated]\nmodule main\nimport strings\n#flag -I @DIR/v3_parent_headers -D FEATURE\n#flag -isystem "@DIR/v3_parent_system" -Wall\n#flag -I @DIR/v3_parent_headers\n@[inline]\nfn make_builder() { mut b := strings.new_builder(10) }\n') or { panic(err) }
-	defer { os.rm(path) or {} }
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()

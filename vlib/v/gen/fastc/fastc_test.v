@@ -8459,7 +8459,6 @@ fn test_expressions_without_safe_lowering_are_rejected() {
 		'module main\nfn divide(b int) { mut x := 1; x /= b; println(x) }\nfn main() { divide(0) }\n',
 		'module main\nfn modulo(b int) { mut x := 1; x %= b; println(x) }\nfn main() { modulo(0) }\n',
 		'module main\nfn main() { println(sizeof(string)) }\n',
-		"module main\nfn main() { s := 'abc'; println(s[0]) }\n",
 		"module main\nfn main() { println(c'a') }\n",
 		'module main\nfn main() { println(`A`) }\n',
 		'module main\nfn show(r rune) { println(r) }\nfn main() { show(65) }\n',
@@ -9132,7 +9131,7 @@ fn main() {
 	// A single-type-parameter generic is monomorphized into one concrete copy per
 	// instantiation (int inferred from a literal, string from a literal, int from
 	// an explicit type argument), and every call is rewritten to the mangled name.
-	assert c_source.contains('int box_mono_int(int x)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} box_mono_int(${fastc_platform_int_c_type} x)'), c_source
 	assert c_source.contains('string box_mono_string(string x)'), c_source
 	assert c_source.contains('box_mono_int(5)'), c_source
 	assert c_source.contains('box_mono_string(_S("hi"))'), c_source
@@ -9177,7 +9176,12 @@ pub fn run[A, B](mut app A, config Config) ! {
 			header: fastc_scan_source_header(library_source, 'library.v', prefs) or { panic(err) }
 		},
 	], map[string]string{}, prefs) or { panic(err) }
-	assert c_source.contains('library__run('), c_source
+	// Self-host generation compacts non-main C function names. Resolve the erased
+	// definition's name so the mutable call must use that same function.
+	signature := '(voidptr* app, library__Config config) {'
+	assert c_source.contains(signature), c_source
+	erased_name := c_source.all_before(signature).all_after_last('\n').all_after_last(' ')
+	assert c_source.contains('${erased_name}(((voidptr *)(&(app))),'), c_source
 	assert c_source.contains('.value='), c_source
 	assert !c_source.contains('run[App'), c_source
 }
@@ -9206,7 +9210,7 @@ fn main() {
 ', 'generic_var_args.v', prefs) or { panic(err) }
 	// Concrete type inferred from a function parameter (`n int`), a local declared
 	// from a literal (`m := 7`), and a literal argument.
-	assert c_source.contains('int identity_mono_int(int x)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} identity_mono_int(${fastc_platform_int_c_type} x)'), c_source
 	assert c_source.contains('string identity_mono_string(string x)'), c_source
 	assert c_source.contains('identity_mono_int(n)'), c_source
 	assert c_source.contains('identity_mono_int(m)'), c_source
@@ -9235,7 +9239,7 @@ fn main() {
 	// is rewritten to the mangled name.
 	assert c_source.contains('struct Box_mono_int {'), c_source
 	assert c_source.contains('struct Box_mono_string {'), c_source
-	assert c_source.contains('int value;'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} value;'), c_source
 	assert c_source.contains('string value;'), c_source
 	assert c_source.contains('(Box_mono_int){'), c_source
 	assert c_source.contains('(Box_mono_string){'), c_source
@@ -9264,7 +9268,7 @@ fn main() {
 	// A method on a generic struct is monomorphized per instantiation: the receiver
 	// type becomes the mangled struct name (with a single underscore, since `__` is
 	// FastC's module separator) so its C method name resolves correctly.
-	assert c_source.contains('int Wrapper_mono_int_get(Wrapper_mono_int w)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} Wrapper_mono_int_get(Wrapper_mono_int w)'), c_source
 	assert c_source.contains('string Wrapper_mono_string_get(Wrapper_mono_string w)'), c_source
 	assert c_source.contains('Wrapper_mono_int_get(wi)'), c_source
 	assert c_source.contains('Wrapper_mono_string_get(ws)'), c_source
@@ -9377,9 +9381,9 @@ fn main() {
 	// joins the concrete args with `_` (a struct, its method, and a function).
 	assert c_source.contains('struct Pair_mono_string_int {'), c_source
 	assert c_source.contains('string key;'), c_source
-	assert c_source.contains('int value;'), c_source
-	assert c_source.contains('Pair_mono_string_int_same(Pair_mono_string_int p, int v)'), c_source
-	assert c_source.contains('int firstof_mono_int_string(int a, string b)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} value;'), c_source
+	assert c_source.contains('Pair_mono_string_int_same(Pair_mono_string_int p, ${fastc_platform_int_c_type} v)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} firstof_mono_int_string(${fastc_platform_int_c_type} a, string b)'), c_source
 }
 
 fn test_comptime_for_fields_unrolling() {
@@ -12464,10 +12468,10 @@ fn sum[T](values []T) T {
 	result += values[1]
 	return result
 }
-
-fn main() {}
 ', 'erased_generic_compound_assignment.v', prefs) or { panic(err) }
-	assert c_source.contains('voidptr main__sum(Array_voidptr values)'), c_source
+	// Without `main` every function stays reachable, and with no caller nothing is
+	// monomorphized, so only the erased placeholder body is lowered.
+	assert c_source.contains('voidptr sum(Array_voidptr values)'), c_source
 	assert c_source.contains('return (voidptr){0};'), c_source
 	assert !c_source.contains('result+='), c_source
 }
@@ -12526,10 +12530,10 @@ fn test_selfhost_erased_generic_type_reflection_uses_stub() {
 fn is_pointer[T]() bool {
 	return T.name[0] == `&`
 }
-
-fn main() {}
 ', 'erased_generic_type_reflection.v', prefs) or { panic(err) }
-	assert c_source.contains('bool main__is_pointer(void)'), c_source
+	// Without `main` every function stays reachable, and with no caller nothing is
+	// monomorphized, so only the erased placeholder body is lowered.
+	assert c_source.contains('bool is_pointer(void)'), c_source
 	assert c_source.contains('return (bool){0};'), c_source
 	assert !c_source.contains('T.name'), c_source
 }

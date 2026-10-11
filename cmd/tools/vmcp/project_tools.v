@@ -232,13 +232,22 @@ directory.',
 			}
 			'limit':         SchemaProperty{
 				kind:        'integer'
-				description: 'Maximum number of files to return.\nDefaults to 500.'
+				description: 'Maximum number of files to return.\nDefaults to 500, at most 2000.'
 			}
 		}), tool_files)
 }
 
 // file_limit is how many files `v_files` returns before it truncates.
 const file_limit = 500
+
+// max_file_limit bounds an explicit `limit`, so one call cannot ask for a
+// multi-megabyte listing. `returned`/`truncated` keep their meaning.
+const max_file_limit = 2000
+
+// clamp_file_limit bounds a requested `v_files` limit from above.
+fn clamp_file_limit(limit int) int {
+	return if limit > max_file_limit { max_file_limit } else { limit }
+}
 
 // tool_files answers `v_files`.
 fn tool_files(ws &Workspace, arguments string) string {
@@ -249,7 +258,7 @@ fn tool_files(ws &Workspace, arguments string) string {
 		return error_json('`${requested}` is not a directory')
 	}
 	include_tests := args.boolean('include_tests', true)
-	limit := args.int('limit', file_limit)
+	limit := clamp_file_limit(args.int('limit', file_limit))
 	mut out := []string{}
 	mut truncated := 0
 	for file in ws.v_files(dir) {

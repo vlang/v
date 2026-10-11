@@ -395,7 +395,8 @@ pub fn format_fl(f f64, p BF_param) string {
 @[direct_array_access; manualfree]
 pub fn format_es(f f64, p BF_param) string {
 	unsafe {
-		mut fs := f64_to_str_pad(if f > 0 { f } else { -f }, p.len1)
+		// the sign is written from `p.positive`
+		mut fs := f64_to_str_pad(fabs(f), p.len1)
 		if p.rm_tail_zero {
 			tmp := fs
 			fs = remove_tail_zeros(fs)
