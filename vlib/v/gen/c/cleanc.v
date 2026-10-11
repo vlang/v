@@ -12,6 +12,7 @@ import v.pref
 import v.token as vtoken
 import v.types
 import v.util
+import v.util.cache_refresh
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
@@ -609,6 +610,9 @@ mut:
 	cache_const_declarations       map[string]string
 	cache_decl_refs                map[string]bool
 	cache_decl_demand              bool
+	cache_pruned_fn_names          []string
+	cache_pruned_fn_modules        []string
+	cache_pruned_fn_refs           []string
 	const_init_order               []string
 	fixed_storage_consts           map[string]bool
 	global_modules                 map[string]string
@@ -665,6 +669,7 @@ mut:
 	inlined_c_static_fns           map[string]bool
 	cache_omitted_c_fns            map[string]bool
 	initial_c_flags                []string
+	cache_refresh_project_flags    []cache_refresh.FlagGroup
 	c_flags                        []string
 	libc_compat_fns                map[string]bool
 	tc                             &types.TypeChecker = unsafe { nil }
@@ -1048,6 +1053,11 @@ pub fn (g &FlatGen) c_flags() []string {
 // set_initial_c_flags makes command-line C flags available while collecting directives.
 pub fn (mut g FlatGen) set_initial_c_flags(flags []string) {
 	g.initial_c_flags = flags.clone()
+}
+
+// set_cache_refresh_project_flags restores project directives beside current module flags.
+pub fn (mut g FlatGen) set_cache_refresh_project_flags(groups []cache_refresh.FlagGroup) {
+	g.cache_refresh_project_flags = groups.clone()
 }
 
 // set_c99_mode configures whether generated C should support strict C99 builds.
@@ -3336,6 +3346,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cache_const_declarations.clear()
 	g.cache_decl_refs.clear()
 	g.cache_decl_demand = false
+	g.cache_pruned_fn_refs = []string{}
 	g.const_files.clear()
 	g.const_init_order = []string{}
 	g.fixed_storage_consts.clear()
@@ -5329,6 +5340,9 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			}
 		}
 	}
+	for group in g.cache_refresh_project_flags {
+		groups << CFlagDirectiveGroup{ flags: group.flags, at_start: group.at_start, in_main: group.in_main, identity: group.identity }
+	}
 	g.c_flags << ordered_c_flag_directive_groups(groups)
 }
 
@@ -5336,6 +5350,8 @@ struct CFlagDirectiveGroup {
 	flags    []string
 	at_start bool
 	in_main  bool
+	source   string
+	identity string
 }
 
 // ordered_c_flag_directive_groups puts the groups of `@START_LIBS` style directives
@@ -5346,7 +5362,7 @@ fn ordered_c_flag_directive_groups(groups []CFlagDirectiveGroup) []string {
 	mut result := []string{}
 	mut seen := map[string]bool{}
 	for group in groups {
-		key := group.flags.join('\x00')
+		key := if group.identity.len > 0 { group.identity } else { group.flags.join('\x00') }
 		if group.at_start && key !in seen {
 			seen[key] = true
 			result << group.flags
@@ -5354,7 +5370,7 @@ fn ordered_c_flag_directive_groups(groups []CFlagDirectiveGroup) []string {
 	}
 	mut main_flags := []string{}
 	for group in groups {
-		key := group.flags.join('\x00')
+		key := if group.identity.len > 0 { group.identity } else { group.flags.join('\x00') }
 		if key in seen {
 			continue
 		}
@@ -5372,6 +5388,28 @@ fn ordered_c_flag_directive_groups(groups []CFlagDirectiveGroup) []string {
 // cache_directive_flags resolves source C flags that affect early C cache keys.
 pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
 	return cache_directive_flags_skipping(a, vroot, target, compile_values, map[int]bool{})
+}
+
+// cache_project_flag_groups returns only directives the refresh importer cannot read.
+// Entry files inside vlib are still project inputs; other vlib flags are resolved anew.
+pub fn cache_project_flag_groups(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string, program_files map[string]bool) []cache_refresh.FlagGroup {
+	vlib := os.real_path(os.join_path(vroot, 'vlib')) + os.path_separator
+	mut result := []cache_refresh.FlagGroup{}
+	for group in cache_directive_flag_groups(a, vroot, target, compile_values, map[int]bool{}) {
+		source := a.real_source_path(group.source)
+		if source !in program_files && os.real_path(source).starts_with(vlib) { continue }
+		result << cache_refresh.FlagGroup{ flags: group.flags, at_start: group.at_start, in_main: group.in_main }
+	}
+	return result
+}
+
+// cache_directive_flags_with_project merges saved project groups with fresh module directives.
+pub fn cache_directive_flags_with_project(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string, project []cache_refresh.FlagGroup) []string {
+	mut groups := cache_directive_flag_groups(a, vroot, target, compile_values, map[int]bool{})
+	for group in project {
+		groups << CFlagDirectiveGroup{ flags: group.flags, at_start: group.at_start, in_main: group.in_main, identity: group.identity }
+	}
+	return ordered_c_flag_directive_groups(groups)
 }
 
 // preflight_directive_flags resolves flags whose compile-time branches were decided by
@@ -5400,6 +5438,10 @@ fn mark_preflight_deferred_directives(a &flat.FlatAst, id flat.NodeId, mut defer
 }
 
 fn cache_directive_flags_skipping(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string, skipped map[int]bool) []string {
+	return ordered_c_flag_directive_groups(cache_directive_flag_groups(a, vroot, target, compile_values, skipped))
+}
+
+fn cache_directive_flag_groups(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string, skipped map[int]bool) []CFlagDirectiveGroup {
 	mut groups := []CFlagDirectiveGroup{}
 	mut cur_file := ''
 	mut cur_module := ''
@@ -5431,10 +5473,11 @@ fn cache_directive_flags_skipping(a &flat.FlatAst, vroot string, target pref.Tar
 				flags:    flags
 				at_start: at_start
 				in_main:  cur_module in ['', 'main']
+				source:   a.cached_header_sources[cur_file] or { cur_file }
 			}
 		}
 	}
-	return ordered_c_flag_directive_groups(groups)
+	return groups
 }
 
 // c_source_file_is_in_vlib reports whether a source file belongs to the compiler's
