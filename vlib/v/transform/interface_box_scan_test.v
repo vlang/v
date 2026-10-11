@@ -124,27 +124,65 @@ fn test_interface_array_spread_classification_and_box_scan() {
 		name:      'Codes'
 		base_type: array_type
 	}), types.Type(types.Alias{ name: 'FixedCodes', base_type: fixed_type })] {
+		for depth in 0 .. 3 {
+			mut a := flat.FlatAst.new()
+			lhs := a.add_val(.ident, 'values')
+			value := a.add_val(.ident, 'source')
+			spread := interface_box_scan_node(mut a, .prefix, '...', '', [value])
+			mut rhs := spread
+			for _ in 0 .. depth {
+				rhs = interface_box_scan_node(mut a, .paren, '', '', [rhs])
+			}
+			append := interface_box_scan_node(mut a, .infix, '', '', [lhs, rhs])
+			mut tc := types.TypeChecker.new(&a)
+			tc.interface_names['Value'] = true
+			tc.register_synth_type(lhs, types.Type(types.Array{
+				elem_type: types.Type(types.Interface{ name: 'Value' })
+			}))
+			tc.register_synth_type(value, actual)
+			tc.register_synth_type(spread, actual)
+			tc.register_synth_type(rhs, actual)
+			mut t := new_transformer(mut a, &tc, map[string]bool{})
+			t.cur_module = 'main'
+
+			assert t.array_append_rhs_is_push_many(lhs, rhs, actual.name(), 'Value') == (i >= 2)
+			t.collect_interface_append_boxes(a.nodes[int(append)])
+
+			boxed_type := if actual is types.Primitive { 'int' } else { 'string' }
+			assert t.interface_boxed_types['Value\n${boxed_type}']
+			expected_keys := ['Value\n${boxed_type}', 'Value\n${c_name(boxed_type)}']
+			assert t.interface_boxed_types.keys().all(it in expected_keys)
+		}
+	}
+}
+
+fn test_interface_array_spread_pointer_classification() {
+	array_type := types.Type(types.Array{ elem_type: types.Type(types.String{}) })
+	fixed_type := types.Type(types.ArrayFixed{ elem_type: types.Type(types.String{}), len: 2 })
+	pointer_type := types.Type(types.Pointer{ base_type: array_type })
+	for i, actual in [pointer_type, types.Type(types.Pointer{ base_type: fixed_type }), types.Type(types.Pointer{
+		base_type: types.Type(types.Alias{ name: 'Codes', base_type: array_type })
+	}), types.Type(types.Alias{ name: 'CodePointer', base_type: pointer_type }), types.Type(types.Pointer{
+		base_type: pointer_type
+	})] {
 		mut a := flat.FlatAst.new()
 		lhs := a.add_val(.ident, 'values')
 		value := a.add_val(.ident, 'source')
 		spread := interface_box_scan_node(mut a, .prefix, '...', '', [value])
-		append := interface_box_scan_node(mut a, .infix, '', '', [lhs, spread])
+		rhs := interface_box_scan_node(mut a, .paren, '', '', [spread])
 		mut tc := types.TypeChecker.new(&a)
 		tc.interface_names['Value'] = true
-		tc.register_synth_type(lhs, types.Type(types.Array{
-			elem_type: types.Type(types.Interface{ name: 'Value' })
-		}))
+		lhs_type := types.Type(types.Array{ elem_type: types.Type(types.Interface{ name: 'Value' }) })
+		tc.register_synth_type(lhs, lhs_type)
 		tc.register_synth_type(value, actual)
 		tc.register_synth_type(spread, actual)
+		tc.register_synth_type(rhs, actual)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.cur_module = 'main'
 
-		assert t.array_append_rhs_is_push_many(lhs, spread, actual.name(), 'Value') == (i >= 2)
-		t.collect_interface_append_boxes(a.nodes[int(append)])
-
-		boxed_type := if actual is types.Primitive { 'int' } else { 'string' }
-		assert t.interface_boxed_types['Value\n${boxed_type}']
-		expected_keys := ['Value\n${boxed_type}', 'Value\n${c_name(boxed_type)}']
-		assert t.interface_boxed_types.keys().all(it in expected_keys)
+		assert !t.array_append_rhs_is_push_many(lhs, spread, actual.name(), 'Value')
+		assert !t.array_append_rhs_is_push_many(lhs, rhs, actual.name(), 'Value')
+		assert t.array_append_rhs_is_push_many(lhs, spread, actual.name(), 'string') == (i < 4)
+		assert t.interface_box_append_expected_type(lhs_type, lhs, rhs) is types.Interface
 	}
 }

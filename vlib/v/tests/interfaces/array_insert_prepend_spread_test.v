@@ -1,5 +1,45 @@
 interface Value {}
 
+struct ParenPrependCountry {
+	code string
+}
+
+struct ParenInsertCountry {
+	code string
+}
+
+fn prepend_parenthesized_countries() []Value {
+	mut values := []Value{}
+	countries := [ParenPrependCountry{'IT'}, ParenPrependCountry{'US'}]
+	values.prepend((...countries))
+	return values
+}
+
+fn insert_parenthesized_countries() []Value {
+	mut values := []Value{}
+	countries := [ParenInsertCountry{'IT'}, ParenInsertCountry{'US'}]
+	values.insert(0, (...countries))
+	return values
+}
+
+fn test_array_prepend_parenthesized_spread_registers_elements() {
+	values := prepend_parenthesized_countries()
+	assert values.len == 2
+	assert values[0] is ParenPrependCountry
+	assert (values[0] as ParenPrependCountry).code == 'IT'
+	assert (values[1] as ParenPrependCountry).code == 'US'
+	assert '${values}'.contains('ParenPrependCountry')
+}
+
+fn test_array_insert_parenthesized_spread_registers_elements() {
+	values := insert_parenthesized_countries()
+	assert values.len == 2
+	assert values[0] is ParenInsertCountry
+	assert (values[0] as ParenInsertCountry).code == 'IT'
+	assert (values[1] as ParenInsertCountry).code == 'US'
+	assert '${values}'.contains('ParenInsertCountry')
+}
+
 fn prepend_strings() []Value {
 	mut values := [Value(['DE'])]
 	strings := ['IT', 'US']

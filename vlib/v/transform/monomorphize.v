@@ -2204,7 +2204,7 @@ fn (mut t Transformer) collect_interface_array_insert_boxes(node flat.Node) {
 	if !interface_box_expected_type(expected) {
 		return
 	}
-	value := t.a.node(value_id)
+	value := t.a.node(t.unwrap_parens(value_id))
 	source_id := if value.kind == .prefix && value.value == '...' && value.children_count > 0 {
 		t.a.child(value, 0)
 	} else {

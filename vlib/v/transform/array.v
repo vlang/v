@@ -2782,7 +2782,7 @@ fn (t &Transformer) array_append_rhs_is_array_spread(rhs_id flat.NodeId) bool {
 	if int(rhs_id) < 0 || int(rhs_id) >= t.a.nodes.len {
 		return false
 	}
-	node := t.a.nodes[int(rhs_id)]
+	node := t.a.nodes[int(t.unwrap_parens(rhs_id))]
 	if node.kind != .prefix || node.value != '...' || node.children_count == 0 {
 		return false
 	}
@@ -2804,15 +2804,27 @@ fn (t &Transformer) node_type_is_array(id flat.NodeId) bool {
 
 // array_append_rhs_is_push_many honors explicit array spread for append, insert and prepend.
 fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
-	rhs_node := t.a.nodes[int(rhs_id)]
+	rhs_node := t.a.nodes[int(t.unwrap_parens(rhs_id))]
 	if rhs_node.kind == .prefix && rhs_node.value == '...' && rhs_node.children_count > 0
 		&& !isnil(t.tc) {
 		value_id := t.a.child(&rhs_node, 0)
 		value_type := t.tc.expr_type(value_id) or { t.tc.resolve_type(value_id) }
-		if array_append_semantic_type_is_array(value_type)
+		value_base := forwarded_return_unalias_type(value_type)
+		if value_base is types.Array || value_base is types.ArrayFixed
 			|| (value_type is types.Unknown && t.array_append_rhs_is_array_spread(rhs_id)) {
 			// Explicit spread appends elements even when the whole array can be boxed as one value.
 			return true
+		}
+		if value_base is types.Pointer {
+			pointed := forwarded_return_unalias_type(value_base.base_type)
+			source_elem := match pointed {
+				types.Array { pointed.elem_type.name() }
+				types.ArrayFixed { pointed.elem_type.name() }
+				else { '' }
+			}
+			// Pointer sources bypass element conversion, so only matching storage is safe.
+			return source_elem.len > 0
+				&& t.array_append_elem_c_type(source_elem) == t.array_append_elem_c_type(elem_type)
 		}
 	}
 	return t.array_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)

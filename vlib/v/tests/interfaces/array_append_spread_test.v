@@ -39,6 +39,24 @@ fn test_array_append_spread_array_alias() {
 	assert '${params}' == "[Value('IT'), Value('US')]"
 }
 
+fn test_array_append_spread_parenthesized() {
+	codes := ['IT', 'US']
+	mut params := []Value{}
+	params << (...codes)
+	params << (...['DE'])
+	assert params.len == 3
+	assert '${params}' == "[Value('IT'), Value('US'), Value('DE')]"
+	assert params[0] is string
+	assert params[2] is string
+}
+
+fn test_array_append_spread_parenthesized_alias() {
+	codes := Codes(['IT', 'US'])
+	mut params := []Value{}
+	params << (...codes)
+	assert '${params}' == "[Value('IT'), Value('US')]"
+}
+
 fn test_array_append_spread_fixed_array_slice() {
 	codes := ['IT', 'US']!
 	more := ['DE']!
@@ -72,6 +90,31 @@ fn test_array_append_spread_scalar_uses_single_value_lowering() {
 	assert params[2] is string
 }
 
+fn test_array_append_spread_pointer_uses_single_value_lowering() {
+	codes := ['IT', 'US']
+	source := &codes
+	mut params := []Value{}
+	params << ...(&codes)
+	params << ...source
+	assert params.len == 2
+	assert params[0] is []string
+	assert params[1] is []string
+	assert '${params}' == "[Value(['IT', 'US']), Value(['IT', 'US'])]"
+}
+
+fn test_array_append_spread_pointer_with_matching_element_types() {
+	codes := [Value('IT'), Value('US')]
+	mut params := []Value{}
+	params << ...(&codes)
+	assert params.len == 2
+	assert '${params}' == "[Value('IT'), Value('US')]"
+
+	strings := ['IT', 'US']
+	mut copied := []string{}
+	copied << ...(&strings)
+	assert copied == strings
+}
+
 fn test_array_append_spread_nested_arrays() {
 	codes := [['IT'], ['US']]
 	mut params := []Value{}
@@ -98,6 +141,16 @@ fn test_array_append_spread_optional_target() {
 	assert '${params}' == "[Value('IT'), Value('US')]"
 }
 
+fn test_array_append_spread_parenthesized_optional_target() {
+	codes := ['IT', 'US']
+	mut holder := ValueHolder{
+		values: []Value{}
+	}
+	holder.values? << (...codes)
+	params := holder.values or { panic('missing values') }
+	assert '${params}' == "[Value('IT'), Value('US')]"
+}
+
 fn spread_codes(mut calls []int) []string {
 	calls << 1
 	return ['IT', 'US']
@@ -107,6 +160,14 @@ fn test_array_append_spread_evaluates_source_once() {
 	mut calls := []int{}
 	mut params := []Value{}
 	params << ...(spread_codes(mut calls))
+	assert calls == [1]
+	assert '${params}' == "[Value('IT'), Value('US')]"
+}
+
+fn test_array_append_spread_parenthesized_evaluates_source_once() {
+	mut calls := []int{}
+	mut params := []Value{}
+	params << (...(spread_codes(mut calls)))
 	assert calls == [1]
 	assert '${params}' == "[Value('IT'), Value('US')]"
 }

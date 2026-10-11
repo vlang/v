@@ -1269,6 +1269,7 @@ println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
 Use `<< ...array` to explicitly append the array's elements. When appending an array of
 concrete values to an empty interface array, `<< array` appends the whole array as one
 interface value, while `<< ...array` converts and appends each element separately.
+The same rule applies when the spread is parenthesized, as in `values << (...codes)`.
 For example, with `interface Value {}`, appending `['IT']` to `[]Value{}` produces
 `[Value(['IT'])]` with `<<` and `[Value('IT')]` with `<< ...`.
 `insert(index, ...array)` and `prepend(...array)` also convert each source element to the
