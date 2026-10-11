@@ -730,3 +730,38 @@ fn test_program_executable_link_signature_tells_builds_apart() {
 	assert base != v3_program_executable_link_signature(['-lm'], true, ['strict=false'])
 	assert base != v3_program_executable_link_signature(['-lm'], false, ['strict=true'])
 }
+
+fn test_library_search_of_a_compiler_is_asked_again_in_another_environment() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_library_search_env_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manager := modulecache.new_manager(os.join_path(root, 'cache'), 'salt', true, '', '')
+	// A compiler that searches where a variable of its environment sends it, as
+	// GCC does with `GCC_EXEC_PREFIX`, and that leaves a line for each run.
+	compiler := os.join_path(root, 'searching-cc')
+	runs := os.join_path(root, 'runs')
+	os.write_file(compiler, '#!/bin/sh\necho run >> ${runs}\necho "libraries: =\${GCC_EXEC_PREFIX}lib"\n')!
+	os.chmod(compiler, 0o755)!
+	saved := os.getenv_opt('GCC_EXEC_PREFIX')
+	defer {
+		if value := saved {
+			os.setenv('GCC_EXEC_PREFIX', value, true)
+		} else {
+			os.unsetenv('GCC_EXEC_PREFIX')
+		}
+	}
+	os.setenv('GCC_EXEC_PREFIX', '/first/', true)
+	assert '/first/lib' in v3_default_link_library_dirs(&manager, compiler, []string{}, '', '')
+	assert '/first/lib' in v3_default_link_library_dirs(&manager, compiler, []string{}, '', '')
+	assert os.read_lines(runs)!.len == 1
+	os.setenv('GCC_EXEC_PREFIX', '/second/', true)
+	second := v3_default_link_library_dirs(&manager, compiler, []string{}, '', '')
+	assert '/second/lib' in second && '/first/lib' !in second
+	assert os.read_lines(runs)!.len == 2
+}

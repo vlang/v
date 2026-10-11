@@ -880,7 +880,16 @@ fn v3_default_link_library_dirs(manager &modulecache.Manager, linker string, bas
 			candidates << dir
 		}
 	}
-	record := os.join_path_single(manager.dir, 'link_library_dirs_${c_hash_bytes(u64(1469598103934665603), 'v3-link-library-dirs-2\n${os.real_path(linker)}\n${v3_cache_file_identity(linker)}\n${base_args.join('\n')}'.bytes()).hex()}')
+	// A compiler driver answers by its environment as well: GCC adds the
+	// directories of `LIBRARY_PATH` to what it prints, and finds its own by
+	// `GCC_EXEC_PREFIX`.
+	record := os.join_path_single(manager.dir, 'link_library_dirs_${c_hash_bytes(u64(1469598103934665603), [
+		'v3-link-library-dirs-3',
+		os.real_path(linker),
+		v3_cache_file_identity(linker),
+		base_args.join('\n'),
+		v3_link_environment_signature(),
+	].join('\x01').bytes()).hex()}')
 	reported := os.read_file(record) or {
 		mut query := base_args.clone()
 		query << '-print-search-dirs'

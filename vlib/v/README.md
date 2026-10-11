@@ -550,7 +550,8 @@ program again and reports the stages as cached, the last one as `cc (cached)` or
 The files that the link read are compared by their metadata first: the objects, archives,
 libraries and other files that the command names, and every name that a linker gives a library
 of `-l` in the directories of `-L`, of `LIBRARY_PATH`, of the compiler (`-print-search-dirs`,
-asked once for a module cache) and of the system. What `-Wl,` and `-Xlinker` hand to the linker
+asked once for a module cache and an environment) and of the system. What `-Wl,` and `-Xlinker`
+hand to the linker
 is read as the one command that it is for the linker, so `-Wl,-L,/dir,-lname` names a directory
 and a library. A library that appears in one of those places counts as a change, and so does a
 program file that was saved while the build that linked the executable ran. A file of text
