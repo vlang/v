@@ -75,7 +75,11 @@ fn parse_attributes(attribute_contents string) !map[string]string {
 					`'`, `"` {
 						state = AttributeParserState.key
 						value_span.end = index
-						attributes[attribute_contents[key_span.start..key_span.end].trim_space()] = attribute_contents[value_span.start..value_span.end]
+						key := attribute_contents[key_span.start..key_span.end].trim_space()
+						if key in attributes {
+							return error('Duplicate XML attribute: ${key}')
+						}
+						attributes[key] = attribute_contents[value_span.start..value_span.end]
 
 						key_span.start = index + 1
 						key_span.end = index + 1
@@ -245,35 +249,117 @@ fn parse_element(contents string) !(DTDElement, string) {
 	return DTDElement{name, definition}, contents[element_end + 1..]
 }
 
+fn parse_doctype_literal(contents string) !(string, string) {
+	text := contents.trim_left(' \t\r\n')
+	if text.len == 0 || text[0] !in [`'`, `"`] {
+		return error('Invalid DOCTYPE: expected a quoted external identifier.')
+	}
+	end := text[1..].index_u8(text[0])
+	if end < 0 {
+		return error('Invalid DOCTYPE: external identifier not closed.')
+	}
+	return text[..end + 2], text[end + 2..]
+}
+
+fn parse_doctype_external_id(contents string) !string {
+	text := contents.trim_space()
+	if text == '' {
+		return ''
+	}
+	kind := if text.starts_with('SYSTEM') {
+		'SYSTEM'
+	} else if text.starts_with('PUBLIC') {
+		'PUBLIC'
+	} else {
+		return error('Invalid DOCTYPE: expected SYSTEM or PUBLIC.')
+	}
+	if text.len <= kind.len || text[kind.len] !in [` `, `\t`, `\r`, `\n`] {
+		return error('Invalid DOCTYPE: missing external identifier.')
+	}
+	_, remaining := parse_doctype_literal(text[kind.len..])!
+	mut trailing := remaining
+	if kind == 'PUBLIC' {
+		if remaining.len == 0 || remaining[0] !in [` `, `\t`, `\r`, `\n`] {
+			return error('Invalid DOCTYPE: PUBLIC requires a system identifier.')
+		}
+		_, rest := parse_doctype_literal(remaining)!
+		trailing = rest
+	}
+	if trailing.trim_space() != '' {
+		return error('Invalid DOCTYPE: unexpected text after external identifier.')
+	}
+	return text
+}
+
 fn parse_doctype(mut reader io.Reader) !DocumentType {
-	// We may have more < in the doctype so keep count
-	mut depth := 1
 	mut doctype_buffer := strings.new_builder(default_string_builder_cap)
 	mut local_buf := [u8(0)]
+	mut quote := u8(0)
+	mut subset_depth := 0
+	mut subset_start := -1
+	mut subset_end := -1
 	for {
-		ch := next_char(mut reader, mut local_buf)!
-		doctype_buffer.write_u8(ch)
-		match ch {
-			`<` {
-				depth++
+		ch := next_char(mut reader, mut local_buf) or {
+			if err is io.Eof || err is os.Eof || err.msg() == 'Unexpected End Of File.' {
+				return error('Invalid DOCTYPE: declaration not closed.')
 			}
-			`>` {
-				depth--
-				if depth == 0 {
-					break
-				}
-			}
-			else {}
+			return err
 		}
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			}
+		} else {
+			match ch {
+				`'`, `"` { quote = ch }
+				`[` {
+					if subset_depth == 0 {
+						subset_start = doctype_buffer.len
+					}
+					subset_depth++
+				}
+				`]` {
+					subset_depth--
+					if subset_depth < 0 {
+						return error('Invalid DOCTYPE: unexpected closing bracket.')
+					}
+					if subset_depth == 0 {
+						subset_end = doctype_buffer.len
+					}
+				}
+				`>` {
+					if subset_depth == 0 {
+						break
+					}
+				}
+				else {}
+			}
+		}
+		doctype_buffer.write_u8(ch)
 	}
-
-	doctype_contents := doctype_buffer.str().trim_space()
-
-	name := doctype_contents.all_before('[').trim_space()
-
-	mut list_contents := doctype_contents.all_after('[').all_before(']').trim_space()
+	contents := doctype_buffer.str()
+	header := if subset_start >= 0 { contents[..subset_start] } else { contents }
+	text := header.trim_space()
+	mut name_end := 0
+	for ch in text {
+		if ch in [` `, `\t`, `\r`, `\n`] {
+			break
+		}
+		name_end++
+	}
+	if name_end == 0 {
+		return error('Invalid DOCTYPE: missing root name.')
+	}
+	name := text[..name_end]
+	external_id := parse_doctype_external_id(text[name_end..])!
+	mut list_contents := ''
+	if subset_start >= 0 {
+		if subset_end <= subset_start || contents[subset_end + 1..].trim_space() != '' {
+			return error('Invalid DOCTYPE: malformed internal subset.')
+		}
+		list_contents = contents[subset_start + 1..subset_end].trim_space()
+	}
 	mut items := []DTDListItem{}
-
 	for list_contents.len > 0 {
 		if list_contents.starts_with('<!ENTITY') {
 			entity, remaining := parse_entity(list_contents)!
@@ -287,13 +373,52 @@ fn parse_doctype(mut reader io.Reader) !DocumentType {
 			return error('Unknown DOCTYPE list item: ${list_contents}')
 		}
 	}
-
 	return DocumentType{
-		name: name
-		dtd:  DocumentTypeDefinition{
-			list: items
-		}
+		name:        name
+		external_id: external_id
+		dtd:         DocumentTypeDefinition{ list: items }
 	}
+}
+
+fn parse_document_start(first_char u8, mut reader io.Reader) !(DocumentType, []XMLComment, u8) {
+	mut ch := first_char
+	mut local_buf := [u8(0)]
+	mut comments := []XMLComment{}
+	mut doctype := DocumentType{ name: '', dtd: '' }
+	mut found_doctype := false
+	for ch == `!` {
+		match next_char(mut reader, mut local_buf)! {
+			`-` {
+				if next_char(mut reader, mut local_buf)! != `-` {
+					return error('Invalid comment.')
+				}
+				comments << parse_comment(mut reader)!
+			}
+			`D` {
+				if found_doctype {
+					return error('Duplicate DOCTYPE declaration.')
+				}
+				mut doc_buf := []u8{len: 6}
+				if reader.read(mut doc_buf)! != 6 || doc_buf != doctype_chars {
+					return error('Invalid DOCTYPE.')
+				}
+				doctype = parse_doctype(mut reader)!
+				found_doctype = true
+			}
+			else {
+				return error('Unsupported control sequence found in prolog.')
+			}
+		}
+		ch = next_char(mut reader, mut local_buf)!
+		for (ch in [` `, `\t`, `\r`, `\n`]) {
+			ch = next_char(mut reader, mut local_buf)!
+		}
+		if ch != `<` {
+			return error('Expected root element after XML declaration or DOCTYPE.')
+		}
+		ch = next_char(mut reader, mut local_buf)!
+	}
+	return doctype, comments, ch
 }
 
 fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
@@ -329,7 +454,8 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 
 	ch = next_char(mut reader, mut local_buf)!
 	if ch != `?` {
-		return Prolog{}, ch
+		doctype, comments, root_char := parse_document_start(ch, mut reader)!
+		return Prolog{ doctype: doctype, comments: comments }, root_char
 	}
 
 	ch = next_char(mut reader, mut local_buf)!
@@ -388,68 +514,22 @@ fn parse_prolog(mut reader io.Reader) !(Prolog, u8) {
 	version := attributes['version'] or { return error('XML declaration missing version.') }
 	encoding := attributes['encoding'] or { 'UTF-8' }
 
-	mut comments := []XMLComment{}
-	mut doctype := DocumentType{
-		name: ''
-		dtd:  ''
-	}
-	mut found_doctype := false
-	for {
+	ch = next_char(mut reader, mut local_buf)!
+	for (ch in [` `, `\t`, `\r`, `\n`]) {
 		ch = next_char(mut reader, mut local_buf)!
-		match ch {
-			` `, `\t`, `\n` {
-				continue
-			}
-			`<` {
-				// We have a comment, DOCTYPE, or root node
-				ch = next_char(mut reader, mut local_buf)!
-				match ch {
-					`!` {
-						// A comment or DOCTYPE
-						match next_char(mut reader, mut local_buf)! {
-							`-` {
-								// A comment
-								if next_char(mut reader, mut local_buf)! != `-` {
-									return error('Invalid comment.')
-								}
-								comments << parse_comment(mut reader)!
-							}
-							`D` {
-								if found_doctype {
-									return error('Duplicate DOCTYPE declaration.')
-								}
-								// <!D -> OCTYPE
-								mut doc_buf := []u8{len: 6}
-								if reader.read(mut doc_buf)! != 6 {
-									return error('Invalid DOCTYPE.')
-								}
-								if doc_buf != doctype_chars {
-									return error('Invalid DOCTYPE.')
-								}
-								found_doctype = true
-								doctype = parse_doctype(mut reader)!
-							}
-							else {
-								return error('Unsupported control sequence found in prolog.')
-							}
-						}
-					}
-					else {
-						// We have found the start of the root node
-						break
-					}
-				}
-			}
-			else {}
-		}
 	}
+	if ch != `<` {
+		return error('Expected root element after XML declaration.')
+	}
+	ch = next_char(mut reader, mut local_buf)!
+	doctype, comments, root_char := parse_document_start(ch, mut reader)!
 
 	return Prolog{
 		version:  version
 		encoding: encoding
 		doctype:  doctype
 		comments: comments
-	}, ch
+	}, root_char
 }
 
 fn parse_children(name string, attributes map[string]string, mut reader io.Reader) !XMLNode {

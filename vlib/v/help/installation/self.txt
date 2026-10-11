@@ -4,11 +4,15 @@ Usage:
   v self
   v self -prod
   v self -b fastc
+  v -b arm64 self
+  v -b arm64 self x2
 
 Options:
   All other options are passed to the build command. (e.g. -prod)
   Plain self-builds compile the full `cmd/v` CLI, which embeds and defaults to V3 on macOS,
   Linux, and BSD.
+  Plain self-builds keep the FastC backend, so the new compiler accepts `-b fastc`; pass
+  `-d skip_fastc` to leave it out.
   On Apple Silicon, regular self-builds use bundled TCC by default; `CC` or `-cc` overrides it.
   -prod uses a single build of one C unit with LTO instead of a PGO cycle. That build runs
   the C compiler on one thread; add -parallel-cc for a faster build of a slower compiler.
@@ -16,3 +20,10 @@ Options:
   `-prod` cannot be combined with `-b fastc`.
   FastC replacement builds (`xN` without `-o`) reject options that the standalone compiler
   cannot preserve across every generation.
+  On macOS ARM64, `-b arm64` builds the full CLI with the native ARM64 backend.
+  First run `v -compile-backend arm64 self` if the current compiler lacks that backend.
+  Native builds retain the C backend and leave out FastC by default.
+  `xN` repeats replacement builds, using the newly built compiler for the next build.
+  Add `-o v_arm64` to keep the current compiler and write a separate executable.
+  Native self-builds do not add C compiler or preallocation options, and report native
+  compilation failures directly without retrying through the C bootstrap.

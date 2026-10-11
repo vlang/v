@@ -4,6 +4,81 @@ import v.flat
 import v.types
 import v.token
 
+fn test_collection_alias_methods_keep_declared_and_inherited_precedence() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'unrelated'
+	tc.type_aliases['strings.Builder'] = '[]u8'
+	tc.type_alias_modules['strings.Builder'] = 'strings'
+	tc.fn_ret_types['array.clear'] = types.Type(types.Void{})
+	tc.fn_ret_types['map.clear'] = types.Type(types.Void{})
+	collector := CallCollector{ a: &a, tc: &tc }
+	assert collector.typed_receiver_method_name('&strings.Builder', 'clear', 'strings')? == 'array.clear'
+	tc.fn_ret_types['strings.Builder.clear'] = types.Type(types.Void{})
+	assert collector.typed_receiver_method_name('strings.Builder', 'clear', 'strings')? == 'strings.Builder.clear'
+	tc.fn_ret_types.delete('strings.Builder.clear')
+	tc.type_aliases['strings.Outer'] = 'Builder'
+	tc.type_alias_modules['strings.Outer'] = 'strings'
+	tc.fn_ret_types['strings.Builder.clear'] = types.Type(types.Void{})
+	assert collector.typed_receiver_method_name('strings.Outer', 'clear', 'main')? == 'strings.Builder.clear'
+}
+
+fn test_collection_alias_methods_use_owner_and_specialized_collections() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['dep.Outer'] = 'Inner'
+	tc.type_alias_modules['dep.Outer'] = 'dep'
+	tc.type_aliases['dep.Inner'] = '[]u8'
+	tc.type_alias_modules['dep.Inner'] = 'dep'
+	tc.type_aliases['Inner'] = 'map[string]int'
+	tc.type_aliases['dep.Values'] = 'map[string]int'
+	tc.type_alias_modules['dep.Values'] = 'dep'
+	for name in ['array.clear', 'map.clear', 'array.hex', '[]u8.hex', 'map.keys', 'map[string]int.keys',
+		'Inner.hex'] {
+		tc.fn_ret_types[name] = types.Type(types.Void{})
+	}
+	collector := CallCollector{ a: &a, tc: &tc }
+	assert collector.typed_receiver_method_name('dep.Outer', 'clear', 'main')? == 'array.clear'
+	assert collector.typed_receiver_method_name('dep.Outer', 'hex', 'main')? == '[]u8.hex'
+	assert collector.typed_receiver_method_name('dep.Values', 'keys', 'main')? == 'map[string]int.keys'
+}
+
+fn test_collection_alias_methods_preserve_canonical_owner_over_current_imports() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['dep.Bytes'] = '[]u8'
+	tc.type_alias_modules['dep.Bytes'] = 'dep'
+	tc.type_aliases['other.Bytes'] = 'map[string]int'
+	tc.type_alias_modules['other.Bytes'] = 'other'
+	tc.fn_ret_types['array.clear'] = types.Type(types.Void{})
+	tc.fn_ret_types['map.clear'] = types.Type(types.Void{})
+	tc.cur_module = 'unrelated'
+	tc.cur_file = 'unrelated.v'
+	tc.register_file_import('dep', 'other')
+	assert types.unalias_type(tc.parse_type('dep.Bytes')) is types.Map
+	assert types.unalias_type(tc.parse_canonical_type('dep.Bytes')) is types.Array
+	collector := CallCollector{ a: &a, tc: &tc }
+	assert collector.typed_receiver_method_name('dep.Bytes', 'clear', 'main')? == 'array.clear'
+}
+
+fn test_collection_alias_methods_leave_cycles_generics_and_structs_conservative() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['CycleA'] = 'CycleB'
+	tc.type_aliases['CycleB'] = 'CycleA'
+	tc.type_aliases['Generic'] = '[]T'
+	tc.type_alias_generic_params['Generic'] = ['T']
+	tc.type_aliases['Outer'] = 'Inner'
+	tc.type_aliases['Inner'] = 'Item'
+	tc.structs['Item'] = []types.StructField{}
+	tc.fn_ret_types['array.clear'] = types.Type(types.Void{})
+	tc.fn_ret_types['Inner.clear'] = types.Type(types.Void{})
+	collector := CallCollector{ a: &a, tc: &tc }
+	for name in ['CycleA', 'CycleB', 'Generic', 'Outer', 'Missing'] {
+		assert collector.typed_receiver_method_name(name, 'clear', 'main') == none, name
+	}
+}
+
 fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -227,6 +302,47 @@ fn array_literal_root_calls(mut a flat.FlatAst, c &CallCollector, kind flat.Node
 	c.collect_calls_with_locals(a.node(root), 'main', map[string]string{}, '', '', map[string]bool{},
 		map[string]string{}, map[int]bool{}, mut calls)
 	return calls
+}
+
+fn test_dynamic_array_iteration_keeps_lowered_get_helper() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Names'] = '[]string'
+	tc.type_alias_modules['Names'] = 'main'
+	tc.type_aliases['NamesPointer'] = '&[]string'
+	tc.type_alias_modules['NamesPointer'] = 'main'
+	collector := CallCollector{ a: &a, tc: &tc }
+	for type_name in ['[]string', '&[]string', 'Names', '&Names', 'NamesPointer', '&NamesPointer',
+		'[2]string', 'string', 'map[string]string'] {
+		for indexed in [false, true] {
+			for mutable in [false, true] {
+				key := a.add_val(.ident, if indexed { 'i' } else { 'val' })
+				val := if indexed { a.add_val(.ident, 'val') } else { flat.NodeId(-1) }
+				container := a.add_val(.ident, 'names')
+				loop := call_helper_node(mut a, flat.Node{
+					kind:  .for_in_stmt
+					value: '3'
+					op:    if mutable { .amp } else { .none }
+				}, [key, val, container])
+				root := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'helper' }, [
+					loop,
+				])
+				mut calls := []string{}
+				collector.collect_calls_with_locals(a.node(root), 'main', map[string]string{},
+					'', '', {
+						'names': true
+						'val':   true
+						'i':     true
+					}, {
+						'names': type_name
+					}, map[int]bool{}, mut calls)
+				expects_get := type_name in ['[]string', '&[]string', 'Names', '&Names', 'NamesPointer',
+					'&NamesPointer']
+				assert ('array.get' in calls) == expects_get, '${type_name}: ${calls}'
+				assert ('array__get' in calls) == expects_get, '${type_name}: ${calls}'
+			}
+		}
+	}
 }
 
 fn test_literal_output_gate_preserves_file_index_fallbacks() {

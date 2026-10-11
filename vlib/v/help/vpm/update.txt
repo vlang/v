@@ -2,12 +2,21 @@ Updates each PACKAGE.
 
 Usage:
   v update [PACKAGE]...
+  v update -p PACKAGE [--precise REF]
+  v update [--latest]
 
 With no PACKAGE, ALL installed packages are updated to their latest versions.
 Run inside a project, the entries of the updated packages in its `v.mod.lock`
-are rewritten to their new revisions. Packages locked at a tag are kept.
+are rewritten to their new revisions. Exact tag pins are kept. Projects using
+version ranges resolve releases within the whole dependency graph; they do not
+move range installations to the default branch.
 
 Options:
+  -p PACKAGE   Update one project dependency, preferring other locked releases.
+  --precise REF  Select an exact ref for one package; all constraints still apply.
+  --latest     Widen selected direct constraints to the latest resolvable stable
+               release and rewrite them as caret constraints in v.mod.
   -v           Print more details about the update.
   -server-url  When doing network operations, use this vpm server.
                Can be given multiple times.
+  --dry-run    Report proposed selections without changing checkouts, v.mod or locks.

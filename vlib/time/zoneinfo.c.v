@@ -1,8 +1,6 @@
 @[has_globals]
 module time
 
-import os
-
 const zoneinfo_unix_sources = [
 	'/usr/share/zoneinfo',
 	'/usr/share/lib/zoneinfo',
@@ -10,19 +8,19 @@ const zoneinfo_unix_sources = [
 	'/etc/zoneinfo',
 ]!
 
-const zoneinfo_vroot_zip = os.join_path(@VEXEROOT, 'vlib', 'time', 'tzdata', 'zoneinfo.zip')
-
 const max_posix_transition_seconds = 167 * seconds_per_hour + 59 * seconds_per_minute + 59
 
-__global zoneinfo_loaders shared []ZoneinfoLoaderFn
+// The loaders are guarded by a lock of this module rather than declared `shared`:
+// a shared global makes every program that imports `time` compile `sync` too.
+__global zoneinfo_loaders = []ZoneinfoLoaderFn{}
 
 // register_zoneinfo_loader registers a fallback loader for IANA time zone data.
 // Registered loaders are used after ZONEINFO, system zoneinfo paths, and V's
 // installed zoneinfo.zip have been tried.
 pub fn register_zoneinfo_loader(loader ZoneinfoLoaderFn) {
-	lock zoneinfo_loaders {
-		zoneinfo_loaders << loader
-	}
+	zoneinfo_loaders_lock()
+	zoneinfo_loaders << loader
+	zoneinfo_loaders_unlock()
 }
 
 // load_location loads an IANA time zone location from ZONEINFO, system zoneinfo
@@ -162,7 +160,7 @@ fn location_from_posix_rule(name string, rule PosixZoneRule) &Location {
 }
 
 fn load_zoneinfo_location(name string) !&Location {
-	zoneinfo := os.getenv('ZONEINFO')
+	zoneinfo := zoneinfo_getenv('ZONEINFO') or { '' }
 	mut sources := []string{}
 	if zoneinfo != '' {
 		sources << zoneinfo
@@ -172,10 +170,9 @@ fn load_zoneinfo_location(name string) !&Location {
 }
 
 fn zoneinfo_loaders_snapshot() []ZoneinfoLoaderFn {
-	mut loaders := []ZoneinfoLoaderFn{}
-	rlock zoneinfo_loaders {
-		loaders = zoneinfo_loaders.clone()
-	}
+	zoneinfo_loaders_lock()
+	loaders := zoneinfo_loaders.clone()
+	zoneinfo_loaders_unlock()
 	return loaders
 }
 
@@ -224,17 +221,17 @@ fn platform_zoneinfo_sources() []string {
 }
 
 fn load_zoneinfo_from_source(source string, name string) ![]u8 {
-	if os.is_dir(source) {
-		return os.read_bytes(os.join_path(source, name))
+	if zoneinfo_is_dir(source) {
+		return zoneinfo_read_file(zoneinfo_join(source, name))
 	}
-	if os.is_file(source) {
+	if zoneinfo_is_file(source) {
 		return read_zoneinfo_zip_entry(source, name)
 	}
 	return error('time zone source "${source}" does not exist')
 }
 
 fn read_zoneinfo_zip_entry(zip_path string, name string) ![]u8 {
-	return read_uncompressed_zoneinfo_zip_entry(os.read_bytes(zip_path)!, name)
+	return read_uncompressed_zoneinfo_zip_entry(zoneinfo_read_file(zip_path)!, name)
 }
 
 fn read_uncompressed_zoneinfo_zip_entry(data []u8, name string) ![]u8 {

@@ -222,11 +222,27 @@ working `tcc` from `PATH`, before using the platform compiler. The system fallba
 when required V runtime artifacts are available, including the bundled `libgc.a` used by default
 glibc and Windows Boehm builds.
 
+On macOS 27 (Darwin 27) and later, V never selects TCC by itself, and `make` and `v self` build
+V with the system compiler: depending on their layout, TCC-linked executables can start there
+with corrupted global variables ([#29744](https://github.com/vlang/v/issues/29744)). An explicit
+`-cc tcc` is still honored.
+
 `-prod` builds never default to TCC, which cannot do their optimizations. On x64 Windows,
 without `-cc`, a `-prod` build uses MSVC when an x64 Visual Studio Developer environment is
 active (`cl` on `PATH`, with `INCLUDE` and `LIB` set; not for `-o file.o`), otherwise a `clang`
 that targets x86_64 MinGW, otherwise `gcc`. A native `-prod` build on another Windows
 architecture uses `gcc`. An explicit `-cc` always wins.
+
+An explicit `-cc msvc` on Windows does not need a Developer environment. When `INCLUDE` or `LIB`
+is not set, V finds the Visual Studio C++ tools (the `cl` on `PATH`, `VCToolsInstallDir`, or the
+newest installation `vswhere` reports) and the Windows SDK (`WindowsSdkDir`, the `KitsRoot10`
+registry value, or `Program Files (x86)\Windows Kits\10`). Expandable registry values use the
+current environment. V puts a `cl` for the architecture V
+builds for on `PATH` when none is there, or when the one there is for another architecture (unless
+`-cc` names it by its path), and sets the missing variables for the C compiler. Variables that are
+already set, as in a Developer Command Prompt, are left as they are. The program that `v run`
+starts gets the environment it was started with, not these changes. If V cannot find tools for
+the requested architecture or a usable SDK, it reports what is missing before `cl` fails.
 
 On macOS, `-cc tcc -gc boehm` uses a persistent bundled `libgc.dylib` store when the physical V
 installation path contains a comma. The store is under `$XDG_DATA_HOME/v-tcc-libgc-v1`, or
@@ -322,7 +338,15 @@ hello world
 
 `v self` defaults to `-gc none`. Pass `-gc <mode>` if you need a different GC mode.
 `v -prod self` uses a single production build of one C unit instead of the three-pass
-PGO cycle.
+PGO cycle. Use `v -prod -parallel-cc self` to compile the generated C units in parallel.
+
+On macOS ARM64, first run `v -compile-backend arm64 self` to include the native backend in
+the current compiler. Then use `v -b arm64 self` to rebuild the full compiler with the native
+ARM64 backend. `v -b arm64 self x2` replaces the compiler twice, so the second build runs the
+compiler produced by the first native build. Use `-o v_arm64` to keep the current compiler
+and write a separate executable. Native self-builds use `-gc none` and retain commands
+such as `self`, `fmt`, and `version`. The native compiler includes the C backend and leaves
+out FastC by default.
 
 ```bash
 cd examples

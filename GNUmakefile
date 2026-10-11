@@ -198,6 +198,19 @@ endif
 endif
 endif
 endif
+ifdef MAC
+ifeq ($(filter -cc,$(VFLAGS)),)
+ifeq ($(findstring -cc=,$(VFLAGS)),)
+ifeq ($(shell expr $(shell uname -r | cut -d. -f1) \>= 27), 1)
+	# Darwin 27's dyld fills the zero-fill pages of TCC-linked executables with file
+	# bytes, corrupting their globals (see pref.host_rejects_tcc_executables), so keep
+	# both `v1 -> v2` and `v2 -> v` on the system compiler.
+	BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
+	BOOTSTRAP_VC_CCOMPILER_VFLAG := $(BOOTSTRAP_CCOMPILER_VFLAG)
+endif
+endif
+endif
+endif
 ifeq ($(LINUX),1)
 ifneq ($(BOOTSTRAP_TCC_REQUESTED),)
 ifneq ($(CC),tcc)

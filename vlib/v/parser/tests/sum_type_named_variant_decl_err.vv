@@ -1,0 +1,11 @@
+type Mixed = Num(int) | string
+
+type Dup = Count(int) | Count(string)
+
+type Lower = count(int) | Empty
+
+type Parens = Empty() | Full(int)
+
+fn main() {
+	println('decl errors')
+}

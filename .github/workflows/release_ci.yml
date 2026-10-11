@@ -2,6 +2,12 @@ name: Release CI
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing weekly or version tag to publish; leave empty to build only'
+        required: false
+        type: string
+        default: ''
   pull_request:
     paths:
       - '.github/workflows/release_ci.yml'
@@ -13,8 +19,8 @@ on:
       - 0.**
 
 concurrency:
-  group: release-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+  group: release-${{ github.workflow }}-${{ inputs.release_tag || (github.ref_type == 'tag' && github.ref_name) || github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' && inputs.release_tag == '' }}
 
 permissions:
   contents: write
@@ -58,13 +64,26 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_tag || github.ref }}
+      - name: Verify release tag
+        if: github.ref_type == 'tag' || inputs.release_tag != ''
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          git check-ref-format "refs/tags/$RELEASE_TAG"
+          case "$RELEASE_TAG" in
+            weekly.*|0.*) ;;
+            *) echo "Unsupported release tag: $RELEASE_TAG" >&2; exit 1 ;;
+          esac
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
       - name: Compile release binaries
         if: runner.os != 'Windows'
         run: |
           make
-          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -prod -o v cmd/v
-          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -prod cmd/tools/vup.v
-          ./v -cc ${{ matrix.cc }} ${{ matrix.cflags }} -prod cmd/tools/vdoctor.v
+          ./v -cc ${{ matrix.cc }} -prod -o v cmd/v
+          ./v -cc ${{ matrix.cc }} -prod cmd/tools/vup.v
+          ./v -cc ${{ matrix.cc }} -prod cmd/tools/vdoctor.v
       - name: Compile release binaries (Windows)
         if: runner.os == 'Windows'
         run: |
@@ -110,7 +129,7 @@ jobs:
           path: ${{ matrix.artifact }}
 
   release-publish:
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: release-build
     runs-on: ubuntu-latest
     steps:
@@ -124,7 +143,13 @@ jobs:
             ~/work/v/v/linux_arm64/v_linux_arm64.zip
             ~/work/v/v/macos_arm64/v_macos_arm64.zip
             ~/work/v/v/macos_x86_64/v_macos_x86_64.zip
-          tag: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
+          tag: ${{ inputs.release_tag || github.ref_name }}
+          name: ${{ inputs.release_tag || github.ref_name }}
+          allowUpdates: true
+          replacesArtifacts: true
+          artifactErrorsFailBuild: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          omitPrereleaseDuringUpdate: true
           draft: false
           prerelease: false

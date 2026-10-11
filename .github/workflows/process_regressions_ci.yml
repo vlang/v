@@ -18,6 +18,10 @@ on:
       - '.github/workflows/process_regressions_ci.yml'
   workflow_dispatch:
 
+concurrency:
+  group: process-regressions-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -37,7 +41,7 @@ jobs:
             build: .\makev.bat -gcc
             v: ./v.exe
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
       VJOBS: '2'
@@ -56,9 +60,9 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 3
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_stdin_test.v
-      - name: Check diagnostic replay
+      - name: Test the compiler launcher
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler cmd/v/v3_fallback_diagnostics_test.v
+        run: ${{ matrix.v }} -new-compiler -silent test cmd/v/
       - name: Check deadlines and inherited output pipes
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_timeout_test.v

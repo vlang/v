@@ -505,7 +505,7 @@ fn test_empty_time() {
 	assert t.unix() == -62167132800
 	assert t.format_rfc3339() == '0000-01-01T00:00:00.000Z'
 	assert t == time.parse_rfc3339(t.format_rfc3339())!
-	assert t.custom_format('MMMM YYYY') == 'January 0'
+	assert t.custom_format('MMMM YYYY') == 'January 0000'
 }
 
 fn test_pre_epoch_unix_calculation() {
@@ -519,7 +519,7 @@ fn test_pre_epoch_unix_calculation() {
 	t := time.Time{}
 	assert t.is_zero()
 	// assert t.unix() == -62169984000
-	assert t.custom_format('MMMM YYYY') == 'January 0'
+	assert t.custom_format('MMMM YYYY') == 'January 0000'
 }
 
 fn test_is_zero() {

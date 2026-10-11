@@ -28,6 +28,8 @@ fn test_false() {
 	assert !utf8.is_rune_punct(`ç`)
 	assert !utf8.is_punct('á', 0)
 	assert !utf8.is_rune_punct(`á`)
-	assert !utf8.is_punct('-', 0)
-	assert !utf8.is_rune_punct(`-`)
+	// '-' is U+002D HYPHEN-MINUS, category Pd, so it is punctuation.
+	// The old western-only table omitted it and this asserted otherwise.
+	assert utf8.is_punct('-', 0)
+	assert utf8.is_rune_punct(`-`)
 }

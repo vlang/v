@@ -92,6 +92,7 @@ fn test_only_c_errors_launch_the_compatibility_compiler() {
 				'test -z "\$V_MACOS_V3_FALLBACK_FILE" || exit 93\n' +
 				'test -z "\$V_MACOS_V3_C_ERROR_DIR" || exit 94\n' +
 				'test "\$1" = run && test "\$3" = ci || exit 95\n' +
+				'printf "%s\\n" "\$@" > "\$${compiler_error_probe_env}/compat_args"\n' +
 				'printf "ran\\n" >> "\$${compiler_error_probe_env}/ran"\n' +
 				'echo "compatibility program ran" >&2\nexit ${status}\n'
 			for path in [os.join_path(compat, 'v'), os.join_path(root, v1_fallback_binary)] {
@@ -115,14 +116,25 @@ fn test_only_c_errors_launch_the_compatibility_compiler() {
 			os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
 			// As in a child of a diagnostics server, which runs a one-shot compilation.
 			os.setenv('V_DIAGNOSTICS_SERVER', '1', true)
-			result := cmdexec.run_with_timeout(launcher, ['run', os.join_path(root, 'sample.vsh'),
-				'ci'], 15_000)
+			mut launch_args := ['run', os.join_path(root, 'sample.vsh'), 'ci']
+			if payload == 'c_compilation_error' {
+				private_args := [
+					'-v3-internal-implicit-tcc-warning=warning: implicit tcc failed',
+					'-v3-internal-parser-diagnostics-printed',
+				]
+				// The restart markers are compiler options at the front, and user
+				// data after the script. Only the compiler options may be removed.
+				launch_args << private_args
+				launch_args.prepend(private_args)
+			}
+			result := cmdexec.run_with_timeout(launcher, launch_args, 15_000)
 			if payload == 'c_compilation_error' {
 				assert result.exit_code == status, result.output
 				assert result.output.starts_with('C compiler output from the default V compiler:\noriginal C error\n'), result.output
 				assert result.output.count('original C error') == 1, result.output
 				assert result.output.all_after('retrying with').contains('compatibility program ran'), result.output
 				assert os.read_file(os.join_path(root, 'ran'))! == 'ran\n'
+				assert os.read_lines(os.join_path(root, 'compat_args'))! == launch_args[2..]
 				assert os.exists(os.join_path(root, 'queried'))
 				assert !os.exists(os.join_path(root, 'replayed'))
 			} else {

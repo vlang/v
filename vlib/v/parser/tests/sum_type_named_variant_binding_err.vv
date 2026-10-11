@@ -1,0 +1,12 @@
+type Expr = IntLit(int) | Count(int) | Void
+
+fn main() {
+	e := Expr.Count(1)
+	match e {
+		Expr.IntLit(n), Expr.Count(m) { println(n) }
+		else {}
+	}
+	if e is Expr.Count(n) {
+		println(n)
+	}
+}

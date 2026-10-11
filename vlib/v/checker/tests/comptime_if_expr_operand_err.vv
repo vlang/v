@@ -10,7 +10,7 @@ fn main() {
 		$if method.name.len == 4 && method.name.starts_with('l') {
 			hits << 'len'
 		}
-		$if method.name.to_upper() == 'LIST' {
+		$if method.name.repeat(2) == 'LIST' {
 			hits << 'upper'
 		}
 		$if method.name[0] != `x` {

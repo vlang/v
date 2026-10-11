@@ -1,4 +1,5 @@
-// vtest build: !msvc
+// vtest build: !msvc && !tinyc
+// tcc rejects XMM registers as asm clobbers (`invalid clobber register 'xmm0'`).
 
 import encoding.hex
 

@@ -4042,7 +4042,13 @@ fn (mut g Gen) comptime_for(id flat.NodeId) {
 	parts := n.value.split('|')
 	loopvar := if parts.len > 0 { parts[0] } else { 'x' }
 	kind := if parts.len > 1 { parts[1] } else { 'fields' }
-	g.write('\$for ${loopvar} in ${g.type_text(n.typ)}.${kind} {')
+	g.write('\$for ${loopvar} in ')
+	if kind == 'strings' && n.children_count == 2 {
+		g.expr(g.a.child(n, 1))
+	} else {
+		g.write('${g.type_text(n.typ)}.${kind}')
+	}
+	g.write(' {')
 	g.writeln('')
 	if n.children_count > 0 {
 		blk := g.a.child_node(n, 0)
@@ -4441,7 +4447,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		gp := f.generic_params()
 		flags := if gp.len > 0 { gp[0] } else { '' }
 		access := access_label(flags)
-		if access != cur_access {
+		if !flags.contains('i') && access != cur_access {
 			// Doc comments written below `pub:` belong to the field, so only the
 			// comments before the specifier itself are emitted ahead of it.
 			if spec_end := g.access_specifier_end(g.source_end, f.pos.offset) {
@@ -4478,12 +4484,14 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		if is_embed {
 			g.write(g.type_text(f.value))
 		} else {
+			prefix := inline_field_access(flags)
+			g.write(prefix)
 			if flags.contains('v') {
 				g.write('volatile ')
 			}
 			g.write(f.value)
-			width := alignments[int(fid)] or { f.value.len }
-			g.write(' '.repeat(width - f.value.len + 1))
+			width := alignments[int(fid)] or { prefix.len + f.value.len }
+			g.write(' '.repeat(width - prefix.len - f.value.len + 1))
 			type_text := g.type_text(f.typ)
 			g.write(type_text)
 			suffix_width = type_text.len
@@ -5120,7 +5128,7 @@ fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) 
 		} else if f.kind == .field_decl {
 			gp := f.generic_params()
 			flags := if gp.len > 0 { gp[0] } else { '' }
-			section = access_label(flags)
+			section = if flags.contains('i') { group_access } else { access_label(flags) }
 			alignable = !flags.contains('e')
 		}
 		if !alignable {
@@ -5147,10 +5155,26 @@ fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) 
 fn (g &Gen) store_field_alignment(mut alignments map[int]int, fields []flat.NodeId) {
 	mut width := 0
 	for fid in fields {
-		width = int_max(width, g.a.node(fid).value.len)
+		f := g.a.node(fid)
+		gp := f.generic_params()
+		flags := if gp.len > 0 { gp[0] } else { '' }
+		width = int_max(width, inline_field_access(flags).len + f.value.len)
 	}
 	for fid in fields {
 		alignments[int(fid)] = width
+	}
+}
+
+// inline_field_access formats per-field access modifiers in a fixed-width prefix column.
+fn inline_field_access(flags string) string {
+	if !flags.contains('i') {
+		return ''
+	}
+	return match access_label(flags) {
+		'pub mut' { 'pub mut ' }
+		'pub' { 'pub     ' }
+		'mut' { 'mut     ' }
+		else { '' }
 	}
 }
 
@@ -6031,6 +6055,71 @@ fn demangle_formatter_local_types(typ string) string {
 	return out.str()
 }
 
+fn (mut g Gen) format_anon_aggregate_source(source string) string {
+	lines := source.split('\n')
+	if lines.len <= 1 {
+		return source
+	}
+	mut line_starts := []int{cap: lines.len}
+	mut offset := 0
+	for line in lines {
+		line_starts << offset
+		offset += line.len + 1
+	}
+	mut line_depths := []int{len: lines.len, init: g.indent}
+	mut protected_lines := []bool{len: lines.len}
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file('anonymous_aggregate', source.len)
+	file.index_lines(source)
+	mut s := scanner.new_scanner(pref.new_preferences(),
+		scanner.Mode.scan_comments | scanner.Mode.skip_interpolation)
+	s.init(file, source)
+	mut line_nr := 0
+	mut depth := g.indent
+	for {
+		tok := s.scan()
+		for line_nr + 1 < lines.len && line_starts[line_nr + 1] <= s.pos {
+			line_nr++
+			line_depths[line_nr] = depth
+		}
+		if tok in [.string, .comment] {
+			// Continuation whitespace belongs to the literal or comment, not the aggregate.
+			mut continuation := line_nr + 1
+			for continuation < lines.len && line_starts[continuation] < s.offset {
+				protected_lines[continuation] = true
+				continuation++
+			}
+		} else if tok == .lcbr {
+			depth++
+		} else if tok == .rcbr {
+			depth--
+		}
+		if tok == .eof {
+			break
+		}
+	}
+	mut out := strings.new_builder(source.len)
+	out.write_string(lines[0] + '\n')
+	for i in 1 .. lines.len {
+		trimmed := lines[i].trim_left(' \t')
+		if protected_lines[i] {
+			out.write_string(lines[i])
+		} else if trimmed.len > 0 {
+			mut indent := line_depths[i]
+			section := trimmed.all_before(':').fields().join(' ')
+			if trimmed.starts_with('}') || (trimmed.contains(':') && section in ['pub', 'pub mut',
+				'pub module_mut', 'mut', '__global', 'module']) {
+				indent--
+			}
+			out.write_string('\t'.repeat(int_max(0, indent)) + trimmed)
+		}
+		if i < lines.len - 1 {
+			out.write_string('\n')
+		}
+	}
+	return out.str()
+}
+
 fn (mut g Gen) type_text(typ string) string {
 	demangled := demangle_formatter_local_types(typ)
 	mut expanded := demangled
@@ -6045,7 +6134,8 @@ fn (mut g Gen) type_text(typ string) string {
 				}
 				name := demangled[start..i]
 				if source := g.formatter_types[name] {
-					out.write_string(source.text)
+					formatted_source := g.format_anon_aggregate_source(source.text)
+					out.write_string(formatted_source)
 					g.skip_comments_in_source(source.start, source.end)
 					g.source_end = int_max(g.source_end, source.end)
 				} else {

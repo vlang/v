@@ -48,6 +48,10 @@ on:
       - '.github/workflows/makev_ci.yml'
   workflow_dispatch:
 
+concurrency:
+  group: makev-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

@@ -1,0 +1,33 @@
+@[generated]
+module main
+
+// V builds C names like `point__area` for the method `area` of `point`, and
+// `e___x` for the value `_x` of `e`; names that would collide are rejected.
+struct point {
+	x int
+}
+
+fn (p point) area() int {
+	return 1
+}
+
+fn point__area(p point) int {
+	return p.x + 2
+}
+
+enum e {
+	_x
+	y
+}
+
+enum e_ {
+	x
+	z
+}
+
+fn main() {
+	println(point{}.area())
+	println(point__area(point{}))
+	println(int(e._x))
+	println(int(e_.x))
+}

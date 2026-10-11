@@ -13,6 +13,7 @@ const macos_v3_caller_no_fallback_present_env = 'V_MACOS_V3_CALLER_NO_FALLBACK_P
 const macos_v3_private_environment_names = [
 	'V_MACOS_V3_FALLBACK_FILE',
 	'V_MACOS_V3_C_ERROR_DIR',
+	'V_MACOS_V3_SOURCE_MANIFEST',
 	'V_MACOS_V3_VHASH',
 	'V_MACOS_V3_VCURRENT_HASH',
 	'V_MACOS_V3_EMBEDDED',
@@ -1479,10 +1480,13 @@ pub fn comptime_flag_is_target_dependent(name string) bool {
 
 // comptime_optional_flag_value supports comptime optional flag value handling for pref.
 pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
-	// `int` is a 64-bit type on 64-bit targets, so the builtin's `$if new_int ?`
-	// guards (max_int/min_int, `int.str`, str_l overflow bounds) must take the
-	// i64 branch there. This mirrors v3's `int` -> `i64` C lowering.
 	if name == 'new_int' {
+		// SSA currently lowers `int` to i32, including array and string headers.
+		// Its builtin limits must use that width even on a 64-bit target.
+		if p.backend == 'arm64' {
+			return false
+		}
+		// The C backend lowers `int` to the target pointer width.
 		return p.target.pointer_bits == 64 || name in p.user_defines
 	}
 	// Test mode is added internally to `user_defines`, but `$if test ?` only asks

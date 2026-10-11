@@ -74,7 +74,7 @@ mut:
 }
 
 // new_uuid_v7_session create a new session for generating uuid_v7.
-// The 12 bits `rand_a` in the RFC 9652, is replaced by 6 bits
+// The 12 bits `rand_a` in the RFC 9562, is replaced by 6 bits
 // sub-millisecond timestamp + 6 bits session counter.
 // See https://git.postgresql.org/gitweb/?p=postgresql.git;a=commitdiff;h=78c5e141e9c139fc2ff36a220334e4aa25e1b0eb
 pub fn new_uuid_v7_session() UUIDSession {
@@ -84,10 +84,13 @@ pub fn new_uuid_v7_session() UUIDSession {
 // next get a new uuid_v7 from current session.
 @[ignore_overflow]
 pub fn (mut u UUIDSession) next() string {
-	timestamp := u64(time.now().unix_nano())
-	// make place for holding 4 bits `version`
-	timestamp_shift_4bits := (timestamp & 0xFFFF_FFFF_FFFF_0000) | ((timestamp & 0x0000_0000_0000_FFFF) >> 4)
-	rand_1 := (timestamp_shift_4bits & 0xFFFF_FFFF_FFFF_FFC0) | u64(u.counter & 0x3F) // 6 bits session counter
+	nanos := u64(time.now().unix_nano())
+	millis := nanos / 1_000_000
+	// 6 bits of the fraction of the millisecond, in 1/64 ms
+	fraction := (nanos % 1_000_000) * 64 / 1_000_000
+	// 48 bits `unix_ts_ms`, the 4 bits of the `version` (set by `internal_uuid`),
+	// the fraction and the 6 bits session counter
+	rand_1 := (millis << 16) | (fraction << 6) | u64(u.counter & 0x3F)
 	rand_2 := default_rng.u64()
 
 	u.counter++

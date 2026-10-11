@@ -1,8 +1,8 @@
-vlib/v/checker/tests/comptime_if_expr_operand_err.vv:13:7: error: cannot evaluate `$if` condition `method.name.to_upper() == 'LIST'` at compile time; use a runtime `if` instead
+vlib/v/checker/tests/comptime_if_expr_operand_err.vv:13:7: error: cannot evaluate `$if` condition `method.name.repeat(2) == 'LIST'` at compile time; use a runtime `if` instead
    11 |             hits << 'len'
    12 |         }
-   13 |         $if method.name.to_upper() == 'LIST' {
-      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   13 |         $if method.name.repeat(2) == 'LIST' {
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    14 |             hits << 'upper'
    15 |         }
 vlib/v/checker/tests/comptime_if_expr_operand_err.vv:16:7: error: cannot evaluate `$if` condition `method.name[0] != `x`` at compile time; use a runtime `if` instead

@@ -367,7 +367,7 @@ pub:
 }
 
 fn (u Userinfo) empty() bool {
-	return u.username == '' && u.password == ''
+	return u.username == '' && u.password == '' && !u.password_set
 }
 
 // string returns the encoded userinfo information in the standard form
@@ -434,6 +434,8 @@ fn split(s string, sep u8, cutc bool) (string, string) {
 // (starting with a scheme). Trying to parse a hostname and path
 // without a scheme is invalid but may not necessarily return an
 // error, due to parsing ambiguities.
+// A literal colon in userinfo sets the password, even when it is empty.
+// Percent-encoded colons do not act as userinfo separators.
 pub fn parse(rawurl string) !URL {
 	// Cut off #frag
 	u, frag := split(rawurl, `#`, true)
@@ -552,7 +554,7 @@ fn parse_authority(authority string) !ParseAuthorityRes {
 	}
 	host := parse_host(raw_host)!
 	name, pwd := split(raw_user, `:`, true)
-	auth := if pwd != '' {
+	auth := if raw_user.contains(':') {
 		user_password(unescape(name, .encode_user_password)!, unescape(pwd, .encode_user_password)!)
 	} else {
 		user(unescape(name, .encode_user_password)!)
@@ -647,7 +649,7 @@ fn valid_encoded_path(s string) bool {
 		// should_escape handle the others.
 		x := s[i]
 		match x {
-			`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `@` {
+			`!`, `$`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `@` {
 				// ok
 			}
 			`[`, `]` {

@@ -80,8 +80,9 @@ latin chars `a-z` and all the digits `\d`.
 It is possible to mix all the properties of the char class together.
 
 > **Note**
-> In order to match the `-` (minus) char, it must be preceded by
-> a backslash in the cc, for example `[\-_\d\a]` will match:
+> To match the `-` (minus) char, place it first or last in the cc, or precede it
+> with a backslash. For example, `[-a-z]` and `[a-z-]` match lowercase letters
+> and a minus, and `[\-_\d\a]` will match:
 > - `-` minus,
 > - `_` underscore,
 > - `\d` numeric chars,
@@ -171,6 +172,9 @@ match too, finally test the token `c`.
 That also means, that a query string like `abc|bde` is not equal to
 `(abc)|(bde)`, but instead to `ab(c|b)de`.
 The OR operation works only for `c|b`, not at char concatenation level.
+
+To match a choice of words, group each word into a token. For example,
+`^((cat)|(dog))$` matches either `cat` or `dog`.
 
 ### Groups
 

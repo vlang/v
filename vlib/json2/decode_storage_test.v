@@ -45,7 +45,9 @@ fn test_flat_metadata_survives_growth_and_tracks_nested_spans() {
 		assert value.position + value.length <= source.len
 	}
 	decoded := decode[Any](source)!
-	assert encode(decoded) == source
+	// Encoding sorts object names lexically; metadata still follows input order.
+	canonical := []string{len: documents.len, init: '{"items":[true,false,null],"name":"entry"}'}
+	assert encode(decoded) == '[' + canonical.join(',') + ']'
 }
 
 fn test_flat_metadata_discriminator_skips_nested_values() {

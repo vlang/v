@@ -104,9 +104,16 @@ pub fn emit_enum(mut e Emitter, en ResolvedEnum) {
 		e.wln(0, '@[_allow_multiple_values]')
 	}
 	e.wln(0, 'pub enum ${en.v_name} {')
+	mut width := 0
+	for v in en.values {
+		if v.name.len > width {
+			width = v.name.len
+		}
+	}
 	for v in en.values {
 		emit_comment(mut e, 1, v.comments)
-		e.wln(1, '${v.name} = ${v.number}')
+		padding := ' '.repeat(width - v.name.len)
+		e.wln(1, '${v.name}${padding} = ${v.number}')
 	}
 	e.wln(0, '}')
 	e.w('')
@@ -127,11 +134,14 @@ pub fn emit_message_struct(mut e Emitter, m ResolvedMessage) {
 		return
 	}
 	e.wln(0, 'pub struct ${m.v_name} {')
-	e.wln(1, 'pub mut:')
+	// `v fmt` puts `pub mut:` at column 0 and its fields one level in, so
+	// emitting them any deeper leaves a file that reformats itself the first
+	// time anyone runs the formatter -- including a `v git-fmt-hook`.
+	e.wln(0, 'pub mut:')
 	for f in m.fields {
-		emit_comment(mut e, 2, f.comments)
-		e.wln(2, '// ${f.name} is `${field_declaration(f)}`.')
-		e.wln(2, '${f.name} ${declared_type(f)}')
+		emit_comment(mut e, 1, f.comments)
+		e.wln(1, '// ${f.name} is `${field_declaration(f)}`.')
+		e.wln(1, '${f.name} ${declared_type(f)}')
 	}
 	e.wln(0, '}')
 	e.w('')

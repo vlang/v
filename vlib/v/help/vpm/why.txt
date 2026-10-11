@@ -24,3 +24,6 @@ works in a build that has no network at all.
 
 Options:
   -v  Print more details about the performed operation.
+
+Versioned requirements are annotated with each parent's constraint and the
+installed version. `v mod graph` prints these manifest dependencies as flat edges.

@@ -1,6 +1,5 @@
 module c
 
-import strconv
 import v.flat
 import v.gen.c.naming
 import v.types { unalias_type }
@@ -138,6 +137,21 @@ fn (mut g FlatGen) optional_type_name(t &types.Type) string {
 	safe_name := inner_ct.replace('*', 'ptr').replace(' ', '_')
 	opt_name := '${prefix}_${safe_name}'
 	g.needed_optional_types[opt_name] = inner_ct
+	mut pointee := cgen_unalias_type(base_type)
+	if pointee is types.Pointer {
+		for pointee is types.Pointer {
+			pointee = cgen_unalias_type(pointee.base_type)
+		}
+		if pointee is types.Struct && !pointee.name.starts_with('C.')
+			&& !types.is_builtin_type_name(pointee.name) && !type_references_thread(pointee) {
+			pointee_ct := g.optional_payload_c_type(pointee)
+			g.optional_pointer_struct_tags[pointee_ct] = if pointee.name in g.tc.unions {
+				'union'
+			} else {
+				'struct'
+			}
+		}
+	}
 	return opt_name
 }
 
@@ -802,6 +816,11 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	if clean.contains('.') {
 		alias := clean.all_before('.')
 		if module_name := g.cached_file_import(file, alias) {
+			// Canonical module paths may themselves start with the import alias.
+			// Re-expanding that prefix makes heap initializer normalization recurse.
+			if clean.starts_with(module_name + '.') {
+				return clean
+			}
 			return module_name + clean[alias.len..]
 		}
 	}
@@ -863,6 +882,7 @@ fn (mut g FlatGen) optional_typedefs() {
 	// list is available. Revisit that concrete list immediately before emission so
 	// every wrapper used by forward_decls() is already defined.
 	g.collect_selected_declaration_signature_types()
+	g.optional_pointer_struct_forward_decls()
 	mut wrote := false
 	mut names := g.needed_optional_types.keys()
 	names.sort()
@@ -874,6 +894,34 @@ fn (mut g FlatGen) optional_typedefs() {
 	}
 	if wrote {
 		g.writeln('')
+	}
+}
+
+// A signature can retain a pointer Result/Option after its unused generic
+// specialization is discarded. Its pointee needs only an opaque declaration.
+fn (mut g FlatGen) optional_pointer_struct_forward_decls() {
+	mut needed := map[string]bool{}
+	for _, payload in g.needed_optional_types {
+		needed[payload.trim_right('*')] = true
+	}
+	mut declared := map[string]bool{}
+	for name in g.c_struct_decl_names() {
+		declared[g.struct_cname(name)] = true
+	}
+	for name in g.c_sum_decl_names() {
+		declared[g.cname(name)] = true
+	}
+	for name, _ in g.interfaces {
+		declared[g.cname(name)] = true
+	}
+	mut names := g.optional_pointer_struct_tags.keys()
+	names.sort()
+	for name in names {
+		if !needed[name] || name in declared || g.cached_support_has_c_type(name) {
+			continue
+		}
+		tag := g.optional_pointer_struct_tags[name]
+		g.writeln('typedef ${tag} ${name} ${name};')
 	}
 }
 
@@ -1076,6 +1124,9 @@ fn (mut g FlatGen) finish_declaration_signature_types() {
 fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 	mut seen := &PreseedTypeSeen{}
 	for name, ret in g.tc.fn_ret_types {
+		if g.cache_decl_demand && !g.cache_function_declaration_needed(name) {
+			continue
+		}
 		// Generic template signatures keep unspecialized placeholder types
 		// (`!&Tls[T]`); their typedefs would reference C types that are never
 		// emitted. Specializations register concrete signatures under their
@@ -1089,6 +1140,9 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 		g.collect_declaration_signature_type(ret)
 	}
 	for name, params in g.tc.fn_param_types {
+		if g.cache_decl_demand && !g.cache_function_declaration_needed(name) {
+			continue
+		}
 		if name in g.tc.fn_generic_params {
 			continue
 		}
@@ -1099,7 +1153,10 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 			g.collect_declaration_signature_type(param)
 		}
 	}
-	for _, fields in g.tc.structs {
+	for name, fields in g.tc.structs {
+		if g.cache_decl_demand && !g.cache_struct_declaration_needed(name) {
+			continue
+		}
 		for field in fields {
 			if !seen.insert(field.typ) {
 				continue
@@ -1121,7 +1178,10 @@ fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 		}
 		g.collect_declaration_signature_type(typ)
 	}
-	for _, typ in g.tc.const_types {
+	for name, typ in g.tc.const_types {
+		if g.cache_decl_demand && !g.cache_decl_refs[g.const_ident_c_name(name)] {
+			continue
+		}
 		if !seen.insert(typ) {
 			continue
 		}
@@ -1281,6 +1341,12 @@ fn (g &FlatGen) type_contains_generic_placeholder(t &types.Type) bool {
 			return g.type_contains_generic_placeholder(t.base_type)
 		}
 		types.Struct {
+			// Inferred anonymous literals are materialized during transform. Their
+			// earlier checker entry has no nominal storage type; prefer the concrete
+			// lowered annotation instead of emitting `v_struct` for its container.
+			if t.name.all_after_last('.') == 'struct' {
+				return true
+			}
 			// A stale generic-call annotation can carry the concrete C function name
 			// as a nominal type. It is not a payload type and must not create an
 			// `__v_option_<function>` typedef in the program prefix.
@@ -2068,7 +2134,8 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			if node.children_count == 0 {
 				return none
 			}
-			return g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)
+			value := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
+			return g.enum_comptime_integer_cast(value, node.value)
 		}
 		.call {
 			return g.enum_comptime_call_value(id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
@@ -2089,8 +2156,13 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			if node.children_count < 2 {
 				return none
 			}
-			left := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
-			right := g.enum_field_expr_value_with_enum(g.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
+			mut left := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
+			mut right := g.enum_field_expr_value_with_enum(g.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
+			if node.op in [.div, .mod] && !isnil(g.tc) {
+				typ := types.unalias_type(g.usable_expr_type(id)).name()
+				left = g.enum_comptime_integer_cast(left, typ)
+				right = g.enum_comptime_integer_cast(right, typ)
+			}
 			if (node.op == .div || node.op == .mod) && right == 0 {
 				return none
 			}
@@ -2103,14 +2175,39 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 				.minus { left - right }
 				.mul { left * right }
 				.power { enum_foldable_int_power(left, right) }
-				.div { left / right }
-				.mod { left % right }
+				.div {
+					if isnil(g.tc) {
+						left / right
+					} else {
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), false)
+					}
+				}
+				.mod {
+					if isnil(g.tc) {
+						left % right
+					} else {
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), true)
+					}
+				}
 				.amp { left & right }
 				.pipe { left | right }
 				.xor { left ^ right }
 				.left_shift { i64(u64(left) << u64(right)) }
-				.right_shift { left >> right }
-				.right_shift_unsigned { i64(u64(left) >> u64(right)) }
+				.right_shift {
+					typ := if isnil(g.tc) {
+						''
+					} else {
+						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name()
+					}
+					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+				}
+				.right_shift_unsigned {
+					if isnil(g.tc) {
+						i64(u64(left) >> u64(right))
+					} else {
+						types.comptime_enum_unsigned_right_shift(left, right, types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name())
+					}
+				}
 				else { none }
 			}
 		}
@@ -2211,7 +2308,8 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 			return none
 		}
 		arg_id := g.a.child(&call, arg_idx)
-		locals[param.value] = g.enum_field_expr_value_with_enum(arg_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
+		value := g.enum_field_expr_value_with_enum(arg_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
+		locals[param.value] = g.enum_comptime_integer_cast(value, param.typ)
 		arg_idx++
 	}
 	for i in 0 .. fn_node.children_count {
@@ -2221,10 +2319,20 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 			continue
 		}
 		if stmt.kind == .return_stmt && stmt.children_count > 0 {
-			return g.enum_comptime_expr_value(g.a.child(stmt, 0), locals, enum_module)
+			value := g.enum_comptime_expr_value(g.a.child(stmt, 0), locals, enum_module)?
+			return g.enum_comptime_integer_cast(value, fn_node.typ)
 		}
 	}
 	return none
+}
+
+fn (g &FlatGen) enum_comptime_integer_cast(value i64, typ string) i64 {
+	resolved := if isnil(g.tc) || typ.len == 0 {
+		typ
+	} else {
+		types.unalias_type(g.tc.parse_type(typ)).name()
+	}
+	return types.comptime_enum_integer_cast(value, resolved)
 }
 
 fn (g &FlatGen) enum_comptime_update_locals(stmt flat.Node, mut locals map[string]i64, enum_module string) {
@@ -2238,7 +2346,11 @@ fn (g &FlatGen) enum_comptime_update_locals(stmt flat.Node, mut locals map[strin
 			if stmt.kind == .decl_assign || stmt.op == .assign {
 				rhs_id := g.a.child(&stmt, i + 1)
 				if value := g.enum_comptime_expr_value(rhs_id, locals, enum_module) {
-					locals[lhs.value] = value
+					locals[lhs.value] = if isnil(g.tc) {
+						value
+					} else {
+						g.enum_comptime_integer_cast(value, g.usable_expr_type(g.a.child(&stmt, i)).name())
+					}
 				} else {
 					locals.delete(lhs.value)
 				}
@@ -2270,46 +2382,97 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 			if node.children_count == 0 {
 				return none
 			}
-			return g.enum_comptime_expr_value(g.a.child(&node, 0), locals, enum_module)
+			value := g.enum_comptime_expr_value(g.a.child(&node, 0), locals, enum_module)?
+			return if node.kind == .cast_expr {
+				g.enum_comptime_integer_cast(value, node.value)
+			} else {
+				value
+			}
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
 			}
 			value := g.enum_comptime_expr_value(g.a.child(&node, 0), locals, enum_module)?
-			return match node.op {
+			result := match node.op {
 				.plus { value }
 				.minus { -value }
 				.bit_not { ~value }
-				else { none }
+				else { return none }
 			}
+			if isnil(g.tc) {
+				return result
+			}
+			// C promotes narrow integer operands for unary arithmetic.
+			typ := types.unalias_type(g.usable_expr_type(id)).name()
+			return types.comptime_enum_integer_cast(result, if typ in ['i8', 'u8', 'byte', 'i16',
+				'u16'] {
+				'int'
+			} else {
+				typ
+			})
 		}
 		.infix {
 			if node.children_count < 2 {
 				return none
 			}
-			left := g.enum_comptime_expr_value(g.a.child(&node, 0), locals, enum_module)?
-			right := g.enum_comptime_expr_value(g.a.child(&node, 1), locals, enum_module)?
+			mut left := g.enum_comptime_expr_value(g.a.child(&node, 0), locals, enum_module)?
+			mut right := g.enum_comptime_expr_value(g.a.child(&node, 1), locals, enum_module)?
+			if node.op in [.div, .mod] && !isnil(g.tc) {
+				// The runtime division helpers convert operands to the expression type first.
+				typ := types.unalias_type(g.usable_expr_type(id)).name()
+				left = g.enum_comptime_integer_cast(left, typ)
+				right = g.enum_comptime_integer_cast(right, typ)
+			}
 			if (node.op in [.div, .mod] && right == 0)
 				|| (node.op in [.left_shift, .right_shift, .right_shift_unsigned] && (right < 0
 					|| right >= 64)) {
 				return none
 			}
-			return match node.op {
+			result := match node.op {
 				.plus { left + right }
 				.minus { left - right }
 				.mul { left * right }
 				.power { enum_foldable_int_power(left, right) }
-				.div { left / right }
-				.mod { left % right }
+				.div {
+					if isnil(g.tc) {
+						left / right
+					} else {
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), false)
+					}
+				}
+				.mod {
+					if isnil(g.tc) {
+						left % right
+					} else {
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), true)
+					}
+				}
 				.amp { left & right }
 				.pipe { left | right }
 				.xor { left ^ right }
 				.left_shift { i64(u64(left) << u64(right)) }
-				.right_shift { left >> right }
-				.right_shift_unsigned { i64(u64(left) >> u64(right)) }
-				else { none }
+				.right_shift {
+					typ := if isnil(g.tc) {
+						''
+					} else {
+						types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name()
+					}
+					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
+				}
+				.right_shift_unsigned {
+					if isnil(g.tc) {
+						i64(u64(left) >> u64(right))
+					} else {
+						types.comptime_enum_unsigned_right_shift(left, right, types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name())
+					}
+				}
+				else { return none }
 			}
+			if isnil(g.tc) {
+				return result
+			}
+			return types.comptime_enum_integer_cast(result, types.unalias_type(g.usable_expr_type(id)).name())
 		}
 		else {
 			return none
@@ -2318,9 +2481,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 }
 
 fn enum_foldable_int_literal(value string) ?i64 {
-	clean := value.replace('_', '')
-	parsed := strconv.common_parse_int(clean, 0, 64, true, true) or { return none }
-	return parsed
+	return types.comptime_enum_integer_literal(value)
 }
 
 @[ignore_overflow]
@@ -2560,4 +2721,14 @@ fn (g &FlatGen) optional_error_field(wrapper string, source string) string {
 fn is_wrapped_c_type(name string) bool {
 	return name in ['__v_option', '__v_result'] || name.starts_with('__v_option_')
 		|| name.starts_with('__v_result_')
+}
+
+// cgen_unalias_type follows canonical alias references without a depth cutoff.
+fn cgen_unalias_type(typ &types.Type) &types.Type {
+	return unalias_type(typ)
+}
+
+// default_init_unalias_type uses canonical storage types for default initialization.
+fn default_init_unalias_type(typ &types.Type) &types.Type {
+	return unalias_type(typ)
 }

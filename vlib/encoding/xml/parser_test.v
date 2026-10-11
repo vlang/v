@@ -128,3 +128,66 @@ fn test_single_element_parsing() ! {
 		}
 	}
 }
+
+fn test_doctype_external_identifiers() {
+	for prefix in ['', '<?xml version="1.0"?>'] {
+		for identifier in ['SYSTEM "root.dtd"', "SYSTEM 'root.dtd'",
+			'PUBLIC "-//Example//DTD Root//EN" "root.dtd"', 'SYSTEM "a>b[1].dtd"', 'SYSTEM ""',
+			'PUBLIC "" ""'] {
+			doc := XMLDocument.from_string('${prefix}<!DOCTYPE root ${identifier}><root/>')!
+			assert doc.root.name == 'root'
+			assert doc.doctype.name == 'root'
+			assert doc.doctype.external_id == identifier
+			assert doc.str().contains('<!DOCTYPE root ${identifier}>')
+			assert XMLDocument.from_string(doc.str())!.doctype == doc.doctype
+		}
+	}
+}
+
+fn test_doctype_external_identifier_with_internal_subset() {
+	doc := XMLDocument.from_string('<!DOCTYPE root SYSTEM "root.dtd" [<!ELEMENT root (child)>]><root><child/></root>')!
+	assert doc.doctype.name == 'root'
+	assert doc.doctype.external_id == 'SYSTEM "root.dtd"'
+	if doc.doctype.dtd is DocumentTypeDefinition {
+		assert doc.doctype.dtd.list.len == 1
+	} else {
+		assert false
+	}
+	assert doc.validate()!.root == doc.root
+	assert doc.str().contains('SYSTEM "root.dtd" [')
+	assert XMLDocument.from_string(doc.str())!.doctype == doc.doctype
+}
+
+fn test_doctype_malformed_external_identifiers() {
+	for input in ['<!DOCTYPE root SYSTEM><root/>', '<!DOCTYPE root SYSTEM root.dtd><root/>',
+		'<!DOCTYPE root PUBLIC "id"><root/>', '<!DOCTYPE root PUBLIC "id""root.dtd"><root/>',
+		'<!DOCTYPE root SYSTEM "root.dtd" extra><root/>', '<!DOCTYPE root SYSTEM "root.dtd',
+		'<!DOCTYPE root SYSTEM "root.dtd"', '<!DOCTYPE root OTHER "root.dtd"><root/>'] {
+		if doc := XMLDocument.from_string(input) {
+			assert false, 'accepted ${input}: ${doc}'
+		} else {
+			assert err.msg().len > 0
+			assert err.msg().contains('DOCTYPE')
+		}
+	}
+}
+
+fn test_duplicate_attributes_are_rejected() {
+	for input in ['<r a="1" a="2"/>', '<r a="1" a="2"></r>', '<r><child a="1" a="1"/></r>',
+		'<?xml version="1.0" version="1.0"?><r/>', '<r x:a="1" x:a="2"/>'] {
+		if doc := XMLDocument.from_string(input) {
+			assert false, 'accepted duplicate attribute: ${doc}'
+		} else {
+			assert err.msg().starts_with('Duplicate XML attribute: ')
+		}
+	}
+}
+
+fn test_attributes_remain_case_sensitive() {
+	doc := XMLDocument.from_string('<r a="1" A="2" x:a="3"/>')!
+	assert doc.root.attributes == {
+		'a':   '1'
+		'A':   '2'
+		'x:a': '3'
+	}
+}

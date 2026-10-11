@@ -2,9 +2,19 @@ module closure
 
 $if !freestanding && !vinix {
 	#include <sys/mman.h>
-	#insert "@VEXEROOT/vlib/builtin/closure/closure_once_nix.h"
+	#include <pthread.h>
 
-	fn C.v_closure_init_once(ClosureInitFn)
+	@[typedef]
+	struct C.pthread_mutex_t {}
+
+	// The lock and the flag of the one-time setup are globals of this module, with C
+	// initializers, rather than the file-static storage of a C header: every
+	// translation unit that includes such a header gets its own copy of them.
+	@[cinit]
+	__global g_closure_once_mutex C.pthread_mutex_t = C.PTHREAD_MUTEX_INITIALIZER
+
+	@[cinit]
+	__global g_closure_once_done = false
 }
 
 struct ClosureMutex {
@@ -112,6 +122,11 @@ fn closure_init_once_platform() {
 			closure_init_body()
 		}
 	} $else {
-		C.v_closure_init_once(closure_init_body)
+		C.pthread_mutex_lock(&g_closure_once_mutex)
+		if !g_closure_once_done {
+			closure_init_body()
+			g_closure_once_done = true
+		}
+		C.pthread_mutex_unlock(&g_closure_once_mutex)
 	}
 }

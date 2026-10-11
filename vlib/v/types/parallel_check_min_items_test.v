@@ -86,11 +86,7 @@ fn test_a_lower_minimum_checks_a_program_on_the_pool_with_the_same_errors() {
 	source := larger_program(40)
 	_, serial_errors := check_program(source, min_parallel_check_items)!
 	was_parallel, errors := check_program(source, 2)!
-	$if windows {
-		assert !was_parallel
-	} $else {
-		assert was_parallel
-	}
+	assert was_parallel
 	assert errors == serial_errors
 }
 

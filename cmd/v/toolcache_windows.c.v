@@ -46,6 +46,7 @@ struct WindowsToolCacheFileInformation {
 const movefile_replace_existing = u32(0x00000001)
 const toolcache_windows_file_share_all = u32(0x00000001 | 0x00000002 | 0x00000004)
 const toolcache_windows_file_share_read_write = u32(0x00000001 | 0x00000002)
+const toolcache_windows_generic_read = u32(0x80000000)
 const toolcache_windows_create_new = u32(1)
 const toolcache_windows_open_existing = u32(3)
 const toolcache_windows_file_attribute_normal = u32(0x00000080)
@@ -55,7 +56,7 @@ const toolcache_windows_file_flag_open_reparse_point = u32(0x00200000)
 const toolcache_windows_file_flag_backup_semantics = u32(0x02000000)
 
 // ToolCacheEntryDir pins the directory that receives a compiled tool. Omitting
-// FILE_SHARE_DELETE keeps the pathname bound to this directory until the build is over;
+// FILE_SHARE_DELETE on a read handle keeps the pathname bound until the build is over;
 // FILE_FLAG_OPEN_REPARSE_POINT makes the attributes below describe the link itself.
 struct ToolCacheEntryDir {
 	path   string
@@ -70,7 +71,9 @@ fn open_tool_cache_entry_dir(path string) !ToolCacheEntryDir {
 	defer {
 		unsafe { free(voidptr(w_path)) }
 	}
-	handle := C.v_toolcache_create_file_w(w_path, 0, toolcache_windows_file_share_read_write, toolcache_windows_open_existing, toolcache_windows_file_flag_backup_semantics | toolcache_windows_file_flag_open_reparse_point)
+	// A zero-access metadata handle does not participate in Windows share checks.
+	// Request directory read access so omitting FILE_SHARE_DELETE prevents renames.
+	handle := C.v_toolcache_create_file_w(w_path, toolcache_windows_generic_read, toolcache_windows_file_share_read_write, toolcache_windows_open_existing, toolcache_windows_file_flag_backup_semantics | toolcache_windows_file_flag_open_reparse_point)
 	if handle == voidptr(-1) {
 		return error('cannot safely open the tool cache entry `${path}`')
 	}

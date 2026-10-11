@@ -35,3 +35,5 @@ fn main() {
 	assert decompressed == uncompressed.bytes()
 }
 ```
+
+Gzip decompression reads all concatenated members and validates each member separately.

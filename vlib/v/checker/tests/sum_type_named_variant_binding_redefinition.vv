@@ -1,0 +1,47 @@
+@[has_globals]
+module main
+
+__global counter int
+
+type Expr = Count(int) | Empty
+
+fn local_binding() {
+	n := 'outer'
+	e := Expr.Count(7)
+	match e {
+		Expr.Count(n) { println(n) }
+		else {}
+	}
+	println(n)
+}
+
+fn subject_binding() {
+	e := Expr.Count(7)
+	match e {
+		Expr.Count(e) { println(e) }
+		else {}
+	}
+}
+
+fn parameter_binding(value string) {
+	e := Expr.Count(7)
+	match e {
+		Expr.Count(value) { println(value) }
+		else {}
+	}
+}
+
+fn global_binding() {
+	e := Expr.Count(7)
+	match e {
+		Expr.Count(counter) { println(counter) }
+		else {}
+	}
+}
+
+fn main() {
+	local_binding()
+	subject_binding()
+	parameter_binding('outer')
+	global_binding()
+}

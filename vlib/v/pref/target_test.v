@@ -141,6 +141,20 @@ fn test_debug_comptime_flag_uses_target_preferences() {
 	assert comptime_flag_value(prefs, 'debug')
 }
 
+fn test_native_int_flag_matches_ssa_width_without_changing_c_targets() {
+	mut prefs := new_preferences()
+	prefs.target = target_from('macos', 'arm64') or { panic(err) }
+	prefs.backend = 'arm64'
+	assert !comptime_optional_flag_value(prefs, 'new_int')
+	prefs.user_defines << 'new_int'
+	assert !comptime_optional_flag_value(prefs, 'new_int')
+	prefs.backend = 'c'
+	assert comptime_optional_flag_value(prefs, 'new_int')
+	prefs.user_defines.clear()
+	prefs.target = target_from('linux', 'arm32') or { panic(err) }
+	assert !comptime_optional_flag_value(prefs, 'new_int')
+}
+
 fn test_prod_comptime_flag_uses_target_preferences() {
 	mut prefs := new_preferences()
 	assert !comptime_flag_value(prefs, 'prod')
@@ -450,4 +464,17 @@ fn test_cross_gcc_condition_uses_a_macro_gcc_defines() {
 	assert gcc_condition.contains('!defined(__clang__)')
 	assert gcc_condition.contains('!defined(__TINYC__)')
 	assert !gcc_condition.contains('__V_GCC__')
+}
+
+fn test_darwin_release_rejects_tcc_executables_from_darwin_27() {
+	assert !darwin_release_rejects_tcc_executables('')
+	assert !darwin_release_rejects_tcc_executables('unknown')
+	assert !darwin_release_rejects_tcc_executables('27x.0.0')
+	assert !darwin_release_rejects_tcc_executables('24.6.0')
+	assert !darwin_release_rejects_tcc_executables('26.9.9')
+	assert darwin_release_rejects_tcc_executables('27.0.0')
+	assert darwin_release_rejects_tcc_executables('28.1.0')
+	$if !macos {
+		assert !host_rejects_tcc_executables()
+	}
 }

@@ -4,10 +4,10 @@ import v.vmod
 
 const vroot = @VEXEROOT
 // Expect has to be installed for the test.
-const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
+const expect_exe = os.find_abs_path_of_executable('expect') or {
 	eprintln('skipping test, since expect is missing')
 	exit(0)
-})
+}
 // Directory that contains the Expect scripts used in the test.
 const expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vcreate', 'tests')
 // Running tests appends a tsession path to VTMP, which is automatically cleaned up after the test.
@@ -72,6 +72,8 @@ fn test_new_with_name_arg_input() {
 	assert mod.description == ''
 	assert mod.version == '0.0.0'
 	assert mod.license == 'MIT'
+	// Without `--agents-md`, no `AGENTS.md` is written.
+	assert !os.exists(os.join_path(test_module_path, project_name, 'AGENTS.md'))
 }
 
 fn test_new_with_model_arg_input() {
@@ -96,4 +98,25 @@ fn test_new_with_model_arg_input() {
 	assert mod.license == 'MIT'
 	// Assert existence of a model-specific file.
 	assert os.exists(os.join_path(project_path, 'tests', 'square_test.v'))
+}
+
+fn test_new_creates_agents_md() {
+	prepare_test_path()!
+	project_name := 'my_agents_project'
+	cmd := '${expect_exe} ${os.join_path(expect_tests_path, 'new_with_agents_md_arg.expect')} ${vroot} ${project_name}'
+	os.exec_opt([expect_exe, os.join_path(expect_tests_path, 'new_with_agents_md_arg.expect'),
+		vroot, '${project_name}']) or {
+		dump(cmd)
+		assert false, err.msg()
+	}
+	agents_path := os.join_path(test_module_path, project_name, 'AGENTS.md')
+	assert os.exists(agents_path)
+	content := os.read_file(agents_path) or {
+		assert false, err.str()
+		return
+	}
+	assert content.contains('# AGENTS.md - ${project_name}')
+	assert content.contains('## Commands')
+	assert content.contains('## Layout')
+	assert content.contains('## Conventions')
 }

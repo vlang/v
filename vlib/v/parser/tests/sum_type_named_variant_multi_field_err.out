@@ -1,0 +1,10 @@
+vlib/v/parser/tests/sum_type_named_variant_multi_field_err.vv:1:14: error: invalid sum type variant `Circle(r f64)`: a named variant holds a single payload type; use a struct payload for several fields, e.g. `Circle(CircleData)`
+    1 | type Shape = Circle(r f64) | Rect(w f64, h f64)
+      |              ~~~~~~~~~~~~~
+    2 | 
+    3 | fn main() {
+vlib/v/parser/tests/sum_type_named_variant_multi_field_err.vv:1:30: error: invalid sum type variant `Rect(w f64, h f64)`: a named variant holds a single payload type; use a struct payload for several fields, e.g. `Rect(RectData)`
+    1 | type Shape = Circle(r f64) | Rect(w f64, h f64)
+      |                              ~~~~~~~~~~~~~~~~~~
+    2 | 
+    3 | fn main() {

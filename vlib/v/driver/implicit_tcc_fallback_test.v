@@ -2,6 +2,53 @@ module driver
 
 import os
 import v.cmdexec
+import v.gen.c as cgen
+import v.parser
+import v.pref
+
+fn test_preflight_defers_source_backed_objects_without_dropping_operands() {
+	dir := os.join_path(os.vtmp_dir(), 'v_tcc_preflight_pending_object_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	pending := os.join_path(dir, 'pending.o')
+	existing := os.join_path(dir, 'existing.o')
+	missing := os.join_path(dir, 'missing.o')
+	os.write_file(os.join_path(dir, 'pending.c'), 'int answer(void) { return 42; }\n')!
+	os.write_file(existing, '')!
+	flags := ['-L', pending, pending, existing, missing, '-lm']
+	assert v3_tcc_preflight_link_flags(flags) == ['-L', pending, existing, missing, '-lm']
+	assert v3_implicit_tcc_flags_incompatibility([pending], 'macos') != none
+}
+
+fn test_dependency_probe_does_not_reject_program_supplied_symbols() {
+	assert v3_tcc_dependency_probe_is_incompatible("tcc: error: library 'pq' not found")
+	assert v3_tcc_dependency_probe_is_incompatible('tcc: error: unrecognized file type')
+	assert !v3_tcc_dependency_probe_is_incompatible("tcc: error: undefined symbol 'program_callback'")
+	assert !v3_tcc_dependency_probe_is_incompatible("tcc: error: unresolved reference to 'program_callback'")
+}
+
+fn test_preflight_defers_source_flags_guarded_by_type_conditions() {
+	dir := os.join_path(os.vtmp_dir(), 'v_tcc_preflight_deferred_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'main.v')
+	os.write_file(source, '\$if int is string {\n #flag -lV3DeferredMustNotBeProbed\n}\n#flag -lV3KnownDependency\nfn main() {}\n')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	prefs.ccompiler = 'tinyc'
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0
+	all_flags := cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
+	assert '-lV3DeferredMustNotBeProbed' in all_flags
+	early_flags := cgen.preflight_directive_flags(a, prefs.vroot, prefs.target,
+		prefs.compile_values)
+	assert early_flags == ['-lV3KnownDependency']
+}
 
 fn test_implicit_tcc_fallback_warning_cites_the_error_line_of_the_failure() {
 	warning := v3_implicit_tcc_fallback_warning('gcc', "\n  tcc: error: unresolved reference to 'GetThreadId'\ntcc: error: second\n")
@@ -97,6 +144,10 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 		eprintln('skipping: no bundled or system tcc available for implicit tcc selection')
 		return
 	}
+	if pref.host_rejects_tcc_executables() {
+		eprintln('skipping: this host never selects tcc implicitly')
+		return
+	}
 	fallback := v3_platform_c_compiler_command(os.user_os())
 	os.find_abs_path_of_executable(fallback) or {
 		eprintln('skipping: no ${fallback} to fall back to')
@@ -108,7 +159,7 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 		os.rmdir_all(dir) or {}
 	}
 	source := os.join_path(dir, 'hello.v')
-	os.write_file(source, "fn main() {\n\tprintln('ok')\n}\n")!
+	os.write_file(source, "fn main() {\n\t\$if tinyc { println('wrong compiler branch') } \$else { println('ok') }\n}\n")!
 	exe := os.join_path(dir, 'hello.exe')
 	old_vflags := os.getenv_opt('VFLAGS')
 	old_vosargs := os.getenv_opt('VOSARGS')
@@ -130,16 +181,33 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 			os.unsetenv('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE')
 		}
 	}
-	build := cmdexec.run(vexe, ['-nocache', '-o', exe, source])
+	build := cmdexec.run(vexe, ['-new-compiler', '-v', '-nocache', '-o', exe, source])
 	assert build.exit_code == 0, build.output
 	assert build.output.contains('warning: implicit tcc could not be used for this build (tcc: error: injected for test coverage)'), build.output
+	assert build.output.count('=== V compiler benchmark ===') == 1, build.output
+	assert build.output.count('parse .v ') == 1, build.output
 	run := cmdexec.run(exe, [])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 	// -silent builds keep their output clean even for an injected failure.
-	quiet := cmdexec.run(vexe, ['-silent', '-nocache', '-o', exe, source])
+	quiet := cmdexec.run(vexe, ['-new-compiler', '-silent', '-nocache', '-o', exe, source])
 	assert quiet.exit_code == 0, quiet.output
 	assert !quiet.output.contains('implicit tcc could not be used'), quiet.output
+	// An explicit request bypasses preflight; disabling retries reports TCC's failure.
+	// Use a real missing library because object-based builds bypass the injected seam.
+	os.unsetenv('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE')
+	os.write_file(source, "#flag -lV3ExplicitTccMissingLibrary\nfn main() { println('ok') }\n")!
+	explicit_tcc := if os.is_file(bundled_tcc) {
+		bundled_tcc
+	} else {
+		os.find_abs_path_of_executable('tcc')!
+	}
+	explicit := cmdexec.run(vexe, ['-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
+		explicit_tcc, '-nocache', '-o', exe, source])
+	assert explicit.exit_code != 0, explicit.output
+	assert explicit.output.contains('V3ExplicitTccMissingLibrary'), explicit.output
+	assert !explicit.output.contains('implicit tcc could not be used'), explicit.output
+	assert !explicit.output.contains('regenerating it with'), explicit.output
 }
 
 // TCC has no `-framework`/`-F` support, but links a framework's `.tbd` stub or

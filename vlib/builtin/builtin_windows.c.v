@@ -100,7 +100,7 @@ const std_output_handle = u32(0xfffffff5)
 const std_error_handle = u32(0xfffffff4)
 const enable_processed_output = 1
 const enable_wrap_at_eol_output = 2
-const evable_virtual_terminal_processing = 4
+const enable_virtual_terminal_processing = 4
 
 // Write UTF-8 directly as UTF-16 for console hosts instead of changing the console code page.
 @[manualfree]
@@ -295,9 +295,9 @@ fn builtin_init() {
 		set_stream_binary_mode(C.stderr)
 		if is_terminal(1) > 0 {
 			C.SetConsoleMode(C.GetStdHandle(std_output_handle),
-				enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
+				enable_processed_output | enable_wrap_at_eol_output | enable_virtual_terminal_processing)
 			C.SetConsoleMode(C.GetStdHandle(std_error_handle),
-				enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
+				enable_processed_output | enable_wrap_at_eol_output | enable_virtual_terminal_processing)
 			unsafe {
 				set_stream_unbuffered(C.stdout)
 				set_stream_unbuffered(C.stderr)
@@ -348,6 +348,12 @@ fn unhandled_exception_handler(e &ExceptionPointers) C.LONG {
 		// so we dont want to catch them...
 		0x4001000A, 0x40010006, 0x406D1388, 0xE06D7363 {
 			return 0
+		}
+		0xC00000FD {
+			// EXCEPTION_STACK_OVERFLOW: the filter runs on what is left of the
+			// overflowed stack, so only write the message, without a backtrace.
+			msg := c'V panic: stack overflow\n'
+			write_buf_to_fd_kernel32(2, &u8(msg), vstrlen_char(msg))
 		}
 		else {
 			eprintln('Unhandled Exception 0x' + ptr_str(e.exception_record.code) + ' at ' +

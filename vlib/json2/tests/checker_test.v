@@ -114,7 +114,7 @@ fn test_check_json_format() {
 		},
 		{
 			'json':  '{"key": 123'
-			'error': 'Syntax: Expecting object key' // improve message
+			'error': 'Syntax: expected object end'
 		},
 		{
 			'json':  '{"key": 123,'
@@ -179,7 +179,7 @@ fn test_check_json_format() {
 
 		json.decode[json.Any](json_and_error['json']) or {
 			if err is json.JsonDecodeError {
-				assert err.message == json_and_error['error']
+				assert err.message == json_and_error['error'], '${json_and_error['json']}: ${err.message}'
 			}
 			has_error = true
 		}

@@ -107,7 +107,7 @@ fn (mut p DateTimeParser) must_be_string_one_of(oneof []string) !string {
 
 fn (mut p DateTimeParser) must_be_valid_month() !int {
 	for v in long_months {
-		if p.current_pos_datetime + v.len < p.datetime.len && p.matches_at(v) {
+		if p.current_pos_datetime + v.len <= p.datetime.len && p.matches_at(v) {
 			p.current_pos_datetime += v.len
 			return long_months.index(v) + 1
 		}
@@ -116,7 +116,7 @@ fn (mut p DateTimeParser) must_be_valid_month() !int {
 }
 
 fn (mut p DateTimeParser) must_be_valid_three_letter_month() !int {
-	if p.current_pos_datetime + 3 < p.datetime.len {
+	if p.current_pos_datetime + 3 <= p.datetime.len {
 		for m := 1; m <= long_months.len; m++ {
 			token := months_string[(m - 1) * 3..m * 3]
 			if p.matches_at(token) {
@@ -130,7 +130,7 @@ fn (mut p DateTimeParser) must_be_valid_three_letter_month() !int {
 
 fn (mut p DateTimeParser) must_be_valid_week_day() !string {
 	for v in long_days {
-		if p.current_pos_datetime + v.len < p.datetime.len && p.matches_at(v) {
+		if p.current_pos_datetime + v.len <= p.datetime.len && p.matches_at(v) {
 			p.current_pos_datetime += v.len
 			return v
 		}
@@ -139,7 +139,7 @@ fn (mut p DateTimeParser) must_be_valid_week_day() !string {
 }
 
 fn (mut p DateTimeParser) must_be_valid_two_letter_week_day() !int {
-	if p.current_pos_datetime + 2 < p.datetime.len {
+	if p.current_pos_datetime + 2 <= p.datetime.len {
 		for d := 1; d <= long_days.len; d++ {
 			token := days_string[(d - 1) * 3..d * 3 - 1]
 			if p.matches_at(token) {
@@ -152,7 +152,7 @@ fn (mut p DateTimeParser) must_be_valid_two_letter_week_day() !int {
 }
 
 fn (mut p DateTimeParser) must_be_valid_three_letter_week_day() !int {
-	if p.current_pos_datetime + 3 < p.datetime.len {
+	if p.current_pos_datetime + 3 <= p.datetime.len {
 		for d := 1; d <= long_days.len; d++ {
 			token := days_string[(d - 1) * 3..d * 3]
 			if p.matches_at(token) {
@@ -204,6 +204,8 @@ fn extract_tokens(s string) ![]string {
 // mm - minute, 0..59
 // s - second, 0..59
 // ss - second, 0..59
+// A - AM or PM, with hours 1..12
+// a - am or pm, with hours 1..12
 fn (mut p DateTimeParser) parse() !Time {
 	mut year_ := 0
 	mut month_ := 0
@@ -211,6 +213,7 @@ fn (mut p DateTimeParser) parse() !Time {
 	mut hour_ := 0
 	mut minute_ := 0
 	mut second_ := 0
+	mut meridiem := ''
 	tokens := extract_tokens(p.format) or {
 		return error_invalid_time(0, 'malformed format string: ${err}')
 	}
@@ -374,10 +377,29 @@ fn (mut p DateTimeParser) parse() !Time {
 					return error_invalid_time(0, 'second must be between 00 and 59')
 				}
 			}
+			'A', 'a' {
+				meridiem = p.next(2) or {
+					return error_invalid_time(0, 'end of string reached before AM/PM was specified')
+				}
+				if (token == 'A' && meridiem !in ['AM', 'PM'])
+					|| (token == 'a' && meridiem !in ['am', 'pm']) {
+					return error_invalid_time(0, 'invalid AM/PM marker: ${meridiem}')
+				}
+			}
 			else {
 				p.must_be_string(token) or { return error_invalid_time(0, '${err}') }
 			}
 		}
+	}
+
+	if p.current_pos_datetime != p.datetime.len {
+		return error_invalid_time(0, 'extra text: ${p.datetime[p.current_pos_datetime..]}')
+	}
+	if meridiem != '' {
+		if hour_ < 1 || hour_ > 12 {
+			return error_invalid_time(0, 'hour must be between 1 and 12 with AM/PM')
+		}
+		hour_ = hour_ % 12 + if meridiem in ['PM', 'pm'] { 12 } else { 0 }
 	}
 
 	if month_ == 2 {
@@ -385,7 +407,7 @@ fn (mut p DateTimeParser) parse() !Time {
 		if day_in_month > feb_days_in_year {
 			return error_invalid_time(0, 'February has only 28 days in the given year')
 		}
-	} else if day_in_month == 31 && month_ !in [1, 3, 5, 7, 8, 10, 12] {
+	} else if day_in_month == 31 && month_ != 0 && month_ !in [1, 3, 5, 7, 8, 10, 12] {
 		month_name := Time{
 			month: month_
 		}.custom_format('MMMM')

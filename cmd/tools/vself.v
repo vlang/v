@@ -34,7 +34,10 @@ fn main() {
 	os.unsetenv('VSELF_COMMAND_INDEX')
 	repeat_count, mut args := extract_repeat_count(args_[1..], command_index)
 	mut effective_args := effective_self_build_args(args)
-	fastc_self_build := uses_fastc_backend(effective_args)
+	self_backend := self_build_backend(effective_args)
+	fastc_self_build := self_backend == 'fastc'
+	arm64_self_build := self_backend == 'arm64'
+	c_self_build := self_backend == 'c'
 	if fastc_self_build && '-prod' in effective_args {
 		eprintln('`v self -b fastc` does not support `-prod`; remove `-prod`.')
 		exit(1)
@@ -43,14 +46,20 @@ fn main() {
 		args = normalize_fastc_backend_args(args)
 		effective_args = effective_self_build_args(args)
 	}
-	if !fastc_self_build && !has_self_build_configuration_arg(effective_args) {
+	if c_self_build && !has_self_build_configuration_arg(effective_args) {
 		// compiling by default, i.e. `v self`:
 		unam := os.uname()
 		if host_os == 'macos' {
 			// Apple Silicon's bundled TCC is much faster for compiler rebuilds. The
 			// generated compiler uses pthread-backed allocator state because native
-			// TinyCC TLS is not reliable on macOS.
-			default_cc := if unam.machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
+			// TinyCC TLS is not reliable on macOS. Newer macOS releases cannot load what
+			// TCC links at all (see pref.host_rejects_tcc_executables).
+			default_cc := if unam.machine in ['arm64', 'aarch64']
+				&& !pref.host_rejects_tcc_executables() {
+				'tcc'
+			} else {
+				'cc'
+			}
 			args << ['-cc', os.getenv_opt('CC') or { default_cc }]
 		} else if host_os == 'linux' && unam.machine in ['arm64', 'aarch64'] {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
@@ -66,19 +75,29 @@ fn main() {
 		args << ['-gc', 'none']
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && '-prod' in effective_args && '-no-memory-limit' !in effective_args
+	if !fastc_self_build && ('-prod' in effective_args || arm64_self_build)
+		&& (!arm64_self_build
+			|| ('-memory-limit' !in effective_args && '--memory-limit' !in effective_args))
+		&& '-no-memory-limit' !in effective_args
 		&& '--no-memory-limit' !in effective_args {
-		// Production C generation for the embedded V3 compiler can legitimately
-		// exceed V3's default 10 GB process limit before the native compiler starts.
+		// Production C generation and native compiler rebuilds without allocation
+		// arenas can exceed the default process limit.
 		args << '-no-memory-limit'
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && self_build_supports_prealloc(effective_args, host_os)
+	if c_self_build && self_build_supports_prealloc(effective_args, host_os)
 		&& !has_prealloc_arg(effective_args) {
 		// The embedded V3 compiler uses disposable preallocation scopes. Pass the
 		// flag explicitly so the first `v up` built by an older compiler gets
 		// the bounded-memory implementation too.
 		args << '-prealloc'
+	}
+	effective_args = effective_self_build_args(args)
+	if c_self_build && !self_build_sets_fastc_inclusion(effective_args) {
+		// Compilers built from `cmd/v` keep the FastC backend by default. Pass that
+		// explicitly too, so the first `v up` run by an older compiler, whose driver
+		// still pruned FastC from `cmd/v`, already produces a V that accepts `-b fastc`.
+		args << ['-compile-backend', 'fastc']
 	}
 	// A replacement compiler has to be built entirely from the checked-out sources.
 	// Reusing a whole-program cache entry here can carry stale checker/codegen state
@@ -110,7 +129,7 @@ fn main() {
 	// them out of line. The three-pass profile-guided cycle would build the large V3
 	// compiler three times.
 	single_prod_build := '-prod' in effective_args
-	pgo_cc_kind := if fastc_self_build || single_prod_build { '' } else { pgo_compiler_kind(args) }
+	pgo_cc_kind := if !c_self_build || single_prod_build { '' } else { pgo_compiler_kind(args) }
 	// Only explicit FastC builds are standalone. Regular replacements must retain
 	// cmd/v so commands such as self, up, fmt, and version remain available.
 	compilation_source := if fastc_self_build { standalone_v3_source } else { full_v_cli_source }
@@ -126,7 +145,9 @@ fn main() {
 				eprintln('PGO self-build failed; falling back to a regular self-build.')
 			}
 		}
-		if fastc_self_build {
+		if fastc_self_build || arm64_self_build {
+			// Native self-build failures must retain the backend diagnostic. Retrying
+			// through the portable C bootstrap cannot validate native self-hosting.
 			run_cmd(cmd) or {
 				eprintln('cannot compile to `${vroot}`: \n${err.msg()}')
 				exit(1)
@@ -168,8 +189,8 @@ fn self_build_output(args []string) string {
 	return output
 }
 
-fn uses_fastc_backend(args []string) bool {
-	mut backend := ''
+fn self_build_backend(args []string) string {
+	mut backend := 'c'
 	mut i := 0
 	for i < args.len {
 		arg := args[i]
@@ -184,7 +205,7 @@ fn uses_fastc_backend(args []string) bool {
 			i++
 		}
 	}
-	return backend == 'fastc'
+	return backend
 }
 
 fn normalize_fastc_backend_args(args []string) []string {
@@ -312,6 +333,29 @@ fn has_gc_arg(args []string) bool {
 			return true
 		}
 		if arg.starts_with('-gc=') {
+			return true
+		}
+	}
+	return false
+}
+
+// self_build_sets_fastc_inclusion reports whether the arguments already decide
+// whether FastC is compiled in, or select the compatibility compiler, which has
+// no `-compile-backend` option.
+fn self_build_sets_fastc_inclusion(args []string) bool {
+	for i, arg in args {
+		if arg in ['-old-compiler', '-all-backends', '--all-backends'] {
+			return true
+		}
+		if arg in ['-compile-backend', '--compile-backend'] && i + 1 < args.len
+			&& args[i + 1].split(',').any(it.trim_space() == 'fastc') {
+			return true
+		}
+		if arg in ['-d', '-define'] && i + 1 < args.len
+			&& args[i + 1].all_before('=').trim_space() == 'skip_fastc' {
+			return true
+		}
+		if arg.starts_with('-d') && arg.len > 2 && arg[2..].all_before('=') == 'skip_fastc' {
 			return true
 		}
 	}
@@ -632,8 +676,22 @@ fn initial_bootstrap_args(args []string) []string {
 	// vc/v.c can be one generation behind this source tree. Its parallel C
 	// splitter predates the single-definition header protocol, and older copies
 	// may also predate V3's process-memory switch. The compiler it produces is
-	// current and receives the original arguments for the final build.
-	return args.filter(it !in ['-parallel-cc', '-no-memory-limit', '--no-memory-limit'])
+	// current and receives the original arguments for the final build. Its V1
+	// compiler also predates `-compile-backend`.
+	mut filtered := []string{cap: args.len}
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg in ['-compile-backend', '--compile-backend'] && i + 1 < args.len {
+			i += 2
+			continue
+		}
+		if arg !in ['-parallel-cc', '-no-memory-limit', '--no-memory-limit'] {
+			filtered << arg
+		}
+		i++
+	}
+	return filtered
 }
 
 fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {

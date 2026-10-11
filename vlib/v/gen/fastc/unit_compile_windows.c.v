@@ -75,8 +75,12 @@ pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string
 	}
 	mut failure := ''
 	for mut compile in compiles {
-		compile.process.wait()
+		// Drain the merged output before waiting: a compiler that prints more than
+		// a pipe buffer of diagnostics would otherwise block on the full pipe while
+		// this loop waits for it to exit. The parent closed its copy of the write
+		// end after starting the process, so the read ends when TinyCC exits.
 		output := compile.process.stdout_slurp()
+		compile.process.wait()
 		code := compile.process.code
 		compile.process.close()
 		if code != 0 && failure == '' {

@@ -166,3 +166,22 @@ fn test_parse_slashes() {
 	assert urllib.parse('//')!.str() == '//'
 	assert urllib.parse('///')!.str() == '///'
 }
+
+fn test_path_backslash_is_escaped_on_output() {
+	for input in [r'http://example.com/\/x', r'http://example.com/%5c/\/x'] {
+		u := urllib.parse(input)!
+		assert u.path.contains(r'\')
+		assert !u.escaped_path().contains(r'\')
+		assert !u.str().contains(r'\')
+		assert !u.request_uri().contains(r'\')
+		assert urllib.parse(u.str())!.path == u.path
+	}
+	u := urllib.parse(r'http://example.com/\/x')!
+	assert u.str() == 'http://example.com/%5C/x'
+	assert u.request_uri() == '/%5C/x'
+	encoded := urllib.parse('http://example.com/%5c/x')!
+	assert encoded.str() == 'http://example.com/%5c/x'
+	assert encoded.escaped_path() == '/%5c/x'
+	quoted := urllib.parse("http://example.com/a'b")!
+	assert quoted.str() == "http://example.com/a'b"
+}

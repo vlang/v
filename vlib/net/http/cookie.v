@@ -181,6 +181,8 @@ fn sanitize_cookie_name(name string) string {
 	return name.replace_each(['\n', '-', '\r', '-'])
 }
 
+// sanitize_cookie_value removes invalid cookie bytes and quotes the sanitized value
+// when it starts or ends with a space or comma.
 // https://tools.ietf.org/html/rfc6265#section-4.1.1
 // cookie-value      = *cookie-octet / ( DQUOTE *cookie-octet DQUOTE )
 // cookie-octet      = %x21 / %x23-2B / %x2D-3A / %x3C-5B / %x5D-7E
@@ -188,19 +190,18 @@ fn sanitize_cookie_name(name string) string {
 //           ; whitespace DQUOTE, comma, semicolon,
 //           ; and backslash
 // We loosen this as spaces and commas are common in cookie values
-// but we produce a quoted cookie-value in when value starts or ends
+// but we produce a quoted cookie-value when value starts or ends
 // with a comma or space.
 pub fn sanitize_cookie_value(v string) string {
 	val := sanitize(valid_cookie_value_byte, v)
-	if v.len == 0 {
-		return v
+	if val.len == 0 {
+		return val
 	}
-	// Check for the existence of a space, comma or semicolon
-	if val.starts_with(' ') || v.contains(';') || val.ends_with(' ') || val.starts_with(',')
-		|| val.ends_with(',') {
-		return '"${v}"'
+	// Quote leading or trailing spaces and commas.
+	if val.starts_with(' ') || val.ends_with(' ') || val.starts_with(',') || val.ends_with(',') {
+		return '"${val}"'
 	}
-	return v
+	return val
 }
 
 fn sanitize_cookie_path(v string) string {
@@ -216,17 +217,21 @@ fn valid_cookie_path_byte(b u8) bool {
 }
 
 fn valid_cookie_domain(v string) bool {
-	if is_cookie_domain_name(v) {
-		return true
+	return is_cookie_domain_name(v) || is_ipv4_literal(v)
+}
+
+fn is_ipv4_literal(s string) bool {
+	parts := s.split('.')
+	if parts.len != 4 {
+		return false
 	}
-	// TODO
-	// valid_ip := net.parse_ip(v) or {
-	// 	false
-	// }
-	// if valid_ip {
-	// 	return true
-	// }
-	return false
+	for part in parts {
+		if part.len == 0 || part.len > 3 || !part.contains_only('0123456789')
+			|| part.int() > 255 {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn is_cookie_domain_name(_s string) bool {
@@ -371,16 +376,17 @@ fn parse_cookie(line string) !Cookie {
 				c.max_age = secs
 				continue
 			}
-			// TODO: Fix this once time works better
-			// 'expires' {
-			// 	c.raw_expires = val
-			// 	mut exptime := time.parse_iso(val)
-			// 	if exptime.year == 0 {
-			// 		exptime = time.parse_iso('Mon, 02-Jan-2006 15:04:05 MST')
-			// 	}
-			// 	c.expires = exptime
-			// 	continue
-			// }
+			'expires' {
+				c.raw_expires = val
+				if exptime := time.parse_http_header_string(val) {
+					// RFC 6265 requires cookie expiry years to be at least 1601.
+					if exptime.year >= 1601 {
+						c.expires = exptime
+						continue
+					}
+				}
+				c.unparsed << parts[i]
+			}
 			'path' {
 				c.path = val
 				continue

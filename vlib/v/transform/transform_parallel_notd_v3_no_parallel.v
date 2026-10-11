@@ -406,11 +406,28 @@ fn transform_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+fn scoped_transform_batch_count(n_items int, total_cost i64, max_batches int, building_v bool) int {
+	if n_items <= 0 {
+		return 0
+	}
+	mut batches := int_min(n_items, int_max(1, max_batches))
+	if !building_v {
+		// Small programs do not need a fresh checker and transformer for every
+		// few function bodies. Keep the existing self-host scratch bounds.
+		by_cost := int_max(1, int(total_cost / shared_helper_min_batch_cost))
+		batches = int_min(batches, by_cost)
+	}
+	return batches
+}
+
 // shared_helper_batch_count picks the scratch batch count for one helper chunk.
-fn shared_helper_batch_count(items []FnWorkItem) int {
+fn shared_helper_batch_count(items []FnWorkItem, building_v bool) int {
 	mut total := i64(0)
 	for item in items {
 		total += i64(item.cost) + 1
+	}
+	if !building_v {
+		return scoped_transform_batch_count(items.len, total, shared_helper_transform_batches, false)
 	}
 	by_cost := int(total / shared_helper_min_batch_cost)
 	return int_max(scoped_transform_batches, int_min(shared_helper_transform_batches, by_cost))
@@ -424,7 +441,7 @@ fn shared_chunk_thread(arg voidptr) voidptr {
 	items := unsafe { &[]FnWorkItem(a.items_ptr) }
 	mut csw := time.new_stopwatch()
 	if w.scope_parallel_workers && (!a.is_master || w.retain_worker_results) {
-		w.transform_scoped_helper_batches(*items, shared_helper_batch_count(*items))
+		w.transform_scoped_helper_batches(*items, shared_helper_batch_count(*items, w.building_v))
 	} else {
 		w.transform_pure_items_serial(*items)
 	}
@@ -1481,6 +1498,9 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 	// not been warmed by the earlier function-body transform. Build it before
 	// the forks; lazy initialization from several workers corrupts the map.
 	t.prepare_parallel_call_param_types()
+	// Classify array constants on the master too, so the workers share one
+	// read-only cache instead of each rescanning the AST per constant.
+	t.precompute_const_array_fixed_storage()
 	// Reflected generic JSON bodies query loop-variable roles while every
 	// specialization is cloned. Build the immutable source-template index once
 	// on the master instead of making every worker scan the multi-million-node
@@ -1770,6 +1790,12 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 	// Workers treat declaration parameter metadata as immutable. Build the lazy
 	// index in the parent arena before a scoped worker can grow its backing map.
 	t.prepare_parallel_call_param_types()
+	// Classify array constants in the parent arena before forking, so every
+	// batch shares one read-only cache instead of rescanning the AST.
+	t.precompute_const_array_fixed_storage()
+	// Serial batches need the same immutable reflected-loop index as parallel
+	// workers; otherwise each batch rescans the entire growing AST for JSON fields.
+	t.prepare_comptime_reflected_for_roles()
 	// A scoped transformer can itself be a fork whose signature tables still
 	// point at its parent's read-only base. Detach before pre-registering the
 	// batch, rather than mutating storage another worker may be reading.
@@ -2356,6 +2382,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		if name !in t.sum_eq_types {
 			t.sum_eq_types[t.promote_scoped_result_text(name)] = SumEqRequest{
 				sum_name:      t.promote_scoped_result_text(req.sum_name)
+				struct_name:   t.promote_scoped_result_text(req.struct_name)
 				module:        t.promote_scoped_result_text(req.module)
 				file:          t.promote_scoped_result_text(req.file)
 				helper_module: t.promote_scoped_result_text(req.helper_module)
@@ -2450,11 +2477,7 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 	for item in items {
 		total_cost += i64(item.cost) + 1
 	}
-	target_batches := if items.len < max_batches {
-		items.len
-	} else {
-		max_batches
-	}
+	target_batches := scoped_transform_batch_count(items.len, total_cost, max_batches, t.building_v)
 	target_cost := if target_batches > 0 {
 		(total_cost + i64(target_batches) - 1) / i64(target_batches)
 	} else {
@@ -2595,6 +2618,9 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 			idx := candidates[ci].idx
 			if idx >= 0 && idx < t.transformed_fns.len {
 				t.transformed_fns[idx] = true
+			}
+			if idx >= 0 && idx < t.lowered_fn_bodies.len {
+				t.lowered_fn_bodies[idx] = true
 			}
 			t.cur_file = candidates[ci].file
 			t.cur_module = candidates[ci].module
@@ -3503,6 +3529,7 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		}
 		param_thread := spawn transform_param_prep_thread(voidptr(param_w))
 		t.defer_pre_scan_indexes = true
+		t.defer_fixed_array_borrow_prep = true
 		index_thread := spawn transform_pre_scan_index_thread(voidptr(t))
 		t.prepare()
 		t.add_prescan_scope(param_thread.wait())
@@ -3512,6 +3539,8 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 		t.call_param_types_decl_index = param_w.call_param_types_decl_index.move()
 		t.call_param_types_index_ready = param_w.call_param_types_index_ready
 		t.call_param_types_prepared = param_w.call_param_types_prepared
+		t.defer_fixed_array_borrow_prep = false
+		t.prepare_fixed_array_borrow_params()
 	} else {
 		t.defer_pre_scan_indexes = true
 		index_thread := spawn transform_pre_scan_index_thread(voidptr(t))

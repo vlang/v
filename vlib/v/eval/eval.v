@@ -4,6 +4,7 @@ import os
 import strconv
 import time
 import v.flat
+import v.util
 import v.parser
 import v.pref
 import v.token as vtoken
@@ -2524,10 +2525,12 @@ fn (mut e Eval) eval_expr(id flat.NodeId) !Value {
 			return void_value()
 		}
 		.int_literal {
-			return Value(strconv.parse_int(clean_number_literal(node.value), 0, 64) or { i64(0) })
+			return Value(strconv.parse_int(clean_number_literal(node.value), util.v_literal_parse_base(node.value), 64) or { i64(0) })
 		}
 		.float_literal {
-			return Value(strconv.atof64(clean_number_literal(node.value)) or { 0.0 })
+			return Value(strconv.atof64(clean_number_literal(node.value), allow_overflow: true) or {
+				0.0
+			})
 		}
 		.bool_literal {
 			return Value(node.value == 'true')
@@ -5278,11 +5281,12 @@ fn (mut e Eval) apply_infix_operator_overload(op flat.Op, left Value, right Valu
 
 fn (mut e Eval) call_string_method(receiver string, method_name string, args []Value) !Value {
 	match method_name {
+		// string.int() accepts `1_000`; strconv.parse_int rejects underscores in base 10.
 		'int' {
-			return Value(strconv.parse_int(receiver, 10, 64) or { i64(0) })
+			return Value(strconv.common_parse_int(receiver, 10, 64, true, false) or { i64(0) })
 		}
 		'i64' {
-			return Value(strconv.parse_int(receiver, 10, 64) or { i64(0) })
+			return Value(strconv.common_parse_int(receiver, 10, 64, true, false) or { i64(0) })
 		}
 		'str' {
 			return Value(receiver)
@@ -6490,7 +6494,7 @@ fn (e &Eval) sizeof_integer_expr(id flat.NodeId, module_name string, seen []flat
 	node := e.node(id)
 	match node.kind {
 		.int_literal {
-			return strconv.parse_int(clean_number_literal(node.value), 0, 64) or { return none }
+			return strconv.parse_int(clean_number_literal(node.value), util.v_literal_parse_base(node.value), 64) or { return none }
 		}
 		.ident {
 			return e.sizeof_fixed_array_len(node.value, module_name, seen)
@@ -6581,7 +6585,7 @@ fn (e &Eval) value_as_int(value Value) !i64 {
 			return if value { i64(1) } else { i64(0) }
 		}
 		string {
-			return strconv.parse_int(value, 10, 64) or { i64(0) }
+			return strconv.common_parse_int(value, 10, 64, true, false) or { i64(0) }
 		}
 		StructValue {
 			if 'value' in value.fields {
@@ -6600,7 +6604,7 @@ fn (e &Eval) value_as_f64(value Value) !f64 {
 		i64 { return f64(value) }
 		EnumValue { return f64(value.value) }
 		bool { return if value { 1.0 } else { 0.0 } }
-		string { return strconv.atof64(value) or { 0.0 } }
+		string { return strconv.atof64(value, allow_overflow: true) or { 0.0 } }
 		else { return error('v.eval: `${e.runtime_type_name(value)}` can not be used as float') }
 	}
 }

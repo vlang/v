@@ -1927,3 +1927,22 @@ fn test_an_entry_planted_in_a_formerly_writable_root_is_never_executed() {
 		assert !os.exists(marker), 'the planted entry was executed'
 	})!
 }
+
+fn test_windows_entry_pin_blocks_rename_until_handle_is_closed() {
+	$if !windows {
+		return
+	}
+	directory := toolcache_test_dir('windows_entry_pin')
+	defer { os.rmdir_all(directory) or {} }
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir(entry_dir)!
+	entry := open_tool_cache_entry_dir(entry_dir)!
+	moved_dir := entry_dir + '.moved'
+	mut renamed_while_open := true
+	os.rename(entry_dir, moved_dir) or { renamed_while_open = false }
+	entry.close()
+	assert !renamed_while_open, 'an open tool-cache entry must deny rename access'
+	os.rename(entry_dir, moved_dir)!
+	assert os.is_dir(moved_dir)
+	assert !os.exists(entry_dir)
+}

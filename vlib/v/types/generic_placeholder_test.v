@@ -64,3 +64,14 @@ fn test_empty_array_generic_diagnostic_prescreen() {
 		}
 	}
 }
+
+fn test_function_type_generic_arguments_retain_placeholders() {
+	a := &flat.FlatAst{}
+	tc := TypeChecker.new(a)
+	for typ in ['fn () T', 'fn (T) int', 'fn (value []T) string', 'fn (fn () T) int', 'Cell[fn () T]'] {
+		assert tc.type_text_has_generic_placeholder(typ), typ
+	}
+	for typ in ['fn ()', 'fn () int', 'fn (string) int', 'Cell[fn () int]'] {
+		assert !tc.type_text_has_generic_placeholder(typ), typ
+	}
+}

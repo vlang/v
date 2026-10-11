@@ -1,0 +1,35 @@
+vlib/v/checker/tests/generated_module_keeps_semantics_err.vv:5:1: error: use `v -enable-globals ...` to enable globals
+    3 | 
+    4 | // Unlike `@[translated]`, `@[generated]` relaxes only the naming rules.
+    5 | __global zbrCounter = 0
+      | ~~~~~~~~~~~~~~~~~~~~~~~
+    6 | 
+    7 | enum _zbr_ty_Color {
+vlib/v/checker/tests/generated_module_keeps_semantics_err.vv:18:2: error: `count` is immutable, declare it with `mut` to make it mutable
+   16 | fn main() {
+   17 |     count := 1
+   18 |     count = 2
+      |     ~~~~~
+   19 |     println(takeColor(1))
+   20 |     mut c := _zbr_ty_Color.red
+vlib/v/checker/tests/generated_module_keeps_semantics_err.vv:19:20: error: cannot use `int literal` as `_zbr_ty_Color` in argument 1 to `takeColor`
+   17 |     count := 1
+   18 |     count = 2
+   19 |     println(takeColor(1))
+      |                       ^
+   20 |     mut c := _zbr_ty_Color.red
+   21 |     c = c + 1
+vlib/v/checker/tests/generated_module_keeps_semantics_err.vv:21:6: error: mismatched types `_zbr_ty_Color` and `int literal`
+   19 |     println(takeColor(1))
+   20 |     mut c := _zbr_ty_Color.red
+   21 |     c = c + 1
+      |         ~~~~~
+   22 |     println('${count} ${c} ${zbrCounter}')
+   23 | }
+vlib/v/checker/tests/generated_module_keeps_semantics_err.vv:21:6: error: infix expr: cannot use `int literal` (right expression) as `_zbr_ty_Color`
+   19 |     println(takeColor(1))
+   20 |     mut c := _zbr_ty_Color.red
+   21 |     c = c + 1
+      |         ~~~~~
+   22 |     println('${count} ${c} ${zbrCounter}')
+   23 | }

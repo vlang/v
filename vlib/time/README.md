@@ -62,6 +62,26 @@ println(t.unix())
 
 V's time module also has these parse methods:
 
+Month and weekday names in `parse_format` may end the input. For example,
+`time.parse_format('May', 'MMMM')!` and `time.parse_format('Jul', 'MMM')!`
+return times in May and July, respectively; weekday tokens also accept a terminal name.
+
+`parse_format(s, format)` requires the format to cover the entire input, including literals.
+Unmatched trailing text or whitespace returns an error instead of parsing only a prefix.
+
+`parse_format` defaults an omitted month to January. Day-only layouts such as
+`time.parse_format('31', 'DD')!` therefore accept January 31; an explicit month still
+enforces its actual length.
+
+`Time.custom_format('YYYY')` pads nonnegative years to at least four digits, so year `100`
+is written as `0100`. For nonnegative years, `YY` writes the final two year digits
+with leading zeros. Negative years retain their existing `YYYY` and `YY` representations.
+
+`parse_format` supports `A` for `AM`/`PM` and `a` for `am`/`pm`. Use these markers with
+an hour from `1` to `12`, for example `time.parse_format('02:30:45PM', 'hh:mm:ssA')!`
+returns hour `14`, while `12:00:00AM` returns hour `0`. Layouts without a marker retain
+their existing 24-hour behavior.
+
 ```v ignore
 fn parse(s string) !Time
 fn parse_iso8601(s string) !Time
@@ -125,6 +145,28 @@ find . -type f -print | LC_ALL=C sort | sed 's#^./##' | \
   zip -0 -X /path/to/v/vlib/time/tzdata/zoneinfo.zip -@
 ```
 
+`time.parse_duration(s)` parses a string such as `1h30m`, `-1.5s` or `300ms` into a
+`time.Duration`. The format is the one of Go's `time.ParseDuration`: an optional sign,
+followed by one or more decimal numbers, each with an optional fraction and a unit. The
+units are `ns`, `us` (or `µs`), `ms`, `s`, `m` and `h`; only `0` can be written without one.
+A string that is not a duration, a number without a unit, an unknown unit such as `d`, and
+a duration that does not fit in the `i64` range of nanoseconds are reported as errors:
+
+```v
+import time
+
+timeout := time.parse_duration('1h30m')!
+assert timeout == 90 * time.minute
+assert time.parse_duration('-1.5s')! == -1500 * time.millisecond
+assert time.parse_duration('2h45m30.5s')!.seconds() == 9930.5
+
+time.parse_duration('5') or { assert err.msg() == 'missing unit in duration: "5"' }
+time.parse_duration('1d') or { assert err.msg() == 'unknown unit "d" in duration: "1d"' }
+```
+
+`Duration.str()` is meant for display. For a minute or more it writes forms such as
+`1:30:00`, which are not duration strings, so `parse_duration` does not read them back.
+
 Another very useful feature of the `time` module is the stop watch,
 for when you want to measure short time periods, elapsed while you
 executed other tasks. [See](https://play.vlang.io/?query=f6c008bc34):
@@ -143,19 +185,5 @@ fn main() {
 }
 ```
 
-Use a timer when a wait needs to participate in a `select`:
-
-```v
-import time
-
-timer := time.new_timer(500 * time.millisecond)
-defer {
-	timer.stop()
-}
-select {
-	fired_at := <-timer.c {
-		println('timer fired at ${fired_at}')
-	}
-	// another channel can be handled here
-}
-```
+A wait that needs to participate in a `select` uses `sync.new_timer`, which sends the
+time on a channel: see the `sync` module.

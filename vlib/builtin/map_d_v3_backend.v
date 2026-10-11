@@ -153,7 +153,10 @@ fn (mut d DenseArray) reserve(n int) {
 	d.cap = n
 	unsafe {
 		d.keys = dense_array_resize(d.keys, old_key_size, d.key_bytes * d.cap, d.key_alignment)
-		d.values = dense_array_resize(d.values, old_value_size, d.value_bytes * d.cap, d.value_alignment)
+		// Zero-sized values retain their initial one-byte allocation across growth.
+		if d.value_bytes != 0 {
+			d.values = dense_array_resize(d.values, old_value_size, d.value_bytes * d.cap, d.value_alignment)
+		}
 		if d.deletes != 0 {
 			d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
 			vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)

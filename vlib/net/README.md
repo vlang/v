@@ -4,6 +4,12 @@
 so you can listen on a port, connect to remote TCP/UDP services, and
 communicate with them.
 
+Blocking TCP reads on POSIX sockets use `SO_RCVTIMEO` to enforce the configured
+read timeout directly in `recv`, avoiding a readiness poll before each read.
+`set_read_timeout` updates this socket timeout; `no_timeout` and `infinite_timeout`
+disable it. Deadline-only reads and nonblocking reads continue to use readiness
+polling, as do sockets that do not support the receive-timeout option.
+
 UDP multicast example:
 
 ```v

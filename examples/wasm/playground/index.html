@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>V WebAssembly playground</title>
+		<style>
+			:root {
+				color-scheme: light dark;
+				font-family: system-ui, sans-serif;
+				background: #f5f7fa;
+				color: #172b4d;
+			}
+			* { box-sizing: border-box; }
+			body { margin: 0; }
+			main { max-width: 1080px; margin: 0 auto; padding: 32px 20px; }
+			h1 { margin: 0 0 8px; font-size: clamp(1.6rem, 4vw, 2.2rem); }
+			.description { margin: 0 0 24px; line-height: 1.5; }
+			.toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+			select, button {
+				font: inherit;
+				border: 1px solid #bbc6d5;
+				border-radius: 6px;
+				padding: 8px 12px;
+				background: #fff;
+				color: inherit;
+			}
+			button { cursor: pointer; }
+			button:disabled { opacity: 0.55; cursor: default; }
+			#run { background: #216ac4; color: #fff; border-color: #216ac4; }
+			:focus-visible { outline: 3px solid #479cf3; outline-offset: 3px; }
+			.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
+			.panel { min-width: 0; }
+			.panel-label { display: block; font-weight: 600; margin: 0 0 10px; font-size: 1rem; }
+			textarea, pre {
+				width: 100%;
+				min-height: 360px;
+				margin: 0;
+				padding: 16px;
+				border: 1px solid #bbc6d5;
+				border-radius: 8px;
+				background: #fff;
+				color: inherit;
+				font: 14px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+				tab-size: 4;
+			}
+			textarea { resize: vertical; }
+			pre { max-height: 600px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+			#status { min-height: 1.5em; margin: 16px 0 0; line-height: 1.5; }
+			.hint { font-size: 0.875rem; color: #52657d; }
+			noscript { display: block; margin-top: 20px; }
+			@media (max-width: 680px) {
+				main { padding: 24px 16px; }
+				.panels { grid-template-columns: 1fr; }
+				textarea { min-height: 300px; }
+				pre { min-height: 160px; }
+			}
+			@media (prefers-color-scheme: dark) {
+				:root { background: #111923; color: #e4edf7; }
+				select, button, textarea, pre { background: #1a2634; border-color: #4d6077; }
+				.hint { color: #adbed3; }
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>V WebAssembly playground</h1>
+			<p class="description">Edit V code and run it locally in your browser.</p>
+			<div class="toolbar">
+				<label for="example">Example</label>
+				<select id="example">
+					<option value="hello">Hello world</option>
+					<option value="squares">Integer loop</option>
+					<option value="fibonacci">Fibonacci</option>
+				</select>
+				<button id="run" type="button">Run</button>
+				<button id="stop" type="button" disabled>Stop</button>
+				<span class="hint" id="shortcut">Ctrl / Cmd + Enter to run</span>
+			</div>
+			<div class="panels">
+				<div class="panel">
+					<label class="panel-label" for="source">V source</label>
+					<textarea id="source" spellcheck="false" autocapitalize="off"
+						aria-describedby="shortcut">fn main() {
+	println('Hello from V and WebAssembly!')
+}
+</textarea>
+				</div>
+				<section class="panel" aria-labelledby="output-label">
+					<h2 class="panel-label" id="output-label">Output</h2>
+					<pre id="output" role="log" aria-live="polite" aria-label="Program output"></pre>
+				</section>
+			</div>
+			<p id="status" role="status">Ready. Choose an example or write your own program.</p>
+			<noscript>This playground requires JavaScript and WebAssembly.</noscript>
+		</main>
+		<script type="module" src="./playground.js"></script>
+	</body>
+</html>

@@ -1081,6 +1081,28 @@ pub fn prealloc_scope_address_range(scope_ptr voidptr) (usize, usize) {
 	}
 }
 
+// prealloc_scope_allocated_size returns the total bytes in the allocation blocks
+// owned by scope_ptr. The scope must be settled: no thread may add or remove blocks
+// during the query. A nil scope returns zero; size overflow saturates at usize's max.
+@[unsafe]
+pub fn prealloc_scope_allocated_size(scope_ptr voidptr) usize {
+	if scope_ptr == unsafe { nil } {
+		return 0
+	}
+	unsafe {
+		scope := &VPreallocScope(scope_ptr)
+		mut total := usize(0)
+		for i in 0 .. scope.ranges_len {
+			bytes := scope.ranges[i].stop - scope.ranges[i].start
+			if bytes > ~usize(0) - total {
+				return ~usize(0)
+			}
+			total += bytes
+		}
+		return total
+	}
+}
+
 // prealloc_scope_abandon restores the current thread arena and intentionally
 // leaks the scoped blocks. It is only for APIs that transfer request state to
 // user code without providing a close hook yet.

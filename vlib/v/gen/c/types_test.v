@@ -1223,3 +1223,20 @@ fn test_parameter_descriptor_survives_parameter_table_reuse() {
 	assert borrowed.name() == '[]int'
 	assert g.current_param_type('first') == none
 }
+
+fn test_import_alias_canonicalization_is_idempotent_for_module_path_prefix() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.file_imports['other.v\ntsc'] = 'tsc.execute.tsc'
+	tc.file_imports['other.v\ngort'] = 'gostd.gort'
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	for source in ['tsc.CompileTimes', '&tsc.CompileTimes', 'gort.Cell[tsc.CompileTimes]',
+		'map[string][]tsc.CompileTimes'] {
+		canonical := g.canonical_import_alias_type_text_in_file(source, 'other.v')
+		assert canonical.contains('tsc.execute.tsc.CompileTimes')
+		assert g.canonical_import_alias_type_text_in_file(canonical, 'other.v') == canonical
+		assert g.canonical_import_alias_type_text_in_file_uncached(canonical, 'other.v') == canonical
+	}
+}

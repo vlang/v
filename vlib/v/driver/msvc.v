@@ -301,12 +301,28 @@ fn msvc_lower_c_file(path string) ! {
 	os.write_file(path, cgen.msvc_compat_c_source(source))!
 }
 
-// msvc_require_cl exits with an explanation when MSVC's compiler cannot be run.
-fn msvc_require_cl(c_compiler string, host_os string, target pref.Target) {
+// msvc_require_cl prepares the environment MSVC's compiler needs on Windows (see
+// msvc_prepare_environment), and exits with an explanation when the compiler cannot be run. It
+// returns the variables it set, which are for the C compiler only: the caller hands them to
+// msvc_restore_environment once the C compiler is done, before the built program can start.
+fn msvc_require_cl(c_compiler string, host_os string, target pref.Target) []MsvcSavedVariable {
+	prepared := if host_os == 'windows' {
+		msvc_prepare_environment(c_compiler, target)
+	} else {
+		MsvcPreparation{}
+	}
 	os.find_abs_path_of_executable(c_compiler) or {
 		eprintln(msvc_missing_cl_message(c_compiler, host_os, target))
+		if prepared.problem != '' {
+			eprintln(prepared.problem)
+		}
+		msvc_restore_environment(prepared.saved)
 		exit(1)
 	}
+	if prepared.problem != '' {
+		eprintln('warning: ${prepared.problem}')
+	}
+	return prepared.saved
 }
 
 // msvc_missing_cl_message explains why `cl` cannot run. Off Windows, it suggests generating

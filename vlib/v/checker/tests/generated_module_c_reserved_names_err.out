@@ -1,0 +1,28 @@
+vlib/v/checker/tests/generated_module_c_reserved_names_err.vv:6:1: error: function name `_S` cannot start with `_` and an uppercase letter, C reserves such names
+    4 | // `_S` is a macro of the generated C code, and C reserves names that begin with
+    5 | // `_` and an uppercase letter.
+    6 | fn _S(s string) string {
+      | ~~~~~~~~~~~~~~~~~~~~~~
+    7 |     return s + '!'
+    8 | }
+vlib/v/checker/tests/generated_module_c_reserved_names_err.vv:10:7: error: const name `__zbr_c_limit` cannot contain `__`, V uses it to build C names
+    8 | }
+    9 | 
+   10 | const __zbr_c_limit = 1
+      |       ~~~~~~~~~~~~~
+   11 | 
+   12 | // Every interface value already has `_typ` and `_object` members in C.
+vlib/v/checker/tests/generated_module_c_reserved_names_err.vv:14:2: error: field name `_typ` is reserved for the interface value itself
+   12 | // Every interface value already has `_typ` and `_object` members in C.
+   13 | interface _zbr_ty_I {
+   14 |     _typ    int
+      |     ~~~~
+   15 |     _object int
+   16 | }
+vlib/v/checker/tests/generated_module_c_reserved_names_err.vv:15:2: error: field name `_object` is reserved for the interface value itself
+   13 | interface _zbr_ty_I {
+   14 |     _typ    int
+   15 |     _object int
+      |     ~~~~~~~
+   16 | }
+   17 |

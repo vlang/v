@@ -295,6 +295,7 @@ fn (mut p Process) impl_check_pid_status(exit_early_on_ret0 bool, waitpid_option
 	if exit_early_on_ret0 && ret == 0 {
 		return true
 	}
+	p.reaped = true
 	mut pret, is_signaled := posix_wait4_to_exit_status(cstatus)
 	if is_signaled {
 		p.status = .aborted

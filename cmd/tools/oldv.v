@@ -145,7 +145,7 @@ fn main() {
 	scripting.used_tools_must_exist(oldv_required_tools(context.use_cache, context.cc))
 	context.cleanup = fp.bool('clean', 0, false, 'Clean before running (slower).')
 	context.fresh_tcc = fp.bool('fresh_tcc', 0, true, 'Do `make fresh_tcc` when preparing a V compiler.')
-	context.cmd_to_run = fp.string('command', `c`, '', 'Command to run in the old V repo.\n')
+	context.cmd_to_run = fp.string('command', `c`, '', 'Shell command to run in the old V repo.\n')
 	context.show_vccommit = fp.bool('show_VC_commit', 0, false, 'Show the VC commit, that can be used to compile the given V commit, and exit.\n')
 	context.is_bisect = fp.bool('bisect', `b`, false, 'Bisect mode. Use the current commit in the repo where oldv is.')
 
@@ -194,7 +194,12 @@ fn main() {
 	scripting.cprintln('#     v commit hash: ${shorter_hash} | folder: ${context.path_v}')
 	if context.cmd_to_run.len > 0 {
 		scripting.cprintln_strong('#           command: ${context.cmd_to_run:-34s}')
-		cmdres := os.exec_or_exit(os.split_args(context.cmd_to_run) or { panic(err) })
+		cmdres := $if windows {
+			// --command is explicitly shell code; preserve cmd.exe's native quoting.
+			unsafe { os.raw_execute(context.cmd_to_run) }
+		} $else {
+			os.exec(['sh', '-c', context.cmd_to_run])
+		}
 		if cmdres.exit_code != 0 {
 			scripting.cprintln_strong('#         exit code: ${cmdres.exit_code:-4d}')
 		}

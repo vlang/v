@@ -718,3 +718,34 @@ Named arrays can also be passed directly for `IN` clauses:
 	user_ids := ['1', '2']
 	users := qb.where('id IN ?', user_ids)!.query()!
 ```
+
+## Explicit relationships in the Function Call API
+
+`orm.new_query[T]` loads scalar fields only. Use `include` to load a direct
+relationship and `then_include` to continue from the last included relationship:
+
+```v ignore
+mut parents := orm.new_query[Parent](db)
+rows := parents.include('children')!.then_include('grandkids')!.query()!
+```
+
+A new `include` starts an independent path. Every segment is validated before it
+changes the builder. An invalid include leaves the previous path intact. `query`
+and `reset` clear all include paths and the current path cursor. Duplicate paths
+are loaded once. Arrays need an `@[fkey]` attribute; singular and optional struct
+relationships use the existing ORM lookup-column mapping.
+
+This changes the Function Call API's previous implicit relationship loading:
+relationships are now populated only when requested. SQL-like `sql db { ... }`
+queries retain their existing implicit loading, including selects without an
+explicit field list. `where` continues to filter the root entity; includes do not
+add joins or related-entity predicates.
+
+When an explicit selection omits a lookup key, the query fetches it for hydration
+without populating that unselected scalar field in the result. With `distinct`,
+the lookup key must be selected explicitly to avoid changing distinctness. Errors
+from explicitly requested relationship queries are returned to the caller.
+
+Loading is currently per parent row: one included collection across N parents
+can execute N additional queries. This API controls which relationships load;
+future batching can reduce the number of database round trips.

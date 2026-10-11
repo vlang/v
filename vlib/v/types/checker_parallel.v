@@ -1261,6 +1261,10 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 					prev_tl = i
 					continue
 				}
+				if tc.skips_library_body(node) {
+					prev_tl = i
+					continue
+				}
 				span := i - prev_tl
 				cost := if i < tc.fn_check_costs.len && tc.fn_check_costs[i] > 0 {
 					tc.fn_check_costs[i]
@@ -1715,6 +1719,18 @@ fn (mut tc TypeChecker) sort_parallel_check_errors() {
 }
 
 fn compare_type_notices(a &TypeError, b &TypeError) int {
+	$if prealloc {
+		// Comparisons return no allocated payload; recycle their temporary searches.
+		scope := unsafe { prealloc_scope_begin() }
+		result := compare_type_notices_inner(a, b)
+		unsafe { prealloc_scope_end(scope) }
+		return result
+	} $else {
+		return compare_type_notices_inner(a, b)
+	}
+}
+
+fn compare_type_notices_inner(a &TypeError, b &TypeError) int {
 	a_is_postfix_value_warning := a.msg.ends_with('operator can only be used as a statement')
 	b_is_postfix_value_warning := b.msg.ends_with('operator can only be used as a statement')
 	if a_is_postfix_value_warning != b_is_postfix_value_warning {
@@ -1739,6 +1755,18 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	$if prealloc {
+		// Comparisons return no allocated payload; recycle their temporary searches.
+		scope := unsafe { prealloc_scope_begin() }
+		result := compare_type_errors_inner(a, b)
+		unsafe { prealloc_scope_end(scope) }
+		return result
+	} $else {
+		return compare_type_errors_inner(a, b)
+	}
+}
+
+fn compare_type_errors_inner(a &TypeError, b &TypeError) int {
 	if a.node == b.node && a.diagnostic_order > 0 && b.diagnostic_order > 0
 		&& a.diagnostic_order != b.diagnostic_order {
 		return a.diagnostic_order - b.diagnostic_order
@@ -3071,8 +3099,10 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 				tc.check_reserved_parameter_name(param_id)
 				if param.op == .dot {
 					tc.check_import_symbol_conflict_at(param_id, param.value, tc.fn_receiver_param_diagnostic_pos(node, param.value))
+					tc.check_generated_parameter_name(param_id, param, tc.fn_receiver_param_diagnostic_pos(node, param.value))
 				} else {
 					tc.check_import_symbol_conflict(param_id, param.value)
+					tc.check_generated_parameter_name(param_id, param, tc.node_value_diagnostic_pos(param_id))
 				}
 				tc.check_module_name_conflict(param_id, param.value)
 			}
@@ -3125,7 +3155,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	}
 	// A check tells what the body of a generic function does wrong without its
 	// type parameters (see check_generic_fn_body).
-	if has_body && generic_params.len > 0 && tc.check_generic_bodies && !fast_valid_build
+	if has_body && generic_params.len > 0 && !fast_valid_build
 		&& !signature_has_bare_generic_type && tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.check_generic_fn_body(node, fn_idx, generic_params)
 	}
@@ -4357,10 +4387,7 @@ fn (mut tc TypeChecker) install_type_cache_overlay() {
 		return
 	}
 	tc.prewarm_shared_type_cache()
-	tc.type_cache = &TypeCache{
-		base:          tc.type_cache
-		parse_enabled: tc.type_cache.parse_enabled
-	}
+	tc.type_cache = new_type_cache_with_base(tc.type_cache.parse_enabled, tc.type_cache)
 	if !isnil(tc.resolution_type_views) {
 		// Cached parse views still point at the cache that is now the shared base.
 		tc.reset_resolution_type_view_cache()
@@ -4426,6 +4453,10 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
+	// Semantic forks need their live ancestors' visited instances for recursive
+	// forwarding. Completed declaration summaries remain read-only in each fork.
+	w.checked_comptime_method_calls = tc.checked_comptime_method_calls.clone()
+	w.comptime_method_calls_by_decl = tc.comptime_method_calls_by_decl.clone()
 	precomputed := tc.precomputed_check_cache()
 	// Parallel checker workers may populate this cache concurrently, so each
 	// worker (and each disposable scoped batch) owns mutable result/miss maps while
@@ -4467,58 +4498,32 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	$if ownership ? {
 		w.ownership_fork_for_parallel_check(tc)
 	}
-	w.type_cache = &TypeCache{
-		// The master's frozen pre-region cache (the overlay's base) is shared
-		// read-only across all forks; each fork writes to its own maps.
-		base:                        if tc.type_cache != unsafe { nil } {
-			tc.type_cache.base
-		} else {
-			&TypeCache(unsafe { nil })
+	// The master's frozen pre-region cache (the overlay's base) is shared
+	// read-only across all forks; each fork writes to its own maps.
+	w.type_cache = new_type_cache_with_base(if !isnil(tc.type_cache) {
+		tc.type_cache.parse_enabled
+	} else {
+		false
+	}, if !isnil(tc.type_cache) {
+		tc.type_cache.base
+	} else {
+		unsafe { nil }
+	})
+	if !isnil(precomputed) {
+		if precomputed.short_type_name_index_built {
+			w.type_cache.short_type_name_index = precomputed.short_type_name_index
 		}
-		parse_enabled:               if tc.type_cache != unsafe { nil } {
-			tc.type_cache.parse_enabled
-		} else {
-			false
+		w.type_cache.short_type_name_index_built = precomputed.short_type_name_index_built
+		if precomputed.local_fn_decl_indexed_len != 0 {
+			w.type_cache.local_fn_decl_index = precomputed.local_fn_decl_index
 		}
-		parse_entries:               map[u64]ParseTypeCacheEntry{}
-		c_entries:                   map[TypeId]string{}
-		struct_field_entries:        map[string]&Type{}
-		struct_field_misses:         map[string]bool{}
-		sum_variant_pattern_entries: map[string]string{}
-		lexical_smartcast_entries:   map[int]&Type{}
-		lexical_smartcast_misses:    map[int]bool{}
-		short_type_name_index:       if isnil(precomputed)
-			|| !precomputed.short_type_name_index_built {
-			map[string]string{}
-		} else {
-			precomputed.short_type_name_index
+		w.type_cache.local_fn_decl_indexed_len = precomputed.local_fn_decl_indexed_len
+		w.type_cache.local_fn_decl_last_module = precomputed.local_fn_decl_last_module
+		if precomputed.source_error_embed_indexed {
+			w.type_cache.source_error_embed_entries = precomputed.source_error_embed_entries
 		}
-		short_type_name_index_built: !isnil(precomputed) && precomputed.short_type_name_index_built
-		local_fn_decl_index:         if isnil(precomputed)
-			|| precomputed.local_fn_decl_indexed_len == 0 {
-			map[string]bool{}
-		} else {
-			precomputed.local_fn_decl_index
-		}
-		local_fn_decl_indexed_len:   if isnil(precomputed) {
-			0
-		} else {
-			precomputed.local_fn_decl_indexed_len
-		}
-		local_fn_decl_last_module:   if isnil(precomputed) {
-			''
-		} else {
-			precomputed.local_fn_decl_last_module
-		}
-		ierror_compat_entries:       map[string]int{}
-		source_error_embed_entries:  if isnil(precomputed)
-			|| !precomputed.source_error_embed_indexed {
-			map[string]int{}
-		} else {
-			precomputed.source_error_embed_entries
-		}
-		source_error_embed_indexed:  !isnil(precomputed) && precomputed.source_error_embed_indexed
-		source_error_embed_shared:   !isnil(precomputed) && precomputed.source_error_embed_indexed
+		w.type_cache.source_error_embed_indexed = precomputed.source_error_embed_indexed
+		w.type_cache.source_error_embed_shared = precomputed.source_error_embed_indexed
 	}
 	if tc.scope_parallel_check_workers {
 		// Shared interner growth from a helper arena would leave compilation-wide
@@ -4665,10 +4670,13 @@ fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
 // instance into the accumulator's arena, before releasing the batch's storage.
 // The accumulator is private to this lane (or the joined master during merge).
 fn (tc &TypeChecker) promote_check_type(typ Type) &Type {
+	if isnil(tc.type_interner) {
+		return &Type(clone_owned_type(typ))
+	}
 	if canonical := tc.probe_intern_type(typ) {
 		return canonical
 	}
-	canonical := tc.intern_type_reference(clone_owned_type(typ))
+	canonical := tc.intern_type_reference(typ)
 	return canonical
 }
 

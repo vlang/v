@@ -3,19 +3,65 @@ module util
 import os
 import time
 import v.pref
+import v.vmod
 
-// external_module_dependencies_for_tool lists the modules from outside vlib that a
-// bundled tool needs before it can be compiled. `v build-tools` installs these up
-// front, and the `v` launcher installs them before it compiles a tool on demand, so
-// that building the tools does not fail on a fresh checkout.
+// external_module_dependencies_for_tool is the legacy dependency snapshot.
+// Installation reads each tool's current manifest through dev_dependencies_for_tool.
 pub const external_module_dependencies_for_tool = {
 	'vdoc': ['markdown']
 }
 
-// external_modules_for_tool returns the modules from outside vlib that the bundled
-// tool `tool_name` (for example `vdoc`) needs before it can be compiled.
+// external_modules_for_tool returns the external dependencies in the tool's manifest.
 pub fn external_modules_for_tool(tool_name string) []string {
-	return external_module_dependencies_for_tool[tool_name] or { []string{} }
+	return dev_dependencies_for_tool(tool_name)
+}
+
+// tool_source_dir returns the folder holding a bundled tool's sources, from the
+// name it is invoked under. It is anchored at the compiler's own `cmd/tools`, not
+// at the working directory, so it does not move when vpm is run from a project.
+fn tool_source_dir(tool_name string) string {
+	if tool_name == '' || tool_name in ['.', '..'] || tool_name.contains_any('/\\') {
+		return ''
+	}
+	return os.join_path_single(os.join_path(os.dir(pref.vexe_path()), 'cmd', 'tools'),
+		tool_name)
+}
+
+// dev_dependencies_for_tool returns the modules from outside vlib that the bundled
+// tool `tool_name` needs before it can be compiled, read from the tool's own
+// `v.mod`. This replaces a table that the compiler carried, which meant a tool
+// needing a module was invisible in the tool's own manifest and could not be
+// declared without editing `vlib`.
+pub fn dev_dependencies_for_tool(tool_name string) []string {
+	source := tool_source_dir(tool_name)
+	if source == '' {
+		return []string{}
+	}
+	vmod_path := os.join_path_single(source, 'v.mod')
+	if !os.is_file(vmod_path) {
+		return []string{}
+	}
+	manifest := vmod.from_file(vmod_path) or { return []string{} }
+	return manifest.unknown['dev_dependencies'] or { []string{} }
+}
+
+// tools_with_dev_dependencies lists the bundled tools whose `v.mod` declares a
+// `dev_dependencies` entry, which is what `v build-tools` installs up front. It
+// reads the folders rather than a table, so a new tool is picked up without a
+// change here.
+fn tools_with_dev_dependencies() []string {
+	mut tools := []string{}
+	tools_dir := os.join_path(os.dir(pref.vexe_path()), 'cmd', 'tools')
+	for entry in os.ls(tools_dir) or { []string{} } {
+		dir := os.join_path_single(tools_dir, entry)
+		if !os.is_dir(dir) {
+			continue
+		}
+		if dev_dependencies_for_tool(entry).len > 0 {
+			tools << entry
+		}
+	}
+	return tools.sorted()
 }
 
 // check_module_is_installed makes sure that `modulename` is present in ~/.vmodules,
@@ -190,7 +236,7 @@ fn wait_for_concurrent_install(mod_dir string, timeout time.Duration, stale_time
 // folder lookup. The returned error names the module that could not be installed, and how to
 // install it manually, instead of leaving the user with a `cannot import module` builder error.
 pub fn ensure_modules_for_tool_are_installed(tool_name string, tool_source string, is_verbose bool) ! {
-	for emodule in external_modules_for_tool(tool_name) {
+	for emodule in dev_dependencies_for_tool(tool_name) {
 		if mod_dir := resolvable_module_dir(emodule, tool_source) {
 			if is_verbose {
 				eprintln('ensure_modules_for_tool_are_installed: `${emodule}` is available in ${mod_dir}')
@@ -214,11 +260,11 @@ pub fn ensure_modules_for_tool_are_installed(tool_name string, tool_source strin
 }
 
 // ensure_modules_for_all_tools_are_installed installs every module named in
-// external_module_dependencies_for_tool. It is called by `v build-tools` before it
+// a `dev_dependencies` entry in its own `v.mod`. It is called by `v build-tools` before it
 // starts compiling, so a missing dependency is reported once, up front, instead of
 // as a confusing "unknown module" error from the middle of a tool's build.
 pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
-	for tool_name, _ in external_module_dependencies_for_tool {
+	for tool_name in tools_with_dev_dependencies() {
 		if is_verbose {
 			eprintln('Installing modules for tool: ${tool_name} ...')
 		}

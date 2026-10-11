@@ -7,12 +7,37 @@ handling processes etc.
 On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
 application data.
 
+`os.user_os()` returns `wasm32_emscripten` when compiled for Emscripten.
+
 ### Console input
 
 On Windows, `os.input()` supports both console and redirected standard input.
 It returns an empty string when the standard input handle is invalid.
 
 ### Path helpers
+
+`os.base()` removes all trailing separators before returning the final path element.
+For example, `os.base('a///')` returns `a`. An empty path returns `.`, and a path made
+entirely of separators returns one separator (`/` for `///`, or `\` for `\\`).
+
+`is_abs_path` follows the host operating system's path conventions. On Unix,
+a leading `/` identifies an absolute path. On Windows, it accepts drive-rooted
+paths (`C:/x`), UNC paths containing a server and share (`//Host/share`), and
+paths rooted on the current drive (`/x` or `\x`). The last form depends on the
+current drive; this predicate does not promise that the path names a drive.
+A bare doubled separator (`//` or `\\`) is an incomplete UNC path and returns
+false. Both slash styles, including mixed separators, are accepted on Windows.
+
+This preserves V's rooted-path convention; it differs from Go's
+`filepath.IsAbs`, which requires a fully qualified Windows path.
+
+`os.join_path()` and `os.join_path_single()` ignore empty elements and collapse
+repeated separators between elements. For example, joining `a` with `/b` gives
+`a/b` on POSIX or `a\b` on Windows. An absolute first nonempty element keeps its
+root: joining `''` with `/b` gives `/b` on POSIX or `\b` on Windows. Windows UNC
+and device prefixes keep their initial double separator. A relative first element
+such as `./b` still gives `b` when the base is empty. A component containing only
+the current directory, such as `./` or `././`, remains `.` instead of an empty path.
 
 `os.dir()` returns everything before the last separator, matching the classic
 `dirname` behaviour. It is not a "go up one level" primitive: on Windows it
@@ -83,6 +108,17 @@ fails or does not report a numeric version. Localized version labels are accepte
 
 ### Walking a tree
 
+`os.utime(path, actime, modtime)` changes access and modification times for files
+and directories using Unix timestamps in seconds. On Windows, it accepts Unicode
+paths and reports Win32 error codes. Timestamps must use positive `FILETIME` tick counts below
+2^63. The zero value (1601-01-01 00:00:00 UTC) is rejected because Windows treats it as
+"leave unchanged".
+
+On Windows, `os.rm()` clears a file's read-only attribute for deletion while preserving
+its other attributes. If removal fails, it attempts to restore the original attributes
+and reports the removal error. `os.rmdir_all()` continues after deletion errors and
+returns the first failure's message and code.
+
 `os.walk()` reports files only, and `os.walk_with_context()` reports directories
 too but cannot skip them, so neither lets you say "do not descend into this one",
 and a large tree has to be read in full. `os.walk_dir()` reports every entry,
@@ -145,11 +181,24 @@ through `os.start_new_command` or `os.Command.start` is also deprecated; use
 `read_line()`, `eof`, `close()`, and `exit_code`. `read_line()` waits for a complete
 line or the end of the output pipe, including when the child pauses between writes.
 For more control, use `os.new_process(program)` and `process.set_args(args)`.
+These arguments are literal on Windows too: `%PATH%` stays `%PATH%`, and quotes
+and trailing backslashes are preserved. Expand environment variables explicitly
+with `os.getenv()` when that is intended.
+
+Call `process.wait()` before `process.close()`, including after `process.signal_kill()`.
+On POSIX systems, waiting reaps the killed child and records its signal exit status.
+Repeated waits preserve the exit status already collected by `wait()` or `is_alive()`.
+
+On Windows, `Result.exit_code` and `Process.code` interpret the child's 32-bit exit
+status as a signed value: `0x80000000` becomes `-2147483648` and `0xFFFFFFFF` becomes
+`-1`. Check `Process.status` to distinguish a completed child returning `-1` from
+a process that has not exited. On POSIX systems, normal exit codes range from 0 to 255.
 
 When shell syntax is required, invoke the shell explicitly with an argument array.
 A shell still interprets its script as code: use a fixed script with positional
 arguments for data, and never interpolate untrusted values into the script.
 On Windows, shell builtins and batch scripts likewise require an explicit shell.
+For example, `os.exec(['cmd', '/d', '/c', 'echo', 'hello'])` runs the `echo` builtin.
 
 ---
 
@@ -183,6 +232,10 @@ value too, while the ones built on the Win32 API (`os.mkdir`, `os.rmdir`, `os.ls
 `os.symlink` and `os.link`) report a Win32 error code. The `os.error_code_*` constants
 hold one of these codes for a condition, so prefer the predicates over comparing
 `err.code()` with them.
+
+`os.utime`, `os.symlink` and `os.link` preserve the Windows API's error code when they fail,
+so duplicate targets and missing paths can be classified with these predicates.
+`os.hostname` and `os.loginname` also preserve their Win32 error codes on failure.
 
 ---
 

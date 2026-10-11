@@ -4,6 +4,69 @@ import v.flat
 import v.types
 import v.token
 
+fn test_fixed_array_reference_iteration_escape_uses_checked_backing_types() {
+	for source in ['foreign_const', 'stale_local', 'synthetic'] {
+		for sliced in [false, true] {
+			mut a := flat.FlatAst.new()
+			mut tc := types.TypeChecker.new(&a)
+			fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
+			mut t := new_transformer(mut a, &tc, map[string]bool{})
+			t.cur_module = 'main'
+			t.set_var_type('out', '[]&int')
+			first := t.make_int_literal(1)
+			second := t.make_int_literal(2)
+			array_start := a.children.len
+			a.children << [first, second]
+			array := a.add_node(flat.Node{
+				kind:           .array_literal
+				typ:            '[2]int'
+				children_start: array_start
+				children_count: 2
+			})
+			decl := t.make_decl_assign('second', array)
+			// The escape prepass runs before declaration lowering registers this local.
+			if source == 'synthetic' {
+				t.set_var_type('second', '[2]int')
+			} else {
+				tc.const_types['time.second'] = types.Type(types.int_)
+				t.collect_const_suffixes()
+				if source == 'stale_local' {
+					t.set_var_type('second', 'int')
+				}
+			}
+			// Source identifiers have checker types, without a lowered local annotation.
+			backing := a.add_val(.ident, 'second')
+			if source != 'synthetic' {
+				tc.register_synth_type(backing, fixed)
+			}
+			container := if sliced {
+				t.make_range_index(backing, t.make_int_literal(0), flat.empty_node, '[]int')
+			} else {
+				backing
+			}
+			if sliced && source != 'synthetic' {
+				tc.register_synth_type(container, types.Type(types.Array{ elem_type: types.Type(types.int_) }))
+			}
+			item := t.make_ident('item')
+			append := t.make_infix(.left_shift, t.make_ident('out'), t.make_prefix(.amp, item))
+			body := t.make_block([t.make_expr_stmt(append)])
+			loop_start := a.children.len
+			a.children << [flat.empty_node, item, container, body]
+			loop := a.add_node(flat.Node{
+				kind:           .for_in_stmt
+				op:             .amp
+				value:          '3'
+				children_start: loop_start
+				children_count: 4
+			})
+			t.mark_escaping_amp_ptrs([decl, loop])
+			assert 'item' in t.escaping_amp_sources, '${source}, sliced: ${sliced}'
+			assert 'second' in t.escaping_amp_sources, '${source}, sliced: ${sliced}'
+			assert 'time.second' !in t.escaping_amp_sources
+		}
+	}
+}
+
 fn test_plain_multi_declaration_copies_promoted_fixed_values_with_their_value_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -137,6 +200,99 @@ fn test_fixed_array_reference_value_parameter_promotion_preserves_reference_abi(
 	replacements2, entry2 := t2.heap_fixed_array_view_params(fn2, [types.Type(types.Pointer{ base_type: fixed })])
 	assert replacements2.len == 0
 	assert entry2.len == 0
+}
+
+fn test_fixed_array_reference_pointer_field_does_not_promote_its_containing_value() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 9 })
+	coordinator := types.Type(types.Struct{ name: 'Coordinator' })
+	coordinator_ptr := types.Type(types.Pointer{ base_type: coordinator })
+	tc.structs['Coordinator'] = [types.StructField{ name: 'reasons', typ: fixed }]
+	tc.structs['Dispatch'] = [types.StructField{ name: 'coordinator', typ: coordinator_ptr }]
+	tc.trust_checked_expr_types = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('dispatch', 'Dispatch')
+	field := t.make_selector(t.make_ident('dispatch'), 'coordinator', '&Coordinator')
+	tc.register_synth_type(field, coordinator_ptr)
+	t.mark_fixed_array_reference_argument_escape(field, coordinator_ptr, map[string]bool{}, map[string][]string{}, map[string]string{}, {
+		'dispatch': true
+	})
+	assert t.escaping_fixed_array_view_sources.len == 0
+	// A pointer explicitly taken to this frame's fixed storage still promotes
+	// the original owner, rather than the pointer alias.
+	t.set_var_type('p', '&Coordinator')
+	p := t.make_ident('p')
+	tc.register_synth_type(p, coordinator_ptr)
+	t.mark_fixed_array_reference_argument_escape(p, coordinator_ptr, {
+		'p': true
+	}, {
+		'p': ['coordinator']
+	}, map[string]string{}, {
+		'coordinator': true
+		'p':           true
+	})
+	assert 'coordinator' in t.escaping_fixed_array_view_sources
+	assert 'p' !in t.escaping_fixed_array_view_sources
+}
+
+fn test_fixed_array_reference_pointer_address_roundtrip_keeps_its_original_owner() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 3 })
+	pointer := types.Type(types.Pointer{ base_type: fixed })
+	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
+	tc.trust_checked_expr_types = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('p', '&[3]int')
+	p := t.make_ident('p')
+	tc.register_synth_type(p, pointer)
+	address := t.make_prefix(.amp, p)
+	tc.register_synth_type(address, types.Type(types.Pointer{ base_type: pointer }))
+	deref := t.make_prefix(.mul, t.make_paren(address))
+	tc.register_synth_type(deref, pointer)
+	t.mark_fixed_array_reference_argument_escape(deref, array_ref, {
+		'p': true
+	}, {
+		'p': ['values']
+	}, map[string]string{}, {
+		'p':      true
+		'values': true
+	})
+	assert 'values' in t.escaping_fixed_array_view_sources
+	assert 'p' !in t.escaping_fixed_array_view_sources
+}
+
+fn test_fixed_array_reference_mutable_iteration_pointer_keeps_its_backing() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
+	rows_type := types.Type(types.ArrayFixed{ elem_type: fixed, len: 2 })
+	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
+	tc.fn_param_types['retain'] = [array_ref]
+	tc.fn_ret_types['retain'] = array_ref
+	tc.trust_checked_expr_types = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('rows', '[2][2]int')
+	rows := t.make_ident('rows')
+	tc.register_synth_type(rows, rows_type)
+	row := t.make_ident('row')
+	tc.register_synth_type(row, types.Type(types.Pointer{ base_type: fixed }))
+	call := t.make_call_typed('retain', [row], '&[]int')
+	t.set_resolved_call_entry(int(call), 'retain')
+	body := t.make_block([t.make_expr_stmt(call)])
+	start := a.children.len
+	a.children << [flat.empty_node, row, rows, body]
+	loop := a.add_node(flat.Node{
+		kind:           .for_in_stmt
+		op:             .amp
+		value:          '3'
+		children_start: start
+		children_count: 4
+	})
+	t.mark_escaping_amp_ptrs([loop])
+	assert 'row' in t.escaping_fixed_array_view_sources
+	assert 'rows' in t.escaping_fixed_array_view_sources
 }
 
 fn test_fixed_array_reference_stack_pointer_projections_keep_original_root() {

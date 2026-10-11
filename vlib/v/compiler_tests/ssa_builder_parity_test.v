@@ -356,12 +356,9 @@ fn test_embed_file_decoder_dispatch_stub_builds_for_ssa() {
 	assert f.blocks.len == 1
 }
 
-// test_closure_once_stub_builds_for_ssa validates this v3 regression case.
-fn test_closure_once_stub_builds_for_ssa() {
-	m := build_source('closure_once_stub', 'fn main() {}')
-	f := find_func(m, 'v_closure_init_once')
-	assert f.blocks.len == 3
-	assert has_instr_op(m, 'v_closure_init_once', .call_indirect)
+// test_pthread_zero_stub_builds_for_ssa validates this v3 regression case.
+fn test_pthread_zero_stub_builds_for_ssa() {
+	m := build_source('pthread_zero_stub', 'fn main() {}')
 	zero_fn := find_func(m, 'v3_pthread_zero')
 	assert zero_fn.blocks.len == 1
 }

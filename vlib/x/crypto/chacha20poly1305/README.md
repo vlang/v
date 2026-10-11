@@ -3,7 +3,7 @@
 Chacha20Poly1305 Authenticated Encryption with Additional Data (AEAD) module for V Language
 
 This module provides authenticated encryption with additional data (AEAD) algorithm in V Language.
-Its backed by experimental `x.crypto.chacha20` symmetric key stream cipher encryption
+It's backed by experimental `x.crypto.chacha20` symmetric key stream cipher encryption
 module and `x.crypto.poly1305` message authentication code (MAC) module.
 
 > [!Warning]

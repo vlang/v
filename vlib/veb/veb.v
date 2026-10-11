@@ -117,6 +117,15 @@ fn listen_addr(params RunParams) string {
 	return '${params.host}:${params.port}'
 }
 
+// request_read_error_response returns the response for a request that
+// `read_request_from_buffered_reader` could not read.
+fn request_read_error_response(err IError) http.Response {
+	if err is http.HeaderLimitError {
+		return http_431
+	}
+	return http_400
+}
+
 fn read_request_from_buffered_reader(mut reader io.BufferedReader) !http.Request {
 	mut req := http.parse_request_head(mut reader)!
 	if transfer_encoding_is_chunked(req.header) {
@@ -444,24 +453,26 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 					}
 					can_have_data_args := user_context.Context.req.method == .post
 						|| user_context.Context.req.method == .get
-					if method.args.len > 1 && can_have_data_args {
-						mut args := []string{cap: method.args.len + 1}
-						data := if user_context.Context.req.method == .get {
-							user_context.Context.query
-						} else {
-							user_context.Context.form
+					$if method.args.len > 1 {
+						if can_have_data_args {
+							mut args := []string{cap: method.args.len + 1}
+							data := if user_context.Context.req.method == .get {
+								user_context.Context.query
+							} else {
+								user_context.Context.form
+							}
+							for param in method.args[1..] {
+								args << data[param.name]
+							}
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+							}
+							app.$method(mut user_context, ...args)
+							$if trace_prealloc ? {
+								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+							}
 						}
-						for param in method.args[1..] {
-							args << data[param.name]
-						}
-						$if trace_prealloc ? {
-							unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-						}
-						app.$method(mut user_context, ...args)
-						$if trace_prealloc ? {
-							unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-						}
-					} else {
+					} $else {
 						$if trace_prealloc ? {
 							unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
 						}
@@ -510,25 +521,27 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 								return
 							}
 						}
-						if method.args.len > 1 && can_have_data_args {
-							// Populate method args with form or query values
-							mut args := []string{cap: method.args.len + 1}
-							data := if user_context.Context.req.method == .get {
-								user_context.Context.query
-							} else {
-								user_context.Context.form
+						$if method.args.len > 1 {
+							if can_have_data_args {
+								// Populate method args with form or query values
+								mut args := []string{cap: method.args.len + 1}
+								data := if user_context.Context.req.method == .get {
+									user_context.Context.query
+								} else {
+									user_context.Context.form
+								}
+								for param in method.args[1..] {
+									args << data[param.name]
+								}
+								$if trace_prealloc ? {
+									unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+								}
+								app.$method(mut user_context, ...args)
+								$if trace_prealloc ? {
+									unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+								}
 							}
-							for param in method.args[1..] {
-								args << data[param.name]
-							}
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-							}
-							app.$method(mut user_context, ...args)
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-							}
-						} else {
+						} $else {
 							$if trace_prealloc ? {
 								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
 							}
@@ -550,25 +563,27 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 							}
 						}
 
-						if method.args.len > 1 && can_have_data_args {
-							// Populate method args with form or query values
-							mut args := []string{cap: method.args.len + 1}
-							data := if user_context.Context.req.method == .get {
-								user_context.Context.query
-							} else {
-								user_context.Context.form
+						$if method.args.len > 1 {
+							if can_have_data_args {
+								// Populate method args with form or query values
+								mut args := []string{cap: method.args.len + 1}
+								data := if user_context.Context.req.method == .get {
+									user_context.Context.query
+								} else {
+									user_context.Context.form
+								}
+								for param in method.args[1..] {
+									args << data[param.name]
+								}
+								$if trace_prealloc ? {
+									unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
+								}
+								app.$method(mut user_context, ...args)
+								$if trace_prealloc ? {
+									unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
+								}
 							}
-							for param in method.args[1..] {
-								args << data[param.name]
-							}
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-							}
-							app.$method(mut user_context, ...args)
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-							}
-						} else {
+						} $else {
 							$if trace_prealloc ? {
 								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
 							}

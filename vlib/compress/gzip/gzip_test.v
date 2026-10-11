@@ -206,3 +206,77 @@ fn test_reading_gzip_files_compressed_with_different_options() {
 	assert content9 == content5
 	assert content5 == content1
 }
+
+fn test_gzip_multiple_members() {
+	first := compress('first member'.bytes())!
+	second := compress('second member'.bytes())!
+	empty := compress([]u8{})!
+	assert decompress(join_gzip_members(first, second))! == 'first membersecond member'.bytes()
+	assert decompress(join_gzip_members(empty, first, empty, second, empty))! == 'first membersecond member'.bytes()
+}
+
+fn test_gzip_multiple_members_with_optional_header() {
+	first := compress('first'.bytes())!
+	mut second := compress('second'.bytes())!
+	second[3] |= test_fname | test_fcomment | test_fextra | test_fhcrc
+	second.insert(10, [u8(2), 0, `e`, `x`, `n`, 0, `c`, 0])
+	checksum := crc32.sum(second[..18])
+	second.insert(18, [u8(checksum), u8(checksum >> 8)])
+	assert decompress(join_gzip_members(first, second))! == 'firstsecond'.bytes()
+}
+
+fn test_gzip_multiple_members_validate_each_trailer() {
+	first := compress('first'.bytes())!
+	mut second := compress('second'.bytes())!
+	second[second.len - 8] ^= 1
+	assert_decompress_error(join_gzip_members(first, second), 'invalid gzip stream: crc32 mismatch')!
+	second[second.len - 8] ^= 1
+	second[second.len - 4] ^= 1
+	assert_decompress_error(join_gzip_members(first, second), 'invalid gzip stream: size mismatch')!
+}
+
+fn test_gzip_multiple_members_reject_partial_member() {
+	first := compress('first'.bytes())!
+	second := compress('second'.bytes())!
+	for length in 1 .. second.len {
+		if decoded := decompress(join_gzip_members(first, second[..length])) {
+			assert false, 'accepted truncated member of ${length} bytes: ${decoded}'
+		} else {
+			assert err.msg().len > 0
+		}
+	}
+}
+
+fn test_gzip_multiple_members_callback() {
+	input := join_gzip_members(compress('first'.bytes())!, compress([]u8{})!, compress('second'.bytes())!)
+	mut collected := []u8{}
+	decoded := decompress_with_callback(input, fn (chunk []u8, userdata voidptr) int {
+		// The caller passes the mutable collection as callback userdata.
+		mut output := unsafe { &[]u8(userdata) }
+		unsafe { *output << chunk }
+		return chunk.len
+	}, &collected)!
+	assert collected == 'firstsecond'.bytes()
+	assert decoded == collected.len
+}
+
+fn test_gzip_multiple_members_callback_abort() {
+	input := join_gzip_members(compress('first'.bytes())!, compress('second'.bytes())!)
+	mut calls := 0
+	decoded := decompress_with_callback(input, fn (_ []u8, calls &int) int {
+		unsafe {
+			*calls += 1
+		}
+		return 0
+	}, &calls)!
+	assert decoded == 0
+	assert calls == 1
+}
+
+fn join_gzip_members(members ...[]u8) []u8 {
+	mut joined := []u8{}
+	for member in members {
+		joined << member
+	}
+	return joined
+}

@@ -1,4 +1,5 @@
 import os
+import v.pref
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
@@ -150,7 +151,12 @@ fn test_macos_default_self_build_compiler_selection() {
 		os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
 			'/tmp/vself_macos_prealloc_test'])
 	assert default_result.exit_code == 0, default_result.output
-	default_cc := if os.uname().machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
+	default_cc := if os.uname().machine in ['arm64', 'aarch64']
+		&& !pref.host_rejects_tcc_executables() {
+		'tcc'
+	} else {
+		'cc'
+	}
 	assert !default_result.output.contains('-b fastc'), default_result.output
 	assert default_result.output.contains('-cc ${default_cc}'), default_result.output
 	assert default_result.output.contains('-prealloc'), default_result.output
@@ -302,4 +308,107 @@ fn test_windows_plain_self_transition_does_not_install_fallback() {
 	assert self_result.exit_code == 0, self_result.output
 	assert !self_result.output.contains('-prealloc'), self_result.output
 	assert !os.exists(os.join_path(root, 'v1_fallback.exe'))
+}
+
+fn test_self_build_keeps_fastc_backend() {
+	$if windows {
+		return
+	}
+	noop := os.find_abs_path_of_executable('echo') or { return }
+	tool := os.join_path(os.vtmp_dir(), 'vself_fastc_backend_test')
+	defer {
+		os.rm(tool) or {}
+	}
+	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
+	assert build.exit_code == 0, build.output
+	// Older drivers prune FastC from cmd/v unless asked, so `v self` and `v up`
+	// request it explicitly.
+	default_result :=
+		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
+			'/tmp/vself_fastc_default_test'])
+	assert default_result.exit_code == 0, default_result.output
+	assert default_result.output.contains('-compile-backend fastc'), default_result.output
+	assert_vself_preserves_full_cli(default_result.output)
+	prod_result :=
+		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-prod', '-o',
+			'/tmp/vself_fastc_prod_test'])
+	assert prod_result.exit_code == 0, prod_result.output
+	assert prod_result.output.contains('-compile-backend fastc'), prod_result.output
+	for opt_out in [['-d', 'skip_fastc'], ['-dskip_fastc'], ['-old-compiler']] {
+		mut args := ['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self']
+		args << opt_out
+		args << ['-o', '/tmp/vself_fastc_opt_out_test']
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+		assert !result.output.contains('-compile-backend'), result.output
+	}
+	vflags_result :=
+		os.exec(['env', 'VFLAGS=-d skip_fastc', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
+			'/tmp/vself_fastc_vflags_test'])
+	assert vflags_result.exit_code == 0, vflags_result.output
+	assert !vflags_result.output.contains('-compile-backend'), vflags_result.output
+}
+
+fn test_arm64_self_build_preserves_native_options_and_full_cli() {
+	$if windows {
+		return
+	}
+	noop := os.find_abs_path_of_executable('echo') or { return }
+	tool := os.join_path(os.vtmp_dir(), 'vself_arm64_options_${os.getpid()}')
+	defer {
+		os.rm(tool) or {}
+	}
+	build := os.exec([vexe, '-nocache', '-o', tool, os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
+	assert build.exit_code == 0, build.output
+	for backend_args in [['-b', 'arm64'], ['-backend', 'arm64'], ['-b', 'fastc', '-b', 'arm64']] {
+		mut args := ['env', 'VFLAGS=', 'VEXE=${noop}', tool, 'self']
+		args << backend_args
+		args << ['x2', '-o', '/tmp/vself_arm64_options_test']
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+		assert result.output.count('cmd/v') == 2, result.output
+		assert !result.output.contains('-cc'), result.output
+		assert !result.output.contains('-prealloc'), result.output
+		assert !result.output.contains('-compile-backend fastc'), result.output
+		assert result.output.contains('-gc none'), result.output
+		assert result.output.contains('-nocache'), result.output
+		assert result.output.contains('-no-memory-limit'), result.output
+		assert_vself_preserves_full_cli(result.output)
+	}
+	for limit_flag in ['-memory-limit', '--memory-limit'] {
+		for extra in [[]string{}, ['-prod']] {
+			mut limited_args := ['env', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', '-b', 'arm64',
+				limit_flag, '16384', '-o', '/tmp/vself_arm64_limited_test']
+			limited_args << extra
+			limited := os.exec(limited_args)
+			assert limited.exit_code == 0, limited.output
+			assert limited.output.contains('${limit_flag} 16384'), limited.output
+			assert !limited.output.contains('-no-memory-limit'), limited.output
+			mut inherited_args := ['env', 'VFLAGS=-b arm64 ${limit_flag} 16384', 'VEXE=${noop}',
+				tool, 'self', '-o', '/tmp/vself_arm64_inherited_limit_test']
+			inherited_args << extra
+			inherited := os.exec(inherited_args)
+			assert inherited.exit_code == 0, inherited.output
+			assert !inherited.output.contains('-no-memory-limit'), inherited.output
+		}
+	}
+	vflags_result := os.exec(['env', 'VFLAGS=-b arm64', 'VEXE=${noop}', tool, 'self', '-o',
+		'/tmp/vself_arm64_vflags_test'])
+	assert vflags_result.exit_code == 0, vflags_result.output
+	assert !vflags_result.output.contains('-cc'), vflags_result.output
+	assert !vflags_result.output.contains('-prealloc'), vflags_result.output
+	assert !vflags_result.output.contains('-compile-backend fastc'), vflags_result.output
+	assert_vself_preserves_full_cli(vflags_result.output)
+	c_override_result := os.exec(['env', 'VFLAGS=-b arm64', 'VEXE=${noop}', tool, 'self', '-b',
+		'c', '-o', '/tmp/vself_arm64_c_override_test'])
+	assert c_override_result.exit_code == 0, c_override_result.output
+	assert c_override_result.output.contains('-prealloc'), c_override_result.output
+	assert c_override_result.output.contains('-compile-backend fastc'), c_override_result.output
+	assert_vself_preserves_full_cli(c_override_result.output)
+
+	failing_compiler := os.find_abs_path_of_executable('false') or { return }
+	failure := os.exec(['env', 'VFLAGS=', 'VEXE=${failing_compiler}', tool, 'self', '-b', 'arm64',
+		'-o', '/tmp/vself_arm64_failed_test'])
+	assert failure.exit_code != 0, failure.output
+	assert !failure.output.contains('bootstrap fallback'), failure.output
 }

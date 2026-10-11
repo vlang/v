@@ -19,10 +19,17 @@ pub mut:
 	state State = .closed // current state of connection
 }
 
+struct WriteLock {
+	reserved bool
+}
+
 // Client represents websocket client
 pub struct Client {
 	is_server bool
 mut:
+	read_buffer       [8192]u8
+	read_start        int
+	read_end          int
 	ssl_conn          &ssl.SSLConn = unsafe { nil } // secure connection used when wss is used
 	proxy_url         string
 	flags             []Flag                // flags used in handshake
@@ -31,6 +38,7 @@ mut:
 	error_callbacks   []ErrorEventHandler   // all callbacks on_error
 	open_callbacks    []OpenEventHandler    // all callbacks on_open
 	close_callbacks   []CloseEventHandler   // all callbacks on_close
+	write_lock        shared WriteLock
 pub:
 	is_ssl        bool   // true if secure socket is used
 	uri           Uri    // uri of current connection
@@ -114,6 +122,8 @@ pub fn new_client(address string, opt ClientOpt) !&Client {
 // connect connects to remote websocket server
 pub fn (mut ws Client) connect() ! {
 	ws.assert_not_connected()!
+	ws.read_start = 0
+	ws.read_end = 0
 	ws.set_state(.connecting)
 	ws.logger.info('connecting to host ${ws.uri}')
 	ws.conn = ws.dial_socket()!
@@ -256,9 +266,9 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 	if !ws.is_server {
 		header_len += 4
 	}
-	mut header := []u8{len: header_len, init: `0`} // [`0`].repeat(header_len)
+	mut header := [14]u8{}
 	header[0] = u8(int(code)) | 0x80
-	masking_key := create_masking_key()
+	masking_key := if ws.is_server { []u8{} } else { create_masking_key() }
 	if ws.is_server {
 		if payload_len <= 125 {
 			header[1] = u8(payload_len)
@@ -299,12 +309,12 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 			return error('frame too large')
 		}
 	}
-	len := header.len + payload_len
+	len := header_len + payload_len
 	mut frame_buf := []u8{len: len}
 	unsafe {
-		vmemcpy(&frame_buf[0], &u8(header.data), header.len)
+		vmemcpy(&frame_buf[0], &header[0], header_len)
 		if payload_len > 0 {
-			vmemcpy(&frame_buf[header.len], bytes, payload_len)
+			vmemcpy(&frame_buf[header_len], bytes, payload_len)
 		}
 	}
 	if !ws.is_server {
@@ -316,7 +326,6 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 	unsafe {
 		frame_buf.free()
 		masking_key.free()
-		header.free()
 	}
 	return written_len
 }

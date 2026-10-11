@@ -1,0 +1,14 @@
+vlib/v/checker/tests/option_or_struct_field_err.vv:8:12: error: `or` block must provide a value of type `bool`, not `?bool`
+    6 | fn merge(input Options, fallback Options) Options {
+    7 |     return Options{
+    8 |         a: input.a or { fallback.a }
+      |                  ^
+    9 |         s: input.s or { fallback.s }
+   10 |     }
+vlib/v/checker/tests/option_or_struct_field_err.vv:9:12: error: `or` block must provide a value of type `string`, not `?string`
+    7 |     return Options{
+    8 |         a: input.a or { fallback.a }
+    9 |         s: input.s or { fallback.s }
+      |                  ^
+   10 |     }
+   11 | }

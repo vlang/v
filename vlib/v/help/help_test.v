@@ -39,7 +39,8 @@ fn test_build_topic_lists_fastc_backend() {
 	res := os.exec([@VEXE, 'help', 'build'])
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('* `fastc`'), res.output
-	assert res.output.contains('on macOS and Linux hosts in V builds that embed V3'), res.output
+	assert res.output.contains('available on macOS, Linux, and Windows'), res.output
+	assert res.output.contains('`-d skip_fastc`'), res.output
 	assert res.output.contains('See `v help vsh`'), res.output
 }
 

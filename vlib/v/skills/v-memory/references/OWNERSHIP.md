@@ -4,9 +4,10 @@
 > repository is the authoritative reference; this is the summary an agent needs
 > before reaching for it.
 
-V's ownership system is optional, off by default, and deliberately narrow: it
-currently tracks **strings created with `.to_owned()`**. That scope matters more
-than the flag does, so read it before relying on it.
+V's ownership system is optional, off by default, and still narrow in what it tracks.
+What is tracked today: **strings created with `.to_owned()` or `.clone()`**, ordinary string
+slices, and the `Owned` / `Copy` / `Drop` struct markers. Not yet covered: arbitrary structs,
+maps and slices tracked as owned on their own.
 
 ## Enabling it
 
@@ -33,7 +34,8 @@ and
 
 ## What counts as owned
 
-Only `to_owned()`. A literal is not owned, and neither are the primitives:
+Use `.to_owned()` or `.clone()` to create an owned string copy. Ordinary string slices
+also create owned storage. A string literal and primitive values are not owned:
 
 ```v ignore
 s := 'hello'.to_owned()   // owned: tracked by the compiler
@@ -41,8 +43,12 @@ t := 'world'              // a plain string: not tracked
 n := 42                   // not tracked
 ```
 
-So `n := s` where `s` is owned moves it; `t := s2` where both are plain strings
-copies as usual.
+Assigning an owned string to another variable moves it. Assigning a plain string
+copies it as usual.
+
+In ownership mode, structs can use the `Owned`, `Copy`, and `Drop` markers in their
+`implements` list. These enable move tracking, copying, and custom destruction,
+respectively. Declared types with these names still follow the usual interface checks.
 
 ## Move semantics
 
@@ -83,15 +89,16 @@ be unable to use it afterwards.
 ## Return value ownership
 
 A function that returns an owned value transfers it to the caller. A function that
-receives one and returns it has moved it twice, which the checker rejects.
+receives an owned value and returns it passes ownership through: the caller's original
+variable remains moved, and the returned value has a new owner.
 
 ```v ignore
-// Wrong: takes ownership and gives it back.
+// Transfers ownership through the function.
 fn take_and_return(s string) string {
 	return s
 }
 
-// Right: borrow to read.
+// Borrows the source and returns a new string.
 fn shout(s &string) string {
 	return s.to_upper()
 }
@@ -101,19 +108,28 @@ fn shout(s &string) string {
 
 ```bash
 v -ownership -o out main.v
-v -ownership file.v          # check only
+v -ownership file.v          # check and compile
 ```
 
 Ownership code is selected per file with the `_d_ownership` suffix, so the same
-source tree builds both ways. What you cannot do is mix: an owned value crossing
-into a file that was not written for it is the case the checker exists to reject.
+source tree builds both ways. The suffix selects source files; it does not mark every
+other file as incompatible with owned arguments. User functions with by-value string
+parameters consume owned strings, while supported standard APIs borrow arguments
+that cannot escape through their return values.
 
 ## Is it worth turning on
 
 - **Yes** when a long-lived string is passed through several layers and a
   use-after-move is a plausible mistake.
-- **Not yet** when you expected it to cover structs, slices or maps. It does not,
-  and the errors you will get are only about strings.
+- **Know the limits before you promise anything.** Arbitrary structs, maps and slices are
+  not tracked as owned on their own, and coverage of stdlib APIs that hand out owned
+  values is still incomplete. Some vlib modules carry `@[manualfree]` or
+  `@[autofree_bug]` to work around gaps, so a clean compile does not prove a module is
+  ownership-clean.
+- **It is off in the shipped compiler.** The standard `v3` executable is built without
+  `-d ownership`. The launcher builds and starts a separate ownership-enabled compiler
+  for an explicit `v -ownership`; the driver rejects ownership mode if reached without
+  that support compiled in.
 
 Read `doc/ownership.md` for the current scope before promising more than the
 checker delivers.

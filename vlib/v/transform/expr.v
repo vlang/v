@@ -3370,9 +3370,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 			return t.make_call_typed(method_name, [lhs, rhs], 'bool')
 		}
 		if struct_type in seen {
-			cmp := t.make_call_typed('C.memcmp', [t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
-				t.make_sizeof_type(struct_type)], 'int')
-			return t.make_infix(.eq, cmp, t.make_int_literal(0))
+			return t.make_recursive_struct_eq_expr(lhs, rhs, struct_type)
 		}
 		if field_eq := t.make_struct_field_eq_expr_with_seen(lhs, rhs, struct_type, seen) {
 			return field_eq
@@ -3382,6 +3380,32 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
 	return t.make_infix(.eq, lhs, rhs)
+}
+
+// A repeated struct type needs a runtime call, rather than another inline
+// expansion or a byte comparison of its strings and container descriptors.
+fn (mut t Transformer) make_recursive_struct_eq_expr(lhs flat.NodeId, rhs flat.NodeId, struct_type string) flat.NodeId {
+	helper_module := if t.sum_eq_helper_module.len > 0 {
+		t.sum_eq_helper_module
+	} else if t.validating_generic_spec {
+		'main'
+	} else if t.cur_module.len > 0 {
+		t.cur_module
+	} else {
+		'main'
+	}
+	base := '__v3_struct_eq_${c_name(struct_type)}'
+	helper := if helper_module == 'main' { '${base}__v3_program' } else { base }
+	if helper !in t.sum_eq_types {
+		t.sum_eq_types[helper] = SumEqRequest{
+			struct_name:   struct_type
+			module:        t.cur_module
+			file:          t.cur_file
+			helper_module: helper_module
+		}
+	}
+	t.mark_fn_used_name(helper)
+	return t.make_call_typed(helper, [lhs, rhs], 'bool')
 }
 
 fn (mut t Transformer) box_membership_interface_eq_rhs(rhs flat.NodeId, interface_type string) ?flat.NodeId {
@@ -3480,9 +3504,9 @@ fn sum_eq_helper_name_in_module(sum_name string, helper_module string) string {
 	return base
 }
 
-// synthesize_sum_eq_helpers generates the fn_decl for every sum type whose
-// equality helper was requested during the transform. Building one helper body
-// can request helpers for nested sum types, so this drains a worklist. Runs
+// synthesize_sum_eq_helpers generates requested sum and recursive struct
+// equality helpers. Building one helper body can request more nested aggregate
+// helpers, so this drains a worklist. Runs
 // serially on the merged AST (workers only record names). Returns the names
 // newly marked used while building the helper bodies (e.g. a payload struct's
 // overloaded `==`), so the caller can run them through the late-used-fn pass —
@@ -3508,7 +3532,7 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 				t.sum_eq_synthesized[helper] = true
 				continue
 			}
-			if req.sum_name.len > 0 {
+			if req.sum_name.len > 0 || req.struct_name.len > 0 {
 				pending << helper
 			}
 		}
@@ -3532,7 +3556,11 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 				t.tc.cur_module = req.module
 				t.tc.cur_file = req.file
 			}
-			t.build_sum_eq_helper_fn(req.sum_name, helper)
+			if req.struct_name.len > 0 {
+				t.build_struct_eq_helper_fn(req.struct_name, helper)
+			} else {
+				t.build_sum_eq_helper_fn(req.sum_name, helper)
+			}
 		}
 	}
 	mut new_names := []string{}
@@ -3558,6 +3586,52 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	return new_names
 }
 
+fn (mut t Transformer) build_struct_eq_helper_fn(struct_type string, helper string) {
+	saved_pending := t.pending_stmts
+	t.pending_stmts = []flat.NodeId{}
+	param_a := t.a.add_node(flat.Node{
+		kind:  .param
+		value: '__struct_eq_a'
+		typ:   struct_type
+	})
+	param_b := t.a.add_node(flat.Node{
+		kind:  .param
+		value: '__struct_eq_b'
+		typ:   struct_type
+	})
+	lhs := t.make_ident('__struct_eq_a')
+	t.set_node_typ(int(lhs), struct_type)
+	rhs := t.make_ident('__struct_eq_b')
+	t.set_node_typ(int(rhs), struct_type)
+	eq := t.make_struct_field_eq_expr(lhs, rhs, struct_type) or {
+		t.pending_stmts = saved_pending
+		return
+	}
+	mut stmts := t.pending_stmts.clone()
+	stmts << t.make_return(eq, 'bool')
+	t.pending_stmts = saved_pending
+	helper_module := if t.sum_eq_helper_module.len > 0 { t.sum_eq_helper_module } else { 'main' }
+	t.add_generated_fn_decl_context(helper_module)
+	start := t.a.children.len
+	t.a.children << param_a
+	t.a.children << param_b
+	t.a.children << stmts
+	fn_decl := t.a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          helper
+		typ:            'bool'
+		children_start: i32(start)
+		children_count: flat.child_count(2 + stmts.len)
+	})
+	t.ensure_node_context_map_capacity()
+	t.mark_node_context(fn_decl, helper_module, t.cur_file)
+	t.register_sum_eq_helper_signature(helper, struct_type)
+}
+
+// build_sum_eq_helper_fn appends `fn __v3_sum_eq_<Sum>(a Sum, b Sum) bool` to the
+// AST: tags must match, then the active variant's inline payload is selected and compared
+// by value (recursing through the usual membership-eq machinery, which routes
+// nested sum types back through their own helpers).
 fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string, helper string) {
 	variants := t.sum_eq_variants(clean_sum) or { return }
 	if variants.len == 0 {
@@ -3911,13 +3985,21 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 	for stmt in body {
 		t.a.children << stmt
 	}
+	mut flags := flat.node_flag_skip_ownership_drops
+	// Aggregate equality can call user operators that delete the current map key.
+	// Keep its owned copy across those callbacks and the final existence lookup.
+	clean_value_type := t.membership_container_type(value_type)
+	if (clean_value_type == 'string' || !t.type_needs_semantic_eq(value_type))
+		&& !(t.membership_type_is_pointer(value_type) && t.is_sum_type_name(clean_value_type)) {
+		flags |= flat.node_flag_borrowed_map_key
+	}
 	t.pending_stmts << t.a.add_node(flat.Node{
 		kind:           .for_in_stmt
 		children_start: start
 		children_count: flat.child_count(3 + body.len)
 		pos:            src.pos
 		value:          '3'
-		flags:          flat.node_flag_skip_ownership_drops
+		flags:          flags
 	})
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), 'bool')
@@ -4761,9 +4843,13 @@ pub fn (mut t Transformer) make_map_init(map_type string) flat.NodeId {
 	})
 }
 
-// make_string_literal builds make string literal data for transform.
+// make_string_literal creates literal text without interpreting interpolation syntax.
 pub fn (mut t Transformer) make_string_literal(value string) flat.NodeId {
-	return t.a.add_val(.string_literal, value)
+	return t.a.add_node(flat.Node{
+		kind:  .string_literal
+		value: value
+		flags: if value.contains(r'${') { flat.node_flag_literal_interpolation_text } else { 0 }
+	})
 }
 
 // make_int_literal builds make int literal data for transform.

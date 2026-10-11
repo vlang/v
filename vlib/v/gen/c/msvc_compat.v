@@ -1408,6 +1408,17 @@ fn msvc_guarded_text(pre []MsvcPre) string {
 	return parts.join(' ')
 }
 
+// msvc_trim_stmt trims the text of a hoisted statement. The statements are joined with
+// spaces, and MSVC only accepts a preprocessor directive (like the `#line` that `-g` emits)
+// as the first non-blank thing on its line (C2014), so a directive keeps its leading newline.
+fn msvc_trim_stmt(s string) string {
+	t := s.trim_space()
+	if t.starts_with('#') {
+		return '\n' + t
+	}
+	return t
+}
+
 // lower_stmt_expr lowers the statement expression whose `(` is at `k`. Its statements
 // become hoisted statements and its last expression statement becomes the value.
 fn (mut l MsvcLowerer) lower_stmt_expr(k int) MsvcLowered {
@@ -1458,7 +1469,7 @@ fn (mut l MsvcLowerer) lower_stmt_expr(k int) MsvcLowered {
 		mut sb := strings.new_builder(64)
 		l.emit_stmt(mut sb, st[0], st[1], true, idx > 0 && l.is_label_item(stmts[idx - 1][0]))
 		res.pre << MsvcPre{
-			text: sb.str().trim_space()
+			text: msvc_trim_stmt(sb.str())
 		}
 	}
 	if value_idx >= 0 {

@@ -250,7 +250,7 @@ pub struct C._utimbuf {
 	modtime i64
 }
 
-fn C._utime(&char, voidptr) i32
+fn C.SetFileTime(voidptr, voidptr, voidptr, voidptr) i32
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
 	$if debug {
@@ -340,10 +340,45 @@ pub fn short_path(path string) string {
 	return join_path_single(short_parent, file_name(normalized))
 }
 
+// utime changes the access and modification times of the file or directory at path.
+// Times are Unix timestamps in seconds. Failures preserve the Win32 error code.
 pub fn utime(path string, actime i64, modtime i64) ! {
-	mut u := C._utimbuf{actime, modtime}
-	if C._utime(&char(path.str), voidptr(&u)) != 0 {
-		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	access_time := windows_filetime_from_unix_seconds(actime)!
+	write_time := windows_filetime_from_unix_seconds(modtime)!
+	wide_path := path.to_wide()
+	defer {
+		// to_wide allocates the UTF-16 buffer used by CreateFileW.
+		unsafe { free(wide_path) }
+	}
+	share_mode := C.FILE_SHARE_READ | C.FILE_SHARE_WRITE | C.FILE_SHARE_DELETE
+	handle := C.CreateFileW(wide_path, C.FILE_WRITE_ATTRIBUTES, share_mode, 0,
+		C.OPEN_EXISTING, C.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if handle == voidptr(-1) {
+		code := int(C.GetLastError())
+		return error_with_code(get_error_msg(code), code)
+	}
+	defer {
+		C.CloseHandle(handle)
+	}
+	if C.SetFileTime(handle, 0, voidptr(&access_time), voidptr(&write_time)) == 0 {
+		code := int(C.GetLastError())
+		return error_with_code(get_error_msg(code), code)
+	}
+}
+
+fn windows_filetime_from_unix_seconds(seconds i64) !Filetime {
+	// Windows absolute system times use positive signed 64-bit tick counts.
+	max_seconds := i64(u64(0x7fff_ffff_ffff_ffff) / windows_filetime_ticks_per_second) -
+		windows_filetime_unix_epoch_seconds
+	// A zero FILETIME means "leave unchanged" to SetFileTime, not the 1601 epoch.
+	if seconds <= -windows_filetime_unix_epoch_seconds || seconds > max_seconds {
+		code := int(C.ERROR_INVALID_PARAMETER)
+		return error_with_code(get_error_msg(code), code)
+	}
+	ticks := u64(seconds + windows_filetime_unix_epoch_seconds) * windows_filetime_ticks_per_second
+	return Filetime{
+		dw_low_date_time:  u32(ticks)
+		dw_high_date_time: u32(ticks >> 32)
 	}
 }
 
@@ -650,10 +685,11 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	C.CloseHandle(proc_info.h_thread)
 	return Result{
 		output:    soutput
-		exit_code: int(exit_code)
+		exit_code: int(i32(exit_code))
 	}
 }
 
+// symlink creates a symbolic link and preserves the Win32 error code on failure.
 pub fn symlink(origin string, target string) ! {
 	// this is a temporary fix for TCC32 due to runtime error
 	// TODO: find the cause why TCC32 for Windows does not work without the compiletime option
@@ -668,7 +704,8 @@ pub fn symlink(origin string, target string) ! {
 
 		// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 		if res != 1 {
-			return error(get_error_msg(int(C.GetLastError())))
+			code := int(C.GetLastError())
+			return error_win32(code: code)
 		}
 		if !exists(target) {
 			return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
@@ -684,11 +721,13 @@ pub fn readlink(path string) !string {
 	return error('${@METHOD} not yet supported on windows')
 }
 
+// link creates a hard link and preserves the Win32 error code on failure.
 pub fn link(origin string, target string) ! {
 	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), unsafe { nil })
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 	if res != 1 {
-		return error(get_error_msg(int(C.GetLastError())))
+		code := int(C.GetLastError())
+		return error_win32(code: code)
 	}
 	if !exists(target) {
 		return error('C.CreateHardLinkW reported success, but link still does not exist')
@@ -765,22 +804,26 @@ pub fn uname() Uname {
 	}
 }
 
+// hostname returns the computer name and preserves the Win32 error code on failure.
 pub fn hostname() !string {
 	buf := [255]u16{}
 	size := u32(255)
 	res := C.GetComputerNameW(&buf[0], voidptr(&size))
 	if !res {
-		return error(get_error_msg(int(C.GetLastError())))
+		code := int(C.GetLastError())
+		return error_win32(code: code)
 	}
 	return unsafe { string_from_wide(&buf[0]) }
 }
 
+// loginname returns the user name and preserves the Win32 error code on failure.
 pub fn loginname() !string {
 	buf := [255]u16{}
 	size := u32(255)
 	res := C.GetUserNameW(&buf[0], voidptr(&size))
 	if !res {
-		return error(get_error_msg(int(C.GetLastError())))
+		code := int(C.GetLastError())
+		return error_win32(code: code)
 	}
 	return unsafe { string_from_wide(&buf[0]) }
 }
@@ -850,7 +893,8 @@ fn get_long_path(path string) !string {
 	long_path_buf := [4096]u16{}
 	res := C.GetLongPathName(input_short_path, &long_path_buf[0], sizeof(long_path_buf))
 	if res == 0 {
-		return error(get_error_msg(int(C.GetLastError())))
+		code := int(C.GetLastError())
+		return error_win32(code: code)
 	}
 	long_path := wide_ptr_to_string(&long_path_buf[0])
 	return long_path

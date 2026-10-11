@@ -1221,12 +1221,12 @@ fn (t &Transformer) match_branch_tuple_parts(branch flat.Node, body_start_idx in
 }
 
 // match_branch_return_block supports match branch return block handling for Transformer.
-fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_idx int, ret_typ string, source_return_id flat.NodeId) flat.NodeId {
+fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_idx int, ret_typ string, source_return_id flat.NodeId, prelude []flat.NodeId) flat.NodeId {
 	heaped_state := t.save_heaped_local_state()
 	defer {
 		t.restore_heaped_local_state(heaped_state)
 	}
-	mut body_ids := []flat.NodeId{}
+	mut body_ids := prelude.clone()
 	for i in body_start_idx .. branch.children_count {
 		body_ids << t.a.child(&branch, i)
 	}
@@ -1336,7 +1336,8 @@ fn (mut t Transformer) build_return_match_chain(match_expr_id flat.NodeId, orig_
 		}
 	}
 
-	body_block := t.match_branch_return_block(branch, body_start_idx, ret_typ, source_return_id)
+	body_block := t.match_branch_return_block(branch, body_start_idx, ret_typ, source_return_id,
+		t.named_variant_binding_decls(match_expr_id, branch))
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}
@@ -1414,7 +1415,7 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
 		sc_pushed++
 	}
-	body_block := t.match_branch_return_block(branch, n_conds, ret_typ, source_return_id)
+	body_block := t.match_branch_return_block(branch, n_conds, ret_typ, source_return_id, []flat.NodeId{})
 	for _ in 0 .. sc_pushed {
 		t.pop_smartcast()
 	}

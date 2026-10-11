@@ -304,16 +304,10 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		return true
 	}
 	if is_string_interp_float_type(type_name) && (f.verb == `f` || f.verb == 0) && f.has_precision {
-		precision := if f.verb == `f` {
-			f.precision
-		} else if f.precision > 0 {
-			f.precision - 1
-		} else {
-			0
-		}
-		g.write('v3_string_pad(v3_f64_fixed((double)(')
+		fixed_fn := if f.verb == `f` { 'v3_f64_fixed' } else { 'v3_f64_trimmed' }
+		g.write('v3_string_pad(${fixed_fn}((double)(')
 		g.gen_string_interp_child_expr(child_id)
-		g.write('), ${precision}), ${f.width}, ${left})')
+		g.write('), ${f.precision}), ${f.width}, ${left})')
 		return true
 	}
 	if typ is types.String || type_name == 'string' {

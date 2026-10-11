@@ -2,6 +2,27 @@ module types
 
 import v.flat
 
+fn test_wrapped_single_letter_concrete_types_preserve_their_semantic_type() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'single'
+	tc.cur_file = 'single.v'
+	tc.structs['single.M'] = []StructField{}
+	for prefix in ['!', '?', '&', '[]', 'chan ', 'thread '] {
+		for _ in 0 .. 2 {
+			parsed := tc.parse_resolution_type('${prefix}M')
+			assert parsed.name() == '${prefix}single.M'
+			assert parsed !is Unknown
+		}
+	}
+	assert tc.parse_type('!single.M') is ResultType
+	assert tc.parse_type('?single.M') is OptionType
+	assert tc.parse_type('[2]single.M') is ArrayFixed
+	assert tc.parse_type('single.T') is Unknown
+	assert tc.parse_type('!single.T') is ResultType
+	assert tc.parse_type('?single.T') is OptionType
+}
+
 fn test_node_cache_reset_clears_string_slots_and_set_bits() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

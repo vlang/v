@@ -6,6 +6,12 @@ checker errors, and unsupported inline assembly (`inline_asm`) do not trigger a
 compatibility retry. They retain the original compiler's failure exit status,
 without locating, installing, or launching the compatibility compiler.
 
+If a V executable embeds an incomplete `vlib/v/gen/c/manual_stdlib_c_headers.h`, builds that
+need its manual libc preamble report the damaged header before generating C and exit 1.
+The diagnostic appears once and does not trigger a compatibility retry. Restore the header
+with `git restore vlib/v/gen/c/manual_stdlib_c_headers.h`, then rebuild V with `make`.
+Headerless C output and `-target-libc-headers` builds do not use this embedded header.
+
 Hard checker errors in dependency functions referenced by the selected source files,
 including callbacks, stored function values, and transitive calls, are reported at the
 dependency's source location before C generation. This also applies to standard-library
@@ -17,6 +23,12 @@ not. Explicit `-building-v` builds still validate assignments, field access, and
 
 For a C compiler failure, V prints the saved output when available, without compiling
 again, before retrying. It is labeled `C compiler output from the default V compiler:`.
+Internal arguments used to restart the default compiler are removed before launching
+the compatibility compiler, so a prior implicit TCC warning cannot cause an unknown-argument error.
+Option values and arguments passed to a program remain intact during this filtering.
+
+Literal-output programs retain the array iteration helpers used by Linux backtrace formatting.
+For example, `v -show-timings examples/hello_world.v` builds without a missing `array__get` symbol.
 
 If V diagnostics were deferred while a failure marker was armed, V replays only the
 default compiler with fallback disabled to display them. This diagnostic replay is
@@ -52,6 +64,11 @@ When a compatibility compiler must be built, V searches PATH for `make`, then `g
 On Windows it also accepts MSYS2's `mingw32-make`. Install GNU make and ensure that
 MSYS2's make executable and `sh` are on PATH: the `make v1` target uses POSIX shell recipes.
 
+The `-vls-mode` compatibility protocol suppresses successful on-demand installation progress
+so the first response contains only the requested compiler output. Installation failures still
+include the installer's output and a failing exit status. Other commands retain installation
+progress.
+
 If a build needs a missing bundled Boehm GC archive, V reports the missing library
 before invoking the C compiler. Reinstall V to restore the bundled libraries, or
 pass `-d use_bundled_libgc` to build GC from source. `-gc none` compiles without GC.
@@ -80,3 +97,7 @@ Unsuffixed values and `M`/`m` values use MiB; `K`/`k` use KiB and `G`/`g` use Gi
 The value must be a nonnegative integer whose converted KiB value fits in a signed 64-bit
 integer. Missing, empty, malformed, negative, and overflowing values produce a CLI error.
 An explicit zero disables the limit, as does `-no-memory-limit`.
+
+The Windows TCC backend supports `-cstrict`, including the startup code that sets the compiler's
+`VEXE` environment variable. Generated CRT calls retain explicit declarations and strict checks
+for implicit function declarations.

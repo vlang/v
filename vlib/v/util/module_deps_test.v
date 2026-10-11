@@ -3,10 +3,22 @@ module util
 import os
 import time
 
-fn test_external_modules_for_tool() {
+fn test_dev_dependencies_for_tool() {
+	// vdoc declares its own dependency in its own `v.mod`, so this reads the tool
+	// rather than a table the compiler carries.
+	assert dev_dependencies_for_tool('vdoc') == ['markdown']
+	// A tool with no `dev_dependencies` entry, and a name that is not a tool.
+	assert dev_dependencies_for_tool('vfmt') == []
+	assert dev_dependencies_for_tool('') == []
+	assert dev_dependencies_for_tool('../vdoc') == []
 	assert external_modules_for_tool('vdoc') == ['markdown']
-	assert external_modules_for_tool('vfmt') == []
-	assert external_modules_for_tool('') == []
+	assert external_module_dependencies_for_tool['vdoc'] == ['markdown']
+}
+
+fn write_tool_manifest(root string) ! {
+	dir := os.join_path(root, 'cmd', 'tools', 'vdoc')
+	os.mkdir_all(dir)!
+	os.write_file(os.join_path(dir, 'v.mod'), "Module {\n\tdev_dependencies: ['markdown']\n}\n")!
 }
 
 fn test_ensure_modules_for_tool_are_installed_keeps_installed_modules() {
@@ -68,6 +80,7 @@ fn test_ensure_modules_for_tool_are_installed_searches_every_module_root() {
 	old_vmodules := os.getenv_opt('VMODULES')
 	old_vexe := os.getenv_opt('VEXE')
 	os.setenv('VEXE', os.join_path(base, 'missing_v'), true)
+	write_tool_manifest(base)!
 	os.setenv('VMODULES', [first_root, later_root].join(os.path_delimiter), true)
 	defer {
 		restore_env('VMODULES', old_vmodules)
@@ -108,6 +121,7 @@ fn test_ensure_modules_for_tool_are_installed_searches_the_tool_project_and_its_
 	old_vmodules := os.getenv_opt('VMODULES')
 	old_vexe := os.getenv_opt('VEXE')
 	os.setenv('VEXE', os.join_path(base, 'missing_v'), true)
+	write_tool_manifest(base)!
 	os.setenv('VMODULES', vmodules, true)
 	defer {
 		restore_env('VMODULES', old_vmodules)
@@ -142,6 +156,7 @@ fn test_ensure_modules_for_tool_are_installed_accepts_a_module_installed_concurr
 	old_vmodules := os.getenv_opt('VMODULES')
 	old_vexe := os.getenv_opt('VEXE')
 	os.setenv('VEXE', fake_vexe, true)
+	write_tool_manifest(base)!
 	os.setenv('VMODULES', vmodules, true)
 	defer {
 		restore_env('VMODULES', old_vmodules)
@@ -169,6 +184,7 @@ fn test_ensure_modules_for_tool_are_installed_waits_for_a_concurrent_install_to_
 	old_vmodules := os.getenv_opt('VMODULES')
 	old_vexe := os.getenv_opt('VEXE')
 	os.setenv('VEXE', fake_vexe, true)
+	write_tool_manifest(base)!
 	os.setenv('VMODULES', vmodules, true)
 	defer {
 		restore_env('VMODULES', old_vmodules)
@@ -196,6 +212,7 @@ fn test_ensure_modules_for_tool_are_installed_reports_an_interrupted_install() {
 	old_vmodules := os.getenv_opt('VMODULES')
 	old_vexe := os.getenv_opt('VEXE')
 	os.setenv('VEXE', os.join_path(base, 'missing_v'), true)
+	write_tool_manifest(base)!
 	os.setenv('VMODULES', vmodules, true)
 	defer {
 		restore_env('VMODULES', old_vmodules)

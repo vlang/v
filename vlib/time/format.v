@@ -350,14 +350,16 @@ const tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'H
 const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
 const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 
-// custom_format returns a date with custom format
+// custom_format returns a date with custom format.
+// YYYY pads nonnegative years to at least four digits; YY pads their final two digits.
+// Negative years retain their existing token formatting.
 //
 // | Category         | Token | Output                                 |
 // |:-----------------|:------|:---------------------------------------|
 // |          Era     | N     | BC AD                                  |
 // |                  | NN    | Before Christ, Anno Domini             |
-// |         Year     | YY    | 70 71 ... 29 30                        |
-// |                  | YYYY  | 1970 1971 ... 2029 2030                |
+// |         Year     | YY    | 00 01 ... 98 99                        |
+// |                  | YYYY  | 0000 0001 ... 9999                    |
 // |      Quarter     | Q     | 1 2 3 4                                |
 // |                  | QQ    | 01 02 03 04                            |
 // |                  | Qo    | 1st 2nd 3rd 4th                        |
@@ -469,10 +471,14 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(long_days[iclamp(0, t.day_of_week() - 1, 6)])
 			}
 			'YY' {
-				sb.write_string(t.year.str()#[2..4])
+				if t.year < 0 {
+					sb.write_string(t.year.str()#[2..4])
+				} else {
+					sb.write_string('${t.year % 100:02}')
+				}
 			}
 			'YYYY' {
-				sb.write_string(t.year.str())
+				sb.write_string(if t.year < 0 { t.year.str() } else { '${t.year:04}' })
 			}
 			'H' {
 				sb.write_string(t.hour.str())

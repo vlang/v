@@ -9,7 +9,9 @@ import v.flat
 // is wrong with one of them is wrong with the function: `e = x` for `x T` with
 // `T Number` and `e int`, as `f64` is not an `int`. The body of a generic
 // function with a type parameter without a constraint is left to its
-// instances, as before: V checks those.
+// instances, as before: V checks those. Only what it uses of another module
+// that is private there is reported for the function itself, in the program's
+// own files (check_generic_fn_body_visibility).
 
 // check_generic_fn_body checks the body of the generic function `node`, whose
 // type parameters are `params`, when they all have a constraint. The body is
@@ -18,7 +20,8 @@ import v.flat
 // their errors come back. The checks against the constraints report what a
 // member or an operator of a type parameter does wrong
 // (checker_generic_constraints.v): a statement with one of those errors gets
-// no other.
+// no other. With a type parameter without a constraint, only the uses of what
+// is private to another module are reported.
 fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params map[string]bool) {
 	if params.len == 0 {
 		return
@@ -26,8 +29,17 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 	constraints := tc.generic_constraints_of(node)
 	for name, _ in params {
 		if name !in constraints {
+			// As the check of its instances, for the program's own functions: a
+			// library function that the program reaches costs it no check here.
+			if tc.diagnostic_files.len == 0 || tc.cur_file in tc.diagnostic_files {
+				tc.check_generic_fn_body_visibility(node, fn_idx)
+			}
 			return
 		}
+	}
+	// Fixture mode defers constrained-body diagnostics, but module privacy also applies there.
+	if !tc.check_generic_bodies {
+		return
 	}
 	// With its type parameters open, the checker says of a statement that does
 	// not depend on them what it says in every instance.
@@ -97,6 +109,36 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 			msg: if reason == '' { msg } else { '${msg}: ${reason}' }
 		}
 	}
+}
+
+// check_generic_fn_body_visibility checks the body of the generic function
+// `node`, which has a type parameter without a constraint, for what it uses of
+// another module that is private there: a field, a method, a function, a
+// constant or a type. Whether a name is private does not depend on the type
+// parameters, so the body is checked once with them open, as the body of any
+// other function of its module, and only those errors are reported: `s.priv = 1`
+// for `s lib.S` is as wrong in `fn f[T](mut s lib.S, x T)` as in a function
+// without type parameters. A member reached through a type parameter has no
+// type in that check, and is left to the instances with the rest of the body.
+fn (mut tc TypeChecker) check_generic_fn_body_visibility(node flat.Node, fn_idx int) {
+	open := tc.check_generic_fn_body_as(node, fn_idx, map[string]string{})
+	for err in open.errors {
+		if is_visibility_error(err.msg) {
+			tc.errors << err
+		}
+	}
+}
+
+// is_visibility_error reports whether `msg` says that a module uses what is
+// private to another one: a field, a method, a function, a constant, a global
+// or a type.
+fn is_visibility_error(msg string) bool {
+	return msg.ends_with('` is not public') || msg.ends_with('` is private')
+		|| msg.starts_with('cannot access private field `')
+		|| msg.contains('` was declared as private to module `')
+		|| msg.starts_with('cannot stringify private type `')
+		|| msg.starts_with('cannot dump private type `')
+		|| msg.contains('` cannot implement private interface `')
 }
 
 // GenericBodyError is an error that the checks of a generic body found at one

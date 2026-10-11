@@ -32,6 +32,8 @@ pub mut:
 	author       string
 	dependencies []string
 	unknown      map[string][]string
+	catalog      map[string]string
+	workspaces   []string
 }
 
 struct Scanner {
@@ -247,7 +249,11 @@ fn (mut p Parser) parse() !Manifest {
 			}
 			.field_key {
 				field_name := tok.val.trim_right(':')
-				if tokens[i + 1].typ !in [.str, .labr] {
+				if i + 1 >= tokens.len {
+					return error('${err_label} missing value for field "${field_name}"')
+				}
+				if tokens[i + 1].typ !in [.str, .labr]
+					&& !(field_name == 'catalog' && tokens[i + 1].typ == .lcbr) {
 					return error('${err_label} value of field "${field_name}" must be either string or an array of strings, at line ${tok.line}')
 				}
 				field_value := tokens[i + 1].val
@@ -282,6 +288,49 @@ fn (mut p Parser) parse() !Manifest {
 						i = idx
 						continue
 					}
+					'catalog' {
+						if tokens[i + 1].typ != .lcbr {
+							return error('${err_label} value of field "catalog" must be an object, at line ${tok.line}')
+						}
+						mut catalog := map[string]string{}
+						mut j := i + 2
+						for j < tokens.len && tokens[j].typ != .rcbr {
+							mut key := ''
+							if tokens[j].typ == .field_key {
+								key = tokens[j].val.trim_right(':')
+								j++
+							} else if tokens[j].typ == .str && j + 1 < tokens.len && tokens[j + 1].typ == .colon {
+								key = tokens[j].val
+								j += 2
+							} else {
+								return error('${err_label} invalid catalog entry at line ${tokens[j].line}')
+							}
+							if key == '' || key in catalog {
+								return error('${err_label} empty or duplicate catalog key "${key}"')
+							}
+							if j >= tokens.len || tokens[j].typ != .str {
+								return error('${err_label} catalog value for "${key}" must be a string')
+							}
+							catalog[key] = tokens[j].val
+							j++
+							if j < tokens.len && tokens[j].typ == .comma { j++ }
+						}
+						if j >= tokens.len {
+							return error('${err_label} unterminated catalog object')
+						}
+						if j + 1 >= tokens.len {
+							return error('${err_label} unterminated Module object after catalog')
+						}
+						mn.catalog = catalog
+						i = j + 1
+						continue
+					}
+					'workspaces' {
+						ws, idx := get_array_content(tokens, i + 1, false)!
+						mn.workspaces = ws
+						i = idx
+						continue
+					}
 					else {
 						if tokens[i + 1].typ == .labr {
 							vals, idx := get_array_content(tokens, i + 1, false)!
@@ -297,7 +346,7 @@ fn (mut p Parser) parse() !Manifest {
 				continue
 			}
 			.comma {
-				if tokens[i - 1].typ !in [.str, .rabr] || tokens[i + 1].typ != .field_key {
+				if tokens[i - 1].typ !in [.str, .rabr, .rcbr] || tokens[i + 1].typ != .field_key {
 					return error('${err_label} invalid comma placement, at line ${tok.line}')
 				}
 				i++

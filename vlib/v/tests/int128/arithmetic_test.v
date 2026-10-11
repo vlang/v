@@ -125,6 +125,25 @@ fn test_u128_array_element_compound_assignment() {
 	assert a[0] == ((u128(13) << 64) % u128(7)) - u128(1)
 }
 
+// The 128-bit element store is the case where a plain compound operator cannot
+// work at all: the C struct representation has none, so the value has to be
+// computed by the helper. The direct store has to do the same, and it has to do
+// it without the bounds-checked store's array__set() call.
+@[direct_array_access]
+fn test_u128_direct_array_element_compound_assignment() {
+	mut a := [u128(10)]
+	a[0] += 1
+	assert a[0] == u128(11)
+	a[0] += u8(1)
+	assert a[0] == u128(12)
+	a[0] <<= 65
+	assert a[0] == (u128(12) << 65)
+	a[0] /= u128(2)
+	assert a[0] == (u128(12) << 64)
+	a[0] %= u128(7)
+	assert a[0] == (u128(12) << 64) % u128(7)
+}
+
 fn test_a_fixed_array_element_compound_assignment() {
 	mut a := [u128(3), u128(4), u128(5)]!
 	a[1] *= 2

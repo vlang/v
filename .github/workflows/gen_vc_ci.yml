@@ -78,6 +78,15 @@ jobs:
           grep 'Turned ON custom defines: no_backtrace,cross'  vc/v_win.c
           grep '#define CUSTOM_DEFINE_cross' vc/v_win.c
 
+          # the snapshots must not contain FastC: its libtcc linking and Mach-O signing are
+          # host specific, so e.g. macOS `make` could not compile a v.c generated on Linux.
+          # The compiler built from the snapshot rebuilds cmd/v natively, which keeps FastC.
+          # (`! grep` would not stop the step: `bash -e` ignores negated commands.)
+          if grep -q 'fastc__' vc/v.c vc/v_win.c; then
+            echo "the generated vc/v.c or vc/v_win.c contains the FastC backend"
+            exit 1
+          fi
+
           # ensure the generated C files for the compiler, are over 5000 lines long, as a safety measure
           [ "$(wc -l < vc/v.c)" -gt 5000 ]
           [ "$(wc -l < vc/v_win.c)" -gt 5000 ]

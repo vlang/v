@@ -1292,6 +1292,30 @@ fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
 	assert flags == ['-lpthread', '-lm']
 }
 
+fn test_v3_compiles_fastc_by_default_only_for_the_full_cli() {
+	for input in ['cmd/v', 'cmd/v/', 'cmd/v/v.v', '/opt/v/cmd/v', '/opt/v/cmd/v/v.v', 'C:\\v\\cmd\\v',
+		'C:\\v\\cmd\\v\\v.v'] {
+		assert v3_compiles_fastc_by_default(input, false, 'c'), input
+	}
+	for input in ['vlib/v/v.v', 'examples/hello_world.v', 'cmd/tools/vself.v'] {
+		assert !v3_compiles_fastc_by_default(input, false, 'c'), input
+	}
+}
+
+fn test_v3_compiles_fastc_by_default_not_for_portable_cross_c() {
+	// `vc/v.c` and `vc/v_win.c` are generated with `-cross`; they must compile on every
+	// host, so they leave out FastC's host-specific libtcc linking and Mach-O signing.
+	for input in ['cmd/v', 'cmd/v/v.v', '/opt/v/cmd/v', 'vlib/v/v.v'] {
+		assert !v3_compiles_fastc_by_default(input, true, 'c'), input
+	}
+}
+
+fn test_native_arm64_compiler_does_not_require_libtcc() {
+	for input in ['cmd/v', 'cmd/v/v.v', '/opt/v/cmd/v'] {
+		assert !v3_compiles_fastc_by_default(input, false, 'arm64'), input
+	}
+}
+
 fn test_v3_fastc_default_linker_flags() {
 	assert v3_fastc_default_linker_flags('windows', true) == []
 	assert v3_fastc_default_linker_flags('linux', false) == ['-lm']
@@ -1741,4 +1765,31 @@ fn test_tcc_compiler_identity_tracks_same_size_rebuilds() {
 	os.write_file(compiler, 'other build')!
 	assert os.file_size(compiler) == 11
 	assert first != tcc_compiler_identity(compiler)
+}
+
+// A host whose loader corrupts TCC-linked executables never selects TCC
+// implicitly, neither the bundled one nor a system one, but still honors an
+// explicit `-cc tcc`.
+fn test_v3_host_rejecting_tcc_executables_never_selects_tcc_implicitly() {
+	host := pref.host_target()
+	options := V3BundledTccProbeOptions{
+		backend:          'c'
+		c_compiler:       'cc'
+		host_os:          host.os
+		host_target:      host
+		target:           host
+		bundled_tcc:      os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+		host_rejects_tcc: true
+	}
+	assert !v3_should_probe_bundled_tcc(options)
+	selection := v3_select_c_compiler(@VEXEROOT, options)
+	assert !selection.bundled_tcc_available
+	assert selection.implicit_tcc == ''
+	assert !selection.c_compiler.contains('tcc')
+	assert selection.effective_c_compiler != 'tinyc'
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...options
+		c_compiler:          'tcc'
+		c_compiler_explicit: true
+	})
 }

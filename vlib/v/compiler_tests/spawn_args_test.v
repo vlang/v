@@ -326,12 +326,12 @@ fn main() {
 	assert c_compact.contains('__v_thread_spawn_detached(wait_for_args_thread_wrapper_detached,(void*)_sa'), c_code
 	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 3, c_code
 	assert c_compact.contains('__v_threadt=__v_thread_spawn(answer_thread_wrapper,'), c_code
-	assert c_code.contains('static void* make_array_thread_wrapper_detached(void* arg) { (void)arg; Array __tr = make_array();'), c_code
+	assert c_code.contains('static void* make_array_thread_wrapper_detached(void* arg) { (void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); Array __tr = make_array();'), c_code
 	assert c_code.contains('array__free(&(__tr));'), c_code
-	assert c_code.contains('static void* make_array_thread_wrapper(void* arg) { (void)arg; Array* __tr = (Array*)__v_thread_alloc(sizeof(Array));'), c_code
-	assert c_code.contains('static void* make_thread_thread_wrapper_detached(void* arg) { (void)arg; __v_thread __tr = make_thread();'), c_code
+	assert c_code.contains('static void* make_array_thread_wrapper(void* arg) { (void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); Array* __tr = (Array*)__v_thread_alloc(sizeof(Array));'), c_code
+	assert c_code.contains('static void* make_thread_thread_wrapper_detached(void* arg) { (void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); __v_thread __tr = make_thread();'), c_code
 	assert c_code.contains('__v_thread_join(__tr);'), c_code
-	assert c_code.contains('static void* make_array_thread_thread_wrapper_detached(void* arg) { (void)arg; __v_thread __tr = make_array_thread();'), c_code
+	assert c_code.contains('static void* make_array_thread_thread_wrapper_detached(void* arg) { (void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); __v_thread __tr = make_array_thread();'), c_code
 	assert c_code.contains('array__free(&(__tr_inner'), c_code
 	assert c_code.contains('static void* make_closure_thread_wrapper_detached(void* arg) { (void)arg;'), c_code
 	assert c_code.contains('closure__closure_try_destroy((void*)(__tr));'), c_code

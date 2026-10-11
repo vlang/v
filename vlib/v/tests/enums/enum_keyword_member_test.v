@@ -104,12 +104,34 @@ fn test_non_keyword_enum_member_cannot_be_escaped() {
 	assert result.output.contains('only escape keyword enum members'), result.output
 }
 
+const native_test_compiler = os.join_path(os.vtmp_dir(), 'v3_native_escaped_enum_compiler_${os.getpid()}')
+
+fn testsuite_end() {
+	os.rm(native_test_compiler) or {}
+}
+
+// exec_native runs a compiler command. `cmd/v` leaves the ARM64 backend out by default, so
+// when @VEXE reports that, the command runs with a compiler built here that includes it.
+fn exec_native(args []string) os.Result {
+	if !os.exists(native_test_compiler) {
+		result := os.exec(args)
+		if !result.output.contains('ARM64 support is not compiled into this executable') {
+			return result
+		}
+		bootstrap := os.exec([@VEXE, '-gc', 'none', '-d', 'skip_fastc', '-compile-backend', 'arm64',
+			'-o', native_test_compiler, os.join_path(@VEXEROOT, 'vlib', 'v', 'v.v')])
+		assert bootstrap.exit_code == 0, bootstrap.output
+	}
+	return os.exec(args.map(if it == @VEXE { native_test_compiler } else { it }))
+}
+
 fn test_native_backend_preserves_escaped_enum_declaration() {
-	$if arm64 {
+	// The native backend writes Mach-O executables.
+	$if macos && arm64 {
 		path := os.join_path(os.vtmp_dir(), 'v3_native_escaped_enum_${os.getpid()}.v')
 		defer { os.rm(path) or {} }
 		os.write_file(path, 'enum Kind { @none = -10 struct }\nenum Distinct { none = 2 @none = 4 }\nfn main() { assert int(Kind.@none) == -10; assert int(Kind.none) == -10; assert int(Kind.@struct) == -9; value := Kind.none; assert value == .none; assert int(Distinct.none) == 2; assert int(Distinct.@none) == 4 }\n')!
-		result := os.exec([@VEXE, '-b', 'arm64', '-gc', 'none', 'run', path])
+		result := exec_native([@VEXE, '-b', 'arm64', '-gc', 'none', 'run', path])
 		assert result.exit_code == 0, result.output
 	}
 }
@@ -168,11 +190,11 @@ fn test_enum_initializers_keep_keyword_reference_identity_in_constant_sizes() {
 }
 
 fn test_native_backend_evaluates_escaped_enum_initializer_references() {
-	$if arm64 {
+	$if macos && arm64 {
 		path := os.join_path(os.vtmp_dir(), 'v3_native_escaped_enum_initializer_${os.getpid()}.v')
 		defer { os.rm(path) or {} }
 		os.write_file(path, 'enum Kind { struct = 4 next = int(Kind.@struct) + 6 @none = 11 reverse = int(Kind.none) + 2 type = 17 @type = 23 plain_exact = int(Kind.type) + 3 escaped_exact = int(Kind.@type) + 3 }\nfn main() { assert int(Kind.next) == 10; assert int(Kind.reverse) == 13; assert int(Kind.plain_exact) == 20; assert int(Kind.escaped_exact) == 26; value := Kind.next; assert value.str() == "next" }\n')!
-		result := os.exec([@VEXE, '-b', 'arm64', '-gc', 'none', 'run', path])
+		result := exec_native([@VEXE, '-b', 'arm64', '-gc', 'none', 'run', path])
 		assert result.exit_code == 0, result.output
 	}
 }

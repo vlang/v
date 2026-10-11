@@ -877,12 +877,18 @@ fn test_closure_lifetime_dispose_frees_bookkeeping_buffers_but_keeps_state() {
 	assert !helper.contains('free(state)')
 }
 
-fn test_closure_lifetime_once_headers_keep_helper_internal() {
-	for header_name in ['closure_once_nix.h', 'closure_once_windows.h'] {
-		source_path := os.join_path(os.dir(vexe), 'vlib/builtin/closure/${header_name}')
-		source := os.read_file(source_path) or { panic(err) }
-		assert source.contains('V_CLOSURE_STATIC_INLINE void v_closure_init_once')
-		assert !source.contains('\nvoid v_closure_init_once')
+fn test_closure_runtime_setup_state_is_kept_in_v() {
+	// A C header that keeps the state of the one-time setup gives a copy of it to
+	// every translation unit that includes it, so that programs whose modules are
+	// compiled separately cannot share the closure runtime.
+	closure_dir := os.join_path(os.dir(vexe), 'vlib/builtin/closure')
+	for file in os.ls(closure_dir) or { panic(err) } {
+		assert !file.ends_with('.h'), file
+		if !file.ends_with('.v') {
+			continue
+		}
+		source := os.read_file(os.join_path(closure_dir, file)) or { panic(err) }
+		assert !source.contains('#insert'), file
 	}
 }
 

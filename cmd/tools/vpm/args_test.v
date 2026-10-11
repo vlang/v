@@ -24,3 +24,19 @@ fn test_merge_server_urls_appends_custom_urls_after_defaults() {
 		'https://mirror.example',
 	]
 }
+
+fn test_precise_update_option_values_are_not_module_queries() {
+	args := ['update', '-p', 'publisher.pkg', '--precise', 'v1.2.3']
+	assert parse_vpm_command(args) == 'update'
+	assert parse_query_args(args, 'update') == []string{}
+	assert parse_query_args(['update', 'pkg', '--precise', 'v1.2.3'], 'update') == ['pkg']
+}
+
+fn test_update_and_release_policy_option_values_are_not_package_queries() {
+	args := ['update', '-p', 'pkg', '--precise', 'v1.2.3', '--dry-run']
+	assert parse_query_args(args, 'update') == []string{}
+	assert parse_query_args(['update', 'pkg', '--precise', 'v1.2.3'], 'update') == ['pkg']
+	assert parse_query_args(['update', '--pin', 'pkg', '--precise', 'v1.2.3'], 'update') == []string{}
+	assert parse_query_args(['install', '--exclude-newer', '2026-01-01', '--minimum-release-age',
+		'2d', 'pkg@^1'], 'install') == ['pkg@^1']
+}

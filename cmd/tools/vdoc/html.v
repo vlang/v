@@ -6,7 +6,6 @@ import encoding.html
 import strings
 import markdown
 import document as doc
-import v.token
 
 const css_js_assets = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
 const default_theme = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vdoc', 'theme')
@@ -18,30 +17,6 @@ const quote_escape_seq = [single_quote, '', double_quote, '']
 
 fn tabs(n int) string {
 	return '\t'.repeat(n)
-}
-
-enum HighlightTokenTyp {
-	unone
-	boolean
-	builtin
-	char
-	comment
-	function
-	keyword
-	name
-	number
-	operator
-	punctuation
-	string
-	// For string interpolation
-	opening_string
-	string_interp
-	partial_string
-	closing_string
-	symbol
-	none
-	module_
-	prefix
 }
 
 struct SearchModuleResult {
@@ -501,49 +476,21 @@ fn resolve_relative_markdown_link(base_url string, link string) string {
 }
 
 fn html_highlight(code string) string {
-	tokens := scan_code(code)
 	mut buf := strings.new_builder(code.len + 64)
 	mut offset := 0
-	for i, scanned in tokens {
-		if scanned.start > offset {
-			buf.write_string(escape_code(code[offset..scanned.start]))
+	for highlighted in highlight_tokens(code) {
+		if highlighted.start > offset {
+			buf.write_string(escape_code(code[offset..highlighted.start]))
 		}
-		raw := code[scanned.start..scanned.end]
-		next_kind := if i + 1 < tokens.len { tokens[i + 1].kind } else { token.Token.eof }
-		typ := match scanned.kind {
-			.comment { HighlightTokenTyp.comment }
-			.string { HighlightTokenTyp.string }
-			.char { HighlightTokenTyp.char }
-			.number { HighlightTokenTyp.number }
-			.key_true, .key_false { HighlightTokenTyp.boolean }
-			.key_none { HighlightTokenTyp.none }
-			.name {
-				if scanned.lit in highlight_builtin_types || scanned.lit == 'chan' {
-					HighlightTokenTyp.builtin
-				} else if next_kind == .lpar {
-					HighlightTokenTyp.function
-				} else {
-					HighlightTokenTyp.name
-				}
-			}
-			else {
-				if scanned.kind.is_keyword() {
-					HighlightTokenTyp.keyword
-				} else if scanned.kind == .question || scanned.kind.is_assignment()
-					|| scanned.kind.is_prefix()
-					|| scanned.kind.is_infix() || scanned.kind.is_postfix() {
-					HighlightTokenTyp.operator
-				} else {
-					HighlightTokenTyp.punctuation
-				}
-			}
-		}
-		if typ in [.unone, .name] {
+		raw := code[highlighted.start..highlighted.end]
+		// Module and type names are not styled in HTML yet. `module_` is a guess, that also
+		// matches variables and fields before a `.`, so it is better not to publish it as a class.
+		if highlighted.typ in [.name, .module_, .type_name] {
 			buf.write_string(escape_code(raw))
 		} else {
-			buf.write_string('<span class="token ${typ}">${escape_code(raw)}</span>')
+			buf.write_string('<span class="token ${highlighted.typ}">${escape_code(raw)}</span>')
 		}
-		offset = scanned.end
+		offset = highlighted.end
 	}
 	if offset < code.len {
 		buf.write_string(escape_code(code[offset..]))

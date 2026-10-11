@@ -1207,9 +1207,20 @@ fn main() {
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, second_main, second_output)
 	assert run_module_cache_binary(second_output) == '42'
+	// The object of `builtin` was compiled without the method-value wrapper of the
+	// first program, which calls a function of that program, so the second program
+	// links the same object instead of building one of its own.
 	second_builtin_objects :=
 		module_cache_object_hashes(cache_dir).keys().filter(it.starts_with('builtin_'))
-	assert second_builtin_objects.len > first_builtin_objects.len
+	assert second_builtin_objects.sorted() == first_builtin_objects.sorted()
+	builtin_sources := os.walk_ext(cache_dir, '.c').filter(os.file_name(it).starts_with('builtin_'))
+	assert builtin_sources.len > 0
+	for builtin_source in builtin_sources {
+		// The prototype of `Worker.value` and the context type of the wrapper may
+		// remain: a declaration emits nothing. The wrapper itself must be gone.
+		source := os.read_file(builtin_source) or { panic(err) }
+		assert !source.contains('_mvwrap_'), builtin_source
+	}
 }
 
 fn test_module_cache_static_inline_attributes_are_not_storage() {
@@ -2344,9 +2355,9 @@ fn test_module_cache_materializes_cached_body_string_definitions() {
 	stable_symbol := module_cache_string_symbol('stable')
 	before_symbol := module_cache_string_symbol('before')
 	after_symbol := module_cache_string_symbol('after')
-	stable_definition := 'static string ${stable_symbol} = {"stable", 6, 1};'
-	before_definition := 'static string ${before_symbol} = {"before", 6, 1};'
-	after_definition := 'static string ${after_symbol} = {"after", 5, 1};'
+	stable_definition := 'static const string ${stable_symbol} = {"stable", 6, 1};'
+	before_definition := 'static const string ${before_symbol} = {"before", 6, 1};'
+	after_definition := 'static const string ${after_symbol} = {"after", 5, 1};'
 	cached := '// V3CACHE_BASELINE ${stable_definition}\n// V3CACHE_BASELINE ${before_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${stable_symbol});\nconsume(${before_symbol});\n'
 	materialized := modulecache.materialize_cached_body_string_definitions(cached)
 	assert materialized.contains(stable_definition)
@@ -2367,8 +2378,8 @@ fn test_module_cache_materializes_cached_body_string_definitions() {
 fn test_module_cache_string_symbol_rewrite_handles_swapped_literals() {
 	alpha_symbol := module_cache_string_symbol('alpha')
 	beta_symbol := module_cache_string_symbol('beta')
-	alpha_definition := 'static string ${alpha_symbol} = {"alpha", 5, 1};'
-	beta_definition := 'static string ${beta_symbol} = {"beta", 4, 1};'
+	alpha_definition := 'static const string ${alpha_symbol} = {"alpha", 5, 1};'
+	beta_definition := 'static const string ${beta_symbol} = {"beta", 4, 1};'
 	source := '${alpha_definition}\n${beta_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${alpha_symbol});\nconsume(${beta_symbol});\n'
 	rewritten := modulecache.rewrite_cached_runtime_strings(source, ['alpha', 'beta'], [
 		'beta',
@@ -2387,8 +2398,8 @@ fn test_module_cache_string_symbol_rewrite_skips_c_string_contents() {
 	new_symbol := module_cache_string_symbol(new_value)
 	unchanged_value := old_symbol
 	unchanged_symbol := module_cache_string_symbol(unchanged_value)
-	old_definition := 'static string ${old_symbol} = {"${old_value}", ${old_value.len}, 1};'
-	unchanged_definition := 'static string ${unchanged_symbol} = {"${unchanged_value}", ${unchanged_value.len}, 1};'
+	old_definition := 'static const string ${old_symbol} = {"${old_value}", ${old_value.len}, 1};'
+	unchanged_definition := 'static const string ${unchanged_symbol} = {"${unchanged_value}", ${unchanged_value.len}, 1};'
 	source := '${old_definition}\n${unchanged_definition}\n/* ${old_symbol} */\nint ${old_symbol}_suffix;\n/* V3CACHE_BODY_BEGIN */\nconsume(${old_symbol});\nconsume(${unchanged_symbol});\n'
 	rewritten := modulecache.rewrite_cached_runtime_strings(source, [old_value, unchanged_value], [
 		new_value,
@@ -2403,7 +2414,7 @@ fn test_module_cache_string_symbol_rewrite_skips_c_string_contents() {
 
 fn test_module_cache_string_symbol_rewrite_rejects_partially_changed_duplicates() {
 	x_symbol := module_cache_string_symbol('x')
-	x_definition := 'static string ${x_symbol} = {"x", 1, 1};'
+	x_definition := 'static const string ${x_symbol} = {"x", 1, 1};'
 	source := '${x_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${x_symbol});\nconsume(${x_symbol});\n'
 	if rewritten := modulecache.rewrite_cached_runtime_strings(source, ['x', 'x'], [
 		'y',
@@ -2691,6 +2702,8 @@ fn main() {
 	environment['V3CACHE'] = cache_dir
 	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 	environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
+	// The manifest costs a digest of every parsed source: a caller asks for it.
+	environment['V_MACOS_V3_SOURCE_MANIFEST'] = '1'
 	mut process := os.new_process(v3_bin)
 	process.set_args(['-silent', '-no-memory-limit', 'run', main_file, side_effect_file])
 	process.set_environment(environment)
@@ -6115,6 +6128,114 @@ fn main() {
 	assert strict.output.contains('check (incremental)'), strict.output
 	assert strict.output.contains('cgen (incremental)'), strict.output
 	assert run_module_cache_binary(strict_output) == '43'
+}
+
+fn test_incremental_program_cache_reuses_cached_module_objects() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_object_reuse_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'cached/cached.v', 'module cached
+
+pub fn value() int {
+	return 40
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import cached
+
+fn adjusted_value() int {
+	return cached.value() + 1
+}
+
+fn main() {
+	println(adjusted_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	// The module cache follows the system C compiler: a bundled TCC builds without it.
+	first :=
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-cc', 'cc', '-o', first_output,
+			main_file])
+	assert first.exit_code == 0, first.output
+	assert run_module_cache_binary(first_output) == '41'
+	write_module_cache_file(root, 'main.v', 'module main
+
+import cached
+
+fn adjusted_value() int {
+	return cached.value() + 2
+}
+
+fn main() {
+	println(adjusted_value())
+}
+')
+	incremental_output := os.join_path(root, 'incremental')
+	incremental :=
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', 'V3_CACHE_TRACE=1', v3_bin, '-v', '-cc', 'cc',
+			'-o', incremental_output, main_file])
+	assert incremental.exit_code == 0, incremental.output
+	assert incremental.output.contains('check (incremental)'), incremental.output
+	assert incremental.output.contains('cgen (incremental)'), incremental.output
+	// The objects of the modules were compiled with the program's wrappers and panic
+	// frames. A lookup that leaves those out finds no object, and compiles the
+	// program and every module again.
+	assert !incremental.output.contains('V3 module cache object miss'), incremental.output
+	assert !incremental.output.contains('check (parallel)'), incremental.output
+	assert run_module_cache_binary(incremental_output) == '42'
+}
+
+fn test_module_cache_keeps_programs_that_use_the_closure_runtime() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_closure_runtime_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn make_adder(n int) fn (int) int {
+	return fn [n] (x int) int {
+		return x + n
+	}
+}
+
+fn main() {
+	add := make_adder(2)
+	println(add(40))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	// The module cache follows the system C compiler: a bundled TCC builds without it.
+	first :=
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', 'V3_CACHE_TRACE=1', v3_bin, '-v', '-cc', 'cc',
+			'-o', first_output, main_file])
+	assert first.exit_code == 0, first.output
+	assert !first.output.contains('V3 module cache fallback'), first.output
+	assert run_module_cache_binary(first_output) == '42'
+
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', 'V3_CACHE_TRACE=1', v3_bin, '-v', '-cc', 'cc',
+			'-o', second_output, main_file])
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('V3 module cache fallback'), second.output
+	assert second.output.contains('check (cached)'), second.output
+	assert second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == '42'
 }
 
 fn test_incremental_program_cache_keeps_main_native_insert() {

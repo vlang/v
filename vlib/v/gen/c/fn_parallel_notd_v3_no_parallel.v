@@ -20,7 +20,18 @@ const min_flat_cgen_parallel_items = 128
 // expression. Keep self-host body batches narrow so those values are released
 // throughout cgen instead of accumulating across hundreds of functions.
 const scoped_cgen_worker_batches = 256
+const min_scoped_cgen_batch_cost = 16_384
 const flat_cgen_chunks_per_job = 32
+
+// parallel_codegen_available keeps preparation and dispatch in the same mode
+// when the compilation's pool has no workers. Standalone generators retain
+// lazy pool creation when the runtime permits multiple jobs.
+fn (g &FlatGen) parallel_codegen_available() bool {
+	if !isnil(g.a.worker_pool) {
+		return g.a.worker_pool.size() > 0
+	}
+	return runtime.nr_jobs() > 1
+}
 
 // FlatCgenChunkArgs represents flat cgen chunk args data used by c.
 struct FlatCgenChunkArgs {
@@ -504,6 +515,7 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 		metadata.c_name_cache = &CNameCache{}
 		metadata.generic_app_cache = &GenericAppCache{}
 		metadata.needed_optional_types = map[string]string{}
+		metadata.optional_pointer_struct_tags = map[string]string{}
 		metadata_thread := spawn checker_signature_support_thread(voidptr(metadata))
 		w.fn_gen_items = <-a.items
 		w.collect_selected_declaration_signature_types()
@@ -512,6 +524,9 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 		// signatures, then checker metadata. Tuple emission deduplicates names.
 		for name, payload in metadata.needed_optional_types {
 			w.needed_optional_types[name] = payload
+		}
+		for name, payload in metadata.optional_pointer_struct_tags {
+			w.optional_pointer_struct_tags[name] = payload
 		}
 		w.multi_return_types << metadata.multi_return_types
 		for name, enabled in metadata.multi_return_type_names {
@@ -1176,6 +1191,7 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 			// into the enclosing cgen arena rather than the retained item arena.
 			g.str_lits = clone_cgen_string_list(g.str_lits)
 			g.str_lit_ids = clone_cgen_string_int_map(g.str_lit_ids)
+			g.specialized_method_c_names = clone_cgen_string_map(g.specialized_method_c_names)
 			g.fn_ptr_types = clone_cgen_string_map(g.fn_ptr_types)
 			g.used_fn_ptr_types = clone_cgen_string_bool_map(g.used_fn_ptr_types)
 			g.c_extern_refs = clone_cgen_string_bool_map(g.c_extern_refs)
@@ -1367,6 +1383,11 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 			g.needed_optional_types[opt_name.clone()] = val_type.clone()
 		}
 	}
+	for opt_name, val_type in batch.optional_pointer_struct_tags {
+		if opt_name !in g.optional_pointer_struct_tags {
+			g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
+		}
+	}
 	for encoded, name in batch.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded.clone()] = name.clone()
@@ -1455,6 +1476,22 @@ fn remap_scoped_worker_string_list(source []string, remap map[int]int, user_c_sy
 	return result
 }
 
+// scoped_cgen_batch_count amortizes worker setup across small function bodies.
+// Compiler builds keep their narrower batches to bound retained lowering scratch.
+fn (g &FlatGen) scoped_cgen_batch_count(n_items int, total_cost i64) int {
+	if n_items == 0 {
+		return 0
+	}
+	mut count := int_min(n_items, scoped_cgen_worker_batches)
+	if !g.tc.building_v_fast {
+		by_cost := total_cost / min_scoped_cgen_batch_cost
+		if by_cost < i64(count) {
+			count = int(by_cost)
+		}
+	}
+	return int_max(count, 1)
+}
+
 // gen_fn_items_scoped_batches bounds helper scratch without adding worker-pool
 // barriers. Each batch gets fresh mutable generator/checker caches while its C
 // output is accumulated in a much smaller result arena.
@@ -1464,15 +1501,12 @@ fn (mut g FlatGen) gen_fn_items_scoped_batches(items []FlatFnGenItem) {
 	for item in items {
 		total_cost += item.cost
 	}
-	n_batches := if items.len < scoped_cgen_worker_batches {
-		items.len
-	} else {
-		scoped_cgen_worker_batches
-	}
+	n_batches := g.scoped_cgen_batch_count(items.len, total_cost)
 	mut start := 0
 	mut consumed_cost := i64(0)
 	for batch_idx in 0 .. n_batches {
 		mut end := start
+		batch_start_cost := consumed_cost
 		target_cost := total_cost * i64(batch_idx + 1) / i64(n_batches)
 		for end < items.len
 			&& (batch_idx == n_batches - 1 || consumed_cost < target_cost || end == start) {
@@ -1483,7 +1517,7 @@ fn (mut g FlatGen) gen_fn_items_scoped_batches(items []FlatFnGenItem) {
 		mut batch := g.new_parallel_worker(batch_idx)
 		// Weighted AST cost tracks generated body bytes closely enough to avoid
 		// the 64 KiB builder growing and copying five or six times per worker.
-		batch.sb = strings.new_builder(int(total_cost * 5) + 65_536)
+		batch.sb = strings.new_builder(int((consumed_cost - batch_start_cost) * 5) + 65_536)
 		batch.gen_fn_items(items[start..end])
 		cgen_worker_scope_leave(scratch_scope)
 		g.absorb_scoped_cgen_batch(batch, false)
@@ -1556,11 +1590,7 @@ fn (mut g FlatGen) gen_fn_items_scoped_master_batches(items []FlatFnGenItem) {
 	for item in items {
 		total_cost += item.cost
 	}
-	n_batches := if items.len < scoped_cgen_worker_batches {
-		items.len
-	} else {
-		scoped_cgen_worker_batches
-	}
+	n_batches := g.scoped_cgen_batch_count(items.len, total_cost)
 	mut start := 0
 	mut consumed_cost := i64(0)
 	for batch_idx in 0 .. n_batches {
@@ -1604,8 +1634,11 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	for opt_name, val_type in fs_worker.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
 	}
+	for opt_name, val_type in fs_worker.optional_pointer_struct_tags {
+		g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
+	}
 	if fs_worker.worker_scope != unsafe { nil } {
-		// The whole-AST scan leaves far more scratch behind than its three result
+		// The whole-AST scan leaves far more scratch behind than its result
 		// tables hold. Publish owned copies into the enclosing cgen arena and
 		// release the helper arena before the function workers start, instead of
 		// keeping it resident through emission.
@@ -1664,9 +1697,10 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 	g.parallel_worker_scopes << worker.parallel_worker_scopes
 	worker.parallel_worker_scopes = []voidptr{}
 	if worker.worker_scope != unsafe { nil } {
-		// Publish owned copies of the three result tables and release the
+		// Publish owned copies of the result tables and release the
 		// signature scan's arena instead of keeping it resident through emission.
 		g.needed_optional_types = clone_cgen_string_map(worker.needed_optional_types)
+		g.optional_pointer_struct_tags = clone_cgen_string_map(worker.optional_pointer_struct_tags)
 		g.multi_return_types = types.clone_owned_types(worker.multi_return_types)
 		g.multi_return_type_names = clone_cgen_string_bool_map(worker.multi_return_type_names)
 		cgen_worker_scope_free(worker.worker_scope)
@@ -1674,6 +1708,7 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 		return
 	}
 	g.needed_optional_types = worker.needed_optional_types.move()
+	g.optional_pointer_struct_tags = worker.optional_pointer_struct_tags.move()
 	g.multi_return_types = worker.multi_return_types
 	g.multi_return_type_names = worker.multi_return_type_names.move()
 }
@@ -1683,6 +1718,9 @@ fn (mut g FlatGen) publish_unresolved_call_optional_types(mut worker FlatGen) {
 		// This scan follows declarations in the serial pipeline, including when
 		// two payload spellings map to the same optional typedef name.
 		g.needed_optional_types[name.clone()] = payload.clone()
+	}
+	for name, payload in worker.optional_pointer_struct_tags {
+		g.optional_pointer_struct_tags[name.clone()] = payload.clone()
 	}
 	// Only the typedef spellings escape this scan; release its parsing scratch.
 	cgen_worker_scope_free(worker.worker_scope)
@@ -1762,6 +1800,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 	// discovered by body workers, so emit those on the master after they merge.
 	parallel_type_decls := available_jobs > 2 && g.scope_parallel_workers
 		&& !g.program_body_only && g.incremental_fn_names.len == 0 && !g.target_libc_headers
+		&& g.cache_const_modules.len == 0
 	n_jobs := flat_cgen_job_count(available_jobs, n_items, g.flat_cgen_job_limit())
 	if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 		if g.scope_parallel_workers {
@@ -2679,6 +2718,11 @@ fn (mut g FlatGen) publish_c_extern_type_discoveries(worker &FlatGen) {
 			g.needed_optional_types[opt_name.clone()] = val_type.clone()
 		}
 	}
+	for opt_name, val_type in worker.optional_pointer_struct_tags {
+		if opt_name !in g.optional_pointer_struct_tags {
+			g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
+		}
+	}
 	for encoded, name in worker.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded.clone()] = name.clone()
@@ -2858,6 +2902,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		shared_param_index_empty:           g.shared_param_index_empty
 		has_shared_params:                  g.has_shared_params
 		fn_decl_mut_receivers:              g.fn_decl_mut_receivers
+		specialized_method_c_names:         g.specialized_method_c_names
 		fn_decl_ret_types:                  g.fn_decl_ret_types
 		non_generic_fn_names_by_module:     g.non_generic_fn_names_by_module
 		generic_fn_keys_by_short:           g.generic_fn_keys_by_short
@@ -2953,6 +2998,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		expected_expr_type:                 g.expected_expr_type
 		expected_enum:                      g.expected_enum
 		needed_optional_types:              g.needed_optional_types.clone()
+		optional_pointer_struct_tags:       g.optional_pointer_struct_tags.clone()
 		optional_types_ready:               g.optional_types_ready
 		emitted_optional_types:             if result_only {
 			g.emitted_optional_types
@@ -3311,6 +3357,9 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 	for opt_name, val_type in w.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
+	}
+	for opt_name, val_type in w.optional_pointer_struct_tags {
+		g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
 	}
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {

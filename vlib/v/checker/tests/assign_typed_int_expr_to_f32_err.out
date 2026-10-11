@@ -1,0 +1,21 @@
+vlib/v/checker/tests/assign_typed_int_expr_to_f32_err.vv:6:10: error: cannot assign to `value`: expected `f32`, not `int`
+    4 | fn shadowed(untyped_constant int) f32 {
+    5 |     mut value := f32(0)
+    6 |     value = untyped_constant * 2
+      |             ~~~~~~~~~~~~~~~~~~~~
+    7 |     return value
+    8 | }
+vlib/v/checker/tests/assign_typed_int_expr_to_f32_err.vv:13:16: error: cannot assign to `my_float_32`: expected `f32`, not `int`
+   11 |     mut my_float_32 := f32(3.2)
+   12 |     my_int := 2
+   13 |     my_float_32 = 2 * my_int
+      |                   ~~~~~~~~~~
+   14 |     my_float_32 = typed_constant * 2
+   15 |     my_float_32 = untyped_constant * 2
+vlib/v/checker/tests/assign_typed_int_expr_to_f32_err.vv:14:16: error: cannot assign to `my_float_32`: expected `f32`, not `int`
+   12 |     my_int := 2
+   13 |     my_float_32 = 2 * my_int
+   14 |     my_float_32 = typed_constant * 2
+      |                   ~~~~~~~~~~~~~~~~~~
+   15 |     my_float_32 = untyped_constant * 2
+   16 |     println(my_float_32 + shadowed(1))

@@ -20,7 +20,7 @@ pub struct Process {
 pub mut:
 	filename         string // the process's command file path
 	pid              int    // the PID of the process
-	code             int          = -1           // the exit code of the process, != -1 *only* when status is .exited *and* the process was not aborted
+	code             int          = -1           // the exit code; on Windows this is a signed 32-bit value, so an exited child can also return -1
 	status           ProcessState = .not_started // the current status of the process
 	err              string   // if the process fails, contains the reason why
 	args             []string // the arguments that the command takes
@@ -35,8 +35,9 @@ pub mut:
 	wdata            voidptr  // the WProcess; used only by the windows implementation
 	create_no_window bool     // sets a value indicating whether to start the process in a new window, The default is false; used only by the windows implementation
 mut:
-	expand_environment bool = true // preserve legacy Windows Process environment expansion
+	expand_environment bool // Process arguments are literal, including environment references on Windows
 	merge_stdio        bool // when true, redirect the child's stderr to its stdout pipe
+	reaped             bool // the child's exit status has already been collected
 }
 
 // new_process - create a new process descriptor.
@@ -44,6 +45,7 @@ mut:
 // That is done because you may want to customize it first,
 // by calling different set_ methods on it.
 // In order to start it, call p.run() or p.wait()
+// The filename and arguments are used literally, without shell or environment expansion.
 pub fn new_process(filename string) &Process {
 	return &Process{
 		filename: filename
@@ -52,6 +54,7 @@ pub fn new_process(filename string) &Process {
 }
 
 // set_args - set the arguments for the new process.
+// Pass literal arguments without shell quoting or escaping.
 pub fn (mut p Process) set_args(pargs []string) {
 	if p.status != .not_started {
 		return

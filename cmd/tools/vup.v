@@ -96,9 +96,15 @@ fn main() {
 		eprintln('Try running `${get_tcc_update_cmd()}` .')
 		exit(1)
 	}
-	current_v_hash := app.current_v_hash() or { @VCURRENTHASH }
-	current_hash_from_filesystem := version.githash(vroot) or { current_v_hash }
-	if !app.skip_current && current_v_hash == current_hash_from_filesystem {
+	current_v_hash := app.current_v_hash() or {
+		// A fallback-built tool can restore a missing primary compiler at its own
+		// revision. An existing compiler with an unknown revision must rebuild.
+		if !os.exists(app.current_vexe_path()) { @VCURRENTHASH } else { '' }
+	}
+	current_hash_from_filesystem := version.githash(vroot) or { '' }
+	if !app.skip_current && !app.is_prod && !app.skip_v_self
+		&& current_v_hash != '' && current_hash_from_filesystem != ''
+		&& current_v_hash == current_hash_from_filesystem {
 		println('V is already updated.')
 		current_vexe_path := app.current_vexe_path()
 		if !os.exists(current_vexe_path) {
@@ -117,11 +123,16 @@ fn main() {
 	if os.user_os() == 'windows' {
 		app.backup('cmd/tools/vup.exe')
 	}
-	if !app.recompile_v() {
-		app.show_current_v_version()
-		eprintln('Recompiling V *failed*.')
-		eprintln('Try running `${get_make_cmd_name()}` .')
-		exit(1)
+	if app.skip_current || app.is_prod || app.skip_v_self || current_v_hash == ''
+		|| current_hash_from_filesystem == '' || !app.compiler_sources_unchanged() {
+		if !app.recompile_v() {
+			app.show_current_v_version()
+			eprintln('Recompiling V *failed*.')
+			eprintln('Try running `${get_make_cmd_name()}` .')
+			exit(1)
+		}
+	} else {
+		println('> compiler sources did not change, not recompiling V.')
 	}
 	if !app.recompile_vup() {
 		app.show_current_v_version()
@@ -268,6 +279,17 @@ fn (app App) update_tcc() bool {
 	app.vprintln(result.output)
 	println('> done updating TCC.')
 	return true
+}
+
+// compiler_sources_unchanged checks whether nothing the compiler is built from
+// differs from the revision the current `v` executable was built at.
+fn (app App) compiler_sources_unchanged() bool {
+	built_hash := app.current_v_hash() or { return false }
+	// Compiler dependencies extend beyond the core modules (for example crypto.sha256,
+	// runtime and sync). Conservatively include all vlib implementation sources.
+	diff := os.exec(['git', 'diff', '--quiet', built_hash, '--', 'cmd/v/', 'vlib/', 'thirdparty/',
+		'v.mod', 'GNUmakefile', 'Makefile', 'makev.bat', ':(exclude)*_test.v', ':(exclude)*.md'])
+	return diff.exit_code == 0
 }
 
 fn (app App) recompile_v() bool {

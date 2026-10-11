@@ -5,59 +5,58 @@ import net.http
 
 // socket_read reads from socket into the provided buffer
 fn (mut ws Client) socket_read(mut buffer []u8) !int {
-	lock {
-		if ws.get_state() in [.closed, .closing] || ws.conn.sock.handle <= 1 {
-			return error('socket_read: trying to read a closed socket')
-		}
-		if ws.is_ssl {
-			r := ws.ssl_conn.read(mut buffer) or { return error('none') }
-			return r
-		} else {
-			r := ws.conn.read(mut buffer) or { return error('none') }
-			return r
-		}
-	}
-	return error('none')
+	return ws.socket_read_ptr(buffer.data, buffer.len)
 }
 
-// socket_read reads from socket into the provided byte pointer and length
+// socket_read_ptr reads ahead, retaining unused bytes for the next frame field.
+// Like the frame parser, the buffer belongs to the connection's single reader.
 fn (mut ws Client) socket_read_ptr(buf_ptr &u8, len int) !int {
-	lock {
-		if ws.get_state() in [.closed, .closing] || ws.conn.sock.handle <= 1 {
-			return error('socket_read_ptr: trying to read a closed socket')
+	if ws.get_state() in [.closed, .closing] || ws.conn.sock.handle <= 1 {
+		return error('socket_read_ptr: trying to read a closed socket')
+	}
+	if len <= 0 {
+		return 0
+	}
+	if ws.read_start == ws.read_end {
+		ws.read_start = 0
+		ws.read_end = 0
+		// Large payloads can go directly into their final allocation.
+		if len >= ws.read_buffer.len {
+			return ws.socket_read_unbuffered(buf_ptr, len)
 		}
-		if ws.is_ssl {
-			r := ws.ssl_conn.socket_read_into_ptr(buf_ptr, len)!
-			return r
-		} else {
-			r := ws.conn.read_ptr(buf_ptr, len)!
-			return r
+		ws.read_end = ws.socket_read_unbuffered(&ws.read_buffer[0], ws.read_buffer.len)!
+		if ws.read_end <= 0 {
+			ws.read_end = 0
+			return 0
 		}
 	}
-	return error('none')
+	available := ws.read_end - ws.read_start
+	count := if available < len { available } else { len }
+	unsafe { vmemcpy(buf_ptr, &ws.read_buffer[ws.read_start], count) }
+	ws.read_start += count
+	return count
+}
+
+fn (mut ws Client) socket_read_unbuffered(buf_ptr &u8, len int) !int {
+	if ws.is_ssl {
+		return ws.ssl_conn.socket_read_into_ptr(buf_ptr, len)
+	}
+	return ws.conn.read_ptr(buf_ptr, len)
 }
 
 // socket_write writes the provided byte array to the socket
 fn (mut ws Client) socket_write(bytes []u8) !int {
-	lock {
+	// Serialize complete frames/batches, including control frames from listen().
+	lock ws.write_lock {
 		if ws.get_state() == .closed || ws.conn.sock.handle <= 1 {
-			ws.debug_log('socket_write: Socket already closed')
 			return error('socket_write: trying to write on a closed socket')
 		}
 		if ws.is_ssl {
 			return ws.ssl_conn.write(bytes)
-		} else {
-			for {
-				n := ws.conn.write(bytes) or {
-					if err.code() == net.err_timed_out_code {
-						continue
-					}
-					return err
-				}
-				return n
-			}
-			panic('reached unreachable code')
 		}
+		// TcpConn.write already completes short writes. A timeout may follow a
+		// partial send: replaying the whole buffer would corrupt frame boundaries.
+		return ws.conn.write(bytes)
 	}
 }
 

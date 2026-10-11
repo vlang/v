@@ -128,6 +128,7 @@ pub struct FnType {
 pub:
 	params      []FnParam
 	return_type &Type = empty_type
+	is_variadic bool // The final array parameter accepts zero or more values.
 }
 
 pub struct FnParam {
@@ -263,6 +264,7 @@ pub fn clone_owned_type(value &Type) Type {
 			}
 			Type(FnType{
 				params:      params
+				is_variadic: value.is_variadic
 				return_type: &Type(clone_owned_type(value.return_type))
 			})
 		}
@@ -470,7 +472,11 @@ pub fn (t &Type) name() string {
 					continue
 				}
 			}
-			s += nested_type_name(param)
+			if t.is_variadic && i == t.params.len - 1 && param is Array {
+				s += '...${nested_type_name(param.elem_type)}'
+			} else {
+				s += nested_type_name(param)
+			}
 		}
 		s += ')'
 		if t.return_type !is Void {

@@ -10,7 +10,8 @@ const source_context_before = 2
 const source_context_after = 2
 
 fn formatted_message(kind string, message string) string {
-	return '${ansi.bold(ansi.color(kind, kind))} ${message}'
+	// Diagnostics name a sum type variant as `Expr.Count`, never by its hidden struct.
+	return '${ansi.bold(ansi.color(kind, kind))} ${flat.demangle_named_variants(message)}'
 }
 
 // formatted_error renders a compiler diagnostic with v1-compatible colors and source context.

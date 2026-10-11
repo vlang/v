@@ -222,7 +222,7 @@ fn monitor_stage_memory(state &StageMemoryMonitor, limit_kb i64, interval i64) {
 				monitor.exiting = true
 				monitor.mutex.unlock()
 				eprintln(message)
-				exit(1)
+				exit_memory_limit()
 			}
 		}
 	}
@@ -245,7 +245,7 @@ fn monitor_memory_limit(limit_kb i64) {
 		message := memory_limit_error(memory.kb, limit_kb, 'during compilation', memory.metric)
 		if message.len > 0 {
 			eprintln(message)
-			exit(1)
+			exit_memory_limit()
 		}
 	}
 }
@@ -344,7 +344,7 @@ fn (mut b Bench) report_step(name string, parallel bool, elapsed_us i64, allocat
 		message := memory_limit_error(memory.kb, b.memory_limit_kb, 'after ${label}', memory.metric)
 		if message.len > 0 {
 			eprintln(message)
-			exit(1)
+			exit_memory_limit()
 		}
 	}
 	ram_mb := f64(ram_kb) / 1024.0

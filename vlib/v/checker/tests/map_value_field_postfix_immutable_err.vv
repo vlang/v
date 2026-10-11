@@ -1,0 +1,21 @@
+struct Hero {
+mut:
+	level int
+}
+
+struct Frozen {
+	level int
+}
+
+fn main() {
+	heroes := {
+		'a': Hero{}
+	}
+	heroes['a'].level++
+	mut frozen := {
+		'a': Frozen{}
+	}
+	frozen['a'].level++
+	println(heroes['a'].level)
+	println(frozen['a'].level)
+}

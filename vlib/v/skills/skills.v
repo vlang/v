@@ -396,6 +396,9 @@ pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 	if os.is_link(dest) {
 		return error('refusing to install over a symlink skill directory `${dest}`')
 	}
+	if os.exists(dest) && !os.is_dir(dest) {
+		return error('refusing to install over a non-directory skill path `${dest}`')
+	}
 	install_dir := os.real_path(os.abs_path(dir))
 	resolved_dest := if os.exists(dest) {
 		os.real_path(os.abs_path(dest))
@@ -432,26 +435,15 @@ pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 	}
 	// Validate provenance before replacing any installed content.
 	validate_origin_destination(dir)!
-	if already_installed && !opts.dry_run {
-		os.rmdir_all(dest)!
+	if !opts.dry_run {
+		install_into(dest, skill.files, skill.directory)!
 	}
 	mut result := InstallResult{
 		skill:   skill.name
 		path:    os.join_path(dest, entry_file)
 		dry_run: opts.dry_run
 	}
-	if !opts.dry_run {
-		os.mkdir_all(dest)!
-	}
 	for relative in skill.files {
-		source := os.join_path(skill.directory, relative)
-		target := os.join_path(dest, relative)
-		if !opts.dry_run {
-			os.mkdir_all(os.dir(target))!
-			// Every bundled skill file is text, so a read and a write are enough
-			// and no platform-specific copy code is needed.
-			os.write_file(target, os.read_file(source)!)!
-		}
 		result.written << relative
 	}
 	if !opts.dry_run {
@@ -464,6 +456,39 @@ pub fn install(skill Skill, dir string, opts InstallOptions) !InstallResult {
 		})!
 	}
 	return result
+}
+
+// install_into stages all files beside `dest` before replacing the installation.
+fn install_into(dest string, files []string, source_dir string) ! {
+	temporary := os.join_path_single(os.dir(dest), '.${os.file_name(dest)}-${rand.uuid_v4()}')
+	os.mkdir_all(temporary)!
+	defer { os.rmdir_all(temporary) or {} }
+	for relative in files {
+		source := os.join_path(source_dir, relative)
+		target := os.join_path(temporary, relative)
+		os.mkdir_all(os.dir(target))!
+		os.write_file(target, os.read_file(source)!)!
+	}
+	swap_into(temporary, dest)!
+}
+
+// swap_into moves a staged directory into place and restores the previous one on failure.
+// Directory replacement requires moving the old directory aside first on Windows.
+fn swap_into(source string, dest string) ! {
+	mut aside := ''
+	if os.exists(dest) {
+		aside = os.join_path_single(os.dir(dest), '.${os.file_name(dest)}.old-${rand.uuid_v4()}')
+		os.rename(dest, aside)!
+	}
+	os.rename(source, dest) or {
+		if aside != '' {
+			os.rename(aside, dest) or {}
+		}
+		return err
+	}
+	if aside != '' {
+		os.rmdir_all(aside) or {}
+	}
 }
 
 // remove deletes an installed skill directory. It reports `removed: false` when
@@ -519,8 +544,9 @@ pub fn installed(dir string) []string {
 }
 
 // out_of_date returns the bundled skills installed in `dir` whose installed copy
-// no longer matches the bundled one. `v skills list` reports these so an agent
-// can offer `v skills add --force` instead of acting on stale guidance.
+// no longer matches the bundled one. This content comparison cannot distinguish
+// local edits from an unchanged installation of an older bundle. Use
+// refresh_candidates when deciding which installations can be safely updated.
 pub fn out_of_date(vroot string, dir string) []string {
 	mut stale := []string{}
 	for name in installed(dir) {

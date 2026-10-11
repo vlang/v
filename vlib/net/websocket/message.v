@@ -141,36 +141,37 @@ pub fn (mut ws Client) read_next_message() !Message {
 			// and need to be returned immediately
 			msg := Message{
 				opcode:  OPCode(frame.opcode)
-				payload: frame_payload.clone()
+				payload: frame_payload
 			}
-			unsafe { frame_payload.free() }
 			return msg
 		}
 		// if the message is fragmented we just put it on fragments
 		// a fragment is allowed to have zero size payload
 		if !frame.fin {
 			ws.fragments << &Fragment{
-				data:   frame_payload.clone()
+				data:   frame_payload
 				opcode: frame.opcode
 			}
-			unsafe { frame_payload.free() }
 			continue
 		}
 		if ws.fragments.len == 0 {
 			ws.validate_utf_8(frame.opcode, frame_payload) or {
 				ws.logger.error('UTF8 validation error: ${err}, len of payload(${frame_payload.len})')
 				ws.send_error_event('UTF8 validation error: ${err}, len of payload(${frame_payload.len})')
+				unsafe { frame_payload.free() }
 				return err
 			}
 			msg := Message{
 				opcode:  OPCode(frame.opcode)
-				payload: frame_payload.clone()
+				payload: frame_payload
 			}
-			unsafe { frame_payload.free() }
 			return msg
 		}
 		defer {
-			ws.fragments = []
+			for fragment in ws.fragments {
+				unsafe { fragment.data.free() }
+			}
+			ws.fragments.clear()
 		}
 		if is_data_frame(frame.opcode) {
 			ws.close(0, '')!
@@ -181,11 +182,10 @@ pub fn (mut ws Client) read_next_message() !Message {
 		ws.validate_utf_8(opcode, payload)!
 		msg := Message{
 			opcode:  opcode
-			payload: payload.clone()
+			payload: payload
 		}
 		unsafe {
 			frame_payload.free()
-			payload.free()
 		}
 		return msg
 	}

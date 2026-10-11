@@ -30,8 +30,9 @@ struct ComptimeConstPrepassToken {
 }
 
 struct ComptimeConstPrepassDecl {
-	key   string
-	value string
+	key       string
+	value     string
+	has_value bool
 }
 
 struct ComptimeConstPrepassChunk {
@@ -64,12 +65,14 @@ fn parse_chunk_thread(arg voidptr) voidptr {
 	w.reserve_for_source(a.chunk_bytes)
 	paths := unsafe { &[]string(a.paths_ptr) }
 	mut starts := unsafe { &[]int(a.starts_ptr) }
+	w.begin_text_cache_batch(a.end - a.start)
 	for i in a.start .. a.end {
 		unsafe {
 			(*starts)[i] = w.a.nodes.len
 		}
 		w.parse_into((*paths)[i])
 	}
+	w.end_text_cache_batch()
 	parser_worker_scope_leave(a.scope)
 	return unsafe { nil }
 }
@@ -91,8 +94,9 @@ fn clone_comptime_const_prepass_decls(values []ComptimeConstPrepassDecl) []Compt
 	mut cloned := []ComptimeConstPrepassDecl{cap: values.len}
 	for value in values {
 		cloned << ComptimeConstPrepassDecl{
-			key:   value.key.clone()
-			value: value.value.clone()
+			key:       value.key.clone()
+			value:     value.value.clone()
+			has_value: value.has_value
 		}
 	}
 	return cloned
@@ -170,6 +174,8 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	}
 	bounds := parse_chunk_bounds(sizes, n_chunks)
 	thread_count := n_chunks - 1
+	previous_const_names := p.comptime_string_consts.clone()
+	prepass_const_names := p.parallel_comptime_const_names(paths)
 	dispatch_file_id_start := p.next_file_id
 	mut starts := []int{len: paths.len}
 	mut prepass_chunks := []&ComptimeConstPrepassChunk{cap: n_chunks}
@@ -186,6 +192,8 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		w.parse_batch_paths = paths.clone()
 		w.next_file_id = dispatch_file_id_start + bounds[ci + 1]
 		w.quick_source_sums = p.quick_source_sums
+		w.no_source_digests = p.no_source_digests
+		w.comptime_string_consts = prepass_const_names.clone()
 		mut chunk_bytes := i64(0)
 		for i in bounds[ci + 1] .. bounds[ci + 2] {
 			chunk_bytes += sizes[i]
@@ -235,7 +243,9 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 	}
 	ppsw := time.new_stopwatch()
+	p.comptime_string_consts = prepass_const_names.clone()
 	p.a.worker_pool.run(prepass_tasks)
+	p.comptime_string_consts = previous_const_names.clone()
 	p.timing_profile('  [ttime]   pp prepass pool  ${f64(ppsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	for ci in 1 .. n_chunks {
 		if args[ci].scope != unsafe { nil } {
@@ -246,9 +256,14 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 	}
 	mut prefix_values := p.comptime_const_values.clone()
+	mut prefix_names := previous_const_names.clone()
 	for chunk_idx in 0 .. n_chunks {
 		if chunk_idx > 0 {
 			parser_workers[chunk_idx - 1].comptime_const_values = prefix_values.clone()
+			parser_workers[chunk_idx - 1].comptime_string_consts = prefix_names.clone()
+		}
+		for decl in prepass_chunks[chunk_idx].decls {
+			prefix_names[decl.key] = true
 		}
 		apply_parallel_comptime_const_decls(mut prefix_values, prepass_chunks[chunk_idx].decls)
 	}
@@ -389,6 +404,33 @@ fn (mut p Parser) remap_worker_file_ids(first_file_id int, delta int) {
 }
 
 @[direct_array_access]
+fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool {
+	// This superset is only for prepass guard proofs. Full parser workers receive
+	// ordered prefixes, so disabled and later declarations cannot enter their scope.
+	mut names := p.comptime_string_consts.clone()
+	for path in paths {
+		src := read_source_file_raw(path) or { continue }
+		mut files := token.FileSet.new()
+		file := files.add_file(path, src.len)
+		mut s := scanner.new_scanner(p.prefs, .normal)
+		s.init(file, src)
+		mut module_name := ''
+		for {
+			tok := s.scan()
+			if tok == .eof { break }
+			if tok == .key_module && s.scan() == .name {
+				module_name = s.lit
+			} else if tok == .key_const {
+				mut decls := []ComptimeConstPrepassDecl{}
+				p.precollect_parallel_const_decl(mut s, module_name, mut decls)
+				for decl in decls { names[decl.key] = true }
+			}
+		}
+	}
+	return names
+}
+
+@[direct_array_access]
 fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int, end int, mut decls []ComptimeConstPrepassDecl) {
 	mut values := p.comptime_const_values.clone()
 	for path in paths[start..end] {
@@ -403,13 +445,13 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 		mut s := scanner.new_scanner(p.prefs, .normal)
 		s.init(file, src)
 		mut module_name := ''
-		module_name = p.precollect_parallel_comptime_scope(mut s, src, path, module_name, false, mut values, mut decls)
+		module_name = p.precollect_parallel_comptime_scope(mut s, src, path, module_name, false, true, mut values, mut decls)
 	}
 }
 
 // Follow declaration-level comptime branches so only consts from the selected branch enter
 // the ordered worker-prefix snapshots.
-fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src string, path string, module_name string, stop_at_rcbr bool, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) string {
+fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src string, path string, module_name string, stop_at_rcbr bool, publish_values bool, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) string {
 	mut current_module := module_name
 	mut has_pending_attrs := false
 	mut pending_decl_disabled := false
@@ -432,11 +474,11 @@ fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src 
 			saved_s := s
 			comptime_kind := s.scan()
 			if comptime_kind == .key_if {
-				current_module = p.precollect_parallel_comptime_if(mut s, src, path, current_module, mut values, mut decls)
+				current_module = p.precollect_parallel_comptime_if(mut s, src, path, current_module, publish_values, mut values, mut decls)
 				continue
 			}
 			if comptime_kind == .key_match {
-				current_module = p.precollect_parallel_comptime_match(mut s, src, path, current_module, mut values, mut decls)
+				current_module = p.precollect_parallel_comptime_match(mut s, src, path, current_module, publish_values, mut values, mut decls)
 				continue
 			}
 			s = saved_s
@@ -458,7 +500,7 @@ fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src 
 			pending_decl_disabled = false
 			if tok == .key_const {
 				if !disabled {
-					p.precollect_parallel_const_decl_and_apply(mut s, current_module, mut values, mut decls)
+					p.precollect_parallel_const_decl_and_apply(mut s, current_module, publish_values, mut values, mut decls)
 				}
 				continue
 			}
@@ -470,32 +512,48 @@ fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src 
 			continue
 		}
 		if tok == .key_const {
-			p.precollect_parallel_const_decl_and_apply(mut s, current_module, mut values, mut decls)
+			p.precollect_parallel_const_decl_and_apply(mut s, current_module, publish_values, mut values, mut decls)
 		}
 	}
 	return current_module
 }
 
-fn (mut p Parser) precollect_parallel_const_decl_and_apply(mut s scanner.Scanner, module_name string, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) {
+fn (mut p Parser) precollect_parallel_const_decl_and_apply(mut s scanner.Scanner, module_name string, publish_values bool, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) {
 	start := decls.len
 	p.precollect_parallel_const_decl(mut s, module_name, mut decls)
 	if decls.len > start {
+		if !publish_values {
+			for i in start .. decls.len {
+				decls[i] = ComptimeConstPrepassDecl{ ...decls[i], has_value: false }
+			}
+		}
 		apply_parallel_comptime_const_decls(mut values, decls[start..])
 	}
 }
 
-fn (mut p Parser) precollect_parallel_comptime_if(mut s scanner.Scanner, src string, path string, module_name string, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) string {
+fn (mut p Parser) precollect_parallel_comptime_if(mut s scanner.Scanner, src string, path string, module_name string, publish_values bool, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) string {
 	mut current_module := module_name
 	mut any_taken := false
 	mut has_condition := true
+	mut unresolved := false
 	for {
 		mut is_enabled := true
+		mut condition_known := true
 		if has_condition {
-			is_enabled = p.parallel_comptime_branch_enabled(mut s, src, path, current_module, values)
+			if enabled := p.parallel_comptime_branch_enabled(mut s, src, path, current_module, values) {
+				is_enabled = enabled
+			} else {
+				condition_known = false
+			}
 		}
+		if !any_taken && !condition_known { unresolved = true }
 		take_branch := !any_taken && is_enabled
-		if take_branch {
-			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module, true, mut values, mut decls)
+		if !any_taken && unresolved && (!condition_known || is_enabled) {
+			// Names remain declarations, but neither undecided arm can publish a value.
+			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module, true, false, mut values, mut decls)
+			if condition_known && is_enabled { any_taken = true }
+		} else if !unresolved && take_branch {
+			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module, true, publish_values, mut values, mut decls)
 			any_taken = true
 		} else {
 			skip_parallel_comptime_block(mut s)
@@ -533,7 +591,7 @@ fn (mut p Parser) precollect_parallel_comptime_if(mut s scanner.Scanner, src str
 	return current_module
 }
 
-fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src string, path string, module_name string, values map[string]string) bool {
+fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src string, path string, module_name string, values map[string]string) ?bool {
 	mut cond := ''
 	mut cond_start := s.offset
 	mut prev := ''
@@ -560,10 +618,16 @@ fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src st
 		prev = piece
 	}
 	resolved := p.resolve_parallel_comptime_prepass_text(cond, cond_start, src, path, module_name, values, true)
+	// The scanner prepass has no import bindings or string-expression AST.
+	// Leave these declarations for the same proof used by the full parser.
+	mut resolver := p.new_parallel_comptime_prepass_resolver(src, path, module_name)
+	resolver.comptime_const_values = values.clone()
+	resolver.comptime_string_consts = p.comptime_string_consts.clone()
+	if resolver.comptime_cond_references_unresolved_local(resolved) { return none }
 	return p.eval_comptime_cond(resolved)
 }
 
-fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src string, path string, module_name string, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) string {
+fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src string, path string, module_name string, publish_values bool, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) string {
 	mut current_module := module_name
 	mut subject := ''
 	mut subject_start := s.offset
@@ -675,8 +739,10 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 		}
 
 		take_arm := subject_known && !matched && (is_else || pattern_matches)
-		if take_arm {
-			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module, true, mut values, mut decls)
+		if !subject_known {
+			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module, true, false, mut values, mut decls)
+		} else if take_arm {
+			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module, true, publish_values, mut values, mut decls)
 			matched = true
 		} else {
 			skip_parallel_comptime_block(mut s)
@@ -880,11 +946,11 @@ fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_n
 				lit: s.lit
 			}
 		}
-		if value := parallel_comptime_const_value(value_tokens) {
-			decls << ComptimeConstPrepassDecl{
-				key:   comptime_const_value_key(module_name, name)
-				value: value
-			}
+		value := parallel_comptime_const_value(value_tokens)
+		decls << ComptimeConstPrepassDecl{
+			key:       comptime_const_value_key(module_name, name)
+			value:     value or { '' }
+			has_value: value != none
 		}
 		if !grouped || closed_group || tok == .eof {
 			return
@@ -931,6 +997,7 @@ fn parallel_comptime_const_value(tokens []ComptimeConstPrepassToken) ?string {
 
 fn apply_parallel_comptime_const_decls(mut values map[string]string, decls []ComptimeConstPrepassDecl) {
 	for decl in decls {
+		if !decl.has_value { continue }
 		if !decl.value.starts_with(comptime_const_prepass_alias_prefix) {
 			values[decl.key] = decl.value
 			continue
@@ -969,11 +1036,7 @@ mut:
 }
 
 fn new_parse_merge_text_cache() &flat.TextProbeCache {
-	// Probes read a value/id only after its nonzero pointer key matches. Initialize
-	// the keys alone; cached strings already belong to the master's text table.
-	mut cache := unsafe { &flat.TextProbeCache(malloc_noscan(sizeof(flat.TextProbeCache))) }
-	cache.ptrs = unsafe { [4096]voidptr{} }
-	return cache
+	return flat.new_text_probe_cache()
 }
 
 // parse_merge_copy_thread copies one worker's nodes/children into the master
@@ -1079,19 +1142,7 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 }
 
 fn clone_parser_source_file(file &token.File) &token.File {
-	mut file_set := token.FileSet.new()
-	mut stored_file := file_set.add_file(file.name.clone(), file.size)
-	if file.has_source_sha256() {
-		stored_file.set_source_sha256(file.source_sha256())
-	}
-	if file.has_source_quick_sum() {
-		stored_file.set_source_quick_sum(file.source_quick_sum())
-	}
-	for line in 2 .. file.line_count() + 1 {
-		stored_file.add_line(file.line_start(line))
-	}
-	stored_file.copy_line_directives(file)
-	return stored_file
+	return file.clone_index()
 }
 
 fn par_parse_merge_enabled() bool {
@@ -1367,6 +1418,9 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		if key !in p.comptime_const_values {
 			p.comptime_const_values[key.clone()] = value.clone()
 		}
+	}
+	for key, value in w.comptime_string_consts {
+		p.comptime_string_consts[key.clone()] = value
 	}
 	p.parsed_v_files += w.parsed_v_files
 	for path in w.parsed_v_file_paths {

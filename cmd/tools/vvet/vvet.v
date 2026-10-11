@@ -51,7 +51,7 @@ const exclude_dirs = ['test', 'slow_test', 'testdata']
 
 fn main() {
 	vet_options := cmdline.options_after(os.args, ['vet'])
-	mut vt := Vet{
+	mut vt := &Vet{
 		opt: Options{
 			is_werror:           '-W' in vet_options
 			is_verbose:          '-verbose' in vet_options || '-v' in vet_options

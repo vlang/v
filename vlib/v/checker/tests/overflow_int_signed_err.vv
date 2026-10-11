@@ -1,3 +1,5 @@
+// Native int overflow depends on the target width and is covered by
+// integer_cast_platform_width_test.v.
 const _i8s = [
 	i8(0xff), // converted to -1
 	i8(128), // converted to -128
@@ -10,13 +12,6 @@ const _i16s = [
 	i16(32768), // converted to -32768
 	i16(-32769), // converted to +32767
 	i16(-0xffff), // converted to +1
-]
-
-const _ints = [
-	int(0xffffffff), // converted to -1
-	int(2147483648), // converted to -2147483648 (overflow in 32-bit int)
-	int(-2147483649), // converted to +2147483647 (overflow)
-	int(-0xffffffff), // converted to +1
 ]
 
 const _i32s = [

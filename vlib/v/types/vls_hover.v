@@ -1015,11 +1015,13 @@ fn (tc &TypeChecker) vls_element_type(node flat.Node) ?Type {
 // signature writes it.
 fn (tc &TypeChecker) vls_fn_literal_type(literal flat.Node) Type {
 	mut params := []FnParam{}
+	mut is_variadic := false
 	for i in 0 .. literal.children_count {
 		param := tc.a.child_node(&literal, i)
 		if param.kind != .param {
 			continue
 		}
+		is_variadic = param.typ.trim_space().starts_with('...')
 		params << FnParam{ typ: tc.parse_type(param.typ), is_mut: param.is_mut }
 	}
 	result := if literal.typ in ['', 'void'] {
@@ -1029,6 +1031,7 @@ fn (tc &TypeChecker) vls_fn_literal_type(literal flat.Node) Type {
 	}
 	return Type(FnType{
 		params:      params
+		is_variadic: is_variadic
 		return_type: tc.intern_type_reference(result)
 	})
 }

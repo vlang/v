@@ -87,7 +87,7 @@ fn (mut i TypeInterner) own_value(t &Type) Type {
 				params << FnParam{ typ: typ, is_mut: param.is_mut }
 			}
 			_, result := i.intern_locked(t.return_type, semantic_type_hash(t.return_type))
-			Type(FnType{ params: params, return_type: result })
+			Type(FnType{ params: params, return_type: result, is_variadic: t.is_variadic })
 		}
 		OptionType {
 			_, base := i.intern_locked(t.base_type, semantic_type_hash(t.base_type))
@@ -294,6 +294,7 @@ pub fn semantic_type_hash(t &Type) u64 {
 		FnType {
 			hash = type_hash_tag(hash, 16)
 			hash = type_hash_tag(hash, t.params.len)
+			hash = type_hash_tag(hash, int(t.is_variadic))
 			for idx in 0 .. t.params.len {
 				hash = type_hash_tag(hash, int(t.params[idx].is_mut))
 				hash = type_hash_child(hash, t.params[idx].typ)
@@ -441,7 +442,7 @@ pub fn semantic_types_equal(a &Type, b &Type) bool {
 			if b !is FnType {
 				return false
 			}
-			if a.params.len != b.params.len || !semantic_types_equal(a.return_type, b.return_type) {
+			if a.params.len != b.params.len || a.is_variadic != b.is_variadic || !semantic_types_equal(a.return_type, b.return_type) {
 				return false
 			}
 			for idx in 0 .. a.params.len {
@@ -525,4 +526,18 @@ pub fn (tc &TypeChecker) fn_type(params []Type, result &Type, mutability []bool)
 		params:      signature
 		return_type: return_type
 	}
+}
+
+// variadic_fn_type creates a canonical signature while preserving its variadic tail.
+pub fn (tc &TypeChecker) variadic_fn_type(params []Type, result &Type, mutability []bool, is_variadic bool) FnType {
+	return FnType{
+		...tc.fn_type(params, result, mutability)
+		is_variadic: is_variadic
+	}
+}
+
+// fn_type_for_name returns the canonical declared signature, including parameter modes.
+pub fn (tc &TypeChecker) fn_type_for_name(name string) ?FnType {
+	typ := tc.fn_type_from_key(name) or { return none }
+	return typ as FnType
 }
