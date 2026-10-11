@@ -98,6 +98,13 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 	routes := generate_routes[A, X](global_app)!
 	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
 	prompt_to_kill_processes_listening_on_port(params.port)
+	$if veb_livereload ? {
+		$if A is StaticApp {
+			start_livereload(global_app.static_files.clone())
+		} $else {
+			start_livereload(map[string]string{})
+		}
+	}
 
 	// Allocate params on the heap to keep it valid for the server lifetime
 	request_params := &RequestParams{

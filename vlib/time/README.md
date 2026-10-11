@@ -187,3 +187,8 @@ fn main() {
 
 A wait that needs to participate in a `select` uses `sync.new_timer`, which sends the
 time on a channel: see the `sync` module.
+
+`Time.from_json_string` accepts a quoted value returned by `to_json()` as well as the unquoted
+value passed by json2. Unix timestamp strings contain decimal digits with an optional leading
+minus and must fit in `i64`. Empty, malformed, and overflowing values return an error.
+`clean12()` uses a single-digit hour when appropriate, followed by `a.m.` or `p.m.`.

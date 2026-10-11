@@ -311,3 +311,21 @@ fn test_atof_rounds_once_with_guard_and_sticky_bits() {
 	assert math.f64_bits(strconv.atof64('1e23 units', allow_extra_chars: true)!) ==
 		u64(0x44b52d02c7e14af6)
 }
+
+fn test_atof_round_trips_shortest_format_near_decimal_ties() {
+	// 1e23 is exactly halfway between adjacent f64 values before ties-to-even rounding.
+	// Test the formatter/parser pair as well as neighboring values on both sides.
+	for center in [u64(0x44b52d02c7e14af6), u64(0x4340000000000000), u64(0x4350000000000000)] {
+		for offset in -8 .. 9 {
+			bits := u64(i64(center) + offset)
+			for sign in [u64(0), u64(1) << 63] {
+				expected := bits | sign
+				value := math.f64_from_bits(expected)
+				shortest := strconv.f64_to_str(value, 17)
+				assert math.f64_bits(strconv.atof64(shortest)!) == expected, shortest
+			}
+		}
+	}
+	assert strconv.f64_to_str(math.f64_from_bits(u64(0x44b52d02c7e14af6)), 17) == '1e+23'
+	assert math.f64_bits(strconv.atof64('1e+23')!) == u64(0x44b52d02c7e14af6)
+}
