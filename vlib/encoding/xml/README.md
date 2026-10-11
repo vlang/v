@@ -28,6 +28,15 @@ import encoding.xml
 doc := xml.XMLDocument.from_file('test/sample.xml')!
 ```
 
+Attribute names must be unique within an element. Repeated attribute names produce a parse error.
+
+### External DOCTYPE Identifiers
+
+`SYSTEM` and `PUBLIC` DOCTYPE identifiers are accepted with or without an XML declaration.
+`DocumentType.external_id` retains the quoted identifier for serialization. An optional internal
+subset is retained in `DocumentType.dtd`. External DTD resources are not loaded or fetched.
+Malformed or unterminated identifiers produce a descriptive parse error.
+
 ### Validating XML Documents
 
 Simply call `validate` on the parsed XML document.

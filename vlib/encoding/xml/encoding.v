@@ -112,9 +112,9 @@ fn write_pretty_dtd_list(mut builder strings.Builder, list []DTDListItem, indent
 				builder.write_string(indent)
 				builder.write_string('<!ELEMENT ')
 				builder.write_string(item.name)
-				builder.write_string(' [')
+				builder.write_string(' (')
 				builder.write_string(item.definition.join(', '))
-				builder.write_string(']>')
+				builder.write_string(')>')
 			}
 		}
 
@@ -125,6 +125,18 @@ fn write_pretty_dtd_list(mut builder strings.Builder, list []DTDListItem, indent
 }
 
 fn write_pretty_doctype(mut builder strings.Builder, doctype DocumentType, indent string) bool {
+	if doctype.external_id != '' {
+		builder.write_string('<!DOCTYPE ')
+		builder.write_string(doctype.name)
+		builder.write_u8(` `)
+		builder.write_string(doctype.external_id)
+		if doctype.dtd is DocumentTypeDefinition && doctype.dtd.list.len > 0 {
+			builder.write_u8(` `)
+			write_pretty_dtd_list(mut builder, doctype.dtd.list, indent)
+		}
+		builder.write_string('>\n')
+		return true
+	}
 	match doctype.dtd {
 		string {
 			content := doctype.dtd

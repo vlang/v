@@ -768,7 +768,9 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	// `internal_linkage` pragma for `-is_o` otherwise gives a local static both a
 	// private definition and an external relocation on macOS.
 	g.writeln('static bool _v3_no_main_initialized = false;')
-	g.writeln('static void _vno_main_init_caller(void) {')
+	// Export wrappers in cached module units share the program's initializer.
+	storage := if g.cache_split { '' } else { 'static ' }
+	g.writeln('${storage}void _vno_main_init_caller(void) {')
 	g.writeln('\tif (_v3_no_main_initialized) { return; }')
 	g.writeln('\t_v3_no_main_initialized = true;')
 	if g.has_builtins {
@@ -16266,7 +16268,8 @@ fn (mut g FlatGen) forward_decls() {
 		g.forward_decl_items(items, mut forwarded_exports)
 		g.bare_builtin_hook_forward_decls()
 		if g.needs_no_main_runtime_init_caller() {
-			g.writeln('static void _vno_main_init_caller(void);')
+			storage := if g.cache_split { '' } else { 'static ' }
+			g.writeln('${storage}void _vno_main_init_caller(void);')
 		}
 		if g.is_shared {
 			g.writeln('void _vcleanup(void);')
@@ -16326,7 +16329,8 @@ fn (mut g FlatGen) forward_decls() {
 	}
 	g.bare_builtin_hook_forward_decls()
 	if g.needs_no_main_runtime_init_caller() {
-		g.writeln('static void _vno_main_init_caller(void);')
+		storage := if g.cache_split { '' } else { 'static ' }
+		g.writeln('${storage}void _vno_main_init_caller(void);')
 	}
 	if g.is_shared {
 		g.writeln('void _vcleanup(void);')

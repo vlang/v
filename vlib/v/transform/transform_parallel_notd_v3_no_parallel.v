@@ -1793,6 +1793,9 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 	// Classify array constants in the parent arena before forking, so every
 	// batch shares one read-only cache instead of rescanning the AST.
 	t.precompute_const_array_fixed_storage()
+	// Serial batches need the same immutable reflected-loop index as parallel
+	// workers; otherwise each batch rescans the entire growing AST for JSON fields.
+	t.prepare_comptime_reflected_for_roles()
 	// A scoped transformer can itself be a fork whose signature tables still
 	// point at its parent's read-only base. Detach before pre-registering the
 	// batch, rather than mutating storage another worker may be reading.
