@@ -866,6 +866,8 @@ pub fn (ctx &Context) end(options EndOptions) {
 			ctx.show_fps()
 		}
 	}
+	// Rendering uses this Context serially on the render thread. Only internal pass state
+	// is mutated, and Sokol consumes its descriptor before this call returns.
 	mut frame_ctx := unsafe { &Context(ctx) }
 	frame_ctx.prepare_end_pass(options, sapp.glue_swapchain())
 	// sg_begin_pass copies its descriptor synchronously. The next pass can
