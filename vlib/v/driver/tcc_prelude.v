@@ -473,29 +473,24 @@ fn v3_tcc_split_preprocessed(preprocessed string) V3TccPreprocessed {
 fn v3_c_has_time_literal(code string) bool {
 	mut i := 0
 	for i < code.len {
-		if code[i] == `'` {
+		c := code[i]
+		if c == `'` {
 			// A character literal can hold a quotation mark.
-			i++
-			for i < code.len && code[i] != `'` && code[i] != `\n` {
-				i += if code[i] == `\\` { 2 } else { 1 }
-			}
+			i = v3_c_skip_literal(code, i)
+			continue
+		}
+		if c.is_digit() {
+			// A number can hold a `'`.
+			i = v3_c_skip_number(code, i)
+			continue
+		}
+		if c != `"` {
 			i++
 			continue
 		}
-		if code[i] != `"` {
-			i++
-			continue
-		}
-		start := i + 1
-		i++
-		for i < code.len && code[i] != `"` && code[i] != `\n` {
-			i += if code[i] == `\\` { 2 } else { 1 }
-		}
-		if i > code.len {
-			i = code.len
-		}
-		literal := code[start..i]
-		i++
+		end := v3_c_skip_literal(code, i)
+		literal := code[i + 1..end]
+		i = end
 		for j := 0; j + 8 <= literal.len; j++ {
 			if literal[j].is_digit() && literal[j + 1].is_digit() && literal[j + 2] == `:`
 				&& literal[j + 3].is_digit() && literal[j + 4].is_digit() && literal[j + 5] == `:`
@@ -682,6 +677,18 @@ fn v3_tcc_prelude_unit(form string, source string, end int) string {
 		source[end..]
 }
 
+// v3_first_c_error_line returns the line of `output`, what a C compiler printed,
+// that tells its first error, or the first line when none says `error`: a line
+// that tells where a file was included from comes before it.
+fn v3_first_c_error_line(output string) string {
+	for line in output.split_into_lines() {
+		if line.contains('error') {
+			return line
+		}
+	}
+	return output.all_before('\n')
+}
+
 // v3_write_tcc_prelude_stamp puts `stamp` in place of the record at `path`.
 fn v3_write_tcc_prelude_stamp(path string, stamp string) bool {
 	tmp := '${path}.tmp.${tempname.unique_token()}'
@@ -786,8 +793,15 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 	}
 	preprocessed := os.read_file(output_file) or { return none }
 	read, of_the_build, relative_paths := v3_preprocessed_files(preprocessed, cc_dir)
-	mut inputs := v3_header_inputs(read, prelude, v3_tcc_include_search(manager, tcc_path, preprocess_args,
-		cc_dir), before_preprocessing)
+	// The headers are read once, for what they make an input of the form and for
+	// what they say of their macros.
+	mut texts := map[string]string{}
+	for path in read {
+		texts[path] = os.read_file(path) or { '' }
+	}
+	mut inputs := v3_inputs_of_headers(read, v3_has_include_names(prelude), v3_tcc_include_search(manager,
+		tcc_path, preprocess_args, cc_dir), before_preprocessing, texts)
+	inputs.add_time_of(prelude)
 	if relative_paths {
 		inputs.relative_paths = true
 		if output_dir.len == 0 {
@@ -814,7 +828,7 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 		// What the preprocessor does not print of the macros is in the text.
 		macros.add(prelude)
 		for path in read {
-			macros.add(os.read_file(path) or { '' })
+			macros.add(texts[path])
 		}
 		form.definitions, form.unusable = macros.with_variable_arguments(form.definitions)
 	}
@@ -824,8 +838,7 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 		// it went in. A form that TinyCC reports an error in is one that it cannot
 		// use. The same run tells which of the names that the headers ask about
 		// are macros before the preprocessor has read anything.
-		mut tested := macros.tested.keys()
-		tested.sort()
+		tested := macros.names_to_test()
 		os.write_file(tmp, form.text()) or { return none }
 		os.write_file(verify_file, '${v3_tcc_preprocessor_probe(tested)}#include "${c_include_path(tmp)}"\n') or {
 			return none
@@ -866,20 +879,34 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 			}
 		}
 	}
-	if form.unusable.len == 0 && !v3_tcc_source_has_build_time_macros(source[end..])
-		&& !v3_time_names_can_be_built(v3_c_time_name_parts(source[end..])) {
+	// A unit that may ask for the time gives another object every second: what
+	// the headers, the rest of the unit and the command say of it tells.
+	mut of_the_time := V3HeaderInputs{
+		mentions_time: inputs.mentions_time
+		time_parts:    inputs.time_parts.clone()
+	}
+	of_the_time.add_time_of(source[end..])
+	for arg in tcc_args {
+		of_the_time.add_time_of(arg)
+	}
+	if form.unusable.len == 0 && !of_the_time.may_ask_for_time()
+		&& !source[end..].contains('__COUNTER__') {
 		// The unit that asks for the form is what there is to compile: with the
-		// form and without it, it must give the same object. A unit that asks for
-		// the time gives another one every second.
+		// form and without it, it must give the same object.
 		match v3_tcc_compare_units(tcc_path, tcc_args, source_name, cc_dir, source, v3_tcc_prelude_unit(tmp,
 			source, end)) {
 			.alike {}
 			.differ {
 				form.unusable = 'TinyCC makes another object of a unit that reads it'
 			}
+			.uncompiled {
+				// TinyCC does not compile the unit as it is: there is nothing to
+				// compare, and the form is kept for what the other checks say.
+				v3_trace_tcc_prelude('not compared: TinyCC does not compile the unit as it is')
+			}
 			.unknown {
-				// The unit does not compile as it is, or TinyCC did not run: that
-				// says nothing of the form, and the next build asks again.
+				// TinyCC did not run: that says nothing of the form, and the next
+				// build asks again.
 				v3_trace_tcc_prelude('not verified: the unit was not compiled')
 				return none
 			}
@@ -917,13 +944,14 @@ fn v3_tcc_prelude(manager &modulecache.Manager, source string, tcc_path string, 
 enum V3UnitsCompared {
 	alike
 	differ
+	uncompiled
 	unknown
 }
 
 // v3_tcc_compare_units tells whether TinyCC makes the same object of `second` as
-// of `first`, two forms of a program unit. Nothing is known of them when `first`
-// does not compile, or when TinyCC did not get to compile `second`; a `second`
-// that it finds an error in differs from a `first` that it compiles.
+// of `first`, two forms of a program unit. A `first` that it finds an error in is
+// `.uncompiled`, a `second` that it finds one in differs from a `first` that it
+// compiles, and nothing is known when TinyCC did not get to compile one of them.
 fn v3_tcc_compare_units(tcc_path string, tcc_args []string, source_name string, cc_dir string, first string, second string) V3UnitsCompared {
 	mut args := v3_tcc_preprocess_args(tcc_args, source_name)
 	args << ['-c', '-o', 'verify.o', 'verify.c']
@@ -939,11 +967,10 @@ fn v3_tcc_compare_units(tcc_path string, tcc_args []string, source_name string, 
 		os.rm(object) or {}
 		compiled := cmdexec.run_in(tcc_path, args, cc_dir)
 		if compiled.exit_code != 0 {
-			return if i == 1 && v3_c_output_reports_source_error(compiled.output) {
-				V3UnitsCompared.differ
-			} else {
-				V3UnitsCompared.unknown
+			if !v3_c_output_reports_source_error(compiled.output) {
+				return .unknown
 			}
+			return if i == 0 { V3UnitsCompared.uncompiled } else { V3UnitsCompared.differ }
 		}
 		objects << os.read_bytes(object) or { return .unknown }
 	}

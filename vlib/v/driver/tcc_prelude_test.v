@@ -319,4 +319,11 @@ fn test_a_date_or_a_time_of_day_in_a_string_is_what_a_time_macro_leaves() {
 	assert v3_c_has_time_literal('const char *s = "built Jan  1 2026";')
 	assert v3_c_has_time_literal('const char *s = "Sun Oct 11 08:11:38 2026";')
 	assert !v3_c_has_time_literal('const char *s = "October 11, 2026 at 8:11"; int t = 12:34:56;')
+	// A `'` between the digits of a number opens no character literal.
+	assert v3_c_has_time_literal('int n = 1\'000; const char *t = "08:11:38";')
+}
+
+fn test_the_first_error_of_a_compiler_is_not_where_a_file_was_included_from() {
+	assert v3_first_c_error_line('In file included from src.c:1:\n/cache/form.i:9: error: ; expected\n') == '/cache/form.i:9: error: ; expected'
+	assert v3_first_c_error_line('tcc: file not found\nmore\n') == 'tcc: file not found'
 }

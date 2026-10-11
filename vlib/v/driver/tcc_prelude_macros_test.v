@@ -9,24 +9,11 @@ fn test_directives_are_the_lines_that_start_with_a_hash_outside_comments() {
 	assert !directives[2].rest.contains('both')
 }
 
-fn test_identifiers_of_a_line_leave_out_numbers_and_literals() {
-	assert v3_c_identifiers('defined(A) && B > 0x10UL || C == \'D\' || !strcmp("E", F)') == [
-		'defined',
-		'A',
-		'B',
-		'C',
-		'strcmp',
-		'F',
-	]
-}
-
 fn test_macros_of_a_prelude_are_those_that_its_text_asks_about_and_defines() {
 	mut macros := V3PreludeMacros{}
 	macros.add('#ifdef __builtin_offsetof\n#elif defined(OTHER) && VALUE > 1\n#endif\n#undef GONE\n#define PLAIN 1\n#define CALL(a, b) a b\n#define LOG(fmt, args...) printf(fmt, args)\n#define ANY(...) f(__VA_ARGS__)\n#define SPLIT(a, \\\n  rest ...) a rest\nint x;\n')
-	mut tested := macros.tested.keys()
-	tested.sort()
-	assert tested == ['ANY', 'CALL', 'GONE', 'LOG', 'OTHER', 'PLAIN', 'SPLIT', 'VALUE',
-		'__builtin_offsetof']
+	assert macros.names_to_test() == ['ANY', 'CALL', 'GONE', 'LOG', 'OTHER', 'PLAIN', 'SPLIT',
+		'VALUE', '__builtin_offsetof']
 	assert macros.named_variadic == {
 		'LOG':   ['args']
 		'SPLIT': ['rest']
@@ -65,4 +52,23 @@ fn test_probes_tell_which_names_the_compiler_and_the_preprocessor_define() {
 	assert differing == '__builtin_offsetof'
 	other := v3_tcc_probe_difference('probe.c:5: error: include file not found\n') or { '' }
 	assert other == ''
+}
+
+fn test_names_that_a_macro_of_a_condition_expands_to_are_asked_about_too() {
+	asked, expanded := v3_c_condition_names('defined(A) && B(C) > 1 || defined D && !E')
+	assert asked == ['A', 'D'] && expanded == ['B', 'C', 'E']
+	// What a macro expands to is no question by itself, and neither is it when
+	// a condition asks whether the macro is defined.
+	mut used := V3PreludeMacros{}
+	used.add('#define offsetof(t, f) __builtin_offsetof(t, f)\n#ifdef OTHER\n#endif\n#ifndef offsetof\n#endif\n#if defined(offsetof)\n#endif\n')
+	assert used.names_to_test() == ['OTHER', 'offsetof']
+	// It is one when a condition expands the macro, however far away.
+	mut asked_far := V3PreludeMacros{}
+	asked_far.add('#define HAS_OFFSETOF defined(__builtin_offsetof)\n#define HAS_IT (HAS_OFFSETOF && LEVEL)\n')
+	asked_far.add('#if HAS_IT\nint yes;\n#endif\n')
+	assert asked_far.names_to_test() == ['HAS_IT', 'HAS_OFFSETOF', 'LEVEL', '__builtin_offsetof']
+	// A macro that names itself ends the search.
+	mut circular := V3PreludeMacros{}
+	circular.add('#define A B\n#define B A\n#if A\n#endif\n')
+	assert circular.names_to_test() == ['A', 'B']
 }

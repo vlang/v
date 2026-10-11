@@ -14987,7 +14987,7 @@ pub fn run(args []string) {
 				if linked.exit_code != 0 && generated_unit.len > 0
 					&& v3_c_output_reports_source_error(linked.output) {
 					// The unit as it was generated decides what becomes of the build.
-					first_error := linked.output.all_before('\n')
+					first_error := v3_first_c_error_line(linked.output)
 					v3_trace_tcc_prelude('not used: ${first_error}')
 					os.write_file(cc_src, generated_unit) or {}
 					read_preprocessed_headers = false

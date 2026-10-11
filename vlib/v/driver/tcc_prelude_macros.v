@@ -10,9 +10,10 @@ import strings
 //   `f(x, rest...)` as `f(x,rest)`.
 // - It defines some macros for a compilation that it does not define for `-E`,
 //   `__builtin_offsetof` among them, and one, `__TCC_PP__`, the other way round.
-//   A header that asks whether such a macro is defined, defines it, or takes its
+//   A header that asks whether such a macro is defined, in a condition or in a
+//   macro that a condition expands, that defines it, or that takes its
 //   definition away, is read in one way by the preprocessor and in another by the
-//   compiler.
+//   compiler. A name that a condition pastes together with `##` is not seen here.
 //
 // The text of the prelude and of the headers that it reads tells both: which
 // macros name their variable argument, and which names a compilation may see
@@ -24,17 +25,6 @@ import strings
 struct V3Directive {
 	name string
 	rest string
-}
-
-// v3_c_skip_literal returns the position after the string or character literal
-// that starts at `start` in `text`. A literal ends with its line at the latest.
-fn v3_c_skip_literal(text string, start int) int {
-	quote := text[start]
-	mut i := start + 1
-	for i < text.len && text[i] != quote && text[i] != `\n` {
-		i += if text[i] == `\\` { 2 } else { 1 }
-	}
-	return if i < text.len && text[i] == quote { i + 1 } else { i }
 }
 
 // v3_c_directives returns the preprocessing directives of the C `text`. A line
@@ -54,15 +44,12 @@ fn v3_c_directives(text string) []V3Directive {
 			i++
 			continue
 		}
-		if c == `/` && i + 1 < text.len && text[i + 1] == `*` {
-			end := text.index_after_('*/', i + 2)
-			i = if end < 0 { text.len } else { end + 2 }
-			continue
-		}
-		if c == `/` && i + 1 < text.len && text[i + 1] == `/` {
-			end := text.index_after_('\n', i + 2)
-			i = if end < 0 { text.len } else { end }
-			continue
+		if c == `/` {
+			after := v3_c_skip_comment(text, i)
+			if after > i {
+				i = after
+				continue
+			}
 		}
 		if c != `#` || !at_line_start {
 			at_line_start = false
@@ -79,13 +66,11 @@ fn v3_c_directives(text string) []V3Directive {
 			} else if b == `\\` && i + 2 < text.len && text[i + 1] == `\r` && text[i + 2] == `\n` {
 				line.write_u8(` `)
 				i += 3
-			} else if b == `/` && i + 1 < text.len && text[i + 1] == `*` {
-				end := text.index_after_('*/', i + 2)
+			} else if b == `/` && v3_c_skip_comment(text, i) > i {
+				// A comment of a directive can go on over lines, and one that
+				// starts with `//` ends the directive.
 				line.write_u8(` `)
-				i = if end < 0 { text.len } else { end + 2 }
-			} else if b == `/` && i + 1 < text.len && text[i + 1] == `/` {
-				end := text.index_after_('\n', i + 2)
-				i = if end < 0 { text.len } else { end }
+				i = v3_c_skip_comment(text, i)
 			} else if b in [`"`, `'`] {
 				end := v3_c_skip_literal(text, i)
 				line.write_string(text[i..end])
@@ -96,10 +81,7 @@ fn v3_c_directives(text string) []V3Directive {
 			}
 		}
 		words := line.str().trim_space()
-		mut name_end := 0
-		for name_end < words.len && (words[name_end] == `_` || words[name_end].is_alnum()) {
-			name_end++
-		}
+		name_end := v3_c_identifier_end(words, 0)
 		directives << V3Directive{
 			name: words[..name_end]
 			rest: words[name_end..]
@@ -108,46 +90,49 @@ fn v3_c_directives(text string) []V3Directive {
 	return directives
 }
 
-// v3_c_identifiers returns the identifiers of a line of C, in their order: what is
-// in a literal or part of a number is none.
-fn v3_c_identifiers(line string) []string {
-	mut names := []string{}
-	mut i := 0
-	for i < line.len {
-		c := line[i]
-		if c in [`"`, `'`] {
-			i = v3_c_skip_literal(line, i)
-		} else if c.is_digit() {
-			for i < line.len && (line[i].is_alnum() || line[i] in [`_`, `.`]) {
-				i++
-			}
-		} else if c == `_` || c.is_letter() {
-			start := i
-			for i < line.len && (line[i] == `_` || line[i].is_alnum()) {
-				i++
-			}
-			names << line[start..i]
-		} else {
-			i++
-		}
-	}
-	return names
-}
-
 // V3PreludeMacros is what the text of a prelude and of its headers says of macros
 // that the output of `tcc -E -dD` does not say.
 struct V3PreludeMacros {
 mut:
-	// The names that a conditional asks about, and those that are defined or
-	// whose definition is taken away: all that the preprocessor and the compiler
-	// must see alike at the start of a unit.
-	tested map[string]bool
+	// The names that a `#define` gives a macro, or that an `#undef` takes one
+	// from.
+	defined map[string]bool
+	// The names that a condition asks about: those of `#ifdef` and of `defined`.
+	asked map[string]bool
+	// The other identifiers of the conditions of `#if`, which it expands.
+	expanded map[string]bool
+	// For a macro, the names that its definitions ask about with `defined`, and
+	// the other identifiers of what they expand to.
+	bodies_ask    map[string][]string
+	bodies_expand map[string][]string
 	// For a macro, the last parameter of each definition of it that takes any
 	// number of arguments under a name: `rest` of `#define f(x, rest...)`.
 	named_variadic map[string][]string
 	// For a macro, the last parameter of each definition of it that takes a fixed
 	// number of arguments.
 	fixed map[string][]string
+}
+
+// v3_c_condition_names returns the names that `text`, a condition of `#if` or what
+// a macro expands to, asks about with `defined`, and its other identifiers, which
+// a condition expands.
+fn v3_c_condition_names(text string) ([]string, []string) {
+	mut asked := []string{}
+	mut expanded := []string{}
+	mut after_defined := false
+	for name in v3_c_identifiers(text) {
+		if after_defined {
+			after_defined = false
+			if name !in asked {
+				asked << name
+			}
+		} else if name == 'defined' {
+			after_defined = true
+		} else if name !in expanded {
+			expanded << name
+		}
+	}
+	return asked, expanded
 }
 
 // add takes the directives of the C `text` into `m`.
@@ -157,51 +142,107 @@ fn (mut m V3PreludeMacros) add(text string) {
 	}
 	for directive in v3_c_directives(text) {
 		match directive.name {
-			'if', 'elif', 'ifdef', 'ifndef', 'elifdef', 'elifndef' {
+			'ifdef', 'ifndef', 'elifdef', 'elifndef' {
 				for name in v3_c_identifiers(directive.rest) {
-					if name != 'defined' {
-						m.tested[name] = true
-					}
+					m.asked[name] = true
+					break
+				}
+			}
+			'if', 'elif' {
+				asked, expanded := v3_c_condition_names(directive.rest)
+				for name in asked {
+					m.asked[name] = true
+				}
+				for name in expanded {
+					m.expanded[name] = true
 				}
 			}
 			'undef' {
 				for name in v3_c_identifiers(directive.rest) {
-					m.tested[name] = true
+					m.defined[name] = true
 					break
 				}
 			}
 			'define' {
 				rest := directive.rest.trim_left(' \t')
-				mut name_end := 0
-				for name_end < rest.len && (rest[name_end] == `_` || rest[name_end].is_alnum()) {
-					name_end++
-				}
+				name_end := v3_c_identifier_end(rest, 0)
 				if name_end == 0 {
 					continue
 				}
 				name := rest[..name_end]
-				m.tested[name] = true
+				m.defined[name] = true
+				mut body := rest[name_end..]
 				// A macro takes arguments when `(` follows its name at once.
-				if name_end >= rest.len || rest[name_end] != `(` {
-					continue
-				}
-				close := rest.index_after_(')', name_end)
-				if close < 0 {
-					continue
-				}
-				last := rest[name_end + 1..close].all_after_last(',').trim_space()
-				if last.ends_with('...') {
-					named := last[..last.len - 3].trim_space()
-					if named.len > 0 && named !in m.named_variadic[name] {
-						m.named_variadic[name] << named
+				if name_end < rest.len && rest[name_end] == `(` {
+					close := rest.index_after_(')', name_end)
+					if close < 0 {
+						continue
 					}
-				} else if last.len > 0 && last !in m.fixed[name] {
-					m.fixed[name] << last
+					body = rest[close + 1..]
+					last := rest[name_end + 1..close].all_after_last(',').trim_space()
+					if last.ends_with('...') {
+						named := last[..last.len - 3].trim_space()
+						if named.len > 0 && named !in m.named_variadic[name] {
+							m.named_variadic[name] << named
+						}
+					} else if last.len > 0 && last !in m.fixed[name] {
+						m.fixed[name] << last
+					}
+				}
+				asked, expanded := v3_c_condition_names(body)
+				for word in asked {
+					if word !in m.bodies_ask[name] {
+						m.bodies_ask[name] << word
+					}
+				}
+				for word in expanded {
+					if word !in m.bodies_expand[name] {
+						m.bodies_expand[name] << word
+					}
 				}
 			}
 			else {}
 		}
 	}
+}
+
+// names_to_test returns the names that the preprocessor and the compiler must find
+// defined alike where a unit starts, in the order of their bytes: those that the
+// text defines or undefines, those that a condition asks about or expands, and
+// those that a macro which a condition expands asks about or expands in its
+// turn, as `__builtin_offsetof` of
+// `#define HAS_OFFSETOF defined(__builtin_offsetof)` under `#if HAS_OFFSETOF`.
+// What a macro expands to in the C, and not in a condition, is no question:
+// `#ifdef offsetof` asks about `offsetof`, and not about what that stands for.
+fn (m &V3PreludeMacros) names_to_test() []string {
+	mut names := map[string]bool{}
+	for name, _ in m.defined {
+		names[name] = true
+	}
+	for name, _ in m.asked {
+		names[name] = true
+	}
+	mut reached := map[string]bool{}
+	mut waiting := m.expanded.keys()
+	for waiting.len > 0 {
+		name := waiting.pop()
+		if reached[name] {
+			continue
+		}
+		reached[name] = true
+		names[name] = true
+		for word in m.bodies_ask[name] {
+			names[word] = true
+		}
+		for word in m.bodies_expand[name] {
+			if !reached[word] {
+				waiting << word
+			}
+		}
+	}
+	mut sorted := names.keys()
+	sorted.sort()
+	return sorted
 }
 
 // with_variable_arguments returns `definitions`, the lines that TinyCC printed for
@@ -220,10 +261,7 @@ fn (m &V3PreludeMacros) with_variable_arguments(definitions string) (string, str
 			out.writeln(line)
 			continue
 		}
-		mut name_end := '#define '.len
-		for name_end < line.len && (line[name_end] == `_` || line[name_end].is_alnum()) {
-			name_end++
-		}
+		name_end := v3_c_identifier_end(line, '#define '.len)
 		close := if name_end < line.len && line[name_end] == `(` {
 			line.index_after_(')', name_end)
 		} else {

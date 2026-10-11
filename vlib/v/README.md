@@ -653,11 +653,14 @@ printed without what says so, `f(x, ...)` as `f(x,__VA_ARGS__)` and `f(x, rest..
 `f(x,rest)`: the form gets it back, and is not used when the headers define one macro in both
 ways. And TinyCC defines some macros for a compilation that it does not define for `-E`
 (`__builtin_offsetof` among them): the form is not used when the headers ask whether one of those
-is defined, define it or take its definition away, which a second small compilation tells for
-every name that they ask about. Last, the unit that asks for a new form is compiled with it and
-without it, and the form is kept only when both give the same object; those are two more
-compilations, once for a set of headers. The rest of the unit follows the form under a `#line`
-that gives its lines the numbers that they had, for `__LINE__` and for what TinyCC says of them.
+is defined, in a condition or in a macro that a condition expands, define it or take its
+definition away, which a second small compilation tells for every such name. A name that a
+condition pastes together with `##` is not seen there. Last, the unit that asks for a new form is
+compiled with it and without it, and the form is kept only when both give the same object; those
+are two more compilations, once for a set of headers, and they are left out for a unit that may
+ask for the time or that TinyCC does not compile as it is. The rest of the unit follows the form
+under a `#line` that gives its lines the numbers that they had, for `__LINE__` and for what TinyCC
+says of them.
 It is not used either when the headers take a value of `__COUNTER__`, ask for the name of the file
 that is compiled or for the time, push or pop a macro, or include a file that the build made; the
 cache records that, so that the next build does not find it out again. The form is valid while the

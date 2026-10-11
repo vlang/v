@@ -65,30 +65,17 @@ fn v3_c_time_name_parts(text string) []string {
 	mut i := 0
 	for i < text.len {
 		c := text[i]
-		if c == `/` && i + 1 < text.len && text[i + 1] == `*` {
-			end := text.index_after_('*/', i + 2)
-			i = if end < 0 { text.len } else { end + 2 }
-			continue
-		}
-		if c == `/` && i + 1 < text.len && text[i + 1] == `/` {
-			end := text.index_after_('\n', i + 2)
-			i = if end < 0 { text.len } else { end }
+		if c == `/` {
+			after := v3_c_skip_comment(text, i)
+			i = if after > i { after } else { i + 1 }
 			continue
 		}
 		if c == `"` || c == `'` {
-			i++
-			for i < text.len && text[i] != c && text[i] != `\n` {
-				i += if text[i] == `\\` { 2 } else { 1 }
-			}
-			i++
+			i = v3_c_skip_literal(text, i)
 			continue
 		}
 		if c.is_digit() {
-			// A number takes letters, and a `'` between two of its digits.
-			for i < text.len && (text[i].is_alnum() || text[i] in [`_`, `.`]
-				|| (text[i] == `'` && i + 1 < text.len && text[i + 1].is_alnum())) {
-				i++
-			}
+			i = v3_c_skip_number(text, i)
 			continue
 		}
 		if c != `_` && !c.is_letter() {
@@ -138,8 +125,14 @@ fn v3_time_names_can_be_built(parts []string) bool {
 	return false
 }
 
-// add_time_of takes what `text`, the C of a unit or the words of a command, says
-// of the time of the compilation into `inputs`.
+// may_ask_for_time reports whether what `inputs` holds of the time can make a C
+// ask for it: a macro that it names, or parts that can be pasted to its name.
+fn (inputs &V3HeaderInputs) may_ask_for_time() bool {
+	return inputs.mentions_time || v3_time_names_can_be_built(inputs.time_parts)
+}
+
+// add_time_of takes what `text`, the C of a unit or an argument of a command,
+// says of the time of the compilation into `inputs`.
 fn (mut inputs V3HeaderInputs) add_time_of(text string) {
 	if v3_c_mentions_compile_time(text) {
 		inputs.mentions_time = true
@@ -287,15 +280,16 @@ fn v3_include_path_below(name string, framework bool) ?string {
 // known then. One that was there all along is one that the compiler passed over,
 // as `#include_next` does.
 fn v3_header_inputs(read []string, unit string, search V3IncludeSearch, before i64) V3HeaderInputs {
-	mut inputs := v3_inputs_of_headers(read, v3_has_include_names(unit), search, before)
+	mut inputs := v3_inputs_of_headers(read, v3_has_include_names(unit), search, before,
+		map[string]string{})
 	inputs.add_time_of(unit)
 	return inputs
 }
 
 // v3_inputs_of_headers is v3_header_inputs for the files alone: `unit_asks` are the
 // names that the unit asks `__has_include` about, and what the unit says of the
-// time is left out.
-fn v3_inputs_of_headers(read []string, unit_asks []string, search V3IncludeSearch, before i64) V3HeaderInputs {
+// time is left out. `texts` holds the files that the caller has read already.
+fn v3_inputs_of_headers(read []string, unit_asks []string, search V3IncludeSearch, before i64, texts map[string]string) V3HeaderInputs {
 	mut inputs := V3HeaderInputs{}
 	// The compiler and its own answer can spell one directory in two ways, and a
 	// directory below one of the search can be a link to another place: a file is
@@ -310,7 +304,7 @@ fn v3_inputs_of_headers(read []string, unit_asks []string, search V3IncludeSearc
 	mut missing := map[string]bool{}
 	mut asked := unit_asks.clone()
 	for path in read {
-		text := os.read_file(path) or { '' }
+		text := texts[path] or { os.read_file(path) or { '' } }
 		inputs.add_time_of(text)
 		own_dir := os.dir(path)
 		mut beside := []string{}
@@ -483,7 +477,7 @@ fn v3_kept_header_inputs(manager &modulecache.Manager, read []string, unit strin
 			return inputs
 		}
 	}
-	mut inputs := v3_inputs_of_headers(sorted, asked, search, before)
+	mut inputs := v3_inputs_of_headers(sorted, asked, search, before, map[string]string{})
 	// What a unit says of the time is no fact of its headers: the record is of
 	// the headers alone.
 	if inputs.unknown.len == 0 && manager.ensure_dir() {

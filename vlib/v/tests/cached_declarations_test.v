@@ -558,6 +558,25 @@ static inline int review_value(void) { return 2; }
 		assert asked.contains('V3 TinyCC prelude: not used: its headers ask about `__builtin_offsetof`'), asked
 	}
 
+	// The question can be in a macro that a condition expands.
+	os.write_file(header, '#define REVIEW_HAS_OFFSETOF defined(__builtin_offsetof)
+#if REVIEW_HAS_OFFSETOF
+static inline int review_value(void) { return 1; }
+#else
+static inline int review_value(void) { return 2; }
+#endif
+')!
+	settle_headers()
+	os.write_file(main_file, value_source + '\nfn added_indirect() {}\n')!
+	indirect := build(root, flags, main_file, 'indirect')
+	os.setenv('V3_TCC_NO_PRELUDE_CACHE', '1', true)
+	build(root, flags, main_file, 'indirect_plain')
+	os.unsetenv('V3_TCC_NO_PRELUDE_CACHE')
+	assert run_built(root, 'indirect') == run_built(root, 'indirect_plain')
+	if run_built(root, 'indirect_plain') == '1' {
+		assert indirect.contains('V3 TinyCC prelude: not used: its headers ask about `__builtin_offsetof`'), indirect
+	}
+
 	// A macro that the headers define with and without a variable number of
 	// arguments cannot be told from what TinyCC prints.
 	os.write_file(header, '#define REVIEW_NAMED(rest...) review_count(rest)
