@@ -259,6 +259,7 @@ fn test_mut_array_pointer_argument_captures_pointee_before_entry_replacement() !
 	assert items[0] == replacement
 }
 
+// vfmt off
 fn test_mut_map_pointer_argument_keeps_entry_slot_before_if_argument_in_parens() {
 	original := &MapMutPointerItem{ value: 3 }
 	replacement := &MapMutPointerItem{ value: 99 }
@@ -266,7 +267,7 @@ fn test_mut_map_pointer_argument_keeps_entry_slot_before_if_argument_in_parens()
 		'one': original
 	}
 	for name, mut item in items {
-		rebind_map_pointer_item[&MapMutPointerItem](mut item, replacement, if name == 'one' {
+		rebind_map_pointer_item[&MapMutPointerItem](mut ((item)), replacement, if name == 'one' {
 			1
 		} else {
 			2
@@ -282,7 +283,7 @@ fn test_mut_array_pointer_argument_keeps_entry_slot_before_match_argument_in_par
 	replacement := &MapMutPointerItem{ value: 99 }
 	mut items := [original]
 	for mut item in items {
-		rebind_map_pointer_item[&MapMutPointerItem](mut item, replacement, match items.len {
+		rebind_map_pointer_item[&MapMutPointerItem](mut ((item)), replacement, match items.len {
 			1 { 1 }
 			else { 2 }
 		})
@@ -298,7 +299,7 @@ fn test_mut_map_pointer_argument_captures_pointee_before_entry_replacement_in_pa
 		'one': original
 	}
 	for name, mut item in items {
-		set_map_pointer_item(mut item, if name == 'one' {
+		set_map_pointer_item(mut ((item)), if name == 'one' {
 			replace_map_pointer_value(mut items, name, replacement)!
 		} else {
 			u32(0)
@@ -315,7 +316,7 @@ fn test_mut_array_pointer_argument_captures_pointee_before_entry_replacement_in_
 	replacement := &MapMutPointerValue[u32]{ value: 99 }
 	mut items := [original]
 	for mut item in items {
-		set_map_pointer_item(mut item, if items.len == 1 {
+		set_map_pointer_item(mut ((item)), if items.len == 1 {
 			replace_array_pointer_value(mut items, replacement)!
 		} else {
 			u32(0)
@@ -325,3 +326,4 @@ fn test_mut_array_pointer_argument_captures_pointee_before_entry_replacement_in_
 	assert replacement.value == 99
 	assert items[0] == replacement
 }
+// vfmt on
