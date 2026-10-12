@@ -84,6 +84,27 @@ fn test_fails() ! {
 	}
 }
 
+fn test_decode_rejects_non_ascii_input() {
+	// a byte above 127 is just a malformed digit, so it errors like one
+	mut input := 'ab'.bytes()
+	input << 0xff
+	if z := decode_bytes(input) {
+		assert false, 'decode_bytes accepted a non-ASCII digit: ${z}'
+	} else {
+		assert err.msg().contains('invalid base58 digit (255)')
+	}
+	if z := decode_walpha_bytes(input, btc_alphabet) {
+		assert false, 'decode_walpha_bytes accepted a non-ASCII digit: ${z}'
+	} else {
+		assert err.msg().contains('invalid base58 digit (255)')
+	}
+	if z := decode_walpha(input.bytestr(), btc_alphabet) {
+		assert false, 'decode_walpha accepted a non-ASCII digit: ${z}'
+	} else {
+		assert err.msg().contains('invalid base58 digit (255)')
+	}
+}
+
 fn test_alphabet_rejects_non_ascii_bytes() {
 	mut input := btc_alphabet.str().bytes()
 	input[0] = 0x80
