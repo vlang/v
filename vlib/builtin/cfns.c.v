@@ -196,7 +196,9 @@ fn C._execve(cmd_path &char, args voidptr, envs voidptr) i32
 
 fn C._execvp(cmd_path &char, args voidptr) i32
 
-fn C.strcmp(s1 &char, s2 &char) i32
+// The generated test runner compares environment values without V AST calls.
+@[markused; noalloc]
+fn C.strcmp(const_s1 &char, const_s2 &char) i32
 
 @[trusted]
 fn C.fork() i32

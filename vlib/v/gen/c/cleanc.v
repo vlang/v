@@ -563,6 +563,7 @@ mut:
 	is_shared                      bool
 	interface_exports              []string
 	object_file_mode               bool
+	no_builtin                     bool
 	suppress_main                  bool
 	coverage_dir                   string
 	coverage_build_options         string
@@ -1941,6 +1942,11 @@ pub fn (mut g FlatGen) set_profile(file string, no_inline bool, fn_names []strin
 // set_shared configures shared-library entry point generation.
 pub fn (mut g FlatGen) set_shared(enabled bool) {
 	g.is_shared = enabled
+}
+
+// set_no_builtin enables compatibility declarations when V libc bindings are unavailable.
+pub fn (mut g FlatGen) set_no_builtin(enabled bool) {
+	g.no_builtin = enabled
 }
 
 // set_object_file_mode gives generated runtime symbols translation-unit-local
@@ -19111,6 +19117,7 @@ fn (mut g FlatGen) preamble() {
 	} else {
 		g.headerless_libc_preamble()
 	}
+	g.portable_native_runtime_helpers()
 	g.thread_signal_stack_runtime()
 	g.write_arch_macros()
 	g.panic_recovery_preamble()
@@ -19173,6 +19180,30 @@ fn (mut g FlatGen) panic_recovery_preamble() {
 	g.writeln('static inline void v_unwind_jump(void* frame) { v_unwind_longjmp(((v_unwind_frame*)frame)->buf); }')
 }
 
+fn (mut g FlatGen) portable_native_runtime_helpers() {
+	if !(g.output_cross_c || g.object_file_mode) || g.no_builtin || g.target_libc_headers {
+		return
+	}
+	if 'gcboehm' in g.compile_defines {
+		gc_source := $embed_file('@VEXEROOT/vlib/builtin/gc_boehm_helpers.c').to_string()
+		gc_header := $embed_file('@VEXEROOT/vlib/builtin/gc_debugger_linux.h').to_string()
+		g.write(gc_source.replace('#include "gc_debugger_linux.h"', gc_header)
+			.replace('void* v_', 'static void* v_').replace('void v_', 'static void v_')
+			.replace('int v_', 'static int v_'))
+	}
+	if 'no_segfault_handler' !in g.compile_defines && g.target.os != 'vinix' {
+		signal_source := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.c').to_string()
+		signal_header := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.h').to_string()
+		g.writeln('#ifndef _WIN32')
+		g.write(signal_source.replace('#define V_PARALLEL_CC 1\n#define V_PARALLEL_CC_OUT_0 1\n', '')
+			.replace('defined(V_GCBOEHM_NATIVE)', 'defined(CUSTOM_DEFINE_gcboehm)')
+			.replace('#include "segfault_handler_nix.h"', signal_header)
+			.replace('void* v_thread_', 'static void* v_thread_')
+			.replace('void v_thread_', 'static void v_thread_'))
+		g.writeln('#endif')
+	}
+}
+
 fn (g &FlatGen) c_directives_use_system_libc() bool {
 	// A freestanding target has no hosted libc to include, whatever the program's
 	// own `#include`s name. Those includes are the project's own headers -- a
@@ -19181,6 +19212,9 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 	// set into a translation unit that has none of them.
 	if g.target_libc_headers {
 		return false
+	}
+	if g.no_builtin || g.output_cross_c || g.object_file_mode {
+		return true
 	}
 	for directive in g.preinclude_directives {
 		for line in directive.split_into_lines() {

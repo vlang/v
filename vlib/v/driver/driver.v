@@ -1633,7 +1633,9 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		args << wrapv_flag
 	}
 	args << '-w'
-	args << object_flags.flags_for_compiler(compiler)
+	// A C helper does not inherit a standard intended for the C++ main unit.
+	args << object_flags.flags_for_compiler(compiler).filter(is_cpp
+		|| !(it.starts_with('-std=c++') || it.starts_with('-std=gnu++')))
 	if language.len > 0 {
 		args << ['-x', language]
 	}
@@ -14558,6 +14560,7 @@ pub fn run(args []string) {
 			g.set_trace_calls(is_trace_calls, trace_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
+			g.set_no_builtin(no_builtin)
 			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
@@ -14645,6 +14648,7 @@ pub fn run(args []string) {
 			g.set_trace_calls(is_trace_calls, trace_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
+			g.set_no_builtin(no_builtin)
 			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
