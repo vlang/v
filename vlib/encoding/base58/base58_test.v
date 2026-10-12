@@ -93,3 +93,27 @@ fn test_alphabet_rejects_non_ascii_bytes() {
 		assert err.msg() == 'base58.new_alphabet: alphabet must contain only ASCII characters'
 	}
 }
+
+fn test_decode_int_exact_and_overflow() ! {
+	assert decode_int('4GmR58')! == 2147483647
+	max_encoded := if sizeof(int) == 8 { 'NQm6nKp8qFC' } else { '4GmR58' }
+	overflow_encoded := if sizeof(int) == 8 { 'NQm6nKp8qFD' } else { '4GmR59' }
+	assert decode_int(max_encoded)! == max_int
+	assert decode_int('111' + max_encoded)! == max_int
+	if v := decode_int(overflow_encoded) {
+		assert false, 'overflowing input decoded as ${v}'
+	} else {
+		assert err.msg().contains('does not fit in an int')
+	}
+	if sizeof(int) == 8 {
+		// Integer accumulation remains exact above the precision limit of f64.
+		assert i64(decode_int('zzzzzzzzzz')!) == i64(430804206899405823)
+	}
+	assert decode_int('z')! == 57
+	assert decode_int('zz')! == 57 * 58 + 57
+	assert decode_int('2')! == 1
+	for alphabet in [btc_alphabet, flickr_alphabet, ripple_alphabet] {
+		encoded := encode_int_walpha(max_int, alphabet)!
+		assert decode_int_walpha(encoded, alphabet)! == max_int
+	}
+}
