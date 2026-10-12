@@ -13380,11 +13380,13 @@ pub fn run(args []string) {
 				trace_v3_cache_fallback('external C inputs cannot be assigned to cache units')
 				restart_v3_without_cache()
 			}
+			mut header_modules := []string{}
 			for module_name, parsed in cache_state.parsed_from_source {
-				if !parsed {
-					continue
+				if parsed {
+					header_modules << module_name
 				}
-				header := modulecache.module_header_with_const_order(a, pre_tc, module_name, prefs.vroot, cache_state.module_import_paths, const_init_order)
+			}
+			for module_name, header in modulecache.module_headers_with_const_order(a, pre_tc, header_modules, prefs.vroot, cache_state.module_import_paths, const_init_order) {
 				if header.len > 0 {
 					cache_state.headers[module_name] = header
 					cache_module_calls_recover(mut cache_state, modulecache.header_text_calls_recover(header))
@@ -22464,7 +22466,7 @@ fn trace_incremental_check(mut tc types.TypeChecker) {
 // an absolute path, which leaves the output of a check what it would be.
 fn trace_diagnostics_server(message string) {
 	trace := os.getenv('V_DIAGNOSTICS_TRACE')
-	if trace.starts_with('/') {
+	if os.is_abs_path(trace) {
 		mut f := os.open_append(trace) or { return }
 		f.writeln('v-diagnostics-server: ${message}') or {}
 		f.close()

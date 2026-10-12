@@ -2463,6 +2463,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 // scratch lifetime within each helper. A fresh Transformer/TypeChecker fork per
 // batch prevents caches from retaining pointers into the released arena.
 fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_batches int) {
+	_ = t.cached_generic_fn_decls()
 	t.retain_current_worker_scope_all()
 	// Only helper accumulators use this arena. The master continues using the
 	// stage arena because its semantic results survive through code generation.
@@ -2697,6 +2698,7 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 // threads when there is enough work, otherwise serially. Returns whether threads
 // were actually used.
 fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int, base_children int) bool {
+	_ = t.cached_generic_fn_decls()
 
 	// Generic body lowering can discover signatures, so generic builds use the
 	// cloned-worker path below. Skip-generic builds, including self-hosts, can use
