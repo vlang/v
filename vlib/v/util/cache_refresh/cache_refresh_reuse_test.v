@@ -58,6 +58,8 @@ fn test_synthetic_refresh_reports_failed_tinycc_module_objects() ! {
 	ordinary_code := ordinary.code
 	ordinary.close()
 	assert ordinary_code == 0 && os.is_file(program), ordinary_output
+	ran := os.exec([program])
+	assert ran.exit_code == 0 && ran.output == '', ran.output
 }
 
 fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches() ! {
