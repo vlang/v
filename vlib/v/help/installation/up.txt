@@ -35,7 +35,8 @@ Equivalent builds and unavailable inputs are skipped, so progress indices can ju
 The final summary reports how many distinct build configurations were checked.
 The same module can be cached separately for different compilers and build modes.
 This also runs when the compiler itself is already updated. A cache refresh
-failure makes the update fail. Older caches without recorded settings are
+failure makes the update fail. TinyCC object failures are reported instead of
+retrying a program without caching. Older caches without recorded settings are
 refreshed in both modes for the available C compilers, for programs and tests.
 Successful legacy migrations mark the old headers to avoid repeating that matrix.
 

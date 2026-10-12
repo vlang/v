@@ -41,7 +41,8 @@ so `v up` can refresh them after replacing the compiler or updating their source
   and unavailable inputs are skipped. A final summary counts the distinct builds checked.
   Removed modules and records with vanished working directories, required compile inputs,
   listed files or directories, or unavailable C compilers are skipped.
-  A compilation failure is returned to `v up`.
+  A compilation failure is returned to `v up`, including TinyCC module object failures.
+  Refresh does not hide an object failure by retrying a whole program without caching.
 
 Inventory records use length-prefixed arguments and working directories to preserve
 quoting, spaces, and newlines. Records without a working directory remain readable.
