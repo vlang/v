@@ -678,9 +678,12 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	}
 	soutput := decode_windows_captured_output(read_data.str())
 	unsafe { read_data.free() }
-	mut exit_code := C.DWORD(0)
+	mut exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
-	C.GetExitCodeProcess(proc_info.h_process, &exit_code)
+	// The SDK DWORD output is a 32-bit value; use its exact pointer type.
+	unsafe {
+		C.GetExitCodeProcess(proc_info.h_process, &C.DWORD(&exit_code))
+	}
 	C.CloseHandle(proc_info.h_process)
 	C.CloseHandle(proc_info.h_thread)
 	return Result{

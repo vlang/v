@@ -335,11 +335,14 @@ fn (mut p Process) win_kill_pgroup() {
 }
 
 fn (mut p Process) win_wait() {
-	mut exit_code := C.DWORD(1)
+	mut exit_code := u32(1)
 	mut wdata := unsafe { &WProcess(p.wdata) }
 	if p.wdata != 0 {
 		C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
-		C.GetExitCodeProcess(wdata.proc_info.h_process, &exit_code)
+		// The SDK DWORD output is a 32-bit value; use its exact pointer type.
+		unsafe {
+			C.GetExitCodeProcess(wdata.proc_info.h_process, &C.DWORD(&exit_code))
+		}
 		close_valid_handle(&wdata.child_stdin_read)
 		close_valid_handle(&wdata.child_stdout_write)
 		close_valid_handle(&wdata.child_stderr_write)
@@ -351,9 +354,12 @@ fn (mut p Process) win_wait() {
 }
 
 fn (mut p Process) win_is_alive() bool {
-	mut exit_code := C.DWORD(0)
+	mut exit_code := u32(0)
 	wdata := unsafe { &WProcess(p.wdata) }
-	C.GetExitCodeProcess(wdata.proc_info.h_process, &exit_code)
+	// The SDK DWORD output is a 32-bit value; use its exact pointer type.
+	unsafe {
+		C.GetExitCodeProcess(wdata.proc_info.h_process, &C.DWORD(&exit_code))
+	}
 	if exit_code == C.STILL_ACTIVE {
 		return true
 	}

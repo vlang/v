@@ -298,3 +298,6 @@ The following functions should be used with care and only when used correctly.
 - os.is_link()
 
 `get_line()` removes CRLF and LF line endings from standard input on every platform.
+
+Windows process exit codes and disk usage use the SDK's `DWORD` and `ULARGE_INTEGER`
+output types. These bindings keep Clang's incompatible pointer diagnostics enabled.

@@ -49,8 +49,8 @@ pub type C.LPCTSTR = &C.TCHAR
 type C.DWORD = u32
 
 @[typedef]
-struct C.ULARGE_INTEGER {
-mut:
+pub struct C.ULARGE_INTEGER {
+pub mut:
 	QuadPart u64
 }
 
