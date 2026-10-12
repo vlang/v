@@ -1,5 +1,10 @@
 module builtin
 
+$if macos || linux {
+	// The bundled amalgamation otherwise enables unmapping only with HAVE_CONFIG_H.
+	#flag -DUSE_MUNMAP=1
+}
+
 $if !no_gc_threads ? {
 	#flag -DGC_THREADS=1
 	$if !no_gc_thread_local_alloc ? {
