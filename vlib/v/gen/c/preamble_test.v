@@ -393,14 +393,14 @@ fn test_manual_stdlib_header_usage_matches_headerless_and_target_header_modes() 
 	mut tc := types.TypeChecker.new(&ast)
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.host_target()
-	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
 	ast.add_node(flat.Node{ kind: .module_decl, value: 'builtin' })
 	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '<pthread.h>' })
-	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
 	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '<stdio.h>' })
-	assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+	assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
 	prefs.target_libc_headers = true
-	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
 }
 
 fn test_manual_stdlib_header_usage_matches_include_collection() {
@@ -413,13 +413,13 @@ fn test_manual_stdlib_header_usage_matches_include_collection() {
 			ast.add_node(flat.Node{ kind: .file, value: '/project/main.v' })
 			ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
 			ast.add_node(flat.Node{ kind: .directive, value: kind, typ: header })
-			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, []) == (header != 'windows <windows.h>'
+			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false) == (header != 'windows <windows.h>'
 				|| prefs.target.os == 'windows')
 			// Portable C includes retain a preprocessor guard for the target C compiler.
 			prefs.output_cross_c = true
-			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
 			prefs.target_libc_headers = true
-			assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [])
+			assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
 		}
 	}
 }
@@ -445,8 +445,25 @@ fn test_manual_stdlib_header_usage_resolves_native_sources_with_cli_include_dirs
 			ast.add_node(flat.Node{ kind: .file, value: os.join_path(root, 'main.v') })
 			ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
 			ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '"helper.c"' })
-			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, ['-I', include_dir]) == (!portable
-				|| has_include)
+			// Portable runtime helpers require compatibility headers even when the
+			// application's native source has no includes of its own.
+			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, ['-I', include_dir], false)
+			mut g := FlatGen.new()
+			g.a = &ast
+			g.tc = &tc
+			g.target = prefs.target
+			g.output_cross_c = portable
+			g.compiler_vroot = prefs.vroot
+			g.c_flags = ['-I', include_dir]
+			assert g.collect_c_directive_at(ast.nodes.len - 1, 'main', ast.nodes.last(),
+				os.join_path(root, 'main.v'), true)
+			assert g.c_directives.len == 1
+			if portable {
+				assert g.c_directives[0].text.trim_space() == source.trim_space()
+			} else {
+				assert g.c_directives[0].text.contains(os.real_path(os.join_path(include_dir, 'helper.c')).replace('\\', '/'))
+			}
+			assert g.inlined_c_fns['helper'] == !has_include
 		}
 	}
 }
@@ -841,4 +858,34 @@ fn test_manual_windows_crt_declares_compiler_environment_setup() {
 	g.compiler_vroot = 'C:/v'
 	g.gen_compiler_vexe_env_setup()
 	assert g.sb.str().contains('_putenv_s("VEXE", v3_vexe);')
+}
+
+fn test_manual_header_preflight_matches_portable_no_builtin_and_object_generation() {
+	for portable in [false, true] {
+		for no_builtin in [false, true] {
+			for object_file_mode in [false, true] {
+				for target_libc_headers in [false, true] {
+					mut ast := flat.FlatAst.new()
+					mut tc := types.TypeChecker.new(&ast)
+					mut prefs := pref.new_preferences()
+					prefs.target = pref.host_target()
+					prefs.output_cross_c = portable
+					prefs.no_builtin = no_builtin
+					prefs.target_libc_headers = target_libc_headers
+					expected := !target_libc_headers && (portable || no_builtin || object_file_mode)
+					assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], object_file_mode) == expected
+					mut g := FlatGen.new()
+					g.a = &ast
+					g.tc = &tc
+					g.set_target(prefs.target)
+					g.set_target_libc_headers(target_libc_headers)
+					g.set_output_cross_c(portable)
+					g.set_no_builtin(no_builtin)
+					g.set_object_file_mode(object_file_mode)
+					g.preamble()
+					assert g.sb.str().contains('#define V_MANUAL_STDLIB_HEADERS 1') == expected
+				}
+			}
+		}
+	}
 }

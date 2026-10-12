@@ -65,7 +65,8 @@ pub fn manual_stdlib_c_headers_error() ?string {
 
 // uses_manual_stdlib_c_headers reports whether this program needs the embedded libc preamble.
 // It is only needed when the embedded header is damaged, before the driver starts C generation.
-pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, prefs &pref.Preferences, initial_c_flags []string) bool {
+// object_file_mode must match the driver's object-output selection.
+pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, prefs &pref.Preferences, initial_c_flags []string, object_file_mode bool) bool {
 	if prefs.target_libc_headers {
 		return false
 	}
@@ -74,6 +75,8 @@ pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, pref
 	g.tc = tc
 	g.target = prefs.target
 	g.output_cross_c = prefs.output_cross_c
+	g.no_builtin = prefs.no_builtin
+	g.object_file_mode = object_file_mode
 	g.compiler_vroot = prefs.vroot
 	g.compile_values = prefs.compile_values
 	g.c99_mode = prefs.c99
