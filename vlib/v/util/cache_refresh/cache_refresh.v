@@ -542,6 +542,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // covers transitive imports, headers, embedded files and compiler changes. Unchanged entries are
 // reused, and each newly compiled module is announced on inherited stdout.
 // Equivalent synthetic import sequences and live entry commands run once per configuration.
+// Both stop after module object validation, before compiling or linking a program unit.
 // Progress identifies the record being checked, its compiler flags, production mode and test mode.
 // Records with vanished working directories, required inputs or compilers are skipped.
 // Live entries whose project source identity changed are skipped until rebuilt and recorded.

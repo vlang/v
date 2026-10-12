@@ -15260,7 +15260,9 @@ pub fn run(args []string) {
 				cache_state.module_sources, project_flags, refresh_entry, show_test_stats) or {
 				trace_v3_cache_fallback('could not record the v up cache inventory: ${err}')
 			}
-			if os.getenv('V3_CACHE_REFRESH') == '1' && os.getenv('V3_CACHE_REFRESH_ENTRY') == '1' {
+			// Refresh validates module objects for both live entries and temporary
+			// importers. Neither needs a program object, development dylib or link.
+			if os.getenv('V3_CACHE_REFRESH') == '1' {
 				prealloc_scope_free_for_v3(cache_prepare_scope)
 				os.rm(cache_plan_file) or {}
 				cleanup_c_build_dir(cc_dir)
@@ -15321,7 +15323,7 @@ pub fn run(args []string) {
 			prealloc_scope_free_for_v3(cache_prepare_scope)
 			os.rm(cache_plan_file) or {}
 		}
-		if os.getenv('V3_CACHE_REFRESH') == '1' && os.getenv('V3_CACHE_REFRESH_ENTRY') == '1' {
+		if os.getenv('V3_CACHE_REFRESH') == '1' {
 			cleanup_c_build_dir(cc_dir)
 			return
 		}

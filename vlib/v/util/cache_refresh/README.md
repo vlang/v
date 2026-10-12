@@ -25,7 +25,9 @@ so `v up` can refresh them after replacing the compiler or updating their source
   Unchanged entries retain all recorded compiler, production, and test variants.
   Absolute `-file-list` files and directories accompany live entries. Directory operands
   recursively include their current sources, so newly added files are included during refresh.
-  Otherwise it compiles a temporary importer with the recorded project directives.
+  Otherwise it prepares a temporary importer with the recorded project directives.
+  Both paths stop after validating and rebuilding module objects, before compiling
+  program objects, building development libraries, or linking an executable.
   It uses the compiler's default caching mode and preserves build modes,
   resolved compiler commands, and absolute search paths.
   A recorded working directory keeps relative C compilation inputs valid.

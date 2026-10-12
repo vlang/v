@@ -2,6 +2,60 @@ module cache_refresh
 
 import os
 
+fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches() ! {
+	$if windows {
+		return
+	}
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	root := os.join_path(os.vtmp_dir(), 'vup_objects_only_${os.getpid()}')
+	os.mkdir_all(root)!
+	saved := os.environ()
+	variables := ['V3CACHE', 'VEXE', 'VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH',
+		'V3_CACHE_REFRESH_ENTRY', 'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V3_CACHE_FORCE_SOURCE',
+		'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
+	defer {
+		for variable in variables {
+			if variable in saved {
+				os.setenv(variable, saved[variable], true)
+			} else {
+				os.unsetenv(variable)
+			}
+		}
+		os.rmdir_all(root) or {}
+	}
+	for variable in variables { os.unsetenv(variable) }
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	os.setenv('VEXE', @VEXE, true)
+	os.setenv('V_SKIP_VVMRC', '1', true)
+	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
+	log := os.join_path(root, 'calls')
+	compiler := os.join_path(root, 'cc')
+	// Module compilation is allowed. Compiling a program unit or linking the
+	// synthetic importer must fail, even if the ordinary compiler could do it.
+	os.write_file(compiler, '#!/bin/sh\n' +
+		'case "\$*" in --version) exec ' + os.quoted_path(cc) + ' "\$@";; esac\n' +
+		'printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n' +
+		'case "\$*" in *program_main_*|*program_prefix_*) echo "unexpected program object" >&2; exit 97;; esac\n' +
+		'for arg; do\n  if [ "\$arg" = -c ]; then exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
+		'echo "unexpected program link" >&2\nexit 98\n')!
+	os.chmod(compiler, 0o755)!
+	for is_test in [false, true] {
+		requests := [Request{
+			args:    ['-cc', compiler]
+			module:  'math.big'
+			imports: ['crypto.ed25519', 'math.big']
+			is_test: is_test
+		}]
+		refresh(@VEXE, requests)!
+		cold_calls := os.read_file(log)!
+		assert cold_calls.len > 0
+		assert !cold_calls.contains('program_main_') && !cold_calls.contains('program_prefix_'), cold_calls
+		assert collect(os.dir(@VEXE), @VEXE)!.any(it.module == 'math.big' && it.is_test == is_test)
+		refresh(@VEXE, requests)!
+		assert os.read_file(log)! == cold_calls, 'warm refresh must reuse its validated module objects'
+	}
+}
+
 fn test_inventory_preserves_distinct_import_orders() ! {
 	root := os.join_path(os.vtmp_dir(), 'vup_no_recursive_inventory_${os.getpid()}')
 	source := os.join_path(root, 'vlib', 'sample', 'sample.v')
