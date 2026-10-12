@@ -1826,7 +1826,12 @@ fn c_object_dependencies(compiler string, compile_args []string, source_file str
 fn c_object_dependencies_in(compiler string, compile_args []string, source_file string, work_dir string) CObjectDependencies {
 	mut args := compile_args.clone()
 	mt_target := 'v3cache'
-	args << ['-M', '-MT', mt_target, source_file]
+	// TinyCC names the dependency target with -o and does not support -MT.
+	if compiler == 'tinyc' || os.file_name(compiler).to_lower_ascii().contains('tcc') {
+		args << ['-M', '-o', mt_target, source_file]
+	} else {
+		args << ['-M', '-MT', mt_target, source_file]
+	}
 	result := if work_dir.len > 0 {
 		cmdexec.run_in(compiler, args, work_dir)
 	} else {
@@ -1898,6 +1903,40 @@ fn c_source_from_object_file(obj_path string) ?string {
 		}
 	}
 	return none
+}
+
+// v3_tcc_link_has_incompatible_objects keeps foreign objects off macOS TinyCC.
+// Missing .o requests backed by C sources are built by the selected compiler;
+// their resolved cache objects are compatible when that compiler is TinyCC.
+fn v3_tcc_link_has_incompatible_objects(resolved_flags []string, requested_flags []string, compiler string) bool {
+	mut resolved_count := 0
+	for idx in c_link_input_indices(resolved_flags) {
+		if c_flag_is_object_file(resolved_flags[idx].trim_space()) {
+			resolved_count++
+		}
+	}
+	if resolved_count == 0 {
+		return false
+	}
+	if compiler != 'tinyc' && !os.file_name(compiler).to_lower_ascii().contains('tcc') {
+		return true
+	}
+	mut compiled_count := 0
+	for idx in c_link_input_indices(requested_flags) {
+		path := requested_flags[idx].trim_space()
+		if !c_flag_is_object_file(path) {
+			continue
+		}
+		if os.is_file(path) {
+			return true
+		}
+		source := c_source_from_object_file(path) or { return true }
+		if !source.ends_with('.c') {
+			return true
+		}
+		compiled_count++
+	}
+	return resolved_count != compiled_count
 }
 
 fn c_object_cache_name(path string, compiler string, compile_args []string, dependencies []string, target pref.Target, refresh bool, mut stats CObjectCacheStats) string {
@@ -14525,12 +14564,8 @@ pub fn run(args []string) {
 		}
 		mut tcc_link_has_incompatible_objects := false
 		if prefs.normalized_target_os() == 'macos' {
-			for flag in resolved_c_flags {
-				if c_flag_is_object_file(flag.trim_space()) {
-					tcc_link_has_incompatible_objects = true
-					break
-				}
-			}
+			tcc_link_has_incompatible_objects = v3_tcc_link_has_incompatible_objects(resolved_c_flags,
+				generated_c_flags, c_compiler)
 		}
 		mut cached_objects := []string{}
 		mut cached_dev_dylib := ''

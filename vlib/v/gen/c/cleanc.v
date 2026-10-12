@@ -5887,12 +5887,24 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		if include_arg.len == 0 {
 			return true
 		}
-		g.note_c_include_directive(module_name, source_file)
-		// These helper headers are superseded by the inline compiler helpers emitted in
-		// builtin_abi_decls(); also including them would redefine the helpers.
 		if c_include_arg_is_builtin_abi_helper(include_arg, g.compiler_vroot) {
 			return true
 		}
+		// Inserted source supplies its own declarations without a header lookup.
+		if node.value == 'insert' {
+			for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file,
+				c_flag_include_dirs(g.c_flags)) {
+				if text := os.read_file(path) {
+					g.collect_inlined_c_structs(text)
+					g.collect_inlined_c_fns(text)
+					g.collect_inlined_c_declared_fns(text)
+					g.add_c_directive(module_name, g.guarded_c_directive(node_idx,
+						cross_prefix_condition, text), before_import)
+					return true
+				}
+			}
+		}
+		g.note_c_include_directive(module_name, source_file)
 		include_dirs := c_flag_include_dirs(g.c_flags)
 		// `#insert` is an explicit request to inline the source text. Delay only
 		// ordinary source includes until after generated type declarations.
@@ -18976,10 +18988,8 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('typedef long long time_t;')
 		g.writeln('#endif')
 	}
-	// C23 has boolean keywords; older C2x compilers get them from stdbool.h.
-	g.writeln('#if defined(__STDC_VERSION__) && __STDC_VERSION__ > 201710L')
-	g.writeln('#include <stdbool.h>')
-	g.writeln('#endif')
+	// C23 and C++ already have boolean keywords.
+	g.writeln('#if !defined(__cplusplus) && (!defined(__STDC_VERSION__) || __STDC_VERSION__ <= 201710L)')
 	g.writeln('#ifndef __bool_true_false_are_defined')
 	g.writeln('#ifdef _MSC_VER')
 	g.writeln('typedef unsigned char bool;')
@@ -18987,6 +18997,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('typedef _Bool bool;')
 	g.writeln('#endif')
 	g.writeln('#define __bool_true_false_are_defined 1')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('typedef void* voidptr;')
 	if g.race {
@@ -19064,7 +19075,7 @@ fn (mut g FlatGen) preamble() {
 	} else {
 		g.headerless_libc_preamble()
 	}
-	g.thread_signal_stack_runtime(use_system_libc)
+	g.thread_signal_stack_runtime()
 	g.write_arch_macros()
 	g.panic_recovery_preamble()
 	g.writeln('')
@@ -19365,9 +19376,21 @@ fn (mut g FlatGen) system_libc_preamble() {
 // wrappers. Under Boehm these wrappers must be scanned GC roots until the worker
 // is joined; libc malloc memory is invisible to the collector.
 fn (mut g FlatGen) thread_allocation_helpers() {
+	g.emit_c_runtime_declarations(['GC_MALLOC_UNCOLLECTABLE', 'GC_FREE', 'GC_allow_register_threads'])
+	if 'gcboehm' in g.compile_defines && g.target.os != 'windows' {
+		g.emit_c_runtime_declarations(['v_gc_pthread_create', 'v_gc_pthread_join', 'v_gc_pthread_detach',
+			'v_gc_pthread_sigmask', 'v_gc_pthread_cancel', 'v_gc_pthread_exit', 'v_gc_dlopen'])
+		for name in ['pthread_create', 'pthread_join', 'pthread_detach', 'pthread_sigmask',
+			'pthread_cancel', 'pthread_exit'] {
+			g.writeln('#define ${name} v_gc_${name}')
+			g.inlined_c_active_macros[name] = true
+		}
+		g.writeln('#define dlopen v_gc_dlopen')
+		g.inlined_c_active_macros['dlopen'] = true
+	}
 	g.writeln('static void* __v_thread_alloc(size_t size) {')
 	g.writeln('#if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
-	g.writeln('\tvoid* p = GC_MALLOC_UNCOLLECTABLE(size);')
+	g.writeln('\tvoid* p = v_gc_malloc_uncollectable(size);')
 	g.writeln('#else')
 	g.writeln('\tvoid* p = malloc(size);')
 	g.writeln('#endif')
@@ -19376,7 +19399,7 @@ fn (mut g FlatGen) thread_allocation_helpers() {
 	g.writeln('}')
 	g.writeln('static void __v_thread_free(void* ptr) {')
 	g.writeln('#if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
-	g.writeln('\tGC_FREE(ptr);')
+	g.writeln('\tv_gc_free(ptr);')
 	g.writeln('#else')
 	g.writeln('\tfree(ptr);')
 	g.writeln('#endif')
@@ -19398,69 +19421,15 @@ fn (g &FlatGen) uses_thread_signal_stack() bool {
 // lowest and highest address of the thread stack, and the size of the mapping. Where
 // the alternate stack can not be used, or a sanitizer handles the signals, both are
 // no-op macros.
-fn (mut g FlatGen) thread_signal_stack_runtime(use_system_libc bool) {
-	if !use_system_libc || !g.uses_thread_signal_stack() {
+fn (mut g FlatGen) thread_signal_stack_runtime() {
+	if !g.uses_thread_signal_stack() {
 		g.writeln('#define __v_thread_signal_stack_enter(stack_top) ((void)(stack_top), (void*)0)')
 		g.writeln('#define __v_thread_signal_stack_leave(alt_stack) ((void)(alt_stack))')
 		return
 	}
-	g.writeln('#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__) || defined(__SANITIZE_HWADDRESS__)')
-	g.writeln('#define __V_NO_THREAD_SIGNAL_STACK 1')
-	g.writeln('#elif defined(__has_feature)')
-	g.writeln('#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || __has_feature(memory_sanitizer) || __has_feature(hwaddress_sanitizer)')
-	g.writeln('#define __V_NO_THREAD_SIGNAL_STACK 1')
-	g.writeln('#endif')
-	g.writeln('#endif')
-	g.writeln('#if !defined(_WIN32) && !defined(__V_NO_THREAD_SIGNAL_STACK) && defined(SA_ONSTACK) && defined(SS_DISABLE) && (defined(MAP_ANONYMOUS) || defined(MAP_ANON)) && !defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)')
-	g.writeln('static inline void* __v_thread_signal_stack_enter(void* stack_top) {')
-	g.writeln('\tstack_t old;')
-	g.writeln('\tmemset(&old, 0, sizeof(old));')
-	g.writeln('\tif (sigaltstack(NULL, &old) != 0 || !(old.ss_flags & SS_DISABLE)) { return NULL; }')
-	g.writeln('\tsize_t size = 64 * 1024;')
-	g.writeln('#if defined(_SC_MINSIGSTKSZ)')
-	g.writeln('\tlong min_size = sysconf(_SC_MINSIGSTKSZ);')
-	g.writeln('\tif (min_size > 0 && (size_t)min_size + 32 * 1024 > size) { size = (size_t)min_size + 32 * 1024; }')
-	g.writeln('#endif')
-	g.writeln('#if defined(MAP_ANONYMOUS)')
-	g.writeln('\tvoid* base = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);')
-	g.writeln('#else')
-	g.writeln('\tvoid* base = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);')
-	g.writeln('#endif')
-	g.writeln('\tif (base == MAP_FAILED) { return NULL; }')
-	g.writeln('#if defined(__APPLE__)')
-	g.writeln('\t(void)stack_top;')
-	g.writeln('\tuintptr_t hi = (uintptr_t)pthread_get_stackaddr_np(pthread_self());')
-	g.writeln('\tuintptr_t stack_size = (uintptr_t)pthread_get_stacksize_np(pthread_self());')
-	g.writeln('#else')
-	// The first V frame of the thread is close to the top of its stack, that has the
-	// requested size; the handler tolerates the small error of this estimate.
-	g.writeln('\tuintptr_t hi = (uintptr_t)stack_top;')
-	g.writeln('\tuintptr_t stack_size = (uintptr_t)V_THREAD_STACK_SIZE;')
-	g.writeln('#endif')
-	g.writeln('\tuintptr_t* header = (uintptr_t*)base;')
-	g.writeln('\theader[0] = (uintptr_t)0x56534f56u;')
-	g.writeln('\theader[1] = hi > stack_size ? hi - stack_size : 0;')
-	g.writeln('\theader[2] = hi;')
-	g.writeln('\theader[3] = (uintptr_t)size;')
-	g.writeln('\tstack_t ss;')
-	g.writeln('\tmemset(&ss, 0, sizeof(ss));')
-	g.writeln('\tss.ss_sp = base;')
-	g.writeln('\tss.ss_size = size;')
-	g.writeln('\tif (sigaltstack(&ss, NULL) != 0) { munmap(base, size); return NULL; }')
-	g.writeln('\treturn base;')
-	g.writeln('}')
-	g.writeln('static inline void __v_thread_signal_stack_leave(void* alt_stack) {')
-	g.writeln('\tif (alt_stack == NULL) { return; }')
-	g.writeln('\tstack_t ss;')
-	g.writeln('\tmemset(&ss, 0, sizeof(ss));')
-	g.writeln('\tss.ss_flags = SS_DISABLE;')
-	g.writeln('\tif (sigaltstack(&ss, NULL) != 0) { return; }')
-	g.writeln('\tmunmap(alt_stack, (size_t)((uintptr_t*)alt_stack)[3]);')
-	g.writeln('}')
-	g.writeln('#else')
-	g.writeln('#define __v_thread_signal_stack_enter(stack_top) ((void)(stack_top), (void*)0)')
-	g.writeln('#define __v_thread_signal_stack_leave(alt_stack) ((void)(alt_stack))')
-	g.writeln('#endif')
+	g.emit_c_runtime_declarations(['v_thread_signal_stack_enter', 'v_thread_signal_stack_leave'])
+	g.writeln('#define __v_thread_signal_stack_enter(stack_top) v_thread_signal_stack_enter(stack_top, V_THREAD_STACK_SIZE)')
+	g.writeln('#define __v_thread_signal_stack_leave(alt_stack) v_thread_signal_stack_leave(alt_stack)')
 }
 
 fn (mut g FlatGen) thread_stack_size_definition() {
@@ -19643,7 +19612,6 @@ fn (mut g FlatGen) target_libc_optional_stdatomic_header() {
 }
 
 fn (mut g FlatGen) headerless_libc_preamble() {
-	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
 	if g.target_libc_headers {
 		// A freestanding target supplies these headers itself, so include them
 		// instead of restating what they declare. Its own <stdint.h> may spell the
@@ -19746,72 +19714,18 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef struct FILE FILE;')
 	g.writeln('#endif')
 	g.writeln('typedef struct DIR DIR;')
+	g.writeln('typedef int (*qsort_callback_func)(const void*, const void*);')
 	g.writeln('#if !defined(_SSIZE_T) && !defined(_SSIZE_T_DEFINED) && !defined(__ssize_t_defined) && !defined(_SSIZE_T_DECLARED)')
 	g.writeln('typedef intptr_t ssize_t;')
 	g.writeln('#endif')
 	g.writeln('extern char** environ;')
-	g.writeln('void* malloc(size_t size);')
-	g.writeln('void* calloc(size_t count, size_t size);')
-	g.writeln('void* realloc(void* ptr, size_t size);')
-	g.writeln('void free(void* ptr);')
-	g.writeln('int printf(const char* format, ...);')
-	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
-	g.writeln('void perror(const char* message);')
-	g.writeln('int fseek(FILE* stream, long offset, int whence);')
-	g.writeln('char* getenv(const char* name);')
-	g.writeln('int setenv(const char* name, const char* value, int overwrite);')
-	g.writeln('int unsetenv(const char* name);')
-	g.writeln('void abort(void);')
-	g.headerless_execinfo_declarations()
 	for name in c_function_like_macro_decl_names() {
 		g.writeln('#ifdef ${name}')
 		g.writeln('#undef ${name}')
 		g.writeln('#endif')
 	}
-	g.writeln('void* memset(void* s, int c, size_t n);')
-	g.writeln('void* memcpy(void* dest, const void* src, size_t n);')
-	g.writeln('void* memmove(void* dest, const void* src, size_t n);')
-	g.writeln('void* memchr(const void* s, int c, size_t n);')
-	g.writeln('int memcmp(const void* s1, const void* s2, size_t n);')
-	g.writeln('size_t strlen(const char* s);')
-	g.writeln('int strcmp(const char* s1, const char* s2);')
-	g.writeln('int strncmp(const char* s1, const char* s2, size_t n);')
-	g.writeln('char* strncpy(char* dest, const char* src, size_t n);')
-	g.writeln('void qsort(void* base, size_t items, size_t item_size, int (*cb)(const void*, const void*));')
-	g.writeln('double floor(double x);')
-	g.writeln('double ceil(double x);')
-	g.writeln('float floorf(float x);')
-	g.writeln('float ceilf(float x);')
-	g.writeln('double sqrt(double x);')
-	g.writeln('double pow(double x, double y);')
-	g.writeln('double ldexp(double x, int exp);')
-	g.writeln('double fmod(double x, double y);')
-	g.writeln('double cos(double x);')
-	g.writeln('double acos(double x);')
-	g.writeln('double fabs(double x);')
-	g.writeln('#ifndef _WIN32')
-	g.writeln('int open(const char* path, int flags, ...);')
-	g.writeln('ssize_t read(int fd, void* buf, size_t count);')
-	g.writeln('int fork(void);')
-	g.writeln('int dup2(int oldfd, int newfd);')
-	g.writeln('int execlp(const char* file, const char* arg, ...);')
-	g.writeln('int execvp(const char* file, char* const argv[]);')
-	g.writeln('void _exit(int status);')
-	g.writeln('#endif')
-	g.writeln('int access(const char* path, int mode);')
-	g.writeln('char* realpath(const char* path, char* resolved_path);')
-	g.writeln('char* strrchr(const char* s, int c);')
-	g.writeln('char* strstr(const char* haystack, const char* needle);')
-	g.writeln('int snprintf(char* str, size_t size, const char* format, ...);')
-	g.writeln('int fcntl(int fd, int cmd, ...);')
-	g.writeln('int pipe(int* pipefds);')
-	g.writeln('int close(int fd);')
-	g.writeln('void* signal(int sig, void* handler);')
-	g.writeln('int atexit(void (*f)(void));')
 	g.writeln('#ifdef __APPLE__')
-	g.writeln('const char* _dyld_get_image_name(unsigned int image_index);')
 	g.writeln('struct mach_header;')
-	g.writeln('const struct mach_header* _dyld_get_image_header(unsigned int image_index);')
 	g.writeln('#endif')
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)')
 	g.writeln('extern FILE* __stdinp;')
@@ -19820,7 +19734,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define stdin __stdinp')
 	g.writeln('#define stdout __stdoutp')
 	g.writeln('#define stderr __stderrp')
-	g.writeln('int* __error(void);')
+	g.emit_c_runtime_declarations(['__error'])
 	g.writeln('#define errno (*__error())')
 	g.writeln('#elif defined(__OpenBSD__)')
 	g.writeln('struct __sFstub { long _stub; };')
@@ -19846,19 +19760,19 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('extern FILE* stdin;')
 	g.writeln('extern FILE* stdout;')
 	g.writeln('extern FILE* stderr;')
-	g.writeln('int* __errno(void);')
+	g.emit_c_runtime_declarations(['__errno'])
 	g.writeln('#define errno (*__errno())')
 	g.writeln('#elif defined(__linux__)')
 	g.writeln('extern FILE* stdin;')
 	g.writeln('extern FILE* stdout;')
 	g.writeln('extern FILE* stderr;')
-	g.writeln('int* __errno_location(void);')
+	g.emit_c_runtime_declarations(['__errno_location'])
 	g.writeln('#define errno (*__errno_location())')
 	g.writeln('#elif defined(_WIN32)')
 	g.writeln('extern FILE* stdin;')
 	g.writeln('extern FILE* stdout;')
 	g.writeln('extern FILE* stderr;')
-	g.writeln('int* _errno(void);')
+	g.emit_c_runtime_declarations(['_errno'])
 	g.writeln('#define errno (*_errno())')
 	g.writeln('#else')
 	g.writeln('extern FILE* stdin;')
@@ -19910,17 +19824,10 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define PTHREAD_ONCE_INIT { 0 }')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	g.writeln('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
-	g.writeln('void* pthread_getspecific(pthread_key_t key);')
-	g.writeln('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
-	g.writeln('int pthread_once(pthread_once_t* once_control, void (*init_routine)(void));')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sem_t;')
 	g.writeln('#if !defined(__sigset_t_defined) && !defined(_SIGSET_T_DECLARED) && !defined(_SIGSET_T_DEFINED) && !defined(_SIGSET_T)')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sigset_t;')
 	g.writeln('#endif')
-	g.writeln('int ptrace(int request, pid_t pid, void* addr, int data);')
-	g.writeln('int sigaddset(sigset_t* set, int signal_number);')
-	g.writeln('int sigprocmask(int how, const sigset_t* set, sigset_t* old_set);')
 	g.headerless_stdarg_decls()
 	g.writeln('#ifndef PTHREAD_MUTEX_INITIALIZER')
 	g.writeln('#ifdef V_HEADERLESS_DARWIN_PTHREAD_TYPES')
@@ -19931,10 +19838,6 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define PTHREAD_MUTEX_INITIALIZER { 0 }')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	g.writeln('int pthread_attr_init(pthread_attr_t* attr);')
-	g.writeln('int pthread_attr_destroy(pthread_attr_t* attr);')
-	g.writeln('int pthread_attr_setstacksize(pthread_attr_t* attr, size_t stacksize);')
-	g.writeln('int pthread_attr_setdetachstate(pthread_attr_t* attr, int detachstate);')
 	g.writeln('#ifndef PTHREAD_CREATE_DETACHED')
 	g.writeln('#ifdef __APPLE__')
 	g.writeln('#define PTHREAD_CREATE_DETACHED 2')
@@ -19942,50 +19845,17 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define PTHREAD_CREATE_DETACHED 1')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	g.writeln('int pthread_equal(pthread_t t1, pthread_t t2);')
-	g.writeln('int pthread_mutex_init(void* mutex, void* attr);')
-	g.writeln('int pthread_mutex_lock(void* mutex);')
-	g.writeln('int pthread_mutex_unlock(void* mutex);')
-	g.writeln('int pthread_mutex_destroy(void* mutex);')
-	g.writeln('int pthread_rwlockattr_init(void* attr);')
-	g.writeln('int pthread_rwlockattr_destroy(void* attr);')
-	g.writeln('int pthread_rwlock_init(void* rwlock, void* attr);')
-	g.writeln('int pthread_rwlock_rdlock(void* rwlock);')
-	g.writeln('int pthread_rwlock_wrlock(void* rwlock);')
-	g.writeln('int pthread_rwlock_tryrdlock(void* rwlock);')
-	g.writeln('int pthread_rwlock_trywrlock(void* rwlock);')
-	g.writeln('int pthread_rwlock_unlock(void* rwlock);')
-	g.writeln('int pthread_rwlock_destroy(void* rwlock);')
-	g.writeln('int pthread_create(void* thread, void* attr, void* start_routine, void* arg);')
-	g.writeln('int pthread_join(void* thread, void** retval);')
-	g.writeln('int pthread_detach(void* thread);')
-	g.writeln('int pthread_cond_init(void* cond, void* attr);')
-	g.writeln('int pthread_cond_destroy(void* cond);')
-	g.writeln('int pthread_cond_wait(void* cond, void* mutex);')
-	g.writeln('int pthread_cond_signal(void* cond);')
-	g.writeln('int pthread_cond_broadcast(void* cond);')
-	g.writeln('void* malloc(size_t size);')
-	g.writeln('void* calloc(size_t count, size_t size);')
-	g.writeln('void* realloc(void* ptr, size_t size);')
-	g.writeln('void free(void* ptr);')
-	g.writeln('int printf(const char* format, ...);')
-	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
-	g.writeln('int fflush(FILE* stream);')
+	g.emit_c_runtime_declarations(['malloc', 'calloc', 'realloc', 'free', 'printf', 'fprintf',
+		'fflush', 'abort', 'memset', 'pthread_equal', 'pthread_key_create', 'pthread_getspecific',
+		'pthread_setspecific', 'pthread_once', 'pthread_attr_init', 'pthread_attr_destroy',
+		'pthread_attr_setstacksize', 'pthread_attr_setdetachstate', 'pthread_create', 'pthread_join',
+		'pthread_detach'])
 	// Both thread runtimes below allocate their contexts through these helpers.
 	g.thread_allocation_helpers()
 	g.writeln('#ifdef _WIN32')
 	g.writeln('#ifndef INFINITE')
 	g.writeln('#define INFINITE 0xFFFFFFFF')
 	g.writeln('#endif')
-	g.writeln('HANDLE CreateThread(void* attributes, size_t stack_size, DWORD (WINAPI *start)(void*), void* parameter, DWORD flags, DWORD* thread_id);')
-	g.writeln('DWORD WaitForSingleObject(HANDLE handle, DWORD milliseconds);')
-	g.writeln('BOOL CloseHandle(HANDLE handle);')
-	g.writeln('DWORD GetLastError(void);')
-	g.writeln('DWORD WINAPI TlsAlloc(void);')
-	g.writeln('void* WINAPI TlsGetValue(DWORD index);')
-	g.writeln('BOOL WINAPI TlsSetValue(DWORD index, void* value);')
-	g.writeln('void* WINAPI GetModuleHandleA(const char* module_name);')
-	g.writeln('void* WINAPI GetProcAddress(void* module, const char* proc_name);')
 	g.writeln('typedef struct { HANDLE handle; void* context; } __v_thread;')
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
@@ -20031,12 +19901,6 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
 	g.pthread_detached_thread_runtime()
 	g.writeln('#endif')
-	// Signature shape covers both the BSD (thunk before compar) and GNU
-	// (compar before arg) qsort_r orders; callers pass fn pointers as void*.
-	g.writeln('void qsort_r(void* base, size_t nel, size_t width, void* a, void* b);')
-	g.writeln('#ifdef __linux__')
-	g.writeln('int pthread_rwlockattr_setkind_np(void* attr, int kind);')
-	g.writeln('#endif')
 	g.writeln('typedef struct SRWLOCK { void* Ptr; } SRWLOCK;')
 	g.writeln('typedef struct CONDITION_VARIABLE { void* Ptr; } CONDITION_VARIABLE;')
 	g.writeln('typedef void* atomic_uintptr_t;')
@@ -20071,44 +19935,22 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_darwin_task_info_struct()
 	g.writeln('#ifdef __APPLE__')
 	g.writeln('typedef struct mach_timebase_info_data_t { u32 numer; u32 denom; } mach_timebase_info_data_t;')
-	g.writeln('u64 mach_absolute_time(void);')
-	g.writeln('int mach_timebase_info(mach_timebase_info_data_t*);')
 	g.writeln('#endif')
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
-	g.writeln('int stat(const char* path, struct stat* buf);')
 	g.headerless_tm_struct()
 	g.writeln('struct utimbuf { time_t actime; time_t modtime; };')
-	g.writeln('time_t mktime(struct tm* timeptr);')
-	g.writeln('struct tm* localtime(time_t* timer);')
-	g.writeln('int utime(char* filename, struct utimbuf* times);')
-	g.writeln('int stat(const char* path, struct stat* buf);')
-	g.writeln('FILE* fopen(const char* path, const char* mode);')
-	g.writeln('FILE* freopen(const char* path, const char* mode, FILE* stream);')
-	g.writeln('int fclose(FILE* stream);')
-	g.writeln('size_t fread(void* ptr, size_t size, size_t nitems, FILE* stream);')
-	g.writeln('size_t fwrite(const void* ptr, size_t size, size_t nitems, FILE* stream);')
-	g.writeln('int fseek(FILE* stream, long offset, int whence);')
-	g.writeln('long ftell(FILE* stream);')
-	g.writeln('#if !defined(_WIN32)')
-	g.writeln('int fseeko(FILE* stream, long long offset, int whence);')
-	g.writeln('long long ftello(FILE* stream);')
-	g.writeln('#endif')
-	g.writeln('int remove(const char* path);')
-	g.writeln('int rename(const char* from, const char* to);')
 	g.writeln('#if !defined(_MODE_T) && !defined(__mode_t_defined) && !defined(_MODE_T_DECLARED)')
 	g.writeln('typedef u32 mode_t;')
 	g.writeln('#endif')
-	g.writeln('time_t time(time_t* tloc);')
-	g.writeln('i32 fileno(FILE* stream);')
-	g.writeln('i32 ftruncate(i32 fd, u64 length);')
-	g.writeln('#if !defined(_WIN32)')
-	g.writeln('i32 mkdir(char* path, u32 mode);')
-	g.writeln('i32 chmod(char* path, u32 mode);')
-	g.writeln('i32 symlink(char* target, char* linkpath);')
-	g.writeln('#endif')
 	g.headerless_termios_struct()
 	g.headerless_platform_constants()
+	g.writeln('static inline int __v_isfinite(double x) { union { double f; u64 u; } bits = { .f = x }; return (bits.u & 0x7ff0000000000000ULL) != 0x7ff0000000000000ULL; }')
+	g.writeln('static inline int __v_signbit(double x) { union { double f; u64 u; } bits = { .f = x }; return (int)(bits.u >> 63); }')
+	g.writeln('#define isfinite(x) __v_isfinite(x)')
+	g.writeln('#define signbit(x) __v_signbit(x)')
+	g.emit_c_runtime_declarations(['getenv', 'setenv', 'pow', 'fabs', 'floor', 'ceil', 'snprintf',
+		'memcpy', 'memmove', 'memcmp', 'strlen', 'qsort'])
 }
 
 fn c_function_like_macro_decl_names() []string {

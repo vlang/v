@@ -228,21 +228,21 @@ fn test_cache_extern_declaration_avoids_tgmath_macro_expansion() {
 	assert c_macro_safe_extern_decl('custom', 'int custom(int x);') == 'int custom(int x);'
 }
 
-fn test_cache_extern_filter_uses_pthread_preamble_declarations() {
+fn test_cache_extern_filter_uses_pthread_v_declarations() {
 	mut preamble_gen := FlatGen.new()
 	preamble_gen.preamble()
 	preamble := preamble_gen.sb.str()
-	assert preamble.contains('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
-	assert preamble.contains('void* pthread_getspecific(pthread_key_t key);')
-	assert preamble.contains('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
+	assert !preamble.contains('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
+	assert !preamble.contains('void* pthread_getspecific(pthread_key_t key);')
+	assert !preamble.contains('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
 	assert !preamble.contains('pthread_key_delete(')
 
 	mut g := FlatGen.new()
 	g.set_cache_split(true)
 
-	assert !g.should_emit_c_extern_decl('pthread_key_create')
-	assert !g.should_emit_c_extern_decl('pthread_getspecific')
-	assert !g.should_emit_c_extern_decl('pthread_setspecific')
+	assert g.should_emit_c_extern_decl('pthread_key_create')
+	assert g.should_emit_c_extern_decl('pthread_getspecific')
+	assert g.should_emit_c_extern_decl('pthread_setspecific')
 	assert g.should_emit_c_extern_decl('pthread_key_delete')
 }
 
