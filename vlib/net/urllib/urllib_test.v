@@ -182,6 +182,23 @@ fn test_parse_rejects_backslash_in_authority() {
 	}
 }
 
+// test_parse_rejects_invalid_zone_escape checks that an invalid %-escape in
+// an IPv6 zone identifier is rejected, like Go does, instead of being
+// silently accepted.
+// See https://github.com/vlang/v/issues/30147
+fn test_parse_rejects_invalid_zone_escape() {
+	// Go: parse "http://[fe80::1%25%ff00]/": invalid URL escape "%ff"
+	if _ := urllib.parse('http://[fe80::1%25%ff00]/') {
+		assert false, 'parser must reject an invalid zone escape'
+	}
+	// a valid zone identifier still parses
+	u := urllib.parse('http://[fe80::1%25eth0]/') or {
+		assert false, 'parser must accept a valid zone identifier: ${err}'
+		return
+	}
+	assert u.hostname() == 'fe80::1%eth0'
+}
+
 fn test_parse_allows_apostrophe_in_authority() {
 	url := urllib.parse("http://o'connor@example'host/")!
 	assert url.host == "example'host"

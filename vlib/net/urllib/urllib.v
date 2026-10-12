@@ -191,7 +191,7 @@ fn unescape(s_ string, mode EncodingMode) !string {
 					}
 					v := ((unhex(s[i + 1]) << u8(4)) | unhex(s[i + 2]))
 					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
-						error(error_msg(err_msg_escape, s[i..i + 3]))
+						return error(error_msg(err_msg_escape, s[i..i + 3]))
 					}
 				}
 				i += 3
