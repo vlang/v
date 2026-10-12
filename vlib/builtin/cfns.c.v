@@ -3,6 +3,9 @@ module builtin
 @[typedef]
 pub struct C.FILE {}
 
+@[typedef]
+pub struct C.qsort_callback_func {}
+
 // Virtual C globals that are available through libc or generated C headers.
 __global C.errno int
 __global C.stdin &C.FILE
@@ -12,16 +15,16 @@ __global C.environ &&char
 __global C._wyp &u64
 
 // <string.h>
-@[noalloc]
+@[markused; noalloc]
 fn C.memcpy(dest voidptr, const_src voidptr, n usize) voidptr
 
-@[noalloc]
+@[markused; noalloc]
 fn C.memcmp(const_s1 voidptr, const_s2 voidptr, n usize) i32
 
-@[noalloc]
+@[markused; noalloc]
 fn C.memmove(dest voidptr, const_src voidptr, n usize) voidptr
 
-@[noalloc]
+@[markused; noalloc]
 fn C.memset(str voidptr, c i32, n usize) voidptr
 
 @[noalloc]
@@ -33,24 +36,30 @@ fn C.memmem(haystack voidptr, haystacklen usize, needle voidptr, needlelen usize
 @[noalloc]
 fn C.mempcpy(dest voidptr, src voidptr, n usize) voidptr
 
-@[trusted]
+@[markused; trusted]
 fn C.calloc(usize, usize) voidptr
 
 fn C.atoi(&char) i32
 
+@[markused]
 fn C.malloc(usize) voidptr
 
+@[markused]
 fn C.realloc(a voidptr, b usize) voidptr
 
-@[noalloc]
+@[markused; noalloc]
 fn C.free(ptr voidptr)
 
+@[markused]
 fn C.mmap(addr_length voidptr, length usize, prot i32, flags i32, fd i32, offset isize) voidptr
 
 // C.munmap releases a memory mapping created by C.mmap.
 fn C.munmap(addr_length voidptr, len usize) i32
+
+@[markused]
 fn C.mprotect(addr_length voidptr, len usize, prot i32) i32
 
+@[markused]
 fn C.aligned_alloc(align usize, size usize) voidptr
 
 // windows aligned memory functions
@@ -67,13 +76,14 @@ $if windows {
 	fn C.VirtualProtect(voidptr, isize, C.DWORD, &C.DWORD) bool
 }
 
-@[noreturn; trusted]
+@[markused; noreturn; trusted]
 fn C.exit(code i32)
 
+@[markused]
 fn C.qsort(base voidptr, items usize, item_size usize, cb C.qsort_callback_func)
 
-@[noalloc]
-fn C.strlen(s &char) usize
+@[markused; noalloc]
+fn C.strlen(const_s &char) usize
 
 @[trusted]
 fn C.isdigit(c i32) bool
@@ -89,11 +99,19 @@ fn C.realpath(const_path &char, resolved_path &char) &char
 // fn C.chmod(byteptr, mode_t) int
 fn C.chmod(path &char, mode u32) i32
 
+@[markused]
 fn C.printf(const_format &char, opt ...voidptr) i32
+
 fn C.dprintf(fd i32, const_format &char, opt ...voidptr) i32
+
+@[markused]
 fn C.fprintf(fstream &C.FILE, const_format &char, opt ...voidptr) i32
+
 fn C.sprintf(str &char, const_format &char, opt ...voidptr) i32
+
+@[markused]
 fn C.snprintf(str &char, size usize, const_format &char, opt ...voidptr) i32
+
 fn C.wprintf(const_format &u16, opt ...voidptr) i32
 
 // used by Android for (e)println to output to the Android log system / logcat
@@ -109,6 +127,7 @@ fn C.abs(f64) f64
 
 fn C.fputs(msg &char, fstream &C.FILE) i32
 
+@[markused]
 fn C.fflush(fstream &C.FILE) i32
 
 // TODO: define args in these functions
@@ -124,7 +143,8 @@ fn C.fileno(&C.FILE) i32
 
 fn C.fread(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 
-fn C.fwrite(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
+@[markused]
+fn C.fwrite(const_ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 
 fn C.fclose(stream &C.FILE) i32
 
@@ -144,7 +164,7 @@ fn C.GetCurrentProcessId() u32
 @[trusted]
 fn C._getpid() i32
 
-@[trusted]
+@[markused; trusted]
 fn C.getpid() i32
 
 @[trusted]
@@ -185,6 +205,7 @@ fn C.waitpid(pid i32, status &int, options i32) i32
 @[trusted]
 fn C.kill(pid i32, sig i32) i32
 
+@[markused]
 fn C.setenv(&char, &char, i32) i32
 
 fn C.unsetenv(&char) i32
@@ -499,22 +520,31 @@ $if windows {
 }
 
 // pthread.h
+@[markused]
 fn C.pthread_self() usize
 
+@[markused]
 fn C.pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32
 
+@[markused]
 fn C.pthread_join(thread voidptr, retval voidptr) i32
 
+@[markused]
 fn C.pthread_attr_init(attr voidptr) i32
 
+@[markused]
 fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) i32
 
+@[markused]
 fn C.pthread_attr_destroy(attr voidptr) i32
 
+@[markused]
 fn C.pthread_mutex_init(voidptr, voidptr) i32
 
+@[markused]
 fn C.pthread_mutex_lock(voidptr) i32
 
+@[markused]
 fn C.pthread_mutex_unlock(voidptr) i32
 
 fn C.pthread_mutex_destroy(voidptr) i32
@@ -586,12 +616,14 @@ fn C.pipe(pipefds &i32) i32
 
 fn C.dup2(oldfd i32, newfd i32) i32
 
+@[markused]
 fn C.fcntl(fd i32, cmd i32, arg ...voidptr) i32
 
 fn C.execlp(file &char, arg &char, va ...voidptr) i32
 
 fn C._exit(code i32)
 
+@[markused]
 fn C.signal(sig i32, handler voidptr) voidptr
 
 // used by gl, stbi, freetype
@@ -637,4 +669,63 @@ $if windows {
 	pub struct C.SRWLOCK {}
 }
 
+@[markused]
 fn C.sysconf(name i32) i32
+
+// Dependencies of the compiler's inline C runtime, not directly called by V code.
+@[markused]
+fn C.abort()
+
+@[markused]
+fn C.getenv(const_name &char) &char
+
+@[markused]
+fn C.pow(x f64, y f64) f64
+
+@[markused]
+fn C.fabs(x f64) f64
+
+@[markused]
+fn C.floor(x f64) f64
+
+@[markused]
+fn C.ceil(x f64) f64
+
+@[markused]
+fn C.__error() &i32
+
+@[markused]
+fn C.__errno() &i32
+
+@[markused]
+fn C.__errno_location() &i32
+
+@[markused]
+fn C._errno() &i32
+
+@[markused]
+fn C.pthread_equal(t1 voidptr, t2 voidptr) i32
+
+@[markused]
+fn C.pthread_key_create(key &usize, destructor voidptr) i32
+
+@[markused]
+fn C.pthread_getspecific(key usize) voidptr
+
+@[markused]
+fn C.pthread_setspecific(key usize, value voidptr) i32
+
+@[markused]
+fn C.pthread_once(control voidptr, init_routine voidptr) i32
+
+@[markused]
+fn C.pthread_attr_setdetachstate(attr voidptr, state i32) i32
+
+@[markused]
+fn C.pthread_detach(thread voidptr) i32
+
+fn C.clock() i64
+
+// The inline test statistics runtime uses this even when time is not imported.
+@[markused]
+fn C.clock_gettime(clock_id i32, tp voidptr) i32

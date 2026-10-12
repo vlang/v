@@ -4452,7 +4452,7 @@ fn (mut g FlatGen) shared_dup_fns() {
 		g.writeln('#if defined(_VPREALLOC)')
 		g.writeln('\t${name}* dest = (${name}*)malloc((size_t)sz);')
 		g.writeln('#else')
-		g.writeln('\t${name}* dest = (${name}*)malloc_uncollectable((isize)sz);')
+		g.writeln('\t${name}* dest = (${name}*)malloc_uncollectable((ptrdiff_t)sz);')
 		g.writeln('#endif')
 		g.writeln('\tmemcpy(dest, src, (size_t)sz);')
 		g.writeln('\tsync__RwMutex__init(&dest->mtx);')
@@ -6553,10 +6553,10 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 			return true
 		}
 		if info := g.struct_decl_infos[name] {
-			// Platform binding files and plain V files with a header directive describe
-			// types supplied by native code. Keep the cheap V1 source-file heuristic;
-			// inspecting the included header itself is unnecessary.
-			if info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file) {
+			// Headerless vlib bindings supply their own complete C layouts.
+			// Keep externally supplied types opaque when headers own their definitions.
+			if (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
+				&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
 				return true
 			}
 		}

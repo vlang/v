@@ -487,7 +487,7 @@ fn test_headerless_thread_runtime_can_spawn_detached_threads() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
 	c_code := g.sb.str()
-	assert c_code.contains('int pthread_detach(void* thread);'), c_code
+	assert !c_code.contains('int pthread_detach(void* thread);'), c_code
 	assert c_code.contains('HANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);'), c_code
 	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), c_code
 }
@@ -535,33 +535,28 @@ fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	assert c_code.contains('typedef __darwin_pthread_key_t pthread_key_t;'), c_code
 	assert c_code.contains('#define PTHREAD_MUTEX_INITIALIZER { 0x32AAABA7, { 0 } }'), c_code
 	assert c_code.contains('#define PTHREAD_ONCE_INIT { 0x30B1BCBA, { 0 } }'), c_code
-	assert c_code.contains('int pthread_once(pthread_once_t* once_control, void (*init_routine)(void));'), c_code
-	assert c_code.contains('int pthread_equal(pthread_t t1, pthread_t t2);'), c_code
+	assert !c_code.contains('int pthread_once(pthread_once_t* once_control, void (*init_routine)(void));'), c_code
+	assert !c_code.contains('int pthread_equal(pthread_t t1, pthread_t t2);'), c_code
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0'), c_code
 }
 
-fn test_headerless_libc_preamble_declares_printf_for_cached_test_harnesses() {
+fn test_headerless_libc_preamble_leaves_library_prototypes_to_v_bindings() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
 	c_code := g.sb.str()
-	assert c_code.contains('int printf(const char* format, ...);'), c_code
-	assert c_code.contains('void perror(const char* message);'), c_code
-	assert c_code.contains('void* memchr(const void* s, int c, size_t n);'), c_code
-	assert c_code.contains('DWORD WINAPI TlsAlloc(void);'), c_code
-	assert c_code.contains('void* WINAPI TlsGetValue(DWORD index);'), c_code
-	assert c_code.contains('BOOL WINAPI TlsSetValue(DWORD index, void* value);'), c_code
-	assert c_code.contains('void* WINAPI GetModuleHandleA(const char* module_name);'), c_code
-	assert c_code.contains('void* WINAPI GetProcAddress(void* module, const char* proc_name);'), c_code
+	assert !c_code.contains('int printf(const char* format, ...);'), c_code
+	assert !c_code.contains('void perror(const char* message);'), c_code
+	assert !c_code.contains('void* memchr(const void* s, int c, size_t n);'), c_code
 	assert !c_code.contains('DWORD WINAPI FlsAlloc('), c_code
 	assert !c_code.contains('void* WINAPI FlsGetValue('), c_code
 	assert !c_code.contains('BOOL WINAPI FlsSetValue('), c_code
 }
 
-fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {
+fn test_headerless_libc_preamble_keeps_qsort_callback_type() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
 	c_code := g.sb.str()
-	assert c_code.contains('void qsort(void* base, size_t items, size_t item_size, int (*cb)(const void*, const void*));'), c_code
+	assert c_code.contains('typedef int (*qsort_callback_func)(const void*, const void*);'), c_code
 }
 
 fn test_target_libc_preamble_uses_target_header_declarations() {
@@ -631,8 +626,8 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('static void* __v_thread_join(')
 	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)')
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
-	assert c_code.contains('void* p = GC_MALLOC_UNCOLLECTABLE(size);')
-	assert c_code.contains('GC_FREE(ptr);')
+	assert c_code.contains('void* p = v_gc_malloc_uncollectable(size);')
+	assert c_code.contains('v_gc_free(ptr);')
 }
 
 fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
@@ -713,10 +708,10 @@ fn test_libc_compat_gettid_supports_s390x() {
 	assert c_code.contains('#elif defined(__s390x__)\n#define SYS_gettid 236'), c_code
 }
 
-fn test_headerless_libc_preamble_suppresses_its_mach_timebase_declaration() {
+fn test_headerless_libc_preamble_uses_v_mach_timebase_declaration() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
-	assert !g.should_emit_c_extern_decl('mach_timebase_info')
+	assert g.should_emit_c_extern_decl('mach_timebase_info')
 	// Compiler builtins never get a prototype; clang rejects redeclaring them.
 	assert !g.should_emit_c_extern_decl('__atomic_fetch_add')
 	assert !g.should_emit_c_extern_decl('__builtin_expect')

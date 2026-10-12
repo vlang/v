@@ -228,22 +228,32 @@ fn test_cache_extern_declaration_avoids_tgmath_macro_expansion() {
 	assert c_macro_safe_extern_decl('custom', 'int custom(int x);') == 'int custom(int x);'
 }
 
-fn test_cache_extern_filter_uses_pthread_preamble_declarations() {
+fn test_cache_extern_filter_uses_pthread_v_declarations() {
 	mut preamble_gen := FlatGen.new()
 	preamble_gen.preamble()
 	preamble := preamble_gen.sb.str()
-	assert preamble.contains('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
-	assert preamble.contains('void* pthread_getspecific(pthread_key_t key);')
-	assert preamble.contains('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
+	assert !preamble.contains('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
+	assert !preamble.contains('void* pthread_getspecific(pthread_key_t key);')
+	assert !preamble.contains('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
 	assert !preamble.contains('pthread_key_delete(')
 
 	mut g := FlatGen.new()
 	g.set_cache_split(true)
 
-	assert !g.should_emit_c_extern_decl('pthread_key_create')
-	assert !g.should_emit_c_extern_decl('pthread_getspecific')
-	assert !g.should_emit_c_extern_decl('pthread_setspecific')
+	assert g.should_emit_c_extern_decl('pthread_key_create')
+	assert g.should_emit_c_extern_decl('pthread_getspecific')
+	assert g.should_emit_c_extern_decl('pthread_setspecific')
 	assert g.should_emit_c_extern_decl('pthread_key_delete')
+	assert g.should_emit_c_extern_decl('pthread_once')
+	assert g.should_emit_c_extern_decl('pthread_attr_setdetachstate')
+
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '<pthread.h>'
+	}, '/tmp/main.c.v', false)
+	assert !g.should_emit_c_extern_decl('pthread_once')
+	assert !g.should_emit_c_extern_decl('pthread_attr_setdetachstate')
 }
 
 fn posix_declaration_filter_gen(target_os string, system_libc bool) FlatGen {
@@ -451,6 +461,32 @@ fn test_top_level_include_deduplication_resets_after_preprocessor_state_changes(
 		'#include <types.h>', '#endif', '#include <types.h>'])
 	assert conditional_directives == ['#include <types.h>', '#if FEATURE', '#include <types.h>',
 		'#endif', '#include <types.h>']
+}
+
+fn test_multiline_guard_does_not_make_following_includes_conditional() {
+	guard := '#ifndef INSERTED_GUARD\n#define INSERTED_GUARD\n#endif'
+	header := '#include "unguarded.h"'
+	assert dedupe_top_level_c_includes([guard, header, header]) == [guard, header]
+	// An inline block can change the macro state observed by an earlier header.
+	assert dedupe_top_level_c_includes([header, guard, header]) == [header, guard, header]
+	// The containing guard remains active while an inline block is emitted.
+	conditional := ['#ifdef FIRST', guard, header, '#endif', '#ifdef SECOND', header, '#endif',
+		header, header]
+	assert dedupe_top_level_c_includes(conditional) == conditional[..conditional.len - 1]
+}
+
+fn test_multiline_directives_preserve_open_conditionals_and_ignore_comments() {
+	header := '#include "unguarded.h"'
+	for separator in [' ', '\t'] {
+		opener := '#if${separator}defined(FIRST) \\\n|| defined(SECOND)'
+		conditional := [opener, header, header, '#else', header, header, '#endif', header, header]
+		assert dedupe_top_level_c_includes(conditional) == conditional[..conditional.len - 1]
+	}
+	guard := '/*\n#if COMMENTED_OUT\n*/\n#ifndef INLINE_GUARD\n#define INLINE_GUARD\n#endif'
+	assert dedupe_top_level_c_includes([guard, header, header]) == [guard, header]
+	// Comments may span directive entries as well as lines in an inline header.
+	commented := ['/*', '#if COMMENTED_OUT\n#endif', '*/', header, header]
+	assert dedupe_top_level_c_includes(commented) == commented[..commented.len - 1]
 }
 
 fn test_headerless_preamble_keeps_explicit_puts_declaration() {

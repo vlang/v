@@ -1,9 +1,5 @@
 module builtin
 
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/wait.h>
-
 // backtrace_exec_capture avoids a shell while keeping builtin independent of os.
 // It does not reuse os' C capture helpers: every program links builtin, and the
 // module cache can not split a static C helper between builtin and os objects.

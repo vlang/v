@@ -1826,7 +1826,12 @@ fn c_object_dependencies(compiler string, compile_args []string, source_file str
 fn c_object_dependencies_in(compiler string, compile_args []string, source_file string, work_dir string) CObjectDependencies {
 	mut args := compile_args.clone()
 	mt_target := 'v3cache'
-	args << ['-M', '-MT', mt_target, source_file]
+	// TinyCC names the dependency target with -o and does not support -MT.
+	if compiler == 'tinyc' || os.file_name(compiler).to_lower_ascii().contains('tcc') {
+		args << ['-M', '-o', mt_target, source_file]
+	} else {
+		args << ['-M', '-MT', mt_target, source_file]
+	}
 	result := if work_dir.len > 0 {
 		cmdexec.run_in(compiler, args, work_dir)
 	} else {
@@ -1898,6 +1903,40 @@ fn c_source_from_object_file(obj_path string) ?string {
 		}
 	}
 	return none
+}
+
+// v3_tcc_link_has_incompatible_objects keeps foreign objects off macOS TinyCC.
+// Missing .o requests backed by C sources are built by the selected compiler;
+// their resolved cache objects are compatible when that compiler is TinyCC.
+fn v3_tcc_link_has_incompatible_objects(resolved_flags []string, requested_flags []string, compiler string) bool {
+	mut resolved_count := 0
+	for idx in c_link_input_indices(resolved_flags) {
+		if c_flag_is_object_file(resolved_flags[idx].trim_space()) {
+			resolved_count++
+		}
+	}
+	if resolved_count == 0 {
+		return false
+	}
+	if compiler != 'tinyc' && !os.file_name(compiler).to_lower_ascii().contains('tcc') {
+		return true
+	}
+	mut compiled_count := 0
+	for idx in c_link_input_indices(requested_flags) {
+		path := requested_flags[idx].trim_space()
+		if !c_flag_is_object_file(path) {
+			continue
+		}
+		if os.is_file(path) {
+			return true
+		}
+		source := c_source_from_object_file(path) or { return true }
+		if !source.ends_with('.c') {
+			return true
+		}
+		compiled_count++
+	}
+	return resolved_count != compiled_count
 }
 
 fn c_object_cache_name(path string, compiler string, compile_args []string, dependencies []string, target pref.Target, refresh bool, mut stats CObjectCacheStats) string {
@@ -7497,6 +7536,7 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 		synthesized_anon_struct_types: ast.synthesized_anon_struct_types
 		source_files:                  ast.source_files
 		resolved_source_paths:         ast.resolved_source_paths.clone()
+		cached_header_sources:         clone_string_string_map(ast.cached_header_sources)
 		source_paths_frozen:           ast.source_paths_frozen
 		template_call_sites:           ast.template_call_sites.clone()
 		template_actions:              clone_int_string_map(ast.template_actions)
@@ -11400,6 +11440,8 @@ pub fn run(args []string) {
 	if v3_builtin_arena_define !in user_defines && v3_input_imports_arena(input_file) {
 		user_defines << v3_builtin_arena_define
 	}
+	// Older bootstrap compilers still require the stdlib's compatibility headers.
+	record_user_define(mut user_defines, mut compile_values, 'v3_c_extern_declarations')
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot).map(os.abs_path(it))
@@ -11762,12 +11804,12 @@ pub fn run(args []string) {
 	// builtin source set, which likewise must remain a monolithic translation unit.
 	// Heap tracking hooks are supplied by user C declarations. Replaying a header
 	// that defines them in every cached translation unit creates duplicate symbols.
-	// Dependency inspection needs the bodies that embed resources; declaration-only
-	// cache headers intentionally omit ordinary function bodies.
+	// Autofree cleanup needs full local-variable metadata from the original bodies.
+	// Dependency inspection also needs bodies that embed resources.
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
 		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
 		&& !print_watched_files && dump_files == ''
-		&& !minimal_literal_output
+		&& !minimal_literal_output && 'autofree' !in prefs.user_defines
 		&& (cache_with_tcc || effective_c_compiler in ['clang', 'gcc', 'mingw'])
 		&& target.os == host_target.os
 		&& target.arch == host_target.arch
@@ -12151,18 +12193,11 @@ pub fn run(args []string) {
 			seed_implicit_imports(mut a, skip_closure_runtime, check_overflow || check_casts)
 		}
 	}
-	// TinyCC needs the closure runtime referenced by unused functions in cached objects.
-	// Cached interfaces omit the bodies that originally pulled that runtime in.
-	if cache_with_tcc && !skip_closure_runtime && !implicit_imports.has_closure {
-		closure_files := pref.get_v_files_from_dir_for_target(prefs.get_vlib_module_path('builtin.closure'),
-			prefs.user_defines, prefs.target)
-		for module_name in ['closure', 'builtin.closure'] {
-			if _ := cache_state.manager.valid_header(module_name, closure_files) {
-				a.add_node(closure_import_node())
-				implicit_imports.has_closure = true
-				break
-			}
-		}
+	// Cached objects can reference closure cleanup in unused public functions.
+	// Headerless modules can now be cached without an explicit closure in the program.
+	if cache_state.manager.enabled && !skip_closure_runtime && !implicit_imports.has_closure {
+		a.add_node(closure_import_node())
+		implicit_imports.has_closure = true
 	}
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
@@ -14761,6 +14796,23 @@ pub fn run(args []string) {
 				pic_flag, target_args, prefs.target, c_compiler, use_implicit_tcc_semantics, cc_dir,
 				mut c_object_cache_stats) or {
 				message := err.msg()
+				if retry_compilation && explicit_tcc {
+					fallback := v3_platform_c_compiler_command(host_os)
+					// Object preparation wraps the C compiler output with the source path.
+					diagnostics := if newline := message.index('\n') {
+						message[newline + 1..]
+					} else {
+						message
+					}
+					eprintln(v3_explicit_tcc_fallback_warning(fallback, diagnostics))
+					if show_c_output && diagnostics.len > 0 {
+						eprintln(diagnostics)
+					}
+					// Reuse the restart path with its implicit warning suppressed.
+					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, true,
+						diagnostics)
+					return
+				}
 				if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, false, 0) {
 					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, silent,
 						if message.len > 0 {
@@ -14942,12 +14994,8 @@ pub fn run(args []string) {
 		}
 		mut tcc_link_has_incompatible_objects := false
 		if prefs.normalized_target_os() == 'macos' {
-			for flag in resolved_c_flags {
-				if c_flag_is_object_file(flag.trim_space()) {
-					tcc_link_has_incompatible_objects = true
-					break
-				}
-			}
+			tcc_link_has_incompatible_objects = v3_tcc_link_has_incompatible_objects(resolved_c_flags,
+				generated_c_flags, c_compiler)
 		}
 		mut cached_objects := []string{}
 		mut cached_dev_dylib := ''
