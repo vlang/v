@@ -4310,10 +4310,55 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 	}
 	mut source_files := source_set.keys()
 	source_files.sort()
+	v3_restore_cached_embedded_inputs(state, source_files, user_c_flags.join('\x00'), mut dependencies)
 	return V3CgenCacheInput{
 		source_files:         source_files
 		dependency_inputs:    dependencies
 		generation_signature: user_c_flags.join('\x00')
+	}
+}
+
+// Cached declarations omit ordinary function bodies, including their embedded resources.
+// Recover those inputs only for valid cached module objects and verify their current bytes.
+fn v3_restore_cached_embedded_inputs(state &V3ModuleCacheState, source_files []string, generation_signature string, mut dependencies map[string]string) {
+	if state.parsed_from_source.len > 0 || state.objects.len == 0 {
+		return
+	}
+	restored := state.manager.cached_cgen_dependency_inputs(source_files, generation_signature,
+		dependencies, ['external:', 'external-meta:', 'external-sha256:']) or { return }
+	mut verified := map[string]string{}
+	for key, signature in restored {
+		if !key.starts_with('external:') {
+			continue
+		}
+		input := key.all_after('external:')
+		owner := input.all_before(':')
+		path := input.all_after(':')
+		if owner !in state.objects || owner !in state.module_sources || !os.is_abs_path(path) {
+			return
+		}
+		metadata_key := 'external-meta:${input}'
+		digest_key := 'external-sha256:${input}'
+		metadata := modulecache.file_metadata_signature(path)
+		if metadata.len == 0 || (restored[metadata_key] or { '' }) != metadata {
+			return
+		}
+		content := os.read_bytes(path) or { return }
+		digest := sha256.sum(content).hex()
+		if (restored[digest_key] or { '' }) != digest
+			|| modulecache.file_signature(path) != signature
+			|| modulecache.file_metadata_signature(path) != metadata {
+			return
+		}
+		verified[key] = signature
+		verified[metadata_key] = metadata
+		verified[digest_key] = digest
+	}
+	if verified.len != restored.len {
+		return
+	}
+	for key, signature in verified {
+		dependencies[key] = signature
 	}
 }
 
