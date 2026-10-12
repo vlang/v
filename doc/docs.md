@@ -9412,7 +9412,7 @@ fields that can use the value `0`, understanding that it is unsafe, and that it 
 cause a panic.
 
 A null reference has to be written as `unsafe { nil }`: outside `unsafe`, the compiler
-rejects `nil`, `0` and `voidptr(0)` where a non-option reference is expected.
+rejects direct `nil`, `0` and `voidptr(0)` constants where a non-option reference is expected.
 Raw `voidptr` targets, C declarations, `.c.v` files and translated code retain their
 C interop rules. Comparisons with null values and optional references remain accepted.
 
