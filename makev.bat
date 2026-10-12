@@ -168,6 +168,14 @@ REM By default, use tcc, since we have it prebuilt:
 call :build_bootstrap_with_tcc
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 call :build_fresh_v_with_tcc
+if !ERRORLEVEL! NEQ 0 goto :self_hosted_fallback
+call :move_updated_to_v
+if !ERRORLEVEL! NEQ 0 goto :compile_error
+goto :success
+
+:self_hosted_fallback
+echo  ^> Snapshot bootstrap failed; rebuilding "%V_UPDATED%" with the self-hosted compiler "%V_EXE%"
+call :build_self_hosted_with_tcc
 if !ERRORLEVEL! NEQ 0 goto :tcc_retry_with_host_bootstrap
 call :move_updated_to_v
 if !ERRORLEVEL! NEQ 0 goto :compile_error
@@ -204,6 +212,17 @@ REM override it after V3 changes into its isolated link directory.
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE%"
 exit /b !stage_error!
+
+:build_self_hosted_with_tcc
+if not exist "%V_EXE%" (
+	echo  ^> Self-hosted compiler not found: "%V_EXE%"
+	exit /b 1
+)
+echo  ^> Compiling "%V_UPDATED%" from cmd/v with the self-hosted compiler "%V_EXE%"
+"%V_EXE%" %V_BOOTSTRAP_VFLAGS% -g -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v
+set self_hosted_error=!ERRORLEVEL!
+if !self_hosted_error! NEQ 0 call :try_delete "%V_UPDATED%"
+exit /b !self_hosted_error!
 
 :clang_strap
 call :build_bootstrap_with_clang
