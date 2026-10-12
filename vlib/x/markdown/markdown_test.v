@@ -359,3 +359,12 @@ fn test_to_plaintext_blockquote_footnotes_share_global_order() {
 	assert text.contains('Footnotes:')
 	assert text.contains('[1] note body')
 }
+
+fn test_indented_list_item_is_not_nested() {
+	// an indented list item is still one item: the marker must be matched
+	// after the item's own indentation, not re-parsed as a nested list.
+	// See https://github.com/vlang/v/issues/30170
+	assert to_html('  - item') == '<ul>\n<li>item</li>\n</ul>\n'
+	assert to_html('  1. item') == '<ol>\n<li>item</li>\n</ol>\n'
+	assert to_html('- item') == '<ul>\n<li>item</li>\n</ul>\n'
+}
