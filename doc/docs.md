@@ -8018,6 +8018,11 @@ function/struct/enum declaration and applies only to the following declaration.
 Attributes with arguments support both `name: value` and call-style `name(value)` syntax.
 Call-style attributes can also use named arguments.
 
+The C backend emits `@[_constructor]` and `@[_destructor]` as GNU function attributes before the
+function declarator, so definitions compile with GCC and Clang. When supported by the C compiler,
+these hooks run before `main` and after it returns. They must not depend on V's runtime being
+initialized. MSVC ignores these attributes.
+
 ```v
 // @[flag] enables Enum types to be used as bitfields
 
