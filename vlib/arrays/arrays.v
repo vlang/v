@@ -488,7 +488,7 @@ pub fn lower_bound[T](array []T, val T) !T {
 		}
 	}
 	if left >= array.len {
-		return error('')
+		return error('.lower_bound: no element >= ${val}')
 	} else {
 		return array[left]
 	}
@@ -511,7 +511,7 @@ pub fn upper_bound[T](array []T, val T) !T {
 		}
 	}
 	if right < 0 {
-		return error('')
+		return error('.upper_bound: no element <= ${val}')
 	} else {
 		return array[right]
 	}
@@ -536,7 +536,7 @@ pub fn binary_search[T](array []T, target T) !int {
 			right = idx - 1
 		}
 	}
-	return error('')
+	return error('.binary_search: target ${target} not found')
 }
 
 // rotate_left rotates the array in-place.
