@@ -21382,6 +21382,8 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 	mut local_names := map[string]bool{}
 	mut candidates := []flat.NodeId{}
 	mut declarations := []flat.NodeId{}
+	mut untyped := []string{}
+	mut shared_types := []string{}
 	mut stack := []flat.NodeId{}
 	for fn_idx in start .. end {
 		fn_node := a.nodes[fn_idx]
@@ -21394,6 +21396,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 		candidates.clear()
 		declarations.clear()
 		stack.clear()
+		mut declared := 0
 		for child_idx in 0 .. fn_node.children_count {
 			child_id := a.child(&fn_node, child_idx)
 			child := a.node(child_id)
@@ -21419,8 +21422,11 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 			}
 			if node.kind == .decl_assign {
 				declarations << id
-				for child_idx := 0; child_idx < node.children_count; child_idx += 2 {
-					lhs := a.child_node(node, child_idx)
+				names := implicit_declared_count(node)
+				values := int(node.children_count) - names
+				declared += names
+				for name_idx in 0 .. names {
+					lhs := a.child_node(node, implicit_declared_child(name_idx, values))
 					if lhs.kind == .ident {
 						local_names[lhs.value] = true
 					}
@@ -21443,34 +21449,76 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				stack << a.child(node, child_idx)
 			}
 		}
-		for _ in 0 .. declarations.len {
-			mut changed := false
-			for declaration_id in declarations {
-				declaration := a.node(declaration_id)
-				for child_idx := 0; child_idx + 1 < declaration.children_count; child_idx += 2 {
-					lhs := a.child_node(declaration, child_idx)
-					if lhs.kind != .ident || lhs.value in ambiguous {
-						continue
+		// The names that the function declares take the types of their values. A
+		// name that two declarations give two types, or that one gives a type and
+		// another one none that is known here, is not known: branches of the
+		// function may each declare it. What was typed from it is not known
+		// either, so the typing starts again without that name.
+		for {
+			mut dropped := false
+			for _ in 0 .. declared + 1 {
+				mut changed := false
+				untyped.clear()
+				for declaration_id in declarations {
+					declaration := a.node(declaration_id)
+					names := implicit_declared_count(declaration)
+					values := int(declaration.children_count) - names
+					// `a, b := f()`: one value for several names, each with the type that
+					// the call returns for it.
+					one_value := names > 1 && values == 1
+					if one_value {
+						shared_types = implicit_multi_value_types(implicit_expr_type(a, a.child(declaration,
+							1), bindings, index, 0), index)
 					}
-					rhs_id := a.child(declaration, child_idx + 1)
-					typ := implicit_expr_type(a, rhs_id, bindings, index, 0)
-					if typ == '' {
-						continue
-					}
-					normalized := implicit_normalize_type(typ, index)
-					if old := bindings[lhs.value] {
-						if old != normalized {
-							ambiguous[lhs.value] = true
-							bindings.delete(lhs.value)
+					for name_idx in 0 .. names {
+						lhs := a.child_node(declaration, implicit_declared_child(name_idx, values))
+						if lhs.kind != .ident || lhs.value in ambiguous {
+							continue
 						}
-					} else {
-						bindings[lhs.value] = normalized
-						changed = true
+						typ := if one_value {
+							if shared_types.len == names { shared_types[name_idx] } else { '' }
+						} else if name_idx < values {
+							implicit_expr_type(a, a.child(declaration, name_idx * 2 + 1), bindings, index, 0)
+						} else {
+							''
+						}
+						if typ == '' {
+							untyped << lhs.value
+							continue
+						}
+						normalized := implicit_normalize_type(typ, index)
+						if old := bindings[lhs.value] {
+							if old != normalized {
+								ambiguous[lhs.value] = true
+								dropped = true
+							}
+						} else {
+							bindings[lhs.value] = normalized
+							changed = true
+						}
+					}
+				}
+				if dropped || !changed {
+					break
+				}
+			}
+			if !dropped {
+				for name in untyped {
+					if name in bindings && name !in ambiguous {
+						ambiguous[name] = true
+						dropped = true
 					}
 				}
 			}
-			if !changed {
+			if !dropped {
 				break
+			}
+			bindings.clear()
+			for child_idx in 0 .. fn_node.children_count {
+				child := a.child_node(&fn_node, child_idx)
+				if child.kind == .param && child.typ.len > 0 && child.value !in bindings {
+					bindings[child.value] = implicit_normalize_type(child.typ, index)
+				}
 			}
 		}
 		for selector_id in candidates {
@@ -21504,6 +21552,64 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 		}
 	}
 	return selectors
+}
+
+// implicit_declared_count returns how many names a `:=` declares. The parser
+// notes it in the value of a declaration of several names, whose children are
+// each name followed by its value and then the names without a value of their
+// own: `a, b := f()` holds `a`, the call and `b`.
+fn implicit_declared_count(declaration &flat.Node) int {
+	if declaration.value.is_int() {
+		count := declaration.value.int()
+		if count > 0 && count <= int(declaration.children_count) {
+			return count
+		}
+	}
+	if declaration.children_count <= 2 {
+		return if declaration.children_count > 0 { 1 } else { 0 }
+	}
+	return int(declaration.children_count) - 1
+}
+
+// implicit_declared_child returns which child of a declaration with `values`
+// values its name number `name_idx` is (see implicit_declared_count).
+fn implicit_declared_child(name_idx int, values int) int {
+	return if name_idx < values { name_idx * 2 } else { values + name_idx }
+}
+
+// implicit_multi_value_types returns the types of the values of `typ`, the
+// return type of a function that returns several, `(string, []int)`; none when
+// it is not one.
+fn implicit_multi_value_types(raw string, index ImplicitFieldScanIndex) []string {
+	typ := implicit_normalize_type(raw, index)
+	if typ.len < 2 || typ[0] != `(` || typ[typ.len - 1] != `)` {
+		return []string{}
+	}
+	mut parts := []string{}
+	mut depth := 0
+	mut start := 1
+	for i := 1; i < typ.len - 1; i++ {
+		match typ[i] {
+			`(`, `[` {
+				depth++
+			}
+			`)`, `]` {
+				depth--
+			}
+			`,` {
+				if depth == 0 {
+					parts << implicit_trim_space(typ[start..i])
+					start = i + 1
+				}
+			}
+			else {}
+		}
+	}
+	parts << implicit_trim_space(typ[start..typ.len - 1])
+	if depth != 0 || parts.any(it == '') {
+		return []string{}
+	}
+	return parts
 }
 
 fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut index ImplicitFieldScanIndex) {
@@ -21681,6 +21787,12 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 				return implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
 			}
 		}
+		.or_expr {
+			// `expr or { ... }` is the value of `expr`, or one of its type.
+			if node.children_count > 0 {
+				return implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
+			}
+		}
 		.block {
 			if node.children_count > 0 {
 				return implicit_expr_type(a, a.child(node, node.children_count - 1), bindings, index, depth + 1)
@@ -21718,6 +21830,24 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 					if implicit_expr_type(a, a.child(node, child_idx), bindings, index, depth + 1) == 'string' {
 						return 'string'
 					}
+				}
+			}
+			// And arithmetic on two numbers of one type, which is a number of that
+			// type: an alias of it that overloads the operator has to return itself.
+			if node.op in [.plus, .minus, .mul, .div, .mod] && node.children_count == 2 {
+				left := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
+				if left in implicit_number_types
+					&& implicit_expr_type(a, a.child(node, 1), bindings, index, depth + 1) == left {
+					return left
+				}
+			}
+		}
+		.prefix {
+			// `-n` is a number of the type of `n`.
+			if node.op == .minus && node.children_count == 1 {
+				typ := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
+				if typ in implicit_number_types {
+					return typ
 				}
 			}
 		}
@@ -21896,6 +22026,11 @@ fn implicit_field_type(raw_type string, field string, index ImplicitFieldScanInd
 }
 
 const implicit_type_prefixes = ['mut ', 'shared ', '&', '?', '!']
+
+// implicit_number_types are the types of numbers, as implicit_normalize_type
+// leaves them.
+const implicit_number_types = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+	'usize', 'f32', 'f64']
 
 fn implicit_normalize_type(raw string, index ImplicitFieldScanIndex) string {
 	mut typ := implicit_trim_space(raw)
