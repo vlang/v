@@ -10625,7 +10625,7 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 		}
 	}
 	refs := g.c_extern_referenced_symbols()
-	if !has_mach_headers && (refs['C.task_info'] || refs['task_info'] || refs['C.mach_task_self'] || refs['mach_task_self']) {
+	if use_system_libc && !has_mach_headers && (refs['C.task_info'] || refs['task_info'] || refs['C.mach_task_self'] || refs['mach_task_self']) {
 		g.writeln('#ifdef __APPLE__')
 		g.emit_preserved_c_directive('#include <mach/mach.h>')
 		g.emit_preserved_c_directive('#include <mach/task.h>')
@@ -20270,9 +20270,9 @@ fn (mut g FlatGen) headerless_timespec_struct() {
 	g.writeln('#ifndef CLOCKS_PER_SEC')
 	g.writeln('#define CLOCKS_PER_SEC 1000000')
 	g.writeln('#endif')
-	g.writeln('clock_t clock(void);')
+	g.emit_c_runtime_declarations(['clock'])
 	g.writeln('#ifndef _WIN32')
-	g.writeln('i32 clock_gettime(i32 clock_id, struct timespec* tp);')
+	g.emit_c_runtime_declarations(['clock_gettime'])
 	g.writeln('#endif')
 }
 
@@ -20411,6 +20411,29 @@ fn (mut g FlatGen) headerless_platform_constants() {
 	g.writeln('#define LOCK_EX 2')
 	g.writeln('#define LOCK_NB 4')
 	g.writeln('#define LOCK_UN 8')
+	g.writeln('#define EIO 5')
+	g.writeln('#define ENXIO 6')
+	g.writeln('#define E2BIG 7')
+	g.writeln('#define EBADF 9')
+	g.writeln('#define ECHILD 10')
+	g.writeln('#define ENOMEM 12')
+	g.writeln('#define EEXIST 17')
+	g.writeln('#define EXDEV 18')
+	g.writeln('#define ENODEV 19')
+	g.writeln('#define ENOTDIR 20')
+	g.writeln('#define EISDIR 21')
+	g.writeln('#define ENFILE 23')
+	g.writeln('#define EMFILE 24')
+	g.writeln('#define ENOTTY 25')
+	g.writeln('#define ETXTBSY 26')
+	g.writeln('#define EFBIG 27')
+	g.writeln('#define ENOSPC 28')
+	g.writeln('#define ESPIPE 29')
+	g.writeln('#define EROFS 30')
+	g.writeln('#define EMLINK 31')
+	g.writeln('#define EPIPE 32')
+	g.writeln('#define EDOM 33')
+	g.writeln('#define ERANGE 34')
 	g.writeln('#define EPERM 1')
 	g.writeln('#define ENOENT 2')
 	g.writeln('#define ESRCH 3')
@@ -20502,6 +20525,7 @@ fn (mut g FlatGen) headerless_mmap_constants(map_anonymous string) {
 	g.writeln('#define PROT_WRITE 0x2')
 	g.writeln('#define PROT_EXEC 0x4')
 	g.writeln('#define MAP_PRIVATE 0x0002')
+	g.writeln('#define MAP_FIXED 0x10')
 	g.writeln('#define MAP_ANONYMOUS ${map_anonymous}')
 	g.writeln('#define MAP_ANON MAP_ANONYMOUS')
 	g.writeln('#define MAP_FAILED ((void*)-1)')
@@ -20575,6 +20599,15 @@ fn (mut g FlatGen) headerless_darwin_kqueue_constants() {
 }
 
 fn (mut g FlatGen) headerless_darwin_constants() {
+	g.writeln('#define O_DIRECTORY 0x00100000')
+	g.writeln('#define O_NOFOLLOW 0x00000100')
+	g.writeln('#define AT_FDCWD -2')
+	g.writeln('#define AT_REMOVEDIR 0x0080')
+
+	g.writeln('#define VM_FLAGS_ANYWHERE 1')
+	g.writeln('#define VM_FLAGS_FIXED 0')
+	g.writeln('#define VM_FLAGS_OVERWRITE 0x4000')
+	g.writeln('#define VM_INHERIT_NONE 2')
 	g.writeln('#define O_RDONLY 0x0000')
 	g.writeln('#define O_WRONLY 0x0001')
 	g.writeln('#define O_RDWR 0x0002')
@@ -21124,6 +21157,11 @@ fn (mut g FlatGen) headerless_windows_constants() {
 }
 
 fn (mut g FlatGen) headerless_linux_constants() {
+	g.writeln('#define O_DIRECTORY 0x10000')
+	g.writeln('#define O_NOFOLLOW 0x20000')
+	g.writeln('#define AT_FDCWD -100')
+	g.writeln('#define AT_REMOVEDIR 0x200')
+
 	g.writeln('#define O_RDONLY 0')
 	g.writeln('#define O_WRONLY 1')
 	g.writeln('#define O_RDWR 2')
@@ -21924,7 +21962,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		return
 	}
 	g.libc_compat_decls()
-	g.writeln('#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP')
+	g.writeln('#if !defined(PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) (0)')
 	g.writeln('#endif')
 	g.filelock_compat_decls()

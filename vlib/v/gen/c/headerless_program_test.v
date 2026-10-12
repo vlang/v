@@ -132,3 +132,41 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output == 'OK\n', run.output
 }
+
+fn test_macos_self_c_has_no_include_directives() {
+	$if !macos {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'headerless_self_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	c_file := os.join_path(root, 'v.c')
+	generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-prealloc', '-compile-backend',
+		'fastc', '-o', c_file, os.join_path(@VEXEROOT, 'cmd', 'v')])
+	assert generated.exit_code == 0, generated.output
+	for line in os.read_file(c_file)!.split_into_lines() {
+		// Compiler string literals still contain text used to generate other C files.
+		assert !line.trim_space().starts_with('#include'), line
+	}
+}
+
+fn test_headerless_standard_modules_and_native_helpers() {
+	$if !macos {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'headerless_modules_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'import os\nimport time\nimport math\nimport runtime\nimport sync\nfn main() {\n assert os.exec(["printf", "OK"]).output == "OK"\n assert time.now().year > 1970\n assert math.sqrt(9) == 3\n assert runtime.free_memory()! > 0\n assert runtime.used_memory()! > 0\n mut wg := sync.new_waitgroup()\n wg.go(fn () {})\n wg.wait()\n println("OK")\n}\n')!
+	c_file := os.join_path(root, 'main.c')
+	generated := cmdexec.run(@VEXE, ['-nocache', '-o', c_file, source])
+	assert generated.exit_code == 0, generated.output
+	assert !os.read_file(c_file)!.contains('#include')
+	for cc in ['tcc', 'clang'] {
+		run := cmdexec.run(@VEXE, ['-nocache', '-cc', cc, '-thread-stack-size', '65536',
+			'-no-retry-compilation', 'run', source])
+		assert run.exit_code == 0, run.output
+		assert run.output == 'OK\n', run.output
+	}
+}

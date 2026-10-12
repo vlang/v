@@ -16613,7 +16613,8 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			g.writeln('#ifndef V3CACHE_PROGRAM_UNIT')
 			g.writeln(line)
 			g.writeln('#endif')
-		} else if name == 'task_info' || name == 'mach_task_self' {
+		} else if (name == 'task_info' || name == 'mach_task_self')
+			&& g.c_directives_use_system_libc() {
 			g.writeln('#ifndef __APPLE__')
 			g.writeln(line)
 			g.writeln('#endif')
@@ -17169,9 +17170,7 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 		return false
 	}
 	if !g.c_directives_use_system_libc() && !g.target_libc_headers
-		&& !g.files_with_c_includes[source_file] && module_name !in g.mods_with_c_includes
-		&& (g.c_source_file_is_in_vlib(source_file) || cfn in c_preamble_declared_extern_symbols
-			|| cfn in c_system_libc_preamble_declared_fns || cfn in c_manual_stdlib_declared_fns) {
+		&& !g.files_with_c_includes[source_file] && module_name !in g.mods_with_c_includes {
 		return true
 	}
 	return g.c_extern_decl_has_no_header(source_file, module_name)
@@ -17440,8 +17439,6 @@ const c_static_helper_symbols = {
 	'cpu_relax':                           true
 	'v_filelock_lock':                     true
 	'v_filelock_unlock':                   true
-	'v_os_exec_capture_start':             true
-	'v_os_execute_capture_start':          true
 	'vschannel_cleanup':                   true
 	'vschannel_init':                      true
 	'v_prealloc_atomic_add_i32':           true
