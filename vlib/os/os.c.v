@@ -2,17 +2,12 @@ module os
 
 import strings
 
-#include <sys/stat.h> // #include <signal.h>
-#include <errno.h>
-
 $if macos {
-	#include <mach-o/dyld.h>
 	// needed for os.executable():
 	fn C._dyld_get_image_name(image u32) &char
 }
 
 $if freebsd || openbsd {
-	#include <sys/sysctl.h>
 }
 
 @[markused]
