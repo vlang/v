@@ -114,11 +114,11 @@ fn main() {
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_input_${pid}')
 	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
+	os.rm(bin + $if windows { '.exe.c' } $else { '.c' }) or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 
-	c_code := os.read_file(bin + '.c') or { panic(err) }
+	c_code := os.read_file(bin + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
 	assert !c_code.contains('@type'), c_code
 	assert !c_code.contains('i64 unix'), c_code
 	assert !c_code.contains('.unix'), c_code
@@ -177,7 +177,7 @@ fn main() {
 		objc_bin := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}')
 		objc_compile := os.exec([v3_bin, '${objc_v}', '-b', 'c', '-o', objc_bin])
 		assert objc_compile.exit_code == 0, objc_compile.output
-		objc_code := os.read_file(objc_bin + '.c') or { panic(err) }
+		objc_code := os.read_file(objc_bin + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
 		type_pos := objc_code.index('struct main__V3PointUnique {') or { -1 }
 		assert type_pos >= 0, objc_code
 		// Objective-C source bodies are compiled in a separate native unit.

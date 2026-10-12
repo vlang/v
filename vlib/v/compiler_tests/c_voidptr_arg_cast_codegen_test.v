@@ -74,7 +74,7 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['1', '9', '9',
 		'9', '9']
-	generated := os.read_file(out + '.c') or { panic(err) }
+	generated := os.read_file(out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
 	assert generated.contains('strict_accept_u32((void*)(&item))'), generated
 	assert generated.contains('strict_get_count(&item)'), generated
 	assert generated.contains('strict_get_count_alias(&item)'), generated

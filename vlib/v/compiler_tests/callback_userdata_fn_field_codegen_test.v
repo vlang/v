@@ -91,7 +91,7 @@ fn main() {
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '73'
-	generated := os.read_file(out + '.c') or { panic(err) }
+	generated := os.read_file(out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
 	assert generated.contains('main__App_on_event('), generated
 	assert !generated.contains('void App__on_event('), generated
 }
@@ -216,7 +216,7 @@ fn main() {
 	run := os.exec([good_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '82'
-	generated := os.read_file(good_out + '.c') or { panic(err) }
+	generated := os.read_file(good_out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
 	assert generated.contains('callback_adapter'), generated
 	assert generated.contains('frame_callback_adapter'), generated
 	assert generated.contains('on_event_callback_adapter'), generated
@@ -252,7 +252,7 @@ fn main() {
 	autofree_run := os.exec([autofree_out])
 	assert autofree_run.exit_code == 0, autofree_run.output
 	assert autofree_run.output.trim_space() == '82'
-	autofree_c := os.read_file(autofree_out + '.c') or { panic(err) }
+	autofree_c := os.read_file(autofree_out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
 	assert autofree_c.contains('main__frame((main__App*)arg0);'), autofree_c
 	assert autofree_c.contains('main__on_event(arg0, (main__App*)arg1);'), autofree_c
 
@@ -384,7 +384,7 @@ fn main() {
 	homonym_run := os.exec([homonym_out])
 	assert homonym_run.exit_code == 0, homonym_run.output
 	assert homonym_run.output.trim_space() == '100'
-	homonym_c := os.read_file(homonym_out + '.c') or { panic(err) }
+	homonym_c := os.read_file(homonym_out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
 	assert homonym_c.contains('right__hit_callback_adapter'), homonym_c
 	assert homonym_c.contains('right__hit((right__App*)arg0);'), homonym_c
 	assert !homonym_c.contains('left__hit_callback_adapter'), homonym_c
@@ -419,7 +419,7 @@ fn main() {
 	c_fn_run := os.exec([c_fn_out])
 	assert c_fn_run.exit_code == 0, c_fn_run.output
 	assert c_fn_run.output.trim_space() == '3'
-	c_fn_c := os.read_file(c_fn_out + '.c') or { panic(err) }
+	c_fn_c := os.read_file(c_fn_out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
 	assert c_fn_c.contains('call_c(abs)'), c_fn_c
 	assert !c_fn_c.contains('call_c((_fn_ptr'), c_fn_c
 	assert !c_fn_c.contains('int abs(App*'), c_fn_c
@@ -496,7 +496,7 @@ fn erased(e voidptr, data voidptr) {
 	parallel_run := os.exec([parallel_out])
 	assert parallel_run.exit_code == 0, parallel_run.output
 	assert parallel_run.output.trim_space() == '1100'
-	parallel_c := os.read_file(parallel_out + '.c') or { panic(err) }
+	parallel_c := os.read_file(parallel_out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
 	names := callback_adapter_names(parallel_c, 'erased_callback_adapter_')
 	assert names.len == 2, parallel_c
 	assert names[0] != names[1]

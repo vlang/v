@@ -91,7 +91,7 @@ fn test_plain_call_prefers_current_module_return_authority() {
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
-	generated := os.read_file(out + '.c') or { panic(err) }
+	generated := os.read_file(out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
 	// Cached module bodies are emitted into their own translation units, and markused prunes
 	// their private helpers from the program unit. The exported entry signatures plus the runtime
 	// assertion above verify that each body retained its declaring module's return authority.

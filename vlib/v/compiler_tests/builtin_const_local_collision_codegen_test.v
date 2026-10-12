@@ -43,7 +43,7 @@ fn main() {
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_builtin_const_collision_input_${os.getpid()}')
 	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
+	os.rm(bin + $if windows { '.exe.c' } $else { '.c' }) or {}
 	compile := os.exec([v3_bin, '-W', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -52,7 +52,7 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 
-	c_code := os.read_file(bin + '.c') or { panic(err) }
+	c_code := os.read_file(bin + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
 	assert !c_code.contains('#define degree ('), c_code
 	assert !c_code.contains('#define hashbits ('), c_code
 	assert c_code.contains('builtin__degree'), c_code
