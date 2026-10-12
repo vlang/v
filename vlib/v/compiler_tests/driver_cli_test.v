@@ -444,6 +444,9 @@ fn test_v3_garbage_collector_modes() {
 	v3_bin := build_driver_cli_v3(root)
 	source := os.join_path(root, 'gc_mode.v')
 	os.write_file(source, 'fn main() {
+	mut values := []string{}
+	values << "runtime"
+	println(values[0])
 	$if gcboehm ? { println("v3_gc_marker_gcboehm_28636") }
 	$if gcboehm_full ? { println("v3_gc_marker_gcboehm_full_28636") }
 	$if gcboehm_incr ? { println("v3_gc_marker_gcboehm_incr_28636") }
@@ -2095,7 +2098,8 @@ fn test_driver_platform_pseudo_uses_selected_target_arch() {
 	v3_bin := build_driver_cli_v3(root)
 	source := os.join_path(root, 'platform.v')
 	os.write_file(source, "fn main() {
-	println(@PLATFORM)
+	platform := @PLATFORM
+	println(platform)
 	\$if @PLATFORM == 'amd64' {
 		println('selected-amd64')
 	} \$else \$if @PLATFORM == 'arm64' {
@@ -2170,7 +2174,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	}
 	v3_bin := build_driver_cli_v3(root)
 	source := os.join_path(root, 'hello.v')
-	os.write_file(source, "fn main() { println('ok') }\n") or { panic(err) }
+	os.write_file(source, "fn main() { message := 'ok'; println(message) }\n") or { panic(err) }
 
 	path_output := os.join_path(root, 'hello_path')
 	path_compile := cmdexec.run(v3_bin, ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o',
@@ -2191,7 +2195,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	assert c_source.len > 100
 	assert c_source.contains('typedef signed char i8;')
 	internal_define_source := os.join_path(root, 'internal_define.v')
-	os.write_file(internal_define_source, "fn main() {\n\t\$if v3_backend ? {\n\t\tprintln('v3_backend_leaked_to_user')\n\t} \$else {\n\t\tprintln('v3_backend_stays_internal')\n\t}\n}\n")!
+	os.write_file(internal_define_source, "fn main() {\n\tmessage := 'runtime'\n\tprintln(message)\n\t\$if v3_backend ? {\n\t\tprintln('v3_backend_leaked_to_user')\n\t} \$else {\n\t\tprintln('v3_backend_stays_internal')\n\t}\n}\n")!
 	internal_define_c := os.join_path(root, 'internal_define.c')
 	internal_define_compile := cmdexec.run(v3_bin, ['-prealloc', '-o', internal_define_c,
 		internal_define_source])

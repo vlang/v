@@ -63,6 +63,10 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, true, false)
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, true)
+	prefs.output_cross_c = true
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.output_cross_c = false
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 	prefs.target = pref.target_from('linux', 'arm64')!
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 	prefs.target = pref.target_from('macos', 'arm64')!

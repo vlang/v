@@ -19,7 +19,7 @@ pub fn (g &FlatGen) generated_literal_output_only() bool {
 // all V runtime support, including GC, for an allocation-free executable.
 fn (mut g FlatGen) literal_output_program() ?string {
 	if !g.skip_enum_autostr || g.tc.diagnostic_files.len != 1 || g.test_files.len > 0
-		|| g.initial_c_flags.len > 0
+		|| g.initial_c_flags.len > 0 || g.output_cross_c
 		|| g.cache_split || g.is_shared || g.object_file_mode || g.suppress_main
 		|| g.program_body_only || g.race || g.track_heap || g.is_trace_calls
 		|| g.profile_file.len > 0 || g.coverage_dir.len > 0 || g.print_fn_names.len > 0
