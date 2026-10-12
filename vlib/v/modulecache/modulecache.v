@@ -5394,6 +5394,9 @@ fn module_header_index(a &flat.FlatAst, tc &types.TypeChecker) ModuleHeaderIndex
 // module_headers_with_const_order generates module headers using one declaration index for the
 // checked AST, preserving the same source and constant order as module_header_with_const_order.
 pub fn module_headers_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, module_names []string, vroot string, import_paths map[string]string, const_order []string) map[string]string {
+	if module_names.len == 0 {
+		return map[string]string{}
+	}
 	index := module_header_index(a, tc)
 	mut headers := map[string]string{}
 	mut source_cache := map[string]string{}
