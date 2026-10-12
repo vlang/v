@@ -101,6 +101,8 @@ fn (mut d Digest) absorb(msg_ []u8) int {
 
 // squeeze squeezes the state and calculates checksum output for the current state.
 // It accepts destination buffer with desired buffer length you want to output.
+// Each output block is preceded by a permutation, and the state is left after the
+// last block, so successive calls continue the output stream.
 @[direct_array_access; inline]
 fn (mut d Digest) squeeze(mut dst []u8) int {
 	// nothing to store, just return unchanged
@@ -111,22 +113,19 @@ fn (mut d Digest) squeeze(mut dst []u8) int {
 	if dst.len > max_hash_size {
 		panic('Digest.squeeze: invalid dst.len')
 	}
-	// The squeezing phase begins after msg is absorbed with an
-	// permutation 𝐴𝑠𝑐𝑜𝑛-𝑝[12] to the state:
-	ascon_pnr(mut d.State, .ascon_prnd_12)
-
 	mut pos := 0
-	mut clen := dst.len
-	// process for full block size
-	for clen >= block_size {
-		binary.little_endian_put_u64(mut dst[pos..pos + 8], d.State.e0)
+	for pos < dst.len {
+		// The squeezing phase begins after msg is absorbed with a permutation
+		// 𝐴𝑠𝑐𝑜𝑛-𝑝[12] to the state, and every further block starts with one too:
 		ascon_pnr(mut d.State, .ascon_prnd_12)
-		pos += block_size
-		clen -= block_size
+		take := if dst.len - pos < block_size { dst.len - pos } else { block_size }
+		if take == block_size {
+			binary.little_endian_put_u64(mut dst[pos..pos + block_size], d.State.e0)
+		} else {
+			store_bytes(mut dst[pos..], d.State.e0, take)
+		}
+		pos += take
 	}
-	// final output, the resulting hash is the concatenation of hash blocks
-	store_bytes(mut dst[pos..], d.State.e0, clen)
-	pos += clen
 
 	// for make sure, assert it here
 	assert pos == dst.len
