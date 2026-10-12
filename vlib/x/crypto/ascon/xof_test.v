@@ -144,3 +144,30 @@ fn test_xof128_read_in_eight_byte_blocks() {
 	}
 	assert acc == md
 }
+
+fn test_xof128_read_partial_blocks() ! {
+	for item in xof128_test_data {
+		msg := hex.decode(item.msg)!
+		md := hex.decode(item.md)!
+		for size in [1, 3, 7, 8, 9] {
+			mut x := ascon.new_xof128(64)
+			x.write(msg)!
+			mut empty := []u8{}
+			assert x.read(mut empty)! == 0
+			mut out := []u8{}
+			for out.len < md.len {
+				n := if md.len - out.len < size { md.len - out.len } else { size }
+				mut part := []u8{len: n}
+				assert x.read(mut part)! == n
+				out << part
+				assert x.read(mut empty)! == 0
+			}
+			assert out == md
+			x.reset()
+			x.write(msg)!
+			mut whole := []u8{len: md.len}
+			x.read(mut whole)!
+			assert whole == md
+		}
+	}
+}
