@@ -119,7 +119,7 @@ fn test_literal_output_keeps_linux_backtrace_array_iteration_runtime() {
 		@VEXE
 	}
 	source := os.join_path(root, 'hello.v')
-	os.write_file(source, "fn main() { println('Hello, World!') }\n")!
+	os.write_file(source, "fn main() { message := 'Hello, World!'; println(message) }\n")!
 	flags := ['-new-compiler', '-no-retry-compilation', '-nocache', '-show-timings']
 	for arch in ['amd64', 'arm64'] {
 		c_path := os.join_path(root, 'hello_${arch}.c')
@@ -203,15 +203,37 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 				generated := cmdexec.run_with_timeout(vexe, c_args, 120_000)
 				assert generated.exit_code == 0, generated.output
 				output := os.read_file(c_path)!
-				if mode == 'none' {
-					assert !output.contains('v_gc_init();'), mode
-				} else {
-					assert output.contains('v_gc_init();'), mode
-					assert output.contains('v_gc_malloc'), mode
-					assert output.contains('v_gc_register_displacement'), mode
-					assert output.contains('gc_runtime_init();'), mode
-				}
+				assert !output.contains('v_gc_init();'), mode
+				assert !output.contains('v_gc_malloc'), mode
+				assert !output.contains('v_gc_register_displacement'), mode
+				assert !output.contains('gc_runtime_init();'), mode
 			}
+		}
+		// Allocating programs still need the selected collector's startup and
+		// allocation support, even though literal output does not.
+		runtime_source := os.join_path(root, 'runtime_${mode}.v')
+		os.write_file(runtime_source, 'fn main() {
+	mut values := []string{}
+	values << "runtime"
+	println(values[0])
+}
+')!
+		runtime_c := os.join_path(root, 'runtime_${mode}.c')
+		mut runtime_args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang']
+		if mode.len > 0 {
+			runtime_args << ['-gc', mode]
+		}
+		runtime_args << ['-o', runtime_c, runtime_source]
+		generated := cmdexec.run_with_timeout(vexe, runtime_args, 120_000)
+		assert generated.exit_code == 0, generated.output
+		output := os.read_file(runtime_c)!
+		if mode == 'none' {
+			assert !output.contains('v_gc_init();'), mode
+		} else {
+			assert output.contains('v_gc_init();'), mode
+			assert output.contains('v_gc_malloc'), mode
+			assert output.contains('v_gc_register_displacement'), mode
+			assert output.contains('gc_runtime_init();'), mode
 		}
 	}
 }
