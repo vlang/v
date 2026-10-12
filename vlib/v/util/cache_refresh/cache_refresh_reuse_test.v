@@ -2,7 +2,7 @@ module cache_refresh
 
 import os
 
-fn test_inventory_deduplicates_import_order() ! {
+fn test_inventory_preserves_distinct_import_orders() ! {
 	root := os.join_path(os.vtmp_dir(), 'vup_no_recursive_inventory_${os.getpid()}')
 	source := os.join_path(root, 'vlib', 'sample', 'sample.v')
 	other := os.join_path(root, 'vlib', 'other', 'other.v')
@@ -30,18 +30,22 @@ fn test_inventory_deduplicates_import_order() ! {
 	before := os.ls(dir)!
 	assert before.len == 2
 	os.setenv('V3_CACHE_REFRESH', '1', true)
+	record(dir, root, ['-cc', 'cc'], false, sources, [], '', false)!
+	assert os.ls(dir)! == before
 	record(dir, root, ['-cc', 'cc'], false, {
 		'other':  [other]
 		'sample': [source]
 	}, [], '', false)!
-	assert os.ls(dir)! == before
-	// Old records with another import ordering have the same inventory identity.
+	assert os.ls(dir)!.len == 4
+	// Order-sensitive module directives must retain separate inventory identities.
 	a := Request{ module: 'sample', imports: ['sample', 'other'] }
 	b := Request{ ...a, imports: ['other', 'sample'] }
-	assert encode_request(a) == encode_request(b)
+	assert encode_request(a) != encode_request(b)
+	assert decode_request(encode_request(a))! == a
+	assert decode_request(encode_request(b))! == b
 }
 
-fn test_synthetic_refresh_replays_each_import_set_once() ! {
+fn test_synthetic_refresh_replays_each_import_sequence_once() ! {
 	$if windows {
 		return
 	}
@@ -64,9 +68,11 @@ fn test_synthetic_refresh_replays_each_import_set_once() ! {
 	assert contents.count('fn main() {}') == 1, contents
 	assert contents.count('import sample as _') == 1, contents
 	assert contents.count('import other as _') == 1, contents
-	// Reordering the same inventory imports must not start another child.
+	assert contents.contains('import sample as _\nimport other as _\n'), contents
+	// Different import orders can change the effective C flags and stay separate.
 	refresh(vexe, [requests[1], Request{ ...requests[2], imports: ['other', 'sample'] }])!
-	assert os.read_file(log)!.count('fn main() {}') == 2
+	assert os.read_file(log)!.count('fn main() {}') == 3
+	assert os.read_file(log)!.contains('import other as _\nimport sample as _\n')
 	// Compiler modes, test mode, source flags and import sets remain separate.
 	refresh(vexe, [
 		Request{ ...requests[1], args: ['-prod'] },
@@ -76,8 +82,81 @@ fn test_synthetic_refresh_replays_each_import_set_once() ! {
 		Request{ module: 'sample', imports: ['sample'] },
 	])!
 	after := os.read_file(log)!
-	assert after.count('fn main() {}') == 6, after
+	assert after.count('fn main() {}') == 7, after
 	assert after.count('fn test_cache_refresh() {}') == 1, after
+}
+
+fn test_refresh_preserves_ordered_module_include_paths() ! {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('clang') or { return }
+	vroot := os.dir(@VEXE)
+	root := os.join_path(os.vtmp_dir(), 'vup_ordered_flags_${os.getpid()}')
+	name := 'vup_ordered_flags_${os.getpid()}'
+	module_root := os.join_path(vroot, 'vlib', name)
+	os.mkdir_all(root)!
+	saved := os.environ()
+	variables := ['V3CACHE', 'VEXE', 'VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH',
+		'V3_CACHE_REFRESH_ENTRY', 'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V3_CACHE_FORCE_SOURCE',
+		'V_SKIP_VVMRC']
+	defer {
+		for variable in variables {
+			if variable in saved {
+				os.setenv(variable, saved[variable], true)
+			} else {
+				os.unsetenv(variable)
+			}
+		}
+		os.rmdir_all(module_root) or {}
+		os.rmdir_all(root) or {}
+	}
+	for variable in variables { os.unsetenv(variable) }
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	os.setenv('VEXE', @VEXE, true)
+	os.setenv('V_SKIP_VVMRC', '1', true)
+	mut headers := []string{}
+	for i, module_name in ['z_first', 'a_second'] {
+		dir := os.join_path(module_root, module_name)
+		include := os.join_path(dir, 'include')
+		os.mkdir_all(include)!
+		header := os.join_path(include, 'vup_order_value.h')
+		headers << header
+		os.write_file(header, 'static inline int vup_order_value(void) { return ${if i == 0 {
+			21
+		} else {
+			42
+		}}; }\n')!
+		os.write_file(os.join_path(dir, 'value.c.v'), 'module ${module_name}\n' +
+			'#flag -I"${include}"\n#include "vup_order_value.h"\n' +
+			'fn C.vup_order_value() int\npub fn value() int { return C.vup_order_value() }\n')!
+	}
+	mut entries := []string{}
+	for i, modules in [['z_first', 'a_second'], ['a_second', 'z_first']] {
+		entry := os.join_path(root, 'main_${i}.v')
+		entries << entry
+		imports := modules.map('import ${name}.${it}\n').join('')
+		os.write_file(entry, imports + 'fn main() { println(z_first.value() + a_second.value()) }\n')!
+		build := os.exec([@VEXE, '-cc', 'clang', '-gc', 'none', '-o', os.join_path(root, 'program'),
+			entry])
+		assert build.exit_code == 0, build.output
+		run := os.exec([os.join_path(root, 'program')])
+		assert run.exit_code == 0 && run.output.trim_space() == if i == 0 { '42' } else { '84' }, run.output
+	}
+	requests := collect(vroot, @VEXE)!.filter(it.module.starts_with(name + '.'))
+	assert requests.len == 4, requests.str()
+	assert requests.any(it.imports.index('${name}.z_first') < it.imports.index('${name}.a_second'))
+	assert requests.any(it.imports.index('${name}.a_second') < it.imports.index('${name}.z_first'))
+	os.write_file(headers[0], 'static inline int vup_order_value(void) { return 31; }\n')!
+	refresh(@VEXE, requests)!
+	for i, entry in entries {
+		warm := os.exec([@VEXE, '-cc', 'clang', '-gc', 'none', '-show-timings', '-o',
+			os.join_path(root, 'program'), entry])
+		assert warm.exit_code == 0, warm.output
+		assert !warm.output.contains('Caching module '), warm.output
+		run := os.exec([os.join_path(root, 'program')])
+		assert run.exit_code == 0 && run.output.trim_space() == if i == 0 { '62' } else { '84' }, run.output
+	}
 }
 
 fn test_repeated_refresh_keeps_the_inventory_and_module_objects_warm() ! {

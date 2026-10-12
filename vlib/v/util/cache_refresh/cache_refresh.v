@@ -64,14 +64,12 @@ fn hash_text(text string) string {
 }
 
 fn encode_request(request Request) string {
-	mut imports := request.imports.clone()
-	imports.sort()
 	mut out := strings.new_builder(128)
 	out.writeln(record_format)
 	out.writeln(request.module)
 	out.writeln(if request.is_test { 'test' } else { 'program' })
 	out.write_string(encode_arguments([request.cwd, encode_project_flags(request.project_flags),
-		encode_arguments(imports), request.entry, request.show_test_stats.str(),
+		encode_arguments(request.imports), request.entry, request.show_test_stats.str(),
 		encode_arguments(request.compile_inputs), encode_entry_sources(request.entry_sources),
 		...request.args]))
 	return out.str()
@@ -274,6 +272,7 @@ pub fn decode_project_flags(content string) ![]FlagGroup {
 // one another's inventories and C-flag variants survive in the same cache.
 // The caller's directory preserves relative compilation inputs during refresh.
 // project_flags preserves project directives without freezing the vlib's flags.
+// Import order is retained because it determines the order of module C directives.
 // entry identifies the original source input for project interface scopes.
 // Its source identities retire configurations after the project input changes.
 // show_test_stats preserves the effective test assertion display mode.
@@ -292,7 +291,6 @@ pub fn record(dir string, vroot string, args []string, is_test bool, sources map
 		name := source_dir[vlib.len + 1..].replace(os.path_separator, '.')
 		if valid_module(name) && name !in modules { modules << name }
 	}
-	modules.sort()
 	for name in modules {
 		request := Request{
 			args:            args
@@ -543,7 +541,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // module with its original flags and working directory. Compiler validation also
 // covers transitive imports, headers, embedded files and compiler changes. Unchanged entries are
 // reused, and each newly compiled module is announced on inherited stdout.
-// Equivalent synthetic import sets and live entry commands run once per configuration.
+// Equivalent synthetic import sequences and live entry commands run once per configuration.
 // Records with vanished working directories, required inputs or compilers are skipped.
 // Live entries whose project source identity changed are skipped until rebuilt and recorded.
 // Legacy headers are marked migrated only after successful refreshes of their variants.
@@ -635,9 +633,10 @@ pub fn refresh(vexe string, requests []Request) ! {
 		// Builtin is implicit in every child. A builtin-only request still imports
 		// strconv to warm the shared core object, as before.
 		if (request.module != 'builtin' || import_names.len == 0) && name !in import_names {
-			import_names << name
+			import_names.prepend(name)
 		}
-		import_names.sort()
+		// Keep the recorded order, including the target's original position:
+		// imported #flag groups can contain ordered include paths and definitions.
 		if !use_entry {
 			key := encode_arguments([request.cwd, request.is_test.str(), request.show_test_stats.str(),
 				encode_project_flags(request.project_flags), encode_arguments(import_names),
