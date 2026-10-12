@@ -100,11 +100,11 @@ fn test_headerless_runtime_prototypes_survive_warm_module_cache() {
 	source := os.join_path(root, 'main.v')
 	// Different bodies reuse builtin interfaces while rebuilding the program prefix.
 	for message in ['first', 'second'] {
-		os.write_file(source, 'fn main() { println("${message}") }\n')!
+		os.write_file(source, 'fn main() { println("${message}") }\nfn cleanup() { println("cleanup") }\n')!
 		run := cmdexec.run(@VEXE, ['-cc', 'clang', '-gc', 'none', '-no-retry-compilation', 'run',
 			source])
 		assert run.exit_code == 0, run.output
-		assert run.output == '${message}\n', run.output
+		assert run.output == '${message}\ncleanup\n', run.output
 	}
 }
 
