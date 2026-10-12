@@ -273,6 +273,10 @@ pub fn (req &Request) do() !Response {
 		}
 		// follow any redirects
 		mut redirect_url := resp.header.get(.location) or { '' }
+		if redirect_url.len == 0 {
+			// a 3xx without a Location header is terminal; hand the response back
+			break
+		}
 		mut qrurl := urllib.URL{}
 		if redirect_url.len > 0 && redirect_url[0] == `/` {
 			qrurl = rurl.parse(redirect_url) or {
