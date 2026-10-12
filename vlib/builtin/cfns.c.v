@@ -470,7 +470,7 @@ fn C.FormatMessageW(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId
 
 fn C.CloseHandle(voidptr) i32
 
-fn C.GetExitCodeProcess(hProcess voidptr, lpExitCode &u32)
+fn C.GetExitCodeProcess(hProcess voidptr, lpExitCode &C.DWORD) bool
 
 @[trusted]
 fn C.GetTickCount() i64
@@ -646,7 +646,7 @@ fn C.WrappedNSLog(str &u8)
 fn C.abs(number i32) i32
 
 $if windows {
-	fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool
+	fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &C.ULARGE_INTEGER, total_number_of_bytes &C.ULARGE_INTEGER, total_number_of_free_bytes &C.ULARGE_INTEGER) bool
 
 	fn C.GetNativeSystemInfo(voidptr)
 
