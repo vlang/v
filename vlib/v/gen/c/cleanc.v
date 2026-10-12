@@ -19949,7 +19949,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.emit_c_runtime_declarations(['getenv', 'setenv', 'pow', 'fabs', 'floor', 'ceil', 'snprintf',
 		'memcpy', 'memmove', 'memcmp', 'strlen', 'qsort', 'fwrite', 'mmap', 'pthread_self',
 		'pthread_mutex_lock', 'pthread_mutex_unlock', 'pthread_mutex_init', 'mprotect', 'sysconf',
-		'aligned_alloc', 'exit', 'getpid'])
+		'aligned_alloc', 'exit', 'getpid', 'fcntl'])
 }
 
 fn c_function_like_macro_decl_names() []string {

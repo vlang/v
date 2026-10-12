@@ -14383,6 +14383,23 @@ pub fn run(args []string) {
 				pic_flag, target_args, prefs.target, c_compiler, use_implicit_tcc_semantics, cc_dir,
 				mut c_object_cache_stats) or {
 				message := err.msg()
+				if retry_compilation && explicit_tcc {
+					fallback := v3_platform_c_compiler_command(host_os)
+					// Object preparation wraps the C compiler output with the source path.
+					diagnostics := if newline := message.index('\n') {
+						message[newline + 1..]
+					} else {
+						message
+					}
+					eprintln(v3_explicit_tcc_fallback_warning(fallback, diagnostics))
+					if show_c_output && diagnostics.len > 0 {
+						eprintln(diagnostics)
+					}
+					// Reuse the restart path with its implicit warning suppressed.
+					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, true,
+						diagnostics)
+					return
+				}
 				if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, false, 0) {
 					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, silent,
 						if message.len > 0 {

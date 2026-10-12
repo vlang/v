@@ -616,6 +616,7 @@ fn C.pipe(pipefds &i32) i32
 
 fn C.dup2(oldfd i32, newfd i32) i32
 
+@[markused]
 fn C.fcntl(fd i32, cmd i32, arg ...voidptr) i32
 
 fn C.execlp(file &char, arg &char, va ...voidptr) i32
