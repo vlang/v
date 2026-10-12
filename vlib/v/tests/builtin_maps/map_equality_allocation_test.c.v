@@ -1,6 +1,9 @@
 // vtest vflags: -gc boehm -d no_gc_thread_local_alloc -d use_bundled_libgc
 module main
 
+// The collector owns the full statistics layout and its function declaration.
+#include <gc.h>
+
 struct C.GC_prof_stats_s {
 	bytes_allocd_since_gc  usize
 	allocd_bytes_before_gc usize
