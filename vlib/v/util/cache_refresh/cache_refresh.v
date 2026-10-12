@@ -64,12 +64,14 @@ fn hash_text(text string) string {
 }
 
 fn encode_request(request Request) string {
+	mut imports := request.imports.clone()
+	imports.sort()
 	mut out := strings.new_builder(128)
 	out.writeln(record_format)
 	out.writeln(request.module)
 	out.writeln(if request.is_test { 'test' } else { 'program' })
 	out.write_string(encode_arguments([request.cwd, encode_project_flags(request.project_flags),
-		encode_arguments(request.imports), request.entry, request.show_test_stats.str(),
+		encode_arguments(imports), request.entry, request.show_test_stats.str(),
 		encode_arguments(request.compile_inputs), encode_entry_sources(request.entry_sources),
 		...request.args]))
 	return out.str()
@@ -290,6 +292,7 @@ pub fn record(dir string, vroot string, args []string, is_test bool, sources map
 		name := source_dir[vlib.len + 1..].replace(os.path_separator, '.')
 		if valid_module(name) && name !in modules { modules << name }
 	}
+	modules.sort()
 	for name in modules {
 		request := Request{
 			args:            args
@@ -540,6 +543,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // module with its original flags and working directory. Compiler validation also
 // covers transitive imports, headers, embedded files and compiler changes. Unchanged entries are
 // reused, and each newly compiled module is announced on inherited stdout.
+// Equivalent synthetic import sets and live entry commands run once per configuration.
 // Records with vanished working directories, required inputs or compilers are skipped.
 // Live entries whose project source identity changed are skipped until rebuilt and recorded.
 // Legacy headers are marked migrated only after successful refreshes of their variants.
@@ -620,14 +624,28 @@ pub fn refresh(vexe string, requests []Request) ! {
 			refreshed_entries[key] = true
 		}
 		name := if request.module == 'builtin' { 'strconv' } else { request.module }
-		mut imports := 'import ${name} as _\n'
+		mut import_names := []string{}
 		for module_name in request.imports {
 			if !valid_module(module_name) { return error('invalid module ${module_name}') }
-			if module_name == name || module_name == 'builtin' { continue }
+			if module_name == 'builtin' { continue }
 			if os.is_dir(os.join_path(os.dir(vexe), 'vlib', module_name.replace('.', os.path_separator))) {
-				imports += 'import ${module_name} as _\n'
+				if module_name !in import_names { import_names << module_name }
 			}
 		}
+		// Builtin is implicit in every child. A builtin-only request still imports
+		// strconv to warm the shared core object, as before.
+		if (request.module != 'builtin' || import_names.len == 0) && name !in import_names {
+			import_names << name
+		}
+		import_names.sort()
+		if !use_entry {
+			key := encode_arguments([request.cwd, request.is_test.str(), request.show_test_stats.str(),
+				encode_project_flags(request.project_flags), encode_arguments(import_names),
+				...request.args])
+			if key in refreshed_entries { continue }
+			refreshed_entries[key] = true
+		}
+		imports := import_names.map('import ${it} as _\n').join('')
 		source := if use_entry {
 			request.entry
 		} else {

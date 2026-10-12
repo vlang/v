@@ -17,6 +17,8 @@ module objects are rebuilt. Isolated ownership caches use the primary V compiler
 Live entries replay absolute -file-list operands and re-expand directories to
 include their current files. Records with vanished listed files or directories
 are skipped. Equivalent live commands run once despite historical source flags.
+Equivalent synthetic import sets also run once per build configuration. Import
+ordering does not create new inventory records during subsequent refreshes.
 Unreadable, truncated, and unsupported inventory files are skipped. Live-entry
 source identities retire obsolete configurations after project source changes;
 a successful build records the current inputs. Older live records without source
