@@ -13,12 +13,17 @@ fn test_tools_keep_their_first_argument_on_a_direct_run() {
 	defer {
 		os.rmdir_all(tpath) or {}
 	}
-	tools := {
+	mut tools := {
+		'cover':    'vcover'
 		'diff':     'vdiff.v'
 		'download': 'vdownload.v'
 		'repeat':   'vrepeat.v'
 		'time':     'vtime.v'
 		'timeout':  'vtimeout.v'
+	}
+	// vgret only runs on Linux: its host check fails before any argument is read.
+	$if linux {
+		tools['gret'] = 'vgret.v'
 	}
 	for name, source in tools {
 		mut binary := os.join_path(tpath, name)
