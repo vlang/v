@@ -14254,9 +14254,7 @@ fn (mut g FlatGen) sizeof_selector_target(base string, fields []string) string {
 			if cgen_unalias_type(typ) is types.Pointer {
 				arrow = true
 			}
-			if field.starts_with('@') {
-				field_name = g.field_c_name(typ, field)
-			}
+			field_name = g.field_c_name(typ, field)
 		}
 		expr += if arrow { '->${field_name}' } else { '.${field_name}' }
 		cur = g.sizeof_selector_field_type(cur, field)

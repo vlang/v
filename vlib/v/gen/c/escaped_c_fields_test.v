@@ -26,6 +26,9 @@ fn test_escaped_c_field_names_follow_the_resolved_owner() {
 		assert g.field_c_name(owner, '@select') == 'select'
 		assert g.field_c_name(owner, '_v_type') == '_v_type'
 		assert g.field_c_name(owner, 'type') == 'type'
+		for field in ['index', 'select', 'malloc', 'exit', 'byte', 'int_str', 'v_index'] {
+			assert g.field_c_name(owner, field) == field
+		}
 	}
 }
 
@@ -35,7 +38,8 @@ fn test_escaped_v_field_names_keep_their_existing_spelling() {
 	alias := types.Type(types.Alias{ name: 'Fields', base_type: v_struct })
 	pointer := types.Type(types.Pointer{ base_type: alias })
 	for owner in [v_struct, alias, pointer] {
-		for field in ['@type', '@struct', '@select', '_v_type', 'type'] {
+		for field in ['@type', '@struct', '@select', '_v_type', 'type', 'index', 'select', 'malloc',
+			'exit', 'byte', 'int_str'] {
 			assert g.field_c_name(owner, field) == c_name(field)
 		}
 	}
@@ -56,6 +60,34 @@ fn test_escaped_c_initializer_field_names_resolve_aliases() {
 	assert g.init_field_c_name('Fields', '@type') == 'type'
 	assert g.init_field_c_name('EscapedFields', '@type') == '_v_type'
 	assert g.init_field_c_name('EscapedFields', '@struct') == '_v_struct'
+	for field in ['index', 'select', 'malloc', 'exit', 'byte', 'int_str', 'v_index'] {
+		assert g.init_field_c_name('C.EscapedFields', field) == field
+		assert g.init_field_c_name('Fields', field) == field
+		assert g.init_field_c_name('EscapedFields', field) == c_name(field)
+	}
+}
+
+fn test_sizeof_c_field_names_follow_alias_pointer_owners() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['C.Record'] = [types.StructField{ name: 'index', typ: types.Type(types.u64_) }]
+	tc.structs['Record'] = tc.structs['C.Record']
+	tc.type_aliases['RecordAlias'] = 'C.Record'
+	tc.type_aliases['RecordPointer'] = '&RecordAlias'
+	tc.type_alias_modules['RecordAlias'] = 'main'
+	tc.type_alias_modules['RecordPointer'] = 'main'
+	tc.cur_module = 'main'
+	tc.push_scope()
+	tc.cur_scope.insert('record', tc.parse_type('RecordAlias'))
+	tc.cur_scope.insert('pointer', tc.parse_type('RecordPointer'))
+	tc.cur_scope.insert('value', tc.parse_type('Record'))
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert g.sizeof_selector_target('record', ['index']) == 'record.index'
+	assert g.sizeof_selector_target('pointer', ['index']) == 'pointer->index'
+	assert g.sizeof_selector_target('value', ['index']) == 'value.v_index'
+	tc.pop_scope()
 }
 
 fn test_escaped_c_callback_selector_assignment_keeps_c_abi_adapter() {
