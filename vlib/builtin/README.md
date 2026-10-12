@@ -10,6 +10,10 @@ for splitting text into grapheme clusters.
 The `.string()` method converts dynamic and fixed arrays of runes to UTF-8 strings,
 including fixed arrays returned by `.map()`.
 
+Rune-to-string helpers encode surrogate halves and values above U+10FFFF as U+FFFD.
+UTF-16 helpers `string_from_wide` and `string_from_wide2` join valid surrogate pairs;
+unpaired UTF-16 units retain their three-byte WTF-8 representation for lossless interop.
+
 It also implements builtin functions like `println`, `eprintln`, `malloc`,
 `panic`, `print_backtrace`.
 
