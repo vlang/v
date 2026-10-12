@@ -268,16 +268,16 @@ pub fn node_payload_with_constraints(generic_params []string, generic_constraint
 		node_payload_unlock()
 		panic('v3: too many node payloads (${idx})')
 	}
-	mut chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(chunk_idx))
+	mut chunk := payload_ptr_get(voidptr(table), usize(chunk_idx))
 	if isnil(chunk) {
 		chunk = node_payload_new_chunk()
-		C.v_flat_payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
+		payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
 		if isnil(chunk) {
 			node_payload_unlock()
 			panic('v3: could not allocate a node payload chunk')
 		}
 	}
-	C.v_flat_payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
+	payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
 	node_payload_count_publish(table, u32(idx + 1))
 	node_payload_unlock()
 	return u32(idx + 1)
@@ -297,8 +297,8 @@ pub fn node_payload_at(id u32) &NodePayload {
 	if isnil(table) || idx >= int(node_payload_count_load(table)) {
 		return &NodePayload(unsafe { nil })
 	}
-	chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
-	return unsafe { &NodePayload(C.v_flat_payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
+	chunk := payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
+	return unsafe { &NodePayload(payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
 }
 
 // node_flag_skip_ownership_drops marks a block/if/for/fn node whose scope must
