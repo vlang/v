@@ -11,6 +11,7 @@ pub const second = Duration(1000 * millisecond)
 pub const minute = Duration(60 * second)
 pub const hour = Duration(60 * minute)
 //	day         = Duration(24 * hour)
+// infinite is the maximum i64 duration, used by APIs that support waiting forever.
 pub const infinite = Duration(i64(9223372036854775807))
 
 // nanoseconds returns the duration as an integer number of nanoseconds.
@@ -67,7 +68,7 @@ fn duration_pad3(n i64) string {
 	return n.str()
 }
 
-// str pretty prints the duration
+// str pretty prints the duration, including the maximum i64 value used by infinite.
 //
 // ```
 // h:m:s      // 5:02:33
@@ -78,9 +79,6 @@ fn duration_pad3(n i64) string {
 // ns<ns>     // 234ns
 // ```
 pub fn (d Duration) str() string {
-	if d == infinite {
-		return 'inf'
-	}
 	mut sign := ''
 	mut t := i64(d)
 	if t < 0 {
