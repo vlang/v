@@ -11348,6 +11348,10 @@ pub fn run(args []string) {
 	c_compiler = selection.c_compiler
 	use_implicit_tcc_semantics := selection.use_implicit_tcc_semantics
 	effective_c_compiler := selection.effective_c_compiler
+	if effective_c_compiler == 'msvc' && target.os != 'windows' && !output_cross_c {
+		eprintln('MSVC requires a Windows target; cannot compile target `${target.os}`')
+		exit(1)
+	}
 	if retry_compilation && use_implicit_tcc_semantics && !check_only && !only_check_syntax
 		&& !c_only && !is_o {
 		if injected_failure := os.getenv_opt('V3_TEST_FORCE_IMPLICIT_TCC_FAILURE') {
