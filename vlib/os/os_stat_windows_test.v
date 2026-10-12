@@ -95,7 +95,7 @@ fn test_windows_get_mode_maps_stat_bits_to_file_mode() {
 }
 
 fn test_windows_stat_reports_directory_and_file_types() {
-	dir_path := join_path(temp_dir(), 'v_os_stat_get_mode_dir')
+	dir_path := join_path(temp_dir(), 'v_os_stat_get_mode_dir_${getpid()}')
 	if !exists(dir_path) {
 		mkdir_all(dir_path)!
 	}
