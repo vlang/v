@@ -214,3 +214,19 @@ fn test_path_backslash_is_escaped_on_output() {
 	quoted := urllib.parse("http://example.com/a'b")!
 	assert quoted.str() == "http://example.com/a'b"
 }
+
+fn test_parse_empty_and_question_only_relative_urls() ! {
+	for raw in ['', '?', '??', '?a=1?', 'mailto:user@example.com?a=1?', '/p?a=1?#fragment?'] {
+		u := urllib.parse(raw)!
+		assert u.str() == raw
+	}
+	u := urllib.parse('?')!
+	assert u.raw_query == ''
+	assert u.force_query
+	v := urllib.parse('??')!
+	assert v.raw_query == '?'
+	assert !v.force_query
+	w := urllib.parse('/p?a=1?#fragment?')!
+	assert w.raw_query == 'a=1?'
+	assert w.fragment == 'fragment?'
+}
