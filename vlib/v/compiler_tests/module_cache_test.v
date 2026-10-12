@@ -62,8 +62,14 @@ fn create_module_cache_vroot(root string) {
 }
 
 fn compile_module_cache_project(v3_bin string, cache_dir string, main_file string, output string) {
-	result :=
-		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-o', output, main_file])
+	compile_module_cache_project_with_flags(v3_bin, cache_dir, main_file, output, [])
+}
+
+fn compile_module_cache_project_with_flags(v3_bin string, cache_dir string, main_file string, output string, flags []string) {
+	mut args := ['env', 'V3CACHE=' + '${cache_dir}', v3_bin]
+	args << flags
+	args << ['-o', output, main_file]
+	result := os.exec(args)
 	assert result.exit_code == 0, result.output
 }
 
@@ -2588,14 +2594,20 @@ fn main() {
 ')
 	cache_dir := os.join_path(root, 'cache')
 	first_output := os.join_path(root, 'first')
-	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	compile_module_cache_project_with_flags(v3_bin, cache_dir, main_file, first_output, [
+		'-cc',
+		'cc',
+	])
 	assert run_module_cache_binary(first_output) == '42'
 	first_configs := module_cache_configuration_dirs(cache_dir)
 	assert first_configs.len == 1, first_configs.str()
 
 	write_module_cache_file(root, 'cc-version', 'wrapper toolchain two\n')
 	second_output := os.join_path(root, 'second')
-	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	compile_module_cache_project_with_flags(v3_bin, cache_dir, main_file, second_output, [
+		'-cc',
+		'cc',
+	])
 	assert run_module_cache_binary(second_output) == '42'
 	second_configs := module_cache_configuration_dirs(cache_dir)
 	assert second_configs.len == first_configs.len + 1, second_configs.str()
