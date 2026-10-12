@@ -505,5 +505,34 @@ fn test_attachment_filename_crlf_cannot_inject_headers() {
 	}
 	message := mail.message_data()
 	assert !message.contains('\r\nBcc: victim@example.com\r\n')
-	assert message.contains('filename="x"Bcc: victim@example.comX"')
+	assert message.contains('filename="x\\"Bcc: victim@example.comX"')
+}
+
+fn test_attachment_cid_and_filename_strip_single_newline_bytes() {
+	attachment := Attachment{
+		cid:      'image\r\nX-Test: injected\r\n\r\nend'
+		filename: 'a\\b"; name="other\r\n.txt'
+		bytes:    'data'.bytes()
+	}
+	data := attachment.to_string()
+	assert data.contains('Content-ID: <imageX-Test: injectedend>\r\n')
+	assert !data.contains('\r\nX-Test:')
+	assert data.contains('filename="a\\\\b\\"; name=\\"other.txt"\r\n')
+	assert data.ends_with('ZGF0YQ==')
+	for newline in ['\r', '\n'] {
+		clean := Attachment{ filename: 'a${newline}b', cid: 'c${newline}d' }.to_string()
+		assert clean.contains('filename="ab"\r\n')
+		assert clean.contains('Content-ID: <cd>\r\n')
+	}
+}
+
+fn test_attachment_clean_values_preserve_headers_and_payload() {
+	data := Attachment{ filename: 'report.txt', cid: 'report@example.com', bytes: [
+		u8(0),
+		1,
+		255,
+	] }.to_string()
+	assert data.contains('Content-ID: <report@example.com>\r\n')
+	assert data.contains('Content-Disposition: attachment; filename="report.txt"\r\n')
+	assert data.ends_with('AAH/')
 }
