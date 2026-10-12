@@ -471,7 +471,8 @@ pub fn concat[T](a []T, b ...T) []T {
 	return m
 }
 
-// returns the smallest element >= val, requires `array` to be sorted.
+// lower_bound returns the smallest element >= val, requiring `array` to be sorted.
+// An empty array or missing bound returns an error describing the operation and value.
 // Example: arrays.lower_bound([2, 4, 6, 8], 3)! // => 4
 pub fn lower_bound[T](array []T, val T) !T {
 	if array.len == 0 {
@@ -488,13 +489,14 @@ pub fn lower_bound[T](array []T, val T) !T {
 		}
 	}
 	if left >= array.len {
-		return error('')
+		return error('.lower_bound: no element >= ${val}')
 	} else {
 		return array[left]
 	}
 }
 
-// returns the largest element <= val, requires `array` to be sorted.
+// upper_bound returns the largest element <= val, requiring `array` to be sorted.
+// An empty array or missing bound returns an error describing the operation and value.
 // Example: arrays.upper_bound([2, 4, 6, 8], 3)! // => 2
 pub fn upper_bound[T](array []T, val T) !T {
 	if array.len == 0 {
@@ -511,7 +513,7 @@ pub fn upper_bound[T](array []T, val T) !T {
 		}
 	}
 	if right < 0 {
-		return error('')
+		return error('.upper_bound: no element <= ${val}')
 	} else {
 		return array[right]
 	}
@@ -536,7 +538,7 @@ pub fn binary_search[T](array []T, target T) !int {
 			right = idx - 1
 		}
 	}
-	return error('')
+	return error('.binary_search: target ${target} not found')
 }
 
 // rotate_left rotates the array in-place.
