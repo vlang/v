@@ -72,6 +72,7 @@ fn alias_row(row &Row) int {
 fn escape_row(row &Row) &Row { return row }
 fn take_address(row &Row) &int { return unsafe { &row[0] } }
 fn forward_row(row &Row) int { return read_row(row) }
+fn forward_escape(row &Row) &Row { return escape_row(row) }
 fn main() {}
 ')!
 	defer { os.rm(path) or {} }
@@ -82,10 +83,11 @@ fn main() {}
 		assert parallel.params[name] == params, name
 		assert parallel.borrows[name] == serial.borrows[name], name
 	}
-	for name in ['read_row', 'write_row', 'read_holder'] {
+	// forward_row hands its parameter straight to read_row, which borrows it
+	for name in ['read_row', 'write_row', 'read_holder', 'forward_row'] {
 		assert parallel.borrows[name] == [true], name
 	}
-	for name in ['alias_row', 'escape_row', 'take_address', 'forward_row'] {
+	for name in ['alias_row', 'escape_row', 'take_address', 'forward_escape'] {
 		assert parallel.borrows[name].len == 0, name
 	}
 	assert parallel.file == serial.file

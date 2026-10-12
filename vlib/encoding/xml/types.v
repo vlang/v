@@ -58,6 +58,8 @@ pub struct DocumentType {
 pub:
 	name string @[required]
 	dtd  DTDInfo
+	// external_id retains the quoted SYSTEM or PUBLIC identifier; external resources are not loaded.
+	external_id string
 }
 
 type DTDInfo = DocumentTypeDefinition | string
