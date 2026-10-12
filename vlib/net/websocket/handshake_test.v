@@ -6,7 +6,7 @@ module websocket
 // length check is a remote denial of service.
 // See https://github.com/vlang/v/issues/30168
 fn test_parse_client_handshake_rejects_colon_less_header() {
-	mut s := new_server(.ip, 18765, '')
+	mut s := new_server(.ip, 0, '')
 	mut c := Client{}
 	bad := 'GET / HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key\r\n\r\n'
 	if _, _ := s.parse_client_handshake(bad, mut c) {
@@ -18,6 +18,45 @@ fn test_parse_client_handshake_rejects_colon_less_header() {
 		assert false, 'server must accept a well-formed handshake: ${err}'
 		return
 	}
+}
+
+fn test_handshake_empty_and_malformed_unknown_headers_return_errors() {
+	mut s := new_server(.ip, 0, '')
+	mut c := Client{}
+	if _, _ := s.parse_client_handshake('', mut c) {
+		assert false
+	}
+	mut ws := Client{}
+	if _ := ws.check_handshake_response('', 'key') {
+		assert false
+	}
+	for header in ['X-Unknown', ': unnamed'] {
+		request := 'GET / HTTP/1.1\r\n${header}\r\n\r\n'
+		if _, _ := s.parse_client_handshake(request, mut c) {
+			assert false
+		} else {
+			assert err.code() == 9
+		}
+		response := 'HTTP/1.1 101 Switching Protocols\r\n${header}\r\n\r\n'
+		if _ := ws.check_handshake_response(response, 'key') {
+			assert false
+		} else {
+			assert err.code() == 9
+		}
+	}
+}
+
+fn test_handshake_preserves_colons_in_values() ! {
+	mut s := new_server(.ip, 0, '')
+	mut c := Client{}
+	key := 'dGhlIHNhbXBsZSBub25jZQ=='
+	challenge := create_key_challenge_response(key)!
+	request := 'GET / HTTP/1.1\r\nHost: localhost:8080\r\nX-URL: https://example.com:443/path\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\n\r\n'
+	_, client := s.parse_client_handshake(request, mut c)!
+	assert client.client_key == key
+	mut ws := Client{}
+	response := 'HTTP/1.1 101 Switching Protocols\r\nX-URL: https://example.com:443/path\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${challenge}\r\n\r\n'
+	ws.check_handshake_response(response, key)!
 }
 
 // test_check_handshake_response_rejects_colon_less_header is the client-side
