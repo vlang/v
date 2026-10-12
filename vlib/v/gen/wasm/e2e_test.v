@@ -50,15 +50,15 @@ fn e2e_module_bytes(name string, source string, production bool) []u8 {
 	return g.mod.compile()
 }
 
-// ---- wasm binary inspector (mirrors WasmReader in ssa_gen_test.v) ----
+// ---- wasm binary inspector (mirrors E2EReader in ssa_gen_test.v) ----
 
-struct WasmReader {
+struct E2EReader {
 mut:
 	bytes []u8
 	pos   int
 }
 
-fn (mut r WasmReader) leb() int {
+fn (mut r E2EReader) leb() int {
 	mut n := 0
 	mut shift := 0
 	for {
@@ -73,7 +73,7 @@ fn (mut r WasmReader) leb() int {
 	return n
 }
 
-fn (mut r WasmReader) name() string {
+fn (mut r E2EReader) name() string {
 	len := r.leb()
 	mut out := ''
 	for _ in 0 .. len {
@@ -85,7 +85,7 @@ fn (mut r WasmReader) name() string {
 
 // wasm_body returns the raw bytes of the section with the given id.
 fn wasm_body(bytes []u8, id u8) []u8 {
-	mut r := WasmReader{
+	mut r := E2EReader{
 		bytes: bytes
 		pos:   8
 	}
@@ -104,7 +104,7 @@ fn wasm_body(bytes []u8, id u8) []u8 {
 // wasm_exports maps every exported function's name to its function index.
 fn wasm_exports(bytes []u8) map[string]int {
 	mut out := map[string]int{}
-	mut r := WasmReader{
+	mut r := E2EReader{
 		bytes: wasm_body(bytes, 7)
 		pos:   0
 	}
@@ -121,15 +121,15 @@ fn wasm_exports(bytes []u8) map[string]int {
 	return out
 }
 
-// wasm_imports maps every `module.name` the import section declares to its type
+// e2e_wasm_imports maps every `module.name` the import section declares to its type
 // index, ignoring non-function imports (there are none here).
-fn wasm_imports(bytes []u8) map[string]int {
+fn e2e_wasm_imports(bytes []u8) map[string]int {
 	mut out := map[string]int{}
 	body := wasm_body(bytes, 2)
 	if body.len == 0 {
 		return out
 	}
-	mut r := WasmReader{
+	mut r := E2EReader{
 		bytes: body
 		pos:   0
 	}
@@ -147,12 +147,12 @@ fn wasm_imports(bytes []u8) map[string]int {
 	return out
 }
 
-// wasm_type_at decodes the `(params) -> (results)` signature registered at
+// e2e_wasm_type_at decodes the `(params) -> (results)` signature registered at
 // `index`, so a test can check the shape of an export or import.
-fn wasm_type_at(bytes []u8, index int) ([]u8, []u8) {
+fn e2e_wasm_type_at(bytes []u8, index int) ([]u8, []u8) {
 	mut params := []u8{}
 	mut results := []u8{}
-	mut r := WasmReader{
+	mut r := E2EReader{
 		bytes: bytes
 		pos:   8
 	}
@@ -193,9 +193,9 @@ fn wasm_type_at(bytes []u8, index int) ([]u8, []u8) {
 // wasm_func_type_idx resolves a function index to its type index by walking the
 // function section past the imported functions that occupy the low indices.
 fn wasm_func_type_idx(bytes []u8, func_index int) int {
-	defined := func_index - wasm_imports(bytes).len
+	defined := func_index - e2e_wasm_imports(bytes).len
 	body := wasm_body(bytes, 3)
-	mut r := WasmReader{
+	mut r := E2EReader{
 		bytes: body
 		pos:   0
 	}
@@ -214,7 +214,7 @@ fn wasm_func_type_idx(bytes []u8, func_index int) int {
 // can look at one function's constants in isolation.
 fn wasm_func_bodies(bytes []u8) [][]u8 {
 	body := wasm_body(bytes, 10)
-	mut r := WasmReader{
+	mut r := E2EReader{
 		bytes: body
 		pos:   0
 	}
@@ -233,7 +233,7 @@ fn wasm_func_bodies(bytes []u8) [][]u8 {
 // segment, which is where SSAGen places the interned string data.
 fn wasm_first_data_seg(bytes []u8) (int, []u8) {
 	body := wasm_body(bytes, 11)
-	mut r := WasmReader{
+	mut r := E2EReader{
 		bytes: body
 		pos:   0
 	}
@@ -347,7 +347,7 @@ fn e2e_node(name string, wasm_bytes []u8, mjs string) string {
 // wasm_export_exists reports whether the export section declares `name` of the
 // given kind (0 function, 2 memory).
 fn wasm_export_exists(bytes []u8, name string, kind u8) bool {
-	mut r := WasmReader{
+	mut r := E2EReader{
 		bytes: wasm_body(bytes, 7)
 		pos:   0
 	}
@@ -420,11 +420,11 @@ fn wide() i64 {
 	// The module also exports its linear memory, the contract a host needs to
 	// read the bytes a print writes.
 	assert wasm_export_exists(bytes, 'memory', export_mem), 'memory export missing'
-	mp, mr := wasm_type_at(bytes, wasm_func_type_idx(bytes, make_idx))
+	mp, mr := e2e_wasm_type_at(bytes, wasm_func_type_idx(bytes, make_idx))
 	assert mp.len == 0 && mr == [valtype_i32], 'make sig: ${mp.str()} -> ${mr.str()}'
-	mp2, mr2 := wasm_type_at(bytes, wasm_func_type_idx(bytes, add_idx))
+	mp2, mr2 := e2e_wasm_type_at(bytes, wasm_func_type_idx(bytes, add_idx))
 	assert mp2 == [valtype_i32] && mr2 == [valtype_i32], 'add_const sig wrong'
-	mp3, mr3 := wasm_type_at(bytes, wasm_func_type_idx(bytes, wide_idx))
+	mp3, mr3 := e2e_wasm_type_at(bytes, wasm_func_type_idx(bytes, wide_idx))
 	assert mp3.len == 0 && mr3 == [valtype_i64], 'wide sig should be ()->i64'
 }
 
@@ -438,7 +438,7 @@ fn main() {
 }
 '
 	bytes := e2e_module_bytes('wasi', source, false)
-	imports := wasm_imports(bytes)
+	imports := e2e_wasm_imports(bytes)
 	write_idx := imports['wasi_snapshot_preview1.fd_write'] or {
 		assert false, 'fd_write missing: ${imports}'
 		-1
@@ -447,10 +447,10 @@ fn main() {
 		assert false, 'proc_exit missing: ${imports}'
 		-1
 	}
-	wp, wr := wasm_type_at(bytes, write_idx)
+	wp, wr := e2e_wasm_type_at(bytes, write_idx)
 	assert wp == [valtype_i32, valtype_i32, valtype_i32, valtype_i32], 'fd_write params wrong'
 	assert wr == [valtype_i32], 'fd_write result wrong'
-	ep, er := wasm_type_at(bytes, exit_idx)
+	ep, er := e2e_wasm_type_at(bytes, exit_idx)
 	assert ep == [valtype_i32], 'proc_exit params wrong'
 	assert er.len == 0, 'proc_exit must not return'
 }
