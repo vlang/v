@@ -26,10 +26,11 @@ pub fn no_result() Result {
 }
 
 struct Route {
-	methods []http.Method
-	path    string
-	words   []string
-	host    string
+	methods         []http.Method
+	path            string
+	words           []string
+	host            string
+	parameter_names []string
 mut:
 	middlewares       []RouteMiddleware
 	after_middlewares []RouteMiddleware
@@ -52,11 +53,16 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 				return error('error parsing method attributes: ${err}')
 			}
 
+			mut parameter_names := []string{}
+			for param in method.args[1..] {
+				parameter_names << param.name
+			}
 			mut route := Route{
-				methods: http_methods
-				path:    route_path
-				words:   route_path_words(route_path)
-				host:    host
+				methods:         http_methods
+				path:            route_path
+				words:           route_path_words(route_path)
+				host:            host
+				parameter_names: parameter_names
 			}
 
 			$if A is MiddlewareApp {
@@ -354,10 +360,6 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	mut route := Route{}
 	mut middleware_has_sent_response := false
 	mut not_found := false
-	mut variadic_route := Route{}
-	mut variadic_route_words := []string{}
-	mut variadic_method_name := ''
-	mut variadic_method_args := []string{}
 
 	defer {
 		// execute middleware functions after veb is done and before the response is send
@@ -461,35 +463,36 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		unsafe { prealloc_scope_checkpoint(c'veb before route match') }
 	}
 
-	if is_root_path {
+	if matched := select_route(routes, url.path, host, user_context.Context.req.method) {
+		route = matched.route
+		$if A is MiddlewareApp {
+			if !validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
+				user_context.Context.req.method)) {
+				middleware_has_sent_response = true
+				return
+			}
+		}
+		mut args := matched.params
+		if matched.from_data {
+			data := if user_context.Context.req.method == .get {
+				user_context.Context.query
+			} else {
+				user_context.Context.form
+			}
+			for name in route.parameter_names {
+				args << data[name]
+			}
+		}
 		$for method in A.methods {
-			$if method.name == 'index' && method.return_type is Result {
-				route = (*routes)[method.name] or {
-					eprintln('[veb] parsed attributes for the `${method.name}` are not found, skipping...')
-					Route{}
-				}
-				if user_context.Context.req.method in route.methods
-					&& (route.host == '' || route.host == host)
-					&& (route.path == '/' || route.path == '/index') {
-					$if A is MiddlewareApp {
-						if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
-							user_context.Context.req.method)) == false {
-							middleware_has_sent_response = true
-							return
-						}
-					}
-					can_have_data_args := user_context.Context.req.method == .post
-						|| user_context.Context.req.method == .get
+			$if method.return_type is Result {
+				if method.name == matched.name {
 					$if method.args.len > 1 {
-						if can_have_data_args {
-							mut args := []string{cap: method.args.len + 1}
-							data := if user_context.Context.req.method == .get {
-								user_context.Context.query
-							} else {
-								user_context.Context.form
-							}
-							for param in method.args[1..] {
-								args << data[param.name]
+						if !matched.from_data || user_context.Context.req.method in [
+							.get,
+							.post,
+						] {
+							if !matched.from_data && args.len + 1 != method.args.len {
+								eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${args.len})')
 							}
 							$if trace_prealloc ? {
 								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
@@ -513,181 +516,54 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 			}
 		}
 	}
-
-	url_words := route_path_words(url.path)
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'veb route words parsed') }
-	}
-
-	// Route matching and match route specific middleware as last step
-	$for method in A.methods {
-		$if method.return_type is Result {
-			route = (*routes)[method.name] or {
-				eprintln('[veb] parsed attributes for the `${method.name}` are not found, skipping...')
-				Route{}
-			}
-
-			// Skip if the HTTP request method does not match the attributes
-			if user_context.Context.req.method in route.methods {
-				// Used for route matching
-				route_words := route.words
-
-				// Skip if the host does not match or is empty
-				if route.host == '' || route.host == host {
-					can_have_data_args := user_context.Context.req.method == .post
-						|| user_context.Context.req.method == .get
-					// Route immediate matches first
-					// For example URL `/register` matches route `/:user`, but `fn register()`
-					// should be called first.
-					if !route.path.contains('/:') && url_words == route_words {
-						// We found a match
-						$if A is MiddlewareApp {
-							if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
-								user_context.Context.req.method)) == false {
-								middleware_has_sent_response = true
-								return
-							}
-						}
-						$if method.args.len > 1 {
-							if can_have_data_args {
-								// Populate method args with form or query values
-								mut args := []string{cap: method.args.len + 1}
-								data := if user_context.Context.req.method == .get {
-									user_context.Context.query
-								} else {
-									user_context.Context.form
-								}
-								for param in method.args[1..] {
-									args << data[param.name]
-								}
-								$if trace_prealloc ? {
-									unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-								}
-								app.$method(mut user_context, ...args)
-								$if trace_prealloc ? {
-									unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-								}
-							}
-						} $else {
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-							}
-							app.$method(mut user_context)
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-							}
-						}
-						return
-					}
-
-					if url_words.len == 0 && route_words.len == 1 && route_words[0] == 'index'
-						&& method.name == 'index' {
-						$if A is MiddlewareApp {
-							if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
-								user_context.Context.req.method)) == false {
-								middleware_has_sent_response = true
-								return
-							}
-						}
-
-						$if method.args.len > 1 {
-							if can_have_data_args {
-								// Populate method args with form or query values
-								mut args := []string{cap: method.args.len + 1}
-								data := if user_context.Context.req.method == .get {
-									user_context.Context.query
-								} else {
-									user_context.Context.form
-								}
-								for param in method.args[1..] {
-									args << data[param.name]
-								}
-								$if trace_prealloc ? {
-									unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-								}
-								app.$method(mut user_context, ...args)
-								$if trace_prealloc ? {
-									unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-								}
-							}
-						} $else {
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-							}
-							app.$method(mut user_context)
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-							}
-						}
-						return
-					}
-
-					if params := route_matches(url_words, route_words) {
-						if route_is_variadic(route_words) {
-							if should_prefer_variadic_route(route_words, variadic_route_words) {
-								variadic_route = route
-								variadic_route_words = route_words.clone()
-								variadic_method_name = method.name
-								variadic_method_args = params.clone()
-							}
-						} else {
-							$if A is MiddlewareApp {
-								if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
-									user_context.Context.req.method)) == false {
-									middleware_has_sent_response = true
-									return
-								}
-							}
-							method_args := params.clone()
-							if method_args.len + 1 != method.args.len {
-								eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
-							}
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-							}
-							app.$method(mut user_context, ...method_args)
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-							}
-							return
-						}
-					}
-				}
-			}
-		}
-	}
-	if variadic_method_name != '' {
-		route = variadic_route
-		$for method in A.methods {
-			$if method.return_type is Result {
-				if method.name == variadic_method_name {
-					$if A is MiddlewareApp {
-						if validate_middleware[X](mut user_context, get_handlers_for_method(variadic_route.middlewares,
-							user_context.Context.req.method)) == false {
-							middleware_has_sent_response = true
-							return
-						}
-					}
-					method_args := variadic_method_args.clone()
-					if method_args.len + 1 != method.args.len {
-						eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
-					}
-					$if trace_prealloc ? {
-						unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-					}
-					app.$method(mut user_context, ...method_args)
-					$if trace_prealloc ? {
-						unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-					}
-					return
-				}
-			}
-		}
-	}
 	// return 404
 	user_context.not_found()
 	not_found = true
 	return
+}
+
+// RouteMatch holds runtime routing work shared by all controller types. Only the
+// selected handler's typed invocation remains in handle_route's method loop.
+struct RouteMatch {
+	name      string
+	route     Route
+	params    []string
+	from_data bool
+}
+
+fn select_route(routes &map[string]Route, path string, host string, method http.Method) ?RouteMatch {
+	is_root := path.len == 0 || path == '/'
+	if is_root {
+		if index_route := (*routes)['index'] {
+			if method in index_route.methods && (index_route.host == '' || index_route.host == host)
+				&& index_route.path in ['/', '/index'] {
+				return RouteMatch{ name: 'index', route: index_route, from_data: true }
+			}
+		}
+	}
+	url_words := route_path_words(path)
+	mut variadic_match := RouteMatch{}
+	for name, route in *routes {
+		if method !in route.methods || (route.host != '' && route.host != host) {
+			continue
+		}
+		if (!route.path.contains('/:') && url_words == route.words)
+			|| (url_words.len == 0 && route.words.len == 1 && route.words[0] == 'index' && name == 'index') {
+			return RouteMatch{ name: name, route: route, from_data: true }
+		}
+		if params := route_matches(url_words, route.words) {
+			if !route_is_variadic(route.words) {
+				return RouteMatch{ name: name, route: route, params: params }
+			}
+			if should_prefer_variadic_route(route.words, variadic_match.route.words) {
+				variadic_match = RouteMatch{ name: name, route: route, params: params }
+			}
+		}
+	}
+	if variadic_match.name != '' {
+		return variadic_match
+	}
+	return none
 }
 
 fn route_is_variadic(route_words []string) bool {
