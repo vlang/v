@@ -108,3 +108,32 @@ fn test_directory_test_runner_declares_hidden_string_comparisons() ! {
 	assert ran.exit_code == 0, ran.output
 	assert ran.output.contains('1 passed'), ran.output
 }
+
+fn test_portable_gc_helper_preserves_linux_header_linkage() ! {
+	$if windows || freestanding || vinix {
+		return
+	}
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	mut g := FlatGen.new()
+	g.set_output_cross_c(true)
+	g.compile_defines << 'gcboehm'
+	g.portable_native_runtime_helpers()
+	code := g.sb.str()
+	linux_header := $embed_file('@VEXEROOT/vlib/builtin/gc_debugger_linux.h').to_string()
+	assert code.contains(linux_header)
+	assert !code.contains('static inline static')
+	root := os.join_path(os.vtmp_dir(), 'portable_linux_gc_guard_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'helpers.c')
+	output := os.join_path(root, 'preprocessed.c')
+	os.write_file(source, code)!
+	// Enable the Linux helper branch with the host SDK; this checks preprocessing,
+	// not execution of Linux-specific root registration on another platform.
+	preprocessed := cmdexec.run(cc, ['-E', '-P', '-D__linux__=1', '-I',
+		os.join_path(@VEXEROOT, 'thirdparty', 'libgc', 'include'), '-o', output, source])
+	assert preprocessed.exit_code == 0, preprocessed.output
+	text := os.read_file(output)!
+	assert text.contains('v_gc_can_register_main_data_roots_impl'), text
+	assert !text.contains('static inline static')
+}

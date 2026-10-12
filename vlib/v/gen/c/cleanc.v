@@ -19184,12 +19184,15 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	if !(g.output_cross_c || g.object_file_mode) || g.no_builtin || g.target_libc_headers {
 		return
 	}
+	g.writeln('#ifndef _WIN32')
+	g.write($embed_file('@VEXEROOT/vlib/v/pthread_helper.h').to_string())
+	g.writeln('#endif')
 	if 'gcboehm' in g.compile_defines {
 		gc_source := $embed_file('@VEXEROOT/vlib/builtin/gc_boehm_helpers.c').to_string()
 		gc_header := $embed_file('@VEXEROOT/vlib/builtin/gc_debugger_linux.h').to_string()
-		g.write(gc_source.replace('#include "gc_debugger_linux.h"', gc_header)
-			.replace('void* v_', 'static void* v_').replace('void v_', 'static void v_')
-			.replace('int v_', 'static int v_'))
+		g.write(gc_source.replace('void* v_', 'static void* v_')
+			.replace('void v_', 'static void v_').replace('int v_', 'static int v_')
+			.replace('#include "gc_debugger_linux.h"', gc_header))
 	}
 	if 'no_segfault_handler' !in g.compile_defines && g.target.os != 'vinix' {
 		signal_source := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.c').to_string()
