@@ -359,3 +359,25 @@ fn test_to_plaintext_blockquote_footnotes_share_global_order() {
 	assert text.contains('Footnotes:')
 	assert text.contains('[1] note body')
 }
+
+fn test_expand_tabs_preserves_interior_tabs() {
+	// leading tabs expand to the next tab stop; tabs elsewhere are literal
+	// content (notably inside code blocks) and must survive byte for byte.
+	// See https://github.com/vlang/v/issues/30171
+	assert expand_tabs('\treturn 1') == '    return 1'
+	assert expand_tabs('  \tx') == '    x'
+	assert expand_tabs('a\tb') == 'a\tb'
+	assert expand_tabs('no tabs') == 'no tabs'
+	assert expand_tabs(' \t\tx\ty') == '        x\ty'
+	assert expand_tabs('\t\t') == '        '
+	assert expand_tabs('世界\ttext') == '世界\ttext'
+	assert expand_tabs('') == ''
+}
+
+fn test_fenced_code_preserves_literal_tabs() {
+	// a tab inside a code line is literal content and must survive byte
+	// for byte; only leading tabs expand (see test_expand_tabs_...).
+	html := to_html('```\na\tb\n```\n')
+	assert html.contains('a\tb')
+	assert to_html('    a\tb\n').contains('a\tb')
+}
