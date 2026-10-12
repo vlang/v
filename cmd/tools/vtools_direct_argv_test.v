@@ -43,7 +43,7 @@ fn test_tools_keep_their_first_argument_on_a_direct_run() {
 				for args in [[binary], [vexe, name]] {
 					missing := os.exec(args)
 					assert missing.exit_code == 1, missing.output
-					assert missing.output.contains('Error missing arguments'), missing.output
+					assert missing.output.starts_with('Usage: vgret PATH'), missing.output
 				}
 			}
 		}
