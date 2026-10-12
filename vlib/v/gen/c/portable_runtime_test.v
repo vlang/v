@@ -127,10 +127,11 @@ fn test_portable_gc_helper_preserves_linux_header_linkage() ! {
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'helpers.c')
 	output := os.join_path(root, 'preprocessed.c')
-	os.write_file(source, code)!
+	// Load the host collector SDK before enabling the guarded Linux helper text.
+	os.write_file(source, '#include <gc.h>\n#ifndef __linux__\n#define __linux__ 1\n#endif\n' + code)!
 	// Enable the Linux helper branch with the host SDK; this checks preprocessing,
 	// not execution of Linux-specific root registration on another platform.
-	preprocessed := cmdexec.run(cc, ['-E', '-P', '-D__linux__=1', '-I',
+	preprocessed := cmdexec.run(cc, ['-E', '-P', '-I',
 		os.join_path(@VEXEROOT, 'thirdparty', 'libgc', 'include'), '-o', output, source])
 	assert preprocessed.exit_code == 0, preprocessed.output
 	text := os.read_file(output)!

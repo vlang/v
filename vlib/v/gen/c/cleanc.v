@@ -19186,7 +19186,15 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	}
 	g.writeln('#ifndef _WIN32')
 	g.write($embed_file('@VEXEROOT/vlib/v/pthread_helper.h').to_string())
+	g.write($embed_file('@VEXEROOT/vlib/v/bench/peak_rss.h').to_string())
+	capture_source := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.c').to_string()
+	capture_header := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.h').to_string()
+	g.write(capture_source.replace('#define V_OS_EXECUTE_SCOPE\n', '')
+		.replace('#include "execute_capture_nix.h"', capture_header))
 	g.writeln('#endif')
+	metadata_source := $embed_file('@VEXEROOT/vlib/v/modulecache/file_metadata.c').to_string()
+	g.write(metadata_source.replace('int v3_modulecache_file_metadata(',
+		'static int v3_modulecache_file_metadata('))
 	if 'gcboehm' in g.compile_defines {
 		gc_source := $embed_file('@VEXEROOT/vlib/builtin/gc_boehm_helpers.c').to_string()
 		gc_header := $embed_file('@VEXEROOT/vlib/builtin/gc_debugger_linux.h').to_string()
