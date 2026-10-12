@@ -15,6 +15,20 @@ typedef struct {
 	void *arg;
 } v3_win_thread_context;
 
+/* Boehm only scans threads it created or registered. This TU does not include
+ * gc.h, so gc.h's CreateThread -> GC_CreateThread redirect never applies here.
+ * A plain CreateThread worker that allocates then aborts the next collection with
+ * "Collecting from unknown thread". GC_CreateThread registers the worker itself. */
+#if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)
+#ifndef GC_H
+HANDLE WINAPI GC_CreateThread(LPSECURITY_ATTRIBUTES, SIZE_T, LPTHREAD_START_ROUTINE,
+	LPVOID, DWORD, LPDWORD);
+#endif
+#define v3_win_create_thread GC_CreateThread
+#else
+#define v3_win_create_thread CreateThread
+#endif
+
 static DWORD WINAPI v3_win_thread_thunk(LPVOID raw_context) {
 	v3_win_thread_context *context = (v3_win_thread_context *)raw_context;
 	void *(*start_routine)(void *) = context->start_routine;
@@ -41,7 +55,7 @@ static inline void *v3_win_thread_create(size_t stack_size,
 	context->start_routine = start_routine;
 	context->arg = arg;
 	DWORD id = 0;
-	HANDLE handle = CreateThread(NULL, stack_size, v3_win_thread_thunk, context,
+	HANDLE handle = v3_win_create_thread(NULL, stack_size, v3_win_thread_thunk, context,
 		STACK_SIZE_PARAM_IS_A_RESERVATION, &id);
 	if (handle == NULL) {
 		HeapFree(GetProcessHeap(), 0, context);
