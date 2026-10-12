@@ -2222,6 +2222,7 @@ fn (g &FlatGen) fn_decl_attributes(node_id flat.NodeId) []string {
 	return []string{}
 }
 
+// GCC requires function definition attributes to precede the declarator.
 fn (g &FlatGen) fn_decl_c_attribute(node_id flat.NodeId) string {
 	if int(node_id) < 0 || g.ccompiler == 'msvc' {
 		return ''
@@ -2238,7 +2239,7 @@ fn (g &FlatGen) fn_decl_c_attribute(node_id flat.NodeId) string {
 	if c_attrs.len == 0 {
 		return ''
 	}
-	return ' __attribute__((${c_attrs.join(', ')}))'
+	return '__attribute__((${c_attrs.join(', ')})) '
 }
 
 // Keep the external declaration and let the C optimizer choose which hinted
@@ -2271,10 +2272,9 @@ fn (g &FlatGen) fn_decl_noreturn_prefix(node_id flat.NodeId) string {
 
 // A `@[_naked]` body is the whole function: the compiler must not wrap it in a
 // prologue and epilogue, or the hand-written `ret` returns through a frame it
-// never set up. The attribute has to precede the declarator, so it cannot join
-// the `_constructor`/`_destructor` group in fn_decl_c_attribute. MSVC is left
-// out: its `__declspec(naked)` is x86-only, and it has no inline assembly for
-// the body to begin with.
+// never set up. Keep it separate from fn_decl_c_attribute so body generation
+// can detect naked functions. MSVC is left out: its `__declspec(naked)` is
+// x86-only, and it has no inline assembly for the body to begin with.
 fn (g &FlatGen) fn_decl_naked_prefix(node_id flat.NodeId) string {
 	if g.ccompiler == 'msvc' {
 		return ''
@@ -5365,12 +5365,13 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		naked_prefix := g.fn_decl_naked_prefix(node_id)
 		is_naked_fn = naked_prefix.len > 0
 		g.write(naked_prefix)
+		g.write(g.fn_decl_c_attribute(node_id))
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
 		g.write(generated_fn_name)
 		g.write('(')
 		g.write_fn_node_params(node)
-		g.writeln(')${g.fn_decl_c_attribute(node_id)} {')
+		g.writeln(') {')
 	}
 	// All generated temporary identifiers are function-local. Reset immediately
 	// before emitting the body so lookup/preparation work cannot affect spelling.
