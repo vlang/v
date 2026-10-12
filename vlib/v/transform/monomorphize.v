@@ -3077,12 +3077,29 @@ fn (mut t Transformer) expand_generic_materialization_specs(decls map[string]Gen
 	}
 }
 
+// declaration_scan_prefix reuses the checker's declaration index for its
+// original AST prefix. Nodes appended by lowering still need a full scan.
+fn (t &Transformer) declaration_scan_prefix() (int, int) {
+	if !isnil(t.tc) && t.tc.top_level_idx.len > 0 && t.tc.top_level_idx_nodes_len > 0
+		&& t.tc.top_level_idx_nodes_len <= t.a.nodes.len {
+		return t.tc.top_level_idx.len, t.tc.top_level_idx_nodes_len
+	}
+	return 0, 0
+}
+
+@[direct_array_access]
 fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDecl {
 	mut decls := map[string]GenericStructDecl{}
 	t.ensure_node_module_map()
 	mut cur_file := ''
 	mut cur_module := ''
-	for i in 0 .. t.a.nodes.len {
+	indexed_count, indexed_nodes := t.declaration_scan_prefix()
+	for scan_idx in 0 .. indexed_count + t.a.nodes.len - indexed_nodes {
+		i := if scan_idx < indexed_count {
+			int(t.tc.top_level_idx[scan_idx])
+		} else {
+			indexed_nodes + scan_idx - indexed_count
+		}
 		kind := t.a.nodes[i].kind
 		if kind != .file && kind != .module_decl && kind != .struct_decl {
 			continue
@@ -3125,12 +3142,19 @@ fn generic_struct_decl_key(name string, module_name string) string {
 	return '${module_name}.${name}'
 }
 
+@[direct_array_access]
 fn (mut t Transformer) collect_generic_sum_decls() map[string]GenericSumDecl {
 	mut decls := map[string]GenericSumDecl{}
 	t.ensure_node_module_map()
 	mut cur_file := ''
 	mut cur_module := ''
-	for i in 0 .. t.a.nodes.len {
+	indexed_count, indexed_nodes := t.declaration_scan_prefix()
+	for scan_idx in 0 .. indexed_count + t.a.nodes.len - indexed_nodes {
+		i := if scan_idx < indexed_count {
+			int(t.tc.top_level_idx[scan_idx])
+		} else {
+			indexed_nodes + scan_idx - indexed_count
+		}
 		kind := t.a.nodes[i].kind
 		if kind != .file && kind != .module_decl && kind != .type_decl {
 			continue

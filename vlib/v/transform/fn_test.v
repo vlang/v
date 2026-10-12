@@ -88,7 +88,7 @@ fn test_call_param_type_name_memo_preserves_composites_and_module_locks() {
 		t.cur_module = module_name
 		t.memo_call_param_type_names = false
 		expected := t.call_param_type_names(params)
-		configure_transformer(mut t, false, true, false, false, false, unsafe { nil })
+		configure_transformer(mut t, false, false, false, false, false, unsafe { nil })
 		assert !t.building_v
 		assert t.memo_call_param_type_names
 		assert t.call_param_type_names(params) == expected
