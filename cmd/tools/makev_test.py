@@ -477,9 +477,16 @@ class BatchExecutionTests(unittest.TestCase):
             "detect": '"%V_EXE%" run cmd/tools/detect_tcc.v',
             "version": '"%V_EXE%" version',
             "register": '"%V_EXE%" run .github/problem-matchers/register_all.vsh',
+            "smoke_version": '"%V_UPDATED%" version',
+            "smoke_compile": '"%V_UPDATED%" -o "%V_UPDATED%.smoke.exe" examples/hello_world.v '
+            '> "%V_UPDATED%.smoke.log" 2>&1',
+            "smoke_run": '"%V_UPDATED%.smoke.exe" > nul',
         }
         body = "\n".join(
-            routine(name) for name in ("check", "success", "version", "move_updated_to_v")
+            routine(name) for name in (
+                "check", "success", "version", "smoke_test_updated", "smoke_log_is_clean",
+                "try_delete", "move_updated_to_v",
+            )
         )
         for name, command in commands.items():
             self.assertEqual(body.count(command + "\n"), 1)
@@ -613,6 +620,218 @@ class BatchExecutionTests(unittest.TestCase):
                 result = self.run_try_delete(workdir, target)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertTrue(target.exists())
+
+    def run_self_hosted(self, workdir, status=0, writes=False, compiler_present=True):
+        compiler = workdir / "v.exe"
+        if compiler_present:
+            compiler.write_text("placeholder compiler", encoding="utf-8")
+        else:
+            compiler = workdir / "missing v.exe"
+        lines = routine("build_self_hosted_with_tcc").splitlines()
+        replaced = 0
+        for index, line in enumerate(lines):
+            if line.startswith('"%V_EXE%" '):
+                lines[index] = line.replace('"%V_EXE%"', "call :stub_v", 1)
+                replaced += 1
+        self.assertEqual(replaced, 1)
+        try_delete = routine("try_delete")
+        for wait in ("ping 192.0.2.1 -n 1 -w 100 >nul", "ping 192.0.2.1 -n 1 -w 250 >nul"):
+            try_delete = try_delete.replace(wait, "rem No delay in tests")
+        stub = [":stub_v", '>>"%test_calls%" echo %*']
+        if writes:
+            stub.append('>"%V_UPDATED%" echo built')
+        stub.append("exit /b " + str(status))
+        script = "\n".join([
+            "@echo off",
+            "setlocal EnableExtensions EnableDelayedExpansion",
+            'set "V_EXE=' + str(compiler) + '"',
+            'set "V_UPDATED=' + str(workdir / "v_up.exe") + '"',
+            "set V_BOOTSTRAP_VFLAGS=-no-parallel",
+            'set "tcc_exe=C:\\fake tools\\tcc.exe"',
+            'set "test_calls=' + str(workdir / "stub calls.txt") + '"',
+            "call :build_self_hosted_with_tcc",
+            "exit /b !ERRORLEVEL!",
+            "\n".join(lines),
+            try_delete,
+            "\n".join(stub),
+        ])
+        harness = workdir / "self hosted harness.bat"
+        harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+        result = subprocess.run(
+            [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)],
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+        calls = workdir / "stub calls.txt"
+        return result, (calls.read_text(encoding="utf-8").splitlines() if calls.exists() else [])
+
+    def test_self_hosted_build_installs_only_a_successful_compile(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            workdir = Path(directory)
+            result, calls = self.run_self_hosted(workdir, writes=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual((workdir / "v_up.exe").read_text().strip(), "built")
+            self.assertEqual(len(calls), 1)
+            self.assertIn("-no-parallel -g -cc", calls[0])
+            self.assertIn("cmd/v", calls[0])
+
+    def test_self_hosted_build_failure_removes_partial_output_and_keeps_exit_code(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            workdir = Path(directory)
+            result, calls = self.run_self_hosted(workdir, status=47, writes=True)
+            self.assertEqual(result.returncode, 47, result.stdout + result.stderr)
+            self.assertFalse((workdir / "v_up.exe").exists())
+            self.assertEqual(len(calls), 1)
+
+    def test_self_hosted_build_reports_a_missing_compiler_without_running_anything(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            workdir = Path(directory)
+            result, calls = self.run_self_hosted(workdir, compiler_present=False)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("Self-hosted compiler not found", result.stdout)
+            self.assertEqual(calls, [])
+            self.assertFalse((workdir / "v_up.exe").exists())
+
+    def run_tcc_routing(self, workdir, bootstrap=0, fresh=0, self_hosted=0, clang=1, gcc=1,
+                        install=0):
+        # Runs the real TCC route, from `tcc_strap` through `tcc_retry_with_host_bootstrap`,
+        # with every compiler step stubbed to record its name and return the given status.
+        start = SOURCE.index("\n:tcc_strap\n") + 1
+        end = SOURCE.index("\n:build_fresh_v_with_tcc\n") + 1
+        stubs = []
+        for label, record, status in (
+            ("build_bootstrap_with_tcc", "bootstrap tcc", bootstrap),
+            ("build_fresh_v_with_tcc", "fresh", fresh),
+            ("build_self_hosted_with_tcc", "self-hosted", self_hosted),
+            ("build_bootstrap_with_clang", "bootstrap clang", clang),
+            ("build_bootstrap_with_gcc", "bootstrap gcc", gcc),
+            ("clang_strap", "clang_strap", 1),
+            ("move_updated_to_v", "install", install),
+            ("compile_error", "compile_error", 1),
+            ("success", "success", 0),
+        ):
+            stubs.extend([
+                ":" + label, '>>"%test_calls%" echo ' + record, "exit /b " + str(status),
+            ])
+        calls = workdir / "routing calls.txt"
+        script = "\n".join([
+            "@echo off",
+            "setlocal EnableExtensions EnableDelayedExpansion",
+            "set compiler=",
+            'set "V_EXE=v.exe"',
+            'set "V_UPDATED=v_up.exe"',
+            'set "test_calls=' + str(calls) + '"',
+            "call :tcc_strap",
+            "exit /b !ERRORLEVEL!",
+            SOURCE[start:end],
+            "\n".join(stubs),
+        ])
+        harness = workdir / "routing harness.bat"
+        harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+        result = subprocess.run(
+            [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)],
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+        return result, (calls.read_text(encoding="utf-8").splitlines() if calls.exists() else [])
+
+    def test_bootstrap_failure_with_a_failed_self_hosted_build_stops_without_repeat_work(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            result, calls = self.run_tcc_routing(Path(directory), bootstrap=1, self_hosted=1)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertEqual(calls, ["bootstrap tcc", "self-hosted", "compile_error"])
+
+    def test_bootstrap_failure_installs_a_successful_self_hosted_build(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            result, calls = self.run_tcc_routing(Path(directory), bootstrap=1, self_hosted=0)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(calls, ["bootstrap tcc", "self-hosted", "install", "success"])
+
+    def test_stage_failure_keeps_the_host_bootstrap_retry_after_a_failed_self_hosted_build(self):
+        # Stage failures keep their existing retry chain. Only a failed bootstrap skips it.
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            result, calls = self.run_tcc_routing(Path(directory), fresh=1, self_hosted=1)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertEqual(calls, [
+                "bootstrap tcc", "fresh", "self-hosted", "bootstrap clang", "bootstrap gcc",
+                "clang_strap",
+            ])
+
+    def test_stage_failure_installs_a_successful_self_hosted_build(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            result, calls = self.run_tcc_routing(Path(directory), fresh=1, self_hosted=0)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(calls, [
+                "bootstrap tcc", "fresh", "self-hosted", "install", "success",
+            ])
+
+    def run_smoke_log_check(self, workdir, log_text):
+        log = workdir / "smoke.log"
+        log.write_text(log_text, encoding="utf-8")
+        script = "\n".join([
+            "@echo off",
+            "setlocal EnableExtensions EnableDelayedExpansion",
+            'call :smoke_log_is_clean "' + str(log) + '"',
+            "exit /b !ERRORLEVEL!",
+            routine("smoke_log_is_clean"),
+        ])
+        harness = workdir / "smoke log harness.bat"
+        harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+        return subprocess.run(
+            [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)],
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+
+    def test_smoke_log_reports_a_compiler_fallback(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            workdir = Path(directory)
+            clean = self.run_smoke_log_check(workdir, "Hello, World!\n")
+            self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+            for log_text in (
+                "warning: tcc compilation failed, falling back to gcc.exe\n",
+                "V compilation failed (c_compilation_error); retrying with the V1 compiler\n",
+                "note: V could not build this program with the default compiler\n",
+            ):
+                with self.subTest(log=log_text):
+                    result = self.run_smoke_log_check(workdir, log_text)
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
+    def test_failed_smoke_version_keeps_the_existing_compiler(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            workdir = Path(directory)
+            (workdir / "v.exe").write_text("working compiler", encoding="utf-8")
+            (workdir / "v_up.exe").write_text("new compiler", encoding="utf-8")
+            result = self.run_batch("move_updated_to_v", workdir, {"smoke_version": 37})
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual((workdir / "v.exe").read_text(), "working compiler")
+            self.assertEqual((workdir / "v_up.exe").read_text(), "new compiler")
+            self.assertFalse((workdir / "v_old.exe").exists())
+
+    def test_failed_smoke_compile_or_run_keeps_the_existing_compiler(self):
+        for step, status in (("smoke_compile", 1), ("smoke_run", 37)):
+            with self.subTest(step=step), tempfile.TemporaryDirectory(
+                prefix="makev tests "
+            ) as directory:
+                workdir = Path(directory)
+                (workdir / "v.exe").write_text("working compiler", encoding="utf-8")
+                (workdir / "v_up.exe").write_text("new compiler", encoding="utf-8")
+                result = self.run_batch("move_updated_to_v", workdir, {step: status})
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual((workdir / "v.exe").read_text(), "working compiler")
+                self.assertFalse((workdir / "v_old.exe").exists())
 
     def run_option_parser(self, workdir, arguments):
         targets = ("build", "clean", "cleanall", "check", "help", "latest_tcc", "rebuild")

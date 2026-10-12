@@ -166,15 +166,23 @@ REM By default, use tcc, since we have it prebuilt:
 :tcc_strap
 :tcc32_strap
 call :build_bootstrap_with_tcc
-if !ERRORLEVEL! NEQ 0 goto :compile_error
+if !ERRORLEVEL! NEQ 0 goto :bootstrap_self_hosted_fallback
 call :build_fresh_v_with_tcc
 if !ERRORLEVEL! NEQ 0 goto :self_hosted_fallback
 call :move_updated_to_v
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 goto :success
 
-:self_hosted_fallback
+:bootstrap_self_hosted_fallback
 echo  ^> Snapshot bootstrap failed; rebuilding "%V_UPDATED%" with the self-hosted compiler "%V_EXE%"
+call :build_self_hosted_with_tcc
+if !ERRORLEVEL! NEQ 0 goto :compile_error
+call :move_updated_to_v
+if !ERRORLEVEL! NEQ 0 goto :compile_error
+goto :success
+
+:self_hosted_fallback
+echo  ^> Stage build failed; rebuilding "%V_UPDATED%" with the self-hosted compiler "%V_EXE%"
 call :build_self_hosted_with_tcc
 if !ERRORLEVEL! NEQ 0 goto :tcc_retry_with_host_bootstrap
 call :move_updated_to_v
@@ -661,10 +669,44 @@ ping 192.0.2.1 -n 1 -w 250 >nul
 del "%~1" >nul 2>&1
 exit /b 0
 
+:smoke_test_updated
+REM Install only a compiler that builds and runs hello world with its default C compiler.
+REM A compiler that falls back to the V1 compiler still exits 0, so check its output too.
+echo  ^> Smoke testing "%V_UPDATED%"
+"%V_UPDATED%" version
+if !ERRORLEVEL! NEQ 0 (
+	echo  ^> "%V_UPDATED%" version failed
+	exit /b 1
+)
+"%V_UPDATED%" -o "%V_UPDATED%.smoke.exe" examples/hello_world.v > "%V_UPDATED%.smoke.log" 2>&1
+set smoke_error=!ERRORLEVEL!
+call :smoke_log_is_clean "%V_UPDATED%.smoke.log"
+if !ERRORLEVEL! NEQ 0 set smoke_error=1
+if !smoke_error! EQU 0 (
+	"%V_UPDATED%.smoke.exe" > nul
+	set smoke_error=!ERRORLEVEL!
+)
+call :try_delete "%V_UPDATED%.smoke.exe"
+call :try_delete "%V_UPDATED%.smoke.log"
+if !smoke_error! NEQ 0 (
+	echo  ^> Smoke test failed; "%V_UPDATED%" was not installed
+	exit /b !smoke_error!
+)
+exit /b 0
+
+:smoke_log_is_clean
+REM Exit 1 when the compile log shows that the compiler fell back to another compiler.
+if not exist "%~1" exit /b 0
+findstr /i /c:"falling back" /c:"could not build" /c:"retrying with" "%~1" >nul
+if !ERRORLEVEL! EQU 0 exit /b 1
+exit /b 0
+
 :move_updated_to_v
 REM The V1 compatibility compiler is installed on demand by `make v1`.
 REM Compiling cmd/v again would only produce another copy of the new driver.
 if not exist "%V_UPDATED%" exit /b 1
+call :smoke_test_updated
+if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 @REM del "%V_EXE%" &:: breaks if `makev.bat` is run from `v up` b/c of held file handle on `%V_EXE%`
 if exist "%V_EXE%" (
 	move /Y "%V_EXE%" "%V_OLD%" >nul
