@@ -5,6 +5,7 @@ closure_sum_returns.md
 codelite.md
 compile_error_messages.md
 compiler-fallback.md
+compiler_output.md
 comptime-reflection-sources.md
 docs.md
 fastc.md

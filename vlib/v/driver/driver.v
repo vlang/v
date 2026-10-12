@@ -11171,10 +11171,8 @@ pub fn run(args []string) {
 	}
 	if backend in ['c', 'fastc'] {
 		target_bin_file := c_executable_bin_file_for_target(bin_file, target.os, is_shared, is_o, c_only)
-		if target_bin_file != bin_file {
-			bin_file = target_bin_file
-			output_file = bin_file + '.c'
-		}
+		// The executable suffix does not belong to the requested generated C path.
+		bin_file = target_bin_file
 	}
 	validate_windows_icon_option(icon_path, target.os, backend, is_shared, is_o, c_only,
 		generate_c_project) or {
@@ -11698,8 +11696,8 @@ pub fn run(args []string) {
 				return
 			}
 			if backend_explicit {
-				fastc.write_c_pieces(bin_file + '.c', fastc_pieces) or {
-					eprintln('failed to retain generated fastc output ${bin_file}.c: ${err.msg()}')
+				fastc.write_c_pieces(output_file, fastc_pieces) or {
+					eprintln('failed to retain generated fastc output ${output_file}: ${err.msg()}')
 					exit(1)
 				}
 			}
@@ -15336,7 +15334,7 @@ pub fn run(args []string) {
 		// Before the driver was split out of v.v, explicit `-b c` binary builds
 		// retained `<output>.c`. Codegen tooling relies on that stable path.
 		if backend_explicit && !c_only {
-			retained_c := bin_file + '.c'
+			retained_c := output_file
 			staged_c := '${retained_c}.stage.${tempname.unique_token()}'
 			retained_c_source := if retained_full_c_source.len > 0 {
 				retained_full_c_source
