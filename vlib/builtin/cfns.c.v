@@ -137,6 +137,8 @@ $if windows {
 	fn C.fseek(stream &C.FILE, offset isize, whence i32) i32
 }
 
+// Coverage and profiling writers call these without a V AST reference.
+@[markused]
 fn C.fopen(filename &char, mode &char) &C.FILE
 
 fn C.fileno(&C.FILE) i32
@@ -146,6 +148,7 @@ fn C.fread(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 @[markused]
 fn C.fwrite(const_ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 
+@[markused]
 fn C.fclose(stream &C.FILE) i32
 
 fn C.pclose(stream &C.FILE) i32
@@ -193,7 +196,9 @@ fn C._execve(cmd_path &char, args voidptr, envs voidptr) i32
 
 fn C._execvp(cmd_path &char, args voidptr) i32
 
-fn C.strcmp(s1 &char, s2 &char) i32
+// The generated test runner compares environment values without V AST calls.
+@[markused; noalloc]
+fn C.strcmp(const_s1 &char, const_s2 &char) i32
 
 @[trusted]
 fn C.fork() i32
@@ -465,7 +470,7 @@ fn C.FormatMessageW(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId
 
 fn C.CloseHandle(voidptr) i32
 
-fn C.GetExitCodeProcess(hProcess voidptr, lpExitCode &u32)
+fn C.GetExitCodeProcess(hProcess voidptr, lpExitCode &C.DWORD) bool
 
 @[trusted]
 fn C.GetTickCount() i64
@@ -609,7 +614,11 @@ fn C.dispatch_release(voidptr)
 // file descriptor based reading/writing
 fn C.read(fd i32, buf voidptr, count usize) i32
 
-fn C.write(fd i32, const_buf voidptr, count usize) isize
+$if windows {
+	fn C.write(fd i32, const_buf voidptr, count u32) i32
+} $else {
+	fn C.write(fd i32, const_buf voidptr, count usize) isize
+}
 
 fn C.close(fd i32) i32
 
@@ -639,7 +648,7 @@ fn C.WrappedNSLog(str &u8)
 fn C.abs(number i32) i32
 
 $if windows {
-	fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool
+	fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &C.ULARGE_INTEGER, total_number_of_bytes &C.ULARGE_INTEGER, total_number_of_free_bytes &C.ULARGE_INTEGER) bool
 
 	fn C.GetNativeSystemInfo(voidptr)
 

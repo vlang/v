@@ -154,3 +154,34 @@ fn C.mach_timebase_info(info voidptr) i32
 		assert !generated.contains('#include'), generated
 	}
 }
+
+fn test_headerless_coverage_and_profile_write_reports_without_imports() ! {
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v3_instrumented_stdio_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'program.v')
+	os.write_file(source, 'fn answer() int { return 6 * 7 }\nfn main() { assert answer() == 42 }\n')!
+	for keep_unused in [false, true] {
+		coverage := os.join_path(root, 'coverage_${keep_unused}')
+		mut args := [@VEXE, '-cc', cc, '-cstrict', '-gc', 'none', '-nocache', '-no-retry-compilation',
+			'-coverage', coverage]
+		if keep_unused {
+			args << '-no-skip-unused'
+		}
+		args << ['run', source]
+		ran := os.exec(args)
+		assert ran.exit_code == 0, ran.output
+		counters := os.ls(coverage)!.filter(it.ends_with('.csv'))
+		assert counters.len == 1, counters.str()
+		contents := os.read_file(os.join_path(coverage, counters[0]))!
+		assert contents.contains('meta,point,hits\n'), contents
+		assert contents.split_into_lines().filter(!it.starts_with('#')).len > 1, contents
+	}
+	profile := os.join_path(root, 'profile.txt')
+	ran := os.exec([@VEXE, '-cc', cc, '-cstrict', '-gc', 'none', '-nocache', '-no-retry-compilation',
+		'-profile', profile, 'run', source])
+	assert ran.exit_code == 0, ran.output
+	report := os.read_file(profile)!
+	assert report.contains('main__answer'), report
+}

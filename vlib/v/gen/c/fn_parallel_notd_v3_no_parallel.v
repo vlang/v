@@ -2808,9 +2808,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		check_scope_vlib_prefixes:          g.check_scope_vlib_prefixes
 		force_bounds_checking:              g.force_bounds_checking
 		object_file_mode:                   g.object_file_mode
+		no_builtin:                         g.no_builtin
 		cache_program_files:                g.cache_program_files
 		incremental_fn_names:               g.incremental_fn_names
 		cached_support_identifiers:         g.cached_support_identifiers
+		cached_program_cleanup:             g.cached_program_cleanup
 		str_lits:                           if result_only && !g.str_lits_shared {
 			clone_cgen_string_list(g.str_lits)
 		} else if g.scope_parallel_workers {

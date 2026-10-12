@@ -207,3 +207,6 @@ Errors after sending a request do not trigger this backend fallback.
 
 The retry preserves certificate validation, configured certificates, HTTP/2 negotiation,
 request headers, method, and body. `-d no_vschannel` continues to select `net.ssl` directly.
+
+Redirect responses without a `Location` header, or with an empty `Location`, are returned
+to the caller without following another URL.

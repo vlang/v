@@ -5299,7 +5299,7 @@ fn module_header_const_storage_name(module_name string, name string) string {
 	return name
 }
 
-fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_order []string) (map[int]flat.NodeId, map[int]string) {
+fn module_header_const_replacements(a &flat.FlatAst, module_name string, file_ids []flat.NodeId, const_order []string) (map[int]flat.NodeId, map[int]string) {
 	mut replacements := map[int]flat.NodeId{}
 	mut files := map[int]string{}
 	if const_order.len == 0 {
@@ -5310,14 +5310,11 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_o
 		ranks[name] = i
 	}
 	mut declarations := []ModuleHeaderConstDecl{}
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0
-			|| file_module_name(a, file_node) != module_name {
-			continue
-		}
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				node := a.nodes[int(id)]
 				if node.kind != .const_decl {
@@ -5359,18 +5356,71 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_o
 	return replacements, files
 }
 
+struct ModuleHeaderIndex {
+	files           map[string][]flat.NodeId
+	modules         map[string][]flat.NodeId
+	imports         map[string][]flat.NodeId
+	attrs           map[int]CachedDeclarationAttrs
+	generic_callees map[string]bool
+}
+
+fn module_header_index(a &flat.FlatAst, tc &types.TypeChecker) ModuleHeaderIndex {
+	mut files := map[string][]flat.NodeId{}
+	mut modules := map[string][]flat.NodeId{}
+	mut imports := map[string][]flat.NodeId{}
+	mut stream_module := ''
+	for i, node in a.nodes {
+		match node.kind {
+			.file {
+				stream_module = file_module_name(a, node)
+				if node.children_count > 0 {
+					files[stream_module] << flat.NodeId(i)
+				}
+			}
+			.module_decl { modules[node.value] << flat.NodeId(i) }
+			.import_decl { imports[stream_module] << flat.NodeId(i) }
+			else {}
+		}
+	}
+	return ModuleHeaderIndex{
+		files:           files
+		modules:         modules
+		imports:         imports
+		attrs:           cached_declaration_attrs(a)
+		generic_callees: generic_specialization_callee_names(tc)
+	}
+}
+
+// module_headers_with_const_order generates module headers using one declaration index for the
+// checked AST, preserving the same source and constant order as module_header_with_const_order.
+pub fn module_headers_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, module_names []string, vroot string, import_paths map[string]string, const_order []string) map[string]string {
+	if module_names.len == 0 {
+		return map[string]string{}
+	}
+	index := module_header_index(a, tc)
+	mut headers := map[string]string{}
+	mut source_cache := map[string]string{}
+	for module_name in module_names {
+		headers[module_name] = module_header_indexed(a, tc, module_name, vroot, import_paths, const_order, index, mut source_cache)
+	}
+	return headers
+}
+
 // module_header_with_const_order preserves dependency ordering for runtime
 // constants whose helper bodies are intentionally omitted from warm headers.
 pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string, const_order []string) string {
+	index := module_header_index(a, tc)
+	mut source_cache := map[string]string{}
+	return module_header_indexed(a, tc, module_name, vroot, import_paths, const_order, index, mut source_cache)
+}
+
+fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string, const_order []string, index &ModuleHeaderIndex, mut source_cache map[string]string) string {
 	mut out := strings.new_builder(4096)
-	declaration_attrs := cached_declaration_attrs(a)
+	declaration_attrs := index.attrs
 	mut module_attr_lines := []string{}
 	mut seen_module_attrs := map[string]bool{}
-	for idx, node in a.nodes {
-		if node.kind != .module_decl || node.value != module_name {
-			continue
-		}
-		attrs := declaration_attrs[idx] or { continue }
+	for id in index.modules[module_name] {
+		attrs := declaration_attrs[int(id)] or { continue }
 		for line in cached_declaration_attrs_text(attrs).split_into_lines() {
 			if line.len == 0 || seen_module_attrs[line] {
 				continue
@@ -5383,25 +5433,22 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 		out.writeln(module_attr_lines.join('\n'))
 	}
 	out.writeln('module ${module_name.all_after_last('.')}')
-	generic_specialization_callees := generic_specialization_callee_names(tc)
-	needs_source_bodies := module_needs_source_bodies(a, tc, module_name, generic_specialization_callees)
-	mut source_cache := map[string]string{}
+	file_ids := index.files[module_name]
+	generic_specialization_callees := index.generic_callees
+	needs_source_bodies := module_needs_source_bodies(a, tc, file_ids, generic_specialization_callees)
 	embed_source_bodies := needs_source_bodies
-		&& module_source_bodies_are_embeddable(a, tc, module_name, generic_specialization_callees, mut source_cache)
+		&& module_source_bodies_are_embeddable(a, tc, file_ids, generic_specialization_callees, mut source_cache)
 	if needs_source_bodies && !embed_source_bodies {
 		out.writeln(source_body_marker)
 	}
 	out.writeln('')
 	mut trusted_c_fns := map[string]bool{}
 	mut calls_recover := false
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0
-			|| file_module_name(a, file_node) != module_name {
-			continue
-		}
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				node := a.nodes[int(id)]
 				if node.kind == .c_fn_decl && node.is_mut {
@@ -5418,18 +5465,12 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 		out.writeln('')
 	}
 	mut seen := map[string]bool{}
-	const_replacements, const_files := module_header_const_replacements(a, module_name, const_order)
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0 {
-			continue
-		}
-		file_module := file_module_name(a, file_node)
-		if file_module != module_name {
-			continue
-		}
+	const_replacements, const_files := module_header_const_replacements(a, module_name, file_ids, const_order)
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				effective_id := const_replacements[int(id)] or { id }
 				node := a.nodes[int(effective_id)]
@@ -5494,15 +5535,8 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 	// (`sync` for locks and `v.embed_file` for `$embed_file`). They are not file
 	// children, so preserve them separately or a warm header would omit the
 	// cached object's link dependencies.
-	mut stream_module := ''
-	for node in a.nodes {
-		if node.kind == .file {
-			stream_module = file_module_name(a, node)
-			continue
-		}
-		if node.kind != .import_decl || stream_module != module_name {
-			continue
-		}
+	for import_id in index.imports[module_name] {
+		node := a.node(import_id)
 		key := decl_key(a, node)
 		if seen[key] {
 			continue
@@ -5671,17 +5705,11 @@ fn append_declaration_nodes(a &flat.FlatAst, id flat.NodeId, mut declarations []
 	declarations << id
 }
 
-fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, module_name string, generic_callees map[string]bool) bool {
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0 {
-			continue
-		}
-		file_module := file_module_name(a, file_node)
-		if file_module != module_name {
-			continue
-		}
+fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, file_ids []flat.NodeId, generic_callees map[string]bool) bool {
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
-			id := a.child(&file_node, i)
+			id := a.child(file_node, i)
 			if declaration_node_needs_source(a, id)
 				|| node_creates_generic_specialization(a, tc, id, generic_callees) {
 				return true
@@ -5691,12 +5719,9 @@ fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, module_nam
 	return false
 }
 
-fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, module_name string, generic_callees map[string]bool, mut source_cache map[string]string) bool {
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0
-			|| file_module_name(a, file_node) != module_name {
-			continue
-		}
+fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, file_ids []flat.NodeId, generic_callees map[string]bool, mut source_cache map[string]string) bool {
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		// An embedded declaration is parsed again without the `#line` directives of its
 		// file, which would change the source locations that it reports.
 		uses_line_directives := if file := a.source_files[file_node.pos.id] {
@@ -5706,7 +5731,7 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, m
 		}
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				needs_source := declaration_node_needs_source(a, id)
 					|| node_creates_generic_specialization(a, tc, id, generic_callees)

@@ -724,7 +724,10 @@ fn (g &FlatGen) has_no_main_module() bool {
 }
 
 fn (mut g FlatGen) gen_executable_cleanup_registration() {
-	if g.module_cleanup_fns.len > 0 || g.is_trace_calls {
+	// Unchanged cleanup bodies live in the cached prefix, outside the selected
+	// incremental function set. An edited main must still register that hook.
+	if g.module_cleanup_fns.len > 0 || g.is_trace_calls
+		|| (g.program_body_only && g.cached_program_cleanup) {
 		g.writeln('atexit(_vcleanup);')
 	}
 }
@@ -17164,9 +17167,18 @@ fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name stri
 fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string, module_name string) bool {
 	// builtin/cfns.c.v declares the static vschannel helper supplied by its C header.
 	// A user C.request declaration is unrelated and follows the normal header checks.
-	if cfn == 'request'
-		&& source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v') {
-		return false
+	if cfn == 'request' {
+		original := if !isnil(g.a) {
+			g.a.cached_header_sources[source_file] or { source_file }
+		} else {
+			source_file
+		}
+		// A cached builtin header represents the whole bundle, so its recorded
+		// source can be array.v rather than the original cfns.c.v declaration.
+		if original.replace('\\', '/').ends_with('/builtin/cfns.c.v')
+			|| (module_name == 'builtin' && g.c_source_file_is_in_vlib(original)) {
+			return false
+		}
 	}
 	if g.target.os == 'vinix' {
 		normalized_file := source_file.replace('\\', '/')
@@ -17197,9 +17209,10 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 	// headerless program. Its vlib bindings still own their C prototypes.
 	module_header_is_authoritative := module_name in g.mods_with_c_includes
 		&& (!is_vlib_source || g.c_directives_use_system_libc())
-	if !g.target_libc_headers
+	if !g.c_directives_use_system_libc() && !g.target_libc_headers
 		&& !g.files_with_c_includes[source_file] && !module_header_is_authoritative
 		&& (is_vlib_source || g.c_source_file_is_compiler_main(source_file)
+			|| cfn in ['task_info', 'mach_task_self', 'getppid']
 			|| cfn in c_preamble_declared_extern_symbols
 			|| cfn in c_system_libc_preamble_declared_fns || cfn in c_manual_stdlib_declared_fns) {
 		return true

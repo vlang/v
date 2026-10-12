@@ -330,3 +330,22 @@ fn test_runtime_bindings_survive_unrelated_system_headers() {
 	assert run.exit_code == 0, run.output
 	assert run.output == 'OK\n', run.output
 }
+
+fn test_cached_member_name_does_not_register_a_program_cleanup_hook() {
+	$if windows || freestanding || vinix {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'cached_cleanup_member_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	for gc in ['none', 'boehm'] {
+		for message in ['first', 'second', 'second'] {
+			os.write_file(source, '@[translated]\nmodule main\nstruct Holder { _vcleanup int }\nfn main() { value := Holder{_vcleanup: 42}; println(value._vcleanup); println("${message}") }\n')!
+			run := cmdexec.run(@VEXE, ['-cc', 'clang', '-gc', gc, '-no-retry-compilation', 'run',
+				source])
+			assert run.exit_code == 0, run.output
+			assert run.output == '42\n${message}\n', run.output
+		}
+	}
+}

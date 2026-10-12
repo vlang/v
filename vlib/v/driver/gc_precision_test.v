@@ -55,12 +55,12 @@ fn main() {
   mut data := []u8{len: 16}
   data[0] = u8(i)
   after := allocated_bytes()
-  assert after - before >= 16
+  if after < before || after - before < 16 { panic("GC counter missed an allocation") }
   retained << data
  }
- assert retained.len == 148
+ if retained.len != 148 { panic("wrong retained allocation count") }
  for i in 0 .. 20 {
-  assert retained[128 + i][0] == u8(i)
+  if retained[128 + i][0] != u8(i) { panic("retained allocation changed") }
  }
 }
 ')!
