@@ -1697,3 +1697,29 @@ fn test_builder_receiver_identity_includes_its_declaring_module() {
 	assert !is_builder_type_name('&Builder', 'custom')
 	assert !is_builder_type_name('custom.Builder', 'strings')
 }
+
+fn test_scoped_workers_reuse_generic_declarations_with_private_indexes() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.generic_fn_decls_cache['sample.identity'] = GenericFnDecl{ key: 'sample.identity' }
+	master.generic_receiver_methods_by_name['value'] = ['sample.Box.value']
+	master.generic_fn_call_names['identity'] = true
+	master.generic_fn_decls_ready = true
+	mut worker := master.fork_scoped_batch_worker(&a, tc.fork_for_parallel_transform(&a))
+	mut sibling := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
+	mut scanner := master.fork_scan_worker(tc.fork_for_parallel_transform(&a))
+	mut forks := [worker, sibling, scanner]
+	for mut fork in forks {
+		assert fork.generic_fn_decls_ready
+		assert 'sample.identity' in fork.cached_generic_fn_decls()
+		assert fork.generic_receiver_methods_by_name['value'] == ['sample.Box.value']
+		assert fork.generic_fn_call_names['identity']
+		fork.generic_fn_decls_cache.delete('sample.identity')
+		fork.generic_receiver_methods_by_name.delete('value')
+		fork.generic_fn_call_names.delete('identity')
+	}
+	assert 'sample.identity' in master.generic_fn_decls_cache
+	assert master.generic_receiver_methods_by_name['value'] == ['sample.Box.value']
+	assert master.generic_fn_call_names['identity']
+}
