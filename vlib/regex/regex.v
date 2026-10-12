@@ -2594,8 +2594,10 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 				if state.group_index == 0 {
 					state.group_index--
-					state.pc = tmp_pc // TEST
-					m_state = .ist_next
+					state.pc = tmp_pc
+					// Do not continue after a group that has not reached its minimum.
+					result = no_match_found
+					m_state = .stop
 					continue
 				}
 
