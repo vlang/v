@@ -1146,6 +1146,49 @@ fn header_of_source(root string, name string, source string) string {
 	return module_header(a, &tc, name, '', map[string]string{})
 }
 
+fn test_cached_struct_field_attributes_round_trip_without_warnings() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_cached_field_attrs_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'options.v')
+	os.write_file(source, "module options
+
+@[params]
+pub struct Options {
+pub:
+	tool int @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2026-12-31']
+	env_overwrite_var ?string = 'VDIFF_CMD' @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2026-12-31']
+	name string @[required; json: 'display_name']
+	plain bool
+}
+")!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	tc := vtypes.TypeChecker.new(a)
+	header := module_header(a, &tc, 'options', '', map[string]string{})
+	header_path := os.join_path(root, 'options.vh')
+	os.write_file(header_path, header)!
+	mut header_parser := parser.Parser.new(pref.new_preferences())
+	reparsed := header_parser.parse_file(header_path)
+	assert header_parser.diagnostics.len == 0, header_parser.diagnostics.str()
+	original_fields := a.nodes.filter(it.kind == .field_decl)
+	cached_fields := reparsed.nodes.filter(it.kind == .field_decl)
+	assert original_fields.len == 4
+	assert cached_fields.len == original_fields.len
+	for i, original in original_fields {
+		cached := cached_fields[i]
+		assert cached.value == original.value
+		assert cached.typ == original.typ
+		assert cached.generic_params() == original.generic_params()
+		assert cached.children_count == original.children_count
+		if original.children_count > 0 {
+			assert expr_text(reparsed, reparsed.child(&cached, 0)) == expr_text(a, a.child(&original,
+				0))
+		}
+	}
+}
+
 fn test_cached_constant_tables_are_typed_declarations() {
 	root := os.join_path(os.vtmp_dir(), 'v3_cached_const_declarations_${os.getpid()}')
 	os.mkdir_all(root)!

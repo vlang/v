@@ -7223,8 +7223,8 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 			out.writeln('${wanted}:')
 			section = wanted
 		}
-		for ai := 1; ai < field_params.len; ai++ {
-			out.writeln('\t@[${field_params[ai]}]')
+		if field_params.len > 1 {
+			out.writeln('\t@[${field_params[1..].join('; ')}]')
 		}
 		mut line := '\t${field.value}'
 		if field.typ.len > 0 && field.typ != field.value {
