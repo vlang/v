@@ -1087,7 +1087,7 @@ fn (g &FlatGen) ownership_free_call(ptr string) string {
 		return '__v_thread_free(${ptr});'
 	}
 	if 'gcboehm' in g.compile_defines {
-		return 'GC_FREE(${ptr});'
+		return 'v_gc_free(${ptr});'
 	}
 	return 'free(${ptr});'
 }
