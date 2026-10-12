@@ -19,7 +19,8 @@ only `main` and the required libc declarations, without linking a collector or n
 runtime helpers. A single `println` uses `puts`; other output preserves embedded NUL
 bytes and handles partial writes. Programs with allocations, initialization, or other
 runtime requirements retain their normal runtime. Instrumented and library builds
-also retain their runtime support.
+also retain their runtime support. Portable `-os cross` and `-cross` snapshots retain
+the complete runtime, pointer-width checks, and custom-define metadata even for literal output.
 
 The GC, signal, process, and compiler helpers are linked from native objects. Their platform headers
 are parsed when those objects are built. V caches the objects using the C compiler, target,
