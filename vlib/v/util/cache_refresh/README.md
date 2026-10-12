@@ -50,6 +50,8 @@ so `v up` can refresh them after replacing the compiler or updating their source
 After a compiler update, module interfaces are regenerated and validated with the new compiler.
 Matching compiled objects can be shared across compiler configurations when their generated C,
 C compiler, compilation flags, working directory, and native dependency fingerprints match.
+The C compiler identity is independent of the V build, and unused generated string literals
+are removed from module C before comparison. Referenced version literals still require a rebuild.
 The shared object and C source are checked before reuse and linked into the new configuration
 without another C compilation. Changed generated code, flags, or native inputs require a new object.
 This preserves compiler validation while avoiding repeated compilation and duplicate object data.

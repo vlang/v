@@ -18745,7 +18745,9 @@ fn (state &V3ModuleCacheState) print_module_cache_notice(module_name string) {
 }
 
 fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, dependencies map[string]string, state &V3ModuleCacheState, module_name string) !bool {
-	c_source := v3_cached_c_unit_source(source, false)
+	// Whole-program declarations include literals from other modules, including
+	// the V build hash. Only literals referenced by this object belong in its C.
+	c_source := modulecache.prune_unreferenced_static_string_definitions(v3_cached_c_unit_source(source, false))
 	compile_signature := v3_cached_object_compile_signature(compiler, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, '')
 	pooled := v3_shared_module_object(entry, compiler, c_source, compile_signature, dependencies)
 	if v3_restore_shared_module_object(pooled, entry) { return false }
