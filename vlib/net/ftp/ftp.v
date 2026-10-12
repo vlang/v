@@ -253,6 +253,7 @@ pub fn (mut zftp FTP) dir() ![]string {
 }
 
 // get retrieves `file` from the remote host.
+// Malformed passive-mode host or port fields return an error before a data connection is opened.
 pub fn (mut zftp FTP) get(file string) ![]u8 {
 	mut dtp := zftp.pasv() or { return error('Cannot stablish data connection') }
 	zftp.write('RETR ${file}')!
