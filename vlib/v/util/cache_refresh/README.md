@@ -28,6 +28,7 @@ so `v up` can refresh them after replacing the compiler or updating their source
   Otherwise it prepares a temporary importer with the recorded project directives.
   Both paths stop after validating and rebuilding module objects, before compiling
   program objects, building development libraries, or linking an executable.
+  Refreshed objects are validated against the published module interfaces before returning.
   It uses the compiler's default caching mode and preserves build modes,
   resolved compiler commands, and absolute search paths.
   A recorded working directory keeps relative C compilation inputs valid.

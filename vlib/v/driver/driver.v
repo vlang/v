@@ -17057,6 +17057,15 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			newly_cached_modules[module_name] = true
 		}
 	}
+	if os.getenv('V3_CACHE_REFRESH') == '1' {
+		// Publishing regenerated headers can invalidate an object loaded earlier.
+		// Refresh stops before the program link could discover that mismatch.
+		state.objects = object_paths.clone()
+		if resolve_flag_specific_cache_objects(mut state, tc.a, object_base, scopes) {
+			os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+			restart_v3_after_cache_invalidation()
+		}
+	}
 
 	return V3PreparedModuleCache{
 		main_source:              main_source
