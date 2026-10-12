@@ -22201,7 +22201,7 @@ fn trace_incremental_check(mut tc types.TypeChecker) {
 // an absolute path, which leaves the output of a check what it would be.
 fn trace_diagnostics_server(message string) {
 	trace := os.getenv('V_DIAGNOSTICS_TRACE')
-	if trace.starts_with('/') {
+	if os.is_abs_path(trace) {
 		mut f := os.open_append(trace) or { return }
 		f.writeln('v-diagnostics-server: ${message}') or {}
 		f.close()
