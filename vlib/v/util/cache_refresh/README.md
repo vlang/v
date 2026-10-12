@@ -2,6 +2,10 @@
 
 This compiler utility records how cached modules from a checkout's vlib were built,
 so `v up` can refresh them after replacing the compiler or updating their sources.
+`v up` selects only TinyCC configurations from this inventory, including its recorded
+normal/production and program/test modes. Other compilers refresh their caches on the next build.
+Only changed generated code or compilation inputs require another C compilation;
+unchanged module objects are reused without cache creation messages.
 
 - `root_dir(vroot, vexe)` locates the checkout's cache and respects `V3CACHE` and test isolation.
   Isolated cache lookup uses the supplied V compiler executable, rather than the helper process.

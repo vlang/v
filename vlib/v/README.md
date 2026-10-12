@@ -481,6 +481,8 @@ This applies to SHA3 and other imported modules with TinyCC too.
 It preserves import order for module C flags and reuses the same records on repeated updates.
 Both original entries and temporary importers stop after module object validation,
 before compiling program objects or linking an executable.
+`v up` refreshes only TinyCC cache configurations, retaining recorded production and test modes.
+Caches for other C compilers are refreshed by the next build that uses that compiler.
 Compiler updates validate fresh module interfaces and reuse compiled objects when the generated C,
 C compiler, flags, and native inputs still match. Reused objects print no cache creation notices.
 Objects and their generated C are shared between configurations to avoid duplicate storage.
