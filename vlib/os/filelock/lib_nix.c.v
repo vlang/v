@@ -1,6 +1,5 @@
 module filelock
 
-#include <sys/file.h>
 #insert "@VEXEROOT/vlib/os/filelock/filelock_helpers.h"
 
 fn C.unlink(&char) i32
