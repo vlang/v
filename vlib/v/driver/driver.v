@@ -605,7 +605,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		common_flags:           common_compile_flags
 	}
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
-	os.mkdir_all(cache_dir)!
+	ensure_native_object_cache_dir(cache_dir)!
 	plan_path := c_link_plan_path(cache_dir, flags, &object_flag_plan, c99, no_std, pic_flag,
 		target_args, target, c_compiler, use_platform_non_c_compiler, mut stats)
 	// Tracing intentionally walks the object manifests so every requested
@@ -1610,9 +1610,17 @@ fn c_source_object_compiler(language string, c_compiler string, use_platform_non
 	return c_compiler
 }
 
+fn ensure_native_object_cache_dir(path string) ! {
+	os.mkdir_all(path) or {
+		// Other compiler processes can create this shared directory after the
+		// existence check. Keep real filesystem errors when it is still absent.
+		if !os.is_dir(path) { return err }
+	}
+}
+
 fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
-	os.mkdir_all(cache_dir)!
+	ensure_native_object_cache_dir(cache_dir)!
 	language := c_source_language(source_file, source_language)
 	is_cpp := language in ['c++', 'objective-c++']
 	std_flag := if is_cpp {
@@ -14413,7 +14421,7 @@ pub fn run(args []string) {
 	} else {
 		// C backend (default)
 		if msg := cgen.manual_stdlib_c_headers_error() {
-			if cgen.uses_manual_stdlib_c_headers(a, &pre_tc, prefs, user_c_flags) {
+			if cgen.uses_manual_stdlib_c_headers(a, &pre_tc, prefs, user_c_flags, is_o) {
 				// The message is the whole diagnosis. Clear the V3 failure marker first, or the
 				// parent process replays this compile and prints the message a second time.
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
