@@ -14,8 +14,14 @@ project interface scopes share refresh records across projects.
 Project directives are merged with flags read from the updated vlib modules.
 The original entry preserves project interface implementers when needed; only its
 module objects are rebuilt. Isolated ownership caches use the primary V compiler.
-Live entries replay resolved -file-list sources, including expanded directories;
-records with vanished listed sources are skipped.
+Live entries replay absolute -file-list operands and re-expand directories to
+include their current files. Records with vanished listed files or directories
+are skipped. Equivalent live commands run once despite historical source flags.
+Unreadable, truncated, and unsupported inventory files are skipped. Live-entry
+source identities retire obsolete configurations after project source changes;
+a successful build records the current inputs. Older live records without source
+identities require rebuilding the project once.
+Ownership dispatch preserves V3_PRIMARY_VEXE independently of the helper's VEXE.
 Each module being cached is printed to stdout as `Caching module <name>...`.
 This also runs when the compiler itself is already updated. A cache refresh
 failure makes the update fail. Older caches without recorded settings are
