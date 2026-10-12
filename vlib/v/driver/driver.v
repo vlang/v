@@ -14156,9 +14156,17 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if monomorph_errors.len > 0 {
+			if monomorph_errors.any(it.contains('compile-time error:')) {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			}
 			if compiler_errors.json_output() {
 				for message in monomorph_errors {
-					eprintln(compiler_errors.json_message('error:', message, []string{}))
+					// Located compile-time errors are encoded during transformation.
+					if message.starts_with('{"file":') || message.starts_with('{"severity":') {
+						eprintln(message)
+					} else {
+						eprintln(compiler_errors.json_message('error:', message, []string{}))
+					}
 				}
 				exit(1)
 			}

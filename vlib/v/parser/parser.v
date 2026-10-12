@@ -4776,6 +4776,12 @@ fn (mut p Parser) parse_compile_message_call(directive_start int, sentinel strin
 	} else {
 		p.expr(.lowest)
 	}
+	if sentinel == '__v_compile_error' {
+		arg := p.a.node(message)
+		if arg.kind != .string_literal || arg.children_count != 0 {
+			p.record_diagnostic_span('`$compile_error` expects a string literal', directive_start, p.prev_tok_end)
+		}
+	}
 	for p.tok != .rpar && p.tok != .eof {
 		p.next()
 	}
