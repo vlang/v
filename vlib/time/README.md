@@ -69,6 +69,10 @@ return times in May and July, respectively; weekday tokens also accept a termina
 `parse_format(s, format)` requires the format to cover the entire input, including literals.
 Unmatched trailing text or whitespace returns an error instead of parsing only a prefix.
 
+Unpadded clock tokens `H`, `h`, `k`, `m`, and `s` accept one or two digits, including
+leading zeros. Their doubled forms require exactly two digits. Thus layouts such as
+`YYYY-MM-DD k:m:s` read back both `2024-07-15 3:4:5` and `2024-07-15 23:40:50`.
+
 `parse_format` defaults an omitted month to January. Day-only layouts such as
 `time.parse_format('31', 'DD')!` therefore accept January 31; an explicit month still
 enforces its actual length.
