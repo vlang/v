@@ -160,8 +160,27 @@ fn check_with_modules_env(name string, env string, files map[string]string, modu
 		}
 	}
 	trace := os.join_path(dir, 'trace.txt')
-	res := os.exec(['${env}', 'VMODULES=' + '${modules_dir}', 'V_DIAGNOSTICS_TRACE=' + '${trace}',
-		@VEXE, '-new-compiler', '-check', '-nocolor', os.join_path(program, 'main.v')])
+	// The child reads these from its environment, so set them here and pass only the
+	// compiler arguments to `os.exec`.
+	os.setenv('VMODULES', modules_dir, true)
+	os.setenv('V_DIAGNOSTICS_TRACE', trace, true)
+	defer {
+		os.unsetenv('VMODULES')
+		os.unsetenv('V_DIAGNOSTICS_TRACE')
+	}
+	// V runs a `defer` at the end of its block, so the variable is declared out here to
+	// stay set until the check has run.
+	mut env_name := ''
+	if env != '' {
+		env_name = env.all_before('=')
+		os.setenv(env_name, env.all_after('='), true)
+	}
+	defer {
+		if env_name != '' {
+			os.unsetenv(env_name)
+		}
+	}
+	res := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', os.join_path(program, 'main.v')])
 	prefix := 'v-diagnostics-server: instances: '
 	lines := (os.read_file(trace) or { '' }).split_into_lines().filter(it.starts_with(prefix)).map(it[prefix.len..])
 	return LibraryCheck{
@@ -216,14 +235,14 @@ fn test_a_check_clones_a_library_instance_without_its_body() {
 }
 
 fn test_v_check_library_bodies_keeps_the_body_of_every_library_instance() {
-	check := check_with_modules_env('bodies_env', 'V_CHECK_LIBRARY_BODIES=1', {
+	check := check_with_modules_env('bodies_env', 'V_CHECK_LIBRARY_BODIES=all', {
 		'main.v': header_program
 	}, {
 		'advlib/advlib.v': library_module
 	})
 	assert check.res.exit_code == 0, check.res.output
 	assert check.trace == ['0 of 1 library instances cloned without their bodies',
-		'every library instance keeps its body: V_CHECK_LIBRARY_BODIES=1 asks for them'], check.trace.str()
+		'every library instance keeps its body: V_CHECK_LIBRARY_BODIES=all asks for them'], check.trace.str()
 }
 
 fn test_a_library_instance_whose_types_reach_a_program_generic_keeps_its_body() {
@@ -321,7 +340,12 @@ fn build_program(name string, source string) os.Result {
 // A build reports the errors of an instance where a check does, as V1 did: the
 // body of a generic function without constraints is still not checked on its
 // own, but each of its instances is, instead of failing in the C compiler.
+// A Windows build leaves the instances to the C compiler (see
+// instance_check_windows.c.v), so this only runs off Windows.
 fn test_a_build_reports_the_member_an_instance_lacks() {
+	$if windows {
+		return
+	}
 	source := "fn show[T](x T) string {\n\treturn x.nme\n}\n\nfn main() {\n\tprintln(show(User{ name: 'a' }))\n}\n"
 	res := build_program('build_struct_typo', source)
 	assert res.exit_code != 0, res.output
@@ -332,10 +356,15 @@ fn test_a_build_reports_the_member_an_instance_lacks() {
 }
 
 // An operator that the type of an instance does not have is reported for that
-// instance too, in a check and in a build: `int + string`.
+// instance too, in a check and in a build: `int + string`. A Windows build leaves
+// the instances to the C compiler, so only the check runs there.
 fn test_an_operator_an_instance_lacks_is_reported() {
 	source := "fn add[T](a T) int {\n\treturn a + 'x'\n}\n\nfn main() {\n\tprintln(add(1))\n}\n"
-	for res in [check_program('operator_check', source), build_program('operator_build', source)] {
+	mut results := [check_program('operator_check', source)]
+	$if !windows {
+		results << build_program('operator_build', source)
+	}
+	for res in results {
 		assert res.exit_code != 0, res.output
 		assert !res.output.contains('C compilation error'), res.output
 		assert error_lines(res.output) == ['11:9: operator `+` cannot concatenate `int` and `string`'], res.output
