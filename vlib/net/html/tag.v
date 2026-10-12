@@ -165,6 +165,10 @@ pub fn (tag &Tag) get_tags_by_attribute_value(name string, value string) []&Tag 
 
 // get_tag_by_class_name retrieves the first found child tag in the tag that has the given class name(s).
 pub fn (tag &Tag) get_tag_by_class_name(names ...string) ?&Tag {
+	if names.len == 0 {
+		// no class name to match, no tag can match it
+		return none
+	}
 	for child in tag.children {
 		mut matched := true
 		for name in names {
@@ -185,6 +189,10 @@ pub fn (tag &Tag) get_tag_by_class_name(names ...string) ?&Tag {
 
 // get_tags_by_class_name retrieves all child tags recursively in the tag that have the given class name(s).
 pub fn (tag &Tag) get_tags_by_class_name(names ...string) []&Tag {
+	if names.len == 0 {
+		// no class name to match, no tag can match it
+		return []&Tag{}
+	}
 	mut res := []&Tag{}
 	for child in tag.children {
 		mut matched := true

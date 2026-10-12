@@ -268,16 +268,16 @@ pub fn node_payload_with_constraints(generic_params []string, generic_constraint
 		node_payload_unlock()
 		panic('v3: too many node payloads (${idx})')
 	}
-	mut chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(chunk_idx))
+	mut chunk := payload_ptr_get(voidptr(table), usize(chunk_idx))
 	if isnil(chunk) {
 		chunk = node_payload_new_chunk()
-		C.v_flat_payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
+		payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
 		if isnil(chunk) {
 			node_payload_unlock()
 			panic('v3: could not allocate a node payload chunk')
 		}
 	}
-	C.v_flat_payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
+	payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
 	node_payload_count_publish(table, u32(idx + 1))
 	node_payload_unlock()
 	return u32(idx + 1)
@@ -297,8 +297,8 @@ pub fn node_payload_at(id u32) &NodePayload {
 	if isnil(table) || idx >= int(node_payload_count_load(table)) {
 		return &NodePayload(unsafe { nil })
 	}
-	chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
-	return unsafe { &NodePayload(C.v_flat_payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
+	chunk := payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
+	return unsafe { &NodePayload(payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
 }
 
 // node_flag_skip_ownership_drops marks a block/if/for/fn node whose scope must
@@ -311,6 +311,9 @@ pub const node_flag_static_type_method = u8(2)
 pub const node_flag_embed_payload = u8(4)
 // node_flag_freed_assignment marks an assignment annotated with `@[freed]`.
 pub const node_flag_freed_assignment = u8(8)
+// node_flag_borrowed_map_key marks a generated read-only map iteration whose
+// key cannot escape. The bit is shared with the assignment-only flag above.
+pub const node_flag_borrowed_map_key = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
@@ -381,6 +384,12 @@ pub fn (n &Node) is_detached_spawn() bool {
 @[inline]
 pub fn (n &Node) skip_ownership_drops() bool {
 	return (n.flags & node_flag_skip_ownership_drops) != 0
+}
+
+// borrows_map_key reports whether a generated map loop only borrows its key.
+@[inline]
+pub fn (n &Node) borrows_map_key() bool {
+	return n.kind == .for_in_stmt && (n.flags & node_flag_borrowed_map_key) != 0
 }
 
 // set_skip_ownership_drops updates the skip-ownership-drops flag.
