@@ -1,14 +1,6 @@
 module os
 
-#include <dirent.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/utsname.h>
-#include <sys/types.h>
-#include <sys/statvfs.h>
-#include <sys/wait.h>
-#include <utime.h>
-#insert "@VEXEROOT/vlib/os/execute_capture_nix.h"
+#flag @VEXEROOT/vlib/os/execute_capture_nix.o
 
 // short_path is a Windows-only helper that returns the DOS 8.3 short path.
 // On non-Windows platforms it simply returns the given path unchanged,

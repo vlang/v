@@ -145,7 +145,7 @@ fn test_retry_runtime_args_preserve_a_command_named_retry() {
 }
 
 fn test_tools_that_own_their_name_receive_only_their_arguments() {
-	for name in ['diff', 'download', 'repeat', 'time', 'timeout'] {
+	for name in ['cover', 'diff', 'download', 'gret', 'repeat', 'time', 'timeout'] {
 		assert external_tool_runtime_args(name, []string{}, [name, '--version']) == ['--version'], name
 	}
 }
