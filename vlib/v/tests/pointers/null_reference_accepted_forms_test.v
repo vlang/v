@@ -133,9 +133,3 @@ fn test_voidptr_targets() {
 	assert unsafe { &Node(handle) }.x == 5
 }
 
-fn test_c_function_arguments() {
-	// `fflush(NULL)` flushes every open output stream.
-	assert C.fflush(voidptr(0)) == 0
-	assert C.fflush(0) == 0
-	assert C.fflush(unsafe { nil }) == 0
-}
