@@ -272,6 +272,7 @@ pub fn decode_project_flags(content string) ![]FlagGroup {
 // one another's inventories and C-flag variants survive in the same cache.
 // The caller's directory preserves relative compilation inputs during refresh.
 // project_flags preserves project directives without freezing the vlib's flags.
+// Import order is retained because it determines the order of module C directives.
 // entry identifies the original source input for project interface scopes.
 // Its source identities retire configurations after the project input changes.
 // show_test_stats preserves the effective test assertion display mode.
@@ -540,6 +541,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // module with its original flags and working directory. Compiler validation also
 // covers transitive imports, headers, embedded files and compiler changes. Unchanged entries are
 // reused, and each newly compiled module is announced on inherited stdout.
+// Equivalent synthetic import sequences and live entry commands run once per configuration.
 // Records with vanished working directories, required inputs or compilers are skipped.
 // Live entries whose project source identity changed are skipped until rebuilt and recorded.
 // Legacy headers are marked migrated only after successful refreshes of their variants.
@@ -620,14 +622,29 @@ pub fn refresh(vexe string, requests []Request) ! {
 			refreshed_entries[key] = true
 		}
 		name := if request.module == 'builtin' { 'strconv' } else { request.module }
-		mut imports := 'import ${name} as _\n'
+		mut import_names := []string{}
 		for module_name in request.imports {
 			if !valid_module(module_name) { return error('invalid module ${module_name}') }
-			if module_name == name || module_name == 'builtin' { continue }
+			if module_name == 'builtin' { continue }
 			if os.is_dir(os.join_path(os.dir(vexe), 'vlib', module_name.replace('.', os.path_separator))) {
-				imports += 'import ${module_name} as _\n'
+				if module_name !in import_names { import_names << module_name }
 			}
 		}
+		// Builtin is implicit in every child. A builtin-only request still imports
+		// strconv to warm the shared core object, as before.
+		if (request.module != 'builtin' || import_names.len == 0) && name !in import_names {
+			import_names.prepend(name)
+		}
+		// Keep the recorded order, including the target's original position:
+		// imported #flag groups can contain ordered include paths and definitions.
+		if !use_entry {
+			key := encode_arguments([request.cwd, request.is_test.str(), request.show_test_stats.str(),
+				encode_project_flags(request.project_flags), encode_arguments(import_names),
+				...request.args])
+			if key in refreshed_entries { continue }
+			refreshed_entries[key] = true
+		}
+		imports := import_names.map('import ${it} as _\n').join('')
 		source := if use_entry {
 			request.entry
 		} else {
