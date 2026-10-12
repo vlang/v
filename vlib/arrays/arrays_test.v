@@ -156,6 +156,10 @@ fn test_chunk() {
 	z2 := chunk[string](y, 3)
 	assert z2 == [['a', 'b', 'c'], ['d', 'e', 'f']]
 	assert chunk[int]([]int{}, 2) == [][]int{}
+	// a non positive size cannot produce a chunk, like window's attributes
+	assert chunk[int](x, 0) == [][]int{}
+	assert chunk[int](x, -1) == [][]int{}
+	assert chunk[int]([]int{}, 0) == [][]int{}
 }
 
 fn test_chunk_while() {
