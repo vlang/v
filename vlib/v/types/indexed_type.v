@@ -1,0 +1,97 @@
+module types
+
+import v.flat
+
+fn (tc &TypeChecker) indexed_type_cache() &IndexedTypeCache {
+	mut cache := unsafe { tc.type_cache }
+	if isnil(cache.indexed_types) || cache.indexed_types.owner != tc.type_interner {
+		cache.indexed_types = &IndexedTypeCache{
+			owner: tc.type_interner
+		}
+	}
+	return cache.indexed_types
+}
+
+@[inline]
+fn (tc &TypeChecker) invalidate_checked_type_id(idx int) {
+	if idx < 0 || isnil(tc.type_cache) || isnil(tc.type_cache.indexed_types) {
+		return
+	}
+	mut cache := unsafe { tc.type_cache.indexed_types }
+	slot := idx & 4095
+	if cache.set[slot] && cache.nodes[slot] == idx {
+		cache.set[slot] = false
+	}
+}
+
+// checked_expr_type_id returns the interned identity of a recorded expression type.
+// The identity belongs to this checker view's interner; do not pass it to another view.
+// It follows the visibility of checked node metadata, without resolving a new type.
+@[direct_array_access]
+pub fn (tc &TypeChecker) checked_expr_type_id(node flat.NodeId) ?TypeId {
+	idx := int(node)
+	if idx < 0 || isnil(tc.type_interner) {
+		return none
+	}
+	dense := isnil(tc.storage_query_probe) && idx < tc.expr_type_set.len
+		&& tc.expr_type_set[idx] && (!tc.parallel_check_sparse || tc.in_check_range(idx))
+	if dense && !isnil(tc.type_cache) {
+		cache := tc.indexed_type_cache()
+		slot := idx & 4095
+		if cache.set[slot] && cache.nodes[slot] == idx {
+			return cache.types[slot]
+		}
+		typ := tc.expr_type_values[idx]
+		id, _ := tc.intern_type(typ)
+		mut writable := unsafe { &IndexedTypeCache(cache) }
+		writable.nodes[slot] = idx
+		writable.types[slot] = id
+		writable.set[slot] = true
+		return id
+	}
+	// Sparse/probe metadata may change as a query moves between scope views.
+	// Leave those compatibility paths uncached until they carry their own IDs.
+	typ := tc.cached_expr_type(node) or { return none }
+	id, _ := tc.intern_type(typ)
+	return id
+}
+
+// type_by_id returns the canonical semantic type for an identity in this checker view.
+pub fn (tc &TypeChecker) type_by_id(id TypeId) ?Type {
+	if isnil(tc.type_interner) {
+		return none
+	}
+	mut interner := unsafe { tc.type_interner }
+	interner.lock.rlock()
+	defer { interner.lock.runlock() }
+	if u32(id) >= u32(interner.types.len) {
+		return none
+	}
+	return interner.types[int(id)]
+}
+
+// type_name_by_id formats an interned type, reusing its canonical spelling.
+// Names are a compatibility boundary; type-sensitive consumers can use type_by_id instead.
+pub fn (tc &TypeChecker) type_name_by_id(id TypeId) string {
+	if isnil(tc.type_interner) {
+		return 'unknown'
+	}
+	if isnil(tc.type_cache) {
+		mut interner := unsafe { tc.type_interner }
+		return interner.name(id)
+	}
+	mut cache := tc.indexed_type_cache()
+	slot := int(u32(id) & 4095)
+	if cache.name_set[slot] && cache.name_ids[slot] == id {
+		return cache.names[slot]
+	}
+	mut interner := unsafe { tc.type_interner }
+	name := interner.name(id)
+	// An out-of-range identity can become valid after the interner grows.
+	if name != 'unknown' {
+		cache.name_ids[slot] = id
+		cache.names[slot] = name
+		cache.name_set[slot] = true
+	}
+	return name
+}

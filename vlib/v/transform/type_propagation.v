@@ -220,7 +220,7 @@ fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?string {
 		return none
 	}
 	typ := t.tc.expr_type(id) or { t.tc.resolve_type(id) }
-	mut name := t.tc.type_name(typ)
+	mut name := t.checker_recorded_type_name(id, typ)
 	if name in t.tc.type_aliases {
 		name = t.normalize_type_alias(name)
 	}
@@ -234,6 +234,26 @@ fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?string {
 		return name
 	}
 	return none
+}
+
+// Keep the indexed semantic identity through repeated reads of a checked
+// composite expression. Calls retain their resolution/annotation precedence;
+// literal and stored-name types already have a constant-time spelling.
+fn (t &Transformer) checker_recorded_type_name(id flat.NodeId, typ types.Type) string {
+	composite := match typ {
+		types.Array, types.ArrayFixed, types.Map, types.Pointer, types.FnType, types.OptionType,
+		types.ResultType, types.Channel, types.MultiReturn {
+			true
+		}
+		else { false }
+	}
+	if composite && int(id) >= 0 && int(id) < t.a.nodes.len
+		&& t.a.nodes[int(id)].kind != .call {
+		if type_id := t.tc.checked_expr_type_id(id) {
+			return t.tc.type_name_by_id(type_id)
+		}
+	}
+	return t.tc.type_name(typ)
 }
 
 fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
@@ -1958,7 +1978,7 @@ fn (t &Transformer) index_expr_type(id flat.NodeId, node flat.Node) string {
 	}
 	if !isnil(t.tc) {
 		if typ := t.tc.expr_type(id) {
-			name := typ.name()
+			name := t.checker_recorded_type_name(id, typ)
 			if name.len > 0 && name != 'unknown' {
 				return t.normalize_type_alias(name)
 			}

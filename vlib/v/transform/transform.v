@@ -27624,7 +27624,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			}
 			if !isnil(t.tc) {
 				if typ := t.tc.expr_type(id) {
-					name := typ.name()
+					name := t.checker_recorded_type_name(id, typ)
 					if name.starts_with('[]') {
 						if local_elem := t.array_literal_local_struct_elem_name(node) {
 							if name[2..].all_after_last('.') == local_elem {
