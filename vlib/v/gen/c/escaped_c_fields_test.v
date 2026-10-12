@@ -26,7 +26,7 @@ fn test_escaped_c_field_names_follow_the_resolved_owner() {
 		assert g.field_c_name(owner, '@select') == 'select'
 		assert g.field_c_name(owner, '_v_type') == '_v_type'
 		assert g.field_c_name(owner, 'type') == 'type'
-		for field in ['index', 'select', 'malloc', 'exit', 'byte', 'int_str', 'v_index'] {
+		for field in ['index', 'select', 'malloc', 'exit', 'byte', 'int_str', 'v_index', 'complex'] {
 			assert g.field_c_name(owner, field) == field
 		}
 	}
@@ -39,7 +39,7 @@ fn test_escaped_v_field_names_keep_their_existing_spelling() {
 	pointer := types.Type(types.Pointer{ base_type: alias })
 	for owner in [v_struct, alias, pointer] {
 		for field in ['@type', '@struct', '@select', '_v_type', 'type', 'index', 'select', 'malloc',
-			'exit', 'byte', 'int_str'] {
+			'exit', 'byte', 'int_str', 'complex'] {
 			assert g.field_c_name(owner, field) == c_name(field)
 		}
 	}
@@ -60,7 +60,7 @@ fn test_escaped_c_initializer_field_names_resolve_aliases() {
 	assert g.init_field_c_name('Fields', '@type') == 'type'
 	assert g.init_field_c_name('EscapedFields', '@type') == '_v_type'
 	assert g.init_field_c_name('EscapedFields', '@struct') == '_v_struct'
-	for field in ['index', 'select', 'malloc', 'exit', 'byte', 'int_str', 'v_index'] {
+	for field in ['index', 'select', 'malloc', 'exit', 'byte', 'int_str', 'v_index', 'complex'] {
 		assert g.init_field_c_name('C.EscapedFields', field) == field
 		assert g.init_field_c_name('Fields', field) == field
 		assert g.init_field_c_name('EscapedFields', field) == c_name(field)
