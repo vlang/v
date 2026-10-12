@@ -5,7 +5,7 @@ const vexe = @VEXE
 
 // Regression test for https://github.com/vlang/v/issues/27330
 //
-// `-usecache` may compile a module separately from the program that uses it.
+// default caching may compile a module separately from the program that uses it.
 // The interface type-table index then has to survive as a real, externally
 // linked symbol: a compile-time constant has no linker symbol, so the module's
 // reference to it failed to link (`undefined symbol: _IError_None___index` on
@@ -22,7 +22,7 @@ fn build_and_run_with_usecache(name string, source string) string {
 	binary_path := os.join_path(tmp_dir, name)
 	os.write_file(source_path, source) or { panic(err) }
 	build :=
-		os.exec([vexe, '-usecache', '-o', binary_path, source_path])
+		os.exec([vexe, '-o', binary_path, source_path])
 	assert build.exit_code == 0, build.output
 	assert os.is_file(binary_path)
 	run := os.exec([binary_path])

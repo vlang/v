@@ -311,6 +311,9 @@ pub const node_flag_static_type_method = u8(2)
 pub const node_flag_embed_payload = u8(4)
 // node_flag_freed_assignment marks an assignment annotated with `@[freed]`.
 pub const node_flag_freed_assignment = u8(8)
+// node_flag_borrowed_map_key marks a generated read-only map iteration whose
+// key cannot escape. The bit is shared with the assignment-only flag above.
+pub const node_flag_borrowed_map_key = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
@@ -381,6 +384,12 @@ pub fn (n &Node) is_detached_spawn() bool {
 @[inline]
 pub fn (n &Node) skip_ownership_drops() bool {
 	return (n.flags & node_flag_skip_ownership_drops) != 0
+}
+
+// borrows_map_key reports whether a generated map loop only borrows its key.
+@[inline]
+pub fn (n &Node) borrows_map_key() bool {
+	return n.kind == .for_in_stmt && (n.flags & node_flag_borrowed_map_key) != 0
 }
 
 // set_skip_ownership_drops updates the skip-ownership-drops flag.

@@ -723,9 +723,22 @@ fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
 		}
 
 		// A leading or trailing minus is a literal, rather than a range separator.
+		//
+		// And so is a minus that follows a *completed* range. In `[a-z-0-9]` the
+		// second `-` has no single character to start a range from - `a-z` is a
+		// range, not a char - so taking it as a separator makes the range-end
+		// branch below overwrite `cc[tmp_index-1]` with an empty interval:
+		// `a-z` becomes `a..0`, and the class silently stops matching the letters
+		// it is made of.
+		//
+		// The condition reads the entry this class has written so far, bounded by
+		// `res_index` so it can never see the previous class's entries. Real PCRE2
+		// and Python both treat this minus as a literal.
 		if ch == `-` && (status == .start
 			|| (status == .in_char && i + char_len < in_txt.len
-				&& in_txt[i + char_len] == `]`)) {
+				&& in_txt[i + char_len] == `]`)
+			|| (status == .in_char && tmp_index > res_index
+				&& re.cc[tmp_index - 1].cc_type == cc_int)) {
 			re.cc[tmp_index].cc_type = cc_char
 			re.cc[tmp_index].ch0 = char_tmp
 			re.cc[tmp_index].ch1 = char_tmp

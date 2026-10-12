@@ -55,6 +55,46 @@ by using the V's built-in self-updater.
 To do so, run the command `v up`.
 This also refreshes the bundled TCC binaries used for fast C compilation.
 
+After updating, `v up` refreshes previously cached vlib modules with the compiler
+and flags used to cache them, including normal and `-prod` builds. Unchanged
+modules are reused. Each module being cached is printed to standard output as
+`Caching module <name>...`. A failed cache refresh makes `v up` fail.
+Cached module headers preserve struct field attribute groups, so valid deprecation
+attributes do not introduce warnings during refresh.
+Ordinary builds report cache progress on standard error. Refreshes retain absolute
+module search paths, resolved C compiler commands, and build modes. They omit
+linker-only flags, including operands embedded in `-cflags`. Relative `V3CACHE`
+and `VTMP` paths are resolved against the directory where `v up` was invoked.
+Refreshes retain each build's working directory for relative C compilation inputs
+and its effective `-run-only` test selectors and assertion display mode.
+Object flags include source `#flag` directives. Records with vanished project
+directories or required compile inputs are skipped. Builds without relative inputs
+or project interface scopes share refresh records across projects.
+Project directives are merged with flags from the updated modules, so changes to
+vlib `#flag` directives take effect during refresh. Cached TCC production builds
+apply the production optimization flags to both module objects and the program.
+Refreshes use the original entry when needed to preserve project interface
+implementers, stopping before linking or running the program. Refreshes
+retain absolute `-file-list` operands for live entries, re-expanding directories
+to include their current sources. Records whose listed files or directories vanished
+are skipped. Historical records sharing the same live command, working directory,
+entry and assertion display mode refresh once. Synthetic refreshes
+also replay source C driver options such as sanitizers at link time. Records for
+unavailable C compilers are skipped.
+Unreadable, truncated, and unsupported inventory files are skipped. Live entries
+retain their project source identity; after the project input changes, obsolete
+configurations are skipped until a successful build records the current inputs.
+Older live records without source identities require rebuilding the project once.
+Isolated test caches use the primary V compiler executable, including when
+`v up` runs through the fallback compiler or as a separate tool, or a build uses
+the delegated ownership compiler. Ownership dispatch preserves the primary path
+through `V3_PRIMARY_VEXE`, independently of the helper's `VEXE`.
+
+For caches created before V recorded their build settings, `v up` identifies the
+cached vlib modules and refreshes them in both modes for the available C compilers,
+for programs and tests. Successful migrations mark the old headers so subsequent
+updates use the new inventory without repeating the fallback matrix.
+
 `v up` reports the agent skills that the new revision left behind, since a new
 revision may ship updated copies of them. It writes nothing: the skills belong to
 the user, and updating the compiler is not consent to overwrite them. Pass
@@ -1206,6 +1246,11 @@ An array is a collection of data elements of the same type. An array literal is 
 list of expressions surrounded by square brackets. An individual element can be
 accessed using an *index* expression. Indexing starts from `0`.
 
+After an array literal, separate `&&` from either adjacent token with whitespace or a comment
+to use logical AND, as in `a == [] && flag`. An attached `[]&&Type{}` declares an array of
+references to references. Separate `&` on both sides to use the binary AND operator;
+`[]&Type{}` and `[] &Type{}` remain array initializers with reference elements.
+
 ```v
 mut nums := [10, 20, 30]
 println(nums) // `[10, 20, 30]`
@@ -1235,6 +1280,14 @@ nums << [5, 6, 7]
 println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
 ```
 
+Use `<< ...array` to explicitly append the array's elements. When appending an array of
+concrete values to an empty interface array, `<< array` appends the whole array as one
+interface value, while `<< ...array` converts and appends each element separately.
+For example, with `interface Value {}`, appending `['IT']` to `[]Value{}` produces
+`[Value(['IT'])]` with `<<` and `[Value('IT')]` with `<< ...`.
+`insert(index, ...array)` and `prepend(...array)` also convert each source element to the
+destination element type before inserting it.
+
 ```v
 mut names := ['John']
 names << 'Peter'
@@ -1248,6 +1301,11 @@ names << 'Sam'
 names := ['John', 'Peter', 'Sam']
 println('Alex' in names) // "false"
 ```
+
+Use `<< ...array` to explicitly append the array's elements. For an interface array,
+`<< array` can append the whole array as one interface value, while `<< ...array`
+converts each element separately. `array.insert(index, ...values)` and
+`array.prepend(...values)` also convert each source element to the destination element type.
 
 #### Array Fields
 
@@ -1533,6 +1591,9 @@ numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
 ```
 
+`sorted()` returns a sorted copy. Alias element types keep their overloaded `<` operator,
+including when the receiver is an array literal or a parenthesized array literal.
+
 ```v
 struct User {
 	age  int
@@ -1769,8 +1830,10 @@ Pointer fields and indexed pointers retain the original fixed-array roots record
 Borrowing does not clone elements or require a `clone()` method.
 
 Passing a local struct's fixed-array storage by reference keeps the local on the stack when
-the called function only reads or writes scalar fields and array elements. Calls that may retain
-the storage still move it to the heap; `-warn-about-allocs` reports these moves.
+the called function only reads or writes scalar fields and array elements, or passes the
+reference, or the address of an element (`&buf[i]`), straight on to a function that does the
+same. Calls that may retain the storage still move it to the heap; `-warn-about-allocs` reports
+these moves.
 Calls through local function values remain conservative, including values that shadow
 function names.
 Explicitly destroying owned source elements invalidates views of those elements, as with other
@@ -2681,6 +2744,8 @@ Parentheses around a mutable map container do not change whether assigning the l
 its entry.
 Mutable map parameters, including explicit pointer parameters (`mut m &map[K]V`),
 keep ordinary value iteration. A mutable loop value writes through to the map entry.
+A mutable pointer-valued loop argument can rebind the stored pointer, including through
+parentheses, while a mutable struct argument updates the pointed-to struct.
 
 Either key or value can be ignored by using a single underscore as the identifier.
 
@@ -5459,6 +5524,10 @@ fn main() {
 
 ### Generics
 
+Cross-module privacy violations that do not depend on type parameters are diagnosed even
+in the program's unused generic functions and methods. Accesses that depend on type parameters
+are checked in concrete instances.
+
 Generic method calls retain the declaring modules of their type arguments when selecting
 the concrete method, including methods returning Result or Option values.
 
@@ -6603,6 +6672,11 @@ string buffers, promoting a simple abstraction-free code style.
 There are 4 ways to manage memory in V.
 
 The default is a minimal and a well performing tracing GC.
+
+With Boehm GC, `-d no_gc_thread_local_alloc` builds the bundled collector without thread-local
+allocation, so allocation counters also observe warmed small-object allocations. It uses the
+platform C compiler unless `-cc` selects one explicitly. This option preserves compiler selection
+when GC is disabled or `-d dynamic_boehm` is enabled; an empty define value does not enable a flag.
 
 The second way is autofree, it can be enabled with `-autofree`. It takes care of most objects
 (~90-100%): the compiler inserts necessary free calls automatically during compilation.
