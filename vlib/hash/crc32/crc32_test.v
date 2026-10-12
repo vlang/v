@@ -63,9 +63,13 @@ fn test_hash_crc32_variants() {
 
 fn test_hash_crc32q_standard() {
 	data := '123456789'.bytes()
-	assert crc32.sum_crc32q(data) == u32(0x3010bf7f)
-	assert crc32.sum_with_poly(crc32.crc32q, data) == u32(0x3010bf7f)
-	assert crc32.sum_crc32q('a'.bytes()) == u32(0xd1112b6b)
+	// the check value of CRC-32/Q for "123456789" is 0xa9cc8179
+	assert crc32.sum_crc32q(data) == u32(0xa9cc8179)
+	assert crc32.sum_with_poly(crc32.crc32q, data) == u32(0xa9cc8179)
+	assert crc32.sum_crc32q('a'.bytes()) == u32(0x248ca0a3)
+	// both spellings of CRC-32/Q (MSB-first and reflected polynomial) agree
+	assert crc32.sum_crc32q(data) == crc32.sum_with_poly(crc32.crc32q_reflected, data)
+	assert crc32.sum_crc32q('a'.bytes()) == crc32.sum_with_poly(crc32.crc32q_reflected, 'a'.bytes())
 }
 
 fn test_hash_crc32_update() {

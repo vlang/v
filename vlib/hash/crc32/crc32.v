@@ -85,7 +85,7 @@ pub fn sum_with_poly(poly u32, b []u8) u32 {
 		ieee { ieee_poly.checksum(b) }
 		crc32c { crc32c_poly.checksum(b) }
 		crc32k { crc32k_poly.checksum(b) }
-		crc32q { crc32q_sum_internal(b) }
+		crc32q { crc32q_reflected_poly.checksum(b) }
 		crc32q_reflected { crc32q_reflected_poly.checksum(b) }
 		else { new(poly).checksum(b) }
 	}
@@ -95,34 +95,6 @@ const ieee_poly = new(ieee)
 const crc32c_poly = new(crc32c)
 const crc32k_poly = new(crc32k)
 const crc32q_reflected_poly = new(crc32q_reflected)
-const crc32q_table = crc32q_generate_table(q)
-
-@[direct_array_access]
-fn crc32q_generate_table(poly u32) []u32 {
-	mut table := []u32{len: 256}
-	for i in 0 .. 256 {
-		mut crc := u32(i) << 24
-		for _ in 0 .. 8 {
-			if crc & u32(0x80000000) != 0 {
-				crc = (crc << 1) ^ poly
-			} else {
-				crc <<= 1
-			}
-		}
-		table[i] = crc
-	}
-	return table
-}
-
-@[direct_array_access]
-fn crc32q_sum_internal(b []u8) u32 {
-	mut crc := u32(0)
-	for byte in b {
-		idx := u8((crc >> 24) ^ byte)
-		crc = crc32q_table[idx] ^ (crc << 8)
-	}
-	return crc
-}
 
 // sum calculates the CRC-32 checksum of `b` by using the IEEE polynomial.
 pub fn sum(b []u8) u32 {
@@ -140,6 +112,9 @@ pub fn sum_crc32k(b []u8) u32 {
 }
 
 // sum_crc32q calculates the CRC-32Q checksum of `b`.
+// CRC-32/Q is a reflected algorithm (refin=true, refout=true), so it is computed
+// through the reflected polynomial, like `crc32q_reflected`. The MSB-first form
+// of the polynomial is a different function, and is not what CRC-32/Q means.
 pub fn sum_crc32q(b []u8) u32 {
-	return crc32q_sum_internal(b)
+	return crc32q_reflected_poly.checksum(b)
 }
