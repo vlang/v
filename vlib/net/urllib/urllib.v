@@ -428,6 +428,8 @@ fn split(s string, sep u8, cutc bool) (string, string) {
 }
 
 // parse parses rawurl into a URL structure.
+// IPv6 zone identifiers permit escaped percent signs (%25) and spaces (%20),
+// including at the end of the zone. Invalid or prohibited escapes return an error.
 //
 // The rawurl may be relative (a path, without a host) or absolute
 // (starting with a scheme). Trying to parse a hostname and path
