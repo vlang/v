@@ -187,7 +187,11 @@ pub fn group[T](arrs ...[]T) [][]T {
 
 // chunk array into a single array of arrays where each element is the next `size` elements of the original.
 // Example: arrays.chunk([1, 2, 3, 4, 5, 6, 7, 8, 9], 2) // => [[1, 2], [3, 4], [5, 6], [7, 8], [9]]
+// It returns an empty array, when `size` is not positive.
 pub fn chunk[T](array []T, size int) [][]T {
+	if size <= 0 {
+		return [][]T{}
+	}
 	// allocate chunk array
 	mut chunks := [][]T{cap: array.len / size + if array.len % size == 0 { 0 } else { 1 }}
 
