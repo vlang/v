@@ -930,6 +930,7 @@ mut:
 	embed_incbin_syms_ready    bool
 	cache_native_input_paths   map[string]bool
 	program_body_only          bool
+	cached_program_cleanup     bool
 	cached_support_identifiers map[string]bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
@@ -2024,6 +2025,11 @@ pub fn (mut g FlatGen) set_cache_native_input_paths(paths []string) {
 // when that prefix has already been validated and loaded from the module cache.
 pub fn (mut g FlatGen) set_program_body_only(enabled bool) {
 	g.program_body_only = enabled
+}
+
+// set_cached_program_cleanup records whether the cached program prefix owns its exit hook.
+pub fn (mut g FlatGen) set_cached_program_cleanup(enabled bool) {
+	g.cached_program_cleanup = enabled
 }
 
 // set_cache_program_files assigns entry-module source files to the program

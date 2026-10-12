@@ -724,7 +724,7 @@ fn (mut g FlatGen) gen_executable_cleanup_registration() {
 	// Unchanged cleanup bodies live in the cached prefix, outside the selected
 	// incremental function set. An edited main must still register that hook.
 	if g.module_cleanup_fns.len > 0 || g.is_trace_calls
-		|| (g.program_body_only && g.cached_support_identifiers['_vcleanup']) {
+		|| (g.program_body_only && g.cached_program_cleanup) {
 		g.writeln('atexit(_vcleanup);')
 	}
 }

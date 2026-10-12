@@ -14488,6 +14488,16 @@ pub fn run(args []string) {
 			''
 		}
 		incremental_known_declarations := incremental_c_declarations + '\n' + incremental_cached_support
+		cached_program_cleanup := if generic_cache_hit {
+			prefix := os.read_file(generic_cache_entry.prefix) or {
+				eprintln('error reading cached program prefix ${generic_cache_entry.prefix}: ${err.msg()}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			modulecache.c_source_function_identifiers(prefix)['_vcleanup']
+		} else {
+			false
+		}
 		cgen_used_fns := if incremental_cache_hit {
 			incremental_stage_used_fns
 		} else {
@@ -14579,6 +14589,7 @@ pub fn run(args []string) {
 			g.set_cache_pruned_functions(pruned_declarations.names, pruned_declarations.modules)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
+			g.set_cached_program_cleanup(cached_program_cleanup)
 			g.set_scope_parallel_workers(!generic_cache_hit)
 			if verbose {
 				eprintln('  [ttime] cg setup           ${f64(cg_pre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -14667,6 +14678,7 @@ pub fn run(args []string) {
 			g.set_cache_pruned_functions(pruned_declarations.names, pruned_declarations.modules)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
+			g.set_cached_program_cleanup(cached_program_cleanup)
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc, cache_no_parallel_cgen, test_files) or {
 				eprintln('error writing ${generated_path}: ${err}')
 				cleanup_c_build_dir(cc_dir)
