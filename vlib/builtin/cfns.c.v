@@ -612,7 +612,11 @@ fn C.dispatch_release(voidptr)
 // file descriptor based reading/writing
 fn C.read(fd i32, buf voidptr, count usize) i32
 
-fn C.write(fd i32, const_buf voidptr, count usize) isize
+$if windows {
+	fn C.write(fd i32, const_buf voidptr, count u32) i32
+} $else {
+	fn C.write(fd i32, const_buf voidptr, count usize) isize
+}
 
 fn C.close(fd i32) i32
 
