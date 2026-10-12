@@ -29,6 +29,10 @@ fn test_color_from_string() {
 	// 8 digit #RRGGBBAA: the last two digits give the alpha
 	assert gg.color_from_string('#FF000080') == gg.rgba(255, 0, 0, 0x80)
 	// unrecognised forms are black, like unknown color names
+	assert gg.color_from_string('#ggg') == gg.black
+	assert gg.color_from_string('#12zz34') == gg.black
+	assert gg.color_from_string('#12345x78') == gg.black
+	assert gg.color_from_string('#abcdef') == gg.rgb(0xAB, 0xCD, 0xEF)
 	assert gg.color_from_string('#') == gg.black
 	assert gg.color_from_string('#F') == gg.black
 	assert gg.color_from_string('#12345') == gg.black

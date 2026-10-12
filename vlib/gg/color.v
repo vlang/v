@@ -317,10 +317,15 @@ const string_colors = {
 // or black Color if string is not found in lookup table, or a hex color if starting with #
 // The hex form accepts the CSS shorthand notations: #RGB and #RGBA, where every digit
 // is doubled, as well as the full #RRGGBB and #RRGGBBAA forms.
-// A hex string of any other length is not a color, and black is returned for it.
+// Invalid hex digits or lengths return black.
 pub fn color_from_string(s string) Color {
 	if s.starts_with('#') {
 		mut digits := s[1..]
+		for digit in digits {
+			if !digit.is_hex_digit() {
+				return black
+			}
+		}
 		if digits.len == 3 || digits.len == 4 {
 			// CSS hex shorthand: #RGB -> #RRGGBB and #RGBA -> #RRGGBBAA
 			mut expanded := []u8{cap: digits.len * 2}
