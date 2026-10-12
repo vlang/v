@@ -689,9 +689,12 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	}
 	soutput := decode_windows_captured_output(read_data.str())
 	unsafe { read_data.free() }
-	exit_code := u32(0)
+	mut exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
-	C.GetExitCodeProcess(proc_info.h_process, voidptr(&exit_code))
+	// The SDK DWORD output is a 32-bit value; use its exact pointer type.
+	unsafe {
+		C.GetExitCodeProcess(proc_info.h_process, &C.DWORD(&exit_code))
+	}
 	C.CloseHandle(proc_info.h_process)
 	C.CloseHandle(proc_info.h_thread)
 	return Result{
@@ -920,9 +923,9 @@ pub fn page_size() int {
 
 // disk_usage returns disk usage of `path`.
 pub fn disk_usage(path string) !DiskUsage {
-	mut free_bytes_available_to_caller := u64(0)
-	mut total := u64(0)
-	mut available := u64(0)
+	mut free_bytes_available_to_caller := C.ULARGE_INTEGER{}
+	mut total := C.ULARGE_INTEGER{}
+	mut available := C.ULARGE_INTEGER{}
 	mut ret := false
 	if path == '.' || path == '' {
 		ret = C.GetDiskFreeSpaceExA(&char(unsafe { nil }), &free_bytes_available_to_caller, &total,
@@ -935,8 +938,8 @@ pub fn disk_usage(path string) !DiskUsage {
 		return error('cannot get disk usage of path')
 	}
 	return DiskUsage{
-		total:     total
-		available: available
-		used:      total - available
+		total:     total.QuadPart
+		available: available.QuadPart
+		used:      total.QuadPart - available.QuadPart
 	}
 }

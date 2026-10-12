@@ -120,7 +120,7 @@ pub fn C.android_print(fstream voidptr, format &char, opt ...voidptr)
 fn C.sscanf(str &char, const_format &char, opt ...voidptr) i32
 fn C.scanf(const_format &char, opt ...voidptr) i32
 
-fn C.puts(msg &char) i32
+fn C.puts(const_msg &char) i32
 
 @[trusted]
 fn C.abs(f64) f64
@@ -470,7 +470,7 @@ fn C.FormatMessageW(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId
 
 fn C.CloseHandle(voidptr) i32
 
-fn C.GetExitCodeProcess(hProcess voidptr, lpExitCode &u32)
+fn C.GetExitCodeProcess(hProcess voidptr, lpExitCode &C.DWORD) bool
 
 @[trusted]
 fn C.GetTickCount() i64
@@ -612,7 +612,11 @@ fn C.dispatch_release(voidptr)
 // file descriptor based reading/writing
 fn C.read(fd i32, buf voidptr, count usize) i32
 
-fn C.write(fd i32, buf voidptr, count usize) i32
+$if windows {
+	fn C.write(fd i32, const_buf voidptr, count u32) i32
+} $else {
+	fn C.write(fd i32, const_buf voidptr, count usize) isize
+}
 
 fn C.close(fd i32) i32
 
@@ -642,7 +646,7 @@ fn C.WrappedNSLog(str &u8)
 fn C.abs(number i32) i32
 
 $if windows {
-	fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool
+	fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &C.ULARGE_INTEGER, total_number_of_bytes &C.ULARGE_INTEGER, total_number_of_free_bytes &C.ULARGE_INTEGER) bool
 
 	fn C.GetNativeSystemInfo(voidptr)
 
