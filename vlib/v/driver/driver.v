@@ -11402,9 +11402,10 @@ pub fn run(args []string) {
 	// builtin source set, which likewise must remain a monolithic translation unit.
 	// Heap tracking hooks are supplied by user C declarations. Replaying a header
 	// that defines them in every cached translation unit creates duplicate symbols.
+	// Autofree cleanup needs the full local-variable metadata, which cached interfaces omit.
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
 		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
-		&& !minimal_literal_output
+		&& !minimal_literal_output && 'autofree' !in prefs.user_defines
 		&& (cache_with_tcc || effective_c_compiler in ['clang', 'gcc', 'mingw'])
 		&& target.os == host_target.os
 		&& target.arch == host_target.arch
@@ -11790,18 +11791,11 @@ pub fn run(args []string) {
 			seed_implicit_imports(mut a, skip_closure_runtime, check_overflow || check_casts)
 		}
 	}
-	// TinyCC needs the closure runtime referenced by unused functions in cached objects.
-	// Cached interfaces omit the bodies that originally pulled that runtime in.
-	if cache_with_tcc && !skip_closure_runtime && !implicit_imports.has_closure {
-		closure_files := pref.get_v_files_from_dir_for_target(prefs.get_vlib_module_path('builtin.closure'),
-			prefs.user_defines, prefs.target)
-		for module_name in ['closure', 'builtin.closure'] {
-			if _ := cache_state.manager.valid_header(module_name, closure_files) {
-				a.add_node(closure_import_node())
-				implicit_imports.has_closure = true
-				break
-			}
-		}
+	// Cached objects can reference closure cleanup in unused public functions.
+	// Headerless modules can now be cached without an explicit closure in the program.
+	if cache_state.manager.enabled && !skip_closure_runtime && !implicit_imports.has_closure {
+		a.add_node(closure_import_node())
+		implicit_imports.has_closure = true
 	}
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 

@@ -16,3 +16,5 @@ in the native helpers.
 Generated C still needs the native objects and library flags when linked. Use V to build
 executables, or `-generate-c-project` to export a build command with the native sources
 and library flags.
+
+Autofree uses a monolithic build so cleanup retains complete local-variable metadata.

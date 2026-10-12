@@ -144,7 +144,9 @@ fn test_macos_self_c_has_no_include_directives() {
 	generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-prealloc', '-compile-backend',
 		'fastc', '-o', c_file, os.join_path(@VEXEROOT, 'cmd', 'v')])
 	assert generated.exit_code == 0, generated.output
-	for line in os.read_file(c_file)!.split_into_lines() {
+	code := os.read_file(c_file)!
+	assert code.contains('DIR* fdopendir('), 'the CLI needs the pointer-returning POSIX binding'
+	for line in code.split_into_lines() {
 		// Compiler string literals still contain text used to generate other C files.
 		assert !line.trim_space().starts_with('#include'), line
 	}
@@ -168,5 +170,22 @@ fn test_headerless_standard_modules_and_native_helpers() {
 			'-no-retry-compilation', 'run', source])
 		assert run.exit_code == 0, run.output
 		assert run.output == 'OK\n', run.output
+	}
+}
+
+fn test_headerless_cached_os_objects_link_closure_cleanup() {
+	$if !macos {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'headerless_cached_os_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	for message in ['first', 'second'] {
+		os.write_file(source, 'import os\nfn main() { assert os.getpid() > 0; println("${message}") }\n')!
+		run := cmdexec.run(@VEXE, ['-cc', 'clang', '-gc', 'boehm', '-no-retry-compilation', 'run',
+			source])
+		assert run.exit_code == 0, run.output
+		assert run.output == '${message}\n', run.output
 	}
 }

@@ -22683,7 +22683,11 @@ fn (mut g FlatGen) fn_return_type_name(t types.Type) string {
 		return fixed_array_ret_wrapper_name(bare)
 	}
 	if g.tc.autofree_mode && t is types.Alias {
-		return g.tc.c_type(t)
+		ct := g.tc.c_type(t)
+		if ct.starts_with('fn_ptr:') {
+			return g.resolve_fn_ptr_type(ct)
+		}
+		return ct
 	}
 	if wide_ct := g.wide_enum_signature_c_type(t) {
 		return wide_ct

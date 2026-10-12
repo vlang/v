@@ -19187,5 +19187,7 @@ fn (g &FlatGen) shared_optional_call_type(id flat.NodeId, node flat.Node) ?types
 // c_source_file_is_compiler_main identifies the CLI's bodyless POSIX bindings.
 fn (g &FlatGen) c_source_file_is_compiler_main(source_file string) bool {
 	root := g.compiler_vroot.replace('\\', '/').trim_right('/')
-	return root.len > 0 && source_file.replace('\\', '/').starts_with('${root}/cmd/v/')
+	path := source_file.replace('\\', '/')
+	return root.len > 0 && (path.starts_with('${root}/cmd/v/')
+		|| path.starts_with('cmd/v/') || path.starts_with('./cmd/v/'))
 }
