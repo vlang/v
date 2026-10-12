@@ -16,3 +16,8 @@ sum value to the current variant. The variant's type does not replace the declar
 of an unrelated generic call.
 
 Receiver and argument types still determine generic calls that are not return values.
+
+String interpolation uses the checked concrete result type of a direct generic call, including
+a parenthesized call or one unwrapped with an `or` block. Its arguments are lowered normally,
+so map and array methods can be passed to the call. The result retains the string representation
+of its concrete type, including runes, arrays, and structs.
