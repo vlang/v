@@ -7,9 +7,15 @@ import sync.stdatomic
 @[params]
 pub struct EncoderOptions {
 pub:
-	prettify       bool
-	indent_string  string = '    '
-	newline_string string = '\n'
+	// json5 permits JSON5 output, including Infinity and NaN.
+	json5 bool
+	// These formatting options apply only when json5 is true.
+	single_quotes   bool
+	unquoted_keys   bool
+	trailing_commas bool
+	prettify        bool
+	indent_string   string = '    '
+	newline_string  string = '\n'
 
 	enum_as_int bool
 
@@ -32,7 +38,7 @@ mut:
 	output []u8 = []u8{cap: 2048}
 }
 
-// encode is a generic function that encodes a type into a JSON string.
+// encode encodes a value as JSON, or JSON5 with `json5: true`.
 pub fn encode[T](val T, config EncoderOptions) string {
 	mut encoder := Encoder{
 		EncoderOptions: config
@@ -112,8 +118,8 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		}
 	} $else $if T.unaliased_typ is $array_fixed {
 		encoder.output << `[`
-		// Only the legacy layout spreads a fixed size array like a dynamic one.
-		spread := encoder.prettify && encoder.legacy_layout
+		// JSON5 and the legacy layout spread fixed size arrays like dynamic arrays.
+		spread := encoder.prettify && (encoder.legacy_layout || encoder.json5)
 		if spread {
 			encoder.open_items(val.len, true)
 		}
@@ -127,7 +133,7 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 			}
 			encoder.encode_value(val[i])
 		}
-		if spread {
+		if spread || encoder.json5 {
 			encoder.close_items(val.len, true)
 		}
 		encoder.output << `]`
@@ -212,7 +218,12 @@ fn next_string_escape(val string, start int, escape_unicode bool) int {
 	return i
 }
 
+@[manualfree]
 fn (mut encoder Encoder) encode_string(val string) {
+	if encoder.json5 {
+		encoder.encode_json5_string(val)
+		return
+	}
 	encoder.output << `"`
 	mut buffer_start := 0
 	mut buffer_end := 0
@@ -275,12 +286,7 @@ fn (mut encoder Encoder) encode_string(val string) {
 					buffer_end++
 					buffer_start = buffer_end
 
-					encoder.output << `\\`
-					encoder.output << `u`
-
-					hex_string := '${character:04x}'
-
-					unsafe { encoder.output.push_many(hex_string.str, 4) }
+					encoder.encode_unicode_escape(u32(character), false)
 
 					continue
 				}
@@ -289,16 +295,15 @@ fn (mut encoder Encoder) encode_string(val string) {
 						encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start)
 					}
 					code_point, width := utf8_rune_at(val, buffer_end)
-					hex_string := if code_point > 0xffff {
+					if code_point > 0xffff {
 						unicode_point_low := u32(code_point) - 0x10000
-						'\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${0xDC00 + (unicode_point_low & 0x3FF):04x}'
+						encoder.encode_unicode_escape(0xD800 + ((unicode_point_low >> 10) & 0x3FF), true)
+						encoder.encode_unicode_escape(0xDC00 + (unicode_point_low & 0x3FF), false)
 					} else {
-						'\\u${u32(code_point):04x}'
+						encoder.encode_unicode_escape(u32(code_point), false)
 					}
 					buffer_end += width
 					buffer_start = buffer_end
-
-					unsafe { encoder.output.push_many(hex_string.str, hex_string.len) }
 
 					continue
 				}
@@ -310,6 +315,16 @@ fn (mut encoder Encoder) encode_string(val string) {
 	unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
 
 	encoder.output << `"`
+}
+
+// encode_unicode_escape writes a UTF-16 code unit without allocating formatted text.
+fn (mut encoder Encoder) encode_unicode_escape(code u32, uppercase bool) {
+	hex := if uppercase { '0123456789ABCDEF' } else { '0123456789abcdef' }
+	encoder.output << `\\`
+	encoder.output << `u`
+	for shift := 12; shift >= 0; shift -= 4 {
+		encoder.output << hex[int((code >> shift) & 0xf)]
+	}
 }
 
 // utf8_rune_at decodes the UTF-8 sequence at `val[i]` like `string.runes()` does: an
@@ -380,6 +395,7 @@ fn (mut encoder Encoder) encode_boolean(val bool) {
 	}
 }
 
+@[manualfree]
 fn (mut encoder Encoder) encode_number[T](val T) {
 	mut integer_val := ''
 	$if T is u8 {
@@ -407,10 +423,22 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 	} $else $if T is f64 {
 		integer_val = f64(val).str()
 	}
+	defer { unsafe { integer_val.free() } }
 	$if T is $float {
 		// JSON has no NaN or infinity, which V formats as `nan`, `+inf` and `-inf`.
 		if integer_val == 'nan' || integer_val.ends_with('inf') {
-			encoder.encode_null()
+			if encoder.json5 {
+				special := if integer_val == 'nan' {
+					'NaN'
+				} else if integer_val.starts_with('-') {
+					'-Infinity'
+				} else {
+					'Infinity'
+				}
+				unsafe { encoder.output.push_many(special.str, special.len) }
+			} else {
+				encoder.encode_null()
+			}
 			return
 		}
 		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
@@ -461,12 +489,33 @@ struct EncoderMapKey[K] {
 	key  K
 }
 
+@[manualfree]
 fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
+	source_keys := val.keys()
+	defer {
+		$if K.unaliased_typ is string {
+			for i in 0 .. source_keys.len {
+				unsafe { source_keys[i].free() }
+			}
+		}
+		unsafe { source_keys.free() }
+	}
 	mut keys := []EncoderMapKey[K]{cap: val.len}
-	for key, _ in val {
+	defer {
+		$if K.unaliased_typ is string {
+			// Names borrow the owned source keys.
+		} $else {
+			for i in 0 .. keys.len {
+				unsafe { keys[i].name.free() }
+			}
+		}
+		unsafe { keys.free() }
+	}
+	for i in 0 .. source_keys.len {
+		key := &source_keys[i]
 		keys << EncoderMapKey[K]{
-			name: '${key}'
-			key:  key
+			name: '${*key}'
+			key:  *key
 		}
 	}
 	// Compare the converted object names: integer keys also sort lexically.
@@ -477,9 +526,15 @@ fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 		if i > 0 {
 			encoder.separate_items(false)
 		}
-		encoder.encode_string(entry.name)
+		encoder.encode_key(entry.name)
 		encoder.write_key_separator()
-		encoder.encode_value[T](val[entry.key])
+		$if T is $option {
+			// `or` would unwrap the payload and discard a present none-valued entry.
+			encoder.encode_value[T](val[entry.key])
+		} $else {
+			item := val[entry.key] or { continue }
+			encoder.encode_value[T](item)
+		}
 	}
 	encoder.close_items(val.len, false)
 	encoder.output << `}`
@@ -597,7 +652,7 @@ fn (mut encoder Encoder) encode_object_key(is_first bool, key string) bool {
 	if encoder.prettify {
 		encoder.add_indent()
 	}
-	encoder.encode_string(key)
+	encoder.encode_key(key)
 	encoder.write_key_separator()
 	return false
 }
@@ -636,8 +691,8 @@ fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
 // variant, laid out like `encode_value` lays out other fixed size arrays.
 fn (mut encoder Encoder) encode_fixed_array_of_sumtype_variants[A](val A) {
 	encoder.output << `[`
-	// Only the legacy layout spreads a fixed size array like a dynamic one.
-	spread := encoder.prettify && encoder.legacy_layout
+	// JSON5 and the legacy layout spread fixed size arrays like dynamic arrays.
+	spread := encoder.prettify && (encoder.legacy_layout || encoder.json5)
 	if spread {
 		encoder.open_items(val.len, true)
 	}
@@ -651,7 +706,7 @@ fn (mut encoder Encoder) encode_fixed_array_of_sumtype_variants[A](val A) {
 		}
 		encoder.encode_sumtype_array_item(val[i])
 	}
-	if spread {
+	if spread || encoder.json5 {
 		encoder.close_items(val.len, true)
 	}
 	encoder.output << `]`
@@ -910,7 +965,7 @@ fn struct_field_should_encode[T](field_info EncoderFieldInfo, val T) bool {
 // encode_cached_struct_key copies ordinary compact keys from immutable metadata.
 // Pretty layouts and keys requiring escaping use the existing encoder.
 fn (mut encoder Encoder) encode_cached_struct_key(is_first bool, field_info EncoderFieldInfo) bool {
-	if !encoder.prettify && field_info.compact_key.len > 0 {
+	if !encoder.prettify && !encoder.json5 && field_info.compact_key.len > 0 {
 		start := if is_first { 1 } else { 0 }
 		// The cached string always contains a comma, quotes, the key, and a colon.
 		unsafe {
@@ -1136,6 +1191,9 @@ fn (mut encoder Encoder) separate_items(is_array bool) {
 // close_items ends the members or elements started by open_items, before the `}`
 // or `]`.
 fn (mut encoder Encoder) close_items(count int, is_array bool) {
+	if encoder.json5 && encoder.trailing_commas && count > 0 {
+		encoder.output << `,`
+	}
 	if !encoder.prettify {
 		return
 	}

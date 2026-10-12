@@ -242,7 +242,6 @@ const auto_complete_flags = [
 	'-dump-files',
 	'-dump-defines',
 	'-experimental',
-	'-usecache',
 	'-use-os-system-to-run',
 	'-macosx-version-min',
 	'-nocache',
