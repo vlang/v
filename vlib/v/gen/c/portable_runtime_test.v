@@ -41,14 +41,21 @@ fn test_cross_snapshot_runs_after_relocation_without_native_helper_objects() ! {
 	payload := os.join_path(root, 'payload.txt')
 	c_source := os.join_path(root, 'snapshot.c')
 	os.write_file(payload, 'portable payload')!
-	os.write_file(source, r'const payload = $embed_file("payload.txt")
+	os.write_file(source, r'import runtime
+import sync
+const payload = $embed_file("payload.txt")
 fn read_payload() string { return payload.to_string() }
 fn main() {
+ $if macos { assert runtime.free_memory() or { panic(err) } > 0 }
+ mut wg := sync.new_waitgroup()
+ wg.go(fn () { assert read_payload() == "portable payload" })
+ wg.wait()
  mut workers := []thread string{}
  for _ in 0 .. 4 { workers << spawn read_payload() }
  for value in workers.wait() { assert value == "portable payload" }
  println("portable")
 }
+
 ')!
 	generated := cmdexec.run(@VEXE, ['-gc', 'none', '-prealloc', '-nocache', '-os', 'cross', '-o',
 		c_source, source])
@@ -65,6 +72,68 @@ fn main() {
 	ran := cmdexec.run(executable, [])
 	assert ran.exit_code == 0, ran.output
 	assert ran.output.trim_space() == 'portable', ran.output
+}
+
+fn test_portable_native_helpers_precede_gc_runtime_redirects() {
+	mut g := FlatGen.new()
+	g.set_output_cross_c(true)
+	g.compile_defines << 'gcboehm'
+	g.portable_native_runtime_helpers()
+	g.thread_allocation_helpers()
+	code := g.sb.str()
+	definition := code.index('static int v_gc_pthread_create(') or { -1 }
+	redirect := code.index('#define pthread_create v_gc_pthread_create') or { -1 }
+	assert definition >= 0 && redirect > definition
+	assert code.count('#include <gc.h>') == 1
+	assert code.contains('static int v_runtime_free_memory_darwin(')
+	assert code.contains('V_SYNC_THREAD_SCOPE int v_sync_thread_create_detached_with_stack(')
+	assert g.inlined_c_declared_fns['v3_modulecache_file_metadata']
+	assert g.inlined_c_declared_fns['v_os_exec_capture_start']
+}
+
+fn test_boehm_object_runs_spawn_and_join_after_relocation() ! {
+	$if !macos && !linux {
+		return
+	}
+	collector := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib', 'libgc.a')
+	if !os.exists(collector) {
+		return
+	}
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'portable_boehm_object_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'library.v')
+	object := os.join_path(root, 'library.o')
+	os.write_file(source, r"module portable
+fn worker() int {
+ data := []u8{len: 4096, init: u8(index % 251)}
+ gc_collect()
+ for index, value in data { if value != u8(index % 251) { panic('lost allocation') } }
+ return 42
+}
+@[export: 'portable_spawn']
+pub fn start() int {
+ child := spawn worker()
+ return child.wait()
+}
+")!
+	generated := cmdexec.run(@VEXE, ['-gc', 'boehm', '-d', 'use_bundled_libgc', '-nocache', '-cc',
+		cc, '-is_o', '-o', object, source])
+	assert generated.exit_code == 0, generated.output
+	moved := os.join_path(root, 'relocated')
+	os.mkdir_all(moved)!
+	relocated := os.join_path(moved, 'library.o')
+	os.mv(object, relocated)!
+	os.rm(source)!
+	main_c := os.join_path(moved, 'main.c')
+	os.write_file(main_c, '#include <unistd.h>\nextern int portable_spawn(void);\nint main(void) { alarm(30); return portable_spawn() == 42 ? 0 : 1; }\n')!
+	executable := os.join_path(moved, 'program')
+	built := cmdexec.run(cc, ['-o', executable, relocated, main_c, collector, '-lm', '-lpthread',
+		'-ldl'])
+	assert built.exit_code == 0, built.output
+	ran := cmdexec.run(executable, [])
+	assert ran.exit_code == 0, ran.output
 }
 
 fn test_object_output_links_from_a_relocated_directory_without_native_helpers() ! {

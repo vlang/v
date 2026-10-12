@@ -19113,11 +19113,12 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('#define V_MANUAL_STDLIB_HEADERS 1')
 		g.writeln('void abort(void);')
 		g.system_libc_headers()
+		// Define native wrappers before runtime prototypes and pthread redirects.
+		g.portable_native_runtime_helpers()
 		g.system_libc_preamble()
 	} else {
 		g.headerless_libc_preamble()
 	}
-	g.portable_native_runtime_helpers()
 	g.thread_signal_stack_runtime()
 	g.write_arch_macros()
 	g.panic_recovery_preamble()
@@ -19184,17 +19185,6 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	if !(g.output_cross_c || g.object_file_mode) || g.no_builtin || g.target_libc_headers {
 		return
 	}
-	g.writeln('#ifndef _WIN32')
-	g.write($embed_file('@VEXEROOT/vlib/v/pthread_helper.h').to_string())
-	g.write($embed_file('@VEXEROOT/vlib/v/bench/peak_rss.h').to_string())
-	capture_source := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.c').to_string()
-	capture_header := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.h').to_string()
-	g.write(capture_source.replace('#define V_OS_EXECUTE_SCOPE\n', '')
-		.replace('#include "execute_capture_nix.h"', capture_header))
-	g.writeln('#endif')
-	metadata_source := $embed_file('@VEXEROOT/vlib/v/modulecache/file_metadata.c').to_string()
-	g.write(metadata_source.replace('int v3_modulecache_file_metadata(',
-		'static int v3_modulecache_file_metadata('))
 	if 'gcboehm' in g.compile_defines {
 		gc_source := $embed_file('@VEXEROOT/vlib/builtin/gc_boehm_helpers.c').to_string()
 		gc_header := $embed_file('@VEXEROOT/vlib/builtin/gc_debugger_linux.h').to_string()
@@ -19202,12 +19192,33 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 			.replace('void v_', 'static void v_').replace('int v_', 'static int v_')
 			.replace('#include "gc_debugger_linux.h"', gc_header))
 	}
+	g.writeln('#ifndef _WIN32')
+	g.write($embed_file('@VEXEROOT/vlib/v/pthread_helper.h').to_string())
+	g.write($embed_file('@VEXEROOT/vlib/sync/thread_helper.h').to_string())
+	g.write($embed_file('@VEXEROOT/vlib/v/bench/peak_rss.h').to_string())
+	capture_source := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.c').to_string()
+	capture_header := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.h').to_string()
+	g.write(capture_source.replace('#define V_OS_EXECUTE_SCOPE\n', '')
+		.replace('#include "execute_capture_nix.h"', capture_header))
+	g.writeln('#endif')
+	g.writeln('#ifdef __APPLE__')
+	free_memory_source := $embed_file('@VEXEROOT/vlib/runtime/free_memory_darwin.c').to_string()
+	g.write(free_memory_source.replace('int v_runtime_free_memory_darwin(',
+		'static int v_runtime_free_memory_darwin('))
+	g.writeln('#endif')
+	metadata_source := $embed_file('@VEXEROOT/vlib/v/modulecache/file_metadata.c').to_string()
+	g.write(metadata_source.replace('int v3_modulecache_file_metadata(',
+		'static int v3_modulecache_file_metadata('))
+	// Native definitions retain qualifiers that these bodyless V views cannot express.
+	g.collect_preserved_c_fns(['v3_modulecache_file_metadata', 'v_os_exec_capture_start',
+		'v_os_execute_capture_start', 'v_os_exec_capture_input_start', 'v_os_fd_write_all'])
 	if 'no_segfault_handler' !in g.compile_defines && g.target.os != 'vinix' {
 		signal_source := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.c').to_string()
 		signal_header := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.h').to_string()
 		g.writeln('#ifndef _WIN32')
 		g.write(signal_source.replace('#define V_PARALLEL_CC 1\n#define V_PARALLEL_CC_OUT_0 1\n', '')
 			.replace('defined(V_GCBOEHM_NATIVE)', 'defined(CUSTOM_DEFINE_gcboehm)')
+			.replace('#include <gc.h>', '#include <gc/gc.h>')
 			.replace('#include "segfault_handler_nix.h"', signal_header)
 			.replace('void* v_thread_', 'static void* v_thread_')
 			.replace('void v_thread_', 'static void v_thread_'))
