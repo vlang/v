@@ -81,3 +81,22 @@ fn test_node_type_memo_epoch_wrap_does_not_restore_old_results() {
 	t.set_var_type('value', 'bool')
 	assert t.node_type(value) == 'bool'
 }
+
+fn test_struct_guess_comparison_follows_checked_ids_and_call_annotation_precedence() {
+	mut a := flat.FlatAst.new()
+	value := a.add_val(.ident, 'value')
+	call := a.add_node(flat.Node{ kind: .call, typ: 'Guess' })
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Guess'] = []types.StructField{}
+	tc.register_synth_type(value, types.Type(types.Pointer{ base_type: types.Type(types.bool_) }))
+	tc.register_synth_type(call, types.Type(types.void_))
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for _ in 0 .. 2 {
+		assert t.checker_type_over_struct_guess(value, 'Guess') or { panic('missing override') } ==
+			'&bool'
+		// The checked call entry is void; its annotation supplies the usable type.
+		assert t.checker_type_over_struct_guess(call, 'Guess') == none
+	}
+	tc.register_synth_type(value, types.Type(types.Struct{ name: 'Guess' }))
+	assert t.checker_type_over_struct_guess(value, 'Guess') == none
+}

@@ -1882,7 +1882,8 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 // have grown inside a disposable compiler-stage arena.
 pub fn (mut tc TypeChecker) reset_type_interners() {
 	if !isnil(tc.type_cache) {
-		tc.type_cache.indexed_types = unsafe { nil }
+		// Numeric identities start over in the replacement interner.
+		tc.type_cache.clear_c_type_entries()
 	}
 	tc.type_interner = new_type_interner()
 	tc.symbols = new_symbol_interner()

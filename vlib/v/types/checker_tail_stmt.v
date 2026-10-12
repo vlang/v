@@ -19319,12 +19319,19 @@ pub fn (tc &TypeChecker) c_type(t Type) string {
 	if tc.type_cache == unsafe { nil } || isnil(tc.type_interner) {
 		return tc.c_type_uncached(t)
 	}
-	mut cache := unsafe { tc.type_cache }
 	// Key on the interned semantic identity, not t.name(): distinct semantic types
 	// can share a source spelling (`[size]int` with different resolved `size`, or
 	// same-named aliases over different resolved bases) yet fold to different C
 	// representations, so a textual key would hand back the wrong layout.
 	id, canonical := tc.intern_type(t)
+	return tc.canonical_c_type(id, canonical)
+}
+
+fn (tc &TypeChecker) cached_c_type_by_id(id TypeId) ?string {
+	if isnil(tc.type_cache) {
+		return none
+	}
+	mut cache := unsafe { tc.type_cache }
 	slot := int(u32(id) & u32(type_cache_recent_slots - 1))
 	if tc.fast_c_type_recent {
 		if cache.c_recent_set[slot] && cache.c_recent_ids[slot] == id {
@@ -19341,10 +19348,22 @@ pub fn (tc &TypeChecker) c_type(t Type) string {
 		}
 		return cached
 	}
+	return none
+}
+
+fn (tc &TypeChecker) canonical_c_type(id TypeId, canonical Type) string {
+	if cached := tc.cached_c_type_by_id(id) {
+		return cached
+	}
+	if isnil(tc.type_cache) {
+		return tc.c_type_uncached(canonical)
+	}
+	mut cache := unsafe { tc.type_cache }
 	cache.c_misses++
 	result := tc.c_type_uncached(canonical)
 	cache.c_entries[id] = result
 	if tc.fast_c_type_recent {
+		slot := int(u32(id) & u32(type_cache_recent_slots - 1))
 		cache.c_recent_ids[slot] = id
 		cache.c_recent_vals[slot] = result
 		cache.c_recent_set[slot] = true

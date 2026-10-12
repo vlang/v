@@ -36,6 +36,7 @@ fn test_checked_type_ids_are_private_to_worker_interners() {
 	tc.register_synth_type(id, Type(Array{ elem_type: Type(int_) }))
 	parent_id := (tc.checked_expr_type_id(id) or { panic('missing checked type') })
 	assert tc.type_name_by_id(parent_id) == '[]int'
+	assert tc.c_type_by_id(parent_id) or { panic('missing parent C type') } == 'Array'
 	mut worker := tc.fork_for_parallel_transform(&a)
 	// Deliberately occupy the parent's numeric identity with a different type.
 	other_id, _ := worker.intern_type(Type(Array{ elem_type: Type(u8_) }))
@@ -44,6 +45,7 @@ fn test_checked_type_ids_are_private_to_worker_interners() {
 	assert worker_id != parent_id
 	assert worker.type_name_by_id(worker_id) == '[]int'
 	assert worker.type_name_by_id(other_id) == '[]u8'
+	assert worker.c_type_by_id(other_id) or { panic('missing worker C type') } == 'Array'
 	assert tc.type_name_by_id(parent_id) == '[]int'
 	tc.reset_type_interners()
 	new_id := (tc.checked_expr_type_id(id) or { panic('missing checked type') })
@@ -56,11 +58,13 @@ fn test_indexed_type_names_do_not_cache_missing_future_ids() {
 	mut tc := TypeChecker.new(&a)
 	future := TypeId(tc.type_count())
 	assert tc.type_by_id(future) == none
+	assert tc.c_type_by_id(future) == none
 	assert tc.type_name_by_id(future) == 'unknown'
 	tc.register_synth_type(id, Type(Array{ elem_type: Type(bool_) }))
 	actual := (tc.checked_expr_type_id(id) or { panic('missing checked type') })
 	assert actual == future
 	assert tc.type_name_by_id(actual) == '[]bool'
+	assert tc.c_type_by_id(actual) or { panic('missing C type') } == 'Array'
 }
 
 fn test_checked_type_ids_keep_same_spelling_different_layouts_separate() {
@@ -78,4 +82,32 @@ fn test_checked_type_ids_keep_same_spelling_different_layouts_separate() {
 	second_type := tc.type_by_id(second_id) or { panic('missing second type') }
 	assert first_type is ArrayFixed && first_type.len == 4
 	assert second_type is ArrayFixed && second_type.len == 8
+	first_c := tc.c_type_by_id(first_id) or { panic('missing first C layout') }
+	second_c := tc.c_type_by_id(second_id) or { panic('missing second C layout') }
+	assert first_c != second_c
+	assert first_c == tc.c_type(first_type)
+	assert second_c == tc.c_type(second_type)
+	assert tc.c_type_by_id(first_id) or { panic('missing cached C layout') } == first_c
+	tc.clear_c_type_cache()
+	assert tc.c_type_by_id(first_id) or { panic('missing cleared C layout') } == first_c
+}
+
+fn test_indexed_c_types_survive_recent_slot_collisions_and_interner_reset() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	mut ids := []TypeId{}
+	mut expected := []string{}
+	for length in 1 .. 2050 {
+		id, _ := tc.intern_type(Type(ArrayFixed{ elem_type: Type(int_), len: length }))
+		ids << id
+		expected << tc.c_type_by_id(id) or { panic('missing C layout') }
+	}
+	for i, id in ids {
+		assert tc.c_type_by_id(id) or { panic('missing evicted C layout') } == expected[i]
+	}
+	tc.reset_type_interners()
+	assert tc.c_type_by_id(ids[0]) == none
+	reused, _ := tc.intern_type(Type(Pointer{ base_type: Type(bool_) }))
+	assert reused == ids[0]
+	assert tc.c_type_by_id(reused) or { panic('missing replacement C layout') } == 'bool*'
 }

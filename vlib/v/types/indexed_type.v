@@ -95,3 +95,16 @@ pub fn (tc &TypeChecker) type_name_by_id(id TypeId) string {
 	}
 	return name
 }
+
+// c_type_by_id returns the C representation of an identity in this checker view.
+// Cached representations are read by numeric identity without rehashing a Type value.
+pub fn (tc &TypeChecker) c_type_by_id(id TypeId) ?string {
+	if isnil(tc.type_interner) {
+		return none
+	}
+	if cached := tc.cached_c_type_by_id(id) {
+		return cached
+	}
+	canonical := tc.type_by_id(id) or { return none }
+	return tc.canonical_c_type(id, canonical)
+}

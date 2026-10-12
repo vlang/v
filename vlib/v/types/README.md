@@ -4,7 +4,8 @@ Compiler stages can retain a checked expression's semantic identity with
 `TypeChecker.checked_expr_type_id(node)`. The returned `TypeId` belongs to that checker's
 interner; a different worker can assign the same number to a different type.
 Use `type_by_id(id)` for the canonical semantic value and `type_name_by_id(id)` only where
-existing code still needs a textual spelling. Rewriting or retyping a node invalidates its
+existing code still needs a textual spelling. `c_type_by_id(id)` reads the C layout cache by
+identity without hashing the semantic type again. Rewriting or retyping a node invalidates its
 cached identity. Source annotations and dynamically resolved call types remain separate.
 
 The builtin error constructors require a string message. To propagate an error from an

@@ -2270,7 +2270,19 @@ fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed strin
 	if checked_type is types.Unknown || checked_type is types.Void {
 		return none
 	}
-	if guessed_c_type == t.tc.c_type(checked_type) {
+	// Calls may obtain their type from a newly resolved signature instead of
+	// checked metadata. Other recorded expressions can carry their identity
+	// straight into the C layout cache, avoiding another semantic hash walk.
+	mut checked_c_type := ''
+	if node.kind != .call {
+		if type_id := t.tc.checked_expr_type_id(id) {
+			checked_c_type = t.tc.c_type_by_id(type_id) or { '' }
+		}
+	}
+	if checked_c_type.len == 0 {
+		checked_c_type = t.tc.c_type(checked_type)
+	}
+	if guessed_c_type == checked_c_type {
 		return none
 	}
 	checked := t.normalize_type_alias(checked_type.name())
