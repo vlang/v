@@ -59,6 +59,9 @@ After 2025/01/21, the `log` module outputs to `stderr` by default.
 Before that, it used `stdout` by default.
 
 If you want to restore the previous behaviour, you have to explicitly call `log.use_stdout()` :
+
+The replacement logger respects `-d log_default_level`, which defaults to `info`.
+
 ```v
 import os
 import log
