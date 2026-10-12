@@ -5,6 +5,21 @@ import v.flat
 import v.pref
 import v.types
 
+fn test_cached_builtin_request_keeps_its_header_owned_declaration() {
+	mut a := flat.FlatAst.new()
+	header := '/cache/builtin.vh'
+	a.cached_header_sources[header] = os.join_path(@VEXEROOT, 'vlib', 'builtin', 'array.v')
+	mut g := FlatGen.new()
+	g.a = &a
+	g.compiler_vroot = @VEXEROOT
+	assert !g.should_emit_c_extern_decl_from_file('request', os.join_path(@VEXEROOT, 'vlib', 'builtin', 'cfns.c.v'), 'builtin')
+	assert !g.should_emit_c_extern_decl_from_file('request', header, 'builtin')
+	// A project's C.request still needs its normal prototype when no header owns it.
+	user := '/project/binding.c.v'
+	g.files_linking_c_sources[user] = true
+	assert g.should_emit_c_extern_decl_from_file('request', user, 'main')
+}
+
 fn test_late_source_does_not_reemit_multiline_header_context() {
 	header := '#if defined(HEADER_IMPL)\n' + 'typedef struct { int value; } header_value;\n' + '#endif'
 	directives := [
