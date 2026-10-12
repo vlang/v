@@ -159,10 +159,53 @@ fn main() {
 }
 
 fn (app App) refresh_cached_modules(requests []cache_refresh.Request) {
-	cache_refresh.refresh(app.current_vexe_path(), requests) or {
+	cache_refresh.refresh(app.current_vexe_path(), tcc_cache_requests(app.vroot, requests)) or {
 		eprintln('v up: refreshing cached vlib modules failed: ${err}')
 		exit(1)
 	}
+}
+
+// tcc_cache_requests selects the default compiler's caches without rebuilding
+// configurations recorded for other C compilers. Those refresh on their next build.
+fn tcc_cache_requests(root string, requests []cache_refresh.Request) []cache_refresh.Request {
+	bundled := os.join_path(root, 'thirdparty', 'tcc', 'tcc.exe')
+	default_tcc := if os.is_executable(bundled) {
+		bundled
+	} else {
+		os.find_abs_path_of_executable('tcc') or { '' }
+	}
+	mut selected := []cache_refresh.Request{}
+	for request in requests {
+		index := request.args.index('-cc')
+		if index < 0 {
+			if default_tcc != '' {
+				selected << cache_refresh.Request{
+					...request
+					args: [...request.args, '-cc', default_tcc]
+				}
+			}
+			continue
+		}
+		if index + 1 >= request.args.len { continue }
+		compiler := request.args[index + 1]
+		if compiler in ['tcc', 'tinyc'] {
+			selected << request
+			continue
+		}
+		path := if os.is_abs_path(compiler) {
+			compiler
+		} else if compiler.contains('/') || compiler.contains('\\') {
+			os.join_path(if request.cwd != '' { request.cwd } else { root }, compiler)
+		} else {
+			os.find_abs_path_of_executable(compiler) or { continue }
+		}
+		resolved := os.real_path(path)
+		if resolved == os.real_path(bundled)
+			|| os.file_name(resolved).to_lower() in ['tcc', 'tcc.exe', 'tinyc', 'tinyc.exe'] {
+			selected << request
+		}
+	}
+	return selected
 }
 
 // skills_refresh_hint is what the report tells the user to run.

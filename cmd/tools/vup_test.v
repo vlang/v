@@ -113,7 +113,7 @@ fn run_vup(root string, home string, tool string, bin_dir string, extra ...strin
 	return os.exec(args)
 }
 
-fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
+fn test_vup_refreshes_only_tinycc_modes_even_when_already_updated() ! {
 	$if windows {
 		return
 	}
@@ -154,23 +154,20 @@ fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
 		os.write_file(cache_log, '')!
 		result := run_vup(root, home, tool, bin_dir, ...options)!
 		assert result.exit_code == 0, result.output
-		assert result.output.count('Caching module crypto.sample...') == 16, result.output
-		assert result.output.count('> Refreshing module cache [') == 16, result.output
-		assert result.output.contains('> Refreshing module cache [1/16]'), result.output
-		assert result.output.contains('> Refreshing module cache [16/16]'), result.output
-		assert result.output.contains('> Module cache refresh complete: 16 build configurations checked.'), result.output
-		for compiler in ['tcc', 'cc', 'clang', 'gcc'] {
-			assert result.output.contains('(normal program; -cc ${compiler}).\nCaching module crypto.sample...'), result.output
-			assert result.output.contains('(production program; -cc ${compiler} -prod).\nCaching module crypto.sample...'), result.output
-			assert result.output.contains('(normal tests; -cc ${compiler}).\nCaching module crypto.sample...'), result.output
-			assert result.output.contains('(production tests; -cc ${compiler} -prod).\nCaching module crypto.sample...'), result.output
-		}
+		assert result.output.count('Caching module crypto.sample...') == 4, result.output
+		assert result.output.count('> Refreshing module cache [') == 4, result.output
+		assert result.output.contains('> Refreshing module cache [1/4]'), result.output
+		assert result.output.contains('> Refreshing module cache [4/4]'), result.output
+		assert result.output.contains('> Module cache refresh complete: 4 build configurations checked.'), result.output
+		assert result.output.contains('(normal program; -cc tcc).\nCaching module crypto.sample...'), result.output
+		assert result.output.contains('(production program; -cc tcc -prod).\nCaching module crypto.sample...'), result.output
+		assert result.output.contains('(normal tests; -cc tcc).\nCaching module crypto.sample...'), result.output
+		assert result.output.contains('(production tests; -cc tcc -prod).\nCaching module crypto.sample...'), result.output
 		calls := os.read_file(cache_log)!.split_into_lines()
-		assert calls.len == 16, calls.str()
-		for compiler in ['tcc', 'cc', 'clang', 'gcc'] {
-			assert calls.any(it.starts_with('-cc ${compiler} -skip-running ')), calls.str()
-			assert calls.any(it.starts_with('-cc ${compiler} -prod -skip-running ')), calls.str()
-		}
+		assert calls.len == 4, calls.str()
+		assert calls.all(it.starts_with('-cc tcc ')), calls.str()
+		assert calls.any(it.starts_with('-cc tcc -skip-running ')), calls.str()
+		assert calls.any(it.starts_with('-cc tcc -prod -skip-running ')), calls.str()
 		assert !calls.any(it.contains(' run ')), calls.str()
 	}
 	// A failed refresh is visible and fails v up, while other modules still refresh.
@@ -183,7 +180,7 @@ fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
 	assert failure.exit_code != 0, failure.output
 	assert failure.output.contains('refreshing cached vlib modules failed'), failure.output
 	assert !failure.output.contains('> Module cache refresh complete:'), failure.output
-	assert os.read_file(cache_log)!.split_into_lines().len == 16
+	assert os.read_file(cache_log)!.split_into_lines().len == 4
 }
 
 fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
@@ -225,7 +222,7 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 		os.setenv(variable, '.cache with spaces', true)
 		dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), variable)
 		os.mkdir_all(dir)!
-		cache_refresh.record(dir, root, ['-cc', 'cc'], false, {
+		cache_refresh.record(dir, root, ['-cc', 'tcc'], false, {
 			'sample': [source]
 		}, [], '', false)!
 		os.write_file(log, '')!
@@ -237,6 +234,108 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 		assert paths[if variable == 'V3CACHE' { 0 } else { 1 }] == os.join_path(project, '.cache with spaces'), paths.str()
 		assert os.is_abs_path(paths[1]), paths.str()
 	}
+}
+
+fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	previous := os.getenv_opt('V3CACHE')
+	previous_dir := os.getwd()
+	os.chdir(root)!
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	defer {
+		if value := previous { os.setenv('V3CACHE', value, true) } else { os.unsetenv('V3CACHE') }
+		os.chdir(previous_dir) or {}
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
+	os.mkdir_all(os.dir(source))!
+	os.write_file(source, 'module sample\n')!
+	bundled := os.join_path(root, 'thirdparty', 'tcc', 'tcc.exe')
+	os.mkdir_all(os.dir(bundled))!
+	write_executable(bundled, '#!/bin/sh\nexit 0\n')!
+	alias := os.join_path(bin_dir, 'compiler-alias')
+	os.symlink(bundled, alias)!
+	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
+	relative := os.path_rel(os.getwd(), bundled)!
+	variants := [['-cc', 'tinyc'], ['-cc', bundled], ['-cc', alias], ['-cc', relative], []string{},
+		['-cc', os.join_path(bin_dir, 'cc')], ['-cc']]
+	for index, flags in variants {
+		dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), 'variant_${index}')
+		os.mkdir_all(dir)!
+		cache_refresh.record(dir, root, flags, false, {
+			'sample': [source]
+		}, [], '', false)!
+	}
+	log := os.join_path(root, 'cache_calls')
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
+		'    printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n    exit 0;;\nesac\n' +
+		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+	result := run_vup(root, home, tool, bin_dir)!
+	assert result.exit_code == 0, result.output
+	calls := os.read_file(log)!.split_into_lines()
+	assert calls.len == 4, calls.str()
+	assert calls.any(it.starts_with('-cc tinyc ')), calls.str()
+	assert calls.any(it.starts_with('-cc ${bundled} ')), calls.str()
+	assert calls.any(it.starts_with('-cc ${alias} ')), calls.str()
+	assert calls.any(it.starts_with('-cc ${relative} ')), calls.str()
+	assert !calls.any(it.contains('-cc ${os.join_path(bin_dir, 'cc')} ')), calls.str()
+	assert result.output.contains('4 build configurations checked.'), result.output
+}
+
+fn test_vup_rebuilds_changed_tinycc_module_and_reuses_unrelated_module() ! {
+	$if windows {
+		return
+	}
+	compiler := os.join_path(vroot, 'v')
+	if !os.is_executable(os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')) { return }
+	system_cc := os.find_abs_path_of_executable('cc') or { return }
+	root, home, tool, bin_dir := vup_report_fixture()!
+	name := 'vup_module_change_${os.getpid()}'
+	modules := os.join_path(vroot, 'vlib', name)
+	defer {
+		os.rmdir_all(modules) or {}
+		os.rmdir_all(root) or {}
+	}
+	for module_name in ['changed', 'unchanged'] {
+		path := os.join_path(modules, module_name, 'value.v')
+		os.mkdir_all(os.dir(path))!
+		os.write_file(path, 'module ${module_name}\npub fn value() int { return 42 }\n')!
+	}
+	entry := os.join_path(root, 'main.v')
+	os.write_file(entry, 'import ${name}.changed as _\nimport ${name}.unchanged as _\nfn main() {}\n')!
+	cache := os.join_path(root, 'cache')
+	environment := ['env', 'VEXE=${compiler}', 'V3CACHE=${cache}', 'V_SKIP_VVMRC=1']
+	for cc in ['tcc', 'cc'] {
+		seed := os.exec([...environment, compiler, '-cc', cc, '-gc', 'none', '-skip-running', '-o',
+			os.join_path(root, 'program'), entry])
+		assert seed.exit_code == 0, seed.output
+	}
+	up := [...environment, 'PATH=${bin_dir}${os.path_delimiter}${os.getenv('PATH')}', 'HOME=${home}',
+		tool]
+	// Publish current interfaces and objects before changing just one input.
+	warm := os.exec(up)
+	assert warm.exit_code == 0, warm.output
+	os.write_file(os.join_path(modules, 'changed', 'value.v'),
+		'module changed\npub fn value() int { return 43 }\n')!
+	updated := os.exec(up)
+	assert updated.exit_code == 0, updated.output
+	assert updated.output.contains('Caching module ${name}.changed...'), updated.output
+	assert !updated.output.contains('Caching module ${name}.unchanged...'), updated.output
+	assert !updated.output.contains('-cc ${system_cc}'), updated.output
+	assert !updated.output.contains('Caching module builtin...'), updated.output
+	again := os.exec(up)
+	assert again.exit_code == 0, again.output
+	assert !again.output.contains('Caching module '), again.output
+	// Linking still sees the changed function alongside the reused object.
+	os.write_file(entry, 'import ${name}.changed\nimport ${name}.unchanged\n' +
+		'fn main() { println(changed.value()); println(unchanged.value()) }\n')!
+	result := os.exec([...environment, compiler, '-cc', 'tcc', '-gc', 'none', 'run', entry])
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == '43\n42', result.output
 }
 
 fn test_vup_collects_isolated_cache_for_the_compiler_instead_of_the_tool() ! {
@@ -262,7 +361,7 @@ fn test_vup_collects_isolated_cache_for_the_compiler_instead_of_the_tool() ! {
 	os.write_file(source, 'module sample\n')!
 	dir := os.join_path(cache, 'config')
 	os.mkdir_all(dir)!
-	cache_refresh.record(dir, root, ['-cc', 'cc'], false, {
+	cache_refresh.record(dir, root, ['-cc', 'tcc'], false, {
 		'sample': [source]
 	}, [], '', false)!
 	for name in ['cc', 'clang', 'gcc', 'tcc'] {
