@@ -4673,6 +4673,11 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		g.collect_c_flags_from_directives()
 	}
 	g.c_flags << g.initial_c_flags
+	// Portable helpers include the collector SDK before V layouts. Record its
+	// ownership now, before declaration workers can emit a second definition.
+	if g.uses_portable_native_runtime_helpers() && 'gcboehm' in g.compile_defines {
+		g.collect_preserved_c_structs(['GC_stack_base'])
+	}
 	if profile {
 		g.timing_profile('  [ttime]   ci flags         ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
@@ -19225,8 +19230,12 @@ fn (mut g FlatGen) panic_recovery_preamble() {
 	g.writeln('static inline void v_unwind_jump(void* frame) { v_unwind_longjmp(((v_unwind_frame*)frame)->buf); }')
 }
 
+fn (g &FlatGen) uses_portable_native_runtime_helpers() bool {
+	return (g.output_cross_c || g.object_file_mode) && !g.no_builtin && !g.target_libc_headers
+}
+
 fn (mut g FlatGen) portable_native_runtime_helpers() {
-	if !(g.output_cross_c || g.object_file_mode) || g.no_builtin || g.target_libc_headers {
+	if !g.uses_portable_native_runtime_helpers() {
 		return
 	}
 	if 'gcboehm' in g.compile_defines {
