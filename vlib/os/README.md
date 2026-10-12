@@ -299,6 +299,9 @@ The following functions should be used with care and only when used correctly.
 
 `get_line()` removes CRLF and LF line endings from standard input on every platform.
 
+Windows process exit codes and disk usage use the SDK's `DWORD` and `ULARGE_INTEGER`
+output types. These bindings keep Clang's incompatible pointer diagnostics enabled.
+
 On Windows, `exec` and `Process` accept an absolute executable path without an extension.
 They use that exact file when it exists, then try the same path with `.exe` appended.
 Explicit extensions are preserved.
