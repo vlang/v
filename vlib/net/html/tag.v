@@ -42,7 +42,11 @@ pub fn (tag &Tag) text() string {
 	if tag.name == 'text' {
 		return tag.leading_text()
 	}
-	if tag.name.len >= 2 && tag.name[..2] == 'br' {
+	// Only the line-break element maps to a newline: a prefix match would
+	// also catch custom elements like `bracket` and drop their content.
+	// `br/` is the name the parser currently keeps for a self-closing
+	// `<br/>` (see #30139); accept it until that is normalized to `br`.
+	if tag.name == 'br' || tag.name == 'br/' {
 		return '\n'
 	}
 	mut text_str := strings.new_builder(200)
