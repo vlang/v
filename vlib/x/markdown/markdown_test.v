@@ -367,4 +367,13 @@ fn test_indented_list_item_is_not_nested() {
 	assert to_html('  - item') == '<ul>\n<li>item</li>\n</ul>\n'
 	assert to_html('  1. item') == '<ol>\n<li>item</li>\n</ol>\n'
 	assert to_html('- item') == '<ul>\n<li>item</li>\n</ul>\n'
+	for spaces in [' ', '  ', '   '] {
+		for marker in ['-', '*', '+'] {
+			assert to_html('${spaces}${marker} item') == '<ul>\n<li>item</li>\n</ul>\n'
+		}
+		assert to_html('${spaces}1) item') == '<ol>\n<li>item</li>\n</ol>\n'
+	}
+	assert to_html('  - first\n    second') == '<ul>\n<li>first\nsecond</li>\n</ul>\n'
+	// A tight list emits no separator between its paragraph and nested list.
+	assert to_html('  - outer\n    - inner') == '<ul>\n<li>outer<ul>\n<li>inner</li>\n</ul>\n</li>\n</ul>\n'
 }

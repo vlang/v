@@ -288,6 +288,9 @@ fn test_my_markdown() {
 
 ## Contributing
 
+Top-level bullet and ordered list markers may have up to three leading spaces.
+Continuation lines use the item's indentation; further indented markers form nested lists.
+
 - Follow V style guidelines (use `v fmt -w` on edits)
 - Add tests for new features
 - Update documentation for public API changes
