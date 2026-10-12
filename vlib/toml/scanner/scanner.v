@@ -342,7 +342,7 @@ fn (s &Scanner) at_crlf() bool {
 pub fn (s &Scanner) peek(n int) u32 {
 	if s.pos + n < s.text.len {
 		// Allow peeking back - needed for spaces between date and time in RFC 3339 format :/
-		if n - 1 < 0 && s.pos + n - 1 >= 0 {
+		if n < 0 && s.pos + n - 1 >= 0 {
 			// util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'LOOKING BAAAA-AACK - OOOVER MY SHOOOOULDEEEER "${s.text[s.pos + n-1]}"')
 			return s.text[s.pos + n - 1]
 		}

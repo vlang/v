@@ -65,9 +65,16 @@ fn test_peek() {
 	assert s.peek(3) == scanner.end_of_text
 	assert s.peek(4) == scanner.end_of_text
 
+	// peek(0) is the byte at the current position, not the previous one
 	assert s.next() == `a`
+	assert s.peek(0) == `b`
+	assert s.peek(1) == `c`
 	assert s.next() == `b`
+	assert s.peek(0) == `c`
+	assert s.peek(1) == scanner.end_of_text
+
 	assert s.next() == `c`
+	assert s.peek(0) == scanner.end_of_text
 	assert s.next() == scanner.end_of_text
 }
 
