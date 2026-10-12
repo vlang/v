@@ -3,6 +3,22 @@ module c
 import os
 import v.cmdexec
 
+fn test_headerless_test_statistics_without_importing_time() {
+	$if windows || freestanding || vinix {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'headerless_test_statistics_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'statistics_test.v')
+	os.write_file(source, 'fn test_statistics() { assert 6 * 7 == 42 }\n')!
+	run := cmdexec.run(@VEXE, ['-nocache', '-cc', 'clang', '-stats', source])
+	assert run.exit_code == 0, run.output
+	assert run.output.contains('1 passed'), run.output
+}
+
 fn test_posix_hello_world_c_has_no_includes() {
 	$if windows || freestanding || vinix {
 		return

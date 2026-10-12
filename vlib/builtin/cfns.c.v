@@ -725,3 +725,7 @@ fn C.pthread_attr_setdetachstate(attr voidptr, state i32) i32
 fn C.pthread_detach(thread voidptr) i32
 
 fn C.clock() i64
+
+// The inline test statistics runtime uses this even when time is not imported.
+@[markused]
+fn C.clock_gettime(clock_id i32, tp voidptr) i32
