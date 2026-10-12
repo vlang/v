@@ -13,7 +13,7 @@ fn test_delegated_compilers_share_the_primary_isolated_cache() {
 	root := os.join_path(os.vtmp_dir(), 'v3_primary_isolated_cache_${os.getpid()}')
 	previous := os.environ()
 	defer {
-		for name in ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE', 'VEXE'] {
+		for name in ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE', 'VEXE', 'V3_PRIMARY_VEXE'] {
 			if name in previous { os.setenv(name, previous[name], true) } else { os.unsetenv(name) }
 		}
 	}
@@ -22,13 +22,88 @@ fn test_delegated_compilers_share_the_primary_isolated_cache() {
 	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
 	primary := os.join_path(root, 'checkout', 'v')
 	vroot := os.dir(primary)
-	os.setenv('VEXE', primary, true)
+	os.setenv('VEXE', os.join_path(root, 'tools', 'v3_ownership'), true)
+	os.setenv('V3_PRIMARY_VEXE', primary, true)
 	manager := new_manager(vroot, 'ownership', true, '', '')
 	assert os.dir(manager.dir) == cache_refresh.root_dir(vroot, primary)
 	assert os.dir(manager.dir) != cache_refresh.root_dir(vroot, os.executable())
 	os.unsetenv('VEXE')
+	os.unsetenv('V3_PRIMARY_VEXE')
 	fallback := new_manager(vroot, 'ownership', true, '', '')
 	assert os.dir(fallback.dir) == cache_refresh.root_dir(vroot, os.executable())
+}
+
+fn test_ownership_dispatch_refreshes_the_primary_isolated_cache() ! {
+	primary := os.real_path(@VEXE)
+	vroot := os.dir(primary)
+	root := os.join_path(os.vtmp_dir(), 'v3_ownership_dispatch_${os.getpid()}')
+	name := 'vup_ownership_${os.getpid()}'
+	module_root := os.join_path(vroot, 'vlib', name)
+	os.mkdir_all(module_root)!
+	os.mkdir_all(root)!
+	previous := os.environ()
+	variables := ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE', 'VEXE', 'V3_PRIMARY_VEXE', 'VFLAGS',
+		'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_ENTRY',
+		'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
+	defer {
+		for variable in variables {
+			if variable in previous {
+				os.setenv(variable, previous[variable], true)
+			} else {
+				os.unsetenv(variable)
+			}
+		}
+		os.rmdir_all(module_root) or {}
+		os.rmdir_all(root) or {}
+	}
+	os.unsetenv('V3CACHE')
+	os.setenv('VTMP', os.join_path(root, 'cache'), true)
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
+	os.setenv('VEXE', primary, true)
+	// A fresh primary invocation must replace an unrelated parent's identity,
+	// and its ownership helper must retain that replacement after exec.
+	os.setenv('V3_PRIMARY_VEXE', os.join_path(root, 'stale-parent'), true)
+	os.setenv('V_SKIP_VVMRC', '1', true)
+	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
+	for variable in ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_ENTRY',
+		'V3_CACHE_REFRESH_PROJECT_FLAGS'] {
+		os.unsetenv(variable)
+	}
+	source := os.join_path(module_root, 'sample.v')
+	os.write_file(source, 'module ${name}\npub fn value() int { return 1 }\n')!
+	entry := os.join_path(root, 'main.v')
+	os.write_file(entry, 'import ${name}\nfn main() { println(${name}.value())\n' +
+		'println(\$env("VEXE"))\nprintln(\$env("V3_PRIMARY_VEXE")) }\n')!
+	mut builds := [][]string{}
+	for mode in ['-ownership', '-autofree'] {
+		for prod in [false, true] {
+			mut args := ['-cc', 'cc', '-gc', 'none', mode]
+			if prod { args << '-prod' }
+			args << ['-o', os.join_path(root, 'program'), 'run', entry]
+			cold := os.exec([primary, ...args])
+			assert cold.exit_code == 0, cold.output
+			lines := cold.output.trim_space().split_into_lines()
+			assert lines.len >= 3 && lines.last() == primary, cold.output
+			helper := lines[lines.len - 2]
+			assert helper != primary && helper.contains('v3_ownership') && os.is_file(helper), cold.output
+			assert cache_refresh.collect(vroot, primary)!.any(it.module == name && mode in it.args && ('-prod' in it.args) == prod)
+			assert cache_refresh.collect(vroot, helper)!.len == 0
+			builds << args
+		}
+	}
+	requests := cache_refresh.collect(vroot, primary)!.filter(it.module == name)
+	assert requests.len == builds.len, requests.str()
+	os.write_file(source, 'module ${name}\npub fn value() int { return 2 }\n')!
+	cache_refresh.refresh(primary, requests)!
+	for args in builds {
+		warm := os.exec([primary, ...args[..args.len - 2], '-show-timings', entry])
+		assert warm.exit_code == 0, warm.output
+		assert !warm.output.contains('Caching module '), warm.output
+		run := os.exec([os.join_path(root, 'program')])
+		assert run.exit_code == 0, run.output
+		lines := run.output.trim_space().split_into_lines()
+		assert lines.len == 3 && lines[0] == '2' && lines.last() == primary, run.output
+	}
 }
 
 fn test_cached_vmod_roots_stop_at_project_boundaries() {
