@@ -90,7 +90,7 @@ fn (c &Cursor) end() int {
 }
 
 // next consumes the current character and returns its code point, or -1 at the
-// end of the input. A line feed restarts the column.
+// end of the input. JSON5 line terminators restart the column; CRLF counts once.
 fn (mut c Cursor) next() int {
 	if c.i >= c.text.len {
 		return -1
@@ -98,8 +98,10 @@ fn (mut c Cursor) next() int {
 	code := int(c.text[c.i])
 	c.offset += c.width()
 	c.i++
-	if code == 0x0A {
-		c.line++
+	if is_line_terminator(code) {
+		if code != 0x0A || c.i < 2 || int(c.text[c.i - 2]) != 0x0D {
+			c.line++
+		}
 		c.col = 1
 	} else {
 		c.col++
@@ -303,10 +305,10 @@ fn lex_escape(mut c Cursor, start Pos, mut res LexResult) {
 
 // strip_comments returns `text` with every comment replaced by spaces.
 //
-// The replacement is byte for byte, and a line terminator inside a comment is
-// kept, so every remaining character keeps the offset it had in the input. That
-// lets a caller report a position in the stripped text against the original
-// file. A comment that is never closed is stripped to the end of the input.
+// The replacement is byte for byte, preserving CR, LF, U+2028 and U+2029 inside
+// comments, so remaining characters keep their byte offsets and line numbers.
+// Retained Unicode separators require JSON5 mode when parsing the stripped text.
+// A comment that is never closed is stripped to the end of the input.
 pub fn strip_comments(text string) string {
 	res := lex(text)
 	if res.comments.len == 0 {
@@ -314,10 +316,18 @@ pub fn strip_comments(text string) string {
 	}
 	mut out := text.bytes()
 	for c in res.comments {
-		for i in c.start .. c.end {
+		mut i := c.start
+		for i < c.end {
+			// Keep all three UTF-8 bytes of each Unicode line separator.
+			if out[i] == 0xe2 && i + 2 < c.end && out[i + 1] == 0x80
+				&& (out[i + 2] == 0xa8 || out[i + 2] == 0xa9) {
+				i += 3
+				continue
+			}
 			if out[i] != 0x0A && out[i] != 0x0D {
 				out[i] = ` `
 			}
+			i++
 		}
 	}
 	return out.bytestr()
