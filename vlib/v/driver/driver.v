@@ -15128,10 +15128,11 @@ pub fn run(args []string) {
 				} else {
 					prepared_cache = prepare_v3_module_cache(generated_source, &cgen_used_fns, &program_used_fns, &pre_tc, c_standard, opt_flag, pic_flag, warning_flags, cached_object_c_flags, needs_objective_c, interface_impl_signature, object_flags_signature + generated_suffix, mut cache_state) or {
 						message := err.msg()
-						if cache_with_tcc {
+						if cache_with_tcc && os.getenv('V3_CACHE_REFRESH') != '1' {
 							// TinyCC does not compile every module on its own. The build
 							// without module objects decides what becomes of the program,
-							// as it does with `-nocache`.
+							// as it does with `-nocache`. A refresh must report its object
+							// failure instead of succeeding without publishing the object.
 							trace_v3_cache_fallback('the bundled TinyCC could not build a module object: ${message.all_before('\n')}')
 							cleanup_c_build_dir(cc_dir)
 							restart_v3_without_cache()
@@ -15262,7 +15263,9 @@ pub fn run(args []string) {
 				cache_state.module_sources, project_flags, refresh_entry, show_test_stats) or {
 				trace_v3_cache_fallback('could not record the v up cache inventory: ${err}')
 			}
-			if os.getenv('V3_CACHE_REFRESH') == '1' && os.getenv('V3_CACHE_REFRESH_ENTRY') == '1' {
+			// Refresh validates module objects for both live entries and temporary
+			// importers. Neither needs a program object, development dylib or link.
+			if os.getenv('V3_CACHE_REFRESH') == '1' {
 				prealloc_scope_free_for_v3(cache_prepare_scope)
 				os.rm(cache_plan_file) or {}
 				cleanup_c_build_dir(cc_dir)
@@ -15323,7 +15326,7 @@ pub fn run(args []string) {
 			prealloc_scope_free_for_v3(cache_prepare_scope)
 			os.rm(cache_plan_file) or {}
 		}
-		if os.getenv('V3_CACHE_REFRESH') == '1' && os.getenv('V3_CACHE_REFRESH_ENTRY') == '1' {
+		if os.getenv('V3_CACHE_REFRESH') == '1' {
 			cleanup_c_build_dir(cc_dir)
 			return
 		}
@@ -17055,6 +17058,15 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		object_paths[module_name] = entry.object
 		if !module_is_compiled {
 			newly_cached_modules[module_name] = true
+		}
+	}
+	if os.getenv('V3_CACHE_REFRESH') == '1' {
+		// Publishing regenerated headers can invalidate an object loaded earlier.
+		// Refresh stops before the program link could discover that mismatch.
+		state.objects = object_paths.clone()
+		if resolve_flag_specific_cache_objects(mut state, tc.a, object_base, scopes) {
+			os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+			restart_v3_after_cache_invalidation()
 		}
 	}
 

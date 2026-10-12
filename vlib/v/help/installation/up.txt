@@ -14,6 +14,8 @@ project interface scopes share refresh records across projects.
 Project directives are merged with flags read from the updated vlib modules.
 The original entry preserves project interface implementers when needed; only its
 module objects are rebuilt. Isolated ownership caches use the primary V compiler.
+Temporary importers also stop after module object validation, before compiling
+program objects, building development libraries, or linking an executable.
 Live entries replay absolute -file-list operands and re-expand directories to
 include their current files. Records with vanished listed files or directories
 are skipped. Equivalent live commands run once despite historical source flags.
@@ -33,7 +35,8 @@ Equivalent builds and unavailable inputs are skipped, so progress indices can ju
 The final summary reports how many distinct build configurations were checked.
 The same module can be cached separately for different compilers and build modes.
 This also runs when the compiler itself is already updated. A cache refresh
-failure makes the update fail. Older caches without recorded settings are
+failure makes the update fail. TinyCC object failures are reported instead of
+retrying a program without caching. Older caches without recorded settings are
 refreshed in both modes for the available C compilers, for programs and tests.
 Successful legacy migrations mark the old headers to avoid repeating that matrix.
 

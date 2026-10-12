@@ -2,6 +2,120 @@ module cache_refresh
 
 import os
 
+fn test_synthetic_refresh_reports_failed_tinycc_module_objects() ! {
+	$if !linux && !macos {
+		return
+	}
+	vroot := os.dir(@VEXE)
+	if !os.is_executable(os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')) { return }
+	root := os.join_path(os.vtmp_dir(), 'vup_failed_tcc_object_${os.getpid()}')
+	name := 'vup_failed_tcc_object_${os.getpid()}'
+	module_root := os.join_path(vroot, 'vlib', name)
+	os.mkdir_all(module_root)!
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(module_root) or {}
+		os.rmdir_all(root) or {}
+	}
+	// This unused public function is compiled into the module object, but a
+	// whole-program fallback would prune it and hide the missing C definition.
+	os.write_file(os.join_path(module_root, 'value.c.v'), 'module ${name}\n' +
+		'pub fn value() int { return int(C.VUP_REFRESH_MISSING_DEFINE) }\n')!
+	source := os.join_path(root, 'helper.v')
+	os.write_file(source, 'import v.util.cache_refresh\nfn main() {\n' +
+		'cache_refresh.refresh(@VEXE, [cache_refresh.Request{module: "${name}", args: ["-cc", "tcc"]}])!\n}\n')!
+	helper := os.join_path(root, 'helper')
+	build := os.exec([@VEXE, '-nocache', '-gc', 'none', '-o', helper, source])
+	assert build.exit_code == 0, build.output
+	mut environment := os.environ()
+	for variable in ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_FORCE_SOURCE'] {
+		environment.delete(variable)
+	}
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+	environment['VEXE'] = @VEXE
+	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+	mut process := os.new_process(helper)
+	process.set_environment(environment)
+	process.set_redirect_stdio()
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	code := process.code
+	process.close()
+	assert code != 0, output
+	assert output.contains('failed to build cached module object'), output
+	assert output.contains('VUP_REFRESH_MISSING_DEFINE'), output
+	assert !output.contains('> Module cache refresh complete:'), output
+	// An ordinary build still uses TinyCC's source fallback successfully.
+	entry := os.join_path(root, 'main.v')
+	os.write_file(entry, 'import ${name} as _\nfn main() {}\n')!
+	program := os.join_path(root, 'program')
+	mut ordinary := os.new_process(@VEXE)
+	ordinary.set_environment(environment)
+	ordinary.set_redirect_stdio()
+	ordinary.set_args(['-cc', 'tcc', '-o', program, entry])
+	ordinary.wait()
+	ordinary_output := ordinary.stdout_slurp() + ordinary.stderr_slurp()
+	ordinary_code := ordinary.code
+	ordinary.close()
+	assert ordinary_code == 0 && os.is_file(program), ordinary_output
+	ran := os.exec([program])
+	assert ran.exit_code == 0 && ran.output == '', ran.output
+}
+
+fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches() ! {
+	$if windows {
+		return
+	}
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	root := os.join_path(os.vtmp_dir(), 'vup_objects_only_${os.getpid()}')
+	os.mkdir_all(root)!
+	saved := os.environ()
+	variables := ['V3CACHE', 'VEXE', 'VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH',
+		'V3_CACHE_REFRESH_ENTRY', 'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V3_CACHE_FORCE_SOURCE',
+		'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
+	defer {
+		for variable in variables {
+			if variable in saved {
+				os.setenv(variable, saved[variable], true)
+			} else {
+				os.unsetenv(variable)
+			}
+		}
+		os.rmdir_all(root) or {}
+	}
+	for variable in variables { os.unsetenv(variable) }
+	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	os.setenv('VEXE', @VEXE, true)
+	os.setenv('V_SKIP_VVMRC', '1', true)
+	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
+	log := os.join_path(root, 'calls')
+	compiler := os.join_path(root, 'cc')
+	// Module compilation is allowed. Compiling a program unit or linking the
+	// synthetic importer must fail, even if the ordinary compiler could do it.
+	os.write_file(compiler, '#!/bin/sh\n' +
+		'case "\$*" in --version) exec ' + os.quoted_path(cc) + ' "\$@";; esac\n' +
+		'printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n' +
+		'case "\$*" in *program_main_*|*program_prefix_*) echo "unexpected program object" >&2; exit 97;; esac\n' +
+		'for arg; do\n  if [ "\$arg" = -c ]; then exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
+		'echo "unexpected program link" >&2\nexit 98\n')!
+	os.chmod(compiler, 0o755)!
+	for is_test in [false, true] {
+		requests := [Request{
+			args:    ['-cc', compiler]
+			module:  'math.big'
+			imports: ['crypto.ed25519', 'math.big']
+			is_test: is_test
+		}]
+		refresh(@VEXE, requests)!
+		cold_calls := os.read_file(log)!
+		assert cold_calls.len > 0
+		assert !cold_calls.contains('program_main_') && !cold_calls.contains('program_prefix_'), cold_calls
+		assert collect(os.dir(@VEXE), @VEXE)!.any(it.module == 'math.big' && it.is_test == is_test)
+		refresh(@VEXE, requests)!
+		assert os.read_file(log)! == cold_calls, 'warm refresh must reuse its validated module objects'
+	}
+}
+
 fn test_inventory_preserves_distinct_import_orders() ! {
 	root := os.join_path(os.vtmp_dir(), 'vup_no_recursive_inventory_${os.getpid()}')
 	source := os.join_path(root, 'vlib', 'sample', 'sample.v')
