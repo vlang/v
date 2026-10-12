@@ -132,4 +132,3 @@ fn test_voidptr_targets() {
 	assert node_from_handle(handle).x == 5
 	assert unsafe { &Node(handle) }.x == 5
 }
-

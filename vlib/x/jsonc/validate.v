@@ -139,7 +139,7 @@ fn check_token(cur json2.Json5Token, prev json2.Json5TokenKind, next json2.Json5
 fn validate(text string, opts ParseOpts) &ParseError {
 	scanner := json2.new_json5_scanner(text)
 	mut stack := []Container{}
-mut prev := json2.Json5TokenKind.none
+	mut prev := json2.Json5TokenKind.none
 	mut cur := scanner.next() or { return unsafe { nil } }
 	for cur.kind != .eof {
 		next := scanner.next() or { return unsafe { nil } }
