@@ -1,7 +1,5 @@
 module os
 
-#include <signal.h>
-
 // v_signal_with_handler_cast wraps signal() with a cast to avoid
 // clang -Werror=incompatible-function-pointer-types between
 // void (*)(os__Signal) and void (*)(int).

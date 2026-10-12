@@ -271,8 +271,14 @@ pub fn (mut am AssetManager) combine(asset_type AssetType) !string {
 }
 
 // TODO: implement proper minification
+// minify_css trims lines while preserving selector whitespace and escaped line breaks.
 @[manualfree]
 pub fn minify_css(css string) string {
+	// A string continuation consumes its newline, while an inserted space becomes string data.
+	// Preserve these inputs, including meaningful indentation on the following line.
+	if css.contains('\\\n') || css.contains('\\\r') || css.contains('\\\f') {
+		return css.trim_space()
+	}
 	mut lines := css.split('\n')
 	// estimate arbitrary number of characters for a line of css
 	mut sb := strings.new_builder(lines.len * 20)
@@ -283,6 +289,9 @@ pub fn minify_css(css string) string {
 	for line in lines {
 		trimmed := line.trim_space()
 		if trimmed != '' {
+			if sb.len > 0 {
+				sb.write_u8(` `)
+			}
 			sb.write_string(trimmed)
 		}
 	}
@@ -291,6 +300,7 @@ pub fn minify_css(css string) string {
 }
 
 // TODO: implement proper minification
+// minify_js joins non-empty trimmed lines without trailing whitespace.
 @[manualfree]
 pub fn minify_js(js string) string {
 	mut lines := js.split('\n')
@@ -303,8 +313,10 @@ pub fn minify_js(js string) string {
 	for line in lines {
 		trimmed := line.trim_space()
 		if trimmed != '' {
+			if sb.len > 0 {
+				sb.write_u8(` `)
+			}
 			sb.write_string(trimmed)
-			sb.write_u8(` `)
 		}
 	}
 
