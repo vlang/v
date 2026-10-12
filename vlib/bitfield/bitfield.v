@@ -448,6 +448,9 @@ pub fn (bf BitField) slice(_start int, _end int) BitField {
 	if end > bf.size {
 		end = bf.size // or panic?
 	}
+	if start < 0 {
+		start = 0 // or panic?
+	}
 	if start > end {
 		start = end // or panic?
 	}
