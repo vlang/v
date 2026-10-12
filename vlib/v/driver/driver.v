@@ -7536,6 +7536,7 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 		synthesized_anon_struct_types: ast.synthesized_anon_struct_types
 		source_files:                  ast.source_files
 		resolved_source_paths:         ast.resolved_source_paths.clone()
+		cached_header_sources:         clone_string_string_map(ast.cached_header_sources)
 		source_paths_frozen:           ast.source_paths_frozen
 		template_call_sites:           ast.template_call_sites.clone()
 		template_actions:              clone_int_string_map(ast.template_actions)

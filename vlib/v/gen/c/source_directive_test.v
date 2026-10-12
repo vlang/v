@@ -463,6 +463,32 @@ fn test_top_level_include_deduplication_resets_after_preprocessor_state_changes(
 		'#endif', '#include <types.h>']
 }
 
+fn test_multiline_guard_does_not_make_following_includes_conditional() {
+	guard := '#ifndef INSERTED_GUARD\n#define INSERTED_GUARD\n#endif'
+	header := '#include "unguarded.h"'
+	assert dedupe_top_level_c_includes([guard, header, header]) == [guard, header]
+	// An inline block can change the macro state observed by an earlier header.
+	assert dedupe_top_level_c_includes([header, guard, header]) == [header, guard, header]
+	// The containing guard remains active while an inline block is emitted.
+	conditional := ['#ifdef FIRST', guard, header, '#endif', '#ifdef SECOND', header, '#endif',
+		header, header]
+	assert dedupe_top_level_c_includes(conditional) == conditional[..conditional.len - 1]
+}
+
+fn test_multiline_directives_preserve_open_conditionals_and_ignore_comments() {
+	header := '#include "unguarded.h"'
+	for separator in [' ', '\t'] {
+		opener := '#if${separator}defined(FIRST) \\\n|| defined(SECOND)'
+		conditional := [opener, header, header, '#else', header, header, '#endif', header, header]
+		assert dedupe_top_level_c_includes(conditional) == conditional[..conditional.len - 1]
+	}
+	guard := '/*\n#if COMMENTED_OUT\n*/\n#ifndef INLINE_GUARD\n#define INLINE_GUARD\n#endif'
+	assert dedupe_top_level_c_includes([guard, header, header]) == [guard, header]
+	// Comments may span directive entries as well as lines in an inline header.
+	commented := ['/*', '#if COMMENTED_OUT\n#endif', '*/', header, header]
+	assert dedupe_top_level_c_includes(commented) == commented[..commented.len - 1]
+}
+
 fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	mut headerless := FlatGen.new()
 	assert !headerless.c_directives_use_system_libc()

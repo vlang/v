@@ -89,13 +89,18 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 	os.setenv('V_SKIP_VVMRC', '1', true)
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	log := os.join_path(root, 'calls')
+	dependency_log := os.join_path(root, 'dependency_calls')
 	compiler := os.join_path(root, 'cc')
 	// Module compilation is allowed. Compiling a program unit or linking the
 	// synthetic importer must fail, even if the ordinary compiler could do it.
+	// Record native helper dependency scans separately so warm refresh still
+	// forbids every new object while allowing dependency validation.
 	os.write_file(compiler, '#!/bin/sh\n' +
 		'case "\$*" in --version) exec ' + os.quoted_path(cc) + ' "\$@";; esac\n' +
-		'printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n' +
 		'case "\$*" in *program_main_*|*program_prefix_*) echo "unexpected program object" >&2; exit 97;; esac\n' +
+		'for arg; do\n  if [ "\$arg" = -M ]; then printf "%s\\n" "\$*" >> ' +
+		os.quoted_path(dependency_log) + '; exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
+		'printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n' +
 		'for arg; do\n  if [ "\$arg" = -c ]; then exec ' + os.quoted_path(cc) + ' "\$@"; fi\ndone\n' +
 		'echo "unexpected program link" >&2\nexit 98\n')!
 	os.chmod(compiler, 0o755)!

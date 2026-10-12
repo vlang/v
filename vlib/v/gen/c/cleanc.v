@@ -10902,16 +10902,37 @@ fn dedupe_top_level_c_includes(directives []string) []string {
 	mut result := []string{}
 	mut seen_includes := map[string]bool{}
 	mut depth := 0
+	mut in_block_comment := false
 	for directive in directives {
 		clean := trimmed_space(directive)
-		if depth == 0 && c_directive_name(clean) in ['include', 'import'] && !c_is_source_include_directive(clean) {
+		if clean.contains('\n') {
+			// Inline blocks can change macros or leave a conditional open. Track
+			// their logical directives without deduplicating inside the block.
+			result << directive
+			seen_includes.clear()
+			for line in c_join_continued_lines(directive) {
+				scanned, next_in_block_comment := c_preprocessor_directive_scan_line(line,
+					in_block_comment)
+				in_block_comment = next_in_block_comment
+				name := c_directive_name(scanned)
+				if name in ['if', 'ifdef', 'ifndef'] {
+					depth++
+				} else if name == 'endif' && depth > 0 {
+					depth--
+				}
+			}
+			continue
+		}
+		scanned, next_in_block_comment := c_preprocessor_directive_scan_line(clean, in_block_comment)
+		in_block_comment = next_in_block_comment
+		name := c_directive_name(scanned)
+		if depth == 0 && name in ['include', 'import'] && !c_is_source_include_directive(clean) {
 			if clean in seen_includes {
 				continue
 			}
 			seen_includes[clean] = true
 		}
 		result << directive
-		name := c_directive_name(clean)
 		if depth == 0 && name in ['define', 'undef'] {
 			// A repeated unguarded include can intentionally observe a different macro
 			// state. Only deduplicate within one unchanged top-level macro epoch.
@@ -10937,9 +10958,9 @@ fn c_directive_name(text string) string {
 	if body.len == 0 {
 		return ''
 	}
-	idx := body.index_u8(` `)
-	if idx < 0 {
-		return body
+	mut idx := 0
+	for idx < body.len && !body[idx].is_space() {
+		idx++
 	}
 	return body[..idx]
 }
