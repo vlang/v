@@ -108,3 +108,73 @@ pub fn (tc &TypeChecker) c_type_by_id(id TypeId) ?string {
 	canonical := tc.type_by_id(id) or { return none }
 	return tc.canonical_c_type(id, canonical)
 }
+
+// parse_type_id resolves source type text to an identity in this checker view.
+// Source imports and generic bindings follow parse_type; builtin scalar IDs can
+// be carried across source contexts without repeating contextual cache lookups.
+pub fn (tc &TypeChecker) parse_type_id(text string) ?TypeId {
+	if isnil(tc.type_interner) {
+		return none
+	}
+	value := tc.parse_type(text)
+	if tc.type_param_texts.len == 0 && !isnil(tc.type_cache)
+		&& tc.type_cache.alias_parse_stack.len == 0 {
+		cache := tc.type_cache.parsed_scalars
+		if !isnil(cache) && cache.owner == tc.type_interner && text.len > 0 {
+			slot := parsed_scalar_slot(text)
+			if parse_type_cache_string_matches(cache.texts[slot], text) {
+				return cache.ids[slot]
+			}
+		}
+	}
+	id, _ := tc.intern_type(value)
+	return id
+}
+
+@[inline]
+fn scalar_builtin_type_name(text string) bool {
+	return is_builtin_type_name(text) && text != 'array' && text != 'map'
+}
+
+@[direct_array_access; inline]
+fn parsed_scalar_slot(text string) int {
+	mut hash := u32(text.len)
+	hash = (hash * 16777619) ^ u32(text[0])
+	hash = (hash * 16777619) ^ u32(text[text.len / 2])
+	hash = (hash * 16777619) ^ u32(text[text.len - 1])
+	return int(hash & 127)
+}
+
+@[direct_array_access; inline]
+fn (tc &TypeChecker) parsed_scalar_type(text string) ?Type {
+	cache := tc.type_cache.parsed_scalars
+	if isnil(cache) || cache.owner != tc.type_interner || text.len == 0 {
+		return none
+	}
+	slot := parsed_scalar_slot(text)
+	if parse_type_cache_string_matches(cache.texts[slot], text) {
+		return cache.values[slot]
+	}
+	return none
+}
+
+// Only exact builtin spellings enter this cache. Their meanings do not depend
+// on imports, the current module, resolution mode or function-local scopes.
+fn (tc &TypeChecker) remember_parsed_scalar_type(text string, id TypeId, value Type) {
+	if isnil(tc.type_interner) {
+		return
+	}
+	mut type_cache := unsafe { tc.type_cache }
+	if isnil(type_cache.parsed_scalars) || type_cache.parsed_scalars.owner != tc.type_interner {
+		type_cache.parsed_scalars = &ParsedScalarTypeCache{
+			owner:  tc.type_interner
+			// Unfilled slots are guarded by their nonempty text key.
+			values: unsafe { []Type{len: 128} }
+		}
+	}
+	mut cache := type_cache.parsed_scalars
+	slot := parsed_scalar_slot(text)
+	cache.texts[slot] = text.clone()
+	cache.ids[slot] = id
+	cache.values[slot] = value
+}

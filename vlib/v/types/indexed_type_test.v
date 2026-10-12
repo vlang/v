@@ -111,3 +111,36 @@ fn test_indexed_c_types_survive_recent_slot_collisions_and_interner_reset() {
 	assert reused == ids[0]
 	assert tc.c_type_by_id(reused) or { panic('missing replacement C layout') } == 'bool*'
 }
+
+fn test_parsed_ids_follow_generic_recursive_alias_and_worker_precedence() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.set_fresh_type_cache(true)
+	integer := tc.parse_type_id('u64') or { panic('missing integer identity') }
+	tc.cur_module = 'other'
+	tc.cur_file = 'other.v'
+	assert tc.parse_type_id('u64') or { panic('missing contextual identity') } == integer
+	tc.type_param_texts['u64'] = 'string'
+	bound := tc.parse_type_id('u64') or { panic('missing bound identity') }
+	assert bound != integer
+	assert tc.type_name_by_id(bound) == 'string'
+	tc.type_param_texts.clear()
+	tc.type_cache.alias_parse_stack << 'u64'
+	recursive := tc.parse_type_id('u64') or { panic('missing recursive identity') }
+	assert recursive != integer
+	assert tc.type_by_id(recursive) or { panic('missing recursive alias') } is Alias
+	tc.type_cache.alias_parse_stack.clear()
+	assert tc.parse_type_id('u64') or { panic('missing restored identity') } == integer
+	mut worker := tc.fork_for_parallel_transform(&a)
+	worker.set_fresh_type_cache(true)
+	boolean := worker.parse_type_id('bool') or { panic('missing worker boolean') }
+	assert boolean == integer
+	worker_integer := worker.parse_type_id('u64') or { panic('missing worker integer') }
+	assert worker_integer != integer
+	assert worker.type_name_by_id(boolean) == 'bool'
+	assert worker.type_name_by_id(worker_integer) == 'u64'
+	tc.reset_type_interners()
+	replacement := tc.parse_type_id('bool') or { panic('missing replacement identity') }
+	assert replacement == integer
+	assert tc.type_name_by_id(replacement) == 'bool'
+}

@@ -15601,8 +15601,16 @@ pub fn (tc &TypeChecker) parse_type(typ string) Type {
 	}
 	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
 		mut cache := unsafe { tc.type_cache }
+		if scalar := tc.parsed_scalar_type(typ) {
+			cache.parse_hits++
+			return scalar
+		}
 		if cached := parse_type_cache_get_mode(mut cache, tc.cur_file, tc.cur_module, typ, tc.fn_context.generic_params, tc.resolution_type_mode, tc.fast_parse_recent) {
 			cache.parse_hits++
+			if scalar_builtin_type_name(typ) {
+				id, canonical := tc.intern_type(cached)
+				tc.remember_parsed_scalar_type(typ, id, canonical)
+			}
 			return cached
 		}
 		// typeof(...) resolves against expression context, so its result must
@@ -15613,7 +15621,10 @@ pub fn (tc &TypeChecker) parse_type(typ string) Type {
 			return tc.parse_type_uncached(typ)
 		}
 		cache.parse_misses++
-		_, result := tc.intern_type(tc.parse_type_uncached(typ))
+		id, result := tc.intern_type(tc.parse_type_uncached(typ))
+		if scalar_builtin_type_name(typ) {
+			tc.remember_parsed_scalar_type(typ, id, result)
+		}
 		if tc.fast_parse_recent {
 			parse_type_cache_put_recent(mut cache, tc.cur_file, tc.cur_module, typ, tc.fn_context.generic_params, tc.resolution_type_mode, result)
 		} else {

@@ -6,7 +6,9 @@ interner; a different worker can assign the same number to a different type.
 Use `type_by_id(id)` for the canonical semantic value and `type_name_by_id(id)` only where
 existing code still needs a textual spelling. `c_type_by_id(id)` reads the C layout cache by
 identity without hashing the semantic type again. Rewriting or retyping a node invalidates its
-cached identity. Source annotations and dynamically resolved call types remain separate.
+cached identity. `parse_type_id(text)` resolves source text at an indexed type boundary;
+its scalar cache keeps both the semantic ID and compatibility value across source contexts.
+Source annotations and dynamically resolved call types remain separate.
 
 The builtin error constructors require a string message. To propagate an error from an
 `or` block, use `return err`. To add context, use `return error('context: ${err}')`.

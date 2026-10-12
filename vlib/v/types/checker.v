@@ -317,6 +317,14 @@ struct ParseTypeCacheEntry {
 
 // IndexedTypeCache bridges checked expression types to the current interner.
 // It is private to one checker view, just like the other TypeCache entries.
+struct ParsedScalarTypeCache {
+mut:
+	owner  &TypeInterner = unsafe { nil }
+	texts  [128]string
+	ids    [128]TypeId
+	values []Type
+}
+
 struct IndexedTypeCache {
 mut:
 	owner    &TypeInterner = unsafe { nil }
@@ -385,7 +393,8 @@ const type_cache_recent_slots = 512
 // TypeCache represents type cache data used by types.
 struct TypeCache {
 mut:
-	indexed_types &IndexedTypeCache = unsafe { nil }
+	parsed_scalars &ParsedScalarTypeCache = unsafe { nil }
+	indexed_types  &IndexedTypeCache      = unsafe { nil }
 	// Frozen fallback cache shared by all parallel-check forks: lookups miss the
 	// own (private) maps first, then consult base read-only; writes always go to
 	// the own maps. The master installs its warm post-collect cache as base for
@@ -1882,6 +1891,7 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 // have grown inside a disposable compiler-stage arena.
 pub fn (mut tc TypeChecker) reset_type_interners() {
 	if !isnil(tc.type_cache) {
+		tc.type_cache.parsed_scalars = unsafe { nil }
 		// Numeric identities start over in the replacement interner.
 		tc.type_cache.clear_c_type_entries()
 	}
@@ -2801,6 +2811,7 @@ pub fn (mut tc TypeChecker) begin_sparse_transform_node_caches(base_nodes int) {
 // transform into the current compilation arena before that scope is freed.
 pub fn (mut tc TypeChecker) promote_scoped_transform_interners(type_start int, symbol_start int, scope voidptr) {
 	if !isnil(tc.type_cache) {
+		tc.type_cache.parsed_scalars = unsafe { nil }
 		tc.type_cache.indexed_types = unsafe { nil }
 	}
 	if !isnil(tc.type_interner) {
