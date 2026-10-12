@@ -781,6 +781,7 @@ mut:
 	inside_trace_call               bool
 	skip_generics                   bool
 	skip_enum_autostr               bool
+	literal_output_only             bool
 	placeholder_check_forced        bool
 	cur_fn_name                     string
 	cur_fn_source_file              string
@@ -3270,6 +3271,7 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	g.a = a
+	g.literal_output_only = false
 	effective_no_parallel := no_parallel || g.profile_file.len > 0 || g.coverage_dir.len > 0
 		|| !g.parallel_codegen_available()
 	// The preparation choices below must agree with the dispatch mode the stages
@@ -3530,6 +3532,18 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.tc = unsafe { tc }
 	if g.tc.a == unsafe { nil } {
 		g.tc.collect(a)
+	}
+	if source := g.literal_output_program() {
+		// Literal output has no V allocations or runtime initialization. Avoid
+		// collecting builtin C flags, which would also link the unused collector.
+		g.c_flags = g.initial_c_flags.clone()
+		g.literal_output_only = true
+		if g.output_path.len > 0 {
+			os.write_file(g.output_path, source) or { g.output_error = err.msg() }
+			unsafe { source.free() }
+			return ''
+		}
+		return source
 	}
 	mut cgsw := time.new_stopwatch()
 	g.tc.precompute_source_error_embed_index()
