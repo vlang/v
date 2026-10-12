@@ -18,6 +18,14 @@ const max_scan_cycles = scan_timeout_s * scan_frequency_hz
 
 const default_veb_suffixes = '*.v,*.html,*.css,*.js,*.md,*.tr'
 
+// build_debounce_ms is how long a build waits after the last change, so that
+// an editor writing a file several times starts one build, not several.
+const build_debounce_ms = 150
+
+// veb_status_env names the environment variable that tells a veb app, built
+// with `-d veb_livereload`, where `v watch` writes the build status.
+const veb_status_env = 'VEB_LIVERELOAD_STATUS'
+
 fn get_scan_timeout_seconds() int {
 	env_vw_timeout := os.getenv('VWATCH_TIMEOUT').int()
 	if env_vw_timeout == 0 {
@@ -102,6 +110,11 @@ mut:
 	cmd_before_run  string   // a command to run before each re-run
 	cmd_after_run   string   // a command to run after each re-run
 	only_watch      []string // If not empty, *all* files that trigger updates, should match *at least one* of these s.match_glob() patterns. This is also triggered for veb apps, to monitor for just *.v,*.js,*.css,*.html in veb projects.
+	has_run         bool     // whether the watched command is `run`
+	is_veb          bool     // whether the program uses veb
+	build_first     bool     // for veb apps: build while the old server runs, and swap on success
+	build_process   &os.Process = unsafe { nil } // the build in progress, in build-first mode
+	status_path     string // where build-first mode writes the build status, for veb's livereload
 }
 
 struct ParsedWatchOptions {
@@ -117,6 +130,7 @@ mut:
 	cmd_before_run    string
 	cmd_after_run     string
 	show_help         bool
+	no_build_first    bool
 }
 
 @[if debug_vwatch ?]
@@ -165,6 +179,18 @@ fn (mut context Context) is_ext_ignored(pf string, pf_ext string) bool {
 	return false
 }
 
+// add_dir_tree adds `dir` and all of its subdirectories (not following
+// symlinks) to the set of watched folders.
+fn add_dir_tree(mut apaths map[string]bool, dir string) {
+	apaths[os.real_path(dir)] = true
+	for entry in os.ls(dir) or { []string{} } {
+		sub := os.join_path_single(dir, entry)
+		if os.is_dir(sub) && !os.is_link(sub) {
+			add_dir_tree(mut apaths, sub)
+		}
+	}
+}
+
 fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 	if context.affected_paths.len == 0 {
 		mut apaths := map[string]bool{}
@@ -188,6 +214,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 			apaths[os.real_path(os.dir(vf))] = true
 			if vf.contains('veb.v') {
 				is_veb_found = true
+				context.is_veb = true
 			}
 		}
 
@@ -213,6 +240,13 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 				tr_dir := os.join_path_single(path, 'translations')
 				if os.is_dir(tr_dir) {
 					apaths[os.real_path(tr_dir)] = true
+				}
+				// Templates are compiled into the program, but the compiler does not
+				// report them either. Watch `templates/` and its subdirectories, so
+				// that a layout in `templates/layout/` triggers a rebuild too.
+				tpl_dir := os.join_path_single(path, 'templates')
+				if os.is_dir(tpl_dir) {
+					add_dir_tree(mut apaths, tpl_dir)
 				}
 			}
 		}
@@ -290,6 +324,7 @@ fn change_detection_loop(ocontext &Context) {
 	for {
 		if context.v_cycles >= max_v_cycles || context.scan_cycles >= max_scan_cycles {
 			context.is_exiting = true
+			context.kill_build()
 			context.kill_pgroup()
 			time.sleep(50 * time.millisecond)
 			exit(255)
@@ -316,6 +351,202 @@ fn (mut context Context) kill_pgroup() {
 	}
 	context.child_process.wait()
 	context.child_process.close()
+}
+
+// kill_build stops the build in progress, if any. It returns true when there was one.
+fn (mut context Context) kill_build() bool {
+	if unsafe { context.build_process == 0 } {
+		return false
+	}
+	mut bp := context.build_process
+	context.build_process = unsafe { nil }
+	if bp.is_alive() {
+		bp.signal_pgkill()
+	}
+	bp.wait()
+	bp.close()
+	return true
+}
+
+// stop_app stops the running program, if any.
+fn (mut context Context) stop_app() {
+	context.kill_pgroup()
+	context.child_process = unsafe { nil }
+}
+
+// write_status records the build status for a veb app's livereload: the state
+// on the first line (`building`, `failed` or `ok`), then the compiler output.
+// It replaces the file in one step, so the app never reads a partial status.
+fn (mut context Context) write_status(state string, details string) {
+	tmp := context.status_path + '.tmp'
+	os.write_file(tmp, state + '\n' + details) or { return }
+	os.mv(tmp, context.status_path) or {}
+}
+
+// start_app runs the built program, telling it where to read the build status.
+fn (mut context Context) start_app(app_bin string, args []string) {
+	mut p := os.new_process(app_bin)
+	p.use_pgroup = true
+	p.set_args(args)
+	mut env := os.environ()
+	env[veb_status_env] = context.status_path
+	p.set_environment(env)
+	p.run()
+	context.child_process = p
+	context.child_has_tty = vwatchtty.set_foreground_process_group(p.pid, context.watcher_pgid)
+	if !context.silent {
+		eprintln('${time.now().format_ss_milli()}: ${app_bin} | pid: ${p.pid:7d} | reload cycle: ${context.v_cycles:5d}')
+	}
+	context.v_cycles++
+}
+
+// default_output_path returns where `v` puts the executable for `target` by
+// default: `dir/dir` for a folder, and `file` for `file.v`.
+fn default_output_path(target string) string {
+	abs := os.real_path(target)
+	if os.is_dir(abs) {
+		return os.join_path_single(abs, os.file_name(abs))
+	}
+	return abs.all_before_last('.v')
+}
+
+// drain_build_output appends what the build printed since the last call.
+fn (mut context Context) drain_build_output(mut output []string) {
+	if unsafe { context.build_process == 0 } {
+		return
+	}
+	mut bp := context.build_process
+	for {
+		chunk := bp.stdout_read()
+		if chunk == '' {
+			break
+		}
+		output << chunk
+	}
+}
+
+// build_first_loop is used for veb apps, unless `--no-build-first` is given.
+// It builds a new executable while the old server keeps serving, then swaps
+// them only if the build succeeds: a failed build leaves the old server
+// running. A change during a build cancels it and starts a new one, since its
+// result would already be out of date. The status of each build is written to
+// `context.status_path`, where a livereload enabled veb app picks it up.
+fn (mut context Context) build_first_loop() {
+	run_pos := context.opts.index('run')
+	mut build_opts := context.opts#[..run_pos].clone()
+	after_run := context.opts#[run_pos + 1..]
+	target := if after_run.len > 0 { after_run[0] } else { '.' }
+	program_args := after_run#[1..]
+	mut app_bin := default_output_path(target)
+	o_pos := build_opts.index('-o')
+	if o_pos >= 0 && o_pos + 1 < build_opts.len {
+		app_bin = os.abs_path(build_opts[o_pos + 1])
+		build_opts.delete(o_pos + 1)
+		build_opts.delete(o_pos)
+	}
+	$if windows {
+		if !app_bin.ends_with('.exe') {
+			app_bin += '.exe'
+		}
+	}
+	new_bin := os.join_path_single(os.dir(app_bin), '.vwatch-new-' + os.file_name(app_bin))
+	status_dir := os.join_path(os.vtmp_dir(), 'vwatch_${context.pid}')
+	os.mkdir_all(status_dir) or {}
+	context.status_path = os.join_path_single(status_dir, 'status')
+	mut pending := true
+	mut pending_since := time.now().add(-build_debounce_ms * time.millisecond)
+	mut output := []string{}
+	mut build_started := time.now()
+	for {
+		if context.is_exiting {
+			context.kill_build()
+			context.stop_app()
+			return
+		}
+		if pending && time.since(pending_since) >= build_debounce_ms * time.millisecond {
+			pending = false
+			if context.kill_build() && !context.silent {
+				eprintln('${time.now().format_ss_milli()}: build cancelled, a newer change arrived')
+			}
+			if context.clear_terminal {
+				term.clear()
+			}
+			context.write_status('building', '')
+			context.run_before_cmd()
+			output = []string{}
+			mut bp := os.new_process(context.vexe)
+			bp.use_pgroup = true
+			bp.set_args([...build_opts, '-o', new_bin, target])
+			bp.set_redirect_stdio_merged()
+			bp.run()
+			context.build_process = bp
+			build_started = time.now()
+			if !context.silent {
+				eprintln('${time.now().format_ss_milli()}: building ${target} | pid: ${bp.pid:7d}')
+			}
+		}
+		if unsafe { context.build_process != 0 } {
+			context.drain_build_output(mut output)
+			mut bp := context.build_process
+			if !bp.is_alive() {
+				bp.wait()
+				context.drain_build_output(mut output)
+				code := bp.code
+				bp.close()
+				context.build_process = unsafe { nil }
+				compiler_output := output.join('')
+				if compiler_output.len > 0 {
+					eprint(compiler_output)
+				}
+				if !context.silent {
+					took := f64(time.since(build_started).milliseconds()) / 1000.0
+					result := if code == 0 { 'succeeded' } else { 'failed' }
+					eprintln('${time.now().format_ss_milli()}: build ${result} in ${took:.2f}s')
+				}
+				if code == 0 {
+					context.stop_app()
+					$if windows {
+						os.rm(app_bin) or {}
+					}
+					os.mv(new_bin, app_bin) or {
+						eprintln('v watch: cannot replace ${app_bin}: ${err}')
+						context.write_status('failed', 'cannot replace ${app_bin}: ${err}')
+						continue
+					}
+					context.write_status('ok', '')
+					context.start_app(app_bin, program_args)
+				} else {
+					context.write_status('failed', compiler_output)
+					if !context.silent {
+						eprintln('${time.now().format_ss_milli()}: build failed; the previous version keeps running')
+					}
+				}
+			}
+		}
+		if unsafe { context.child_process != 0 } && !context.child_process.is_alive() {
+			context.restore_terminal()
+			context.child_process.wait()
+			context.child_process.close()
+			context.child_process = unsafe { nil }
+			context.run_after_cmd()
+			if context.keep_running && os.exists(app_bin) {
+				context.start_app(app_bin, program_args)
+			}
+		}
+		select {
+			action := <-context.rerun_channel {
+				if action == .quit {
+					context.kill_build()
+					context.stop_app()
+					return
+				}
+				pending = true
+				pending_since = time.now()
+			}
+			100 * time.millisecond {
+			}
+		}
+	}
 }
 
 fn (mut context Context) restore_terminal() {
@@ -350,6 +581,10 @@ fn (mut context Context) run_after_cmd() {
 fn (mut context Context) compilation_runner_loop() {
 	cmd := '"${context.vexe}" ${context.opts.join(' ')}'
 	_ := <-context.rerun_channel
+	if context.build_first && context.has_run && context.is_veb {
+		context.build_first_loop()
+		return
+	}
 	for {
 		context.elog('>> loop: v_cycles: ${context.v_cycles}')
 		if context.clear_terminal {
@@ -460,6 +695,8 @@ fn main() {
 	context.only_watch = parsed_watch_options.only_watch
 	context.cmd_before_run = parsed_watch_options.cmd_before_run
 	context.cmd_after_run = parsed_watch_options.cmd_after_run
+	context.has_run = has_run
+	context.build_first = !parsed_watch_options.no_build_first
 	context.opts = []
 	context.opts << all_args_before_watch_cmd
 	context.opts << parsed_watch_options.remaining_options
@@ -507,6 +744,11 @@ fn parse_watch_options(args []string) !ParsedWatchOptions {
 		}
 		if is_watch_option_name(arg, 'keep', `k`) {
 			parsed.keep_running = true
+			i++
+			continue
+		}
+		if is_watch_option_name(arg, 'no-build-first', 0) {
+			parsed.no_build_first = true
 			i++
 			continue
 		}
@@ -631,12 +873,23 @@ fn (mut context Context) manager_main(all_args_before_watch_cmd []string, all_ar
 			mut context := unsafe { &Context(voidptr(&ccontext)) }
 			context.resume_worker = true
 		}) or { panic(err) }
+		// Pass termination on to the worker, which stops the program it runs.
+		os.signal_opt(.term, manager_stop_signal_handler) or { panic(err) }
+		os.signal_opt(.hup, manager_stop_signal_handler) or { panic(err) }
 	}
 	for {
 		mut worker_process := os.new_process(myexecutable)
 		worker_process.set_args(worker_opts)
 		worker_process.run()
 		for {
+			if context.is_exiting {
+				if worker_process.is_alive() {
+					worker_process.signal_term()
+				}
+				worker_process.wait()
+				worker_process.close()
+				return
+			}
 			if context.resume_worker {
 				context.resume_worker = false
 				vwatchtty.continue_process_group_of(worker_process.pid)
@@ -655,6 +908,18 @@ fn (mut context Context) manager_main(all_args_before_watch_cmd []string, all_ar
 	}
 }
 
+fn worker_stop_signal_handler(_ os.Signal) {
+	mut context := unsafe { &Context(voidptr(&ccontext)) }
+	context.is_exiting = true
+	context.kill_build()
+	context.kill_pgroup()
+}
+
+fn manager_stop_signal_handler(_ os.Signal) {
+	mut context := unsafe { &Context(voidptr(&ccontext)) }
+	context.is_exiting = true
+}
+
 fn propagate_terminal_stop(_ os.Signal) {
 	context := unsafe { &Context(voidptr(&ccontext)) }
 	vwatchtty.suspend_manager_process_group(context.watcher_pgid)
@@ -663,11 +928,14 @@ fn propagate_terminal_stop(_ os.Signal) {
 fn (mut context Context) worker_main() {
 	context.watcher_pgid = vwatchtty.process_group()
 	context.rerun_channel = chan RerunCommand{cap: 10}
-	os.signal_opt(.int, fn (_ os.Signal) {
-		mut context := unsafe { &Context(voidptr(&ccontext)) }
-		context.is_exiting = true
-		context.kill_pgroup()
-	}) or { panic(err) }
+	os.signal_opt(.int, worker_stop_signal_handler) or { panic(err) }
+	$if !windows {
+		// `kill`, a closed terminal, or a process supervisor: stop the build and
+		// the program too. They run in their own process groups, so they would
+		// otherwise keep running (and keep their port) after `v watch` is gone.
+		os.signal_opt(.term, worker_stop_signal_handler) or { panic(err) }
+		os.signal_opt(.hup, worker_stop_signal_handler) or { panic(err) }
+	}
 	$if !windows {
 		for signal in vwatchtty.terminal_stop_signals() {
 			os.signal_opt(signal, propagate_terminal_stop) or { panic(err) }

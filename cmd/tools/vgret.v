@@ -156,7 +156,6 @@ fn main() {
 	fp.version(tool_version)
 	fp.description(tool_description)
 	fp.arguments_description('PATH [PATH]')
-	fp.skip_executable()
 
 	show_help := fp.bool('help', `h`, false, 'Show this help text.')
 
