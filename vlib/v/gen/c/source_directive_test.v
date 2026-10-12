@@ -243,6 +243,59 @@ fn test_cache_extern_declaration_avoids_tgmath_macro_expansion() {
 	assert c_macro_safe_extern_decl('custom', 'int custom(int x);') == 'int custom(int x);'
 }
 
+fn test_source_macro_bindings_follow_final_preprocessor_state() ! {
+	root := os.join_path(os.vtmp_dir(), 'c_source_macro_bindings_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, os.join_path(@VEXEROOT, 'vlib', 'macro_bindings.c.v'))
+	a.add_val(.module_decl, 'main')
+	for name in ['function_macro', 'object_macro', 'removed_macro', 'conditional_macro',
+		'unrelated_function'] {
+		a.add_node(flat.Node{ kind: .c_fn_decl, value: 'C.${name}', typ: 'int' })
+	}
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.compiler_vroot = @VEXEROOT
+	for directive in [
+		'#define function_macro() (7)',
+		'#define object_macro another_macro',
+		'#define another_macro() (11)',
+		'#define removed_macro() (99)',
+		'#undef removed_macro',
+		'#if SOURCE_MACRO_ENABLED',
+		'#define conditional_macro() (13)',
+		'#endif',
+	] {
+		g.add_c_directive('main', directive, false)
+	}
+	g.emit_c_directives(false)
+	g.c_extern_forward_decls()
+	source := g.sb.str()
+	for name in ['function_macro', 'object_macro', 'removed_macro', 'conditional_macro'] {
+		assert source.contains('#ifndef ${name}\nint ${name}(void);\n#endif'), source
+	}
+	assert source.contains('int unrelated_function(void);'), source
+	assert !source.contains('#ifndef unrelated_function'), source
+	// Disabled and undefined macros need a real declaration; active function-like
+	// and object-like macros must expand only at the call site. Compile both states.
+	file := os.join_path(root, 'bindings.c')
+	os.write_file(file, source + '\nint removed_macro(void) { return 17; }\n' +
+		'#ifndef conditional_macro\nint conditional_macro(void) { return 19; }\n#endif\n' +
+		'int unrelated_function(void) { return 23; }\n' +
+		'int main(void) { return function_macro() != 7 || object_macro() != 11 ||\n' +
+		'removed_macro() != 17 || conditional_macro() != (SOURCE_MACRO_ENABLED ? 13 : 19) || unrelated_function() != 23; }\n')!
+	for enabled in ['0', '1'] {
+		output := os.join_path(root, 'bindings_${enabled}')
+		compiled := os.exec(['cc', '-DSOURCE_MACRO_ENABLED=${enabled}', '-o', output, file])
+		assert compiled.exit_code == 0, compiled.output
+		run := os.exec([output])
+		assert run.exit_code == 0, run.output
+	}
+}
+
 fn test_cache_extern_filter_uses_pthread_v_declarations() {
 	mut preamble_gen := FlatGen.new()
 	preamble_gen.preamble()

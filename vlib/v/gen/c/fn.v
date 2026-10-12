@@ -16534,6 +16534,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 	mut decls := map[string]CExternForwardDecl{}
 	mut names := []string{}
 	referenced_c_externs := g.c_extern_referenced_symbols()
+	source_macros := g.c_source_defined_macro_names()
 	// file/module/c_fn_decl nodes only occur at the top level: iterate the
 	// checker's top-level index for the range it covers, then scan only the
 	// transform-appended tail.
@@ -16629,6 +16630,12 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		node := g.a.nodes[decl.node_idx]
 		line := c_macro_safe_extern_decl(name, g.c_extern_decl_line_with_attributes(node,
 			flat.NodeId(decl.node_idx), name))
+		if source_macros[name] {
+			// The C preprocessor owns the final state of source macros, including
+			// conditional definitions and later #undef directives. A bodyless V
+			// binding describes the call without declaring an active macro as a function.
+			g.writeln('#ifndef ${name}')
+		}
 		if g.c_extern_decl_is_cached_object_fallback(name) {
 			g.writeln('#ifndef V3CACHE_PROGRAM_UNIT')
 			g.writeln(line)
@@ -16641,10 +16648,24 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		} else {
 			g.writeln(line)
 		}
+		if source_macros[name] {
+			g.writeln('#endif')
+		}
 	}
 	if names.len > 0 {
 		g.writeln('')
 	}
+}
+
+fn (g &FlatGen) c_source_defined_macro_names() map[string]bool {
+	mut names := map[string]bool{}
+	for directive in g.c_directives {
+		kind, name := c_macro_directive_info(directive.text)
+		if kind == 'define' && name.len > 0 {
+			names[name] = true
+		}
+	}
+	return names
 }
 
 // first_node_id_at_or_after returns the position of the first id >= `start` in
