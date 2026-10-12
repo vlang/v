@@ -9390,7 +9390,8 @@ fn v3_fallback_backend_specific_builtin_source(path string, builtin_root string)
 }
 
 fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Preferences, is_test_command bool, is_checker_fixture bool) bool {
-	if prefs.backend != 'c' || prefs.target.os != 'macos' || is_test_command || is_checker_fixture
+	if prefs.backend != 'c' || prefs.target.os !in ['macos', 'linux', 'freebsd', 'openbsd', 'netbsd',
+		'dragonfly', 'solaris', 'haiku'] || is_test_command || is_checker_fixture
 		|| !(input_file.ends_with('.v') || input_file.ends_with('.vv')) || !os.is_file(input_file)
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
@@ -11810,7 +11811,7 @@ pub fn run(args []string) {
 		&& target.os in ['macos', 'linux']
 	// A program that only prints literals needs a fraction of builtin, which is
 	// parsed for it each time. The cached builtin is ready without that.
-	minimal_literal_output := !is_prof && !is_trace_calls && !cache_with_tcc
+	minimal_literal_output := !is_prof && !is_trace_calls && !no_skip_unused
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	mut noalloc_modes := []string{}
 	if ownership_mode || 'ownership' in prefs.user_defines {
@@ -11965,7 +11966,7 @@ pub fn run(args []string) {
 	if no_builtin {
 		builtin_files = []
 	}
-	if minimal_literal_output {
+	if minimal_literal_output && target.os == 'macos' {
 		builtin_files = builtin_files.filter(is_minimal_literal_output_builtin_file(it))
 	}
 	bundle_sources := builtin_bundle_source_files(mut p.a, prefs, builtin_files)
@@ -12145,7 +12146,7 @@ pub fn run(args []string) {
 	if !prepared_imports.ready {
 		a.user_code_start = a.nodes.len
 	}
-	if minimal_literal_output {
+	if minimal_literal_output && target.os == 'macos' {
 		suppress_minimal_literal_output_builtin_imports(mut a)
 	}
 
@@ -12963,7 +12964,7 @@ pub fn run(args []string) {
 		// A module cache build checks and compiles whole modules, also for a program
 		// that only prints literals: the interfaces and the objects it publishes
 		// serve every other program.
-		trivial_literal_output = !is_trace_calls && backend != 'arm64' && test_files.len == 0 && !is_checker_fixture
+		trivial_literal_output = !is_trace_calls && !no_skip_unused && backend != 'arm64' && test_files.len == 0 && !is_checker_fixture
 			&& effective_c_compiler != 'msvc' && !cache_state.manager.enabled
 			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
 		if verbose {
@@ -14504,6 +14505,7 @@ pub fn run(args []string) {
 		mut windows_gui_entry_point := cgen_cache_metadata.windows_gui_entry_point
 		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
+		mut generated_literal_output_only := false
 		incremental_c_declarations := if incremental_cache_restored {
 			os.read_file(incremental_tcc_declarations_path) or {
 				eprintln('error reading incremental C declarations ${incremental_tcc_declarations_path}: ${err.msg()}')
@@ -14631,6 +14633,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			cgen_was_parallel = g.was_parallel()
+			generated_literal_output_only = g.generated_literal_output_only()
 			pruned_function_refs, pruned_functions_checked := g.referenced_pruned_cache_functions()
 			if pruned_function_refs.len > 0 || !pruned_functions_checked {
 				// The generated C calls a function whose declaration this build left out.
@@ -14716,6 +14719,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			cgen_was_parallel = g.was_parallel()
+			generated_literal_output_only = g.generated_literal_output_only()
 			pruned_function_refs, pruned_functions_checked := g.referenced_pruned_cache_functions()
 			if pruned_function_refs.len > 0 || !pruned_functions_checked {
 				// The generated C calls a function whose declaration this build left out.
@@ -14972,7 +14976,7 @@ pub fn run(args []string) {
 			}
 			native_support_inputs << icon_object
 		}
-		if effective_tcc && !is_o {
+		if effective_tcc && !is_o && !generated_literal_output_only {
 			atomic_input := if generate_c_project.len > 0 {
 				tcc_atomic_s_arg(prefs)
 			} else {
@@ -15665,9 +15669,11 @@ pub fn run(args []string) {
 				tcc_args << cached_objects
 			}
 			if !is_o {
-				atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
-				if atomic_s.len > 0 {
-					tcc_args << atomic_s
+				if !generated_literal_output_only {
+					atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
+					if atomic_s.len > 0 {
+						tcc_args << atomic_s
+					}
 				}
 				tcc_args << embed_incbin_objects
 			}
