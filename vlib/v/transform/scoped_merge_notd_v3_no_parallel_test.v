@@ -20,6 +20,7 @@ fn test_generic_batch_publishes_indirect_base_writes_and_new_nodes() {
 	batch.set_node_value(0, 'indirect_rewrite'.clone())
 	batch.set_node_typ(1, 'previous_batch_type'.clone())
 	batch.set_node_generic_params(0, ['T'.clone()])
+	a.nodes[0].set_generic_params_and_constraints(['T'.clone()], ['retiring constraint'.clone()])
 	added := a.add_node(flat.Node{ kind: .ident, value: 'appended'.clone(), typ: 'new_type'.clone() })
 	transform_worker_scope_leave(scope)
 	master.absorb_scoped_batch(batch, scope, new_node_start)
@@ -31,11 +32,14 @@ fn test_generic_batch_publishes_indirect_base_writes_and_new_nodes() {
 			assert !transform_scope_owns(scope, node.payload_ptr())
 			assert !transform_scope_owns(scope, node.generic_params().data)
 			assert !transform_scope_owns(scope, node.generic_params()[0].str)
+			assert !transform_scope_owns(scope, node.generic_constraints().data)
+			assert !transform_scope_owns(scope, node.generic_constraints()[0].str)
 		}
 	}
 	transform_worker_scope_free(scope)
 	assert a.nodes[0].value == 'indirect_rewrite'
 	assert a.nodes[0].generic_params() == ['T']
+	assert a.nodes[0].generic_constraints() == ['retiring constraint']
 	assert a.nodes[1].typ == 'previous_batch_type'
 	assert a.nodes[int(added)].value == 'appended'
 }
