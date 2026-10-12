@@ -8188,7 +8188,7 @@ fn v3_should_regenerate_after_implicit_tcc(retry_compilation bool, use_implicit_
 	return retry_compilation && use_implicit_tcc_semantics && (!tried_tcc || tcc_exit_code != 0)
 }
 
-fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string) ?string {
+fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string, vroot string) ?string {
 	if c_flags_need_objective_c(flags) || c_link_flags_use_non_c_language(flags) {
 		return 'its native inputs require a C++ or Objective-C compiler'
 	}
@@ -8201,7 +8201,18 @@ fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string) ?stri
 				continue
 			}
 			if c_flag_is_object_file(flag) {
-				return 'its native inputs require linking external objects on macOS'
+				mut shipped_source := false
+				if !os.exists(flag) {
+					if source := c_source_from_object_file(flag) {
+						shipped_source = source.ends_with('.c')
+							&& cgen.native_path_is_shipped(source, vroot)
+					}
+				}
+				// Missing shipped C objects are built by the selected compiler.
+				// Existing or foreign objects still require the platform linker.
+				if !shipped_source {
+					return 'its native inputs require linking external objects on macOS'
+				}
 			}
 			i++
 		}
@@ -12386,7 +12397,8 @@ pub fn run(args []string) {
 		preflight_flags << link_ld_flags
 		preflight_flags << cgen.preflight_directive_flags(a, prefs.vroot, prefs.target,
 			prefs.compile_values)
-		if reason := v3_implicit_tcc_flags_incompatibility(preflight_flags, prefs.target.os) {
+		if reason := v3_implicit_tcc_flags_incompatibility(preflight_flags, prefs.target.os,
+			prefs.vroot) {
 			// Selecting a compiler for known native input requirements is expected.
 			// Keep the explanation for verbose builds; actual TCC failures still warn.
 			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, '', silent || !verbose,

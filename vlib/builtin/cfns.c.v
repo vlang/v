@@ -137,6 +137,8 @@ $if windows {
 	fn C.fseek(stream &C.FILE, offset isize, whence i32) i32
 }
 
+// Coverage and profiling writers call these without a V AST reference.
+@[markused]
 fn C.fopen(filename &char, mode &char) &C.FILE
 
 fn C.fileno(&C.FILE) i32
@@ -146,6 +148,7 @@ fn C.fread(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 @[markused]
 fn C.fwrite(const_ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 
+@[markused]
 fn C.fclose(stream &C.FILE) i32
 
 fn C.pclose(stream &C.FILE) i32

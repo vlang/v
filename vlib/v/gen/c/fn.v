@@ -17178,6 +17178,7 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 	if !g.c_directives_use_system_libc() && !g.target_libc_headers
 		&& !g.files_with_c_includes[source_file] && module_name !in g.mods_with_c_includes
 		&& (g.c_source_file_is_in_vlib(source_file) || g.c_source_file_is_compiler_main(source_file)
+			|| cfn in ['task_info', 'mach_task_self', 'getppid']
 			|| cfn in c_preamble_declared_extern_symbols
 			|| cfn in c_system_libc_preamble_declared_fns || cfn in c_manual_stdlib_declared_fns) {
 		return true

@@ -502,6 +502,42 @@ fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	assert !system_libc.should_emit_c_extern_decl('sendfile')
 }
 
+fn test_headerless_application_platform_bindings_keep_their_declarations() {
+	mut g := FlatGen.new()
+	source := '/project/main.c.v'
+	for name in ['task_info', 'mach_task_self', 'getppid'] {
+		assert g.should_emit_c_extern_decl_from_file(name, source, 'main'), name
+	}
+	// An explicit SDK header remains authoritative for the application bindings.
+	g.add_c_directive('main', '#include <mach/mach.h>', false)
+	g.note_c_include_directive('main', source)
+	for name in ['task_info', 'mach_task_self', 'getppid'] {
+		assert !g.should_emit_c_extern_decl_from_file(name, source, 'main'), name
+	}
+}
+
+fn test_darwin_task_api_runs_with_headerless_and_explicit_sdk_bindings() ! {
+	$if !macos {
+		return
+	}
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v3_mach_task_api_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.c.v')
+	program := '@[typedef]\nstruct C.task_t {}\nstruct C.task_basic_info { resident_size u64 }\nfn C.mach_task_self() C.task_t\nfn C.task_info(C.task_t, i32, &int, &u32) i32\nfn main() {\n mut info := C.task_basic_info{}\n mut count := u32(C.MACH_TASK_BASIC_INFO_COUNT)\n status := C.task_info(C.mach_task_self(), C.TASK_BASIC_INFO, unsafe { &int(&info) }, &count)\n assert status == C.KERN_SUCCESS\n assert info.resident_size > 0\n println("\${sizeof(C.task_basic_info)}:\${__offsetof(C.task_basic_info, resident_size)}:\${u32(C.MACH_TASK_BASIC_INFO_COUNT)}:\${i32(C.TASK_BASIC_INFO)}")\n}\n'
+	mut layouts := []string{}
+	for explicit_header in [false, true] {
+		prefix := if explicit_header { '#include <mach/mach.h>\n' } else { '' }
+		os.write_file(source, prefix + program)!
+		ran := os.exec([@VEXE, '-cc', cc, '-cstrict', '-gc', 'none', '-nocache', '-no-retry-compilation',
+			'run', source])
+		assert ran.exit_code == 0, ran.output
+		layouts << ran.output.trim_space()
+	}
+	assert layouts[0] == layouts[1], 'headerless layout ${layouts[0]} differs from SDK ${layouts[1]}'
+}
+
 fn test_target_libc_headers_own_their_c_extern_declarations() {
 	mut g := FlatGen.new()
 	g.set_target_libc_headers(true)
