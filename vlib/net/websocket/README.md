@@ -20,6 +20,8 @@ and the client's callbacks have been registered.
 in order without waiting to collect more traffic. It uses one socket write and
 returns the wire byte count, including headers. Empty batches are a no-op.
 Control frames must be at most 125 bytes; continuation frames are not accepted.
+The same control payload limit applies to `write`, `write_ptr`, and `close`.
+For `close`, the two-byte status code leaves at most 123 bytes for the reason.
 Close frames are not accepted; call `client.close(code, reason)` for the closing handshake.
 The entire batch is validated before any frames are sent.
 Socket writes, including pongs from the reader, are serialized per connection.

@@ -254,8 +254,12 @@ pub fn (mut ws Client) pong() ! {
 	ws.send_control_frame(.pong, 'PONG', [])!
 }
 
-// write_ptr writes len bytes provided a byteptr with a websocket messagetype
+// write_ptr writes payload_len bytes from a pointer with a websocket message type.
+// Control frame payloads larger than 125 bytes are rejected before socket access.
 pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
+	if is_control_frame(code) && payload_len > 125 {
+		return error('control frame payload exceeds 125 bytes')
+	}
 	// ws.debug_log('write_ptr code: ${code}')
 	if ws.get_state() != .open || ws.conn.sock.handle < 1 {
 		// todo: send error here later
@@ -330,7 +334,8 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 	return written_len
 }
 
-// write writes a byte array with a websocket messagetype to socket
+// write writes a byte array with a websocket message type to the socket.
+// Control frame payloads may contain at most 125 bytes.
 pub fn (mut ws Client) write(bytes []u8, code OPCode) !int {
 	return ws.write_ptr(&u8(bytes.data), bytes.len, code)
 }
