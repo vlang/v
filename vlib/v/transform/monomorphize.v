@@ -9562,7 +9562,7 @@ fn (t &Transformer) generic_array_literal_alias_expr_name(id flat.NodeId) ?strin
 			return name
 		}
 	}
-	for candidate in [node.typ, node.value] {
+	for candidate in alias_name_candidates(node) {
 		if candidate.len > 0 {
 			return candidate
 		}
