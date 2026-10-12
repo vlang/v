@@ -7,6 +7,8 @@ The C backend emits libc prototypes from bodyless V declarations such as
 `fn C.strlen(const_s &char) usize`. Runtime bindings are marked used so cached modules
 retain their prototypes. Native backends retain C declarations without rooting same-named
 V functions. Explicit user-provided headers remain included.
+Bindings to source macros omit prototypes while the macros are defined. Conditional
+definitions and later `#undef` directives follow the C preprocessor's final state.
 Coverage and profiling retain file I/O and timer declarations even when the application
 imports no standard library modules.
 Mach task APIs declared by the application also keep their prototypes in headerless C.
@@ -53,7 +55,8 @@ bytes and handles partial writes. Programs with allocations, initialization, or 
 runtime requirements retain their normal runtime. Instrumented, library, freestanding,
 and `-file-list` builds also retain their runtime support. Portable `-os cross` and `-cross`
 snapshots retain the complete runtime, pointer-width checks, and custom-define metadata
-even for literal output.
+even for literal output. They use a complete translation unit rather than the V module cache,
+keeping embedded runtime helpers and their state together.
 
 The GC, signal, process, and compiler helpers are linked from native objects. Their platform headers
 are parsed when those objects are built. V caches the objects using the C compiler, target,
