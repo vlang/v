@@ -18,3 +18,6 @@ executables, or `-generate-c-project` to export a build command with the native 
 and library flags.
 
 Autofree uses a monolithic build so cleanup retains complete local-variable metadata.
+
+Older bootstrap compilers use compatibility headers for their first compiler build.
+The current compiler supplies an internal capability define and omits those headers.

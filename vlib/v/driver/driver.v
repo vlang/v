@@ -11437,6 +11437,8 @@ pub fn run(args []string) {
 	if v3_builtin_arena_define !in user_defines && v3_input_imports_arena(input_file) {
 		user_defines << v3_builtin_arena_define
 	}
+	// Older bootstrap compilers still require the stdlib's compatibility headers.
+	record_user_define(mut user_defines, mut compile_values, 'v3_c_extern_declarations')
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot).map(os.abs_path(it))
