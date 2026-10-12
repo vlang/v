@@ -15,7 +15,7 @@ fn test_compiler_default_clone_uses_the_aggregate_type() {
 		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
-		os.rm(out + $if windows { '.exe.c' } $else { '.c' }) or {}
+		os.rm(out + '.c') or {}
 	}
 	build :=
 		os.exec([default_clone_vexe, '-gc', 'none', '-d', 'ownership', '-path',
@@ -41,7 +41,7 @@ fn main() {
 	}
 	compile := os.exec([v3_bin, '${src}', '-d', 'ownership', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	c_source := os.read_file(out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
+	c_source := os.read_file(out + '.c') or { panic(err) }
 	assert !c_source.contains('string__clone(item)'), c_source
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
@@ -59,7 +59,7 @@ fn test_compiler_default_clone_inside_generic_fn() {
 		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
-		os.rm(out + $if windows { '.exe.c' } $else { '.c' }) or {}
+		os.rm(out + '.c') or {}
 	}
 	build :=
 		os.exec([default_clone_vexe, '-gc', 'none', '-d', 'ownership', '-path',

@@ -15,7 +15,7 @@ fn test_capturing_callbacks_use_owned_capture_contexts() {
 		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
-		os.rm(out + $if windows { '.exe.c' } $else { '.c' }) or {}
+		os.rm(out + '.c') or {}
 	}
 	build :=
 		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
@@ -64,7 +64,7 @@ fn main() {
 	}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	c_source := os.read_file(out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
+	c_source := os.read_file(out + '.c') or { panic(err) }
 	assert c_source.contains('closure__closure_create_with_data')
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
@@ -80,7 +80,7 @@ fn test_spawned_capturing_literals_use_owned_capture_contexts() {
 		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
-		os.rm(out + $if windows { '.exe.c' } $else { '.c' }) or {}
+		os.rm(out + '.c') or {}
 	}
 	build :=
 		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
@@ -121,7 +121,7 @@ fn main() {
 	}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	c_source := os.read_file(out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
+	c_source := os.read_file(out + '.c') or { panic(err) }
 	assert c_source.contains('closure__closure_create_with_data'), c_source
 	assert c_source.contains('__anon_fn_0_Ctx'), c_source
 	assert c_source.contains('_args_thread_wrapper'), c_source
@@ -141,7 +141,7 @@ fn test_spawned_named_capturing_callback_survives_join_and_reuse() {
 		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
-		os.rm(out + $if windows { '.exe.c' } $else { '.c' }) or {}
+		os.rm(out + '.c') or {}
 	}
 	build :=
 		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
@@ -164,7 +164,7 @@ fn main() {
 	}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	c_source := os.read_file(out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
+	c_source := os.read_file(out + '.c') or { panic(err) }
 	assert !c_source.contains('closure__closure_try_destroy((void*)p->f);'), c_source
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

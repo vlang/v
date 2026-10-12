@@ -538,7 +538,7 @@ fn execute_shell(cmd string) Result {
 // extension-less path, so `-o build/prog` (which writes `build/prog.exe`) would otherwise fail
 // with "The system cannot find the file specified".
 fn win_exec_application_name(exe string) string {
-	if file_ext(exe) == '' && is_file(exe + '.exe') {
+	if !is_file(exe) && file_ext(exe) == '' && is_file(exe + '.exe') {
 		return exe + '.exe'
 	}
 	return exe

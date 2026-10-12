@@ -78,7 +78,7 @@ fn main() {
 	assert run.output.contains('52\n'), run.output
 	assert run.output.trim_space().ends_with('2026'), run.output
 
-	generated := os.read_file(bin + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
+	generated := os.read_file(bin + '.c') or { panic(err) }
 	c_lines := c_variadic_call_lines(generated, ['printf', 'fprintf', 'sscanf'])
 	assert c_lines.len >= 4, generated
 	for line in c_lines {
@@ -121,7 +121,7 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '2', run.output
 
-	generated := os.read_file(bin + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
+	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert generated.contains('i64 __vararg_storage_'), generated
 	assert generated.contains('double __vararg_storage_'), generated
 	assert !generated.contains('Small __vararg_storage_'), generated

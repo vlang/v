@@ -76,7 +76,7 @@ fn main() {
 	compile := os.exec([v3_bin, main_path, ...(os.split_args(feature_arg) or { panic(err) }), '-b',
 		'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
-	c_path := bin_path + $if windows { '.exe.c' } $else { '.c' }
+	c_path := bin_path + '.c'
 	assert os.exists(c_path), '${name}: missing generated C ${c_path}'
 	return os.read_file(c_path) or { panic(err) }
 }

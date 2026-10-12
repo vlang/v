@@ -17,10 +17,10 @@ fn test_arc_clone_shares_payload_and_drops_it_once() {
 		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
-		os.rm(out + $if windows { '.exe.c' } $else { '.c' }) or {}
+		os.rm(out + '.c') or {}
 		os.rm(nonownership_src) or {}
 		os.rm(nonownership_out) or {}
-		os.rm(nonownership_out + $if windows { '.exe.c' } $else { '.c' }) or {}
+		os.rm(nonownership_out + '.c') or {}
 	}
 	build :=
 		os.exec([arc_codegen_vexe, '-gc', 'none', '-d', 'ownership', '-path',
@@ -229,7 +229,7 @@ fn main() {
 	}
 	compile := os.exec([v3_bin, '${src}', '-d', 'ownership', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	c_source := os.read_file(out + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
+	c_source := os.read_file(out + '.c') or { panic(err) }
 	assert c_source.contains('arc__Arc_')
 	assert c_source.contains('__clone')
 	run := os.exec([out])

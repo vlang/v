@@ -19,7 +19,7 @@ fn test_c_string_literal_pointer_codegen_preserves_regular_addresses() {
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	c_code := os.read_file(bin + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
+	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('puts("canary");'), c_code
 	assert c_code.contains('puts("line 1\\nline 2");'), c_code
 	assert !c_code.contains('puts(&"canary");'), c_code
@@ -55,7 +55,7 @@ fn test_embedded_nul_string_literal_codegen_escapes_c_source() {
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	c_code := os.read_file(bin + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
+	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('ab\\000cd'), c_code
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -76,7 +76,7 @@ fn test_c_escape_literals_are_scalar_bytes_in_scalar_contexts() {
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	c_code := os.read_file(bin + $if windows { '.exe.c' } $else { '.c' }) or { panic(err) }
+	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('putchar(*"\\x41")'), c_code
 	assert c_code.contains('putchar((*"\\x41"))'), c_code
 	assert c_code.contains('putchar(*"\\101")'), c_code
