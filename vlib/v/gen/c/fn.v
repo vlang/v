@@ -17181,6 +17181,8 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 // header set in system_libc_headers(). Declarations from other system headers are
 // tracked per include through inlined_c_declared_fns.
 const c_system_libc_preamble_declared_fns = {
+	'pthread_attr_setdetachstate':   true
+	'pthread_once':                  true
 	'__builtin_ctz':                 true
 	'__builtin_ctzll':               true
 	'abs':                           true

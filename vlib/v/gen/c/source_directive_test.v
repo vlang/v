@@ -244,6 +244,16 @@ fn test_cache_extern_filter_uses_pthread_v_declarations() {
 	assert g.should_emit_c_extern_decl('pthread_getspecific')
 	assert g.should_emit_c_extern_decl('pthread_setspecific')
 	assert g.should_emit_c_extern_decl('pthread_key_delete')
+	assert g.should_emit_c_extern_decl('pthread_once')
+	assert g.should_emit_c_extern_decl('pthread_attr_setdetachstate')
+
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '<pthread.h>'
+	}, '/tmp/main.c.v', false)
+	assert !g.should_emit_c_extern_decl('pthread_once')
+	assert !g.should_emit_c_extern_decl('pthread_attr_setdetachstate')
 }
 
 fn posix_declaration_filter_gen(target_os string, system_libc bool) FlatGen {
