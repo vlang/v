@@ -9,64 +9,6 @@ import os
 import time
 import crypto.sha256
 
-fn test_portable_executable_keeps_one_signal_runtime_owner_and_host_cache() ! {
-	$if windows || freestanding || vinix {
-		return
-	}
-	root := os.join_path(os.vtmp_dir(), 'portable_runtime_owner_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn main() {\n values := [1, 2]\n assert values.len == 2\n println("runtime owner OK")\n}\n')!
-	cache := os.join_path(root, 'cache')
-	child_env := {
-		'VFLAGS':                 ''
-		'VEXE':                   @VEXE
-		'VTEST_ONLY_FN':          ''
-		'VTMP':                   os.join_path(root, 'vtmp')
-		'V3CACHE':                cache
-		'VTOOLS_CACHE_DIR':       os.join_path(root, 'tools')
-		'VJOBS':                  '1'
-		'V_MACOS_V3_NO_FALLBACK': '1'
-	}
-	for flags in [['-os', 'cross'], []string{}] {
-		for _ in 0 .. 2 {
-			run := cmdexec.run_in_merged_with_env(@VEXE, ['-cc', 'clang', '-gc', 'none',
-				'-no-retry-compilation', ...flags, 'run', source], @VEXEROOT, child_env)
-			assert run.exit_code == 0, run.output
-			assert run.output.trim_space().ends_with('runtime owner OK'), run.output
-			assert !run.output.contains('discarding them and retrying'), run.output
-		}
-		headers := os.walk_ext(cache, '.vh')
-		if flags.len > 0 {
-			assert headers.len == 0, headers.str()
-			assert os.walk_ext(cache, '.o').len == 0
-		} else {
-			assert headers.len > 0, 'ordinary host builds must still publish module interfaces'
-		}
-	}
-}
-
-fn test_incremental_main_inlines_and_deduplicates_literal_declarations() ! {
-	root := os.join_path(os.vtmp_dir(), 'incremental_inline_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	declarations := os.join_path(root, 'declarations.h')
-	body := os.join_path(root, 'body.c')
-	literal := 'static const string _v3_lit_5_abc = {"hello", 5, 1};\n'
-	os.write_file(declarations, 'typedef struct { const char* str; int len; int is_lit; } string;\n' + literal)!
-	os.write_file(body, literal + 'int main(void) { return _v3_lit_5_abc.len != 5; }\n')!
-	source := v3_incremental_main_source(os.read_file(declarations)!, os.read_file(body)!)
-	assert !source.contains('#include'), source
-	assert source.count(literal.trim_space()) == 1, source
-	generated := os.join_path(root, 'main.c')
-	binary := os.join_path(root, 'main')
-	os.write_file(generated, source)!
-	compiled := cmdexec.run('cc', ['-Werror', '-o', binary, generated])
-	assert compiled.exit_code == 0, compiled.output
-	assert cmdexec.run(binary, []).exit_code == 0
-}
-
 fn test_tcc_dependency_scan_tracks_native_helper_headers() {
 	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
 	if !os.is_file(tcc) {
@@ -105,61 +47,6 @@ fn test_macos_tcc_accepts_generated_c_objects_but_rejects_foreign_objects() {
 	assert v3_tcc_link_has_incompatible_objects(resolved, [], '/tools/tcc.exe')
 	os.write_file(request, 'prebuilt object')!
 	assert v3_tcc_link_has_incompatible_objects(resolved, [request], '/tools/tcc.exe')
-}
-
-fn test_macos_tcc_caches_native_objective_c_sdk_objects() ! {
-	$if !macos {
-		return
-	}
-	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
-	if !os.is_file(tcc) || cmdexec.run(tcc, ['-v']).exit_code != 0 {
-		return
-	}
-	root := os.join_path(os.vtmp_dir(), 'native_objc_cache_${os.getpid()}_${time.now().unix_nano()}')
-	os.mkdir_all(root)!
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'native_objc_cache' }\n")!
-	os.write_file(os.join_path(root, '.v.mod.stop'), '')!
-	os.write_file(os.join_path(root, 'native_sdk.m'), '#import <Foundation/Foundation.h>\n#include <stdint.h>\nint64_t native_strlen(const char* text) {\n    @autoreleasepool { return (int64_t)[[NSString stringWithUTF8String:text] length]; }\n}\n')!
-	source := os.join_path(root, 'main.c.v')
-	os.write_file(source, 'module main\n#flag -framework Foundation\n#flag -fobjc-arc\n#flag "@VMODROOT/native_sdk.o"\n@[c_extern]\nfn C.native_strlen(const_text &char) i64\nfn main() { assert C.native_strlen(c\'cached SDK\') == 10; println(\'native SDK cache probe passed\') }\n')!
-	child_vtmp := os.join_path(root, 'vtmp')
-	child_env := {
-		'VFLAGS':                 ''
-		'VEXE':                   @VEXE
-		'VTMP':                   child_vtmp
-		'V3CACHE':                os.join_path(root, 'cache')
-		'VTOOLS_CACHE_DIR':       os.join_path(root, 'tools')
-		'V_MACOS_V3_NO_FALLBACK': '1'
-		'V3_CACHE_TRACE':         '1'
-	}
-	args := ['-nocache', '-cc', 'tcc', '-showcc', '-o', os.join_path(root, 'probe'), 'run', source]
-	cold := cmdexec.run_in_merged_with_env(@VEXE, args, root, child_env)
-	assert cold.exit_code == 0, cold.output
-	assert cold.output.contains('native SDK cache probe passed'), cold.output
-	mut hashes := map[string]string{}
-	mut mtimes := map[string]i64{}
-	for object in os.walk_ext(child_vtmp, '.o') {
-		if !os.file_name(object).starts_with('native_sdk_o_') {
-			continue
-		}
-		hashes[object] = sha256.sum(os.read_bytes(object)!).hex()
-		// A sentinel detects replacements even when both compilations finish in the same second.
-		os.utime(object, 1_234_567_890, 1_234_567_890)!
-		mtimes[object] = os.file_last_mod_unix(object)
-	}
-	assert hashes.len > 0, cold.output
-	warm := cmdexec.run_in_merged_with_env(@VEXE, args, root, child_env)
-	assert warm.exit_code == 0, warm.output
-	assert warm.output.contains('native SDK cache probe passed'), warm.output
-	assert !warm.output.contains('discarding them and retrying'), warm.output
-	assert !warm.output.contains('C object cache miss: key=native_sdk_o_'), warm.output
-	for object, digest in hashes {
-		assert sha256.sum(os.read_bytes(object)!).hex() == digest, object
-		assert os.file_last_mod_unix(object) == mtimes[object], object
-	}
 }
 
 fn native_inputs_of(a &flat.FlatAst, user_c_flags []string) cgen.CacheNativeInputs {
@@ -609,7 +496,7 @@ fn test_cached_signal_header_has_one_owner_with_shared_program_declarations() ! 
 			false))!
 		os.write_file(declarations_path, tcc_declarations)!
 		os.write_file(body_path, body)!
-		os.write_file(incremental_path, v3_incremental_main_source(tcc_declarations, body))!
+		os.write_file(incremental_path, v3_incremental_main_source(declarations_path, tcc_declarations, body))!
 		// A cached combined source may later be split for parallel compilation.
 		// The owner prelude copied into its declaration header cannot promote a body unit.
 		parallel_header, safe := v3_parallel_c_declaration_header(owner_source, []string{},
@@ -668,214 +555,6 @@ fn test_only_declaration_headers_are_replicated_into_cached_objects() {
 	assert modulecache.c_source_is_replicable('static int foo_helper(int a[sizeof(int)]);\n')
 }
 
-fn test_cached_malloc_pointer_type_survives_function_body_changes() ! {
-	$if !macos {
-		return
-	}
-	root := os.join_path(os.vtmp_dir(), 'cached_pointer_typing_${os.getpid()}_${time.now().unix_nano()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'cached_pointer_typing' }\n")!
-	os.write_file(os.join_path(root, '.v.mod.stop'), '')!
-	source := os.join_path(root, 'main.v')
-	cache := os.join_path(root, 'cache')
-	child_env := {
-		'VFLAGS':                 ''
-		'VEXE':                   @VEXE
-		'VTMP':                   os.join_path(root, 'vtmp')
-		'V3CACHE':                cache
-		'VTOOLS_CACHE_DIR':       os.join_path(root, 'tools')
-		'V_MACOS_V3_NO_FALLBACK': '1'
-	}
-	args := ['-cc', 'clang', '-silent', '-o', os.join_path(root, 'probe'), 'run', source]
-	// Changing the stored byte forces a fresh check using warmed module interfaces;
-	// an exact whole-program hit would otherwise hide corrupted pointer annotations.
-	for value in [65, 67] {
-		os.write_file(source, 'fn identity[T](value T) T { return value }
-fn consume(value voidptr) { assert value != unsafe { nil } }
-fn main() {
-	unsafe {
-		data_len := identity(\'file XX\').len
-		buf := malloc(data_len * 2)
-		for _ in 0 .. 2 {
-			consume(buf)
-			buf[data_len] = ${value}
-			assert buf[data_len] == ${value}
-		}
-		free(buf)
-	}
-	println(\'pointer value ${value}\')
-}
-')!
-		for _ in 0 .. 2 {
-			compiled := cmdexec.run_in_merged_with_env(@VEXE, args, root, child_env)
-			assert compiled.exit_code == 0, compiled.output
-			assert compiled.output.contains('pointer value ${value}'), compiled.output
-		}
-		assert os.walk_ext(cache, '.vh').any(os.file_name(it).starts_with('builtin_')), 'build did not populate the module cache'
-	}
-}
-
-fn test_cached_export_callbacks_share_initialization_across_main_forms() ! {
-	$if !macos {
-		return
-	}
-	root := os.join_path(os.vtmp_dir(), 'cached_export_startup_${os.getpid()}_${time.now().unix_nano()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'cached_export_startup' }\n")!
-	os.write_file(os.join_path(root, '.v.mod.stop'), '')!
-	source := os.join_path(root, 'main.c.v')
-	cache := os.join_path(root, 'cache')
-	child_env := {
-		'VFLAGS':                 ''
-		'VEXE':                   @VEXE
-		'VTMP':                   os.join_path(root, 'vtmp')
-		'V3CACHE':                cache
-		'VTOOLS_CACHE_DIR':       os.join_path(root, 'tools')
-		'V_MACOS_V3_NO_FALLBACK': '1'
-	}
-	args := ['-cc', 'clang', '-enable-globals', '-silent', '-o', os.join_path(root, 'probe'), 'run',
-		source, 'callback-argument']
-	mut objects := map[string]i64{}
-	for i, explicit_main in [false, true, false] {
-		value := 65 + i
-		arguments_check := if explicit_main {
-			'assert os.args.last() == "callback-argument"'
-		} else {
-			''
-		}
-		body := '	assert initializations == 1
-	assert stbi.Image{}.width == 0
-	${arguments_check}
-	unsafe {
-		buffer := &u8(C.stbi__callback_malloc(4))
-		buffer[0] = ${value}
-		assert buffer[0] == ${value}
-		C.stbi__callback_free(buffer)
-	}
-	assert initializations == 1
-	println(\'callback ${value}\')
-'
-		program := 'import os
-import stbi
-
-__global initializations = 0
-
-fn init() { initializations++ }
-
-@[c_extern]
-fn C.stbi__callback_malloc(size usize) voidptr
-@[c_extern]
-fn C.stbi__callback_free(pointer voidptr)
-
-' + if explicit_main { 'fn main() {\n' + body + '}\n' } else { body }
-		os.write_file(source, program)!
-		compiled := cmdexec.run_in_merged_with_env(@VEXE, args, root, child_env)
-		assert compiled.exit_code == 0, compiled.output
-		assert compiled.output.contains('callback ${value}'), compiled.output
-		if i == 0 {
-			for object in os.walk_ext(cache, '.o') {
-				if os.file_name(object).starts_with('stbi_') {
-					os.utime(object, 1_234_567_890, 1_234_567_890)!
-					objects[object] = os.file_last_mod_unix(object)
-				}
-			}
-			assert objects.len > 0, 'exported callback module was not cached'
-		} else {
-			current_objects := os.walk_ext(cache, '.o').filter(os.file_name(it).starts_with('stbi_'))
-			assert current_objects.sorted() == objects.keys().sorted(), current_objects.str()
-			for object, modified in objects {
-				assert os.file_last_mod_unix(object) == modified, object
-			}
-		}
-	}
-}
-
-fn test_cached_error_dispatch_lowers_unused_method_bodies_and_helpers() ! {
-	$if !macos {
-		return
-	}
-	root := os.join_path(os.vtmp_dir(), 'cached_error_dispatch_${os.getpid()}_${time.now().unix_nano()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'cached_error_dispatch' }\n")!
-	os.write_file(os.join_path(root, '.v.mod.stop'), '')!
-	source := os.join_path(root, 'dispatch_test.v')
-	cache := os.join_path(root, 'cache')
-	child_env := {
-		'VFLAGS':                 ''
-		'VEXE':                   @VEXE
-		'VTMP':                   os.join_path(root, 'vtmp')
-		'V3CACHE':                cache
-		'VTOOLS_CACHE_DIR':       os.join_path(root, 'tools')
-		'V_MACOS_V3_NO_FALLBACK': '1'
-		'VTEST_ONLY_FN':          ''
-	}
-	// These methods are referenced only by the generated IError dispatch table.
-	// Calling them in V would hide the missing reachability/lowering regression.
-	for value in [41, 43] {
-		os.write_file(source, 'struct ArrayMessageError {
- values []string
-}
-fn (err ArrayMessageError) msg() string { return "values: \${err.values}" }
-fn (err ArrayMessageError) code() int { return dispatch_code() }
-fn dispatch_code() int { return ${value} }
-fn test_smoke() { assert ${value} > 0 }
-')!
-		for _ in 0 .. 2 {
-			compiled := cmdexec.run_in_merged_with_env(@VEXE, ['-cc', 'clang', '-silent', source],
-				root, child_env)
-			assert compiled.exit_code == 0, compiled.output
-		}
-		assert os.walk_ext(cache, '.vh').any(os.file_name(it).starts_with('builtin_')), 'build did not populate the module cache'
-	}
-}
-
-fn test_cached_unused_fixed_array_layouts_do_not_hide_live_return_dependencies() ! {
-	$if !macos {
-		return
-	}
-	root := os.join_path(os.vtmp_dir(), 'cached_fixed_array_demand_${os.getpid()}_${time.now().unix_nano()}')
-	os.mkdir_all(os.join_path(root, 'arrays'))!
-	defer { os.rmdir_all(root) or {} }
-	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'cached_fixed_array_demand' }\n")!
-	os.write_file(os.join_path(root, '.v.mod.stop'), '')!
-	os.write_file(os.join_path(root, 'arrays', 'arrays.v'), 'module arrays
-pub struct Header {
-pub:
- text string
-}
-pub struct Request {
- headers [100]Header
-}
-pub fn answer() int { return 42 }
-pub fn headers() [2]Header { return [Header{ text: "first" }, Header{ text: "second" }]! }
-')!
-	source := os.join_path(root, 'demand_test.v')
-	cache := os.join_path(root, 'cache')
-	child_env := {
-		'VFLAGS':                 ''
-		'VEXE':                   @VEXE
-		'VTMP':                   os.join_path(root, 'vtmp')
-		'V3CACHE':                cache
-		'VTOOLS_CACHE_DIR':       os.join_path(root, 'tools')
-		'V_MACOS_V3_NO_FALLBACK': '1'
-		'VTEST_ONLY_FN':          ''
-	}
-	for i in 0 .. 4 {
-		body := if i < 2 {
-			'assert arrays.answer() == 42\nassert ${i} >= 0'
-		} else {
-			'values := arrays.headers()\nassert values[1].text == "second"\nassert ${i} >= 0'
-		}
-		os.write_file(source, 'import arrays\nfn test_demand() {\n${body}\n}\n')!
-		compiled := cmdexec.run_in_merged_with_env(@VEXE, ['-cc', 'clang', '-silent', source], root, child_env)
-		assert compiled.exit_code == 0, compiled.output
-		assert os.walk_ext(cache, '.vh').any(os.file_name(it).starts_with('arrays_')), 'build did not populate the module cache'
-	}
-}
-
 fn test_incremental_program_keeps_one_owner_for_cached_and_new_literals() ! {
 	root := os.join_path(os.vtmp_dir(), 'incremental_literal_owner_${os.getpid()}_${time.now().unix_nano()}')
 	os.mkdir_all(root)!
@@ -887,9 +566,8 @@ fn test_incremental_program_keeps_one_owner_for_cached_and_new_literals() ! {
 		// Inline prefix code must keep its storage before the body, while each
 		// edited body owns its new literal. The cached source remains reusable.
 		body := 'static const string _v3_lit_cached = {"cached", 6, 1};\nstatic const string _v3_lit_new = {"new", ${length}, 1};\nint main(void) { return cached_length() != 6 || _v3_lit_cached.len != 6 || _v3_lit_new.len != ${length}; }\n'
-		combined := v3_incremental_main_source(declarations, body)
-		assert combined.count('static const string _v3_lit_cached =') == 1
-		assert !combined.contains('#include')
+		combined := v3_incremental_main_source(declarations_path, declarations, body)
+		assert !combined.contains('static const string _v3_lit_cached =')
 		assert combined.contains('static const string _v3_lit_new =')
 		assert os.read_file(declarations_path)! == declarations
 		source := os.join_path(root, 'main.c')

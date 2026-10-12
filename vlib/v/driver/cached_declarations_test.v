@@ -222,83 +222,55 @@ fn stage_literal_words_and_names() (map[string]bool, map[string]bool) {
 				continue
 			}
 			source := os.read_file(os.join_path_single(stage_dir, file)) or { continue }
-			collect_stage_literal_words(source, mut words, mut names)
-		}
-	}
-	return words, names
-}
-
-// collect_stage_literal_words collects runtime name candidates from one stage's
-// source, excluding literal C header arguments.
-fn collect_stage_literal_words(source string, mut words map[string]bool, mut names map[string]bool) {
-	mut i := 0
-	for i < source.len {
-		quote := source[i]
-		i++
-		if quote !in [`'`, `"`] {
-			continue
-		}
-		// An SDK header argument names a file, not a runtime function.
-		if i < source.len && source[i] == `<` {
-			mut end := i + 1
-			for end < source.len && source[end] != quote && source[end] != `\n` {
-				end++
-			}
-			if end < source.len && source[end] == quote && source[i..end].ends_with('.h>') {
-				i = end + 1
-				continue
-			}
-		}
-		mut word := []u8{}
-		mut name := []u8{}
-		for i < source.len && source[i] != quote && source[i] != `\n` {
-			c := source[i]
-			if c == `\\` {
-				// An escape ends a word, and is none of its letters.
-				i += 2
+			mut i := 0
+			for i < source.len {
+				quote := source[i]
+				i++
+				if quote !in [`'`, `"`] {
+					continue
+				}
+				mut word := []u8{}
+				mut name := []u8{}
+				for i < source.len && source[i] != quote && source[i] != `\n` {
+					c := source[i]
+					if c == `\\` {
+						// An escape ends a word, and is none of its letters.
+						i += 2
+						if word.len > 0 {
+							words[word.bytestr()] = true
+							word.clear()
+						}
+						if name.len > 0 {
+							names[name.bytestr()] = true
+							name.clear()
+						}
+						continue
+					}
+					if c.is_letter() || c.is_digit() || c == `_` {
+						word << c
+					} else if word.len > 0 {
+						words[word.bytestr()] = true
+						word.clear()
+					}
+					if c.is_letter() || c.is_digit() || c in [`_`, `.`] {
+						name << c
+					} else if name.len > 0 {
+						names[name.bytestr()] = true
+						name.clear()
+					}
+					i++
+				}
 				if word.len > 0 {
 					words[word.bytestr()] = true
-					word.clear()
 				}
 				if name.len > 0 {
 					names[name.bytestr()] = true
-					name.clear()
 				}
-				continue
+				i++
 			}
-			if c.is_letter() || c.is_digit() || c == `_` {
-				word << c
-			} else if word.len > 0 {
-				words[word.bytestr()] = true
-				word.clear()
-			}
-			if c.is_letter() || c.is_digit() || c in [`_`, `.`] {
-				name << c
-			} else if name.len > 0 {
-				names[name.bytestr()] = true
-				name.clear()
-			}
-			i++
 		}
-		if word.len > 0 {
-			words[word.bytestr()] = true
-		}
-		if name.len > 0 {
-			names[name.bytestr()] = true
-		}
-		i++
 	}
-}
-
-fn test_stage_literal_words_distinguish_header_paths_from_runtime_names() {
-	mut words := map[string]bool{}
-	mut names := map[string]bool{}
-	collect_stage_literal_words("headers := ['<sys/random.h>', '<random.h>']", mut words, mut names)
-	assert !words['random']
-	assert !names['random.h']
-	collect_stage_literal_words("runtime := ['random', 'strings.random']", mut words, mut names)
-	assert words['random']
-	assert names['strings.random']
+	return words, names
 }
 
 const always_loaded_module_dirs = ['builtin', 'builtin/closure', 'strconv', 'strings', 'hash',

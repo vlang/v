@@ -3,22 +3,18 @@
 
 #include <stddef.h>
 
-#ifndef V_BROTLI_LINKAGE
-#define V_BROTLI_LINKAGE static inline
-#endif
-
 #if defined(_WIN32)
 #include <windows.h>
 
-V_BROTLI_LINKAGE void* v_brotli_open(const char* name) {
+static inline void* v_brotli_open(const char* name) {
 	return (void*)LoadLibraryA(name);
 }
 
-V_BROTLI_LINKAGE void* v_brotli_sym(void* handle, const char* name) {
+static inline void* v_brotli_sym(void* handle, const char* name) {
 	return (void*)GetProcAddress((HMODULE)handle, name);
 }
 
-V_BROTLI_LINKAGE int v_brotli_close(void* handle) {
+static inline int v_brotli_close(void* handle) {
 	return FreeLibrary((HMODULE)handle) != 0;
 }
 #else
@@ -33,15 +29,15 @@ V_BROTLI_LINKAGE int v_brotli_close(void* handle) {
 #undef dlclose
 #endif
 
-V_BROTLI_LINKAGE void* v_brotli_open(const char* name) {
+static inline void* v_brotli_open(const char* name) {
 	return dlopen(name, RTLD_LAZY);
 }
 
-V_BROTLI_LINKAGE void* v_brotli_sym(void* handle, const char* name) {
+static inline void* v_brotli_sym(void* handle, const char* name) {
 	return dlsym(handle, name);
 }
 
-V_BROTLI_LINKAGE int v_brotli_close(void* handle) {
+static inline int v_brotli_close(void* handle) {
 	return dlclose(handle) == 0;
 }
 #endif
@@ -53,7 +49,7 @@ void __msan_unpoison(const volatile void* a, size_t size);
 #endif
 #endif
 
-V_BROTLI_LINKAGE void v_brotli_msan_unpoison(const void* ptr, size_t len) {
+static inline void v_brotli_msan_unpoison(const void* ptr, size_t len) {
 #if defined(V_BROTLI_MEMORY_SANITIZER)
 	if (len > 0) {
 		__msan_unpoison(ptr, len);

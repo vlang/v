@@ -1,11 +1,7 @@
 #ifndef V_NET_MBEDTLS_HELPERS_H
 #define V_NET_MBEDTLS_HELPERS_H
-#ifndef V_MBEDTLS_HELPER_LINKAGE
-#define V_MBEDTLS_HELPER_LINKAGE static inline
-#endif
 
-
-V_MBEDTLS_HELPER_LINKAGE void v_mbedtls_ssl_set_bio_nonblocking(mbedtls_ssl_context *ssl, mbedtls_net_context *net)
+static inline void v_mbedtls_ssl_set_bio_nonblocking(mbedtls_ssl_context *ssl, mbedtls_net_context *net)
 {
 	mbedtls_ssl_set_bio(ssl, net, mbedtls_net_send, mbedtls_net_recv, NULL);
 }
@@ -18,7 +14,7 @@ V_MBEDTLS_HELPER_LINKAGE void v_mbedtls_ssl_set_bio_nonblocking(mbedtls_ssl_cont
  * one place that needs real field access, resolved by the real C compiler
  * against the real struct layout rather than a V-side guess at the offset.
  */
-V_MBEDTLS_HELPER_LINKAGE mbedtls_pk_context *v_mbedtls_x509_crt_get_pk(mbedtls_x509_crt *crt)
+static inline mbedtls_pk_context *v_mbedtls_x509_crt_get_pk(mbedtls_x509_crt *crt)
 {
 	return &crt->pk;
 }
@@ -46,7 +42,7 @@ V_MBEDTLS_HELPER_LINKAGE mbedtls_pk_context *v_mbedtls_x509_crt_get_pk(mbedtls_x
  * `const T*` or a C enum return type in an `fn C.` declaration, so the C
  * side is the side that must match.
  */
-V_MBEDTLS_HELPER_LINKAGE int v_mbedtls_pk_ec_group_id(mbedtls_pk_context *pk)
+static inline int v_mbedtls_pk_ec_group_id(mbedtls_pk_context *pk)
 {
 	const mbedtls_ecp_keypair *kp = mbedtls_pk_ec(*pk);
 	if (kp == NULL) {
@@ -70,7 +66,7 @@ V_MBEDTLS_HELPER_LINKAGE int v_mbedtls_pk_ec_group_id(mbedtls_pk_context *pk)
  * failing check's own mbedTLS error code) if either restricts the
  * certificate's use to something other than a TLS server signing key.
  */
-V_MBEDTLS_HELPER_LINKAGE int v_mbedtls_check_server_cert_usage(mbedtls_x509_crt *crt)
+static inline int v_mbedtls_check_server_cert_usage(mbedtls_x509_crt *crt)
 {
 	int ku_ret = mbedtls_x509_crt_check_key_usage(crt, MBEDTLS_X509_KU_DIGITAL_SIGNATURE);
 	if (ku_ret != 0) {

@@ -1,7 +1,3 @@
-#ifndef V_NET_OPENSSL_LINKAGE
-#define V_NET_OPENSSL_LINKAGE static
-#endif
-
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,7 +17,7 @@ static int v_net_openssl_pem_read_reached_eof(void) {
 	return 0;
 }
 
-V_NET_OPENSSL_LINKAGE int v_net_openssl_SSL_CTX_use_certificate_chain_memory(SSL_CTX *ctx,
+static int v_net_openssl_SSL_CTX_use_certificate_chain_memory(SSL_CTX *ctx,
 		const unsigned char *data, size_t len) {
 	if (len > INT_MAX) {
 		return 0;
@@ -58,13 +54,13 @@ V_NET_OPENSSL_LINKAGE int v_net_openssl_SSL_CTX_use_certificate_chain_memory(SSL
 	return 1;
 }
 
-V_NET_OPENSSL_LINKAGE int v_net_openssl_SSL_CTX_extra_chain_certs_count(SSL_CTX *ctx) {
+static int v_net_openssl_SSL_CTX_extra_chain_certs_count(SSL_CTX *ctx) {
 	STACK_OF(X509) *chain = NULL;
 	SSL_CTX_get_extra_chain_certs(ctx, &chain);
 	return chain == NULL ? 0 : sk_X509_num(chain);
 }
 
-V_NET_OPENSSL_LINKAGE int v_net_openssl_SSL_CTX_use_PrivateKey_memory(SSL_CTX *ctx,
+static int v_net_openssl_SSL_CTX_use_PrivateKey_memory(SSL_CTX *ctx,
 		const unsigned char *data, size_t len) {
 	if (len > INT_MAX) {
 		return 0;
@@ -83,7 +79,7 @@ V_NET_OPENSSL_LINKAGE int v_net_openssl_SSL_CTX_use_PrivateKey_memory(SSL_CTX *c
 	return result;
 }
 
-V_NET_OPENSSL_LINKAGE int v_net_openssl_SSL_CTX_load_verify_memory(SSL_CTX *ctx,
+static int v_net_openssl_SSL_CTX_load_verify_memory(SSL_CTX *ctx,
 		const unsigned char *data, size_t len) {
 	if (len > INT_MAX) {
 		return 0;
@@ -127,7 +123,7 @@ V_NET_OPENSSL_LINKAGE int v_net_openssl_SSL_CTX_load_verify_memory(SSL_CTX *ctx,
 	return loaded > 0 ? 1 : 0;
 }
 
-V_NET_OPENSSL_LINKAGE int v_net_openssl_SSL_CTX_load_client_CA_file(SSL_CTX *ctx, const char *file) {
+static int v_net_openssl_SSL_CTX_load_client_CA_file(SSL_CTX *ctx, const char *file) {
 	STACK_OF(X509_NAME) *names = SSL_load_client_CA_file(file);
 	if (names == NULL) {
 		return 0;
@@ -137,7 +133,7 @@ V_NET_OPENSSL_LINKAGE int v_net_openssl_SSL_CTX_load_client_CA_file(SSL_CTX *ctx
 	return 1;
 }
 
-V_NET_OPENSSL_LINKAGE int v_net_openssl_SSL_CTX_client_CA_names_count(SSL_CTX *ctx) {
+static int v_net_openssl_SSL_CTX_client_CA_names_count(SSL_CTX *ctx) {
 	STACK_OF(X509_NAME) *names = SSL_CTX_get_client_CA_list(ctx);
 	return names == NULL ? 0 : sk_X509_NAME_num(names);
 }
@@ -145,11 +141,11 @@ V_NET_OPENSSL_LINKAGE int v_net_openssl_SSL_CTX_client_CA_names_count(SSL_CTX *c
 // SSL_get1_peer_certificate is only available in OpenSSL 3.x.
 #if defined(LIBRESSL_VERSION_NUMBER) || !defined(OPENSSL_VERSION_NUMBER) \
 	|| OPENSSL_VERSION_NUMBER < 0x30000000L
-V_NET_OPENSSL_LINKAGE X509 *v_net_openssl_get1_peer_certificate(SSL *ssl) {
+static X509 *v_net_openssl_get1_peer_certificate(SSL *ssl) {
 	return SSL_get_peer_certificate(ssl);
 }
 #else
-V_NET_OPENSSL_LINKAGE X509 *v_net_openssl_get1_peer_certificate(SSL *ssl) {
+static X509 *v_net_openssl_get1_peer_certificate(SSL *ssl) {
 	return SSL_get1_peer_certificate(ssl);
 }
 #endif
@@ -158,10 +154,10 @@ V_NET_OPENSSL_LINKAGE X509 *v_net_openssl_get1_peer_certificate(SSL *ssl) {
 // older builds linkable and report that identity validation is unavailable so
 // callers can reject validated connections before starting a handshake.
 #if !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER < 0x10002000L
-V_NET_OPENSSL_LINKAGE int v_net_openssl_has_x509_identity_checks(void) {
+static int v_net_openssl_has_x509_identity_checks(void) {
 	return 0;
 }
-V_NET_OPENSSL_LINKAGE int v_net_openssl_x509_check_host(X509 *cert, const char *name, size_t name_len, unsigned int flags, char **peer_name) {
+static int v_net_openssl_x509_check_host(X509 *cert, const char *name, size_t name_len, unsigned int flags, char **peer_name) {
 	(void)cert;
 	(void)name;
 	(void)name_len;
@@ -169,20 +165,20 @@ V_NET_OPENSSL_LINKAGE int v_net_openssl_x509_check_host(X509 *cert, const char *
 	(void)peer_name;
 	return 0;
 }
-V_NET_OPENSSL_LINKAGE int v_net_openssl_x509_check_ip_asc(X509 *cert, const char *ip_asc, unsigned int flags) {
+static int v_net_openssl_x509_check_ip_asc(X509 *cert, const char *ip_asc, unsigned int flags) {
 	(void)cert;
 	(void)ip_asc;
 	(void)flags;
 	return 0;
 }
 #else
-V_NET_OPENSSL_LINKAGE int v_net_openssl_has_x509_identity_checks(void) {
+static int v_net_openssl_has_x509_identity_checks(void) {
 	return 1;
 }
-V_NET_OPENSSL_LINKAGE int v_net_openssl_x509_check_host(X509 *cert, const char *name, size_t name_len, unsigned int flags, char **peer_name) {
+static int v_net_openssl_x509_check_host(X509 *cert, const char *name, size_t name_len, unsigned int flags, char **peer_name) {
 	return X509_check_host(cert, name, name_len, flags, peer_name);
 }
-V_NET_OPENSSL_LINKAGE int v_net_openssl_x509_check_ip_asc(X509 *cert, const char *ip_asc, unsigned int flags) {
+static int v_net_openssl_x509_check_ip_asc(X509 *cert, const char *ip_asc, unsigned int flags) {
 	return X509_check_ip_asc(cert, ip_asc, flags);
 }
 #endif
@@ -193,18 +189,18 @@ V_NET_OPENSSL_LINKAGE int v_net_openssl_x509_check_ip_asc(X509 *cert, const char
 // LibreSSL reports a high OPENSSL_VERSION_NUMBER and provides ALPN, so it uses
 // the native path below.
 #if !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER < 0x10002000L
-V_NET_OPENSSL_LINKAGE int v_net_openssl_set_alpn_protos(SSL *ssl, const unsigned char *protos, unsigned int protos_len) {
+static int v_net_openssl_set_alpn_protos(SSL *ssl, const unsigned char *protos, unsigned int protos_len) {
 	(void)ssl;
 	(void)protos;
 	(void)protos_len;
 	return -1; // ALPN unsupported on this OpenSSL version
 }
-V_NET_OPENSSL_LINKAGE void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **data, unsigned int *len) {
+static void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **data, unsigned int *len) {
 	(void)ssl;
 	*data = NULL;
 	*len = 0;
 }
-V_NET_OPENSSL_LINKAGE void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
+static void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
 		const unsigned char *protos, unsigned int protos_len) {
 	(void)ctx;
 	(void)protos;
@@ -265,7 +261,7 @@ static int v_net_openssl_alpn_select_cb(SSL *ssl, const unsigned char **out,
 	return SSL_TLSEXT_ERR_NOACK;
 }
 
-V_NET_OPENSSL_LINKAGE void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
+static void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
 		const unsigned char *protos, unsigned int protos_len) {
 	if (!v_net_openssl_init_alpn_select_state_index()) {
 		return NULL;
@@ -290,10 +286,10 @@ V_NET_OPENSSL_LINKAGE void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX
 	return selection;
 }
 
-V_NET_OPENSSL_LINKAGE int v_net_openssl_set_alpn_protos(SSL *ssl, const unsigned char *protos, unsigned int protos_len) {
+static int v_net_openssl_set_alpn_protos(SSL *ssl, const unsigned char *protos, unsigned int protos_len) {
 	return SSL_set_alpn_protos(ssl, protos, protos_len);
 }
-V_NET_OPENSSL_LINKAGE void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **data, unsigned int *len) {
+static void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **data, unsigned int *len) {
 	SSL_get0_alpn_selected(ssl, data, len);
 }
 #endif
@@ -301,7 +297,7 @@ V_NET_OPENSSL_LINKAGE void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsi
 // Match the init API to the OpenSSL headers that are actually available.
 #if defined(LIBRESSL_VERSION_NUMBER) || !defined(OPENSSL_VERSION_NUMBER) \
 	|| OPENSSL_VERSION_NUMBER < 0x10100000L
-V_NET_OPENSSL_LINKAGE int v_net_openssl_init_ssl(void) {
+static int v_net_openssl_init_ssl(void) {
 	SSL_load_error_strings();
 	if (SSL_library_init() != 1) {
 		return 0;
@@ -309,7 +305,7 @@ V_NET_OPENSSL_LINKAGE int v_net_openssl_init_ssl(void) {
 	return v_net_openssl_init_alpn_select_state_index();
 }
 #else
-V_NET_OPENSSL_LINKAGE int v_net_openssl_init_ssl(void) {
+static int v_net_openssl_init_ssl(void) {
 	if (OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS, 0) != 1) {
 		return 0;
 	}
@@ -331,11 +327,11 @@ V_NET_OPENSSL_LINKAGE int v_net_openssl_init_ssl(void) {
 // On older OpenSSL/LibreSSL, fall back to SSLv23_server_method().
 #if defined(LIBRESSL_VERSION_NUMBER) || !defined(OPENSSL_VERSION_NUMBER) \
 	|| OPENSSL_VERSION_NUMBER < 0x10100000L
-V_NET_OPENSSL_LINKAGE const SSL_METHOD *v_net_openssl_TLS_server_method(void) {
+static const SSL_METHOD *v_net_openssl_TLS_server_method(void) {
 	return SSLv23_server_method();
 }
 #else
-V_NET_OPENSSL_LINKAGE const SSL_METHOD *v_net_openssl_TLS_server_method(void) {
+static const SSL_METHOD *v_net_openssl_TLS_server_method(void) {
 	return TLS_server_method();
 }
 #endif

@@ -6547,12 +6547,10 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		}
 	}
 	if name.starts_with('C.') {
-		explicit_layout := g.c_struct_has_explicit_layout(name)
+		// Match V1: `@[typedef]` C structs name types supplied by native code and
+		// must never get a synthesized V-owned declaration or body.
 		if name in g.tc.c_typedef_structs {
-			info := g.struct_decl_infos[name] or { return true }
-			if !explicit_layout && !g.c_source_file_is_in_vlib(info.file) {
-				return true
-			}
+			return true
 		}
 		if g.cache_native_c_symbols[name[2..]] {
 			return true
@@ -6563,10 +6561,8 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		if info := g.struct_decl_infos[name] {
 			// Headerless vlib bindings supply their own complete C layouts.
 			// Keep externally supplied types opaque when headers own their definitions.
-			if !explicit_layout
-				&& (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
-				&& (g.files_with_c_includes[info.file] || info.module in g.mods_with_c_includes
-					|| !g.c_source_file_is_in_vlib(info.file)) {
+			if (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
+				&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
 				return true
 			}
 		}
@@ -6604,16 +6600,8 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	return name in c_preamble_defined_structs || g.cocoa_nsfont_class(name)
 }
 
-fn (g &FlatGen) c_struct_has_explicit_layout(name string) bool {
-	info := g.struct_decl_infos[name] or { return false }
-	return info.node_id >= 0
-		&& g.tc.declaration_has_attribute(flat.NodeId(info.node_id), 'c_extern')
-}
-
 const c_system_header_struct_names = {
 	'__stat64':  true
-	'iovec':     true
-	'pollfd':    true
 	'sigaction': true
 }
 
@@ -6649,7 +6637,6 @@ const c_preamble_defined_structs = {
 	'C.pthread_mutex_t':            true
 	'C.pthread_rwlock_t':           true
 	'C.pthread_rwlockattr_t':       true
-	'C.qsort_callback_func':        true
 	'C.rusage':                     true
 	'C.sem_t':                      true
 	'C.SECURITY_ATTRIBUTES':        true
@@ -7708,21 +7695,16 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 // write_struct_field writes struct field output for c.
 fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) {
 	qualifier := if f.is_volatile { 'volatile ' } else { '' }
-	field_name := if _struct_name.starts_with('C.') {
-		f.name.trim_string_left('@')
-	} else {
-		g.cname(f.name)
-	}
 	if f.typ is types.Void {
-		g.writeln('\t${qualifier}int ${field_name};')
+		g.writeln('\t${qualifier}int ${g.cname(f.name)};')
 		return
 	}
 	if info := g.shared_field_info(_struct_name, f.name) {
-		g.writeln('\t${qualifier}${info.wrapper}* ${field_name};')
+		g.writeln('\t${qualifier}${info.wrapper}* ${g.cname(f.name)};')
 		return
 	}
 	if shared_alias_ptr := g.shared_alias_pointer_type(f.typ) {
-		g.writeln('\t${qualifier}${g.tc.c_type(shared_alias_ptr)} ${field_name};')
+		g.writeln('\t${qualifier}${g.tc.c_type(shared_alias_ptr)} ${g.cname(f.name)};')
 		return
 	}
 	mut field_type := f.typ
@@ -7736,7 +7718,7 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 				g.tc.c_type(field_type.base_type)
 			}
 			ct := g.resolve_fn_ptr_type(c_abi_fn)
-			g.writeln('\t${qualifier}${ct}* ${field_name};')
+			g.writeln('\t${qualifier}${ct}* ${g.cname(f.name)};')
 			return
 		}
 	}
@@ -7745,10 +7727,10 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 			g.tc.c_type(raw_field_type)
 		}
 		ct := g.resolve_fn_ptr_type(c_abi_fn)
-		g.writeln('\t${qualifier}${ct} ${field_name};')
+		g.writeln('\t${qualifier}${ct} ${g.cname(f.name)};')
 	} else if field_type is types.ArrayFixed {
 		c_elem, dims := g.fixed_array_decl_parts(field_type)
-		g.writeln('\t${qualifier}${c_elem} ${field_name}${dims};')
+		g.writeln('\t${qualifier}${c_elem} ${g.cname(f.name)}${dims};')
 	} else {
 		mut ct := if field_type is types.OptionType || field_type is types.ResultType {
 			g.optional_type_name(field_type)
@@ -7763,7 +7745,7 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 		if ct == 'void' {
 			ct = 'int'
 		}
-		g.writeln('\t${qualifier}${ct} ${field_name};')
+		g.writeln('\t${qualifier}${ct} ${g.cname(f.name)};')
 	}
 }
 

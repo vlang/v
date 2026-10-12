@@ -202,22 +202,18 @@ fn cross_compile_probe(payload string) ?(string, string) {
 
 // cross_compile_probe_with does the same with extra flags on the V command line.
 fn cross_compile_probe_with(payload string, extra string) ?(string, string) {
-	return cross_compile_probe_full(payload, extra, '', false)
+	return cross_compile_probe_full(payload, extra, '')
 }
 
 // cross_compile_probe_full also puts `prelude` in front of the embedded constant,
 // which moves everything after it in the AST.
-fn cross_compile_probe_full(payload string, extra string, prelude string, dump_flags bool) ?(string, string) {
-	return snapshot_compile_probe(payload, extra, prelude, 'cross', dump_flags)
-}
-
-fn snapshot_compile_probe(payload string, extra string, prelude string, target_os string, dump_flags bool) ?(string, string) {
+fn cross_compile_probe_full(payload string, extra string, prelude string) ?(string, string) {
 	vexe := os.getenv('VEXE')
 	if vexe == '' {
 		return none
 	}
-	tag := if extra == '' { '' } else { '_${extra.replace('-', '').replace(' ', '_')}' }
-	dir := os.join_path(os.vtmp_dir(), 'embed_file_${target_os}_${os.getpid()}_${payload.len}${tag}_${prelude.len}')
+	tag := if extra == '' { '' } else { '_${extra.replace('-', '')}' }
+	dir := os.join_path(os.vtmp_dir(), 'embed_file_cross_${os.getpid()}_${payload.len}${tag}_${prelude.len}')
 	os.mkdir_all(dir) or { return none }
 	os.write_file(os.join_path(dir, 'payload.bin'), payload) or { return none }
 	src := os.join_path(dir, 'prog.v')
@@ -296,26 +292,11 @@ fn main() {
 }
 ") or { return none }
 	out := os.join_path(dir, 'prog.c')
-	mut args := [vexe]
-	if extra != '' {
-		args << (os.split_args(extra) or { panic(err) })
-	}
-	if dump_flags {
-		args << ['-dump-c-flags', os.join_path(dir, 'cflags.txt')]
-	}
-	args << ['-os', target_os, '-o', out, src]
-	res := os.exec(args)
+	res := os.exec([vexe, '${extra}', '-os', 'cross', '-o', '${out}', '${src}'])
 	if res.exit_code != 0 {
 		assert false, res.output
 	}
 	return dir, out
-}
-
-// build_cross_snapshot replays the native objects and libraries required by the
-// generated C, including the native thread signal-stack implementation.
-fn build_cross_snapshot(cc string, dir string, out string) !os.Result {
-	flags := os.read_lines(os.join_path(dir, 'cflags.txt'))!
-	return os.exec([cc, '-std=gnu11', '-w', '-o', os.join_path(dir, 'prog'), out, ...flags])
 }
 
 // probe_splits_over_large_payloads reports whether the compiler being probed is
@@ -453,7 +434,7 @@ fn test_cross_output_names_joined_buffers_after_their_contents() {
 		return
 	}
 	payload := payload_of(large_payload_len)
-	_, plain := cross_compile_probe_full(payload, '', '', false) or { return }
+	_, plain := cross_compile_probe_full(payload, '', '') or { return }
 	plain_text := os.read_file(plain) or { '' }
 	os.rmdir_all(os.dir(plain)) or {}
 	// The same payload, with everything around it moved.
@@ -461,7 +442,7 @@ fn test_cross_output_names_joined_buffers_after_their_contents() {
 fn shifted_b(x int) int { return x + 2 }
 struct Shifted { field int }
 '
-	_, shifted := cross_compile_probe_full(payload, '', shifted_prelude, false) or { return }
+	_, shifted := cross_compile_probe_full(payload, '', shifted_prelude) or { return }
 	shifted_text := os.read_file(shifted) or { '' }
 	os.rmdir_all(os.dir(shifted)) or {}
 	assert plain_text != '' && shifted_text != ''
@@ -482,12 +463,12 @@ fn test_cross_snapshot_runs_under_prealloc() {
 	}
 	cc := os.find_abs_path_of_executable('cc') or { return }
 	payload := payload_of(large_payload_len)
-	dir, out := cross_compile_probe_full(payload, '-prealloc', '', true) or { return }
+	dir, out := cross_compile_probe_with(payload, '-prealloc') or { return }
 	defer {
 		os.rmdir_all(dir) or {}
 	}
 	exe := os.join_path(dir, 'prog')
-	build := build_cross_snapshot(cc, dir, out)!
+	build := os.exec([cc, '-std=gnu11', '-w', '-o', exe, '${out}', '-lm', '-lpthread'])
 	assert build.exit_code == 0, build.output
 	os.rm(os.join_path(dir, 'payload.bin')) or {
 		assert false, err.msg()
@@ -508,9 +489,9 @@ fn test_cross_snapshot_runs_without_the_embedded_file() {
 	// Both sizes: one written as string literals, one as an array object.
 	for size in [medium_payload_len, large_payload_len] {
 		payload := payload_of(size)
-		dir, out := cross_compile_probe_full(payload, '', '', true) or { return }
+		dir, out := cross_compile_probe(payload) or { return }
 		exe := os.join_path(dir, 'prog')
-		build := build_cross_snapshot(cc, dir, out)!
+		build := os.exec([cc, '-std=gnu11', '-w', '-o', exe, '${out}', '-lm', '-lpthread'])
 		assert build.exit_code == 0, build.output
 		// Stand in for "compiled on another machine": the file the snapshot was
 		// generated from is gone by the time the program runs.
@@ -521,29 +502,6 @@ fn test_cross_snapshot_runs_without_the_embedded_file() {
 		res := os.exec([exe])
 		assert res.exit_code == 0, res.output
 		assert res.output.trim_space() == checksum(payload)
-		os.rmdir_all(dir) or {}
-	}
-}
-
-fn test_macos_headerless_snapshot_replays_native_flags_without_the_embedded_file() {
-	$if !macos {
-		return
-	}
-	cc := os.find_abs_path_of_executable('cc') or { return }
-	payload := payload_of(large_payload_len)
-	for extra in ['', '-prealloc'] {
-		// Native development builds reload embedded files. Production builds
-		// store their bytes in the snapshot, as portable cross output does.
-		dir, out := snapshot_compile_probe(payload, '-prod ${extra}'.trim_space(), '', 'macos',
-			true) or { return }
-		code := os.read_file(out)!
-		assert !code.split_into_lines().any(it.trim_space().starts_with('#include')), out
-		build := build_cross_snapshot(cc, dir, out)!
-		assert build.exit_code == 0, build.output
-		os.rm(os.join_path(dir, 'payload.bin'))!
-		run := os.exec([os.join_path(dir, 'prog')])
-		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == checksum(payload)
 		os.rmdir_all(dir) or {}
 	}
 }

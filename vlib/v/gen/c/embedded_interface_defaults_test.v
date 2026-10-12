@@ -30,37 +30,30 @@ fn main() {
 	assert y.payload.value() == 7
 }
 '
-	run_embedded_interface_defaults_source('nested', source, [])
+	run_embedded_interface_defaults_source('nested', source)
 }
 
 fn test_log_use_stdout_preserves_embedded_defaults() {
-	// Struct literals inherit Log.debug; use_stdout uses the configured constructor level.
-	for level in ['info', 'debug'] {
-		source := 'import log
+	source := 'import log
 fn main() {
 	mut direct := log.ThreadSafeLog{}
 	assert direct.get_level() == .debug
 	log.use_stdout()
-	assert log.get_level() == .${level}
+	assert log.get_level() == .debug
 	log.info("logger-defaults-ok")
 }
 '
-		flags := if level == 'debug' { ['-d', 'log_default_level=debug'] } else { []string{} }
-		output := run_embedded_interface_defaults_source('logger_${level}', source, flags)
-		assert output.contains('logger-defaults-ok'), output
-	}
+	output := run_embedded_interface_defaults_source('logger', source)
+	assert output.contains('logger-defaults-ok'), output
 }
 
-fn run_embedded_interface_defaults_source(name string, source string, flags []string) string {
+fn run_embedded_interface_defaults_source(name string, source string) string {
 	root := os.join_path(os.vtmp_dir(), 'embedded_interface_defaults_${name}_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'main.v')
 	os.write_file(path, source) or { panic(err) }
-	mut args := ['-new-compiler', '-nocache']
-	args << flags
-	args << ['run', path]
-	result := cmdexec.run(@VEXE, args)
+	result := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', 'run', path])
 	assert result.exit_code == 0, result.output
 	return result.output
 }

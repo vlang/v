@@ -3,14 +3,10 @@ module sapp
 import os
 import stbi
 
-$if macos {
-	#flag darwin -DSOKOL_VALIDATE_NON_FATAL=1
-} $else {
-	#define SOKOL_VALIDATE_NON_FATAL 1
-}
+#define SOKOL_VALIDATE_NON_FATAL 1
 
 // v_sapp_read_rgba_pixels reads pixels from the active backend into `pixels`.
-fn C.v_sapp_read_rgba_pixels(x i32, y i32, width i32, height i32, pixels charptr) i32
+fn C.v_sapp_read_rgba_pixels(x int, y int, width int, height int, pixels charptr) int
 
 // screenshot takes a screenshot of the current backend framebuffer/window contents
 // at call time and saves it to `path`. The format is inferred from the extension

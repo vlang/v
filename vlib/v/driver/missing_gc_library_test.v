@@ -32,8 +32,6 @@ fn test_missing_bundled_gc_library_reports_setup_failure() {
 		}
 	}
 	source := os.join_path(root, 'main.v')
-	// The setup check needs actual heap allocation. A literal-only hello program
-	// now omits the collector and succeeds even when the GC library is absent.
 	os.write_file(source, 'fn main() {
 	mut messages := []string{}
 	messages << "hello"

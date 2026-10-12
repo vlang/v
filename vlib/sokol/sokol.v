@@ -3,10 +3,10 @@ module sokol
 import sokol.c as _
 
 /* pub enum Key {
-	up     = 265
-	left   = 263
-	right  = 262
-	down   = 264
-	escape = 256
-	space  = 32
+	up     = C.SAPP_KEYCODE_UP
+	left   = C.SAPP_KEYCODE_LEFT
+	right  = C.SAPP_KEYCODE_RIGHT
+	down   = C.SAPP_KEYCODE_DOWN
+	escape = C.SAPP_KEYCODE_ESCAPE
+	space  = C.SAPP_KEYCODE_SPACE
 } */

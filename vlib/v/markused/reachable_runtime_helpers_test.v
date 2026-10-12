@@ -683,7 +683,7 @@ fn main() {}
 	assert queue.len == first_len
 	// A later body can introduce a second abstract dispatch after the first one was cached.
 	used['Reader.second'] = true
-	enqueue_ierror_dispatch_helpers(tc, mut used, mut queue, mut processed)
+	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut processed)
 	assert used['Item.second']
 	assert processed['Reader.second']
 }
@@ -714,7 +714,7 @@ fn main() {
 	assert used['f64.str']
 	assert used['strconv__f64_to_str_l']
 	first_len := queue.len
-	enqueue_ierror_dispatch_helpers(tc, mut used, mut queue, mut processed)
+	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut processed)
 	assert queue.len == first_len
 }
 
@@ -942,25 +942,4 @@ ${call}
 			assert tested[helper]
 		}
 	}
-}
-
-fn test_ierror_dispatch_tables_reach_method_bodies_and_dependencies() {
-	a, tc := checked_runtime_helper_source('module builtin
-interface IError {
- msg() string
- code() int
-}
-struct HiddenError {
- values []string
-}
-fn (err HiddenError) msg() string { return "values: \${err.values}" }
-fn (err HiddenError) code() int { return error_code() }
-fn error_code() int { return 42 }
-fn main() {}
-')
-	used, _ := mark_used_with_generic_usage_full_runtime(a, tc)
-	assert used['HiddenError.msg']
-	assert used['HiddenError.code']
-	assert used['error_code']
-	assert used['strings.Builder.write_string']
 }

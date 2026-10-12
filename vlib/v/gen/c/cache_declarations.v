@@ -410,16 +410,6 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 	for typ in g.multi_return_types {
 		g.cache_require_declaration_type(typ, mut seen)
 	}
-	// Fixed-array names hide their element types from the C identifier scan.
-	// Expand live bare/return-wrapper references before pruning struct layouts.
-	old_module := g.tc.cur_module
-	for name, info in g.collect_fixed_array_typedefs_needed() {
-		if g.cache_fixed_array_declaration_needed(name) {
-			g.tc.cur_module = info.module
-			g.cache_require_declaration_type(info.arr, mut seen)
-		}
-	}
-	g.tc.cur_module = old_module
 	for name, _ in g.tc.structs {
 		if g.cache_struct_declaration_needed(name) {
 			g.cache_require_declaration_type(types.Struct{ name: name }, mut seen)
@@ -431,13 +421,6 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 	for name, _ in g.tc.sum_types {
 		if g.cache_decl_refs[g.cname(name)] {
 			g.cache_require_declaration_type(types.SumType{ name: name }, mut seen)
-		}
-	}
-	// The discovery pass includes private fields of unused cached structs.
-	// Their array typedefs must follow the same demand as the struct layouts.
-	for name in g.fixed_array_typedefs_needed.keys() {
-		if !g.cache_fixed_array_declaration_needed(name) {
-			g.fixed_array_typedefs_needed.delete(name)
 		}
 	}
 	g.collect_referenced_pruned_cache_functions()
@@ -458,10 +441,6 @@ fn (g &FlatGen) demanded_cache_constant_declarations() string {
 fn (g &FlatGen) cache_struct_declaration_needed(name string) bool {
 	ct := g.struct_cname(name)
 	return g.cache_decl_refs[ct] || g.cache_decl_refs[ct.all_after_last(' ')]
-}
-
-fn (g &FlatGen) cache_fixed_array_declaration_needed(name string) bool {
-	return g.cache_decl_refs[name] || g.cache_decl_refs[fixed_array_ret_wrapper_name(name)]
 }
 
 fn (g &FlatGen) cache_function_declaration_needed(name string) bool {

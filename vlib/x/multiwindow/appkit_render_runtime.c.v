@@ -534,13 +534,13 @@ fn (mut backend AppKitBackend) collect_render_updates() ![]BackendRenderUpdate {
 				if record.native_destroyed {
 					continue
 				}
-				mut visible := i32(0)
-				mut miniaturized := i32(0)
-				mut occluded := i32(0)
-				mut width := i32(0)
-				mut height := i32(0)
-				mut framebuffer_width := i32(0)
-				mut framebuffer_height := i32(0)
+				mut visible := 0
+				mut miniaturized := 0
+				mut occluded := 0
+				mut width := 0
+				mut height := 0
+				mut framebuffer_width := 0
+				mut framebuffer_height := 0
 				mut scale := f32(0)
 				available := if backend.render_health.blocks_graphics() {
 					false

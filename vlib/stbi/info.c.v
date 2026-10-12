@@ -1,6 +1,6 @@
 module stbi
 
-fn C.stbi_info_from_memory(buffer &u8, len i32, x &i32, y &i32, channels_in_file &i32) i32
+fn C.stbi_info_from_memory(buffer &u8, len i32, x &int, y &int, channels_in_file &int) i32
 
 // ImageInfo describes an image, as read from its header alone.
 pub struct ImageInfo {
@@ -18,15 +18,15 @@ pub fn info_from_memory(buf &u8, bufsize int) !ImageInfo {
 	if bufsize < 0 || bufsize > max_i32 {
 		return error('stbi_image cannot read a header from a buffer of ${bufsize} bytes')
 	}
-	mut width := i32(0)
-	mut height := i32(0)
-	mut nr_channels := i32(0)
+	mut width := 0
+	mut height := 0
+	mut nr_channels := 0
 	if 0 == C.stbi_info_from_memory(buf, i32(bufsize), &width, &height, &nr_channels) {
 		return error('stbi_image failed to read the image header from memory')
 	}
 	return ImageInfo{
-		width:       int(width)
-		height:      int(height)
-		nr_channels: int(nr_channels)
+		width:       width
+		height:      height
+		nr_channels: nr_channels
 	}
 }

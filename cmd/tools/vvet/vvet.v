@@ -41,6 +41,8 @@ struct Options {
 	fn_sizing           bool
 	repeated_code       bool
 	fn_inlining         bool
+mut:
+	is_vfmt_off bool
 }
 
 const term_colors = term.can_show_color_on_stderr()
@@ -129,27 +131,13 @@ fn (mut vt Vet) vet_file(path string) {
 	vt.a = p.parse_file(path)
 	vt.mod = 'main'
 	vt.filtered_lines = {
-		.default:        map[int]bool{}
 		.space_indent:   map[int]bool{}
 		.trailing_space: map[int]bool{}
 	}
-	mut format_modes := map[int]bool{}
 	for comment in vt.a.comments {
 		start, end := vt.span_lines(comment.pos)
 		is_multi := vt.source[int(comment.pos.offset)..int(comment.pos.end)].starts_with('/*')
 		vt.filtered_lines.comments(is_multi, start, end)
-		text := comment.text.trim_space()
-		if text.starts_with('// vfmt off') {
-			format_modes[start] = true
-		} else if text.starts_with('// vfmt on') {
-			format_modes[start] = false
-		}
-	}
-	source_lines := os.read_lines(vt.file) or { []string{} }
-	mut formatting_off := false
-	for line, _ in source_lines {
-		if mode := format_modes[line] { formatting_off = mode }
-		if formatting_off { vt.filtered_lines[.default][line] = true }
 	}
 	vt.regex_vars = map[string]bool{}
 	vt.string_vars = map[string]bool{}
@@ -166,6 +154,7 @@ fn (mut vt Vet) vet_file(path string) {
 			vt.visit(child)
 		}
 	}
+	source_lines := os.read_lines(vt.file) or { []string{} }
 	for ln, line in source_lines {
 		vt.vet_line(source_lines, line, ln)
 	}
@@ -181,7 +170,12 @@ fn (mut vt Vet) vet_line(lines []string, line string, lnumber int) {
 }
 
 fn (mut vt Vet) vet_space_usage(line string, lnumber int) {
-	if lnumber in vt.filtered_lines[.default] {
+	if line.starts_with('// vfmt off') {
+		vt.opt.is_vfmt_off = true
+	} else if line.starts_with('// vfmt on') {
+		vt.opt.is_vfmt_off = false
+	}
+	if vt.opt.is_vfmt_off {
 		return
 	}
 	if lnumber !in vt.filtered_lines[.space_indent] {

@@ -7492,11 +7492,7 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 			node.value
 		}
 		.char_literal {
-			if node.value.starts_with('c:') {
-				"c'${escape_v_c_string(node.value[2..])}'"
-			} else {
-				'`${escape_v_char(node.value)}`'
-			}
+			'`${escape_v_char(node.value)}`'
 		}
 		.string_literal {
 			"'${escape_v_string(node.value)}'"
@@ -7756,24 +7752,4 @@ fn escape_v_char(value string) string {
 	// escape sequences. Escaping it again would turn `\\` into `\\\\` in a
 	// cached header and change the rune's value when that header is parsed.
 	return value
-}
-
-fn escape_v_c_string(value string) string {
-	mut out := strings.new_builder(value.len)
-	mut i := 0
-	for i < value.len {
-		ch := value[i]
-		if ch == `\\` && i + 1 < value.len {
-			// The scanner retains C escapes; replay them without escaping twice.
-			out.write_u8(ch)
-			i++
-			out.write_u8(value[i])
-		} else if ch == `'` {
-			out.write_string("\\'")
-		} else {
-			out.write_u8(ch)
-		}
-		i++
-	}
-	return out.str()
 }

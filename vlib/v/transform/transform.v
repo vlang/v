@@ -3421,12 +3421,11 @@ fn (mut t Transformer) collect_types() {
 				// The type of `C.va_arg(T, ap)` is `T`, not a declared return type.
 				if node.typ.len > 0 && node.value !in ['C.va_arg', 'va_arg'] {
 					ret_typ := t.normalize_type_in_module(node.typ, cur_mod)
-					bare_name := node.value.trim_string_left('C.')
-					t.fn_ret_types['C.${bare_name}'] = ret_typ
-					// C extern aliases must not replace a V signature, such as
-					// malloc returning &u8 alongside C.malloc returning voidptr.
-					if bare_name !in t.tc.v_fn_semantic_names {
-						t.fn_ret_types[bare_name] = ret_typ
+					t.fn_ret_types[node.value] = ret_typ
+					if node.value.starts_with('C.') {
+						t.fn_ret_types[node.value[2..]] = ret_typ
+					} else {
+						t.fn_ret_types['C.${node.value}'] = ret_typ
 					}
 				}
 			}

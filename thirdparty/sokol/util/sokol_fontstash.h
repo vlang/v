@@ -1764,20 +1764,20 @@ SOKOL_API_IMPL FONScontext* sfons_create(const sfons_desc_t* desc) {
 
 SOKOL_API_IMPL void sfons_destroy(FONScontext* ctx) {
     SOKOL_ASSERT(ctx);
-    _sfons_t* sfons = (_sfons_t*) fonsGetUserData(ctx);
+    _sfons_t* sfons = (_sfons_t*) ctx->params.userPtr;
     fonsDeleteInternal(ctx);
     const sfons_allocator_t allocator = sfons->desc.allocator;
     _sfons_free(&allocator, sfons);
 }
 
 SOKOL_API_IMPL void sfons_flush(FONScontext* ctx) {
-    SOKOL_ASSERT(ctx && fonsGetUserData(ctx));
-    _sfons_t* sfons = (_sfons_t*) fonsGetUserData(ctx);
+    SOKOL_ASSERT(ctx && ctx->params.userPtr);
+    _sfons_t* sfons = (_sfons_t*) ctx->params.userPtr;
     if (sfons->img_dirty) {
         sfons->img_dirty = false;
         sg_image_data data;
         _sfons_clear(&data, sizeof(data));
-        data.subimage[0][0].ptr = fonsGetTextureData(ctx, NULL, NULL);
+        data.subimage[0][0].ptr = ctx->texData;
         data.subimage[0][0].size = (size_t) (sfons->cur_width * sfons->cur_height);
         sg_update_image(sfons->img, &data);
     }

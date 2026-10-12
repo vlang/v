@@ -127,7 +127,7 @@ fn (mut g FlatGen) gen_test_failure_global() {
 		if g.cache_split {
 			g.writeln('/* V3CACHE_MODULE main */')
 		}
-		g.jump_buffer_declarations()
+		g.writeln('#include <setjmp.h>')
 		g.writeln('static int __test_failures = 0;')
 		g.writeln('static jmp_buf __v_test_jump_buffer;')
 		g.writeln('static int __v_test_jump_active = 0;')
@@ -675,9 +675,6 @@ fn (mut g FlatGen) gen_synthetic_main_after_fns() {
 		return
 	}
 	if g.has_entry_main() {
-		if g.needs_no_main_runtime_init_caller() {
-			g.gen_no_main_runtime_init_caller()
-		}
 		return
 	}
 	if g.is_shared {
@@ -733,8 +730,7 @@ fn (mut g FlatGen) gen_executable_cleanup_registration() {
 }
 
 fn (g &FlatGen) needs_no_main_runtime_init_caller() bool {
-	// Cached export wrappers must work with both explicit and synthetic mains.
-	return g.test_files.len == 0 && (g.cache_split || g.suppress_main || !g.has_entry_main())
+	return g.test_files.len == 0 && (g.suppress_main || !g.has_entry_main())
 		&& (g.a.export_fn_names.len > 0 || g.is_shared)
 }
 
@@ -780,9 +776,7 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	g.writeln('${storage}void _vno_main_init_caller(void) {')
 	g.writeln('\tif (_v3_no_main_initialized) { return; }')
 	g.writeln('\t_v3_no_main_initialized = true;')
-	// A cached program's entrypoint has already supplied argc/argv. Before an
-	// entrypoint runs, their global storage is zero initialized for lazy callbacks.
-	if g.has_builtins && !g.cache_split {
+	if g.has_builtins {
 		g.writeln('\tg_main_argc = 0;')
 		g.writeln('\tg_main_argv = NULL;')
 	}
@@ -5351,17 +5345,13 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		}
 		g.gen_compiler_vexe_env_setup()
 		g.gen_coverage_registration()
-		if g.needs_no_main_runtime_init_caller() {
-			g.writeln('\t_vno_main_init_caller();')
-		} else {
-			g.gen_trace_startup()
-			g.gen_profile_startup_enable()
-			if g.runtime_init_is_needed() {
-				g.gen_vinit_call('argc', 'argv')
-			}
-			g.gen_profile_registration()
-			g.gen_executable_cleanup_registration()
+		g.gen_trace_startup()
+		g.gen_profile_startup_enable()
+		if g.runtime_init_is_needed() {
+			g.gen_vinit_call('argc', 'argv')
 		}
+		g.gen_profile_registration()
+		g.gen_executable_cleanup_registration()
 	} else {
 		ret_type := g.fn_node_return_type(node, module_name)
 		g.set_cur_fn_ret(ret_type)
@@ -5796,11 +5786,9 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	}
 	g.gen_compiler_vexe_env_setup()
 	g.gen_coverage_registration()
+	g.gen_trace_startup()
+	g.gen_profile_startup_enable()
 	needs_no_main_runtime_init_caller := g.needs_no_main_runtime_init_caller()
-	if !needs_no_main_runtime_init_caller || !g.cache_split {
-		g.gen_trace_startup()
-		g.gen_profile_startup_enable()
-	}
 	if needs_no_main_runtime_init_caller {
 		// Exported callbacks can be invoked without main. Share their guarded
 		// initializer so main and callback startup cannot initialize twice.
@@ -16493,10 +16481,6 @@ struct CExternForwardDecl {
 // emit_c_runtime_declarations declares dependencies of generated inline helpers
 // from the same bodyless V bindings used by ordinary C calls.
 fn (mut g FlatGen) emit_c_runtime_declarations(required []string) {
-	g.emit_c_runtime_declarations_with_replay(required, false)
-}
-
-fn (mut g FlatGen) emit_c_runtime_declarations_with_replay(required []string, replay bool) {
 	if isnil(g.a) || isnil(g.tc) {
 		return
 	}
@@ -16519,10 +16503,10 @@ fn (mut g FlatGen) emit_c_runtime_declarations_with_replay(required []string, re
 				continue
 			}
 			name := g.c_decl_abi_names['C.${raw_name}'] or { raw_name }
-			if !replay && name in g.inlined_c_declared_fns {
+			if name in g.inlined_c_declared_fns {
 				continue
 			}
-			g.writeln(g.c_extern_decl_line_with_attributes(node, flat.NodeId(idx), name))
+			g.writeln(g.c_extern_decl_line(node, name))
 			g.inlined_c_declared_fns[name] = true
 		}
 	}
@@ -16534,7 +16518,6 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 	mut decls := map[string]CExternForwardDecl{}
 	mut names := []string{}
 	referenced_c_externs := g.c_extern_referenced_symbols()
-	source_macros := g.c_source_defined_macro_names()
 	// file/module/c_fn_decl nodes only occur at the top level: iterate the
 	// checker's top-level index for the range it covers, then scan only the
 	// transform-appended tail.
@@ -16628,14 +16611,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		g.tc.cur_file = decl.file
 		g.tc.cur_module = decl.module_name
 		node := g.a.nodes[decl.node_idx]
-		line := c_macro_safe_extern_decl(name, g.c_extern_decl_line_with_attributes(node,
-			flat.NodeId(decl.node_idx), name))
-		if source_macros[name] {
-			// The C preprocessor owns the final state of source macros, including
-			// conditional definitions and later #undef directives. A bodyless V
-			// binding describes the call without declaring an active macro as a function.
-			g.writeln('#ifndef ${name}')
-		}
+		line := c_macro_safe_extern_decl(name, g.c_extern_decl_line(node, name))
 		if g.c_extern_decl_is_cached_object_fallback(name) {
 			g.writeln('#ifndef V3CACHE_PROGRAM_UNIT')
 			g.writeln(line)
@@ -16648,24 +16624,10 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		} else {
 			g.writeln(line)
 		}
-		if source_macros[name] {
-			g.writeln('#endif')
-		}
 	}
 	if names.len > 0 {
 		g.writeln('')
 	}
-}
-
-fn (g &FlatGen) c_source_defined_macro_names() map[string]bool {
-	mut names := map[string]bool{}
-	for directive in g.c_directives {
-		kind, name := c_macro_directive_info(directive.text)
-		if kind == 'define' && name.len > 0 {
-			names[name] = true
-		}
-	}
-	return names
 }
 
 // first_node_id_at_or_after returns the position of the first id >= `start` in
@@ -17154,11 +17116,11 @@ fn (g &FlatGen) c_extern_decl_is_cached_object_fallback(cfn string) bool {
 
 // c_extern_decl_has_no_header mirrors the V1 backend's rule for deciding whether a
 // `fn C.foo` declaration still needs a generated prototype. V3 does not parse C
-// headers, and a partial SDK binding may omit native typedefs, attributes, or
-// macro-dependent ABI details even when `const_` parameters preserve const pointers.
-// Emitting that approximation next to an authoritative native declaration can
-// produce conflicting types (sokol, stb, fontstash and Xlib all hit it).
-// A prototype is only needed where no header can
+// headers, so a V declaration is only ever an approximation of the real signature:
+// `&char` cannot express `const char*`, and a typedef'd `Window` or `Status` cannot
+// be spelled at all. Emitting one next to the header that already declares the
+// symbol is therefore a `conflicting types` error waiting to happen (sokol, stb,
+// fontstash and Xlib all hit it). A prototype is only needed where no header can
 // supply one: the declaring file links a C source/object directly, or its module
 // links a C library without including anything.
 fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name string) bool {
@@ -17173,7 +17135,7 @@ fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name stri
 	if g.target_libc_headers {
 		return true
 	}
-	if g.files_linking_c_sources[source_file] || g.files_linking_c_libraries[source_file] {
+	if g.files_linking_c_sources[source_file] {
 		return true
 	}
 	// A `#postinclude` lands after every declaration and call site in the unit, so it
@@ -17219,21 +17181,15 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 	if !g.should_emit_c_extern_decl(cfn) {
 		return false
 	}
-	is_vlib_source := g.c_source_file_is_in_vlib(source_file)
 	// These stdlib bindings remain necessary when unrelated modules use headers.
-	if is_vlib_source
+	if g.c_source_file_is_in_vlib(source_file)
 		&& cfn in ['_Exit', 'flock', 'v_os_fd_write_all', 'v_os_execute_capture_start',
 			'v_os_exec_capture_start', 'v_os_exec_capture_input_start'] {
 		return true
 	}
-	// Native-only headers can mark a module without declaring symbols in this
-	// headerless program. Its vlib bindings still own their C prototypes.
-	module_header_is_authoritative := module_name in g.mods_with_c_includes
-		&& (!is_vlib_source || g.c_directives_use_system_libc())
-	// An unrelated header can provide libc without declaring this SDK's symbols.
-	if !g.target_libc_headers
-		&& !g.files_with_c_includes[source_file] && !module_header_is_authoritative
-		&& (is_vlib_source || g.c_source_file_is_compiler_main(source_file)
+	if !g.c_directives_use_system_libc() && !g.target_libc_headers
+		&& !g.files_with_c_includes[source_file] && module_name !in g.mods_with_c_includes
+		&& (g.c_source_file_is_in_vlib(source_file) || g.c_source_file_is_compiler_main(source_file)
 			|| cfn in ['task_info', 'mach_task_self', 'getppid']
 			|| cfn in c_preamble_declared_extern_symbols
 			|| cfn in c_system_libc_preamble_declared_fns || cfn in c_manual_stdlib_declared_fns) {
@@ -17722,23 +17678,6 @@ fn (g &FlatGen) is_c_extern_fn_name_arg(arg_id flat.NodeId) bool {
 	}
 	name := g.direct_callback_ident_name(arg_id) or { return false }
 	return name.starts_with('C.')
-}
-
-fn (mut g FlatGen) c_extern_decl_line_with_attributes(node flat.Node, node_id flat.NodeId, cfn string) string {
-	line := g.c_extern_decl_line(node, cfn)
-	if g.ccompiler == 'msvc' {
-		return line
-	}
-	mut attributes := []string{}
-	for attribute in ['returns_twice', 'noreturn'] {
-		if g.tc.declaration_has_attribute(node_id, attribute) {
-			attributes << attribute
-		}
-	}
-	if attributes.len == 0 {
-		return line
-	}
-	return line.trim_string_right(';') + ' __attribute__((${attributes.join(', ')}));'
 }
 
 fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {

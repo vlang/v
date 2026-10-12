@@ -280,27 +280,23 @@ module ecdsa
 
 #flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/x25519.o
 
-$if macos {
-	#flag @VEXEROOT/thirdparty/mbedtls/v_helpers.o
-} $else {
-	#include <mbedtls/ecdsa.h>
+#include <mbedtls/ecdsa.h>
 
-	#include <mbedtls/ecdh.h>
+#include <mbedtls/ecdh.h>
 
-	#include <mbedtls/ecp.h>
+#include <mbedtls/ecp.h>
 
-	#include <mbedtls/bignum.h>
+#include <mbedtls/bignum.h>
 
-	#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/ctr_drbg.h>
 
-	#include <mbedtls/entropy.h>
+#include <mbedtls/entropy.h>
 
-	#include <mbedtls/error.h>
+#include <mbedtls/error.h>
 
-	#include <mbedtls/threading.h>
+#include <mbedtls/threading.h>
 
-	#insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_threading.h"
-}
+#insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_threading.h"
 
 // v_mbedtls_threading_setup installs the mutex callbacks mbedtls needs when
 // built with MBEDTLS_THREADING_ALT (Windows) -- a no-op elsewhere. Safe to
@@ -335,44 +331,26 @@ pub const C.MBEDTLS_ECP_MAX_PT_LEN int
 pub const C.MBEDTLS_ECDSA_MAX_LEN int
 
 @[typedef]
-struct C.mbedtls_ecp_group {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [24]u64
-}
+struct C.mbedtls_ecp_group {}
 
 @[typedef]
-struct C.mbedtls_ecp_point {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [6]u64
-}
+struct C.mbedtls_ecp_point {}
 
 // mbedtls_ecdsa_context is mbedTLS's own typedef of mbedtls_ecp_keypair
 // (ecdsa.h) -- one opaque type covers both PrivateKey (grp+d+Q all set) and
 // PublicKey (grp+Q set, d left zero) on the V side, mirroring how
 // crypto.ecdsa's OpenSSL backend reuses one &C.EVP_PKEY for both.
 @[typedef]
-struct C.mbedtls_ecdsa_context {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [32]u64
-}
+struct C.mbedtls_ecdsa_context {}
 
 @[typedef]
-struct C.mbedtls_mpi {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [2]u64
-}
+struct C.mbedtls_mpi {}
 
 @[typedef]
-struct C.mbedtls_ctr_drbg_context {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [52]u64
-}
+struct C.mbedtls_ctr_drbg_context {}
 
 @[typedef]
-struct C.mbedtls_entropy_context {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [113]u64
-}
+struct C.mbedtls_entropy_context {}
 
 fn C.mbedtls_ecdsa_init(ctx &C.mbedtls_ecdsa_context)
 

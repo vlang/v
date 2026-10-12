@@ -21,23 +21,23 @@ pub mut:
 }
 
 pub enum HorizontalAlign {
-	left   = 1
-	center = 2
-	right  = 4
+	left   = C.FONS_ALIGN_LEFT
+	center = C.FONS_ALIGN_CENTER
+	right  = C.FONS_ALIGN_RIGHT
 }
 
 pub enum VerticalAlign {
-	top      = 8
-	middle   = 16
-	bottom   = 32
-	baseline = 64
+	top      = C.FONS_ALIGN_TOP
+	middle   = C.FONS_ALIGN_MIDDLE
+	bottom   = C.FONS_ALIGN_BOTTOM
+	baseline = C.FONS_ALIGN_BASELINE
 }
 
 const initial_text_atlas_size = int($d('gg_text_buff_size', 2048))
 const max_text_atlas_size = 8192
 
 fn expand_atlas_callback(uptr voidptr, error i32, _val i32) {
-	if error != i32(fontstash.ErrorCode.atlas_full) {
+	if error != C.FONS_ATLAS_FULL {
 		return
 	}
 	fons := unsafe { &fontstash.Context(uptr) }
@@ -246,11 +246,11 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg TextCfg) {
 	$if macos {
 		if ctx.native_rendering {
 			if cfg.align == align_right {
-				width := darwin_text_width_with_cfg(text_, cfg)
+				width := C.darwin_text_width_with_cfg(text_, cfg)
 				// println('draw text ctx.height = ${ctx.height}')
-				darwin_draw_string(x - width, ctx.height - y, text_, cfg)
+				C.darwin_draw_string(x - width, ctx.height - y, text_, cfg)
 			} else {
-				darwin_draw_string(x, ctx.height - y, text_, cfg)
+				C.darwin_draw_string(x, ctx.height - y, text_, cfg)
 			}
 			return
 		}
@@ -291,7 +291,7 @@ fn (ctx &Context) text_metrics(s string) (f32, [4]f32) {
 pub fn (ctx &Context) text_width(s string) int {
 	$if macos {
 		if ctx.native_rendering {
-			return darwin_text_width(s)
+			return C.darwin_text_width(s)
 		}
 	}
 	// ctx.set_text_cfg(cfg) TODO
@@ -326,7 +326,7 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 pub fn (ctx &Context) text_width_f(s string) f32 {
 	$if macos {
 		if ctx.native_rendering {
-			return darwin_text_width(s)
+			return C.darwin_text_width(s)
 		}
 	}
 	// ctx.set_text_cfg(cfg) TODO

@@ -1,23 +1,5 @@
 import os
 
-fn test_vet_formatting_off_regions_and_file_isolation() {
-	vexe := os.getenv('VEXE')
-	tmp := os.join_path(os.temp_dir(), 'vvet_format_regions_${os.getpid()}')
-	os.mkdir_all(tmp)!
-	defer { os.rmdir_all(tmp) or {} }
-	first := os.join_path(tmp, 'first.v')
-	second := os.join_path(tmp, 'second.v')
-	os.write_file(first, 'fn main() {\n\t// vfmt off\n  assert 1 in [1]\n\t// vfmt on\n\tassert 2 in [2]\n\t// vfmt off\n  assert 3 in [3]\n}\n')!
-	os.write_file(second, "fn main() {\n\tmarker := '// vfmt off'\n\tassert 4 in [4]\n\tprintln(marker)\n}\n")!
-	result := os.exec([vexe, 'vet', '-nocolor', first, second])
-	assert result.exit_code == 1, result.output
-	assert result.output.contains('${first}:5: error: Use `2 == 2`'), result.output
-	assert result.output.contains('${second}:3: error: Use `4 == 4`'), result.output
-	assert !result.output.contains('Use `1 == 1`'), result.output
-	assert !result.output.contains('Use `3 == 3`'), result.output
-	assert !result.output.contains('spaces for indentation'), result.output
-}
-
 // Regression for #28692: diagnostics from earlier files must survive parsing
 // later files, including result-returning functions with escaped newlines.
 fn test_vet_multifile_diagnostics() {

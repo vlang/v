@@ -327,40 +327,6 @@ fn test_target_libc_opaque_packed_struct_restores_packing() {
 	assert c_code.contains('#pragma pack(push, 1)\nstruct TargetOpaque;\n#pragma pack(pop)')
 }
 
-fn test_cached_native_struct_layout_keeps_original_source_ownership() {
-	for owner in ['/checkout/vlib/sdk/native.c.v', '/project/sdk/native.c.v'] {
-		mut a := flat.FlatAst.new()
-		header := '/cache/v3_module_cache_test/sdk.vh'
-		a.cached_header_sources[header] = owner
-		name := 'C.CachedSdkRecord'
-		field := a.add_node(flat.Node{ kind: .field_decl, value: 'value', typ: 'i32' })
-		start := a.begin_children()
-		a.add_child(field)
-		id := a.add_node(flat.Node{
-			kind:           .struct_decl
-			value:          name
-			children_start: start
-			children_count: 1
-		})
-		mut tc := types.TypeChecker.new(&a)
-		tc.c_typedef_structs[name] = true
-		tc.structs[name] = [types.StructField{ name: 'value', typ: types.Type(types.i32_) }]
-		mut g := FlatGen.new()
-		g.a = &a
-		g.tc = &tc
-		g.compiler_vroot = '/checkout'
-		g.register_struct_decl_info_at(int(id), name, name, 'sdk', header, a.nodes[int(id)])
-		g.struct_decls()
-		generated := g.sb.str()
-		if owner.starts_with('/checkout/vlib/') {
-			assert generated.contains('struct CachedSdkRecord {'), generated
-			assert generated.contains('i32 value;'), generated
-		} else {
-			assert !generated.contains('CachedSdkRecord'), generated
-		}
-	}
-}
-
 fn aligned_struct_decl_c(ccompiler string, attrs string, union_decl bool) string {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -691,12 +657,7 @@ fn test_header_backed_c_declarations_skip_generated_prototypes() {
 	mut lib_only := FlatGen.new()
 	lib_only.note_c_flag_directive('bindings', source, '-lfoo')
 	assert lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
-	// A sibling's header does not own this file's directly linked library binding.
 	lib_only.note_c_include_directive('bindings', '/project/other.c.v')
-	assert lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
-	assert !lib_only.should_emit_c_extern_decl_from_file('foo_open', '/project/shared.c.v',
-		'bindings')
-	lib_only.note_c_include_directive('bindings', source)
 	assert !lib_only.should_emit_c_extern_decl_from_file('foo_open', source, 'bindings')
 
 	// Nothing links and nothing includes: the symbol has to come from somewhere else,
@@ -1053,11 +1014,8 @@ fn test_path_linked_libraries_keep_headerless_c_prototypes() {
 		// A sibling binding file can share the module's library linkage.
 		assert g.should_emit_c_extern_decl_from_file('my_ext_fn', '/project/other.c.v',
 			'bindings'), flag
-		// Direct linkage keeps this source's prototype despite a sibling's header.
 		g.note_c_include_directive('bindings', '/project/header.c.v')
-		assert g.should_emit_c_extern_decl_from_file('my_ext_fn', source, 'bindings'), flag
-		assert !g.should_emit_c_extern_decl_from_file('my_ext_fn', '/project/other.c.v',
-			'bindings'), flag
+		assert !g.should_emit_c_extern_decl_from_file('my_ext_fn', source, 'bindings'), flag
 		g.note_c_include_directive('bindings', source)
 		assert !g.should_emit_c_extern_decl_from_file('my_ext_fn', source, 'bindings'), flag
 	}
@@ -1100,8 +1058,6 @@ fn test_forced_native_source_language_keeps_headerless_prototypes() {
 		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
 		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
 			'bindings'), flag
-		assert !g.should_emit_c_extern_decl_from_file('native_api', '/project/other.c.v',
-			'bindings'), flag
 		g.note_c_include_directive('bindings', '/project/bindings.c.v')
 		assert !g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
 			'bindings'), flag
@@ -1120,11 +1076,7 @@ fn test_force_loaded_archives_keep_headerless_prototypes() {
 		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
 		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
 			'bindings'), flag
-		// The file linking the archive owns its bodyless declaration.
 		g.note_c_include_directive('bindings', '/project/header.c.v')
-		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
-			'bindings'), flag
-		g.note_c_include_directive('bindings', '/project/bindings.c.v')
 		assert !g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
 			'bindings'), flag
 	}

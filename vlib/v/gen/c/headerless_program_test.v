@@ -2,113 +2,27 @@ module c
 
 import os
 import v.cmdexec
-import v.pref
 
-fn test_macos_headerless_pthread_and_jump_buffer_match_sdk_abi() {
+fn test_brotli_binding_retains_its_native_headers() {
 	$if !macos {
 		return
 	}
-	root := os.join_path(os.vtmp_dir(), 'headerless_native_abi_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	mut g := FlatGen.new()
-	g.set_target(pref.target_from('macos', $if arm64 { 'arm64' } $else { 'amd64' })!)
-	g.headerless_libc_preamble()
-	// Isolate the emitted storage declarations so the oracle needs no V runtime.
-	preamble := g.sb.str()
-	start := preamble.index('typedef int pid_t;')?
-	end := preamble.index('#ifndef va_start')?
-	storage := preamble[start..end]
-	mut jump := FlatGen.new()
-	jump.set_target(g.target)
-	jump.jump_buffer_declarations()
-	mut net_constants := FlatGen.new()
-	net_constants.headerless_darwin_net_constants()
-	mut posix_records := FlatGen.new()
-	posix_records.headerless_statvfs_struct()
-	posix_records.headerless_timeval_struct()
-	headerless := storage + jump.sb.str() + net_constants.sb.str() +
-		'typedef unsigned int u32;\ntypedef int i32;\n' + posix_records.sb.str()
-	assert !headerless.contains('#include')
-	mut measurements := 'int printf(const char*, ...);\nint main(void) {\n'
-	for name in ['pthread_t', 'pthread_attr_t', 'pthread_mutex_t', 'pthread_cond_t', 'pthread_rwlock_t',
-		'pthread_rwlockattr_t', 'pthread_condattr_t', 'pthread_once_t', 'pthread_key_t', 'sem_t',
-		'sigset_t', 'jmp_buf', 'struct statvfs', 'struct timeval'] {
-		measurements += 'printf("${name} %lu %lu\\n", (unsigned long)sizeof(${name}), (unsigned long)_Alignof(${name}));\n'
-	}
-	for name, fields in {
-		'statvfs': ['f_bsize', 'f_frsize', 'f_blocks', 'f_bfree', 'f_bavail', 'f_files', 'f_ffree',
-			'f_favail', 'f_fsid', 'f_flag', 'f_namemax']
-		'timeval': ['tv_sec', 'tv_usec']
-	} {
-		for field in fields {
-			measurements += 'printf("${name}.${field} %lu %lu\\n", (unsigned long)__builtin_offsetof(struct ${name}, ${field}), (unsigned long)sizeof(((struct ${name}*)0)->${field}));\n'
-		}
-	}
-	// Once.count follows an embedded RwMutex; a size mismatch changes its offset.
-	measurements += 'struct rwmutex { pthread_rwlock_t mutex; unsigned int inited; };\n'
-	measurements += 'struct once { struct rwmutex m; unsigned long long count; };\n'
-	measurements += 'printf("once.count %lu\\n", (unsigned long)__builtin_offsetof(struct once, count));\n'
-	measurements += 'printf("shutdown %d %d %d\\n", SHUT_RD, SHUT_WR, SHUT_RDWR);\n'
-	measurements += 'printf("nosignal %d\\n", MSG_NOSIGNAL);\nreturn 0;\n}\n'
-	mut results := []string{}
-	for role, declarations in [headerless,
-		'#include <stdio.h>\n#include <pthread.h>\n#include <semaphore.h>\n#include <signal.h>\n#include <setjmp.h>\n#include <sys/socket.h>\n#include <sys/statvfs.h>\n#include <sys/time.h>\n'] {
-		source := os.join_path(root, 'oracle_${role}.c')
-		binary := os.join_path(root, 'oracle_${role}')
-		os.write_file(source, declarations + measurements)!
-		compiled := cmdexec.run('cc', ['-std=c11', '-o', binary, source])
-		assert compiled.exit_code == 0, compiled.output
-		run := cmdexec.run(binary, [])
-		assert run.exit_code == 0, run.output
-		results << run.output
-	}
-	assert results[0] == results[1], 'headerless:\n${results[0]}SDK:\n${results[1]}'
-}
-
-fn test_macos_recover_c_has_no_includes_and_runs() {
-	$if !macos {
-		return
-	}
-	root := os.join_path(os.vtmp_dir(), 'headerless_recover_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'brotli_native_headers_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn main() {\n defer { if message := recover() { println(message) } }\n panic("recovered")\n}\n')!
 	c_file := os.join_path(root, 'main.c')
+	os.write_file(source, 'import compress.brotli
+fn main() {
+	encoded := brotli.compress("hello".bytes(), {}) or { panic(err) }
+	decoded := brotli.decompress(encoded, {}) or { panic(err) }
+	assert decoded.bytestr() == "hello"
+}
+')!
 	generated := cmdexec.run(@VEXE, ['-nocache', '-o', c_file, source])
 	assert generated.exit_code == 0, generated.output
-	assert !os.read_file(c_file)!.contains('#include')
-	for flags in [['-cc', 'tcc'], ['-cc', 'clang'], ['-cc', 'clang', '-prod']] {
-		mut args := ['-nocache', '-no-retry-compilation']
-		args << flags
-		args << ['run', source]
-		run := cmdexec.run(@VEXE, args)
-		assert run.exit_code == 0, run.output
-		assert run.output == 'recovered\n', run.output
-	}
-}
-
-fn test_macos_cached_test_recovery_declares_jump_buffer_before_frames() {
-	$if !macos {
-		return
-	}
-	root := os.join_path(os.vtmp_dir(), 'headerless_test_recover_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'recover_test.v')
-	c_file := os.join_path(root, 'recover_test.c')
-	for message in ['first', 'second'] {
-		os.write_file(source, 'fn test_recover() {\n defer { if message := recover() { assert message == "${message}" } }\n panic("${message}")\n}\n')!
-		generated := cmdexec.run(@VEXE, ['-cc', 'clang', '-o', c_file, source])
-		assert generated.exit_code == 0, generated.output
-		code := os.read_file(c_file)!
-		assert !code.contains('#include')
-		// Recovery frames precede the test runner's own jump-buffer declaration.
-		assert code.index('typedef int jmp_buf')? < code.index('typedef struct v_unwind_frame')?
-		run := cmdexec.run(@VEXE, ['-cc', 'clang', '-silent', '-no-retry-compilation', source])
-		assert run.exit_code == 0, run.output
-	}
+	code := os.read_file(c_file)!
+	assert code.contains('#include <dlfcn.h>'), 'Brotli must retain its native loader header'
 }
 
 fn test_headerless_test_statistics_without_importing_time() {

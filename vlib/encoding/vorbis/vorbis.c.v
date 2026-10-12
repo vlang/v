@@ -4,10 +4,7 @@ module vorbis
 
 #flag -I @VEXEROOT/thirdparty/stb_vorbis
 #flag @VEXEROOT/thirdparty/stb_vorbis/stb_vorbis.o
-
-$if !macos {
-	#include "stb_vorbis.h"
-}
+#include "stb_vorbis.h"
 
 @[typedef]
 pub struct C.stb_vorbis_alloc {
@@ -26,7 +23,6 @@ pub mut:
 	channels                   i32
 	setup_memory_required      u32
 	setup_temp_memory_required u32
-	temp_memory_required       u32
 	max_frame_size             i32
 }
 

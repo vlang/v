@@ -5,44 +5,6 @@ import v.cmdexec
 import v.flat
 import v.types
 
-fn test_collector_layout_ownership_precedes_portable_declaration_workers() {
-	for portable in [false, true] {
-		for object_file_mode in [false, true] {
-			for no_builtin in [false, true] {
-				for target_libc_headers in [false, true] {
-					for boehm in [false, true] {
-						mut a := flat.FlatAst.new()
-						mut tc := types.TypeChecker.new(&a)
-						tc.structs['C.GC_stack_base'] = [types.StructField{
-							name: 'mem_base'
-							typ:  types.Pointer{ base_type: types.Type(types.void_) }
-						}]
-						mut g := FlatGen.new()
-						g.a = &a
-						g.tc = &tc
-						g.set_output_cross_c(portable)
-						g.set_object_file_mode(object_file_mode)
-						g.set_no_builtin(no_builtin)
-						g.set_target_libc_headers(target_libc_headers)
-						if boehm {
-							g.compile_defines << 'gcboehm'
-						}
-						owns_layout := (portable || object_file_mode) && !no_builtin
-							&& !target_libc_headers && boehm
-						g.collect_gen_info(false)
-						// Layout selection runs before the prefix writes its native helpers.
-						assert g.skip_builtin_struct('C.GC_stack_base') == owns_layout
-						g.struct_decls()
-						assert g.sb.str().contains('struct GC_stack_base {') == !owns_layout
-						g.portable_native_runtime_helpers()
-						assert g.sb.str().contains('#include <gc.h>') == owns_layout
-					}
-				}
-			}
-		}
-	}
-}
-
 fn test_partial_c_closure_view_keeps_the_v_runtime_layout() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)

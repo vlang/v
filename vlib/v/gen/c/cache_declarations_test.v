@@ -3,60 +3,6 @@ module c
 import v.flat
 import v.types
 
-fn test_cached_fixed_arrays_prune_unused_layouts_and_keep_nested_return_dependencies() {
-	for wrapper_reference in [false, true] {
-		mut a := flat.FlatAst.new()
-		mut tc := types.TypeChecker.new(&a)
-		tc.structs['sample.Leaf'] = [types.StructField{
-			name: 'value'
-			typ:  types.int_
-		}]
-		tc.structs['sample.Unused'] = []types.StructField{}
-		tc.structs['sample.UnusedHolder'] = [types.StructField{
-			name: 'values'
-			typ:  types.ArrayFixed{
-				elem_type: types.Struct{ name: 'sample.Unused' }
-				len:       100
-			}
-		}]
-		inner := types.ArrayFixed{
-			elem_type: types.Struct{ name: 'sample.Leaf' }
-			len:       3
-		}
-		outer := types.ArrayFixed{
-			elem_type: inner
-			len:       2
-		}
-		tc.fn_ret_types['sample.rows'] = outer
-		mut g := FlatGen.new()
-		g.a = &a
-		g.tc = &tc
-		g.populate_fixed_array_ret_wrappers()
-		bare_name := g.fixed_array_c_type(outer)
-		inner_name := g.fixed_array_c_type(inner)
-		assert g.collect_fixed_array_typedefs_needed().len == 3
-		g.cache_decl_demand = true
-		g.cache_decl_refs[if wrapper_reference {
-			fixed_array_ret_wrapper_name(bare_name)
-		} else {
-			bare_name
-		}] = true
-		g.finish_cache_declaration_demand('')
-		needed := g.collect_fixed_array_typedefs_needed()
-		assert needed.len == 2, needed.keys().str()
-		assert bare_name in needed
-		assert inner_name in needed
-		assert g.c_struct_decl_names() == ['sample.Leaf']
-		g.fixed_array_early_typedefs()
-		g.struct_decls()
-		g.fixed_array_typedefs()
-		emitted := g.sb.str()
-		assert !emitted.contains('sample__Unused'), emitted
-		assert emitted.index('struct sample__Leaf {')? < emitted.index('typedef sample__Leaf ${inner_name}')?, emitted
-		assert emitted.contains('struct ${fixed_array_ret_wrapper_name(bare_name)} {'), emitted
-	}
-}
-
 fn test_cache_declaration_references_ignore_literals_and_comments() {
 	mut g := FlatGen.new()
 	g.cache_collect_declaration_refs('needed("quoted \\\" ignored", \'x\'); /* hidden */ // hidden_too\nother_2;')

@@ -35,32 +35,15 @@ $if msvc {
 	#flag -lcrypto
 }
 
-$if macos {
-	#flag @VEXEROOT/vlib/crypto/ecdsa/ecdsa_native.o
-	#define EVP_PKEY_base_id EVP_PKEY_get_base_id
-	#define EVP_PKEY_bits EVP_PKEY_get_bits
-	#define EVP_PKEY_size EVP_PKEY_get_size
-	#define OPENSSL_free v_ecdsa_OPENSSL_free
-	#define NID_X9_62_prime256v1 415
-	#define NID_secp384r1 715
-	#define NID_secp521r1 716
-	#define NID_secp256k1 714
-	#define NID_X9_62_id_ecPublicKey 408
-	#define EVP_PKEY_EC 408
-	#define EVP_PKEY_PUBLIC_KEY 134
-	#define EVP_PKEY_KEYPAIR 135
-	#define OPENSSL_EC_NAMED_CURVE 1
-} $else {
-	#include <openssl/ecdsa.h>
-	#include <openssl/obj_mac.h>
-	#include <openssl/bn.h>
-	#include <openssl/evp.h>
-	#include <openssl/ec.h>
-	#include <openssl/x509.h>
-	#include <openssl/bio.h>
-	#include <openssl/pem.h>
-	#include <openssl/param_build.h>
-}
+#include <openssl/ecdsa.h>
+#include <openssl/obj_mac.h>
+#include <openssl/bn.h>
+#include <openssl/evp.h>
+#include <openssl/ec.h>
+#include <openssl/x509.h>
+#include <openssl/bio.h>
+#include <openssl/pem.h>
+#include <openssl/param_build.h>
 
 // The following header is available on OpenSSL 3.0, but not in OpenSSL 1.1.1f
 //#include <openssl/core.h>
@@ -95,7 +78,7 @@ fn C.EVP_PKEY_public_check(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_dup(key &C.EVP_PKEY) &C.EVP_PKEY
 fn C.EVP_PKEY_set_bn_param(pkey &C.EVP_PKEY, const_key_name &char, const_bn &C.BIGNUM) i32
 
-fn C.EVP_PKEY_get_group_name(pkey &C.EVP_PKEY, gname &u8, gname_sz usize, gname_len &usize) i32
+fn C.EVP_PKEY_get_group_name(pkey &C.EVP_PKEY, gname &u8, gname_sz u32, gname_len &usize) i32
 fn C.EVP_PKEY_get1_encoded_public_key(pkey &C.EVP_PKEY, ppub &&u8) usize
 fn C.EVP_PKEY_get_bn_param(pkey &C.EVP_PKEY, key_name &char, bn &&C.BIGNUM) i32
 fn C.EVP_PKEY_fromdata_init(ctx &C.EVP_PKEY_CTX) i32
@@ -108,21 +91,21 @@ fn C.EVP_PKEY_verify_init(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_verify(ctx &C.EVP_PKEY_CTX, sig &u8, siglen usize, tbs &u8, tbslen usize) i32
 
 // single shoot digest signing (verifying) routine
-fn C.EVP_DigestSign(ctx &C.EVP_MD_CTX, sig &u8, siglen &usize, tbs &u8, tbslen usize) i32
-fn C.EVP_DigestVerify(ctx &C.EVP_MD_CTX, sig &u8, siglen usize, tbs &u8, tbslen usize) i32
+fn C.EVP_DigestSign(ctx &C.EVP_MD_CTX, sig &u8, siglen &usize, tbs &u8, tbslen i32) i32
+fn C.EVP_DigestVerify(ctx &C.EVP_MD_CTX, sig &u8, siglen i32, tbs &u8, tbslen i32) i32
 
 // Message digest routines
 fn C.EVP_DigestInit(ctx &C.EVP_MD_CTX, md &C.EVP_MD) i32
-fn C.EVP_DigestUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt usize) i32
+fn C.EVP_DigestUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt i32) i32
 fn C.EVP_DigestFinal(ctx &C.EVP_MD_CTX, md &u8, s &u32) i32
 
 // Recommended hashed signing/verifying routines
 fn C.EVP_DigestSignInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e &C.ENGINE, pkey &C.EVP_PKEY) i32
-fn C.EVP_DigestSignUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt usize) i32
+fn C.EVP_DigestSignUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt i32) i32
 fn C.EVP_DigestSignFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen &usize) i32
 fn C.EVP_DigestVerifyInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e &C.ENGINE, pkey &C.EVP_PKEY) i32
-fn C.EVP_DigestVerifyUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt usize) i32
-fn C.EVP_DigestVerifyFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen usize) i32
+fn C.EVP_DigestVerifyUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt i32) i32
+fn C.EVP_DigestVerifyFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen i32) i32
 
 // EVP_PKEY Context
 @[typedef]
@@ -154,10 +137,10 @@ fn C.BIO_new(t &C.BIO_METHOD) &C.BIO
 fn C.BIO_free_all(a &C.BIO)
 fn C.BIO_s_mem() &C.BIO_METHOD
 fn C.BIO_write(b &C.BIO, buf &u8, length i32) i32
-fn C.PEM_read_bio_PrivateKey(bp &C.BIO, x &&C.EVP_PKEY, cb voidptr, u voidptr) &C.EVP_PKEY
-fn C.PEM_read_bio_PUBKEY(bp &C.BIO, x &&C.EVP_PKEY, cb voidptr, u voidptr) &C.EVP_PKEY
+fn C.PEM_read_bio_PrivateKey(bp &C.BIO, x &&C.EVP_PKEY, cb i32, u &voidptr) &C.EVP_PKEY
+fn C.PEM_read_bio_PUBKEY(bp &C.BIO, x &&C.EVP_PKEY, cb i32, u &voidptr) &C.EVP_PKEY
 fn C.PEM_write_bio_PUBKEY(bp &C.BIO, x &C.EVP_PKEY) i32
-fn C.d2i_PUBKEY(k &&C.EVP_PKEY, pp &&u8, length i64) &C.EVP_PKEY
+fn C.d2i_PUBKEY(k &&C.EVP_PKEY, pp &&u8, length u32) &C.EVP_PKEY
 fn C.i2d_PUBKEY_bio(bo &C.BIO, pkey &C.EVP_PKEY) i32
 fn C.d2i_PUBKEY_bio(bo &C.BIO, key &&C.EVP_PKEY) &C.EVP_PKEY
 

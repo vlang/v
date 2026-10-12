@@ -32,16 +32,10 @@ fn cb_free(p voidptr) {
 }
 
 #flag -I @VEXEROOT/thirdparty/stb_image
-
-$if macos {
-	#define STBI_rgb_alpha 4
-} $else {
-	#include "stb_image.h"
-	#include "stb_image_write.h"
-	#include "stb_image_resize2.h"
-	#include "stb_v_header.h"
-}
-
+#include "stb_image.h"
+#include "stb_image_write.h"
+#include "stb_image_resize2.h"
+#include "stb_v_header.h"
 #flag @VEXEROOT/thirdparty/stb_image/stbi.o
 
 // Image represents an image loaded from file or memory, or an image, produced after resizing
@@ -117,9 +111,9 @@ pub fn (img &Image) free() {
 // Load functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbi_load(filename &char, x &i32, y &i32, channels_in_file &i32, desired_channels i32) &u8
-fn C.stbi_load_from_file(f voidptr, x &i32, y &i32, channels_in_file &i32, desired_channels i32) &u8
-fn C.stbi_load_from_memory(buffer &u8, len i32, x &i32, y &i32, channels_in_file &i32, desired_channels i32) &u8
+fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_channels i32) &u8
+fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels i32) &u8
+fn C.stbi_load_from_memory(buffer &u8, len i32, x &int, y &int, channels_in_file &int, desired_channels i32) &u8
 
 pub const C.STBI_rgb_alpha int
 
@@ -156,14 +150,8 @@ pub fn load(path string, params LoadParams) !Image {
 		ext:         ext
 		nr_channels: params.desired_channels
 	}
-	mut width := i32(0)
-	mut height := i32(0)
-	mut channels := i32(0)
-	res.data = C.stbi_load(&char(path.str), &width, &height, &channels,
+	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.original_nr_channels,
 		params.desired_channels)
-	res.width = int(width)
-	res.height = int(height)
-	res.original_nr_channels = int(channels)
 	if params.desired_channels == 0 {
 		res.nr_channels = res.original_nr_channels
 	}
@@ -184,14 +172,8 @@ pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 		ok:          true
 		nr_channels: params.desired_channels
 	}
-	mut width := i32(0)
-	mut height := i32(0)
-	mut channels := i32(0)
-	res.data = C.stbi_load_from_memory(buf, bufsize, &width, &height,
-		&channels, params.desired_channels)
-	res.width = int(width)
-	res.height = int(height)
-	res.original_nr_channels = int(channels)
+	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height,
+		&res.original_nr_channels, params.desired_channels)
 	if params.desired_channels == 0 {
 		res.nr_channels = res.original_nr_channels
 	}

@@ -131,22 +131,18 @@ $if prod && opt_size ? {
 #flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/everest.o
 #flag @VEXEROOT/thirdparty/mbedtls/3rdparty/everest/library/x25519.o
 
-$if macos {
-	#flag @VEXEROOT/thirdparty/mbedtls/v_helpers.o
-} $else {
-	#include <mbedtls/net_sockets.h>
-	#include <mbedtls/ssl.h>
-	#include <mbedtls/entropy.h>
-	#include <mbedtls/ctr_drbg.h>
-	#include <mbedtls/error.h>
-	#include <mbedtls/threading.h>
-	// oid.h isn't pulled in transitively by ssl.h/x509_crt.h -- needed for
-	// MBEDTLS_OID_SERVER_AUTH/MBEDTLS_OID_SIZE, used by the cert-usage shim
-	// below (mbedtls_helpers.h).
-	#include <mbedtls/oid.h>
-	#insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_helpers.h"
-	#insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_threading.h"
-}
+#include <mbedtls/net_sockets.h>
+#include <mbedtls/ssl.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/error.h>
+#include <mbedtls/threading.h>
+// oid.h isn't pulled in transitively by ssl.h/x509_crt.h -- needed for
+// MBEDTLS_OID_SERVER_AUTH/MBEDTLS_OID_SIZE, used by the cert-usage shim
+// below (mbedtls_helpers.h).
+#include <mbedtls/oid.h>
+#insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_helpers.h"
+#insert "@VEXEROOT/vlib/net/mbedtls/mbedtls_threading.h"
 
 // v_mbedtls_threading_setup installs the mutex callbacks mbedtls needs when it
 // is built with MBEDTLS_THREADING_ALT (Windows). On platforms that use pthread
@@ -160,26 +156,17 @@ fn init() {
 	C.v_mbedtls_threading_setup()
 }
 
-// mbedtls_net_context holds the native socket descriptor.
 @[typedef]
 pub struct C.mbedtls_net_context {
 mut:
-	fd i32
+	fd int
 }
 
-// mbedtls_ssl_context stores the bundled library context without exposing its internal fields.
 @[typedef]
-pub struct C.mbedtls_ssl_context {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [71]u64
-}
+pub struct C.mbedtls_ssl_context {}
 
-// mbedtls_ssl_config stores the bundled library context without exposing its internal fields.
 @[typedef]
-pub struct C.mbedtls_ssl_config {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [49]u64
-}
+pub struct C.mbedtls_ssl_config {}
 
 @[typedef]
 pub struct C.mbedtls_ssl_send_t {}
@@ -190,40 +177,20 @@ pub struct C.mbedtls_ssl_recv_t {}
 @[typedef]
 pub struct C.mbedtls_ssl_recv_timeout_t {}
 
-// mbedtls_pk_context stores the bundled library context without exposing its internal fields.
 @[typedef]
-pub struct C.mbedtls_pk_context {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [2]u64
-}
+pub struct C.mbedtls_pk_context {}
 
-// mbedtls_ctr_drbg_context stores the bundled library context without exposing its internal fields.
 @[typedef]
-pub struct C.mbedtls_ctr_drbg_context {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [52]u64
-}
+pub struct C.mbedtls_ctr_drbg_context {}
 
-// mbedtls_entropy_context stores the bundled library context without exposing its internal fields.
 @[typedef]
-pub struct C.mbedtls_entropy_context {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [113]u64
-}
+pub struct C.mbedtls_entropy_context {}
 
-// mbedtls_x509_crt stores the bundled library context without exposing its internal fields.
 @[typedef]
-pub struct C.mbedtls_x509_crt {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [93]u64
-}
+pub struct C.mbedtls_x509_crt {}
 
-// mbedtls_x509_crl stores the bundled library context without exposing its internal fields.
 @[typedef]
-pub struct C.mbedtls_x509_crl {
-	// Opaque bundled-library storage; v_helpers.c checks size and alignment.
-	storage [52]u64
-}
+pub struct C.mbedtls_x509_crl {}
 
 fn C.mbedtls_net_init(&C.mbedtls_net_context)
 fn C.mbedtls_net_connect(&C.mbedtls_net_context, &char, &char, i32) i32
@@ -289,11 +256,10 @@ fn C.mbedtls_pk_verify(&C.mbedtls_pk_context, i32, &u8, usize, &u8, usize) i32
 // MBEDTLS_PRIVATE-wrapped fields and no internal invariants beyond "two
 // plain ints" -- safe to hand-replicate, unlike the cases this module
 // deliberately keeps behind C shims instead (see mbedtls_helpers.h).
-// mbedtls_pk_rsassa_pss_options selects the digest and expected salt length.
 pub struct C.mbedtls_pk_rsassa_pss_options {
 mut:
-	mgf1_hash_id      i32
-	expected_salt_len i32
+	mgf1_hash_id      int
+	expected_salt_len int
 }
 
 // mbedtls_pk_verify_ext verifies a signature with an explicit signature
