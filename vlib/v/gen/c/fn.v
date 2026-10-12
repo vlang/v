@@ -17170,7 +17170,10 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 		return false
 	}
 	if !g.c_directives_use_system_libc() && !g.target_libc_headers
-		&& !g.files_with_c_includes[source_file] && module_name !in g.mods_with_c_includes {
+		&& !g.files_with_c_includes[source_file] && module_name !in g.mods_with_c_includes
+		&& (g.c_source_file_is_in_vlib(source_file) || g.c_source_file_is_compiler_main(source_file)
+			|| cfn in c_preamble_declared_extern_symbols
+			|| cfn in c_system_libc_preamble_declared_fns || cfn in c_manual_stdlib_declared_fns) {
 		return true
 	}
 	return g.c_extern_decl_has_no_header(source_file, module_name)
@@ -19179,4 +19182,10 @@ fn (g &FlatGen) shared_optional_call_type(id flat.NodeId, node flat.Node) ?types
 		`?` { types.Type(types.OptionType{ base_type: pointer }) }
 		else { types.Type(types.ResultType{ base_type: pointer }) }
 	}
+}
+
+// c_source_file_is_compiler_main identifies the CLI's bodyless POSIX bindings.
+fn (g &FlatGen) c_source_file_is_compiler_main(source_file string) bool {
+	root := g.compiler_vroot.replace('\\', '/').trim_right('/')
+	return root.len > 0 && source_file.replace('\\', '/').starts_with('${root}/cmd/v/')
 }
