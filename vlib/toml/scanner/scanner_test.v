@@ -100,3 +100,21 @@ fn test_multiline_string() {
 	assert tok.lit.contains('def')
 	assert tok.lit.contains('123')
 }
+
+fn test_peek_negative_offsets() ! {
+	mut s := scanner.new_scanner(input: scan_input)!
+	assert s.peek(-1) == scanner.end_of_text
+	assert s.peek(min_int) == scanner.end_of_text
+	assert s.peek(max_int) == scanner.end_of_text
+	s.next()
+	assert s.peek(-1) == `a`
+	assert s.peek(-2) == scanner.end_of_text
+	s.next()
+	assert s.peek(-1) == `b`
+	assert s.peek(-2) == `a`
+	s.next()
+	assert s.peek(-1) == `c`
+	assert s.peek(-3) == `a`
+	assert s.peek(-4) == scanner.end_of_text
+	assert s.peek(max_int) == scanner.end_of_text
+}
