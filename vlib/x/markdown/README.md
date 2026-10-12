@@ -290,6 +290,9 @@ fn test_my_markdown() {
 
 Top-level bullet and ordered list markers may have up to three leading spaces.
 Continuation lines use the item's indentation; further indented markers form nested lists.
+Leading tabs used for block indentation expand to four-column tab stops.
+Tabs after a line's first non-whitespace character remain literal content,
+including in fenced and indented code blocks.
 
 - Follow V style guidelines (use `v fmt -w` on edits)
 - Add tests for new features
