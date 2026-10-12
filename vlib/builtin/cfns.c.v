@@ -50,12 +50,16 @@ fn C.realloc(a voidptr, b usize) voidptr
 @[markused; noalloc]
 fn C.free(ptr voidptr)
 
+@[markused]
 fn C.mmap(addr_length voidptr, length usize, prot i32, flags i32, fd i32, offset isize) voidptr
 
 // C.munmap releases a memory mapping created by C.mmap.
 fn C.munmap(addr_length voidptr, len usize) i32
+
+@[markused]
 fn C.mprotect(addr_length voidptr, len usize, prot i32) i32
 
+@[markused]
 fn C.aligned_alloc(align usize, size usize) voidptr
 
 // windows aligned memory functions
@@ -72,7 +76,7 @@ $if windows {
 	fn C.VirtualProtect(voidptr, isize, C.DWORD, &C.DWORD) bool
 }
 
-@[noreturn; trusted]
+@[markused; noreturn; trusted]
 fn C.exit(code i32)
 
 @[markused]
@@ -139,6 +143,7 @@ fn C.fileno(&C.FILE) i32
 
 fn C.fread(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 
+@[markused]
 fn C.fwrite(const_ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 
 fn C.fclose(stream &C.FILE) i32
@@ -159,7 +164,7 @@ fn C.GetCurrentProcessId() u32
 @[trusted]
 fn C._getpid() i32
 
-@[trusted]
+@[markused; trusted]
 fn C.getpid() i32
 
 @[trusted]
@@ -515,6 +520,7 @@ $if windows {
 }
 
 // pthread.h
+@[markused]
 fn C.pthread_self() usize
 
 @[markused]
@@ -532,10 +538,13 @@ fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) i32
 @[markused]
 fn C.pthread_attr_destroy(attr voidptr) i32
 
+@[markused]
 fn C.pthread_mutex_init(voidptr, voidptr) i32
 
+@[markused]
 fn C.pthread_mutex_lock(voidptr) i32
 
+@[markused]
 fn C.pthread_mutex_unlock(voidptr) i32
 
 fn C.pthread_mutex_destroy(voidptr) i32
@@ -658,6 +667,7 @@ $if windows {
 	pub struct C.SRWLOCK {}
 }
 
+@[markused]
 fn C.sysconf(name i32) i32
 
 // Dependencies of the compiler's inline C runtime, not directly called by V code.

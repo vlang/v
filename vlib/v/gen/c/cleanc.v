@@ -5890,18 +5890,15 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		if c_include_arg_is_builtin_abi_helper(include_arg, g.compiler_vroot) {
 			return true
 		}
-		// Inserted source supplies its own declarations without a header lookup.
-		if node.value == 'insert' {
-			for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file,
-				c_flag_include_dirs(g.c_flags)) {
-				if text := os.read_file(path) {
-					g.collect_inlined_c_structs(text)
-					g.collect_inlined_c_fns(text)
-					g.collect_inlined_c_declared_fns(text)
-					g.add_c_directive(module_name, g.guarded_c_directive(node_idx,
-						cross_prefix_condition, text), before_import)
-					return true
-				}
+		// Heap-mode checks are preprocessor guards, not a source of C declarations.
+		// Keep them inline without changing header lookup for other #insert files.
+		guard_path := os.join_path(g.compiler_vroot, 'vlib', 'builtin', 'track_heap_checks.h')
+		if node.value == 'insert'
+			&& normalized_c_include_arg_path(include_arg) == guard_path.replace('\\', '/') {
+			if text := os.read_file(guard_path) {
+				g.add_c_directive(module_name, g.guarded_c_directive(node_idx,
+					cross_prefix_condition, text), before_import)
+				return true
 			}
 		}
 		g.note_c_include_directive(module_name, source_file)
@@ -19950,7 +19947,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define isfinite(x) __v_isfinite(x)')
 	g.writeln('#define signbit(x) __v_signbit(x)')
 	g.emit_c_runtime_declarations(['getenv', 'setenv', 'pow', 'fabs', 'floor', 'ceil', 'snprintf',
-		'memcpy', 'memmove', 'memcmp', 'strlen', 'qsort'])
+		'memcpy', 'memmove', 'memcmp', 'strlen', 'qsort', 'fwrite', 'mmap', 'pthread_self',
+		'pthread_mutex_lock', 'pthread_mutex_unlock', 'pthread_mutex_init', 'mprotect', 'sysconf',
+		'aligned_alloc', 'exit', 'getpid'])
 }
 
 fn c_function_like_macro_decl_names() []string {
