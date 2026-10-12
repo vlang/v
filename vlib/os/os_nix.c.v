@@ -139,7 +139,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 			}
 			.start_and_ends_with {
 				p := pat.split('*')
-				f.starts_with(p[0]) && f.ends_with(p[1])
+				f.starts_with(p[0]) && f.ends_with(p.last())
 			}
 			.contains {
 				f.contains(pat)
