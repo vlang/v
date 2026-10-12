@@ -59,6 +59,8 @@ After updating, `v up` refreshes previously cached vlib modules with the compile
 and flags used to cache them, including normal and `-prod` builds. Unchanged
 modules are reused. Each module being cached is printed to standard output as
 `Caching module <name>...`. A failed cache refresh makes `v up` fail.
+Cached module headers preserve struct field attribute groups, so valid deprecation
+attributes do not introduce warnings during refresh.
 Ordinary builds report cache progress on standard error. Refreshes retain absolute
 module search paths, resolved C compiler commands, and build modes. They omit
 linker-only flags, including operands embedded in `-cflags`. Relative `V3CACHE`
