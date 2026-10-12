@@ -721,7 +721,10 @@ fn (g &FlatGen) has_no_main_module() bool {
 }
 
 fn (mut g FlatGen) gen_executable_cleanup_registration() {
-	if g.module_cleanup_fns.len > 0 || g.is_trace_calls {
+	// Unchanged cleanup bodies live in the cached prefix, outside the selected
+	// incremental function set. An edited main must still register that hook.
+	if g.module_cleanup_fns.len > 0 || g.is_trace_calls
+		|| (g.program_body_only && g.cached_program_cleanup) {
 		g.writeln('atexit(_vcleanup);')
 	}
 }
@@ -768,7 +771,9 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	// `internal_linkage` pragma for `-is_o` otherwise gives a local static both a
 	// private definition and an external relocation on macOS.
 	g.writeln('static bool _v3_no_main_initialized = false;')
-	g.writeln('static void _vno_main_init_caller(void) {')
+	// Export wrappers in cached module units share the program's initializer.
+	storage := if g.cache_split { '' } else { 'static ' }
+	g.writeln('${storage}void _vno_main_init_caller(void) {')
 	g.writeln('\tif (_v3_no_main_initialized) { return; }')
 	g.writeln('\t_v3_no_main_initialized = true;')
 	if g.has_builtins {
@@ -16028,6 +16033,25 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 }
 
 fn (mut g FlatGen) gen_lowered_mut_value_storage_arg(arg_id flat.NodeId, arg_node flat.Node, expected types.Type) bool {
+	mut binding := arg_node
+	if arg_node.kind == .prefix && arg_node.op in [.amp, .mul]
+		&& arg_node.children_count == 1 {
+		binding = g.a.child_node(&arg_node, 0)
+	}
+	if binding.kind == .ident {
+		if value_type := g.local_indirect_value_type(binding.value) {
+			clean_value := cgen_unalias_type(value_type)
+			clean_expected := cgen_unalias_type(expected)
+			if clean_value is types.Pointer && clean_expected is types.Pointer
+				&& g.tc.c_type(clean_value) == g.tc.c_type(clean_expected) {
+				// Borrowed loop bindings retain a pointer to the entry slot. A
+				// pointer-valued entry passed as T* needs its stored pointer,
+				// rather than the T** that permits replacing the map entry.
+				g.write('(*${g.local_decl_cname(binding.value)})')
+				return true
+			}
+		}
+	}
 	if arg_node.kind != .prefix || arg_node.op != .mul || arg_node.children_count != 1 {
 		return false
 	}
@@ -16266,7 +16290,8 @@ fn (mut g FlatGen) forward_decls() {
 		g.forward_decl_items(items, mut forwarded_exports)
 		g.bare_builtin_hook_forward_decls()
 		if g.needs_no_main_runtime_init_caller() {
-			g.writeln('static void _vno_main_init_caller(void);')
+			storage := if g.cache_split { '' } else { 'static ' }
+			g.writeln('${storage}void _vno_main_init_caller(void);')
 		}
 		if g.is_shared {
 			g.writeln('void _vcleanup(void);')
@@ -16326,7 +16351,8 @@ fn (mut g FlatGen) forward_decls() {
 	}
 	g.bare_builtin_hook_forward_decls()
 	if g.needs_no_main_runtime_init_caller() {
-		g.writeln('static void _vno_main_init_caller(void);')
+		storage := if g.cache_split { '' } else { 'static ' }
+		g.writeln('${storage}void _vno_main_init_caller(void);')
 	}
 	if g.is_shared {
 		g.writeln('void _vcleanup(void);')
@@ -16452,6 +16478,40 @@ struct CExternForwardDecl {
 	specificity int
 }
 
+// emit_c_runtime_declarations declares dependencies of generated inline helpers
+// from the same bodyless V bindings used by ordinary C calls.
+fn (mut g FlatGen) emit_c_runtime_declarations(required []string) {
+	if isnil(g.a) || isnil(g.tc) {
+		return
+	}
+	file := g.tc.cur_file
+	mod := g.tc.cur_module
+	defer {
+		g.tc.cur_file = file
+		g.tc.cur_module = mod
+	}
+	for idx in g.top_level_nodes() {
+		node := g.a.nodes[idx]
+		if node.kind == .file {
+			g.tc.cur_file = node.value
+			g.tc.cur_module = 'main'
+		} else if node.kind == .module_decl {
+			g.tc.cur_module = node.value
+		} else if node.kind == .c_fn_decl {
+			raw_name := node.value.trim_string_left('C.')
+			if raw_name !in required {
+				continue
+			}
+			name := g.c_decl_abi_names['C.${raw_name}'] or { raw_name }
+			if name in g.inlined_c_declared_fns {
+				continue
+			}
+			g.writeln(g.c_extern_decl_line(node, name))
+			g.inlined_c_declared_fns[name] = true
+		}
+	}
+}
+
 fn (mut g FlatGen) c_extern_forward_decls() {
 	mut cur_module := 'main'
 	mut cur_file := ''
@@ -16556,7 +16616,8 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			g.writeln('#ifndef V3CACHE_PROGRAM_UNIT')
 			g.writeln(line)
 			g.writeln('#endif')
-		} else if name == 'task_info' || name == 'mach_task_self' {
+		} else if (name == 'task_info' || name == 'mach_task_self')
+			&& g.c_directives_use_system_libc() {
 			g.writeln('#ifndef __APPLE__')
 			g.writeln(line)
 			g.writeln('#endif')
@@ -16798,10 +16859,11 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	if cfn in c_manual_stdlib_declared_fns && g.c_directives_use_system_libc() {
 		return false
 	}
-	if g.cache_split && cfn in c_cache_system_header_declared_fns {
+	if g.cache_split && g.c_directives_use_system_libc()
+		&& cfn in c_cache_system_header_declared_fns {
 		return false
 	}
-	if cfn in c_preamble_declared_extern_symbols {
+	if cfn in c_preamble_declared_extern_symbols && g.c_directives_use_system_libc() {
 		if g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols {
 			return true
 		}
@@ -17088,9 +17150,18 @@ fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name stri
 fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string, module_name string) bool {
 	// builtin/cfns.c.v declares the static vschannel helper supplied by its C header.
 	// A user C.request declaration is unrelated and follows the normal header checks.
-	if cfn == 'request'
-		&& source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v') {
-		return false
+	if cfn == 'request' {
+		original := if !isnil(g.a) {
+			g.a.cached_header_sources[source_file] or { source_file }
+		} else {
+			source_file
+		}
+		// A cached builtin header represents the whole bundle, so its recorded
+		// source can be array.v rather than the original cfns.c.v declaration.
+		if original.replace('\\', '/').ends_with('/builtin/cfns.c.v')
+			|| (module_name == 'builtin' && g.c_source_file_is_in_vlib(original)) {
+			return false
+		}
 	}
 	if g.target.os == 'vinix' {
 		normalized_file := source_file.replace('\\', '/')
@@ -17110,6 +17181,20 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 	if !g.should_emit_c_extern_decl(cfn) {
 		return false
 	}
+	// These stdlib bindings remain necessary when unrelated modules use headers.
+	if g.c_source_file_is_in_vlib(source_file)
+		&& cfn in ['_Exit', 'flock', 'v_os_fd_write_all', 'v_os_execute_capture_start',
+			'v_os_exec_capture_start', 'v_os_exec_capture_input_start'] {
+		return true
+	}
+	if !g.c_directives_use_system_libc() && !g.target_libc_headers
+		&& !g.files_with_c_includes[source_file] && module_name !in g.mods_with_c_includes
+		&& (g.c_source_file_is_in_vlib(source_file) || g.c_source_file_is_compiler_main(source_file)
+			|| cfn in ['task_info', 'mach_task_self', 'getppid']
+			|| cfn in c_preamble_declared_extern_symbols
+			|| cfn in c_system_libc_preamble_declared_fns || cfn in c_manual_stdlib_declared_fns) {
+		return true
+	}
 	return g.c_extern_decl_has_no_header(source_file, module_name)
 }
 
@@ -17117,6 +17202,8 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 // header set in system_libc_headers(). Declarations from other system headers are
 // tracked per include through inlined_c_declared_fns.
 const c_system_libc_preamble_declared_fns = {
+	'pthread_attr_setdetachstate':   true
+	'pthread_once':                  true
 	'__builtin_ctz':                 true
 	'__builtin_ctzll':               true
 	'abs':                           true
@@ -17336,8 +17423,6 @@ const c_static_helper_symbols = {
 	'WIFEXITED':                           true
 	'WIFSIGNALED':                         true
 	'WTERMSIG':                            true
-	'access':                              true
-	'atexit':                              true
 	'atomic_compare_exchange_strong_byte': true
 	'atomic_compare_exchange_strong_ptr':  true
 	'atomic_compare_exchange_strong_u16':  true
@@ -17373,29 +17458,9 @@ const c_static_helper_symbols = {
 	'atomic_store_u16':                    true
 	'atomic_store_u32':                    true
 	'atomic_store_u64':                    true
-	'close':                               true
 	'cpu_relax':                           true
-	'dup2':                                true
-	'execlp':                              true
-	'execvp':                              true
-	'fcntl':                               true
-	'fork':                                true
-	'getenv':                              true
-	'open':                                true
-	'pipe':                                true
-	'posix_spawn':                         true
-	'posix_spawnp':                        true
-	'read':                                true
-	'realpath':                            true
-	'setenv':                              true
-	'signal':                              true
-	'snprintf':                            true
-	'strrchr':                             true
-	'strstr':                              true
 	'v_filelock_lock':                     true
 	'v_filelock_unlock':                   true
-	'v_os_exec_capture_start':             true
-	'v_os_execute_capture_start':          true
 	'vschannel_cleanup':                   true
 	'vschannel_init':                      true
 	'v_prealloc_atomic_add_i32':           true
@@ -17407,7 +17472,6 @@ const c_static_helper_symbols = {
 	'v_signal_with_handler_cast':          true
 	'wyhash':                              true
 	'wyhash64':                            true
-	'_exit':                               true
 	'_wymix':                              true
 	'_vcleanup':                           true
 	'_vinit':                              true
@@ -19137,4 +19201,12 @@ fn (g &FlatGen) shared_optional_call_type(id flat.NodeId, node flat.Node) ?types
 		`?` { types.Type(types.OptionType{ base_type: pointer }) }
 		else { types.Type(types.ResultType{ base_type: pointer }) }
 	}
+}
+
+// c_source_file_is_compiler_main identifies the CLI's bodyless POSIX bindings.
+fn (g &FlatGen) c_source_file_is_compiler_main(source_file string) bool {
+	root := g.compiler_vroot.replace('\\', '/').trim_right('/')
+	path := source_file.replace('\\', '/')
+	return root.len > 0 && (path.starts_with('${root}/cmd/v/')
+		|| path.starts_with('cmd/v/') || path.starts_with('./cmd/v/'))
 }

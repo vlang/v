@@ -12,6 +12,7 @@ import v.pref
 import v.token as vtoken
 import v.types
 import v.util
+import v.util.cache_refresh
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
@@ -64,7 +65,8 @@ pub fn manual_stdlib_c_headers_error() ?string {
 
 // uses_manual_stdlib_c_headers reports whether this program needs the embedded libc preamble.
 // It is only needed when the embedded header is damaged, before the driver starts C generation.
-pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, prefs &pref.Preferences, initial_c_flags []string) bool {
+// object_file_mode must match the driver's object-output selection.
+pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, prefs &pref.Preferences, initial_c_flags []string, object_file_mode bool) bool {
 	if prefs.target_libc_headers {
 		return false
 	}
@@ -73,6 +75,8 @@ pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, pref
 	g.tc = tc
 	g.target = prefs.target
 	g.output_cross_c = prefs.output_cross_c
+	g.no_builtin = prefs.no_builtin
+	g.object_file_mode = object_file_mode
 	g.compiler_vroot = prefs.vroot
 	g.compile_values = prefs.compile_values
 	g.c99_mode = prefs.c99
@@ -562,6 +566,7 @@ mut:
 	is_shared                      bool
 	interface_exports              []string
 	object_file_mode               bool
+	no_builtin                     bool
 	suppress_main                  bool
 	coverage_dir                   string
 	coverage_build_options         string
@@ -609,6 +614,9 @@ mut:
 	cache_const_declarations       map[string]string
 	cache_decl_refs                map[string]bool
 	cache_decl_demand              bool
+	cache_pruned_fn_names          []string
+	cache_pruned_fn_modules        []string
+	cache_pruned_fn_refs           []string
 	const_init_order               []string
 	fixed_storage_consts           map[string]bool
 	global_modules                 map[string]string
@@ -665,6 +673,7 @@ mut:
 	inlined_c_static_fns           map[string]bool
 	cache_omitted_c_fns            map[string]bool
 	initial_c_flags                []string
+	cache_refresh_project_flags    []cache_refresh.FlagGroup
 	c_flags                        []string
 	libc_compat_fns                map[string]bool
 	tc                             &types.TypeChecker = unsafe { nil }
@@ -776,6 +785,7 @@ mut:
 	inside_trace_call               bool
 	skip_generics                   bool
 	skip_enum_autostr               bool
+	literal_output_only             bool
 	placeholder_check_forced        bool
 	cur_fn_name                     string
 	cur_fn_source_file              string
@@ -924,6 +934,7 @@ mut:
 	embed_incbin_syms_ready    bool
 	cache_native_input_paths   map[string]bool
 	program_body_only          bool
+	cached_program_cleanup     bool
 	cached_support_identifiers map[string]bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
@@ -1048,6 +1059,11 @@ pub fn (g &FlatGen) c_flags() []string {
 // set_initial_c_flags makes command-line C flags available while collecting directives.
 pub fn (mut g FlatGen) set_initial_c_flags(flags []string) {
 	g.initial_c_flags = flags.clone()
+}
+
+// set_cache_refresh_project_flags restores project directives beside current module flags.
+pub fn (mut g FlatGen) set_cache_refresh_project_flags(groups []cache_refresh.FlagGroup) {
+	g.cache_refresh_project_flags = groups.clone()
 }
 
 // set_c99_mode configures whether generated C should support strict C99 builds.
@@ -1933,6 +1949,11 @@ pub fn (mut g FlatGen) set_shared(enabled bool) {
 	g.is_shared = enabled
 }
 
+// set_no_builtin enables compatibility declarations when V libc bindings are unavailable.
+pub fn (mut g FlatGen) set_no_builtin(enabled bool) {
+	g.no_builtin = enabled
+}
+
 // set_object_file_mode gives generated runtime symbols translation-unit-local
 // linkage while retaining public entry-module functions through C ABI wrappers.
 pub fn (mut g FlatGen) set_object_file_mode(enabled bool) {
@@ -2008,6 +2029,11 @@ pub fn (mut g FlatGen) set_cache_native_input_paths(paths []string) {
 // when that prefix has already been validated and loaded from the module cache.
 pub fn (mut g FlatGen) set_program_body_only(enabled bool) {
 	g.program_body_only = enabled
+}
+
+// set_cached_program_cleanup records whether the cached program prefix owns its exit hook.
+pub fn (mut g FlatGen) set_cached_program_cleanup(enabled bool) {
+	g.cached_program_cleanup = enabled
 }
 
 // set_cache_program_files assigns entry-module source files to the program
@@ -3260,6 +3286,7 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	g.a = a
+	g.literal_output_only = false
 	effective_no_parallel := no_parallel || g.profile_file.len > 0 || g.coverage_dir.len > 0
 		|| !g.parallel_codegen_available()
 	// The preparation choices below must agree with the dispatch mode the stages
@@ -3336,6 +3363,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cache_const_declarations.clear()
 	g.cache_decl_refs.clear()
 	g.cache_decl_demand = false
+	g.cache_pruned_fn_refs = []string{}
 	g.const_files.clear()
 	g.const_init_order = []string{}
 	g.fixed_storage_consts.clear()
@@ -3519,6 +3547,18 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.tc = unsafe { tc }
 	if g.tc.a == unsafe { nil } {
 		g.tc.collect(a)
+	}
+	if source := g.literal_output_program() {
+		// Literal output has no V allocations or runtime initialization. Avoid
+		// collecting builtin C flags, which would also link the unused collector.
+		g.c_flags = g.initial_c_flags.clone()
+		g.literal_output_only = true
+		if g.output_path.len > 0 {
+			os.write_file(g.output_path, source) or { g.output_error = err.msg() }
+			unsafe { source.free() }
+			return ''
+		}
+		return source
 	}
 	mut cgsw := time.new_stopwatch()
 	g.tc.precompute_source_error_embed_index()
@@ -5329,6 +5369,9 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			}
 		}
 	}
+	for group in g.cache_refresh_project_flags {
+		groups << CFlagDirectiveGroup{ flags: group.flags, at_start: group.at_start, in_main: group.in_main, identity: group.identity }
+	}
 	g.c_flags << ordered_c_flag_directive_groups(groups)
 }
 
@@ -5336,6 +5379,8 @@ struct CFlagDirectiveGroup {
 	flags    []string
 	at_start bool
 	in_main  bool
+	source   string
+	identity string
 }
 
 // ordered_c_flag_directive_groups puts the groups of `@START_LIBS` style directives
@@ -5346,7 +5391,7 @@ fn ordered_c_flag_directive_groups(groups []CFlagDirectiveGroup) []string {
 	mut result := []string{}
 	mut seen := map[string]bool{}
 	for group in groups {
-		key := group.flags.join('\x00')
+		key := if group.identity.len > 0 { group.identity } else { group.flags.join('\x00') }
 		if group.at_start && key !in seen {
 			seen[key] = true
 			result << group.flags
@@ -5354,7 +5399,7 @@ fn ordered_c_flag_directive_groups(groups []CFlagDirectiveGroup) []string {
 	}
 	mut main_flags := []string{}
 	for group in groups {
-		key := group.flags.join('\x00')
+		key := if group.identity.len > 0 { group.identity } else { group.flags.join('\x00') }
 		if key in seen {
 			continue
 		}
@@ -5372,6 +5417,28 @@ fn ordered_c_flag_directive_groups(groups []CFlagDirectiveGroup) []string {
 // cache_directive_flags resolves source C flags that affect early C cache keys.
 pub fn cache_directive_flags(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) []string {
 	return cache_directive_flags_skipping(a, vroot, target, compile_values, map[int]bool{})
+}
+
+// cache_project_flag_groups returns only directives the refresh importer cannot read.
+// Entry files inside vlib are still project inputs; other vlib flags are resolved anew.
+pub fn cache_project_flag_groups(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string, program_files map[string]bool) []cache_refresh.FlagGroup {
+	vlib := os.real_path(os.join_path(vroot, 'vlib')) + os.path_separator
+	mut result := []cache_refresh.FlagGroup{}
+	for group in cache_directive_flag_groups(a, vroot, target, compile_values, map[int]bool{}) {
+		source := a.real_source_path(group.source)
+		if source !in program_files && os.real_path(source).starts_with(vlib) { continue }
+		result << cache_refresh.FlagGroup{ flags: group.flags, at_start: group.at_start, in_main: group.in_main }
+	}
+	return result
+}
+
+// cache_directive_flags_with_project merges saved project groups with fresh module directives.
+pub fn cache_directive_flags_with_project(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string, project []cache_refresh.FlagGroup) []string {
+	mut groups := cache_directive_flag_groups(a, vroot, target, compile_values, map[int]bool{})
+	for group in project {
+		groups << CFlagDirectiveGroup{ flags: group.flags, at_start: group.at_start, in_main: group.in_main, identity: group.identity }
+	}
+	return ordered_c_flag_directive_groups(groups)
 }
 
 // preflight_directive_flags resolves flags whose compile-time branches were decided by
@@ -5400,6 +5467,10 @@ fn mark_preflight_deferred_directives(a &flat.FlatAst, id flat.NodeId, mut defer
 }
 
 fn cache_directive_flags_skipping(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string, skipped map[int]bool) []string {
+	return ordered_c_flag_directive_groups(cache_directive_flag_groups(a, vroot, target, compile_values, skipped))
+}
+
+fn cache_directive_flag_groups(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string, skipped map[int]bool) []CFlagDirectiveGroup {
 	mut groups := []CFlagDirectiveGroup{}
 	mut cur_file := ''
 	mut cur_module := ''
@@ -5431,10 +5502,11 @@ fn cache_directive_flags_skipping(a &flat.FlatAst, vroot string, target pref.Tar
 				flags:    flags
 				at_start: at_start
 				in_main:  cur_module in ['', 'main']
+				source:   a.cached_header_sources[cur_file] or { cur_file }
 			}
 		}
 	}
-	return ordered_c_flag_directive_groups(groups)
+	return groups
 }
 
 // c_source_file_is_in_vlib reports whether a source file belongs to the compiler's
@@ -5844,12 +5916,21 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		if include_arg.len == 0 {
 			return true
 		}
-		g.note_c_include_directive(module_name, source_file)
-		// These helper headers are superseded by the inline compiler helpers emitted in
-		// builtin_abi_decls(); also including them would redefine the helpers.
 		if c_include_arg_is_builtin_abi_helper(include_arg, g.compiler_vroot) {
 			return true
 		}
+		// Heap-mode checks are preprocessor guards, not a source of C declarations.
+		// Keep them inline without changing header lookup for other #insert files.
+		guard_path := os.join_path(g.compiler_vroot, 'vlib', 'builtin', 'track_heap_checks.h')
+		if node.value == 'insert'
+			&& normalized_c_include_arg_path(include_arg) == guard_path.replace('\\', '/') {
+			if text := os.read_file(guard_path) {
+				g.add_c_directive(module_name, g.guarded_c_directive(node_idx,
+					cross_prefix_condition, text), before_import)
+				return true
+			}
+		}
+		g.note_c_include_directive(module_name, source_file)
 		include_dirs := c_flag_include_dirs(g.c_flags)
 		// `#insert` is an explicit request to inline the source text. Delay only
 		// ordinary source includes until after generated type declarations.
@@ -5893,6 +5974,11 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 				g.collect_inlined_c_fns_for_cache(source_text, true, false)
 				g.collect_inlined_c_declared_fns(source_text)
 				mut source_directive := c_native_source_context_include(source_path)
+				if g.cache_split && source_path == os.real_path(os.join_path(g.compiler_vroot, 'thirdparty', 'zstd', 'zstd.c')) {
+					// Cached module objects share one native implementation in the program
+					// prefix; their C declarations retain the bundled source's exact ABI.
+					source_directive = '#if !defined(V_PARALLEL_CC) || defined(V_PARALLEL_CC_OUT_0)\n${source_directive}\n#else\n${c_zstd_cache_header(source_text)}\n#endif'
+				}
 				if g.output_cross_c {
 					// Portable output carries the source text: its path is gone on the
 					// machine that later compiles the generated C. Its own quoted
@@ -10227,6 +10313,21 @@ fn (mut g FlatGen) emit_c_directives(late bool) {
 	}
 }
 
+// The bundled amalgamation contains its public headers verbatim. Cached modules
+// need those declarations, while only the program owner includes the implementation.
+fn c_zstd_cache_header(source string) string {
+	mut sections := []string{}
+	for name in ['zstd_errors.h', 'zstd.h'] {
+		start_marker := '/**** start inlining ../${name} ****/'
+		end_marker := '/**** ended inlining ../${name} ****/'
+		start := source.index(start_marker) or { return '' }
+		tail := source[start + start_marker.len..]
+		end := tail.index(end_marker) or { return '' }
+		sections << tail[..end]
+	}
+	return '#define ZSTD_STATIC_LINKING_ONLY\n' + sections.join('\n')
+}
+
 fn (mut g FlatGen) emit_c_source_directives() {
 	mut emitted := false
 	directives := g.ordered_c_directives(false)
@@ -10573,7 +10674,7 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 		}
 	}
 	refs := g.c_extern_referenced_symbols()
-	if !has_mach_headers && (refs['C.task_info'] || refs['task_info'] || refs['C.mach_task_self'] || refs['mach_task_self']) {
+	if use_system_libc && !has_mach_headers && (refs['C.task_info'] || refs['task_info'] || refs['C.mach_task_self'] || refs['mach_task_self']) {
 		g.writeln('#ifdef __APPLE__')
 		g.emit_preserved_c_directive('#include <mach/mach.h>')
 		g.emit_preserved_c_directive('#include <mach/task.h>')
@@ -10830,16 +10931,37 @@ fn dedupe_top_level_c_includes(directives []string) []string {
 	mut result := []string{}
 	mut seen_includes := map[string]bool{}
 	mut depth := 0
+	mut in_block_comment := false
 	for directive in directives {
 		clean := trimmed_space(directive)
-		if depth == 0 && c_directive_name(clean) in ['include', 'import'] && !c_is_source_include_directive(clean) {
+		if clean.contains('\n') {
+			// Inline blocks can change macros or leave a conditional open. Track
+			// their logical directives without deduplicating inside the block.
+			result << directive
+			seen_includes.clear()
+			for line in c_join_continued_lines(directive) {
+				scanned, next_in_block_comment := c_preprocessor_directive_scan_line(line,
+					in_block_comment)
+				in_block_comment = next_in_block_comment
+				name := c_directive_name(scanned)
+				if name in ['if', 'ifdef', 'ifndef'] {
+					depth++
+				} else if name == 'endif' && depth > 0 {
+					depth--
+				}
+			}
+			continue
+		}
+		scanned, next_in_block_comment := c_preprocessor_directive_scan_line(clean, in_block_comment)
+		in_block_comment = next_in_block_comment
+		name := c_directive_name(scanned)
+		if depth == 0 && name in ['include', 'import'] && !c_is_source_include_directive(clean) {
 			if clean in seen_includes {
 				continue
 			}
 			seen_includes[clean] = true
 		}
 		result << directive
-		name := c_directive_name(clean)
 		if depth == 0 && name in ['define', 'undef'] {
 			// A repeated unguarded include can intentionally observe a different macro
 			// state. Only deduplicate within one unchanged top-level macro epoch.
@@ -10865,9 +10987,9 @@ fn c_directive_name(text string) string {
 	if body.len == 0 {
 		return ''
 	}
-	idx := body.index_u8(` `)
-	if idx < 0 {
-		return body
+	mut idx := 0
+	for idx < body.len && !body[idx].is_space() {
+		idx++
 	}
 	return body[..idx]
 }
@@ -14191,9 +14313,7 @@ fn (mut g FlatGen) sizeof_selector_target(base string, fields []string) string {
 			if cgen_unalias_type(typ) is types.Pointer {
 				arrow = true
 			}
-			if field.starts_with('@') {
-				field_name = g.field_c_name(typ, field)
-			}
+			field_name = g.field_c_name(typ, field)
 		}
 		expr += if arrow { '->${field_name}' } else { '.${field_name}' }
 		cur = g.sizeof_selector_field_type(cur, field)
@@ -18933,10 +19053,8 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('typedef long long time_t;')
 		g.writeln('#endif')
 	}
-	// C23 has boolean keywords; older C2x compilers get them from stdbool.h.
-	g.writeln('#if defined(__STDC_VERSION__) && __STDC_VERSION__ > 201710L')
-	g.writeln('#include <stdbool.h>')
-	g.writeln('#endif')
+	// C23 and C++ already have boolean keywords.
+	g.writeln('#if !defined(__cplusplus) && (!defined(__STDC_VERSION__) || __STDC_VERSION__ <= 201710L)')
 	g.writeln('#ifndef __bool_true_false_are_defined')
 	g.writeln('#ifdef _MSC_VER')
 	g.writeln('typedef unsigned char bool;')
@@ -18944,6 +19062,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('typedef _Bool bool;')
 	g.writeln('#endif')
 	g.writeln('#define __bool_true_false_are_defined 1')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('typedef void* voidptr;')
 	if g.race {
@@ -19017,11 +19136,13 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('#define V_MANUAL_STDLIB_HEADERS 1')
 		g.writeln('void abort(void);')
 		g.system_libc_headers()
+		// Define native wrappers before runtime prototypes and pthread redirects.
+		g.portable_native_runtime_helpers()
 		g.system_libc_preamble()
 	} else {
 		g.headerless_libc_preamble()
 	}
-	g.thread_signal_stack_runtime(use_system_libc)
+	g.thread_signal_stack_runtime()
 	g.write_arch_macros()
 	g.panic_recovery_preamble()
 	g.writeln('')
@@ -19083,6 +19204,51 @@ fn (mut g FlatGen) panic_recovery_preamble() {
 	g.writeln('static inline void v_unwind_jump(void* frame) { v_unwind_longjmp(((v_unwind_frame*)frame)->buf); }')
 }
 
+fn (mut g FlatGen) portable_native_runtime_helpers() {
+	if !(g.output_cross_c || g.object_file_mode) || g.no_builtin || g.target_libc_headers {
+		return
+	}
+	if 'gcboehm' in g.compile_defines {
+		gc_source := $embed_file('@VEXEROOT/vlib/builtin/gc_boehm_helpers.c').to_string()
+		gc_header := $embed_file('@VEXEROOT/vlib/builtin/gc_debugger_linux.h').to_string()
+		g.write(gc_source.replace('void* v_', 'static void* v_')
+			.replace('void v_', 'static void v_').replace('int v_', 'static int v_')
+			.replace('#include "gc_debugger_linux.h"', gc_header))
+	}
+	g.writeln('#ifndef _WIN32')
+	g.write($embed_file('@VEXEROOT/vlib/v/pthread_helper.h').to_string())
+	g.write($embed_file('@VEXEROOT/vlib/sync/thread_helper.h').to_string())
+	g.write($embed_file('@VEXEROOT/vlib/v/bench/peak_rss.h').to_string())
+	capture_source := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.c').to_string()
+	capture_header := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.h').to_string()
+	g.write(capture_source.replace('#define V_OS_EXECUTE_SCOPE\n', '')
+		.replace('#include "execute_capture_nix.h"', capture_header))
+	g.writeln('#endif')
+	g.writeln('#ifdef __APPLE__')
+	free_memory_source := $embed_file('@VEXEROOT/vlib/runtime/free_memory_darwin.c').to_string()
+	g.write(free_memory_source.replace('int v_runtime_free_memory_darwin(',
+		'static int v_runtime_free_memory_darwin('))
+	g.writeln('#endif')
+	metadata_source := $embed_file('@VEXEROOT/vlib/v/modulecache/file_metadata.c').to_string()
+	g.write(metadata_source.replace('int v3_modulecache_file_metadata(',
+		'static int v3_modulecache_file_metadata('))
+	// Native definitions retain qualifiers that these bodyless V views cannot express.
+	g.collect_preserved_c_fns(['v3_modulecache_file_metadata', 'v_os_exec_capture_start',
+		'v_os_execute_capture_start', 'v_os_exec_capture_input_start', 'v_os_fd_write_all'])
+	if 'no_segfault_handler' !in g.compile_defines && g.target.os != 'vinix' {
+		signal_source := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.c').to_string()
+		signal_header := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.h').to_string()
+		g.writeln('#ifndef _WIN32')
+		g.write(signal_source.replace('#define V_PARALLEL_CC 1\n#define V_PARALLEL_CC_OUT_0 1\n', '')
+			.replace('defined(V_GCBOEHM_NATIVE)', 'defined(CUSTOM_DEFINE_gcboehm)')
+			.replace('#include <gc.h>', '#include <gc/gc.h>')
+			.replace('#include "segfault_handler_nix.h"', signal_header)
+			.replace('void* v_thread_', 'static void* v_thread_')
+			.replace('void v_thread_', 'static void v_thread_'))
+		g.writeln('#endif')
+	}
+}
+
 fn (g &FlatGen) c_directives_use_system_libc() bool {
 	// A freestanding target has no hosted libc to include, whatever the program's
 	// own `#include`s name. Those includes are the project's own headers -- a
@@ -19091,6 +19257,9 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 	// set into a translation unit that has none of them.
 	if g.target_libc_headers {
 		return false
+	}
+	if g.no_builtin || g.output_cross_c || g.object_file_mode {
+		return true
 	}
 	for directive in g.preinclude_directives {
 		for line in directive.split_into_lines() {
@@ -19181,11 +19350,19 @@ fn (mut g FlatGen) system_libc_headers() {
 	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
 		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/ioctl.h', 'sys/mman.h', 'sys/resource.h',
 		'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h', 'sys/utsname.h',
-		'sys/un.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
+		'sys/un.h', 'sys/uio.h', 'sys/ptrace.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
 		g.writeln('#include <${header}>')
 	}
+	g.writeln('#if defined(__linux__) && defined(__GLIBC__)')
+	g.writeln('#include <sys/poll.h>')
+	g.writeln('#else')
+	g.writeln('#include <poll.h>')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('#ifdef __APPLE__')
+	g.writeln('#include <mach/mach.h>')
+	g.writeln('#include <mach/mach_vm.h>')
+	g.writeln('#include <CommonCrypto/CommonDigest.h>')
 	g.writeln('#include <mach/mach_time.h>')
 	g.writeln('#include <mach-o/dyld.h>')
 	g.writeln('#endif')
@@ -19322,9 +19499,21 @@ fn (mut g FlatGen) system_libc_preamble() {
 // wrappers. Under Boehm these wrappers must be scanned GC roots until the worker
 // is joined; libc malloc memory is invisible to the collector.
 fn (mut g FlatGen) thread_allocation_helpers() {
+	g.emit_c_runtime_declarations(['GC_MALLOC_UNCOLLECTABLE', 'GC_FREE', 'GC_allow_register_threads'])
+	if 'gcboehm' in g.compile_defines && g.target.os != 'windows' {
+		g.emit_c_runtime_declarations(['v_gc_pthread_create', 'v_gc_pthread_join', 'v_gc_pthread_detach',
+			'v_gc_pthread_sigmask', 'v_gc_pthread_cancel', 'v_gc_pthread_exit', 'v_gc_dlopen'])
+		for name in ['pthread_create', 'pthread_join', 'pthread_detach', 'pthread_sigmask',
+			'pthread_cancel', 'pthread_exit'] {
+			g.writeln('#define ${name} v_gc_${name}')
+			g.inlined_c_active_macros[name] = true
+		}
+		g.writeln('#define dlopen v_gc_dlopen')
+		g.inlined_c_active_macros['dlopen'] = true
+	}
 	g.writeln('static void* __v_thread_alloc(size_t size) {')
 	g.writeln('#if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
-	g.writeln('\tvoid* p = GC_MALLOC_UNCOLLECTABLE(size);')
+	g.writeln('\tvoid* p = v_gc_malloc_uncollectable(size);')
 	g.writeln('#else')
 	g.writeln('\tvoid* p = malloc(size);')
 	g.writeln('#endif')
@@ -19333,7 +19522,7 @@ fn (mut g FlatGen) thread_allocation_helpers() {
 	g.writeln('}')
 	g.writeln('static void __v_thread_free(void* ptr) {')
 	g.writeln('#if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)')
-	g.writeln('\tGC_FREE(ptr);')
+	g.writeln('\tv_gc_free(ptr);')
 	g.writeln('#else')
 	g.writeln('\tfree(ptr);')
 	g.writeln('#endif')
@@ -19355,69 +19544,15 @@ fn (g &FlatGen) uses_thread_signal_stack() bool {
 // lowest and highest address of the thread stack, and the size of the mapping. Where
 // the alternate stack can not be used, or a sanitizer handles the signals, both are
 // no-op macros.
-fn (mut g FlatGen) thread_signal_stack_runtime(use_system_libc bool) {
-	if !use_system_libc || !g.uses_thread_signal_stack() {
+fn (mut g FlatGen) thread_signal_stack_runtime() {
+	if !g.uses_thread_signal_stack() {
 		g.writeln('#define __v_thread_signal_stack_enter(stack_top) ((void)(stack_top), (void*)0)')
 		g.writeln('#define __v_thread_signal_stack_leave(alt_stack) ((void)(alt_stack))')
 		return
 	}
-	g.writeln('#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__) || defined(__SANITIZE_HWADDRESS__)')
-	g.writeln('#define __V_NO_THREAD_SIGNAL_STACK 1')
-	g.writeln('#elif defined(__has_feature)')
-	g.writeln('#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || __has_feature(memory_sanitizer) || __has_feature(hwaddress_sanitizer)')
-	g.writeln('#define __V_NO_THREAD_SIGNAL_STACK 1')
-	g.writeln('#endif')
-	g.writeln('#endif')
-	g.writeln('#if !defined(_WIN32) && !defined(__V_NO_THREAD_SIGNAL_STACK) && defined(SA_ONSTACK) && defined(SS_DISABLE) && (defined(MAP_ANONYMOUS) || defined(MAP_ANON)) && !defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)')
-	g.writeln('static inline void* __v_thread_signal_stack_enter(void* stack_top) {')
-	g.writeln('\tstack_t old;')
-	g.writeln('\tmemset(&old, 0, sizeof(old));')
-	g.writeln('\tif (sigaltstack(NULL, &old) != 0 || !(old.ss_flags & SS_DISABLE)) { return NULL; }')
-	g.writeln('\tsize_t size = 64 * 1024;')
-	g.writeln('#if defined(_SC_MINSIGSTKSZ)')
-	g.writeln('\tlong min_size = sysconf(_SC_MINSIGSTKSZ);')
-	g.writeln('\tif (min_size > 0 && (size_t)min_size + 32 * 1024 > size) { size = (size_t)min_size + 32 * 1024; }')
-	g.writeln('#endif')
-	g.writeln('#if defined(MAP_ANONYMOUS)')
-	g.writeln('\tvoid* base = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);')
-	g.writeln('#else')
-	g.writeln('\tvoid* base = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);')
-	g.writeln('#endif')
-	g.writeln('\tif (base == MAP_FAILED) { return NULL; }')
-	g.writeln('#if defined(__APPLE__)')
-	g.writeln('\t(void)stack_top;')
-	g.writeln('\tuintptr_t hi = (uintptr_t)pthread_get_stackaddr_np(pthread_self());')
-	g.writeln('\tuintptr_t stack_size = (uintptr_t)pthread_get_stacksize_np(pthread_self());')
-	g.writeln('#else')
-	// The first V frame of the thread is close to the top of its stack, that has the
-	// requested size; the handler tolerates the small error of this estimate.
-	g.writeln('\tuintptr_t hi = (uintptr_t)stack_top;')
-	g.writeln('\tuintptr_t stack_size = (uintptr_t)V_THREAD_STACK_SIZE;')
-	g.writeln('#endif')
-	g.writeln('\tuintptr_t* header = (uintptr_t*)base;')
-	g.writeln('\theader[0] = (uintptr_t)0x56534f56u;')
-	g.writeln('\theader[1] = hi > stack_size ? hi - stack_size : 0;')
-	g.writeln('\theader[2] = hi;')
-	g.writeln('\theader[3] = (uintptr_t)size;')
-	g.writeln('\tstack_t ss;')
-	g.writeln('\tmemset(&ss, 0, sizeof(ss));')
-	g.writeln('\tss.ss_sp = base;')
-	g.writeln('\tss.ss_size = size;')
-	g.writeln('\tif (sigaltstack(&ss, NULL) != 0) { munmap(base, size); return NULL; }')
-	g.writeln('\treturn base;')
-	g.writeln('}')
-	g.writeln('static inline void __v_thread_signal_stack_leave(void* alt_stack) {')
-	g.writeln('\tif (alt_stack == NULL) { return; }')
-	g.writeln('\tstack_t ss;')
-	g.writeln('\tmemset(&ss, 0, sizeof(ss));')
-	g.writeln('\tss.ss_flags = SS_DISABLE;')
-	g.writeln('\tif (sigaltstack(&ss, NULL) != 0) { return; }')
-	g.writeln('\tmunmap(alt_stack, (size_t)((uintptr_t*)alt_stack)[3]);')
-	g.writeln('}')
-	g.writeln('#else')
-	g.writeln('#define __v_thread_signal_stack_enter(stack_top) ((void)(stack_top), (void*)0)')
-	g.writeln('#define __v_thread_signal_stack_leave(alt_stack) ((void)(alt_stack))')
-	g.writeln('#endif')
+	g.emit_c_runtime_declarations(['v_thread_signal_stack_enter', 'v_thread_signal_stack_leave'])
+	g.writeln('#define __v_thread_signal_stack_enter(stack_top) v_thread_signal_stack_enter(stack_top, V_THREAD_STACK_SIZE)')
+	g.writeln('#define __v_thread_signal_stack_leave(alt_stack) v_thread_signal_stack_leave(alt_stack)')
 }
 
 fn (mut g FlatGen) thread_stack_size_definition() {
@@ -19600,7 +19735,6 @@ fn (mut g FlatGen) target_libc_optional_stdatomic_header() {
 }
 
 fn (mut g FlatGen) headerless_libc_preamble() {
-	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
 	if g.target_libc_headers {
 		// A freestanding target supplies these headers itself, so include them
 		// instead of restating what they declare. Its own <stdint.h> may spell the
@@ -19703,72 +19837,18 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef struct FILE FILE;')
 	g.writeln('#endif')
 	g.writeln('typedef struct DIR DIR;')
+	g.writeln('typedef int (*qsort_callback_func)(const void*, const void*);')
 	g.writeln('#if !defined(_SSIZE_T) && !defined(_SSIZE_T_DEFINED) && !defined(__ssize_t_defined) && !defined(_SSIZE_T_DECLARED)')
 	g.writeln('typedef intptr_t ssize_t;')
 	g.writeln('#endif')
 	g.writeln('extern char** environ;')
-	g.writeln('void* malloc(size_t size);')
-	g.writeln('void* calloc(size_t count, size_t size);')
-	g.writeln('void* realloc(void* ptr, size_t size);')
-	g.writeln('void free(void* ptr);')
-	g.writeln('int printf(const char* format, ...);')
-	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
-	g.writeln('void perror(const char* message);')
-	g.writeln('int fseek(FILE* stream, long offset, int whence);')
-	g.writeln('char* getenv(const char* name);')
-	g.writeln('int setenv(const char* name, const char* value, int overwrite);')
-	g.writeln('int unsetenv(const char* name);')
-	g.writeln('void abort(void);')
-	g.headerless_execinfo_declarations()
 	for name in c_function_like_macro_decl_names() {
 		g.writeln('#ifdef ${name}')
 		g.writeln('#undef ${name}')
 		g.writeln('#endif')
 	}
-	g.writeln('void* memset(void* s, int c, size_t n);')
-	g.writeln('void* memcpy(void* dest, const void* src, size_t n);')
-	g.writeln('void* memmove(void* dest, const void* src, size_t n);')
-	g.writeln('void* memchr(const void* s, int c, size_t n);')
-	g.writeln('int memcmp(const void* s1, const void* s2, size_t n);')
-	g.writeln('size_t strlen(const char* s);')
-	g.writeln('int strcmp(const char* s1, const char* s2);')
-	g.writeln('int strncmp(const char* s1, const char* s2, size_t n);')
-	g.writeln('char* strncpy(char* dest, const char* src, size_t n);')
-	g.writeln('void qsort(void* base, size_t items, size_t item_size, int (*cb)(const void*, const void*));')
-	g.writeln('double floor(double x);')
-	g.writeln('double ceil(double x);')
-	g.writeln('float floorf(float x);')
-	g.writeln('float ceilf(float x);')
-	g.writeln('double sqrt(double x);')
-	g.writeln('double pow(double x, double y);')
-	g.writeln('double ldexp(double x, int exp);')
-	g.writeln('double fmod(double x, double y);')
-	g.writeln('double cos(double x);')
-	g.writeln('double acos(double x);')
-	g.writeln('double fabs(double x);')
-	g.writeln('#ifndef _WIN32')
-	g.writeln('int open(const char* path, int flags, ...);')
-	g.writeln('ssize_t read(int fd, void* buf, size_t count);')
-	g.writeln('int fork(void);')
-	g.writeln('int dup2(int oldfd, int newfd);')
-	g.writeln('int execlp(const char* file, const char* arg, ...);')
-	g.writeln('int execvp(const char* file, char* const argv[]);')
-	g.writeln('void _exit(int status);')
-	g.writeln('#endif')
-	g.writeln('int access(const char* path, int mode);')
-	g.writeln('char* realpath(const char* path, char* resolved_path);')
-	g.writeln('char* strrchr(const char* s, int c);')
-	g.writeln('char* strstr(const char* haystack, const char* needle);')
-	g.writeln('int snprintf(char* str, size_t size, const char* format, ...);')
-	g.writeln('int fcntl(int fd, int cmd, ...);')
-	g.writeln('int pipe(int* pipefds);')
-	g.writeln('int close(int fd);')
-	g.writeln('void* signal(int sig, void* handler);')
-	g.writeln('int atexit(void (*f)(void));')
 	g.writeln('#ifdef __APPLE__')
-	g.writeln('const char* _dyld_get_image_name(unsigned int image_index);')
 	g.writeln('struct mach_header;')
-	g.writeln('const struct mach_header* _dyld_get_image_header(unsigned int image_index);')
 	g.writeln('#endif')
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__)')
 	g.writeln('extern FILE* __stdinp;')
@@ -19777,7 +19857,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define stdin __stdinp')
 	g.writeln('#define stdout __stdoutp')
 	g.writeln('#define stderr __stderrp')
-	g.writeln('int* __error(void);')
+	g.emit_c_runtime_declarations(['__error'])
 	g.writeln('#define errno (*__error())')
 	g.writeln('#elif defined(__OpenBSD__)')
 	g.writeln('struct __sFstub { long _stub; };')
@@ -19803,19 +19883,19 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('extern FILE* stdin;')
 	g.writeln('extern FILE* stdout;')
 	g.writeln('extern FILE* stderr;')
-	g.writeln('int* __errno(void);')
+	g.emit_c_runtime_declarations(['__errno'])
 	g.writeln('#define errno (*__errno())')
 	g.writeln('#elif defined(__linux__)')
 	g.writeln('extern FILE* stdin;')
 	g.writeln('extern FILE* stdout;')
 	g.writeln('extern FILE* stderr;')
-	g.writeln('int* __errno_location(void);')
+	g.emit_c_runtime_declarations(['__errno_location'])
 	g.writeln('#define errno (*__errno_location())')
 	g.writeln('#elif defined(_WIN32)')
 	g.writeln('extern FILE* stdin;')
 	g.writeln('extern FILE* stdout;')
 	g.writeln('extern FILE* stderr;')
-	g.writeln('int* _errno(void);')
+	g.emit_c_runtime_declarations(['_errno'])
 	g.writeln('#define errno (*_errno())')
 	g.writeln('#else')
 	g.writeln('extern FILE* stdin;')
@@ -19867,17 +19947,10 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define PTHREAD_ONCE_INIT { 0 }')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	g.writeln('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
-	g.writeln('void* pthread_getspecific(pthread_key_t key);')
-	g.writeln('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
-	g.writeln('int pthread_once(pthread_once_t* once_control, void (*init_routine)(void));')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sem_t;')
 	g.writeln('#if !defined(__sigset_t_defined) && !defined(_SIGSET_T_DECLARED) && !defined(_SIGSET_T_DEFINED) && !defined(_SIGSET_T)')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sigset_t;')
 	g.writeln('#endif')
-	g.writeln('int ptrace(int request, pid_t pid, void* addr, int data);')
-	g.writeln('int sigaddset(sigset_t* set, int signal_number);')
-	g.writeln('int sigprocmask(int how, const sigset_t* set, sigset_t* old_set);')
 	g.headerless_stdarg_decls()
 	g.writeln('#ifndef PTHREAD_MUTEX_INITIALIZER')
 	g.writeln('#ifdef V_HEADERLESS_DARWIN_PTHREAD_TYPES')
@@ -19888,10 +19961,6 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define PTHREAD_MUTEX_INITIALIZER { 0 }')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	g.writeln('int pthread_attr_init(pthread_attr_t* attr);')
-	g.writeln('int pthread_attr_destroy(pthread_attr_t* attr);')
-	g.writeln('int pthread_attr_setstacksize(pthread_attr_t* attr, size_t stacksize);')
-	g.writeln('int pthread_attr_setdetachstate(pthread_attr_t* attr, int detachstate);')
 	g.writeln('#ifndef PTHREAD_CREATE_DETACHED')
 	g.writeln('#ifdef __APPLE__')
 	g.writeln('#define PTHREAD_CREATE_DETACHED 2')
@@ -19899,50 +19968,17 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define PTHREAD_CREATE_DETACHED 1')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	g.writeln('int pthread_equal(pthread_t t1, pthread_t t2);')
-	g.writeln('int pthread_mutex_init(void* mutex, void* attr);')
-	g.writeln('int pthread_mutex_lock(void* mutex);')
-	g.writeln('int pthread_mutex_unlock(void* mutex);')
-	g.writeln('int pthread_mutex_destroy(void* mutex);')
-	g.writeln('int pthread_rwlockattr_init(void* attr);')
-	g.writeln('int pthread_rwlockattr_destroy(void* attr);')
-	g.writeln('int pthread_rwlock_init(void* rwlock, void* attr);')
-	g.writeln('int pthread_rwlock_rdlock(void* rwlock);')
-	g.writeln('int pthread_rwlock_wrlock(void* rwlock);')
-	g.writeln('int pthread_rwlock_tryrdlock(void* rwlock);')
-	g.writeln('int pthread_rwlock_trywrlock(void* rwlock);')
-	g.writeln('int pthread_rwlock_unlock(void* rwlock);')
-	g.writeln('int pthread_rwlock_destroy(void* rwlock);')
-	g.writeln('int pthread_create(void* thread, void* attr, void* start_routine, void* arg);')
-	g.writeln('int pthread_join(void* thread, void** retval);')
-	g.writeln('int pthread_detach(void* thread);')
-	g.writeln('int pthread_cond_init(void* cond, void* attr);')
-	g.writeln('int pthread_cond_destroy(void* cond);')
-	g.writeln('int pthread_cond_wait(void* cond, void* mutex);')
-	g.writeln('int pthread_cond_signal(void* cond);')
-	g.writeln('int pthread_cond_broadcast(void* cond);')
-	g.writeln('void* malloc(size_t size);')
-	g.writeln('void* calloc(size_t count, size_t size);')
-	g.writeln('void* realloc(void* ptr, size_t size);')
-	g.writeln('void free(void* ptr);')
-	g.writeln('int printf(const char* format, ...);')
-	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
-	g.writeln('int fflush(FILE* stream);')
+	g.emit_c_runtime_declarations(['malloc', 'calloc', 'realloc', 'free', 'printf', 'fprintf',
+		'fflush', 'abort', 'memset', 'pthread_equal', 'pthread_key_create', 'pthread_getspecific',
+		'pthread_setspecific', 'pthread_once', 'pthread_attr_init', 'pthread_attr_destroy',
+		'pthread_attr_setstacksize', 'pthread_attr_setdetachstate', 'pthread_create', 'pthread_join',
+		'pthread_detach'])
 	// Both thread runtimes below allocate their contexts through these helpers.
 	g.thread_allocation_helpers()
 	g.writeln('#ifdef _WIN32')
 	g.writeln('#ifndef INFINITE')
 	g.writeln('#define INFINITE 0xFFFFFFFF')
 	g.writeln('#endif')
-	g.writeln('HANDLE CreateThread(void* attributes, size_t stack_size, DWORD (WINAPI *start)(void*), void* parameter, DWORD flags, DWORD* thread_id);')
-	g.writeln('DWORD WaitForSingleObject(HANDLE handle, DWORD milliseconds);')
-	g.writeln('BOOL CloseHandle(HANDLE handle);')
-	g.writeln('DWORD GetLastError(void);')
-	g.writeln('DWORD WINAPI TlsAlloc(void);')
-	g.writeln('void* WINAPI TlsGetValue(DWORD index);')
-	g.writeln('BOOL WINAPI TlsSetValue(DWORD index, void* value);')
-	g.writeln('void* WINAPI GetModuleHandleA(const char* module_name);')
-	g.writeln('void* WINAPI GetProcAddress(void* module, const char* proc_name);')
 	g.writeln('typedef struct { HANDLE handle; void* context; } __v_thread;')
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
@@ -19988,12 +20024,6 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
 	g.pthread_detached_thread_runtime()
 	g.writeln('#endif')
-	// Signature shape covers both the BSD (thunk before compar) and GNU
-	// (compar before arg) qsort_r orders; callers pass fn pointers as void*.
-	g.writeln('void qsort_r(void* base, size_t nel, size_t width, void* a, void* b);')
-	g.writeln('#ifdef __linux__')
-	g.writeln('int pthread_rwlockattr_setkind_np(void* attr, int kind);')
-	g.writeln('#endif')
 	g.writeln('typedef struct SRWLOCK { void* Ptr; } SRWLOCK;')
 	g.writeln('typedef struct CONDITION_VARIABLE { void* Ptr; } CONDITION_VARIABLE;')
 	g.writeln('typedef void* atomic_uintptr_t;')
@@ -20028,44 +20058,24 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_darwin_task_info_struct()
 	g.writeln('#ifdef __APPLE__')
 	g.writeln('typedef struct mach_timebase_info_data_t { u32 numer; u32 denom; } mach_timebase_info_data_t;')
-	g.writeln('u64 mach_absolute_time(void);')
-	g.writeln('int mach_timebase_info(mach_timebase_info_data_t*);')
 	g.writeln('#endif')
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
-	g.writeln('int stat(const char* path, struct stat* buf);')
 	g.headerless_tm_struct()
 	g.writeln('struct utimbuf { time_t actime; time_t modtime; };')
-	g.writeln('time_t mktime(struct tm* timeptr);')
-	g.writeln('struct tm* localtime(time_t* timer);')
-	g.writeln('int utime(char* filename, struct utimbuf* times);')
-	g.writeln('int stat(const char* path, struct stat* buf);')
-	g.writeln('FILE* fopen(const char* path, const char* mode);')
-	g.writeln('FILE* freopen(const char* path, const char* mode, FILE* stream);')
-	g.writeln('int fclose(FILE* stream);')
-	g.writeln('size_t fread(void* ptr, size_t size, size_t nitems, FILE* stream);')
-	g.writeln('size_t fwrite(const void* ptr, size_t size, size_t nitems, FILE* stream);')
-	g.writeln('int fseek(FILE* stream, long offset, int whence);')
-	g.writeln('long ftell(FILE* stream);')
-	g.writeln('#if !defined(_WIN32)')
-	g.writeln('int fseeko(FILE* stream, long long offset, int whence);')
-	g.writeln('long long ftello(FILE* stream);')
-	g.writeln('#endif')
-	g.writeln('int remove(const char* path);')
-	g.writeln('int rename(const char* from, const char* to);')
 	g.writeln('#if !defined(_MODE_T) && !defined(__mode_t_defined) && !defined(_MODE_T_DECLARED)')
 	g.writeln('typedef u32 mode_t;')
 	g.writeln('#endif')
-	g.writeln('time_t time(time_t* tloc);')
-	g.writeln('i32 fileno(FILE* stream);')
-	g.writeln('i32 ftruncate(i32 fd, u64 length);')
-	g.writeln('#if !defined(_WIN32)')
-	g.writeln('i32 mkdir(char* path, u32 mode);')
-	g.writeln('i32 chmod(char* path, u32 mode);')
-	g.writeln('i32 symlink(char* target, char* linkpath);')
-	g.writeln('#endif')
 	g.headerless_termios_struct()
 	g.headerless_platform_constants()
+	g.writeln('static inline int __v_isfinite(double x) { union { double f; u64 u; } bits = { .f = x }; return (bits.u & 0x7ff0000000000000ULL) != 0x7ff0000000000000ULL; }')
+	g.writeln('static inline int __v_signbit(double x) { union { double f; u64 u; } bits = { .f = x }; return (int)(bits.u >> 63); }')
+	g.writeln('#define isfinite(x) __v_isfinite(x)')
+	g.writeln('#define signbit(x) __v_signbit(x)')
+	g.emit_c_runtime_declarations(['getenv', 'setenv', 'pow', 'fabs', 'floor', 'ceil', 'snprintf',
+		'memcpy', 'memmove', 'memcmp', 'strlen', 'qsort', 'fwrite', 'mmap', 'pthread_self',
+		'pthread_mutex_lock', 'pthread_mutex_unlock', 'pthread_mutex_init', 'mprotect', 'sysconf',
+		'aligned_alloc', 'exit', 'getpid', 'fcntl'])
 }
 
 fn c_function_like_macro_decl_names() []string {
@@ -20386,9 +20396,9 @@ fn (mut g FlatGen) headerless_timespec_struct() {
 	g.writeln('#ifndef CLOCKS_PER_SEC')
 	g.writeln('#define CLOCKS_PER_SEC 1000000')
 	g.writeln('#endif')
-	g.writeln('clock_t clock(void);')
+	g.emit_c_runtime_declarations(['clock'])
 	g.writeln('#ifndef _WIN32')
-	g.writeln('i32 clock_gettime(i32 clock_id, struct timespec* tp);')
+	g.emit_c_runtime_declarations(['clock_gettime'])
 	g.writeln('#endif')
 }
 
@@ -20527,6 +20537,29 @@ fn (mut g FlatGen) headerless_platform_constants() {
 	g.writeln('#define LOCK_EX 2')
 	g.writeln('#define LOCK_NB 4')
 	g.writeln('#define LOCK_UN 8')
+	g.writeln('#define EIO 5')
+	g.writeln('#define ENXIO 6')
+	g.writeln('#define E2BIG 7')
+	g.writeln('#define EBADF 9')
+	g.writeln('#define ECHILD 10')
+	g.writeln('#define ENOMEM 12')
+	g.writeln('#define EEXIST 17')
+	g.writeln('#define EXDEV 18')
+	g.writeln('#define ENODEV 19')
+	g.writeln('#define ENOTDIR 20')
+	g.writeln('#define EISDIR 21')
+	g.writeln('#define ENFILE 23')
+	g.writeln('#define EMFILE 24')
+	g.writeln('#define ENOTTY 25')
+	g.writeln('#define ETXTBSY 26')
+	g.writeln('#define EFBIG 27')
+	g.writeln('#define ENOSPC 28')
+	g.writeln('#define ESPIPE 29')
+	g.writeln('#define EROFS 30')
+	g.writeln('#define EMLINK 31')
+	g.writeln('#define EPIPE 32')
+	g.writeln('#define EDOM 33')
+	g.writeln('#define ERANGE 34')
 	g.writeln('#define EPERM 1')
 	g.writeln('#define ENOENT 2')
 	g.writeln('#define ESRCH 3')
@@ -20618,6 +20651,7 @@ fn (mut g FlatGen) headerless_mmap_constants(map_anonymous string) {
 	g.writeln('#define PROT_WRITE 0x2')
 	g.writeln('#define PROT_EXEC 0x4')
 	g.writeln('#define MAP_PRIVATE 0x0002')
+	g.writeln('#define MAP_FIXED 0x10')
 	g.writeln('#define MAP_ANONYMOUS ${map_anonymous}')
 	g.writeln('#define MAP_ANON MAP_ANONYMOUS')
 	g.writeln('#define MAP_FAILED ((void*)-1)')
@@ -20691,6 +20725,15 @@ fn (mut g FlatGen) headerless_darwin_kqueue_constants() {
 }
 
 fn (mut g FlatGen) headerless_darwin_constants() {
+	g.writeln('#define O_DIRECTORY 0x00100000')
+	g.writeln('#define O_NOFOLLOW 0x00000100')
+	g.writeln('#define AT_FDCWD -2')
+	g.writeln('#define AT_REMOVEDIR 0x0080')
+
+	g.writeln('#define VM_FLAGS_ANYWHERE 1')
+	g.writeln('#define VM_FLAGS_FIXED 0')
+	g.writeln('#define VM_FLAGS_OVERWRITE 0x4000')
+	g.writeln('#define VM_INHERIT_NONE 2')
 	g.writeln('#define O_RDONLY 0x0000')
 	g.writeln('#define O_WRONLY 0x0001')
 	g.writeln('#define O_RDWR 0x0002')
@@ -21240,6 +21283,11 @@ fn (mut g FlatGen) headerless_windows_constants() {
 }
 
 fn (mut g FlatGen) headerless_linux_constants() {
+	g.writeln('#define O_DIRECTORY 0x10000')
+	g.writeln('#define O_NOFOLLOW 0x20000')
+	g.writeln('#define AT_FDCWD -100')
+	g.writeln('#define AT_REMOVEDIR 0x200')
+
 	g.writeln('#define O_RDONLY 0')
 	g.writeln('#define O_WRONLY 1')
 	g.writeln('#define O_RDWR 2')
@@ -22040,7 +22088,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		return
 	}
 	g.libc_compat_decls()
-	g.writeln('#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP')
+	g.writeln('#if !defined(PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) (0)')
 	g.writeln('#endif')
 	g.filelock_compat_decls()
@@ -22756,7 +22804,11 @@ fn (mut g FlatGen) fn_return_type_name(t types.Type) string {
 		return fixed_array_ret_wrapper_name(bare)
 	}
 	if g.tc.autofree_mode && t is types.Alias {
-		return g.tc.c_type(t)
+		ct := g.tc.c_type(t)
+		if ct.starts_with('fn_ptr:') {
+			return g.resolve_fn_ptr_type(ct)
+		}
+		return ct
 	}
 	if wide_ct := g.wide_enum_signature_c_type(t) {
 		return wide_ct

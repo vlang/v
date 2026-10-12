@@ -3992,6 +3992,17 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	return result
 }
 
+// call_arg_is_undeclared_c_identifier reports whether the argument is `C.<name>`,
+// a C variable that V has no type for (see c_identifier_is_undeclared). A `mut`
+// argument names the object whose address its parameter takes.
+fn (t &Transformer) call_arg_is_undeclared_c_identifier(arg_node &flat.Node) bool {
+	if isnil(t.tc) || arg_node.is_mut || arg_node.kind != .selector || arg_node.children_count == 0 {
+		return false
+	}
+	base := t.a.child_node(arg_node, 0)
+	return base.kind == .ident && base.value == 'C' && t.tc.c_identifier_is_undeclared(arg_node.value)
+}
+
 @[direct_array_access]
 fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId, param_type string) flat.NodeId {
 	if int(arg_id) < 0 {
@@ -4020,6 +4031,14 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		value := t.transform_expr(arg_id)
 		t.set_node_typ(int(value), param_type)
 		return value
+	}
+	if (param_type.starts_with('&') || transform_param_type_is_void_pointer(param_type))
+		&& t.call_arg_is_undeclared_c_identifier(arg_node) {
+		// The checker gives a C variable that V does not declare the type that its
+		// first use expects, but the body of a generic instance is not checked. Its
+		// argument takes the type of the parameter here, so that no later pass
+		// takes it for a value whose address the pointer parameter needs.
+		return t.make_cast(param_type, t.transform_expr(arg_id), param_type)
 	}
 	if t.in_spawn_expr && t.call_arg_has_shared_marker(arg_id) {
 		return t.transform_expr(arg_id)

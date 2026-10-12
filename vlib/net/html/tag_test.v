@@ -77,3 +77,11 @@ fn test_search_by_class() {
 	assert shuffled_class_tags.len == 1
 	assert shuffled_class_tags[0].attributes['class'] == 'complex-0 complex-1 complex-2'
 }
+
+fn test_search_by_no_class_name() {
+	mut dom := parse(generate_temp_html_with_classes())
+	tag := dom.get_tags(name: 'body')[0]
+	// no class name means no match, not "every tag"
+	assert tag.get_tag_by_class_name() == none
+	assert tag.get_tags_by_class_name().len == 0
+}

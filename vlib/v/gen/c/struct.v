@@ -29,23 +29,21 @@ fn c_field_name(name string) string {
 	return c_name(name)
 }
 
-// field_c_name preserves the external spelling of escaped C aggregate members.
+// field_c_name preserves the external spelling of C aggregate members.
 // V fields still use the normal identifier mangling, even through aliases.
 fn (g &FlatGen) field_c_name(owner types.Type, field string) string {
-	if field.starts_with('@') {
-		base := cgen_unalias_unwrap_all_pointers(owner)
-		if base is types.Struct && base.name.starts_with('C.') {
-			return field[1..]
-		}
+	base := cgen_unalias_unwrap_all_pointers(owner)
+	if base is types.Struct && base.name.starts_with('C.') {
+		return if field.starts_with('@') { field[1..] } else { field }
 	}
 	return g.cname(field)
 }
 
-// init_field_c_name resolves the owner of an initializer designator only
-// when its source spelling contains an escape.
+// init_field_c_name resolves initializer owners so C members retain their spelling.
 fn (g &FlatGen) init_field_c_name(owner string, field string) string {
-	if field.starts_with('@') {
-		return g.field_c_name(g.tc.parse_type(owner), field)
+	base := cgen_unalias_unwrap_all_pointers(g.tc.parse_type(owner))
+	if base is types.Struct && base.name.starts_with('C.') {
+		return if field.starts_with('@') { field[1..] } else { field }
 	}
 	return c_field_name(field)
 }
@@ -4454,7 +4452,7 @@ fn (mut g FlatGen) shared_dup_fns() {
 		g.writeln('#if defined(_VPREALLOC)')
 		g.writeln('\t${name}* dest = (${name}*)malloc((size_t)sz);')
 		g.writeln('#else')
-		g.writeln('\t${name}* dest = (${name}*)malloc_uncollectable((isize)sz);')
+		g.writeln('\t${name}* dest = (${name}*)malloc_uncollectable((ptrdiff_t)sz);')
 		g.writeln('#endif')
 		g.writeln('\tmemcpy(dest, src, (size_t)sz);')
 		g.writeln('\tsync__RwMutex__init(&dest->mtx);')
@@ -6542,6 +6540,12 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	if g.inlined_c_structs[name] {
 		return true
 	}
+	if name.starts_with('C.builtin__closure__') {
+		// This C view resolves to a V runtime type, whose complete layout owns it.
+		if 'closure.${name['C.builtin__closure__'.len..]}' in g.tc.structs {
+			return true
+		}
+	}
 	if name.starts_with('C.') {
 		// Match V1: `@[typedef]` C structs name types supplied by native code and
 		// must never get a synthesized V-owned declaration or body.
@@ -6555,10 +6559,10 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 			return true
 		}
 		if info := g.struct_decl_infos[name] {
-			// Platform binding files and plain V files with a header directive describe
-			// types supplied by native code. Keep the cheap V1 source-file heuristic;
-			// inspecting the included header itself is unnecessary.
-			if info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file) {
+			// Headerless vlib bindings supply their own complete C layouts.
+			// Keep externally supplied types opaque when headers own their definitions.
+			if (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
+				&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
 				return true
 			}
 		}
