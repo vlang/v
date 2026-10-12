@@ -80,14 +80,14 @@ fn test_glob_multi_segment_wildcard_matches_first_and_last_segment() {
 	// `c`, not names ending with the middle segment `b`.
 	// See https://github.com/vlang/v/issues/30152
 	cwd := os.getwd()
-	tmp := os.join_path(os.temp_dir(), 'v_glob_test_${os.getpid()}')
+	tmp := os.join_path(os.vtmp_dir(), 'v_glob_test_${os.getpid()}')
 	os.mkdir_all(tmp)!
 	os.chdir(tmp)!
 	defer {
 		os.chdir(cwd) or {}
 		os.rmdir_all(tmp) or {}
 	}
-	for name in ['ab', 'axxb', 'axbyc', 'azbzc'] {
+	for name in ['ab', 'axxb', 'axbyc', 'azbzc', 'axc', 'acbc', 'a', 'aa', 'aaa'] {
 		os.write_file(name, 'x')!
 	}
 	matches := os.glob('a*b*c')!
@@ -95,9 +95,16 @@ fn test_glob_multi_segment_wildcard_matches_first_and_last_segment() {
 	assert 'azbzc' in matches
 	assert 'ab' !in matches
 	assert 'axxb' !in matches
+	assert 'axc' !in matches
+	assert 'acbc' in matches
 	// the two-segment case is unchanged
 	two := os.glob('a*b')!
 	assert 'ab' in two
 	assert 'axxb' in two
 	assert 'axbyc' !in two
+	assert os.glob('a*a')! == ['aa', 'aaa']
+	assert os.glob('*b*c')! == ['acbc', 'axbyc', 'azbzc']
+	assert os.glob('a*b*')! == ['ab', 'acbc', 'axbyc', 'axxb', 'azbzc']
+	assert os.glob('*b*c*')! == ['acbc', 'axbyc', 'azbzc']
+	assert os.glob('a**b**c')! == ['acbc', 'axbyc', 'azbzc']
 }
