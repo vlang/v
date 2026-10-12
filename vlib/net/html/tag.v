@@ -37,7 +37,8 @@ fn (mut tag Tag) add_child(t &Tag) int {
 	return tag.children.len
 }
 
-// text returns the text contents of the tag.
+// text returns the text contents of the tag and its children.
+// A br element (including the parser's br/ form) contributes a newline.
 pub fn (tag &Tag) text() string {
 	if tag.name == 'text' {
 		return tag.leading_text()

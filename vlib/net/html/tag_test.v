@@ -104,3 +104,18 @@ fn test_text_returns_newline_only_for_br() {
 	assert brs.len == 1
 	assert brs[0].text() == '\n'
 }
+
+fn test_br_prefix_elements_preserve_own_text_and_children() {
+	for name in ['b', 'bracket', 'broom', 'br-widget'] {
+		tag := Tag{
+			name:     name
+			content:  'before'
+			children: [&Tag{ name: 'text', content: 'after' }]
+		}
+		assert tag.text() == 'beforeafter'
+	}
+	for name in ['br', 'br/'] {
+		assert Tag{ name: name }.text() == '\n'
+	}
+	assert Tag{}.text() == ''
+}
