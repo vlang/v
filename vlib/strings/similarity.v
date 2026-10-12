@@ -66,10 +66,14 @@ pub fn levenshtein_distance(a string, b string) int {
 	return row[a.len]
 }
 
-// levenshtein_distance_percentage uses the Levenshtein Distance algorithm to calculate how similar two strings are as a percentage (higher is closer).
+// levenshtein_distance_percentage calculates string similarity as a percentage (higher is closer).
+// Two empty strings are identical and return 100 percent.
 pub fn levenshtein_distance_percentage(a string, b string) f32 {
 	d := levenshtein_distance(a, b)
 	l := if a.len >= b.len { a.len } else { b.len }
+	if l == 0 {
+		return 100.0
+	}
 	return (1.00 - f32(d) / f32(l)) * 100.00
 }
 
