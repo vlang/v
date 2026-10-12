@@ -527,11 +527,15 @@ fn test_attachment_cid_and_filename_strip_single_newline_bytes() {
 }
 
 fn test_attachment_clean_values_preserve_headers_and_payload() {
-	data := Attachment{ filename: 'report.txt', cid: 'report@example.com', bytes: [
-		u8(0),
-		1,
-		255,
-	] }.to_string()
+	data := Attachment{
+		filename: 'report.txt'
+		cid:      'report@example.com'
+		bytes:    [
+			u8(0),
+			1,
+			255,
+		]
+	}.to_string()
 	assert data.contains('Content-ID: <report@example.com>\r\n')
 	assert data.contains('Content-Disposition: attachment; filename="report.txt"\r\n')
 	assert data.ends_with('AAH/')
