@@ -918,6 +918,7 @@ pub mut:
 	interface_query_indexes_ready         bool
 
 	c_globals              map[string]Type
+	inferred_c_globals     []InferredCGlobal // the entries of c_globals that this checker added, for its merge
 	global_names           map[string]bool
 	shared_global_names    map[string]bool
 	const_types            map[string]Type

@@ -91,6 +91,9 @@ It is possible to mix all the properties of the char class together.
 > - `\d` numeric chars,
 > - `\a` lower case chars.
 
+A minus immediately after a completed range is also literal. For example,
+`[a-z-0-9]` matches lowercase letters, digits, and a minus; the `a-z` range remains intact.
+
 ### Meta-chars
 
 A meta-char is specified by a backslash, before a character.
