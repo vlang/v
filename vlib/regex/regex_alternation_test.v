@@ -1,5 +1,35 @@
 import regex
 
+struct AlternationBoundaryCase {
+	pattern string
+	input   string
+	start   int
+	end     int
+}
+
+fn test_alternation_repetition_boundaries_and_utf8() {
+	cases := [
+		AlternationBoundaryCase{'a|b|c|d', 'xxdyy', 2, 3},
+		AlternationBoundaryCase{'(a|b){2,3}', 'abac', 0, 3},
+		AlternationBoundaryCase{'(a|b)*z', 'z', 0, 1},
+		AlternationBoundaryCase{'(a|b)*z', 'abaz', 0, 4},
+		// Reluctant repetition keeps the existing minimum-only continuation behavior.
+		AlternationBoundaryCase{'(a|b){1,3}?z', 'abz', 1, 3},
+		AlternationBoundaryCase{'(é|😀)+', 'é😀x', 0, 6},
+		AlternationBoundaryCase{'((ab)|(cd)){2}', 'abcdx', 0, 4},
+		AlternationBoundaryCase{'((ab)|(cd)){2,3}', 'abcdabx', 0, 6},
+	]
+	for item in cases {
+		mut re := regex.regex_opt(item.pattern)!
+		start, end := re.find(item.input)
+		assert start == item.start, '${item.pattern} on ${item.input}'
+		assert end == item.end, '${item.pattern} on ${item.input}'
+	}
+	mut re := regex.regex_opt('(a|b){2}z')!
+	start, _ := re.find('az')
+	assert start == -1
+}
+
 fn test_alternation_chain_matches_every_branch() {
 	for pattern in ['a|b|c', 'c|b|a', '(a)|(b)|(c)'] {
 		for input in ['a', 'b', 'c'] {
