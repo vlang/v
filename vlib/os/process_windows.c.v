@@ -89,7 +89,7 @@ fn win_bare_command_search_dirs() []string {
 // system cannot find the file specified".
 fn (p &Process) win_resolve_filename() !string {
 	if is_abs_path(p.filename) {
-		return p.filename
+		return win_exec_application_name(p.filename)
 	}
 	if p.filename.contains('\\') || p.filename.contains('/') {
 		return abs_path(p.filename)

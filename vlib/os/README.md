@@ -298,3 +298,7 @@ The following functions should be used with care and only when used correctly.
 - os.is_link()
 
 `get_line()` removes CRLF and LF line endings from standard input on every platform.
+
+On Windows, `exec` and `Process` accept an absolute executable path without an extension.
+They use that exact file when it exists, then try the same path with `.exe` appended.
+Explicit extensions are preserved.

@@ -15,4 +15,7 @@ fn main() {
 }
 ```
 
+`lower_bound`, `upper_bound`, and `binary_search` return an error when no matching element
+exists. The error names the operation and the value that could not be found.
+
 `chunk(array, size)` returns an empty array when `size` is zero or negative.

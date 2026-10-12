@@ -4425,6 +4425,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.in_return_expr = false
 	w.expected_expr_node = -1
 	w.expected_expr_type = ''
+	t.copy_generic_decl_indexes(mut w)
 	return &w
 }
 
@@ -4528,7 +4529,20 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.in_return_expr = false
 	w.expected_expr_node = -1
 	w.expected_expr_type = ''
+	t.copy_generic_decl_indexes(mut w)
 	return &w
+}
+
+// Generic templates do not change during body lowering. Copy the small prepared indexes
+// instead of scanning the entire, growing AST in every disposable worker arena.
+fn (t &Transformer) copy_generic_decl_indexes(mut w Transformer) {
+	if !t.generic_fn_decls_ready {
+		return
+	}
+	w.generic_fn_decls_cache = t.generic_fn_decls_cache.clone()
+	w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
+	w.generic_fn_call_names = t.generic_fn_call_names.clone()
+	w.generic_fn_decls_ready = true
 }
 
 // fork_program_view constructs a worker from explicit compilation-wide state.
