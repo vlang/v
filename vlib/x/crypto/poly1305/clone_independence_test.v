@@ -1,5 +1,7 @@
 module poly1305
 
+import encoding.hex
+
 fn ci_tag(msg []u8, key []u8) []u8 {
 	mut po := new(key) or { panic(err) }
 	po.update(msg)
@@ -60,4 +62,29 @@ fn test_poly1305_clone_of_a_fresh_instance_matches_the_original() {
 	parent.finish(mut pout)
 	clone.finish(mut cout)
 	assert pout == cout
+}
+
+fn test_poly1305_clones_match_rfc8439_vector_at_every_offset() ! {
+	// RFC 8439, section 2.5.2.
+	key := hex.decode('85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b')!
+	msg := 'Cryptographic Forum Research Group'.bytes()
+	tag := hex.decode('a8061dc1305136c6c22b8baf0c0127a9')!
+	for n in 0 .. msg.len + 1 {
+		mut parent := new(key)!
+		parent.update(msg[..n])
+		mut child := parent.clone()
+		parent.update(msg[n..])
+		child.update(msg[n..])
+		mut a := []u8{len: 16}
+		mut b := []u8{len: 16}
+		if n % 2 == 0 {
+			parent.finish(mut a)
+			child.finish(mut b)
+		} else {
+			child.finish(mut b)
+			parent.finish(mut a)
+		}
+		assert a == tag
+		assert b == tag
+	}
 }
