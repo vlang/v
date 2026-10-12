@@ -17209,7 +17209,8 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 	// headerless program. Its vlib bindings still own their C prototypes.
 	module_header_is_authoritative := module_name in g.mods_with_c_includes
 		&& (!is_vlib_source || g.c_directives_use_system_libc())
-	if !g.c_directives_use_system_libc() && !g.target_libc_headers
+	// An unrelated header can provide libc without declaring this SDK's symbols.
+	if !g.target_libc_headers
 		&& !g.files_with_c_includes[source_file] && !module_header_is_authoritative
 		&& (is_vlib_source || g.c_source_file_is_compiler_main(source_file)
 			|| cfn in ['task_info', 'mach_task_self', 'getppid']

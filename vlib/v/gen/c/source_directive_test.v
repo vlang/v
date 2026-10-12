@@ -775,3 +775,27 @@ fn test_relative_vlib_source_keeps_native_layout_ownership() {
 	assert !g.skip_builtin_struct('C.iovec')
 	assert g.should_emit_c_extern_decl_from_file('writev', source, 'c')
 }
+
+fn test_vlib_sdk_declarations_survive_unrelated_system_headers() {
+	mut a := flat.FlatAst.new()
+	mut g := FlatGen.new()
+	g.a = &a
+	g.compiler_vroot = @VEXEROOT
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	source := os.join_path(@VEXEROOT, 'vlib', 'sokol', 'gfx', 'gfx_funcs.c.v')
+	g.add_c_directive('multiwindow_sokol_trace', '#include <stddef.h>', false)
+	assert g.c_directives_use_system_libc()
+	assert !g.files_with_c_includes[source]
+	assert 'gfx' !in g.mods_with_c_includes
+	assert g.should_emit_c_extern_decl_from_file('sg_isvalid', source, 'gfx')
+	assert g.should_emit_c_extern_decl_from_file('sg_make_image', source, 'gfx')
+	header := '/cache/gfx.vh'
+	a.cached_header_sources[header] = source
+	assert g.should_emit_c_extern_decl_from_file('sg_make_image', header, 'gfx')
+	// A real SDK header in the declaring module still owns its approximated bindings.
+	g.note_c_include_directive('gfx', '/project/partial_sdk.c.v')
+	assert !g.should_emit_c_extern_decl_from_file('sg_isvalid', source, 'gfx')
+	g.mods_with_c_includes.delete('gfx')
+	g.files_with_c_includes[source] = true
+	assert !g.should_emit_c_extern_decl_from_file('sg_isvalid', source, 'gfx')
+}
