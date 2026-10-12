@@ -2135,7 +2135,89 @@ fn interface_box_fn_type_return_type(typ types.Type) ?types.Type {
 	return none
 }
 
+// interface_box_source_type resolves a source binding before transform workers register locals.
+fn (t &Transformer) interface_box_source_type(id flat.NodeId) types.Type {
+	if typ := t.tc.expr_type(id) {
+		if typ !is types.Unknown {
+			return typ
+		}
+	}
+	source_id := t.unwrap_parens(id)
+	source := t.a.node(source_id)
+	if source.kind == .ident {
+		mut cursor := int(source_id)
+		for _ in 0 .. t.a.nodes.len {
+			parent_id := t.source_parent_id(cursor)
+			if parent_id < 0 {
+				break
+			}
+			parent := t.a.nodes[parent_id]
+			mut previous := 0
+			for i in 0 .. parent.children_count {
+				if int(t.a.child(&parent, i)) == cursor {
+					previous = i
+					break
+				}
+			}
+			for i := previous - 1; i >= 0; i-- {
+				child_id := t.a.child(&parent, i)
+				child := t.a.node(child_id)
+				if child.kind == .param && child.value == source.value {
+					return t.tc.parse_type(child.typ)
+				}
+				if child.kind == .decl_assign {
+					if typ := t.local_decl_type_at(source.value, int(child_id)) {
+						return t.tc.parse_type(typ)
+					}
+				}
+			}
+			if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+				break
+			}
+			cursor = parent_id
+		}
+	}
+	return t.tc.resolve_type(id)
+}
+
+// collect_interface_array_insert_boxes records concrete elements before array mutation lowering.
+fn (mut t Transformer) collect_interface_array_insert_boxes(node flat.Node) {
+	if node.children_count < 2 {
+		return
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0
+		|| callee.value !in ['insert', 'prepend'] {
+		return
+	}
+	value_index := if callee.value == 'insert' { 2 } else { 1 }
+	if node.children_count != value_index + 1 {
+		return
+	}
+	receiver_id := t.a.child(callee, 0)
+	receiver_type := interface_box_unalias_type(types.unwrap_all_pointers(t.interface_box_source_type(receiver_id)))
+	if receiver_type !is types.Array {
+		return
+	}
+	value_id := t.a.child(&node, value_index)
+	expected := t.interface_box_append_expected_type(receiver_type, receiver_id, value_id)
+	if !interface_box_expected_type(expected) {
+		return
+	}
+	value := t.a.node(value_id)
+	source_id := if value.kind == .prefix && value.value == '...' && value.children_count > 0 {
+		t.a.child(value, 0)
+	} else {
+		value_id
+	}
+	actual := t.interface_box_source_type(source_id)
+	t.collect_interface_boxed_type(actual, expected)
+	t.collect_interface_boxed_value(source_id, expected)
+}
+
 fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node flat.Node) {
+	// Builtin array mutations have no ordinary function parameter signature to scan.
+	t.collect_interface_array_insert_boxes(node)
 	mut call_name := t.tc.resolved_call_name(call_id) or { '' }
 	callee := t.a.child_node(&node, 0)
 	if call_name.len == 0 {
@@ -2482,6 +2564,8 @@ fn (mut t Transformer) collect_interface_append_boxes(node flat.Node) {
 	lhs_type := t.tc.expr_type(lhs_id) or { t.tc.resolve_type(lhs_id) }
 	expected := t.interface_box_append_expected_type(lhs_type, lhs_id, rhs_id)
 	if interface_box_expected_type(expected) {
+		actual := t.tc.expr_type(rhs_id) or { t.tc.resolve_type(rhs_id) }
+		t.collect_interface_boxed_type(actual, expected)
 		t.collect_interface_boxed_value(rhs_id, expected)
 	}
 }
