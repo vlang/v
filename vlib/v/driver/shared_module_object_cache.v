@@ -4,6 +4,26 @@ import os
 import crypto.sha256
 import v.modulecache
 import v.tempname
+import v.cmdexec
+
+fn v3_shared_file_metadata_identity(metadata string) string {
+	// Source-signature memoization prefixes metadata with the V build hash.
+	// Object sharing identifies the C compiler file independently of that build.
+	return metadata.all_after(':')
+}
+
+fn v3_shared_file_identity(path string) string {
+	metadata := modulecache.file_metadata_signature(path)
+	if metadata != '' { return 'metadata=' + v3_shared_file_metadata_identity(metadata) }
+	content := os.read_file(path) or { return 'missing' }
+	return 'content=' + sha256.hexhash(content)
+}
+
+fn v3_shared_c_compiler_identity(compiler string) string {
+	path := os.real_path(os.find_abs_path_of_executable(compiler) or { compiler })
+	version := cmdexec.run(path, ['--version'])
+	return '${path}\t${v3_shared_file_identity(path)}\t${version.exit_code}\t${version.output.replace('\n', ' ')}'
+}
 
 // Compiler-specific interfaces are regenerated before looking here. Sharing an
 // object requires identical C, C compiler, flags, and native dependency contents.
@@ -11,7 +31,7 @@ fn v3_shared_module_object(entry modulecache.Entry, compiler V3CachedObjectCompi
 	identity := if compiler.identity != '' {
 		compiler.identity
 	} else {
-		v3_c_compiler_identity(compiler.path)
+		v3_shared_c_compiler_identity(compiler.path)
 	}
 	mut inputs := ['shared-module-object-v1', os.file_name(entry.c_source), sha256.hexhash(source),
 		identity, compile_signature, os.getwd()]

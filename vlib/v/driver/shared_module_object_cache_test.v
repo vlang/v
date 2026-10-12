@@ -4,6 +4,58 @@ import os
 import v.cmdexec
 import v.modulecache
 
+fn test_shared_compiler_identity_survives_different_v_build_hashes() ! {
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	root := os.join_path(os.vtmp_dir(), 'shared_compiler_identity_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'identity.v')
+	os.write_file(source, 'import os\nimport v.modulecache\nfn main() { println(modulecache.file_metadata_signature(os.args[1])) }\n')!
+	mut identities := []string{}
+	for build_hash in ['object_pool_old_build', 'object_pool_new_build'] {
+		mut environment := os.environ()
+		environment['V_MACOS_V3_VCURRENT_HASH'] = build_hash
+		environment['V_MACOS_V3_VHASH'] = build_hash
+		environment['VEXE'] = @VEXE
+		helper := os.join_path(root, build_hash)
+		mut process := os.new_process(@VEXE)
+		process.set_environment(environment)
+		process.set_args(['-nocache', '-gc', 'none', '-o', helper, source])
+		process.set_redirect_stdio()
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		code := process.code
+		process.close()
+		assert code == 0, output
+		result := os.exec([helper, cc])
+		assert result.exit_code == 0, result.output
+		metadata := result.output.trim_space()
+		assert metadata.starts_with(build_hash + ':'), metadata
+		identities << v3_shared_file_metadata_identity(metadata)
+	}
+	assert identities[0] == identities[1], identities.str()
+}
+
+fn test_shared_file_identity_checks_contents_without_metadata() ! {
+	root := os.join_path(os.vtmp_dir(), 'shared_compiler_no_metadata_${os.getpid()}')
+	os.mkdir_all(root)!
+	file := os.join_path(root, 'compiler')
+	previous := os.getenv_opt('V3_TEST_NO_FILE_METADATA')
+	defer {
+		if value := previous {
+			os.setenv('V3_TEST_NO_FILE_METADATA', value, true)
+		} else {
+			os.unsetenv('V3_TEST_NO_FILE_METADATA')
+		}
+		os.rmdir_all(root) or {}
+	}
+	os.setenv('V3_TEST_NO_FILE_METADATA', file, true)
+	os.write_file(file, 'old compiler')!
+	before := v3_shared_file_identity(file)
+	os.write_file(file, 'new compiler')!
+	assert before != v3_shared_file_identity(file)
+}
+
 fn test_module_objects_are_reused_across_compiler_configurations() ! {
 	cc := os.find_abs_path_of_executable('cc') or { return }
 	root := os.join_path(os.vtmp_dir(), 'shared_module_objects_${os.getpid()}')

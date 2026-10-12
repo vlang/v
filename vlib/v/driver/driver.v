@@ -11941,7 +11941,14 @@ pub fn run(args []string) {
 	}
 	mut cache_state := V3ModuleCacheState{
 		manager:                   cache_manager
-		object_compiler:           V3CachedObjectCompiler{ path: c_compiler, identity: cc_identity }
+		object_compiler:           V3CachedObjectCompiler{
+			path:     c_compiler
+			identity: if cache_enabled {
+				v3_shared_c_compiler_identity(if cache_with_tcc { bundled_tcc } else { c_compiler })
+			} else {
+				''
+			}
+		}
 		// Updates announce refreshed modules; ordinary builds show progress with timings.
 		silent:                    silent || (!verbose && !show_timings
 			&& os.getenv('V3_CACHE_REFRESH') != '1')
@@ -15026,7 +15033,7 @@ pub fn run(args []string) {
 			cache_state.object_compiler = V3CachedObjectCompiler{
 				path:     bundled_tcc
 				args:     object_compiler_args
-				identity: cc_identity
+				identity: cache_state.object_compiler.identity
 			}
 			cache_state.objects_only = true
 		}
