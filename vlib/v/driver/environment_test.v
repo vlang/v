@@ -4,6 +4,7 @@ import os
 import crypto.sha256
 import v.ansi
 import v.flat
+import v.gen.c as cgen
 import v.parser
 import v.pref
 import v.types
@@ -708,4 +709,21 @@ fn test_clone_after_transform_keeps_the_frozen_source_path_table() {
 	cloned := clone_flat_ast_after_transform(&a)
 	assert cloned.source_paths_frozen
 	assert cloned.real_source_path('written.v') == 'recorded.v'
+}
+
+fn test_clone_after_transform_keeps_cached_vlib_flag_ownership() {
+	header := os.join_path(os.vtmp_dir(), 'cache', 'builtin.vh')
+	source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'segfault_handler_nix.c.v')
+	mut a := flat.FlatAst.new()
+	a.cached_header_sources[header] = source
+	a.add_node(flat.Node{ kind: .file, value: header })
+	a.add_node(flat.Node{ kind: .module_decl, value: 'builtin' })
+	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: '@VEXEROOT/vlib/builtin/segfault_handler_nix.o' })
+	cloned := clone_flat_ast_after_transform(&a)
+	// Changing the original map must not reclassify the clone's vlib directive.
+	a.cached_header_sources[header] = os.join_path(os.vtmp_dir(), 'project', 'main.v')
+	assert cloned.cached_header_sources[header] == source
+	flags := cgen.cache_project_flag_groups(cloned, @VEXEROOT, pref.host_target(),
+		map[string]string{}, map[string]bool{})
+	assert flags == []
 }
