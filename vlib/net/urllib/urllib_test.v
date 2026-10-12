@@ -89,6 +89,35 @@ fn test_parse_empty_query_two() {
 	assert query_str == query_encode
 }
 
+// testing the case where the URL ends with '?' and its query holds another '?'
+fn test_parse_query_with_extra_question_mark() {
+	// a single trailing '?' means: an empty query, that should still be printed
+	u := urllib.parse('http://example.com/p?')!
+	assert u.path == '/p'
+	assert u.raw_query == ''
+	assert u.force_query == true
+	assert u.str() == 'http://example.com/p?'
+	// the query holds a '?' of its own, so it is not empty and no force is needed
+	v := urllib.parse('http://example.com/p?a=1?')!
+	assert v.path == '/p'
+	assert v.raw_query == 'a=1?'
+	assert v.force_query == false
+	assert v.str() == 'http://example.com/p?a=1?'
+	// a '?' in the middle does not end the URL, it is part of the query
+	w := urllib.parse('http://example.com/p?a=1?b=2')!
+	assert w.path == '/p'
+	assert w.raw_query == 'a=1?b=2'
+	assert w.force_query == false
+	assert w.str() == 'http://example.com/p?a=1?b=2'
+	// normal, single '?' URLs are not affected
+	x := urllib.parse('http://example.com/p?a=1&b=2')!
+	assert x.path == '/p'
+	assert x.raw_query == 'a=1&b=2'
+	assert x.force_query == false
+	assert x.str() == 'http://example.com/p?a=1&b=2'
+	assert urllib.parse('http://example.com/p')!.str() == 'http://example.com/p'
+}
+
 fn test_parse() {
 	urls := [
 		'jdbc:mysql://test_user:ouupppssss@localhost:3306/sakila?profileSQL=true',
@@ -184,4 +213,20 @@ fn test_path_backslash_is_escaped_on_output() {
 	assert encoded.escaped_path() == '/%5c/x'
 	quoted := urllib.parse("http://example.com/a'b")!
 	assert quoted.str() == "http://example.com/a'b"
+}
+
+fn test_parse_empty_and_question_only_relative_urls() ! {
+	for raw in ['', '?', '??', '?a=1?', 'mailto:user@example.com?a=1?', '/p?a=1?#fragment?'] {
+		u := urllib.parse(raw)!
+		assert u.str() == raw
+	}
+	u := urllib.parse('?')!
+	assert u.raw_query == ''
+	assert u.force_query
+	v := urllib.parse('??')!
+	assert v.raw_query == '?'
+	assert !v.force_query
+	w := urllib.parse('/p?a=1?#fragment?')!
+	assert w.raw_query == 'a=1?'
+	assert w.fragment == 'fragment?'
 }

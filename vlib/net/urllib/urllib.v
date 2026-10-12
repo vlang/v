@@ -486,8 +486,7 @@ fn parse_url(rawurl string, via_request bool) !URL {
 	url.scheme = p[0]
 	mut rest := p[1]
 	url.scheme = url.scheme.to_lower()
-	// if rest.ends_with('?') && strings.count(rest, '?') == 1 {
-	if rest.ends_with('?') && !rest[..1].contains('?') {
+	if rest.ends_with('?') && rest.count('?') == 1 {
 		url.force_query = true
 		rest = rest[..rest.len - 1]
 	} else {

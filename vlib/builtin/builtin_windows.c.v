@@ -48,6 +48,12 @@ pub type C.LPCTSTR = &C.TCHAR
 
 type C.DWORD = u32
 
+@[typedef]
+pub struct C.ULARGE_INTEGER {
+pub mut:
+	QuadPart u64
+}
+
 fn C.WriteConsoleW(voidptr, &u16, C.DWORD, &C.DWORD, voidptr) bool
 fn C.WriteFile(voidptr, &u8, C.DWORD, &C.DWORD, voidptr) bool
 fn C.ExitProcess(u32)

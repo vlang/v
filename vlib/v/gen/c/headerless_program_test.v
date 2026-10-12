@@ -36,7 +36,9 @@ fn test_posix_hello_world_c_has_no_includes() {
 		assert generated.exit_code == 0, generated.output
 		code := os.read_file(c_file)!
 		assert !code.contains('#include'), gc
-		assert code.contains('void* malloc(size_t'), gc
+		assert code.len < 256, '${gc}: ${code.len} bytes'
+		assert code.contains('int puts(const char*'), gc
+		assert !code.contains('malloc') && !code.contains('GC_') && !code.contains('gc_'), gc
 		run := cmdexec.run(@VEXE, ['-nocache', '-no-retry-compilation', '-gc', gc, 'run', source])
 		assert run.exit_code == 0, run.output
 		assert run.output == 'Hello, World!\n', run.output

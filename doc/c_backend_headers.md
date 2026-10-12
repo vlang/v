@@ -13,6 +13,15 @@ imports no standard library modules.
 Mach task APIs declared by the application also keep their prototypes in headerless C.
 An explicit Mach SDK header remains authoritative when supplied by the application.
 
+For a single-file POSIX program containing only literal `print`, `println`, `eprint`,
+and `eprintln` calls, the compiler proves that no V allocations are needed. It emits
+only `main` and the required libc declarations, without linking a collector or native
+runtime helpers. A single `println` uses `puts`; other output preserves embedded NUL
+bytes and handles partial writes. Programs with allocations, initialization, or other
+runtime requirements retain their normal runtime. Instrumented and library builds
+also retain their runtime support. Portable `-os cross` and `-cross` snapshots retain
+the complete runtime, pointer-width checks, and custom-define metadata even for literal output.
+
 The GC, signal, process, and compiler helpers are linked from native objects. Their platform headers
 are parsed when those objects are built. V caches the objects using the C compiler, target,
 flags, and source and header dependencies. `-nocache` disables the V module cache; native
