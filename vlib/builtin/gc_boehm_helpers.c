@@ -39,7 +39,10 @@ int v_gc_pthread_detach(void* thread) { return pthread_detach((pthread_t)thread)
 int v_gc_pthread_sigmask(int how, const void* set, void* oldset) {
 	return pthread_sigmask(how, (const sigset_t*)set, (sigset_t*)oldset);
 }
+// Android does not implement POSIX thread cancellation.
+#if !defined(__ANDROID__)
 int v_gc_pthread_cancel(void* thread) { return pthread_cancel((pthread_t)thread); }
+#endif
 void v_gc_pthread_exit(void* result) { pthread_exit(result); }
 void* v_gc_dlopen(const char* path, int mode) { return dlopen(path, mode); }
 #endif
