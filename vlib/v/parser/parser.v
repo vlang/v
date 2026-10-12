@@ -4776,6 +4776,12 @@ fn (mut p Parser) parse_compile_message_call(directive_start int, sentinel strin
 	} else {
 		p.expr(.lowest)
 	}
+	if sentinel == '__v_compile_error' {
+		arg := p.a.node(message)
+		if arg.kind != .string_literal || arg.children_count != 0 {
+			p.record_diagnostic_span('`$compile_error` expects a string literal', directive_start, p.prev_tok_end)
+		}
+	}
 	for p.tok != .rpar && p.tok != .eof {
 		p.next()
 	}
@@ -14748,7 +14754,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	// empty array or fixed array type: []Type{} or [N]Type{}
 	if p.tok == .rsbr {
 		p.next()
-		if !p.can_start_type_name() {
+		if !p.can_start_type_name() || p.amp_after_array_brackets_is_infix() {
 			return p.a.add_node(flat.Node{
 				kind: .array_literal
 				pos:  p.span_to(bracket_start)
@@ -14799,9 +14805,11 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	if p.tok == .rsbr {
 		size_end := p.tok_pos
 		p.next()
-		if p.tok == .name || p.tok == .amp || (p.tok == .and && p.tok_pos == p.prev_tok_end)
+		// A `!` that is detached from what follows marks a fixed array literal, it does not
+		// start an element type: `x == [1]! && y`.
+		if p.tok == .name || (p.tok in [.amp, .and] && !p.amp_after_array_brackets_is_infix())
 			|| p.tok == .question
-			|| (p.tok == .not && token_can_start_type_name(p.peek()))
+			|| (p.tok == .not && token_can_start_type_name(p.peek()) && p.tok_end == p.peek_pos)
 			|| (p.tok == .lsbr && p.current_lbr_starts_array_type()) {
 			// fixed array type: [N]Type. Use the literal node value for a plain integer
 			// size, but recover the full source text for a const expression (e.g.
@@ -14976,6 +14984,27 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		})
 	}
 	return lit
+}
+
+// amp_after_array_brackets_is_infix reports whether the `&`/`&&` after the `]` of `[]` or
+// `[N]` is a binary operator (`a == [] && b == []`, `x == [1] & mask`), and not the
+// reference prefix of an element type (`[]&Foo{}`, `[3]&&Foo{}`). Token separators tell
+// the two apart, like it does for `[1 - 2]` and `[1 -2]`.
+// `&&` is the logical operator unless it is attached on both sides: after an array literal
+// it is far more common than a pointer to a pointer.
+// `&` is an operator only when it is detached on both sides: `[] &Foo{}` stays an array init.
+fn (p &Parser) amp_after_array_brackets_is_infix() bool {
+	if p.tok !in [.amp, .and] {
+		return false
+	}
+	detached_left := p.tok_pos > p.prev_tok_end
+	detached_right := (p.tok_end < p.s.src.len && p.s.src[p.tok_end] in [` `, `\t`, `\r`, `\n`])
+		|| (p.tok_end + 1 < p.s.src.len && p.s.src[p.tok_end] == `/`
+			&& p.s.src[p.tok_end + 1] in [`/`, `*`])
+	if p.tok == .and {
+		return detached_left || detached_right
+	}
+	return detached_left && detached_right
 }
 
 fn (p &Parser) fixed_array_size_text(size_node flat.NodeId, size_start int, size_end int) string {

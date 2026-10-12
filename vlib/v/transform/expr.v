@@ -3998,13 +3998,21 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 	for stmt in body {
 		t.a.children << stmt
 	}
+	mut flags := flat.node_flag_skip_ownership_drops
+	// Aggregate equality can call user operators that delete the current map key.
+	// Keep its owned copy across those callbacks and the final existence lookup.
+	clean_value_type := t.membership_container_type(value_type)
+	if (clean_value_type == 'string' || !t.type_needs_semantic_eq(value_type))
+		&& !(t.membership_type_is_pointer(value_type) && t.is_sum_type_name(clean_value_type)) {
+		flags |= flat.node_flag_borrowed_map_key
+	}
 	t.pending_stmts << t.a.add_node(flat.Node{
 		kind:           .for_in_stmt
 		children_start: start
 		children_count: flat.child_count(3 + body.len)
 		pos:            src.pos
 		value:          '3'
-		flags:          flat.node_flag_skip_ownership_drops
+		flags:          flags
 	})
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), 'bool')
@@ -4342,7 +4350,11 @@ fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
 	if t.is_ordering_snapshot_temp(id) {
 		return id
 	}
-	pointer_type := t.lvalue_type(id)
+	source_id := t.unwrap_parens(id)
+	pointer_type := t.lvalue_type(source_id)
+	source := t.a.nodes[int(source_id)]
+	borrowed_pointer_value := source.kind == .ident && t.pointer_value_rvalues[source.value]
+		&& !t.mut_param_values[source.value] && pointer_type.starts_with('&&')
 	preserve_pointer_value := pointer_type.starts_with('&')
 	// A block expression (notably `unsafe { ... }`) drains pending statements into
 	// its own statement-expression. Do not let it capture snapshots belonging to
@@ -4352,6 +4364,10 @@ fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
 	t.pending_stmts.clear()
 	expr := if _ := t.generated_variant_access_type(id) {
 		id
+	} else if borrowed_pointer_value {
+		// Mutable pointer-valued iteration stores a pointer to the entry slot.
+		// Capture the pointee before a later argument can replace that entry.
+		t.transform_expr(id)
 	} else if preserve_pointer_value {
 		t.transform_expr_preserving_pointer_value(id)
 	} else {
@@ -4364,7 +4380,13 @@ fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
 		return expr
 	}
 	tmp_name := t.new_temp('order_snapshot')
-	mut tmp_typ := if preserve_pointer_value { pointer_type } else { t.node_type(expr) }
+	mut tmp_typ := if borrowed_pointer_value {
+		pointer_type[1..]
+	} else if preserve_pointer_value {
+		pointer_type
+	} else {
+		t.node_type(expr)
+	}
 	if tmp_typ.len == 0 {
 		tmp_typ = t.node_type(id)
 	}

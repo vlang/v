@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module jsonc
 
-import x.json5
+import json2
 
 // Container names the kind of collection a token sits directly inside, which is
 // what tells an unquoted object key apart from a bare value.
@@ -99,7 +99,7 @@ fn grammar_violation(lit string, digits string) string {
 // after `cur`, which together with `inside` are what a rule needs: a token is an
 // object key only directly after `{` or `,`, and a comma ends a collection only
 // when a closing bracket follows it.
-fn check_token(cur json5.Token, prev json5.TokenKind, next json5.Token, inside Container, opts ParseOpts) string {
+fn check_token(cur json2.Json5Token, prev json2.Json5TokenKind, next json2.Json5Token, inside Container, opts ParseOpts) string {
 	if cur.kind == .comma && (next.kind == .rcbr || next.kind == .rsbr) {
 		if !opts.allow_trailing_comma {
 			return 'a trailing comma is not valid JSONC'
@@ -137,9 +137,9 @@ fn check_token(cur json5.Token, prev json5.TokenKind, next json5.Token, inside C
 // cannot fail; the error arm below is unreachable in practice and reports no
 // violation rather than inventing one.
 fn validate(text string, opts ParseOpts) &ParseError {
-	scanner := json5.new_scanner(text)
+	scanner := json2.new_json5_scanner(text)
 	mut stack := []Container{}
-	mut prev := json5.TokenKind.none
+	mut prev := json2.Json5TokenKind.none
 	mut cur := scanner.next() or { return nil }
 	for cur.kind != .eof {
 		next := scanner.next() or { return nil }
@@ -171,25 +171,25 @@ fn validate(text string, opts ParseOpts) &ParseError {
 // locate converts the line and column of a JSON5 token into a Pos, recovering
 // the byte offsets from `text`.
 //
-// The extent is the token's own source text. Every token this module reports on
-// carries its raw spelling in `lit` — an unquoted key, a number, a keyword, or
-// the comma itself — so its byte length is the width to underline. A token whose
-// `lit` has been decoded, such as a string, is never reported here, because the
-// rune pass owns string literals and measures them as it walks.
+// The extent is the token's source byte length, which includes any Unicode
+// escapes in an unquoted key even though `lit` contains its decoded value.
 //
 // The walk uses the rune pass's Cursor, which counts lines and columns the way
 // the JSON5 scanner does, including stepping over a leading byte order mark
 // without counting a column for it, and which keeps the byte offset in step
 // with the source even across bytes that are not valid UTF-8.
-fn locate(text string, tok json5.Token) Pos {
+fn locate(text string, tok json2.Json5Token) Pos {
 	mut c := new_cursor(text)
-	for !c.done() && (c.line != tok.pos.line || c.col != tok.pos.col) {
+	// The LF in CRLF shares the next token's line and column when that column is one.
+	// A token never starts on a line terminator; finish the break before matching it.
+	for !c.done()
+		&& (c.line != tok.pos.line || c.col != tok.pos.col || is_line_terminator(c.at())) {
 		c.next()
 	}
 	return Pos{
 		line:       tok.pos.line
 		col:        tok.pos.col
 		offset:     c.offset
-		end_offset: c.offset + tok.lit.len
+		end_offset: c.offset + tok.length
 	}
 }

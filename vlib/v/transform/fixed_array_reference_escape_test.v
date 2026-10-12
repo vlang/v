@@ -202,6 +202,99 @@ fn test_fixed_array_reference_value_parameter_promotion_preserves_reference_abi(
 	assert entry2.len == 0
 }
 
+fn test_fixed_array_reference_pointer_field_does_not_promote_its_containing_value() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 9 })
+	coordinator := types.Type(types.Struct{ name: 'Coordinator' })
+	coordinator_ptr := types.Type(types.Pointer{ base_type: coordinator })
+	tc.structs['Coordinator'] = [types.StructField{ name: 'reasons', typ: fixed }]
+	tc.structs['Dispatch'] = [types.StructField{ name: 'coordinator', typ: coordinator_ptr }]
+	tc.trust_checked_expr_types = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('dispatch', 'Dispatch')
+	field := t.make_selector(t.make_ident('dispatch'), 'coordinator', '&Coordinator')
+	tc.register_synth_type(field, coordinator_ptr)
+	t.mark_fixed_array_reference_argument_escape(field, coordinator_ptr, map[string]bool{}, map[string][]string{}, map[string]string{}, {
+		'dispatch': true
+	})
+	assert t.escaping_fixed_array_view_sources.len == 0
+	// A pointer explicitly taken to this frame's fixed storage still promotes
+	// the original owner, rather than the pointer alias.
+	t.set_var_type('p', '&Coordinator')
+	p := t.make_ident('p')
+	tc.register_synth_type(p, coordinator_ptr)
+	t.mark_fixed_array_reference_argument_escape(p, coordinator_ptr, {
+		'p': true
+	}, {
+		'p': ['coordinator']
+	}, map[string]string{}, {
+		'coordinator': true
+		'p':           true
+	})
+	assert 'coordinator' in t.escaping_fixed_array_view_sources
+	assert 'p' !in t.escaping_fixed_array_view_sources
+}
+
+fn test_fixed_array_reference_pointer_address_roundtrip_keeps_its_original_owner() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 3 })
+	pointer := types.Type(types.Pointer{ base_type: fixed })
+	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
+	tc.trust_checked_expr_types = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('p', '&[3]int')
+	p := t.make_ident('p')
+	tc.register_synth_type(p, pointer)
+	address := t.make_prefix(.amp, p)
+	tc.register_synth_type(address, types.Type(types.Pointer{ base_type: pointer }))
+	deref := t.make_prefix(.mul, t.make_paren(address))
+	tc.register_synth_type(deref, pointer)
+	t.mark_fixed_array_reference_argument_escape(deref, array_ref, {
+		'p': true
+	}, {
+		'p': ['values']
+	}, map[string]string{}, {
+		'p':      true
+		'values': true
+	})
+	assert 'values' in t.escaping_fixed_array_view_sources
+	assert 'p' !in t.escaping_fixed_array_view_sources
+}
+
+fn test_fixed_array_reference_mutable_iteration_pointer_keeps_its_backing() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	fixed := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
+	rows_type := types.Type(types.ArrayFixed{ elem_type: fixed, len: 2 })
+	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
+	tc.fn_param_types['retain'] = [array_ref]
+	tc.fn_ret_types['retain'] = array_ref
+	tc.trust_checked_expr_types = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('rows', '[2][2]int')
+	rows := t.make_ident('rows')
+	tc.register_synth_type(rows, rows_type)
+	row := t.make_ident('row')
+	tc.register_synth_type(row, types.Type(types.Pointer{ base_type: fixed }))
+	call := t.make_call_typed('retain', [row], '&[]int')
+	t.set_resolved_call_entry(int(call), 'retain')
+	body := t.make_block([t.make_expr_stmt(call)])
+	start := a.children.len
+	a.children << [flat.empty_node, row, rows, body]
+	loop := a.add_node(flat.Node{
+		kind:           .for_in_stmt
+		op:             .amp
+		value:          '3'
+		children_start: start
+		children_count: 4
+	})
+	t.mark_escaping_amp_ptrs([loop])
+	assert 'row' in t.escaping_fixed_array_view_sources
+	assert 'rows' in t.escaping_fixed_array_view_sources
+}
+
 fn test_fixed_array_reference_stack_pointer_projections_keep_original_root() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

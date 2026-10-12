@@ -1862,8 +1862,8 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	program := os.join_path(root, 'dispatcher_build.v')
 	binary := os.join_path(root, 'dispatcher_build')
 	os.write_file(program, "println('built')")!
-	build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-cstrict', '-skip-running', '-usecache',
-		'build', '-o', binary, program])
+	build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-cstrict', '-skip-running', 'build',
+		'-o', binary, program])
 	assert build.exit_code == 0, build.output
 	assert !os.exists(binary + '.c')
 	built := cmdexec.run(binary, [])
