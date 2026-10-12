@@ -13380,11 +13380,13 @@ pub fn run(args []string) {
 				trace_v3_cache_fallback('external C inputs cannot be assigned to cache units')
 				restart_v3_without_cache()
 			}
+			mut header_modules := []string{}
 			for module_name, parsed in cache_state.parsed_from_source {
-				if !parsed {
-					continue
+				if parsed {
+					header_modules << module_name
 				}
-				header := modulecache.module_header_with_const_order(a, pre_tc, module_name, prefs.vroot, cache_state.module_import_paths, const_init_order)
+			}
+			for module_name, header in modulecache.module_headers_with_const_order(a, pre_tc, header_modules, prefs.vroot, cache_state.module_import_paths, const_init_order) {
 				if header.len > 0 {
 					cache_state.headers[module_name] = header
 					cache_module_calls_recover(mut cache_state, modulecache.header_text_calls_recover(header))
