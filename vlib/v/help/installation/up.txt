@@ -7,6 +7,9 @@ a failed source comparison, or -prod, -skip_v_self or -skip_current forces rebui
 
 It then refreshes previously cached vlib modules with their original C compiler
 and build flags, including normal and -prod builds. Unchanged modules are reused.
+After rebuilding V, module interfaces are validated with the new compiler. Matching
+generated C, C compilers, flags, and native inputs reuse previously compiled objects
+across compiler configurations without creating another copy of the object data.
 Object flags include source #flag directives. Records with vanished project
 directories, required compile inputs, or C compilers are skipped. Test selectors
 and assertion display modes are retained. Builds without relative inputs or
@@ -39,6 +42,7 @@ failure makes the update fail. TinyCC object failures are reported instead of
 retrying a program without caching. Older caches without recorded settings are
 refreshed in both modes for the available C compilers, for programs and tests.
 Successful legacy migrations mark the old headers to avoid repeating that matrix.
+A disk-full error stops the remaining refresh builds; free space before retrying.
 
 It also reports the agent skills installed for this user, in ~/.agents/skills,
 that the new revision left behind. Skills with local changes, and skills
