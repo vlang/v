@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.cmdexec
 import v.skills
 import v.util.version
 import v.util.recompilation
@@ -175,6 +176,7 @@ fn tcc_cache_requests(root string, requests []cache_refresh.Request) []cache_ref
 		os.find_abs_path_of_executable('tcc') or { '' }
 	}
 	mut selected := []cache_refresh.Request{}
+	mut compiler_kinds := map[string]bool{}
 	for request in requests {
 		index := request.args.index('-cc')
 		if index < 0 {
@@ -199,13 +201,36 @@ fn tcc_cache_requests(root string, requests []cache_refresh.Request) []cache_ref
 		} else {
 			os.find_abs_path_of_executable(compiler) or { continue }
 		}
-		resolved := os.real_path(path)
-		if resolved == os.real_path(bundled)
-			|| os.file_name(resolved).to_lower() in ['tcc', 'tcc.exe', 'tinyc', 'tinyc.exe'] {
+		cwd := if request.cwd != '' { request.cwd } else { root }
+		key := path + '\x00' + cwd
+		is_tcc := compiler_kinds[key] or {
+			kind := is_tcc_cache_compiler(path, bundled, cwd)
+			compiler_kinds[key] = kind
+			kind
+		}
+		if is_tcc {
 			selected << request
 		}
 	}
 	return selected
+}
+
+fn is_tcc_cache_compiler(path string, bundled string, cwd string) bool {
+	resolved := os.real_path(path)
+	name := os.file_name(resolved).to_lower_ascii()
+	if resolved == os.real_path(bundled) || name.contains('tcc') || name.contains('tinyc') {
+		return true
+	}
+	// Match the driver's effective compiler classification, including renamed
+	// executables and wrappers whose version output identifies TinyCC.
+	if name.contains('clang') || name.contains('gcc') || name.contains('mingw')
+		|| name in ['cl', 'cl.exe'] || name.contains('msvc') || name.contains('++') {
+		return false
+	}
+	if os.user_os() in ['macos', 'ios'] && resolved == '/usr/bin/cc' { return false }
+	if !os.is_executable(path) { return false }
+	compiler_version := cmdexec.run_in(path, ['--version'], cwd).output.to_lower_ascii()
+	return compiler_version.contains('tiny c compiler') || compiler_version.contains('tcc version')
 }
 
 // skills_refresh_hint is what the report tells the user to run.

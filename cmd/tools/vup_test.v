@@ -259,9 +259,20 @@ fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
 	alias := os.join_path(bin_dir, 'compiler-alias')
 	os.symlink(bundled, alias)!
 	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
+	renamed := os.join_path(bin_dir, 'my-tcc')
+	write_executable(renamed, '#!/bin/sh\nexit 0\n')!
+	copied := os.join_path(bin_dir, 'backend-copy')
+	write_executable(copied, '#!/bin/sh\necho "Tiny C Compiler 0.9.27"\n')!
+	wrapper := os.join_path(bin_dir, 'compiler-wrapper')
+	probes := os.join_path(root, 'version_probes')
+	write_executable(wrapper, '#!/bin/sh\necho probe >> ' + os.quoted_path(probes) +
+		'\necho "tcc version 0.9.27"\n')!
+	other := os.join_path(bin_dir, 'other-compiler')
+	write_executable(other, '#!/bin/sh\necho "clang version 18.0.0"\n')!
 	relative := os.path_rel(os.getwd(), bundled)!
 	variants := [['-cc', 'tinyc'], ['-cc', bundled], ['-cc', alias], ['-cc', relative], []string{},
-		['-cc', os.join_path(bin_dir, 'cc')], ['-cc']]
+		['-cc', os.join_path(bin_dir, 'cc')], ['-cc'], ['-cc', renamed], ['-cc', copied],
+		['-cc', wrapper], ['-cc', wrapper, '-prod'], ['-cc', other]]
 	for index, flags in variants {
 		dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), 'variant_${index}')
 		os.mkdir_all(dir)!
@@ -269,6 +280,23 @@ fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
 			'sample': [source]
 		}, [], '', false)!
 	}
+	// A wrapper can select its backend from project-local configuration.
+	context_wrapper := os.join_path(bin_dir, 'context-compiler')
+	context_probes := os.join_path(root, 'context_probes')
+	write_executable(context_wrapper, '#!/bin/sh\npwd >> ' + os.quoted_path(context_probes) +
+		'\nif [ -f tinycc.cfg ]; then echo "tcc version 0.9.27"; else echo "clang version 18"; fi\n')!
+	for context in ['tinycc_project', 'clang_project'] {
+		project := os.join_path(root, context)
+		os.mkdir_all(project)!
+		if context == 'tinycc_project' { os.write_file(os.join_path(project, 'tinycc.cfg'), '')! }
+		os.chdir(project)!
+		dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), context)
+		os.mkdir_all(dir)!
+		cache_refresh.record(dir, root, ['-cc', context_wrapper], false, {
+			'sample': [source]
+		}, [cache_refresh.FlagGroup{ flags: ['-I.'], identity: 'context' }], '', false)!
+	}
+	os.chdir(root)!
 	log := os.join_path(root, 'cache_calls')
 	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
 		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
@@ -277,13 +305,24 @@ fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
 	result := run_vup(root, home, tool, bin_dir)!
 	assert result.exit_code == 0, result.output
 	calls := os.read_file(log)!.split_into_lines()
-	assert calls.len == 4, calls.str()
+	assert calls.len == 9, calls.str()
 	assert calls.any(it.starts_with('-cc tinyc ')), calls.str()
 	assert calls.any(it.starts_with('-cc ${bundled} ')), calls.str()
 	assert calls.any(it.starts_with('-cc ${alias} ')), calls.str()
 	assert calls.any(it.starts_with('-cc ${relative} ')), calls.str()
+	assert calls.any(it.starts_with('-cc ${renamed} ')), calls.str()
+	assert calls.any(it.starts_with('-cc ${copied} ')), calls.str()
+	assert calls.any(it.starts_with('-cc ${wrapper} -skip-running ')), calls.str()
+	assert calls.any(it.starts_with('-cc ${wrapper} -prod ')), calls.str()
+	assert calls.filter(it.starts_with('-cc ${context_wrapper} ')).len == 1, calls.str()
 	assert !calls.any(it.contains('-cc ${os.join_path(bin_dir, 'cc')} ')), calls.str()
-	assert result.output.contains('4 build configurations checked.'), result.output
+	assert !calls.any(it.contains('-cc ${other} ')), calls.str()
+	assert os.read_file(probes)!.split_into_lines() == ['probe']
+	contexts := os.read_file(context_probes)!.split_into_lines()
+	assert contexts.len == 2, contexts.str()
+	assert os.join_path(root, 'tinycc_project') in contexts, contexts.str()
+	assert os.join_path(root, 'clang_project') in contexts, contexts.str()
+	assert result.output.contains('9 build configurations checked.'), result.output
 }
 
 fn test_vup_rebuilds_changed_tinycc_module_and_reuses_unrelated_module() ! {
