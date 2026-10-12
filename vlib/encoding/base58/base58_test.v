@@ -93,3 +93,19 @@ fn test_alphabet_rejects_non_ascii_bytes() {
 		assert err.msg() == 'base58.new_alphabet: alphabet must contain only ASCII characters'
 	}
 }
+
+fn test_decode_int_exact_and_overflow() {
+	// 58^10 - 1 is the biggest all-'z' value that fits in an int, and it is
+	// bigger than 2^53, so the float place values used before lost precision
+	assert decode_int('zzzzzzzzzz')! == 430804206899405823
+	// one more digit overflows: no silent wrap to a negative value, no collision
+	if v := decode_int('zzzzzzzzzzz') {
+		assert false, 'overflowing input decoded as ${v}'
+	} else {
+		assert err.msg().contains('does not fit in an int')
+	}
+	// smaller values keep their value
+	assert decode_int('z')! == 57
+	assert decode_int('zz')! == 57 * 58 + 57
+	assert decode_int('2')! == 1
+}
