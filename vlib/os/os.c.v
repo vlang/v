@@ -2,17 +2,12 @@ module os
 
 import strings
 
-#include <sys/stat.h> // #include <signal.h>
-#include <errno.h>
-
 $if macos {
-	#include <mach-o/dyld.h>
 	// needed for os.executable():
 	fn C._dyld_get_image_name(image u32) &char
 }
 
 $if freebsd || openbsd {
-	#include <sys/sysctl.h>
 }
 
 @[markused]
@@ -37,6 +32,8 @@ fn C.ferror(stream &C.FILE) i32
 fn C.feof(stream &C.FILE) i32
 
 fn C.CopyFile(&u16, &u16, bool) i32
+
+fn C.SetFileAttributesW(lpFileName &u16, dwFileAttributes u32) bool
 
 fn write_file_direct(path string, text string) ! {
 	mut f := create(path)!
@@ -578,10 +575,40 @@ pub fn is_readable(path string) bool {
 }
 
 // rm removes file in `path`.
+// On Windows it clears the file's read-only attribute for deletion and preserves
+// its other attributes. If deletion fails, it attempts to restore the original attributes.
 pub fn rm(path string) ! {
 	mut rc := 0
 	$if windows {
-		rc = C._wremove(path.to_wide())
+		wpath := path.to_wide()
+		defer {
+			// This call owns the wide path passed to the Windows APIs.
+			unsafe { free(wpath) }
+		}
+		attrs := C.GetFileAttributesW(wpath)
+		mut changed := false
+		if attrs != u32(C.INVALID_FILE_ATTRIBUTES)
+			&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0
+			&& attrs & u32(C.FILE_ATTRIBUTE_READONLY) != 0 {
+			without_read_only := attrs & ~u32(C.FILE_ATTRIBUTE_READONLY)
+			new_attrs := if without_read_only == 0 {
+				u32(C.FILE_ATTRIBUTE_NORMAL)
+			} else {
+				without_read_only
+			}
+			changed = C.SetFileAttributesW(wpath, new_attrs)
+		}
+		rc = C._wremove(wpath)
+		if rc == -1 {
+			code := int(C.errno)
+			if changed {
+				C.SetFileAttributesW(wpath, attrs)
+			}
+			return error_posix(
+				code: code
+				msg:  'Failed to remove "${path}": ' + posix_get_error_msg(code)
+			)
+		}
 	} $else {
 		rc = C.remove(&char(path.str))
 	}

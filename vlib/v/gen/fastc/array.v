@@ -432,12 +432,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
 	if g.direct_array_access {
 		return FastcRenderedExpression{
-			source: '(((${element_type} *)(${array_value}).data)[${index_source}])'
+			source: '(((${g.collection_storage_type(element_type)} *)(${array_value}).data)[${index_source}])'
 			typ:    element_type
 		}
 	}
 	return FastcRenderedExpression{
-		source: '(*(${element_type} *)builtin__array_get(${array_value}, ${index_source}))'
+		source: '(*(${g.collection_storage_type(element_type)} *)builtin__array_get(${array_value}, ${index_source}))'
 		typ:    element_type
 	}
 }
@@ -638,10 +638,11 @@ fn (g &Parser) fastc_inline_array_element_equality(array_type string, left strin
 		// A further-nested array element would need another loop level; not supported yet.
 		return error('nested array element')
 	}
+	inner_storage := g.collection_storage_type(inner_element)
 	inner_comparison := if g.underlying_alias_type(inner_element).trim_right('*') == 'string' {
-		'builtin__string_eq(((${inner_element} *)__vf_meq_l.data)[__vf_meq_k], ((${inner_element} *)__vf_meq_r.data)[__vf_meq_k])'
+		'builtin__string_eq(((${inner_storage} *)__vf_meq_l.data)[__vf_meq_k], ((${inner_storage} *)__vf_meq_r.data)[__vf_meq_k])'
 	} else {
-		'(((${inner_element} *)__vf_meq_l.data)[__vf_meq_k] == ((${inner_element} *)__vf_meq_r.data)[__vf_meq_k])'
+		'(((${inner_storage} *)__vf_meq_l.data)[__vf_meq_k] == ((${inner_storage} *)__vf_meq_r.data)[__vf_meq_k])'
 	}
 	return '({ ${array_type} __vf_meq_l = (${left}); ${array_type} __vf_meq_r = (${right}); bool __vf_meq = (__vf_meq_l.len == __vf_meq_r.len); for (int __vf_meq_k = 0; __vf_meq && __vf_meq_k < __vf_meq_l.len; __vf_meq_k++) { if (!${inner_comparison}) { __vf_meq = false; break; } } __vf_meq; })'
 }

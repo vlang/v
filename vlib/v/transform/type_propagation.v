@@ -448,6 +448,20 @@ fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?string {
 	if node.kind == .fn_literal {
 		return t.fn_literal_type_text(node)
 	}
+	// The ordinary monomorphization scan has no live local scope. Its var_types
+	// can still describe the last transformed function; only a cloned generic
+	// specialization has seeded authoritative parameter bindings here.
+	if node.kind == .ident && (!t.in_monomorphize_scan || t.cloning_generic_fn_depth > 0) {
+		local_type := t.var_type(node.value)
+		if local_type.len > 0 {
+			if t.is_fn_pointer_type_name(local_type) {
+				return t.normalize_type_alias(local_type)
+			}
+			// Generic parameters keep their concrete type in the local scope. A
+			// same-named function must not turn a value parameter into a callback.
+			return none
+		}
+	}
 	if typ := t.tc.expr_type(id) {
 		if name := fn_value_type_name_from_type(typ) {
 			return t.normalize_type_alias(name)
@@ -795,8 +809,18 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 
 fn (t &Transformer) builtin_selector_type(base_type string, field_name string) ?string {
 	clean := t.trim_pointer_type(t.normalize_type_alias(base_type))
-	if field_name == 'len' && (clean == 'string' || clean.starts_with('[]')
-		|| clean.starts_with('map[') || t.is_fixed_array_type(clean)
+	if clean == 'array' || clean.starts_with('[]') {
+		// Array header fields have builtin types. Inferring them from a same-named
+		// field on an unrelated struct can turn a pointer value into an implicit
+		// reference when passing `values.data` to a V function such as vmemcpy.
+		return match field_name {
+			'data' { 'voidptr' }
+			'element_size', 'offset', 'len', 'cap' { 'int' }
+			'flags' { 'ArrayFlags' }
+			else { none }
+		}
+	}
+	if field_name == 'len' && (clean == 'string' || clean.starts_with('map[') || t.is_fixed_array_type(clean)
 		|| clean == 'chan' || clean.starts_with('chan ')) {
 		return 'int'
 	}
@@ -1794,6 +1818,19 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 	}
 	base, args, is_generic_app := generic_app_parts(clean)
 	if is_generic_app {
+		// Expand the applied alias before its base: expanding only `Values` in
+		// `Values[Item]` would leave the arguments attached to its `[]T` target.
+		alias_type := if !base.contains('.') && mod.len > 0
+			&& t.type_authority_has('${mod}.${base}') {
+			'${mod}.${clean}'
+		} else {
+			clean
+		}
+		if !isnil(t.tc) {
+			if expanded := t.expand_generic_type_alias(alias_type) {
+				return t.normalize_type_alias(expanded)
+			}
+		}
 		mut normalized_args := []string{cap: args.len}
 		for arg in args {
 			normalized_args << t.normalize_type_in_module(arg, mod)
@@ -1978,6 +2015,9 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) string {
 		if node.kind == .array_literal && t.generic_arg_is_unresolved(resolved) {
 			elem_type := t.array_literal_elem_type(node)
 			if decl_type_is_usable(elem_type) && !t.generic_arg_is_unresolved(elem_type) {
+				if t.is_fixed_array_type(resolved) {
+					return '[${fixed_array_len_text(resolved)}]${elem_type}'
+				}
 				return '[]${elem_type}'
 			}
 		}

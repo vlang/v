@@ -1793,6 +1793,9 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 	// Classify array constants in the parent arena before forking, so every
 	// batch shares one read-only cache instead of rescanning the AST.
 	t.precompute_const_array_fixed_storage()
+	// Serial batches need the same immutable reflected-loop index as parallel
+	// workers; otherwise each batch rescans the entire growing AST for JSON fields.
+	t.prepare_comptime_reflected_for_roles()
 	// A scoped transformer can itself be a fork whose signature tables still
 	// point at its parent's read-only base. Detach before pre-registering the
 	// batch, rather than mutating storage another worker may be reading.
@@ -2379,6 +2382,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		if name !in t.sum_eq_types {
 			t.sum_eq_types[t.promote_scoped_result_text(name)] = SumEqRequest{
 				sum_name:      t.promote_scoped_result_text(req.sum_name)
+				struct_name:   t.promote_scoped_result_text(req.struct_name)
 				module:        t.promote_scoped_result_text(req.module)
 				file:          t.promote_scoped_result_text(req.file)
 				helper_module: t.promote_scoped_result_text(req.helper_module)
@@ -2614,6 +2618,9 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 			idx := candidates[ci].idx
 			if idx >= 0 && idx < t.transformed_fns.len {
 				t.transformed_fns[idx] = true
+			}
+			if idx >= 0 && idx < t.lowered_fn_bodies.len {
+				t.lowered_fn_bodies[idx] = true
 			}
 			t.cur_file = candidates[ci].file
 			t.cur_module = candidates[ci].module

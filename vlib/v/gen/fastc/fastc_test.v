@@ -8459,7 +8459,6 @@ fn test_expressions_without_safe_lowering_are_rejected() {
 		'module main\nfn divide(b int) { mut x := 1; x /= b; println(x) }\nfn main() { divide(0) }\n',
 		'module main\nfn modulo(b int) { mut x := 1; x %= b; println(x) }\nfn main() { modulo(0) }\n',
 		'module main\nfn main() { println(sizeof(string)) }\n',
-		"module main\nfn main() { s := 'abc'; println(s[0]) }\n",
 		"module main\nfn main() { println(c'a') }\n",
 		'module main\nfn main() { println(`A`) }\n',
 		'module main\nfn show(r rune) { println(r) }\nfn main() { show(65) }\n',

@@ -6376,6 +6376,51 @@ fn (mut tc TypeChecker) reject_capturing_fn_literal_escape(id flat.NodeId, messa
 	_ = message
 }
 
+// InferredCGlobal is a C identifier that V has no declaration for, with the
+// type that the context of its first use expects.
+struct InferredCGlobal {
+	name string
+	typ  Type
+}
+
+// c_identifier_is_undeclared reports whether `C.<name>` is a C variable that V
+// has no type for: it has no V declaration, and no checked use gave it one (see
+// remember_inferred_c_global). Only a lower case name is a variable: the others
+// are the macros and enum values of C, which V takes for integers.
+pub fn (tc &TypeChecker) c_identifier_is_undeclared(name string) bool {
+	if name.len == 0 || name[0] < `a` || name[0] > `z` || ascii_name_has_upper(name) {
+		return false
+	}
+	qname := 'C.${name}'
+	return qname !in tc.c_globals && qname !in tc.const_types && qname !in tc.fn_ret_types
+}
+
+// inferred_c_global_type returns the type that the undeclared C identifier
+// `node` takes from the type `expected` of its context. A `mut` argument names
+// the object that its parameter takes a reference to.
+fn inferred_c_global_type(node flat.Node, expected Type) Type {
+	if node.is_mut && expected is Pointer {
+		return expected.base_type
+	}
+	return expected
+}
+
+// remember_inferred_c_global gives the undeclared C identifier `qname` the
+// type `typ` for the rest of the compilation. `c_globals` is shared with every
+// other checker view, and a body is checked by a fork whose allocations are
+// released with its batch: an entry added in place would leave the shared map
+// pointing into that storage. So the checker replaces its own map by a copy
+// that holds the entry, and notes it for the checker it is merged into (see
+// merge_parallel_check_worker_scoped), which owns what it keeps.
+fn (mut tc TypeChecker) remember_inferred_c_global(qname string, typ Type) {
+	tc.c_globals = tc.c_globals.clone()
+	tc.c_globals[qname] = typ
+	tc.inferred_c_globals << InferredCGlobal{
+		name: qname
+		typ:  typ
+	}
+}
+
 // check_selector validates check selector state for types.
 fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
@@ -6465,11 +6510,11 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		display_type_name := '${display_module_name}.${node.value}'
 		if base.value == 'C' {
 			qname := 'C.${node.value}'
-			if qname !in tc.c_globals && qname !in tc.const_types && qname !in tc.fn_ret_types && node.value.len > 0 && node.value[0] >= `a` && node.value[0] <= `z`
-				&& !ascii_name_has_upper(node.value) {
+			if tc.c_identifier_is_undeclared(node.value) {
 				if expected := tc.expected_context_for_expr(id) {
-					tc.c_globals[qname] = expected
-					tc.register_synth_type(id, expected)
+					inferred := inferred_c_global_type(node, expected)
+					tc.remember_inferred_c_global(qname, inferred)
+					tc.register_synth_type(id, inferred)
 					return
 				}
 				tc.record_error_at(.unknown_ident, 'undefined C identifier: `${qname}`', id, tc.node_value_diagnostic_pos(id))
@@ -6638,6 +6683,12 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		return
 	}
 	method_receiver := unalias_and_unwrap_pointer_type(base_type)
+	if method_receiver is Struct && method_receiver.name.all_after_last('.') == 'struct' {
+		if field_type := tc.inferred_anonymous_struct_field_type(base_id, node.value) {
+			tc.register_synth_type(id, field_type)
+			return
+		}
+	}
 	// A method value resolved as a C receiver method has its privacy checked here already.
 	mut c_receiver_method_value := ''
 	if method_receiver is Struct && tc.struct_field_type(method_receiver.name, node.value) == none {
@@ -7250,8 +7301,13 @@ fn (tc &TypeChecker) is_namespace_selector(node flat.Node, base flat.Node) bool 
 	if base.value == 'C' || tc.has_active_import(base.value) {
 		return true
 	}
-	if base.value == 'main' || base.value == tc.cur_module {
+	if base.value == 'main' || base.value == tc.cur_module
+		|| base.value == tc.cur_module.all_after_last('.') {
 		if node.value in tc.const_types || '${base.value}.${node.value}' in tc.const_types {
+			return true
+		}
+		if tc.global_type_for_selector(node) != none
+			|| tc.local_bare_fn_signature_key(node.value) != none {
 			return true
 		}
 	}
@@ -8063,11 +8119,11 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 		module_name := tc.resolve_import_alias(base.value) or { base.value }
 		if base.value == 'C' {
 			qname := 'C.${node.value}'
-			if qname !in tc.c_globals && qname !in tc.const_types && qname !in tc.fn_ret_types && node.value.len > 0 && node.value[0] >= `a` && node.value[0] <= `z`
-				&& !ascii_name_has_upper(node.value) {
+			if tc.c_identifier_is_undeclared(node.value) {
 				if expected := tc.expected_context_for_expr(id) {
-					tc.c_globals[qname] = expected
-					tc.register_synth_type(id, expected)
+					inferred := inferred_c_global_type(node, expected)
+					tc.remember_inferred_c_global(qname, inferred)
+					tc.register_synth_type(id, inferred)
 				} else {
 					tc.register_synth_type(id, builtin_int_type)
 				}
@@ -9393,6 +9449,9 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 				return key
 			}
 			return none
+		}
+		if base.value == tc.cur_module || base.value == tc.cur_module.all_after_last('.') {
+			return tc.local_bare_fn_signature_key(node.value)
 		}
 		if key := tc.static_assoc_fn_key_for_base(base.value, node.value) {
 			return key
@@ -11750,11 +11809,22 @@ fn assign_stable_interface_type_ids(mut ids map[string]int, mut used map[int]boo
 }
 
 // interface_impl_set_signature returns the complete deterministic interface implementer set
-// that controls collision-resolved dispatch IDs for the current program.
+// that controls collision-resolved dispatch IDs for the current program: a line
+// `name=impl,impl` for every interface.
+// The module cache keys the object of a module by the interfaces that the code of that module
+// can reach, and needs two more facts for it, which follow as lines of their own:
+// `#module name=module` for an interface or an implementer whose name has no module prefix
+// (`builtin` and the program share that spelling), and `#reach impl=name,name` for the
+// interfaces among the fields of an implementer.
 pub fn (tc &TypeChecker) interface_impl_set_signature() string {
 	mut iface_names := tc.interface_names.keys()
 	iface_names.sort()
 	mut lines := []string{cap: iface_names.len}
+	mut bare_names := []string{}
+	mut impl_seen := map[string]bool{}
+	mut reach_lines := []string{}
+	mut seen := map[string]bool{}
+	mut found := map[string]bool{}
 	for iface_name in iface_names {
 		impl_names := if iface_name in ['IError', 'builtin.IError'] {
 			tc.ierror_impl_names()
@@ -11762,8 +11832,115 @@ pub fn (tc &TypeChecker) interface_impl_set_signature() string {
 			tc.interface_impl_names(iface_name)
 		}
 		lines << '${iface_name}=${impl_names.join(',')}'
+		if !impl_seen[iface_name] {
+			impl_seen[iface_name] = true
+			if !iface_name.all_before('[').contains('.') {
+				bare_names << iface_name
+			}
+		}
+		for impl_name in impl_names {
+			if impl_seen[impl_name] {
+				continue
+			}
+			impl_seen[impl_name] = true
+			if !impl_name.all_before('[').contains('.') {
+				bare_names << impl_name
+			}
+			if impl_name in tc.interface_names {
+				continue
+			}
+			seen.clear()
+			tc.collect_interfaces_in_type_structure(tc.parse_type(impl_name), mut seen, mut
+				found)
+			if found.len > 0 {
+				mut reached := found.keys()
+				reached.sort()
+				reach_lines << '#reach ${impl_name}=${reached.join(',')}'
+				found.clear()
+			}
+		}
 	}
+	bare_names.sort()
+	for name in bare_names {
+		module_name := if visibility := tc.declaration_visibility[name.all_before('[')] {
+			if visibility.module_name == '' { 'main' } else { visibility.module_name }
+		} else {
+			'?'
+		}
+		lines << '#module ${name}=${module_name}'
+	}
+	reach_lines.sort()
+	lines << reach_lines
 	return lines.join('\n')
+}
+
+// collect_interfaces_in_type_structure adds to `found` every interface that a value of
+// `typ` can hold in one of its fields, elements or variants, at any depth.
+fn (tc &TypeChecker) collect_interfaces_in_type_structure(typ Type, mut seen map[string]bool, mut found map[string]bool) {
+	match typ {
+		Alias {
+			tc.collect_interfaces_in_type_structure(typ.base_type, mut seen, mut found)
+		}
+		Pointer {
+			tc.collect_interfaces_in_type_structure(typ.base_type, mut seen, mut found)
+		}
+		OptionType {
+			tc.collect_interfaces_in_type_structure(typ.base_type, mut seen, mut found)
+		}
+		ResultType {
+			tc.collect_interfaces_in_type_structure(typ.base_type, mut seen, mut found)
+		}
+		Array {
+			tc.collect_interfaces_in_type_structure(typ.elem_type, mut seen, mut found)
+		}
+		ArrayFixed {
+			tc.collect_interfaces_in_type_structure(typ.elem_type, mut seen, mut found)
+		}
+		Channel {
+			tc.collect_interfaces_in_type_structure(typ.elem_type, mut seen, mut found)
+		}
+		Map {
+			tc.collect_interfaces_in_type_structure(typ.key_type, mut seen, mut found)
+			tc.collect_interfaces_in_type_structure(typ.value_type, mut seen, mut found)
+		}
+		MultiReturn {
+			for part in typ.types {
+				tc.collect_interfaces_in_type_structure(part, mut seen, mut found)
+			}
+		}
+		Struct {
+			if seen[typ.name] {
+				return
+			}
+			seen[typ.name] = true
+			for field in tc.struct_fields_for_type(typ.name) {
+				tc.collect_interfaces_in_type_structure(field.typ, mut seen, mut found)
+			}
+		}
+		Interface {
+			name := tc.interface_metadata_name(typ.name)
+			found[name] = true
+			if seen[name] {
+				return
+			}
+			seen[name] = true
+			for field in tc.interface_fields[name] or { []StructField{} } {
+				tc.collect_interfaces_in_type_structure(field.typ, mut seen, mut found)
+			}
+		}
+		SumType {
+			if seen[typ.name] {
+				return
+			}
+			seen[typ.name] = true
+			base := tc.sum_base_name(typ.name)
+			for variant in tc.sum_types[base] or { []string{} } {
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(typ.name, variant))
+				tc.collect_interfaces_in_type_structure(variant_type, mut seen, mut found)
+			}
+		}
+		else {}
+	}
 }
 
 // interface_concrete_method_keys returns generated interface dispatch methods and
@@ -18593,6 +18770,11 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				}
 			}
 			if clean is Struct {
+				if clean.name.all_after_last('.') == 'struct' {
+					if typ := tc.inferred_anonymous_struct_field_type(tc.a.child(node, 0), node.value) {
+						return typ
+					}
+				}
 				if typ := tc.struct_field_type(clean.name, node.value) {
 					return typ
 				}

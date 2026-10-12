@@ -90,7 +90,7 @@ fn handle_ssl_connection[A, X](mut ssl_conn openssl.SSLConn, params &SslRequestP
 	for {
 		req := read_request_from_buffered_reader(mut reader) or {
 			if err !is io.Eof {
-				write_ssl_response(mut ssl_conn, http_400) or {}
+				write_ssl_response(mut ssl_conn, request_read_error_response(err)) or {}
 			}
 			return
 		}

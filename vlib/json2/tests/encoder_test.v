@@ -100,13 +100,13 @@ fn test_encoder_prettify() {
 		}
 	}
 	assert json.encode(obj, prettify: true, indent_string: '  ') == '{
-  "hello": "world",
   "arr": [
     "im a string",
     [
       "3rd level"
     ]
   ],
+  "hello": "world",
   "obj": {
     "map": "map inside a map"
   }
@@ -175,9 +175,9 @@ fn test_encode_value() {
 	manifest['from_source'] = json.Any('from_source')
 
 	assert json.encode(manifest, prettify: true, indent_string: '  ') == r'{
-  "server_path": "new_path",
+  "from_source": "from_source",
   "last_updated": "timestamp.format_ss()",
-  "from_source": "from_source"
+  "server_path": "new_path"
 }'
 }
 

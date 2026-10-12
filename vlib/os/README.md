@@ -16,6 +16,10 @@ It returns an empty string when the standard input handle is invalid.
 
 ### Path helpers
 
+`os.base()` removes all trailing separators before returning the final path element.
+For example, `os.base('a///')` returns `a`. An empty path returns `.`, and a path made
+entirely of separators returns one separator (`/` for `///`, or `\` for `\\`).
+
 `is_abs_path` follows the host operating system's path conventions. On Unix,
 a leading `/` identifies an absolute path. On Windows, it accepts drive-rooted
 paths (`C:/x`), UNC paths containing a server and share (`//Host/share`), and
@@ -103,6 +107,17 @@ On Windows, `os.uname()` leaves `release` and `version` empty if the `ver` comma
 fails or does not report a numeric version. Localized version labels are accepted.
 
 ### Walking a tree
+
+`os.utime(path, actime, modtime)` changes access and modification times for files
+and directories using Unix timestamps in seconds. On Windows, it accepts Unicode
+paths and reports Win32 error codes. Timestamps must use positive `FILETIME` tick counts below
+2^63. The zero value (1601-01-01 00:00:00 UTC) is rejected because Windows treats it as
+"leave unchanged".
+
+On Windows, `os.rm()` clears a file's read-only attribute for deletion while preserving
+its other attributes. If removal fails, it attempts to restore the original attributes
+and reports the removal error. `os.rmdir_all()` continues after deletion errors and
+returns the first failure's message and code.
 
 `os.walk()` reports files only, and `os.walk_with_context()` reports directories
 too but cannot skip them, so neither lets you say "do not descend into this one",
@@ -218,7 +233,7 @@ value too, while the ones built on the Win32 API (`os.mkdir`, `os.rmdir`, `os.ls
 hold one of these codes for a condition, so prefer the predicates over comparing
 `err.code()` with them.
 
-`os.symlink` and `os.link` preserve the Windows API's error code when link creation fails,
+`os.utime`, `os.symlink` and `os.link` preserve the Windows API's error code when they fail,
 so duplicate targets and missing paths can be classified with these predicates.
 `os.hostname` and `os.loginname` also preserve their Win32 error codes on failure.
 
@@ -281,3 +296,5 @@ The following functions should be used with care and only when used correctly.
 - os.is_writable()
 - os.is_executable()
 - os.is_link()
+
+`get_line()` removes CRLF and LF line endings from standard input on every platform.

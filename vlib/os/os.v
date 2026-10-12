@@ -273,30 +273,45 @@ pub fn sigint_to_signal_name(si int) string {
 }
 
 // rmdir_all recursively removes the specified directory.
+// It continues after deletion errors and returns the first error's message and code.
 pub fn rmdir_all(path string) ! {
-	mut err_msg := ''
-	mut err_code := -1
 	items := ls(path)!
+	// Report the first failure, not the last. The last is almost always the
+	// closing `rmdir(path)` on Windows, which fails with ERROR_DIR_NOT_EMPTY
+	// once any deletion above it was refused, and that message names neither
+	// the file that failed nor the reason.
+	mut failed := false
+	mut first_msg := ''
+	mut first_code := -1
 	for item in items {
 		fullpath := join_path_single(path, item)
 		if is_dir(fullpath) && !is_link(fullpath) {
 			rmdir_all(fullpath) or {
-				err_msg = err.msg()
-				err_code = err.code()
+				if !failed {
+					failed = true
+					first_msg = err.msg()
+					first_code = err.code()
+				}
 			}
 		} else {
 			rm(fullpath) or {
-				err_msg = err.msg()
-				err_code = err.code()
+				if !failed {
+					failed = true
+					first_msg = err.msg()
+					first_code = err.code()
+				}
 			}
 		}
 	}
 	rmdir(path) or {
-		err_msg = err.msg()
-		err_code = err.code()
+		if !failed {
+			failed = true
+			first_msg = err.msg()
+			first_code = err.code()
+		}
 	}
-	if err_msg != '' {
-		return error_with_code(err_msg, err_code)
+	if failed {
+		return error_with_code(first_msg, first_code)
 	}
 }
 
@@ -359,16 +374,16 @@ pub fn base(path string) string {
 		return '.'
 	}
 	detected_path_separator := if path.contains('/') { '/' } else { '\\' }
-	if path == detected_path_separator {
+	mut end := path.len
+	for end > 0 && path[end - 1] == detected_path_separator[0] {
+		end--
+	}
+	if end == 0 {
 		return detected_path_separator
 	}
-	if path.ends_with(detected_path_separator) {
-		path2 := path[..path.len - 1]
-		pos := path2.last_index(detected_path_separator) or { return path2.clone() }
-		return path2[pos + 1..]
-	}
-	pos := path.last_index(detected_path_separator) or { return path.clone() }
-	return path[pos + 1..]
+	trimmed := path[..end]
+	pos := trimmed.last_index(detected_path_separator) or { return trimmed.clone() }
+	return trimmed[pos + 1..]
 }
 
 // file_name will return all characters found after the last occurrence of `path_separator`.
@@ -440,13 +455,10 @@ pub fn input(prompt string) string {
 	return res
 }
 
-// get_line returns a one-line string from stdin.
+// get_line returns a one-line string from stdin, removing its CRLF or LF line ending.
 pub fn get_line() string {
 	str := get_raw_line()
-	$if windows {
-		return str.trim_right('\r\n')
-	}
-	return str.trim_right('\n')
+	return str.trim_right('\r\n')
 }
 
 // get_lines returns an array of strings read from stdin.

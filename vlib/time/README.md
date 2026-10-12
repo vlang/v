@@ -69,6 +69,10 @@ return times in May and July, respectively; weekday tokens also accept a termina
 `parse_format(s, format)` requires the format to cover the entire input, including literals.
 Unmatched trailing text or whitespace returns an error instead of parsing only a prefix.
 
+Unpadded clock tokens `H`, `h`, `k`, `m`, and `s` accept one or two digits, including
+leading zeros. Their doubled forms require exactly two digits. Thus layouts such as
+`YYYY-MM-DD k:m:s` read back both `2024-07-15 3:4:5` and `2024-07-15 23:40:50`.
+
 `parse_format` defaults an omitted month to January. Day-only layouts such as
 `time.parse_format('31', 'DD')!` therefore accept January 31; an explicit month still
 enforces its actual length.
@@ -145,6 +149,33 @@ find . -type f -print | LC_ALL=C sort | sed 's#^./##' | \
   zip -0 -X /path/to/v/vlib/time/tzdata/zoneinfo.zip -@
 ```
 
+`time.parse_duration(s)` parses a string such as `1h30m`, `-1.5s` or `300ms` into a
+`time.Duration`. The format is the one of Go's `time.ParseDuration`: an optional sign,
+followed by one or more decimal numbers, each with an optional fraction and a unit. The
+units are `ns`, `us` (or `µs`), `ms`, `s`, `m` and `h`; only `0` can be written without one.
+A string that is not a duration, a number without a unit, an unknown unit such as `d`, and
+a duration that does not fit in the `i64` range of nanoseconds are reported as errors:
+
+```v
+import time
+
+timeout := time.parse_duration('1h30m')!
+assert timeout == 90 * time.minute
+assert time.parse_duration('-1.5s')! == -1500 * time.millisecond
+assert time.parse_duration('2h45m30.5s')!.seconds() == 9930.5
+
+time.parse_duration('5') or { assert err.msg() == 'missing unit in duration: "5"' }
+time.parse_duration('1d') or { assert err.msg() == 'unknown unit "d" in duration: "1d"' }
+```
+
+`Duration.str()` is meant for display. For a minute or more it writes forms such as
+`1:30:00`, which are not duration strings, so `parse_duration` does not read them back.
+Negative durations retain a single minus sign even at the minimum `i64` value:
+`time.Duration(i64(-9223372036854775807) - 1).str()` returns `-2562047:47:16`.
+It renders the maximum `i64` duration as `2562047:47:16`, including `time.infinite`.
+The `time.infinite` constant still tells APIs that support it to wait forever; displaying it
+uses the same duration format as other finite `i64` values.
+
 Another very useful feature of the `time` module is the stop watch,
 for when you want to measure short time periods, elapsed while you
 executed other tasks. [See](https://play.vlang.io/?query=f6c008bc34):
@@ -165,3 +196,8 @@ fn main() {
 
 A wait that needs to participate in a `select` uses `sync.new_timer`, which sends the
 time on a channel: see the `sync` module.
+
+`Time.from_json_string` accepts a quoted value returned by `to_json()` as well as the unquoted
+value passed by json2. Unix timestamp strings contain decimal digits with an optional leading
+minus and must fit in `i64`. Empty, malformed, and overflowing values return an error.
+`clean12()` uses a single-digit hour when appropriate, followed by `a.m.` or `p.m.`.
