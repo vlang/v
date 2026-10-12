@@ -14473,7 +14473,7 @@ pub fn run(args []string) {
 		mut windows_gui_entry_point := cgen_cache_metadata.windows_gui_entry_point
 		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
-		incremental_c_declarations := if incremental_cache_hit {
+		incremental_c_declarations := if incremental_cache_restored {
 			os.read_file(incremental_tcc_declarations_path) or {
 				eprintln('error reading incremental C declarations ${incremental_tcc_declarations_path}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
@@ -15241,7 +15241,7 @@ pub fn run(args []string) {
 					}
 					refreshed_incremental_body = stable_body_source
 					stable_main_source := v3_incremental_program_main_source(prepared_cache.program_prefix_source, stable_body_source)
-					stable_tcc_main_source := v3_incremental_main_source(incremental_tcc_declarations_path, prepared_plan_entry.source)
+					stable_tcc_main_source := v3_incremental_main_source(incremental_tcc_declarations_path, incremental_c_declarations, stable_body_source)
 					prepared_cache.main_source = stable_main_source
 					prepared_cache.tcc_main_source = stable_tcc_main_source
 					os.write_file(cc_src, stable_main_source) or {
@@ -16851,14 +16851,12 @@ fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, buil
 	return files
 }
 
-fn v3_incremental_main_source(tcc_declarations_path string, body_path string) string {
-	slash := [u8(92)].bytestr()
-	escaped_slash := [u8(92), 92].bytestr()
-	quote := [u8(34)].bytestr()
-	escaped_quote := [u8(92), 34].bytestr()
-	declarations_include := tcc_declarations_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
-	body_include := body_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
-	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${declarations_include}"\n#include "${body_include}"\n'
+fn v3_incremental_main_source(tcc_declarations_path string, declarations string, body_source string) string {
+	// The declaration prefix owns literals needed by its inline support. The
+	// reconstructed body also carries those literals for standalone generation.
+	// Keep new body literals, but do not define the prefix's storage twice.
+	body := modulecache.without_duplicate_static_string_definitions(body_source, declarations)
+	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${c_include_path(tcc_declarations_path)}"\n' + body
 }
 
 fn c_include_path(path string) string {
@@ -16883,7 +16881,8 @@ fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_
 	}
 	body_source := os.read_file(body_path)!
 	main_source := v3_incremental_program_main_source(cached_prefix, body_source)
-	tcc_main_source := v3_incremental_main_source(tcc_declarations_path, body_path)
+	tcc_declarations := os.read_file(tcc_declarations_path)!
+	tcc_main_source := v3_incremental_main_source(tcc_declarations_path, tcc_declarations, body_source)
 	return V3PreparedModuleCache{
 		main_source:           main_source
 		tcc_main_source:       tcc_main_source

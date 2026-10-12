@@ -21,6 +21,8 @@ in the native helpers.
 Missing shipped C objects are built with the selected compiler, including TinyCC.
 On macOS, existing or external object inputs still select the platform C compiler.
 Wrappers that expand Boehm allocation macros include the collector header explicitly.
+Warm incremental builds share the cached declaration prefix's string storage and retain
+new program literals and cleanup hooks after source edits.
 
 Generated C still needs the native objects and library flags when linked. Use V to build
 executables, or `-generate-c-project` to export a build command with the native sources
