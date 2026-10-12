@@ -9390,8 +9390,8 @@ fn v3_fallback_backend_specific_builtin_source(path string, builtin_root string)
 }
 
 fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Preferences, is_test_command bool, is_checker_fixture bool) bool {
-	if prefs.backend != 'c' || prefs.target.os !in ['macos', 'linux', 'freebsd', 'openbsd', 'netbsd',
-		'dragonfly', 'solaris', 'haiku'] || is_test_command || is_checker_fixture
+	if prefs.backend != 'c' || prefs.output_cross_c || prefs.target.os !in ['macos', 'linux', 'freebsd',
+		'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku'] || is_test_command || is_checker_fixture
 		|| !(input_file.ends_with('.v') || input_file.ends_with('.vv')) || !os.is_file(input_file)
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
@@ -12964,7 +12964,7 @@ pub fn run(args []string) {
 		// A module cache build checks and compiles whole modules, also for a program
 		// that only prints literals: the interfaces and the objects it publishes
 		// serve every other program.
-		trivial_literal_output = !is_trace_calls && !no_skip_unused && backend != 'arm64' && test_files.len == 0 && !is_checker_fixture
+		trivial_literal_output = !prefs.output_cross_c && !is_trace_calls && !no_skip_unused && backend != 'arm64' && test_files.len == 0 && !is_checker_fixture
 			&& effective_c_compiler != 'msvc' && !cache_state.manager.enabled
 			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
 		if verbose {
