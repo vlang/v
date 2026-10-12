@@ -8614,19 +8614,32 @@ fn v3_cache_compiler_executable_identity(vexe string) string {
 	return '${path}\t${v3_cache_file_identity(path)}'
 }
 
-// v3_cache_compiler_runtime_inputs lists the `$embed_file` targets of the C backend, which
-// copies them into the generated C code. A build of the compiler carries their bytes. A
+// v3_cache_compiler_runtime_inputs lists root-relative `$embed_file` targets of the C backend,
+// which copies them into generated C code. A build of the compiler carries their bytes. A
 // development build of another program that runs the backend keeps only their paths and
 // reads the files at run time, and so does a compiler that was built by an older V.
-const v3_cache_compiler_runtime_inputs = ['manual_stdlib_c_headers.h', 'int128_helpers.h',
-	'int128_string.h']
+const v3_cache_compiler_runtime_inputs = [
+	'vlib/v/gen/c/manual_stdlib_c_headers.h',
+	'vlib/v/gen/c/int128_helpers.h',
+	'vlib/v/gen/c/int128_string.h',
+	'vlib/builtin/gc_boehm_helpers.c',
+	'vlib/builtin/gc_debugger_linux.h',
+	'vlib/v/pthread_helper.h',
+	'vlib/sync/thread_helper.h',
+	'vlib/v/bench/peak_rss.h',
+	'vlib/os/execute_capture_nix.c',
+	'vlib/os/execute_capture_nix.h',
+	'vlib/runtime/free_memory_darwin.c',
+	'vlib/v/modulecache/file_metadata.c',
+	'vlib/builtin/segfault_handler_nix.c',
+	'vlib/builtin/segfault_handler_nix.h',
+]
 
 // v3_cache_compiler_runtime_inputs_identity identifies the files in
 // v3_cache_compiler_runtime_inputs, under the compiler source tree `root`, so that editing
 // them invalidates cached artifacts without rebuilding the compiler executable.
 fn v3_cache_compiler_runtime_inputs_identity(root string) string {
-	dir := os.join_path(root, 'vlib', 'v', 'gen', 'c')
-	return v3_cache_compiler_runtime_inputs.map(v3_cache_file_identity(os.join_path(dir,
+	return v3_cache_compiler_runtime_inputs.map(v3_cache_file_identity(os.join_path(root,
 		it))).join('\t')
 }
 

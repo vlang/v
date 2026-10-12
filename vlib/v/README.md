@@ -544,6 +544,8 @@ are embedded in the `.vh` interface, so a warm cached build parses `.v` files on
 program's directory; the `.v` list makes an unexpected module-cache miss visible. After
 successfully populating module objects, a cold build with timings enabled prints a hint that
 unchanged modules will not be recompiled on the next run.
+Development compiler cache identity includes every embedded runtime header and native C helper
+source. Editing any of these inputs invalidates cached artifacts without rebuilding the compiler.
 Third-party C objects retain dependency manifests, so warm builds verify each unique source or
 header once without launching a dependency-scanner process per object. Unchanged inputs use
 nanosecond-resolution file metadata; a metadata change falls back to the recorded content hash.
