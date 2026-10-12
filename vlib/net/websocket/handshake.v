@@ -63,6 +63,10 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 			continue
 		}
 		keys := lines[i].split(':').map(it.trim_space())
+		if keys.len < 2 {
+			return error_with_code('malformed header line in client handshake: `${lines[i]}`',
+				9)
+		}
 		match keys[0].to_lower() {
 			'upgrade' {
 				flags << .has_upgrade
@@ -137,6 +141,10 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 			continue
 		}
 		keys := lines[i].split(':').map(it.trim_space())
+		if keys.len < 2 {
+			return error_with_code('malformed header line in handshake response: `${lines[i]}`',
+				9)
+		}
 		match keys[0].to_lower() {
 			'upgrade' {
 				ws.flags << .has_upgrade
