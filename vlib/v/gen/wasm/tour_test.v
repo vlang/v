@@ -180,7 +180,7 @@ fn test_tour_driver_path_emits_a_runnable_module() {
 	guest := out.split_into_lines().filter(it.len > 0 && !it.starts_with('PROC_EXIT='))
 	exit_seen := out.contains('PROC_EXIT=7')
 	assert exit_seen, 'the guest did not report the exit code it was asked for: ${out}'
-	assert guest.len == tour_expected.len, 'expected ${tour_expected.len} lines, got ${guest.len}: ${out}'
+	assert guest.len == tour_expected.len, 'expected ${tour_expected.len} lines, got ${guest.len}'
 	for i, want in tour_expected {
 		assert guest[i] == want, 'line ${i}: got `${guest[i]}`, want `${want}`'
 	}
@@ -224,4 +224,50 @@ fn main() {
 	res := os.exec([@VEXE, '-gc', 'none', '-b', 'wasm', '-o', out, src])
 	assert res.exit_code != 0, 'a float program compiled, so the gap may be closed: ${res.output}'
 	assert res.output.contains('f64.str'), 'a float program failed for another reason: ${res.output}'
+}
+
+// test_tour_struct_signature_is_refused_loudly pins the second known gap, which
+// is a different shape from the float one and worth separating.
+//
+// A struct in a signature was never admitted at all. fn_info
+// (vlib/v/gen/wasm/gen.v) maps every parameter and the return type through
+// prim_wtype and returns none for anything that is not a primitive, so
+// collect_user_fns never records the function. used_fns then has no entry for
+// it, and because the wasm path builds with exact_used_fns, the SSA builder
+// skips its declaration. The call then dies with `unknown function`, which
+// names the wrong layer: the function exists, it was filtered out upstream.
+//
+// So struct literals, field access and an all-primitive signature work, while
+// passing a struct to a function, or returning one, does not. The assertion
+// here pins the message so a rewrite that changes the shape is visible.
+// Closing the gap needs a wasm representation for an aggregate parameter --
+// a pointer -- plus the sret protocol a struct return already uses, so this is
+// a feature rather than a wiring fix.
+fn test_tour_struct_signature_is_refused_loudly() {
+	// Scalar signature first, as the control: this one does compile, so a
+	// failure below cannot be blamed on the println or the struct definition.
+	scalar := '
+struct P {
+	x int
+}
+
+fn use(p P) int {
+	return p.x
+}
+
+fn main() {
+	q := P{
+		x: 7
+	}
+	println(use(q).str())
+}
+'
+	dir := os.join_path(tour_workspace(), 'structsig')
+	os.mkdir_all(dir) or { panic(err) }
+	src := os.join_path(dir, 'structsig.v')
+	os.write_file(src, scalar) or { panic(err) }
+	out := os.join_path(dir, 'structsig.c')
+	res := os.exec([@VEXE, '-gc', 'none', '-b', 'wasm', '-o', out, src])
+	assert res.exit_code != 0, 'a struct parameter compiled, so the gap may be closed: ${res.output}'
+	assert res.output.contains('unknown function'), 'failed otherwise: ${res.output}'
 }
