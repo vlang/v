@@ -481,8 +481,12 @@ This applies to SHA3 and other imported modules with TinyCC too.
 It preserves import order for module C flags and reuses the same records on repeated updates.
 Both original entries and temporary importers stop after module object validation,
 before compiling program objects or linking an executable.
+Compiler updates validate fresh module interfaces and reuse compiled objects when the generated C,
+C compiler, flags, and native inputs still match. Reused objects print no cache creation notices.
+Objects and their generated C are shared between configurations to avoid duplicate storage.
 Refresh progress labels each build's compiler flags and normal/production and program/test modes.
 Record indices can jump when builds are grouped or skipped; the final summary counts checked builds.
+Refresh stops on a disk-full error so remaining configurations do not keep attempting writes.
 If TinyCC cannot compile or link a cached program unit, V retries the original sources
 without module caching before changing C compilers or reporting a compilation failure.
 Programs importing `v.reflection` parse original module sources to preserve source-file

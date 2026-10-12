@@ -44,6 +44,16 @@ so `v up` can refresh them after replacing the compiler or updating their source
   listed files or directories, or unavailable C compilers are skipped.
   A compilation failure is returned to `v up`, including TinyCC module object failures.
   Refresh does not hide an object failure by retrying a whole program without caching.
+  Child output is streamed while refresh runs. A disk-full error stops the remaining builds
+  immediately and asks for free space before another update.
+
+After a compiler update, module interfaces are regenerated and validated with the new compiler.
+Matching compiled objects can be shared across compiler configurations when their generated C,
+C compiler, compilation flags, working directory, and native dependency fingerprints match.
+The shared object and C source are checked before reuse and linked into the new configuration
+without another C compilation. Changed generated code, flags, or native inputs require a new object.
+This preserves compiler validation while avoiding repeated compilation and duplicate object data.
+Older caches populate the shared index when their objects are next compiled.
 
 Inventory records use length-prefixed arguments and working directories to preserve
 quoting, spaces, and newlines. Records without a working directory remain readable.
