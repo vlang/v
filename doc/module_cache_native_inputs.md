@@ -18,3 +18,6 @@ Set `V3_CACHE_TRACE=1` to inspect cache decisions, and use `-show-timings` to se
 `monomorphize (cached)` on an unchanged build. External native inputs without a safe
 ownership or replication policy still fall back to an uncached build. TCC selection
 continues to follow the compiler's existing cache eligibility rules.
+
+`-print-watched-files` and `-dump-files` parse source bodies to include every embedded resource,
+including resources omitted from warm declaration headers.

@@ -11760,8 +11760,11 @@ pub fn run(args []string) {
 	// builtin source set, which likewise must remain a monolithic translation unit.
 	// Heap tracking hooks are supplied by user C declarations. Replaying a header
 	// that defines them in every cached translation unit creates duplicate symbols.
+	// Dependency inspection needs the bodies that embed resources; declaration-only
+	// cache headers intentionally omit ordinary function bodies.
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
 		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
+		&& !print_watched_files && dump_files == ''
 		&& !minimal_literal_output
 		&& (cache_with_tcc || effective_c_compiler in ['clang', 'gcc', 'mingw'])
 		&& target.os == host_target.os

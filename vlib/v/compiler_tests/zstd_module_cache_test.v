@@ -1,6 +1,6 @@
 import os
 
-fn test_cached_module_embedded_resources_refresh_and_reject_deletion() ! {
+fn test_cached_module_embedded_resources_refresh_after_changes_and_deletion() ! {
 	$if windows {
 		return
 	}
@@ -27,6 +27,12 @@ fn test_cached_module_embedded_resources_refresh_and_reject_deletion() ! {
 	assert warm.exit_code == 0 && warm.output.contains('monomorphize (cached)'), warm.output
 	first := os.exec([binary])
 	assert first.exit_code == 0 && first.output.trim_space() == 'first', first.output
+	watched := os.exec([...args[..args.len - 1], '-print-watched-files', source])
+	assert watched.exit_code == 0 && os.real_path(resource) in watched.output.split_into_lines(), watched.output
+	manifest := os.join_path(root, 'inputs.txt')
+	dumped := os.exec([...args[..args.len - 1], '-dump-files', manifest, source])
+	assert dumped.exit_code == 0, dumped.output
+	assert os.real_path(resource) in os.read_file(manifest)!.split_into_lines()
 	os.write_file(resource, 'other')!
 	changed := os.exec(args)
 	assert changed.exit_code == 0, changed.output
@@ -34,7 +40,11 @@ fn test_cached_module_embedded_resources_refresh_and_reject_deletion() ! {
 	assert other.exit_code == 0 && other.output.trim_space() == 'other', other.output
 	os.rm(resource)!
 	missing := os.exec(args)
-	assert missing.exit_code != 0, missing.output
+	assert missing.exit_code == 0, missing.output
+	// A missing embedded file preserves its existing runtime error, rather than
+	// restoring the earlier cached payload.
+	missing_run := os.exec([binary])
+	assert missing_run.exit_code != 0 && missing_run.output.contains('do not exist'), missing_run.output
 }
 
 fn test_shipped_zstd_and_veb_use_module_cache() {
