@@ -6540,6 +6540,12 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	if g.inlined_c_structs[name] {
 		return true
 	}
+	if name.starts_with('C.builtin__closure__') {
+		// This C view resolves to a V runtime type, whose complete layout owns it.
+		if 'closure.${name['C.builtin__closure__'.len..]}' in g.tc.structs {
+			return true
+		}
+	}
 	if name.starts_with('C.') {
 		// Match V1: `@[typedef]` C structs name types supplied by native code and
 		// must never get a synthesized V-owned declaration or body.

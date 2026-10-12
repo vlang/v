@@ -1634,7 +1634,9 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		args << wrapv_flag
 	}
 	args << '-w'
-	args << object_flags.flags_for_compiler(compiler)
+	// A C helper does not inherit a standard intended for the C++ main unit.
+	args << object_flags.flags_for_compiler(compiler).filter(is_cpp
+		|| !(it.starts_with('-std=c++') || it.starts_with('-std=gnu++')))
 	if language.len > 0 {
 		args << ['-x', language]
 	}
@@ -8189,7 +8191,7 @@ fn v3_should_regenerate_after_implicit_tcc(retry_compilation bool, use_implicit_
 	return retry_compilation && use_implicit_tcc_semantics && (!tried_tcc || tcc_exit_code != 0)
 }
 
-fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string) ?string {
+fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string, vroot string) ?string {
 	if c_flags_need_objective_c(flags) || c_link_flags_use_non_c_language(flags) {
 		return 'its native inputs require a C++ or Objective-C compiler'
 	}
@@ -8202,7 +8204,18 @@ fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string) ?stri
 				continue
 			}
 			if c_flag_is_object_file(flag) {
-				return 'its native inputs require linking external objects on macOS'
+				mut shipped_source := false
+				if !os.exists(flag) {
+					if source := c_source_from_object_file(flag) {
+						shipped_source = source.ends_with('.c')
+							&& cgen.native_path_is_shipped(source, vroot)
+					}
+				}
+				// Missing shipped C objects are built by the selected compiler.
+				// Existing or foreign objects still require the platform linker.
+				if !shipped_source {
+					return 'its native inputs require linking external objects on macOS'
+				}
 			}
 			i++
 		}
@@ -12394,7 +12407,8 @@ pub fn run(args []string) {
 		preflight_flags << link_ld_flags
 		preflight_flags << cgen.preflight_directive_flags(a, prefs.vroot, prefs.target,
 			prefs.compile_values)
-		if reason := v3_implicit_tcc_flags_incompatibility(preflight_flags, prefs.target.os) {
+		if reason := v3_implicit_tcc_flags_incompatibility(preflight_flags, prefs.target.os,
+			prefs.vroot) {
 			// Selecting a compiler for known native input requirements is expected.
 			// Keep the explanation for verbose builds; actual TCC failures still warn.
 			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, '', silent || !verbose,
@@ -14467,7 +14481,7 @@ pub fn run(args []string) {
 		mut windows_gui_entry_point := cgen_cache_metadata.windows_gui_entry_point
 		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
-		incremental_c_declarations := if incremental_cache_hit {
+		incremental_c_declarations := if incremental_cache_restored {
 			os.read_file(incremental_tcc_declarations_path) or {
 				eprintln('error reading incremental C declarations ${incremental_tcc_declarations_path}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
@@ -14482,6 +14496,16 @@ pub fn run(args []string) {
 			''
 		}
 		incremental_known_declarations := incremental_c_declarations + '\n' + incremental_cached_support
+		cached_program_cleanup := if generic_cache_hit {
+			prefix := os.read_file(generic_cache_entry.prefix) or {
+				eprintln('error reading cached program prefix ${generic_cache_entry.prefix}: ${err.msg()}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			modulecache.c_source_function_identifiers(prefix)['_vcleanup']
+		} else {
+			false
+		}
 		cgen_used_fns := if incremental_cache_hit {
 			incremental_stage_used_fns
 		} else {
@@ -14554,6 +14578,7 @@ pub fn run(args []string) {
 			g.set_trace_calls(is_trace_calls, trace_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
+			g.set_no_builtin(no_builtin)
 			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
@@ -14572,6 +14597,7 @@ pub fn run(args []string) {
 			g.set_cache_pruned_functions(pruned_declarations.names, pruned_declarations.modules)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
+			g.set_cached_program_cleanup(cached_program_cleanup)
 			g.set_scope_parallel_workers(!generic_cache_hit)
 			if verbose {
 				eprintln('  [ttime] cg setup           ${f64(cg_pre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -14641,6 +14667,7 @@ pub fn run(args []string) {
 			g.set_trace_calls(is_trace_calls, trace_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
+			g.set_no_builtin(no_builtin)
 			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
@@ -14659,6 +14686,7 @@ pub fn run(args []string) {
 			g.set_cache_pruned_functions(pruned_declarations.names, pruned_declarations.modules)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
+			g.set_cached_program_cleanup(cached_program_cleanup)
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc, cache_no_parallel_cgen, test_files) or {
 				eprintln('error writing ${generated_path}: ${err}')
 				cleanup_c_build_dir(cc_dir)
@@ -15234,7 +15262,7 @@ pub fn run(args []string) {
 					}
 					refreshed_incremental_body = stable_body_source
 					stable_main_source := v3_incremental_program_main_source(prepared_cache.program_prefix_source, stable_body_source)
-					stable_tcc_main_source := v3_incremental_main_source(incremental_tcc_declarations_path, prepared_plan_entry.source)
+					stable_tcc_main_source := v3_incremental_main_source(incremental_tcc_declarations_path, incremental_c_declarations, stable_body_source)
 					prepared_cache.main_source = stable_main_source
 					prepared_cache.tcc_main_source = stable_tcc_main_source
 					os.write_file(cc_src, stable_main_source) or {
@@ -16844,14 +16872,12 @@ fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, buil
 	return files
 }
 
-fn v3_incremental_main_source(tcc_declarations_path string, body_path string) string {
-	slash := [u8(92)].bytestr()
-	escaped_slash := [u8(92), 92].bytestr()
-	quote := [u8(34)].bytestr()
-	escaped_quote := [u8(92), 34].bytestr()
-	declarations_include := tcc_declarations_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
-	body_include := body_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
-	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${declarations_include}"\n#include "${body_include}"\n'
+fn v3_incremental_main_source(tcc_declarations_path string, declarations string, body_source string) string {
+	// The declaration prefix owns literals needed by its inline support. The
+	// reconstructed body also carries those literals for standalone generation.
+	// Keep new body literals, but do not define the prefix's storage twice.
+	body := modulecache.without_duplicate_static_string_definitions(body_source, declarations)
+	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${c_include_path(tcc_declarations_path)}"\n' + body
 }
 
 fn c_include_path(path string) string {
@@ -16876,7 +16902,8 @@ fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_
 	}
 	body_source := os.read_file(body_path)!
 	main_source := v3_incremental_program_main_source(cached_prefix, body_source)
-	tcc_main_source := v3_incremental_main_source(tcc_declarations_path, body_path)
+	tcc_declarations := os.read_file(tcc_declarations_path)!
+	tcc_main_source := v3_incremental_main_source(tcc_declarations_path, tcc_declarations, body_source)
 	return V3PreparedModuleCache{
 		main_source:           main_source
 		tcc_main_source:       tcc_main_source
