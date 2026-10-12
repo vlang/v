@@ -243,31 +243,69 @@ fn main() {
 // Closing the gap needs a wasm representation for an aggregate parameter --
 // a pointer -- plus the sret protocol a struct return already uses, so this is
 // a feature rather than a wiring fix.
-fn test_tour_struct_signature_is_refused_loudly() {
-	// Scalar signature first, as the control: this one does compile, so a
-	// failure below cannot be blamed on the println or the struct definition.
-	scalar := '
+fn test_tour_struct_parameter_lowers_as_the_pointer_it_is() {
+	// An aggregate arrives as a pointer, and on a 32-bit target a pointer is the
+	// i32 the signature already described, so a struct parameter is admitted the
+	// same way a primitive one is. The assertion is on the value, because a
+	// parameter that arrives as garbage would compile just as happily.
+	param := '
 struct P {
 	x int
+	y int
 }
 
 fn use(p P) int {
-	return p.x
+	return p.x * 100 + p.y
 }
 
 fn main() {
 	q := P{
-		x: 7
+		x: 30
+		y: 4
 	}
 	println(use(q).str())
 }
 '
-	dir := os.join_path(tour_workspace(), 'structsig')
+	dir := os.join_path(tour_workspace(), 'structparam')
 	os.mkdir_all(dir) or { panic(err) }
-	src := os.join_path(dir, 'structsig.v')
-	os.write_file(src, scalar) or { panic(err) }
-	out := os.join_path(dir, 'structsig.c')
+	src := os.join_path(dir, 'structparam.v')
+	os.write_file(src, param) or { panic(err) }
+	out := os.join_path(dir, 'structparam.c')
 	res := os.exec([@VEXE, '-gc', 'none', '-b', 'wasm', '-o', out, src])
-	assert res.exit_code != 0, 'a struct parameter compiled, so the gap may be closed: ${res.output}'
-	assert res.output.contains('unknown function'), 'failed otherwise: ${res.output}'
+	assert res.exit_code == 0, 'a struct parameter was refused: ${res.output}'
+	if node := tour_node_bin() {
+		wout, _ := tour_run('structparam', os.read_bytes(out)!)
+		guest := wout.split_into_lines().filter(it.len > 0 && !it.contains('PROC_EXIT'))
+		assert guest.len == 1 && guest[0] == '3004', 'struct parameter gave `${wout}`, want 3004'
+	}
+}
+
+// A struct return is the half that does not work. The ABI passes it through a
+// hidden sret pointer and the function's own result type is void, which is not
+// what an i32 slot describes, so describing it as one would silently miscompile
+// rather than fail. It stays refused here until a change explains it.
+fn test_tour_struct_return_is_still_refused() {
+	ret := '
+struct P {
+	x int
+}
+
+fn mk() P {
+	return P{
+		x: 9
+	}
+}
+
+fn main() {
+	p := mk()
+	println(p.x.str())
+}
+'
+	dir := os.join_path(tour_workspace(), 'structret')
+	os.mkdir_all(dir) or { panic(err) }
+	src := os.join_path(dir, 'structret.v')
+	os.write_file(src, ret) or { panic(err) }
+	out := os.join_path(dir, 'structret.c')
+	res := os.exec([@VEXE, '-gc', 'none', '-b', 'wasm', '-o', out, src])
+	assert res.exit_code != 0, 'a struct return compiled, so that gap may be closed: ${res.output}'
 }

@@ -558,6 +558,46 @@ fn (g &Gen) collect_call_keys(id flat.NodeId, cur_mod string, cur_file string, c
 
 // fn_info extracts a compilable signature, or none if the function uses types
 // the backend does not handle yet (strings, structs, arrays, pointers, ...).
+// wasm_param_may_be_aggregate reports whether an aggregate parameter can be
+// passed as a pointer. It admits a struct whose fields all lower, mirroring the
+// driver's struct-literal rule, and refuses everything else so an unsupported
+// type is still refused loudly rather than silently collapsing into an i32 it
+// cannot use. The rule lives here rather than in the driver because the driver
+// imports this package, so the reverse import would be a cycle.
+fn (g &Gen) wasm_param_may_be_aggregate(t types.Type) bool {
+	return wasm_aggregate_param_ok(g.tc, t, 0)
+}
+
+fn wasm_aggregate_param_ok(tc &types.TypeChecker, typ types.Type, depth int) bool {
+	if depth > 8 {
+		return false
+	}
+	match typ {
+		types.Primitive, types.Char, types.Rune, types.ISize, types.USize, types.Enum,
+		types.String {
+			return true
+		}
+		types.Alias {
+			return wasm_aggregate_param_ok(tc, typ.base_type, depth)
+		}
+		types.Struct {
+			st := tc.structs[typ.name] or { return false }
+			for f in st {
+				if !wasm_aggregate_param_ok(tc, f.typ, depth + 1) {
+					return false
+				}
+			}
+			return true
+		}
+		types.Pointer {
+			return wasm_aggregate_param_ok(tc, typ.base_type, depth + 1)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file string) ?FnInfo {
 	mut params := []WType{}
 	for i in 0 .. node.children_count {
@@ -566,7 +606,18 @@ fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file stri
 			continue
 		}
 		pt := g.tc.parse_type(p.typ)
-		w := prim_wtype(pt) or { return none }
+		// An aggregate arrives as a pointer, which on a 32-bit target is an i32,
+		// so a parameter whose fields all lower takes the same slot. A return
+		// does not: the ABI passes it through a hidden sret pointer and the
+		// function's own result type is void, so that direction stays refused
+		// until a separate change describes it.
+		w := prim_wtype(pt) or {
+			if g.wasm_param_may_be_aggregate(g.tc.parse_type(p.typ)) {
+				WType.i32
+			} else {
+				return none
+			}
+		}
 		params << w
 	}
 	mut ret := WType.void

@@ -891,15 +891,16 @@ fn test_shape_match_enum_returns_value() {
 			expected: '7'
 		},
 	])
-	// score itself names an enum, so it is not exported either: the host reaches
-	// the match through score_at, whose signature is all primitive.
+	// An enum parameter lowers as the i32 it already is, so score is exported
+	// now: the host reaches the match through score_at, whose signature is all
+	// primitive, but nothing filters score out for naming an enum.
 	shape_enter_workspace()
 	wasm := shape_module('match_enum', shape_source_match_enum, false) or {
 		assert false, 'the wasm backend refused this program: ${err.msg()}'
 		return
 	}
 	exports := shape_exports(wasm)
-	assert 'score' !in exports, 'a `fn f(c Color)` must not be exported: ${exports.keys()}'
+	assert 'score' in exports, 'a `fn f(c Color)` must be exported: ${exports.keys()}'
 	assert 'score_at' in exports, 'the primitive wrapper must be exported: ${exports.keys()}'
 }
 
