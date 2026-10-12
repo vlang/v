@@ -2,6 +2,88 @@ module cache_refresh
 
 import os
 
+fn test_compiler_updates_reuse_unchanged_generated_module_objects() ! {
+	$if windows {
+		return
+	}
+	os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'vup_compiler_object_reuse_${os.getpid()}')
+	os.mkdir_all(root)!
+	compilers := [0, 1].map(os.join_path(os.dir(@VEXE), 'vup_object_reuse_${os.getpid()}_${it}'))
+	defer {
+		for compiler in compilers { os.rm(compiler) or {} }
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'import crypto.sha3 as _\nfn main() {}\n')!
+	mut environment := os.environ()
+	for name in ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_FORCE_SOURCE'] {
+		environment.delete(name)
+	}
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+	environment['V3_CACHE_REFRESH'] = '1'
+	environment['V_SKIP_VVMRC'] = '1'
+	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+	for index in 0 .. 2 {
+		// Different executable identities force fresh compiler-specific interfaces
+		// even though these compilers generate the same module C.
+		compiler := compilers[index]
+		os.cp(@VEXE, compiler)!
+		os.chmod(compiler, 0o755)!
+		environment['VEXE'] = compiler
+		mut process := os.new_process(compiler)
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.set_args(['-cc', 'clang', '-gc', 'none', '-skip-running', '-o',
+			os.join_path(root, 'program'), source])
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		code := process.code
+		process.close()
+		assert code == 0, output
+		if index == 0 {
+			assert output.contains('Caching module crypto.sha3...'), output
+		} else {
+			assert !output.contains('Caching module '), output
+		}
+	}
+}
+
+fn test_refresh_stops_on_disk_full_and_streams_large_child_output() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vup_disk_full_${os.getpid()}')
+	for name in ['first', 'second'] { os.mkdir_all(os.join_path(root, 'vlib', name))! }
+	defer { os.rmdir_all(root) or {} }
+	log := os.join_path(root, 'calls')
+	vexe := os.join_path(root, 'v')
+	os.write_file(vexe, '#!/bin/sh\n' +
+		'echo called >> ' + os.quoted_path(log) + '\n' +
+		'awk \'BEGIN { for (i = 0; i < 20000; i++) print "cache output" }\'\n' +
+		'printf "%s" "No space left " >&2\nsleep 0.02\n' +
+		'printf "%s\\n" "on device" >&2\nexit 7\n')!
+	os.chmod(vexe, 0o755)!
+	source := os.join_path(root, 'helper.v')
+	os.write_file(source, 'import v.util.cache_refresh\nfn main() {\n' +
+		'cache_refresh.refresh("${vexe}", [cache_refresh.Request{module:"first"}, cache_refresh.Request{module:"second"}])!\n}\n')!
+	helper := os.join_path(root, 'helper')
+	build := os.exec([@VEXE, '-nocache', '-gc', 'none', '-o', helper, source])
+	assert build.exit_code == 0, build.output
+	stdout := os.join_path(root, 'stdout')
+	stderr := os.join_path(root, 'stderr')
+	result := os.exec(['sh', '-c',
+		'${os.quoted_path(helper)} > ${os.quoted_path(stdout)} 2> ${os.quoted_path(stderr)}'])
+	output := os.read_file(stdout)! + os.read_file(stderr)!
+	assert result.exit_code != 0, output
+	assert output.count('cache output') == 20000
+	assert output.contains('No space left on device'), output
+	assert output.contains('disk is full; cache refresh stopped'), output
+	assert output.contains('exit 7'), output
+	assert !output.contains('> Module cache refresh complete:'), output
+	assert os.read_file(log)!.split_into_lines().len == 1
+}
+
 fn test_synthetic_refresh_reports_failed_tinycc_module_objects() ! {
 	$if !linux && !macos {
 		return

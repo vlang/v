@@ -163,8 +163,9 @@ fn v3_parser_diagnostics_printed(value bool) bool {
 // V3CachedObjectCompiler is the C compiler that builds the objects of the module
 // cache, with the arguments it needs ahead of those of one compilation.
 struct V3CachedObjectCompiler {
-	path string = 'cc'
-	args []string
+	path     string = 'cc'
+	args     []string
+	identity string
 }
 
 struct V3ModuleCacheState {
@@ -604,7 +605,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 		common_flags:           common_compile_flags
 	}
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
-	os.mkdir_all(cache_dir)!
+	ensure_native_object_cache_dir(cache_dir)!
 	plan_path := c_link_plan_path(cache_dir, flags, &object_flag_plan, c99, no_std, pic_flag,
 		target_args, target, c_compiler, use_platform_non_c_compiler, mut stats)
 	// Tracing intentionally walks the object manifests so every requested
@@ -1609,9 +1610,17 @@ fn c_source_object_compiler(language string, c_compiler string, use_platform_non
 	return c_compiler
 }
 
+fn ensure_native_object_cache_dir(path string) ! {
+	os.mkdir_all(path) or {
+		// Other compiler processes can create this shared directory after the
+		// existence check. Keep real filesystem errors when it is still absent.
+		if !os.is_dir(path) { return err }
+	}
+}
+
 fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
-	os.mkdir_all(cache_dir)!
+	ensure_native_object_cache_dir(cache_dir)!
 	language := c_source_language(source_file, source_language)
 	is_cpp := language in ['c++', 'objective-c++']
 	std_flag := if is_cpp {
@@ -1633,7 +1642,9 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		args << wrapv_flag
 	}
 	args << '-w'
-	args << object_flags.flags_for_compiler(compiler)
+	// A C helper does not inherit a standard intended for the C++ main unit.
+	args << object_flags.flags_for_compiler(compiler).filter(is_cpp
+		|| !(it.starts_with('-std=c++') || it.starts_with('-std=gnu++')))
 	if language.len > 0 {
 		args << ['-x', language]
 	}
@@ -8188,7 +8199,7 @@ fn v3_should_regenerate_after_implicit_tcc(retry_compilation bool, use_implicit_
 	return retry_compilation && use_implicit_tcc_semantics && (!tried_tcc || tcc_exit_code != 0)
 }
 
-fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string) ?string {
+fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string, vroot string) ?string {
 	if c_flags_need_objective_c(flags) || c_link_flags_use_non_c_language(flags) {
 		return 'its native inputs require a C++ or Objective-C compiler'
 	}
@@ -8201,7 +8212,18 @@ fn v3_implicit_tcc_flags_incompatibility(flags []string, target_os string) ?stri
 				continue
 			}
 			if c_flag_is_object_file(flag) {
-				return 'its native inputs require linking external objects on macOS'
+				mut shipped_source := false
+				if !os.exists(flag) {
+					if source := c_source_from_object_file(flag) {
+						shipped_source = source.ends_with('.c')
+							&& cgen.native_path_is_shipped(source, vroot)
+					}
+				}
+				// Missing shipped C objects are built by the selected compiler.
+				// Existing or foreign objects still require the platform linker.
+				if !shipped_source {
+					return 'its native inputs require linking external objects on macOS'
+				}
 			}
 			i++
 		}
@@ -8592,19 +8614,32 @@ fn v3_cache_compiler_executable_identity(vexe string) string {
 	return '${path}\t${v3_cache_file_identity(path)}'
 }
 
-// v3_cache_compiler_runtime_inputs lists the `$embed_file` targets of the C backend, which
-// copies them into the generated C code. A build of the compiler carries their bytes. A
+// v3_cache_compiler_runtime_inputs lists root-relative `$embed_file` targets of the C backend,
+// which copies them into generated C code. A build of the compiler carries their bytes. A
 // development build of another program that runs the backend keeps only their paths and
 // reads the files at run time, and so does a compiler that was built by an older V.
-const v3_cache_compiler_runtime_inputs = ['manual_stdlib_c_headers.h', 'int128_helpers.h',
-	'int128_string.h']
+const v3_cache_compiler_runtime_inputs = [
+	'vlib/v/gen/c/manual_stdlib_c_headers.h',
+	'vlib/v/gen/c/int128_helpers.h',
+	'vlib/v/gen/c/int128_string.h',
+	'vlib/builtin/gc_boehm_helpers.c',
+	'vlib/builtin/gc_debugger_linux.h',
+	'vlib/v/pthread_helper.h',
+	'vlib/sync/thread_helper.h',
+	'vlib/v/bench/peak_rss.h',
+	'vlib/os/execute_capture_nix.c',
+	'vlib/os/execute_capture_nix.h',
+	'vlib/runtime/free_memory_darwin.c',
+	'vlib/v/modulecache/file_metadata.c',
+	'vlib/builtin/segfault_handler_nix.c',
+	'vlib/builtin/segfault_handler_nix.h',
+]
 
 // v3_cache_compiler_runtime_inputs_identity identifies the files in
 // v3_cache_compiler_runtime_inputs, under the compiler source tree `root`, so that editing
 // them invalidates cached artifacts without rebuilding the compiler executable.
 fn v3_cache_compiler_runtime_inputs_identity(root string) string {
-	dir := os.join_path(root, 'vlib', 'v', 'gen', 'c')
-	return v3_cache_compiler_runtime_inputs.map(v3_cache_file_identity(os.join_path(dir,
+	return v3_cache_compiler_runtime_inputs.map(v3_cache_file_identity(os.join_path(root,
 		it))).join('\t')
 }
 
@@ -11941,7 +11976,14 @@ pub fn run(args []string) {
 	}
 	mut cache_state := V3ModuleCacheState{
 		manager:                   cache_manager
-		object_compiler:           V3CachedObjectCompiler{ path: c_compiler }
+		object_compiler:           V3CachedObjectCompiler{
+			path:     c_compiler
+			identity: if cache_enabled {
+				v3_shared_c_compiler_identity(if cache_with_tcc { bundled_tcc } else { c_compiler })
+			} else {
+				''
+			}
+		}
 		// Updates announce refreshed modules; ordinary builds show progress with timings.
 		silent:                    silent || (!verbose && !show_timings
 			&& os.getenv('V3_CACHE_REFRESH') != '1')
@@ -12387,7 +12429,8 @@ pub fn run(args []string) {
 		preflight_flags << link_ld_flags
 		preflight_flags << cgen.preflight_directive_flags(a, prefs.vroot, prefs.target,
 			prefs.compile_values)
-		if reason := v3_implicit_tcc_flags_incompatibility(preflight_flags, prefs.target.os) {
+		if reason := v3_implicit_tcc_flags_incompatibility(preflight_flags, prefs.target.os,
+			prefs.vroot) {
 			// Selecting a compiler for known native input requirements is expected.
 			// Keep the explanation for verbose builds; actual TCC failures still warn.
 			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, '', silent || !verbose,
@@ -14392,7 +14435,7 @@ pub fn run(args []string) {
 	} else {
 		// C backend (default)
 		if msg := cgen.manual_stdlib_c_headers_error() {
-			if cgen.uses_manual_stdlib_c_headers(a, &pre_tc, prefs, user_c_flags) {
+			if cgen.uses_manual_stdlib_c_headers(a, &pre_tc, prefs, user_c_flags, is_o) {
 				// The message is the whole diagnosis. Clear the V3 failure marker first, or the
 				// parent process replays this compile and prints the message a second time.
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
@@ -14461,7 +14504,7 @@ pub fn run(args []string) {
 		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
 		mut generated_literal_output_only := false
-		incremental_c_declarations := if incremental_cache_hit {
+		incremental_c_declarations := if incremental_cache_restored {
 			os.read_file(incremental_tcc_declarations_path) or {
 				eprintln('error reading incremental C declarations ${incremental_tcc_declarations_path}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
@@ -14476,6 +14519,16 @@ pub fn run(args []string) {
 			''
 		}
 		incremental_known_declarations := incremental_c_declarations + '\n' + incremental_cached_support
+		cached_program_cleanup := if generic_cache_hit {
+			prefix := os.read_file(generic_cache_entry.prefix) or {
+				eprintln('error reading cached program prefix ${generic_cache_entry.prefix}: ${err.msg()}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			modulecache.c_source_function_identifiers(prefix)['_vcleanup']
+		} else {
+			false
+		}
 		cgen_used_fns := if incremental_cache_hit {
 			incremental_stage_used_fns
 		} else {
@@ -14548,6 +14601,7 @@ pub fn run(args []string) {
 			g.set_trace_calls(is_trace_calls, trace_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
+			g.set_no_builtin(no_builtin)
 			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
@@ -14566,6 +14620,7 @@ pub fn run(args []string) {
 			g.set_cache_pruned_functions(pruned_declarations.names, pruned_declarations.modules)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
+			g.set_cached_program_cleanup(cached_program_cleanup)
 			g.set_scope_parallel_workers(!generic_cache_hit)
 			if verbose {
 				eprintln('  [ttime] cg setup           ${f64(cg_pre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -14636,6 +14691,7 @@ pub fn run(args []string) {
 			g.set_trace_calls(is_trace_calls, trace_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
+			g.set_no_builtin(no_builtin)
 			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
@@ -14654,6 +14710,7 @@ pub fn run(args []string) {
 			g.set_cache_pruned_functions(pruned_declarations.names, pruned_declarations.modules)
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
+			g.set_cached_program_cleanup(cached_program_cleanup)
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc, cache_no_parallel_cgen, test_files) or {
 				eprintln('error writing ${generated_path}: ${err}')
 				cleanup_c_build_dir(cc_dir)
@@ -15027,8 +15084,9 @@ pub fn run(args []string) {
 				object_compiler_args << '-bt25'
 			}
 			cache_state.object_compiler = V3CachedObjectCompiler{
-				path: bundled_tcc
-				args: object_compiler_args
+				path:     bundled_tcc
+				args:     object_compiler_args
+				identity: cache_state.object_compiler.identity
 			}
 			cache_state.objects_only = true
 		}
@@ -15229,7 +15287,7 @@ pub fn run(args []string) {
 					}
 					refreshed_incremental_body = stable_body_source
 					stable_main_source := v3_incremental_program_main_source(prepared_cache.program_prefix_source, stable_body_source)
-					stable_tcc_main_source := v3_incremental_main_source(incremental_tcc_declarations_path, prepared_plan_entry.source)
+					stable_tcc_main_source := v3_incremental_main_source(incremental_tcc_declarations_path, incremental_c_declarations, stable_body_source)
 					prepared_cache.main_source = stable_main_source
 					prepared_cache.tcc_main_source = stable_tcc_main_source
 					os.write_file(cc_src, stable_main_source) or {
@@ -16841,14 +16899,12 @@ fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, buil
 	return files
 }
 
-fn v3_incremental_main_source(tcc_declarations_path string, body_path string) string {
-	slash := [u8(92)].bytestr()
-	escaped_slash := [u8(92), 92].bytestr()
-	quote := [u8(34)].bytestr()
-	escaped_quote := [u8(92), 34].bytestr()
-	declarations_include := tcc_declarations_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
-	body_include := body_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
-	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${declarations_include}"\n#include "${body_include}"\n'
+fn v3_incremental_main_source(tcc_declarations_path string, declarations string, body_source string) string {
+	// The declaration prefix owns literals needed by its inline support. The
+	// reconstructed body also carries those literals for standalone generation.
+	// Keep new body literals, but do not define the prefix's storage twice.
+	body := modulecache.without_duplicate_static_string_definitions(body_source, declarations)
+	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${c_include_path(tcc_declarations_path)}"\n' + body
 }
 
 fn c_include_path(path string) string {
@@ -16873,7 +16929,8 @@ fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_
 	}
 	body_source := os.read_file(body_path)!
 	main_source := v3_incremental_program_main_source(cached_prefix, body_source)
-	tcc_main_source := v3_incremental_main_source(tcc_declarations_path, body_path)
+	tcc_declarations := os.read_file(tcc_declarations_path)!
+	tcc_main_source := v3_incremental_main_source(tcc_declarations_path, tcc_declarations, body_source)
 	return V3PreparedModuleCache{
 		main_source:           main_source
 		tcc_main_source:       tcc_main_source
@@ -16986,7 +17043,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		bundle_signature := v3_cached_object_content_signature(object_base, bundle_content)
 		// Another program, or this one before an edit, may have generated the same C
 		// for these modules. Its object is the one this C compiles to.
-		bundle_is_compiled := if _ := state.manager.reusable_object('builtin', state.bundle_sources,
+		mut bundle_is_compiled := if _ := state.manager.reusable_object('builtin', state.bundle_sources,
 			bundle_signature, bundle_dependencies)
 		{
 			true
@@ -16994,7 +17051,6 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			false
 		}
 		if !bundle_is_compiled {
-			state.print_module_cache_notice('builtin')
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
@@ -17015,12 +17071,13 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			} else {
 				prune_foreign_program_wrappers(declarations, bundle_code) + bundle_code
 			}
-			compile_v3_cached_object(state.object_compiler, state.manager.object_entry('builtin', state.bundle_sources, bundle_signature), module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c) or {
+			compiled := compile_v3_cached_object(state.object_compiler, state.manager.object_entry('builtin', state.bundle_sources, bundle_signature), module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, bundle_dependencies, state, 'builtin') or {
 				prealloc_scope_leave_for_v3(bundle_compile_scope)
 				message := err.msg().clone()
 				prealloc_scope_free_for_v3(bundle_compile_scope)
 				return error(message)
 			}
+			if !compiled { bundle_is_compiled = true }
 			unsafe { bundle_body.free() }
 			prealloc_scope_leave_for_v3(bundle_compile_scope)
 			prealloc_scope_free_for_v3(bundle_compile_scope)
@@ -17068,7 +17125,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		module_signature := v3_cached_object_content_signature(object_base, module_content)
 		dependencies := cache_object_dependency_signatures(state, tc.a, [module_name])
 		entry := state.manager.object_entry(module_name, source_files, module_signature)
-		module_is_compiled := if _ := state.manager.reusable_object(module_name, source_files,
+		mut module_is_compiled := if _ := state.manager.reusable_object(module_name, source_files,
 			module_signature, dependencies)
 		{
 			true
@@ -17076,7 +17133,6 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			false
 		}
 		if !module_is_compiled {
-			state.print_module_cache_notice(module_name)
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
@@ -17094,12 +17150,13 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			} else {
 				prune_foreign_program_wrappers(declarations, body) + body
 			}
-			compile_v3_cached_object(state.object_compiler, entry, module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c) or {
+			compiled := compile_v3_cached_object(state.object_compiler, entry, module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, dependencies, state, module_name) or {
 				prealloc_scope_leave_for_v3(module_compile_scope)
 				message := err.msg().clone()
 				prealloc_scope_free_for_v3(module_compile_scope)
 				return error(message)
 			}
+			if !compiled { module_is_compiled = true }
 			prealloc_scope_leave_for_v3(module_compile_scope)
 			prealloc_scope_free_for_v3(module_compile_scope)
 		}
@@ -18741,7 +18798,14 @@ fn (state &V3ModuleCacheState) print_module_cache_notice(module_name string) {
 	}
 }
 
-fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool) ! {
+fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, dependencies map[string]string, state &V3ModuleCacheState, module_name string) !bool {
+	// Whole-program declarations include literals from other modules, including
+	// the V build hash. Only literals referenced by this object belong in its C.
+	c_source := modulecache.prune_unreferenced_static_string_definitions(v3_cached_c_unit_source(source, false))
+	compile_signature := v3_cached_object_compile_signature(compiler, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, '')
+	pooled := v3_shared_module_object(entry, compiler, c_source, compile_signature, dependencies)
+	if v3_restore_shared_module_object(pooled, entry) { return false }
+	state.print_module_cache_notice(module_name)
 	unique := tempname.unique_token()
 	// GCC records the input basename in otherwise-identical object files. Put the
 	// stable cache basename in a unique directory so recompiles remain byte-for-byte
@@ -18756,7 +18820,7 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 			os.rmdir_all(tmp_dir) or {}
 		}
 	}
-	os.write_file(tmp_source, v3_cached_c_unit_source(source, false))!
+	os.write_file(tmp_source, c_source)!
 	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
 	tmp_object := '${entry.object}.tmp.${unique}'
@@ -18784,6 +18848,8 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 			return error('failed to publish cached module source ${entry.c_source}: ${err}')
 		}
 	}
+	v3_publish_shared_module_object(pooled, entry)
+	return true
 }
 
 fn vmod_subdirs(dir string) ![]string {

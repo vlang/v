@@ -241,7 +241,7 @@ $if !windows {
 	fn C.v_gc_dlopen(const_path &char, mode i32) voidptr
 }
 
-fn C.GC_memalign(align isize, size isize) voidptr
+fn C.GC_memalign(align usize, size usize) voidptr
 
 // explicitly perform garbage collection now! Garbage collections
 // are done automatically when needed, so this function is hardly needed

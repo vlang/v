@@ -13,7 +13,7 @@ pub struct C.mach_timebase_info_data_t {
 
 fn C.mach_absolute_time() u64
 
-fn C.mach_timebase_info(&C.mach_timebase_info_data_t)
+fn C.mach_timebase_info(&C.mach_timebase_info_data_t) i32
 
 fn C.clock_gettime_nsec_np(i32) u64
 

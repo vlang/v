@@ -137,6 +137,8 @@ $if windows {
 	fn C.fseek(stream &C.FILE, offset isize, whence i32) i32
 }
 
+// Coverage and profiling writers call these without a V AST reference.
+@[markused]
 fn C.fopen(filename &char, mode &char) &C.FILE
 
 fn C.fileno(&C.FILE) i32
@@ -146,6 +148,7 @@ fn C.fread(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 @[markused]
 fn C.fwrite(const_ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 
+@[markused]
 fn C.fclose(stream &C.FILE) i32
 
 fn C.pclose(stream &C.FILE) i32
@@ -193,7 +196,9 @@ fn C._execve(cmd_path &char, args voidptr, envs voidptr) i32
 
 fn C._execvp(cmd_path &char, args voidptr) i32
 
-fn C.strcmp(s1 &char, s2 &char) i32
+// The generated test runner compares environment values without V AST calls.
+@[markused; noalloc]
+fn C.strcmp(const_s1 &char, const_s2 &char) i32
 
 @[trusted]
 fn C.fork() i32

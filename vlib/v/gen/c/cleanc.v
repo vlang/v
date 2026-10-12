@@ -65,7 +65,8 @@ pub fn manual_stdlib_c_headers_error() ?string {
 
 // uses_manual_stdlib_c_headers reports whether this program needs the embedded libc preamble.
 // It is only needed when the embedded header is damaged, before the driver starts C generation.
-pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, prefs &pref.Preferences, initial_c_flags []string) bool {
+// object_file_mode must match the driver's object-output selection.
+pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, prefs &pref.Preferences, initial_c_flags []string, object_file_mode bool) bool {
 	if prefs.target_libc_headers {
 		return false
 	}
@@ -74,6 +75,8 @@ pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, pref
 	g.tc = tc
 	g.target = prefs.target
 	g.output_cross_c = prefs.output_cross_c
+	g.no_builtin = prefs.no_builtin
+	g.object_file_mode = object_file_mode
 	g.compiler_vroot = prefs.vroot
 	g.compile_values = prefs.compile_values
 	g.c99_mode = prefs.c99
@@ -563,6 +566,7 @@ mut:
 	is_shared                      bool
 	interface_exports              []string
 	object_file_mode               bool
+	no_builtin                     bool
 	suppress_main                  bool
 	coverage_dir                   string
 	coverage_build_options         string
@@ -930,6 +934,7 @@ mut:
 	embed_incbin_syms_ready    bool
 	cache_native_input_paths   map[string]bool
 	program_body_only          bool
+	cached_program_cleanup     bool
 	cached_support_identifiers map[string]bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
@@ -1944,6 +1949,11 @@ pub fn (mut g FlatGen) set_shared(enabled bool) {
 	g.is_shared = enabled
 }
 
+// set_no_builtin enables compatibility declarations when V libc bindings are unavailable.
+pub fn (mut g FlatGen) set_no_builtin(enabled bool) {
+	g.no_builtin = enabled
+}
+
 // set_object_file_mode gives generated runtime symbols translation-unit-local
 // linkage while retaining public entry-module functions through C ABI wrappers.
 pub fn (mut g FlatGen) set_object_file_mode(enabled bool) {
@@ -2019,6 +2029,11 @@ pub fn (mut g FlatGen) set_cache_native_input_paths(paths []string) {
 // when that prefix has already been validated and loaded from the module cache.
 pub fn (mut g FlatGen) set_program_body_only(enabled bool) {
 	g.program_body_only = enabled
+}
+
+// set_cached_program_cleanup records whether the cached program prefix owns its exit hook.
+pub fn (mut g FlatGen) set_cached_program_cleanup(enabled bool) {
+	g.cached_program_cleanup = enabled
 }
 
 // set_cache_program_files assigns entry-module source files to the program
@@ -19121,6 +19136,8 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('#define V_MANUAL_STDLIB_HEADERS 1')
 		g.writeln('void abort(void);')
 		g.system_libc_headers()
+		// Define native wrappers before runtime prototypes and pthread redirects.
+		g.portable_native_runtime_helpers()
 		g.system_libc_preamble()
 	} else {
 		g.headerless_libc_preamble()
@@ -19187,6 +19204,51 @@ fn (mut g FlatGen) panic_recovery_preamble() {
 	g.writeln('static inline void v_unwind_jump(void* frame) { v_unwind_longjmp(((v_unwind_frame*)frame)->buf); }')
 }
 
+fn (mut g FlatGen) portable_native_runtime_helpers() {
+	if !(g.output_cross_c || g.object_file_mode) || g.no_builtin || g.target_libc_headers {
+		return
+	}
+	if 'gcboehm' in g.compile_defines {
+		gc_source := $embed_file('@VEXEROOT/vlib/builtin/gc_boehm_helpers.c').to_string()
+		gc_header := $embed_file('@VEXEROOT/vlib/builtin/gc_debugger_linux.h').to_string()
+		g.write(gc_source.replace('void* v_', 'static void* v_')
+			.replace('void v_', 'static void v_').replace('int v_', 'static int v_')
+			.replace('#include "gc_debugger_linux.h"', gc_header))
+	}
+	g.writeln('#ifndef _WIN32')
+	g.write($embed_file('@VEXEROOT/vlib/v/pthread_helper.h').to_string())
+	g.write($embed_file('@VEXEROOT/vlib/sync/thread_helper.h').to_string())
+	g.write($embed_file('@VEXEROOT/vlib/v/bench/peak_rss.h').to_string())
+	capture_source := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.c').to_string()
+	capture_header := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.h').to_string()
+	g.write(capture_source.replace('#define V_OS_EXECUTE_SCOPE\n', '')
+		.replace('#include "execute_capture_nix.h"', capture_header))
+	g.writeln('#endif')
+	g.writeln('#ifdef __APPLE__')
+	free_memory_source := $embed_file('@VEXEROOT/vlib/runtime/free_memory_darwin.c').to_string()
+	g.write(free_memory_source.replace('int v_runtime_free_memory_darwin(',
+		'static int v_runtime_free_memory_darwin('))
+	g.writeln('#endif')
+	metadata_source := $embed_file('@VEXEROOT/vlib/v/modulecache/file_metadata.c').to_string()
+	g.write(metadata_source.replace('int v3_modulecache_file_metadata(',
+		'static int v3_modulecache_file_metadata('))
+	// Native definitions retain qualifiers that these bodyless V views cannot express.
+	g.collect_preserved_c_fns(['v3_modulecache_file_metadata', 'v_os_exec_capture_start',
+		'v_os_execute_capture_start', 'v_os_exec_capture_input_start', 'v_os_fd_write_all'])
+	if 'no_segfault_handler' !in g.compile_defines && g.target.os != 'vinix' {
+		signal_source := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.c').to_string()
+		signal_header := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.h').to_string()
+		g.writeln('#ifndef _WIN32')
+		g.write(signal_source.replace('#define V_PARALLEL_CC 1\n#define V_PARALLEL_CC_OUT_0 1\n', '')
+			.replace('defined(V_GCBOEHM_NATIVE)', 'defined(CUSTOM_DEFINE_gcboehm)')
+			.replace('#include <gc.h>', '#include <gc/gc.h>')
+			.replace('#include "segfault_handler_nix.h"', signal_header)
+			.replace('void* v_thread_', 'static void* v_thread_')
+			.replace('void v_thread_', 'static void v_thread_'))
+		g.writeln('#endif')
+	}
+}
+
 fn (g &FlatGen) c_directives_use_system_libc() bool {
 	// A freestanding target has no hosted libc to include, whatever the program's
 	// own `#include`s name. Those includes are the project's own headers -- a
@@ -19195,6 +19257,9 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 	// set into a translation unit that has none of them.
 	if g.target_libc_headers {
 		return false
+	}
+	if g.no_builtin || g.output_cross_c || g.object_file_mode {
+		return true
 	}
 	for directive in g.preinclude_directives {
 		for line in directive.split_into_lines() {
