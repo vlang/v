@@ -325,6 +325,7 @@ fn test_lower_bound() {
 	b := []int{}
 	c := [1, 2, 3]
 	assert lower_bound(a, 2)! == 3
+	assert lower_bound(c, 3)! == 3
 	if _ := lower_bound(b, 4) {
 		assert false, 'lower_bound on an empty array should have failed'
 	} else {
