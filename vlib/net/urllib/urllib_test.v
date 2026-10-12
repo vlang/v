@@ -197,6 +197,16 @@ fn test_parse_rejects_invalid_zone_escape() {
 		return
 	}
 	assert u.hostname() == 'fe80::1%eth0'
+	for zone in ['eth%20', 'eth%25', '%20', '%25'] {
+		url := urllib.parse('http://[fe80::1%25${zone}]/')!
+		expected := zone.replace('%20', ' ').replace('%25', '%')
+		assert url.hostname() == 'fe80::1%${expected}'
+	}
+	for zone in ['eth%ff', 'eth%2F', 'eth%00', 'eth%', 'eth%2', 'eth%GG'] {
+		if _ := urllib.parse('http://[fe80::1%25${zone}]/') {
+			assert false, 'accepted invalid zone escape ${zone}'
+		}
+	}
 }
 
 fn test_parse_allows_apostrophe_in_authority() {

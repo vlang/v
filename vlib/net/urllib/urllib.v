@@ -186,9 +186,8 @@ fn unescape(s_ string, mode EncodingMode) !string {
 					// That is, you can use escaping in the zone identifier but not
 					// to introduce bytes you couldn't just write directly.
 					// But Windows puts spaces here! Yay.
-					if i + 3 >= s.len {
-						return error(error_msg('unescape: invalid escape sequence', ''))
-					}
+					// The escape's two hex digits were checked above; a complete
+					// escape is valid even when it ends the zone identifier.
 					v := ((unhex(s[i + 1]) << u8(4)) | unhex(s[i + 2]))
 					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
 						return error(error_msg(err_msg_escape, s[i..i + 3]))
