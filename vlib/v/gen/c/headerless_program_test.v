@@ -14,8 +14,8 @@ fn test_brotli_binding_retains_its_native_headers() {
 	c_file := os.join_path(root, 'main.c')
 	os.write_file(source, 'import compress.brotli
 fn main() {
-	encoded := brotli.compress("hello".bytes(), {}) or { panic(err) }
-	decoded := brotli.decompress(encoded, {}) or { panic(err) }
+	encoded := brotli.compress("hello".bytes(), brotli.CompressParams{}) or { panic(err) }
+	decoded := brotli.decompress(encoded, brotli.DecompressParams{}) or { panic(err) }
 	assert decoded.bytestr() == "hello"
 }
 ')!
