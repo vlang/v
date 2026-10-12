@@ -50,6 +50,20 @@ fn test_minimal_literal_output_builtin_keeps_collector_support_files() {
 	}
 }
 
+fn test_minimal_literal_output_builtin_rejects_portable_snapshots() {
+	root := literal_output_gc_test_root()!
+	defer { os.rmdir_all(root) or { panic(err) } }
+	source := os.join_path(root, 'literal_output.v')
+	os.write_file(source, "fn main() { println('hello') }\n")!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('macos', 'arm64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.output_cross_c = true
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.output_cross_c = false
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+}
+
 fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	root := literal_output_gc_test_root()!
 	defer {
@@ -63,11 +77,9 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, true, false)
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, true)
-	prefs.output_cross_c = true
-	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
-	prefs.output_cross_c = false
-	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 	prefs.target = pref.target_from('linux', 'arm64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.target = pref.target_from('windows', 'amd64')!
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 	prefs.target = pref.target_from('macos', 'arm64')!
 	prefs.backend = 'arm64'

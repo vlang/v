@@ -2294,15 +2294,19 @@ fn main() {
 	}
 
 	if false_exe := os.find_abs_path_of_executable('false') {
-		cc_result := cmdexec.run(v3_bin, ['-prod', '-showcc', '-cc', false_exe, source, '-o',
-			os.join_path(root, 'false_cc')])
+		// Exercise the final C compiler command without needing runtime objects
+		// to be built by the deliberately failing compiler first.
+		false_cc_source := os.join_path(root, 'false_cc.v')
+		os.write_file(false_cc_source, "fn main() { println('ok') }\n")!
+		cc_result := cmdexec.run(v3_bin, ['-prod', '-showcc', '-cc', false_exe, '-o',
+			os.join_path(root, 'false_cc'), false_cc_source])
 		assert cc_result.exit_code != 0
 		assert cc_result.output.contains(cmdexec.display(false_exe, ['-std=gnu11'])), cc_result.output
 		assert cc_result.output.contains('-O3'), cc_result.output
 		assert cc_result.output.contains('-flto'), cc_result.output
 		assert !cc_result.output.contains('-O2'), cc_result.output
 		custom_prod_result := cmdexec.run(v3_bin, ['-prod', '-no-prod-options', '-showcc', '-cc',
-			false_exe, source, '-o', os.join_path(root, 'false_cc_custom_prod')])
+			false_exe, '-o', os.join_path(root, 'false_cc_custom_prod'), false_cc_source])
 		assert custom_prod_result.exit_code != 0
 		assert !custom_prod_result.output.contains('-O3'), custom_prod_result.output
 		assert !custom_prod_result.output.contains('-flto'), custom_prod_result.output

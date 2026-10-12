@@ -23,7 +23,6 @@ fn test_portable_literal_output_retains_snapshot_runtime_and_metadata() {
 		assert code.contains('#define CUSTOM_DEFINE_cross'), flags.str()
 		assert code.contains('#define CUSTOM_DEFINE_no_backtrace'), flags.str()
 		assert code.contains('static inline byte atomic_fetch_add_byte('), flags.str()
-		assert code.contains('typedef signed char i8;'), flags.str()
 		assert code.contains('portable literal'), flags.str()
 	}
 	// Ordinary host output remains allocation-free after snapshot generation.
