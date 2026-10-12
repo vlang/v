@@ -164,11 +164,9 @@ pub fn decode_walpha_bytes(input []u8, alphabet Alphabet) ![]u8 {
 	mut outi := []u32{len: (b58sz + 3) / 4}
 
 	for _, r in input {
-		if r > 127 {
-			panic(@MOD + '.' + @FN +
-				': high-bit set on invalid digit; outside of ascii range (${r}). This should never happen.')
-		}
-		if alphabet.decode[r] == -1 {
+		// a byte above 127 is outside the 128 entry decode table, and it is
+		// not a valid digit either, so it is reported like any other one
+		if r > 127 || alphabet.decode[r] == -1 {
 			return error(@MOD + '.' + @FN + ': invalid base58 digit (${r})')
 		}
 
