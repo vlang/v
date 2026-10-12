@@ -479,6 +479,8 @@ print no cache creation notices; `-silent` suppresses them too.
 This applies to SHA3 and other imported modules with TinyCC too.
 `v up` refreshes cached modules once per equivalent import sequence and build configuration.
 It preserves import order for module C flags and reuses the same records on repeated updates.
+Both original entries and temporary importers stop after module object validation,
+before compiling program objects or linking an executable.
 Refresh progress labels each build's compiler flags and normal/production and program/test modes.
 Record indices can jump when builds are grouped or skipped; the final summary counts checked builds.
 If TinyCC cannot compile or link a cached program unit, V retries the original sources
