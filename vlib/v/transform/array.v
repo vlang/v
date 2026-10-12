@@ -1045,12 +1045,22 @@ fn (t &Transformer) array_literal_alias_expr_name(node flat.Node) string {
 			return name
 		}
 	}
-	for candidate in [node.typ, node.value] {
+	for candidate in alias_name_candidates(node) {
 		if candidate.len > 0 && t.generic_arg_is_alias_name(candidate, t.cur_module) {
 			return candidate
 		}
 	}
 	return ''
+}
+
+// alias_name_candidates lists the node fields that can name an alias type. A literal's value
+// is its text, not a type name: the string literal 'Speed' is not the alias `Speed`.
+fn alias_name_candidates(node flat.Node) []string {
+	if node.kind in [.string_literal, .string_interp, .char_literal, .int_literal, .float_literal,
+		.bool_literal] {
+		return [node.typ]
+	}
+	return [node.typ, node.value]
 }
 
 // transform_array_literal_for_type transforms transform array literal for type data for transform.

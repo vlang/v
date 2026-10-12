@@ -479,8 +479,16 @@ print no cache creation notices; `-silent` suppresses them too.
 This applies to SHA3 and other imported modules with TinyCC too.
 `v up` refreshes cached modules once per equivalent import sequence and build configuration.
 It preserves import order for module C flags and reuses the same records on repeated updates.
+Both original entries and temporary importers stop after module object validation,
+before compiling program objects or linking an executable.
+`v up` refreshes only TinyCC cache configurations, retaining recorded production and test modes.
+Caches for other C compilers are refreshed by the next build that uses that compiler.
+Compiler updates validate fresh module interfaces and reuse compiled objects when the generated C,
+C compiler, flags, and native inputs still match. Reused objects print no cache creation notices.
+Objects and their generated C are shared between configurations to avoid duplicate storage.
 Refresh progress labels each build's compiler flags and normal/production and program/test modes.
 Record indices can jump when builds are grouped or skipped; the final summary counts checked builds.
+Refresh stops on a disk-full error so remaining configurations do not keep attempting writes.
 If TinyCC cannot compile or link a cached program unit, V retries the original sources
 without module caching before changing C compilers or reporting a compilation failure.
 Programs importing `v.reflection` parse original module sources to preserve source-file
@@ -536,6 +544,8 @@ are embedded in the `.vh` interface, so a warm cached build parses `.v` files on
 program's directory; the `.v` list makes an unexpected module-cache miss visible. After
 successfully populating module objects, a cold build with timings enabled prints a hint that
 unchanged modules will not be recompiled on the next run.
+Development compiler cache identity includes every embedded runtime header and native C helper
+source. Editing any of these inputs invalidates cached artifacts without rebuilding the compiler.
 Third-party C objects retain dependency manifests, so warm builds verify each unique source or
 header once without launching a dependency-scanner process per object. Unchanged inputs use
 nanosecond-resolution file metadata; a metadata change falls back to the recorded content hash.

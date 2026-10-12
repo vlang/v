@@ -188,11 +188,11 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 				assert generated.exit_code == 0, generated.output
 				output := os.read_file(c_path)!
 				if mode == 'none' {
-					assert !output.contains('GC_INIT();'), mode
+					assert !output.contains('v_gc_init();'), mode
 				} else {
-					assert output.contains('GC_INIT();'), mode
-					assert output.contains('GC_MALLOC'), mode
-					assert output.contains('GC_REGISTER_DISPLACEMENT'), mode
+					assert output.contains('v_gc_init();'), mode
+					assert output.contains('v_gc_malloc'), mode
+					assert output.contains('v_gc_register_displacement'), mode
 					assert output.contains('gc_runtime_init();'), mode
 				}
 			}
