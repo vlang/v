@@ -14,3 +14,5 @@ fn main() {
 	assert arrays.idx_min(a)! == 3
 }
 ```
+
+`chunk(array, size)` returns an empty array when `size` is zero or negative.
