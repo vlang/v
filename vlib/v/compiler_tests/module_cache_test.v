@@ -649,6 +649,9 @@ fn module_cache_configuration_dirs(cache_dir string) []string {
 		}
 		root := os.join_path(cache_dir, entry)
 		for config in os.ls(root) or { continue } {
+			if config.len == 0 || config.len > 16 || config.trim('0123456789abcdef') != '' {
+				continue
+			}
 			path := os.join_path(root, config)
 			if os.is_dir(path) {
 				dirs << path

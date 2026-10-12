@@ -328,12 +328,24 @@ fn test_tcc_compiles_the_headers_of_a_program_from_their_preprocessed_form() {
 			env.restore()
 		}
 	}
+	headers := os.join_path(root, 'headers')
+	os.mkdir_all(headers)!
+	header := os.join_path(headers, 'v_cached_headers_contract.h')
+	os.write_file(header, 'static inline int review_cached_headers_value(void) { return 37; }\n')!
+	saved_cpath := cpath_headers([headers])
+	defer {
+		restore_cpath(saved_cpath)
+	}
+	settle_headers()
+	header_program := '#include <v_cached_headers_contract.h>\n' +
+		program.replace('struct Point {', 'fn C.review_cached_headers_value() int\n\nstruct Point {').replace('fn main() {',
+			'fn main() {\n\tassert C.review_cached_headers_value() == 37')
 	main_file := os.join_path(root, 'main.v')
-	os.write_file(main_file, program)!
+	os.write_file(main_file, header_program)!
 	build(root, flags, main_file, 'cold')
 	mut preprocessed := 0
 	for i in 0 .. 3 {
-		os.write_file(main_file, program + '\nfn added_${i}() int {\n\treturn ${i}\n}\n')!
+		os.write_file(main_file, header_program + '\nfn added_${i}() int {\n\treturn ${i}\n}\n')!
 		// The object of the unit is the one that its headers give.
 		os.setenv('V3_TCC_PRELUDE_VERIFY', '1', true)
 		warm := build(root, flags, main_file, 'warm')
@@ -362,12 +374,12 @@ fn test_tcc_compiles_the_headers_of_a_program_from_their_preprocessed_form() {
 		assert text.contains('\nfile=') && text.contains('\nmissing='), text
 		os.write_file(stamp, text.replace_once('\nfile=', '\nfile=/nonexistent/v_cached_declarations_test.h\tabsent\nfile='))!
 	}
-	os.write_file(main_file, program + '\nfn added_again() {}\n')!
+	os.write_file(main_file, header_program + '\nfn added_again() {}\n')!
 	again := build(root, flags, main_file, 'again')
 	assert again.contains('V3 TinyCC prelude: a header changed'), again
 	assert again.contains('V3 TinyCC prelude: preprocessed'), again
 	assert run_built(root, 'again') == program_output
-	os.write_file(main_file, program + '\nfn added_once_more() {}\n')!
+	os.write_file(main_file, header_program + '\nfn added_once_more() {}\n')!
 	once_more := build(root, flags, main_file, 'once_more')
 	assert !once_more.contains('V3 TinyCC prelude'), once_more
 	assert run_built(root, 'once_more') == program_output
