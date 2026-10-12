@@ -141,7 +141,7 @@ fn check_with_modules(name string, files map[string]string, modules map[string]s
 }
 
 // check_with_modules_env is check_with_modules with the environment `env`
-// (`NAME=value ...`) added to the check.
+// (`NAME=value`) added to the check.
 fn check_with_modules_env(name string, env string, files map[string]string, modules map[string]string) LibraryCheck {
 	dir := os.join_path(os.vtmp_dir(), 'v3_check_generic_library_${name}_${os.getpid()}')
 	modules_dir := os.join_path(dir, 'modules')
@@ -162,22 +162,36 @@ fn check_with_modules_env(name string, env string, files map[string]string, modu
 	trace := os.join_path(dir, 'trace.txt')
 	// The child reads these from its environment, so set them here and pass only the
 	// compiler arguments to `os.exec`.
+	previous_modules := os.getenv_opt('VMODULES')
+	previous_trace := os.getenv_opt('V_DIAGNOSTICS_TRACE')
 	os.setenv('VMODULES', modules_dir, true)
 	os.setenv('V_DIAGNOSTICS_TRACE', trace, true)
 	defer {
-		os.unsetenv('VMODULES')
-		os.unsetenv('V_DIAGNOSTICS_TRACE')
+		if value := previous_modules {
+			os.setenv('VMODULES', value, true)
+		} else {
+			os.unsetenv('VMODULES')
+		}
+		if value := previous_trace {
+			os.setenv('V_DIAGNOSTICS_TRACE', value, true)
+		} else {
+			os.unsetenv('V_DIAGNOSTICS_TRACE')
+		}
 	}
 	// V runs a `defer` at the end of its block, so the variable is declared out here to
 	// stay set until the check has run.
-	mut env_name := ''
+	env_name := env.all_before('=')
+	previous_env := os.getenv_opt(env_name)
 	if env != '' {
-		env_name = env.all_before('=')
 		os.setenv(env_name, env.all_after('='), true)
 	}
 	defer {
 		if env_name != '' {
-			os.unsetenv(env_name)
+			if value := previous_env {
+				os.setenv(env_name, value, true)
+			} else {
+				os.unsetenv(env_name)
+			}
 		}
 	}
 	res := os.exec([@VEXE, '-new-compiler', '-check', '-nocolor', os.join_path(program, 'main.v')])
@@ -243,6 +257,49 @@ fn test_v_check_library_bodies_keeps_the_body_of_every_library_instance() {
 	assert check.res.exit_code == 0, check.res.output
 	assert check.trace == ['0 of 1 library instances cloned without their bodies',
 		'every library instance keeps its body: V_CHECK_LIBRARY_BODIES=all asks for them'], check.trace.str()
+}
+
+fn test_only_all_keeps_every_library_body() {
+	for value in ['1', ''] {
+		check := check_with_modules_env('bodies_not_all_${value}', 'V_CHECK_LIBRARY_BODIES=${value}', {
+			'main.v': header_program
+		}, {
+			'advlib/advlib.v': library_module
+		})
+		assert check.res.exit_code == 0, check.res.output
+		assert check.trace == ['1 of 1 library instances cloned without their bodies'], check.trace.str()
+	}
+}
+
+fn test_library_check_restores_existing_environment_values() {
+	keys := ['VMODULES', 'V_DIAGNOSTICS_TRACE', 'V_CHECK_LIBRARY_BODIES']
+	mut previous := map[string]string{}
+	mut present := map[string]bool{}
+	for key in keys {
+		if value := os.getenv_opt(key) {
+			previous[key] = value
+			present[key] = true
+		}
+		os.setenv(key, 'saved_${key}', true)
+	}
+	defer {
+		for key in keys {
+			if present[key] {
+				os.setenv(key, previous[key], true)
+			} else {
+				os.unsetenv(key)
+			}
+		}
+	}
+	check := check_with_modules_env('restore_env', 'V_CHECK_LIBRARY_BODIES=all', {
+		'main.v': header_program
+	}, {
+		'advlib/advlib.v': library_module
+	})
+	assert check.res.exit_code == 0, check.res.output
+	for key in keys {
+		assert os.getenv(key) == 'saved_${key}'
+	}
 }
 
 fn test_a_library_instance_whose_types_reach_a_program_generic_keeps_its_body() {

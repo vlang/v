@@ -936,3 +936,7 @@ Both populated and empty map references retain valid storage after initializatio
 
 The special lowering for `strings.Builder` applies to that module’s type.
 Types named `Builder` in other modules keep their own methods.
+
+For diagnostics-only generic checks, `V_CHECK_LIBRARY_BODIES=all` retains every imported
+library instance body. Other values use reachability to omit irrelevant library bodies.
+`V_DIAGNOSTICS_TRACE` appends check tracing to an absolute path on each supported platform.
