@@ -28,6 +28,12 @@ pub fn eprintln(s string) {
 pub fn flush_stdout() {
 }
 
+// exit ends the process. The WASM backend has an `exit` intrinsic that lowers
+// to proc_exit, so this declaration is here for the checker to resolve the
+// call and the body is never linked.
+pub fn exit(code int) {
+}
+
 // flush_stderr is a no-op on WASM: output goes straight to the fd with no stdio
 // buffer to drain.
 pub fn flush_stderr() {
