@@ -3,6 +3,7 @@ module transform
 import os
 import time
 import v.flat
+import v.errors
 import v.gen.c.naming
 import v.pref
 import v.types
@@ -21379,6 +21380,7 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 	}
 	if node.value.len > 0 && node.value == '__v_compile_error' {
 		t.record_selected_compile_error_call(node)
+		return t.make_empty()
 	}
 	// Materialize value `match`/`if` method receivers and arguments before builtin/method
 	// dispatch, so builtin lowerings (e.g. `(match ...).clone()` -> make_array_clone_call, or
@@ -21745,7 +21747,14 @@ fn (mut t Transformer) record_selected_compile_error_call(node flat.Node) {
 	} else {
 		'compile-time error'
 	}
-	t.record_monomorph_error('compile-time error: ${message}')
+	diagnostic := if errors.json_output() {
+		errors.json_error('error:', 'compile-time error: ${message}', []string{}, t.a,
+			flat.empty_node, node.pos)
+	} else {
+		errors.formatted_error('error:', 'compile-time error: ${message}', t.a, flat.empty_node,
+			node.pos)
+	}
+	t.record_monomorph_error(diagnostic)
 }
 
 // is_disabled_fn_name reports whether is disabled fn name applies in transform.

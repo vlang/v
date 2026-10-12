@@ -8,7 +8,8 @@ import v.cmdexec
 import v.tempname
 
 const record_prefix = '.vup_refresh_'
-const record_format = 'vup-cache-refresh-6'
+const record_format = 'vup-cache-refresh-7'
+const input_record_format = 'vup-cache-refresh-6'
 const entry_record_format = 'vup-cache-refresh-5'
 const project_record_format = 'vup-cache-refresh-4'
 const object_record_format = 'vup-cache-refresh-3'
@@ -36,6 +37,7 @@ pub:
 	entry           string            // Original program input, for interface-specific module aliases.
 	show_test_stats bool              // Effective VTEST_SHOW_ASSERTS configuration.
 	compile_inputs  []string          // Required caller-supplied files that existed when recorded.
+	entry_sources   map[string]string // Source identities tying a live entry to its recorded configuration.
 	legacy_headers  map[string]string // Legacy header paths and content signatures awaiting migration.
 }
 
@@ -68,7 +70,8 @@ fn encode_request(request Request) string {
 	out.writeln(if request.is_test { 'test' } else { 'program' })
 	out.write_string(encode_arguments([request.cwd, encode_project_flags(request.project_flags),
 		encode_arguments(request.imports), request.entry, request.show_test_stats.str(),
-		encode_arguments(request.compile_inputs), ...request.args]))
+		encode_arguments(request.compile_inputs), encode_entry_sources(request.entry_sources),
+		...request.args]))
 	return out.str()
 }
 
@@ -84,8 +87,8 @@ fn encode_arguments(args []string) string {
 
 fn decode_request(content string) !Request {
 	parts := content.split_nth('\n', 4)
-	if parts.len != 4 || parts[0] !in [record_format, entry_record_format, project_record_format,
-		object_record_format, cwd_record_format, legacy_record_format] || !valid_module(parts[1])
+	if parts.len != 4 || parts[0] !in [record_format, input_record_format, entry_record_format,
+		project_record_format, object_record_format, cwd_record_format, legacy_record_format] || !valid_module(parts[1])
 		|| parts[2] !in ['test', 'program'] {
 		return error('invalid module cache refresh record')
 	}
@@ -106,12 +109,16 @@ fn decode_request(content string) !Request {
 		// override updated module directives. Retain their CLI configuration only.
 		return Request{ args: args[3 + count..].clone(), module: parts[1], is_test: parts[2] == 'test', cwd: args[0] }
 	}
-	has_entry := parts[0] in [record_format, entry_record_format]
+	has_entry := parts[0] in [record_format, input_record_format, entry_record_format]
 	if has_entry && args.len < 4 { return error('missing program entry') }
-	if parts[0] == record_format && (args.len < 6 || args[4] !in ['true', 'false']) {
+	has_inputs := parts[0] in [record_format, input_record_format]
+	if has_inputs && (args.len < 6 || args[4] !in ['true', 'false']) {
 		return error('invalid test display configuration')
 	}
+	if parts[0] == record_format && args.len < 7 { return error('missing entry source identities') }
 	arg_offset := if parts[0] == record_format {
+		7
+	} else if has_inputs {
 		6
 	} else if has_entry {
 		4
@@ -126,13 +133,90 @@ fn decode_request(content string) !Request {
 		project_flags:   decode_project_flags(args[1])!
 		imports:         decode_arguments(args[2])!
 		entry:           if has_entry { args[3] } else { '' }
-		show_test_stats: parts[0] == record_format && args[4] == 'true'
-		compile_inputs:  if parts[0] == record_format {
+		show_test_stats: has_inputs && args[4] == 'true'
+		compile_inputs:  if has_inputs {
 			decode_arguments(args[5])!
 		} else {
 			[]string{}
 		}
+		entry_sources:   if parts[0] == record_format {
+			decode_entry_sources(args[6])!
+		} else {
+			map[string]string{}
+		}
 	}
+}
+
+fn encode_entry_sources(sources map[string]string) string {
+	mut paths := sources.keys()
+	paths.sort()
+	mut args := []string{}
+	for path in paths { args << [path, sources[path]] }
+	return encode_arguments(args)
+}
+
+fn decode_entry_sources(content string) !map[string]string {
+	args := decode_arguments(content)!
+	if args.len % 2 != 0 { return error('invalid entry source identities') }
+	mut sources := map[string]string{}
+	for i := 0; i < args.len; i += 2 {
+		signature := args[i + 1]
+		hash := signature.all_after(':')
+		if !os.is_abs_path(args[i]) || (!signature.starts_with('file:') && !signature.starts_with('dir:'))
+			|| hash.len == 0 || hash.len > 16 || !hash.bytes().all(it.is_hex_digit()) {
+			return error('invalid entry source identity')
+		}
+		sources[args[i]] = signature
+	}
+	return sources
+}
+
+fn entry_source_signature(path string) !string {
+	if os.is_dir(path) {
+		mut files := os.walk_ext(path, '.v')
+		files.sort()
+		mut inputs := []string{}
+		for file in files { inputs << [file, hash_text(os.read_file(file)!)] }
+		return 'dir:${hash_text(encode_arguments(inputs))}'
+	}
+	return 'file:${hash_text(os.read_file(path)!)}'
+}
+
+fn snapshot_entry_sources(vlib string, entry string, args []string, cwd string, modules map[string][]string) !map[string]string {
+	mut sources := map[string]string{}
+	if entry == '' { return sources }
+	mut paths := [os.real_path(entry)]
+	index := args.index('-file-list')
+	if index >= 0 && index + 1 < args.len {
+		for input in args[index + 1].split(',') {
+			paths << os.real_path(if os.is_abs_path(input) {
+				input
+			} else {
+				os.join_path(cwd, input)
+			})
+		}
+	}
+	for _, files in modules {
+		for file in files {
+			path := os.real_path(file)
+			// New source files in a project import can introduce new dependencies.
+			if !path.starts_with(vlib + os.path_separator) { paths << os.dir(path) }
+		}
+	}
+	for path in paths {
+		if path !in sources { sources[path] = entry_source_signature(path)! }
+	}
+	return sources
+}
+
+fn entry_sources_unchanged(request Request) bool {
+	if request.entry == '' { return true }
+	// Older live records cannot identify the source/configuration pair safely.
+	if request.entry_sources.len == 0 { return false }
+	for path, signature in request.entry_sources {
+		if (entry_source_signature(path) or { return false }) != signature { return false }
+	}
+	return true
 }
 
 fn decode_arguments(content string) ![]string {
@@ -188,14 +272,17 @@ pub fn decode_project_flags(content string) ![]FlagGroup {
 // one another's inventories and C-flag variants survive in the same cache.
 // The caller's directory preserves relative compilation inputs during refresh.
 // project_flags preserves project directives without freezing the vlib's flags.
+// Import order is retained because it determines the order of module C directives.
 // entry identifies the original source input for project interface scopes.
+// Its source identities retire configurations after the project input changes.
 // show_test_stats preserves the effective test assertion display mode.
 // Cwd-independent builds share records across projects; required compile inputs
-// and resolved -file-list sources are tracked so their removal retires the obsolete configuration.
+// and explicit -file-list files are tracked so their removal retires the obsolete configuration.
 pub fn record(dir string, vroot string, args []string, is_test bool, sources map[string][]string, project_flags []FlagGroup, entry string, show_test_stats bool) ! {
 	vlib := os.real_path(os.join_path(vroot, 'vlib'))
 	inputs := required_compile_inputs(args, project_flags, os.getwd())
 	cwd := if entry != '' || flags_need_cwd(args, project_flags) { os.getwd() } else { '' }
+	entry_sources := snapshot_entry_sources(vlib, entry, args, cwd, sources)!
 	mut modules := []string{}
 	for _, files in sources {
 		if files.len == 0 { continue }
@@ -215,6 +302,7 @@ pub fn record(dir string, vroot string, args []string, is_test bool, sources map
 			entry:           entry
 			show_test_stats: show_test_stats
 			compile_inputs:  inputs
+			entry_sources:   entry_sources
 		}
 		content := encode_request(request)
 		path := os.join_path(dir, '${record_prefix}${hash_text(content)}')
@@ -321,11 +409,23 @@ fn required_compile_inputs(args []string, project []FlagGroup, cwd string) []str
 	return inputs
 }
 
+fn listed_sources_available(request Request) bool {
+	index := request.args.index('-file-list')
+	if index < 0 { return true }
+	if index + 1 >= request.args.len { return false }
+	for input in request.args[index + 1].split(',') {
+		path := if os.is_abs_path(input) { input } else { os.join_path(request.cwd, input) }
+		if !os.is_file(path) && !os.is_dir(path) { return false }
+	}
+	return true
+}
+
 // collect snapshots vexe's inventory before `v up` replaces the compiler. Old
 // caches predate these records: their header filenames still identify vlib
 // source directories, so warm those modules for the available C compilers in
 // both normal and production mode, for programs and tests. Successfully migrated
 // legacy headers are excluded from subsequent snapshots.
+// Unreadable and unsupported inventory artifacts are skipped, as are stale live sources.
 pub fn collect(vroot string, vexe string) ![]Request {
 	root := root_dir(vroot, vexe)
 	if !os.is_dir(root) {
@@ -334,14 +434,14 @@ pub fn collect(vroot string, vexe string) ![]Request {
 	mut requests := []Request{}
 	mut seen := map[string]int{}
 	mut legacy_headers := []string{}
-	mut configs := os.ls(root)!
+	mut configs := os.ls(root) or { return [] }
 	configs.sort()
 	for config in configs {
 		dir := os.join_path(root, config)
 		if !os.is_dir(dir) {
 			continue
 		}
-		mut entries := os.ls(dir)!
+		mut entries := os.ls(dir) or { continue }
 		entries.sort()
 		mut recorded := map[string]bool{}
 		for entry in entries {
@@ -349,13 +449,13 @@ pub fn collect(vroot string, vexe string) ![]Request {
 				continue
 			}
 			path := os.join_path(dir, entry)
-			request := decode_request(os.read_file(path)!)!
-			if !valid_module(request.module) {
-				return error('invalid module in ${path}')
-			}
+			content := os.read_file(path) or { continue }
+			request := decode_request(content) or { continue }
 			recorded[request.module] = true
 			if request.cwd != '' && !os.is_dir(request.cwd) { continue }
 			if request.compile_inputs.any(!os.is_file(it)) { continue }
+			if !listed_sources_available(request) { continue }
+			if !entry_sources_unchanged(request) { continue }
 			key := encode_request(request)
 			if key !in seen {
 				seen[key] = requests.len
@@ -374,7 +474,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 		}
 		for header in config_headers {
 			path := os.join_path(dir, header)
-			signature := hash_text(os.read_file(path)!)
+			signature := hash_text(os.read_file(path) or { continue })
 			if (os.read_file('${path}.vup_migrated') or { '' }) != signature {
 				legacy_headers << path
 			}
@@ -417,7 +517,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 			for name in modules {
 				mut headers := map[string]string{}
 				for path in legacy_modules[name] {
-					headers[path] = hash_text(os.read_file(path)!)
+					headers[path] = hash_text(os.read_file(path) or { continue })
 				}
 				for is_test in [false, true] {
 					request := Request{ args: flags, module: name, is_test: is_test, legacy_headers: headers }
@@ -441,7 +541,10 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // module with its original flags and working directory. Compiler validation also
 // covers transitive imports, headers, embedded files and compiler changes. Unchanged entries are
 // reused, and each newly compiled module is announced on inherited stdout.
+// Equivalent synthetic import sequences and live entry commands run once per configuration.
+// Progress identifies the record being checked, its compiler flags, production mode and test mode.
 // Records with vanished working directories, required inputs or compilers are skipped.
+// Live entries whose project source identity changed are skipped until rebuilt and recorded.
 // Legacy headers are marked migrated only after successful refreshes of their variants.
 pub fn refresh(vexe string, requests []Request) ! {
 	if requests.len == 0 { return }
@@ -492,11 +595,14 @@ pub fn refresh(vexe string, requests []Request) ! {
 	mut refreshed_entries := map[string]bool{}
 	mut migrated_headers := map[string]string{}
 	mut incomplete_headers := map[string]bool{}
-	for request in requests {
+	mut checked_configurations := 0
+	for index, request in requests {
 		if !valid_module(request.module) { return error('invalid module ${request.module}') }
 		for path, signature in request.legacy_headers { migrated_headers[path] = signature }
 		if (request.cwd != '' && !os.is_dir(request.cwd))
 			|| request.compile_inputs.any(!os.is_file(it))
+			|| !listed_sources_available(request)
+			|| !entry_sources_unchanged(request)
 			|| !compiler_available(os.dir(vexe), request) {
 			for path in request.legacy_headers.keys() { incomplete_headers[path] = true }
 			continue
@@ -510,19 +616,37 @@ pub fn refresh(vexe string, requests []Request) ! {
 		}
 		use_entry := request.entry != '' && os.exists(request.entry)
 		if use_entry {
-			key := encode_request(Request{ ...request, module: 'builtin' })
+			// The current entry supplies directives and imports; their historical
+			// inventory values do not change the live child's command or environment.
+			key := encode_arguments([request.cwd, request.entry, request.show_test_stats.str(),
+				...request.args])
 			if key in refreshed_entries { continue }
 			refreshed_entries[key] = true
 		}
 		name := if request.module == 'builtin' { 'strconv' } else { request.module }
-		mut imports := 'import ${name} as _\n'
+		mut import_names := []string{}
 		for module_name in request.imports {
 			if !valid_module(module_name) { return error('invalid module ${module_name}') }
-			if module_name == name || module_name == 'builtin' { continue }
+			if module_name == 'builtin' { continue }
 			if os.is_dir(os.join_path(os.dir(vexe), 'vlib', module_name.replace('.', os.path_separator))) {
-				imports += 'import ${module_name} as _\n'
+				if module_name !in import_names { import_names << module_name }
 			}
 		}
+		// Builtin is implicit in every child. A builtin-only request still imports
+		// strconv to warm the shared core object, as before.
+		if (request.module != 'builtin' || import_names.len == 0) && name !in import_names {
+			import_names.prepend(name)
+		}
+		// Keep the recorded order, including the target's original position:
+		// imported #flag groups can contain ordered include paths and definitions.
+		if !use_entry {
+			key := encode_arguments([request.cwd, request.is_test.str(), request.show_test_stats.str(),
+				encode_project_flags(request.project_flags), encode_arguments(import_names),
+				...request.args])
+			if key in refreshed_entries { continue }
+			refreshed_entries[key] = true
+		}
+		imports := import_names.map('import ${it} as _\n').join('')
 		source := if use_entry {
 			request.entry
 		} else {
@@ -558,6 +682,10 @@ pub fn refresh(vexe string, requests []Request) ! {
 			environment.delete('VTEST_ONLY_FN')
 		}
 		command << ['-skip-running', '-o', os.join_path(dir, 'refresh'), source]
+		println('> Refreshing module cache [${index + 1}/${requests.len}] (${refresh_configuration(request)}).')
+		// Keep the configuration above its child's cache notices in redirected output too.
+		flush_stdout()
+		checked_configurations++
 		mut code := -1
 		$if windows {
 			if request.show_test_stats {
@@ -602,6 +730,21 @@ pub fn refresh(vexe string, requests []Request) ! {
 			return err
 		}
 	}
+	if checked_configurations > 0 {
+		println('> Module cache refresh complete: ${checked_configurations} build configurations checked.')
+	}
+}
+
+fn refresh_configuration(request Request) string {
+	mode := if '-prod' in request.args { 'production' } else { 'normal' }
+	kind := if request.is_test { 'tests' } else { 'program' }
+	mut flags := []string{}
+	for arg in request.args {
+		text := arg.replace('\r', '\\r').replace('\n', '\\n').replace('\t', '\\t')
+		flags << if text == '' || text.contains(' ') { os.quoted_path(text) } else { text }
+	}
+	options := if flags.len > 0 { flags.join(' ') } else { 'default compiler flags' }
+	return '${mode} ${kind}; ${options}'
 }
 
 fn flags_need_cwd(args []string, project []FlagGroup) bool {

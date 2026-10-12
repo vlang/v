@@ -133,9 +133,11 @@ fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
 			if prod { flags << '-prod' }
 			dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), '${compiler}_${prod}')
 			os.mkdir_all(dir)!
-			cache_refresh.record(dir, root, flags, false, {
-				'sample': [source]
-			}, [], '', false)!
+			for is_test in [false, true] {
+				cache_refresh.record(dir, root, flags, is_test, {
+					'sample': [source]
+				}, [], '', false)!
+			}
 		}
 	}
 	cache_log := os.join_path(root, 'cache_calls.log')
@@ -152,9 +154,19 @@ fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
 		os.write_file(cache_log, '')!
 		result := run_vup(root, home, tool, bin_dir, ...options)!
 		assert result.exit_code == 0, result.output
-		assert result.output.count('Caching module crypto.sample...') == 8, result.output
+		assert result.output.count('Caching module crypto.sample...') == 16, result.output
+		assert result.output.count('> Refreshing module cache [') == 16, result.output
+		assert result.output.contains('> Refreshing module cache [1/16]'), result.output
+		assert result.output.contains('> Refreshing module cache [16/16]'), result.output
+		assert result.output.contains('> Module cache refresh complete: 16 build configurations checked.'), result.output
+		for compiler in ['tcc', 'cc', 'clang', 'gcc'] {
+			assert result.output.contains('(normal program; -cc ${compiler}).\nCaching module crypto.sample...'), result.output
+			assert result.output.contains('(production program; -cc ${compiler} -prod).\nCaching module crypto.sample...'), result.output
+			assert result.output.contains('(normal tests; -cc ${compiler}).\nCaching module crypto.sample...'), result.output
+			assert result.output.contains('(production tests; -cc ${compiler} -prod).\nCaching module crypto.sample...'), result.output
+		}
 		calls := os.read_file(cache_log)!.split_into_lines()
-		assert calls.len == 8, calls.str()
+		assert calls.len == 16, calls.str()
 		for compiler in ['tcc', 'cc', 'clang', 'gcc'] {
 			assert calls.any(it.starts_with('-cc ${compiler} -skip-running ')), calls.str()
 			assert calls.any(it.starts_with('-cc ${compiler} -prod -skip-running ')), calls.str()
@@ -170,7 +182,8 @@ fn test_vup_refreshes_all_cached_compiler_modes_even_when_already_updated() ! {
 	failure := run_vup(root, home, tool, bin_dir)!
 	assert failure.exit_code != 0, failure.output
 	assert failure.output.contains('refreshing cached vlib modules failed'), failure.output
-	assert os.read_file(cache_log)!.split_into_lines().len == 8
+	assert !failure.output.contains('> Module cache refresh complete:'), failure.output
+	assert os.read_file(cache_log)!.split_into_lines().len == 16
 }
 
 fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {

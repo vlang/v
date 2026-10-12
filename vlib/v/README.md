@@ -477,6 +477,10 @@ With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to 
 before compiling a new module object, including during `run`. Ordinary builds and warm builds
 print no cache creation notices; `-silent` suppresses them too.
 This applies to SHA3 and other imported modules with TinyCC too.
+`v up` refreshes cached modules once per equivalent import sequence and build configuration.
+It preserves import order for module C flags and reuses the same records on repeated updates.
+Refresh progress labels each build's compiler flags and normal/production and program/test modes.
+Record indices can jump when builds are grouped or skipped; the final summary counts checked builds.
 If TinyCC cannot compile or link a cached program unit, V retries the original sources
 without module caching before changing C compilers or reporting a compilation failure.
 Programs importing `v.reflection` parse original module sources to preserve source-file

@@ -29,23 +29,21 @@ fn c_field_name(name string) string {
 	return c_name(name)
 }
 
-// field_c_name preserves the external spelling of escaped C aggregate members.
+// field_c_name preserves the external spelling of C aggregate members.
 // V fields still use the normal identifier mangling, even through aliases.
 fn (g &FlatGen) field_c_name(owner types.Type, field string) string {
-	if field.starts_with('@') {
-		base := cgen_unalias_unwrap_all_pointers(owner)
-		if base is types.Struct && base.name.starts_with('C.') {
-			return field[1..]
-		}
+	base := cgen_unalias_unwrap_all_pointers(owner)
+	if base is types.Struct && base.name.starts_with('C.') {
+		return if field.starts_with('@') { field[1..] } else { field }
 	}
 	return g.cname(field)
 }
 
-// init_field_c_name resolves the owner of an initializer designator only
-// when its source spelling contains an escape.
+// init_field_c_name resolves initializer owners so C members retain their spelling.
 fn (g &FlatGen) init_field_c_name(owner string, field string) string {
-	if field.starts_with('@') {
-		return g.field_c_name(g.tc.parse_type(owner), field)
+	base := cgen_unalias_unwrap_all_pointers(g.tc.parse_type(owner))
+	if base is types.Struct && base.name.starts_with('C.') {
+		return if field.starts_with('@') { field[1..] } else { field }
 	}
 	return c_field_name(field)
 }

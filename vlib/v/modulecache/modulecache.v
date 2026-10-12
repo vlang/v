@@ -325,11 +325,12 @@ pub:
 }
 
 // new_manager creates a configuration-scoped persistent module cache manager.
-// Delegated compilers retain the primary VEXE for isolated cache lookup.
+// Delegated compilers retain V3_PRIMARY_VEXE for isolated cache lookup.
 pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values string, version_pseudo_values string) Manager {
 	config_key := hash_text(cache_format + '\n' + salt)
+	primary := os.getenv_opt('V3_PRIMARY_VEXE') or { os.getenv_opt('VEXE') or { os.executable() } }
 	return Manager{
-		dir:                   os.join_path(cache_refresh.root_dir(vroot, os.getenv_opt('VEXE') or { os.executable() }), config_key)
+		dir:                   os.join_path(cache_refresh.root_dir(vroot, primary), config_key)
 		enabled:               enabled
 		salt:                  salt
 		build_pseudo_values:   build_pseudo_values
@@ -7222,8 +7223,8 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 			out.writeln('${wanted}:')
 			section = wanted
 		}
-		for ai := 1; ai < field_params.len; ai++ {
-			out.writeln('\t@[${field_params[ai]}]')
+		if field_params.len > 1 {
+			out.writeln('\t@[${field_params[1..].join('; ')}]')
 		}
 		mut line := '\t${field.value}'
 		if field.typ.len > 0 && field.typ != field.value {
