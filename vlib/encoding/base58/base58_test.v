@@ -74,6 +74,14 @@ fn test_fails() ! {
 		return error(@MOD + '.' + @FN + ': expected decode to fail, got ${z}')
 	}
 
+	// non-ASCII bytes are invalid digits too: they must return an error,
+	// not panic (see https://github.com/vlang/v/issues/30202)
+	if z := decode('ab\xff') {
+		return error(@MOD + '.' + @FN + ': expected decode to fail, got ${z}')
+	} else {
+		assert err.msg() == 'base58.decode_walpha_bytes: invalid base58 digit (255)'
+	}
+
 	// repeating character
 	if abc := new_alphabet('aaaaafghij\$lmnopqrstuvwxyz0123456789_ABCDEFGHIJLMNOPQRSTUV') {
 		return error(@MOD + '.' + @FN + ': expected new_alphabet to fail, got ${abc}')
