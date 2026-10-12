@@ -34,7 +34,12 @@ fn test_missing_bundled_gc_library_reports_setup_failure() {
 	source := os.join_path(root, 'main.v')
 	// The setup check needs actual heap allocation. A literal-only hello program
 	// now omits the collector and succeeds even when the GC library is absent.
-	os.write_file(source, "fn main() { mut values := []string{}\n values << 'hello'\n println(values[0]) }\n")!
+	os.write_file(source, 'fn main() {
+	mut messages := []string{}
+	messages << "hello"
+	println(messages[0])
+}
+')!
 	result := cmdexec.run_in(compiler, ['-nocache', '-cc', 'cc', '-gc', 'boehm', '-no-retry-compilation',
 		source], root)
 	assert result.exit_code != 0
@@ -44,12 +49,6 @@ fn test_missing_bundled_gc_library_reports_setup_failure() {
 	assert result.output.contains('-gc none'), result.output
 	assert !result.output.contains('This is a V compiler bug'), result.output
 	assert !result.output.contains('retrying with'), result.output
-	literal_source := os.join_path(root, 'literal.v')
-	os.write_file(literal_source, "fn main() { println('hello') }\n")!
-	literal := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-cc', 'cc', '-gc', 'boehm',
-		'-no-retry-compilation', 'run', literal_source], root)
-	assert literal.exit_code == 0, literal.output
-	assert literal.output.trim_space() == 'hello', literal.output
 	without_gc := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-cc', 'cc', '-gc', 'none',
 		'-no-retry-compilation', 'run', source], root)
 	assert without_gc.exit_code == 0, without_gc.output
@@ -60,4 +59,14 @@ fn test_missing_bundled_gc_library_reports_setup_failure() {
 	object := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-gc', 'boehm', '-cc', 'cc',
 		'-o', os.join_path(root, 'main.o'), source], root)
 	assert object.exit_code == 0, object.output
+	assert os.is_file(os.join_path(root, 'main.c'))
+	assert os.is_file(os.join_path(root, 'main.o'))
+	// Allocation-free literal output does not need the missing collector.
+	literal_source := os.join_path(root, 'literal.v')
+	os.write_file(literal_source, "fn main() { println('hello') }\n")!
+	assert !os.exists(os.join_path(root, 'thirdparty', 'tcc', 'lib', 'libgc.a'))
+	literal := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-cc', 'cc', '-gc', 'boehm',
+		'-no-retry-compilation', 'run', literal_source], root)
+	assert literal.exit_code == 0, literal.output
+	assert literal.output == 'hello\n', literal.output
 }

@@ -50,6 +50,20 @@ fn test_minimal_literal_output_builtin_keeps_collector_support_files() {
 	}
 }
 
+fn test_minimal_literal_output_builtin_rejects_portable_snapshots() {
+	root := literal_output_gc_test_root()!
+	defer { os.rmdir_all(root) or { panic(err) } }
+	source := os.join_path(root, 'literal_output.v')
+	os.write_file(source, "fn main() { println('hello') }\n")!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('macos', 'arm64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.output_cross_c = true
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.output_cross_c = false
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+}
+
 fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	root := literal_output_gc_test_root()!
 	defer {
@@ -65,6 +79,8 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, true)
 	prefs.target = pref.target_from('linux', 'arm64')!
 	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.target = pref.target_from('windows', 'amd64')!
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 	prefs.target = pref.target_from('macos', 'arm64')!
 	prefs.backend = 'arm64'
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
@@ -197,6 +213,33 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 				assert !output.contains('v_gc_'), mode
 				assert !output.contains('#include'), mode
 			}
+		}
+		// Allocating programs still need the selected collector's startup and
+		// allocation support, even though literal output does not.
+		runtime_source := os.join_path(root, 'runtime_${mode}.v')
+		os.write_file(runtime_source, 'fn main() {
+	mut values := []string{}
+	values << "runtime"
+	println(values[0])
+}
+')!
+		runtime_c := os.join_path(root, 'runtime_${mode}.c')
+		mut runtime_args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'clang']
+		if mode.len > 0 {
+			runtime_args << ['-gc', mode]
+		}
+		runtime_args << ['-o', runtime_c, runtime_source]
+		generated := cmdexec.run_with_timeout(vexe, runtime_args, 120_000)
+		assert generated.exit_code == 0, generated.output
+		output := os.read_file(runtime_c)!
+		assert !output.contains('#include'), mode
+		if mode == 'none' {
+			assert !output.contains('v_gc_init();'), mode
+		} else {
+			assert output.contains('v_gc_init();'), mode
+			assert output.contains('v_gc_malloc'), mode
+			assert output.contains('v_gc_register_displacement'), mode
+			assert output.contains('gc_runtime_init();'), mode
 		}
 	}
 	// Actual allocation keeps the default collector and its runtime reachable.
