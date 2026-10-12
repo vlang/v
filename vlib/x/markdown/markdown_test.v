@@ -376,6 +376,8 @@ fn test_indented_list_item_is_not_nested() {
 	assert to_html('  - first\n    second') == '<ul>\n<li>first\nsecond</li>\n</ul>\n'
 	// A tight list emits no separator between its paragraph and nested list.
 	assert to_html('  - outer\n    - inner') == '<ul>\n<li>outer<ul>\n<li>inner</li>\n</ul>\n</li>\n</ul>\n'
+}
+
 fn test_expand_tabs_preserves_interior_tabs() {
 	// leading tabs expand to the next tab stop; tabs elsewhere are literal
 	// content (notably inside code blocks) and must survive byte for byte.
