@@ -626,6 +626,31 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 	assert t.lock_colliding_main_substitution_type_text('other.Box[map[other.Key]T]', 'other.Box[map[other.Key]Context]', 'arc', [
 		'T',
 	]) == 'other.Box[map[other.Key]main.Context]'
+	// A locked argument makes the spelling qualified, so the decl-module base must be too.
+	assert t.lock_colliding_main_substitution_type_text('&Arc[T]', '&Arc[Context]', 'arc', [
+		'T',
+	]) == '&arc.Arc[main.Context]'
+}
+
+fn test_collision_locked_signature_keeps_interface_and_alias_declaration_modules() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Item'] = StructInfo{}
+	t.structs['callee.Item'] = StructInfo{}
+	t.active_specialization_main_types['Item'] = true
+	tc.interface_names['callee.Reader'] = true
+	tc.interface_generic_params['callee.Reader'] = ['T']
+	tc.type_aliases['callee.Mapper'] = 'fn (T) int'
+	tc.type_alias_generic_params['callee.Mapper'] = ['T']
+	decl := GenericFnDecl{ module: 'callee' }
+	for base in ['Reader', 'Mapper'] {
+		for prefix in ['', '&', '[]', '?'] {
+			assert t.specialized_signature_type_text(decl, '${prefix}${base}[T]', ['Item'], ['T']) == '${prefix}callee.${base}[main.Item]'
+		}
+		assert t.specialized_signature_type_text(decl, 'other.${base}[T]', ['Item'], ['T']) == 'other.${base}[main.Item]'
+		assert t.specialized_signature_type_text(decl, '${base}[T]', ['int'], ['T']).contains('main.') == false
+	}
 }
 
 fn test_generic_fn_type_param_mode_payload_preserves_mutability() {
@@ -942,6 +967,56 @@ fn test_record_monomorph_cache_spec_replaces_existing_entry() {
 	assert spec.args == ['iam.Token']
 	assert spec.decl_key == 'main.f'
 	assert spec.module == 'main'
+}
+
+fn test_serial_monomorph_batches_share_source_reflected_loop_index() {
+	$if !v3_no_parallel ? {
+		path := os.join_path(os.vtmp_dir(), 'monomorph_reflected_loop_${os.getpid()}.v')
+		os.write_file(path, 'struct Item {
+	items []string
+}
+fn count[T](value T) int {
+	mut result := 0
+	\$for field in T.fields {
+		\$if field.typ is []string {
+			for key, text in value.\$(field.name) {
+				result += key + text.len
+			}
+		}
+	}
+	return result
+}
+fn main() {
+	assert count[Item](Item{items: ["a", "bb"]}) == 4
+}
+') or { panic(err) }
+		defer { os.rm(path) or {} }
+		mut p := parser.Parser.new(pref.new_preferences())
+		mut a := p.parse_file(path)
+		mut tc := types.TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_semantics()
+		assert tc.errors.len == 0, tc.errors.str()
+		mut t := new_transformer(mut a, &tc, {
+			'main': true
+		})
+		t.prepare()
+		decl := t.cached_generic_fn_decls()['count'] or { panic('missing count declaration') }
+		args := ['Item']
+		mut emitted := map[string]bool{}
+		mut generated := []string{}
+		assert t.run_scoped_monomorphize_specs([PendingGenericFnSpec{
+			decl: decl
+			args: args
+			key:  generic_fn_spec_key(decl.key, args)
+		}], mut emitted, mut generated)
+		assert t.comptime_reflected_for_ready
+		assert t.comptime_reflected_for_roles['key'] == 1
+		assert t.comptime_reflected_for_roles['text'] == 2
+		worker := t.fork_scoped_batch_worker(a, &tc)
+		assert worker.comptime_reflected_for_ready
+		assert worker.comptime_reflected_for_roles == t.comptime_reflected_for_roles
+	}
 }
 
 fn test_generic_unresolved_function_type_checks_parameters_and_return() {

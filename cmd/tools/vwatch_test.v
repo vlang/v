@@ -1,5 +1,6 @@
 import os
 import time
+import net.http
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
@@ -84,6 +85,146 @@ fn test_watch_run_reloads_on_source_change() {
 
 	assert first_run_error == '', '${first_run_error}\n${output}'
 	assert reload_error == '', '${reload_error}\n${output}'
+}
+
+// For veb apps, `v watch` builds the new version while the old one keeps serving,
+// keeps the old one when a build fails, writes the build status for veb's live
+// reload, and stops the app when it is itself terminated.
+fn test_watch_builds_veb_app_first_and_stops_it_on_sigterm() {
+	$if windows {
+		return
+	}
+	app_dir := os.join_path(tsource_dir, 'vebapp')
+	os.mkdir_all(app_dir)!
+	port := 28000 + os.getpid() % 1000
+	write_veb_app(app_dir, port, 'V1', true)!
+	base := 'http://127.0.0.1:${port}'
+
+	mut process := os.new_process(vexe)
+	process.set_work_folder(vroot)
+	process.set_redirect_stdio()
+	process.use_pgroup = true
+	process.set_args(['watch', '-d', 'veb_livereload', 'run', app_dir])
+	process.run()
+	mut log := []string{}
+
+	mut errors := []string{}
+	if !wait_for_http(base + '/', 'version V1', mut process, mut log) {
+		errors << 'the first build never served `version V1`'
+	} else {
+		// A broken build must leave the old version serving, and say so:
+		time.sleep(1500 * time.millisecond)
+		write_veb_app(app_dir, port, 'V2', false)!
+		if !wait_for_log('build failed; the previous version keeps running', mut process, mut
+			log)
+		{
+			errors << 'no `build failed` message after a broken edit'
+		}
+		if get_text(base + '/') != 'version V1' {
+			errors << 'the old version stopped serving after a failed build'
+		}
+		if !get_text(base + '/status').starts_with('failed\n') {
+			errors << 'the build status was not `failed`: `${get_text(base + '/status')}`'
+		}
+		// Fixing it swaps in the new version:
+		time.sleep(1500 * time.millisecond)
+		write_veb_app(app_dir, port, 'V3', true)!
+		if !wait_for_http(base + '/', 'version V3', mut process, mut log) {
+			errors << 'the fixed build never served `version V3`'
+		}
+		if get_text(base + '/status') != 'ok\n' {
+			errors << 'the build status was not `ok`: `${get_text(base + '/status')}`'
+		}
+	}
+	// SIGTERM to `v watch` itself (not its process group) must stop the app too:
+	process.signal_term()
+	stopwatch := time.new_stopwatch()
+	for get_text(base + '/') != '' && stopwatch.elapsed() < 10 * time.second {
+		time.sleep(watch_poll_interval)
+	}
+	if get_text(base + '/') != '' {
+		errors << 'the app kept serving after `v watch` got SIGTERM'
+	}
+	if process.is_alive() {
+		process.signal_pgkill()
+	}
+	process.wait()
+	drain_process_output(mut process, mut log)
+	process.close()
+	assert errors.len == 0, errors.join('\n') + '\n' + log.join('')
+}
+
+fn write_veb_app(app_dir string, port int, version string, valid bool) ! {
+	broken := if valid { '' } else { '\n\tthis does not compile' }
+	os.write_file(os.join_path(app_dir, 'main.v'), "module main
+
+import os
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (app &App) index(mut ctx Context) veb.Result {${broken}
+	return ctx.text('version ${version}')
+}
+
+pub fn (app &App) status(mut ctx Context) veb.Result {
+	return ctx.text(os.read_file(os.getenv('VEB_LIVERELOAD_STATUS')) or { 'no status' })
+}
+
+fn main() {
+	mut app := &App{}
+	veb.run_at[App, Context](mut app, family: .ip, host: '127.0.0.1', port: ${port}) or { panic(err) }
+}
+")!
+}
+
+fn get_text(url string) string {
+	res := http.get(url) or { return '' }
+	return res.body
+}
+
+fn drain_process_output(mut process os.Process, mut log []string) {
+	for {
+		chunk := process.stderr_read() + process.stdout_read()
+		if chunk == '' {
+			break
+		}
+		log << chunk
+	}
+}
+
+fn wait_for_http(url string, expected string, mut process os.Process, mut log []string) bool {
+	stopwatch := time.new_stopwatch()
+	for stopwatch.elapsed() < watch_ready_timeout {
+		drain_process_output(mut process, mut log)
+		if get_text(url) == expected {
+			return true
+		}
+		if !process.is_alive() {
+			return false
+		}
+		time.sleep(watch_poll_interval)
+	}
+	return false
+}
+
+fn wait_for_log(text string, mut process os.Process, mut log []string) bool {
+	stopwatch := time.new_stopwatch()
+	for stopwatch.elapsed() < watch_ready_timeout {
+		drain_process_output(mut process, mut log)
+		if log.join('').contains(text) {
+			return true
+		}
+		if !process.is_alive() {
+			return false
+		}
+		time.sleep(watch_poll_interval)
+	}
+	return false
 }
 
 fn write_versioned_source(source_path string, version string) ! {
