@@ -485,3 +485,25 @@ fn smtp_tls_test_case(python string, starttls bool, hostname string, verify stri
 	server_result := os.read_file(result_path)!.trim_space()
 	return '${client_state}:${server_result}'
 }
+
+fn test_attachment_filename_crlf_cannot_inject_headers() {
+	// a filename containing CRLF must not break out of the
+	// Content-Disposition header: it is stripped, like strip_crlf does
+	// for other header values.
+	// See https://github.com/vlang/v/issues/30174
+	mail := Mail{
+		from:        'sender@example.com'
+		to:          'receiver@example.com'
+		subject:     'CRLF test'
+		body:        'message body'
+		attachments: [
+			Attachment{
+				filename: 'x"\r\nBcc: victim@example.com\r\nX'
+				bytes:    'data'.bytes()
+			},
+		]
+	}
+	message := mail.message_data()
+	assert !message.contains('\r\nBcc: victim@example.com\r\n')
+	assert message.contains('filename="x"Bcc: victim@example.comX"')
+}
