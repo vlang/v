@@ -9,6 +9,44 @@ import os
 import time
 import crypto.sha256
 
+fn test_portable_executable_keeps_one_signal_runtime_owner_and_host_cache() ! {
+	$if windows || freestanding || vinix {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'portable_runtime_owner_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {\n values := [1, 2]\n assert values.len == 2\n println("runtime owner OK")\n}\n')!
+	cache := os.join_path(root, 'cache')
+	child_env := {
+		'VFLAGS':                 ''
+		'VEXE':                   @VEXE
+		'VTEST_ONLY_FN':          ''
+		'VTMP':                   os.join_path(root, 'vtmp')
+		'V3CACHE':                cache
+		'VTOOLS_CACHE_DIR':       os.join_path(root, 'tools')
+		'VJOBS':                  '1'
+		'V_MACOS_V3_NO_FALLBACK': '1'
+	}
+	for flags in [['-os', 'cross'], []string{}] {
+		for _ in 0 .. 2 {
+			run := cmdexec.run_in_merged_with_env(@VEXE, ['-cc', 'clang', '-gc', 'none',
+				'-no-retry-compilation', ...flags, 'run', source], @VEXEROOT, child_env)
+			assert run.exit_code == 0, run.output
+			assert run.output.trim_space().ends_with('runtime owner OK'), run.output
+			assert !run.output.contains('discarding them and retrying'), run.output
+		}
+		headers := os.walk_ext(cache, '.vh')
+		if flags.len > 0 {
+			assert headers.len == 0, headers.str()
+			assert os.walk_ext(cache, '.o').len == 0
+		} else {
+			assert headers.len > 0, 'ordinary host builds must still publish module interfaces'
+		}
+	}
+}
+
 fn test_incremental_main_inlines_and_deduplicates_literal_declarations() ! {
 	root := os.join_path(os.vtmp_dir(), 'incremental_inline_${os.getpid()}')
 	os.mkdir_all(root)!

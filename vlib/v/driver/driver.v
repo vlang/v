@@ -11875,7 +11875,9 @@ pub fn run(args []string) {
 	// that defines them in every cached translation unit creates duplicate symbols.
 	// Autofree cleanup needs full local-variable metadata from the original bodies.
 	// Dependency inspection also needs bodies that embed resources.
-	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
+	// Portable output embeds its native runtime in one translation unit. Splitting
+	// it into cached objects would also link the separate native runtime owners.
+	cache_candidate_enabled := !prefs.output_cross_c && backend == 'c' && !c_only && !no_cache && !no_skip_unused
 		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
 		&& !print_watched_files && dump_files == ''
 		&& !minimal_literal_output && 'autofree' !in prefs.user_defines
