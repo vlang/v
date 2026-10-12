@@ -37,3 +37,21 @@ fn test_task_non_repeatable_runs_once() {
 	ctx.exec('b')
 	assert counter.runs == ['dep', 'a', 'b']
 }
+
+fn test_repeatable_task_runs_when_requested_directly() {
+	mut counter := &RunCounter{}
+	mut ctx := context()
+	ctx.task(name: 'repeat', repeatable: true, run: counter.record)
+	ctx.exec('repeat')
+	ctx.exec('repeat')
+	assert counter.runs == ['repeat', 'repeat']
+}
+
+fn test_repeatable_task_still_honors_should_run() {
+	mut counter := &RunCounter{}
+	mut ctx := context()
+	ctx.task(name: 'skip', repeatable: true, should_run: |self| false, run: counter.record)
+	ctx.exec('skip')
+	ctx.exec('skip')
+	assert counter.runs.len == 0
+}
