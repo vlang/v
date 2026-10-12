@@ -768,7 +768,9 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	// `internal_linkage` pragma for `-is_o` otherwise gives a local static both a
 	// private definition and an external relocation on macOS.
 	g.writeln('static bool _v3_no_main_initialized = false;')
-	g.writeln('static void _vno_main_init_caller(void) {')
+	// Export wrappers in cached module units share the program's initializer.
+	storage := if g.cache_split { '' } else { 'static ' }
+	g.writeln('${storage}void _vno_main_init_caller(void) {')
 	g.writeln('\tif (_v3_no_main_initialized) { return; }')
 	g.writeln('\t_v3_no_main_initialized = true;')
 	if g.has_builtins {
@@ -16028,6 +16030,25 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 }
 
 fn (mut g FlatGen) gen_lowered_mut_value_storage_arg(arg_id flat.NodeId, arg_node flat.Node, expected types.Type) bool {
+	mut binding := arg_node
+	if arg_node.kind == .prefix && arg_node.op in [.amp, .mul]
+		&& arg_node.children_count == 1 {
+		binding = g.a.child_node(&arg_node, 0)
+	}
+	if binding.kind == .ident {
+		if value_type := g.local_indirect_value_type(binding.value) {
+			clean_value := cgen_unalias_type(value_type)
+			clean_expected := cgen_unalias_type(expected)
+			if clean_value is types.Pointer && clean_expected is types.Pointer
+				&& g.tc.c_type(clean_value) == g.tc.c_type(clean_expected) {
+				// Borrowed loop bindings retain a pointer to the entry slot. A
+				// pointer-valued entry passed as T* needs its stored pointer,
+				// rather than the T** that permits replacing the map entry.
+				g.write('(*${g.local_decl_cname(binding.value)})')
+				return true
+			}
+		}
+	}
 	if arg_node.kind != .prefix || arg_node.op != .mul || arg_node.children_count != 1 {
 		return false
 	}
@@ -16266,7 +16287,8 @@ fn (mut g FlatGen) forward_decls() {
 		g.forward_decl_items(items, mut forwarded_exports)
 		g.bare_builtin_hook_forward_decls()
 		if g.needs_no_main_runtime_init_caller() {
-			g.writeln('static void _vno_main_init_caller(void);')
+			storage := if g.cache_split { '' } else { 'static ' }
+			g.writeln('${storage}void _vno_main_init_caller(void);')
 		}
 		if g.is_shared {
 			g.writeln('void _vcleanup(void);')
@@ -16326,7 +16348,8 @@ fn (mut g FlatGen) forward_decls() {
 	}
 	g.bare_builtin_hook_forward_decls()
 	if g.needs_no_main_runtime_init_caller() {
-		g.writeln('static void _vno_main_init_caller(void);')
+		storage := if g.cache_split { '' } else { 'static ' }
+		g.writeln('${storage}void _vno_main_init_caller(void);')
 	}
 	if g.is_shared {
 		g.writeln('void _vcleanup(void);')
