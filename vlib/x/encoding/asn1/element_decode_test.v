@@ -49,4 +49,25 @@ fn test_decode_rejects_trailing_data() {
 	original_obj := Utf8String.new('hi')!
 	obj := decode(trailing[..trailing.len - 2])!
 	assert obj.equal(original_obj)
+	for suffix in [[u8(0)], [u8(0x05), 0x00]] {
+		mut bytes := trailing[..4].clone()
+		bytes << suffix
+		if _ := decode(bytes) {
+			assert false, 'accepted trailing ${suffix}'
+		}
+		if _ := decode_with_options(bytes, '') {
+			assert false, 'accepted trailing ${suffix} with empty options'
+		}
+	}
+	// The nonempty options path already checks that its wrapper consumes all input.
+	for bytes in [[u8(0xa5), 0x04, 0x0c, 0x02, 0x68, 0x69, 0], [u8(0x85), 0x02, 0x68, 0x69, 0]] {
+		options := if bytes[0] == 0xa5 {
+			'context_specific:5;explicit;inner:12'
+		} else {
+			'context_specific:5;implicit;inner:12'
+		}
+		if _ := decode_with_options(bytes, options) {
+			assert false, 'accepted trailing bytes with ${options}'
+		}
+	}
 }

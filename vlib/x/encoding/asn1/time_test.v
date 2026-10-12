@@ -152,4 +152,9 @@ fn test_generalizedtime_rejects_trailing_garbage() {
 	// the valid form still parses
 	gt := GeneralizedTime.new('20240101000000Z')!
 	assert gt.value == '20240101000000Z'
+	for value in ['20240101000000Z0', '20240101000000Z2024', '20240101000000', '20240101000000z'] {
+		if _ := GeneralizedTime.new(value) {
+			assert false, 'accepted invalid GeneralizedTime ${value}'
+		}
+	}
 }
