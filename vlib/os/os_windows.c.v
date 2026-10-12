@@ -533,6 +533,17 @@ fn execute_shell(cmd string) Result {
 	return unsafe { raw_execute_shell(cmd) }
 }
 
+// win_exec_application_name returns the executable that `CreateProcessW` must start for the
+// absolute path `exe`. With an application name, `CreateProcessW` does not append `.exe` to an
+// extension-less path, so `-o build/prog` (which writes `build/prog.exe`) would otherwise fail
+// with "The system cannot find the file specified".
+fn win_exec_application_name(exe string) string {
+	if file_ext(exe) == '' && is_file(exe + '.exe') {
+		return exe + '.exe'
+	}
+	return exe
+}
+
 // exec starts the specified command with arguments, waits for it to complete, and returns its output.
 pub fn exec(args []string) Result {
 	if args.len == 0 {
@@ -548,7 +559,7 @@ pub fn exec(args []string) Result {
 	mut application_name := ''
 	filename_lc := args[0].to_lower_ascii()
 	if is_abs_path(args[0]) && !filename_lc.ends_with('.bat') && !filename_lc.ends_with('.cmd') {
-		application_name = args[0]
+		application_name = win_exec_application_name(args[0])
 	}
 	return windows_execute_command_line(command_line, application_name, args.join(' '), false)
 }
