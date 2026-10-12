@@ -17169,6 +17169,12 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 	if !g.should_emit_c_extern_decl(cfn) {
 		return false
 	}
+	// These stdlib bindings remain necessary when unrelated modules use headers.
+	if g.c_source_file_is_in_vlib(source_file)
+		&& cfn in ['_Exit', 'flock', 'v_os_fd_write_all', 'v_os_execute_capture_start',
+			'v_os_exec_capture_start', 'v_os_exec_capture_input_start'] {
+		return true
+	}
 	if !g.c_directives_use_system_libc() && !g.target_libc_headers
 		&& !g.files_with_c_includes[source_file] && module_name !in g.mods_with_c_includes
 		&& (g.c_source_file_is_in_vlib(source_file) || g.c_source_file_is_compiler_main(source_file)
