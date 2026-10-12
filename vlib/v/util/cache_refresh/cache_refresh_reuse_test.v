@@ -2,6 +2,64 @@ module cache_refresh
 
 import os
 
+fn test_synthetic_refresh_reports_failed_tinycc_module_objects() ! {
+	$if !linux && !macos {
+		return
+	}
+	vroot := os.dir(@VEXE)
+	if !os.is_executable(os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')) { return }
+	root := os.join_path(os.vtmp_dir(), 'vup_failed_tcc_object_${os.getpid()}')
+	name := 'vup_failed_tcc_object_${os.getpid()}'
+	module_root := os.join_path(vroot, 'vlib', name)
+	os.mkdir_all(module_root)!
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(module_root) or {}
+		os.rmdir_all(root) or {}
+	}
+	// This unused public function is compiled into the module object, but a
+	// whole-program fallback would prune it and hide the missing C definition.
+	os.write_file(os.join_path(module_root, 'value.c.v'), 'module ${name}\n' +
+		'pub fn value() int { return int(C.VUP_REFRESH_MISSING_DEFINE) }\n')!
+	source := os.join_path(root, 'helper.v')
+	os.write_file(source, 'import v.util.cache_refresh\nfn main() {\n' +
+		'cache_refresh.refresh(@VEXE, [cache_refresh.Request{module: "${name}", args: ["-cc", "tcc"]}])!\n}\n')!
+	helper := os.join_path(root, 'helper')
+	build := os.exec([@VEXE, '-nocache', '-gc', 'none', '-o', helper, source])
+	assert build.exit_code == 0, build.output
+	mut environment := os.environ()
+	for variable in ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_FORCE_SOURCE'] {
+		environment.delete(variable)
+	}
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+	environment['VEXE'] = @VEXE
+	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+	mut process := os.new_process(helper)
+	process.set_environment(environment)
+	process.set_redirect_stdio()
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	code := process.code
+	process.close()
+	assert code != 0, output
+	assert output.contains('failed to build cached module object'), output
+	assert output.contains('VUP_REFRESH_MISSING_DEFINE'), output
+	assert !output.contains('> Module cache refresh complete:'), output
+	// An ordinary build still uses TinyCC's source fallback successfully.
+	entry := os.join_path(root, 'main.v')
+	os.write_file(entry, 'import ${name} as _\nfn main() {}\n')!
+	program := os.join_path(root, 'program')
+	mut ordinary := os.new_process(@VEXE)
+	ordinary.set_environment(environment)
+	ordinary.set_redirect_stdio()
+	ordinary.set_args(['-cc', 'tcc', '-o', program, entry])
+	ordinary.wait()
+	ordinary_output := ordinary.stdout_slurp() + ordinary.stderr_slurp()
+	ordinary_code := ordinary.code
+	ordinary.close()
+	assert ordinary_code == 0 && os.is_file(program), ordinary_output
+}
+
 fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches() ! {
 	$if windows {
 		return
