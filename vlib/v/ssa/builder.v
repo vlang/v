@@ -1539,8 +1539,8 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		return true
 	}
 	return name.starts_with('print_backtrace') || name.starts_with('backtrace_')
-		|| name.starts_with('map.') || name in ['map_map_eq', 'map_map_ne']
-		|| name.starts_with('VMapData.')
+		|| name.starts_with('map.')
+		|| name in ['map_map_eq', 'map_map_ne', 'VMapData.free']
 		|| name in ['print_libbacktrace', 'eprint_libbacktrace', 'bsd_backtrace_resolve_atos']
 }
 
@@ -6131,7 +6131,8 @@ fn (b &Builder) fn_is_used(name string) bool {
 	}
 	if name in ['new_map', 'memdup', 'int_str', 'bool_str', 'print', 'println', 'eprint', 'eprintln',
 		'exit', 'arguments', 'tos', 'tos2', 'tos3', 'tos_clone', 'cstring_to_vstring', 'malloc_noscan',
-		'isnil', 'error', 'error_with_code', 'join_path_single'] {
+		'isnil', 'error', 'error_with_code', 'join_path_single', 'DenseArray.has_index',
+		'DenseArray__has_index', 'has_index'] {
 		return true
 	}
 	return false
