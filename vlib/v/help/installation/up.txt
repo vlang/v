@@ -26,6 +26,12 @@ a successful build records the current inputs. Older live records without source
 identities require rebuilding the project once.
 Ownership dispatch preserves V3_PRIMARY_VEXE independently of the helper's VEXE.
 Each module being cached is printed to stdout as `Caching module <name>...`.
+Before each refresh build, progress shows the cache record index and total,
+normal or production mode, program or test mode, and its original compiler flags.
+For example: `> Refreshing module cache [1/8] (production tests; -cc clang -prod).`
+Equivalent builds and unavailable inputs are skipped, so progress indices can jump.
+The final summary reports how many distinct build configurations were checked.
+The same module can be cached separately for different compilers and build modes.
 This also runs when the compiler itself is already updated. A cache refresh
 failure makes the update fail. Older caches without recorded settings are
 refreshed in both modes for the available C compilers, for programs and tests.

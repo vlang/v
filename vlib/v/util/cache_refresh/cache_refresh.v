@@ -542,6 +542,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // covers transitive imports, headers, embedded files and compiler changes. Unchanged entries are
 // reused, and each newly compiled module is announced on inherited stdout.
 // Equivalent synthetic import sequences and live entry commands run once per configuration.
+// Progress identifies the record being checked, its compiler flags, production mode and test mode.
 // Records with vanished working directories, required inputs or compilers are skipped.
 // Live entries whose project source identity changed are skipped until rebuilt and recorded.
 // Legacy headers are marked migrated only after successful refreshes of their variants.
@@ -594,7 +595,8 @@ pub fn refresh(vexe string, requests []Request) ! {
 	mut refreshed_entries := map[string]bool{}
 	mut migrated_headers := map[string]string{}
 	mut incomplete_headers := map[string]bool{}
-	for request in requests {
+	mut checked_configurations := 0
+	for index, request in requests {
 		if !valid_module(request.module) { return error('invalid module ${request.module}') }
 		for path, signature in request.legacy_headers { migrated_headers[path] = signature }
 		if (request.cwd != '' && !os.is_dir(request.cwd))
@@ -680,6 +682,10 @@ pub fn refresh(vexe string, requests []Request) ! {
 			environment.delete('VTEST_ONLY_FN')
 		}
 		command << ['-skip-running', '-o', os.join_path(dir, 'refresh'), source]
+		println('> Refreshing module cache [${index + 1}/${requests.len}] (${refresh_configuration(request)}).')
+		// Keep the configuration above its child's cache notices in redirected output too.
+		flush_stdout()
+		checked_configurations++
 		mut code := -1
 		$if windows {
 			if request.show_test_stats {
@@ -724,6 +730,21 @@ pub fn refresh(vexe string, requests []Request) ! {
 			return err
 		}
 	}
+	if checked_configurations > 0 {
+		println('> Module cache refresh complete: ${checked_configurations} build configurations checked.')
+	}
+}
+
+fn refresh_configuration(request Request) string {
+	mode := if '-prod' in request.args { 'production' } else { 'normal' }
+	kind := if request.is_test { 'tests' } else { 'program' }
+	mut flags := []string{}
+	for arg in request.args {
+		text := arg.replace('\r', '\\r').replace('\n', '\\n').replace('\t', '\\t')
+		flags << if text == '' || text.contains(' ') { os.quoted_path(text) } else { text }
+	}
+	options := if flags.len > 0 { flags.join(' ') } else { 'default compiler flags' }
+	return '${mode} ${kind}; ${options}'
 }
 
 fn flags_need_cwd(args []string, project []FlagGroup) bool {

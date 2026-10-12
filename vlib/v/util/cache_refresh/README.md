@@ -34,6 +34,9 @@ so `v up` can refresh them after replacing the compiler or updating their source
   It excludes linker-only flags, including operands embedded in `-cflags`.
   It validates dependencies, reuses unchanged objects, and
   reports newly cached modules on stdout. It never runs the generated programs.
+  Each refresh build announces its record index and total, compiler flags, production mode,
+  and program/test mode before its module notices. Indices can jump as equivalent builds
+  and unavailable inputs are skipped. A final summary counts the distinct builds checked.
   Removed modules and records with vanished working directories, required compile inputs,
   listed files or directories, or unavailable C compilers are skipped.
   A compilation failure is returned to `v up`.

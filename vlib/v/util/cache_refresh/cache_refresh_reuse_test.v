@@ -200,7 +200,18 @@ fn test_repeated_refresh_keeps_the_inventory_and_module_objects_warm() ! {
 	output := process.stdout_slurp() + process.stderr_slurp()
 	assert process.code == 0, output
 	process.close()
-	counts := output.trim_space().split_into_lines()
+	counts := output.trim_space().split_into_lines().filter(it.len > 0 && it.bytes().all(it.is_digit()))
 	assert counts.len == 3, output
 	assert counts[0] == counts[1] && counts[1] == counts[2], output
+	assert output.count('> Module cache refresh complete: 1 build configurations checked.') == 3, output
+}
+
+fn test_refresh_configuration_identifies_compiler_and_modes() {
+	assert refresh_configuration(Request{ args: ['-cc', 'tcc'] }) == 'normal program; -cc tcc'
+	assert refresh_configuration(Request{ args: ['-cc', 'clang', '-prod'], is_test: true }) == 'production tests; -cc clang -prod'
+	assert refresh_configuration(Request{ args: ['-gc', 'none', '-g', '-cc', '/path with spaces/clang'] }) == 'normal program; -gc none -g -cc ${os.quoted_path('/path with spaces/clang')}'
+	assert refresh_configuration(Request{}) == 'normal program; default compiler flags'
+	flags := refresh_configuration(Request{ args: ['-cflags', '-DFIRST\n-DSECOND\r\t'] })
+	assert !flags.contains('\n') && !flags.contains('\r') && !flags.contains('\t'), flags
+	assert flags.contains('\\n') && flags.contains('\\r') && flags.contains('\\t'), flags
 }
