@@ -96,3 +96,8 @@ https://github.com/vlang/v/blob/master/examples/gg/random_stars.v
 
 A third approach, is to only upload your changing inputs to the GPU, and do all
 the calculations and drawing there in shaders.
+
+On macOS the native Sokol implementation is compiled into cached SDK objects. Generated C uses the
+layouts and declarations in the V bindings, so it does not include Sokol or Apple framework headers.
+Native C `int` fields and callback parameters use `i32`; sizes and field offsets are checked against
+native headers by `vlib/gg/native_abi_test.c.v`. Backend flags are part of the object cache key.

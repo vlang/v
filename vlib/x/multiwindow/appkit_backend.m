@@ -16,6 +16,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "appkit_backend_helpers.h"
+#if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
+#include "../../../thirdparty/sokol/sokol_gfx.h"
+#endif
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 #include "testdata/native_appkit_lifetime_oracle_helpers.h"
 #define V_MULTIWINDOW_TEST_APPKIT_PROCESS_COMMIT UINT64_C(15)

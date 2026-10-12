@@ -32,7 +32,9 @@ fn test_missing_bundled_gc_library_reports_setup_failure() {
 		}
 	}
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, "fn main() { println('hello') }\n")!
+	// The setup check needs actual heap allocation. A literal-only hello program
+	// now omits the collector and succeeds even when the GC library is absent.
+	os.write_file(source, "fn main() { mut values := []string{}\n values << 'hello'\n println(values[0]) }\n")!
 	result := cmdexec.run_in(compiler, ['-nocache', '-cc', 'cc', '-gc', 'boehm', '-no-retry-compilation',
 		source], root)
 	assert result.exit_code != 0
@@ -42,6 +44,12 @@ fn test_missing_bundled_gc_library_reports_setup_failure() {
 	assert result.output.contains('-gc none'), result.output
 	assert !result.output.contains('This is a V compiler bug'), result.output
 	assert !result.output.contains('retrying with'), result.output
+	literal_source := os.join_path(root, 'literal.v')
+	os.write_file(literal_source, "fn main() { println('hello') }\n")!
+	literal := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-cc', 'cc', '-gc', 'boehm',
+		'-no-retry-compilation', 'run', literal_source], root)
+	assert literal.exit_code == 0, literal.output
+	assert literal.output.trim_space() == 'hello', literal.output
 	without_gc := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-cc', 'cc', '-gc', 'none',
 		'-no-retry-compilation', 'run', source], root)
 	assert without_gc.exit_code == 0, without_gc.output

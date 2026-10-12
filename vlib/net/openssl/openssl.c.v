@@ -41,11 +41,15 @@ $if $pkgconfig('openssl') {
 	}
 }
 
-#include <openssl/rand.h> # Please install OpenSSL development headers
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <openssl/x509v3.h>
-#insert "@VEXEROOT/vlib/net/openssl/openssl_compat.h"
+$if macos {
+	#flag @VEXEROOT/vlib/net/openssl/openssl_native.o
+} $else {
+	#include <openssl/rand.h> # Please install OpenSSL development headers
+	#include <openssl/ssl.h>
+	#include <openssl/err.h>
+	#include <openssl/x509v3.h>
+	#insert "@VEXEROOT/vlib/net/openssl/openssl_compat.h"
+}
 
 @[typedef]
 pub struct C.SSL {
@@ -86,13 +90,13 @@ fn C.BIO_set_conn_hostname(b &C.BIO, name &char) i32
 // there are actually 2 macros for BIO_get_ssl
 // fn C.BIO_get_ssl(bp &C.BIO, ssl charptr, c int)
 // fn C.BIO_get_ssl(bp &C.BIO, sslp charptr)
-fn C.BIO_get_ssl(bp &C.BIO, vargs ...voidptr)
+fn C.BIO_get_ssl(bp &C.BIO, ssl &&C.SSL) i32
 
 fn C.BIO_do_connect(b &C.BIO) i32
 
 fn C.BIO_do_handshake(b &C.BIO) i32
 
-fn C.BIO_puts(b &C.BIO, buf &char)
+fn C.BIO_puts(b &C.BIO, const_buf &char) i32
 
 fn C.BIO_read(b &C.BIO, buf voidptr, len i32) i32
 
@@ -100,7 +104,7 @@ fn C.BIO_free_all(a &C.BIO)
 
 fn C.SSL_CTX_new(method &C.SSL_METHOD) &C.SSL_CTX
 
-fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options i32)
+fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options u64) u64
 
 fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth i32)
 
@@ -158,7 +162,7 @@ fn C.ERR_error_string_n(e u64, buf &char, len usize)
 
 fn C.SSL_get_error(ssl &C.SSL, ret i32) i32
 
-fn C.SSL_get_verify_result(ssl &C.SSL) i32
+fn C.SSL_get_verify_result(ssl &C.SSL) i64
 
 fn C.SSL_set_tlsext_host_name(s &C.SSL, name &char) i32
 

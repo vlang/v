@@ -661,3 +661,66 @@ fn test_portable_output_keeps_other_target_linkage_metadata() {
 		assert !selected.should_emit_c_extern_decl_from_file('native_api', source, 'bindings'), flag
 	}
 }
+
+fn test_iovec_layout_ownership_follows_system_headers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['C.iovec'] = []types.StructField{}
+	mut headerless := FlatGen.new()
+	headerless.a = &a
+	headerless.tc = &tc
+	assert !headerless.skip_builtin_struct('C.iovec')
+	headerless.struct_decls()
+	assert headerless.sb.str().contains('struct iovec {')
+	mut headed := FlatGen.new()
+	headed.a = &a
+	headed.tc = &tc
+	headed.add_c_directive('main', '#include <sys/uio.h>', false)
+	assert headed.c_directives_use_system_libc()
+	assert headed.skip_builtin_struct('C.iovec')
+	headed.struct_decls()
+	assert !headed.sb.str().contains('struct iovec {')
+}
+
+fn test_commoncrypto_shipped_binding_preserves_external_header_ownership() {
+	mut g := FlatGen.new()
+	g.compiler_vroot = @VEXEROOT
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	source := os.join_path(@VEXEROOT, 'vlib', 'v', 'gen', 'arm64', 'linker_darwin.c.v')
+	assert g.headerless_vlib_include('<CommonCrypto/CommonDigest.h>', source)
+	assert !g.headerless_vlib_include('<CommonCrypto/CommonDigest.h>', '/project/linker_darwin.c.v')
+	g.set_target_libc_headers(true)
+	assert !g.headerless_vlib_include('<CommonCrypto/CommonDigest.h>', source)
+}
+
+fn test_headerless_vlib_bindings_ignore_native_only_module_header_metadata() {
+	mut g := FlatGen.new()
+	g.compiler_vroot = os.getwd()
+	source := os.join_path(g.compiler_vroot, 'vlib', 'builtin', 'printing.c.v')
+	g.mods_with_c_includes['builtin'] = true
+	assert !g.c_directives_use_system_libc()
+	assert g.should_emit_c_extern_decl_from_file('setvbuf', source, 'builtin')
+	assert g.should_emit_c_extern_decl_from_file('setvbuf', 'vlib/builtin/printing.c.v', 'builtin')
+	assert !g.should_emit_c_extern_decl_from_file('setvbuf', '/project/partial_sdk.c.v', 'builtin')
+	g.files_with_c_includes[source] = true
+	assert !g.should_emit_c_extern_decl_from_file('setvbuf', source, 'builtin')
+	g.files_with_c_includes.delete(source)
+	g.add_c_directive('builtin', '#include <stdio.h>', false)
+	assert !g.should_emit_c_extern_decl_from_file('setvbuf', source, 'builtin')
+}
+
+fn test_relative_vlib_source_keeps_native_layout_ownership() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['C.iovec'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.compiler_vroot = os.getwd()
+	source := 'vlib/v/gen/c/output_nix.c.v'
+	g.register_struct_decl_info('C.iovec', 'C.iovec', 'c', source, flat.Node{})
+	assert g.c_source_file_is_in_vlib(source)
+	assert !g.c_source_file_is_in_vlib('')
+	assert !g.skip_builtin_struct('C.iovec')
+	assert g.should_emit_c_extern_decl_from_file('writev', source, 'c')
+}

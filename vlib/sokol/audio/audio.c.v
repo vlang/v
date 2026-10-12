@@ -15,10 +15,14 @@ $if openbsd {
 // FreeBSD requires the audio/alsa-lib to be installed
 #flag freebsd -I/usr/local/include
 
-@[use_once]
-#define SOKOL_IMPL
+$if macos {
+	#flag darwin @VEXEROOT/thirdparty/sokol/sokol_audio_native.o
+} $else {
+	@[use_once]
+	#define SOKOL_IMPL
+	#include "sokol_audio.h"
+}
 
-#include "sokol_audio.h"
 #flag linux -lasound -lpthread
 #flag darwin -framework AudioToolbox
 #flag windows -lole32

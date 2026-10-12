@@ -2113,7 +2113,11 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			is_mut:         is_v_header_decl || is_trusted_c_decl
 		})
 		p.record_formatter_param_list_end(id, param_list_end)
-		p.pending_export = ''
+		if is_v_header_decl {
+			p.register_pending_export(name)
+		} else {
+			p.pending_export = ''
+		}
 		p.register_pending_noreturn(name, interop_prefix)
 		return id
 	}

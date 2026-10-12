@@ -1,7 +1,10 @@
 module multiwindow
 
 #flag -I @VMODROOT/vlib/x/multiwindow
-#insert "@VMODROOT/vlib/x/multiwindow/native_render_result.h"
+
+$if !darwin {
+	#insert "@VMODROOT/vlib/x/multiwindow/native_render_result.h"
+}
 
 const err_render_target_transient_unavailable = 'multiwindow: render target is transiently unavailable'
 const err_render_target_lost = 'multiwindow: native render target was lost'
@@ -433,7 +436,7 @@ fn native_render_ok(domain NativeRenderDomain, operation NativeRenderOperation, 
 	return native_render_outcome(domain, operation, scope, .ok, 0, 0, '')
 }
 
-@[typedef]
+@[c_extern; typedef]
 struct C.VMultiwindowNativePrimitive {
 mut:
 	valid_mask            u64

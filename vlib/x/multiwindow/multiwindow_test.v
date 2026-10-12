@@ -1834,11 +1834,11 @@ fn test_appkit_readback_capability_requires_ready_metal_renderer() {
 
 fn test_appkit_sharedlive_source_excludes_objc_implementation() {
 	source := multiwindow_source_file('appkit_backend.c.v')
-	assert source.contains('#insert "@VMODROOT/vlib/x/multiwindow/appkit_backend_helpers.h"')
-	assert_source_order(source, '#insert "@VMODROOT/vlib/x/multiwindow/appkit_backend_helpers.h"',
-		'$if sharedlive ? {')
-	assert_source_order(source, '$if sharedlive ? {',
-		'#include "@VMODROOT/vlib/x/multiwindow/appkit_backend.m"')
+	assert source.contains('#flag darwin @VMODROOT/vlib/x/multiwindow/appkit_backend.o')
+	assert !source.contains('#include "@VMODROOT/vlib/x/multiwindow/appkit_backend.m"')
+	assert !source.contains('#insert "@VMODROOT/vlib/x/multiwindow/appkit_backend_helpers.h"')
+	assert_source_order(source, '\$if sharedlive ? {',
+		'#flag darwin @VMODROOT/vlib/x/multiwindow/appkit_backend.o')
 }
 
 fn test_appkit_monitor_refresh_precedes_native_observation_conversion_source_guard() {

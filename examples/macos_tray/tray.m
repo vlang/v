@@ -1,59 +1,68 @@
-// #include <Cocoa/Cocoa.h> // Uncomment for C/C++ intellisense
+#include <Cocoa/Cocoa.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 // See this tutorial to learn about NSApplicationDelegate:
 // https://bumbershootsoft.wordpress.com/2018/11/22/unfiltered-cocoa-completing-the-application/
 
-static NSString *nsstring(string s) {
-  return [[NSString alloc] initWithBytesNoCopy:s.str
-                                        length:s.len
-                                      encoding:NSUTF8StringEncoding
-                                  freeWhenDone:NO];
-}
+typedef void (*tray_click_callback)(void*, int32_t);
+typedef struct tray_info {
+  NSApplication *app;
+  id app_delegate;
+} tray_info;
 
 // Manages the app lifecycle.
 @interface AppDelegate : NSObject <NSApplicationDelegate> {
   NSAutoreleasePool *pool;
   NSApplication *app;
   NSStatusItem *statusItem;    // our button
-  main__TrayParams trayParams; // TrayParams is defined in tray.v
+  NSArray *titles;
+  tray_click_callback on_click;
+  void *user_data;
 }
 @end
 
 @implementation AppDelegate
-- (AppDelegate *)initWithParams:(main__TrayParams)params {
+- (AppDelegate *)initWithTitles:(const char *const *)labels
+                         count:(int32_t)count
+                      callback:(tray_click_callback)callback
+                      userData:(void *)data {
   if (self = [super init]) {
-    trayParams = params;
+    NSMutableArray *items = [NSMutableArray arrayWithCapacity:count];
+    for (int32_t i = 0; i < count; i++) {
+      NSString *title = [NSString stringWithUTF8String:labels[i]];
+      [items addObject:title ? title : @""];
+    }
+    titles = [items copy];
+    on_click = callback;
+    user_data = data;
   }
   return self;
 }
 
-// Called when NSMenuItem is clicked.
+- (void)dealloc {
+  [titles release];
+  [super dealloc];
+}
+
+// Called when NSMenuItem is clicked. V owns the menu items and resolves the index.
 - (void)onAction:(id)sender {
-  struct main__TrayMenuItem *item =
-      (struct main__TrayMenuItem *)[[sender representedObject] pointerValue];
-  if (item) {
-    trayParams.on_click(*item);
+  if (on_click) {
+    on_click(user_data, (int32_t)[sender tag]);
   }
 }
 
 - (NSMenu *)buildMenu {
-  NSMenu *menu = [NSMenu new];
-  [menu autorelease];
+  NSMenu *menu = [[[NSMenu alloc] init] autorelease];
   [menu setAutoenablesItems:NO];
-
-  main__TrayMenuItem *params_items = trayParams.items.data;
-  for (int i = 0; i < trayParams.items.len; i++) {
-    NSString *title = nsstring(params_items[i].text);
-    NSMenuItem *item = [menu addItemWithTitle:title
+  for (NSUInteger i = 0; i < [titles count]; i++) {
+    NSMenuItem *item = [menu addItemWithTitle:[titles objectAtIndex:i]
                                        action:@selector(onAction:)
                                 keyEquivalent:@""];
-    NSValue *representedObject = [NSValue valueWithPointer:(params_items + i)];
-    [item setRepresentedObject:representedObject];
+    [item setTag:(NSInteger)i];
     [item setTarget:self];
-    [item autorelease];
     [item setEnabled:YES];
   }
-
   return menu;
 }
 
@@ -86,9 +95,9 @@ static NSString *nsstring(string s) {
 @end
 
 // Initializes NSApplication and NSStatusItem, aka system tray menu item.
-main__TrayInfo *tray_app_init(main__TrayParams params) {
+void *tray_app_init(const char *const *titles, int32_t count, tray_click_callback callback, void *user_data) {
   NSApplication *app = [NSApplication sharedApplication];
-  AppDelegate *appDelegate = [[AppDelegate alloc] initWithParams:params];
+  AppDelegate *appDelegate = [[AppDelegate alloc] initWithTitles:titles count:count callback:callback userData:user_data];
 
   // Hide icon from the doc.
   [app setActivationPolicy:NSApplicationActivationPolicyProhibited];
@@ -96,24 +105,24 @@ main__TrayInfo *tray_app_init(main__TrayParams params) {
 
   [appDelegate initTrayMenuItem];
 
-  main__TrayInfo *tray_info = malloc(sizeof(main__TrayInfo));
-  tray_info->app = app;
-  tray_info->app_delegate = appDelegate;
-  return tray_info;
+  tray_info *info = malloc(sizeof(tray_info));
+  info->app = app;
+  info->app_delegate = appDelegate;
+  return info;
 }
 
 // Blocks and runs the application.
-void tray_app_run(main__TrayInfo *tray_info) {
-  NSApplication *app = (NSApplication *)(tray_info->app);
+void tray_app_run(void *handle) {
+  NSApplication *app = ((tray_info *)handle)->app;
   [app run];
 }
 
 // Processes a single NSEvent while blocking the thread
 // until there is an event.
-void tray_app_loop(main__TrayInfo *tray_info) {
+void tray_app_loop(void *handle) {
   NSDate *until = [NSDate distantFuture];
 
-  NSApplication *app = (NSApplication *)(tray_info->app);
+  NSApplication *app = ((tray_info *)handle)->app;
   NSEvent *event = [app nextEventMatchingMask:ULONG_MAX
                                     untilDate:until
                                        inMode:@"kCFRunLoopDefaultMode"
@@ -125,7 +134,7 @@ void tray_app_loop(main__TrayInfo *tray_info) {
 }
 
 // Terminates the app.
-void tray_app_exit(main__TrayInfo *tray_info) {
-  NSApplication *app = (NSApplication *)(tray_info->app);
+void tray_app_exit(void *handle) {
+  NSApplication *app = ((tray_info *)handle)->app;
   [app terminate:app];
 }

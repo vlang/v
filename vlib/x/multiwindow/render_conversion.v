@@ -71,10 +71,10 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn (backend &AppKitBackend) logical_to_pixel_rect(id WindowId, x f32, y f32, width f32, height f32) !(int, int, int, int) {
 		$if darwin {
 			index := backend.window_record_index(id) or { return error(err_window_not_found) }
-			mut out_x := 0
-			mut out_y := 0
-			mut out_width := 0
-			mut out_height := 0
+			mut out_x := i32(0)
+			mut out_y := i32(0)
+			mut out_width := i32(0)
+			mut out_height := i32(0)
 			if C.v_multiwindow_appkit_logical_to_pixel_rect(backend.windows[index].state, x, y,
 				width, height, &out_x, &out_y, &out_width, &out_height) == 0 {
 				return error(err_render_conversion_unavailable)

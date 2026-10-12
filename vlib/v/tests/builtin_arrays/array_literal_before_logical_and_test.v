@@ -59,7 +59,10 @@ fn test_empty_array_literal_before_logical_and_in_conditions() {
 		else { 100 }
 	}
 	assert hits == 3
+	// Keep singleton membership to exercise array parsing before logical AND.
+	// vfmt off
 	assert 1 in [1] && flag
+	// vfmt on
 	assert 1 !in [] && flag
 }
 
@@ -98,8 +101,8 @@ fn test_comments_separate_logical_and_after_array_literals() {
 	assert a == [] && // separator
 	flag
 	assert a == [] /* separator */
-	 && flag
+		&& flag
 	fixed := [1]!
 	assert fixed == [1]! /* separator */
-	 && flag
+		&& flag
 }

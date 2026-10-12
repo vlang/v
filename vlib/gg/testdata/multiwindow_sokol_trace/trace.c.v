@@ -2,7 +2,11 @@ module multiwindow_sokol_trace
 
 import sokol.gfx
 
-#insert "@VMODROOT/vlib/gg/testdata/multiwindow_sokol_trace/trace_helpers.h"
+$if macos {
+	#flag @VMODROOT/vlib/gg/testdata/multiwindow_sokol_trace/trace_native.o
+} $else {
+	#insert "@VMODROOT/vlib/gg/testdata/multiwindow_sokol_trace/trace_helpers.h"
+}
 
 fn C.v_multiwindow_trace_install() int
 fn C.v_multiwindow_trace_install_owned() u64

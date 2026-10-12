@@ -25,7 +25,10 @@ fn test_recursive_struct_equality_compares_content_at_every_depth() {
 		assert a != different
 		assert !(a == different)
 		assert [a] == [b]
+		// Exercise membership's recursive equality helper independently of ==.
+		// vfmt off
 		assert a in [b]
+		// vfmt on
 		left_map := {
 			'node': a
 		}

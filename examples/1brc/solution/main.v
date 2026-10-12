@@ -3,10 +3,11 @@ import flag
 import math
 import os
 
-#include <sys/mman.h>
-
 fn C.mmap(addr voidptr, len usize, prot i32, flags i32, fd i32, offset i64) voidptr
 fn C.munmap(addr voidptr, len usize) i32
+
+// MAP_SHARED is 0x01 on the supported POSIX targets.
+const mmap_shared = i32(0x01)
 
 struct MemoryMappedFile {
 	size usize
@@ -25,7 +26,7 @@ fn mmap_file(path string) MemoryMappedFile {
 	// `mmap` returns an untyped mapping pointer; reinterpret it as `&u8` to read the file
 	// bytes. The mapping is owned by this `MemoryMappedFile` and stays valid until `unmap`
 	// calls `munmap`, so the pointer is live for as long as the struct is used.
-	mf.data = unsafe { &u8(C.mmap(nil, mf.size, C.PROT_READ, C.MAP_SHARED, mf.file.fd, 0)) }
+	mf.data = unsafe { &u8(C.mmap(nil, mf.size, C.PROT_READ, mmap_shared, mf.file.fd, 0)) }
 	return mf
 }
 

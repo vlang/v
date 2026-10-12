@@ -98,6 +98,7 @@ fn (mut g FlatGen) emit_coverage_support() {
 	if g.coverage_dir.len == 0 {
 		return
 	}
+	g.emit_c_runtime_declarations(['fopen', 'fclose'])
 	g.write_coverage_metadata()
 	counter_count := if g.coverage_counter_count > 0 { g.coverage_counter_count } else { 1 }
 	compile_tag := '${os.getpid()}_${time.now().unix_micro()}'

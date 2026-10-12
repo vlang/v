@@ -108,6 +108,7 @@ typedef struct FONScontext FONScontext;
 // Constructor and destructor.
 FONS_DEF FONScontext* fonsCreateInternal(FONSparams* params);
 FONS_DEF void fonsDeleteInternal(FONScontext* s);
+FONS_DEF void* fonsGetUserData(FONScontext* s);
 
 FONS_DEF void fonsSetErrorCallback(FONScontext* s, void (*callback)(void* uptr, int error, int val), void* uptr);
 // Returns current atlas size.
@@ -119,6 +120,7 @@ FONS_DEF int fonsResetAtlas(FONScontext* stash, int width, int height);
 
 // Add fonts
 FONS_DEF int fonsGetFontByName(FONScontext* s, const char* name);
+FONS_DEF int fonsAddFontMem(FONScontext* stash, const char* name, unsigned char* data, int dataSize, int freeData);
 FONS_DEF int fonsAddFallbackFont(FONScontext* stash, int base, int fallback);
 
 // State handling
@@ -918,7 +920,7 @@ error:
 	return FONS_INVALID;
 }
 
-int fonsAddFontMem(FONScontext* stash, const char* name, unsigned char* data, int dataSize, int freeData)
+FONS_DEF int fonsAddFontMem(FONScontext* stash, const char* name, unsigned char* data, int dataSize, int freeData)
 {
 	int i, ascent, descent, fh, lineGap;
 	FONSfont* font;
@@ -1579,6 +1581,11 @@ FONS_DEF void fonsLineBounds(FONScontext* stash, float y, float* miny, float* ma
 		*maxy = y + font->descender * (float)isize/10.0f;
 		*miny = *maxy - font->lineh*isize/10.0f;
 	}
+}
+
+FONS_DEF void* fonsGetUserData(FONScontext* stash)
+{
+	return stash->params.userPtr;
 }
 
 FONS_DEF const unsigned char* fonsGetTextureData(FONScontext* stash, int* width, int* height)

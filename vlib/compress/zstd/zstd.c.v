@@ -16,7 +16,11 @@ $if tinyc {
 	#flag -DXXH_NO_PREFETCH
 }
 
-#include "zstd.c"	// msvc can't compile multiple source files, so included
+$if macos {
+	#flag @VEXEROOT/thirdparty/zstd/zstd.o
+} $else {
+	#include "zstd.c" // MSVC requires a single translation unit.
+}
 
 const frame_header_size_max = 18
 const content_size_unknown = u64(-1)
@@ -277,7 +281,14 @@ pub:
 	upper_bound int
 }
 
-fn C.ZSTD_cParam_getBounds(CParameter) Bounds
+@[typedef]
+struct C.ZSTD_bounds {
+	error      usize
+	lowerBound i32
+	upperBound i32
+}
+
+fn C.ZSTD_cParam_getBounds(CParameter) C.ZSTD_bounds
 fn C.ZSTD_CCtx_setParameter(voidptr, CParameter, i32) usize
 fn C.ZSTD_CCtx_setPledgedSrcSize(voidptr, u64) usize
 
@@ -316,7 +327,7 @@ pub enum DParameter {
 	experimental_param6 = 1005
 }
 
-fn C.ZSTD_dParam_getBounds(DParameter) Bounds
+fn C.ZSTD_dParam_getBounds(DParameter) C.ZSTD_bounds
 fn C.ZSTD_DCtx_setParameter(voidptr, DParameter, i32) usize
 fn C.ZSTD_DCtx_reset(voidptr, ResetDirective) usize
 

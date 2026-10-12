@@ -3069,6 +3069,9 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 		}
 	}
 	mut duplicate_parameter_ids := map[int]bool{}
+	// Cached prototypes share the imports of every source file in the module.
+	// Their parameter names have no body in which to shadow those merged aliases.
+	merged_cache_prototype := node.is_mut && is_module_cache_header(tc.cur_file)
 	if !fast_valid_build {
 		mut parameter_names := map[string]bool{}
 		for pi in 0 .. node.children_count {
@@ -3102,17 +3105,21 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 				}
 				tc.check_reserved_parameter_name(param_id)
 				if param.op == .dot {
-					tc.check_import_symbol_conflict_at(param_id, param.value, tc.fn_receiver_param_diagnostic_pos(node, param.value))
+					if !merged_cache_prototype {
+						tc.check_import_symbol_conflict_at(param_id, param.value, tc.fn_receiver_param_diagnostic_pos(node, param.value))
+					}
 					tc.check_generated_parameter_name(param_id, param, tc.fn_receiver_param_diagnostic_pos(node, param.value))
 				} else {
-					tc.check_import_symbol_conflict(param_id, param.value)
+					if !merged_cache_prototype {
+						tc.check_import_symbol_conflict(param_id, param.value)
+					}
 					tc.check_generated_parameter_name(param_id, param, tc.node_value_diagnostic_pos(param_id))
 				}
-				tc.check_module_name_conflict(param_id, param.value)
+				if !merged_cache_prototype { tc.check_module_name_conflict(param_id, param.value) }
 			}
 		}
 	}
-	if !fast_valid_build && !node.value.contains('.') && tc.has_active_import(node.value) {
+	if !fast_valid_build && !merged_cache_prototype && !node.value.contains('.') && tc.has_active_import(node.value) {
 		tc.record_error_at(.duplicate_decl, 'duplicate of an import symbol `${node.value}`', flat.NodeId(fn_idx), tc.fn_declaration_diagnostic_pos(node))
 	}
 	for pi in 0 .. node.children_count {

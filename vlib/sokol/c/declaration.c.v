@@ -105,57 +105,69 @@ $if emscripten ? {
 
 #flag linux -ldl
 
-// To allow for thirdparty initializing window / acceleration contexts
-// but still be able to use sokol.gfx e.g. SDL+sokol_gfx
-$if !no_sokol_app ? {
-	$if linux && sokol_wayland ? {
-		// Enable Wayland on Linux (when explicitly enabled with -d sokol_wayland)
-		#define SOKOL_WAYLAND
-		#flag -I@VEXEROOT/thirdparty/sokol
-	} $else $if linux {
-		// Explicitly disable Wayland on Linux when not using sokol_wayland
-		#define SOKOL_DISABLE_WAYLAND
-		// Force EGL instead of GLX so that eglSwapBuffers provides consistent
-		// vsync pacing on both native X11 and XWayland sessions.
-		#define SOKOL_FORCE_EGL
+// On macOS the native implementation is compiled and cached independently.
+// The V bindings below provide the ABI declarations used by generated C.
+$if macos {
+	$if no_sokol_app ? {
+		#flag darwin -DV_SOKOL_NO_APP
+	}
+	$if sharedlive ? {
+		#flag darwin -DV_SOKOL_SHARED_LIVE
+	}
+	#flag darwin @VEXEROOT/thirdparty/sokol/sokol_native.o
+} $else {
+	// To allow for thirdparty initializing window / acceleration contexts
+	// but still be able to use sokol.gfx e.g. SDL+sokol_gfx
+	$if !no_sokol_app ? {
+		$if linux && sokol_wayland ? {
+			// Enable Wayland on Linux (when explicitly enabled with -d sokol_wayland)
+			#define SOKOL_WAYLAND
+			#flag -I@VEXEROOT/thirdparty/sokol
+		} $else $if linux {
+			// Explicitly disable Wayland on Linux when not using sokol_wayland
+			#define SOKOL_DISABLE_WAYLAND
+			// Force EGL instead of GLX so that eglSwapBuffers provides consistent
+			// vsync pacing on both native X11 and XWayland sessions.
+			#define SOKOL_FORCE_EGL
+		}
+
+		$if macos {
+			$if sharedlive ? {
+			} $else {
+				// The live-reload dylib should reuse the host app's sokol_app symbols on macOS.
+				#define SOKOL_APP_IMPL
+			}
+		} $else $if windows {
+			$if sharedlive ? {
+			} $else {
+				// On Windows, the live-reload DLL links back to the host executable's
+				// import library, so it should not embed its own sokol_app backend.
+				#define SOKOL_APP_IMPL
+			}
+		} $else {
+			#define SOKOL_APP_IMPL
+		}
+
+		@[use_once]
+		#include "sokol_app.h"
 	}
 
-	$if macos {
-		$if sharedlive ? {
-		} $else {
-			// The live-reload dylib should reuse the host app's sokol_app symbols on macOS.
-			#define SOKOL_APP_IMPL
-		}
-	} $else $if windows {
-		$if sharedlive ? {
-		} $else {
-			// On Windows, the live-reload DLL links back to the host executable's
-			// import library, so it should not embed its own sokol_app backend.
-			#define SOKOL_APP_IMPL
-		}
+	$if windows && sharedlive ? {
 	} $else {
-		#define SOKOL_APP_IMPL
+		@[use_once]
+		#define SOKOL_GFX_IMPL
 	}
 
-	@[use_once]
-	#include "sokol_app.h"
+	#define SOKOL_NO_DEPRECATED
+	#include "sokol_gfx.h"
+
+	$if windows && sharedlive ? {
+	} $else {
+		@[use_once]
+		#define SOKOL_IMPL
+	}
+
+	#include "util/sokol_gl.h"
+
+	#include "sokol_v.post.h"
 }
-
-$if windows && sharedlive ? {
-} $else {
-	@[use_once]
-	#define SOKOL_GFX_IMPL
-}
-
-#define SOKOL_NO_DEPRECATED
-#include "sokol_gfx.h"
-
-$if windows && sharedlive ? {
-} $else {
-	@[use_once]
-	#define SOKOL_IMPL
-}
-
-#include "util/sokol_gl.h"
-
-#include "sokol_v.post.h"

@@ -521,3 +521,7 @@ enforces the deadline, reaps child processes, and checks the final cleanup JSON.
 Real RandR or Wayland output removal/reconnection and external portal-parent
 consumption by another toolkit or desktop portal require an interactive desktop
 session and remain manual integration checks.
+
+On macOS the AppKit backend is linked from a cached native object. Its C ABI records use `i32` for
+native C `int` values, including output buffers. Generated C does not include AppKit or Metal
+headers; `appkit_abi_test.c.v` validates native record sizes and field offsets against SDK bindings.

@@ -1,6 +1,10 @@
 module sapp
 
-#define SOKOL_VALIDATE_NON_FATAL 1
+$if macos {
+	#flag darwin -DSOKOL_VALIDATE_NON_FATAL=1
+} $else {
+	#define SOKOL_VALIDATE_NON_FATAL 1
+}
 
 // returns true after sokol-app has been initialized
 fn C.sapp_isvalid() bool
@@ -165,4 +169,4 @@ fn C.sapp_x11_get_display() voidptr
 fn C.sapp_android_get_native_activity() voidptr
 
 // V-specific: read RGBA pixels from the active backend framebuffer
-fn C.v_sapp_read_rgba_pixels(x int, y int, width int, height int, pixels charptr) int
+fn C.v_sapp_read_rgba_pixels(x i32, y i32, width i32, height i32, pixels charptr) i32

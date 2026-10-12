@@ -2713,6 +2713,7 @@ fn (g &FlatGen) configure_c_extern_scan_worker(mut worker FlatGen) {
 	worker.files_with_c_includes = g.files_with_c_includes.clone()
 	worker.files_with_c_postincludes = g.files_with_c_postincludes.clone()
 	worker.files_linking_c_sources = g.files_linking_c_sources.clone()
+	worker.files_linking_c_libraries = g.files_linking_c_libraries.clone()
 	worker.mods_with_c_libs = g.mods_with_c_libs.clone()
 	worker.mods_with_c_includes = g.mods_with_c_includes.clone()
 	worker.c_extern_forced_decls = g.c_extern_forced_decls.clone()
@@ -2870,6 +2871,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		files_with_c_includes:              g.files_with_c_includes
 		files_with_c_postincludes:          g.files_with_c_postincludes
 		files_linking_c_sources:            g.files_linking_c_sources
+		files_linking_c_libraries:          g.files_linking_c_libraries
 		mods_with_c_libs:                   g.mods_with_c_libs
 		mods_with_c_includes:               g.mods_with_c_includes
 		inlined_c_active_macros:            g.inlined_c_active_macros

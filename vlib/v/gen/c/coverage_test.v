@@ -2,6 +2,9 @@ module c
 
 import os
 import v.flat
+import v.parser
+import v.pref
+import v.types
 import v.token
 
 fn test_coverage_json_escape_handles_every_control_character() {
@@ -94,4 +97,60 @@ fn test_windows_statistics_and_coverage_clock_avoids_direct_tick_count_import() 
 	assert generated.contains('QueryPerformanceCounter(&counter)')
 	assert generated.contains('counter.QuadPart / frequency.QuadPart')
 	assert generated.contains('counter.QuadPart % frequency.QuadPart')
+}
+
+fn test_instrumentation_file_calls_use_bodyless_bindings_without_source_calls() {
+	root := os.join_path(os.vtmp_dir(), 'instrumentation_bindings_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'bindings.c.v')
+	os.write_file(source, 'module builtin
+struct C.FILE {}
+fn C.fopen(const_filename &char, const_mode &char) &C.FILE
+fn C.fclose(stream &C.FILE) i32
+fn C.mach_absolute_time() u64
+fn C.mach_timebase_info(info voidptr) i32
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(source)
+	assert p.diagnostics.len == 0
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	for mode in ['coverage', 'profile-file', 'profile-stdout'] {
+		mut g := FlatGen.new()
+		g.a = &a
+		g.tc = &tc
+		g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+		if mode == 'coverage' {
+			g.set_coverage(os.join_path(root, 'counters'), '')
+			g.emit_coverage_support()
+		} else {
+			g.set_profile(if mode == 'profile-file' {
+				os.join_path(root, 'profile.txt')
+			} else {
+				'-'
+			}, false, [])
+			g.gen_profile_support()
+		}
+		generated := g.sb.str()
+		if mode == 'profile-stdout' {
+			assert !generated.contains('fopen('), generated
+			assert !generated.contains('fclose('), generated
+		} else {
+			declaration := 'FILE* fopen(const char* const_filename, const char* const_mode);'
+			assert generated.contains(declaration), generated
+			assert generated.contains('i32 fclose(FILE* stream);'), generated
+			body := if mode == 'coverage' {
+				'static void v3_write_coverage_stats('
+			} else {
+				'void vprint_profile_stats('
+			}
+			assert generated.index(declaration)? < generated.index(body)?, generated
+		}
+		if mode != 'coverage' {
+			assert generated.contains('i32 mach_timebase_info(void* info);'), generated
+			assert !generated.contains('extern int mach_timebase_info(mach_timebase_info_data_t*);'), generated
+		}
+		assert !generated.contains('#include'), generated
+	}
 }

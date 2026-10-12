@@ -7,7 +7,11 @@ $if linux {
 	#flag -ldl
 }
 
-#insert "@VEXEROOT/vlib/compress/brotli/brotli_dl.h"
+$if macos {
+	#flag @VEXEROOT/vlib/compress/brotli/brotli_dl.o
+} $else {
+	#insert "@VEXEROOT/vlib/compress/brotli/brotli_dl.h"
+}
 
 fn C.v_brotli_open(const_name &char) voidptr
 fn C.v_brotli_sym(handle voidptr, const_name &char) voidptr

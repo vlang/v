@@ -6,6 +6,10 @@
 #include <stddef.h>
 #include <string.h>
 
+#ifndef V_MULTIWINDOW_TRACE_API
+#define V_MULTIWINDOW_TRACE_API static
+#endif
+
 #define V_MULTIWINDOW_TRACE_CAPACITY 16384
 #define V_MULTIWINDOW_TYPED_TRACE_CAPACITY 256
 
@@ -331,7 +335,7 @@ static void v_multiwindow_trace_commit(void* user_data) {
     (void)user_data;
 }
 
-static uint64_t v_multiwindow_trace_install_owned(void) {
+V_MULTIWINDOW_TRACE_API uint64_t v_multiwindow_trace_install_owned(void) {
 #if defined(SOKOL_TRACE_HOOKS)
     if (v_multiwindow_trace_installed) {
         return UINT64_C(0);
@@ -375,11 +379,11 @@ static uint64_t v_multiwindow_trace_install_owned(void) {
 #endif
 }
 
-static int v_multiwindow_trace_install(void) {
+V_MULTIWINDOW_TRACE_API int v_multiwindow_trace_install(void) {
     return v_multiwindow_trace_install_owned() != UINT64_C(0) ? 1 : 0;
 }
 
-static int v_multiwindow_trace_uninstall_owned(uint64_t generation) {
+V_MULTIWINDOW_TRACE_API int v_multiwindow_trace_uninstall_owned(uint64_t generation) {
 #if defined(SOKOL_TRACE_HOOKS)
     if (!v_multiwindow_trace_installed || generation == UINT64_C(0) ||
         generation != v_multiwindow_trace_active_generation) {
@@ -395,7 +399,7 @@ static int v_multiwindow_trace_uninstall_owned(uint64_t generation) {
 #endif
 }
 
-static int v_multiwindow_trace_logical_release_owned(uint64_t generation) {
+V_MULTIWINDOW_TRACE_API int v_multiwindow_trace_logical_release_owned(uint64_t generation) {
     if (!v_multiwindow_trace_installed || generation == UINT64_C(0) ||
         generation != v_multiwindow_trace_active_generation) {
         return 0;
@@ -405,14 +409,14 @@ static int v_multiwindow_trace_logical_release_owned(uint64_t generation) {
     return 1;
 }
 
-static void v_multiwindow_trace_uninstall(void) {
+V_MULTIWINDOW_TRACE_API void v_multiwindow_trace_uninstall(void) {
     if (v_multiwindow_trace_installed) {
         (void)v_multiwindow_trace_uninstall_owned(
             v_multiwindow_trace_active_generation);
     }
 }
 
-static void v_multiwindow_trace_reset(void) {
+V_MULTIWINDOW_TRACE_API void v_multiwindow_trace_reset(void) {
     v_multiwindow_trace_length = 0;
     v_multiwindow_trace_buffer[0] = '\0';
     v_multiwindow_typed_trace_count = 0;
@@ -420,51 +424,51 @@ static void v_multiwindow_trace_reset(void) {
     memset(v_multiwindow_typed_trace, 0, sizeof(v_multiwindow_typed_trace));
 }
 
-static const char* v_multiwindow_trace_snapshot(void) {
+V_MULTIWINDOW_TRACE_API const char* v_multiwindow_trace_snapshot(void) {
     return v_multiwindow_trace_buffer;
 }
 
-static size_t v_multiwindow_typed_trace_snapshot_count(void) {
+V_MULTIWINDOW_TRACE_API size_t v_multiwindow_typed_trace_snapshot_count(void) {
     return v_multiwindow_typed_trace_count;
 }
 
-static int v_multiwindow_typed_trace_snapshot_overflow(void) {
+V_MULTIWINDOW_TRACE_API int v_multiwindow_typed_trace_snapshot_overflow(void) {
     return v_multiwindow_typed_trace_overflow ? 1 : 0;
 }
 
-static uint64_t v_multiwindow_trace_active_install_generation(void) {
+V_MULTIWINDOW_TRACE_API uint64_t v_multiwindow_trace_active_install_generation(void) {
     return v_multiwindow_trace_active_generation;
 }
 
-static int v_multiwindow_typed_trace_snapshot_operation(size_t index) {
+V_MULTIWINDOW_TRACE_API int v_multiwindow_typed_trace_snapshot_operation(size_t index) {
     if (index >= v_multiwindow_typed_trace_count) {
         return V_MULTIWINDOW_TRACE_OPERATION_INVALID;
     }
     return v_multiwindow_typed_trace[index].operation;
 }
 
-static uint32_t v_multiwindow_typed_trace_snapshot_identity(size_t index) {
+V_MULTIWINDOW_TRACE_API uint32_t v_multiwindow_typed_trace_snapshot_identity(size_t index) {
     if (index >= v_multiwindow_typed_trace_count) {
         return 0;
     }
     return v_multiwindow_typed_trace[index].identity;
 }
 
-static int64_t v_multiwindow_typed_trace_snapshot_value(size_t index) {
+V_MULTIWINDOW_TRACE_API int64_t v_multiwindow_typed_trace_snapshot_value(size_t index) {
     if (index >= v_multiwindow_typed_trace_count) {
         return 0;
     }
     return v_multiwindow_typed_trace[index].value;
 }
 
-static uint64_t v_multiwindow_typed_trace_snapshot_sequence(size_t index) {
+V_MULTIWINDOW_TRACE_API uint64_t v_multiwindow_typed_trace_snapshot_sequence(size_t index) {
     if (index >= v_multiwindow_typed_trace_count) {
         return 0;
     }
     return v_multiwindow_typed_trace[index].sequence;
 }
 
-static uint64_t v_multiwindow_typed_trace_snapshot_swapchain_identity(
+V_MULTIWINDOW_TRACE_API uint64_t v_multiwindow_typed_trace_snapshot_swapchain_identity(
     size_t index) {
     if (index >= v_multiwindow_typed_trace_count) {
         return UINT64_C(0);
@@ -472,27 +476,27 @@ static uint64_t v_multiwindow_typed_trace_snapshot_swapchain_identity(
     return v_multiwindow_typed_trace[index].swapchain_identity;
 }
 
-static int v_multiwindow_typed_trace_snapshot_width(size_t index) {
+V_MULTIWINDOW_TRACE_API int v_multiwindow_typed_trace_snapshot_width(size_t index) {
     return index < v_multiwindow_typed_trace_count ?
         v_multiwindow_typed_trace[index].width : 0;
 }
 
-static int v_multiwindow_typed_trace_snapshot_height(size_t index) {
+V_MULTIWINDOW_TRACE_API int v_multiwindow_typed_trace_snapshot_height(size_t index) {
     return index < v_multiwindow_typed_trace_count ?
         v_multiwindow_typed_trace[index].height : 0;
 }
 
-static int v_multiwindow_typed_trace_snapshot_sample_count(size_t index) {
+V_MULTIWINDOW_TRACE_API int v_multiwindow_typed_trace_snapshot_sample_count(size_t index) {
     return index < v_multiwindow_typed_trace_count ?
         v_multiwindow_typed_trace[index].sample_count : 0;
 }
 
-static int v_multiwindow_typed_trace_snapshot_color_format(size_t index) {
+V_MULTIWINDOW_TRACE_API int v_multiwindow_typed_trace_snapshot_color_format(size_t index) {
     return index < v_multiwindow_typed_trace_count ?
         v_multiwindow_typed_trace[index].color_format : 0;
 }
 
-static int v_multiwindow_typed_trace_snapshot_depth_format(size_t index) {
+V_MULTIWINDOW_TRACE_API int v_multiwindow_typed_trace_snapshot_depth_format(size_t index) {
     return index < v_multiwindow_typed_trace_count ?
         v_multiwindow_typed_trace[index].depth_format : 0;
 }

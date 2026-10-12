@@ -405,3 +405,6 @@ https://github.com/vlang/v/blob/master/examples/gg/random_stars.v
 
 A third approach, is to only upload your changing inputs to the GPU, and do all
 the calculations and drawing there in shaders.
+On macOS native AppKit rendering is linked from a cached Objective-C object. Its interface uses
+explicit C ABI records for colors, text settings, byte strings, sizes, and image handles. Generated
+programs keep their V data layouts and do not need to include Apple framework headers.

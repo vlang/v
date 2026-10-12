@@ -22,7 +22,7 @@ fn check_cached_header_source(source string, extension string, parallel bool, sc
 			os.unsetenv('VJOBS')
 		}
 	}
-	root := os.join_path(os.vtmp_dir(), 'v3 header semantics ${os.getpid()}_${time.now().unix_nano()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_module_cache_header_semantics_${os.getpid()}_${time.now().unix_nano()}')
 	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or { panic(err) }
@@ -92,6 +92,17 @@ fn stop(unused int)
 			assert result.definitions.len == min_parallel_check_items + 8
 			assert result.errors.len == 0, result.errors.str()
 			assert result.notices.len == 0, result.notices.str()
+		}
+	}
+}
+
+fn test_cached_prototype_names_do_not_shadow_merged_imports() {
+	for parallel in [false, true] {
+		for scoped in [false, true] {
+			prototype := check_cached_header_source('import math.bits\npub fn prime(bits int) int\n', 'vh', parallel, scoped)!
+			assert prototype.errors.len == 0, prototype.errors.str()
+			definition := check_cached_header_source('import math.bits\npub fn prime(bits int) int { return bits }\n', 'vh', parallel, scoped)!
+			assert definition.errors.any(it.msg == 'duplicate of an import symbol `bits`'), definition.errors.str()
 		}
 	}
 }

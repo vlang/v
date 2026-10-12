@@ -1,7 +1,8 @@
 #include <stdint.h>
 #include <Cocoa/Cocoa.h>
+#include "gg_darwin_abi.h"
 
-static uint32_t gg_color_key(gg__Color c) {
+static uint32_t gg_color_key(v_gg_color c) {
 	return ((uint32_t)c.r)
 		| ((uint32_t)c.g << 8)
 		| ((uint32_t)c.b << 16)
@@ -15,7 +16,7 @@ static CGFloat gg_color_channel(uint8_t value) {
 static NSMutableDictionary<NSNumber*, NSColor*>* g_ns_color_cache = nil;
 static NSMutableDictionary<NSNumber*, id>* g_cg_color_cache = nil;
 
-NSColor* nscolor(gg__Color c) {
+NSColor* nscolor(v_gg_color c) {
 	if (g_ns_color_cache == nil) {
 		g_ns_color_cache = [[NSMutableDictionary alloc] init];
 	}
@@ -32,7 +33,7 @@ NSColor* nscolor(gg__Color c) {
 	return color;
 }
 
-static CGColorRef cgcolor(gg__Color c) {
+static CGColorRef cgcolor(v_gg_color c) {
 	if (g_cg_color_cache == nil) {
 		g_cg_color_cache = [[NSMutableDictionary alloc] init];
 	}
@@ -58,7 +59,7 @@ static CGContextRef current_cg_context() {
 	return [context CGContext];
 }
 
-CFStringRef cfstring(string s) {
+CFStringRef cfstring(v_gg_string s) {
 	return CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
 	                                     (const UInt8*)s.str,
 	                                     s.len,
@@ -67,7 +68,7 @@ CFStringRef cfstring(string s) {
 	                                     kCFAllocatorNull);
 }
 
-NSString* nsstring(string s) {
+NSString* nsstring(v_gg_string s) {
 	CFStringRef cf = cfstring(s);
 	if (cf == nil) {
 		return @"";
@@ -75,7 +76,7 @@ NSString* nsstring(string s) {
 	return CFBridgingRelease(cf);
 }
 
-gg__Size gg_get_screen_size() {
+v_gg_size gg_get_screen_size() {
 	NSScreen *currentScreen = nil;
 	NSWindow *mainWindow = [NSApp mainWindow];
 	// 1. Try screen containing the main window
@@ -113,7 +114,7 @@ gg__Size gg_get_screen_size() {
 	// Use NSDeviceSize to get pixel dimensions
 	NSSize displayPixelSize = [[description objectForKey:NSDeviceSize] sizeValue];
 	// Create the V gg.Size object
-	gg__Size res;
+	v_gg_size res;
 	res.width = displayPixelSize.width;
 	res.height = displayPixelSize.height;
 	return res;
@@ -159,7 +160,7 @@ void gg_set_force_mono(int on) { g_gg_force_mono = on; }
 // persist for the process; bounded by the number of distinct combinations.
 static NSMutableDictionary<NSNumber*, NSDictionary*>* g_text_attr_cache = nil;
 
-static NSDictionary* darwin_text_attrs(gg__TextCfg cfg) {
+static NSDictionary* darwin_text_attrs(v_gg_text_cfg cfg) {
 	uint64_t key = ((uint64_t)cfg.color.r)
 		| ((uint64_t)cfg.color.g << 8)
 		| ((uint64_t)cfg.color.b << 16)
@@ -200,7 +201,7 @@ static NSDictionary* darwin_text_attrs(gg__TextCfg cfg) {
 	return attr;
 }
 
-void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
+void darwin_draw_string(int x, int y, v_gg_string s, v_gg_text_cfg cfg) {
 	NSDictionary* attr = darwin_text_attrs(cfg);
 	CFStringRef cf = cfstring(s);
 	if (cf == nil) {
@@ -232,7 +233,7 @@ static NSDictionary* darwin_measure_attrs(void) {
 	return attrs;
 }
 
-static int darwin_text_width_with_attrs(string s, NSDictionary* attrs) {
+static int darwin_text_width_with_attrs(v_gg_string s, NSDictionary* attrs) {
 	// println('text_width "${s}" len=${s.len}')
 	NSString* n = @"";
 	CFStringRef cf = nil;
@@ -254,15 +255,15 @@ static int darwin_text_width_with_attrs(string s, NSDictionary* attrs) {
 	return (int)(ceil(size.width));
 }
 
-int darwin_text_width(string s) {
+int darwin_text_width(v_gg_string s) {
 	return darwin_text_width_with_attrs(s, darwin_measure_attrs());
 }
 
-int darwin_text_width_with_cfg(string s, gg__TextCfg cfg) {
+int darwin_text_width_with_cfg(v_gg_string s, v_gg_text_cfg cfg) {
 	return darwin_text_width_with_attrs(s, darwin_text_attrs(cfg));
 }
 
-void darwin_draw_rect(float x, float y, float width, float height, gg__Color c) {
+void darwin_draw_rect(float x, float y, float width, float height, v_gg_color c) {
 	if (width <= 0 || height <= 0) {
 		return;
 	}
@@ -306,30 +307,29 @@ void darwin_window_refresh() {
 	//[[NSGraphicsContext currentContext] flushGraphics];
 }
 
-gg__Image darwin_create_image(string path_) {
+v_gg_image darwin_create_image(v_gg_string path_) {
 	// file = file.trim_space()
 	NSString* path = nsstring(path_);
 	NSImage* img = [[NSImage alloc] initWithContentsOfFile:path];
 	if (img == 0) {
 	}
 	NSSize size = [img size];
-	gg__Image res;
+	v_gg_image res = {0};
 	res.width = size.width;
 	res.height = size.height;
-	res.path = path_;
 	res.ok = true;
 	// printf("inited img width=%d\n", res.width) ;
 	//  need __bridge_retained so that the pointer is not freed by ARC
-	res.data = (__bridge_retained voidptr)(img);
+	res.data = (__bridge_retained void*)(img);
 	return res;
 }
 
-void darwin_draw_image(float x, float y, float w, float h, gg__Image* img) {
-	NSImage* i = (__bridge NSImage*)(img->data);
+void darwin_draw_image(float x, float y, float w, float h, void* image) {
+	NSImage* i = (__bridge NSImage*)image;
 	[i drawInRect:NSMakeRect(x, y, w, h)];
 }
 
-void darwin_draw_circle(float x, float y, float d, gg__Color color) {
+void darwin_draw_circle(float x, float y, float d, v_gg_color color) {
 	if (d <= 0) {
 		return;
 	}
@@ -341,7 +341,7 @@ void darwin_draw_circle(float x, float y, float d, gg__Color color) {
 	CGContextFillEllipseInRect(context, CGRectMake(x, y, d * 2, d * 2));
 }
 
-void darwin_draw_circle_empty(float x, float y, float d, gg__Color color) {
+void darwin_draw_circle_empty(float x, float y, float d, v_gg_color color) {
 	if (d <= 0) {
 		return;
 	}

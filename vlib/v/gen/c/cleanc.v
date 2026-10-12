@@ -663,6 +663,7 @@ mut:
 	files_with_c_includes          map[string]bool
 	files_with_c_postincludes      map[string]bool
 	files_linking_c_sources        map[string]bool
+	files_linking_c_libraries      map[string]bool
 	mods_with_c_libs               map[string]bool
 	mods_with_c_includes           map[string]bool
 	inlined_c_active_macros        map[string]bool
@@ -1575,6 +1576,7 @@ pub fn FlatGen.new() FlatGen {
 		files_with_c_includes:              map[string]bool{}
 		files_with_c_postincludes:          map[string]bool{}
 		files_linking_c_sources:            map[string]bool{}
+		files_linking_c_libraries:          map[string]bool{}
 		mods_with_c_libs:                   map[string]bool{}
 		mods_with_c_includes:               map[string]bool{}
 		inlined_c_active_macros:            map[string]bool{}
@@ -3397,6 +3399,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.files_with_c_includes.clear()
 	g.files_with_c_postincludes.clear()
 	g.files_linking_c_sources.clear()
+	g.files_linking_c_libraries.clear()
 	g.mods_with_c_libs.clear()
 	g.mods_with_c_includes.clear()
 	g.inlined_c_active_macros.clear()
@@ -5495,24 +5498,37 @@ fn cache_directive_flag_groups(a &flat.FlatAst, vroot string, target pref.Target
 }
 
 // c_source_file_is_in_vlib reports whether a source file belongs to the compiler's
-// own vlib tree. Module level C library/include flags are only tracked for user
-// modules, so a platform `#flag` inside vlib never forces a prototype.
+// own vlib tree, whose platform bindings can supply headerless C declarations.
+// Cached headers retain the ownership of their original module sources.
 fn (g &FlatGen) c_source_file_is_in_vlib(source_file string) bool {
 	root := g.compiler_vroot.replace('\\', '/').trim_right('/')
 	if root.len == 0 {
 		return false
 	}
-	return source_file.replace('\\', '/').starts_with('${root}/vlib/')
+	owner_file := if isnil(g.a) {
+		source_file
+	} else {
+		g.a.cached_header_sources[source_file] or { source_file }
+	}
+	if owner_file.len == 0 {
+		return false
+	}
+	owner_path := owner_file.replace('\\', '/')
+	if owner_path.starts_with('${root}/vlib/') {
+		return true
+	}
+	return !os.is_abs_path(owner_path)
+		&& os.abs_path(owner_path).replace('\\', '/').starts_with('${root}/vlib/')
 }
 
-// note_c_include_directive records that a file (and, for user code, its module)
+// note_c_include_directive records that a file and its module
 // pulls in a C header. The header is the authoritative declaration of everything it
 // covers, so V3 must not add a second, less precise prototype next to it.
 fn (mut g FlatGen) note_c_include_directive(module_name string, source_file string) {
 	if source_file.len > 0 {
 		g.files_with_c_includes[source_file] = true
 	}
-	if module_name.len > 0 && !g.c_source_file_is_in_vlib(source_file) {
+	if module_name.len > 0 {
 		g.mods_with_c_includes[module_name] = true
 	}
 }
@@ -5613,14 +5629,16 @@ fn c_linker_flag_links_file(flag string, extensions []string) bool {
 }
 
 // note_c_flag_directive records the two `#flag` shapes that leave a `fn C.` symbol
-// without a header: a linked C source/object, and a user module that links a C
+// without a header: a linked C source/object, and a module that links a C
 // library by name or path without including anything.
 fn (mut g FlatGen) note_c_flag_directive(module_name string, source_file string, flag string) {
 	if source_file.len > 0 && c_flag_links_c_source(flag) {
 		g.files_linking_c_sources[source_file] = true
 	}
-	if module_name.len > 0 && (flag.contains('-l') || c_flag_links_c_library(flag))
-		&& !g.c_source_file_is_in_vlib(source_file) {
+	if source_file.len > 0 && (flag.contains('-l') || c_flag_links_c_library(flag)) {
+		g.files_linking_c_libraries[source_file] = true
+	}
+	if module_name.len > 0 && (flag.contains('-l') || c_flag_links_c_library(flag)) {
 		g.mods_with_c_libs[module_name] = true
 	}
 }
@@ -5899,6 +5917,9 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		include_arg := c_include_arg_for_target_with_values(directive_raw, g.compiler_vroot,
 			source_file, g.target, g.compile_values)
 		if include_arg.len == 0 {
+			return true
+		}
+		if g.headerless_vlib_include(include_arg, source_file) {
 			return true
 		}
 		if c_include_arg_is_builtin_abi_helper(include_arg, g.compiler_vroot) {
@@ -19157,7 +19178,7 @@ fn (mut g FlatGen) panic_recovery_preamble() {
 	if !g.uses_recover {
 		return
 	}
-	g.writeln('#include <setjmp.h>')
+	g.jump_buffer_declarations()
 	g.writeln('typedef struct v_unwind_frame {')
 	g.writeln('\tstruct v_unwind_frame* prev;')
 	g.writeln('\tvoid* owner;')
@@ -19842,14 +19863,29 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#if !defined(_OFF_T) && !defined(_OFF_T_DEFINED) && !defined(__off_t_defined) && !defined(_BSD_OFF_T_DEFINED_) && !defined(_OFF_T_DECLARED)')
 	g.writeln('typedef long long off_t;')
 	g.writeln('#endif')
-	// Fallback pthread declarations for the headerless build. They are only
-	// emitted when the platform's real <pthread.h> guards are absent, so when the
-	// system header is included its exact types win. The opaque unions are
-	// deliberately oversized (and over-aligned) to safely back the real objects
-	// on mainstream targets; a platform whose pthread objects exceed these sizes
-	// must be built with its real <pthread.h> in scope.
+	// Darwin storage must match the SDK exactly: these types appear inside V
+	// structs whose layout must stay identical across cached translation units.
 	g.writeln('#if !defined(_BITS_PTHREADTYPES_COMMON_H) && !defined(_PTHREAD_H) && !defined(_PTHREADTYPES_H_) && !defined(_PTHREADTYPES_H) && !defined(__pthread_t_defined) && !defined(_SYS__PTHREAD_TYPES_H_) && !defined(_PTHREAD_T)')
 	g.writeln('typedef void* pthread_t;')
+	g.writeln('#if defined(__APPLE__)')
+	g.writeln('#if defined(__LP64__)')
+	g.writeln('typedef union { unsigned char _opaque[64]; long _align; } pthread_attr_t;')
+	g.writeln('typedef union { unsigned char _opaque[64]; long _align; } pthread_mutex_t;')
+	g.writeln('typedef union { unsigned char _opaque[48]; long _align; } pthread_cond_t;')
+	g.writeln('typedef union { unsigned char _opaque[200]; long _align; } pthread_rwlock_t;')
+	g.writeln('typedef union { unsigned char _opaque[24]; long _align; } pthread_rwlockattr_t;')
+	g.writeln('typedef union { unsigned char _opaque[16]; long _align; } pthread_condattr_t;')
+	g.writeln('typedef union { unsigned char _opaque[16]; long _align; } pthread_once_t;')
+	g.writeln('#else')
+	g.writeln('typedef union { unsigned char _opaque[40]; long _align; } pthread_attr_t;')
+	g.writeln('typedef union { unsigned char _opaque[44]; long _align; } pthread_mutex_t;')
+	g.writeln('typedef union { unsigned char _opaque[28]; long _align; } pthread_cond_t;')
+	g.writeln('typedef union { unsigned char _opaque[128]; long _align; } pthread_rwlock_t;')
+	g.writeln('typedef union { unsigned char _opaque[16]; long _align; } pthread_rwlockattr_t;')
+	g.writeln('typedef union { unsigned char _opaque[8]; long _align; } pthread_condattr_t;')
+	g.writeln('typedef union { unsigned char _opaque[8]; long _align; } pthread_once_t;')
+	g.writeln('#endif')
+	g.writeln('#else')
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_attr_t;')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } pthread_mutex_t;')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } pthread_cond_t;')
@@ -19857,6 +19893,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_rwlockattr_t;')
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_condattr_t;')
 	g.writeln('typedef union { unsigned char _opaque[16]; long long _align; } pthread_once_t;')
+	g.writeln('#endif')
 	g.writeln('typedef unsigned long pthread_key_t;')
 	g.writeln('#endif')
 	// Mach headers expose Darwin's internal pthread storage types without the
@@ -19882,9 +19919,17 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define PTHREAD_ONCE_INIT { 0 }')
 	g.writeln('#endif')
 	g.writeln('#endif')
+	g.writeln('#if defined(__APPLE__)')
+	g.writeln('typedef int sem_t;')
+	g.writeln('#else')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sem_t;')
+	g.writeln('#endif')
 	g.writeln('#if !defined(__sigset_t_defined) && !defined(_SIGSET_T_DECLARED) && !defined(_SIGSET_T_DEFINED) && !defined(_SIGSET_T)')
+	g.writeln('#if defined(__APPLE__)')
+	g.writeln('typedef unsigned int sigset_t;')
+	g.writeln('#else')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sigset_t;')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.headerless_stdarg_decls()
 	g.writeln('#ifndef PTHREAD_MUTEX_INITIALIZER')
@@ -20292,7 +20337,9 @@ fn (mut g FlatGen) headerless_dirent_struct() {
 }
 
 fn (mut g FlatGen) headerless_statvfs_struct() {
-	g.writeln('#ifdef __NetBSD__')
+	g.writeln('#if defined(__APPLE__)')
+	g.writeln('struct statvfs { unsigned long f_bsize; unsigned long f_frsize; u32 f_blocks; u32 f_bfree; u32 f_bavail; u32 f_files; u32 f_ffree; u32 f_favail; unsigned long f_fsid; unsigned long f_flag; unsigned long f_namemax; };')
+	g.writeln('#elif defined(__NetBSD__)')
 	g.writeln('struct statvfs { unsigned long f_flag; unsigned long f_bsize; unsigned long f_frsize; unsigned long f_iosize; u64 f_blocks; u64 f_bfree; u64 f_bavail; u64 f_bresvd; u64 f_files; u64 f_ffree; u64 f_favail; u64 f_fresvd; u64 f_syncreads; u64 f_syncwrites; u64 f_asyncreads; u64 f_asyncwrites; struct { i32 __fsid_val[2]; } f_fsidx; unsigned long f_fsid; unsigned long f_namemax; u32 f_owner; u64 f_spare[4]; char f_fstypename[32]; char f_mntonname[1024]; char f_mntfromname[1024]; char f_mntfromlabel[1024]; };')
 	g.writeln('#else')
 	g.writeln('struct statvfs { unsigned long f_bsize; unsigned long f_frsize; unsigned long f_blocks; unsigned long f_bfree; unsigned long f_bavail; unsigned long f_files; unsigned long f_ffree; unsigned long f_favail; unsigned long f_fsid; unsigned long f_flag; unsigned long f_namemax; int __f_spare[6]; };')
@@ -20301,7 +20348,9 @@ fn (mut g FlatGen) headerless_statvfs_struct() {
 
 fn (mut g FlatGen) headerless_timeval_struct() {
 	g.writeln('#if !defined(__timeval_defined) && !defined(_STRUCT_TIMEVAL) && !defined(_TIMEVAL_DEFINED) && !defined(_TIMEVAL_DECLARED)')
-	g.writeln('#ifdef _WIN32')
+	g.writeln('#if defined(__APPLE__)')
+	g.writeln('struct timeval { long tv_sec; i32 tv_usec; };')
+	g.writeln('#elif defined(_WIN32)')
 	g.writeln('struct timeval { long tv_sec; long tv_usec; };')
 	g.writeln('#else')
 	g.writeln('struct timeval { long tv_sec; long tv_usec; };')
@@ -21354,6 +21403,9 @@ fn (mut g FlatGen) headerless_darwin_net_constants() {
 	g.writeln('#define SOCK_DGRAM 2')
 	g.writeln('#define SOCK_RAW 3')
 	g.writeln('#define SOCK_SEQPACKET 5')
+	g.writeln('#define SHUT_RD 0')
+	g.writeln('#define SHUT_WR 1')
+	g.writeln('#define SHUT_RDWR 2')
 	g.writeln('#define IPPROTO_IP 0')
 	g.writeln('#define IPPROTO_ICMP 1')
 	g.writeln('#define IPPROTO_TCP 6')
@@ -21396,6 +21448,7 @@ fn (mut g FlatGen) headerless_darwin_net_constants() {
 	g.writeln('#define AI_PASSIVE 0x00000001')
 	g.writeln('#define SOMAXCONN 128')
 	g.writeln('#define MSG_DONTWAIT 0x80')
+	g.writeln('#define MSG_NOSIGNAL 0x80000')
 }
 
 fn (mut g FlatGen) headerless_bsd_net_constants(af_inet6 string, msg_nosignal string, so_nosigpipe string) {

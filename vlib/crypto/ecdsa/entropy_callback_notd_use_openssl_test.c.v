@@ -1,3 +1,4 @@
+// vtest build: !use_openssl?
 module ecdsa
 
 fn test_entropy_callback_preserves_integer_result() {

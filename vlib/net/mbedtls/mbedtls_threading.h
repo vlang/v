@@ -13,6 +13,10 @@
  */
 #ifndef V_MBEDTLS_THREADING_H
 #define V_MBEDTLS_THREADING_H
+#ifndef V_MBEDTLS_HELPER_LINKAGE
+#define V_MBEDTLS_HELPER_LINKAGE static inline
+#endif
+
 
 #if defined(_WIN32) && defined(MBEDTLS_THREADING_ALT)
 
@@ -51,14 +55,14 @@ static int v_mbedtls_mutex_unlock(mbedtls_threading_mutex_t *m) {
     return 0;
 }
 
-static inline void v_mbedtls_threading_setup(void) {
+V_MBEDTLS_HELPER_LINKAGE void v_mbedtls_threading_setup(void) {
     mbedtls_threading_set_alt(v_mbedtls_mutex_init, v_mbedtls_mutex_free,
         v_mbedtls_mutex_lock, v_mbedtls_mutex_unlock);
 }
 
 #else /* not (Windows + THREADING_ALT) */
 
-static inline void v_mbedtls_threading_setup(void) { }
+V_MBEDTLS_HELPER_LINKAGE void v_mbedtls_threading_setup(void) { }
 
 #endif
 

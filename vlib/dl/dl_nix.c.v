@@ -1,17 +1,28 @@
 module dl
 
-#include <dlfcn.h>
+$if !macos {
+	#include <dlfcn.h>
+}
 
 $if linux {
 	#flag -ldl
 }
 
-pub const rtld_now = C.RTLD_NOW
-pub const rtld_lazy = C.RTLD_LAZY
-pub const rtld_global = C.RTLD_GLOBAL
-pub const rtld_local = C.RTLD_LOCAL
-pub const rtld_nodelete = C.RTLD_NODELETE
-pub const rtld_noload = C.RTLD_NOLOAD
+$if macos {
+	pub const rtld_now = 2
+	pub const rtld_lazy = 1
+	pub const rtld_global = 8
+	pub const rtld_local = 4
+	pub const rtld_nodelete = 128
+	pub const rtld_noload = 16
+} $else {
+	pub const rtld_now = C.RTLD_NOW
+	pub const rtld_lazy = C.RTLD_LAZY
+	pub const rtld_global = C.RTLD_GLOBAL
+	pub const rtld_local = C.RTLD_LOCAL
+	pub const rtld_nodelete = C.RTLD_NODELETE
+	pub const rtld_noload = C.RTLD_NOLOAD
+}
 
 fn C.dlopen(filename &char, flags i32) voidptr
 

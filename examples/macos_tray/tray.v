@@ -4,37 +4,25 @@
 
 module main
 
-#include <Cocoa/Cocoa.h>
 #flag -framework Cocoa
 
-#include "@VMODROOT/tray.m"
+#flag @VMODROOT/tray.o
 
-fn C.tray_app_init(TrayParams) &TrayInfo
-fn C.tray_app_loop(&TrayInfo)
-fn C.tray_app_run(&TrayInfo)
-fn C.tray_app_exit(&TrayInfo)
+fn C.tray_app_init(titles &&char, count i32, on_click fn (voidptr, i32), user_data voidptr) voidptr
+fn C.tray_app_loop(voidptr)
+fn C.tray_app_run(voidptr)
+fn C.tray_app_exit(voidptr)
 
 struct TrayMenuItem {
 	id   string @[required] // Unique ID.
 	text string @[required] // Text to display.
 }
 
-// Parameters to configure the tray button.
-struct TrayParams {
-	items    []TrayMenuItem         @[required]
-	on_click fn (item TrayMenuItem) @[required]
-}
-
-// Internal Cocoa application state.
-struct TrayInfo {
-	app          voidptr // pointer to NSApplication
-	app_delegate voidptr // pointer to AppDelegate
-}
-
 @[heap]
 struct MyApp {
 mut:
-	tray_info &TrayInfo = unsafe { nil }
+	tray_info voidptr = unsafe { nil }
+	items     []TrayMenuItem
 }
 
 fn (app &MyApp) on_menu_item_click(item TrayMenuItem) {
@@ -44,21 +32,30 @@ fn (app &MyApp) on_menu_item_click(item TrayMenuItem) {
 	}
 }
 
+fn tray_menu_click(user_data voidptr, index i32) {
+	app := unsafe { &MyApp(user_data) }
+	if index >= 0 && int(index) < app.items.len {
+		app.on_menu_item_click(app.items[int(index)])
+	}
+}
+
 fn main() {
 	mut my_app := &MyApp{
 		tray_info: unsafe { nil }
 	}
 
-	my_app.tray_info = C.tray_app_init(TrayParams{
-		items:    [TrayMenuItem{
-			id:   'hello'
-			text: 'Hello'
-		}, TrayMenuItem{
-			id:   'quit'
-			text: 'Quit!'
-		}]
-		on_click: my_app.on_menu_item_click
-	})
+	my_app.items = [TrayMenuItem{
+		id:   'hello'
+		text: 'Hello'
+	}, TrayMenuItem{
+		id:   'quit'
+		text: 'Quit!'
+	}]
+	mut titles := []&char{cap: my_app.items.len}
+	for item in my_app.items {
+		titles << &char(item.text.str)
+	}
+	my_app.tray_info = C.tray_app_init(titles.data, i32(titles.len), tray_menu_click, my_app)
 
 	//// Use this:
 	// for {

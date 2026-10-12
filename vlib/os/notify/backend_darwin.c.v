@@ -3,7 +3,11 @@ module notify
 import time
 import os
 
-#insert "@VEXEROOT/vlib/os/notify/kqueue.h"
+$if macos {
+	#flag @VEXEROOT/vlib/os/notify/kqueue.o
+} $else {
+	#insert "@VEXEROOT/vlib/os/notify/kqueue.h"
+}
 
 pub struct C.kevent {
 mut:

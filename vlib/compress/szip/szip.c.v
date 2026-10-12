@@ -4,7 +4,14 @@ import os
 
 #flag -I @VEXEROOT/thirdparty/zip
 #define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
-#include "zip.c"
+
+$if macos {
+	#flag -DMINIZ_NO_ZLIB_COMPATIBLE_NAMES
+	#flag @VEXEROOT/vlib/compress/szip/zip_native.o
+} $else {
+	#define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
+	#include "zip.c"
+}
 
 @[params]
 pub struct ZipFolderOptions {
@@ -17,7 +24,8 @@ pub struct C.zip_t {
 
 pub type Zip = C.zip_t
 
-pub type Fn_on_extract_entry = fn (&&char, &&char) int
+// Fn_on_extract_entry receives an extracted file name and the caller's context.
+pub type Fn_on_extract_entry = fn (&char, voidptr) i32
 
 fn C.zip_open(&char, i32, char) &Zip
 
@@ -31,7 +39,7 @@ fn C.zip_entry_close(&Zip) i32
 
 fn C.zip_entry_name(&Zip) &u8
 
-fn C.zip_entry_index(&Zip) i32
+fn C.zip_entry_index(&Zip) isize
 
 fn C.zip_entry_isdir(&Zip) i32
 
@@ -43,27 +51,27 @@ fn C.zip_entry_write(&Zip, voidptr, usize) i32
 
 fn C.zip_entry_fwrite(&Zip, &char) i32
 
-fn C.zip_entry_read(&Zip, &voidptr, &usize) i32
+fn C.zip_entry_read(&Zip, &voidptr, &usize) isize
 
-fn C.zip_entry_noallocread(&Zip, voidptr, usize) i32
+fn C.zip_entry_noallocread(&Zip, voidptr, usize) isize
 
 fn C.zip_entry_fread(&Zip, &char) i32
 
-fn C.zip_entries_total(&Zip) i32
+fn C.zip_entries_total(&Zip) isize
 
 fn C.zip_extract(&char, &char, Fn_on_extract_entry, voidptr) i32
 
-fn cb_zip_extract(_filename &&char, _arg &&char) int {
+fn cb_zip_extract(_filename &char, _arg voidptr) i32 {
 	return 0
 }
 
 pub enum CompressionLevel {
-	no_compression      = C.MZ_NO_COMPRESSION
-	best_speed          = C.MZ_BEST_SPEED
-	best_compression    = C.MZ_BEST_COMPRESSION
-	uber_compression    = C.MZ_UBER_COMPRESSION
-	default_level       = C.MZ_DEFAULT_LEVEL
-	default_compression = C.MZ_DEFAULT_COMPRESSION
+	no_compression      = 0
+	best_speed          = 1
+	best_compression    = 9
+	uber_compression    = 10
+	default_level       = 6
+	default_compression = -1
 }
 
 // OpenMode lists the opening modes.

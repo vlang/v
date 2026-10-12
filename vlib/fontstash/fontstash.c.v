@@ -2,17 +2,28 @@ module fontstash
 
 #flag -I @VEXEROOT/thirdparty/fontstash
 
-@[use_once]
-#define FONTSTASH_IMPLEMENTATION
+$if macos {
+	#flag darwin @VEXEROOT/thirdparty/fontstash/fontstash_native.o
+	$if gcboehm ? {
+		#flag darwin -DV_FONTSTASH_GC
+	}
+	$if use_freetype ? {
+		#flag darwin -DFONS_USE_FREETYPE=1
+	}
+} $else {
+	@[use_once]
+	#define FONTSTASH_IMPLEMENTATION
 
-$if gcboehm ? {
-	#define FONTSTASH_MALLOC GC_MALLOC
-	#define FONTSTASH_REALLOC GC_REALLOC
-	#define FONTSTASH_FREE GC_FREE
-	#define FONTSTASH_MALLOC_ATOMIC GC_MALLOC_ATOMIC
+	$if gcboehm ? {
+		#define FONTSTASH_MALLOC GC_MALLOC
+		#define FONTSTASH_REALLOC GC_REALLOC
+		#define FONTSTASH_FREE GC_FREE
+		#define FONTSTASH_MALLOC_ATOMIC GC_MALLOC_ATOMIC
+	}
+
+	#include "fontstash.h"
 }
 
-#include "fontstash.h"
 #flag darwin -I/usr/local/Cellar/freetype/2.10.2/include/freetype2
 
 fn C.GC_MALLOC_ATOMIC(n usize) voidptr
@@ -28,7 +39,7 @@ $if windows {
 pub type Context = C.FONScontext
 
 //#flag -lfreetype
-pub const invalid = C.FONS_INVALID
+pub const invalid = -1
 
 // create_internal returns a fontstash Context allocated on the heap.
 //

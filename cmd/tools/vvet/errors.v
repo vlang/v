@@ -40,6 +40,7 @@ pub:
 }
 
 fn (mut vt Vet) error(msg string, line int, fix FixKind) {
+	if fix == .vfmt && line in vt.filtered_lines[.default] { return }
 	vt.errors << VetError{
 		message:   msg
 		file_path: vt.file

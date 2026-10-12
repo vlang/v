@@ -289,6 +289,20 @@ fn test_v3_no_std_omits_default_c_and_cpp_standards() {
 	assert cxx_standard_flag(false, true) == ''
 }
 
+fn test_native_object_standards_follow_each_source_language() {
+	flags := ['-std=c++11', '--std=c11', '-std=unknown', '-D', '-std=gnu++20', '-I', '-std=c99',
+		'-fPIC']
+	for language in ['c', 'objective-c'] {
+		assert c_source_object_language_flags(flags, language) == ['--std=c11', '-std=unknown',
+			'-D', '-std=gnu++20', '-I', '-std=c99', '-fPIC']
+	}
+	for language in ['c++', 'objective-c++'] {
+		assert c_source_object_language_flags(flags, language) == ['-std=c++11', '-std=unknown',
+			'-D', '-std=gnu++20', '-I', '-std=c99', '-fPIC']
+	}
+	assert c_source_object_language_flags(flags, 'assembler') == flags
+}
+
 fn test_v3_no_std_command_keeps_the_user_standard_only() {
 	$if windows {
 		return
@@ -391,7 +405,9 @@ fn test_v3_implicit_tcc_uses_platform_compiler_for_non_c_objects() {
 	assert c_source_object_compiler('c++', 'cc', false, 'linux') == 'c++'
 	assert c_source_object_compiler('objective-c', 'clang', false, 'linux') == 'clang'
 	assert c_source_object_compiler('c++', 'clang', false, 'linux') == 'clang'
-	assert c_source_object_compiler('objective-c', 'tcc', false, 'linux') == 'tcc'
+	assert c_source_object_compiler('objective-c', 'tcc', false, 'linux') == 'cc'
+	assert c_source_object_compiler('objective-c', 'tcc', false, 'macos') == 'cc'
+	assert c_source_object_compiler('objective-c', 'tinyc', false, 'macos') == 'cc'
 	assert c_source_object_compiler('c++', 'tcc', false, 'linux') == 'c++'
 	assert c_source_object_compiler('c++', '/opt/toolchains/tcc', false, 'linux') == 'c++'
 	assert c_source_object_compiler('c++', 'tinyc', false, 'linux') == 'c++'
@@ -1171,7 +1187,8 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 		'-no-retry-compilation', '-o', output, v_source], root)
 	assert !build.output.contains('failed to build C object'), build.output
 	assert build.exit_code == 0
-		|| build.output.contains('implicit tcc could not be used for this build'), build.output
+		|| build.output.contains('implicit tcc could not be used for this build')
+		|| build.output.contains('TinyCC cannot link the native objects of this program; use -cc clang'), build.output
 }
 
 fn test_v3_system_tcc_runtime_requires_windows_openlibm() {

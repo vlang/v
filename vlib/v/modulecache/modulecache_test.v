@@ -1153,6 +1153,37 @@ fn header_of_source(root string, name string, source string) string {
 	return module_header(a, &tc, name, '', map[string]string{})
 }
 
+fn test_cached_c_string_defaults_preserve_pointer_literals_and_escapes() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_cached_c_strings_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := 'module selectors
+pub struct Options {
+pub:
+ selector &char = c\'#canvas\'
+ quoted &char = c"it\'s quoted"
+ escaped &char = c\'backslash\\\\tab\\tquote\\"\'
+ rune_value rune = `\\n`
+}
+'
+	header := header_of_source(root, 'selectors', source)
+	assert header.contains("selector &char = c'#canvas'"), header
+	assert header.contains(r"quoted &char = c'it\'s quoted'"), header
+	assert header.contains(r'backslash\\tab\tquote\"'), header
+	path := os.join_path(root, 'selectors.vh')
+	os.write_file(path, header)!
+	mut p := parser.Parser.new(pref.new_preferences())
+	reparsed := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut values := []string{}
+	for node in reparsed.nodes {
+		if node.kind == .char_literal {
+			values << node.value
+		}
+	}
+	assert values == ['c:#canvas', r"c:it\'s quoted", r'c:backslash\\tab\tquote\"', r'\n'], values.str()
+}
+
 fn test_cached_struct_field_attributes_round_trip_without_warnings() ! {
 	root := os.join_path(os.vtmp_dir(), 'v3_cached_field_attrs_${os.getpid()}')
 	os.mkdir_all(root)!

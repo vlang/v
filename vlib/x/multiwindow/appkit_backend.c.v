@@ -17,17 +17,17 @@ const service_appkit_readback_ready = 1
 const service_appkit_readback_failed = 3
 
 struct AppKitServiceRawWindowState {
-	mapping           int
-	visibility        int
-	active            int
-	focused           int
-	minimized         int
-	maximized         int
-	fullscreen        int
-	mouse_locked      int
-	position_known    int
-	x                 int
-	y                 int
+	mapping           i32
+	visibility        i32
+	active            i32
+	focused           i32
+	minimized         i32
+	maximized         i32
+	fullscreen        i32
+	mouse_locked      i32
+	position_known    i32
+	x                 i32
+	y                 i32
 	monitor_native_id u64
 	scale             f32
 }
@@ -46,16 +46,16 @@ struct AppKitServiceQueuedSnapshot {
 struct AppKitServiceRawMonitor {
 	native_id   u64
 	name        string
-	x           int
-	y           int
-	width       int
-	height      int
-	work_x      int
-	work_y      int
-	work_width  int
-	work_height int
+	x           i32
+	y           i32
+	width       i32
+	height      i32
+	work_x      i32
+	work_y      i32
+	work_width  i32
+	work_height i32
 	scale       f32
-	primary     int
+	primary     i32
 }
 
 struct AppKitServiceMonitorRecord {
@@ -76,96 +76,122 @@ $if darwin {
 	#flag darwin -framework Cocoa
 	#flag darwin -framework QuartzCore
 	#flag darwin -framework Metal
-	#insert "@VMODROOT/vlib/x/multiwindow/appkit_backend_helpers.h"
 	$if sharedlive ? {
 	} $else {
-		#include "@VMODROOT/vlib/x/multiwindow/appkit_backend.m"
+		#flag darwin @VMODROOT/vlib/x/multiwindow/appkit_backend.o
 	}
 
-	@[typedef]
+	@[c_extern; typedef]
 	struct C.VMultiwindowAppKitQueuedEvent {
 	mut:
 		sequence                  u64
-		event_kind                int
-		lifecycle_kind            int
-		input_kind                int
-		key_code                  int
+		event_kind                i32
+		lifecycle_kind            i32
+		input_kind                i32
+		key_code                  i32
 		char_code                 u32
-		key_repeat                int
+		key_repeat                i32
 		modifiers                 u32
-		mouse_button              int
+		mouse_button              i32
 		mouse_x                   f32
 		mouse_y                   f32
 		mouse_dx                  f32
 		mouse_dy                  f32
 		scroll_x                  f32
 		scroll_y                  f32
-		window_width              int
-		window_height             int
-		framebuffer_width         int
-		framebuffer_height        int
-		service_snapshot_valid    int
-		service_kind              int
-		service_operation         int
-		service_mapping           int
-		service_visibility        int
-		service_active            int
-		service_focused           int
-		service_minimized         int
-		service_maximized         int
-		service_fullscreen        int
-		service_mouse_locked      int
-		service_position_known    int
-		service_x                 int
-		service_y                 int
+		window_width              i32
+		window_height             i32
+		framebuffer_width         i32
+		framebuffer_height        i32
+		service_snapshot_valid    i32
+		service_kind              i32
+		service_operation         i32
+		service_mapping           i32
+		service_visibility        i32
+		service_active            i32
+		service_focused           i32
+		service_minimized         i32
+		service_maximized         i32
+		service_fullscreen        i32
+		service_mouse_locked      i32
+		service_position_known    i32
+		service_x                 i32
+		service_y                 i32
 		service_monitor_native_id u64
 		service_scale             f32
-		dropped_file_count        int
+		dropped_file_count        i32
 		dropped_files             &&char = unsafe { nil }
-		touch_count               int
+		touch_count               i32
 		touch_ids                 [8]u64
 		touch_x                   [8]f32
 		touch_y                   [8]f32
-		touch_changed             [8]int
+		touch_changed             [8]i32
 	}
 
 	$if gg_multiwindow ?|| x_multiwindow_render ? {
-		@[typedef]
+		@[c_extern; typedef]
 		struct C.sg_mtl_image_info {
 		mut:
 			tex         [2]voidptr
-			active_slot int
+			active_slot i32
 		}
 
+		@[c_extern]
 		fn C.sg_mtl_query_image_info(image gfx.Image) C.sg_mtl_image_info
 	}
 
-	fn C.v_multiwindow_appkit_is_main_thread() int
-	fn C.v_multiwindow_appkit_prepare_application() int
+	@[c_extern]
+	fn C.v_multiwindow_appkit_is_main_thread() i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_prepare_application() i32
+	@[c_extern]
 	fn C.v_multiwindow_appkit_create_metal_device() C.VMultiwindowNativePrimitive
+	@[c_extern]
 	fn C.v_multiwindow_appkit_release_metal_device(device voidptr) C.VMultiwindowNativePrimitive
-	fn C.v_multiwindow_appkit_create_window(device voidptr, title &char, width int, height int, min_width int, min_height int, resizable int, visible int, high_dpi int, borderless int, fullscreen int, out_width &int, out_height &int, out_framebuffer_width &int, out_framebuffer_height &int) C.VMultiwindowNativePrimitive
+	@[c_extern]
+	fn C.v_multiwindow_appkit_create_window(device voidptr, const_title &char, width i32, height i32, min_width i32, min_height i32, resizable i32, visible i32, high_dpi i32, borderless i32, fullscreen i32, out_width &i32, out_height &i32, out_framebuffer_width &i32, out_framebuffer_height &i32) C.VMultiwindowNativePrimitive
+	@[c_extern]
 	fn C.v_multiwindow_appkit_configure_window_device(state voidptr, device voidptr) C.VMultiwindowNativePrimitive
+	@[c_extern]
 	fn C.v_multiwindow_appkit_destroy_window(state voidptr) C.VMultiwindowNativePrimitive
+	@[c_extern]
 	fn C.v_multiwindow_appkit_release_window(state voidptr) C.VMultiwindowNativePrimitive
-	fn C.v_multiwindow_appkit_set_window_title(state voidptr, title &char) int
-	fn C.v_multiwindow_appkit_set_cursor_shape(state voidptr, shape int) int
-	fn C.v_multiwindow_appkit_resize_window(state voidptr, width int, height int, out_width &int, out_height &int, out_framebuffer_width &int, out_framebuffer_height &int) int
+	@[c_extern]
+	fn C.v_multiwindow_appkit_set_window_title(state voidptr, const_title &char) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_set_cursor_shape(state voidptr, shape i32) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_resize_window(state voidptr, width i32, height i32, out_width &i32, out_height &i32, out_framebuffer_width &i32, out_framebuffer_height &i32) i32
+	@[c_extern]
 	fn C.v_multiwindow_appkit_poll_events()
-	fn C.v_multiwindow_appkit_event_sequence_exhausted() int
-	fn C.v_multiwindow_appkit_take_queued_event(state voidptr, out_event &C.VMultiwindowAppKitQueuedEvent) int
+	@[c_extern]
+	fn C.v_multiwindow_appkit_event_sequence_exhausted() i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_take_queued_event(state voidptr, out_event &C.VMultiwindowAppKitQueuedEvent) i32
+	@[c_extern]
 	fn C.v_multiwindow_appkit_release_queued_event_resources(event &C.VMultiwindowAppKitQueuedEvent)
+	@[c_extern]
 	fn C.v_multiwindow_appkit_begin_frame(state voidptr, device voidptr) C.VMultiwindowNativePrimitive
+	@[c_extern]
 	fn C.v_multiwindow_appkit_end_frame(state voidptr, drawable voidptr) C.VMultiwindowNativePrimitive
+	@[c_extern]
 	fn C.v_multiwindow_appkit_abort_frame(state voidptr, drawable voidptr) C.VMultiwindowNativePrimitive
+	@[c_extern]
 	fn C.v_multiwindow_appkit_release_drawable(state voidptr, drawable voidptr) C.VMultiwindowNativePrimitive
+	@[c_extern]
 	fn C.v_multiwindow_appkit_begin_render_batch() C.VMultiwindowNativePrimitive
+	@[c_extern]
 	fn C.v_multiwindow_appkit_end_render_batch(pool voidptr) C.VMultiwindowNativePrimitive
+	@[c_extern]
 	fn C.v_multiwindow_appkit_create_renderer_anchor(device voidptr) C.VMultiwindowNativePrimitive
+	@[c_extern]
 	fn C.v_multiwindow_appkit_destroy_renderer_anchor(state voidptr) C.VMultiwindowNativePrimitive
-	fn C.v_multiwindow_appkit_render_snapshot(state voidptr, out_visible &int, out_miniaturized &int, out_occluded &int, out_width &int, out_height &int, out_framebuffer_width &int, out_framebuffer_height &int, out_scale &f32) int
-	fn C.v_multiwindow_appkit_logical_to_pixel_rect(state voidptr, x f32, y f32, width f32, height f32, out_x &int, out_y &int, out_width &int, out_height &int) int
-	fn C.v_multiwindow_appkit_pixel_to_logical_rect(state voidptr, x int, y int, width int, height int, out_x &f32, out_y &f32, out_width &f32, out_height &f32) int
+	@[c_extern]
+	fn C.v_multiwindow_appkit_render_snapshot(state voidptr, out_visible &i32, out_miniaturized &i32, out_occluded &i32, out_width &i32, out_height &i32, out_framebuffer_width &i32, out_framebuffer_height &i32, out_scale &f32) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_logical_to_pixel_rect(state voidptr, x f32, y f32, width f32, height f32, out_x &i32, out_y &i32, out_width &i32, out_height &i32) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_pixel_to_logical_rect(state voidptr, x i32, y i32, width i32, height i32, out_x &f32, out_y &f32, out_width &f32, out_height &f32) i32
 
 	// Package-2 AppKit service ABI v1. All calls are made on the AppKit main
 	// thread. General return values are 1 success/data, 0 unavailable/no data,
@@ -177,41 +203,76 @@ $if darwin {
 	// 0 unknown/1 hidden/2 visible/3 occluded; observed bool 0 unknown/1 off/2 on.
 	// Titlebar appearance is 0 system/1 light/2 dark. Readback status is 1 ready
 	// or 3 failed; native cancellation never publishes a terminal. The ABI version is 1.
+	@[c_extern]
 	fn C.v_multiwindow_appkit_service_abi_version() u32
-	fn C.v_multiwindow_appkit_service_capability(state voidptr, operation int, renderer_ready int) int
-	fn C.v_multiwindow_appkit_service_window_state(state voidptr, out_mapping &int, out_visibility &int, out_active &int, out_focused &int, out_minimized &int, out_maximized &int, out_fullscreen &int, out_mouse_locked &int, out_position_known &int, out_x &int, out_y &int, out_monitor_native_id &u64, out_scale &f32) int
-	fn C.v_multiwindow_appkit_service_show_window(state voidptr) int
-	fn C.v_multiwindow_appkit_service_hide_window(state voidptr) int
-	fn C.v_multiwindow_appkit_service_focus_window(state voidptr) int
-	fn C.v_multiwindow_appkit_service_raise_window(state voidptr) int
-	fn C.v_multiwindow_appkit_service_set_window_position(state voidptr, x int, y int) int
-	fn C.v_multiwindow_appkit_service_minimize_window(state voidptr) int
-	fn C.v_multiwindow_appkit_service_maximize_window(state voidptr) int
-	fn C.v_multiwindow_appkit_service_restore_window(state voidptr) int
-	fn C.v_multiwindow_appkit_service_set_fullscreen(state voidptr, enabled int) int
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_capability(state voidptr, operation i32, renderer_ready i32) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_window_state(state voidptr, out_mapping &i32, out_visibility &i32, out_active &i32, out_focused &i32, out_minimized &i32, out_maximized &i32, out_fullscreen &i32, out_mouse_locked &i32, out_position_known &i32, out_x &i32, out_y &i32, out_monitor_native_id &u64, out_scale &f32) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_show_window(state voidptr) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_hide_window(state voidptr) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_focus_window(state voidptr) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_raise_window(state voidptr) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_set_window_position(state voidptr, x i32, y i32) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_minimize_window(state voidptr) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_maximize_window(state voidptr) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_restore_window(state voidptr) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_set_fullscreen(state voidptr, enabled i32) i32
+	@[c_extern]
 	fn C.v_multiwindow_appkit_service_monitor_revision() u64
-	fn C.v_multiwindow_appkit_service_monitor_count() int
-	fn C.v_multiwindow_appkit_service_monitor_info(index int, out_native_id &u64, out_x &int, out_y &int, out_width &int, out_height &int, out_work_x &int, out_work_y &int, out_work_width &int, out_work_height &int, out_scale &f32, out_primary &int, out_name_length &usize) int
-	fn C.v_multiwindow_appkit_service_copy_monitor_name(index int, out_name &char, capacity usize) int
-	fn C.v_multiwindow_appkit_service_set_clipboard_text(state voidptr, text &char, text_length usize) int
-	fn C.v_multiwindow_appkit_service_clipboard_text_length(state voidptr, out_length &usize) int
-	fn C.v_multiwindow_appkit_service_copy_clipboard_text(state voidptr, out_text &char, capacity usize) int
-	fn C.v_multiwindow_appkit_service_set_owner(state voidptr, owner_state voidptr, modal int) int
-	fn C.v_multiwindow_appkit_service_clear_owner(state voidptr) int
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_monitor_count() i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_monitor_info(index i32, out_native_id &u64, out_x &i32, out_y &i32, out_width &i32, out_height &i32, out_work_x &i32, out_work_y &i32, out_work_width &i32, out_work_height &i32, out_scale &f32, out_primary &i32, out_name_length &usize) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_copy_monitor_name(index i32, out_name &char, capacity usize) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_set_clipboard_text(state voidptr, const_text &char, text_length usize) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_clipboard_text_length(state voidptr, out_length &usize) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_copy_clipboard_text(state voidptr, out_text &char, capacity usize) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_set_owner(state voidptr, owner_state voidptr, modal i32) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_clear_owner(state voidptr) i32
+	@[c_extern]
 	fn C.v_multiwindow_appkit_service_native_window(state voidptr) voidptr
-	fn C.v_multiwindow_appkit_service_set_mouse_lock(state voidptr, enabled int) int
-	fn C.v_multiwindow_appkit_service_set_titlebar_appearance(state voidptr, appearance int) int
-	fn C.v_multiwindow_appkit_service_detach_accessibility(state voidptr) int
-	fn C.v_multiwindow_appkit_service_arm_offscreen_readback_pass(state voidptr, texture voidptr, pass_serial u64, producing_frame u64) int
-	fn C.v_multiwindow_appkit_service_stage_window_readback(state voidptr, request u64, x int, y int, width int, height int, producing_frame u64) int
-	fn C.v_multiwindow_appkit_service_stage_image_readback(state voidptr, texture voidptr, request u64, x int, y int, width int, height int, producing_frame u64) int
-	fn C.v_multiwindow_appkit_service_resolve_readbacks_after_submit(state voidptr, submitted_frame u64, submission_succeeded int) int
-	fn C.v_multiwindow_appkit_service_take_readback_result(state voidptr, out_request &u64, out_status &int, out_width &int, out_height &int, out_stride &int, out_submitted_frame &u64, out_byte_length &usize) int
-	fn C.v_multiwindow_appkit_service_copy_readback_pixels(state voidptr, request u64, out_pixels &u8, capacity usize) int
-	fn C.v_multiwindow_appkit_service_release_readback_result(state voidptr, request u64) int
-	fn C.v_multiwindow_appkit_service_cancel_readback(state voidptr, request u64) int
-	fn C.v_multiwindow_appkit_service_cancel_all_readbacks(state voidptr) int
-	fn C.v_multiwindow_appkit_service_release_window_services(state voidptr) int
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_set_mouse_lock(state voidptr, enabled i32) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_set_titlebar_appearance(state voidptr, appearance i32) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_detach_accessibility(state voidptr) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_arm_offscreen_readback_pass(state voidptr, texture voidptr, pass_serial u64, producing_frame u64) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_stage_window_readback(state voidptr, request u64, x i32, y i32, width i32, height i32, producing_frame u64) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_stage_image_readback(state voidptr, texture voidptr, request u64, x i32, y i32, width i32, height i32, producing_frame u64) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_resolve_readbacks_after_submit(state voidptr, submitted_frame u64, submission_succeeded i32) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_take_readback_result(state voidptr, out_request &u64, out_status &i32, out_width &i32, out_height &i32, out_stride &i32, out_submitted_frame &u64, out_byte_length &usize) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_copy_readback_pixels(state voidptr, request u64, out_pixels &u8, capacity usize) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_release_readback_result(state voidptr, request u64) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_cancel_readback(state voidptr, request u64) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_cancel_all_readbacks(state voidptr) i32
+	@[c_extern]
+	fn C.v_multiwindow_appkit_service_release_window_services(state voidptr) i32
 }
 
 struct AppKitNativeQueuedEvent {
@@ -1273,10 +1334,10 @@ fn (mut backend AppKitBackend) service_take_readback_results() ![]BackendReadbac
 			}
 			for {
 				mut request := u64(0)
-				mut status := 0
-				mut width := 0
-				mut height := 0
-				mut stride := 0
+				mut status := i32(0)
+				mut width := i32(0)
+				mut height := i32(0)
+				mut stride := i32(0)
 				mut submitted_frame := u64(0)
 				mut byte_length := usize(0)
 				take_status := C.v_multiwindow_appkit_service_take_readback_result(record.state,
@@ -1822,10 +1883,10 @@ fn (mut backend AppKitBackend) create_window(id WindowId, config WindowConfig) !
 		mut state_ticket := backend.reserve_appkit_lifetime_ticket(mut cleanup, .appkit_state, seed) or {
 			return error(err_render_native_renderer_unavailable)
 		}
-		mut width := 0
-		mut height := 0
-		mut framebuffer_width := 0
-		mut framebuffer_height := 0
+		mut width := i32(0)
+		mut height := i32(0)
+		mut framebuffer_width := i32(0)
+		mut framebuffer_height := i32(0)
 		context := operation.materialize(backend.native_operations, .metal, .window_surface_create, seed) or {
 			if !backend.native_operations.burn_lifetime_ticket(state_ticket) {
 				backend.pending_window_state = AppKitPendingWindowState{
@@ -1969,10 +2030,10 @@ fn (mut backend AppKitBackend) resize_window(id WindowId, width int, height int)
 		if backend.render_health.blocks_graphics() {
 			return error(err_render_native_renderer_unavailable)
 		}
-		mut actual_width := 0
-		mut actual_height := 0
-		mut framebuffer_width := 0
-		mut framebuffer_height := 0
+		mut actual_width := i32(0)
+		mut actual_height := i32(0)
+		mut framebuffer_width := i32(0)
+		mut framebuffer_height := i32(0)
 		if C.v_multiwindow_appkit_resize_window(backend.windows[index].state, width, height,
 			&actual_width, &actual_height, &framebuffer_width, &framebuffer_height) == 0 {
 			return error(err_appkit_resize_window_failed)

@@ -702,7 +702,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v5', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v5', 'native-source-standards-v1', os.getwd(), flags.join('\x00'),
 		object_flags.environment_flags.join('\x00'), object_flags.primary_compiler,
 		object_flags.primary_compiler_flags.join('\x00'), object_flags.common_flags.join('\x00'),
 		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
@@ -1598,15 +1598,50 @@ fn c_source_language(source_file string, source_language string) string {
 }
 
 fn c_source_object_compiler(language string, c_compiler string, use_platform_non_c_compiler bool, target_os string) string {
-	if use_platform_non_c_compiler && language == 'objective-c' {
+	is_tinyc := c_compiler == 'tinyc' || c_compiler.to_lower().contains('tcc')
+	if language == 'objective-c' && (use_platform_non_c_compiler || is_tinyc) {
 		return v3_platform_c_compiler(target_os)
 	}
-	is_tinyc := c_compiler == 'tinyc' || c_compiler.to_lower().contains('tcc')
 	if language in ['c++', 'objective-c++']
 		&& (c_compiler == 'cc' || use_platform_non_c_compiler || is_tinyc) {
 		return 'c++'
 	}
 	return c_compiler
+}
+
+fn c_source_object_language_flags(flags []string, language string) []string {
+	if language !in ['c', 'c++', 'objective-c', 'objective-c++'] {
+		return flags
+	}
+	is_cpp := language in ['c++', 'objective-c++']
+	mut compatible := []string{}
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
+		clean := flag.trim_space()
+		if c_flag_consumes_next_operand(clean) {
+			compatible << flag
+			if i + 1 < flags.len { compatible << flags[i + 1] }
+			i += 2
+			continue
+		}
+		if clean.starts_with('-std=') || clean.starts_with('--std=') {
+			standard := clean.all_after('=')
+			cpp_standard := standard.starts_with('c++') || standard.starts_with('gnu++')
+				|| standard.starts_with('iso14882')
+			c_standard := !cpp_standard && (standard.starts_with('c')
+				|| standard.starts_with('gnu') || standard.starts_with('iso9899'))
+			// Generated C can use C++, while its separately linked helpers stay C.
+			// Keep each source's default or compatible user-selected standard.
+			if (!is_cpp && cpp_standard) || (is_cpp && c_standard) {
+				i++
+				continue
+			}
+		}
+		compatible << flag
+		i++
+	}
+	return compatible
 }
 
 fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
@@ -1633,7 +1668,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		args << wrapv_flag
 	}
 	args << '-w'
-	args << object_flags.flags_for_compiler(compiler)
+	args << c_source_object_language_flags(object_flags.flags_for_compiler(compiler), language)
 	if language.len > 0 {
 		args << ['-x', language]
 	}
@@ -9361,9 +9396,9 @@ fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Pref
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
 	}
-	// The reduced builtin set includes Boehm's declarations and startup helpers.
-	// VGC still needs the complete builtin dependency graph.
-	if 'vgc' in prefs.user_defines {
+	// The reduced builtin set assumes hosted I/O. VGC also needs the complete
+	// builtin dependency graph.
+	if 'vgc' in prefs.user_defines || 'freestanding' in prefs.user_defines {
 		return false
 	}
 	// Parse the one user file before builtin. This conservative syntax-only pass
@@ -11776,7 +11811,7 @@ pub fn run(args []string) {
 		&& target.os in ['macos', 'linux']
 	// A program that only prints literals needs a fraction of builtin, which is
 	// parsed for it each time. The cached builtin is ready without that.
-	minimal_literal_output := !is_prof && !is_trace_calls && !no_skip_unused
+	minimal_literal_output := file_list.len == 0 && !is_prof && !is_trace_calls && !no_skip_unused
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	mut noalloc_modes := []string{}
 	if ownership_mode || 'ownership' in prefs.user_defines {
@@ -14476,10 +14511,21 @@ pub fn run(args []string) {
 			''
 		}
 		incremental_known_declarations := incremental_c_declarations + '\n' + incremental_cached_support
-		cgen_used_fns := if incremental_cache_hit {
+		mut cgen_used_fns := if incremental_cache_hit {
 			incremental_stage_used_fns
 		} else {
 			used_fns
+		}
+		if incremental_cache_hit {
+			// Unchanged lifecycle functions remain in the cached body, but a rebuilt
+			// main still has to register cleanup and invoke module initialization.
+			for name, used in used_fns {
+				if used && (name in ['init', 'cleanup', 'builtin_init']
+					|| name.ends_with('.init') || name.ends_with('.cleanup')
+					|| name.ends_with('.builtin_init')) {
+					cgen_used_fns[name] = true
+				}
+			}
 		}
 		if cgen_cache_hit && !cgen_prepared_hit {
 			os.cp(cgen_cache_entry.source, cache_plan_file) or {
@@ -15001,6 +15047,20 @@ pub fn run(args []string) {
 			tcc_link_has_incompatible_objects = v3_tcc_link_has_incompatible_objects(resolved_c_flags,
 				generated_c_flags, c_compiler)
 		}
+		if effective_tcc && tcc_link_has_incompatible_objects {
+			// Native Mach-O objects are valid cached SDK artifacts, but TinyCC
+			// cannot consume them. Select their toolchain before cache recovery
+			// mistakes an unsupported object format for damaged cached output.
+			if retry_compilation {
+				trace_v3_cache_fallback('native objects require the platform C compiler')
+				v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, true,
+					'native objects require the platform C compiler')
+				return
+			}
+			eprintln('TinyCC cannot link the native objects of this program; use -cc clang')
+			cleanup_c_build_dir(cc_dir)
+			exit(1)
+		}
 		mut cached_objects := []string{}
 		mut cached_dev_dylib := ''
 		mut prefix_source_identity := cgen_cache_metadata.prefix_source_identity
@@ -15229,7 +15289,11 @@ pub fn run(args []string) {
 					}
 					refreshed_incremental_body = stable_body_source
 					stable_main_source := v3_incremental_program_main_source(prepared_cache.program_prefix_source, stable_body_source)
-					stable_tcc_main_source := v3_incremental_main_source(incremental_tcc_declarations_path, prepared_plan_entry.source)
+					stable_tcc_main_source := v3_incremental_main_source(incremental_tcc_declarations_path, prepared_plan_entry.source) or {
+						eprintln('error reading incremental cached C inputs: ${err.msg()}')
+						cleanup_c_build_dir(cc_dir)
+						exit(1)
+					}
 					prepared_cache.main_source = stable_main_source
 					prepared_cache.tcc_main_source = stable_tcc_main_source
 					os.write_file(cc_src, stable_main_source) or {
@@ -16841,14 +16905,11 @@ fn builtin_bundle_source_files(mut a flat.FlatAst, prefs &pref.Preferences, buil
 	return files
 }
 
-fn v3_incremental_main_source(tcc_declarations_path string, body_path string) string {
-	slash := [u8(92)].bytestr()
-	escaped_slash := [u8(92), 92].bytestr()
-	quote := [u8(34)].bytestr()
-	escaped_quote := [u8(92), 34].bytestr()
-	declarations_include := tcc_declarations_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
-	body_include := body_path.replace(slash, escaped_slash).replace(quote, escaped_quote)
-	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${declarations_include}"\n#include "${body_include}"\n'
+fn v3_incremental_main_source(tcc_declarations_path string, body_path string) !string {
+	declarations := os.read_file(tcc_declarations_path)!
+	body := os.read_file(body_path)!
+	return '#define V3CACHE_PROGRAM_UNIT 1\n' + declarations + '\n' +
+		modulecache.without_duplicate_static_string_definitions(body, declarations)
 }
 
 fn c_include_path(path string) string {
@@ -16873,7 +16934,7 @@ fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_
 	}
 	body_source := os.read_file(body_path)!
 	main_source := v3_incremental_program_main_source(cached_prefix, body_source)
-	tcc_main_source := v3_incremental_main_source(tcc_declarations_path, body_path)
+	tcc_main_source := v3_incremental_main_source(tcc_declarations_path, body_path)!
 	return V3PreparedModuleCache{
 		main_source:           main_source
 		tcc_main_source:       tcc_main_source

@@ -107,4 +107,4 @@ mut:
 	iov_len  usize
 }
 
-fn C.writev(fd int, iov &C.iovec, iovcnt int) isize
+fn C.writev(fd int, const_iov &C.iovec, iovcnt int) isize

@@ -30,8 +30,13 @@ fn test_ordinary_v_v_file_has_the_same_checker_errors_as_app_v() {
 		assert v.exit_code != 0, v.output
 		assert app.output.contains('field `name` of struct `Foo` is immutable'), app.output
 		assert app.output.contains('`f` is immutable'), app.output
-		assert app.output.replace(os.real_path(app_file), '<input>') == v.output.replace(os.real_path(v_file),
-			'<input>'), v.output
+		app_path := os.real_path(app_file)
+		v_path := os.real_path(v_file)
+		app_diagnostics := app.output.replace(app_path, '<input>').replace(os.path_rel(os.getwd(),
+			app_path)!, '<input>')
+		v_diagnostics := v.output.replace(v_path, '<input>').replace(os.path_rel(os.getwd(),
+			v_path)!, '<input>')
+		assert app_diagnostics == v_diagnostics, v.output
 		forced := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor', '-building-v',
 			...(os.split_args(mode) or { panic(err) }), v_file])
 		assert forced.exit_code != 0, forced.output

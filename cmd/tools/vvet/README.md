@@ -4,6 +4,9 @@
 `v vet directory/` applies the same checks to each V source file in the directory,
 including subdirectories, and reports their collected diagnostics.
 
+Formatting checks honor `// vfmt off` and `// vfmt on` comments, including indented
+regions. Documentation and analysis checks still run in those regions.
+
 Use `-F` for function-size notices, `-r` for repeated-expression notices, and `-I`
 for possible inlining notices. These options follow `vet`:
 

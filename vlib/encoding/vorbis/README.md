@@ -24,3 +24,7 @@ unsafe { x.free() }
 ```
 
 Note: x.data points to the actual memory block that has the decoded content.
+
+On macOS the decoder is linked from a cached native object, using the ABI declarations in V.
+`C.stb_vorbis_info.temp_memory_required` reports the decoder's temporary memory requirement. It
+matches the native `stb_vorbis_info` layout.

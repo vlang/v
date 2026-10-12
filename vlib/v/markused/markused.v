@@ -867,7 +867,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// Interface method values and other roots can enter the queue as abstract
 	// dispatch keys that have no function declaration of their own. Seed their
 	// concrete implementations before the declaration-driven BFS skips those keys.
-	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut reachable_helper_scan.interface_dispatch_methods)
+	if trivial_literal_output {
+		enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut reachable_helper_scan.interface_dispatch_methods)
+	} else {
+		// C generation emits every IError msg/code dispatch target. Their bodies
+		// and dependencies must be reached and lowered before they are emitted.
+		enqueue_ierror_dispatch_helpers(tc, mut used, mut queue, mut reachable_helper_scan.interface_dispatch_methods)
+	}
 	// Interface dispatch reachability: calling an interface method `Foo.m` may
 	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those
 	// concrete methods are only referenced from the generated dispatch switch, so
@@ -3132,7 +3138,7 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 		enqueue('f32__eq_epsilon', mut used, mut queue)
 	}
 	if scan.needs_ierror_equality_dispatch {
-		enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut scan.interface_dispatch_methods)
+		enqueue_ierror_dispatch_helpers(tc, mut used, mut queue, mut scan.interface_dispatch_methods)
 	}
 	if scan.needs_shared_runtime {
 		enqueue('malloc_uncollectable', mut used, mut queue)
@@ -3210,7 +3216,7 @@ fn markused_is_builtin_closure_global(a &flat.FlatAst, tc &types.TypeChecker, no
 		&& os.dir(file.name).replace('\\', '/').ends_with('vlib/builtin/closure')
 }
 
-fn enqueue_ierror_equality_dispatch_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut processed_dispatches map[string]bool) {
+fn enqueue_ierror_dispatch_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut processed_dispatches map[string]bool) {
 	for iface_name in tc.interface_names.keys() {
 		if !markused_is_ierror_interface_name(iface_name) {
 			continue

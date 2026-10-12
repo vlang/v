@@ -10,6 +10,12 @@ struct MissingTestFunctionInput {
 	line   int = 1
 }
 
+fn missing_test_function_diagnostics(output string, path string) string {
+	absolute := os.real_path(path)
+	relative := os.path_rel(os.getwd(), absolute) or { panic(err) }
+	return output.replace(absolute, '<input>').replace(relative, '<input>')
+}
+
 fn test_test_files_without_active_functions_report_located_errors() {
 	root := os.join_path(os.vtmp_dir(), 'v3_missing_test_function_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -37,8 +43,9 @@ fn test_test_files_without_active_functions_report_located_errors() {
 			result := os.exec([@VEXE, '-new-compiler', '-nocache', '-no-retry-compilation', '-nocolor',
 				...flags, '-o', output, path])
 			assert result.exit_code == 1, result.output
-			location := '${os.real_path(path)}:${input.line}:1: error: '
-			assert result.output.contains(location + missing_test_function_message), result.output
+			location := '<input>:${input.line}:1: error: '
+			assert missing_test_function_diagnostics(result.output, path).contains(location +
+				missing_test_function_message), result.output
 			assert result.output.count(missing_test_function_message) == 1, result.output
 			assert !result.output.contains('V panic:'), result.output
 		}
@@ -117,7 +124,7 @@ fn test_result() ! {
 		result := os.exec([@VEXE, '-new-compiler', '-nocache', '-no-retry-compilation', '-nocolor',
 			'-check', invalid])
 		assert result.exit_code == 1, result.output
-		assert result.output.contains('${os.real_path(invalid)}:3:1: error: invalid test signature: ${input.name}'), result.output
+		assert missing_test_function_diagnostics(result.output, invalid).contains('<input>:3:1: error: invalid test signature: ${input.name}'), result.output
 		assert !result.output.contains(missing_test_function_message), result.output
 		assert !result.output.contains('V panic:'), result.output
 	}

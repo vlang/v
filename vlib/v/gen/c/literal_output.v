@@ -28,7 +28,7 @@ fn (mut g FlatGen) literal_output_program() ?string {
 		return none
 	}
 	for define in g.compile_defines {
-		if define in ['noprintln', 'noeprintln', 'builtin_print_use_fprintf'] {
+		if define in ['freestanding', 'noprintln', 'noeprintln', 'builtin_print_use_fprintf'] {
 			return none
 		}
 	}

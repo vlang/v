@@ -39,10 +39,10 @@ pub type Range = C.sapp_range
 @[typedef]
 pub struct C.sapp_image_desc {
 pub:
-	width            int
-	height           int
-	cursor_hotspot_x int
-	cursor_hotspot_y int
+	width            i32
+	height           i32
+	cursor_hotspot_x i32
+	cursor_hotspot_y i32
 	pixels           Range
 }
 
@@ -60,8 +60,8 @@ pub type IconDesc = C.sapp_icon_desc
 @[typedef]
 pub struct C.sapp_gl_desc {
 pub mut:
-	major_version int // override GL/GLES major version
-	minor_version int // override GL/GLES minor version
+	major_version i32 // override GL/GLES major version
+	minor_version i32 // override GL/GLES minor version
 }
 
 pub type GlDesc = C.sapp_gl_desc
@@ -109,9 +109,9 @@ pub type IosDesc = C.sapp_ios_desc
 @[typedef]
 pub struct C.sapp_environment_defaults {
 pub:
-	color_format int
-	depth_format int
-	sample_count int
+	color_format i32
+	depth_format i32
+	sample_count i32
 }
 
 pub type EnvironmentDefaults = C.sapp_environment_defaults
@@ -216,11 +216,11 @@ pub type GlSwapchain = C.sapp_gl_swapchain
 @[typedef]
 pub struct C.sapp_swapchain {
 pub:
-	width        int
-	height       int
-	sample_count int
-	color_format int
-	depth_format int
+	width        i32
+	height       i32
+	sample_count i32
+	color_format i32
+	depth_format i32
 	metal        MetalSwapchain
 	d3d11        D3d11Swapchain
 	wgpu         WgpuSwapchain
@@ -245,19 +245,19 @@ pub mut:
 	cleanup_userdata_cb fn (voidptr)         = unsafe { nil }
 	event_userdata_cb   fn (&Event, voidptr) = unsafe { nil }
 
-	width                        int       // the preferred width of the window / canvas
-	height                       int       // the preferred height of the window / canvas
-	sample_count                 int       // MSAA sample count
-	swap_interval                int       // the preferred swap interval on Windows, macOS, Linux, iOS, and HTML5; Android support is not implemented yet
+	width                        i32       // the preferred width of the window / canvas
+	height                       i32       // the preferred height of the window / canvas
+	sample_count                 i32       // MSAA sample count
+	swap_interval                i32       // the preferred swap interval on Windows, macOS, Linux, iOS, and HTML5; Android support is not implemented yet
 	high_dpi                     bool      // whether the rendering canvas is full-resolution on HighDPI displays
 	fullscreen                   bool      // whether the window should be created in fullscreen mode
 	alpha                        bool      // whether the framebuffer should have an alpha channel (ignored on some platforms)
 	window_title                 &char     // the window title as UTF-8 encoded string
 	enable_clipboard             bool      // enable clipboard access, default is false
-	clipboard_size               int       // max size of clipboard content in bytes
+	clipboard_size               i32       // max size of clipboard content in bytes
 	enable_dragndrop             bool      // enable file dropping (drag'n'drop), default is false
-	max_dropped_files            int       // max number of dropped files to process (default: 1)
-	max_dropped_file_path_length int       // max length in bytes of a dropped UTF-8 file path (default: 2048)
+	max_dropped_files            i32       // max number of dropped files to process (default: 1)
+	max_dropped_file_path_length i32       // max length in bytes of a dropped UTF-8 file path (default: 2048)
 	icon                         IconDesc  // the initial window icon to set
 	allocator                    Allocator // optional memory allocation overrides (default: malloc/free)
 	logger                       Logger    // logging callback override (default: NO LOGGING!)
@@ -268,8 +268,8 @@ pub mut:
 	ios   IosDesc   // iOS specific options
 	// V patches
 	__v_native_render bool // V patch to allow for native rendering
-	min_width         int  // V patch to allow for min window width
-	min_height        int  // V patch to allow for min window height
+	min_width         i32  // V patch to allow for min window width
+	min_height        i32  // V patch to allow for min window height
 	borderless_window bool // V patch to create a window without native decorations when supported
 }
 
@@ -291,12 +291,12 @@ pub mut:
 	mouse_dy           f32                         // relative vertical mouse movement since last frame, always valid
 	scroll_x           f32                         // horizontal mouse wheel scroll distance, valid in MOUSE_SCROLL events
 	scroll_y           f32                         // vertical mouse wheel scroll distance, valid in MOUSE_SCROLL events
-	num_touches        int                         // number of valid items in the touches[] array
+	num_touches        i32                         // number of valid items in the touches[] array
 	touches            [max_touchpoints]TouchPoint // current touch points, valid in TOUCHES_BEGIN, TOUCHES_MOVED, TOUCHES_ENDED
-	window_width       int                         // current window- and framebuffer width in pixels, always valid
-	window_height      int                         // current window- and framebuffer height in pixels, always valid
-	framebuffer_width  int                         // = window_width * dpi_scale
-	framebuffer_height int                         // = window_height * dpi_scale
+	window_width       i32                         // current window- and framebuffer width in pixels, always valid
+	window_height      i32                         // current window- and framebuffer height in pixels, always valid
+	framebuffer_width  i32                         // = window_width * dpi_scale
+	framebuffer_height i32                         // = window_height * dpi_scale
 }
 
 pub type Event = C.sapp_event

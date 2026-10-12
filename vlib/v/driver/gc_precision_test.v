@@ -39,17 +39,11 @@ fn test_precise_boehm_counts_each_small_allocation_after_warmup() {
 		@VEXE
 	}
 	source := os.join_path(root, 'precise_gc.c.v')
+	// The native atomic heap getter reports the same total as the profiler's
+	// allocd_bytes_before_gc + bytes_allocd_since_gc, without SDK struct storage.
 	os.write_file(source, 'module main
-struct C.GC_prof_stats_s {
- bytes_allocd_since_gc usize
- allocd_bytes_before_gc usize
- gc_no usize
-}
-fn C.GC_get_prof_stats(&C.GC_prof_stats_s, usize) usize
 fn allocated_bytes() u64 {
- mut stats := C.GC_prof_stats_s{}
- C.GC_get_prof_stats(&stats, sizeof(C.GC_prof_stats_s))
- return u64(stats.allocd_bytes_before_gc + stats.bytes_allocd_since_gc)
+ return u64(gc_heap_usage().total_bytes)
 }
 fn main() {
  mut retained := [][]u8{cap: 256}

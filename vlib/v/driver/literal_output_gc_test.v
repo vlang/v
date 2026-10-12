@@ -64,7 +64,7 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, true, false)
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, true)
 	prefs.target = pref.target_from('linux', 'arm64')!
-	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 	prefs.target = pref.target_from('macos', 'arm64')!
 	prefs.backend = 'arm64'
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
@@ -103,7 +103,9 @@ fn test_literal_output_keeps_linux_backtrace_array_iteration_runtime() {
 		@VEXE
 	}
 	source := os.join_path(root, 'hello.v')
-	os.write_file(source, "fn main() { println('Hello, World!') }\n")!
+	// A dynamic array keeps the ordinary allocation and bounds-check runtime
+	// reachable; allocation-free literal output intentionally omits that runtime.
+	os.write_file(source, "fn main() { mut values := []string{}\n values << 'Hello, World!'\n println(values[0]) }\n")!
 	flags := ['-new-compiler', '-no-retry-compilation', '-nocache', '-show-timings']
 	for arch in ['amd64', 'arm64'] {
 		c_path := os.join_path(root, 'hello_${arch}.c')
@@ -187,15 +189,31 @@ fn test_macos_literal_output_with_gc_has_no_compiler_diagnostics() {
 				generated := cmdexec.run_with_timeout(vexe, c_args, 120_000)
 				assert generated.exit_code == 0, generated.output
 				output := os.read_file(c_path)!
-				if mode == 'none' {
-					assert !output.contains('GC_INIT();'), mode
-				} else {
-					assert output.contains('GC_INIT();'), mode
-					assert output.contains('GC_MALLOC'), mode
-					assert output.contains('GC_REGISTER_DISPLACEMENT'), mode
-					assert output.contains('gc_runtime_init();'), mode
-				}
+				// Literal output allocates no heap storage in any collector mode.
+				assert !output.contains('GC_INIT();'), mode
+				assert !output.contains('GC_MALLOC'), mode
+				assert !output.contains('GC_REGISTER_DISPLACEMENT'), mode
+				assert !output.contains('gc_runtime_init();'), mode
+				assert !output.contains('v_gc_'), mode
+				assert !output.contains('#include'), mode
 			}
 		}
 	}
+	// Actual allocation keeps the default collector and its runtime reachable.
+	allocating_source := os.join_path(root, 'allocating.v')
+	allocating_c := os.join_path(root, 'allocating.c')
+	os.write_file(allocating_source, "fn main() { mut values := []string{}\n values << 'allocated'\n println(values[0]) }\n")!
+	generated := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-nocache',
+		'-cc', 'clang', '-o', allocating_c, allocating_source], 120_000)
+	assert generated.exit_code == 0, generated.output
+	output := os.read_file(allocating_c)!
+	assert output.contains('v_gc_init();')
+	assert output.contains('v_gc_malloc(')
+	assert output.contains('v_gc_register_displacement(sizeof(void*));')
+	assert output.contains('gc_runtime_init();')
+	assert !output.contains('#include')
+	run := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation', '-nocache',
+		'-cc', 'clang', 'run', allocating_source], 120_000)
+	assert run.exit_code == 0, run.output
+	assert run.output == 'allocated\n', run.output
 }

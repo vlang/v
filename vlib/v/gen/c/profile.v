@@ -123,13 +123,13 @@ fn (mut g FlatGen) gen_profile_support() {
 	if g.profile_file.len == 0 {
 		return
 	}
-	// The profiling timer is forced into the used-function set even when user
-	// code does not import `time`. Keep its platform C function declarations
-	// available in that minimal program too. The V-generated Mach struct already
-	// exists here, so including the system header would redefine it.
+	// These calls are generated outside source bodies. Keep their declarations
+	// from the bodyless V bindings even when no source function reaches them.
+	if g.profile_file != '-' {
+		g.emit_c_runtime_declarations(['fopen', 'fclose'])
+	}
 	if g.target.os == 'macos' {
-		g.writeln('extern u64 mach_absolute_time(void);')
-		g.writeln('extern int mach_timebase_info(mach_timebase_info_data_t*);')
+		g.emit_c_runtime_declarations(['mach_absolute_time', 'mach_timebase_info'])
 	}
 	g.writeln('// V profile counters:')
 	for pc in g.profile_counters {

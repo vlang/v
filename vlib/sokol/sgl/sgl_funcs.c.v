@@ -22,9 +22,9 @@ fn C.sgl_destroy_pipeline(pip C.sgl_pipeline)
 
 // render state functions
 fn C.sgl_defaults()
-fn C.sgl_viewport(x int, y int, w int, h int, origin_top_left bool)
+fn C.sgl_viewport(x i32, y i32, w i32, h i32, origin_top_left bool)
 fn C.sgl_viewportf(x f32, y f32, w f32, h f32, origin_top_left bool)
-fn C.sgl_scissor_rect(x int, y int, w int, h int, origin_top_left bool)
+fn C.sgl_scissor_rect(x i32, y i32, w i32, h i32, origin_top_left bool)
 fn C.sgl_scissor_rectf(x f32, y f32, w f32, h f32, origin_top_left bool)
 fn C.sgl_enable_texture()
 fn C.sgl_disable_texture()
