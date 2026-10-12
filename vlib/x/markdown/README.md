@@ -288,6 +288,10 @@ fn test_my_markdown() {
 
 ## Contributing
 
+Leading tabs used for block indentation expand to four-column tab stops.
+Tabs after a line's first non-whitespace character remain literal content,
+including in fenced and indented code blocks.
+
 - Follow V style guidelines (use `v fmt -w` on edits)
 - Add tests for new features
 - Update documentation for public API changes

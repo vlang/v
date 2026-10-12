@@ -368,6 +368,10 @@ fn test_expand_tabs_preserves_interior_tabs() {
 	assert expand_tabs('  \tx') == '    x'
 	assert expand_tabs('a\tb') == 'a\tb'
 	assert expand_tabs('no tabs') == 'no tabs'
+	assert expand_tabs(' \t\tx\ty') == '        x\ty'
+	assert expand_tabs('\t\t') == '        '
+	assert expand_tabs('世界\ttext') == '世界\ttext'
+	assert expand_tabs('') == ''
 }
 
 fn test_fenced_code_preserves_literal_tabs() {
@@ -375,4 +379,5 @@ fn test_fenced_code_preserves_literal_tabs() {
 	// for byte; only leading tabs expand (see test_expand_tabs_...).
 	html := to_html('```\na\tb\n```\n')
 	assert html.contains('a\tb')
+	assert to_html('    a\tb\n').contains('a\tb')
 }
