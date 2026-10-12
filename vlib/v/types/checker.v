@@ -5863,6 +5863,11 @@ pub fn (tc &TypeChecker) ownership_time_spent_us() i64 {
 
 // qualify_name resolves a name to its module-qualified form in the current checker context.
 pub fn (tc &TypeChecker) qualify_name(name string) string {
+	// Builtin spellings cannot depend on imports, declarations or the current
+	// module. Avoid the contextual cache and wrapper walk for these leaves.
+	if is_builtin_type_name(name) {
+		return name
+	}
 	if !isnil(tc.qualify_name_cache) {
 		mut cache := tc.qualify_name_cache
 		fingerprint := tc.qualify_table_fingerprint()

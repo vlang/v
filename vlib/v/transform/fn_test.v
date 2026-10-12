@@ -1630,7 +1630,7 @@ fn test_node_type_memo_reuses_capacity_when_function_range_grows() {
 	assert t.node_type_memo.values.data == values
 	assert t.node_type_memo.filled.data == filled
 	for flag in t.node_type_memo.filled {
-		assert flag == 0
+		assert flag != t.node_type_memo.generation
 	}
 }
 
@@ -1643,14 +1643,14 @@ fn test_unchanged_node_text_still_invalidates_semantic_memos() {
 	t.begin_node_type_memo(idx, idx)
 	for change_type in [true, false] {
 		tc.expr_type_set[idx] = true
-		t.node_type_memo.filled[0] = 1
+		t.node_type_memo.filled[0] = t.node_type_memo.generation
 		if change_type {
 			t.set_node_typ(idx, 'int'.clone())
 		} else {
 			t.set_node_value(idx, 'value'.clone())
 		}
 		assert !tc.expr_type_set[idx]
-		assert t.node_type_memo.filled[0] == 0
+		assert t.node_type_memo.filled[0] != t.node_type_memo.generation
 		assert a.nodes[idx].typ == 'int'
 		assert a.nodes[idx].value == 'value'
 	}

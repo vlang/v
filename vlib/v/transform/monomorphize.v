@@ -4363,7 +4363,9 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	old_params := t.active_generic_params
 	old_specialization_args := t.active_specialization_args
 	mut old_specialization_main_types := t.active_specialization_main_types.move()
+	t.clear_node_type_memo()
 	t.active_generic_params = t.generic_fn_param_names(decl.node, decl.module)
+	t.clear_node_type_memo()
 	t.active_specialization_args = concrete_args
 	t.active_specialization_main_types = t.specialization_main_type_closure(concrete_args)
 	if decl.node.value.contains('.') {
@@ -4464,7 +4466,9 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	if !t.generic_signatures_pre_registered {
 		t.register_specialized_fn_signature(decl, clone, concrete_args)
 	}
+	t.clear_node_type_memo()
 	t.active_generic_params = old_params
+	t.clear_node_type_memo()
 	t.active_specialization_args = old_specialization_args
 	t.active_specialization_main_types = old_specialization_main_types.move()
 	generic_params := t.generic_fn_param_names(decl.node, decl.module)
@@ -4522,7 +4526,9 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, speci
 	old_generic_params := t.active_generic_params
 	old_specialization_args := t.active_specialization_args
 	mut old_specialization_main_types := t.active_specialization_main_types.clone()
+	t.clear_node_type_memo()
 	t.active_generic_params = params
+	t.clear_node_type_memo()
 	t.active_specialization_args = args
 	t.active_specialization_main_types = t.specialization_main_type_closure(args)
 	t.cur_module = module_name
@@ -4562,7 +4568,9 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, speci
 	t.cur_fn_ret_type = old_ret_type
 	t.restore_var_types(old_var_types)
 	t.cur_fn_is_generic = old_is_generic
+	t.clear_node_type_memo()
 	t.active_generic_params = old_generic_params
+	t.clear_node_type_memo()
 	t.active_specialization_args = old_specialization_args
 	t.active_specialization_main_types = old_specialization_main_types.clone()
 }
@@ -4611,6 +4619,7 @@ fn (mut t Transformer) generated_fn_used_names(decl GenericFnDecl, clone_id flat
 	old_specialization_main_types := t.active_specialization_main_types.clone()
 	t.cur_module = decl.module
 	t.cur_file = decl.file
+	t.clear_node_type_memo()
 	t.active_specialization_args = args
 	t.active_specialization_main_types = t.specialization_main_type_closure(args)
 	// Keep a caller-owned main type bare while recording the generated callee.
@@ -4623,6 +4632,7 @@ fn (mut t Transformer) generated_fn_used_names(decl GenericFnDecl, clone_id flat
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
+	t.clear_node_type_memo()
 	t.active_specialization_args = old_specialization_args
 	t.active_specialization_main_types = old_specialization_main_types.clone()
 	return names
@@ -4650,6 +4660,7 @@ fn (mut t Transformer) generated_fn_body_call_names_filtered(root flat.NodeId, c
 	mut saved_addr_lvalue_pointer_locals := t.addr_lvalue_pointer_locals.move()
 	mut saved_orm_initialized_fields := t.orm_initialized_fields.move()
 	mut saved_sql_query_data_aliases := t.sql_query_data_aliases.move()
+	t.clear_node_type_memo()
 	t.var_types = []VarTypeBinding{}
 	t.var_type_indices = map[string]int{}
 	t.mut_param_values = map[string]bool{}
@@ -4657,6 +4668,7 @@ fn (mut t Transformer) generated_fn_body_call_names_filtered(root flat.NodeId, c
 	t.collect_generated_fn_body_call_names(root, candidate_names, filter_candidates, mut names, mut seen)
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
+	t.clear_node_type_memo()
 	t.var_types = unsafe { saved_vars }
 	t.var_type_indices = saved_var_indices.move()
 	t.mut_param_values = saved_mut_param_values.move()
@@ -5101,6 +5113,7 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	// arguments in the caller's context. Re-resolving them here under another active
 	// module can change a bare nominal type without changing `clone_value`.
 	concrete_args := args.clone()
+	t.clear_node_type_memo()
 	t.active_specialization_args = concrete_args
 	mut caller_main_types := t.specialization_main_type_closure(concrete_args)
 	if old_module in ['', 'main'] {
@@ -5188,6 +5201,7 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
+	t.clear_node_type_memo()
 	t.active_specialization_args = old_specialization_args
 	t.active_specialization_main_types = old_specialization_main_types.move()
 }
@@ -6574,6 +6588,7 @@ fn (mut t Transformer) rewrite_generic_method_call(id flat.NodeId, node flat.Nod
 // ident-lowered form (receiver already an explicit child).
 fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node flat.Node, decl GenericFnDecl, args []string) {
 	old_params := t.active_generic_params
+	t.clear_node_type_memo()
 	t.active_generic_params = t.generic_fn_param_names(decl.node, decl.module)
 	concrete_args := t.canonical_generic_specialization_args(args)
 	spec_value := specialized_generic_fn_value(decl.node.value, concrete_args)
@@ -6581,6 +6596,7 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 	preserved_args := concrete_args.join(', ')
 	t.record_generic_specialization_args_for_names([spec_name, c_name(spec_name)], concrete_args)
 	ret_typ := t.specialized_signature_type_text(decl, t.generic_fn_return_type_text(decl), concrete_args, t.active_generic_params)
+	t.clear_node_type_memo()
 	t.active_generic_params = old_params
 	param_types := t.specialized_generic_call_param_type_texts(decl, concrete_args)
 
@@ -10940,6 +10956,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			mut bound_args := args.clone()
 			bound_args << pointee
 			result := t.clone_generic_node_with_return_context(t.a.child(&node, branch_index), bound_args, return_context)
+			t.clear_node_type_memo()
 			t.active_generic_params = old_params
 			return result
 		}
