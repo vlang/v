@@ -5936,6 +5936,11 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 				g.collect_inlined_c_fns_for_cache(source_text, true, false)
 				g.collect_inlined_c_declared_fns(source_text)
 				mut source_directive := c_native_source_context_include(source_path)
+				if g.cache_split && source_path == os.real_path(os.join_path(g.compiler_vroot, 'thirdparty', 'zstd', 'zstd.c')) {
+					// Cached module objects share one native implementation in the program
+					// prefix; their C declarations retain the bundled source's exact ABI.
+					source_directive = '#if !defined(V_PARALLEL_CC) || defined(V_PARALLEL_CC_OUT_0)\n${source_directive}\n#else\n${c_zstd_cache_header(source_text)}\n#endif'
+				}
 				if g.output_cross_c {
 					// Portable output carries the source text: its path is gone on the
 					// machine that later compiles the generated C. Its own quoted
@@ -10268,6 +10273,21 @@ fn (mut g FlatGen) emit_c_directives(late bool) {
 	if emitted {
 		g.writeln('')
 	}
+}
+
+// The bundled amalgamation contains its public headers verbatim. Cached modules
+// need those declarations, while only the program owner includes the implementation.
+fn c_zstd_cache_header(source string) string {
+	mut sections := []string{}
+	for name in ['zstd_errors.h', 'zstd.h'] {
+		start_marker := '/**** start inlining ../${name} ****/'
+		end_marker := '/**** ended inlining ../${name} ****/'
+		start := source.index(start_marker) or { return '' }
+		tail := source[start + start_marker.len..]
+		end := tail.index(end_marker) or { return '' }
+		sections << tail[..end]
+	}
+	return '#define ZSTD_STATIC_LINKING_ONLY\n' + sections.join('\n')
 }
 
 fn (mut g FlatGen) emit_c_source_directives() {

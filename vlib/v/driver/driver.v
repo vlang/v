@@ -4310,10 +4310,55 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 	}
 	mut source_files := source_set.keys()
 	source_files.sort()
+	v3_restore_cached_embedded_inputs(state, source_files, user_c_flags.join('\x00'), mut dependencies)
 	return V3CgenCacheInput{
 		source_files:         source_files
 		dependency_inputs:    dependencies
 		generation_signature: user_c_flags.join('\x00')
+	}
+}
+
+// Cached declarations omit ordinary function bodies, including their embedded resources.
+// Recover those inputs only for valid cached module objects and verify their current bytes.
+fn v3_restore_cached_embedded_inputs(state &V3ModuleCacheState, source_files []string, generation_signature string, mut dependencies map[string]string) {
+	if state.parsed_from_source.len > 0 || state.objects.len == 0 {
+		return
+	}
+	restored := state.manager.cached_cgen_dependency_inputs(source_files, generation_signature,
+		dependencies, ['external:', 'external-meta:', 'external-sha256:']) or { return }
+	mut verified := map[string]string{}
+	for key, signature in restored {
+		if !key.starts_with('external:') {
+			continue
+		}
+		input := key.all_after('external:')
+		owner := input.all_before(':')
+		path := input.all_after(':')
+		if owner !in state.objects || owner !in state.module_sources || !os.is_abs_path(path) {
+			return
+		}
+		metadata_key := 'external-meta:${input}'
+		digest_key := 'external-sha256:${input}'
+		metadata := modulecache.file_metadata_signature(path)
+		if metadata.len == 0 || (restored[metadata_key] or { '' }) != metadata {
+			return
+		}
+		content := os.read_bytes(path) or { return }
+		digest := sha256.sum(content).hex()
+		if (restored[digest_key] or { '' }) != digest
+			|| modulecache.file_signature(path) != signature
+			|| modulecache.file_metadata_signature(path) != metadata {
+			return
+		}
+		verified[key] = signature
+		verified[metadata_key] = metadata
+		verified[digest_key] = digest
+	}
+	if verified.len != restored.len {
+		return
+	}
+	for key, signature in verified {
+		dependencies[key] = signature
 	}
 }
 
@@ -4436,6 +4481,7 @@ mut:
 // V-shipped native file: the files it includes, and whether its text can be
 // replicated into every cached module object.
 struct V3NativeInputExpansion {
+	roots      []string
 	paths      []string
 	replicable bool
 }
@@ -4448,7 +4494,7 @@ fn v3_native_input_expansion_record(cache_dir string, path string, include_dirs 
 		return ''
 	}
 	mut hash := u64(1469598103934665603)
-	for part in ['v3-native-expansion-4', os.real_path(path), include_dirs.join('\x00'), vroot,
+	for part in ['v3-native-expansion-5', os.real_path(path), include_dirs.join('\x00'), vroot,
 		check_replication.str()] {
 		hash = c_hash_bytes(hash, part.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
@@ -4580,6 +4626,11 @@ fn v3_record_native_input_expansion(record string, expansion V3NativeInputExpans
 // With a `cache_dir` it reads what an earlier build recorded there about a file
 // that has not changed since, and records what it works out itself.
 fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, check_replication bool, cache_dir string) V3NativeInputClosure {
+	return v3_native_input_closure_with_mbedtls(native_inputs, vroot, check_replication, cache_dir,
+		V3NativeInputExpansion{})
+}
+
+fn v3_native_input_closure_with_mbedtls(native_inputs &cgen.CacheNativeInputs, vroot string, check_replication bool, cache_dir string, mbedtls V3NativeInputExpansion) V3NativeInputClosure {
 	mut result := V3NativeInputClosure{}
 	if check_replication && native_inputs.implementation_define.len > 0 {
 		result.unassignable = '#define ${native_inputs.implementation_define}'
@@ -4594,6 +4645,10 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 				continue
 			}
 			requires_replication := check_replication && native_inputs.native_paths[path]
+			if path !in expansions && mbedtls.replicable && path in mbedtls.roots {
+				expansions[path] = mbedtls.paths.clone()
+				replicable[path] = true
+			}
 			if path !in expansions {
 				// Reading a header with the headers it includes, and deciding whether
 				// its declarations can be replicated, costs more than the rest of the
@@ -4610,9 +4665,9 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 						vroot, true, mut active, mut expanded_paths)
 					expansions[path] = expanded_paths.keys()
 					replicable[path] = complete && (!requires_replication
+						|| v3_cache_native_input_has_program_owner(path, text, vroot)
 						|| (!cgen.cache_native_input_is_source(path)
-							&& (modulecache.c_source_is_replicable(text)
-								|| v3_cache_native_input_has_program_owner(path, text, vroot))))
+							&& modulecache.c_source_is_replicable(text)))
 					if complete {
 						v3_record_native_input_expansion(record, V3NativeInputExpansion{
 							paths:      expansions[path]
@@ -4635,11 +4690,353 @@ fn v3_native_input_closure(native_inputs &cgen.CacheNativeInputs, vroot string, 
 	return result
 }
 
-// v3_cache_native_input_has_program_owner recognizes only the builtin runtime
-// header whose nonowner branch exposes a declaration instead of private state.
-// Keep this guard in sync if the shipped header changes its ownership protocol;
-// a marker in any other native header never grants cache ownership.
+fn v3_is_bundled_mbedtls_header(path string, vroot string) bool {
+	root := os.real_path(os.join_path(vroot, 'thirdparty', 'mbedtls', 'include'))
+	return path.starts_with(root + os.path_separator) && path.ends_with('.h')
+}
+
+const v3_mbedtls_protected_header_macros = ['__sputc', 'inline', '__inline', '__inline__',
+	'__attribute__', '__attribute', '__always_inline__', 'always_inline', 'gnu_inline', '__gnu_inline__']
+
+fn v3_mbedtls_flag_overrides_header_context(flag string) bool {
+	clean := flag.trim_space().trim('\'"')
+	// Opaque compiler inputs can hide macros and dependencies from the cache key.
+	if clean.starts_with('@') || clean.starts_with('--config')
+		|| clean in ['-specs', '--specs'] || clean.starts_with('-specs=')
+		|| clean.starts_with('--specs=') {
+		return true
+	}
+	if clean.starts_with('-Wp,') {
+		for operand in clean.split(',')[1..] {
+			if operand.starts_with('@') { return true }
+		}
+	}
+	macro_option := clean.starts_with('-D') || clean.starts_with('-U')
+		|| clean.starts_with('/D') || clean.starts_with('/U') || clean.starts_with('-Wp,')
+		|| clean.starts_with('--define-macro') || clean.starts_with('--undefine-macro')
+	for name in v3_mbedtls_protected_header_macros {
+		// Separate operands also cover -Xpreprocessor and -Xclang forwarding.
+		if (macro_option && clean.contains(name)) || clean == name
+			|| clean.starts_with(name + '=') || clean.starts_with(name + '(') {
+			return true
+		}
+	}
+	return false
+}
+
+// Native configuration overrides require their original preprocessing context.
+// Keep those on the existing conservative fallback instead of guessing that context.
+fn v3_mbedtls_default_header_context(a &flat.FlatAst, flags []string) bool {
+	for i, flag in flags {
+		if v3_mbedtls_flag_overrides_header_context(flag) { return false }
+		language := c_joined_source_language(flag.trim_space())
+		if (language.len > 0 && language !in ['c', 'objective-c', 'none'])
+			|| (flag.trim_space() == '-x' && (i + 1 == flags.len
+				|| flags[i + 1].trim_space() !in ['c', 'objective-c', 'none'])) {
+			return false
+		}
+		if flag.contains('MBEDTLS_') || flag.contains('PSA_') || flag.contains('-include')
+			|| flag.contains('imacros') || flag.starts_with('/FI')
+			|| flag in ['-fgnu89-inline', '-ansi', 'c89', 'gnu89', 'c90', 'gnu90', 'iso9899:1990',
+				'iso9899:199409']
+			|| flag.replace('--std=', '-std=') in ['-std=c89', '-std=gnu89', '-std=c90', '-std=gnu90',
+				'-std=iso9899:1990', '-std=iso9899:199409'] {
+			return false
+		}
+	}
+	for node in a.nodes {
+		// A V C-binding can add a non-inline prototype outside the header probe.
+		if node.kind == .c_fn_decl && node.value.all_after_last('.') == '__sputc' {
+			return false
+		}
+		if node.kind != .directive { continue }
+		if node.value.starts_with('@attributes:') {
+			for attr in node.generic_params() {
+				if attr.all_before(':').trim_space() == 'c'
+					&& attr.all_after(':').trim_space().trim('\'"') == '__sputc' {
+					return false
+				}
+			}
+		}
+		if node.value in ['define', 'undef'] {
+			// These builtin callback wrappers do not alter header declarations.
+			if node.value != 'define' || node.typ !in [
+				'v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))',
+				'v_gc_get_warn_proc() ((void *)GC_get_warn_proc())',
+				'v_gc_set_abort_func(cb) GC_set_abort_func((GC_abort_func)(cb))',
+				'v_gc_get_abort_func() ((void *)GC_get_abort_func())',
+				'v_gc_call_abort_func(fn, msg) ((GC_abort_func)(fn))(msg)',
+				'v_signal_with_handler_cast(sig, handler) signal((sig), (void (*)(int))(handler))',
+			] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// Preprocessing may put a macro's consecutive type declarations on one line.
+// Give the line-oriented declaration scanner their original item boundaries.
+fn v3_split_native_declaration_lines(source string) string {
+	mut out := strings.new_builder(source.len)
+	mut quote := u8(0)
+	mut escaped := false
+	mut brace_depth := 0
+	mut paren_depth := 0
+	mut line_comment := false
+	mut block_comment := false
+	for i, ch in source {
+		out.write_u8(ch)
+		if line_comment {
+			if ch == `\n` { line_comment = false }
+			continue
+		}
+		if block_comment {
+			if ch == `/` && i > 0 && source[i - 1] == `*` { block_comment = false }
+			continue
+		}
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if ch == `\\` {
+				escaped = true
+			} else if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == `/` && i + 1 < source.len {
+			if source[i + 1] == `/` {
+				line_comment = true
+				continue
+			}
+			if source[i + 1] == `*` {
+				block_comment = true
+				continue
+			}
+		}
+		if ch in [`"`, `\'`] {
+			quote = ch
+			continue
+		}
+		if ch == `{` {
+			brace_depth++
+		} else if ch == `}` {
+			brace_depth--
+		} else if ch == `(` {
+			paren_depth++
+		} else if ch == `)` {
+			paren_depth--
+		} else if ch == `;` && brace_depth == 0 && paren_depth == 0 {
+			out.write_u8(`\n`)
+		}
+	}
+	return out.str()
+}
+
+// Only use this after preprocessing has resolved attribute macros. The macOS
+// SDK's __sputc C11 helper carries a pure optimization annotation. A separate
+// declaration can change inline linkage, so require its sole source occurrence.
+// Preserve all other attributed helpers and GNU inline's external semantics.
+fn v3_native_preprocessed_declarations_for_replication(source string) string {
+	mut declarations := v3_split_native_declaration_lines(source)
+	if source.split('__sputc').len != 2 {
+		return declarations
+	}
+	for annotation in ['__attribute__ ((__always_inline__))', '__attribute__((__always_inline__))',
+		'__attribute__ ((always_inline))', '__attribute__((always_inline))'] {
+		head := 'inline ${annotation} int __sputc('
+		declarations = declarations.replace(head, 'inline int __sputc(')
+	}
+	return declarations
+}
+
+// A sibling input can hide directives behind comments or macro continuations.
+// Type references and V's own helper include guards do not override configuration.
+fn v3_native_text_overrides_mbedtls(source string) bool {
+	logical_source := v3_native_directive_text(source)
+	if logical_source.contains('__sputc') { return true }
+	for line in logical_source.split_into_lines() {
+		trimmed := line.trim_space()
+		if !trimmed.starts_with('#') { continue }
+		parts := trimmed[1..].trim_space().fields()
+		if parts.len >= 2 && parts[0] in ['define', 'undef'] {
+			name := parts[1].all_before('(')
+			if name.starts_with('MBEDTLS_') || name.starts_with('PSA_')
+				|| name in v3_mbedtls_protected_header_macros {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Inspect logical C directives without changing the literal expansion cache.
+fn v3_native_directive_text(source string) string {
+	spliced := source.replace('\\\n', '').replace('\\\r\n', '')
+	mut text := strings.new_builder(spliced.len)
+	mut quote := u8(0)
+	mut escaped := false
+	mut block_comment := false
+	mut line_comment := false
+	mut i := 0
+	for i < spliced.len {
+		ch := spliced[i]
+		if block_comment {
+			if ch == `*` && i + 1 < spliced.len && spliced[i + 1] == `/` {
+				block_comment = false
+				i += 2
+				continue
+			}
+			if ch == `\n` { text.write_u8(ch) }
+		} else if line_comment {
+			if ch == `\n` {
+				line_comment = false
+				text.write_u8(ch)
+			}
+		} else if quote != 0 {
+			text.write_u8(ch)
+			if escaped {
+				escaped = false
+			} else if ch == `\\` {
+				escaped = true
+			} else if ch == quote {
+				quote = 0
+			}
+		} else if ch == `/` && i + 1 < spliced.len && spliced[i + 1] in [`*`, `/`] {
+			block_comment = spliced[i + 1] == `*`
+			line_comment = !block_comment
+			text.write_u8(` `)
+			i += 2
+			continue
+		} else {
+			text.write_u8(ch)
+			if ch in [`"`, `'`] { quote = ch }
+		}
+		i++
+	}
+	return text.str()
+}
+
+fn v3_mbedtls_context_guard_source(path string, source string, vroot string) string {
+	real_path := os.real_path(path)
+	if real_path == os.real_path(os.join_path(vroot, 'thirdparty', 'zstd', 'zstd.c'))
+		&& v3_cache_native_input_has_program_owner(real_path, source, vroot) {
+		// The shipped ARM workaround restores inline immediately after this
+		// system include, so it cannot change later mbedTLS/SDK declarations.
+		return source.replace('#    define inline __inline__  /* circumvent a clang bug */\n#    include <arm_neon.h>\n#    undef inline\n', '#    include <arm_neon.h>\n')
+	}
+	return source
+}
+
+fn v3_native_file_has_default_mbedtls_context(path string, include_dirs []string, vroot string, mut visited map[string]bool) bool {
+	real_path := os.real_path(path)
+	if visited[real_path] { return true }
+	visited[real_path] = true
+	if v3_is_bundled_mbedtls_header(real_path, vroot) { return true }
+	source := os.read_file(real_path) or { return false }
+	guard_source := v3_mbedtls_context_guard_source(real_path, source, vroot)
+	if v3_native_text_overrides_mbedtls(guard_source) { return false }
+	for line in v3_native_directive_text(source).split_into_lines() {
+		if include_path := v3_parallel_local_include_path(line, os.dir(real_path), include_dirs) {
+			if !cgen.native_path_is_shipped(include_path, vroot) { return false }
+			if !v3_native_file_has_default_mbedtls_context(include_path, include_dirs, vroot, mut visited) {
+				return false
+			}
+		} else if argument := v3_include_directive_argument(line) {
+			if !argument.starts_with('<') { return false }
+		}
+	}
+	return true
+}
+
+fn v3_preprocess_bundled_mbedtls_headers(native_inputs &cgen.CacheNativeInputs, a &flat.FlatAst, prefs &pref.Preferences, flags []string, compiler string, compiler_explicit bool, cross_sysroot string) V3NativeInputExpansion {
+	if prefs.is_prod || prefs.is_shared || !v3_mbedtls_default_header_context(a, flags)
+		|| c_link_flags_use_cpp_language(flags) {
+		return V3NativeInputExpansion{}
+	}
+	language := cache_probe_language(cgen.cache_native_inputs_language(a, prefs.vroot,
+		flags, prefs.c99, prefs.ccompiler, prefs.target), flags)
+	if language !in ['c', 'objective-c'] { return V3NativeInputExpansion{} }
+	mut headers := map[string]bool{}
+	for path in native_inputs.native_paths.keys() {
+		if v3_is_bundled_mbedtls_header(path, prefs.vroot) { headers[path] = true }
+	}
+	if headers.len == 0 { return V3NativeInputExpansion{} }
+	for path in native_inputs.native_paths.keys() {
+		if v3_is_bundled_mbedtls_header(path, prefs.vroot) { continue }
+		mut visited := map[string]bool{}
+		if !v3_native_file_has_default_mbedtls_context(path, native_inputs.include_dirs, prefs.vroot, mut visited) {
+			return V3NativeInputExpansion{}
+		}
+		// The ordinary closure must also record every dependency seen by the
+		// logical guard, including comment-prefixed and spliced includes.
+		mut active := map[string]bool{}
+		mut expanded_paths := map[string]bool{}
+		v3_expand_shipped_native_file(path, native_inputs.include_dirs,
+			prefs.vroot, true, mut active, mut expanded_paths)
+		mut reaches_mbedtls := false
+		for dependency in visited.keys() {
+			if v3_is_bundled_mbedtls_header(dependency, prefs.vroot) {
+				headers[dependency] = true
+				reaches_mbedtls = true
+			} else if !expanded_paths[dependency] {
+				return V3NativeInputExpansion{}
+			}
+		}
+		if reaches_mbedtls {
+			if cgen.cache_native_input_is_source(path) { return V3NativeInputExpansion{} }
+			headers[path] = true
+		}
+	}
+
+	mut paths := headers.keys()
+	paths.sort()
+	source := os.join_path(os.vtmp_dir(), 'v3_mbedtls_headers_${tempname.unique_token()}.c')
+	ordered := paths.filter(v3_is_bundled_mbedtls_header(it, prefs.vroot))
+		.clone()
+	mut probe_paths := ordered.clone()
+	probe_paths << paths.filter(!v3_is_bundled_mbedtls_header(it, prefs.vroot))
+	text := probe_paths.map('#include "' + it.replace('\\', '/') + '"').join('\n')
+	os.write_file(source, text) or { return V3NativeInputExpansion{} }
+	defer { os.rm(source) or {} }
+	mut args := [c_standard_flag(prefs.c99, false)]
+	args << c_compiler_target_args(prefs.target, compiler, compiler_explicit, cross_sysroot) or {
+		return V3NativeInputExpansion{}
+	}
+	args << c_object_compile_flags(flags)
+	// Match the generated units, including Darwin's implicit Objective-C headers.
+	args << ['-x', language]
+	mut preprocess_args := args.clone()
+	preprocess_args << ['-E', '-P', source]
+	preprocessed := cmdexec.run(compiler, preprocess_args)
+	if preprocessed.exit_code != 0 || !modulecache.c_source_is_replicable(v3_native_preprocessed_declarations_for_replication(preprocessed.output)) {
+		return V3NativeInputExpansion{}
+	}
+	dependencies := c_object_dependencies(compiler, args, source)
+	if dependencies.used_fallback { return V3NativeInputExpansion{} }
+	// Probe on each build: literal expansion records do not include preprocessing
+	// flags. Every active header, including system headers, remains a cache input.
+	return V3NativeInputExpansion{
+		roots:      paths
+		paths:      dependencies.files.filter(os.real_path(it) != os.real_path(source)).map(os.real_path(it))
+		replicable: true
+	}
+}
+
+// v3_cache_native_input_has_program_owner recognizes shipped inputs whose
+// nonowner branch exposes declarations instead of private state. Keep this guard
+// in sync with cgen and the shipped ownership protocols; arbitrary native inputs
+// never gain cache ownership from a marker alone.
 fn v3_cache_native_input_has_program_owner(path string, source string, vroot string) bool {
+	// Cgen emits the bundled zstd implementation only in the program owner,
+	// and reconstructs its declarations for every nonowner translation unit.
+	if os.real_path(path) == os.real_path(os.join_path(vroot, 'thirdparty', 'zstd', 'zstd.c')) {
+		return source.contains('/**** start inlining ../zstd_errors.h ****/')
+			&& source.contains('/**** ended inlining ../zstd_errors.h ****/')
+			&& source.contains('/**** start inlining ../zstd.h ****/')
+			&& source.contains('/**** ended inlining ../zstd.h ****/')
+	}
 	if os.real_path(path) != os.real_path(os.join_path(vroot, 'vlib', 'builtin',
 		'segfault_handler_nix.h'))
 		|| !source.contains('#define V_PARALLEL_CC_STATIC_STORAGE_HANDLED 1') {
@@ -11363,8 +11760,11 @@ pub fn run(args []string) {
 	// builtin source set, which likewise must remain a monolithic translation unit.
 	// Heap tracking hooks are supplied by user C declarations. Replaying a header
 	// that defines them in every cached translation unit creates duplicate symbols.
+	// Dependency inspection needs the bodies that embed resources; declaration-only
+	// cache headers intentionally omit ordinary function bodies.
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
 		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
+		&& !print_watched_files && dump_files == ''
 		&& !minimal_literal_output
 		&& (cache_with_tcc || effective_c_compiler in ['clang', 'gcc', 'mingw'])
 		&& target.os == host_target.os
@@ -12056,8 +12456,17 @@ pub fn run(args []string) {
 	native_closure := if has_external_c_inputs || native_inputs.module_inputs.len == 0 {
 		V3NativeInputClosure{}
 	} else {
-		v3_native_input_closure(&native_inputs, prefs.vroot, cache_state.manager.enabled,
-			if cache_state.manager.enabled { cache_state.manager.dir } else { '' })
+		mut preprocessing_flags := environment_c_flags.clone()
+		preprocessing_flags << user_c_flags
+		preprocessing_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
+		mbedtls_expansion := if cache_state.manager.enabled {
+			v3_preprocess_bundled_mbedtls_headers(&native_inputs, a, prefs, preprocessing_flags,
+				effective_c_compiler, c_compiler_explicit, '')
+		} else {
+			V3NativeInputExpansion{}
+		}
+		v3_native_input_closure_with_mbedtls(&native_inputs, prefs.vroot, cache_state.manager.enabled,
+			if cache_state.manager.enabled { cache_state.manager.dir } else { '' }, mbedtls_expansion)
 	}
 	if cache_state.manager.enabled && native_closure.unassignable.len > 0 {
 		trace_v3_cache_fallback('external C inputs cannot be assigned to cache units: ${native_closure.unassignable}')
