@@ -1,5 +1,6 @@
 module trace
 
+import os
 import sync
 import time
 
@@ -50,8 +51,9 @@ pub fn new_tracer() &Tracer {
 	}
 }
 
-// Span is one open measurement. End it exactly once; double end is a safe
-// no-op. Spans are values, so nesting is the caller's structure and needs
+// Span is one open measurement. End each instance exactly once; repeating end on
+// the same instance is a safe no-op. Copies have independent completion state.
+// Spans are values, so nesting is the caller's structure and needs
 // no thread-local stack: concurrent spans from any threads aggregate by
 // name under the tracer mutex.
 pub struct Span {
@@ -59,12 +61,13 @@ mut:
 	tracer &Tracer = unsafe { nil }
 	name   string
 	start  u64
+	tid    u64
 	ended  bool
 }
 
 // span opens a measurement with the monotonic clock.
 pub fn (mut t Tracer) span(name string) Span {
-	return Span{t, name, time.sys_mono_now(), false}
+	return Span{t, name, time.sys_mono_now(), thread_id_here(), false}
 }
 
 // end closes the measurement, attributing the elapsed time to its name.
@@ -74,11 +77,11 @@ pub fn (mut s Span) end() {
 	}
 	s.ended = true
 	dur := time.sys_mono_now() - s.start
-	s.tracer.record(s.name, s.start, dur)
+	s.tracer.record(s.name, s.start, dur, s.tid)
 }
 
 // record aggregates one completed span plus its trace event.
-fn (mut t Tracer) record(name string, start_ns u64, dur_ns u64) {
+fn (mut t Tracer) record(name string, start_ns u64, dur_ns u64, tid u64) {
 	t.mutex.lock()
 	defer {
 		t.mutex.unlock()
@@ -90,7 +93,7 @@ fn (mut t Tracer) record(name string, start_ns u64, dur_ns u64) {
 		st.max_ns = dur_ns
 	}
 	t.stats[name] = st
-	t.events << TraceEvent{name, start_ns / 1000, dur_ns / 1000, thread_id_here()}
+	t.events << TraceEvent{name, start_ns / 1000, dur_ns / 1000, tid}
 }
 
 // thread_id_here attributes the calling thread. sync.thread_id is used when
@@ -142,7 +145,7 @@ pub fn (t &Tracer) to_chrome_trace() string {
 	}
 	mut parts := []string{cap: t.events.len}
 	for e in t.events {
-		parts << '{"name":"${json_escape(e.name)}","ph":"X","ts":${e.start_us},"dur":${e.dur_us},"tid":${e.tid}}'
+		parts << '{"name":"${json_escape(e.name)}","ph":"X","ts":${e.start_us},"dur":${e.dur_us},"tid":${e.tid},"pid":${os.getpid()}}'
 	}
 	return '{"traceEvents":[' + parts.join(',') + ']}'
 }
@@ -174,7 +177,9 @@ fn json_escape(s string) string {
 			}
 			else {
 				if c < 0x20 {
-					b << u8(63) // ? (control bytes in names are replaced)
+					b << '\\u00'.bytes()
+					b << '0123456789abcdef'[c >> 4]
+					b << '0123456789abcdef'[c & 0x0f]
 				} else {
 					b << c
 				}

@@ -1,5 +1,7 @@
 module trace
 
+import sync
+
 fn test_tracer_aggregates_spans() {
 	mut t := new_tracer()
 	mut a := t.span('work')
@@ -72,4 +74,26 @@ fn test_tracer_concurrent_spans() {
 	assert rep.len == 1
 	assert rep[0].count == 200, 'every span from every thread must be counted'
 	assert t.event_count() == 200
+}
+
+fn test_chrome_export_preserves_control_bytes() {
+	name := [u8(0), 1, 8, 9, 10, 12, 13, 31, 34, 92].bytestr()
+	assert json_escape(name) == '\\u0000\\u0001\\u0008\\t\\n\\u000c\\r\\u001f\\"\\\\'
+	mut t := new_tracer()
+	mut s := t.span(name)
+	s.end()
+	assert t.to_chrome_trace().contains('"pid":')
+}
+
+fn test_span_keeps_starting_thread() {
+	mut t := new_tracer()
+	mut s := t.span('moved')
+	starting_thread := sync.thread_id()
+	assert s.tid == starting_thread
+	done := spawn fn [mut s] () {
+		s.end()
+	}()
+	done.wait()
+	assert t.events.len == 1
+	assert t.events[0].tid == starting_thread
 }
