@@ -914,7 +914,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut library_frontier := &types.LibraryBodyFrontier(unsafe { nil })
 	mut check_library_frontiers := library_body_checker != unsafe { nil }
 	mut runtime_helpers_pending := rt_scan_parallel
-	for qi < queue.len || runtime_helpers_pending || pending_library_names.len > 0 {
+	for qi < queue.len || runtime_helpers_pending || pending_library_names.len > 0
+		|| check_library_frontiers {
 		if qi >= queue.len && pending_library_names.len > 0 {
 			// The public entry point supplies its mutable checker; other callers
 			// leave this pointer nil and retain the existing reachability behavior.
@@ -948,6 +949,33 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 			pending_library_ids.clear()
 			pending_library_names.clear()
+			continue
+		}
+		if qi >= queue.len && !runtime_helpers_pending && check_library_frontiers {
+			// The convergence check also accepts ambiguous short declaration names.
+			// These bodies have no exact reachable queue entry. Complete their
+			// semantic checks without introducing new reachability roots.
+			mut checker := unsafe { &types.TypeChecker(library_body_checker) }
+			remaining := checker.reached_library_body_nodes(used)
+			if remaining.len > 0 {
+				node_count := a.nodes.len
+				top_level_size := tc.top_level_idx.len
+				mut recheck_reachability := false
+				for id in remaining {
+					if id >= processed_nodes.len || processed_nodes[id] {
+						recheck_reachability = true
+					}
+				}
+				checker.check_reached_library_bodies(used, library_check_parallel)
+				// Checking an unreached body only publishes its own expression types
+				// and call edges. Existing reached bodies retain their analysis. New
+				// arena nodes or declarations require the conservative fresh pass.
+				if recheck_reachability || a.nodes.len != node_count
+					|| tc.top_level_idx.len != top_level_size || checker.errors.len > 0 {
+					return mark_used_with_generic_usage(a, checker)
+				}
+			}
+			check_library_frontiers = false
 			continue
 		}
 		if qi >= queue.len {

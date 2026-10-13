@@ -1,0 +1,226 @@
+// `first()` and `last()` of an empty array panic with the message of the builtin
+// method, whatever the call is lowered to, and evaluate their receiver once.
+struct Item {
+mut:
+	n    int
+	name string
+	tags []string
+}
+
+struct Holder {
+mut:
+	ints  []int
+	items []Item
+	calls int
+}
+
+fn (h Holder) get() []int {
+	return h.ints
+}
+
+fn (mut h Holder) next() []int {
+	h.calls++
+	return h.ints
+}
+
+fn (mut h Holder) next_items() []Item {
+	h.calls++
+	return h.items
+}
+
+fn (mut h Holder) set_last(n int) {
+	h.items.last().n = n
+}
+
+type Ints = []int
+
+fn empty_ints() []int {
+	return []int{}
+}
+
+fn generic_first[T](a []T) T {
+	return a.first()
+}
+
+fn generic_last[T](a []T) T {
+	return a.last()
+}
+
+fn mut_first(mut a []int) int {
+	return a.first()
+}
+
+fn mut_last(mut a []int) int {
+	return a.last()
+}
+
+@[direct_array_access]
+fn direct_last(a []int) int {
+	return a.last()
+}
+
+fn bump(mut item Item) {
+	item.n++
+}
+
+struct Message {
+mut:
+	text string = 'no panic'
+}
+
+fn run_and_recover(f fn (), mut msg Message) {
+	defer {
+		if r := recover() {
+			msg.text = r
+		}
+	}
+	f()
+}
+
+fn check(name string, f fn ()) {
+	mut msg := Message{}
+	run_and_recover(f, mut msg)
+	println('${name}: ${msg.text}')
+}
+
+fn run_counted(f fn (mut Holder), mut h Holder) {
+	defer {
+		recover()
+	}
+	f(mut h)
+}
+
+fn receiver_calls(name string, f fn (mut Holder)) {
+	mut h := Holder{}
+	run_counted(f, mut h)
+	println('${name}: receiver evaluated ${h.calls} time(s)')
+}
+
+fn main() {
+	check('local first', fn () {
+		e := []int{}
+		println(e.first())
+	})
+	check('local last', fn () {
+		e := []int{}
+		println(e.last())
+	})
+	check('field first', fn () {
+		h := Holder{}
+		println(h.ints.first())
+	})
+	check('field last', fn () {
+		h := Holder{}
+		println(h.ints.last())
+	})
+	check('call result first', fn () {
+		println(empty_ints().first())
+	})
+	check('call result last', fn () {
+		println(empty_ints().last())
+	})
+	check('method chain first', fn () {
+		h := Holder{}
+		println(h.get().filter(it > 0).first())
+	})
+	check('method chain last', fn () {
+		h := Holder{}
+		println(h.get().map(it * 2).last())
+	})
+	check('generic first', fn () {
+		println(generic_first([]string{}))
+	})
+	check('generic last', fn () {
+		println(generic_last([]int{}))
+	})
+	check('mut param first', fn () {
+		mut e := []int{}
+		println(mut_first(mut e))
+	})
+	check('mut param last', fn () {
+		mut e := []int{}
+		println(mut_last(mut e))
+	})
+	check('struct field of first', fn () {
+		items := []Item{}
+		println(items.first().n)
+	})
+	check('struct field of last', fn () {
+		items := []Item{}
+		println(items.last().name)
+	})
+	check('string first', fn () {
+		names := []string{}
+		println(names.first().len)
+	})
+	check('pointer last', fn () {
+		refs := []&Item{}
+		println(refs.last().n)
+	})
+	check('nested last', fn () {
+		rows := [[]int{}]
+		println(rows.last().last())
+	})
+	check('alias first', fn () {
+		ints := Ints([]int{})
+		println(ints.first())
+	})
+	check('direct_array_access last', fn () {
+		println(direct_last([]int{}))
+	})
+	check('assign field of first', fn () {
+		mut items := []Item{}
+		items.first().n = 1
+	})
+	check('assign field of last', fn () {
+		mut items := []Item{}
+		items.last().n += 2
+	})
+	check('assign in method', fn () {
+		mut h := Holder{}
+		h.set_last(3)
+	})
+	check('append to last', fn () {
+		mut rows := [][]int{}
+		rows.last() << 4
+	})
+	check('append if to last', fn () {
+		mut rows := [][]int{}
+		rows.last() << if rows.len == 0 { 5 } else { 6 }
+	})
+	check('append to field of first', fn () {
+		mut items := []Item{}
+		items.first().tags << 'tag'
+	})
+	check('index of last', fn () {
+		mut rows := [][]int{}
+		rows.last()[0] = 7
+	})
+	check('mut argument last', fn () {
+		mut items := []Item{}
+		bump(mut items.last())
+	})
+	check('assign nested last', fn () {
+		mut grid := [][]Item{}
+		grid.last().last().n = 8
+	})
+	receiver_calls('first', fn (mut h Holder) {
+		println(h.next().first())
+	})
+	receiver_calls('last', fn (mut h Holder) {
+		println(h.next().last())
+	})
+	receiver_calls('assign field of last', fn (mut h Holder) {
+		h.next_items().last().n = 9
+	})
+	check('not empty', fn () {
+		mut items := [Item{
+			n: 1
+		}, Item{
+			n: 2
+		}]
+		items.first().n += 10
+		items.last().n = 20
+		println('${items.first().n} ${items.last().n} ${generic_last([1, 2, 3])}')
+	})
+}

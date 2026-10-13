@@ -134,6 +134,21 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 	]
 }
 
+fn test_self_launcher_keeps_replacement_backend_options_out_of_helper_build() {
+	prefix := ['-b', 'fastc', '-os', 'linux', '-arch', 'arm64', '-silent']
+	assert external_tool_compile_args('vself', prefix) == ['-silent', '-g', '-gc', 'none']
+	assert external_tool_runtime_args('self', prefix, ['self']) == [
+		'-b',
+		'fastc',
+		'-os',
+		'linux',
+		'-arch',
+		'arm64',
+		'-silent',
+		'self',
+	]
+}
+
 fn test_retry_runtime_args_preserve_a_command_named_retry() {
 	assert external_tool_runtime_args('retry', []string{}, ['retry', '-r', '1', '--', 'retry',
 		'argument']) == ['-r', '1', '--', 'retry', 'argument']
@@ -145,7 +160,7 @@ fn test_retry_runtime_args_preserve_a_command_named_retry() {
 }
 
 fn test_tools_that_own_their_name_receive_only_their_arguments() {
-	for name in ['diff', 'download', 'repeat', 'time', 'timeout'] {
+	for name in ['cover', 'diff', 'download', 'gret', 'repeat', 'time', 'timeout'] {
 		assert external_tool_runtime_args(name, []string{}, [name, '--version']) == ['--version'], name
 	}
 }
