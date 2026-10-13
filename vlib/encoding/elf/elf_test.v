@@ -131,34 +131,86 @@ fn test_elf_symbols() {
 	assert main.typ() == 2, 'STT_FUNC'
 }
 
+fn assert_bad_elf(data []u8) {
+	if _ := parse_bytes(data) {
+		assert false, 'malformed ELF must error'
+	}
+}
+
 fn test_elf_rejects_bad_input() {
-	parse_bytes([]u8{}) or {
-		assert err.msg() == 'elf: truncated ELF header'
-		return
-	}
-	assert false, 'empty input must error'
-	parse_bytes('MZ....'.bytes()) or {
-		assert err.msg() == 'elf: bad magic, not an ELF file'
-		return
-	}
-	assert false, 'non-ELF magic must error'
+	assert_bad_elf([]u8{})
+	mut magic := minimal_elf()
+	magic[0] = `M`
+	assert_bad_elf(magic)
 	mut elf32 := minimal_elf()
 	elf32[4] = 1
-	parse_bytes(elf32) or {
-		assert err.msg() == 'elf: only 64-bit objects are supported'
-		return
-	}
-	assert false, '32-bit objects must error'
+	assert_bad_elf(elf32)
 	mut be := minimal_elf()
 	be[5] = 2
-	parse_bytes(be) or {
-		assert err.msg() == 'elf: only little-endian objects are supported'
-		return
+	assert_bad_elf(be)
+	for i in 0 .. minimal_elf().len {
+		assert_bad_elf(minimal_elf()[..i])
 	}
-	assert false, 'big-endian objects must error'
-	truncated := minimal_elf()[..100]
-	parse_bytes(truncated) or {
-		return
+	for offset in [u64(1), 2147483647, 0xffffffffffffffff] {
+		mut bad := minimal_elf()
+		tput_u64_at(mut bad, 40, offset)
+		assert_bad_elf(bad)
 	}
-	assert false, 'truncated section headers must error'
+	mut names := minimal_elf()
+	names[62] = 1 // .text is not a string table
+	assert_bad_elf(names)
+}
+
+fn test_elf_without_sections_or_names() {
+	mut no_sections := minimal_elf()[..64].clone()
+	tput_u64_at(mut no_sections, 40, 0)
+	no_sections[58] = 0
+	no_sections[60] = 0
+	no_sections[62] = 0
+	f := parse_bytes(no_sections)!
+	assert f.sections().len == 0
+	if _ := f.symbols() {
+		assert false
+	}
+	mut no_names := minimal_elf()
+	no_names[62] = 0
+	unnamed := parse_bytes(no_names)!
+	for section in unnamed.sections() {
+		assert section.name == ''
+	}
+	assert unnamed.symbols()![1].name == 'main'
+}
+
+fn test_elf_rejects_malformed_symbol_tables() {
+	base := minimal_elf()
+	shoff := int(read_u64(base, 40)!)
+	sym_header := shoff + 3 * 64
+	for stride in [u64(0), 1, 23, 25, 0xffffffffffffffff] {
+		mut bad := base.clone()
+		tput_u64_at(mut bad, sym_header + 56, stride)
+		f := parse_bytes(bad)!
+		if _ := f.symbols() {
+			assert false, 'bad stride ${stride} must error'
+		}
+	}
+	for size in [u64(23), 47, 0xffffffffffffffff] {
+		mut bad := base.clone()
+		tput_u64_at(mut bad, sym_header + 32, size)
+		f := parse_bytes(bad)!
+		if _ := f.symbols() {
+			assert false, 'bad size ${size} must error'
+		}
+	}
+	mut bad_offset := base.clone()
+	tput_u64_at(mut bad_offset, sym_header + 24, 0xffffffffffffffff)
+	f := parse_bytes(bad_offset)!
+	if _ := f.symbols() {
+		assert false
+	}
+	mut bad_link := base.clone()
+	bad_link[sym_header + 40] = 1 // .text is not a string table
+	linked := parse_bytes(bad_link)!
+	if _ := linked.symbols() {
+		assert false
+	}
 }

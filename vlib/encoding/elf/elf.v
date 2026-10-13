@@ -132,23 +132,40 @@ pub fn parse_bytes(data []u8) !&File {
 	if data[5] != 1 {
 		return error('elf: only little-endian objects are supported')
 	}
+	if data[6] != 1 || read_u32(data, 20)! != 1 {
+		return error('elf: unsupported ELF version')
+	}
+	if read_u16(data, 52)! < 64 {
+		return error('elf: bad ELF header size')
+	}
 	shoff := read_u64(data, 40)!
 	shentsize := read_u16(data, 58)!
 	shnum := read_u16(data, 60)!
 	shstrndx := read_u16(data, 62)!
-	if shentsize < 64 {
-		return error('elf: bad section header size')
-	}
-	if shnum == 0 {
-		return error('elf: extended section numbering is not supported')
-	}
-	if shstrndx >= shnum {
-		return error('elf: bad string table index')
-	}
 	mut f := &File{
 		data:    data.clone()
 		machine: machine_from_value(read_u16(data, 18)!)
 		entry:   read_u64(data, 24)!
+	}
+	if shnum == 0 {
+		if shoff != 0 {
+			return error('elf: extended section numbering is not supported')
+		}
+		if shstrndx != 0 {
+			return error('elf: bad string table index')
+		}
+		return f
+	}
+	if shentsize < 64 {
+		return error('elf: bad section header size')
+	}
+	if shstrndx >= shnum {
+		return error('elf: bad string table index')
+	}
+	// Check the entire table before calculating individual header offsets.
+	table_size := u64(shnum) * u64(shentsize)
+	if shoff == 0 || table_size > u64(data.len) || shoff > u64(data.len) - table_size {
+		return error('elf: section headers out of bounds')
 	}
 	for i in 0 .. int(shnum) {
 		base := u64(shoff) + u64(i) * u64(shentsize)
@@ -169,8 +186,15 @@ pub fn parse_bytes(data []u8) !&File {
 		}
 		_ = name_off
 	}
-	// resolve names through the string-table section
+	// SHN_UNDEF denotes a file without section names.
+	if shstrndx == 0 {
+		return f
+	}
+	// Resolve names through the string-table section.
 	strtab := f.sections[int(shstrndx)]
+	if strtab.typ != .strtab {
+		return error('elf: section names require a string table')
+	}
 	strtab_bytes := f.slice(strtab.offset, strtab.size)!
 	for i in 0 .. f.sections.len {
 		base := u64(shoff) + u64(i) * u64(shentsize)
@@ -197,16 +221,20 @@ pub fn (f &File) symbols() ![]Symbol {
 		}
 		found = true
 		strtab := f.slice_of(sh.link, 'string table')!
-		entsize := if sh.entsize == 0 { u64(24) } else { sh.entsize }
-		mut off := sh.offset
-		for off + 24 <= sh.offset + sh.size {
-			name_off := read_u32(f.data, off)!
+		if sh.entsize < 24 || sh.size % sh.entsize != 0 {
+			return error('elf: bad symbol entry size')
+		}
+		// Bound the full table before indexing entries or narrowing their offsets.
+		symbol_data := f.slice(sh.offset, sh.size)!
+		for i in 0 .. int(sh.size / sh.entsize) {
+			off := u64(i) * sh.entsize
+			name_off := read_u32(symbol_data, off)!
 			op := int(off)
-			info := f.data[op + 4]
-			other := f.data[op + 5]
-			shndx := read_u16(f.data, off + 6)!
-			value := read_u64(f.data, off + 8)!
-			size := read_u64(f.data, off + 16)!
+			info := symbol_data[op + 4]
+			other := symbol_data[op + 5]
+			shndx := read_u16(symbol_data, off + 6)!
+			value := read_u64(symbol_data, off + 8)!
+			size := read_u64(symbol_data, off + 16)!
 			out << Symbol{
 				name:  cstring(strtab, u64(name_off))!
 				value: value
@@ -215,7 +243,6 @@ pub fn (f &File) symbols() ![]Symbol {
 				other: other
 				shndx: shndx
 			}
-			off += entsize
 		}
 	}
 	if !found {
@@ -238,6 +265,9 @@ fn (f &File) slice_of(idx u32, what string) ![]u8 {
 		return error('elf: bad ${what} index')
 	}
 	sh := f.sections[idx]
+	if sh.typ != .strtab {
+		return error('elf: ${what} section is not a string table')
+	}
 	return f.slice(sh.offset, sh.size)
 }
 
