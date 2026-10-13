@@ -56,9 +56,11 @@ fn rebundle(fake_vroot string, name string) ! {
 // It returns the checkout, the home directory, the built tool, and a PATH
 // holding only the stand-ins.
 fn vup_report_fixture() !(string, string, string, string) {
-	root := os.join_path(os.vtmp_dir(), 'vup_report_${os.getpid()}')
+	mut root := os.join_path(os.vtmp_dir(), 'vup_report_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
+	// Match the checkout's physical path when macOS exposes /tmp through /private/tmp.
+	root = os.real_path(root)
 	home := os.join_path(root, 'home')
 	os.mkdir_all(os.join_path(home, '.agents', 'skills')) or { panic(err) }
 	for name in ['alpha', 'beta', 'gamma'] {
@@ -267,7 +269,8 @@ fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
 	write_executable(wrapper, '#!/bin/sh\necho probe >> ' + os.quoted_path(probes) +
 		'\necho "tcc version 0.9.27"\n')!
 	other := os.join_path(bin_dir, 'other-compiler')
-	write_executable(other, '#!/bin/sh\necho "clang version 18.0.0"\n')!
+	write_executable(other, '#!/bin/sh\necho "clang version 19.1.7"\n' +
+		'echo "InstalledDir: /opt/tinycc-tcc version-compatible-sdk/bin"\n')!
 	relative := os.path_rel(os.getwd(), bundled)!
 	variants := [['-cc', 'tinyc'], ['-cc', bundled], ['-cc', alias], ['-cc', relative], []string{},
 		['-cc', os.join_path(bin_dir, 'cc')], ['-cc'], ['-cc', renamed], ['-cc', copied],

@@ -66,6 +66,24 @@ fn test_tcc_prod_detection_checks_compiler_aliases() {
 	assert tcc_with_prod_requested(['-prod', '-cc', alias])
 	os.write_file(alias, '#!/bin/sh\nprintf "clang version 18.0.0\\n"\n')!
 	assert !tcc_with_prod_requested(['-prod', '-cc', alias])
+	os.write_file(alias, '#!/bin/sh\nprintf "clang version 19.1.7\\nInstalledDir: /opt/tinycc-tcc version-compatible-sdk/bin\\n"\n')!
+	assert !ccompiler_is_tinycc(alias)
+	assert !tcc_with_prod_requested(['-prod', '-cc', alias])
+	assert ccompiler_can_assemble(alias)
+}
+
+fn test_ccompiler_version_is_tinycc_recognizes_banner_lines_only() {
+	for banner in ['tcc version 0.9.27 (arm64 Darwin)', 'TinyCC version 0.9.27',
+		'Tiny C Compiler 0.9.27', 'Tiny C Compiler - Copyright (C) 2001-2026',
+		'warning: wrapper\n  tcc version 0.9.27\n', 'TinyCC'] {
+		assert ccompiler_version_is_tinycc(banner), banner
+	}
+	for version in ['clang version 19.1.7\nInstalledDir: /opt/tinycc-compatible-sdk/bin',
+		'clang version 19.1.7\nInstalledDir: /opt/tcc version-compatible-sdk/bin',
+		'gcc version 14.0\nConfigured with: --prefix=/opt/tiny c compiler-sdk',
+		'clang version 19.1.7 (supports TinyCC-compatible inputs)', 'notcc version 1.0'] {
+		assert !ccompiler_version_is_tinycc(version), version
+	}
 }
 
 fn test_tinycc_file_name_matches_tcc_names_only() {

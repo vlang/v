@@ -586,11 +586,35 @@ fn test_effective_c_compiler_name_does_not_read_tinycc_from_names_that_only_cont
 }
 
 fn test_v3_tcc_prod_rejected_only_for_a_prod_c_build_that_resolves_to_tinycc() {
-	assert v3_tcc_prod_rejected(true, 'c', 'tinyc')
-	assert !v3_tcc_prod_rejected(true, 'c', 'gcc')
-	assert !v3_tcc_prod_rejected(true, 'c', 'clang')
-	assert !v3_tcc_prod_rejected(true, 'arm64', 'tinyc')
-	assert !v3_tcc_prod_rejected(false, 'c', 'tinyc')
+	assert v3_tcc_prod_rejected(true, 'c', 'tinyc', 'tcc')
+	assert !v3_tcc_prod_rejected(true, 'c', 'gcc', 'gcc')
+	assert !v3_tcc_prod_rejected(true, 'c', 'clang', 'clang')
+	assert !v3_tcc_prod_rejected(true, 'arm64', 'tinyc', 'tcc')
+	assert !v3_tcc_prod_rejected(false, 'c', 'tinyc', 'tcc')
+}
+
+fn test_v3_tcc_prod_rejected_checks_actual_banner_for_known_compiler_names() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_prod_compiler_banner_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	for name in ['clang-alias', 'gcc-alias'] {
+		alias := os.join_path(root, name)
+		os.write_file(alias, '#!/bin/sh\nprintf "tcc version 0.9.27\\n"\n')!
+		os.chmod(alias, 0o700)!
+		effective := effective_c_compiler_name(alias, pref.host_target())
+		assert effective != 'tinyc'
+		assert v3_tcc_prod_rejected(true, 'c', effective, alias)
+		assert !v3_tcc_prod_rejected(false, 'c', effective, alias)
+		assert !v3_tcc_prod_rejected(true, 'arm64', effective, alias)
+	}
+	clang := os.join_path(root, 'cc')
+	os.write_file(clang, '#!/bin/sh\nprintf "clang version 19.1.7\\nInstalledDir: /opt/tinycc-tcc version-compatible-sdk/bin\\n"\n')!
+	os.chmod(clang, 0o700)!
+	assert effective_c_compiler_name(clang, pref.host_target()) == 'clang'
+	assert !v3_tcc_prod_rejected(true, 'c', 'clang', clang)
 }
 
 fn test_v3_windows_prod_msvc_ready_needs_a_matching_developer_environment() {

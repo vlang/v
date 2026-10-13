@@ -1195,7 +1195,7 @@ pub fn normalized_arch(target_arch string) string {
 // out an alias for tcc.
 pub fn ccompiler_can_assemble(ccompiler string) bool {
 	real_name := os.file_name(os.real_path(ccompiler)).to_lower_ascii()
-	if real_name.contains('tcc') || real_name.contains('tinyc') || real_name.contains('msvc')
+	if tinycc_file_name(real_name) || real_name.contains('msvc')
 		|| real_name in ['cl', 'cl.exe'] {
 		return false
 	}
@@ -1203,8 +1203,7 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 	for version_flag in ['--version', '-v'] {
 		res := os.exec([ccompiler, '${version_flag}'])
 		output := res.output.to_lower_ascii()
-		if output.contains('tiny c compiler') || output.contains('tinycc')
-			|| output.contains('\ntcc') || output.starts_with('tcc')
+		if ccompiler_version_is_tinycc(output)
 			|| output.contains('microsoft c/c++') || output.contains('msvc') {
 			return false
 		}
@@ -1260,8 +1259,9 @@ fn prod_profile_consumes_value(args []string, index int) bool {
 
 // ccompiler_is_tinycc reports whether `ccompiler` is TinyCC. It resolves the path and any
 // symlink, then checks the file name with tinycc_file_name. Any other executable is asked for
-// its version, so a copy of tcc under another name is still recognised. A name that does not
-// resolve to an executable is judged by its name alone.
+// its version banner, so a copy of tcc under another name is still recognised. Mentions of
+// TinyCC in metadata such as an installed directory do not identify a compiler. A name that
+// does not resolve to an executable is judged by its name alone.
 pub fn ccompiler_is_tinycc(ccompiler string) bool {
 	path := os.find_abs_path_of_executable(ccompiler) or { ccompiler.replace('\\', '/') }
 	resolved := os.real_path(path)
@@ -1273,8 +1273,21 @@ pub fn ccompiler_is_tinycc(ccompiler string) bool {
 	}
 	for flag in ['--version', '-v'] {
 		version := os.exec([resolved, flag]).output.to_lower_ascii()
-		if version.contains('tiny c compiler') || version.contains('tcc version')
-			|| version.contains('tinycc') {
+		if ccompiler_version_is_tinycc(version) {
+			return true
+		}
+	}
+	return false
+}
+
+// ccompiler_version_is_tinycc reports whether output contains a TinyCC version or branding
+// banner line. Paths and other metadata containing the compiler's name are ignored.
+pub fn ccompiler_version_is_tinycc(output string) bool {
+	for line in output.to_lower_ascii().split_into_lines() {
+		banner := line.trim_space()
+		if banner in ['tcc', 'tinycc', 'tiny c compiler']
+			|| banner.starts_with('tcc version ') || banner.starts_with('tinycc version ')
+			|| banner.starts_with('tiny c compiler ') {
 			return true
 		}
 	}

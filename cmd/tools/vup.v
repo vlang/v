@@ -232,7 +232,7 @@ fn is_tcc_cache_compiler(path string, bundled string, cwd string) bool {
 	if os.user_os() in ['macos', 'ios'] && resolved == '/usr/bin/cc' { return false }
 	if !os.is_executable(path) { return false }
 	compiler_version := cmdexec.run_in(path, ['--version'], cwd).output.to_lower_ascii()
-	return compiler_version.contains('tiny c compiler') || compiler_version.contains('tcc version')
+	return pref.ccompiler_version_is_tinycc(compiler_version)
 }
 
 // skills_refresh_hint is what the report tells the user to run.
