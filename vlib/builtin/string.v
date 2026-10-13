@@ -2814,7 +2814,8 @@ pub fn (s string) strip_margin() string {
 	return s.strip_margin_custom(`|`)
 }
 
-// strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
+// strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`.
+// A trailing region without a delimiter is retained, except for its final whitespace-only lines.
 @[direct_array_access]
 pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
@@ -2827,6 +2828,8 @@ pub fn (s string) strip_margin_custom(del u8) string {
 	// can be is this big
 	mut ret := unsafe { malloc_noscan(s.len + 1) }
 	mut count := 0
+	mut exhausted := false
+	mut tail_content_end := s.len - 1
 	for i := 0; i < s.len; i++ {
 		if s[i] in [10, 13] {
 			unsafe {
@@ -2841,11 +2844,24 @@ pub fn (s string) strip_margin_custom(del u8) string {
 				count++
 				i++
 			}
-			for s[i] != sep {
-				i++
-				if i >= s.len {
-					break
+			if !exhausted {
+				mut j := i + 1
+				for j < s.len && s[j] != sep {
+					j++
 				}
+				if j < s.len {
+					// Keep the established removal of lines before the next delimiter.
+					i = j
+					continue
+				}
+				// Search the unmarked tail only once, even when it contains many lines.
+				exhausted = true
+				for tail_content_end > i && s[tail_content_end] in [u8(9), 10, 13, 32] {
+					tail_content_end--
+				}
+			}
+			if i >= tail_content_end {
+				i = s.len
 			}
 		} else {
 			unsafe {
