@@ -260,3 +260,28 @@ fn test_invalid_versions_and_inner_lengths() {
 		assert false
 	}
 }
+
+fn test_pem_skips_noncertificate_blocks() {
+	prefix := '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n'
+	cert := parse_pem(prefix + testdata_pem())!
+	assert cert.common_name() == 'mail.example.com'
+	if _ := parse_pem(prefix) {
+		assert false
+	} else {
+		assert err.msg().contains('no CERTIFICATE')
+	}
+}
+
+fn test_directory_string_repertoires() {
+	value, decoded := der_string(encode_test_tlv(0x14, [u8(0xe9)]))!
+	assert !decoded
+	assert value == ''
+	for invalid in [[u8(0)], [u8(10)], [u8(`@`)]] {
+		if _, _ := der_string(encode_test_tlv(tag_printable, invalid)) {
+			assert false
+		}
+	}
+	printable, ok := der_string(encode_test_tlv(tag_printable, "AZaz09 '()+,-./:=?".bytes()))!
+	assert ok
+	assert printable == "AZaz09 '()+,-./:=?"
+}

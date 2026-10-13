@@ -47,11 +47,23 @@ const tag_ctx3 = 0xA3
 
 // parse_pem parses the first CERTIFICATE block of PEM text.
 pub fn parse_pem(pem_text string) !Certificate {
-	block, _ := pem.decode(pem_text) or { return error('x509: no PEM block found') }
-	if block.block_type != 'CERTIFICATE' {
-		return error('x509: expected CERTIFICATE block, got `${block.block_type}`')
+	mut rest := pem_text
+	mut saw_block := false
+	for {
+		block, next := pem.decode(rest) or {
+			return error(if saw_block {
+				'x509: no CERTIFICATE PEM block found'
+			} else {
+				'x509: no PEM block found'
+			})
+		}
+		saw_block = true
+		if block.block_type == 'CERTIFICATE' {
+			return parse_der(block.data)
+		}
+		rest = next
 	}
-	return parse_der(block.data)
+	return error('x509: no CERTIFICATE PEM block found')
 }
 
 // parse_der parses one complete DER-encoded certificate without verifying its signature.
@@ -374,7 +386,7 @@ fn der_string(tlv []u8) !(string, bool) {
 		}
 		return out, true
 	}
-	if tag != tag_printable && tag != tag_utf8string && tag != tag_ia5 && tag != 0x14 {
+	if tag != tag_printable && tag != tag_utf8string && tag != tag_ia5 {
 		return '', false
 	}
 	value := content.bytestr()
@@ -385,6 +397,10 @@ fn der_string(tlv []u8) !(string, bool) {
 		for c in content {
 			if c > 127 {
 				return error('x509: invalid ASCII string')
+			}
+			if tag == tag_printable && !(c >= `a` && c <= `z`) && !(c >= `A` && c <= `Z`)
+				&& !(c >= `0` && c <= `9`) && !" '()+,-./:=?".contains_u8(c) {
+				return error('x509: invalid PrintableString')
 			}
 		}
 	}
