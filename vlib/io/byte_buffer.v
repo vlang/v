@@ -123,7 +123,7 @@ pub fn (mut b ByteBuffer) put_bytes(data []u8) {
 
 // peek reserves n unread bytes, erroring on underflow.
 fn (b &ByteBuffer) peek(n int) ! {
-	if n < 0 || b.pos + n > b.buf.len {
+	if n < 0 || n > b.remaining() {
 		return error('io: ByteBuffer underflow')
 	}
 }

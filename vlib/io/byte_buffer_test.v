@@ -41,23 +41,50 @@ fn test_byte_buffer_compact_and_rewind() {
 	assert b.remaining() == 0 && b.len() == 0
 }
 
-fn test_byte_buffer_underflow() {
+fn test_byte_buffer_underflow_does_not_consume() {
 	mut b := new_byte_buffer(0)
-	b.put_u8(9)
-	b.flip()
-	assert b.get_u8()! == 9
-	b.get_u8() or {
-		assert err.msg() == 'io: ByteBuffer underflow'
-		return
+	for width in [1, 2, 4, 8] {
+		if _ := b.get_bytes(width) {
+			assert false
+		} else {
+			assert err.msg() == 'io: ByteBuffer underflow'
+		}
+		assert b.remaining() == 0
 	}
-	assert false, 'over-read must error'
-	b.get_u32_be() or {
-		assert err.msg() == 'io: ByteBuffer underflow'
-		return
+	if _ := b.get_u8() {
+		assert false
 	}
-	assert false, 'wide over-read must error'
-	b.get_bytes(3) or {
-		return
+	if _ := b.get_u16_be() {
+		assert false
 	}
-	assert false, 'bulk over-read must error'
+	if _ := b.get_u16_le() {
+		assert false
+	}
+	if _ := b.get_u32_be() {
+		assert false
+	}
+	if _ := b.get_u32_le() {
+		assert false
+	}
+	if _ := b.get_u64_be() {
+		assert false
+	}
+	if _ := b.get_u64_le() {
+		assert false
+	}
+	b.put_bytes([u8(1), 2, 3])
+	assert b.get_u8()! == 1
+	for n in [-1, 2147483647, 3] {
+		if _ := b.get_bytes(n) {
+			assert false, 'must reject ${n}'
+		} else {
+			assert err.msg() == 'io: ByteBuffer underflow'
+		}
+		assert b.remaining() == 2
+	}
+	assert b.get_bytes(0)!.len == 0
+	assert b.get_bytes(2)! == [u8(2), 3]
+	b.clear()
+	assert b.len() == 0
+	assert b.remaining() == 0
 }
