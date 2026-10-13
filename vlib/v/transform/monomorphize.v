@@ -2017,6 +2017,11 @@ fn (t &Transformer) unchecked_library_box_nodes() []bool {
 }
 
 fn (mut t Transformer) collect_interface_boxed_types_range(start int, end int) {
+	// Type maps are stable during this scan. Discard classifications afterwards:
+	// subsequent specialization can materialize new interface and alias types.
+	old_cache := t.interface_box_scan_cache
+	t.interface_box_scan_cache = &InterfaceBoxScanCache{}
+	defer { t.interface_box_scan_cache = old_cache }
 	limit := if end < t.a.nodes.len { end } else { t.a.nodes.len }
 	for idx in start .. limit {
 		if idx < t.interface_boxed_skip_nodes.len && t.interface_boxed_skip_nodes[idx] {
@@ -2626,6 +2631,26 @@ fn (t &Transformer) interface_box_type_text_maybe(raw_type string) bool {
 	if raw_type == '' {
 		return false
 	}
+	if !isnil(t.interface_box_scan_cache) {
+		mut cache := t.interface_box_scan_cache
+		if cache.module != t.cur_module || cache.file != t.cur_file {
+			cache.module = t.cur_module
+			cache.file = t.cur_file
+			cache.types.clear()
+		}
+		if result := cache.types[raw_type] {
+			return result > 0
+		}
+	}
+	result := t.interface_box_type_text_maybe_uncached(raw_type)
+	if !isnil(t.interface_box_scan_cache) {
+		mut cache := t.interface_box_scan_cache
+		cache.types[raw_type] = if result { i8(1) } else { i8(-1) }
+	}
+	return result
+}
+
+fn (t &Transformer) interface_box_type_text_maybe_uncached(raw_type string) bool {
 	clean := t.normalize_type_alias(raw_type).trim_space()
 	if clean.starts_with('?') || clean.starts_with('!') {
 		return t.interface_box_type_text_maybe(clean[1..])
@@ -2937,17 +2962,7 @@ fn (mut t Transformer) materialize_generic_structs(erase_templates bool) {
 	if decls.len == 0 && sum_decls.len == 0 {
 		return
 	}
-	mut specs := map[string]string{}
-	mut sum_specs := map[string]GenericSpecContext{}
-	if t.generic_materialization_ready {
-		specs = t.generic_struct_specs_cache.clone()
-		sum_specs = t.generic_sum_specs_cache.clone()
-		t.collect_generic_struct_specs_range(decls, mut specs, t.generic_materialization_scan_from, t.a.nodes.len)
-		t.collect_generic_sum_specs_range(sum_decls, mut sum_specs, t.generic_materialization_scan_from, t.a.nodes.len)
-		t.expand_generic_materialization_specs(decls, sum_decls, mut specs, mut sum_specs)
-	} else {
-		specs, sum_specs = t.collect_generic_materialization_specs(decls, sum_decls)
-	}
+	specs, sum_specs := t.collect_generic_materialization_specs(decls, sum_decls)
 	t.monomorph_profile('mono materialize specs: ${time.ticks() - debug_started} ms (${specs.len}/${sum_specs.len})')
 	for spec, context in sum_specs {
 		decl := sum_decls[context.base] or { continue }
@@ -2993,14 +3008,6 @@ fn (mut t Transformer) materialize_generic_sum_types(erase_templates bool) {
 	}
 	decls := t.collect_generic_struct_decls()
 	sum_decls := t.collect_generic_sum_decls()
-	if sum_decls.len == 0 {
-		specs, _ := t.collect_generic_materialization_specs(decls, sum_decls)
-		t.generic_struct_specs_cache = specs.clone()
-		t.generic_sum_specs_cache = map[string]GenericSpecContext{}
-		t.generic_materialization_scan_from = t.a.nodes.len
-		t.generic_materialization_ready = true
-		return
-	}
 	specs, sum_specs := t.collect_generic_materialization_specs(decls, sum_decls)
 	t.generic_struct_specs_cache = specs.clone()
 	t.generic_sum_specs_cache = sum_specs.clone()
@@ -3028,10 +3035,23 @@ fn (mut t Transformer) erase_generic_sum_templates(sum_decls map[string]GenericS
 }
 
 fn (mut t Transformer) collect_generic_materialization_specs(decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl) (map[string]string, map[string]GenericSpecContext) {
-	mut specs := map[string]string{}
-	mut sum_specs := map[string]GenericSpecContext{}
-	t.collect_generic_struct_specs(decls, mut specs)
-	t.collect_generic_sum_specs(sum_decls, mut sum_specs)
+	mut specs := if t.generic_materialization_ready {
+		t.generic_struct_specs_cache.clone()
+	} else {
+		map[string]string{}
+	}
+	mut sum_specs := if t.generic_materialization_ready {
+		t.generic_sum_specs_cache.clone()
+	} else {
+		map[string]GenericSpecContext{}
+	}
+	if t.generic_materialization_ready {
+		t.collect_generic_struct_specs_range(decls, mut specs, t.generic_materialization_scan_from, t.a.nodes.len)
+		t.collect_generic_sum_specs_range(sum_decls, mut sum_specs, t.generic_materialization_scan_from, t.a.nodes.len)
+	} else {
+		t.collect_generic_struct_specs(decls, mut specs)
+		t.collect_generic_sum_specs(sum_decls, mut sum_specs)
+	}
 	t.expand_generic_materialization_specs(decls, sum_decls, mut specs, mut sum_specs)
 	return specs, sum_specs
 }
@@ -15369,27 +15389,40 @@ fn (t &Transformer) recorded_generic_specialization_args(typ string) ?[]string {
 	if args := t.recorded_generic_specialization_args_exact(clean) {
 		return args
 	}
-	clean_cname := c_name(clean)
-	if clean_cname != clean {
-		if args := t.recorded_generic_specialization_args_exact(clean_cname) {
+	for name in t.generic_specialization_lookup_names(clean) {
+		if args := t.recorded_generic_specialization_args_exact(name) {
 			return args
 		}
+	}
+	return none
+}
+
+fn (t &Transformer) generic_specialization_lookup_names(clean string) []string {
+	if !isnil(t.generic_spec_name_cache) {
+		if names := t.generic_spec_name_cache.entries[clean] {
+			return names
+		}
+	}
+	mut names := []string{}
+	clean_cname := c_name(clean)
+	if clean_cname != clean {
+		names << clean_cname
 	}
 	if clean.contains('__') {
 		dotted := clean.replace('__', '.')
 		if dotted != clean && dotted != clean_cname {
-			if args := t.recorded_generic_specialization_args_exact(dotted) {
-				return args
-			}
+			names << dotted
 		}
 		dotted_cname := c_name(dotted)
 		if dotted_cname != clean && dotted_cname != clean_cname && dotted_cname != dotted {
-			if args := t.recorded_generic_specialization_args_exact(dotted_cname) {
-				return args
-			}
+			names << dotted_cname
 		}
 	}
-	return none
+	if !isnil(t.generic_spec_name_cache) {
+		mut cache := t.generic_spec_name_cache
+		cache.entries[clean] = names
+	}
+	return names
 }
 
 fn (t &Transformer) recorded_generic_specialization_args_exact(name string) ?[]string {

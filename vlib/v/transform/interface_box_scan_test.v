@@ -3,6 +3,58 @@ module transform
 import v.flat
 import v.types
 
+fn test_interface_box_type_classification_cache_preserves_source_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['Reader'] = true
+	tc.type_aliases['Handle'] = 'Reader'
+	tc.type_aliases['dependency.Handle'] = 'int'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.interface_box_scan_cache = &InterfaceBoxScanCache{}
+	for module_name in ['main', 'dependency', 'main'] {
+		t.cur_module = module_name
+		tc.cur_module = module_name
+		for typ in ['int', 'Reader', 'Handle', '?Handle', '(int, Handle)', '[]int', 'map[string]Reader'] {
+			expected := t.interface_box_type_text_maybe_uncached(typ)
+			assert t.interface_box_type_text_maybe(typ) == expected
+			assert t.interface_box_type_text_maybe(typ) == expected
+		}
+		assert t.interface_box_type_text_maybe('Handle') == (module_name == 'main')
+	}
+	t.cur_module = 'main'
+	tc.cur_module = 'main'
+	tc.interface_names['first.ImportedHandle'] = true
+	tc.type_aliases['second.ImportedHandle'] = 'int'
+	tc.file_selective_imports[file_import_key('first.v', 'ImportedHandle')] = ['first.ImportedHandle']
+	tc.file_selective_imports[file_import_key('second.v', 'ImportedHandle')] = ['second.ImportedHandle']
+	for file in ['first.v', 'second.v', 'first.v'] {
+		t.cur_file = file
+		tc.cur_file = file
+		assert t.interface_box_type_text_maybe('ImportedHandle') == (file == 'first.v')
+		assert t.interface_box_type_text_maybe('ImportedHandle') == (file == 'first.v')
+	}
+}
+
+fn test_interface_box_scan_discards_classifications_before_type_maps_change() {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{ kind: .ident, value: 'value', typ: 'Source' })
+	ret := interface_box_scan_node(mut a, .return_stmt, '', '', [value])
+	interface_box_scan_node(mut a, .fn_decl, 'read', 'Handle', [ret])
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['Reader'] = true
+	tc.type_aliases['Handle'] = 'int'
+	tc.register_synth_type(value, types.Type(types.Struct{ name: 'Source' }))
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	t.collect_interface_boxed_types_range(0, a.nodes.len)
+	assert isnil(t.interface_box_scan_cache)
+	assert !t.interface_boxed_types['Reader\nSource']
+	tc.type_aliases['Handle'] = 'Reader'
+	t.collect_interface_boxed_types_range(0, a.nodes.len)
+	assert isnil(t.interface_box_scan_cache)
+	assert t.interface_boxed_types['Reader\nSource']
+}
+
 fn interface_box_scan_node(mut a flat.FlatAst, kind flat.NodeKind, value string, typ string, children []flat.NodeId) flat.NodeId {
 	start := a.children.len
 	a.children << children

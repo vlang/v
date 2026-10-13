@@ -36,6 +36,88 @@ fn test_generic_declaration_index_preserves_appended_templates_and_erasure() {
 	assert 'later.Added' !in t.collect_generic_struct_decls()
 }
 
+fn test_collect_types_preserves_indexed_headers_and_appended_declarations() {
+	path := os.join_path(os.vtmp_dir(), 'collect_types_index_${os.getpid()}.v')
+	os.write_file(path, 'module source\nstruct Item { value int }\nenum Kind { first second }\ntype Choice = int | string\nfn value() int { return 1 }\n')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	a.add_val(.file, 'appended.v')
+	a.add_val(.module_decl, 'later')
+	a.add_node(flat.Node{ kind: .struct_decl, value: 'Added' })
+	a.add_node(flat.Node{ kind: .fn_decl, value: 'value', typ: 'string' })
+	mut indexed := new_transformer(mut a, &tc, map[string]bool{})
+	indexed.collect_types()
+	assert 'source.Item' in indexed.structs
+	assert 'later.Added' in indexed.structs
+	assert indexed.fn_ret_types['later.value'] == 'string'
+	assert indexed.fn_ret_types['source.value'] == 'int'
+	tc.top_level_idx.clear()
+	mut scanned := new_transformer(mut a, &tc, map[string]bool{})
+	scanned.collect_types()
+	assert scanned.structs == indexed.structs
+	assert scanned.sum_types == indexed.sum_types
+	assert scanned.enum_types == indexed.enum_types
+	assert scanned.fn_ret_types == indexed.fn_ret_types
+}
+
+fn test_generic_materialization_cache_discovers_appended_nested_instances() {
+	path := os.join_path(os.vtmp_dir(), 'generic_materialization_cache_${os.getpid()}.v')
+	os.write_file(path, 'module main\nstruct Box[T] { value T }\ntype Choice[T] = T | string\nfn initial(value Box[Choice[int]]) {}\n')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.prepare()
+	t.materialize_generic_sum_types(false)
+	assert t.generic_materialization_ready
+	assert 'Box[Choice[int]]' in t.generic_struct_specs_cache
+	assert 'Choice[int]' in t.generic_sum_specs_cache
+	// Late lowering appends an instance whose nested sum also needs materialization.
+	a.add_val(.file, path)
+	a.add_val(.module_decl, 'main')
+	param := a.add_node(flat.Node{ kind: .param, value: 'later', typ: 'Box[Choice[u64]]' })
+	children_start := a.children.len
+	a.children << param
+	a.add_node(flat.Node{ kind: .fn_decl, value: 'later', children_start: children_start, children_count: 1 })
+	t.materialize_generic_sum_types(false)
+	assert 'Box[Choice[int]]' in t.generic_struct_specs_cache
+	assert 'Box[Choice[u64]]' in t.generic_struct_specs_cache
+	assert 'Choice[int]' in tc.sum_types
+	assert 'Choice[u64]' in tc.sum_types
+	assert t.generic_materialization_scan_from == a.nodes.len
+	// A fresh full collection must discover exactly the same instances and contexts.
+	decls := t.collect_generic_struct_decls()
+	sum_decls := t.collect_generic_sum_decls()
+	cached_structs := t.generic_struct_specs_cache.clone()
+	cached_sums := t.generic_sum_specs_cache.clone()
+	t.generic_materialization_ready = false
+	full_structs, full_sums := t.collect_generic_materialization_specs(decls, sum_decls)
+	assert full_structs == cached_structs
+	assert full_sums == cached_sums
+}
+
+fn test_specialization_spelling_cache_observes_late_local_and_parent_registrations() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.recorded_generic_specialization_args('dependency__identity') == none
+	assert t.recorded_generic_specialization_args('dependency__identity') == none
+	t.generic_specialization_args['dependency.identity'] = ['int']
+	assert t.recorded_generic_specialization_args('dependency__identity')? == ['int']
+	assert t.recorded_generic_specialization_args('dependency.parent') == none
+	mut parent := map[string][]string{}
+	t.generic_specialization_args_parent = &parent
+	parent['dependency__parent'] = ['string']
+	assert t.recorded_generic_specialization_args('&dependency.parent')? == ['string']
+}
+
 fn test_node_context_cache_growth_preserves_ids_and_initializes_new_slots() {
 	mut cache := []u16{}
 	grow_node_context_cache(mut cache, 3, 8)

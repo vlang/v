@@ -282,6 +282,7 @@ mut:
 	struct_guess_cache            &AliasCache              = unsafe { nil }
 	generic_unresolved_cache      &GenericUnresolvedCache  = unsafe { nil }
 	generic_spec_decode_cache     &LookupCache             = unsafe { nil }
+	generic_spec_name_cache       &GenericSpecNameCache    = unsafe { nil }
 	struct_field_type_cache       &LookupCache             = unsafe { nil }
 	variant_short_name_cache      &AliasCache              = unsafe { nil }
 	selector_type_cache           &SelectorTypeCache       = unsafe { nil }
@@ -293,6 +294,7 @@ mut:
 	type_alias_name_cache         &ContextBoolLookupCache  = unsafe { nil }
 	raw_return_alias_cache        &ContextBoolLookupCache  = unsafe { nil }
 	interface_box_param_cache     &BoolLookupCache         = unsafe { nil }
+	interface_box_scan_cache      &InterfaceBoxScanCache   = unsafe { nil }
 	alias_receiver_method_cache   &LookupCache             = unsafe { nil }
 	receiver_method_cache         &ReceiverMethodCache     = unsafe { nil }
 	promote_text_cache            &PromoteTextCache        = unsafe { nil }
@@ -684,6 +686,20 @@ mut:
 	entries map[string]string
 	misses  map[string]bool
 	recent  &util.KeyRecentCache = unsafe { nil }
+}
+
+// GenericSpecNameCache stores spelling conversions, not lookup results: a
+// previously missing specialization can be registered later in the same pass.
+struct GenericSpecNameCache {
+mut:
+	entries map[string][]string
+}
+
+struct InterfaceBoxScanCache {
+mut:
+	module string
+	file   string
+	types  map[string]i8
 }
 
 // recent_cache returns this cache's front cache, allocating it on first use.
@@ -1926,6 +1942,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		interface_box_param_cache:   &BoolLookupCache{
 			entries: map[string]i8{}
 		}
+		generic_spec_name_cache:     &GenericSpecNameCache{}
 		alias_receiver_method_cache: &LookupCache{
 			entries: map[string]string{}
 			misses:  map[string]bool{}
@@ -3237,16 +3254,18 @@ fn (mut t Transformer) restore_var_types(saved []VarTypeBinding) {
 // collect_types updates collect types state for transform.
 @[direct_array_access]
 fn (mut t Transformer) collect_types() {
-	// All matched kinds are top-level declarations; when the checker's
-	// top-level index covers the AST, iterate it instead of streaming every
-	// node (same nodes, same order, ~100x fewer).
-	use_idx := !isnil(t.tc) && t.tc.top_level_idx.len > 0
-		&& t.tc.top_level_idx_nodes_len == t.a.nodes.len
-	count := if use_idx { t.tc.top_level_idx.len } else { t.a.nodes.len }
+	// Lowering preserves the indexed declaration headers and appends synthesized
+	// declarations. Reuse the source index and scan only the appended tail.
+	indexed_count, indexed_nodes := t.declaration_scan_prefix()
 	mut cur_mod := ''
 	mut cur_file := ''
-	for ii in 0 .. count {
-		node := if use_idx { t.a.nodes[t.tc.top_level_idx[ii]] } else { t.a.nodes[ii] }
+	for ii in 0 .. indexed_count + t.a.nodes.len - indexed_nodes {
+		node_idx := if ii < indexed_count {
+			int(t.tc.top_level_idx[ii])
+		} else {
+			indexed_nodes + ii - indexed_count
+		}
+		node := t.a.nodes[node_idx]
 		match node.kind {
 			.file {
 				cur_file = node.value
@@ -4311,6 +4330,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.generic_spec_name_cache = &GenericSpecNameCache{}
 	w.receiver_method_cache = &ReceiverMethodCache{}
 	w.promote_text_cache = &PromoteTextCache{}
 	w.struct_field_type_cache = &LookupCache{
@@ -4459,6 +4479,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.generic_spec_name_cache = &GenericSpecNameCache{}
 	w.receiver_method_cache = &ReceiverMethodCache{}
 	w.promote_text_cache = &PromoteTextCache{}
 	w.struct_field_type_cache = &LookupCache{
