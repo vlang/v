@@ -1,6 +1,7 @@
 module pref
 
 import os
+import strings
 import time
 import v.cmdexec
 
@@ -1269,6 +1270,7 @@ fn prod_profile_consumes_value(args []string, index int) bool {
 // its version banner, so a copy of tcc under another name is still recognised. Mentions of
 // TinyCC in metadata such as an installed directory do not identify a compiler. A name that
 // does not resolve to an executable is judged by its name alone.
+// Local launchable files precede PATH. Windows also permits loadable PE files with other extensions.
 pub fn ccompiler_is_tinycc(ccompiler string) bool {
 	return ccompiler_is_tinycc_in(ccompiler, os.getwd())
 }
@@ -1276,12 +1278,22 @@ pub fn ccompiler_is_tinycc(ccompiler string) bool {
 fn ccompiler_is_tinycc_in(ccompiler string, cwd string) bool {
 	work_folder := if cwd == '' { os.getwd() } else { cwd }
 	path := ccompiler_path_in(ccompiler, work_folder)
+	if path == '' {
+		mut name := ccompiler
+		$if windows {
+			name = ccompiler_windows_expand_env_vars(name)
+		}
+		return tinycc_file_name(os.file_name(name))
+	}
 	resolved := os.real_path(path)
 	if tinycc_file_name(os.file_name(resolved)) {
 		return true
 	}
-	if !os.is_executable(resolved) {
+	if !os.is_file(resolved) {
 		return false
+	}
+	$if !windows {
+		if !os.is_executable(resolved) { return false }
 	}
 	for flag in ['--version', '-v'] {
 		version := cmdexec.run_in(resolved, [flag], work_folder).output
@@ -1293,31 +1305,78 @@ fn ccompiler_is_tinycc_in(ccompiler string, cwd string) bool {
 }
 
 // ccompiler_path_in resolves explicit paths and PATH entries in the requested directory.
-// Preserve os's suffix-before-directory search order without changing the process PATH.
+// Match cmdexec's local-file and explicit-path rules before searching PATH.
 fn ccompiler_path_in(ccompiler string, cwd string) string {
+	mut program := ccompiler
+	$if windows {
+		program = ccompiler_windows_expand_env_vars(program)
+	}
+	path := if os.is_abs_path(program) { program } else { os.join_path(cwd, program) }
+	if os.is_file(path) && os.is_executable(path) { return path }
+	mut explicit_path := os.is_abs_path(program) || program.contains('/')
+	$if windows {
+		explicit_path = explicit_path || program.contains('\\')
+	}
+	if explicit_path {
+		$if windows {
+			return ccompiler_windows_executable_path(path)
+		} $else {
+			return path
+		}
+	}
 	mut suffixes := ['']
 	$if windows {
 		suffixes = ['.com', '.exe', '.bat', '.cmd', '']
-		if os.file_ext(ccompiler).to_lower_ascii() in suffixes && os.file_ext(ccompiler) != '' {
+		if os.file_ext(program).to_lower_ascii() in suffixes && os.file_ext(program) != '' {
 			suffixes = ['']
 		}
-	}
-	if os.is_abs_path(ccompiler) || ccompiler.contains('/') || ccompiler.contains('\\') {
-		path := if os.is_abs_path(ccompiler) { ccompiler } else { os.join_path(cwd, ccompiler) }
-		for suffix in suffixes {
-			candidate := path + suffix
-			if os.is_file(candidate) && os.is_executable(candidate) { return candidate }
-		}
-		return path.replace('\\', '/')
 	}
 	for suffix in suffixes {
 		for entry in os.getenv('PATH').split(os.path_delimiter) {
 			directory := if os.is_abs_path(entry) { entry } else { os.join_path(cwd, entry) }
-			candidate := os.join_path(directory, ccompiler + suffix)
+			candidate := os.join_path(directory, program + suffix)
 			if os.is_file(candidate) && os.is_executable(candidate) { return candidate }
 		}
 	}
-	return os.join_path(cwd, ccompiler)
+	return ''
+}
+
+// Explicit Windows paths have CreateProcessW's single implicit `.exe` suffix.
+// Nonstandard extensions can still contain a loadable PE image.
+fn ccompiler_windows_executable_path(candidate string) string {
+	if os.is_file(candidate) && os.is_executable(candidate) { return candidate }
+	if os.file_ext(candidate) != '' { return candidate }
+	probed := candidate + '.exe'
+	if os.is_file(probed) && os.is_executable(probed) { return probed }
+	return candidate
+}
+
+// Keep the same single-pass percent expansion as cmdexec's Windows launch path.
+fn ccompiler_windows_expand_env_vars(text string) string {
+	if !text.contains('%') { return text }
+	parts := text.split('%')
+	mut out := strings.new_builder(text.len)
+	for i in 0 .. parts.len {
+		if i % 2 == 0 {
+			out.write_string(parts[i])
+			continue
+		}
+		if i == parts.len - 1 {
+			out.write_string('%')
+			out.write_string(parts[i])
+			continue
+		}
+		name := parts[i]
+		value := if name == '' { '' } else { os.getenv(name) }
+		if value != '' {
+			out.write_string(value)
+			continue
+		}
+		out.write_string('%')
+		out.write_string(name)
+		out.write_string('%')
+	}
+	return out.str()
 }
 
 // ccompiler_version_is_tinycc reports whether output contains a TinyCC version or branding

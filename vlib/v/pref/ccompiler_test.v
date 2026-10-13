@@ -169,3 +169,69 @@ fn test_tcc_prod_detection_uses_recorded_wrapper_directory_without_chdir() {
 	assert tcc_with_prod_requested_in(['-prod', '-cc', bare], project)
 	assert os.getwd() == before
 }
+
+fn test_tcc_prod_detection_prefers_launchable_local_compiler_before_path() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_pref_local_cc_${os.getpid()}')
+	project := os.join_path(root, 'project')
+	bin := os.join_path(root, 'bin')
+	os.mkdir_all(project)!
+	os.mkdir_all(bin)!
+	saved_path := os.getenv('PATH')
+	defer {
+		os.setenv('PATH', saved_path, true)
+		os.rmdir_all(root) or {}
+	}
+	local := os.join_path(project, 'clang')
+	search := os.join_path(bin, 'clang')
+	os.write_file(local, '#!/bin/sh\necho "tcc version 0.9.27"\n')!
+	os.write_file(search, '#!/bin/sh\necho "clang version 19.1.7"\n')!
+	os.chmod(local, 0o700)!
+	os.chmod(search, 0o700)!
+	os.setenv('PATH', bin + os.path_delimiter + saved_path, true)
+	before := os.getwd()
+	assert ccompiler_path_in('clang', project) == local
+	assert tcc_with_prod_requested_in(['-prod', '-cc', 'clang'], project)
+	assert !tcc_with_prod_requested_in(['-prod', '-cc', 'clang'], root)
+	os.write_file(local, '#!/bin/sh\necho "clang version 19.1.7"\n')!
+	os.write_file(search, '#!/bin/sh\necho "tcc version 0.9.27"\n')!
+	assert !tcc_with_prod_requested_in(['-prod', '-cc', 'clang'], project)
+	assert tcc_with_prod_requested_in(['-prod', '-cc', 'clang'], root)
+	assert os.getwd() == before
+}
+
+fn test_ccompiler_windows_explicit_path_uses_exe_not_com_or_cmd() {
+	root := os.join_path(os.vtmp_dir(), 'v_pref_windows_paths_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'clang')
+	for suffix in ['', '.com', '.exe', '.cmd', '.bin'] {
+		os.write_file(path + suffix, 'dummy executable-path fixture')!
+		os.chmod(path + suffix, if suffix in ['.com', '.exe', '.cmd'] { 0o700 } else { 0o600 })!
+	}
+	assert ccompiler_windows_executable_path(path) == path + '.exe'
+	assert ccompiler_windows_executable_path(path + '.bin') == path + '.bin'
+	os.rm(path + '.exe')!
+	assert ccompiler_windows_executable_path(path) == path
+	os.rm(path)!
+	assert ccompiler_windows_executable_path(path) == path
+	$if windows {
+		assert os.real_path(ccompiler_path_in('./clang.bin', root)) == os.real_path(path + '.bin')
+	}
+}
+
+fn test_ccompiler_windows_percent_expansion_matches_launch_spelling() {
+	name := 'V_PREF_COMPILER_SDK_${os.getpid()}'
+	missing := 'V_PREF_COMPILER_UNSET_${os.getpid()}'
+	previous := os.getenv(name)
+	defer {
+		if previous == '' { os.unsetenv(name) } else { os.setenv(name, previous, true) }
+	}
+	os.setenv(name, 'C:/compiler sdk', true)
+	assert ccompiler_windows_expand_env_vars('%${name}%/clang.exe') == 'C:/compiler sdk/clang.exe'
+	assert ccompiler_windows_expand_env_vars('%${missing}%/clang.exe') == '%${missing}%/clang.exe'
+	assert ccompiler_windows_expand_env_vars('%%/clang.exe') == '%%/clang.exe'
+	assert ccompiler_windows_expand_env_vars('%${name}/clang.exe') == '%${name}/clang.exe'
+}

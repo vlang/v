@@ -477,6 +477,9 @@ The C backend rejects `-prod` with TinyCC, including compiler aliases and rename
 Use Clang or GCC for production builds. Help, formatter, and other tool commands remain available
 with those flags. `v.pref.ccompiler_version_is_tinycc` recognizes TinyCC banner lines;
 mentions in metadata such as Clang's `InstalledDir` do not identify TinyCC.
+Compiler probes follow the launch path, including executable files in the working directory
+before `PATH`. Windows explicit paths use the implicit `.exe` suffix and expand `%NAME%` variables;
+renamed PE files with other extensions can also be queried.
 With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
 before compiling a new module object, including during `run`. Ordinary builds and warm builds
 print no cache creation notices; `-silent` suppresses them too.
