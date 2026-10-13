@@ -67,3 +67,19 @@ fn test_script_tag() {
 	parser.parse_html(temp_html)
 	assert parser.tags[2].content.len == script_content.len
 }
+
+fn test_parse_script_and_style_keep_their_body() {
+	for sample in ['<script>var x = 1;</script>', '<style>body { color: red; }</style>'] {
+		mut parser := Parser{}
+		parser.parse_html(sample)
+		assert parser.tags.len == 1, sample
+		tag := parser.tags.first()
+		assert tag.content != '', sample
+		assert tag.str() == sample, tag.str()
+	}
+	// the normal text path is unchanged
+	mut parser := Parser{}
+	parser.parse_html('<textarea>keep me</textarea>')
+	assert parser.tags.first().content == 'keep me'
+	assert parser.tags.first().str() == '<textarea>keep me</textarea>'
+}

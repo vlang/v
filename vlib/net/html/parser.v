@@ -129,6 +129,9 @@ pub fn (mut parser Parser) split_parse(data string) {
 					parser.lexical_attributes.open_code = false
 					// modify lexeme_builder to include script text as content in the next loop
 					parser.lexical_attributes.lexeme_builder.go_back(name_close_tag.len)
+					// the builder now holds exactly the body, since it was reset
+					// when the opening tag closed; keep it as the tag content
+					parser.lexical_attributes.current_tag.content = parser.builder_str()
 					parser.lexical_attributes.current_tag.closed = true
 					parser.lexical_attributes.current_tag.close_type = .new_tag
 				}
