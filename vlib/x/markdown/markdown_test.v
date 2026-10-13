@@ -360,6 +360,24 @@ fn test_to_plaintext_blockquote_footnotes_share_global_order() {
 	assert text.contains('[1] note body')
 }
 
+fn test_indented_list_item_is_not_nested() {
+	// an indented list item is still one item: the marker must be matched
+	// after the item's own indentation, not re-parsed as a nested list.
+	// See https://github.com/vlang/v/issues/30170
+	assert to_html('  - item') == '<ul>\n<li>item</li>\n</ul>\n'
+	assert to_html('  1. item') == '<ol>\n<li>item</li>\n</ol>\n'
+	assert to_html('- item') == '<ul>\n<li>item</li>\n</ul>\n'
+	for spaces in [' ', '  ', '   '] {
+		for marker in ['-', '*', '+'] {
+			assert to_html('${spaces}${marker} item') == '<ul>\n<li>item</li>\n</ul>\n'
+		}
+		assert to_html('${spaces}1) item') == '<ol>\n<li>item</li>\n</ol>\n'
+	}
+	assert to_html('  - first\n    second') == '<ul>\n<li>first\nsecond</li>\n</ul>\n'
+	// A tight list emits no separator between its paragraph and nested list.
+	assert to_html('  - outer\n    - inner') == '<ul>\n<li>outer<ul>\n<li>inner</li>\n</ul>\n</li>\n</ul>\n'
+}
+
 fn test_expand_tabs_preserves_interior_tabs() {
 	// leading tabs expand to the next tab stop; tabs elsewhere are literal
 	// content (notably inside code blocks) and must survive byte for byte.
