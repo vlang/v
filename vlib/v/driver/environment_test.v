@@ -748,6 +748,18 @@ fn test_scoped_type_metadata_preserves_generic_interface_parameters() {
 	assert key == 'Store[T].get'
 }
 
+fn test_translated_module_attributes_are_detected_for_prefix_regeneration() {
+	mut a := flat.FlatAst.new()
+	id := a.add_node(flat.Node{ kind: .module_decl, value: 'main' })
+	assert !program_has_translated_module_attributes(&a)
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(id)}'
+		payload: flat.node_payload(['translated'])
+	})
+	assert program_has_translated_module_attributes(&a)
+}
+
 fn test_scoped_ast_storage_copy_preserves_persistent_text_and_promotes_retiring_payloads() {
 	$if !prealloc {
 		return

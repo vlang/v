@@ -486,6 +486,8 @@ Selected option/result tuple signatures declare their payload layouts before the
 Shared wrappers retain their payload layouts even when only compile-time reflection visits them.
 Recursive interface string helpers belong to the interface's declaration module.
 Warm builds preserve generic interface parameter metadata after temporary compiler arenas are freed.
+Translated programs regenerate their C prefixes after body edits so new runtime helpers are present;
+their module and executable caches remain enabled.
 Portable cross output keeps its embedded signal-handler installer local so cached builds can
 also link the native helper object.
 With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
