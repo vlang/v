@@ -15662,6 +15662,12 @@ fn (t &Transformer) generic_arg_is_unresolved_uncached(arg string) bool {
 	if clean.starts_with('[]') {
 		return t.generic_arg_is_unresolved(clean[2..])
 	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return t.generic_arg_is_unresolved(clean[bracket_end + 1..])
+		}
+	}
 	if clean.starts_with('map[') {
 		bracket_end := generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len {

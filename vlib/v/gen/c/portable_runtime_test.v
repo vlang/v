@@ -57,6 +57,14 @@ fn main() {
 }
 
 ')!
+	// Cached cross builds also link native helper objects; the embedded installer
+	// must not export a second copy of the native signal-handler symbol.
+	for _ in 0 .. 2 {
+		cached := cmdexec.run('env', ['V3CACHE=${os.join_path(root, 'cache')}', @VEXE, '-cc', cc,
+			'-gc', 'none', '-prealloc', '-os', 'cross', 'run', source])
+		assert cached.exit_code == 0, cached.output
+		assert cached.output.trim_space() == 'portable', cached.output
+	}
 	generated := cmdexec.run(@VEXE, ['-gc', 'none', '-prealloc', '-nocache', '-os', 'cross', '-o',
 		c_source, source])
 	assert generated.exit_code == 0, generated.output
