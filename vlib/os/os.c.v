@@ -991,9 +991,9 @@ fn normalize_windows_extended_path_prefix(path string) string {
 
 // relative_path_from_cwd writes the working directory, a separator and `fpath` to `buf`,
 // as a C string. It returns false when the working directory is not known as an absolute
-// path, or when the result does not fit in `size` bytes.
+// path, or when the result does not fit in `size` bytes. Only real_path on macOS needs it.
 fn relative_path_from_cwd(fpath string, buf voidptr, size int) bool {
-	$if windows {
+	$if !macos {
 		return false
 	} $else {
 		unsafe {
@@ -1075,18 +1075,22 @@ pub fn real_path(fpath string) string {
 		}
 	} $else {
 		mut ret := &char(unsafe { nil })
-		if fpath.len > 0 && fpath[0] != `/` {
-			// A relative path is resolved against the working directory, which libc finds
-			// again on every call. macOS reads the parent directories for that, so the
-			// call costs as much as those directories are large. Naming the directory
-			// in the path resolves the same file without that lookup.
-			mut joined := [max_path_buffer_size]u8{}
-			if relative_path_from_cwd(fpath, voidptr(&joined[0]), max_path_buffer_size) {
-				ret = &char(C.realpath(&char(&joined[0]), &char(&fullpath[0])))
-				// What is missing or unreachable under its full name is so by its relative one.
-				if ret == 0 && C.errno in [error_code_noent, error_code_notdir, error_code_denied] {
-					unsafe { res.free() }
-					return fpath.clone()
+		$if macos {
+			if fpath.len > 0 && fpath[0] != `/` {
+				// A relative path is resolved against the working directory, which libc
+				// finds again on every call. The libc of macOS reads the parent directories
+				// for that, so the call costs as much as those directories are large.
+				// Naming the directory in the path resolves the same file without that
+				// lookup. Other libcs ask the kernel, and would only check its answer again.
+				mut joined := [max_path_buffer_size]u8{}
+				if relative_path_from_cwd(fpath, voidptr(&joined[0]), max_path_buffer_size) {
+					ret = &char(C.realpath(&char(&joined[0]), &char(&fullpath[0])))
+					// What is missing or unreachable under its full name is so by its relative one.
+					if ret == 0
+						&& C.errno in [error_code_noent, error_code_notdir, error_code_denied] {
+						unsafe { res.free() }
+						return fpath.clone()
+					}
 				}
 			}
 		}
