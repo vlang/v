@@ -6968,7 +6968,9 @@ fn (b &Builder) fn_is_used_for_decl(name string, qualified_method bool) bool {
 	}
 	normalized_name := name.replace('__', '.')
 	used_short_name := normalized_name.all_after_last('.')
-	if !qualified_method && used_short_name in b.used_fns {
+	// A retained C prototype is tracked by its bare symbol name. It does not
+	// make a same-named V function in another module reachable.
+	if !qualified_method && used_short_name in b.used_fns && used_short_name !in b.c_fn_ids {
 		return true
 	}
 	if name in b.used_fn_suffixes {
@@ -6980,7 +6982,8 @@ fn (b &Builder) fn_is_used_for_decl(name string, qualified_method bool) bool {
 		suffix_start = dot + 1
 		if suffix_start < normalized_name.len {
 			suffix := normalized_name[suffix_start..]
-			if (!qualified_method || suffix.contains('.')) && suffix in b.used_fn_normalized {
+			if (!qualified_method || suffix.contains('.')) && suffix in b.used_fn_normalized
+				&& (suffix.contains('.') || suffix !in b.c_fn_ids) {
 				return true
 			}
 		}
