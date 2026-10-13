@@ -129,12 +129,8 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 
 		if status == .field_char {
 			mut fc_ch1 := `0`
-			mut fc_ch2 := `0`
 			if (i + 1) < str.len {
 				fc_ch1 = str[i + 1]
-				if (i + 2) < str.len {
-					fc_ch2 = str[i + 2]
-				}
 			}
 			if ch == `+` {
 				sign = true
@@ -160,20 +156,6 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 			} else if ch == `.` && fc_ch1 >= `1` && fc_ch1 <= `9` {
 				status = .check_float
 				i++
-				continue
-			}
-			// manage "%.*s" precision field
-			else if ch == `.` && fc_ch1 == `*` && fc_ch2 == `s` {
-				v_sprintf_panic(p_index, pt.len)
-				len := unsafe { *(&int(pt[p_index])) }
-				p_index++
-				v_sprintf_panic(p_index, pt.len)
-				mut s := unsafe { *(&string(pt[p_index])) }
-				s = v_sprintf_str_precision(s, len)
-				p_index++
-				res.write_string(s)
-				status = .reset_params
-				i += 3
 				continue
 			}
 			status = .len_set_start
@@ -213,6 +195,14 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 		}
 
 		if status == .check_float {
+			if ch == `*` && i + 1 < str.len && str[i + 1] == `s` {
+				v_sprintf_panic(p_index, pt.len)
+				len1 = unsafe { *(&int(pt[p_index])) }
+				p_index++
+				status = .check_type
+				i++
+				continue
+			}
 			if ch >= `0` && ch <= `9` {
 				len1 = int(ch - `0`)
 				status = .check_float_in

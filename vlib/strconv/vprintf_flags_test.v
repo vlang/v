@@ -223,3 +223,25 @@ fn test_format_that_ends_inside_of_a_specifier_keeps_it() {
 		assert strconv.v_sprintf('%d%5.2', 1) == '1%5.2'
 	}
 }
+
+fn test_string_star_precision_combines_with_field_width() {
+	unsafe {
+		assert strconv.v_sprintf('[%5.*s] [%-5.*s]', 2, 'abcdef', 2, 'abcdef') == '[   ab] [ab   ]'
+		assert strconv.v_sprintf('[%5.*s] [%-5.*s]', 0, 'abcdef', 0, 'abcdef') == '[     ] [     ]'
+		assert strconv.v_sprintf('[%5.*s]', 10, 'abc') == '[  abc]'
+		assert strconv.v_sprintf('[%5.*s]', -1, 'abc') == '[  abc]'
+		assert strconv.v_sprintf('[%5.*s]', 2, 'héllo') == '[   hé]'
+		assert strconv.v_sprintf('[%-5.*s]', 1, '😀😀') == '[😀    ]'
+		assert strconv.v_sprintf('[%2.*s]', 3, 'abcdef') == '[abc]'
+		assert strconv.v_sprintf('[%05.*s]', 2, 'abcdef') == '[   ab]'
+		assert strconv.v_sprintf('[%5.*s]|%d|%s', 2, 'abcdef', 7, 'whole') == '[   ab]|7|whole'
+	}
+}
+
+fn test_space_flag_preserves_a_single_negative_zero_sign() {
+	unsafe {
+		assert strconv.v_sprintf('% f % e % g', -0.0, -0.0, -0.0) == '-0.000000 -0.000000e+00 -0'
+		assert strconv.v_sprintf('[% 010.2f]', -0.0) == '[-000000.00]'
+		assert strconv.v_sprintf('% f % e % g', 0.0, 0.0, 0.0) == ' 0.000000  0.000000e+00  0'
+	}
+}

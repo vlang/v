@@ -68,6 +68,10 @@ For the `f`, `F`, `e` and `E` types, it is the number of digits after the decima
 For the `s` type, it is the maximum number of characters of the string to output.
 It counts runes, not bytes: `v_sprintf('%.3s', 'abcdef')` is `abc`.
 
+For strings, `.*` takes the precision from the next integer argument and still applies field
+width and alignment: `[%5.*s]` with `2` and `abcdef` produces `[   ab]`. String precision counts
+runes; a negative precision keeps the whole string.
+
 #### Length field
 
 The Length field can be omitted or be any of:
