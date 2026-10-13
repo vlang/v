@@ -432,6 +432,10 @@ veb.run_at[App, Context](mut app,
 A negative value is an error. `max_request_buffer_size` is a different setting, which does
 not limit the body.
 
+The limit applies to both plain HTTP and HTTPS. Chunked bodies count the combined payload of
+all chunks. Invalid or overflowing `Content-Length` values and malformed chunk sizes are rejected
+with `400` before allocating their declared body; TLS reads also reject truncated bodies.
+
 ### Host
 
 To restrict an endpoint to a specific host, you can use the `host` attribute

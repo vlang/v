@@ -1,6 +1,6 @@
-// vtest build: !sanitized_job? && !use_openssl?
+// vtest build: !sanitized_job?
 import io
-import net.mbedtls
+import net.ssl
 import os
 import time
 import veb
@@ -42,23 +42,27 @@ fn testsuite_begin() {
 		family:                .ip
 		timeout_in_seconds:    2
 		max_request_body_size: limit
-		ssl_config:            mbedtls.SSLConnectConfig{
+		ssl_config:            ssl.SSLConnectConfig{
 			cert:     os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.crt')
 			cert_key: os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.key')
-		}
+		}.SSLConnectConfig
 	)
 	_ := <-app.started
 }
 
-// put sends a request that has the given framing header and body in one TLS record,
-// which the server reads completely, and returns the raw response.
+// put sends a request that has the given framing header and body,
+// fragmented across TLS writes, and returns the raw response.
 fn put(framing string, body string) !string {
-	mut conn := mbedtls.new_ssl_conn(validate: false)!
+	mut conn := ssl.new_ssl_conn(validate: false)!
 	conn.dial('127.0.0.1', https_port)!
 	defer {
 		conn.shutdown() or {}
 	}
-	conn.write_string('PUT /upload HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n${framing}\r\n\r\n${body}')!
+	conn.write_string('PUT /upload HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n${framing}\r\n\r\n')!
+	for offset := 0; offset < body.len; offset += 37 {
+		end := if offset + 37 < body.len { offset + 37 } else { body.len }
+		conn.write_string(body[offset..end])!
+	}
 	return io.read_all(reader: conn)!.bytestr()
 }
 
@@ -66,7 +70,7 @@ fn test_https_body_with_content_length() {
 	accepted := put('Content-Length: ${limit}', 'x'.repeat(limit))!
 	assert accepted.starts_with('HTTP/1.1 200 OK'), accepted
 	assert accepted.ends_with('got ${limit} bytes'), accepted
-	rejected := put('Content-Length: ${limit + 1}', 'x'.repeat(limit + 1))!
+	rejected := put('Content-Length: ${limit + 1}', '')!
 	assert rejected.starts_with('HTTP/1.1 413 '), rejected
 	assert rejected.contains('Connection: close'), rejected
 }
@@ -82,4 +86,21 @@ fn test_https_chunked_body() {
 	served := put('Content-Length: 2', 'ok')!
 	assert served.starts_with('HTTP/1.1 200 OK'), served
 	assert served.ends_with('got 2 bytes'), served
+}
+
+fn test_https_rejects_invalid_and_overflowing_content_lengths() {
+	for value in ['-1', '+1', '1x', '0x10', '18446744073709551616'] {
+		response := put('Content-Length: ' + value, '')!
+		assert response.starts_with('HTTP/1.1 400 '), response
+	}
+	// A declared oversized body must be rejected without waiting for its bytes.
+	response := put('Content-Length: ${limit + 1}', '')!
+	assert response.starts_with('HTTP/1.1 413 '), response
+	assert response.contains('Connection: close'), response
+}
+
+fn test_https_chunk_limit_rejects_before_oversized_chunk_is_read() {
+	response := put('Transfer-Encoding: chunked', '3e9\r\n')!
+	assert response.starts_with('HTTP/1.1 413 '), response
+	assert response.contains('Connection: close'), response
 }
