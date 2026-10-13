@@ -377,8 +377,7 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavaila
 		return
 	}
 	guards := enclosing_guards_at(c_code, helper_at)
-	assert guards.any(!it.starts_with('!') && it.contains('defined(__linux__)')
-		&& !it.contains('!defined(__linux__)')), 'the Linux entropy helper is guarded by ${guards}, which also hold outside Linux'
+	assert guards.any(it in ['#if defined(__linux__)', '#ifdef __linux__']), 'the Linux entropy helper is guarded by ${guards}, which also hold outside Linux'
 	assert function_body(c_code, helper_signature).contains('syscall(SYS_getrandom'), 'the syscall is missing from the Linux entropy helper'
 }
 
