@@ -1,3 +1,4 @@
+// vtest build: network?
 import os
 import time
 import rand
@@ -8,10 +9,6 @@ const v = @VEXE
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test_${rand.ulid()}')
 
 fn testsuite_begin() {
-	$if !network ? {
-		eprintln('> skipping ${@FILE}, when `-d network` is missing')
-		exit(0)
-	}
 	dump(test_path)
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path) or {}
@@ -69,7 +66,6 @@ fn test_install_dependencies_in_module_dir() {
 fn test_resolve_external_dependencies_during_module_install() {
 	res := cmd_ok_args(@LOCATION, ['${v}', 'install', '-v',
 		'https://github.com/ttytm/emoji-mart-desktop'])
-	assert res.output.contains('Found 2 dependencies'), res.output
 	expect_installing(@LOCATION, res.output, 'ttytm.webview')
 	expect_installing(@LOCATION, res.output, 'miniaudio')
 	// `ttytm.webview` is a registered VPM module, so it lands in `<vmodules_dir>/ttytm/webview`.

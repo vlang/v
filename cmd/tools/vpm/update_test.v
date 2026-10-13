@@ -1,4 +1,4 @@
-// vtest build: !musl? && !sanitized_job?
+// vtest build: network? && !musl? && !sanitized_job?
 // vtest retry: 3
 import os
 import rand
@@ -8,10 +8,6 @@ const v = @VEXE
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_update_test_${rand.ulid()}')
 
 fn testsuite_begin() {
-	$if !network ? {
-		eprintln('> skipping ${@FILE}, when `-d network` is missing')
-		exit(0)
-	}
 	dump(test_path)
 	test_utils.set_test_env(test_path)
 }

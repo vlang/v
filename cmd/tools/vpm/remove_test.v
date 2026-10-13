@@ -1,3 +1,4 @@
+// vtest build: network?
 // vtest retry: 3
 import os
 import rand
@@ -7,10 +8,6 @@ const vexe = @VEXE
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_remove_test_${rand.ulid()}')
 
 fn testsuite_begin() {
-	$if !network ? {
-		eprintln('> skipping ${@FILE}, when `-d network` is missing')
-		exit(0)
-	}
 	dump(test_path)
 	test_utils.set_test_env(test_path)
 }
