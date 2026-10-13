@@ -126,3 +126,12 @@ fn test_sprintf_unknown_verb_is_written_back() {
 	assert unsafe { strconv.v_sprintf('[%#-08y] [%x] [%4d]', 1, 255, 7) } == '[%#-08y] [ff] [   7]'
 	assert unsafe { strconv.v_sprintf('%é|%d', 1, 2) } == '%é|2'
 }
+
+fn test_sprintf_left_alignment_overrides_zero_padding_in_any_flag_order() {
+	unsafe {
+		assert strconv.v_sprintf('[%#0-8x] [%0#-8x] [%#-08x]', 255, 255, 255) == '[0xff    ] [0xff    ] [0xff    ]'
+		assert strconv.v_sprintf('[%0-#8X] [%#0-8o] [%0#-8b]', 255, 8, 5) == '[0XFF    ] [010     ] [0b101   ]'
+		assert strconv.v_sprintf('[%0-5d] [%-05d] [%0-5d]', 42, 42, -42) == '[42   ] [42   ] [-42  ]'
+		assert strconv.v_sprintf('[%0-5x] [%05x]', 255, 255) == '[ff   ] [000ff]'
+	}
+}

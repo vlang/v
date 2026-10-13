@@ -50,6 +50,8 @@ The Flags field may be zero or more (in any order) of:
 | `0` (zero)  | When the 'width' option is specified, prepends zeros for numeric types. (The default prepends spaces.) For example, `printf("%4X",3)` produces `   3`, while `printf("%04X",3)` produces `0003`. |
 | `#` (hash)  | Alternative form of `x`, `X`, `o` and `b`: prefixes `0x`, `0X`, `0` and `0b`. |
 
+The `-` flag overrides `0` in any flag order: `%#0-8x` of `255` is `0xff    `.
+
 #### Width field
 
 The Width field specifies a _maximum_ number of characters to output,

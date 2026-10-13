@@ -134,6 +134,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				continue
 			} else if ch == `-` {
 				align = .left
+				pad_ch = ` `
 				i++
 				continue
 			} else if ch in [`0`, ` `] {
