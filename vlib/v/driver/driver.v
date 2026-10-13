@@ -17272,6 +17272,22 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 		}
 		return '${location}error: `\$res()` is not supported by the V3 ${backend} backend'
 	}
+	if node.kind == .call && node.children_count > 0 {
+		callee := a.child_node(&node, 0)
+		if callee.kind == .ident && callee.value == '__v3_closure_current_data' {
+			// The transform puts this call at the head of every closure body that
+			// captures a variable, and the C backend lowers it to a reference to the
+			// running closure's environment. The native backend has no such register
+			// convention, so the body cannot be built at all; saying so here beats
+			// failing later on a callee that was never declared.
+			location := if source_pos := a.source_position(node.pos) {
+				'${source_pos}: '
+			} else {
+				fallback_location
+			}
+			return '${location}error: closures that capture variables are not supported by the V3 ${backend} backend'
+		}
+	}
 	for i in 0 .. node.children_count {
 		if msg := unsupported_backend_node_error(a, tc, a.child(&node, i), backend, diagnose_aggregates, fallback_location, mut visited) {
 			return msg
