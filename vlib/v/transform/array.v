@@ -327,12 +327,14 @@ fn (mut t Transformer) make_array_insert_many_call(lhs_addr flat.NodeId, index f
 		t.make_selector(rhs_value, 'data', 'voidptr'), t.make_selector(rhs_value, 'len', 'int')], 'void')
 }
 
-fn (mut t Transformer) finish_borrowed_array_insert_many_call(call flat.NodeId, rhs flat.NodeId, rhs_type string, cloned bool) flat.NodeId {
-	if !cloned || t.is_fixed_array_type(rhs_type) {
+fn (mut t Transformer) finish_borrowed_array_insert_many_call(call flat.NodeId, rhs flat.NodeId, rhs_type string, cloned bool, converted bool) flat.NodeId {
+	if (!cloned && !converted) || t.is_fixed_array_type(rhs_type) {
 		return call
 	}
-	// insert_many transfers the cloned element bytes. Run the insertion before freeing only
-	// the temporary array's backing buffer; the destination now owns its elements.
+	// insert_many transfers the element bytes into the destination. Run the insertion
+	// before freeing only the temporary array's backing buffer — a clone taken above,
+	// or a conversion buffer built to box the elements — since the destination now
+	// owns its elements.
 	t.pending_stmts << t.make_expr_stmt(call)
 	return t.make_method_call(rhs, 'free', []flat.NodeId{})
 }
@@ -1043,7 +1045,7 @@ fn (t &Transformer) array_literal_alias_expr_name(node flat.Node) string {
 			return name
 		}
 	}
-	for candidate in [node.typ, node.value] {
+	for candidate in alias_name_candidates(node) {
 		if candidate.len > 0 && t.generic_arg_is_alias_name(candidate, t.cur_module) {
 			return candidate
 		}
@@ -1051,12 +1053,28 @@ fn (t &Transformer) array_literal_alias_expr_name(node flat.Node) string {
 	return ''
 }
 
+// alias_name_candidates lists the node fields that can name an alias type. A literal's value
+// is its text, not a type name: the string literal 'Speed' is not the alias `Speed`.
+fn alias_name_candidates(node flat.Node) []string {
+	if node.kind in [.string_literal, .string_interp, .char_literal, .int_literal, .float_literal,
+		.bool_literal] {
+		return [node.typ]
+	}
+	return [node.typ, node.value]
+}
+
 // transform_array_literal_for_type transforms transform array literal for type data for transform.
 fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
 	if t.in_const_init {
 		return none
 	}
-	target_array_type := t.normalize_type_alias(target_type)
+	mut target_array_type := t.normalize_type_alias(target_type)
+	if t.generic_arg_is_unresolved(target_array_type) {
+		resolved_type := t.node_type(id)
+		if resolved_type.starts_with('[]') && !t.generic_arg_is_unresolved(resolved_type) {
+			target_array_type = resolved_type
+		}
+	}
 	checker_array_type := t.normalize_type_alias(t.raw_checker_node_type(id))
 	array_type := if target_array_type.starts_with('[]')
 		&& t.is_sum_type_name(target_array_type[2..]) {
@@ -2552,7 +2570,19 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 		t.transform_lvalue(base_id)
 	}
 	if prepend_many {
-		mut value := t.transform_array_many_rhs(value_id, value_node, base_type)
+		mut value := flat.empty_node
+		mut converted_bulk_append := false
+		if converted := t.transform_array_value_for_dynamic_target(value_id, base_type) {
+			// `[]Iface.prepend(...[]Concrete)` has to box every element. A bare
+			// insert_many would memcpy the concrete values into interface-sized slots
+			// and leave the type tag unset, so the first method call dispatches to
+			// nothing.
+			value = converted
+			rhs_type = base_type
+			converted_bulk_append = true
+		} else {
+			value = t.transform_array_many_rhs(value_id, value_node, base_type)
+		}
 		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type, elem_type)
 		value = cloned_value
 		mut changes := t.make_bool_literal(true)
@@ -2574,7 +2604,8 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 			t.pending_stmts << call
 			call = t.make_empty()
 		}
-		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned)
+		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned,
+			converted_bulk_append)
 	}
 	mut value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
 		t.wrap_sum_value(value_id, elem_type)
@@ -2645,7 +2676,19 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	valid_index := t.make_infix(.logical_and, t.make_infix(.ge, index, t.make_int_literal(0)),
 		t.make_infix(.le, index, t.make_selector(array_value, 'len', 'int')))
 	if insert_many {
-		mut value := t.transform_array_many_rhs(value_id, value_node, base_type)
+		mut value := flat.empty_node
+		mut converted_bulk_append := false
+		if converted := t.transform_array_value_for_dynamic_target(value_id, base_type) {
+			// `[]Iface.insert(i, ...[]Concrete)` has to box every element. A bare
+			// insert_many would memcpy the concrete values into interface-sized slots
+			// and leave the type tag unset, so the first method call dispatches to
+			// nothing.
+			value = converted
+			rhs_type = base_type
+			converted_bulk_append = true
+		} else {
+			value = t.transform_array_many_rhs(value_id, value_node, base_type)
+		}
 		cloned_value, cloned := t.clone_borrowed_array_append_many_value(value_id, value, rhs_type, elem_type)
 		value = cloned_value
 		mut changes := t.make_bool_literal(true)
@@ -2668,7 +2711,8 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 			t.pending_stmts << call
 			call = t.make_empty()
 		}
-		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned)
+		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned,
+			converted_bulk_append)
 	}
 	mut value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
 		t.wrap_sum_value(value_id, elem_type)
@@ -2741,8 +2785,51 @@ fn (t &Transformer) push_many_count_is_type_name(id flat.NodeId) bool {
 	return node.kind == .ident && node.value.len > 0 && node.value[0] >= `A` && node.value[0] <= `Z`
 }
 
-// array_append_rhs_is_push_many supports array append rhs is push many handling for Transformer.
+// array_append_rhs_is_array_spread reports whether the RHS of an append, insert or
+// prepend is a `...src` spread of an array, which the destination takes element by
+// element.
+fn (t &Transformer) array_append_rhs_is_array_spread(rhs_id flat.NodeId) bool {
+	if int(rhs_id) < 0 || int(rhs_id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(rhs_id)]
+	if node.kind != .prefix || node.value != '...' || node.children_count == 0 {
+		return false
+	}
+	return t.node_type_is_array(rhs_id) || t.node_type_is_array(t.a.child(&node, 0))
+}
+
+// node_type_is_array reports whether `id` denotes an array, accepting the `...T`
+// form the checker uses for a spread or a variadic parameter.
+fn (t &Transformer) node_type_is_array(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	mut clean := t.normalize_type_alias(t.node_type(id)).trim_space()
+	if clean.starts_with('...') {
+		clean = clean[3..]
+	}
+	return clean.starts_with('[]') || t.is_fixed_array_type(clean)
+}
+
+// array_append_rhs_is_push_many honors explicit array spread for append, insert and prepend.
 fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
+	rhs_node := t.a.nodes[int(rhs_id)]
+	if rhs_node.kind == .prefix && rhs_node.value == '...' && rhs_node.children_count > 0
+		&& !isnil(t.tc) {
+		value_id := t.a.child(&rhs_node, 0)
+		value_type := t.tc.expr_type(value_id) or { t.tc.resolve_type(value_id) }
+		if array_append_semantic_type_is_array(value_type)
+			|| (value_type is types.Unknown && t.array_append_rhs_is_array_spread(rhs_id)) {
+			// Explicit spread appends elements even when the whole array can be boxed as one value.
+			return true
+		}
+	}
+	return t.array_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
+}
+
+// array_rhs_is_push_many selects bulk insertion when the source element types match.
+fn (t &Transformer) array_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type string, elem_type string) bool {
 	rhs_node := t.a.nodes[int(rhs_id)]
 	if rhs_node.kind == .spawn_expr {
 		return false
@@ -3321,6 +3408,15 @@ fn (t &Transformer) array_receiver_raw_elem_type(fn_node flat.Node, elem_type st
 	}
 	receiver := t.a.child(&fn_node, 0)
 	mut raw := t.raw_var_type_for_expr(receiver) or { '' }
+	source_id := t.array_literal_alias_expr_id(receiver)
+	source := t.a.nodes[int(source_id)]
+	if source.kind == .array_literal {
+		// Literal receivers may already have a lowered []int/[]u8 annotation.
+		// Recover their declared alias before selecting its methods/operators.
+		raw = t.array_literal_checker_alias_type(source_id) or {
+			t.array_literal_alias_type(source) or { raw }
+		}
+	}
 	if !raw.starts_with('[') {
 		raw = t.raw_checker_node_type(receiver)
 	}
