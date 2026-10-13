@@ -49,17 +49,18 @@ The Flags field may be zero or more (in any order) of:
 | `+` (plus)  | Prepends a plus for positive signed-numeric types. positive = `+`, negative = `-`. (The default doesn't prepend anything to positive numbers.)                                                   |
 | ` ` (space) | Prepends a space to a non-negative number of a signed type. (The `+` flag wins.) |
 | `0` (zero)  | When the 'width' option is specified, prepends zeros for numeric types. (The default prepends spaces.) For example, `printf("%4X",3)` produces `   3`, while `printf("%04X",3)` produces `0003`. |
+| `#` (hash)  | Alternative form of `x`, `X`, `o` and `b`: prefixes `0x`, `0X`, `0` and `0b`. |
+
+The `-` flag overrides `0` in any flag order: `%#0-8x` of `255` is `0xff    `.
 
 #### Width field
 
-The Width field specifies a _maximum_ number of characters to output,
-and is typically used to pad fixed-width fields in tabulated output,
-it causes truncation of oversized fields.
+The Width field specifies a minimum number of characters to output.
+It pads shorter fields with spaces, or with zeros for numeric types when the `0` flag is set.
+A field longer than the width is kept in full.
 
-The width field may be omitted, or it may be a numeric integer value,
-or may also be specified by a parameter when indicated by an asterisk `*`.
-For example, `v_printf("%*.s", 5, my_string)` will result in `   mystring` being printed,
-with a total width of 5 characters.
+The width field may be omitted or specified as a decimal integer.
+For example, `v_sprintf('%5s', 'ab')` produces `   ab`, with a total width of 5 characters.
 
 #### Precision field
 
@@ -106,6 +107,19 @@ The Type field can be any of:
 | `s`       | string                                                                                                                      |
 | `p`       | `void *` (pointer to void) in an implementation-defined format.                                                             |
 | `c`       | `char` (character).                                                                                                         |
+| `o`       | `unsigned int` as an octal number. The length field specifies its size, as for `u`. |
+| `b`       | `unsigned int` as a binary number. The length field specifies its size, as for `u`. |
+| `t`       | `bool`, as `true` or `false`.                                                       |
+| `q`       | string, as a double-quoted literal with the escape sequences of `strconv.quote`.    |
+
+`o` and `b` print a negative argument in two's complement, at the size of the length field
+(32 bits when it is omitted): `%o` of `-1` is `37777777777`, and `%hho` of `-1` is `377`.
+
+With the `#` flag, a zero value gets no prefix, like in C: `%#x` of `0` is `0`.
+When the field is padded with zeros, they follow the prefix: `%#08x` of `255` is `0x0000ff`.
+
+A specifier with any other type is written back unchanged, for example `%y`.
+It still takes one parameter, so the specifiers after it keep theirs.
 
 The `c` type takes a `rune`, or a byte sized value like an `u8`, and prints it as UTF-8.
 
@@ -204,6 +218,23 @@ println(temp_s)
 [       7d] [       7D] [7d       ] [7D       ] [00000007d] [00000007D]
 ```
 
+octal, binary, alternative form, bool, quoted string, unknown type
+
+```v
+import strconv
+
+a := 10
+ok := true
+s := 'a "b"'
+sc9 := '%o %#o %b %#b %#x [%-6t] [%10q] %y'
+temp_s := strconv.v_sprintf(sc9, a, a, a, a, a, ok, s, a)
+println(temp_s)
+```
+
+```
+12 012 1010 0b1010 0xa [true  ] [ "a \"b\""] %y
+```
+
 floating points
 
 Floating-point conversions preserve the sign of negative zero. General notation (`%g` and
@@ -283,6 +314,14 @@ fn remove_tail_zeros(s string) string
 `format_dec` format the integer number using the parameters in the `BF_param` struct.
 
 `format_fl` format a float number in normal notation using the parameters in the `BF_param` struct.
+
+On the C backend, `f64_to_str_lnd1`, `format_fl` and the `%f` and `%F` specifiers preserve all
+integer digits of a finite `f64` in fixed notation. Precision counts digits after the decimal
+point, and rounding uses the exact binary value, with halfway values rounded away from zero.
+For example, `f64_to_str_lnd1(1e23, 1)` returns `99999999999999991611392.0`, and
+`f64_to_str_lnd1(0.1, 20)` returns `0.10000000000000000555`. Large values can have up to 309
+integer digits; precision adds the requested fractional digits. For `format_fl`, the
+`BF_param.positive` field supplies the output sign.
 
 `format_es format a float number in scientific notation using the parameters in the BF_param`
 struct.
