@@ -447,7 +447,6 @@ fn (mut context Context) parse_options() ! {
 	fp.version('0.0.3')
 	fp.description('Repeat command(s) and collect statistics.\nNote: quote each command (argument), when it contains spaces.')
 	fp.arguments_description('CMD1 CMD2 ...')
-	fp.skip_executable()
 	fp.limit_free_args_to_at_least(1)!
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.run_count = fp.int('runs', `r`, 10, 'Run count. Default: 10')

@@ -95,3 +95,16 @@ fn test_gzip_inserted_bytes_before_trailer_fails() {
 	}
 	assert false
 }
+
+fn test_gzip_callback_abort_does_not_validate_unread_trailer() {
+	mut compressed := compress_gzip('partial decoding'.bytes())!
+	compressed[compressed.len - 8] ^= 1
+	if decoded := decompress_gzip(compressed) {
+		assert false, 'accepted corrupted complete stream: ${decoded}'
+	} else {
+		assert err.msg() == 'invalid gzip stream: crc32 mismatch'
+	}
+	assert decompress_with_callback(compressed, fn (_ []u8, _ voidptr) int {
+		return 0
+	}, unsafe { nil })! == 0
+}

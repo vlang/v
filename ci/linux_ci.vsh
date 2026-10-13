@@ -155,16 +155,16 @@ fn v_self_compilation_usecache_tcc() {
 		return
 	}
 	exec_args(['v', 'wipe-cache'])
-	exec_args(['v', '-usecache', 'examples/hello_world.v'])
+	exec_args(['v', 'examples/hello_world.v'])
 	exec_args(['./examples/hello_world'])
 
 	exec_args(['v', 'wipe-cache'])
-	exec_args(['v', '-o', 'v2', '-usecache', 'cmd/v'])
-	exec_args(['./v2', '-o', 'v3', '-usecache', 'cmd/v'])
+	exec_args(['v', '-o', 'v2', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', 'cmd/v'])
 	exec_args(['./v3', 'version'])
 
 	exec_args(['v', 'wipe-cache'])
-	exec_args(['./v3', '-o', 'tetris', '-usecache', 'examples/tetris/tetris.v'])
+	exec_args(['./v3', '-o', 'tetris', 'examples/tetris/tetris.v'])
 	exec_args(['rm', '-f', './examples/hello_world', 'v2', 'v3', 'tetris'])
 }
 
@@ -240,16 +240,16 @@ fn v_self_compilation_usecache_gcc() {
 		return
 	}
 	exec_args(['v', 'wipe-cache'])
-	exec_args(['v', '-usecache', 'examples/hello_world.v'])
+	exec_args(['v', 'examples/hello_world.v'])
 	exec_args(['examples/hello_world'])
 
 	exec_args(['v', 'wipe-cache'])
-	exec_args(['v', '-o', 'v2', '-usecache', 'cmd/v'])
-	exec_args(['./v2', '-o', 'v3', '-usecache', 'cmd/v'])
+	exec_args(['v', '-o', 'v2', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', 'cmd/v'])
 	exec_args(['./v3', 'version'])
 
 	exec_args(['v', 'wipe-cache'])
-	exec_args(['./v3', '-o', 'tetris', '-usecache', 'examples/tetris/tetris.v'])
+	exec_args(['./v3', '-o', 'tetris', 'examples/tetris/tetris.v'])
 	exec_args(['rm', '-f', './examples/hello_world', 'v2', 'v3', 'tetris'])
 }
 
@@ -387,16 +387,16 @@ fn v_self_compilation_usecache_clang() {
 		return
 	}
 	exec_args(['v', 'wipe-cache'])
-	exec_args(['v', '-usecache', 'examples/hello_world.v'])
+	exec_args(['v', 'examples/hello_world.v'])
 	exec_args(['./examples/hello_world'])
 
 	exec_args(['v', 'wipe-cache'])
-	exec_args(['v', '-o', 'v2', '-usecache', 'cmd/v'])
-	exec_args(['./v2', '-o', 'v3', '-usecache', 'cmd/v'])
+	exec_args(['v', '-o', 'v2', 'cmd/v'])
+	exec_args(['./v2', '-o', 'v3', 'cmd/v'])
 	exec_args(['./v3', 'version'])
 
 	exec_args(['v', 'wipe-cache'])
-	exec_args(['./v3', '-o', 'tetris', '-usecache', 'examples/tetris/tetris.v'])
+	exec_args(['./v3', '-o', 'tetris', 'examples/tetris/tetris.v'])
 	exec_args(['rm', '-f', './examples/hello_world', 'v2', 'v3', 'tetris'])
 }
 
@@ -645,7 +645,7 @@ const all_tasks = {
 	'run_vsh_script_tcc':                                Task{run_vsh_script_tcc, 'Run a VSH script (tcc)'}
 	'test_v_tutorials_tcc':                              Task{test_v_tutorials_tcc, 'Test V tutorials (tcc)'}
 	'build_fast_tcc':                                    Task{build_fast_tcc, 'Build cmd/tools/fast (tcc)'}
-	'v_self_compilation_usecache_tcc':                   Task{v_self_compilation_usecache_tcc, 'V self compilation with -usecache (tcc)'}
+	'v_self_compilation_usecache_tcc':                   Task{v_self_compilation_usecache_tcc, 'V self compilation with default caching (tcc)'}
 	'test_password_input_tcc':                           Task{test_password_input_tcc, 'Test password input (tcc)'}
 	'test_readline_tcc':                                 Task{test_readline_tcc, 'Test readline (tcc)'}
 	'test_leak_detector_tcc':                            Task{test_leak_detector_tcc, 'Test leak detector (tcc)'}
@@ -657,7 +657,7 @@ const all_tasks = {
 	'valgrind_v_c_gcc':                                  Task{valgrind_v_c_gcc, 'Valgrind v.c (gcc)'}
 	'run_sanitizers_gcc':                                Task{run_sanitizers_gcc, 'Run sanitizers (gcc)'}
 	'v_self_compilation_gcc':                            Task{v_self_compilation_gcc, 'V self compilation (gcc)'}
-	'v_self_compilation_usecache_gcc':                   Task{v_self_compilation_usecache_gcc, 'V self compilation with -usecache (gcc)'}
+	'v_self_compilation_usecache_gcc':                   Task{v_self_compilation_usecache_gcc, 'V self compilation with default caching (gcc)'}
 	'verify_v_test_works_gcc':                           Task{verify_v_test_works_gcc, 'Verify `v test` works (gcc)'}
 	'test_pure_v_math_module_gcc':                       Task{test_pure_v_math_module_gcc, 'Test pure V math module (gcc)'}
 	'self_tests_gcc':                                    Task{self_tests_gcc, 'Self tests (gcc)'}
@@ -678,7 +678,7 @@ const all_tasks = {
 	'valgrind_clang':                                    Task{valgrind_clang, 'Valgrind (clang)'}
 	'run_sanitizers_clang':                              Task{run_sanitizers_clang, 'Run sanitizers (clang)'}
 	'v_self_compilation_clang':                          Task{v_self_compilation_clang, 'V self compilation (clang)'}
-	'v_self_compilation_usecache_clang':                 Task{v_self_compilation_usecache_clang, 'V self compilation with -usecache (clang)'}
+	'v_self_compilation_usecache_clang':                 Task{v_self_compilation_usecache_clang, 'V self compilation with default caching (clang)'}
 	'verify_v_test_works_clang':                         Task{verify_v_test_works_clang, 'Verify `v test` works (clang)'}
 	'test_pure_v_math_module_clang':                     Task{test_pure_v_math_module_clang, 'Test pure V math module (clang)'}
 	'self_tests_clang':                                  Task{self_tests_clang, 'Self tests (clang)'}

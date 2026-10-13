@@ -11,9 +11,18 @@ struct HeaderKV {
 	value string
 }
 
+// max_headers is the number of fields that a `Header` can hold.
 pub const max_headers = 50
 
-// Header represents the key-value pairs in an HTTP header
+// Header represents the key-value pairs in an HTTP header.
+// It holds at most `max_headers` fields. A field that does not fit is never
+// stored: the writers that return a Result (`add_custom`, `set_custom`,
+// `add_custom_map`, `new_custom_header_from_map`) fail with a
+// `HeaderLimitError`, the others (`add`, `set`, `add_map`, `new_header`,
+// `new_header_from_map`, `join`) drop it.
+// A field value can not hold CR, LF or NUL (RFC 9110 section 5.5): the writers
+// that return a Result fail with a `HeaderValueError`, the others store a
+// space in place of each such byte.
 pub struct Header {
 pub mut:
 	// data map[string][]string
@@ -378,20 +387,21 @@ fn header_key_eq(a string, b string) bool {
 	return true
 }
 
-// Create a new Header object
+// new_header creates a new Header object.
+// Only the first `max_headers` entries of `kvs` are stored.
+// CR, LF and NUL in a value are replaced by a space, see `add`.
 pub fn new_header(kvs ...HeaderConfig) Header {
 	mut h := Header{
 		// data: map[string][]string{}
 	}
-	for i, kv in kvs {
-		h.data[i] = HeaderKV{kv.key.str(), kv.value}
-		// h.add(kv.key, kv.value)
+	for kv in kvs {
+		h.add(kv.key, kv.value)
 	}
-	h.cur_pos = kvs.len
 	return h
 }
 
 // new_header_from_map creates a Header from key value pairs
+// CR, LF and NUL in a value are replaced by a space, see `add`.
 pub fn new_header_from_map(kvs map[CommonHeader]string) Header {
 	mut h := new_header()
 	h.add_map(kvs)
@@ -399,32 +409,51 @@ pub fn new_header_from_map(kvs map[CommonHeader]string) Header {
 }
 
 // new_custom_header_from_map creates a Header from string key value pairs
+// It returns a `HeaderValueError` for a value that contains CR, LF or NUL.
 pub fn new_custom_header_from_map(kvs map[string]string) !Header {
 	mut h := new_header()
 	h.add_custom_map(kvs)!
 	return h
 }
 
+// append stores one more field, and returns false, leaving the header
+// unchanged, when it already holds `max_headers` fields.
+fn (mut h Header) append(key string, value string) bool {
+	if h.cur_pos >= max_headers {
+		return false
+	}
+	h.data[h.cur_pos] = HeaderKV{key, value}
+	h.cur_pos++
+	return true
+}
+
 // add appends a value to the header key.
+// The value is dropped if the header already holds `max_headers` fields.
+// CR, LF and NUL can not be part of a field value (RFC 9110 section 5.5):
+// each of them is stored as a space.
 pub fn (mut h Header) add(key CommonHeader, value string) {
 	k := key.str()
 	// h.data[k] << value
-	h.data[h.cur_pos] = HeaderKV{k, value}
-	h.cur_pos++
+	h.append(k, header_value_without_crlf_nul(value))
 	// h.add_key(k)
 }
 
 // add_custom appends a value to a custom header key. This function will
-// return an error if the key contains invalid header characters.
+// return an error if the key contains invalid header characters, and a
+// `HeaderLimitError` if the header already holds `max_headers` fields.
+// A value that contains CR, LF or NUL is rejected with a `HeaderValueError`.
 pub fn (mut h Header) add_custom(key string, value string) ! {
 	is_valid(key)!
+	check_header_value(key, value)!
 	// h.data[key] << value
-	h.data[h.cur_pos] = HeaderKV{key, value}
-	h.cur_pos++
+	if !h.append(key, value) {
+		return HeaderLimitError{}
+	}
 	// h.add_key(key)
 }
 
 // add_map appends the value for each header key.
+// CR, LF and NUL in a value are replaced by a space, see `add`.
 pub fn (mut h Header) add_map(kvs map[CommonHeader]string) {
 	for k, v in kvs {
 		h.add(k, v)
@@ -432,6 +461,7 @@ pub fn (mut h Header) add_map(kvs map[CommonHeader]string) {
 }
 
 // add_custom_map appends the value for each custom header key.
+// It returns a `HeaderValueError` for a value that contains CR, LF or NUL.
 pub fn (mut h Header) add_custom_map(kvs map[string]string) ! {
 	for k, v in kvs {
 		h.add_custom(k, v)!
@@ -440,19 +470,22 @@ pub fn (mut h Header) add_custom_map(kvs map[string]string) ! {
 
 // set sets the key-value pair. This function will clear any other values
 // that exist for the CommonHeader.
+// A key that is not present yet is dropped if the header already holds
+// `max_headers` fields.
+// CR, LF and NUL in the value are replaced by a space, see `add`.
 pub fn (mut h Header) set(key CommonHeader, value string) {
 	key_str := key.str()
+	safe_value := header_value_without_crlf_nul(value)
 
 	// for i, kv in h.data {
 	for i := 0; i < h.cur_pos; i++ {
 		if h.data[i].key == key_str {
-			h.data[i] = HeaderKV{key_str, value}
+			h.data[i] = HeaderKV{key_str, safe_value}
 			return
 		}
 	}
 	// Not updated, add a new one
-	h.data[h.cur_pos] = HeaderKV{key_str, value}
-	h.cur_pos++
+	h.append(key_str, safe_value)
 
 	// h.data[k] = [value]
 	// h.add_key(k)
@@ -461,9 +494,12 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 // set_custom sets the key-value pair for a custom header key. This
 // function will clear any other values that exist for the header. This
 // function will return an error if the key contains invalid header
-// characters.
+// characters, and a `HeaderLimitError` if the key is not present yet and
+// the header already holds `max_headers` fields.
+// A value that contains CR, LF or NUL is rejected with a `HeaderValueError`.
 pub fn (mut h Header) set_custom(key string, value string) ! {
 	is_valid(key)!
+	check_header_value(key, value)!
 	mut set := false
 	mut i := 0
 	for i < h.cur_pos {
@@ -483,8 +519,9 @@ pub fn (mut h Header) set_custom(key string, value string) ! {
 		return
 	}
 	// Not updated, add a new one
-	h.data[h.cur_pos] = HeaderKV{key, value}
-	h.cur_pos++
+	if !h.append(key, value) {
+		return HeaderLimitError{}
+	}
 	// h.data[key] = [value]
 	// h.add_key(key)
 }
@@ -751,7 +788,9 @@ pub fn (h Header) render_into_sb(mut sb strings.Builder, flags HeaderRenderConfi
 	//}
 }
 
-// join combines two Header structs into a new Header struct
+// join combines two Header structs into a new Header struct.
+// The fields of `other` that do not fit in `max_headers` are dropped.
+// CR, LF and NUL in a value of `other` are replaced by a space, see `add`.
 pub fn (h Header) join(other Header) Header {
 	mut combined := Header{
 		data:    h.data // h.data.clone()
@@ -759,7 +798,10 @@ pub fn (h Header) join(other Header) Header {
 	}
 	for k in other.keys() {
 		for v in other.custom_values(k, exact: true) {
-			combined.add_custom(k, v) or {
+			combined.add_custom(k, header_value_without_crlf_nul(v)) or {
+				if err is HeaderLimitError {
+					return combined
+				}
 				// panic because this should never fail
 				panic('unexpected error: ' + err.str())
 			}
@@ -804,6 +846,109 @@ pub fn (err HeaderKeyError) msg() string {
 
 pub fn (err HeaderKeyError) code() int {
 	return err.code
+}
+
+// HeaderLimitError is the error for a field that does not fit in a `Header`,
+// which holds at most `max_headers` fields. The request and response parsers
+// return it for a message that has more header fields than that.
+pub struct HeaderLimitError {
+	Error
+}
+
+// msg returns the description of the error.
+pub fn (err HeaderLimitError) msg() string {
+	return 'too many header fields: http.Header holds at most ${max_headers}'
+}
+
+// HeaderValueError is the error for a field value that contains CR, LF or NUL.
+// RFC 9110 section 5.5 forbids these bytes in a field value: written as they
+// are, they would end the field line. The request and response parsers return
+// it for a received field whose value has a bare CR or a NUL.
+pub struct HeaderValueError {
+	Error
+pub:
+	header       string // the name of the field
+	invalid_char u8     // the first forbidden byte of its value
+}
+
+// msg returns the description of the error. It names the field and the byte,
+// and leaves the value out, which can be a credential.
+pub fn (err HeaderValueError) msg() string {
+	name := match err.invalid_char {
+		`\r` { 'CR' }
+		`\n` { 'LF' }
+		else { 'NUL' }
+	}
+	return "Invalid header value for '${err.header}': it contains ${name}"
+}
+
+// header_value_word returns the 8 bytes of `value` that start at `i` as one
+// integer. An optimizing C compiler turns it into a single load.
+@[direct_array_access; inline]
+fn header_value_word(value string, i int) u64 {
+	lo := u32(value[i]) | u32(value[i + 1]) << 8 | u32(value[i + 2]) << 16 | u32(value[i + 3]) << 24
+	hi := u32(value[i + 4]) | u32(value[i + 5]) << 8 | u32(value[i + 6]) << 16 | u32(value[i + 7]) << 24
+	return u64(hi) << 32 | lo
+}
+
+// word_has_byte_below_0e reports whether one of the 8 bytes of `w` is below
+// 0x0e, the range that holds NUL, LF and CR. The subtraction intentionally wraps.
+@[ignore_overflow; inline]
+fn word_has_byte_below_0e(w u64) bool {
+	return (w - 0x0e0e0e0e0e0e0e0e) & ~w & 0x8080808080808080 != 0
+}
+
+// header_value_crlf_nul_index returns the index of the first CR, LF or NUL in
+// `value`, or -1 when it has none.
+@[direct_array_access]
+fn header_value_crlf_nul_index(value string) int {
+	if value.len >= 8 {
+		// The usual value has no byte below 0x0e: rule it out 8 bytes at a
+		// time. The last word overlaps the one before it.
+		mut i := 0
+		for i + 8 < value.len && !word_has_byte_below_0e(header_value_word(value, i)) {
+			i += 8
+		}
+		if i + 8 >= value.len && !word_has_byte_below_0e(header_value_word(value, value.len - 8)) {
+			return -1
+		}
+	}
+	for i in 0 .. value.len {
+		c := value[i]
+		if c == `\r` || c == `\n` || c == 0 {
+			return i
+		}
+	}
+	return -1
+}
+
+// check_header_value returns a `HeaderValueError` if `value` contains CR, LF or NUL.
+fn check_header_value(key string, value string) ! {
+	i := header_value_crlf_nul_index(value)
+	if i >= 0 {
+		return HeaderValueError{
+			header:       key
+			invalid_char: value[i]
+		}
+	}
+}
+
+// header_value_without_crlf_nul returns `value` with each CR, LF and NUL
+// replaced by a space, which is what RFC 9110 section 5.5 asks of a recipient
+// that does not reject the message. It returns `value` itself, without a copy,
+// when it has none of them.
+fn header_value_without_crlf_nul(value string) string {
+	first := header_value_crlf_nul_index(value)
+	if first < 0 {
+		return value
+	}
+	mut b := value.bytes()
+	for i in first .. b.len {
+		if b[i] == `\r` || b[i] == `\n` || b[i] == 0 {
+			b[i] = ` `
+		}
+	}
+	return b.bytestr()
 }
 
 // is_valid checks if the header token contains all valid bytes
