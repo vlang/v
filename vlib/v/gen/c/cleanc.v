@@ -16,6 +16,7 @@ import v.util.cache_refresh
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
+const array_accessor_index_marker = '__v3_array_accessor_index'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const manual_c_headers_source = $embed_file('manual_stdlib_c_headers.h').to_string()
 const c_objective_c_bridge_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer']
@@ -17373,14 +17374,23 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 							g.write(')))')
 							return
 						}
-						g.write('(*(${c_elem}*)array_get(')
+						// An lvalue `first()`/`last()` calls the builtin method, which reports an
+						// empty array under its own name, in place of `array.get`.
+						accessor := g.array_accessor_index_method(node)
+						if accessor.len > 0 {
+							g.write('(*(${c_elem}*)array__${accessor}(')
+						} else {
+							g.write('(*(${c_elem}*)array_get(')
+						}
 						base_node := g.a.nodes[int(base_id)]
 						if is_ptr && !(base_node.kind == .ident && g.local_ident_is_shared_wrapper(base_node.value)) {
 							g.write('*')
 						}
 						g.gen_expr(base_id)
-						g.write(', ')
-						g.gen_expr(g.a.child(node, 1))
+						if accessor.len == 0 {
+							g.write(', ')
+							g.gen_expr(g.a.child(node, 1))
+						}
 						g.write('))')
 					} else {
 						is_runtime_array, runtime_is_ptr := runtime_array_struct_index_info(index_base_type)
@@ -22172,9 +22182,11 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
 	g.writeln('void* memdup(void* src, ptrdiff_t sz);')
 	g.writeln('static inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }')
+	// Integer types only: `qsort` is not stable, which only floats could show (see
+	// `array_default_sort_runtime_helper` in the transformer).
 	for sort_spec in ['int|${g.int_ct}', 'i8|signed char', 'i16|short', 'i64|long long',
 		'u8|unsigned char', 'u16|unsigned short', 'u32|unsigned', 'u64|unsigned long long',
-		'isize|ptrdiff_t', 'usize|size_t', 'f32|float', 'f64|double', 'rune|unsigned', 'char|char'] {
+		'isize|ptrdiff_t', 'usize|size_t', 'rune|unsigned', 'char|char'] {
 		sort_type := sort_spec.all_before('|')
 		c_type := sort_spec.all_after('|')
 		g.writeln('static int v3_array_sort_${sort_type}_cmp(const void* a, const void* b) { ${c_type} av = *(const ${c_type}*)a; ${c_type} bv = *(const ${c_type}*)b; return (av > bv) - (av < bv); }')
@@ -23840,12 +23852,27 @@ fn (mut g FlatGen) global_init_optional_c_type(name string) ?string {
 	return none
 }
 
+// test_failure_helpers emits the helpers that write the report of a failed assert or
+// test to stderr, in the order that `eprint` and `eprintln` in builtin keep: stdout and
+// stderr are flushed before the text is written, and stderr is flushed after it. stderr
+// is not unbuffered everywhere: the C runtime on Windows buffers it, when it is a pipe or
+// a file. `v3_eprintf` takes the arguments of `printf`. The flushes are in functions, so
+// that each report line in the program costs two calls, and not three inlined flushes.
 fn (mut g FlatGen) test_failure_helpers() {
+	g.writeln('static FILE* v3_eprint_begin(void) {')
+	g.writeln('\tfflush(stdout);')
+	g.writeln('\tfflush(stderr);')
+	g.writeln('\treturn stderr;')
+	g.writeln('}')
+	g.writeln('static void v3_eprint_end(void) {')
+	g.writeln('\tfflush(stderr);')
+	g.writeln('}')
+	g.writeln('#define v3_eprintf(...) do { fprintf(v3_eprint_begin(), __VA_ARGS__); v3_eprint_end(); } while (0)')
 	g.writeln('static void v3_eprint_lit(const char* s) {')
-	g.writeln('\tfprintf(stderr, "%s", s);')
+	g.writeln('\tv3_eprintf("%s", s);')
 	g.writeln('}')
 	g.writeln('static void v3_eprintln_string(string s) {')
-	g.writeln('\tfprintf(stderr, "%.*s\\n", s.len, (char*)s.str);')
+	g.writeln('\tv3_eprintf("%.*s\\n", s.len, (char*)s.str);')
 	g.writeln('}')
 	g.writeln('')
 }
