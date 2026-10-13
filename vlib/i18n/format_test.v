@@ -28,6 +28,9 @@ fn test_formatter_currency_percent() {
 	en := i18n.new_formatter('en-US')!
 	de := i18n.new_formatter('de')!
 	assert en.currency(1234.5, 'USD') == '\$1,234.50'
+	assert en.currency(-1234.5, 'USD') == '-\$1,234.50'
+	assert de.currency(-1234.5, 'EUR') == '-1.234,50 €'
+	assert en.currency(-0.001, 'USD') == '\$0.00'
 	assert de.currency(1234.5, 'EUR') == '1.234,50 €'
 	assert en.currency(1234.5, 'JPY') == '¥1,235'
 	assert de.currency(99.99, 'CHF') == '99,99 CHF'

@@ -110,7 +110,8 @@ return an error. The formatter provides `number_int`, `number`, `currency`, `per
 and normalizes negative zero. NaN and infinity retain their ordinary string representations.
 
 Currency formatting recognizes USD, EUR, GBP, JPY, CHF, CNY, CAD, and AUD; unknown codes use
-the code as a symbol and two fractional digits. Percent formatting multiplies a ratio by 100
+the code as a symbol and two fractional digits. Negative amounts put the sign before a prefixed
+currency symbol. Percent formatting multiplies a ratio by 100
 and uses one fractional digit. Dates omit time and use month/day/year for English,
 day.month.year for German, and day/month/year for French.
 

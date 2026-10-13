@@ -108,6 +108,9 @@ pub fn (f &Formatter) currency(x f64, code string) string {
 	if f.currency_after {
 		return amount + sep + sym
 	}
+	if amount.starts_with('-') {
+		return '-' + sym + sep + amount[1..]
+	}
 	return sym + sep + amount
 }
 
