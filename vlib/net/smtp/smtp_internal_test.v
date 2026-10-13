@@ -485,3 +485,26 @@ fn smtp_tls_test_case(python string, starttls bool, hostname string, verify stri
 	server_result := os.read_file(result_path)!.trim_space()
 	return '${client_state}:${server_result}'
 }
+
+fn test_attachment_to_string_sanitizes_filename_and_cid() {
+	// CRLF in a filename or cid is placed verbatim into the SMTP DATA payload,
+	// which injected headers such as Bcc: or ended the transaction early
+	malicious := Attachment{
+		filename: 'x"\r\nBcc: victim@example.com\r\nX'
+		cid:      'evil\r\nBcc: victim@example.com'
+		bytes:    [u8(1)]
+	}
+	got := malicious.to_string()
+	// the whole name stays on one header line, with the quote escaped
+	assert got.contains('filename="x\\"Bcc: victim@example.comX"')
+	// no injected header line can start
+	for line in got.split('\r\n') {
+		assert !line.trim_space().starts_with('Bcc:')
+	}
+	// a normal filename is not changed
+	plain := Attachment{
+		filename: 'report.pdf'
+		bytes:    [u8(1)]
+	}
+	assert plain.to_string().contains('filename="report.pdf"')
+}

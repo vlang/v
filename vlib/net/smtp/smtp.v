@@ -995,12 +995,15 @@ fn write_attachments(mut sb strings.Builder, attachments []Attachment, boundary 
 
 fn (a &Attachment) to_string() string {
 	crlf := '\r\n'
+	// CR and LF in these values would inject headers or end the DATA
+	// transaction, and an unescaped " would break out of the quoted filename
+	filename := strip_crlf(a.filename).replace('\\', '\\\\').replace('"', '\\"')
 	cid := if a.cid != '' {
-		'Content-ID: <${a.cid}>${crlf}'
+		'Content-ID: <${strip_crlf(a.cid)}>${crlf}'
 	} else {
 		''
 	}
-	return 'Content-Type: application/octet-stream${crlf}${cid}Content-Transfer-Encoding: base64${crlf}Content-Disposition: attachment; filename="${a.filename}"${crlf}${crlf}${fold_base64(base64.encode(a.bytes))}'
+	return 'Content-Type: application/octet-stream${crlf}${cid}Content-Transfer-Encoding: base64${crlf}Content-Disposition: attachment; filename="${filename}"${crlf}${crlf}${fold_base64(base64.encode(a.bytes))}'
 }
 
 fn fold_base64(encoded string) string {
