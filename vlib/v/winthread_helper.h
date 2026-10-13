@@ -21,6 +21,11 @@ typedef struct {
  * "Collecting from unknown thread". GC_CreateThread registers the worker itself. */
 #if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)
 #ifndef GC_H
+/* gc.h renames GC_CreateThread under GC_UNDERSCORE_STDCALL. Mirror that rename so the
+ * declaration matches the libgc export. */
+#if defined(GC_UNDERSCORE_STDCALL)
+#define GC_CreateThread _GC_CreateThread
+#endif
 HANDLE WINAPI GC_CreateThread(LPSECURITY_ATTRIBUTES, SIZE_T, LPTHREAD_START_ROUTINE,
 	LPVOID, DWORD, LPDWORD);
 #endif

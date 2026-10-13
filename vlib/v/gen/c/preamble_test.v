@@ -525,6 +525,9 @@ fn test_boehm_windows_spawn_threads_are_created_by_gc_create_thread() {
 		assert !c_code.contains('= CreateThread(NULL'), '${preamble}: raw CreateThread spawn remains'
 		assert c_code.count('GC_CreateThread(NULL, __v_thread_stack_size') == 3, '${preamble}: ${c_code.count('GC_CreateThread(NULL, __v_thread_stack_size')} spawn creates through GC_CreateThread'
 		assert c_code.contains('HANDLE WINAPI GC_CreateThread('), preamble
+		// libgc exports the stdcall name with an underscore when built with GC_UNDERSCORE_STDCALL.
+		// Mirror gc.h's rename, so the declaration matches that export.
+		assert c_code.contains('#if defined(GC_UNDERSCORE_STDCALL)\n#define GC_CreateThread _GC_CreateThread\n#endif'), preamble
 	}
 }
 

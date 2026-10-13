@@ -19510,6 +19510,11 @@ fn (mut g FlatGen) thread_allocation_helpers() {
 	}
 	if g.windows_spawn_create_fn() == 'GC_CreateThread' {
 		g.writeln('#if defined(_WIN32) && !defined(GC_H)')
+		// gc.h renames GC_CreateThread under GC_UNDERSCORE_STDCALL. Mirror that rename so the
+		// declaration matches the libgc export.
+		g.writeln('#if defined(GC_UNDERSCORE_STDCALL)')
+		g.writeln('#define GC_CreateThread _GC_CreateThread')
+		g.writeln('#endif')
 		g.writeln('HANDLE WINAPI GC_CreateThread(LPSECURITY_ATTRIBUTES, SIZE_T, LPTHREAD_START_ROUTINE, LPVOID, DWORD, LPDWORD);')
 		g.writeln('#endif')
 	}
