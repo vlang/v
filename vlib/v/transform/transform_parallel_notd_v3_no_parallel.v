@@ -2209,11 +2209,21 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	if old_params.len == 0 {
 		return
 	}
+	old_constraints := node.generic_constraints()
 	mut needs_owned_params := transform_scope_owns(scope, node.payload_ptr())
 		|| transform_scope_owns(scope, old_params.data)
+		|| (old_constraints.len > 0 && transform_scope_owns(scope, old_constraints.data))
 	if !needs_owned_params {
 		for param in old_params {
 			if param.len > 0 && transform_scope_owns(scope, param.str) {
+				needs_owned_params = true
+				break
+			}
+		}
+	}
+	if !needs_owned_params {
+		for constraint in old_constraints {
+			if constraint.len > 0 && transform_scope_owns(scope, constraint.str) {
 				needs_owned_params = true
 				break
 			}
@@ -2231,7 +2241,15 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 			params << param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		if constraint.len > 0 && transform_scope_owns(scope, constraint.str) {
+			constraints << t.promote_scoped_result_text(constraint)
+		} else {
+			constraints << constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
 	transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
 }
 
@@ -2345,24 +2363,17 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		t.end_promote_text_window()
 	}
 	t.merge_worker_signatures(batch)
-	if t.skip_generics {
-		// Non-generic workers mutate only newly appended nodes and slots recorded by
-		// the setter log. This avoids a full, growing-AST scan after every batch.
-		for idx in new_node_start .. batch.a.nodes.len {
-			t.promote_scoped_node_to_current(idx, scope)
-		}
-		for idx in batch.scoped_owned_base_nodes.keys() {
-			t.promote_scoped_node_to_current(idx, scope)
-		}
-		for idx in batch.scoped_owned_base_log {
-			t.promote_scoped_node_to_current(int(idx), scope)
-		}
-	} else {
-		// Generic lowering can rewrite nodes reached indirectly through late calls.
-		// Keep the exhaustive fallback for those transforms.
-		for idx in 0 .. batch.a.nodes.len {
-			t.promote_scoped_node_to_current(idx, scope)
-		}
+	// Setters record writes to every pre-existing node, including nodes reached
+	// indirectly by generic lowering. Publish those and the appended region;
+	// scanning the growing AST after each batch makes publication quadratic.
+	for idx in new_node_start .. batch.a.nodes.len {
+		t.promote_scoped_node_to_current(idx, scope)
+	}
+	for idx in batch.scoped_owned_base_nodes.keys() {
+		t.promote_scoped_node_to_current(idx, scope)
+	}
+	for idx in batch.scoped_owned_base_log {
+		t.promote_scoped_node_to_current(int(idx), scope)
 	}
 	for idx in batch.scoped_owned_base_nodes.keys() {
 		t.scoped_owned_base_log << flat.NodeId(idx)

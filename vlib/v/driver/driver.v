@@ -7529,9 +7529,29 @@ fn clone_flat_node_owned(node flat.Node) flat.Node {
 }
 
 fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
+	return clone_flat_ast_after_transform_from_scope(ast, unsafe { nil })
+}
+
+@[manualfree]
+fn clone_flat_ast_after_transform_from_scope(ast &flat.FlatAst, scope voidptr) &flat.FlatAst {
 	mut nodes := []flat.Node{cap: ast.nodes.len}
-	for node in ast.nodes {
-		nodes << clone_flat_node_owned(node)
+	if scope == unsafe { nil } {
+		for node in ast.nodes {
+			nodes << clone_flat_node_owned(node)
+		}
+	} else {
+		// Canonical source text and previously published generic payloads already
+		// belong to the compilation. Copy headers without the append operator's
+		// implicit managed-field clone, then promote only retiring-arena fields.
+		if ast.nodes.len > 0 {
+			unsafe {
+				nodes.grow_len(ast.nodes.len)
+				vmemcpy(nodes.data, ast.nodes.data, isize(ast.nodes.len) * isize(sizeof(flat.Node)))
+			}
+		}
+		for idx in 0 .. nodes.len {
+			promote_scoped_node(mut nodes[idx], scope)
+		}
 	}
 	mut children := []flat.NodeId{cap: ast.children.len}
 	children << ast.children
@@ -13941,7 +13961,7 @@ pub fn run(args []string) {
 						}
 						if scoped_value_owned(region.scope, a.nodes.data)
 							|| scoped_value_owned(region.scope, a.children.data) {
-							a = clone_flat_ast_after_transform(a)
+							a = clone_flat_ast_after_transform_from_scope(a, region.scope)
 							pre_tc.rebind_ast(a)
 						}
 						prealloc_scope_free_for_v3(region.scope)
@@ -14157,7 +14177,7 @@ pub fn run(args []string) {
 			if a.nodes.cap != monomorph_nodes_cap || a.children.cap != monomorph_children_cap
 				|| scoped_value_owned(monomorph_scope, a.nodes.data)
 				|| scoped_value_owned(monomorph_scope, a.children.data) {
-				a = clone_flat_ast_after_transform(a)
+				a = clone_flat_ast_after_transform_from_scope(a, monomorph_scope)
 				pre_tc.rebind_ast(a)
 			}
 			if a.specialized_fn_nodes.len != base_specialized_fns {

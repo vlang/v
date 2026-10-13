@@ -727,3 +727,35 @@ fn test_clone_after_transform_keeps_cached_vlib_flag_ownership() {
 		map[string]string{}, map[string]bool{})
 	assert flags == []
 }
+
+fn test_scoped_ast_storage_copy_preserves_persistent_text_and_promotes_retiring_payloads() {
+	$if !prealloc {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	_, canonical := a.intern_text('persistent value')
+	a.add_node(flat.Node{ kind: .ident, value: canonical })
+	persistent_ptr := usize(voidptr(a.nodes[0].value.str))
+	constraints := ['persistent constraint'.clone()]
+	scope := prealloc_scope_begin_for_v3()
+	value := 'retiring value'.clone()
+	typ := 'retiring type'.clone()
+	param := 'retiring parameter'.clone()
+	mut generated := flat.Node{ kind: .fn_decl, value: value, typ: typ }
+	generated.set_generic_params_and_constraints([param], constraints)
+	a.nodes << generated
+	prealloc_scope_leave_for_v3(scope)
+	cloned := clone_flat_ast_after_transform_from_scope(&a, scope)
+	assert usize(voidptr(cloned.nodes[0].value.str)) == persistent_ptr
+	assert !scoped_value_owned(scope, cloned.nodes.data)
+	assert !scoped_value_owned(scope, cloned.nodes[1].value.str)
+	assert !scoped_value_owned(scope, cloned.nodes[1].typ.str)
+	assert !scoped_value_owned(scope, cloned.nodes[1].payload_ptr())
+	assert !scoped_value_owned(scope, cloned.nodes[1].generic_params().data)
+	assert !scoped_value_owned(scope, cloned.nodes[1].generic_params()[0].str)
+	prealloc_scope_free_for_v3(scope)
+	assert cloned.nodes[1].value == 'retiring value'
+	assert cloned.nodes[1].typ == 'retiring type'
+	assert cloned.nodes[1].generic_params() == ['retiring parameter']
+	assert cloned.nodes[1].generic_constraints() == constraints
+}

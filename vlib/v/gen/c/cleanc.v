@@ -3563,12 +3563,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	mut cgsw := time.new_stopwatch()
 	g.tc.precompute_source_error_embed_index()
 	g.timing_profile('  [ttime]   ci embed idx     ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	if g.skip_generics {
-		// The declared-type tables are static for the whole generic-free cgen
-		// phase, so qualify_name is memoizable per (module, file) context.
-		// Worker forks receive their own instances (fork_for_parallel_codegen).
-		g.tc.qualify_name_cache = &types.QualifyNameCache{}
-	}
+	// Qualification tracks the source context and declared-type table growth,
+	// including concrete types registered while emitting generic programs.
+	// Worker forks receive independent caches.
+	g.tc.qualify_name_cache = &types.QualifyNameCache{}
 	defer {
 		g.tc.qualify_name_cache = unsafe { nil }
 	}

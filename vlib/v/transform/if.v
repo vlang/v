@@ -1751,7 +1751,9 @@ fn (mut t Transformer) transform_plain_if_branches(id flat.NodeId, node flat.Nod
 		base_invalidated := t.invalidated_smartcasts.clone()
 		new_then_id = t.transform_if_branch_as_block(then_id)
 		mut then_invalidated := t.invalidated_smartcasts.clone()
+		t.clear_node_type_memo()
 		t.smartcast_stack = base_smartcasts.clone()
+		t.clear_node_type_memo()
 		t.invalidated_smartcasts = base_invalidated.clone()
 		if has_else {
 			else_node := t.a.nodes[int(else_id)]
@@ -1767,7 +1769,9 @@ fn (mut t Transformer) transform_plain_if_branches(id flat.NodeId, node flat.Nod
 				then_invalidated[key] = true
 			}
 		}
+		t.clear_node_type_memo()
 		t.invalidated_smartcasts = then_invalidated.move()
+		t.clear_node_type_memo()
 		t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 	}
 
@@ -1830,7 +1834,9 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 	}
 	new_then_id := t.transform_if_branch_as_block(then_id)
 	mut then_invalidated := t.invalidated_smartcasts.clone()
+	t.clear_node_type_memo()
 	t.smartcast_stack = then_base_smartcasts.clone()
+	t.clear_node_type_memo()
 	t.invalidated_smartcasts = base_invalidated.clone()
 	t.restore_var_types(saved_var_types)
 	t.restore_heaped_local_state(saved_heaped_state)
@@ -1850,6 +1856,7 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 		} else {
 			new_else_id = t.transform_if_branch_as_block(else_id)
 		}
+		t.clear_node_type_memo()
 		t.smartcast_stack = else_base_smartcasts
 		t.restore_var_types(saved_var_types)
 		t.restore_heaped_local_state(saved_heaped_state)
@@ -1860,7 +1867,9 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 			then_invalidated[key] = true
 		}
 	}
+	t.clear_node_type_memo()
 	t.invalidated_smartcasts = then_invalidated.move()
+	t.clear_node_type_memo()
 	t.smartcast_stack = t.non_invalidated_smartcasts(then_base_smartcasts)
 
 	// Rebuild the if_expr with (possibly) new children.

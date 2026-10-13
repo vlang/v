@@ -315,6 +315,27 @@ struct ParseTypeCacheEntry {
 	typ            Type
 }
 
+// IndexedTypeCache bridges checked expression types to the current interner.
+// It is private to one checker view, just like the other TypeCache entries.
+struct ParsedScalarTypeCache {
+mut:
+	owner  &TypeInterner = unsafe { nil }
+	texts  [128]string
+	ids    [128]TypeId
+	values []Type
+}
+
+struct IndexedTypeCache {
+mut:
+	owner    &TypeInterner = unsafe { nil }
+	nodes    [4096]int
+	types    [4096]TypeId
+	set      [4096]bool
+	name_ids [4096]TypeId
+	names    [4096]string
+	name_set [4096]bool
+}
+
 struct SourceStructFieldDecl {
 	name string
 	typ  string
@@ -372,6 +393,8 @@ const type_cache_recent_slots = 512
 // TypeCache represents type cache data used by types.
 struct TypeCache {
 mut:
+	parsed_scalars &ParsedScalarTypeCache = unsafe { nil }
+	indexed_types  &IndexedTypeCache      = unsafe { nil }
 	// Frozen fallback cache shared by all parallel-check forks: lookups miss the
 	// own (private) maps first, then consult base read-only; writes always go to
 	// the own maps. The master installs its warm post-collect cache as base for
@@ -534,6 +557,7 @@ fn new_type_cache_with_base(parse_enabled bool, base &TypeCache) &TypeCache {
 }
 
 fn (mut cache TypeCache) clear_c_type_entries() {
+	cache.indexed_types = unsafe { nil }
 	cache.c_entries.clear()
 	cache.c_name_entries.clear()
 	for i in 0 .. cache.c_recent_set.len {
@@ -1866,6 +1890,11 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 // reset_type_interners replaces semantic interners whose backing storage may
 // have grown inside a disposable compiler-stage arena.
 pub fn (mut tc TypeChecker) reset_type_interners() {
+	if !isnil(tc.type_cache) {
+		tc.type_cache.parsed_scalars = unsafe { nil }
+		// Numeric identities start over in the replacement interner.
+		tc.type_cache.clear_c_type_entries()
+	}
 	tc.type_interner = new_type_interner()
 	tc.symbols = new_symbol_interner()
 }
@@ -1978,6 +2007,9 @@ fn (mut tc TypeChecker) reset_sparse_fn_values() {
 // Independent arrays can be initialized on separate persistent worker arenas.
 fn (mut tc TypeChecker) reset_node_cache_group(n int, group int) {
 	if group == 0 {
+		if !isnil(tc.type_cache) {
+			tc.type_cache.indexed_types = unsafe { nil }
+		}
 		tc.resolved_call_names = new_zeroed_name_cache(n)
 		tc.resolved_call_set = []bool{len: n}
 		return
@@ -2662,6 +2694,7 @@ pub fn (mut tc TypeChecker) materialize_sparse_transform_node_caches(n int, capa
 	}
 	for idx, typ in tc.sparse_expr_type_values {
 		if idx >= 0 && idx < n {
+			tc.invalidate_checked_type_id(idx)
 			tc.expr_type_values[idx] = typ
 			tc.expr_type_set[idx] = true
 		}
@@ -2689,6 +2722,7 @@ fn (mut tc TypeChecker) widen_mixed_integer_expr_types() {
 		typ := tc.expr_type_values[idx]
 		widened := tc.widen_mixed_integer_expr_type(flat.NodeId(idx), typ)
 		if widened.name() != typ.name() {
+			tc.invalidate_checked_type_id(idx)
 			tc.expr_type_values[idx] = widened
 		}
 	}
@@ -2776,6 +2810,10 @@ pub fn (mut tc TypeChecker) begin_sparse_transform_node_caches(base_nodes int) {
 // promote_scoped_transform_interners moves additions made by a scoped
 // transform into the current compilation arena before that scope is freed.
 pub fn (mut tc TypeChecker) promote_scoped_transform_interners(type_start int, symbol_start int, scope voidptr) {
+	if !isnil(tc.type_cache) {
+		tc.type_cache.parsed_scalars = unsafe { nil }
+		tc.type_cache.indexed_types = unsafe { nil }
+	}
 	if !isnil(tc.type_interner) {
 		mut interner := tc.type_interner
 		interner.promote_from(type_start, scope)
@@ -5418,6 +5456,7 @@ fn (mut tc TypeChecker) invalidate_const_initializer_type(expr_id flat.NodeId) {
 	if idx < 0 || idx >= tc.a.nodes.len {
 		return
 	}
+	tc.invalidate_checked_type_id(idx)
 	if idx < tc.expr_type_set.len {
 		tc.expr_type_set[idx] = false
 	}
@@ -5863,6 +5902,11 @@ pub fn (tc &TypeChecker) ownership_time_spent_us() i64 {
 
 // qualify_name resolves a name to its module-qualified form in the current checker context.
 pub fn (tc &TypeChecker) qualify_name(name string) string {
+	// Builtin spellings cannot depend on imports, declarations or the current
+	// module. Avoid the contextual cache and wrapper walk for these leaves.
+	if is_builtin_type_name(name) {
+		return name
+	}
 	if !isnil(tc.qualify_name_cache) {
 		mut cache := tc.qualify_name_cache
 		fingerprint := tc.qualify_table_fingerprint()
@@ -9883,6 +9927,7 @@ fn (tc &TypeChecker) in_check_range(idx int) bool {
 // concurrent writes to the same slot.
 @[direct_array_access; inline]
 pub fn (tc &TypeChecker) invalidate_checked_expr_type(idx int) {
+	tc.invalidate_checked_type_id(idx)
 	if idx >= 0 && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 		mut wtc := unsafe { tc }
 		wtc.expr_type_set[idx] = false
@@ -10549,6 +10594,7 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 	if int(id) < 0 {
 		return
 	}
+	tc.invalidate_checked_type_id(int(id))
 	kind := if int(id) < tc.a.nodes.len { tc.a.nodes[int(id)].kind } else { flat.NodeKind.empty }
 	// An arithmetic node that mixes a 128-bit type with a narrower one arrives here
 	// with the narrower operand's type. Every reader of the recorded type (printing,
