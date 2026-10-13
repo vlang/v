@@ -4145,6 +4145,9 @@ fn (mut g FlatGen) gen_global_declaration_block() {
 // immutable after cgen preparation. Parallel self-host cgen can build it on the
 // caller while the persistent worker pool emits function bodies.
 fn (mut g FlatGen) gen_type_declaration_block() {
+	// The final function selection can add wrapped tuple signatures after cache
+	// demand collection. Discover them before emitting their payload layouts.
+	g.collect_selected_declaration_signature_types()
 	g.enum_decls()
 	g.type_forward_decls()
 	g.type_alias_decls(false)

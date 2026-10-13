@@ -482,6 +482,7 @@ Literal-output programs still instantiate retained generic helpers with `-no-ski
 Merged imports in cached headers do not create parameter-name conflicts across source files.
 Warm builds retain every `IError` implementer's `msg` and `code` methods and their helpers,
 including calls made by dispatchers inside cached objects.
+Selected option/result tuple signatures declare their payload layouts before their wrappers.
 With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
 before compiling a new module object, including during `run`. Ordinary builds and warm builds
 print no cache creation notices; `-silent` suppresses them too.

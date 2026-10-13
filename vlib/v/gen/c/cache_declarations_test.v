@@ -3,6 +3,41 @@ module c
 import v.flat
 import v.types
 
+fn test_final_cached_signatures_declare_tuple_payloads_before_wrappers() {
+	for is_result in [false, true] {
+		mut a := flat.FlatAst.new()
+		fn_id := a.add_node(flat.Node{ kind: .fn_decl, value: 'pair' })
+		mut tc := types.TypeChecker.new(&a)
+		payload := types.Type(types.MultiReturn{
+			types: [types.Type(types.string_), types.Type(types.string_)]
+		})
+		tc.fn_ret_types['dep.pair'] = if is_result {
+			types.Type(types.ResultType{ base_type: payload })
+		} else {
+			types.Type(types.OptionType{ base_type: payload })
+		}
+		mut g := FlatGen.new()
+		g.a = &a
+		g.tc = &tc
+		g.cache_decl_demand = true
+		g.decl_types_ready = true
+		g.optional_types_ready = true
+		g.multi_return_types_ready = true
+		g.fn_gen_items = [
+			FlatFnGenItem{ node_id: fn_id, module: 'dep', file: 'dep.v', c_name: 'dep__pair' },
+		]
+		g.gen_type_declaration_block()
+		output := g.sb.str()
+		tuple_position := output.index('struct multi_return_string_string {') or { -1 }
+		wrapper := if is_result { '__v_result' } else { '__v_option' }
+		wrapper_position := output.index('typedef struct ${wrapper}_multi_return_string_string') or {
+			-1
+		}
+		assert tuple_position >= 0, output
+		assert wrapper_position > tuple_position, output
+	}
+}
+
 fn test_cached_header_retains_its_vlib_source_classification() {
 	mut a := flat.FlatAst.new()
 	a.cached_header_sources['/cache/builtin.vh'] = '/repo/vlib/builtin/array.v'
