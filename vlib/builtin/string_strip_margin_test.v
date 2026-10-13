@@ -103,3 +103,10 @@ fn test_strip_margin_keeps_a_trailing_line_without_delimiter() {
 	// a whitespace only tail is still dropped
 	assert 'a\n   '.strip_margin() == 'a\n'
 }
+
+fn test_strip_margin_long_unmarked_tail() {
+	tail := 'content\n'.repeat(10000)
+	assert tail.strip_margin() == tail
+	assert 'a\n|b\nremaining\n   '.strip_margin() == 'a\nb\nremaining\n'
+	assert 'a\n#b\nremaining'.strip_margin_custom(`#`) == 'a\nb\nremaining'
+}
