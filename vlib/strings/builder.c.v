@@ -36,25 +36,22 @@ pub fn (mut b Builder) write_ptr(ptr &u8, len int) {
 	unsafe { b.push_many(ptr, len) }
 }
 
-// write_rune appends a single rune to the accumulated buffer
+// write_rune appends a single rune to the accumulated buffer.
+// An invalid rune (a surrogate half in 0xD800..0xDFFF, or a value above 0x10FFFF)
+// is written as U+FFFD, the replacement character.
 @[manualfree]
 pub fn (mut b Builder) write_rune(r rune) {
 	mut buffer := [5]u8{}
 	res := unsafe { utf32_to_str_no_malloc(u32(r), mut &buffer[0]) }
-	if res.len == 0 {
-		return
-	}
 	unsafe { b.push_many(res.str, res.len) }
 }
 
 // write_runes appends all the given runes to the accumulated buffer.
+// An invalid rune is written as U+FFFD, see `write_rune`.
 pub fn (mut b Builder) write_runes(runes []rune) {
 	mut buffer := [5]u8{}
 	for r in runes {
 		res := unsafe { utf32_to_str_no_malloc(u32(r), mut &buffer[0]) }
-		if res.len == 0 {
-			continue
-		}
 		unsafe { b.push_many(res.str, res.len) }
 	}
 }
@@ -294,7 +291,8 @@ pub fn (mut b Builder) free() {
 	}
 }
 
-// write_repeated_rune appends multiple copies of the same rune to the accumulated buffer
+// write_repeated_rune appends multiple copies of the same rune to the accumulated buffer.
+// An invalid rune is written as U+FFFD, see `write_rune`.
 @[direct_array_access]
 pub fn (mut b Builder) write_repeated_rune(r rune, count int) {
 	if count <= 0 {
@@ -304,9 +302,6 @@ pub fn (mut b Builder) write_repeated_rune(r rune, count int) {
 	// Convert rune to UTF-8 bytes once
 	mut buffer := [5]u8{}
 	res := unsafe { utf32_to_str_no_malloc(u32(r), mut &buffer[0]) }
-	if res.len == 0 {
-		return
-	}
 
 	if res.len == 1 {
 		b.ensure_cap(b.len + count)
