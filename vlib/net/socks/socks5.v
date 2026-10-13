@@ -124,9 +124,8 @@ fn handshake(mut con net.Connection, host string, username string, password stri
 		v << addr_type_ipv4
 		v << parse_ipv4(address)!
 	} else if address.contains_only(':1234567890abcdf') {
-		// v << addr_type_ipv6
-		// v << parse_ipv4(address)!
-		// TODO: support ipv6
+		// TODO: support ipv6, by emitting addr_type_ipv6 and the 16 address bytes
+		return error('IPv6 SOCKS5 destinations are not supported')
 	} else { // domain
 		if address.len > 255 {
 			return error('${address} is too long')
