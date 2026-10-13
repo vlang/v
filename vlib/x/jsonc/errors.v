@@ -136,7 +136,7 @@ fn is_json5_whitespace(code int) bool {
 		return false
 	}
 	return code == r_vt || code == r_ff || code == r_nbsp || code == r_bom
-		|| (code > 0x2000 && utf8.is_space(rune(code)))
+		|| (code > 0xff && utf8.is_space(rune(code)))
 }
 
 // is_hex_digit reports whether `code` is an ASCII hexadecimal digit.

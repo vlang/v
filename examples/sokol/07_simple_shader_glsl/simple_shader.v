@@ -136,7 +136,7 @@ fn init(user_data voidptr) {
 	app.shader_pipeline = gfx.make_pipeline(&pipeline_desc)
 }
 
-fn cleanup(user_data voidptr) {
+fn cleanup(_user_data voidptr) {
 	gfx.shutdown()
 }
 

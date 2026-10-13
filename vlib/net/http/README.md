@@ -19,6 +19,11 @@ for compatibility. Their standard phrases are `Early Hints` (103) and `Too Early
 Status 203 uses `Non-Authoritative Information`, 207 uses `Multi-Status`, and 418 uses
 `I'm a teapot`.
 
+A server without an explicit `listener` opens a socket on its configured `addr`, even when
+standard input is a socket. An explicitly supplied listener may use descriptor zero. Closing
+the server clears the closed listener, so a later `listen_and_serve()` binds a new socket on
+the server's address. Failed accepts other than timeouts pause briefly before retrying.
+
 ## Making requests
 
 ```v ignore
@@ -212,3 +217,6 @@ Errors after sending a request do not trigger this backend fallback.
 
 The retry preserves certificate validation, configured certificates, HTTP/2 negotiation,
 request headers, method, and body. `-d no_vschannel` continues to select `net.ssl` directly.
+
+Redirect responses without a `Location` header, or with an empty `Location`, are returned
+to the caller without following another URL.
