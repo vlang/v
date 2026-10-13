@@ -427,7 +427,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				$if !nofloat ? {
 					v_sprintf_panic(p_index, pt.len)
 					x := unsafe { *(&f64(pt[p_index])) }
-					positive := x >= f64(0.0)
+					positive := !signbit(x)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
 					s := format_fl_old(f64(x),
 						pad_ch:    pad_ch
@@ -454,7 +454,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				$if !nofloat ? {
 					v_sprintf_panic(p_index, pt.len)
 					x := unsafe { *(&f64(pt[p_index])) }
-					positive := x >= f64(0.0)
+					positive := !signbit(x)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
 					s := format_es_old(f64(x),
 						pad_ch:    pad_ch
@@ -481,10 +481,11 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				$if !nofloat ? {
 					v_sprintf_panic(p_index, pt.len)
 					x := unsafe { *(&f64(pt[p_index])) }
-					positive := x >= f64(0.0)
+					positive := !signbit(x)
 					mut s := ''
 					tx := fabs(x)
-					if tx < 999_999.0 && tx >= 0.00001 {
+					// zero has a decimal exponent of 0, so it is printed in normal notation
+					if tx == 0.0 || (tx < 999_999.0 && tx >= 0.00001) {
 						// println("Here g format_fl [${tx}]")
 						len1 = if len1 >= 0 { len1 + 1 } else { def_len1 }
 						tmp := s
@@ -568,13 +569,11 @@ fn v_sprintf_panic(idx int, len int) {
 	}
 }
 
-// fabs returns the absolute value of `x`. Like C's fabs(), it clears the sign of -0.0 too.
+// fabs returns the magnitude of x, clearing the sign of negative zero and NaNs.
+// The formatting caller applies the requested output sign separately.
 fn fabs(x f64) f64 {
-	if x < 0.0 {
+	if signbit(x) {
 		return -x
-	}
-	if x == 0.0 {
-		return 0.0
 	}
 	return x
 }
@@ -585,7 +584,7 @@ pub fn format_fl_old(f f64, p BF_param) string {
 	unsafe {
 		mut s := ''
 		// mut fs := "1.2343"
-		mut fs := f64_to_str_lnd1(if f >= 0.0 { f } else { -f }, p.len1)
+		mut fs := f64_to_str_lnd1(fabs(f), p.len1)
 		// println("Dario")
 		// println(fs)
 
