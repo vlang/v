@@ -180,6 +180,8 @@ fn client_ip(req http.Request) string {
 
 ## Cookies, headers and multipart
 
+Header value validation also works in `-check-overflow` builds: permitted TAB bytes are kept.
+
 `Request.add_cookie`/`Request.cookie` and `Response.cookies` handle cookies.
 `Response.cookies` reads `Max-Age` as a decimal integer: a positive number of seconds is
 stored in `Cookie.max_age`, zero or a negative number as `-1` (delete now). Any other value
@@ -199,6 +201,13 @@ return an `http.HeaderLimitError` for a field that does not fit, and so do
 `http.parse_request`, `http.parse_response` and the other parsers for a message that has
 more header fields. `add`, `set`, `new_header` and `join` have no error to return: they
 drop such a field.
+
+A field value can not contain CR, LF or NUL (RFC 9110 section 5.5): written as they are,
+these bytes end the field line. `add_custom` and `set_custom` return an
+`http.HeaderValueError` for such a value, and so do the parsers for a received field
+whose value has a bare CR or a NUL. `add`, `set`, `new_header` and `join` store a space
+in place of each of these bytes. `Request.do` and `http.fetch` return the error for a
+`user_agent` that contains one of them.
 
 `Cookie.str()` and `sanitize_cookie_value` remove invalid bytes from cookie values,
 including control characters, quotes, semicolons and backslashes. Spaces and commas
