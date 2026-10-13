@@ -41,10 +41,11 @@ Wrappers that expand Boehm allocation macros include the collector header explic
 Warm incremental builds share the cached declaration prefix's string storage and retain
 new program literals and cleanup hooks after source edits.
 
-Regular generated C represents interned string literals as `_str_N` macros expanding to
-`_S("...")`, without a global string struct for each literal. The macro preserves the literal's
-byte length, including embedded NUL bytes. Cached modules retain static literal storage for
-sharing and rewriting through their declaration prefix.
+Regular generated C initializes interned `static const string _str_N` variables with `_S("...")`.
+The macro preserves the literal's byte length, including embedded NUL bytes. Literal IDs remain
+ordinary identifiers so they do not expand C struct member names. Cached modules retain explicit
+literal initializers for sharing and rewriting through their declaration prefix. MSVC output also
+uses explicit initializers because its C compiler rejects file-scope compound literal initializers.
 
 Generated C still needs the native objects and library flags when linked. Use V to build
 executables, or `-generate-c-project` to export a build command with the native sources

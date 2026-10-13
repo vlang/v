@@ -464,18 +464,16 @@ fn (mut g FlatGen) string_literals_from(start int) {
 // output builder: escaping into a temporary and interpolating the line would
 // leave two copies of every literal behind in the cgen arena.
 fn (mut g FlatGen) write_string_literal_def(id int, s string) {
-	// Cached modules rewrite and share literal storage through their declaration prefix.
-	// Regular C output can expand the header at each use without a global string object.
-	if !g.cache_stable_symbols {
-		g.write('#define _str_')
-		g.sb.write_decimal(i64(id))
-		g.sb.write_string(' _S("')
-		c_escape_into(mut g.sb, s)
-		g.writeln('")')
-		return
-	}
 	g.write('static const string _str_')
 	g.sb.write_decimal(i64(id))
+	// Cached modules rewrite and share literal storage through their declaration prefix.
+	// Keep literal IDs out of the macro namespace so C member names remain untouched.
+	if !g.cache_stable_symbols && g.ccompiler != 'msvc' {
+		g.sb.write_string(' = _S("')
+		c_escape_into(mut g.sb, s)
+		g.writeln('");')
+		return
+	}
 	g.sb.write_string(' = {"')
 	c_escape_into(mut g.sb, s)
 	g.sb.write_string('", ')
