@@ -706,6 +706,27 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 	}
 }
 
+// array_accessors_call_builtin reports whether `first()`/`last()` are emitted as calls of
+// the builtin methods, whose guard reports an empty array under the name of the method.
+// A `-no-bounds-checking` build keeps the index that `array.get` does not check there.
+fn (g &FlatGen) array_accessors_call_builtin() bool {
+	return 'no_bounds_checking' !in g.compile_defines
+}
+
+// array_accessor_index_method returns the method, `first` or `last`, that an index marked
+// by the transformer stands for (an lvalue use, such as `arr.last().field = x`) when the
+// index is emitted as a call of that method, and '' for any other index.
+fn (g &FlatGen) array_accessor_index_method(node &flat.Node) string {
+	if node.payload == 0 || !g.array_accessors_call_builtin() {
+		return ''
+	}
+	params := node.generic_params()
+	if params.len == 2 && params[0] == array_accessor_index_marker {
+		return params[1]
+	}
+	return ''
+}
+
 // gen_array_method_call emits array method call output for c.
 fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr types.Array) {
 	base_id := g.a.child(fn_node, 0)
@@ -743,7 +764,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			g.write(')')
 		}
 		'last' {
-			if g.expr_is_stable_for_reuse(base_id) {
+			if !g.array_accessors_call_builtin() && g.expr_is_stable_for_reuse(base_id) {
 				g.write('*(${c_elem}*)array_get(')
 				if is_ptr {
 					g.write('*')
@@ -753,7 +774,8 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 				g.gen_expr(base_id)
 				g.write('${dot}len - 1)')
 			} else {
-				// The index above names the receiver twice, which would evaluate
+				// `array.last` reports an empty array under its own name. The index
+				// above also names the receiver twice, which would evaluate
 				// `make().last()` twice.
 				g.write('*(${c_elem}*)array__last(')
 				if is_ptr {
@@ -764,12 +786,21 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			}
 		}
 		'first' {
-			g.write('*(${c_elem}*)array_get(')
-			if is_ptr {
-				g.write('*')
+			if g.array_accessors_call_builtin() {
+				g.write('*(${c_elem}*)array__first(')
+				if is_ptr {
+					g.write('*')
+				}
+				g.gen_expr(base_id)
+				g.write(')')
+			} else {
+				g.write('*(${c_elem}*)array_get(')
+				if is_ptr {
+					g.write('*')
+				}
+				g.gen_expr(base_id)
+				g.write(', 0)')
 			}
-			g.gen_expr(base_id)
-			g.write(', 0)')
 		}
 		'delete_last' {
 			g.write('array__delete_last(')

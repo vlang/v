@@ -10,6 +10,10 @@ pub const max_http_post_size = $d('veb_max_http_post_size_bytes', 1048576)
 pub const default_port = int($d('veb_default_port', 8080))
 pub const methods_with_form = [http.Method.post, .put, .patch]
 
+// default_max_request_body_size is the default of `RunParams.max_request_body_size`.
+// It is the same as the default of `fasthttp.ServerConfig.max_request_body_size`.
+const default_max_request_body_size = 64 * 1024 * 1024
+
 pub const headers_close = http.new_custom_header_from_map({
 	'Server': 'veb'
 })!
@@ -53,6 +57,17 @@ pub const http_413 = http.new_response(
 	header: http.new_header(
 		key:   .content_type
 		value: 'text/plain'
+	).join(headers_close)
+)
+
+// http_413_close is sent before the connection is closed, since the rest of the
+// request body was not read.
+const http_413_close = http.new_response(
+	status: .request_entity_too_large
+	body:   '413 Request entity is too large'
+	header: http.new_header(http.HeaderConfig{ key: .content_type, value: 'text/plain' },
+		key:   .connection
+		value: 'close'
 	).join(headers_close)
 )
 

@@ -2,7 +2,39 @@ module transform
 
 import os
 import v.flat
+import v.parser
+import v.pref
 import v.types
+
+fn test_generic_declaration_index_preserves_appended_templates_and_erasure() {
+	path := os.join_path(os.vtmp_dir(), 'generic_decl_index_${os.getpid()}.v')
+	os.write_file(path, 'module source\nstruct Box[T] { value T }\ntype Choice[T] = T | string\n')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	assert tc.top_level_idx.len > 0
+	a.add_val(.file, 'appended.v')
+	a.add_val(.module_decl, 'later')
+	mut appended := flat.Node{ kind: .struct_decl, value: 'Added' }
+	appended.set_generic_params(['T'])
+	added := a.add_node(appended)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	indexed_structs := t.collect_generic_struct_decls()
+	indexed_sums := t.collect_generic_sum_decls()
+	assert 'source.Box' in indexed_structs
+	assert indexed_structs['source.Box'].file == path
+	assert indexed_structs['later.Added'].id == added
+	assert indexed_structs['later.Added'].file == 'appended.v'
+	assert indexed_sums['source.Choice'].file == path
+	tc.top_level_idx.clear()
+	assert t.collect_generic_struct_decls() == indexed_structs
+	assert t.collect_generic_sum_decls() == indexed_sums
+	t.set_node(int(added), flat.Node{})
+	assert 'later.Added' !in t.collect_generic_struct_decls()
+}
 
 fn test_node_context_cache_growth_preserves_ids_and_initializes_new_slots() {
 	mut cache := []u16{}
@@ -624,6 +656,31 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 	assert t.lock_colliding_main_substitution_type_text('other.Box[map[other.Key]T]', 'other.Box[map[other.Key]Context]', 'arc', [
 		'T',
 	]) == 'other.Box[map[other.Key]main.Context]'
+	// A locked argument makes the spelling qualified, so the decl-module base must be too.
+	assert t.lock_colliding_main_substitution_type_text('&Arc[T]', '&Arc[Context]', 'arc', [
+		'T',
+	]) == '&arc.Arc[main.Context]'
+}
+
+fn test_collision_locked_signature_keeps_interface_and_alias_declaration_modules() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Item'] = StructInfo{}
+	t.structs['callee.Item'] = StructInfo{}
+	t.active_specialization_main_types['Item'] = true
+	tc.interface_names['callee.Reader'] = true
+	tc.interface_generic_params['callee.Reader'] = ['T']
+	tc.type_aliases['callee.Mapper'] = 'fn (T) int'
+	tc.type_alias_generic_params['callee.Mapper'] = ['T']
+	decl := GenericFnDecl{ module: 'callee' }
+	for base in ['Reader', 'Mapper'] {
+		for prefix in ['', '&', '[]', '?'] {
+			assert t.specialized_signature_type_text(decl, '${prefix}${base}[T]', ['Item'], ['T']) == '${prefix}callee.${base}[main.Item]'
+		}
+		assert t.specialized_signature_type_text(decl, 'other.${base}[T]', ['Item'], ['T']) == 'other.${base}[main.Item]'
+		assert t.specialized_signature_type_text(decl, '${base}[T]', ['int'], ['T']).contains('main.') == false
+	}
 }
 
 fn test_generic_fn_type_param_mode_payload_preserves_mutability() {
@@ -942,6 +999,56 @@ fn test_record_monomorph_cache_spec_replaces_existing_entry() {
 	assert spec.module == 'main'
 }
 
+fn test_serial_monomorph_batches_share_source_reflected_loop_index() {
+	$if !v3_no_parallel ? {
+		path := os.join_path(os.vtmp_dir(), 'monomorph_reflected_loop_${os.getpid()}.v')
+		os.write_file(path, 'struct Item {
+	items []string
+}
+fn count[T](value T) int {
+	mut result := 0
+	\$for field in T.fields {
+		\$if field.typ is []string {
+			for key, text in value.\$(field.name) {
+				result += key + text.len
+			}
+		}
+	}
+	return result
+}
+fn main() {
+	assert count[Item](Item{items: ["a", "bb"]}) == 4
+}
+') or { panic(err) }
+		defer { os.rm(path) or {} }
+		mut p := parser.Parser.new(pref.new_preferences())
+		mut a := p.parse_file(path)
+		mut tc := types.TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_semantics()
+		assert tc.errors.len == 0, tc.errors.str()
+		mut t := new_transformer(mut a, &tc, {
+			'main': true
+		})
+		t.prepare()
+		decl := t.cached_generic_fn_decls()['count'] or { panic('missing count declaration') }
+		args := ['Item']
+		mut emitted := map[string]bool{}
+		mut generated := []string{}
+		assert t.run_scoped_monomorphize_specs([PendingGenericFnSpec{
+			decl: decl
+			args: args
+			key:  generic_fn_spec_key(decl.key, args)
+		}], mut emitted, mut generated)
+		assert t.comptime_reflected_for_ready
+		assert t.comptime_reflected_for_roles['key'] == 1
+		assert t.comptime_reflected_for_roles['text'] == 2
+		worker := t.fork_scoped_batch_worker(a, &tc)
+		assert worker.comptime_reflected_for_ready
+		assert worker.comptime_reflected_for_roles == t.comptime_reflected_for_roles
+	}
+}
+
 fn test_generic_unresolved_function_type_checks_parameters_and_return() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -1011,4 +1118,156 @@ fn test_parameterized_typeof_value_display_preserves_source_names() {
 	marker := flat.Node{ kind: .typeof_expr, value: generic_type_name_marker('T') }
 	assert t.generic_comptime_typeof_display_name(marker, ['other.Payload'],
 		'other.Payload') == 'other.Payload'
+}
+
+fn test_monomorphize_after_transform_keeps_lowered_fn_bodies() {
+	path := os.join_path(os.vtmp_dir(), 'monomorphize_lowered_bodies_${os.getpid()}.v')
+	os.write_file(path, '@[heap]
+struct Frame {
+mut:
+	name string
+}
+
+struct Tag {
+mut:
+	others []Frame
+}
+
+fn (mut tag Tag) add_frame(frame Frame) {
+	tag.others << frame
+}
+
+fn fill[T](mut tag T) {
+	mut cur := &Frame{}
+	tag.add_frame(cur)
+}
+
+fn main() {
+	mut tag := Tag{}
+	fill[Tag](mut tag)
+}
+') or {
+		panic(err)
+	}
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	// Markused names a method by its V spelling only.
+	used := transform_with_used(mut a, &tc, {
+		'main':          true
+		'fill':          true
+		'Tag.add_frame': true
+	})
+	assert !used['Tag__add_frame']
+	mut add_frame_idx := -1
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == 'Tag.add_frame' {
+			add_frame_idx = i
+		}
+	}
+	assert add_frame_idx >= 0
+	lowered := a.nodes[add_frame_idx]
+	mono_used, errors, _ := monomorphize_with_used_checked_config_scoped_cached(mut a, &tc,
+		used, false, unsafe { nil }, []MonomorphCacheSpec{}, true)
+	assert errors.len == 0, errors.str()
+	// The call in `fill[Tag]` inserts the C spelling: that is not a new function.
+	assert mono_used['Tag__add_frame']
+	assert a.nodes[add_frame_idx].children_start == lowered.children_start
+	assert a.nodes[add_frame_idx].children_count == lowered.children_count
+}
+
+fn test_late_fn_bodies_pass_lowers_a_body_once_while_monomorphizing() {
+	path := os.join_path(os.vtmp_dir(), 'monomorphize_late_bodies_${os.getpid()}.v')
+	os.write_file(path, 'struct Tag {
+mut:
+	count int
+}
+
+fn (mut tag Tag) bump() {
+	tag.count++
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	used := transform_with_used(mut a, &tc, {
+		'main': true
+	})
+	mut bump_idx := -1
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == 'Tag.bump' {
+			bump_idx = i
+		}
+	}
+	assert bump_idx >= 0
+	parsed := a.nodes[bump_idx]
+	mut t := new_transformer(mut a, &tc, used)
+	t.prepare()
+	t.mark_used_fn_bodies_lowered()
+	limit := t.a.nodes.len
+	// Nothing named the method before: its first spelling gets its body lowered.
+	t.transform_late_used_fn_bodies(['Tag__bump'], 0, 1, limit)
+	lowered := t.a.nodes[bump_idx]
+	assert lowered.children_start != parsed.children_start
+	// Its other spelling, inserted in a later round, is not another function.
+	t.transform_late_used_fn_bodies(['Tag.bump'], 0, 1, limit)
+	assert t.a.nodes[bump_idx].children_start == lowered.children_start
+}
+
+fn test_scoped_late_fn_bodies_pass_records_lowered_bodies() {
+	path := os.join_path(os.vtmp_dir(), 'monomorphize_scoped_late_bodies_${os.getpid()}.v')
+	mut source := 'struct Tag {\nmut:\n\tcount int\n}\n'
+	mut names := []string{}
+	for i in 0 .. direct_late_transform_max_names + 1 {
+		source += 'fn (mut tag Tag) bump${i}() { tag.count++ }\n'
+		names << 'Tag__bump${i}'
+	}
+	source += 'fn main() {}\n'
+	os.write_file(path, source) or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	used := transform_with_used(mut a, &tc, {
+		'main': true
+	})
+	mut t := new_transformer(mut a, &tc, used)
+	t.prepare()
+	t.mark_used_fn_bodies_lowered()
+	// Monomorphization starts without the main transformer's body bookkeeping.
+	assert t.transformed_fns.len == 0
+	t.scope_parallel_workers = true
+	t.retain_worker_results = true
+	limit := t.a.nodes.len
+	// More than the direct-pass limit routes these bodies through scoped batches.
+	t.transform_late_used_fn_bodies(names, 0, names.len, limit)
+	mut lowered := map[int]int{}
+	for i in 0 .. limit {
+		node := t.a.nodes[i]
+		if node.kind == .fn_decl && node.value.starts_with('Tag.bump') {
+			assert t.lowered_fn_bodies[i], node.value
+			lowered[i] = node.children_start
+		}
+	}
+	assert lowered.len == names.len
+	// A later round discovers another spelling of a body that the batch lowered.
+	t.transform_late_used_fn_bodies(['Tag.bump0'], 0, 1, limit)
+	for idx, children_start in lowered {
+		assert t.a.nodes[idx].children_start == children_start
+	}
 }

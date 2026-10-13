@@ -36,6 +36,12 @@ fn bool_to_u64(b bool) u64 {
 	return u64(0)
 }
 
+// signbit reports whether the sign bit of `x` is set. Unlike `x < 0.0`, it is true for -0.0 too.
+@[inline]
+fn signbit(x f64) bool {
+	return bits.f64_bits(x) >> 63 != 0
+}
+
 fn get_string_special(neg bool, expZero bool, mantZero bool) string {
 	if !mantZero {
 		return 'nan'
