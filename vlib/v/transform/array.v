@@ -1128,7 +1128,13 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 }
 
 fn (mut t Transformer) transform_fixed_array_literal_for_type(_id flat.NodeId, node flat.Node, target_type string) ?flat.NodeId {
-	fixed_type := t.normalize_type_alias(target_type)
+	mut fixed_type := t.normalize_type_alias(target_type)
+	if t.generic_arg_is_unresolved(fixed_type) {
+		elem_type := t.array_literal_elem_type(node)
+		if decl_type_is_usable(elem_type) && !t.generic_arg_is_unresolved(elem_type) {
+			fixed_type = '[${fixed_array_len_text(fixed_type)}]${elem_type}'
+		}
+	}
 	if !t.is_fixed_array_type(fixed_type) {
 		return none
 	}
