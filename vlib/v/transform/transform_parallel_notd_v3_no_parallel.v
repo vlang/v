@@ -1831,6 +1831,9 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		mut wtc := t.tc.fork_for_parallel_transform(wast)
 		wtc.ensure_private_transform_signatures()
 		mut w := t.fork_worker(wast, wtc)
+		// Earlier batches are part of this batch's base too. Log their rewrites
+		// so publication does not have to search the entire AST for owned text.
+		w.scoped_base_nodes = base_nodes
 		// Lifted function literals and other synthesized symbols are named from
 		// this counter. Batches run one after another, so let every batch continue
 		// the master's sequence: with a per-batch counter the same `__anon_fn_N`
@@ -1934,21 +1937,36 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		for name in generated_names {
 			generated << name.clone()
 		}
-		if t.stage_scope != unsafe { nil } {
-			parent_state := transform_stage_scope_suspend(t.stage_scope)
-			for idx in 0 .. t.a.nodes.len {
-				t.clone_scoped_worker_node(idx, scope)
-			}
-			transform_stage_scope_resume(t.stage_scope, parent_state)
-		} else {
-			for idx in 0 .. t.a.nodes.len {
-				t.promote_scoped_node_to_current(idx, scope)
-			}
-		}
+		t.publish_scoped_monomorph_nodes(w, base_nodes, scope)
 		transform_worker_scope_free(scope)
 		start = end
 	}
 	return true
+}
+
+// publish_scoped_monomorph_nodes owns the appended region and every rewritten
+// base node before releasing a specialization batch. Untouched nodes already
+// belong to the parent; rescanning them after every batch makes publication
+// proportional to the whole program instead of the generated specializations.
+fn (mut t Transformer) publish_scoped_monomorph_nodes(w &Transformer, base_nodes int, scope voidptr) {
+	base_writes := w.scoped_owned_base_node_ids()
+	if t.stage_scope != unsafe { nil } {
+		parent_state := transform_stage_scope_suspend(t.stage_scope)
+		for idx in base_nodes .. t.a.nodes.len {
+			t.clone_scoped_worker_node(idx, scope)
+		}
+		for idx in base_writes {
+			t.clone_scoped_worker_node(idx, scope)
+		}
+		transform_stage_scope_resume(t.stage_scope, parent_state)
+	} else {
+		for idx in base_nodes .. t.a.nodes.len {
+			t.promote_scoped_node_to_current(idx, scope)
+		}
+		for idx in base_writes {
+			t.promote_scoped_node_to_current(idx, scope)
+		}
+	}
 }
 
 fn monomorph_spec_worker(key string, worker_count int) int {
