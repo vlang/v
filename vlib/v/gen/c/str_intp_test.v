@@ -51,24 +51,32 @@ fn test_voidptr_function_value_detection_prefers_explicit_node_type() {
 	assert !g.node_is_fn_value_for_voidptr(stale_id, value_node)
 }
 
-fn test_string_literal_table_preserves_explicit_initializers_for_cache_and_msvc() {
-	for cached in [false, true] {
-		mut g := FlatGen.new()
-		g.cache_stable_symbols = cached
-		g.ccompiler = if cached { 'clang' } else { 'msvc' }
-		g.intern_string('literal')
-		g.string_literals()
-		assert g.sb.str() == 'static const string _str_0 = {"literal", 7, 1};\n\n'
-	}
+fn test_cached_string_literal_table_preserves_explicit_initializers() {
+	mut g := FlatGen.new()
+	g.cache_stable_symbols = true
+	g.intern_string('literal')
+	g.string_literals()
+	assert g.sb.str() == 'static const string _str_0 = {"literal", 7, 1};\n\n'
 }
 
-fn test_string_literal_table_uses_macro_initializers_in_regular_and_split_c_output() {
+fn test_string_literal_table_uses_declaration_macros_in_regular_and_split_c_output() {
 	for split in [false, true] {
 		mut g := FlatGen.new()
 		g.cache_split = split
 		g.intern_string('literal')
 		g.string_literals()
-		assert g.sb.str() == 'static const string _str_0 = _S("literal");\n\n'
+		assert g.sb.str() == '_SL(_str_0, "literal", 7);\n\n'
+	}
+}
+
+fn test_cross_string_literal_declarations_preserve_byte_lengths() {
+	for ccompiler in ['clang', 'gcc', 'tcc', 'msvc'] {
+		mut g := FlatGen.new()
+		g.ccompiler = ccompiler
+		g.set_output_cross_c(true)
+		g.intern_string('a\x00b')
+		g.string_literals()
+		assert g.sb.str() == '_SL(_str_0, "a\\000b", 3);\n\n'
 	}
 }
 
