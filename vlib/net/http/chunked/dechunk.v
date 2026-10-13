@@ -15,8 +15,9 @@ mut:
 	text string
 }
 
-fn (mut s ChunkScanner) read_chunk_size() u32 {
-	mut n := u32(0)
+fn (mut s ChunkScanner) read_chunk_size() !u32 {
+	mut n := u64(0)
+	mut digits := 0
 	for {
 		if s.pos >= s.text.len {
 			break
@@ -25,11 +26,21 @@ fn (mut s ChunkScanner) read_chunk_size() u32 {
 		if !c.is_hex_digit() {
 			break
 		}
-		n = n << 4
-		n += u32(unhex(c))
+		n = n << 4 | u64(unhex(c))
+		// a size that does not fit u32 could never be satisfied from the
+		// buffer; reject it here instead of wrapping around silently (a
+		// wrap to 0 would even look like the terminating chunk)
+		if n > u64(0xFFFF_FFFF) {
+			return error('invalid chunk size: overflow')
+		}
 		s.pos++
+		digits++
 	}
-	return n
+	// no digits at all is malformed input, not the zero-size terminator
+	if digits == 0 {
+		return error('invalid chunk size: expected hexadecimal number')
+	}
+	return u32(n)
 }
 
 fn unhex(c u8) u8 {
@@ -63,7 +74,7 @@ pub fn decode(text string) !string {
 		text: text
 	}
 	for {
-		csize := cscanner.read_chunk_size()
+		csize := cscanner.read_chunk_size()!
 		if 0 == csize {
 			break
 		}
