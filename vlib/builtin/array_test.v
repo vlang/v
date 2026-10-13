@@ -1124,6 +1124,247 @@ fn test_i64_sort() {
 	assert f[6] == 79
 }
 
+// Equal integers are the same value, so the order of `<` leaves one possible result.
+fn test_integer_sort_value_result() {
+	mut i64s := [i64(3), -1, 3, 0, -1, max_i64, min_i64, 3, 0]
+	i64s.sort()
+	assert i64s == [min_i64, -1, -1, 0, 0, 3, 3, 3, max_i64]
+	mut ints := [50, -15, 1, 79, 1, 38, 0, -15, 27, 1]
+	ints.sort()
+	assert ints == [-15, -15, 0, 1, 1, 1, 27, 38, 50, 79]
+	assert [u8(200), 3, 255, 0, 3, 127, 128].sorted() == [u8(0), 3, 3, 127, 128, 200, 255]
+	assert [i8(-128), 127, 0, -1, 1, -1].sorted() == [i8(-128), -1, -1, 0, 1, 127]
+	assert [u64(1) << 63, 1, max_u64, 0, 1].sorted() == [u64(0), 1, 1, u64(1) << 63, max_u64]
+	assert []int{}.sorted() == []int{}
+	assert [7].sorted() == [7]
+	assert [7, -7].sorted() == [-7, 7]
+	mut seed := u64(29991)
+	mut large := []i64{cap: 5000}
+	for _ in 0 .. 5000 {
+		seed = seed * 6364136223846793005 + 1442695040888963407
+		large << i64(seed >> 52) - 2048
+	}
+	sorted := large.sorted()
+	assert sorted == large.sorted(a < b)
+	for i in 1 .. sorted.len {
+		assert sorted[i - 1] <= sorted[i]
+	}
+	large.sort()
+	assert large == sorted
+	large.reverse_in_place()
+	large.sort()
+	assert large == sorted
+}
+
+// float_sort_bits returns the bytes of a float as an integer. `-0.0 == 0.0`, and a
+// NaN is not equal to itself, so only the bits show which element went where.
+fn float_sort_bits[T](x T) u64 {
+	value := x
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &value, int(sizeof(T))) }
+	return bits
+}
+
+fn float_array_sort_bits[T](a []T) []u64 {
+	mut res := []u64{cap: a.len}
+	for x in a {
+		res << float_sort_bits(x)
+	}
+	return res
+}
+
+fn f64_from_sort_bits(bits u64) f64 {
+	mut x := f64(0)
+	unsafe { vmemcpy(&x, &bits, int(sizeof(f64))) }
+	return x
+}
+
+fn f32_from_sort_bits(bits u32) f32 {
+	mut x := f32(0)
+	unsafe { vmemcpy(&x, &bits, int(sizeof(f32))) }
+	return x
+}
+
+// float_sort_model sorts by the order that `sort()` documents for floats, with a
+// plain insertion sort: ascending by `<`, NaNs last, and the elements that `<`
+// does not tell apart in their input order.
+fn float_sort_model[T](input []T) []T {
+	mut res := []T{cap: input.len}
+	for x in input {
+		if x != x {
+			continue
+		}
+		mut i := res.len
+		res << x
+		for i > 0 && x < res[i - 1] {
+			res[i] = res[i - 1]
+			i--
+		}
+		res[i] = x
+	}
+	for x in input {
+		if x != x {
+			res << x
+		}
+	}
+	return res
+}
+
+// f64_sort_input returns `n` floats in which a few ordinary values repeat among
+// both zeros, both infinities and NaNs. Every NaN has its own payload, so that
+// the order of the NaNs is visible too.
+fn f64_sort_input(n int) []f64 {
+	mut seed := u32(n) * 2654435761 + 29991
+	mut res := []f64{cap: n}
+	for i in 0 .. n {
+		seed = seed * 1664525 + 1013904223
+		kind := (seed >> 16) % 12
+		res << match kind {
+			0 { 0.0 }
+			1 { f64_from_sort_bits(0x8000000000000000) }
+			2 { f64_from_sort_bits(0x7ff8000000000000 | u64(i + 1)) }
+			3 { f64_from_sort_bits(0xfff8000000000000 | u64(i + 1)) }
+			4 { f64_from_sort_bits(0x7ff0000000000000) }
+			5 { f64_from_sort_bits(0xfff0000000000000) }
+			else { f64(int((seed >> 8) % 41) - 20) * 0.25 }
+		}
+	}
+	return res
+}
+
+// f32_sort_input is `f64_sort_input` for `f32`.
+fn f32_sort_input(n int) []f32 {
+	mut seed := u32(n) * 2654435761 + 29991
+	mut res := []f32{cap: n}
+	for i in 0 .. n {
+		seed = seed * 1664525 + 1013904223
+		kind := (seed >> 16) % 12
+		res << match kind {
+			0 { f32(0.0) }
+			1 { f32_from_sort_bits(0x80000000) }
+			2 { f32_from_sort_bits(0x7fc00000 | u32(i + 1)) }
+			3 { f32_from_sort_bits(0xffc00000 | u32(i + 1)) }
+			4 { f32_from_sort_bits(0x7f800000) }
+			5 { f32_from_sort_bits(0xff800000) }
+			else { f32(int((seed >> 8) % 41) - 20) * 0.25 }
+		}
+	}
+	return res
+}
+
+const float_sort_sizes = [0, 1, 2, 3, 7, 8, 9, 33, 64, 1000, 3000]
+
+fn test_f64_sort_keeps_signed_zeros_in_their_original_order() {
+	neg_zero := f64_from_sort_bits(0x8000000000000000)
+	assert neg_zero == 0.0
+	assert float_sort_bits(neg_zero) != float_sort_bits(0.0)
+	source := [1.0, 0.0, -1.0, neg_zero, 2.0, 0.0, -2.0, neg_zero, 3.0, 0.0, neg_zero, -3.0]
+	want := float_array_sort_bits([-3.0, -2.0, -1.0, 0.0, neg_zero, 0.0, neg_zero, 0.0, neg_zero,
+		1.0, 2.0, 3.0])
+	mut sorted := source.clone()
+	sorted.sort()
+	assert float_array_sort_bits(sorted) == want
+	assert float_array_sort_bits(source.sorted()) == want
+	mut fixed := [1.0, 0.0, -1.0, neg_zero, 2.0, 0.0, -2.0, neg_zero, 3.0, 0.0, neg_zero, -3.0]!
+	fixed.sort()
+	assert float_array_sort_bits(fixed[..]) == want
+	// All the elements are equal, so sorting must not move any of them.
+	for n in float_sort_sizes {
+		for step in [2, 3] {
+			zeros := []f64{len: n, init: if index % step == 0 { neg_zero } else { 0.0 }}
+			mut sorted_zeros := zeros.clone()
+			sorted_zeros.sort()
+			assert float_array_sort_bits(sorted_zeros) == float_array_sort_bits(zeros), 'n: ${n}, step: ${step}'
+		}
+	}
+}
+
+fn test_f32_sort_keeps_signed_zeros_in_their_original_order() {
+	neg_zero := f32_from_sort_bits(0x80000000)
+	assert neg_zero == f32(0.0)
+	assert float_sort_bits(neg_zero) != float_sort_bits(f32(0.0))
+	source := [f32(1.0), 0.0, -1.0, neg_zero, 2.0, 0.0, -2.0, neg_zero, 3.0, 0.0, neg_zero, -3.0]
+	want := float_array_sort_bits([f32(-3.0), -2.0, -1.0, 0.0, neg_zero, 0.0, neg_zero, 0.0, neg_zero,
+		1.0, 2.0, 3.0])
+	mut sorted := source.clone()
+	sorted.sort()
+	assert float_array_sort_bits(sorted) == want
+	assert float_array_sort_bits(source.sorted()) == want
+	for n in float_sort_sizes {
+		for step in [2, 3] {
+			zeros := []f32{len: n, init: if index % step == 0 { neg_zero } else { f32(0.0) }}
+			mut sorted_zeros := zeros.clone()
+			sorted_zeros.sort()
+			assert float_array_sort_bits(sorted_zeros) == float_array_sort_bits(zeros), 'n: ${n}, step: ${step}'
+		}
+	}
+}
+
+fn test_f64_sort_puts_nans_after_the_other_elements() {
+	nan1 := f64_from_sort_bits(0x7ff8000000000001)
+	nan2 := f64_from_sort_bits(0xfff8000000000002)
+	inf := f64_from_sort_bits(0x7ff0000000000000)
+	assert nan1 != nan1
+	source := [3.0, nan1, 1.0, inf, 2.0, nan2, 0.5, -inf]
+	want := float_array_sort_bits([-inf, 0.5, 1.0, 2.0, 3.0, inf, nan1, nan2])
+	mut sorted := source.clone()
+	sorted.sort()
+	assert float_array_sort_bits(sorted) == want
+	assert float_array_sort_bits(source.sorted()) == want
+	// Two NaNs are not ordered either, so they stay as they were.
+	nans := [nan2, nan1]
+	assert float_array_sort_bits(nans.sorted()) == float_array_sort_bits(nans)
+	assert float_array_sort_bits([nan1, 1.0].sorted()) == float_array_sort_bits([1.0, nan1])
+}
+
+fn test_f32_sort_puts_nans_after_the_other_elements() {
+	nan1 := f32_from_sort_bits(0x7fc00001)
+	nan2 := f32_from_sort_bits(0xffc00002)
+	inf := f32_from_sort_bits(0x7f800000)
+	assert nan1 != nan1
+	source := [f32(3.0), nan1, 1.0, inf, 2.0, nan2, 0.5, -inf]
+	want := float_array_sort_bits([-inf, 0.5, 1.0, 2.0, 3.0, inf, nan1, nan2])
+	mut sorted := source.clone()
+	sorted.sort()
+	assert float_array_sort_bits(sorted) == want
+	assert float_array_sort_bits(source.sorted()) == want
+	nans := [nan2, nan1]
+	assert float_array_sort_bits(nans.sorted()) == float_array_sort_bits(nans)
+	one := f32(1.0)
+	assert float_array_sort_bits([nan1, one].sorted()) == float_array_sort_bits([one, nan1])
+}
+
+// Random, already sorted and reversed inputs of each size, against the model.
+fn test_f64_sort_order() {
+	for n in float_sort_sizes {
+		source := f64_sort_input(n)
+		want := float_sort_model(source)
+		mut sorted := source.clone()
+		sorted.sort()
+		assert float_array_sort_bits(sorted) == float_array_sort_bits(want), 'n: ${n}'
+		assert float_array_sort_bits(source.sorted()) == float_array_sort_bits(want), 'n: ${n}'
+		sorted.sort()
+		assert float_array_sort_bits(sorted) == float_array_sort_bits(want), 'sorted, n: ${n}'
+		reversed := want.reverse()
+		assert float_array_sort_bits(reversed.sorted()) == float_array_sort_bits(float_sort_model(reversed)), 'reversed, n: ${n}'
+	}
+}
+
+fn test_f32_sort_order() {
+	for n in float_sort_sizes {
+		source := f32_sort_input(n)
+		want := float_sort_model(source)
+		mut sorted := source.clone()
+		sorted.sort()
+		assert float_array_sort_bits(sorted) == float_array_sort_bits(want), 'n: ${n}'
+		assert float_array_sort_bits(source.sorted()) == float_array_sort_bits(want), 'n: ${n}'
+		sorted.sort()
+		assert float_array_sort_bits(sorted) == float_array_sort_bits(want), 'sorted, n: ${n}'
+		reversed := want.reverse()
+		assert float_array_sort_bits(reversed.sorted()) == float_array_sort_bits(float_sort_model(reversed)), 'reversed, n: ${n}'
+	}
+}
+
 fn test_sort_index_expr() {
 	mut f := [[i64(50), 48], [i64(15)], [i64(1)], [i64(79)], [i64(38)], [i64(0)], [i64(27)]]
 	// TODO: This currently gives "indexing pointer" error without unsafe

@@ -6,6 +6,10 @@ It implements the builtin V types `array`, `string`, `map`.
 With bounds checking enabled, `first()` and `last()` on an empty dynamic array panic with
 `array.first: array is empty` and `array.last: array is empty`, respectively.
 This also applies when writing through the returned element, such as `cells.last().field = value`.
+
+Default array `sort()` and `sorted()` keep equal elements in their original order.
+For floating point elements, NaNs follow all other values. Equal signed zeros and NaNs
+keep their original order; an explicit comparison controls its own ordering.
 Maps with empty struct values support growth, reservation, and deletion with every C compiler,
 including compilers where the empty struct occupies zero bytes.
 It also includes Unicode-aware string helpers such as `string.graphemes()`
