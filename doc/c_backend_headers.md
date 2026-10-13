@@ -53,6 +53,9 @@ The current compiler supplies an internal capability define and omits those head
 Portable `-os cross` snapshots and `-is_o` objects embed their V-owned native runtime helpers,
 so standalone C consumers do not need helper paths from the compiler checkout. These modes
 and `-no-builtin` use compatibility headers when complete V bindings are unavailable.
+On Linux, these system headers supply the `syscall` declaration for the thread ID helper.
+Headerless output retains its own declaration, so object builds avoid redeclaring it with
+different linkage attributes.
 
 Malformed embedded compatibility headers are diagnosed before C compilation in portable,
 object, and `-no-builtin` modes. Parallel builds can reuse a native object cache directory
