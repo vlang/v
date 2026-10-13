@@ -12,6 +12,9 @@ V's `time` module, provides utilities for working with time and dates:
 Dates before year 1 use the proleptic Gregorian calendar with astronomical year numbering: year
 0 is 1 BC and is a leap year. Unix timestamp and day-offset conversions preserve dates at the
 400-year cycle boundaries before year 0, including March 1 and 2 of years -400, -800 and -1200.
+`days_from_unix_epoch`, `day_of_week` and `Time.week_of_year()` use the same calendar for
+year zero and negative years. Weekdays remain 1 (Monday) through 7 (Sunday), and ISO week
+numbers repeat every 400 years. The zero `Time` value has Unix timestamp `-62167219200`.
 
 `time.ticks()` returns milliseconds since the UNIX epoch on Unix platforms. On Windows it
 returns a 64-bit count of milliseconds since system startup, which does not wrap after
