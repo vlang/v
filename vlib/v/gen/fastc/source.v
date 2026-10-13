@@ -142,6 +142,11 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 	mut queue := []FastcQueuedSource{}
 	if prefs.building_v {
 		for builtin_file in fastc_module_source_files(builtin_dir, prefs, mut module_dir_files) {
+			// The v3 backend selects map_d_v3_backend.v instead of map.v, as the driver's
+			// builtin filter does. Both declare DenseArray, so keeping both is a duplicate.
+			if os.file_name(builtin_file) == 'map.v' && 'v3_backend' in prefs.user_defines {
+				continue
+			}
 			queue << FastcQueuedSource{
 				path:         builtin_file
 				module_name:  'builtin'
