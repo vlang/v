@@ -144,7 +144,7 @@ const write_set_cookie_tests = [
 			name:  'special-1'
 			value: 'a z'
 		}
-		raw:    'special-1=a z'
+		raw:    'special-1="a z"'
 	},
 	SetCookieTestCase{
 		cookie: &http.Cookie{
@@ -172,7 +172,7 @@ const write_set_cookie_tests = [
 			name:  'special-5'
 			value: 'a,z'
 		}
-		raw:    'special-5=a,z'
+		raw:    'special-5="a,z"'
 	},
 	SetCookieTestCase{
 		cookie: &http.Cookie{
@@ -246,7 +246,7 @@ const write_set_cookie_tests = [
 			name:  'complex-value'
 			value: 'a b,c;d'
 		}
-		raw:    'complex-value=a b,cd'
+		raw:    'complex-value="a b,cd"'
 	},
 	SetCookieTestCase{
 		cookie: &http.Cookie{
@@ -300,7 +300,7 @@ fn test_sanitize_cookie_value_filters_bytes_and_preserves_edge_quoting() {
 	assert http.sanitize_cookie_value('') == ''
 	assert http.sanitize_cookie_value('\x00a\tb\r\nc\x7f"\\;') == 'abc'
 	assert http.sanitize_cookie_value([u8(0), u8(0x7f), u8(0xff)].bytestr()) == ''
-	assert http.sanitize_cookie_value('a b,c') == 'a b,c'
+	assert http.sanitize_cookie_value('a b,c') == '"a b,c"'
 	assert http.sanitize_cookie_value('; a') == '" a"'
 	assert http.sanitize_cookie_value('a ;') == '"a "'
 	assert http.sanitize_cookie_value(';,a') == '",a"'

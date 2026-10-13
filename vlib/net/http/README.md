@@ -223,8 +223,7 @@ in place of each of these bytes. `Request.do` and `http.fetch` return the error 
 
 `Cookie.str()` and `sanitize_cookie_value` remove invalid bytes from cookie values,
 including control characters, quotes, semicolons and backslashes. Spaces and commas
-inside the value are preserved; the sanitized value is quoted when it begins or ends
-with a space or comma.
+are preserved; the sanitized value is quoted when it contains a space or comma.
 
 ### Windows TLS handshake compatibility
 
