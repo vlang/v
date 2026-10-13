@@ -143,6 +143,10 @@ struct { int i; float f; } c_function(unsigned long a, signed char b);
 A pointer to a V function is equivalent to a pointer to a C function, when the
 functions have equivalent types.
 
+For V functions taking `...voidptr`, non-pointer scalar arguments are stored in temporaries.
+Integers and enum values narrower than the target's V `int` are widened to `int`, and `f32`
+is widened to `f64`. The callee must read each slot using its corresponding storage type.
+
 
 ## Other V types, that are currently not supported/documented for use with C:
 Other V types like interface, thread, chan, and map types are represented

@@ -2,7 +2,7 @@ module cache_refresh
 
 import os
 
-fn test_synthetic_refresh_links_source_driver_flags() ! {
+fn test_synthetic_refresh_preserves_source_driver_flags() ! {
 	$if !linux && !macos {
 		return
 	}
@@ -44,8 +44,8 @@ fn test_synthetic_refresh_links_source_driver_flags() ! {
 	assert requests.len == 1, requests.str()
 	assert requests[0].project_flags.any('-fsanitize=address' in it.flags), requests.str()
 	os.write_file(module_file, 'module ${name}\npub fn value() int { return 2 }\n')!
-	// Exercise the synthetic fallback as well as the live-entry path: its
-	// instrumented objects require the same driver option at the final link.
+	// Exercise the synthetic fallback too: its instrumented module objects
+	// must stay compatible with the original program's compiler flags.
 	refresh(@VEXE, requests.map(Request{ ...it, entry: '' }))!
 	warm := os.exec([@VEXE, ...args])
 	assert warm.exit_code == 0, warm.output
