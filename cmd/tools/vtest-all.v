@@ -373,17 +373,17 @@ fn get_all_commands() []Command {
 		v3_compatible: false
 	}
 	res << Command{
-		line:          '${vexe} -usecache -cg examples/hello_world.v'
-		okmsg:         '`v -usecache -cg` works.'
+		line:          '${vexe} -cg examples/hello_world.v'
+		okmsg:         '`v -cg` works.'
 		rmfile:        'examples/hello_world'
 		v3_compatible: false
 	}
 	// Note: test that a program that depends on thirdparty libraries with its
 	// own #flags (tetris depends on gg, which uses sokol) can be compiled
-	// with -usecache:
+	// with default caching:
 	res << Command{
-		line:   '${vexe} -usecache examples/tetris/tetris.v'
-		okmsg:  '`v -usecache` works.'
+		line:   '${vexe} examples/tetris/tetris.v'
+		okmsg:  '`v` with default caching works.'
 		rmfile: 'examples/tetris/tetris'
 	}
 	$if macos || linux {
@@ -459,17 +459,17 @@ fn (mut cmd Command) run() ? {
 		}
 	}
 	sw := time.new_stopwatch()
-	arguments := if cmd.arguments.len > 0 {
+	cmd_args := if cmd.arguments.len > 0 {
 		cmd.arguments
 	} else {
 		os.split_args(cmd.line) or { panic(err) }
 	}
 	if cmd.runcmd == .system {
-		cmd.ecode = os.system_args(arguments)
+		cmd.ecode = os.system_args(cmd_args)
 		cmd.output = ''
 	}
 	if cmd.runcmd == .execute {
-		res := os.exec(arguments)
+		res := os.exec(cmd_args)
 		cmd.ecode = res.exit_code
 		cmd.output = res.output
 	}

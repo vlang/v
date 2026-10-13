@@ -103,7 +103,7 @@ jobs:
         run: v run ci/linux_ci.vsh test_v_tutorials_tcc
       - name: Build cmd/tools/fast
         run: v run ci/linux_ci.vsh build_fast_tcc
-      - name: V self compilation with -usecache
+      - name: V self compilation with default caching
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_tcc
       - name: Test password input
         run: v run ci/linux_ci.vsh test_password_input_tcc
@@ -158,7 +158,7 @@ jobs:
         run: v run ci/linux_ci.vsh run_sanitizers_gcc
       - name: v self compilation
         run: v run ci/linux_ci.vsh v_self_compilation_gcc
-      - name: v self compilation with -usecache
+      - name: v self compilation with default caching
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_gcc
       - name: Verify `v test` works
         run: v run ci/linux_ci.vsh verify_v_test_works_gcc
@@ -235,7 +235,7 @@ jobs:
         run: v run ci/linux_ci.vsh run_sanitizers_clang
       - name: v self compilation
         run: v run ci/linux_ci.vsh v_self_compilation_clang
-      - name: v self compilation with -usecache
+      - name: v self compilation with default caching
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_clang
       - name: Verify `v test` works
         run: v run ci/linux_ci.vsh verify_v_test_works_clang

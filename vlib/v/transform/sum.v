@@ -172,11 +172,12 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 	if resolved_c_name := t.resolve_sum_name_from_c_name(sum_name) {
 		return resolved_c_name
 	}
-	// A container of a sum type is not itself a sum type: `[]ast.Value` must
+	// A container or function involving a sum type is not itself a sum type: `[]ast.Value` must
 	// not resolve to `ast.Value` (the short-name and generic-application
 	// fallbacks below would), or an or/assign lowering boxes the whole array
 	// into one sum value.
-	if sum_name.starts_with('[]') || sum_name.starts_with('map[') || sum_name.starts_with('[') {
+	if sum_name.starts_with('[]') || sum_name.starts_with('map[') || sum_name.starts_with('[')
+		|| sum_name.starts_with('fn(') || sum_name.starts_with('fn (') {
 		return ''
 	}
 	if !isnil(t.tc) && sum_name in t.tc.sum_types {

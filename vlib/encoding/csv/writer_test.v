@@ -1,5 +1,26 @@
 import encoding.csv
 
+fn test_writer_embedded_line_endings() {
+	for use_crlf in [false, true] {
+		for field in ['a\rb', 'a\nb', 'a\r\nb', 'a\r\r\nb', 'a"\rb'] {
+			mut writer := csv.new_writer(use_crlf: use_crlf)
+			writer.write(['prefix', field, 'suffix'])!
+			escaped := field.replace('"', '""')
+			encoded := if use_crlf {
+				escaped.replace('\r', '').replace('\n', '\r\n')
+			} else {
+				escaped
+			}
+			ending := if use_crlf { '\r\n' } else { '\n' }
+			output := writer.str()
+			assert output == 'prefix,"${encoded}",suffix${ending}'
+			mut reader := csv.new_reader(output)
+			expected := if use_crlf { field.replace('\r', '') } else { field.replace('\r\n', '\n') }
+			assert reader.read()! == ['prefix', expected, 'suffix']
+		}
+	}
+}
+
 fn test_encoding_csv_writer() {
 	mut csv_writer := csv.new_writer()
 

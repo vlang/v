@@ -149,8 +149,11 @@ fn test_precision_0_of_a_float_that_rounds_to_a_multiple_of_100() {
 	assert strconv.f64_to_str_lnd1(100.0, 0) == '100'
 }
 
-// Below 2^52 the digits and the rounding are the ones that they were.
-fn test_floats_below_2_pow_52_are_unchanged() {
+// Preserve the exact binary-value rounding already supported below 2^52.
+fn test_floats_below_2_pow_52_keep_exact_binary_rounding() {
+	assert strconv.f64_to_str_lnd1(0.1, 20) == '0.10000000000000000555'
+	assert strconv.f64_to_str_lnd1(-0.125, 2) == '-0.13'
+	assert strconv.f64_to_str_lnd1(math.f64_from_bits(u64(1) << 63), 3) == '-0.000'
 	assert strconv.f64_to_str_lnd1(4503599627370495.5, 1) == '4503599627370495.5'
 	assert strconv.f64_to_str_lnd1(4503599627370495.5, 0) == '4503599627370496'
 	assert strconv.f64_to_str_lnd1(0.125, 2) == '0.13'
