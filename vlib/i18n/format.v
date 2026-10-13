@@ -180,6 +180,9 @@ fn fixed_float(x f64, decimals int) string {
 	if !math.is_finite(x) {
 		return x.str()
 	}
+	if x == 0 {
+		return if decimals == 0 { '0' } else { '0.' + '0'.repeat(decimals) }
+	}
 	neg := x < 0
 	a := if neg { -x } else { x }
 	// Expand the shortest round-tripping decimal once, before applying the
