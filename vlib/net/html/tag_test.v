@@ -137,3 +137,14 @@ fn test_search_by_valueless_attribute() {
 	// an empty value matches only where it is actually present
 	assert tag.get_tag_by_attribute_value('value', '')?.name == 'input'
 }
+
+fn test_search_by_empty_attribute_value_recurses_in_document_order() {
+	mut dom := parse('<div><section><input value="" disabled></section><input disabled></div>')
+	tag := dom.get_root()
+	matches := tag.get_tags_by_attribute_value('value', '')
+	assert matches.len == 1
+	assert matches[0] == tag.get_tag_by_attribute_value('value', '')?
+	assert tag.get_tags_by_attribute('disabled').len == 2
+	assert tag.get_tags_by_attribute_value('disabled', '').len == 2
+	assert tag.get_tag_by_attribute('disabled')? == matches[0]
+}
