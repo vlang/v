@@ -62,3 +62,9 @@ mut:
 // 	// called for every key-value pair in object (minus apostrophes for keys) e.g. ('name': 'foo'), ('name': 'bar'), ('age': '99')
 // 	from_json_pair(raw_key string, raw_value T)!
 // }
+
+// ValueDecoder lets a type decode a whole JSON or JSON5 value as a dynamic tree.
+pub interface ValueDecoder {
+mut:
+	from_json(value Any)
+}
