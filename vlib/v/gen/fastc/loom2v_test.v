@@ -76,6 +76,17 @@ fn choose(flag bool) Entry {
 	return entry
 }
 
+fn result_entry(ok bool) !Entry {
+	if !ok {
+		return error("entry missing")
+	}
+	return Entry{value: 42}
+}
+
+fn result_field(ok bool) !int {
+	return (result_entry(ok)!).value
+}
+
 fn pick[T](first T, second T, unused voidptr) T {
 	return if first < second { first } else { second }
 }
@@ -112,6 +123,7 @@ import toml
 import typesonly
 import math
 import os
+import v.pref
 
 @[if fastc_loom_debug ?]
 fn debug(value string) {
@@ -120,14 +132,29 @@ fn debug(value string) {
 
 fn main() {
 	assert os.environ().len > 0
+	assert pref.module_search_stop_marker == ".v.mod.stop"
 	_ := typesonly.Marker{}
 	doc := toml.parse_text("[item]\nvalue = 42\nitems = [1, 2]\n") or { panic(err) }
 	println(C.native_answer())
 	assert properties.len == 3
+	index := 1
+	minimum := [u32(0x80), 0x800, 0x10000][index]
+	assert minimum == u32(0x800)
+	address := usize(0x12345)
+	unsafe {
+		assert usize(voidptr(address)) == address
+	}
 	assert "${u8(0):02x}" == "00"
 	assert "${u8(255):02x}" == "ff"
 	assert choose(true).value == 42
 	assert choose(false).value == 42
+	field_value := result_field(true)!
+	assert field_value == 42
+	failed_field := result_field(false) or {
+		assert err.msg() == "entry missing"
+		-1
+	}
+	assert failed_field == -1
 	assert pick(18, 2, unsafe { nil }) == 2
 	assert math.min(18, 2) == 2
 	base := ["a", "b"]

@@ -1453,7 +1453,8 @@ fn fastc_source_uses_captures(source string, prefs &pref.Preferences) bool {
 		return false
 	}
 	mut scan := scanner.new_scanner(prefs, .normal)
-	scan.init(token.File.unindexed('closure_probe', source.len), source)
+	file := token.File.unindexed('closure_probe', source.len)
+	scan.init(file, source)
 	mut tok := scan.scan()
 	for tok != .eof {
 		if tok == .key_fn {

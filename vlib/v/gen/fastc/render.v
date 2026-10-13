@@ -4522,6 +4522,26 @@ fn (g &Parser) render_option_propagation(inner_tokens []FastcExpressionToken) ?F
 // propagates the option from `x()`, unwrapping it to the value, and the trailing member chain
 // then applies to that value. Returns none when there is no such mid-expression propagation.
 fn (g &Parser) render_propagation_before_member(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if tokens.len > 3 && tokens[0].tok == .lpar {
+		close := fastc_matching_rpar(tokens, 0) or { return none }
+		if close + 1 < tokens.len && tokens[close + 1].tok == .dot {
+			inner := fastc_strip_paren_tokens(tokens[1..close])
+			if inner.len > 1 && inner.last().tok in [.not, .question]
+				&& !fastc_trailing_not_marks_fixed_array_literal(inner) {
+				value := g.render_option_propagation(inner[..inner.len - 1]) or { return none }
+				mut chained := [FastcExpressionToken{
+					tok:    .name
+					source: '(${value.source})'
+					typ:    value.typ
+				}]
+				chained << tokens[close + 1..]
+				return FastcRenderedExpression{
+					source: g.render_call_argument_expression(chained, '') or { return none }
+					typ:    g.infer_expression_type(chained) or { '' }
+				}
+			}
+		}
+	}
 	mut depth := 0
 	for i, item in tokens {
 		match item.tok {

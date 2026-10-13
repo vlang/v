@@ -58,3 +58,11 @@ Target-specific files and test files are filtered when loading a directory.
 
 The full-runtime path remains experimental. Mutable and expression closure captures and
 128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.
+
+Build a FastC compiler with `v -b fastc self`. Its `self` command keeps FastC for subsequent
+generations; use `v -b fastc self x2` to check repeated replacement builds.
+Standalone replacements accept directory entries and `-enable-globals`. Their `-nocache`
+option disables TinyCC object and executable caching, including in repeated self-builds.
+The launcher helper runs on the host C backend. Native source flags are retained during
+self-builds, and a missing `.o` input is compiled from its matching `.c` source when available.
+Use `-keepc` to retain generated C, including when TinyCC rejects it.

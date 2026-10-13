@@ -168,11 +168,6 @@ fn (mut g Parser) parse_c_directive() ! {
 	directive := g.lit.trim_space()
 	g.next()
 	if directive == 'flag' || directive.starts_with('flag ') || directive == 'pkgconfig' || directive.starts_with('pkgconfig ') {
-		// FastC's compiler invocation supplies its own target flags. The bootstrap
-		// dependency set only uses these directives for optional libraries.
-		if g.prefs.selfhost {
-			return
-		}
 		if directive.starts_with('flag ') {
 			mut rest := directive['flag '.len..].trim_space()
 			// A platform-qualified `#flag <os> ...` that names a different target is
@@ -186,11 +181,7 @@ fn (mut g Parser) parse_c_directive() ! {
 				}
 				rest = rest.all_after(qualifier).trim_space()
 			}
-			// FastC drives its own tcc link line (it already links pthread, libm and
-			// the host system libraries), so a bare `#flag -lfoo`/`-L`/`-framework`
-			// only names extra link libraries, and `-I<path>` only adds a header search
-			// path (FastC's bundled tcc already resolves the system headers these C
-			// files include). Skip such flags instead of rejecting the whole program.
+			// Retain native inputs and link/header search flags for TinyCC.
 			if fastc_flag_is_skippable(rest) {
 				g.c_flags << fastc_c_flag_args(rest, g.prefs.vroot, g.path)!
 				return
@@ -302,7 +293,8 @@ fn fastc_pkgconfig_flags(raw string) ![]string {
 	}
 }
 
-fn fastc_flag_is_native_input(flag string) bool {
+// fastc_flag_is_native_input reports whether a flag is a native source or link input.
+pub fn fastc_flag_is_native_input(flag string) bool {
 	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.o')
 		|| flag.ends_with('.a') || flag.ends_with('.obj') || flag.ends_with('.lib')
 		|| flag.ends_with('.dylib') || flag.ends_with('.so') || flag.contains('.so.'))
@@ -311,7 +303,7 @@ fn fastc_flag_is_native_input(flag string) bool {
 // fastc_flag_is_skippable reports whether a `#flag` payload only affects native
 // compilation or linking, so the parser can leave it to the TinyCC driver.
 fn fastc_flag_is_skippable(flag string) bool {
-	tokens := flag.fields()
+	tokens := cmdexec.split_args(flag) or { return false }
 	if tokens.len == 0 {
 		return false
 	}

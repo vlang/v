@@ -9831,9 +9831,7 @@ $if !skip_fastc ? {
 		mut cc_args := environment_c_flags.clone()
 		cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg,
 			tcc_resources.library_arg]
-		if !(prefs.building_v && prefs.selfhost && prefs.normalized_target_os() == 'macos') {
-			cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root)
-		}
+		cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root)
 		cc_args << source_c_flags
 		// A call without a prototype would silently truncate a pointer result
 		// (the C carries no headers): it is an error, not a warning.
@@ -9909,18 +9907,7 @@ $if !skip_fastc ? {
 		native_sources := cc_args.filter(c_flag_is_c_source_file(it))
 		final_args << native_sources
 		final_args << user_c_flags.filter(c_flag_is_c_source_file(it))
-		if prefs.building_v && prefs.selfhost && prefs.normalized_target_os() == 'macos' {
-			// Header-free self-hosts only call symbols from FastC's macOS ABI
-			// table. Its compact stub avoids parsing the SDK's full libSystem
-			// umbrella stub while preserving the same dylib install name.
-			fastc_system_tbd := os.join_path_single(build_dir, 'libFastcSystem.tbd')
-			os.write_file(fastc_system_tbd, fastc.fastc_macos_system_tbd(prefs.normalized_target_arch())) or {
-				return V3FastCCompileResult{}
-			}
-			final_args << fastc_system_tbd
-		} else {
-			final_args << v3_fastc_default_linker_flags(prefs.normalized_target_os(), uses_threads)
-		}
+		final_args << v3_fastc_default_linker_flags(prefs.normalized_target_os(), uses_threads)
 		atomic_arg := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
 		if atomic_arg.len > 0 {
 			final_args << atomic_arg
@@ -11674,6 +11661,7 @@ pub fn run(args []string) {
 						mut anticipated_cc_args := environment_c_flags.clone()
 						anticipated_cc_args << ['-std=gnu11', tcc_resources.base_arg,
 							tcc_resources.include_arg, tcc_resources.library_arg]
+						anticipated_cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root_cache.get())
 						anticipated_cc_args << '-Werror=implicit-function-declaration'
 						if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
 							anticipated_cc_args << '-bt25'
@@ -11744,6 +11732,13 @@ pub fn run(args []string) {
 			} else {
 				''
 			}
+			if keep_c {
+				keep_c_file := keep_c_output_file(bin_file)
+				fastc.write_c_pieces(keep_c_file, fastc_pieces) or {
+					eprintln('failed to retain generated fastc output ${keep_c_file}: ${err.msg()}')
+					exit(1)
+				}
+			}
 			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache && !fastc_bench, mut prestarted_fastc_units)
 			if (verbose || show_cc) && fastc_result.command.len > 0 {
 				if c_to_stdout {
@@ -11802,13 +11797,6 @@ pub fn run(args []string) {
 			if backend_explicit {
 				fastc.write_c_pieces(output_file, fastc_pieces) or {
 					eprintln('failed to retain generated fastc output ${output_file}: ${err.msg()}')
-					exit(1)
-				}
-			}
-			if keep_c {
-				keep_c_file := keep_c_output_file(bin_file)
-				fastc.write_c_pieces(keep_c_file, fastc_pieces) or {
-					eprintln('failed to retain generated fastc output ${keep_c_file}: ${err.msg()}')
 					exit(1)
 				}
 			}

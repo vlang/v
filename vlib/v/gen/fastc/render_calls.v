@@ -244,10 +244,9 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		}
 	}
 	inner_type := g.infer_expression_type(inner_tokens) or { '' }
-	// `voidptr(callback)` is a pointer reinterpretation, not a generic-value box.
-	// Rendering its function-alias operand against `voidptr` would allocate storage
-	// for the callback pointer and return that storage address, which is not callable.
-	inner_expected_type := if c_type == 'voidptr' && inner_type in g.fn_alias_return_types {
+	// Explicit voidptr casts reinterpret the operand's bits. Generic argument
+	// boxing would instead return the address of storage containing those bits.
+	inner_expected_type := if c_type == 'voidptr' {
 		inner_type
 	} else {
 		c_type

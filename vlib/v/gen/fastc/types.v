@@ -601,7 +601,12 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 	}
 	array_end := if tokens[end - 1].tok == .not { end - 1 } else { end }
-	if tokens[start].tok == .lsbr && tokens[array_end - 1].tok == .rsbr {
+	array_literal_close := if tokens[start].tok == .lsbr {
+		fastc_matching_delimiter_before(tokens, start, array_end, .lsbr, .rsbr) or { -1 }
+	} else {
+		-1
+	}
+	if array_literal_close == array_end - 1 && tokens[start].tok == .lsbr {
 		items := fastc_expression_list_items(tokens, start + 1, array_end - 1)!
 		if items.len == 0 {
 			return ''
