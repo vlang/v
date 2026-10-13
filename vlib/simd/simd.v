@@ -63,26 +63,31 @@ pub fn (v F32x4) store_part(mut dst []f32) ! {
 }
 
 // + adds corresponding lanes.
+@[noinline]
 pub fn (v F32x4) + (other F32x4) F32x4 {
 	return add_native(v, other)
 }
 
 // - subtracts corresponding lanes.
+@[noinline]
 pub fn (v F32x4) - (other F32x4) F32x4 {
 	return sub_native(v, other)
 }
 
 // * multiplies corresponding lanes.
+@[noinline]
 pub fn (v F32x4) * (other F32x4) F32x4 {
 	return mul_native(v, other)
 }
 
 // / divides corresponding lanes.
+@[noinline]
 pub fn (v F32x4) / (other F32x4) F32x4 {
 	return div_native(v, other)
 }
 
 // sqrt returns the square root of each lane.
+@[noinline]
 pub fn (v F32x4) sqrt() F32x4 {
 	return sqrt_native(v)
 }
