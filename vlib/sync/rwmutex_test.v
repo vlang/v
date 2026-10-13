@@ -72,3 +72,20 @@ fn test_try_lock_rwmutex() {
 	mx.unlock() // you must unlock it, after try_wlock success
 	mx.destroy()
 }
+
+struct ZeroRwHolder {
+mut:
+	rw sync.RwMutex
+}
+
+fn test_try_lock_zero_value_rwmutex() {
+	// try_rlock/try_wlock must work on a zero-value RwMutex like lock/rlock
+	// do: all four go through lazy_init(), which also installs the
+	// writer-preference kind instead of the libc default.
+	// See https://github.com/vlang/v/issues/30146
+	mut h := &ZeroRwHolder{}
+	assert h.rw.try_wlock() == true
+	h.rw.unlock()
+	assert h.rw.try_rlock() == true
+	h.rw.runlock()
+}

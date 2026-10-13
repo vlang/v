@@ -201,6 +201,7 @@ pub fn (mut m RwMutex) lock() {
 // If the mutex was already locked, it will return false.
 @[inline]
 pub fn (mut m RwMutex) try_rlock() bool {
+	m.lazy_init()
 	return C.pthread_rwlock_tryrdlock(&m.mutex) == 0
 }
 
@@ -208,6 +209,7 @@ pub fn (mut m RwMutex) try_rlock() bool {
 // If the mutex was already locked, it will return false.
 @[inline]
 pub fn (mut m RwMutex) try_wlock() bool {
+	m.lazy_init()
 	return C.pthread_rwlock_trywrlock(&m.mutex) == 0
 }
 
