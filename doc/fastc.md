@@ -75,6 +75,7 @@ Under TinyCC on macOS and Linux, preallocation uses pthread storage to keep each
 arena independent.
 Dynamic array literals with complex element expressions evaluate those elements before copying
 the array, avoiding nested C aggregate initializers unsupported by bundled Linux TinyCC.
+Their temporaries avoid collisions with local and parameter names.
 
 The full-runtime path remains experimental. Mutable and expression closure captures and
 128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.

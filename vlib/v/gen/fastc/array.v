@@ -3,23 +3,24 @@ module fastc
 import strings
 import v.token
 
-// fastc_dynamic_array_literal_source keeps complex element expressions out of
+// dynamic_array_literal_source keeps complex element expressions out of
 // C aggregate initializers, which bundled TinyCC on Linux cannot nest safely.
-fn fastc_dynamic_array_literal_source(array_type string, element_type string, items []string) string {
+fn (g &Parser) dynamic_array_literal_source(array_type string, element_type string, items []string) string {
 	is_scalar := fastc_is_numeric_expression_type(element_type)
 		|| element_type in ['bool', 'char', 'voidptr', 'byteptr', 'charptr']
 		|| element_type.ends_with('*')
 	if is_scalar && !items.any(it.contains('{')) {
 		return '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${element_type}), (${element_type}[]){${items.join(',')}}))'
 	}
-	return fastc_array_values_call_source(element_type, items,
-		'((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${element_type}), __vf_array_literal))')
+	values_name := g.temporary_namespace('array') + '_literal'
+	return fastc_array_values_call_source(element_type, items, values_name,
+		'((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${element_type}), ${values_name}))')
 }
 
-fn fastc_array_values_call_source(element_type string, items []string, call_source string) string {
-	mut statements := ['${element_type} __vf_array_literal[${items.len}];']
+fn fastc_array_values_call_source(element_type string, items []string, values_name string, call_source string) string {
+	mut statements := ['${element_type} ${values_name}[${items.len}];']
 	for i, item in items {
-		statements << '__vf_array_literal[${i}] = (${item});'
+		statements << '${values_name}[${i}] = (${item});'
 	}
 	return '({ ${statements.join(' ')} ${call_source}; })'
 }

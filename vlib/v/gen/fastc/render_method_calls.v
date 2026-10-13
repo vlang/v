@@ -74,7 +74,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 				c_arguments << g.render_call_argument_expression(argument, signature.parameter_types[argument_index]) or { return none }
 			}
 			named_initializer := g.render_named_struct_initializer(element_type, call_args[named_start..]) or { return none }
-			c_arguments << fastc_dynamic_array_literal_source(variadic_type, element_type,
+			c_arguments << g.dynamic_array_literal_source(variadic_type, element_type,
 				[named_initializer])
 			return FastcRenderedExpression{
 				source: '${g.c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
@@ -116,7 +116,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		packed := if variadic_count == 0 {
 			'(${variadic_type}){0}'
 		} else {
-			fastc_dynamic_array_literal_source(variadic_type, element_type, variadic_values)
+			g.dynamic_array_literal_source(variadic_type, element_type, variadic_values)
 		}
 		rendered_arguments.trim(fixed_arguments)
 		rendered_arguments << packed
@@ -781,7 +781,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			packed := if variadic_count == 0 {
 				'(${variadic_type}){0}'
 			} else {
-				fastc_dynamic_array_literal_source(variadic_type, element_type, variadic_values)
+				g.dynamic_array_literal_source(variadic_type, element_type, variadic_values)
 			}
 			direct_arguments.trim(fixed_arguments)
 			direct_arguments << packed

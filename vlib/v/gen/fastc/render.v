@@ -3508,7 +3508,7 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 		}
 	}
 	return FastcRenderedExpression{
-		source: fastc_dynamic_array_literal_source(array_type, normalized_element, rendered_items)
+		source: g.dynamic_array_literal_source(array_type, normalized_element, rendered_items)
 		typ:    array_type
 	}
 }

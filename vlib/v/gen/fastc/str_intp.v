@@ -453,8 +453,9 @@ fn (mut g Parser) read_interpolated_string() !string {
 		return parts[0]
 	}
 	if g.selfhost {
-		return fastc_array_values_call_source('string', parts,
-			'builtin__string_plus_many(${parts.len}, __vf_array_literal)')
+		values_name := g.temporary_namespace('array') + '_literal'
+		return fastc_array_values_call_source('string', parts, values_name,
+			'builtin__string_plus_many(${parts.len}, ${values_name})')
 	}
 	return 'builtin__string_plus_many(${parts.len}, (string[]){${parts.join(', ')}})'
 }
