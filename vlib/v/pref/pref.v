@@ -1217,9 +1217,8 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 }
 
 // tcc_with_prod_requested reports whether a production C build selects TinyCC.
-// The last compiler and backend options win. Executable aliases are identified
-// by their resolved name or version output, so compatibility builds and cache
-// refreshes follow the same restriction as the V3 driver.
+// Compiler option values are skipped and the last compiler/backend options win.
+// Executable aliases follow ccompiler_is_tinycc, for both compilation and cache refresh.
 pub fn tcc_with_prod_requested(args []string) bool {
 	mut prod := false
 	mut ccompiler := ''
@@ -1231,44 +1230,82 @@ pub fn tcc_with_prod_requested(args []string) bool {
 			prod = true
 		} else if arg in ['-cc', '-b', '-backend'] && i + 1 < args.len {
 			i++
-			if arg == '-cc' {
-				ccompiler = args[i]
-			} else {
-				backend = args[i]
-			}
+			if arg == '-cc' { ccompiler = args[i] } else { backend = args[i] }
 		} else if arg.starts_with('-cc=') {
 			ccompiler = arg['-cc='.len..]
 		} else if arg.starts_with('-b=') {
 			backend = arg['-b='.len..]
 		} else if arg.starts_with('-backend=') {
 			backend = arg['-backend='.len..]
+		} else if arg in ['-prof', '-profile'] {
+			if prod_profile_consumes_value(args, i) { i++ }
+		} else if arg == '-cf' || option_may_consume_value(arg) {
+			i++
 		}
 		i++
 	}
-	if !prod || backend != 'c' || ccompiler == '' {
+	return prod && backend == 'c' && ccompiler != '' && ccompiler_is_tinycc(ccompiler)
+}
+
+// prod_profile_consumes_value follows the launcher's optional profiling output rule.
+fn prod_profile_consumes_value(args []string, index int) bool {
+	next := args[index + 1] or { return false }
+	if next == '-' { return true }
+	if next.starts_with('-') || next in ['run', 'build', 'test', 'doc']
+		|| next.ends_with('.v') || next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next) {
 		return false
 	}
-	if is_tcc_compiler_name(ccompiler) {
+	return args[index + 2..].any(!it.starts_with('-'))
+}
+
+// ccompiler_is_tinycc for how a compiler is recognised.
+pub fn tcc_with_prod_requested(args []string) bool {
+	mut prod := false
+	mut ccompiler := ''
+	for i, arg in args {
+		if arg == '-prod' {
+			prod = true
+		} else if arg == '-cc' && i + 1 < args.len {
+			ccompiler = args[i + 1]
+		} else if arg.starts_with('-cc=') {
+			ccompiler = arg['-cc='.len..]
+		}
+	}
+	return prod && ccompiler != '' && ccompiler_is_tinycc(ccompiler)
+}
+
+// ccompiler_is_tinycc reports whether `ccompiler` is TinyCC. It resolves the path and any
+// symlink, then checks the file name with tinycc_file_name. Any other executable is asked for
+// its version, so a copy of tcc under another name is still recognised. A name that does not
+// resolve to an executable is judged by its name alone.
+pub fn ccompiler_is_tinycc(ccompiler string) bool {
+	path := os.find_abs_path_of_executable(ccompiler) or { ccompiler.replace('\\', '/') }
+	resolved := os.real_path(path)
+	if tinycc_file_name(os.file_name(resolved)) {
 		return true
 	}
-	path := os.find_abs_path_of_executable(ccompiler) or { return false }
-	if is_tcc_compiler_name(os.real_path(path)) {
-		return true
+	if !os.is_executable(resolved) {
+		return false
 	}
 	for flag in ['--version', '-v'] {
-		output := os.exec([path, flag]).output.to_lower_ascii()
-		if output.contains('tiny c compiler') || output.contains('tinycc')
-			|| output.contains('tcc version') {
+		version := os.exec([resolved, flag]).output.to_lower_ascii()
+		if version.contains('tiny c compiler') || version.contains('tcc version')
+			|| version.contains('tinycc') {
 			return true
 		}
 	}
 	return false
 }
 
-// is_tcc_compiler_name reports whether the file name is a known TinyCC executable.
-fn is_tcc_compiler_name(ccompiler string) bool {
-	name := os.file_name(ccompiler.replace('\\', '/')).to_lower_ascii()
-	return name in ['tcc', 'tcc.exe', 'tinyc', 'tinyc.exe', 'tinygcc', 'tinygcc.exe']
+// tinycc_file_name reports whether `file_name` is tcc or tinyc, with an optional `.exe` and an
+// optional target prefix such as `x86_64-w64-mingw32-tcc`. A name that only contains tcc, such
+// as `distcc` or `notcc`, is not TinyCC.
+pub fn tinycc_file_name(file_name string) bool {
+	mut name := file_name.to_lower_ascii()
+	if name.ends_with('.exe') {
+		name = name[..name.len - '.exe'.len]
+	}
+	return name in ['tcc', 'tinyc', 'tinycc'] || name.ends_with('-tcc') || name.ends_with('-tinycc')
 }
 
 // find_system_assembler returns a GCC or Clang compatible compiler driver found

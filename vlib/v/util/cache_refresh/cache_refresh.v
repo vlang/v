@@ -23,7 +23,12 @@ const legacy_record_format = 'vup-cache-refresh-1'
 fn request_uses_prod_tcc(request Request) bool {
 	mut args := request.args.clone()
 	for i, arg in args {
-		if arg == '-cc' && i + 1 < args.len && request.cwd != '' {
+		if arg.starts_with('-cc=') && request.cwd != '' {
+			compiler := arg['-cc='.len..]
+			if !os.is_abs_path(compiler) && (compiler.contains('/') || compiler.contains('\\')) {
+				args[i] = '-cc=' + os.join_path(request.cwd, compiler)
+			}
+		} else if arg == '-cc' && i + 1 < args.len && request.cwd != '' {
 			compiler := args[i + 1]
 			if !os.is_abs_path(compiler) && (compiler.contains('/') || compiler.contains('\\')) {
 				args[i + 1] = os.join_path(request.cwd, compiler)

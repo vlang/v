@@ -1030,5 +1030,7 @@ fn test_refresh_skips_production_tinycc_alias_before_starting_builds() {
 	os.chmod(alias, 0o700)!
 	request := Request{ args: ['-prod', '-cc', './cc'], cwd: root, module: 'builtin' }
 	assert request_uses_prod_tcc(request)
+	equals_request := Request{ ...request, args: ['-prod', '-cc=./cc'] }
+	assert request_uses_prod_tcc(equals_request)
 	refresh(os.join_path(root, 'missing-v'), [request])!
 }

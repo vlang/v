@@ -7970,7 +7970,7 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
 	resolved_path := os.real_path(compiler_path)
 	name := os.file_name(resolved_path).to_lower_ascii()
-	if name.contains('tcc') || name.contains('tinyc') {
+	if pref.tinycc_file_name(name) {
 		return 'tinyc'
 	}
 	if name.contains('clang') {

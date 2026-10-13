@@ -573,6 +573,18 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 	})
 }
 
+fn test_effective_c_compiler_name_does_not_read_tinycc_from_names_that_only_contain_tcc() {
+	root := os.join_path(os.vtmp_dir(), 'v3_notcc_driver_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	// The V executable is a real compiler driver that is not TinyCC.
+	not_tinycc := os.join_path(root, 'distcc.exe')
+	os.cp(@VEXE, not_tinycc) or { panic(err) }
+	assert effective_c_compiler_name(not_tinycc, pref.host_target()) != 'tinyc'
+}
+
 fn test_v3_tcc_prod_rejected_only_for_a_prod_c_build_that_resolves_to_tinycc() {
 	assert v3_tcc_prod_rejected(true, 'c', 'tinyc')
 	assert !v3_tcc_prod_rejected(true, 'c', 'gcc')

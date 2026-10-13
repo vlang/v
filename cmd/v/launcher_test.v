@@ -711,9 +711,23 @@ fn test_prod_refuses_tinycc_under_another_name_once_it_resolves() {
 	os.cp(bundled, alias_path) or { panic(err) }
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, 'fn main() {\n\tprintln(1)\n}\n') or { panic(err) }
-	result := os.exec([@VEXE, '-prod', '-cc', alias_path, '-o', os.join_path(dir, 'main'), source])
-	assert result.exit_code == 1, result.output
-	assert result.output.contains('tcc is not allowed with -prod'), result.output
+	// `-old-compiler` must refuse the alias too, before the compatibility compiler is started.
+	for args in [['-prod', '-cc', alias_path], ['-old-compiler', '-prod', '-cc', alias_path]] {
+		result := os.exec([@VEXE, ...args, '-o', os.join_path(dir, 'main'), source])
+		assert result.exit_code == 1, '${args}: ${result.output}'
+		assert result.output.contains('tcc is not allowed with -prod'), '${args}: ${result.output}'
+		assert !result.output.contains('retrying with'), '${args}: ${result.output}'
+	}
+}
+
+fn test_prod_with_tinycc_in_vflags_does_not_block_version_or_help() {
+	mut environment := os.environ()
+	environment['VFLAGS'] = '-prod -cc tcc'
+	for args in [['version'], ['help']] {
+		result := run_launcher_test_process(@VEXE, args, os.getwd(), environment)
+		assert result.exit_code == 0, '${args}: ${result.output}'
+		assert !result.output.contains('tcc is not allowed with -prod'), '${args}: ${result.output}'
+	}
 }
 
 fn test_external_tools_do_not_use_the_v1_fallback() {
