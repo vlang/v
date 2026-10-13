@@ -509,6 +509,35 @@ fn test_realpath_absolutizes_existing_relative_paths() {
 	assert os.is_abs_path(real_path_of_examples_folder)
 }
 
+fn test_realpath_resolves_a_relative_path_like_its_absolute_spelling() {
+	os.mkdir_all(os.join_path('rp_dir', 'sub')) or { panic(err) }
+	os.write_file(os.join_path('rp_dir', 'sub', 'file.txt'), 'abc') or { panic(err) }
+	mut existing := ['.', 'rp_dir', os.join_path('rp_dir', 'sub', 'file.txt'),
+		os.join_path('rp_dir', '.', 'sub', '..', 'sub'),
+		os.join_path('..', os.file_name(os.getwd()), 'rp_dir')]
+	$if !windows {
+		existing << 'rp_dir//sub/'
+		if _ := os.symlink(os.join_path('rp_dir', 'sub'), 'rp_link') {
+			existing << os.join_path('rp_link', 'file.txt')
+			assert os.real_path(os.join_path('rp_link', 'file.txt')) == os.real_path(os.join_path('rp_dir',
+				'sub', 'file.txt'))
+		}
+	}
+	wd := os.getwd()
+	for path in existing {
+		resolved := os.real_path(path)
+		assert os.is_abs_path(resolved), path
+		assert resolved == os.real_path(os.join_path_single(wd, path)), path
+	}
+	$if !windows {
+		// what does not exist, or lies under a file, stays as it was given
+		for path in ['rp_missing', os.join_path('rp_dir', 'rp_missing', 'file.txt'),
+			os.join_path('rp_dir', 'sub', 'file.txt', 'below')] {
+			assert os.real_path(path) == path
+		}
+	}
+}
+
 // TODO: think much more about whether this is desirable:
 
 fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
