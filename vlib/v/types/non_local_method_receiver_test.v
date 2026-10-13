@@ -46,11 +46,14 @@ fn check_non_local_receiver(name string, source string, flags []string) os.Resul
 
 fn test_methods_on_imported_named_types_are_rejected() {
 	for flags in [[]string{}, ['-no-parallel'], ['-prod']] {
-		for receiver in ['foreign.Mode', '&foreign.Mode', 'foreign.Record', '&foreign.Record',
-			'mut foreign.Record', 'foreign.Readable', 'foreign.Value', 'foreign.Count', 'foreign.Box[T]'] {
-			type_text := receiver.trim_string_left('mut ')
-			parameter := if receiver.starts_with('mut ') {
-				'mut value ${type_text}'
+		for receiver in ['foreign.Mode', '&foreign.Mode', '&&foreign.Mode', 'foreign.Record',
+			'&foreign.Record', '&&foreign.Record', '&&&foreign.Record', 'mut foreign.Record',
+			'mut &&foreign.Record', 'shared &&foreign.Record', 'foreign.Readable', '&&foreign.Readable',
+			'foreign.Value', '&&foreign.Value', 'foreign.Count', '&&foreign.Count', 'foreign.Box[T]',
+			'&&foreign.Box[T]'] {
+			type_text := receiver.trim_string_left('mut ').trim_string_left('shared ')
+			parameter := if receiver.starts_with('mut ') || receiver.starts_with('shared ') {
+				'${receiver.all_before(' ')} value ${type_text}'
 			} else {
 				'value ${type_text}'
 			}
@@ -124,7 +127,7 @@ fn main() {
 }
 
 fn test_unknown_receivers_keep_the_unknown_type_diagnostic() {
-	for receiver in ['Abc', 'foreign.Missing', '&foreign.Missing'] {
+	for receiver in ['Abc', 'foreign.Missing', '&foreign.Missing', '&&foreign.Missing'] {
 		result := check_non_local_receiver('unknown', 'import foreign
 
 fn (value ${receiver}) label() string { return "unknown" }
@@ -134,5 +137,49 @@ fn main() {}
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('unknown type'), result.output
 		assert !result.output.contains('cannot define new methods on non-local type'), result.output
+	}
+}
+
+fn test_local_receiver_ownership_across_files() {
+	root := os.join_path(os.vtmp_dir(), 'local_receiver_files_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'counter')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'local_receiver_files' }\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'counter', 'data.v'), non_local_receiver_module.replace('module foreign',
+		'module counter')) or { panic(err) }
+	mut methods := 'module counter\n\npub fn (value Record) read() int { return 1 }\n'
+	for receiver in ['Record', 'Mode', 'Count', 'Readable', 'Value', 'Box[T]'] {
+		methods += 'pub fn (value ${receiver}) description() string { return "local" }\n'
+	}
+	os.write_file(os.join_path(root, 'counter', 'methods.v'), methods) or { panic(err) }
+	main_file := os.join_path(root, 'main.v')
+	for module_header in ['', 'module main\n'] {
+		os.write_file(os.join_path(root, 'data.v'), '${module_header}struct Local {}
+type LocalAlias = Local
+') or { panic(err) }
+		os.write_file(os.join_path(root, 'methods.v'), '${module_header}
+fn (value &&Local) description() string { return "local" }
+fn (value &&LocalAlias) description() string { return "alias" }
+fn (shared value &&Local) shared_description() string { return "shared" }
+') or { panic(err) }
+		os.write_file(main_file, '${module_header}import counter
+
+fn main() {
+ assert counter.Record{}.description() == "local"
+ assert counter.Mode.first.description() == "local"
+ assert counter.Count(1).description() == "local"
+ assert counter.Readable(counter.Record{}).description() == "local"
+ assert counter.Value(counter.Record{}).description() == "local"
+ assert counter.Box[int]{}.description() == "local"
+}
+') or { panic(err) }
+		for flags in [[]string{}, ['-no-parallel'], ['-prod']] {
+			result := os.exec([@VEXE, '-new-compiler', ...flags, '-check', root])
+			assert result.exit_code == 0, result.output
+		}
 	}
 }
