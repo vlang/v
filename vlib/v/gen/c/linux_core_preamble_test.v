@@ -3,6 +3,39 @@ module c
 import os
 import v.cmdexec
 
+fn test_linux_open_flags_match_native_libc() {
+	$if !linux || freestanding {
+		return
+	}
+	mut g := FlatGen.new()
+	g.headerless_linux_constants()
+	constants := ['O_DIRECTORY', 'O_NOFOLLOW', 'O_RDONLY', 'O_WRONLY', 'O_RDWR', 'O_CREAT', 'O_EXCL',
+		'O_NOCTTY', 'O_TRUNC', 'O_APPEND', 'O_NONBLOCK', 'O_SYNC', 'O_CLOEXEC', 'AT_FDCWD',
+		'AT_REMOVEDIR', 'F_GETFD', 'F_SETFD', 'F_GETFL', 'F_SETFL', 'F_SETLK', 'F_SETLKW', 'FD_CLOEXEC',
+		'MADV_DONTNEED']
+	mut code := '#define _GNU_SOURCE 1\n#include <fcntl.h>\n#include <sys/mman.h>\n'
+	for name in constants {
+		code += 'enum { SDK_${name} = ${name} };\n'
+	}
+	for line in g.sb.str().split_into_lines() {
+		if line.starts_with('#define ') {
+			name := line.all_after('#define ').all_before(' ')
+			code += '#undef ${name}\n'
+		}
+	}
+	code += g.sb.str()
+	for name in constants {
+		code += '_Static_assert(${name} == SDK_${name}, "${name} value");\n'
+	}
+	dir := os.join_path(os.vtmp_dir(), 'linux_open_flags_sdk_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'sdk.c')
+	os.write_file(source, code)!
+	result := cmdexec.run('cc', ['-std=c11', '-Werror', '-fsyntax-only', source])
+	assert result.exit_code == 0, result.output
+}
+
 fn test_linux_rusage_storage_matches_native_libc() {
 	$if !linux || freestanding {
 		return

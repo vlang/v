@@ -1,6 +1,6 @@
 # Headers in generated C
 
-Literal hello world programs generate C without `#include` directives on hosted Unix,
+Literal hello world programs generate C without `#include` directives on supported hosted Unix,
 Windows, Android and iOS targets. Windows keeps its CRT output mode; mobile targets retain
 their platform logging APIs. Compiler self builds use standalone core declarations on
 macOS, Linux, Windows and the BSD targets with a described libc ABI.
@@ -8,7 +8,8 @@ macOS, Linux, Windows and the BSD targets with a described libc ABI.
 NetBSD, Solaris, Haiku, QNX, Serenity, Vinix and Emscripten retain the SDK preamble for
 compiler and runtime builds. Their symbol versions, storage or constants require native
 declarations that the standalone preamble does not yet describe completely. Literal
-hello output still avoids those headers. Native execution must be validated on each
+hello output still avoids those headers on the other hosted targets. Vinix retains the complete
+runtime even for literal output. Native execution must be validated on each
 platform; generating C for a target alone does not verify its runtime ABI.
 The compiler's string literals can contain the text of includes for other generated programs.
 The C backend emits libc prototypes from bodyless V declarations such as

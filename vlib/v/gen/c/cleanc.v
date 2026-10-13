@@ -21440,8 +21440,13 @@ fn (mut g FlatGen) headerless_windows_constants() {
 
 fn (mut g FlatGen) headerless_linux_constants() {
 	g.writeln('#define MADV_DONTNEED 4')
+	g.writeln('#if defined(__aarch64__) || defined(__arm__)')
+	g.writeln('#define O_DIRECTORY 0x4000')
+	g.writeln('#define O_NOFOLLOW 0x8000')
+	g.writeln('#else')
 	g.writeln('#define O_DIRECTORY 0x10000')
 	g.writeln('#define O_NOFOLLOW 0x20000')
+	g.writeln('#endif')
 	g.writeln('#define AT_FDCWD -100')
 	g.writeln('#define AT_REMOVEDIR 0x200')
 
