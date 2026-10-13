@@ -80,8 +80,10 @@ pub fn answer() int {
 	}
 
 	compile :=
-		os.exec([v3_bin, '-coverage', coverage_dir, '-shared', '-o', '${out_lib}', tmp_dir])
+		os.exec([v3_bin, '-v', '-coverage', coverage_dir, '-shared', '-o', '${out_lib}', tmp_dir])
 	assert compile.exit_code == 0, compile.output
+	// `-v` is what makes the driver print the resolved C command line; without it the
+	// output is empty and the assertions below have nothing to inspect.
 	assert compile.output.contains('-shared'), compile.output
 	assert !compile.output.contains('_main not defined'), compile.output
 	assert os.exists(out_path)
