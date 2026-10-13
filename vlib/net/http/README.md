@@ -66,6 +66,11 @@ If the bounded compressed prefix cannot be decompressed, it retains the encoded 
 ordinary response parsing. The client still reads the full response and invokes progress callbacks,
 so streaming downloads can keep a bounded preview without losing data in the callbacks.
 
+An HTTP/2 or HTTP/3 response with a field that can not be delivered is an error, not a
+response without that field: a field name that is not a token, or a field value with CR, LF
+or NUL, makes the response malformed, and more than `http.max_headers` fields, trailers
+included, is an `http.HeaderLimitError`.
+
 ## Serving requests
 
 A server is a `Handler` — anything with a `handle(Request) Response` method —
@@ -97,6 +102,11 @@ Set `cert` and `cert_key` to terminate TLS (PEM strings when
 serve HTTP/2: on the TLS listener it advertises ALPN `h2, http/1.1`, and on the
 plain listener it accepts prior-knowledge cleartext h2c. Either way a client
 that does not ask for HTTP/2 keeps the ordinary HTTP/1.1 path.
+
+An HTTP/2 request with a field name that is not a token, or a field value with CR, LF or
+NUL, is malformed: its stream is reset and the handler is not called. A request with more
+than `http.max_headers` fields, counting the `Host` field that `:authority` becomes, is
+answered with `431 Request Header Fields Too Large`.
 
 ## Identifying the client
 
