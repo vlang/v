@@ -552,6 +552,18 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	queue << 'main'
 	used['main'] = true
+	if cache_mode {
+		// Cached IError dispatchers name every implementer's methods, even when
+		// their callers have no body in the warm AST. Cgen emits these methods,
+		// so retain their transformations and the helpers their bodies call.
+		for impl in tc.ierror_impl_names() {
+			for method in ['msg', 'code'] {
+				for alias in interface_implementer_method_aliases(impl, method, tc) {
+					enqueue(alias, mut used, mut queue)
+				}
+			}
+		}
+	}
 	$if ownership ? {
 		// Ownership cleanup and clone lowering emits direct C references to these
 		// process-wide IError sentinels. They have no source-AST reference for the

@@ -480,6 +480,8 @@ Generated fixed-array map-key helpers declare their cached builtin callees befor
 Inferred anonymous fixed arrays use their materialized element types, including nested arrays.
 Literal-output programs still instantiate retained generic helpers with `-no-skip-unused`.
 Merged imports in cached headers do not create parameter-name conflicts across source files.
+Warm builds retain every `IError` implementer's `msg` and `code` methods and their helpers,
+including calls made by dispatchers inside cached objects.
 With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
 before compiling a new module object, including during `run`. Ordinary builds and warm builds
 print no cache creation notices; `-silent` suppresses them too.
