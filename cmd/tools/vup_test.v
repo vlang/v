@@ -179,7 +179,7 @@ fn test_vup_refreshes_only_tinycc_modes_even_when_already_updated() ! {
 	assert failure.exit_code != 0, failure.output
 	assert failure.output.contains('refreshing cached vlib modules failed'), failure.output
 	assert !failure.output.contains('> Module cache refresh complete:'), failure.output
-	assert os.read_file(cache_log)!.split_into_lines().len == 4
+	assert os.read_file(cache_log)!.split_into_lines().len == 2
 }
 
 fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
@@ -304,7 +304,8 @@ fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
 	result := run_vup(root, home, tool, bin_dir)!
 	assert result.exit_code == 0, result.output
 	calls := os.read_file(log)!.split_into_lines()
-	assert calls.len == 9, calls.str()
+	// The production wrapper resolves to TinyCC, so it is skipped with the other tcc+prod records.
+	assert calls.len == 8, calls.str()
 	assert calls.any(it.starts_with('-cc tinyc ')), calls.str()
 	assert calls.any(it.starts_with('-cc ${bundled} ')), calls.str()
 	assert calls.any(it.starts_with('-cc ${alias} ')), calls.str()
@@ -312,16 +313,18 @@ fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
 	assert calls.any(it.starts_with('-cc ${renamed} ')), calls.str()
 	assert calls.any(it.starts_with('-cc ${copied} ')), calls.str()
 	assert calls.any(it.starts_with('-cc ${wrapper} -skip-running ')), calls.str()
-	assert calls.any(it.starts_with('-cc ${wrapper} -prod ')), calls.str()
+	assert !calls.any(it.starts_with('-cc ${wrapper} -prod ')), calls.str()
 	assert calls.filter(it.starts_with('-cc ${context_wrapper} ')).len == 1, calls.str()
 	assert !calls.any(it.contains('-cc ${os.join_path(bin_dir, 'cc')} ')), calls.str()
 	assert !calls.any(it.contains('-cc ${other} ')), calls.str()
-	assert os.read_file(probes)!.split_into_lines() == ['probe']
+	// vup probes the wrapper once for its cache selection, and the refresh filter probes the
+	// production record again before skipping it.
+	assert os.read_file(probes)!.split_into_lines() == ['probe', 'probe']
 	contexts := os.read_file(context_probes)!.split_into_lines()
 	assert contexts.len == 2, contexts.str()
 	assert os.join_path(root, 'tinycc_project') in contexts, contexts.str()
 	assert os.join_path(root, 'clang_project') in contexts, contexts.str()
-	assert result.output.contains('9 build configurations checked.'), result.output
+	assert result.output.contains('8 build configurations checked.'), result.output
 }
 
 fn test_vup_rebuilds_changed_tinycc_module_and_reuses_unrelated_module() ! {
