@@ -5435,11 +5435,27 @@ fn voidptr_variadic_type_passes_direct(typ types.Type) bool {
 	return typ is types.Pointer || typ is types.Nil
 }
 
+// voidptr_variadic_storage_type returns the type of the temporary that holds one non-pointer
+// argument of a `...voidptr` parameter. The callee reads an integer argument as an `int`
+// (`*(&int(arg))`), so every integer narrower than the target's `int` is widened to it, like
+// the arguments of a C variadic function; an `f32` is widened to `f64`.
 fn (t &Transformer) voidptr_variadic_storage_type(arg_id flat.NodeId) string {
 	typ := t.normalize_type_alias(t.node_type(arg_id))
-	match typ {
+	mut scalar := typ
+	if !isnil(t.tc) {
+		parsed := types.unalias_type(t.tc.parse_type(typ))
+		if parsed is types.Enum {
+			// An enum occupies its backing type, or C's 32 bit `int` when it declares none.
+			scalar = t.enum_backing_types[parsed.name] or { 'i32' }
+		}
+	}
+	match scalar {
 		'char', 'i8', 'u8', 'i16', 'u16' {
 			return 'int'
+		}
+		'i32', 'u32', 'rune' {
+			// Narrower than `int` only where `int` is 64 bits wide.
+			return if types.platform_int_bits() == 64 { 'int' } else { typ }
 		}
 		'f32' {
 			return 'f64'

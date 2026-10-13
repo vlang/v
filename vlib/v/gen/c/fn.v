@@ -15552,6 +15552,10 @@ fn voidptr_variadic_type_passes_direct(typ types.Type) bool {
 	return typ is types.Pointer || typ is types.Nil
 }
 
+// voidptr_variadic_storage_c_type returns the C type of the temporary that holds one non-pointer
+// argument of a `...voidptr` parameter. It follows `voidptr_variadic_storage_type` in the
+// transformer: the callee reads an integer argument as a V `int`, so every integer narrower
+// than the target's `int` is widened to it, and an `f32` to `f64`.
 fn (g &FlatGen) voidptr_variadic_storage_c_type(actual types.Type) string {
 	mut clean := actual
 	for _ in 0 .. 8 {
@@ -15561,18 +15565,29 @@ fn (g &FlatGen) voidptr_variadic_storage_c_type(actual types.Type) string {
 		}
 		break
 	}
-	if clean is types.Char {
-		return 'int'
-	}
 	if clean is types.Primitive {
-		if clean.props.has(.integer) && clean.size < 32 {
-			return 'int'
-		}
 		if clean.props.has(.float) && clean.size == 32 {
 			return 'double'
 		}
 	}
-	return g.tc.c_type(clean)
+	// An enum occupies its backing type, or C's 32 bit `int` when it declares none.
+	storage_ct := if clean is types.Enum {
+		g.enum_storage_c_type(clean)
+	} else {
+		g.tc.c_type(clean)
+	}
+	match storage_ct {
+		'char', 'i8', 'u8', 'i16', 'u16' {
+			return g.int_ct
+		}
+		'int', 'i32', 'u32' {
+			// Narrower than V's `int` only where that is 64 bits wide.
+			return if g.int_ct == 'i64' { g.int_ct } else { storage_ct }
+		}
+		else {
+			return storage_ct
+		}
+	}
 }
 
 fn raw_sizeof_arg_value(value string) ?string {
