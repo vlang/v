@@ -321,6 +321,10 @@ shell/editor after that, so that it can pick up the new PATH variable.
 To bring IDE functions for the V programming languages to your editor, check out
 [v-analyzer](https://github.com/vlang/v-analyzer). It provides language server capabilities.
 
+`v ls --check` reports whether the VLS launcher has an installed, executable language server.
+It exits successfully when none is installed. Use `--path` to check a specific executable.
+
+
 ## Testing and running the examples
 
 Make sure V can compile itself:

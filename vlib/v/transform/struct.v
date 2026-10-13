@@ -1346,7 +1346,7 @@ fn (t &Transformer) embedded_field_for_direct_selector(info StructInfo, field_na
 }
 
 fn embedded_selector_matches(field_name string, embedded_name string) bool {
-	clean := embedded_name.trim_space().trim_left('&')
+	clean := trimmed_transform_text(embedded_name).trim_left('&')
 	if clean.len == 0 {
 		return false
 	}
@@ -1654,7 +1654,7 @@ fn split_sum_union_text(s string) []string {
 			}
 			`|` {
 				if depth == 0 {
-					part := s[start..i].trim_space()
+					part := trimmed_transform_text(s[start..i])
 					if part.len > 0 {
 						parts << part
 					}
@@ -1664,7 +1664,7 @@ fn split_sum_union_text(s string) []string {
 			else {}
 		}
 	}
-	part := s[start..].trim_space()
+	part := trimmed_transform_text(s[start..])
 	if part.len > 0 {
 		parts << part
 	}

@@ -6680,6 +6680,20 @@ fn incremental_top_level_nodes(a &flat.FlatAst) []bool {
 	return result
 }
 
+fn program_has_translated_module_attributes(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		idx := node.value.all_after('@attributes:').int()
+		if idx >= 0 && idx < a.nodes.len && a.nodes[idx].kind == .module_decl
+			&& node.generic_params().any(it.all_before(':').trim_space() == 'translated') {
+			return true
+		}
+	}
+	return false
+}
+
 fn incremental_declaration_attribute_signatures(a &flat.FlatAst) map[int]string {
 	mut result := map[int]string{}
 	for node in a.nodes {
@@ -7675,6 +7689,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.enum_fields = clone_string_list_map(tc.enum_fields)
 	tc.flag_enums = clone_string_bool_map(tc.flag_enums)
 	tc.interface_names = clone_string_bool_map(tc.interface_names)
+	tc.interface_generic_params = clone_string_list_map(tc.interface_generic_params)
 	tc.interface_fields = clone_struct_field_map(tc.interface_fields)
 	tc.interface_embeds = clone_string_list_map(tc.interface_embeds)
 	tc.interface_abstract_methods = clone_string_list_map(tc.interface_abstract_methods)
@@ -12624,7 +12639,10 @@ pub fn run(args []string) {
 	}
 	use_macos_dev_program_cache := backend == 'c' && program_cache_enabled && !is_prod && !is_shared
 		&& !is_selfhost && prefs.normalized_target_os() == 'macos'
+	// Translated body edits can require new integer-formatting helpers and map
+	// declarations that the prior prefix did not contain. Rebuild that prefix.
 	incremental_cache_enabled := use_macos_dev_program_cache
+		&& !translated_mode && !program_has_translated_module_attributes(a)
 		&& os.getenv('V3_CACHE_DISABLE_INCREMENTAL') != '1'
 	mut generic_cache_inputs_ready := false
 	mut incremental_snapshot := V3IncrementalSnapshot{}
@@ -19511,12 +19529,15 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			}
 			err := type_errors[first_unused]
 			severity := if err.severity.len > 0 { err.severity } else { 'error:' }
-			print_type_diagnostic(a, severity, err)
+			mut first_run := compiler_errors.DiagnosticRun{}
+			print_type_diagnostic(mut first_run, a, severity, err)
 			return
 		}
 	}
 	mut ordered_notices := notices.clone()
 	ordered_notices.sort_with_compare(compare_print_notices)
+	// One report names the same few files many times over.
+	mut run := compiler_errors.DiagnosticRun{}
 	mut printed_diagnostics := 0
 	for notice in ordered_notices {
 		if skip_notices && notice.severity in ['', 'notice:'] {
@@ -19530,7 +19551,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			continue
 		}
 		severity := if notice.severity.len > 0 { notice.severity } else { 'notice:' }
-		print_type_diagnostic(a, severity, notice)
+		print_type_diagnostic(mut run, a, severity, notice)
 		printed_diagnostics++
 	}
 	source_errors := reorder_chained_generic_inference_errors(a, dedupe_type_diagnostics(a, type_errors))
@@ -19566,7 +19587,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	for ei in 0 .. max_errors {
 		err := ordered_errors[ei]
 		severity := if err.severity.len > 0 { err.severity } else { 'error:' }
-		print_type_diagnostic(a, severity, err)
+		print_type_diagnostic(mut run, a, severity, err)
 	}
 	if message_limit < 0 && !fatal_errors && !all_errors && ordered_errors.len > max_errors {
 		eprintln('... and ${ordered_errors.len - max_errors} more errors')
@@ -19770,13 +19791,13 @@ fn is_bare_generic_fntype_decl_error(err types.TypeError) bool {
 
 // print_type_diagnostic prints one diagnostic of the checker: a line of JSON with
 // `-json-errors`, else the message with its source excerpt and details.
-fn print_type_diagnostic(a &flat.FlatAst, severity string, diagnostic types.TypeError) {
+fn print_type_diagnostic(mut run compiler_errors.DiagnosticRun, a &flat.FlatAst, severity string, diagnostic types.TypeError) {
 	if compiler_errors.json_output() {
 		eprintln(compiler_errors.json_error(severity, diagnostic.msg, diagnostic.details, a,
 			diagnostic.node, diagnostic.pos))
 		return
 	}
-	eprintln(compiler_errors.formatted_error(severity, diagnostic.msg, a, diagnostic.node, diagnostic.pos))
+	eprintln(run.formatted_error(severity, diagnostic.msg, a, diagnostic.node, diagnostic.pos))
 	print_type_diagnostic_details(diagnostic.details)
 }
 

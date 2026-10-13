@@ -4038,9 +4038,19 @@ fn (mut g FlatGen) write_parallel_cc_unit_marker() {
 
 fn (mut g FlatGen) gen_pre_body_support_declarations() {
 	g.fixed_array_map_key_forward_decls()
+	support_start := g.sb.len
 	g.fixed_array_map_key_definitions()
 	g.gen_ownership_recursive_drop_helpers()
-	g.cached_header_forward_decls()
+	if g.cache_decl_demand {
+		// Support helpers can be the only callers of cached builtin functions.
+		// Select and emit those prototypes before the helper definitions.
+		support := g.sb.cut_to(support_start)
+		g.cache_collect_declaration_refs(support)
+		g.cached_header_forward_decls()
+		g.write(support)
+	} else {
+		g.cached_header_forward_decls()
+	}
 	g.interface_method_forward_decls()
 	g.shared_dup_fns()
 	if !g.skip_enum_autostr {
@@ -4135,6 +4145,15 @@ fn (mut g FlatGen) gen_global_declaration_block() {
 // immutable after cgen preparation. Parallel self-host cgen can build it on the
 // caller while the persistent worker pool emits function bodies.
 fn (mut g FlatGen) gen_type_declaration_block() {
+	// The final function selection can add wrapped tuple signatures after cache
+	// demand collection. Discover them before emitting their payload layouts.
+	g.collect_selected_declaration_signature_types()
+	if g.cache_decl_demand {
+		mut seen := map[string]bool{}
+		for typ in g.multi_return_types {
+			g.cache_require_declaration_type(typ, mut seen)
+		}
+	}
 	g.enum_decls()
 	g.type_forward_decls()
 	g.type_alias_decls(false)
@@ -5516,7 +5535,12 @@ fn (g &FlatGen) c_source_file_is_in_vlib(source_file string) bool {
 	if root.len == 0 {
 		return false
 	}
-	return source_file.replace('\\', '/').starts_with('${root}/vlib/')
+	original_file := if !isnil(g.a) {
+		g.a.cached_header_sources[source_file] or { source_file }
+	} else {
+		source_file
+	}
+	return original_file.replace('\\', '/').starts_with('${root}/vlib/')
 }
 
 // note_c_include_directive records that a file (and, for user code, its module)
@@ -19251,6 +19275,7 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 			.replace('defined(V_GCBOEHM_NATIVE)', 'defined(CUSTOM_DEFINE_gcboehm)')
 			.replace('#include <gc.h>', '#include <gc/gc.h>')
 			.replace('#include "segfault_handler_nix.h"', signal_header)
+			.replace('#define V_SEGFAULT_HANDLER_SCOPE\n', '#define V_SEGFAULT_HANDLER_SCOPE static\n')
 			.replace('void* v_thread_', 'static void* v_thread_')
 			.replace('void v_thread_', 'static void v_thread_'))
 		g.writeln('#endif')

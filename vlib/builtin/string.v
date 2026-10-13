@@ -443,6 +443,7 @@ struct RepIndex {
 }
 
 // replace_each replaces all occurrences of the string pairs given in `vals`.
+// Pairs with an empty search string are ignored; empty replacement strings remove matches.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 @[direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
@@ -466,6 +467,11 @@ pub fn (s string) replace_each(vals []string) string {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
 		rep := vals[rep_i]
 		with := vals[rep_i + 1]
+		if rep.len == 0 {
+			// an empty needle matches at every position without advancing
+			// the scan below, so skip it instead of looping forever
+			continue
+		}
 
 		for {
 			idx = s_.index_after_(rep, idx)
@@ -2694,9 +2700,13 @@ pub fn (s string) reverse() string {
 }
 
 // limit returns a portion of the string, starting at `0` and extending for a given number of characters afterward.
+// A non-positive limit returns an empty string.
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
 pub fn (s string) limit(max int) string {
+	if max <= 0 {
+		return ''
+	}
 	u := s.runes()
 	if u.len <= max {
 		return s.clone()
@@ -2804,7 +2814,8 @@ pub fn (s string) strip_margin() string {
 	return s.strip_margin_custom(`|`)
 }
 
-// strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
+// strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`.
+// A trailing region without a delimiter is retained, except for its final whitespace-only lines.
 @[direct_array_access]
 pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
@@ -2817,6 +2828,8 @@ pub fn (s string) strip_margin_custom(del u8) string {
 	// can be is this big
 	mut ret := unsafe { malloc_noscan(s.len + 1) }
 	mut count := 0
+	mut exhausted := false
+	mut tail_content_end := s.len - 1
 	for i := 0; i < s.len; i++ {
 		if s[i] in [10, 13] {
 			unsafe {
@@ -2831,11 +2844,24 @@ pub fn (s string) strip_margin_custom(del u8) string {
 				count++
 				i++
 			}
-			for s[i] != sep {
-				i++
-				if i >= s.len {
-					break
+			if !exhausted {
+				mut j := i + 1
+				for j < s.len && s[j] != sep {
+					j++
 				}
+				if j < s.len {
+					// Keep the established removal of lines before the next delimiter.
+					i = j
+					continue
+				}
+				// Search the unmarked tail only once, even when it contains many lines.
+				exhausted = true
+				for tail_content_end > i && s[tail_content_end] in [u8(9), 10, 13, 32] {
+					tail_content_end--
+				}
+			}
+			if i >= tail_content_end {
+				i = s.len
 			}
 		} else {
 			unsafe {
