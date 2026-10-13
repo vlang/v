@@ -2694,6 +2694,7 @@ pub fn (s string) reverse() string {
 }
 
 // limit returns a portion of the string, starting at `0` and extending for a given number of characters afterward.
+// A non-positive limit returns an empty string.
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
 pub fn (s string) limit(max int) string {

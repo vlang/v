@@ -72,3 +72,5 @@ ensure no allocation from a rewound or freed scope remains in use.
 scope, excluding allocator metadata and address gaps between blocks. It returns zero for a nil
 scope and saturates at `usize`'s maximum on overflow. This query is unsafe: no thread may add or
 remove blocks while it runs.
+
+`string.limit(max)` counts Unicode code points and returns an empty string for `max <= 0`.
