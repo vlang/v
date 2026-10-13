@@ -1,5 +1,7 @@
 module math
 
+import math.bits
+
 // Floating-point mod function.
 // mod returns the floating-point remainder of x/y.
 // The magnitude of the result is less than y and its
@@ -40,23 +42,24 @@ pub fn fmod(x f64, y f64) f64 {
 }
 
 // gcd calculates greatest common (positive) divisor (or zero if a and b are both zero).
-pub fn gcd(a_ i64, b_ i64) i64 {
-	mut a := a_
-	mut b := b_
-	if a < 0 {
-		a = -a
+// It works on magnitudes in the u64 domain, so unlike plain negation it is
+// safe for minimum values; unrepresentable results saturate to the type
+// maximum. Supported for all fixed-width integer types.
+pub fn gcd[T](a T, b T) T {
+	if a == T(0) && b == T(0) {
+		return T(0)
 	}
-	if b < 0 {
-		b = -b
+	mut x := u64mag(a)
+	mut y := u64mag(b)
+	for y != 0 {
+		t := x % y
+		x = y
+		y = t
 	}
-	for b != 0 {
-		a %= b
-		if a == 0 {
-			return b
-		}
-		b %= a
+	if x > u64(maxof[T]()) {
+		return maxof[T]()
 	}
-	return a
+	return T(x)
 }
 
 // egcd returns (gcd(a, b), x, y) such that |a*x + b*y| = gcd(a, b)
@@ -75,13 +78,17 @@ pub fn egcd(a i64, b i64) (i64, i64, i64) {
 }
 
 // lcm calculates least common (non-negative) multiple.
-pub fn lcm(a i64, b i64) i64 {
-	if a == 0 {
-		return a
+// Results too large to represent saturate to the type maximum instead of
+// overflowing. Supported for all fixed-width integer types.
+pub fn lcm[T](a T, b T) T {
+	if a == T(0) || b == T(0) {
+		return T(0)
 	}
-	res := a * (b / gcd(b, a))
-	if res < 0 {
-		return -res
+	g := gcd(a, b)
+	qa := u64mag(a) / u64mag(g)
+	hi, lo := bits.mul_64(qa, u64mag(b))
+	if hi != 0 || lo > u64(maxof[T]()) {
+		return maxof[T]()
 	}
-	return res
+	return T(lo)
 }
