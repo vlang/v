@@ -1217,8 +1217,15 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 
 // tcc_with_prod_requested reports whether a production C build selects TinyCC.
 // Compiler option values are skipped and the last compiler/backend options win.
-// Executable aliases follow ccompiler_is_tinycc, for both compilation and cache refresh.
+// Executable aliases follow ccompiler_is_tinycc in the caller's working directory.
 pub fn tcc_with_prod_requested(args []string) bool {
+	return tcc_with_prod_requested_in(args, '')
+}
+
+// tcc_with_prod_requested_in reports whether a production C build selects TinyCC in cwd.
+// Relative compiler paths and wrapper version queries use cwd without changing the caller's
+// working directory. Compiler option values are skipped and the last compiler/backend win.
+pub fn tcc_with_prod_requested_in(args []string, cwd string) bool {
 	mut prod := false
 	mut ccompiler := ''
 	mut backend := 'c'
@@ -1243,7 +1250,7 @@ pub fn tcc_with_prod_requested(args []string) bool {
 		}
 		i++
 	}
-	return prod && backend == 'c' && ccompiler != '' && ccompiler_is_tinycc(ccompiler)
+	return prod && backend == 'c' && ccompiler != '' && ccompiler_is_tinycc_in(ccompiler, cwd)
 }
 
 // prod_profile_consumes_value follows the launcher's optional profiling output rule.
@@ -1263,7 +1270,17 @@ fn prod_profile_consumes_value(args []string, index int) bool {
 // TinyCC in metadata such as an installed directory do not identify a compiler. A name that
 // does not resolve to an executable is judged by its name alone.
 pub fn ccompiler_is_tinycc(ccompiler string) bool {
-	path := os.find_abs_path_of_executable(ccompiler) or { ccompiler.replace('\\', '/') }
+	return ccompiler_is_tinycc_in(ccompiler, os.getwd())
+}
+
+fn ccompiler_is_tinycc_in(ccompiler string, cwd string) bool {
+	work_folder := if cwd == '' { os.getwd() } else { cwd }
+	compiler_path := if !os.is_abs_path(ccompiler) && (ccompiler.contains('/') || ccompiler.contains('\\')) {
+		os.join_path(work_folder, ccompiler)
+	} else {
+		ccompiler
+	}
+	path := os.find_abs_path_of_executable(compiler_path) or { compiler_path.replace('\\', '/') }
 	resolved := os.real_path(path)
 	if tinycc_file_name(os.file_name(resolved)) {
 		return true
@@ -1272,7 +1289,7 @@ pub fn ccompiler_is_tinycc(ccompiler string) bool {
 		return false
 	}
 	for flag in ['--version', '-v'] {
-		version := os.exec([resolved, flag]).output.to_lower_ascii()
+		version := cmdexec.run_in(resolved, [flag], work_folder).output
 		if ccompiler_version_is_tinycc(version) {
 			return true
 		}

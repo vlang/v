@@ -1033,4 +1033,24 @@ fn test_refresh_skips_production_tinycc_alias_before_starting_builds() {
 	equals_request := Request{ ...request, args: ['-prod', '-cc=./cc'] }
 	assert request_uses_prod_tcc(equals_request)
 	refresh(os.join_path(root, 'missing-v'), [request])!
+	project := os.join_path(root, 'tinycc-project')
+	os.mkdir_all(project)!
+	os.mkdir_all(os.join_path(root, 'vlib', 'builtin'))!
+	wrapper := os.join_path(root, 'context-wrapper')
+	os.write_file(wrapper, '#!/bin/sh\ncase "$PWD" in\n*/tinycc-project) echo "tcc version 0.9.27" ;;\n*) echo "clang version 19.1.7" ;;\nesac\n')!
+	os.chmod(wrapper, 0o700)!
+	marker := os.join_path(root, 'refresh-started')
+	fake_v := os.join_path(root, 'fake-v')
+	os.write_file(fake_v, '#!/bin/sh\necho started > ' + os.quoted_path(marker) + '\nexit 91\n')!
+	os.chmod(fake_v, 0o700)!
+	before := os.getwd()
+	for args in [['-prod', '-cc', wrapper], ['-prod', '-cc', '../context-wrapper'],
+		['-prod', '-cc=../context-wrapper']] {
+		context_request := Request{ ...request, args: args, cwd: project }
+		assert request_uses_prod_tcc(context_request)
+		refresh(fake_v, [context_request])!
+		assert !os.exists(marker)
+	}
+	assert !request_uses_prod_tcc(Request{ ...request, args: ['-prod', '-cc', wrapper] })
+	assert os.getwd() == before
 }

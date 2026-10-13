@@ -131,3 +131,25 @@ fn test_tcc_prod_detection_skips_option_values() {
 	assert tcc_with_prod_requested(['-profile', '-prod', '-cc', 'tcc', 'main.v'])
 	assert tcc_with_prod_requested(['-profile', 'report.txt', '-prod', '-cc', 'tcc', 'main.v'])
 }
+
+fn test_tcc_prod_detection_uses_recorded_wrapper_directory_without_chdir() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_pref_cwd_${os.getpid()}')
+	project := os.join_path(root, 'tinycc-project')
+	os.mkdir_all(project)!
+	defer { os.rmdir_all(root) or {} }
+	wrapper := os.join_path(root, 'wrapper')
+	os.write_file(wrapper, '#!/bin/sh\ncase "$PWD" in\n*/tinycc-project) echo "tcc version 0.9.27" ;;\n*) echo "clang version 19.1.7" ;;\nesac\n')!
+	os.chmod(wrapper, 0o700)!
+	before := os.getwd()
+	for args in [['-prod', '-cc', wrapper], ['-prod', '-cc', '../wrapper'],
+		['-prod', '-cc=../wrapper']] {
+		assert tcc_with_prod_requested_in(args, project)
+	}
+	assert !tcc_with_prod_requested_in(['-prod', '-cc', wrapper], root)
+	assert !tcc_with_prod_requested_in(['-cc', wrapper], project)
+	assert !tcc_with_prod_requested_in(['-cc', wrapper, '-o', '-prod'], project)
+	assert os.getwd() == before
+}

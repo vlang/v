@@ -18,24 +18,10 @@ const object_record_format = 'vup-cache-refresh-3'
 const cwd_record_format = 'vup-cache-refresh-2'
 const legacy_record_format = 'vup-cache-refresh-1'
 
-// request_uses_prod_tcc resolves caller-relative compiler paths before applying
-// the production restriction to a historical cache record.
+// request_uses_prod_tcc applies the production restriction using the recorded compiler
+// paths and working directory, including context-sensitive compiler wrappers.
 fn request_uses_prod_tcc(request Request) bool {
-	mut args := request.args.clone()
-	for i, arg in args {
-		if arg.starts_with('-cc=') && request.cwd != '' {
-			compiler := arg['-cc='.len..]
-			if !os.is_abs_path(compiler) && (compiler.contains('/') || compiler.contains('\\')) {
-				args[i] = '-cc=' + os.join_path(request.cwd, compiler)
-			}
-		} else if arg == '-cc' && i + 1 < args.len && request.cwd != '' {
-			compiler := args[i + 1]
-			if !os.is_abs_path(compiler) && (compiler.contains('/') || compiler.contains('\\')) {
-				args[i + 1] = os.join_path(request.cwd, compiler)
-			}
-		}
-	}
-	return pref.tcc_with_prod_requested(args)
+	return pref.tcc_with_prod_requested_in(request.args, request.cwd)
 }
 
 // FlagGroup preserves the ordering and deduplication of a project's C directives.
