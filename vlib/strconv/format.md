@@ -58,6 +58,7 @@ The `-` flag overrides `0` in any flag order: `%#0-8x` of `255` is `0xff    `.
 The Width field specifies a minimum number of characters to output.
 It pads shorter fields with spaces, or with zeros for numeric types when the `0` flag is set.
 A field longer than the width is kept in full.
+For strings, width uses visible columns.
 
 The width field may be omitted or specified as a decimal integer.
 For example, `v_sprintf('%5s', 'ab')` produces `   ab`, with a total width of 5 characters.

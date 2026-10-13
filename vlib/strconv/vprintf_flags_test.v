@@ -231,7 +231,7 @@ fn test_string_star_precision_combines_with_field_width() {
 		assert strconv.v_sprintf('[%5.*s]', 10, 'abc') == '[  abc]'
 		assert strconv.v_sprintf('[%5.*s]', -1, 'abc') == '[  abc]'
 		assert strconv.v_sprintf('[%5.*s]', 2, 'héllo') == '[   hé]'
-		assert strconv.v_sprintf('[%-5.*s]', 1, '😀😀') == '[😀    ]'
+		assert strconv.v_sprintf('[%-5.*s]', 1, '😀😀') == '[😀   ]'
 		assert strconv.v_sprintf('[%2.*s]', 3, 'abcdef') == '[abc]'
 		assert strconv.v_sprintf('[%05.*s]', 2, 'abcdef') == '[   ab]'
 		assert strconv.v_sprintf('[%5.*s]|%d|%s', 2, 'abcdef', 7, 'whole') == '[   ab]|7|whole'
