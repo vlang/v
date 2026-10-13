@@ -844,14 +844,24 @@ fn test_auto_str_helper_uses_interface_declaration_module() {
 		file := '${owner}.v'
 		a.source_files[1] = token.File.unindexed(file, 1)
 		name := if owner == 'view' { 'view.View' } else { 'View' }
-		a.add_node(flat.Node{
+		module_id := a.add_val(.module_decl, owner)
+		decl_id := a.add_node(flat.Node{
 			kind:  .interface_decl
 			value: 'View'
 			pos:   token.new_pos(1, 0)
 		})
+		file_children := a.children.len
+		a.children << module_id
+		a.children << decl_id
+		a.add_node(flat.Node{
+			kind:           .file
+			value:          file
+			children_start: i32(file_children)
+			children_count: 2
+		})
 		mut tc := types.TypeChecker.new(&a)
 		module_path := if owner == 'main' { a.real_source_path(file) } else { file }
-		tc.file_modules[module_path] = owner
+		tc.file_modules[module_path] = 'datatypes'
 		mut t := Transformer{
 			a:          &a
 			tc:         &tc
