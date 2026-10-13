@@ -99,6 +99,51 @@ fn test_literal_output_with_empty_strings_and_explicit_main() {
 	}
 }
 
+fn test_literal_output_with_file_list_preserves_closure_initialization() {
+	$if !macos && !linux && !freebsd && !openbsd {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'literal_file_list_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	listed_source := os.join_path(root, 'extra.v')
+	os.write_file(source, 'println("main literal")\n')!
+	os.write_file(listed_source, 'module main
+fn init() {
+	value := "closure init"
+	captured := fn [value] () { println(value) }
+	captured()
+}
+')!
+	run := cmdexec.run(@VEXE, ['-nocache', '-cc', 'clang', '-gc', 'none', '-no-retry-compilation',
+		'-file-list', listed_source, 'run', source])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'closure init\nmain literal\n', run.output
+}
+
+fn test_literal_output_preserves_freestanding_runtime() {
+	$if !macos && !linux && !freebsd && !openbsd {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'literal_freestanding_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	code_file := os.join_path(root, 'main.c')
+	os.write_file(source, 'fn main() { println("freestanding literal") }\n')!
+	for flags in [['-freestanding'], ['-d', 'freestanding']] {
+		mut args := ['-nocache', '-gc', 'none']
+		args << flags
+		args << ['-o', code_file, source]
+		generated := cmdexec.run(@VEXE, args)
+		assert generated.exit_code == 0, generated.output
+		code := os.read_file(code_file)!
+		assert code.contains('void println(string s) {'), code
+		assert code.contains('bare_print(s.str,'), code
+	}
+}
+
 fn test_nonliteral_program_preserves_gc_and_initialization() {
 	$if !macos && !linux && !freebsd && !openbsd {
 		return

@@ -9396,9 +9396,9 @@ fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Pref
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
 	}
-	// The reduced builtin set includes Boehm's declarations and startup helpers.
-	// VGC still needs the complete builtin dependency graph.
-	if 'vgc' in prefs.user_defines {
+	// The reduced builtin set assumes hosted I/O. VGC also needs the complete
+	// builtin dependency graph.
+	if 'vgc' in prefs.user_defines || 'freestanding' in prefs.user_defines {
 		return false
 	}
 	// Parse the one user file before builtin. This conservative syntax-only pass
@@ -11811,7 +11811,7 @@ pub fn run(args []string) {
 		&& target.os in ['macos', 'linux']
 	// A program that only prints literals needs a fraction of builtin, which is
 	// parsed for it each time. The cached builtin is ready without that.
-	minimal_literal_output := !is_prof && !is_trace_calls && !no_skip_unused
+	minimal_literal_output := file_list.len == 0 && !is_prof && !is_trace_calls && !no_skip_unused
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	mut noalloc_modes := []string{}
 	if ownership_mode || 'ownership' in prefs.user_defines {

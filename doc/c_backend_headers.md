@@ -8,6 +8,9 @@ The C backend emits libc prototypes from bodyless V declarations such as
 retain their prototypes. Native backends retain C declarations without rooting same-named
 V functions.
 Explicit headers for other C libraries remain included.
+The headerless requirement covers hello world and compiler self builds, rather than every
+library binding. Modules such as `compress.brotli` retain their C headers and cached
+implementations.
 Coverage and profiling retain file I/O and timer declarations even when the application
 imports no standard library modules.
 Mach task APIs declared by the application also keep their prototypes in headerless C.
@@ -18,9 +21,10 @@ and `eprintln` calls, the compiler proves that no V allocations are needed. It e
 only `main` and the required libc declarations, without linking a collector or native
 runtime helpers. A single `println` uses `puts`; other output preserves embedded NUL
 bytes and handles partial writes. Programs with allocations, initialization, or other
-runtime requirements retain their normal runtime. Instrumented and library builds
-also retain their runtime support. Portable `-os cross` and `-cross` snapshots retain
-the complete runtime, pointer-width checks, and custom-define metadata even for literal output.
+runtime requirements retain their normal runtime. Instrumented, library, freestanding,
+and `-file-list` builds also retain their runtime support. Portable `-os cross` and `-cross`
+snapshots retain the complete runtime, pointer-width checks, and custom-define metadata even
+for literal output.
 
 The GC, signal, process, and compiler helpers are linked from native objects. Their platform headers
 are parsed when those objects are built. V caches the objects using the C compiler, target,

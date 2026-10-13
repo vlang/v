@@ -3,6 +3,28 @@ module c
 import os
 import v.cmdexec
 
+fn test_brotli_binding_retains_its_native_headers() {
+	$if !macos {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'brotli_native_headers_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	c_file := os.join_path(root, 'main.c')
+	os.write_file(source, 'import compress.brotli
+fn main() {
+	encoded := brotli.compress("hello".bytes(), brotli.CompressParams{}) or { panic(err) }
+	decoded := brotli.decompress(encoded, brotli.DecompressParams{}) or { panic(err) }
+	assert decoded.bytestr() == "hello"
+}
+')!
+	generated := cmdexec.run(@VEXE, ['-nocache', '-o', c_file, source])
+	assert generated.exit_code == 0, generated.output
+	code := os.read_file(c_file)!
+	assert code.contains('#include <dlfcn.h>'), 'Brotli must retain its native loader header'
+}
+
 fn test_headerless_test_statistics_without_importing_time() {
 	$if windows || freestanding || vinix {
 		return
