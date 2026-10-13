@@ -110,3 +110,13 @@ fn test_strip_margin_long_unmarked_tail() {
 	assert 'a\n|b\nremaining\n   '.strip_margin() == 'a\nb\nremaining\n'
 	assert 'a\n#b\nremaining'.strip_margin_custom(`#`) == 'a\nb\nremaining'
 }
+
+fn test_strip_margin_strips_leading_delimiter_on_first_line() {
+	// the first line drops everything up to its delimiter like every other
+	// line does; without one it is kept whole.
+	// See https://github.com/vlang/v/issues/30433
+	assert '|  a'.strip_margin() == '  a'
+	assert '|  a\n|  b'.strip_margin() == '  a\n  b'
+	assert 'Hello there,\n       |  this is a string,'.strip_margin() == 'Hello there,\n  this is a string,'
+	assert ''.strip_margin() == ''
+}

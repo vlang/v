@@ -2830,7 +2830,17 @@ pub fn (s string) strip_margin_custom(del u8) string {
 	mut count := 0
 	mut exhausted := false
 	mut tail_content_end := s.len - 1
-	for i := 0; i < s.len; i++ {
+	// The first line drops everything up to its delimiter like every other
+	// line does; without one it is kept whole.
+	mut start := 0
+	mut j := 0
+	for j < s.len && s[j] != sep && s[j] != 10 && s[j] != 13 {
+		j++
+	}
+	if j < s.len && s[j] == sep {
+		start = j + 1
+	}
+	for i := start; i < s.len; i++ {
 		if s[i] in [10, 13] {
 			unsafe {
 				ret[count] = s[i]
