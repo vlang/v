@@ -456,6 +456,8 @@ fn (mut tc TypeChecker) check_library_body_items(items []CheckWorkItem, parallel
 	if items.len == 0 {
 		return 0
 	}
+	notices_before := tc.notices.len
+	notices_sorted := tc.library_sorted_notice_count == notices_before
 	for item in items {
 		name := tc.a.nodes[item.fn_idx].value
 		tc.reachable_library_fns[library_fn_body_key(item.module, name)] = true
@@ -485,7 +487,13 @@ fn (mut tc TypeChecker) check_library_body_items(items []CheckWorkItem, parallel
 		tc.filter_pending_ierror_errors()
 		tc.defer_ierror_gating = false
 	}
-	tc.sort_parallel_check_errors()
+	// Repeated successful frontiers do not reorder or remove existing notices.
+	// Sort once, and again only when diagnostics change. Failures always use
+	// the full sorter, including its error deduplication and priority rules.
+	if !notices_sorted || tc.errors.len > 0 || tc.notices.len != notices_before {
+		tc.sort_parallel_check_errors()
+	}
+	tc.library_sorted_notice_count = tc.notices.len
 	tc.restore_type_cache_base()
 	tc.direct_parent_index_trusted = saved_trusted
 	tc.resolution_type_mode = true

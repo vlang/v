@@ -1149,7 +1149,10 @@ pub mut:
 	type_declaration_ids   map[string][]int
 mut:
 	checked_library_body_count int
-	cache_lexical_parents      bool = true
+	// Successful reachability frontiers only append notices. Keep their last
+	// sorted size; error-producing batches retain the full sorting path.
+	library_sorted_notice_count int  = -1
+	cache_lexical_parents       bool = true
 	// Source-validated bodies consisting solely of a known terminating call.
 	// Their lowered temporaries belong to the exempt argument expression.
 	noalloc_terminal_functions map[string]bool

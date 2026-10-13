@@ -7685,8 +7685,13 @@ fn option_result_selector_type(typ Type, field string) ?Type {
 	return none
 }
 
-// index_operator_call_info returns accessible index operator metadata for a compatible receiver.
+// index_operator_call_info resolves a declared index operator for the receiver type.
 pub fn (tc &TypeChecker) index_operator_call_info(base_type Type, op string) ?CallInfo {
+	if tc.method_suffix_prescreen && tc.top_level_idx.len > 0
+		&& op !in tc.receiver_method_suffix_index
+		&& '@${op}' !in tc.receiver_method_suffix_index {
+		return none
+	}
 	clean := unwrap_pointer(base_type)
 	type_name := resolve_type_name_for_method(clean)
 	if type_name.len == 0 {
