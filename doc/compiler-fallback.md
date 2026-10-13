@@ -6,6 +6,12 @@ checker errors, and unsupported inline assembly (`inline_asm`) do not trigger a
 compatibility retry. They retain the original compiler's failure exit status,
 without locating, installing, or launching the compatibility compiler.
 
+If a V executable embeds an incomplete `vlib/v/gen/c/manual_stdlib_c_headers.h`, builds that
+need its manual libc preamble report the damaged header before generating C and exit 1.
+The diagnostic appears once and does not trigger a compatibility retry. Restore the header
+with `git restore vlib/v/gen/c/manual_stdlib_c_headers.h`, then rebuild V with `make`.
+Headerless C output and `-target-libc-headers` builds do not use this embedded header.
+
 Hard checker errors in dependency functions referenced by the selected source files,
 including callbacks, stored function values, and transitive calls, are reported at the
 dependency's source location before C generation. This also applies to standard-library

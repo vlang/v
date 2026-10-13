@@ -15,7 +15,7 @@ const settings = init_settings()
 const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 const valid_vpm_commands = ['help', 'search', 'install', 'link', 'update', 'upgrade', 'outdated',
-	'list', 'remove', 'show', 'unlink', 'why', 'vendor']
+	'list', 'remove', 'show', 'unlink', 'why', 'vendor', 'registry']
 const excluded_dirs = ['.cache', 'vlib']
 
 fn main() {
@@ -85,6 +85,9 @@ fn main() {
 			}
 			vpm_vendor()
 		}
+		'registry' {
+			vpm_registry(query)
+		}
 		else {
 			// Unreachable in regular usage. V will catch unknown commands beforehand.
 			vpm_error('unknown command "${vpm_command}"')
@@ -118,6 +121,15 @@ fn parse_query_args(args []string, vpm_command string) []string {
 	for arg in args {
 		if skip_next {
 			skip_next = false
+			continue
+		}
+		// `registry` takes its own options, and the shared value-option list knows
+		// nothing about them: `-p 9090` is its port, not a package name, so neither
+		// the option nor its value may be dropped once the command is found. Every
+		// other subcommand asks for module names, where an option would be a module
+		// that cannot exist.
+		if has_found_command && vpm_command == 'registry' {
+			query << arg
 			continue
 		}
 		if arg in value_option_names {

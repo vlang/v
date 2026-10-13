@@ -29,3 +29,6 @@ fn main() {
 ```
 
 More examples found on [`parser_test.v`](parser_test.v) and [`html_test.v`](html_test.v)
+
+Calling `get_tag_by_class_name` without class names returns `none`;
+`get_tags_by_class_name` without class names returns an empty array.
