@@ -485,6 +485,8 @@ including calls made by dispatchers inside cached objects.
 Selected option/result tuple signatures declare their payload layouts before their wrappers.
 Shared wrappers retain their payload layouts even when only compile-time reflection visits them.
 Recursive interface string helpers belong to the interface's declaration module.
+Portable cross output keeps its embedded signal-handler installer local so cached builds can
+also link the native helper object.
 With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
 before compiling a new module object, including during `run`. Ordinary builds and warm builds
 print no cache creation notices; `-silent` suppresses them too.

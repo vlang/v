@@ -19269,6 +19269,7 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 			.replace('defined(V_GCBOEHM_NATIVE)', 'defined(CUSTOM_DEFINE_gcboehm)')
 			.replace('#include <gc.h>', '#include <gc/gc.h>')
 			.replace('#include "segfault_handler_nix.h"', signal_header)
+			.replace('#define V_SEGFAULT_HANDLER_SCOPE\n', '#define V_SEGFAULT_HANDLER_SCOPE static\n')
 			.replace('void* v_thread_', 'static void* v_thread_')
 			.replace('void v_thread_', 'static void v_thread_'))
 		g.writeln('#endif')
