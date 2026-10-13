@@ -566,6 +566,16 @@ extern char **environ;
 const c_selfhost_post_directives = r'#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
 #define pthread_rwlockattr_setkind_np(a, b) (0)
 #endif
+#if defined(__linux__)
+/* These builtin APIs are not declared by the TinyCC C99 system headers. */
+#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)
+extern int backtrace(void **, int);
+extern char **backtrace_symbols(void *const *, int);
+extern void backtrace_symbols_fd(void *const *, int, int);
+#endif
+extern int gettid(void);
+extern void *aligned_alloc(size_t, size_t);
+#endif
 #ifndef memory_order_relaxed
 #define memory_order_relaxed 0
 #define memory_order_acquire 2

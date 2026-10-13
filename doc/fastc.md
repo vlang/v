@@ -64,6 +64,17 @@ are also retained when their side effects cannot be proven unused. Executable li
 disabled whenever native source or binary inputs are present, so replacing an input at the same
 path takes effect on the next build.
 
+Native flags support `$first_existing(...)` and `$when_first_existing(...)`, including
+library inputs and include/search path prefixes. They select the first existing candidate;
+an unmatched `$when_first_existing` omits the flag, while `$first_existing` reports an error.
+This includes the optional atomic-library flags used on Linux.
+Linux GC builds load atomic support even without an explicit `sync` import. Native C helpers
+are linked before the static archives they call, including the bundled GC.
+Under TinyCC on macOS and Linux, preallocation uses pthread storage to keep each thread's
+arena independent.
+Dynamic array literals with complex element expressions evaluate those elements before copying
+the array, avoiding nested C aggregate initializers unsupported by bundled Linux TinyCC.
+
 The full-runtime path remains experimental. Mutable and expression closure captures and
 128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.
 

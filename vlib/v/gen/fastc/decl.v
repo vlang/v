@@ -788,11 +788,10 @@ fn fastc_prealloc_enabled(prefs &pref.Preferences) bool {
 // fastc_write_prealloc_tls_global emits the arena root `g_memory_block` as
 // per-thread storage, so the parallel per-file generator's worker threads each
 // bump-allocate from their own chunk instead of racing one shared global. This
-// mirrors gen/c's `write_prealloc_tls_global`: bundled TinyCC on macOS has no
-// working thread-local storage, so there the identifier is redirected to a
-// pthread-key slot; every other target uses `_Thread_local`.
+// uses a pthread-key slot on macOS and Linux under TinyCC, which lacks usable
+// language-level thread-local storage. Other compilers use their native TLS.
 fn fastc_write_prealloc_tls_global(mut out strings.Builder, styp string, c_name string, header_free bool) {
-	out.writeln('#if defined(__TINYC__) && defined(__APPLE__)')
+	out.writeln('#if defined(__TINYC__) && (defined(__APPLE__) || defined(__linux__))')
 	if !header_free {
 		// A header-free build declares the pthread API in its prelude.
 		out.writeln('#include <pthread.h>')
