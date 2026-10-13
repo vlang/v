@@ -1258,22 +1258,6 @@ fn prod_profile_consumes_value(args []string, index int) bool {
 	return args[index + 2..].any(!it.starts_with('-'))
 }
 
-// ccompiler_is_tinycc for how a compiler is recognised.
-pub fn tcc_with_prod_requested(args []string) bool {
-	mut prod := false
-	mut ccompiler := ''
-	for i, arg in args {
-		if arg == '-prod' {
-			prod = true
-		} else if arg == '-cc' && i + 1 < args.len {
-			ccompiler = args[i + 1]
-		} else if arg.starts_with('-cc=') {
-			ccompiler = arg['-cc='.len..]
-		}
-	}
-	return prod && ccompiler != '' && ccompiler_is_tinycc(ccompiler)
-}
-
 // ccompiler_is_tinycc reports whether `ccompiler` is TinyCC. It resolves the path and any
 // symlink, then checks the file name with tinycc_file_name. Any other executable is asked for
 // its version, so a copy of tcc under another name is still recognised. A name that does not

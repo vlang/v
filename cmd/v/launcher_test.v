@@ -982,3 +982,33 @@ fn test_v1_fallback_rejects_copied_current_launcher() {
 	assert result.output.starts_with('V ${v_version} ')
 	assert !v1_fallback_has_expected_version(copy)
 }
+
+fn test_private_tool_builds_keep_tools_available_with_tinycc_production_flags() {
+	assert external_tool_compile_args('vfmt', ['-prod', '-cc', 'tcc']) == ['-cc', 'tcc']
+	assert external_tool_args_without_prod(['-prod', '-o', '-prod', '-cc', 'tcc']) == [
+		'-o',
+		'-prod',
+		'-cc',
+		'tcc',
+	]
+	assert external_tool_runtime_args('self', ['-prod', '-cc', 'tcc'], ['self']) == [
+		'-prod',
+		'-cc',
+		'tcc',
+		'self',
+	]
+}
+
+fn test_cold_formatter_cache_accepts_tinycc_production_environment() {
+	if !os.is_executable(os.join_path(os.dir(@VEXE), 'thirdparty', 'tcc', 'tcc.exe')) { return }
+	root := os.join_path(os.vtmp_dir(), 'launcher_prod_tcc_tool_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut environment := os.environ()
+	environment['VFLAGS'] = '-prod -cc tcc -gc none'
+	environment['VTOOLS_CACHE_DIR'] = os.join_path(root, 'tools')
+	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+	result := run_launcher_test_process(@VEXE, ['fmt', '--help'], os.getwd(), environment)
+	assert result.exit_code == 0, result.output
+	assert !result.output.contains('tcc is not allowed with -prod'), result.output
+}
