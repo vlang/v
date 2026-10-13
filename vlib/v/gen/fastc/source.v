@@ -1581,9 +1581,12 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		module_name = 'main'
 	}
 	if prefs.backend == 'fastc' && prefs.building_v && prefs.target.os == 'linux'
+		&& !(prefs.target.arch == 'amd64' && 'musl' in prefs.user_defines)
 		&& module_name == 'builtin' && path.ends_with('builtin_d_gcboehm.c.v') {
 		// TinyCC's GC helpers require the platform atomic declarations and
 		// library even when the application itself does not import sync.
+		// On musl amd64, TinyCC supplies the helpers and the driver supplies
+		// the fence object; importing stdatomic would add unsupported atomic.S.
 		imports['__fastc_gc_atomic'] = 'sync.stdatomic'
 		if 'sync.stdatomic' !in import_order {
 			import_order << 'sync.stdatomic'

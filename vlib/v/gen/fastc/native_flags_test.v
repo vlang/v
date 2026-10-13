@@ -71,6 +71,35 @@ fn test_fastc_linux_atomic_library_directives() {
 	}
 }
 
+fn test_fastc_linux_gc_atomic_support_without_sync_import() {
+	root := os.join_path(os.vtmp_dir(), 'fastc_linux_gc_atomic_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'fn main() { println(42) }') or { panic(err) }
+	for libc in ['musl', 'glibc'] {
+		for arch in ['amd64', 'arm64'] {
+			mut prefs := pref.new_preferences()
+			prefs.vroot = @VEXEROOT
+			prefs.backend = 'fastc'
+			prefs.building_v = true
+			prefs.ccompiler = 'tinyc'
+			prefs.target = pref.target_from('linux', arch) or { panic(err) }
+			prefs.user_defines = ['v3_backend', 'gcboehm', libc]
+			// Exercise both initial resolution and reuse of its source memo.
+			for _ in 0 .. 2 {
+				generation := generate_files_with_source_paths([root], prefs) or { panic(err) }
+				assert generation.source_paths.any(it.ends_with('builtin_d_gcboehm.c.v'))
+				has_stdatomic := generation.source_paths.any(it.ends_with('sync/stdatomic/1.declarations.c.v'))
+				assert has_stdatomic == !(libc == 'musl' && arch == 'amd64'), '${libc}/${arch}'
+				assert !generation.c_flags.any(it.ends_with('atomic.S')), generation.c_flags.str()
+				assert generation.c_source().contains('int main(')
+			}
+		}
+	}
+}
+
 fn test_fastc_prealloc_arena_is_separate_for_worker_threads() {
 	$if !macos && !linux {
 		return
