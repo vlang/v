@@ -236,3 +236,15 @@ fn test_dir_base_and_file_name_agree() {
 		assert split_name + split_ext == name, path
 	}
 }
+
+fn test_base_trims_all_trailing_separators() {
+	assert os.base('/a///') == 'a'
+	assert os.base('a\\\\') == 'a'
+	assert os.base('////') == '/'
+	assert os.base('\\\\') == '\\'
+	$if windows {
+		assert os.base('/\\') == '/'
+		assert os.base('\\/') == '\\'
+		assert os.base('C:/a/\\/') == 'a'
+	}
+}

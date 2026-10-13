@@ -1793,6 +1793,9 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 	// Classify array constants in the parent arena before forking, so every
 	// batch shares one read-only cache instead of rescanning the AST.
 	t.precompute_const_array_fixed_storage()
+	// Serial batches need the same immutable reflected-loop index as parallel
+	// workers; otherwise each batch rescans the entire growing AST for JSON fields.
+	t.prepare_comptime_reflected_for_roles()
 	// A scoped transformer can itself be a fork whose signature tables still
 	// point at its parent's read-only base. Detach before pre-registering the
 	// batch, rather than mutating storage another worker may be reading.
@@ -2206,11 +2209,21 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	if old_params.len == 0 {
 		return
 	}
+	old_constraints := node.generic_constraints()
 	mut needs_owned_params := transform_scope_owns(scope, node.payload_ptr())
 		|| transform_scope_owns(scope, old_params.data)
+		|| (old_constraints.len > 0 && transform_scope_owns(scope, old_constraints.data))
 	if !needs_owned_params {
 		for param in old_params {
 			if param.len > 0 && transform_scope_owns(scope, param.str) {
+				needs_owned_params = true
+				break
+			}
+		}
+	}
+	if !needs_owned_params {
+		for constraint in old_constraints {
+			if constraint.len > 0 && transform_scope_owns(scope, constraint.str) {
 				needs_owned_params = true
 				break
 			}
@@ -2228,7 +2241,15 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 			params << param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		if constraint.len > 0 && transform_scope_owns(scope, constraint.str) {
+			constraints << t.promote_scoped_result_text(constraint)
+		} else {
+			constraints << constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
 	transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
 }
 
@@ -2342,24 +2363,17 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		t.end_promote_text_window()
 	}
 	t.merge_worker_signatures(batch)
-	if t.skip_generics {
-		// Non-generic workers mutate only newly appended nodes and slots recorded by
-		// the setter log. This avoids a full, growing-AST scan after every batch.
-		for idx in new_node_start .. batch.a.nodes.len {
-			t.promote_scoped_node_to_current(idx, scope)
-		}
-		for idx in batch.scoped_owned_base_nodes.keys() {
-			t.promote_scoped_node_to_current(idx, scope)
-		}
-		for idx in batch.scoped_owned_base_log {
-			t.promote_scoped_node_to_current(int(idx), scope)
-		}
-	} else {
-		// Generic lowering can rewrite nodes reached indirectly through late calls.
-		// Keep the exhaustive fallback for those transforms.
-		for idx in 0 .. batch.a.nodes.len {
-			t.promote_scoped_node_to_current(idx, scope)
-		}
+	// Setters record writes to every pre-existing node, including nodes reached
+	// indirectly by generic lowering. Publish those and the appended region;
+	// scanning the growing AST after each batch makes publication quadratic.
+	for idx in new_node_start .. batch.a.nodes.len {
+		t.promote_scoped_node_to_current(idx, scope)
+	}
+	for idx in batch.scoped_owned_base_nodes.keys() {
+		t.promote_scoped_node_to_current(idx, scope)
+	}
+	for idx in batch.scoped_owned_base_log {
+		t.promote_scoped_node_to_current(int(idx), scope)
 	}
 	for idx in batch.scoped_owned_base_nodes.keys() {
 		t.scoped_owned_base_log << flat.NodeId(idx)
@@ -2379,6 +2393,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		if name !in t.sum_eq_types {
 			t.sum_eq_types[t.promote_scoped_result_text(name)] = SumEqRequest{
 				sum_name:      t.promote_scoped_result_text(req.sum_name)
+				struct_name:   t.promote_scoped_result_text(req.struct_name)
 				module:        t.promote_scoped_result_text(req.module)
 				file:          t.promote_scoped_result_text(req.file)
 				helper_module: t.promote_scoped_result_text(req.helper_module)
@@ -2459,6 +2474,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 // scratch lifetime within each helper. A fresh Transformer/TypeChecker fork per
 // batch prevents caches from retaining pointers into the released arena.
 fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_batches int) {
+	_ = t.cached_generic_fn_decls()
 	t.retain_current_worker_scope_all()
 	// Only helper accumulators use this arena. The master continues using the
 	// stage arena because its semantic results survive through code generation.
@@ -2693,6 +2709,7 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 // threads when there is enough work, otherwise serially. Returns whether threads
 // were actually used.
 fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int, base_children int) bool {
+	_ = t.cached_generic_fn_decls()
 
 	// Generic body lowering can discover signatures, so generic builds use the
 	// cloned-worker path below. Skip-generic builds, including self-hosts, can use

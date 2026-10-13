@@ -3,6 +3,7 @@ module transform
 import os
 import time
 import v.flat
+import v.errors
 import v.gen.c.naming
 import v.pref
 import v.types
@@ -62,13 +63,14 @@ const zeroed_stack_value_decl_marker = '__v3_zeroed_stack_value_decl'
 // sequence of disposable scoped-worker forks. Larger sets keep bounded scratch.
 const direct_late_transform_max_names = 64
 
-// SumEqRequest records where a sum type's equality helper was first requested,
+// SumEqRequest records where a sum or recursive struct equality helper was first requested,
 // so the helper body is built under that module/file resolution context. The
 // helper module can differ for program-specific generic specializations, whose
 // generated functions and helpers must stay in the main cache segment.
 pub struct SumEqRequest {
 pub:
 	sum_name      string
+	struct_name   string
 	module        string
 	file          string
 	helper_module string
@@ -326,8 +328,8 @@ mut:
 	used_fns_parent               &map[string]bool = unsafe { nil }
 	used_fns_root                 &map[string]bool = unsafe { nil }
 	comptime_reflected_params     map[string][]ParamMeta
-	// sum_eq_types records sum types whose deep-equality helper fn
-	// (__v3_sum_eq_<name>) is called somewhere, keyed by the concrete helper name with the
+	// sum_eq_types records sum and recursive struct deep-equality helpers,
+	// keyed by the concrete helper name with the
 	// module/file context of the requesting call site (type resolution inside
 	// the helper body needs that context). The helpers are synthesized
 	// serially after the (possibly parallel) transform completes.
@@ -1239,6 +1241,7 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 		// The AST arena is unchanged during this scan.
 		node := unsafe { &t.a.nodes[idx] }
 		if node.kind == .fn_decl && (node.value.starts_with('__v3_sum_eq_')
+			|| node.value.starts_with('__v3_struct_eq_')
 			|| node.value.starts_with('__v3_default_clone_')) {
 			synthesized_helpers << node.value
 		}
@@ -1261,7 +1264,7 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool, retain_worker_results bool, stage_scope voidptr) {
 	t.skip_generics = skip_generics
 	t.building_v = building_v
-	t.memo_node_types = building_v && t.memo_expansion_node_types
+	t.memo_node_types = t.memo_expansion_node_types
 	t.fast_escape_precheck = building_v && os.getenv('V3_NO_ESCAPE_PRECHECK') == ''
 	t.ordinary_escape_precheck = !building_v && os.getenv('V3_NO_ESCAPE_PRECHECK') == ''
 	t.inplace_child_rewrites = building_v && os.getenv('V3_NO_INPLACE_TRANSFORM_CHILDREN') == ''
@@ -1282,8 +1285,7 @@ fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bo
 	t.lean_struct_init_fields = building_v && os.getenv('V3_NO_LEAN_TRANSFORM_STRUCT_FIELDS') == ''
 	t.inplace_struct_fields = t.inplace_child_rewrites
 		&& os.getenv('V3_NO_INPLACE_TRANSFORM_STRUCT_FIELDS') == ''
-	t.memo_call_param_type_names = (building_v || skip_generics)
-		&& os.getenv('V3_NO_TRANSFORM_TYPE_NAME_MEMO') == ''
+	t.memo_call_param_type_names = os.getenv('V3_NO_TRANSFORM_TYPE_NAME_MEMO') == ''
 	t.memo_semantic_type_names = building_v && os.getenv('V3_TRANSFORM_TYPE_NAME_MEMO_ALL') != ''
 	t.prefix_param_scan = building_v && os.getenv('V3_NO_PREFIX_PARAM_SCAN') == ''
 	t.preserve_inplace_expr_types = t.inplace_child_rewrites
@@ -2764,6 +2766,7 @@ fn (mut t Transformer) set_receiver_method_suffix_index(key string, name string)
 
 // reset_var_types updates reset var types state for transform.
 fn (mut t Transformer) reset_var_types() {
+	t.clear_node_type_memo()
 	t.var_types.clear()
 	t.var_type_indices.clear()
 	if !isnil(t.var_type_cache) {
@@ -2795,6 +2798,7 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 		local_closure_cleanup_assigns: t.local_closure_cleanup_assigns
 		local_closure_field_cleanups:  t.local_closure_field_cleanups
 	}
+	t.clear_node_type_memo()
 	t.var_types = []VarTypeBinding{}
 	t.comptime_scalar_locals = map[string]ComptimeStringScalar{}
 	t.var_type_indices = map[string]int{}
@@ -2811,6 +2815,7 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 }
 
 fn (mut t Transformer) restore_function_local_state(state FunctionLocalState) {
+	t.clear_node_type_memo()
 	t.var_types = state.var_types
 	t.comptime_scalar_locals = state.comptime_scalar_locals
 	t.var_type_indices = state.var_type_indices
@@ -2885,6 +2890,7 @@ fn (mut t Transformer) enter_implicit_err_scope(has_error bool) ImplicitErrScope
 	t.clear_heaped_local_binding('err')
 	t.set_implicit_err_var_type()
 	if t.smartcast_stack.len > 0 {
+		t.clear_node_type_memo()
 		t.smartcast_stack = smartcasts_without_binding(t.smartcast_stack, 'err')
 	}
 	return scope
@@ -2901,6 +2907,7 @@ fn (mut t Transformer) leave_implicit_err_scope(scope ImplicitErrScope) {
 fn (mut t Transformer) mark_var_as_ref_param(name string) {
 	i := t.var_type_index(name)
 	if i >= 0 {
+		t.clear_node_type_memo()
 		t.var_types[i].is_ref_param = true
 	}
 }
@@ -2923,10 +2930,12 @@ fn (mut t Transformer) set_var_type_binding(name string, typ string, raw_typ str
 	if name == '' {
 		return
 	}
+	t.clear_node_type_memo()
 	raw := if raw_typ != '' { raw_typ } else { typ }
 	i := t.var_type_index(name)
 	if i >= 0 {
 		t.var_type_indices[name] = i
+		t.clear_node_type_memo()
 		t.var_types[i] = VarTypeBinding{
 			name:            name
 			typ:             typ
@@ -2979,6 +2988,7 @@ fn decl_assign_value_is_shared(value string) bool {
 
 // unset_var_type supports unset var type handling for Transformer.
 fn (mut t Transformer) unset_var_type(name string) {
+	t.clear_node_type_memo()
 	i := t.var_type_index(name)
 	if i >= 0 {
 		t.var_types.delete(i)
@@ -3189,6 +3199,7 @@ fn (t &Transformer) var_type_index(name string) int {
 }
 
 fn (mut t Transformer) restore_var_types(saved []VarTypeBinding) {
+	t.clear_node_type_memo()
 	if !isnil(t.var_type_cache) {
 		t.var_type_cache.clear()
 	}
@@ -3207,10 +3218,12 @@ fn (mut t Transformer) restore_var_types(saved []VarTypeBinding) {
 			for i in saved.len .. t.var_types.len {
 				t.var_type_indices.delete(t.var_types[i].name)
 			}
+			t.clear_node_type_memo()
 			t.var_types = saved
 			return
 		}
 	}
+	t.clear_node_type_memo()
 	t.var_types = saved
 	t.var_type_indices.clear()
 	for i, binding in t.var_types {
@@ -3718,6 +3731,7 @@ fn (mut t Transformer) transform_top_level_file(file_idx int, file_node flat.Nod
 	t.cur_fn_name = 'main'
 	t.cur_fn_ret_type = 'void'
 	t.reset_var_types()
+	t.clear_node_type_memo()
 	t.smartcast_stack.clear()
 	t.pending_stmts.clear()
 	mut new_children := []flat.NodeId{cap: int(file_node.children_count)}
@@ -3754,6 +3768,7 @@ fn (mut t Transformer) transform_top_level_file(file_idx int, file_node flat.Nod
 	t.cur_fn_name = old_fn_name
 	t.cur_fn_ret_type = old_fn_ret_type
 	t.restore_var_types(old_var_types)
+	t.clear_node_type_memo()
 	t.smartcast_stack = old_smartcast_stack
 	t.pending_stmts = old_pending_stmts
 }
@@ -4422,6 +4437,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.in_return_expr = false
 	w.expected_expr_node = -1
 	w.expected_expr_type = ''
+	t.copy_generic_decl_indexes(mut w)
 	return &w
 }
 
@@ -4525,7 +4541,20 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.in_return_expr = false
 	w.expected_expr_node = -1
 	w.expected_expr_type = ''
+	t.copy_generic_decl_indexes(mut w)
 	return &w
+}
+
+// Generic templates do not change during body lowering. Copy the small prepared indexes
+// instead of scanning the entire, growing AST in every disposable worker arena.
+fn (t &Transformer) copy_generic_decl_indexes(mut w Transformer) {
+	if !t.generic_fn_decls_ready {
+		return
+	}
+	w.generic_fn_decls_cache = t.generic_fn_decls_cache.clone()
+	w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
+	w.generic_fn_call_names = t.generic_fn_call_names.clone()
+	w.generic_fn_decls_ready = true
 }
 
 // fork_program_view constructs a worker from explicit compilation-wide state.
@@ -4745,6 +4774,7 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 			if scoped {
 				t.sum_eq_types[name.clone()] = SumEqRequest{
 					sum_name:      req.sum_name.clone()
+					struct_name:   req.struct_name.clone()
 					module:        req.module.clone()
 					file:          req.file.clone()
 					helper_module: req.helper_module.clone()
@@ -4906,6 +4936,7 @@ fn (mut t Transformer) clone_sum_eq_types_owned() {
 	for name, req in t.sum_eq_types {
 		cloned[name.clone()] = SumEqRequest{
 			sum_name:      req.sum_name.clone()
+			struct_name:   req.struct_name.clone()
 			module:        req.module.clone()
 			file:          req.file.clone()
 			helper_module: req.helper_module.clone()
@@ -5448,6 +5479,7 @@ fn (mut t Transformer) record_refined_node_type(idx int, typ string) {
 			return
 		}
 	}
+	t.clear_node_type_memo()
 	t.refined_node_types[idx] = typ
 }
 
@@ -6578,6 +6610,13 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	if typ.len == 0 {
 		typ = t.node_type(expr_id)
 	}
+	if t.stringify_type_has_generic_placeholder(typ) {
+		// The declared return type of a generic function names its type parameter
+		// until the call is specialized; the checker has the type of this part.
+		if checked_typ := t.concrete_checker_node_type(expr_id) {
+			typ = checked_typ
+		}
+	}
 	if ref_typ := t.string_interp_interface_smartcast_ref_type(expr_id) {
 		if !t.node_type(transformed).starts_with('&') {
 			transformed = t.make_prefix(.amp, transformed)
@@ -7422,6 +7461,7 @@ fn (mut t Transformer) heap_escaping_value_decl(var_name string, elem_typ string
 	t.pointer_value_rvalues[var_name] = true
 	stmts << t.make_decl_assign_typed(var_name, heap_rhs, ptr_typ)
 	i := t.var_type_index(var_name)
+	t.clear_node_type_memo()
 	t.var_types[i] = VarTypeBinding{
 		...t.var_types[i]
 		heap_value_typ: if raw_typ.len > 0 { raw_typ } else { elem_typ }
@@ -7933,6 +7973,7 @@ fn (mut t Transformer) restore_heaped_local_state(state HeapedLocalState) {
 		// then retain the complete incoming metadata, including its semantic heap type.
 		t.set_var_type_with_raw(binding.name, binding.typ, binding.raw_typ)
 		i := t.var_type_index(binding.name)
+		t.clear_node_type_memo()
 		t.var_types[i] = binding
 	}
 }
@@ -10035,6 +10076,23 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escape(arg_id flat.No
 		value_id = t.a.child(&value, 0)
 	}
 	mut value_type := types.unalias_type(t.tc.resolve_type(value_id))
+	if value_type is types.Pointer {
+		pointer_expr := t.a.nodes[int(value_id)]
+		// Direct local references still need conservative escape metadata when a
+		// generic call infers their type without recording an address source.
+		direct_local := pointer_expr.kind == .ident
+			&& t.escape_ident_is_stack_local(pointer_expr.value, local_stack_names)
+		// Dereferencing the address of a pointer local, such as *(&p), keeps
+		// that local's recorded fixed-array owner even though the result is a pointer.
+		stack_deref := pointer_expr.kind == .prefix && pointer_expr.op == .mul
+			&& t.escape_address_expr_is_stack_local(value_id, local_stack_names, amp_ptrs, ptr_aliases)
+		if !direct_local && !stack_deref
+			&& !t.escape_address_indirect_base_is_stack_backed(value_id, amp_ptrs, ptr_aliases, local_stack_names) {
+			// A pointer field's referent is not inline storage owned by its containing
+			// value. Only follow pointers known to reference this frame's stack data.
+			return
+		}
+	}
 	for value_type is types.Pointer {
 		value_type = types.unalias_type(value_type.base_type)
 	}
@@ -10425,6 +10483,9 @@ fn (mut t Transformer) scan_for_in_escape_pass(node &flat.Node, mut amp_ptrs map
 			if int(value_id) >= 0 {
 				binding := t.a.nodes[int(value_id)]
 				if binding.kind == .ident && binding.value.len > 0 && binding.value != '_' {
+					// Mutable fixed-array iteration binds a pointer into its backing,
+					// rather than an independently allocated pointer value.
+					amp_ptrs[binding.value] = true
 					for source in t.escape_address_sources(backing_id, amp_sources, ptr_aliases) {
 						add_escape_amp_source(mut reference_backing_sources, binding.value, source)
 					}
@@ -10855,6 +10916,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	}
 	t.reset_var_types()
 	t.cur_fn_variadic_param = ''
+	t.clear_node_type_memo()
 	t.smartcast_stack.clear()
 	t.invalidated_smartcasts.clear()
 	t.smartcast_event_id = 0
@@ -11041,6 +11103,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			flags:          fn_node.flags
 		})
 	}
+	t.clear_node_type_memo()
 	t.smartcast_stack.clear()
 	t.invalidated_smartcasts.clear()
 	t.smartcast_event_id = 0
@@ -11196,8 +11259,10 @@ pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 	}
 	defer {
 		if had_base_smartcasts {
+			t.clear_node_type_memo()
 			t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 		} else {
+			t.clear_node_type_memo()
 			t.smartcast_stack.clear()
 		}
 	}
@@ -11666,6 +11731,7 @@ fn (mut t Transformer) selected_sizeof_value_type(name string) ?string {
 	t.tc.cur_file = t.cur_file
 	// A declaration's type test must not see the caller's locals or generics.
 	t.restore_var_types([]VarTypeBinding{})
+	t.clear_node_type_memo()
 	t.active_generic_params = []string{}
 	t.cur_fn_is_generic = false
 	defer {
@@ -11674,6 +11740,7 @@ fn (mut t Transformer) selected_sizeof_value_type(name string) ?string {
 		t.tc.cur_module = old_tc_module
 		t.tc.cur_file = old_tc_file
 		t.restore_var_types(old_var_types)
+		t.clear_node_type_memo()
 		t.active_generic_params = old_generic_params
 		t.cur_fn_is_generic = old_is_generic
 	}
@@ -14546,8 +14613,10 @@ fn (mut t Transformer) transform_lvalue_without_smartcast(id flat.NodeId) flat.N
 		}
 		keep << sc
 	}
+	t.clear_node_type_memo()
 	t.smartcast_stack = keep
 	transformed := t.transform_lvalue(id)
+	t.clear_node_type_memo()
 	t.smartcast_stack = base_smartcasts
 	return transformed
 }
@@ -14808,6 +14877,7 @@ fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {
 	}
 	t.smartcast_event_id++
 	t.smartcast_invalidation_event_ids[key] = t.smartcast_event_id
+	t.clear_node_type_memo()
 	t.invalidated_smartcasts[key] = true
 	prefix := '${key}.'
 	mut keep := []SmartcastContext{cap: t.smartcast_stack.len}
@@ -14817,6 +14887,7 @@ fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {
 		}
 		keep << sc
 	}
+	t.clear_node_type_memo()
 	t.smartcast_stack = keep
 }
 
@@ -18566,7 +18637,9 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 	}
 	then_block := t.multi_if_assign_block(then_id, lhs_ids)
 	mut branch_invalidated := t.invalidated_smartcasts.clone()
+	t.clear_node_type_memo()
 	t.smartcast_stack = base_smartcasts.clone()
+	t.clear_node_type_memo()
 	t.invalidated_smartcasts = base_invalidated.clone()
 	t.restore_var_types(saved_var_types)
 	t.restore_heaped_local_state(heaped_state)
@@ -18589,7 +18662,9 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 			}
 		}
 	}
+	t.clear_node_type_memo()
 	t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
+	t.clear_node_type_memo()
 	t.invalidated_smartcasts = branch_invalidated.move()
 	t.restore_var_types(saved_var_types)
 	result << t.make_if(new_cond, then_block, else_block)
@@ -20273,7 +20348,9 @@ fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) fla
 		base_invalidated := t.invalidated_smartcasts.clone()
 		mut merged_invalidated := base_invalidated.clone()
 		for i in 0 .. node.children_count {
+			t.clear_node_type_memo()
 			t.smartcast_stack = base_smartcasts.clone()
+			t.clear_node_type_memo()
 			t.invalidated_smartcasts = base_invalidated.clone()
 			branches << t.transform_select_branch(t.a.child(&node, i), order_cases)
 			for key, invalidated in t.invalidated_smartcasts {
@@ -20282,7 +20359,9 @@ fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) fla
 				}
 			}
 		}
+		t.clear_node_type_memo()
 		t.invalidated_smartcasts = merged_invalidated.move()
+		t.clear_node_type_memo()
 		t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 	}
 	if t.rewrite_children_in_place(id, branches) {
@@ -20362,6 +20441,7 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 			if remaining_smartcasts.len < t.smartcast_stack.len {
 				saved_smartcasts = t.smartcast_stack.clone()
 				saved_invalidated = t.invalidated_smartcasts.clone()
+				t.clear_node_type_memo()
 				t.smartcast_stack = remaining_smartcasts
 			}
 		}
@@ -20548,7 +20628,9 @@ fn (mut t Transformer) restore_shadowed_smartcast_state(name string, base_smartc
 			restored_invalidated[key] = invalidated
 		}
 	}
+	t.clear_node_type_memo()
 	t.invalidated_smartcasts = restored_invalidated.move()
+	t.clear_node_type_memo()
 	t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 }
 
@@ -21264,11 +21346,7 @@ fn checked_small_numeric_type(typ types.Type) bool {
 		&& (clean.props.has(.integer) || clean.props.has(.float))
 }
 
-fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node flat.Node, child_index int) bool {
-	arg_id := t.a.child(&node, child_index)
-	if !t.is_fixed_array_type(t.normalize_type_alias(t.node_type(arg_id))) {
-		return false
-	}
+fn (mut t Transformer) resolved_call_argument_param_type(id flat.NodeId, node flat.Node, child_index int) ?types.Type {
 	call_name := t.call_name_for_node(id, node)
 	mut params := t.call_param_types_for_node(call_name, node)
 	if concrete_params := t.concrete_generic_call_param_types(id, node) {
@@ -21281,10 +21359,63 @@ fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node fl
 	}
 	param_index := child_index - 1 + offset
 	if param_index < 0 || param_index >= params.len {
+		return none
+	}
+	return params[param_index]
+}
+
+fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node flat.Node, child_index int) bool {
+	arg_id := t.a.child(&node, child_index)
+	if !t.is_fixed_array_type(t.normalize_type_alias(t.node_type(arg_id))) {
 		return false
 	}
-	param_type := t.normalize_type_alias(t.semantic_type_name(params[param_index]))
+	param := t.resolved_call_argument_param_type(id, node, child_index) or { return false }
+	param_type := t.normalize_type_alias(t.semantic_type_name(param))
 	return param_type.starts_with('&') || param_type in ['voidptr', 'byteptr', 'charptr']
+}
+
+// A mutable pointer parameter borrows the loop entry's slot, while a mutable
+// struct parameter borrows its pointee. Preserve the slot only for the former.
+fn (mut t Transformer) snapshot_mut_pointer_slot_arg(id flat.NodeId, node flat.Node, child_index int) ?flat.NodeId {
+	arg_id := t.a.child(&node, child_index)
+	binding_id := t.unwrap_parens(arg_id)
+	arg := t.a.nodes[int(binding_id)]
+	if (!t.a.nodes[int(arg_id)].is_mut && !arg.is_mut)
+		|| arg.kind != .ident || !t.pointer_value_rvalues[arg.value]
+		|| t.mut_param_values[arg.value] {
+		return none
+	}
+	storage_type := t.lvalue_type(binding_id)
+	if !storage_type.starts_with('&&') {
+		return none
+	}
+	param := t.resolved_call_argument_param_type(id, node, child_index)?
+	param_type := t.normalize_type_alias(t.semantic_type_name(param))
+	if param_type != t.normalize_type_alias(storage_type) {
+		// Function values keep mutability separately from their source parameter type.
+		callee_id := t.unwrap_parens(t.a.child(&node, 0))
+		callee := t.a.node(callee_id)
+		if callee.kind == .ident && t.raw_var_type(callee.value).len == 0 {
+			return none
+		}
+		if callee.kind == .selector {
+			field_type := t.raw_selector_field_type(callee_id) or { return none }
+			if _ := transform_fn_type(t.tc.parse_type(field_type)) {
+			} else {
+				return none
+			}
+		}
+		fn_type := t.call_callee_fn_type(callee_id) or { return none }
+		param_index := child_index - 1
+		if param_index < 0 || param_index >= fn_type.params.len
+			|| param_index >= fn_type.params_mut.len || !fn_type.params_mut[param_index]
+			|| t.normalize_type_alias(t.semantic_type_name(fn_type.params[param_index])) !=
+				t.normalize_type_alias(storage_type[1..]) {
+			return none
+		}
+	}
+	storage := t.transform_expr_preserving_pointer_value(binding_id)
+	return t.snapshot_transformed_expr_for_reuse(storage, storage_type, 'order_snapshot')
 }
 
 // transform_call_expr lowers a checked call and its argument conversions.
@@ -21299,6 +21430,7 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 	}
 	if node.value.len > 0 && node.value == '__v_compile_error' {
 		t.record_selected_compile_error_call(node)
+		return t.make_empty()
 	}
 	// Materialize value `match`/`if` method receivers and arguments before builtin/method
 	// dispatch, so builtin lowerings (e.g. `(match ...).clone()` -> make_array_clone_call, or
@@ -21459,7 +21591,9 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 					// not standalone call operands. Keep their wrappers intact: the struct lowering
 					// pass snapshots preceding field values before materializing a later branch.
 					// Fixed arrays decaying to pointers also borrow their original storage.
-					if t.a.nodes[int(arg_id)].is_mut
+					if slot := t.snapshot_mut_pointer_slot_arg(id, node, i) {
+						slot
+					} else if t.a.nodes[int(arg_id)].is_mut
 						|| t.call_argument_borrows_fixed_array(id, node, i) {
 						if stabilized := t.stabilize_original_lvalue_receiver(arg_id) {
 							stabilized
@@ -21663,7 +21797,14 @@ fn (mut t Transformer) record_selected_compile_error_call(node flat.Node) {
 	} else {
 		'compile-time error'
 	}
-	t.record_monomorph_error('compile-time error: ${message}')
+	diagnostic := if errors.json_output() {
+		errors.json_error('error:', 'compile-time error: ${message}', []string{}, t.a,
+			flat.empty_node, node.pos)
+	} else {
+		errors.formatted_error('error:', 'compile-time error: ${message}', t.a, flat.empty_node,
+			node.pos)
+	}
+	t.record_monomorph_error(diagnostic)
 }
 
 // is_disabled_fn_name reports whether is disabled fn name applies in transform.
@@ -22281,10 +22422,64 @@ fn (t &Transformer) string_interp_child_has_unresolved_generic_part(id flat.Node
 	candidates << t.reliable_stringify_type(id)
 	for typ in candidates {
 		if t.stringify_type_has_generic_placeholder(typ) {
+			return !t.string_interp_part_is_checked_call(id)
+		}
+	}
+	return false
+}
+
+// string_interp_part_is_checked_call reports whether the interpolation part `id` is a
+// call, possibly parenthesised or with an `or` block, whose concrete type the checker
+// recorded. A call to a generic function keeps its declared return type (`T`) until
+// the monomorphization pass specializes it, so the transformer's own type of such a
+// part still names the type parameter. The part is lowered like any other: leaving
+// the interpolation to cgen would skip the lowering of every part's sub-expressions.
+fn (t &Transformer) string_interp_part_is_checked_call(id flat.NodeId) bool {
+	mut node := t.a.nodes[int(id)]
+	for node.kind in [.paren, .or_expr] && node.children_count > 0 {
+		inner_id := t.a.child(&node, 0)
+		if int(inner_id) < 0 {
+			return false
+		}
+		node = t.a.nodes[int(inner_id)]
+	}
+	return node.kind == .call && t.concrete_checker_node_type(id) != none
+		&& !t.has_generic_value_branch(id)
+}
+
+// has_generic_value_branch reports whether the expression `id` contains a value `if`
+// or `match` whose own type still names a generic parameter, as it does when its
+// branches are calls to generic functions. Lowering one binds it to a temporary of
+// that type, so cgen keeps an interpolation that has one.
+fn (t &Transformer) has_generic_value_branch(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .spawn_expr] {
+		return false
+	}
+	if node.kind in [.match_stmt, .if_expr]
+		&& t.stringify_type_has_generic_placeholder(t.node_type(id)) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.has_generic_value_branch(t.a.child(&node, i)) {
 			return true
 		}
 	}
 	return false
+}
+
+// concrete_checker_node_type returns the type the checker recorded for the expression
+// `id`, unless that type is unknown or still names a generic parameter.
+fn (t &Transformer) concrete_checker_node_type(id flat.NodeId) ?string {
+	typ := t.raw_checker_node_type(id)
+	if typ.len == 0 || typ == 'unknown' || t.generic_arg_is_unresolved(typ)
+		|| t.stringify_type_has_generic_placeholder(typ) {
+		return none
+	}
+	return typ
 }
 
 fn (mut t Transformer) ensure_stringify_generic_instances_for_type(typ string) {
@@ -24971,6 +25166,14 @@ fn (mut t Transformer) transform_array_literal(id flat.NodeId, node flat.Node) f
 			return lowered
 		}
 	}
+	// Inferred anonymous elements acquire their nominal type in the shared
+	// materialization prepass. Publish the resolved container type as well;
+	// the checker annotation can still describe its earlier `struct` placeholder.
+	resolved_array_type := t.node_type(id)
+	if resolved_array_type.starts_with('[]') && !t.generic_arg_is_unresolved(resolved_array_type)
+		&& t.generic_arg_is_unresolved(node.typ) {
+		t.set_node_typ(int(id), resolved_array_type)
+	}
 	lowered := t.lower_array_literal_to_runtime(id, node)
 	if lowered != id {
 		return lowered
@@ -26384,6 +26587,7 @@ fn (mut t Transformer) push_smartcast_with_display(expr_name string, variant str
 		sum_type_name: sum_type
 		display_type:  display_type
 	}
+	t.clear_node_type_memo()
 	t.smartcast_stack << smartcast
 	t.smartcast_event_id++
 	t.smartcast_reestablishment_event_ids[expr_name] = t.smartcast_event_id
@@ -26392,6 +26596,7 @@ fn (mut t Transformer) push_smartcast_with_display(expr_name string, variant str
 // pop_smartcast updates pop smartcast state for Transformer.
 pub fn (mut t Transformer) pop_smartcast() {
 	if t.smartcast_stack.len > 0 {
+		t.clear_node_type_memo()
 		t.smartcast_stack.delete_last()
 	}
 }
@@ -27007,7 +27212,7 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 		// before the transformer has installed the new local binding (`copy := ...`).
 		if lhs_semantic_type := t.tc.expr_type(t.a.child(node, 0)) {
 			lhs_type := t.tc.type_name(lhs_semantic_type)
-			if decl_type_is_usable(lhs_type) {
+			if decl_type_is_usable(lhs_type) && !t.generic_arg_is_unresolved(lhs_type) {
 				// The declaration type can intentionally differ from the visible
 				// smartcast of the rhs after an exiting guard or assertion.
 				return lhs_type
@@ -27042,7 +27247,7 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 			return rhs_authority
 		}
 	}
-	if decl_type_is_usable(node.typ) {
+	if decl_type_is_usable(node.typ) && !t.generic_arg_is_unresolved(node.typ) {
 		return node.typ
 	}
 	if node.children_count >= 2 {
@@ -27419,7 +27624,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			}
 			if !isnil(t.tc) {
 				if typ := t.tc.expr_type(id) {
-					name := typ.name()
+					name := t.checker_recorded_type_name(id, typ)
 					if name.starts_with('[]') {
 						if local_elem := t.array_literal_local_struct_elem_name(node) {
 							if name[2..].all_after_last('.') == local_elem {

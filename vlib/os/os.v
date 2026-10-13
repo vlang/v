@@ -406,15 +406,13 @@ pub fn base(path string) string {
 	}
 	bslash_separates := backslash_separates(path)
 	mut end := path.len
-	mut pos := last_separator_index(path, end, bslash_separates)
-	if pos == end - 1 {
-		// The path ends with a separator: the last element is the one before it.
-		if end == 1 {
-			return path.clone()
-		}
+	for end > 0 && (path[end - 1] == fslash || (bslash_separates && path[end - 1] == bslash)) {
 		end--
-		pos = last_separator_index(path, end, bslash_separates)
 	}
+	if end == 0 {
+		return path[..1]
+	}
+	pos := last_separator_index(path, end, bslash_separates)
 	return path[pos + 1..end]
 }
 
@@ -479,13 +477,10 @@ pub fn input(prompt string) string {
 	return res
 }
 
-// get_line returns a one-line string from stdin.
+// get_line returns a one-line string from stdin, removing its CRLF or LF line ending.
 pub fn get_line() string {
 	str := get_raw_line()
-	$if windows {
-		return str.trim_right('\r\n')
-	}
-	return str.trim_right('\n')
+	return str.trim_right('\r\n')
 }
 
 // get_lines returns an array of strings read from stdin.
