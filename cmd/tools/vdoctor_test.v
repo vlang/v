@@ -124,3 +124,11 @@ fn main() {
 }
 ')!
 }
+
+fn test_doctor_fetch_uses_split_argv() {
+	// os.exec spawns the program directly, so the git fetch must be passed as
+	// separate argv elements; a compound string silently never ran
+	source := os.read_file(os.join_path(@VMODROOT, 'cmd', 'tools', 'vdoctor.v'))!
+	assert source.contains("os.exec([a.vexe, 'timeout', '5.1', '--', 'git', '-C', '.', 'fetch', 'V_REPO'])")
+	assert !source.contains("'git -C . fetch V_REPO'")
+}
