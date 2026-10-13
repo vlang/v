@@ -1314,7 +1314,6 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 }
 
 fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool, retain_worker_results bool, stage_scope voidptr) {
-	t.no_checked_numeric_infix = os.getenv('V3_NO_CHECKED_NUMERIC_INFIX') != ''
 	t.skip_generics = skip_generics
 	t.building_v = building_v
 	t.memo_node_types = t.memo_expansion_node_types
@@ -2085,6 +2084,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		a:                           a
 		tc:                          unsafe { tc }
 		memo_expansion_node_types:   os.getenv('V3_NO_NODE_TYPE_MEMO') == ''
+		no_checked_numeric_infix:    os.getenv('V3_NO_CHECKED_NUMERIC_INFIX') != ''
 		has_spawn_expr:              tc.threads_condition_value()
 		used_fns:                    used_fns.clone()
 		interface_box_param_cache:   &BoolLookupCache{

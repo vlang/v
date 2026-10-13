@@ -950,3 +950,9 @@ Types named `Builder` in other modules keep their own methods.
 For diagnostics-only generic checks, `V_CHECK_LIBRARY_BODIES=all` retains every imported
 library instance body. Other values use reachability to omit irrelevant library bodies.
 `V_DIAGNOSTICS_TRACE` appends check tracing to an absolute path on each supported platform.
+
+### Numeric infix differential control
+
+Set `V3_NO_CHECKED_NUMERIC_INFIX=1` to disable the checked numeric infix shortcut during
+both initial function lowering and later monomorphization. This is a diagnostic control for
+comparing generated C through the full dispatch path; ordinary compilation keeps the shortcut.
