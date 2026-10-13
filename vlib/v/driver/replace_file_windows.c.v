@@ -14,7 +14,16 @@ const windows_movefile_replace_existing = u32(1)
 fn windows_replace_file(source string, destination string) ! {
 	windows_source := source.replace('/', '\\')
 	windows_destination := destination.replace('/', '\\')
-	if C.MoveFileExW(windows_source.to_wide(), windows_destination.to_wide(), windows_movefile_replace_existing) == 0 {
+	wide_source := windows_source.to_wide()
+	wide_destination := windows_destination.to_wide()
+	defer {
+		// MoveFileExW borrows the unmanaged buffers allocated by to_wide.
+		unsafe {
+			free(voidptr(wide_source))
+			free(voidptr(wide_destination))
+		}
+	}
+	if C.MoveFileExW(wide_source, wide_destination, windows_movefile_replace_existing) == 0 {
 		// Read the code before another API call overwrites it.
 		code := C.GetLastError()
 		return error('failed to replace `${windows_destination}` with `${windows_source}` (Windows error ${code})')
