@@ -2831,11 +2831,31 @@ pub fn (s string) strip_margin_custom(del u8) string {
 				count++
 				i++
 			}
-			for s[i] != sep {
-				i++
-				if i >= s.len {
-					break
+			// Look for the delimiter on the following lines. Lines without
+			// one are dropped with their margin, but if the string ends
+			// first, the tail is content and must be emitted below -
+			// unless it is only whitespace.
+			mut j := i + 1
+			for j < s.len && s[j] != sep {
+				j++
+			}
+			if j < s.len {
+				// found the delimiter: drop the margin through it
+				i = j
+			} else {
+				mut blank := true
+				for k := i + 1; k < s.len; k++ {
+					if s[k] !in [u8(9), 10, 13, 32] {
+						blank = false
+						break
+					}
 				}
+				if blank {
+					// no delimiter and only whitespace left: drop the tail
+					i = s.len
+				}
+				// else: no delimiter but real content left: keep i at the
+				// line break, so the outer loop emits the tail normally
 			}
 		} else {
 			unsafe {

@@ -93,3 +93,13 @@ fn test_strip_margins_crlf() {
 
 	assert crlf == crlf_stripped
 }
+
+fn test_strip_margin_keeps_a_trailing_line_without_delimiter() {
+	assert 'a\nb'.strip_margin() == 'a\nb'
+	assert 'a\nb\nc\n'.strip_margin() == 'a\nb\nc\n'
+	assert 'a\r\nb\r\nc'.strip_margin() == 'a\r\nb\r\nc'
+	// a middle line without a delimiter is still dropped
+	assert 'a\nb\n|c'.strip_margin() == 'a\nc'
+	// a whitespace only tail is still dropped
+	assert 'a\n   '.strip_margin() == 'a\n'
+}
