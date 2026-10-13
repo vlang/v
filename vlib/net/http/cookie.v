@@ -5,6 +5,7 @@ module http
 
 import time
 import strings
+import strconv
 
 pub struct Cookie {
 pub mut:
@@ -104,7 +105,7 @@ pub fn (c &Cookie) str() string {
 	b.write_string('=')
 	b.write_string(sanitize_cookie_value(c.value))
 	if c.path.len > 0 {
-		b.write_string('; path=')
+		b.write_string('; Path=')
 		b.write_string(sanitize_cookie_path(c.path))
 	}
 	if c.domain.len > 0 {
@@ -117,7 +118,7 @@ pub fn (c &Cookie) str() string {
 			if d[0] == `.` {
 				d = d.substr(1, d.len)
 			}
-			b.write_string('; domain=')
+			b.write_string('; Domain=')
 			b.write_string(d)
 		} else {
 			// TODO: Log invalid cookie domain warning
@@ -125,7 +126,7 @@ pub fn (c &Cookie) str() string {
 	}
 	if c.expires.year > 1600 {
 		time_str := c.expires.http_header_string()
-		b.write_string('; expires=')
+		b.write_string('; Expires=')
 		b.write_string(time_str)
 	}
 	// TODO: Fix this. Technically a max age of 0 or less should be 0
@@ -324,7 +325,8 @@ fn parse_cookie(line string) !Cookie {
 		value: value
 		raw:   line
 	}
-	for i, _ in parts {
+	// parts[0] is the `name=value` pair read above; the attributes start after it.
+	for i in 1 .. parts.len {
 		parts[i] = parts[i].trim_space()
 		if parts[i].len == 0 {
 			continue
@@ -363,15 +365,11 @@ fn parse_cookie(line string) !Cookie {
 				continue
 			}
 			'max-age' {
-				mut secs := val.int()
-				if secs != 0 && val[0] != `0` {
-					break
+				if secs := parse_cookie_max_age(val) {
+					c.max_age = if secs > 0 { secs } else { -1 }
+					continue
 				}
-				if secs <= 0 {
-					secs = -1
-				}
-				c.max_age = secs
-				continue
+				c.unparsed << parts[i]
 			}
 			'expires' {
 				c.raw_expires = val
@@ -394,4 +392,21 @@ fn parse_cookie(line string) !Cookie {
 		}
 	}
 	return c
+}
+
+// parse_cookie_max_age returns the number of seconds in the value of a `Max-Age`
+// attribute. The value has to be a decimal integer that fits in an int: an optional
+// sign and digits, nothing else, and no leading zero unless the number is zero.
+// `string.int()` is too lenient for that: it reads `12abc` as 12, `0x10` as 16
+// and `abc` or an empty value as 0.
+fn parse_cookie_max_age(val string) ?int {
+	digits := if val.len > 0 && (val[0] == `-` || val[0] == `+`) { val[1..] } else { val }
+	if !all_digits(digits) {
+		return none
+	}
+	secs := strconv.atoi64(val) or { return none }
+	if secs < min_int || secs > max_int || (secs != 0 && val[0] == `0`) {
+		return none
+	}
+	return int(secs)
 }

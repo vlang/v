@@ -568,9 +568,13 @@ fn v_sprintf_panic(idx int, len int) {
 	}
 }
 
+// fabs returns the absolute value of `x`. Like C's fabs(), it clears the sign of -0.0 too.
 fn fabs(x f64) f64 {
 	if x < 0.0 {
 		return -x
+	}
+	if x == 0.0 {
+		return 0.0
 	}
 	return x
 }
@@ -657,7 +661,8 @@ pub fn format_fl_old(f f64, p BF_param) string {
 fn format_es_old(f f64, p BF_param) string {
 	unsafe {
 		mut s := ''
-		mut fs := f64_to_str_pad(if f > 0 { f } else { -f }, p.len1)
+		// the sign is written from `p.positive`
+		mut fs := f64_to_str_pad(fabs(f), p.len1)
 		if p.rm_tail_zero {
 			tmp := fs
 			fs = remove_tail_zeros_old(fs)

@@ -242,12 +242,17 @@ fn test_direct_call_does_not_prefix_synthetic_helper_with_owner_module() {
 	g.tc = &tc
 	g.non_generic_fn_names_by_module['ast\x01__v3_autostr_ast__Comment'] = true
 	g.non_generic_fn_names_by_module['ast\x01__v3_default_clone_json2__Any'] = true
+	g.non_generic_fn_names_by_module['ast\x01__v3_struct_eq_ast__Comment'] = true
 
 	assert g.direct_call_name_for_call(flat.empty_node, '__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
 	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
 	assert g.direct_call_name_for_call(flat.empty_node, '__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
 	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
 	assert g.fn_c_name_in_module('main', '__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
+	assert g.direct_call_name_for_call(flat.empty_node, '__v3_struct_eq_ast__Comment') == '__v3_struct_eq_ast__Comment'
+	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_struct_eq_ast__Comment') == '__v3_struct_eq_ast__Comment'
+	assert g.fn_c_name_in_module('ast', '__v3_struct_eq_ast__Comment') == '__v3_struct_eq_ast__Comment'
+	assert qualified_fn_name_in_module('ast', '__v3_struct_eq_ast__Comment') == '__v3_struct_eq_ast__Comment'
 }
 
 fn test_main_function_is_prefixed_when_preserved_c_header_owns_typedef_name() {
