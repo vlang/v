@@ -230,3 +230,23 @@ fn test_scrypt() {
 		assert results == c.expected_result, '${c.name} failed'
 	}
 }
+
+fn test_scrypt_oversized_parameters_error() {
+	// n is only bounded by being a power of 2, so 128 * r * n can exceed u32
+	// (here 2^53) and used to wrap the work buffer to 0 and panic in smix with
+	// 'array.slice: slice bounds out of range'. It now reports the buffer length.
+	r := u32(1) << 20
+	if _ := scrypt('pw'.bytes(), 'salt'.bytes(), u64(1) << 40, r, u32(1), 32) {
+		assert false, 'scrypt with an oversized 128*r*n must fail, not succeed'
+	} else {
+		assert err is OutputBufferLengthError
+	}
+	// the product guard is unchanged, and still fires on its own
+	r2 := u32(1) << 20
+	p2 := u32(1) << 20
+	if _ := scrypt('pw'.bytes(), 'salt'.bytes(), 2, r2, p2, 32) {
+		assert false, 'r*p >= 2^30 must fail'
+	} else {
+		assert err is BlocksizeParallelProductError
+	}
+}

@@ -229,16 +229,37 @@ pub fn scrypt(password []u8, salt []u8, n u64, r u32, p u32, dk_len u64) ![]u8 {
 		}
 	}
 
-	mut b := pbkdf2.key(password, salt, 1, int(128 * r * p), sha256.new())!
+	// the buffer lengths are computed in u64: `128 * r * p` used to be computed
+	// in u32 and wrap (r = 2^20, p = 512 gave 2^36 wrapped to 0).
+	block_len := u64(128) * u64(r)
+	buf_len := block_len * u64(p)
+	if buf_len > max_buffer_length {
+		return OutputBufferLengthError{
+			length: buf_len
+		}
+	}
+	// `128 * r * n` is not covered by the guards above, since n is only required
+	// to be a power of two. It can overflow u64 too (r = 2^20, n = 2^40 gives
+	// 2^67), which wrapped to 0 and panicked later in smix, so n is bounded
+	// before the product is formed.
+	max_n := max_buffer_length / block_len
+	if n > max_n {
+		return OutputBufferLengthError{
+			length: block_len * (max_n + 1)
+		}
+	}
+	work_len := block_len * n
 
-	mut xy := []u8{len: int(256 * r), cap: int(256 * r), init: 0}
-	mut v := []u8{len: int(128 * r * n), cap: int(128 * r * n), init: 0}
+	mut b := pbkdf2.key(password, salt, 1, int(buf_len), sha256.new())!
+
+	mut xy := []u8{len: int(u64(256) * u64(r)), cap: int(u64(256) * u64(r)), init: 0}
+	mut v := []u8{len: int(work_len), cap: int(work_len), init: 0}
 
 	for i in u32(0) .. p {
-		smix(mut b[i * 128 * r..], r, n, mut v, mut xy)
+		smix(mut b[int(u64(i) * 128 * u64(r))..], r, n, mut v, mut xy)
 	}
 
-	result := pbkdf2.key(password, b, 1, int(128 * r * p), sha256.new())!
+	result := pbkdf2.key(password, b, 1, int(buf_len), sha256.new())!
 
 	return result[..int(dk_len)]
 }
