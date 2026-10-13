@@ -10,36 +10,39 @@ import v.ssa
 @[heap]
 pub struct SSAGen {
 mut:
-	m             &ssa.Module = unsafe { nil }
-	mod           &Module     = unsafe { nil }
-	configured    bool
-	exports       map[string]string
-	imports       map[string]WasmImport
-	init_fns      []string
-	main_fn       string
-	fn_index      map[string]int
-	fn_table      map[string]int
-	global_addr   map[string]int
-	strings       map[int]int
-	data          []u8
-	stack_global  int
-	heap_global   int
-	stack_bottom  int
-	write_index   int
-	exit_index    int
-	alloc_index   int
-	cur           Code
-	locals        []u8
-	value_local   map[int]int
-	slots         map[int]int
-	phi_snapshots map[int]int
-	frame_size    int
-	frame_local   int
-	pc_local      int
-	sret_local    int = -1
-	nparams       int
-	cur_ret       ssa.TypeID
-	warnings      []string
+	m           &ssa.Module = unsafe { nil }
+	mod         &Module     = unsafe { nil }
+	configured  bool
+	exports     map[string]string
+	imports     map[string]WasmImport
+	init_fns    []string
+	main_fn     string
+	fn_index    map[string]int
+	fn_table    map[string]int
+	global_addr map[string]int
+	strings     map[int]int
+	// literal_text_addr holds the address a literal's bytes occupy, keyed by kind
+	// and text, so a repeat of a literal that has already been laid out reuses it.
+	literal_text_addr map[string]int
+	data              []u8
+	stack_global      int
+	heap_global       int
+	stack_bottom      int
+	write_index       int
+	exit_index        int
+	alloc_index       int
+	cur               Code
+	locals            []u8
+	value_local       map[int]int
+	slots             map[int]int
+	phi_snapshots     map[int]int
+	frame_size        int
+	frame_local       int
+	pc_local          int
+	sret_local        int = -1
+	nparams           int
+	cur_ret           ssa.TypeID
+	warnings          []string
 }
 
 // new creates a WebAssembly generator for an SSA module.
@@ -68,7 +71,7 @@ pub fn (mut g SSAGen) declare_imports(imports []WasmImport) {
 // gen emits only functions reachable from the selected SSA entry points.
 pub fn (mut g SSAGen) gen() ! {
 	functions := g.reachable_functions()!
-	g.collect_data()
+	g.collect_data(functions, g.reachable_values(functions))
 	mut init := Code{}
 	g.stack_bottom = (data_base + g.data.len + 15) & ~15
 	stack_top := g.stack_bottom + 1024 * 1024
@@ -262,7 +265,41 @@ fn (mut g SSAGen) reserve_data(size int, alignment int) int {
 	return addr
 }
 
-fn (mut g SSAGen) collect_data() {
+// reachable_values returns the value IDs the emitted functions can reach. It is the
+// same worklist shape as reachable_functions, but over values rather than functions:
+// a block references its instructions, an instruction references the operands it
+// reads, and a constant is a leaf. Anything outside this set is unreachable from
+// every function that will actually be lowered.
+fn (g &SSAGen) reachable_values(functions []int) map[int]bool {
+	mut reached := map[int]bool{}
+	mut pending := []int{}
+	for fid in functions {
+		for bid in g.m.funcs[fid].blocks {
+			for vid in g.m.blocks[bid].instrs {
+				pending << vid
+			}
+		}
+	}
+	for pending.len > 0 {
+		vid := pending.pop()
+		if vid <= 0 || vid >= g.m.values.len || vid in reached {
+			continue
+		}
+		reached[vid] = true
+		if g.m.values[vid].kind != .instruction {
+			continue
+		}
+		instr := g.m.instrs[g.m.values[vid].index]
+		for oi, operand in instr.operands {
+			if instr.is_value_operand(oi) && operand > 0 {
+				pending << operand
+			}
+		}
+	}
+	return reached
+}
+
+fn (mut g SSAGen) collect_data(functions []int, reachable map[int]bool) {
 	for global in g.m.globals {
 		size := g.m.type_size(global.typ)
 		addr := g.reserve_data(if size > 0 { size } else { 8 }, 8)
@@ -281,17 +318,34 @@ fn (mut g SSAGen) collect_data() {
 		if value.kind !in [.string_literal, .c_string_literal] {
 			continue
 		}
+		// Only constants the emitted functions can reach are laid out. The SSA
+		// builder registers literals for every stub it creates on a 32-bit target,
+		// so most of them have no referrer at all, and each one cost bytes for its
+		// text plus a whole string struct.
+		if functions.len > 0 && i !in reachable {
+			continue
+		}
+		// Identical literals share one copy. The SSA module holds several
+		// separately-created values with the same text, and each used to reserve
+		// its own text and its own struct.
+		key := value.kind.str() + ':' + value.name
+		if text := g.literal_text_addr[key] {
+			g.strings[i] = text
+			continue
+		}
 		text := g.reserve_data(value.name.len + 1, 1)
 		for j, byte in value.name.bytes() {
 			g.data[text - data_base + j] = byte
 		}
 		if value.kind == .c_string_literal {
 			g.strings[i] = text
+			g.literal_text_addr[key] = text
 			continue
 		}
 		size := g.m.type_size(value.typ)
 		addr := g.reserve_data(size, 8)
 		g.strings[i] = addr
+		g.literal_text_addr[key] = addr
 		for j in 0 .. g.m.target.ptr_size {
 			g.data[addr - data_base + j] = u8(u64(text) >> (j * 8))
 		}
@@ -466,7 +520,17 @@ fn (mut g SSAGen) value(id int) ! {
 			}
 			g.narrow(value.typ)
 		}
-		.string_literal, .c_string_literal { g.cur.i32_const(g.strings[id]) }
+		.string_literal, .c_string_literal {
+			// A literal that was laid out has an address; one that was dropped as
+			// unreachable must never silently become a null pointer here, so the
+			// lookup fails loudly instead. That is the guard that makes the
+			// reachability filter safe to trust.
+			addr := g.strings[id] or {
+				name := g.m.values[id].name
+				return error('wasm: string literal `${name}` was dropped as unreachable but is referenced')
+			}
+			g.cur.i32_const(addr)
+		}
 		.global {
 			addr := g.global_addr[value.name] or { return error('wasm: unknown global `${value.name}`') }
 			g.cur.i32_const(addr)
