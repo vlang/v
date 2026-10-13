@@ -1,0 +1,7 @@
+body {
+	margin: 2rem auto;
+	max-width: 40rem;
+	font: 16px/1.6 system-ui, sans-serif;
+}
+
+h1 { font-size: 1.8rem; }

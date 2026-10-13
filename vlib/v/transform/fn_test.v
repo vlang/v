@@ -88,7 +88,7 @@ fn test_call_param_type_name_memo_preserves_composites_and_module_locks() {
 		t.cur_module = module_name
 		t.memo_call_param_type_names = false
 		expected := t.call_param_type_names(params)
-		configure_transformer(mut t, false, true, false, false, false, unsafe { nil })
+		configure_transformer(mut t, false, false, false, false, false, unsafe { nil })
 		assert !t.building_v
 		assert t.memo_call_param_type_names
 		assert t.call_param_type_names(params) == expected
@@ -1630,7 +1630,7 @@ fn test_node_type_memo_reuses_capacity_when_function_range_grows() {
 	assert t.node_type_memo.values.data == values
 	assert t.node_type_memo.filled.data == filled
 	for flag in t.node_type_memo.filled {
-		assert flag == 0
+		assert flag != t.node_type_memo.generation
 	}
 }
 
@@ -1643,14 +1643,14 @@ fn test_unchanged_node_text_still_invalidates_semantic_memos() {
 	t.begin_node_type_memo(idx, idx)
 	for change_type in [true, false] {
 		tc.expr_type_set[idx] = true
-		t.node_type_memo.filled[0] = 1
+		t.node_type_memo.filled[0] = t.node_type_memo.generation
 		if change_type {
 			t.set_node_typ(idx, 'int'.clone())
 		} else {
 			t.set_node_value(idx, 'value'.clone())
 		}
 		assert !tc.expr_type_set[idx]
-		assert t.node_type_memo.filled[0] == 0
+		assert t.node_type_memo.filled[0] != t.node_type_memo.generation
 		assert a.nodes[idx].typ == 'int'
 		assert a.nodes[idx].value == 'value'
 	}
@@ -1696,4 +1696,30 @@ fn test_builder_receiver_identity_includes_its_declaring_module() {
 	assert !is_builder_type_name('Builder', 'main')
 	assert !is_builder_type_name('&Builder', 'custom')
 	assert !is_builder_type_name('custom.Builder', 'strings')
+}
+
+fn test_scoped_workers_reuse_generic_declarations_with_private_indexes() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.generic_fn_decls_cache['sample.identity'] = GenericFnDecl{ key: 'sample.identity' }
+	master.generic_receiver_methods_by_name['value'] = ['sample.Box.value']
+	master.generic_fn_call_names['identity'] = true
+	master.generic_fn_decls_ready = true
+	mut worker := master.fork_scoped_batch_worker(&a, tc.fork_for_parallel_transform(&a))
+	mut sibling := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
+	mut scanner := master.fork_scan_worker(tc.fork_for_parallel_transform(&a))
+	mut forks := [worker, sibling, scanner]
+	for mut fork in forks {
+		assert fork.generic_fn_decls_ready
+		assert 'sample.identity' in fork.cached_generic_fn_decls()
+		assert fork.generic_receiver_methods_by_name['value'] == ['sample.Box.value']
+		assert fork.generic_fn_call_names['identity']
+		fork.generic_fn_decls_cache.delete('sample.identity')
+		fork.generic_receiver_methods_by_name.delete('value')
+		fork.generic_fn_call_names.delete('identity')
+	}
+	assert 'sample.identity' in master.generic_fn_decls_cache
+	assert master.generic_receiver_methods_by_name['value'] == ['sample.Box.value']
+	assert master.generic_fn_call_names['identity']
 }
