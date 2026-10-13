@@ -97,3 +97,21 @@ fn test_api_call() {
 		assert false, 'new_xof_digest(0, sha3.size_256) should be error'
 	}
 }
+
+fn test_digest_hashes_a_second_message() {
+	// a checksum must leave the digest reusable: the next message hashes
+	// on its own, and further writes do not panic
+	mut d := sha3.new256() or { panic(err) }
+	d.write('abc'.bytes()) or { panic(err) }
+	assert d.checksum() == sha3.sum256('abc'.bytes())
+	d.write('xyz'.bytes()) or { panic(err) }
+	assert d.checksum() == sha3.sum256('xyz'.bytes())
+	d.write('a'.bytes()) or { panic(err) }
+	d.write('b'.bytes()) or { panic(err) }
+	assert d.checksum() == sha3.sum256('ab'.bytes())
+	// reset restores the initial state explicitly too
+	d.write('abc'.bytes()) or { panic(err) }
+	d.reset()
+	d.write('abc'.bytes()) or { panic(err) }
+	assert d.checksum() == sha3.sum256('abc'.bytes())
+}
