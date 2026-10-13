@@ -144,7 +144,11 @@ fn main() {
 	}
 	// TinyCC is not a -prod compiler. Refuse the pair before any compiler starts, including the
 	// compatibility compiler that `-old-compiler` selects.
-	if pref.tcc_with_prod_requested(compiler_args) {
+	if command !in external_commands
+		&& command !in ['version', '-version', '--version', 'help', '-h', '--help', 'new', 'init',
+			'install', 'link', 'list', 'outdated', 'remove', 'registry', 'search', 'show', 'unlink',
+			'update', 'upgrade', 'vlib-docs']
+		&& pref.tcc_with_prod_requested(compiler_args) {
 		eprintln('tcc is not allowed with -prod')
 		exit(1)
 	}

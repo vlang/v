@@ -1216,29 +1216,59 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 	return false
 }
 
-// tcc_with_prod_requested reports whether `args` contain `-prod` and select TinyCC: the last
-// `-cc` or `-cc=` names a file called tcc or tinyc, as the driver takes the last one. It only
-// reads the names; the driver also checks the compiler it resolves, which catches an alias
-// such as `cc` for tcc.
+// tcc_with_prod_requested reports whether a production C build selects TinyCC.
+// The last compiler and backend options win. Executable aliases are identified
+// by their resolved name or version output, so compatibility builds and cache
+// refreshes follow the same restriction as the V3 driver.
 pub fn tcc_with_prod_requested(args []string) bool {
 	mut prod := false
 	mut ccompiler := ''
-	for i, arg in args {
+	mut backend := 'c'
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
 		if arg == '-prod' {
 			prod = true
-		} else if arg == '-cc' && i + 1 < args.len {
-			ccompiler = args[i + 1]
+		} else if arg in ['-cc', '-b', '-backend'] && i + 1 < args.len {
+			i++
+			if arg == '-cc' {
+				ccompiler = args[i]
+			} else {
+				backend = args[i]
+			}
 		} else if arg.starts_with('-cc=') {
 			ccompiler = arg['-cc='.len..]
+		} else if arg.starts_with('-b=') {
+			backend = arg['-b='.len..]
+		} else if arg.starts_with('-backend=') {
+			backend = arg['-backend='.len..]
+		}
+		i++
+	}
+	if !prod || backend != 'c' || ccompiler == '' {
+		return false
+	}
+	if is_tcc_compiler_name(ccompiler) {
+		return true
+	}
+	path := os.find_abs_path_of_executable(ccompiler) or { return false }
+	if is_tcc_compiler_name(os.real_path(path)) {
+		return true
+	}
+	for flag in ['--version', '-v'] {
+		output := os.exec([path, flag]).output.to_lower_ascii()
+		if output.contains('tiny c compiler') || output.contains('tinycc')
+			|| output.contains('tcc version') {
+			return true
 		}
 	}
-	return prod && ccompiler != '' && is_tcc_compiler_name(ccompiler)
+	return false
 }
 
-// is_tcc_compiler_name reports whether the file name of `ccompiler` is tcc or tinyc.
+// is_tcc_compiler_name reports whether the file name is a known TinyCC executable.
 fn is_tcc_compiler_name(ccompiler string) bool {
-	name := os.file_name(ccompiler).to_lower_ascii()
-	return name.contains('tcc') || name.contains('tinyc')
+	name := os.file_name(ccompiler.replace('\\', '/')).to_lower_ascii()
+	return name in ['tcc', 'tcc.exe', 'tinyc', 'tinyc.exe', 'tinygcc', 'tinygcc.exe']
 }
 
 // find_system_assembler returns a GCC or Clang compatible compiler driver found

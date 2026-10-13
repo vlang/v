@@ -379,3 +379,6 @@ For WebAssembly-specific build flags, use `v help build-wasm`.
 
 See also:
    `v help run` for documentation regarding `v run`.
+
+Production C builds reject TinyCC, including executable aliases. This restriction does not
+apply to help/version commands or non-C backends.

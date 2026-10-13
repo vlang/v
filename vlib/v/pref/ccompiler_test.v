@@ -43,3 +43,27 @@ fn test_tcc_with_prod_requested_needs_both_prod_and_a_tinycc_name() {
 	assert !tcc_with_prod_requested(['-cc', 'tcc', '-prod', '-cc', 'gcc', 'main.v'])
 	assert tcc_with_prod_requested(['-cc', 'gcc', '-prod', '-cc', 'tcc', 'main.v'])
 }
+
+fn test_tcc_prod_detection_does_not_match_unrelated_names_or_backends() {
+	assert !tcc_with_prod_requested(['-prod', '-cc', 'distcc'])
+	assert !tcc_with_prod_requested(['-prod', '-cc', 'notcc'])
+	assert !tcc_with_prod_requested(['-prod', '-cc', 'tcc', '-b', 'arm64'])
+	assert !tcc_with_prod_requested(['-prod', '-cc', 'tcc', '-b', 'fastc'])
+	assert tcc_with_prod_requested(['-prod', '-cc', 'tcc', '-b', 'arm64', '-b', 'c'])
+	assert !tcc_with_prod_requested(['-cc', '-prod'])
+}
+
+fn test_tcc_prod_detection_checks_compiler_aliases() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_pref_prod_alias_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	alias := os.join_path(root, 'cc')
+	os.write_file(alias, '#!/bin/sh\nprintf "tcc version 0.9.27\\n"\n')!
+	os.chmod(alias, 0o700)!
+	assert tcc_with_prod_requested(['-prod', '-cc', alias])
+	os.write_file(alias, '#!/bin/sh\nprintf "clang version 18.0.0\\n"\n')!
+	assert !tcc_with_prod_requested(['-prod', '-cc', alias])
+}

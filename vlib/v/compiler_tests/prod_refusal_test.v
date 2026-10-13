@@ -54,3 +54,25 @@ fn test_self_refuses_prod_with_fastc() {
 	assert result.output.contains('does not support `-prod`'), result.output
 	assert (os.ls(root) or { []string{} }) == ['main.v'], result.output
 }
+
+fn test_prod_tinycc_flags_allow_information_commands() {
+	for command in ['version', 'help'] {
+		result := os.exec([@VEXE, '-prod', '-cc', 'tcc', command])
+		assert result.exit_code == 0, result.output
+		assert !result.output.contains('tcc is not allowed with -prod'), result.output
+	}
+}
+
+fn test_old_compiler_prod_refuses_a_tinycc_alias() {
+	$if windows {
+		return
+	}
+	root := prod_refusal_root('alias')
+	defer { os.rmdir_all(root) or {} }
+	alias := os.join_path(root, 'cc')
+	os.write_file(alias, '#!/bin/sh\nprintf "tcc version 0.9.27\\n"\n')!
+	os.chmod(alias, 0o700)!
+	result := os.exec([@VEXE, '-old-compiler', '-prod', '-cc', alias, os.join_path(root, 'main.v')])
+	assert result.exit_code == 1, result.output
+	assert result.output.contains('tcc is not allowed with -prod'), result.output
+}

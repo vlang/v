@@ -18,6 +18,21 @@ const object_record_format = 'vup-cache-refresh-3'
 const cwd_record_format = 'vup-cache-refresh-2'
 const legacy_record_format = 'vup-cache-refresh-1'
 
+// request_uses_prod_tcc resolves caller-relative compiler paths before applying
+// the production restriction to a historical cache record.
+fn request_uses_prod_tcc(request Request) bool {
+	mut args := request.args.clone()
+	for i, arg in args {
+		if arg == '-cc' && i + 1 < args.len && request.cwd != '' {
+			compiler := args[i + 1]
+			if !os.is_abs_path(compiler) && (compiler.contains('/') || compiler.contains('\\')) {
+				args[i + 1] = os.join_path(request.cwd, compiler)
+			}
+		}
+	}
+	return pref.tcc_with_prod_requested(args)
+}
+
 // FlagGroup preserves the ordering and deduplication of a project's C directives.
 pub struct FlagGroup {
 pub:
@@ -554,7 +569,7 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // TinyCC production builds are never refreshed: the compiler refuses `-cc tcc` with `-prod`,
 // and records made before that rule still exist.
 pub fn refresh(vexe string, all_requests []Request) ! {
-	requests := all_requests.filter(!pref.tcc_with_prod_requested(it.args))
+	requests := all_requests.filter(!request_uses_prod_tcc(it))
 	if requests.len == 0 { return }
 	dir := os.join_path(os.vtmp_dir(), 'vup_cache_refresh_${tempname.unique_token()}')
 	os.mkdir_all(dir)!

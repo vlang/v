@@ -1017,3 +1017,18 @@ fn test_refresh_replays_and_clears_test_assert_display_modes() ! {
 	assert os.read_file(log)!.split_into_lines() == ['1', 'unset']
 	assert os.getenv('VTEST_SHOW_ASSERTS') == 'ambient'
 }
+
+fn test_refresh_skips_production_tinycc_alias_before_starting_builds() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'cache_refresh_prod_tcc_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	alias := os.join_path(root, 'cc')
+	os.write_file(alias, '#!/bin/sh\nprintf "tcc version 0.9.27\\n"\n')!
+	os.chmod(alias, 0o700)!
+	request := Request{ args: ['-prod', '-cc', './cc'], cwd: root, module: 'builtin' }
+	assert request_uses_prod_tcc(request)
+	refresh(os.join_path(root, 'missing-v'), [request])!
+}
