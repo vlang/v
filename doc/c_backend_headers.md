@@ -7,6 +7,8 @@ The C backend emits libc prototypes from bodyless V declarations such as
 `fn C.strlen(const_s &char) usize`. Runtime bindings are marked used so cached modules
 retain their prototypes. Native backends retain C declarations without rooting same-named
 V functions.
+Mark C functions supplied by linked objects with `@[c_extern]` so their prototypes remain
+available even when the same V file includes an unrelated system header.
 Explicit headers for other C libraries remain included.
 The headerless requirement covers hello world and compiler self builds, rather than every
 library binding. Modules such as `compress.brotli` retain their C headers and cached
