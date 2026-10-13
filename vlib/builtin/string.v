@@ -443,6 +443,7 @@ struct RepIndex {
 }
 
 // replace_each replaces all occurrences of the string pairs given in `vals`.
+// Pairs with an empty search string are ignored; empty replacement strings remove matches.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 @[direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
@@ -466,6 +467,11 @@ pub fn (s string) replace_each(vals []string) string {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
 		rep := vals[rep_i]
 		with := vals[rep_i + 1]
+		if rep.len == 0 {
+			// an empty needle matches at every position without advancing
+			// the scan below, so skip it instead of looping forever
+			continue
+		}
 
 		for {
 			idx = s_.index_after_(rep, idx)
@@ -2694,9 +2700,13 @@ pub fn (s string) reverse() string {
 }
 
 // limit returns a portion of the string, starting at `0` and extending for a given number of characters afterward.
+// A non-positive limit returns an empty string.
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
 pub fn (s string) limit(max int) string {
+	if max <= 0 {
+		return ''
+	}
 	u := s.runes()
 	if u.len <= max {
 		return s.clone()
