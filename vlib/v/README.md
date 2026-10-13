@@ -480,6 +480,25 @@ mentions in metadata such as Clang's `InstalledDir` do not identify TinyCC.
 Compiler probes follow the launch path, including executable files in the working directory
 before `PATH`. Windows explicit paths use the implicit `.exe` suffix and expand `%NAME%` variables;
 renamed PE files with other extensions can also be queried.
+Cached programs retain the element layouts required by fixed-array aliases and option payloads.
+Cached standard-library headers retain their source classification so headerless C bindings keep
+their complete layouts, including the Boehm GC stack type used by interface stringification.
+Generated fixed-array map-key helpers declare their cached builtin callees before their definitions.
+Inferred anonymous fixed arrays use their materialized element types, including nested arrays.
+Literal-output programs still instantiate retained generic helpers with `-no-skip-unused`.
+Merged imports in cached headers do not create parameter-name conflicts across source files.
+Warm builds retain every `IError` implementer's `msg` and `code` methods and their helpers,
+including calls made by dispatchers inside cached objects.
+Selected option/result tuple signatures retain nested struct payload layouts, including signatures
+discovered after cache demand collection, and declare them before their tuples and wrappers.
+Shared wrappers retain their payload layouts even when only compile-time reflection visits them.
+Recursive interface string helpers belong to the interface's declaration module, including generic
+applications whose arguments name types from other modules.
+Warm builds preserve generic interface parameter metadata after temporary compiler arenas are freed.
+Translated programs regenerate their C prefixes after body edits so new runtime helpers are present;
+their module and executable caches remain enabled.
+Portable cross output keeps its embedded signal-handler installer local so cached builds can
+also link the native helper object.
 With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
 before compiling a new module object, including during `run`. Ordinary builds and warm builds
 print no cache creation notices; `-silent` suppresses them too.
