@@ -238,13 +238,13 @@ fn test_dir_base_and_file_name_agree() {
 }
 
 fn test_base_trims_all_trailing_separators() {
-	assert os.base('/a///') == 'a'
-	assert os.base('a\\\\') == 'a'
-	assert os.base('////') == '/'
-	assert os.base('\\\\') == '\\'
+	assert base('/a///') == 'a'
+	assert base('a\\\\') == 'a'
+	assert base('////') == '/'
+	assert base('\\\\') == '\\'
 	$if windows {
-		assert os.base('/\\') == '/'
-		assert os.base('\\/') == '\\'
-		assert os.base('C:/a/\\/') == 'a'
+		assert base('/\\') == '/'
+		assert base('\\/') == '\\'
+		assert base('C:/a/\\/') == 'a'
 	}
 }
