@@ -1,0 +1,291 @@
+module mail
+
+import encoding.base64
+import strings
+
+// default_boundary separates MIME parts. It is only required to be unique
+// within one message, so a fixed default is safe; override it with
+// set_boundary when embedding messages inside each other.
+const default_boundary = 'v-mail-boundary-9f3a'
+
+// Attachment is one file carried by a Message.
+pub struct Attachment {
+pub:
+	filename  string
+	mime_type string = 'application/octet-stream'
+	data      []u8
+}
+
+// Message is an email message: headers plus text/html bodies and attachments.
+// Build one with the setters and encode, or read one back with parse. It is
+// the message layer that `net.smtp` (send) and `net.imap`/`net.pop` (fetch)
+// transport as opaque RFC 5322 text.
+pub struct Message {
+pub mut:
+	from        string
+	to          []string
+	cc          []string
+	subject     string
+	text_body   string
+	html_body   string
+	attachments []Attachment
+	boundary    string = default_boundary
+}
+
+// new_message creates an empty Message.
+pub fn new_message() Message {
+	return Message{}
+}
+
+// set_from sets the From header.
+pub fn (mut m Message) set_from(addr string) {
+	m.from = addr
+}
+
+// add_to appends a To recipient.
+pub fn (mut m Message) add_to(addr string) {
+	m.to << addr
+}
+
+// add_cc appends a Cc recipient.
+pub fn (mut m Message) add_cc(addr string) {
+	m.cc << addr
+}
+
+// set_subject sets the Subject header (ASCII; RFC 2047 encoding is out of
+// scope and passed through verbatim).
+pub fn (mut m Message) set_subject(subject string) {
+	m.subject = subject
+}
+
+// set_text_body sets the plain-text body.
+pub fn (mut m Message) set_text_body(body string) {
+	m.text_body = body
+}
+
+// set_html_body sets the HTML body variant.
+pub fn (mut m Message) set_html_body(body string) {
+	m.html_body = body
+}
+
+// add_attachment attaches data under filename with a MIME type
+// ('application/octet-stream' when empty).
+pub fn (mut m Message) add_attachment(filename string, data []u8, mime_type string) {
+	mt := if mime_type == '' { 'application/octet-stream' } else { mime_type }
+	m.attachments << Attachment{filename, mt, data}
+}
+
+// set_boundary overrides the MIME part boundary.
+pub fn (mut m Message) set_boundary(boundary string) {
+	m.boundary = boundary
+}
+
+// encode renders the message as RFC 5322 text: plain text/plain when there is
+// only a text body, multipart/alternative for text+html, and multipart/mixed
+// once attachments are present.
+pub fn (m &Message) encode() !string {
+	mut b := strings.new_builder(1024)
+	if m.from != '' {
+		b.writeln('From: ${m.from}')
+	}
+	if m.to.len > 0 {
+		b.writeln('To: ${m.to.join(', ')}')
+	}
+	if m.cc.len > 0 {
+		b.writeln('Cc: ${m.cc.join(', ')}')
+	}
+	if m.subject != '' {
+		b.writeln('Subject: ${m.subject}')
+	}
+	b.writeln('MIME-Version: 1.0')
+	if m.attachments.len > 0 {
+		b.writeln('Content-Type: multipart/mixed; boundary="${m.boundary}"')
+		b.writeln('')
+		write_text_part(mut b, m.text_body)
+		if m.html_body != '' {
+			write_part(mut b, m.boundary, 'text/html; charset=utf-8', '', m.html_body)
+		}
+		for a in m.attachments {
+			write_part(mut b, m.boundary, '${a.mime_type}; name="${a.filename}"',
+				'attachment; filename="${a.filename}"', wrap_base64(base64.encode(a.data)))
+		}
+		b.writeln('--${m.boundary}--')
+	} else if m.html_body != '' {
+		b.writeln('Content-Type: multipart/alternative; boundary="${m.boundary}"')
+		b.writeln('')
+		write_text_part(mut b, m.text_body)
+		write_part(mut b, m.boundary, 'text/html; charset=utf-8', '', m.html_body)
+		b.writeln('--${m.boundary}--')
+	} else {
+		b.writeln('Content-Type: text/plain; charset=utf-8')
+		b.writeln('')
+		b.writeln(m.text_body)
+	}
+	return b.str()
+}
+
+// write_text_part writes the plain-text body part.
+fn write_text_part(mut b strings.Builder, body string) {
+	b.writeln('Content-Type: text/plain; charset=utf-8')
+	b.writeln('')
+	b.writeln(body)
+}
+
+// write_part writes one MIME part with an optional disposition header.
+fn write_part(mut b strings.Builder, boundary string, content_type string, disposition string, body string) {
+	b.writeln('--${boundary}')
+	b.writeln('Content-Type: ${content_type}')
+	if disposition != '' {
+		b.writeln('Content-Disposition: ${disposition}')
+		if !content_type.contains('text/') {
+			b.writeln('Content-Transfer-Encoding: base64')
+		}
+	}
+	b.writeln('')
+	b.writeln(body)
+}
+
+// wrap_base64 folds base64 text to 76-column lines per RFC 2045.
+fn wrap_base64(s string) string {
+	if s.len <= 76 {
+		return s
+	}
+	mut out := []string{}
+	mut i := 0
+	for i < s.len {
+		mut end := i + 76
+		if end > s.len {
+			end = s.len
+		}
+		out << s[i..end]
+		i = end
+	}
+	return out.join('\n')
+}
+
+// parse reads RFC 5322 text back into a Message: headers (with folding),
+// text/html bodies, and base64 or 7bit attachments. Quoted-printable parts
+// are an error (no decoder in vlib); header values pass through verbatim.
+pub fn parse(raw string) !Message {
+	if raw.trim_space() == '' {
+		return error('mail: empty message')
+	}
+	norm := raw.replace('\r\n', '\n').replace('\r', '\n')
+	sep := norm.index('\n\n') or { return error('mail: missing header/body separator') }
+	headers := parse_headers(norm[..sep])
+	body := norm[sep + 2..]
+	mut m := Message{}
+	m.from = headers['from'] or { '' }
+	if to := headers['to'] {
+		for addr in to.split(',') {
+			t := addr.trim_space()
+			if t != '' {
+				m.to << t
+			}
+		}
+	}
+	if cc := headers['cc'] {
+		for addr in cc.split(',') {
+			t := addr.trim_space()
+			if t != '' {
+				m.cc << t
+			}
+		}
+	}
+	m.subject = headers['subject'] or { '' }
+	ct := headers['content-type'] or { 'text/plain' }
+	if ct.starts_with('multipart/') {
+		boundary := content_param(ct, 'boundary') or {
+			return error('mail: multipart without boundary')
+		}
+		m.fill_from_parts(split_parts(body, boundary))!
+		return m
+	}
+	// single-part: the whole body is the text
+	m.text_body = body.trim_right('\n')
+	return m
+}
+
+// parse_headers folds continuation lines and lowercases field names.
+fn parse_headers(section string) map[string]string {
+	mut headers := map[string]string{}
+	mut last := ''
+	for line in section.split('\n') {
+		if line.starts_with(' ') || line.starts_with('\t') {
+			if last != '' {
+				headers[last] = headers[last] + ' ' + line.trim_space()
+			}
+			continue
+		}
+		colon := line.index(':') or { continue }
+		last = line[..colon].trim_space().to_lower()
+		headers[last] = line[colon + 1..].trim_space()
+	}
+	return headers
+}
+
+// content_param extracts a `key="value"` (or bare) parameter from a header.
+fn content_param(header string, key string) ?string {
+	for part in header.split(';') {
+		p := part.trim_space()
+		if p.to_lower().starts_with(key + '=') {
+			v := p[key.len + 1..].trim_space().trim('"')
+			return v
+		}
+	}
+	return none
+}
+
+// split_parts cuts a multipart body on its boundary, dropping the preamble,
+// the epilogue and the closing `--`.
+fn split_parts(body string, boundary string) []string {
+	mut parts := []string{}
+	for chunk in body.split('--' + boundary) {
+		mut t := chunk.trim('\n')
+		if t == '' || t == '--' {
+			continue
+		}
+		if t.ends_with('--') {
+			t = t[..t.len - 2]
+		}
+		t = t.trim('\n')
+		if t != '' {
+			parts << t
+		}
+	}
+	return parts
+}
+
+// fill_from_parts assigns text/html/attachment parts into the message.
+fn (mut m Message) fill_from_parts(parts []string) ! {
+	for part in parts {
+		sep := part.index('\n\n') or { continue }
+		headers := parse_headers(part[..sep])
+		mut body := part[sep + 2..].trim_right('\n')
+		ct := headers['content-type'] or { 'text/plain' }
+		ctype := ct.all_before(';').trim_space().to_lower()
+		enc := (headers['content-transfer-encoding'] or { '7bit' }).to_lower()
+		mut decoded := body
+		if enc == 'base64' {
+			clean := body.replace('\n', '').replace(' ', '')
+			decoded = base64.decode(clean).bytestr()
+		} else if enc != '7bit' && enc != '8bit' && enc != 'binary' {
+			return error('mail: unsupported transfer encoding `${enc}`')
+		}
+		if ctype == 'text/plain' && m.text_body == '' {
+			m.text_body = decoded
+		} else if ctype == 'text/html' && m.html_body == '' {
+			m.html_body = decoded
+		} else if ctype.starts_with('multipart/') {
+			// nested multiparts (e.g. alternative inside mixed): recurse
+			boundary := content_param(ct, 'boundary') or {
+				return error('mail: nested multipart without boundary')
+			}
+			m.fill_from_parts(split_parts(body, boundary))!
+		} else {
+			filename := content_param(headers['content-disposition'] or { '' },
+				'filename') or { content_param(ct, 'name') or { '' } }
+			m.attachments << Attachment{filename, ctype, decoded.bytes()}
+		}
+	}
+}
