@@ -91,6 +91,35 @@ fn test_portable_native_helpers_precede_gc_runtime_redirects() {
 	assert g.inlined_c_declared_fns['v_os_exec_capture_start']
 }
 
+fn test_portable_peak_rss_helper_returns_the_type_of_its_generated_prototype() ! {
+	$if windows || freestanding || vinix {
+		return
+	}
+	cc := os.find_abs_path_of_executable('clang') or {
+		os.find_abs_path_of_executable('cc') or { return }
+	}
+	mut g := FlatGen.new()
+	g.set_output_cross_c(true)
+	g.portable_native_runtime_helpers()
+	code := g.sb.str()
+	result_type := code.index('#define V_PEAK_RSS_INT i64') or { -1 }
+	definition := code.index('V_PEAK_RSS_SCOPE V_PEAK_RSS_INT v3_bench_peak_rss_kb(void)') or { -1 }
+	assert result_type >= 0 && definition > result_type
+	// `i64` is `int64_t` in portable C: `long` on Linux and Android, `long long` on
+	// macOS. A C compiler takes the two for different types whatever their sizes, so
+	// the helper is checked against a prototype with each spelling.
+	header := $embed_file('@VEXEROOT/vlib/v/bench/peak_rss.h').to_string()
+	root := os.join_path(os.vtmp_dir(), 'portable_peak_rss_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for index, spelling in ['long', 'long long'] {
+		source := os.join_path(root, 'peak_rss_${index}.c')
+		os.write_file(source, 'typedef ${spelling} i64;\n#define V_PEAK_RSS_INT i64\n${header}i64 v3_bench_peak_rss_kb(void);\nint main(void) { return v3_bench_peak_rss_kb() < 0; }\n')!
+		checked := cmdexec.run(cc, ['-std=gnu11', '-fsyntax-only', source])
+		assert checked.exit_code == 0, '${spelling}: ${checked.output}'
+	}
+}
+
 fn test_boehm_object_runs_spawn_and_join_after_relocation() ! {
 	$if !macos && !linux {
 		return

@@ -19226,6 +19226,9 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	g.writeln('#ifndef _WIN32')
 	g.write($embed_file('@VEXEROOT/vlib/v/pthread_helper.h').to_string())
 	g.write($embed_file('@VEXEROOT/vlib/sync/thread_helper.h').to_string())
+	// The prototype generated for `fn C.v3_bench_peak_rss_kb() i64` returns `i64`,
+	// which is `int64_t` here and not `long long` on every target.
+	g.writeln('#define V_PEAK_RSS_INT i64')
 	g.write($embed_file('@VEXEROOT/vlib/v/bench/peak_rss.h').to_string())
 	capture_source := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.c').to_string()
 	capture_header := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.h').to_string()
