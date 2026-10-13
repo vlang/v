@@ -9378,7 +9378,9 @@ fn (mut tc TypeChecker) record_invalid_enum_infix(id flat.NodeId, node flat.Node
 
 fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
 	mut current := id
-	for _ in 0 .. 32 {
+	// A valid parent path can contain arbitrarily many nested blocks. The arena
+	// length still bounds the walk if malformed parent links form a cycle.
+	for _ in 0 .. tc.a.nodes.len {
 		// No block holds a function declaration. The parent of a specialized
 		// one, which nothing holds, is a scan of the whole node arena.
 		if tc.valid_node_id(current) && tc.a.node(current).kind == .fn_decl {
@@ -13522,6 +13524,15 @@ fn (mut tc TypeChecker) check_defer_stmt(node flat.Node) {
 		tc.check_node(tc.a.child(&node, i))
 	}
 	tc.defer_unsafe_depth = outer_defer_unsafe_depth
+}
+
+// check_defer_body_at_lexical_unsafe_context checks a deferred body again at an exit,
+// using the unsafe context where it was declared instead of the exit's context.
+fn (mut tc TypeChecker) check_defer_body_at_lexical_unsafe_context(id flat.NodeId, node flat.Node) {
+	outer_unsafe_depth := tc.unsafe_depth
+	tc.unsafe_depth = if tc.expr_is_inside_unsafe_block(id) { 1 } else { 0 }
+	tc.check_defer_stmt(node)
+	tc.unsafe_depth = outer_unsafe_depth
 }
 
 fn (mut tc TypeChecker) check_asm_stmt(id flat.NodeId, node flat.Node) {

@@ -1066,12 +1066,12 @@ fn (mut tc TypeChecker) ownership_mark_scope_node(id flat.NodeId) {
 
 fn (mut tc TypeChecker) ownership_check_defer_stmt(id flat.NodeId, node flat.Node) {
 	if tc.ownership_effects_disabled() {
-		tc.ownership_check_defer_body(id, node)
+		tc.check_defer_body_at_lexical_unsafe_context(id, node)
 		return
 	}
 	frame := tc.ownership_snapshot_frame()
 	tc.ownership_begin_suppressed_checks()
-	tc.ownership_check_defer_body(id, node)
+	tc.check_defer_body_at_lexical_unsafe_context(id, node)
 	tc.ownership_end_suppressed_checks()
 	tc.ownership_restore_frame(frame)
 	tc.ownership_register_defer_stmt(id)
@@ -1119,7 +1119,7 @@ fn (mut tc TypeChecker) ownership_run_scope_defers() {
 			continue
 		}
 		defer_node := tc.a.nodes[int(defer_id)]
-		tc.ownership_check_defer_body(defer_id, defer_node)
+		tc.check_defer_body_at_lexical_unsafe_context(defer_id, defer_node)
 	}
 }
 
@@ -1151,20 +1151,9 @@ fn (mut tc TypeChecker) ownership_check_return_defers() {
 			continue
 		}
 		defer_node := tc.a.nodes[int(defer_id)]
-		tc.ownership_check_defer_body(defer_id, defer_node)
+		tc.check_defer_body_at_lexical_unsafe_context(defer_id, defer_node)
 	}
 	tc.ownership_restore_frame(frame)
-}
-
-// ownership_check_defer_body checks a `defer` body, also again at each exit that runs it.
-// Such an exit can be outside the `unsafe` block that holds the `defer`.
-fn (mut tc TypeChecker) ownership_check_defer_body(id flat.NodeId, node flat.Node) {
-	outer_unsafe_depth := tc.unsafe_depth
-	if tc.unsafe_depth == 0 && tc.expr_is_inside_unsafe_block(id) {
-		tc.unsafe_depth = 1
-	}
-	tc.check_defer_stmt(node)
-	tc.unsafe_depth = outer_unsafe_depth
 }
 
 fn (mut tc TypeChecker) ownership_pop_scope() {
