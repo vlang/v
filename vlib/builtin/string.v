@@ -443,6 +443,7 @@ struct RepIndex {
 }
 
 // replace_each replaces all occurrences of the string pairs given in `vals`.
+// Pairs with an empty search string are ignored; empty replacement strings remove matches.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 @[direct_array_access]
 pub fn (s string) replace_each(vals []string) string {

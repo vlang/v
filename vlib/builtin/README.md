@@ -72,3 +72,6 @@ ensure no allocation from a rewound or freed scope remains in use.
 scope, excluding allocator metadata and address gaps between blocks. It returns zero for a nil
 scope and saturates at `usize`'s maximum on overflow. This query is unsafe: no thread may add or
 remove blocks while it runs.
+
+`string.replace_each(pairs)` ignores pairs with an empty search string. An empty replacement
+string removes matches of a nonempty search string.
