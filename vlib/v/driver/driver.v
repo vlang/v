@@ -19517,12 +19517,15 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			}
 			err := type_errors[first_unused]
 			severity := if err.severity.len > 0 { err.severity } else { 'error:' }
-			print_type_diagnostic(a, severity, err)
+			mut first_run := compiler_errors.DiagnosticRun{}
+			print_type_diagnostic(mut first_run, a, severity, err)
 			return
 		}
 	}
 	mut ordered_notices := notices.clone()
 	ordered_notices.sort_with_compare(compare_print_notices)
+	// One report names the same few files many times over.
+	mut run := compiler_errors.DiagnosticRun{}
 	mut printed_diagnostics := 0
 	for notice in ordered_notices {
 		if skip_notices && notice.severity in ['', 'notice:'] {
@@ -19536,7 +19539,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			continue
 		}
 		severity := if notice.severity.len > 0 { notice.severity } else { 'notice:' }
-		print_type_diagnostic(a, severity, notice)
+		print_type_diagnostic(mut run, a, severity, notice)
 		printed_diagnostics++
 	}
 	source_errors := reorder_chained_generic_inference_errors(a, dedupe_type_diagnostics(a, type_errors))
@@ -19572,7 +19575,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	for ei in 0 .. max_errors {
 		err := ordered_errors[ei]
 		severity := if err.severity.len > 0 { err.severity } else { 'error:' }
-		print_type_diagnostic(a, severity, err)
+		print_type_diagnostic(mut run, a, severity, err)
 	}
 	if message_limit < 0 && !fatal_errors && !all_errors && ordered_errors.len > max_errors {
 		eprintln('... and ${ordered_errors.len - max_errors} more errors')
@@ -19776,13 +19779,13 @@ fn is_bare_generic_fntype_decl_error(err types.TypeError) bool {
 
 // print_type_diagnostic prints one diagnostic of the checker: a line of JSON with
 // `-json-errors`, else the message with its source excerpt and details.
-fn print_type_diagnostic(a &flat.FlatAst, severity string, diagnostic types.TypeError) {
+fn print_type_diagnostic(mut run compiler_errors.DiagnosticRun, a &flat.FlatAst, severity string, diagnostic types.TypeError) {
 	if compiler_errors.json_output() {
 		eprintln(compiler_errors.json_error(severity, diagnostic.msg, diagnostic.details, a,
 			diagnostic.node, diagnostic.pos))
 		return
 	}
-	eprintln(compiler_errors.formatted_error(severity, diagnostic.msg, a, diagnostic.node, diagnostic.pos))
+	eprintln(run.formatted_error(severity, diagnostic.msg, a, diagnostic.node, diagnostic.pos))
 	print_type_diagnostic_details(diagnostic.details)
 }
 
