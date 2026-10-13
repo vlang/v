@@ -43,3 +43,41 @@ fn test_tcc_with_prod_requested_needs_both_prod_and_a_tinycc_name() {
 	assert !tcc_with_prod_requested(['-cc', 'tcc', '-prod', '-cc', 'gcc', 'main.v'])
 	assert tcc_with_prod_requested(['-cc', 'gcc', '-prod', '-cc', 'tcc', 'main.v'])
 }
+
+fn test_tinycc_file_name_matches_tcc_names_only() {
+	for name in ['tcc', 'tcc.exe', 'TCC.EXE', 'tinyc', 'tinycc', 'x86_64-w64-mingw32-tcc'] {
+		assert tinycc_file_name(name), name
+	}
+	for name in ['distcc', 'notcc', 'notcc.exe', 'gcc', 'clang', 'cc'] {
+		assert !tinycc_file_name(name), name
+	}
+}
+
+fn test_tcc_with_prod_requested_finds_tinycc_under_another_name() {
+	bundled := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(bundled) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_pref_tinycc_alias_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	alias_path := os.join_path(root, 'cc_alias.exe')
+	os.cp(bundled, alias_path) or { panic(err) }
+	assert tcc_with_prod_requested(['-prod', '-cc', alias_path])
+	assert !tcc_with_prod_requested(['-cc', alias_path])
+}
+
+fn test_tcc_with_prod_requested_ignores_other_executables_with_tcc_in_their_name() {
+	root := os.join_path(os.vtmp_dir(), 'v_pref_notcc_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	// The V executable is a real compiler driver that is not TinyCC.
+	not_tinycc := os.join_path(root, 'notcc.exe')
+	os.cp(@VEXE, not_tinycc) or { panic(err) }
+	assert !tcc_with_prod_requested(['-prod', '-cc', not_tinycc])
+	assert !tcc_with_prod_requested(['-prod', '-cc', 'distcc'])
+}
