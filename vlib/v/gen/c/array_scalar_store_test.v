@@ -155,6 +155,25 @@ pub fn check() {
 	assert !body.contains('scalar_push_base'), body
 }
 
+fn test_global_array_push_callback_keeps_its_call() {
+	generated := scalar_array_generate('
+@[has_globals]
+module scalar_global
+
+__global array_push = fn (mut values []i64, value &i64) {
+	values[0] = *value + 1000
+}
+
+pub fn check() {
+	mut values := []i64{len: 1, cap: 4, init: 1}
+	value := i64(42)
+	array_push(mut values, &value)
+}
+', [])!
+	body := scalar_array_body(generated, 'scalar_global__check')
+	assert !body.contains('scalar_push_base'), body
+}
+
 fn scalar_array_body(generated string, name string) string {
 	assert generated.contains('void ${name}('), 'missing generated function ${name}'
 	return generated.all_after_last('void ${name}(').all_after('{').all_before('\n}').trim_space()
