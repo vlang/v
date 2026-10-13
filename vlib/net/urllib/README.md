@@ -21,3 +21,6 @@ For `http://user:@example.com/`, `URL.user.password_set` is true and `URL.str()`
 The same applies to an empty username: `http://:@example.com/` retains `:@` when serialized.
 A percent-encoded colon in a username, such as `user%3Aname`, does not set a password unless a
 literal colon follows it.
+
+A URL with a single trailing `?` retains its empty query marker. Additional question marks
+inside a nonempty query remain part of `raw_query`, including a question mark at its end.

@@ -757,8 +757,10 @@ fn (mut t Transformer) specialize_struct_default_expr(struct_type string, defaul
 		return default_id
 	}
 	old_params := t.active_generic_params.clone()
+	t.clear_node_type_memo()
 	t.active_generic_params = params
 	clone_id := t.clone_generic_node(default_id, args)
+	t.clear_node_type_memo()
 	t.active_generic_params = old_params
 	return clone_id
 }

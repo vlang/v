@@ -18,16 +18,44 @@ features.
 
 ## Quick Start
 
-Run your veb app with a live reload via `v -d veb_livereload watch run .`
+Run your veb app with a live reload via `v watch -d veb_livereload run .`
 
-Now modifying any file in your web app (whether it's a .v file with the backend logic
-or a compiled .html template file) will result in an instant refresh of your app
-in the browser. No need to quit the app, rebuild it, and refresh the page in the browser!
+Stylesheet changes are applied in place. Changes to other static assets trigger a
+full reload so updated scripts and images are fetched. Page or template changes
+preserve the DOM state unless scripts or head elements changed; those changes
+also reload the page so the browser applies them.
+
+Page and template edits update the browser while preserving scroll position, focus,
+and typed form values when scripts and head elements stay the same.
+No need to quit the app, rebuild it, and refresh the page in the browser!
+
+* A `.v` file or a template (anywhere under `templates/`): `v watch` rebuilds and
+  restarts the app, then the page fetches itself again and updates only what changed.
+  The previous version keeps serving while the new one builds. If the build fails, it
+  keeps running, and the page shows the compiler errors until the next successful build.
+  `v watch --no-build-first` stops the app before each build instead.
+* A file served by a `veb.StaticHandler` (for example `static/css/main.css`): the
+  running app notices the change itself, with no rebuild. Stylesheets are swapped in
+  place; other files reload the page.
 
 Note: this works by injecting a small `<script>` tag before the ending `</html>` tag of the page,
-that will check periodically if the current page has to be reloaded. In other words, it works for
+that keeps one Server-Sent Events connection open to the app. In other words, it works for
 template pages that have that `</html>` tag, or for ones that were produced by `ctx.html()` and that
 also have that closing tag, but not for ones produced by `ctx.text()` .
+Pages that were the result of a POST request, and pages that fail to update, are reloaded instead.
+A small notice in the corner of the page shows when the app is rebuilding and when the
+page was updated; hide it with `-d veb_livereload_no_toast`.
+
+The live updates are not available for apps served over HTTPS (`veb.run_at` with an `ssl_config`),
+or behind a proxy that blocks long-lived connections. Those can keep using the older script, which
+polls the app and reloads the whole page after a restart:
+`v watch -d veb_livereload -d veb_livereload_polling run .`
+(set its interval with `-d veb_livereload_poll_ms=500`).
+
+While the app restarts, the page retries the connection every 250 ms; each failed attempt
+shows up in the browser's network log. With `v watch --no-build-first`, the app is down for
+the whole build: `-d veb_livereload_retry_max_ms=1000` makes the retries back off, doubling
+from 250 ms up to that cap, for fewer failed attempts at the cost of a slower update.
 
 ## Port already in use
 
@@ -386,6 +414,30 @@ pub fn (app &App) get_user_by_id(mut ctx Context) veb.Result {
 }
 ```
 
+### Request body size
+
+veb reads the whole request body into memory before it calls the route. A body can have up
+to `max_request_body_size` bytes, a field of `RunParams` that is 64 MiB by default. veb answers
+a request that has a larger body with `413`, and closes the connection. Raise the limit to
+accept larger uploads:
+
+```v ignore
+veb.run_at[App, Context](mut app,
+	port:                  8080
+	max_request_body_size: 512 * 1024 * 1024
+)!
+```
+
+`max_request_body_size: 0` removes the limit; use it only where every client is trusted.
+A negative value is an error. `max_request_buffer_size` is a different setting, which does
+not limit the body.
+
+The limit applies to both plain HTTP and HTTPS. Chunked bodies count the combined payload of
+all chunks. Invalid or overflowing `Content-Length` values and malformed chunk sizes are rejected
+with `400` before allocating their declared body; TLS reads also reject truncated bodies.
+Conflicting lengths and requests containing both `Transfer-Encoding` and `Content-Length`
+are rejected with `400`.
+
 ### Host
 
 To restrict an endpoint to a specific host, you can use the `host` attribute
@@ -456,6 +508,31 @@ pub fn (mut ctx Context) not_found() veb.Result {
 	return ctx.html('<h1>Page not found!</h1>')
 }
 ```
+
+## Rendering without a server
+
+`veb.render_request[A, X](mut app, req)` dispatches an `http.Request` through the
+same routes, middleware, and registered controllers as the server, without opening
+a listener. It returns `!&veb.Context`: read the completed response from `ctx.res`.
+`X` must embed `veb.Context`.
+Context, route, and controller configuration errors are returned to the caller. Custom
+fields on `X` remain local to the handler; they are not part of the returned context.
+
+```v ignore
+ctx := veb.render_request[App, Context](mut app, http.Request{
+	method: .get
+	url: '/'
+})!
+os.write_file('index.html', ctx.res.body)!
+```
+
+Initialize static handlers and controllers before rendering, as before `veb.run`.
+Static file responses expose `ctx.return_file` and `ctx.return_type` instead of
+reading the file into `ctx.res.body`. Handlers that take over a connection require
+a real server connection and are unsuitable for this helper.
+
+See `examples/veb/static_export/` for an HTML export using the same page handlers
+as its preview server.
 
 ## Static files and website
 

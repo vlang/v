@@ -280,3 +280,15 @@ fn test_matches_naive_reference() {
 		}
 	}
 }
+
+fn test_rejects_non_positive_key_length() {
+	for name in variants {
+		for key_length in [0, -1] {
+			if key := pbkdf2.key('password'.bytes(), 'salt'.bytes(), 1, key_length, new_hash(name)) {
+				assert false, '${name} accepted key_length=${key_length}: ${key}'
+			} else {
+				assert err.msg() == 'pbkdf2: key_length must be larger than 0'
+			}
+		}
+	}
+}
