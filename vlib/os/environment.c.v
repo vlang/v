@@ -91,16 +91,22 @@ pub fn environ() map[string]string {
 	mut res := map[string]string{}
 	$if windows {
 		mut estrings := C.GetEnvironmentStringsW()
-		mut eline := ''
-		for c := estrings; *c != 0; {
-			eline = unsafe { string_from_wide(c) }
+		mut p := unsafe { estrings }
+		// Walk the block in UTF-16 code units: each entry is NUL-terminated,
+		// so find the terminator directly instead of advancing by the
+		// decoded string's UTF-8 byte length, which overshoots on any
+		// non-ASCII entry and mis-parses the rest of the block.
+		for unsafe { *p } != 0 {
+			mut end := unsafe { p }
+			for unsafe { *end } != 0 {
+				unsafe { end = end + 1 }
+			}
+			eline := unsafe { string_from_wide(p) }
 			eq_index := eline.index_u8(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
 			}
-			unsafe {
-				c = c + eline.len + 1
-			}
+			unsafe { p = end + 1 }
 		}
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
