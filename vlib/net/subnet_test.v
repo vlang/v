@@ -33,34 +33,24 @@ fn test_cidr_edges() {
 }
 
 fn test_cidr_malformed() {
-	net.parse_cidr('192.168.1.0') or {
-		assert err.msg().contains('missing a prefix')
-		return
+	inputs := ['192.168.1.0', '192.168.1.0/33', '192.168.1.0/abc', '999.1.1.0/24', '1.2.3/24',
+		'01.2.3.4/24', '4294967296.1.1.0/24', '18446744073709551616.1.1.0/24', '192.168.1.0/4294967296',
+		'192.168.1.0/999999999999999999999999999', '192.168.1.0/-1', '192.168.1.0/24/1', '192.168.1.0/',
+		'1..2.3/8']
+	for input in inputs {
+		if _ := net.parse_cidr(input) {
+			assert false, 'must reject ${input}'
+		} else {
+			assert err.msg().starts_with('net: ')
+		}
 	}
-	assert false, 'missing prefix must error'
-	net.parse_cidr('192.168.1.0/33') or {
-		assert err.msg().contains('out of range')
-		return
-	}
-	assert false, 'prefix > 32 must error'
-	net.parse_cidr('192.168.1.0/abc') or {
-		assert err.msg().contains('bad prefix')
-		return
-	}
-	assert false, 'non-numeric prefix must error'
-	net.parse_cidr('999.1.1.0/24') or {
-		assert err.msg().contains('bad IPv4')
-		return
-	}
-	assert false, 'octet > 255 must error'
-	net.parse_cidr('1.2.3/24') or {
-		assert err.msg().contains('bad IPv4')
-		return
-	}
-	assert false, 'short address must error'
-	net.parse_cidr('01.2.3.4/24') or {
-		assert err.msg().contains('bad IPv4')
-		return
-	}
-	assert false, 'leading zeros must error'
+}
+
+fn test_cidr_masks_host_address_and_rejects_oversized_query() {
+	n := net.parse_cidr('192.168.1.77/24')!
+	assert n.ip == net.parse_ip('192.168.1.77')!
+	assert n.network() == '192.168.1.0'
+	assert n.broadcast() == '192.168.1.255'
+	assert !n.contains('4294967488.168.1.77')
+	assert net.parse_cidr('0.0.0.0/00032')!.prefix == 32
 }

@@ -18,12 +18,16 @@ pub:
 pub fn parse_cidr(s string) !IPNet {
 	sep := s.index('/') or { return error('net: CIDR `${s}` is missing a prefix') }
 	ip := parse_ip(s[..sep])!
-	prefix := s[sep + 1..].int()
+	raw_prefix := s[sep + 1..]
 	if s[sep + 1..] == '' || !is_all_digits(s[sep + 1..]) {
 		return error('net: CIDR `${s}` has a bad prefix')
 	}
-	if prefix < 0 || prefix > 32 {
-		return error('net: CIDR prefix ${prefix} out of range 0..32')
+	mut prefix := 0
+	for c in raw_prefix.bytes() {
+		prefix = prefix * 10 + int(c - `0`)
+		if prefix > 32 {
+			return error('net: CIDR prefix ${raw_prefix} out of range 0..32')
+		}
 	}
 	mask := if prefix == 0 { u32(0) } else { u32(0xFFFFFFFF) << u32(32 - prefix) }
 	network := ip & mask
@@ -38,7 +42,7 @@ pub fn parse_ip(s string) !u32 {
 	}
 	mut out := u32(0)
 	for p in parts {
-		if p == '' || !is_all_digits(p) {
+		if p == '' || p.len > 3 || !is_all_digits(p) {
 			return error('net: bad IPv4 address `${s}`')
 		}
 		n := p.u32()
