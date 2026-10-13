@@ -127,6 +127,11 @@ fn (mut r Request) phr_parse_request(buf_start &u8, buf_end &u8, mut pret Pret) 
 			pret.err = 'error parsing request: expected "\n" after "\r"'
 			return unsafe { nil }
 		}
+		unsafe { buf++ }
+		if buf == buf_end {
+			pret.ret = -2
+			return unsafe { nil }
+		}
 	}
 
 	// parse request line

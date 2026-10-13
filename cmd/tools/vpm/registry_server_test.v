@@ -150,6 +150,27 @@ fn test_the_sbom_route_is_reachable() {
 	assert rsp.body.contains('SPDX-2.3'), rsp.body
 }
 
+fn test_the_sbom_download_location_serves_the_published_archive() {
+	mut r := new_registry()
+	archive := os.join_path(srv_root, 'sbom_archive.zip')
+	content := [u8(0x50), 0x4b, 3, 4, 0, 0xff, 0x80, 0x0a].bytestr()
+	os.write_file(archive, content)!
+	r.publish(srv_info('downloadable', '1.0.0', ''), archive)!
+	mut running := start_registry(r)!
+	defer { running.server.close() }
+	response := http.get('${running.base}/sbom.spdx.json?dl=${running.base}/')!
+	assert response.status_code == 200
+	document := json2.decode[SpdxDocument](response.body)!
+	assert document.packages.len == 1
+	location := document.packages[0].download_location
+	assert location == '${running.base}/downloadable/@v/1.0.0.zip'
+	download := http.get(location)!
+	assert download.status_code == 200
+	content_type := download.header.get(.content_type) or { '' }
+	assert content_type == 'application/zip'
+	assert download.body == content
+}
+
 fn test_the_config_route_is_reachable() {
 	r := new_registry()
 	mut running := start_registry(r)!

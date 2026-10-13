@@ -1043,6 +1043,216 @@ fn struct_meta[T]() []TableField {
 	return meta
 }
 
+// Keep primitive conversion outside the model field loop: every model shares these helpers.
+fn row_primitive_to_i8(value Primitive) i8 {
+	return match value {
+		i8 { i8(value) }
+		i16 { i8(value) }
+		int { i8(value) }
+		i64 { i8(value) }
+		u8 { i8(value) }
+		u16 { i8(value) }
+		u32 { i8(value) }
+		u64 { i8(value) }
+		bool { i8(value) }
+		f32 { i8(value) }
+		f64 { i8(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_i16(value Primitive) i16 {
+	return match value {
+		i8 { i16(value) }
+		i16 { i16(value) }
+		int { i16(value) }
+		i64 { i16(value) }
+		u8 { i16(value) }
+		u16 { i16(value) }
+		u32 { i16(value) }
+		u64 { i16(value) }
+		bool { i16(value) }
+		f32 { i16(value) }
+		f64 { i16(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_int(value Primitive) int {
+	return match value {
+		i8 { int(value) }
+		i16 { int(value) }
+		int { int(value) }
+		i64 { int(value) }
+		u8 { int(value) }
+		u16 { int(value) }
+		u32 { int(value) }
+		u64 { int(value) }
+		bool { int(value) }
+		f32 { int(value) }
+		f64 { int(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_i64(value Primitive) i64 {
+	return match value {
+		i8 { i64(value) }
+		i16 { i64(value) }
+		int { i64(value) }
+		i64 { i64(value) }
+		u8 { i64(value) }
+		u16 { i64(value) }
+		u32 { i64(value) }
+		u64 { i64(value) }
+		bool { i64(value) }
+		f32 { i64(value) }
+		f64 { i64(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_u8(value Primitive) u8 {
+	return match value {
+		i8 { u8(value) }
+		i16 { u8(value) }
+		int { u8(value) }
+		i64 { u8(value) }
+		u8 { u8(value) }
+		u16 { u8(value) }
+		u32 { u8(value) }
+		u64 { u8(value) }
+		bool { u8(value) }
+		f32 { u8(value) }
+		f64 { u8(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_u16(value Primitive) u16 {
+	return match value {
+		i8 { u16(value) }
+		i16 { u16(value) }
+		int { u16(value) }
+		i64 { u16(value) }
+		u8 { u16(value) }
+		u16 { u16(value) }
+		u32 { u16(value) }
+		u64 { u16(value) }
+		bool { u16(value) }
+		f32 { u16(value) }
+		f64 { u16(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_u32(value Primitive) u32 {
+	return match value {
+		i8 { u32(value) }
+		i16 { u32(value) }
+		int { u32(value) }
+		i64 { u32(value) }
+		u8 { u32(value) }
+		u16 { u32(value) }
+		u32 { u32(value) }
+		u64 { u32(value) }
+		bool { u32(value) }
+		f32 { u32(value) }
+		f64 { u32(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_u64(value Primitive) u64 {
+	return match value {
+		i8 { u64(value) }
+		i16 { u64(value) }
+		int { u64(value) }
+		i64 { u64(value) }
+		u8 { u64(value) }
+		u16 { u64(value) }
+		u32 { u64(value) }
+		u64 { u64(value) }
+		bool { u64(value) }
+		f32 { u64(value) }
+		f64 { u64(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_f32(value Primitive) f32 {
+	return match value {
+		i8 { f32(value) }
+		i16 { f32(value) }
+		int { f32(value) }
+		i64 { f32(value) }
+		u8 { f32(value) }
+		u16 { f32(value) }
+		u32 { f32(value) }
+		u64 { f32(value) }
+		bool { f32(value) }
+		f32 { value }
+		f64 { f32(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_f64(value Primitive) f64 {
+	return match value {
+		i8 { f64(value) }
+		i16 { f64(value) }
+		int { f64(value) }
+		i64 { f64(value) }
+		u8 { f64(value) }
+		u16 { f64(value) }
+		u32 { f64(value) }
+		u64 { f64(value) }
+		bool { f64(value) }
+		f32 { f64(value) }
+		f64 { value }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_bool(value Primitive) bool {
+	return match value {
+		i8 { value != 0 }
+		i16 { value != 0 }
+		int { value != 0 }
+		i64 { value != 0 }
+		u8 { value != 0 }
+		u16 { value != 0 }
+		u32 { value != 0 }
+		u64 { value != 0 }
+		bool { value }
+		f32 { value != 0 }
+		f64 { value != 0 }
+		else { false }
+	}
+}
+
+struct MappedRowField {
+	typ   int
+	index int
+}
+
+// row_field_for_mapping shares metadata lookup across model field specializations
+// and avoids allocating a filtered metadata array for every field of every row.
+fn row_field_for_mapping(meta []TableField, fields []string, hydration_fields []string, name string) ?MappedRowField {
+	for field in meta {
+		if field.name != name {
+			continue
+		}
+		column := sql_field_name(field)
+		index := fields.index(column)
+		if index < 0 || column in hydration_fields {
+			return none
+		}
+		return MappedRowField{ typ: field.typ, index: index }
+	}
+	return none
+}
+
 // map_row map a row result into a struct
 fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 	mut instance := T{}
@@ -1051,191 +1261,42 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 		$if field.is_embed {
 			mut embedded := instance.$(field.name)
 			$for sub in field.typ.fields {
-				mut m := TableField{}
-				mm := qb.meta.filter(it.name == '${field.name}.${sub.name}')
-				if mm.len != 0 {
-					m = mm[0]
-					index := qb.config.fields.index(sql_field_name(m))
-					if index >= 0 && sql_field_name(m) !in qb.hydration_fields {
-						value := row[index]
+				if mapped := row_field_for_mapping(qb.meta, qb.config.fields, qb.hydration_fields, '${field.name}.${sub.name}') {
+					value := row[mapped.index]
 
-						if value != Primitive(Null{}) {
-							$if sub.unaliased_typ is i8 || sub.unaliased_typ is ?i8 {
-								embedded.$(sub.name) = match value {
-									i8 { i8(value) }
-									i16 { i8(value) }
-									int { i8(value) }
-									i64 { i8(value) }
-									u8 { i8(value) }
-									u16 { i8(value) }
-									u32 { i8(value) }
-									u64 { i8(value) }
-									bool { i8(value) }
-									f32 { i8(value) }
-									f64 { i8(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is i16 || sub.unaliased_typ is ?i16 {
-								embedded.$(sub.name) = match value {
-									i8 { i16(value) }
-									i16 { i16(value) }
-									int { i16(value) }
-									i64 { i16(value) }
-									u8 { i16(value) }
-									u16 { i16(value) }
-									u32 { i16(value) }
-									u64 { i16(value) }
-									bool { i16(value) }
-									f32 { i16(value) }
-									f64 { i16(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is int || sub.unaliased_typ is ?int {
-								embedded.$(sub.name) = match value {
-									i8 { int(value) }
-									i16 { int(value) }
-									int { int(value) }
-									i64 { int(value) }
-									u8 { int(value) }
-									u16 { int(value) }
-									u32 { int(value) }
-									u64 { int(value) }
-									bool { int(value) }
-									f32 { int(value) }
-									f64 { int(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is $enum {
-								embedded = orm_embedded_enum_from_primitive(embedded, sub.name,
-									value)
-							} $else $if sub.unaliased_typ is i64 || sub.unaliased_typ is ?i64 {
-								embedded.$(sub.name) = match value {
-									i8 { i64(value) }
-									i16 { i64(value) }
-									int { i64(value) }
-									i64 { i64(value) }
-									u8 { i64(value) }
-									u16 { i64(value) }
-									u32 { i64(value) }
-									u64 { i64(value) }
-									bool { i64(value) }
-									f32 { i64(value) }
-									f64 { i64(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is u8 || sub.unaliased_typ is ?u8 {
-								embedded.$(sub.name) = match value {
-									i8 { u8(value) }
-									i16 { u8(value) }
-									int { u8(value) }
-									i64 { u8(value) }
-									u8 { u8(value) }
-									u16 { u8(value) }
-									u32 { u8(value) }
-									u64 { u8(value) }
-									bool { u8(value) }
-									f32 { u8(value) }
-									f64 { u8(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is u16 || sub.unaliased_typ is ?u16 {
-								embedded.$(sub.name) = match value {
-									i8 { u16(value) }
-									i16 { u16(value) }
-									int { u16(value) }
-									i64 { u16(value) }
-									u8 { u16(value) }
-									u16 { u16(value) }
-									u32 { u16(value) }
-									u64 { u16(value) }
-									bool { u16(value) }
-									f32 { u16(value) }
-									f64 { u16(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is u32 || sub.unaliased_typ is ?u32 {
-								embedded.$(sub.name) = match value {
-									i8 { u32(value) }
-									i16 { u32(value) }
-									int { u32(value) }
-									i64 { u32(value) }
-									u8 { u32(value) }
-									u16 { u32(value) }
-									u32 { u32(value) }
-									u64 { u32(value) }
-									bool { u32(value) }
-									f32 { u32(value) }
-									f64 { u32(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is u64 || sub.unaliased_typ is ?u64 {
-								embedded.$(sub.name) = match value {
-									i8 { u64(value) }
-									i16 { u64(value) }
-									int { u64(value) }
-									i64 { u64(value) }
-									u8 { u64(value) }
-									u16 { u64(value) }
-									u32 { u64(value) }
-									u64 { u64(value) }
-									bool { u64(value) }
-									f32 { u64(value) }
-									f64 { u64(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is f32 || sub.unaliased_typ is ?f32 {
-								embedded.$(sub.name) = match value {
-									i8 { f32(value) }
-									i16 { f32(value) }
-									int { f32(value) }
-									i64 { f32(value) }
-									u8 { f32(value) }
-									u16 { f32(value) }
-									u32 { f32(value) }
-									u64 { f32(value) }
-									bool { f32(value) }
-									f32 { value }
-									f64 { f32(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is f64 || sub.unaliased_typ is ?f64 {
-								embedded.$(sub.name) = match value {
-									i8 { f64(value) }
-									i16 { f64(value) }
-									int { f64(value) }
-									i64 { f64(value) }
-									u8 { f64(value) }
-									u16 { f64(value) }
-									u32 { f64(value) }
-									u64 { f64(value) }
-									bool { f64(value) }
-									f32 { f64(value) }
-									f64 { value }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is bool || sub.unaliased_typ is ?bool {
-								embedded.$(sub.name) = match value {
-									i8 { value != 0 }
-									i16 { value != 0 }
-									int { value != 0 }
-									i64 { value != 0 }
-									u8 { value != 0 }
-									u16 { value != 0 }
-									u32 { value != 0 }
-									u64 { value != 0 }
-									bool { value }
-									f32 { value != 0 }
-									f64 { value != 0 }
-									else { false }
-								}
-							} $else $if sub.unaliased_typ is string || sub.unaliased_typ is ?string {
-								embedded.$(sub.name) = value as string
-							} $else $if sub.unaliased_typ is time.Time || sub.unaliased_typ is ?time.Time {
-								if m.typ == time_ {
-									embedded.$(sub.name) = value as time.Time
-								} else if m.typ == type_string {
-									embedded.$(sub.name) = time.parse(value as string)!
-								}
+					if value != Primitive(Null{}) {
+						$if sub.unaliased_typ is i8 || sub.unaliased_typ is ?i8 {
+							embedded.$(sub.name) = row_primitive_to_i8(value)
+						} $else $if sub.unaliased_typ is i16 || sub.unaliased_typ is ?i16 {
+							embedded.$(sub.name) = row_primitive_to_i16(value)
+						} $else $if sub.unaliased_typ is int || sub.unaliased_typ is ?int {
+							embedded.$(sub.name) = row_primitive_to_int(value)
+						} $else $if sub.unaliased_typ is $enum {
+							embedded = orm_embedded_enum_from_primitive(embedded, sub.name,
+								value)
+						} $else $if sub.unaliased_typ is i64 || sub.unaliased_typ is ?i64 {
+							embedded.$(sub.name) = row_primitive_to_i64(value)
+						} $else $if sub.unaliased_typ is u8 || sub.unaliased_typ is ?u8 {
+							embedded.$(sub.name) = row_primitive_to_u8(value)
+						} $else $if sub.unaliased_typ is u16 || sub.unaliased_typ is ?u16 {
+							embedded.$(sub.name) = row_primitive_to_u16(value)
+						} $else $if sub.unaliased_typ is u32 || sub.unaliased_typ is ?u32 {
+							embedded.$(sub.name) = row_primitive_to_u32(value)
+						} $else $if sub.unaliased_typ is u64 || sub.unaliased_typ is ?u64 {
+							embedded.$(sub.name) = row_primitive_to_u64(value)
+						} $else $if sub.unaliased_typ is f32 || sub.unaliased_typ is ?f32 {
+							embedded.$(sub.name) = row_primitive_to_f32(value)
+						} $else $if sub.unaliased_typ is f64 || sub.unaliased_typ is ?f64 {
+							embedded.$(sub.name) = row_primitive_to_f64(value)
+						} $else $if sub.unaliased_typ is bool || sub.unaliased_typ is ?bool {
+							embedded.$(sub.name) = row_primitive_to_bool(value)
+						} $else $if sub.unaliased_typ is string || sub.unaliased_typ is ?string {
+							embedded.$(sub.name) = value as string
+						} $else $if sub.unaliased_typ is time.Time || sub.unaliased_typ is ?time.Time {
+							if mapped.typ == time_ {
+								embedded.$(sub.name) = value as time.Time
+							} else if mapped.typ == type_string {
+								embedded.$(sub.name) = time.parse(value as string)!
 							}
 						}
 					}
@@ -1243,196 +1304,47 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 			}
 			instance.$(field.name) = embedded
 		} $else {
-			mut m := TableField{}
-			mm := qb.meta.filter(it.name == field.name)
-			if mm.len != 0 {
-				m = mm[0]
-				index := qb.config.fields.index(sql_field_name(m))
-				if index >= 0 && sql_field_name(m) !in qb.hydration_fields {
-					value := row[index]
+			if mapped := row_field_for_mapping(qb.meta, qb.config.fields, qb.hydration_fields, field.name) {
+				value := row[mapped.index]
 
-					$if field.typ is $option {
-						if value == Primitive(Null{}) {
-							instance.$(field.name) = none
-						}
+				$if field.typ is $option {
+					if value == Primitive(Null{}) {
+						instance.$(field.name) = none
 					}
-					if value != Primitive(Null{}) {
-						$if field.unaliased_typ is i8 || field.unaliased_typ is ?i8 {
-							instance.$(field.name) = match value {
-								i8 { i8(value) }
-								i16 { i8(value) }
-								int { i8(value) }
-								i64 { i8(value) }
-								u8 { i8(value) }
-								u16 { i8(value) }
-								u32 { i8(value) }
-								u64 { i8(value) }
-								bool { i8(value) }
-								f32 { i8(value) }
-								f64 { i8(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is i16 || field.unaliased_typ is ?i16 {
-							instance.$(field.name) = match value {
-								i8 { i16(value) }
-								i16 { i16(value) }
-								int { i16(value) }
-								i64 { i16(value) }
-								u8 { i16(value) }
-								u16 { i16(value) }
-								u32 { i16(value) }
-								u64 { i16(value) }
-								bool { i16(value) }
-								f32 { i16(value) }
-								f64 { i16(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is int || field.unaliased_typ is ?int {
-							instance.$(field.name) = match value {
-								i8 { int(value) }
-								i16 { int(value) }
-								int { int(value) }
-								i64 { int(value) }
-								u8 { int(value) }
-								u16 { int(value) }
-								u32 { int(value) }
-								u64 { int(value) }
-								bool { int(value) }
-								f32 { int(value) }
-								f64 { int(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is $enum {
-							instance.$(field.name) = orm_enum_i64_from_primitive(value,
-								instance.$(field.name))
-						} $else $if field.unaliased_typ is i64 || field.unaliased_typ is ?i64 {
-							instance.$(field.name) = match value {
-								i8 { i64(value) }
-								i16 { i64(value) }
-								int { i64(value) }
-								i64 { i64(value) }
-								u8 { i64(value) }
-								u16 { i64(value) }
-								u32 { i64(value) }
-								u64 { i64(value) }
-								bool { i64(value) }
-								f32 { i64(value) }
-								f64 { i64(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is u8 || field.unaliased_typ is ?u8 {
-							instance.$(field.name) = match value {
-								i8 { u8(value) }
-								i16 { u8(value) }
-								int { u8(value) }
-								i64 { u8(value) }
-								u8 { u8(value) }
-								u16 { u8(value) }
-								u32 { u8(value) }
-								u64 { u8(value) }
-								bool { u8(value) }
-								f32 { u8(value) }
-								f64 { u8(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is u16 || field.unaliased_typ is ?u16 {
-							instance.$(field.name) = match value {
-								i8 { u16(value) }
-								i16 { u16(value) }
-								int { u16(value) }
-								i64 { u16(value) }
-								u8 { u16(value) }
-								u16 { u16(value) }
-								u32 { u16(value) }
-								u64 { u16(value) }
-								bool { u16(value) }
-								f32 { u16(value) }
-								f64 { u16(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is u32 || field.unaliased_typ is ?u32 {
-							instance.$(field.name) = match value {
-								i8 { u32(value) }
-								i16 { u32(value) }
-								int { u32(value) }
-								i64 { u32(value) }
-								u8 { u32(value) }
-								u16 { u32(value) }
-								u32 { u32(value) }
-								u64 { u32(value) }
-								bool { u32(value) }
-								f32 { u32(value) }
-								f64 { u32(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is u64 || field.unaliased_typ is ?u64 {
-							instance.$(field.name) = match value {
-								i8 { u64(value) }
-								i16 { u64(value) }
-								int { u64(value) }
-								i64 { u64(value) }
-								u8 { u64(value) }
-								u16 { u64(value) }
-								u32 { u64(value) }
-								u64 { u64(value) }
-								bool { u64(value) }
-								f32 { u64(value) }
-								f64 { u64(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is f32 || field.unaliased_typ is ?f32 {
-							instance.$(field.name) = match value {
-								i8 { f32(value) }
-								i16 { f32(value) }
-								int { f32(value) }
-								i64 { f32(value) }
-								u8 { f32(value) }
-								u16 { f32(value) }
-								u32 { f32(value) }
-								u64 { f32(value) }
-								bool { f32(value) }
-								f32 { value }
-								f64 { f32(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is f64 || field.unaliased_typ is ?f64 {
-							instance.$(field.name) = match value {
-								i8 { f64(value) }
-								i16 { f64(value) }
-								int { f64(value) }
-								i64 { f64(value) }
-								u8 { f64(value) }
-								u16 { f64(value) }
-								u32 { f64(value) }
-								u64 { f64(value) }
-								bool { f64(value) }
-								f32 { f64(value) }
-								f64 { value }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is bool || field.unaliased_typ is ?bool {
-							instance.$(field.name) = match value {
-								i8 { value != 0 }
-								i16 { value != 0 }
-								int { value != 0 }
-								i64 { value != 0 }
-								u8 { value != 0 }
-								u16 { value != 0 }
-								u32 { value != 0 }
-								u64 { value != 0 }
-								bool { value }
-								f32 { value != 0 }
-								f64 { value != 0 }
-								else { false }
-							}
-						} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {
-							instance.$(field.name) = value as string
-						} $else $if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
-							if m.typ == time_ {
-								instance.$(field.name) = value as time.Time
-							} else if m.typ == type_string {
-								instance.$(field.name) = time.parse(value as string)!
-							}
+				}
+				if value != Primitive(Null{}) {
+					$if field.unaliased_typ is i8 || field.unaliased_typ is ?i8 {
+						instance.$(field.name) = row_primitive_to_i8(value)
+					} $else $if field.unaliased_typ is i16 || field.unaliased_typ is ?i16 {
+						instance.$(field.name) = row_primitive_to_i16(value)
+					} $else $if field.unaliased_typ is int || field.unaliased_typ is ?int {
+						instance.$(field.name) = row_primitive_to_int(value)
+					} $else $if field.unaliased_typ is $enum {
+						instance.$(field.name) = orm_enum_i64_from_primitive(value,
+							instance.$(field.name))
+					} $else $if field.unaliased_typ is i64 || field.unaliased_typ is ?i64 {
+						instance.$(field.name) = row_primitive_to_i64(value)
+					} $else $if field.unaliased_typ is u8 || field.unaliased_typ is ?u8 {
+						instance.$(field.name) = row_primitive_to_u8(value)
+					} $else $if field.unaliased_typ is u16 || field.unaliased_typ is ?u16 {
+						instance.$(field.name) = row_primitive_to_u16(value)
+					} $else $if field.unaliased_typ is u32 || field.unaliased_typ is ?u32 {
+						instance.$(field.name) = row_primitive_to_u32(value)
+					} $else $if field.unaliased_typ is u64 || field.unaliased_typ is ?u64 {
+						instance.$(field.name) = row_primitive_to_u64(value)
+					} $else $if field.unaliased_typ is f32 || field.unaliased_typ is ?f32 {
+						instance.$(field.name) = row_primitive_to_f32(value)
+					} $else $if field.unaliased_typ is f64 || field.unaliased_typ is ?f64 {
+						instance.$(field.name) = row_primitive_to_f64(value)
+					} $else $if field.unaliased_typ is bool || field.unaliased_typ is ?bool {
+						instance.$(field.name) = row_primitive_to_bool(value)
+					} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {
+						instance.$(field.name) = value as string
+					} $else $if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
+						if mapped.typ == time_ {
+							instance.$(field.name) = value as time.Time
+						} else if mapped.typ == type_string {
+							instance.$(field.name) = time.parse(value as string)!
 						}
 					}
 				}
