@@ -40,6 +40,7 @@ $if dynamic_boehm ? {
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -L @VEXEROOT/thirdparty/tcc/lib
 			#flag -lgc
+			#flag -luser32
 		} $else $if msvc {
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
