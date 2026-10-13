@@ -81,12 +81,12 @@ fn test_linux_headerless_rwmutex_uses_native_libc_support() {
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, 'import sync
 fn main() {
-	mut lock := sync.new_rwmutex()
-	lock.rlock()
-	lock.runlock()
-	lock.lock()
-	lock.unlock()
-	lock.destroy()
+	mut mutex := sync.new_rwmutex()
+	mutex.rlock()
+	mutex.runlock()
+	mutex.lock()
+	mutex.unlock()
+	mutex.destroy()
 	println("OK")
 }
 ')!
