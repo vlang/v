@@ -372,3 +372,24 @@ fn main() {}
 	assert actual.contains('string__lt(')
 	assert actual.contains('__v_u128_')
 }
+
+fn test_numeric_infix_control_is_set_for_fresh_monomorphize_transformers() {
+	previous := os.getenv_opt('V3_NO_CHECKED_NUMERIC_INFIX')
+	defer {
+		if value := previous {
+			os.setenv('V3_NO_CHECKED_NUMERIC_INFIX', value, true)
+		} else {
+			os.unsetenv('V3_NO_CHECKED_NUMERIC_INFIX')
+		}
+	}
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	os.setenv('V3_NO_CHECKED_NUMERIC_INFIX', '1', true)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.no_checked_numeric_infix
+	w := new_transformer_view(&a, &tc, map[string]bool{})
+	assert w.no_checked_numeric_infix
+	os.unsetenv('V3_NO_CHECKED_NUMERIC_INFIX')
+	enabled := new_transformer(mut a, &tc, map[string]bool{})
+	assert !enabled.no_checked_numeric_infix
+}
