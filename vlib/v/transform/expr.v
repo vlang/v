@@ -2407,10 +2407,12 @@ fn (mut t Transformer) transform_optional_wrapper_selector_expr(id flat.NodeId, 
 			}
 			remaining_smartcasts << smartcast
 		}
+		t.clear_node_type_memo()
 		t.smartcast_stack = remaining_smartcasts
 	}
 	// Lower promoted fields and their bases before marking the optional wrapper.
 	transformed := t.transform_expr(id)
+	t.clear_node_type_memo()
 	t.smartcast_stack = t.restore_smartcasts_since(saved_smartcast_event_id, saved_smartcasts)
 	return t.mark_optional_wrapper_expr(transformed, raw_type)
 }
@@ -2427,9 +2429,11 @@ fn (mut t Transformer) transform_optional_wrapper_index_expr(id flat.NodeId, nod
 			}
 			remaining_smartcasts << smartcast
 		}
+		t.clear_node_type_memo()
 		t.smartcast_stack = remaining_smartcasts
 	}
 	transformed := t.transform_index_expr(id, node)
+	t.clear_node_type_memo()
 	t.smartcast_stack = t.restore_smartcasts_since(saved_smartcast_event_id, saved_smartcasts)
 	return t.mark_optional_wrapper_expr(transformed, raw_type)
 }

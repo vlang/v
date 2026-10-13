@@ -185,7 +185,7 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 				}
 			}
 			encoder.output << `{`
-			is_first := encoder.encode_struct_fields[T](val, true, [], '')
+			is_first := encoder.encode_plain_struct_fields[T](val, true)
 			encoder.close_object(!is_first)
 		}
 	}
@@ -665,7 +665,7 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name st
 		}
 	}
 	encoder.output << `{`
-	mut is_first := unsafe { encoder.encode_struct_fields[T](val, true, [], '') }
+	mut is_first := unsafe { encoder.encode_plain_struct_fields[T](val, true) }
 	is_first = encoder.encode_object_key(is_first, '_type')
 	encoder.encode_string(variant_name)
 	encoder.close_object(!is_first)
@@ -1036,51 +1036,34 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant_with_embeds[T](val T, var
 	encoder.close_object(!is_first)
 }
 
+// encode_plain_struct_field does not need embedded-field collision tracking. Its
+// typed value encoder is shared by all ordinary structs with the same field type.
+fn (mut encoder Encoder) encode_plain_struct_field[F](val F, field_info EncoderFieldInfo, is_first bool) bool {
+	if !struct_field_should_encode(field_info, val) {
+		return is_first
+	}
+	new_is_first := encoder.encode_cached_struct_key(is_first, field_info)
+	encoder.encode_struct_field_value(val)
+	return new_is_first
+}
+
 @[unsafe]
-fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used_keys []string, prefix string) bool {
+fn (mut encoder Encoder) encode_plain_struct_fields[T](val T, was_first bool) bool {
 	field_info_cache := encoder.cached_field_infos[T]()
 	mut is_first := was_first
-	mut used_keys := old_used_keys
 	mut i := 0
-	// Only embedded children consume the keys collected by this struct.
-	mut track_keys := false
 	$for field in T.fields {
-		$if field.is_embed {
-			track_keys = true
-		}
-	}
-
-	$for field in T.fields {
-		$if !field.is_embed {
-			if !field.attrs.contains('skip') {
-				$if field.typ is $shared {
-					shared field_value := unsafe { val.$(field.name) }
-					rlock field_value {
-						is_first = encoder.encode_struct_field(field_value, field_info_cache.field_infos[i],
-							is_first, mut used_keys, old_used_keys, prefix, false, track_keys)
-					}
-				} $else {
-					is_first = encoder.encode_struct_field(val.$(field.name), field_info_cache.field_infos[i],
-						is_first, mut used_keys, old_used_keys, prefix, false, track_keys)
-				}
-			}
-		}
-		i++
-	}
-	$for field in T.fields {
-		$if field.is_embed {
-			new_prefix := prefix + field.name + '.'
+		if !field.attrs.contains('skip') {
 			$if field.typ is $shared {
 				shared field_value := unsafe { val.$(field.name) }
 				rlock field_value {
-					is_first = encoder.encode_struct_fields(field_value, is_first, used_keys,
-						new_prefix)
+					is_first = encoder.encode_plain_struct_field(field_value, field_info_cache.field_infos[i], is_first)
 				}
 			} $else {
-				is_first = encoder.encode_struct_fields(val.$(field.name), is_first, used_keys,
-					new_prefix)
+				is_first = encoder.encode_plain_struct_field(val.$(field.name), field_info_cache.field_infos[i], is_first)
 			}
 		}
+		i++
 	}
 	return is_first
 }

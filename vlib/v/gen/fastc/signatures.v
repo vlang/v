@@ -528,60 +528,64 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	mut top_level_references := map[string]bool{}
 	fastc_collect_reference_partials(sources, prefs, available_names, mut references, mut top_level_references)
 	mut used := {
-		'main':                   true
-		'run':                    true
+		'main':                     true
+		'run':                      true
+		// Capturing literals and their scoped cleanup call these from generated C.
+		'closure_create_with_data': true
+		'closure_try_destroy':      true
+		'memdup':                   true
 		// `select` is a keyword, so a `sql db { select ... }` block does not surface a
 		// `.select(` reference the way `insert`/`update`/... do; seed it so a connection
 		// type's `select` method survives reachability pruning for the ORM lowering.
-		'select':                 true
+		'select':                   true
 		// `arr.sort(a < b)` lowers to a `sort_with_compare` call emitted in generated C,
 		// so no source `.sort_with_compare(` reference surfaces; seed it (its body pulls in
 		// vqsort transitively) so it survives reachability pruning.
-		'sort_with_compare':      true
+		'sort_with_compare':        true
 		// Channel send/receive (`ch <- v` / `<-ch`) lower to `builtin__chan_try_push`/
 		// `builtin__chan_try_pop` in generated C, so no source `.try_push(`/`.try_pop(`
 		// reference surfaces; seed them so the chan stubs survive reachability pruning.
-		'try_push':               true
-		'try_pop':                true
-		'panic_result_not_set':   true
-		'array_push':             true
-		'push':                   true
-		'push_many':              true
-		'array_slice':            true
-		'slice':                  true
-		'at':                     true
-		'keys':                   true
-		'get':                    true
-		'get_check':              true
-		'new_map':                true
-		'set':                    true
-		'values':                 true
-		'map_hash_string':        true
-		'map_eq_string':          true
-		'map_clone_string':       true
-		'map_free_string':        true
-		'map_free_nop':           true
-		'map_hash_int_1':         true
-		'map_hash_int_2':         true
-		'map_hash_int_4':         true
-		'map_hash_int_8':         true
-		'map_hash_int_16':        true
-		'map_eq_int_1':           true
-		'map_eq_int_2':           true
-		'map_eq_int_4':           true
-		'map_eq_int_8':           true
-		'map_eq_int_16':          true
-		'map_clone_int_1':        true
-		'map_clone_int_2':        true
-		'map_clone_int_4':        true
-		'map_clone_int_8':        true
-		'map_clone_int_16':       true
-		'new_array_from_c_array': true
-		'string_plus_many':       true
-		'v_fixed_index':          true
+		'try_push':                 true
+		'try_pop':                  true
+		'panic_result_not_set':     true
+		'array_push':               true
+		'push':                     true
+		'push_many':                true
+		'array_slice':              true
+		'slice':                    true
+		'at':                       true
+		'keys':                     true
+		'get':                      true
+		'get_check':                true
+		'new_map':                  true
+		'set':                      true
+		'values':                   true
+		'map_hash_string':          true
+		'map_eq_string':            true
+		'map_clone_string':         true
+		'map_free_string':          true
+		'map_free_nop':             true
+		'map_hash_int_1':           true
+		'map_hash_int_2':           true
+		'map_hash_int_4':           true
+		'map_hash_int_8':           true
+		'map_hash_int_16':          true
+		'map_eq_int_1':             true
+		'map_eq_int_2':             true
+		'map_eq_int_4':             true
+		'map_eq_int_8':             true
+		'map_eq_int_16':            true
+		'map_clone_int_1':          true
+		'map_clone_int_2':          true
+		'map_clone_int_4':          true
+		'map_clone_int_8':          true
+		'map_clone_int_16':         true
+		'new_array_from_c_array':   true
+		'string_plus_many':         true
+		'v_fixed_index':            true
 		// `m1 == m2` lowers to a `builtin__map_map_eq` call in generated C, so no source
 		// `.map_map_eq(` reference surfaces; seed it so it survives reachability pruning.
-		'map_map_eq':             true
+		'map_map_eq':               true
 	}
 	for name in top_level_references.keys() {
 		used[name] = true

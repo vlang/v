@@ -51,6 +51,7 @@ const prefix_scope_drops_block_value = '__v3_prefix_scope_drops'
 const generated_variant_access_marker = '__v3_generated_variant_access'
 const optional_wrapper_access_marker = '__v3_optional_wrapper_access'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
+const array_accessor_index_marker = '__v3_array_accessor_index'
 const transformed_option_unwrap_access_marker = '__v3_transformed_option_unwrap_access'
 const debugger_smartcast_marker = '__v3_debugger_smartcasts'
 const non_aliasing_allocation_call_marker = '__v3_non_aliasing_allocation_call'
@@ -1264,7 +1265,7 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool, retain_worker_results bool, stage_scope voidptr) {
 	t.skip_generics = skip_generics
 	t.building_v = building_v
-	t.memo_node_types = building_v && t.memo_expansion_node_types
+	t.memo_node_types = t.memo_expansion_node_types
 	t.fast_escape_precheck = building_v && os.getenv('V3_NO_ESCAPE_PRECHECK') == ''
 	t.ordinary_escape_precheck = !building_v && os.getenv('V3_NO_ESCAPE_PRECHECK') == ''
 	t.inplace_child_rewrites = building_v && os.getenv('V3_NO_INPLACE_TRANSFORM_CHILDREN') == ''
@@ -1285,8 +1286,7 @@ fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bo
 	t.lean_struct_init_fields = building_v && os.getenv('V3_NO_LEAN_TRANSFORM_STRUCT_FIELDS') == ''
 	t.inplace_struct_fields = t.inplace_child_rewrites
 		&& os.getenv('V3_NO_INPLACE_TRANSFORM_STRUCT_FIELDS') == ''
-	t.memo_call_param_type_names = (building_v || skip_generics)
-		&& os.getenv('V3_NO_TRANSFORM_TYPE_NAME_MEMO') == ''
+	t.memo_call_param_type_names = os.getenv('V3_NO_TRANSFORM_TYPE_NAME_MEMO') == ''
 	t.memo_semantic_type_names = building_v && os.getenv('V3_TRANSFORM_TYPE_NAME_MEMO_ALL') != ''
 	t.prefix_param_scan = building_v && os.getenv('V3_NO_PREFIX_PARAM_SCAN') == ''
 	t.preserve_inplace_expr_types = t.inplace_child_rewrites
@@ -2767,6 +2767,7 @@ fn (mut t Transformer) set_receiver_method_suffix_index(key string, name string)
 
 // reset_var_types updates reset var types state for transform.
 fn (mut t Transformer) reset_var_types() {
+	t.clear_node_type_memo()
 	t.var_types.clear()
 	t.var_type_indices.clear()
 	if !isnil(t.var_type_cache) {
@@ -2798,6 +2799,7 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 		local_closure_cleanup_assigns: t.local_closure_cleanup_assigns
 		local_closure_field_cleanups:  t.local_closure_field_cleanups
 	}
+	t.clear_node_type_memo()
 	t.var_types = []VarTypeBinding{}
 	t.comptime_scalar_locals = map[string]ComptimeStringScalar{}
 	t.var_type_indices = map[string]int{}
@@ -2814,6 +2816,7 @@ fn (mut t Transformer) detach_function_local_state() FunctionLocalState {
 }
 
 fn (mut t Transformer) restore_function_local_state(state FunctionLocalState) {
+	t.clear_node_type_memo()
 	t.var_types = state.var_types
 	t.comptime_scalar_locals = state.comptime_scalar_locals
 	t.var_type_indices = state.var_type_indices
@@ -2888,6 +2891,7 @@ fn (mut t Transformer) enter_implicit_err_scope(has_error bool) ImplicitErrScope
 	t.clear_heaped_local_binding('err')
 	t.set_implicit_err_var_type()
 	if t.smartcast_stack.len > 0 {
+		t.clear_node_type_memo()
 		t.smartcast_stack = smartcasts_without_binding(t.smartcast_stack, 'err')
 	}
 	return scope
@@ -2904,6 +2908,7 @@ fn (mut t Transformer) leave_implicit_err_scope(scope ImplicitErrScope) {
 fn (mut t Transformer) mark_var_as_ref_param(name string) {
 	i := t.var_type_index(name)
 	if i >= 0 {
+		t.clear_node_type_memo()
 		t.var_types[i].is_ref_param = true
 	}
 }
@@ -2926,10 +2931,12 @@ fn (mut t Transformer) set_var_type_binding(name string, typ string, raw_typ str
 	if name == '' {
 		return
 	}
+	t.clear_node_type_memo()
 	raw := if raw_typ != '' { raw_typ } else { typ }
 	i := t.var_type_index(name)
 	if i >= 0 {
 		t.var_type_indices[name] = i
+		t.clear_node_type_memo()
 		t.var_types[i] = VarTypeBinding{
 			name:            name
 			typ:             typ
@@ -2982,6 +2989,7 @@ fn decl_assign_value_is_shared(value string) bool {
 
 // unset_var_type supports unset var type handling for Transformer.
 fn (mut t Transformer) unset_var_type(name string) {
+	t.clear_node_type_memo()
 	i := t.var_type_index(name)
 	if i >= 0 {
 		t.var_types.delete(i)
@@ -3192,6 +3200,7 @@ fn (t &Transformer) var_type_index(name string) int {
 }
 
 fn (mut t Transformer) restore_var_types(saved []VarTypeBinding) {
+	t.clear_node_type_memo()
 	if !isnil(t.var_type_cache) {
 		t.var_type_cache.clear()
 	}
@@ -3210,10 +3219,12 @@ fn (mut t Transformer) restore_var_types(saved []VarTypeBinding) {
 			for i in saved.len .. t.var_types.len {
 				t.var_type_indices.delete(t.var_types[i].name)
 			}
+			t.clear_node_type_memo()
 			t.var_types = saved
 			return
 		}
 	}
+	t.clear_node_type_memo()
 	t.var_types = saved
 	t.var_type_indices.clear()
 	for i, binding in t.var_types {
@@ -3721,6 +3732,7 @@ fn (mut t Transformer) transform_top_level_file(file_idx int, file_node flat.Nod
 	t.cur_fn_name = 'main'
 	t.cur_fn_ret_type = 'void'
 	t.reset_var_types()
+	t.clear_node_type_memo()
 	t.smartcast_stack.clear()
 	t.pending_stmts.clear()
 	mut new_children := []flat.NodeId{cap: int(file_node.children_count)}
@@ -3757,6 +3769,7 @@ fn (mut t Transformer) transform_top_level_file(file_idx int, file_node flat.Nod
 	t.cur_fn_name = old_fn_name
 	t.cur_fn_ret_type = old_fn_ret_type
 	t.restore_var_types(old_var_types)
+	t.clear_node_type_memo()
 	t.smartcast_stack = old_smartcast_stack
 	t.pending_stmts = old_pending_stmts
 }
@@ -4425,6 +4438,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.in_return_expr = false
 	w.expected_expr_node = -1
 	w.expected_expr_type = ''
+	t.copy_generic_decl_indexes(mut w)
 	return &w
 }
 
@@ -4528,7 +4542,20 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.in_return_expr = false
 	w.expected_expr_node = -1
 	w.expected_expr_type = ''
+	t.copy_generic_decl_indexes(mut w)
 	return &w
+}
+
+// Generic templates do not change during body lowering. Copy the small prepared indexes
+// instead of scanning the entire, growing AST in every disposable worker arena.
+fn (t &Transformer) copy_generic_decl_indexes(mut w Transformer) {
+	if !t.generic_fn_decls_ready {
+		return
+	}
+	w.generic_fn_decls_cache = t.generic_fn_decls_cache.clone()
+	w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
+	w.generic_fn_call_names = t.generic_fn_call_names.clone()
+	w.generic_fn_decls_ready = true
 }
 
 // fork_program_view constructs a worker from explicit compilation-wide state.
@@ -5453,6 +5480,7 @@ fn (mut t Transformer) record_refined_node_type(idx int, typ string) {
 			return
 		}
 	}
+	t.clear_node_type_memo()
 	t.refined_node_types[idx] = typ
 }
 
@@ -7434,6 +7462,7 @@ fn (mut t Transformer) heap_escaping_value_decl(var_name string, elem_typ string
 	t.pointer_value_rvalues[var_name] = true
 	stmts << t.make_decl_assign_typed(var_name, heap_rhs, ptr_typ)
 	i := t.var_type_index(var_name)
+	t.clear_node_type_memo()
 	t.var_types[i] = VarTypeBinding{
 		...t.var_types[i]
 		heap_value_typ: if raw_typ.len > 0 { raw_typ } else { elem_typ }
@@ -7945,6 +7974,7 @@ fn (mut t Transformer) restore_heaped_local_state(state HeapedLocalState) {
 		// then retain the complete incoming metadata, including its semantic heap type.
 		t.set_var_type_with_raw(binding.name, binding.typ, binding.raw_typ)
 		i := t.var_type_index(binding.name)
+		t.clear_node_type_memo()
 		t.var_types[i] = binding
 	}
 }
@@ -10887,6 +10917,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	}
 	t.reset_var_types()
 	t.cur_fn_variadic_param = ''
+	t.clear_node_type_memo()
 	t.smartcast_stack.clear()
 	t.invalidated_smartcasts.clear()
 	t.smartcast_event_id = 0
@@ -11073,6 +11104,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			flags:          fn_node.flags
 		})
 	}
+	t.clear_node_type_memo()
 	t.smartcast_stack.clear()
 	t.invalidated_smartcasts.clear()
 	t.smartcast_event_id = 0
@@ -11228,8 +11260,10 @@ pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 	}
 	defer {
 		if had_base_smartcasts {
+			t.clear_node_type_memo()
 			t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 		} else {
+			t.clear_node_type_memo()
 			t.smartcast_stack.clear()
 		}
 	}
@@ -11698,6 +11732,7 @@ fn (mut t Transformer) selected_sizeof_value_type(name string) ?string {
 	t.tc.cur_file = t.cur_file
 	// A declaration's type test must not see the caller's locals or generics.
 	t.restore_var_types([]VarTypeBinding{})
+	t.clear_node_type_memo()
 	t.active_generic_params = []string{}
 	t.cur_fn_is_generic = false
 	defer {
@@ -11706,6 +11741,7 @@ fn (mut t Transformer) selected_sizeof_value_type(name string) ?string {
 		t.tc.cur_module = old_tc_module
 		t.tc.cur_file = old_tc_file
 		t.restore_var_types(old_var_types)
+		t.clear_node_type_memo()
 		t.active_generic_params = old_generic_params
 		t.cur_fn_is_generic = old_is_generic
 	}
@@ -12901,7 +12937,8 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 						} else {
 							t.make_infix(.minus, t.make_selector(base, 'len', 'int'), t.make_int_literal(1))
 						}
-						return t.make_index(base, index, clean_base_type[2..])
+						return t.make_array_accessor_index(base, index, clean_base_type[2..],
+							callee.value)
 					}
 				}
 			}
@@ -12911,6 +12948,17 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 			return t.transform_expr(id)
 		}
 	}
+}
+
+// make_array_accessor_index builds the element access `base[index]` that an lvalue use of
+// `first()`/`last()` lowers to (`arr.last().field = x`), and marks it with that method. The
+// C generator emits a marked index as a call of the builtin method, so that an empty array
+// is reported by the guard of `array.first`/`array.last` and not as an index out of range.
+fn (mut t Transformer) make_array_accessor_index(base flat.NodeId, index flat.NodeId, elem_type string, method string) flat.NodeId {
+	id := t.make_index(base, index, elem_type)
+	t.set_node_generic_params(int(id), [array_accessor_index_marker, method])
+	t.mark_fn_used('array__${method}')
+	return id
 }
 
 // --- stmt handlers (skeleton - identity transforms with child recursion) ---
@@ -14578,8 +14626,10 @@ fn (mut t Transformer) transform_lvalue_without_smartcast(id flat.NodeId) flat.N
 		}
 		keep << sc
 	}
+	t.clear_node_type_memo()
 	t.smartcast_stack = keep
 	transformed := t.transform_lvalue(id)
+	t.clear_node_type_memo()
 	t.smartcast_stack = base_smartcasts
 	return transformed
 }
@@ -14698,6 +14748,8 @@ fn (mut t Transformer) rebuild_transformed_lvalue(node flat.Node, children []fla
 		value:          node.value
 		typ:            node.typ
 		is_mut:         node.is_mut
+		// An index stays marked as a lowered `first()`/`last()` (make_array_accessor_index).
+		payload:        if node.kind == .index { node.payload } else { 0 }
 	})
 }
 
@@ -14840,6 +14892,7 @@ fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {
 	}
 	t.smartcast_event_id++
 	t.smartcast_invalidation_event_ids[key] = t.smartcast_event_id
+	t.clear_node_type_memo()
 	t.invalidated_smartcasts[key] = true
 	prefix := '${key}.'
 	mut keep := []SmartcastContext{cap: t.smartcast_stack.len}
@@ -14849,6 +14902,7 @@ fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {
 		}
 		keep << sc
 	}
+	t.clear_node_type_memo()
 	t.smartcast_stack = keep
 }
 
@@ -18598,7 +18652,9 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 	}
 	then_block := t.multi_if_assign_block(then_id, lhs_ids)
 	mut branch_invalidated := t.invalidated_smartcasts.clone()
+	t.clear_node_type_memo()
 	t.smartcast_stack = base_smartcasts.clone()
+	t.clear_node_type_memo()
 	t.invalidated_smartcasts = base_invalidated.clone()
 	t.restore_var_types(saved_var_types)
 	t.restore_heaped_local_state(heaped_state)
@@ -18621,7 +18677,9 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 			}
 		}
 	}
+	t.clear_node_type_memo()
 	t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
+	t.clear_node_type_memo()
 	t.invalidated_smartcasts = branch_invalidated.move()
 	t.restore_var_types(saved_var_types)
 	result << t.make_if(new_cond, then_block, else_block)
@@ -20305,7 +20363,9 @@ fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) fla
 		base_invalidated := t.invalidated_smartcasts.clone()
 		mut merged_invalidated := base_invalidated.clone()
 		for i in 0 .. node.children_count {
+			t.clear_node_type_memo()
 			t.smartcast_stack = base_smartcasts.clone()
+			t.clear_node_type_memo()
 			t.invalidated_smartcasts = base_invalidated.clone()
 			branches << t.transform_select_branch(t.a.child(&node, i), order_cases)
 			for key, invalidated in t.invalidated_smartcasts {
@@ -20314,7 +20374,9 @@ fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) fla
 				}
 			}
 		}
+		t.clear_node_type_memo()
 		t.invalidated_smartcasts = merged_invalidated.move()
+		t.clear_node_type_memo()
 		t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 	}
 	if t.rewrite_children_in_place(id, branches) {
@@ -20394,6 +20456,7 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 			if remaining_smartcasts.len < t.smartcast_stack.len {
 				saved_smartcasts = t.smartcast_stack.clone()
 				saved_invalidated = t.invalidated_smartcasts.clone()
+				t.clear_node_type_memo()
 				t.smartcast_stack = remaining_smartcasts
 			}
 		}
@@ -20580,7 +20643,9 @@ fn (mut t Transformer) restore_shadowed_smartcast_state(name string, base_smartc
 			restored_invalidated[key] = invalidated
 		}
 	}
+	t.clear_node_type_memo()
 	t.invalidated_smartcasts = restored_invalidated.move()
+	t.clear_node_type_memo()
 	t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 }
 
@@ -26537,6 +26602,7 @@ fn (mut t Transformer) push_smartcast_with_display(expr_name string, variant str
 		sum_type_name: sum_type
 		display_type:  display_type
 	}
+	t.clear_node_type_memo()
 	t.smartcast_stack << smartcast
 	t.smartcast_event_id++
 	t.smartcast_reestablishment_event_ids[expr_name] = t.smartcast_event_id
@@ -26545,6 +26611,7 @@ fn (mut t Transformer) push_smartcast_with_display(expr_name string, variant str
 // pop_smartcast updates pop smartcast state for Transformer.
 pub fn (mut t Transformer) pop_smartcast() {
 	if t.smartcast_stack.len > 0 {
+		t.clear_node_type_memo()
 		t.smartcast_stack.delete_last()
 	}
 }
@@ -27572,7 +27639,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			}
 			if !isnil(t.tc) {
 				if typ := t.tc.expr_type(id) {
-					name := typ.name()
+					name := t.checker_recorded_type_name(id, typ)
 					if name.starts_with('[]') {
 						if local_elem := t.array_literal_local_struct_elem_name(node) {
 							if name[2..].all_after_last('.') == local_elem {

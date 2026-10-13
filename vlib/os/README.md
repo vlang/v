@@ -44,6 +44,12 @@ the current directory, such as `./` or `././`, remains `.` instead of an empty p
 answers `.` for `C:` and the bare volume `C:` for `C:\dir`, and both of those
 name a *current* directory rather than a location in the given path.
 
+`os.dir()`, `os.base()`, `os.file_name()` and `os.split_path()` agree on what a
+separator is. `/` always is one. `\` is one on Windows, so a path may mix both
+there: `os.file_name(r'a/b\c')` is `c`. On other systems `\` is a valid file name
+character, so the same call gives `b\c`; it separates only in a path that has no
+`/` at all, which keeps a Windows style path such as `a\b\c.v` usable everywhere.
+
 `os.parent_dir()` is the walking variant. Every value it returns is safe to
 probe directly, and it returns an empty string once there is no parent left:
 
@@ -154,6 +160,20 @@ To accumulate state across calls, pass a method of a `mut` local, as in
 `os.walk_dir(root, c.visit)`, or capture a reference (`mut c := &Counter{}`): a
 closure that captures `[mut n]` only updates its own copy, see
 [Closures](https://github.com/vlang/v/blob/master/doc/docs.md#closures).
+
+Only `os.walk_dir()` and `os.glob()` sort. `os.ls()` returns the entries of a directory
+in the order the operating system reports them, and `os.walk()`, `os.walk_ext()` and
+`os.walk_with_context()` visit each directory in that order. It differs between platforms
+and filesystems: NTFS usually lists names alphabetically without regard to case, while on
+APFS or ext4 the order looks arbitrary. Sort the result when a stable order is needed:
+
+```v
+import os
+
+mut entries := os.ls('.')!
+entries.sort()
+println(entries)
+```
 
 ### Running commands
 
@@ -298,3 +318,13 @@ The following functions should be used with care and only when used correctly.
 - os.is_link()
 
 `get_line()` removes CRLF and LF line endings from standard input on every platform.
+
+Windows process exit codes and disk usage use the SDK's `DWORD` and `ULARGE_INTEGER`
+output types. These bindings keep Clang's incompatible pointer diagnostics enabled.
+
+On Windows, `exec` and `Process` accept an absolute executable path without an extension.
+They use that exact file when it exists, then try the same path with `.exe` appended.
+Explicit extensions are preserved.
+
+On Windows, `os.get_error_msg` removes the trailing CR/LF line break from system
+messages. Error text returned by operations using it retains the message's punctuation.
