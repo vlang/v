@@ -5116,3 +5116,13 @@ fn (mut t Transformer) make_fixed_array_len_expr(s string) flat.NodeId {
 fn c_name(name string) string {
 	return naming.c_name(name)
 }
+
+// lookup_c_name is c_name for a spelling that is only compared or used as a
+// lookup key: the text may belong to the checker's memo of c_name.
+@[inline]
+fn (t &Transformer) lookup_c_name(name string) string {
+	if isnil(t.tc) {
+		return naming.c_name(name)
+	}
+	return t.tc.cached_c_name(name)
+}

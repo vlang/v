@@ -4270,16 +4270,21 @@ fn (t &Transformer) node_module_or(idx int, fallback string) string {
 	return fallback
 }
 
+@[direct_array_access]
 fn (mut t Transformer) mark_node_context(id flat.NodeId, module_name string, file_name string) {
 	if t.node_context_read_only {
 		return
 	}
 	module_id := t.node_context_text_id(module_name)
 	file_id := t.node_context_text_id(file_name)
+	// The stack's length is its high-water mark and `top` the live depth, so room
+	// is made once per node rather than once per child.
 	t.node_context_stack.clear()
 	t.node_context_stack << id
-	for t.node_context_stack.len > 0 {
-		cur := t.node_context_stack.pop()
+	mut top := 1
+	for top > 0 {
+		top--
+		cur := t.node_context_stack[top]
 		idx := int(cur)
 		if idx < 0 || idx >= t.a.nodes.len {
 			continue
@@ -4302,14 +4307,19 @@ fn (mut t Transformer) mark_node_context(id flat.NodeId, module_name string, fil
 		if start < 0 || end > t.a.children.len {
 			continue
 		}
+		if top + (end - start) > t.node_context_stack.len {
+			unsafe { t.node_context_stack.grow_len(top + (end - start) - t.node_context_stack.len) }
+		}
 		for i in start .. end {
 			// The child range is checked above; avoid per-child bounds checks while mapping modules.
 			child_id := unsafe { t.a.children[i] }
 			if int(child_id) >= 0 {
-				t.node_context_stack << child_id
+				t.node_context_stack[top] = child_id
+				top++
 			}
 		}
 	}
+	t.node_context_stack.clear()
 }
 
 fn (mut t Transformer) collect_node_subtree_ids(id flat.NodeId, mut nodes map[int]bool) {
@@ -15498,7 +15508,8 @@ fn (t &Transformer) recorded_generic_specialization_args(typ string) ?[]string {
 	if args := t.recorded_generic_specialization_args_exact(clean) {
 		return args
 	}
-	clean_cname := c_name(clean)
+	// Only a lookup key: the checker's memo of c_name answers the repeats.
+	clean_cname := t.lookup_c_name(clean)
 	if clean_cname != clean {
 		if args := t.recorded_generic_specialization_args_exact(clean_cname) {
 			return args
@@ -15511,7 +15522,7 @@ fn (t &Transformer) recorded_generic_specialization_args(typ string) ?[]string {
 				return args
 			}
 		}
-		dotted_cname := c_name(dotted)
+		dotted_cname := t.lookup_c_name(dotted)
 		if dotted_cname != clean && dotted_cname != clean_cname && dotted_cname != dotted {
 			if args := t.recorded_generic_specialization_args_exact(dotted_cname) {
 				return args
