@@ -2,10 +2,6 @@ module fastc
 
 import os
 
-#include <CommonCrypto/CommonDigest.h>
-
-#include <sys/mman.h>
-
 fn C.CC_SHA256(const_data voidptr, len u32, md &u8) &u8
 
 // fastc_sign_macho_adhoc_mapped extends and patches the linker output through
