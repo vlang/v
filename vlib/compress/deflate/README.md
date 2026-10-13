@@ -40,3 +40,8 @@ Gzip decompression reads all concatenated members and validates each member sepa
 
 A callback returning zero aborts decompression immediately. The returned count covers delivered
 bytes; unread compressed data and container checksums are not validated after an abort.
+
+Inflation rejects dynamic blocks without an end-of-block code, invalid or incomplete Huffman
+codes, and code-length repeats beyond the declared alphabets. A literals-only block may omit
+distance codes; using a length symbol in such a block is an error. The same validation applies
+to streaming inflation.
