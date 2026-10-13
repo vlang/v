@@ -78,6 +78,26 @@ enum GlobMatch {
 	any
 }
 
+fn glob_match_wildcard(name string, pattern string) bool {
+	parts := pattern.split('*')
+	if !name.starts_with(parts[0]) {
+		return false
+	}
+	mut pos := parts[0].len
+	for i in 1 .. parts.len {
+		part := parts[i]
+		if part == '' {
+			continue
+		}
+		if i == parts.len - 1 {
+			return name.ends_with(part) && name.len - part.len >= pos
+		}
+		offset := name[pos..].index(part) or { return false }
+		pos += offset + part.len
+	}
+	return true
+}
+
 fn glob_match(dir string, pattern string, next_pattern string, mut matches []string) []string {
 	mut subdirs := []string{}
 	if is_file(dir) {
@@ -138,8 +158,8 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 				f.ends_with(pat)
 			}
 			.start_and_ends_with {
-				p := pat.split('*')
-				f.starts_with(p[0]) && f.ends_with(p[1])
+				// Keep the original edge wildcards and match every interior piece in order.
+				glob_match_wildcard(f, if pattern == '**' { next_pattern } else { pattern })
 			}
 			.contains {
 				f.contains(pat)

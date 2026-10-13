@@ -1262,6 +1262,8 @@ pub fn write_file_array(path string, buffer array) ! {
 
 // glob function searches for all the pathnames matching patterns and returns a
 // sorted list of found pathnames.
+// On Unix, each * matches zero or more characters within a path component;
+// literal pieces between multiple stars must occur in order without overlapping.
 @[manualfree]
 pub fn glob(patterns ...string) ![]string {
 	mut matches := []string{}
