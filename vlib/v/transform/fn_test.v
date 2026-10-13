@@ -1,6 +1,7 @@
 module transform
 
 import v.flat
+import v.token
 import v.types
 
 fn literal_binding_test_node(mut a flat.FlatAst, kind flat.NodeKind, children []flat.NodeId) flat.NodeId {
@@ -835,6 +836,33 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 	assert a.nodes[helper_idx - 2].value == 'main'
 	assert a.nodes[helper_idx - 1].kind == .module_decl
 	assert a.nodes[helper_idx - 1].value == 'token'
+}
+
+fn test_auto_str_helper_uses_interface_declaration_module() {
+	for owner in ['main', 'builtin', 'view'] {
+		mut a := flat.FlatAst.new()
+		file := '${owner}.v'
+		a.source_files[1] = token.File.unindexed(file, 1)
+		name := if owner == 'view' { 'view.View' } else { 'View' }
+		a.add_node(flat.Node{
+			kind:  .interface_decl
+			value: 'View'
+			pos:   token.new_pos(1, 0)
+		})
+		mut tc := types.TypeChecker.new(&a)
+		module_path := if owner == 'main' { a.real_source_path(file) } else { file }
+		tc.file_modules[module_path] = owner
+		mut t := Transformer{
+			a:          &a
+			tc:         &tc
+			cur_module: 'datatypes'
+			cur_file:   'datatypes/linked_list.v'
+		}
+		value := t.make_ident('view')
+		t.stringify_stack << 'Wrapper'
+		t.request_auto_str_helper(value, name)
+		assert t.auto_str_types[name].helper_module == owner
+	}
 }
 
 fn test_default_clone_helper_drops_owned_rvalue_after_saving_clone() {

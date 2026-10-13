@@ -111,6 +111,23 @@ fn test_cache_demand_keeps_fixed_array_alias_element_layouts() {
 	assert 'sample.Unused' !in names, names.str()
 }
 
+fn test_cache_demand_keeps_shared_wrapper_payload_layouts() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['sample.Box'] = []types.StructField{}
+	tc.struct_modules['sample.Box'] = 'sample'
+	tc.structs['sample.Unused'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.cache_decl_demand = true
+	g.register_shared_type_name('sample.Box', 'sample')
+	g.finish_cache_declaration_demand('')
+	names := g.c_struct_decl_names()
+	assert 'sample.Box' in names, names.str()
+	assert 'sample.Unused' !in names, names.str()
+}
+
 fn test_cache_map_key_helpers_follow_their_builtin_prototypes() {
 	mut a := flat.FlatAst.new()
 	file_id := a.add_val(.file, 'builtin.vh')

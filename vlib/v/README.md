@@ -483,6 +483,8 @@ Merged imports in cached headers do not create parameter-name conflicts across s
 Warm builds retain every `IError` implementer's `msg` and `code` methods and their helpers,
 including calls made by dispatchers inside cached objects.
 Selected option/result tuple signatures declare their payload layouts before their wrappers.
+Shared wrappers retain their payload layouts even when only compile-time reflection visits them.
+Recursive interface string helpers belong to the interface's declaration module.
 With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
 before compiling a new module object, including during `run`. Ordinary builds and warm builds
 print no cache creation notices; `-silent` suppresses them too.

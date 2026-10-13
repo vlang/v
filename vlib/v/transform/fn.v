@@ -6695,6 +6695,26 @@ fn (t &Transformer) auto_str_helper_owner_module(aggregate string) string {
 		if module_name := t.tc.struct_modules[aggregate] {
 			return module_name
 		}
+		if module_name := t.tc.type_alias_modules[aggregate] {
+			return module_name
+		}
+		// Bare interfaces belong to main or builtin, even when a library
+		// specialization requests their recursive stringification helper.
+		if !aggregate.contains('.') {
+			for node in t.a.nodes {
+				if node.kind != .interface_decl || node.value != aggregate {
+					continue
+				}
+				if source := t.a.source_files[node.pos.id] {
+					module_name := t.tc.file_modules[source.name] or {
+						t.tc.file_modules[t.a.real_source_path(source.name)] or { continue }
+					}
+					if module_name in ['', 'main', 'builtin'] {
+						return module_name
+					}
+				}
+			}
+		}
 	}
 	if !aggregate.starts_with('C.') && aggregate.contains('.') {
 		return aggregate.all_before_last('.')

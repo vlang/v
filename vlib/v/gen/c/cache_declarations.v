@@ -412,6 +412,14 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 	for _, info in g.collect_fixed_array_typedefs_needed() {
 		g.cache_require_declaration_type(info.arr, mut seen)
 	}
+	// Shared wrappers store their payload by value, including wrappers collected
+	// from fields that were only visited by compile-time reflection.
+	old_module := g.tc.cur_module
+	for _, info in g.shared_type_names {
+		g.tc.cur_module = info.module
+		g.cache_require_declaration_type(g.tc.parse_type(info.inner), mut seen)
+	}
+	g.tc.cur_module = old_module
 	for typ in g.multi_return_types {
 		g.cache_require_declaration_type(typ, mut seen)
 	}
