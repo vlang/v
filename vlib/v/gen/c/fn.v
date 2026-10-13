@@ -16508,6 +16508,10 @@ fn (mut g FlatGen) emit_c_runtime_declarations(required []string) {
 		g.tc.cur_file = file
 		g.tc.cur_module = mod
 	}
+	// Match ordinary extern declaration selection when a program supplies a more
+	// specific view than builtin's fallback, such as its own C.CloseHandle(int).
+	mut decls := map[string]CExternForwardDecl{}
+	mut names := []string{}
 	for idx in g.top_level_nodes() {
 		node := g.a.nodes[idx]
 		if node.kind == .file {
@@ -16524,9 +16528,27 @@ fn (mut g FlatGen) emit_c_runtime_declarations(required []string) {
 			if name in g.inlined_c_declared_fns {
 				continue
 			}
-			g.writeln(g.c_extern_decl_line(node, name))
-			g.inlined_c_declared_fns[name] = true
+			if name !in decls {
+				names << name
+			}
+			program_decl_priority := if g.cache_program_files[g.tc.cur_file] { 1000 } else { 0 }
+			specificity := program_decl_priority + c_extern_decl_specificity(g.a, node)
+			if name !in decls || specificity > decls[name].specificity {
+				decls[name] = CExternForwardDecl{
+					node_idx:    int(idx)
+					file:        g.tc.cur_file
+					module_name: g.tc.cur_module
+					specificity: specificity
+				}
+			}
 		}
+	}
+	for name in names {
+		decl := decls[name]
+		g.tc.cur_file = decl.file
+		g.tc.cur_module = decl.module_name
+		g.writeln(g.c_extern_decl_line(g.a.nodes[decl.node_idx], name))
+		g.inlined_c_declared_fns[name] = true
 	}
 }
 

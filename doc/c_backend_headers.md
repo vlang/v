@@ -33,8 +33,9 @@ keep the spelling and calling convention of the program's own C functions.
 
 For a single-file hosted program containing only literal `print`, `println`, `eprint`,
 and `eprintln` calls, the compiler proves that no V allocations are needed. It emits
-only `main` and the required libc declarations, without linking a collector or native
-runtime helpers. On POSIX targets a single `println` uses `puts`; other output preserves
+only `main` and the required native declarations, without linking a collector or initializing
+the V runtime. Platform logging adapters remain linked when required.
+On POSIX targets a single `println` uses `puts`; other output preserves
 embedded NUL bytes and handles partial writes. Windows ASCII output uses the CRT in binary mode,
 with bounded write counts and partial-write retries. Unicode console output retains
 the normal Windows runtime. Android retains log priorities, formatting and configurable

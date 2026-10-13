@@ -5525,7 +5525,11 @@ fn (g &FlatGen) c_source_file_is_in_vlib(source_file string) bool {
 	if root.len == 0 {
 		return false
 	}
-	source := g.a.cached_header_sources[source_file] or { source_file }
+	source := if isnil(g.a) {
+		source_file
+	} else {
+		g.a.cached_header_sources[source_file] or { source_file }
+	}
 	return source.replace('\\', '/').starts_with('${root}/vlib/')
 }
 
@@ -5536,7 +5540,11 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 	if g.no_builtin || g.output_cross_c || g.object_file_mode || g.target_libc_headers {
 		return false
 	}
-	source := g.a.cached_header_sources[source_file] or { source_file }
+	source := if isnil(g.a) {
+		source_file
+	} else {
+		g.a.cached_header_sources[source_file] or { source_file }
+	}
 	root := g.compiler_vroot.replace('\\', '/').trim_right('/')
 	path := source.replace('\\', '/')
 	if root.len == 0 || !path.starts_with(root + '/vlib/') {

@@ -19,10 +19,12 @@ fn (mut g FlatGen) headerless_windows_core_declarations() {
 	g.writeln('typedef struct PROCESS_MEMORY_COUNTERS { u32 cb; u32 PageFaultCount; size_t PeakWorkingSetSize; size_t WorkingSetSize; size_t QuotaPeakPagedPoolUsage; size_t QuotaPagedPoolUsage; size_t QuotaPeakNonPagedPoolUsage; size_t QuotaNonPagedPoolUsage; size_t PagefileUsage; size_t PeakPagefileUsage; } PROCESS_MEMORY_COUNTERS;')
 	g.writeln('#ifdef _WIN64\ntypedef unsigned long long __v_windows_size_t;\n#else\ntypedef unsigned long __v_windows_size_t;\n#endif')
 	g.writeln('HANDLE WINAPI CreateThread(SECURITY_ATTRIBUTES*, __v_windows_size_t, DWORD (WINAPI *)(void*), void*, DWORD, DWORD*);')
-	g.writeln('DWORD WINAPI GetLastError(void);')
-	g.writeln('DWORD WINAPI WaitForSingleObject(HANDLE, DWORD);')
-	g.writeln('BOOL WINAPI CloseHandle(HANDLE);')
+	if g.target.os == 'windows' {
+		g.emit_c_runtime_declarations(['GetLastError', 'WaitForSingleObject', 'CloseHandle'])
+	}
 	g.writeln('#endif')
-	g.inlined_c_structs['_FILETIME'] = true
-	g.collect_preserved_c_fns(['CreateThread', 'GetLastError', 'WaitForSingleObject', 'CloseHandle'])
+	if g.target.os == 'windows' {
+		g.inlined_c_structs['_FILETIME'] = true
+		g.collect_preserved_c_fns(['CreateThread'])
+	}
 }

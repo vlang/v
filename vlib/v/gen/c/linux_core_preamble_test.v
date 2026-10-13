@@ -17,13 +17,19 @@ fn test_linux_open_flags_match_native_libc() {
 	for name in constants {
 		code += 'enum { SDK_${name} = ${name} };\n'
 	}
+	for name in constants {
+		code += '#undef ${name}\n'
+	}
 	for line in g.sb.str().split_into_lines() {
 		if line.starts_with('#define ') {
 			name := line.all_after('#define ').all_before(' ')
-			code += '#undef ${name}\n'
+			if name in constants {
+				code += '${line}\n'
+			}
+		} else if line.starts_with('#') {
+			code += '${line}\n'
 		}
 	}
-	code += g.sb.str()
 	for name in constants {
 		code += '_Static_assert(${name} == SDK_${name}, "${name} value");\n'
 	}
