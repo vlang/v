@@ -128,3 +128,27 @@ fn test_unterminated_code_body_is_preserved_at_eof() {
 	assert dom.get_root().name == 'script'
 	assert dom.get_root().content == 'first second'
 }
+
+fn test_parse_quoted_attribute_adds_no_empty_key() {
+	// a quoted attribute must not leave an empty-key attribute behind, which
+	// also corrupted str() round-trips with a stray space.
+	// See https://github.com/vlang/v/issues/30139
+	dom := parse('<div><span class="a b">x</span></div>')
+	span := dom.get_tags(name: 'span')[0]
+	assert span.attributes == {
+		'class': 'a b'
+	}
+	assert span.str() == '<span class="a b">x</span>'
+}
+
+fn test_parse_unquoted_attribute_values() {
+	// unquoted values belong to the preceding `name=`, they are not
+	// attributes of their own.
+	// See https://github.com/vlang/v/issues/30139
+	dom := parse('<div><input type=text name=q></div>')
+	input := dom.get_tags(name: 'input')[0]
+	assert input.attributes == {
+		'type': 'text'
+		'name': 'q'
+	}
+}

@@ -191,8 +191,16 @@ pub fn (mut parser Parser) split_parse(data string) {
 				*/
 				if parser.lexical_attributes.current_tag.name == '' {
 					parser.lexical_attributes.current_tag.name = complete_lexeme
-				} else if complete_lexeme != '/' {
-					parser.lexical_attributes.current_tag.attributes[complete_lexeme] = ''
+				} else if complete_lexeme != '' && complete_lexeme != '/' {
+					// an unquoted value completes here: `type=text>` stores
+					// `text` under the attribute named by `last_attribute`
+					if parser.lexical_attributes.current_tag.last_attribute != '' {
+						lattr := parser.lexical_attributes.current_tag.last_attribute
+						parser.lexical_attributes.current_tag.attributes[lattr] = complete_lexeme
+						parser.lexical_attributes.current_tag.last_attribute = ''
+					} else {
+						parser.lexical_attributes.current_tag.attributes[complete_lexeme] = ''
+					}
 				}
 				parser.lexical_attributes.open_tag = false
 				parser.lexical_attributes.lexeme_builder.go_back_to(0) // if tag name is code
@@ -207,11 +215,19 @@ pub fn (mut parser Parser) split_parse(data string) {
 				complete_lexeme := parser.builder_str().to_lower()
 				if parser.lexical_attributes.current_tag.name == '' {
 					parser.lexical_attributes.current_tag.name = complete_lexeme
-				} else {
-					parser.lexical_attributes.current_tag.attributes[complete_lexeme] = ''
-					parser.lexical_attributes.current_tag.last_attribute = ''
-					if chr == `=` {
-						parser.lexical_attributes.current_tag.last_attribute = complete_lexeme
+				} else if complete_lexeme != '' {
+					// an unquoted value completes here: `type=text ` stores
+					// `text` under the attribute named by `last_attribute`
+					if parser.lexical_attributes.current_tag.last_attribute != '' && chr != `=` {
+						lattr := parser.lexical_attributes.current_tag.last_attribute
+						parser.lexical_attributes.current_tag.attributes[lattr] = complete_lexeme
+						parser.lexical_attributes.current_tag.last_attribute = ''
+					} else {
+						parser.lexical_attributes.current_tag.attributes[complete_lexeme] = ''
+						parser.lexical_attributes.current_tag.last_attribute = ''
+						if chr == `=` {
+							parser.lexical_attributes.current_tag.last_attribute = complete_lexeme
+						}
 					}
 				}
 				parser.lexical_attributes.lexeme_builder.go_back_to(0)
