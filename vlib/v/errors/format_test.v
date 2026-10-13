@@ -93,6 +93,40 @@ fn test_source_lines_through_matches_split_into_lines() {
 	}
 }
 
+fn test_diagnostic_run_finds_lines_in_any_order() {
+	sources := ['', 'one', 'one\n', 'one\ntwo', 'one\r\ntwo\r\n', '\n\nthree\n\nfive', 'a\rb\r\rc',
+		'last line\n\n', 'a\nb\nc\nd\ne\nf\ng\nh']
+	for source in sources {
+		count := source.split_into_lines().len
+		// forwards, backwards, and back and forth around a line found before
+		mut requests := [][]int{}
+		for first in -1 .. count + 3 {
+			requests << [first, first + 2]
+		}
+		for first := count + 2; first >= -1; first-- {
+			requests << [first, first]
+		}
+		for first in 0 .. count + 1 {
+			requests << [count - first, count + 4]
+			requests << [first, first + 1]
+			requests << [first + 2, first]
+		}
+		mut run := DiagnosticRun{
+			source_known: true
+			source_read:  true
+			source_name:  'memory'
+			source:       source
+		}
+		for request in requests {
+			assert run.source_lines_through(source, request[0], request[1]) == source_lines_through(source,
+				request[0], request[1]), '${source.bytes()} ${request}'
+		}
+		// another text of the same length is not the source the run has read
+		other := source.clone()
+		assert run.source_lines_through(other, 2, 3) == source_lines_through(other, 2, 3)
+	}
+}
+
 fn test_diagnostic_run_formats_like_separate_diagnostics() {
 	root := os.join_path(os.temp_dir(), 'v3_diagnostic_run_${os.getpid()}')
 	os.rmdir_all(root) or {}

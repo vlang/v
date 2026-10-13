@@ -210,3 +210,120 @@ fn test_alias_chain_stops_at_plain_types_and_cycles() {
 	assert t.normalize_type_alias_chain('Names') == '[]string'
 	assert t.normalize_type_alias_chain('Ping') in ['Ping', 'Pong']
 }
+
+fn shortcut_test_node(mut a flat.FlatAst, node flat.Node, children []flat.NodeId) flat.NodeId {
+	start := a.children.len
+	a.children << children
+	return a.add_node(flat.Node{
+		...node
+		children_start: start
+		children_count: children.len
+	})
+}
+
+// shortcut_capturing_literal is a function literal that captures a variable.
+fn shortcut_capturing_literal(mut a flat.FlatAst, mut t Transformer) flat.NodeId {
+	return shortcut_test_node(mut a, flat.Node{ kind: .fn_literal }, [
+		t.make_ident('captured'),
+	])
+}
+
+fn test_trimmed_transform_text_is_trim_space() {
+	for text in ['', ' ', '\t\n', 'int', ' int', 'int ', '\tmap[string]int\n', 'a b', ' a b ',
+		'\vx\f', 'é', ' é\r'] {
+		assert trimmed_transform_text(text) == text.trim_space(), text.bytes().str()
+	}
+}
+
+fn test_interface_box_scan_reads_the_kinds_it_handles() {
+	for kind in [flat.NodeKind.file, .module_decl, .fn_decl, .fn_literal, .lambda_expr, .assign,
+		.decl_assign, .selector_assign, .index_assign, .select_branch, .infix, .cast_expr, .call,
+		.struct_init] {
+		assert interface_box_scan_reads_kind(kind), kind.str()
+	}
+	for kind in [flat.NodeKind.ident, .string_literal, .selector, .block, .return_stmt, .if_expr,
+		.param, .field_init, .array_literal, .prefix] {
+		assert !interface_box_scan_reads_kind(kind), kind.str()
+	}
+}
+
+fn test_closure_bounds_hold_for_every_value_the_cleanup_walk_accepts() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	plain := shortcut_test_node(mut a, flat.Node{ kind: .fn_literal }, [])
+	text := t.make_string_literal('text')
+	name := t.make_ident('name')
+	field := t.make_selector(t.make_ident('base'), 'field', 'int')
+	cond := a.add_val(.bool_literal, 'true')
+	in_paren := t.make_paren(shortcut_capturing_literal(mut a, mut t))
+	in_block := shortcut_test_node(mut a, flat.Node{ kind: .block }, [
+		t.make_string_literal('first'),
+		shortcut_capturing_literal(mut a, mut t),
+	])
+	block_of_text := shortcut_test_node(mut a, flat.Node{ kind: .block }, [
+		shortcut_capturing_literal(mut a, mut t),
+		t.make_string_literal('last'),
+	])
+	both_branches := shortcut_test_node(mut a, flat.Node{ kind: .if_expr }, [cond,
+		shortcut_capturing_literal(mut a, mut t), shortcut_capturing_literal(mut a, mut t)])
+	one_branch := shortcut_test_node(mut a, flat.Node{ kind: .if_expr }, [cond,
+		shortcut_capturing_literal(mut a, mut t), t.make_string_literal('else')])
+	negated := shortcut_test_node(mut a, flat.Node{ kind: .postfix, op: .not }, [
+		shortcut_capturing_literal(mut a, mut t),
+	])
+	elements := shortcut_test_node(mut a, flat.Node{ kind: .array_literal }, [
+		t.make_string_literal('element'),
+		shortcut_capturing_literal(mut a, mut t),
+	])
+	texts := shortcut_test_node(mut a, flat.Node{ kind: .array_literal }, [
+		t.make_string_literal('one'),
+		t.make_string_literal('two'),
+	])
+	nested := shortcut_test_node(mut a, flat.Node{ kind: .array_literal }, [elements])
+	assert t.may_allocate_fresh_runtime_closure(in_paren)
+	assert t.may_allocate_fresh_runtime_closure(in_block)
+	assert t.may_allocate_fresh_runtime_closure(both_branches)
+	assert t.may_allocate_fresh_runtime_closure(one_branch)
+	assert t.may_allocate_fresh_runtime_closure(plain)
+	assert t.may_allocate_fresh_runtime_closure(field)
+	assert !t.may_allocate_fresh_runtime_closure(text)
+	assert !t.may_allocate_fresh_runtime_closure(name)
+	assert !t.may_allocate_fresh_runtime_closure(block_of_text)
+	assert !t.may_allocate_fresh_runtime_closure(elements)
+	assert t.appended_value_may_allocate_runtime_closure(elements)
+	assert t.appended_value_may_allocate_runtime_closure(negated)
+	assert !t.appended_value_may_allocate_runtime_closure(texts)
+	assert !t.appended_value_may_allocate_runtime_closure(text)
+	assert t.is_closure_field_initializer(elements)
+	assert t.is_closure_field_initializer(shortcut_test_node(mut a, flat.Node{
+		kind: .postfix
+		op:   .not
+	}, [nested]))
+	assert !t.is_closure_field_initializer(in_paren)
+	assert !t.is_closure_field_initializer(text)
+	// The walk accepts no value that its bounds turn away.
+	mut accepted := 0
+	for idx in 0 .. a.nodes.len {
+		id := flat.NodeId(idx)
+		if t.expr_allocates_fresh_runtime_closure(id) {
+			accepted++
+			assert t.may_allocate_fresh_runtime_closure(id), a.nodes[idx].kind.str()
+		}
+		mut appended := []LocalClosureFieldCandidate{}
+		t.collect_local_closure_append_value_candidates(id, id, id, 'values', 'values[*]',
+			flat.NodeId(-1), mut appended)
+		if appended.len > 0 {
+			accepted++
+			assert t.appended_value_may_allocate_runtime_closure(id), a.nodes[idx].kind.str()
+		}
+		mut fields := []LocalClosureFieldCandidate{}
+		t.collect_local_closure_initializer_field_candidates(flat.NodeId(-1), id, id, 'values',
+			'values', flat.NodeId(-1), mut fields)
+		if fields.len > 0 {
+			accepted++
+			assert t.is_closure_field_initializer(id), a.nodes[idx].kind.str()
+		}
+	}
+	assert accepted > 10
+}

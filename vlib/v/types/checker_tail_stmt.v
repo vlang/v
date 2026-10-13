@@ -17881,13 +17881,10 @@ fn wide_integer_type_for_widening(typ Type) bool {
 @[direct_array_access]
 fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ Type) Type {
 	tidx := int(id)
-	if tidx < 0 || tidx >= tc.a.nodes.len {
+	if tidx < 0 || tidx >= tc.a.nodes.len || tc.a.nodes[tidx].kind != .infix {
 		return typ
 	}
 	node := tc.a.nodes[tidx]
-	if node.kind != .infix {
-		return typ
-	}
 	if !narrow_integer_type_for_widening(typ) {
 		return typ
 	}

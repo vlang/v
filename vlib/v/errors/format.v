@@ -29,6 +29,9 @@ mut:
 	source_read  bool
 	source_name  string
 	source       string
+	// Where the line `cursor_line` of `source` starts, 0 when no line was located yet.
+	cursor_line   int
+	cursor_offset int
 }
 
 // formatted_error renders a compiler diagnostic with v1-compatible colors and source context.
@@ -142,7 +145,7 @@ fn (mut run DiagnosticRun) formatted_source_error(kind string, message string, f
 		if position.filename != file.name || position.line != physical_line {
 			if position.filename != file.name {
 				if source := run.read_source(position.filename) {
-					lines := source_lines_through(source, position.line - source_context_before,
+					lines := run.source_lines_through(source, position.line - source_context_before,
 						position.line + source_context_after)
 					if position.line <= lines.len {
 						write_source_excerpt(mut result, kind, lines, position.line, span_start,
@@ -152,7 +155,7 @@ fn (mut run DiagnosticRun) formatted_source_error(kind string, message string, f
 				}
 			}
 			source := run.read_source(file.name) or { return result.str().trim_right('\n') }
-			lines := source_lines_through(source, physical_line, physical_line)
+			lines := run.source_lines_through(source, physical_line, physical_line)
 			if physical_line <= lines.len {
 				write_source_line(mut result, kind, lines[physical_line - 1], position.line, true,
 					true, span_start, span_end)
@@ -161,7 +164,7 @@ fn (mut run DiagnosticRun) formatted_source_error(kind string, message string, f
 		}
 	}
 	source := run.read_source(file.name) or { return result.str().trim_right('\n') }
-	lines := source_lines_through(source, position.line - source_context_before,
+	lines := run.source_lines_through(source, position.line - source_context_before,
 		position.line + source_context_after)
 	if lines.len == 0 {
 		return result.str().trim_right('\n')
@@ -174,13 +177,19 @@ fn (mut run DiagnosticRun) formatted_source_error(kind string, message string, f
 // line `last_line`: all of them when the source is shorter, the first `last_line` otherwise.
 // Lines before `first_line` are left empty. A diagnostic prints a few lines around its
 // position, so its whole file, often thousands of lines long, is not copied line by line.
-@[direct_array_access]
 fn source_lines_through(source string, first_line int, last_line int) []string {
-	mut lines := []string{}
+	return source_lines_from(source, 0, 1, first_line, last_line)
+}
+
+// source_lines_from is source_lines_through for a source whose line `start_line`, no later
+// than `first_line` or the first line, is known to start at `start_offset`.
+@[direct_array_access]
+fn source_lines_from(source string, start_offset int, start_line int, first_line int, last_line int) []string {
+	mut lines := []string{len: start_line - 1}
 	// An empty source has no lines; any other has a first one to count.
 	limit := int_max(1, last_line)
-	mut line_start := 0
-	for i := 0; i < source.len; i++ {
+	mut line_start := start_offset
+	for i := start_offset; i < source.len; i++ {
 		if line_start > i {
 			continue
 		}
@@ -206,6 +215,45 @@ fn source_lines_through(source string, first_line int, last_line int) []string {
 		lines << if lines.len + 1 < first_line { '' } else { source[line_start..] }
 	}
 	return lines
+}
+
+// source_lines_through returns what the function of the same name does for the source
+// read last. The diagnostics of one file come in the order of their lines, so the search
+// for a line starts where the one before it was found rather than at the top of the file.
+@[direct_array_access]
+fn (mut run DiagnosticRun) source_lines_through(source string, first_line int, last_line int) []string {
+	if !run.source_read || source.str != run.source.str || source.len != run.source.len {
+		return source_lines_through(source, first_line, last_line)
+	}
+	target := int_min(int_max(1, first_line), int_max(1, last_line))
+	mut line := 1
+	mut line_start := 0
+	if run.cursor_line > 0 && run.cursor_line <= target {
+		line = run.cursor_line
+		line_start = run.cursor_offset
+	}
+	for i := line_start; line < target && i < source.len; i++ {
+		if line_start > i {
+			continue
+		}
+		c := source[i]
+		if c != `\n` && c != `\r` {
+			continue
+		}
+		line_start = if c == `\r` && i + 1 < source.len && source[i + 1] == `\n` {
+			i + 2
+		} else {
+			i + 1
+		}
+		line++
+	}
+	if line < target {
+		// The source ends before the first line asked for.
+		return []string{len: if line_start < source.len { line } else { line - 1 }}
+	}
+	run.cursor_line = line
+	run.cursor_offset = line_start
+	return source_lines_from(source, line_start, line, first_line, last_line)
 }
 
 // write_source_excerpt writes the lines around `target_line` of `lines`, and highlights
@@ -481,6 +529,7 @@ fn (mut run DiagnosticRun) read_source(name string) ?string {
 	if !run.source_known || run.source_name != name {
 		run.source_name = name
 		run.source_known = true
+		run.cursor_line = 0
 		if source := os.read_file(name) {
 			run.source = source
 			run.source_read = true
