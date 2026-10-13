@@ -19470,9 +19470,10 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#endif')
 	g.writeln('#else')
 	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
-		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/ioctl.h', 'sys/mman.h', 'sys/resource.h',
-		'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h', 'sys/utsname.h',
-		'sys/un.h', 'sys/uio.h', 'sys/ptrace.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
+		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/file.h', 'sys/ioctl.h', 'sys/mman.h',
+		'sys/resource.h', 'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h',
+		'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/ptrace.h', 'sys/wait.h', 'termios.h', 'unistd.h',
+		'utime.h'] {
 		g.writeln('#include <${header}>')
 	}
 	g.writeln('#if defined(__linux__) && defined(__GLIBC__)')
