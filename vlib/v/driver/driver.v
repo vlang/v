@@ -6680,6 +6680,20 @@ fn incremental_top_level_nodes(a &flat.FlatAst) []bool {
 	return result
 }
 
+fn program_has_translated_module_attributes(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		idx := node.value.all_after('@attributes:').int()
+		if idx >= 0 && idx < a.nodes.len && a.nodes[idx].kind == .module_decl
+			&& node.generic_params().any(it.all_before(':').trim_space() == 'translated') {
+			return true
+		}
+	}
+	return false
+}
+
 fn incremental_declaration_attribute_signatures(a &flat.FlatAst) map[int]string {
 	mut result := map[int]string{}
 	for node in a.nodes {
@@ -7675,6 +7689,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.enum_fields = clone_string_list_map(tc.enum_fields)
 	tc.flag_enums = clone_string_bool_map(tc.flag_enums)
 	tc.interface_names = clone_string_bool_map(tc.interface_names)
+	tc.interface_generic_params = clone_string_list_map(tc.interface_generic_params)
 	tc.interface_fields = clone_struct_field_map(tc.interface_fields)
 	tc.interface_embeds = clone_string_list_map(tc.interface_embeds)
 	tc.interface_abstract_methods = clone_string_list_map(tc.interface_abstract_methods)
@@ -7970,7 +7985,7 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
 	resolved_path := os.real_path(compiler_path)
 	name := os.file_name(resolved_path).to_lower_ascii()
-	if name.contains('tcc') || name.contains('tinyc') {
+	if pref.tinycc_file_name(name) {
 		return 'tinyc'
 	}
 	if name.contains('clang') {
@@ -7995,7 +8010,7 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	}
 	compiler_result := cmdexec.run(compiler_path, ['--version'])
 	version := compiler_result.output.to_lower_ascii()
-	if version.contains('tiny c compiler') || version.contains('tcc version') {
+	if pref.ccompiler_version_is_tinycc(version) {
 		return 'tinyc'
 	}
 	if version.contains('clang') {
@@ -8025,6 +8040,14 @@ fn v3_select_implicit_c_compiler(c_compiler string, c_compiler_explicit bool, im
 		return implicit_tcc
 	}
 	return c_compiler
+}
+
+// v3_tcc_prod_rejected reports whether a `-prod` C build would compile with TinyCC.
+// Probe the actual compiler for production builds because its name may suggest Clang or GCC.
+// FastC refuses `-prod` on its own, earlier.
+fn v3_tcc_prod_rejected(is_prod bool, backend string, effective_c_compiler string, c_compiler string) bool {
+	return is_prod && backend == 'c'
+		&& (effective_c_compiler == 'tinyc' || pref.ccompiler_is_tinycc(c_compiler))
 }
 
 // V3CCompilerSelection is the C compiler that receives a compilation's first
@@ -11437,6 +11460,10 @@ pub fn run(args []string) {
 	c_compiler = selection.c_compiler
 	use_implicit_tcc_semantics := selection.use_implicit_tcc_semantics
 	effective_c_compiler := selection.effective_c_compiler
+	if v3_tcc_prod_rejected(is_prod, backend, effective_c_compiler, c_compiler) {
+		eprintln('tcc is not allowed with -prod')
+		exit(1)
+	}
 	if effective_c_compiler == 'msvc' && target.os != 'windows' && !output_cross_c {
 		eprintln('MSVC requires a Windows target; cannot compile target `${target.os}`')
 		exit(1)
@@ -12624,7 +12651,10 @@ pub fn run(args []string) {
 	}
 	use_macos_dev_program_cache := backend == 'c' && program_cache_enabled && !is_prod && !is_shared
 		&& !is_selfhost && prefs.normalized_target_os() == 'macos'
+	// Translated body edits can require new integer-formatting helpers and map
+	// declarations that the prior prefix did not contain. Rebuild that prefix.
 	incremental_cache_enabled := use_macos_dev_program_cache
+		&& !translated_mode && !program_has_translated_module_attributes(a)
 		&& os.getenv('V3_CACHE_DISABLE_INCREMENTAL') != '1'
 	mut generic_cache_inputs_ready := false
 	mut incremental_snapshot := V3IncrementalSnapshot{}

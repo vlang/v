@@ -6715,13 +6715,46 @@ fn auto_str_helper_name(aggregate string) string {
 }
 
 fn (t &Transformer) auto_str_helper_owner_module(aggregate string) string {
+	base_name := aggregate.all_before('[')
 	if !isnil(t.tc) {
 		if module_name := t.tc.struct_modules[aggregate] {
 			return module_name
 		}
+		if module_name := t.tc.type_alias_modules[aggregate] {
+			return module_name
+		}
+		// Bare interfaces belong to main or builtin, even when a library
+		// specialization requests their recursive stringification helper.
+		if !base_name.contains('.') {
+			for node in t.a.nodes {
+				if node.kind != .interface_decl || node.value != base_name {
+					continue
+				}
+				if source := t.a.source_files[node.pos.id] {
+					// Generated helper contexts can revisit a source file in a foreign
+					// namespace. The parsed file's module remains its declaration owner.
+					for file_node in t.a.nodes {
+						if file_node.kind == .file && file_node.children_count > 0
+							&& (file_node.value == source.name
+								|| t.a.real_source_path(file_node.value) == t.a.real_source_path(source.name)) {
+							module_name := t.file_module_name(file_node)
+							if module_name in ['', 'main', 'builtin'] {
+								return if module_name.len > 0 { module_name } else { 'main' }
+							}
+						}
+					}
+					module_name := t.tc.file_modules[source.name] or {
+						t.tc.file_modules[t.a.real_source_path(source.name)] or { continue }
+					}
+					if module_name in ['', 'main', 'builtin'] {
+						return module_name
+					}
+				}
+			}
+		}
 	}
-	if !aggregate.starts_with('C.') && aggregate.contains('.') {
-		return aggregate.all_before_last('.')
+	if !base_name.starts_with('C.') && base_name.contains('.') {
+		return base_name.all_before_last('.')
 	}
 	return if t.cur_module.len > 0 { t.cur_module } else { 'main' }
 }
