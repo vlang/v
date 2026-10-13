@@ -678,6 +678,44 @@ fn run_launcher_test_process(executable string, args []string, work_dir string,
 	return result
 }
 
+fn test_prod_with_tinycc_is_refused_before_any_compiler_runs() {
+	dir := os.join_path(os.vtmp_dir(), 'v_prod_tinycc_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'main.v')
+	os.write_file(source, 'fn main() {\n\tprintln(1)\n}\n') or { panic(err) }
+	output := os.join_path(dir, 'main')
+	// `-old-compiler` must not reach the compatibility compiler with this pair either.
+	for args in [['-prod', '-cc', 'tcc'], ['-cc=tinyc', '-prod'],
+		['-old-compiler', '-prod', '-cc', 'tcc']] {
+		result := os.exec([@VEXE, ...args, '-o', output, source])
+		assert result.exit_code == 1, '${args}: ${result.output}'
+		assert result.output.contains('tcc is not allowed with -prod'), '${args}: ${result.output}'
+	}
+}
+
+fn test_prod_refuses_tinycc_under_another_name_once_it_resolves() {
+	bundled := os.join_path(os.dir(@VEXE), 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(bundled) {
+		return
+	}
+	dir := os.join_path(os.vtmp_dir(), 'v_prod_tinycc_alias_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	// The name has no `tcc`, so only the resolved compiler gives it away.
+	alias_path := os.join_path(dir, 'cc_alias.exe')
+	os.cp(bundled, alias_path) or { panic(err) }
+	source := os.join_path(dir, 'main.v')
+	os.write_file(source, 'fn main() {\n\tprintln(1)\n}\n') or { panic(err) }
+	result := os.exec([@VEXE, '-prod', '-cc', alias_path, '-o', os.join_path(dir, 'main'), source])
+	assert result.exit_code == 1, result.output
+	assert result.output.contains('tcc is not allowed with -prod'), result.output
+}
+
 fn test_external_tools_do_not_use_the_v1_fallback() {
 	$if !windows {
 		false_executable := os.find_abs_path_of_executable('false') or { return }

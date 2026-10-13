@@ -6,6 +6,7 @@ import strconv
 import strings
 import time
 import v.cmdexec
+import v.pref
 import v.tempname
 
 const record_prefix = '.vup_refresh_'
@@ -550,7 +551,10 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // Live entries whose project source identity changed are skipped until rebuilt and recorded.
 // Legacy headers are marked migrated only after successful refreshes of their variants.
 // Disk-full failures stop remaining builds; child output is forwarded without buffering it all.
-pub fn refresh(vexe string, requests []Request) ! {
+// TinyCC production builds are never refreshed: the compiler refuses `-cc tcc` with `-prod`,
+// and records made before that rule still exist.
+pub fn refresh(vexe string, all_requests []Request) ! {
+	requests := all_requests.filter(!pref.tcc_with_prod_requested(it.args))
 	if requests.len == 0 { return }
 	dir := os.join_path(os.vtmp_dir(), 'vup_cache_refresh_${tempname.unique_token()}')
 	os.mkdir_all(dir)!

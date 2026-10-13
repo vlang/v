@@ -701,6 +701,8 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		}
 		for mode in modes {
 			for prod in [false, true] {
+				// TinyCC is not a -prod compiler, so there is no production TinyCC build to check.
+				if compiler == 'tcc' && prod { continue }
 				mut flags := ['-cc', compiler, '-gc', 'none', '-path', 'modules/../modules|@vlib',
 					'-file-list', '../shared support.v,../implementers']
 				if prod { flags << '-prod' }

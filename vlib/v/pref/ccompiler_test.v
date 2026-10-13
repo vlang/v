@@ -29,3 +29,17 @@ fn test_ccompiler_can_assemble_rejects_a_tcc_alias() {
 	found := find_system_assembler() or { panic('the fake Clang was not found') }
 	assert found == alias_path
 }
+
+fn test_tcc_with_prod_requested_needs_both_prod_and_a_tinycc_name() {
+	assert tcc_with_prod_requested(['-prod', '-cc', 'tcc', 'main.v'])
+	assert tcc_with_prod_requested(['-cc', 'C:/tools/tcc.exe', '-prod', 'main.v'])
+	assert tcc_with_prod_requested(['-cc=tinyc', '-prod', 'main.v'])
+	assert tcc_with_prod_requested(['-prod', '-cc', 'TCC.EXE', 'main.v'])
+	assert !tcc_with_prod_requested(['-cc', 'tcc', 'main.v'])
+	assert !tcc_with_prod_requested(['-prod', '-cc', 'clang', 'main.v'])
+	assert !tcc_with_prod_requested(['-prod', '-cc'])
+	assert !tcc_with_prod_requested(['-prod', 'main.v'])
+	// The last `-cc` wins, so a `VFLAGS=-cc tcc` can be overridden on the command line.
+	assert !tcc_with_prod_requested(['-cc', 'tcc', '-prod', '-cc', 'gcc', 'main.v'])
+	assert tcc_with_prod_requested(['-cc', 'gcc', '-prod', '-cc', 'tcc', 'main.v'])
+}

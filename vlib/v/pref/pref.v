@@ -1216,6 +1216,31 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 	return false
 }
 
+// tcc_with_prod_requested reports whether `args` contain `-prod` and select TinyCC: the last
+// `-cc` or `-cc=` names a file called tcc or tinyc, as the driver takes the last one. It only
+// reads the names; the driver also checks the compiler it resolves, which catches an alias
+// such as `cc` for tcc.
+pub fn tcc_with_prod_requested(args []string) bool {
+	mut prod := false
+	mut ccompiler := ''
+	for i, arg in args {
+		if arg == '-prod' {
+			prod = true
+		} else if arg == '-cc' && i + 1 < args.len {
+			ccompiler = args[i + 1]
+		} else if arg.starts_with('-cc=') {
+			ccompiler = arg['-cc='.len..]
+		}
+	}
+	return prod && ccompiler != '' && is_tcc_compiler_name(ccompiler)
+}
+
+// is_tcc_compiler_name reports whether the file name of `ccompiler` is tcc or tinyc.
+fn is_tcc_compiler_name(ccompiler string) bool {
+	name := os.file_name(ccompiler).to_lower_ascii()
+	return name.contains('tcc') || name.contains('tinyc')
+}
+
 // find_system_assembler returns a GCC or Clang compatible compiler driver found
 // on PATH, one that can assemble a preprocessed `.S` file, or none.
 pub fn find_system_assembler() ?string {

@@ -154,20 +154,19 @@ fn test_vup_refreshes_only_tinycc_modes_even_when_already_updated() ! {
 		os.write_file(cache_log, '')!
 		result := run_vup(root, home, tool, bin_dir, ...options)!
 		assert result.exit_code == 0, result.output
-		assert result.output.count('Caching module crypto.sample...') == 4, result.output
-		assert result.output.count('> Refreshing module cache [') == 4, result.output
-		assert result.output.contains('> Refreshing module cache [1/4]'), result.output
-		assert result.output.contains('> Refreshing module cache [4/4]'), result.output
-		assert result.output.contains('> Module cache refresh complete: 4 build configurations checked.'), result.output
+		assert result.output.count('Caching module crypto.sample...') == 2, result.output
+		assert result.output.count('> Refreshing module cache [') == 2, result.output
+		assert result.output.contains('> Refreshing module cache [1/2]'), result.output
+		assert result.output.contains('> Refreshing module cache [2/2]'), result.output
+		assert result.output.contains('> Module cache refresh complete: 2 build configurations checked.'), result.output
 		assert result.output.contains('(normal program; -cc tcc).\nCaching module crypto.sample...'), result.output
-		assert result.output.contains('(production program; -cc tcc -prod).\nCaching module crypto.sample...'), result.output
 		assert result.output.contains('(normal tests; -cc tcc).\nCaching module crypto.sample...'), result.output
-		assert result.output.contains('(production tests; -cc tcc -prod).\nCaching module crypto.sample...'), result.output
+		// The production TinyCC records stay on disk from before the rule, and are not refreshed.
 		calls := os.read_file(cache_log)!.split_into_lines()
-		assert calls.len == 4, calls.str()
+		assert calls.len == 2, calls.str()
 		assert calls.all(it.starts_with('-cc tcc ')), calls.str()
 		assert calls.any(it.starts_with('-cc tcc -skip-running ')), calls.str()
-		assert calls.any(it.starts_with('-cc tcc -prod -skip-running ')), calls.str()
+		assert !calls.any(it.contains('-prod')), calls.str()
 		assert !calls.any(it.contains(' run ')), calls.str()
 	}
 	// A failed refresh is visible and fails v up, while other modules still refresh.

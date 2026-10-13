@@ -8027,6 +8027,12 @@ fn v3_select_implicit_c_compiler(c_compiler string, c_compiler_explicit bool, im
 	return c_compiler
 }
 
+// v3_tcc_prod_rejected reports whether a `-prod` C build would compile with TinyCC, which is
+// when its C compiler resolves to tinyc. FastC refuses `-prod` on its own, earlier.
+fn v3_tcc_prod_rejected(is_prod bool, backend string, effective_c_compiler string) bool {
+	return is_prod && backend == 'c' && effective_c_compiler == 'tinyc'
+}
+
 // V3CCompilerSelection is the C compiler that receives a compilation's first
 // build attempt, and the name (`tinyc`, `gcc`, `clang`, ...) the generated code
 // and the `// vtest build:` facts describe it by.
@@ -11437,6 +11443,10 @@ pub fn run(args []string) {
 	c_compiler = selection.c_compiler
 	use_implicit_tcc_semantics := selection.use_implicit_tcc_semantics
 	effective_c_compiler := selection.effective_c_compiler
+	if v3_tcc_prod_rejected(is_prod, backend, effective_c_compiler) {
+		eprintln('tcc is not allowed with -prod')
+		exit(1)
+	}
 	if effective_c_compiler == 'msvc' && target.os != 'windows' && !output_cross_c {
 		eprintln('MSVC requires a Windows target; cannot compile target `${target.os}`')
 		exit(1)
