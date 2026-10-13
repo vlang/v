@@ -60,7 +60,7 @@ pub fn (mut p Phaser) arrive_and_wait() u64 {
 
 // arrive_and_deregister records one arrival and removes one party. If that
 // completes the phase, the phase advances and waiters are released. It
-// returns the completed phase number.
+// returns the phase in which the party arrived, even if it is not yet complete.
 pub fn (mut p Phaser) arrive_and_deregister() u64 {
 	p.mutex.lock()
 	defer {

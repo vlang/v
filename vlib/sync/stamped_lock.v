@@ -1,7 +1,7 @@
 module sync
 
 // StampedLock is a lock with optimistic reads: readers can take a stamp and
-// validate it afterwards without ever blocking writers, falling back to a
+// validate it afterwards without holding a read lock, falling back to a
 // regular read lock when validation fails. It is the V-idiomatic equivalent
 // of Java's `java.util.concurrent.locks.StampedLock`.
 @[heap]
