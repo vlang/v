@@ -3,6 +3,9 @@
 `builtin` is a module that is implicitly imported by every V program.
 
 It implements the builtin V types `array`, `string`, `map`.
+Default array `sort()` and `sorted()` keep equal elements in their original order.
+For floating point elements, NaNs follow all other values. Equal signed zeros and NaNs
+keep their original order; an explicit comparison controls its own ordering.
 Maps with empty struct values support growth, reservation, and deletion with every C compiler,
 including compilers where the empty struct occupies zero bytes.
 It also includes Unicode-aware string helpers such as `string.graphemes()`
