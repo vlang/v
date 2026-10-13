@@ -45,6 +45,9 @@ and pass reached declaration IDs to `TypeChecker.check_library_body_frontier_nod
 The snapshot preserves declaration order, source context, and checking ranges. A changed
 AST or an unindexed declaration returns `none`, so integrations can fall back to
 `check_reached_library_bodies` with the complete used-function map.
+`TypeChecker.reached_library_body_nodes(used)` returns the remaining declarations accepted
+by that convergence check, including ambiguous short names. Reachability can complete their
+semantic checks without revisiting already-checked bodies when the declaration arena is unchanged.
 
 Verbose builds include bodies checked by reachability frontiers in the `checked late` count.
 The initial pass also checks the library methods that a generic body names in a member
