@@ -14008,6 +14008,16 @@ fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
 }
 
 fn (mut b Builder) resolve_type(name string) TypeID {
+	// wasm has no 128-bit integer, and a u128 that falls through the primitive
+	// table below degrades to a narrower type and then answers wrong: `u128 >> 64`
+	// gives 0 and a 128-bit product loses its high limb. Refuse the name here
+	// rather than lower it, so the caller is told which type is missing instead
+	// of being handed a wrong number. The other 32-bit targets keep their own
+	// resolution path, and a 64-bit target either supports u128 or refuses it in
+	// its own backend.
+	if b.m.target.ptr_size == 4 && (name == 'u128' || name == 'i128') {
+		panic('wasm: `${name}` is not supported on the wasm target; wasm has no 128-bit integer type')
+	}
 	if name == 'thread' || name.starts_with('thread ') {
 		return b.u64_type
 	}
