@@ -91,8 +91,9 @@ fn test_text_before_a_comment_or_cdata_keeps_the_document_order() ! {
 		comment,
 		xml.XMLNodeContents('l3\nl4'),
 	]
-	// Each text is trimmed, like the text around a child node.
-	assert children_of('<r> x <!-- c --> y </r>')! == [x, comment, y]
+	// Element boundaries trim text; separators around a comment remain in the text run.
+	assert children_of('<r> x <!-- c --> y </r>')! == [xml.XMLNodeContents('x '), comment,
+		xml.XMLNodeContents(' y')]
 	assert children_of('<r> x <a/> y </r>')! == [x, node, y]
 }
 
@@ -185,8 +186,8 @@ fn test_unterminated_document_error_has_a_message() {
 	assert parse_error('<r><![CDATA[x]]') == 'CDATA section not closed.'
 	assert parse_error('<!-- hello') == 'XML Comment not closed.'
 	assert parse_error('<?xml version="1.0"?><!-- hello') == 'XML Comment not closed.'
-	assert parse_error('<!DOCTYPE a [') == 'DOCTYPE declaration not closed.'
-	assert parse_error('<?xml version="1.0"?><!DOCTYPE a [') == 'DOCTYPE declaration not closed.'
+	assert parse_error('<!DOCTYPE a [') == 'Invalid DOCTYPE: declaration not closed.'
+	assert parse_error('<?xml version="1.0"?><!DOCTYPE a [') == 'Invalid DOCTYPE: declaration not closed.'
 	// A document without a root node keeps the message that it had.
 	assert parse_error('') == 'XML document is empty.'
 	assert parse_error('<?xml version="1.0"?>\n') == 'XML document is empty.'
@@ -237,4 +238,12 @@ fn test_empty_element_name_is_an_error() {
 	assert parse_error('< >') == missing
 	assert parse_error('<r>< ></ ></r>') == missing
 	assert parse_error('<\n>') == missing
+}
+
+fn test_attribute_assignment_without_a_complete_value_is_an_error() {
+	for source in ['<a k=/>', '<a k=></a>', '<a k="/>', "<a k='/>"] {
+		assert parse_error(source) != 'parsed without an error', source
+		assert parse_error(source) != '', source
+	}
+	assert parse_error('<a ="v"/>') == 'XML attribute is missing name.'
 }
