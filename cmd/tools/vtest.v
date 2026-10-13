@@ -44,7 +44,16 @@ fn main() {
 	if strict_v3 {
 		// Apply strict V3 flags to each top-level test compilation without leaking
 		// compiler-only flags into test binaries and the tools they launch.
-		session_vargs = '${requested_vflags} ${session_vargs}'
+		// The launcher already forwarded the tokenised VFLAGS in args_before, so
+		// prepend only the flags that are not there yet, re-quoting values that
+		// contain a space so the later re-tokenise keeps them as one argument.
+		mut extra_vargs := []string{}
+		for flag in requested_args {
+			if flag !in args_before {
+				extra_vargs << if flag.contains(' ') { '"${flag}"' } else { flag }
+			}
+		}
+		session_vargs = extra_vargs.join(' ') + ' ' + session_vargs
 		os.unsetenv('VFLAGS')
 	}
 
