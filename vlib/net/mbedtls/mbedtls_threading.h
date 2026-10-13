@@ -51,14 +51,14 @@ static int v_mbedtls_mutex_unlock(mbedtls_threading_mutex_t *m) {
     return 0;
 }
 
-static void v_mbedtls_threading_setup(void) {
+static inline void v_mbedtls_threading_setup(void) {
     mbedtls_threading_set_alt(v_mbedtls_mutex_init, v_mbedtls_mutex_free,
         v_mbedtls_mutex_lock, v_mbedtls_mutex_unlock);
 }
 
 #else /* not (Windows + THREADING_ALT) */
 
-static void v_mbedtls_threading_setup(void) { }
+static inline void v_mbedtls_threading_setup(void) { }
 
 #endif
 

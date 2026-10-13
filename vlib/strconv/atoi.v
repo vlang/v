@@ -141,7 +141,13 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 
 // parse_uint is like parse_int but for unsigned numbers.
 pub fn parse_uint(s string, _base int, _bit_size int) !u64 {
-	return common_parse_uint(s, _base, _bit_size, true, true)
+	n := common_parse_uint(s, _base, _bit_size, true, true)!
+	// Only base 0 permits underscores. The shared digit loop accepts them in every base,
+	// because `string.int()` and its siblings parse `1_000` with an explicit base 10.
+	if _base != 0 && s.contains_u8(`_`) {
+		return error('common_parse_uint: syntax error ${s}')
+	}
+	return n
 }
 
 // common_parse_int parses a signed integer, optionally stopping at invalid digits.
@@ -222,7 +228,12 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 // correspond to int, int8, int16, int32, and int64.
 // If bitSize is below 0 or above 64, an error is returned.
 pub fn parse_int(_s string, base int, _bit_size int) !i64 {
-	return common_parse_int(_s, base, _bit_size, true, false)
+	n := common_parse_int(_s, base, _bit_size, true, false)!
+	// Only base 0 permits underscores, see parse_uint.
+	if base != 0 && _s.contains_u8(`_`) {
+		return error('common_parse_uint: syntax error ${_s}')
+	}
+	return n
 }
 
 // atoi_common_check perform basics check on string to parse:
