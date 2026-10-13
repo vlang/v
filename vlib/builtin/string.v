@@ -466,6 +466,11 @@ pub fn (s string) replace_each(vals []string) string {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
 		rep := vals[rep_i]
 		with := vals[rep_i + 1]
+		if rep.len == 0 {
+			// an empty needle matches at every position without advancing
+			// the scan below, so skip it instead of looping forever
+			continue
+		}
 
 		for {
 			idx = s_.index_after_(rep, idx)
