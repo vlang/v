@@ -1,11 +1,5 @@
 module transform
 
-#include <mach/mach.h>
-
-#include <mach/mach_vm.h>
-
-#include <unistd.h>
-
 fn C.mach_vm_allocate(target C.task_t, address &u64, size u64, flags int) int
 
 fn C.mach_vm_deallocate(target C.task_t, address u64, size u64) int

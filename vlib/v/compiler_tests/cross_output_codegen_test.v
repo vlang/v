@@ -155,7 +155,9 @@ fn main() {
 	println(read_value("generic"))
 }
 '
-	c_code := cross_generate_with('-no-retry-compilation -cross -cc ${generation_cc} -gc none',
+	// This fixture links C directly to test preserved generic method values.
+	// Ordinary V builds supply the native signal helper separately.
+	c_code := cross_generate_with('-no-retry-compilation -d no_segfault_handler -cross -cc ${generation_cc} -gc none',
 		'method_values', source)
 	dir := os.join_path(os.vtmp_dir(), 'v3_cross_method_values_${os.getpid()}')
 	os.mkdir_all(dir)!
