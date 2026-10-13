@@ -16955,7 +16955,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_selector_enum
 			}
 			if base.kind == .ident && base.value == 'C' {
-				g.write(c_winapi_wide_export_name(g.c_namespace_global_c_name(node.value)))
+				g.write(g.c_extern_export_name(g.c_namespace_global_c_name(node.value)))
 			} else if enum_selector_qbase.len > 0 {
 				ekey := '${enum_selector_qbase}.${node.value}'
 				if expr := g.enum_value_expr_for_key(ekey) {

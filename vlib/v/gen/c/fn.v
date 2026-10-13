@@ -441,7 +441,7 @@ fn flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId) int {
 	return if span > 0 { span + 64 } else { int(node.children_count) + 65 }
 }
 
-fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, mut c_extern_refs map[string]bool, mut stack []flat.NodeId) (int, bool) {
+fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, windows_target bool, mut c_extern_refs map[string]bool, mut stack []flat.NodeId) (int, bool) {
 	mut cost := 0
 	mut needs_prelude_scan := false
 	stack.clear()
@@ -467,7 +467,9 @@ fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, mut c_exter
 					raw_cfn := naming.c_name(raw_name)
 					c_extern_refs[raw_name] = true
 					c_extern_refs[raw_cfn] = true
-					c_extern_refs[c_winapi_wide_export_name(raw_cfn)] = true
+					if windows_target {
+						c_extern_refs[c_winapi_wide_export_name(raw_cfn)] = true
+					}
 				}
 			}
 		}
@@ -1917,7 +1919,7 @@ fn (g &FlatGen) flattened_generic_method_short_alias(name string) ?string {
 fn (mut g FlatGen) libc_compat_call_name(name string) ?string {
 	if name.starts_with('C.') {
 		cfn := g.cname(name)
-		wide_cfn := c_winapi_wide_export_name(cfn)
+		wide_cfn := g.c_extern_export_name(cfn)
 		if wide_cfn != cfn {
 			return wide_cfn
 		}
@@ -16569,7 +16571,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 				raw_cfn
 			}
 		}
-		cfn := c_winapi_wide_export_name(mapped_cfn)
+		cfn := g.c_extern_export_name(mapped_cfn)
 		shared_runtime_extern := g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols
 		if g.has_used_fn_filter() && !(g.needs_thread_runtime
 			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
@@ -16715,7 +16717,7 @@ fn (g &FlatGen) collect_c_extern_ref_from_node_into(node &flat.Node, mut refs ma
 		raw_cfn := g.cname(raw_name)
 		refs[raw_name] = true
 		refs[raw_cfn] = true
-		refs[c_winapi_wide_export_name(raw_cfn)] = true
+		refs[g.c_extern_export_name(raw_cfn)] = true
 	}
 	if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
 		base_id := g.a.child(node, 0)
@@ -16726,7 +16728,7 @@ fn (g &FlatGen) collect_c_extern_ref_from_node_into(node &flat.Node, mut refs ma
 				raw_cfn := g.cname(raw_name)
 				refs[raw_name] = true
 				refs[raw_cfn] = true
-				refs[c_winapi_wide_export_name(raw_cfn)] = true
+				refs[g.c_extern_export_name(raw_cfn)] = true
 			}
 		}
 	}
@@ -16752,7 +16754,7 @@ fn (mut g FlatGen) preseed_c_extern_fn_ptr_types_with_filter(referenced map[stri
 		mapped_cfn := g.c_decl_abi_names[raw_name] or {
 			g.c_decl_abi_names[g.cname(raw_name)] or { raw_cfn }
 		}
-		cfn := c_winapi_wide_export_name(mapped_cfn)
+		cfn := g.c_extern_export_name(mapped_cfn)
 		shared_runtime_extern := g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols
 		if filter_used && g.has_used_fn_filter() && !(g.needs_thread_runtime
 			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
@@ -17686,7 +17688,7 @@ fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
 	ret_type := g.parse_node_type(&node)
 	sb.write_string(g.c_extern_interop_type_name(ret_type) or { g.fn_return_type_name(ret_type) })
 	sb.write_string(' ')
-	call_conv := c_extern_calling_convention(cfn)
+	call_conv := g.c_extern_calling_convention(cfn)
 	if call_conv.len > 0 {
 		sb.write_string(call_conv)
 		sb.write_u8(` `)
@@ -17698,11 +17700,25 @@ fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
 	return sb.str()
 }
 
-fn c_extern_calling_convention(cfn string) string {
-	if cfn in c_winapi_extern_symbols {
+// c_extern_calling_convention returns the calling convention for the prototype V
+// writes for `cfn`. The names in c_winapi_extern_symbols are the Win32 API on a
+// Windows target only. Anywhere else a `fn C.Sleep` is a C function of the program
+// itself, and `WINAPI` is not even defined.
+fn (g &FlatGen) c_extern_calling_convention(cfn string) string {
+	if g.target.os == 'windows' && cfn in c_winapi_extern_symbols {
 		return 'WINAPI'
 	}
 	return ''
+}
+
+// c_extern_export_name returns the symbol that the C name `cfn` is linked as. On a
+// Windows target an unsuffixed Win32 API name stands for its wide export; on any
+// other target the same name belongs to the program and is kept.
+fn (g &FlatGen) c_extern_export_name(cfn string) string {
+	if g.target.os == 'windows' {
+		return c_winapi_wide_export_name(cfn)
+	}
+	return cfn
 }
 
 fn c_winapi_wide_export_name(cfn string) string {
