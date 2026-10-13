@@ -56,9 +56,11 @@ fn rebundle(fake_vroot string, name string) ! {
 // It returns the checkout, the home directory, the built tool, and a PATH
 // holding only the stand-ins.
 fn vup_report_fixture() !(string, string, string, string) {
-	root := os.join_path(os.vtmp_dir(), 'vup_report_${os.getpid()}')
+	mut root := os.join_path(os.vtmp_dir(), 'vup_report_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
+	// Match the checkout's physical path when macOS exposes /tmp through /private/tmp.
+	root = os.real_path(root)
 	home := os.join_path(root, 'home')
 	os.mkdir_all(os.join_path(home, '.agents', 'skills')) or { panic(err) }
 	for name in ['alpha', 'beta', 'gamma'] {
@@ -154,20 +156,19 @@ fn test_vup_refreshes_only_tinycc_modes_even_when_already_updated() ! {
 		os.write_file(cache_log, '')!
 		result := run_vup(root, home, tool, bin_dir, ...options)!
 		assert result.exit_code == 0, result.output
-		assert result.output.count('Caching module crypto.sample...') == 4, result.output
-		assert result.output.count('> Refreshing module cache [') == 4, result.output
-		assert result.output.contains('> Refreshing module cache [1/4]'), result.output
-		assert result.output.contains('> Refreshing module cache [4/4]'), result.output
-		assert result.output.contains('> Module cache refresh complete: 4 build configurations checked.'), result.output
+		assert result.output.count('Caching module crypto.sample...') == 2, result.output
+		assert result.output.count('> Refreshing module cache [') == 2, result.output
+		assert result.output.contains('> Refreshing module cache [1/2]'), result.output
+		assert result.output.contains('> Refreshing module cache [2/2]'), result.output
+		assert result.output.contains('> Module cache refresh complete: 2 build configurations checked.'), result.output
 		assert result.output.contains('(normal program; -cc tcc).\nCaching module crypto.sample...'), result.output
-		assert result.output.contains('(production program; -cc tcc -prod).\nCaching module crypto.sample...'), result.output
 		assert result.output.contains('(normal tests; -cc tcc).\nCaching module crypto.sample...'), result.output
-		assert result.output.contains('(production tests; -cc tcc -prod).\nCaching module crypto.sample...'), result.output
+		// The production TinyCC records stay on disk from before the rule, and are not refreshed.
 		calls := os.read_file(cache_log)!.split_into_lines()
-		assert calls.len == 4, calls.str()
+		assert calls.len == 2, calls.str()
 		assert calls.all(it.starts_with('-cc tcc ')), calls.str()
 		assert calls.any(it.starts_with('-cc tcc -skip-running ')), calls.str()
-		assert calls.any(it.starts_with('-cc tcc -prod -skip-running ')), calls.str()
+		assert !calls.any(it.contains('-prod')), calls.str()
 		assert !calls.any(it.contains(' run ')), calls.str()
 	}
 	// A failed refresh is visible and fails v up, while other modules still refresh.
@@ -180,7 +181,7 @@ fn test_vup_refreshes_only_tinycc_modes_even_when_already_updated() ! {
 	assert failure.exit_code != 0, failure.output
 	assert failure.output.contains('refreshing cached vlib modules failed'), failure.output
 	assert !failure.output.contains('> Module cache refresh complete:'), failure.output
-	assert os.read_file(cache_log)!.split_into_lines().len == 4
+	assert os.read_file(cache_log)!.split_into_lines().len == 2
 }
 
 fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
@@ -268,7 +269,8 @@ fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
 	write_executable(wrapper, '#!/bin/sh\necho probe >> ' + os.quoted_path(probes) +
 		'\necho "tcc version 0.9.27"\n')!
 	other := os.join_path(bin_dir, 'other-compiler')
-	write_executable(other, '#!/bin/sh\necho "clang version 18.0.0"\n')!
+	write_executable(other, '#!/bin/sh\necho "clang version 19.1.7"\n' +
+		'echo "InstalledDir: /opt/tinycc-tcc version-compatible-sdk/bin"\n')!
 	relative := os.path_rel(os.getwd(), bundled)!
 	variants := [['-cc', 'tinyc'], ['-cc', bundled], ['-cc', alias], ['-cc', relative], []string{},
 		['-cc', os.join_path(bin_dir, 'cc')], ['-cc'], ['-cc', renamed], ['-cc', copied],
@@ -305,7 +307,8 @@ fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
 	result := run_vup(root, home, tool, bin_dir)!
 	assert result.exit_code == 0, result.output
 	calls := os.read_file(log)!.split_into_lines()
-	assert calls.len == 9, calls.str()
+	// The production wrapper resolves to TinyCC, so it is skipped with the other tcc+prod records.
+	assert calls.len == 8, calls.str()
 	assert calls.any(it.starts_with('-cc tinyc ')), calls.str()
 	assert calls.any(it.starts_with('-cc ${bundled} ')), calls.str()
 	assert calls.any(it.starts_with('-cc ${alias} ')), calls.str()
@@ -313,16 +316,18 @@ fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
 	assert calls.any(it.starts_with('-cc ${renamed} ')), calls.str()
 	assert calls.any(it.starts_with('-cc ${copied} ')), calls.str()
 	assert calls.any(it.starts_with('-cc ${wrapper} -skip-running ')), calls.str()
-	assert calls.any(it.starts_with('-cc ${wrapper} -prod ')), calls.str()
+	assert !calls.any(it.starts_with('-cc ${wrapper} -prod ')), calls.str()
 	assert calls.filter(it.starts_with('-cc ${context_wrapper} ')).len == 1, calls.str()
 	assert !calls.any(it.contains('-cc ${os.join_path(bin_dir, 'cc')} ')), calls.str()
 	assert !calls.any(it.contains('-cc ${other} ')), calls.str()
-	assert os.read_file(probes)!.split_into_lines() == ['probe']
+	// vup probes the wrapper once for its cache selection, and the refresh filter probes the
+	// production record again before skipping it.
+	assert os.read_file(probes)!.split_into_lines() == ['probe', 'probe']
 	contexts := os.read_file(context_probes)!.split_into_lines()
 	assert contexts.len == 2, contexts.str()
 	assert os.join_path(root, 'tinycc_project') in contexts, contexts.str()
 	assert os.join_path(root, 'clang_project') in contexts, contexts.str()
-	assert result.output.contains('9 build configurations checked.'), result.output
+	assert result.output.contains('8 build configurations checked.'), result.output
 }
 
 fn test_vup_rebuilds_changed_tinycc_module_and_reuses_unrelated_module() ! {

@@ -473,6 +473,14 @@ and builds with bundled TinyCC on macOS and Linux. TinyCC builds and links its o
 objects. Pass `-nocache` or `--no-cache` to disable caching. A first TinyCC build can be
 faster without the cache, while later builds reuse the cached modules and executable.
 The former `-usecache` flag is no longer accepted.
+The C backend rejects `-prod` with TinyCC, including compiler aliases and renamed copies.
+Use Clang or GCC for production builds. Help, formatter, and other tool commands remain available
+with those flags. `v.pref.ccompiler_version_is_tinycc` recognizes TinyCC banner lines;
+mentions in metadata such as Clang's `InstalledDir` do not identify TinyCC.
+Compiler probes follow the launch path, including executable files in the working directory
+before `PATH`. Windows explicit paths use the implicit `.exe` suffix and expand `%NAME%` variables;
+renamed PE files with other extensions can also be queried.
+
 Cached programs retain the element layouts required by fixed-array aliases and option payloads.
 Cached standard-library headers retain their source classification so headerless C bindings keep
 their complete layouts, including the Boehm GC stack type used by interface stringification.
@@ -500,7 +508,11 @@ This applies to SHA3 and other imported modules with TinyCC too.
 It preserves import order for module C flags and reuses the same records on repeated updates.
 Both original entries and temporary importers stop after module object validation,
 before compiling program objects or linking an executable.
-`v up` refreshes only TinyCC cache configurations, retaining recorded production and test modes.
+`v up` refreshes only TinyCC cache configurations, retaining recorded test modes.
+Production TinyCC records made by older compilers are skipped.
+`v.pref.tcc_with_prod_requested_in` checks compiler wrappers in the record's working directory
+and resolves relative compiler paths and `PATH` entries there without changing the caller's
+directory or environment.
 Caches for other C compilers are refreshed by the next build that uses that compiler.
 Compiler updates validate fresh module interfaces and reuse compiled objects when the generated C,
 C compiler, flags, and native inputs still match. Reused objects print no cache creation notices.
