@@ -262,6 +262,14 @@ fn remove_tail_zeros(s string) string
 
 `format_fl` format a float number in normal notation using the parameters in the `BF_param` struct.
 
+On the C backend, `f64_to_str_lnd1`, `format_fl` and the `%f` and `%F` specifiers preserve all
+integer digits of a finite `f64` in fixed notation. Precision counts digits after the decimal
+point, and rounding uses the exact binary value, with halfway values rounded away from zero.
+For example, `f64_to_str_lnd1(1e23, 1)` returns `99999999999999991611392.0`, and
+`f64_to_str_lnd1(0.1, 20)` returns `0.10000000000000000555`. Large values can have up to 309
+integer digits; precision adds the requested fractional digits. For `format_fl`, the
+`BF_param.positive` field supplies the output sign.
+
 `format_es format a float number in scientific notation using the parameters in the BF_param`
 struct.
 
