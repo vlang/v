@@ -49,11 +49,22 @@ fn test_voidptr_function_value_detection_prefers_explicit_node_type() {
 	assert !g.node_is_fn_value_for_voidptr(stale_id, value_node)
 }
 
-fn test_string_literal_table_has_internal_const_linkage() {
+fn test_cached_string_literal_table_has_internal_const_linkage() {
 	mut g := FlatGen.new()
+	g.cache_stable_symbols = true
 	g.intern_string('literal')
 	g.string_literals()
 	assert g.sb.str() == 'static const string _str_0 = {"literal", 7, 1};\n\n'
+}
+
+fn test_string_literal_table_uses_macros_in_regular_and_split_c_output() {
+	for split in [false, true] {
+		mut g := FlatGen.new()
+		g.cache_split = split
+		g.intern_string('literal')
+		g.string_literals()
+		assert g.sb.str() == '#define _str_0 _S("literal")\n\n'
+	}
 }
 
 fn test_character_interpolation_uses_rune_text() {

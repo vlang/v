@@ -67,10 +67,19 @@ fn test_parallel_computed_constant_guards_select_the_same_runtime_branch() {
 fn comptime_router_body_with_literal_values(code string, body string) string {
 	mut literals := map[string]string{}
 	for line in code.split_into_lines() {
-		if !line.starts_with('static const string _str_') { continue }
-		name := line.all_after('static const string ').all_before(' = ')
+		is_macro := line.starts_with('#define _str_')
+		if !is_macro && !line.starts_with('static const string _str_') { continue }
+		name := if is_macro {
+			line.all_after('#define ').all_before(' ')
+		} else {
+			line.all_after('static const string ').all_before(' = ')
+		}
 		assert name !in literals, name
-		literals[name] = line.all_after(' = ').trim_string_right(';')
+		literals[name] = if is_macro {
+			line.all_after('#define ${name} ')
+		} else {
+			line.all_after(' = ').trim_string_right(';')
+		}
 	}
 	mut resolved := ''
 	mut i := 0
@@ -94,14 +103,20 @@ fn comptime_router_body_with_literal_values(code string, body string) string {
 }
 
 fn test_comptime_router_comparison_preserves_literal_contents() {
-	first := comptime_router_body_with_literal_values('static const string _str_1 = {"users", 5, 1};',
-		'string path = _str_1;')
-	renumbered := comptime_router_body_with_literal_values('static const string _str_10 = {"users", 5, 1};',
-		'string path = _str_10;')
-	changed := comptime_router_body_with_literal_values('static const string _str_10 = {"posts", 5, 1};',
-		'string path = _str_10;')
-	assert first == renumbered
-	assert first != changed
+	for macro in [false, true] {
+		users := if macro { '_S("users")' } else { '{"users", 5, 1};' }
+		posts := if macro { '_S("posts")' } else { '{"posts", 5, 1};' }
+		prefix := if macro { '#define ' } else { 'static const string ' }
+		separator := if macro { ' ' } else { ' = ' }
+		first := comptime_router_body_with_literal_values('${prefix}_str_1${separator}${users}',
+			'string path = _str_1;')
+		renumbered := comptime_router_body_with_literal_values('${prefix}_str_10${separator}${users}',
+			'string path = _str_10;')
+		changed := comptime_router_body_with_literal_values('${prefix}_str_10${separator}${posts}',
+			'string path = _str_10;')
+		assert first == renumbered
+		assert first != changed
+	}
 }
 
 fn test_comptime_string_sources_emit_no_runtime_parsing_or_array() {
