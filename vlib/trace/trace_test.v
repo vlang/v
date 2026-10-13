@@ -1,5 +1,6 @@
 module trace
 
+import json2
 import sync
 
 fn test_tracer_aggregates_spans() {
@@ -83,6 +84,10 @@ fn test_chrome_export_preserves_control_bytes() {
 	mut s := t.span(name)
 	s.end()
 	assert t.to_chrome_trace().contains('"pid":')
+	decoded := json2.parse(t.to_chrome_trace())!
+	events := decoded.as_map()['traceEvents']!.as_array()
+	assert events.len == 1
+	assert events[0].as_map()['name']!.str() == name
 }
 
 fn test_span_keeps_starting_thread() {
