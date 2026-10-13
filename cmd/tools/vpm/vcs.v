@@ -26,12 +26,12 @@ const vcs_info = init_vcs_info() or {
 	exit(1)
 }
 
-fn init_vcs_info() !map[VCS]VCSInfo {
-	git_installed_raw_ver := parse_git_version(os.exec_opt(['git', '--version'])!.output) or { '' }
-	git_installed_ver := semver.from(git_installed_raw_ver)!
+// git_clone_install_args returns the options `git clone` takes before the url and
+// path, for the installed git `git_ver` on `os_name`.
+fn git_clone_install_args(git_ver semver.Version, os_name string) ![]string {
 	git_shallow_submod_ver := semver.from('2.36.0')!
 	mut git_install_args := ['clone', '--recursive']
-	if os.user_os() != 'windows' {
+	if os_name != 'windows' {
 		// The variation of environment factors on windows is too high;
 		// the following options are known to work well on != windows,
 		// but can sometimes cause failures on windows for yet unknown reasons,
@@ -39,7 +39,7 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 		// for more details, about why this is now allowed only on != windows platforms.
 		// Keep module blobs in the initial pack. Partial clones need another network
 		// fetch during checkout, which can stall installations such as `v install ui2`.
-		if git_installed_ver >= git_shallow_submod_ver {
+		if git_ver >= git_shallow_submod_ver {
 			git_install_args << '--shallow-submodules'
 		}
 	}
@@ -48,6 +48,13 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 	// 13.6 MB with it, for an identical working tree.
 	git_install_args << '--depth'
 	git_install_args << '1'
+	return git_install_args
+}
+
+fn init_vcs_info() !map[VCS]VCSInfo {
+	git_installed_raw_ver := parse_git_version(os.exec_opt(['git', '--version'])!.output) or { '' }
+	git_installed_ver := semver.from(git_installed_raw_ver)!
+	git_install_args := git_clone_install_args(git_installed_ver, os.user_os())!
 	return {
 		VCS.git: VCSInfo{
 			dir:  '.git'
@@ -74,12 +81,44 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 	}
 }
 
-// enable_git_longpaths sets core.longpaths for every git process vpm starts.
+// git_config_count returns how many GIT_CONFIG_* entries the environment already
+// holds, or none when GIT_CONFIG_COUNT is set to anything but a plain decimal count.
+fn git_config_count() ?int {
+	text := os.getenv('GIT_CONFIG_COUNT')
+	if text == '' {
+		return 0
+	}
+	count := text.int()
+	if count < 0 || count.str() != text {
+		return none
+	}
+	return count
+}
+
+// enable_git_longpaths sets core.longpaths for every git process vpm starts after
+// main begins. The `git --version` call that initializes vcs_info runs before that, and
+// reads no config, so it does not need the setting.
 // Windows git keeps the 260-character path limit unless that setting is on, and
-// vpm's module cache is deep enough to exceed it. Existing GIT_CONFIG_COUNT
-// entries are kept, and the new setting is appended after them.
+// vpm's module cache is deep enough to exceed it. The setting goes in two variables:
+// GIT_CONFIG_COUNT, which git 2.31 and later read, and GIT_CONFIG_PARAMETERS, the
+// variable `git -c` fills in, which every git version reads, so it also covers git
+// before 2.31. Existing entries in both are kept, and the new setting is appended
+// after them. A GIT_CONFIG_COUNT that is not a plain non-negative decimal is left
+// alone and reported, since extending it would overwrite or hide the user's entries.
+// The new entries come last, so a core.longpaths=false the user already set is
+// overridden for the git processes vpm starts.
 fn enable_git_longpaths() {
-	count := os.getenv('GIT_CONFIG_COUNT').int()
+	mut params := os.getenv('GIT_CONFIG_PARAMETERS')
+	if params != '' {
+		params += ' '
+	}
+	os.setenv('GIT_CONFIG_PARAMETERS', "${params}'core.longpaths'='true'", true)
+	count := git_config_count() or {
+		vpm_warn('not adding core.longpaths to GIT_CONFIG_COUNT.',
+			details: 'GIT_CONFIG_COUNT is not a plain non-negative integer, so vpm leaves it alone. Git may exit with an error on it.'
+		)
+		return
+	}
 	os.setenv('GIT_CONFIG_KEY_${count}', 'core.longpaths', true)
 	os.setenv('GIT_CONFIG_VALUE_${count}', 'true', true)
 	os.setenv('GIT_CONFIG_COUNT', '${count + 1}', true)

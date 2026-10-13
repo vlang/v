@@ -8,7 +8,7 @@ import test_utils { cmd_fail_args, cmd_ok_args }
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_local_test_${rand.ulid()}')
 
 struct LocalInstallCase {
-	args        string
+	args        []string
 	module_name string
 	workdir     string
 }
@@ -26,47 +26,54 @@ fn test_install_from_local_git_repository_variants() ! {
 	repo_dot_git_path := os.join_path(test_path, 'local_repo.git')
 	create_local_git_module(repo_path, 'local_repo_pkg')
 	create_local_git_module(repo_dot_git_path, 'local_repo_dot_git_pkg')
+	// A temporary root with a space in it, such as a profile path, must still be one argument.
+	spaced_repo_path := os.join_path(test_path, 'space dir', 'local repo')
+	create_local_git_module(spaced_repo_path, 'spaced_repo_pkg')
 
 	cases := [
 		LocalInstallCase{
-			args:        repo_path
+			args:        [spaced_repo_path]
+			module_name: 'spaced_repo_pkg'
+		},
+		LocalInstallCase{
+			args:        [repo_path]
 			module_name: 'local_repo_pkg'
 		},
 		LocalInstallCase{
-			args:        file_url(repo_path)
+			args:        [file_url(repo_path)]
 			module_name: 'local_repo_pkg'
 		},
 		LocalInstallCase{
-			args:        '--git ${repo_path}'
+			args:        ['--git', repo_path]
 			module_name: 'local_repo_pkg'
 		},
 		LocalInstallCase{
-			args:        '--git ${file_url(repo_path)}'
+			args:        ['--git', file_url(repo_path)]
 			module_name: 'local_repo_pkg'
 		},
 		LocalInstallCase{
-			args:        os.file_name(repo_path)
+			args:        [os.file_name(repo_path)]
 			module_name: 'local_repo_pkg'
 			workdir:     test_path
 		},
 		LocalInstallCase{
-			args:        repo_dot_git_path
+			args:        [repo_dot_git_path]
 			module_name: 'local_repo_dot_git_pkg'
 		},
 		LocalInstallCase{
-			args:        file_url(repo_dot_git_path)
+			args:        [file_url(repo_dot_git_path)]
 			module_name: 'local_repo_dot_git_pkg'
 		},
 		LocalInstallCase{
-			args:        '--git ${repo_dot_git_path}'
+			args:        ['--git', repo_dot_git_path]
 			module_name: 'local_repo_dot_git_pkg'
 		},
 		LocalInstallCase{
-			args:        '--git ${file_url(repo_dot_git_path)}'
+			args:        ['--git', file_url(repo_dot_git_path)]
 			module_name: 'local_repo_dot_git_pkg'
 		},
 		LocalInstallCase{
-			args:        os.file_name(repo_dot_git_path)
+			args:        [os.file_name(repo_dot_git_path)]
 			module_name: 'local_repo_dot_git_pkg'
 			workdir:     test_path
 		},
@@ -74,13 +81,12 @@ fn test_install_from_local_git_repository_variants() ! {
 	for i, c in cases {
 		vmodules_path := os.join_path(test_path, 'vmodules_case_${i}')
 		test_utils.set_test_env(vmodules_path)
-		cmd := '${vexe} install ${c.args}'
 		old_dir := os.getwd()
 		if c.workdir != '' {
 			os.chdir(c.workdir) or { panic(err) }
 		}
 		mut argv := [vexe, 'install']
-		argv << os.split_args(c.args)!
+		argv << c.args
 		res := cmd_ok_args(@LOCATION, argv)
 		if c.workdir != '' {
 			os.chdir(old_dir) or {}
