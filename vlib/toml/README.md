@@ -212,3 +212,7 @@ array = [
 doc := toml.parse_text(toml_text) or { panic(err) }
 assert to.json(doc) == '{ "val": true, "table": { "array": [ { "a": "A" }, { "b": "B" } ] } }'
 ```
+
+`toml.scanner.Scanner.peek(0)` returns the byte at the current scanner position without
+advancing it, or `end_of_text` when the position is at the end of the input.
+Negative offsets look behind that position. An offset outside the input returns `end_of_text`.

@@ -783,8 +783,12 @@ fn (mut p BlockParser) parse_list_item(base_indent int) &Node {
 	first_raw := expand_tabs(p.lines[p.pos])
 	first_stripped := trim_indent(first_raw, base_indent)
 
-	// Extract content after marker
-	marker_line := first_stripped
+	// Extract content after marker. The item carries its own indentation
+	// (up to 3 spaces for a top-level list), so skip it before matching the
+	// marker: otherwise a `-` after the indent is misread and the marker
+	// text leaks into the content, which then parses as a nested list.
+	// first_leading below adds the skipped width back into content_indent.
+	marker_line := first_stripped[leading_spaces(first_stripped)..]
 	mut marker_idx := 0
 
 	// Find where marker ends in stripped line

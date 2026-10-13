@@ -36,6 +36,11 @@ The main differences can be summarized in the following points:
   not the sequence of symbols.
   Note: **Two char classes with an `OR` in the middle is a syntax error.**
 
+  Token alternatives can be chained (`a|b|c`) and repeated (`(a|b)+`). To alternate
+  whole sequences, group each sequence: `((cat)|(dog))+` matches `dogcat`.
+  A bounded group must reach its minimum before the following token is matched:
+  `(a|b){2}z` matches `abz` and rejects `az`.
+
 - The **match operation stops at the end of the string**. It does *NOT* stop
   at new line characters.
 
