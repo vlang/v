@@ -1,5 +1,6 @@
 module i18n
 
+import math
 import strconv
 import time
 
@@ -72,9 +73,13 @@ pub fn (f &Formatter) number_int[T](x T) string {
 
 // number formats a float with decimals fractional digits and locale grouping
 // and decimal separator: 1234567.891 -> '1,234,567.89' (en, 2 decimals).
-// Rounding is exact decimal rounding on the printed expansion (half up).
+// Rounding is half away from zero on the shortest decimal representation.
+// NaN and infinities pass through without grouping.
 pub fn (f &Formatter) number(x f64, decimals int) string {
 	assert decimals >= 0 && decimals <= 9, 'i18n: decimals must be 0..9'
+	if !math.is_finite(x) {
+		return x.str()
+	}
 	fixed := fixed_float(x, decimals)
 	neg := fixed.starts_with('-')
 	body := if neg { fixed[1..] } else { fixed }
@@ -132,9 +137,9 @@ pub fn (f &Formatter) date(t time.Time) string {
 	}
 }
 
-// compare_collated compares two strings by root collation order: letters
-// compare by base letter ignoring case and diacritics (ä sorts with a),
-// with the original byte order breaking ties deterministically.
+// compare_collated compares Latin strings with ASCII case and selected Latin
+// accent folding (ä sorts with a), ignoring U+0300..U+036F combining marks.
+// Original byte order breaks ties; this is not full Unicode locale collation.
 pub fn compare_collated(a string, b string) int {
 	ka := collation_key(a)
 	kb := collation_key(b)
@@ -153,7 +158,7 @@ pub fn compare_collated(a string, b string) int {
 	return 0
 }
 
-// sort_collated sorts strings in place by root collation order.
+// sort_collated sorts strings in place using compare_collated.
 pub fn sort_collated(mut arr []string) {
 	arr.sort_with_compare(fn (a &string, b &string) int {
 		return compare_collated(*a, *b)
@@ -172,18 +177,33 @@ fn pad2(n int) string {
 // half away from zero in the decimal domain (no binary float dust), with a
 // '.' separator. decimals must be 0..9. NaN/Inf pass through as-is.
 fn fixed_float(x f64, decimals int) string {
-	if x != x || x > 1e300 || x < -1e300 {
+	if !math.is_finite(x) {
 		return x.str()
 	}
 	neg := x < 0
 	a := if neg { -x } else { x }
-	// exactly 10 fractional digits, zero-padded, correctly rounded at 10th
-	s := '${a:.10f}'
-	dot := s.index('.') or { return s }
-	int_part := s[..dot]
-	frac := s[dot + 1..]
+	// Expand the shortest round-tripping decimal once, before applying the
+	// requested rounding. Intermediate fixed precision can introduce double rounding.
+	s := strconv.f64_to_str(a, 17)
+	exponent_start := s.index('e') or { return s }
+	exponent := s[exponent_start + 1..].int()
+	digits := s[..exponent_start].replace('.', '')
+	decimal_position := exponent + 1
+	mut int_part := '0'
+	mut frac := ''
+	if decimal_position <= 0 {
+		frac = '0'.repeat(-decimal_position) + digits
+	} else if decimal_position >= digits.len {
+		int_part = digits + '0'.repeat(decimal_position - digits.len)
+	} else {
+		int_part = digits[..decimal_position]
+		frac = digits[decimal_position..]
+	}
+	if frac.len <= decimals {
+		frac += '0'.repeat(decimals + 1 - frac.len)
+	}
 	mut keep := if decimals == 0 { '' } else { frac[..decimals] }
-	round_up := decimals < 10 && frac[decimals] >= `5`
+	round_up := frac[decimals] >= `5`
 	mut int_res := int_part
 	if round_up {
 		if decimals == 0 {
@@ -272,11 +292,14 @@ fn collation_key(s string) string {
 // so CJK and other scripts sort by codepoint after Latin.
 fn fold_rune(r rune) string {
 	c := u32(r)
+	if c >= 0x300 && c <= 0x36F {
+		return ''
+	}
 	if c >= 65 && c <= 90 {
 		return rune(c + 32).str()
 	}
 	// specials with multi-char or irregular folding
-	if c == 0xDF {
+	if c == 0xDF || c == 0x1E9E {
 		return 'ss'
 	}
 	if c == 0xE6 || c == 0xC6 {
@@ -285,12 +308,12 @@ fn fold_rune(r rune) string {
 	if c == 0x152 || c == 0x153 {
 		return 'oe'
 	}
-	if c == 0xFE {
+	if c == 0xDE || c == 0xFE {
 		return 'th'
 	}
 	// a
 	if (c >= 0xC0 && c <= 0xC5) || (c >= 0xE0 && c <= 0xE5) || (c >= 0x100
-		&& c <= 0x105) || (c >= 0x1CD && c <= 0x1CF) {
+		&& c <= 0x105) || (c >= 0x1CD && c <= 0x1CE) {
 		return 'a'
 	}
 	// c
@@ -316,7 +339,7 @@ fn fold_rune(r rune) string {
 	}
 	// i (incl. dotless ı; ĳ folds to 'ij')
 	if (c >= 0xCC && c <= 0xCF) || (c >= 0xEC && c <= 0xEF) || (c >= 0x128
-		&& c <= 0x131) || (c >= 0x208 && c <= 0x20B) {
+		&& c <= 0x131) || c == 0x1CF || c == 0x1D0 || (c >= 0x208 && c <= 0x20B) {
 		return 'i'
 	}
 	if c == 0x132 || c == 0x133 {
@@ -345,11 +368,11 @@ fn fold_rune(r rune) string {
 		return 'o'
 	}
 	// r
-	if (c >= 0x154 && c <= 0x157) {
+	if (c >= 0x154 && c <= 0x159) {
 		return 'r'
 	}
 	// s (incl. Romanian ș)
-	if (c >= 0x158 && c <= 0x161) || c == 0x218 || c == 0x219 {
+	if (c >= 0x15A && c <= 0x161) || c == 0x218 || c == 0x219 {
 		return 's'
 	}
 	// t (incl. Romanian ț)

@@ -1,3 +1,4 @@
+import math
 import i18n
 import time
 
@@ -57,4 +58,28 @@ fn test_sort_collated() {
 	assert i18n.compare_collated('a', 'ä') < 0, 'tie breaks on byte order'
 	assert i18n.compare_collated('z', 'a') > 0
 	assert i18n.compare_collated('abc', 'abc') == 0
+}
+
+fn test_formatter_rounding_boundaries_and_special_values() {
+	en := i18n.new_formatter('en')!
+	de := i18n.new_formatter('de')!
+	assert en.number(1.234499999999, 3) == '1.234'
+	assert en.number(1.2345, 3) == '1.235'
+	assert en.number(-1.2345, 3) == '-1.235'
+	assert en.number(9.9995, 3) == '10.000'
+	assert en.number(1e-300, 9) == '0.000000000'
+	assert en.number(-0.0, 2) == '0.00'
+	assert en.number(1e301, 2).replace(',', '') == '1' + '0'.repeat(301) + '.00'
+	for x in [math.nan(), math.inf(1), math.inf(-1)] {
+		assert en.number(x, 2) == x.str()
+		assert de.number(x, 0) == x.str()
+	}
+}
+
+fn test_collation_latin_accents_and_combining_marks() {
+	assert i18n.compare_collated('Řeka', 'sea') < 0
+	assert i18n.compare_collated('Ǐ', 'b') > 0
+	assert i18n.compare_collated('Þing', 'zebra') < 0
+	assert i18n.compare_collated('ápfel', 'apple') < 0
+	assert i18n.compare_collated('ẞ', 'street') < 0
 }
