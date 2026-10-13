@@ -93,7 +93,8 @@ fn (mut r Registry) record_change(kind string, module string, version string) {
 	}
 }
 
-// add_module adds or updates a module in the registry.
+// add_module appends metadata for a new module version.
+// Publishing callers must reject versions that are already registered.
 pub fn (mut r Registry) add_module(info ModuleInfo) {
 	mut entry := r.modules[info.name]
 	entry.name = info.name
@@ -199,7 +200,7 @@ pub fn (r &Registry) changes_since(unix_ts i64) []Change {
 pub fn (r &Registry) search(query string) []RegistryEntry {
 	mut results := []RegistryEntry{}
 	for _, entry in r.modules {
-		if entry.name.contains(query) {
+		if entry.name.contains(query) || entry.versions.any(it.description.contains(query)) {
 			results << entry
 		}
 	}

@@ -237,6 +237,33 @@ fn test_search_no_match() {
 	assert results.len == 0
 }
 
+fn test_search_descriptions_returns_each_module_once() {
+	mut r := new_registry()
+	for version in ['1.0.0', '2.0.0'] {
+		r.add_module(ModuleInfo{
+			name:        'parser'
+			version:     version
+			description: 'syntax tools'
+		})
+	}
+	r.add_module(ModuleInfo{
+		name:        'syntax_helper'
+		version:     '1.0.0'
+		description: 'syntax helpers'
+	})
+	mut names := r.search('syntax').map(it.name)
+	names.sort()
+	assert names == ['parser', 'syntax_helper']
+	assert r.search('').len == 2
+	assert r.search('SYNTAX').len == 0
+	response := handle_request(r, 'GET', '/api/search', {
+		'q': 'syntax tools'
+	}, RequestOptions{})
+	entries := json2.decode[[]RegistryEntry](response) or { panic(err) }
+	assert entries.len == 1
+	assert entries[0].name == 'parser'
+}
+
 fn test_export_import_json() {
 	mut r := new_registry()
 	r.add_module(ModuleInfo{

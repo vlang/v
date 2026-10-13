@@ -94,7 +94,8 @@ The fields:
   description, license, dependencies, checksum, published_at, features, and
   `yanked`.
 - `/<module>/@latest` returns the highest version that is not yanked.
-- `/api/search` matches the query against the module **name** only.
+- `/api/search` matches a case-sensitive substring against the module name or any version's
+  description. Each matching module appears once, even when several versions match.
 - `/api/modules/<module>` returns the whole `RegistryEntry` with every version.
 - `/api/changes` takes `since` as a unix timestamp and returns the changes
   recorded at or after it; the mark itself is included. A missing `since` is
