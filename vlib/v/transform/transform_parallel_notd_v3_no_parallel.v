@@ -399,7 +399,7 @@ fn transform_chunk_thread(arg voidptr) voidptr {
 	items := unsafe { &[]FnWorkItem(a.items_ptr) }
 	if w.scope_parallel_workers && w.retain_worker_results {
 		batches := if w.building_v { scoped_selfhost_transform_batches } else { 1 }
-		w.transform_scoped_helper_batches(*items, batches)
+		w.transform_scoped_helper_batches(*items, batches, false)
 	} else {
 		w.transform_pure_items_serial(*items)
 	}
@@ -441,7 +441,7 @@ fn shared_chunk_thread(arg voidptr) voidptr {
 	items := unsafe { &[]FnWorkItem(a.items_ptr) }
 	mut csw := time.new_stopwatch()
 	if w.scope_parallel_workers && (!a.is_master || w.retain_worker_results) {
-		w.transform_scoped_helper_batches(*items, shared_helper_batch_count(*items, w.building_v))
+		w.transform_scoped_helper_batches(*items, shared_helper_batch_count(*items, w.building_v), false)
 	} else {
 		w.transform_pure_items_serial(*items)
 	}
@@ -2479,7 +2479,8 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 // transform_scoped_helper_batches keeps one worker-pool dispatch but bounds
 // scratch lifetime within each helper. A fresh Transformer/TypeChecker fork per
 // batch prevents caches from retaining pointers into the released arena.
-fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_batches int) {
+// `alone` says that no other helper runs batches at the same time.
+fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_batches int, alone bool) {
 	_ = t.cached_generic_fn_decls()
 	t.retain_current_worker_scope_all()
 	// Only helper accumulators use this arena. The master continues using the
@@ -2509,7 +2510,13 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 	t.call_param_types_decl_shared = true
 	// Batches reuse one scratch arena: each batch's results are published into
 	// longer-lived storage before the next batch starts, so the arena is rewound
-	// instead of being freed and faulted in again for every batch.
+	// instead of being freed and faulted in again for every batch. With helpers
+	// running beside this one only a floor stays mapped.
+	keep_bytes := if alone {
+		transform_sole_batch_arena_keep_bytes
+	} else {
+		transform_batch_arena_keep_bytes
+	}
 	mut scratch_scope := unsafe { nil }
 	mut start := 0
 	mut batch_idx := 0
@@ -2531,7 +2538,8 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 			t.tc.refresh_transform_static_method_names()
 			t.refresh_alias_receiver_fns()
 		}
-		if scratch_scope == unsafe { nil } || !transform_worker_scope_reenter(scratch_scope) {
+		if scratch_scope == unsafe { nil }
+			|| !transform_worker_scope_reenter(scratch_scope, keep_bytes) {
 			transform_worker_scope_free(scratch_scope)
 			scratch_scope = transform_worker_scope_begin(true)
 		}
@@ -2741,7 +2749,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// function's temporary allocations until the entire stage finishes.
 		if t.scope_parallel_workers && t.retain_worker_results {
 			t.prepare_parallel_call_param_types()
-			t.transform_scoped_helper_batches(items, scoped_transform_batches)
+			t.transform_scoped_helper_batches(items, scoped_transform_batches, true)
 		} else {
 			t.transform_pure_items_serial(items)
 		}

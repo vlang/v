@@ -1593,12 +1593,20 @@ fn transform_worker_scope_begin(enabled bool) voidptr {
 // keep idle pages of every helper resident through the parallel peak.
 const transform_batch_arena_keep_bytes = isize($d('transform_batch_arena_keep_mb', 1)) * 1024 * 1024
 
+// transform_sole_batch_arena_keep_bytes is the bound for batches that run one at a time
+// with no helper beside them. Their arena is mapped in full while a batch is published
+// anyway, and a batch that starts in mapped memory does not fault its pages in again. The
+// bound is what a program can then hold over its former peak, when its largest batch is
+// an early one.
+const transform_sole_batch_arena_keep_bytes = isize($d('transform_sole_batch_arena_keep_mb', 64)) * 1024 * 1024
+
 // transform_worker_scope_reenter makes a helper arena that was left current
-// again, rewound, for the next batch. False means the caller needs a new arena.
-fn transform_worker_scope_reenter(scope voidptr) bool {
+// again, rewound, for the next batch, with at most `keep_bytes` of it still
+// mapped. False means the caller needs a new arena.
+fn transform_worker_scope_reenter(scope voidptr, keep_bytes isize) bool {
 	$if prealloc {
 		if scope != unsafe { nil } {
-			return unsafe { prealloc_scope_reenter(scope, transform_batch_arena_keep_bytes) }
+			return unsafe { prealloc_scope_reenter(scope, keep_bytes) }
 		}
 	}
 	return false
@@ -4086,7 +4094,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 				literal_decls := t.collect_literal_fn_decls(t.a.nodes.len)
 				pure_items := t.transform_serial_then_collect_pure(literal_decls)
 				t.prepare_parallel_call_param_types()
-				t.transform_scoped_helper_batches(pure_items, scoped_transform_batches)
+				t.transform_scoped_helper_batches(pure_items, scoped_transform_batches, true)
 				t.transform_deferred_expansion_items()
 				if !has_entry_main {
 					t.transform_top_level_user_stmts()

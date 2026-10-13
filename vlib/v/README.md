@@ -956,3 +956,11 @@ library instance body. Other values use reachability to omit irrelevant library 
 Set `V3_NO_CHECKED_NUMERIC_INFIX=1` to disable the checked numeric infix shortcut during
 both initial function lowering and later monomorphization. This is a diagnostic control for
 comparing generated C through the full dispatch path; ordinary compilation keeps the shortcut.
+
+### Transform batch arenas
+
+Function bodies are lowered in batches that share one scratch arena, rewound between batches.
+Batches that run one at a time keep up to 64 MiB of it mapped, so that the next batch does not
+fault its pages in again; build the compiler with `-d transform_sole_batch_arena_keep_mb=N` to
+change that bound. Helpers that run side by side keep 1 MiB each
+(`-d transform_batch_arena_keep_mb=N`), since every idle arena adds to the peak.
