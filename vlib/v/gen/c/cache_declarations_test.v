@@ -334,4 +334,3 @@ int main() { println("_v3_lit_unused"); println(_v3_lit_direct); println(used())
 	assert !pruned.contains('static inline string unused()'), pruned
 	assert pruned.contains('println("_v3_lit_unused")'), pruned
 }
-
