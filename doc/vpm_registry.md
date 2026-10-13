@@ -1,45 +1,42 @@
 # VPM registry protocol
 
-This document defines the wire protocol a V package registry is expected to
-serve. It is implemented in two files:
+This document covers the registry protocol on the `fix/vpm-registry-protocol`
+branch. It is implemented in four files:
 
 - `cmd/tools/vpm/registry.v` — routing, the metadata format, ed25519 signing,
   entity-tag caching, the change feed, and artefact storage.
-- `cmd/tools/vpm/sbom.v` — the SPDX bill of materials a version can declare.
+- `cmd/tools/vpm/sbom.v` — the SPDX bill of materials the registry serves.
+- `cmd/tools/vpm/registry_server.v` — the HTTP server, and the `registry`
+  subcommand of the vpm tool.
+- `cmd/tools/vpm/registry_client.v` — metadata and version-list requests using the
+  registry's existing token configuration.
 
-An HTTP server that serves it, a client that speaks it, and the `v install`
-change that asks one are separate and later. Until they land, nothing in the
-tree listens for or issues these requests.
-
-A VPM registry, as defined here, is an HTTP service that answers questions
-about the module versions in one directory tree: which versions exist, what
-each one declares, where its archive is, what changed since a given moment,
+A VPM registry, as built here, is an HTTP service that reads one directory tree
+and answers questions about the module versions in it: which versions exist,
+what each one declares, where its archive is, what changed since a given moment,
 what the whole set hashes to, and which signing key vouches for it. There is no
-database, no user account and no replication. Everything a registry serves
-comes from `index.json` and the archives beside it, with metadata read at
-startup and archive bytes verified on each download.
+database, no user account and no replication. Everything the server serves comes
+from `index.json` and the archives beside it, with metadata read at startup and archive bytes
+verified on each download.
 
-This document defines the wire protocol. It is not a description of a working
-server: the change that lands it adds the data types, the on-disk
-`.vpm-registry` store and the metadata format, and nothing that listens on a
-socket. Serving it, signing it and resolving against it are separate changes,
-planned in that order.
+## Status: an additional metadata source, not an install path
 
-## Status: a data definition, not yet a metadata source
-
-**Nothing consumes this protocol yet, and `v install` is unchanged.**
+**`v install` keeps its existing VCS install path.**
 
 `v install` still resolves a registered module through `get_mod_vpm_info` in
-`cmd/tools/vpm/common.v`, issuing `GET <server>/api/packages/<name>` and
-cloning the VCS url named in the reply. No code in the tree requests a registry
-route. Nothing in this change touches that path.
+`cmd/tools/vpm/common.v`. That loop now asks the registry protocol first, from
+the one base `VPM_REGISTRY` names, and then the vpm servers exactly as it did
+before: `GET <server>/api/packages/<name>`, then a clone of the VCS url named
+in the reply. With `VPM_REGISTRY` unset, no registry route is requested at all
+and resolution behaves as it did before a registry could be configured.
 
-What is here is the vocabulary. `registry.v` defines the index structure and
-the metadata a version carries; `sbom.v` defines the bill of materials one can
-declare. A directory rather than a database is the deliberate choice: it means
-a registry can be a static tree behind anything, which is why these files
-compile against upstream master with no companion change and no server to
-drag in.
+A registry is a metadata source and nothing more. `RegistryModule` carries no
+repository url, and nothing downloads and unpacks an archive, so a module found
+in a registry is reported rather than installed: the resolution records that the
+registry holds it, why its archive could not be located, and goes on to the
+servers. Counting the call sites: `serve`, `route` and `handle_request` still
+have no caller in `cmd/tools/vpm` outside `registry_server.v` and the tests,
+and `/api/packages/<name>` is still not served by the router at all.
 
 The compiler frontend dispatches `./v registry serve` to the VPM tool. The server is also
 available through `./v run cmd/tools/vpm registry serve` or a compiled VPM binary.
@@ -84,11 +81,13 @@ non-empty body and `application/zip` on an archive.
 The fields:
 
 - `/config.json` serves `dl`, `api`, `auth_required` and `public_key`. `dl` and
-  `api` are the fixed strings `https://example.com/downloads` and
-  `https://example.com/api`, `auth_required` is always `false`, and `public_key`
+  `api` use the plain HTTP address from the request's Host header and its `/api` route.
+  Without an HTTP transport,
+  the in-process router returns `/` and `/api`. `auth_required` is always `false`, and `public_key`
   is `Registry.public_key_hex()`: the registry's own key, or `""` when it holds
-  no signing key. `dl` points at a documentation domain, so an archive base
-  must not be assumed to exist until a real one is configured.
+  no signing key. `registry_archive_base` in `registry_client.v` reads `dl` for
+  the install path, resolves relative references against the registry URL, and refuses
+  a base on an RFC 2606 documentation domain or outside HTTP(S).
 - `/<module>/@v/list` returns versions sorted by semver, descending. An unknown
   module answers `200` with `[]`, not `404`.
 - `/<module>/@v/<version>.info` returns one `ModuleInfo`: name, version,
@@ -101,7 +100,7 @@ The fields:
   recorded at or after it; the mark itself is included. A missing `since` is
   read as `0`, which means everything.
 - `/sbom.spdx.json` accepts `namespace` and `dl` as query parameters, defaulting
-  to `https://vpm.local/spdx/vpm-registry` and `https://vpm.local/downloads`.
+  to `https://vpm.local/spdx/vpm-registry` and the same plain HTTP address as `/config.json`.
 - `/signature.sig` returns the signature inside a JSON string.
 
 Any path the router does not match, and any module it cannot find, answers the
@@ -133,28 +132,58 @@ Data is stored in `os.getwd()/.vpm-registry`, from `registry_dir()` in
   trailing spaces or trailing dots.
 - `signing.key` — the hex ed25519 seed, read but never served.
 
-The default port is 9090 (`default_registry_port`). A server binds `:9090`,
-which is every interface, although a startup message that names loopback is
-misleading. No server lands in this change.
+The default port is 9090 (`default_registry_port`). The server binds `:9090`,
+which is every interface, although the message it prints names loopback.
+It serves plain HTTP from the root path and advertises `http://<Host>` in `/config.json`
+and default SPDX archive links. TLS origins and mounted prefixes require configuration
+in the proxy outside this command; forwarded headers do not configure this server.
+
+### The port flag reaches the parser
+
+`vpm_registry` looks for `--port` or `-p` in `query[1..]`, and `parse_query_args`
+in `cmd/tools/vpm/vpm.v` now hands it the arguments of the `registry` subcommand
+untouched. The strip it applies to every other subcommand — drop any argument
+beginning with `-`, and drop the value that follows an option that takes one —
+is right for module names and wrong here, where the only arguments are options.
+`-p` is on the shared value-option list because `v update -p <pkg>` means a
+package, so it was dropped along with its value and the port stayed at its
+default. `-m <url>` before `registry` is still skipped, so a mirror cannot be
+read as a registry argument.
+
+```
+$ ./v registry serve --port 9099
+Serving 0 module(s) on port 9099
+Listening on http://127.0.0.1:9099
+```
+
+Ports must contain decimal digits and be from 1 to 65535. Invalid text, numeric suffixes and
+out-of-range values are rejected before the server binds a socket.
 
 ### Environment variables
 
 - `VPM_REGISTRY_KEY` — a hex-encoded ed25519 seed. It takes precedence over
   `signing.key`; the seed must be exactly 32 bytes or the registry is treated as
   unsigned. With neither, `signature()` returns `""`.
+- `VPM_REGISTRY` — the base url of the registry `v install` asks before the vpm
+  servers, read per resolution and normalised like a server url. Unset means
+  there is no registry, and then no registry route is requested at all. Unlike a
+  selected server, a registry is never recorded: a module found in one is
+  reported rather than installed, so there is nothing to prefer next time.
 - `VPM_TOKEN_<HOST>` and `VPM_TOKEN` — bearer tokens for **client** requests, not
   for the server. `registry_token` in `common.v` builds the scoped name from the
   host, replacing `.` and `-` with `_` and uppercasing it, so
   `https://vpm.example.com/a` reads `VPM_TOKEN_VPM_EXAMPLE_COM`, and falls back
-  to `VPM_TOKEN` when that is unset. The registry server reads neither: it
-  authenticates nothing.
+  to `VPM_TOKEN` when that is unset and the request matches the configured
+  `VPM_REGISTRY` origin (scheme, host, and port). Tokens are attached only to
+  registry protocol requests; public package metadata requests receive none. The registry server
+  reads neither variable and does not authenticate requests.
 
 ## Publishing
 
 `Registry.publish(info ModuleInfo, archive_path string) !` in `registry.v`
-records a version and stores its archive. No HTTP route reaches it and no code
-outside the tests calls it: a registry is populated either by a test or by
-writing `index.json` and the archive files directly.
+records a version and stores its archive. There is no HTTP route that reaches
+it, and no non-test code calls it: a registry is populated either by a test or
+by writing `index.json` and the archive files directly.
 
 What `publish` does:
 
@@ -169,9 +198,9 @@ What `publish` does:
 - appends a `publish` entry to the change log.
 
 `publish` does not persist the index, and neither does anything else: `save()`
-has no caller. A registry's contents are therefore fixed for the lifetime of
-the process, and replacing `index.json` underneath a running server has no
-effect until restart.
+has no caller in this branch, and the server reads `index.json` once at startup.
+A registry's contents are therefore fixed for the lifetime of the process, and
+replacing `index.json` underneath a running server has no effect until restart.
 
 ## Signing
 
@@ -226,6 +255,7 @@ Two details:
 - Archive transports verify the exact bytes sent against indexed metadata, even if the file
   changes after routing. Unknown metadata and missing or mismatched checksums refuse the archive.
 - Request paths retain their percent-encoded spelling; routing removes trailing slashes.
+  Query parameter names and values are URL-decoded.
 
 ## SPDX output
 
@@ -234,6 +264,8 @@ The SBOM uses the [SPDX 2.3 JSON field names][spdx-schema], including `SPDXID`, 
 Metadata-only packages have `filesAnalyzed: false`; an unspecified license is `NOASSERTION`.
 Checksums of successfully published archives appear in the document regardless of the submitted
 checksum spelling.
+Package download locations use `<dl>/<module>/@v/<version>.zip`, matching the archive route.
+Trailing slashes on `dl` are removed before appending the route.
 
 [spdx-schema]: https://raw.githubusercontent.com/spdx/spdx-spec/v2.3.1/schemas/spdx-schema.json
 
@@ -243,10 +275,7 @@ checksum spelling.
   and `yank` and `unyank` have no caller outside the tests.
 - No code calls `publish`, and no code calls `save()`, so the tool never writes
   an index.
-- `config.json` still returns fixed `https://example.com/...` values for `dl`
-  and `api` and a fixed `auth_required: false`; only `public_key` comes from the
-  registry's own state. The install path reads `dl` and refuses the placeholder,
-  but nothing configures it.
+- `config.json` always reports `auth_required: false`; the server does not authenticate requests.
 - No archive download. A module found in a registry is reported, not installed:
   `RegistryModule` carries no repository url, and nothing downloads and unpacks
   the archive. The resolution names the registry, the version and the archive
@@ -261,8 +290,6 @@ checksum spelling.
   notice when the tool is built.
 - `search` compares the query against the module name only, although its doc
   comment says name or description.
-- The SPDX `downloadLocation` is `<dl>/<name>/<version>.zip`, which is not the
-  shape of the archive route `/<module>/@v/<version>.zip`.
 - The registry server enforces no authentication whatsoever.
 - Nothing consumes the change feed. `changes_since` exists for a mirror to call,
   and no mirror is implemented.

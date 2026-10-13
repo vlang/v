@@ -83,8 +83,10 @@ fn spdx_cpe(name string, version string) string {
 // spdx_document renders the bill of materials for this registry's modules.
 // `namespace` should be unique per document, conventionally a URL under the
 // producing organisation's control, and `download_base` is the registry's
-// artifact base, which becomes each package's download location.
+// artifact base. Trailing slashes are removed before appending the registry's
+// /<module>/@v/<version>.zip archive route to each package's download location.
 pub fn (r &Registry) spdx_document(namespace string, download_base string) SpdxDocument {
+	artifact_base := download_base.trim_right('/')
 	mut packages := []SpdxPackage{}
 	for _, entry in r.modules {
 		for v in entry.versions {
@@ -114,7 +116,7 @@ pub fn (r &Registry) spdx_document(namespace string, download_base string) SpdxD
 				name:              v.name
 				spdxid:            spdx_id_for(v.name, v.version)
 				version_info:      v.version
-				download_location: '${download_base}/${v.name}/${v.version}.zip'
+				download_location: '${artifact_base}/${v.name}/@v/${v.version}.zip'
 				license_concluded: if v.license == '' { 'NOASSERTION' } else { v.license }
 				license_declared:  if v.license == '' { 'NOASSERTION' } else { v.license }
 				copyright_text:    'NOASSERTION'

@@ -33,16 +33,22 @@ mut:
 	state           ServerStatus = .closed
 	listener_opened bool
 pub mut:
-	addr                    string        = ':${default_server_port}'
-	handler                 Handler       = DebugHandler{}
-	read_timeout            time.Duration = 30 * time.second
-	write_timeout           time.Duration = 30 * time.second
-	accept_timeout          time.Duration = 30 * time.second
-	tls_handshake_timeout   time.Duration = 30 * time.second // fallback handshake budget used when accept_timeout is zero or net.infinite_timeout; ignored on non-TLS servers
-	pool_channel_slots      int           = 1024
-	worker_num              int           = runtime.nr_jobs()
-	max_keep_alive_requests int           = 100 // max requests per keep-alive connection (0 = unlimited)
-	listener                net.TcpListener
+	addr                    string          = ':${default_server_port}'
+	handler                 Handler         = DebugHandler{}
+	read_timeout            time.Duration   = 30 * time.second
+	write_timeout           time.Duration   = 30 * time.second
+	accept_timeout          time.Duration   = 30 * time.second
+	tls_handshake_timeout   time.Duration   = 30 * time.second // fallback handshake budget used when accept_timeout is zero or net.infinite_timeout; ignored on non-TLS servers
+	pool_channel_slots      int             = 1024
+	worker_num              int             = runtime.nr_jobs()
+	max_keep_alive_requests int             = 100 // max requests per keep-alive connection (0 = unlimited)
+	listener                net.TcpListener = net.TcpListener{
+		sock: net.TcpSocket{
+			Socket: net.Socket{
+				handle: -1
+			}
+		}
+	}
 
 	// TLS termination: when both `cert` and `cert_key` are set, the server
 	// accepts HTTPS connections instead of plain HTTP. With
@@ -62,7 +68,7 @@ pub mut:
 	show_startup_message bool = true // set to false, to remove the default `Listening on ...` message.
 }
 
-// listen_and_serve listens on the server port `s.port` over TCP network and
+// listen_and_serve listens on `s.addr`, or uses an explicitly supplied TCP listener, and
 // uses `s.parse_and_respond` to handle requests on incoming connections with `s.handler`.
 pub fn (mut s Server) listen_and_serve() {
 	if s.handler is DebugHandler {
@@ -74,11 +80,7 @@ pub fn (mut s Server) listen_and_serve() {
 		return
 	}
 
-	mut l := s.listener.addr() or {
-		eprintln('Failed getting listener address, err: ${err}')
-		return
-	}
-	if l.family() == net.AddrFamily.unspec {
+	if s.listener.sock.handle == -1 {
 		listening_address := if s.addr == '' || s.addr == ':0' { 'localhost:0' } else { s.addr }
 		listen_family := net.AddrFamily.ip
 		// listen_family := $if windows { net.AddrFamily.ip } $else { net.AddrFamily.ip6 }
@@ -86,10 +88,10 @@ pub fn (mut s Server) listen_and_serve() {
 			eprintln('Listening on ${s.addr} failed, err: ${err}')
 			return
 		}
-		l = s.listener.addr() or {
-			eprintln('Failed getting listener address 2, err: ${err}')
-			return
-		}
+	}
+	l := s.listener.addr() or {
+		eprintln('Failed getting listener address, err: ${err}')
+		return
 	}
 	s.addr = l.str()
 	s.listener_opened = true
@@ -120,6 +122,7 @@ pub fn (mut s Server) listen_and_serve() {
 				continue
 			}
 			eprintln('accept() failed, reason: ${err}; skipping')
+			time.sleep(10 * time.millisecond)
 			continue
 		}
 		conn.set_read_timeout(s.read_timeout)
@@ -141,11 +144,13 @@ pub fn (mut s Server) stop() {
 }
 
 // close immediately closes the port and signals the server that it has been closed.
+// A successfully closed listener is cleared so listen_and_serve can reopen it.
 @[inline]
 pub fn (mut s Server) close() {
 	s.state = .closed
 	if s.listener_opened {
 		s.listener.close() or { return }
+		s.listener.sock.handle = -1
 		s.listener_opened = false
 	}
 	if s.on_closed != unsafe { nil } {

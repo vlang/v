@@ -383,6 +383,9 @@ fn windows_filetime_from_unix_seconds(seconds i64) !Filetime {
 }
 
 // ls returns the names of the files and directories in path.
+// The entries come in the order the operating system reports them, which os.ls does not sort.
+// That order differs between platforms and filesystems, so call `.sort()` on the result when
+// a stable order is needed.
 pub fn ls(path string) ![]string {
 	if path == '' {
 		return error('ls() expects a folder, not an empty string')
@@ -502,6 +505,8 @@ fn ptr_win_get_error_msg(code u32) voidptr {
 }
 
 // get_error_msg return error code representation in string.
+// The line break that FormatMessageW puts at the end of a system message is not
+// part of the result.
 pub fn get_error_msg(code int) string {
 	if code < 0 { // skip negative
 		return ''
@@ -512,7 +517,8 @@ pub fn get_error_msg(code int) string {
 	}
 	msg := wide_ptr_to_string(&u16(ptr_text))
 	C.LocalFree(ptr_text)
-	return msg
+	// Only the terminating "\r\n" is removed; the text keeps its final period.
+	return msg.trim_right('\r\n')
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
@@ -533,6 +539,17 @@ fn execute_shell(cmd string) Result {
 	return unsafe { raw_execute_shell(cmd) }
 }
 
+// win_exec_application_name returns the executable that `CreateProcessW` must start for the
+// absolute path `exe`. With an application name, `CreateProcessW` does not append `.exe` to an
+// extension-less path, so `-o build/prog` (which writes `build/prog.exe`) would otherwise fail
+// with "The system cannot find the file specified".
+fn win_exec_application_name(exe string) string {
+	if !is_file(exe) && file_ext(exe) == '' && is_file(exe + '.exe') {
+		return exe + '.exe'
+	}
+	return exe
+}
+
 // exec starts the specified command with arguments, waits for it to complete, and returns its output.
 pub fn exec(args []string) Result {
 	if args.len == 0 {
@@ -548,7 +565,7 @@ pub fn exec(args []string) Result {
 	mut application_name := ''
 	filename_lc := args[0].to_lower_ascii()
 	if is_abs_path(args[0]) && !filename_lc.ends_with('.bat') && !filename_lc.ends_with('.cmd') {
-		application_name = args[0]
+		application_name = win_exec_application_name(args[0])
 	}
 	return windows_execute_command_line(command_line, application_name, args.join(' '), false)
 }
@@ -678,9 +695,12 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	}
 	soutput := decode_windows_captured_output(read_data.str())
 	unsafe { read_data.free() }
-	exit_code := u32(0)
+	mut exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
-	C.GetExitCodeProcess(proc_info.h_process, voidptr(&exit_code))
+	// The SDK DWORD output is a 32-bit value; use its exact pointer type.
+	unsafe {
+		C.GetExitCodeProcess(proc_info.h_process, &C.DWORD(&exit_code))
+	}
 	C.CloseHandle(proc_info.h_process)
 	C.CloseHandle(proc_info.h_thread)
 	return Result{
@@ -909,9 +929,9 @@ pub fn page_size() int {
 
 // disk_usage returns disk usage of `path`.
 pub fn disk_usage(path string) !DiskUsage {
-	mut free_bytes_available_to_caller := u64(0)
-	mut total := u64(0)
-	mut available := u64(0)
+	mut free_bytes_available_to_caller := C.ULARGE_INTEGER{}
+	mut total := C.ULARGE_INTEGER{}
+	mut available := C.ULARGE_INTEGER{}
 	mut ret := false
 	if path == '.' || path == '' {
 		ret = C.GetDiskFreeSpaceExA(&char(unsafe { nil }), &free_bytes_available_to_caller, &total,
@@ -924,8 +944,8 @@ pub fn disk_usage(path string) !DiskUsage {
 		return error('cannot get disk usage of path')
 	}
 	return DiskUsage{
-		total:     total
-		available: available
-		used:      total - available
+		total:     total.QuadPart
+		available: available.QuadPart
+		used:      total.QuadPart - available.QuadPart
 	}
 }
