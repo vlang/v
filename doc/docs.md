@@ -11263,6 +11263,30 @@ For more examples, see
 
 ### Hot code reloading
 
+The recommended way to iterate on a running program is `v watch`,
+which rebuilds and re-runs it whenever one of its `.v` files changes:
+
+```bash
+v watch run message.v
+```
+
+For veb web apps, `v watch` goes further and refreshes the browser for
+you. Run the app with the `veb_livereload` define:
+
+```bash
+v watch -d veb_livereload run .
+```
+
+Stylesheet changes are applied in place; page or template edits update
+the browser while preserving scroll position, focus, and typed form
+values. The page shows a notice while the app is rebuilding (hide it
+with `-d veb_livereload_no_toast`), and setups without server-sent
+events can poll instead (`-d veb_livereload_polling`, with
+`-d veb_livereload_poll_ms=500`), with backoff while the app restarts
+(`-d veb_livereload_retry_max_ms=1000`). See the
+[veb README](https://github.com/vlang/v/tree/master/vlib/veb/README.md#quick-start)
+for the full list of options.
+
 ```v live
 module main
 
@@ -11281,6 +11305,8 @@ fn main() {
 }
 ```
 
+#### Per-function reloading with `@[live]`
+
 Build this example with `v -live message.v`.
 
 You can also run this example with `v -live run message.v`.
@@ -11288,6 +11314,10 @@ Make sure that in command you use a path to a V's file,
 **not** a path to a folder (like `v -live run .`) -
 in that case you need to modify content of a folder (add new file, for example),
 because changes in *message.v* will have no effect.
+
+Note: `@[live]` reloading currently has no effect with the default
+compiler (see vlang/v#30198); `v watch`, described above, is the
+working alternative.
 
 Functions that you want to be reloaded must have `@[live]` attribute
 before their definition.
