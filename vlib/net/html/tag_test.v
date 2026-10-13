@@ -77,3 +77,45 @@ fn test_search_by_class() {
 	assert shuffled_class_tags.len == 1
 	assert shuffled_class_tags[0].attributes['class'] == 'complex-0 complex-1 complex-2'
 }
+
+fn test_search_by_no_class_name() {
+	mut dom := parse(generate_temp_html_with_classes())
+	tag := dom.get_tags(name: 'body')[0]
+	// no class name means no match, not "every tag"
+	assert tag.get_tag_by_class_name() == none
+	assert tag.get_tags_by_class_name().len == 0
+}
+
+fn test_text_returns_newline_only_for_br() {
+	// text() must map exactly the line-break element to a newline: a prefix
+	// match also catches custom elements like `bracket` and drops their
+	// content and children.
+	// See https://github.com/vlang/v/issues/30163
+	// NOTE: the tags are read from get_tags() rather than get_tags(name:),
+	// because the document root is missing from the type index; that is
+	// tracked in https://github.com/vlang/v/issues/30268.
+	mut dom := parse('<bracket>inner text</bracket>')
+	mut bracket := dom.get_tags()[0]
+	assert bracket.name == 'bracket'
+	assert bracket.text() == 'inner text'
+
+	mut dom_br := parse('<div><p>a<br/>b</p></div>')
+	mut brs := dom_br.get_tags(name: 'br/')
+	assert brs.len == 1
+	assert brs[0].text() == '\n'
+}
+
+fn test_br_prefix_elements_preserve_own_text_and_children() {
+	for name in ['b', 'bracket', 'broom', 'br-widget'] {
+		tag := Tag{
+			name:     name
+			content:  'before'
+			children: [&Tag{ name: 'text', content: 'after' }]
+		}
+		assert tag.text() == 'beforeafter'
+	}
+	for name in ['br', 'br/'] {
+		assert Tag{ name: name }.text() == '\n'
+	}
+	assert Tag{}.text() == ''
+}
