@@ -9,10 +9,8 @@ $if !tinyc {
 	#flag darwin @VEXEROOT/thirdparty/tcc/lib/libtcc.a
 }
 
-#include "libtcc.h"
-
 $if !tinyc && !fastc_selfhost ? {
-	#insert "@VMODROOT/vlib/v/gen/fastc/libtcc_system_darwin.h"
+	#flag @VMODROOT/vlib/v/gen/fastc/libtcc_system_darwin.o
 }
 
 struct C.TCCState {}

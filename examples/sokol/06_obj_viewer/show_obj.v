@@ -189,7 +189,7 @@ fn draw_start_glsl(app App) {
 	gfx.apply_viewport(0, 0, ws.width, ws.height, true)
 }
 
-fn draw_end_glsl(app App) {
+fn draw_end_glsl(_app App) {
 	gfx.end_pass()
 	gfx.commit()
 }
@@ -228,9 +228,9 @@ fn my_init(mut app App) {
 	app.init_flag = true
 }
 
-fn cleanup(mut app App) {
+fn cleanup(mut _app App) {
 	/*
-	for _, mat in app.obj_part.texture {
+	for _, mat in _app.obj_part.texture {
 		obj.destroy_texture(mat)
 	}
 	*/
