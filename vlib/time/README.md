@@ -9,6 +9,10 @@ V's `time` module, provides utilities for working with time and dates:
 - stop watches for accurately measuring time durations
 - sleeping for a period of time
 
+Dates before year 1 use the proleptic Gregorian calendar with astronomical year numbering: year
+0 is 1 BC and is a leap year. Unix timestamp and day-offset conversions preserve dates at the
+400-year cycle boundaries before year 0, including March 1 and 2 of years -400, -800 and -1200.
+
 `time.ticks()` returns milliseconds since the UNIX epoch on Unix platforms. On Windows it
 returns a 64-bit count of milliseconds since system startup, which does not wrap after
 49.7 days. The Windows counter is resolved at runtime so it also works with bundled TCC
@@ -201,7 +205,3 @@ time on a channel: see the `sync` module.
 value passed by json2. Unix timestamp strings contain decimal digits with an optional leading
 minus and must fit in `i64`. Empty, malformed, and overflowing values return an error.
 `clean12()` uses a single-digit hour when appropriate, followed by `a.m.` or `p.m.`.
-
-Dates before year 1 use the proleptic Gregorian calendar with astronomical year numbering: year
-0 is 1 BC and is a leap year. Unix timestamp and day-offset conversions preserve dates at the
-400-year cycle boundaries before year 0, including March 1 and 2 of years -400, -800 and -1200.
