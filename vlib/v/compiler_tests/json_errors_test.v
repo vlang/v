@@ -156,6 +156,32 @@ fn main() {
 	assert diagnostics[0].message == 'argument count mismatch for `a.plus`: expected 1, got 2'
 }
 
+fn test_json_errors_positions_compile_errors_selected_by_generic_reflection() {
+	dir := write_project('reflected_compile_error', {
+		'main.v': 'struct App { count int }
+fn check[T]() {
+	\$for field in T.fields {
+		\$if field.typ is int {
+			\$compile_error("invalid reflected field")
+		}
+	}
+}
+fn main() { check[App]() }
+'
+	})
+	defer { os.rmdir_all(dir) or {} }
+	res := run_in(dir, ['-color', '-json-errors', '-no-retry-compilation', '-nocache', '-o', 'main.c',
+		'main.v'])
+	assert res.exit_code == 1, res.output
+	diagnostics := decode_diagnostics(res.output)
+	assert diagnostics.len == 1, res.output
+	assert diagnostics[0].file == 'main.v', res.output
+	assert diagnostics[0].line == 5, res.output
+	assert diagnostics[0].col == 4, res.output
+	assert diagnostics[0].severity == 'error', res.output
+	assert diagnostics[0].message == 'compile-time error: invalid reflected field', res.output
+}
+
 fn test_json_errors_keeps_the_exit_code_of_a_program_with_warnings_only() {
 	dir := write_project('warnings', {
 		'main.v': 'module main\n\nfn main() {\n\tunused := 1\n\tprintln(2)\n}\n'

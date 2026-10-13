@@ -30,6 +30,11 @@ String numeric conveniences such as `.int()`, `.i64()`, `.u64()`, and their narr
 also keep bare leading zeros decimal. Explicit `0b`, `0o`, and `0x` prefixes still select a base.
 Use `.parse_int(0, bits)` or `.parse_uint(0, bits)` for base-zero inference on a string.
 
+Underscores may separate digits, as in `1_000` or `0xFF_FF`, with base 0 only: with an explicit
+base, `parse_int` and `parse_uint` return an error for them. The lower-level `common_parse_int`,
+`common_parse_uint` and `common_parse_uint2` accept the separators in every base; `.int()` and
+the other string conveniences below use them, so `'1_000'.int()` is 1000.
+
 ```v
 assert '010'.int() == 10
 assert '0o10'.int() == 8
@@ -58,6 +63,27 @@ assert math.is_nan(strconv.atof64('NaN')!)
 On the C backend, `allow_extra_chars: true` permits trailing characters after a decimal number,
 for example `atof64('1.5units', allow_extra_chars: true)` returns `1.5`.
 A mantissa and any exponent must still contain digits.
+
+On the C backend, a number whose magnitude is too large for an `f64`, such as `1e400`,
+returns a `value out of range` error, so that it cannot be mistaken for an `inf` in the input.
+Pass `allow_overflow: true` to get `+inf` or `-inf` for such a number instead; `string.f64()`
+and `string.f32()`, which have no error to return, do that. The `inf` and `infinity` spellings
+never return this error. A number too small for an `f64`, such as `1e-400`, is not an error:
+it rounds to a subnormal value or to a signed zero.
+
+```v
+import strconv
+import math
+
+if value := strconv.atof64('1e400') {
+	assert false, 'parsed as ${value}'
+} else {
+	assert err.msg() == 'strconv.atof64: parsing "1e400": value out of range'
+}
+assert math.is_inf(strconv.atof64('-1e400', allow_overflow: true)!, -1)
+assert strconv.atof64('1.7976931348623157e308')! == math.max_f64
+assert strconv.atof64('1e-400')! == 0.0
+```
 
 ## Integer formatting
 
@@ -91,7 +117,19 @@ These functions round the shortest decimal representation half up, then append z
 needed. They do not round the exact binary value like C's `printf`: for example,
 `f64_to_str_pad(0.1, 20)` gives `1.00000000000000000000e-01`.
 
+On the C backend, `format_es` rounds the exact binary `f64` value to the requested scientific
+precision half up. This preserves subnormal digits: `format_es(5e-324, len1: 2)`
+returns `4.94e-324`. Zero precision omits the decimal point; zero values receive the requested
+padding. `BF_param.positive` supplies the sign, including for negative zero, when calling
+`format_es` directly. The shortest-form `f64_to_str_pad` behaviour described above is unchanged.
+
 ## Buffer formatting
+
+On the C backend, `format_fl` and `f64_to_str_lnd1` format the exact binary `f64` value
+in fixed decimal notation, rounded to the requested fractional precision half up.
+Large integer values retain every digit, and precision can expose digits beyond the shortest
+decimal representation: `format_fl(0.1, len1: 20)` returns `0.10000000000000000555`.
+`BF_param.positive` supplies the sign when calling `format_fl` directly.
 
 `write_dec` and `write_dec_u` write a decimal integer into a caller-provided `[]u8`
 buffer. They return the number of bytes written, or `-1` when the buffer is too small.

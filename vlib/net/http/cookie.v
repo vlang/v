@@ -5,6 +5,7 @@ module http
 
 import time
 import strings
+import strconv
 
 pub struct Cookie {
 pub mut:
@@ -104,7 +105,7 @@ pub fn (c &Cookie) str() string {
 	b.write_string('=')
 	b.write_string(sanitize_cookie_value(c.value))
 	if c.path.len > 0 {
-		b.write_string('; path=')
+		b.write_string('; Path=')
 		b.write_string(sanitize_cookie_path(c.path))
 	}
 	if c.domain.len > 0 {
@@ -117,7 +118,7 @@ pub fn (c &Cookie) str() string {
 			if d[0] == `.` {
 				d = d.substr(1, d.len)
 			}
-			b.write_string('; domain=')
+			b.write_string('; Domain=')
 			b.write_string(d)
 		} else {
 			// TODO: Log invalid cookie domain warning
@@ -125,7 +126,7 @@ pub fn (c &Cookie) str() string {
 	}
 	if c.expires.year > 1600 {
 		time_str := c.expires.http_header_string()
-		b.write_string('; expires=')
+		b.write_string('; Expires=')
 		b.write_string(time_str)
 	}
 	// TODO: Fix this. Technically a max age of 0 or less should be 0
@@ -182,7 +183,7 @@ fn sanitize_cookie_name(name string) string {
 }
 
 // sanitize_cookie_value removes invalid cookie bytes and quotes the sanitized value
-// when it starts or ends with a space or comma.
+// when it contains a space or comma.
 // https://tools.ietf.org/html/rfc6265#section-4.1.1
 // cookie-value      = *cookie-octet / ( DQUOTE *cookie-octet DQUOTE )
 // cookie-octet      = %x21 / %x23-2B / %x2D-3A / %x3C-5B / %x5D-7E
@@ -190,15 +191,12 @@ fn sanitize_cookie_name(name string) string {
 //           ; whitespace DQUOTE, comma, semicolon,
 //           ; and backslash
 // We loosen this as spaces and commas are common in cookie values
-// but we produce a quoted cookie-value when value starts or ends
-// with a comma or space.
+// but we produce a quoted cookie-value when value contains
+// a comma or space.
 pub fn sanitize_cookie_value(v string) string {
 	val := sanitize(valid_cookie_value_byte, v)
-	if val.len == 0 {
-		return val
-	}
-	// Quote leading or trailing spaces and commas.
-	if val.starts_with(' ') || val.ends_with(' ') || val.starts_with(',') || val.ends_with(',') {
+	// Quote a value that contains spaces or commas.
+	if val.contains_any(' ,') {
 		return '"${val}"'
 	}
 	return val
@@ -327,7 +325,8 @@ fn parse_cookie(line string) !Cookie {
 		value: value
 		raw:   line
 	}
-	for i, _ in parts {
+	// parts[0] is the `name=value` pair read above; the attributes start after it.
+	for i in 1 .. parts.len {
 		parts[i] = parts[i].trim_space()
 		if parts[i].len == 0 {
 			continue
@@ -366,15 +365,11 @@ fn parse_cookie(line string) !Cookie {
 				continue
 			}
 			'max-age' {
-				mut secs := val.int()
-				if secs != 0 && val[0] != `0` {
-					break
+				if secs := parse_cookie_max_age(val) {
+					c.max_age = if secs > 0 { secs } else { -1 }
+					continue
 				}
-				if secs <= 0 {
-					secs = -1
-				}
-				c.max_age = secs
-				continue
+				c.unparsed << parts[i]
 			}
 			'expires' {
 				c.raw_expires = val
@@ -397,4 +392,21 @@ fn parse_cookie(line string) !Cookie {
 		}
 	}
 	return c
+}
+
+// parse_cookie_max_age returns the number of seconds in the value of a `Max-Age`
+// attribute. The value has to be a decimal integer that fits in an int: an optional
+// sign and digits, nothing else, and no leading zero unless the number is zero.
+// `string.int()` is too lenient for that: it reads `12abc` as 12, `0x10` as 16
+// and `abc` or an empty value as 0.
+fn parse_cookie_max_age(val string) ?int {
+	digits := if val.len > 0 && (val[0] == `-` || val[0] == `+`) { val[1..] } else { val }
+	if !all_digits(digits) {
+		return none
+	}
+	secs := strconv.atoi64(val) or { return none }
+	if secs < min_int || secs > max_int || (secs != 0 && val[0] == `0`) {
+		return none
+	}
+	return int(secs)
 }
