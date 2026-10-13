@@ -204,6 +204,14 @@ fn (g &Parser) condition_brace_opens_struct_literal(tokens []FastcExpressionToke
 	if before_index >= 0 && tokens[before_index].tok in [.key_is, .not_is, .key_as] {
 		return false
 	}
+	// A composite target can end in a declared type too (`is []mod.Type` or
+	// `!is map[string]mod.Type`). Its brace still opens the condition's block.
+	for i := before_index; i >= 0; i-- {
+		if tokens[i].tok in [.key_is, .not_is, .key_as]
+			&& g.type_from_expression_tokens(tokens[i + 1..]) != none {
+			return false
+		}
+	}
 	return true
 }
 
@@ -505,6 +513,14 @@ struct FastcLoweredOrExpression {
 	paren_depth    int
 }
 
+fn (g &Parser) option_container_c_type(tokens []FastcExpressionToken, expression string) string {
+	typ := g.infer_expression_type(tokens) or { '' }
+	if typ in ['Option', '__v_result'] {
+		return typ
+	}
+	return '__typeof__((${expression}))'
+}
+
 fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression_tokens []FastcExpressionToken, input_paren_depth int, brace_depth int, struct_depths []int, struct_paren_depths []int, struct_field_value_start int, expected_struct_field_type string, saved_expected_expression_type string) !FastcLoweredOrExpression {
 	mut previous_token := token.Token.name
 	mut previous_lit := ''
@@ -515,12 +531,24 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	for wrapper_parens < expression_tokens.len && expression_tokens[wrapper_parens].tok == .lpar {
 		wrapper_parens++
 	}
+	mut open_parens := 0
+	for item in expression_tokens {
+		if item.tok == .lpar {
+			open_parens++
+		} else if item.tok == .rpar {
+			open_parens--
+		}
+	}
+	if wrapper_parens > open_parens {
+		wrapper_parens = if open_parens > 0 { open_parens } else { 0 }
+	}
 	raw_option_buffer := fastc_take_string(mut result)
 	mut option_expression := raw_option_buffer.trim_space()
 	mut value_type := g.expected_expression_type
 	mut option_tokens := expression_tokens.clone()
 	mut assignment_prefix := ''
 	mut assignment_suffix := ''
+	mut assignment_prefix_tokens := []FastcExpressionToken{}
 	mut scoped_operand_prefix := ''
 	mut scoped_or_operand := false
 	mut assignment_depth := 0
@@ -583,6 +611,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 			}
 			if assignment_token.tok == .assign {
 				if map_wrap := g.render_map_index_assignment_wrapping(left_tokens) {
+					assignment_prefix_tokens = expression_tokens[..i + 1].clone()
 					assignment_prefix = map_wrap.prefix
 					assignment_suffix = map_wrap.suffix
 					value_type = map_wrap.value_type
@@ -598,6 +627,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 					''
 				}
 				if left_source != '' {
+					assignment_prefix_tokens = expression_tokens[..i + 1].clone()
 					assignment_prefix = '${left_source}${assignment_token.tok.str()}'
 					value_type = left_type
 					option_tokens = expression_tokens[i + 1..].clone()
@@ -732,6 +762,11 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 		option_value_type = g.option_value_type_for_expression(option_tokens)
 	}
 	// The `or` result is the option payload, not the enclosing expression's type.
+	option_container_type := g.option_container_c_type(if grouped_operand {
+		grouped_value_tokens
+	} else {
+		option_tokens
+	}, option_expression)
 	if g.selfhost && option_value_type != '' && option_value_type != value_type {
 		value_type = option_value_type
 	}
@@ -830,11 +865,11 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 			// The or-block ends in a fallback VALUE: run the leading statements and
 			// use the value on failure, the unwrapped option value on success.
 			or_result := g.temporary_name('or_result')
-			'({ __auto_type ${temporary} = (${option_expression}); ${complex_value_type} ${or_result}; if (${temporary}.state) { ${error_binding} ${block_lines.join(' ')} ${or_result} = (${fallback_value}); } else { ${or_result} = ${complex_success}; } ${or_result}; })'
+			'({ ${option_container_type} ${temporary} = (${option_expression}); ${complex_value_type} ${or_result}; if (${temporary}.state) { ${error_binding} ${block_lines.join(' ')} ${or_result} = (${fallback_value}); } else { ${or_result} = ${complex_success}; } ${or_result}; })'
 		} else {
 			// The or-block only runs statements (it diverges): run them on failure,
 			// then use the unwrapped value.
-			'({ __auto_type ${temporary} = (${option_expression}); if (${temporary}.state) { ${error_binding} ${block_lines.join(' ')} } ${complex_success}; })'
+			'({ ${option_container_type} ${temporary} = (${option_expression}); if (${temporary}.state) { ${error_binding} ${block_lines.join(' ')} } ${complex_success}; })'
 		}
 		result.write_string(assignment_prefix)
 		result.write_string(scoped_operand_prefix)
@@ -850,7 +885,8 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 				is_statement: or_expression_is_statement
 			}
 		} else {
-			expression_tokens = [
+			expression_tokens = assignment_prefix_tokens.clone()
+			expression_tokens << [
 				FastcExpressionToken{
 					tok:          .name
 					lit:          temporary
@@ -866,7 +902,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 					lit: '='
 				}
 			}
-			if assignment_prefix != '' && assignment_suffix == '' {
+			if assignment_prefix != '' && assignment_suffix == '' && assignment_prefix_tokens.len == 0 {
 				expression_tokens << FastcExpressionToken{
 					tok: .assign
 					lit: '='
@@ -1013,11 +1049,11 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 	or_expr_body := if fallback_type == 'IError' && g.return_type == '__v_result' {
 		// `return result_call() or { error(...) }`: the IError is a replacement
 		// result failure, not a value of the result payload type.
-		'({ __auto_type ${temporary} = (${option_expression}); if (${temporary}.state) { return (__v_result){.err = (${fallback}), .state = 1}; } ${success_value}; })'
+		'({ ${option_container_type} ${temporary} = (${option_expression}); if (${temporary}.state) { return (__v_result){.err = (${fallback}), .state = 1}; } ${success_value}; })'
 	} else if value_type == 'void' || fallback_type in ['', 'void'] {
-		'({ __auto_type ${temporary} = (${option_expression}); if (${temporary}.state) { ${fallback}; } ${success_value}; })'
+		'({ ${option_container_type} ${temporary} = (${option_expression}); if (${temporary}.state) { ${fallback}; } ${success_value}; })'
 	} else {
-		'({ __auto_type ${temporary} = (${option_expression}); ${temporary}.state ? (${fallback}) : ${success_value}; })'
+		'({ ${option_container_type} ${temporary} = (${option_expression}); ${temporary}.state ? (${fallback}) : ${success_value}; })'
 	}
 	if fallback_type == 'IError' && g.return_type == '__v_result' && option_value_type != '' {
 		value_type = option_value_type
@@ -1037,7 +1073,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 			is_statement: or_expression_is_statement
 		}
 	} else {
-		expression_tokens = []FastcExpressionToken{}
+		expression_tokens = assignment_prefix_tokens.clone()
 		for _ in 0 .. wrapper_parens {
 			expression_tokens << FastcExpressionToken{
 				tok: .lpar
@@ -1059,7 +1095,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 				lit: '='
 			}
 		}
-		if assignment_prefix != '' && assignment_suffix == '' {
+		if assignment_prefix != '' && assignment_suffix == '' && assignment_prefix_tokens.len == 0 {
 			expression_tokens << FastcExpressionToken{
 				tok: .assign
 				lit: '='
@@ -1526,11 +1562,13 @@ fn (mut g Parser) read_compound_expression_atom(expression_tokens []FastcExpress
 			typ: g.last_expression_type
 		}
 	}
-	anon := g.parse_anonymous_function()!
+	anon, anon_name, is_capturing := g.parse_anonymous_function()!
 	return FastcExpressionToken{
-		tok:    .name
-		lit:    anon
-		source: anon
+		tok:                  .name
+		lit:                  anon_name
+		source:               anon
+		typ:                  'fn ()'
+		is_capturing_closure: is_capturing
 	}
 }
 
@@ -2256,6 +2294,14 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 		g.validate_expression_calls(expression_tokens)!
 	}
 	mut rendered_expression := fastc_take_trimmed(mut result)
+	if g.selfhost && expression_tokens.any(it.tok == .name && it.source != '')
+		&& !expression_tokens.any(it.tok.is_assignment()) {
+		// Rebuild enclosing casts and calls after lowering an operand to a typed atom.
+		// Their opening delimiters may have been consumed by the operand's `or` block.
+		rendered_expression = g.render_raw_expression_tokens(expression_tokens) or {
+			rendered_expression
+		}
+	}
 	if g.selfhost && expression_tokens.len > 1 && expression_tokens.last().tok == .question {
 		// A trailing `?` propagates an option exactly like `!` propagates a result.
 		// FastC represents both with one `Option` type, so normalize `?` to the `!`
@@ -2292,6 +2338,24 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 			}
 		}
 	}
+	if g.selfhost && expression_tokens.any(it.tok == .name && it.source != '')
+		&& fastc_tokens_have_top_level_assignment(expression_tokens) {
+		if assignment := g.render_map_expression(expression_tokens) {
+			g.last_expression_type = assignment.typ
+			g.last_expression = expression_tokens
+			return g.render_constant_references(expression_tokens, assignment.source)
+		}
+		if assignment := g.render_array_assignment_expression(expression_tokens) {
+			g.last_expression_type = assignment.typ
+			g.last_expression = expression_tokens
+			return g.render_constant_references(expression_tokens, assignment.source)
+		}
+		if assignment := g.render_assignment_expression(expression_tokens) {
+			g.last_expression_type = assignment.typ
+			g.last_expression = expression_tokens
+			return g.render_constant_references(expression_tokens, assignment.source)
+		}
+	}
 	if g.selfhost && expression_tokens.len > 1 && expression_tokens.last().tok == .not && rendered_expression.ends_with('?') {
 		rendered_expression = rendered_expression[..rendered_expression.len - 1] + '!'
 	}
@@ -2322,6 +2386,10 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 	if special := g.render_special_expression(expression_tokens, rendered_expression) {
 		g.last_expression_type = special.typ
 		g.last_expression = expression_tokens
+		return_types := g.multi_return_types_for_expression(expression_tokens)
+		if return_types.len > 0 {
+			g.last_multi_return_types = return_types.clone()
+		}
 		return g.render_constant_references(expression_tokens, special.source)
 	}
 	g.last_expression_type = g.infer_expression_type(expression_tokens)!
@@ -4017,6 +4085,29 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 	has_membership := flags.has_membership
 	has_top_level_logical := flags.has_top_level_logical
 	if g.selfhost {
+		if tokens.len > 1 && tokens[0].tok == .amp && !tokens[0].is_mut_argument {
+			if has_as {
+				if reference := g.render_as_cast_expression_with_reference(tokens[1..], true) {
+					return reference
+				}
+			}
+			if tokens.len == 2 && tokens[1].tok == .name {
+				if local := g.locals[tokens[1].lit] {
+					if local.smartcast_origin_source != '' {
+						access := if local.smartcast_origin_type.ends_with('*') {
+							'->'
+						} else {
+							'.'
+						}
+						typ := local.typ.trim_right('*') + '*'
+						return FastcRenderedExpression{
+							source: '((${typ})${local.smartcast_origin_source}${access}_object)'
+							typ:    typ
+						}
+					}
+				}
+			}
+		}
 		if has_lsbr && has_lpar {
 			if explicit_generic := g.render_explicit_generic_call_expression(tokens) {
 				return explicit_generic
@@ -4207,7 +4298,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 				'*((${value_type} *)${temporary}.data)'
 			}
 			return FastcRenderedExpression{
-				source: '({ __auto_type ${temporary} = (${inner_source}); if (${temporary}.state) { ${failure} } ${value}; })'
+				source: '({ ${g.option_container_c_type(inner_tokens, inner_source)} ${temporary} = (${inner_source}); if (${temporary}.state) { ${failure} } ${value}; })'
 				typ:    value_type
 			}
 		}
