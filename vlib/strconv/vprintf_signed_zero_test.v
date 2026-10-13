@@ -116,3 +116,16 @@ fn test_format_fl_and_format_es_write_the_sign_passed_in_the_params() {
 	assert strconv.format_es(neg_zero, strconv.BF_param{ len1: 2, positive: false }) == '-0.00e+00'
 	assert strconv.format_fl_old(neg_zero, strconv.BF_param{ len1: 2, positive: false }) == '-0.00'
 }
+
+fn test_format_fl_old_does_not_leak_negative_zero_into_unsigned_digits() {
+	negative_zero := math.f64_from_bits(u64(0x8000_0000_0000_0000))
+	assert strconv.format_fl_old(negative_zero, strconv.BF_param{ len1: 2, positive: true }) == '0.00'
+	assert strconv.format_fl_old(negative_zero, strconv.BF_param{ len1: 2, positive: true, sign_flag: true }) == '+0.00'
+}
+
+fn test_v_sprintf_negative_nan_keeps_one_sign() {
+	negative_nan := math.f64_from_bits(u64(0xfff8_0000_0000_0001))
+	assert math.signbit(negative_nan)
+	assert sprintf3('%f %e %g', negative_nan) == '-nan -nan -nan'
+	assert sprintf3('%+f %+e %+g', negative_nan) == '-nan -nan -nan'
+}
