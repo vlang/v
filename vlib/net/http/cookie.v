@@ -105,7 +105,7 @@ pub fn (c &Cookie) str() string {
 	b.write_string('=')
 	b.write_string(sanitize_cookie_value(c.value))
 	if c.path.len > 0 {
-		b.write_string('; path=')
+		b.write_string('; Path=')
 		b.write_string(sanitize_cookie_path(c.path))
 	}
 	if c.domain.len > 0 {
@@ -118,7 +118,7 @@ pub fn (c &Cookie) str() string {
 			if d[0] == `.` {
 				d = d.substr(1, d.len)
 			}
-			b.write_string('; domain=')
+			b.write_string('; Domain=')
 			b.write_string(d)
 		} else {
 			// TODO: Log invalid cookie domain warning
@@ -126,7 +126,7 @@ pub fn (c &Cookie) str() string {
 	}
 	if c.expires.year > 1600 {
 		time_str := c.expires.http_header_string()
-		b.write_string('; expires=')
+		b.write_string('; Expires=')
 		b.write_string(time_str)
 	}
 	// TODO: Fix this. Technically a max age of 0 or less should be 0
