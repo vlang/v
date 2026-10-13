@@ -1,6 +1,10 @@
 #ifndef V_OS_EXECUTE_CAPTURE_NIX_H
 #define V_OS_EXECUTE_CAPTURE_NIX_H
 
+#ifndef V_OS_EXECUTE_SCOPE
+#define V_OS_EXECUTE_SCOPE static inline
+#endif
+
 // v_os_execute_set_cloexec marks an fd as close-on-exec. When multiple threads
 // each call os.execute, every pipe() they create is briefly visible to all of
 // them; without FD_CLOEXEC, one thread's spawned child can inherit another
@@ -9,7 +13,7 @@
 // empty (seen on macOS arm64 in CI). Setting CLOEXEC closes the fd
 // automatically across exec, which fixes the race for both fork/execvp and
 // posix_spawn paths.
-static inline void v_os_execute_set_cloexec(int fd) {
+V_OS_EXECUTE_SCOPE void v_os_execute_set_cloexec(int fd) {
 	int flags = fcntl(fd, F_GETFD, 0);
 	if (flags >= 0) {
 		fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
@@ -20,7 +24,7 @@ static inline void v_os_execute_set_cloexec(int fd) {
 // Android API levels below 28 do not provide posix_spawn(). Fall back to
 // fork()/execvp() with a pipe; this is what popen() does internally and
 // is sufficient for capturing the merged stdout+stderr of a shell command.
-static inline int v_os_execute_capture_start(const char *cmd, int *child_pid, int *read_fd) {
+V_OS_EXECUTE_SCOPE int v_os_execute_capture_start(const char *cmd, int *child_pid, int *read_fd) {
 	int pipefd[2];
 	if (pipe(pipefd) != 0) {
 		return -1;
@@ -50,7 +54,7 @@ static inline int v_os_execute_capture_start(const char *cmd, int *child_pid, in
 	return 0;
 }
 
-static inline int v_os_exec_capture_start(char *const argv[], int *child_pid, int *read_fd) {
+V_OS_EXECUTE_SCOPE int v_os_exec_capture_start(char *const argv[], int *child_pid, int *read_fd) {
 	if (argv == NULL || argv[0] == NULL) {
 		return -1;
 	}
@@ -105,7 +109,7 @@ extern char **environ;
 }
 #endif
 
-static inline int v_os_execute_capture_start(const char *cmd, int *child_pid, int *read_fd) {
+V_OS_EXECUTE_SCOPE int v_os_execute_capture_start(const char *cmd, int *child_pid, int *read_fd) {
 	int pipefd[2];
 	if (pipe(pipefd) != 0) {
 		return -1;
@@ -141,7 +145,7 @@ static inline int v_os_execute_capture_start(const char *cmd, int *child_pid, in
 	return 0;
 }
 
-static inline int v_os_exec_capture_start(char *const argv[], int *child_pid, int *read_fd) {
+V_OS_EXECUTE_SCOPE int v_os_exec_capture_start(char *const argv[], int *child_pid, int *read_fd) {
 	if (argv == NULL || argv[0] == NULL) {
 		return -1;
 	}
@@ -184,7 +188,7 @@ static inline int v_os_exec_capture_start(char *const argv[], int *child_pid, in
 // It is defined on all nix platforms because fastc references it
 // unconditionally (see vlib/v/gen/fastc/unit_compile_nix.c.v); guarding it
 // behind __APPLE__ left it undefined at link time on Linux.
-static inline void v_os_fd_write_all(int fd, const char *data, size_t len) {
+V_OS_EXECUTE_SCOPE void v_os_fd_write_all(int fd, const char *data, size_t len) {
 	while (len > 0) {
 		ssize_t written = write(fd, data, len);
 		if (written <= 0) {
@@ -200,7 +204,7 @@ static inline void v_os_fd_write_all(int fd, const char *data, size_t len) {
 // additional pipe connected to the child's stdin. F_SETNOSIGPIPE makes a
 // writer observe EPIPE instead of terminating the parent when a child exits
 // after reporting an early input error.
-static inline int v_os_exec_capture_input_start(char *const argv[], int *child_pid, int *read_fd, int *write_fd) {
+V_OS_EXECUTE_SCOPE int v_os_exec_capture_input_start(char *const argv[], int *child_pid, int *read_fd, int *write_fd) {
 	if (argv == NULL || argv[0] == NULL) {
 		return -1;
 	}

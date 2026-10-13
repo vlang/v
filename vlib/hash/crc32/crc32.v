@@ -139,7 +139,8 @@ pub fn sum_crc32k(b []u8) u32 {
 	return crc32k_poly.checksum(b)
 }
 
-// sum_crc32q calculates the CRC-32Q checksum of `b`.
+// sum_crc32q calculates the CRC-32Q (CRC-32/AIXM) checksum of `b`.
+// It uses non-reflected input/output, polynomial 0x814141ab, and zero init/xorout.
 pub fn sum_crc32q(b []u8) u32 {
 	return crc32q_sum_internal(b)
 }
