@@ -12,8 +12,21 @@
 #ifdef _WIN32
 #include <windows.h>
 
+/* Boehm only scans threads it created or registered. gc.h redirects CreateThread to
+ * GC_CreateThread only when it precedes this header, so declare GC_CreateThread here
+ * for Boehm builds. A plain CreateThread thread aborts the next collection it triggers. */
+#if (defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)) && !defined(GC_H)
+HANDLE WINAPI GC_CreateThread(LPSECURITY_ATTRIBUTES, SIZE_T, LPTHREAD_START_ROUTINE,
+	LPVOID, DWORD, LPDWORD);
+#endif
+#if defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)
+#define v_sync_create_thread GC_CreateThread
+#else
+#define v_sync_create_thread CreateThread
+#endif
+
 V_SYNC_THREAD_SCOPE int v_sync_thread_create_detached_with_stack(void *start, void *arg, size_t stack_size) {
-	HANDLE handle = CreateThread(NULL, stack_size, (LPTHREAD_START_ROUTINE)start,
+	HANDLE handle = v_sync_create_thread(NULL, stack_size, (LPTHREAD_START_ROUTINE)start,
 		arg, 0, NULL);
 	if (handle == NULL) {
 		return (int)GetLastError();
