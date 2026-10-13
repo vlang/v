@@ -478,6 +478,7 @@ Cached standard-library headers retain their source classification so headerless
 their complete layouts, including the Boehm GC stack type used by interface stringification.
 Generated fixed-array map-key helpers declare their cached builtin callees before their definitions.
 Inferred anonymous fixed arrays use their materialized element types, including nested arrays.
+Merged imports in cached headers do not create parameter-name conflicts across source files.
 With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
 before compiling a new module object, including during `run`. Ordinary builds and warm builds
 print no cache creation notices; `-silent` suppresses them too.
