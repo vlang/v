@@ -6680,6 +6680,20 @@ fn incremental_top_level_nodes(a &flat.FlatAst) []bool {
 	return result
 }
 
+fn program_has_translated_module_attributes(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		idx := node.value.all_after('@attributes:').int()
+		if idx >= 0 && idx < a.nodes.len && a.nodes[idx].kind == .module_decl
+			&& node.generic_params().any(it.all_before(':').trim_space() == 'translated') {
+			return true
+		}
+	}
+	return false
+}
+
 fn incremental_declaration_attribute_signatures(a &flat.FlatAst) map[int]string {
 	mut result := map[int]string{}
 	for node in a.nodes {
@@ -7675,6 +7689,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.enum_fields = clone_string_list_map(tc.enum_fields)
 	tc.flag_enums = clone_string_bool_map(tc.flag_enums)
 	tc.interface_names = clone_string_bool_map(tc.interface_names)
+	tc.interface_generic_params = clone_string_list_map(tc.interface_generic_params)
 	tc.interface_fields = clone_struct_field_map(tc.interface_fields)
 	tc.interface_embeds = clone_string_list_map(tc.interface_embeds)
 	tc.interface_abstract_methods = clone_string_list_map(tc.interface_abstract_methods)
@@ -12624,7 +12639,10 @@ pub fn run(args []string) {
 	}
 	use_macos_dev_program_cache := backend == 'c' && program_cache_enabled && !is_prod && !is_shared
 		&& !is_selfhost && prefs.normalized_target_os() == 'macos'
+	// Translated body edits can require new integer-formatting helpers and map
+	// declarations that the prior prefix did not contain. Rebuild that prefix.
 	incremental_cache_enabled := use_macos_dev_program_cache
+		&& !translated_mode && !program_has_translated_module_attributes(a)
 		&& os.getenv('V3_CACHE_DISABLE_INCREMENTAL') != '1'
 	mut generic_cache_inputs_ready := false
 	mut incremental_snapshot := V3IncrementalSnapshot{}

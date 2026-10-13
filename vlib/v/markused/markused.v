@@ -280,7 +280,8 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool, all_functions bool, allow_trivial_literal_output bool, prepared &PreparedMarkusedDecls, library_body_checker voidptr, library_check_parallel bool) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
 	trivial_literal_output := allow_trivial_literal_output && !cache_mode && cache_modules.len == 0
-		&& test_files.len == 0 && is_trivial_literal_output_program(a, tc.diagnostic_files)
+		&& test_files.len == 0 && !all_functions
+		&& is_trivial_literal_output_program(a, tc.diagnostic_files)
 	// An exact literal-output program has no user expressions or declarations that
 	// can instantiate a generic. Skip generic indexes and per-node generic checks,
 	// just as the known non-generic self-host path does.
@@ -551,6 +552,18 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	queue << 'main'
 	used['main'] = true
+	if cache_mode {
+		// Cached IError dispatchers name every implementer's methods, even when
+		// their callers have no body in the warm AST. Cgen emits these methods,
+		// so retain their transformations and the helpers their bodies call.
+		for impl in tc.ierror_impl_names() {
+			for method in ['msg', 'code'] {
+				for alias in interface_implementer_method_aliases(impl, method, tc) {
+					enqueue(alias, mut used, mut queue)
+				}
+			}
+		}
+	}
 	$if ownership ? {
 		// Ownership cleanup and clone lowering emits direct C references to these
 		// process-wide IError sentinels. They have no source-AST reference for the
