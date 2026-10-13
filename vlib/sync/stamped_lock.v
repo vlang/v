@@ -18,19 +18,21 @@ mut:
 pub fn new_stamped_lock() &StampedLock {
 	mut m := new_mutex()
 	return &StampedLock{
-		mutex: m
-		cond:  new_cond(m)
+		mutex:   m
+		cond:    new_cond(m)
+		version: 1
 	}
 }
 
-// try_optimistic_read returns a stamp for the current state. It never blocks;
-// use validate to check the stamp afterwards.
+// try_optimistic_read returns a nonzero stamp, or zero while a writer is active.
+// It briefly acquires the internal mutex but does not wait for a writer to finish.
+// Optimistic access must use atomic data or other synchronization to avoid data races.
 pub fn (mut l StampedLock) try_optimistic_read() u64 {
 	l.mutex.lock()
 	defer {
 		l.mutex.unlock()
 	}
-	return l.version
+	return if l.writing { u64(0) } else { l.version }
 }
 
 // validate reports whether no write happened since stamp was taken and no
@@ -40,7 +42,7 @@ pub fn (mut l StampedLock) validate(stamp u64) bool {
 	defer {
 		l.mutex.unlock()
 	}
-	return !l.writing && l.version == stamp
+	return stamp != 0 && !l.writing && l.version == stamp
 }
 
 // read_lock acquires shared read access, blocking while a writer is active.
@@ -90,5 +92,8 @@ pub fn (mut l StampedLock) write_unlock() {
 	}
 	l.writing = false
 	l.version++
+	if l.version == 0 {
+		l.version = 1
+	}
 	l.cond.broadcast()
 }

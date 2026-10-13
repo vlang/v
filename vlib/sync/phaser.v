@@ -67,10 +67,11 @@ pub fn (mut p Phaser) arrive_and_deregister() u64 {
 		p.mutex.unlock()
 	}
 	ph := p.phase
-	if p.parties > 0 {
-		p.parties--
+	if p.parties == 0 {
+		return ph
 	}
-	p.arrived++
+	// Removing a party also removes its outstanding arrival for this phase.
+	p.parties--
 	if p.parties == 0 || p.arrived >= u64(p.parties) {
 		p.arrived = 0
 		p.phase++

@@ -69,3 +69,19 @@ fn test_stamped_lock_version_bumps_on_write() {
 	assert first != second, 'version must advance per write'
 	assert l.validate(second) == true
 }
+
+fn test_stamped_lock_stamp_during_write_stays_invalid() {
+	mut l := sync.new_stamped_lock()
+	assert !l.validate(0)
+	before := l.try_optimistic_read()
+	assert before != 0
+	l.write_lock()
+	during := l.try_optimistic_read()
+	assert during == 0
+	assert !l.validate(before)
+	assert !l.validate(during)
+	l.write_unlock()
+	assert !l.validate(during)
+	assert !l.validate(before)
+	assert l.validate(l.try_optimistic_read())
+}
