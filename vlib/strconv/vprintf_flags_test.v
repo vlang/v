@@ -147,6 +147,18 @@ fn test_char_that_is_not_a_code_point_is_replaced() {
 	}
 }
 
+fn forward_char_arguments(args ...voidptr) string {
+	return unsafe { strconv.v_sprintf('%c|%c|%c', ...args) }
+}
+
+fn test_char_uses_promoted_integer_storage() {
+	assert forward_char_arguments(u8(65), 66, `€`) == 'A|B|€'
+	assert forward_char_arguments(`😀`, u16(233), i32(67)) == '😀|é|C'
+	// Narrowing to a rune keeps the low 32 bits of the numeric value on either byte order.
+	wide := int(i64(0x1234567800000041))
+	assert unsafe { strconv.v_sprintf('%c', wide) } == 'A'
+}
+
 fn test_string_precision() {
 	unsafe {
 		assert strconv.v_sprintf('%.3s', 'abcdef') == 'abc'

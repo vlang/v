@@ -122,7 +122,9 @@ When the field is padded with zeros, they follow the prefix: `%#08x` of `255` is
 A specifier with any other type is written back unchanged, for example `%y`.
 It still takes one parameter, so the specifiers after it keep theirs.
 
-The `c` type takes a `rune`, or a byte sized value like an `u8`, and prints it as UTF-8.
+The `c` type takes a `rune`, an integer, or a byte sized value like an `u8`, and prints it as
+UTF-8. Integer arguments are read at their promoted `int` width before converting to a rune,
+so the result is the same on little-endian and big-endian targets.
 
 A specifier that the end of the format string cuts short, like a lone `%` at the end,
 is printed as it is written.
