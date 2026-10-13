@@ -356,6 +356,14 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 		upd.pass_to_ls = true
 	}
 
+	if upd.is_check && upd.ls_path == '' {
+		if ls_path := upd.find_ls_path() {
+			if os.is_executable(ls_path) {
+				upd.ls_path = ls_path
+			}
+		}
+	}
+
 	if upd.pass_to_ls {
 		if upd.ls_path == '' {
 			if ls_path := upd.find_ls_path() {
