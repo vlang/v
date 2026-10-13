@@ -60,7 +60,11 @@ pub:
 	assert !compile.output.contains('unknown function `m.after`'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('(geom__Color){'), c_code
+	// The qualified positional init reaches the C backend as a designated-initializer
+	// struct definition rather than an unnamed C compound literal, which is the
+	// correct form for a const declaration. What matters is that the four positional
+	// values survive the import resolution, so pin them rather than the literal form.
+	assert c_code.contains('m__shade = {.r = 1.0, .g = 2.0, .b = 3.0, .a = 4.0}'), c_code
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }
