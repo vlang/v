@@ -305,3 +305,6 @@ output types. These bindings keep Clang's incompatible pointer diagnostics enabl
 On Windows, `exec` and `Process` accept an absolute executable path without an extension.
 They use that exact file when it exists, then try the same path with `.exe` appended.
 Explicit extensions are preserved.
+
+On Windows, `os.get_error_msg` removes the trailing CR/LF line break from system
+messages. Error text returned by operations using it retains the message's punctuation.
