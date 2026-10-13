@@ -12,8 +12,16 @@ struct C.pthread_t {}
 
 fn C.pthread_join(worker C.pthread_t, retval voidptr) int
 fn C.prctl(option int, arg2 voidptr, arg3 u64, arg4 u64, arg5 u64) int
+
+// pthread_helper.o supplies these, and no header that this file includes
+// declares them: `@[c_extern]` has their prototypes written.
+@[c_extern]
 fn C.v3_pthread_zero() C.pthread_t
+
+@[c_extern]
 fn C.v3_pthread_create(worker &C.pthread_t, stack_size usize, start_routine fn (voidptr) voidptr, arg voidptr) int
+
+@[c_extern]
 fn C.v3_pthread_is_current(worker C.pthread_t) int
 
 // WorkerThread is one joinable persistent pool worker.
