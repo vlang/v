@@ -1555,7 +1555,27 @@ fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 	if module_name == 'c' && name.starts_with('Gen.') {
 		return true
 	}
-	if module_name == 'os' && name in ['is_dir', 'is_link', 'ls'] {
+	if module_name == 'os' && name in ['is_dir', 'is_link', 'ls', 'Process.wait', 'CommandArgs.close',
+		'system_args'] {
+		// `os.is_dir`/`os.is_link` need a `C.stat` result the native path cannot
+		// shape, and `os.ls` needs the `C.opendir`/`C.readdir` handles with it.
+		//
+		// `Process.wait` cannot be generated either, one level deeper: it ends in
+		// `Process._spawn`, whose POSIX implementation calls `C.fork`, `C.execve`,
+		// `C.kill` and `C._exit` (vlib/os/process_nix.c.v), none of which
+		// `register_functions` declares as externs -- it declares the parts of
+		// that file that are usable (`pipe`, `waitpid`, `dup`, `dup2`), so the
+		// gap is deliberate rather than an oversight. A body that calls a
+		// function the backend cannot compile is itself incompilable, and
+		// `CommandArgs.close` and `system_args` are the two bodies that reach
+		// `wait` (vlib/os/command.c.v and vlib/os/process.c.v), so each has to be
+		// left out together with it.
+		//
+		// None of the three is reachable without spawning a process: markused does
+		// not mark them used for a program that only reads `os.args`, so excluding
+		// them costs a native program nothing, and a program that does want them
+		// fails at compile time naming the function it asked for, rather than
+		// linking a binary with the call silently missing.
 		return true
 	}
 	return b.skip_source_fn(name)
