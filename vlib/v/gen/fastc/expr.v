@@ -1562,12 +1562,13 @@ fn (mut g Parser) read_compound_expression_atom(expression_tokens []FastcExpress
 			typ: g.last_expression_type
 		}
 	}
-	anon, anon_name := g.parse_anonymous_function()!
+	anon, anon_name, is_capturing := g.parse_anonymous_function()!
 	return FastcExpressionToken{
-		tok:    .name
-		lit:    anon_name
-		source: anon
-		typ:    'fn ()'
+		tok:                  .name
+		lit:                  anon_name
+		source:               anon
+		typ:                  'fn ()'
+		is_capturing_closure: is_capturing
 	}
 }
 

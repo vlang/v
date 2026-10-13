@@ -740,6 +740,19 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				direct_arguments << named_initializer
 			} else {
 				for argument_index, argument in call_args {
+					if argument_index == 0 && tokens[i].lit == 'delete'
+						&& receiver_type.trim_right('*').starts_with('Map_') {
+						key_type, _ := g.map_key_value_types(receiver_type.trim_right('*')) or {
+							continue
+						}
+						key_source := g.render_call_argument_expression(argument, key_type) or {
+							continue
+						}
+						// The map ABI takes the address of the key's bytes, even when
+						// the key is itself a pointer (as in the closure live map).
+						direct_arguments << '((${key_type}[]){${key_source}})'
+						continue
+					}
 					expected_index := argument_index + 1
 					expected_type := if signature.is_variadic && expected_index >= signature.parameter_types.len - 1 {
 						g.array_element_type(signature.parameter_types.last()) or { continue }

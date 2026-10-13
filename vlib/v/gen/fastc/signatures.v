@@ -530,8 +530,9 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	mut used := {
 		'main':                     true
 		'run':                      true
-		// Capturing function literals call this runtime entry from generated C.
+		// Capturing literals and their scoped cleanup call these from generated C.
 		'closure_create_with_data': true
+		'closure_try_destroy':      true
 		'memdup':                   true
 		// `select` is a keyword, so a `sql db { select ... }` block does not surface a
 		// `.select(` reference the way `insert`/`update`/... do; seed it so a connection

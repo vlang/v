@@ -889,11 +889,12 @@ struct FastcFunctionDeferBlock {
 }
 
 struct FastcExpressionToken {
-	tok             token.Token
-	source          string
-	unsafe_depth    int
-	is_mut_argument bool
-	is_statement    bool
+	tok                  token.Token
+	source               string
+	unsafe_depth         int
+	is_mut_argument      bool
+	is_statement         bool
+	is_capturing_closure bool
 mut:
 	lit string
 	typ string
@@ -2521,6 +2522,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		for id in native_refs {
 			live_modules[id] = true
 		}
+		for source in generation_sources {
+			for imported_module in source.header.blank_imports {
+				if module_id := native_module_ids[imported_module] {
+					live_modules[module_id] = true
+				}
+			}
+		}
 		for i, output in outputs {
 			module_name := generation_sources[i].header.module_name
 			module_id := native_module_ids[module_name] or { continue }
@@ -2543,11 +2551,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		for i, output in outputs {
 			module_name := generation_sources[i].header.module_name
 			module_id := native_module_ids[module_name] or { -1 }
-			if module_id >= 0 && !live_modules[module_id] {
-				continue
-			}
 			for flag in output.c_flags {
 				if fastc_flag_is_native_input(flag) {
+					// Binary artifacts can carry constructors or registration data
+					// independently of the module's declared C functions.
+					if flag.ends_with('.c') && module_id >= 0 && !live_modules[module_id] {
+						continue
+					}
 					required_native_inputs[flag] = true
 				}
 			}

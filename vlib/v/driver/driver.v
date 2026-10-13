@@ -9913,7 +9913,7 @@ $if !skip_fastc ? {
 			final_args << atomic_arg
 		}
 		final_args << link_ld_flags
-		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled && native_sources.len == 0 && !user_c_flags.any(c_flag_is_c_source_file(it)))
+		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled && !final_args.any(fastc.fastc_flag_is_native_input(it)))
 		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
 			if bench_phases {
 				now_us := cc_sw.elapsed().microseconds()

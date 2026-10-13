@@ -11,7 +11,7 @@ import v.token
 // reusing the same machinery the on-demand monomorphization drain relies on. Its
 // definition is captured out of `g.out` and stored alongside the mono instances
 // so it is emitted at top level; the enclosing expression only keeps the name.
-fn (mut g Parser) parse_anonymous_function() !(string, string) {
+fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	anon_start := g.s.pos
 	// Advance the main scanner past the whole literal: `fn`, an optional parameter
 	// list, the return type, and the balanced body block. `body_end` marks the byte
@@ -166,7 +166,7 @@ fn (mut g Parser) parse_anonymous_function() !(string, string) {
 	g.local_scope_depth = saved_scope_depth
 	g.in_mono_drain = saved_drain
 	if capture_names.len == 0 {
-		return '(&${c_name})', c_name
+		return '(&${c_name})', c_name, false
 	}
 	signature := g.mono_functions[c_name]
 	context_name := '${c_name}_captures'
@@ -199,7 +199,76 @@ fn (mut g Parser) parse_anonymous_function() !(string, string) {
 		'void'
 	} else {
 		signature.parameter_types.map(fastc_output_c_type(it)).join(', ')
-	}}))${create_function}((voidptr)${wrapper_name}, builtin__memdup(&__vf_capture_value, sizeof(__vf_capture_value)), true); })', c_name
+	}}))${create_function}((voidptr)${wrapper_name}, builtin__memdup(&__vf_capture_value, sizeof(__vf_capture_value)), true); })', c_name, true
+}
+
+// local_closure_has_only_scoped_calls proves a fresh local callback does not
+// escape its declaring block. Value uses (including aliases and assignments),
+// asynchronous calls, nested functions and function defers keep runtime ownership.
+fn (g &Parser) local_closure_has_only_scoped_calls(name string) bool {
+	mut scan := g.s
+	mut tok := g.tok
+	mut lit := g.lit
+	mut depth := 0
+	for tok != .eof {
+		if tok == .rcbr {
+			if depth == 0 {
+				return true
+			}
+			depth--
+		} else if tok == .lcbr {
+			depth++
+		} else if tok == .key_fn {
+			if !fastc_skip_unrelated_closure(mut scan, name) {
+				return false
+			}
+		} else if tok in [.key_spawn, .key_go, .hash] {
+			return false
+		} else if tok == .name && lit == name {
+			mut next := scan
+			if next.scan() != .lpar {
+				return false
+			}
+		}
+		tok = scan.scan()
+		lit = scan.lit
+	}
+	return false
+}
+
+fn fastc_skip_unrelated_closure(mut scan scanner.Scanner, name string) bool {
+	mut tok := scan.scan()
+	// `defer(fn)` runs after the declaring block has ended.
+	if tok == .rpar {
+		return false
+	}
+	mut depth := 0
+	for tok != .eof {
+		if tok == .name && scan.lit == name {
+			return false
+		}
+		if tok == .lcbr {
+			depth++
+		} else if tok == .rcbr {
+			depth--
+			if depth == 0 {
+				return true
+			}
+		}
+		tok = scan.scan()
+	}
+	return false
+}
+
+fn (mut g Parser) add_local_closure_cleanup(name string) {
+	destroy := g.c_function_name_for_key(fastc_function_key('builtin.closure', 'closure_try_destroy'))
+	line := '${destroy}((voidptr)${g.local_c_name(name)});'
+	if name == '_' {
+		g.write_line(line)
+		return
+	}
+	g.deferred_block_starts << g.deferred_lines.len
+	g.deferred_lines << '\t'.repeat(g.indent) + line
 }
 
 fn (g &Parser) capture_type_source(typ string) ?string {

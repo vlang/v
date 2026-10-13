@@ -56,6 +56,14 @@ closure captures. A single-file entry can select the same runtime with `-d fastc
 its module siblings are included.
 Target-specific files and test files are filtered when loading a directory.
 
+Capturing callbacks proven local to a block release their runtime slot and captured context
+when the block exits, including through `return`, `break`, and `continue`. Callbacks that escape
+or have unproven ownership remain managed by the closure runtime.
+Blank imports retain their native inputs for initialization side effects. Native binary inputs
+are also retained when their side effects cannot be proven unused. Executable link caching is
+disabled whenever native source or binary inputs are present, so replacing an input at the same
+path takes effect on the next build.
+
 The full-runtime path remains experimental. Mutable and expression closure captures and
 128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.
 

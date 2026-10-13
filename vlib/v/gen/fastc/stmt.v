@@ -2586,6 +2586,10 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 		fn_signature_key:     if g.last_expression.len == 1 { g.last_expression[0].lit } else { '' }
 		bool_implications:    bool_implications
 	})
+	if !is_static && g.last_expression.len == 1 && g.last_expression[0].is_capturing_closure
+		&& (name == '_' || g.local_closure_has_only_scoped_calls(name)) {
+		g.add_local_closure_cleanup(name)
+	}
 }
 
 fn fastc_normalize_inferred_type(typ string) string {

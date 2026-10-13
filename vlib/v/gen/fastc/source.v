@@ -1236,11 +1236,15 @@ fn fastc_canonicalize_header_imports(header FastcSourceHeader, module_aliases ma
 	for alias, import_path in header.imports {
 		resolved[alias] = module_aliases[import_path] or { import_path }
 	}
+	mut resolved_blank_imports := []string{}
+	for import_path in header.blank_imports {
+		resolved_blank_imports << module_aliases[import_path] or { import_path }
+	}
 	return FastcSourceHeader{
 		module_name:             header.module_name
 		imports:                 resolved
 		import_order:            header.import_order
-		blank_imports:           header.blank_imports
+		blank_imports:           resolved_blank_imports
 		has_globals:             header.has_globals
 		translated:              header.translated
 		has_constants:           header.has_constants
