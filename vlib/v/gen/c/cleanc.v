@@ -25411,7 +25411,15 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		return
 	}
 	if g.is_const_expr(val_id) && !(node.kind == .prefix && node.op == .amp) {
+		// Enum shorthands like `.b` resolve against the expected enum; without it
+		// they fall back to the first enum in the program that has such a value.
+		old_expected_enum := g.expected_enum
+		unaliased_elem := default_init_unalias_type(elem_type)
+		if unaliased_elem is types.Enum {
+			g.expected_enum = unaliased_elem.name
+		}
 		const_val := g.const_expr_to_string(val_id, []string{})
+		g.expected_enum = old_expected_enum
 		if trimmed_space(const_val).len > 0 {
 			builder.write_string(const_val)
 			return
