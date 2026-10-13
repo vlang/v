@@ -394,16 +394,18 @@ pub fn (t Time) relative_short() string {
 	return '${prefix}${y}y${suffix}'
 }
 
+// sakamoto_month_offsets is the lookup table of Sakamoto's day-of-week
+// algorithm (https://stackoverflow.com/a/6385934). It is a module level
+// fixed array so day_of_week does not heap-allocate it on every call.
+const sakamoto_month_offsets = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]!
+
 // day_of_week returns the current day of a given year, month, and day, as an integer.
 pub fn day_of_week(y int, m int, d int) int {
-	// Sakomotho's algorithm is explained here:
-	// https://stackoverflow.com/a/6385934
-	t := [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
 	mut sy := y
 	if m < 3 {
 		sy = sy - 1
 	}
-	return (sy + sy / 4 - sy / 100 + sy / 400 + t[iclamp(0, m - 1, 11)] + d - 1) % 7 + 1
+	return (sy + sy / 4 - sy / 100 + sy / 400 + sakamoto_month_offsets[iclamp(0, m - 1, 11)] + d - 1) % 7 + 1
 }
 
 // day_of_week returns the current day as an integer.
