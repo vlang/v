@@ -7281,8 +7281,10 @@ fn (t &Transformer) array_default_sort_runtime_helper(elem_type string) ?string 
 fn (mut t Transformer) array_sort_float_less_expr(cur flat.NodeId, prev flat.NodeId) flat.NodeId {
 	prev_is_nan := t.make_infix(.ne, prev, prev)
 	cur_is_number := t.make_infix(.eq, cur, cur)
-	return t.make_infix(.logical_or, t.make_infix(.lt, cur, prev), t.make_infix(.logical_and,
-		prev_is_nan, cur_is_number))
+	// Test for NaNs before comparing: native floating-point comparisons can
+	// otherwise treat an unordered `<` as true.
+	return t.make_infix(.logical_and, cur_is_number, t.make_infix(.logical_or,
+		prev_is_nan, t.make_infix(.lt, cur, prev)))
 }
 
 // make_array_compare_sort_stmt builds make array compare sort stmt data for transform.
