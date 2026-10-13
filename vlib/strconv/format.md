@@ -215,6 +215,9 @@ println(temp_s)
 
 floating points
 
+Floating-point conversions preserve the sign of negative zero. General notation (`%g` and
+`%G`) writes zero as `0` or `-0`, while retaining the requested field width and sign flag.
+
 ```v
 import strconv
 

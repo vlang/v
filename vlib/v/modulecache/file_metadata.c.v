@@ -3,7 +3,7 @@ module modulecache
 import os
 import time
 
-#include "@VMODROOT/vlib/v/modulecache/file_metadata.c"
+#flag @VMODROOT/vlib/v/modulecache/file_metadata.o
 
 fn C.v3_modulecache_file_metadata(&char, &u64, &u64, &u64, &u64, &u64, &u64, &u64) int
 
