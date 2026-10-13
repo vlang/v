@@ -2,6 +2,7 @@ module config
 
 import os
 import toml
+import strconv
 
 // LoadOptions selects where configuration values come from, in precedence
 // order: cli, then env, then files (first hit wins), then @[default].
@@ -57,8 +58,7 @@ pub fn load[T](opts LoadOptions) !T {
 		} $else $if field.typ is bool {
 			cfg.$(field.name) = parse_config_bool(field.name, raw)!
 		} $else {
-			compile_error('config: unsupported field type for `' + field.name +
-				'`; use string, int or bool')
+			check_field_type(cfg.$(field.name))
 		}
 	}
 	return cfg
@@ -66,10 +66,8 @@ pub fn load[T](opts LoadOptions) !T {
 
 // resolve_raw finds the winning raw string for one field, or errors.
 fn resolve_raw(name string, attrs []string, cli map[string]string, env_prefix string, docs []toml.Doc) !string {
-	for key in ['--' + name, '--' + name.replace('_', '-')] {
-		if v := cli[key] {
-			return v
-		}
+	if v := cli['--' + name.replace('_', '-')] {
+		return v
 	}
 	env_name := attr_arg(attrs, 'env') or { env_prefix + name.to_upper() }
 	if v := os.getenv_opt(env_name) {
@@ -121,12 +119,12 @@ fn parse_cli_args(args []string) map[string]string {
 		a := args[i]
 		if a.starts_with('--') {
 			if eq := a.index('=') {
-				out[a[..eq]] = a[eq + 1..]
+				out[a[..eq].replace('_', '-')] = a[eq + 1..]
 			} else if i + 1 < args.len && !args[i + 1].starts_with('--') {
-				out[a] = args[i + 1]
+				out[a.replace('_', '-')] = args[i + 1]
 				i++
 			} else {
-				out[a] = 'true'
+				out[a.replace('_', '-')] = 'true'
 			}
 		}
 		i++
@@ -174,7 +172,9 @@ fn parse_config_int(field string, raw string) !int {
 			return error('config: `${field}` is not a valid int: `${raw}`')
 		}
 	}
-	return raw.int()
+	return strconv.atoi(raw) or {
+		return error('config: `${field}` is not a valid int: `${raw}`')
+	}
 }
 
 // parse_config_bool converts true/1/yes and false/0/no (case-insensitive).
@@ -183,5 +183,13 @@ fn parse_config_bool(field string, raw string) !bool {
 		'true', '1', 'yes' { return true }
 		'false', '0', 'no' { return false }
 		else { return error('config: `${field}` is not a valid bool: `${raw}`') }
+	}
+}
+
+fn check_field_type[T](value T) {
+	_ = value
+	$if T is string || T is int || T is bool {
+	} $else {
+		$compile_error('config: unsupported field type; use string, int or bool')
 	}
 }

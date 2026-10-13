@@ -10,6 +10,11 @@ struct ServerConfig {
 }
 
 fn test_config_defaults_and_required() {
+	defaults := load[ServerConfig](cli: ['--token=provided'], env_prefix: 'VLIB_TEST_UNSET_')!
+	assert defaults.host == 'localhost'
+	assert defaults.port == 8080
+	assert !defaults.debug
+
 	load[ServerConfig](env_prefix: 'VLIB_TEST_UNSET_') or {
 		assert err.msg() == 'config: required key `token` was not provided'
 		return
@@ -91,24 +96,81 @@ fn test_config_env_beats_file() {
 	assert cfg.token == 'envtok'
 }
 
-fn test_config_invalid_values_and_missing_file() {
-	os.setenv('VLIB_TEST3_PORT', 'abc', true)
-	os.setenv('VLIB_TEST3_TOKEN', 'tok', true)
-	load[ServerConfig](env_prefix: 'VLIB_TEST3_') or {
+fn test_config_invalid_int() {
+	load[ServerConfig](cli: ['--port=abc', '--token=tok'], env_prefix: 'VLIB_TEST_BAD_') or {
 		assert err.msg() == 'config: `port` is not a valid int: `abc`'
 		return
 	}
 	assert false, 'bad int must error'
-	os.setenv('VLIB_TEST4_DEBUG', 'maybe', true)
-	os.setenv('VLIB_TEST4_TOKEN', 'tok', true)
-	load[ServerConfig](env_prefix: 'VLIB_TEST4_') or {
+}
+
+fn test_config_invalid_bool() {
+	load[ServerConfig](cli: ['--debug=maybe', '--token=tok'], env_prefix: 'VLIB_TEST_BAD_') or {
 		assert err.msg() == 'config: `debug` is not a valid bool: `maybe`'
 		return
 	}
 	assert false, 'bad bool must error'
+}
+
+fn test_config_missing_file() {
 	load[ServerConfig](files: ['/nonexistent-dir-xyz/app.toml']) or {
 		assert err.msg().contains('cannot read')
 		return
 	}
 	assert false, 'missing file must error'
+}
+
+fn test_config_integer_boundaries_and_overflow() {
+	for raw in ['2147483647', '-2147483648', '0', '-0', '00010'] {
+		assert parse_config_int('port', raw)! == raw.int()
+	}
+	for raw in ['2147483648', '-2147483649', '4294967296', '18446744073709551616',
+		'999999999999999999999999999999', '-', '+1', '1_000', ' 1'] {
+		if _ := parse_config_int('port', raw) {
+			assert false, 'must reject ${raw}'
+		} else {
+			assert err.msg() == 'config: `port` is not a valid int: `${raw}`'
+		}
+	}
+}
+
+fn test_config_cli_alias_empty_value_and_bare_boolean() {
+	cfg := load[ServerConfig](
+		cli:        ['--host=', '--token=tok', '--debug']
+		env_prefix: 'VLIB_TEST_EMPTY_'
+	)!
+	assert cfg.host == ''
+	assert cfg.debug
+}
+
+struct AliasConfig {
+	host_name string @[default: 'localhost']
+}
+
+fn test_config_cli_aliases_use_last_argument() {
+	cfg := load[AliasConfig](
+		cli:        ['--host_name=first', '--host-name', 'second']
+		env_prefix: 'VLIB_TEST_ALIAS_'
+	)!
+	assert cfg.host_name == 'second'
+	reverse := load[AliasConfig](
+		cli:        ['--host-name=first', '--host_name=second']
+		env_prefix: 'VLIB_TEST_ALIAS_'
+	)!
+	assert reverse.host_name == 'second'
+}
+
+fn test_unsupported_field_type_is_a_compile_error() ! {
+	fixture_root := os.join_path(os.vtmp_dir(), 'config unsupported ${os.getpid()}')
+	os.mkdir_all(fixture_root)!
+	defer {
+		os.rmdir_all(fixture_root) or {}
+	}
+	fixture := os.join_path(fixture_root, 'unsupported.v')
+	os.write_file(fixture, "import config\nstruct UnsupportedConfig { value f64 @[default: '1.0'] }\nfn main() { cfg := config.load[UnsupportedConfig](config.LoadOptions{})! println(cfg) }\n")!
+	module_path := os.join_path(@VMODROOT, 'vlib') + '|@vlib|@vmodules'
+	result := os.exec([@VEXE, '-enable-globals', '-path', module_path, '-o',
+		os.join_path(fixture_root, 'unsupported'), fixture])
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('config: unsupported field type; use string, int or bool'), result.output
 }
