@@ -4466,6 +4466,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					value_node.pos
 				}
 				tc.record_error_at(.assignment_mismatch, 'assigning `0` to a reference field is only allowed in `unsafe` blocks', field_id, pos)
+			} else if !init_name.starts_with('C.') {
+				tc.record_null_constant_reference_error(.assignment_mismatch, value_id, expected)
 			}
 			if tc.unsafe_depth == 0 && unalias_type(expected) is Array
 				&& (field_is_mut || tc.slice_expr_base_is_mutable(value_id)) {
@@ -9679,6 +9681,54 @@ fn (tc &TypeChecker) expr_tail_is_nil(id flat.NodeId) bool {
 			return false
 		}
 	}
+}
+
+// null_constant_expr_text returns how `id` spells a compile-time null pointer: `nil`,
+// `0` or `voidptr(0)`, with or without parentheses around it. Anything else, including
+// `unsafe { nil }`, yields an empty string.
+fn (tc &TypeChecker) null_constant_expr_text(id flat.NodeId) string {
+	value_id := tc.unwrap_paren_expr_id(id)
+	if !tc.valid_node_id(value_id) {
+		return ''
+	}
+	value := tc.a.node(value_id)
+	if value.kind == .nil_literal {
+		return 'nil'
+	}
+	if value.kind == .int_literal && numeric_literal_is_zero(value.value) {
+		return '0'
+	}
+	if value.kind == .cast_expr && value.value == 'voidptr' && value.children_count == 1
+		&& tc.is_zero_literal(tc.unwrap_paren_expr_id(tc.a.child(value, 0))) {
+		return 'voidptr(0)'
+	}
+	return ''
+}
+
+// record_null_constant_reference_error rejects a compile-time null constant that is
+// converted implicitly to the non-option reference `expected` outside `unsafe`, like the
+// explicit cast `&T(0)` already is. `unsafe { nil }` stays the way to write a null
+// reference. `voidptr` targets, `.c.v` files and translated files are left alone, as
+// they are by the cast rule.
+fn (mut tc TypeChecker) record_null_constant_reference_error(kind TypeErrorKind, expr_id flat.NodeId, expected Type) bool {
+	if tc.unsafe_depth > 0 || fn_param_unalias_type(expected) !is Pointer {
+		return false
+	}
+	text := tc.null_constant_expr_text(expr_id)
+	if text.len == 0 {
+		return false
+	}
+	if fn_param_is_voidptr_type(expected) || tc.translated_files[tc.cur_file]
+		|| tc.cur_file.ends_with('.c.v') || tc.expr_is_inside_unsafe_block(expr_id) {
+		return false
+	}
+	msg := if text == 'nil' {
+		'`nil` is only allowed in `unsafe` code'
+	} else {
+		'cannot use `${text}` as `${call_argument_type_name(expected)}` outside `unsafe`, use `unsafe { nil }`'
+	}
+	tc.record_error_at(kind, msg, expr_id, tc.a.node(expr_id).pos)
+	return true
 }
 
 // fn_value_type supports fn value type handling for TypeChecker.

@@ -16752,6 +16752,10 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 				continue
 			}
 		}
+		if !node.value.starts_with('C.')
+			&& tc.record_null_constant_reference_error(.assignment_mismatch, default_id, expected) {
+			continue
+		}
 		tc.annotate_expected_expr(default_id, expected)
 		tc.check_node_with_expected_context(default_id, expected)
 		actual := tc.resolve_expr(default_id, expected)
@@ -17852,6 +17856,10 @@ fn (mut tc TypeChecker) check_global_decl_semantics(node_id flat.NodeId, node fl
 		field := tc.a.node(field_id)
 		if field.kind != .field_decl || field.value.len == 0 || field.value.starts_with('C.') {
 			continue
+		}
+		if field.typ.len > 0 && field.children_count > 0 {
+			tc.record_null_constant_reference_error(.assignment_mismatch, tc.a.child(field, 0),
+				tc.parse_type(field.typ))
 		}
 		pos := tc.node_value_diagnostic_pos(field_id)
 		if field.value == '_' {
