@@ -15,6 +15,11 @@ pub struct Box[T] {
  value T
 }
 
+pub struct Pair[T, U] {
+ first T
+ second U
+}
+
 pub interface Readable {
  read() int
 }
@@ -88,6 +93,52 @@ fn main() {}
 ', [])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('cannot define new methods on non-local type &other.Mode'), result.output
+}
+
+fn test_alias_hints_declare_only_the_receivers_generic_parameters() {
+	for flags in [[]string{}, ['-no-parallel'], ['-prod']] {
+		for receiver, params in {
+			'foreign.Box[T]':          'T'
+			'&&foreign.Box[T]':        'T'
+			'shared &&foreign.Box[T]': 'T'
+			'foreign.Box[[]T]':        'T'
+			'foreign.Pair[T, U]':      'T, U'
+			'foreign.Pair[U, T]':      'T, U'
+			'foreign.Pair[string, T]': 'T'
+			'foreign.Box[int]':        ''
+			'foreign.Record':          ''
+		} {
+			type_text := receiver.trim_string_left('shared ')
+			parameter := if receiver.starts_with('shared ') {
+				'shared value ${type_text}'
+			} else {
+				'value ${type_text}'
+			}
+			result := check_non_local_receiver('alias_hint', 'import foreign
+
+fn (${parameter}) label[X](other X) string { return "local" }
+
+fn main() {}
+', flags)
+			assert result.exit_code != 0, result.output
+			alias_name := if params == '' { 'AliasName' } else { 'AliasName[${params}]' }
+			assert result.output.contains('Define an alias and use that instead like `type ${alias_name} = ${type_text}`'), result.output
+			if params != '' {
+				assert result.output.contains('use `${alias_name}` as the receiver'), result.output
+			}
+			alias_declaration := result.output.all_after('instead like `').all_before('`')
+			method_params := if params == '' { 'X' } else { '${params}, X' }
+			fixed := check_non_local_receiver('alias_hint_fixed', 'import foreign
+
+${alias_declaration}
+
+fn (value ${alias_name}) label[${method_params}](other X) string { return "local" }
+
+fn main() {}
+', flags)
+			assert fixed.exit_code == 0, fixed.output
+		}
+	}
 }
 
 fn test_selectively_imported_receiver_is_not_local() {

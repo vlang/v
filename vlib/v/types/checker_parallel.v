@@ -3239,7 +3239,19 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			}
 			if is_non_local_type && !is_builtin_array_override && !is_local_collection {
 				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
-				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
+				receiver_generics := tc.fn_context.generic_params.filter(type_text_contains_symbol(receiver.typ,
+					it))
+				alias_name := if receiver_generics.len == 0 {
+					'AliasName'
+				} else {
+					'AliasName[${receiver_generics.join(', ')}]'
+				}
+				receiver_hint := if receiver_generics.len == 0 {
+					''
+				} else {
+					', and use `${alias_name}` as the receiver with matching generic method parameters'
+				}
+				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type ${alias_name} = ${receiver_text}`${receiver_hint}', receiver_id, receiver_pos)
 			}
 		}
 	}
