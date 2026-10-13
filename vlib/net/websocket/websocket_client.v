@@ -345,7 +345,8 @@ pub fn (mut ws Client) write_string(str string) !int {
 	return ws.write_ptr(str.str, str.len, .text_frame)
 }
 
-// close closes the websocket connection
+// close closes the websocket connection. A positive code leaves at most 123 bytes for the reason.
+// An oversized reason returns an error and still shuts down, resets, and emits the close event.
 pub fn (mut ws Client) close(code int, message string) ! {
 	ws.debug_log('sending close, ${code}, ${message}')
 	ws_state := ws.get_state()
@@ -365,6 +366,9 @@ pub fn (mut ws Client) close(code int, message string) ! {
 		code_ := conv.hton16(u16(code))
 		message_len := message.len + 2
 		mut close_frame := []u8{len: message_len}
+		defer {
+			unsafe { close_frame.free() }
+		}
 		close_frame[0] = u8(code_ & 0xFF)
 		close_frame[1] = u8(code_ >> 8)
 		// code32 = (close_frame[0] << 8) + close_frame[1]
@@ -372,7 +376,6 @@ pub fn (mut ws Client) close(code int, message string) ! {
 			close_frame[i + 2] = message[i]
 		}
 		ws.send_control_frame(.close, 'CLOSE', close_frame)!
-		unsafe { close_frame.free() }
 	} else {
 		ws.send_control_frame(.close, 'CLOSE', [])!
 	}
