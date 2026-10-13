@@ -18,7 +18,12 @@ fn test_v1_fallback_drops_private_restart_options() {
 	warning := '-v3-internal-implicit-tcc-warning=warning: implicit tcc failed'
 	assert v1_fallback_args([warning, '-v3-internal-parser-diagnostics-printed',
 		'-v3-internal-force-cache-source', '-macos-v3-internal-quiet', '-macos-v3-compat-c99',
-		'-show-timings', '-cc', 'cc', 'main.v', warning]) == ['-show-timings', '-cc', 'cc', 'main.v']
+		'-v3-internal-all-cached-declarations', '-show-timings', '-cc', 'cc', 'main.v', warning]) == [
+		'-show-timings',
+		'-cc',
+		'cc',
+		'main.v',
+	]
 }
 
 fn test_v1_fallback_preserves_private_option_names_in_values() {
