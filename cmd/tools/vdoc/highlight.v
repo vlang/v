@@ -18,6 +18,9 @@ struct ScannedToken {
 	inside_string_interpolation bool
 	// starts_line is whether a newline separates the token from the one before it.
 	starts_line bool
+	// resumes_string is whether the token is the part of a string after an interpolation, like
+	// `b'` in `'a${x}b'`, instead of the start of a literal.
+	resumes_string bool
 }
 
 fn scan_code(code string) []ScannedToken {
@@ -31,6 +34,7 @@ fn scan_code(code string) []ScannedToken {
 	for {
 		inside_interpolation := scanner_.in_str_inter || scanner_.in_str_incomplete
 			|| scanner_.str_parent_quotes.len > 0
+		resumes_string := scanner_.in_str_incomplete
 		mut kind := scanner_.scan()
 		if kind == .eof {
 			break
@@ -52,6 +56,7 @@ fn scan_code(code string) []ScannedToken {
 				inside_string_interpolation: inside_interpolation || scanner_.in_str_inter
 					|| scanner_.in_str_incomplete || scanner_.str_parent_quotes.len > 0
 				starts_line:                 code[prev_end..start].contains_u8(`\n`)
+				resumes_string:              resumes_string
 			}
 		}
 	}
@@ -306,10 +311,10 @@ fn find_attribute_words(tokens []ScannedToken) []bool {
 // sequence in it, like `\n` or `\x41`, as a separate `.escape` part. Raw strings, like `r'\n'`,
 // have no escape sequences.
 fn add_string_parts(mut highlighted []HighlightedToken, code string, scanned ScannedToken) {
-	// A raw string ends with its opening quote, unlike a part of a string after an interpolation
-	// that starts with `r`, like `r"\n'` in `'${x}r"\n'`.
-	is_raw := scanned.end - scanned.start > 2 && code[scanned.start] == `r`
-		&& code[scanned.start + 1] in [`'`, `"`] && code[scanned.end - 1] == code[scanned.start + 1]
+	// A part of a string after an interpolation can start like a raw string too, like `r"\n"` in
+	// `'${x}r"\n"${y}'`.
+	is_raw := !scanned.resumes_string && scanned.end - scanned.start > 1
+		&& code[scanned.start] == `r` && code[scanned.start + 1] in [`'`, `"`]
 	mut start := scanned.start
 	mut i := scanned.start
 	for !is_raw && i < scanned.end {
@@ -331,36 +336,64 @@ fn add_string_parts(mut highlighted []HighlightedToken, code string, scanned Sca
 }
 
 // escape_end returns where the escape sequence that starts with the `\` at `i` ends, before
-// `limit`. `\x`, `\u` and `\U` take 2, 4 and 8 hex digits, and `\0` up to 3 octal digits.
+// `limit`. `\x`, `\u` and `\U` take 2, 4 and 8 hex digits, and an octal escape takes exactly
+// three octal digits, like `\101`. Otherwise, the `\` escapes only the next character, like `\0`.
 fn escape_end(code string, i int, limit int) int {
 	if i + 1 >= limit {
 		return limit
 	}
-	is_hex := code[i + 1] in [`x`, `u`, `U`]
-	max_digits, start := match code[i + 1] {
-		`x` { 2, i + 2 }
-		`u` { 4, i + 2 }
-		`U` { 8, i + 2 }
-		`0`...`7` { 3, i + 1 }
-		else { 0, i + 2 }
+	digits := match code[i + 1] {
+		`x` { 2 }
+		`u` { 4 }
+		`U` { 8 }
+		else { 0 }
 	}
-	mut end := start
-	for end < limit && end < start + max_digits {
-		if !(code[end].is_oct_digit() || (is_hex && code[end].is_hex_digit())) {
-			break
+	if digits > 0 {
+		mut end := i + 2
+		for end < limit && end < i + 2 + digits && code[end].is_hex_digit() {
+			end++
 		}
-		end++
+		return end
 	}
-	return end
+	if i + 3 < limit && code[i + 1].is_oct_digit() && code[i + 2].is_oct_digit()
+		&& code[i + 3].is_oct_digit() {
+		return i + 4
+	}
+	return i + 2
 }
 
 // find_module_names returns, for every token, whether it is the name of a module, like `os` in
 // `os.args` or `http` in `http.Request`. That is a lowercase name right before a `.`, unless the
-// code declares a variable with that name, like `a` in `a := [1]` before `a.len`. The names in
-// `module` and `import` lines, like `net`, `http` and `h` in `import net.http as h`, are too.
+// code declares a variable with that name, like `a` in `a := [1]` before `a.len`, or V declares
+// it implicitly, like `it`, and no import binds it. The names in `module` and `import` lines,
+// like `net`, `http` and `h` in `import net.http as h`, are modules too.
 fn find_module_names(tokens []ScannedToken) []bool {
-	variables := find_variable_names(tokens)
 	mut modules := []bool{len: tokens.len}
+	imported := mark_module_lines(mut modules, tokens)
+	variables := find_variable_names(tokens)
+	for i, scanned in tokens {
+		if modules[i] || scanned.kind != .name || i + 1 >= tokens.len || tokens[i + 1].kind != .dot
+			|| tokens[i + 1].start != scanned.end {
+			continue
+		}
+		// After a `.`, it is a field, like `b` in `a.b.c`.
+		if i > 0 && tokens[i - 1].kind == .dot {
+			continue
+		}
+		name := scanned.lit
+		// `@` names, like `@FN`, are compile time pseudo variables, or keywords used as names.
+		modules[i] = !is_type_name(name) && !name.starts_with('@')
+			&& name !in highlight_builtin_types && name !in variables
+			&& (name in imported || name !in highlight_implicit_variables)
+	}
+	return modules
+}
+
+// mark_module_lines marks the module paths of the `module` and `import` lines in `modules`, and
+// returns the names that the imports bind, like `http` in `import net.http`, or `h` in
+// `import net.http as h`.
+fn mark_module_lines(mut modules []bool, tokens []ScannedToken) map[string]bool {
+	mut imported := map[string]bool{}
 	mut brace_depth := 0
 	for i, scanned in tokens {
 		if scanned.kind == .lcbr {
@@ -372,49 +405,39 @@ fn find_module_names(tokens []ScannedToken) []bool {
 		// `node.module` or `module string` in a struct.
 		if scanned.kind in [.key_module, .key_import] && brace_depth == 0
 			&& (i == 0 || scanned.starts_line) {
-			mark_module_path(mut modules, tokens, i + 1)
-			continue
+			binding := mark_module_path(mut modules, tokens, i + 1)
+			if scanned.kind == .key_import && binding != '' {
+				imported[binding] = true
+			}
 		}
-		if modules[i] || scanned.kind != .name || i + 1 >= tokens.len || tokens[i + 1].kind != .dot
-			|| tokens[i + 1].start != scanned.end {
-			continue
-		}
-		// After a `.`, it is a field, like `b` in `a.b.c`.
-		if i > 0 && tokens[i - 1].kind == .dot {
-			continue
-		}
-		// `@` names, like `@FN`, are compile time pseudo variables, or keywords used as names.
-		modules[i] = !is_type_name(scanned.lit) && !scanned.lit.starts_with('@')
-			&& scanned.lit !in highlight_builtin_types && scanned.lit !in variables
 	}
-	return modules
+	return imported
 }
 
 // mark_module_path marks the module path that starts at `start`, like `net.http` or
-// `net.http as h`, in `modules`.
-fn mark_module_path(mut modules []bool, tokens []ScannedToken, start int) {
+// `net.http as h`, in `modules`. It returns the last name of the path, which the path binds.
+fn mark_module_path(mut modules []bool, tokens []ScannedToken, start int) string {
 	mut i := start
+	mut binding := ''
 	for i < tokens.len && tokens[i].kind == .name {
 		modules[i] = true
+		binding = tokens[i].lit
 		if i + 2 < tokens.len && tokens[i + 1].kind in [.dot, .key_as] {
 			i += 2
 		} else {
 			break
 		}
 	}
+	return binding
 }
 
 // find_variable_names returns the names that `tokens` declare as variables, like `x` in `x := 1`,
 // `for i, x in xs`, `fn (x Foo) f(y int)`, `|x| x * 2`, `const x = 1`, `if x is Foo` and
-// `match x {`, the
-// symbols of a selective import, like `args` in `import os { args }`, and the implicit ones,
-// like `it`. A declaration counts for the whole snippet, not just for its scope.
+// `match x {`, and the symbols of a selective import, like `args` in `import os { args }`.
+// A declaration counts for the whole snippet, not just for its scope.
 fn find_variable_names(tokens []ScannedToken) map[string]bool {
 	closing := find_closing_brackets(tokens)
 	mut names := map[string]bool{}
-	for name in highlight_implicit_variables {
-		names[name] = true
-	}
 	for i, scanned in tokens {
 		match scanned.kind {
 			.decl_assign {

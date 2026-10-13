@@ -256,6 +256,11 @@ fn test_highlight_tokens_module_names() {
 	assert kind_of('os.args', 'os') == 'module_'
 	assert kind_of('fn f(r http.Request)', 'http') == 'module_'
 	assert kinds_of('import net.http\nhttp.get(url)', 'http') == ['module_', 'module_']
+	// An import alias is a module, even when it is named like an implicit variable.
+	assert kinds_of('import arrays as a\na.sum([1, 2, 3])', 'a') == ['module_', 'module_']
+	assert kinds_of('import arrays as it\nit.sum([1])', 'it') == ['module_', 'module_']
+	// A declared variable still hides the import.
+	assert kinds_of('import arrays as a\na := [1]\na.len', 'a') == ['module_', 'name', 'name']
 	assert classify('import net.http as h') == ['import:keyword', 'net:module_', '.:punctuation',
 		'http:module_', 'as:keyword', 'h:module_']
 	assert kind_of('module demo', 'demo') == 'module_'
@@ -301,10 +306,19 @@ fn test_highlight_tokens_string_escapes() {
 	assert classify("'a\\nb'") == ["'a:string", '\\n:escape', "b':string"]
 	assert classify("'\\x41\\u00e9\\101\\0'") == ["':string", '\\x41:escape', '\\u00e9:escape',
 		'\\101:escape', '\\0:escape', "':string"]
+	// An octal escape takes exactly three digits; otherwise `\0` is an escape of its own.
+	assert classify("'\\01'") == ["':string", '\\0:escape', "1':string"]
+	assert classify("'\\012'") == ["':string", '\\012:escape', "':string"]
+	assert classify("'\\08'") == ["':string", '\\0:escape', "8':string"]
 	assert classify("'\\\${x}'").filter(it.ends_with(':escape')) == ['\\$:escape']
 	assert classify("r'a\\n'") == ["r'a\\n':string"]
-	// A part after an interpolation that starts with `r` is no raw string.
+	// A part after an interpolation that starts with `r` is no raw string, even when it ends
+	// with the quote that follows the `r`.
 	assert classify('\'\${x}r"\\n\'').filter(it.ends_with(':escape')) == ['\\n:escape']
+	assert classify('\'\${x}r"\\n"\${y}\'').filter(it.ends_with(':escape')) == ['\\n:escape']
+	// An unfinished raw string is still raw, and so is a raw string inside an interpolation.
+	assert classify("r'path\\name").filter(it.ends_with(':escape')) == []
+	assert classify("'\${r'\\n'}'").filter(it.ends_with(':escape')) == []
 	assert classify("'a\\") == ["'a:string", '\\:escape']
 }
 
