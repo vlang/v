@@ -991,7 +991,8 @@ fn normalize_windows_extended_path_prefix(path string) string {
 
 // relative_path_from_cwd writes the working directory, a separator and `fpath` to `buf`,
 // as a C string. It returns false when the working directory is not known as an absolute
-// path, or when the result does not fit in `size` bytes. Only real_path on macOS needs it.
+// path, when that path no longer names it, or when the result does not fit in `size`
+// bytes. Only real_path on macOS needs it.
 fn relative_path_from_cwd(fpath string, buf voidptr, size int) bool {
 	$if !macos {
 		return false
@@ -1003,7 +1004,13 @@ fn relative_path_from_cwd(fpath string, buf voidptr, size int) bool {
 			}
 			cwd_len := int(C.strlen(&char(cwd)))
 			mut ok := false
-			if cwd_len > 0 && cwd[0] == `/` && cwd_len + 1 + fpath.len < size {
+			// libc resolves by name too, from the directory's path, after checking that
+			// the path still names the directory; a renamed directory fails the check.
+			mut named := C.stat{}
+			mut current := C.stat{}
+			same_directory := C.stat(&char(cwd), &named) == 0 && C.stat(c'.', &current) == 0
+				&& named.st_dev == current.st_dev && named.st_ino == current.st_ino
+			if same_directory && cwd_len > 0 && cwd[0] == `/` && cwd_len + 1 + fpath.len < size {
 				mut dst := &u8(buf)
 				C.memcpy(dst, cwd, usize(cwd_len))
 				mut n := cwd_len

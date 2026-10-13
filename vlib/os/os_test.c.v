@@ -538,6 +538,27 @@ fn test_realpath_resolves_a_relative_path_like_its_absolute_spelling() {
 	}
 }
 
+fn test_realpath_follows_a_renamed_working_directory() {
+	$if windows {
+		return
+	}
+	root := os.real_path(os.getwd())
+	defer {
+		os.chdir(root) or { panic(err) }
+	}
+	os.mkdir_all(os.join_path('rp_before', 'inner')) or { panic(err) }
+	os.write_file(os.join_path('rp_before', 'inner', 'file.txt'), 'abc') or { panic(err) }
+	os.chdir(os.join_path('rp_before', 'inner')) or { panic(err) }
+	os.mv(os.join_path(root, 'rp_before'), os.join_path(root, 'rp_after')) or { panic(err) }
+	// another directory takes the name the working directory had
+	os.mkdir_all(os.join_path(root, 'rp_before', 'inner')) or { panic(err) }
+	os.write_file(os.join_path(root, 'rp_before', 'inner', 'file.txt'), 'other') or { panic(err) }
+	assert os.real_path('file.txt') == os.join_path(root, 'rp_after', 'inner', 'file.txt')
+	assert os.real_path('.') == os.join_path(root, 'rp_after', 'inner')
+	assert os.real_path(os.join_path('..', '..', 'rp_before', 'inner', 'file.txt')) == os.join_path(root,
+		'rp_before', 'inner', 'file.txt')
+}
+
 // TODO: think much more about whether this is desirable:
 
 fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
