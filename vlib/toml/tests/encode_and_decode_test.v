@@ -387,3 +387,20 @@ dates = [ 1979-05-27    , 2022-12-31    ]
 	}
 	assert toml.decode[Arrs](s)! == a
 }
+
+struct EscapedStrings {
+	text string
+}
+
+fn test_encode_escapes_special_characters_in_strings() {
+	// strings requiring escapes must round-trip: an unescaped quote,
+	// backslash or newline produces TOML the decoder rejects.
+	for original in ['plain', 'say "hi"', 'back\\slash', 'tab\there', 'new\nline', 'nul\x00here',
+		'esc\x1b!', 'del\x7f!'] {
+		encoded := toml.encode(EscapedStrings{
+			text: original
+		})
+		decoded := toml.decode[EscapedStrings](encoded)!
+		assert decoded.text == original
+	}
+}
