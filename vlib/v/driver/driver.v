@@ -7675,6 +7675,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.enum_fields = clone_string_list_map(tc.enum_fields)
 	tc.flag_enums = clone_string_bool_map(tc.flag_enums)
 	tc.interface_names = clone_string_bool_map(tc.interface_names)
+	tc.interface_generic_params = clone_string_list_map(tc.interface_generic_params)
 	tc.interface_fields = clone_struct_field_map(tc.interface_fields)
 	tc.interface_embeds = clone_string_list_map(tc.interface_embeds)
 	tc.interface_abstract_methods = clone_string_list_map(tc.interface_abstract_methods)
