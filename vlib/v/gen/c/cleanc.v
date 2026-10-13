@@ -15397,8 +15397,15 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			}
 		}
 		.prefix {
-			child := g.const_expr_to_string(g.a.child(&node, 0), seen)
-			'${g.op_str(node.op)}(${child})'
+			child_id := g.a.child(&node, 0)
+			child_node := g.a.nodes[int(child_id)]
+			if node.op == .minus && child_node.kind == .int_literal
+				&& int_literal_needs_long_long_suffix(&child_node) {
+				'-${numeric_literal_c_text(&child_node)}LL'
+			} else {
+				child := g.const_expr_to_string(child_id, seen)
+				'${g.op_str(node.op)}(${child})'
+			}
 		}
 		.paren {
 			child := g.const_expr_to_string(g.a.child(&node, 0), seen)
@@ -25480,6 +25487,15 @@ fn numeric_literal_c_text(node &flat.Node) string {
 	return value
 }
 
+// int_literal_needs_long_long_suffix reports whether a literal above INT_MAX and within the
+// signed 64-bit range needs an `LL` suffix before it is negated. MSVC types such a literal as
+// unsigned long when it fits 32 bits, so an unsuffixed `-2147483648` widens to +2147483648.
+fn int_literal_needs_long_long_suffix(node &flat.Node) bool {
+	text := if node.value.contains_u8(`_`) { node.value.replace('_', '') } else { node.value }
+	value := strconv.parse_uint(text, util.v_literal_parse_base(text), 64) or { return false }
+	return value > 2147483647 && value <= 9223372036854775807
+}
+
 fn (mut g FlatGen) precompute_consts() string {
 	names := g.const_emission_order_owned()
 	return g.precompute_consts_in_order(names)
@@ -25967,6 +25983,11 @@ fn (g &FlatGen) shift_count_const_value(id flat.NodeId, seen []string) ?int {
 fn (mut g FlatGen) gen_prefix_op_operand(op flat.Op, child_id flat.NodeId) {
 	g.write(g.op_str(op))
 	child := g.a.nodes[int(child_id)]
+	if op == .minus && child.kind == .int_literal && int_literal_needs_long_long_suffix(&child) {
+		g.write(numeric_literal_c_text(&child))
+		g.write('LL')
+		return
+	}
 	needs_paren := child.kind in [.infix, .in_expr]
 	if needs_paren {
 		g.write('(')
