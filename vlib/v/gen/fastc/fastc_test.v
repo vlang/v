@@ -271,7 +271,7 @@ fn main() {
 	assert c_source.contains('return shared+other;'), c_source
 	assert c_source.contains('return shared^2;'), c_source
 	assert !c_source.contains('return &shared'), c_source
-	assert c_source.contains('__auto_type __v0 = (shared);'), c_source
+	assert c_source.contains('Option __v0 = (shared);'), c_source
 	assert c_source.contains('__vf_m_x = (shared);'), c_source
 	assert c_source.count('return shared;') == 3, c_source
 	assert c_source.contains('if (shared)'), c_source
@@ -429,7 +429,7 @@ fn main() {
 	_ := propagate() or { 0 }
 }
 ', 'selfhost_multiline_shared_result_propagation.v', prefs) or { panic(err) }
-	assert c_source.contains('__auto_type __vf_op = (shared);'), c_source
+	assert c_source.contains('__v_result __vf_op = (shared);'), c_source
 	assert !c_source.contains('shared!'), c_source
 }
 
@@ -1922,7 +1922,7 @@ fn main() {
 	assert message.contains('nonliteral `:c` interpolation'), message
 }
 
-fn test_i64_codepoint_interpolation_requires_runtime_support() {
+fn test_i64_codepoint_interpolation_uses_real_builtin_runtime() {
 	prefs := pref.new_preferences()
 	mut message := ''
 	_ := generate(r"module main
@@ -1939,18 +1939,14 @@ fn main() {
 
 	mut selfhost_prefs := pref.new_preferences()
 	selfhost_prefs.building_v = true
-	mut selfhost_message := ''
-	_ := generate(r"module main
+	selfhost_c := generate(r"module main
 
 fn main() {
 	value := i64(65)
 	println('${value:c}')
 }
-", 'i64_codepoint_interpolation_selfhost.v', selfhost_prefs) or {
-		selfhost_message = err.msg()
-		''
-	}
-	assert selfhost_message.contains('interpolation of type `i64`'), selfhost_message
+", 'i64_codepoint_interpolation_selfhost.v', selfhost_prefs) or { panic(err) }
+	assert selfhost_c.contains('v_fastc_signed_format((long long)(value), "c")'), selfhost_c
 }
 
 fn test_zero_value_strings_print_as_empty_strings() {
