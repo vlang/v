@@ -374,6 +374,7 @@ typedef _Bool bool;
 #include <sys/wait.h>
 #include <sys/utsname.h>
 #include <sys/mman.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <signal.h>
@@ -551,6 +552,7 @@ const c_selfhost_preamble_includes = r'#include <stdint.h>
 #include <sys/wait.h>
 #include <sys/utsname.h>
 #include <sys/mman.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <signal.h>
