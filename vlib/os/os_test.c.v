@@ -833,6 +833,19 @@ fn test_base() {
 	assert os.base('filename') == 'filename'
 }
 
+fn test_base_multiple_trailing_separators() {
+	assert os.base('a//') == 'a'
+	assert os.base('v/vlib/os///') == 'os'
+	assert os.base('a\\\\') == 'a'
+	assert os.base('v\\vlib\\os\\\\\\') == 'os'
+	assert os.base('/') == '/'
+	assert os.base('//') == '/'
+	assert os.base('////') == '/'
+	assert os.base('\\') == '\\'
+	assert os.base('\\\\') == '\\'
+	assert os.base('\\\\\\\\') == '\\'
+}
+
 fn test_file_name() {
 	assert os.file_name('') == ''
 	assert os.file_name('v\\vlib\\os\\os.v') == 'os.v'

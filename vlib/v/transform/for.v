@@ -1550,6 +1550,17 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 				return concrete_payload
 			}
 		}
+		if iter_node.kind == .index && (iter_node.value == 'range'
+			|| (iter_node.children_count > 1 && t.a.child_node(&iter_node, 1).kind == .range)) {
+			// Late generic reachability can leave checker slice metadata resolved
+			// outside this function's local scope. Resolve the slice from its current
+			// container before mistaking an array of strings for string iteration.
+			slice_type := for_iter_payload_type(t.node_type(iter_id))
+			if for_iter_type_is_container(slice_type) {
+				t.set_node_typ(int(iter_id), slice_type)
+				return slice_type
+			}
+		}
 		checker_type := t.raw_checker_node_type(iter_id)
 		if checker_type.len > 0 {
 			checker_payload := for_iter_payload_type(checker_type)
