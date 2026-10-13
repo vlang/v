@@ -435,6 +435,8 @@ not limit the body.
 The limit applies to both plain HTTP and HTTPS. Chunked bodies count the combined payload of
 all chunks. Invalid or overflowing `Content-Length` values and malformed chunk sizes are rejected
 with `400` before allocating their declared body; TLS reads also reject truncated bodies.
+Conflicting lengths and requests containing both `Transfer-Encoding` and `Content-Length`
+are rejected with `400`.
 
 ### Host
 

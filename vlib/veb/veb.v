@@ -174,6 +174,9 @@ fn (err RequestBodyLimitError) msg() string {
 fn read_request_from_buffered_reader(mut reader io.BufferedReader, max_request_body_size int) !http.Request {
 	mut req := http.parse_request_head(mut reader)!
 	length_values := req.header.values(.content_length)
+	if length_values.len > 0 && req.header.contains(.transfer_encoding) {
+		return error('conflicting request body framing')
+	}
 	mut content_length_i := 0
 	for i, value in length_values {
 		length := parse_request_content_length(value)!
@@ -183,9 +186,6 @@ fn read_request_from_buffered_reader(mut reader io.BufferedReader, max_request_b
 		content_length_i = length
 	}
 	if transfer_encoding_is_chunked(req.header) {
-		if length_values.len > 0 {
-			return error('conflicting request body framing')
-		}
 		req.data = read_chunked_request_body(mut reader, max_request_body_size)!
 		return req
 	}

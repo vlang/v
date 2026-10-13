@@ -104,3 +104,12 @@ fn test_https_chunk_limit_rejects_before_oversized_chunk_is_read() {
 	assert response.starts_with('HTTP/1.1 413 '), response
 	assert response.contains('Connection: close'), response
 }
+
+fn test_https_rejects_any_transfer_encoding_with_content_length() {
+	for framing in ['Content-Length: 1\r\nTransfer-Encoding: gzip',
+		'Content-Length: 1\r\nTransfer-Encoding: gzip\r\nTransfer-Encoding: chunked',
+		'Transfer-Encoding: gzip\r\nContent-Length: 0'] {
+		response := put(framing, '')!
+		assert response.starts_with('HTTP/1.1 400 '), response
+	}
+}

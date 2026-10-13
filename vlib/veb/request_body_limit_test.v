@@ -94,7 +94,10 @@ fn test_truncated_and_zero_progress_body_read_returns_error() {
 
 fn test_conflicting_lengths_cannot_hide_an_oversized_body() {
 	for framing in ['Content-Length: 1\r\nContent-Length: 4', 'Content-Length: 1\r\nContent-Length: 4x',
-		'Content-Length: 1\r\nTransfer-Encoding: chunked'] {
+		'Content-Length: 1\r\nTransfer-Encoding: chunked', 'Content-Length: 1\r\nTransfer-Encoding: gzip',
+		'Content-Length: 1\r\nTransfer-Encoding: gzip\r\nTransfer-Encoding: chunked',
+		'Transfer-Encoding: gzip\r\nContent-Length: 0',
+		'Transfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\nContent-Length: 1'] {
 		if _ := parse_limited_body(framing, 'a', 3, false) {
 			assert false, 'accepted ambiguous request framing'
 		} else {
