@@ -390,6 +390,17 @@ pub fn (mut tc TypeChecker) check_reached_library_bodies(used map[string]bool, p
 	return tc.check_library_body_items(tc.library_body_items(used, true), parallel)
 }
 
+// reached_library_body_nodes returns still-unchecked declarations named by used,
+// including ambiguous short names retained by the convergence check.
+pub fn (mut tc TypeChecker) reached_library_body_nodes(used map[string]bool) []int {
+	items := tc.library_body_items(used, true)
+	mut nodes := []int{cap: items.len}
+	for item in items {
+		nodes << item.fn_idx
+	}
+	return nodes
+}
+
 // LibraryBodyFrontier holds unchanged declaration ranges for one reachability pass.
 pub struct LibraryBodyFrontier {
 	items          []CheckWorkItem
