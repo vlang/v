@@ -989,42 +989,55 @@ fn normalize_windows_extended_path_prefix(path string) string {
 	return path.clone()
 }
 
+// working_directory_is reports whether `path`, a C string, names the working directory.
+// libc decides that the same way before it resolves a relative path from a name: the
+// path of a directory that was renamed, or replaced by another, fails the comparison.
+fn working_directory_is(path &char) bool {
+	mut named := C.stat{}
+	mut current := C.stat{}
+	return C.stat(path, &named) == 0 && C.stat(c'.', &current) == 0 && named.st_dev == current.st_dev
+		&& named.st_ino == current.st_ino
+}
+
 // relative_path_from_cwd writes the working directory, a separator and `fpath` to `buf`,
-// as a C string. It returns false when the working directory is not known as an absolute
-// path, when that path no longer names it, or when the result does not fit in `size`
-// bytes. Only real_path on macOS needs it.
-fn relative_path_from_cwd(fpath string, buf voidptr, size int) bool {
+// as a C string, and returns the length of the directory's path in it. It returns 0 when
+// the working directory is not known as an absolute path, when that path no longer names
+// it, or when the result does not fit in `size` bytes. Only real_path on macOS needs it.
+fn relative_path_from_cwd(fpath string, buf voidptr, size int) int {
 	$if !macos {
-		return false
+		return 0
 	} $else {
-		unsafe {
-			cwd := &u8(C.getcwd(0, 4096))
-			if cwd == 0 {
-				return false
-			}
-			cwd_len := int(C.strlen(&char(cwd)))
-			mut ok := false
-			// libc resolves by name too, from the directory's path, after checking that
-			// the path still names the directory; a renamed directory fails the check.
-			mut named := C.stat{}
-			mut current := C.stat{}
-			same_directory := C.stat(&char(cwd), &named) == 0 && C.stat(c'.', &current) == 0
-				&& named.st_dev == current.st_dev && named.st_ino == current.st_ino
-			if same_directory && cwd_len > 0 && cwd[0] == `/` && cwd_len + 1 + fpath.len < size {
-				mut dst := &u8(buf)
-				C.memcpy(dst, cwd, usize(cwd_len))
-				mut n := cwd_len
-				if cwd[cwd_len - 1] != `/` {
-					dst[n] = `/`
-					n++
-				}
-				C.memcpy(dst + n, fpath.str, usize(fpath.len))
-				dst[n + fpath.len] = 0
-				ok = true
-			}
-			C.free(cwd)
-			return ok
+		cwd := &u8(C.getcwd(0, 4096))
+		if cwd == unsafe { nil } {
+			return 0
 		}
+		defer {
+			// getcwd allocated the path for this call.
+			unsafe { C.free(cwd) }
+		}
+		cwd_len := int(C.strlen(&char(cwd)))
+		// `cwd` is a C string of cwd_len bytes: reading its first byte needs no bounds
+		// that V could check.
+		if cwd_len == 0 || unsafe { cwd[0] } != `/` || cwd_len + 1 + fpath.len >= size {
+			return 0
+		}
+		if !working_directory_is(&char(cwd)) {
+			return 0
+		}
+		// The copies write through raw pointers. They stay inside `buf`: the length of
+		// both parts, the separator and the terminator was compared with `size` above.
+		unsafe {
+			mut dst := &u8(buf)
+			C.memcpy(dst, cwd, usize(cwd_len))
+			mut n := cwd_len
+			if cwd[cwd_len - 1] != `/` {
+				dst[n] = `/`
+				n++
+			}
+			C.memcpy(dst + n, fpath.str, usize(fpath.len))
+			dst[n + fpath.len] = 0
+		}
+		return cwd_len
 	}
 }
 
@@ -1090,11 +1103,22 @@ pub fn real_path(fpath string) string {
 				// Naming the directory in the path resolves the same file without that
 				// lookup. Other libcs ask the kernel, and would only check its answer again.
 				mut joined := [max_path_buffer_size]u8{}
-				if relative_path_from_cwd(fpath, voidptr(&joined[0]), max_path_buffer_size) {
+				dir_len := relative_path_from_cwd(fpath, voidptr(&joined[0]), max_path_buffer_size)
+				if dir_len > 0 {
 					ret = &char(C.realpath(&char(&joined[0]), &char(&fullpath[0])))
-					// What is missing or unreachable under its full name is so by its relative one.
-					if ret == 0
-						&& C.errno in [error_code_noent, error_code_notdir, error_code_denied] {
+					failure := C.errno
+					// The directory can be renamed, and its name given to another one, between
+					// the check of that name and the resolution through it. The answer stands
+					// only if the name is still the working directory's afterwards.
+					separator := joined[dir_len]
+					joined[dir_len] = 0
+					still_named := working_directory_is(&char(&joined[0]))
+					joined[dir_len] = separator
+					if !still_named {
+						ret = &char(unsafe { nil })
+					} else if ret == 0
+						&& failure in [error_code_noent, error_code_notdir, error_code_denied] {
+						// What is missing or unreachable under its full name is so by its relative one.
 						unsafe { res.free() }
 						return fpath.clone()
 					}
