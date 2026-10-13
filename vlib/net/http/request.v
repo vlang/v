@@ -214,7 +214,9 @@ fn (mut req Request) set_remote_addr(addr string) {
 	}
 }
 
-// add_cookie adds a cookie to the request.
+// add_cookie adds a cookie to the request. The name and value are stored as given,
+// and `Request.cookie` returns them unchanged. They are sanitized when the request
+// is sent: see `cookie_header_value` for what is written to the Cookie header.
 pub fn (mut req Request) add_cookie(c Cookie) {
 	req.cookies[c.name] = c.value
 }
@@ -236,17 +238,38 @@ pub fn (req &Request) cookie(name string) ?Cookie {
 
 // cookie_header_value returns the value net.http sends in the Cookie header,
 // combining request cookies and explicit Cookie field values.
+//
+// A request cookie (from `add_cookie`, or from `cookies` of `http.fetch`) is written
+// as one `name=value` pair. Its value goes through `sanitize_cookie_value`, which
+// removes control characters, quotes, semicolons, backslashes and non-ASCII bytes.
+// A cookie whose name is empty, or contains `;`, `=`, a space, a control character
+// or a non-ASCII byte, is left out: rewriting the name would send another cookie.
+// Explicit Cookie field values of the header are appended unchanged.
 pub fn (req &Request) cookie_header_value() string {
 	return req.cookie_header_value_with_header(req.header)
 }
 
+// cookie_header_value_with_header is the only place that turns `req.cookies` into
+// header text. The HTTP/1.1, HTTP/2 and HTTP/3 clients and net.http.signature all
+// take the value from here, so what it sanitizes is sanitized for all of them.
 fn (req &Request) cookie_header_value_with_header(header Header) string {
 	mut parts := []string{cap: req.cookies.len + header.values(.cookie).len}
 	for key, value in req.cookies {
-		parts << '${key}=${value}'
+		if !is_request_cookie_name_writable(key) {
+			continue
+		}
+		parts << '${key}=${sanitize_cookie_value(value)}'
 	}
 	parts << header.values(.cookie)
 	return parts.join('; ')
+}
+
+// is_request_cookie_name_writable reports whether `name` can be the name of a
+// `name=value` pair in a Cookie header. It has to be a valid cookie name, and it
+// must not contain `;` or `=` whatever else `is_cookie_name_valid` lets through:
+// a reader ends the pair at the first `;` and the name at the first `=`.
+fn is_request_cookie_name_writable(name string) bool {
+	return is_cookie_name_valid(name) && !name.contains_any(';=')
 }
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is received
