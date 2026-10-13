@@ -151,6 +151,6 @@ be quoted. Duplicate keys, malformed values and non-string workspaces are errors
 These fields store metadata without expanding dependency aliases.
 Registry-qualified dependency keys remain distinct in lock data.
 
-The internal candidate API named `resolve_with_pubgrub` currently delegates to the consistent
-backtracking search. Dependency constraints are checked in both directions; a complete
-conflict-driven PubGrub algorithm is pending.
+The candidate search behind `resolve_with_pubgrub` is test-only: it delegates to the consistent
+backtracking search, which the test suite exercises. Dependency constraints are checked in both
+directions; a complete conflict-driven PubGrub algorithm is pending.

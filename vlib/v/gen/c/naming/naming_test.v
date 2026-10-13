@@ -91,3 +91,12 @@ fn test_gnu_predefined_macro_names_are_escaped() {
 	assert c_name('linux') == 'v_linux'
 	assert c_name('unix') == 'v_unix'
 }
+
+fn test_complex_header_macro_name_is_escaped() {
+	assert c_name('complex') == '${internal_symbol_c_prefix}macro_complex'
+	assert c_name('@complex') == c_name('complex')
+	assert c_name('complex') != c_name('v_complex')
+	assert c_name('complex') != c_name('${internal_symbol_c_prefix}macro_complex')
+	assert c_name('complex_value') == 'complex_value'
+	assert c_name('C.complex') == 'complex'
+}
