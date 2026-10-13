@@ -2697,6 +2697,9 @@ pub fn (s string) reverse() string {
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
 pub fn (s string) limit(max int) string {
+	if max <= 0 {
+		return ''
+	}
 	u := s.runes()
 	if u.len <= max {
 		return s.clone()

@@ -1269,7 +1269,7 @@ fn test_limit() {
 	assert s.limit(2) == 'he'
 	assert s.limit(9) == s
 	assert s.limit(0) == ''
-	// assert s.limit(-1) == ''
+	assert s.limit(-1) == ''
 }
 
 fn test_repeat() {
