@@ -4665,7 +4665,15 @@ fn (mut t Transformer) generated_fn_body_call_names_filtered(root flat.NodeId, c
 	t.var_type_indices = map[string]int{}
 	t.mut_param_values = map[string]bool{}
 	t.seed_generated_fn_body_context(root)
+	// The filtered scan only declares or rebinds locals while it walks a body, so its
+	// scopes restore from the undo log. Queued nested specializations can run other
+	// lowering, which keeps the copying scopes.
+	undo_was_active := t.var_type_undo_active
+	undo_start := t.var_type_undo_log.len
+	t.var_type_undo_active = filter_candidates && !t.defer_nested_generic_emissions
 	t.collect_generated_fn_body_call_names(root, candidate_names, filter_candidates, mut names, mut seen)
+	t.var_type_undo_active = undo_was_active
+	t.var_type_undo_log.trim(undo_start)
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
 	t.clear_node_type_memo()
@@ -4753,6 +4761,15 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, cand
 	// This traversal queues signatures and updates caches without growing the AST.
 	node := t.a.node(id)
 	if node.kind in [.block, .for_stmt, .for_in_stmt, .select_branch] {
+		if t.var_type_undo_active {
+			scope := t.mark_var_type_scope()
+			for i in 0 .. node.children_count {
+				t.collect_generated_fn_body_call_names(t.a.child(node, i), candidate_names,
+					filter_candidates, mut names, mut seen)
+			}
+			t.restore_var_type_scope(scope)
+			return
+		}
 		saved_vars := t.var_types.clone()
 		for i in 0 .. node.children_count {
 			t.collect_generated_fn_body_call_names(t.a.child(node, i), candidate_names,
@@ -4785,7 +4802,9 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, cand
 			}
 		}
 	} else if node.kind in [.ident, .selector, .cast_expr, .paren, .expr_stmt] {
-		if fn_value_name := t.generated_fn_value_name_for_used(id, *node) {
+		if fn_value_name := t.generated_fn_value_name_for_used(id, *node, candidate_names,
+			filter_candidates)
+		{
 			t.push_generated_used_name(fn_value_name, candidate_names, filter_candidates, mut names, mut seen)
 		}
 	}
@@ -4814,10 +4833,11 @@ fn (mut t Transformer) seed_generated_decl_assign_binding(node flat.Node) {
 }
 
 fn (mut t Transformer) generated_decl_assign_binding_type(node flat.Node, lhs flat.Node, rhs_id flat.NodeId) string {
-	for candidate in [lhs.typ, node.typ] {
-		if candidate.len > 0 {
-			return candidate
-		}
+	if lhs.typ.len > 0 {
+		return lhs.typ
+	}
+	if node.typ.len > 0 {
+		return node.typ
 	}
 	if int(rhs_id) >= 0 && int(rhs_id) < t.a.nodes.len {
 		rhs := t.a.nodes[int(rhs_id)]
@@ -4832,11 +4852,20 @@ fn (mut t Transformer) generated_decl_assign_binding_type(node flat.Node, lhs fl
 	return ''
 }
 
-fn (mut t Transformer) generated_fn_value_name_for_used(id flat.NodeId, node flat.Node) ?string {
+// generated_fn_value_name_for_used names the function that a value node refers to. With
+// `filter_candidates`, the caller keeps a name only when it passes the late-name scan's
+// filter over `candidate_names`.
+fn (mut t Transformer) generated_fn_value_name_for_used(id flat.NodeId, node flat.Node, candidate_names &map[string]bool, filter_candidates bool) ?string {
 	if !isnil(t.tc) {
 		if name := t.tc.resolved_fn_value_name(id) {
 			return name
 		}
+	}
+	// Every spelling probed below ends with this node's text: skip the probes when
+	// no name with that ending can pass the filter.
+	if filter_candidates && node.value.len > 0 && !isnil(t.tc)
+		&& t.late_scan_gate_rejects(node.value, candidate_names) {
+		return none
 	}
 	if node.kind == .ident && node.value.len > 0 {
 		if t.var_type(node.value).len > 0 {
@@ -5628,9 +5657,10 @@ fn (mut t Transformer) concrete_generic_call_return_type(id flat.NodeId, node fl
 	}
 	callee := t.a.child_node(&node, 0)
 	mut specialized_node_type := ''
-	if callee.kind == .ident
-		&& (t.generic_callee_is_specialization(callee.value) || callee.value.contains('_T_'))
-		&& generic_inference_arg_type_usable(node.typ) {
+	// The recorded type of the call is read first: most calls carry none, and telling a
+	// specialized callee apart takes several table lookups.
+	if callee.kind == .ident && generic_inference_arg_type_usable(node.typ)
+		&& (callee.value.contains('_T_') || t.generic_callee_is_specialization(callee.value)) {
 		concrete_node_type := t.normalize_type_alias(node.typ)
 		if !t.generic_arg_is_unresolved(concrete_node_type) {
 			specialized_node_type = concrete_node_type
@@ -5900,6 +5930,67 @@ fn (mut t Transformer) build_generic_receiver_method_index() {
 	}
 	t.generic_receiver_methods_by_name = by_name.move()
 	t.generic_fn_call_names = call_names.move()
+	mut tails := map[string]bool{}
+	mut static_methods := map[string]bool{}
+	for key, _ in t.generic_fn_decls_cache {
+		for spelling in generic_call_name_spellings(short_name_view(key)) {
+			tails[spelling] = true
+		}
+		if _, method := flat.decode_static_type_method_name(key) {
+			for spelling in generic_call_name_spellings(method) {
+				static_methods[spelling] = true
+			}
+		}
+	}
+	t.generic_decl_name_tails = tails.move()
+	t.generic_static_method_names = static_methods.move()
+	t.generic_decl_name_tails_count = t.generic_fn_decls_cache.len
+}
+
+// generic_name_cannot_spell_decl reports whether no spelling derived from `name` is a
+// key of the generic declaration table: `name` carries none of the markers that select a
+// rewritten spelling (`@` escapes and static method names, `__` flattened receivers), and
+// no key ends with its final segment. Qualifying a name, dropping its generic arguments
+// and toggling the `@` escape all keep that final segment.
+@[direct_array_access]
+fn (t &Transformer) generic_name_cannot_spell_decl(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	mut tail_start := 0
+	for i in 0 .. name.len {
+		c := name[i]
+		if c == `@` || (c == `_` && i + 1 < name.len && name[i + 1] == `_`) {
+			return false
+		}
+		if c == `.` {
+			tail_start = i + 1
+		}
+	}
+	return !t.generic_decl_name_tails[unsafe { name.substr_unsafe(tail_start, name.len) }]
+}
+
+// generic_call_cannot_name_decl is an exact, allocation-free rejection for
+// unshadowed_generic_call_decl_key. Every key that function can return is spelled from
+// the checker's resolved name or from the callee's own text, so a call whose names
+// cannot spell a declaration skips the candidate lists it would build to find that out.
+// Most calls in a program name no generic declaration at all.
+fn (t &Transformer) generic_call_cannot_name_decl(resolved string, has_resolved bool, callee flat.Node, decls map[string]GenericFnDecl) bool {
+	if t.generic_decl_name_tails_count != decls.len || decls.len != t.generic_fn_decls_cache.len {
+		return false
+	}
+	if has_resolved && !t.generic_name_cannot_spell_decl(resolved) {
+		return false
+	}
+	if callee.kind == .ident {
+		// `_T_` marks a specialized plain call, decoded without the name tables.
+		return t.generic_name_cannot_spell_decl(callee.value) && !callee.value.contains('_T_')
+	}
+	if callee.kind == .selector {
+		return t.generic_name_cannot_spell_decl(callee.value)
+			&& !t.generic_static_method_names[callee.value]
+	}
+	return true
 }
 
 fn generic_call_name_spellings(name string) []string {
@@ -6763,6 +6854,9 @@ fn (mut t Transformer) unregister_generic_fn_signature(decl GenericFnDecl) {
 		t.tc.fn_param_types.delete(name)
 		t.tc.fn_variadic.delete(name)
 	}
+	// A removal can hide a later registration from a count of the signatures.
+	t.tc.forget_transform_static_method_names()
+	t.alias_receiver_fns_signatures = -1
 }
 
 fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []string) {
@@ -7463,8 +7557,19 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 }
 
 fn (mut t Transformer) unshadowed_generic_call_decl_key(id flat.NodeId, node flat.Node, callee flat.Node, module_name string, decls map[string]GenericFnDecl) ?string {
+	mut resolved := ''
+	mut has_resolved := false
 	if !isnil(t.tc) {
-		if resolved := t.tc.resolved_call_name(id) {
+		if name := t.tc.resolved_call_name(id) {
+			resolved = name
+			has_resolved = true
+		}
+	}
+	if t.generic_call_cannot_name_decl(resolved, has_resolved, callee, decls) {
+		return none
+	}
+	if !isnil(t.tc) {
+		if has_resolved {
 			if key := t.generic_resolved_call_decl_key(resolved, callee, node, module_name, decls) {
 				if decl := decls[key] {
 					if !t.generic_call_arg_count_matches_decl(node, decl) {

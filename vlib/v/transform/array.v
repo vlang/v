@@ -2467,8 +2467,13 @@ fn (t &Transformer) clean_array_append_lhs_type(typ string) string {
 // normalize_type_alias_chain expands an alias of an alias (`type MorePtrs = Ptrs`,
 // `type Ptrs = &[]&int`) to the type they both name.
 fn (t &Transformer) normalize_type_alias_chain(typ string) string {
-	mut current := typ
+	// Most spellings name no alias: answer those before tracking the chain.
+	mut current := t.normalize_type_alias(typ)
+	if current == typ {
+		return typ
+	}
 	mut seen := map[string]bool{}
+	seen[typ] = true
 	for {
 		if current in seen {
 			break
@@ -3109,6 +3114,35 @@ fn (t &Transformer) array_append_literal_sum_array_variant_type(rhs_id flat.Node
 }
 
 fn (t &Transformer) array_append_elem_is_interface(elem_type string) bool {
+	if isnil(t.append_elem_interface_cache) || isnil(t.tc) {
+		return t.array_append_elem_is_interface_uncached(elem_type)
+	}
+	mut cache := t.append_elem_interface_cache
+	tables := t.tc.interface_names.len + t.tc.type_aliases.len + t.tc.structs.len +
+		t.tc.sum_types.len + t.tc.enum_names.len
+	if cache.tables != tables || !same_transform_text(cache.module, t.cur_module)
+		|| !same_transform_text(cache.file, t.cur_file)
+		|| !same_transform_text(cache.tc_module, t.tc.cur_module)
+		|| !same_transform_text(cache.tc_file, t.tc.cur_file) {
+		cache.tables = tables
+		cache.module = t.cur_module
+		cache.file = t.cur_file
+		cache.tc_module = t.tc.cur_module
+		cache.tc_file = t.tc.cur_file
+		cache.answers.entries.clear()
+		cache.answers.last_name = ''
+		cache.answers.last_value = 0
+	}
+	cached := cache.answers.get(elem_type)
+	if cached != 0 {
+		return cached > 0
+	}
+	result := t.array_append_elem_is_interface_uncached(elem_type)
+	cache.answers.put(elem_type, if result { i8(1) } else { i8(-1) })
+	return result
+}
+
+fn (t &Transformer) array_append_elem_is_interface_uncached(elem_type string) bool {
 	if t.is_builtin_ierror_interface_name(elem_type) {
 		return true
 	}

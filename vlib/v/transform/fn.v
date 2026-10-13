@@ -836,6 +836,21 @@ fn (t &Transformer) alias_receiver_method_candidates(method string) []string {
 	}
 	mut candidates := []string{}
 	method_suffix := '.${method}'
+	if t.alias_receiver_fns_signatures == t.tc.fn_param_types.len
+		&& t.alias_receiver_fns_aliases == t.tc.type_aliases.len {
+		// The same signatures and aliases as listed: the scan below would visit these
+		// names in this order. Their parameters can have been registered since.
+		for name in t.alias_receiver_fns[short_name_view(method)] {
+			if !name.ends_with(method_suffix) {
+				continue
+			}
+			params := t.tc.fn_param_types[name] or { continue }
+			if params.len > 0 {
+				candidates << name
+			}
+		}
+		return candidates
+	}
 	for name, params in t.tc.fn_param_types {
 		if params.len == 0 || !name.ends_with(method_suffix) {
 			continue
@@ -6182,6 +6197,12 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		if inferred.len > 0 && inferred != clean_typ {
 			return t.wrap_string_conversion(expr, inferred)
 		}
+	}
+	// `string` is the builtin string in every module: a type name declared by a program
+	// starts with a capital letter, so no alias, enum or function type below can be
+	// spelled that way. Interpolated values are strings more often than anything else.
+	if clean_typ == 'string' && !is_ref {
+		return expr
 	}
 	if !isnil(t.tc) {
 		local_struct_shadows_alias := t.bare_struct_name_is_local_to_current_module(clean_typ)

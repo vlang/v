@@ -358,6 +358,31 @@ mut:
 	interface_impl_spec_count      int
 	ierror_none_type_id            int
 	interface_var_concrete_types   map[string]string
+	// alias_receiver_fns lists, by method name and in signature order, every signature
+	// whose receiver is a type alias, whether or not its parameters are known yet. It
+	// describes the checker tables while they hold alias_receiver_fns_signatures
+	// signatures and alias_receiver_fns_aliases aliases; -1 marks it unusable.
+	alias_receiver_fns            map[string][]string
+	alias_receiver_fns_signatures int = -1
+	alias_receiver_fns_aliases    int
+	// var_type_undo_log holds the bindings that set_var_type_binding replaced while
+	// var_type_undo_active is set. A walk that only adds or rebinds locals restores a
+	// lexical scope from it instead of copying every live binding on scope entry.
+	var_type_undo_log    []VarTypeUndo
+	var_type_undo_active bool
+	// late_scan_gate is set while the filtered late-name scan walks function bodies.
+	late_scan_gate &LateScanGate = unsafe { nil }
+	// no_checked_numeric_infix turns checked_numeric_infix_can_skip_handlers off.
+	no_checked_numeric_infix bool
+	// append_elem_interface_cache answers array_append_elem_is_interface again.
+	append_elem_interface_cache &ElemInterfaceCache = unsafe { nil }
+	// generic_decl_name_tails holds the text after the last `.` of every key of
+	// generic_fn_decls_cache, in both `@` spellings, and generic_static_method_names
+	// the methods of its static type method keys. generic_decl_name_tails_count is the
+	// size of the table they describe, or -1 while they describe none.
+	generic_decl_name_tails       map[string]bool
+	generic_static_method_names   map[string]bool
+	generic_decl_name_tails_count int = -1
 	// used_struct_operator_fns holds the callee names of direct calls seen during
 	// monomorphize. Infix operators on generic instances are lowered to direct calls
 	// (`Vec_int__plus(a, b)`) before this pass, so an operator overload is specialized for
@@ -768,6 +793,20 @@ mut:
 	last_value i8
 }
 
+// ElemInterfaceCache memoizes array_append_elem_is_interface by element type spelling.
+// The answer reads the importing file and module of both the transformer and its
+// checker and the declared type tables, so the entries are dropped when any of those
+// change. Appends repeat a handful of element types throughout a function.
+struct ElemInterfaceCache {
+mut:
+	module    string
+	file      string
+	tc_module string
+	tc_file   string
+	tables    int
+	answers   BoolLookupCache
+}
+
 @[inline]
 fn (mut c BoolLookupCache) get(name string) i8 {
 	if c.last_value != 0 && c.last_name.len == name.len
@@ -997,6 +1036,18 @@ struct VarTypeBinding {
 	is_implicit_err bool
 mut:
 	is_ref_param bool
+}
+
+// VarTypeUndo is one binding replaced inside a scope opened by mark_var_type_scope.
+struct VarTypeUndo {
+	index   int
+	binding VarTypeBinding
+}
+
+// VarTypeScopeMark is the binding state restore_var_type_scope returns to.
+struct VarTypeScopeMark {
+	bindings int
+	undo     int
 }
 
 struct FunctionLocalState {
@@ -1263,6 +1314,7 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 }
 
 fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool, retain_worker_results bool, stage_scope voidptr) {
+	t.no_checked_numeric_infix = os.getenv('V3_NO_CHECKED_NUMERIC_INFIX') != ''
 	t.skip_generics = skip_generics
 	t.building_v = building_v
 	t.memo_node_types = t.memo_expansion_node_types
@@ -1630,6 +1682,95 @@ fn (mut t Transformer) new_call_names_from_used_fn_bodies(used &map[string]bool,
 	return t.scan_late_call_names_dispatch(cands, used, candidate_names)
 }
 
+// LateScanGate lists the final name segment (the text after the last `.`) of every name
+// the filtered late-name scan can publish for a function value: the late transform
+// candidates, the used struct operator functions, and the known functions whose receiver
+// can expand to interface implementers. A function value spelled by an identifier or a
+// selector always ends with that node's own text, so a node whose final segment is not
+// listed cannot contribute a name, whatever its candidate spellings resolve to.
+struct LateScanGate {
+	tails           map[string]bool
+	candidate_names voidptr
+	// Sizes of the tables `tails` was derived from. The gate only answers while they
+	// are unchanged; a walk that registers a signature or a type falls back to probing.
+	operator_fns        int
+	fn_ret_types        int
+	tc_fn_ret_types     int
+	tc_fn_param_types   int
+	interface_names     int
+	type_aliases        int
+	type_alias_suffixes int
+}
+
+fn (t &Transformer) new_late_scan_gate(candidate_names &map[string]bool) &LateScanGate {
+	mut tails := map[string]bool{}
+	for name, _ in *candidate_names {
+		tails[short_name_view(name)] = true
+	}
+	for name, _ in t.used_struct_operator_fns {
+		tails[short_name_view(name)] = true
+	}
+	// Methods share few receivers; decide each receiver's expansion once.
+	mut receiver_expands := map[string]bool{}
+	for name, _ in t.fn_ret_types {
+		t.add_late_scan_interface_tail(name, mut tails, mut receiver_expands)
+	}
+	for name, _ in t.tc.fn_ret_types {
+		t.add_late_scan_interface_tail(name, mut tails, mut receiver_expands)
+	}
+	for name, _ in t.tc.fn_param_types {
+		t.add_late_scan_interface_tail(name, mut tails, mut receiver_expands)
+	}
+	return &LateScanGate{
+		tails:               tails
+		candidate_names:     voidptr(candidate_names)
+		operator_fns:        t.used_struct_operator_fns.len
+		fn_ret_types:        t.fn_ret_types.len
+		tc_fn_ret_types:     t.tc.fn_ret_types.len
+		tc_fn_param_types:   t.tc.fn_param_types.len
+		interface_names:     t.tc.interface_names.len
+		type_aliases:        t.tc.type_aliases.len
+		type_alias_suffixes: t.type_alias_suffixes.len
+	}
+}
+
+// add_late_scan_interface_tail lists the method of a known function whose receiver
+// late_name_may_expand_interface accepts.
+fn (t &Transformer) add_late_scan_interface_tail(name string, mut tails map[string]bool, mut receiver_expands map[string]bool) {
+	dot := name.last_index_u8(`.`)
+	if dot < 0 {
+		return
+	}
+	// The views are only probed while `name` owns its backing bytes; a new map key
+	// is copied on insertion.
+	receiver := unsafe { name.substr_unsafe(0, dot) }
+	expands := receiver_expands[receiver] or {
+		found := t.late_name_may_expand_interface(name)
+		receiver_expands[receiver] = found
+		found
+	}
+	if expands {
+		tails[unsafe { name.substr_unsafe(dot + 1, name.len) }] = true
+	}
+}
+
+// late_scan_gate_rejects reports whether the filtered late-name scan can skip a function
+// value node spelled `value`: no name ending with it passes the scan's filter.
+@[inline]
+fn (t &Transformer) late_scan_gate_rejects(value string, candidate_names &map[string]bool) bool {
+	gate := t.late_scan_gate
+	if isnil(gate) || gate.candidate_names != voidptr(candidate_names)
+		|| gate.operator_fns != t.used_struct_operator_fns.len
+		|| gate.fn_ret_types != t.fn_ret_types.len || gate.tc_fn_ret_types != t.tc.fn_ret_types.len
+		|| gate.tc_fn_param_types != t.tc.fn_param_types.len
+		|| gate.interface_names != t.tc.interface_names.len
+		|| gate.type_aliases != t.tc.type_aliases.len
+		|| gate.type_alias_suffixes != t.type_alias_suffixes.len {
+		return false
+	}
+	return !gate.tails[short_name_view(value)]
+}
+
 fn (mut t Transformer) late_transform_candidate_name_filter(node_limit int) map[string]bool {
 	mut names := map[string]bool{}
 	limit := if node_limit < t.a.nodes.len { node_limit } else { t.a.nodes.len }
@@ -1654,13 +1795,13 @@ fn (t &Transformer) collect_late_scan_candidates(limit int) []LateFnCandidate {
 	mut cur_module := ''
 	mut cur_file := ''
 	for i in 0 .. limit {
-		node := t.a.nodes[i]
-		kind_id := int(node.kind)
+		// Only the three declaration kinds below are read past their kind tag.
+		kind_id := int(t.a.nodes[i].kind)
 		if kind_id == 77 {
-			cur_file = node.value
+			cur_file = t.a.nodes[i].value
 			cur_module = ''
 		} else if kind_id == 73 {
-			cur_module = node.value
+			cur_module = t.a.nodes[i].value
 		} else if kind_id == 61 {
 			cands << LateFnCandidate{
 				idx:    i
@@ -1678,10 +1819,12 @@ fn (t &Transformer) collect_late_scan_candidates(limit int) []LateFnCandidate {
 // transformer's private per-function context and checker caches), so disjoint
 // ranges can run on worker threads; concatenating the per-range results in
 // range order and deduplicating reproduces the serial scan exactly.
-fn (mut t Transformer) scan_late_call_names_range(cands []LateFnCandidate, used &map[string]bool, candidate_names &map[string]bool, start int, end int) []string {
+fn (mut t Transformer) scan_late_call_names_range(cands []LateFnCandidate, used &map[string]bool, candidate_names &map[string]bool, gate &LateScanGate, start int, end int) []string {
 	mut names := []string{}
 	old_module := t.cur_module
 	old_file := t.cur_file
+	old_gate := t.late_scan_gate
+	t.late_scan_gate = unsafe { gate }
 	for ci in start .. end {
 		cand := cands[ci]
 		node := t.a.nodes[cand.idx]
@@ -1707,6 +1850,7 @@ fn (mut t Transformer) scan_late_call_names_range(cands []LateFnCandidate, used 
 			names << call_name
 		}
 	}
+	t.late_scan_gate = old_gate
 	t.cur_module = old_module
 	t.cur_file = old_file
 	return names
@@ -2126,6 +2270,7 @@ fn (mut t Transformer) prepare() {
 		entries: map[string]i8{}
 	}
 	t.raw_return_alias_cache = &ContextBoolLookupCache{}
+	t.append_elem_interface_cache = &ElemInterfaceCache{}
 	t.prepare_interface_impl_indexes()
 	t.ierror_none_type_id = t.interface_impl_type_id('IError', 'None__') or { 0 }
 	if !t.defer_fixed_array_borrow_prep {
@@ -2935,6 +3080,12 @@ fn (mut t Transformer) set_var_type_binding(name string, typ string, raw_typ str
 	raw := if raw_typ != '' { raw_typ } else { typ }
 	i := t.var_type_index(name)
 	if i >= 0 {
+		if t.var_type_undo_active {
+			t.var_type_undo_log << VarTypeUndo{
+				index:   i
+				binding: t.var_types[i]
+			}
+		}
 		t.var_type_indices[name] = i
 		t.clear_node_type_memo()
 		t.var_types[i] = VarTypeBinding{
@@ -3232,6 +3383,40 @@ fn (mut t Transformer) restore_var_types(saved []VarTypeBinding) {
 	}
 }
 
+// mark_var_type_scope opens a lexical scope for a walk that runs with
+// var_type_undo_active: until restore_var_type_scope, bindings may only be added or
+// replaced through set_var_type_binding.
+@[inline]
+fn (t &Transformer) mark_var_type_scope() VarTypeScopeMark {
+	return VarTypeScopeMark{
+		bindings: t.var_types.len
+		undo:     t.var_type_undo_log.len
+	}
+}
+
+// restore_var_type_scope leaves the bindings as restore_var_types would after a copy
+// taken at `mark`: locals declared since then are dropped and replaced ones return to
+// their previous binding. Its cost follows the scope's own declarations, not the
+// number of live bindings.
+@[direct_array_access]
+fn (mut t Transformer) restore_var_type_scope(mark VarTypeScopeMark) {
+	t.clear_node_type_memo()
+	if !isnil(t.var_type_cache) {
+		t.var_type_cache.clear()
+	}
+	for i in mark.bindings .. t.var_types.len {
+		t.var_type_indices.delete(t.var_types[i].name)
+	}
+	t.var_types.trim(mark.bindings)
+	for i := t.var_type_undo_log.len - 1; i >= mark.undo; i-- {
+		undo := t.var_type_undo_log[i]
+		if undo.index < mark.bindings {
+			t.var_types[undo.index] = undo.binding
+		}
+	}
+	t.var_type_undo_log.trim(mark.undo)
+}
+
 // --- type collection ---
 
 // collect_types updates collect types state for transform.
@@ -3524,8 +3709,9 @@ fn (mut t Transformer) collect_alias_methods() {
 	if isnil(t.tc) {
 		return
 	}
+	t.alias_receiver_fns = map[string][]string{}
 	for name, params in t.tc.fn_param_types {
-		if params.len == 0 || name.index_u8(`.`) < 0 {
+		if name.index_u8(`.`) < 0 {
 			continue
 		}
 		receiver_name := name.all_before_last('.')
@@ -3533,6 +3719,10 @@ fn (mut t Transformer) collect_alias_methods() {
 			continue
 		}
 		method := name.all_after_last('.')
+		t.alias_receiver_fns[method] << name
+		if params.len == 0 {
+			continue
+		}
 		t.alias_method_candidates[method] << name
 		param_name := params[0].name()
 		clean_alias := if param_name.starts_with('&') { param_name[1..] } else { param_name }
@@ -3546,6 +3736,31 @@ fn (mut t Transformer) collect_alias_methods() {
 		}
 	}
 	t.alias_method_candidates_ready = true
+	t.alias_receiver_fns_signatures = t.tc.fn_param_types.len
+	t.alias_receiver_fns_aliases = t.tc.type_aliases.len
+}
+
+// refresh_alias_receiver_fns lists the alias receiver signatures again after signatures
+// or aliases were registered, so the workers forked next can use the list.
+fn (mut t Transformer) refresh_alias_receiver_fns() {
+	if isnil(t.tc) || (t.alias_receiver_fns_signatures == t.tc.fn_param_types.len
+		&& t.alias_receiver_fns_aliases == t.tc.type_aliases.len) {
+		return
+	}
+	mut by_method := map[string][]string{}
+	for name, _ in t.tc.fn_param_types {
+		dot := name.last_index_u8(`.`)
+		if dot <= 0 {
+			continue
+		}
+		// The receiver view is only probed while `name` owns its backing bytes.
+		if unsafe { name.substr_unsafe(0, dot) } in t.tc.type_aliases {
+			by_method[name[dot + 1..]] << name
+		}
+	}
+	t.alias_receiver_fns = by_method.move()
+	t.alias_receiver_fns_signatures = t.tc.fn_param_types.len
+	t.alias_receiver_fns_aliases = t.tc.type_aliases.len
 }
 
 // normalize_sum_variant_type transforms normalize sum variant type data for transform.
@@ -4334,6 +4549,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		entries: map[string]i8{}
 	}
 	w.raw_return_alias_cache = &ContextBoolLookupCache{}
+	w.append_elem_interface_cache = &ElemInterfaceCache{}
 	w.alias_receiver_method_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -4482,6 +4698,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		entries: map[string]i8{}
 	}
 	w.raw_return_alias_cache = &ContextBoolLookupCache{}
+	w.append_elem_interface_cache = &ElemInterfaceCache{}
 	w.alias_receiver_method_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -4555,6 +4772,9 @@ fn (t &Transformer) copy_generic_decl_indexes(mut w Transformer) {
 	w.generic_fn_decls_cache = t.generic_fn_decls_cache.clone()
 	w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
 	w.generic_fn_call_names = t.generic_fn_call_names.clone()
+	w.generic_decl_name_tails = t.generic_decl_name_tails.clone()
+	w.generic_static_method_names = t.generic_static_method_names.clone()
+	w.generic_decl_name_tails_count = t.generic_decl_name_tails_count
 	w.generic_fn_decls_ready = true
 }
 
@@ -4578,6 +4798,9 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		alias_methods:                       t.alias_methods
 		alias_method_candidates:             t.alias_method_candidates
 		alias_method_candidates_ready:       t.alias_method_candidates_ready
+		alias_receiver_fns:                  t.alias_receiver_fns
+		alias_receiver_fns_signatures:       t.alias_receiver_fns_signatures
+		alias_receiver_fns_aliases:          t.alias_receiver_fns_aliases
 		globals:                             t.globals
 		global_qualified_names:              t.global_qualified_names
 		sum_types:                           t.sum_types
@@ -4708,6 +4931,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		generic_call_spec_misses:            map[int]bool{}
 		monomorph_error_seen:                map[string]bool{}
 		skip_generics:                       t.skip_generics
+		no_checked_numeric_infix:            t.no_checked_numeric_infix
 		building_v:                          t.building_v
 		memo_node_types:                     t.memo_node_types
 		memo_expansion_node_types:           t.memo_expansion_node_types
@@ -21288,15 +21512,22 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 // operators still require the type-specific dispatch, including aliases recovered
 // from the original element type of an indexed operand.
 fn (t &Transformer) checked_numeric_infix_can_skip_handlers(node flat.Node) bool {
-	if !t.skip_generics || t.building_v || t.validating_generic_spec || t.cur_fn_is_generic
-		|| t.active_generic_params.len > 0 || t.active_specialization_args.len > 0
-		|| t.smartcast_stack.len > 0 || isnil(t.tc)
+	if t.no_checked_numeric_infix || t.building_v || t.validating_generic_spec
+		|| t.cur_fn_is_generic || t.active_generic_params.len > 0
+		|| t.active_specialization_args.len > 0 || t.smartcast_stack.len > 0 || isnil(t.tc)
 		|| node.children_count != 2 || node.op !in [.plus, .minus, .mul, .div, .mod, .eq, .ne,
 		.lt, .gt, .le, .ge, .amp, .pipe, .xor, .right_shift, .right_shift_unsigned] {
 		return false
 	}
 	lhs := t.a.child(&node, 0)
 	rhs := t.a.child(&node, 1)
+	// A program with generic declarations also lowers their specialized clones, whose
+	// operands the checker never typed. There the shortcut stays with the operands it
+	// did type as part of the concrete function being lowered: for those, nothing
+	// differs from a program without generics.
+	if !t.skip_generics && !(t.is_checked_item_source(lhs) && t.is_checked_item_source(rhs)) {
+		return false
+	}
 	if !t.checked_numeric_infix_operand(lhs, node.op, true) {
 		return false
 	}
@@ -21306,6 +21537,15 @@ fn (t &Transformer) checked_numeric_infix_can_skip_handlers(node flat.Node) bool
 		return true
 	}
 	return t.checked_numeric_infix_operand(rhs, node.op, false)
+}
+
+// is_checked_item_source reports whether `id` is a node of the function being lowered that
+// already existed when the program was checked.
+@[inline]
+fn (t &Transformer) is_checked_item_source(id flat.NodeId) bool {
+	idx := int(id)
+	return t.item_range_lo >= 0 && idx >= t.item_range_lo && idx <= t.item_range_hi
+		&& idx < t.tc.top_level_idx_nodes_len
 }
 
 fn (t &Transformer) checked_numeric_infix_operand(id flat.NodeId, op flat.Op, is_lhs bool) bool {
