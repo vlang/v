@@ -235,6 +235,15 @@ NB: the build flags are shared with the run command too:
           127          0.110ms            866ns i64_str
           127          0.016ms            127ns tos
 
+  -e <code>, -e=<code>
+    Compile and run inline V source as a script. Compiler options go before -e; arguments
+    after the source are passed to the program. The program exit status is returned.
+    For example: v -e 'println(1)'
+
+  -http
+    Serve the current directory on localhost:4001. Equivalent to:
+    v -e 'import net.http.file; file.serve()'
+
   -message-limit <limit>
     The maximum amount of warnings / errors / notices, that will be accumulated (defaults to 200).
     The compiler may stop accumulating additional diagnostics, once this limit has been reached.

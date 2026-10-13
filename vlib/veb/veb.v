@@ -26,10 +26,11 @@ pub fn no_result() Result {
 }
 
 struct Route {
-	methods []http.Method
-	path    string
-	words   []string
-	host    string
+	methods         []http.Method
+	path            string
+	words           []string
+	host            string
+	parameter_names []string
 mut:
 	middlewares       []RouteMiddleware
 	after_middlewares []RouteMiddleware
@@ -52,11 +53,16 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 				return error('error parsing method attributes: ${err}')
 			}
 
+			mut parameter_names := []string{}
+			for param in method.args[1..] {
+				parameter_names << param.name
+			}
 			mut route := Route{
-				methods: http_methods
-				path:    route_path
-				words:   route_path_words(route_path)
-				host:    host
+				methods:         http_methods
+				path:            route_path
+				words:           route_path_words(route_path)
+				host:            host
+				parameter_names: parameter_names
 			}
 
 			$if A is MiddlewareApp {
@@ -86,6 +92,28 @@ struct SslRequestParams {
 	routes                    &map[string]Route
 	benchmark_page_generation bool
 	max_request_buffer_size   int
+	max_request_body_size     int
+}
+
+// render_request dispatches one request without starting a listener and returns
+// the completed base context. Read the response from `ctx.res`; fields added to
+// the application's context type are only available inside its handlers.
+// Static file responses retain `return_type` and `return_file`, as on the server.
+// X must embed veb.Context. Context, route, and controller configuration errors
+// are returned to the caller.
+pub fn render_request[A, X](mut app A, req http.Request) !&Context {
+	$for field in X.fields {
+		$if field.name == 'Context' && field.is_embed {
+			routes := generate_routes[A, X](app)!
+			controllers_sorted := check_duplicate_routes_in_controllers[A](app, routes)!
+			params := RequestParams{
+				controllers_sorted: controllers_sorted
+				routes:             &routes
+			}
+			return handle_request_and_route[A, X](mut app, req, -1, params)
+		}
+	}
+	return error('the application context type must embed veb.Context')
 }
 
 fn ssl_enabled(params RunParams) bool {
@@ -123,24 +151,73 @@ fn request_read_error_response(err IError) http.Response {
 	if err is http.HeaderLimitError {
 		return http_431
 	}
+	if err is RequestBodyLimitError {
+		return http_413_close
+	}
 	return http_400
 }
 
-fn read_request_from_buffered_reader(mut reader io.BufferedReader) !http.Request {
+// RequestBodyLimitError is the error for a request whose body has more than
+// `RunParams.max_request_body_size` bytes.
+struct RequestBodyLimitError {
+	Error
+}
+
+// msg returns the description of the error.
+fn (err RequestBodyLimitError) msg() string {
+	return 'the request body is too large'
+}
+
+// read_request_from_buffered_reader reads one request. It returns a `RequestBodyLimitError`
+// for a body of more than `max_request_body_size` bytes (0 means no limit), and does not
+// read the rest of that body.
+fn read_request_from_buffered_reader(mut reader io.BufferedReader, max_request_body_size int) !http.Request {
 	mut req := http.parse_request_head(mut reader)!
+	length_values := req.header.values(.content_length)
+	if length_values.len > 0 && req.header.contains(.transfer_encoding) {
+		return error('conflicting request body framing')
+	}
+	mut content_length_i := 0
+	for i, value in length_values {
+		length := parse_request_content_length(value)!
+		if i > 0 && length != content_length_i {
+			return error('conflicting content lengths')
+		}
+		content_length_i = length
+	}
 	if transfer_encoding_is_chunked(req.header) {
-		req.data = read_chunked_request_body(mut reader)!
+		req.data = read_chunked_request_body(mut reader, max_request_body_size)!
 		return req
 	}
-	content_length := req.header.get(.content_length) or { '0' }
-	content_length_i := content_length.int()
 	if content_length_i <= 0 {
 		return req
+	}
+	if max_request_body_size > 0 && content_length_i > max_request_body_size {
+		return RequestBodyLimitError{}
 	}
 	mut body := []u8{len: content_length_i}
 	read_exact_bytes(mut reader, mut body)!
 	req.data = body.bytestr()
 	return req
+}
+
+// parse_request_content_length rejects prefixes, signs, junk, and integer overflow.
+fn parse_request_content_length(value string) !int {
+	if value.len == 0 {
+		return error('invalid content length')
+	}
+	mut length := 0
+	for byte in value {
+		if byte < `0` || byte > `9` {
+			return error('invalid content length')
+		}
+		digit := int(byte - `0`)
+		if length > (max_int - digit) / 10 {
+			return error('content length too large')
+		}
+		length = length * 10 + digit
+	}
+	return length
 }
 
 fn transfer_encoding_is_chunked(header http.Header) bool {
@@ -153,7 +230,7 @@ fn transfer_encoding_is_chunked(header http.Header) bool {
 	return false
 }
 
-fn read_chunked_request_body(mut reader io.BufferedReader) !string {
+fn read_chunked_request_body(mut reader io.BufferedReader, max_request_body_size int) !string {
 	mut sb := strings.new_builder(1024)
 	for {
 		mut chunk_size_line := reader.read_line()!
@@ -163,6 +240,12 @@ fn read_chunked_request_body(mut reader io.BufferedReader) !string {
 		chunk_size_line = chunk_size_line.trim_space()
 		if chunk_size_line.len == 0 {
 			return error('invalid chunk size line')
+		}
+		for byte in chunk_size_line {
+			if !((byte >= `0` && byte <= `9`) || (byte >= `a` && byte <= `f`)
+				|| (byte >= `A` && byte <= `F`)) {
+				return error('invalid chunk size line')
+			}
 		}
 		chunk_size_u64 := strconv.parse_uint(chunk_size_line, 16, 64) or {
 			return error('invalid chunk size line')
@@ -179,6 +262,9 @@ fn read_chunked_request_body(mut reader io.BufferedReader) !string {
 				}
 			}
 		}
+		if max_request_body_size > 0 && chunk_size > max_request_body_size - sb.len {
+			return RequestBodyLimitError{}
+		}
 		mut chunk := []u8{len: chunk_size}
 		read_exact_bytes(mut reader, mut chunk)!
 		sb.write(chunk)!
@@ -194,7 +280,16 @@ fn read_chunked_request_body(mut reader io.BufferedReader) !string {
 fn read_exact_bytes(mut reader io.BufferedReader, mut buf []u8) ! {
 	mut offset := 0
 	for offset < buf.len {
-		offset += reader.read(mut buf[offset..])!
+		n := reader.read(mut buf[offset..]) or {
+			if err is io.Eof {
+				return error('unexpected end of request body')
+			}
+			return err
+		}
+		if n <= 0 {
+			return error('unexpected end of request body')
+		}
+		offset += n
 	}
 }
 
@@ -333,10 +428,6 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 	mut route := Route{}
 	mut middleware_has_sent_response := false
 	mut not_found := false
-	mut variadic_route := Route{}
-	mut variadic_route_words := []string{}
-	mut variadic_method_name := ''
-	mut variadic_method_args := []string{}
 
 	defer {
 		// execute middleware functions after veb is done and before the response is send
@@ -380,9 +471,15 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 
 	$if veb_livereload ? {
 		if url.path.starts_with('/veb_livereload/') {
-			if url.path.ends_with('current') {
-				user_context.handle_veb_livereload_current()
+			if url.path.ends_with('/events') {
+				user_context.handle_veb_livereload_events()
 				return
+			}
+			$if veb_livereload_polling ? {
+				if url.path.ends_with('current') {
+					user_context.handle_veb_livereload_current()
+					return
+				}
 			}
 			if url.path.ends_with('script.js') {
 				user_context.handle_veb_livereload_script()
@@ -434,35 +531,36 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 		unsafe { prealloc_scope_checkpoint(c'veb before route match') }
 	}
 
-	if is_root_path {
+	if matched := select_route(routes, url.path, host, user_context.Context.req.method) {
+		route = matched.route
+		$if A is MiddlewareApp {
+			if !validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
+				user_context.Context.req.method)) {
+				middleware_has_sent_response = true
+				return
+			}
+		}
+		mut args := matched.params
+		if matched.from_data {
+			data := if user_context.Context.req.method == .get {
+				user_context.Context.query
+			} else {
+				user_context.Context.form
+			}
+			for name in route.parameter_names {
+				args << data[name]
+			}
+		}
 		$for method in A.methods {
-			$if method.name == 'index' && method.return_type is Result {
-				route = (*routes)[method.name] or {
-					eprintln('[veb] parsed attributes for the `${method.name}` are not found, skipping...')
-					Route{}
-				}
-				if user_context.Context.req.method in route.methods
-					&& (route.host == '' || route.host == host)
-					&& (route.path == '/' || route.path == '/index') {
-					$if A is MiddlewareApp {
-						if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
-							user_context.Context.req.method)) == false {
-							middleware_has_sent_response = true
-							return
-						}
-					}
-					can_have_data_args := user_context.Context.req.method == .post
-						|| user_context.Context.req.method == .get
+			$if method.return_type is Result {
+				if method.name == matched.name {
 					$if method.args.len > 1 {
-						if can_have_data_args {
-							mut args := []string{cap: method.args.len + 1}
-							data := if user_context.Context.req.method == .get {
-								user_context.Context.query
-							} else {
-								user_context.Context.form
-							}
-							for param in method.args[1..] {
-								args << data[param.name]
+						if !matched.from_data || user_context.Context.req.method in [
+							.get,
+							.post,
+						] {
+							if !matched.from_data && args.len + 1 != method.args.len {
+								eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${args.len})')
 							}
 							$if trace_prealloc ? {
 								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
@@ -486,181 +584,54 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 			}
 		}
 	}
-
-	url_words := route_path_words(url.path)
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'veb route words parsed') }
-	}
-
-	// Route matching and match route specific middleware as last step
-	$for method in A.methods {
-		$if method.return_type is Result {
-			route = (*routes)[method.name] or {
-				eprintln('[veb] parsed attributes for the `${method.name}` are not found, skipping...')
-				Route{}
-			}
-
-			// Skip if the HTTP request method does not match the attributes
-			if user_context.Context.req.method in route.methods {
-				// Used for route matching
-				route_words := route.words
-
-				// Skip if the host does not match or is empty
-				if route.host == '' || route.host == host {
-					can_have_data_args := user_context.Context.req.method == .post
-						|| user_context.Context.req.method == .get
-					// Route immediate matches first
-					// For example URL `/register` matches route `/:user`, but `fn register()`
-					// should be called first.
-					if !route.path.contains('/:') && url_words == route_words {
-						// We found a match
-						$if A is MiddlewareApp {
-							if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
-								user_context.Context.req.method)) == false {
-								middleware_has_sent_response = true
-								return
-							}
-						}
-						$if method.args.len > 1 {
-							if can_have_data_args {
-								// Populate method args with form or query values
-								mut args := []string{cap: method.args.len + 1}
-								data := if user_context.Context.req.method == .get {
-									user_context.Context.query
-								} else {
-									user_context.Context.form
-								}
-								for param in method.args[1..] {
-									args << data[param.name]
-								}
-								$if trace_prealloc ? {
-									unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-								}
-								app.$method(mut user_context, ...args)
-								$if trace_prealloc ? {
-									unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-								}
-							}
-						} $else {
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-							}
-							app.$method(mut user_context)
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-							}
-						}
-						return
-					}
-
-					if url_words.len == 0 && route_words.len == 1 && route_words[0] == 'index'
-						&& method.name == 'index' {
-						$if A is MiddlewareApp {
-							if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
-								user_context.Context.req.method)) == false {
-								middleware_has_sent_response = true
-								return
-							}
-						}
-
-						$if method.args.len > 1 {
-							if can_have_data_args {
-								// Populate method args with form or query values
-								mut args := []string{cap: method.args.len + 1}
-								data := if user_context.Context.req.method == .get {
-									user_context.Context.query
-								} else {
-									user_context.Context.form
-								}
-								for param in method.args[1..] {
-									args << data[param.name]
-								}
-								$if trace_prealloc ? {
-									unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-								}
-								app.$method(mut user_context, ...args)
-								$if trace_prealloc ? {
-									unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-								}
-							}
-						} $else {
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-							}
-							app.$method(mut user_context)
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-							}
-						}
-						return
-					}
-
-					if params := route_matches(url_words, route_words) {
-						if route_is_variadic(route_words) {
-							if should_prefer_variadic_route(route_words, variadic_route_words) {
-								variadic_route = route
-								variadic_route_words = route_words.clone()
-								variadic_method_name = method.name
-								variadic_method_args = params.clone()
-							}
-						} else {
-							$if A is MiddlewareApp {
-								if validate_middleware[X](mut user_context, get_handlers_for_method(route.middlewares,
-									user_context.Context.req.method)) == false {
-									middleware_has_sent_response = true
-									return
-								}
-							}
-							method_args := params.clone()
-							if method_args.len + 1 != method.args.len {
-								eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
-							}
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-							}
-							app.$method(mut user_context, ...method_args)
-							$if trace_prealloc ? {
-								unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-							}
-							return
-						}
-					}
-				}
-			}
-		}
-	}
-	if variadic_method_name != '' {
-		route = variadic_route
-		$for method in A.methods {
-			$if method.return_type is Result {
-				if method.name == variadic_method_name {
-					$if A is MiddlewareApp {
-						if validate_middleware[X](mut user_context, get_handlers_for_method(variadic_route.middlewares,
-							user_context.Context.req.method)) == false {
-							middleware_has_sent_response = true
-							return
-						}
-					}
-					method_args := variadic_method_args.clone()
-					if method_args.len + 1 != method.args.len {
-						eprintln('[veb] warning: uneven parameters count (${method.args.len}) in `${method.name}`, compared to the veb route `${method.attrs}` (${method_args.len})')
-					}
-					$if trace_prealloc ? {
-						unsafe { prealloc_scope_checkpoint(c'veb before route handler') }
-					}
-					app.$method(mut user_context, ...method_args)
-					$if trace_prealloc ? {
-						unsafe { prealloc_scope_checkpoint(c'veb after route handler') }
-					}
-					return
-				}
-			}
-		}
-	}
 	// return 404
 	user_context.not_found()
 	not_found = true
 	return
+}
+
+// RouteMatch holds runtime routing work shared by all controller types. Only the
+// selected handler's typed invocation remains in handle_route's method loop.
+struct RouteMatch {
+	name      string
+	route     Route
+	params    []string
+	from_data bool
+}
+
+fn select_route(routes &map[string]Route, path string, host string, method http.Method) ?RouteMatch {
+	is_root := path.len == 0 || path == '/'
+	if is_root {
+		if index_route := (*routes)['index'] {
+			if method in index_route.methods && (index_route.host == '' || index_route.host == host)
+				&& index_route.path in ['/', '/index'] {
+				return RouteMatch{ name: 'index', route: index_route, from_data: true }
+			}
+		}
+	}
+	url_words := route_path_words(path)
+	mut variadic_match := RouteMatch{}
+	for name, route in *routes {
+		if method !in route.methods || (route.host != '' && route.host != host) {
+			continue
+		}
+		if (!route.path.contains('/:') && url_words == route.words)
+			|| (url_words.len == 0 && route.words.len == 1 && route.words[0] == 'index' && name == 'index') {
+			return RouteMatch{ name: name, route: route, from_data: true }
+		}
+		if params := route_matches(url_words, route.words) {
+			if !route_is_variadic(route.words) {
+				return RouteMatch{ name: name, route: route, params: params }
+			}
+			if should_prefer_variadic_route(route.words, variadic_match.route.words) {
+				variadic_match = RouteMatch{ name: name, route: route, params: params }
+			}
+		}
+	}
+	if variadic_match.name != '' {
+		return variadic_match
+	}
+	return none
 }
 
 fn route_is_variadic(route_words []string) bool {

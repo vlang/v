@@ -79,8 +79,11 @@ pub mut:
 	files map[string][]http.FileData
 	res   http.Response
 	// use form_error to pass errors from the context to your frontend
-	form_error                  string
-	livereload_poll_interval_ms int = 250
+	form_error string
+	// livereload_poll_interval_ms is not used: veb serves the livereload script
+	// before any user code runs, so it could never be set. With
+	// `-d veb_livereload_polling`, use `-d veb_livereload_poll_ms=<ms>` instead.
+	livereload_poll_interval_ms int = 250 @[deprecated: 'use `-d veb_livereload_poll_ms=<ms>`']
 }
 
 fn clone_response_writer_header(header http.Header) http.Header {
@@ -147,7 +150,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	$if veb_livereload ? {
 		if mimetype == 'text/html' {
 			ctx.res.body = response.replace('</html>',
-				'<script src="/veb_livereload/${veb_livereload_server_start}/script.js"></script>\n</html>')
+				livereload_script_tag(ctx.req.method.str()) + '\n</html>')
 		} else {
 			ctx.res.body = response.clone()
 		}

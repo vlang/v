@@ -87,6 +87,8 @@ pub:
 	boundary    string
 }
 
+// Attachment is a MIME attachment. CR and LF are removed from its filename and cid.
+// Filename quotes and backslashes are escaped when writing the MIME parameter.
 pub struct Attachment {
 pub:
 	cid      string
@@ -995,12 +997,17 @@ fn write_attachments(mut sb strings.Builder, attachments []Attachment, boundary 
 
 fn (a &Attachment) to_string() string {
 	crlf := '\r\n'
+	// Filenames and content ids come from the caller (often a user-supplied
+	// upload name) and are interpolated verbatim into the MIME headers below,
+	// so strip CR and LF the same way strip_crlf() does for other header
+	// values: otherwise they inject arbitrary headers or terminate DATA.
+	filename := quote_name(strip_crlf(a.filename))
 	cid := if a.cid != '' {
-		'Content-ID: <${a.cid}>${crlf}'
+		'Content-ID: <${strip_crlf(a.cid)}>${crlf}'
 	} else {
 		''
 	}
-	return 'Content-Type: application/octet-stream${crlf}${cid}Content-Transfer-Encoding: base64${crlf}Content-Disposition: attachment; filename="${a.filename}"${crlf}${crlf}${fold_base64(base64.encode(a.bytes))}'
+	return 'Content-Type: application/octet-stream${crlf}${cid}Content-Transfer-Encoding: base64${crlf}Content-Disposition: attachment; filename=${filename}${crlf}${crlf}${fold_base64(base64.encode(a.bytes))}'
 }
 
 fn fold_base64(encoded string) string {
