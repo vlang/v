@@ -2224,6 +2224,7 @@ fn (mut t Transformer) append_implicit_err_decl(mut stmts []flat.NodeId, err_exp
 	}
 	stmts << t.make_guard_value_decls('err', err_expr, 'IError')
 	i := t.var_type_index('err')
+	t.clear_node_type_memo()
 	t.var_types[i] = VarTypeBinding{
 		...t.var_types[i]
 		is_implicit_err: true

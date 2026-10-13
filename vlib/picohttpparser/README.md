@@ -10,3 +10,5 @@ which in turn is "a tiny, primitive, fast HTTP request/response parser."
 Header names accept ASCII letters, digits, and the HTTP token punctuation
 `!#$%&'*+-.^_` followed by backtick, `|`, and `~`. Spaces, other separators, control bytes,
 and non-ASCII bytes are rejected. A colon separates the header name from its value.
+
+Request parsing accepts one leading CRLF and counts it in the consumed byte total.
