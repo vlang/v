@@ -33,9 +33,15 @@ More examples found on [`parser_test.v`](parser_test.v) and [`html_test.v`](html
 Calling `get_tag_by_class_name` without class names returns `none`;
 `get_tags_by_class_name` without class names returns an empty array.
 
+Script and style elements preserve their raw bodies in `tag.content` and when serialized with
+`tag.str()`. Text following a closing script or style tag belongs to the surrounding document.
+
 Document searches include the root element in name, class, and attribute matches. Class searches
 match all supplied class names and return elements in document order. Searches on a `Tag` inspect
 only its descendants.
+
 Attribute searches match attributes by presence, including boolean attributes such as `disabled`
 and attributes with an empty value. Searching for an empty value matches only tags that have the
 attribute. Searches on a `Tag` recursively inspect its children.
+
+Unterminated script and style elements retain their collected body when parsing ends.
