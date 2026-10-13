@@ -201,3 +201,8 @@ time on a channel: see the `sync` module.
 value passed by json2. Unix timestamp strings contain decimal digits with an optional leading
 minus and must fit in `i64`. Empty, malformed, and overflowing values return an error.
 `clean12()` uses a single-digit hour when appropriate, followed by `a.m.` or `p.m.`.
+
+`unix_milli`, `unix_micro` and `unix_nano` round the seconds component down for negative
+timestamps, keeping `Time.nanosecond` in `0 .. 999_999_999`. `unix_nanosecond` and
+`unix_microsecond` carry out-of-range subsecond arguments into the seconds component.
+`Location.unix_nanosecond_to_local` applies the same normalization before choosing the zone.
