@@ -95,6 +95,11 @@ fn (mut zftp FTP) read() !(int, string) {
 	if data[3] == `-` {
 		for {
 			data = zftp.reader.read_line()!
+			// a continuation line has to carry the 3 digit code and a
+			// separator, anything shorter is malformed
+			if data.len < 4 {
+				return 0, ''
+			}
 			if data[..3].int() == code && data[3] != `-` {
 				break
 			}
@@ -267,20 +272,31 @@ pub fn (mut zftp FTP) get(file string) ![]u8 {
 fn is_dtp_message_valid(msg string) bool {
 	// An example of message:
 	// '227 Entering Passive Mode (209,132,183,61,48,218)'
-	return msg.contains('(') && msg.contains(')') && msg.contains(',')
+	par_start_idx := msg.index('(') or { return false }
+	par_end_idx := msg.last_index(')') or { return false }
+	if par_start_idx >= par_end_idx {
+		return false
+	}
+	data := msg[par_start_idx + 1..par_end_idx].split(',')
+	if data.len != 6 {
+		return false
+	}
+	for field in data {
+		if field.trim_space().len == 0 || !field.trim_space().is_int() {
+			return false
+		}
+	}
+	return true
 }
 
 fn get_host_ip_from_dtp_message(msg string) (string, int) {
-	mut par_start_idx := -1
-	mut par_end_idx := -1
-	for i, c in msg {
-		if c == `(` {
-			par_start_idx = i + 1
-		} else if c == `)` {
-			par_end_idx = i
-		}
+	// the caller validated the shape with is_dtp_message_valid
+	par_start_idx := msg.index('(') or { return '', 0 }
+	par_end_idx := msg.last_index(')') or { return '', 0 }
+	data := msg[par_start_idx + 1..par_end_idx].split(',')
+	if data.len != 6 {
+		return '', 0
 	}
-	data := msg[par_start_idx..par_end_idx].split(',')
 	ip := data[0..4].join('.')
 	port := data[4].int() * 256 + data[5].int()
 	return ip, port
