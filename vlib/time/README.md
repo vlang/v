@@ -201,3 +201,7 @@ time on a channel: see the `sync` module.
 value passed by json2. Unix timestamp strings contain decimal digits with an optional leading
 minus and must fit in `i64`. Empty, malformed, and overflowing values return an error.
 `clean12()` uses a single-digit hour when appropriate, followed by `a.m.` or `p.m.`.
+
+Dates before year 1 use the proleptic Gregorian calendar with astronomical year numbering: year
+0 is 1 BC and is a leap year. Unix timestamp and day-offset conversions preserve dates at the
+400-year cycle boundaries before year 0, including March 1 and 2 of years -400, -800 and -1200.
