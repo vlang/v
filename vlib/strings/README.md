@@ -10,3 +10,8 @@ including repeated writes. Valid Unicode scalar values retain their UTF-8 encodi
 
 `levenshtein_distance_percentage` returns 100 for identical strings, including two empty strings.
 An empty string compared with a nonempty string returns zero.
+
+Builder buffer methods clamp requested byte ranges to the stored buffer. Negative counts to
+`go_back` or `cut_last` do nothing; counts beyond its length discard or return the whole buffer.
+`go_back_to` and `cut_to` treat negative positions as zero and leave positions past the end alone.
+`spart` returns only the intersection of the requested range with the buffer.
