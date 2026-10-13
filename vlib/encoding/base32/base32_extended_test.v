@@ -3,8 +3,7 @@
 // padding modes, and the decode strictness rules.
 //
 // The vectors are the published ones from RFC 4648 section 10. Everything else
-// asserts measured behaviour; anything that looks wrong is pinned with a NOTE
-// rather than changed.
+// retains current master validation, including rejecting bytes outside the alphabet.
 import encoding.base32
 
 struct Vector {
@@ -187,14 +186,14 @@ fn test_decode_error_messages_name_the_offset() {
 	}
 }
 
-// NOTE: additional padding past the documented amount is accepted, and it
-// appends a spurious 0x00 byte, because `MY` alone is only a 2-character
-// quantum and the extra `=` characters are read as further data characters.
-// This is current behaviour, not intended behaviour.
-fn test_decode_accepts_extra_padding() {
+// Extra padding after a complete quantum is currently accepted, but a padding
+// byte read as a data symbol is rejected by the alphabet validation.
+fn test_decode_padding_bytes_are_not_data_symbols() {
 	assert base32.decode('MZXW6===='.bytes())!.bytestr() == 'foo'
 	assert base32.decode('MZXW6====='.bytes())!.bytestr() == 'foo'
-	assert base32.decode('MY=========='.bytes())! == [u8(0x66), 0x00]
+	if _ := base32.decode('MY=========='.bytes()) {
+		assert false, 'padding read as a data symbol must be rejected'
+	}
 }
 
 // The doc comment on `decode` says "\r and \n are ignored", and now the
@@ -204,28 +203,22 @@ fn test_decode_ignores_newlines() {
 	assert base32.decode('\nMZXW6===\n'.bytes())! == 'foo'.bytes()
 }
 
-// NOTE: the decoder only reports the 0xFF sentinel, which nothing in the
-// decode map ever produces, so a byte outside the alphabet is silently read
-// as digit 0 (`A` in the std alphabet) rather than rejected. `MZX?6===`
-// decodes to 666e0f instead of erroring. Pinned as-is.
-fn test_decode_does_not_reject_bytes_outside_the_alphabet() {
-	assert base32.decode('MZX?6==='.bytes())! == [u8(0x66), 0x6e, 0x0f]
-	// The same is true of the hex alphabet, where the unknown byte lands on
-	// digit 0 and corrupts the final byte: 0x6f becomes 0x60.
-	hex_encoding := base32.new_encoding(base32.hex_alphabet)
-	assert hex_encoding.decode('CPNM?==='.bytes())! == [u8(0x66), 0x6f, 0x60]
-	assert hex_encoding.decode('CPNMU==='.bytes())! == 'foo'.bytes()
-	// Whether the corruption surfaces as an error at all depends on how the
-	// padding arithmetic lands out, so the same class of input sometimes
-	// errors and sometimes does not.
-	if _ := base32.decode('MZXW?6==='.bytes()) {
-		assert false, 'this input currently errors, and must stay that way'
+fn test_decode_rejects_bytes_outside_the_alphabet() {
+	for source in ['MZX?6===', 'MZXW?6==='] {
+		if _ := base32.decode(source.bytes()) {
+			assert false, source
+		}
 	}
+	hex_encoding := base32.new_encoding(base32.hex_alphabet)
+	if _ := hex_encoding.decode('CPNM?==='.bytes()) {
+		assert false, 'unknown byte in hex alphabet must be rejected'
+	}
+	assert hex_encoding.decode('CPNMU==='.bytes())! == 'foo'.bytes()
 }
 
-// NOTE: RFC 4648 section 6 defines base32 as case sensitive, but a decoder
-// that silently maps unknown bytes to 0 turns lowercase input into wrong
-// bytes rather than an error. `mzxw6===` decodes to 00000f, not `foo`.
+// Standard base32 is case sensitive; lowercase input is outside its alphabet.
 fn test_decode_does_not_case_fold() {
-	assert base32.decode('mzxw6==='.bytes())! == [u8(0x00), 0x00, 0x0f]
+	if _ := base32.decode('mzxw6==='.bytes()) {
+		assert false, 'lowercase input must be rejected'
+	}
 }
