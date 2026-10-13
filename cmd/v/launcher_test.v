@@ -17,13 +17,13 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 fn test_v1_fallback_drops_private_restart_options() {
 	warning := '-v3-internal-implicit-tcc-warning=warning: implicit tcc failed'
 	assert v1_fallback_args([warning, '-v3-internal-parser-diagnostics-printed',
-		'-macos-v3-internal-quiet', '-macos-v3-compat-c99', '-show-timings', '-cc', 'cc', 'main.v',
-		warning]) == ['-show-timings', '-cc', 'cc', 'main.v']
+		'-v3-internal-force-cache-source', '-macos-v3-internal-quiet', '-macos-v3-compat-c99',
+		'-show-timings', '-cc', 'cc', 'main.v', warning]) == ['-show-timings', '-cc', 'cc', 'main.v']
 }
 
 fn test_v1_fallback_preserves_private_option_names_in_values() {
 	for private_option in ['-v3-internal-implicit-tcc-warning=message',
-		'-v3-internal-parser-diagnostics-printed'] {
+		'-v3-internal-parser-diagnostics-printed', '-v3-internal-force-cache-source'] {
 		for option in ['-o', '-cf', '-cflags', '-ldflags', '-d'] {
 			args := [option, private_option, 'main.v']
 			assert v1_fallback_args(args) == args
@@ -35,7 +35,8 @@ fn test_v1_fallback_preserves_private_option_names_in_values() {
 
 fn test_v1_fallback_preserves_private_option_names_in_program_arguments() {
 	private_args := ['-v3-internal-implicit-tcc-warning=message',
-		'-v3-internal-parser-diagnostics-printed', '-macos-v3-internal-quiet', '-macos-v3-compat-c99']
+		'-v3-internal-parser-diagnostics-printed', '-v3-internal-force-cache-source',
+		'-macos-v3-internal-quiet', '-macos-v3-compat-c99']
 	for prefix in [
 		['run', 'main.v'],
 		['run', 'run'],
@@ -131,6 +132,22 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 		'-verify',
 		'file.v',
 	]
+}
+
+fn test_retry_runtime_args_preserve_a_command_named_retry() {
+	assert external_tool_runtime_args('retry', []string{}, ['retry', '-r', '1', '--', 'retry',
+		'argument']) == ['-r', '1', '--', 'retry', 'argument']
+	assert external_tool_runtime_args('retry', []string{}, ['retry', 'retry', 'argument']) == [
+		'retry',
+		'argument',
+	]
+	assert external_tool_runtime_args('retry', []string{}, ['retry']) == []string{}
+}
+
+fn test_tools_that_own_their_name_receive_only_their_arguments() {
+	for name in ['cover', 'diff', 'download', 'gret', 'repeat', 'time', 'timeout'] {
+		assert external_tool_runtime_args(name, []string{}, [name, '--version']) == ['--version'], name
+	}
 }
 
 fn test_formatter_backend_options_are_runtime_preferences() {
