@@ -142,6 +142,12 @@ fn main() {
 		eprintln('unknown option `-usecache`; caching is enabled by default, use `-nocache` to disable it')
 		exit(1)
 	}
+	// TinyCC is not a -prod compiler. Refuse the pair before any compiler starts, including the
+	// compatibility compiler that `-old-compiler` selects.
+	if pref.tcc_with_prod_requested(compiler_args) {
+		eprintln('tcc is not allowed with -prod')
+		exit(1)
+	}
 	if command in ['version', '-version', '--version'] {
 		println('V ${v_version} ${@VCURRENTHASH}')
 		return

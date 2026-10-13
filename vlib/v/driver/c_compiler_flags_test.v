@@ -135,7 +135,7 @@ fn test_module_cache_refresh_reads_only_project_flags_in_refresh_children() ! {
 	assert v3_cache_refresh_project_flags()! == []cache_refresh.FlagGroup{}
 }
 
-fn test_cached_tcc_main_command_preserves_production_optimization() ! {
+fn test_cached_tcc_main_command_refuses_production_mode() ! {
 	compiler := v3_driver_test_executable()
 	if !os.is_executable(os.join_path(os.dir(compiler), 'thirdparty', 'tcc', 'tcc.exe')) { return }
 	root := os.join_path(os.vtmp_dir(), 'vup_tcc_optimization_${os.getpid()}')
@@ -154,7 +154,14 @@ fn test_cached_tcc_main_command_preserves_production_optimization() ! {
 	for name in ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH'] { os.unsetenv(name) }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'import math\nfn main() { println(math.abs(-3.0)) }\n')!
-	for mode in [[]string{}, ['-prod'], ['-prod', '-no-prod-options']] {
+	// TinyCC is not a -prod compiler, so the same build with -prod stops before compiling.
+	for mode in [['-prod'], ['-prod', '-no-prod-options']] {
+		refused := os.exec([compiler, '-cc', 'tcc', '-gc', 'none', '-showcc', ...mode, '-o',
+			os.join_path(root, 'program'), source])
+		assert refused.exit_code == 1, refused.output
+		assert refused.output.contains('tcc is not allowed with -prod'), refused.output
+	}
+	for mode in [[]string{}] {
 		result := os.exec([compiler, '-cc', 'tcc', '-gc', 'none', '-showcc', ...mode, '-o',
 			os.join_path(root, 'program'), source])
 		assert result.exit_code == 0, result.output
@@ -553,7 +560,8 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 		host_target:   windows_target
 		target:        windows_target
 	})
-	// An explicit `-cc tcc` still wins with -prod on Windows.
+	// The probe still finds the bundled TinyCC for an explicit `-cc tcc` with -prod on Windows;
+	// the driver then refuses that build (see v3_tcc_prod_rejected).
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
 		is_prod:             true
@@ -563,6 +571,14 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 		host_target:         windows_target
 		target:              windows_target
 	})
+}
+
+fn test_v3_tcc_prod_rejected_only_for_a_prod_c_build_that_resolves_to_tinycc() {
+	assert v3_tcc_prod_rejected(true, 'c', 'tinyc')
+	assert !v3_tcc_prod_rejected(true, 'c', 'gcc')
+	assert !v3_tcc_prod_rejected(true, 'c', 'clang')
+	assert !v3_tcc_prod_rejected(true, 'arm64', 'tinyc')
+	assert !v3_tcc_prod_rejected(false, 'c', 'tinyc')
 }
 
 fn test_v3_windows_prod_msvc_ready_needs_a_matching_developer_environment() {
