@@ -115,3 +115,35 @@ fn test_digest_hashes_a_second_message() {
 	d.write('abc'.bytes()) or { panic(err) }
 	assert d.checksum() == sha3.sum256('abc'.bytes())
 }
+
+fn test_digest_reset_boundaries_and_variants() {
+	for size, rate in {
+		sha3.size_224: sha3.rate_224
+		sha3.size_256: sha3.rate_256
+		sha3.size_384: sha3.rate_384
+		sha3.size_512: sha3.rate_512
+	} {
+		for padding in [sha3.Padding.sha3, .keccak] {
+			mut d := sha3.new_digest(rate, size, padding: padding)!
+			for length in [0, rate - 1, rate, rate + 1, rate * 3 + 1] {
+				data := []u8{len: length, init: u8(index)}
+				mut fresh := sha3.new_digest(rate, size, padding: padding)!
+				fresh.write(data)!
+				d.write(data[..length / 2])!
+				d.write(data[length / 2..])!
+				assert d.checksum() == fresh.checksum()
+			}
+			d.write('discard'.bytes())!
+			d.reset()
+			mut fresh := sha3.new_digest(rate, size, padding: padding)!
+			assert d.checksum() == fresh.checksum()
+			assert d.checksum() == fresh.checksum()
+		}
+	}
+	// Extended-output digests preserve their output size and absorption rate on reset.
+	mut xof := sha3.new128xof(sha3.xof_rate_128 * 2 + 1)!
+	xof.write('message'.bytes())!
+	first := xof.checksum()
+	xof.write('message'.bytes())!
+	assert xof.checksum() == first
+}
