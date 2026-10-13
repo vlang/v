@@ -377,6 +377,11 @@ pub fn (mut ws Client) close(code int, message string) ! {
 // send_control_frame sends a control frame to the server
 fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []u8) ! {
 	ws.debug_log('send control frame ${code}, frame_type: ${frame_typ}')
+	// RFC 6455 limits control frame payloads to 125 bytes; a longer payload
+	// would not fit in the 7 bit length field of the frame header
+	if payload.len > 125 {
+		return error('control frame payload exceeds 125 bytes')
+	}
 	if ws.get_state() !in [.open, .closing] && ws.conn.sock.handle > 1 {
 		return error('socket is not connected')
 	}
