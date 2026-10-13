@@ -209,6 +209,61 @@ fn test_v_self_accepts_fastc_backend() {
 	assert run.output.trim_space() == '42'
 }
 
+fn test_fastc_self_prefix_builds_repeated_generations() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc self prefix ${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for directory in ['cmd', 'vlib', 'thirdparty'] {
+		os.symlink(os.join_path(fastc_backend_vroot, directory), os.join_path(root, directory)) or {
+			panic(err)
+		}
+	}
+	compiler := os.join_path(root, 'v')
+	os.cp(@VEXE, compiler) or { panic(err) }
+	build := run_with_v_environment(compiler, ['-b', 'fastc', 'self', 'x3'], '', compiler)
+	assert build.exit_code == 0, build.output
+	assert build.output.count('V self compiling') == 3, build.output
+	assert build.output.contains('-b fastc'), build.output
+	assert os.is_executable(compiler)
+	repeated := run_with_v_environment(compiler, ['-nocache', 'self', 'x2'], '', compiler)
+	assert repeated.exit_code == 0, repeated.output
+	assert repeated.output.count('V self compiling') == 2, repeated.output
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'fastc_self_prefix' }") or {
+		panic(err)
+	}
+	// The resulting compiler must also retain native inputs and split linker flags.
+	os.mkdir_all(os.join_path(root, 'native libraries')) or { panic(err) }
+	os.write_file(os.join_path(root, 'native.c'), 'int native_answer(void) { return 42; }\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'native.h'), 'int native_answer(void);\n') or {
+		panic(err)
+	}
+	source := os.join_path(root, 'main.c.v')
+	write_fastc_test_source(source, r'module main
+#flag "@VMODROOT/native.c"
+#flag -L "@VMODROOT/native libraries"
+#include "@VMODROOT/native.h"
+fn C.native_answer() int
+__global native_calls int
+fn main() {
+	native_calls = C.native_answer()
+	println(native_calls)
+}
+')
+	program := os.join_path(root, 'program')
+	compile := cmdexec.run(compiler, ['-nocache', '-enable-globals', '-o', program, root])
+	assert compile.exit_code == 0, compile.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42', run.output
+}
+
 fn test_fastc_backend_parses_directly_to_c_without_ast_fallback() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_backend_${os.getpid()}')
 	os.rmdir_all(root) or {}
