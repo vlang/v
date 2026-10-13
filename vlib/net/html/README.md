@@ -32,3 +32,6 @@ More examples found on [`parser_test.v`](parser_test.v) and [`html_test.v`](html
 
 Calling `get_tag_by_class_name` without class names returns `none`;
 `get_tags_by_class_name` without class names returns an empty array.
+
+Script and style elements preserve their raw bodies in `tag.content` and when serialized with
+`tag.str()`. Text following a closing script or style tag belongs to the surrounding document.

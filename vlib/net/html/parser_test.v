@@ -83,3 +83,33 @@ fn test_parse_script_and_style_keep_their_body() {
 	assert parser.tags.first().content == 'keep me'
 	assert parser.tags.first().str() == '<textarea>keep me</textarea>'
 }
+
+fn test_code_body_stays_separate_from_following_text() {
+	for sample in ['<div><script>let x = 1;</script>after<p>end</p></div>',
+		'<div><style>p { color: red; }</style>after</div>'] {
+		mut dom := parse(sample)
+		root := dom.get_root()
+		assert root.str() == sample
+		assert root.children[0].content.ends_with('after') == false
+		assert root.children[1].name == 'text'
+		assert root.children[1].content == 'after'
+	}
+	mut parser := Parser{}
+	parser.split_parse('<script>a();</script>after')
+	parser.finalize()
+	assert parser.tags.len == 2
+	assert parser.tags[0].content == 'a();'
+	assert parser.tags[1].name == 'text'
+	assert parser.tags[1].content == 'after'
+}
+
+fn test_split_code_body_is_preserved() {
+	mut parser := Parser{}
+	parser.split_parse('<script>a\n')
+	parser.split_parse('b</scr')
+	parser.split_parse('ipt><style>x</style>')
+	parser.finalize()
+	assert parser.tags.len == 2
+	assert parser.tags[0].content == 'a\nb'
+	assert parser.tags[1].content == 'x'
+}
