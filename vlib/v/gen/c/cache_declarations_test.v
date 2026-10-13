@@ -8,8 +8,17 @@ fn test_final_cached_signatures_declare_tuple_payloads_before_wrappers() {
 		mut a := flat.FlatAst.new()
 		fn_id := a.add_node(flat.Node{ kind: .fn_decl, value: 'pair' })
 		mut tc := types.TypeChecker.new(&a)
+		tc.structs['dep.Box'] = [types.StructField{
+			name: 'child'
+			typ:  types.Struct{ name: 'dep.Child' }
+		}]
+		tc.structs['dep.Child'] = [types.StructField{
+			name: 'value'
+			typ:  types.int_
+		}]
+		tc.structs['dep.Unused'] = []types.StructField{}
 		payload := types.Type(types.MultiReturn{
-			types: [types.Type(types.string_), types.Type(types.string_)]
+			types: [types.Type(types.Struct{ name: 'dep.Box' }), types.Type(types.string_)]
 		})
 		tc.fn_ret_types['dep.pair'] = if is_result {
 			types.Type(types.ResultType{ base_type: payload })
@@ -28,13 +37,18 @@ fn test_final_cached_signatures_declare_tuple_payloads_before_wrappers() {
 		]
 		g.gen_type_declaration_block()
 		output := g.sb.str()
-		tuple_position := output.index('struct multi_return_string_string {') or { -1 }
+		child_position := output.index('struct dep__Child {') or { -1 }
+		box_position := output.index('struct dep__Box {') or { -1 }
+		tuple_position := output.index('struct multi_return_dep__Box_string {') or { -1 }
 		wrapper := if is_result { '__v_result' } else { '__v_option' }
-		wrapper_position := output.index('typedef struct ${wrapper}_multi_return_string_string') or {
+		wrapper_position := output.index('typedef struct ${wrapper}_multi_return_dep__Box_string') or {
 			-1
 		}
-		assert tuple_position >= 0, output
+		assert child_position >= 0, output
+		assert box_position > child_position, output
+		assert tuple_position > box_position, output
 		assert wrapper_position > tuple_position, output
+		assert !output.contains('dep__Unused'), output
 	}
 }
 

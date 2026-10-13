@@ -6691,6 +6691,7 @@ fn auto_str_helper_name(aggregate string) string {
 }
 
 fn (t &Transformer) auto_str_helper_owner_module(aggregate string) string {
+	base_name := aggregate.all_before('[')
 	if !isnil(t.tc) {
 		if module_name := t.tc.struct_modules[aggregate] {
 			return module_name
@@ -6700,9 +6701,9 @@ fn (t &Transformer) auto_str_helper_owner_module(aggregate string) string {
 		}
 		// Bare interfaces belong to main or builtin, even when a library
 		// specialization requests their recursive stringification helper.
-		if !aggregate.contains('.') {
+		if !base_name.contains('.') {
 			for node in t.a.nodes {
-				if node.kind != .interface_decl || node.value != aggregate {
+				if node.kind != .interface_decl || node.value != base_name {
 					continue
 				}
 				if source := t.a.source_files[node.pos.id] {
@@ -6728,8 +6729,8 @@ fn (t &Transformer) auto_str_helper_owner_module(aggregate string) string {
 			}
 		}
 	}
-	if !aggregate.starts_with('C.') && aggregate.contains('.') {
-		return aggregate.all_before_last('.')
+	if !base_name.starts_with('C.') && base_name.contains('.') {
+		return base_name.all_before_last('.')
 	}
 	return if t.cur_module.len > 0 { t.cur_module } else { 'main' }
 }

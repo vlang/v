@@ -870,8 +870,11 @@ fn test_auto_str_helper_uses_interface_declaration_module() {
 		}
 		value := t.make_ident('view')
 		t.stringify_stack << 'Wrapper'
-		t.request_auto_str_helper(value, name)
-		assert t.auto_str_types[name].helper_module == owner
+		for suffix in ['', '[int]', '[pkg.Item]'] {
+			application := name + suffix
+			t.request_auto_str_helper(value, application)
+			assert t.auto_str_types[application].helper_module == owner, application
+		}
 	}
 }
 

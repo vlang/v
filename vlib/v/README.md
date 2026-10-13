@@ -482,9 +482,11 @@ Literal-output programs still instantiate retained generic helpers with `-no-ski
 Merged imports in cached headers do not create parameter-name conflicts across source files.
 Warm builds retain every `IError` implementer's `msg` and `code` methods and their helpers,
 including calls made by dispatchers inside cached objects.
-Selected option/result tuple signatures declare their payload layouts before their wrappers.
+Selected option/result tuple signatures retain nested struct payload layouts, including signatures
+discovered after cache demand collection, and declare them before their tuples and wrappers.
 Shared wrappers retain their payload layouts even when only compile-time reflection visits them.
-Recursive interface string helpers belong to the interface's declaration module.
+Recursive interface string helpers belong to the interface's declaration module, including generic
+applications whose arguments name types from other modules.
 Warm builds preserve generic interface parameter metadata after temporary compiler arenas are freed.
 Translated programs regenerate their C prefixes after body edits so new runtime helpers are present;
 their module and executable caches remain enabled.

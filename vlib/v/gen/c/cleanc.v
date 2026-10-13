@@ -4148,6 +4148,12 @@ fn (mut g FlatGen) gen_type_declaration_block() {
 	// The final function selection can add wrapped tuple signatures after cache
 	// demand collection. Discover them before emitting their payload layouts.
 	g.collect_selected_declaration_signature_types()
+	if g.cache_decl_demand {
+		mut seen := map[string]bool{}
+		for typ in g.multi_return_types {
+			g.cache_require_declaration_type(typ, mut seen)
+		}
+	}
 	g.enum_decls()
 	g.type_forward_decls()
 	g.type_alias_decls(false)
