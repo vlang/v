@@ -129,8 +129,13 @@ pub fn (mut parser Parser) split_parse(data string) {
 					parser.lexical_attributes.open_code = false
 					// modify lexeme_builder to include script text as content in the next loop
 					parser.lexical_attributes.lexeme_builder.go_back(name_close_tag.len)
+					// the builder now holds exactly the body, since it was reset
+					// when the opening tag closed; keep it as the tag content
+					parser.lexical_attributes.current_tag.content = parser.builder_str()
 					parser.lexical_attributes.current_tag.closed = true
 					parser.lexical_attributes.current_tag.close_type = .new_tag
+					parser.lexical_attributes.lexeme_builder.go_back_to(0)
+					parser.generate_tag()
 				}
 			}
 		} else if parser.lexical_attributes.open_comment {
@@ -222,6 +227,9 @@ pub fn (mut parser Parser) split_parse(data string) {
 					&& !blank_string(temp_string) {
 					parser.lexical_attributes.text_after_tag = true
 				} else {
+					if parser.lexical_attributes.current_tag.name == '' {
+						parser.lexical_attributes.current_tag.name = 'text'
+					}
 					parser.lexical_attributes.current_tag.content = temp_string // verify later who has this content
 				}
 			}
@@ -272,21 +280,33 @@ pub fn (mut parser Parser) parse_html(data string) {
 		// After `split_into_lines()` we need to add `\n` again.
 		parser.split_parse(if index < lines.len - 1 { '${line}\n' } else { line })
 	}
-	parser.generate_tag()
+	parser.finalize()
 	parser.dom.debug_file = parser.debug_file
 	parser.dom.construct(parser.tags)
 }
 
-// finalize finishes the parsing stage .
+// finalize flushes pending text and finishes the parsing stage.
 @[inline]
 pub fn (mut parser Parser) finalize() {
+	if parser.lexical_attributes.open_code {
+		parser.lexical_attributes.current_tag.content = parser.builder_str()
+		parser.lexical_attributes.lexeme_builder.go_back_to(0)
+		parser.lexical_attributes.open_code = false
+	}
+	if !parser.lexical_attributes.open_code && !parser.lexical_attributes.open_tag
+		&& parser.lexical_attributes.current_tag.name == ''
+		&& parser.lexical_attributes.lexeme_builder.len > 0 {
+		parser.lexical_attributes.current_tag.name = 'text'
+		parser.lexical_attributes.current_tag.content = parser.builder_str()
+		parser.lexical_attributes.lexeme_builder.go_back_to(0)
+	}
 	parser.generate_tag()
 }
 
 // get_dom returns the parser's current DOM representation.
 pub fn (mut parser Parser) get_dom() DocumentObjectModel {
 	if !parser.dom.constructed {
-		parser.generate_tag()
+		parser.finalize()
 		parser.dom.construct(parser.tags)
 	}
 	return parser.dom

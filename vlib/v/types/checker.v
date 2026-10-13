@@ -1188,6 +1188,12 @@ mut:
 	static_associated_signature_count int = -1
 	declaration_param_mutability      map[string][]bool
 	strict_map_index_files            map[string]bool
+	// transform_static_method_names is static_associated_method_names taken again from
+	// the signatures a batch of function bodies starts with: transform registers
+	// signatures as it goes, which leaves the checked index behind for good.
+	// transform_static_method_count is the number of signatures it lists, -1 for none.
+	transform_static_method_names map[string]bool
+	transform_static_method_count int = -1
 	// short fn name -> first declaring top-level node index, in declaration
 	// order (mirrors the expr_raw_fn_type_text scan's first-match rule).
 	fn_decl_short_name_ids map[string]int
@@ -1569,6 +1575,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		static_associated_fn_keys:             tc.static_associated_fn_keys
 		static_associated_method_names:        tc.static_associated_method_names
 		static_associated_signature_count:     tc.static_associated_signature_count
+		transform_static_method_names:         tc.transform_static_method_names
+		transform_static_method_count:         tc.transform_static_method_count
 		declaration_param_mutability:          tc.declaration_param_mutability
 		strict_map_index_files:                tc.strict_map_index_files
 		fn_decl_short_name_ids:                tc.fn_decl_short_name_ids
