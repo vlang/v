@@ -288,6 +288,11 @@ pub fn (mut parser Parser) parse_html(data string) {
 // finalize flushes pending text and finishes the parsing stage.
 @[inline]
 pub fn (mut parser Parser) finalize() {
+	if parser.lexical_attributes.open_code {
+		parser.lexical_attributes.current_tag.content = parser.builder_str()
+		parser.lexical_attributes.lexeme_builder.go_back_to(0)
+		parser.lexical_attributes.open_code = false
+	}
 	if !parser.lexical_attributes.open_code && !parser.lexical_attributes.open_tag
 		&& parser.lexical_attributes.current_tag.name == ''
 		&& parser.lexical_attributes.lexeme_builder.len > 0 {

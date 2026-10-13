@@ -38,3 +38,5 @@ Script and style elements preserve their raw bodies in `tag.content` and when se
 Attribute searches match attributes by presence, including boolean attributes such as `disabled`
 and attributes with an empty value. Searching for an empty value matches only tags that have the
 attribute. Searches on a `Tag` recursively inspect its children.
+
+Unterminated script and style elements retain their collected body when parsing ends.

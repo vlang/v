@@ -113,3 +113,18 @@ fn test_split_code_body_is_preserved() {
 	assert parser.tags[0].content == 'a\nb'
 	assert parser.tags[1].content == 'x'
 }
+
+fn test_unterminated_code_body_is_preserved_at_eof() {
+	for name in ['script', 'style'] {
+		mut parser := Parser{}
+		parser.parse_html('<${name}>raw <text>\nkept')
+		assert parser.tags.len == 1
+		assert parser.tags[0].content == 'raw <text>\nkept'
+	}
+	mut streaming := Parser{}
+	streaming.split_parse('<script>first')
+	streaming.split_parse(' second')
+	dom := streaming.get_dom()
+	assert dom.get_root().name == 'script'
+	assert dom.get_root().content == 'first second'
+}
