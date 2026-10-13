@@ -280,7 +280,8 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool, all_functions bool, allow_trivial_literal_output bool, prepared &PreparedMarkusedDecls, library_body_checker voidptr, library_check_parallel bool) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
 	trivial_literal_output := allow_trivial_literal_output && !cache_mode && cache_modules.len == 0
-		&& test_files.len == 0 && is_trivial_literal_output_program(a, tc.diagnostic_files)
+		&& test_files.len == 0 && !all_functions
+		&& is_trivial_literal_output_program(a, tc.diagnostic_files)
 	// An exact literal-output program has no user expressions or declarations that
 	// can instantiate a generic. Skip generic indexes and per-node generic checks,
 	// just as the known non-generic self-host path does.

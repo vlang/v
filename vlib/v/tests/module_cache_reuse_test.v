@@ -238,7 +238,7 @@ fn test_default_cache_keeps_the_closure_runtime_when_module_bodies_are_not_parse
 	}
 }
 
-fn test_tcc_retries_programs_that_cannot_use_cached_declarations() {
+fn test_tcc_uses_cached_declarations_for_anonymous_and_fixed_arrays() {
 	$if !linux && !macos {
 		return
 	}
@@ -257,10 +257,13 @@ fn test_tcc_retries_programs_that_cannot_use_cached_declarations() {
 		os.setenv('V3CACHE', os.join_path(root, 'cache${i}'), true)
 		for fixture in fixtures {
 			os.write_file(main_file, os.read_file(os.join_path(@VEXEROOT, 'vlib/v/tests', fixture))!)!
-			for _ in 0 .. 2 {
+			for iteration in 0 .. 2 {
 				output := build(root, flags, main_file, 'program')
-				assert output.contains('the bundled TinyCC could not compile or link the cached program'), output
+				assert !output.contains('the bundled TinyCC could not compile or link the cached program'), output
 				assert !output.contains('implicit tcc could not be used'), output
+				if iteration == 1 {
+					assert_reused_modules(output)
+				}
 				_ := run_built(root, 'program')
 			}
 		}

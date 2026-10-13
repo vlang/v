@@ -1,8 +1,31 @@
 module markused
 
+import os
 import v.flat
+import v.parser
+import v.pref
 import v.types
 import v.token
+
+fn test_all_functions_keeps_generic_calls_outside_literal_main() {
+	root := os.join_path(os.vtmp_dir(), 'all_fn_literal_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	builtin_file := os.join_path(root, 'builtin.v')
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(builtin_file, 'module builtin\nfn generic_helper[T](value T) {}\nfn wrapper() { generic_helper(1) }\nfn println(value string) {}\n')!
+	os.write_file(main_file, 'fn main() { println("literal") }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([builtin_file, main_file])
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnostic_files[main_file] = true
+	assert is_trivial_literal_output_program(a, tc.diagnostic_files)
+	used, uses_generics := mark_all_used_with_generic_usage(a, &tc, []string{})
+	assert uses_generics
+	assert used['wrapper']
+	assert used['generic_helper']
+}
 
 fn test_collection_alias_methods_keep_declared_and_inherited_precedence() {
 	mut a := flat.FlatAst.new()
