@@ -1621,6 +1621,10 @@ fn (mut g FlatGen) enum_decls() {
 			}
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
+				if name == 'os.AssetMode' && g.is_android_asset_binding(g.tc.cur_file)
+					&& g.omits_unused_android_asset_sdk() {
+					continue
+				}
 				cn := g.cname(name)
 				if emitted[cn] {
 					continue

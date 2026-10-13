@@ -1,13 +1,23 @@
 # Headers in generated C
 
-On Unix, compiling `examples/hello_world.v` generates C without `#include` directives.
-On macOS, `v -keepc self` also retains compiler C with no include directives.
+Literal hello world programs generate C without `#include` directives on hosted Unix,
+Windows, Android and iOS targets. Windows keeps its CRT output mode; mobile targets retain
+their platform logging APIs. Compiler self builds use standalone core declarations on
+macOS, Linux, Windows and the BSD targets with a described libc ABI.
+
+NetBSD, Solaris, Haiku, QNX, Serenity, Vinix and Emscripten retain the SDK preamble for
+compiler and runtime builds. Their symbol versions, storage or constants require native
+declarations that the standalone preamble does not yet describe completely. Literal
+hello output still avoids those headers. Native execution must be validated on each
+platform; generating C for a target alone does not verify its runtime ABI.
 The compiler's string literals can contain the text of includes for other generated programs.
 The C backend emits libc prototypes from bodyless V declarations such as
 `fn C.strlen(const_s &char) usize`. Runtime bindings are marked used so cached modules
 retain their prototypes. Native backends retain C declarations without rooting same-named
 V functions.
-Explicit headers for other C libraries remain included.
+Explicit headers for other C libraries remain included. Core SDK headers are also
+restored when another binding requests headers, so native declarations stay authoritative
+regardless of source collection order.
 The headerless requirement covers hello world and compiler self builds, rather than every
 library binding. Modules such as `compress.brotli` retain their C headers and cached
 implementations.
@@ -20,12 +30,17 @@ Win32 API names in headerless C declarations receive `WINAPI` and their wide exp
 names only for Windows targets. On other targets, names such as `Sleep` and `CreateFile`
 keep the spelling and calling convention of the program's own C functions.
 
-For a single-file POSIX program containing only literal `print`, `println`, `eprint`,
+For a single-file hosted program containing only literal `print`, `println`, `eprint`,
 and `eprintln` calls, the compiler proves that no V allocations are needed. It emits
 only `main` and the required libc declarations, without linking a collector or native
-runtime helpers. A single `println` uses `puts`; other output preserves embedded NUL
-bytes and handles partial writes. Programs with allocations, initialization, or other
-runtime requirements retain their normal runtime. Instrumented, library, freestanding,
+runtime helpers. On POSIX targets a single `println` uses `puts`; other output preserves
+embedded NUL bytes and handles partial writes. Windows ASCII output uses the CRT in binary mode,
+with bounded write counts and partial-write retries. Unicode console output retains
+the normal Windows runtime. Android retains log priorities, formatting and configurable
+tags. iOS retains the native logger; allocations within platform loggers belong to those
+libraries. iOS format literals containing `%` retain the normal runtime. Programs with
+allocations, initialization, or other runtime requirements retain their normal runtime.
+Instrumented, library, freestanding,
 and `-file-list` builds also retain their runtime support. Portable `-os cross` and `-cross`
 snapshots retain the complete runtime, pointer-width checks, and custom-define metadata even
 for literal output.

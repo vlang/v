@@ -1,6 +1,6 @@
 module sync
 
-#insert "@VEXEROOT/vlib/sync/thread_helper.h"
+#flag @VEXEROOT/vlib/sync/thread_helper.o
 
 fn C.v_sync_thread_create_detached(voidptr, voidptr) int
 
