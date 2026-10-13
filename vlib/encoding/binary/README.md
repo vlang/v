@@ -29,6 +29,13 @@ sequence in big endian, we get `0x12345678`.
 > Invalid lengths or offsets panic before any read or write, even when the slice has a larger
 > backing array. `little_endian_f32_at` follows the same rule for its 4-byte value.
 
+IEEE 754 floats can be read or written at an offset with `little_endian_f32_at`,
+`big_endian_f32_at`, `little_endian_f64_at`, `big_endian_f64_at`, and their
+`little_endian_put_f32_at`, `big_endian_put_f32_at`, `little_endian_put_f64_at`,
+`big_endian_put_f64_at` counterparts. These preserve the exact floating point bits,
+including negative zero, subnormal values, infinities, and NaN payloads. The `_at`
+bounds requirements above apply to all of them; `f32` needs four bytes and `f64` needs eight.
+
 For generic `T` data encoding/decoding, you can use `encode_binary[T]()` and `decode_binary[T]()`:
 
 ```v oksyntax

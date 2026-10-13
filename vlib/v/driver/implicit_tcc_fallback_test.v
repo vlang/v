@@ -19,7 +19,20 @@ fn test_preflight_defers_source_backed_objects_without_dropping_operands() {
 	os.write_file(existing, '')!
 	flags := ['-L', pending, pending, existing, missing, '-lm']
 	assert v3_tcc_preflight_link_flags(flags) == ['-L', pending, existing, missing, '-lm']
-	assert v3_implicit_tcc_flags_incompatibility([pending], 'macos') != none
+	assert v3_implicit_tcc_flags_incompatibility([pending], 'macos', @VEXEROOT) != none
+}
+
+fn test_implicit_tcc_accepts_only_missing_shipped_c_objects() ! {
+	root := os.join_path(os.vtmp_dir(), 'v_tcc_shipped_source_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'vlib', 'builtin'))!
+	defer { os.rmdir_all(root) or {} }
+	object := os.join_path(root, 'vlib', 'builtin', 'helper.o')
+	os.write_file(object.replace('.o', '.c'), 'int helper(void) { return 42; }\n')!
+	assert v3_implicit_tcc_flags_incompatibility([object], 'macos', root) == none
+	assert v3_implicit_tcc_flags_incompatibility([object], 'macos', @VEXEROOT) != none
+	// An existing object can have a foreign format even beside a shipped source.
+	os.write_file(object, '')!
+	assert v3_implicit_tcc_flags_incompatibility([object], 'macos', root) != none
 }
 
 fn test_dependency_probe_does_not_reject_program_supplied_symbols() {

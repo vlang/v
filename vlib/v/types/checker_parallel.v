@@ -2801,6 +2801,7 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 		tc.statement_nodes[idx] = true
 	}
 	for idx, typ in tc.sparse_expr_type_values {
+		tc.invalidate_checked_type_id(idx)
 		tc.expr_type_values[idx] = typ
 		tc.expr_type_set[idx] = true
 	}
@@ -4831,6 +4832,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		}
 	}
 	for idx, typ in w.sparse_expr_type_values {
+		tc.invalidate_checked_type_id(idx)
 		owned_type := if scoped {
 			tc.promote_check_type(typ)
 		} else {
