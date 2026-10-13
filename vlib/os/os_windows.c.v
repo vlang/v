@@ -383,6 +383,9 @@ fn windows_filetime_from_unix_seconds(seconds i64) !Filetime {
 }
 
 // ls returns the names of the files and directories in path.
+// The entries come in the order the operating system reports them, which os.ls does not sort.
+// That order differs between platforms and filesystems, so call `.sort()` on the result when
+// a stable order is needed.
 pub fn ls(path string) ![]string {
 	if path == '' {
 		return error('ls() expects a folder, not an empty string')
