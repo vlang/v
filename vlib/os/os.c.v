@@ -322,6 +322,11 @@ pub fn cp(src string, dst string, config CopyParams) ! {
 			if count == 0 {
 				break
 			}
+			if count < 0 {
+				C.close(fp_to)
+				C.close(fp_from)
+				return error_with_code('cp: failed to read from ${src}', int(count))
+			}
 			if C.write(fp_to, &buf[0], count) < 0 {
 				C.close(fp_to)
 				C.close(fp_from)
