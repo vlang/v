@@ -27,3 +27,19 @@ fn test_eq_fallback() {
 	assert !eq(s1, s2)
 	assert eq(s1, 'x'.repeat(1000) + 'a')
 }
+
+fn test_intern_owns_canonical_storage() {
+	mut p := new_pool()
+	mut first := 'allocated equal text'.clone()
+	second := 'allocated equal text'.clone()
+	assert first.str != second.str
+	a := p.intern(first)
+	b := p.intern(second)
+	assert a.str == b.str
+	assert a.str != first.str
+	// The caller can release its original allocation without invalidating the pool.
+	unsafe { first.free() }
+	assert a == 'allocated equal text'
+	assert p.intern('allocated equal text').str == a.str
+	assert p.len() == 1
+}

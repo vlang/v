@@ -21,11 +21,11 @@ pub fn new_pool() Pool {
 	return Pool{}
 }
 
-// intern returns the canonical copy of s, storing it on first sight.
+// intern returns the canonical copy of s, cloning it on first sight.
 // Repeated calls with equal strings return storage-identical values.
 pub fn (mut p Pool) intern(s string) string {
 	if s !in p.canonical {
-		p.canonical[s] = s
+		p.canonical[s] = s.clone()
 	}
 	return p.canonical[s]
 }
