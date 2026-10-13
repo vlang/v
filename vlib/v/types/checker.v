@@ -1705,6 +1705,11 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	forked.transform_signature_maps_shared = true
 	forked.transform_signature_maps_changed = false
 	forked.transform_struct_maps_shared = true
+	// Scoped reachability uses a transform fork too. Retain the master's body
+	// policy so it does not eagerly collect the library bodies the check skipped.
+	forked.skips_library_bodies = tc.skips_library_bodies
+	forked.library_files = tc.library_files
+	forked.reachable_library_fns = tc.reachable_library_fns
 	// Visible-mutation analysis only runs during checking. Do not allocate its
 	// three private maps for the many short-lived transform forks.
 	forked.visible_mutation_cache = unsafe { nil }

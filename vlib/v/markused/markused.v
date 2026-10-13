@@ -794,18 +794,42 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// Precollect every body's call/initializer-ref lists up front (across
 	// threads when available): the BFS below then only does the cheap
 	// name-resolution work. Collecting inline used to serialize ~80% of
-	// markused's time inside the BFS loop.
+	// markused's time inside the BFS loop. Keep skipped library bodies out of
+	// the eager pass, and collect reached bodies inline when there are no workers.
 	if tc.verbose {
 		eprintln('  [ttime] mu decl scan       ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		mu_sw.restart()
 	}
 	mut body_index := map[int]int{}
 	mut body_results := []BodyCalls{}
-	if body_ids.len >= min_eager_markused_bodies {
-		for i, id in body_ids {
+	if body_ids.len >= min_eager_markused_bodies
+		&& (!tc.skips_library_bodies || a.worker_count() > 0) {
+		mut checked_ids := []int{}
+		mut checked_modules := []string{}
+		mut checked_import_contexts := []int{}
+		if tc.skips_library_bodies {
+			for i, id in body_ids {
+				node := a.node(flat.NodeId(id))
+				file := if source := a.source_files[node.pos.id] { source.name } else { '' }
+				if tc.skips_library_body_in_file(*node, file, body_modules[i]) {
+					continue
+				}
+				checked_ids << id
+				checked_modules << body_modules[i]
+				checked_import_contexts << body_import_contexts[i]
+			}
+		}
+		collect_ids := if tc.skips_library_bodies { checked_ids } else { body_ids }
+		collect_modules := if tc.skips_library_bodies { checked_modules } else { body_modules }
+		collect_import_contexts := if tc.skips_library_bodies {
+			checked_import_contexts
+		} else {
+			body_import_contexts
+		}
+		for i, id in collect_ids {
 			body_index[id] = i
 		}
-		body_results = precollect_body_calls(collector, body_ids, body_modules, body_import_contexts)
+		body_results = precollect_body_calls(collector, collect_ids, collect_modules, collect_import_contexts)
 	}
 	if tc.verbose {
 		eprintln('  [ttime] mu precollect      ${f64(mu_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (bodies: ${body_ids.len})')
