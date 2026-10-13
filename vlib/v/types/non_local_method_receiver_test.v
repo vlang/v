@@ -1,0 +1,138 @@
+module types
+
+import os
+
+const non_local_receiver_module = 'module foreign
+
+pub enum Mode {
+ first
+ second
+}
+
+pub struct Record {}
+
+pub struct Box[T] {
+ value T
+}
+
+pub interface Readable {
+ read() int
+}
+
+pub type Value = Record | int
+
+pub type Count = int
+
+pub fn (mode Mode) label() string {
+ return "mode"
+}
+'
+
+fn check_non_local_receiver(name string, source string, flags []string) os.Result {
+	root := os.join_path(os.vtmp_dir(), 'non_local_receiver_${name}_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'foreign')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'non_local_receiver' }\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'foreign', 'foreign.v'), non_local_receiver_module) or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
+	return os.exec([@VEXE, '-new-compiler', ...flags, '-check', root])
+}
+
+fn test_methods_on_imported_named_types_are_rejected() {
+	for flags in [[]string{}, ['-no-parallel'], ['-prod']] {
+		for receiver in ['foreign.Mode', '&foreign.Mode', 'foreign.Record', '&foreign.Record',
+			'mut foreign.Record', 'foreign.Readable', 'foreign.Value', 'foreign.Count', 'foreign.Box[T]'] {
+			type_text := receiver.trim_string_left('mut ')
+			parameter := if receiver.starts_with('mut ') {
+				'mut value ${type_text}'
+			} else {
+				'value ${type_text}'
+			}
+			result := check_non_local_receiver('imported', 'import foreign
+
+struct Record {}
+
+pub fn (${parameter}) str() string {
+ return "foreign"
+}
+
+fn main() {}
+', flags)
+			assert result.exit_code != 0, '${receiver}: ${result.output}'
+			assert result.output.contains('cannot define new methods on non-local type ${type_text}'), result.output
+			assert result.output.contains('Define an alias and use that instead'), result.output
+		}
+	}
+}
+
+fn test_import_alias_does_not_make_a_receiver_local() {
+	result := check_non_local_receiver('import_alias', 'import foreign as other
+
+pub fn (mod &other.Mode) str() string {
+ return match mod {
+  .first { "first" }
+  .second { "second" }
+ }
+}
+
+fn main() {}
+', [])
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot define new methods on non-local type &other.Mode'), result.output
+}
+
+fn test_selectively_imported_receiver_is_not_local() {
+	result := check_non_local_receiver('selective_import', 'import foreign { Mode }
+
+fn (mode Mode) label() string { return "foreign" }
+
+fn main() {}
+', [])
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('cannot define new methods on non-local type Mode'), result.output
+}
+
+fn test_local_aliases_and_same_named_types_can_have_methods() {
+	result := check_non_local_receiver('local', 'import foreign
+
+type LocalMode = foreign.Mode
+type LocalRecord = foreign.Record
+type LocalCount = foreign.Count
+
+struct Record {}
+
+fn (value LocalMode) label() string { return "local mode" }
+fn (value &LocalRecord) label() string { return "local record" }
+fn (value LocalCount) label() string { return "local count" }
+fn (value Record) label() string { return "record" }
+
+fn main() {
+ assert foreign.Mode.first.label() == "mode"
+ assert LocalMode(foreign.Mode.first).label() == "local mode"
+ assert LocalRecord(foreign.Record{}).label() == "local record"
+ assert LocalCount(foreign.Count(1)).label() == "local count"
+ assert Record{}.label() == "record"
+}
+', [])
+	assert result.exit_code == 0, result.output
+}
+
+fn test_unknown_receivers_keep_the_unknown_type_diagnostic() {
+	for receiver in ['Abc', 'foreign.Missing', '&foreign.Missing'] {
+		result := check_non_local_receiver('unknown', 'import foreign
+
+fn (value ${receiver}) label() string { return "unknown" }
+
+fn main() {}
+', [])
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('unknown type'), result.output
+		assert !result.output.contains('cannot define new methods on non-local type'), result.output
+	}
+}

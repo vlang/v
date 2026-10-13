@@ -3210,10 +3210,16 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			if unalias_type(receiver_type) is MultiReturn {
 				tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ))
 			}
-			is_non_local_builtin := match receiver_type {
+			is_non_local_type := match receiver_type {
 				Primitive, String, Char, Rune, ISize, USize, Array, ArrayFixed, Channel, Map,
 				FnType {
 					true
+				}
+				Alias, Struct, Interface, Enum, SumType {
+					receiver_name := receiver_type.name()
+					!receiver_name.starts_with('C.') && !receiver_name.starts_with('JS.')
+						&& tc.type_name_known(receiver_name)
+						&& !tc.source_module_declares_type(receiver_name)
 				}
 				else {
 					false
@@ -3231,7 +3237,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 					false
 				}
 			}
-			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override
+			if tc.cur_module != 'builtin' && is_non_local_type && !is_builtin_array_override
 				&& !is_local_collection {
 				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
 				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
