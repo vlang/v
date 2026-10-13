@@ -4699,6 +4699,7 @@ fn par_check_clone_enabled() bool {
 	return os.getenv('V3_NO_PAR_CK_CLONE') == ''
 }
 
+@[direct_array_access]
 fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem) {
 	mut cache := CheckTypePromotionCache{}
 	mut names := CheckNamePromotionCache{}

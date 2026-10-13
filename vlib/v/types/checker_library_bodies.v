@@ -40,6 +40,7 @@ pub fn (mut tc TypeChecker) skip_library_bodies_for_reachability(library_files m
 
 fn (mut tc TypeChecker) prepare_library_body_reachability(library_files map[string]bool, seeded_fns []string, follow_names bool, defer_implicit_methods bool) int {
 	tc.checked_library_body_count = 0
+	tc.library_body_convergence_complete = false
 	tc.library_files = library_files.clone()
 	tc.reachable_library_fns = tc.library_fns_reachable_by_name(seeded_fns, follow_names, defer_implicit_methods)
 	tc.skips_library_bodies = library_files.len > 0

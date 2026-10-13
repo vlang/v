@@ -17711,8 +17711,17 @@ mut:
 	call_generation  u32 = 1
 	call_ids         [2048]int
 	call_generations [2048]u32
-	// A fixed array expands every CallInfo default into a huge C initializer.
-	call_infos []CallInfo = []CallInfo{len: 2048, init: CallInfo{}}
+	// A slot is read only after its node id and generation match. Initialize
+	// entries when publishing a call result, avoiding 2048 unused defaults.
+	call_infos []CallInfo = empty_call_info_memo()
+}
+
+fn empty_call_info_memo() []CallInfo {
+	mut slots := []CallInfo{cap: 2048}
+	// Expose reserved slots without constructing their unused default payloads.
+	// Node and generation guards prevent reading a slot before its first write.
+	unsafe { slots.len = 2048 }
+	return slots
 }
 
 // arm_body_resolve_memo (re)activates the per-item resolve memo for one work
@@ -17754,6 +17763,10 @@ fn (mut memo BodyResolveMemo) begin(lo int, hi int) {
 	memo.lo = lo
 	memo.hi = hi
 	memo.call_generation++
+	if memo.call_generation == 0 {
+		memo.call_generations = [2048]u32{}
+		memo.call_generation = 1
+	}
 	if memo.types.len < span {
 		// A type is read only after its filled byte is set for this function.
 		memo.types = unsafe { []Type{len: span} }

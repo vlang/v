@@ -201,6 +201,7 @@ pub fn can_check_library_body_frontiers(a &flat.FlatAst, tc &types.TypeChecker) 
 // collecting its calls, retaining the current reachability queue between frontiers.
 // The checker and reachability results belong to the caller's compilation arena.
 pub fn mark_used_checking_library_bodies(a &flat.FlatAst, mut tc types.TypeChecker, parallel bool) (map[string]bool, bool) {
+	tc.library_body_convergence_complete = false
 	return mark_used_with_test_files(a, &tc, map[string]bool{}, map[string]bool{}, false, true,
 		false, true, unsafe { nil }, unsafe { voidptr(&tc) }, parallel)
 }
@@ -377,6 +378,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 	}
 
+	mut convergence_index_complete := !use_prepared
+	convergence_node_count := a.nodes.len
+	convergence_top_level_size := tc.top_level_idx.len
 	mut fn_count := 0
 	mut fn_with_dot := 0
 	mut contains2_total := 0
@@ -450,6 +454,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				decl_qname := qualify_fn(decl_module, node.value)
 				fn_decl_file := tc.fn_type_files[decl_qname] or { decl_file }
 				fn_decl_module := tc.fn_type_modules[decl_qname] or { decl_module }
+				if fn_decl_module != decl_module {
+					convergence_index_complete = false
+				}
 				fn_decl_import_context := import_context_by_file[fn_decl_file] or {
 					decl_import_context
 				}
@@ -767,9 +774,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		map[string]bool{}
 	}
 	collector := CallCollector{
-		a:                                a
-		tc:                               tc
-		receiver_method_cache:            &MarkusedMethodCache{}
+		a:                     a
+		tc:                    tc
+		receiver_method_cache: &MarkusedMethodCache{}
+		local_walk_scratch:    &MarkusedLocalWalkScratch{}
+		decl_name_cache:       &DeclNameCache{}
+
 		source_type_cache:                &SourceTypeCache{}
 		default_calls:                    &StructDefaultCalls{}
 		fn_decls:                         fn_decls
@@ -830,7 +840,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut reachable_helper_scan := RuntimeHelpersScan{}
 	mut runtime_helper_seen := []bool{}
 	mut runtime_helper_stack := []flat.NodeId{cap: 128}
-	mut runtime_helper_nodes := []int{cap: 128}
+	mut runtime_helper_nodes := MarkusedNodeList{ nodes: []int{cap: 128} }
 	if reachable_runtime_helpers {
 		reachable_helper_scan.select_array_methods = true
 		reachable_helper_scan.select_source_utilities = true
@@ -844,7 +854,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				if markused_is_builtin_closure_global(a, tc, node) {
 					runtime_helper_subtree(a, flat.NodeId(idx), mut reachable_helper_scan.deferred_closure_mask,
 						mut runtime_helper_stack, mut runtime_helper_nodes)
-					reachable_helper_scan.deferred_closure_nodes << runtime_helper_nodes
+					reachable_helper_scan.deferred_closure_nodes << runtime_helper_nodes.nodes[..runtime_helper_nodes.size]
 				}
 			}
 		}
@@ -962,7 +972,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			// These bodies have no exact reachable queue entry. Complete their
 			// semantic checks without introducing new reachability roots.
 			mut checker := unsafe { &types.TypeChecker(library_body_checker) }
-			remaining := checker.reached_library_body_nodes(used)
+			use_decl_index := convergence_index_complete && !isnil(library_frontier)
+				&& a.nodes.len == convergence_node_count
+				&& tc.top_level_idx.len == convergence_top_level_size
+			remaining := if use_decl_index {
+				unchecked_used_library_nodes(a, tc, fn_decl_lists, used)
+			} else {
+				checker.reached_library_body_nodes(used)
+			}
 			if remaining.len > 0 {
 				node_count := a.nodes.len
 				top_level_size := tc.top_level_idx.len
@@ -972,7 +989,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						recheck_reachability = true
 					}
 				}
-				checker.check_reached_library_bodies(used, library_check_parallel)
+				if use_decl_index {
+					_ = checker.check_library_body_frontier_nodes(library_frontier, remaining,
+						library_check_parallel) or {
+						checker.check_reached_library_bodies(used, library_check_parallel)
+					}
+				} else {
+					checker.check_reached_library_bodies(used, library_check_parallel)
+				}
 				// Checking an unreached body only publishes its own expression types
 				// and call edges. Existing reached bodies retain their analysis. New
 				// arena nodes or declarations require the conservative fresh pass.
@@ -981,6 +1005,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					return mark_used_with_generic_usage(a, checker)
 				}
 			}
+			checker.library_body_convergence_complete = true
 			check_library_frontiers = false
 			continue
 		}
@@ -1048,8 +1073,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			processed_nodes[node_key] = true
 			if reachable_runtime_helpers {
 				runtime_helper_subtree(a, fn_info.node_id, mut runtime_helper_seen, mut runtime_helper_stack, mut runtime_helper_nodes)
-				if runtime_helper_nodes.len > 0 {
-					reachable_helper_scan.enqueue_nodes(a, tc, runtime_helper_nodes, []bool{}, fn_info.module, collector.imports(fn_info.import_context), mut used, mut queue)
+				if runtime_helper_nodes.size > 0 {
+					reachable_helper_scan.enqueue_nodes(a, tc, runtime_helper_nodes.nodes[..runtime_helper_nodes.size], []bool{}, fn_info.module, collector.imports(fn_info.import_context), mut used, mut queue)
 				}
 			}
 			// This function is reachable, so any methods it uses as *values* (recorded by
@@ -2321,16 +2346,19 @@ fn markused_syntax_needs_closure_runtime(a &flat.FlatAst) bool {
 
 // CallCollector represents call collector data used by markused.
 struct CallCollector {
-	a                     &flat.FlatAst        = unsafe { nil }
-	tc                    &types.TypeChecker   = unsafe { nil }
-	receiver_method_cache &MarkusedMethodCache = unsafe { nil }
-	source_type_cache     &SourceTypeCache     = unsafe { nil }
-	default_calls         &StructDefaultCalls  = unsafe { nil }
-	fn_decls              map[string]FnDeclInfo
-	fn_suffixes           map[string]bool
-	struct_decls          map[string]StructDeclInfo
-	const_decls           map[string]ConstDeclInfo
-	const_suffixes        map[string]bool
+	a                     &flat.FlatAst             = unsafe { nil }
+	tc                    &types.TypeChecker        = unsafe { nil }
+	receiver_method_cache &MarkusedMethodCache      = unsafe { nil }
+	local_walk_scratch    &MarkusedLocalWalkScratch = unsafe { nil }
+	decl_name_cache       &DeclNameCache            = unsafe { nil }
+
+	source_type_cache &SourceTypeCache    = unsafe { nil }
+	default_calls     &StructDefaultCalls = unsafe { nil }
+	fn_decls          map[string]FnDeclInfo
+	fn_suffixes       map[string]bool
+	struct_decls      map[string]StructDeclInfo
+	const_decls       map[string]ConstDeclInfo
+	const_suffixes    map[string]bool
 	// True only when the declaration scan indexed every constant/global key.
 	// Manually constructed collectors can retain the ordinary candidate lookup.
 	const_suffixes_complete bool
@@ -2774,8 +2802,8 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 // runtime_helper_subtree appends each node of a reached body once, including nested
 // expressions introduced by checking. These need not be contiguous in the arena.
 @[direct_array_access]
-fn runtime_helper_subtree(a &flat.FlatAst, root flat.NodeId, mut seen []bool, mut stack []flat.NodeId, mut node_ids []int) {
-	node_ids.clear()
+fn runtime_helper_subtree(a &flat.FlatAst, root flat.NodeId, mut seen []bool, mut stack []flat.NodeId, mut node_ids MarkusedNodeList) {
+	node_ids.size = 0
 	if seen.len < a.nodes.len {
 		seen << []bool{len: a.nodes.len - seen.len}
 	}
@@ -2787,7 +2815,7 @@ fn runtime_helper_subtree(a &flat.FlatAst, root flat.NodeId, mut seen []bool, mu
 			continue
 		}
 		seen[id] = true
-		node_ids << id
+		node_ids.push(id)
 		node := &a.nodes[id]
 		for i in 0 .. node.children_count {
 			walker.push(a.child(node, i))
@@ -2809,7 +2837,7 @@ fn runtime_helper_body_mask(a &flat.FlatAst, body_ids []int) []bool {
 		}
 	}
 	mut stack := []flat.NodeId{}
-	mut nodes := []int{}
+	mut nodes := MarkusedNodeList{}
 	for next := a.nodes.len; next > 0; next-- {
 		id := next - 1
 		if !seen[id] {
@@ -2829,6 +2857,24 @@ fn runtime_helper_body_mask(a &flat.FlatAst, body_ids []int) []bool {
 		}
 	}
 	return seen
+}
+
+// Traversal outputs retain their high-water length too. Consumers borrow only
+// the live prefix until the next synchronous scan resets size.
+struct MarkusedNodeList {
+mut:
+	nodes []int
+	size  int
+}
+
+@[direct_array_access; inline]
+fn (mut list MarkusedNodeList) push(id int) {
+	if list.size < list.nodes.len {
+		list.nodes[list.size] = id
+	} else {
+		list.nodes << id
+	}
+	list.size++
 }
 
 // The private traversal stack retains its high-water length so push/pop do not
@@ -3757,6 +3803,9 @@ fn markused_sum_variants(name string, tc &types.TypeChecker) []string {
 }
 
 fn markused_type_text_is_channel(raw string) bool {
+	if !raw.contains('chan') {
+		return false
+	}
 	mut clean := raw.trim_space()
 	for {
 		if clean.starts_with('&') {
@@ -4752,12 +4801,6 @@ fn (c &CallCollector) selective_alias_uses_generics(name string, cur_module stri
 }
 
 fn (c &CallCollector) generic_fn_name_is_known(name string, cur_module string) bool {
-	gate := c.generic_calls
-	if !isnil(gate) && gate.nodes == c.a.nodes.len
-		&& gate.functions == c.tc.fn_generic_params.len && name.index_u8(`[`) < 0
-		&& name !in gate.names && name.all_after_last('.') !in gate.names {
-		return false
-	}
 	if name in c.tc.fn_generic_params || c.generic_receiver_method_name_is_known(name) {
 		return true
 	}
@@ -5286,6 +5329,29 @@ mut:
 	names map[string]bool
 }
 
+// The declaration scan already indexes the raw, qualified and C spellings
+// accepted by library-body convergence. Probe reached names instead of
+// regenerating those spellings for every still-unused library declaration.
+fn unchecked_used_library_nodes(a &flat.FlatAst, tc &types.TypeChecker, declarations map[string][]FnDeclInfo, used map[string]bool) []int {
+	mut seen := []bool{len: a.nodes.len}
+	mut result := []int{}
+	for name, _ in used {
+		infos := declarations[name] or { continue }
+		for info in infos {
+			id := int(info.node_id)
+			if id < 0 || id >= seen.len || seen[id] { continue }
+			seen[id] = true
+			node := a.node(info.node_id)
+			file := if source := a.source_files[node.pos.id] { source.name } else { '' }
+			module_name := tc.file_modules[file] or { info.module }
+			if tc.skips_library_body_in_file(node, file, module_name) {
+				result << id
+			}
+		}
+	}
+	return result
+}
+
 // BodyCalls holds the precollected call and initializer-ref names of one
 // fn_decl body (see precollect_body_calls).
 struct BodyCalls {
@@ -5308,7 +5374,7 @@ fn (c &CallCollector) collect_body(node &flat.Node, cur_module string, imports m
 // on the collector independently of this reporting-only flag.
 fn (c &CallCollector) collect_body_with_generic_detection(node &flat.Node, cur_module string, imports map[string]string, detect_generics bool) BodyCalls {
 	receiver_name, receiver_struct := receiver_info(c.a, node)
-	local_values, has_inference_binders := markused_local_value_names(c.a, node)
+	local_values, has_inference_binders := c.local_value_names(node)
 	visibility_names := c.local_value_visibility_names(local_values, cur_module, imports)
 	needs_visibility := visibility_names.len > 0
 	mut local_types := map[string]string{}
@@ -5368,9 +5434,12 @@ fn (c &CallCollector) collect_bodies_range(body_ids []int, body_modules []string
 // TypeChecker. The lookup maps are shared read-only.
 fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
 	return CallCollector{
-		a:                                c.a
-		tc:                               wtc
-		receiver_method_cache:            &MarkusedMethodCache{}
+		a:                     c.a
+		tc:                    wtc
+		receiver_method_cache: &MarkusedMethodCache{}
+		local_walk_scratch:    &MarkusedLocalWalkScratch{}
+		decl_name_cache:       &DeclNameCache{}
+
 		source_type_cache:                &SourceTypeCache{}
 		default_calls:                    &StructDefaultCalls{}
 		fn_decls:                         c.fn_decls
@@ -5492,11 +5561,8 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 						c.add_initializer_ref_candidates('${base.value}.${child.value}', cur_module, imports, mut initializer_refs)
 					}
 				}
-				// Authoritative checker edges already cover source function values.
-				// Enum classification is only needed by the fallback collector.
-				if !source_edges_authoritative
-					&& !c.selector_is_enum_value(child, cur_module, imports, local_values) {
-					c.collect_fn_value_selector(child_id, child, cur_module, imports, mut calls)
+				if !source_edges_authoritative {
+					c.collect_fn_value_selector(child_id, child, cur_module, imports, local_values, mut calls)
 				}
 			}
 			.call {
@@ -5667,18 +5733,6 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 					}
 				} else if !source_edges_authoritative && resolved_call.len > 0 {
 					calls << resolved_call
-				}
-				if !source_edges_authoritative {
-					for ci in 1 .. child.children_count {
-						arg_id := c.a.child(child, ci)
-						if int(arg_id) >= 0 {
-							arg := &c.a.nodes[int(arg_id)]
-							if arg.kind == .ident && arg.value.len > 0 {
-								arg_is_local := markused_ident_is_visible_local(arg_id, arg.value, local_values, visible_local_idents)
-								c.collect_fn_value_ident(arg_id, arg.value, cur_module, imports, arg_is_local, mut calls)
-							}
-						}
-					}
 				}
 				if c.detect_generics {
 					c.collect_generic_alias_operator_usage(child, resolved_call, cur_module, imports, local_values, local_types, mut calls)
@@ -6055,23 +6109,34 @@ fn (c &CallCollector) checked_local_bindings(root &flat.Node, cur_module string,
 		}
 	}
 	mut result := CheckedLocalBindings{
-		type_names:  c.local_fn_param_type_names(root, cur_module)
 		ident_names: names.clone()
 	}
 	mut bindings := map[string]bool{}
-	for name, _ in result.type_names {
-		bindings[name] = true
-	}
 	mut param_index := 0
 	for i in 0 .. root.children_count {
 		param := c.a.child_node(root, i)
 		if param.kind != .param || param.value.len == 0 { continue }
+		bindings[param.value] = true
+		result.type_names[param.value] = ''
 		if param_index < params.len && markused_direct_sum_type(params[param_index]) {
 			result.sum_types[param.value] = params[param_index].name()
+			result.type_names[param.value] = result.sum_types[param.value]
 		}
 		param_index++
 	}
-	mut stack := MarkusedNodeStack{ nodes: []flat.NodeId{cap: int(root.children_count)} }
+	if param_index != params.len { return none }
+	mut first_local_read := flat.empty_node
+	mut scratch := c.local_walk_scratch
+	mut stack := MarkusedNodeStack{
+		nodes: if !isnil(scratch) {
+			scratch.nodes
+		} else {
+			[]flat.NodeId{cap: int(root.children_count)}
+		}
+	}
+	defer {
+		if !isnil(scratch) { scratch.nodes = stack.nodes }
+	}
 	mut loop_names := map[string]bool{}
 	for i in 0 .. root.children_count {
 		id := c.a.child(root, i)
@@ -6150,7 +6215,7 @@ fn (c &CallCollector) checked_local_bindings(root &flat.Node, cur_module string,
 					if lhs.value in result.type_names {
 						return none
 					}
-					result.type_names[lhs.value] = typ.name()
+					result.type_names[lhs.value] = result.sum_types[lhs.value] or { '' }
 				}
 			}
 			for i in 0 .. rhs_count {
@@ -6161,6 +6226,7 @@ fn (c &CallCollector) checked_local_bindings(root &flat.Node, cur_module string,
 			}
 		}
 		if node.kind == .ident && (node.value in names || node.value in loop_names) {
+			if int(first_local_read) < 0 { first_local_read = id }
 			typ := c.tc.expr_type(id) or { return none }
 			if !markused_checked_local_type(typ) {
 				return none
@@ -6180,6 +6246,14 @@ fn (c &CallCollector) checked_local_bindings(root &flat.Node, cur_module string,
 			} else {
 				flat.NodeId(-int(child_id) - 1)
 			})
+		}
+	}
+	// Manually constructed checker views without an interner retain the
+	// spelling-based fallback. Checked bodies otherwise format only queried types.
+	if int(first_local_read) >= 0 {
+		if _ := c.tc.checked_expr_type_id(first_local_read) {
+		} else {
+			return none
 		}
 	}
 	return result
@@ -6248,7 +6322,7 @@ fn markused_direct_sum_type(typ types.Type) bool {
 
 @[direct_array_access]
 fn (c &CallCollector) local_value_info_with_visibility(node &flat.Node, cur_module string, imports map[string]string) (map[string]bool, map[string]string, map[int]string, map[int]bool) {
-	names, has_inference_binders := markused_local_value_names(c.a, node)
+	names, has_inference_binders := c.local_value_names(node)
 	return c.local_value_info_for_names(node, cur_module, imports, names, has_inference_binders)
 }
 
@@ -6294,11 +6368,32 @@ fn (c &CallCollector) local_value_info_for_names(node &flat.Node, cur_module str
 	return names, type_names, ident_types, visible_local_idents
 }
 
+fn (c &CallCollector) local_value_names(node &flat.Node) (map[string]bool, bool) {
+	if isnil(c.local_walk_scratch) {
+		return markused_local_value_names(c.a, node)
+	}
+	mut scratch := c.local_walk_scratch
+	return markused_local_value_names_with_scratch(c.a, node, mut scratch)
+}
+
 @[direct_array_access]
 fn markused_local_value_names(a &flat.FlatAst, node &flat.Node) (map[string]bool, bool) {
+	mut scratch := MarkusedLocalWalkScratch{}
+	return markused_local_value_names_with_scratch(a, node, mut scratch)
+}
+
+@[heap]
+struct MarkusedLocalWalkScratch {
+mut:
+	nodes []flat.NodeId
+}
+
+@[direct_array_access]
+fn markused_local_value_names_with_scratch(a &flat.FlatAst, node &flat.Node, mut buffer MarkusedLocalWalkScratch) (map[string]bool, bool) {
 	mut names := map[string]bool{}
 	mut has_inference_binders := false
-	mut stack := MarkusedNodeStack{ nodes: []flat.NodeId{cap: int(node.children_count)} }
+	mut stack := MarkusedNodeStack{ nodes: buffer.nodes }
+	defer { buffer.nodes = stack.nodes }
 	for i in 0 .. node.children_count {
 		child_id := a.child(node, i)
 		if int(child_id) >= 0 {
@@ -6401,12 +6496,24 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 			continue
 		}
 		if child.kind == .for_in_stmt {
-			mut nested_types := type_names.clone()
 			mut nested_names := names.clone()
+			mark := changes.len
+			// Registration changes only the key and value bindings. Journal them,
+			// then restore every loop-local change when this scope finishes.
+			for binding_index in 0 .. 2 {
+				binding := c.a.child_node(child, binding_index)
+				if binding.kind != .ident || binding.value in ['', '_'] { continue }
+				if previous := type_names[binding.value] {
+					changes << LocalTypeChange{ name: binding.value, typ: previous, present: true }
+				} else {
+					changes << LocalTypeChange{ name: binding.value }
+				}
+			}
 			c.register_top_level_for_in_vars(child, cur_module, imports, mut nested_names,
-				mut nested_types)
-			c.infer_local_type_bindings(child, cur_module, imports, nested_names,
-				mut nested_types, mut ident_types, false)
+				mut type_names)
+			c.infer_local_type_bindings_scoped(child, cur_module, imports, nested_names,
+				mut type_names, mut ident_types, false, mut changes)
+			markused_restore_local_types(mark, mut type_names, mut changes)
 			continue
 		}
 		if child.kind == .lambda_expr {
@@ -6960,7 +7067,7 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 				} else if c.collect_interface_method_value_selector(child, mut calls) {
 					// handled
 				} else if !c.top_level_selector_base_is_local(child, local_values) {
-					c.collect_fn_value_selector(child_id, child, cur_module, imports, mut calls)
+					c.collect_fn_value_selector(child_id, child, cur_module, imports, local_values, mut calls)
 				} else if child.children_count > 0 {
 					// A method value on a local/global receiver (`app.frame` passed as a
 					// callback field, e.g. `gg.new_context(frame_fn: app.frame)`). Mark the
@@ -8118,6 +8225,36 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 	key_id := c.a.child(node, 0)
 	val_id := c.a.child(node, 1)
 	container_id := c.a.child(node, 2)
+	// Checked loop bindings already supply the value type. Resolve the key
+	// against the outer bindings before writing either loop variable; this
+	// path needs no copies of the surrounding maps.
+	key_binding := c.a.node(key_id)
+	second_binding := c.a.node(val_id)
+	second_is_named := int(val_id) >= 0 && second_binding.kind == .ident
+		&& second_binding.value.len > 0
+	cached_value_id := if second_is_named { val_id } else { key_id }
+	cached_value_name := if second_is_named { second_binding.value } else { key_binding.value }
+	if (second_is_named || key_binding.kind == .ident) && cached_value_name.len > 0
+		&& cached_value_name != '_' {
+		if cached := c.tc.expr_type(cached_value_id) {
+			if !markused_type_has_unknown(cached) {
+				if name := markused_type_name(cached, false) {
+					if name != 'generic' {
+						if second_is_named && key_binding.kind == .ident
+							&& key_binding.value.len > 0 && key_binding.value != '_' {
+							key_type := c.top_level_for_in_key_type_name(container_id, cur_module,
+								imports, local_values, local_types)
+							local_values[key_binding.value] = true
+							if key_type.len > 0 { local_types[key_binding.value] = key_type }
+						}
+						local_values[cached_value_name] = true
+						local_types[cached_value_name] = name
+						return
+					}
+				}
+			}
+		}
+	}
 	container_values := local_values.clone()
 	container_types := local_types.clone()
 	key_node := c.a.node(key_id)
@@ -8624,11 +8761,11 @@ fn (c &CallCollector) collect_struct_operator_call(lhs_id flat.NodeId, op flat.O
 	// Logical/bitwise operators cannot dispatch to a struct overload. Avoid
 	// resolving their operand types merely to discover that after the lookup.
 	op_name := markused_struct_operator_symbol(op) or { return }
-	mut possible := c.has_index_operator(op_name) || c.fn_suffixes[op_name]
+	mut possible := c.has_receiver_method(op_name) || c.fn_suffixes[op_name]
 	if !possible {
 		match op {
-			.gt, .ge, .le { possible = c.has_index_operator('<') || c.fn_suffixes['<'] }
-			.ne { possible = c.has_index_operator('==') || c.fn_suffixes['=='] }
+			.gt, .ge, .le { possible = c.has_receiver_method('<') || c.fn_suffixes['<'] }
+			.ne { possible = c.has_receiver_method('==') || c.fn_suffixes['=='] }
 			else {}
 		}
 	}
@@ -8702,7 +8839,7 @@ fn (c &CallCollector) collect_assign_operator_call(node &flat.Node, cur_module s
 }
 
 fn (c &CallCollector) collect_index_overload_assignment_methods(node &flat.Node, cur_module string, local_types map[string]string, mut calls []string) {
-	if !c.has_index_operator('[]=') && (node.op == .assign || !c.has_index_operator('[]')) {
+	if !c.has_receiver_method('[]=') && (node.op == .assign || !c.has_receiver_method('[]')) {
 		return
 	}
 	if node.children_count < 2 {
@@ -8754,7 +8891,7 @@ fn (c &CallCollector) collect_index_overload_compound_helpers(receiver string, o
 }
 
 fn (c &CallCollector) collect_index_overload_getter_method(node &flat.Node, cur_module string, local_types map[string]string, mut calls []string) {
-	if !c.has_index_operator('[]') {
+	if !c.has_receiver_method('[]') {
 		return
 	}
 	if node.children_count == 0 {
@@ -9108,8 +9245,11 @@ fn (c &CallCollector) collect_fn_value_ident(id flat.NodeId, name string, cur_mo
 
 // collect_fn_value_selector updates collect fn value selector state for markused.
 @[direct_array_access]
-fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
+fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool, mut calls []string) {
 	if resolved := c.tc.resolved_fn_value_name(id) {
+		if c.selector_is_enum_value(node, cur_module, imports, local_values) {
+			return
+		}
 		calls << resolved
 		return
 	}
@@ -9117,6 +9257,9 @@ fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node,
 	// typed-selector fallback when checking established that the selector itself
 	// is a function value; otherwise the fallback over-marks unrelated methods.
 	if !c.node_is_fn_value(id) {
+		return
+	}
+	if c.selector_is_enum_value(node, cur_module, imports, local_values) {
 		return
 	}
 	if c.collect_interface_method_value_selector(node, mut calls) {
@@ -9260,7 +9403,45 @@ fn (c &CallCollector) name_has_fn_decl(name string, cur_module string, imports m
 }
 
 // name_has_candidate_decl returns name has candidate decl data for CallCollector.
+struct DeclNameResults {
+mut:
+	functions map[string]bool
+	values    map[string]bool
+}
+
+struct DeclNameCache {
+mut:
+	modules map[string]&DeclNameResults
+}
+
 fn (c &CallCollector) name_has_candidate_decl(name string, cur_module string, imports map[string]string, include_consts bool) bool {
+	// Bare local names cannot depend on import aliases. These declaration
+	// indexes stay immutable for this collector, including its worker forks.
+	if name.index_u8(`.`) >= 0 || isnil(c.decl_name_cache) {
+		return c.name_has_candidate_decl_uncached(name, cur_module, imports, include_consts)
+	}
+	if !c.fn_suffixes[name] && !(include_consts && c.const_suffixes[name]) { return false }
+	mut cache := c.decl_name_cache
+	mut module_results := cache.modules[cur_module] or {
+		fresh := &DeclNameResults{}
+		cache.modules[cur_module] = fresh
+		fresh
+	}
+	if include_consts {
+		if result := module_results.values[name] { return result }
+	} else {
+		if result := module_results.functions[name] { return result }
+	}
+	result := c.name_has_candidate_decl_uncached(name, cur_module, imports, include_consts)
+	if include_consts {
+		module_results.values[name] = result
+	} else {
+		module_results.functions[name] = result
+	}
+	return result
+}
+
+fn (c &CallCollector) name_has_candidate_decl_uncached(name string, cur_module string, imports map[string]string, include_consts bool) bool {
 	has_dot := name.index_u8(`.`) >= 0
 	if !has_dot && !c.fn_suffixes[name] && !(include_consts && c.const_suffixes[name]) {
 		return false
@@ -9442,7 +9623,7 @@ fn (c &CallCollector) collect_sum_variant_receiver_methods_for_type_name(type_na
 }
 
 fn (c &CallCollector) collect_index_operator_method(index_id flat.NodeId, method string, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut calls []string) bool {
-	if !c.has_index_operator(method) {
+	if !c.has_receiver_method(method) {
 		return false
 	}
 	if int(index_id) < 0 {
@@ -9459,8 +9640,8 @@ fn (c &CallCollector) collect_index_operator_method(index_id flat.NodeId, method
 	return c.collect_typed_receiver_method(base_id, method, cur_module, imports, local_values, local_types, mut calls)
 }
 
-fn (c &CallCollector) has_index_operator(method string) bool {
-	// Use the same complete declaration index as checker index-overload queries.
+fn (c &CallCollector) has_receiver_method(method string) bool {
+	// Use the same complete declaration index as checker receiver-method queries.
 	// Incomplete manually built views and the compatibility switch keep the scan.
 	return !c.tc.method_suffix_prescreen || c.tc.top_level_idx.len == 0
 		|| method in c.tc.receiver_method_suffix_index
@@ -9667,6 +9848,11 @@ fn (c &CallCollector) collection_alias_receiver_method_name(type_name string, me
 }
 
 fn markused_clean_receiver_type_name(type_name string) string {
+	if type_name.len > 0 && !type_name[0].is_space()
+		&& !type_name[type_name.len - 1].is_space() && type_name[0] != `&`
+		&& !type_name.starts_with('mut ') && !type_name.starts_with('shared ') {
+		return type_name
+	}
 	mut clean := type_name.trim_space()
 	for {
 		if clean.starts_with('&') {

@@ -13544,7 +13544,9 @@ pub fn run(args []string) {
 		if prepare_markused_overlap {
 			prepared_markused.release()
 		}
-		if skip_library_bodies {
+		// The frontier path already completed convergence for this reachability
+		// set. Profiling adds new roots above and still needs the ordinary check.
+		if skip_library_bodies && (!pre_tc.library_body_convergence_complete || is_prof) {
 			// The check found the types that markused resolves calls with, so
 			// markused can reach library functions that its first pass did not.
 			for {
@@ -13563,9 +13565,9 @@ pub fn run(args []string) {
 				used_fns, uses_generics = v3_mark_used_for_program(a, mut pre_tc, scope_prealloc_markused,
 					effective_c_compiler == 'msvc', prefs.verbose)
 			}
-			if verbose {
-				eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${pre_tc.library_bodies_checked_late()} checked late (worker threads: ${a.worker_count()})')
-			}
+		}
+		if skip_library_bodies && verbose {
+			eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${pre_tc.library_bodies_checked_late()} checked late (worker threads: ${a.worker_count()})')
 		}
 		mut prepared_transform := if prepare_transform_overlap {
 			prepared_transform_threads[0].wait()

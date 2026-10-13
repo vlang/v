@@ -1063,21 +1063,24 @@ pub mut:
 	cross_target_prefs            &pref.Preferences = unsafe { nil }
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
-	skips_library_bodies          bool            // see skip_unreachable_library_bodies
-	library_files                 map[string]bool // the files whose unreachable bodies the check leaves out
-	reachable_library_fns         map[string]bool // the functions of those files that it checks
-	shadow_diagnostic_root        string
-	shadow_explicit_roots         []string
-	shadow_dependency_roots       []string
-	multiple_module_import_lines  map[u64]bool
-	import_line_indexed_files     map[int]bool
-	source_texts_by_file          map[string]string
-	ct_update_pos                 map[int]token.Pos
-	ct_update_indexed             bool
-	insert_include_dirs_by_file   map[string][]string
-	has_spawn_expr                int = -1
-	inactive_top_level_node_ids   []i32
-	selected_file_called_fns      map[string]bool
+	skips_library_bodies          bool // see skip_unreachable_library_bodies
+	// Set by markused only after convergence for its returned reachability set.
+	// Adding roots requires the ordinary late-body convergence check again.
+	library_body_convergence_complete bool
+	library_files                     map[string]bool // the files whose unreachable bodies the check leaves out
+	reachable_library_fns             map[string]bool // the functions of those files that it checks
+	shadow_diagnostic_root            string
+	shadow_explicit_roots             []string
+	shadow_dependency_roots           []string
+	multiple_module_import_lines      map[u64]bool
+	import_line_indexed_files         map[int]bool
+	source_texts_by_file              map[string]string
+	ct_update_pos                     map[int]token.Pos
+	ct_update_indexed                 bool
+	insert_include_dirs_by_file       map[string][]string
+	has_spawn_expr                    int = -1
+	inactive_top_level_node_ids       []i32
+	selected_file_called_fns          map[string]bool
 	// Names newly inserted into selected_file_called_fns and not yet chased by
 	// the transitive closure in collect_selected_file_called_fns_transitively.
 	selected_file_worklist []string
