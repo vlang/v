@@ -592,6 +592,16 @@ fn wasm_aggregate_param_ok(tc &types.TypeChecker, typ types.Type, depth int) boo
 		types.Pointer {
 			return wasm_aggregate_param_ok(tc, typ.base_type, depth + 1)
 		}
+		// An option or a result is a struct_t in SSA with a leading `ok`, so it
+		// travels the same way a struct does. Its payload decides whether the
+		// whole thing lowers, which is what makes `?int` and `!int` representable
+		// while `?map[string]int` stays refused.
+		types.OptionType {
+			return wasm_aggregate_param_ok(tc, typ.base_type, depth + 1)
+		}
+		types.ResultType {
+			return wasm_aggregate_param_ok(tc, typ.base_type, depth + 1)
+		}
 		else {
 			return false
 		}
@@ -621,9 +631,25 @@ fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file stri
 		params << w
 	}
 	mut ret := WType.void
+	mut hidden_sret := false
 	if node.typ.len > 0 && node.typ != 'void' {
 		rt := g.tc.parse_type(node.typ)
-		ret = prim_wtype(rt) or { return none }
+		// A struct return is passed through a hidden pointer: the caller supplies
+		// the slot and the function's own result type is void. So the signature
+		// gains a leading i32 and the result becomes void, which is what the SSA
+		// sret path already describes. Options and results take the same shape,
+		// because both are struct_t values in SSA.
+		if w := prim_wtype(rt) {
+			ret = w
+		} else if g.wasm_param_may_be_aggregate(g.tc.parse_type(node.typ)) {
+			ret = WType.void
+			hidden_sret = true
+		} else {
+			return none
+		}
+	}
+	if hidden_sret {
+		params.prepend(WType.i32)
 	}
 	return FnInfo{
 		name:    node.value

@@ -282,23 +282,28 @@ fn main() {
 
 // A struct return is the half that does not work. The ABI passes it through a
 // hidden sret pointer and the function's own result type is void, which is not
-// what an i32 slot describes, so describing it as one would silently miscompile
-// rather than fail. It stays refused here until a change explains it.
-fn test_tour_struct_return_is_still_refused() {
+// A struct return travels through a hidden sret pointer: the caller supplies
+// the slot and the function's own result type is void. That is what the
+// signature below describes, so the assertion is on the value rather than on
+// the build succeeding, because a return that arrived as garbage would compile
+// just as happily.
+fn test_tour_struct_return_lowers_through_the_sret_slot() {
 	ret := '
 struct P {
 	x int
+	y int
 }
 
 fn mk() P {
 	return P{
-		x: 9
+		x: 30
+		y: 4
 	}
 }
 
 fn main() {
 	p := mk()
-	println(p.x.str())
+	println((p.x * 100 + p.y).str())
 }
 '
 	dir := os.join_path(tour_workspace(), 'structret')
@@ -307,5 +312,38 @@ fn main() {
 	os.write_file(src, ret) or { panic(err) }
 	out := os.join_path(dir, 'structret.c')
 	res := os.exec([@VEXE, '-gc', 'none', '-b', 'wasm', '-o', out, src])
-	assert res.exit_code != 0, 'a struct return compiled, so that gap may be closed: ${res.output}'
+	assert res.exit_code == 0, 'a struct return was refused: ${res.output}'
+	if node := tour_node_bin() {
+		wout, _ := tour_run('structret', os.read_bytes(out)!)
+		guest := wout.split_into_lines().filter(it.len > 0 && !it.contains('PROC_EXIT'))
+		assert guest.len == 1 && guest[0] == '3004', 'struct return gave `${wout}`, want 3004'
+	}
+}
+
+// An option return takes the same shape, because an option is a struct_t in SSA
+// with a leading `ok`. The value proves the payload survived the sret copy.
+fn test_tour_option_return_carries_its_payload() {
+	ret := '
+fn get() ?int {
+	return 42
+}
+
+fn main() {
+	if v := get() {
+		println(v.str())
+	}
+}
+'
+	dir := os.join_path(tour_workspace(), 'optret')
+	os.mkdir_all(dir) or { panic(err) }
+	src := os.join_path(dir, 'optret.v')
+	os.write_file(src, ret) or { panic(err) }
+	out := os.join_path(dir, 'optret.c')
+	res := os.exec([@VEXE, '-gc', 'none', '-b', 'wasm', '-o', out, src])
+	assert res.exit_code == 0, 'an option return was refused: ${res.output}'
+	if node := tour_node_bin() {
+		wout, _ := tour_run('optret', os.read_bytes(out)!)
+		guest := wout.split_into_lines().filter(it.len > 0 && !it.contains('PROC_EXIT'))
+		assert guest.len == 1 && guest[0] == '42', 'option return gave `${wout}`, want 42'
+	}
 }

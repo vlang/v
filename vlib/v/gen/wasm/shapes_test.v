@@ -776,7 +776,11 @@ fn test_shape_string_concatenation() {
 		return
 	}
 	exports := shape_exports(wasm)
-	assert 'cat3' !in exports, 'a `fn f() string` must not be exported: ${exports.keys()}'
+	// A `fn f() string` is exported now: a string is a three-word struct, so it
+	// travels through the sret slot the same way a declared struct does. The
+	// host still reaches the concatenated value through the primitive wrappers,
+	// but nothing filters cat3 out for returning a string.
+	assert 'cat3' in exports, 'a `fn f() string` must be exported: ${exports.keys()}'
 	assert 'cat3_first_two' in exports, 'the primitive wrapper must be exported: ${exports.keys()}'
 }
 
