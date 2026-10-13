@@ -159,3 +159,14 @@ fn test_floats_below_2_pow_52_keep_exact_binary_rounding() {
 	assert strconv.f64_to_str_lnd1(0.125, 2) == '0.13'
 	assert unsafe { strconv.v_sprintf('%f|%.2f', 123456.789, 1e15) } == '123456.789000|1000000000000000.00'
 }
+
+// The special-value guard skipped the exponent letter only when the value
+// started with a sign, so unsigned inf puts its i at index 0 where the
+// guard did not look for it. Both l_parse functions then fell into the digit
+// parser and returned 'Float conversion error!!'.
+fn test_l_parse_passes_through_every_special_value() {
+	for input in ['inf', '+inf', '-inf', 'nan'] {
+		assert strconv.fxx_to_str_l_parse(input) == input, input
+		assert strconv.fxx_to_str_l_parse_with_dot(input) == input, input
+	}
+}
