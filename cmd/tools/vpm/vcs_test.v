@@ -81,14 +81,14 @@ fn test_enable_git_longpaths_leaves_an_invalid_count_alone() {
 	defer {
 		restore_git_config_env(saved)
 	}
-	for invalid in ['-1', 'two', '2 ', '+2', '99999999999999999999'] {
+	for invalid in ['-1', 'two', '2 ', '+2', '99999999999999999999', '2147483647'] {
 		os.unsetenv('GIT_CONFIG_KEY_0')
 		os.unsetenv('GIT_CONFIG_PARAMETERS')
 		os.setenv('GIT_CONFIG_COUNT', invalid, true)
 		enable_git_longpaths()
 		assert os.getenv('GIT_CONFIG_COUNT') == invalid, invalid
 		assert os.getenv('GIT_CONFIG_KEY_0') == '', invalid
-		assert os.getenv('GIT_CONFIG_PARAMETERS') == "'core.longpaths'='true'", invalid
+		assert os.getenv('GIT_CONFIG_PARAMETERS') == "'core.longpaths=true'", invalid
 	}
 }
 
@@ -99,19 +99,19 @@ fn test_enable_git_longpaths_appends_after_existing_entries() {
 	}
 	os.unsetenv('GIT_CONFIG_KEY_2')
 	os.setenv('GIT_CONFIG_COUNT', '2', true)
-	os.setenv('GIT_CONFIG_PARAMETERS', "'core.autocrlf'='false'", true)
+	os.setenv('GIT_CONFIG_PARAMETERS', "'core.autocrlf=false'", true)
 	enable_git_longpaths()
 	assert os.getenv('GIT_CONFIG_COUNT') == '3'
 	assert os.getenv('GIT_CONFIG_KEY_2') == 'core.longpaths'
 	assert os.getenv('GIT_CONFIG_VALUE_2') == 'true'
-	assert os.getenv('GIT_CONFIG_PARAMETERS') == "'core.autocrlf'='false' 'core.longpaths'='true'"
+	assert os.getenv('GIT_CONFIG_PARAMETERS') == "'core.autocrlf=false' 'core.longpaths=true'"
 	os.unsetenv('GIT_CONFIG_COUNT')
 	os.unsetenv('GIT_CONFIG_KEY_0')
 	os.unsetenv('GIT_CONFIG_PARAMETERS')
 	enable_git_longpaths()
 	assert os.getenv('GIT_CONFIG_COUNT') == '1'
 	assert os.getenv('GIT_CONFIG_KEY_0') == 'core.longpaths'
-	assert os.getenv('GIT_CONFIG_PARAMETERS') == "'core.longpaths'='true'"
+	assert os.getenv('GIT_CONFIG_PARAMETERS') == "'core.longpaths=true'"
 }
 
 // Git before 2.31 ignores GIT_CONFIG_COUNT, but every git version reads
@@ -127,7 +127,7 @@ fn test_enable_git_longpaths_reaches_git_without_config_count() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	os.setenv('GIT_CONFIG_PARAMETERS', "'core.autocrlf'='false'", true)
+	os.setenv('GIT_CONFIG_PARAMETERS', "'core.autocrlf=false'", true)
 	enable_git_longpaths()
 	os.unsetenv('GIT_CONFIG_COUNT')
 	os.unsetenv('GIT_CONFIG_KEY_0')

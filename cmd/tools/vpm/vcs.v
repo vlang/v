@@ -89,7 +89,7 @@ fn git_config_count() ?int {
 		return 0
 	}
 	count := text.int()
-	if count < 0 || count.str() != text {
+	if count < 0 || count == 2147483647 || count.str() != text {
 		return none
 	}
 	return count
@@ -112,7 +112,7 @@ fn enable_git_longpaths() {
 	if params != '' {
 		params += ' '
 	}
-	os.setenv('GIT_CONFIG_PARAMETERS', "${params}'core.longpaths'='true'", true)
+	os.setenv('GIT_CONFIG_PARAMETERS', "${params}'core.longpaths=true'", true)
 	count := git_config_count() or {
 		vpm_warn('not adding core.longpaths to GIT_CONFIG_COUNT.',
 			details: 'GIT_CONFIG_COUNT is not a plain non-negative integer, so vpm leaves it alone. Git may exit with an error on it.'

@@ -208,3 +208,19 @@ int main() { println("_v3_lit_unused"); println(_v3_lit_direct); println(used())
 	assert !pruned.contains('static inline string unused()'), pruned
 	assert pruned.contains('println("_v3_lit_unused")'), pruned
 }
+
+fn test_cache_demand_keeps_fixed_array_alias_element_layouts() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['sample.Box'] = []types.StructField{}
+	tc.structs['sample.Unused'] = []types.StructField{}
+	tc.type_aliases['sample.Boxes'] = '[2]sample.Box'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.cache_decl_demand = true
+	g.finish_cache_declaration_demand('')
+	names := g.c_struct_decl_names()
+	assert 'sample.Box' in names, names.str()
+	assert 'sample.Unused' !in names, names.str()
+}

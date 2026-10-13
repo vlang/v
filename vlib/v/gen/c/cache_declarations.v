@@ -407,6 +407,11 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 		g.cache_collect_declaration_refs(payload)
 	}
 	mut seen := map[string]bool{}
+	// Fixed-array typedefs can outlive their original use in aliases or options.
+	// Keep their element layouts when pruning a cached program's declarations.
+	for _, info in g.collect_fixed_array_typedefs_needed() {
+		g.cache_require_declaration_type(info.arr, mut seen)
+	}
 	for typ in g.multi_return_types {
 		g.cache_require_declaration_type(typ, mut seen)
 	}

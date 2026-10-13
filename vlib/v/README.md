@@ -473,6 +473,7 @@ and builds with bundled TinyCC on macOS and Linux. TinyCC builds and links its o
 objects. Pass `-nocache` or `--no-cache` to disable caching. A first TinyCC build can be
 faster without the cache, while later builds reuse the cached modules and executable.
 The former `-usecache` flag is no longer accepted.
+Cached programs retain element layouts needed by fixed-array aliases and optional payloads.
 With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
 before compiling a new module object, including during `run`. Ordinary builds and warm builds
 print no cache creation notices; `-silent` suppresses them too.
