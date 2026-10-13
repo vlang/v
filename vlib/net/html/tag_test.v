@@ -119,3 +119,32 @@ fn test_br_prefix_elements_preserve_own_text_and_children() {
 	}
 	assert Tag{}.text() == ''
 }
+
+fn test_search_by_valueless_attribute() {
+	mut dom := parse('<div><input disabled><input value=""></div>')
+	// the div is the document root; reach it without the dom index
+	tag := dom.get_root()
+	assert tag.name == 'div'
+	// a present attribute with an empty value is still present
+	assert tag.get_tag_by_attribute('disabled')?.name == 'input'
+	assert tag.get_tags_by_attribute('disabled').len == 1
+	assert tag.get_tags_by_attribute('value').len == 1
+	// an absent attribute never matches, even for an empty value
+	assert tag.get_tag_by_attribute('nonexistent') == none
+	assert tag.get_tags_by_attribute('nonexistent').len == 0
+	assert tag.get_tag_by_attribute_value('nonexistent', '') == none
+	assert tag.get_tags_by_attribute_value('nonexistent', '').len == 0
+	// an empty value matches only where it is actually present
+	assert tag.get_tag_by_attribute_value('value', '')?.name == 'input'
+}
+
+fn test_search_by_empty_attribute_value_recurses_in_document_order() {
+	mut dom := parse('<div><section><input value="" disabled></section><input disabled></div>')
+	tag := dom.get_root()
+	matches := tag.get_tags_by_attribute_value('value', '')
+	assert matches.len == 1
+	assert matches[0] == tag.get_tag_by_attribute_value('value', '')?
+	assert tag.get_tags_by_attribute('disabled').len == 2
+	assert tag.get_tags_by_attribute_value('disabled', '').len == 2
+	assert tag.get_tag_by_attribute('disabled')? == matches[0]
+}
