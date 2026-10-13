@@ -2,6 +2,7 @@ module main
 
 import os
 import v.cmdexec
+import v.pref
 import v.skills
 import v.util.version
 import v.util.recompilation
@@ -218,7 +219,8 @@ fn tcc_cache_requests(root string, requests []cache_refresh.Request) []cache_ref
 fn is_tcc_cache_compiler(path string, bundled string, cwd string) bool {
 	resolved := os.real_path(path)
 	name := os.file_name(resolved).to_lower_ascii()
-	if resolved == os.real_path(bundled) || name.contains('tcc') || name.contains('tinyc') {
+	// Same file-name rule as the launcher and driver, so `notcc` or `distcc` is not TinyCC by name.
+	if resolved == os.real_path(bundled) || pref.tinycc_file_name(name) {
 		return true
 	}
 	// Match the driver's effective compiler classification, including renamed
