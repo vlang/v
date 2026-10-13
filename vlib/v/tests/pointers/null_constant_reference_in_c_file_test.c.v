@@ -1,8 +1,13 @@
+@[has_globals]
+module main
+
 // A `.c.v` file is C interop code: like the null cast `&Node(0)`, the null constants
 // `0` and `voidptr(0)` stay accepted in it where a reference is expected.
 struct Node {
 	x int
 }
+
+__global c_global_null &Node = 0
 
 struct Holder {
 mut:
@@ -22,6 +27,7 @@ fn node_is_null(node &Node) bool {
 }
 
 fn test_null_constants_as_references_in_a_c_file() {
+	assert node_is_null(c_global_null)
 	assert node_is_null(null_node())
 	assert node_is_null(zero_node())
 	assert node_is_null(voidptr(0))

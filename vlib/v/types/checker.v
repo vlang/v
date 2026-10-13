@@ -17811,6 +17811,10 @@ fn (mut tc TypeChecker) check_global_decl_semantics(node_id flat.NodeId, node fl
 		if field.kind != .field_decl || field.value.len == 0 || field.value.starts_with('C.') {
 			continue
 		}
+		if field.typ.len > 0 && field.children_count > 0 {
+			tc.record_null_constant_reference_error(.assignment_mismatch, tc.a.child(field, 0),
+				tc.parse_type(field.typ))
+		}
 		pos := tc.node_value_diagnostic_pos(field_id)
 		if field.value == '_' {
 			tc.record_error_at(.duplicate_decl, 'cannot use `_` as a global name', field_id,

@@ -1,4 +1,4 @@
-@[translated]
+@[has_globals; translated]
 module main
 
 // C code translated by c2v returns and stores `0` for a null pointer. Like the null
@@ -6,6 +6,8 @@ module main
 struct Node {
 	x int
 }
+
+__global translated_global_null &Node = 0
 
 struct Holder {
 mut:
@@ -25,6 +27,7 @@ fn node_is_null(node &Node) bool {
 }
 
 fn test_null_constants_as_references_in_a_translated_file() {
+	assert node_is_null(translated_global_null)
 	assert node_is_null(null_node())
 	assert node_is_null(zero_node())
 	assert node_is_null(voidptr(0))

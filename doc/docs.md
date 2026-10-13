@@ -9413,6 +9413,7 @@ cause a panic.
 
 A null reference has to be written as `unsafe { nil }`: outside `unsafe`, the compiler
 rejects direct `nil`, `0` and `voidptr(0)` constants where a non-option reference is expected.
+The same rule applies to explicitly typed global initializers when globals are enabled.
 Raw `voidptr` targets, C declarations, `.c.v` files and translated code retain their
 C interop rules. Comparisons with null values and optional references remain accepted.
 
