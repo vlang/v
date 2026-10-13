@@ -4,7 +4,7 @@
 module jsonc
 
 import os
-import x.json5
+import json2
 
 // ParseOpts tunes how strictly a document is read.
 pub struct ParseOpts {
@@ -15,12 +15,62 @@ pub:
 	allow_trailing_comma bool
 }
 
-// Any is the dynamic tree a parsed document produces. It is the JSON5 tree,
-// unchanged: JSONC documents are a subset of what JSON5 accepts.
-pub type Any = json5.Any
+// Any is the dynamic tree a parsed document produces, shared with json2.
+pub type Any = json2.Any
 
-// Doc is a parsed document with path lookup. It is the JSON5 `Doc`.
-pub type Doc = json5.Doc
+// Doc is a parsed document with json2's path lookup and JSONC rendering.
+pub type Doc = json2.Doc
+
+// str renders the document as JSONC, using overflowing decimal numbers for infinity.
+// NaN values in manually wrapped trees render as null.
+@[manualfree]
+pub fn (d Doc) str() string {
+	mut encoded := []u8{cap: 2048}
+	// No views of the scratch buffers escape, so growth can release old storage.
+	unsafe { encoded.flags.set(.noslices) }
+	defer { unsafe { encoded.free() } }
+	json2.encode_append(d.root, mut encoded, json5: true)
+	mut output := []u8{cap: encoded.len}
+	unsafe { output.flags.set(.noslices) }
+	defer { unsafe { output.free() } }
+	mut i := 0
+	for i < encoded.len {
+		current := encoded[i]
+		if current == `"` {
+			output << current
+			i++
+			// Copy quoted keys and values intact, including escaped quotes and backslashes.
+			for i < encoded.len {
+				byte := encoded[i]
+				output << byte
+				i++
+				if byte == `\\` && i < encoded.len {
+					output << encoded[i]
+					i++
+				} else if byte == `"` {
+					break
+				}
+			}
+			continue
+		}
+		// With quoted keys, these are the only uppercase tokens the encoder emits.
+		if current == `I` {
+			for byte in '1e999' {
+				output << byte
+			}
+			i += 'Infinity'.len
+		} else if current == `N` {
+			for byte in 'null' {
+				output << byte
+			}
+			i += 'NaN'.len
+		} else {
+			output << current
+			i++
+		}
+	}
+	return output.bytestr()
+}
 
 // violation returns the first JSONC strictness violation in `text`, or none when
 // the document is valid.
@@ -45,7 +95,7 @@ pub fn violation(text string) ?ParseError {
 // violation_opts returns the first JSONC strictness violation in `text` under
 // `opts`, or none when the document is valid.
 pub fn violation_opts(text string, opts ParseOpts) ?ParseError {
-	_ = json5.parse_text(text) or { return none }
+	_ = json2.parse_text(text, json5: true) or { return none }
 	found := earliest_violation(text, opts)
 	if found != nil {
 		return as_value(found)
@@ -92,7 +142,7 @@ pub fn is_valid(text string) bool {
 
 // is_valid_opts reports whether `text` is valid JSONC under `opts`.
 pub fn is_valid_opts(text string, opts ParseOpts) bool {
-	_ = json5.parse_text(text) or { return false }
+	_ = json2.parse_text(text, json5: true) or { return false }
 	lexed := lex(text)
 	if lexed.violation != nil {
 		return false
@@ -108,7 +158,7 @@ pub fn parse_text(text string) !Doc {
 // parse_text_opts parses the JSONC document in `text` under `opts` and returns
 // a `Doc`.
 pub fn parse_text_opts(text string, opts ParseOpts) !Doc {
-	doc := json5.parse_text(text)!
+	doc := json2.parse_text(text, json5: true)!
 	found := earliest_violation(text, opts)
 	if found != nil {
 		return found
@@ -140,17 +190,14 @@ pub fn parse_opts(text string, opts ParseOpts) !Any {
 
 // decode parses the JSONC document in `text` and decodes it into `T`.
 //
-// The target rules are the JSON5 decoder's, so a JSONC document decodes into
-// anything a JSON5 document does: structs with embedded structs flattened into
-// the parent, enums by name or by value, `map[string]T`, arrays, options and
-// every scalar width. A field is matched by name or by an `@[json5: 'name']`
-// attribute, because the JSON5 decoder owns the traversal.
-//
-// A missing key leaves a field at its default. An error about the shape of a
-// value rather than the dialect comes from that decoder, and so carries its
-// `json5:` prefix.
+// The target rules are json2's: structs, embedded structs, enums, maps, arrays,
+// options and scalar types. Fields use `@[json: 'name']` for renaming.
+// Missing keys retain their defaults. Dialect validation precedes decoding.
 pub fn decode[T](text string) !T {
-	return json5.decode_any[T](parse(text)!)
+	// Validate the dialect before decoding the original text, preserving integers
+	// beyond the precision of the dynamic tree's f64 values.
+	_ = parse_text(text)!
+	return json2.decode[T](text, json5: true)
 }
 
 // decode_file reads and decodes the JSONC document at `path` into `T`.
@@ -158,9 +205,10 @@ pub fn decode_file[T](path string) !T {
 	return decode[T](read(path)!)
 }
 
-// decode_any converts an already parsed tree into `T` using the JSON5 decoder.
+// decode_any converts an already parsed tree into `T` using the json2 decoder.
+// Decimal overflow retained as infinity is preserved during conversion.
 pub fn decode_any[T](value Any) !T {
-	return json5.decode_any[T](value)
+	return json2.decode_any[T](value, json5: true)
 }
 
 // read returns the contents of `path`, naming the file in any error.
