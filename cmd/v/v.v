@@ -567,8 +567,9 @@ fn install_external_tool_modules(tool_name string, tool_source string, compile_a
 // they can start even when libgc cannot allocate executable pages or cannot be loaded.
 fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 	mut compile_args := clean_compiler_selection_flags(prefix_args)
-	if tool_name == 'vfmt' {
-		// Backend options select formatting rules, not the formatter executable's target.
+	if tool_name in ['vfmt', 'vself'] {
+		// Backend/target options describe formatting rules or the replacement
+		// compiler. The launcher helper itself must run on the host C backend.
 		_, native_args := split_tool_backend_args(compile_args)
 		compile_args = external_tool_args_without_target(native_args)
 	}
