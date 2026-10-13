@@ -1,39 +1,42 @@
 module sync
 
-// g_park_registry holds the permits and waiters for park/unpark. It is created
-// in init() following the same __global pattern as rand.default_rng.
-__global g_park_registry &ParkRegistry
-
-fn init() {
-	g_park_registry = &ParkRegistry{
-		mutex: new_mutex()
-	}
-}
-
-// ParkRegistry tracks parked threads by thread id (see thread_id).
-// It is an internal implementation detail of park/unpark.
-struct ParkRegistry {
+// Parker is a caller-owned registry for parking and unparking threads by
+// thread id (see `thread_id`). It is the V-idiomatic equivalent of Rust's
+// `std::thread::{park, unpark}`: unlike free functions, it needs no globals,
+// so it cannot disturb other code in the module.
+//
+// A Parker is typically shared between a worker thread, which calls `park`,
+// and the thread that later wakes it with `unpark`.
+@[heap]
+pub struct Parker {
 mut:
 	mutex   &Mutex
 	permits map[u64]bool
 	waiters map[u64]chan bool
 }
 
+// new_parker creates an empty Parker.
+pub fn new_parker() &Parker {
+	mut m := new_mutex()
+	return &Parker{
+		mutex: m
+	}
+}
+
 // park blocks the calling thread until another thread calls `unpark` with its
-// thread id (see `thread_id`). If `unpark` was already called for this thread,
-// park returns immediately (stored permit), so wakeups are never lost.
-// It is the V-idiomatic equivalent of Rust's `std::thread::park`.
-pub fn park() {
+// thread id. If `unpark` was already called for this thread, park returns
+// immediately (stored permit), so wakeups are never lost.
+pub fn (mut p Parker) park() {
 	tid := thread_id()
-	g_park_registry.mutex.lock()
-	if tid in g_park_registry.permits {
-		g_park_registry.permits.delete(tid)
-		g_park_registry.mutex.unlock()
+	p.mutex.lock()
+	if tid in p.permits {
+		p.permits.delete(tid)
+		p.mutex.unlock()
 		return
 	}
 	ch := chan bool{cap: 1}
-	g_park_registry.waiters[tid] = ch
-	g_park_registry.mutex.unlock()
+	p.waiters[tid] = ch
+	p.mutex.unlock()
 	_ := <-ch
 	ch.close()
 }
@@ -41,17 +44,16 @@ pub fn park() {
 // unpark wakes the thread currently parked with the given thread id. If no
 // thread is parked with that id yet, a permit is stored so its next `park`
 // returns immediately.
-// It is the V-idiomatic equivalent of Rust's `std::thread::unpark`.
-pub fn unpark(tid u64) {
-	g_park_registry.mutex.lock()
+pub fn (mut p Parker) unpark(tid u64) {
+	p.mutex.lock()
 	defer {
-		g_park_registry.mutex.unlock()
+		p.mutex.unlock()
 	}
-	if tid in g_park_registry.waiters {
-		mut ch := g_park_registry.waiters[tid]
-		g_park_registry.waiters.delete(tid)
+	if tid in p.waiters {
+		mut ch := p.waiters[tid]
+		p.waiters.delete(tid)
 		ch <- true
 	} else {
-		g_park_registry.permits[tid] = true
+		p.permits[tid] = true
 	}
 }
