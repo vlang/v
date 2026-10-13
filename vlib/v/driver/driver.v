@@ -9831,7 +9831,7 @@ $if !skip_fastc ? {
 		mut cc_args := environment_c_flags.clone()
 		cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg,
 			tcc_resources.library_arg]
-		if !(prefs.building_v && prefs.normalized_target_os() == 'macos') {
+		if !(prefs.building_v && prefs.selfhost && prefs.normalized_target_os() == 'macos') {
 			cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root)
 		}
 		cc_args << source_c_flags
@@ -9906,7 +9906,10 @@ $if !skip_fastc ? {
 		user_link_args := c_dylib_link_flags(user_c_flags)
 		mut final_args := base_link_args.clone()
 		final_args << user_link_args
-		if prefs.building_v && prefs.normalized_target_os() == 'macos' {
+		native_sources := cc_args.filter(c_flag_is_c_source_file(it))
+		final_args << native_sources
+		final_args << user_c_flags.filter(c_flag_is_c_source_file(it))
+		if prefs.building_v && prefs.selfhost && prefs.normalized_target_os() == 'macos' {
 			// Header-free self-hosts only call symbols from FastC's macOS ABI
 			// table. Its compact stub avoids parsing the SDK's full libSystem
 			// umbrella stub while preserving the same dylib install name.
@@ -9923,7 +9926,7 @@ $if !skip_fastc ? {
 			final_args << atomic_arg
 		}
 		final_args << link_ld_flags
-		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled)
+		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled && native_sources.len == 0 && !user_c_flags.any(c_flag_is_c_source_file(it)))
 		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
 			if bench_phases {
 				now_us := cc_sw.elapsed().microseconds()
@@ -9972,7 +9975,7 @@ $if !skip_fastc ? {
 			prepared_units := fastc.fastc_prepare_c_units(tcc_path, compile_args, unit_paths, cache_enabled)
 			cached_objects = prepared_units.cache_objects()
 			link_inputs := prepared_units.objects.clone()
-			mut display_args := compile_base_args.clone()
+			mut display_args := compile_args.clone()
 			display_args << ['-o', staged_binary]
 			display_args << link_inputs
 			display_args << final_args
@@ -9984,7 +9987,7 @@ $if !skip_fastc ? {
 					eprintln('fastc-phase tcc.units_compiled ${cc_sw.elapsed().microseconds()}us')
 				}
 			} else {
-				mut prepared_link := fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_base_args, final_args)
+				mut prepared_link := fastc.fastc_prepare_link(tcc_path, os.join_path_single(tcc_dir, 'lib'), compile_args, final_args)
 				preload_link := (feeds_prestarted || rendering_units.paths.len > 0)
 					&& fastc.fastc_prepared_link_accepts_inputs(&prepared_link)
 				if feeds_prestarted {
@@ -11177,10 +11180,10 @@ pub fn run(args []string) {
 	}
 	cmd_v_module_input := input_loads_cmd_v_module(input_file)
 	compiler_tree_input := input_is_compiler_tree(input_file)
-	if backend == 'fastc' && 'fastc_real_builtin' in user_defines {
+	if backend == 'fastc' && ('fastc_real_builtin' in user_defines || os.is_dir(input_file)) {
 		// Opt-in: compile an ordinary program through FastC's real-`builtin` path
 		// (real `struct string`, error system, and the full runtime) instead of the
-		// bootstrap `const char*` runtime. This is how FastC reaches real apps.
+		// bootstrap `const char*` runtime. Directory entries use the same path.
 		building_v = true
 	}
 	// Large serial compiler-module builds create the same transform and C-generation
@@ -11497,7 +11500,9 @@ pub fn run(args []string) {
 		user_defines << v3_builtin_arena_define
 	}
 	// Older bootstrap compilers still require the stdlib's compatibility headers.
-	record_user_define(mut user_defines, mut compile_values, 'v3_c_extern_declarations')
+	if backend != 'fastc' {
+		record_user_define(mut user_defines, mut compile_values, 'v3_c_extern_declarations')
+	}
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot).map(os.abs_path(it))
@@ -11562,8 +11567,9 @@ pub fn run(args []string) {
 			// FastC is a standalone parser that emits C while consuming scanner tokens.
 			// Never let an unsupported FastC input continue into the AST frontend below.
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-			if !input_file.ends_with('.v') || !os.is_file(input_file) || file_list.len > 0 {
-				eprintln('fastc requires exactly one `.v` entry file')
+			if (!(input_file.ends_with('.v') && os.is_file(input_file)) && !os.is_dir(input_file))
+				|| file_list.len > 0 {
+				eprintln('fastc requires exactly one `.v` entry file or source directory')
 				exit(1)
 			}
 			fastc_artifact_file := if c_only {
@@ -11658,7 +11664,7 @@ pub fn run(args []string) {
 			mut prestarted_fastc_units := fastc.FastcPrestartedCUnits{}
 			mut prestart_workers := []thread fastc.FastcPrestartedCUnits{}
 			$if macos {
-				if !c_only && prefs.building_v && !fastc_cross_target
+				if !c_only && prefs.building_v && prefs.selfhost && !fastc_cross_target
 					&& (is_debug || no_cache || fastc_bench) {
 					tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 					tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')

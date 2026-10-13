@@ -42,3 +42,19 @@ runtime features. Floating point printing and most standard library imports are 
 The self-hosting compiler path has additional internal lowerings and a different runtime;
 its capabilities do not imply support in ordinary programs. Use the default C backend when
 a program requires the full language or standard library.
+
+For a project split across source files, pass its directory:
+
+```sh
+v -b fastc -enable-globals -o program path/to/project
+```
+
+Directory entries select the full builtin runtime, including V strings, maps, errors, and
+garbage collection. This path supports standard-library imports such as `os` and `toml`,
+composite sum-type tests, integer interpolation formats, anonymous functions, and immutable
+closure captures. A single-file entry can select the same runtime with `-d fastc_real_builtin`;
+its module siblings are included.
+Target-specific files and test files are filtered when loading a directory.
+
+The full-runtime path remains experimental. Mutable and expression closure captures and
+128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.

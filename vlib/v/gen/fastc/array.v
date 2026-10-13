@@ -248,7 +248,8 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 			prefix_depth++
 		} else if item.tok in [.rpar, .rsbr, .rcbr] {
 			prefix_depth--
-		} else if prefix_depth == 0 && item.tok.is_assignment() {
+		} else if prefix_depth == 0 && (item.tok.is_assignment()
+			|| item.tok in [.key_in, .not_in]) {
 			// `target = [value]` ends in `]`, but its bracket pair is an array literal,
 			// not an index applied to the assignment prefix.
 			return none
@@ -1189,9 +1190,13 @@ fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int
 			.rcbr {
 				braces--
 			}
-			.comma {
+			.comma, .semicolon {
 				if parens == 0 && brackets == 0 && braces == 0 {
 					if item_start == i {
+						if tokens[i].tok == .semicolon {
+							item_start = i + 1
+							continue
+						}
 						return error('empty expression-list item')
 					}
 					// Items are consumed while `tokens` is alive and never mutated, so views are safe.
