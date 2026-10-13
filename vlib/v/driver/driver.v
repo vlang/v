@@ -8038,7 +8038,12 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	mut c_compiler := v3_select_implicit_c_compiler(options.c_compiler, options.c_compiler_explicit,
 		implicit_tcc)
 	if options.prefer_platform_cc && !options.c_compiler_explicit && options.c_compiler == 'cc' {
-		c_compiler = v3_platform_c_compiler(options.host_os)
+		// Only Windows needs the absolute path: a bare name does not respawn there.
+		c_compiler = if options.host_os == 'windows' {
+			v3_platform_c_compiler_command(options.host_os)
+		} else {
+			v3_platform_c_compiler(options.host_os)
+		}
 	}
 	if v3_windows_prod_needs_default_c_compiler(options) {
 		c_compiler = v3_windows_prod_default_c_compiler(options.target.arch, options.is_o)
@@ -17960,9 +17965,6 @@ fn restart_v3_with_args(extra_args []string) {
 		// Windows has no exec either: `_execvp` would start the child and then
 		// exit this process with status 0, dropping the restarted build's
 		// result on the floor.
-		// The child owns fallback reporting from here, as on the stdin path above.
-		// A marker staged by this process would be replayed after a successful child.
-		clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
 		exit(os.system_args([executable, ...args]))
 	} $else {
 		os.execvp(executable, args) or {
