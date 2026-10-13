@@ -126,16 +126,19 @@ fn test_parse_type_cache_keeps_context_components_without_joined_keys() {
 	tc.type_cache.parse_enabled = true
 	tc.cur_file = 'one.v'
 	tc.cur_module = 'one'
-	assert tc.parse_type('int').name() == 'int'
-	assert tc.parse_type('int').name() == 'int'
+	// Nominal names require the source context; builtin scalars do not.
+	tc.structs['one.Item'] = []StructField{}
+	tc.structs['two.Item'] = []StructField{}
+	assert tc.parse_type('Item').name() == 'one.Item'
+	assert tc.parse_type('Item').name() == 'one.Item'
 	assert tc.type_cache.parse_entries.len == 1
 
 	tc.cur_module = 'two'
-	assert tc.parse_type('int').name() == 'int'
+	assert tc.parse_type('Item').name() == 'two.Item'
 	assert tc.type_cache.parse_entries.len == 2
 
 	tc.cur_file = 'two.v'
-	assert tc.parse_type('int').name() == 'int'
+	assert tc.parse_type('Item').name() == 'two.Item'
 	assert tc.type_cache.parse_entries.len == 3
 }
 

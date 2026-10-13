@@ -22,7 +22,7 @@ module asn1
 pub fn decode(bytes []u8) !Element {
 	// call Element.decode_with_rule directly
 	el, pos := Element.decode_with_rule(bytes, 0, .der)!
-	if pos > bytes.len {
+	if pos != bytes.len {
 		return error('decode on data with trailing data')
 	}
 	return el
@@ -57,7 +57,7 @@ pub fn decode_with_options(bytes []u8, opt string) !Element {
 	// if null-option length, call Element.decode_with_rule directly
 	if opt.len == 0 {
 		el, pos := Element.decode_with_rule(bytes, 0, .der)!
-		if pos > bytes.len {
+		if pos != bytes.len {
 			return error('decode on data with trailing data')
 		}
 		return el

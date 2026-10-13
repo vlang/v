@@ -74,6 +74,10 @@ fn test_c_output_path_only_writes_c_file() {
 		reader.wait()
 		assert fifo_compile.exit_code == 0, fifo_compile.output
 		assert !fifo_source.starts_with('read failed:'), fifo_source
-		assert fifo_source.contains('int main(int argc, char** argv)'), fifo_source
+		regular_source := os.read_file(c_out) or { panic(err) }
+		assert fifo_source == regular_source, fifo_source
+		assert !os.exists(bin_out)
+		assert !fifo_compile.output.contains('tcc.exe'), fifo_compile.output
+		assert !fifo_compile.output.contains('cc -std=gnu11'), fifo_compile.output
 	}
 }
