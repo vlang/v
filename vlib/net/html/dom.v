@@ -210,7 +210,7 @@ pub fn (dom &DocumentObjectModel) get_tags(options GetTagsOptions) []&Tag {
 
 // get_tags_by_class_name retrieves all tags recursively in the document root that have the given class name(s).
 pub fn (dom &DocumentObjectModel) get_tags_by_class_name(names ...string) []&Tag {
-	if names.len == 0 {
+	if names.len == 0 || dom.all_tags.len == 0 {
 		return []&Tag{}
 	}
 	mut res := []&Tag{}

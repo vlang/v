@@ -32,3 +32,7 @@ More examples found on [`parser_test.v`](parser_test.v) and [`html_test.v`](html
 
 Calling `get_tag_by_class_name` without class names returns `none`;
 `get_tags_by_class_name` without class names returns an empty array.
+
+Document searches include the root element in name, class, and attribute matches. Class searches
+match all supplied class names and return elements in document order. Searches on a `Tag` inspect
+only its descendants.

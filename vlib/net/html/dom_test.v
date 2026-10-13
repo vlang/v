@@ -110,3 +110,16 @@ fn test_document_root_matches_its_own_classes() {
 	assert dom.get_tags_by_class_name('y').len == 1
 	assert dom.get_tags_by_attribute('class').len == 2
 }
+
+fn test_document_class_search_handles_empty_and_multiple_names() {
+	empty := parse('')
+	assert empty.get_tags_by_class_name('x').len == 0
+	mut dom := parse('<div class="x y"><p class="x">hi</p><span class="x y"></span></div>')
+	assert dom.get_tags_by_class_name().len == 0
+	matches := dom.get_tags_by_class_name('x', 'y')
+	assert matches.len == 2
+	assert matches[0].name == 'div'
+	assert matches[1].name == 'span'
+	assert dom.get_tags_by_class_name('x').len == 3
+	assert dom.get_tags(name: 'div')[0] == dom.get_root()
+}
