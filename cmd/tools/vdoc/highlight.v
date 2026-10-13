@@ -323,6 +323,10 @@ fn add_string_parts(mut highlighted []HighlightedToken, code string, scanned Sca
 			continue
 		}
 		end := escape_end(code, i, scanned.end)
+		if end < 0 {
+			i++
+			continue
+		}
 		if i > start {
 			highlighted << HighlightedToken{.string, start, i}
 		}
@@ -337,7 +341,8 @@ fn add_string_parts(mut highlighted []HighlightedToken, code string, scanned Sca
 
 // escape_end returns where the escape sequence that starts with the `\` at `i` ends, before
 // `limit`. `\x`, `\u` and `\U` take 2, 4 and 8 hex digits, and an octal escape takes exactly
-// three octal digits, like `\101`. Otherwise, the `\` escapes only the next character, like `\0`.
+// three octal digits, like `\101`. Otherwise, the `\` escapes only the next character, like `\0`,
+// except for another digit, like in `\1` or `\12`, which keeps its `\`, so that it returns -1.
 fn escape_end(code string, i int, limit int) int {
 	if i + 1 >= limit {
 		return limit
@@ -358,6 +363,9 @@ fn escape_end(code string, i int, limit int) int {
 	if i + 3 < limit && code[i + 1].is_oct_digit() && code[i + 2].is_oct_digit()
 		&& code[i + 3].is_oct_digit() {
 		return i + 4
+	}
+	if code[i + 1].is_digit() && code[i + 1] != `0` {
+		return -1
 	}
 	return i + 2
 }

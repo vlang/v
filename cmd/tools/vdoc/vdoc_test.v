@@ -310,6 +310,10 @@ fn test_highlight_tokens_string_escapes() {
 	assert classify("'\\01'") == ["':string", '\\0:escape', "1':string"]
 	assert classify("'\\012'") == ["':string", '\\012:escape', "':string"]
 	assert classify("'\\08'") == ["':string", '\\0:escape', "8':string"]
+	// Another digit without three octal digits keeps its `\`, so it is no escape.
+	assert classify("'\\1'") == ["'\\1':string"]
+	assert classify("'\\12'") == ["'\\12':string"]
+	assert classify("'\\8\\n'") == ["'\\8:string", '\\n:escape', "':string"]
 	assert classify("'\\\${x}'").filter(it.ends_with(':escape')) == ['\\$:escape']
 	assert classify("r'a\\n'") == ["r'a\\n':string"]
 	// A part after an interpolation that starts with `r` is no raw string, even when it ends
