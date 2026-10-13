@@ -16,6 +16,9 @@ and the client's callbacks have been registered.
 
 ## Explicit write batching
 
+Opening handshakes reject empty input and malformed header lines with an error.
+Each nonempty header line needs a name followed by a colon; values may contain further colons.
+
 `client.write_messages([]websocket.Message)` sends the supplied complete frames
 in order without waiting to collect more traffic. It uses one socket write and
 returns the wire byte count, including headers. Empty batches are a no-op.
