@@ -152,4 +152,20 @@ fn test_tcc_prod_detection_uses_recorded_wrapper_directory_without_chdir() {
 	assert !tcc_with_prod_requested_in(['-cc', wrapper], project)
 	assert !tcc_with_prod_requested_in(['-cc', wrapper, '-o', '-prod'], project)
 	assert os.getwd() == before
+	bare := 'pref_context_cc_${os.getpid()}'
+	os.cp(wrapper, os.join_path(project, bare))!
+	os.chmod(os.join_path(project, bare), 0o700)!
+	saved_path := os.getenv('PATH')
+	defer { os.setenv('PATH', saved_path, true) }
+	for prefix in ['.', ''] {
+		os.setenv('PATH', prefix + os.path_delimiter + saved_path, true)
+		assert tcc_with_prod_requested_in(['-prod', '-cc', bare], project)
+		assert !tcc_with_prod_requested_in(['-prod', '-cc', bare], root)
+		assert os.getenv('PATH') == prefix + os.path_delimiter + saved_path
+	}
+	os.mkdir_all(os.join_path(project, 'bin'))!
+	os.mv(os.join_path(project, bare), os.join_path(project, 'bin', bare))!
+	os.setenv('PATH', 'bin' + os.path_delimiter + saved_path, true)
+	assert tcc_with_prod_requested_in(['-prod', '-cc', bare], project)
+	assert os.getwd() == before
 }

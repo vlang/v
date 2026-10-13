@@ -1053,4 +1053,16 @@ fn test_refresh_skips_production_tinycc_alias_before_starting_builds() {
 	}
 	assert !request_uses_prod_tcc(Request{ ...request, args: ['-prod', '-cc', wrapper] })
 	assert os.getwd() == before
+	bare := 'cache_context_cc_${os.getpid()}'
+	os.cp(wrapper, os.join_path(project, bare))!
+	os.chmod(os.join_path(project, bare), 0o700)!
+	saved_path := os.getenv('PATH')
+	defer { os.setenv('PATH', saved_path, true) }
+	os.setenv('PATH', '.' + os.path_delimiter + saved_path, true)
+	context_request := Request{ ...request, args: ['-prod', '-cc', bare], cwd: project }
+	assert request_uses_prod_tcc(context_request)
+	refresh(fake_v, [context_request])!
+	assert !os.exists(marker)
+	assert os.getenv('PATH') == '.' + os.path_delimiter + saved_path
+	assert os.getwd() == before
 }

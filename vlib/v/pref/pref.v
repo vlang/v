@@ -1275,12 +1275,7 @@ pub fn ccompiler_is_tinycc(ccompiler string) bool {
 
 fn ccompiler_is_tinycc_in(ccompiler string, cwd string) bool {
 	work_folder := if cwd == '' { os.getwd() } else { cwd }
-	compiler_path := if !os.is_abs_path(ccompiler) && (ccompiler.contains('/') || ccompiler.contains('\\')) {
-		os.join_path(work_folder, ccompiler)
-	} else {
-		ccompiler
-	}
-	path := os.find_abs_path_of_executable(compiler_path) or { compiler_path.replace('\\', '/') }
+	path := ccompiler_path_in(ccompiler, work_folder)
 	resolved := os.real_path(path)
 	if tinycc_file_name(os.file_name(resolved)) {
 		return true
@@ -1295,6 +1290,34 @@ fn ccompiler_is_tinycc_in(ccompiler string, cwd string) bool {
 		}
 	}
 	return false
+}
+
+// ccompiler_path_in resolves explicit paths and PATH entries in the requested directory.
+// Preserve os's suffix-before-directory search order without changing the process PATH.
+fn ccompiler_path_in(ccompiler string, cwd string) string {
+	mut suffixes := ['']
+	$if windows {
+		suffixes = ['.com', '.exe', '.bat', '.cmd', '']
+		if os.file_ext(ccompiler).to_lower_ascii() in suffixes && os.file_ext(ccompiler) != '' {
+			suffixes = ['']
+		}
+	}
+	if os.is_abs_path(ccompiler) || ccompiler.contains('/') || ccompiler.contains('\\') {
+		path := if os.is_abs_path(ccompiler) { ccompiler } else { os.join_path(cwd, ccompiler) }
+		for suffix in suffixes {
+			candidate := path + suffix
+			if os.is_file(candidate) && os.is_executable(candidate) { return candidate }
+		}
+		return path.replace('\\', '/')
+	}
+	for suffix in suffixes {
+		for entry in os.getenv('PATH').split(os.path_delimiter) {
+			directory := if os.is_abs_path(entry) { entry } else { os.join_path(cwd, entry) }
+			candidate := os.join_path(directory, ccompiler + suffix)
+			if os.is_file(candidate) && os.is_executable(candidate) { return candidate }
+		}
+	}
+	return os.join_path(cwd, ccompiler)
 }
 
 // ccompiler_version_is_tinycc reports whether output contains a TinyCC version or branding

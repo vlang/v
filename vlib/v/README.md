@@ -488,7 +488,8 @@ before compiling program objects or linking an executable.
 `v up` refreshes only TinyCC cache configurations, retaining recorded test modes.
 Production TinyCC records made by older compilers are skipped.
 `v.pref.tcc_with_prod_requested_in` checks compiler wrappers in the record's working directory
-and resolves relative compiler paths there without changing the caller's directory.
+and resolves relative compiler paths and `PATH` entries there without changing the caller's
+directory or environment.
 Caches for other C compilers are refreshed by the next build that uses that compiler.
 Compiler updates validate fresh module interfaces and reuse compiled objects when the generated C,
 C compiler, flags, and native inputs still match. Reused objects print no cache creation notices.
