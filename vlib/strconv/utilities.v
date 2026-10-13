@@ -36,9 +36,9 @@ fn bool_to_u64(b bool) u64 {
 	return u64(0)
 }
 
-// signbit reports whether the sign bit of `x` is set. Unlike `x < 0.0`, it is true for -0.0 too.
+// format_has_sign_bit reports whether the sign bit of `x` is set. Unlike `x < 0.0`, it is true for -0.0 too.
 @[inline]
-fn signbit(x f64) bool {
+fn format_has_sign_bit(x f64) bool {
 	return bits.f64_bits(x) >> 63 != 0
 }
 

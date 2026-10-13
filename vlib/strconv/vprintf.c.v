@@ -443,7 +443,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				$if !nofloat ? {
 					v_sprintf_panic(p_index, pt.len)
 					x := unsafe { *(&f64(pt[p_index])) }
-					positive := !signbit(x)
+					positive := !format_has_sign_bit(x)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
 					len0 = v_sprintf_blank_sign(mut res, blank && positive && !sign, len0)
 					s := format_fl_old(f64(x),
@@ -471,7 +471,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				$if !nofloat ? {
 					v_sprintf_panic(p_index, pt.len)
 					x := unsafe { *(&f64(pt[p_index])) }
-					positive := !signbit(x)
+					positive := !format_has_sign_bit(x)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
 					len0 = v_sprintf_blank_sign(mut res, blank && positive && !sign, len0)
 					s := format_es_old(f64(x),
@@ -499,7 +499,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 				$if !nofloat ? {
 					v_sprintf_panic(p_index, pt.len)
 					x := unsafe { *(&f64(pt[p_index])) }
-					positive := !signbit(x)
+					positive := !format_has_sign_bit(x)
 					mut s := ''
 					len0 = v_sprintf_blank_sign(mut res, blank && positive && !sign, len0)
 					tx := fabs(x)
@@ -730,7 +730,7 @@ fn v_sprintf_alt_form(verb u8, digits string, zero_len int) string {
 // fabs returns the magnitude of x, clearing the sign of negative zero and NaNs.
 // The formatting caller applies the requested output sign separately.
 fn fabs(x f64) f64 {
-	if signbit(x) {
+	if format_has_sign_bit(x) {
 		return -x
 	}
 	return x
