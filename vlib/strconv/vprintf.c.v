@@ -104,10 +104,9 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 		// single char, manage it here
 		if ch == `c` && status == .field_char {
 			v_sprintf_panic(p_index, pt.len)
-			// A `rune` argument is stored in 4 bytes, while a byte sized one is promoted to
-			// an `int`, that can be wider. Read only the 4 bytes, that both of them have:
-			// on a little endian target, they are the low ones of that `int`.
-			mut r := unsafe { *(&rune(pt[p_index])) }
+			// Integer arguments, including runes and bytes, use an `int` storage slot.
+			// Read that slot before narrowing so its byte order does not affect the rune.
+			mut r := rune(unsafe { *(&int(pt[p_index])) })
 			if r > 0x10ffff || (r >= 0xd800 && r <= 0xdfff) {
 				r = rune(0xfffd) // not a valid code point
 			}
