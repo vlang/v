@@ -203,7 +203,9 @@ pub fn (mut parser Parser) split_parse(data string) {
 				// parser.print_debug(parser.lexical_attributes.current_tag.name)
 			} else if chr !in [u8(9), ` `, `=`, `\n`] { // Tab, space, = and \n
 				parser.lexical_attributes.lexeme_builder.write_u8(chr)
-			} else if chr != 10 {
+			} else {
+				// a newline separates like a space does: without this a tag
+				// split across lines glues its name to the first attribute
 				complete_lexeme := parser.builder_str().to_lower()
 				if parser.lexical_attributes.current_tag.name == '' {
 					parser.lexical_attributes.current_tag.name = complete_lexeme

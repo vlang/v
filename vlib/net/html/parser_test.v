@@ -128,3 +128,13 @@ fn test_unterminated_code_body_is_preserved_at_eof() {
 	assert dom.get_root().name == 'script'
 	assert dom.get_root().content == 'first second'
 }
+
+fn test_parse_tag_split_across_lines() {
+	// a newline inside a tag separates like a space: without this the tag
+	// name glues to the first attribute (`divclass`).
+	// See https://github.com/vlang/v/issues/30423
+	dom := parse('<div>\n<span\nclass="x">t</span>\n</div>')
+	span := dom.get_tags(name: 'span')[0]
+	assert span.attributes['class'] == 'x'
+	assert span.text() == 't'
+}
