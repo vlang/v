@@ -892,8 +892,8 @@ fn header_value_word(value string, i int) u64 {
 }
 
 // word_has_byte_below_0e reports whether one of the 8 bytes of `w` is below
-// 0x0e, the range that holds NUL, LF and CR.
-@[inline]
+// 0x0e, the range that holds NUL, LF and CR. The subtraction intentionally wraps.
+@[ignore_overflow; inline]
 fn word_has_byte_below_0e(w u64) bool {
 	return (w - 0x0e0e0e0e0e0e0e0e) & ~w & 0x8080808080808080 != 0
 }

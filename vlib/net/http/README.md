@@ -175,6 +175,8 @@ fn client_ip(req http.Request) string {
 
 ## Cookies, headers and multipart
 
+Header value validation also works in `-check-overflow` builds: permitted TAB bytes are kept.
+
 `Request.add_cookie`/`Request.cookie` and `Response.cookies` handle cookies.
 `Response.cookies` parses `Expires` with `time.parse_http_header_string`. Invalid dates
 and years before 1601 remain in `Cookie.unparsed`; they do not replace a valid expiry.
