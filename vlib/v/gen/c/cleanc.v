@@ -10146,6 +10146,21 @@ fn (g &FlatGen) ordered_startup_modules(module_to_init map[string]string) []stri
 	mut result := []string{}
 	mut visiting := map[string]bool{}
 	mut visited := map[string]bool{}
+	// Cached object names are sorted independently of source imports. Begin
+	// at root importers, even ones without an initializer, so their dependency
+	// traversal owns the order before the cached-module fallback below.
+	mut imported_modules := map[string]bool{}
+	for _, imports in g.module_imports {
+		for dep in imports {
+			imported_modules[g.startup_dependency_module(dep, startup_modules)] = true
+		}
+	}
+	g.visit_startup_module('builtin', startup_modules, mut visiting, mut visited, mut result)
+	for mod, _ in g.module_imports {
+		if mod !in imported_modules {
+			g.visit_startup_module(mod, startup_modules, mut visiting, mut visited, mut result)
+		}
+	}
 	for mod in module_order {
 		g.visit_startup_module(mod, startup_modules, mut visiting, mut visited, mut result)
 	}
