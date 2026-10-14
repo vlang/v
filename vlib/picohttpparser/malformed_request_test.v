@@ -99,7 +99,7 @@ const malformed_cases = [
 	},
 ]
 
-pub fn test_parse_request_malformed_table() {
+fn test_parse_request_malformed_table() {
 	for c in malformed_cases {
 		mut r := Request{}
 		mut got_err := ''
@@ -116,7 +116,7 @@ pub fn test_parse_request_malformed_table() {
 	}
 }
 
-pub fn test_parse_request_keeps_trailers_after_the_first_request() {
+fn test_parse_request_keeps_trailers_after_the_first_request() {
 	// A second request in the same buffer is body, not headers.
 	mut r := Request{}
 	mut got_err := ''
@@ -132,7 +132,7 @@ pub fn test_parse_request_keeps_trailers_after_the_first_request() {
 	assert r.body == 'C: d\r\n\r\n', 'body "${r.body}"'
 }
 
-pub fn test_parse_request_trims_header_value_whitespace() {
+fn test_parse_request_trims_header_value_whitespace() {
 	// leading OWS after the colon and trailing OWS before CRLF are both dropped
 	mut r := Request{}
 	n := r.parse_request('GET / HTTP/1.1\r\nHost:   x  \r\n\r\n') or {
@@ -152,7 +152,7 @@ pub fn test_parse_request_trims_header_value_whitespace() {
 	assert r2.headers[0].value == 'x', 'value "${r2.headers[0].value}"'
 }
 
-pub fn test_parse_request_allows_an_empty_header_value() {
+fn test_parse_request_allows_an_empty_header_value() {
 	mut r := Request{}
 	n := r.parse_request('GET / HTTP/1.1\r\nHost:\r\n\r\n') or {
 		assert false, 'unexpected error: ${err}'
@@ -164,7 +164,7 @@ pub fn test_parse_request_allows_an_empty_header_value() {
 	assert r.headers[0].value == '', 'value "${r.headers[0].value}"'
 }
 
-pub fn test_parse_request_stores_obs_fold_as_a_nameless_header() {
+fn test_parse_request_stores_obs_fold_as_a_nameless_header() {
 	// A continuation line becomes a header with an empty name and the original
 	// whitespace kept in the value.
 	mut r := Request{}
@@ -190,14 +190,27 @@ pub fn test_parse_request_stores_obs_fold_as_a_nameless_header() {
 	assert r2.headers[1].value == '\ty', 'value "${r2.headers[1].value}"'
 }
 
-pub fn test_parse_request_leading_crlf_is_rejected() {
-	// NOTE: phr_parse_request advances past the '\r' but leaves buf on the '\n',
-	// so the documented "skip first empty line" path cannot succeed. A leading
-	// CRLF is reported as an invalid character instead. Pinned as-is.
-	for input in ['\r\nGET / HTTP/1.1\r\nHost: x\r\n\r\n', '\r\n', '\n'] {
-		mut r := Request{}
-		mut got_err := ''
-		r.parse_request(input) or { got_err = err.msg() }
-		assert got_err == 'error parsing request: invalid character "10"', 'input "${input}": "${got_err}"'
+fn test_parse_request_leading_crlf_is_accepted() {
+	input := '\r\nGET / HTTP/1.1\r\nHost: x\r\n\r\n'
+	mut r := Request{}
+	assert r.parse_request(input)! == input.len
+	assert r.method == 'GET'
+	assert r.path == '/'
+	assert r.num_headers == 1
+	assert r.headers[0].name == 'Host'
+	assert r.headers[0].value == 'x'
+}
+
+fn test_parse_request_leading_crlf_without_request_is_incomplete() {
+	mut r := Request{}
+	assert r.parse_request('\r\n')! == -2
+}
+
+fn test_parse_request_leading_bare_lf_is_rejected() {
+	mut r := Request{}
+	if _ := r.parse_request('\n') {
+		assert false, 'a bare leading LF must be rejected'
+	} else {
+		assert err.msg() == 'error parsing request: invalid character "10"'
 	}
 }
