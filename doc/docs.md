@@ -7351,6 +7351,9 @@ so it may rewrite a file accepted by either check mode.
 To disable formatting for a block of code, wrap it with `// vfmt off` and
 `// vfmt on` comments.
 
+These directives retain their source order relative to struct field attributes.
+Attribute groups that cross a directive boundary retain the affected field's source text.
+
 ```bash
 // Not affected by fmt
 // vfmt off

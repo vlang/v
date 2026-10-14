@@ -4439,8 +4439,8 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 	mut previous := flat.empty_node
 	for fid in fields {
 		f := g.a.node(fid)
-		g.emit_blank_line_between(previous, fid)
 		if f.kind != .field_decl {
+			g.emit_blank_line_between(previous, fid)
 			// e.g. a `$if` block inside the struct body
 			g.emit_comments_before(f.pos.offset)
 			g.source_end = int_max(g.source_end, f.pos.offset)
@@ -4450,6 +4450,26 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		}
 		gp := f.generic_params()
 		flags := if gp.len > 0 { gp[0] } else { '' }
+		if g.struct_field_preserves_attr_prefix(fid, previous) {
+			// Keep leading attributes on their original side of a formatting directive.
+			if g.on_newline && g.out.len > 0 && g.out.last_n(1) == '\n' {
+				g.out.go_back(1)
+			}
+			g.out.write_string(g.source[g.source_end..f.pos.end])
+			g.on_newline = false
+			g.skip_comments_before(f.pos.end)
+			g.source_end = f.pos.end
+			g.emit_trailing_comments(f.pos.end)
+			if !g.on_newline {
+				g.writeln('')
+			}
+			if !flags.contains('i') {
+				cur_access = access_label(flags)
+			}
+			previous = fid
+			continue
+		}
+		g.emit_blank_line_between(previous, fid)
 		access := access_label(flags)
 		if !flags.contains('i') && access != cur_access {
 			// Doc comments written below `pub:` belong to the field, so only the
@@ -4479,7 +4499,8 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		g.source_end = int_max(g.source_end, f.pos.offset)
 		is_embed := flags.contains('e')
 		mut suffix_width := 0
-		pads_comment := int(fid) in comment_align
+		preserve_attr_suffix := g.struct_field_preserves_attr_suffix(fid)
+		pads_comment := int(fid) in comment_align && !preserve_attr_suffix
 		if is_embed {
 			g.write(g.type_text(f.value))
 		} else {
@@ -4518,12 +4539,17 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		}
 		if gp.len > 1 {
 			attr_text := '@[${gp[1..].join('; ')}]'
-			if pad := attr_align[int(fid)] {
-				if pad > suffix_width {
-					g.write(' '.repeat(pad - suffix_width))
+			if preserve_attr_suffix {
+				g.write(g.source[g.a.child_node(f, 0).pos.end..f.pos.end])
+				g.skip_comments_before(f.pos.end)
+			} else {
+				if pad := attr_align[int(fid)] {
+					if pad > suffix_width {
+						g.write(' '.repeat(pad - suffix_width))
+					}
 				}
+				g.write(' ${attr_text}')
 			}
-			g.write(' ${attr_text}')
 			suffix_width = attr_text.len
 		}
 		if pads_comment {
@@ -5013,6 +5039,54 @@ fn (g &Gen) struct_field_default_width(fid flat.NodeId) int {
 	return g.array_expr_width(g.a.child(f, 0))
 }
 
+fn (g &Gen) has_vfmt_directive_between(start int, end int) bool {
+	for comment in g.comments {
+		if comment.pos.offset >= end {
+			break
+		}
+		if comment.pos.offset >= start {
+			text := comment.text.trim_space()
+			if text.starts_with('// vfmt off') || text.starts_with('// vfmt on') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (g &Gen) struct_field_preserves_attr_suffix(fid flat.NodeId) bool {
+	f := g.a.node(fid)
+	return f.children_count > 0 && f.generic_params().len > 1 && f.pos.end <= g.source.len
+		&& g.has_vfmt_directive_between(g.a.child_node(f, 0).pos.end, f.pos.end)
+}
+
+fn (g &Gen) struct_field_preserves_attr_prefix(fid flat.NodeId, previous flat.NodeId) bool {
+	f := g.a.node(fid)
+	if int(previous) < 0 || f.generic_params().len < 2 {
+		return false
+	}
+	p := g.a.node(previous)
+	if p.kind != .field_decl || p.pos.end < 0 || p.pos.end > f.pos.offset
+		|| f.pos.end > g.source.len || !g.has_vfmt_directive_between(p.pos.end, f.pos.offset) {
+		return false
+	}
+	// Only actual leading attributes matter; attribute-like text in comments is ignored.
+	mut cursor := p.pos.end
+	for comment in g.comments {
+		if comment.pos.offset >= f.pos.offset {
+			break
+		}
+		if comment.pos.end <= cursor {
+			continue
+		}
+		if comment.pos.offset > cursor && g.source[cursor..comment.pos.offset].contains('@[') {
+			return true
+		}
+		cursor = comment.pos.end
+	}
+	return cursor < f.pos.offset && g.source[cursor..f.pos.offset].contains('@[')
+}
+
 // struct_field_attr_default_width measures the formatted default, including quotes and
 // normalized expression spacing, without consuming the enclosing declaration's comments.
 fn (g &Gen) struct_field_attr_default_width(fid flat.NodeId, column int) int {
@@ -5065,7 +5139,8 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 	mut previous := flat.empty_node
 	mut prev_state := 0
 	mut comment_groups := map[int]int{}
-	for fid in fields {
+	mut preserved_fields := map[int]bool{}
+	for field_i, fid in fields {
 		f := g.a.node(fid)
 		if f.kind != .field_decl || !f.pos.is_valid() {
 			previous = flat.empty_node
@@ -5079,6 +5154,12 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 		}
 		line := g.source_line(f.pos.offset)
 		has_break := g.field_alignment_break(previous, fid)
+		source_previous := if field_i > 0 { fields[field_i - 1] } else { flat.empty_node }
+		preserves_attrs := g.struct_field_preserves_attr_prefix(fid, source_previous)
+			|| g.struct_field_preserves_attr_suffix(fid)
+		if preserves_attrs {
+			preserved_fields[int(fid)] = true
+		}
 		type_width := g.type_text(f.typ).len
 		mut suffix := type_width
 		mut suffix_known := true
@@ -5097,7 +5178,8 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 		has_deferred_comment := f.children_count > 0 && gp.len > 1
 			&& g.has_comment_between(g.a.child_node(f, 0).pos.end, f.pos.end)
 			&& g.has_trailing_comment(g.a.child_node(f, 0).pos.end)
-		if suffix_known && (has_deferred_comment || g.has_trailing_comment(f.pos.end)) {
+		if suffix_known && !preserves_attrs
+			&& (has_deferred_comment || g.has_trailing_comment(f.pos.end)) {
 			// Comments only line up across fields that end the same way. A `= default` or an
 			// attribute makes the text in front of the comment a different shape, so the run
 			// restarts there instead of pushing the plain fields far to the right.
@@ -5133,6 +5215,10 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 			defaults[int(fid)] = default_align.max_len(line)
 		}
 		if gp.len > 1 {
+			if int(fid) in preserved_fields {
+				attr_group_break = true
+				continue
+			}
 			type_width := g.type_text(f.typ).len
 			padded_type_width := int_max(type_width, defaults[int(fid)] or { 0 })
 			flags := gp[0]

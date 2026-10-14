@@ -2591,6 +2591,33 @@ fn test_formatter_defers_comments_after_the_last_default_operand() {
 	assert vfmt('struct_field_last_operand_default_comments_twice', out) == out
 }
 
+fn test_formatter_preserves_off_directives_before_default_attributes() {
+	for ending in ['\t// vfmt on\n\tb int = 2 @[b]\n}\n', '\tb   int=2 @[b]\n}\n'] {
+		source := 'struct Directives {\n\ta int = 1 // vfmt off\n\t@[a]\n${ending}'
+		out := vfmt('struct_field_off_directive_before_attrs', source)
+		assert out == source, out
+		assert out.count('@[a]') == 1, out
+		assert vfmt('struct_field_off_directive_before_attrs_twice', out) == out
+	}
+}
+
+fn test_formatter_preserves_on_directives_before_default_attributes() {
+	source := 'struct Directives {\n\t// vfmt off\n\ta   int=1 // vfmt on\n\t@[a]\n\tb int = 2 @[b]\n}\n'
+	out := vfmt('struct_field_on_directive_before_attrs', source)
+	assert out == source, out
+	assert out.count('@[a]') == 1, out
+	assert vfmt('struct_field_on_directive_before_attrs_twice', out) == out
+}
+
+fn test_formatter_preserves_directives_between_default_attribute_groups() {
+	source := 'struct Directives {\n\ta int = 1 // vfmt off\n\t@[a]\n\t// vfmt on\n\t@[b]\n\tc int = 3 @[c]\n}\n'
+	out := vfmt('struct_field_directives_between_attr_groups', source)
+	assert out == source, out
+	assert out.count('@[a]') == 1, out
+	assert out.count('@[b]') == 1, out
+	assert vfmt('struct_field_directives_between_attr_groups_twice', out) == out
+}
+
 // Enum members and interface members align their trailing comments the same way.
 fn test_formatter_aligns_enum_and_interface_trailing_comments() {
 	source := 'enum Stage {\n\tcompile_begin // before\n\tcompile_end   // after\n\tcmd_begin     // before run\n}\n\ninterface Reporter {\n\tsession_start(message string) // at the start\n\tstop()                        // at the end\n}\n'

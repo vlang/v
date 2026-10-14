@@ -503,6 +503,18 @@ fn test_fmt_preserves_comments_with_v3() {
 	assert formatted.contains("fn format_me() { println('yes') }"), formatted
 }
 
+fn test_fmt_preserves_vfmt_directives_before_default_attributes() {
+	source := 'struct Directives {\n\ta int = 1 // vfmt off\n\t@[a]\n\t// vfmt on\n\tb int = 2 @[b]\n}\n'
+	res, formatted := run_vfmt_write('field_attribute_vfmt_directives', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	assert formatted.count('@[a]') == 1, formatted
+	second_res, twice := run_vfmt_write('field_attribute_vfmt_directives_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert twice == formatted, twice
+}
+
 fn test_fmt_keeps_regular_comments_attached_with_v3() {
 	source := '// docs\nfn main(){\n\tx := 1 // inline\n\t_ = x\n}\n'
 	res, formatted := run_vfmt_write('regular_comments', source, '')
