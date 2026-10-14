@@ -2,6 +2,7 @@ module c
 
 import os
 import v.cmdexec
+import v.flat
 import v.pref
 
 fn test_mmap_header_ownership_is_limited_to_supported_shipped_bindings() {
@@ -19,6 +20,10 @@ fn test_mmap_header_ownership_is_limited_to_supported_shipped_bindings() {
 		assert !g.core_native_header_is_redeclared(source, '<sys/mman.h>'), target
 	}
 	g.set_target(pref.target_from('macos', 'arm64')!)
+	mut a := flat.FlatAst{}
+	a.cached_header_sources['/cache/os.vh'] = source
+	g.a = &a
+	assert g.core_native_header_is_redeclared('/cache/os.vh', '<sys/mman.h>')
 	g.no_builtin = true
 	assert !g.core_native_header_is_redeclared(source, '<sys/mman.h>')
 	g.no_builtin = false
@@ -121,7 +126,7 @@ fn main() {
 			assert !code.contains('i32 msync('), 'SDK owns the msync prototype'
 		} else {
 			assert !code.contains('#include'), 'native mmap must preserve the standalone preamble'
-			assert code.contains('i32 msync(void* addr, usize len, i32 flags);'), 'missing native msync ABI'
+			assert code.contains('i32 msync(void* addr, size_t len, i32 flags);'), 'missing native msync ABI'
 		}
 		compiled := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-cc', 'clang', '-cflags',
 			'-Werror=implicit-function-declaration', '-o', executable, source])
