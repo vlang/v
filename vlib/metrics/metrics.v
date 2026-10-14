@@ -75,6 +75,9 @@ pub fn (mut r Registry) counter(name string) &Counter {
 	assert valid_name(name, true), 'metrics: invalid instrument name ${name}'
 	r.mutex.lock()
 	defer { r.mutex.unlock() }
+	for existing in r.histograms.keys() {
+		assert name !in [existing + '_bucket', existing + '_sum', existing + '_count'], 'metrics: instrument name conflicts with histogram samples'
+	}
 	assert name !in r.gauges, 'metrics: instrument name already used'
 	assert name !in r.histograms, 'metrics: instrument name already used'
 	if name !in r.counters {
@@ -82,7 +85,7 @@ pub fn (mut r Registry) counter(name string) &Counter {
 			mutex: sync.new_mutex()
 		}
 	}
-	return r.counters[name]
+	return r.counters[name] or { panic('metrics: missing counter') }
 }
 
 // gauge returns the named gauge, creating it on first use.
@@ -90,6 +93,9 @@ pub fn (mut r Registry) gauge(name string) &Gauge {
 	assert valid_name(name, true), 'metrics: invalid instrument name ${name}'
 	r.mutex.lock()
 	defer { r.mutex.unlock() }
+	for existing in r.histograms.keys() {
+		assert name !in [existing + '_bucket', existing + '_sum', existing + '_count'], 'metrics: instrument name conflicts with histogram samples'
+	}
 	assert name !in r.counters, 'metrics: instrument name already used'
 	assert name !in r.histograms, 'metrics: instrument name already used'
 	if name !in r.gauges {
@@ -97,7 +103,7 @@ pub fn (mut r Registry) gauge(name string) &Gauge {
 			mutex: sync.new_mutex()
 		}
 	}
-	return r.gauges[name]
+	return r.gauges[name] or { panic('metrics: missing gauge') }
 }
 
 // histogram returns the named histogram with the given bucket upper bounds
@@ -107,14 +113,21 @@ pub fn (mut r Registry) histogram(name string, bounds []f64) &Histogram {
 	assert valid_name(name, true), 'metrics: invalid instrument name ${name}'
 	r.mutex.lock()
 	defer { r.mutex.unlock() }
+	for existing in r.histograms.keys() {
+		assert name !in [existing + '_bucket', existing + '_sum', existing + '_count'], 'metrics: instrument name conflicts with histogram samples'
+	}
 	assert name !in r.counters, 'metrics: instrument name already used'
 	assert name !in r.gauges, 'metrics: instrument name already used'
+	for suffix in ['_bucket', '_sum', '_count'] {
+		sample := name + suffix
+		assert sample !in r.counters && sample !in r.gauges && sample !in r.histograms, 'metrics: histogram sample name already used'
+	}
 	for i, bound in bounds {
 		assert !math.is_nan(bound) && !math.is_inf(bound, 0), 'metrics: bucket bounds must be finite'
 		assert i == 0 || bound > bounds[i - 1], 'metrics: bucket bounds must be strictly ascending'
 	}
-	if name in r.histograms {
-		assert r.histograms[name].bounds == bounds, 'metrics: bucket bounds differ'
+	if existing := r.histograms[name] {
+		assert existing.bounds == bounds, 'metrics: bucket bounds differ'
 	}
 	if name !in r.histograms {
 		r.histograms[name] = &Histogram{
@@ -122,7 +135,7 @@ pub fn (mut r Registry) histogram(name string, bounds []f64) &Histogram {
 			bounds: bounds.clone()
 		}
 	}
-	return r.histograms[name]
+	return r.histograms[name] or { panic('metrics: missing histogram') }
 }
 
 // add increments the labeled series by v. Negative or NaN increments panic;
@@ -238,7 +251,7 @@ pub fn (mut r Registry) to_prometheus() string {
 	defer { r.mutex.unlock() }
 	mut out := []string{}
 	for name in r.counters.keys() {
-		mut c := r.counters[name]
+		mut c := r.counters[name] or { continue }
 		out << '# HELP ${name} counter'
 		out << '# TYPE ${name} counter'
 		c.mutex.lock()
@@ -246,7 +259,7 @@ pub fn (mut r Registry) to_prometheus() string {
 		c.mutex.unlock()
 	}
 	for name in r.gauges.keys() {
-		mut g := r.gauges[name]
+		mut g := r.gauges[name] or { continue }
 		out << '# HELP ${name} gauge'
 		out << '# TYPE ${name} gauge'
 		g.mutex.lock()
@@ -254,7 +267,7 @@ pub fn (mut r Registry) to_prometheus() string {
 		g.mutex.unlock()
 	}
 	for name in r.histograms.keys() {
-		mut h := r.histograms[name]
+		mut h := r.histograms[name] or { continue }
 		out << '# HELP ${name} histogram'
 		out << '# TYPE ${name} histogram'
 		h.mutex.lock()
@@ -289,7 +302,7 @@ fn (mut r Registry) render_samples(name string, vals map[string]f64) string {
 	return out.join('\n')
 }
 
-// render_labels decodes the canonical label encoding back to `k="v"` pairs.
+// render_labels extracts canonical, already escaped `k="v"` pairs.
 fn render_labels(k string) string {
 	return k.all_after('\x00')
 }

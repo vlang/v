@@ -1,7 +1,7 @@
 `metrics.new_registry()` owns named counters, gauges, and histograms. Create instruments with
 `counter(name)`, `gauge(name)`, or `histogram(name, bounds)`. `Counter.add` accepts nonnegative
 increments; gauges support `set` and signed `inc`. Invalid names, negative or NaN counter increments,
-conflicting instrument types, and invalid histogram bounds panic. Names use ASCII letters,
+conflicting instrument types or histogram sample names, and invalid histogram bounds panic. Names use ASCII letters,
 underscores, and noninitial digits; metric names may also contain colons.
 
 Every operation, including registration and `to_prometheus`, synchronizes access. A scrape locks

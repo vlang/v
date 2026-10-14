@@ -1,6 +1,7 @@
 module metrics
 
 import math
+import os
 
 fn test_counter_aggregation() {
 	mut r := new_registry()
@@ -175,4 +176,24 @@ fn test_scrape_while_registering_and_updating_instruments() {
 		'worker': 'one'
 	}) == 499
 	assert r.to_prometheus().contains('# TYPE extra_3 gauge')
+}
+
+fn test_invalid_instruments_fail_explicitly() {
+	dir := os.join_path(os.vtmp_dir(), 'metrics_invalid_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	cases := [
+		"mut c := r.counter('total'); c.add(-1, {})",
+		"r.histogram('latency', [2.0, 1.0])",
+		"r.counter('bad\\nname')",
+		"r.counter('latency_count'); r.histogram('latency', [1.0])",
+		"r.histogram('latency', [1.0]); r.counter('latency_count')",
+	]
+	for i, body in cases {
+		path := os.join_path(dir, 'invalid_${i}.v')
+		os.write_file(path, 'module main\nimport metrics\nfn main() {\nmut r := metrics.new_registry()\n${body}\n}\n')!
+		result := os.exec([@VEXE, 'run', path])
+		assert result.exit_code != 0, body
+		assert result.output.contains('metrics:'), result.output
+	}
 }
