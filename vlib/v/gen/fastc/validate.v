@@ -47,7 +47,7 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 			'((bool)false)'
 		}
 		.key_nil {
-			g.nil_expression()!
+			'NULL'
 		}
 		.key_none {
 			if g.selfhost {
@@ -76,11 +76,139 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 	}
 }
 
-fn (g &Parser) nil_expression() !string {
-	if g.unsafe_depth == 0 && !g.in_mono_drain {
-		return g.unsupported('`nil` outside an `unsafe` block')
+// validate_nil refuses `nil` outside `unsafe`. With the real vlib it accepts the uses V3
+// accepts that FastC can recognize: `nil` as the whole value of a field declared `voidptr`
+// (`x.f = nil`, `T{f: nil}`, `T{nil}`) or of a `voidptr` argument to a function (os.Mmap.close
+// assigns `nil` to voidptr fields).
+fn (g &Parser) validate_nil(tokens []FastcExpressionToken, previous token.Token, paren_depth int, bracket_depth int, brace_depth int, struct_types []string, struct_depths []int, struct_paren_depths []int) ! {
+	if g.unsafe_depth > 0 || g.in_mono_drain {
+		return
 	}
-	return 'NULL'
+	if g.selfhost && g.nil_ends_value()
+		&& g.nil_target_is_voidptr(tokens, previous, paren_depth, bracket_depth, brace_depth, struct_types, struct_depths, struct_paren_depths) {
+		return
+	}
+	return g.unsupported('`nil` outside an `unsafe` block')
+}
+
+// nil_target_is_voidptr reports whether the value starting at the current `nil` is assigned to
+// a field declared `voidptr`, initializes one in a struct literal, or is a `voidptr` argument.
+fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous token.Token, paren_depth int, bracket_depth int, brace_depth int, struct_types []string, struct_depths []int, struct_paren_depths []int) bool {
+	if previous == .assign && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
+		// `receiver.field =`
+		if tokens.len < 4 || tokens.last().tok != .assign {
+			return false
+		}
+		target := tokens[..tokens.len - 1]
+		if target[target.len - 2].tok != .dot || target.last().tok != .name {
+			return false
+		}
+		receiver_type := g.infer_expression_type(target[..target.len - 2]) or { return false }
+		field := g.struct_field_metadata(receiver_type, target.last().lit) or { return false }
+		return field.is_declared_voidptr
+	}
+	if previous == .colon && struct_depths.len > 0 && brace_depth == struct_depths.last()
+		&& paren_depth == struct_paren_depths.last() && struct_types.len > 0 && tokens.len >= 2
+		&& tokens[tokens.len - 2].tok == .name {
+		// `Struct{field:`
+		field := g.struct_field_metadata(struct_types.last(), tokens[tokens.len - 2].lit) or {
+			return false
+		}
+		return field.is_declared_voidptr
+	}
+	if previous in [.lcbr, .comma, .semicolon] && struct_depths.len > 0
+		&& brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last()
+		&& struct_types.len > 0 {
+		// `Struct{value,`
+		return g.nil_positional_field_is_voidptr(tokens, struct_types.last())
+	}
+	if previous in [.lpar, .comma] && paren_depth > 0 {
+		// `function(`
+		return g.nil_argument_is_voidptr(tokens)
+	}
+	return false
+}
+
+// nil_positional_field_is_voidptr reports whether the value being read in a positional literal
+// of `struct_type` initializes a field declared `voidptr`: the field at the value's position.
+fn (g &Parser) nil_positional_field_is_voidptr(tokens []FastcExpressionToken, struct_type string) bool {
+	open := fastc_innermost_open_index(tokens)
+	if open < 0 || tokens[open].tok != .lcbr {
+		return false
+	}
+	// Count the values before this one; a `field:` or `...` makes the literal not positional.
+	mut index := 0
+	mut inner := 0
+	for i := open + 1; i < tokens.len; i++ {
+		match tokens[i].tok {
+			.lpar, .lsbr, .lcbr {
+				inner++
+			}
+			.rpar, .rsbr, .rcbr {
+				inner--
+			}
+			.comma, .semicolon {
+				if inner == 0 {
+					index++
+				}
+			}
+			.colon, .ellipsis {
+				if inner == 0 {
+					return false
+				}
+			}
+			else {}
+		}
+	}
+	fields := g.struct_field_info[fastc_trim_pointer_suffix(struct_type)] or { return false }
+	return index < fields.len && fields[index].is_declared_voidptr
+}
+
+// nil_argument_is_voidptr reports whether the argument being read goes to a `voidptr` parameter
+// of a non-generic function, called by its name or through an imported module (`util.f(`).
+// FastC also stores fn-typed parameters as `voidptr`; V3 accepts a `nil` argument for those as
+// well. Methods are not trusted: a generic struct's methods keep their erased type parameters
+// as `voidptr`.
+fn (g &Parser) nil_argument_is_voidptr(tokens []FastcExpressionToken) bool {
+	open := fastc_innermost_open_index(tokens)
+	if open <= 0 || tokens[open].tok != .lpar || tokens[open - 1].tok != .name {
+		return false
+	}
+	name := tokens[open - 1].lit
+	if name in g.generic_method_names {
+		return false
+	}
+	if open >= 2 && tokens[open - 2].tok == .dot {
+		// `module.function(`: the qualifier must be an imported module, not a value.
+		if open < 3 || tokens[open - 3].tok != .name || tokens[open - 3].lit in g.locals
+			|| (open >= 4 && tokens[open - 4].tok == .dot) {
+			return false
+		}
+		imported_module := g.imports[tokens[open - 3].lit] or { return false }
+		signature := g.functions[fastc_function_key(g.resolve_module_alias(imported_module), name)] or {
+			return false
+		}
+		index := fastc_call_argument_index(tokens, open)
+		return index < signature.parameter_types.len && signature.parameter_types[index] == 'voidptr'
+	}
+	if name in g.locals {
+		return false
+	}
+	return g.streaming_call_argument_type(tokens) == 'voidptr'
+}
+
+// nil_ends_value reports whether the current `nil` is a whole value: the next token closes it or
+// ends the statement, so no operator applies to it.
+fn (g &Parser) nil_ends_value() bool {
+	mut lookahead := g.s
+	mut next := lookahead.scan()
+	if next == .semicolon && !g.semicolon_continues_expression() {
+		return true
+	}
+	for next == .semicolon {
+		next = lookahead.scan()
+	}
+	return next in [.comma, .rpar, .rcbr, .eof]
 }
 
 fn (g &Parser) expression_name(previous token.Token, qualified_name_owner string) !string {
