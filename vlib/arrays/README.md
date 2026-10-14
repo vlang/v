@@ -22,3 +22,6 @@ exists. The error names the operation and the value that could not be found.
 
 `is_sorted(array)` checks ascending order, allowing equal adjacent elements. Empty and
 single-element arrays are sorted. The element type must support ordering comparisons.
+`bisect_left(array, value)` and `bisect_right(array, value)` return insertion positions in an
+ascending sorted array, before or after existing equal values. `insort_left` and `insort_right`
+insert at those positions. Empty arrays return position zero; unsorted input is unsupported.

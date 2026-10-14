@@ -1,5 +1,7 @@
 module workers
 
+#include "@VMODROOT/vlib/v/pthread_helper.h"
+
 #flag @VMODROOT/vlib/v/pthread_helper.o
 
 $if linux {
