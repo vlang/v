@@ -287,11 +287,10 @@ fn test_walk_dir_reports_a_directory_it_cannot_list() {
 // that cannot be read, rather than failing the call.
 fn test_walk_dir_reports_a_missing_root() {
 	missing := os.join_path_single(tfolder, 'missing')
+	// walk_root takes the receiver as a mut parameter, so the callback writes
+	// through to this collector. Passing c.cb directly would copy it.
 	mut c := Collector{}
-	os.walk_dir(missing, c.cb) or {
-		assert false, 'walk_dir failed for a missing root: ${err}'
-		return
-	}
+	walk_root(mut c, missing)
 	assert c.visits == ['missing'], 'visits = ${c.visits}'
 	assert c.failed == [missing]
 	assert c.err_codes.len == 1 && c.err_codes[0] != 0, 'err_codes = ${c.err_codes}'
