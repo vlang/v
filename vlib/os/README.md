@@ -19,6 +19,10 @@ values. If the operating system cannot provide an environment block, it returns 
 On Windows, `os.input()` supports both console and redirected standard input.
 It returns an empty string when the standard input handle is invalid.
 
+### Memory-mapped files
+
+See [memory-mapped files](mmap.md) for file mappings and safe use of their byte views.
+
 ### Path helpers
 
 Windows short-path expansion counts output capacity in UTF-16 characters and reports an
