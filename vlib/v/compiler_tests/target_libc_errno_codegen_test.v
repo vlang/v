@@ -27,9 +27,10 @@ fn main() {}
 		panic(err)
 	}
 	out := os.join_path(root, 'out.c')
-	result := os.exec([target_libc_errno_vexe, '-nocache', '-freestanding', '-arch', 'arm32',
-		'-target-libc-headers', '-gc', 'none', '-no-bounds-checking', '-enable-globals', '-o',
-		out, input])
+	// -target-libc-headers refuses Windows targets, and the target OS defaults to the host's
+	result := os.exec([target_libc_errno_vexe, '-nocache', '-os', 'linux', '-freestanding', '-arch',
+		'arm32', '-target-libc-headers', '-gc', 'none', '-no-bounds-checking', '-enable-globals',
+		'-o', out, input])
 	assert result.exit_code == 0, result.output
 	code := os.read_file(out) or { panic(err) }
 	assert code.contains('#include <errno.h>'), code
