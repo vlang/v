@@ -387,7 +387,7 @@ extern char **environ;
 #include <execinfo.h>
 #endif
 #if defined(__linux__) && defined(__GLIBC__)
-extern pid_t gettid(void);
+#include <sys/syscall.h>
 #endif
 #endif
 
@@ -572,7 +572,7 @@ extern char **environ;
 #include <execinfo.h>
 #endif
 #if defined(__linux__) && defined(__GLIBC__)
-extern pid_t gettid(void);
+#include <sys/syscall.h>
 #endif
 #endif
 '
@@ -587,7 +587,13 @@ extern int backtrace(void **, int);
 extern char **backtrace_symbols(void *const *, int);
 extern void backtrace_symbols_fd(void *const *, int, int);
 #endif
+#if defined(__GLIBC__)
+/* glibc exports `gettid` only from 2.30 on; the system call works with any glibc. */
+static inline pid_t v_fastc_gettid(void) { return (pid_t)syscall(SYS_gettid); }
+#define gettid v_fastc_gettid
+#else
 extern int gettid(void);
+#endif
 extern void *aligned_alloc(size_t, size_t);
 #endif
 #ifndef memory_order_relaxed

@@ -323,3 +323,27 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'backtrace preserved'
 }
+
+fn test_fastc_glibc_gettid_uses_the_system_call() {
+	$if !(linux && glibc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_glibc_gettid_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+fn main() {
+	assert v_gettid() == v_getpid()
+	println("main thread id")
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-gc', 'none', '-nocache', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'main thread id'
+	// glibc exports `gettid` only from 2.30 on, so the program must not import it.
+	binary := os.read_file(program) or { panic(err) }
+	assert !binary.contains('\x00gettid\x00')
+}
