@@ -7260,7 +7260,7 @@ fn main() {
 	cache_dir := os.join_path(root, 'cache')
 	first_output := os.join_path(root, 'first')
 	first :=
-		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-showcc', '-show-timings',
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-cc', 'cc', '-showcc', '-show-timings',
 			'-enable-globals', '-o', first_output, main_file])
 	assert first.exit_code == 0, first.output
 	assert first.output.contains('> cc '), first.output
@@ -7269,7 +7269,7 @@ fn main() {
 
 	second_output := os.join_path(root, 'second')
 	second :=
-		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-showcc', '-show-timings',
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-cc', 'cc', '-showcc', '-show-timings',
 			'-enable-globals', '-o', second_output, main_file])
 	assert second.exit_code == 0, second.output
 	assert second.output.contains('> cc '), second.output
@@ -7307,7 +7307,7 @@ fn main() {
 	cache_dir := os.join_path(root, 'cache')
 	first_output := os.join_path(root, 'first')
 	first :=
-		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-showcc', '-show-timings',
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-cc', 'cc', '-showcc', '-show-timings',
 			'-enable-globals', '-o', first_output, main_file])
 	assert first.exit_code == 0, first.output
 	assert first.output.contains('> cc '), first.output
@@ -7316,7 +7316,7 @@ fn main() {
 
 	second_output := os.join_path(root, 'second')
 	second :=
-		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-showcc', '-show-timings',
+		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-cc', 'cc', '-showcc', '-show-timings',
 			'-enable-globals', '-o', second_output, main_file])
 	assert second.exit_code == 0, second.output
 	assert second.output.contains('> cc '), second.output
