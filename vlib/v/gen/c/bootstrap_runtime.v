@@ -122,7 +122,7 @@ fn (mut g FlatGen) headerless_cmdexec_poll_helper() {
 		return
 	}
 	g.write(headerless_cmdexec_poll)
-	g.collect_preserved_c_fns(['poll', 'v_cmdexec_poll_revents'])
+	g.collect_preserved_c_fns(['v_cmdexec_poll_revents'])
 }
 
 const headerless_cmdexec_poll = r'
@@ -133,13 +133,18 @@ struct v_cmdexec_pollfd {
 	short revents;
 };
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
-int poll(struct v_cmdexec_pollfd*, unsigned int, int);
+typedef unsigned int v_cmdexec_nfds_t;
 #else
-int poll(struct v_cmdexec_pollfd*, size_t, int);
+typedef size_t v_cmdexec_nfds_t;
+#endif
+#ifdef __APPLE__
+int v_cmdexec_poll_sys(struct v_cmdexec_pollfd*, v_cmdexec_nfds_t, int) __asm__("_poll");
+#else
+int v_cmdexec_poll_sys(struct v_cmdexec_pollfd*, v_cmdexec_nfds_t, int) __asm__("poll");
 #endif
 static inline short v_cmdexec_poll_revents(int fd, short events) {
 	struct v_cmdexec_pollfd descriptor = {fd, events, 0};
-	if (poll(&descriptor, 1, 0) <= 0) {
+	if (v_cmdexec_poll_sys(&descriptor, 1, 0) <= 0) {
 		return 0;
 	}
 	return descriptor.revents;

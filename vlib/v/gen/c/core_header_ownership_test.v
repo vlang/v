@@ -37,9 +37,17 @@ fn test_core_header_ownership_preserves_application_and_thirdparty_headers() {
 	assert g.c_source_file_is_in_vlib('/cache/worker.vh')
 	g.output_cross_c = true
 	assert !g.core_native_header_is_redeclared('/cache/worker.vh', '<sys/prctl.h>')
+	assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"')
 	g.output_cross_c = false
 	g.target_libc_headers = true
 	assert !g.core_native_header_is_redeclared('/cache/worker.vh', '<sys/prctl.h>')
+	g.target_libc_headers = false
+	for sdk_mode in ['object', 'no_builtin'] {
+		g.object_file_mode = sdk_mode == 'object'
+		g.no_builtin = sdk_mode == 'no_builtin'
+		assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"')
+	}
+	assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"')
 }
 
 fn test_core_headers_are_restored_after_an_unrelated_explicit_sdk_header() {
@@ -77,6 +85,7 @@ fn test_unverified_libc_abis_keep_native_sdk_declarations() {
 			'amd64'
 		}) or { panic(err) })
 		assert g.c_directives_use_system_libc(), target
+		assert !g.core_native_header_is_redeclared('/vroot/vlib/v/cmdexec/cmdexec_pipe.c.v', '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"'), target
 	}
 }
 
