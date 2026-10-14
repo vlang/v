@@ -94,8 +94,9 @@ make
 That should be it, and you should find your V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
-On macOS, `make` guards Linux-only `prctl` code in older bootstrap snapshots before
-streaming `vc/v.c` to the C compiler. The single snapshot stays unchanged on disk.
+On Unix-like systems, `make` and the `v self` bootstrap fallback stream compatibility fixes
+for older `vc/v.c` snapshots to the C compiler. These match the peak RSS helper's return type
+to `i64` and guard Linux-only `prctl` code. The snapshot stays unchanged on disk.
 
 On Windows, `makev.bat` generates the first compiler stage as C and links it directly.
 This also works with older bootstrap snapshots whose process-spawn code is broken.
