@@ -355,10 +355,18 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			}
 			match node.kind {
 				.call {
-					if t.node_file_or(i, '').len == 0 && i !in t.generic_call_spec_cache && !t.synthetic_generic_call_has_exact_identity(node) {
-						continue
+					// Past this point a call carries a recorded specialization, names its
+					// callee's specialization exactly, or, in a source file, can name a
+					// generic declaration.
+					mut skip := false
+					if i !in t.generic_call_spec_cache {
+						skip = if t.node_file_or(i, '').len == 0 {
+							!t.synthetic_generic_call_has_exact_identity(node)
+						} else {
+							!t.call_may_target_generic(node)
+						}
 					}
-					if !t.call_name_can_target_generic(node) && i !in t.generic_call_spec_cache && !t.synthetic_generic_call_has_exact_identity(node) {
+					if skip {
 						continue
 					}
 					if t.call_is_recorded_struct_operator(node)
@@ -499,6 +507,16 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, 
 	}
 	base_id := t.a.child(&node, 0)
 	base := t.a.nodes[int(base_id)]
+	// Telling `xs[i]` from `f[int]` below resolves the base's type; rule out a base
+	// that cannot name a generic function before paying that for every index.
+	if !t.generic_fn_value_base_may_match(id, base_id, base, decls) {
+		return none
+	}
+	return t.explicit_generic_fn_value_specialization_of(id, node, base_id, base, module_name,
+		decls)
+}
+
+fn (mut t Transformer) explicit_generic_fn_value_specialization_of(id flat.NodeId, node flat.Node, base_id flat.NodeId, base flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []string) {
 	// Empty for a value index too.
 	type_arg_text := t.generic_call_type_args_name(node)
 	if type_arg_text.len == 0 {
@@ -6087,6 +6105,59 @@ fn (t &Transformer) synthetic_generic_call_has_exact_identity(node flat.Node) bo
 	return (callee.value.contains('[') && callee.value.contains(']'))
 		|| callee.value.contains('_T_')
 		|| t.generic_callee_is_specialization(callee.value)
+}
+
+// call_may_target_generic is call_name_can_target_generic(node) ||
+// synthetic_generic_call_has_exact_identity(node), with the specialization lookup
+// that both end with, their costly part, done once.
+fn (t &Transformer) call_may_target_generic(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	direct := t.a.nodes[int(t.a.child(&node, 0))]
+	if direct.kind == .ident && direct.value.len > 0 && ((direct.value.contains('[')
+		&& direct.value.contains(']')) || direct.value.contains('_T_')) {
+		return true
+	}
+	mut callee := direct
+	mut has_explicit_generic_args := false
+	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
+		has_explicit_generic_args = true
+		callee = t.a.nodes[int(t.a.child(&callee, 0))]
+	}
+	if callee.kind !in [.ident, .selector] || callee.value.len == 0 {
+		return false
+	}
+	if has_explicit_generic_args || t.call_is_normalized_explicit_generic_call(node)
+		|| t.generic_fn_call_names[callee.value] || callee.value.contains('_T_') {
+		return true
+	}
+	// Here `callee` is the call's own child: the one both tests look up.
+	return t.generic_callee_is_specialization(callee.value)
+}
+
+// generic_fn_value_base_may_match is a superset test for whether the base of an
+// index can name a generic function given type arguments. Every candidate that
+// explicit_generic_fn_value_decl_candidates forms is spelled from the base's text,
+// unless the checker resolved the value itself.
+fn (t &Transformer) generic_fn_value_base_may_match(id flat.NodeId, base_id flat.NodeId, base flat.Node, decls map[string]GenericFnDecl) bool {
+	if base.kind != .ident && base.kind != .selector {
+		return false
+	}
+	if t.generic_decl_name_tails_count != decls.len || decls.len != t.generic_fn_decls_cache.len
+		|| !t.generic_name_cannot_spell_decl(base.value) {
+		return true
+	}
+	if base.kind != .ident || isnil(t.tc) {
+		return false
+	}
+	if _ := t.tc.resolved_fn_value_name(id) {
+		return true
+	}
+	if _ := t.tc.resolved_fn_value_name(base_id) {
+		return true
+	}
+	return false
 }
 
 fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, call_id flat.NodeId, node flat.Node, call_module string) ?[]string {
