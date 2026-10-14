@@ -258,12 +258,35 @@ fn main() {
 	println("archive")
 }
 ') or { panic(err) }
-	program := os.join_path(root, 'program')
-	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-enable-globals', '-o', program, root])
-	assert build.exit_code == 0, build.output
-	run := cmdexec.run(program, [])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'archive', run.output
+	for jobs in ['1', '2'] {
+		program := os.join_path(root, 'program_${jobs}')
+		build := cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-b', 'fastc',
+			'-enable-globals', '-o', program, root], '', {
+			'VJOBS': jobs
+		})
+		assert build.exit_code == 0, '${jobs} jobs: ${build.output}'
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'archive', run.output
+	}
+}
+
+fn test_fastc_prepared_link_recognizes_native_c_sources() {
+	$if macos && !tinyc && !fastc_selfhost ?&& !v3_backend ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_link_source_${os.getpid()}')
+		os.mkdir_all(root) or { panic(err) }
+		defer { os.rmdir_all(root) or {} }
+		source := os.join_path(root, 'helper.c')
+		os.write_file(source, 'int native_answer(void) { return 42; }\n') or { panic(err) }
+		assert fastc_libtcc_is_link_input(source)
+		assert !fastc_libtcc_is_link_input(os.join_path(root, 'missing.c'))
+		assert !fastc_libtcc_is_link_input(root)
+		tcc_lib := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib')
+		mut link := fastc_prepare_link(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe'),
+			tcc_lib, ['-B${tcc_lib}'], [])
+		defer { fastc_discard_link(mut link) }
+		assert fastc_prepared_link_accepts_inputs(&link)
+	}
 }
 
 fn test_fastc_existing_path_macros_preserve_quoted_commas() {
