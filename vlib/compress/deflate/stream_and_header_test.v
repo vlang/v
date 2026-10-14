@@ -311,30 +311,53 @@ fn test_validate_zlib_header_rejects_preset_dictionary() {
 }
 
 fn test_validate_zlib_header_rejects_malformed_headers() {
-	validate_zlib_header([u8(0x78), 0x9c]) or {
-		assert err.msg() == 'invalid zlib stream: too short'
+	for data in [[]u8{}, [u8(0x78)]] {
+		if _ := validate_zlib_header(data) {
+			assert false, 'truncated header must be rejected'
+		} else {
+			assert err.msg() == 'invalid zlib stream: too short'
+		}
 	}
-	validate_zlib_header([u8(0x79), 0x9c, 0x00, 0x00, 0x00, 0x01]) or {
-		assert err.msg() == 'invalid zlib stream: unsupported compression method'
-	}
-	validate_zlib_header([u8(0x78), 0x9d, 0x00, 0x00, 0x00, 0x01]) or {
-		assert err.msg() == 'invalid zlib stream: bad header checksum'
+	for i, data in [[u8(0x79), 0x9c], [u8(0x78), 0x9d]] {
+		if _ := validate_zlib_header(data) {
+			assert false, 'malformed header must be rejected'
+		} else {
+			expected := ['unsupported compression method', 'bad header checksum'][i]
+			assert err.msg() == 'invalid zlib stream: ${expected}'
+		}
 	}
 }
 
 fn test_validate_zlib_header_rejects_cinfo_above_7() {
-	// RFC 1950 s2: CINFO above 7 is forbidden. Both headers carry a correct
-	// FCHECK, so only the CINFO nibble differs from a legal header.
-	validate_zlib_header([u8(0x88), 0x1c, 0, 0, 0, 0, 0, 0, 0, 0]) or {
-		assert err.msg() == 'invalid zlib stream: invalid compression info'
-		return
+	// Both headers have a valid FCHECK, so validation must reject CINFO.
+	for data in [[u8(0x88), 0x1c], [u8(0xf8), 0x00]] {
+		if _ := validate_zlib_header(data) {
+			assert false, 'invalid CINFO must be rejected: ${data}'
+		} else {
+			assert err.msg() == 'invalid zlib stream: invalid compression info'
+		}
 	}
-	assert false, 'CINFO=8 must be rejected'
-	validate_zlib_header([u8(0xf8), 0x00, 0, 0, 0, 0, 0, 0, 0, 0]) or {
-		assert err.msg() == 'invalid zlib stream: invalid compression info'
-		return
+}
+
+fn test_decompress_zlib_rejects_short_streams_after_valid_header() {
+	for len in 2 .. 6 {
+		mut data := []u8{len: len}
+		data[0] = 0x78
+		data[1] = 0x9c
+		if _ := decompress_zlib(data) {
+			assert false, 'truncated zlib stream must be rejected'
+		} else {
+			assert err.msg() == 'invalid zlib stream: too short'
+		}
+		mut acc := ChunkAcc{}
+		if _ := decompress_with_callback(data, count_chunk, &acc) {
+			assert false, 'truncated callback zlib stream must be rejected'
+		} else {
+			assert err.msg() == 'invalid zlib stream: too short'
+		}
+		assert acc.total == 0
+		assert acc.chunks == 0
 	}
-	assert false, 'CINFO=15 must be rejected'
 }
 
 fn test_validate_zlib_header_accepts_two_byte_header() {
