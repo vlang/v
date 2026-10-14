@@ -1497,6 +1497,8 @@ const c_main_runtime_shadow_fn_names = {
 	'new_map': true
 	'accept':  true
 	'perror':  true
+	'sync':    true
+	'syncfs':  true
 	'id':      true
 	// The C preamble keeps `typedef uint8_t byte;`.
 	'byte':    true
