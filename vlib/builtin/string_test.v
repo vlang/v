@@ -562,6 +562,13 @@ fn test_is_bin() {
 	assert '0.34'.is_bin() == false
 	assert '0o23'.is_bin() == false
 	assert 'vlang'.is_bin() == false
+	// the prefix characters are accepted in either case, like .int()
+	assert '0B1'.is_bin() == true
+	assert '0B0'.is_bin() == true
+	assert '-0B1'.is_bin() == true
+	assert '+0B1101'.is_bin() == true
+	assert '0B'.is_bin() == false
+	assert '-0B'.is_bin() == false
 }
 
 fn test_is_oct() {
@@ -572,6 +579,13 @@ fn test_is_oct() {
 	assert '-0o0'.is_oct() == true
 	assert '-0o1'.is_oct() == true
 	assert '-0o2'.is_oct() == true
+	// the prefix characters are accepted in either case, like .int()
+	assert '0O0'.is_oct() == true
+	assert '0O1'.is_oct() == true
+	assert '-0O1'.is_oct() == true
+	assert '+0O23'.is_oct() == true
+	assert '0O'.is_oct() == false
+	assert '0O8'.is_oct() == false
 
 	assert '0o04'.is_oct() == true
 	assert '0o16'.is_oct() == true
@@ -636,6 +650,15 @@ fn test_is_hex() {
 	assert '0.34'.is_hex() == false
 	assert '0o23'.is_hex() == false
 	assert 'vlang'.is_hex() == false
+	// the prefix characters are accepted in either case, like .int()
+	assert '0X1'.is_hex() == true
+	assert '0X1A'.is_hex() == true
+	assert '-0X1'.is_hex() == true
+	assert '-0X1A'.is_hex() == true
+	assert '+0X1'.is_hex() == true
+	assert '+0XFF'.is_hex() == true
+	assert '0X'.is_hex() == false
+	assert '0XG'.is_hex() == false
 }
 
 fn test_is_int() {

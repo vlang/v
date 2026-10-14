@@ -94,6 +94,10 @@ string removes matches of a nonempty search string.
 when no later delimiter exists. Final whitespace-only lines are discarded. Lines before a later
 delimiter keep their established removal behavior.
 
+The `string.is_bin()`, `is_oct()`, and `is_hex()` predicates accept both lowercase and uppercase
+prefixes (`0b`/`0B`, `0o`/`0O`, and `0x`/`0X`), including after an optional sign. Each prefix
+must be followed by at least one valid digit for its base.
+
 ### Reverse splitting
 
 `rsplit`, `rsplit_nth`, and `rsplit_once` recognize nonempty delimiters at the end of a string.
