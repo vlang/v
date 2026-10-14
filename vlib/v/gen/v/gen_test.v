@@ -2500,6 +2500,30 @@ fn test_formatter_aligns_attributes_at_call_default_wrap_boundary() {
 	assert vfmt('struct_field_call_wrap_boundary_twice', out) == out
 }
 
+fn test_formatter_keeps_comments_before_attributed_defaults_out_of_alignment() {
+	source := 'struct Comments {\n\ta int = /* note a */ 1 @[a]\n\tb int = /* note b */ 1234567 @[b]\n\tc int = 0 @[c]\n\td int = 12 @[d]\n}\n'
+	want := 'struct Comments {\n\ta int = /* note a */\n\t1 @[a]\n\tb int = /* note b */\n\t1234567 @[b]\n\tc int = 0  @[c]\n\td int = 12 @[d]\n}\n'
+	out := vfmt('struct_field_leading_default_comments', source)
+	assert out == want, out
+	assert vfmt('struct_field_leading_default_comments_twice', out) == out
+}
+
+fn test_formatter_keeps_comments_after_defaults_with_their_attributes() {
+	source := 'struct Comments {\n\ta int = 1 /* note a */ @[a]\n\tb int = 1234567 /* note b */ @[b]\n\tc int = 0 @[c]\n\td int = 12 @[d]\n}\n'
+	want := 'struct Comments {\n\ta int = 1       @[a] /* note a */\n\tb int = 1234567 @[b] /* note b */\n\tc int = 0       @[c]\n\td int = 12      @[d]\n}\n'
+	out := vfmt('struct_field_trailing_default_comments', source)
+	assert out == want, out
+	assert vfmt('struct_field_trailing_default_comments_twice', out) == out
+}
+
+fn test_formatter_keeps_multiple_default_comments_and_trailing_field_comments() {
+	source := 'struct Comments {\n\ta int = 1 /* note a */ /* second a */ @[a] // tail a\n\tb int = 123 /* note b */ @[b] // tail b\n}\n'
+	want := 'struct Comments {\n\ta int = 1   @[a] /* note a */ /* second a */ // tail a\n\tb int = 123 @[b] /* note b */ // tail b\n}\n'
+	out := vfmt('struct_field_multiple_default_comments', source)
+	assert out == want, out
+	assert vfmt('struct_field_multiple_default_comments_twice', out) == out
+}
+
 // Enum members and interface members align their trailing comments the same way.
 fn test_formatter_aligns_enum_and_interface_trailing_comments() {
 	source := 'enum Stage {\n\tcompile_begin // before\n\tcompile_end   // after\n\tcmd_begin     // before run\n}\n\ninterface Reporter {\n\tsession_start(message string) // at the start\n\tstop()                        // at the end\n}\n'

@@ -4478,7 +4478,9 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		// While a comment column is being reached, the trailing comment must not be printed
 		// by the default expression's own pass: it would land before the padding.
 		pads_comment := int(fid) in comment_align
-		if pads_comment {
+		// Comments after an attributed default must wait until its attributes are written.
+		suppress_comments := pads_comment || (f.children_count > 0 && gp.len > 1)
+		if suppress_comments {
 			g.suppress_trailing_comments++
 		}
 		if is_embed {
@@ -4522,12 +4524,17 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 			g.write(' ${attr_text}')
 			suffix_width = attr_text.len
 		}
-		if pads_comment {
+		if suppress_comments {
 			g.suppress_trailing_comments--
+		}
+		if pads_comment {
 			pad := comment_align[int(fid)] or { 0 }
 			if pad >= suffix_width {
 				g.write(' '.repeat(pad - suffix_width + 1))
 			}
+		}
+		if f.children_count > 0 && gp.len > 1 {
+			g.emit_comments_before(f.pos.end)
 		}
 		g.emit_trailing_comments(f.pos.end)
 		if !g.on_newline {
@@ -5015,7 +5022,9 @@ fn (g &Gen) struct_field_attr_default_width(fid flat.NodeId, column int) int {
 		return 0
 	}
 	value := g.a.child_node(f, 0)
-	if g.has_comment_between(value.pos.offset, value.pos.end) {
+	// Leading and internal comments can make the default span several output lines.
+	// Comments after the value are emitted after its attributes by struct_fields.
+	if g.has_comment_between(f.pos.offset, value.pos.end) {
 		return 0
 	}
 	mut preview := Gen{

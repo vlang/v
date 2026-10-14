@@ -7313,6 +7313,8 @@ struct SearchOptions {
 }
 ```
 
+Comments following a default value stay with that field, after its inline attributes.
+
 Backend options before `fmt`, such as `v -b arm64 fmt file.v`, or in `VFLAGS` are honored.
 The `arm64` and `eval` backends use the same source formatting rules as `c`.
 
