@@ -8,6 +8,9 @@ questions or even make a REPL or an embedded console.
 
 On Unix, `read_char()` returns a `failed to read character` error when input is unavailable.
 
+Unix line input accepts `ÿ` (U+00FF) as a character. Ctrl+W deletes the word to the left of the
+cursor, including on one-character lines, and has no effect on an empty line.
+
 # Usage:
 
 ```v

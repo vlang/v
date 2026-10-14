@@ -1246,6 +1246,9 @@ An array is a collection of data elements of the same type. An array literal is 
 list of expressions surrounded by square brackets. An individual element can be
 accessed using an *index* expression. Indexing starts from `0`.
 
+A string literal keeps its string type even when its text names a type alias.
+For example, `['Speed']` contains strings, while `[Speed(7)]` contains `Speed` values.
+
 After an array literal, separate `&&` from either adjacent token with whitespace or a comment
 to use logical AND, as in `a == [] && flag`. An attached `[]&&Type{}` declares an array of
 references to references. Separate `&` on both sides to use the binary AND operator;
@@ -3485,6 +3488,12 @@ V doesn't have classes, but you can define methods on types.
 A method is a function with a special receiver argument.
 The receiver appears in its own argument list between the `fn` keyword and the method name.
 Methods must be in the same module as the receiver type.
+This also applies to receivers with any number of pointer levels
+and to types imported under another name.
+To add methods for an imported type, declare a local type alias and use it as the receiver.
+For a generic receiver such as `other.Box[T]`, the alias must also declare its type parameters:
+`type LocalBox[T] = other.Box[T]`. Use `LocalBox[T]` as the receiver and repeat `T` in the method's
+generic parameter list.
 
 In this example, the `can_register` method has a receiver of type `User` named `u`.
 The convention is not to use receiver names like `self` or `this`,
@@ -8015,6 +8024,11 @@ function/struct/enum declaration and applies only to the following declaration.
 Attributes with arguments support both `name: value` and call-style `name(value)` syntax.
 Call-style attributes can also use named arguments.
 
+The C backend emits `@[_constructor]` and `@[_destructor]` as GNU function attributes before the
+function declarator, so definitions compile with GCC and Clang. When supported by the C compiler,
+these hooks run before `main` and after it returns. They must not depend on V's runtime being
+initialized. MSVC ignores these attributes.
+
 ```v
 // @[flag] enables Enum types to be used as bitfields
 
@@ -9407,6 +9421,12 @@ Zero-value references, or nil pointers, will **NOT** be supported in the future,
 for now data structures such as Linked Lists or Binary Trees that rely on reference
 fields that can use the value `0`, understanding that it is unsafe, and that it can
 cause a panic.
+
+A null reference has to be written as `unsafe { nil }`: outside `unsafe`, the compiler
+rejects direct `nil`, `0` and `voidptr(0)` constants where a non-option reference is expected.
+The same rule applies to explicitly typed global initializers when globals are enabled.
+Raw `voidptr` targets, C declarations, `.c.v` files and translated code retain their
+C interop rules. Comparisons with null values and optional references remain accepted.
 
 ```v
 struct Node {
