@@ -1063,21 +1063,24 @@ pub mut:
 	cross_target_prefs            &pref.Preferences = unsafe { nil }
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
-	skips_library_bodies          bool            // see skip_unreachable_library_bodies
-	library_files                 map[string]bool // the files whose unreachable bodies the check leaves out
-	reachable_library_fns         map[string]bool // the functions of those files that it checks
-	shadow_diagnostic_root        string
-	shadow_explicit_roots         []string
-	shadow_dependency_roots       []string
-	multiple_module_import_lines  map[u64]bool
-	import_line_indexed_files     map[int]bool
-	source_texts_by_file          map[string]string
-	ct_update_pos                 map[int]token.Pos
-	ct_update_indexed             bool
-	insert_include_dirs_by_file   map[string][]string
-	has_spawn_expr                int = -1
-	inactive_top_level_node_ids   []i32
-	selected_file_called_fns      map[string]bool
+	skips_library_bodies          bool // see skip_unreachable_library_bodies
+	// Set by markused only after convergence for its returned reachability set.
+	// Adding roots requires the ordinary late-body convergence check again.
+	library_body_convergence_complete bool
+	library_files                     map[string]bool // the files whose unreachable bodies the check leaves out
+	reachable_library_fns             map[string]bool // the functions of those files that it checks
+	shadow_diagnostic_root            string
+	shadow_explicit_roots             []string
+	shadow_dependency_roots           []string
+	multiple_module_import_lines      map[u64]bool
+	import_line_indexed_files         map[int]bool
+	source_texts_by_file              map[string]string
+	ct_update_pos                     map[int]token.Pos
+	ct_update_indexed                 bool
+	insert_include_dirs_by_file       map[string][]string
+	has_spawn_expr                    int = -1
+	inactive_top_level_node_ids       []i32
+	selected_file_called_fns          map[string]bool
 	// Names newly inserted into selected_file_called_fns and not yet chased by
 	// the transitive closure in collect_selected_file_called_fns_transitively.
 	selected_file_worklist []string
@@ -1149,7 +1152,10 @@ pub mut:
 	type_declaration_ids   map[string][]int
 mut:
 	checked_library_body_count int
-	cache_lexical_parents      bool = true
+	// Successful reachability frontiers only append notices. Keep their last
+	// sorted size; error-producing batches retain the full sorting path.
+	library_sorted_notice_count int  = -1
+	cache_lexical_parents       bool = true
 	// Source-validated bodies consisting solely of a known terminating call.
 	// Their lowered temporaries belong to the exempt argument expression.
 	noalloc_terminal_functions map[string]bool
@@ -1705,6 +1711,11 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	forked.transform_signature_maps_shared = true
 	forked.transform_signature_maps_changed = false
 	forked.transform_struct_maps_shared = true
+	// Scoped reachability uses a transform fork too. Retain the master's body
+	// policy so it does not eagerly collect the library bodies the check skipped.
+	forked.skips_library_bodies = tc.skips_library_bodies
+	forked.library_files = tc.library_files
+	forked.reachable_library_fns = tc.reachable_library_fns
 	// Visible-mutation analysis only runs during checking. Do not allocate its
 	// three private maps for the many short-lived transform forks.
 	forked.visible_mutation_cache = unsafe { nil }

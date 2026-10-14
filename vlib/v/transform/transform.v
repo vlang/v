@@ -22774,18 +22774,34 @@ fn (t &Transformer) string_interp_child_has_unresolved_generic_part(id flat.Node
 			return false
 		}
 	}
-	mut candidates := []string{cap: 5}
-	candidates << t.node_type(id)
+	// Every spelling is resolved before any is tested, and the spellings of one
+	// part mostly coincide: test each distinct one once.
+	mut candidates := [5]string{}
+	mut n := 0
+	candidates[n] = t.node_type(id)
+	n++
 	if node.typ.len > 0 {
-		candidates << t.normalize_type_alias(node.typ)
+		candidates[n] = t.normalize_type_alias(node.typ)
+		n++
 	}
 	if node.kind == .ident {
-		candidates << t.var_type(node.value)
+		candidates[n] = t.var_type(node.value)
+		n++
 	}
-	candidates << t.lvalue_type(id)
-	candidates << t.reliable_stringify_type(id)
-	for typ in candidates {
-		if t.stringify_type_has_generic_placeholder(typ) {
+	candidates[n] = t.lvalue_type(id)
+	n++
+	candidates[n] = t.reliable_stringify_type(id)
+	n++
+	for i in 0 .. n {
+		typ := candidates[i]
+		mut tested := false
+		for j in 0 .. i {
+			if same_transform_text(candidates[j], typ) {
+				tested = true
+				break
+			}
+		}
+		if !tested && t.stringify_type_has_generic_placeholder(typ) {
 			return !t.string_interp_part_is_checked_call(id)
 		}
 	}
@@ -26382,6 +26398,11 @@ fn (t &Transformer) resolved_ident_fn_value(id flat.NodeId, name string) ?string
 	if fn_name := t.tc.resolved_fn_value_name(id) {
 		return fn_name
 	}
+	// resolve_fn_value_ident answers none for a bound local whatever the checker
+	// says about its type, so there is nothing to resolve for one.
+	if name.len == 0 || t.var_type(name).len > 0 {
+		return none
+	}
 	typ := t.tc.resolve_type(id)
 	if typ !is types.FnType && typ !is types.Unknown {
 		return none
@@ -27067,8 +27088,9 @@ fn (t &Transformer) concrete_variant_matches_generic_pattern(concrete string, pa
 	if !is_generic {
 		return false
 	}
-	if c_name(pattern) == concrete
-		|| t.variant_short_name(c_name(pattern)) == t.variant_short_name(concrete) {
+	pattern_cname := t.lookup_c_name(pattern)
+	if pattern_cname == concrete
+		|| t.variant_short_name(pattern_cname) == t.variant_short_name(concrete) {
 		return true
 	}
 	if !t.generic_variant_args_are_open(pattern_args) {
