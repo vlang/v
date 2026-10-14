@@ -14,6 +14,14 @@ The trigonometric functions `sin`, `cos`, `sincos`, `tan` and `cot` reduce large
 with multiword arithmetic before evaluation, including inputs near a multiple of pi/2 and
 values up to `math.max_f64`. Infinite angles produce NaN.
 
+`wrapping(value)` and `saturating(value)` create integer arithmetic wrappers for
+`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, and `int`.
+Their `+`, `-`, and `*` operators wrap modulo the integer width or clamp to its bounds,
+respectively. `neg()` applies the corresponding negation policy.
+For signed minimum divided by `-1`, wrapping returns the minimum and saturation returns
+the maximum. Both `%` operators return zero for that pair without overflowing the backend's
+division operation. Zero divisors follow ordinary integer division behavior.
+
 `gcd(a, b)` and `lcm(a, b)` accept matching integer types from `i8` through `i64`,
 `u8` through `u64`, and `int`. They compute with unsigned magnitudes, including signed minimum
 values, and clamp an unrepresentable result to the type maximum.

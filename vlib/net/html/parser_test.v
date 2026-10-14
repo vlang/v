@@ -129,6 +129,30 @@ fn test_unterminated_code_body_is_preserved_at_eof() {
 	assert dom.get_root().content == 'first second'
 }
 
+fn test_parse_quoted_attribute_adds_no_empty_key() {
+	// a quoted attribute must not leave an empty-key attribute behind, which
+	// also corrupted str() round-trips with a stray space.
+	// See https://github.com/vlang/v/issues/30139
+	dom := parse('<div><span class="a b">x</span></div>')
+	span := dom.get_tags(name: 'span')[0]
+	assert span.attributes == {
+		'class': 'a b'
+	}
+	assert span.str() == '<span class="a b">x</span>'
+}
+
+fn test_parse_unquoted_attribute_values() {
+	// unquoted values belong to the preceding `name=`, they are not
+	// attributes of their own.
+	// See https://github.com/vlang/v/issues/30139
+	dom := parse('<div><input type=text name=q></div>')
+	input := dom.get_tags(name: 'input')[0]
+	assert input.attributes == {
+		'type': 'text'
+		'name': 'q'
+	}
+}
+
 fn test_parse_tag_split_across_lines() {
 	// a newline inside a tag separates like a space: without this the tag
 	// name glues to the first attribute (`divclass`).
@@ -188,4 +212,26 @@ fn test_parse_trailing_text_belongs_to_the_surrounding_element() {
 	assert texts[0].text() == 'trailing'
 	assert texts[0].parent.name == 'div'
 	assert dom.get_root().text() == 'atrailing'
+}
+
+fn test_parse_unquoted_values_preserve_case_and_class_lookup() {
+	dom := parse('<div><span CLASS = Hero ID=Mixed\nDATA-X = A=B checked>t</span></div>')
+	span := dom.get_tags(name: 'span')[0]
+	assert span.attributes == {
+		'class':   'Hero'
+		'id':      'Mixed'
+		'data-x':  'A=B'
+		'checked': ''
+	}
+	assert dom.get_tags_by_class_name('Hero')[0].attributes['id'] == 'Mixed'
+}
+
+fn test_parse_unquoted_values_separated_by_html_whitespace() {
+	for separator in [' ', '\t', '\n', '\r', '\f'] {
+		dom := parse('<div><input value=Mixed${separator}name=Q></div>')
+		input := dom.get_tags(name: 'input')[0]
+		assert input.attributes['value'] == 'Mixed'
+		assert input.attributes['name'] == 'Q'
+		assert '' !in input.attributes
+	}
 }
