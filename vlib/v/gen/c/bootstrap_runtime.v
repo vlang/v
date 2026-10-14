@@ -114,3 +114,35 @@ static inline int v_sync_thread_create_detached(void* start, void* arg) {
 	return v_sync_thread_create_detached_with_stack(start, arg, V_THREAD_STACK_SIZE);
 }
 '
+
+// headerless_cmdexec_poll_helper replaces only the shipped poll header when the
+// standalone ABI owns libc declarations; SDK-backed units keep the native helper.
+fn (mut g FlatGen) headerless_cmdexec_poll_helper() {
+	if g.target.os == 'windows' || !g.core_header_directives.any(it.directive.module == 'cmdexec') {
+		return
+	}
+	g.write(headerless_cmdexec_poll)
+	g.collect_preserved_c_fns(['poll', 'v_cmdexec_poll_revents'])
+}
+
+const headerless_cmdexec_poll = r'
+#ifndef _WIN32
+struct v_cmdexec_pollfd {
+	int fd;
+	short events;
+	short revents;
+};
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
+int poll(struct v_cmdexec_pollfd*, unsigned int, int);
+#else
+int poll(struct v_cmdexec_pollfd*, size_t, int);
+#endif
+static inline short v_cmdexec_poll_revents(int fd, short events) {
+	struct v_cmdexec_pollfd descriptor = {fd, events, 0};
+	if (poll(&descriptor, 1, 0) <= 0) {
+		return 0;
+	}
+	return descriptor.revents;
+}
+#endif
+'
