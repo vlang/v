@@ -63,17 +63,17 @@ mut:
 	used_fn_suffixes         map[string]bool
 	cur_module               string
 	cur_func                 int
-	cur_func_ret_type        string
+	cur_func_ret_type        u32
 	cur_block                BlockID
 	vars                     map[string]ValueID
 	global_vars              map[string]ValueID
-	global_type_names        map[string]string
+	global_type_names        flat.TypeTextBindings
 	global_imports           map[string]string
 	global_aliases           map[string]string
-	var_type_names           map[string]string
+	var_type_names           flat.TypeTextBindings
 	mut_pointer_params       map[string]TypeID
 	mut_param_names          map[string]bool
-	sum_guard_variants       map[ValueID]string
+	sum_guard_variants       map[ValueID]u32
 	i64_type                 TypeID
 	i32_type                 TypeID
 	i8_type                  TypeID
@@ -95,12 +95,12 @@ mut:
 	native_initializers      map[string]NativeInitializer
 	native_initializer_order []string
 	struct_types             map[string]TypeID
-	struct_field_types       map[string]string
+	struct_field_types       flat.TypeTextBindings
 	struct_field_defaults    map[string]NativeFieldDefault
 	default_struct_types     map[TypeID]bool
 	option_types             map[string]TypeID
-	sum_type_variants        map[string][]string
-	sum_type_canonical       map[string]string
+	sum_type_variants        flat.TypeTextListBindings
+	sum_type_canonical       flat.TypeTextBindings
 	enum_types               map[string]bool
 	flag_enum_types          map[string]bool
 	enum_values              map[string]int
@@ -143,13 +143,13 @@ mut:
 struct VarBinding {
 	exists bool
 	addr   ValueID
-	typ    string
+	typ    u32
 }
 
 struct BuilderScope {
 	active     bool
 	vars       map[string]ValueID
-	type_names map[string]string
+	type_names flat.TypeTextBindings
 }
 
 // IfGuardState stores if guard state state used by ssa.
@@ -160,7 +160,7 @@ struct IfGuardState {
 	slot      ValueID
 	value_ptr ValueID
 	typ       TypeID
-	typ_name  string
+	typ_name  u32
 }
 
 // BuildOptions controls which functions a build materializes. The zero value
@@ -201,19 +201,19 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		used_fn_suffixes:   map[string]bool{}
 		vars:               map[string]ValueID{}
 		global_vars:        map[string]ValueID{}
-		global_type_names:  map[string]string{}
+		global_type_names:  flat.TypeTextBindings{}
 		global_imports:     map[string]string{}
-		var_type_names:     map[string]string{}
+		var_type_names:     flat.TypeTextBindings{}
 		mut_pointer_params: map[string]TypeID{}
 		mut_param_names:    map[string]bool{}
 		fn_types:           map[string]TypeID{}
 		fn_ids:             map[string]int{}
 		const_exprs:        map[string]flat.NodeId{}
 		struct_types:       map[string]TypeID{}
-		struct_field_types: map[string]string{}
+		struct_field_types: flat.TypeTextBindings{}
 		option_types:       map[string]TypeID{}
-		sum_type_variants:  map[string][]string{}
-		sum_type_canonical: map[string]string{}
+		sum_type_variants:  flat.TypeTextListBindings{}
+		sum_type_canonical: flat.TypeTextBindings{}
 		enum_types:         map[string]bool{}
 		flag_enum_types:    map[string]bool{}
 		enum_values:        map[string]int{}
@@ -392,45 +392,45 @@ fn (mut b Builder) register_types() {
 			for i in 0 .. node.children_count {
 				f := b.a.child_node(&node, i)
 				field_type_name := native_c_struct_field_type(node.value, f.value) or {
-					qualify_type_ref_name(f.typ, cur_module)
+					qualify_type_ref_name(f.typ_text(), cur_module)
 				}
 				field_type := b.resolve_struct_storage_type(field_type_name, cur_module)
 				field_types << field_type
 				field_names << f.value
-				b.struct_field_types[node.value + '.' + f.value] = field_type_name
+				b.struct_field_types.set(node.value + '.' + f.value, field_type_name)
 				short_name := node.value.all_after('.')
-				b.struct_field_types[short_name + '.' + f.value] = field_type_name
+				b.struct_field_types.set(short_name + '.' + f.value, field_type_name)
 				if cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
-					b.struct_field_types[cur_module + '.' + short_name + '.' + f.value] = field_type_name
+					b.struct_field_types.set(cur_module + '.' + short_name + '.' + f.value, field_type_name)
 				}
 			}
 			if abi := native_c_struct_abi(node.value, b.m.target.ptr_size) {
 				field_names = abi.field_names.clone()
-				field_types = []TypeID{cap: abi.field_types.len}
-				for field_type in abi.field_types {
+				field_types = []TypeID{cap: abi.field_types_text().len}
+				for field_type in abi.field_types_text() {
 					field_types << b.resolve_struct_storage_type(field_type, cur_module)
 				}
 				for i, name in field_names {
-					b.struct_field_types[node.value + '.' + name] = abi.field_types[i]
-					b.struct_field_types[node.value.all_after('.') + '.' + name] = abi.field_types[i]
+					b.struct_field_types.set(node.value + '.' + name, abi.field_types_text()[i])
+					b.struct_field_types.set(node.value.all_after('.') + '.' + name, abi.field_types_text()[i])
 				}
 			}
 			if node.value == 'C.tm' && 'tm_zone' !in field_names {
 				field_names << 'tm_zone'
 				field_types << b.resolve_type('&char')
-				b.struct_field_types['C.tm.tm_zone'] = '&char'
-				b.struct_field_types['tm.tm_zone'] = '&char'
+				b.struct_field_types.set('C.tm.tm_zone', '&char')
+				b.struct_field_types.set('tm.tm_zone', '&char')
 			}
 			typ_id := b.struct_type_id_for_decl(node.value, cur_module)
 			b.m.type_store.types[typ_id] = Type{
 				kind:        .struct_t
 				fields:      field_types
 				field_names: field_names
-				is_union:    'union' in node.typ.split(',')
+				is_union:    'union' in node.typ_text().split(',')
 			}
 		} else if node.kind == .type_decl && node.children_count > 0 {
 			sum_name := qualify_type_name(node.value, cur_module)
-			variants := b.sum_type_variants[sum_name] or { []string{} }
+			variants := b.sum_type_variants.get(sum_name) or { []string{} }
 			mut field_types := []TypeID{}
 			mut field_names := []string{}
 			field_types << b.i32_type
@@ -504,7 +504,7 @@ fn (mut b Builder) resolve_struct_storage_type(name string, module_name string) 
 
 struct NativeCStructAbi {
 	field_names []string
-	field_types []string
+	field_types flat.TypeTextList
 }
 
 fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
@@ -513,37 +513,38 @@ fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
 		// &char so selectors have C array-to-pointer semantics.
 		return NativeCStructAbi{
 			field_names: ['sysname', 'nodename', 'release', 'version', 'machine']
-			field_types: ['[256]char', '[256]char', '[256]char', '[256]char', '[256]char']
+			field_types: flat.TypeTextList.from_names(['[256]char', '[256]char', '[256]char',
+				'[256]char', '[256]char'])
 		}
 	}
 	if struct_name == 'C.pthread_mutex_t' {
 		return NativeCStructAbi{
 			field_names: ['opaque']
-			field_types: ['[8]u64']
+			field_types: flat.TypeTextList.from_names(['[8]u64'])
 		}
 	}
 	if struct_name == 'C.pthread_rwlock_t' {
 		return NativeCStructAbi{
 			field_names: ['opaque']
-			field_types: ['[25]u64']
+			field_types: flat.TypeTextList.from_names(['[25]u64'])
 		}
 	}
 	if struct_name == 'C.pthread_rwlockattr_t' {
 		return NativeCStructAbi{
 			field_names: ['opaque']
-			field_types: ['[3]u64']
+			field_types: flat.TypeTextList.from_names(['[3]u64'])
 		}
 	}
 	if struct_name == 'C.pthread_cond_t' {
 		return NativeCStructAbi{
 			field_names: ['opaque']
-			field_types: ['[6]u64']
+			field_types: flat.TypeTextList.from_names(['[6]u64'])
 		}
 	}
 	if struct_name == 'C.pthread_condattr_t' {
 		return NativeCStructAbi{
 			field_names: ['opaque']
-			field_types: ['[2]u64']
+			field_types: flat.TypeTextList.from_names(['[2]u64'])
 		}
 	}
 	if struct_name == 'C.task_basic_info' {
@@ -553,7 +554,8 @@ fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
 			field_names: ['virtual_size', 'resident_size', 'resident_size_max', 'user_time_seconds',
 				'user_time_microseconds', 'system_time_seconds', 'system_time_microseconds', 'policy',
 				'suspend_count']
-			field_types: ['u64', 'u64', 'u64', 'i32', 'i32', 'i32', 'i32', 'i32', 'i32']
+			field_types: flat.TypeTextList.from_names(['u64', 'u64', 'u64', 'i32', 'i32', 'i32',
+				'i32', 'i32', 'i32'])
 		}
 	}
 	if struct_name == 'C.rusage' {
@@ -562,8 +564,8 @@ fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
 			field_names: ['ru_utime_sec', 'ru_utime_usec', 'ru_stime_sec', 'ru_stime_usec', 'ru_maxrss',
 				'ru_ixrss', 'ru_idrss', 'ru_isrss', 'ru_minflt', 'ru_majflt', 'ru_nswap', 'ru_inblock',
 				'ru_oublock', 'ru_msgsnd', 'ru_msgrcv', 'ru_nsignals', 'ru_nvcsw', 'ru_nivcsw']
-			field_types: ['i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64',
-				'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64']
+			field_types: flat.TypeTextList.from_names(['i64', 'i64', 'i64', 'i64', 'i64', 'i64',
+				'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64'])
 		}
 	}
 	return none
@@ -613,8 +615,8 @@ fn (mut b Builder) register_multi_return_type(ret types.MultiReturn) TypeID {
 		field_types << b.ssa_type_from_checker_type(field_type)
 		field_name := 'arg${i}'
 		field_names << field_name
-		b.struct_field_types[name + '.' + field_name] = field_type.name()
-		b.struct_field_types[source_name + '.' + field_name] = field_type.name()
+		b.struct_field_types.set(name + '.' + field_name, field_type.name())
+		b.struct_field_types.set(source_name + '.' + field_name, field_type.name())
 	}
 	b.m.type_store.types[typ_id] = Type{
 		kind:        .struct_t
@@ -790,7 +792,7 @@ fn (mut b Builder) register_sum_type_name(name string, module_name string, typ_i
 	b.register_struct_type_name(name, module_name, typ_id)
 	mut variants := []string{}
 	if b.tc != unsafe { nil } {
-		if tc_variants := b.tc.sum_types[qualified_name] {
+		if tc_variants := b.tc.sum_types.get(qualified_name) {
 			variants = tc_variants.clone()
 		}
 	}
@@ -806,15 +808,15 @@ fn (mut b Builder) register_sum_type_name(name string, module_name string, typ_i
 			break
 		}
 	}
-	b.sum_type_variants[qualified_name] = variants
-	b.sum_type_canonical[qualified_name] = qualified_name
+	b.sum_type_variants.set(qualified_name, variants)
+	b.sum_type_canonical.set(qualified_name, qualified_name)
 	if name != qualified_name {
-		b.sum_type_variants[name] = variants
-		b.sum_type_canonical[name] = qualified_name
+		b.sum_type_variants.set(name, variants)
+		b.sum_type_canonical.set(name, qualified_name)
 	}
 	short_name := qualified_name.all_after('.')
-	b.sum_type_variants[short_name] = variants
-	b.sum_type_canonical[short_name] = qualified_name
+	b.sum_type_variants.set(short_name, variants)
+	b.sum_type_canonical.set(short_name, qualified_name)
 }
 
 // qualify_type_name supports qualify type name handling for ssa.
@@ -888,10 +890,10 @@ fn (b &Builder) sum_type_variants_for_decl(node flat.Node, module_name string) [
 // register_sum_field_type updates register sum field type state for ssa.
 fn (mut b Builder) register_sum_field_type(name string, module_name string, field_name string, field_type string) {
 	short_name := name.all_after('.')
-	b.struct_field_types[name + '.' + field_name] = field_type
-	b.struct_field_types[short_name + '.' + field_name] = field_type
+	b.struct_field_types.set(name + '.' + field_name, field_type)
+	b.struct_field_types.set(short_name + '.' + field_name, field_type)
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		b.struct_field_types[module_name + '.' + short_name + '.' + field_name] = field_type
+		b.struct_field_types.set(module_name + '.' + short_name + '.' + field_name, field_type)
 	}
 }
 
@@ -963,7 +965,11 @@ fn (mut b Builder) register_globals() {
 			continue
 		}
 		if node.kind == .import_decl {
-			alias := if node.typ.len > 0 { node.typ } else { node.value.all_after_last('.') }
+			alias := if node.typ_text().len > 0 {
+				node.typ_text()
+			} else {
+				node.value.all_after_last('.')
+			}
 			b.global_imports[cur_module + '#' + alias] = node.value
 			continue
 		}
@@ -971,8 +977,8 @@ fn (mut b Builder) register_globals() {
 			for i in 0 .. node.children_count {
 				f := b.a.child_node(&node, i)
 				if b.m.target.ptr_size == 4 {
-					mut typ := b.resolve_type(f.typ)
-					if b.m.target.ptr_size == 4 && f.typ.len == 0 && f.children_count > 0 {
+					mut typ := b.resolve_type(f.typ_text())
+					if b.m.target.ptr_size == 4 && f.typ_text().len == 0 && f.children_count > 0 {
 						typ = b.global_constant_type(b.a.child(f, 0))
 					}
 					name := if b.source_modules.len > 0 {
@@ -987,8 +993,8 @@ fn (mut b Builder) register_globals() {
 						b.initialize_global(b.m.values[addr].index, b.a.child(f, 0))
 					}
 				} else {
-					type_name := if f.typ.len > 0 {
-						f.typ
+					type_name := if f.typ_text().len > 0 {
+						f.typ_text()
 					} else if f.children_count > 0 {
 						expr_id := b.a.child(f, 0)
 						checked := b.checked_expr_type_name(expr_id)
@@ -1025,11 +1031,11 @@ fn (mut b Builder) register_globals() {
 							else { f.value.all_after('C.') }
 						}
 						b.vars[f.value] = b.m.add_external_global(symbol, typ)
-						b.global_type_names[f.value] = type_name
+						b.global_type_names.set(f.value, type_name)
 						continue
 					}
 					b.vars[name] = b.m.add_global(ssa_c_name(name), typ)
-					b.global_type_names[name] = type_name
+					b.global_type_names.set(name, type_name)
 					b.global_aliases[cur_module + '.' + f.value] = name
 				}
 			}
@@ -1552,17 +1558,17 @@ fn (mut b Builder) register_functions() {
 		if node.kind != .c_fn_decl {
 			continue
 		}
-		ret_type := b.resolve_c_decl_type(node.typ)
+		ret_type := b.resolve_c_decl_type(node.typ_text())
 		mut param_types := []TypeID{}
 		mut variadic_start := -1
 		for i in 0 .. node.children_count {
 			child := b.a.child_node(&node, i)
 			if child.kind == .param {
-				if child.typ.starts_with('...') {
+				if child.typ_text().starts_with('...') {
 					variadic_start = param_types.len
 					continue
 				}
-				param_types << b.resolve_c_decl_type(child.typ)
+				param_types << b.resolve_c_decl_type(child.typ_text())
 			}
 		}
 		b.register_extern(node.value, ret_type, param_types)
@@ -1596,7 +1602,7 @@ fn (mut b Builder) register_functions() {
 				continue
 			}
 			ret_type := b.checker_return_type(node.value, cur_module) or {
-				b.resolve_type_in_module(node.typ, cur_module)
+				b.resolve_type_in_module(node.typ_text(), cur_module)
 			}
 			mut param_types := []TypeID{}
 			mut param_idx := 0
@@ -3148,8 +3154,10 @@ fn (mut b Builder) register_array_runtime_stubs() {
 		b.generate_array_repeat_to_depth_body(array_repeat_id)
 	}
 
-	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32',
-		'f64', 'rune', 'char'] {
+	// Integer types only, like the C backend: the transformer lowers a float sort
+	// to its stable merge sort.
+	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'rune',
+		'char'] {
 		elem_type := match sort_type {
 			'int', 'rune' { b.i32_type }
 			'i8' { b.i8_type }
@@ -3158,9 +3166,7 @@ fn (mut b Builder) register_array_runtime_stubs() {
 			'u8', 'char' { b.u8_type }
 			'u16' { b.u16_type }
 			'u32' { b.u32_type }
-			'u64', 'usize' { b.u64_type }
-			'f32' { b.f32_type }
-			else { b.f64_type }
+			else { b.u64_type }
 		}
 		mut sort_params := []TypeID{}
 		sort_params << ptr_array
@@ -6833,8 +6839,8 @@ fn (mut b Builder) register_type_aliases() {
 		}
 		// A type_decl with no children and a non-empty `typ` is an alias
 		// (`type Foo = Bar`); a type_decl with children is a sum type.
-		if node.kind == .type_decl && node.children_count == 0 && node.typ.len > 0 {
-			base := b.resolve_type_in_module(node.typ, cur_module)
+		if node.kind == .type_decl && node.children_count == 0 && node.typ_text().len > 0 {
+			base := b.resolve_type_in_module(node.typ_text(), cur_module)
 			if base > 0 {
 				b.type_aliases[node.value] = base
 				qualified := qualify_type_name(node.value, cur_module)
@@ -6846,10 +6852,10 @@ fn (mut b Builder) register_type_aliases() {
 
 // source_param_type_name returns the ABI storage type for a parsed parameter.
 fn (b &Builder) source_param_type_name(param flat.Node, fn_name string, module_name string, idx int) string {
-	mut name := if param.typ.starts_with('&') {
-		param.typ
+	mut name := if param.typ_text().starts_with('&') {
+		param.typ_text()
 	} else {
-		b.checker_param_type_name(fn_name, module_name, idx) or { param.typ }
+		b.checker_param_type_name(fn_name, module_name, idx) or { param.typ_text() }
 	}
 	// An explicit `mut p &T` keeps &T in the parsed type and marks the extra
 	// caller slot with op == .amp. The transformed body dereferences that slot.
@@ -6968,7 +6974,9 @@ fn (b &Builder) fn_is_used_for_decl(name string, qualified_method bool) bool {
 	}
 	normalized_name := name.replace('__', '.')
 	used_short_name := normalized_name.all_after_last('.')
-	if !qualified_method && used_short_name in b.used_fns {
+	// A retained C prototype is tracked by its bare symbol name. It does not
+	// make a same-named V function in another module reachable.
+	if !qualified_method && used_short_name in b.used_fns && used_short_name !in b.c_fn_ids {
 		return true
 	}
 	if name in b.used_fn_suffixes {
@@ -6980,7 +6988,8 @@ fn (b &Builder) fn_is_used_for_decl(name string, qualified_method bool) bool {
 		suffix_start = dot + 1
 		if suffix_start < normalized_name.len {
 			suffix := normalized_name[suffix_start..]
-			if (!qualified_method || suffix.contains('.')) && suffix in b.used_fn_normalized {
+			if (!qualified_method || suffix.contains('.')) && suffix in b.used_fn_normalized
+				&& (suffix.contains('.') || suffix !in b.c_fn_ids) {
 				return true
 			}
 		}
@@ -7040,7 +7049,7 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 	func_id := b.fn_ids[fn_name]
 	b.cur_module = module_name
 	b.cur_func = func_id
-	b.cur_func_ret_type = qualify_type_ref_name(node.typ, module_name)
+	b.cur_func_ret_type = flat.source_type_id(qualify_type_ref_name(node.typ_text(), module_name))
 	b.reset_function_state()
 
 	entry := b.m.add_block(func_id, 'entry')
@@ -7060,7 +7069,7 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 			alloca := b.emit0(.alloca, b.m.type_store.get_ptr(typ))
 			b.emit2(.store, b.void_type, param_val, alloca)
 			b.vars[child.value] = alloca
-			b.var_type_names[child.value] = typ_name
+			b.var_type_names.set(child.value, typ_name)
 			if child.is_mut && b.is_pointer_type(typ) {
 				b.mut_param_names[child.value] = true
 			}
@@ -7104,7 +7113,7 @@ fn (mut b Builder) build_top_level_main() {
 	func_id := b.fn_ids['main'] or { return }
 	b.cur_module = 'main'
 	b.cur_func = func_id
-	b.cur_func_ret_type = ''
+	b.cur_func_ret_type = flat.source_type_id('')
 	b.reset_function_state()
 	entry := b.m.add_block(func_id, 'entry')
 	b.cur_block = entry
@@ -7138,15 +7147,15 @@ fn (mut b Builder) reset_function_state() {
 	b.loop_targets.clear()
 	for name, val_id in b.global_vars {
 		b.vars[name] = val_id
-		if typ := b.global_type_names[name] {
-			b.var_type_names[name] = typ
+		if typ := b.global_type_names.get(name) {
+			b.var_type_names.set(name, typ)
 		}
 	}
 	for alias, name in b.global_aliases {
 		if addr := b.global_vars[name] {
 			b.vars[alias] = addr
-			if typ := b.global_type_names[name] {
-				b.var_type_names[alias] = typ
+			if typ := b.global_type_names.get(name) {
+				b.var_type_names.set(alias, typ)
 			}
 		}
 	}
@@ -7157,8 +7166,8 @@ fn (mut b Builder) reset_function_state() {
 				short := name[prefix.len..]
 				if !short.contains('.') {
 					b.vars[short] = val_id
-					if typ := b.global_type_names[name] {
-						b.var_type_names[short] = typ
+					if typ := b.global_type_names.get(name) {
+						b.var_type_names.set(short, typ)
 					}
 				}
 			}
@@ -7239,7 +7248,7 @@ fn (b &Builder) save_var_binding(name string) VarBinding {
 		return VarBinding{
 			exists: true
 			addr:   addr
-			typ:    b.var_type_names[name] or { '' }
+			typ:    b.var_type_names.type_id(name) or { u32(0) }
 		}
 	}
 	return VarBinding{}
@@ -7252,8 +7261,8 @@ fn (mut b Builder) restore_var_binding(name string, binding VarBinding) {
 	}
 	if binding.exists {
 		b.vars[name] = binding.addr
-		if binding.typ.len > 0 {
-			b.var_type_names[name] = binding.typ
+		if binding.typ != 0 {
+			b.var_type_names.set_id(name, binding.typ)
 		} else {
 			b.var_type_names.delete(name)
 		}
@@ -7271,7 +7280,7 @@ fn (mut b Builder) bind_loop_var(name string, typ TypeID, typ_name string) Value
 	slot := b.emit0(.alloca, b.m.type_store.get_ptr(typ))
 	b.vars[name] = slot
 	if typ_name.len > 0 {
-		b.var_type_names[name] = typ_name
+		b.var_type_names.set(name, typ_name)
 	}
 	return slot
 }
@@ -7286,21 +7295,21 @@ fn (b &Builder) for_in_container_type_name(container_id flat.NodeId) string {
 		return ''
 	}
 	node := b.a.nodes[int(container_id)]
-	if node.typ.len > 0 {
-		return node.typ.trim_left('&')
+	if node.typ_text().len > 0 {
+		return node.typ_text().trim_left('&')
 	}
 	if node.kind == .ident {
-		return (b.var_type_names[node.value] or { '' }).trim_left('&')
+		return (b.var_type_names.get(node.value) or { '' }).trim_left('&')
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base_type := b.for_in_container_type_name(b.a.child(&node, 0)).trim_left('&')
 		field_key := base_type + '.' + node.value
-		if field_type := b.struct_field_types[field_key] {
+		if field_type := b.struct_field_types.get(field_key) {
 			return field_type.trim_left('&')
 		}
 		short_type := base_type.all_after('.')
 		short_key := short_type + '.' + node.value
-		if field_type := b.struct_field_types[short_key] {
+		if field_type := b.struct_field_types.get(short_key) {
 			return field_type.trim_left('&')
 		}
 	}
@@ -7380,7 +7389,7 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 				} else {
 					// Resolve `return .member` against the declared return type so a
 					// duplicated enum-member name is not built as 0 (see build_assign_rhs).
-					b.build_field_value(expr_id, b.cur_func_ret_type)
+					b.build_field_value(expr_id, b.cur_func_ret_type_text())
 				}
 				if b.is_option_type(ret_type) && b.value_type(val) != ret_type {
 					expr_node := b.a.nodes[int(expr_id)]
@@ -7518,8 +7527,8 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 		lhs := b.a.nodes[int(lhs_id)]
 		mut rhs_val := b.build_expr(rhs_id)
 		mut rhs_type := b.value_type(rhs_val)
-		if int(rhs_id) >= 0 && b.a.nodes[int(rhs_id)].kind == .nil_literal && lhs.typ.len > 0 {
-			declared_type := b.resolve_type(lhs.typ)
+		if int(rhs_id) >= 0 && b.a.nodes[int(rhs_id)].kind == .nil_literal && lhs.typ_text().len > 0 {
+			declared_type := b.resolve_type(lhs.typ_text())
 			if b.is_pointer_type(declared_type) && declared_type != rhs_type {
 				// Transformed pointer-valued branches initialize their typed staging
 				// local with nil. Preserve its pointee instead of inferring voidptr.
@@ -7533,13 +7542,13 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 			b.vars[lhs.value] = alloca
 			declared_type := b.declared_v_type_name(lhs_id, rhs_id)
 			rhs_type_name := b.checked_expr_type_name(rhs_id)
-			b.var_type_names[lhs.value] = if declared_type.len > 0 {
+			b.var_type_names.set(lhs.value, if declared_type.len > 0 {
 				declared_type
 			} else if rhs_type_name.len > 0 && rhs_type_name != 'unknown' {
 				rhs_type_name
 			} else {
-				node.typ
-			}
+				node.typ_text()
+			})
 		}
 		i += 2
 	}
@@ -7554,7 +7563,7 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 fn (mut b Builder) build_assign_rhs(lhs flat.Node, rhs_id flat.NodeId) ValueID {
 	mut type_name := ''
 	if lhs.kind == .ident {
-		type_name = b.var_type_names[lhs.value] or { '' }
+		type_name = b.var_type_names.get(lhs.value) or { '' }
 	} else if lhs.kind == .selector {
 		type_name = b.selector_type_name(lhs) or { '' }
 	}
@@ -8189,7 +8198,7 @@ fn (mut b Builder) build_option_if_guard(name string, rhs_id flat.NodeId) (bool,
 		slot:      b.emit0(.alloca, b.m.type_store.get_ptr(value_typ))
 		value_ptr: value_ptr
 		typ:       value_typ
-		typ_name:  b.option_payload_type_name(rhs_id)
+		typ_name:  flat.source_type_id(b.option_payload_type_name(rhs_id))
 	}
 	return true, cond, guard
 }
@@ -8228,7 +8237,7 @@ fn (mut b Builder) build_map_index_if_guard(name string, index_node flat.Node) (
 		slot:      slot
 		value_ptr: value_ptr
 		typ:       val_type
-		typ_name:  val_type_name
+		typ_name:  flat.source_type_id(val_type_name)
 	}
 	return true, found, guard
 }
@@ -8245,8 +8254,8 @@ fn (mut b Builder) activate_if_guard(guard IfGuardState) {
 	value := b.emit1(.load, guard.typ, typed_value_ptr)
 	b.emit2(.store, b.void_type, value, guard.slot)
 	b.vars[guard.name] = guard.slot
-	if guard.typ_name.len > 0 {
-		b.var_type_names[guard.name] = guard.typ_name
+	if guard.typ_name_text().len > 0 {
+		b.var_type_names.set(guard.name, guard.typ_name_text())
 	}
 }
 
@@ -8601,7 +8610,7 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 				operand := b.a.child(&node, 0)
 				// sizeof uses the operand's type without evaluating its value.
 				size = b.sizeof_type_name(b.checked_expr_type_name(operand))
-			} else if type_name := b.var_type_names[node.value] {
+			} else if type_name := b.var_type_names.get(node.value) {
 				size = b.sizeof_type_name(type_name)
 			} else if addr := b.vars[node.value] {
 				size = b.m.type_size(b.deref_type(addr))
@@ -8842,8 +8851,8 @@ fn (mut b Builder) build_in_expr(node flat.Node) ValueID {
 
 // build_enum_val builds enum val data for ssa.
 fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
-	if node.typ.len > 0 {
-		if value := b.enum_value_for_type(node.typ, node.value) {
+	if node.typ_text().len > 0 {
+		if value := b.enum_value_for_type(node.typ_text(), node.value) {
 			return b.m.get_or_add_const(b.i64_type, value.str())
 		}
 	}
@@ -9045,9 +9054,9 @@ fn (mut b Builder) build_block_expr(node flat.Node) ValueID {
 }
 
 fn (mut b Builder) build_array_literal(node flat.Node) ValueID {
-	if b.is_fixed_array_type_name(node.typ) {
+	if b.is_fixed_array_type_name(node.typ_text()) {
 		mut fixed_node := node
-		fixed_node.value = node.typ
+		fixed_node.value = node.typ_text()
 		return b.build_fixed_array_init(fixed_node)
 	}
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -9418,7 +9427,7 @@ fn (mut b Builder) build_or_expr(id flat.NodeId, node flat.Node) ValueID {
 	if result := b.build_option_or_expr(id, expr_id, b.a.child(&node, 1)) {
 		return result
 	}
-	return b.default_value_for_type(b.or_result_type(id, node.typ))
+	return b.default_value_for_type(b.or_result_type(id, node.typ_text()))
 }
 
 fn (mut b Builder) build_option_or_expr(id flat.NodeId, expr_id flat.NodeId, fallback_id flat.NodeId) ?ValueID {
@@ -10091,7 +10100,7 @@ fn (mut b Builder) build_cast_expr(node flat.Node) ValueID {
 	if node.children_count == 0 {
 		return b.m.get_or_add_const(b.i64_type, '0')
 	}
-	target_name := if node.typ.len > 0 { node.typ } else { node.value }
+	target_name := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
 	if target_name.len == 0 {
 		return b.build_expr(b.a.child(&node, 0))
 	}
@@ -10208,18 +10217,18 @@ fn (b &Builder) canonical_sum_type_name(name string) ?string {
 	if !name.contains('.') && b.cur_module.len > 0 && b.cur_module != 'main'
 		&& b.cur_module != 'builtin' {
 		qualified := '${b.cur_module}.${name}'
-		if canonical := b.sum_type_canonical[qualified] {
+		if canonical := b.sum_type_canonical.get(qualified) {
 			return canonical
 		}
 	}
-	if canonical := b.sum_type_canonical[name] {
+	if canonical := b.sum_type_canonical.get(name) {
 		return canonical
 	}
 	if name.contains('.') {
 		return none
 	}
 	short_name := name.all_after('.')
-	if canonical := b.sum_type_canonical[short_name] {
+	if canonical := b.sum_type_canonical.get(short_name) {
 		return canonical
 	}
 	return none
@@ -10242,7 +10251,7 @@ fn (mut b Builder) sum_variant_for_expr(sum_name string, expr_id flat.NodeId, va
 		return variant
 	}
 	value_type := b.value_type(value)
-	variants := b.sum_type_variants[sum_name] or { []string{} }
+	variants := b.sum_type_variants.get(sum_name) or { []string{} }
 	for variant in variants {
 		variant_type := b.resolve_type(variant)
 		if variant_type == value_type {
@@ -10257,7 +10266,7 @@ fn (b &Builder) find_sum_variant(sum_name string, type_name string) ?string {
 		return none
 	}
 	short_type := type_name.all_after('.')
-	variants := b.sum_type_variants[sum_name] or { []string{} }
+	variants := b.sum_type_variants.get(sum_name) or { []string{} }
 	for variant in variants {
 		short_variant := variant.all_after('.')
 		if variant == type_name || short_variant == short_type {
@@ -10269,7 +10278,7 @@ fn (b &Builder) find_sum_variant(sum_name string, type_name string) ?string {
 
 fn (b &Builder) sum_variant_index(sum_name string, variant string) int {
 	short_variant := variant.all_after('.')
-	variants := b.sum_type_variants[sum_name] or { []string{} }
+	variants := b.sum_type_variants.get(sum_name) or { []string{} }
 	for i, candidate in variants {
 		short_candidate := candidate.all_after('.')
 		if candidate == variant || short_candidate == short_variant {
@@ -10334,8 +10343,8 @@ fn (b &Builder) is_sum_type_id(typ_id TypeID) bool {
 	if typ_id <= 0 {
 		return false
 	}
-	for sum_name, _ in b.sum_type_variants {
-		if canonical := b.sum_type_canonical[sum_name] {
+	for sum_name, _ in b.sum_type_variants.ids {
+		if canonical := b.sum_type_canonical.get(sum_name) {
 			if sum_typ := b.struct_types[canonical] {
 				if sum_typ == typ_id {
 					return true
@@ -10350,8 +10359,9 @@ fn (b &Builder) sum_type_has_field(typ_id TypeID, field_name string) bool {
 	if !b.is_sum_type_id(typ_id) {
 		return false
 	}
-	for sum_name, variants in b.sum_type_variants {
-		if canonical := b.sum_type_canonical[sum_name] {
+	for sum_name, variants_id in b.sum_type_variants.ids {
+		variants := variants_id.map(flat.source_type_name(it))
+		if canonical := b.sum_type_canonical.get(sum_name) {
 			if sum_typ := b.struct_types[canonical] {
 				if sum_typ != typ_id {
 					continue
@@ -10467,7 +10477,7 @@ fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
 			// Fixed-array locals hold their storage pointer. Taking their address
 			// must expose the array bytes rather than the pointer's local slot.
 			storage_type := b.deref_type(addr)
-			if b.is_fixed_array_type_name(b.var_type_names[child.value] or { '' })
+			if b.is_fixed_array_type_name(b.var_type_names.get(child.value) or { '' })
 				&& storage_type > 0 && storage_type < b.m.type_store.types.len
 				&& b.m.type_store.types[storage_type].kind == .ptr_t {
 				return b.emit1(.load, storage_type, addr)
@@ -10928,8 +10938,8 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		mut type_name := arg.value
 		if arg.kind == .sizeof_expr && arg.children_count > 0 {
 			type_name = b.checked_expr_type_name(b.a.child(&arg, 0))
-		} else if type_name in b.var_type_names {
-			type_name = b.var_type_names[type_name]
+		} else if b.var_type_names.contains(type_name) {
+			type_name = b.var_type_names.value(type_name)
 		} else if type_name.len == 0 {
 			type_name = b.checked_expr_type_name(arg_id)
 		}
@@ -11512,7 +11522,7 @@ fn (b &Builder) is_disabled_fn_name(name string) bool {
 fn (mut b Builder) map_array_elem_size_arg(id flat.NodeId, node flat.Node) ?ValueID {
 	mut typ_name := b.checked_expr_type_name(id)
 	if typ_name.len == 0 || typ_name == 'unknown' {
-		typ_name = node.typ
+		typ_name = node.typ_text()
 	}
 	if !typ_name.starts_with('[]') {
 		return none
@@ -11671,8 +11681,8 @@ fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) string {
 		return ''
 	}
 	node := b.a.nodes[int(id)]
-	if node.typ.len > 0 && b.is_flag_enum_type_name(node.typ) {
-		return node.typ
+	if node.typ_text().len > 0 && b.is_flag_enum_type_name(node.typ_text()) {
+		return node.typ_text()
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		mut base_type := b.receiver_type_name(b.a.child(&node, 0)).trim_left('&')
@@ -11914,7 +11924,7 @@ fn (b &Builder) receiver_type_name(base_id flat.NodeId) string {
 	}
 	base_node := b.a.nodes[int(base_id)]
 	if base_node.kind == .ident {
-		if var_name := b.var_type_names[base_node.value] {
+		if var_name := b.var_type_names.get(base_node.value) {
 			return var_name
 		}
 	} else if base_node.kind == .selector && base_node.children_count > 0 {
@@ -12024,8 +12034,8 @@ fn (mut b Builder) call_expr_result_type(id flat.NodeId, node flat.Node) TypeID 
 	if checked.len > 0 && checked != 'unknown' {
 		return b.resolve_type(checked)
 	}
-	if node.typ.len > 0 && node.typ != 'unknown' {
-		return b.resolve_type(node.typ)
+	if node.typ_text().len > 0 && node.typ_text() != 'unknown' {
+		return b.resolve_type(node.typ_text())
 	}
 	return b.i64_type
 }
@@ -12261,7 +12271,7 @@ fn (b &Builder) lookup_const_expr(name string) ?flat.NodeId {
 
 fn (mut b Builder) float_literal_type(id flat.NodeId, node flat.Node) TypeID {
 	checked := b.checked_expr_type_name(id)
-	if checked == 'f32' || node.typ == 'f32' {
+	if checked == 'f32' || node.typ_text() == 'f32' {
 		return b.f32_type
 	}
 	return b.f64_type
@@ -12338,7 +12348,7 @@ fn (b &Builder) expr_type_name_for_map(id flat.NodeId) string {
 	}
 	node := b.a.nodes[int(id)]
 	if node.kind == .ident {
-		if var_name := b.var_type_names[node.value] {
+		if var_name := b.var_type_names.get(node.value) {
 			if var_name.len > 0 {
 				return var_name
 			}
@@ -12348,8 +12358,8 @@ fn (b &Builder) expr_type_name_for_map(id flat.NodeId) string {
 	if checked.len > 0 && checked != 'unknown' {
 		return checked
 	}
-	if node.typ.len > 0 {
-		return node.typ
+	if node.typ_text().len > 0 {
+		return node.typ_text()
 	}
 	if node.kind == .prefix && node.children_count > 0 && node.op == .amp {
 		inner := b.expr_type_name_for_map(b.a.child(&node, 0))
@@ -12360,12 +12370,12 @@ fn (b &Builder) expr_type_name_for_map(id flat.NodeId) string {
 	if node.kind == .selector && node.children_count > 0 {
 		base_type := b.expr_type_name_for_map(b.a.child(&node, 0)).trim_left('&')
 		field_key := base_type + '.' + node.value
-		if field_type := b.struct_field_types[field_key] {
+		if field_type := b.struct_field_types.get(field_key) {
 			return field_type
 		}
 		short_type := base_type.all_after('.')
 		short_key := short_type + '.' + node.value
-		if field_type := b.struct_field_types[short_key] {
+		if field_type := b.struct_field_types.get(short_key) {
 			return field_type
 		}
 	}
@@ -12454,8 +12464,8 @@ fn (b &Builder) declared_v_type_name(lhs_id flat.NodeId, rhs_id flat.NodeId) str
 		if rhs.kind == .array_init && b.is_fixed_array_type_name(rhs.value) {
 			return rhs.value
 		}
-		if rhs.kind == .array_literal && b.is_fixed_array_type_name(rhs.typ) {
-			return rhs.typ
+		if rhs.kind == .array_literal && b.is_fixed_array_type_name(rhs.typ_text()) {
+			return rhs.typ_text()
 		}
 		if rhs.kind == .call && rhs.children_count > 0 {
 			fn_node := b.a.child_node(&rhs, 0)
@@ -12467,14 +12477,14 @@ fn (b &Builder) declared_v_type_name(lhs_id flat.NodeId, rhs_id flat.NodeId) str
 				}
 			}
 		}
-		if rhs.typ.len > 0 && rhs.typ != 'unknown' {
-			return rhs.typ
+		if rhs.typ_text().len > 0 && rhs.typ_text() != 'unknown' {
+			return rhs.typ_text()
 		}
 	}
 	if int(lhs_id) >= 0 {
 		lhs := b.a.nodes[int(lhs_id)]
-		if lhs.typ.len > 0 {
-			return lhs.typ
+		if lhs.typ_text().len > 0 {
+			return lhs.typ_text()
 		}
 	}
 	lhs_type := b.checked_expr_type_name(lhs_id)
@@ -12516,11 +12526,11 @@ fn (b &Builder) checked_expr_type_name(id flat.NodeId) string {
 			}
 		}
 	}
-	if node.typ.len > 0 && node.typ != 'unknown' {
-		return node.typ
+	if node.typ_text().len > 0 && node.typ_text() != 'unknown' {
+		return node.typ_text()
 	}
 	if node.kind == .ident {
-		if typ := b.var_type_names[node.value] {
+		if typ := b.var_type_names.get(node.value) {
 			return typ
 		}
 	}
@@ -12537,7 +12547,7 @@ fn (b &Builder) selector_type_name(node flat.Node) ?string {
 		return none
 	}
 	if sum_name := b.canonical_sum_type_name(base_type) {
-		if variants := b.sum_type_variants[sum_name] {
+		if variants := b.sum_type_variants.get(sum_name) {
 			for variant in variants {
 				if sum_variant_field_name(variant) == node.value {
 					return variant
@@ -12559,7 +12569,7 @@ fn (b &Builder) builder_method_name_for_base(base flat.Node, method string) ?str
 	if !is_builder_method(method) {
 		return none
 	}
-	mut receiver_type := b.var_type_names[base.value] or { '' }
+	mut receiver_type := b.var_type_names.get(base.value) or { '' }
 	if receiver_type.starts_with('&') {
 		receiver_type = receiver_type[1..]
 	}
@@ -12837,7 +12847,7 @@ fn (mut b Builder) smartcast_sum_selector_addr(sum_addr ValueID, base_id flat.No
 	if !b.is_sum_type_id(sum_type) {
 		return none
 	}
-	base_type_name := b.sum_guard_variants[sum_addr] or { b.checked_expr_type_name(base_id) }
+	base_type_name := flat.source_type_name(b.sum_guard_variants[sum_addr] or { flat.source_type_id(b.checked_expr_type_name(base_id)) })
 	if base_type_name.len == 0 {
 		return none
 	}
@@ -12880,8 +12890,8 @@ fn (b &Builder) sum_name_for_type_id(typ_id TypeID) ?string {
 	if typ_id <= 0 {
 		return none
 	}
-	for sum_name, _ in b.sum_type_variants {
-		if canonical := b.sum_type_canonical[sum_name] {
+	for sum_name, _ in b.sum_type_variants.ids {
+		if canonical := b.sum_type_canonical.get(sum_name) {
 			if sum_typ := b.struct_types[canonical] {
 				if sum_typ == typ_id {
 					return sum_name
@@ -12988,7 +12998,7 @@ fn (mut b Builder) load_selector_field(node flat.Node, struct_typ_id TypeID, fie
 		return field
 	}
 	field := b.emit1(.load, b.deref_type(field_ptr), field_ptr)
-	if node.typ.len == 0 || !b.sum_type_has_field(struct_typ_id, node.value) {
+	if node.typ_text().len == 0 || !b.sum_type_has_field(struct_typ_id, node.value) {
 		return field
 	}
 	field_typ := b.value_type(field)
@@ -12999,7 +13009,7 @@ fn (mut b Builder) load_selector_field(node flat.Node, struct_typ_id TypeID, fie
 	if field_type.kind != .ptr_t {
 		return field
 	}
-	expected := b.resolve_type(node.typ)
+	expected := b.resolve_type(node.typ_text())
 	if expected > 0 && expected == field_type.elem_type {
 		return b.emit1(.load, expected, field)
 	}
@@ -13007,7 +13017,7 @@ fn (mut b Builder) load_selector_field(node flat.Node, struct_typ_id TypeID, fie
 }
 
 fn (b &Builder) is_option_like_var(name string) bool {
-	typ := b.var_type_names[name] or { return false }
+	typ := b.var_type_names.get(name) or { return false }
 	return typ.len > 0 && (typ[0] == `?` || typ[0] == `!` || typ == '__v_option')
 }
 
@@ -13310,8 +13320,8 @@ fn (mut b Builder) index_elem_type(id flat.NodeId, node flat.Node) TypeID {
 			return b.resolve_type(elem_type)
 		}
 	}
-	if node.typ != '' && !node.typ.starts_with('[]') {
-		return b.resolve_type(node.typ)
+	if node.typ_text() != '' && !node.typ_text().starts_with('[]') {
+		return b.resolve_type(node.typ_text())
 	}
 	checked := b.checked_expr_type_name(id)
 	if checked.len > 0 && checked != 'unknown' && !checked.starts_with('[]') && checked[0] != `?`
@@ -13511,12 +13521,12 @@ fn (mut b Builder) default_field_value(struct_name string, field_name string, ze
 fn (b &Builder) field_type_name(struct_name string, field_name string) string {
 	name := struct_name.trim_left('&')
 	key := name + '.' + field_name
-	if typ := b.struct_field_types[key] {
+	if typ := b.struct_field_types.get(key) {
 		return typ
 	}
 	short_name := name.all_after('.')
 	short_key := short_name + '.' + field_name
-	if typ := b.struct_field_types[short_key] {
+	if typ := b.struct_field_types.get(short_key) {
 		return typ
 	}
 	return ''
@@ -13965,13 +13975,13 @@ fn (b &Builder) type_alias_target(name string) ?string {
 	if b.tc == unsafe { nil } || name.len == 0 {
 		return none
 	}
-	if target := b.tc.type_aliases[name] {
+	if target := b.tc.type_aliases.get(name) {
 		return target
 	}
 	if !name.contains('.') && b.cur_module.len > 0 && b.cur_module != 'main'
 		&& b.cur_module != 'builtin' {
 		qualified_name := b.cur_module + '.' + name
-		if target := b.tc.type_aliases[qualified_name] {
+		if target := b.tc.type_aliases.get(qualified_name) {
 			return target
 		}
 	}
@@ -14222,3 +14232,21 @@ fn (mut b Builder) register_synthetic_c_function(name string, ret TypeID, params
 }
 
 // func_add_argument supports func add argument handling for Builder.
+
+// cur_func_ret_type_text resolves the indexed source type spelling.
+@[inline]
+pub fn (value &Builder) cur_func_ret_type_text() string {
+	return flat.source_type_name(value.cur_func_ret_type)
+}
+
+// typ_name_text resolves the indexed source type spelling.
+@[inline]
+fn (value &IfGuardState) typ_name_text() string {
+	return flat.source_type_name(value.typ_name)
+}
+
+// field_types_text resolves the indexed source type spelling.
+@[inline]
+fn (value &NativeCStructAbi) field_types_text() []string {
+	return value.field_types.names()
+}

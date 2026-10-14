@@ -7,8 +7,14 @@ struct OwnershipState {}
 pub struct OwnershipDropEntry {
 pub:
 	name             string
-	type_name        string
+	type_name        u32
 	optional_wrapper bool
+}
+
+// type_name_text resolves the indexed type spelling of a cleanup entry.
+@[inline]
+pub fn (entry &OwnershipDropEntry) type_name_text() string {
+	return flat.source_type_name(entry.type_name)
 }
 
 // ownership_drop_entries_at_return returns no destructor entries when ownership checking is disabled.

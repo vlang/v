@@ -88,19 +88,25 @@ pub fn to_string(p voidptr) string {
 // Unless you are interfacing with a C library, that does specifically use wchar_t,
 // consider using string_from_wide2 instead, which will always assume that the input
 // data is in an UTF-16 encoding, no matter what the platform is.
+// On windows, where a `C.wchar_t` is an UTF-16 code unit, a surrogate pair is decoded
+// to the code point that it stands for, like string_from_wide2 does.
 @[manualfree; unsafe]
 pub fn to_string2(p voidptr, len int) string {
-	pc := &Character(p)
-	mut sb := strings.new_builder(len)
-	defer {
-		unsafe { sb.free() }
+	$if windows {
+		return unsafe { string_from_wide2(&u16(p), len) }
+	} $else {
+		pc := &Character(p)
+		mut sb := strings.new_builder(len)
+		defer {
+			unsafe { sb.free() }
+		}
+		for i := 0; i < len; i++ {
+			u := unsafe { rune(pc[i]) }
+			sb.write_rune(u)
+		}
+		res := sb.str()
+		return res
 	}
-	for i := 0; i < len; i++ {
-		u := unsafe { rune(pc[i]) }
-		sb.write_rune(u)
-	}
-	res := sb.str()
-	return res
 }
 
 // from_string converts the V string (in UTF-8 encoding), into a newly allocated

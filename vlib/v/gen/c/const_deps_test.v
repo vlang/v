@@ -37,7 +37,7 @@ fn const_deps_test_call(mut a flat.FlatAst, name string) flat.NodeId {
 
 fn const_deps_test_method_call(mut a flat.FlatAst, receiver string, method string) flat.NodeId {
 	base := add_const_deps_test_node(mut a, .struct_init, receiver, [])
-	a.nodes[int(base)].typ = receiver
+	a.nodes[int(base)].typ = flat.source_type_id(receiver)
 	callee := add_const_deps_test_node(mut a, .selector, method, [base])
 	return add_const_deps_test_node(mut a, .call, '', [callee])
 }
@@ -190,7 +190,7 @@ fn test_enum_helper_prefers_exact_free_function_over_method_suffix() {
 	mut a := flat.FlatAst.new()
 	add_const_deps_test_node(mut a, .module_decl, 'main', [])
 	receiver := add_const_deps_test_node(mut a, .param, 'm', [])
-	a.nodes[int(receiver)].typ = 'Maker'
+	a.nodes[int(receiver)].typ = flat.source_type_id('Maker')
 	method_value := add_const_deps_test_node(mut a, .int_literal, '99', [])
 	method_return := add_const_deps_test_node(mut a, .return_stmt, '', [method_value])
 	add_const_deps_test_node(mut a, .fn_decl, 'Maker.make', [receiver, method_return])

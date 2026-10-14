@@ -3,6 +3,47 @@ module transform
 import v.flat
 import v.types
 
+fn test_generic_batch_publishes_indirect_base_writes_and_new_nodes() {
+	mut a := flat.FlatAst.new()
+	a.add_node(flat.Node{ kind: .ident, value: 'outside_current_body' })
+	a.add_node(flat.Node{ kind: .ident, value: 'previous_batch' })
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.scope_parallel_workers = true
+	assert !master.skip_generics
+	new_node_start := a.nodes.len
+	scope := transform_worker_scope_begin(true)
+	mut batch := master.fork_scoped_batch_worker(&a, tc.fork_for_parallel_transform(&a))
+	batch.scoped_base_nodes = new_node_start
+	batch.item_range_lo = 1
+	batch.item_range_hi = 1
+	batch.set_node_value(0, 'indirect_rewrite'.clone())
+	batch.set_node_typ(1, 'previous_batch_type'.clone())
+	batch.set_node_generic_params(0, ['T'.clone()])
+	a.nodes[0].set_generic_params_and_constraints(['T'.clone()], ['retiring constraint'.clone()])
+	added := a.add_node(flat.Node{ kind: .ident, value: 'appended'.clone(), typ: flat.source_type_id('new_type'.clone()) })
+	transform_worker_scope_leave(scope)
+	master.absorb_scoped_batch(batch, scope, new_node_start)
+	for id in [0, 1, int(added)] {
+		node := a.nodes[id]
+		assert !transform_scope_owns(scope, node.value.str)
+		assert !transform_scope_owns(scope, node.typ_text().str)
+		if node.generic_params().len > 0 {
+			assert !transform_scope_owns(scope, node.payload_ptr())
+			assert !transform_scope_owns(scope, node.generic_params().data)
+			assert !transform_scope_owns(scope, node.generic_params()[0].str)
+			assert !transform_scope_owns(scope, node.generic_constraints().data)
+			assert !transform_scope_owns(scope, node.generic_constraints()[0].str)
+		}
+	}
+	transform_worker_scope_free(scope)
+	assert a.nodes[0].value == 'indirect_rewrite'
+	assert a.nodes[0].generic_params() == ['T']
+	assert a.nodes[0].generic_constraints() == ['retiring constraint']
+	assert a.nodes[1].typ_text() == 'previous_batch_type'
+	assert a.nodes[int(added)].value == 'appended'
+}
+
 fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -15,7 +56,13 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	scope := helper.merge_scratch_scope
 	helper.used_fns['main.generated'.clone()] = true
 	helper.sum_eq_types['main.Sum'.clone()] = SumEqRequest{
-		sum_name:      'main.Sum'.clone()
+		sum_name:      flat.source_type_id('main.Sum'.clone())
+		module:        'main'.clone()
+		file:          'main.v'.clone()
+		helper_module: 'main'.clone()
+	}
+	helper.sum_eq_types['main.Node'.clone()] = SumEqRequest{
+		struct_name:   flat.source_type_id('main.Node'.clone())
 		module:        'main'.clone()
 		file:          'main.v'.clone()
 		helper_module: 'main'.clone()
@@ -25,19 +72,21 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	helper.tc.fork_overlay.resolved_call_names[10] = text
 	helper.generic_call_spec_cache[12] = GenericCallSpec{
 		decl_key: 'main.generic'.clone()
-		args:     ['[]int'.clone()]
+		args:     flat.TypeTextList.from_names(['[]int'.clone()])
 	}
 	transform_worker_scope_leave(scope)
 	master.merge_worker_used_fns(helper)
 	assert !transform_scope_owns(scope, master.used_fns_log[0].str)
-	assert !transform_scope_owns(scope, master.sum_eq_types['main.Sum'].sum_name.str)
+	assert !transform_scope_owns(scope, master.sum_eq_types['main.Sum'].sum_name_text().str)
+	assert !transform_scope_owns(scope, master.sum_eq_types['main.Node'].struct_name_text().str)
 	master.merge_worker(helper, []FnWorkItem{}, 0, 0, false)
 	assert helper.merge_scratch_scope == unsafe { nil }
 	assert master.used_fns_log == ['main.generated']
 	assert master.sum_eq_types['main.Sum'].file == 'main.v'
+	assert master.sum_eq_types['main.Node'].struct_name_text() == 'main.Node'
 	assert tc.sparse_resolved_call_names[10] == 'main.resolved'
 	assert master.generic_call_spec_cache[12].decl_key == 'main.generic'
-	assert master.generic_call_spec_cache[12].args == ['[]int']
+	assert master.generic_call_spec_cache[12].args_text() == ['[]int']
 }
 
 fn test_scoped_monomorph_specialization_args_are_deep_cloned() {
@@ -147,18 +196,18 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	param_id := a.add_node(flat.Node{
 		kind:  .param
 		value: 'item'
-		typ:   'T'
+		typ:   flat.source_type_id('T')
 	})
 	item_id := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'item'
-		typ:   'T'
+		typ:   flat.source_type_id('T')
 	})
 	return_children := a.begin_children()
 	a.add_child(item_id)
 	return_id := a.add_node(flat.Node{
 		kind:           .return_stmt
-		typ:            'T'
+		typ:            flat.source_type_id('T')
 		children_start: return_children
 		children_count: 1
 	})
@@ -167,7 +216,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	a.add_child(return_id)
 	literal_id := a.add_node(flat.Node{
 		kind:           .fn_literal
-		typ:            'T'
+		typ:            flat.source_type_id('T')
 		children_start: literal_children
 		children_count: 2
 	})
@@ -175,7 +224,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	a.add_child(literal_id)
 	outer_return_id := a.add_node(flat.Node{
 		kind:           .return_stmt
-		typ:            'fn (T) T'
+		typ:            flat.source_type_id('fn (T) T')
 		children_start: outer_return_children
 		children_count: 1
 	})
@@ -184,7 +233,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	mut fn_node := flat.Node{
 		kind:           .fn_decl
 		value:          'make_callback'
-		typ:            'fn (T) T'
+		typ:            flat.source_type_id('fn (T) T')
 		children_start: fn_children
 		children_count: 1
 	}
@@ -233,13 +282,13 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 			continue
 		}
 		lifted++
-		assert node.typ in ['int', 'string']
+		assert node.typ_text() in ['int', 'string']
 		for name in [node.value, transform_qualified_fn_name(decl.module, node.value)] {
-			assert t.fn_ret_types[name] == node.typ
-			assert (tc.fn_ret_types[name] or { panic('missing lifted return ${name}') }).name() == node.typ
+			assert t.fn_ret_types.value(name) == node.typ_text()
+			assert (tc.fn_ret_types[name] or { panic('missing lifted return ${name}') }).name() == node.typ_text()
 			params := tc.fn_param_types[name] or { panic('missing lifted params ${name}') }
 			assert params.len == 1
-			assert params[0].name() == node.typ
+			assert params[0].name() == node.typ_text()
 		}
 	}
 	assert lifted == 2

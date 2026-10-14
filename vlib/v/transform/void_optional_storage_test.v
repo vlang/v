@@ -6,8 +6,8 @@ import v.types
 fn test_void_optional_storage_does_not_clone_a_payload() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['VoidResult'] = '!'
-	tc.type_aliases['VoidOption'] = '?'
+	tc.type_aliases.set('VoidResult', '!')
+	tc.type_aliases.set('VoidOption', '?')
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for typ in ['!', '?', '!void', '?void', '!!', '??', 'VoidResult', 'VoidOption'] {
 		t.set_var_type('source', typ)

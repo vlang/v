@@ -810,6 +810,26 @@ type FixedRootPtr = &[3]int
 type FixedRootPtrAlias = FixedRootPtr
 
 @[noinline]
+fn reference_from_fixed_pointer_address_roundtrip(use_range bool) &[]int {
+	values := [191, 192, 193]!
+	p := unsafe { &values }
+	unsafe {
+		if use_range {
+			return retain_immutable_array_reference((*(&p))[1..])
+		}
+		return retain_immutable_array_reference(*(&p))
+	}
+}
+
+fn test_pointer_address_roundtrip_keeps_original_fixed_roots_alive() {
+	whole := reference_from_fixed_pointer_address_roundtrip(false)
+	range := reference_from_fixed_pointer_address_roundtrip(true)
+	assert overwrite_stack() == 7
+	assert read_retained_optional_fixed_reference(whole) == [191, 192, 193]
+	assert read_retained_optional_fixed_reference(range) == [192, 193]
+}
+
+@[noinline]
 fn reference_from_cast_fixed_address(chained bool) &[]int {
 	values := [181, 182, 183]!
 	unsafe {

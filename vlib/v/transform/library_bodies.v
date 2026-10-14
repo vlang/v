@@ -32,7 +32,7 @@ import v.types
 // - a module that a library file belongs to or imports: that code can name the
 //   program's generics.
 //
-// V_CHECK_LIBRARY_BODIES=1 keeps every body, as before. V_DIAGNOSTICS_TRACE tells
+// V_CHECK_LIBRARY_BODIES=all keeps every body, as before. V_DIAGNOSTICS_TRACE tells
 // how many instances were cloned without their bodies.
 struct LibraryBodies {
 mut:
@@ -62,8 +62,8 @@ fn (mut t Transformer) library_instance_needs_body(args []string) bool {
 
 fn (mut t Transformer) prepare_library_bodies() {
 	t.library_bodies.ready = true
-	if os.getenv('V_CHECK_LIBRARY_BODIES') == '1' {
-		t.keep_library_bodies('V_CHECK_LIBRARY_BODIES=1 asks for them')
+	if os.getenv('V_CHECK_LIBRARY_BODIES') == 'all' {
+		t.keep_library_bodies('V_CHECK_LIBRARY_BODIES=all asks for them')
 		return
 	}
 	for _, decl in t.cached_generic_fn_decls() {
@@ -91,7 +91,7 @@ fn (mut t Transformer) prepare_library_bodies() {
 			continue
 		}
 		receiver := key[..dot]
-		if receiver in t.tc.structs || receiver in t.tc.sum_types || receiver in t.tc.type_aliases
+		if receiver in t.tc.structs || t.tc.sum_types.contains(receiver) || t.tc.type_aliases.contains(receiver)
 			|| receiver in t.tc.enum_names {
 			t.library_bodies.methods[receiver] << key
 		}
@@ -113,7 +113,7 @@ fn (mut t Transformer) generic_decl_receiver_is_generic(decl GenericFnDecl) bool
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind == .param {
-			t.collect_generic_param_names_from_type(child.typ, decl.module, mut params)
+			t.collect_generic_param_names_from_type(child.typ_text(), decl.module, mut params)
 			break
 		}
 	}
@@ -224,7 +224,7 @@ fn (mut t Transformer) library_type_reaches_program(typ string) bool {
 }
 
 fn library_type_text(typ string) string {
-	text := typ.trim_space()
+	text := trimmed_transform_text(typ)
 	return if text.starts_with('main.') { text['main.'.len..] } else { text }
 }
 
@@ -294,11 +294,11 @@ fn (mut t Transformer) library_type_parts(text string) ?[]string {
 			parts << library_type_text(substitute_generic_type_text_with_params(field.typ.name(),
 				args, params))
 		}
-	} else if variants := t.tc.sum_types[name] {
+	} else if variants := t.tc.sum_types.get(name) {
 		for variant in variants {
 			parts << library_type_text(variant)
 		}
-	} else if target := t.tc.type_aliases[name] {
+	} else if target := t.tc.type_aliases.get(name) {
 		parts << library_type_text(target)
 	} else if name !in t.tc.enum_names {
 		return none

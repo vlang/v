@@ -205,11 +205,13 @@ pub fn integer_from_bytes(oinput []u8, config IntegerConfig) Integer {
 
 // integer_from_string creates a new `big.Integer` from the decimal digits specified in the given string.
 // For other bases, use `big.integer_from_radix` instead.
+// Empty strings and a sign without digits return an error.
 pub fn integer_from_string(characters string) !Integer {
 	return integer_from_radix(characters, 10)
 }
 
 // integer_from_radix creates a new `big.Integer` from the given string and radix.
+// A leading sign is allowed, but at least one valid digit is required.
 pub fn integer_from_radix(all_characters string, radix u32) !Integer {
 	if radix < 2 || radix > 36 {
 		return error('math.big: Radix must be between 2 and 36 (inclusive)')
@@ -224,6 +226,11 @@ fn validate_string(characters string, radix u32) ! {
 	sign_present := characters.len > 0 && (characters[0] == `+` || characters[0] == `-`)
 
 	start_index := if sign_present { 1 } else { 0 }
+
+	// a sign on its own is not a number, nor is an empty string
+	if start_index >= characters.len {
+		return error('math.big: No digits in the given string')
+	}
 
 	for index := start_index; index < characters.len; index++ {
 		digit := characters[index]

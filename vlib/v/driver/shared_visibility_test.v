@@ -5,8 +5,8 @@ fn test_shared_visibility_is_in_cached_object_flags_and_signature() {
 	for target_os in ['linux', 'macos'] {
 		flags := v3_shared_object_compile_flags(base, target_os, true, false)
 		assert flags == ['-Iexample', '-fvisibility=hidden']
-		assert v3_cached_object_compile_signature('c11', '', '', '', flags, false, '') !=
-			v3_cached_object_compile_signature('c11', '', '', '', base, false, '')
+		assert v3_cached_object_compile_signature(V3CachedObjectCompiler{}, 'c11', '', '', '', flags, false, '') !=
+			v3_cached_object_compile_signature(V3CachedObjectCompiler{}, 'c11', '', '', '', base, false, '')
 	}
 	for target_os in ['linux', 'macos', 'windows'] {
 		assert v3_shared_object_compile_flags(base, target_os, true, true) == base

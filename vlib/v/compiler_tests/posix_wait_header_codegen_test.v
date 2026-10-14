@@ -105,13 +105,23 @@ fn wait_header_compile(v3_bin string, name string, source string) WaitHeaderProg
 }
 
 fn wait_header_gen_c(v3_bin string, name string, source string) string {
+	return wait_header_gen_c_for_target(v3_bin, name, source, '')
+}
+
+fn wait_header_gen_windows_c(v3_bin string, name string, source string) string {
+	return wait_header_gen_c_for_target(v3_bin, name, source, 'windows')
+}
+
+fn wait_header_gen_c_for_target(v3_bin string, name string, source string, target string) string {
 	pid := os.getpid()
 	src := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}.v')
 	c_path := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}.c')
 	os.write_file(src, source) or { panic(err) }
 	os.rm(c_path) or {}
-	compile := wait_header_execute_without_vflags([wait_header_exe(v3_bin), '-b', 'c', '-o', c_path,
-		src])
+	mut args := [wait_header_exe(v3_bin), '-b', 'c', '-o', c_path]
+	if target.len > 0 { args << ['-os', target] }
+	args << src
+	compile := wait_header_execute_without_vflags(args)
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -385,48 +395,42 @@ fn main() {
 	assert run.output.trim_space().int() > 0, run.output
 }
 
-fn test_windows_crt_underscore_c_decls_emit_extern_prototypes() {
+fn test_windows_crt_underscore_c_decls_use_target_headers() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_c(v3_bin, 'windows_crt_underscore_decls', 'module main
+	c_code := wait_header_gen_windows_c(v3_bin, 'windows_crt_underscore_decls', 'module main
 
 fn C._wfopen(&u16, &u16) voidptr
 fn C._wsystem(&u16) int
 fn C._wgetenv(&u16) voidptr
 fn C._waccess(&u16, int) int
 fn C._wchdir(&u16) int
-fn C._chsize_s(voidptr, u64) int
+fn C._chsize_s(int, u64) int
 
 fn main() {
-	p := &u16(unsafe { nil })
-	h := voidptr(0)
-	_ = C._wfopen(p, p)
-	_ = C._wsystem(p)
-	_ = C._wgetenv(p)
-	_ = C._waccess(p, 0)
-	_ = C._wchdir(p)
-	_ = C._chsize_s(h, u64(0))
+ p := &u16(unsafe { nil })
+ _ = C._wfopen(p, p)
+ _ = C._wsystem(p)
+ _ = C._wgetenv(p)
+ _ = C._waccess(p, 0)
+ _ = C._wchdir(p)
+ _ = C._chsize_s(0, u64(0))
 }
 ')
-	assert !wait_header_has_include_directive(c_code), c_code
-	assert c_code.contains('#ifdef _MSC_VER'), c_code
-	assert c_code.contains('typedef unsigned __int64 size_t;'), c_code
-	assert c_code.contains('typedef __int64 ptrdiff_t;'), c_code
-	assert c_code.contains('typedef unsigned __int64 uintptr_t;'), c_code
-	assert c_code.contains('typedef __int64 intptr_t;'), c_code
-	assert c_code.contains('#elif defined(_WIN32)'), c_code
-	assert c_code.contains('int* _errno(void);'), c_code
-	assert c_code.contains('#define errno (*_errno())'), c_code
-	assert c_code.contains('void* _wfopen(u16*, u16*);'), c_code
-	assert c_code.contains('int _wsystem(u16*);'), c_code
-	assert c_code.contains('void* _wgetenv(u16*);'), c_code
-	assert c_code.contains('int _waccess(u16*, int);'), c_code
-	assert c_code.contains('int _wchdir(u16*);'), c_code
-	assert c_code.contains('int _chsize_s(void*, u64);'), c_code
+	assert c_code.contains('#include <windows.h>'), c_code
+	assert c_code.contains('#include <io.h>'), c_code
+	assert c_code.contains('#include <stdint.h>'), c_code
+	// The CRT headers own these declarations; voidptr prototypes would conflict
+	// with the real FILE* and wchar_t* return types.
+	assert !c_code.contains('void* _wfopen(u16*, u16*);'), c_code
+	assert !c_code.contains('void* _wgetenv(u16*);'), c_code
+	for name in ['_wfopen', '_wsystem', '_wgetenv', '_waccess', '_wchdir', '_chsize_s'] {
+		assert c_code.contains('(void)(' + name + '('), c_code
+	}
 }
 
-fn test_windows_sdk_types_are_emitted_before_extern_prototypes() {
+fn test_windows_sdk_types_come_from_target_headers() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_c(v3_bin, 'windows_sdk_type_order', 'module main
+	c_code := wait_header_gen_windows_c(v3_bin, 'windows_sdk_type_order', 'module main
 
 @[typedef]
 struct C.SECURITY_ATTRIBUTES {}
@@ -439,20 +443,16 @@ fn main() {
 	_ = C.CreateHardLinkW(path, path, attrs)
 }
 ')
-	security_typedef := 'typedef struct SECURITY_ATTRIBUTES { DWORD nLength; void* lpSecurityDescriptor; BOOL bInheritHandle; } SECURITY_ATTRIBUTES;'
-	security_typedef_idx := c_code.index(security_typedef) or { -1 }
-	prototype_idx := c_code.index('int WINAPI CreateHardLinkW(u16*, u16*, SECURITY_ATTRIBUTES*);') or {
-		-1
-	}
-	assert security_typedef_idx >= 0, c_code
-	assert prototype_idx >= 0, c_code
-	assert security_typedef_idx < prototype_idx, c_code
+	assert c_code.contains('#include <windows.h>'), c_code
+	assert c_code.contains('SECURITY_ATTRIBUTES* attrs'), c_code
+	assert c_code.contains('CreateHardLinkW(path, path, attrs)'), c_code
+	assert !c_code.contains('typedef struct SECURITY_ATTRIBUTES {'), c_code
 	assert !c_code.contains('typedef struct SECURITY_ATTRIBUTES SECURITY_ATTRIBUTES;'), c_code
 }
 
-fn test_winapi_extern_prototypes_use_calling_convention() {
+fn test_winapi_declarations_come_from_target_headers() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_c(v3_bin, 'winapi_calling_convention', 'module main
+	c_code := wait_header_gen_windows_c(v3_bin, 'winapi_calling_convention', 'module main
 
 fn C.GetStdHandle(u32) voidptr
 fn C.CreateFileW(&u16, u32, u32, voidptr, u32, u32, voidptr) voidptr
@@ -463,17 +463,16 @@ fn main() {
 	_ = C.CreateFileW(path, 0, 0, voidptr(0), 0, 0, voidptr(0))
 }
 ')
-	assert c_code.contains('#ifndef WINAPI'), c_code
-	assert c_code.contains('#define WINAPI __stdcall'), c_code
-	assert c_code.contains('void* WINAPI GetStdHandle(u32);'), c_code
-	assert c_code.contains('void* WINAPI CreateFileW(u16*, u32, u32, void*, u32, u32, void*);'), c_code
-	assert !c_code.contains('void* GetStdHandle(u32);'), c_code
-	assert !c_code.contains('void* CreateFileW(u16*, u32, u32, void*, u32, u32, void*);'), c_code
+	assert c_code.contains('#include <windows.h>'), c_code
+	assert c_code.contains('GetStdHandle('), c_code
+	assert c_code.contains('CreateFileW(path,'), c_code
+	assert !c_code.contains('void* WINAPI GetStdHandle(u32);'), c_code
+	assert !c_code.contains('void* WINAPI CreateFileW(u16*, u32, u32, void*, u32, u32, void*);'), c_code
 }
 
 fn test_unsuffixed_winapi_decls_use_wide_exports() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_c(v3_bin, 'winapi_unsuffixed_wide_exports', 'module main
+	c_code := wait_header_gen_windows_c(v3_bin, 'winapi_unsuffixed_wide_exports', 'module main
 
 fn C.GetModuleFileName(voidptr, &u16, u32) u32
 fn C.CreateFile(&u16, u32, u32, voidptr, u32, u32, voidptr) voidptr
@@ -488,14 +487,15 @@ fn main() {
 	_ = voidptr(&C.DefWindowProc)
 }
 ')
-	assert c_code.contains('u32 WINAPI GetModuleFileNameW(void*, u16*, u32);'), c_code
-	assert c_code.contains('void* WINAPI CreateFileW(u16*, u32, u32, void*, u32, u32, void*);'), c_code
-	assert c_code.contains('void* WINAPI LoadLibraryW(u16*);'), c_code
-	assert c_code.contains('ptrdiff_t WINAPI DefWindowProcW(void*, u32, size_t, ptrdiff_t);'), c_code
+	assert !c_code.contains('u32 WINAPI GetModuleFileNameW(void*, u16*, u32);'), c_code
+	assert !c_code.contains('void* WINAPI CreateFileW(u16*, u32, u32, void*, u32, u32, void*);'), c_code
+	assert !c_code.contains('void* WINAPI LoadLibraryW(u16*);'), c_code
+	assert !c_code.contains('ptrdiff_t WINAPI DefWindowProcW(void*, u32, size_t, ptrdiff_t);'), c_code
+	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('GetModuleFileNameW('), c_code
 	assert c_code.contains('CreateFileW('), c_code
 	assert c_code.contains('LoadLibraryW('), c_code
-	assert c_code.contains('&DefWindowProcW'), c_code
+	assert c_code.contains('(void*)(DefWindowProcW)'), c_code
 	assert !c_code.contains('GetModuleFileName('), c_code
 	assert !c_code.contains('CreateFile('), c_code
 	assert !c_code.contains('LoadLibrary('), c_code
@@ -517,9 +517,9 @@ fn main() {
 	assert !c_code.contains('int SSL_CTX_load_verify_locations(void* ctx, char* const_file'), c_code
 }
 
-fn test_windows_sync_structs_use_headerless_preamble_storage() {
+fn test_windows_sync_structs_use_target_headers() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_c(v3_bin, 'windows_sync_struct_storage', 'module main
+	c_code := wait_header_gen_windows_c(v3_bin, 'windows_sync_struct_storage', 'module main
 
 @[typedef]
 struct C.SRWLOCK {}
@@ -536,11 +536,11 @@ fn main() {
 	_ := SyncHolder{}
 }
 ')
-	assert !wait_header_has_include_directive(c_code), c_code
-	assert c_code.contains('typedef struct SRWLOCK { void* Ptr; } SRWLOCK;'), c_code
-	assert c_code.contains('typedef struct CONDITION_VARIABLE { void* Ptr; } CONDITION_VARIABLE;'), c_code
+	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('SRWLOCK rw;'), c_code
 	assert c_code.contains('CONDITION_VARIABLE cv;'), c_code
+	assert !c_code.contains('typedef struct SRWLOCK {'), c_code
+	assert !c_code.contains('typedef struct CONDITION_VARIABLE {'), c_code
 	assert !c_code.contains('typedef struct SRWLOCK SRWLOCK;'), c_code
 	assert !c_code.contains('typedef struct CONDITION_VARIABLE CONDITION_VARIABLE;'), c_code
 }
@@ -572,9 +572,9 @@ fn main() {
 	assert !c_code.contains('union epoll_data {\n'), c_code
 }
 
-fn test_windows_console_records_use_headerless_preamble_definitions() {
+fn test_windows_console_records_use_target_headers() {
 	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_c(v3_bin, 'windows_console_records', 'module main
+	c_code := wait_header_gen_windows_c(v3_bin, 'windows_console_records', 'module main
 
 pub union C.Event {
 	KeyEvent              C.KEY_EVENT_RECORD
@@ -663,11 +663,11 @@ fn main() {
 	_ := C.CHAR_INFO{}
 }
 ')
-	assert c_code.contains('typedef union uChar { u16 UnicodeChar; u8 AsciiChar; } uChar;'), c_code
-	assert c_code.contains('typedef struct KEY_EVENT_RECORD { int bKeyDown; u16 wRepeatCount; u16 wVirtualKeyCode; u16 wVirtualScanCode; uChar uChar; u32 dwControlKeyState; } KEY_EVENT_RECORD;'), c_code
-	assert c_code.contains('typedef struct INPUT_RECORD { u16 EventType; Event Event; } INPUT_RECORD;'), c_code
-	assert !c_code.contains('union uChar {\n'), c_code
-	assert !c_code.contains('struct uChar'), c_code
+	assert c_code.contains('#include <windows.h>'), c_code
+	assert c_code.contains('(INPUT_RECORD){0}'), c_code
+	assert c_code.contains('(CHAR_INFO){0}'), c_code
+	assert !c_code.contains('typedef struct KEY_EVENT_RECORD {'), c_code
+	assert !c_code.contains('typedef struct INPUT_RECORD {'), c_code
 	assert !c_code.contains('struct KEY_EVENT_RECORD {\n'), c_code
 }
 

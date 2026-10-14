@@ -581,13 +581,13 @@ fn main() {
 	assert sql_expr_count == 0
 	users := decl_rhs(a, 'main', 'users')
 	assert users.kind == .call
-	assert users.typ == '![]User'
+	assert users.typ_text() == '![]User'
 	count := decl_rhs(a, 'main', 'count')
 	assert count.kind == .call
-	assert count.typ == '!int'
+	assert count.typ_text() == '!int'
 	created := decl_rhs(a, 'main', 'created')
 	assert created.kind == .call
-	assert created.typ == '!int'
+	assert created.typ_text() == '!int'
 }
 
 // test_or_expr_lowers_to_temp_and_if validates this v3 regression case.
@@ -722,7 +722,7 @@ fn main() {
 		if stmt.kind == .decl_assign && stmt.children_count >= 2 {
 			lhs := a.child_node(stmt, 0)
 			if lhs.kind == .ident && lhs.value == key_tmp {
-				assert stmt.typ == '[2]string'
+				assert stmt.typ_text() == '[2]string'
 				found_key_decl = true
 			}
 		}

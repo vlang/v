@@ -1060,12 +1060,10 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		}
 	}
 	mut value_cache := new_parse_merge_text_cache()
-	mut type_cache := new_parse_merge_text_cache()
 	defer {
 		// Only the buffers are owned here; their strings borrow the master AST.
 		unsafe {
 			free(value_cache)
-			free(type_cache)
 		}
 	}
 	for k in 0 .. w.a.nodes.len {
@@ -1084,11 +1082,6 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		// canonical table's insertion order matches the serial merge.
 		mut all_hit := true
 		node.value, all_hit = p.a.probe_text_ptr_cached(node.value, mut value_cache.ptrs, mut value_cache.values)
-		mut hit := true
-		mut type_id := u16(0)
-		type_id, node.typ, hit = p.a.probe_type_text_ptr_cached(node.typ, mut type_cache.ptrs, mut type_cache.values, mut type_cache.ids)
-		node.set_type_text_id(type_id)
-		all_hit = all_hit && hit
 		params := node.generic_params()
 		if params.len > 0 {
 			mut canonical_params := []string{cap: params.len}
