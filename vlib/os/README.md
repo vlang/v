@@ -4,6 +4,8 @@
 command line arguments, reading/writing files, listing folders,
 handling processes etc.
 
+See [Named pipes](fifo.md) for client/server FIFO endpoints.
+
 On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
 application data.
 
@@ -16,6 +18,10 @@ values. If the operating system cannot provide an environment block, it returns 
 
 On Windows, `os.input()` supports both console and redirected standard input.
 It returns an empty string when the standard input handle is invalid.
+
+### Memory-mapped files
+
+See [memory-mapped files](mmap.md) for file mappings and safe use of their byte views.
 
 ### Path helpers
 

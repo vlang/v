@@ -9974,11 +9974,13 @@ $if !skip_fastc ? {
 		}
 		base_link_args := c_dylib_link_flags(cc_args)
 		user_link_args := c_dylib_link_flags(user_c_flags)
-		mut final_args := base_link_args.clone()
-		final_args << user_link_args
 		native_sources := cc_args.filter(c_flag_is_c_source_file(it))
-		final_args << native_sources
+		// Native helpers must introduce their references before static archives
+		// are searched, including the bundled GC's C wrappers on Linux.
+		mut final_args := native_sources.clone()
 		final_args << user_c_flags.filter(c_flag_is_c_source_file(it))
+		final_args << base_link_args
+		final_args << user_link_args
 		final_args << v3_fastc_default_linker_flags(prefs.normalized_target_os(), uses_threads)
 		atomic_arg := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
 		if atomic_arg.len > 0 {
