@@ -54,9 +54,10 @@ garbage collection. Generic calls infer their concrete type from a mutable varia
 If a call reaches a generic placeholder without a concrete instance, it reports the function
 and exits with an error instead of returning a zero value.
 This path supports standard-library imports such as `os` and `toml`,
-composite sum-type tests, integer interpolation formats, anonymous functions, and immutable
-closure captures. A single-file entry can select the same runtime with `-d fastc_real_builtin`;
-its module siblings are included.
+composite sum-type tests, integer and floating point interpolation formats, anonymous functions,
+and immutable closure captures. Float formats support precision, width, left alignment, and the
+`f` suffix to retain trailing zeros. A single-file entry can select the same runtime with
+`-d fastc_real_builtin`; its module siblings are included.
 Target-specific files and test files are filtered when loading a directory.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context

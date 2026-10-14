@@ -85,6 +85,7 @@ static int padded_snprintf(char* out, size_t cap, const char* format, ...) {
     }
     return n;
 }
+#undef snprintf
 #define snprintf padded_snprintf
 '
 	checks := '
