@@ -5114,9 +5114,6 @@ fn (g &Gen) struct_field_preserves_attr_prefix(fid flat.NodeId, previous flat.No
 	mut start := body_start
 	if int(previous) >= 0 {
 		p := g.a.node(previous)
-		if p.kind != .field_decl {
-			return false
-		}
 		start = p.pos.end
 	}
 	if start < 0 || start > f.pos.offset || f.pos.end > g.source.len

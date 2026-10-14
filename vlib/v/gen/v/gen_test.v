@@ -2704,6 +2704,23 @@ fn test_formatter_preserves_first_field_directive_attributes_with_header_comment
 	assert vfmt('struct_first_field_directives_header_comment_twice', out) == out
 }
 
+fn test_formatter_preserves_directive_attributes_after_comptime_members() {
+	for attribute in ['@[required]', "@[json: 'value']"] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for ending in ['\t// vfmt on\n\tc int @[c]\n}\n', '}\n'] {
+				source := 'struct After {\n\t\$if linux {\n\t}\n\t${attribute}\n\t// vfmt off\n\t${declaration}\n${ending}'
+				for line_ending in ['\n', '\r\n'] {
+					out := vfmt('struct_directive_attrs_after_comptime', source.replace('\n',
+						line_ending))
+					assert out == source, out
+					assert out.count(attribute) == 1, out
+					assert vfmt('struct_directive_attrs_after_comptime_twice', out) == out
+				}
+			}
+		}
+	}
+}
+
 fn test_formatter_formats_first_field_after_completed_directives() {
 	source := 'struct First {\n\t// vfmt off\n\t// vfmt on\n\t@[required] a, b   int\n}\n'
 	want := 'struct First {\n\t// vfmt off\n\t// vfmt on\n\ta int @[required]\n\tb int @[required]\n}\n'

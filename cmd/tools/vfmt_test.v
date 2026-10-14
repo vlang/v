@@ -544,6 +544,20 @@ fn test_fmt_normalizes_crlf_before_first_field_directives() {
 	}
 }
 
+fn test_fmt_preserves_directive_attributes_after_comptime_members() {
+	source := 'struct After {\n\t\$if linux {\n\t}\n\t@[required]\n\t// vfmt off\n\ta, b   int\n\t// vfmt on\n\tc int @[c]\n}\n'
+	for i, line_ending in ['\n', '\r\n'] {
+		res, formatted := run_vfmt_write('directive_attrs_after_comptime_${i}', source.replace('\n',
+			line_ending), '')
+		assert res.exit_code == 0, res.output
+		assert formatted == source, formatted
+		second_res, twice := run_vfmt_write('directive_attrs_after_comptime_${i}_twice', formatted,
+			'')
+		assert second_res.exit_code == 0, second_res.output
+		assert twice == formatted
+	}
+}
+
 fn test_fmt_formats_enabled_leading_attributes_after_vfmt_on() {
 	declarations := ['@[a] value   int=1+2', '@[a] x, y   int']
 	formatted_fields := ['value int = 1 + 2 @[a]', 'x int @[a]\n\ty int @[a]']
