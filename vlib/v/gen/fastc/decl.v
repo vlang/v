@@ -874,7 +874,13 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initiali
 	g.global_types[key] = typ
 	if g.tok == .assign {
 		g.next()
-		initializer := g.read_expression([token.Token.semicolon])!
+		mut initializer := g.read_expression([token.Token.semicolon])!
+		if g.last_expression.len == 3 && g.last_expression[0].lit == 'C'
+			&& g.last_expression[1].tok == .dot && g.last_expression[2].tok == .name {
+			// Native aggregate initializer macros expand to braces. A cast turns
+			// them into compound literals when initialization runs at startup.
+			initializer = '(${typ})${initializer}'
+		}
 		if !(g.selfhost && key in ['g_main_argc', 'g_main_argv']) {
 			initializers.writeln('\t${c_name} = ${initializer};')
 		}
@@ -1721,6 +1727,9 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 		fastc_emit_source_type_declarations(type_source_file, prefs, declared_types, declared_kinds, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types, mut alias_base_types, mut fn_alias_return_types, mut sum_types, mut sum_type_variants, mut enum_infos, mut bodies)!
 	}
 	timer.mark('type_declarations.emit')
+	if '__v_result' in struct_fields {
+		out.writeln('typedef struct __v_result __v_result;')
+	}
 	// The composite typedefs go here in the output; they are rendered by the
 	// caller once the signature phase has contributed its names too.
 	declarations_head := out.str()
@@ -1732,6 +1741,9 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 		// over declared_kinds re-rendered each candidate's C name (a `.replace`
 		// allocation) on every query, which dominated the type-declaration phase.
 		mut by_value_composite_names := map[string]bool{}
+		if '__v_result' in struct_fields {
+			by_value_composite_names['__v_result'] = true
+		}
 		for key, kind in declared_kinds {
 			if kind in [.struct_, .union_, .interface_] {
 				by_value_composite_names[fastc_c_declared_type_name(key)] = true
@@ -2395,7 +2407,12 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 		out.writeln('')
 	}
 	if c_name == 'Option' {
-		out.writeln('typedef struct { u8 state; IError err; void *data; } __v_result;')
+		out.writeln('struct __v_result { u8 state; IError err; void *data; };')
+		mut result_fields := map[string]string{}
+		result_fields['state'] = 'u8'
+		result_fields['err'] = 'IError'
+		result_fields['data'] = 'voidptr'
+		struct_fields['__v_result'] = result_fields
 	}
 	struct_fields[c_name] = fields_by_name.move()
 	struct_field_info[c_name] = field_info.clone()
