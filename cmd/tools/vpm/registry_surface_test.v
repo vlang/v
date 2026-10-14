@@ -102,6 +102,7 @@ fn test_the_artifact_endpoint_serves_a_published_archive() {
 		return
 	}
 	assert os.read_file(resp.artifact_path)! == 'module sources'
+	assert resp.body == 'module sources'
 }
 
 fn test_the_artifact_endpoint_refuses_an_unpublished_version() {
@@ -116,18 +117,25 @@ fn test_the_artifact_endpoint_ignores_a_non_artifact_path() {
 	assert artifact_request(r, '/alpha/@v/1.0.0.info') == none
 }
 
-// An archive is streamed, so `serve` never hashes a body for it and no 304 can
-// apply.
-fn test_serve_streams_an_artifact_rather_than_hashing_a_body() {
+// An archive carries verified buffered bytes, while artifact routes retain their
+// separate conditional-request policy and never return a 304 response.
+fn test_serve_returns_verified_artifact_bytes_without_an_entity_tag() {
 	mut r := new_registry()
 	archive := write_archive('module sources')
 	checksum := 'sha256:${sha256_hex('module sources'.bytes())}'
 	r.publish(surface_info('alpha', '1.0.0', checksum), archive)!
 
 	resp := serve(r, 'GET', '/alpha/@v/1.0.0.zip', map[string]string{}, map[string]string{})
-	assert resp.artifact_path != '', 'a zip route was answered with a body'
+	assert resp.artifact_path != '', 'a zip route lost its artifact marker'
+	assert resp.body == 'module sources'
 	assert resp.status_code == 200
 	assert resp.etag == '', 'an artifact carried an entity tag'
+	conditional := serve(r, 'GET', '/alpha/@v/1.0.0.zip', map[string]string{}, {
+		'If-None-Match': '*'
+	})
+	assert conditional.status_code == 200
+	assert conditional.body == 'module sources'
+	assert conditional.etag == ''
 }
 
 // The bytes on disk are checked against the index before serving, so a store

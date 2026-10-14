@@ -64,14 +64,65 @@ static inline int vpm_registry_close_file(void *stream) {
     return 0;
 }
 
+static inline int vpm_registry_sync_file(void *stream) {
+    FILE *file = (FILE *)stream;
+    if (fflush(file) != 0) return errno ? errno : EIO;
+#ifdef _WIN32
+    if (_commit(_fileno(file)) != 0) return errno ? errno : EIO;
+#else
+    int fd = fileno(file);
+    int result;
+    do { result = fsync(fd); } while (result != 0 && errno == EINTR);
+    if (result != 0) return errno ? errno : EIO;
+#ifdef __APPLE__
+    do { result = fcntl(fd, F_FULLFSYNC); } while (result != 0 && errno == EINTR);
+    if (result != 0) return errno ? errno : EIO;
+#endif
+#endif
+    return 0;
+}
+
 static inline int vpm_registry_replace_file(void *source, void *target) {
 #ifdef _WIN32
     if (!MoveFileExW((const wchar_t *)source, (const wchar_t *)target,
-                     MOVEFILE_REPLACE_EXISTING)) return (int)GetLastError();
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return (int)GetLastError();
 #else
     if (rename((const char *)source, (const char *)target) != 0) return errno ? errno : EIO;
 #endif
     return 0;
+}
+
+static inline int vpm_registry_sync_directory(void *path) {
+#ifdef _WIN32
+    /* Windows has no portable directory fsync. Replacements use
+       MOVEFILE_WRITE_THROUGH; ancestor creation remains filesystem-dependent. */
+    (void)path;
+    return 0;
+#else
+    int flags = O_RDONLY;
+#ifdef O_DIRECTORY
+    flags |= O_DIRECTORY;
+#endif
+    int fd = open((const char *)path, flags);
+    if (fd < 0) return errno ? errno : EIO;
+    int failure = 0;
+    struct stat status;
+    if (fstat(fd, &status) != 0) failure = errno ? errno : EIO;
+    else if (!S_ISDIR(status.st_mode)) failure = ENOTDIR;
+    if (!failure) {
+        int result;
+        do { result = fsync(fd); } while (result != 0 && errno == EINTR);
+        if (result != 0) failure = errno ? errno : EIO;
+#ifdef __APPLE__
+        if (!failure) {
+            do { result = fcntl(fd, F_FULLFSYNC); } while (result != 0 && errno == EINTR);
+            if (result != 0) failure = errno ? errno : EIO;
+        }
+#endif
+    }
+    if (close(fd) != 0 && !failure) failure = errno ? errno : EIO;
+    return failure;
+#endif
 }
 
 #endif

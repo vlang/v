@@ -103,21 +103,45 @@ pub fn (mut r Registry) add_module(info ModuleInfo) {
 	r.record_change('publish', info.name, info.version)
 }
 
-// list_versions returns all versions of a module, sorted by semver descending.
-pub fn (r &Registry) list_versions(name string) []string {
-	entry := r.modules[name] or { return [] }
-	mut versions := entry.versions.clone()
-	versions.sort_with_compare(fn (a &ModuleInfo, b &ModuleInfo) int {
-		va := semver.from(a.version) or { semver.Version{} }
-		vb := semver.from(b.version) or { semver.Version{} }
+// compare_registry_versions orders semver-parser versions first, then opaque versions.
+// SemVer precedence is descending; raw spelling breaks ties and orders opaque values.
+fn compare_registry_versions(a &ModuleInfo, b &ModuleInfo) int {
+	mut a_valid := true
+	mut b_valid := true
+	va := semver.from(a.version) or {
+		a_valid = false
+		semver.Version{}
+	}
+	vb := semver.from(b.version) or {
+		b_valid = false
+		semver.Version{}
+	}
+	if a_valid != b_valid {
+		return if a_valid { -1 } else { 1 }
+	}
+	if a_valid {
 		if va > vb {
 			return -1
 		}
 		if va < vb {
 			return 1
 		}
-		return 0
-	})
+	}
+	if a.version > b.version {
+		return -1
+	}
+	if a.version < b.version {
+		return 1
+	}
+	return 0
+}
+
+// list_versions returns versions in descending SemVer precedence before opaque values.
+// Opaque versions and equal-precedence SemVer spellings use descending lexical order.
+pub fn (r &Registry) list_versions(name string) []string {
+	entry := r.modules[name] or { return [] }
+	mut versions := entry.versions.clone()
+	versions.sort_with_compare(compare_registry_versions)
 	return versions.map(it.version)
 }
 
@@ -132,24 +156,14 @@ pub fn (r &Registry) get_info(name string, version string) ?ModuleInfo {
 	return none
 }
 
-// get_latest returns the highest non-yanked version of a module.
+// get_latest returns the first non-yanked version in the same order as list_versions.
 pub fn (r &Registry) get_latest(name string) ?ModuleInfo {
 	entry := r.modules[name] or { return none }
 	mut candidates := entry.versions.filter(!it.yanked)
 	if candidates.len == 0 {
 		return none
 	}
-	candidates.sort_with_compare(fn (a &ModuleInfo, b &ModuleInfo) int {
-		va := semver.from(a.version) or { semver.Version{} }
-		vb := semver.from(b.version) or { semver.Version{} }
-		if va > vb {
-			return -1
-		}
-		if va < vb {
-			return 1
-		}
-		return 0
-	})
+	candidates.sort_with_compare(compare_registry_versions)
 	return candidates[0]
 }
 
@@ -234,14 +248,21 @@ pub fn import_json(data string) !Registry {
 }
 
 fn (r &Registry) validate_registry_entries() ! {
+	mut seen_names := map[string]string{}
 	for name, entry in r.modules {
 		if !registry_artifact_component(name) {
 			return error('invalid registry module key `${name}`')
 		}
+		folded_name := name.to_lower_ascii()
+		if previous := seen_names[folded_name] {
+			return error('case-insensitive registry module collision between `${previous}` and `${name}`')
+		}
+		seen_names[folded_name] = name
 		if !registry_artifact_component(entry.name) || entry.name != name {
 			return error('registry entry name `${entry.name}` does not match module key `${name}`')
 		}
 		mut seen_versions := map[string]bool{}
+		mut folded_versions := map[string]string{}
 		for info in entry.versions {
 			if !registry_artifact_component(info.name) || info.name != name {
 				return error('registry version module name `${info.name}` does not match module key `${name}`')
@@ -252,7 +273,12 @@ fn (r &Registry) validate_registry_entries() ! {
 			if info.version in seen_versions {
 				return error('duplicate registry version `${info.version}` for module `${name}`')
 			}
+			folded_version := info.version.to_lower_ascii()
+			if previous := folded_versions[folded_version] {
+				return error('case-insensitive registry version collision between `${previous}` and `${info.version}` for module `${name}`')
+			}
 			seen_versions[info.version] = true
+			folded_versions[folded_version] = info.version
 		}
 	}
 }
@@ -304,6 +330,26 @@ fn registry_key_path() string {
 	return os.join_path(registry_dir(), registry_key_file_name)
 }
 
+// Artifact paths retain their published spelling, so aliases must be refused
+// before writing on filesystems that cannot distinguish ASCII letter case.
+fn (r &Registry) check_artifact_casefold(name string, version string) ! {
+	folded_name := name.to_lower_ascii()
+	folded_version := version.to_lower_ascii()
+	for existing_name, entry in r.modules {
+		if existing_name.to_lower_ascii() != folded_name {
+			continue
+		}
+		if existing_name != name {
+			return error('case-insensitive registry module collision between `${existing_name}` and `${name}`')
+		}
+		for info in entry.versions {
+			if info.version != version && info.version.to_lower_ascii() == folded_version {
+				return error('case-insensitive registry version collision between `${info.version}` and `${version}` for module `${name}`')
+			}
+		}
+	}
+}
+
 // publish records `info` and stores its archive, refusing anything whose bytes
 // do not match the checksum it claims. A registry that accepted a mismatched
 // archive would hand out sources that nobody vouched for.
@@ -311,6 +357,7 @@ pub fn (mut r Registry) publish(info ModuleInfo, archive_path string) ! {
 	if !registry_artifact_component(info.name) || !registry_artifact_component(info.version) {
 		return error('module name and version must be nonempty artifact path components')
 	}
+	r.check_artifact_casefold(info.name, info.version)!
 	content := os.read_file(archive_path) or {
 		return error('failed to read the archive for `${info.name}`: ${err.msg()}')
 	}
@@ -323,12 +370,9 @@ pub fn (mut r Registry) publish(info ModuleInfo, archive_path string) ! {
 	// an existing lockfile points at, so it is refused rather than overwritten.
 	if existing := r.get_info(info.name, info.version) {
 		if existing.checksum.trim_string_left('sha256:').trim_string_left('SHA256:') == actual {
-			// A retry restores missing/corrupt artifact bytes, but never rewrites
-			// the published metadata, yank state, or change history.
-			if read_registry_artifact(r, info.name, info.version,
-				artifact_path(info.name, info.version)) != none {
-				return
-			}
+			// A retry replaces and synchronizes verified bytes even when they
+			// already match: a previous rename may have failed its directory sync.
+			// Published metadata, yank state, and change history remain unchanged.
 			r.store_registry_artifact(info.name, info.version, content)!
 			return
 		}
@@ -344,7 +388,7 @@ pub fn (mut r Registry) publish(info ModuleInfo, archive_path string) ! {
 
 fn (r &Registry) store_registry_artifact(name string, version string, content string) ! {
 	dest := artifact_path(name, version)
-	os.mkdir_all(os.dir(dest)) or {
+	registry_mkdir_all(os.dir(dest)) or {
 		return error('failed to create artifact directory: ${err.msg()}')
 	}
 	registry_store_file(dest, content) or {
@@ -353,10 +397,11 @@ fn (r &Registry) store_registry_artifact(name string, version string, content st
 }
 
 // save persists a complete registry through an atomic same-directory replacement.
-// A failed write, close, or rename leaves the previous index intact.
+// A failed write, file synchronization, close, or rename leaves the previous
+// index intact. A later directory synchronization error reports uncertain durability.
 pub fn (r &Registry) save() ! {
 	dir := registry_dir()
-	os.mkdir_all(dir) or {
+	registry_mkdir_all(dir) or {
 		return error('failed to create registry directory: ${err.msg()}')
 	}
 	registry_store_file(registry_index_path(), r.export_json()) or {
@@ -405,9 +450,8 @@ pub mut:
 	status_code int = 200
 	body        string
 	etag        string
-	// artifact_path names a file the transport should stream instead of sending
-	// `body`. An archive is not text, so it cannot be carried by the string
-	// every other endpoint returns.
+	// artifact_path identifies a binary archive response. Its verified bytes
+	// are already in body, so transports must not reopen this path.
 	artifact_path string
 }
 
@@ -416,8 +460,8 @@ pub mut:
 // when the client's cached copy is still current, so an unchanged index costs
 // a header exchange rather than a full retransmission.
 pub fn serve(registry Registry, method string, path string, query map[string]string, headers map[string]string) RegistryResponse {
-	// An archive is streamed, so it never has a body to hash for an entity tag
-	// and never answers a conditional request.
+	// An archive already carries verified bytes and bypasses metadata ETag hashing
+	// and conditional responses.
 	if method == 'GET' {
 		if artifact := artifact_request(registry, path) {
 			return artifact
@@ -490,8 +534,8 @@ pub:
 
 // artifact_request answers `GET /<module>/@v/<version>.zip`, the route that
 // delivers a module's sources. It is separate from `handle_request` because an
-// archive is not text: the response names a file for the transport to stream
-// rather than carrying it in the string every other endpoint returns.
+// archive carries binary bytes in body with artifact_path identifying the content type.
+// Verification reads the file once, and the transport uses that exact buffer.
 pub fn artifact_request(registry Registry, path string) ?RegistryResponse {
 	parts := path.trim_left('/').split('/')
 	if parts.len != 3 || parts[1] != '@v' || !parts[2].ends_with('.zip') {
@@ -505,8 +549,9 @@ pub fn artifact_request(registry Registry, path string) ?RegistryResponse {
 	if !os.exists(archive) {
 		return none
 	}
-	read_registry_artifact(registry, parts[0], version, archive) or { return none }
+	content := read_registry_artifact(registry, parts[0], version, archive) or { return none }
 	return RegistryResponse{
+		body:          content
 		artifact_path: archive
 	}
 }
@@ -613,9 +658,9 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 		return json2.encode(registry.changes_since(since))
 	}
 
-	// GET /<module>/@v/<version>.zip streams the published archive. The bytes
-	// are verified against the checksum the index recorded before being served,
-	// so a corrupted or tampered store is caught here rather than at the client.
+	// GET /<module>/@v/<version>.zip returns buffered archive bytes verified
+	// against the checksum recorded in the index. Transport sends those same
+	// bytes, so a changed file cannot replace the verified response contents.
 	// GET /signature.sig serves the ed25519 signature over the registry index.
 	// A verifier must pin the origin's public key through a trusted external
 	// channel. A mirror can sign substituted contents using its own key.

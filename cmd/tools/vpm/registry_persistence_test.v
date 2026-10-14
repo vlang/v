@@ -271,9 +271,9 @@ fn assert_unique_registry_version_routes(registry Registry, names []string, vers
 fn test_import_and_load_preserve_exact_opaque_versions_and_per_module_identity() {
 	reset_persisted_registry()
 	names := ['alpha', 'beta']
-	// Build metadata, case and non-semver spelling are part of the opaque identity.
-	versions := ['release_2026+build.7', 'Release_2026+build.7', 'release_2026+build.8', '1.0.0+build.7',
-		'1.0.0+build.8']
+	// Opaque spelling is preserved; case-only aliases cannot share portable paths.
+	versions := ['release_2026+build.7', 'Release_2026+candidate.7', 'release_2026+build.8',
+		'1.0.0+build.7', '1.0.0+build.8']
 	active := 'release_2026+build.8'
 	mut registry := new_registry()
 	for name in names {
@@ -294,5 +294,29 @@ fn test_import_and_load_preserve_exact_opaque_versions_and_per_module_identity()
 	assert loaded.export_json() == data
 	for candidate in [imported, loaded] {
 		assert_unique_registry_version_routes(candidate, names, versions, active)
+	}
+}
+
+fn test_import_and_load_reject_casefold_colliding_module_names() {
+	reset_persisted_registry()
+	os.mkdir_all(registry_dir())!
+	for names in [['Alpha', 'alpha'], ['alpha', 'Alpha']] {
+		mut registry := new_registry()
+		for name in names {
+			registry.add_module(ModuleInfo{ name: name, version: 'release+build.1' })
+		}
+		assert_invalid_persisted_registry(registry)
+	}
+}
+
+fn test_import_and_load_reject_casefold_colliding_versions() {
+	reset_persisted_registry()
+	os.mkdir_all(registry_dir())!
+	for versions in [['Release+Build.1', 'release+build.1'], ['release+build.1', 'Release+Build.1']] {
+		mut registry := new_registry()
+		for version in versions {
+			registry.add_module(ModuleInfo{ name: 'alpha', version: version })
+		}
+		assert_invalid_persisted_registry(registry)
 	}
 }

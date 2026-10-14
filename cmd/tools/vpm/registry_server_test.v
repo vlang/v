@@ -238,23 +238,34 @@ fn test_conditional_unknown_response_stays_404_over_http() {
 	assert second.body == first.body
 }
 
-fn test_archive_transport_rechecks_the_bytes_after_routing() {
-	mut r := new_registry()
-	archive := os.join_path(srv_root, 'rechecked.zip')
-	os.write_file(archive, 'verified bytes')!
-	r.publish(srv_info('rechecked', '1.0.0', ''), archive)!
-	resp := serve(r, 'GET', '/rechecked/@v/1.0.0.zip', map[string]string{}, map[string]string{})
-	assert resp.artifact_path != ''
-	content := read_registry_artifact(r, 'rechecked', '1.0.0', resp.artifact_path) or { panic('missing verified content') }
-	assert content == 'verified bytes'
-	os.write_file(resp.artifact_path, 'replaced after routing')!
-	if changed := read_registry_artifact(r, 'rechecked', '1.0.0', resp.artifact_path) {
-		assert false, 'transport accepted changed bytes: ${changed}'
+fn test_archive_transport_uses_verified_bytes_after_file_replacement_or_removal() {
+	for action in ['replace', 'remove'] {
+		mut r := new_registry()
+		archive := os.join_path(srv_root, 'buffered-${action}.zip')
+		content := [u8(0x50), 0x4b, 3, 4, 0, 0xff, 0x80, 0x0a].bytestr()
+		os.write_file(archive, content)!
+		r.publish(srv_info('buffered-${action}', '1.0.0', ''), archive)!
+		path := '/buffered-${action}/@v/1.0.0.zip'
+		resp := serve(r, 'GET', path, map[string]string{}, map[string]string{})
+		assert resp.status_code == 200
+		assert resp.artifact_path != ''
+		assert resp.body == content
+		if action == 'replace' {
+			os.write_file(resp.artifact_path, 'replaced after routing')!
+		} else {
+			os.rm(resp.artifact_path)!
+		}
+		// A completed route owns its verified buffer, even when the file changes.
+		response := registry_http_response(resp)
+		assert response.status_code == 200
+		assert response.body == content
+		assert response.header.get(.content_type) or { '' } == 'application/zip'
+		// A new request must validate the current file and reject it.
+		mut h := RegistryHandler{ registry: r }
+		fresh := h.handle(http.Request{ method: .get, url: path })
+		assert fresh.status_code == 404
+		assert !fresh.body.contains('replaced after routing')
 	}
-	mut h := RegistryHandler{ registry: r }
-	response := h.handle(http.Request{ method: .get, url: '/rechecked/@v/1.0.0.zip' })
-	assert response.status_code == 404
-	assert !response.body.contains('replaced after routing')
 }
 
 fn test_registry_port_parses_the_entire_decimal_value() {

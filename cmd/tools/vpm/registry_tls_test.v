@@ -21,7 +21,8 @@ mut:
 
 fn registry_tls_clear_env() {
 	for name in [registry_url_env, registry_ca_file_env, registry_insecure_loopback_env, 'VPM_TOKEN',
-		'VPM_TOKEN_LOCALHOST', 'VPM_TOKEN_127_0_0_1', 'SSL_CERT_FILE', 'SSL_CERT_DIR'] {
+		'VPM_REGISTRY_TOKEN_HOST_6C6F63616C686F7374', 'VPM_REGISTRY_TOKEN_HOST_3132372E302E302E31',
+		'SSL_CERT_FILE', 'SSL_CERT_DIR'] {
 		os.unsetenv(name)
 	}
 }
@@ -276,7 +277,7 @@ fn test_registry_ca_setting_does_not_add_credentials_to_public_https() {
 		registry_tls_clear_env()
 	}
 	registry_tls_configure_token(running.base)
-	os.setenv('VPM_TOKEN_LOCALHOST', 'scoped-tls-token', true)
+	os.setenv('VPM_REGISTRY_TOKEN_HOST_6C6F63616C686F7374', 'scoped-tls-token', true)
 	os.setenv(registry_ca_file_env, os.join_path(registry_tls_test_root, 'missing-ca.pem'), true)
 	response := vpm_http_get(running.base + '/health')!
 	assert response.status_code == 200

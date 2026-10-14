@@ -92,7 +92,7 @@ fn vpm_http_post(url string, data string) !http.Response {
 
 // Registry credentials are only consulted by the registry protocol transport.
 // Host-scoped tokens take precedence over the configured origin's VPM_TOKEN.
-const vpm_token_env_prefix = 'VPM_TOKEN_'
+const vpm_token_env_prefix = 'VPM_REGISTRY_TOKEN_HOST_'
 const registry_ca_file_env = 'VPM_REGISTRY_CA_FILE'
 const registry_insecure_loopback_env = 'VPM_REGISTRY_ALLOW_INSECURE_LOOPBACK'
 
@@ -218,19 +218,23 @@ fn vpm_registry_redirect(request &http.Request, _ int, next_url string) ! {
 	}
 }
 
-// registry_token returns the bearer token configured for the registry that
-// serves `url`, or '' when it needs none. The host part of the url gives the
-// name of the scoped variable, so `https://vpm.example.com/a` reads
-// `VPM_TOKEN_VPM_EXAMPLE_COM`. The unqualified VPM_TOKEN is only eligible for
-// the origin configured by VPM_REGISTRY, including its scheme and port.
+// registry_token_env_name encodes the lowercase hostname as uppercase UTF-8 hex.
+// The encoding preserves punctuation and stays distinct on case-insensitive
+// environment implementations. The former underscore-based keys are ignored.
+fn registry_token_env_name(host string) string {
+	return '${vpm_token_env_prefix}${host.to_lower().bytes().hex().to_upper()}'
+}
+
+// registry_token returns the bearer token configured for the registry serving
+// `url`, or '' when it needs none. Scoped keys use registry_token_env_name;
+// VPM_TOKEN is only eligible for the exact origin configured by VPM_REGISTRY.
 fn registry_token(url string) string {
 	parsed := urllib.parse(url) or { return '' }
 	host := parsed.hostname()
 	if host == '' || parsed.scheme.to_lower() !in ['http', 'https'] {
 		return ''
 	}
-	// An environment name may not hold `.` or `-`, so both become `_`.
-	scoped_name := '${vpm_token_env_prefix}${host.replace('.', '_').replace('-', '_').to_upper()}'
+	scoped_name := registry_token_env_name(host)
 	if scoped := os.getenv_opt(scoped_name) {
 		return scoped
 	}
@@ -251,7 +255,7 @@ fn require_registry_token(url string, status_code int) ! {
 	if registry_token(url) != '' {
 		return error('the registry at `${url}` rejected the configured token (401 Unauthorized).')
 	}
-	return error('the registry at `${url}` requires authentication (401 Unauthorized). Set ${vpm_token_env_prefix}<HOST> for it, for example ${vpm_token_env_prefix}VPM_EXAMPLE_COM, or VPM_TOKEN for the origin configured by VPM_REGISTRY.')
+	return error('the registry at `${url}` requires authentication (401 Unauthorized). Set ${vpm_token_env_prefix}<HEX_HOST>, using uppercase hex of the lowercase hostname UTF-8 bytes (for example ${vpm_token_env_prefix}76706D2E6578616D706C652E636F6D for vpm.example.com), or VPM_TOKEN for the origin configured by VPM_REGISTRY.')
 }
 
 // registry_url names the registry whose protocol is asked before the vpm

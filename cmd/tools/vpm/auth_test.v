@@ -15,8 +15,13 @@ fn clear_auth_environment() {
 	os.unsetenv(registry_url_env)
 	os.unsetenv(registry_insecure_loopback_env)
 	os.unsetenv('VPM_TOKEN')
+	os.unsetenv('VPM_REGISTRY_TOKEN_HOST_76706D2E6578616D706C652E636F6D')
+	os.unsetenv('VPM_REGISTRY_TOKEN_HOST_6D792D72656769737472792E696F')
+	os.unsetenv('VPM_REGISTRY_TOKEN_HOST_6D792E72656769737472792E696F')
 	os.unsetenv('VPM_TOKEN_VPM_EXAMPLE_COM')
 	os.unsetenv('VPM_TOKEN_MY_REGISTRY_IO')
+	os.unsetenv('VPM_TOKEN_HOST_6162')
+	os.unsetenv('VPM_REGISTRY_TOKEN_HOST_6162')
 }
 
 fn test_public_registry_needs_no_token() {
@@ -73,7 +78,7 @@ fn test_scoped_token_wins_over_the_unqualified_one() {
 	defer { clear_auth_environment() }
 	os.setenv('VPM_TOKEN', 'tok-all', true)
 	os.setenv(registry_url_env, 'https://vpm.example.com', true)
-	os.setenv('VPM_TOKEN_VPM_EXAMPLE_COM', 'tok-example', true)
+	os.setenv('VPM_REGISTRY_TOKEN_HOST_76706D2E6578616D706C652E636F6D', 'tok-example', true)
 	assert registry_token('https://vpm.example.com/a_module') == 'tok-example'
 	assert registry_token('https://vpm.other.io/a_module') == ''
 	os.unsetenv(registry_url_env)
@@ -85,16 +90,63 @@ fn test_empty_scoped_token_disables_the_unqualified_fallback() {
 	defer { clear_auth_environment() }
 	os.setenv(registry_url_env, 'https://vpm.example.com', true)
 	os.setenv('VPM_TOKEN', 'private-token', true)
-	os.setenv('VPM_TOKEN_VPM_EXAMPLE_COM', '', true)
+	os.setenv('VPM_REGISTRY_TOKEN_HOST_76706D2E6578616D706C652E636F6D', '', true)
 	assert registry_token('https://vpm.example.com/a') == ''
 }
 
-// An environment name may not hold `.` or `-`, so both fold to `_`.
-fn test_host_punctuation_folds_into_underscores() {
+fn test_host_token_keys_are_injective_after_hostname_case_folding() {
+	assert registry_token_env_name('vpm.example.com') == 'VPM_REGISTRY_TOKEN_HOST_76706D2E6578616D706C652E636F6D'
+	assert registry_token_env_name('VPM.EXAMPLE.COM') == 'VPM_REGISTRY_TOKEN_HOST_76706D2E6578616D706C652E636F6D'
+	assert registry_token_env_name('my-registry.io') == 'VPM_REGISTRY_TOKEN_HOST_6D792D72656769737472792E696F'
+	assert registry_token_env_name('my.registry.io') == 'VPM_REGISTRY_TOKEN_HOST_6D792E72656769737472792E696F'
+	assert registry_token_env_name('café.example') == 'VPM_REGISTRY_TOKEN_HOST_636166C3A92E6578616D706C65'
+	// Windows folds environment variable case: these keys still stay distinct.
+	assert registry_token_env_name('my-registry.io').to_lower() != registry_token_env_name('my.registry.io').to_lower()
+}
+
+fn test_old_colliding_hosts_receive_only_their_own_encoded_token() {
 	clear_auth_environment()
 	defer { clear_auth_environment() }
-	os.setenv('VPM_TOKEN_MY_REGISTRY_IO', 'tok-my', true)
-	assert registry_token('https://my-registry.io/a_module') == 'tok-my'
+	os.setenv('VPM_TOKEN_MY_REGISTRY_IO', 'unsafe-legacy-token', true)
+	assert registry_token('https://my-registry.io/a_module') == ''
+	assert registry_token('https://my.registry.io/a_module') == ''
+	os.setenv('VPM_REGISTRY_TOKEN_HOST_6D792D72656769737472792E696F', 'hyphen-token', true)
+	assert registry_token('https://MY-REGISTRY.IO/a_module') == 'hyphen-token'
+	assert registry_token('https://my.registry.io/a_module') == ''
+	os.unsetenv('VPM_REGISTRY_TOKEN_HOST_6D792D72656769737472792E696F')
+	os.setenv('VPM_REGISTRY_TOKEN_HOST_6D792E72656769737472792E696F', 'dot-token', true)
+	assert registry_token('https://my-registry.io/a_module') == ''
+	assert registry_token('https://MY.REGISTRY.IO/a_module') == 'dot-token'
+	os.setenv('VPM_REGISTRY_TOKEN_HOST_6D792D72656769737472792E696F', 'hyphen-token', true)
+	assert registry_token('https://my-registry.io/a_module') == 'hyphen-token'
+	assert registry_token('https://my.registry.io/a_module') == 'dot-token'
+}
+
+fn test_legacy_tokens_do_not_change_the_exact_origin_global_fallback() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
+	os.setenv('VPM_TOKEN_VPM_EXAMPLE_COM', 'legacy-token', true)
+	assert registry_token('https://vpm.example.com/a') == ''
+	os.setenv('VPM_TOKEN', 'global-token', true)
+	os.setenv(registry_url_env, 'https://vpm.example.com:443', true)
+	assert registry_token('https://vpm.example.com/a') == 'global-token'
+	assert registry_token('https://vpm.example.com:8443/a') == ''
+	assert registry_token('http://vpm.example.com/a') == ''
+	assert registry_token('https://other.example.com/a') == ''
+}
+
+fn test_new_token_namespace_cannot_consume_a_legacy_token_for_another_host() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
+	// Under the old punctuation mapping, host-6162 used this key. A new
+	// encoding beneath VPM_TOKEN_HOST_ would misread it as host ab's token.
+	os.setenv('VPM_TOKEN_HOST_6162', 'legacy-host-6162-token', true)
+	assert registry_token_env_name('ab') == 'VPM_REGISTRY_TOKEN_HOST_6162'
+	assert registry_token('https://ab/module') == ''
+	assert registry_token('https://host-6162/module') == ''
+	os.setenv('VPM_REGISTRY_TOKEN_HOST_6162', 'ab-token', true)
+	assert registry_token('https://ab/module') == 'ab-token'
+	assert registry_token('https://host-6162/module') == ''
 }
 
 fn test_unparseable_url_asks_for_no_token() {
@@ -102,7 +154,7 @@ fn test_unparseable_url_asks_for_no_token() {
 	defer { clear_auth_environment() }
 	os.setenv(registry_url_env, 'https://vpm.example.com', true)
 	os.setenv('VPM_TOKEN', 'private-token', true)
-	os.setenv('VPM_TOKEN_VPM_EXAMPLE_COM', 'scoped-token', true)
+	os.setenv('VPM_REGISTRY_TOKEN_HOST_76706D2E6578616D706C652E636F6D', 'scoped-token', true)
 	assert registry_token('::::not a url::::') == ''
 	assert registry_token('file://vpm.example.com/a') == ''
 	assert registry_token('//vpm.example.com/a') == ''
@@ -113,6 +165,8 @@ fn test_401_without_a_token_is_reported_as_an_auth_requirement() {
 	defer { clear_auth_environment() }
 	require_registry_token('https://vpm.example.com/a_module', 401) or {
 		assert err.msg().contains('requires authentication'), err.msg()
+		assert err.msg().contains('VPM_REGISTRY_TOKEN_HOST_76706D2E6578616D706C652E636F6D'), err.msg()
+		assert !err.msg().contains('VPM_TOKEN_VPM_EXAMPLE_COM'), err.msg()
 		return
 	}
 	assert false, 'a 401 with no token configured should have raised an error'

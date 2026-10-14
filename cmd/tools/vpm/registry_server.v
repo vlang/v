@@ -46,25 +46,21 @@ fn (mut h RegistryHandler) handle(req http.Request) http.Response {
 	normalised := normalise_registry_path(path)
 
 	resp := serve(h.registry, req.method.str(), normalised, query, headers)
-	// `ResponseConfig` is immutable once built, so the body and its content type
-	// are decided before it is constructed rather than patched afterwards.
-	mut body := resp.body
-	mut content_type := if resp.body == '' { '' } else { 'application/json' }
-	if resp.artifact_path != '' {
-		// Recheck the bytes being sent, since the file may have changed after routing.
-		parts := normalised.trim_left('/').split('/')
-		version := parts[2].trim_string_right('.zip')
-		body = read_registry_artifact(h.registry, parts[0], version, resp.artifact_path) or {
-			return http.new_response(http.ResponseConfig{
-				status: http.Status.not_found
-				body:   '{"error": "unreadable"}'
-			})
-		}
-		content_type = 'application/zip'
+	return registry_http_response(resp)
+}
+
+// registry_http_response sends the exact bytes already verified by routing.
+fn registry_http_response(resp RegistryResponse) http.Response {
+	content_type := if resp.artifact_path != '' {
+		'application/zip'
+	} else if resp.body != '' {
+		'application/json'
+	} else {
+		''
 	}
 	mut conf := http.ResponseConfig{
 		status: http_status_from_code(resp.status_code)
-		body:   body
+		body:   resp.body
 	}
 	if resp.etag != '' {
 		conf.header.add(.etag, resp.etag)

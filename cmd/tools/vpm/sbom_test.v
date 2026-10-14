@@ -1,6 +1,7 @@
 module main
 
 import json2
+import os
 import uuid
 
 fn sbom_demo_info(name string, version string, license string, checksum string) ModuleInfo {
@@ -16,13 +17,16 @@ fn sbom_demo_info(name string, version string, license string, checksum string) 
 	}
 }
 
+// SHA256 of the actual artifact bytes 'abc'; short illustrative hashes are invalid.
+const sbom_test_digest = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+
 const sbom_namespace = 'https://vpm.example.com/spdx'
 const sbom_download_base = 'https://vpm.example.com/dl'
 
 fn new_sbom_demo_registry() Registry {
 	mut r := new_registry()
-	r.add_module(sbom_demo_info('serde', '1.0.0', 'MIT', 'sha256:abc123'))
-	r.add_module(sbom_demo_info('my/lib', '2.0.0', 'Apache-2.0', 'sha256:abc123'))
+	r.add_module(sbom_demo_info('serde', '1.0.0', 'MIT', 'sha256:${sbom_test_digest}'))
+	r.add_module(sbom_demo_info('my/lib', '2.0.0', 'Apache-2.0', 'sha256:${sbom_test_digest}'))
 	return r
 }
 
@@ -39,9 +43,9 @@ fn test_the_document_declares_the_spdx_version_it_conforms_to() {
 // module produces two packages rather than one.
 fn test_every_version_is_a_package() {
 	mut r := new_registry()
-	r.add_module(sbom_demo_info('serde', '1.0.0', 'MIT', 'sha256:abc123'))
-	r.add_module(sbom_demo_info('serde', '1.1.0', 'MIT', 'sha256:abc123'))
-	r.add_module(sbom_demo_info('other', '2.0.0', 'MIT', 'sha256:abc123'))
+	r.add_module(sbom_demo_info('serde', '1.0.0', 'MIT', 'sha256:${sbom_test_digest}'))
+	r.add_module(sbom_demo_info('serde', '1.1.0', 'MIT', 'sha256:${sbom_test_digest}'))
+	r.add_module(sbom_demo_info('other', '2.0.0', 'MIT', 'sha256:${sbom_test_digest}'))
 	doc := r.spdx_document(sbom_namespace, sbom_download_base)
 	assert doc.packages.len == 3
 }
@@ -54,7 +58,7 @@ fn test_the_checksum_drops_the_vpm_prefix() {
 	doc := r.spdx_document(sbom_namespace, sbom_download_base)
 	assert doc.packages[0].checksums.len == 1
 	assert doc.packages[0].checksums[0].algorithm == 'SHA256'
-	assert doc.packages[0].checksums[0].checksum_value == 'abc123'
+	assert doc.packages[0].checksums[0].checksum_value == sbom_test_digest
 }
 
 // A module with no recorded checksum must not produce an empty digest entry.
@@ -63,6 +67,52 @@ fn test_an_absent_checksum_yields_no_entry() {
 	r.add_module(sbom_demo_info('serde', '1.0.0', 'MIT', ''))
 	doc := r.spdx_document(sbom_namespace, sbom_download_base)
 	assert doc.packages[0].checksums.len == 0
+}
+
+fn test_sbom_keeps_all_sha256_spellings_accepted_from_a_manual_index() {
+	original_directory := os.getwd()
+	directory := os.join_path(os.vtmp_dir(), 'vpm_sbom_manual_index_${os.getpid()}')
+	os.mkdir_all(directory)!
+	os.chdir(directory)!
+	defer {
+		os.chdir(original_directory) or { panic(err) }
+		os.rmdir_all(directory) or { panic(err) }
+	}
+	// Publishing canonicalizes a digest. Import the recorded spellings directly
+	// so this proves the manually imported index and artifact path also agree.
+	for recorded in [sbom_test_digest, 'sha256:${sbom_test_digest}', 'SHA256:${sbom_test_digest}',
+		'sha256:SHA256:${sbom_test_digest}'] {
+		mut source := new_registry()
+		source.add_module(sbom_demo_info('serde', '1.0.0', 'MIT', recorded))
+		registry := import_json(source.export_json())!
+		info := registry.get_info('serde', '1.0.0') or { panic('imported module is missing') }
+		assert info.checksum == recorded
+		archive := artifact_path('serde', '1.0.0')
+		os.mkdir_all(os.dir(archive))!
+		os.write_file(archive, 'abc')!
+		response := artifact_request(registry, '/serde/@v/1.0.0.zip') or {
+			panic('artifact integrity rejected recorded checksum ${recorded}')
+		}
+		assert response.body == 'abc'
+		document := json2.decode[SpdxDocument](registry.spdx_json(sbom_namespace, sbom_download_base))!
+		assert document.packages.len == 1
+		checksums := document.packages[0].checksums
+		assert checksums.len == 1
+		assert checksums[0].algorithm == 'SHA256'
+		assert checksums[0].checksum_value == sbom_test_digest
+	}
+}
+
+fn test_sbom_does_not_advertise_digests_that_artifact_integrity_cannot_accept() {
+	for recorded in ['', 'sha256:', 'SHA256:', 'abc123', 'sha256:abc123',
+		'sha256:${sbom_test_digest}0', sbom_test_digest.to_upper(), 'Sha256:${sbom_test_digest}',
+		'sha512:${sbom_test_digest}', 'ga7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'] {
+		mut registry := new_registry()
+		registry.add_module(sbom_demo_info('serde', '1.0.0', 'MIT', recorded))
+		document := registry.spdx_document(sbom_namespace, sbom_download_base)
+		assert document.packages.len == 1
+		assert document.packages[0].checksums.len == 0, recorded
+	}
 }
 
 // SPDX element ids may not hold `/` or `:`, so a name like `my/lib` must be
@@ -135,16 +185,75 @@ fn test_spdx_json_emits_encoded_purls_without_changing_package_metadata() {
 }
 
 fn test_cpe_is_well_formed() {
-	assert spdx_cpe('serde', '1.0.0') == 'cpe:2.3:a:vpm:serde:1.0.0:*:*:*:*:*:*:*'
-	// CPE requires `:` be escaped in the product part.
-	assert spdx_cpe('a:b', '1.0.0').contains('a\\:b')
+	plain := spdx_cpe('serde', '1.0.0') or { panic('plain components were omitted') }
+	assert plain == 'cpe:2.3:a:vpm:serde:1.0.0:*:*:*:*:*:*:*'
+	escaped := spdx_cpe('a:b', 'release:one') or { panic('literal colon was omitted') }
+	assert escaped == 'cpe:2.3:a:vpm:a\\:b:release\\:one:*:*:*:*:*:*:*'
 }
 
-// A build-metadata version cannot be expressed as a CPE, so it is omitted
-// rather than emitted as something malformed.
+fn test_cpe_quotes_literal_punctuation_in_both_product_and_version() {
+	// Fixed vectors follow NISTIR 7695 section 6.2, Figure 6-3: only ASCII
+	// letters, digits, hyphen, period and underscore are unquoted literals.
+	cases := {
+		'a-z_1.0':                    'a-z_1.0'
+		'*':                          '\\*'
+		'?':                          '\\?'
+		'a*b?':                       'a\\*b\\?'
+		'\\':                         '\\\\'
+		'a\\b':                       'a\\\\b'
+		':':                          '\\:'
+		'!"#$%&\'(),/:;<=>@[]^`{|}~': '\\!\\"\\#\\$\\%\\&\\\'\\(\\)\\,\\/\\:\\;\\<\\=\\>\\@\\[\\]\\^\\`\\{\\|\\}\\~'
+	}
+	for component, expected in cases {
+		product := spdx_cpe(component, '1.0.0') or { panic('product was omitted: ${component}') }
+		assert product == 'cpe:2.3:a:vpm:${expected}:1.0.0:*:*:*:*:*:*:*'
+		version := spdx_cpe('serde', component) or { panic('version was omitted: ${component}') }
+		assert version == 'cpe:2.3:a:vpm:serde:${expected}:*:*:*:*:*:*:*'
+	}
+	// A plus is representable as a product literal; the version omission is
+	// a retained registry policy, not a claim that CPE has no plus escape.
+	product_plus := spdx_cpe('serde+extra', '1.0.0') or { panic('product plus was omitted') }
+	assert product_plus == 'cpe:2.3:a:vpm:serde\\+extra:1.0.0:*:*:*:*:*:*:*'
+}
+
+fn test_unrepresentable_cpe_components_keep_exact_metadata_and_purl() {
+	// Whole '-' means CPE NA, not the literal module/version string. Quoting
+	// it as '\-' is not permitted by the formatted-string grammar either.
+	for component in ['', '-', 'with space', 'tab\there', 'line\nbreak', '\x00', '\x7f', 'café'] {
+		for as_product in [true, false] {
+			name := if as_product { component } else { 'serde' }
+			version := if as_product { '1.0.0' } else { component }
+			mut registry := new_registry()
+			registry.add_module(sbom_demo_info(name, version, 'MIT', ''))
+			document := json2.decode[SpdxDocument](registry.spdx_json(sbom_namespace, sbom_download_base))!
+			package := document.packages[0]
+			assert package.name == name
+			assert package.version_info == version
+			assert package.external_refs.len == 1
+			assert package.external_refs[0].reference_type == 'purl'
+			assert package.external_refs[0].reference_locator == spdx_purl(name, version)
+		}
+	}
+}
+
+fn test_spdx_json_preserves_escaped_cpe_literals_without_wildcards() {
+	mut registry := new_registry()
+	registry.add_module(sbom_demo_info('a:b\\*?', 'release:*?\\tag', 'MIT', ''))
+	document := json2.decode[SpdxDocument](registry.spdx_json(sbom_namespace, sbom_download_base))!
+	package := document.packages[0]
+	assert package.name == 'a:b\\*?'
+	assert package.version_info == 'release:*?\\tag'
+	assert package.external_refs.len == 2
+	cpe := package.external_refs[1]
+	assert cpe.reference_type == 'cpe23Type'
+	assert cpe.reference_locator == 'cpe:2.3:a:vpm:a\\:b\\\\\\*\\?:release\\:\\*\\?\\\\tag:*:*:*:*:*:*:*'
+}
+
+// Preserve the registry policy of omitting a CPE for build-metadata versions;
+// PURL still identifies the exact version.
 fn test_a_build_metadata_version_omits_the_cpe() {
 	mut r := new_registry()
-	r.add_module(sbom_demo_info('serde', '1.0.0+build.7', 'MIT', 'sha256:abc123'))
+	r.add_module(sbom_demo_info('serde', '1.0.0+build.7', 'MIT', 'sha256:${sbom_test_digest}'))
 	doc := r.spdx_document(sbom_namespace, sbom_download_base)
 	assert doc.packages[0].external_refs.len == 1
 	assert doc.packages[0].external_refs[0].reference_type == 'purl'
@@ -173,7 +282,7 @@ fn test_the_json_round_trips_through_a_decoder() {
 		return
 	}
 	assert doc.packages.len == 2
-	assert doc.packages[0].checksums[0].checksum_value == 'abc123'
+	assert doc.packages[0].checksums[0].checksum_value == sbom_test_digest
 }
 
 fn test_the_sbom_endpoint_answers_json() {

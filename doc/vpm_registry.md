@@ -87,8 +87,11 @@ The fields:
   no signing key. `registry_archive_base` in `registry_client.v` reads `dl` for
   the install path and refuses a base on an RFC 2606 documentation domain, which
   is where that fixed value points.
-- `/<module>/@v/list` returns versions sorted by semver, descending. An unknown
-  module answers `200` with `[]`, not `404`.
+- `/<module>/@v/list` first orders versions accepted by the existing `semver` parser by
+  descending precedence, followed by opaque versions in descending lexical order. Equal-precedence
+  spellings also use descending lexical order, including build metadata. Thus `release_2026`
+  precedes `release_2025`; this is lexical ordering, so `release_9` precedes `release_10`.
+  An unknown module answers `200` with `[]`, not `404`.
 - `/<module>/@v/<version>.info` returns one `ModuleInfo`: name, version,
   description, license, dependencies, checksum, published_at, features, and
   `yanked`.
@@ -142,6 +145,10 @@ existing index abort startup and report the error. Imported module keys, entry n
 and versions must satisfy the same component rules as publication. The key and every name within
 its entry must agree; inconsistent or unroutable metadata is rejected. Each version string must
 occur only once within a module, even when duplicate records have identical metadata.
+Module names that differ only by ASCII letter case are rejected, as are versions differing only
+by case within one module. Publication enforces the same rules before writing an archive, so
+`alpha@1.0.0-ALPHA` and `alpha@1.0.0-alpha` cannot overwrite each other on a case-insensitive
+filesystem. The same version remains valid in different, non-colliding modules.
 
 The default port is 9090 (`default_registry_port`). The server binds every IPv4 interface,
 reported as `0.0.0.0:9090`. It performs no authentication: other hosts that can reach this port
@@ -182,11 +189,14 @@ the listener has bound successfully.
   there is no registry, and then no registry route is requested at all. Unlike a
   selected server, a registry is never recorded: a module found in one is
   reported rather than installed, so there is nothing to prefer next time.
-- `VPM_TOKEN_<HOST>` and `VPM_TOKEN` — bearer tokens for **client** requests, not
-  for the server. `registry_token` in `common.v` builds the scoped name from the
-  host, replacing `.` and `-` with `_` and uppercasing it, so
-  `https://vpm.example.com/a` reads `VPM_TOKEN_VPM_EXAMPLE_COM`, and falls back
-  to `VPM_TOKEN` when that is unset only for the configured `VPM_REGISTRY` origin (scheme,
+- `VPM_REGISTRY_TOKEN_HOST_<HEX>` and `VPM_TOKEN` — bearer tokens for **client** requests, not
+  for the server. The scoped suffix is the uppercase hexadecimal encoding of the lowercased
+  hostname's UTF-8 bytes. For example, `vpm.example.com` selects
+  `VPM_REGISTRY_TOKEN_HOST_76706D2E6578616D706C652E636F6D`. Distinct hostnames have distinct keys,
+  including `foo-bar.example.com` and `foo.bar-example.com`. The old punctuation-to-underscore
+  keys are ignored because their mapping could expose a token to a different host.
+  An explicitly set empty scoped token disables fallback. When the scoped key is unset,
+  `VPM_TOKEN` applies only to the configured `VPM_REGISTRY` origin (scheme,
   hostname and effective port). An unset registry disables the fallback. Public VPM requests,
   including public-server fallback after consulting a registry, receive no registry credentials.
   The registry server reads neither token variable: it authenticates nothing.
@@ -215,16 +225,24 @@ What `publish` does:
 - records every accepted digest spelling as `sha256:<digest>`, including an empty checksum,
   while retaining the publication's other metadata;
 - refuses to replace a version that is already published, unless the checksum is
-  unchanged after normalization. A matching repeat verifies the stored archive and restores it
-  if missing or corrupt, without changing the original metadata, yank state or change log;
+  unchanged after normalization. A matching repeat replaces and syncs the verified archive bytes,
+  including when already present, so a retry after a directory-sync error re-establishes durability.
+  The original metadata, yank state and change log are preserved;
 - writes the archive to `artifacts/<module>/<version>.zip`;
 - appends a `publish` entry to the change log.
 
 `publish` does not persist the index, and neither does anything else: `save()`
 has no caller in this branch, and the server reads `index.json` once at startup.
-`save()` writes a unique temporary file beside `index.json` and atomically replaces the index
-after the complete write succeeds. A failed write or replacement preserves the previous index.
+`save()` writes a unique temporary file beside `index.json`, flushes and syncs its contents,
+checks its close, and atomically replaces the index. Archive writes use the same replacement path.
+On Unix it syncs the containing directory after replacement, and newly created storage directories
+and their parents before writing; macOS also requests `F_FULLFSYNC`. Windows syncs the file with
+`_commit` and requests `MOVEFILE_WRITE_THROUGH` for replacement; it has no explicit directory
+sync in this implementation. Windows directory-creation persistence depends on the filesystem.
+Failures before replacement preserve the previous file. A directory-sync failure after replacement
+reports that replacement occurred and its durability is uncertain; it cannot restore the old file.
 Temporary files start private; existing regular-file permissions are retained on Unix.
+Sync errors are reported rather than silently claiming a durable save.
 A registry's contents are therefore fixed for the lifetime of the process, and
 replacing `index.json` underneath a running server has no effect until restart.
 
@@ -278,10 +296,10 @@ GET /demo/@latest  If-None-Match: "deadbeef"      -> 200, ETag "e2629a20...", 24
 
 Two details:
 
-- The archive route never carries an entity tag and never answers a conditional
-  request, because an archive is streamed from disk and there is no body to hash.
-  Measured: `GET /demo/@v/1.0.0.zip` returned `application/zip`, 28 bytes, and
-  no `ETag` header.
+- The archive route never carries an entity tag and never answers a conditional request.
+  Routing reads and hashes the archive once, then passes that verified binary buffer to the HTTP
+  response without reopening the file or hashing it again for an ETag. Downloads are buffered in
+  memory; this implementation does not stream archives or promise constant memory per request.
 - A `404` carries an entity tag as well, since the not-found body is hashed like
   any other body, but a matching conditional request still returns 404.
 - Archive transports verify the exact bytes sent against indexed metadata, even if the file
@@ -298,8 +316,13 @@ and `dl` query parameters customize its namespace and download base. There is no
 The SBOM uses the [SPDX 2.3 JSON field names][spdx-schema], including `SPDXID`, `spdxVersion`,
 `downloadLocation` and `checksumValue`. Package IDs encode both name and version without collisions.
 Metadata-only packages have `filesAnalyzed: false`; an unspecified license is `NOASSERTION`.
-Checksums of successfully published archives appear in the document regardless of the submitted
-checksum spelling.
+Valid SHA-256 checksums appear for published archives and imported index entries alike: raw
+64-character lowercase digests and the `sha256:` and `SHA256:` prefixes are accepted.
+Invalid or missing checksum values are omitted.
+CPE product and version components quote literal wildcard and punctuation characters according to
+CPE 2.3 formatted-string rules. If a component cannot safely be represented, including empty,
+non-ASCII, whitespace, or a whole `-`, the CPE reference is omitted; package URLs remain present.
+Versions containing build metadata (`+`) also omit the CPE reference.
 
 [spdx-schema]: https://raw.githubusercontent.com/spdx/spdx-spec/v2.3.1/schemas/spdx-schema.json
 
@@ -332,5 +355,10 @@ checksum spelling.
 - The registry server enforces no authentication whatsoever.
 - Nothing consumes the change feed. `changes_since` exists for a mirror to call,
   and no mirror is implemented.
+- No checksum transparency log or Merkle tree is implemented. The ordinary change feed contains
+  module, version, kind and time; it has no checksum, tree root, inclusion proof or tamper-evident
+  history. It cannot audit published hashes.
+- `GET /<module>/@v/<version>.mod` is planned and currently returns 404; the server neither
+  stores nor generates a separate `v.mod` response.
 - `/api/packages/<name>` and `/api/packages/<name>/incr_downloads`, the two
   routes `v install` does use, are not served.

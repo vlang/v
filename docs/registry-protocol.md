@@ -31,7 +31,8 @@ underlying error and exits with a nonzero status.
 
 Unknown routes return HTTP 404, including conditional requests for missing metadata.
 Successful GET metadata supports ETag revalidation with case-insensitive HTTP header names.
-Archive transports verify the exact bytes sent against recorded metadata.
+Archive routing reads and hashes a file once, then sends that verified buffer without reopening
+the file. Downloads are buffered in memory; archive streaming is not implemented.
 Paths retain percent-encoded spelling; the server removes trailing slashes before routing.
 Query keys and values follow `urllib.parse_query`: percent escapes are decoded and `+` means space.
 Query parsing errors return HTTP 400.
@@ -43,8 +44,8 @@ Query parsing errors return HTTP 400.
   immutable zips
 - **Scalable**: Per-file fetch, not full clone (like Cargo's sparse protocol)
 - **Signed registry**: Verification against an independently pinned origin key
-- **Checksum transparency log**: Append-only Merkle tree for all published hashes, like Go's
-  sum.golang.org
+- **Checksum transparency log (planned)**: An append-only Merkle tree for published hashes is
+  a design goal, not an implemented integrity guarantee.
 - **Private registries**: Token-based authentication (like Cargo or Packagist)
 - **SBOM/SPDX output**: Supply chain security
 
@@ -56,9 +57,15 @@ Query parsing errors return HTTP 400.
 |----------|---------|
 | `GET /<module>/@v/list` | List all known versions of a module |
 | `GET /<module>/@v/<version>.info` | JSON metadata for a specific version |
-| `GET /<module>/@v/<version>.mod` | The `v.mod` file for that version |
+| `GET /<module>/@v/<version>.mod` | Planned: separate `v.mod` response (currently 404) |
 | `GET /<module>/@v/<version>.zip` | The full module source as a zip file |
 | `GET /<module>/@latest` | Latest version info |
+
+The `.mod` route is not implemented: the server neither stores nor generates a separate manifest.
+Version lists and `@latest` share one order: versions accepted by the existing `semver` parser
+first, by descending precedence, then opaque versions by descending lexical order.
+Equal-precedence spellings use descending lexical order as a tie-breaker. Yanked versions remain
+listed and are skipped by `@latest`.
 
 ### Registry Configuration (Cargo sparse-style)
 
@@ -125,17 +132,27 @@ Per-version entry (JSON):
   URL delimiters, percent escapes, whitespace and other control characters are rejected before
   publishing or importing an index, so the raw `.info` and `.zip` paths remain reachable.
   Imported map keys, entry names, and per-version names must agree; all names and versions
-  must satisfy these component rules.
+  must satisfy these component rules. Module names differing only by ASCII letter case are
+  rejected; versions differing only by case within one module are also rejected, during both
+  publication and import. This prevents archive overwrites on case-insensitive filesystems.
 - The zip file's SHA-256 checksum is recorded in the metadata
 - Accepted raw, `sha256:`, `SHA256:`, and omitted checksums are stored as `sha256:<verified digest>`
 - The checksum is used for integrity verification on download
-- Republishing identical bytes verifies the stored archive and repairs missing or corrupt bytes
-  without changing existing version metadata, yank state, or change history
-- Saving the index uses a unique temporary file in the same directory and an atomic replacement
-  after a successful complete write; write or replacement failures preserve the previous index
+- Republishing identical bytes replaces and syncs the verified archive, repairing missing or
+  corrupt storage and retrying uncertain directory durability without changing existing version
+  metadata, yank state, or change history
+- Index and archive replacement sync the completed temporary file before renaming it.
+  Unix also syncs the containing directory and newly created storage directory ancestry; macOS
+  additionally requests `F_FULLFSYNC`. Windows uses `_commit` and
+  `MOVEFILE_WRITE_THROUGH`, without an explicit directory sync. Windows directory creation
+  persistence depends on the filesystem. Failures before replacement preserve the previous file;
+  a failure syncing the directory after replacement reports that replacement already occurred
+  and durability is uncertain.
 - Artifact downloads require a recorded version and a matching, nonempty checksum; orphan files
   are never served
-- A transparency log records all published checksums
+- A checksum transparency log is planned, not implemented. The change feed contains module,
+  version, kind and time only; it has no published hashes, Merkle roots, inclusion proofs, or
+  tamper-evident history.
 
 ## Registry Signing
 
@@ -178,7 +195,11 @@ Per-version entry (JSON):
   This follows the [SPDX namespace requirements][spdx-namespace]. A newly generated default document
   has a new ETag, so it does not revalidate a previous document with HTTP 304.
 - Includes license information
-- Includes checksums for all packages
+- Includes valid SHA-256 checksums from published or imported metadata: raw 64-character lowercase
+  digests and `sha256:` or `SHA256:` prefixes. Missing or invalid checksums are omitted.
+- CPE 2.3 references escape literal wildcard and punctuation characters in both product and
+  version. Components that cannot safely be represented omit the CPE reference; package URLs
+  remain available. Versions with build metadata also omit CPE references.
 - JSON uses the SPDX 2.3 field names, with `filesAnalyzed: false` for registry metadata. Package IDs
   encode both module name and version, so each package version has a distinct identifier.
 - Field names and package identifiers follow the [official SPDX JSON schema][spdx-schema].
@@ -214,11 +235,14 @@ authenticates nothing.
   and reports an error requesting `VPM_REGISTRY_CA_FILE` if none is available. OpenSSL and native
   Windows SChannel use their default trust stores. A per-request CA file requires a Windows build
   with `-d no_vschannel`; VPM rejects this setting on the native HTTP backend, which ignores it.
-- The token comes from `VPM_TOKEN_<HOST>`, where `<HOST>` is the registry's hostname with `.` and
-  `-` folded to `_` and uppercased, so `https://vpm.example.com/` reads
-  `VPM_TOKEN_VPM_EXAMPLE_COM`. `VPM_TOKEN` is the fallback only for the configured `VPM_REGISTRY`
-  origin, matching its scheme, hostname and effective port. With `VPM_REGISTRY` unset, this fallback
-  is unused. `registry_token` builds the name; `registry_http_get` selects authenticated transport.
+- The scoped token comes from `VPM_REGISTRY_TOKEN_HOST_<HEX>`, using uppercase hexadecimal
+  bytes of the lowercased hostname. For `vpm.example.com` this is
+  `VPM_REGISTRY_TOKEN_HOST_76706D2E6578616D706C652E636F6D`. Distinct hostnames cannot share a key;
+  punctuation-to-underscore legacy keys are ignored. An explicitly empty scoped value disables
+  fallback. `VPM_TOKEN` is the fallback only when the scoped key is unset, and only for the
+  configured `VPM_REGISTRY` origin, matching scheme, hostname and effective port. With
+  `VPM_REGISTRY` unset, this fallback is unused. `registry_token` builds the name;
+  `registry_http_get` selects authenticated transport.
 - There is no login endpoint, and nothing obtains or issues a token. No route in this repository
   accepts credentials. A token is provisioned in the environment by whoever configures it, which is
   why it is a VPM client variable and not part of the protocol.

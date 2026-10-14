@@ -109,3 +109,74 @@ fn test_missing_archives_are_not_repaired_from_unverified_or_different_bytes() {
 	assert registry.export_json() == before
 	assert !os.exists(destination)
 }
+
+fn test_casefold_alias_publications_preserve_the_original_artifact_and_metadata() {
+	original_archive := os.join_path(repair_root, 'casefold-original.zip')
+	alias_archive := os.join_path(repair_root, 'casefold-alias.zip')
+	os.write_file(original_archive, 'original case-sensitive identity bytes')!
+	os.write_file(alias_archive, 'different alias bytes must never overwrite the original')!
+	for index, pair in [[ModuleInfo{ name: 'AliasModule', version: '1.0.0' },
+		ModuleInfo{ name: 'aliasmodule', version: '1.0.0' }], [ModuleInfo{ name: 'module-version', version: 'Release+Build.1' },
+		ModuleInfo{ name: 'module-version', version: 'release+build.1' }]] {
+		mut registry := new_registry()
+		original := pair[0]
+		alias := pair[1]
+		registry.publish(original, original_archive)!
+		assert registry.yank(original.name, original.version)
+		before := registry.export_json()
+		destination := artifact_path(original.name, original.version)
+		before_names := os.ls(os.dir(destination))!
+		before_modules := os.ls(artifacts_dir())!
+		mut rejected := false
+		registry.publish(alias, alias_archive) or {
+			assert err.msg().contains('case-insensitive registry'), err.msg()
+			rejected = true
+		}
+		assert rejected, 'case-only alias publication was accepted (${index})'
+		assert registry.export_json() == before
+		assert os.read_file(destination)! == 'original case-sensitive identity bytes'
+		assert os.ls(os.dir(destination))! == before_names
+		assert os.ls(artifacts_dir())! == before_modules
+		response := repair_archive_get(registry, original.name, original.version)!
+		assert response.status_code == 200
+		assert response.body == 'original case-sensitive identity bytes'
+		assert registry.export_json() == before
+	}
+}
+
+fn repair_directory_sync_fail(directory string) ! {
+	return error('injected repair directory synchronization failure')
+}
+
+fn test_matching_retries_replace_verified_bytes_after_uncertain_directory_synchronization() {
+	archive := os.join_path(repair_root, 'durability-retry.zip')
+	content := 'verified bytes survive a retry after an uncertain replacement'
+	os.write_file(archive, content)!
+	info := ModuleInfo{ name: 'durability-retry', version: '1.0.0' }
+	mut registry := new_registry()
+	registry.publish(info, archive)!
+	assert registry.yank(info.name, info.version)
+	before := registry.export_json()
+	destination := artifact_path(info.name, info.version)
+	mut uncertain := false
+	registry_store_file_using(destination, content, registry_write_file, registry_sync_file,
+		registry_close_file, registry_replace_file, repair_directory_sync_fail) or {
+		assert err.msg().contains('was replaced')
+		assert err.msg().contains('durability is uncertain')
+		uncertain = true
+	}
+	assert uncertain
+	assert os.read_file(destination)! == content
+	link := os.join_path(repair_root, 'before-durability-retry')
+	$if !windows {
+		os.link(destination, link)!
+	}
+	registry.publish(info, archive)!
+	assert registry.export_json() == before
+	assert os.read_file(destination)! == content
+	$if !windows {
+		// A checksum-only early return would still share this old inode.
+		os.write_file(link, 'old inode after replacement')!
+		assert os.read_file(destination)! == content
+	}
+}

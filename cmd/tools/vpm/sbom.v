@@ -75,11 +75,50 @@ fn spdx_purl(name string, version string) string {
 	return 'pkg:vpm/${encoded_name}@${encoded_version}'
 }
 
-// spdx_cpe is a CPE 2.3 name, which is how vulnerability databases refer to a
-// package. CPE requires backslashes and colons be escaped in the product part.
-fn spdx_cpe(name string, version string) string {
-	escaped := name.replace('\\', '\\5c').replace(':', '\\:')
-	return 'cpe:2.3:a:vpm:${escaped}:${version}:*:*:*:*:*:*:*'
+// spdx_cpe_component binds literal printable ASCII to the NISTIR 7695
+// formatted-string syntax. Empty and whole '-' cannot name these literals;
+// spaces, controls and non-ASCII characters are outside its component grammar.
+fn spdx_cpe_component(value string) ?string {
+	if value == '' || value == '-' {
+		return none
+	}
+	mut escaped := []u8{}
+	for c in value {
+		if c <= 32 || c >= 127 {
+			return none
+		}
+		if !c.is_alnum() && c !in [`-`, `.`, `_`] {
+			escaped << `\\`
+		}
+		escaped << c
+	}
+	return escaped.bytestr()
+}
+
+// spdx_cpe emits literal product and version components, never wildcard
+// interpretations. Keep the existing conservative omission of build metadata.
+fn spdx_cpe(name string, version string) ?string {
+	if version.contains('+') {
+		return none
+	}
+	product := spdx_cpe_component(name) or { return none }
+	product_version := spdx_cpe_component(version) or { return none }
+	return 'cpe:2.3:a:vpm:${product}:${product_version}:*:*:*:*:*:*:*'
+}
+
+// spdx_sha256_checksum accepts the same prefix trimming as artifact integrity
+// checks, and emits only the lowercase 64-hex digest those checks can accept.
+fn spdx_sha256_checksum(recorded string) ?string {
+	digest := recorded.trim_string_left('sha256:').trim_string_left('SHA256:')
+	if digest.len != 64 {
+		return none
+	}
+	for c in digest {
+		if !c.is_digit() && (c < `a` || c > `f`) {
+			return none
+		}
+	}
+	return digest
 }
 
 // spdx_document renders the bill of materials for this registry's modules.
@@ -91,10 +130,10 @@ pub fn (r &Registry) spdx_document(namespace string, download_base string) SpdxD
 	for _, entry in r.modules {
 		for v in entry.versions {
 			mut checksums := []SpdxChecksum{}
-			if v.checksum.starts_with('sha256:') {
+			if digest := spdx_sha256_checksum(v.checksum) {
 				checksums << SpdxChecksum{
 					algorithm:      'SHA256'
-					checksum_value: v.checksum.all_after('sha256:')
+					checksum_value: digest
 				}
 			}
 			mut refs := []SpdxExternalRef{}
@@ -103,13 +142,11 @@ pub fn (r &Registry) spdx_document(namespace string, download_base string) SpdxD
 				reference_type:     'purl'
 				reference_locator:  spdx_purl(v.name, v.version)
 			}
-			// CPE names a product for vulnerability tracking; a version holding
-			// a `+` in it is a build-metadata version that CPE cannot express.
-			if !v.version.contains('+') {
+			if cpe := spdx_cpe(v.name, v.version) {
 				refs << SpdxExternalRef{
 					reference_category: 'SECURITY'
 					reference_type:     'cpe23Type'
-					reference_locator:  spdx_cpe(v.name, v.version)
+					reference_locator:  cpe
 				}
 			}
 			packages << SpdxPackage{

@@ -211,13 +211,13 @@ fn start_token_echo_handler_at(handler TokenEchoHandler, addr string) !RunningTo
 	}
 }
 
-// The echo server is reached as `127.0.0.1`, which folds to the scoped name
+// The echo server is reached as `127.0.0.1`, which encodes to the scoped name
 // below. The other two are named so a case can set one without disturbing the
 // next: the scoped variable is this host's, the other one is a token that
 // belongs to a different registry entirely.
-const wire_scoped_token_var = 'VPM_TOKEN_127_0_0_1'
+const wire_scoped_token_var = 'VPM_REGISTRY_TOKEN_HOST_3132372E302E302E31'
 const wire_fallback_token_var = 'VPM_TOKEN'
-const wire_other_host_token_var = 'VPM_TOKEN_VPM_EXAMPLE_COM'
+const wire_other_host_token_var = 'VPM_REGISTRY_TOKEN_HOST_76706D2E6578616D706C652E636F6D'
 
 // clear_wire_tokens removes every variable any case below sets, so the
 // environment the suite started with cannot decide a case and one case cannot
@@ -228,8 +228,9 @@ fn clear_wire_tokens() {
 	os.unsetenv(wire_scoped_token_var)
 	os.unsetenv(wire_fallback_token_var)
 	os.unsetenv(wire_other_host_token_var)
-	os.unsetenv('VPM_TOKEN_LOCALHOST')
-	os.unsetenv('VPM_TOKEN_127_0_0_2')
+	os.unsetenv('VPM_REGISTRY_TOKEN_HOST_6C6F63616C686F7374')
+	os.unsetenv('VPM_REGISTRY_TOKEN_HOST_3132372E302E302E32')
+	os.unsetenv('VPM_TOKEN_127_0_0_1')
 }
 
 // authorization_on_the_wire asks the echo server for a protocol route and
@@ -257,6 +258,21 @@ fn test_the_scoped_token_reaches_the_server() {
 		return
 	}
 	assert seen == 'Bearer tok-scoped', 'the server received `${seen}`, not the scoped token'
+}
+
+fn test_legacy_host_token_is_ignored_on_the_wire_but_encoded_token_is_sent() {
+	clear_wire_tokens()
+	os.setenv(registry_insecure_loopback_env, '1', true)
+	mut running := start_token_echo()!
+	defer {
+		running.server.close()
+		clear_wire_tokens()
+	}
+	os.setenv(registry_url_env, running.base, true)
+	os.setenv('VPM_TOKEN_127_0_0_1', 'unsafe-legacy-token', true)
+	assert authorization_on_the_wire(running.base)! == ''
+	os.setenv('VPM_REGISTRY_TOKEN_HOST_3132372E302E302E31', 'encoded-token', true)
+	assert authorization_on_the_wire(running.base)! == 'Bearer encoded-token'
 }
 
 // The unqualified variable is the fallback for a machine with one private
