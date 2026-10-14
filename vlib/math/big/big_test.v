@@ -1028,3 +1028,17 @@ fn test_bytes_from_bytes() {
 		assert a.str() == c.str()
 	}
 }
+
+fn test_integer_from_radix_requires_digits() {
+	for radix in [u32(2), 10, 16, 36] {
+		for value in ['', '+', '-'] {
+			if _ := big.integer_from_radix(value, radix) {
+				assert false, 'empty digit sequence must fail in every radix'
+			} else {
+				assert err.msg() == 'math.big: No digits in the given string'
+			}
+		}
+		assert big.integer_from_radix('+0', radix)!.str() == '0'
+		assert big.integer_from_radix('-1', radix)!.str() == '-1'
+	}
+}
