@@ -2148,17 +2148,28 @@ fn run_binary(bin_file string, args []string) int {
 			return 1
 		}
 	}
-	process.wait()
-	os.signal_opt(.int, prev_int_handler) or {
-		eprintln('v3: could not restore SIGINT handler: ${err}')
-	}
-	$if !windows {
-		os.signal_opt(.quit, prev_quit_handler) or {
-			eprintln('v3: could not restore SIGQUIT handler: ${err}')
+	defer {
+		os.signal_opt(.int, prev_int_handler) or {
+			eprintln('v3: could not restore SIGINT handler: ${err}')
 		}
+		$if !windows {
+			os.signal_opt(.quit, prev_quit_handler) or {
+				eprintln('v3: could not restore SIGQUIT handler: ${err}')
+			}
+		}
+		process.close()
 	}
-	exit_code := if process.code >= 0 { process.code } else { 1 }
-	process.close()
+	termination_signal := wait_run_process(mut process) or {
+		eprintln('v3: ${err}')
+		return 1
+	}
+	exit_code := if termination_signal > 0 {
+		128 + termination_signal
+	} else if process.code >= 0 {
+		process.code
+	} else {
+		1
+	}
 	return exit_code
 }
 
