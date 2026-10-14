@@ -191,7 +191,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 				*/
 				if parser.lexical_attributes.current_tag.name == '' {
 					parser.lexical_attributes.current_tag.name = complete_lexeme
-				} else if complete_lexeme != '/' {
+				} else if complete_lexeme.len > 0 && complete_lexeme != '/' {
 					parser.lexical_attributes.current_tag.attributes[complete_lexeme] = ''
 				}
 				parser.lexical_attributes.open_tag = false
