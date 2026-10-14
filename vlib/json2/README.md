@@ -176,6 +176,9 @@ fn main() {
 Enums encode as strings by default. Use `@[json_as_number]` on an enum to emit
 its integer value instead.
 
+Integer encoding preserves the width of the input type, including `int` and its aliases.
+An `int` is not narrowed to `i32` when written as a value, struct field, or collection element.
+
 Floats use decimal notation for zero and magnitudes from `1e-6` (inclusive) to
 `1e21` (exclusive), and scientific notation outside that range, matching Go's
 `encoding/json`. Exponents omit leading zeros, for example `1e-7`.
