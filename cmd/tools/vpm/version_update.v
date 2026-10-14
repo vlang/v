@@ -16,6 +16,52 @@ fn project_has_ranges(manifest vmod.Manifest, dir string) bool {
 	return false
 }
 
+// project_update_source uses checkout origins only for installed module names.
+// Repository requirements retain their own identity even if a same-named
+// directory exists in the module store.
+fn project_update_source(roots []string, key string) string {
+	if key.contains('://') || is_local_repository(key) || key.starts_with('git@') {
+		return normalized_clone_source(key)
+	}
+	_, path := resolve_existing_module(roots, key) or { '', '' }
+	origin := if path == '' { '' } else { checkout_origin_url(path) }
+	return normalized_clone_source(if origin == '' { key } else { origin })
+}
+
+// project_update_changes associates a target with every direct requirement of
+// its repository before the resolver selects a version from the first alias.
+fn project_update_changes(dependencies []string, targets []string, precise string) map[string]string {
+	mut changes := map[string]string{}
+	roots := module_roots()
+	for target in targets {
+		target_key := lockfile_module_key(target)
+		target_source := project_update_source(roots, target_key)
+		changes[target_key] = precise
+		for dependency in dependencies {
+			key := lockfile_module_key(dependency)
+			if key == target_key || project_update_source(roots, key) == target_source {
+				changes[key] = precise
+			}
+		}
+	}
+	return changes
+}
+
+fn module_matches_update_target(m Module, target string) bool {
+	key := lockfile_module_key(target)
+	source := normalized_clone_source(key)
+	if m.name == key || import_path_of(m.install_path) == key {
+		return true
+	}
+	for alias in m.requested_aliases {
+		alias_key := lockfile_module_key(alias)
+		if alias_key == key || normalized_clone_source(alias_key) == source {
+			return true
+		}
+	}
+	return false
+}
+
 // update_versioned_project resolves the whole project before replacing checkouts.
 // Partial updates prefer other locked selections but can backtrack when a new
 // release changes its transitive requirements.
@@ -52,22 +98,17 @@ fn update_versioned_project(query []string) bool {
 		vpm_error('`--precise VERSION` requires one package (`-p PACKAGE` or a positional name).')
 		exit(1)
 	}
-	mut changes := map[string]string{}
-	for target in targets {
-		changes[lockfile_module_key(target)] = settings.precise
-	}
+	original_dependencies := project_dependencies(manifest)
+	changes := project_update_changes(original_dependencies, targets, settings.precise)
 	mut selector := new_install_server_selector()
 	mut scope := LockScope{}
 	scope.begin()
 	scope.complete = true
-	original_dependencies := project_dependencies(manifest)
 	mut dependencies := original_dependencies.clone()
 	if settings.is_latest {
 		for i, dep in dependencies {
 			ident := lockfile_module_key(dep)
-			_, installed := resolve_existing_module(module_roots(), dep) or { '', '' }
-			name := if installed == '' { ident } else { import_path_of(installed) }
-			if targets.len == 0 || ident in changes || name in changes {
+			if targets.len == 0 || ident in changes {
 				constraint := requirement_version(dep)
 				if constraint == '' || is_version_range(constraint) || tag_satisfies_range(constraint, '*') {
 					dependencies[i] = ident + '@*'
@@ -81,8 +122,7 @@ fn update_versioned_project(query []string) bool {
 	}
 	if targets.len > 0 {
 		for target in targets {
-			if !modules.any(lockfile_module_key(it.requested) == lockfile_module_key(target)
-				|| it.name == target || import_path_of(it.install_path) == target) {
+			if !modules.any(module_matches_update_target(it, target)) {
 				for m in modules { rmdir_all(m.tmp_path) or {} }
 				vpm_error('`${target}` is not a dependency of this project.')
 				exit(1)

@@ -168,11 +168,6 @@ fn (mut g Parser) parse_c_directive() ! {
 	directive := g.lit.trim_space()
 	g.next()
 	if directive == 'flag' || directive.starts_with('flag ') || directive == 'pkgconfig' || directive.starts_with('pkgconfig ') {
-		// FastC's compiler invocation supplies its own target flags. The bootstrap
-		// dependency set only uses these directives for optional libraries.
-		if g.prefs.selfhost {
-			return
-		}
 		if directive.starts_with('flag ') {
 			mut rest := directive['flag '.len..].trim_space()
 			// A platform-qualified `#flag <os> ...` that names a different target is
@@ -186,11 +181,7 @@ fn (mut g Parser) parse_c_directive() ! {
 				}
 				rest = rest.all_after(qualifier).trim_space()
 			}
-			// FastC drives its own tcc link line (it already links pthread, libm and
-			// the host system libraries), so a bare `#flag -lfoo`/`-L`/`-framework`
-			// only names extra link libraries, and `-I<path>` only adds a header search
-			// path (FastC's bundled tcc already resolves the system headers these C
-			// files include). Skip such flags instead of rejecting the whole program.
+			// Retain native inputs and link/header search flags for TinyCC.
 			if fastc_flag_is_skippable(rest) {
 				g.c_flags << fastc_c_flag_args(rest, g.prefs.vroot, g.path)!
 				return
@@ -231,6 +222,16 @@ fn (mut g Parser) parse_c_directive() ! {
 	if c_directive == '' {
 		return g.unsupported('empty C directive')
 	}
+	if c_directive.starts_with('include ')
+		&& c_directive.contains('/thirdparty/stdatomic/nix/atomic.h')
+		&& g.prefs.target.arch == 'arm64' {
+		// TinyCC emits C99 extern-inline ARM64 support functions in each split
+		// unit. Weak definitions let the linker share those identical helpers.
+		g.out.writeln('#define inline __attribute__((weak)) inline')
+		g.out.writeln('#${c_directive}')
+		g.out.writeln('#undef inline')
+		return
+	}
 	g.out.writeln('#${c_directive}')
 }
 
@@ -262,7 +263,7 @@ fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
 				break
 			}
 		}
-		if (arg.ends_with('.o') || arg.ends_with('.a') || arg.ends_with('.obj') || arg.ends_with('.lib')) && !os.is_abs_path(arg) {
+		if fastc_flag_is_native_input(arg) && !os.is_abs_path(arg) {
 			args[i] = os.join_path(base_dir, arg)
 		}
 		resolved_arg := args[i]
@@ -292,13 +293,17 @@ fn fastc_pkgconfig_flags(raw string) ![]string {
 	}
 }
 
-// fastc_flag_is_skippable reports whether a `#flag` payload only names link
-// libraries/search paths/frameworks or header include paths. Such flags affect
-// linking or header lookup, not C generation, so FastC can safely skip them (it
-// manages its own tcc link line and ships the system headers these C files include).
-// Anything else (`-D`, `-std=...`) still reaches the unsupported path.
+// fastc_flag_is_native_input reports whether a flag is a native source or link input.
+pub fn fastc_flag_is_native_input(flag string) bool {
+	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.o')
+		|| flag.ends_with('.a') || flag.ends_with('.obj') || flag.ends_with('.lib')
+		|| flag.ends_with('.dylib') || flag.ends_with('.so') || flag.contains('.so.'))
+}
+
+// fastc_flag_is_skippable reports whether a `#flag` payload only affects native
+// compilation or linking, so the parser can leave it to the TinyCC driver.
 fn fastc_flag_is_skippable(flag string) bool {
-	tokens := flag.fields()
+	tokens := cmdexec.split_args(flag) or { return false }
 	if tokens.len == 0 {
 		return false
 	}
@@ -320,10 +325,8 @@ fn fastc_flag_is_skippable(flag string) bool {
 			i += 2
 			continue
 		}
-		// A bare object / static-library link input (`@VEXEROOT/.../cJSON.o`): FastC drives
-		// its own tcc link line and does not add these, so skip it. If a live reference to
-		// its symbols survives reachability, the link fails explicitly instead.
-		if part.ends_with('.o') || part.ends_with('.a') || part.ends_with('.obj') || part.ends_with('.lib') {
+		// Bare native inputs are resolved and passed to the TinyCC driver.
+		if fastc_flag_is_native_input(part) {
 			i++
 			continue
 		}
@@ -1430,7 +1433,7 @@ fn fastc_expression_tokens_contain(tokens []FastcExpressionToken, wanted token.T
 
 fn fastc_expression_tokens_contain_boolean_operator(tokens []FastcExpressionToken) bool {
 	for item in tokens {
-		if item.tok in [.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .not] {
+		if item.tok in [.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .not, .key_in, .not_in] {
 			return true
 		}
 	}

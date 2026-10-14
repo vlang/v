@@ -223,7 +223,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	// A pre-rendered synthetic base atom (e.g. a string interpolation `'${x}'[0]`, folded into
 	// one token carrying its C text in `.source`) is `.string`, not `.name`; accept it too so
 	// the index applies to the rendered string rather than reaching the raw renderer.
-	if tokens.len < 4 || (tokens[0].tok !in [.name, .string, .lpar] && tokens[0].source == '') || tokens.last().tok != .rsbr {
+	if tokens.len < 4 || (tokens[0].tok !in [.name, .string, .lpar, .lsbr] && tokens[0].source == '') || tokens.last().tok != .rsbr {
 		return none
 	}
 	mut open := -1
@@ -248,7 +248,8 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 			prefix_depth++
 		} else if item.tok in [.rpar, .rsbr, .rcbr] {
 			prefix_depth--
-		} else if prefix_depth == 0 && item.tok.is_assignment() {
+		} else if prefix_depth == 0 && (item.tok.is_assignment()
+			|| item.tok in [.key_in, .not_in]) {
 			// `target = [value]` ends in `]`, but its bracket pair is an array literal,
 			// not an index applied to the assignment prefix.
 			return none
@@ -287,6 +288,8 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		'*(${inner})'
 	} else if base_tokens.len == 1 {
 		g.resolved_root_expression_name(base_tokens[0].lit)
+	} else if literal_base := g.render_array_literal_argument(base_tokens, base_type) {
+		literal_base.source
 	} else if nested_base := g.render_array_access_expression(base_tokens) {
 		nested_base.source
 	} else if map_base := g.render_map_expression(base_tokens) {
@@ -432,12 +435,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
 	if g.direct_array_access {
 		return FastcRenderedExpression{
-			source: '(((${element_type} *)(${array_value}).data)[${index_source}])'
+			source: '(((${g.collection_storage_type(element_type)} *)(${array_value}).data)[${index_source}])'
 			typ:    element_type
 		}
 	}
 	return FastcRenderedExpression{
-		source: '(*(${element_type} *)builtin__array_get(${array_value}, ${index_source}))'
+		source: '(*(${g.collection_storage_type(element_type)} *)builtin__array_get(${array_value}, ${index_source}))'
 		typ:    element_type
 	}
 }
@@ -638,10 +641,11 @@ fn (g &Parser) fastc_inline_array_element_equality(array_type string, left strin
 		// A further-nested array element would need another loop level; not supported yet.
 		return error('nested array element')
 	}
+	inner_storage := g.collection_storage_type(inner_element)
 	inner_comparison := if g.underlying_alias_type(inner_element).trim_right('*') == 'string' {
-		'builtin__string_eq(((${inner_element} *)__vf_meq_l.data)[__vf_meq_k], ((${inner_element} *)__vf_meq_r.data)[__vf_meq_k])'
+		'builtin__string_eq(((${inner_storage} *)__vf_meq_l.data)[__vf_meq_k], ((${inner_storage} *)__vf_meq_r.data)[__vf_meq_k])'
 	} else {
-		'(((${inner_element} *)__vf_meq_l.data)[__vf_meq_k] == ((${inner_element} *)__vf_meq_r.data)[__vf_meq_k])'
+		'(((${inner_storage} *)__vf_meq_l.data)[__vf_meq_k] == ((${inner_storage} *)__vf_meq_r.data)[__vf_meq_k])'
 	}
 	return '({ ${array_type} __vf_meq_l = (${left}); ${array_type} __vf_meq_r = (${right}); bool __vf_meq = (__vf_meq_l.len == __vf_meq_r.len); for (int __vf_meq_k = 0; __vf_meq && __vf_meq_k < __vf_meq_l.len; __vf_meq_k++) { if (!${inner_comparison}) { __vf_meq = false; break; } } __vf_meq; })'
 }
@@ -1188,9 +1192,13 @@ fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int
 			.rcbr {
 				braces--
 			}
-			.comma {
+			.comma, .semicolon {
 				if parens == 0 && brackets == 0 && braces == 0 {
 					if item_start == i {
+						if tokens[i].tok == .semicolon {
+							item_start = i + 1
+							continue
+						}
 						return error('empty expression-list item')
 					}
 					// Items are consumed while `tokens` is alive and never mutated, so views are safe.

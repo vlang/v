@@ -14,7 +14,7 @@ import v.astjson
 const run_timeout_note = 'the child is waited on, so a build may take minutes'
 
 // run_output_limit is how many lines of output one response carries before it is
-// trimmed, with the head kept because a compiler explains a failure there.
+// trimmed, with the tail kept because a compiler explains a failure there.
 const run_output_limit = 400
 
 // spec_run declares `v_run`.
@@ -24,17 +24,21 @@ fn spec_run() ToolSpec {
 arguments `v run` takes. Returns the exit code and the program output. Writes
 whatever the program itself writes; it does not edit the project.',
 		input_schema(['target'], {
-			'target': SchemaProperty{
+			'target':          SchemaProperty{
 				kind:        'string'
 				description: 'A .v file, a directory or a module\nname.'
 			}
-			'args':   SchemaProperty{
+			'args':            SchemaProperty{
 				kind:        'array'
 				description: 'Arguments\npassed to the program after the target.'
 			}
-			'flags':  SchemaProperty{
+			'flags':           SchemaProperty{
 				kind:        'array'
 				description: 'Compiler\nflags, for example `["-g"]`.'
+			}
+			'max_diagnostics': SchemaProperty{
+				kind:        'integer'
+				description: 'Limit (100); counts stay totals.'
 			}
 		}), tool_run)
 }
@@ -49,7 +53,7 @@ fn tool_run(ws &Workspace, arguments string) string {
 	// compile `prog.v` with no define at all and pass `-d proof=present` to the
 	// program instead, silently running different code from the one requested.
 	return run_json(ws, resolved, run_arguments(args.list('flags'), resolved,
-		args.list('args')))
+		args.list('args')), args.int('max_diagnostics', max_diagnostics_default))
 }
 
 // run_arguments builds the `v` argument list for `v_run`.
@@ -98,8 +102,13 @@ fn tool_eval(ws &Workspace, arguments string) string {
 }
 
 // run_json runs the compiler and renders what it produced.
-fn run_json(ws &Workspace, target string, compiler_args []string) string {
+fn run_json(ws &Workspace, target string, compiler_args []string, max_diagnostics int) string {
 	run := run_compiler(ws, compiler_args)
+	return run_result_json(ws, target, run, max_diagnostics)
+}
+
+// run_result_json renders a completed run without starting another compiler.
+fn run_result_json(ws &Workspace, target string, run CompilerRun, max_diagnostics int) string {
 	mut w := astjson.Writer{}
 	w.begin_object()
 	w.key('target')
@@ -126,8 +135,19 @@ fn run_json(ws &Workspace, target string, compiler_args []string) string {
 	w.key('output')
 	w.string(trim_output(run.output, run_output_limit))
 	items := parse_diagnostics(run.output)
+	w.key('error_count')
+	w.number(count_errors(items))
+	w.key('warning_count')
+	w.number(count_by_kind(items, 'warning'))
 	if items.len > 0 {
-		w.key_raw('diagnostics', diagnostics_json(items))
+		kept, omitted := page_diagnostics(items, max_diagnostics)
+		w.key_raw('diagnostics', diagnostics_json(kept))
+		w.key('diagnostics_omitted')
+		w.number(omitted)
+		if omitted > 0 {
+			w.key('hint')
+			w.string('Only the first ${kept.len} diagnostics are shown; narrow the path or raise `max_diagnostics`.')
+		}
 	}
 	w.end_object()
 	return w.str()
