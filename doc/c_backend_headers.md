@@ -54,6 +54,10 @@ and library flags.
 
 Autofree uses a monolithic build so cleanup retains complete local-variable metadata.
 
+Scalar array appends can use typed stores into spare capacity in library modules as well as
+`main`. Growth and slice handling retain the runtime append helper. User functions and callbacks
+named `array_push` keep their own calls.
+
 Older bootstrap compilers use compatibility headers for their first compiler build.
 The current compiler supplies an internal capability define and omits those headers.
 
