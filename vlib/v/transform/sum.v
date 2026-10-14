@@ -25,7 +25,7 @@ fn (t &Transformer) trim_all_pointer_type(typ string) string {
 }
 
 fn interface_pattern_is_collapsed_container_type(name string) bool {
-	clean := name.trim_space()
+	clean := trimmed_transform_text(name)
 	return clean.starts_with('[]') || clean.starts_with('map[')
 }
 
@@ -358,7 +358,7 @@ fn (t &Transformer) find_sum_type_with_short_name(short_name string) string {
 }
 
 fn (t &Transformer) sum_subject_type_candidates(subject_type string) []string {
-	clean := t.trim_pointer_type(t.normalize_type_alias(subject_type)).trim_space()
+	clean := trimmed_transform_text(t.trim_pointer_type(t.normalize_type_alias(subject_type)))
 	if clean.len == 0 {
 		return []string{}
 	}
@@ -415,7 +415,7 @@ fn (t &Transformer) sum_subject_type_args_in_scope(args []string) []string {
 }
 
 fn (t &Transformer) sum_subject_type_arg_in_scope(arg string) string {
-	clean := arg.trim_space()
+	clean := trimmed_transform_text(arg)
 	if clean.len == 0 {
 		return clean
 	}
@@ -481,7 +481,7 @@ fn (t &Transformer) sum_subject_type_arg_base_in_scope(name string) string {
 }
 
 fn push_sum_subject_type_candidate(mut candidates []string, mut seen map[string]bool, candidate string) {
-	clean := candidate.trim_space()
+	clean := trimmed_transform_text(candidate)
 	if clean.len == 0 || clean in seen {
 		return
 	}
@@ -974,7 +974,7 @@ fn (t &Transformer) specialized_is_pattern_known(pattern string) bool {
 		if types.is_builtin_type_name(candidate) || t.interface_pattern_candidate_known(candidate) {
 			return true
 		}
-		clean := candidate.trim_space()
+		clean := trimmed_transform_text(candidate)
 		if clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('[')
 			|| clean.starts_with('fn ') || clean.starts_with('fn(') {
 			if t.tc.parse_type(clean).name() != 'unknown' {
@@ -1261,7 +1261,7 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 }
 
 fn (t &Transformer) function_alias_impl_name(name string) ?string {
-	clean := name.trim_space()
+	clean := trimmed_transform_text(name)
 	if !clean.starts_with('fn(') && !clean.starts_with('fn ') {
 		return none
 	}
@@ -1269,7 +1269,7 @@ fn (t &Transformer) function_alias_impl_name(name string) ?string {
 	aliases.sort()
 	for alias in aliases {
 		target := t.tc.type_aliases[alias] or { continue }
-		if target.trim_space() == clean {
+		if trimmed_transform_text(target) == clean {
 			return alias
 		}
 	}

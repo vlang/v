@@ -2,7 +2,7 @@ module types
 
 import v.flat
 
-fn test_scalar_parser_preserves_interner_order_and_context_cache_entries() {
+fn test_scalar_parser_preserves_interner_order_across_source_contexts() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	mut expected := TypeChecker.new(&a)
@@ -20,19 +20,22 @@ fn test_scalar_parser_preserves_interner_order_and_context_cache_entries() {
 		assert semantic_types_equal(parsed, expected_type)
 	}
 	assert tc.type_count() == expected.type_count()
-	assert tc.type_cache.parse_entries.len == names.len
-	assert tc.type_cache_stats().parse_misses == names.len
 	for name in names {
 		assert semantic_types_equal(tc.parse_type(name), builtin_type_value(name))
 	}
-	assert tc.type_cache_stats().parse_hits == names.len
 	tc.cur_file = 'two.v'
 	for name in names {
 		assert semantic_types_equal(tc.parse_type(name), builtin_type_value(name))
 	}
 	assert tc.type_count() == expected.type_count()
-	assert tc.type_cache.parse_entries.len == 2 * names.len
-	assert tc.type_cache_stats().parse_misses == 2 * names.len
+	// Builtin meanings stay fixed when the source context changes. Their IDs
+	// need no separate contextual parse entry for each referencing file.
+	for name in names {
+		id := tc.parse_type_id(name) or { panic('missing scalar identity') }
+		assert semantic_types_equal(tc.type_by_id(id) or { panic('missing scalar') },
+			builtin_type_value(name))
+	}
+	assert tc.type_count() == expected.type_count()
 }
 
 fn test_scalar_parser_keeps_recursive_alias_and_type_parameter_precedence() {

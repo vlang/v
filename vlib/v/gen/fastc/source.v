@@ -19,9 +19,34 @@ fn fastc_vmod_root_for_file(source_file string) string {
 fn fastc_preferences_for_entry_paths(paths []string, prefs &pref.Preferences) pref.Preferences {
 	mut scoped := *prefs
 	if scoped.module_resolution_root == '' && paths.len > 0 {
-		scoped.module_resolution_root = os.dir(os.real_path(paths[0]))
+		scoped.module_resolution_root = if os.is_dir(paths[0]) {
+			os.real_path(paths[0])
+		} else {
+			os.dir(os.real_path(paths[0]))
+		}
 	}
 	return scoped
+}
+
+fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]string {
+	mut entries := []string{}
+	for path in paths {
+		if !os.is_dir(path) {
+			entries << path
+			continue
+		}
+		files := fastc_list_module_sources(os.real_path(path), prefs)
+		if files.len == 0 {
+			return error('fastc entry directory `${path}` has no V source files for this target')
+		}
+		if prefs.building_v {
+			// The real-builtin resolver gathers the entry file's module siblings.
+			entries << files[0]
+		} else {
+			entries << files
+		}
+	}
+	return entries
 }
 
 fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) string {
@@ -86,7 +111,8 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]FastcSourceFile, map[string]string) {
 	mut pending_memo_store := FastcPendingMemoStore{}
 	scoped_prefs := fastc_preferences_for_entry_paths(paths, prefs)
-	sources, module_aliases := fastc_resolve_source_files_deferring_memo(paths, &scoped_prefs, mut pending_memo_store)!
+	entries := fastc_expand_entry_paths(paths, &scoped_prefs)!
+	sources, module_aliases := fastc_resolve_source_files_deferring_memo(entries, &scoped_prefs, mut pending_memo_store)!
 	fastc_wait_memo_store(mut pending_memo_store)
 	return sources, module_aliases
 }
@@ -142,6 +168,15 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 	mut queue := []FastcQueuedSource{}
 	if prefs.building_v {
 		for builtin_file in fastc_module_source_files(builtin_dir, prefs, mut module_dir_files) {
+			// V3 uses the pointer-sized map implementation selected by `v3_backend`.
+			// The legacy layout in map.v belongs to the compatibility compiler.
+			if os.file_name(builtin_file) == 'map.v' && 'v3_backend' in prefs.user_defines {
+				continue
+			}
+			// FastC has no 128-bit integer lowering yet.
+			if os.file_name(builtin_file) in ['int_d_v3_backend.v', 'string_d_v3_backend.v'] {
+				continue
+			}
 			queue << FastcQueuedSource{
 				path:         builtin_file
 				module_name:  'builtin'
@@ -516,9 +551,8 @@ fn fastc_resolve_memo_path_of_real(real_paths []string, prefs &pref.Preferences)
 		return ''
 	}
 	mut hash := u64(14695981039346656037)
-	// The format version keeps compilers that write different memo layouts
-	// from overwriting each other's memo.
-	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-2')
+	// The resolver version separates memo layouts and implicit dependencies.
+	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-3')
 	hash = fastc_fnv_hash(hash, prefs.vroot)
 	hash = fastc_fnv_hash(hash, prefs.target.os)
 	hash = fastc_fnv_hash(hash, prefs.target.arch)
@@ -1201,11 +1235,15 @@ fn fastc_canonicalize_header_imports(header FastcSourceHeader, module_aliases ma
 	for alias, import_path in header.imports {
 		resolved[alias] = module_aliases[import_path] or { import_path }
 	}
+	mut resolved_blank_imports := []string{}
+	for import_path in header.blank_imports {
+		resolved_blank_imports << module_aliases[import_path] or { import_path }
+	}
 	return FastcSourceHeader{
 		module_name:             header.module_name
 		imports:                 resolved
 		import_order:            header.import_order
-		blank_imports:           header.blank_imports
+		blank_imports:           resolved_blank_imports
 		has_globals:             header.has_globals
 		translated:              header.translated
 		has_constants:           header.has_constants
@@ -1413,6 +1451,27 @@ fn fastc_source_file_matches_backend(path string) bool {
 	return !path.ends_with('.arm64.v') && !path.ends_with('.amd64.v') && !path.ends_with('.native.v') && !path.ends_with('.wasm.v') && !path.ends_with('.rv64.v') && !path.ends_with('.js.v')
 }
 
+fn fastc_source_uses_captures(source string, prefs &pref.Preferences) bool {
+	if !source.contains('fn') || !source.contains('[') {
+		return false
+	}
+	mut scan := scanner.new_scanner(prefs, .normal)
+	file := token.File.unindexed('closure_probe', source.len)
+	scan.init(file, source)
+	mut tok := scan.scan()
+	for tok != .eof {
+		if tok == .key_fn {
+			tok = scan.scan()
+			if tok == .lsbr {
+				return true
+			}
+			continue
+		}
+		tok = scan.scan()
+	}
+	return false
+}
+
 fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences) !FastcSourceHeader {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
@@ -1520,6 +1579,24 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	}
 	if module_name == '' {
 		module_name = 'main'
+	}
+	if prefs.backend == 'fastc' && prefs.building_v && prefs.target.os == 'linux'
+		&& !(prefs.target.arch == 'amd64' && 'musl' in prefs.user_defines)
+		&& module_name == 'builtin' && path.ends_with('builtin_d_gcboehm.c.v') {
+		// TinyCC's GC helpers require the platform atomic declarations and
+		// library even when the application itself does not import sync.
+		// On musl amd64, TinyCC supplies the helpers and the driver supplies
+		// the fence object; importing stdatomic would add unsupported atomic.S.
+		imports['__fastc_gc_atomic'] = 'sync.stdatomic'
+		if 'sync.stdatomic' !in import_order {
+			import_order << 'sync.stdatomic'
+		}
+	}
+	if prefs.building_v && !prefs.selfhost && fastc_source_uses_captures(source, prefs) {
+		imports['__fastc_closure'] = 'builtin.closure'
+		if 'builtin.closure' !in import_order {
+			import_order << 'builtin.closure'
+		}
 	}
 	// V auto-injects `import orm` for files that use `sql <conn> { ... }` blocks.
 	// Mirror that so the ORM lowering resolves `orm.Table`/`orm.QueryData`/... and the

@@ -701,6 +701,8 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		}
 		for mode in modes {
 			for prod in [false, true] {
+				// TinyCC is not a -prod compiler, so there is no production TinyCC build to check.
+				if compiler == 'tcc' && prod { continue }
 				mut flags := ['-cc', compiler, '-gc', 'none', '-path', 'modules/../modules|@vlib',
 					'-file-list', '../shared support.v,../implementers']
 				if prod { flags << '-prod' }
@@ -1014,4 +1016,53 @@ fn test_refresh_replays_and_clears_test_assert_display_modes() ! {
 	refresh(vexe, [true, false].map(Request{ module: 'sample', is_test: true, show_test_stats: it }))!
 	assert os.read_file(log)!.split_into_lines() == ['1', 'unset']
 	assert os.getenv('VTEST_SHOW_ASSERTS') == 'ambient'
+}
+
+fn test_refresh_skips_production_tinycc_alias_before_starting_builds() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'cache_refresh_prod_tcc_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	alias := os.join_path(root, 'cc')
+	os.write_file(alias, '#!/bin/sh\nprintf "tcc version 0.9.27\\n"\n')!
+	os.chmod(alias, 0o700)!
+	request := Request{ args: ['-prod', '-cc', './cc'], cwd: root, module: 'builtin' }
+	assert request_uses_prod_tcc(request)
+	equals_request := Request{ ...request, args: ['-prod', '-cc=./cc'] }
+	assert request_uses_prod_tcc(equals_request)
+	refresh(os.join_path(root, 'missing-v'), [request])!
+	project := os.join_path(root, 'tinycc-project')
+	os.mkdir_all(project)!
+	os.mkdir_all(os.join_path(root, 'vlib', 'builtin'))!
+	wrapper := os.join_path(root, 'context-wrapper')
+	os.write_file(wrapper, '#!/bin/sh\ncase "$PWD" in\n*/tinycc-project) echo "tcc version 0.9.27" ;;\n*) echo "clang version 19.1.7" ;;\nesac\n')!
+	os.chmod(wrapper, 0o700)!
+	marker := os.join_path(root, 'refresh-started')
+	fake_v := os.join_path(root, 'fake-v')
+	os.write_file(fake_v, '#!/bin/sh\necho started > ' + os.quoted_path(marker) + '\nexit 91\n')!
+	os.chmod(fake_v, 0o700)!
+	before := os.getwd()
+	for args in [['-prod', '-cc', wrapper], ['-prod', '-cc', '../context-wrapper'],
+		['-prod', '-cc=../context-wrapper']] {
+		context_request := Request{ ...request, args: args, cwd: project }
+		assert request_uses_prod_tcc(context_request)
+		refresh(fake_v, [context_request])!
+		assert !os.exists(marker)
+	}
+	assert !request_uses_prod_tcc(Request{ ...request, args: ['-prod', '-cc', wrapper] })
+	assert os.getwd() == before
+	bare := 'cache_context_cc_${os.getpid()}'
+	os.cp(wrapper, os.join_path(project, bare))!
+	os.chmod(os.join_path(project, bare), 0o700)!
+	saved_path := os.getenv('PATH')
+	defer { os.setenv('PATH', saved_path, true) }
+	os.setenv('PATH', '.' + os.path_delimiter + saved_path, true)
+	context_request := Request{ ...request, args: ['-prod', '-cc', bare], cwd: project }
+	assert request_uses_prod_tcc(context_request)
+	refresh(fake_v, [context_request])!
+	assert !os.exists(marker)
+	assert os.getenv('PATH') == '.' + os.path_delimiter + saved_path
+	assert os.getwd() == before
 }

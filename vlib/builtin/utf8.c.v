@@ -1,7 +1,5 @@
 module builtin
 
-import strings
-
 const cp_acp = 0
 const cp_utf8 = 65001
 
@@ -73,22 +71,14 @@ pub fn string_from_wide(_wstr &u16) string {
 // style string, encoded in UTF-16. It is more efficient, compared to
 // string_from_wide, but it requires you to know the input string length,
 // and to pass it as the second argument.
+// A surrogate pair is decoded to the code point that it stands for. An unpaired
+// surrogate, which valid UTF-16 does not contain, is kept in its 3 byte form
+// (see wtf8_from_wide), so that no input unit is lost.
 // See also builtin.wchar.to_string2/2, for a version that eases working
 // with the platform dependent &wchar_t L"" strings.
 @[manualfree; unsafe]
 pub fn string_from_wide2(_wstr &u16, len int) string {
-	$if windows {
-		return wtf8_from_wide(_wstr, len)
-	} $else {
-		mut sb := strings.new_builder(len)
-		for i := 0; i < len; i++ {
-			u := unsafe { rune(_wstr[i]) }
-			sb.write_rune(u)
-		}
-		res := sb.str()
-		unsafe { sb.free() }
-		return res
-	}
+	return wtf8_from_wide(_wstr, len)
 }
 
 // wtf8_to_wide decodes V's Windows path representation. Unlike strict UTF-8,

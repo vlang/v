@@ -348,19 +348,48 @@ pub fn file_ext(opath string) string {
 	return path[pos..]
 }
 
+// backslash_separates returns true when `\` separates the elements of `path`, as `/` always does.
+// On Windows it does, so a path may mix both separators. On other systems `\` is a valid file
+// name character, and it separates only in a path that has no `/` at all, so that a Windows
+// style path like `v\vlib\os` is split in the same way on every system.
+fn backslash_separates(path string) bool {
+	$if windows {
+		return true
+	}
+	return !path.contains_u8(fslash)
+}
+
+// last_separator_index returns the index of the last path separator in `path[..end]`, or -1
+// when it has none. The last element of the path starts right after it. `/` is always a
+// separator, `\` is one when `bslash_separates` is true (see backslash_separates).
+@[direct_array_access]
+fn last_separator_index(path string, end int, bslash_separates bool) int {
+	for i := end - 1; i >= 0; i-- {
+		c := path[i]
+		if c == fslash || (bslash_separates && c == bslash) {
+			return i
+		}
+	}
+	return -1
+}
+
 // dir returns all but the last element of path, typically the path's directory.
 // After dropping the final element, trailing slashes are removed.
 // If the path is empty, dir returns ".". If the path consists entirely of separators,
 // dir returns a single separator.
 // The returned path does not end in a separator unless it is the root directory.
+// On Windows both `/` and `\` separate path elements. On other systems `\` does so only in
+// a path that has no `/`.
 pub fn dir(path string) string {
 	if path == '' {
 		return '.'
 	}
-	detected_path_separator := if path.contains('/') { '/' } else { '\\' }
-	pos := path.last_index(detected_path_separator) or { return '.' }
+	pos := last_separator_index(path, path.len, backslash_separates(path))
+	if pos == -1 {
+		return '.'
+	}
 	if pos == 0 {
-		return detected_path_separator
+		return path[..1]
 	}
 	return path[..pos]
 }
@@ -369,31 +398,36 @@ pub fn dir(path string) string {
 // Trailing path separators are removed before extracting the last element.
 // If the path is empty, base returns ".". If the path consists entirely of separators, base returns a
 // single separator.
+// On Windows both `/` and `\` separate path elements. On other systems `\` does so only in
+// a path that has no `/`.
 pub fn base(path string) string {
 	if path == '' {
 		return '.'
 	}
-	detected_path_separator := if path.contains('/') { '/' } else { '\\' }
+	bslash_separates := backslash_separates(path)
 	mut end := path.len
-	for end > 0 && path[end - 1] == detected_path_separator[0] {
+	for end > 0 && (path[end - 1] == fslash || (bslash_separates && path[end - 1] == bslash)) {
 		end--
 	}
 	if end == 0 {
-		return detected_path_separator
+		return path[..1]
 	}
-	trimmed := path[..end]
-	pos := trimmed.last_index(detected_path_separator) or { return trimmed.clone() }
-	return trimmed[pos + 1..]
+	pos := last_separator_index(path, end, bslash_separates)
+	return path[pos + 1..end]
 }
 
-// file_name will return all characters found after the last occurrence of `path_separator`.
+// file_name will return all characters found after the last path separator.
 // file extension is included.
+// On Windows both `/` and `\` separate path elements. On other systems `\` does so only in
+// a path that has no `/`.
 pub fn file_name(path string) string {
-	detected_path_separator := if path.contains('/') { '/' } else { '\\' }
-	return path.all_after_last(detected_path_separator)
+	pos := last_separator_index(path, path.len, backslash_separates(path))
+	return path[pos + 1..]
 }
 
 // split_path will split `path` into (`dir`,`filename`,`ext`).
+// On Windows both `/` and `\` separate path elements. On other systems `\` does so only in
+// a path that has no `/`.
 // Examples:
 // ```v
 // dir,filename,ext := os.split_path('/usr/lib/test.so')
@@ -408,27 +442,15 @@ pub fn split_path(path string) (string, string, string) {
 		return '..', '', ''
 	}
 
-	detected_path_separator := if path.contains('/') { '/' } else { '\\' }
-
-	if path == detected_path_separator {
-		return detected_path_separator, '', ''
-	}
-	if path.ends_with(detected_path_separator) {
-		return path[..path.len - 1], '', ''
-	}
+	pos := last_separator_index(path, path.len, backslash_separates(path))
 	mut dir_path := '.'
-	/*
-		TODO: JS backend does not support IfGuard yet.
-	*/
-	pos := path.last_index(detected_path_separator) or { -1 }
-	if pos == -1 {
-		dir_path = '.'
-	} else if pos == 0 {
-		dir_path = detected_path_separator
-	} else {
+	if pos == 0 {
+		dir_path = path[..1]
+	} else if pos > 0 {
 		dir_path = path[..pos]
 	}
-	fname := path.all_after_last(detected_path_separator)
+	// A path that ends with a separator has an empty file name.
+	fname := path[pos + 1..]
 	pos_ext := fname.last_index_u8(`.`)
 	if pos_ext == -1 || pos_ext == 0 || pos_ext + 1 >= fname.len {
 		return dir_path, fname, ''
@@ -871,6 +893,8 @@ pub:
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
+// The files of each directory come in the order of `os.ls`, which is not sorted and differs
+// between platforms and filesystems. Call `.sort()` on the result when a stable order is needed.
 // For listing only one level deep, see: `os.ls`
 pub fn walk_ext(path string, ext string, opts WalkParams) []string {
 	mut res := []string{}
@@ -899,6 +923,8 @@ fn impl_walk_ext(path string, ext string, mut out []string, opts WalkParams) {
 
 // walk traverses the given directory `path`.
 // When a file is encountered, it will call the callback `f` with current file as argument.
+// The entries of each directory are visited in the order of `os.ls`, which is not sorted and
+// differs between platforms and filesystems. For a walk in lexical order, see: `os.walk_dir`
 // Note: walk can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`
@@ -1060,6 +1086,8 @@ pub type FnWalkContextCB = fn (voidptr, string)
 // For each encountered file *and* directory, it will call your `fcb` callback,
 // passing it the arbitrary `context` in its first parameter,
 // and the path to the file in its second parameter.
+// The entries of each directory are visited in the order of `os.ls`, which is not sorted and
+// differs between platforms and filesystems. For a walk in lexical order, see: `os.walk_dir`
 // Note: walk_with_context can be called even for deeply nested folders,
 // since it does not recurse, but processes them iteratively.
 // For listing only one level deep, see: `os.ls`

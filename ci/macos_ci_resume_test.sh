@@ -37,6 +37,12 @@ if [ "$1" = doctor ]; then
     echo doctor >> direct.log
     exit 0
 fi
+if [ "$1" = -no-memory-limit ]; then
+    [ "$2" = -silent ] && [ "$3" = test-self ] && [ "$4" = vlib ] || exit 98
+    [ "${VTEST_FAIL_FAST:-}" = 1 ] && [ "${VJOBS:-}" = 1 ] || exit 99
+    echo self-tests >> self.log
+    exit 0
+fi
 [ "$1" = run ] && [ "$2" = ci/macos_ci.vsh ] || exit 90
 [ "$CI" = true ] && [ "$GITHUB_ACTIONS" = true ] || exit 91
 [ "$VFLAGS" = '-cc clang' ] && [ "$V_MACOS_V3_NO_FALLBACK" = 1 ] || exit 92
@@ -127,6 +133,13 @@ done
 run_ci 0 v_doctor
 cmp "$work/saved" "$checkpoint"
 [ "$(cat "$checkout/direct.log")" = doctor ] || fail 'individual task did not run'
+
+# Execute the real self_tests task: its GitHub branch must retain the aggregate
+# runner's serial fail-fast setting instead of replacing it with the CPU count.
+(cd "$checkout" && GITHUB_JOB=clang-macos VTEST_FAIL_FAST=1 VJOBS=1 \
+    V_CI_VEXE="$fake_v" "$runner" self_tests) > "$work/output" 2>&1 || \
+    fail 'self_tests replaced the fail-fast worker count'
+[ "$(cat "$checkout/self.log")" = self-tests ] || fail 'self_tests did not run'
 
 # A second checkout must not consume the first checkout's saved progress.
 first_checkout=$checkout

@@ -84,7 +84,13 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 		temporary
 	}
 	return FastcStructLiteralFieldValue{
-		explicit_initializers: ['${field_decl_type} ${temporary} = (${value});']
+		explicit_initializers: if value.contains('({') {
+			// TinyCC cannot keep an outer aggregate initializer active while
+			// evaluating a statement expression with its own initializers.
+			['${field_decl_type} ${temporary}; ${temporary} = (${value});']
+		} else {
+			['${field_decl_type} ${temporary} = (${value});']
+		}
 		rendered_field:        '.${c_field_name}=(${stored_value})'
 		field_value:           stored_value
 	}
@@ -201,7 +207,14 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		if tokens[index].tok == .ellipsis {
 			index++
 			value_start := index
-			for index < close && tokens[index].tok !in [.semicolon, .comma] {
+			// The base ends at a top-level separator, not one inside its own call.
+			mut depth := 0
+			for index < close && (depth > 0 || tokens[index].tok !in [.semicolon, .comma]) {
+				if tokens[index].tok in [.lpar, .lsbr, .lcbr] {
+					depth++
+				} else if tokens[index].tok in [.rpar, .rsbr, .rcbr] {
+					depth--
+				}
 				index++
 			}
 			if value_start == index {
@@ -369,7 +382,8 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 		rendered_fields = ordered_fields.clone()
 	}
-	if layout_type == 'array' {
+	if layout_type == 'array' && update_source == ''
+		&& c_type.trim_right('*').starts_with('Array_') {
 		array_type := c_type.trim_right('*')
 		element_type := g.array_element_type(array_type) or { return none }
 		length := field_values['len'] or { '0' }

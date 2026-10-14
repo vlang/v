@@ -175,6 +175,27 @@ fn (mut g Parser) fastc_array_str_name(c_type string) ?string {
 	return fn_name
 }
 
+fn (mut g Parser) fastc_map_str_name(c_type string) ?string {
+	map_type := fastc_normalize_inferred_type(c_type).trim_right('*')
+	key_type, value_type := g.map_key_value_types(map_type)?
+	fn_name := 'v_fastc_map_str_${map_type}'
+	if fn_name in g.spawn_helpers {
+		return fn_name
+	}
+	g.spawn_helpers[fn_name] = ''
+	g.protos.writeln('string ${fn_name}(${map_type} it);')
+	key_string := g.fastc_struct_field_str_expression('__vf_key', key_type) or {
+		g.spawn_helpers.delete(fn_name)
+		return none
+	}
+	value_string := g.fastc_struct_field_str_expression('(*(${value_type} *)builtin__map_get_check((map *)&it, &__vf_key))', value_type) or {
+		g.spawn_helpers.delete(fn_name)
+		return none
+	}
+	g.spawn_helpers[fn_name] = 'string ${fn_name}(${map_type} it) {\n\tstring res = _S("{");\n\tarray keys = builtin__map_keys((map *)&it);\n\tfor (int i = 0; i < keys.len; i++) {\n\t\t${key_type} __vf_key = *(${key_type} *)builtin__array_get(keys, i);\n\t\tif (i) res = builtin__string_plus(res, _S(", "));\n\t\tres = builtin__string_plus(res, ${key_string});\n\t\tres = builtin__string_plus(res, _S(": "));\n\t\tres = builtin__string_plus(res, ${value_string});\n\t}\n\treturn builtin__string_plus(res, _S("}"));\n}'
+	return fn_name
+}
+
 // fastc_struct_field_str_expression returns a C string expression that renders a struct
 // field value `value_c` of C type `field_c_type` for the default `str()`: a string is
 // single-quoted, a type with a `str()` method (user or builtin, e.g. `int`) calls it, an
@@ -194,6 +215,18 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 	}
 	if ft.trim_right('*').starts_with('Array_') {
 		if helper := g.fastc_array_str_name(ft) {
+			value := if ft.ends_with('*') { '*(${value_c})' } else { value_c }
+			return '${helper}(${value})'
+		}
+	}
+	if ft.trim_right('*').starts_with('Map_') {
+		if helper := g.fastc_map_str_name(ft) {
+			value := if ft.ends_with('*') { '*(${value_c})' } else { value_c }
+			return '${helper}(${value})'
+		}
+	}
+	if ft.trim_right('*') in g.sum_types {
+		if helper := g.fastc_sumtype_str_helper(ft) {
 			value := if ft.ends_with('*') { '*(${value_c})' } else { value_c }
 			return '${helper}(${value})'
 		}
@@ -258,6 +291,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 					format_specifier += g.lit
 				} else if g.tok == .minus {
 					format_specifier += '-'
+				} else if g.tok == .plus {
+					format_specifier += '+'
 				} else {
 					return g.unsupported('interpolation format token `${g.token_source()}`')
 				}
@@ -304,6 +339,18 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 			array_value := if interpolation_type.ends_with('*') { '*(${value})' } else { value }
 			parts << '${helper}(${array_value})'
+		} else if interpolation_type.trim_right('*').starts_with('Map_') {
+			helper := g.fastc_map_str_name(interpolation_type) or {
+				return g.unsupported('interpolation of map type `${value_type}`')
+			}
+			map_value := if interpolation_type.ends_with('*') { '*(${value})' } else { value }
+			parts << '${helper}(${map_value})'
+		} else if format_specifier == '+' && fastc_is_integer_expression_type(interpolation_type) {
+			// `${n:+}` signs a non-negative integer too.
+			integer_str := g.fastc_struct_field_str_expression('__vf_signed', interpolation_type) or {
+				return g.unsupported('interpolation format `+` for `${value_type}`')
+			}
+			parts << '({ ${interpolation_type} __vf_signed = (${value}); string __vf_signed_str = ${integer_str}; __vf_signed >= 0 ? builtin__string_plus(_S("+"), __vf_signed_str) : __vf_signed_str; })'
 		} else if g.declared_kinds[g.semantic_type_key(interpolation_type)] == .enum_ {
 			enum_key := g.semantic_type_key(interpolation_type)
 			is_unsigned := g.enum_flags[enum_key]
@@ -349,11 +396,23 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 		} else {
 			mut converted_primitive := false
-			if !g.selfhost {
+			if g.selfhost && interpolation_type in ['f64', 'f32'] {
+				// `${x:.1}`, `${x:8.2}`, `${x:-8.2}`, `${x:.2f}`: the C backend's float formats.
+				if float_format := fastc_float_interpolation_format(format_specifier) {
+					formatted := '${g.fastc_float_format_helper(float_format.fixed)}((double)(${value}), ${float_format.precision})'
+					parts << if float_format.width > 0 {
+						'v_fastc_string_pad(${formatted}, ${float_format.width}, ${float_format.left_align})'
+					} else {
+						formatted
+					}
+					converted_primitive = true
+				}
+			}
+			if !converted_primitive && (!g.selfhost || format_specifier != '') {
 				if primitive_conversion := fastc_primitive_interpolation_expression(interpolation_type, value, format_specifier) {
 					parts << primitive_conversion
 					converted_primitive = true
-				} else if fastc_is_primitive_interpolation_type(interpolation_type) {
+				} else if !g.selfhost && fastc_is_primitive_interpolation_type(interpolation_type) {
 					return g.unsupported('interpolation format `${format_specifier}` for `${value_type}`')
 				}
 			}
@@ -419,6 +478,11 @@ fn (mut g Parser) read_interpolated_string() !string {
 	if parts.len == 1 {
 		return parts[0]
 	}
+	if g.selfhost {
+		values_name := g.temporary_namespace('array') + '_literal'
+		return fastc_array_values_call_source('string', parts, values_name,
+			'builtin__string_plus_many(${parts.len}, ${values_name})')
+	}
 	return 'builtin__string_plus_many(${parts.len}, (string[]){${parts.join(', ')}})'
 }
 
@@ -480,14 +544,19 @@ fn fastc_integer_interpolation_format_is_supported(format string, is_unsigned bo
 fn fastc_primitive_interpolation_expression(value_type string, value string, format string) ?string {
 	if fastc_is_integer_expression_type(value_type) {
 		is_unsigned := fastc_is_unsigned_integer_type(value_type)
-		if !fastc_integer_interpolation_format_is_supported(format, is_unsigned) {
+		effective_format := if format.len > 0 && format[format.len - 1].is_digit() {
+			format + 'd'
+		} else {
+			format
+		}
+		if !fastc_integer_interpolation_format_is_supported(effective_format, is_unsigned) {
 			return none
 		}
-		if format != '' {
+		if effective_format != '' {
 			return if is_unsigned {
-				'v_fastc_unsigned_format((unsigned long long)(${value}), "${format}")'
+				'v_fastc_unsigned_format((unsigned long long)(${value}), "${effective_format}")'
 			} else {
-				'v_fastc_signed_format((long long)(${value}), "${format}")'
+				'v_fastc_signed_format((long long)(${value}), "${effective_format}")'
 			}
 		}
 	}

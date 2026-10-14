@@ -121,6 +121,69 @@ pub fn check() {
 	assert !body.contains('scalar_push_base'), body
 }
 
+fn test_scalar_append_outside_main_has_a_typed_spare_capacity_path() {
+	generated := scalar_array_generate('
+module scalar_library
+
+pub fn append(mut values []i64, value i64) {
+	values << value
+}
+', [])!
+	body := scalar_array_body(generated, 'scalar_library__append')
+	assert body.contains('scalar_push_base'), body
+	assert body.contains('->len <'), body
+	assert body.contains('ArrayFlags__is_slice'), body
+	assert body.contains('else { array_push('), body
+	assert !body.contains('[]){'), body
+}
+
+fn test_user_generic_array_push_call_keeps_its_qualified_function() {
+	generated := scalar_array_generate('
+module scalar_generic
+
+fn array_push[T](mut values []T, value &T) {
+	values[0] = *value
+}
+
+pub fn check() {
+	mut values := []i64{len: 1, cap: 4, init: 1}
+	value := i64(42)
+	array_push(mut values, &value)
+}
+', [])!
+	body := scalar_array_body(generated, 'scalar_generic__check')
+	assert !body.contains('scalar_push_base'), body
+}
+
+fn test_global_array_push_callback_keeps_its_call() {
+	generated := scalar_array_generate('
+@[has_globals]
+module scalar_global
+
+__global array_push = fn (mut values []i64, value &i64) {
+	values[0] = *value + 1000
+}
+
+pub fn check() {
+	mut values := []i64{len: 1, cap: 4, init: 1}
+	value := i64(42)
+	array_push(mut values, &value)
+}
+
+pub fn append(mut values []i64, value i64) {
+	values << value
+}
+', [])!
+	body := scalar_array_body(generated, 'scalar_global__check')
+	assert body.contains('scalar_global__array_push('), body
+	assert !body.contains('scalar_push_base'), body
+	// An append lowered in that module is still an append, not a call of the global.
+	appended := scalar_array_body(generated, 'scalar_global__append')
+	assert appended.contains('scalar_push_base'), appended
+	assert appended.contains('else { array_push('), appended
+	assert !appended.contains('scalar_global__array_push('), appended
+}
+
 fn scalar_array_body(generated string, name string) string {
 	assert generated.contains('void ${name}('), 'missing generated function ${name}'
 	return generated.all_after_last('void ${name}(').all_after('{').all_before('\n}').trim_space()
