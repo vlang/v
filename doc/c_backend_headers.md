@@ -22,6 +22,10 @@ regardless of source collection order.
 The headerless requirement covers hello world and compiler self builds, rather than every
 library binding. Modules such as `compress.brotli` retain their C headers and cached
 implementations.
+Assertion messages and their formatting temporaries are emitted inside the failure branch.
+Passing assertions do not evaluate message operands or call their `str()` methods,
+including for array interpolation and value `if` or `match` expressions.
+
 Coverage and profiling retain file I/O and timer declarations even when the application
 imports no standard library modules.
 On macOS, standalone `statvfs` storage retains the native 32-bit block and inode counters;
