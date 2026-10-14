@@ -21,7 +21,8 @@ mut:
 }
 
 // BTree is an ordered map with logarithmic insert, lookup and delete. Keys
-// must support `<` and `==` (all integer, float and string types do). It is
+// must have a total order consistent with `<` and `==`; floating-point NaN
+// keys are unsupported. Integer, other float and string keys work. It is
 // the V-idiomatic equivalent of Rust's `std::collections::BTreeMap`,
 // complementing the string-only builtin `SortedMap` and the unordered builtin
 // `map` and `datatypes.Set`.
