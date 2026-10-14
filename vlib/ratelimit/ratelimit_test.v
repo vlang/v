@@ -64,3 +64,17 @@ fn test_token_bucket_concurrent_allow() {
 	s := b.stats()
 	assert s.allowed + s.denied == 200, 'every call must be counted exactly once'
 }
+
+fn test_token_bucket_clock_does_not_refill_twice() {
+	mut clk := &MsClock{ now: 1000 }
+	clock := fn [clk] () i64 { return clk.now }
+	mut b := new_token_bucket_with_clock(TokenBucketConfig{ rate_per_sec: 10.0, burst: 1 }, clock)
+	assert b.allow()
+	clk.now = 900
+	assert !b.allow()
+	clk.now = 1000
+	assert !b.allow()
+	clk.now = 1100
+	assert b.allow()
+	assert !b.allow()
+}
