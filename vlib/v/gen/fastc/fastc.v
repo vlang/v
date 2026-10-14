@@ -588,7 +588,9 @@ extern char **backtrace_symbols(void *const *, int);
 extern void backtrace_symbols_fd(void *const *, int, int);
 #endif
 #if defined(__GLIBC__)
-/* glibc exports `gettid` only from 2.30 on; the system call works with any glibc. */
+/* glibc exports `gettid` only from 2.30 on; the system call works with any glibc.
+   Strict feature modes hide `syscall` in <unistd.h>, so it is declared here. */
+long syscall(long number, ...);
 static inline pid_t v_fastc_gettid(void) { return (pid_t)syscall(SYS_gettid); }
 #define gettid v_fastc_gettid
 #else

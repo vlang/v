@@ -154,3 +154,41 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '5\n2'
 }
+
+// A parameter shadows a generic only inside its function: a constant initialized after
+// it with a call to that generic gets an instance for the call.
+fn test_fastc_generic_called_after_a_function_with_a_shadowing_parameter_is_instantiated() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_generic_fixture('after_shadow', 'module main
+
+fn transform[T](x T) T {
+	return x
+}
+
+fn hold(transform fn (int) int) int {
+	return transform(2)
+}
+
+const answer = transform(1)
+
+fn double(x int) int {
+	return x * 2
+}
+
+fn main() {
+	println(answer)
+	println(hold(double))
+}
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '1\n4'
+}
