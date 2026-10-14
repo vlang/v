@@ -40,3 +40,12 @@ fn test_lcm_saturates() {
 	assert lcm(i32(2000000000), i32(3)) == 2147483647
 	assert lcm(max_u64, u64(2)) == max_u64
 }
+
+fn test_gcd_many_preserves_unsaturated_magnitude() {
+	assert gcd_many([min_i8, i8(0), i8(2)]) == 2
+	assert gcd_many([min_i8, i8(2), i8(0)]) == 2
+	assert gcd_many([i8(0), min_i8, i8(2)]) == 2
+	assert gcd_many([min_i64, i64(0), i64(16)]) == 16
+	assert gcd_many([min_i8]) == max_i8
+	assert lcm(min_i8, min_i8) == max_i8
+}

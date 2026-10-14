@@ -13,3 +13,9 @@ infinity as input returns positive infinity.
 The trigonometric functions `sin`, `cos`, `sincos`, `tan` and `cot` reduce large finite angles
 with multiword arithmetic before evaluation, including inputs near a multiple of pi/2 and
 values up to `math.max_f64`. Infinite angles produce NaN.
+
+`gcd(a, b)` and `lcm(a, b)` accept matching integer types from `i8` through `i64`,
+`u8` through `u64`, and `int`. They compute with unsigned magnitudes, including signed minimum
+values, and clamp an unrepresentable result to the type maximum.
+`gcd_many(values)` computes the common divisor before applying that clamp; its empty result is zero.
+`lcm_many(values)` returns one for an empty input and zero when any element is zero.

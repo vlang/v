@@ -44,18 +44,12 @@ pub fn fmod(x f64, y f64) f64 {
 // gcd calculates greatest common (positive) divisor (or zero if a and b are both zero).
 // It works on magnitudes in the u64 domain, so unlike plain negation it is
 // safe for minimum values; unrepresentable results saturate to the type
-// maximum. Supported for all fixed-width integer types.
+// maximum. Supports int and signed/unsigned integer widths up to 64 bits.
 pub fn gcd[T](a T, b T) T {
 	if a == T(0) && b == T(0) {
 		return T(0)
 	}
-	mut x := u64mag(a)
-	mut y := u64mag(b)
-	for y != 0 {
-		t := x % y
-		x = y
-		y = t
-	}
+	x := gcd_u64(u64mag(a), u64mag(b))
 	if x > u64(maxof[T]()) {
 		return maxof[T]()
 	}
@@ -79,14 +73,15 @@ pub fn egcd(a i64, b i64) (i64, i64, i64) {
 
 // lcm calculates least common (non-negative) multiple.
 // Results too large to represent saturate to the type maximum instead of
-// overflowing. Supported for all fixed-width integer types.
+// overflowing. Supports int and signed/unsigned integer widths up to 64 bits.
 pub fn lcm[T](a T, b T) T {
 	if a == T(0) || b == T(0) {
 		return T(0)
 	}
-	g := gcd(a, b)
-	qa := u64mag(a) / u64mag(g)
-	hi, lo := bits.mul_64(qa, u64mag(b))
+	x := u64mag(a)
+	y := u64mag(b)
+	qa := x / gcd_u64(x, y)
+	hi, lo := bits.mul_64(qa, y)
 	if hi != 0 || lo > u64(maxof[T]()) {
 		return maxof[T]()
 	}
