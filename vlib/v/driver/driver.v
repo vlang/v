@@ -6680,6 +6680,20 @@ fn incremental_top_level_nodes(a &flat.FlatAst) []bool {
 	return result
 }
 
+fn program_has_translated_module_attributes(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		idx := node.value.all_after('@attributes:').int()
+		if idx >= 0 && idx < a.nodes.len && a.nodes[idx].kind == .module_decl
+			&& node.generic_params().any(it.all_before(':').trim_space() == 'translated') {
+			return true
+		}
+	}
+	return false
+}
+
 fn incremental_declaration_attribute_signatures(a &flat.FlatAst) map[int]string {
 	mut result := map[int]string{}
 	for node in a.nodes {
@@ -7361,10 +7375,11 @@ fn promote_scoped_ast_nodes_flagged(mut ast flat.FlatAst, base_nodes int, new_en
 	}
 }
 
-// release_transform_helper_scopes canonicalizes every node text still owned by
-// one of the self-host transform helper arenas (preparation and pre-scan
-// indexes) and then frees those arenas.
-fn release_transform_helper_scopes(mut a flat.FlatAst, scopes []voidptr) {
+// publish_transform_helper_scope_texts canonicalizes every node text still
+// owned by one of the self-host transform helper arenas (preparation and
+// pre-scan indexes). The caller frees the arenas once nothing names their
+// memory any more: the type cache of the transform stage can.
+fn publish_transform_helper_scope_texts(mut a flat.FlatAst, scopes []voidptr) {
 	mut flags := []u8{len: a.nodes.len}
 	if transform.scan_scoped_text_flags_parallel_multi(a, scopes, mut flags) {
 		mut canon_cache := flat.TextProbeCache{}
@@ -7389,9 +7404,6 @@ fn release_transform_helper_scopes(mut a flat.FlatAst, scopes []voidptr) {
 		}
 	}
 	unsafe { flags.free() }
-	for scope in scopes {
-		prealloc_scope_free_for_v3(scope)
-	}
 }
 
 // canonicalize_scoped_node_cached is canonicalize_scoped_node with a pointer
@@ -7675,6 +7687,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.enum_fields = clone_string_list_map(tc.enum_fields)
 	tc.flag_enums = clone_string_bool_map(tc.flag_enums)
 	tc.interface_names = clone_string_bool_map(tc.interface_names)
+	tc.interface_generic_params = clone_string_list_map(tc.interface_generic_params)
 	tc.interface_fields = clone_struct_field_map(tc.interface_fields)
 	tc.interface_embeds = clone_string_list_map(tc.interface_embeds)
 	tc.interface_abstract_methods = clone_string_list_map(tc.interface_abstract_methods)
@@ -7970,7 +7983,7 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
 	resolved_path := os.real_path(compiler_path)
 	name := os.file_name(resolved_path).to_lower_ascii()
-	if name.contains('tcc') || name.contains('tinyc') {
+	if pref.tinycc_file_name(name) {
 		return 'tinyc'
 	}
 	if name.contains('clang') {
@@ -7995,7 +8008,7 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	}
 	compiler_result := cmdexec.run(compiler_path, ['--version'])
 	version := compiler_result.output.to_lower_ascii()
-	if version.contains('tiny c compiler') || version.contains('tcc version') {
+	if pref.ccompiler_version_is_tinycc(version) {
 		return 'tinyc'
 	}
 	if version.contains('clang') {
@@ -8025,6 +8038,14 @@ fn v3_select_implicit_c_compiler(c_compiler string, c_compiler_explicit bool, im
 		return implicit_tcc
 	}
 	return c_compiler
+}
+
+// v3_tcc_prod_rejected reports whether a `-prod` C build would compile with TinyCC.
+// Probe the actual compiler for production builds because its name may suggest Clang or GCC.
+// FastC refuses `-prod` on its own, earlier.
+fn v3_tcc_prod_rejected(is_prod bool, backend string, effective_c_compiler string, c_compiler string) bool {
+	return is_prod && backend == 'c'
+		&& (effective_c_compiler == 'tinyc' || pref.ccompiler_is_tinycc(c_compiler))
 }
 
 // V3CCompilerSelection is the C compiler that receives a compilation's first
@@ -11439,6 +11460,10 @@ pub fn run(args []string) {
 	c_compiler = selection.c_compiler
 	use_implicit_tcc_semantics := selection.use_implicit_tcc_semantics
 	effective_c_compiler := selection.effective_c_compiler
+	if v3_tcc_prod_rejected(is_prod, backend, effective_c_compiler, c_compiler) {
+		eprintln('tcc is not allowed with -prod')
+		exit(1)
+	}
 	if effective_c_compiler == 'msvc' && target.os != 'windows' && !output_cross_c {
 		eprintln('MSVC requires a Windows target; cannot compile target `${target.os}`')
 		exit(1)
@@ -12626,7 +12651,10 @@ pub fn run(args []string) {
 	}
 	use_macos_dev_program_cache := backend == 'c' && program_cache_enabled && !is_prod && !is_shared
 		&& !is_selfhost && prefs.normalized_target_os() == 'macos'
+	// Translated body edits can require new integer-formatting helpers and map
+	// declarations that the prior prefix did not contain. Rebuild that prefix.
 	incremental_cache_enabled := use_macos_dev_program_cache
+		&& !translated_mode && !program_has_translated_module_attributes(a)
 		&& os.getenv('V3_CACHE_DISABLE_INCREMENTAL') != '1'
 	mut generic_cache_inputs_ready := false
 	mut incremental_snapshot := V3IncrementalSnapshot{}
@@ -12962,6 +12990,9 @@ pub fn run(args []string) {
 	mut retained_transform_scope := unsafe { nil }
 	mut retained_transform_prepare_scope := unsafe { nil }
 	mut retained_transform_prescan_scopes := []voidptr{}
+	// Helper arenas of the transform stage whose texts are published, kept until
+	// the type cache that can name their memory is dropped.
+	mut transform_helper_scopes := []voidptr{}
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
@@ -13546,7 +13577,9 @@ pub fn run(args []string) {
 		if prepare_markused_overlap {
 			prepared_markused.release()
 		}
-		if skip_library_bodies {
+		// The frontier path already completed convergence for this reachability
+		// set. Profiling adds new roots above and still needs the ordinary check.
+		if skip_library_bodies && (!pre_tc.library_body_convergence_complete || is_prof) {
 			// The check found the types that markused resolves calls with, so
 			// markused can reach library functions that its first pass did not.
 			for {
@@ -13565,9 +13598,9 @@ pub fn run(args []string) {
 				used_fns, uses_generics = v3_mark_used_for_program(a, mut pre_tc, scope_prealloc_markused,
 					effective_c_compiler == 'msvc', prefs.verbose)
 			}
-			if verbose {
-				eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${pre_tc.library_bodies_checked_late()} checked late (worker threads: ${a.worker_count()})')
-			}
+		}
+		if skip_library_bodies && verbose {
+			eprintln('  [ttime] mu library bodies   ${pre_tc.skipped_library_bodies()} left unchecked, ${pre_tc.library_bodies_checked_late()} checked late (worker threads: ${a.worker_count()})')
 		}
 		mut prepared_transform := if prepare_transform_overlap {
 			prepared_transform_threads[0].wait()
@@ -13755,7 +13788,11 @@ pub fn run(args []string) {
 					helper_scopes << retained_transform_prepare_scope
 				}
 				helper_scopes << retained_transform_prescan_scopes
-				release_transform_helper_scopes(mut a, helper_scopes)
+				publish_transform_helper_scope_texts(mut a, helper_scopes)
+				// The type cache of this stage holds lookups keyed by the texts of
+				// these arenas. It is dropped before the transform arena is released,
+				// or kept with that arena through Cgen: release them with it.
+				transform_helper_scopes << helper_scopes
 				retained_transform_prepare_scope = unsafe { nil }
 				retained_transform_prescan_scopes = []voidptr{}
 			}
@@ -13936,6 +13973,10 @@ pub fn run(args []string) {
 					eprintln('  [leakcheck] tf scope: rc ${leaked_rc} fv ${leaked_fv} node.value ${leaked_nv} node.typ ${leaked_nt} first_rc ${first_leak}')
 				}
 				prealloc_scope_free_for_v3(transform_scope)
+				for scope in transform_helper_scopes {
+					prealloc_scope_free_for_v3(scope)
+				}
+				transform_helper_scopes = []voidptr{}
 				if verbose {
 					eprintln('  [ttime] promote checker    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 					post_sw.restart()
@@ -14160,8 +14201,6 @@ pub fn run(args []string) {
 				eprintln('mono AST before pass: ${a.nodes.len}/${a.nodes.cap} nodes, ${a.children.len}/${a.children.cap} children')
 			}
 			base_monomorph_nodes := a.nodes.len
-			monomorph_nodes_cap := a.nodes.cap
-			monomorph_children_cap := a.children.cap
 			base_specialized_fns := a.specialized_fn_nodes.len
 			monomorph_scope := prealloc_scope_begin_for_v3()
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a, &pre_tc, monomorph_input_used, !current_no_parallel
@@ -14173,10 +14212,10 @@ pub fn run(args []string) {
 				eprintln('mono AST after pass: ${a.nodes.len}/${a.nodes.cap} nodes, ${a.children.len}/${a.children.cap} children')
 			}
 			// The scoped transformer interns every escaping node payload while the
-			// parent arena is temporarily current. Only an unexpected AST backing
-			// growth still needs a full promotion clone.
-			if a.nodes.cap != monomorph_nodes_cap || a.children.cap != monomorph_children_cap
-				|| scoped_value_owned(monomorph_scope, a.nodes.data)
+			// parent arena is temporarily current, and it grows the AST backing in
+			// that arena as well. Only a backing that still ended up in the
+			// disposable arena needs a full promotion clone.
+			if scoped_value_owned(monomorph_scope, a.nodes.data)
 				|| scoped_value_owned(monomorph_scope, a.children.data) {
 				a = clone_flat_ast_after_transform_from_scope(a, monomorph_scope)
 				pre_tc.rebind_ast(a)
@@ -16208,6 +16247,10 @@ Please install the corresponding development package/libraries and make sure the
 		prealloc_scope_free_for_v3(retained_transform_prepare_scope)
 		retained_transform_prepare_scope = unsafe { nil }
 	}
+	for scope in transform_helper_scopes {
+		prealloc_scope_free_for_v3(scope)
+	}
+	transform_helper_scopes = []voidptr{}
 	if show_test_stats {
 		println('checker summary: 0 V errors, ${checker_warning_count} V warnings, ${checker_notice_count} V notices')
 	}
@@ -19513,12 +19556,15 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			}
 			err := type_errors[first_unused]
 			severity := if err.severity.len > 0 { err.severity } else { 'error:' }
-			print_type_diagnostic(a, severity, err)
+			mut first_run := compiler_errors.DiagnosticRun{}
+			print_type_diagnostic(mut first_run, a, severity, err)
 			return
 		}
 	}
 	mut ordered_notices := notices.clone()
 	ordered_notices.sort_with_compare(compare_print_notices)
+	// One report names the same few files many times over.
+	mut run := compiler_errors.DiagnosticRun{}
 	mut printed_diagnostics := 0
 	for notice in ordered_notices {
 		if skip_notices && notice.severity in ['', 'notice:'] {
@@ -19532,7 +19578,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			continue
 		}
 		severity := if notice.severity.len > 0 { notice.severity } else { 'notice:' }
-		print_type_diagnostic(a, severity, notice)
+		print_type_diagnostic(mut run, a, severity, notice)
 		printed_diagnostics++
 	}
 	source_errors := reorder_chained_generic_inference_errors(a, dedupe_type_diagnostics(a, type_errors))
@@ -19568,7 +19614,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	for ei in 0 .. max_errors {
 		err := ordered_errors[ei]
 		severity := if err.severity.len > 0 { err.severity } else { 'error:' }
-		print_type_diagnostic(a, severity, err)
+		print_type_diagnostic(mut run, a, severity, err)
 	}
 	if message_limit < 0 && !fatal_errors && !all_errors && ordered_errors.len > max_errors {
 		eprintln('... and ${ordered_errors.len - max_errors} more errors')
@@ -19772,13 +19818,13 @@ fn is_bare_generic_fntype_decl_error(err types.TypeError) bool {
 
 // print_type_diagnostic prints one diagnostic of the checker: a line of JSON with
 // `-json-errors`, else the message with its source excerpt and details.
-fn print_type_diagnostic(a &flat.FlatAst, severity string, diagnostic types.TypeError) {
+fn print_type_diagnostic(mut run compiler_errors.DiagnosticRun, a &flat.FlatAst, severity string, diagnostic types.TypeError) {
 	if compiler_errors.json_output() {
 		eprintln(compiler_errors.json_error(severity, diagnostic.msg, diagnostic.details, a,
 			diagnostic.node, diagnostic.pos))
 		return
 	}
-	eprintln(compiler_errors.formatted_error(severity, diagnostic.msg, a, diagnostic.node, diagnostic.pos))
+	eprintln(run.formatted_error(severity, diagnostic.msg, a, diagnostic.node, diagnostic.pos))
 	print_type_diagnostic_details(diagnostic.details)
 }
 

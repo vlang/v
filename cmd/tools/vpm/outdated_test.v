@@ -1,5 +1,5 @@
 // vtest retry: 3
-// vtest build: !windows
+// vtest build: network? && !windows
 module main
 
 import os
@@ -9,10 +9,6 @@ import test_utils { cmd_ok_args }
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_outdated_test_${rand.ulid()}')
 
 fn testsuite_begin() {
-	$if !network ? {
-		eprintln('> skipping ${@FILE}, when `-d network` is missing')
-		exit(0)
-	}
 	dump(test_path)
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path)!
