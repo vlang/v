@@ -296,3 +296,30 @@ fn test_fastc_linux_prealloc_without_spawn_requires_pthread_linking() {
 	assert generation.c_source().contains('pthread_key_create')
 	assert generation.uses_threads
 }
+
+fn test_fastc_backtrace_symbols_accept_erased_frames() {
+	$if !macos && !(linux && glibc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_backtrace_headers_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.c.v'), r'module main
+fn main() {
+	mut frames := [8]voidptr{}
+	count := C.backtrace(&frames[0], 8)
+	assert count > 0
+	symbols := C.backtrace_symbols(voidptr(&frames[0]), count)
+	assert symbols != unsafe { nil }
+	C.free(symbols)
+	println("backtrace preserved")
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-enable-globals', '-gc', 'none', '-no-prealloc',
+		'-nocache', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'backtrace preserved'
+}
