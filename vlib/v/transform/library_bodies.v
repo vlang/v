@@ -224,7 +224,7 @@ fn (mut t Transformer) library_type_reaches_program(typ string) bool {
 }
 
 fn library_type_text(typ string) string {
-	text := typ.trim_space()
+	text := trimmed_transform_text(typ)
 	return if text.starts_with('main.') { text['main.'.len..] } else { text }
 }
 

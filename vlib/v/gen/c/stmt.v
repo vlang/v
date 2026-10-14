@@ -7572,26 +7572,32 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			if node.typ.len > 0 {
 				decl_type := g.tc.parse_resolution_type(node.typ)
-				if _ := array_like_type(decl_type) {
-					rhs_v_type = decl_type
-				} else if _ := array_fixed_type(decl_type) {
-					rhs_v_type = decl_type
+				if !g.type_contains_generic_placeholder(decl_type) {
+					if _ := array_like_type(decl_type) {
+						rhs_v_type = decl_type
+					} else if _ := array_fixed_type(decl_type) {
+						rhs_v_type = decl_type
+					}
 				}
 			}
 			if lhs.typ.len > 0 {
 				lhs_decl_type := g.parse_node_type(&lhs)
-				if _ := array_like_type(lhs_decl_type) {
-					rhs_v_type = lhs_decl_type
-				} else if _ := array_fixed_type(lhs_decl_type) {
-					rhs_v_type = lhs_decl_type
+				if !g.type_contains_generic_placeholder(lhs_decl_type) {
+					if _ := array_like_type(lhs_decl_type) {
+						rhs_v_type = lhs_decl_type
+					} else if _ := array_fixed_type(lhs_decl_type) {
+						rhs_v_type = lhs_decl_type
+					}
 				}
 			}
 			if lhs.kind == .ident {
 				lhs_type := g.usable_expr_type(lhs_id)
-				if _ := array_like_type(lhs_type) {
-					rhs_v_type = lhs_type
-				} else if _ := array_fixed_type(lhs_type) {
-					rhs_v_type = lhs_type
+				if !g.type_contains_generic_placeholder(lhs_type) {
+					if _ := array_like_type(lhs_type) {
+						rhs_v_type = lhs_type
+					} else if _ := array_fixed_type(lhs_type) {
+						rhs_v_type = lhs_type
+					}
 				}
 			}
 			if arr := array_like_type(rhs_v_type) {
@@ -10271,6 +10277,28 @@ fn (g &FlatGen) or_expr_source_type(expr_id flat.NodeId, expr_node flat.Node) ty
 		decl_type := g.selector_declared_type(expr_id) or { types.Type(types.Unknown{}) }
 		if decl_type is types.OptionType || decl_type is types.ResultType {
 			return decl_type
+		}
+	}
+	// Flag enums lower `<Enum>.from(<int>)` to a `__v_result` compound expression
+	// in `gen_flag_enum_from_call`. Keep that result type visible to `gen_or_expr`
+	// when this call appears as `expr!`/`expr?`, otherwise the propagation and
+	// unwrap machinery is skipped and the compound expression leaks through.
+	if expr_node.kind == .call && expr_node.children_count > 0 {
+		call_node := g.a.child_node(&expr_node, 0)
+		if call_node.kind == .selector && call_node.value == 'from' && call_node.children_count > 0 {
+			base_id := g.a.child(call_node, 0)
+			base := g.a.nodes[int(base_id)]
+			if base.kind == .ident && g.selector_base_is_value(base.value) {
+				return g.usable_expr_type(expr_id)
+			}
+			if enum_name := g.enum_from_selector_base_name(base_id) {
+				if enum_name in g.tc.flag_enums
+					&& !g.selector_call_resolves_to_user_fn(expr_id, enum_name, call_node.value) {
+					return types.Type(types.ResultType{
+						base_type: types.Type(types.Enum{ name: enum_name })
+					})
+				}
+			}
 		}
 	}
 	return g.usable_expr_type(expr_id)

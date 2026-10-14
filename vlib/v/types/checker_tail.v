@@ -372,6 +372,11 @@ fn (mut tc TypeChecker) check_import_symbol_conflict(id flat.NodeId, name string
 }
 
 fn (mut tc TypeChecker) check_import_symbol_conflict_at(id flat.NodeId, name string, pos token.Pos) {
+	// A cached header combines imports from different source files. Its names
+	// were already checked in their original file scopes before being cached.
+	if is_module_cache_header(tc.cur_file) {
+		return
+	}
 	if name == '' || name == '_' || !tc.has_active_import(name) {
 		return
 	}

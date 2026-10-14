@@ -394,13 +394,14 @@ pub fn (t Time) relative_short() string {
 	return '${prefix}${y}y${suffix}'
 }
 
+// sakamoto_month_offsets is Sakamoto's day-of-week lookup table.
+// A fixed array avoids a heap allocation on every call.
+const sakamoto_month_offsets = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]!
+
 // day_of_week returns the current day of a given year, month, and day, as an integer.
 // The result is from 1 (Monday) to 7 (Sunday), also for the years before 1 of the
 // proleptic Gregorian calendar, where the year 0 is 1 BC.
 pub fn day_of_week(y int, m int, d int) int {
-	// Sakomotho's algorithm is explained here:
-	// https://stackoverflow.com/a/6385934
-	t := [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
 	mut sy := y
 	if m < 3 {
 		sy = sy - 1
@@ -411,7 +412,7 @@ pub fn day_of_week(y int, m int, d int) int {
 		// days, which is 20871 whole weeks), so use the same year of a later cycle.
 		sy = sy % 400 + 400
 	}
-	return (sy + sy / 4 - sy / 100 + sy / 400 + t[iclamp(0, m - 1, 11)] + d - 1) % 7 + 1
+	return (sy + sy / 4 - sy / 100 + sy / 400 + sakamoto_month_offsets[iclamp(0, m - 1, 11)] + d - 1) % 7 + 1
 }
 
 // day_of_week returns the current day as an integer.

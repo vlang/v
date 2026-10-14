@@ -1952,9 +1952,21 @@ fn (mut g FlatGen) gen_scalar_array_push_call_stmt(id flat.NodeId, node flat.Nod
 	callee_id := g.a.child(&node, 0)
 	callee := g.a.nodes[int(callee_id)]
 	resolved := g.call_key(id, target)
+	// A call through a global of this name is the program's own. The transformer
+	// records the helper as the target of an append it lowered, which tells the two
+	// apart where the module has such a global.
+	if _ := g.global_type_for_ident(target) {
+		recorded := g.tc.resolved_call_name(id) or { '' }
+		if recorded != target {
+			return false
+		}
+	}
+	// Outside `main` the key of the runtime helper is its module-qualified spelling,
+	// which names no function. Only a key that does name one belongs to the program.
 	if callee.kind != .ident || g.selector_base_is_local_value(target)
 		|| g.non_generic_fn_decl_exists_in_module(target, g.tc.cur_module)
-		|| resolved !in [target, 'builtin.${target}'] {
+		|| (resolved !in [target, 'builtin.${target}']
+			&& (resolved in g.tc.fn_param_types || resolved in g.tc.fn_ret_types)) {
 		return false
 	}
 	array_id := g.a.child(&node, 1)

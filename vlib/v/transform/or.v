@@ -130,7 +130,7 @@ fn (mut t Transformer) array_index_info_from_parts(base_id flat.NodeId, index_ex
 		base_type = base_type[1..]
 	}
 	for base_type.starts_with('shared ') {
-		base_type = base_type[7..].trim_space()
+		base_type = trimmed_transform_text(base_type[7..])
 	}
 	mut optional_type := ''
 	mut base_optional := false
@@ -307,10 +307,10 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 	if channel_type.len == 0 {
 		channel_type = t.node_type(channel_id)
 	}
-	channel_type = t.normalize_type_alias(channel_type).trim_space()
+	channel_type = trimmed_transform_text(t.normalize_type_alias(channel_type))
 	fallback_needs_deref := channel_type.starts_with('&')
 	for channel_type.starts_with('&') {
-		channel_type = channel_type[1..].trim_space()
+		channel_type = trimmed_transform_text(channel_type[1..])
 	}
 	if !channel_type.starts_with('chan ') {
 		if field_channel_type := t.channel_receive_selector_source_type(channel_id) {
@@ -320,7 +320,7 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 	if !channel_type.starts_with('chan ') {
 		return none
 	}
-	value_type := t.normalize_type_alias(channel_type[5..].trim_space())
+	value_type := t.normalize_type_alias(trimmed_transform_text(channel_type[5..]))
 	if value_type.len == 0 {
 		return none
 	}
@@ -340,7 +340,7 @@ fn (t &Transformer) channel_receive_selector_source_type(channel_id flat.NodeId)
 		return none
 	}
 	for candidate in [t.resolve_selector_type(node), t.selector_field_type(node)] {
-		clean := t.normalize_type_alias(candidate).trim_space()
+		clean := trimmed_transform_text(t.normalize_type_alias(candidate))
 		if clean.starts_with('chan ') || clean.starts_with('&chan ') {
 			return clean.trim_left('&').trim_space()
 		}
@@ -363,7 +363,7 @@ fn (mut t Transformer) channel_receive_source_needs_deref(channel_id flat.NodeId
 	if source_type.len == 0 {
 		source_type = t.node_type(channel_id)
 	}
-	source_type = t.normalize_type_alias(source_type).trim_space()
+	source_type = trimmed_transform_text(t.normalize_type_alias(source_type))
 	return source_type.starts_with('&')
 }
 
@@ -399,7 +399,7 @@ fn (mut t Transformer) channel_receive_or_info(node flat.Node) ?ChannelReceiveIn
 	if expr.kind != .prefix || expr.op != .arrow || expr.children_count == 0 {
 		return none
 	}
-	mut value_type := t.normalize_type_alias(node.typ).trim_space()
+	mut value_type := trimmed_transform_text(t.normalize_type_alias(node.typ))
 	if (value_type.len == 0 || value_type in ['void', 'unknown'])
 		&& t.is_optional_type_name(t.cur_fn_ret_type) {
 		value_type = t.optional_base_type(t.qualify_optional_type(t.cur_fn_ret_type))
@@ -1096,7 +1096,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 }
 
 fn (t &Transformer) specialized_or_expr_types(expr_type string) (string, string) {
-	clean := expr_type.trim_space()
+	clean := trimmed_transform_text(expr_type)
 	if clean in ['!', '?'] {
 		return '${clean}void', 'void'
 	}
@@ -1116,7 +1116,7 @@ fn (t &Transformer) specialized_or_expr_types(expr_type string) (string, string)
 }
 
 fn (t &Transformer) qualify_specialized_or_expr_value_type(typ string) string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.starts_with('(') && clean.ends_with(')') {
 		mut qualified_items := []string{}
 		for item in split_generic_args(clean[1..clean.len - 1]) {
@@ -1171,12 +1171,12 @@ fn (mut t Transformer) thread_wait_or_expr_type(call flat.Node) ?string {
 		return thread_array_wait_return_type(fixed_array_elem_type(clean))
 	}
 	if clean.starts_with('[]') {
-		return thread_array_wait_return_type(clean[2..].trim_space())
+		return thread_array_wait_return_type(trimmed_transform_text(clean[2..]))
 	}
 	if !clean.starts_with('thread ') {
 		return none
 	}
-	payload := clean[7..].trim_space()
+	payload := trimmed_transform_text(clean[7..])
 	if payload == '?' || payload == '!' {
 		return '${payload}void'
 	}
@@ -1724,7 +1724,7 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 }
 
 fn (t &Transformer) qualify_or_storage_type(typ string) string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.len == 0 {
 		return clean
 	}
@@ -2077,7 +2077,7 @@ fn (t &Transformer) shared_alias_storage_type(typ string) string {
 	if isnil(t.tc) {
 		return typ
 	}
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.len == 0 || clean.starts_with('&') {
 		return typ
 	}
@@ -2105,9 +2105,9 @@ fn (t &Transformer) shared_alias_storage_type(typ string) string {
 }
 
 fn shared_alias_inner_type_text(raw string) ?string {
-	clean := raw.trim_space()
+	clean := trimmed_transform_text(raw)
 	if clean.starts_with('shared ') {
-		return clean[7..].trim_space()
+		return trimmed_transform_text(clean[7..])
 	}
 	return none
 }

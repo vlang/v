@@ -142,7 +142,7 @@ fn (t &Transformer) comptime_for_base_type(raw string) string {
 }
 
 fn (t &Transformer) comptime_for_value_source_type(raw string) ?string {
-	clean := raw.trim_space()
+	clean := trimmed_transform_text(raw)
 	if clean.len == 0 {
 		return none
 	}
@@ -158,11 +158,11 @@ fn (t &Transformer) comptime_for_value_source_type(raw string) ?string {
 }
 
 fn (t &Transformer) comptime_for_var_source_type(name string) ?string {
-	raw_typ := t.raw_var_type(name).trim_space()
+	raw_typ := trimmed_transform_text(t.raw_var_type(name))
 	if raw_typ.len > 0 {
 		return t.comptime_for_value_type_base(raw_typ)
 	}
-	typ := t.var_type(name).trim_space()
+	typ := trimmed_transform_text(t.var_type(name))
 	if typ.len > 0 {
 		return t.comptime_for_value_type_base(typ)
 	}
@@ -184,14 +184,14 @@ fn (t &Transformer) comptime_for_field_source_type(owner_type string, field_name
 }
 
 fn (t &Transformer) comptime_for_value_type_base(raw string) string {
-	mut typ := raw.trim_space()
+	mut typ := trimmed_transform_text(raw)
 	for {
 		if typ.starts_with('mut ') {
-			typ = typ[4..].trim_space()
+			typ = trimmed_transform_text(typ[4..])
 		} else if typ.starts_with('shared ') || typ.starts_with('atomic ') {
-			typ = typ[7..].trim_space()
+			typ = trimmed_transform_text(typ[7..])
 		} else if typ.starts_with('&') {
-			typ = typ[1..].trim_space()
+			typ = trimmed_transform_text(typ[1..])
 		} else {
 			break
 		}
@@ -200,7 +200,7 @@ fn (t &Transformer) comptime_for_value_type_base(raw string) string {
 }
 
 fn (t &Transformer) comptime_resolve_selective_import_type(raw string) string {
-	clean := raw.trim_space()
+	clean := trimmed_transform_text(raw)
 	if clean.len == 0 || isnil(t.tc) || t.cur_file.len == 0 {
 		return clean
 	}
@@ -233,7 +233,7 @@ fn (t &Transformer) comptime_resolve_selective_import_type(raw string) string {
 }
 
 fn (t &Transformer) comptime_resolve_selective_import_reflection_source(raw string) string {
-	clean := raw.trim_space()
+	clean := trimmed_transform_text(raw)
 	if clean.len == 0 || isnil(t.tc) || t.cur_file.len == 0 {
 		return clean
 	}
@@ -436,7 +436,7 @@ fn comptime_param_scan_thread(arg voidptr) voidptr {
 }
 
 fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
-	mut typ := raw.trim_space()
+	mut typ := trimmed_transform_text(raw)
 	if typ.len == 0 {
 		return typ
 	}
@@ -448,10 +448,10 @@ fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
 	}
 	mut seen := map[string]bool{}
 	seen[typ] = true
-	typ = normalized.trim_space()
+	typ = trimmed_transform_text(normalized)
 	for typ.len > 0 && typ !in seen {
 		seen[typ] = true
-		next := t.normalize_type_alias(typ).trim_space()
+		next := trimmed_transform_text(t.normalize_type_alias(typ))
 		if next == typ {
 			break
 		}
@@ -491,7 +491,7 @@ fn is_trim_space_byte(c u8) bool {
 // comptime_typeof_unaliased_type removes only aliases at the root of a reflected type.
 // Aliases nested inside arrays, maps, options, and other aggregate types retain their identity.
 fn (t &Transformer) comptime_typeof_unaliased_type(raw string) string {
-	clean := raw.trim_space()
+	clean := trimmed_transform_text(raw)
 	if clean.len == 0 || isnil(t.tc) {
 		return t.comptime_normalize_type_alias_chain(clean)
 	}
@@ -638,7 +638,7 @@ fn (mut t Transformer) comptime_attribute_metas(source string, loop_id flat.Node
 }
 
 fn (t &Transformer) comptime_reflection_source(source string, loop_id flat.NodeId) string {
-	clean := source.trim_space()
+	clean := trimmed_transform_text(source)
 	rhs_id := t.comptime_reflection_local_rhs(loop_id, clean) or { return clean }
 	// This helper only reads AST nodes while the borrow is live.
 	rhs := unsafe { &t.a.nodes[int(rhs_id)] }
@@ -810,18 +810,18 @@ fn (mut t Transformer) comptime_node_raw_attribute_data(node_id int) RawAttribut
 fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []AttributeMeta {
 	mut attrs := []AttributeMeta{}
 	for attr_idx, raw in raw_attrs {
-		clean := raw.trim_space()
+		clean := trimmed_transform_text(raw)
 		if clean.len == 0 {
 			continue
 		}
 		recorded_kind := if attr_idx < raw_kinds.len { raw_kinds[attr_idx] } else { -1 }
 		colon := clean.index_u8(`:`)
 		has_arg := colon >= 0 && !(recorded_kind == 1
-			&& !comptime_attr_is_string_literal(clean[colon + 1..].trim_space()))
+			&& !comptime_attr_is_string_literal(trimmed_transform_text(clean[colon + 1..])))
 		if has_arg {
 			idx := colon
-			name := clean[..idx].trim_space()
-			raw_arg := clean[idx + 1..].trim_space()
+			name := trimmed_transform_text(clean[..idx])
+			raw_arg := trimmed_transform_text(clean[idx + 1..])
 			arg := comptime_attr_unquote(raw_arg)
 			kind := if recorded_kind >= 0 {
 				recorded_kind
@@ -880,14 +880,14 @@ fn comptime_attr_unquote(s string) string {
 }
 
 fn comptime_attr_display(raw string) string {
-	clean := raw.trim_space()
+	clean := trimmed_transform_text(raw)
 	colon := clean.index_u8(`:`)
 	if colon < 0 {
 		// Whole-string attributes are stored without their quotes. Decode their source spelling
 		// before exposing it through the legacy []string metadata.
 		return comptime_cond_unescape(clean)
 	}
-	raw_arg := clean[colon + 1..].trim_space()
+	raw_arg := trimmed_transform_text(clean[colon + 1..])
 	if !comptime_attr_is_string_literal(raw_arg) || raw_arg[0] == `r` {
 		return clean
 	}
@@ -1050,7 +1050,7 @@ fn (mut t Transformer) expand_comptime_for_params(var_name string, fn_name strin
 }
 
 fn (t &Transformer) comptime_param_metas(fn_name string) []ParamMeta {
-	raw_wanted := fn_name.trim_space()
+	raw_wanted := trimmed_transform_text(fn_name)
 	wanted := t.comptime_resolve_selective_import_reflection_source(raw_wanted)
 	if params := t.comptime_reflected_params[wanted] {
 		return params.clone()
@@ -1124,7 +1124,7 @@ fn comptime_params_match_signature(params []ParamMeta, return_type string, wante
 		return false
 	}
 	for i, param in params {
-		if param.typ.trim_space() != generic_fn_type_param_payload(wanted_params[i]).trim_space() {
+		if trimmed_transform_text(param.typ) != trimmed_transform_text(generic_fn_type_param_payload(wanted_params[i])) {
 			return false
 		}
 	}
@@ -1338,12 +1338,12 @@ fn comptime_method_receiver_base(raw string) string {
 }
 
 fn comptime_method_receiver_type(raw string) string {
-	mut name := raw.trim_space()
+	mut name := trimmed_transform_text(raw)
 	if name.starts_with('mut ') {
-		name = name[4..].trim_space()
+		name = trimmed_transform_text(name[4..])
 	}
 	for name.starts_with('&') {
-		name = name[1..].trim_space()
+		name = trimmed_transform_text(name[1..])
 	}
 	return name
 }
@@ -2263,7 +2263,7 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 	result = comptime_cond_replace_bare_ident(result, var_name, method_type)
 	for op in [' !is ', ' is '] {
 		if idx := comptime_top_index(result, op) {
-			expected := result[idx + op.len..].trim_space()
+			expected := trimmed_transform_text(result[idx + op.len..])
 			normalized := if !isnil(t.tc)
 				&& (expected.starts_with('fn(') || expected.starts_with('fn (')) {
 				t.comptime_field_type_id_key(expected, t.cur_module)
@@ -2323,7 +2323,7 @@ fn subst_method_attrs_access_cond(cond string, var_name string, method MethodMet
 			if rel_end < 0 {
 				break
 			}
-			index_text := result[pos + 1..pos + 1 + rel_end].trim_space()
+			index_text := trimmed_transform_text(result[pos + 1..pos + 1 + rel_end])
 			end := pos + 1 + rel_end + 1
 			if !comptime_is_int(index_text) || index_text.starts_with('-') {
 				offset = end
@@ -2377,7 +2377,7 @@ fn subst_method_attrs_access_cond(cond string, var_name string, method MethodMet
 		if depth != 0 {
 			break
 		}
-		arg := comptime_condition_strip_outer_parens(result[arg_start..pos - 1].trim_space())
+		arg := comptime_condition_strip_outer_parens(trimmed_transform_text(result[arg_start..pos - 1]))
 		replacement := '(${arg} in ${comptime_method_attrs_cond_array(method)})'
 		result = result[..start] + replacement + result[pos..]
 		offset = start + replacement.len
@@ -2428,7 +2428,7 @@ fn (t &Transformer) subst_method_param_cond(cond string, var_name string, method
 				offset = member_start
 				continue
 			}
-			index_text := result[index_start..index_end].trim_space()
+			index_text := trimmed_transform_text(result[index_start..index_end])
 			if !comptime_is_int(index_text) || index_text.starts_with('-') {
 				offset = member_end
 				continue
@@ -2494,7 +2494,7 @@ fn (mut t Transformer) expand_comptime_for_variants(var_name string, base_type s
 fn (t &Transformer) comptime_sum_variants(base_type string) []VariantMeta {
 	resolved := t.comptime_resolve_sum_type_name(base_type)
 	mut variants := if !base_type.contains('.') {
-		t.comptime_local_sum_variants(base_type.trim_space()) or { []string{} }
+		t.comptime_local_sum_variants(trimmed_transform_text(base_type)) or { []string{} }
 	} else if isnil(t.tc) {
 		[]string{}
 	} else {
@@ -2517,7 +2517,7 @@ fn (t &Transformer) comptime_sum_variants(base_type string) []VariantMeta {
 }
 
 fn (t &Transformer) comptime_resolve_sum_type_name(base_type string) string {
-	base := base_type.trim_space()
+	base := trimmed_transform_text(base_type)
 	if base.len == 0 {
 		return base
 	}
@@ -3232,7 +3232,7 @@ fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.
 	if t.source_parent_ids.len > 0 {
 		for candidate_id in t.if_expr_nodes_by_file[call.pos.id] {
 			if t.comptime_option_guard_unwraps(unsafe { &t.a.nodes[candidate_id] }, source_name, &call) {
-				return fm.comptime_typ[1..].trim_space()
+				return trimmed_transform_text(fm.comptime_typ[1..])
 			}
 		}
 	} else {
@@ -3242,7 +3242,7 @@ fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.
 			// This read-only scan keeps the borrowed AST node valid.
 			candidate := unsafe { &t.a.nodes[candidate_id] }
 			if t.comptime_option_guard_unwraps(candidate, source_name, &call) {
-				return fm.comptime_typ[1..].trim_space()
+				return trimmed_transform_text(fm.comptime_typ[1..])
 			}
 		}
 	}
@@ -3866,7 +3866,7 @@ fn (mut t Transformer) comptime_field_metas(base_type string) []FieldMeta {
 	if interface_metas := t.comptime_interface_field_metas(base_type) {
 		return interface_metas
 	}
-	clean_base := base_type.trim_space()
+	clean_base := trimmed_transform_text(base_type)
 	// Builtin runtime representations such as `string` and `array` are structs
 	// in the generated C ABI, but they are not language-level structs and must
 	// not expose those implementation fields through `T.fields`.
@@ -3911,7 +3911,7 @@ fn (mut t Transformer) comptime_interface_field_metas(base_type string) ?[]Field
 	if isnil(t.tc) {
 		return none
 	}
-	clean := base_type.trim_space().trim_left('&?!')
+	clean := trimmed_transform_text(base_type).trim_left('&?!')
 	mut iface_name := clean
 	if iface_name !in t.tc.interface_names {
 		qualified := t.tc.qualify_name(clean)
@@ -4023,7 +4023,7 @@ fn (t &Transformer) struct_field_decl_metas(base_type string) map[string]FieldDe
 }
 
 fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_module string) map[string]FieldDeclMeta {
-	mut decl_name := base_type.trim_space()
+	mut decl_name := trimmed_transform_text(base_type)
 	if idx := decl_name.index('[') {
 		decl_name = decl_name[..idx]
 	}
@@ -4092,7 +4092,7 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 
 fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string, decl_module string, is_embed bool, extra FieldDeclMeta) FieldMeta {
 	is_option := ftyp.starts_with('?')
-	mut core := if is_option { ftyp[1..].trim_space() } else { ftyp }
+	mut core := if is_option { trimmed_transform_text(ftyp[1..]) } else { ftyp }
 	mut indir := 0
 	mut is_shared := false
 	mut is_atomic := false
@@ -4100,17 +4100,17 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 	if core.starts_with('shared ') {
 		is_shared = true
 		indir++
-		core = core[7..].trim_space()
+		core = trimmed_transform_text(core[7..])
 	} else if core.starts_with('atomic ') {
 		is_atomic = true
-		core = core[7..].trim_space()
+		core = trimmed_transform_text(core[7..])
 	}
 	for core.starts_with('&') {
 		indir++
 		core = core[1..]
 	}
 	unaliased := if resolved_typ != '' {
-		resolved_typ.trim_space()
+		trimmed_transform_text(resolved_typ)
 	} else {
 		t.comptime_normalize_type_alias_chain(ftyp)
 	}
@@ -4143,7 +4143,7 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 }
 
 fn (t &Transformer) comptime_enum_type_known(raw string) bool {
-	clean := raw.trim_space()
+	clean := trimmed_transform_text(raw)
 	if clean in t.enum_types || (!isnil(t.tc) && clean in t.tc.enum_names) {
 		return true
 	}
@@ -4159,7 +4159,7 @@ fn (t &Transformer) comptime_enum_type_known(raw string) bool {
 }
 
 fn (t &Transformer) comptime_field_type_is_struct(typ string) bool {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.len == 0 || comptime_is_primitive_type(clean) {
 		return false
 	}
@@ -4167,7 +4167,7 @@ fn (t &Transformer) comptime_field_type_is_struct(typ string) bool {
 }
 
 fn comptime_generic_type_base(typ string) string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.starts_with('[') || !clean.contains('[') {
 		return ''
 	}
@@ -4176,7 +4176,7 @@ fn comptime_generic_type_base(typ string) string {
 	if bracket <= 0 || bracket_end <= bracket {
 		return ''
 	}
-	return clean[..bracket].trim_space()
+	return trimmed_transform_text(clean[..bracket])
 }
 
 fn (t &Transformer) comptime_field_type_id(typ string, decl_module string) int {
@@ -4187,11 +4187,11 @@ fn (t &Transformer) comptime_field_type_id(typ string, decl_module string) int {
 	mut base_key := key
 	mut indirections := 0
 	for base_key.starts_with('?') || base_key.starts_with('!') {
-		base_key = base_key[1..].trim_space()
+		base_key = trimmed_transform_text(base_key[1..])
 	}
 	for base_key.starts_with('&') {
 		indirections++
-		base_key = base_key[1..].trim_space()
+		base_key = trimmed_transform_text(base_key[1..])
 	}
 	builtin_idx := comptime_builtin_type_idx(base_key)
 	indirection_bits := int(u32(indirections) << 16)
@@ -4243,7 +4243,7 @@ fn comptime_builtin_type_idx(name string) int {
 }
 
 fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) string {
-	mut core := typ.trim_space()
+	mut core := trimmed_transform_text(typ)
 	if core.len == 0 {
 		return ''
 	}
@@ -4262,7 +4262,7 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 	mut refs := ''
 	for core.starts_with('&') {
 		refs += '&'
-		core = core[1..].trim_space()
+		core = trimmed_transform_text(core[1..])
 	}
 	if refs != '' {
 		return refs + t.comptime_field_type_id_key(core, decl_module)
@@ -4371,14 +4371,14 @@ fn comptime_is_primitive_type(typ string) bool {
 // decorations from an (already alias-resolved) field type, yielding the core type used for
 // metadata classification.
 fn comptime_strip_field_wrappers(typ string) string {
-	mut core := typ.trim_space()
+	mut core := trimmed_transform_text(typ)
 	if core.starts_with('?') {
-		core = core[1..].trim_space()
+		core = trimmed_transform_text(core[1..])
 	}
 	if core.starts_with('shared ') {
-		core = core[7..].trim_space()
+		core = trimmed_transform_text(core[7..])
 	} else if core.starts_with('atomic ') {
-		core = core[7..].trim_space()
+		core = trimmed_transform_text(core[7..])
 	}
 	for core.starts_with('&') {
 		core = core[1..]
@@ -4557,9 +4557,9 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 	}
 	if node.kind == .prefix && node.op == .amp && node.children_count > 0
 		&& t.subtree_has_reflected_typeof_idx(t.a.child(&node, 0), var_name) {
-		mut pointee := fm.comptime_typ.trim_space()
+		mut pointee := trimmed_transform_text(fm.comptime_typ)
 		if pointee.starts_with('&') {
-			pointee = pointee[1..].trim_space()
+			pointee = trimmed_transform_text(pointee[1..])
 		}
 		zero := t.zero_value_for_type(pointee)
 		start := t.a.children.len
@@ -4885,10 +4885,10 @@ fn (t &Transformer) subtree_has_reflected_typeof_idx(id flat.NodeId, var_name st
 // selector. For the legacy static form (`val.test in [...]` inside the `test` iteration), it
 // resolves the receiver's field type instead of assuming that every `.test` belongs to `fm`.
 fn (t &Transformer) subst_reflected_field_selector_cond(original string, substituted string, var_name string, fm FieldMeta) string {
-	clean := original.trim_space()
+	clean := trimmed_transform_text(original)
 	for op in [' !in', ' in'] {
 		if op_idx := comptime_top_index(clean, op) {
-			left := clean[..op_idx].trim_space()
+			left := trimmed_transform_text(clean[..op_idx])
 			mut selector_type := ''
 			if comptime_reflected_selector_left(left, var_name) {
 				selector_type = fm.comptime_typ
@@ -4897,14 +4897,14 @@ fn (t &Transformer) subst_reflected_field_selector_cond(original string, substit
 				if !left.ends_with(static_suffix) {
 					continue
 				}
-				receiver := left[..left.len - static_suffix.len].trim_space()
+				receiver := trimmed_transform_text(left[..left.len - static_suffix.len])
 				if !comptime_plain_ident(receiver) {
 					continue
 				}
-				receiver_type := t.var_type(receiver).trim_space().trim_left('&')
+				receiver_type := trimmed_transform_text(t.var_type(receiver)).trim_left('&')
 				selector_type = t.lookup_struct_field_type(receiver_type, fm.name) or { continue }
 			}
-			resolved := substituted.trim_space()
+			resolved := trimmed_transform_text(substituted)
 			if resolved_op_idx := comptime_top_index(resolved, op) {
 				return selector_type + resolved[resolved_op_idx..]
 			}
@@ -4919,7 +4919,7 @@ fn comptime_reflected_selector_left(left string, var_name string) bool {
 	}
 	open_idx := left.last_index('.\$(') or { return false }
 	return comptime_cond_references_ident(left, var_name)
-		&& left[open_idx + 3..left.len - 1].trim_space() == '${var_name}.name'
+		&& trimmed_transform_text(left[open_idx + 3..left.len - 1]) == '${var_name}.name'
 }
 
 fn comptime_plain_ident(value string) bool {
@@ -5033,7 +5033,7 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 			t.local_decl_type_before(rhs.value, children[1]) or { '' }
 		} else if rhs.kind == .or_expr && rhs.value == '?' && fm.is_option
 			&& fm.comptime_typ.starts_with('?') {
-			fm.comptime_typ[1..].trim_space()
+			trimmed_transform_text(fm.comptime_typ[1..])
 		} else {
 			''
 		}
@@ -5484,7 +5484,7 @@ fn comptime_cond_name_char(ch u8) bool {
 }
 
 fn comptime_cond_is_static_literal_expr(cond string) bool {
-	clean := comptime_condition_strip_outer_parens(cond.trim_space())
+	clean := comptime_condition_strip_outer_parens(trimmed_transform_text(cond))
 	for op in ['||', '&&'] {
 		if op_idx := comptime_top_index(clean, op) {
 			return comptime_cond_is_static_literal_expr(clean[..op_idx])
@@ -5507,7 +5507,7 @@ fn comptime_cond_is_static_literal_expr(cond string) bool {
 }
 
 fn comptime_cond_is_quoted_literal(value string) bool {
-	clean := value.trim_space()
+	clean := trimmed_transform_text(value)
 	return clean.len >= 2 && clean[0] in [`'`, `"`, `\``] && clean[clean.len - 1] == clean[0]
 }
 
@@ -5629,7 +5629,7 @@ fn (t &Transformer) comptime_if_source_cond(pos token.Pos) ?(string, token.Pos) 
 // `==`/`!=`, integer ordering, `&&`/`||`/`!`, bare bool, and the string literal members of
 // comptime_cond_string_member). Returns none when it cannot be decided statically.
 fn (mut t Transformer) eval_field_cond(cond string) ?bool {
-	clean := comptime_condition_strip_outer_parens(cond.trim_space())
+	clean := comptime_condition_strip_outer_parens(trimmed_transform_text(cond))
 	if clean == 'true' {
 		return true
 	}
@@ -5652,8 +5652,8 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 	}
 	for op in [' !is ', ' is '] {
 		if op_idx := comptime_top_index(clean, op) {
-			left := clean[..op_idx].trim_space()
-			right := clean[op_idx + op.len..].trim_space()
+			left := trimmed_transform_text(clean[..op_idx])
+			right := trimmed_transform_text(clean[op_idx + op.len..])
 			matches := if left.starts_with('\$') && !right.starts_with('\$') {
 				t.comptime_type_matches(right, left) or { return none }
 			} else {
@@ -5682,8 +5682,8 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 				&& clean[after] != `(` {
 				continue
 			}
-			needle_text := clean[..op_idx].trim_space()
-			list := clean[after..].trim_space()
+			needle_text := trimmed_transform_text(clean[..op_idx])
+			list := trimmed_transform_text(clean[after..])
 			mut found := false
 			if needle_text.ends_with('.typ') || needle_text.ends_with('.unaliased_typ') {
 				if !list.starts_with('[') || !list.ends_with(']') {
@@ -5698,14 +5698,14 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 			} else {
 				needle := comptime_cond_operand(needle_text) or { return none }
 				if list.starts_with('[') && list.ends_with(']') {
-					mut rest := list[1..list.len - 1].trim_space()
+					mut rest := trimmed_transform_text(list[1..list.len - 1])
 					for rest.len > 0 {
 						comma := comptime_condition_top_level_index(rest, ',')
 						item := if comma >= 0 { rest[..comma] } else { rest }
 						value := comptime_cond_operand(item) or { return none }
 						found = found || value == needle
 						if comma < 0 { break }
-						rest = rest[comma + 1..].trim_space()
+						rest = trimmed_transform_text(rest[comma + 1..])
 					}
 				} else {
 					value := comptime_cond_string_member(list) or { list }
@@ -5754,7 +5754,7 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 // is. Any unsupported expression, such as `'name'.repeat(2)` or `'name'[0]`, is not its own
 // value, so it cannot be compared as text: none.
 fn comptime_cond_operand(operand string) ?string {
-	clean := comptime_condition_strip_outer_parens(operand.trim_space())
+	clean := comptime_condition_strip_outer_parens(trimmed_transform_text(operand))
 	if value := comptime_cond_string_member(clean) {
 		return comptime_unquote(value)
 	}
@@ -5783,7 +5783,7 @@ fn comptime_string_scalar(receiver string, method string, args []string) ?Compti
 
 // comptime_cond_string_member folds literal string method chains to literal condition text.
 fn comptime_cond_string_member(expr string) ?string {
-	clean := comptime_condition_strip_outer_parens(expr.trim_space())
+	clean := comptime_condition_strip_outer_parens(trimmed_transform_text(expr))
 	if clean.len < 2 || clean[0] !in [`'`, `"`] {
 		return none
 	}
@@ -5792,7 +5792,7 @@ fn comptime_cond_string_member(expr string) ?string {
 		return none
 	}
 	mut receiver := comptime_unquote(clean[..receiver_end])
-	mut rest := clean[receiver_end..].trim_space()
+	mut rest := trimmed_transform_text(clean[receiver_end..])
 	for rest.len > 0 {
 		if rest.starts_with('[') {
 			end := rest.index_u8(`]`)
@@ -5803,8 +5803,8 @@ fn comptime_cond_string_member(expr string) ?string {
 			if bounds.len != 2 {
 				return none
 			}
-			low_text := bounds[0].trim_space()
-			high_text := bounds[1].trim_space()
+			low_text := trimmed_transform_text(bounds[0])
+			high_text := trimmed_transform_text(bounds[1])
 			low := if low_text == '' {
 				0
 			} else {
@@ -5819,7 +5819,7 @@ fn comptime_cond_string_member(expr string) ?string {
 				return none
 			}
 			receiver = receiver[low..high]
-			rest = rest[end + 1..].trim_space()
+			rest = trimmed_transform_text(rest[end + 1..])
 			if rest.len == 0 {
 				return comptime_cond_string_literal(receiver)
 			}
@@ -5828,7 +5828,7 @@ fn comptime_cond_string_member(expr string) ?string {
 		if !rest.starts_with('.') {
 			return none
 		}
-		member := rest[1..].trim_space()
+		member := trimmed_transform_text(rest[1..])
 		if member == 'len' {
 			return receiver.len.str()
 		}
@@ -5841,10 +5841,10 @@ fn comptime_cond_string_member(expr string) ?string {
 			return none
 		}
 		mut args := []string{}
-		mut arg_text := member[paren + 1..end].trim_space()
+		mut arg_text := trimmed_transform_text(member[paren + 1..end])
 		for arg_text.len > 0 {
 			comma := comptime_condition_top_level_index(arg_text, ',')
-			raw_arg := (if comma < 0 { arg_text } else { arg_text[..comma] }).trim_space()
+			raw_arg := trimmed_transform_text((if comma < 0 { arg_text } else { arg_text[..comma] }))
 			arg := comptime_cond_string_member(raw_arg) or { raw_arg }
 			if arg.len < 2 || arg[0] !in [`'`, `"`] || comptime_cond_skip_string(arg, 0) != arg.len {
 				return none
@@ -5853,13 +5853,13 @@ fn comptime_cond_string_member(expr string) ?string {
 			if comma < 0 {
 				break
 			}
-			arg_text = arg_text[comma + 1..].trim_space()
+			arg_text = trimmed_transform_text(arg_text[comma + 1..])
 			if arg_text.len == 0 {
 				return none
 			}
 		}
-		value := comptime_string_scalar(receiver, member[..paren].trim_space(), args) or { return none }
-		rest = member[end + 1..].trim_space()
+		value := comptime_string_scalar(receiver, trimmed_transform_text(member[..paren]), args) or { return none }
+		rest = trimmed_transform_text(member[end + 1..])
 		if rest.len == 0 {
 			return if value.typ == 'string' {
 				comptime_cond_string_literal(value.value)

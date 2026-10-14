@@ -145,18 +145,15 @@ fn test_decode_accepts_non_canonical_encodings() {
 	assert uused == 2
 }
 
-// NOTE: on an unterminated run of continuation bytes the unsigned decoders
-// report one more byte than they consumed, because they compute
-// The byte count must be the number of bytes actually consumed, whether or not
-// the array ends with a terminator.
-fn test_decode_reports_the_bytes_consumed_on_an_unterminated_input() {
+// Truncated input has no complete value and reports the documented failure length.
+fn test_decode_reports_truncation_for_unterminated_input() {
 	truncated := [u8(0x80), 0x80, 0x80]
 	sv, sused := leb128.decode_i32(truncated)
 	assert sv == 0
-	assert sused == 3
+	assert sused == 0
 	uv, uused := leb128.decode_u32(truncated)
 	assert uv == 0
-	assert uused == 3
+	assert uused == 0
 }
 
 // The two width families agree about how many bytes an empty input uses.

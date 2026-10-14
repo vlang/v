@@ -1526,7 +1526,7 @@ fn (mut t Transformer) split_nested_match_string_interp_block_value(branch flat.
 		return none
 	}
 	subject_text, label_text := nested_match_interp_prefix(first.value) or { return none }
-	if !nested_match_has_else_separator(middle.value) || !last.value.trim_space().ends_with('}}') {
+	if !nested_match_has_else_separator(middle.value) || !trimmed_transform_text(last.value).ends_with('}}') {
 		return none
 	}
 	subject, _ := t.simple_nested_interp_expr(subject_text) or { return none }

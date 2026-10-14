@@ -264,3 +264,72 @@ fn test_launcher_keeps_compiler_options_in_failure_reproduction() {
 	assert hints[0].contains('-enable-globals'), hints[0]
 	assert hints[0].contains('-d vtest_prefix_flag'), hints[0]
 }
+
+fn test_standalone_strict_vflags_preserves_repeated_option_values() {
+	$if !macos && !linux && !bsd {
+		return
+	}
+	old_vflags := os.getenv_opt('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		} else {
+			os.unsetenv('VFLAGS')
+		}
+	}
+	path := os.join_path(tpath, 'vflags_pairs_test.v')
+	os.write_file(path, '
+fn test_both_defines() {
+	\$if vtest_environment_define ? {} \$else { assert false, "missing environment define" }
+	\$if vtest_command_define ? {} \$else { assert false, "missing command define" }
+}
+')!
+	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang -d vtest_environment_define', true)
+	result := os.exec([mytest_exe, '-d', 'vtest_command_define', 'test', path])
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('1 passed, 1 total'), result.output
+}
+
+fn test_launcher_strict_vflags_preserves_quoted_cflags_once() {
+	$if !macos && !linux && !bsd {
+		return
+	}
+	old_vflags := os.getenv_opt('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		} else {
+			os.unsetenv('VFLAGS')
+		}
+	}
+	include_dir := os.join_path(tpath, 'include directory with spaces')
+	os.mkdir_all(include_dir)!
+	os.write_file(os.join_path(include_dir, 'vtest_flags_probe.h'),
+		'static int vtest_flags_probe(void) { return 27; }\n')!
+	path := os.join_path(tpath, 'vflags_quoted_failure_test.c.v')
+	os.write_file(path, '
+#include "vtest_flags_probe.h"
+fn C.vtest_flags_probe() int
+fn test_compilation_completed() {
+	assert C.vtest_flags_probe() == 27
+	assert false, "VTEST_QUOTED_FLAGS_EXECUTED"
+}
+')!
+	cflags := '-I"${include_dir}"'
+	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang -g -cflags ${os.quoted_path(cflags)}', true)
+	for stats in [false, true] {
+		args := if stats { [vexe, '-stats', 'test', path] } else { [vexe, 'test', path] }
+		result := os.exec(args)
+		assert result.exit_code == 1, result.output
+		assert result.output.contains('VTEST_QUOTED_FLAGS_EXECUTED'), result.output
+		assert !result.output.contains('compilation failed'), result.output
+		hints := result.output.split_into_lines().filter(it.contains('To reproduce just failure'))
+		assert hints.len == 1, result.output
+		forwarded := os.split_args(hints[0].all_after('run:').trim_space())!
+		assert forwarded.filter(it == '-g').len == 1, hints[0]
+		assert forwarded.filter(it == '-cflags').len == 1, hints[0]
+		position := forwarded.index('-cflags')
+		assert position >= 0 && position + 1 < forwarded.len, hints[0]
+		assert forwarded[position + 1] == cflags, hints[0]
+	}
+}

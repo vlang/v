@@ -7685,8 +7685,13 @@ fn option_result_selector_type(typ Type, field string) ?Type {
 	return none
 }
 
-// index_operator_call_info returns accessible index operator metadata for a compatible receiver.
+// index_operator_call_info resolves a declared index operator for the receiver type.
 pub fn (tc &TypeChecker) index_operator_call_info(base_type Type, op string) ?CallInfo {
+	if tc.method_suffix_prescreen && tc.top_level_idx.len > 0
+		&& op !in tc.receiver_method_suffix_index
+		&& '@${op}' !in tc.receiver_method_suffix_index {
+		return none
+	}
 	clean := unwrap_pointer(base_type)
 	type_name := resolve_type_name_for_method(clean)
 	if type_name.len == 0 {
@@ -9430,8 +9435,12 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 	base := tc.a.child_node(&node, 0)
 	// A namespace value can share a function's name; only call syntax selects
 	// that function. Keep the stored value's type and identity for bare selectors.
-	if tc.is_namespace_selector(node, base)
-		&& (tc.global_type_for_selector(node) != none || tc.const_type_for_selector(node) != none) {
+	// A namespace is an identifier that names no value. Past that test, few selectors
+	// name a global or a constant: look those up before deciding whether the base is
+	// a namespace, which probes every kind of type and import.
+	if base.kind == .ident && !tc.ident_resolves_to_value(base.value)
+		&& (tc.global_type_for_selector(node) != none || tc.const_type_for_selector(node) != none)
+		&& tc.is_namespace_selector(node, base) {
 		return none
 	}
 	if base.kind == .ident {
@@ -9538,6 +9547,12 @@ fn (tc &TypeChecker) static_assoc_fn_key_for_base(type_ident string, method stri
 		&& !tc.static_associated_method_names[method] {
 		return none
 	}
+	// The same test against the signatures a transform batch started with. Every key
+	// probed below is a static name of `method`, so no listed signature can match.
+	if tc.transform_static_method_count == tc.fn_ret_types.len
+		&& !tc.transform_static_method_names[method] {
+		return none
+	}
 	mut direct_candidates := []string{}
 	tc.add_static_assoc_type_candidate(mut direct_candidates, type_ident)
 	tc.add_static_assoc_type_candidate(mut direct_candidates, tc.qualify_name(type_ident))
@@ -9554,6 +9569,34 @@ fn (tc &TypeChecker) static_assoc_fn_key_for_base(type_ident string, method stri
 		}
 	}
 	return none
+}
+
+// refresh_transform_static_method_names lists the methods of the static type method
+// signatures registered so far, for the checkers forked from this one. Signatures are
+// only added between two refreshes, so the list is current exactly while their count is
+// unchanged; forget_transform_static_method_names covers a removal. The caller owns
+// this checker: no other thread may be resolving through it.
+pub fn (tc &TypeChecker) refresh_transform_static_method_names() {
+	if tc.transform_static_method_count == tc.fn_ret_types.len {
+		return
+	}
+	mut names := map[string]bool{}
+	for name, _ in tc.fn_ret_types {
+		if _, method := flat.decode_static_type_method_name(name) {
+			names[method] = true
+		}
+	}
+	mut owner := unsafe { tc }
+	owner.transform_static_method_names = names.move()
+	owner.transform_static_method_count = tc.fn_ret_types.len
+}
+
+// forget_transform_static_method_names drops the list: a signature was removed, or the
+// arena holding the list is about to be released.
+pub fn (tc &TypeChecker) forget_transform_static_method_names() {
+	mut owner := unsafe { tc }
+	owner.transform_static_method_names = map[string]bool{}
+	owner.transform_static_method_count = -1
 }
 
 fn (tc &TypeChecker) fn_key_is_static_associated(key string) bool {
@@ -17706,8 +17749,17 @@ mut:
 	call_generation  u32 = 1
 	call_ids         [2048]int
 	call_generations [2048]u32
-	// A fixed array expands every CallInfo default into a huge C initializer.
-	call_infos []CallInfo = []CallInfo{len: 2048, init: CallInfo{}}
+	// A slot is read only after its node id and generation match. Initialize
+	// entries when publishing a call result, avoiding 2048 unused defaults.
+	call_infos []CallInfo = empty_call_info_memo()
+}
+
+fn empty_call_info_memo() []CallInfo {
+	mut slots := []CallInfo{cap: 2048}
+	// Expose reserved slots without constructing their unused default payloads.
+	// Node and generation guards prevent reading a slot before its first write.
+	unsafe { slots.len = 2048 }
+	return slots
 }
 
 // arm_body_resolve_memo (re)activates the per-item resolve memo for one work
@@ -17749,6 +17801,10 @@ fn (mut memo BodyResolveMemo) begin(lo int, hi int) {
 	memo.lo = lo
 	memo.hi = hi
 	memo.call_generation++
+	if memo.call_generation == 0 {
+		memo.call_generations = [2048]u32{}
+		memo.call_generation = 1
+	}
 	if memo.types.len < span {
 		// A type is read only after its filled byte is set for this function.
 		memo.types = unsafe { []Type{len: span} }
@@ -17843,13 +17899,10 @@ fn wide_integer_type_for_widening(typ Type) bool {
 @[direct_array_access]
 fn (tc &TypeChecker) widen_mixed_integer_expr_type(id flat.NodeId, typ Type) Type {
 	tidx := int(id)
-	if tidx < 0 || tidx >= tc.a.nodes.len {
+	if tidx < 0 || tidx >= tc.a.nodes.len || tc.a.nodes[tidx].kind != .infix {
 		return typ
 	}
 	node := tc.a.nodes[tidx]
-	if node.kind != .infix {
-		return typ
-	}
 	if !narrow_integer_type_for_widening(typ) {
 		return typ
 	}

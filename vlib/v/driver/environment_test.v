@@ -728,6 +728,38 @@ fn test_clone_after_transform_keeps_cached_vlib_flag_ownership() {
 	assert flags == []
 }
 
+fn test_scoped_type_metadata_preserves_generic_interface_parameters() {
+	$if !prealloc {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['Store'] = true
+	tc.fn_ret_types['Store[T].get'] = types.Type(types.int_)
+	scope := prealloc_scope_begin_for_v3()
+	tc.interface_generic_params['Store'.clone()] = ['T'.clone()]
+	prealloc_scope_leave_for_v3(scope)
+	promote_scoped_type_metadata(mut tc)
+	params := tc.interface_generic_params['Store']
+	assert !scoped_value_owned(scope, params.data)
+	assert !scoped_value_owned(scope, params[0].str)
+	prealloc_scope_free_for_v3(scope)
+	key := tc.interface_method_signature_key('Store', 'get') or { panic('missing interface method') }
+	assert key == 'Store[T].get'
+}
+
+fn test_translated_module_attributes_are_detected_for_prefix_regeneration() {
+	mut a := flat.FlatAst.new()
+	id := a.add_node(flat.Node{ kind: .module_decl, value: 'main' })
+	assert !program_has_translated_module_attributes(&a)
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(id)}'
+		payload: flat.node_payload(['translated'])
+	})
+	assert program_has_translated_module_attributes(&a)
+}
+
 fn test_scoped_ast_storage_copy_preserves_persistent_text_and_promotes_retiring_payloads() {
 	$if !prealloc {
 		return

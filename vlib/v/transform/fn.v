@@ -199,7 +199,7 @@ fn (t &Transformer) fn_value_call_return_type(node flat.Node) ?string {
 }
 
 fn fn_type_return_type_text(typ string) ?string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if !(clean.starts_with('fn(') || clean.starts_with('fn (')) {
 		return none
 	}
@@ -214,7 +214,7 @@ fn fn_type_return_type_text(typ string) ?string {
 		} else if clean[i] == `)` {
 			depth--
 			if depth == 0 {
-				ret := clean[i + 1..].trim_space()
+				ret := trimmed_transform_text(clean[i + 1..])
 				if ret.len == 0 {
 					return 'void'
 				}
@@ -774,7 +774,7 @@ fn (t &Transformer) resolve_alias_receiver_method_keyed(base_type string, method
 			return none
 		}
 	}
-	raw_base := base_type.trim_space().trim_left('&')
+	raw_base := trimmed_transform_text(base_type).trim_left('&')
 	clean_base := t.normalize_type_alias(base_type)
 	mut exact_aliases := [raw_base]
 	if !raw_base.contains('.') && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
@@ -836,6 +836,21 @@ fn (t &Transformer) alias_receiver_method_candidates(method string) []string {
 	}
 	mut candidates := []string{}
 	method_suffix := '.${method}'
+	if t.alias_receiver_fns_signatures == t.tc.fn_param_types.len
+		&& t.alias_receiver_fns_aliases == t.tc.type_aliases.len {
+		// The same signatures and aliases as listed: the scan below would visit these
+		// names in this order. Their parameters can have been registered since.
+		for name in t.alias_receiver_fns[short_name_view(method)] {
+			if !name.ends_with(method_suffix) {
+				continue
+			}
+			params := t.tc.fn_param_types[name] or { continue }
+			if params.len > 0 {
+				candidates << name
+			}
+		}
+		return candidates
+	}
 	for name, params in t.tc.fn_param_types {
 		if params.len == 0 || !name.ends_with(method_suffix) {
 			continue
@@ -855,7 +870,7 @@ fn (t &Transformer) alias_target_type_preserving_main_lock(base_type string) ?st
 	if isnil(t.tc) || base_type == '' {
 		return none
 	}
-	mut clean := base_type.trim_space()
+	mut clean := trimmed_transform_text(base_type)
 	for clean.starts_with('&') {
 		clean = clean[1..]
 	}
@@ -2336,7 +2351,7 @@ fn (mut t Transformer) transform_trailing_field_init_struct_arg(node flat.Node, 
 	if field_ids.len == 0 {
 		return none
 	}
-	normalized_target := t.normalize_type_alias_chain(target_type.trim_space())
+	normalized_target := t.normalize_type_alias_chain(trimmed_transform_text(target_type))
 	if normalized_target.starts_with('&&') {
 		return none
 	}
@@ -2367,7 +2382,7 @@ fn (t &Transformer) struct_arg_type_name(param_type string) ?string {
 	if param_type == '' {
 		return none
 	}
-	mut typ := t.normalize_type_alias_chain(param_type.trim_space())
+	mut typ := t.normalize_type_alias_chain(trimmed_transform_text(param_type))
 	if typ.starts_with('&') {
 		typ = typ[1..]
 	}
@@ -2435,9 +2450,12 @@ fn (t &Transformer) call_name_for_node(id flat.NodeId, node flat.Node) string {
 				short_name := short_name_view(name)
 				if fn_node.kind == .ident && fn_node.value == short_name {
 					qname := '${t.cur_module}.${short_name}'
+					if qname in t.fn_ret_types || qname in t.tc.fn_ret_types {
+						return qname
+					}
+					// The lowered spelling is only needed when the plain one is not declared.
 					lowered_qname := c_name(qname)
-					if qname in t.fn_ret_types || qname in t.tc.fn_ret_types
-						|| lowered_qname in t.fn_ret_types || lowered_qname in t.tc.fn_ret_types {
+					if lowered_qname in t.fn_ret_types || lowered_qname in t.tc.fn_ret_types {
 						return qname
 					}
 				}
@@ -3427,7 +3445,7 @@ fn (t &Transformer) decl_param_type_in_module(typ string, module_name string) st
 }
 
 fn (t &Transformer) decl_param_type_in_scope(typ string, module_name string, file_name string) string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.len == 0 {
 		return clean
 	}
@@ -3541,16 +3559,16 @@ fn (t &Transformer) decl_fn_type_in_scope(typ string, module_name string, file_n
 }
 
 fn (t &Transformer) decl_fn_type_param_in_scope(param string, module_name string, file_name string) string {
-	mut text := param.trim_space()
+	mut text := trimmed_transform_text(param)
 	mut is_mut := false
 	if text.starts_with('mut ') {
 		is_mut = true
-		text = text[4..].trim_space()
+		text = trimmed_transform_text(text[4..])
 	}
 	space := generic_top_level_space_index(text)
 	if space > 0 {
-		head := text[..space].trim_space()
-		tail := text[space + 1..].trim_space()
+		head := trimmed_transform_text(text[..space])
+		tail := trimmed_transform_text(text[space + 1..])
 		if generic_fn_type_param_head_is_name(head, tail) {
 			text = tail
 		}
@@ -3560,8 +3578,8 @@ fn (t &Transformer) decl_fn_type_param_in_scope(param string, module_name string
 		if marker_idx <= 0 {
 			continue
 		}
-		head := text[..marker_idx].trim_space()
-		tail := text[marker_idx..].trim_space()
+		head := trimmed_transform_text(text[..marker_idx])
+		tail := trimmed_transform_text(text[marker_idx..])
 		if generic_fn_type_param_head_is_name(head, tail) {
 			text = tail
 		}
@@ -3944,10 +3962,10 @@ fn (t &Transformer) expr_is_overloaded_index_result(id flat.NodeId) bool {
 
 fn pointer_type_depth_and_base(typ string) (int, string) {
 	mut depth := 0
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	for clean.starts_with('&') {
 		depth++
-		clean = clean[1..].trim_space()
+		clean = trimmed_transform_text(clean[1..])
 	}
 	match clean {
 		'voidptr' {
@@ -5124,7 +5142,7 @@ fn transform_param_type_is_void_pointer(type_name string) bool {
 		return type_name == '&void' || type_name == 'voidptr' || type_name == 'byteptr'
 			|| type_name == 'charptr'
 	}
-	clean := type_name.trim_space()
+	clean := trimmed_transform_text(type_name)
 	return clean == '&void' || clean == 'voidptr' || clean == 'byteptr' || clean == 'charptr'
 }
 
@@ -5581,7 +5599,7 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId, for_print bool) flat.
 		// A reference-typed aggregate payload already carries that marker from its
 		// own `&Struct`/`&SumType` conversion, so prefixing it again prints `&&`.
 		if t.is_interface_type_name(sc.sum_type_name)
-			&& !t.smartcast_target_type(sc).trim_space().starts_with('&')
+			&& !trimmed_transform_text(t.smartcast_target_type(sc)).starts_with('&')
 			&& !(typ.starts_with('&')
 				&& t.stringify_aggregate_type_name(t.trim_all_pointer_type(typ)) != none) {
 			return t.string_plus(t.make_string_literal('&'), converted)
@@ -5687,7 +5705,7 @@ fn (t &Transformer) declared_selector_pointer_alias_type(id flat.NodeId) ?string
 		base_type = t.raw_checker_node_type(base_id)
 	}
 	raw_type := t.lookup_struct_field_raw_type(base_type, node.value) or { return none }
-	clean := raw_type.trim_space()
+	clean := trimmed_transform_text(raw_type)
 	if clean.starts_with('&') && t.is_type_alias_name(t.trim_pointer_type(clean)) {
 		return clean
 	}
@@ -5804,7 +5822,7 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 }
 
 fn (t &Transformer) unsigned_shift_type_text(typ string, node flat.Node) string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if !isnil(t.tc) {
 		mut operand := t.tc.parse_type(clean)
 		file := if source := t.a.source_files[node.pos.id] { source.name } else { t.cur_file }
@@ -6118,10 +6136,10 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		clean_typ = clean_typ[1..]
 	}
 	for clean_typ.starts_with('shared ') {
-		clean_typ = clean_typ[7..].trim_space()
+		clean_typ = trimmed_transform_text(clean_typ[7..])
 	}
 	for clean_typ.starts_with('atomic ') {
-		clean_typ = clean_typ[7..].trim_space()
+		clean_typ = trimmed_transform_text(clean_typ[7..])
 	}
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ['builtin.'.len..]
@@ -6182,6 +6200,12 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		if inferred.len > 0 && inferred != clean_typ {
 			return t.wrap_string_conversion(expr, inferred)
 		}
+	}
+	// `string` is the builtin string in every module: a type name declared by a program
+	// starts with a capital letter, so no alias, enum or function type below can be
+	// spelled that way. Interpolated values are strings more often than anything else.
+	if clean_typ == 'string' && !is_ref {
+		return expr
 	}
 	if !isnil(t.tc) {
 		local_struct_shadows_alias := t.bare_struct_name_is_local_to_current_module(clean_typ)
@@ -6245,7 +6269,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	}
 	if clean_typ == 'thread' || clean_typ.starts_with('thread ') {
 		payload := if clean_typ.starts_with('thread ') {
-			clean_typ[7..].trim_space()
+			trimmed_transform_text(clean_typ[7..])
 		} else {
 			'void'
 		}
@@ -6254,7 +6278,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if clean_typ.starts_with('chan ') {
 		channel_value := if is_ref { t.make_prefix(.mul, expr) } else { expr }
 		return t.make_call_typed('v3_chan_str', [channel_value,
-			t.make_string_literal(clean_typ[5..].trim_space())], 'string')
+			t.make_string_literal(trimmed_transform_text(clean_typ[5..]))], 'string')
 	}
 	if clean_typ.starts_with('fn(') || clean_typ.starts_with('fn (') {
 		return t.make_string_literal(stringify_fn_type_display(clean_typ))
@@ -6415,9 +6439,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 }
 
 fn (mut t Transformer) multi_pointer_str_expands_value(typ string) bool {
-	mut base := typ.trim_space()
+	mut base := trimmed_transform_text(typ)
 	for base.starts_with('&') {
-		base = base[1..].trim_space()
+		base = trimmed_transform_text(base[1..])
 	}
 	base = t.normalize_type_alias(base)
 	return t.is_optional_type_name(base) || base.starts_with('[]') || base.starts_with('map[')
@@ -6691,13 +6715,46 @@ fn auto_str_helper_name(aggregate string) string {
 }
 
 fn (t &Transformer) auto_str_helper_owner_module(aggregate string) string {
+	base_name := aggregate.all_before('[')
 	if !isnil(t.tc) {
 		if module_name := t.tc.struct_modules[aggregate] {
 			return module_name
 		}
+		if module_name := t.tc.type_alias_modules[aggregate] {
+			return module_name
+		}
+		// Bare interfaces belong to main or builtin, even when a library
+		// specialization requests their recursive stringification helper.
+		if !base_name.contains('.') {
+			for node in t.a.nodes {
+				if node.kind != .interface_decl || node.value != base_name {
+					continue
+				}
+				if source := t.a.source_files[node.pos.id] {
+					// Generated helper contexts can revisit a source file in a foreign
+					// namespace. The parsed file's module remains its declaration owner.
+					for file_node in t.a.nodes {
+						if file_node.kind == .file && file_node.children_count > 0
+							&& (file_node.value == source.name
+								|| t.a.real_source_path(file_node.value) == t.a.real_source_path(source.name)) {
+							module_name := t.file_module_name(file_node)
+							if module_name in ['', 'main', 'builtin'] {
+								return if module_name.len > 0 { module_name } else { 'main' }
+							}
+						}
+					}
+					module_name := t.tc.file_modules[source.name] or {
+						t.tc.file_modules[t.a.real_source_path(source.name)] or { continue }
+					}
+					if module_name in ['', 'main', 'builtin'] {
+						return module_name
+					}
+				}
+			}
+		}
 	}
-	if !aggregate.starts_with('C.') && aggregate.contains('.') {
-		return aggregate.all_before_last('.')
+	if !base_name.starts_with('C.') && base_name.contains('.') {
+		return base_name.all_before_last('.')
 	}
 	return if t.cur_module.len > 0 { t.cur_module } else { 'main' }
 }
@@ -7102,12 +7159,12 @@ fn (mut t Transformer) ref_value_str_reaches_large_circular_graph(elem_type stri
 }
 
 fn (t &Transformer) stringify_type_reaches_stack(typ string, mut seen map[string]bool) bool {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	for {
 		mut stripped := false
 		for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
 			if clean.starts_with(prefix) {
-				clean = clean[prefix.len..].trim_space()
+				clean = trimmed_transform_text(clean[prefix.len..])
 				stripped = true
 				break
 			}
@@ -7162,7 +7219,7 @@ fn (t &Transformer) stringify_type_reaches_stack(typ string, mut seen map[string
 }
 
 fn stringify_fn_type_display(typ string) string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.starts_with('fn(') {
 		return 'fn ${clean[2..]}'
 	}
@@ -7190,7 +7247,7 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 			}
 		}
 		if base_type.starts_with('&') {
-			pointee_alias := base_type[1..].trim_space()
+			pointee_alias := trimmed_transform_text(base_type[1..])
 			if str_fn := t.alias_custom_str_method_name(pointee_alias) {
 				return t.lower_ref_str_guarded(expr, pointee_alias, true, str_fn, '&nil')
 			}
@@ -7229,14 +7286,14 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 }
 
 fn (t &Transformer) is_fn_stringify_type(typ string) bool {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	short := short_name_view(clean)
 	return clean.starts_with('fn(') || clean.starts_with('fn (') || clean.starts_with('_fn_ptr_')
 		|| short.starts_with('_fn_ptr_') || t.is_fn_pointer_type_name(clean)
 }
 
 fn (t &Transformer) fn_stringify_display(typ string) string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.starts_with('_fn_ptr_') || short_name_view(clean).starts_with('_fn_ptr_') {
 		return 'fn'
 	}
@@ -7393,13 +7450,13 @@ fn (t &Transformer) lookup_str_alias_uncached(clean_typ string) ?string {
 }
 
 fn (t &Transformer) array_alias_stringify_type(typ string) ?string {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	is_ref := clean.starts_with('&')
 	if is_ref {
 		clean = clean[1..]
 	}
 	alias_name, base_type := t.lookup_str_alias(clean) or { return none }
-	base_clean := base_type.trim_space()
+	base_clean := trimmed_transform_text(base_type)
 	if base_clean.starts_with('[]') || base_clean.starts_with('map[') {
 		return if is_ref { '&${alias_name}' } else { alias_name }
 	}
@@ -7423,11 +7480,11 @@ fn (t &Transformer) alias_str_suppress_wrapper_for_mut_param_deref(expr flat.Nod
 }
 
 fn (t &Transformer) alias_str_resolved_base_type(base_type string) string {
-	mut clean := base_type.trim_space()
+	mut clean := trimmed_transform_text(base_type)
 	mut seen := []string{}
 	for clean.len > 0 && clean !in seen {
 		seen << clean
-		next := t.normalize_type_alias(clean).trim_space()
+		next := trimmed_transform_text(t.normalize_type_alias(clean))
 		if next == clean {
 			break
 		}
@@ -7439,7 +7496,7 @@ fn (t &Transformer) alias_str_resolved_base_type(base_type string) string {
 // alias_str_option_base_type peels aliases around an option without resolving aliases in its
 // payload, since they may provide a custom `str()` method.
 fn (t &Transformer) alias_str_option_base_type(base_type string) ?string {
-	mut clean := base_type.trim_space()
+	mut clean := trimmed_transform_text(base_type)
 	mut seen := []string{}
 	for clean.len > 0 && clean !in seen {
 		if t.is_optional_type_name(clean) {
@@ -7447,7 +7504,7 @@ fn (t &Transformer) alias_str_option_base_type(base_type string) ?string {
 		}
 		seen << clean
 		_, next := t.lookup_str_alias(clean) or { return none }
-		clean = next.trim_space()
+		clean = trimmed_transform_text(next)
 	}
 	return none
 }
@@ -7458,7 +7515,7 @@ fn (t &Transformer) alias_str_option_base_type(base_type string) ?string {
 // name -- `Option(MyByte(0))`, not `Option(0)` -- so the wrapper the plain path
 // suppresses has to be added back here.
 fn (mut t Transformer) optional_payload_alias_display_name(typ string) ?string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if isnil(t.tc) || clean.len == 0 || clean.starts_with('&') {
 		return none
 	}
@@ -7607,7 +7664,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 
 fn auto_str_field_is_skipped(meta FieldDeclMeta) bool {
 	for attr in comptime_attribute_metas_from_raw(meta.attrs, []int{}) {
-		if attr.name == 'str' && attr.has_arg && attr.arg.trim_space() == 'skip' {
+		if attr.name == 'str' && attr.has_arg && trimmed_transform_text(attr.arg) == 'skip' {
 			return true
 		}
 	}
@@ -7631,9 +7688,9 @@ fn (t &Transformer) stringify_types_match(a string, b string) bool {
 }
 
 fn (t &Transformer) stringify_type_key(typ string) string {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	for clean.starts_with('&') {
-		clean = clean[1..].trim_space()
+		clean = trimmed_transform_text(clean[1..])
 	}
 	normalized := t.normalize_type_alias(clean)
 	if normalized != clean {
@@ -7661,7 +7718,7 @@ fn (mut t Transformer) rebuild_struct_autostr_recurse_index() {
 		}
 		mut allows_recurse := false
 		for attr in node.generic_params() {
-			clean := attr.trim_space()
+			clean := trimmed_transform_text(attr)
 			if clean.starts_with('autostr') && clean.contains('allowrecurse') {
 				allows_recurse = true
 				break
@@ -7742,11 +7799,11 @@ fn (t &Transformer) alias_string_display_name(alias_name string, base_type strin
 // when the alias base is primitive (`d: Duration(42)`), unless the alias defines its own
 // str() method, which is used bare.
 fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type string, field_type string, c_owner bool) flat.NodeId {
-	mut clean := raw_field_type.trim_space()
+	mut clean := trimmed_transform_text(raw_field_type)
 	if clean.starts_with('&') {
 		if c_owner {
 			pointer_depth := dump_pointer_depth(clean)
-			mut elem_type := clean[pointer_depth..].trim_space()
+			mut elem_type := trimmed_transform_text(clean[pointer_depth..])
 			elem_type = t.normalize_type_alias(elem_type)
 			if elem_type.starts_with('builtin.') {
 				elem_type = elem_type.all_after_last('.')
@@ -7837,12 +7894,12 @@ fn (mut t Transformer) lower_charptr_struct_field_str(expr flat.NodeId) flat.Nod
 // are always single-line (primitives, plain strings, enums, custom str() output) keep their
 // text untouched — V does not re-indent multi-line string content or custom str() results.
 fn (mut t Transformer) struct_str_field_needs_indent(field_type string) bool {
-	mut clean := field_type.trim_space()
+	mut clean := trimmed_transform_text(field_type)
 	for clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
-		clean = clean[1..].trim_space()
+		clean = trimmed_transform_text(clean[1..])
 	}
 	for clean.starts_with('shared ') {
-		clean = clean[7..].trim_space()
+		clean = trimmed_transform_text(clean[7..])
 	}
 	if clean.starts_with('builtin.') {
 		clean = clean.all_after_last('.')
@@ -7920,12 +7977,12 @@ fn (mut t Transformer) stringify_expansion_estimate(typ string) int {
 }
 
 fn (mut t Transformer) stringify_expansion_estimate_at(typ string, depth_left int) int {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	for {
 		mut stripped := false
 		for prefix in ['mut ', 'shared ', 'atomic ', '...', '?', '!', '[]', '&'] {
 			if clean.starts_with(prefix) {
-				clean = clean[prefix.len..].trim_space()
+				clean = trimmed_transform_text(clean[prefix.len..])
 				stripped = true
 				break
 			}
@@ -8070,7 +8127,7 @@ fn (mut t Transformer) string_interp_expansion_estimates(node flat.Node) (int, b
 			estimate += unresolved_interp_expansion_estimate
 			needs_deferred_lowering = true
 		} else {
-			if t.is_optional_type_name(typ.trim_space()) {
+			if t.is_optional_type_name(trimmed_transform_text(typ)) {
 				// Option/result conversion emits a prelude and conditional through
 				// pending_stmts even when its scalar payload has no stringify expansion.
 				needs_deferred_lowering = true
@@ -8098,7 +8155,7 @@ fn (mut t Transformer) string_interp_expr_needs_deferred_lowering(id flat.NodeId
 		// synthesize conditionals and pending statements that are absent from this AST.
 		return true
 	}
-	raw_type := t.reliable_stringify_type(id).trim_space()
+	raw_type := trimmed_transform_text(t.reliable_stringify_type(id))
 	clean_type := t.normalize_type_alias(raw_type)
 	if clean_type.starts_with('[]') || t.is_fixed_array_type(clean_type) {
 		// Collection stringification always synthesizes a loop and temporaries.
@@ -8223,14 +8280,14 @@ fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {
 	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal] {
 		return false
 	}
-	if t.is_optional_type_name(t.reliable_stringify_type(id).trim_space()) {
+	if t.is_optional_type_name(trimmed_transform_text(t.reliable_stringify_type(id))) {
 		return true
 	}
 	if node.kind == .ident {
 		if t.source_parent_ids.len > 0 {
 			return t.local_binding_before(node.value, id) or { false }
 		}
-		return t.raw_var_type(node.value).trim_space().starts_with('shared ')
+		return trimmed_transform_text(t.raw_var_type(node.value)).starts_with('shared ')
 	}
 	if node.kind == .as_expr && interface_pattern_is_collapsed_container_type(node.value) {
 		// Interface-to-container casts emit a runtime type check before producing the
@@ -8259,7 +8316,7 @@ fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {
 }
 
 fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	if clean.len == 0 {
 		return none
 	}
@@ -8313,11 +8370,11 @@ fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
 }
 
 fn (t &Transformer) generic_specialized_source_type_name(typ string) ?string {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	mut pointer_prefix := ''
 	for clean.starts_with('&') {
 		pointer_prefix += '&'
-		clean = clean[1..].trim_space()
+		clean = trimmed_transform_text(clean[1..])
 	}
 	args := t.recorded_generic_specialization_args(clean) or {
 		t.decode_single_generic_specialized_type_args(clean) or { return none }
@@ -8527,7 +8584,7 @@ fn generic_specialized_type_base_may_match(flat_name string, base string) bool {
 }
 
 fn add_generic_specialized_type_candidate(mut candidates []string, candidate string) {
-	clean := candidate.trim_space()
+	clean := trimmed_transform_text(candidate)
 	if clean.len > 0 && clean !in candidates {
 		candidates << clean
 	}
@@ -8539,7 +8596,7 @@ fn generic_specialized_source_type_name_for_base(base string, args []string) str
 }
 
 fn (t &Transformer) source_type_name_from_c_name(typ string) ?string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.len == 0 || !clean.contains('__') || t.type_name_is_declared(clean) {
 		return none
 	}
@@ -8590,7 +8647,7 @@ struct FixedArrayCNameParts {
 }
 
 fn (t &Transformer) fixed_array_source_type_from_c_name(typ string) ?string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if !clean.starts_with('Array_fixed_') {
 		return none
 	}
@@ -8682,7 +8739,7 @@ fn source_type_name_matches_c_name(name string, cname string) bool {
 }
 
 fn (t &Transformer) normalize_runtime_array_stringify_type(typ string) string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.starts_with('Array_') && !clean.starts_with('Array_fixed_') {
 		if clean in t.structs || clean in t.sum_types || clean in t.enum_types {
 			return typ
@@ -8868,7 +8925,7 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 		clean_typ = clean_typ[1..]
 	}
 	for clean_typ.starts_with('atomic ') {
-		clean_typ = clean_typ[7..].trim_space()
+		clean_typ = trimmed_transform_text(clean_typ[7..])
 	}
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ.all_after_last('.')
@@ -9157,7 +9214,11 @@ fn (mut t Transformer) wide_integer_format_conversion(expr flat.NodeId, typ stri
 	if format == 'c' {
 		// The cast the 64-bit path would use cannot be put on a 128-bit value, so
 		// the conversion happens inside the type instead.
-		name := if typ.trim_space() == 'i128' { 'i128__char_str' } else { 'u128__char_str' }
+		name := if trimmed_transform_text(typ) == 'i128' {
+			'i128__char_str'
+		} else {
+			'u128__char_str'
+		}
 		return t.make_call_typed(name, [expr], 'string')
 	}
 	mut width := 0
@@ -9224,11 +9285,11 @@ fn (t &Transformer) expr_is_shared_value(expr flat.NodeId) bool {
 	}
 	node := t.a.nodes[int(expr)]
 	if node.kind == .ident {
-		return t.raw_var_type(node.value).trim_space().starts_with('shared ')
+		return trimmed_transform_text(t.raw_var_type(node.value)).starts_with('shared ')
 	}
 	if node.kind == .selector && node.value == 'val' && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
-		return base.kind == .ident && t.raw_var_type(base.value).trim_space().starts_with('shared ')
+		return base.kind == .ident && trimmed_transform_text(t.raw_var_type(base.value)).starts_with('shared ')
 	}
 	return false
 }
@@ -9852,13 +9913,13 @@ fn (mut t Transformer) generic_str_method_specialization(fn_name string, receive
 }
 
 fn generic_str_alias_target_args(target string) []string {
-	clean := target.trim_space()
+	clean := trimmed_transform_text(target)
 	_, args, is_generic := generic_app_parts(clean)
 	if is_generic && args.len > 0 {
 		return args
 	}
 	if clean.starts_with('[]') && clean.len > 2 {
-		return [clean[2..].trim_space()]
+		return [trimmed_transform_text(clean[2..])]
 	}
 	return []string{}
 }
@@ -9934,7 +9995,7 @@ fn (mut t Transformer) lower_array_str_impl(arr_expr flat.NodeId, base_type stri
 				field_base_type = field_base_type[1..]
 			}
 			for field_base_type.starts_with('shared ') {
-				field_base_type = field_base_type[7..].trim_space()
+				field_base_type = trimmed_transform_text(field_base_type[7..])
 			}
 			if field_type := t.lookup_struct_field_type(field_base_type, selector.value) {
 				selector_type = field_type
@@ -9943,7 +10004,7 @@ fn (mut t Transformer) lower_array_str_impl(arr_expr flat.NodeId, base_type stri
 			}
 		}
 		for selector_type.starts_with('shared ') {
-			selector_type = selector_type[7..].trim_space()
+			selector_type = trimmed_transform_text(selector_type[7..])
 		}
 		if selector_type.starts_with('[]') && selector_type.len > 2 {
 			elem_type = selector_type[2..]
@@ -10108,7 +10169,7 @@ fn (t &Transformer) current_specialized_receiver_args(receiver_type string) ?[]s
 }
 
 fn (t &Transformer) current_fn_receiver_type() string {
-	name := t.cur_fn_name.trim_space()
+	name := trimmed_transform_text(t.cur_fn_name)
 	if name.len == 0 {
 		return ''
 	}
@@ -10238,7 +10299,7 @@ fn (mut t Transformer) map_str_loop_piece(name string, typ string, kind int, fix
 }
 
 fn (t &Transformer) map_str_type_has_transform_conversion(typ string) bool {
-	mut clean := t.normalize_type_alias(typ).trim_space()
+	mut clean := trimmed_transform_text(t.normalize_type_alias(typ))
 	if clean.len == 0 {
 		return false
 	}
@@ -10284,7 +10345,7 @@ fn (t &Transformer) map_str_kind_for_type(typ string) int {
 	if t.is_enum_stringify_type(typ) {
 		return 0
 	}
-	mut clean := t.normalize_type_alias(typ).trim_space()
+	mut clean := trimmed_transform_text(t.normalize_type_alias(typ))
 	if clean.starts_with('builtin.') {
 		clean = clean.all_after_last('.')
 	}
@@ -10326,7 +10387,7 @@ fn (t &Transformer) map_str_kind_for_type(typ string) int {
 }
 
 fn (t &Transformer) map_str_fixed_len_for_type(typ string) int {
-	clean := t.normalize_type_alias(typ).trim_space()
+	clean := trimmed_transform_text(t.normalize_type_alias(typ))
 	if transform_type_text_is_fixed_array(clean) {
 		return fixed_array_len(clean)
 	}
@@ -10448,9 +10509,9 @@ fn (t &Transformer) resolve_flag_enum_type_name(typ string) ?string {
 }
 
 fn (t &Transformer) flag_enum_mask_for_type(typ string) int {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	for clean.starts_with('&') {
-		clean = clean[1..].trim_space()
+		clean = trimmed_transform_text(clean[1..])
 	}
 	members := t.comptime_enum_members(clean)
 	mut mask := 0
@@ -10461,11 +10522,11 @@ fn (t &Transformer) flag_enum_mask_for_type(typ string) int {
 }
 
 fn (t &Transformer) flag_enum_has_backing_type(typ string) bool {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	for clean.starts_with('&') {
-		clean = clean[1..].trim_space()
+		clean = trimmed_transform_text(clean[1..])
 	}
-	normalized := t.normalize_type_alias(clean).trim_space()
+	normalized := trimmed_transform_text(t.normalize_type_alias(clean))
 	for candidate in [normalized, clean] {
 		if candidate.len == 0 {
 			continue
@@ -10702,7 +10763,7 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 // being cleaned up as though it were an owned rvalue after cloning reads it.
 fn (mut t Transformer) make_compiler_default_borrowed_clone_value(source flat.NodeId, typ string, allow_method bool) flat.NodeId {
 	mut stable_source := source
-	clean := t.normalize_type_alias(typ).trim_space()
+	clean := trimmed_transform_text(t.normalize_type_alias(typ))
 	// Transforming a borrowed projection can produce a non-addressable shallow value.
 	// Stabilize every such value so clone lowering borrows it rather than mistaking it for
 	// an owned rvalue that must be destroyed after cloning.
@@ -10718,7 +10779,7 @@ fn (mut t Transformer) make_compiler_default_borrowed_clone_value(source flat.No
 // compiler-provided IClone value. The initial aggregate copy preserves scalar/reference
 // fields, and each owning field is then replaced with its independent clone.
 fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ string, allow_method bool) flat.NodeId {
-	clean := t.normalize_type_alias(typ).trim_space()
+	clean := trimmed_transform_text(t.normalize_type_alias(typ))
 	if clean.len == 0 || clean.starts_with('&') {
 		return source
 	}
@@ -11141,7 +11202,7 @@ fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat
 // temporary literal into an addressable synthetic identifier.
 fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId, map_type string, source_is_owned_temporary bool) flat.NodeId {
 	key_type, value_type := t.map_type_parts(map_type)
-	clean_key_type := t.normalize_type_alias(key_type).trim_space()
+	clean_key_type := trimmed_transform_text(t.normalize_type_alias(key_type))
 	key_needs_clone := clean_key_type != 'string'
 		&& t.compiler_default_clone_type_needs_work(key_type)
 	value_needs_clone := t.compiler_default_clone_type_needs_work(value_type)
@@ -11231,7 +11292,7 @@ fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
 }
 
 fn (t &Transformer) compiler_default_clone_type_needs_work_seen(typ string, seen []string) bool {
-	clean := t.normalize_type_alias(typ).trim_space()
+	clean := trimmed_transform_text(t.normalize_type_alias(typ))
 	if clean.len == 0 || clean.starts_with('&') || clean in seen {
 		return false
 	}
@@ -11858,7 +11919,7 @@ fn (mut t Transformer) mark_fixed_array_element_drops(typ string, seen []string)
 	if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(typ)) {
 		return
 	}
-	clean := t.normalize_type_alias(typ).trim_space()
+	clean := trimmed_transform_text(t.normalize_type_alias(typ))
 	if clean.len == 0 || clean.starts_with('&') || clean in seen {
 		return
 	}
@@ -12237,7 +12298,11 @@ fn (mut t Transformer) validate_cgen_array_method_args(node flat.Node, base_id f
 		return false
 	}
 	if method == 'wait' {
-		elem_type := if base_type.starts_with('[]') { base_type[2..].trim_space() } else { '' }
+		elem_type := if base_type.starts_with('[]') {
+			trimmed_transform_text(base_type[2..])
+		} else {
+			''
+		}
 		if elem_type != 'thread' && !elem_type.starts_with('thread ') {
 			t.record_monomorph_error('unknown function `${display_name}`')
 			return false
@@ -12287,19 +12352,19 @@ fn (mut t Transformer) validate_cgen_array_method_args(node flat.Node, base_id f
 }
 
 fn thread_array_wait_return_type(elem_type string) ?string {
-	name := elem_type.trim_space()
+	name := trimmed_transform_text(elem_type)
 	if name == 'thread' {
 		return 'void'
 	}
 	if !name.starts_with('thread ') {
 		return none
 	}
-	payload := name[7..].trim_space()
+	payload := trimmed_transform_text(name[7..])
 	if payload == '?' || payload == '!' {
 		return '${payload}void'
 	}
 	if payload.starts_with('?') || payload.starts_with('!') {
-		value_type := payload[1..].trim_space()
+		value_type := trimmed_transform_text(payload[1..])
 		if value_type.len == 0 || value_type == 'void' {
 			return '${payload[0].ascii_str()}void'
 		}
@@ -12355,9 +12420,9 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		if key_type.len == 0 || value_type.len == 0 {
 			return none
 		}
-		mut clean_base_type := t.normalize_type_alias(base_type).trim_space()
+		mut clean_base_type := trimmed_transform_text(t.normalize_type_alias(base_type))
 		for clean_base_type.starts_with('shared ') {
-			clean_base_type = clean_base_type[7..].trim_space()
+			clean_base_type = trimmed_transform_text(clean_base_type[7..])
 		}
 		source_is_owned_temporary := !clean_base_type.starts_with('&')
 			&& !t.expr_can_take_address(base_id)
@@ -12473,7 +12538,7 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 	}
 	if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type))
 		&& t.compiler_default_clone_type_needs_work(elem_type)
-		&& (fn_node.value == 'values' || t.normalize_type_alias(elem_type).trim_space() != 'string') {
+		&& (fn_node.value == 'values' || trimmed_transform_text(t.normalize_type_alias(elem_type)) != 'string') {
 		return t.make_owned_map_items_value(base, clean_type, elem_type, fn_node.value == 'keys', source_is_owned_temporary)
 	}
 	t.mark_fn_used('map__${fn_node.value}')
@@ -12553,7 +12618,7 @@ fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.
 	if isnil(t.tc) {
 		return
 	}
-	clean_key_type := t.normalize_type_alias(key_type_name).trim_space()
+	clean_key_type := trimmed_transform_text(t.normalize_type_alias(key_type_name))
 	key_requires_drop := t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type_name))
 		&& !(method == 'free' && clean_key_type == 'string')
 	value_requires_drop :=
@@ -12613,7 +12678,7 @@ fn (mut t Transformer) append_owned_map_entry_delete_with_drops(map_expr flat.No
 	if isnil(t.tc) {
 		return false
 	}
-	clean_key_type := t.normalize_type_alias(key_type_name).trim_space()
+	clean_key_type := trimmed_transform_text(t.normalize_type_alias(key_type_name))
 	key_requires_drop := clean_key_type != 'string'
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type_name))
 	value_requires_drop :=
@@ -12711,9 +12776,9 @@ fn (mut t Transformer) try_lower_channel_method_call(call_id flat.NodeId, node f
 		if resolved_method := t.tc.resolved_call_name(call_id) {
 			channel_method := 'chan.${fn_node.value}'
 			runtime_method := 'sync__Channel__${fn_node.value}'
-			mut clean_resolved_method := resolved_method.trim_space()
+			mut clean_resolved_method := trimmed_transform_text(resolved_method)
 			for clean_resolved_method.starts_with('&') {
-				clean_resolved_method = clean_resolved_method[1..].trim_space()
+				clean_resolved_method = trimmed_transform_text(clean_resolved_method[1..])
 			}
 			is_typed_channel_method := clean_resolved_method.starts_with('chan ')
 				&& clean_resolved_method.ends_with('.${fn_node.value}')
@@ -12732,7 +12797,7 @@ fn (mut t Transformer) try_lower_channel_method_call(call_id flat.NodeId, node f
 	mut ptr_depth := 0
 	for clean_type.starts_with('&') {
 		ptr_depth++
-		clean_type = clean_type[1..].trim_space()
+		clean_type = trimmed_transform_text(clean_type[1..])
 	}
 	if clean_type != 'chan' && !clean_type.starts_with('chan ') {
 		if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id, 'chan.close') {
@@ -13232,7 +13297,7 @@ fn fn_literal_value_type_text(params []types.Type, ret_type string) string {
 }
 
 fn fn_literal_value_type_text_from_text(params []string, ret_type string) string {
-	ret := ret_type.trim_space()
+	ret := trimmed_transform_text(ret_type)
 	if ret.len == 0 || ret == 'void' {
 		return 'fn(${params.join(', ')})'
 	}
@@ -13778,14 +13843,14 @@ fn (mut t Transformer) pointer_alias_direct_str_call(base_id flat.NodeId, alias_
 	if declaring_alias, str_fn := t.alias_custom_str_method_in_chain(alias_name) {
 		return t.make_pointer_alias_str_call(base_id, declaring_alias, str_fn)
 	}
-	mut current := alias_name.trim_space()
+	mut current := trimmed_transform_text(alias_name)
 	mut seen := map[string]bool{}
 	for current.len > 0 && !seen[current] {
 		seen[current] = true
 		_, target := t.lookup_str_alias(current) or { return none }
-		clean_target := target.trim_space()
+		clean_target := trimmed_transform_text(target)
 		if clean_target.starts_with('&') {
-			pointee := clean_target[1..].trim_space()
+			pointee := trimmed_transform_text(clean_target[1..])
 			if declaring_alias, str_fn := t.alias_custom_str_method_in_chain(pointee) {
 				return t.make_pointer_alias_str_call(base_id, declaring_alias, str_fn)
 			}
@@ -13800,7 +13865,7 @@ fn (mut t Transformer) pointer_alias_direct_str_call(base_id flat.NodeId, alias_
 }
 
 fn (mut t Transformer) alias_custom_str_method_in_chain(alias_name string) ?(string, string) {
-	mut current := alias_name.trim_space()
+	mut current := trimmed_transform_text(alias_name)
 	mut seen := map[string]bool{}
 	for current.len > 0 && !seen[current] {
 		seen[current] = true
@@ -13808,7 +13873,7 @@ fn (mut t Transformer) alias_custom_str_method_in_chain(alias_name string) ?(str
 			return current, str_fn
 		}
 		_, target := t.lookup_str_alias(current) or { return none }
-		clean_target := target.trim_space()
+		clean_target := trimmed_transform_text(target)
 		if clean_target.starts_with('&') || !t.is_type_alias_name(clean_target) {
 			return none
 		}
@@ -14964,7 +15029,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if base_type.len == 0 {
 		base_type = t.lvalue_type(base_id)
 	}
-	if base_type.len == 0 || base_type.trim_space().trim('&') in ['void', 'voidptr']
+	if base_type.len == 0 || trimmed_transform_text(base_type).trim('&') in ['void', 'voidptr']
 		|| t.generic_arg_is_unresolved(base_type) {
 		if specialized_ret := t.specialized_interface_method_call_return_type(base_id, base_node) {
 			base_type = specialized_ret
@@ -15976,24 +16041,24 @@ fn (t &Transformer) collect_callback_nested_fn_types(param string, mut signature
 			payload = unnamed
 			continue
 		}
-		normalized := t.normalize_type_alias(payload).trim_space()
+		normalized := trimmed_transform_text(t.normalize_type_alias(payload))
 		if normalized != payload {
 			payload = normalized
 			continue
 		}
 		if payload.starts_with('?') || payload.starts_with('!') || payload.starts_with('&') {
-			payload = payload[1..].trim_space()
+			payload = trimmed_transform_text(payload[1..])
 		} else if payload.starts_with('shared ') {
-			payload = payload[7..].trim_space()
+			payload = trimmed_transform_text(payload[7..])
 		} else if payload.starts_with('atomic ') {
-			payload = payload[7..].trim_space()
+			payload = trimmed_transform_text(payload[7..])
 		} else if payload.starts_with('[]') {
-			payload = payload[2..].trim_space()
+			payload = trimmed_transform_text(payload[2..])
 		} else if payload.starts_with('...') {
-			payload = payload[3..].trim_space()
+			payload = trimmed_transform_text(payload[3..])
 		} else if payload.starts_with('chan ') || payload.starts_with('thread ') {
 			prefix_len := if payload.starts_with('chan ') { 5 } else { 7 }
-			payload = payload[prefix_len..].trim_space()
+			payload = trimmed_transform_text(payload[prefix_len..])
 		} else if payload.starts_with('map[') || payload.starts_with('[') {
 			open := if payload.starts_with('map[') { 3 } else { 0 }
 			mut depth := 0
@@ -16012,7 +16077,7 @@ fn (t &Transformer) collect_callback_nested_fn_types(param string, mut signature
 			if end < 0 || end + 1 >= payload.len {
 				return
 			}
-			payload = payload[end + 1..].trim_space()
+			payload = trimmed_transform_text(payload[end + 1..])
 		} else if payload.starts_with('(') && payload.ends_with(')') {
 			for part in split_generic_args(payload[1..payload.len - 1]) {
 				t.collect_callback_nested_fn_types(part, mut signatures)
@@ -16750,7 +16815,7 @@ fn (t &Transformer) receiver_method_return_type(method_name string, fallback str
 }
 
 fn (t &Transformer) fn_return_alias_type_text(method_name string, ret_text string) ?string {
-	clean := ret_text.trim_space()
+	clean := trimmed_transform_text(ret_text)
 	if clean.len == 0 || isnil(t.tc) {
 		return none
 	}
@@ -16939,7 +17004,7 @@ fn (t &Transformer) receiver_method_matches_type_name(method_name string, typ st
 	if receiver_name.len == 0 {
 		return true
 	}
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	for clean.starts_with('&') {
 		clean = clean[1..]
 	}
@@ -17284,7 +17349,7 @@ fn generic_receiver_flat_type_variants(receiver_type string) []string {
 }
 
 fn flattened_generic_receiver_short_variants(receiver_type string) []string {
-	clean := receiver_type.trim_space()
+	clean := trimmed_transform_text(receiver_type)
 	if clean.len == 0 || !clean.contains('__') || !clean.contains('_') {
 		return []string{}
 	}
@@ -17353,7 +17418,7 @@ fn (mut t Transformer) lower_fixed_array_dynamic_receiver_method_call(node flat.
 }
 
 fn fixed_array_outer_elem_type(type_text string) string {
-	clean := type_text.trim_space()
+	clean := trimmed_transform_text(type_text)
 	if clean.len == 0 {
 		return ''
 	}
@@ -17386,7 +17451,7 @@ fn transform_can_prefix_collection_receiver(module_name string) bool {
 }
 
 fn (t &Transformer) receiver_type_text_variants(type_text string) []string {
-	clean := type_text.trim_space()
+	clean := trimmed_transform_text(type_text)
 	mut names := []string{}
 	transform_push_receiver_candidate(mut names, clean)
 	transform_push_receiver_candidate(mut names, receiver_type_text_short_spelling(clean))
@@ -17399,7 +17464,7 @@ fn (t &Transformer) receiver_type_text_variants(type_text string) []string {
 }
 
 fn (t &Transformer) receiver_type_text_source_fixed_spelling(type_text string) string {
-	clean := type_text.trim_space()
+	clean := trimmed_transform_text(type_text)
 	if clean.len == 0 || clean.starts_with('[') || !t.is_fixed_array_type(clean) {
 		return clean
 	}
@@ -17421,7 +17486,7 @@ fn (t &Transformer) receiver_type_text_source_fixed_spelling(type_text string) s
 }
 
 fn transform_postfix_fixed_array_parts(type_text string) (string, []string) {
-	clean := type_text.trim_space()
+	clean := trimmed_transform_text(type_text)
 	mut end := clean.len
 	mut dims := []string{}
 	for end > 0 && clean[end - 1] == `]` {
@@ -17429,7 +17494,7 @@ fn transform_postfix_fixed_array_parts(type_text string) (string, []string) {
 		if start < 0 {
 			break
 		}
-		dims << clean[start + 1..end - 1].trim_space()
+		dims << trimmed_transform_text(clean[start + 1..end - 1])
 		end = start
 	}
 	return clean[..end], dims
@@ -17451,7 +17516,7 @@ fn transform_trailing_matching_bracket_start(s string, end int) int {
 }
 
 fn receiver_type_text_short_spelling(type_text string) string {
-	clean := type_text.trim_space()
+	clean := trimmed_transform_text(type_text)
 	if clean.starts_with('[]') {
 		return '[]' + receiver_type_text_short_spelling(clean[2..])
 	}
@@ -17476,7 +17541,7 @@ fn receiver_type_text_short_spelling(type_text string) string {
 }
 
 fn (t &Transformer) receiver_type_text_module_names(type_text string) []string {
-	clean := type_text.trim_space()
+	clean := trimmed_transform_text(type_text)
 	mut names := []string{}
 	if clean.starts_with('[]') {
 		return t.receiver_type_text_module_names(clean[2..])
@@ -18459,7 +18524,7 @@ fn (t &Transformer) call_return_type_name(ret_name string, node flat.Node) strin
 
 // specialize_generic_type_name supports specialize generic type name handling for Transformer.
 fn (t &Transformer) specialize_generic_type_name(typ string, generic_arg string) string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.len == 0 || generic_arg == '' {
 		return typ
 	}

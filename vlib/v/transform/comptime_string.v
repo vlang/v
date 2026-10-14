@@ -494,7 +494,7 @@ fn (mut t Transformer) eval_reflected_string_condition(cond string, node flat.No
 // Concrete type tests do not hide invalid string operands in the same condition.
 fn (mut t Transformer) comptime_condition_has_unresolved_type_test(cond string) bool {
 	if 'is' !in comptime_condition_bare_names(cond) { return false }
-	clean := comptime_condition_strip_outer_parens(cond.trim_space())
+	clean := comptime_condition_strip_outer_parens(trimmed_transform_text(cond))
 	for op in ['||', '&&'] {
 		index := comptime_condition_top_level_index(clean, op)
 		if index >= 0 {

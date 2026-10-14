@@ -179,8 +179,8 @@ fn (t &Transformer) decl_type_should_override_fallback(authority string, fallbac
 }
 
 fn (t &Transformer) local_struct_type_overrides_imported_alias(authority string, fallback string) bool {
-	mut local := authority.trim_space()
-	mut imported := fallback.trim_space()
+	mut local := trimmed_transform_text(authority)
+	mut imported := trimmed_transform_text(fallback)
 	for prefix in ['[]', '&', '?', '!'] {
 		for local.starts_with(prefix) && imported.starts_with(prefix) {
 			local = local[prefix.len..]
@@ -195,7 +195,7 @@ fn (t &Transformer) local_struct_type_overrides_imported_alias(authority string,
 }
 
 fn map_value_starts_with_fixed_array(typ string) bool {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if !clean.starts_with('map[') {
 		return false
 	}
@@ -210,7 +210,8 @@ fn decl_type_is_usable(typ string) bool {
 	if types.type_text_contains_typeof(typ) {
 		return false
 	}
-	clean := typ.replace(' ', '')
+	// `replace` copies the text even when it holds no space.
+	clean := if typ.contains_u8(` `) { typ.replace(' ', '') } else { typ }
 	return clean !in ['Option', '__v_option', 'Result'] && !clean.starts_with('Option_')
 		&& !clean.starts_with('__v_option_') && !clean.starts_with('Result_')
 }
@@ -529,7 +530,7 @@ fn (t &Transformer) fn_literal_type_text(node flat.Node) string {
 		slot_type := explicit_mut_pointer_param_type_text(child, fn_literal_param_type_text(raw))
 		params << mutable_fn_value_param_type_text(child, slot_type)
 	}
-	ret := node.typ.trim_space()
+	ret := trimmed_transform_text(node.typ)
 	if ret.len == 0 || ret == 'void' {
 		return 'fn (${params.join(', ')})'
 	}
@@ -537,16 +538,16 @@ fn (t &Transformer) fn_literal_type_text(node flat.Node) string {
 }
 
 fn fn_literal_param_type_text(raw string) string {
-	mut text := raw.trim_space()
+	mut text := trimmed_transform_text(raw)
 	if text.starts_with('mut ') {
-		text = text[4..].trim_space()
+		text = trimmed_transform_text(text[4..])
 	}
 	space := generic_top_level_space_index(text)
 	if space <= 0 {
 		return text
 	}
-	head := text[..space].trim_space()
-	tail := text[space + 1..].trim_space()
+	head := trimmed_transform_text(text[..space])
+	tail := trimmed_transform_text(text[space + 1..])
 	if generic_fn_type_param_head_is_name(head, tail) {
 		return tail
 	}
@@ -1632,7 +1633,7 @@ fn (t &Transformer) expand_generic_type_alias(typ string) ?string {
 }
 
 fn strip_field_module_prefix_from_type(typ string, module_name string) string {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.len == 0 || module_name == '' {
 		return clean
 	}
@@ -2203,7 +2204,8 @@ fn type_text_may_name_struct(typ string) bool {
 	if start >= typ.len {
 		return false
 	}
-	clean := typ[start..]
+	// Only read below, while `typ` owns the bytes.
+	clean := unsafe { typ.substr_unsafe(start, typ.len) }
 	if is_plain_builtin_alias_type(clean) {
 		return false
 	}
