@@ -515,6 +515,64 @@ fn test_fmt_preserves_vfmt_directives_before_default_attributes() {
 	assert twice == formatted, twice
 }
 
+fn test_fmt_preserves_first_field_attributes_crossing_directives() {
+	for i, declaration in ['a   int', 'a, b   int'] {
+		source := 'struct First {\n\t@[required]\n\t// vfmt off\n\t${declaration}\n\t// vfmt on\n\tc int @[c]\n}\n'
+		res, formatted := run_vfmt_write('first_field_directive_attrs_${i}', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted == source, formatted
+		assert formatted.count('@[required]') == 1, formatted
+		second_res, twice := run_vfmt_write('first_field_directive_attrs_${i}_twice', formatted,
+			'')
+		assert second_res.exit_code == 0, second_res.output
+		assert twice == formatted
+	}
+}
+
+fn test_fmt_normalizes_crlf_before_first_field_directives() {
+	for i, declaration in ['a   int', 'a, b   int'] {
+		want := 'struct First {\n\t@[required]\n\t// vfmt off\n\t${declaration}\n\t// vfmt on\n\tc int @[c]\n}\n'
+		res, formatted := run_vfmt_write('first_field_directive_crlf_${i}', want.replace('\n',
+			'\r\n'), '')
+		assert res.exit_code == 0, res.output
+		assert formatted == want, formatted
+		assert !formatted.contains('\r'), formatted
+		second_res, twice := run_vfmt_write('first_field_directive_crlf_${i}_twice', formatted,
+			'')
+		assert second_res.exit_code == 0, second_res.output
+		assert twice == formatted
+	}
+}
+
+fn test_fmt_preserves_directive_attributes_after_comptime_members() {
+	source := 'struct After {\n\t\$if linux {\n\t}\n\t@[required]\n\t// vfmt off\n\ta, b   int\n\t// vfmt on\n\tc int @[c]\n}\n'
+	for i, line_ending in ['\n', '\r\n'] {
+		res, formatted := run_vfmt_write('directive_attrs_after_comptime_${i}', source.replace('\n',
+			line_ending), '')
+		assert res.exit_code == 0, res.output
+		assert formatted == source, formatted
+		second_res, twice := run_vfmt_write('directive_attrs_after_comptime_${i}_twice', formatted,
+			'')
+		assert second_res.exit_code == 0, second_res.output
+		assert twice == formatted
+	}
+}
+
+fn test_fmt_keeps_header_line_comments_separate_from_directive_attributes() {
+	source := 'struct First\n\t// header\n{ @[required]\n\t// vfmt off\n\ta, b   int\n\t// vfmt on\n\tc int @[c]\n}\n'
+	for i, line_ending in ['\n', '\r\n'] {
+		res, formatted := run_vfmt_write('header_line_comment_directive_attrs_${i}', source.replace('\n',
+			line_ending), '')
+		assert res.exit_code == 0, res.output
+		assert formatted.split_into_lines().filter(it.trim_space() == '@[required]').len == 1, formatted
+		assert !formatted.contains('// header\n\n'), formatted
+		second_res, twice := run_vfmt_write('header_line_comment_directive_attrs_${i}_twice', formatted,
+			'')
+		assert second_res.exit_code == 0, second_res.output
+		assert twice == formatted
+	}
+}
+
 fn test_fmt_formats_enabled_leading_attributes_after_vfmt_on() {
 	declarations := ['@[a] value   int=1+2', '@[a] x, y   int']
 	formatted_fields := ['value int = 1 + 2 @[a]', 'x int @[a]\n\ty int @[a]']

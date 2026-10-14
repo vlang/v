@@ -8697,7 +8697,6 @@ const v3_cache_compiler_runtime_inputs = [
 	'vlib/os/execute_capture_nix.c',
 	'vlib/os/execute_capture_nix.h',
 	'vlib/runtime/free_memory_darwin.c',
-	'vlib/runtime/used_memory_freebsd.c',
 	'vlib/runtime/free_memory_openbsd.c',
 	'vlib/v/diagserver/syscalls_linux.c',
 	'vlib/v/modulecache/file_metadata.c',
@@ -10926,6 +10925,11 @@ pub fn run(args []string) {
 			i++
 		}
 	}
+	if backend == 'native' {
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		eprintln(pref.native_backend_replacement_message)
+		exit(1)
+	}
 	if compiler_errors.json_output() {
 		// The details of a diagnostic are text, whatever `-color` asked for.
 		ansi.set_colors_enabled(false)
@@ -11588,6 +11592,15 @@ pub fn run(args []string) {
 	// Older bootstrap compilers still require the stdlib's compatibility headers.
 	if backend != 'fastc' {
 		record_user_define(mut user_defines, mut compile_values, 'v3_c_extern_declarations')
+	}
+	if cmd_v_build && output_cross_c && backend == 'c' && !no_builtin && !is_o
+		&& !target_libc_headers
+		&& target.os in ['macos', 'linux', 'freebsd', 'openbsd', 'dragonfly', 'windows', 'android',
+			'termux', 'ios'] {
+		// vc/v.c must bootstrap without platform headers or checkout-local objects.
+		// Keep the signal-context ABI out of this portable compiler snapshot.
+		record_user_define(mut user_defines, mut compile_values, 'v3_headerless_bootstrap')
+		record_user_define(mut user_defines, mut compile_values, 'no_segfault_handler')
 	}
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
