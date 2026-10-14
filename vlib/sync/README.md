@@ -12,6 +12,15 @@ Function channels support explicit capacities and default initialization in stru
 and globals. Arrays of channels can use an explicit `init` expression to initialize
 each channel. A received function value can be called normally.
 
+## Barrier
+
+`new_barrier(n)` creates a reusable rendezvous for a positive, fixed number of
+participants. Share the returned pointer between workers. Each participant calls
+`wait()` once per round; all wait until the last participant arrives. Exactly one wait
+returns `true` for that round, identifying its leader. Other waits return `false`.
+A completed round resets the arrival count automatically. With one participant, every
+wait returns immediately with `true`.
+
 Use a timer when a wait needs to participate in a `select`:
 
 ```v
@@ -46,12 +55,3 @@ hold a read lock or wait for a writer to finish. Optimistic access does not make
 concurrent reads and writes safe: use atomic data or other synchronization, and validate
 the stamp after reading. Use a regular read lock for non-atomic shared data. Locks are
 not reentrant and must be released once for each corresponding acquisition.
-
-## Barrier
-
-`new_barrier(n)` creates a reusable rendezvous for a positive, fixed number of
-participants. Share the returned pointer between workers. Each participant calls
-`wait()` once per round; all wait until the last participant arrives. Exactly one wait
-returns `true` for that round, identifying its leader. Other waits return `false`.
-A completed round resets the arrival count automatically. With one participant, every
-wait returns immediately with `true`.
