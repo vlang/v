@@ -419,18 +419,26 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 	} $else $if T is isize {
 		integer_val = isize(val).str()
 	} $else $if T is f32 {
-		magnitude := f32_abs(val)
-		integer_val = if magnitude == 0 || (magnitude >= f32(1e-6) && magnitude < f32(1e21)) {
-			f32(val).strlong()
-		} else {
-			f32(val).str()
+		$if js {
+			integer_val = f32(val).str()
+		} $else {
+			magnitude := f32_abs(val)
+			integer_val = if magnitude == 0 || (magnitude >= f32(1e-6) && magnitude < f32(1e21)) {
+				f32(val).strlong()
+			} else {
+				f32(val).str()
+			}
 		}
 	} $else $if T is f64 {
-		magnitude := f64_abs(val)
-		integer_val = if magnitude == 0 || (magnitude >= 1e-6 && magnitude < 1e21) {
-			f64(val).strlong()
-		} else {
-			f64(val).str()
+		$if js {
+			integer_val = f64(val).str()
+		} $else {
+			magnitude := f64_abs(val)
+			integer_val = if magnitude == 0 || (magnitude >= 1e-6 && magnitude < 1e21) {
+				f64(val).strlong()
+			} else {
+				f64(val).str()
+			}
 		}
 	}
 	defer { unsafe { integer_val.free() } }
