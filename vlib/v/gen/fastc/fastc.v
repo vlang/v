@@ -1312,6 +1312,7 @@ struct Parser {
 	has_startup_inits bool
 	has_cleanup_hooks bool
 mut:
+	uses_pthread_tls     bool
 	path                 string
 	source_offset        int
 	source_line_offset   int
