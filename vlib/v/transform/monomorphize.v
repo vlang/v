@@ -15668,7 +15668,47 @@ fn (t &Transformer) canonical_short_fixed_array_arg(arg string) ?string {
 	return candidate
 }
 
+// SpecArgsMissCache keeps the spellings recorded_generic_specialization_args
+// found nothing for. Specialization arguments are only ever recorded under new
+// keys, so a miss holds until the recorded maps grow or the parent map changes.
+@[heap]
+struct SpecArgsMissCache {
+mut:
+	misses     map[string]bool
+	local_len  int = -1
+	parent_len int = -1
+	parent     voidptr
+}
+
 fn (t &Transformer) recorded_generic_specialization_args(typ string) ?[]string {
+	mut cache := t.spec_args_misses
+	if isnil(cache) {
+		return t.recorded_generic_specialization_args_uncached(typ)
+	}
+	parent := voidptr(t.generic_specialization_args_parent)
+	parent_len := if isnil(t.generic_specialization_args_parent) {
+		-1
+	} else {
+		unsafe { t.generic_specialization_args_parent.len }
+	}
+	if cache.local_len != t.generic_specialization_args.len || cache.parent_len != parent_len
+		|| cache.parent != parent {
+		cache.misses.clear()
+		cache.local_len = t.generic_specialization_args.len
+		cache.parent_len = parent_len
+		cache.parent = parent
+	}
+	if cache.misses[typ] {
+		return none
+	}
+	if args := t.recorded_generic_specialization_args_uncached(typ) {
+		return args
+	}
+	cache.misses[typ] = true
+	return none
+}
+
+fn (t &Transformer) recorded_generic_specialization_args_uncached(typ string) ?[]string {
 	trimmed := trimmed_transform_text(typ)
 	clean := if trimmed.starts_with('&') { trimmed.trim_left('&') } else { trimmed }
 	if clean.len == 0 {

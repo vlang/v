@@ -539,6 +539,20 @@ fn test_gnu_c_flags_keep_default_feature_macros() {
 	}
 }
 
+fn test_syncfs_binding_requests_linux_gnu_feature_macros() {
+	for flags in [[]string{}, ['-std=gnu11'], ['-std=c99', '-std=gnu99']] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.fn_ret_types['C.syncfs'] = types.Type(types.int_)
+		mut g := FlatGen.new()
+		g.tc = &tc
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert c_code.contains('#if defined(__linux__) && !defined(_GNU_SOURCE)\n#define _GNU_SOURCE\n#endif'), '${flags}: ${c_code}'
+	}
+}
+
 fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
