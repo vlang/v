@@ -35,6 +35,16 @@ fn fastc_text_line(text string, offset int) int {
 	return line
 }
 
+// fastc_text_column is the 1-based column of byte `offset` in `text`.
+fn fastc_text_column(text string, offset int) int {
+	end := if offset < text.len { offset } else { text.len }
+	mut start := end
+	for start > 0 && text[start - 1] != `\n` {
+		start--
+	}
+	return end - start + 1
+}
+
 // fastc_test_failure_line is the line a test that returns an error reports, chosen as the C
 // harness chooses it: the first line of its body that can return or propagate one, else the
 // line of its `fn`.
@@ -64,20 +74,40 @@ struct FastcTestFunction {
 	return_type  string
 }
 
+// fastc_compare_test_functions orders test functions as their declarations are ordered.
+fn fastc_compare_test_functions(a &FastcTestFunction, b &FastcTestFunction) int {
+	if a.path != b.path {
+		return if a.path < b.path { -1 } else { 1 }
+	}
+	return a.position - b.position
+}
+
 // fastc_synthesized_test_main is the main of a test build: it runs every test of the test
 // file in source order between testsuite_begin and testsuite_end, each between before_each and
-// after_each. A failed assert reports itself and ends its test (v_fastc_test_assert_fail
+// after_each. A failed assert reports itself and ends its test (v_fastc_test_fail_transfer
 // longjmps back here): a failed before_each skips the test, after_each runs either way. A test
-// returning an error fails with its message; the exit status is 1 when any test failed.
-fn fastc_synthesized_test_main(functions map[string]FastcFunctionSignature, function_c_names map[string]string, prefs &pref.Preferences, has_startup_inits bool, has_cleanup_hooks bool) string {
+// returning an error fails with its message; the exit status is 1 when any test failed. A test
+// or hook that takes parameters is refused, as V refuses it.
+fn fastc_synthesized_test_main(functions map[string]FastcFunctionSignature, function_c_names map[string]string, prefs &pref.Preferences, has_startup_inits bool, has_cleanup_hooks bool) !string {
 	selfhost := prefs.building_v
 	mut texts := map[string]string{}
 	mut tests := []FastcTestFunction{}
+	mut invalid := []FastcTestFunction{}
 	mut hooks := map[string]string{}
 	for key, signature in functions {
 		name := key.all_after_last('.')
-		if !fastc_is_test_harness_function(name) || signature.parameter_types.len > 0
-			|| key.starts_with('C.') || !fastc_is_test_source(signature.path, prefs) {
+		// Only the test file's top-level functions are tests and hooks; a method is not.
+		if !fastc_is_test_harness_function(name)
+			|| key != fastc_function_key(signature.module_name, name)
+			|| !fastc_is_test_source(signature.path, prefs) {
+			continue
+		}
+		if signature.parameter_types.len > 0 {
+			invalid << FastcTestFunction{
+				name:     name
+				path:     signature.path
+				position: signature.position
+			}
 			continue
 		}
 		c_name := function_c_names[key] or { fastc_c_function_name(signature.module_name, name) }
@@ -88,23 +118,27 @@ fn fastc_synthesized_test_main(functions map[string]FastcFunctionSignature, func
 		if signature.path !in texts {
 			texts[signature.path] = os.read_file(signature.path) or { '' }
 		}
-		text := texts[signature.path]
-		position := text.index('fn ${name}(') or { text.len }
 		tests << FastcTestFunction{
 			name:         name
 			c_name:       c_name
 			path:         signature.path
-			position:     position
-			failure_line: fastc_test_failure_line(text, position)
+			position:     signature.position
+			failure_line: fastc_test_failure_line(texts[signature.path], signature.position)
 			return_type:  signature.return_type
 		}
 	}
-	tests.sort_with_compare(fn (a &FastcTestFunction, b &FastcTestFunction) int {
-		if a.path != b.path {
-			return if a.path < b.path { -1 } else { 1 }
+	tests.sort_with_compare(fastc_compare_test_functions)
+	if invalid.len > 0 {
+		invalid.sort_with_compare(fastc_compare_test_functions)
+		mut errors := []string{cap: invalid.len}
+		for function in invalid {
+			text := os.read_file(function.path) or { '' }
+			line := fastc_text_line(text, function.position)
+			column := fastc_text_column(text, function.position)
+			errors << '${function.path}:${line}:${column}: error: invalid test signature: test functions should take 0 parameters'
 		}
-		return a.position - b.position
-	})
+		return error(errors.join('\n'))
+	}
 	before_each := hooks['before_each'] or { '' }
 	after_each := hooks['after_each'] or { '' }
 	mut out := strings.new_builder(1024)
@@ -112,11 +146,17 @@ fn fastc_synthesized_test_main(functions map[string]FastcFunctionSignature, func
 	out.writeln('static jmp_buf v_fastc_test_jump;')
 	out.writeln('static int v_fastc_test_active;')
 	out.writeln('static int v_fastc_test_failures;')
-	out.writeln('void v_fastc_test_assert_fail(string where, string message) {')
+	out.writeln('void v_fastc_test_assert_report(string where, string message) {')
 	out.writeln('\tfprintf(stderr, "%.*s: %.*s\\n", (int)where.len, (char *)where.str, (int)message.len, (char *)message.str);')
 	out.writeln('\tv_fastc_test_failures++;')
+	out.writeln('}')
+	out.writeln('void v_fastc_test_fail_transfer(void) {')
 	out.writeln('\tif (v_fastc_test_active) longjmp(v_fastc_test_jump, 1);')
 	out.writeln('\texit(1);')
+	out.writeln('}')
+	out.writeln('void v_fastc_test_assert_fail(string where, string message) {')
+	out.writeln('\tv_fastc_test_assert_report(where, message);')
+	out.writeln('\tv_fastc_test_fail_transfer();')
 	out.writeln('}')
 	parameters := if selfhost { 'int argc, char **argv' } else { 'void' }
 	out.writeln('int main(${parameters}) {')

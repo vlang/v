@@ -123,6 +123,13 @@ fn fastc_parameter_is_params_struct(parameter_type string, params_structs map[st
 }
 
 fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+	collect_function_signatures_at(source, 0, path, header, prefs, skips, declared_types,
+		declared_type_c_names, params_structs, mut functions)!
+}
+
+// collect_function_signatures_at collects the functions declared in `source`, which starts at
+// byte `source_offset` of the file at `path`.
+fn collect_function_signatures_at(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
@@ -161,6 +168,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 		}
 		if tok == .key_fn && brace_depth == 0 && previous_tok != .assign {
 			is_public := previous_tok == .key_pub
+			declaration_offset := source_offset + scan.pos
 			tok = scan.scan()
 			mut parameter_types := []string{}
 			mut parameter_mutability := []bool{}
@@ -399,6 +407,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				is_c_extern:              is_c_function && next_declaration_is_c_extern
 				module_name:              header.module_name
 				path:                     path
+				position:                 declaration_offset
 			}
 			if previous := functions[function_key] {
 				if !is_c_function {
@@ -441,7 +450,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 		tok = scan.scan()
 	}
 	if header.has_comptime_if {
-		fastc_collect_selected_comptime_function_signatures(source, path, header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
+		fastc_collect_selected_comptime_function_signatures(source, source_offset, path, header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
 	}
 }
 
