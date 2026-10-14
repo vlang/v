@@ -103,6 +103,41 @@ fn main() {
 	assert run.exit_code == 0, run.output
 }
 
+fn test_imported_numeric_alias_fields_validate_generic_values() ! {
+	directory := os.join_path(os.vtmp_dir(), 'imported_numeric_fields_${os.getpid()}')
+	os.mkdir_all(os.join_path(directory, 'numeric_fields'))!
+	defer { os.rmdir_all(directory) or {} }
+	os.write_file(os.join_path(directory, 'numeric_fields', 'types.v'), 'module numeric_fields
+pub type Measure = f64
+pub struct Number {
+pub:
+	width Measure
+}
+')!
+	for index, value in ['true', '"12"', 'numeric_fields.Measure(12.5)'] {
+		verification := if index == 2 {
+			'assert f64(number(${value}).width) == 12.5'
+		} else {
+			'_ = number(${value})'
+		}
+		source := 'module main\nimport numeric_fields\nfn number[T](value T) numeric_fields.Number { return numeric_fields.Number{width: value} }\nfn main() { ${verification} }\n'
+		for check in [false, true] {
+			name := 'imported_${index}_${check}'
+			result := generic_numeric_field_program(directory, name, source, check)
+			if index == 2 {
+				assert result.exit_code == 0, result.output
+			} else {
+				assert result.exit_code != 0, result.output
+				assert result.output.contains('cannot assign to field `width`'), result.output
+			}
+		}
+		if index == 2 {
+			run := os.exec([os.join_path(directory, 'imported_2_false')])
+			assert run.exit_code == 0, run.output
+		}
+	}
+}
+
 fn test_generic_numeric_fields_validate_fallible_generic_method_results() {
 	directory := os.join_path(os.vtmp_dir(), 'generic_numeric_methods_${os.getpid()}')
 	os.mkdir_all(directory) or { panic(err) }
@@ -241,7 +276,7 @@ fn test_explicit_generic_callees_keep_type_arguments_before_fallible_arguments()
 	os.mkdir_all(directory) or { panic(err) }
 	defer { os.rmdir_all(directory) or {} }
 	source := 'module main
-import x.json2
+import json2
 struct User { name string }
 fn values() ![]int { return [2, 3] }
 fn data() !string { return \'[{"name":"Ada"}]\' }
