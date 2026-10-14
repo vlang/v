@@ -10099,6 +10099,11 @@ fn (g &FlatGen) ordered_module_cleanup_fns() []string {
 	mut result := []string{}
 	mut visiting := map[string]bool{}
 	mut visited := map[string]bool{}
+	// Cleanup reverses startup's root-derived dependency order. The fallback
+	// below also retains hooks absent from startup and import metadata.
+	for mod in g.ordered_startup_modules(module_to_cleanup) {
+		g.visit_module_init(mod, module_to_cleanup, mut visiting, mut visited, mut result)
+	}
 	for cleanup_fn in g.module_cleanup_fns {
 		mod := g.module_cleanup_fn_modules[cleanup_fn] or { '' }
 		g.visit_module_init(mod, module_to_cleanup, mut visiting, mut visited, mut result)
