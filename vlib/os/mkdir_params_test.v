@@ -1,7 +1,7 @@
 import os
 
 fn test_mkdir_all_creates_nested_folders() {
-	base := os.join_path(os.temp_dir(), 'vcov_mkdir_params_test')
+	base := os.join_path(os.vtmp_dir(), 'vcov_mkdir_params_test_${os.getpid()}')
 	os.rmdir_all(base) or {}
 	defer {
 		os.rmdir_all(base) or {}
@@ -17,7 +17,7 @@ fn test_mkdir_all_creates_nested_folders() {
 }
 
 fn test_mkdir_all_is_idempotent() {
-	base := os.join_path(os.temp_dir(), 'vcov_mkdir_params_test')
+	base := os.join_path(os.vtmp_dir(), 'vcov_mkdir_params_test_${os.getpid()}')
 	os.rmdir_all(base) or {}
 	defer {
 		os.rmdir_all(base) or {}
@@ -29,7 +29,7 @@ fn test_mkdir_all_is_idempotent() {
 }
 
 fn test_mkdir_all_accepts_the_alternate_separator() {
-	base := os.join_path(os.temp_dir(), 'vcov_mkdir_params_test')
+	base := os.join_path(os.vtmp_dir(), 'vcov_mkdir_params_test_${os.getpid()}')
 	os.rmdir_all(base) or {}
 	defer {
 		os.rmdir_all(base) or {}
@@ -42,7 +42,7 @@ fn test_mkdir_all_accepts_the_alternate_separator() {
 }
 
 fn test_mkdir_all_with_an_explicit_mode() {
-	base := os.join_path(os.temp_dir(), 'vcov_mkdir_params_test')
+	base := os.join_path(os.vtmp_dir(), 'vcov_mkdir_params_test_${os.getpid()}')
 	os.rmdir_all(base) or {}
 	defer {
 		os.rmdir_all(base) or {}
@@ -61,7 +61,7 @@ fn test_mkdir_params_default_mode_is_0o777() {
 }
 
 fn test_mkdir_all_fails_when_a_file_is_in_the_way() {
-	base := os.join_path(os.temp_dir(), 'vcov_mkdir_params_test')
+	base := os.join_path(os.vtmp_dir(), 'vcov_mkdir_params_test_${os.getpid()}')
 	os.rmdir_all(base) or {}
 	defer {
 		os.rmdir_all(base) or {}

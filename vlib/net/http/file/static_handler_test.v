@@ -4,7 +4,7 @@ import os
 import net.http
 import time
 
-const probe_root = os.join_path(os.temp_dir(), 'v_testcov_file_handler')
+const probe_root = os.join_path(os.vtmp_dir(), 'v_testcov_file_handler_${os.getpid()}')
 
 // A fixed tree: a text file, a css file, an index.html and a subfolder holding
 // one file. Nothing here listens on a socket - the handler is called directly.

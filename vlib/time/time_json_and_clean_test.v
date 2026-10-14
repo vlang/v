@@ -117,12 +117,14 @@ fn test_from_json_string_rejects_the_quoted_form_that_to_json_produces() {
 fn test_stopwatch_restart_zeros_the_elapsed_time() {
 	mut sw := time.new_stopwatch()
 	time.sleep(10 * time.millisecond)
-	before := sw.elapsed()
+	sw.pause()
+	assert sw.elapsed() > 0
 	sw.restart()
-	after := sw.elapsed()
-	// restart() re-reads the clock, so the new elapsed time cannot exceed the
-	// one measured before it.
-	assert after <= before
+	assert sw.end == 0
+	sw.stop()
+	// The previous paused interval must be cleared, regardless of scheduling
+	// delays between restarting and stopping the watch.
+	assert sw.elapsed() == time.Duration(i64(sw.end - sw.start))
 }
 
 fn test_ticks_is_a_monotonic_millisecond_clock() {

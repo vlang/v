@@ -35,7 +35,7 @@ fn js_child_environment() map[string]string {
 // js_compile runs the backend over `program` and returns the generated JS path
 // together with what the backend printed. The compile step is kept separate
 // from the run step so a failure names whether the backend or node is at fault.
-fn js_compile(program string, output_js string) (string, string) {
+fn js_compile(program string, output_js string) (int, string, string) {
 	mut compiler := os.new_process(@VEXE)
 	compiler.set_args(['-b', 'js', '-silent', '-o', output_js, program])
 	compiler.set_environment(js_child_environment())
@@ -45,7 +45,7 @@ fn js_compile(program string, output_js string) (string, string) {
 	compiler.wait()
 	compile_code := compiler.code
 	compiler.close()
-	return compile_output, output_js
+	return compile_code, compile_output, output_js
 }
 
 // js_run_java_script executes an already generated JS file under node.
@@ -69,8 +69,8 @@ fn js_run_java_script(output_js string, program_args []string) JsRun {
 fn js_run_program(root string, name string, source string, program_args []string) !JsRun {
 	program := js_write_fixture(root, name, source)!
 	output_js := os.join_path(root, '${name}_out.js')
-	compile_output, generated := js_compile(program, output_js)
-	if !os.exists(generated) {
+	compile_code, compile_output, generated := js_compile(program, output_js)
+	if compile_code != 0 || !os.exists(generated) {
 		return JsRun{
 			exit_code: 1
 			output:    compile_output
@@ -80,6 +80,10 @@ fn js_run_program(root string, name string, source string, program_args []string
 }
 
 fn test_js_backend_compiles_and_runs_a_program_under_node() {
+	os.find_abs_path_of_executable('node') or {
+		eprintln('Skipping Node.js execution: node is unavailable')
+		return
+	}
 	root := js_new_fixture_root('hello')!
 	defer {
 		os.rmdir_all(root) or {}
@@ -108,7 +112,8 @@ fn test_js_backend_reports_an_unsupported_feature() {
 		os.rmdir_all(root) or {}
 	}
 	program := js_write_fixture(root, 'unsupported.v', 'import os\n\nfn main() {\n\tprintln(os.args[1])\n}\n')!
-	compile_output, _ := js_compile(program, os.join_path(root, 'unsupported_out.js'))
+	compile_code, compile_output, _ := js_compile(program, os.join_path(root, 'unsupported_out.js'))
+	assert compile_code != 0, compile_output
 	assert compile_output.contains('compatibility generator'), 'expected the backend to name its limitation, got: ${compile_output}'
 }
 
@@ -118,6 +123,7 @@ fn test_js_backend_compiles_a_literal_println() {
 		os.rmdir_all(root) or {}
 	}
 	program := js_write_fixture(root, 'lit.v', "fn main() {\n\tprintln('literal')\n}\n")!
-	compile_output, generated := js_compile(program, os.join_path(root, 'lit_out.js'))
+	compile_code, compile_output, generated := js_compile(program, os.join_path(root, 'lit_out.js'))
+	assert compile_code == 0, compile_output
 	assert os.exists(generated), 'compile reported: ${compile_output}'
 }

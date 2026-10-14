@@ -6,7 +6,7 @@ import os
 // extensions plus one with none, so the MIME-type guard in host_serve_static
 // can be exercised without a fixture inside the repo.
 fn cov_static_tree() string {
-	root := os.join_path(os.temp_dir(), 'vcov_veb_static_host')
+	root := os.join_path(os.vtmp_dir(), 'vcov_veb_static_host_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	for sub in ['', 'sub', 'assets'] {
 		os.mkdir_all(os.join_path(root, sub)) or { panic(err) }

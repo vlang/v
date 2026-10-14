@@ -12,7 +12,7 @@
 import os
 import veb.assets
 
-const base_cache_dir = os.join_path(os.temp_dir(), 'veb_assets_lookup_test')
+const base_cache_dir = os.join_path(os.vtmp_dir(), 'veb_assets_lookup_test_${os.getpid()}')
 
 fn testsuite_begin() {
 	os.mkdir_all(base_cache_dir) or { panic(err) }

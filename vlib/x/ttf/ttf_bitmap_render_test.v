@@ -471,7 +471,7 @@ fn test_save_as_ppm_writes_a_p3_header_and_every_pixel() {
 	bmp.clear()
 	bmp.color = u32(0x01020304)
 	bmp.bg_color = u32(0x0A0B0C0D)
-	path := os.join_path(os.temp_dir(), 'x_ttf_render_test_ppm.ppm')
+	path := os.join_path(os.vtmp_dir(), 'x_ttf_render_test_ppm.ppm_${os.getpid()}')
 	bmp.save_as_ppm(path)
 	text := os.read_file(path) or { panic('could not read the ppm back: ${err}') }
 	lines := text.split('\n')
@@ -498,7 +498,7 @@ fn test_save_raw_data_writes_the_same_bytes_as_get_raw_bytes() {
 	mut bmp := new_bmp(&tf, 8, 4)
 	bmp.plot(0, 0, u32(0x5A))
 	bmp.plot(7, 3, u32(0x11))
-	path := os.join_path(os.temp_dir(), 'x_ttf_render_test_raw.bin')
+	path := os.join_path(os.vtmp_dir(), 'x_ttf_render_test_raw.bin_${os.getpid()}')
 	bmp.save_raw_data(path)
 	saved := os.read_bytes(path) or { panic('could not read the raw back: ${err}') }
 	assert saved == bmp.get_raw_bytes()
