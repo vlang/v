@@ -119,7 +119,7 @@ fn (mut u Untar) read_header() ! {
 				return error('Checksum error: directory reading:${u.read}')
 			}
 			u.read.special = .no
-			u.read.set_short_path(u.buffer, false)
+			u.read.set_short_path(u.buffer, true)
 			u.reader.dir_block(mut u.read, u64(u.size))
 			// u.state = .header
 		}
