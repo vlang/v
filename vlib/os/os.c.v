@@ -907,7 +907,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
 		return res
 	}
 	$if dragonfly {
@@ -916,7 +916,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
 		return res
 	}
 	$if linux {
@@ -925,7 +925,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
 		return res
 	}
 	$if solaris {

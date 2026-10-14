@@ -2,6 +2,8 @@
 
 `sync` provides cross platform handling of concurrency primitives.
 
+On FreeBSD, mutexes store native `pthread_mutex_t` and `pthread_rwlock_t` values.
+
 On macOS and default pthread platforms, zero-value `RwMutex` try locks initialize the native lock
 and wait for concurrent first-use initialization to finish before acquiring it.
 
