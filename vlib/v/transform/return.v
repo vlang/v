@@ -675,7 +675,7 @@ fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expec
 
 fn forwarded_return_type_is_unresolved(typ types.Type) bool {
 	base := forwarded_return_unalias_type(typ)
-	name := base.name().trim_space()
+	name := trimmed_transform_text(base.name())
 	if name == 'unknown' || name.ends_with('.unknown') || is_generic_placeholder_type_name(name) {
 		return true
 	}

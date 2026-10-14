@@ -9,12 +9,21 @@ application data.
 
 `os.user_os()` returns `wasm32_emscripten` when compiled for Emscripten.
 
+On Windows, `os.environ()` walks UTF-16 environment entries without losing non-ASCII names or
+values. If the operating system cannot provide an environment block, it returns an empty map.
+
 ### Console input
 
 On Windows, `os.input()` supports both console and redirected standard input.
 It returns an empty string when the standard input handle is invalid.
 
 ### Path helpers
+
+Windows short-path expansion counts output capacity in UTF-16 characters and reports an
+insufficient output buffer as an error.
+
+`os.executable()` returns the process executable path. On Linux, NetBSD, and DragonFly,
+it uses the exact byte count returned by `readlink`, without requiring a NUL terminator.
 
 `os.base()` removes all trailing separators before returning the final path element.
 For example, `os.base('a///')` returns `a`. An empty path returns `.`, and a path made
@@ -328,3 +337,13 @@ Explicit extensions are preserved.
 
 On Windows, `os.get_error_msg` removes the trailing CR/LF line break from system
 messages. Error text returned by operations using it retains the message's punctuation.
+
+### Child process output
+
+On Windows, `os.exec()` captures bytes from successful child-pipe reads only. Closing the output
+pipe does not append a previous chunk again. Commands with no output return an empty output string.
+
+### Writing arrays
+
+`os.write_file_array()` closes its file even when writing fails, including when a device is full
+or a pipe reader closes. The write error is still returned to the caller.
