@@ -24,6 +24,8 @@ library binding. Modules such as `compress.brotli` retain their C headers and ca
 implementations.
 Coverage and profiling retain file I/O and timer declarations even when the application
 imports no standard library modules.
+On macOS, standalone `statvfs` storage retains the native 32-bit block and inode counters;
+its field offsets and widths are checked against the installed SDK.
 Mach task APIs declared by the application also keep their prototypes in headerless C.
 An explicit Mach SDK header remains authoritative when supplied by the application.
 

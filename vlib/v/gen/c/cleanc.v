@@ -20555,7 +20555,9 @@ fn (mut g FlatGen) headerless_dirent_struct() {
 }
 
 fn (mut g FlatGen) headerless_statvfs_struct() {
-	g.writeln('#ifdef __NetBSD__')
+	g.writeln('#ifdef __APPLE__')
+	g.writeln('struct statvfs { unsigned long f_bsize; unsigned long f_frsize; u32 f_blocks; u32 f_bfree; u32 f_bavail; u32 f_files; u32 f_ffree; u32 f_favail; unsigned long f_fsid; unsigned long f_flag; unsigned long f_namemax; };')
+	g.writeln('#elif defined(__NetBSD__)')
 	g.writeln('struct statvfs { unsigned long f_flag; unsigned long f_bsize; unsigned long f_frsize; unsigned long f_iosize; u64 f_blocks; u64 f_bfree; u64 f_bavail; u64 f_bresvd; u64 f_files; u64 f_ffree; u64 f_favail; u64 f_fresvd; u64 f_syncreads; u64 f_syncwrites; u64 f_asyncreads; u64 f_asyncwrites; struct { i32 __fsid_val[2]; } f_fsidx; unsigned long f_fsid; unsigned long f_namemax; u32 f_owner; u64 f_spare[4]; char f_fstypename[32]; char f_mntonname[1024]; char f_mntfromname[1024]; char f_mntfromlabel[1024]; };')
 	g.writeln('#else')
 	g.writeln('struct statvfs { unsigned long f_bsize; unsigned long f_frsize; unsigned long f_blocks; unsigned long f_bfree; unsigned long f_bavail; unsigned long f_files; unsigned long f_ffree; unsigned long f_favail; unsigned long f_fsid; unsigned long f_flag; unsigned long f_namemax; int __f_spare[6]; };')
