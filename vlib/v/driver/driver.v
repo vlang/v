@@ -14190,8 +14190,6 @@ pub fn run(args []string) {
 				eprintln('mono AST before pass: ${a.nodes.len}/${a.nodes.cap} nodes, ${a.children.len}/${a.children.cap} children')
 			}
 			base_monomorph_nodes := a.nodes.len
-			monomorph_nodes_cap := a.nodes.cap
-			monomorph_children_cap := a.children.cap
 			base_specialized_fns := a.specialized_fn_nodes.len
 			monomorph_scope := prealloc_scope_begin_for_v3()
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a, &pre_tc, monomorph_input_used, !current_no_parallel
@@ -14203,10 +14201,10 @@ pub fn run(args []string) {
 				eprintln('mono AST after pass: ${a.nodes.len}/${a.nodes.cap} nodes, ${a.children.len}/${a.children.cap} children')
 			}
 			// The scoped transformer interns every escaping node payload while the
-			// parent arena is temporarily current. Only an unexpected AST backing
-			// growth still needs a full promotion clone.
-			if a.nodes.cap != monomorph_nodes_cap || a.children.cap != monomorph_children_cap
-				|| scoped_value_owned(monomorph_scope, a.nodes.data)
+			// parent arena is temporarily current, and it grows the AST backing in
+			// that arena as well. Only a backing that still ended up in the
+			// disposable arena needs a full promotion clone.
+			if scoped_value_owned(monomorph_scope, a.nodes.data)
 				|| scoped_value_owned(monomorph_scope, a.children.data) {
 				a = clone_flat_ast_after_transform_from_scope(a, monomorph_scope)
 				pre_tc.rebind_ast(a)

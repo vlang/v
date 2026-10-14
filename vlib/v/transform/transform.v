@@ -1820,7 +1820,16 @@ fn (t &Transformer) collect_late_scan_candidates(limit int) []LateFnCandidate {
 	mut cands := []LateFnCandidate{cap: 8192}
 	mut cur_module := ''
 	mut cur_file := ''
-	for i in 0 .. limit {
+	mut indexed_count, mut indexed_nodes := t.top_level_scan_prefix()
+	if indexed_nodes > limit {
+		indexed_count, indexed_nodes = 0, 0
+	}
+	for scan_idx in 0 .. indexed_count + limit - indexed_nodes {
+		i := if scan_idx < indexed_count {
+			int(t.tc.top_level_idx[scan_idx])
+		} else {
+			indexed_nodes + scan_idx - indexed_count
+		}
 		// Only the three declaration kinds below are read past their kind tag.
 		kind_id := int(t.a.nodes[i].kind)
 		if kind_id == 77 {
@@ -3445,6 +3454,31 @@ fn (mut t Transformer) restore_var_type_scope(mark VarTypeScopeMark) {
 	t.var_type_undo_log.trim(mark.undo)
 }
 
+// top_level_scan_prefix tells a scan of the top-level declarations how much of
+// the tree it can read through the checker's declaration index instead of
+// streaming every node: the number of index entries, and the number of nodes
+// they cover. The nodes from that count on, which lowering appended, are
+// streamed. The index stands in for a stream only when it lists its nodes in
+// their order, as a stream reads them; `0, 0` asks for a stream of every node.
+@[direct_array_access]
+fn (t &Transformer) top_level_scan_prefix() (int, int) {
+	if isnil(t.tc) || t.tc.top_level_idx.len == 0 {
+		return 0, 0
+	}
+	covered := t.tc.top_level_idx_nodes_len
+	if covered <= 0 || covered > t.a.nodes.len {
+		return 0, 0
+	}
+	mut previous := -1
+	for idx in t.tc.top_level_idx {
+		if idx <= previous || idx >= covered {
+			return 0, 0
+		}
+		previous = idx
+	}
+	return t.tc.top_level_idx.len, covered
+}
+
 // --- type collection ---
 
 // collect_types updates collect types state for transform.
@@ -3452,14 +3486,28 @@ fn (mut t Transformer) restore_var_type_scope(mark VarTypeScopeMark) {
 fn (mut t Transformer) collect_types() {
 	// All matched kinds are top-level declarations; when the checker's
 	// top-level index covers the AST, iterate it instead of streaming every
-	// node (same nodes, same order, ~100x fewer).
+	// node (same nodes, same order, ~100x fewer). Lowering appends behind the
+	// index, so a later stage reads the nodes it covers through it as well and
+	// streams only what was appended.
 	use_idx := !isnil(t.tc) && t.tc.top_level_idx.len > 0
 		&& t.tc.top_level_idx_nodes_len == t.a.nodes.len
-	count := if use_idx { t.tc.top_level_idx.len } else { t.a.nodes.len }
+	mut indexed_count := 0
+	mut indexed_nodes := 0
+	if use_idx {
+		indexed_count = t.tc.top_level_idx.len
+		indexed_nodes = t.a.nodes.len
+	} else {
+		indexed_count, indexed_nodes = t.top_level_scan_prefix()
+	}
+	count := indexed_count + t.a.nodes.len - indexed_nodes
 	mut cur_mod := ''
 	mut cur_file := ''
 	for ii in 0 .. count {
-		node := if use_idx { t.a.nodes[t.tc.top_level_idx[ii]] } else { t.a.nodes[ii] }
+		node := if ii < indexed_count {
+			t.a.nodes[t.tc.top_level_idx[ii]]
+		} else {
+			t.a.nodes[indexed_nodes + ii - indexed_count]
+		}
 		match node.kind {
 			.file {
 				cur_file = node.value
@@ -13863,6 +13911,12 @@ fn (mut t Transformer) precompute_const_array_fixed_storage() {
 	if candidate_keys.len == 0 {
 		return
 	}
+	// Nearly every identifier and selector of a tree names no candidate. Its
+	// length and first byte tell that for most of them, without hashing it.
+	mut name_marks := []bool{len: const_array_name_mark_lens * 256}
+	for name, _ in candidate_names {
+		name_marks[const_array_name_mark(name)] = true
+	}
 	mut ref_candidates := []i32{len: t.a.nodes.len}
 	mut ref_states := []u8{len: t.a.nodes.len}
 	mut unmatched := []int{len: candidate_keys.len}
@@ -13892,7 +13946,8 @@ fn (mut t Transformer) precompute_const_array_fixed_storage() {
 				}
 			}
 		}
-		if node.kind in [.ident, .selector, .as_expr, .paren] {
+		if node.kind in [.as_expr, .paren]
+			|| (node.kind in [.ident, .selector] && name_marks[const_array_name_mark(node.value)]) {
 			if candidate := t.const_array_candidate_for_expr(flat.NodeId(idx), cur_module, cur_file, candidate_ids, candidate_names) {
 				ref_candidates[idx] = candidate + 1
 				if ref_states[idx] != 1 {
@@ -13925,6 +13980,25 @@ fn (mut t Transformer) precompute_const_array_fixed_storage() {
 		result := !invalid_candidates[idx] && fixed_candidates[idx] && unmatched[idx] == 0
 		t.const_array_fixed_storage_cache[key] = if result { i8(1) } else { i8(-1) }
 	}
+}
+
+// const_array_name_mark_lens is the number of name lengths const_array_name_mark
+// tells apart; longer names share the last one.
+const const_array_name_mark_lens = 64
+
+// const_array_name_mark is the slot of `name` in a table of the lengths and
+// first bytes of a set of names: a name whose slot is unset is not in the set.
+@[inline]
+fn const_array_name_mark(name string) int {
+	if name.len == 0 {
+		return 0
+	}
+	len := if name.len < const_array_name_mark_lens {
+		name.len
+	} else {
+		const_array_name_mark_lens - 1
+	}
+	return (len << 8) | int(name[0])
 }
 
 fn (t &Transformer) const_array_candidate_for_expr(id flat.NodeId, module_name string, file string, candidates map[string]int, candidate_names map[string]bool) ?int {
@@ -28875,7 +28949,14 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 	// Each function gets its own visitation epoch without allocating another map.
 	mut visited := []u32{len: limit}
 	mut epoch := u32(0)
-	for i in 0 .. limit {
+	// Read after `limit` is taken: lowering appends nodes while this loop runs.
+	indexed_count, indexed_nodes := t.top_level_scan_prefix()
+	for scan_idx in 0 .. indexed_count + limit - indexed_nodes {
+		i := if scan_idx < indexed_count {
+			int(t.tc.top_level_idx[scan_idx])
+		} else {
+			indexed_nodes + scan_idx - indexed_count
+		}
 		if t.a.nodes[i].kind != .fn_decl {
 			continue
 		}
@@ -28914,23 +28995,26 @@ fn (mut t Transformer) lower_remaining_match_subtree(id flat.NodeId, mut visited
 		return
 	}
 	visited[idx] = epoch
-	mut node := t.a.nodes[idx]
-	if node.kind == .match_stmt {
-		lowered := t.lower_one_match(node)
+	if t.a.nodes[idx].kind == .match_stmt {
+		// Lowering appends nodes, so it works on a copy of this one.
+		match_node := t.a.nodes[idx]
+		lowered := t.lower_one_match(match_node)
 		t.set_node(idx, t.a.nodes[int(lowered)])
-		node = t.a.nodes[idx]
 	}
-	if node.children_count == 0 {
+	// Only the child range of the node is needed from here on.
+	children_start := int(t.a.nodes[idx].children_start)
+	children_count := int(t.a.nodes[idx].children_count)
+	if children_count == 0 {
 		return
 	}
-	if node.children_start < 0 || node.children_start >= t.a.children.len {
+	if children_start < 0 || children_start >= t.a.children.len {
 		return
 	}
-	child_end := int_min(node.children_start + node.children_count, t.a.children.len)
+	child_end := int_min(children_start + children_count, t.a.children.len)
 	// Lowering appends children and replaces nodes, but keeps existing child
 	// slots. Reload by slot after each recursive call so arena growth cannot
 	// invalidate a borrowed slice, without copying every non-leaf's children.
-	for child_slot in node.children_start .. child_end {
+	for child_slot in children_start .. child_end {
 		child_id := t.a.children[child_slot]
 		t.lower_remaining_match_subtree(child_id, mut visited, epoch)
 	}

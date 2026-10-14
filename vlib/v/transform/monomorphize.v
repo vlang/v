@@ -3371,10 +3371,16 @@ fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]Gener
 	mut type_context_file := ''
 	mut seen_context_types := map[string]bool{}
 	for node_idx in safe_start .. safe_end {
-		node := t.a.nodes[node_idx]
-		type_has_bracket := node.typ.contains('[')
-		type_has_flat := !type_has_bracket && node.typ.contains('_')
-		mut may_contain_spec := type_has_bracket || type_has_flat
+		// The scan appends no node, and most nodes cannot spell a specialization:
+		// only a candidate is copied.
+		scanned := unsafe { &t.a.nodes[node_idx] }
+		mut may_contain_spec := scanned.typ.len > 0
+			&& (scanned.typ.contains('[') || scanned.typ.contains('_'))
+		if !may_contain_spec && scanned.kind !in [.sql_expr, .struct_init, .array_init, .map_init,
+			.cast_expr, .as_expr, .sizeof_expr, .offsetof_expr, .typeof_expr, .is_expr] {
+			continue
+		}
+		node := *scanned
 		if !may_contain_spec {
 			may_contain_spec = match node.kind {
 				.sql_expr {
@@ -4080,7 +4086,13 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 	t.ensure_node_module_map()
 	mut cur_file := ''
 	mut cur_module := ''
-	for i in 0 .. t.a.nodes.len {
+	indexed_count, indexed_nodes := t.top_level_scan_prefix()
+	for scan_idx in 0 .. indexed_count + t.a.nodes.len - indexed_nodes {
+		i := if scan_idx < indexed_count {
+			int(t.tc.top_level_idx[scan_idx])
+		} else {
+			indexed_nodes + scan_idx - indexed_count
+		}
 		kind := t.a.nodes[i].kind
 		if kind != .file && kind != .module_decl && kind != .fn_decl {
 			continue
@@ -4127,7 +4139,13 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 	}
 	old_module := t.cur_module
 	t.cur_module = ''
-	for i in 0 .. t.a.nodes.len {
+	indexed_count, indexed_nodes := t.top_level_scan_prefix()
+	for scan_idx in 0 .. indexed_count + t.a.nodes.len - indexed_nodes {
+		i := if scan_idx < indexed_count {
+			int(t.tc.top_level_idx[scan_idx])
+		} else {
+			indexed_nodes + scan_idx - indexed_count
+		}
 		kind := t.a.nodes[i].kind
 		if kind != .module_decl && kind != .fn_decl {
 			continue
@@ -4351,27 +4369,38 @@ fn (mut t Transformer) collect_node_subtree_ids(id flat.NodeId, mut nodes map[in
 	}
 }
 
+@[direct_array_access]
 fn (mut t Transformer) collect_node_subtree_flags(id flat.NodeId, mut nodes []bool, mut stack []flat.NodeId) {
-	stack.clear()
-	stack << id
-	for stack.len > 0 {
-		current := stack.pop()
-		idx := int(current)
-		if idx < 0 || idx >= t.a.nodes.len || idx >= nodes.len || nodes[idx] {
+	limit := if nodes.len < t.a.nodes.len { nodes.len } else { t.a.nodes.len }
+	// `stack` only lends its storage: the pending ids are stack[..top], kept by
+	// hand because this walk visits every node of the unused functions.
+	if stack.len == 0 {
+		stack << id
+	} else {
+		stack[0] = id
+	}
+	mut top := 1
+	for top > 0 {
+		top--
+		idx := int(stack[top])
+		if idx < 0 || idx >= limit || nodes[idx] {
 			continue
 		}
 		nodes[idx] = true
-		node := t.a.node(flat.NodeId(idx))
-		start := node.children_start
+		node := &t.a.nodes[idx]
+		start := int(node.children_start)
 		end := start + int(node.children_count)
 		if start < 0 || end > t.a.children.len {
 			continue
 		}
+		if top + (end - start) > stack.len {
+			stack << []flat.NodeId{len: top + (end - start) - stack.len + 256}
+		}
 		for i in start .. end {
-			// The child range is checked above; avoid bounds checks in this hot walk.
-			child_id := unsafe { t.a.children[i] }
+			child_id := t.a.children[i]
 			if int(child_id) >= 0 {
-				stack << child_id
+				stack[top] = child_id
+				top++
 			}
 		}
 	}
