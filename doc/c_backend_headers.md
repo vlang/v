@@ -63,6 +63,12 @@ On macOS, existing or external object inputs still select the platform C compile
 Wrappers that expand Boehm allocation macros include the collector header explicitly.
 Warm incremental builds share the cached declaration prefix's string storage and retain
 new program literals and cleanup hooks after source edits.
+Warm builds using `os` also retain system-header ownership, so platform stat macros do not
+conflict with compatibility declarations. Windows standalone and custom-libc builds keep
+their required native layouts.
+Core file mappings retain standalone declarations on verified 64-bit targets, including native
+mapping flags and the synchronization function signature. Other targets and programs using
+explicit C headers or custom libc headers keep platform-header ownership.
 
 Regular generated C declares interned strings with `_SL(_str_N, "...", byte_length)`.
 The macro expands to a `static const string` with a plain brace initializer. V supplies the byte
@@ -82,13 +88,19 @@ Scalar array appends can use typed stores into spare capacity in library modules
 named `array_push` keep their own calls.
 
 Older bootstrap compilers use compatibility headers for their first compiler build.
-On FreeBSD and OpenBSD, these include `<sys/sysctl.h>` for the constants used by
-`os.executable()`.
-The current compiler supplies an internal capability define and omits those headers.
+The BSD constants used by `os.executable()` are defined in V. The current compiler
+supplies an internal capability define and omits the compatibility headers.
+FreeBSD resident memory lookup also uses V-owned sysctl identifiers without `libprocstat`.
 
 Portable `-os cross` snapshots and `-is_o` objects embed their V-owned native runtime helpers,
 so standalone C consumers do not need helper paths from the compiler checkout. These modes
 and `-no-builtin` use compatibility headers when complete V bindings are unavailable.
+
+Portable compiler snapshots generated with `-cross cmd/v` or `-os cross cmd/v` supply
+their runtime declarations and helper definitions from V without include directives on
+the supported hosted targets.
+They retain the complete compiler runtime and disable the platform signal handler.
+The text of includes inside compiler string literals is still present for other generated programs.
 
 Malformed embedded compatibility headers are diagnosed before C compilation in portable,
 object, and `-no-builtin` modes. Parallel builds can reuse a native object cache directory

@@ -228,17 +228,24 @@ fn test_self_c_has_no_include_directives() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	c_file := os.join_path(root, 'v.c')
-	generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-prealloc', '-compile-backend',
-		'fastc', '-o', c_file, os.join_path(@VEXEROOT, 'cmd', 'v')])
-	assert generated.exit_code == 0, generated.output
-	code := os.read_file(c_file)!
-	$if !windows {
-		assert code.split_into_lines().any(it.starts_with('DIR* fdopendir(')), 'the CLI needs the pointer-returning POSIX fdopendir binding'
-		assert code.split_into_lines().any(it.starts_with('DIR* opendir(')), 'the CLI needs the pointer-returning POSIX opendir binding'
-	}
-	for line in code.split_into_lines() {
-		// Compiler string literals still contain text used to generate other C files.
-		assert !line.trim_space().starts_with('#include'), line
+	for mode in [['-gc', 'none', '-prealloc', '-compile-backend', 'fastc'], ['-cross']] {
+		mut args := ['-nocache']
+		args << mode
+		args << ['-o', c_file, os.join_path(@VEXEROOT, 'cmd', 'v')]
+		generated := cmdexec.run(@VEXE, args)
+		assert generated.exit_code == 0, generated.output
+		code := os.read_file(c_file)!
+		$if !windows {
+			assert code.split_into_lines().any(it.starts_with('DIR* fdopendir(')), 'the CLI needs the pointer-returning POSIX fdopendir binding'
+			assert code.split_into_lines().any(it.starts_with('DIR* opendir(')), 'the CLI needs the pointer-returning POSIX opendir binding'
+		}
+		if '-cross' in mode {
+			assert code.contains('#define CUSTOM_DEFINE_v3_headerless_bootstrap'), mode.join(' ')
+		}
+		for line in code.split_into_lines() {
+			// Compiler string literals still contain text used to generate other C files.
+			assert !line.trim_space().starts_with('#include'), line
+		}
 	}
 }
 
