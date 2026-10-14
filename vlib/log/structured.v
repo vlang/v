@@ -42,6 +42,8 @@ fn json_escape(s string) string {
 				if c < 0x20 {
 					b << u8(92)
 					b << u8(117)
+					b << u8(48)
+					b << u8(48)
 					b << hex_digit(c >> 4)
 					b << hex_digit(c & 0x0f)
 				} else {
@@ -70,6 +72,9 @@ fn (l &Log) structured_line(s string, level Level, fields map[string]string) str
 	mut keys := fields.keys()
 	keys.sort()
 	for k in keys {
+		if k in ['time', 'level', 'msg'] {
+			continue
+		}
 		parts << '"${json_escape(k)}":"${json_escape(fields[k])}"'
 	}
 	return '{' + parts.join(',') + '}'
@@ -135,7 +140,7 @@ pub fn (mut l Log) warn_with(s string, fields map[string]string) {
 // info_with logs an info record with structured fields, subject to the same
 // level filtering as `info`. Output is a single-line JSON object with the
 // reserved keys time, level and msg plus the given fields, in sorted key
-// order; the plain-text methods (info, warn, ...) are unchanged.
+// order. Fields using a reserved key are ignored; the plain-text methods (info, warn, ...) are unchanged.
 pub fn (mut l Log) info_with(s string, fields map[string]string) {
 	if int(l.level) < int(Level.info) {
 		return
@@ -150,4 +155,45 @@ pub fn (mut l Log) debug_with(s string, fields map[string]string) {
 		return
 	}
 	l.send_output_structured(s, .debug, fields)
+}
+
+// error_with logs a structured error record while holding the logger mutex.
+pub fn (mut x ThreadSafeLog) error_with(s string, fields map[string]string) {
+	if unsafe { x.mu == 0 } { return }
+	x.mu.lock()
+	defer { x.mu.unlock() }
+	x.Log.error_with(s, fields)
+}
+
+// warn_with logs a structured warn record while holding the logger mutex.
+pub fn (mut x ThreadSafeLog) warn_with(s string, fields map[string]string) {
+	if unsafe { x.mu == 0 } { return }
+	x.mu.lock()
+	defer { x.mu.unlock() }
+	x.Log.warn_with(s, fields)
+}
+
+// info_with logs a structured info record while holding the logger mutex.
+pub fn (mut x ThreadSafeLog) info_with(s string, fields map[string]string) {
+	if unsafe { x.mu == 0 } { return }
+	x.mu.lock()
+	defer { x.mu.unlock() }
+	x.Log.info_with(s, fields)
+}
+
+// debug_with logs a structured debug record while holding the logger mutex.
+pub fn (mut x ThreadSafeLog) debug_with(s string, fields map[string]string) {
+	if unsafe { x.mu == 0 } { return }
+	x.mu.lock()
+	defer { x.mu.unlock() }
+	x.Log.debug_with(s, fields)
+}
+
+// fatal_with logs a structured fatal record while holding the logger mutex and panics.
+@[noreturn]
+pub fn (mut x ThreadSafeLog) fatal_with(s string, fields map[string]string) {
+	if unsafe { x.mu == 0 } { panic(s) }
+	x.mu.lock()
+	defer { x.mu.unlock() }
+	x.Log.fatal_with(s, fields)
 }

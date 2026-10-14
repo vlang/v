@@ -1,3 +1,4 @@
+import json2
 import os
 import log
 import rand
@@ -6,9 +7,6 @@ fn slog_setup() (string, string) {
 	lfolder := os.join_path(os.vtmp_dir(), rand.ulid())
 	lpath := os.join_path(lfolder, 'current.log')
 	os.mkdir_all(lfolder) or { panic('mkdir: ${err}') }
-	mut l := log.new_thread_safe_log()
-	l.set_level(.debug)
-	l.set_full_logpath(lpath)
 	return lfolder, lpath
 }
 
@@ -99,4 +97,55 @@ fn test_plain_text_mode_unchanged() {
 	assert content.contains('plain message')
 	assert content.contains('[INFO'), 'plain tag must be unchanged'
 	os.rmdir_all(lfolder) or {}
+}
+
+fn test_structured_control_characters_and_reserved_keys() {
+	lfolder, lpath := slog_setup()
+	defer { os.rmdir_all(lfolder) or {} }
+	mut l := log.new_thread_safe_log()
+	l.set_full_logpath(lpath)
+	controls := []u8{len: 32, init: u8(index)}.bytestr()
+	l.info_with(controls, {
+		'time':   'fake time'
+		'level':  'fake level'
+		'msg':    'fake message'
+		controls: controls
+	})
+	l.close()
+	content := os.read_file(lpath)!
+	record := json2.decode[map[string]string](content)!
+	assert record['msg'] == controls
+	assert record['level'] == 'info'
+	assert record['time'] != 'fake time'
+	assert record[controls] == controls
+	assert content.count('\n') == 1
+}
+
+fn test_structured_thread_safe_records() {
+	lfolder, lpath := slog_setup()
+	defer { os.rmdir_all(lfolder) or {} }
+	mut l := log.new_thread_safe_log()
+	l.set_full_logpath(lpath)
+	mut tasks := []thread{}
+	for worker in 0 .. 4 {
+		tasks << spawn fn [mut l, worker] () {
+			for entry in 0 .. 25 {
+				l.info_with('parallel', {
+					'worker': worker.str()
+					'entry':  entry.str()
+				})
+			}
+		}()
+	}
+	tasks.wait()
+	l.close()
+	lines := os.read_lines(lpath)!
+	assert lines.len == 100
+	mut seen := map[string]bool{}
+	for line in lines {
+		record := json2.decode[map[string]string](line)!
+		assert record['msg'] == 'parallel'
+		seen[record['worker'] + ':' + record['entry']] = true
+	}
+	assert seen.len == 100
 }
