@@ -2455,6 +2455,27 @@ fn test_formatter_aligns_struct_field_attributes_with_defaults() {
 	assert vfmt('struct_field_attribute_alignment_twice', out) == want
 }
 
+fn test_formatter_aligns_attributes_across_mixed_volatile_fields() {
+	for separator in ['; ', '\n\t'] {
+		for fields in [
+			'volatile a MyAlias @[a]${separator}b MyAlias = 0 @[b]',
+			'a MyAlias @[a]${separator}volatile b MyAlias = 0 @[b]',
+			'volatile a MyAlias = 0 @[a]${separator}b MyAlias @[b]',
+			'volatile a int = 0 @[a]${separator}b MyAlias = 12 @[b]',
+			'volatile a int = 0 @[a]${separator}volatile beta MyAlias = 12 @[b]',
+			'volatile a MyAlias @[a]${separator}volatile beta MyAlias @[b]',
+			'pub volatile a MyAlias @[a]${separator}b MyAlias = 0 @[b]',
+		] {
+			source := 'type MyAlias = int\n\nstruct Mixed {\n\t${fields}\n}\n'
+			out := vfmt('struct_field_mixed_volatile_attributes', source)
+			field_lines := out.split_into_lines().filter(it.contains('@['))
+			assert field_lines.len == 2, out
+			assert field_lines[0].all_before('@[').len == field_lines[1].all_before('@[').len, out
+			assert vfmt('struct_field_mixed_volatile_attributes_twice', out) == out
+		}
+	}
+}
+
 fn test_formatter_aligns_struct_field_attributes_after_padded_defaults() {
 	source := "struct Defaults {\n\ta int = 1 @[one] // first\n\tbeta string = 'x' @[two] // second\n\tc bool @[three] // third\n\n\tx int @[one]\n\ty string @[two]\n}\n"
 	want := "struct Defaults {\n\ta    int    = 1   @[one]   // first\n\tbeta string = 'x' @[two]   // second\n\tc    bool         @[three] // third\n\n\tx int    @[one]\n\ty string @[two]\n}\n"

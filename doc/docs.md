@@ -7303,6 +7303,7 @@ For example, it preserves closure captures and loop binder mutability while you 
 incomplete code.
 
 Adjacent struct fields align their inline attributes, including fields with default values.
+Mixed volatile and non-volatile fields account for the width of the `volatile ` prefix.
 The alignment accounts for the type, the ` = ` separator, and the default value:
 
 ```v

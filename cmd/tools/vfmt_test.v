@@ -1976,6 +1976,17 @@ fn test_fmt_ends_comment_groups_at_wrapping_attributed_defaults() {
 	assert twice == formatted
 }
 
+fn test_fmt_aligns_attributes_across_mixed_volatile_fields() {
+	source := 'type MyAlias = int\n\nstruct Mixed {\n\tvolatile a MyAlias @[a]\n\tb MyAlias = 0 @[b]\n}\n'
+	want := 'type MyAlias = int\n\nstruct Mixed {\n\tvolatile a MyAlias @[a]\n\tb MyAlias = 0      @[b]\n}\n'
+	res, formatted := run_vfmt_write('mixed_volatile_field_attributes', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted == want, formatted
+	second_res, twice := run_vfmt_write('mixed_volatile_field_attributes_twice', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert twice == formatted
+}
+
 fn test_fmt_aligns_struct_field_attributes_with_defaults() {
 	source := 'struct ConfigSearch {
 pub mut:

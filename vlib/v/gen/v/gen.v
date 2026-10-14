@@ -4552,8 +4552,13 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 				g.skip_comments_before(f.pos.end)
 			} else {
 				if pad := attr_align[int(fid)] {
-					if pad > suffix_width {
-						g.write(' '.repeat(pad - suffix_width))
+					attr_suffix_width := suffix_width + if flags.contains('v') {
+						'volatile '.len
+					} else {
+						0
+					}
+					if pad > attr_suffix_width {
+						g.write(' '.repeat(pad - attr_suffix_width))
 					}
 				}
 				g.write(' ${attr_text}')
@@ -5246,12 +5251,14 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 			type_width := g.type_text(f.typ).len
 			padded_type_width := int_max(type_width, defaults[int(fid)] or { 0 })
 			flags := gp[0]
+			// The volatile prefix shifts the type column beyond the aligned field name.
+			volatile_width := if flags.contains('v') { 'volatile '.len } else { 0 }
 			column := g.indent * 4 + (alignments[int(fid)] or { f.value.len }) + 1 +
-				padded_type_width + 3 + if flags.contains('v') { 'volatile '.len } else { 0 }
+				padded_type_width + 3 + volatile_width
 			default_width := g.struct_field_attr_default_width(fid, column)
 			if f.children_count == 0 || default_width > 0 {
 				// Defaults must be aligned before measuring the column for attributes.
-				suffix := if f.children_count > 0 {
+				suffix := volatile_width + if f.children_count > 0 {
 					padded_type_width + 3 + default_width
 				} else {
 					type_width
