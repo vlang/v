@@ -12,6 +12,9 @@ fn test_lookup_host_localhost() {
 fn test_lookup_host_numeric_passthrough() {
 	assert net.lookup_host('127.0.0.1')! == ['127.0.0.1']
 	assert net.lookup_host('::1')! == ['::1']
+	assert net.lookup_host('[::1]')! == ['::1']
+	assert net.lookup_host('2001:db8::1')! == ['2001:db8::1']
+	assert net.lookup_host('::')! == ['::']
 	assert net.resolve_ip('127.0.0.1')! == '127.0.0.1'
 }
 
@@ -28,4 +31,16 @@ fn test_lookup_host_unknown_name_errors() {
 		return
 	}
 	assert false, 'unresolvable name must error'
+}
+
+fn test_lookup_host_rejects_ports_and_malformed_brackets() {
+	for name in ['127.0.0.1:80', '[::1]:80', '[::1]suffix', '[localhost]', '[::1', '::1]', '[[::1]]',
+		'localhost\x00.invalid'] {
+		assert_lookup_host_rejected(name)
+	}
+}
+
+fn assert_lookup_host_rejected(name string) {
+	net.lookup_host(name) or { return }
+	assert false, 'host name `${name}` must be rejected'
 }

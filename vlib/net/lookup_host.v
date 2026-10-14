@@ -3,13 +3,22 @@ module net
 // lookup_host resolves a host name to the list of its IP address literals,
 // in the order the resolver returned them. Numeric inputs resolve without
 // touching DNS, so the function is safe on values that may or may not need
-// resolution. name is a host name, not a host:port pair (a trailing port is
-// not stripped and will fail resolution, like Node's `dns.lookup`).
+// resolution. name is a host name, not a host:port pair. IPv6 literals may
+// optionally be bracketed; a trailing port is rejected.
 // It is the V-idiomatic equivalent of Node's `dns.lookup` / Go's
 // `net.LookupHost`.
 pub fn lookup_host(name string) ![]string {
 	if name.len == 0 {
 		return error('net.lookup_host: empty host name')
+	}
+	if name.contains('\x00') {
+		return error('net.lookup_host: host name contains a NUL byte')
+	}
+	if name.contains_any('[]') {
+		if !name.starts_with('[') || !name.ends_with(']') || name.count('[') != 1
+			|| name.count(']') != 1 || !name.contains(':') {
+			return error('net.lookup_host: invalid bracketed host name `${name}`')
+		}
 	}
 	// Bare IPv6 literals collide with vlib's `addr[0] == ':'` any-address
 	// shortcut in resolve_ipaddrs, so bracket them first (split_address
