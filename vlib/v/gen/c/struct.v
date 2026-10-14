@@ -1155,7 +1155,10 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		has_field = g.gen_promoted_struct_defaults(promoted.root_type, c_field_name(promoted.root), mut promoted_set_fields, has_field)
 	}
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
-	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
+	// Caller types can retain a main. lock while checked fields remain bare-keyed.
+	// Resolve their declaration before selecting metadata for implicit defaults.
+	resolved_defaults_key := if info := g.find_struct_decl(sname) { info.full_name } else { sname }
+	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { resolved_defaults_key }
 	if defaults_key in g.tc.structs {
 		for f in g.tc.structs[defaults_key] {
 			if f.name in set_fields {
