@@ -347,3 +347,5 @@ pipe does not append a previous chunk again. Commands with no output return an e
 
 `os.write_file_array()` closes its file even when writing fails, including when a device is full
 or a pipe reader closes. The write error is still returned to the caller.
+
+`os.cp` reports source read failures as `cp: failed to read from <source>` and closes both files.

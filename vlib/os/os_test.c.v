@@ -1413,3 +1413,26 @@ fn test_disk_usage() {
 	assert usage.available > 0
 	assert usage.used > 0
 }
+
+fn test_cp_directory_reports_read_error() {
+	// Copying a directory fails when reading it (EISDIR on Unix): the error
+	// must blame the read side, not the write side, and the -1 from read()
+	// must never reach write() as a SIZE_MAX length.
+	// See https://github.com/vlang/v/issues/30153
+	folder := 'test_cp_directory'
+	dst := 'test_cp_directory_copy'
+	os.mkdir(folder)!
+	defer {
+		os.rmdir_all(folder) or {}
+		os.rm(dst) or {}
+	}
+	os.cp(folder, dst) or {
+		$if windows {
+			// Windows copies via CopyFile, which fails at open with its own message
+			return
+		}
+		assert err.msg().contains('failed to read from')
+		return
+	}
+	assert false, 'cp of a directory should fail'
+}
