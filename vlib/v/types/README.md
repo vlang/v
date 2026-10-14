@@ -1,5 +1,15 @@
 # Type checking
 
+Compiler stages can retain a checked expression's semantic identity with
+`TypeChecker.checked_expr_type_id(node)`. The returned `TypeId` belongs to that checker's
+interner; a different worker can assign the same number to a different type.
+Use `type_by_id(id)` for the canonical semantic value and `type_name_by_id(id)` only where
+existing code still needs a textual spelling. `c_type_by_id(id)` reads the C layout cache by
+identity without hashing the semantic type again. Rewriting or retyping a node invalidates its
+cached identity. `parse_type_id(text)` resolves source text at an indexed type boundary;
+its scalar cache keeps both the semantic ID and compatibility value across source contexts.
+Source annotations and dynamically resolved call types remain separate.
+
 The builtin error constructors require a string message. To propagate an error from an
 `or` block, use `return err`. To add context, use `return error('context: ${err}')`.
 Passing the error value directly as `error(err)` is rejected before C generation and includes
@@ -35,6 +45,12 @@ and pass reached declaration IDs to `TypeChecker.check_library_body_frontier_nod
 The snapshot preserves declaration order, source context, and checking ranges. A changed
 AST or an unindexed declaration returns `none`, so integrations can fall back to
 `check_reached_library_bodies` with the complete used-function map.
+`TypeChecker.reached_library_body_nodes(used)` returns the remaining declarations accepted
+by the convergence check, including ambiguous short names. After markused completes that
+check, `library_body_convergence_complete` certifies its returned reachability set. The driver
+can omit a duplicate scan until another path adds roots, such as profiling.
+Reachability can complete their semantic checks without revisiting already-checked bodies
+when the declaration arena is unchanged.
 
 Verbose builds include bodies checked by reachability frontiers in the `checked late` count.
 The initial pass also checks the library methods that a generic body names in a member
