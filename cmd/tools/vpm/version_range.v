@@ -179,11 +179,6 @@ fn release_age_seconds(value string) !i64 {
 	return amount * scale
 }
 
-fn is_tag_too_new(tag_date string, age string) !bool {
-	timestamp := time.parse_rfc3339(tag_date)!.unix()
-	return timestamp > time.now().unix() - release_age_seconds(age)!
-}
-
 fn tag_commit_date(url string, tag string) !string {
 	// Each discovery owns its directory, including concurrent calls for the same tag.
 	tmp_dir := get_tmp_path(settings.tmp_path, 'tag-date-' + rand.ulid())!
@@ -196,24 +191,6 @@ fn tag_commit_date(url string, tag string) !string {
 	date := date_res.output.trim_space()
 	time.parse_rfc3339(date)!
 	return date
-}
-
-// validate_range_destinations guards independent non-project selections from
-// overwriting the single-version module store. Project installs solve the graph jointly.
-fn validate_range_destinations(modules []Module) ! {
-	mut seen := map[string]Module{}
-	for m in modules {
-		mut destination := os.norm_path(real_path_with_missing_suffix(m.install_path))
-		$if windows {
-			destination = destination.to_lower()
-		}
-		if previous := seen[destination] {
-			if m.version_range != '' || previous.version_range != '' {
-				return error('multiple requirements for `${m.name}` at `${fmt_mod_path(destination)}`: `${previous.requested}` selected `${previous.version}`, while `${m.requested}` selected `${m.version}`; joint version-range resolution is not yet supported')
-			}
-		}
-		seen[destination] = m
-	}
 }
 
 fn release_tag_allowed(url string, tag string) !bool {

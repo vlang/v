@@ -52,13 +52,7 @@ fn test_coarse_mtime_is_recent_only_within_the_timestamp_steps() {
 }
 
 fn test_file_metadata_helper_uses_generated_u64_abi() {
-	header_path := os.join_path(@VEXEROOT, 'vlib', 'v', 'modulecache', 'file_metadata.c')
-	header := os.read_file(header_path) or { panic(err) }
-	signature := 'static int v3_modulecache_file_metadata(const char *path, u64 *device, u64 *inode,
-	u64 *size, u64 *mtime_seconds, u64 *mtime_nanoseconds,
-	u64 *ctime_seconds, u64 *ctime_nanoseconds)'
-	assert header.count(signature) == 3
-	assert !header.contains('uint64_t *')
+	helper_path := os.join_path(@VEXEROOT, 'vlib', 'v', 'modulecache', 'file_metadata.c')
 
 	cc := os.find_abs_path_of_executable('cc') or { return }
 	temp_dir := os.join_path(os.temp_dir(), 'v3_modulecache_file_metadata_${os.getpid()}')
@@ -67,16 +61,16 @@ fn test_file_metadata_helper_uses_generated_u64_abi() {
 		os.rmdir_all(temp_dir) or {}
 	}
 
-	header_include := header_path.replace('\\', '/')
 	aliases := ['typedef unsigned long long u64;', 'typedef uint64_t u64;']
-	branches := ['', '#undef __APPLE__\n#undef __linux__']
+	branches := [false, true]
 	for alias_index, alias in aliases {
-		for branch_index, branch in branches {
+		for branch_index, fallback in branches {
 			source_path := os.join_path(temp_dir, 'abi_${alias_index}_${branch_index}.c')
 			source := '#include <stdint.h>
 ${alias}
-${branch}
-#include "${header_include}"
+// Match the bodyless V binding in a separate translation unit.
+extern int v3_modulecache_file_metadata(const char *, u64 *, u64 *, u64 *, u64 *,
+    u64 *, u64 *, u64 *);
 
 int main(void) {
 	u64 device = 0;
@@ -86,15 +80,26 @@ int main(void) {
 	u64 mtime_nanoseconds = 0;
 	u64 ctime_seconds = 0;
 	u64 ctime_nanoseconds = 0;
-	return v3_modulecache_file_metadata("", &device, &inode, &size, &mtime_seconds,
-		&mtime_nanoseconds, &ctime_seconds, &ctime_nanoseconds);
+	int found = v3_modulecache_file_metadata(__FILE__, &device, &inode, &size,
+        &mtime_seconds, &mtime_nanoseconds, &ctime_seconds, &ctime_nanoseconds);
+#if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
+    return !(found == 1 && inode > 0 && size > 0);
+#else
+    return found != 0;
+#endif
 }
 '
 			os.write_file(source_path, source) or { panic(err) }
-			result :=
-				os.exec([cc, '-D_DEFAULT_SOURCE', '-std=c99', '-fsyntax-only',
-					'-Werror=incompatible-pointer-types', source_path])
+			executable := os.join_path(temp_dir, 'abi_${alias_index}_${branch_index}')
+			mut args := [cc, '-D_DEFAULT_SOURCE', '-std=c99', '-Werror=incompatible-pointer-types',
+				source_path, helper_path, '-o', executable]
+			if fallback {
+				args << ['-U__APPLE__', '-U__linux__']
+			}
+			result := os.exec(args)
 			assert result.exit_code == 0, result.output
+			run := os.exec([executable])
+			assert run.exit_code == 0, run.output
 		}
 	}
 }

@@ -316,6 +316,33 @@ fn test_parse_int() {
 	assert strconv.parse_int('16', 16, 0)! == 0x16
 	assert strconv.parse_int('16', 8, 0)! == 0o16
 	assert strconv.parse_int('11', 2, 0)! == 3
+	// Bit size 0 is `int`: 64 bits wide on 64-bit targets, 32 bits wide on 32-bit ones.
+	if sizeof(int) == 8 {
+		assert strconv.parse_int('5000000000', 10, 0)! == 5000000000
+		assert strconv.parse_int('-5000000000', 10, 0)! == -5000000000
+		assert strconv.parse_uint('5000000000', 10, 0)! == 5000000000
+		assert strconv.parse_int('9223372036854775807', 10, 0)! == max_i64
+		assert strconv.parse_int('-9223372036854775808', 10, 0)! == min_i64
+		assert strconv.parse_uint('18446744073709551615', 10, 0)! == max_u64
+		// One past the limits: parse_int saturates as it does for an explicit bit size,
+		// the checked variants report the overflow.
+		assert strconv.parse_int('9223372036854775808', 10, 0)! == max_i64
+		assert strconv.parse_int('-9223372036854775809', 10, 0)! == min_i64
+		assert strconv.common_parse_int('9223372036854775808', 10, 0, true, true) or { 1 } == 1
+		assert strconv.common_parse_int('-9223372036854775809', 10, 0, true, true) or { 1 } == 1
+		assert strconv.parse_uint('18446744073709551616', 10, 0) or { 1 } == 1
+	} else {
+		assert strconv.parse_int('2147483647', 10, 0)! == max_i32
+		assert strconv.parse_int('-2147483648', 10, 0)! == min_i32
+		assert strconv.parse_uint('4294967295', 10, 0)! == max_u32
+		assert strconv.parse_int('2147483648', 10, 0)! == max_i32
+		assert strconv.parse_int('-2147483649', 10, 0)! == min_i32
+		assert strconv.common_parse_int('2147483648', 10, 0, true, true) or { 1 } == 1
+		assert strconv.common_parse_int('-2147483649', 10, 0, true, true) or { 1 } == 1
+		assert strconv.parse_uint('4294967296', 10, 0) or { 1 } == 1
+		assert strconv.parse_int('5000000000', 10, 0) or { 1 } == 1
+		assert strconv.parse_uint('5000000000', 10, 0) or { 1 } == 1
+	}
 	// Different bit sizes
 	assert strconv.parse_int('127', 10, 8)! == 127
 	assert strconv.parse_int('128', 10, 8)! == 127
@@ -444,6 +471,79 @@ fn test_common_parse_uint2_compatibility() {
 		// println("${a0} => ${query[1]}")
 		assert a0.str() == query[1]
 	}
+}
+
+struct ExplicitBaseSeparator { // test struct
+	input string // digits of `base` with underscores between them
+	base  int
+	value u64 // of the same digits without the underscores
+}
+
+// The table above only uses base 0. With an explicit base, parse_int and
+// parse_uint treat an underscore as any other character that is not a digit.
+fn test_parse_explicit_base_rejects_underscores() {
+	cases := [
+		ExplicitBaseSeparator{'1_000', 10, 1000},
+		ExplicitBaseSeparator{'1_000_000', 10, 1000000},
+		ExplicitBaseSeparator{'0_10', 10, 10},
+		ExplicitBaseSeparator{'ff_ff', 16, 0xffff},
+		ExplicitBaseSeparator{'FF_FF', 16, 0xffff},
+		ExplicitBaseSeparator{'7_7', 8, 0o77},
+		ExplicitBaseSeparator{'1_0', 2, 2},
+		ExplicitBaseSeparator{'z_z', 36, 1295},
+	]
+	for c in cases {
+		for bit_size in [0, 64] {
+			if value := strconv.parse_uint(c.input, c.base, bit_size) {
+				assert false, 'parse_uint("${c.input}", ${c.base}, ${bit_size}) returned ${value}'
+			} else {
+				assert err.msg().contains('syntax error'), err.msg()
+			}
+			for signed in [c.input, '+' + c.input, '-' + c.input] {
+				if value := strconv.parse_int(signed, c.base, bit_size) {
+					assert false, 'parse_int("${signed}", ${c.base}, ${bit_size}) returned ${value}'
+				} else {
+					assert err.msg().contains('syntax error'), err.msg()
+				}
+			}
+		}
+		// The `string` methods expose the same functions.
+		if value := c.input.parse_uint(c.base, 64) {
+			assert false, '"${c.input}".parse_uint(${c.base}, 64) returned ${value}'
+		}
+		if value := c.input.parse_int(c.base, 64) {
+			assert false, '"${c.input}".parse_int(${c.base}, 64) returned ${value}'
+		}
+		// The digits themselves are valid in that base.
+		digits := c.input.replace('_', '')
+		assert strconv.parse_uint(digits, c.base, 0)! == c.value
+		assert strconv.parse_int(digits, c.base, 0)! == i64(c.value)
+		assert strconv.parse_int('-' + digits, c.base, 64)! == -i64(c.value)
+	}
+	// Base 0 keeps the separators, with and without a base prefix.
+	for input, expected in {
+		'1_000':       u64(1000)
+		'0x1_0':       16
+		'0xFF_FF':     0xffff
+		'0b1010_1010': 0b10101010
+		'0o7_7':       0o77
+	} {
+		for bit_size in [0, 64] {
+			assert strconv.parse_uint(input, 0, bit_size)! == expected
+			assert strconv.parse_int(input, 0, bit_size)! == i64(expected)
+			assert strconv.parse_int('-' + input, 0, bit_size)! == -i64(expected)
+		}
+	}
+	// `string.int()` and its siblings read `1_000` in base 10 through the
+	// common_parse_* functions, which accept the separators in every base.
+	value, code := strconv.common_parse_uint2('1_000', 10, 64)
+	assert value == 1000
+	assert code == 0
+	assert strconv.common_parse_uint('ff_ff', 16, 64, true, true)! == 0xffff
+	assert strconv.common_parse_int('-1_000', 10, 64, false, false)! == -1000
+	assert '1_000'.int() == 1000
+	assert '-1_000'.i64() == -1000
+	assert '1_000'.u64() == 1000
 }
 
 fn test_parse_base_zero_implicit_octal() {
