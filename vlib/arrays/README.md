@@ -19,3 +19,6 @@ fn main() {
 exists. The error names the operation and the value that could not be found.
 
 `chunk(array, size)` returns an empty array when `size` is zero or negative.
+
+`is_sorted(array)` checks ascending order, allowing equal adjacent elements. Empty and
+single-element arrays are sorted. The element type must support ordering comparisons.

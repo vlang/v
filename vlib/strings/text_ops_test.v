@@ -39,3 +39,15 @@ fn test_contains_rune() {
 	assert !contains_rune('', `a`)
 	assert contains_rune('日本語', `本`)
 }
+
+fn test_text_ops_boundaries_and_unicode_contracts() {
+	assert split_after('é::文::', '::') == ['é::', '文::', '']
+	assert split_after('', '') == ['']
+	assert split_after('aba', 'aba') == ['aba', '']
+	assert last_index_any('aéz', 'é') == 2
+	assert last_index_any('é', 'ø') == 0, 'this API intentionally searches bytes'
+	assert contains_rune('x😀y', `😀`)
+	assert !contains_rune('é', `ø`)
+	assert equal_fold('Vé', 'vé')
+	assert !equal_fold('VÉ', 'vé')
+}
