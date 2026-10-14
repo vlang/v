@@ -45,3 +45,6 @@ and attributes with an empty value. Searching for an empty value matches only ta
 attribute. Searches on a `Tag` recursively inspect its children.
 
 Unterminated script and style elements retain their collected body when parsing ends.
+
+Newlines inside tags separate names and attributes like spaces. Consecutive separators preserve
+a pending quoted attribute value.

@@ -207,6 +207,9 @@ pub fn (mut parser Parser) split_parse(data string) {
 				// a newline separates like a space does: without this a tag
 				// split across lines glues its name to the first attribute
 				complete_lexeme := parser.builder_str().to_lower()
+				if complete_lexeme.len == 0 {
+					continue
+				}
 				if parser.lexical_attributes.current_tag.name == '' {
 					parser.lexical_attributes.current_tag.name = complete_lexeme
 				} else {

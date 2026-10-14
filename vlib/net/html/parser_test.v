@@ -138,3 +138,20 @@ fn test_parse_tag_split_across_lines() {
 	assert span.attributes['class'] == 'x'
 	assert span.text() == 't'
 }
+
+fn test_parse_newline_before_quoted_attribute_value() {
+	dom := parse('<span class=\n"x" id="y">t</span>')
+	span := dom.get_tags(name: 'span')[0]
+	assert span.attributes['class'] == 'x'
+	assert span.attributes['id'] == 'y'
+	assert span.text() == 't'
+	assert '' !in span.attributes
+}
+
+fn test_parse_repeated_newlines_inside_tag() {
+	dom := parse('<span\n\nclass="x"\n\nid="y">t</span>')
+	span := dom.get_tags(name: 'span')[0]
+	assert span.attributes['class'] == 'x'
+	assert span.attributes['id'] == 'y'
+	assert '' !in span.attributes
+}
