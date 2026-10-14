@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: vlang/vc
-          ref: dfc458a13ba8923ebc249e262c331f8169aa728b
+          ref: c3063f8ca58150f6c6d98d86dc95bd3543e620f3
           path: vc
           fetch-depth: 0
           filter: blob:none

@@ -32,7 +32,7 @@ import v.types
 // - a module that a library file belongs to or imports: that code can name the
 //   program's generics.
 //
-// V_CHECK_LIBRARY_BODIES=1 keeps every body, as before. V_DIAGNOSTICS_TRACE tells
+// V_CHECK_LIBRARY_BODIES=all keeps every body, as before. V_DIAGNOSTICS_TRACE tells
 // how many instances were cloned without their bodies.
 struct LibraryBodies {
 mut:
@@ -62,8 +62,8 @@ fn (mut t Transformer) library_instance_needs_body(args []string) bool {
 
 fn (mut t Transformer) prepare_library_bodies() {
 	t.library_bodies.ready = true
-	if os.getenv('V_CHECK_LIBRARY_BODIES') == '1' {
-		t.keep_library_bodies('V_CHECK_LIBRARY_BODIES=1 asks for them')
+	if os.getenv('V_CHECK_LIBRARY_BODIES') == 'all' {
+		t.keep_library_bodies('V_CHECK_LIBRARY_BODIES=all asks for them')
 		return
 	}
 	for _, decl in t.cached_generic_fn_decls() {
@@ -224,7 +224,7 @@ fn (mut t Transformer) library_type_reaches_program(typ string) bool {
 }
 
 fn library_type_text(typ string) string {
-	text := typ.trim_space()
+	text := trimmed_transform_text(typ)
 	return if text.starts_with('main.') { text['main.'.len..] } else { text }
 }
 
