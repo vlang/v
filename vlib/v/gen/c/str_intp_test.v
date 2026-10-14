@@ -13,7 +13,7 @@ fn formatted_enum_interp_c_expr(format string) string {
 	g.a = &a
 	g.tc = &tc
 	assert g.gen_formatted_string_interp_child_expr(value_id, types.Enum{
-		name: 'Color'
+		name_id: flat.source_type_id('Color')
 	}, format)
 	return g.sb.str()
 }
@@ -34,7 +34,7 @@ fn test_voidptr_function_value_detection_prefers_explicit_node_type() {
 	stale_id := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'callback'
-		typ:   'fn ()'
+		typ:   flat.source_type_id('fn ()')
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['gg.WindowReadbackId'] = []types.StructField{}
@@ -45,7 +45,7 @@ fn test_voidptr_function_value_detection_prefers_explicit_node_type() {
 	value_node := flat.Node{
 		kind:  .ident
 		value: 'request'
-		typ:   'gg.WindowReadbackId'
+		typ:   flat.source_type_id('gg.WindowReadbackId')
 	}
 	assert type_is_fn_value(g.usable_expr_type(stale_id))
 	assert !g.node_is_fn_value_for_voidptr(stale_id, value_node)
@@ -134,7 +134,7 @@ fn test_character_interpolation_unwraps_integer_alias() {
 	g.a = &a
 	g.tc = &tc
 	assert g.gen_formatted_string_interp_child_expr(value_id, types.Alias{
-		name:      'Code'
+		name_id:   flat.source_type_id('Code')
 		base_type: types.Type(types.u8_)
 	}, 'c')
 	assert g.sb.str() == 'rune__str((u32)(65))'
@@ -152,7 +152,7 @@ fn test_ierror_interpolation_uses_dynamic_message_dispatch() {
 	err_id := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'err'
-		typ:   'IError'
+		typ:   flat.source_type_id('IError')
 	})
 	a.children << err_id
 	interp_id := a.add_node(flat.Node{
@@ -162,7 +162,7 @@ fn test_ierror_interpolation_uses_dynamic_message_dispatch() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.register_synth_type(err_id, types.Type(types.Interface{
-		name: 'IError'
+		name_id: flat.source_type_id('IError')
 	}))
 	mut g := FlatGen.new()
 	g.a = &a
@@ -177,7 +177,7 @@ fn test_lowered_string_join_keeps_source_identifiers_out_of_its_temporary_namesp
 	part := a.add_node(flat.Node{
 		kind:  .ident
 		value: name
-		typ:   'string'
+		typ:   flat.source_type_id('string')
 	})
 	a.children << part
 	a.children << part
@@ -189,7 +189,7 @@ fn test_lowered_string_join_keeps_source_identifiers_out_of_its_temporary_namesp
 	g.gen_string_interp(flat.Node{
 		kind:           .string_interp
 		value:          '__v3_string_join'
-		typ:            'string'
+		typ:            flat.source_type_id('string')
 		children_count: 2
 	})
 	output := g.sb.str()

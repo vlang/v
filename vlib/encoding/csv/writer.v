@@ -28,7 +28,8 @@ pub fn new_writer(config WriterConfig) &Writer {
 	}
 }
 
-// write writes a single record, preserving carriage returns unless use_crlf is enabled.
+// write writes a single record, preserving bare carriage returns in quoted fields.
+// With use_crlf, newlines become CRLF while existing CRLF pairs are preserved.
 pub fn (mut w Writer) write(record []string) !bool {
 	if !valid_delim(w.delimiter) {
 		return &InvalidDelimiterError{}
@@ -56,8 +57,10 @@ pub fn (mut w Writer) write(record []string) !bool {
 				match z {
 					`"` { w.sb.write_string('""') }
 					`\r` {
-						if !w.use_crlf {
-							w.sb.write_u8(`\r`)
+						w.sb.write_string('\r')
+						if w.use_crlf && field.len > 1 && field[1] == `\n` {
+							w.sb.write_string('\n')
+							field = field[1..]
 						}
 					}
 					`\n` { w.sb.write_string(le) }

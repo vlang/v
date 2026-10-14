@@ -202,7 +202,7 @@ fn test_struct_init_main_alias_target_keeps_declaration_scope() {
 	tc.struct_modules['Context'] = 'main'
 	tc.structs['veb.Context'] = []types.StructField{}
 	tc.struct_modules['veb.Context'] = 'veb'
-	tc.type_aliases['AliasContext'] = 'Context'
+	tc.type_aliases.set('AliasContext', 'Context')
 	tc.type_alias_modules['AliasContext'] = 'main'
 	tc.cur_module = 'veb'
 	mut g := FlatGen.new()
@@ -363,7 +363,7 @@ fn aligned_struct_decl_c(ccompiler string, attrs string, union_decl bool) string
 	node_id := a.add_node(flat.Node{
 		kind:  .struct_decl
 		value: name
-		typ:   attrs
+		typ:   flat.source_type_id(attrs)
 	})
 	mut g := FlatGen.new()
 	g.a = &a
@@ -440,7 +440,7 @@ fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
 	g.a = &a
 	g.tc = &tc
 	alias_to_voidptr := types.Type(types.Alias{
-		name:      'Data'
+		name_id:   flat.source_type_id('Data')
 		base_type: types.Type(types.Pointer{
 			base_type: types.Type(types.void_)
 		})
@@ -459,17 +459,17 @@ fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
 		types.StructField{
 			name:     'veb.Context'
 			typ:      types.Type(types.Struct{
-				name: 'veb.Context'
+				name_id: flat.source_type_id('veb.Context')
 			})
 			is_embed: true
 		},
 	]
 
 	base := types.Type(types.Struct{
-		name: 'main.Context'
+		name_id: flat.source_type_id('main.Context')
 	})
 	expected := types.Type(types.Struct{
-		name: 'Context'
+		name_id: flat.source_type_id('Context')
 	})
 	assert g.embedded_receiver_path_for_expected(base, expected) == none
 	assert g.emitted_method_belongs_to_receiver(base, 'before_request', 'Context__before_request')
@@ -561,7 +561,7 @@ fn test_fixed_array_typedef_allows_opaque_pointer_elements() {
 	mut g := FlatGen.new()
 	g.tc = &tc
 	opaque := types.Type(types.Struct{
-		name: 'C.Foo'
+		name_id: flat.source_type_id('C.Foo')
 	})
 	assert g.fixed_array_type_has_unknown_struct(opaque)
 	assert !g.fixed_array_type_has_unknown_struct(types.Type(types.Pointer{
@@ -572,8 +572,8 @@ fn test_fixed_array_typedef_allows_opaque_pointer_elements() {
 fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types['a.tast.Value'] = ['a.tast.First', 'a.tast.Target']
-	tc.sum_types['b.tast.Value'] = ['b.tast.Target', 'b.tast.Second']
+	tc.sum_types.set('a.tast.Value', ['a.tast.First', 'a.tast.Target'])
+	tc.sum_types.set('b.tast.Value', ['b.tast.Target', 'b.tast.Second'])
 	mut g := FlatGen.new()
 	g.tc = &tc
 	assert g.sum_type_index('tast.Value', 'b.tast.Target') == 0
@@ -602,8 +602,8 @@ fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
 fn test_typeof_type_index_fallback_uses_matching_sum_variant() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types['main.Value'] = ['main.Foo', 'main.Bar']
-	tc.sum_types['main.Other'] = ['main.Baz', 'main.Qux']
+	tc.sum_types.set('main.Value', ['main.Foo', 'main.Bar'])
+	tc.sum_types.set('main.Other', ['main.Baz', 'main.Qux'])
 	mut g := FlatGen.new()
 	g.tc = &tc
 	assert g.type_index_for_type_name('Foo') == 1
@@ -863,10 +863,10 @@ fn test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator() {
 	assert voidptr(g.generic_app_cache.base) == voidptr(own_generic_app_cache)
 	g.unique_struct_ct_cache.put('Batch', 'main__Batch')
 	g.param_types_cache['batch'] = [types.Type(types.void_)]
-	g.import_type_cache.unqualified_texts['Batch'] = 'main.Batch'
+	g.import_type_cache.unqualified_texts.put('Batch', 'main.Batch')
 	mut batch_file := g.import_type_cache.for_file('batch.v')
-	batch_file.texts['Batch'] = 'main.Batch'
-	batch_file.parsed['Batch'] = types.Type(types.void_)
+	batch_file.texts.put('Batch', 'main.Batch')
+	batch_file.parsed[flat.source_type_id('Batch')] = types.Type(types.void_)
 	g.restore_scratch_lookup_caches(saved)
 	assert voidptr(g.unique_struct_ct_cache) == voidptr(own_unique_struct_ct_cache)
 	assert voidptr(g.struct_cname_cache) == voidptr(own_struct_cname_cache)
@@ -875,7 +875,7 @@ fn test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator() {
 	assert g.unique_struct_ct_cache.get('Batch') == none
 	assert 'batch' !in g.param_types_cache
 	// The per-file child cache the batch created is dropped with it.
-	assert g.import_type_cache.unqualified_texts.len == 0
+	assert g.import_type_cache.unqualified_texts.entries.len == 0
 	assert g.import_type_cache.by_file.len == 0
 	assert isnil(g.import_type_cache.last)
 }

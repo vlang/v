@@ -223,10 +223,10 @@ fn (tc &TypeChecker) vls_condition_value_hover_at(file_id int, offset int, sourc
 	}
 	for i in 0 .. decl.children_count {
 		param := tc.a.child_node(&decl, i)
-		if param.kind == .param && param.value == word && param.typ.len > 0 {
-			declared := tc.parse_type(param.typ)
+		if param.kind == .param && param.value == word && param.typ_text().len > 0 {
+			declared := tc.parse_type(param.typ_text())
 			if type_contains_unknown(declared) {
-				return tc.vls_generic_value_text(id, word, param.typ)
+				return tc.vls_generic_value_text(id, word, param.typ_text())
 			}
 			return '${word} ${tc.vls_type_text(declared)}'
 		}
@@ -325,7 +325,7 @@ fn (tc &TypeChecker) vls_decl_contains_offset(decl flat.Node, offset int) bool {
 	mut return_function_tokens := 0
 	if decl.is_mut {
 		mut return_scanner := scanner.new_scanner(&pref.Preferences{}, .normal)
-		return_scanner.init(unsafe { nil }, decl.typ)
+		return_scanner.init(unsafe { nil }, decl.typ_text())
 		for {
 			return_token := return_scanner.scan()
 			if return_token == .eof { break }

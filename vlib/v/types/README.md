@@ -10,6 +10,31 @@ cached identity. `parse_type_id(text)` resolves source text at an indexed type b
 its scalar cache keeps both the semantic ID and compatibility value across source contexts.
 Source annotations and dynamically resolved call types remain separate.
 
+`TypeChecker.semantic_type_id(value)` interns a semantic descriptor in the same table.
+Markused retains declared sum receivers by this identity and keys checked receiver-method
+lookups by numeric type and method indexes. Unresolved source spellings use their own indexes,
+so a semantic ID must not be substituted for a source-spelling ID.
+
+Nominal `Struct`, `Interface`, `Enum`, `SumType`, and `Alias` descriptors store their source
+identity in `name_id`, a `u32` assigned by `flat.source_type_id`. Use `name()` to resolve a
+spelling at an integration boundary. Equality, hashing, and owned copies retain the numeric
+identity. This spelling identity is shared across workers; semantic `TypeId` values still belong
+to a particular checker's interner.
+
+Alias targets, generic binding values, and original return annotations use `flat.TypeTextBindings`.
+Parameter annotations, sum variants, implemented interfaces, and interface embeddings use
+`flat.TypeTextListBindings`. Binding keys retain declaration names; values carry source IDs.
+`InterfaceImplIndex` retains its ordered implementation names in a `TypeTextList`;
+`names_text()` resolves them for diagnostics and emission while preserving interface tag order.
+Canonical name caches, recursive-alias stacks, and deferred return annotations also retain IDs.
+
+Generic constraints, frozen interface implementation lists, and cached C type representations
+also retain numeric spelling identities. AST and worker publication copy these indexes and their
+list storage directly; only ordinary declaration payloads require string promotion.
+
+Numeric APIs retain identities across stages. Text APIs resolve spellings when parsing source,
+reporting diagnostics, or integrating with an emitter that consumes names.
+
 The builtin error constructors require a string message. To propagate an error from an
 `or` block, use `return err`. To add context, use `return error('context: ${err}')`.
 Passing the error value directly as `error(err)` is rejected before C generation and includes

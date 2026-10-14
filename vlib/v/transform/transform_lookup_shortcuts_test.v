@@ -145,8 +145,8 @@ fn test_generic_call_name_filter_keeps_every_spelling_of_a_declaration() {
 fn test_alias_receiver_candidates_follow_the_signature_tables() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Meters'] = 'int'
-	tc.type_aliases['unit.Feet'] = 'int'
+	tc.type_aliases.set('Meters', 'int')
+	tc.type_aliases.set('unit.Feet', 'int')
 	receiver := [types.Type(types.int_)]
 	tc.fn_param_types['Meters.double'] = receiver
 	tc.fn_param_types['os.double'] = receiver
@@ -167,7 +167,7 @@ fn test_alias_receiver_candidates_follow_the_signature_tables() {
 	tc.fn_param_types['Meters.pending'] = receiver
 	assert t.alias_receiver_method_candidates('pending') == ['Meters.pending']
 	// A new signature or alias is found by the scan until the list is taken again.
-	tc.type_aliases['Yards'] = 'int'
+	tc.type_aliases.set('Yards', 'int')
 	tc.fn_param_types['Yards.double'] = receiver
 	expected := ['Meters.double', 'unit.Feet.double', 'Yards.double']
 	assert t.alias_receiver_method_candidates('double') == expected
@@ -199,10 +199,10 @@ fn test_append_element_interface_answers_follow_the_type_tables() {
 fn test_alias_chain_stops_at_plain_types_and_cycles() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Names'] = 'Words'
-	tc.type_aliases['Words'] = '[]string'
-	tc.type_aliases['Ping'] = 'Pong'
-	tc.type_aliases['Pong'] = 'Ping'
+	tc.type_aliases.set('Names', 'Words')
+	tc.type_aliases.set('Words', '[]string')
+	tc.type_aliases.set('Ping', 'Pong')
+	tc.type_aliases.set('Pong', 'Ping')
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	assert t.normalize_type_alias_chain('int') == 'int'

@@ -838,9 +838,13 @@ pub fn (s string) format(args ...string) string {
 	return out.str()
 }
 
-// last_index returns the position of the last occurrence of the input string.
+// index_last_ returns the position of the last occurrence of the input string.
+// An empty input string is found at position `s.len`.
 fn (s string) index_last_(p string) int {
-	if p.len > s.len || p.len == 0 {
+	if p.len == 0 {
+		return s.len
+	}
+	if p.len > s.len {
 		return -1
 	}
 	mut i := s.len - p.len
@@ -858,6 +862,7 @@ fn (s string) index_last_(p string) int {
 }
 
 // last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+// An empty needle is found at position `s.len`, including in an empty `s`.
 @[inline]
 pub fn (s string) last_index(needle string) ?int {
 	idx := s.index_last_(needle)

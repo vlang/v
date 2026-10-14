@@ -82,7 +82,7 @@ fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
 	unused_call := restored_type_node(mut a, .call, '', [unused_callee])
 	unused_body := restored_type_node(mut a, .block, '', [unused_call])
 	unused_fn := restored_type_node(mut a, .fn_decl, 'unused', [unused_body])
-	a.nodes[int(first_callee)].typ = 'fn (int) int'
+	a.nodes[int(first_callee)].typ = flat.source_type_id('fn (int) int')
 	a.nodes[int(unused_fn)].set_generic_params_and_constraints(['T'], ['Record'])
 	a.intern_node_texts_from(0)
 	canonical_nodes := a.nodes.clone()
@@ -99,7 +99,7 @@ fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
 	tc.fn_param_types['C.native'] = [boolean]
 	tc.fn_ret_types['C.native'] = integer
 	tc.set_resolved_fn_value(int(native), 'C.native')
-	tc.register_synth_type(local, types.Type(types.Struct{ name: 'Receiver' }))
+	tc.register_synth_type(local, types.Type(types.Struct{ name_id: flat.source_type_id('Receiver') }))
 	restore_transformed_fn_value_types(mut tc, &a, {
 		'main':       true
 		'first.run':  true
@@ -117,7 +117,7 @@ fn test_restored_direct_types_keep_module_names_and_c_receiver_identity() {
 		params:      [boolean]
 		return_type: integer
 	})
-	assert tc.expr_type_values[int(local)] == types.Type(types.Struct{ name: 'Receiver' })
+	assert tc.expr_type_values[int(local)] == types.Type(types.Struct{ name_id: flat.source_type_id('Receiver') })
 	assert !tc.expr_type_set[int(unused_callee)]
 	assert_restoration_preserves_canonical_node_texts(&a, canonical_nodes, canonical_text_count)
 	// A second restoration observes refreshed signatures rather than retaining
@@ -141,7 +141,7 @@ fn assert_restoration_preserves_canonical_node_texts(a &flat.FlatAst, canonical_
 	assert a.text_values.len == canonical_text_count
 	for i, node in a.nodes {
 		assert node.value.str == canonical_nodes[i].value.str
-		assert node.typ.str == canonical_nodes[i].typ.str
+		assert node.typ_text().str == canonical_nodes[i].typ_text().str
 		assert node.type_text_id() == canonical_nodes[i].type_text_id()
 		assert node.payload == canonical_nodes[i].payload
 	}

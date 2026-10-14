@@ -1143,6 +1143,9 @@ pub fn (s string) split_n(delim string, n int) []string {
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
+// With an empty `delim` each part is one rune, not one byte, so a multi-byte
+// character is never split across parts; see https://github.com/vlang/v/issues/29834 .
+// Example: assert 'αβγ'.split('') == ['α', 'β', 'γ']
 @[direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
@@ -1150,12 +1153,22 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	defer { unsafe { res.flags.clear(.noslices) } }
 	match delim.len {
 		0 {
-			for i, ch in s {
+			// Walk runes, keeping the byte offset of each, so a part is always a
+			// whole character and the `nth` remainder slots on a rune boundary.
+			mut i := 0
+			for i < s.len {
+				_, mut char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+				if char_len < 1 {
+					// Should not happen for valid UTF-8, but a zero or negative
+					// step would loop for ever, so advance defensively.
+					char_len = 1
+				}
 				if nth > 0 && res.len == nth - 1 {
 					res << s[i..]
 					break
 				}
-				res << ch.ascii_str()
+				res << s[i..i + char_len]
+				i += char_len
 			}
 		}
 		1 {
@@ -1204,6 +1217,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
 // When splitting at a nonempty delimiter, an end match produces an empty first part.
+// An empty delimiter splits complete UTF-8 runes in reverse order.
 @[direct_array_access]
 pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	mut res := []string{}
@@ -1211,12 +1225,26 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	defer { unsafe { res.flags.clear(.noslices) } }
 	match delim.len {
 		0 {
-			for i := s.len - 1; i >= 0; i-- {
+			// Collect the rune boundaries forward, then walk them back, so the
+			// `nth` remainder is the leading runes rather than a byte prefix.
+			mut starts := []int{cap: 8}
+			mut ends := []int{cap: 8}
+			mut i := 0
+			for i < s.len {
+				_, mut char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+				if char_len < 1 {
+					char_len = 1
+				}
+				starts << i
+				ends << i + char_len
+				i += char_len
+			}
+			for j := ends.len - 1; j >= 0; j-- {
 				if nth > 0 && res.len == nth - 1 {
-					res << s[..i + 1]
+					res << s[..ends[j]]
 					break
 				}
-				res << s[i].ascii_str()
+				res << s[starts[j]..ends[j]]
 			}
 		}
 		1 {
@@ -1446,10 +1474,13 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 }
 
 // index_ returns the position of the first character of the input string.
-// It will return `-1` if the input string can't be found.
+// It will return `-1` if the input string can't be found, or `0` for an empty input string.
 @[direct_array_access]
 pub fn (s string) index_(p string) int {
-	if p.len > s.len || p.len == 0 || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
+	if p.len == 0 {
+		return 0
+	}
+	if p.len > s.len || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
 		return -1
 	}
 	if p.len > max_direct_index_needle_len {
@@ -1480,6 +1511,7 @@ const max_direct_index_needle_len = 16
 
 // index returns the position of the first character of the first occurrence of the `needle` string in `s`.
 // It will return `none` if the `needle` string can't be found in `s`.
+// An empty needle is found at position `0`, including in an empty `s`.
 pub fn (s string) index(p string) ?int {
 	idx := s.index_(p)
 	if idx == -1 {
@@ -1489,6 +1521,7 @@ pub fn (s string) index(p string) ?int {
 }
 
 // last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+// An empty needle is found at position `s.len`, including in an empty `s`.
 @[inline]
 pub fn (s string) last_index(needle string) ?int {
 	idx := s.index_last_(needle)
@@ -1560,7 +1593,10 @@ pub fn (s string) index_any(chars string) int {
 // index_last_ returns the position of the last occurrence of the given string `p` in `s`.
 @[direct_array_access]
 fn (s string) index_last_(p string) int {
-	if p.len > s.len || p.len == 0 {
+	if p.len == 0 {
+		return s.len
+	}
+	if p.len > s.len {
 		return -1
 	}
 	mut i := s.len - p.len
@@ -1814,20 +1850,25 @@ pub fn (s string) to_lower() string {
 	return runes.string()
 }
 
-// is_lower returns `true`, if all characters in the string are lowercase.
+// is_lower returns `true` if all ASCII letters in the string are lowercase,
+// and the string contains at least one lowercase ASCII letter.
 // It only works when the input is composed entirely from ASCII characters.
 // Example: assert 'hello developer'.is_lower() == true
 @[direct_array_access]
 pub fn (s string) is_lower() bool {
-	if s == '' || s[0].is_digit() {
+	if s == '' {
 		return false
 	}
+	mut has_lower := false
 	for i in 0 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
 		}
+		if s[i] >= `a` && s[i] <= `z` {
+			has_lower = true
+		}
 	}
-	return true
+	return has_lower
 }
 
 // to_upper_ascii returns the string in all UPPERCASE characters.
@@ -1981,7 +2022,7 @@ pub fn (s string) is_title() bool {
 // Example: assert 'hey [man] how you doin'.find_between('[', ']') == 'man'
 pub fn (s string) find_between(start string, end string) string {
 	start_pos := s.index_(start)
-	if start_pos == -1 {
+	if start_pos == -1 || start.len == 0 {
 		return ''
 	}
 	// First get everything to the right of 'start'
@@ -2340,7 +2381,7 @@ pub fn (str string) is_oct() bool {
 		return false
 	}
 
-	if i < str.len && str[i] == `o` {
+	if i < str.len && (str[i] == `o` || str[i] == `O`) {
 		i++
 	} else {
 		return false
@@ -2383,7 +2424,7 @@ pub fn (str string) is_bin() bool {
 		return false
 	}
 
-	if i < str.len && str[i] == `b` {
+	if i < str.len && (str[i] == `b` || str[i] == `B`) {
 		i++
 	} else {
 		return false
@@ -2426,7 +2467,7 @@ pub fn (str string) is_hex() bool {
 		return false
 	}
 
-	if i < str.len && str[i] == `x` {
+	if i < str.len && (str[i] == `x` || str[i] == `X`) {
 		i++
 	} else {
 		return false
@@ -2566,7 +2607,7 @@ pub fn (s &string) free() {
 // TODO: deprecate and remove either .before or .all_before
 pub fn (s string) before(sub string) string {
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[..pos]
@@ -2579,7 +2620,7 @@ pub fn (s string) before(sub string) string {
 pub fn (s string) all_before(sub string) string {
 	// TODO: remove dup method
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[..pos]
@@ -2591,7 +2632,7 @@ pub fn (s string) all_before(sub string) string {
 // Example: assert 'abcd'.all_before_last('.') == 'abcd'
 pub fn (s string) all_before_last(sub string) string {
 	pos := s.index_last_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[..pos]
@@ -2603,7 +2644,7 @@ pub fn (s string) all_before_last(sub string) string {
 // Example: assert 'abcd'.all_after('z') == 'abcd'
 pub fn (s string) all_after(sub string) string {
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[pos + sub.len..]
@@ -2615,7 +2656,7 @@ pub fn (s string) all_after(sub string) string {
 // Example: assert 'abcd'.all_after_last('z') == 'abcd'
 pub fn (s string) all_after_last(sub string) string {
 	pos := s.index_last_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[pos + sub.len..]
@@ -2627,7 +2668,7 @@ pub fn (s string) all_after_last(sub string) string {
 // Example: assert 'abcd'.all_after_first('z') == 'abcd'
 pub fn (s string) all_after_first(sub string) string {
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[pos + sub.len..]

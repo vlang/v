@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import os
 import v.pref
 import v.scanner
@@ -193,7 +194,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 	return FastcComptimeBlock{}
 }
 
-fn fastc_collect_selected_comptime_function_signatures(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+fn fastc_collect_selected_comptime_function_signatures(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
@@ -286,7 +287,7 @@ fn (mut g Parser) parse_comptime_if_statement() !bool {
 }
 
 // parse_comptime_match_statement selects a type branch from `$match T` or
-// `$match T.unaliased_typ`. Late generic instances contain a concrete type name in
+// `$match T.unaliased_typ_text()`. Late generic instances contain a concrete type name in
 // place of `T`, so only the selected branch needs to enter the ordinary statement
 // parser. This is the statement form used by json2's numeric decoder.
 fn (mut g Parser) parse_comptime_match_statement() !bool {
@@ -352,7 +353,7 @@ fn (mut g Parser) parse_comptime_match_statement() !bool {
 // It resolves the concrete type's fields (monomorphization has already turned a
 // generic `T.fields` into a concrete `User.fields`), captures the body source,
 // and re-parses it once per field with a comptime-field context so `<var>.name`,
-// `<var>.typ` and `t.$(<var>.name)` resolve.
+// `<var>.typ_text()` and `t.$(<var>.name)` resolve.
 fn (mut g Parser) parse_comptime_for_statement() !bool {
 	g.expect(.dollar)!
 	g.expect(.key_for)!
@@ -606,11 +607,11 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 						type_c, type_end, next_after := g.read_comptime_is_type(mut s)
 						if type_c != '' {
 							matches := if type_c.starts_with('?') {
-								field.option_value_type == type_c[1..]
+								field.option_value_type_text() == type_c[1..]
 							} else if type_c.starts_with('@') {
-								g.comptime_type_matches(field.typ, type_c[1..], true)
+								g.comptime_type_matches(field.typ_text(), type_c[1..], true)
 							} else {
-								field.typ.trim_right('*') == type_c
+								field.typ_text().trim_right('*') == type_c
 							}
 							edits << FastcSourceEdit{
 								start:       var_pos
@@ -844,7 +845,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 	}
 	name := g.lit
 	g.next()
-	// `T.unaliased_typ is X` (json2's encoder dispatch): a comptime type test on the type
+	// `T.unaliased_typ_text() is X` (json2's encoder dispatch): a comptime type test on the type
 	// with aliases resolved. After monomorphization `T` is a concrete type name here, so
 	// resolve the leading name's underlying (un-aliased) type before the `is` compare; for
 	// a non-alias it is a no-op.
@@ -954,7 +955,7 @@ fn (g &Parser) comptime_pseudo_string(name string) ?string {
 
 fn (g &Parser) comptime_named_type(name string) string {
 	if local := g.locals[name] {
-		return local.typ
+		return local.typ_text()
 	}
 	if primitive := fastc_primitive_c_type(name) {
 		return primitive
@@ -1063,9 +1064,9 @@ fn (mut g Parser) read_comptime_d_expression() !string {
 	g.next() // the define name (only meaningful with `-d name=value`, not transported)
 	g.expect(.comma)!
 	default_value := g.read_expression([token.Token.rpar])!
-	value_type := g.last_expression_type
+	value_type := g.last_expression_type_text()
 	g.expect(.rpar)!
-	g.last_expression_type = value_type
+	g.last_expression_type = flat.source_type_id(value_type)
 	g.last_expression = []FastcExpressionToken{}
 	return default_value
 }
@@ -1090,6 +1091,8 @@ fn (mut g Parser) read_comptime_embed_file() !string {
 	}
 	g.expect(.rpar)!
 	embed_path := fastc_string_literal_content(path_literal)
+		.replace('@VEXEROOT', g.prefs.vroot)
+		.replace('@VMODROOT', fastc_vmod_root_for_file(g.path))
 	resolved := if os.is_abs_path(embed_path) {
 		embed_path
 	} else {
@@ -1111,7 +1114,7 @@ fn (mut g Parser) read_comptime_embed_file() !string {
 	g.expect(.rpar)!
 	match accessor {
 		'to_string', 'str' {
-			g.last_expression_type = 'string'
+			g.last_expression_type = flat.source_type_id('string')
 			g.last_expression = []FastcExpressionToken{}
 			return '_S(${fastc_c_string_value(content)})'
 		}
@@ -1151,7 +1154,7 @@ fn (g &Parser) comptime_pseudo_expression(name string) ?string {
 	line += g.source_line_offset
 	module_name := if g.module_name == '' { 'main' } else { g.module_name }
 	function_name := g.current_function
-	receiver_name := g.current_receiver.all_after_last('.')
+	receiver_name := g.current_receiver_text().all_after_last('.')
 	method_name := if receiver_name != '' {
 		'${receiver_name}.${function_name}'
 	} else {
@@ -1256,7 +1259,16 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	g.expect(.lcbr)!
 	if condition {
 		value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
-		value_type := g.last_expression_type
+		value_type := g.last_expression_type_text()
+		option_value_type := if value_type in ['Option', '__v_result'] {
+			if g.last_expression.len > 0 {
+				g.option_value_type_for_expression(g.last_expression)
+			} else {
+				g.last_option_value_type_text()
+			}
+		} else {
+			''
+		}
 		g.skip_semicolons()
 		g.expect(.rcbr)!
 		if g.tok == .dollar {
@@ -1269,7 +1281,8 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 				g.skip_open_block()!
 			}
 		}
-		g.last_expression_type = value_type
+		g.last_expression_type = flat.source_type_id(value_type)
+		g.last_option_value_type = flat.source_type_id(option_value_type)
 		g.last_expression = []FastcExpressionToken{}
 		return value
 	}
@@ -1284,10 +1297,20 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	}
 	g.expect(.lcbr)!
 	value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
-	value_type := g.last_expression_type
+	value_type := g.last_expression_type_text()
+	option_value_type := if value_type in ['Option', '__v_result'] {
+		if g.last_expression.len > 0 {
+			g.option_value_type_for_expression(g.last_expression)
+		} else {
+			g.last_option_value_type_text()
+		}
+	} else {
+		''
+	}
 	g.skip_semicolons()
 	g.expect(.rcbr)!
-	g.last_expression_type = value_type
+	g.last_expression_type = flat.source_type_id(value_type)
+	g.last_option_value_type = flat.source_type_id(option_value_type)
 	g.last_expression = []FastcExpressionToken{}
 	return value
 }
@@ -1704,7 +1727,7 @@ fn (g &Parser) fastc_veb_context_name() string {
 		return 'ctx'
 	}
 	for name, local in g.locals {
-		base := local.typ.trim_right('*')
+		base := local.typ_text().trim_right('*')
 		if base == 'Context' || base.ends_with('__Context') {
 			return name
 		}
