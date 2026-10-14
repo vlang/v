@@ -195,6 +195,23 @@ fn test_symlinks_cannot_escape_the_served_folder() {
 	inside := fetch(mut h, '/inside/deep.txt')
 	assert inside.status_code == 200
 	assert inside.body == 'deep'
+	os.rm(os.join_path(folder, 'index.html'))!
+	os.symlink(os.join_path(sibling, 'leak.txt'), os.join_path(folder, 'index.html'))!
+	assert fetch(mut h, '/index.html').status_code == 403
+	for auto_index in [true, false] {
+		mut indexed := handler(folder, 'index.html', auto_index)
+		response := fetch(mut indexed, '/')
+		assert response.status_code == 403
+		assert response.body == '<h1>forbidden</h1>'
+	}
+	os.rm(os.join_path(folder, 'index.html'))!
+	os.symlink(os.join_path(folder, 'sub', 'deep.txt'), os.join_path(folder, 'index.html'))!
+	for auto_index in [true, false] {
+		mut indexed := handler(folder, 'index.html', auto_index)
+		response := fetch(mut indexed, '/')
+		assert response.status_code == 200
+		assert response.body == 'deep'
+	}
 }
 
 fn test_serving_the_filesystem_root_preserves_descendant_access() {
