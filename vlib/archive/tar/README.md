@@ -8,6 +8,7 @@ like Linux command `tar -xvf` but in memory instead modifying the filesystem. Pa
 files, and file's content and manage paths longer than 100 chars.
 
 Directory and file paths join a ustar prefix and name with `/`.
+Header checksums are verified for files, directories, links, devices, and FIFOs.
 
 ### Read Efficiency
 
