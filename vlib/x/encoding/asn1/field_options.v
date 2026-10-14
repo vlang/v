@@ -227,10 +227,8 @@ fn (fo FieldOptions) inner_tag() !Tag {
 	return inn_tag
 }
 
-// install_default tries to install and sets element el as a default value when has_default flag of FieldOptions
-// has been set into true, or error if has_default is false.
-// When default_value has been set with some value before this, its would return error until you force it
-// by setingt force flag into true.
+// install_default sets el as the default value when has_default is true.
+// Replacing an existing default requires force to be true.
 pub fn (mut fo FieldOptions) install_default(el Element, force bool) ! {
 	if fo.has_default {
 		if fo.default_value == none {
@@ -243,6 +241,7 @@ pub fn (mut fo FieldOptions) install_default(el Element, force bool) ! {
 		}
 		// replace the old one, or should we check its matching tag ?
 		fo.default_value = el
+		return
 	}
 	return error('you can not install default value when has_default being not set')
 }
