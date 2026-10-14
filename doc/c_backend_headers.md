@@ -109,3 +109,8 @@ created by another compiler process; filesystem failures remain errors.
 Negated integer literals above `INT_MAX` and within the signed 64-bit range receive an `LL`
 suffix in C output, including parenthesized operands and constant initializers. This preserves
 their sign with MSVC.
+
+With `-target-libc-headers`, the target libc owns the accessor behind its `errno` macro.
+The generated C includes `<errno.h>` and leaves the libc accessor declaration to that header,
+avoiding conflicts where the target's `int32_t` differs from C's `int`. Headerless output
+retains the V-owned declarations.

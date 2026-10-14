@@ -12,7 +12,7 @@ fn test_target_libc_headers_leave_the_errno_accessor_to_the_target() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	input := os.join_path(root, 'main.v')
+	input := os.join_path(root, 'main.c.v')
 	os.write_file(input, 'module main
 
 fn C.puts(s &char) int
