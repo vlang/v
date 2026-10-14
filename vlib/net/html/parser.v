@@ -11,7 +11,7 @@ mut:
 	open_string        int
 	open_comment       bool
 	is_attribute       bool
-	pending_attribute string
+	pending_attribute  string
 	opened_code_type   string
 	line_count         int
 	outside_tag        bool
