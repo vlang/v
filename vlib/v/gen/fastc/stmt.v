@@ -2278,7 +2278,7 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 			}
 			target = FastcRenderedExpression{
 				source: global_name
-				typ:    flat.source_type_id(g.global_types.value(global_key))
+				typ:    g.global_types.value_id(global_key)
 			}
 		}
 		targets << target

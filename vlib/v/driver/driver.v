@@ -20496,14 +20496,14 @@ fn is_supported_test_harness_fn(a &flat.FlatAst, tc &types.TypeChecker, node &fl
 	if test_harness_fn_param_count(a, node) != 0 {
 		return false
 	}
-	return test_harness_fn_return_supported(tc.parse_type(node.typ_text()))
+	return test_harness_fn_return_supported(tc.parse_type(node.typ))
 }
 
 fn is_supported_test_harness_hook(a &flat.FlatAst, tc &types.TypeChecker, node &flat.Node) bool {
 	if node.generic_params().len > 0 {
 		return false
 	}
-	return test_harness_fn_param_count(a, node) == 0 && tc.parse_type(node.typ_text()) is types.Void
+	return test_harness_fn_param_count(a, node) == 0 && tc.parse_type(node.typ) is types.Void
 }
 
 fn test_harness_fn_param_count(a &flat.FlatAst, node &flat.Node) int {

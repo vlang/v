@@ -229,11 +229,11 @@ fn (mut g Gen) wasm_import(namespace string, decl flat.Node) !WasmImport {
 		if p.kind != .param || p.value.len == 0 {
 			continue
 		}
-		params << g.import_valtype(imp, p.value, p.typ_text())!
+		params << g.import_valtype(imp, p.value, p.typ)!
 	}
 	mut results := []u8{}
 	if decl.typ_text().len > 0 && decl.typ_text() != 'void' {
-		results << g.import_valtype(imp, '', decl.typ_text())!
+		results << g.import_valtype(imp, '', decl.typ)!
 	}
 	return WasmImport{
 		namespace: namespace
@@ -248,13 +248,14 @@ fn (mut g Gen) wasm_import(namespace string, decl flat.Node) !WasmImport {
 // `param` is empty. Anything the backend cannot represent as a single wasm value
 // is refused here rather than widened, so a signature the host cannot satisfy is
 // never emitted.
-fn (mut g Gen) import_valtype(imp string, param string, text string) !u8 {
-	t := unalias(g.tc.parse_type(text))
+fn (mut g Gen) import_valtype(imp string, param string, source_id u32) !u8 {
+	t := unalias(g.tc.parse_type(source_id))
 	if t is types.Pointer {
 		return valtype_i32
 	}
 	role := if param.len == 0 { 'result' } else { 'parameter `${param}`' }
 	w := prim_wtype(t) or {
+		text := flat.source_type_name(source_id)
 		return error('wasm: import `${imp}`: ${role} type `${text}` is not a value type')
 	}
 	return wt_valtype(w)
@@ -619,14 +620,11 @@ fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file stri
 		if p.kind != .param || p.value.len == 0 {
 			continue
 		}
-		pt := g.tc.parse_type(p.typ_text())
-		// An aggregate arrives as a pointer, which on a 32-bit target is an i32,
-		// so a parameter whose fields all lower takes the same slot. A return
-		// does not: the ABI passes it through a hidden sret pointer and the
-		// function's own result type is void, so that direction stays refused
-		// until a separate change describes it.
+		pt := g.tc.parse_type(p.typ)
+		// Aggregate parameters travel as pointers; supported aggregate returns
+		// use the hidden sret slot handled below.
 		w := prim_wtype(pt) or {
-			if g.wasm_param_may_be_aggregate(g.tc.parse_type(p.typ_text())) {
+			if g.wasm_param_may_be_aggregate(pt) {
 				WType.i32
 			} else {
 				return none
@@ -637,7 +635,7 @@ fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file stri
 	mut ret := WType.void
 	mut hidden_sret := false
 	if node.typ_text().len > 0 && node.typ_text() != 'void' {
-		rt := g.tc.parse_type(node.typ_text())
+		rt := g.tc.parse_type(node.typ)
 		// A struct return is passed through a hidden pointer: the caller supplies
 		// the slot and the function's own result type is void. So the signature
 		// gains a leading i32 and the result becomes void, which is what the SSA
@@ -645,7 +643,7 @@ fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file stri
 		// because both are struct_t values in SSA.
 		if w := prim_wtype(rt) {
 			ret = w
-		} else if g.wasm_param_may_be_aggregate(g.tc.parse_type(node.typ_text())) {
+		} else if g.wasm_param_may_be_aggregate(rt) {
 			ret = WType.void
 			hidden_sret = true
 		} else {
@@ -719,7 +717,7 @@ fn (mut g Gen) emit_user_fn(f FnInfo) {
 			continue
 		}
 		w := f.params[pi]
-		pt := g.tc.parse_type(p.typ_text())
+		pt := g.tc.parse_type(p.typ)
 		g.var_index[p.value] = pi
 		g.var_wtype[p.value] = w
 		g.var_unsigned[p.value] = type_is_unsigned(pt)
@@ -1092,7 +1090,7 @@ fn (mut g Gen) decl_width(rhs_id flat.NodeId, fallback_typ string) int {
 		return w
 	}
 	if fallback_typ.len > 0 {
-		return narrow_width(g.tc.parse_type(fallback_typ))
+		return narrow_width(g.tc.parse_type(flat.source_type_id(fallback_typ)))
 	}
 	return 32
 }
@@ -1752,7 +1750,7 @@ fn (mut g Gen) emit_inc(w WType, inc bool) {
 
 fn (mut g Gen) gen_cast(node flat.Node) WType {
 	child_id := g.a.child(&node, 0)
-	tt := g.tc.parse_type(node.value)
+	tt := g.tc.parse_type(flat.source_type_id(node.value))
 	target := prim_wtype(tt) or { WType.i32 }
 	child := g.a.nodes[int(child_id)]
 	if target in [WType.f32, WType.f64] && child.kind == .int_literal {
@@ -1889,7 +1887,7 @@ fn (mut g Gen) collect_globals() {
 			// Type from the declaration, or inferred from the initializer.
 			mut t := types.Type(types.Void{})
 			if f.typ_text().len > 0 {
-				t = g.tc.parse_type(f.typ_text())
+				t = g.tc.parse_type(f.typ)
 			} else if f.children_count > 0 {
 				t = g.tc.resolve_type(g.a.child(f, 0))
 			}
@@ -2126,7 +2124,7 @@ fn bool_to_i64(b bool) i64 {
 // fold_cast_int wraps a folded constant to a numeric cast target's width and
 // signedness, the compile-time form of gen_cast's narrowing.
 fn (g &Gen) fold_cast_int(v i64, type_name string) i64 {
-	return narrow_to_type(v, g.tc.parse_type(type_name))
+	return narrow_to_type(v, g.tc.parse_type(flat.source_type_id(type_name)))
 }
 
 // narrow_to_type wraps a folded constant to an integer type's width and
@@ -2220,7 +2218,7 @@ fn (g &Gen) fold_const_float(id flat.NodeId) f64 {
 		.cast_expr {
 			if n.children_count > 0 {
 				cid := g.a.child(&n, 0)
-				tw := prim_wtype(g.tc.parse_type(n.value)) or { WType.f64 }
+				tw := prim_wtype(g.tc.parse_type(flat.source_type_id(n.value))) or { WType.f64 }
 				if tw !in [WType.f32, WType.f64] {
 					// Cast to an integer type inside a float context: fold and
 					// narrow as an int, then widen to float.
@@ -2565,7 +2563,7 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 			return g.expr_wtype(g.a.child(&node, 0), fallback_typ)
 		}
 		if node.kind == .cast_expr && node.value.len > 0 {
-			if w := prim_wtype(g.tc.parse_type(node.value)) {
+			if w := prim_wtype(g.tc.parse_type(flat.source_type_id(node.value))) {
 				return w
 			}
 		}
@@ -2594,7 +2592,7 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 		}
 	}
 	if fallback_typ.len > 0 && fallback_typ != 'void' {
-		if w := prim_wtype(g.tc.parse_type(fallback_typ)) {
+		if w := prim_wtype(g.tc.parse_type(flat.source_type_id(fallback_typ))) {
 			return w
 		}
 	}
@@ -2636,7 +2634,7 @@ fn (mut g Gen) is_unsigned(id flat.NodeId) bool {
 			return g.is_unsigned(g.a.child(&node, 0))
 		}
 		if node.kind == .cast_expr && node.value.len > 0 {
-			return type_is_unsigned(g.tc.parse_type(node.value))
+			return type_is_unsigned(g.tc.parse_type(flat.source_type_id(node.value)))
 		}
 	}
 	return type_is_unsigned(g.tc.resolve_type(id))
@@ -2648,7 +2646,7 @@ fn (mut g Gen) decl_is_unsigned(rhs_id flat.NodeId, fallback_typ string) bool {
 		return true
 	}
 	if fallback_typ.len > 0 {
-		return type_is_unsigned(g.tc.parse_type(fallback_typ))
+		return type_is_unsigned(g.tc.parse_type(flat.source_type_id(fallback_typ)))
 	}
 	return false
 }

@@ -614,7 +614,7 @@ fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
 fn test_parallel_type_declarations_preseed_function_type_aliases() {
 	mut g, mut tc := parallel_worker_test_gen(true)
 	tc.type_aliases.set('Callback', 'fn (int)')
-	callback_type := tc.parse_type(tc.type_aliases.value('Callback'))
+	callback_type := tc.parse_type(tc.type_aliases.value_id('Callback'))
 	encoded := tc.c_type(callback_type)
 	assert encoded.starts_with('fn_ptr:')
 	assert encoded !in g.fn_ptr_types

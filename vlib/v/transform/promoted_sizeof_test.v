@@ -8,7 +8,7 @@ fn test_promoted_sizeof_strips_only_heap_storage_indirection() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for value_type in ['Record', 'RecordAlias', 'u32', '[3]u32', '&Record'] {
-		t.set_var_type('value', '&${value_type}')
+		t.set_var_type('value', flat.source_type_id('&${value_type}'))
 		t.heaped_amp_locals['value'] = true
 		sizeof_name := flat.Node{ kind: .sizeof_expr, value: 'value' }
 		assert t.promoted_sizeof_value_type(sizeof_name)? == value_type

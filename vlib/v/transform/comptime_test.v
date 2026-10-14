@@ -121,7 +121,7 @@ fn test_comptime_method_selector_keeps_unregistered_local_receivers() {
 		if binding in ['checked', 'checked_builtin_shadow', 'checked_generated_shadow'] {
 			tc.register_synth_type(receiver, types.Type(types.Struct{ name_id: flat.source_type_id('Dummy') }))
 		} else if binding in ['registered', 'builtin_shadow'] {
-			t.set_var_type(name, 'Dummy')
+			t.set_var_type(name, flat.source_type_id('Dummy'))
 		}
 		selector := substitute_reflected_method_receiver(mut t, receiver, MethodMeta{
 			name:        'sample'
@@ -262,7 +262,7 @@ fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 	tc.fn_implicit_veb_ctx['App.show'] = true
 	tc.fn_param_types['App.show'] = [
 		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
-		tc.parse_type('mut Context'),
+		tc.parse_type(flat.source_type_id('mut Context')),
 	]
 	tc.params_structs['RouteParams'] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -344,8 +344,8 @@ fn test_comptime_method_call_arity_distinguishes_mut_route_arg_from_ctx() {
 	tc.fn_implicit_veb_ctx['App.update'] = true
 	tc.fn_param_types['App.update'] = [
 		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
-		tc.parse_type('mut Context'),
-		tc.parse_type('mut Item'),
+		tc.parse_type(flat.source_type_id('mut Context')),
+		tc.parse_type(flat.source_type_id('mut Item')),
 	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	method := MethodMeta{
@@ -383,8 +383,8 @@ fn test_comptime_method_call_arity_binds_context_value_to_declared_interface() {
 	tc.fn_implicit_veb_ctx['App.show'] = true
 	tc.fn_param_types['App.show'] = [
 		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
-		tc.parse_type('mut Context'),
-		tc.parse_type('RouteArg'),
+		tc.parse_type(flat.source_type_id('mut Context')),
+		tc.parse_type(flat.source_type_id('RouteArg')),
 	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	method := MethodMeta{
@@ -447,36 +447,36 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 	tc.structs['RouteParams'] = [
 		types.StructField{
 			name: 'a'
-			typ:  tc.parse_type('int')
+			typ:  tc.parse_type(flat.source_type_id('int'))
 		},
 		types.StructField{
 			name: 'b'
-			typ:  tc.parse_type('int')
+			typ:  tc.parse_type(flat.source_type_id('int'))
 		},
 	]
 	tc.structs['OtherParams'] = [types.StructField{
 		name: 'a'
-		typ:  tc.parse_type('int')
+		typ:  tc.parse_type(flat.source_type_id('int'))
 	}]
 	tc.structs['RequiredParams'] = [
 		types.StructField{
 			name: 'a'
-			typ:  tc.parse_type('int')
+			typ:  tc.parse_type(flat.source_type_id('int'))
 		},
 		types.StructField{
 			name: 'b'
-			typ:  tc.parse_type('int')
+			typ:  tc.parse_type(flat.source_type_id('int'))
 		},
 		types.StructField{
 			name: 'c'
-			typ:  tc.parse_type('int')
+			typ:  tc.parse_type(flat.source_type_id('int'))
 		},
 	]
 	tc.fn_implicit_veb_ctx['App.configure'] = true
 	tc.fn_param_types['App.configure'] = [
 		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
-		tc.parse_type('mut Context'),
-		tc.parse_type('RouteParams'),
+		tc.parse_type(flat.source_type_id('mut Context')),
+		tc.parse_type(flat.source_type_id('RouteParams')),
 	]
 	tc.params_structs['RouteParams'] = true
 	tc.params_structs['OtherParams'] = true

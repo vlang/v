@@ -226,23 +226,8 @@ fn main() {
 	assert res.output.contains('f64.str'), 'a float program failed for another reason: ${res.output}'
 }
 
-// test_tour_struct_signature_is_refused_loudly pins the second known gap, which
-// is a different shape from the float one and worth separating.
-//
-// A struct in a signature was never admitted at all. fn_info
-// (vlib/v/gen/wasm/gen.v) maps every parameter and the return type through
-// prim_wtype and returns none for anything that is not a primitive, so
-// collect_user_fns never records the function. used_fns then has no entry for
-// it, and because the wasm path builds with exact_used_fns, the SSA builder
-// skips its declaration. The call then dies with `unknown function`, which
-// names the wrong layer: the function exists, it was filtered out upstream.
-//
-// So struct literals, field access and an all-primitive signature work, while
-// passing a struct to a function, or returning one, does not. The assertion
-// here pins the message so a rewrite that changes the shape is visible.
-// Closing the gap needs a wasm representation for an aggregate parameter --
-// a pointer -- plus the sret protocol a struct return already uses, so this is
-// a feature rather than a wiring fix.
+// Struct parameters and results use aggregate pointers and hidden sret slots.
+// Runtime values verify that both sides of each function boundary agree.
 fn test_tour_struct_parameter_lowers_as_the_pointer_it_is() {
 	// An aggregate arrives as a pointer, and on a 32-bit target a pointer is the
 	// i32 the signature already described, so a struct parameter is admitted the
@@ -280,8 +265,6 @@ fn main() {
 	}
 }
 
-// A struct return is the half that does not work. The ABI passes it through a
-// hidden sret pointer and the function's own result type is void, which is not
 // A struct return travels through a hidden sret pointer: the caller supplies
 // the slot and the function's own result type is void. That is what the
 // signature below describes, so the assertion is on the value rather than on

@@ -105,11 +105,11 @@ fn (tc &TypeChecker) named_sum_variant_names(sum_name string) []string {
 fn (mut tc TypeChecker) check_named_variant_init(id flat.NodeId, node flat.Node) bool {
 	sum_text, variant := flat.decode_named_variant_type_name(node.value) or { return true }
 	display := '${sum_text.all_after_last('.')}.${variant}'
-	variant_type := tc.parse_type(node.value)
+	variant_type := tc.parse_type(flat.source_type_id(node.value))
 	base_name := generic_base_name(node.value)
 	if variant_type !is Struct
 		|| (base_name !in tc.structs && tc.qualify_name(base_name) !in tc.structs) {
-		sum_type := tc.parse_type(sum_text)
+		sum_type := tc.parse_type(flat.source_type_id(sum_text))
 		sum_name := if sum_type is SumType { sum_type.name() } else { '' }
 		names := if sum_name.len > 0 { tc.named_sum_variant_names(sum_name) } else { []string{} }
 		message := if names.len > 0 {
