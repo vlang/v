@@ -8,11 +8,14 @@ fn seek_to(mut s Seeker, pos i64) ! {
 }
 
 fn test_seeker_with_os_file() {
-	path := os.join_path(os.temp_dir(), 'v_io_seeker_test.txt')
-	os.write_file(path, 'hello') or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'io_seeker_${os.getpid()}')
+	// mkdir fails if the directory already exists, so this test only owns a new fixture.
+	os.mkdir(root)!
 	defer {
-		os.rm(path) or {}
+		os.rmdir_all(root) or {}
 	}
+	path := os.join_path(root, 'input.txt')
+	os.write_file(path, 'hello')!
 	mut f := os.open(path)!
 	defer {
 		f.close()
