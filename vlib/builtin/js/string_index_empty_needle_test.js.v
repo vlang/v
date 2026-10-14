@@ -7,3 +7,13 @@ fn test_index_empty_needle() {
 	assert ''.index('a') == none
 	assert ''.last_index('a') == none
 }
+
+fn test_after_delimiters() {
+	for s in ['abc', '', 'é🙂'] {
+		assert s.after('') == s
+		assert s.after('missing') == s
+	}
+	assert '23:34:45.234'.after(':') == '45.234'
+	assert 'abc--def--ghi'.after('--') == 'ghi'
+	assert 'α🙂β🙂γ'.after('🙂') == 'γ'
+}
