@@ -634,6 +634,32 @@ fn test_integer_from() {
 	}
 }
 
+fn test_integer_from_string_rejects_no_digits() {
+	// an empty digit sequence is not a number: Go's big.Int.SetString
+	// returns _, false for all three
+	mut had_empty_err := false
+	if _ := big.integer_from_string('') {
+		assert false, 'integer_from_string("") should fail'
+	} else {
+		had_empty_err = true
+	}
+	assert had_empty_err
+	mut had_plus_err := false
+	if _ := big.integer_from_string('+') {
+		assert false, 'integer_from_string("+") should fail'
+	} else {
+		had_plus_err = true
+	}
+	assert had_plus_err
+	mut had_minus_err := false
+	if _ := big.integer_from_string('-') {
+		assert false, 'integer_from_string("-") should fail'
+	} else {
+		had_minus_err = true
+	}
+	assert had_minus_err
+}
+
 fn test_bytes() {
 	for t in bytes_test_data {
 		r, s := t.value.parse().bytes()
@@ -1000,5 +1026,19 @@ fn test_bytes_from_bytes() {
 		b, _ := a.bytes()
 		c := big.integer_from_bytes(b)
 		assert a.str() == c.str()
+	}
+}
+
+fn test_integer_from_radix_requires_digits() {
+	for radix in [u32(2), 10, 16, 36] {
+		for value in ['', '+', '-'] {
+			if _ := big.integer_from_radix(value, radix) {
+				assert false, 'empty digit sequence must fail in every radix'
+			} else {
+				assert err.msg() == 'math.big: No digits in the given string'
+			}
+		}
+		assert big.integer_from_radix('+0', radix)!.str() == '0'
+		assert big.integer_from_radix('-1', radix)!.str() == '-1'
 	}
 }
