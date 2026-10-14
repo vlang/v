@@ -67,8 +67,12 @@ fn main() {
 	mut scalar := Value(9)
 	if scalar !is int { return }
 	println(scalar + 1)
+	println(1 + scalar)
+	println((scalar + 1) * 2)
+	println(scalar & 3)
+	println(scalar << 1)
 }
-', 'true\n0\n0\n13\n12\nidentity\n10')
+', 'true\n0\n0\n13\n12\nidentity\n10\n10\n20\n1\n18')
 }
 
 fn test_fastc_voidptr_alias_local_can_be_reset_to_nil() {

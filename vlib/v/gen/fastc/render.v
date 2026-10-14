@@ -1340,6 +1340,25 @@ fn (g &Parser) render_fixed_array_equality_data(tokens []FastcExpressionToken, c
 	return if c_type.ends_with('*') { '(${source})->data' } else { '(${source}).data' }
 }
 
+fn (g &Parser) narrowed_numeric_operand_type(tokens []FastcExpressionToken, inferred string) string {
+	if tokens.len >= 3 && tokens[0].tok == .lpar && tokens.last().tok == .rpar {
+		if close := fastc_matching_rpar(tokens, 0) {
+			if close == tokens.len - 1 {
+				return g.narrowed_numeric_operand_type(tokens[1..tokens.len - 1], inferred)
+			}
+		}
+	}
+	if tokens.len == 1 && tokens[0].tok == .name {
+		if local := g.locals[tokens[0].lit] {
+			value_type := local.typ.trim_right('*')
+			if local.is_reference && local.smartcast_origin_type != '' && fastc_is_numeric_expression_type(value_type) {
+				return value_type
+			}
+		}
+	}
+	return inferred
+}
+
 fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	if tokens.len >= 3 && tokens[0].tok == .lpar && tokens.last().tok == .rpar {
 		close := fastc_matching_rpar(tokens, 0) or { -1 }
@@ -1454,6 +1473,12 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		return none
 	}
 	if method_key !in g.functions {
+		right_type := g.infer_expression_type(right_tokens) or { return none }
+		left_value_type := g.narrowed_numeric_operand_type(left_tokens, left_type)
+		right_value_type := g.narrowed_numeric_operand_type(right_tokens, right_type)
+		// Mutable scalar smartcasts point at boxed storage. Read each value before
+		// arithmetic, rather than dereferencing the result of pointer arithmetic.
+		reference_arithmetic := left_value_type != left_type || right_value_type != right_type
 		mut left_special := FastcRenderedExpression{}
 		if rendered := g.render_overloaded_binary_expression(left_tokens) {
 			left_special = rendered
@@ -1464,24 +1489,23 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		}
 		guarded_shift := g.translated && tokens[operator_index].tok in [.left_shift, .right_shift,
 			.right_shift_unsigned]
-		if left_special.source == '' && right_special.source == '' && !guarded_shift {
+		if left_special.source == '' && right_special.source == '' && !guarded_shift && !reference_arithmetic {
 			return none
 		}
-		right_type := g.infer_expression_type(right_tokens) or { return none }
 		left := if left_special.source != '' {
 			left_special.source
 		} else {
-			g.render_call_argument_expression(left_tokens, left_type) or { return none }
+			g.render_call_argument_expression(left_tokens, left_value_type) or { return none }
 		}
 		right := if right_special.source != '' {
 			right_special.source
 		} else {
-			g.render_call_argument_expression(right_tokens, right_type) or { return none }
+			g.render_call_argument_expression(right_tokens, right_value_type) or { return none }
 		}
 		if guarded_shift {
 			return FastcRenderedExpression{
-				source: g.render_guarded_shift_expression(left, right, left_type, tokens[operator_index].tok) or { return none }
-				typ:    fastc_normalize_inferred_type(left_type)
+				source: g.render_guarded_shift_expression(left, right, left_value_type, tokens[operator_index].tok) or { return none }
+				typ:    fastc_normalize_inferred_type(left_value_type)
 			}
 		}
 		// A `+` whose operands are strings is concatenation, not C pointer arithmetic. When
@@ -1493,9 +1517,20 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 				typ:    'string'
 			}
 		}
+		left_result_type := if left_special.typ != '' { left_special.typ } else { left_value_type }
+		right_result_type := if right_special.typ != '' {
+			right_special.typ
+		} else {
+			right_value_type
+		}
+		arithmetic_type := fastc_common_arithmetic_type(left_result_type, right_result_type)
 		return FastcRenderedExpression{
 			source: '((${left})${operator}(${right}))'
-			typ:    g.infer_expression_type(tokens) or { left_type }
+			typ:    if arithmetic_type != '' {
+				arithmetic_type
+			} else {
+				g.infer_expression_type(tokens) or { left_type }
+			}
 		}
 	}
 	signature := g.functions[method_key]
