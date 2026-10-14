@@ -108,19 +108,17 @@ fn test_numeric_field_errors_remain_separate_across_generic_instances() ! {
 	os.mkdir_all(directory)!
 	defer { os.rmdir_all(directory) or {} }
 	source := 'module main
-type NamedInt = int
-fn (value NamedInt) name() string { return "named" }
+struct Named { name string }
 struct Number { width int }
-fn number[T](value T) Number { return Number{width: value.name()} }
+fn number[T](value T) Number { return Number{width: value.name} }
 fn main() {
     _ = number[int](1)
-    _ = number[NamedInt](NamedInt(1))
+    _ = number[Named](Named{name: "named"})
 }'
 	for check in [false, true] {
 		result := generic_numeric_field_program(directory, 'instances_${check}', source, check)
 		assert result.exit_code != 0, result.output
-		assert result.output.contains('unknown method'), result.output
-		assert result.output.contains('`int.name`'), result.output
+		assert result.output.contains('`int` has no property `name`'), result.output
 		assert result.output.count('cannot assign to field `width`') == 1, result.output
 		assert result.output.contains('expected `int`, not `string`'), result.output
 	}
