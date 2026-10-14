@@ -17975,6 +17975,7 @@ const c_winapi_extern_symbols = {
 	'LoadLibrary':                     true
 	'LoadLibraryW':                    true
 	'LocalFree':                       true
+	'MoveFileExW':                     true
 	'MoveFileW':                       true
 	'MultiByteToWideChar':             true
 	'OpenClipboard':                   true

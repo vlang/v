@@ -78,6 +78,7 @@ pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, pref
 	g.output_cross_c = prefs.output_cross_c
 	g.no_builtin = prefs.no_builtin
 	g.object_file_mode = object_file_mode
+	g.set_compile_defines(prefs.user_defines)
 	g.compiler_vroot = prefs.vroot
 	g.compile_values = prefs.compile_values
 	g.c99_mode = prefs.c99
@@ -5553,9 +5554,10 @@ fn (g &FlatGen) c_source_file_is_in_vlib(source_file string) bool {
 
 // core_native_header_is_redeclared matches shipped bindings whose complete storage
 // and constants are supplied by the standalone preamble. Explicit user headers,
-// third-party bindings and bootstrap snapshots retain their normal SDK headers.
+// third-party bindings and general portable snapshots retain their normal SDK headers.
 fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg string) bool {
-	if g.no_builtin || g.output_cross_c || g.object_file_mode || g.target_libc_headers {
+	if g.no_builtin || (g.output_cross_c && !g.headerless_compiler_bootstrap())
+		|| g.object_file_mode || g.target_libc_headers {
 		return false
 	}
 	source := if isnil(g.a) {
@@ -5576,9 +5578,11 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 		'builtin/builtin_windows.c.v' { return include_arg in ['<io.h>', '<fcntl.h>'] }
 		'builtin/closure/closure_windows.c.v' { return include_arg == '<synchapi.h>' }
 		'os/fd.c.v' { return include_arg == '<winsock2.h>' }
+		'os/mmap_nix.c.v' { return include_arg == '<sys/mman.h>' }
 		'os/os_stat_windows.c.v' { return include_arg == '<sys/stat.h>' }
 		'os/os_windows.c.v' { return include_arg in ['<process.h>', '<sys/utime.h>'] }
 		'os/password_windows.c.v', 'v/driver/windows_icon_windows.c.v',
+		'v/driver/replace_file_windows.c.v',
 		'v/cmdexec/cmdexec_pipe.c.v' {
 			return include_arg == '<windows.h>'
 		}
@@ -19277,6 +19281,9 @@ fn (mut g FlatGen) preamble() {
 		g.system_libc_preamble()
 	} else {
 		g.headerless_libc_preamble()
+		if g.headerless_compiler_bootstrap() {
+			g.portable_native_runtime_helpers()
+		}
 	}
 	g.thread_signal_stack_runtime()
 	g.write_arch_macros()
@@ -19344,6 +19351,10 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	if !(g.output_cross_c || g.object_file_mode) || g.no_builtin || g.target_libc_headers {
 		return
 	}
+	if g.headerless_compiler_bootstrap() {
+		g.headerless_compiler_runtime_helpers()
+		return
+	}
 	if 'gcboehm' in g.compile_defines {
 		gc_source := $embed_file('@VEXEROOT/vlib/builtin/gc_boehm_helpers.c').to_string()
 		gc_header := $embed_file('@VEXEROOT/vlib/builtin/gc_debugger_linux.h').to_string()
@@ -19371,11 +19382,6 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	g.writeln('#if defined(__linux__) && !defined(__ANDROID__)')
 	g.write($embed_file('@VEXEROOT/vlib/v/diagserver/syscalls_linux.c').to_string().replace('int v3_linux_', 'static int v3_linux_'))
 	g.writeln('#endif')
-	if g.target.os == 'freebsd' {
-		g.writeln('#ifdef __FreeBSD__')
-		g.write($embed_file('@VEXEROOT/vlib/runtime/used_memory_freebsd.c').to_string().replace('uint64_t v_runtime_', 'static uint64_t v_runtime_'))
-		g.writeln('#endif')
-	}
 	if g.target.os == 'openbsd' {
 		g.writeln('#ifdef __OpenBSD__')
 		g.write($embed_file('@VEXEROOT/vlib/runtime/free_memory_openbsd.c').to_string().replace('int v_runtime_', 'static int v_runtime_'))
@@ -19386,9 +19392,9 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 		'static int v3_modulecache_file_metadata('))
 	// Native definitions retain qualifiers that these bodyless V views cannot express.
 	g.collect_preserved_c_fns(['v3_linux_parent_death_signal', 'v3_linux_memory_file',
-		'v3_linux_name_worker', 'v_runtime_freebsd_resident_pages', 'v_runtime_openbsd_free_memory',
-		'v3_modulecache_file_metadata', 'v_os_exec_capture_start', 'v_os_execute_capture_start',
-		'v_os_exec_capture_input_start', 'v_os_fd_write_all'])
+		'v3_linux_name_worker', 'v_runtime_openbsd_free_memory', 'v3_modulecache_file_metadata',
+		'v_os_exec_capture_start', 'v_os_execute_capture_start', 'v_os_exec_capture_input_start',
+		'v_os_fd_write_all'])
 	if 'no_segfault_handler' !in g.compile_defines && g.target.os != 'vinix' {
 		signal_source := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.c').to_string()
 		signal_header := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.h').to_string()
@@ -19404,6 +19410,13 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	}
 }
 
+// headerless_compiler_bootstrap identifies the portable compiler snapshot whose
+// runtime declarations and helper definitions are supplied entirely by V.
+fn (g &FlatGen) headerless_compiler_bootstrap() bool {
+	return g.output_cross_c && !g.no_builtin && !g.object_file_mode && !g.target_libc_headers
+		&& 'v3_headerless_bootstrap' in g.compile_defines
+}
+
 fn (g &FlatGen) c_directives_use_system_libc() bool {
 	// A freestanding target has no hosted libc to include, whatever the program's
 	// own `#include`s name. Those includes are the project's own headers -- a
@@ -19411,6 +19424,9 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 	// include as proof of a system libc put <sys/un.h> and the rest of the hosted
 	// set into a translation unit that has none of them.
 	if g.target_libc_headers {
+		return false
+	}
+	if g.headerless_compiler_bootstrap() {
 		return false
 	}
 	if g.no_builtin || g.output_cross_c || g.object_file_mode {
@@ -20395,6 +20411,15 @@ fn (mut g FlatGen) headerless_windows_sdk_types() {
 	g.writeln('typedef int BOOL;')
 	g.writeln('typedef void* HANDLE;')
 	g.writeln('#endif')
+	g.writeln('#define ERROR_INSUFFICIENT_BUFFER 122')
+	g.writeln('int _close(int);')
+	g.writeln('void _exit(int);')
+	g.writeln('#define close _close')
+	g.writeln('#ifdef _MSC_VER')
+	g.writeln('unsigned char _BitScanForward(unsigned long*, unsigned long);')
+	g.writeln('unsigned char _BitScanForward64(unsigned long*, u64);')
+	g.writeln('u64 __lzcnt64(u64);')
+	g.writeln('#endif')
 	g.writeln('#if !defined(_SECURITY_ATTRIBUTES_DEFINED) && !defined(_SECURITY_ATTRIBUTES)')
 	g.writeln('#define _SECURITY_ATTRIBUTES_DEFINED')
 	g.writeln('typedef struct SECURITY_ATTRIBUTES { DWORD nLength; void* lpSecurityDescriptor; BOOL bInheritHandle; } SECURITY_ATTRIBUTES;')
@@ -20405,6 +20430,10 @@ fn (mut g FlatGen) headerless_windows_sdk_types() {
 	g.writeln('#endif')
 	g.writeln('#endif')
 	g.headerless_windows_core_declarations()
+	if g.target.os == 'windows' {
+		g.collect_preserved_c_fns(['_BitScanForward', '_BitScanForward64', '__lzcnt64', 'close',
+			'_close', '_exit'])
+	}
 }
 
 fn (mut g FlatGen) headerless_stdarg_decls() {
@@ -20784,7 +20813,7 @@ fn (mut g FlatGen) headerless_platform_constants() {
 	g.writeln('#elif defined(_WIN32)')
 	g.headerless_windows_constants()
 	g.writeln('#elif defined(__FreeBSD__)')
-	g.headerless_bsd_constants('0x00100000', '12', '13', '4', '47', '28', '0x00020000', '0x0800', true)
+	g.headerless_freebsd_constants()
 	g.writeln('#elif defined(__OpenBSD__)')
 	g.headerless_bsd_constants('0x10000', '8', '9', '3', '28', '24', '0x0400', '', false)
 	g.writeln('#elif defined(__NetBSD__)')
@@ -20862,6 +20891,16 @@ fn (mut g FlatGen) headerless_sysctl_constants() {
 }
 
 fn (mut g FlatGen) headerless_mmap_constants(map_anonymous string) {
+	g.writeln('#define MAP_SHARED 0x0001')
+	g.writeln('#if defined(__APPLE__)')
+	g.writeln('#define MS_SYNC 0x0010')
+	g.writeln('#elif defined(__FreeBSD__) || defined(__DragonFly__)')
+	g.writeln('#define MS_SYNC 0x0000')
+	g.writeln('#elif defined(__OpenBSD__) || defined(__NetBSD__)')
+	g.writeln('#define MS_SYNC 0x0002')
+	g.writeln('#else')
+	g.writeln('#define MS_SYNC 0x0004')
+	g.writeln('#endif')
 	g.writeln('#define PROT_READ 0x1')
 	g.writeln('#define PROT_WRITE 0x2')
 	g.writeln('#define PROT_EXEC 0x4')
@@ -21066,6 +21105,16 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 	g.headerless_darwin_net_constants()
 	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
 	g.writeln('struct flock { off_t l_start; off_t l_len; pid_t l_pid; short l_type; short l_whence; };')
+}
+
+fn (mut g FlatGen) headerless_freebsd_constants() {
+	g.headerless_bsd_constants('0x00100000', '12', '13', '4', '47', '28', '0x00020000', '0x0800', true)
+	g.writeln('#define O_NOFOLLOW 0x0100')
+	g.writeln('#define O_DIRECTORY 0x00020000')
+	g.writeln('#define AT_FDCWD -100')
+	g.writeln('#define AT_REMOVEDIR 0x0800')
+	g.writeln('#define _SC_NPROCESSORS_ONLN 58')
+	g.writeln('#define _SC_PHYS_PAGES 121')
 }
 
 fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_setlkw string, clock_monotonic string, sc_pagesize string, af_inet6 string, msg_nosignal string, so_nosigpipe string, flock_sysid bool) {
