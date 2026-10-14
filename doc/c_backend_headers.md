@@ -63,6 +63,9 @@ On macOS, existing or external object inputs still select the platform C compile
 Wrappers that expand Boehm allocation macros include the collector header explicitly.
 Warm incremental builds share the cached declaration prefix's string storage and retain
 new program literals and cleanup hooks after source edits.
+Warm builds using `os` also retain system-header ownership, so platform stat macros do not
+conflict with compatibility declarations. Windows standalone and custom-libc builds keep
+their required native layouts.
 
 Regular generated C declares interned strings with `_SL(_str_N, "...", byte_length)`.
 The macro expands to a `static const string` with a plain brace initializer. V supplies the byte

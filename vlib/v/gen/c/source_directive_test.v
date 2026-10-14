@@ -319,6 +319,29 @@ fn test_cache_split_uses_system_sigaction_declaration() {
 	assert g.skip_builtin_struct('C.sigaction')
 }
 
+fn test_cache_split_omits_only_non_windows_stat64_compatibility_stub() {
+	for target_os in ['macos', 'linux'] {
+		mut cached := posix_declaration_filter_gen(target_os, false)
+		cached.set_cache_split(true)
+		assert cached.skip_builtin_struct('C.__stat64'), target_os
+		assert !cached.skip_builtin_struct('C.ProjectStat'), target_os
+
+		headerless := posix_declaration_filter_gen(target_os, false)
+		assert !headerless.skip_builtin_struct('C.__stat64'), target_os
+		mut custom_libc := posix_declaration_filter_gen(target_os, false)
+		custom_libc.set_cache_split(true)
+		custom_libc.set_target_libc_headers(true)
+		assert !custom_libc.skip_builtin_struct('C.__stat64'), target_os
+	}
+	for cache_split in [false, true] {
+		mut windows := posix_declaration_filter_gen('windows', false)
+		windows.set_cache_split(cache_split)
+		assert !windows.skip_builtin_struct('C.__stat64')
+		windows.add_c_directive('main', '#include <sys/stat.h>', false)
+		assert windows.skip_builtin_struct('C.__stat64')
+	}
+}
+
 fn test_cocoa_nsfont_binding_uses_the_framework_class() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)
