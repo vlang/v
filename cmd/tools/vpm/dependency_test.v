@@ -66,6 +66,7 @@ fn test_install_dependencies_in_module_dir() {
 fn test_resolve_external_dependencies_during_module_install() {
 	res := cmd_ok_args(@LOCATION, ['${v}', 'install', '-v',
 		'https://github.com/ttytm/emoji-mart-desktop'])
+	assert res.output.contains('Found 2 dependencies'), res.output
 	expect_installing(@LOCATION, res.output, 'ttytm.webview')
 	expect_installing(@LOCATION, res.output, 'miniaudio')
 	// `ttytm.webview` is a registered VPM module, so it lands in `<vmodules_dir>/ttytm/webview`.

@@ -475,6 +475,9 @@ fn (mut r Resolver) solve(pending []Requirement, selected map[string]Module, req
 		mut next := pending[1..].clone()
 		mut chain := req.chain.clone()
 		chain << m.name + at_version(m.version)
+		if m.manifest.dependencies.len > 0 {
+			verbose_println('Found ${m.manifest.dependencies.len} dependencies for `${m.name}`: ${m.manifest.dependencies}.')
+		}
 		for dep in m.manifest.dependencies {
 			next << Requirement{ raw: dep, chain: chain, requiring: m.name }
 		}
