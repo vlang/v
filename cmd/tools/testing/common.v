@@ -12,7 +12,7 @@ import v.pref
 import v.scanner
 import v.token
 import v.util.vtest
-import v.util.vflags
+import v.cmdexec
 import runtime
 import rand
 import strings
@@ -776,8 +776,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.njobs = ts.benchmark.njobs
 	abs_path := os.real_path(p.get_item[string](idx))
 	mut relative_file := abs_path
-	mut cmd_options :=
-		vflags.tokenize_to_args(ts.vargs) // make sure that `'-W -silent'` becomes `['-W', '-silent']`, while keeping quoted spaces intact
+	mut cmd_options := os.split_args(ts.vargs) or { panic(err) }
 	mut run_js := false
 
 	is_fmt := ts.vargs.contains('fmt')
@@ -786,20 +785,20 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 	if relative_file.ends_with('.js.v') {
 		if produces_file_output {
-			cmd_options << ' -b js'
+			cmd_options << ['-b', 'js']
 			run_js = true
 		}
 	}
 
 	if relative_file.ends_with('.c.v') {
 		if produces_file_output {
-			cmd_options << ' -b c'
+			cmd_options << ['-b', 'c']
 			run_js = false
 		}
 	}
 
 	if relative_file.contains('global') && !is_fmt {
-		cmd_options << ' -enable-globals'
+		cmd_options << '-enable-globals'
 	}
 	if ts.root_relative {
 		relative_file = relative_file.replace_once(ts.vroot + os.path_separator, '')
@@ -839,28 +838,28 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	mut details := get_test_details(file)
 	if details.vflags != '' && !is_fmt {
-		cmd_options << details.vflags
+		cmd_options << os.split_args(details.vflags) or { panic(err) }
 	}
 
-	reproduce_options := cmd_options.clone()
+	mut reproduce_options := cmd_options.clone()
 	generated_binary_fpath := os.join_path_single(test_folder_path, generated_binary_fname)
 	if produces_file_output {
 		if ts.rm_binaries {
 			os.rm(generated_binary_fpath) or {}
 		}
-		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
-	}
-	mut skip_running := '-skip-running'
-	if ts.show_stats {
-		skip_running = ''
+		cmd_options << ['-o', generated_binary_fpath]
 	}
 	compile_options := cmd_options.filter(it != '-silent')
-	mut compile_vexe := ts.vexe
-	mut compile_args := '${skip_running} ${compile_options.join(' ')}'
-	mut reproduce_vexe := ts.vexe
-	mut reproduce_args := reproduce_options.join(' ')
-	reproduce_cmd := '${os.quoted_path(reproduce_vexe)} ${reproduce_args} ${os.quoted_path(file)}'
-	cmd := '${os.quoted_path(compile_vexe)} ${compile_args} ${os.quoted_path(file)}'
+	mut compile_argv := [ts.vexe]
+	if !ts.show_stats {
+		compile_argv << '-skip-running'
+	}
+	compile_argv << compile_options
+	compile_argv << file
+	reproduce_options << file
+	reproduce_cmd := cmdexec.display(ts.vexe, reproduce_options)
+	cmd := cmdexec.display(ts.vexe, compile_argv[1..])
+
 	run_cmd := if run_js {
 		'node ${os.quoted_path(generated_binary_fpath)}'
 	} else {
@@ -933,7 +932,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut res := ts.exec(os.split_args(cmd) or { panic(err) }, mtc)
+		mut res := ts.exec(compile_argv, mtc)
 		mut status := res.exit_code
 		if res.output != '' {
 			output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
@@ -953,7 +952,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				ts.append_message(.cmd_begin, cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				retry_res := ts.exec(os.split_args(cmd) or { panic(err) }, mtc)
+				retry_res := ts.exec(compile_argv, mtc)
 				status = retry_res.exit_code
 				if retry_res.output != '' {
 					output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
@@ -993,7 +992,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		compile_d_cmd := time.new_stopwatch()
 		mut compile_r := os.Result{}
 		for cretry in 0 .. max_compilation_retries {
-			compile_r = ts.exec(os.split_args(cmd) or { panic(err) }, mtc)
+			compile_r = ts.exec(compile_argv, mtc)
 			compile_cmd_duration = compile_d_cmd.elapsed()
 			// eprintln('>>>> cretry: ${cretry} | compile_r.exit_code: ${compile_r.exit_code} | compile_cmd_duration: ${compile_cmd_duration:8} | file: ${normalised_relative_file}')
 			if compile_r.exit_code == 0 {

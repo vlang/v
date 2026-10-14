@@ -2,6 +2,8 @@
 
 `arrays` is a module that provides utility functions to make working with arrays easier.
 
+See [combinatorics](combinatorics.md) for permutations, combinations, and Cartesian products.
+
 ## Examples
 
 ```v

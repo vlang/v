@@ -20,3 +20,8 @@ Builder buffer methods clamp requested byte ranges to the stored buffer. Negativ
 piece after a trailing separator. An empty separator returns `[s]`. `equal_fold(a, b)` folds
 ASCII letters only. `last_index_any(s, chars)` searches bytes and returns a byte index or `-1`;
 use `contains_rune(s, r)` to search for a complete Unicode rune.
+
+`indent(s, prefix, skip_first)` adds `prefix` to each line separated by `\n`.
+When `skip_first` is true, the first line is unchanged. Empty lines are also prefixed,
+including the empty final line after a trailing newline. An empty input is one empty line:
+it returns `prefix` when `skip_first` is false, and an empty string otherwise.

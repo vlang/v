@@ -2568,7 +2568,12 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 		g.write_line('static bool ${init_guard};')
 		g.write_line('if (!${init_guard}) { ${init_guard} = true; ${c_name} = (${expression}); }')
 	} else {
-		g.write_line('${declaration_type} ${c_name} = (${expression});')
+		if expression.contains('({') {
+			g.write_line('${declaration_type} ${c_name};')
+			g.write_line('${c_name} = (${expression});')
+		} else {
+			g.write_line('${declaration_type} ${c_name} = (${expression});')
+		}
 	}
 	function_alias := g.functions[local_type] or {
 		if g.last_expression.len == 1 {

@@ -1,7 +1,5 @@
 module runtime
 
-import os
-
 $if tinyc {
 	#include <sys/resource.h>
 }
@@ -15,20 +13,10 @@ fn C.getrusage(who i32, usage &C.rusage) i32
 
 $if !tinyc {
 	#flag -lprocstat
-
-	#include <sys/user.h>
-	#include <libprocstat.h>
+	#flag @VEXEROOT/vlib/runtime/used_memory_freebsd.o
 }
 
-struct C.procstat {}
-
-struct C.kinfo_proc {
-	ki_rssize u64
-}
-
-fn C.procstat_open_sysctl() &C.procstat
-fn C.procstat_close(&C.procstat)
-fn C.procstat_getprocs(&C.procstat, i32, i32, &u32) &C.kinfo_proc
+fn C.v_runtime_freebsd_resident_pages() u64
 
 // used_memory retrieves the current physical memory usage of the process.
 pub fn used_memory() !u64 {
@@ -46,19 +34,6 @@ pub fn used_memory() !u64 {
 		}
 		return u64(int_max(1, usage.ru_maxrss)) * 1024
 	} $else {
-		mut proc_status := C.procstat_open_sysctl()
-		defer {
-			C.procstat_close(proc_status)
-		}
-
-		mut count := u32(0)
-
-		kip := C.procstat_getprocs(proc_status, C.KERN_PROC_PID | C.KERN_PROC_INC_THREAD,
-			os.getpid(), &count)
-
-		if kip != 0 {
-			return u64(kip.ki_rssize * page_size)
-		}
+		return C.v_runtime_freebsd_resident_pages() * u64(page_size)
 	}
-	return 0
 }
