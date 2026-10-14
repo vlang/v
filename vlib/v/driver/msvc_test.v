@@ -52,6 +52,10 @@ fn test_c_compiler_is_msvc() {
 	assert c_compiler_is_msvc('cl')
 	assert c_compiler_is_msvc('C:/Program Files/Microsoft Visual Studio/VC/bin/CL.EXE')
 	assert c_compiler_is_msvc('msvc')
+	assert c_compiler_is_msvc('clang-cl')
+	assert c_compiler_is_msvc('C:/Program Files/LLVM/bin/clang-cl.exe')
+	assert effective_c_compiler_name('clang-cl', pref.host_target()) == 'msvc'
+	assert effective_c_compiler_name('clang-cl.exe', pref.host_target()) == 'msvc'
 	assert !c_compiler_is_msvc('clang')
 	assert !c_compiler_is_msvc('cc')
 }

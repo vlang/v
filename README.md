@@ -80,6 +80,8 @@ PowerShell.
 To build with Visual Studio, run `makev.bat -msvc`. If the bundled TCC bootstrap cannot be
 compiled or fails while building the next compiler stage, the script retries with MSVC,
 then Clang and GCC.
+`makev.bat -clang` keeps Clang's installed target: LLVM-MinGW uses its GNU runtime,
+while Visual Studio's Clang uses the adjacent `clang-cl.exe` and the MSVC SDK.
 Note: On FreeBSD, OpenBSD, NetBSD, DragonFly, and Solaris, install GNU `make` and run it as
 `gmake`.
 Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.

@@ -25,9 +25,10 @@ const msvc_linker_input_extensions = ['.o', '.obj', '.lib', '.a', '.res', '.def'
 
 // c_compiler_is_msvc reports whether a C compiler command is MSVC's `cl`, judging by its
 // name only (like effective_c_compiler_name, but without running the compiler).
+// clang-cl uses the same command-line and SDK ABI.
 fn c_compiler_is_msvc(compiler string) bool {
 	name := os.file_name(compiler).to_lower_ascii()
-	return name in ['cl', 'cl.exe'] || name.contains('msvc')
+	return name in ['cl', 'cl.exe', 'clang-cl', 'clang-cl.exe'] || name.contains('msvc')
 }
 
 // v3_msvc_link_flags returns the linker options for a Windows program linked by MSVC,

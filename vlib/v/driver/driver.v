@@ -7992,6 +7992,9 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	if pref.tinycc_file_name(name) {
 		return 'tinyc'
 	}
+	if c_compiler_is_msvc(compiler) {
+		return 'msvc'
+	}
 	if name.contains('clang') {
 		return 'clang'
 	}
