@@ -904,6 +904,9 @@ fn get_long_path(path string) !string {
 		code := int(C.GetLastError())
 		return error_win32(code: code)
 	}
+	if res >= u32(long_path_buf.len) {
+		return error_win32(code: C.ERROR_INSUFFICIENT_BUFFER)
+	}
 	long_path := wide_ptr_to_string(&long_path_buf[0])
 	return long_path
 }
