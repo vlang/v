@@ -191,7 +191,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 				*/
 				if parser.lexical_attributes.current_tag.name == '' {
 					parser.lexical_attributes.current_tag.name = complete_lexeme
-				} else if complete_lexeme != '/' {
+				} else if complete_lexeme.len > 0 && complete_lexeme != '/' {
 					parser.lexical_attributes.current_tag.attributes[complete_lexeme] = ''
 				}
 				parser.lexical_attributes.open_tag = false
@@ -203,8 +203,13 @@ pub fn (mut parser Parser) split_parse(data string) {
 				// parser.print_debug(parser.lexical_attributes.current_tag.name)
 			} else if chr !in [u8(9), ` `, `=`, `\n`] { // Tab, space, = and \n
 				parser.lexical_attributes.lexeme_builder.write_u8(chr)
-			} else if chr != 10 {
+			} else {
+				// a newline separates like a space does: without this a tag
+				// split across lines glues its name to the first attribute
 				complete_lexeme := parser.builder_str().to_lower()
+				if complete_lexeme.len == 0 {
+					continue
+				}
 				if parser.lexical_attributes.current_tag.name == '' {
 					parser.lexical_attributes.current_tag.name = complete_lexeme
 				} else {
@@ -294,11 +299,24 @@ pub fn (mut parser Parser) finalize() {
 		parser.lexical_attributes.open_code = false
 	}
 	if !parser.lexical_attributes.open_code && !parser.lexical_attributes.open_tag
-		&& parser.lexical_attributes.current_tag.name == ''
 		&& parser.lexical_attributes.lexeme_builder.len > 0 {
-		parser.lexical_attributes.current_tag.name = 'text'
-		parser.lexical_attributes.current_tag.content = parser.builder_str()
-		parser.lexical_attributes.lexeme_builder.go_back_to(0)
+		if parser.lexical_attributes.current_tag.name == ''
+			|| parser.lexical_attributes.current_tag.name[0] == `/` {
+			// trailing text after the last tag (or with no tags at all):
+			// it belongs to a new text node. Flush the closing tag first
+			// so construction attaches the text to the surrounding element.
+			parser.generate_tag()
+			parser.tags << &Tag{
+				name:         'text'
+				content:      parser.builder_str()
+				text_content: parser.builder_str()
+			}
+			parser.lexical_attributes.lexeme_builder.go_back_to(0)
+		} else {
+			// text inside an element that was never closed belongs to it
+			parser.lexical_attributes.current_tag.content += parser.builder_str()
+			parser.lexical_attributes.lexeme_builder.go_back_to(0)
+		}
 	}
 	parser.generate_tag()
 }
