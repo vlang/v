@@ -713,7 +713,7 @@ fn parse_scalar(text string) !Any {
 		return Any(numeric.parse_uint(0, 64)!)
 	}
 	if is_float(numeric) {
-		return Any(strconv.atof64(numeric)!)
+		return Any(strconv.atof64(numeric, allow_overflow: true)!)
 	}
 	return Any(value)
 }
@@ -1073,7 +1073,7 @@ fn is_float(value string) bool {
 	if !value.contains('.') && !value.contains('e') && !value.contains('E') {
 		return false
 	}
-	strconv.atof64(value) or { return false }
+	strconv.atof64(value, allow_overflow: true) or { return false }
 	return true
 }
 

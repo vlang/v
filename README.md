@@ -94,8 +94,10 @@ make
 That should be it, and you should find your V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
-On macOS, `make` guards Linux-only `prctl` code in older bootstrap snapshots before
-streaming `vc/v.c` to the C compiler. The single snapshot stays unchanged on disk.
+On Unix-like systems, `make` and the `v self` bootstrap fallback stream compatibility fixes
+for older `vc/v.c` snapshots to the C compiler. These match the peak RSS helper's return type
+to `i64` and guard Linux-only `prctl` code. The snapshot stays unchanged on disk.
+The compatibility filter uses the system `sh`; Bash is not required.
 
 On Windows, `makev.bat` generates the first compiler stage as C and links it directly.
 This also works with older bootstrap snapshots whose process-spawn code is broken.
@@ -115,6 +117,10 @@ v up
 ```
 
 This also refreshes the bundled TCC binaries used for fast C compilation.
+Previously cached modules are validated with the updated compiler. Successful checks that
+produce no output remain quiet; `Caching module <name>...` reports actual C compilation.
+Different build configurations can compile the same module separately.
+Use `v up -v` to show progress for every checked cache configuration, including reused objects.
 
 > [!NOTE]
 > If you run into any trouble, or you have a different operating
@@ -320,6 +326,10 @@ shell/editor after that, so that it can pick up the new PATH variable.
 
 To bring IDE functions for the V programming languages to your editor, check out
 [v-analyzer](https://github.com/vlang/v-analyzer). It provides language server capabilities.
+
+`v ls --check` reports whether the VLS launcher has an installed, executable language server.
+It exits successfully when none is installed. Use `--path` to check a specific executable.
+
 
 ## Testing and running the examples
 

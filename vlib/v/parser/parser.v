@@ -4776,6 +4776,12 @@ fn (mut p Parser) parse_compile_message_call(directive_start int, sentinel strin
 	} else {
 		p.expr(.lowest)
 	}
+	if sentinel == '__v_compile_error' {
+		arg := p.a.node(message)
+		if arg.kind != .string_literal || arg.children_count != 0 {
+			p.record_diagnostic_span('`$compile_error` expects a string literal', directive_start, p.prev_tok_end)
+		}
+	}
 	for p.tok != .rpar && p.tok != .eof {
 		p.next()
 	}
@@ -5565,11 +5571,15 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 
 fn write_comptime_cond_string(mut out strings.Builder, value string) {
 	out.write_u8(`'`)
-	for i := 0; i < value.len; i++ {
-		if value[i] == `\\` || value[i] == `'` {
-			out.write_u8(`\\`)
+	if !value.contains('\\') && !value.contains("'") {
+		out.write_string(value)
+	} else {
+		for i := 0; i < value.len; i++ {
+			if value[i] == `\\` || value[i] == `'` {
+				out.write_u8(`\\`)
+			}
+			out.write_u8(value[i])
 		}
-		out.write_u8(value[i])
 	}
 	out.write_u8(`'`)
 }
@@ -8444,8 +8454,11 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 // Portable `-os cross` output cannot do that: `apath` names a directory on the machine
 // that generated the snapshot, and the snapshot is compiled and run somewhere else. That
 // is how `vc/v.c` bootstraps V, so a portable snapshot always embeds the bytes.
+// A build of the compiler embeds them too. The files it embeds are the C headers that it
+// copies into every program, and its source tree changes under it: after a `git pull`,
+// the executable that has to rebuild V would otherwise generate C from the new headers.
 fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
-	if !p.prefs.is_prod && !p.prefs.output_cross_c {
+	if !p.prefs.is_prod && !p.prefs.output_cross_c && !p.prefs.building_v {
 		return none
 	}
 	if apath.len == 0 || !os.is_file(apath) {
@@ -14745,7 +14758,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	// empty array or fixed array type: []Type{} or [N]Type{}
 	if p.tok == .rsbr {
 		p.next()
-		if !p.can_start_type_name() {
+		if !p.can_start_type_name() || p.amp_after_array_brackets_is_infix() {
 			return p.a.add_node(flat.Node{
 				kind: .array_literal
 				pos:  p.span_to(bracket_start)
@@ -14796,9 +14809,11 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	if p.tok == .rsbr {
 		size_end := p.tok_pos
 		p.next()
-		if p.tok == .name || p.tok == .amp || (p.tok == .and && p.tok_pos == p.prev_tok_end)
+		// A `!` that is detached from what follows marks a fixed array literal, it does not
+		// start an element type: `x == [1]! && y`.
+		if p.tok == .name || (p.tok in [.amp, .and] && !p.amp_after_array_brackets_is_infix())
 			|| p.tok == .question
-			|| (p.tok == .not && token_can_start_type_name(p.peek()))
+			|| (p.tok == .not && token_can_start_type_name(p.peek()) && p.tok_end == p.peek_pos)
 			|| (p.tok == .lsbr && p.current_lbr_starts_array_type()) {
 			// fixed array type: [N]Type. Use the literal node value for a plain integer
 			// size, but recover the full source text for a const expression (e.g.
@@ -14973,6 +14988,27 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		})
 	}
 	return lit
+}
+
+// amp_after_array_brackets_is_infix reports whether the `&`/`&&` after the `]` of `[]` or
+// `[N]` is a binary operator (`a == [] && b == []`, `x == [1] & mask`), and not the
+// reference prefix of an element type (`[]&Foo{}`, `[3]&&Foo{}`). Token separators tell
+// the two apart, like it does for `[1 - 2]` and `[1 -2]`.
+// `&&` is the logical operator unless it is attached on both sides: after an array literal
+// it is far more common than a pointer to a pointer.
+// `&` is an operator only when it is detached on both sides: `[] &Foo{}` stays an array init.
+fn (p &Parser) amp_after_array_brackets_is_infix() bool {
+	if p.tok !in [.amp, .and] {
+		return false
+	}
+	detached_left := p.tok_pos > p.prev_tok_end
+	detached_right := (p.tok_end < p.s.src.len && p.s.src[p.tok_end] in [` `, `\t`, `\r`, `\n`])
+		|| (p.tok_end + 1 < p.s.src.len && p.s.src[p.tok_end] == `/`
+			&& p.s.src[p.tok_end + 1] in [`/`, `*`])
+	if p.tok == .and {
+		return detached_left || detached_right
+	}
+	return detached_left && detached_right
 }
 
 fn (p &Parser) fixed_array_size_text(size_node flat.NodeId, size_start int, size_end int) string {
@@ -18528,11 +18564,21 @@ pub fn (mut p Parser) resolve_comptime_string_declarations() map[int]bool {
 	}
 	p.comptime_local_values = map[string]string{}
 	p.local_binding_counts = map[string]int{}
+	mut file_ids := p.a.file_node_ids.clone()
+	if file_ids.len == 0 || p.a.file_index_incomplete {
+		file_ids = []i32{}
+		for i, node in p.a.nodes {
+			if node.kind == .file {
+				file_ids << i
+			}
+		}
+	}
 	// Files are parsed before their imports. Revisit consumers when a dependency
 	// publishes a constant from a newly selected declaration branch.
 	for {
 		mut changed := false
-		for node in p.a.nodes {
+		for file_id in file_ids {
+			node := p.a.nodes[file_id]
 			if node.kind != .file || node.children_count == 0 { continue }
 			p.cur_file = node.value
 			p.cur_module = 'main'
@@ -18550,7 +18596,8 @@ pub fn (mut p Parser) resolve_comptime_string_declarations() map[int]bool {
 		if !changed { break }
 	}
 	mut deferred_imports := map[int]bool{}
-	for node in p.a.nodes {
+	for file_id in file_ids {
+		node := p.a.nodes[file_id]
 		if node.kind != .file || node.children_count == 0 { continue }
 		for child in p.a.children_of(&node) {
 			p.collect_deferred_comptime_string_imports(child, mut deferred_imports)

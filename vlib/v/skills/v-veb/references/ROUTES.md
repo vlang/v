@@ -120,8 +120,9 @@ pub fn (app &App) index(mut ctx Context) veb.Result {
 }
 ```
 
-`$veb.html()` also enables live reload in debug builds, so during development
-prefer it over naming a file.
+Live reload is enabled by compiling with `-d veb_livereload` (for example
+`v watch -d veb_livereload run .`). It applies to every HTML response that ends
+with `</html>`, from `$veb.html()` and `ctx.html()` alike.
 
 ## Reading the request
 

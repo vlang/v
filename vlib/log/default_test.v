@@ -1,6 +1,14 @@
 import log
 import time
 
+fn test_use_stdout_respects_default_log_level() {
+	slevel := $d('log_default_level', 'info')
+	expected := log.level_from_tag(slevel.to_upper()) or { panic('invalid test log level') }
+	log.set_level(.disabled)
+	log.use_stdout()
+	assert log.get_level() == expected
+}
+
 fn test_default_log_instance() {
 	println(@FN + ' start')
 	log.info('info')

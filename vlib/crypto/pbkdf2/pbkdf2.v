@@ -10,8 +10,12 @@ import hash
 // key derives a key from the password, salt and iteration count
 // `h` selects the hash used by HMAC: a digest from `crypto.sha1`, `crypto.sha256`
 // (SHA-224, SHA-256) or `crypto.sha512` (SHA-384, SHA-512, SHA-512/224, SHA-512/256).
+// key_length must be positive; zero and negative lengths return an error.
 // example pbkdf2.key('test'.bytes(), '123456'.bytes(), 1000, 64, sha512.new())
 pub fn key(password []u8, salt []u8, count int, key_length int, h hash.Hash) ![]u8 {
+	if key_length <= 0 {
+		return error('pbkdf2: key_length must be larger than 0')
+	}
 	match h {
 		sha1.Digest {
 			mut mac := hmac.new_hmac(sha1.new, password)

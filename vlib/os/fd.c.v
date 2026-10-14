@@ -2,11 +2,6 @@ module os
 
 // low level operations with file descriptors/handles
 
-$if !windows {
-	#include <sys/select.h>
-	#include <sys/ioctl.h>
-}
-
 $if windows {
 	#include <winsock2.h>
 }

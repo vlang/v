@@ -328,3 +328,7 @@ fn main() {
 	app.gg.run()
 }
 ```
+
+The supported format 0 and format 4 character maps cover the Basic Multilingual Plane.
+`map_code` returns glyph zero for character codes outside `0 .. 0xffff`. `clear_filler` and
+`exec_filler` initialize missing filler rows automatically, including after height increases.
