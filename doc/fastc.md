@@ -73,7 +73,7 @@ Linux GC builds load atomic support even without an explicit `sync` import. On L
 with musl, TinyCC's helpers and the driver-prepared fence object provide this support.
 Native C helpers are linked before the static archives they call, including the bundled GC.
 Under TinyCC on macOS and Linux, preallocation uses pthread storage to keep each thread's
-arena independent.
+arena independent. The required pthread library is linked even without `spawn`.
 Dynamic array literals with complex element expressions evaluate those elements before copying
 the array, avoiding nested C aggregate initializers unsupported by bundled Linux TinyCC.
 Their temporaries avoid collisions with local and parameter names.

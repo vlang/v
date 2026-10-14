@@ -630,6 +630,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
+	mut uses_pthread_tls := false
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := map[string]string{}
 	helper_has_c_functions := fastc_functions_declare_c(functions)
@@ -686,6 +687,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 		gen.s.init(file, global_source)
 		gen.next()
 		gen.parse_selected_global_declarations(mut out, mut initializers, false)!
+		uses_pthread_tls = uses_pthread_tls || gen.uses_pthread_tls
 		global_types = gen.global_types.move()
 		for name, _ in gen.composite_types {
 			composite_types[name] = true
@@ -703,6 +705,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 	}
 	return FastcGlobalDeclarations{
 		declarations:        out.str()
+		uses_pthread_tls:    uses_pthread_tls
 		module_initializers: module_initializers
 		composite_types:     composite_types
 		fixed_array_types:   fixed_array_types
@@ -867,6 +870,8 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initiali
 		// The prealloc arena root must be per-thread; a shared global would be
 		// corrupted by the parallel per-file generator's concurrent bump-allocations.
 		fastc_write_prealloc_tls_global(mut out, typ, c_name, g.header_free)
+		// TinyCC needs pthreads for the TLS slot even when the program never spawns.
+		g.uses_pthread_tls = g.prefs.target.os in ['macos', 'linux']
 	} else {
 		out.writeln('static ${typ} ${c_name};')
 	}

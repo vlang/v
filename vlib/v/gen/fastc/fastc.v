@@ -1143,6 +1143,7 @@ fn fastc_join_c_pieces(pieces []string) string {
 }
 
 struct FastcGlobalDeclarations {
+	uses_pthread_tls    bool
 	declarations        string
 	module_initializers map[string]string
 	composite_types     map[string]bool
@@ -2578,7 +2579,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		c_flags = c_flags.filter(!fastc_flag_is_native_input(it) || it in required_native_inputs)
 	}
-	return pieces, spawn_typedefs.len > 0, c_flags
+	return pieces, spawn_typedefs.len > 0 || global_output.uses_pthread_tls, c_flags
 }
 
 fn fastc_collect_native_name_ids(text string, ids map[string]int, mut refs []int) {

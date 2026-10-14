@@ -279,3 +279,20 @@ fn test_fastc_existing_path_macros_preserve_quoted_commas() {
 	assert optional_enabled
 	assert optional == '-L' + os.quoted_path(path)
 }
+
+fn test_fastc_linux_prealloc_without_spawn_requires_pthread_linking() {
+	root := os.join_path(os.vtmp_dir(), 'fastc_linux_tls_link_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'fn main() { println(42) }') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.vroot = @VEXEROOT
+	prefs.backend = 'fastc'
+	prefs.building_v = true
+	prefs.ccompiler = 'tinyc'
+	prefs.target = pref.target_from('linux', 'amd64') or { panic(err) }
+	prefs.user_defines = ['v3_backend', 'gc_none', 'prealloc']
+	generation := generate_files_with_source_paths([root], prefs) or { panic(err) }
+	assert generation.c_source().contains('pthread_key_create')
+	assert generation.uses_threads
+}
