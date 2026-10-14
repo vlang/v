@@ -157,12 +157,11 @@ fn test_vup_refreshes_only_tinycc_modes_even_when_already_updated() ! {
 		result := run_vup(root, home, tool, bin_dir, ...options)!
 		assert result.exit_code == 0, result.output
 		assert result.output.count('Caching module crypto.sample...') == 2, result.output
-		assert result.output.count('> Refreshing module cache [') == 2, result.output
-		assert result.output.contains('> Refreshing module cache [1/2]'), result.output
-		assert result.output.contains('> Refreshing module cache [2/2]'), result.output
+		assert result.output.count('> Refreshing module cache (') == 2, result.output
+		assert !result.output.contains('> Refreshing module cache ['), result.output
 		assert result.output.contains('> Module cache refresh complete: 2 build configurations checked.'), result.output
-		assert result.output.contains('(normal program; -cc tcc).\nCaching module crypto.sample...'), result.output
-		assert result.output.contains('(normal tests; -cc tcc).\nCaching module crypto.sample...'), result.output
+		assert result.output.contains('> Refreshing module cache (normal program; -cc tcc).\nCaching module crypto.sample...'), result.output
+		assert result.output.contains('> Refreshing module cache (normal tests; -cc tcc).\nCaching module crypto.sample...'), result.output
 		// The production TinyCC records stay on disk from before the rule, and are not refreshed.
 		calls := os.read_file(cache_log)!.split_into_lines()
 		assert calls.len == 2, calls.str()
@@ -171,6 +170,28 @@ fn test_vup_refreshes_only_tinycc_modes_even_when_already_updated() ! {
 		assert !calls.any(it.contains('-prod')), calls.str()
 		assert !calls.any(it.contains(' run ')), calls.str()
 	}
+	// Warm caches still get validated on both update paths, without claiming any rebuilds.
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
+		'    printf "%s\\n" "\$*" >> ' + os.quoted_path(cache_log) + '\n' +
+		'    exit 0;;\nesac\necho "V 0.5.2 abcdef0"\nexit 0\n')!
+	for options in [[]string{}, ['-skip_current'], ['-prod']] {
+		os.write_file(cache_log, '')!
+		warm := run_vup(root, home, tool, bin_dir, ...options)!
+		assert warm.exit_code == 0, warm.output
+		assert !warm.output.contains('> Refreshing module cache '), warm.output
+		assert !warm.output.contains('> Module cache refresh complete:'), warm.output
+		assert os.read_file(cache_log)!.split_into_lines().len == 2
+	}
+	// Verbose updates retain the indexed validation report even when no modules rebuild.
+	os.write_file(cache_log, '')!
+	verbose := run_vup(root, home, tool, bin_dir, '-v')!
+	assert verbose.exit_code == 0, verbose.output
+	assert verbose.output.count('> Refreshing module cache [') == 2, verbose.output
+	assert verbose.output.contains('> Refreshing module cache [1/2]'), verbose.output
+	assert verbose.output.contains('> Refreshing module cache [2/2]'), verbose.output
+	assert verbose.output.contains('> Module cache refresh complete: 2 build configurations checked.'), verbose.output
+	assert os.read_file(cache_log)!.split_into_lines().len == 2
 	// A failed refresh is visible and fails v up, while other modules still refresh.
 	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
 		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
@@ -327,7 +348,8 @@ fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
 	assert contexts.len == 2, contexts.str()
 	assert os.join_path(root, 'tinycc_project') in contexts, contexts.str()
 	assert os.join_path(root, 'clang_project') in contexts, contexts.str()
-	assert result.output.contains('8 build configurations checked.'), result.output
+	assert !result.output.contains('> Refreshing module cache '), result.output
+	assert !result.output.contains('> Module cache refresh complete:'), result.output
 }
 
 fn test_vup_rebuilds_changed_tinycc_module_and_reuses_unrelated_module() ! {
@@ -374,6 +396,8 @@ fn test_vup_rebuilds_changed_tinycc_module_and_reuses_unrelated_module() ! {
 	again := os.exec(up)
 	assert again.exit_code == 0, again.output
 	assert !again.output.contains('Caching module '), again.output
+	assert !again.output.contains('> Refreshing module cache '), again.output
+	assert !again.output.contains('> Module cache refresh complete:'), again.output
 	// Linking still sees the changed function alongside the reused object.
 	os.write_file(entry, 'import ${name}.changed\nimport ${name}.unchanged\n' +
 		'fn main() { println(changed.value()); println(unchanged.value()) }\n')!

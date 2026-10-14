@@ -187,10 +187,27 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 		'echo "unexpected program link" >&2\nexit 98\n')!
 	os.chmod(compiler, 0o755)!
 	for is_test in [false, true] {
+		// Overlapping import sets share compiler flags but can select different
+		// interface implementations. Every variant must survive a complete pass.
 		requests := [Request{
 			args:    ['-cc', compiler]
 			module:  'math.big'
 			imports: ['crypto.ed25519', 'math.big']
+			is_test: is_test
+		}, Request{
+			args:    ['-cc', compiler]
+			module:  'os'
+			imports: ['os', 'flag', 'time']
+			is_test: is_test
+		}, Request{
+			args:    ['-cc', compiler]
+			module:  'term'
+			imports: ['term', 'time']
+			is_test: is_test
+		}, Request{
+			args:    ['-cc', compiler]
+			module:  'runtime'
+			imports: ['runtime', 'sync', 'time']
 			is_test: is_test
 		}]
 		refresh(@VEXE, requests)!
@@ -390,7 +407,7 @@ fn test_repeated_refresh_keeps_the_inventory_and_module_objects_warm() ! {
 		'for _ in 0 .. 3 {\n' +
 		'requests := cache_refresh.collect(os.dir(@VEXE), @VEXE)!\n' +
 		'assert requests.len > 0\nprintln(requests.len)\n' +
-		'cache_refresh.refresh(@VEXE, requests)!\n}\n}\n')!
+		'cache_refresh.refresh(@VEXE, requests, verbose: true)!\n}\n}\n')!
 	helper := os.join_path(root, 'refresh_helper')
 	build := os.exec([@VEXE, '-nocache', '-gc', 'none', '-o', helper, helper_source])
 	assert build.exit_code == 0, build.output
@@ -415,4 +432,70 @@ fn test_refresh_configuration_identifies_compiler_and_modes() {
 	flags := refresh_configuration(Request{ args: ['-cflags', '-DFIRST\n-DSECOND\r\t'] })
 	assert !flags.contains('\n') && !flags.contains('\r') && !flags.contains('\t'), flags
 	assert flags.contains('\\n') && flags.contains('\\r') && flags.contains('\\t'), flags
+}
+
+fn test_refresh_reports_only_children_producing_output_unless_verbose() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vup_quiet_refresh_${os.getpid()}')
+	for name in ['first', 'second'] { os.mkdir_all(os.join_path(root, 'vlib', name))! }
+	defer { os.rmdir_all(root) or {} }
+	log := os.join_path(root, 'calls')
+	vexe := os.join_path(root, 'v')
+	os.write_file(vexe, '#!/bin/sh\n' +
+		'echo called >> ' + os.quoted_path(log) + '\n' +
+		'case "\$*" in\n' +
+		'  *"-d noisy"*) printf "child stdout\\n"; printf "child stderr\\n" >&2;;\n' +
+		'  *"-d stderr"*) printf "child stderr\\n" >&2;;\n' +
+		'  *"-d fail"*) exit 7;;\n' +
+		'esac\nexit 0\n')!
+	os.chmod(vexe, 0o755)!
+	source := os.join_path(root, 'helper.v')
+	os.write_file(source, 'import os\nimport v.util.cache_refresh\nfn main() {\n' +
+		'mode := os.args[1]\n' +
+		'kind := if mode == "mixed" { "noisy" } else if mode in ["stderr", "fail"] { mode } else { "quiet" }\n' +
+		'first := cache_refresh.Request{module: "first", args: ["-d", "quiet"]}\n' +
+		'second := cache_refresh.Request{module: "second", args: ["-d", kind]}\n' +
+		'cache_refresh.refresh("${vexe}", [first, first, second], verbose: mode == "verbose")!\n}\n')!
+	helper := os.join_path(root, 'helper')
+	build := os.exec([@VEXE, '-nocache', '-gc', 'none', '-o', helper, source])
+	assert build.exit_code == 0, build.output
+	for mode in ['quiet', 'mixed', 'stderr', 'verbose', 'fail'] {
+		os.write_file(log, '')!
+		result := os.exec([helper, mode])
+		output := result.output
+		// Quiet checks and duplicate elimination must still validate both configurations.
+		assert os.read_file(log)!.split_into_lines().len == 2, output
+		match mode {
+			'quiet' {
+				assert result.exit_code == 0 && output == '', output
+			}
+			'mixed', 'stderr' {
+				assert result.exit_code == 0, output
+				assert output.count('> Refreshing module cache (') == 1, output
+				assert !output.contains('> Refreshing module cache ['), output
+				assert !output.contains('-d quiet'), output
+				flag := if mode == 'mixed' { 'noisy' } else { 'stderr' }
+				assert output.starts_with('> Refreshing module cache (normal program; -d ${flag}).\n'), output
+				if mode == 'mixed' {
+					assert output.contains('child stdout\n'), output
+				}
+				assert output.contains('child stderr\n'), output
+				assert output.contains('> Module cache refresh complete: 2 build configurations checked.'), output
+			}
+			'verbose' {
+				assert result.exit_code == 0, output
+				assert output.count('> Refreshing module cache [') == 2, output
+				assert output.contains('[1/3]') && output.contains('[3/3]'), output
+				assert output.contains('> Module cache refresh complete: 2 build configurations checked.'), output
+			}
+			'fail' {
+				assert result.exit_code != 0, output
+				assert output.contains('> Module cache refresh failed [3/3] (normal program; -d fail; exit 7).'), output
+				assert !output.contains('> Module cache refresh complete:'), output
+			}
+			else {}
+		}
+	}
 }
