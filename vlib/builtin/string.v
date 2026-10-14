@@ -2815,6 +2815,7 @@ pub fn (s string) strip_margin() string {
 }
 
 // strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`.
+// The first line also drops its prefix through the delimiter, when present.
 // A trailing region without a delimiter is retained, except for its final whitespace-only lines.
 @[direct_array_access]
 pub fn (s string) strip_margin_custom(del u8) string {
@@ -2830,7 +2831,17 @@ pub fn (s string) strip_margin_custom(del u8) string {
 	mut count := 0
 	mut exhausted := false
 	mut tail_content_end := s.len - 1
-	for i := 0; i < s.len; i++ {
+	// The first line drops everything up to its delimiter like every other
+	// line does; without one it is kept whole.
+	mut start := 0
+	mut j := 0
+	for j < s.len && s[j] != sep && s[j] != 10 && s[j] != 13 {
+		j++
+	}
+	if j < s.len && s[j] == sep {
+		start = j + 1
+	}
+	for i := start; i < s.len; i++ {
 		if s[i] in [10, 13] {
 			unsafe {
 				ret[count] = s[i]
