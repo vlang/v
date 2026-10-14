@@ -40,24 +40,50 @@ fn test_ini_errors() {
 		return
 	}
 	assert false, 'keys outside sections must error'
+}
+
+fn test_ini_duplicate_section_error() {
 	parse_string('[a]\n[a]') or {
 		assert err.msg() == 'ini: line 2: duplicate section `a`'
 		return
 	}
 	assert false, 'duplicate sections must error'
+}
+
+fn test_ini_duplicate_key_error() {
 	parse_string('[a]\nk = 1\nk = 2') or {
 		assert err.msg() == 'ini: line 3: duplicate key `k`'
 		return
 	}
 	assert false, 'duplicate keys must error'
+}
+
+fn test_ini_missing_separator_error() {
 	parse_string('[a]\njust words') or {
 		assert err.msg() == 'ini: line 2: missing `=` or `:` separator'
 		return
 	}
 	assert false, 'separator-less lines must error'
+}
+
+fn test_ini_unbalanced_header_error() {
 	parse_string('[oops') or {
 		assert err.msg() == 'ini: line 1: unbalanced section header'
 		return
 	}
 	assert false, 'unbalanced headers must error'
+}
+
+fn test_ini_empty_section_roundtrip() {
+	mut f := IniFile{}
+	f.set('', 'key', 'value')
+	again := parse_string(f.encode())!
+	assert again.sections() == ['']
+	assert again.get('', 'key') or { '' } == 'value'
+}
+
+fn test_ini_comments_remain_in_values() {
+	f := parse_string('[a]\nurl = https://example.com/path#fragment\ntext: a;b:c=d\n')!
+	assert f.get('a', 'url') or { '' } == 'https://example.com/path#fragment'
+	assert f.get('a', 'text') or { '' } == 'a;b:c=d'
 }

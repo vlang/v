@@ -18,6 +18,7 @@ mut:
 pub fn parse_string(s string) !IniFile {
 	mut f := IniFile{}
 	mut current := ''
+	mut has_section := false
 	for ln, raw_line in s.split('\n') {
 		line := raw_line.trim_space()
 		if line.len == 0 || line[0] == `;` || line[0] == `#` {
@@ -34,9 +35,10 @@ pub fn parse_string(s string) !IniFile {
 			f.sections[name] = map[string]string{}
 			f.order << name
 			current = name
+			has_section = true
 			continue
 		}
-		if current == '' {
+		if !has_section {
 			return error('ini: line ${ln + 1}: key outside any section')
 		}
 		sep := separator_pos(line) or {
@@ -87,7 +89,9 @@ pub fn (f &IniFile) sections() []string {
 	return f.order.clone()
 }
 
-// encode renders the document back to INI text (round-trip stable).
+// encode renders sections in insertion order and keys in sorted order.
+// Names and values must use the single-line syntax accepted by parse_string;
+// surrounding whitespace is trimmed when the encoded text is parsed again.
 pub fn (f &IniFile) encode() string {
 	mut out := []string{}
 	for name in f.order {
