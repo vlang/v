@@ -17943,6 +17943,7 @@ const c_winapi_extern_symbols = {
 	'GetExitCodeProcess':              true
 	'GetFinalPathNameByHandleW':       true
 	'GetFileAttributesW':              true
+	'GetFileInformationByHandle':      true
 	'GetFileSizeEx':                   true
 	'GetFileType':                     true
 	'GetFullPathName':                 true

@@ -88,3 +88,14 @@ fn test_windows_native_callback_thunks_match_sdk_calling_conventions() {
 		}
 	}
 }
+
+fn test_windows_sdk_owns_metadata_handle_declarations() {
+	for arch in ['x86', 'amd64'] {
+		mut g := windows_core_test_gen()
+		g.set_target(pref.target_from('windows', arch) or { panic(err) })
+		assert g.c_extern_calling_convention('GetFileInformationByHandle') == 'WINAPI'
+		assert g.should_emit_c_extern_decl('GetFileInformationByHandle')
+		g.add_c_directive('main', '#include <windows.h>', false)
+		assert !g.should_emit_c_extern_decl('GetFileInformationByHandle')
+	}
+}
