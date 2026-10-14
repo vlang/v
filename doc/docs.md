@@ -7357,6 +7357,7 @@ These directives retain their source order relative to struct field attributes.
 Attribute groups that cross a directive boundary retain the affected field's source text.
 This preservation also applies to the first field in a struct.
 Compile-time members also provide source boundaries for following field attributes.
+Header line comments stay on separate lines from preserved body text.
 CRLF line endings in preserved field prefixes are normalized to LF.
 A completed directive region before an attribute leaves the enabled field subject to formatting.
 

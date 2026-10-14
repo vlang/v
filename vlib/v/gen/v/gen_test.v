@@ -2721,6 +2721,27 @@ fn test_formatter_preserves_directive_attributes_after_comptime_members() {
 	}
 }
 
+fn test_formatter_keeps_header_line_comments_separate_from_directive_attributes() {
+	for header in ['struct First\n\t// header\n{', 'struct First // header\n{',
+		'struct // header\nFirst {'] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for attribute_prefix in [' @[required]\n', '\n\t@[required]\n'] {
+				source := '${header}${attribute_prefix}\t// vfmt off\n\t${declaration}\n\t// vfmt on\n\tc int @[c]\n}\n'
+				for line_ending in ['\n', '\r\n'] {
+					out := vfmt('struct_header_line_comment_directive_attrs', source.replace('\n',
+						line_ending))
+					assert out.split_into_lines().filter(it.trim_space() == '@[required]').len == 1, out
+					assert !out.contains('// header\n\n'), out
+					assert out.count('@[required]') == 1, out
+					assert out.count('// header') == 1, out
+					assert reparse_diagnostics('struct_header_line_comment_directive_attrs', out) == 0
+					assert vfmt('struct_header_line_comment_directive_attrs_twice', out) == out
+				}
+			}
+		}
+	}
+}
+
 fn test_formatter_formats_first_field_after_completed_directives() {
 	source := 'struct First {\n\t// vfmt off\n\t// vfmt on\n\t@[required] a, b   int\n}\n'
 	want := 'struct First {\n\t// vfmt off\n\t// vfmt on\n\ta int @[required]\n\tb int @[required]\n}\n'

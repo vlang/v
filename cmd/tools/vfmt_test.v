@@ -558,6 +558,21 @@ fn test_fmt_preserves_directive_attributes_after_comptime_members() {
 	}
 }
 
+fn test_fmt_keeps_header_line_comments_separate_from_directive_attributes() {
+	source := 'struct First\n\t// header\n{ @[required]\n\t// vfmt off\n\ta, b   int\n\t// vfmt on\n\tc int @[c]\n}\n'
+	for i, line_ending in ['\n', '\r\n'] {
+		res, formatted := run_vfmt_write('header_line_comment_directive_attrs_${i}', source.replace('\n',
+			line_ending), '')
+		assert res.exit_code == 0, res.output
+		assert formatted.split_into_lines().filter(it.trim_space() == '@[required]').len == 1, formatted
+		assert !formatted.contains('// header\n\n'), formatted
+		second_res, twice := run_vfmt_write('header_line_comment_directive_attrs_${i}_twice', formatted,
+			'')
+		assert second_res.exit_code == 0, second_res.output
+		assert twice == formatted
+	}
+}
+
 fn test_fmt_formats_enabled_leading_attributes_after_vfmt_on() {
 	declarations := ['@[a] value   int=1+2', '@[a] x, y   int']
 	formatted_fields := ['value int = 1 + 2 @[a]', 'x int @[a]\n\ty int @[a]']

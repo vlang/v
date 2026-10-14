@@ -4488,14 +4488,21 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, body_start int, end int, comp
 		flags := if gp.len > 0 { gp[0] } else { '' }
 		if g.struct_field_preserves_attr_prefix(fid, previous, body_start) {
 			// Keep leading attributes on their original side of a formatting directive.
+			comment_i := g.comment_i
 			if int(previous) < 0 {
 				g.emit_comments_before(body_start)
 				g.source_end = int_max(g.source_end, body_start)
 			}
-			if g.on_newline && g.out.len > 0 && g.out.last_n(1) == '\n' {
+			emitted_line_comment := g.comment_i > comment_i
+				&& g.comments[g.comment_i - 1].text.starts_with('//')
+			prefix := g.source[g.source_end..f.pos.end].replace('\r\n', '\n')
+			needs_comment_separator := emitted_line_comment && prefix.all_before('\n').trim_space().len > 0
+			// Retain the separator that terminates a header line comment.
+			if g.on_newline && g.out.len > 0 && g.out.last_n(1) == '\n'
+				&& (!needs_comment_separator || g.out.last_n(2) == '\n\n') {
 				g.out.go_back(1)
 			}
-			g.out.write_string(g.source[g.source_end..f.pos.end].replace('\r\n', '\n'))
+			g.out.write_string(prefix)
 			g.on_newline = false
 			g.skip_comments_before(f.pos.end)
 			g.source_end = f.pos.end
