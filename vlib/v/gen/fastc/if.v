@@ -15,7 +15,6 @@ fn (g &Parser) smartcast_payload_binding(value_type string, object string, wants
 	return value_type, value, false
 }
 
-
 fn (g &Parser) optional_function_field_for_expression(tokens []FastcExpressionToken) ?FastcStructField {
 	if tokens.len < 3 || tokens[tokens.len - 2].tok != .dot || tokens.last().tok != .name {
 		return none

@@ -41,6 +41,7 @@ fn test_fastc_function_field_nil_assignment_requires_unsafe() {
 fn test_fastc_negated_mutable_sum_pointer_variant_preserves_nil() {
 	fastc_review_regression_matches_c('pointer_sum', 'module main
 type Value = int | voidptr
+fn read(value Value) int { if value is int { return value }; return -1 }
 fn main() {
 	pointer := voidptr(unsafe { nil })
 	mut value := Value(pointer)
@@ -54,9 +55,9 @@ fn main() {
 		println(usize(alternate))
 		alternate = Value(13)
 	}
-	if alternate is int { println(alternate) }
+	println(read(alternate))
 	value = Value(12)
-	if value is int { println(value) }
+	println(read(value))
 	number := 7
 	address := voidptr(&number)
 	mut nonnil := Value(address)
