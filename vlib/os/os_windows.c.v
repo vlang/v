@@ -5,7 +5,6 @@ import encoding.utf8.validate
 
 #flag windows -l advapi32
 #include <process.h>
-#include <sys/utime.h>
 
 // path_separator is the platform specific separator string, used between the folders, and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '\\'
@@ -245,12 +244,7 @@ fn decode_windows_captured_output(raw string) string {
 	return res
 }
 
-pub struct C._utimbuf {
-	actime  i64
-	modtime i64
-}
-
-fn C._utime(&char, voidptr) i32
+fn C.SetFileTime(voidptr, voidptr, voidptr, voidptr) i32
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
 	$if debug {
@@ -340,14 +334,52 @@ pub fn short_path(path string) string {
 	return join_path_single(short_parent, file_name(normalized))
 }
 
+// utime changes the access and modification times of the file or directory at path.
+// Times are Unix timestamps in seconds. Failures preserve the Win32 error code.
 pub fn utime(path string, actime i64, modtime i64) ! {
-	mut u := C._utimbuf{actime, modtime}
-	if C._utime(&char(path.str), voidptr(&u)) != 0 {
-		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	access_time := windows_filetime_from_unix_seconds(actime)!
+	write_time := windows_filetime_from_unix_seconds(modtime)!
+	wide_path := path.to_wide()
+	defer {
+		// to_wide allocates the UTF-16 buffer used by CreateFileW.
+		unsafe { free(wide_path) }
+	}
+	share_mode := C.FILE_SHARE_READ | C.FILE_SHARE_WRITE | C.FILE_SHARE_DELETE
+	handle := C.CreateFileW(wide_path, C.FILE_WRITE_ATTRIBUTES, share_mode, 0,
+		C.OPEN_EXISTING, C.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if handle == voidptr(-1) {
+		code := int(C.GetLastError())
+		return error_with_code(get_error_msg(code), code)
+	}
+	defer {
+		C.CloseHandle(handle)
+	}
+	if C.SetFileTime(handle, 0, voidptr(&access_time), voidptr(&write_time)) == 0 {
+		code := int(C.GetLastError())
+		return error_with_code(get_error_msg(code), code)
+	}
+}
+
+fn windows_filetime_from_unix_seconds(seconds i64) !Filetime {
+	// Windows absolute system times use positive signed 64-bit tick counts.
+	max_seconds := i64(u64(0x7fff_ffff_ffff_ffff) / windows_filetime_ticks_per_second) -
+		windows_filetime_unix_epoch_seconds
+	// A zero FILETIME means "leave unchanged" to SetFileTime, not the 1601 epoch.
+	if seconds <= -windows_filetime_unix_epoch_seconds || seconds > max_seconds {
+		code := int(C.ERROR_INVALID_PARAMETER)
+		return error_with_code(get_error_msg(code), code)
+	}
+	ticks := u64(seconds + windows_filetime_unix_epoch_seconds) * windows_filetime_ticks_per_second
+	return Filetime{
+		dw_low_date_time:  u32(ticks)
+		dw_high_date_time: u32(ticks >> 32)
 	}
 }
 
 // ls returns the names of the files and directories in path.
+// The entries come in the order the operating system reports them, which os.ls does not sort.
+// That order differs between platforms and filesystems, so call `.sort()` on the result when
+// a stable order is needed.
 pub fn ls(path string) ![]string {
 	if path == '' {
 		return error('ls() expects a folder, not an empty string')
@@ -439,16 +471,8 @@ pub fn get_module_filename(handle HANDLE) !string {
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-FormatMessageWa#parameters
 const format_message_allocate_buffer = 0x00000100
-const format_message_argument_array = 0x00002000
-const format_message_from_hmodule = 0x00000800
-const format_message_from_string = 0x00000400
 const format_message_from_system = 0x00001000
 const format_message_ignore_inserts = 0x00000200
-
-// Ref - winnt.h
-const sublang_neutral = 0x00
-const sublang_default = 0x01
-const lang_neutral = sublang_neutral
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes--12000-15999-
 const max_error_code = 15841
@@ -467,6 +491,8 @@ fn ptr_win_get_error_msg(code u32) voidptr {
 }
 
 // get_error_msg return error code representation in string.
+// The line break that FormatMessageW puts at the end of a system message is not
+// part of the result.
 pub fn get_error_msg(code int) string {
 	if code < 0 { // skip negative
 		return ''
@@ -477,7 +503,8 @@ pub fn get_error_msg(code int) string {
 	}
 	msg := wide_ptr_to_string(&u16(ptr_text))
 	C.LocalFree(ptr_text)
-	return msg
+	// Only the terminating "\r\n" is removed; the text keeps its final period.
+	return msg.trim_right('\r\n')
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
@@ -498,6 +525,17 @@ fn execute_shell(cmd string) Result {
 	return unsafe { raw_execute_shell(cmd) }
 }
 
+// win_exec_application_name returns the executable that `CreateProcessW` must start for the
+// absolute path `exe`. With an application name, `CreateProcessW` does not append `.exe` to an
+// extension-less path, so `-o build/prog` (which writes `build/prog.exe`) would otherwise fail
+// with "The system cannot find the file specified".
+fn win_exec_application_name(exe string) string {
+	if !is_file(exe) && file_ext(exe) == '' && is_file(exe + '.exe') {
+		return exe + '.exe'
+	}
+	return exe
+}
+
 // exec starts the specified command with arguments, waits for it to complete, and returns its output.
 pub fn exec(args []string) Result {
 	if args.len == 0 {
@@ -513,7 +551,7 @@ pub fn exec(args []string) Result {
 	mut application_name := ''
 	filename_lc := args[0].to_lower_ascii()
 	if is_abs_path(args[0]) && !filename_lc.ends_with('.bat') && !filename_lc.ends_with('.cmd') {
-		application_name = args[0]
+		application_name = win_exec_application_name(args[0])
 	}
 	return windows_execute_command_line(command_line, application_name, args.join(' '), false)
 }
@@ -629,23 +667,28 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
 	buf := [4096]u8{}
-	mut bytes_read := u32(0)
 	mut read_data := strings.new_builder(1024)
 	for {
 		mut result := false
+		mut bytes_read := u32(0)
 		unsafe {
 			result = C.ReadFile(child_stdout_read, &buf[0], 1000, voidptr(&bytes_read), 0)
-			read_data.write_ptr(&buf[0], int(bytes_read))
 		}
-		if result == false || int(bytes_read) == 0 {
+		if result == false || bytes_read == 0 {
 			break
+		}
+		unsafe {
+			read_data.write_ptr(&buf[0], int(bytes_read))
 		}
 	}
 	soutput := decode_windows_captured_output(read_data.str())
 	unsafe { read_data.free() }
-	exit_code := u32(0)
+	mut exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
-	C.GetExitCodeProcess(proc_info.h_process, voidptr(&exit_code))
+	// The SDK DWORD output is a 32-bit value; use its exact pointer type.
+	unsafe {
+		C.GetExitCodeProcess(proc_info.h_process, &C.DWORD(&exit_code))
+	}
 	C.CloseHandle(proc_info.h_process)
 	C.CloseHandle(proc_info.h_thread)
 	return Result{
@@ -856,10 +899,15 @@ fn get_long_path(path string) !string {
 		unsafe { free(input_short_path) }
 	}
 	long_path_buf := [4096]u16{}
-	res := C.GetLongPathName(input_short_path, &long_path_buf[0], sizeof(long_path_buf))
+	// nNumberOfCharacters counts WCHARs, not bytes: sizeof would claim room
+	// for 8192 characters in a 4096 element buffer.
+	res := C.GetLongPathName(input_short_path, &long_path_buf[0], u32(long_path_buf.len))
 	if res == 0 {
 		code := int(C.GetLastError())
 		return error_win32(code: code)
+	}
+	if res >= u32(long_path_buf.len) {
+		return error_win32(code: C.ERROR_INSUFFICIENT_BUFFER)
 	}
 	long_path := wide_ptr_to_string(&long_path_buf[0])
 	return long_path
@@ -874,9 +922,9 @@ pub fn page_size() int {
 
 // disk_usage returns disk usage of `path`.
 pub fn disk_usage(path string) !DiskUsage {
-	mut free_bytes_available_to_caller := u64(0)
-	mut total := u64(0)
-	mut available := u64(0)
+	mut free_bytes_available_to_caller := C.ULARGE_INTEGER{}
+	mut total := C.ULARGE_INTEGER{}
+	mut available := C.ULARGE_INTEGER{}
 	mut ret := false
 	if path == '.' || path == '' {
 		ret = C.GetDiskFreeSpaceExA(&char(unsafe { nil }), &free_bytes_available_to_caller, &total,
@@ -889,8 +937,8 @@ pub fn disk_usage(path string) !DiskUsage {
 		return error('cannot get disk usage of path')
 	}
 	return DiskUsage{
-		total:     total
-		available: available
-		used:      total - available
+		total:     total.QuadPart
+		available: available.QuadPart
+		used:      total.QuadPart - available.QuadPart
 	}
 }

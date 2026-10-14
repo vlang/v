@@ -7,11 +7,8 @@ fn test_parse() {
 	h1_tag := tags[0] // <h1>Hello world!</h1>
 	assert h1_tag.name == 'h1'
 	assert h1_tag.content == 'Hello world!'
-	assert h1_tag.attributes.len == 2
-	// TODO: do not remove. Attributes must not have an empty attr.
-	// assert h1_tag.attributes.len == 1
-	assert h1_tag.str() == '<h1 class="title" >Hello world!</h1>'
-	// assert h1_tag.str() == '<h1 class="title">Hello world!</h1>'
+	assert h1_tag.attributes.len == 1
+	assert h1_tag.str() == '<h1 class="title">Hello world!</h1>'
 }
 
 fn test_parse_inline_tags() {
@@ -36,7 +33,7 @@ fn test_parse_content_with_nested_tags() {
 	doc := parse('<tr id="line"><td><a href="#">wom<nobr>All</a></td></tr>')
 	td_tag := doc.get_tags(name: 'td')[0]
 	a_tag := td_tag.get_tags('a')[0]
-	assert td_tag.content == '<a href="#" >wom<nobr>All</nobr></a>'
+	assert td_tag.content == '<a href="#">wom<nobr>All</nobr></a>'
 	assert a_tag.content == 'wom<nobr>All</nobr>'
 	assert td_tag.text() == 'womAll'
 }

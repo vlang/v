@@ -242,9 +242,10 @@ checked and sessions will be stored forever until they are destroyed.
 #### Pre-sessions
 
 By default a session cookie is only generated when you call `save`, or `resave`.
-By setting `save_uninitialized` to `true` a session cookie will always be set,
-even if there is no data for the session yet. This is useful when you need session
-data to be always available.
+By setting `save_uninitialized` to `true`, the session middleware creates a cookie
+for a request without a valid session, even before any data is saved. No session
+data is stored until you call `save` or `resave`. Calling `save` without a valid session
+creates one regardless of `save_uninitialized`, including when middleware is not used.
 
 Or, for example, you could use pre-sessions to mitigate login-csrf,
 since you can bind a csrf-token to the "pre-session" id. Then when the user logs

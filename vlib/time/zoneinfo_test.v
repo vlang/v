@@ -366,20 +366,23 @@ fn test_load_location_local_ignores_tz_local() {
 }
 
 fn test_load_location_local_empty_tz_is_utc() {
-	old_tz := os.getenv_opt('TZ')
-	os.setenv('TZ', '', true)
-	defer {
-		if old := old_tz {
-			os.setenv('TZ', old, true)
-		} else {
-			os.unsetenv('TZ')
+	$if !windows {
+		// Windows removes TZ when it is set to an empty value.
+		old_tz := os.getenv_opt('TZ')
+		os.setenv('TZ', '', true)
+		defer {
+			if old := old_tz {
+				os.setenv('TZ', old, true)
+			} else {
+				os.unsetenv('TZ')
+			}
 		}
+		loc := time.load_location('Local')!
+		zone := loc.zone_at(1_704_067_200)!
+		assert loc.name == 'UTC'
+		assert zone.name == 'UTC'
+		assert zone.offset == 0
 	}
-	loc := time.load_location('Local')!
-	zone := loc.zone_at(1_704_067_200)!
-	assert loc.name == 'UTC'
-	assert zone.name == 'UTC'
-	assert zone.offset == 0
 }
 
 fn test_load_location_local_posix_tz() {
@@ -421,5 +424,25 @@ fn test_load_location_local_colon_prefixed_posix_tz() {
 		assert winter.offset == -18_000
 		assert summer.name == 'EDT'
 		assert summer.offset == -14_400
+	}
+}
+
+fn test_load_location_local_empty_tz_uses_system_zone_on_windows() {
+	$if windows {
+		old_tz := os.getenv_opt('TZ')
+		os.setenv('TZ', 'UTC0', true)
+		os.setenv('TZ', '', true)
+		defer {
+			if old := old_tz {
+				os.setenv('TZ', old, true)
+			} else {
+				os.unsetenv('TZ')
+			}
+		}
+		assert os.getenv_opt('TZ') == none
+		loc := time.load_location('Local')!
+		assert loc.name == 'Local'
+		zone := loc.zone_at(1_704_067_200)!
+		assert zone.name.len > 0
 	}
 }

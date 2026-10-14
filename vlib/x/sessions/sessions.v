@@ -79,8 +79,8 @@ pub:
 	cookie_options CookieOptions
 	// max age of session data and id, default is 30 days
 	max_age time.Duration = time.hour * 24 * 30
-	// set to true if you want to create a session if there isn't any data stored yet.
-	// Also called pre-sessions
+	// create a session cookie in the middleware before any data is saved (pre-sessions).
+	// Explicit save calls create a session in either mode.
 	save_uninitialized bool
 pub mut:
 	store Store[T] @[required]
@@ -140,20 +140,14 @@ pub fn (mut s Sessions[T]) logout[X](mut ctx X) ! {
 	})
 }
 
-// save `data` for the current session.
+// save stores `data` for the current session, creating a session if needed.
+// save_uninitialized only controls whether middleware creates a session before data is saved.
 pub fn (mut s Sessions[T]) save[X](mut ctx X, data T) ! {
-	if sid := s.get_session_id(ctx) {
-		s.store.set(sid, data)!
+	sid := s.get_session_id(ctx) or { s.set_session_id(mut ctx) }
+	if _ := s.store.set(sid, data) {
 		ctx.CurrentSession.session_data = data
 	} else {
-		if s.save_uninitialized == false {
-			// no valid session id, but the user only wants to create a session
-			// when data is saved. So we create the session here
-			sid := s.set_session_id(mut ctx)
-			s.store.set(sid, data)!
-			ctx.CurrentSession.session_data = data
-		}
-		eprintln('[veb.sessions] error: trying to save data without a valid session!')
+		return err
 	}
 }
 
