@@ -76,20 +76,25 @@ jobs:
 
       - name: Resolve the tag being published
         id: tag
+        env:
+          V_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          tag="${{ inputs.tag || github.ref_name }}"
-          if [ -z "$tag" ]; then
-            echo "no V tag resolved"
+          tag="$V_RELEASE_TAG"
+          if [[ ${#tag} -gt 120 ]] || ! [[ "$tag" =~ ^([0-9]+\.[0-9]+\.[0-9]+|weekly\.[A-Za-z0-9_.-]+)$ ]]; then
+            echo "expected a release or weekly V tag that fits the image tags" >&2
             exit 1
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: generate tags conditionally
         id: gen_tags
+        env:
+          V_RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          IMAGE_VARIANT: ${{ matrix.os }}
         run: |
-          tag="${{ steps.tag.outputs.tag }}"
-          case "${{ matrix.os }}" in
+          tag="$V_RELEASE_TAG"
+          case "$IMAGE_VARIANT" in
             debian)
               # debian is the default variant, so it owns the unqualified tags.
               echo 'TAGS=thevlang/vlang:latest,thevlang/vlang:debian,thevlang/vlang:'"$tag"',thevlang/vlang:debian-'"$tag" >> "$GITHUB_OUTPUT"
@@ -98,7 +103,7 @@ jobs:
               echo 'TAGS=thevlang/vlang:static-'"$tag" >> "$GITHUB_OUTPUT"
               ;;
             *)
-              echo 'TAGS=thevlang/vlang:${{ matrix.os }},thevlang/vlang:'"${{ matrix.os }}"'-'"$tag" >> "$GITHUB_OUTPUT"
+              echo 'TAGS=thevlang/vlang:'"$IMAGE_VARIANT"',thevlang/vlang:'"$IMAGE_VARIANT"'-'"$tag" >> "$GITHUB_OUTPUT"
               ;;
           esac
 

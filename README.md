@@ -165,6 +165,9 @@ Dockerfiles and needs no daemon, so `podman build -f ... .` works too;
 it also runs containers as your own user, so files written into a mounted
 source tree stay owned by you.
 
+Manual release publishing accepts a numeric release tag such as `0.5.2`, or a `weekly.*` tag.
+The input is limited to 120 characters so each generated Docker image tag fits its limit.
+
 To build one locally instead:
 
 ```bash
