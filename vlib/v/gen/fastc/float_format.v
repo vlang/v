@@ -60,7 +60,8 @@ fn (mut g Parser) fastc_float_format_helper(fixed bool) string {
 	return if fixed { 'v_fastc_f64_fixed' } else { 'v_fastc_f64_trimmed' }
 }
 
-// The C backend's v3_f64_fixed, v3_f64_exp and v3_f64_trimmed, so a FastC build prints
+// The C backend's v3_f64_fixed, v3_f64_exp (with v3_float_normalize_exponent, which strips
+// the third exponent digit some CRTs print) and v3_f64_trimmed, so a FastC build prints
 // formatted floats exactly as the C backend does. Character codes are numeric: 45 `-`,
 // 43 `+`, 46 `.`, 48 `0`, 57 `9`, 69 `E`, 101 `e`.
 const fastc_float_format_c = r'double pow(double, double);
@@ -115,6 +116,18 @@ string v_fastc_f64_fixed(double x, int precision) {
 	out[pos] = 0;
 	return (string){.str = out, .len = out_len, .is_lit = 0};
 }
+static int v_fastc_float_normalize_exponent(char* text, int n) {
+	int digits = n;
+	while (digits > 0 && text[digits - 1] >= 48 && text[digits - 1] <= 57) --digits;
+	if (digits < 2 || (text[digits - 1] != 43 && text[digits - 1] != 45) || (text[digits - 2] != 101 && text[digits - 2] != 69)) return n;
+	int first = digits;
+	while (n - first > 2 && text[first] == 48) ++first;
+	if (first > digits) {
+		memmove(text + digits, text + first, (size_t)(n - first + 1));
+		n -= first - digits;
+	}
+	return n;
+}
 static string v_fastc_f64_exp(double x, int precision) {
 	char tmp[128];
 	int n = snprintf(tmp, sizeof(tmp), "%.*e", precision, x);
@@ -122,6 +135,7 @@ static string v_fastc_f64_exp(double x, int precision) {
 	u8* out = (u8*)malloc((size_t)n + 1);
 	if (n < (int)sizeof(tmp)) memcpy(out, tmp, (size_t)n + 1);
 	else snprintf((char*)out, (size_t)n + 1, "%.*e", precision, x);
+	n = v_fastc_float_normalize_exponent((char*)out, n);
 	return (string){.str = out, .len = n, .is_lit = 0};
 }
 string v_fastc_f64_trimmed(double x, int precision) {
