@@ -372,6 +372,11 @@ fn (mut tc TypeChecker) check_import_symbol_conflict(id flat.NodeId, name string
 }
 
 fn (mut tc TypeChecker) check_import_symbol_conflict_at(id flat.NodeId, name string, pos token.Pos) {
+	// A cached header combines imports from different source files. Its names
+	// were already checked in their original file scopes before being cached.
+	if is_module_cache_header(tc.cur_file) {
+		return
+	}
 	if name == '' || name == '_' || !tc.has_active_import(name) {
 		return
 	}
@@ -2685,6 +2690,27 @@ fn (tc &TypeChecker) returned_receiver_projection_type(typ Type, suffix string) 
 	return none
 }
 
+// record_null_constant_return_errors applies the null constant rule to every value of a
+// `return`, against the matching slot of the function's return type. It reports whether
+// the only returned value was rejected, so that it is not diagnosed a second time.
+fn (mut tc TypeChecker) record_null_constant_return_errors(node flat.Node, expected Type) bool {
+	if multi := multi_return_payload_type(expected) {
+		if node.children_count == multi.types.len {
+			for i in 0 .. node.children_count {
+				tc.record_null_constant_reference_error(.return_mismatch, tc.a.child(&node, i),
+					multi.types[i])
+			}
+		}
+		return false
+	}
+	if node.children_count != 1 {
+		return false
+	}
+	payload := if expected is ResultType { expected.base_type } else { expected }
+	return tc.record_null_constant_reference_error(.return_mismatch, tc.a.child(&node, 0),
+		payload)
+}
+
 // check_return validates check return state for types.
 @[direct_array_access]
 fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
@@ -2707,6 +2733,9 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		for i in 0 .. node.children_count {
 			tc.check_node(tc.a.child(&node, i))
 		}
+		return
+	}
+	if tc.record_null_constant_return_errors(node, expected) {
 		return
 	}
 	saved_expected_expr_id := tc.expected_expr_id
@@ -4485,8 +4514,10 @@ fn (mut tc TypeChecker) check_valid_call_preamble(id flat.NodeId, node flat.Node
 	}
 	callee_id := tc.a.child(&node, 0)
 	callee := tc.a.node(callee_id)
-	if callee.kind in [.call, .fn_literal, .lambda_expr] {
-		tc.check_node(callee_id)
+	callee_expr_id := tc.unwrap_paren_expr_id(callee_id)
+	callee_expr := tc.a.node(callee_expr_id)
+	if callee_expr.kind in [.call, .fn_literal, .lambda_expr] {
+		tc.check_node(callee_expr_id)
 	}
 	if callee.kind == .selector && callee.value.starts_with('$') && callee.value.len > 1 {
 		tc.check_dynamic_comptime_method_call(id, node, callee)
@@ -4854,8 +4885,10 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				}
 			}
 		}
-		if callee.kind == .fn_literal || callee.kind == .lambda_expr {
-			tc.check_node(callee_id)
+		callee_expr_id := tc.unwrap_paren_expr_id(callee_id)
+		callee_expr := tc.a.node(callee_expr_id)
+		if callee_expr.kind in [.fn_literal, .lambda_expr] {
+			tc.check_node(callee_expr_id)
 		}
 		if callee.kind == .ident && (callee.value in tc.fn_ret_types
 			|| tc.qualify_fn_name(callee.value) in tc.fn_ret_types) {
@@ -16195,6 +16228,10 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				tc.record_error_at(.call_arg_mismatch, 'literal argument cannot be passed as reference parameter `${reference_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				continue
 			}
+		}
+		if !info.name.starts_with('C.')
+			&& tc.record_null_constant_reference_error(.call_arg_mismatch, arg_id, expected) {
+			continue
 		}
 		if call_arg_numeric_type(expected) && call_arg_numeric_type(actual) && call_argument_type_name(actual) != call_argument_type_name(expected) && !(call_argument_type_name(actual) in [
 			'int',
