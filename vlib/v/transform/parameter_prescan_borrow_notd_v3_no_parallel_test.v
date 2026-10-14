@@ -69,6 +69,7 @@ fn alias_row(row &Row) int {
  alias := row
  return unsafe { alias[0] }
 }
+
 fn escape_row(row &Row) &Row { return row }
 fn take_address(row &Row) &int { return unsafe { &row[0] } }
 fn forward_row(row &Row) int { return read_row(row) }
@@ -92,4 +93,33 @@ fn main() {}
 	}
 	assert parallel.file == serial.file
 	assert parallel.mod == serial.mod
+}
+
+fn test_borrow_summary_dependency_chains_cycles_and_repeated_edges() {
+	path := os.join_path(os.vtmp_dir(), 'borrow_dependency_graph_${os.getpid()}.v')
+	mut source := 'module main\ntype Row = [4]int\n'
+	for i in 0 .. 48 {
+		body := if i == 47 { 'return p[0]' } else { 'return step${i + 1}(p)' }
+		source += 'fn step${i}(p &Row) int { ${body} }\n'
+	}
+	source += 'fn repeated(p &Row) int { return step0(p) + step0(p) }\n'
+	source += 'fn cycle_a(p &Row) int { return cycle_b(p) }\n'
+	source += 'fn cycle_b(p &Row) int { return cycle_a(p) }\n'
+	source += 'fn retained(p &Row) &Row { return p }\n'
+	source += 'fn forward_retained(p &Row) &Row { return retained(p) }\n'
+	source += 'fn independent(p &Row, q &Row) int { return step0(p) + unsafe { retained(q)[0] } }\n'
+	source += 'fn main() {}\n'
+	os.write_file(path, source)!
+	defer { os.rm(path) or {} }
+	for parallel in [false, true] {
+		snapshot := param_prescan_borrow_snapshot(path, parallel)
+		for i in 0 .. 48 {
+			assert snapshot.borrows['step${i}'] == [true], 'step${i}'
+		}
+		assert snapshot.borrows['repeated'] == [true]
+		assert snapshot.borrows['independent'] == [true, false]
+		for name in ['cycle_a', 'cycle_b', 'retained', 'forward_retained'] {
+			assert snapshot.borrows[name].len == 0, name
+		}
+	}
 }
