@@ -37,7 +37,7 @@ const args = arguments()
 const usage = 'Usage: v up [options]\n' +
 	'\n' +
 	'Options:\n' +
-	'  -v                 Print more details about the update.\n' +
+	'  -v                 Print more details, including unchanged cache configurations.\n' +
 	'  -prod              Compile the updated V with the -prod flag.\n' +
 	'  -skills            Refresh the installed agent skills that fell behind.\n' +
 	'  -skip_v_self       Rebuild with make or makev.bat instead of `v self`.\n' +
@@ -161,7 +161,9 @@ fn main() {
 }
 
 fn (app App) refresh_cached_modules(requests []cache_refresh.Request) {
-	cache_refresh.refresh(app.current_vexe_path(), tcc_cache_requests(app.vroot, requests)) or {
+	cache_refresh.refresh(app.current_vexe_path(), tcc_cache_requests(app.vroot, requests),
+		verbose: app.is_verbose
+	) or {
 		eprintln('v up: refreshing cached vlib modules failed: ${err}')
 		exit(1)
 	}
