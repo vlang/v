@@ -61,3 +61,22 @@ fn test_graph_int_keys_disconnected() {
 fn before_int(order []int, a int, b int) bool {
 	return order.index(a) < order.index(b)
 }
+
+fn test_successors_cannot_mutate_graph() {
+	mut g := new_graph[string]()
+	g.add_edge('a', 'b')
+	mut next := g.successors('a')
+	next[0] = 'unknown'
+	next << 'another'
+	assert g.successors('a') == ['b']
+	assert g.topo_sort()! == ['a', 'b']
+}
+
+fn test_parallel_edges_and_empty_graph() {
+	mut g := new_graph[int]()
+	assert g.topo_sort()! == []
+	g.add_edge(1, 2)
+	g.add_edge(1, 2)
+	assert g.topo_sort()! == [1, 2]
+	assert !g.has_cycle()
+}

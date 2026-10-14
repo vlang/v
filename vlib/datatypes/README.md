@@ -36,3 +36,12 @@ smallest of the item and heap contents; an empty heap returns the item unchanged
 `replace(item)` removes the existing minimum before inserting the item and errors on an empty
 heap. `nlargest(n, items)` and `nsmallest(n, items)` return sorted copies with at most `n`
 elements; nonpositive counts return an empty array.
+
+## Directed graphs
+
+`new_graph[T]()` creates a directed graph with V map keys as nodes.
+`add_node` adds an isolated node; `add_edge(from, to)` adds both endpoints implicitly.
+Parallel edges are accepted. `successors(node)` returns an independent array.
+`topo_sort()` returns a result containing an ordering where each edge's source precedes its target.
+`has_cycle()` detects cycles, including self-loops. An empty graph has an empty ordering.
+Cycle errors list nodes that could not be ordered, including nodes downstream of a cycle.

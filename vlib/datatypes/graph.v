@@ -2,8 +2,7 @@ module datatypes
 
 // Graph is a directed graph with topological sorting (Kahn's algorithm). It
 // is the V-idiomatic equivalent of Python's `graphlib`: the core of build
-// systems, DI containers and task schedulers. Node keys need `==` (all
-// integer, float, string and comparable struct types do).
+// systems, DI containers and task schedulers. Node keys must be supported V map key types.
 pub struct Graph[T] {
 mut:
 	nodes map[T]bool
@@ -33,12 +32,12 @@ pub fn (mut g Graph[T]) add_edge(from T, to T) {
 	g.succ[from] = outs
 }
 
-// successors returns the direct successors of v (empty if none).
+// successors returns an independent array of direct successors of v (empty if none).
 pub fn (g &Graph[T]) successors(v T) []T {
 	if v !in g.succ {
 		return []T{}
 	}
-	return g.succ[v]
+	return g.succ[v].clone()
 }
 
 // has_cycle reports whether the graph contains a directed cycle
@@ -49,7 +48,8 @@ pub fn (g &Graph[T]) has_cycle() bool {
 }
 
 // topo_sort returns the nodes in dependency order (dependencies first).
-// Cyclic graphs are an error naming the nodes stuck in the cycle.
+// Cyclic graphs are an error naming nodes that could not be ordered,
+// including successors blocked by a cycle.
 pub fn (g &Graph[T]) topo_sort() ![]T {
 	order, leftover := g.kahn()
 	if leftover.len > 0 {
