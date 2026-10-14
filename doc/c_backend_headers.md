@@ -66,9 +66,9 @@ new program literals and cleanup hooks after source edits.
 Warm builds using `os` also retain system-header ownership, so platform stat macros do not
 conflict with compatibility declarations. Windows standalone and custom-libc builds keep
 their required native layouts.
-Core file mappings retain standalone declarations on supported targets, including native
-mapping flags and the synchronization function signature. Explicit C headers and targets
-without a verified standalone mapping ABI keep platform-header ownership.
+Core file mappings retain standalone declarations on verified 64-bit targets, including native
+mapping flags and the synchronization function signature. Other targets and programs using
+explicit C headers or custom libc headers keep platform-header ownership.
 
 Regular generated C declares interned strings with `_SL(_str_N, "...", byte_length)`.
 The macro expands to a `static const string` with a plain brace initializer. V supplies the byte
