@@ -16,6 +16,9 @@ The C backend emits libc prototypes from bodyless V declarations such as
 `fn C.strlen(const_s &char) usize`. Runtime bindings are marked used so cached modules
 retain their prototypes. Native backends retain C declarations without rooting same-named
 V functions.
+With `-target-libc-headers`, `<errno.h>` owns the errno accessor declarations.
+This avoids conflicting `i32*` prototypes on targets whose `int32_t` is `long`,
+such as ARM newlib.
 Explicit headers for other C libraries remain included. Core SDK headers are also
 restored when another binding requests headers, so native declarations stay authoritative
 regardless of source collection order.
