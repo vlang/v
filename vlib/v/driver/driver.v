@@ -174,6 +174,7 @@ struct V3ModuleCacheState {
 	bundle_sources      []string
 	bundle_source_paths map[string]bool
 mut:
+	c_build_dir               string
 	object_compiler           V3CachedObjectCompiler
 	objects_only              bool // the program unit is compiled and linked with the objects directly: no dylib, no program plan
 	no_program_declarations   bool // nothing reads the declarations of the program unit on its own: no dev dylib, no generic or incremental plan
@@ -12375,7 +12376,7 @@ pub fn run(args []string) {
 		if _ := cache_state_module_name(&cache_state, 'v.reflection') {
 			trace_v3_cache_fallback('runtime reflection needs the original source-file metadata')
 			// Keep the caller's environment visible to compile-time `$env` and `v run`.
-			restart_v3_with_args([v3_internal_force_cache_source_flag])
+			restart_v3_with_args([v3_internal_force_cache_source_flag], '')
 		}
 	}
 	if !no_builtin && v3_builtin_arena_define !in prefs.user_defines
@@ -12650,7 +12651,7 @@ pub fn run(args []string) {
 	has_external_c_inputs := native_inputs.user_supplied.len > 0
 	if cache_state.manager.enabled && has_external_c_inputs {
 		trace_v3_cache_fallback('native C inputs require compilation without header inspection: ${native_inputs.user_supplied}')
-		restart_v3_without_cache()
+		restart_v3_without_cache('')
 	}
 	native_closure := if has_external_c_inputs || native_inputs.module_inputs.len == 0 {
 		V3NativeInputClosure{}
@@ -12669,7 +12670,7 @@ pub fn run(args []string) {
 	}
 	if cache_state.manager.enabled && native_closure.unassignable.len > 0 {
 		trace_v3_cache_fallback('external C inputs cannot be assigned to cache units: ${native_closure.unassignable}')
-		restart_v3_without_cache()
+		restart_v3_without_cache('')
 	}
 
 	mut crun_build_identity := ''
@@ -12831,7 +12832,7 @@ pub fn run(args []string) {
 		if !prepare_v3_cache_external_inputs(mut cache_state, &native_inputs,
 			&native_closure) {
 			trace_v3_cache_fallback('native C inputs require compilation without header inspection')
-			restart_v3_without_cache()
+			restart_v3_without_cache('')
 		}
 		input := if program_executable_input_ready {
 			program_executable_input
@@ -12963,7 +12964,7 @@ pub fn run(args []string) {
 	if should_restart_v3_large_cold_cache(cache_state.manager.enabled, scope_prealloc_stages, a.nodes.len, cgen_cache_hit, generic_cache_hit, incremental_cache_hit) {
 		_ = write_v3_large_cold_cache_marker(large_cold_cache_marker, fallback_report_sources.keys())
 		trace_v3_cache_fallback('cold source graph is too large for scoped cache population')
-		restart_v3_without_cache()
+		restart_v3_without_cache('')
 	}
 	// Exact whole-program cache hits do not consume the generic or incremental
 	// snapshots. Build those AST-wide signatures only on a miss, while retaining
@@ -13505,7 +13506,7 @@ pub fn run(args []string) {
 			if !prepare_v3_cache_external_inputs(mut cache_state, &native_inputs,
 				&native_closure) {
 				trace_v3_cache_fallback('external C inputs cannot be assigned to cache units')
-				restart_v3_without_cache()
+				restart_v3_without_cache('')
 			}
 			mut header_modules := []string{}
 			for module_name, parsed in cache_state.parsed_from_source {
@@ -13520,7 +13521,7 @@ pub fn run(args []string) {
 				}
 			}
 			if invalidate_changed_cache_dependents(mut cache_state, a) {
-				restart_v3_after_cache_invalidation()
+				restart_v3_after_cache_invalidation('')
 			}
 		}
 		// Ownership analysis only exists in `-d ownership` builds and runs
@@ -13587,7 +13588,7 @@ pub fn run(args []string) {
 			if incremental_cache_hit
 				&& incremental_changed_functions_require_reachability_rebuild(a, markused_tc, mut incremental_changed_names, mut used_fns, user_files) {
 				os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
-				restart_v3_after_cache_invalidation()
+				restart_v3_after_cache_invalidation('')
 			}
 		} else if test_files.len > 0 {
 			used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a, markused_tc, test_files)
@@ -14630,6 +14631,7 @@ pub fn run(args []string) {
 			cc_src = os.join_path_single(cc_dir, 'src.c')
 			cc_out = os.join_path_single(cc_dir, cc_output_name)
 		}
+		cache_state.c_build_dir = cc_dir
 		mut published_c_source := cc_src
 		cache_plan_file := if cache_state.manager.enabled {
 			os.join_path_single(cc_dir, 'cache_plan.c')
@@ -14882,7 +14884,7 @@ pub fn run(args []string) {
 			}
 			merged_cached_source := merge_incremental_program_body(incremental_cached_body, cached_prefix, changed_source, incremental_changed_keys) or {
 				os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
-				restart_v3_after_cache_invalidation()
+				restart_v3_after_cache_invalidation(cc_dir)
 				''
 			}
 			merged_source :=
@@ -15225,7 +15227,7 @@ pub fn run(args []string) {
 				|| tcc_link_has_incompatible_objects || target_args.len > 0 || is_c_debug
 				|| dump_c_flags.len > 0 {
 				trace_v3_cache_fallback('the bundled TinyCC cannot build and link the module objects of this program')
-				restart_v3_without_cache()
+				restart_v3_without_cache(cc_dir)
 			}
 			// No flags of the environment: `CFLAGS` and `LDFLAGS` turn the module
 			// cache off (see `no_cache` where they are read), so none reach an object.
@@ -15282,7 +15284,7 @@ pub fn run(args []string) {
 				objects := cache_state.manager.valid_cgen_prepared_objects(cgen_cache_entry, compile_signature) or {
 					if resolve_flag_specific_cache_objects(mut cache_state, a, object_flags_signature + program_suffix, parse_v3_interface_scopes(interface_impl_signature)) {
 						os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
-						restart_v3_after_cache_invalidation()
+						restart_v3_after_cache_invalidation(cc_dir)
 					}
 					resolved_objects := cache_object_paths(cache_state.objects)
 					cache_state.manager.write_cgen_prepared_objects(cgen_cache_entry, compile_signature, resolved_objects) or {}
@@ -15327,7 +15329,7 @@ pub fn run(args []string) {
 							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix, generated_source) {
 							trace_v3_cache_fallback('cached program prefix has stale target thread support')
 							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
-							restart_v3_after_cache_invalidation()
+							restart_v3_after_cache_invalidation(cc_dir)
 						}
 						// An incremental plan holds only the bodies that changed. The wrappers
 						// and the panic frames that select the cached module objects are in the
@@ -15359,7 +15361,7 @@ pub fn run(args []string) {
 							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix, generated_source) {
 							trace_v3_cache_fallback('cached program prefix has stale target thread support')
 							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
-							restart_v3_after_cache_invalidation()
+							restart_v3_after_cache_invalidation(cc_dir)
 						}
 						cached_declarations := os.read_file(generic_cache_entry.declarations) or {
 							eprintln('error reading cached generic declarations ${generic_cache_entry.declarations}: ${err.msg()}')
@@ -15396,7 +15398,7 @@ pub fn run(args []string) {
 							// failure instead of succeeding without publishing the object.
 							trace_v3_cache_fallback('the bundled TinyCC could not build a module object: ${message.all_before('\n')}')
 							cleanup_c_build_dir(cc_dir)
-							restart_v3_without_cache()
+							restart_v3_without_cache(cc_dir)
 						}
 						if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 							cache_plan_file,
@@ -15918,7 +15920,7 @@ pub fn run(args []string) {
 			if checker_notices_printed {
 				restart_args << v3_internal_checker_notices_printed_flag
 			}
-			restart_v3_with_args(restart_args)
+			restart_v3_with_args(restart_args, cc_dir)
 		}
 		if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, tried_tcc, result.exit_code) {
 			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, silent,
@@ -17040,7 +17042,7 @@ fn v3_incremental_program_main_source(cached_prefix string, body_source string) 
 fn prepare_v3_incremental_cached_body(body_path string, prefix_path string, tcc_declarations_path string, cached_prefix string, object_base string, interface_impl_signature string, a &flat.FlatAst, mut state V3ModuleCacheState) !V3PreparedModuleCache {
 	if resolve_flag_specific_cache_objects(mut state, a, object_base, parse_v3_interface_scopes(interface_impl_signature)) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
-		restart_v3_after_cache_invalidation()
+		restart_v3_after_cache_invalidation(state.c_build_dir)
 	}
 	objects := cache_object_paths(state.objects)
 	if !os.is_file(prefix_path) || !os.is_file(tcc_declarations_path) || objects.len == 0 {
@@ -17064,7 +17066,7 @@ fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string,
 	}
 	if resolve_flag_specific_cache_objects(mut state, a, object_base, parse_v3_interface_scopes(interface_impl_signature)) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
-		restart_v3_after_cache_invalidation()
+		restart_v3_after_cache_invalidation(state.c_build_dir)
 	}
 	incremental_c_function_sections(generated_source) or {
 		return error('v3 generic C function sections are unavailable')
@@ -17111,7 +17113,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	scopes := parse_v3_interface_scopes(interface_impl_signature)
 	if resolve_flag_specific_cache_objects(mut state, tc.a, object_base, scopes) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
-		restart_v3_after_cache_invalidation()
+		restart_v3_after_cache_invalidation(state.c_build_dir)
 	}
 	main_body := split.modules['main'] or { '' }
 	program_specializations := split.modules['__v3_program_specializations'] or { '' }
@@ -17296,7 +17298,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		state.objects = object_paths.clone()
 		if resolve_flag_specific_cache_objects(mut state, tc.a, object_base, scopes) {
 			os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
-			restart_v3_after_cache_invalidation()
+			restart_v3_after_cache_invalidation(state.c_build_dir)
 		}
 	}
 
@@ -17942,8 +17944,8 @@ fn invalidate_changed_cache_dependents(mut state V3ModuleCacheState, a &flat.Fla
 	return invalidated
 }
 
-fn restart_v3_after_cache_invalidation() {
-	restart_v3_with_args([])
+fn restart_v3_after_cache_invalidation(build_dir string) {
+	restart_v3_with_args([], build_dir)
 }
 
 fn trace_v3_cache_fallback(reason string) {
@@ -18068,11 +18070,12 @@ fn valid_v3_large_cold_cache_marker(path string) bool {
 	return true
 }
 
-fn restart_v3_without_cache() {
-	restart_v3_with_args(['-nocache'])
+fn restart_v3_without_cache(build_dir string) {
+	restart_v3_with_args(['-nocache'], build_dir)
 }
 
-fn restart_v3_with_args(extra_args []string) {
+fn restart_v3_with_args(extra_args []string, build_dir string) {
+	cleanup_c_build_dir(build_dir)
 	executable := os.executable()
 	mut args := extra_args.clone()
 	if v3_parser_diagnostics_printed(false)
@@ -23822,7 +23825,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 							// restart with all bundle source bodies for the replacement object.
 							if !cache_state.force_source {
 								os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
-								restart_v3_after_cache_invalidation()
+								restart_v3_after_cache_invalidation('')
 							}
 							cache_state.bundle_valid = false
 							cache_state.objects.delete('builtin')

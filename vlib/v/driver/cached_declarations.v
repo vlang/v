@@ -432,7 +432,7 @@ fn restart_v3_with_all_cached_declarations(manager &modulecache.Manager, reason 
 	if notices_printed {
 		args << v3_internal_checker_notices_printed_flag
 	}
-	restart_v3_with_args(args)
+	restart_v3_with_args(args, '')
 }
 
 // restart_v3_for_errors_of_pruned_build starts a build that left functions out
