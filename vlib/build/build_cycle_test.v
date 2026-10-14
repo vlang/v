@@ -23,6 +23,7 @@ fn test_indirect_cycle_is_reported() {
 	// not recurse until the stack overflows, so it runs in a child process
 	dir := os.join_path(os.vtmp_dir(), 'build_cycle_test')
 	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
 	prog := os.join_path(dir, 'cycle_prog.v')
 	os.write_file(prog, cycle_prog)!
 	result := os.exec([@VEXE, 'run', prog])
