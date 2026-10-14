@@ -669,6 +669,10 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 			}
 			conn = t.dial_h1_tcp(req, key, host, port)!
 		} else {
+			if conn.idle_tcp_closed() {
+				conn.close_conn()
+				continue
+			}
 			conn.refresh_timeouts(req)
 		}
 		resp, reusable := conn.exchange(req, raw) or {

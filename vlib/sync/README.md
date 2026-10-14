@@ -30,6 +30,17 @@ select {
 }
 ```
 
+### Concurrent maps
+
+`sync.new_concurrent_map[K, V]()` creates a map with 32 independently locked shards.
+Use `store`, `load`, `load_or_store`, and `delete` for concurrent access. Key types follow
+builtin maps; pointer keys use pointer identity even when their pointed-to data changes.
+`load_or_store` atomically returns the existing value (with `true`) or stores its argument
+(with `false`). `len` visits shards separately and may reflect concurrent changes.
+`range` snapshots each shard before calling the callback, so callbacks can mutate the map.
+It visits each snapshot entry until the callback returns `false`; concurrent additions and
+removals may or may not be reflected. Locks protect map operations, not objects stored as values.
+
 ## Phaser and StampedLock
 
 `new_phaser()` creates a reusable barrier. Register each participating worker before the
@@ -46,6 +57,24 @@ hold a read lock or wait for a writer to finish. Optimistic access does not make
 concurrent reads and writes safe: use atomic data or other synchronization, and validate
 the stamp after reading. Use a regular read lock for non-atomic shared data. Locks are
 not reentrant and must be released once for each corresponding acquisition.
+
+## Latch
+
+`new_latch(n)` creates a one-shot countdown gate, with a nonnegative initial count.
+Each `count_down()` decrements a positive count. `wait()` blocks until the count reaches
+zero; all current and future waiters then pass immediately. Further countdowns do
+nothing. `count()` reads the remaining count under the latch's lock. Construct the latch
+with `new_latch`, and share the returned pointer between workers.
+
+## Parker
+
+Share a `new_parker()` pointer between a worker and its waker. The worker calls `park()`,
+and the waker calls `unpark(worker_id)` with the worker's `sync.thread_id()`. An unpark
+wakes a registered waiter; otherwise it retains one permit for that thread's next park.
+Repeated unparks before a park coalesce into one permit. A wake consumes the current
+park's permit, so another unpark may permit the next park even before the worker resumes.
+Each thread's permits and waits are independent. Keep a Parker scoped to the workers
+using it: permits for exited threads are not automatically removed.
 
 ## OnceLock and LazyLock
 

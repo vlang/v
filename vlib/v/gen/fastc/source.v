@@ -551,9 +551,8 @@ fn fastc_resolve_memo_path_of_real(real_paths []string, prefs &pref.Preferences)
 		return ''
 	}
 	mut hash := u64(14695981039346656037)
-	// The format version keeps compilers that write different memo layouts
-	// from overwriting each other's memo.
-	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-2')
+	// The resolver version separates memo layouts and implicit dependencies.
+	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-3')
 	hash = fastc_fnv_hash(hash, prefs.vroot)
 	hash = fastc_fnv_hash(hash, prefs.target.os)
 	hash = fastc_fnv_hash(hash, prefs.target.arch)
@@ -1580,6 +1579,18 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	}
 	if module_name == '' {
 		module_name = 'main'
+	}
+	if prefs.backend == 'fastc' && prefs.building_v && prefs.target.os == 'linux'
+		&& !(prefs.target.arch == 'amd64' && 'musl' in prefs.user_defines)
+		&& module_name == 'builtin' && path.ends_with('builtin_d_gcboehm.c.v') {
+		// TinyCC's GC helpers require the platform atomic declarations and
+		// library even when the application itself does not import sync.
+		// On musl amd64, TinyCC supplies the helpers and the driver supplies
+		// the fence object; importing stdatomic would add unsupported atomic.S.
+		imports['__fastc_gc_atomic'] = 'sync.stdatomic'
+		if 'sync.stdatomic' !in import_order {
+			import_order << 'sync.stdatomic'
+		}
 	}
 	if prefs.building_v && !prefs.selfhost && fastc_source_uses_captures(source, prefs) {
 		imports['__fastc_closure'] = 'builtin.closure'

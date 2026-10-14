@@ -566,6 +566,16 @@ extern char **environ;
 const c_selfhost_post_directives = r'#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
 #define pthread_rwlockattr_setkind_np(a, b) (0)
 #endif
+#if defined(__linux__)
+/* These builtin APIs are not declared by the TinyCC C99 system headers. */
+#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)
+extern int backtrace(void **, int);
+extern char **backtrace_symbols(void *const *, int);
+extern void backtrace_symbols_fd(void *const *, int, int);
+#endif
+extern int gettid(void);
+extern void *aligned_alloc(size_t, size_t);
+#endif
 #ifndef memory_order_relaxed
 #define memory_order_relaxed 0
 #define memory_order_acquire 2
@@ -1133,6 +1143,7 @@ fn fastc_join_c_pieces(pieces []string) string {
 }
 
 struct FastcGlobalDeclarations {
+	uses_pthread_tls    bool
 	declarations        string
 	module_initializers map[string]string
 	composite_types     map[string]bool
@@ -1301,6 +1312,7 @@ struct Parser {
 	has_startup_inits bool
 	has_cleanup_hooks bool
 mut:
+	uses_pthread_tls     bool
 	path                 string
 	source_offset        int
 	source_line_offset   int
@@ -2568,7 +2580,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		c_flags = c_flags.filter(!fastc_flag_is_native_input(it) || it in required_native_inputs)
 	}
-	return pieces, spawn_typedefs.len > 0, c_flags
+	return pieces, spawn_typedefs.len > 0 || global_output.uses_pthread_tls, c_flags
 }
 
 fn fastc_collect_native_name_ids(text string, ids map[string]int, mut refs []int) {
