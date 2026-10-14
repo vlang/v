@@ -1087,7 +1087,7 @@ fn (g &FlatGen) ownership_free_call(ptr string) string {
 		return '__v_thread_free(${ptr});'
 	}
 	if 'gcboehm' in g.compile_defines {
-		return 'GC_FREE(${ptr});'
+		return 'v_gc_free(${ptr});'
 	}
 	return 'free(${ptr});'
 }
@@ -3918,8 +3918,8 @@ fn (mut g FlatGen) gen_test_assert_failure(node flat.Node) {
 	g.gen_assert_value_string(rhs_id)
 	g.writeln(';')
 	g.writeln('v3_eprint_lit("   > assert ${c_escape(expression)}\\n");')
-	g.writeln('fprintf(stderr, "     Left value (len: %lld): `%.*s`\\n", (long long)${lhs}.len, (int)${lhs}.len, (char*)${lhs}.str);')
-	g.writeln('fprintf(stderr, "    Right value (len: %lld): `%.*s`\\n", (long long)${rhs}.len, (int)${rhs}.len, (char*)${rhs}.str);')
+	g.writeln('v3_eprintf("     Left value (len: %lld): `%.*s`\\n", (long long)${lhs}.len, (int)${lhs}.len, (char*)${lhs}.str);')
+	g.writeln('v3_eprintf("    Right value (len: %lld): `%.*s`\\n", (long long)${rhs}.len, (int)${rhs}.len, (char*)${rhs}.str);')
 	g.gen_test_assert_message(node)
 	g.writeln('v3_eprint_lit("\\n");')
 }
@@ -3930,7 +3930,7 @@ fn (mut g FlatGen) gen_test_assert_message(node flat.Node) {
 	g.write('string ${message} = ')
 	g.gen_expr(message_id)
 	g.writeln(';')
-	g.writeln('fprintf(stderr, "        Message: %.*s\\n", (int)${message}.len, (char*)${message}.str);')
+	g.writeln('v3_eprintf("        Message: %.*s\\n", (int)${message}.len, (char*)${message}.str);')
 }
 
 // gen_assert_failure reports a failed assert outside of test builds, in the format of
@@ -3955,7 +3955,7 @@ fn (mut g FlatGen) gen_assert_failure(node flat.Node) {
 		g.write('string ${message} = ')
 		g.gen_expr(message_id)
 		g.writeln(';')
-		g.writeln('fprintf(stderr, "      message: %.*s\\n", (int)${message}.len, (char*)${message}.str);')
+		g.writeln('v3_eprintf("      message: %.*s\\n", (int)${message}.len, (char*)${message}.str);')
 	}
 	if !g.cur_fn_assert_continues {
 		g.writeln('v3_eprint_lit("V panic: Assertion failed...\\n");')
@@ -3985,14 +3985,14 @@ fn (mut g FlatGen) gen_assert_failure_value(prefix string, id flat.NodeId, label
 	g.gen_assert_value_string(id)
 	g.writeln(';')
 	if label.len == 0 {
-		g.writeln('fprintf(stderr, "%s: %.*s\\n", "${c_escape(prefix)}", (int)${value}.len, (char*)${value}.str);')
+		g.writeln('v3_eprintf("%s: %.*s\\n", "${c_escape(prefix)}", (int)${value}.len, (char*)${value}.str);')
 		return
 	}
 	escaped_label := c_escape(label)
 	g.writeln('if (${value}.len == ${label.len} && memcmp(${value}.str, "${escaped_label}", ${label.len}) == 0) {')
 	g.writeln('\tv3_eprint_lit("${c_escape(prefix)}: ${escaped_label}\\n");')
 	g.writeln('} else {')
-	g.writeln('\tfprintf(stderr, "%s: %s = %.*s\\n", "${c_escape(prefix)}", "${escaped_label}", (int)${value}.len, (char*)${value}.str);')
+	g.writeln('\tv3_eprintf("%s: %s = %.*s\\n", "${c_escape(prefix)}", "${escaped_label}", (int)${value}.len, (char*)${value}.str);')
 	g.writeln('}')
 }
 
@@ -7572,26 +7572,32 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			if node.typ.len > 0 {
 				decl_type := g.tc.parse_resolution_type(node.typ)
-				if _ := array_like_type(decl_type) {
-					rhs_v_type = decl_type
-				} else if _ := array_fixed_type(decl_type) {
-					rhs_v_type = decl_type
+				if !g.type_contains_generic_placeholder(decl_type) {
+					if _ := array_like_type(decl_type) {
+						rhs_v_type = decl_type
+					} else if _ := array_fixed_type(decl_type) {
+						rhs_v_type = decl_type
+					}
 				}
 			}
 			if lhs.typ.len > 0 {
 				lhs_decl_type := g.parse_node_type(&lhs)
-				if _ := array_like_type(lhs_decl_type) {
-					rhs_v_type = lhs_decl_type
-				} else if _ := array_fixed_type(lhs_decl_type) {
-					rhs_v_type = lhs_decl_type
+				if !g.type_contains_generic_placeholder(lhs_decl_type) {
+					if _ := array_like_type(lhs_decl_type) {
+						rhs_v_type = lhs_decl_type
+					} else if _ := array_fixed_type(lhs_decl_type) {
+						rhs_v_type = lhs_decl_type
+					}
 				}
 			}
 			if lhs.kind == .ident {
 				lhs_type := g.usable_expr_type(lhs_id)
-				if _ := array_like_type(lhs_type) {
-					rhs_v_type = lhs_type
-				} else if _ := array_fixed_type(lhs_type) {
-					rhs_v_type = lhs_type
+				if !g.type_contains_generic_placeholder(lhs_type) {
+					if _ := array_like_type(lhs_type) {
+						rhs_v_type = lhs_type
+					} else if _ := array_fixed_type(lhs_type) {
+						rhs_v_type = lhs_type
+					}
 				}
 			}
 			if arr := array_like_type(rhs_v_type) {
@@ -10501,7 +10507,7 @@ fn (mut g FlatGen) gen_test_propagation_failure(node flat.Node, is_result bool) 
 	err_msg := g.tmp_name()
 	message := if is_result { 'IError__msg(&err)' } else { g.interface_str_lit('none') }
 	g.write('string ${err_msg} = ${message}; ')
-	g.write('fprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(position.filename)}", ${position.line}, "${c_escape(g.cur_fn_name)}", ${err_msg}.len, ${err_msg}.str); ')
+	g.write('v3_eprintf("%s:%d: fn %s failed propagation with error: %.*s\\n", "${c_escape(position.filename)}", ${position.line}, "${c_escape(g.cur_fn_name)}", ${err_msg}.len, ${err_msg}.str); ')
 	g.write('__test_failures++; return;')
 }
 
