@@ -67,7 +67,7 @@ pub fn (mut z Zipf) next() int {
 	mut lo := 0
 	mut hi := z.cdf.len - 1
 	for lo < hi {
-		mid := (lo + hi) / 2
+		mid := lo + (hi - lo) / 2
 		if r < z.cdf[mid] {
 			hi = mid
 		} else {
