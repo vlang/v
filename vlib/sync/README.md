@@ -75,3 +75,20 @@ Repeated unparks before a park coalesce into one permit. A wake consumes the cur
 park's permit, so another unpark may permit the next park even before the worker resumes.
 Each thread's permits and waits are independent. Keep a Parker scoped to the workers
 using it: permits for exited threads are not automatically removed.
+
+## OnceLock and LazyLock
+
+`new_once_lock[T]()` creates an initially empty cell. `set(value)` stores the first value
+and returns `true`; subsequent sets return `false` and keep that value. `get()` returns
+`none` before initialization. `get_or_init(f)` runs one initializer and returns its value
+to every caller. All three methods acquire the same mutex, so a `get()` during
+initialization waits for the initializer to finish. The initializer must not call any
+method on the same cell, since that would deadlock.
+
+`new_lazy_lock(f)` binds an initializer to a cell. Its `get()` runs the initializer on
+first use and returns the cached value thereafter. Concurrent calls wait for the same
+initialization. The initializer must not reenter `get()` on the same LazyLock.
+
+Construct these cells with their factory functions and share the returned pointers.
+The locks protect initialization and retrieval; a returned pointer, map, or array may
+alias the stored data. Synchronize any later mutation of shared returned data separately.
