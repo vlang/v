@@ -224,6 +224,77 @@ fn test_day_of_week() {
 	}
 }
 
+fn test_day_of_week_in_years_before_1() {
+	// The proleptic Gregorian calendar, with year 0 for 1 BC and -1 for 2 BC:
+	assert time.day_of_week(1, 1, 1) == 1 // Monday
+	assert time.day_of_week(0, 12, 31) == 7
+	assert time.day_of_week(0, 3, 1) == 3
+	assert time.day_of_week(0, 2, 29) == 2
+	assert time.day_of_week(0, 1, 1) == 6 // Saturday
+	assert time.day_of_week(-1, 12, 31) == 5 // Friday
+	assert time.day_of_week(-1, 1, 1) == 5
+	assert time.day_of_week(-4, 1, 1) == 1
+	assert time.day_of_week(-100, 1, 1) == 1
+	assert time.day_of_week(-400, 3, 1) == 3
+	assert time.day_of_week(-401, 12, 31) == 5
+	t := time.Time{
+		year:  0
+		month: 1
+		day:   1
+	}
+	assert t.day_of_week() == 6
+	assert t.weekday_str() == 'Sat'
+	assert t.long_weekday_str() == 'Saturday'
+	assert t.custom_format('d c ddd') == '6 6 Sat'
+	assert time.unix(-62167219200).day_of_week() == 6
+}
+
+fn test_day_of_week_and_week_of_year_repeat_every_400_years() {
+	// 400 Gregorian years are 146097 days, which is 20871 whole weeks, so that the years
+	// -800 .. 0 have to match the years 400 .. 1200.
+	for year in -800 .. 1 {
+		for month in 1 .. 13 {
+			for day in 1 .. time.days_in_month(month, year)! + 1 {
+				t := time.Time{
+					year:  year
+					month: month
+					day:   day
+				}
+				later := time.Time{
+					...t
+					year: year + 1200
+				}
+				dow := t.day_of_week()
+				assert dow >= 1 && dow <= 7, '${year} ${month} ${day}'
+				assert dow == later.day_of_week(), '${year} ${month} ${day}'
+				assert t.week_of_year() == later.week_of_year(), '${year} ${month} ${day}'
+			}
+		}
+	}
+}
+
+fn test_day_of_week_follows_the_day_count() {
+	// Walk the calendar one day at a time, from the year -800 to the Unix epoch and a year
+	// past it. Each day has to be 1 day and 1 weekday after the previous one.
+	mut days := time.days_from_unix_epoch(-800, 1, 1)
+	mut dow := time.day_of_week(-800, 1, 1)
+	for year in -800 .. 1971 {
+		for month in 1 .. 13 {
+			for day in 1 .. time.days_in_month(month, year)! + 1 {
+				assert time.days_from_unix_epoch(year, month, day) == days, '${year} ${month} ${day}'
+				assert time.day_of_week(year, month, day) == dow, '${year} ${month} ${day}'
+				days++
+				dow = dow % 7 + 1
+			}
+		}
+	}
+	// The walk ends on 1971-01-01, a Friday, 365 days after the epoch (a Thursday).
+	assert days == 365
+	assert dow == 5
+	assert time.days_from_unix_epoch(1970, 1, 1) == 0
+	assert time.day_of_week(1970, 1, 1) == 4
+}
+
 fn test_week_of_year() {
 	// As windows use msvcrt.dll, which `strftime` does not support %V, so skip test
 	// TODO: newer version windows use ucrtbase.dll, which support %V
@@ -250,6 +321,48 @@ fn test_week_of_year() {
 	}
 	assert t1.week_of_year() == 10
 	assert t1.add_days(1).week_of_year() == 10
+}
+
+fn test_week_of_year_in_years_before_1() {
+	// [year, month, day, ISO 8601 week], around the year boundaries at and below year 0
+	dates := [
+		[1, 1, 1, 1], // Monday
+		[0, 12, 31, 52], // Sunday
+		[0, 12, 25, 52], // Monday
+		[0, 12, 24, 51],
+		[0, 1, 3, 1], // Monday
+		[0, 1, 2, 52],
+		[0, 1, 1, 52], // Saturday, in the last week of the year -1
+		[-1, 12, 31, 52],
+		[-1, 12, 27, 52], // Monday
+		[-1, 12, 26, 51],
+		[-1, 1, 4, 1], // Monday
+		[-1, 1, 3, 53],
+		[-1, 1, 1, 53], // Friday, in the last week of the year -2, which has 53 weeks
+		[-2, 12, 31, 53], // Thursday
+		[-2, 12, 28, 53], // Monday
+		[-2, 12, 27, 52],
+		[-3, 1, 1, 1], // Wednesday
+		[-4, 12, 31, 1], // Tuesday, in the first week of the year -3
+		[-4, 12, 30, 1], // Monday
+		[-4, 12, 29, 52],
+		[-4, 1, 1, 1], // Monday
+		[-5, 12, 31, 52],
+		[-100, 1, 1, 1], // Monday
+		[-101, 12, 31, 52],
+		[-400, 3, 1, 9],
+		[-400, 1, 1, 52], // Saturday
+		[-401, 12, 31, 52],
+	]
+	for date in dates {
+		t := time.Time{
+			year:  date[0]
+			month: date[1]
+			day:   date[2]
+		}
+		assert t.week_of_year() == date[3], '${date}'
+		assert t.custom_format('w ww') == '${date[3]} ${date[3]:02}', '${date}'
+	}
 }
 
 fn test_year_day() {
@@ -502,14 +615,16 @@ fn test_parse_weekday() {
 
 fn test_empty_time() {
 	t := time.Time{}
-	assert t.unix() == -62167132800
+	// 0000-01-01 00:00:00 UTC; the year 0 is a leap year, 366 days before 0001-01-01
+	assert t.unix() == -62167219200
+	assert time.unix(t.unix()).format_rfc3339() == '0000-01-01T00:00:00.000Z'
 	assert t.format_rfc3339() == '0000-01-01T00:00:00.000Z'
 	assert t == time.parse_rfc3339(t.format_rfc3339())!
 	assert t.custom_format('MMMM YYYY') == 'January 0000'
 }
 
 fn test_pre_epoch_unix_calculation() {
-	assert time.new(time.Time{}).unix() == -62167132800
+	assert time.new(time.Time{}).unix() == -62167219200
 	assert time.new(
 		year:  1
 		month: 1
