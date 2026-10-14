@@ -45,6 +45,12 @@ collections. These settings do not make live objects eligible for collection.
 The address is hexadecimal with the `0x` prefix: `println(voidptr(u64(42)))` prints `0x2a`.
 String interpolation of a `voidptr` uses the hexadecimal address without the prefix.
 
+### Splitting by characters
+
+`split_any` and `rsplit_any` match complete UTF-8 runes from their delimiter string.
+Malformed bytes are treated as U+FFFD, matching `string.runes()`. The reverse form
+returns parts in reverse order.
+
 ### String indexing
 
 String indexing checks signed and unsigned positions before reading a byte, including `i64`

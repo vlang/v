@@ -993,7 +993,7 @@ fn (s string) plus_two(a string, b string) string {
 	return res
 }
 
-// split_any splits the string to an array by any of the `delim` chars.
+// split_any splits the string to an array by any of the UTF-8 runes in `delim`.
 // If the delimiter string is empty then `.split()` is used.
 // Example: assert "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
 @[direct_array_access]
@@ -1008,14 +1008,22 @@ pub fn (s string) split_any(delim string) []string {
 		if delim.len <= 0 {
 			return s.split('')
 		}
-		for index, ch in s {
-			for delim_ch in delim {
-				if ch == delim_ch {
-					res << s[i..index]
-					i = index + 1
+		delim_runes := delim.runes()
+		mut j := 0
+		for j < s.len {
+			r, char_len := utf8_decode_rune(unsafe { &s.str[j] }, s.len - j)
+			mut is_delim := false
+			for delim_rune in delim_runes {
+				if r == delim_rune {
+					is_delim = true
 					break
 				}
 			}
+			if is_delim {
+				res << s[i..j]
+				i = j + char_len
+			}
+			j += char_len
 		}
 		if i < s.len {
 			res << s[i..]
@@ -1024,7 +1032,7 @@ pub fn (s string) split_any(delim string) []string {
 	return res
 }
 
-// rsplit_any splits the string to an array by any of the `delim` chars in reverse order.
+// rsplit_any splits the string by UTF-8 runes in `delim`, in reverse order.
 // If the delimiter string is empty then `.rsplit()` is used.
 // Example: assert "first row\nsecond row".rsplit_any(" \n") == ['row', 'second', 'row', 'first']
 @[direct_array_access]
@@ -1038,15 +1046,31 @@ pub fn (s string) rsplit_any(delim string) []string {
 			return s.rsplit('')
 		}
 		mut rbound := s.len
+		delim_runes := delim.runes()
 		for i >= 0 {
-			for delim_ch in delim {
-				if s[i] == delim_ch {
-					res << s[i + 1..rbound]
-					rbound = i
+			// find the start of the rune ending at byte `i`
+			mut start := i
+			for start > 0 && i - start < 3 && utf8_is_continuation(s[start]) {
+				start--
+			}
+			mut r, mut char_len := utf8_decode_rune(unsafe { &s.str[start] }, s.len - start)
+			if start + char_len != i + 1 {
+				// Decode exactly one in-bounds byte of the malformed suffix as a replacement.
+				start = i
+				r, char_len = utf8_decode_rune(unsafe { &s.str[start] }, 1)
+			}
+			mut is_delim := false
+			for delim_rune in delim_runes {
+				if r == delim_rune {
+					is_delim = true
 					break
 				}
 			}
-			i--
+			if is_delim {
+				res << s[start + char_len..rbound]
+				rbound = start
+			}
+			i = start - 1
 		}
 		if rbound > 0 {
 			res << s[..rbound]
