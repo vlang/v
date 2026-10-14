@@ -5577,8 +5577,8 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 		'builtin/closure/closure_windows.c.v' { return include_arg == '<synchapi.h>' }
 		'os/fd.c.v' { return include_arg == '<winsock2.h>' }
 		'os/mmap_nix.c.v' {
-			return g.target.os in ['macos', 'linux', 'android', 'termux', 'freebsd', 'openbsd',
-				'dragonfly']
+			return g.target.pointer_bits == 64 && g.target.os in ['macos', 'linux', 'android',
+				'termux', 'freebsd', 'openbsd', 'dragonfly']
 				&& include_arg == '<sys/mman.h>'
 		}
 		'os/os_stat_windows.c.v' { return include_arg == '<sys/stat.h>' }

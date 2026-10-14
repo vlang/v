@@ -15,6 +15,12 @@ fn test_mmap_header_ownership_is_limited_to_supported_shipped_bindings() {
 		assert !g.core_native_header_is_redeclared(source, '<custom.h>'), target
 		assert !g.core_native_header_is_redeclared('/project/os/mmap_nix.c.v', '<sys/mman.h>'), target
 	}
+	for target in ['macos', 'linux', 'freebsd', 'openbsd', 'dragonfly'] {
+		for arch in ['x86', 'arm32'] {
+			g.set_target(pref.target_from(target, arch)!)
+			assert !g.core_native_header_is_redeclared(source, '<sys/mman.h>'), '${target}/${arch}'
+		}
+	}
 	for target in ['qnx', 'netbsd', 'solaris', 'haiku', 'windows'] {
 		g.set_target(pref.target_from(target, 'amd64')!)
 		assert !g.core_native_header_is_redeclared(source, '<sys/mman.h>'), target
@@ -137,5 +143,22 @@ fn main() {
 		run := cmdexec.run(executable, [data_file])
 		assert run.exit_code == 0, run.output
 		assert run.output == 'mapped and synced\n', run.output
+	}
+}
+
+fn test_32_bit_bsd_mmap_uses_the_native_sdk_offset_type() {
+	root := os.join_path(os.vtmp_dir(), 'mmap_bsd32_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	c_file := os.join_path(root, 'main.c')
+	os.write_file(source, 'import os\nfn main() {\n mut mapping := os.mmap_create("mapped", 4096) or { panic(err) }\n mapping.sync() or { panic(err) }\n mapping.close()\n}\n')!
+	for target in ['freebsd', 'openbsd', 'dragonfly'] {
+		generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-os', target, '-arch', 'x86',
+			'-o', c_file, source])
+		assert generated.exit_code == 0, generated.output
+		code := os.read_file(c_file)!
+		assert code.contains('#include <sys/mman.h>'), '${target}: the SDK must own the 64-bit off_t argument'
+		assert !code.contains('void* mmap('), '${target}: do not emit the pointer-width V fallback beside the SDK'
 	}
 }
