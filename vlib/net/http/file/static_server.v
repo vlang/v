@@ -77,8 +77,19 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 	mut uri_path := url.all_after_first('/').all_before('?').trim_right('/')
 	requested_file_path :=
 		os.norm_path(os.real_path(os.join_path_single(h.params.folder, uri_path)))
-	if !requested_file_path.starts_with(h.params.folder) {
-		log.warn('forbidden request; base folder: ${h.params.folder}, requested_file_path: ${requested_file_path}, ')
+	folder_prefix := h.params.folder.trim_right(os.path_separator) + os.path_separator
+	outside_folder := requested_file_path != h.params.folder
+		&& !requested_file_path.starts_with(folder_prefix)
+	mut index_file_path := ''
+	if !outside_folder && os.is_dir(requested_file_path) && h.params.index_file != '' {
+		index_file_path = os.norm_path(os.real_path(os.join_path_single(requested_file_path,
+			h.params.index_file)))
+	}
+	outside_index := index_file_path != '' && index_file_path != h.params.folder
+		&& !index_file_path.starts_with(folder_prefix)
+	if outside_folder || outside_index {
+		refused_path := if outside_folder { requested_file_path } else { index_file_path }
+		log.warn('forbidden request; base folder: ${h.params.folder}, requested_file_path: ${refused_path}, ')
 		res.set_status(.forbidden)
 		res.body = '<h1>forbidden</h1>'
 		res.header.add(.content_type, 'text/html; charset=utf-8')
@@ -94,7 +105,7 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 	mut body := ''
 	mut content_type := 'text/html; charset=utf-8'
 	if os.is_dir(requested_file_path) {
-		ipath := os.join_path_single(requested_file_path, h.params.index_file)
+		ipath := index_file_path
 		if h.params.auto_index {
 			if h.params.index_file == '' {
 				body = get_folder_index_html(requested_file_path, uri_path, h.params.filter_myexe)

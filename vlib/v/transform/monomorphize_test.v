@@ -6,6 +6,36 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_generic_declaration_index_preserves_appended_templates_and_erasure() {
+	path := os.join_path(os.vtmp_dir(), 'generic_decl_index_${os.getpid()}.v')
+	os.write_file(path, 'module source\nstruct Box[T] { value T }\ntype Choice[T] = T | string\n')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	assert tc.top_level_idx.len > 0
+	a.add_val(.file, 'appended.v')
+	a.add_val(.module_decl, 'later')
+	mut appended := flat.Node{ kind: .struct_decl, value: 'Added' }
+	appended.set_generic_params(['T'])
+	added := a.add_node(appended)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	indexed_structs := t.collect_generic_struct_decls()
+	indexed_sums := t.collect_generic_sum_decls()
+	assert 'source.Box' in indexed_structs
+	assert indexed_structs['source.Box'].file == path
+	assert indexed_structs['later.Added'].id == added
+	assert indexed_structs['later.Added'].file == 'appended.v'
+	assert indexed_sums['source.Choice'].file == path
+	tc.top_level_idx.clear()
+	assert t.collect_generic_struct_decls() == indexed_structs
+	assert t.collect_generic_sum_decls() == indexed_sums
+	t.set_node(int(added), flat.Node{})
+	assert 'later.Added' !in t.collect_generic_struct_decls()
+}
+
 fn test_node_context_cache_growth_preserves_ids_and_initializes_new_slots() {
 	mut cache := []u16{}
 	grow_node_context_cache(mut cache, 3, 8)

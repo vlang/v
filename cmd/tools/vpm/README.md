@@ -154,3 +154,9 @@ Registry-qualified dependency keys remain distinct in lock data.
 The candidate search behind `resolve_with_pubgrub` is test-only: it delegates to the consistent
 backtracking search, which the test suite exercises. Dependency constraints are checked in both
 directions; a complete conflict-driven PubGrub algorithm is pending.
+
+On Windows, VPM enables Git `core.longpaths` for the Git processes it starts. Existing
+`GIT_CONFIG_PARAMETERS` and indexed `GIT_CONFIG_*` entries are preserved, with the long-path
+setting appended using the assignment syntax supported before Git 2.31. Invalid or unextendable
+indexed counts are left unchanged and reported.
+Local Windows `file:///C:/...` origins compare consistently with ordinary drive paths.

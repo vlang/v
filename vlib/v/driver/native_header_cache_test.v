@@ -9,6 +9,46 @@ import os
 import time
 import crypto.sha256
 
+fn test_tcc_dependency_scan_tracks_native_helper_headers() {
+	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(tcc) {
+		return
+	}
+	if cmdexec.run(tcc, ['-v']).exit_code != 0 {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'tcc_native_dependencies_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'helper.h')
+	source := os.join_path(root, 'helper.c')
+	os.write_file(header, '#define HELPER_VALUE 42\n')!
+	os.write_file(source, '#include "helper.h"\nint helper(void) { return HELPER_VALUE; }\n')!
+	deps := c_object_dependencies(tcc, [], source)
+	assert !deps.used_fallback
+	assert source in deps.files
+	assert header in deps.files
+}
+
+fn test_macos_tcc_accepts_generated_c_objects_but_rejects_foreign_objects() {
+	root := os.join_path(os.vtmp_dir(), 'tcc_object_provenance_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'helper.c')
+	request := os.join_path(root, 'helper.o')
+	resolved := [os.join_path(root, 'cache', 'helper_content_hash.o')]
+	os.write_file(source, 'int helper(void) { return 42; }\n')!
+	assert !v3_tcc_link_has_incompatible_objects(resolved, [request], '/tools/tcc.exe')
+	assert v3_tcc_link_has_incompatible_objects(resolved, [request], 'clang')
+	assert v3_tcc_link_has_incompatible_objects(resolved, [], '/tools/tcc.exe')
+	os.write_file(request, 'prebuilt object')!
+	assert v3_tcc_link_has_incompatible_objects(resolved, [request], '/tools/tcc.exe')
+}
+
 fn native_inputs_of(a &flat.FlatAst, user_c_flags []string) cgen.CacheNativeInputs {
 	return cgen.cache_native_inputs(a, @VEXEROOT, pref.host_target(), user_c_flags, map[string]string{},
 		map[string]bool{})
@@ -456,7 +496,7 @@ fn test_cached_signal_header_has_one_owner_with_shared_program_declarations() ! 
 			false))!
 		os.write_file(declarations_path, tcc_declarations)!
 		os.write_file(body_path, body)!
-		os.write_file(incremental_path, v3_incremental_main_source(declarations_path, body_path))!
+		os.write_file(incremental_path, v3_incremental_main_source(declarations_path, tcc_declarations, body))!
 		// A cached combined source may later be split for parallel compilation.
 		// The owner prelude copied into its declaration header cannot promote a body unit.
 		parallel_header, safe := v3_parallel_c_declaration_header(owner_source, []string{},
@@ -513,4 +553,28 @@ fn test_only_declaration_headers_are_replicated_into_cached_objects() {
 	assert !modulecache.c_source_is_replicable('static int foo_counters[FOO(1)];\n')
 	assert modulecache.c_source_is_replicable('static int foo_helper(int x);\n')
 	assert modulecache.c_source_is_replicable('static int foo_helper(int a[sizeof(int)]);\n')
+}
+
+fn test_incremental_program_keeps_one_owner_for_cached_and_new_literals() ! {
+	root := os.join_path(os.vtmp_dir(), 'incremental_literal_owner_${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	declarations := 'typedef struct { const char* str; int len; int literal; } string;\nstatic const string _v3_lit_cached = {"cached", 6, 1};\nstatic inline int cached_length(void) { return _v3_lit_cached.len; }\n'
+	declarations_path := os.join_path(root, 'declarations.h')
+	os.write_file(declarations_path, declarations)!
+	for length in [3, 7] {
+		// Inline prefix code must keep its storage before the body, while each
+		// edited body owns its new literal. The cached source remains reusable.
+		body := 'static const string _v3_lit_cached = {"cached", 6, 1};\nstatic const string _v3_lit_new = {"new", ${length}, 1};\nint main(void) { return cached_length() != 6 || _v3_lit_cached.len != 6 || _v3_lit_new.len != ${length}; }\n'
+		combined := v3_incremental_main_source(declarations_path, declarations, body)
+		assert !combined.contains('static const string _v3_lit_cached =')
+		assert combined.contains('static const string _v3_lit_new =')
+		assert os.read_file(declarations_path)! == declarations
+		source := os.join_path(root, 'main.c')
+		binary := os.join_path(root, 'main')
+		os.write_file(source, combined)!
+		compiled := cmdexec.run('cc', ['-std=c11', '-Werror', '-o', binary, source])
+		assert compiled.exit_code == 0, compiled.output
+		assert cmdexec.run(binary, []string{}).exit_code == 0
+	}
 }

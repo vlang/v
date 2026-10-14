@@ -72,3 +72,57 @@ fn test_try_lock_rwmutex() {
 	mx.unlock() // you must unlock it, after try_wlock success
 	mx.destroy()
 }
+
+struct ZeroRwHolder {
+mut:
+	rw sync.RwMutex
+}
+
+fn test_try_lock_zero_value_rwmutex() {
+	$if windows {
+		$if !windows_7 ? {
+			return
+		}
+	}
+	// try_rlock/try_wlock must work on a zero-value RwMutex like lock/rlock
+	// do: all four go through lazy_init(), which also installs the
+	// writer-preference kind instead of the libc default.
+	// See https://github.com/vlang/v/issues/30146
+	mut h := &ZeroRwHolder{}
+	assert h.rw.try_wlock() == true
+	h.rw.unlock()
+	assert h.rw.try_rlock() == true
+	h.rw.runlock()
+	h.rw.destroy()
+}
+
+fn try_zero_rw_read(mut holder ZeroRwHolder, ready chan bool, start chan bool) bool {
+	ready <- true
+	_ := <-start
+	locked := holder.rw.try_rlock()
+	if locked {
+		holder.rw.runlock()
+	}
+	return locked
+}
+
+fn test_concurrent_try_read_lock_on_zero_value() {
+	$if windows {
+		return
+	}
+	for _ in 0 .. 20 {
+		mut holder := &ZeroRwHolder{}
+		ready := chan bool{cap: 8}
+		start := chan bool{cap: 8}
+		mut readers := []thread bool{}
+		for _ in 0 .. 8 {
+			readers << spawn try_zero_rw_read(mut holder, ready, start)
+		}
+		for _ in 0 .. 8 { _ := <-ready }
+		for _ in 0 .. 8 { start <- true }
+		for reader in readers {
+			assert reader.wait()
+		}
+		holder.rw.destroy()
+	}
+}

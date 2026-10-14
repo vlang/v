@@ -8,6 +8,9 @@ mut:
 	// should_run caches the result of should_run from tasks.
 	should_run map[string]bool
 	tasks      []Task
+	// visiting holds the names of the tasks on the current dependency
+	// stack, so an indirect cycle is reported instead of recursing.
+	visiting []string
 pub mut:
 	// default is the default task to run when no others are provided.
 	default ?string
@@ -76,6 +79,7 @@ pub fn (mut context BuildContext) task(config TaskParams) {
 		name:       config.name
 		help:       config.help
 		depends:    config.depends
+		repeatable: config.repeatable
 	}
 }
 
@@ -120,6 +124,16 @@ pub fn (mut task Task) exec(mut context BuildContext) {
 	if task.did_run && !task.repeatable {
 		println(': ${task.name} (skipped)')
 		return
+	}
+	if task.name in context.visiting {
+		mut cycle := context.visiting.clone()
+		cycle << task.name
+		eprintln('error: cyclic task dependency detected: ${cycle.join(' -> ')}')
+		exit(1)
+	}
+	context.visiting << task.name
+	defer {
+		context.visiting.pop()
 	}
 
 	if task.name !in context.should_run {

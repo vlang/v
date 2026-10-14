@@ -5571,11 +5571,15 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 
 fn write_comptime_cond_string(mut out strings.Builder, value string) {
 	out.write_u8(`'`)
-	for i := 0; i < value.len; i++ {
-		if value[i] == `\\` || value[i] == `'` {
-			out.write_u8(`\\`)
+	if !value.contains('\\') && !value.contains("'") {
+		out.write_string(value)
+	} else {
+		for i := 0; i < value.len; i++ {
+			if value[i] == `\\` || value[i] == `'` {
+				out.write_u8(`\\`)
+			}
+			out.write_u8(value[i])
 		}
-		out.write_u8(value[i])
 	}
 	out.write_u8(`'`)
 }
@@ -18560,11 +18564,21 @@ pub fn (mut p Parser) resolve_comptime_string_declarations() map[int]bool {
 	}
 	p.comptime_local_values = map[string]string{}
 	p.local_binding_counts = map[string]int{}
+	mut file_ids := p.a.file_node_ids.clone()
+	if file_ids.len == 0 || p.a.file_index_incomplete {
+		file_ids = []i32{}
+		for i, node in p.a.nodes {
+			if node.kind == .file {
+				file_ids << i
+			}
+		}
+	}
 	// Files are parsed before their imports. Revisit consumers when a dependency
 	// publishes a constant from a newly selected declaration branch.
 	for {
 		mut changed := false
-		for node in p.a.nodes {
+		for file_id in file_ids {
+			node := p.a.nodes[file_id]
 			if node.kind != .file || node.children_count == 0 { continue }
 			p.cur_file = node.value
 			p.cur_module = 'main'
@@ -18582,7 +18596,8 @@ pub fn (mut p Parser) resolve_comptime_string_declarations() map[int]bool {
 		if !changed { break }
 	}
 	mut deferred_imports := map[int]bool{}
-	for node in p.a.nodes {
+	for file_id in file_ids {
+		node := p.a.nodes[file_id]
 		if node.kind != .file || node.children_count == 0 { continue }
 		for child in p.a.children_of(&node) {
 			p.collect_deferred_comptime_string_imports(child, mut deferred_imports)

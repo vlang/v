@@ -5,6 +5,21 @@ import v.flat
 import v.pref
 import v.types
 
+fn test_cached_builtin_request_keeps_its_header_owned_declaration() {
+	mut a := flat.FlatAst.new()
+	header := '/cache/builtin.vh'
+	a.cached_header_sources[header] = os.join_path(@VEXEROOT, 'vlib', 'builtin', 'array.v')
+	mut g := FlatGen.new()
+	g.a = &a
+	g.compiler_vroot = @VEXEROOT
+	assert !g.should_emit_c_extern_decl_from_file('request', os.join_path(@VEXEROOT, 'vlib', 'builtin', 'cfns.c.v'), 'builtin')
+	assert !g.should_emit_c_extern_decl_from_file('request', header, 'builtin')
+	// A project's C.request still needs its normal prototype when no header owns it.
+	user := '/project/binding.c.v'
+	g.files_linking_c_sources[user] = true
+	assert g.should_emit_c_extern_decl_from_file('request', user, 'main')
+}
+
 fn test_late_source_does_not_reemit_multiline_header_context() {
 	header := '#if defined(HEADER_IMPL)\n' + 'typedef struct { int value; } header_value;\n' + '#endif'
 	directives := [
@@ -228,22 +243,32 @@ fn test_cache_extern_declaration_avoids_tgmath_macro_expansion() {
 	assert c_macro_safe_extern_decl('custom', 'int custom(int x);') == 'int custom(int x);'
 }
 
-fn test_cache_extern_filter_uses_pthread_preamble_declarations() {
+fn test_cache_extern_filter_uses_pthread_v_declarations() {
 	mut preamble_gen := FlatGen.new()
 	preamble_gen.preamble()
 	preamble := preamble_gen.sb.str()
-	assert preamble.contains('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
-	assert preamble.contains('void* pthread_getspecific(pthread_key_t key);')
-	assert preamble.contains('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
+	assert !preamble.contains('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
+	assert !preamble.contains('void* pthread_getspecific(pthread_key_t key);')
+	assert !preamble.contains('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
 	assert !preamble.contains('pthread_key_delete(')
 
 	mut g := FlatGen.new()
 	g.set_cache_split(true)
 
-	assert !g.should_emit_c_extern_decl('pthread_key_create')
-	assert !g.should_emit_c_extern_decl('pthread_getspecific')
-	assert !g.should_emit_c_extern_decl('pthread_setspecific')
+	assert g.should_emit_c_extern_decl('pthread_key_create')
+	assert g.should_emit_c_extern_decl('pthread_getspecific')
+	assert g.should_emit_c_extern_decl('pthread_setspecific')
 	assert g.should_emit_c_extern_decl('pthread_key_delete')
+	assert g.should_emit_c_extern_decl('pthread_once')
+	assert g.should_emit_c_extern_decl('pthread_attr_setdetachstate')
+
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '<pthread.h>'
+	}, '/tmp/main.c.v', false)
+	assert !g.should_emit_c_extern_decl('pthread_once')
+	assert !g.should_emit_c_extern_decl('pthread_attr_setdetachstate')
 }
 
 fn posix_declaration_filter_gen(target_os string, system_libc bool) FlatGen {
@@ -292,6 +317,29 @@ fn test_cache_split_uses_system_sigaction_declaration() {
 	mut g := posix_declaration_filter_gen('macos', false)
 	g.set_cache_split(true)
 	assert g.skip_builtin_struct('C.sigaction')
+}
+
+fn test_cache_split_omits_only_non_windows_stat64_compatibility_stub() {
+	for target_os in ['macos', 'linux'] {
+		mut cached := posix_declaration_filter_gen(target_os, false)
+		cached.set_cache_split(true)
+		assert cached.skip_builtin_struct('C.__stat64'), target_os
+		assert !cached.skip_builtin_struct('C.ProjectStat'), target_os
+
+		headerless := posix_declaration_filter_gen(target_os, false)
+		assert !headerless.skip_builtin_struct('C.__stat64'), target_os
+		mut custom_libc := posix_declaration_filter_gen(target_os, false)
+		custom_libc.set_cache_split(true)
+		custom_libc.set_target_libc_headers(true)
+		assert !custom_libc.skip_builtin_struct('C.__stat64'), target_os
+	}
+	for cache_split in [false, true] {
+		mut windows := posix_declaration_filter_gen('windows', false)
+		windows.set_cache_split(cache_split)
+		assert !windows.skip_builtin_struct('C.__stat64')
+		windows.add_c_directive('main', '#include <sys/stat.h>', false)
+		assert windows.skip_builtin_struct('C.__stat64')
+	}
 }
 
 fn test_cocoa_nsfont_binding_uses_the_framework_class() {
@@ -453,6 +501,32 @@ fn test_top_level_include_deduplication_resets_after_preprocessor_state_changes(
 		'#endif', '#include <types.h>']
 }
 
+fn test_multiline_guard_does_not_make_following_includes_conditional() {
+	guard := '#ifndef INSERTED_GUARD\n#define INSERTED_GUARD\n#endif'
+	header := '#include "unguarded.h"'
+	assert dedupe_top_level_c_includes([guard, header, header]) == [guard, header]
+	// An inline block can change the macro state observed by an earlier header.
+	assert dedupe_top_level_c_includes([header, guard, header]) == [header, guard, header]
+	// The containing guard remains active while an inline block is emitted.
+	conditional := ['#ifdef FIRST', guard, header, '#endif', '#ifdef SECOND', header, '#endif',
+		header, header]
+	assert dedupe_top_level_c_includes(conditional) == conditional[..conditional.len - 1]
+}
+
+fn test_multiline_directives_preserve_open_conditionals_and_ignore_comments() {
+	header := '#include "unguarded.h"'
+	for separator in [' ', '\t'] {
+		opener := '#if${separator}defined(FIRST) \\\n|| defined(SECOND)'
+		conditional := [opener, header, header, '#else', header, header, '#endif', header, header]
+		assert dedupe_top_level_c_includes(conditional) == conditional[..conditional.len - 1]
+	}
+	guard := '/*\n#if COMMENTED_OUT\n*/\n#ifndef INLINE_GUARD\n#define INLINE_GUARD\n#endif'
+	assert dedupe_top_level_c_includes([guard, header, header]) == [guard, header]
+	// Comments may span directive entries as well as lines in an inline header.
+	commented := ['/*', '#if COMMENTED_OUT\n#endif', '*/', header, header]
+	assert dedupe_top_level_c_includes(commented) == commented[..commented.len - 1]
+}
+
 fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	mut headerless := FlatGen.new()
 	assert !headerless.c_directives_use_system_libc()
@@ -464,6 +538,42 @@ fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	assert system_libc.c_directives_use_system_libc()
 	assert !system_libc.should_emit_c_extern_decl('puts')
 	assert !system_libc.should_emit_c_extern_decl('sendfile')
+}
+
+fn test_headerless_application_platform_bindings_keep_their_declarations() {
+	mut g := FlatGen.new()
+	source := '/project/main.c.v'
+	for name in ['task_info', 'mach_task_self', 'getppid'] {
+		assert g.should_emit_c_extern_decl_from_file(name, source, 'main'), name
+	}
+	// An explicit SDK header remains authoritative for the application bindings.
+	g.add_c_directive('main', '#include <mach/mach.h>', false)
+	g.note_c_include_directive('main', source)
+	for name in ['task_info', 'mach_task_self', 'getppid'] {
+		assert !g.should_emit_c_extern_decl_from_file(name, source, 'main'), name
+	}
+}
+
+fn test_darwin_task_api_runs_with_headerless_and_explicit_sdk_bindings() ! {
+	$if !macos {
+		return
+	}
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v3_mach_task_api_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.c.v')
+	program := '@[typedef]\nstruct C.task_t {}\nstruct C.task_basic_info { resident_size u64 }\nfn C.mach_task_self() C.task_t\nfn C.task_info(C.task_t, i32, &int, &u32) i32\nfn main() {\n mut info := C.task_basic_info{}\n mut count := u32(C.MACH_TASK_BASIC_INFO_COUNT)\n status := C.task_info(C.mach_task_self(), C.TASK_BASIC_INFO, unsafe { &int(&info) }, &count)\n assert status == C.KERN_SUCCESS\n assert info.resident_size > 0\n println("\${sizeof(C.task_basic_info)}:\${__offsetof(C.task_basic_info, resident_size)}:\${u32(C.MACH_TASK_BASIC_INFO_COUNT)}:\${i32(C.TASK_BASIC_INFO)}")\n}\n'
+	mut layouts := []string{}
+	for explicit_header in [false, true] {
+		prefix := if explicit_header { '#include <mach/mach.h>\n' } else { '' }
+		os.write_file(source, prefix + program)!
+		ran := os.exec([@VEXE, '-cc', cc, '-cstrict', '-gc', 'none', '-nocache', '-no-retry-compilation',
+			'run', source])
+		assert ran.exit_code == 0, ran.output
+		layouts << ran.output.trim_space()
+	}
+	assert layouts[0] == layouts[1], 'headerless layout ${layouts[0]} differs from SDK ${layouts[1]}'
 }
 
 fn test_target_libc_headers_own_their_c_extern_declarations() {

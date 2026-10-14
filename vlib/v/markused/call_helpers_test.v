@@ -1,8 +1,62 @@
 module markused
 
+import os
 import v.flat
+import v.parser
+import v.pref
 import v.types
 import v.token
+
+fn test_warm_cache_keeps_ierror_methods_and_their_helpers() {
+	root := os.join_path(os.vtmp_dir(), 'cached_ierror_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	builtin_file := os.join_path(root, 'builtin.vh')
+	error_file := os.join_path(root, 'errors.v')
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(builtin_file, 'module builtin\npub interface IError {\nmsg() string\ncode() int\n}\n')!
+	os.write_file(error_file, 'module errors
+pub struct TestError {}
+fn message_helper() string { return "message" }
+fn code_helper() int { return 7 }
+fn (e TestError) msg() string { return message_helper() }
+fn (e TestError) code() int { return code_helper() }
+fn unused_helper() {}
+')!
+	os.write_file(main_file, 'import errors\nfn main() { _ := errors.TestError{} }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([builtin_file, error_file, main_file])
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	used := mark_used_for_cache(a, &tc, []string{}, map[string]bool{})
+	assert used['errors.TestError.msg']
+	assert used['errors.TestError.code']
+	assert used['errors.message_helper']
+	assert used['errors.code_helper']
+	assert !used['errors.unused_helper']
+}
+
+fn test_all_functions_keeps_generic_calls_outside_literal_main() {
+	root := os.join_path(os.vtmp_dir(), 'all_fn_literal_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	builtin_file := os.join_path(root, 'builtin.v')
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(builtin_file, 'module builtin\nfn generic_helper[T](value T) {}\nfn wrapper() { generic_helper(1) }\nfn println(value string) {}\n')!
+	os.write_file(main_file, 'fn main() { println("literal") }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([builtin_file, main_file])
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnostic_files[main_file] = true
+	assert is_trivial_literal_output_program(a, tc.diagnostic_files)
+	used, uses_generics := mark_all_used_with_generic_usage(a, &tc, []string{})
+	assert uses_generics
+	assert used['wrapper']
+	assert used['generic_helper']
+}
 
 fn test_collection_alias_methods_keep_declared_and_inherited_precedence() {
 	mut a := flat.FlatAst.new()

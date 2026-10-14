@@ -20,6 +20,8 @@ It prints:
 
 Unquoted fields cannot contain double quotes. Enclose a field containing quotes in double
 quotes and escape each embedded quote by doubling it; `read()` returns an error for a bare quote.
+After a closing quote, only the delimiter or the end of the record is allowed; trailing text
+and whitespace return an error.
 
 The writer preserves carriage returns and line feeds inside quoted fields by default. With
 `use_crlf: true`, it drops carriage returns and writes each line feed as CRLF, matching the

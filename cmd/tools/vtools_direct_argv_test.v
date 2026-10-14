@@ -13,12 +13,17 @@ fn test_tools_keep_their_first_argument_on_a_direct_run() {
 	defer {
 		os.rmdir_all(tpath) or {}
 	}
-	tools := {
+	mut tools := {
+		'cover':    'vcover'
 		'diff':     'vdiff.v'
 		'download': 'vdownload.v'
 		'repeat':   'vrepeat.v'
 		'time':     'vtime.v'
 		'timeout':  'vtimeout.v'
+	}
+	// vgret only runs on Linux: its host check fails before any argument is read.
+	$if linux {
+		tools['gret'] = 'vgret.v'
 	}
 	for name, source in tools {
 		mut binary := os.join_path(tpath, name)
@@ -30,5 +35,17 @@ fn test_tools_keep_their_first_argument_on_a_direct_run() {
 		assert build.exit_code == 0, '${name}: ${build.output}'
 		res := os.exec([binary, '--version'])
 		assert res.exit_code == 0, '${name}: ${res.output}'
+		launched := os.exec([vexe, name, '--version'])
+		assert launched.exit_code == 0, '${name}: ${launched.output}'
+		assert launched.output.trim_space().ends_with(res.output.trim_space()), '${name}: ${launched.output}'
+		$if linux {
+			if name == 'gret' {
+				for args in [[binary], [vexe, name]] {
+					missing := os.exec(args)
+					assert missing.exit_code == 1, missing.output
+					assert missing.output.starts_with('Usage: vgret PATH'), missing.output
+				}
+			}
+		}
 	}
 }

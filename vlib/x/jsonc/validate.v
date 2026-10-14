@@ -140,9 +140,9 @@ fn validate(text string, opts ParseOpts) &ParseError {
 	scanner := json2.new_json5_scanner(text)
 	mut stack := []Container{}
 	mut prev := json2.Json5TokenKind.none
-	mut cur := scanner.next() or { return nil }
+	mut cur := scanner.next() or { return unsafe { nil } }
 	for cur.kind != .eof {
-		next := scanner.next() or { return nil }
+		next := scanner.next() or { return unsafe { nil } }
 		inside := if stack.len > 0 { stack[stack.len - 1] } else { Container.array }
 		message := check_token(cur, prev, next, inside, opts)
 		if message != '' {
@@ -165,7 +165,7 @@ fn validate(text string, opts ParseOpts) &ParseError {
 		prev = cur.kind
 		cur = next
 	}
-	return nil
+	return unsafe { nil }
 }
 
 // locate converts the line and column of a JSON5 token into a Pos, recovering

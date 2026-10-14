@@ -3,7 +3,11 @@
 
 #include <windows.h>
 
-static inline unsigned long long v_time_ticks_ms(void) {
+#ifndef V_TIME_TICKS_SCOPE
+#define V_TIME_TICKS_SCOPE static inline
+#endif
+
+V_TIME_TICKS_SCOPE unsigned long long v_time_ticks_ms(void) {
     typedef ULONGLONG (WINAPI *tick_count_fn)(void);
     HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
     tick_count_fn tick_count = kernel32

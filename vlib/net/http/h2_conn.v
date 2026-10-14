@@ -230,12 +230,12 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 					}
 					for f in decoded {
 						// RFC 9113 §8.1: trailers MUST NOT contain pseudo-header fields;
-						// the §8.2 field-name rules apply. A malformed field makes the
+						// the §8.2 field rules apply. A malformed field makes the
 						// response malformed — fail the request (mirrors the mux reset).
 						if f.name.starts_with(':') {
 							return error('h2: malformed trailers: pseudo-header ${f.name}')
 						}
-						reason := h2_response_field_error(f.name)
+						reason := h2_response_field_with_value_error(f)
 						if reason != '' {
 							return error('h2: malformed trailers: ${reason}')
 						}

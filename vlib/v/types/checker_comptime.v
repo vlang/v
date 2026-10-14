@@ -19656,6 +19656,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		} $else {
 			tc.check_node_with_expected_context(rhs_id, expected_type)
 		}
+		if node.op == .assign {
+			tc.record_null_constant_reference_error(.assignment_mismatch, rhs_id, expected_type)
+		}
 		if lhs_node.kind == .ident && tc.ident_is_mutable_lvalue(lhs_node.value) {
 			tc.check_mutable_array_immutable_references(rhs_id)
 		}

@@ -137,6 +137,27 @@ fn test_the_archive_route_serves_the_published_bytes() {
 	assert rsp.body == content, rsp.body
 }
 
+fn test_the_config_archive_base_downloads_the_published_bytes() {
+	mut r := new_registry()
+	archive := os.join_path(srv_root, 'configured_archive.zip')
+	content := [u8(0x50), 0x4b, 3, 4, 0, 0xff].bytestr()
+	os.write_file(archive, content)!
+	r.publish(srv_info('configured', '1.0.0', ''), archive)!
+	mut running := start_registry(r)!
+	defer { running.server.close() }
+	config := fetch_registry_config(running.base)!
+	assert config.dl == running.base
+	assert config.api == '${running.base}/api'
+	base := registry_archive_base(running.base)!
+	response := http.get('${base}/configured/@v/1.0.0.zip')!
+	assert response.status_code == 200
+	assert response.body == content
+	// Default SPDX links use the same transport origin as config.json.
+	bom := http.get('${running.base}/sbom.spdx.json')!
+	document := json2.decode[SpdxDocument](bom.body)!
+	assert document.packages[0].download_location == '${base}/configured/@v/1.0.0.zip'
+}
+
 // The SBOM and signature routes are part of the same protocol, so a hosted
 // registry serves them too.
 fn test_the_sbom_route_is_reachable() {
