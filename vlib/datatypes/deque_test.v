@@ -16,26 +16,79 @@ fn test_deque_interleaved() {
 	assert d.is_empty()
 }
 
-fn test_deque_empty_errors() {
+fn test_deque_empty_pop_front_errors() {
 	mut d := new_deque[int]()
 	d.pop_front() or {
 		assert err.msg() == 'datatypes: pop_front from empty Deque'
 		return
 	}
 	assert false, 'pop_front on empty must error'
+}
+
+fn test_deque_empty_pop_back_errors() {
+	mut d := new_deque[int]()
 	d.pop_back() or {
 		assert err.msg() == 'datatypes: pop_back from empty Deque'
 		return
 	}
 	assert false, 'pop_back on empty must error'
+}
+
+fn test_deque_empty_peek_front_errors() {
+	d := new_deque[int]()
 	d.peek_front() or {
 		return
 	}
 	assert false, 'peek_front on empty must error'
+}
+
+fn test_deque_empty_peek_back_errors() {
+	d := new_deque[int]()
 	d.peek_back() or {
 		return
 	}
 	assert false, 'peek_back on empty must error'
+}
+
+fn test_deque_popped_values_are_not_retained() {
+	mut d := new_deque[string]()
+	d.push_back('front payload')
+	d.push_back('back payload')
+	assert d.pop_front()! == 'front payload'
+	assert d.pop_back()! == 'back payload'
+	for value in d.buf {
+		assert value == ''
+	}
+	d.push_front('reused')
+	assert d.array() == ['reused']
+}
+
+fn test_deque_array_snapshot_is_independent() {
+	mut d := new_deque[int]()
+	d.push_back(1)
+	d.push_back(2)
+	mut snapshot := d.array()
+	snapshot[0] = 9
+	d.push_front(0)
+	assert snapshot == [9, 2]
+	assert d.array() == [0, 1, 2]
+}
+
+struct DequeRefPayload {
+	value int
+}
+
+fn test_deque_reference_and_array_values_survive_pop() {
+	mut refs := new_deque[&DequeRefPayload]()
+	refs.push_back(&DequeRefPayload{ value: 7 })
+	assert refs.pop_back()!.value == 7
+	assert isnil(refs.buf[0])
+	mut arrays := new_deque[[]int]()
+	arrays.push_front([1, 2, 3])
+	assert arrays.pop_front()! == [1, 2, 3]
+	for value in arrays.buf {
+		assert value.len == 0
+	}
 }
 
 fn test_deque_wrap_and_growth() {

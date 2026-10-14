@@ -2,9 +2,8 @@ module datatypes
 
 // Deque is a double-ended queue: both ends support push and pop in amortized
 // O(1). It is ring-buffer backed, so unlike Queue it is also usable as a
-// stack, a palindrome buffer or a work-stealing endpoint. It is the
-// V-idiomatic equivalent of Zig's std.Deque / Python's collections.deque.
-// The single-ended datatypes.Queue is unchanged.
+// stack or a palindrome buffer. Like Queue, it requires external
+// synchronization when shared between threads.
 @[heap]
 pub struct Deque[T] {
 mut:
@@ -64,23 +63,32 @@ pub fn (mut d Deque[T]) push_front(item T) {
 }
 
 // pop_front removes and returns the front element, or an error if empty.
+// The vacated slot no longer retains the removed value.
 pub fn (mut d Deque[T]) pop_front() !T {
 	if d.len == 0 {
 		return error('datatypes: pop_front from empty Deque')
 	}
 	item := d.buf[d.head]
+	// A default fixed array clears references without allocating a new T object.
+	empty := [1]T{}
+	d.buf[d.head] = empty[0]
 	d.head = (d.head + 1) % d.buf.len
 	d.len--
 	return item
 }
 
 // pop_back removes and returns the back element, or an error if empty.
+// The vacated slot no longer retains the removed value.
 pub fn (mut d Deque[T]) pop_back() !T {
 	if d.len == 0 {
 		return error('datatypes: pop_back from empty Deque')
 	}
 	d.len--
-	return d.buf[(d.head + d.len) % d.buf.len]
+	index := (d.head + d.len) % d.buf.len
+	item := d.buf[index]
+	empty := [1]T{}
+	d.buf[index] = empty[0]
+	return item
 }
 
 // peek_front returns the front element without removing it.
