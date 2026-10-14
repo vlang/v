@@ -8682,7 +8682,6 @@ const v3_cache_compiler_runtime_inputs = [
 	'vlib/os/execute_capture_nix.c',
 	'vlib/os/execute_capture_nix.h',
 	'vlib/runtime/free_memory_darwin.c',
-	'vlib/runtime/used_memory_freebsd.c',
 	'vlib/runtime/free_memory_openbsd.c',
 	'vlib/v/diagserver/syscalls_linux.c',
 	'vlib/v/modulecache/file_metadata.c',
@@ -11252,10 +11251,14 @@ pub fn run(args []string) {
 	}
 	cmd_v_module_input := input_loads_cmd_v_module(input_file)
 	compiler_tree_input := input_is_compiler_tree(input_file)
-	if backend == 'fastc' && ('fastc_real_builtin' in user_defines || os.is_dir(input_file)) {
+	fastc_test_file := backend == 'fastc' && (is_v3_test_file(input_file, backend, target)
+		|| is_v3_test_file(input_file, 'c', target))
+	if backend == 'fastc' && ('fastc_real_builtin' in user_defines || os.is_dir(input_file)
+		|| fastc_test_file) {
 		// Opt-in: compile an ordinary program through FastC's real-`builtin` path
 		// (real `struct string`, error system, and the full runtime) instead of the
-		// bootstrap `const char*` runtime. Directory entries use the same path.
+		// bootstrap `const char*` runtime. Directory entries use the same path, and so
+		// does a test file, whose harness reports through V strings and errors.
 		building_v = true
 	}
 	// Large serial compiler-module builds create the same transform and C-generation
@@ -11579,6 +11582,15 @@ pub fn run(args []string) {
 	if backend != 'fastc' {
 		record_user_define(mut user_defines, mut compile_values, 'v3_c_extern_declarations')
 	}
+	if cmd_v_build && output_cross_c && backend == 'c' && !no_builtin && !is_o
+		&& !target_libc_headers
+		&& target.os in ['macos', 'linux', 'freebsd', 'openbsd', 'dragonfly', 'windows', 'android',
+			'termux', 'ios'] {
+		// vc/v.c must bootstrap without platform headers or checkout-local objects.
+		// Keep the signal-context ABI out of this portable compiler snapshot.
+		record_user_define(mut user_defines, mut compile_values, 'v3_headerless_bootstrap')
+		record_user_define(mut user_defines, mut compile_values, 'no_segfault_handler')
+	}
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot).map(os.abs_path(it))
@@ -11668,9 +11680,12 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			mut unsupported_modes := []string{}
-			if is_test_command || is_v3_test_file(input_file, backend, target)
-				|| is_v3_test_file(input_file, 'c', target) || is_checker_fixture {
+			if is_test_command || is_checker_fixture {
 				unsupported_modes << 'test/checker mode'
+			}
+			// A test file builds as a program whose main runs its tests.
+			if fastc_test_file {
+				prefs.is_test = true
 			}
 			if is_prod {
 				unsupported_modes << '`-prod`'

@@ -7,8 +7,12 @@ $if macos {
 	fn C._dyld_get_image_name(image u32) &char
 }
 
-$if freebsd || openbsd {
-}
+// BSD sysctl identifiers stay in V so executable lookup does not require C headers.
+const sysctl_ctl_kern = i32(1)
+const freebsd_kern_proc = i32(14)
+const freebsd_kern_proc_pathname = i32(12)
+const openbsd_kern_proc_args = i32(55)
+const openbsd_kern_proc_argv = i32(1)
 
 @[markused]
 pub const args = arguments()
@@ -874,7 +878,7 @@ pub fn executable() string {
 	}
 	$if freebsd {
 		bufsize := usize(max_path_buffer_size)
-		mib := [i32(C.CTL_KERN), C.KERN_PROC, C.KERN_PROC_PATHNAME, -1]! // C `int` mib buffer
+		mib := [sysctl_ctl_kern, freebsd_kern_proc, freebsd_kern_proc_pathname, -1]! // C `int` mib buffer
 		unsafe { C.sysctl(&mib[0], mib.len, &result[0], &bufsize, 0, 0) }
 		res := unsafe { tos_clone(&result[0]) }
 		return res
@@ -889,7 +893,7 @@ pub fn executable() string {
 		mut pbuf := unsafe { &&u8(&result[0]) }
 		bufsize := usize(max_path_buffer_size)
 		pid := C.getpid()
-		mib := [i32(C.CTL_KERN), C.KERN_PROC_ARGS, pid, C.KERN_PROC_ARGV]! // C `int` mib buffer
+		mib := [sysctl_ctl_kern, openbsd_kern_proc_args, pid, openbsd_kern_proc_argv]! // C `int` mib buffer
 		if unsafe { C.sysctl(&mib[0], mib.len, nil, &bufsize, nil, 0) } == 0 {
 			if bufsize > max_path_buffer_size {
 				pbuf = unsafe { &&u8(malloc(int(bufsize))) }

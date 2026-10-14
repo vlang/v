@@ -266,7 +266,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		return none
 	}
 	mut prefix_depth := 0
-	for item in tokens[..open] {
+	for prefix_index, item in tokens[..open] {
 		if item.tok in [.lpar, .lsbr, .lcbr] {
 			prefix_depth++
 		} else if item.tok in [.rpar, .rsbr, .rcbr] {
@@ -275,6 +275,13 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 			|| item.tok in [.key_in, .not_in]) {
 			// `target = [value]` ends in `]`, but its bracket pair is an array literal,
 			// not an index applied to the assignment prefix.
+			return none
+		} else if prefix_depth == 0 && prefix_index > 0 && item.tok in [.plus, .minus, .mul, .div,
+			.mod, .left_shift, .right_shift, .right_shift_unsigned, .amp, .pipe, .xor, .eq, .ne,
+			.lt, .gt, .le, .ge, .and, .logical_or]
+			&& tokens[prefix_index - 1].tok in [.name, .number, .string, .char, .rpar, .rsbr, .rcbr] {
+			// `'0x' + s[0..2]`: a binary operator after an operand leaves the brackets
+			// indexing its right operand, not the whole expression before them.
 			return none
 		}
 	}
@@ -429,7 +436,8 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		}
 	}
 	is_raw_fixed_array := base_type.starts_with('FixedArray_') && g.fixed_array_uses_raw_storage(base_tokens)
-	if fixed_length := fastc_fixed_array_length(base_type.trim_right('*')) {
+	// An alias of a fixed array (`type Gf = [16]i64`) is laid out as the array it names.
+	if fixed_length := fastc_fixed_array_length(g.underlying_alias_type(base_type.trim_right('*'))) {
 		checked_index := 'builtin__v_fixed_index(${index_source}, ${fixed_length})'
 		if is_raw_fixed_array {
 			return FastcRenderedExpression{
@@ -438,9 +446,14 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 			}
 		}
 		access := if base_type.ends_with('*') { '->' } else { '.' }
+		// `->` reads the trailing `*` as a pointer to the array (a `mut` fixed-array
+		// parameter), so its element type is the array's, without that `*`.
+		pointee_element_type := g.fixed_array_pointee_element_type(base_type, base_tokens) or {
+			element_type
+		}
 		return FastcRenderedExpression{
 			source: '((${base_source})${access}data[${checked_index}])'
-			typ:    flat.source_type_id(element_type)
+			typ:    flat.source_type_id(pointee_element_type)
 		}
 	}
 	if is_raw_fixed_array {
@@ -674,6 +687,20 @@ fn (g &Parser) fastc_inline_array_element_equality(array_type string, left strin
 }
 
 fn (g &Parser) render_membership_candidate(tokens []FastcExpressionToken, expected_type string) ?string {
+	rendered := g.render_membership_candidate_source(tokens, expected_type)?
+	// A subject narrowed earlier in the same condition (`e is string && e !in xs`) reads
+	// through the variant pointer; the membership test compares its value.
+	if expected_type != '' && !expected_type.ends_with('*') && g.member_smartcasts.len > 0
+		&& g.expression_uses_member_smartcast(tokens) {
+		actual := fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { '' })
+		if actual == expected_type + '*' {
+			return fastc_narrowed_variant_value(rendered, expected_type)
+		}
+	}
+	return rendered
+}
+
+fn (g &Parser) render_membership_candidate_source(tokens []FastcExpressionToken, expected_type string) ?string {
 	if tokens.len == 1 && tokens[0].source != '' {
 		// A synthetic atom (an `or`-unwrap, interpolation, etc.) carries its complete C
 		// spelling in `source`; use it verbatim rather than re-rendering its bare `lit`.

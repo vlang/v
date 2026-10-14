@@ -40,10 +40,15 @@ unchanged module objects are reused without cache creation messages.
   Effective `-run-only` selectors and assertion display modes preserve test configurations.
   It excludes linker-only flags, including operands embedded in `-cflags`.
   It validates dependencies, reuses unchanged objects, and
-  reports newly cached modules on stdout. It never runs the generated programs.
-  Each refresh build announces its record index and total, compiler flags, production mode,
-  and program/test mode before its module notices. Indices can jump as equivalent builds
-  and unavailable inputs are skipped. A final summary counts the distinct builds checked.
+  reports modules compiled into new cached objects on stdout. It never runs the generated programs.
+  Different configurations can compile the same module separately.
+  By default, a build announces its compiler flags, production mode, and program/test mode
+  only before its first output. Successful cache checks that produce no output remain quiet.
+  A final summary counts the distinct builds checked, including reused configurations,
+  only when a child produced output. The optional `RefreshOptions{verbose: true}` argument
+  announces every checked build's record index and total and prints the summary for silent builds.
+  `v up -v` enables this verbose progress. Indices can jump as equivalent builds and
+  unavailable inputs are skipped.
   Removed modules and records with vanished working directories, required compile inputs,
   listed files or directories, or unavailable C compilers are skipped.
   A compilation failure is returned to `v up`, including TinyCC module object failures.

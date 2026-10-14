@@ -8,9 +8,6 @@ $if !v3_c_extern_declarations ? {
 	#include <sys/file.h>
 	#include <stdlib.h>
 	#include "@VMODROOT/vlib/os/execute_capture_legacy.h"
-	$if freebsd || openbsd {
-		#include <sys/sysctl.h>
-	}
 	$if macos {
 		#include <mach/mach.h>
 		#include <mach/mach_vm.h>

@@ -865,7 +865,10 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		'${receiver_key}.${name}'
 	}
-	is_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main'] && name == 'main'
+	is_program_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main']
+		&& name == 'main'
+	// A test build runs its tests from a main of its own; the program's is an ordinary function.
+	is_main := is_program_main && !g.prefs.is_test
 	is_module_init := !is_static_method && receiver_type == '' && name == 'init'
 	is_module_cleanup := !is_static_method && receiver_type == '' && name == 'cleanup'
 	if is_main {
