@@ -96,7 +96,9 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_number(i8(val))
 	} $else $if T.unaliased_typ is i16 {
 		encoder.encode_number(i16(val))
-	} $else $if T.unaliased_typ is int || T.unaliased_typ is i32 {
+	} $else $if T.unaliased_typ is int {
+		encoder.encode_number(int(val))
+	} $else $if T.unaliased_typ is i32 {
 		encoder.encode_number(i32(val))
 	} $else $if T.unaliased_typ is i64 {
 		encoder.encode_number(i64(val))
@@ -410,7 +412,9 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 		integer_val = i8(val).str()
 	} $else $if T is i16 {
 		integer_val = i16(val).str()
-	} $else $if T is int || T is i32 {
+	} $else $if T is int {
+		integer_val = int(val).str()
+	} $else $if T is i32 {
 		integer_val = i32(val).str()
 	} $else $if T is i64 {
 		integer_val = i64(val).str()
@@ -419,9 +423,27 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 	} $else $if T is isize {
 		integer_val = isize(val).str()
 	} $else $if T is f32 {
-		integer_val = f32(val).str()
+		$if js {
+			integer_val = f32(val).str()
+		} $else {
+			magnitude := f32_abs(val)
+			integer_val = if magnitude == 0 || (magnitude >= f32(1e-6) && magnitude < f32(1e21)) {
+				f32(val).strlong()
+			} else {
+				f32(val).str()
+			}
+		}
 	} $else $if T is f64 {
-		integer_val = f64(val).str()
+		$if js {
+			integer_val = f64(val).str()
+		} $else {
+			magnitude := f64_abs(val)
+			integer_val = if magnitude == 0 || (magnitude >= 1e-6 && magnitude < 1e21) {
+				f64(val).strlong()
+			} else {
+				f64(val).str()
+			}
+		}
 	}
 	defer { unsafe { integer_val.free() } }
 	$if T is $float {
@@ -440,6 +462,11 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 				encoder.encode_null()
 			}
 			return
+		}
+		// JSON uses compact exponents, so `1e-07` becomes `1e-7`.
+		if integer_val.len >= 4 && integer_val[integer_val.len - 4] == `e`
+			&& integer_val[integer_val.len - 2] == `0` {
+			integer_val = integer_val[..integer_val.len - 2] + integer_val[integer_val.len - 1..]
 		}
 		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
 			&& integer_val[integer_val.len - 1] == `0` { // ends in .0

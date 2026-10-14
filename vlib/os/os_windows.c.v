@@ -5,6 +5,7 @@ import encoding.utf8.validate
 
 #flag windows -l advapi32
 #include <process.h>
+#include <winerror.h>
 
 // path_separator is the platform specific separator string, used between the folders, and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '\\'

@@ -190,7 +190,7 @@ fn (mut found DeclarationKeys) add_declaration_keys(a &flat.FlatAst, i int, mark
 		}
 		.import_decl {
 			short_name := node.value.all_after_last('.')
-			alias := if node.typ.len > 0 { node.typ } else { short_name }
+			alias := if node.typ_text().len > 0 { node.typ_text() } else { short_name }
 			found.aliases[alias] << AliasUse{
 				path:   node.value
 				marker: marker

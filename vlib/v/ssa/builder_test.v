@@ -67,11 +67,8 @@ fn main() {}
 }
 
 fn test_native_field_type_lookup_preserves_containers_through_pointer_receivers() {
-	b := Builder{
-		struct_field_types: {
-			'Checker.ids': 'map[string][]int'
-		}
-	}
+	mut b := Builder{}
+	b.struct_field_types.set('Checker.ids', 'map[string][]int')
 	for receiver in ['Checker', '&Checker', '&&Checker', 'types.Checker', '&types.Checker'] {
 		assert b.field_type_name(receiver, 'ids') == 'map[string][]int'
 	}
@@ -202,7 +199,7 @@ fn test_native_c_tm_uses_the_platform_abi_layout() {
 fn test_native_task_basic_info_uses_the_platform_abi_layout() {
 	abi := native_c_struct_abi('C.task_basic_info', 8) or { panic('missing task info ABI') }
 	assert abi.field_names[1] == 'resident_size'
-	assert abi.field_types == ['u64', 'u64', 'u64', 'i32', 'i32', 'i32', 'i32', 'i32', 'i32']
+	assert abi.field_types_text() == ['u64', 'u64', 'u64', 'i32', 'i32', 'i32', 'i32', 'i32', 'i32']
 	assert native_c_struct_abi('C.other', 8) == none
 }
 
@@ -210,8 +207,8 @@ fn test_native_task_basic_info_uses_the_platform_abi_layout() {
 fn test_native_rusage_uses_the_platform_abi_layout() {
 	abi := native_c_struct_abi('C.rusage', 8) or { panic('missing rusage ABI') }
 	assert abi.field_names[4] == 'ru_maxrss'
-	assert abi.field_types.len == 18
-	assert abi.field_types.all(it == 'i64')
+	assert abi.field_types_text().len == 18
+	assert abi.field_types_text().all(it == 'i64')
 	assert '_proc_pid_rusage' in arm64_force_external_syms
 }
 
@@ -226,7 +223,7 @@ fn test_native_darwin_pthread_types_use_the_platform_abi_layout() {
 	for name, field_type in expected {
 		abi := native_c_struct_abi(name, 8) or { panic('missing ${name} ABI') }
 		assert abi.field_names == ['opaque']
-		assert abi.field_types == [field_type]
+		assert abi.field_types_text() == [field_type]
 	}
 }
 
@@ -519,7 +516,7 @@ fn test_wasm32_indirect_call_numeric_parameter_types() {
 		callee_id := a.child(&node, 0)
 		if a.nodes[int(callee_id)].value == 'callback' {
 			// Transformed local callees recover their signature from the binding.
-			a.nodes[int(callee_id)].typ = ''
+			a.nodes[int(callee_id)].set_type_text('')
 			tc.expr_type_set[int(callee_id)] = false
 		}
 	}
