@@ -420,6 +420,7 @@ fn test_rsplit_trailing_delim_30510() {
 	assert 'abc'.rsplit('abc') == ['', '']
 	assert 'abcabc'.rsplit('abc') == ['', '', '']
 	assert 'aaaa'.rsplit('aa') == ['', '', '']
+	assert 'ababa'.rsplit('aba') == ['', 'ab']
 	assert 'abcabcabc'.rsplit_nth('abc', 2) == ['', 'abcabc']
 	a, b := 'abcabcabc'.rsplit_once('abc') or { '', '' }
 	assert a == 'abcabc'

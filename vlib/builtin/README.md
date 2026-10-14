@@ -83,3 +83,9 @@ string removes matches of a nonempty search string.
 `string.strip_margin()` and `strip_margin_custom(del)` keep content after the last line break
 when no later delimiter exists. Final whitespace-only lines are discarded. Lines before a later
 delimiter keep their established removal behavior.
+
+### Reverse splitting
+
+`rsplit`, `rsplit_nth`, and `rsplit_once` recognize nonempty delimiters at the end of a string.
+Splitting at an end delimiter gives `rsplit` and `rsplit_nth` an empty first array element.
+Substring matches are selected from right to left without overlapping.

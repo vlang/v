@@ -1175,10 +1175,11 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	return res
 }
 
-// rsplit_nth splits the string based on the passed `delim` substring in revese order.
+// rsplit_nth splits the string based on the passed `delim` substring in reverse order.
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
+// When splitting at a nonempty delimiter, an end match produces an empty first part.
 @[direct_array_access]
 pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	mut res := []string{}
