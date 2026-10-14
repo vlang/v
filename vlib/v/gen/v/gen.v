@@ -4437,8 +4437,15 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 	default_align, attr_align, comment_align := g.struct_field_suffix_alignments(fields, alignments)
 	mut cur_access := ''
 	mut previous := flat.empty_node
+	mut preserved_end := -1
 	for fid in fields {
 		f := g.a.node(fid)
+		// Grouped declarations can have several nodes sharing one preserved source span.
+		if f.kind == .field_decl && f.pos.offset >= 0 && f.pos.offset < preserved_end
+			&& f.pos.end <= preserved_end {
+			previous = fid
+			continue
+		}
 		if f.kind != .field_decl {
 			g.emit_blank_line_between(previous, fid)
 			// e.g. a `$if` block inside the struct body
@@ -4459,6 +4466,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 			g.on_newline = false
 			g.skip_comments_before(f.pos.end)
 			g.source_end = f.pos.end
+			preserved_end = f.pos.end
 			g.emit_trailing_comments(f.pos.end)
 			if !g.on_newline {
 				g.writeln('')
@@ -5070,7 +5078,7 @@ fn (g &Gen) struct_field_preserves_attr_prefix(fid flat.NodeId, previous flat.No
 		|| f.pos.end > g.source.len || !g.has_vfmt_directive_between(p.pos.end, f.pos.offset) {
 		return false
 	}
-	// Only actual leading attributes matter; attribute-like text in comments is ignored.
+	// Ignore attribute-like text in comments and directives before the first real attribute.
 	mut cursor := p.pos.end
 	for comment in g.comments {
 		if comment.pos.offset >= f.pos.offset {
@@ -5079,12 +5087,19 @@ fn (g &Gen) struct_field_preserves_attr_prefix(fid flat.NodeId, previous flat.No
 		if comment.pos.end <= cursor {
 			continue
 		}
-		if comment.pos.offset > cursor && g.source[cursor..comment.pos.offset].contains('@[') {
-			return true
+		if comment.pos.offset > cursor {
+			attr_index := g.source[cursor..comment.pos.offset].index('@[') or { -1 }
+			if attr_index >= 0 {
+				return g.has_vfmt_directive_between(cursor + attr_index, f.pos.offset)
+			}
 		}
 		cursor = comment.pos.end
 	}
-	return cursor < f.pos.offset && g.source[cursor..f.pos.offset].contains('@[')
+	if cursor < f.pos.offset {
+		attr_index := g.source[cursor..f.pos.offset].index('@[') or { return false }
+		return g.has_vfmt_directive_between(cursor + attr_index, f.pos.offset)
+	}
+	return false
 }
 
 // struct_field_attr_default_width measures the formatted default, including quotes and
@@ -5140,10 +5155,15 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 	mut prev_state := 0
 	mut comment_groups := map[int]int{}
 	mut preserved_fields := map[int]bool{}
+	mut preserved_end := -1
 	for field_i, fid in fields {
 		f := g.a.node(fid)
 		if f.kind != .field_decl || !f.pos.is_valid() {
 			previous = flat.empty_node
+			continue
+		}
+		if f.pos.offset < preserved_end && f.pos.end <= preserved_end {
+			previous = fid
 			continue
 		}
 		gp := f.generic_params()
@@ -5155,8 +5175,11 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 		line := g.source_line(f.pos.offset)
 		has_break := g.field_alignment_break(previous, fid)
 		source_previous := if field_i > 0 { fields[field_i - 1] } else { flat.empty_node }
-		preserves_attrs := g.struct_field_preserves_attr_prefix(fid, source_previous)
-			|| g.struct_field_preserves_attr_suffix(fid)
+		preserves_prefix := g.struct_field_preserves_attr_prefix(fid, source_previous)
+		preserves_attrs := preserves_prefix || g.struct_field_preserves_attr_suffix(fid)
+		if preserves_prefix {
+			preserved_end = f.pos.end
+		}
 		if preserves_attrs {
 			preserved_fields[int(fid)] = true
 		}

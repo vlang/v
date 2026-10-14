@@ -2603,9 +2603,10 @@ fn test_formatter_preserves_off_directives_before_default_attributes() {
 
 fn test_formatter_preserves_on_directives_before_default_attributes() {
 	source := 'struct Directives {\n\t// vfmt off\n\ta   int=1 // vfmt on\n\t@[a]\n\tb int = 2 @[b]\n}\n'
+	want := 'struct Directives {\n\t// vfmt off\n\ta   int=1 // vfmt on\n\tb int = 2 @[a; b]\n}\n'
 	out := vfmt('struct_field_on_directive_before_attrs', source)
-	assert out == source, out
-	assert out.count('@[a]') == 1, out
+	assert out == want, out
+	assert out.count('@[a; b]') == 1, out
 	assert vfmt('struct_field_on_directive_before_attrs_twice', out) == out
 }
 
@@ -2616,6 +2617,25 @@ fn test_formatter_preserves_directives_between_default_attribute_groups() {
 	assert out.count('@[a]') == 1, out
 	assert out.count('@[b]') == 1, out
 	assert vfmt('struct_field_directives_between_attr_groups_twice', out) == out
+}
+
+fn test_formatter_formats_leading_attributes_after_completed_directives() {
+	declarations := ['@[a] value   int=1+2', '@[a] x, y   int']
+	formatted_fields := ['value int = 1 + 2 @[a]', 'x int @[a]\n\ty int @[a]']
+	for i, declaration in declarations {
+		source := 'struct Completed {\n\tbefore int\n\t// vfmt off\n\t// vfmt on\n\t${declaration}\n}\n'
+		want := 'struct Completed {\n\tbefore int\n\t// vfmt off\n\t// vfmt on\n\t${formatted_fields[i]}\n}\n'
+		out := vfmt('struct_field_attrs_after_completed_directives_${i}', source)
+		assert out == want, out
+		assert vfmt('struct_field_attrs_after_completed_directives_${i}_twice', out) == out
+	}
+}
+
+fn test_formatter_preserves_grouped_fields_crossing_attribute_directives_once() {
+	source := 'struct Crossing {\n\tbefore int\n\t@[a]\n\t// vfmt off\n\t// vfmt on\n\tx, y   int\n}\n'
+	out := vfmt('struct_grouped_field_attribute_directives', source)
+	assert out == source, out
+	assert vfmt('struct_grouped_field_attribute_directives_twice', out) == out
 }
 
 // Enum members and interface members align their trailing comments the same way.

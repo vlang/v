@@ -7353,6 +7353,7 @@ To disable formatting for a block of code, wrap it with `// vfmt off` and
 
 These directives retain their source order relative to struct field attributes.
 Attribute groups that cross a directive boundary retain the affected field's source text.
+A completed directive region before an attribute leaves the enabled field subject to formatting.
 
 ```bash
 // Not affected by fmt

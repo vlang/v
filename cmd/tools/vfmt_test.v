@@ -515,6 +515,23 @@ fn test_fmt_preserves_vfmt_directives_before_default_attributes() {
 	assert twice == formatted, twice
 }
 
+fn test_fmt_formats_enabled_leading_attributes_after_vfmt_on() {
+	declarations := ['@[a] value   int=1+2', '@[a] x, y   int']
+	formatted_fields := ['value int = 1 + 2 @[a]', 'x int @[a]\n\ty int @[a]']
+	for i, declaration in declarations {
+		source := 'struct Completed {\n\tbefore int\n\t// vfmt off\n\t// vfmt on\n\t${declaration}\n}\n'
+		want := 'struct Completed {\n\tbefore int\n\t// vfmt off\n\t// vfmt on\n\t${formatted_fields[i]}\n}\n'
+		res, formatted := run_vfmt_write('completed_directive_leading_attrs_${i}', source,
+			'')
+		assert res.exit_code == 0, res.output
+		assert formatted == want, formatted
+		second_res, twice := run_vfmt_write('completed_directive_leading_attrs_${i}_twice',
+			formatted, '')
+		assert second_res.exit_code == 0, second_res.output
+		assert twice == formatted, twice
+	}
+}
+
 fn test_fmt_keeps_regular_comments_attached_with_v3() {
 	source := '// docs\nfn main(){\n\tx := 1 // inline\n\t_ = x\n}\n'
 	res, formatted := run_vfmt_write('regular_comments', source, '')
