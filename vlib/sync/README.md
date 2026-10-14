@@ -2,6 +2,11 @@
 
 `sync` provides cross platform handling of concurrency primitives.
 
+On FreeBSD, mutexes store native `pthread_mutex_t` and `pthread_rwlock_t` values.
+
+On macOS and default pthread platforms, zero-value `RwMutex` try locks initialize the native lock
+and wait for concurrent first-use initialization to finish before acquiring it.
+
 Channels can carry function values, including aliases such as `type Task = fn ()`.
 Function channels support explicit capacities and default initialization in structs
 and globals. Arrays of channels can use an explicit `init` expression to initialize

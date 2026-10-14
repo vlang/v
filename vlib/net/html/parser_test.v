@@ -152,3 +152,86 @@ fn test_parse_unquoted_attribute_values() {
 		'name': 'q'
 	}
 }
+
+fn test_parse_tag_split_across_lines() {
+	// a newline inside a tag separates like a space: without this the tag
+	// name glues to the first attribute (`divclass`).
+	// See https://github.com/vlang/v/issues/30423
+	dom := parse('<div>\n<span\nclass="x">t</span>\n</div>')
+	span := dom.get_tags(name: 'span')[0]
+	assert span.attributes['class'] == 'x'
+	assert span.text() == 't'
+}
+
+fn test_parse_newline_before_quoted_attribute_value() {
+	dom := parse('<span class=\n"x" id="y">t</span>')
+	span := dom.get_tags(name: 'span')[0]
+	assert span.attributes['class'] == 'x'
+	assert span.attributes['id'] == 'y'
+	assert span.text() == 't'
+	assert '' !in span.attributes
+}
+
+fn test_parse_repeated_newlines_inside_tag() {
+	dom := parse('<span\n\nclass="x"\n\nid="y">t</span>')
+	span := dom.get_tags(name: 'span')[0]
+	assert span.attributes['class'] == 'x'
+	assert span.attributes['id'] == 'y'
+	assert '' !in span.attributes
+}
+
+fn test_parse_trailing_text_after_last_tag() {
+	// text after the last tag must survive parsing instead of being
+	// dropped: it becomes a text node following the tags.
+	// See https://github.com/vlang/v/issues/30161
+	mut dom := parse('<p>a</p>trailing')
+	mut found := false
+	for t in dom.get_tags() {
+		if t.name == 'text' && t.text_content == 'trailing' {
+			found = true
+		}
+	}
+	assert found, 'trailing text was dropped'
+}
+
+fn test_parse_unclosed_tag_keeps_text() {
+	// text inside an element that is never closed belongs to it.
+	// See https://github.com/vlang/v/issues/30161
+	mut dom := parse('<div><p>unclosed')
+	mut p := dom.get_tags(name: 'p')[0]
+	assert p.text_content == 'unclosed'
+}
+
+fn test_parse_trailing_text_belongs_to_the_surrounding_element() {
+	dom := parse('<div><p>a</p>trailing')
+	p := dom.get_tags(name: 'p')[0]
+	assert p.text() == 'a'
+	assert p.children.len == 0
+	texts := dom.get_tags(name: 'text')
+	assert texts.len == 1
+	assert texts[0].text() == 'trailing'
+	assert texts[0].parent.name == 'div'
+	assert dom.get_root().text() == 'atrailing'
+}
+
+fn test_parse_unquoted_values_preserve_case_and_class_lookup() {
+	dom := parse('<div><span CLASS = Hero ID=Mixed\nDATA-X = A=B checked>t</span></div>')
+	span := dom.get_tags(name: 'span')[0]
+	assert span.attributes == {
+		'class':   'Hero'
+		'id':      'Mixed'
+		'data-x':  'A=B'
+		'checked': ''
+	}
+	assert dom.get_tag_by_class_name('Hero')?.attributes['id'] == 'Mixed'
+}
+
+fn test_parse_unquoted_values_separated_by_html_whitespace() {
+	for separator in [' ', '\t', '\n', '\r', '\f'] {
+		dom := parse('<div><input value=Mixed${separator}name=Q></div>')
+		input := dom.get_tags(name: 'input')[0]
+		assert input.attributes['value'] == 'Mixed'
+		assert input.attributes['name'] == 'Q'
+		assert '' !in input.attributes
+	}
+}
