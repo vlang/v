@@ -119,27 +119,23 @@ fn test_windows_stat_reports_directory_and_file_types() {
 	assert !file_stat.get_mode().owner.execute
 }
 
-// short_path has no test. The empty-string case is a documented guard, and the
-// forward/slash normalisation must not change the answer for a path that
-// already uses backslashes, so a short directory name has to survive as itself.
 fn test_short_path_empty_string_is_empty() {
 	assert short_path('') == ''
 }
 
 fn test_short_path_accepts_forward_slashes() {
-	// A short path is already a short path: GetShortPathNameW returns the
-	// same string, whether or not it was written with forward slashes.
-	dir := join_path(temp_dir(), 'v_short_path')
-	if !exists(dir) {
-		mkdir_all(dir)!
-	}
+	// Create an owned fixture so concurrent runs cannot remove each other's files.
+	dir := join_path(vtmp_dir(), 'short_path_${getpid()}')
+	mkdir(dir)!
 	defer {
-		rmdir_all(dir) or {}
+		rmdir(dir) or {}
 	}
 	backslashed := short_path(dir)
 	assert backslashed != ''
-	// The normalisation is internal, so the input's separators must not leak
-	// into the output when the result is returned unchanged.
+	forward_slashed := dir.replace('\\', '/')
+	assert forward_slashed.contains('/')
+	// If short names are unavailable, short_path preserves the original input.
+	assert short_path(forward_slashed).replace('/', '\\') == backslashed
 	assert backslashed.contains('\\')
 	assert !backslashed.contains('/')
 }

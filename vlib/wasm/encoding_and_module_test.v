@@ -2,9 +2,9 @@ module wasm
 
 import math.bits
 
-// The `wasm` module serialises a module into the WebAssembly binary format, and
-// before this file it had no test at all: `v doc` listed a public `compile`
-// and a dozen unexported encoders, and nothing exercised any of them.
+// The `wasm` module serialises a module into the WebAssembly binary format.
+// These byte-level tests complement the modules validated in tests/ and cover
+// the section encoders and public compile function without external tools.
 //
 // The expectations here are byte-level and derived from the spec or computed
 // by hand, not measured off the implementation, so a green test means the
