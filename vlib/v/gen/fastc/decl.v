@@ -2238,7 +2238,10 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 			tok = fastc_skip_attribute(mut scan)!
 			continue
 		}
-		if tok == .key_pub {
+		// `pub string` names a field `pub`; only `pub:` / `pub mut:` start a section.
+		mut pub_lookahead := scan
+		pub_starts_section := tok == .key_pub && pub_lookahead.scan() in [.key_mut, .colon]
+		if pub_starts_section {
 			fields_are_public = true
 			fields_are_mutable = false
 			tok = scan.scan()

@@ -1200,3 +1200,8 @@ fn digit_value(c u8) int {
 	}
 	return 256
 }
+
+// compile_value is the value given with `-d name=value`, if any.
+pub fn (s &Scanner) compile_value(name string) ?string {
+	return s.pref.compile_values[name] or { return none }
+}
