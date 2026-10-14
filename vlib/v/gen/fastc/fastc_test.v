@@ -8032,7 +8032,7 @@ type Callback = fn (shared int)
 
 fn main() {}
 ', 'selfhost_function_alias_shared_parameter.v', prefs) or { panic(err) }
-	assert c_source.contains('typedef void (*Callback)(int*);'), c_source
+	assert c_source.contains('typedef void (*Callback)(${fastc_platform_int_c_type}*);'), c_source
 }
 
 fn test_selfhost_static_option_constructor_propagates_payload_type() {
@@ -11045,9 +11045,9 @@ fn main() {
 }
 ', 'selfhost_fn_param.v', prefs) or { panic(err) }
 	// An inline function-typed parameter is declared as a real C function pointer with
-	// unspecified args (so `f(x)` compiles as a direct call), and its return type is
-	// recovered so `"got " + f(x)` resolves as a string concatenation.
-	assert c_source.contains('string (*f)()'), c_source
+	// its prototype (so `f(x)` converts its argument as a direct call does), and its
+	// return type is recovered so `"got " + f(x)` resolves as a string concatenation.
+	assert c_source.contains('string (*f)(${fastc_platform_int_c_type})'), c_source
 	assert c_source.contains('builtin__string_plus'), c_source
 }
 

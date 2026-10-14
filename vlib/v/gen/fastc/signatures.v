@@ -1,6 +1,7 @@
 module fastc
 
 import os
+import strings
 import v.pref
 import v.scanner
 import v.token
@@ -562,6 +563,9 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 		'push_many':                true
 		'array_slice':              true
 		'slice':                    true
+		// A gated slice `a#[i..j]` lowers to these, which no source text names.
+		'slice_ni':                 true
+		'substr_ni':                true
 		'at':                       true
 		'keys':                     true
 		'get':                      true
@@ -1083,14 +1087,8 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 			parameter_is_mut = true
 			tok = look.scan()
 		}
-		mut has_parameter_name := false
-		if tok == .name {
-			mut probe := look
-			next_token := probe.scan()
-			has_parameter_name = next_token in [.name, .amp, .and, .mul, .question, .not, .key_fn,
-				.lsbr]
-		}
-		if has_parameter_name {
+		if !fastc_parameter_is_type_only(look, tok, path, module_name, imports, declared_types,
+			allow_short_placeholders) {
 			tok = look.scan()
 		}
 		parameter_type, next_token := fastc_scan_type(mut look, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
@@ -1118,6 +1116,15 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		return_type:       return_type
 		option_value_type: option_value_type
 	}
+}
+
+// fastc_parameter_is_type_only recognizes one whole unnamed parameter type ending at a
+// separator. Parameters are classified separately because function types can mix names and types.
+fn fastc_parameter_is_type_only(scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) bool {
+	mut look := scan
+	_, next_token := fastc_scan_type(mut look, first, path, module_name, imports, declared_types,
+		allow_short_placeholders) or { return false }
+	return next_token in [.comma, .semicolon, .rpar]
 }
 
 fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) !(string, token.Token) {
@@ -1165,6 +1172,45 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 		if tok == .rsbr {
 			is_dynamic = true
 			tok = scan.scan()
+		} else if tok == .dollar {
+			// `[$d('name', 32)]T`: the `-d name=N` value, else the default.
+			mut define := ''
+			mut default_length := ''
+			tok = scan.scan()
+			if tok == .name && scan.lit == 'd' {
+				tok = scan.scan()
+				if tok == .lpar {
+					tok = scan.scan()
+					if tok == .string {
+						define = scan.lit.trim('\'"')
+						tok = scan.scan()
+					}
+					if tok == .comma {
+						tok = scan.scan()
+						if tok == .number {
+							default_length = scan.lit
+							tok = scan.scan()
+						}
+					}
+					if tok == .rpar {
+						tok = scan.scan()
+					}
+				}
+			}
+			if tok == .rsbr && define != '' && default_length != '' {
+				fixed_length = scan.compile_value(define) or { default_length }
+				tok = scan.scan()
+			} else {
+				mut depth := 1
+				for depth > 0 && tok != .eof {
+					if tok == .lsbr {
+						depth++
+					} else if tok == .rsbr {
+						depth--
+					}
+					tok = scan.scan()
+				}
+			}
 		} else if tok in [.name, .number] {
 			fixed_length = scan.lit
 			if tok == .name {
@@ -1428,9 +1474,94 @@ fn (g &Parser) fixed_array_length_value(source string) ?int {
 			return none
 		}
 		seen[key] = true
-		value = g.constant_values[key] or { return none }
+		value = g.constant_values[key] or { return g.c_integer_expression_value(key, 0) }
 	}
 	return none
+}
+
+// c_integer_expression_value folds a constant's C spelling such as
+// `(mod__a+mod__b*2)`: integers, constant names, `+ - * / %` and parentheses.
+fn (g &Parser) c_integer_expression_value(source string, depth int) ?int {
+	if depth > 16 {
+		return none
+	}
+	mut terms := []string{}
+	mut operators := []u8{}
+	mut i := 0
+	text := source.trim_space()
+	mut current := strings.new_builder(16)
+	mut paren := 0
+	for i < text.len {
+		c := text[i]
+		if c == `(` {
+			paren++
+		} else if c == `)` {
+			paren--
+		}
+		if paren == 0 && c in [`+`, `-`] && current.len > 0 {
+			terms << current.str().trim_space()
+			operators << c
+		} else if c != ` ` || paren > 0 {
+			current.write_u8(c)
+		}
+		i++
+	}
+	terms << current.str().trim_space()
+	mut total := 0
+	for k, term in terms {
+		value := g.c_integer_term_value(term, depth)?
+		total = if k == 0 || operators[k - 1] == `+` { total + value } else { total - value }
+	}
+	return total
+}
+
+fn (g &Parser) c_integer_term_value(term string, depth int) ?int {
+	mut factors := []string{}
+	mut operators := []u8{}
+	mut current := strings.new_builder(16)
+	mut paren := 0
+	for c in term {
+		if c == `(` {
+			paren++
+		} else if c == `)` {
+			paren--
+		}
+		if paren == 0 && c in [`*`, `/`, `%`] {
+			factors << current.str().trim_space()
+			operators << c
+		} else {
+			current.write_u8(c)
+		}
+	}
+	factors << current.str().trim_space()
+	mut product := 0
+	for k, factor in factors {
+		mut value := 0
+		if factor.starts_with('(') && factor.ends_with(')') {
+			value = g.c_integer_expression_value(factor[1..factor.len - 1], depth + 1)?
+		} else if decimal := fastc_decimal_integer_value(factor) {
+			value = decimal
+		} else {
+			constant := g.constant_values[factor] or { return none }
+			value = if decimal := fastc_decimal_integer_value(constant) {
+				decimal
+			} else {
+				g.c_integer_expression_value(constant, depth + 1)?
+			}
+		}
+		if k == 0 {
+			product = value
+		} else if operators[k - 1] == `*` {
+			product *= value
+		} else if value == 0 {
+			return none
+		} else if operators[k - 1] == `/` {
+			product /= value
+		} else {
+			product %= value
+		}
+	}
+	return product
 }
 
 fn fastc_array_c_type(element_type string) string {

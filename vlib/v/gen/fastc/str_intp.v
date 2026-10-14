@@ -291,6 +291,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 					format_specifier += g.lit
 				} else if g.tok == .minus {
 					format_specifier += '-'
+				} else if g.tok == .plus {
+					format_specifier += '+'
 				} else {
 					return g.unsupported('interpolation format token `${g.token_source()}`')
 				}
@@ -337,6 +339,18 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 			array_value := if interpolation_type.ends_with('*') { '*(${value})' } else { value }
 			parts << '${helper}(${array_value})'
+		} else if interpolation_type.trim_right('*').starts_with('Map_') {
+			helper := g.fastc_map_str_name(interpolation_type) or {
+				return g.unsupported('interpolation of map type `${value_type}`')
+			}
+			map_value := if interpolation_type.ends_with('*') { '*(${value})' } else { value }
+			parts << '${helper}(${map_value})'
+		} else if format_specifier == '+' && fastc_is_integer_expression_type(interpolation_type) {
+			// `${n:+}` signs a non-negative integer too.
+			integer_str := g.fastc_struct_field_str_expression('__vf_signed', interpolation_type) or {
+				return g.unsupported('interpolation format `+` for `${value_type}`')
+			}
+			parts << '({ ${interpolation_type} __vf_signed = (${value}); string __vf_signed_str = ${integer_str}; __vf_signed >= 0 ? builtin__string_plus(_S("+"), __vf_signed_str) : __vf_signed_str; })'
 		} else if g.declared_kinds[g.semantic_type_key(interpolation_type)] == .enum_ {
 			enum_key := g.semantic_type_key(interpolation_type)
 			is_unsigned := g.enum_flags[enum_key]
@@ -382,7 +396,19 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 		} else {
 			mut converted_primitive := false
-			if !g.selfhost || format_specifier != '' {
+			if g.selfhost && interpolation_type in ['f64', 'f32'] {
+				// `${x:.1}`, `${x:8.2}`, `${x:-8.2}`, `${x:.2f}`: the C backend's float formats.
+				if float_format := fastc_float_interpolation_format(format_specifier) {
+					formatted := '${g.fastc_float_format_helper(float_format.fixed)}((double)(${value}), ${float_format.precision})'
+					parts << if float_format.width > 0 {
+						'v_fastc_string_pad(${formatted}, ${float_format.width}, ${float_format.left_align})'
+					} else {
+						formatted
+					}
+					converted_primitive = true
+				}
+			}
+			if !converted_primitive && (!g.selfhost || format_specifier != '') {
 				if primitive_conversion := fastc_primitive_interpolation_expression(interpolation_type, value, format_specifier) {
 					parts << primitive_conversion
 					converted_primitive = true

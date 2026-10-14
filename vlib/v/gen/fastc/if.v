@@ -35,7 +35,7 @@ fn (g &Parser) or_block_has_statements() bool {
 		return true
 	}
 	if g.tok in [.dollar, .key_return, .key_if, .key_for, .key_match, .key_mut, .key_defer, .key_break,
-		.key_continue] {
+		.key_continue, .key_assert] {
 		return true
 	}
 	mut lookahead := scanner.new_scanner(g.prefs, .normal)
@@ -615,18 +615,15 @@ fn (mut g Parser) parse_if() !bool {
 	had_guard := guard_name in g.locals
 	if guard_name != '' {
 		if guard_function_source != '' {
-			parameters := if guard_function.fn_parameter_types.len == 0 {
-				'void'
-			} else {
-				guard_function.fn_parameter_types.join(', ')
-			}
+			parameters := fastc_c_prototype_parameters(guard_function.fn_parameter_types)
 			return_type := if guard_function.fn_return_type == '' {
 				'void'
 			} else {
 				guard_function.fn_return_type
 			}
+			c_return_type := fastc_output_c_type(return_type)
 			name := fastc_c_identifier(guard_name)
-			g.write_line('${return_type} (*${name})(${parameters}) = (${return_type} (*)(${parameters}))(${guard_function_source});')
+			g.write_line('${c_return_type} (*${name})(${parameters}) = (${c_return_type} (*)(${parameters}))(${guard_function_source});')
 			g.locals[guard_name] = FastcLocal{
 				is_mut:               guard_is_mut
 				typ:                  'voidptr'

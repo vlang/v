@@ -360,9 +360,12 @@ typedef _Bool bool;
 #endif
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* V __offsetof(T, field) */
+#define __offsetof(st, m) offsetof(st, m)
 #ifndef _WIN32
 #include <pthread.h>
 #include <unistd.h>
@@ -378,6 +381,7 @@ typedef _Bool bool;
 #include <fcntl.h>
 #include <dirent.h>
 #include <signal.h>
+#include <utime.h>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
@@ -387,7 +391,7 @@ extern char **environ;
 #include <execinfo.h>
 #endif
 #if defined(__linux__) && defined(__GLIBC__)
-extern pid_t gettid(void);
+#include <sys/syscall.h>
 #endif
 #endif
 
@@ -545,9 +549,12 @@ static inline u64 wyhash(const void *key, size_t len, u64 seed, const u64 *secre
 // c_selfhost_preamble_includes is the header block of c_selfhost_preamble;
 // a header-free build replaces it with the target's C ABI prelude.
 const c_selfhost_preamble_includes = r'#include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* V __offsetof(T, field) */
+#define __offsetof(st, m) offsetof(st, m)
 #ifndef _WIN32
 #include <pthread.h>
 #include <unistd.h>
@@ -563,6 +570,7 @@ const c_selfhost_preamble_includes = r'#include <stdint.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <signal.h>
+#include <utime.h>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
@@ -572,7 +580,7 @@ extern char **environ;
 #include <execinfo.h>
 #endif
 #if defined(__linux__) && defined(__GLIBC__)
-extern pid_t gettid(void);
+#include <sys/syscall.h>
 #endif
 #endif
 '
@@ -587,7 +595,15 @@ extern int backtrace(void **, int);
 extern char **backtrace_symbols(void *const *, int);
 extern void backtrace_symbols_fd(void *const *, int, int);
 #endif
+#if defined(__GLIBC__)
+/* glibc exports `gettid` only from 2.30 on; the system call works with any glibc.
+   Strict feature modes hide `syscall` in <unistd.h>, so it is declared here. */
+long syscall(long number, ...);
+static inline pid_t v_fastc_gettid(void) { return (pid_t)syscall(SYS_gettid); }
+#define gettid v_fastc_gettid
+#else
 extern int gettid(void);
+#endif
 extern void *aligned_alloc(size_t, size_t);
 #endif
 #ifndef memory_order_relaxed
@@ -951,6 +967,9 @@ struct FastcStructField {
 	is_skip              bool
 	is_function          bool
 	is_optional_function bool
+	// The field's type is spelled `voidptr`; fn types and erased type parameters are stored
+	// as `voidptr` too, and V3 accepts `nil` outside `unsafe` only for a real one.
+	is_declared_voidptr bool
 	// Shared map fields keep pointer identity even though FastC currently erases locking.
 	// Without this, copying their containing struct detaches subsequent map header updates.
 	is_shared_pointer bool
@@ -1414,12 +1433,14 @@ mut:
 	// (`?T`), so the caller can record it on the declared local.
 	pending_option_value_type string
 	// Set by `parse_type` when it parses a function type (`fn (...) R`): the C return
-	// type (`Option`/`string`/…) and, for an `!`/`?R` return, the wrapped value type.
-	// Lets a fn-typed parameter be declared as a real function pointer and its call
-	// results be type-inferred. `pending_fn_pointer` gates whether the others apply.
+	// type (`Option`/`string`/…), for an `!`/`?R` return the wrapped value type, and the
+	// C prototype of its parameters. Lets a fn-typed parameter be declared as a real
+	// function pointer and its call results be type-inferred. `pending_fn_pointer` gates
+	// whether the others apply.
 	pending_fn_pointer           bool
 	pending_fn_return_type       string
 	pending_fn_option_value_type string
+	pending_fn_parameters        string
 	c_flags                      []string
 	fixed_array_types            map[string]string
 	composite_types              map[string]bool
