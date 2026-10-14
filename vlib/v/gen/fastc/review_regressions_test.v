@@ -109,22 +109,23 @@ struct Record {
 	names [2]string
 	fallback []int
 }
-fn make_names(mut calls int) [2]string { calls++; return ["gamma", "delta"]! }
+struct Counter { mut: calls int }
+fn make_names(mut counter Counter) [2]string { counter.calls++; return ["gamma", "delta"]! }
 fn copy_record(record &Record) Record { return Record{names: record.names} }
 fn main() {
 	original := Record{names: ["field", "array"]!}
 	copied := copy_record(&original)
 	parenthesized := Record{names: (original.names)}
 	constant := Record{names: names}
-	mut calls := 0
-	returned := Record{names: make_names(mut calls)}
+	mut counter := Counter{}
+	returned := Record{names: make_names(mut counter)}
 	assert copied.fallback.len == 0
-	assert calls == 1
+	assert counter.calls == 1
 	println(copied.names[0])
 	println(parenthesized.names[1])
 	println(constant.names[0])
 	println(returned.names[0])
-	println(calls)
+	println(counter.calls)
 }
 ', 'field\narray\nalpha\ngamma\n1')
 }
