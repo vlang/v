@@ -642,13 +642,15 @@ pre {
 }
 .token.number,
 .token.string_interp,
+.token.escape,
 .token.enum_value {
 	color: #702459;
 	color: var(--code-symbol-text-color);
 }
 .token.string,
 .token.char,
-.token.builtin {
+.token.builtin,
+.token.type_name {
 	color: #38a169;
 	color: var(--code-builtin-text-color);
 }
@@ -665,6 +667,9 @@ pre {
 .token.keyword {
 	color: #2b6cb0;
 	color: var(--code-keyword-text-color);
+	font-weight: bold;
+}
+.token.module_ {
 	font-weight: bold;
 }
 .token.function {

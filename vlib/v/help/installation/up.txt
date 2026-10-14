@@ -36,8 +36,9 @@ Ownership dispatch preserves V3_PRIMARY_VEXE independently of the helper's VEXE.
 Each module being cached is printed to stdout as `Caching module <name>...`.
 Before each refresh build, progress shows the cache record index and total,
 normal or production mode, program or test mode, and its original compiler flags.
-For example: `> Refreshing module cache [1/4] (production tests; -cc tcc -prod).`
-Equivalent builds and unavailable inputs are skipped, so progress indices can jump.
+For example: `> Refreshing module cache [1/2] (normal program; -cc tcc).`
+Equivalent builds, unavailable inputs and production TinyCC builds are skipped, so progress
+indices can jump. TinyCC is not a `-prod` compiler.
 The final summary reports how many distinct build configurations were checked.
 The same module can be cached separately for different TinyCC build modes.
 This also runs when the compiler itself is already updated. A cache refresh

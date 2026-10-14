@@ -121,7 +121,7 @@ pub fn (tag &Tag) get_tags(name string) []&Tag {
 // get_tag_by_attribute retrieves the first found child tag in the tag that has the given attribute name.
 pub fn (tag &Tag) get_tag_by_attribute(name string) ?&Tag {
 	for child in tag.children {
-		if child.attributes[name] != '' {
+		if name in child.attributes {
 			return child
 		}
 		if c := child.get_tag_by_attribute(name) {
@@ -135,7 +135,7 @@ pub fn (tag &Tag) get_tag_by_attribute(name string) ?&Tag {
 pub fn (tag &Tag) get_tags_by_attribute(name string) []&Tag {
 	mut res := []&Tag{}
 	for child in tag.children {
-		if child.attributes[name] != '' {
+		if name in child.attributes {
 			res << child
 		}
 		res << child.get_tags_by_attribute(name)
@@ -146,7 +146,7 @@ pub fn (tag &Tag) get_tags_by_attribute(name string) []&Tag {
 // get_tag_by_attribute_value retrieves the first found child tag in the tag that has the given attribute name and value.
 pub fn (tag &Tag) get_tag_by_attribute_value(name string, value string) ?&Tag {
 	for child in tag.children {
-		if child.attributes[name] == value {
+		if name in child.attributes && child.attributes[name] == value {
 			return child
 		}
 		if c := child.get_tag_by_attribute_value(name, value) {
@@ -160,7 +160,7 @@ pub fn (tag &Tag) get_tag_by_attribute_value(name string, value string) ?&Tag {
 pub fn (tag &Tag) get_tags_by_attribute_value(name string, value string) []&Tag {
 	mut res := []&Tag{}
 	for child in tag.children {
-		if child.attributes[name] == value {
+		if name in child.attributes && child.attributes[name] == value {
 			res << child
 		}
 		res << child.get_tags_by_attribute_value(name, value)

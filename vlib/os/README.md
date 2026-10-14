@@ -16,6 +16,9 @@ It returns an empty string when the standard input handle is invalid.
 
 ### Path helpers
 
+`os.executable()` returns the process executable path. On Linux, NetBSD, and DragonFly,
+it uses the exact byte count returned by `readlink`, without requiring a NUL terminator.
+
 `os.base()` removes all trailing separators before returning the final path element.
 For example, `os.base('a///')` returns `a`. An empty path returns `.`, and a path made
 entirely of separators returns one separator (`/` for `///`, or `\` for `\\`).

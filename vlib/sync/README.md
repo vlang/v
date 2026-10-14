@@ -2,6 +2,8 @@
 
 `sync` provides cross platform handling of concurrency primitives.
 
+On FreeBSD, mutexes store native `pthread_mutex_t` and `pthread_rwlock_t` values.
+
 Channels can carry function values, including aliases such as `type Task = fn ()`.
 Function channels support explicit capacities and default initialization in structs
 and globals. Arrays of channels can use an explicit `init` expression to initialize
@@ -24,3 +26,20 @@ select {
 	// another channel can be handled here
 }
 ```
+
+## Phaser and StampedLock
+
+`new_phaser()` creates a reusable barrier. Register each participating worker before the
+phase starts. Each registered party calls `arrive_and_wait()` once per phase, or calls
+`arrive_and_deregister()` once to leave. The phase advances only when all remaining
+parties have arrived. Both methods return the phase they arrived in. With no parties,
+arrival and deregistration leave the phase unchanged. `phase_number()` observes the phase.
+
+`new_stamped_lock()` offers shared `read_lock()`/`read_unlock()` and exclusive
+`write_lock()`/`write_unlock()` pairs. A `try_optimistic_read()` stamp is nonzero while no
+writer is active, and zero during a write. `validate(stamp)` rejects zero and stamps
+invalidated by a write. Stamp operations briefly acquire an internal mutex; they do not
+hold a read lock or wait for a writer to finish. Optimistic access does not make ordinary
+concurrent reads and writes safe: use atomic data or other synchronization, and validate
+the stamp after reading. Use a regular read lock for non-atomic shared data. Locks are
+not reentrant and must be released once for each corresponding acquisition.
