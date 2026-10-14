@@ -1,7 +1,7 @@
 module cell
 
 // RefCell is a container with runtime-checked borrowing: many shared borrows
-// may coexist, but an exclusive borrow excludes all others, exactly like
+// may coexist, but an exclusive borrow excludes all others, inspired by
 // Rust's `std::cell::RefCell`. Unlike `shared` variables it is single-threaded
 // and needs no locks; unlike plain references the checks happen at runtime.
 // Access goes through callbacks, since V has no guard lifetimes.
@@ -41,7 +41,9 @@ pub fn (mut c RefCell[T]) try_with(f fn (v T) T) ?T {
 // with_mut runs f on the value under an exclusive borrow and stores the
 // result back. It panics if the cell is borrowed in any way.
 pub fn (mut c RefCell[T]) with_mut(f fn (v T) T) {
-	c.try_with_mut(f) or { panic('cell: already borrowed') }
+	if !c.try_with_mut(f) {
+		panic('cell: already borrowed')
+	}
 }
 
 // try_with_mut is with_mut without the panic: it returns false (leaving the
@@ -58,8 +60,9 @@ pub fn (mut c RefCell[T]) try_with_mut(f fn (v T) T) bool {
 	return true
 }
 
-// try_borrow returns a detached copy of the value, or none if the cell is
-// exclusively borrowed. The copy is not tracked: mutate through with_mut.
+// try_borrow returns the value using ordinary V value semantics, or none if
+// the cell is exclusively borrowed. This access is not tracked afterwards;
+// references contained in T are not deep-cloned. Update through with_mut.
 pub fn (c &RefCell[T]) try_borrow() ?T {
 	if c.borrows < 0 {
 		return none
