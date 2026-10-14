@@ -5591,9 +5591,14 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 		'os/os_stat_windows.c.v' { return include_arg == '<sys/stat.h>' }
 		'os/os_windows.c.v' { return include_arg in ['<process.h>', '<sys/utime.h>'] }
 		'os/password_windows.c.v', 'v/driver/windows_icon_windows.c.v',
-		'v/driver/replace_file_windows.c.v',
+		'v/driver/replace_file_windows.c.v' {
+			return include_arg == '<windows.h>'
+		}
 		'v/cmdexec/cmdexec_pipe.c.v' {
 			return include_arg == '<windows.h>'
+				|| (g.target.os in ['macos', 'linux', 'android', 'termux', 'freebsd', 'openbsd',
+					'dragonfly', 'ios']
+					&& normalized_c_include_arg_path(include_arg) == root + '/vlib/v/cmdexec/cmdexec_poll.h')
 		}
 		'time/time_windows.c.v' { return include_arg == '<time.h>' }
 		'sync/sync_windows.c.v' { return include_arg in ['<synchapi.h>', '<time.h>'] }
@@ -19279,6 +19284,7 @@ fn (mut g FlatGen) preamble() {
 		g.system_libc_preamble()
 	} else {
 		g.headerless_libc_preamble()
+		g.headerless_cmdexec_poll_helper()
 		if g.headerless_compiler_bootstrap() {
 			g.portable_native_runtime_helpers()
 		}

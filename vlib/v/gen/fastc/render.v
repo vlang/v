@@ -1012,7 +1012,8 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 		// assigned); copy the source array's bytes instead. A by-value wrapper source keeps its
 		// array in `.data`, while another raw-storage source is already a bare array.
 		right_data := if g.fixed_array_uses_raw_storage(rhs_tokens) {
-			right
+			// The bare array, not the wrapper value an argument would be given.
+			g.render_member_receiver(rhs_tokens) or { right }
 		} else {
 			'(${right}).data'
 		}
@@ -5138,7 +5139,11 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 		-1
 	}
 	if call_close > 0 && call_close + 2 < tokens.len && tokens[call_close + 1].tok == .dot {
-		call := g.render_method_receiver_expression(tokens[..call_close + 1]) or { return none }
+		call_tokens := tokens[..call_close + 1]
+		// A free call renders its arguments against the parameter types.
+		call := g.render_missing_call_arguments(call_tokens) or {
+			g.render_method_receiver_expression(call_tokens) or { return none }
+		}
 		source = call.source
 		current_type = call.typ_text()
 		i = call_close + 1
@@ -5172,6 +5177,30 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 			// is invalid — cast to the element pointer first.
 			close := fastc_matching_delimiter(tokens, i, .lsbr, .rsbr) or { return none }
 			layout := fastc_trim_pointer_suffix(g.underlying_alias_type(current_type))
+			if fixed_element := fastc_fixed_array_element_type(layout) {
+				// A fixed array is indexed in place: raw C storage (a field or global)
+				// directly, a wrapper value (a local or parameter) through `.data`.
+				index_source := g.render_membership_candidate(tokens[i + 1..close], 'int') or {
+					return none
+				}
+				storage := if g.fixed_array_uses_raw_storage(tokens[..i]) {
+					'(${source})'
+				} else if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+					'(${source})->data'
+				} else {
+					'(${source}).data'
+				}
+				fixed_length := fastc_fixed_array_length(layout) or { '' }
+				source = if g.selfhost && fixed_length != '' {
+					'${storage}[builtin__v_fixed_index(${index_source}, ${fixed_length})]'
+				} else {
+					'${storage}[${index_source}]'
+				}
+				current_type = fixed_element
+				member_path += '[]'
+				i = close + 1
+				continue
+			}
 			if !layout.starts_with('Array_') {
 				return none
 			}

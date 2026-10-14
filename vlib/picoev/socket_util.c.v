@@ -61,7 +61,7 @@ fn setup_sock(fd int) ! {
 		}
 	} $else $if windows {
 		non_blocking_mode := u32(1)
-		if C.ioctlsocket(fd, C.FIONBIO, &non_blocking_mode) == C.SOCKET_ERROR {
+		if C.ioctlsocket(fd, C.FIONBIO, voidptr(&non_blocking_mode)) == C.SOCKET_ERROR {
 			return error('icotlsocket failed')
 		}
 	} $else {

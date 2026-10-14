@@ -378,8 +378,14 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		} else {
 			base_type.trim_right('*')
 		}
+		// `a#[i..j]` counts a negative bound from the end and clamps instead of panicking.
+		gated := tokens[open].lit == '#'
+		if gated && is_fixed_array {
+			return none
+		}
 		mut slice_source := if base_layout_type == 'string' {
-			'builtin__string_substr(${if receiver_is_pointer { '*' } else { '' }}(${receiver_source}), ${start}, ${end})'
+			substr := if gated { 'builtin__string_substr_ni' } else { 'builtin__string_substr' }
+			'${substr}(${if receiver_is_pointer { '*' } else { '' }}(${receiver_source}), ${start}, ${end})'
 		} else if is_fixed_array {
 			// Slicing a fixed array yields a NEW dynamic array copied from the element
 			// range; the raw `u8 x[N]` / wrapped `.data` storage differs by receiver kind.
@@ -401,7 +407,11 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 			} else {
 				receiver_source
 			}
-			'builtin__array_slice(${array_value}, ${start}, ${end})'
+			if gated {
+				'builtin__array_slice_ni(${array_value}, ${start}, ${end})'
+			} else {
+				'builtin__array_slice(${array_value}, ${start}, ${end})'
+			}
 		}
 		if needs_receiver_temporary {
 			receiver_decl_type := g.declaration_c_type(base_type, base_source)
@@ -542,8 +552,21 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 		}
 		index_source := g.render_membership_candidate(tokens[i + 2..close], 'int') or { continue }
 		base_source := g.resolved_root_expression_name(tokens[i].lit)
-		needle := '${base_source}[${index_source}]'
-		replacement := g.render_array_access_expression(tokens[i..close + 1]) or { continue }
+		mut needle := '${base_source}[${index_source}]'
+		// `a[i][j]`: the chained indexes are one access.
+		mut access_end := close
+		for access_end + 1 < tokens.len && tokens[access_end + 1].tok == .lsbr {
+			next_close := fastc_matching_delimiter(tokens, access_end + 1, .lsbr, .rsbr) or { break }
+			if fastc_expression_tokens_contain_range(tokens, access_end + 2, next_close, .dotdot) {
+				break
+			}
+			next_index := g.render_membership_candidate(tokens[access_end + 2..next_close], 'int') or {
+				break
+			}
+			needle += '[${next_index}]'
+			access_end = next_close
+		}
+		replacement := g.render_array_access_expression(tokens[i..access_end + 1]) or { continue }
 		if fastc_contains(rendered, needle) {
 			// A method receiver may already contain the lowered direct access
 			// `((s).str[i])`; the raw `s[i]` suffix there is a struct member, not
@@ -1020,6 +1043,24 @@ fn (g &Parser) array_initializer_type(tokens []FastcExpressionToken) ?string {
 		}
 		dimensions = 1
 		index = 3
+	} else if tokens.len >= 5 && tokens[0].tok == .lsbr && tokens[1].tok in [.name, .number, .lpar] {
+		// `[mod.size]T{}` spells its length as a type does; `[size + 1]T{}` folds it.
+		close := fastc_matching_delimiter(tokens, 0, .lsbr, .rsbr) or { -1 }
+		if close > 1 && close + 1 < tokens.len && tokens[close + 1].tok != .lcbr {
+			size := tokens[1..close]
+			if size.len == 3 && size[0].tok == .name && size[1].tok == .dot && size[2].tok == .name
+				&& size[0].lit in g.imports {
+				fixed_length = fastc_c_constant_name(g.imports[size[0].lit], size[2].lit)
+			} else {
+				value, position := g.constant_integer_sum(size, 0) or { return none }
+				if position != size.len {
+					return none
+				}
+				fixed_length = value.str()
+			}
+			dimensions = 1
+			index = close + 1
+		}
 	}
 	for index + 1 < tokens.len && tokens[index].tok == .lsbr && tokens[index + 1].tok == .rsbr {
 		dimensions++
@@ -1266,4 +1307,72 @@ fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int
 	item := unsafe { tokens[item_start..end] }
 	result << item
 	return result
+}
+
+// constant_integer_sum folds `a + b - c` over constant_integer_term from `start`, returning
+// the value and the position after it.
+fn (g &Parser) constant_integer_sum(tokens []FastcExpressionToken, start int) ?(int, int) {
+	mut value, mut position := g.constant_integer_term(tokens, start)?
+	for position < tokens.len && tokens[position].tok in [.plus, .minus] {
+		operator := tokens[position].tok
+		right, next := g.constant_integer_term(tokens, position + 1)?
+		value = if operator == .plus { value + right } else { value - right }
+		position = next
+	}
+	return value, position
+}
+
+// constant_integer_term folds `a * b / c % d` over integer literals, constants and
+// parenthesized sums.
+fn (g &Parser) constant_integer_term(tokens []FastcExpressionToken, start int) ?(int, int) {
+	mut value, mut position := g.constant_integer_factor(tokens, start)?
+	for position < tokens.len && tokens[position].tok in [.mul, .div, .mod] {
+		operator := tokens[position].tok
+		right, next := g.constant_integer_factor(tokens, position + 1)?
+		if operator != .mul && right == 0 {
+			return none
+		}
+		value = match operator {
+			.mul { value * right }
+			.div { value / right }
+			else { value % right }
+		}
+		position = next
+	}
+	return value, position
+}
+
+fn (g &Parser) constant_integer_factor(tokens []FastcExpressionToken, start int) ?(int, int) {
+	if start >= tokens.len {
+		return none
+	}
+	item := tokens[start]
+	if item.tok == .lpar {
+		value, close := g.constant_integer_sum(tokens, start + 1)?
+		if close >= tokens.len || tokens[close].tok != .rpar {
+			return none
+		}
+		return value, close + 1
+	}
+	if item.tok == .number {
+		value := g.fixed_array_length_value(fastc_c_selfhost_number(item.lit))?
+		return value, start + 1
+	}
+	if item.tok != .name {
+		return none
+	}
+	mut module_name := g.module_name
+	mut name := item.lit
+	mut next := start + 1
+	if next + 1 < tokens.len && tokens[next].tok == .dot && tokens[next + 1].tok == .name
+		&& item.lit in g.imports {
+		module_name = g.imports[item.lit]
+		name = tokens[next + 1].lit
+		next += 2
+	}
+	c_name := g.constants[fastc_constant_key(module_name, name)] or {
+		fastc_c_constant_name(module_name, name)
+	}
+	value := g.fixed_array_length_value(c_name)?
+	return value, next
 }

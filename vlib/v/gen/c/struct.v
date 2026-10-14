@@ -1136,16 +1136,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	}
 	after_fields_module := g.tc.cur_module
 	g.tc.cur_module = init_module
-	resolved_sname := g.struct_init_resolved_decl_name(lookup_source_name)
-	// Main-module declarations are bare-keyed, but an imported generic clone can
-	// carry an explicit `main.X` lock to disambiguate a same-named module type.
-	// Preserve that lock while selecting source defaults; reducing it back to `X`
-	// here would rebind the lookup in the imported function's module.
-	sname := if lookup_source_name.starts_with('main.') && !resolved_sname.contains('.') {
-		lookup_source_name
-	} else {
-		resolved_sname
-	}
+	sname := g.struct_init_default_owner(lookup_source_name)
 	g.tc.cur_module = after_fields_module
 	if is_union_init {
 		if !has_field {
@@ -1172,7 +1163,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 			if f.name in set_fields {
 				continue
 			}
-			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ, g.init_field_c_name(defaults_key, f.name), has_field)
+			has_field = g.gen_unset_struct_field_default(sname, f.name, f.typ, g.init_field_c_name(sname, f.name), has_field)
 		}
 	}
 	if !has_field {
@@ -1675,20 +1666,25 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 	}
 	after_fields_module := g.tc.cur_module
 	g.tc.cur_module = init_module
-	sname := g.struct_init_resolved_decl_name(node.value)
+	sname := g.struct_init_default_owner(lookup_source_name)
 	g.tc.cur_module = after_fields_module
 	// A declared default for a fixed-array field has to be copied after the literal
 	// closes, like the explicitly set ones above; emitting it as a designator would
 	// produce `.id = (u64[4]){...}`, a compound literal that decays to a pointer.
 	mut deferred_fixed_defaults := []DeferredFixedArrayDefault{}
 	has_field = g.gen_struct_default_fields_deferring_fixed_arrays(sname, mut set_fields, has_field, true, mut deferred_fixed_defaults)
-	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
+	resolved_defaults_key := if info := g.find_struct_decl(sname) {
+		info.full_name_text()
+	} else {
+		sname
+	}
+	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { resolved_defaults_key }
 	if defaults_key in g.tc.structs {
 		for f in g.tc.structs[defaults_key] {
 			if f.name in set_fields {
 				continue
 			}
-			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ, g.init_field_c_name(defaults_key, f.name), has_field)
+			has_field = g.gen_unset_struct_field_default(sname, f.name, f.typ, g.init_field_c_name(sname, f.name), has_field)
 		}
 	}
 	if !has_field {
@@ -2307,15 +2303,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	}
 	after_fields_module := g.tc.cur_module
 	g.tc.cur_module = init_module
-	// A specialized generic heap literal can retain its unqualified source spelling
-	// while `lookup_source_name` identifies the concrete caller type. Use that same
-	// concrete name for declared defaults; resolving `node.value` in the generic
-	// function's module can otherwise borrow a same-named local struct.
-	sname := if lookup_source_name.starts_with('main.') {
-		lookup_source_name
-	} else {
-		g.struct_init_resolved_decl_name(lookup_source_name)
-	}
+	sname := g.struct_init_default_owner(lookup_source_name)
 	g.tc.cur_module = after_fields_module
 	if is_union_init {
 		if !has_field {
@@ -2348,7 +2336,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 			if f.name in set_fields {
 				continue
 			}
-			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ, g.init_field_c_name(defaults_key, f.name), has_field)
+			has_field = g.gen_unset_struct_field_default(sname, f.name, f.typ, g.init_field_c_name(sname, f.name), has_field)
 		}
 	}
 	if !has_field {
@@ -5388,6 +5376,17 @@ fn (g &FlatGen) struct_type_alias_target(type_name string) ?string {
 		return target
 	}
 	return none
+}
+
+// Preserve a main-module lock for owner-sensitive defaults such as shared fields.
+// The resolved declaration name is suitable for metadata keys, but its bare main
+// spelling could select a same-named struct in the imported generic's module.
+fn (g &FlatGen) struct_init_default_owner(type_name string) string {
+	resolved := g.struct_init_resolved_decl_name(type_name)
+	if type_name.starts_with('main.') && !resolved.contains('.') {
+		return type_name
+	}
+	return resolved
 }
 
 fn (g &FlatGen) struct_init_resolved_decl_name(type_name string) string {

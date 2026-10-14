@@ -209,7 +209,14 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		if tokens[index].tok == .ellipsis {
 			index++
 			value_start := index
-			for index < close && tokens[index].tok !in [.semicolon, .comma] {
+			// The base ends at a top-level separator, not one inside its own call.
+			mut depth := 0
+			for index < close && (depth > 0 || tokens[index].tok !in [.semicolon, .comma]) {
+				if tokens[index].tok in [.lpar, .lsbr, .lcbr] {
+					depth++
+				} else if tokens[index].tok in [.rpar, .rsbr, .rcbr] {
+					depth--
+				}
 				index++
 			}
 			if value_start == index {
