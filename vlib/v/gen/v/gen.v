@@ -5121,7 +5121,7 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 			type_width := g.type_text(f.typ).len
 			padded_type_width := int_max(type_width, defaults[int(fid)] or { 0 })
 			flags := gp[0]
-			column := (g.indent + 1) * 4 + (alignments[int(fid)] or { f.value.len }) + 1 +
+			column := g.indent * 4 + (alignments[int(fid)] or { f.value.len }) + 1 +
 				padded_type_width + 3 + if flags.contains('v') { 'volatile '.len } else { 0 }
 			default_width := g.struct_field_attr_default_width(fid, column)
 			if f.children_count == 0 || default_width > 0 {

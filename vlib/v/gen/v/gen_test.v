@@ -2480,6 +2480,26 @@ fn test_formatter_does_not_align_attributes_across_wrapped_defaults() {
 	assert vfmt('struct_field_wrapped_default_attributes_twice', out) == out
 }
 
+fn test_formatter_aligns_attributes_at_array_default_wrap_boundary() {
+	// The first array element reaches column 85 with the field's actual indentation.
+	field_name := 'array_field_name_to_place_the_default_near_the_array_wrapping_boundary'
+	source := 'struct Arrays {\n\t${field_name} []int = [1, 2] @[first]\n\tother []int = [3, 4, 5] @[second]\n}\n'
+	out := vfmt('struct_field_array_wrap_boundary', source)
+	assert out.contains('[]int = [1, 2]    @[first]\n'), out
+	assert out.contains('[]int = [3, 4, 5] @[second]\n'), out
+	assert vfmt('struct_field_array_wrap_boundary_twice', out) == out
+}
+
+fn test_formatter_aligns_attributes_at_call_default_wrap_boundary() {
+	// The calls end at columns 98 and 99, just below the 100-column wrapping limit.
+	field_name := 'call_field_name_to_place_the_default_near_function_call_wrapping_boundary'
+	source := 'struct Calls {\n\t${field_name} int = make(value: 1) @[first]\n\tother int = make(value: 12) @[second]\n}\n'
+	out := vfmt('struct_field_call_wrap_boundary', source)
+	assert out.contains('int = make(value: 1)  @[first]\n'), out
+	assert out.contains('int = make(value: 12) @[second]\n'), out
+	assert vfmt('struct_field_call_wrap_boundary_twice', out) == out
+}
+
 // Enum members and interface members align their trailing comments the same way.
 fn test_formatter_aligns_enum_and_interface_trailing_comments() {
 	source := 'enum Stage {\n\tcompile_begin // before\n\tcompile_end   // after\n\tcmd_begin     // before run\n}\n\ninterface Reporter {\n\tsession_start(message string) // at the start\n\tstop()                        // at the end\n}\n'
