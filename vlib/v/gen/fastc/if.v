@@ -553,7 +553,7 @@ fn (mut g Parser) parse_if() !bool {
 			guard_type = map_lookup.typ
 			guard_is_mut = guard_name_index == 1
 			guard_option = g.temporary_name('if_guard')
-			g.write_line('__auto_type ${guard_option} = (${map_lookup.source});')
+			g.write_line('Option ${guard_option} = (${map_lookup.source});')
 			condition = '${guard_option}.state == 0'
 			g.last_expression_type = 'bool'
 		} else if array_lookup := g.render_array_lookup_option_expression(right_tokens) {
@@ -563,7 +563,7 @@ fn (mut g Parser) parse_if() !bool {
 			guard_type = array_lookup.typ
 			guard_is_mut = guard_name_index == 1
 			guard_option = g.temporary_name('if_guard')
-			g.write_line('__auto_type ${guard_option} = (${array_lookup.source});')
+			g.write_line('Option ${guard_option} = (${array_lookup.source});')
 			condition = '${guard_option}.state == 0'
 			g.last_expression_type = 'bool'
 		} else {
@@ -576,7 +576,7 @@ fn (mut g Parser) parse_if() !bool {
 				guard_erased_generic = g.erased_generic_option_value_type_for_expression(right_tokens) != none
 				right_source := condition.all_after(':=').trim_space()
 				guard_result = (g.infer_expression_type(right_tokens) or { '' }) == '__v_result'
-				g.write_line('__auto_type ${guard_option} = (${right_source});')
+				g.write_line('${if guard_result { '__v_result' } else { 'Option' }} ${guard_option} = (${right_source});')
 				condition = '${guard_option}.state == 0'
 				g.last_expression_type = 'bool'
 			}
@@ -860,7 +860,7 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 	g.skip_semicolons()
 	g.expect(.lcbr)!
 	guard_option := g.temporary_name('if_guard')
-	g.write_line('__auto_type ${guard_option} = (${rhs});')
+	g.write_line('${g.option_container_c_type(g.last_expression, rhs)} ${guard_option} = (${rhs});')
 	g.write_line('if (${guard_option}.state == 0) {')
 	g.indent++
 	multi_return := g.temporary_name('multi_return')
@@ -1371,6 +1371,7 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 	}
 	g.expect(.decl_assign)!
 	rhs := g.read_expression([token.Token.semicolon, token.Token.lcbr])!
+	guard_container_type := g.option_container_c_type(g.last_expression, rhs)
 	component_types := g.multi_return_types_for_expression(g.last_expression)
 	if component_types.len < names.len {
 		return g.unsupported('multi-return option guard component types')
@@ -1443,7 +1444,7 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 	g.expected_expression_type = outer_expected_type
 	g.last_expression = []FastcExpressionToken{}
 	result_var := g.temporary_name('if_result')
-	return '({ __auto_type ${guard_option} = (${rhs}); ${result_type} ${result_var}; if (${guard_option}.state == 0) { ${binds}${result_var} = (${then_expr}); } else { ${result_var} = (${else_expr}); } ${result_var}; })'
+	return '({ ${guard_container_type} ${guard_option} = (${rhs}); ${result_type} ${result_var}; if (${guard_option}.state == 0) { ${binds}${result_var} = (${then_expr}); } else { ${result_var} = (${else_expr}); } ${result_var}; })'
 }
 
 // fastc_plan_is_bare_local reports whether a member-smart-cast plan narrows a bare local
@@ -1517,18 +1518,21 @@ fn (mut g Parser) read_if_expression() !string {
 	mut guard_type := ''
 	mut guard_option := ''
 	mut guard_source := ''
+	mut guard_container_type := ''
 	if g.selfhost && g.last_expression.len >= 3 && g.last_expression[0].tok == .name && g.last_expression[1].tok == .decl_assign {
 		right_tokens := g.last_expression[2..]
 		if map_lookup := g.render_map_lookup_option_expression(right_tokens) {
 			guard_name = g.last_expression[0].lit
 			guard_type = map_lookup.typ
 			guard_source = map_lookup.source
+			guard_container_type = 'Option'
 		} else {
 			option_type := g.option_value_type_for_expression(right_tokens)
 			if option_type != '' {
 				guard_name = g.last_expression[0].lit
 				guard_type = option_type
 				guard_source = condition.all_after(':=').trim_space()
+				guard_container_type = g.option_container_c_type(right_tokens, guard_source)
 			}
 		}
 		if guard_name != '' {
@@ -1817,7 +1821,7 @@ fn (mut g Parser) read_if_expression() !string {
 	return if guard_option == '' {
 		wrapped
 	} else {
-		'({ __auto_type ${guard_option} = (${guard_source}); ${wrapped}; })'
+		'({ ${guard_container_type} ${guard_option} = (${guard_source}); ${wrapped}; })'
 	}
 }
 
