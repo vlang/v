@@ -6,6 +6,8 @@ nominal aliases, and parser metadata. They differ from a checker's semantic `typ
 Resolving an unqualified spelling still requires its module and import context.
 
 `source_type_id` and `source_type_name` cross the spelling boundary. Zero denotes empty text.
+`source_type_shape` reads syntax flags recorded when a spelling is interned, allowing
+type caches to inspect wrapper, container, qualified-name, and `typeof` syntax by ID.
 `FlatAst.type_text_id` and `node_type_text_id` use this same `u32` namespace, independently
 of the AST table used for ordinary text payloads.
 The process owns immutable spellings in nonmoving chunks. Insertion is synchronized; readers
@@ -16,6 +18,8 @@ The table retains unique spellings until process exit; IDs are not serialized ac
 `TypeTextTable` provides a private lookup cache over these shared identities. `TypeTextBindings`
 and `NodeTypeTextBindings` store binding values as indexes. `get` resolves a present binding,
 including one whose spelling is empty. `type_id` and `set_id` pass an index without formatting it.
+`value_id` returns an index directly, using zero for an empty or absent binding. Use `type_id`
+or `contains` when those two states need to be distinguished.
 `clone` copies lexical bindings while sharing their lookup cache. `fork` copies both bindings
 and the private cache for a worker; immutable IDs can be copied directly between workers.
 Do not concurrently mutate the same binding map or private lookup cache.

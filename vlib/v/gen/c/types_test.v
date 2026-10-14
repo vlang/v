@@ -633,9 +633,9 @@ fn test_import_alias_type_text_uses_the_node_source_file() {
 	g.a = ast
 	g.tc = &tc
 
-	assert g.canonical_import_alias_type_text_in_file('&pref.Preferences', 'driver.v') == '&v.pref.Preferences'
-	assert g.canonical_import_alias_type_text_in_file('map[string][]pref.Target', 'driver.v') == 'map[string][]v.pref.Target'
-	assert g.canonical_import_alias_type_in_file('token.Pos', 'parser.v').name() == 'v.token.Pos'
+	assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id('&pref.Preferences'), 'driver.v')) == '&v.pref.Preferences'
+	assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id('map[string][]pref.Target'), 'driver.v')) == 'map[string][]v.pref.Target'
+	assert g.canonical_import_alias_type_in_file(flat.source_type_id('token.Pos'), 'parser.v').name() == 'v.token.Pos'
 	for _ in 0 .. 3 {
 		for file in ['driver.v', 'unrelated.v'] {
 			expected := if file == 'driver.v' {
@@ -643,13 +643,13 @@ fn test_import_alias_type_text_uses_the_node_source_file() {
 			} else {
 				'&v.pref.Preferences'
 			}
-			assert g.canonical_import_alias_type_text_in_file('&pref.Preferences'.clone(), file.clone()) == expected
-			assert g.canonical_import_alias_type_text_in_file(' &pref.Preferences ', file) == expected
+			assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id('&pref.Preferences'.clone()), file.clone())) == expected
+			assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(' &pref.Preferences '), file)) == expected
 		}
 	}
-	assert g.canonical_import_alias_type_text_in_file(' &&int ', 'driver.v') == '&&int'
-	assert g.canonical_import_alias_type_text_in_file('map[ string ] []int', 'driver.v') == 'map[string][]int'
-	assert g.canonical_import_alias_type_text_in_file('Box[int,string]', 'driver.v') == 'Box[int, string]'
+	assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(' &&int '), 'driver.v')) == '&&int'
+	assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id('map[ string ] []int'), 'driver.v')) == 'map[string][]int'
+	assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id('Box[int,string]'), 'driver.v')) == 'Box[int, string]'
 }
 
 fn test_exact_import_type_lookup_uses_qualified_declaration_keys() {
@@ -689,7 +689,7 @@ fn test_import_type_cache_keeps_file_contexts_separate() {
 	for _ in 0 .. 3 {
 		for file in ['first.v', 'second.v'] {
 			for typ in ['model.Item', '&model.Item', '[]model.Item', '?model.Item'] {
-				cached := g.canonical_import_alias_type_in_file(typ.clone(), file.clone())
+				cached := g.canonical_import_alias_type_in_file(flat.source_type_id(typ.clone()), file.clone())
 				uncached := g.canonical_import_alias_type_in_file_uncached(typ, file)
 				assert cached == uncached
 				assert cached.name().contains(file.all_before('.') + '.model.Item')
@@ -699,7 +699,7 @@ fn test_import_type_cache_keeps_file_contexts_separate() {
 	// A new generation must not retain types from the previous declaration table.
 	g.reset_context_lookup_caches()
 	tc.file_imports['first.v\nmodel'] = 'second.model'
-	assert g.canonical_import_alias_type_in_file('model.Item', 'first.v').name() == 'second.model.Item'
+	assert g.canonical_import_alias_type_in_file(flat.source_type_id('model.Item'), 'first.v').name() == 'second.model.Item'
 }
 
 fn test_unqualified_type_normalization_cache_preserves_spacing_and_nesting() {
@@ -717,7 +717,7 @@ fn test_unqualified_type_normalization_cache_preserves_spacing_and_nesting() {
 		'[3]int':                         '[3]int'
 	} {
 		for file in ['one.v', 'two.v', 'one.v'] {
-			assert g.canonical_import_alias_type_text_in_file(input.clone(), file) == expected
+			assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(input.clone()), file)) == expected
 		}
 	}
 	assert g.import_type_cache.unqualified_texts.entries.len > 0
@@ -738,9 +738,9 @@ fn test_import_alias_type_normalization_preserves_primitive_containers_and_named
 	g.tc = &tc
 	node := flat.Node{ kind: .ident }
 	for text in ['int', 'string', 'voidptr', '&&int', '?[]int', '!map[string][]u8', '[3]int'] {
-		typ := tc.parse_type(text)
+		typ := tc.parse_type(flat.source_type_id(text))
 		assert g.canonical_import_alias_type_for_node(typ, &node) == typ
-		assert g.canonical_import_alias_type_text_in_file(typ.name(), 'driver.v') == typ.name()
+		assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(typ.source_type_id(), 'driver.v')) == typ.name()
 	}
 	for text, expected in {
 		'model.Item':      'app.model.Item'
@@ -1206,9 +1206,9 @@ fn test_import_alias_canonicalization_is_idempotent_for_module_path_prefix() {
 	g.tc = &tc
 	for source in ['tsc.CompileTimes', '&tsc.CompileTimes', 'gort.Cell[tsc.CompileTimes]',
 		'map[string][]tsc.CompileTimes'] {
-		canonical := g.canonical_import_alias_type_text_in_file(source, 'other.v')
+		canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(source), 'other.v'))
 		assert canonical.contains('tsc.execute.tsc.CompileTimes')
-		assert g.canonical_import_alias_type_text_in_file(canonical, 'other.v') == canonical
+		assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(canonical), 'other.v')) == canonical
 		assert g.canonical_import_alias_type_text_in_file_uncached(canonical, 'other.v') == canonical
 	}
 }

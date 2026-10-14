@@ -136,7 +136,7 @@ fn (t &Transformer) fixed_array_call_param_ref(name string, call flat.Node, inde
 	callee_id := t.a.child(&call, 0)
 	callee := t.a.node(callee_id)
 	if callee.kind == .ident {
-		if t.var_type(callee.value).len > 0 {
+		if flat.source_type_name(t.var_type(callee.value)).len > 0 {
 			return none
 		}
 		// Escape prescanning precedes local type registration. Resolve lexical

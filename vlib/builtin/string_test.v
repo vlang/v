@@ -805,6 +805,24 @@ fn test_replace() {
 	assert v.replace('  ', ' ') == 'a  b c d'
 }
 
+fn test_replace_once() {
+	assert 'abcabc'.replace_once('abc', 'X') == 'Xabc'
+	assert 'abc'.replace_once('b', 'XYZ') == 'aXYZc'
+	assert 'abc'.replace_once('c', '') == 'ab'
+	assert 'abc'.replace_once('missing', 'X') == 'abc'
+	assert 'abc'.replace_once('abcd', 'X') == 'abc'
+	assert ''.replace_once('a', 'X') == ''
+	assert 'abc'.replace_once('', 'X') == 'Xabc'
+	assert ''.replace_once('', 'X') == 'X'
+	assert 'abc'.replace_once('', '') == 'abc'
+	assert ''.replace_once('', '') == ''
+	assert 'é🙂'.replace_once('', '前') == '前é🙂'
+	assert 'abc'.replace_once('b', r'$&') == r'a$&c'
+	assert 'abc'.replace_once('b', r'$$') == r'a$$c'
+	assert 'abc'.replace_once('b', r'$`') == r'a$`c'
+	assert 'abc'.replace_once('b', r"$'") == r"a$'c"
+}
+
 fn test_replace_each() {
 	s := 'hello man man :)'
 	q := s.replace_each([
@@ -1785,6 +1803,42 @@ fn test_index_u8() {
 	assert 'abc'.index_u8(`C`) == -1
 }
 
+fn test_index_empty_needle() {
+	for s in ['abc', '', 'é🙂', string{}] {
+		for needle in ['', string{}] {
+			assert s.contains(needle)
+			assert s.index_(needle) == 0
+			assert s.index(needle)? == 0
+		}
+	}
+	assert 'abcabc'.index('bc')? == 1
+	assert 'abc'.index('missing') == none
+	assert ''.index('a') == none
+}
+
+fn test_last_index_empty_needle() {
+	for s in ['abc', '', 'é🙂', string{}] {
+		for needle in ['', string{}] {
+			assert s.last_index(needle)? == s.len
+		}
+	}
+	assert ''.last_index('a') == none
+}
+
+fn test_empty_delimiter_helpers() {
+	for s in ['abc', '', 'é🙂'] {
+		assert s.before('') == s
+		assert s.all_before('') == s
+		assert s.all_before_last('') == s
+		assert s.all_after('') == s
+		assert s.all_after_first('') == s
+		assert s.all_after_last('') == s
+		assert s.after('') == s
+		assert s.find_between('', ']') == ''
+		assert s.find_between('[', '') == ''
+	}
+}
+
 fn test_last_index() {
 	assert 'abcabca'.last_index('ca')? == 5
 	assert 'abcabca'.last_index('ab')? == 3
@@ -1930,4 +1984,14 @@ fn test_split_any_invalid_utf8_matches_replacement_runes() {
 	parts := s.split_any('�')
 	assert parts.len == 4097
 	assert s.rsplit_any('�') == parts.reverse()
+}
+
+fn test_after_empty_missing_and_multibyte_delimiters() {
+	for s in ['abc', '', 'é🙂'] {
+		assert s.after('') == s
+		assert s.after('missing') == s
+	}
+	assert '23:34:45.234'.after(':') == '45.234'
+	assert 'abc--def--ghi'.after('--') == 'ghi'
+	assert 'α🙂β🙂γ'.after('🙂') == 'γ'
 }

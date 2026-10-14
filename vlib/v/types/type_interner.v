@@ -95,18 +95,18 @@ fn (i &TypeInterner) probe_frozen(t Type) ?Type {
 	return none
 }
 
-fn (mut i TypeInterner) name(id TypeId) string {
+fn (mut i TypeInterner) source_type_id(id TypeId) u32 {
 	i.lock.lock()
 	defer {
 		i.lock.unlock()
 	}
 	if int(id) < 0 || int(id) >= i.types.len {
-		return 'unknown'
+		return flat.source_type_id('unknown')
 	}
 	if i.names[int(id)] == 0 {
-		i.names[int(id)] = flat.source_type_id(i.types[int(id)].name())
+		i.names[int(id)] = i.types[int(id)].source_type_id()
 	}
-	return flat.source_type_name(i.names[int(id)])
+	return i.names[int(id)]
 }
 
 fn (mut i TypeInterner) canonicalize(t Type) (TypeId, Type) {
