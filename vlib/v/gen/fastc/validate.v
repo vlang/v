@@ -77,7 +77,9 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 }
 
 fn (g &Parser) nil_expression() !string {
-	if g.unsafe_depth == 0 && !g.in_mono_drain {
+	// With the real vlib, V3's checker decides where `nil` may stand (os.Mmap.close assigns
+	// it to voidptr fields outside `unsafe`); only the minimal builtin keeps the strict rule.
+	if g.unsafe_depth == 0 && !g.in_mono_drain && !g.selfhost {
 		return g.unsupported('`nil` outside an `unsafe` block')
 	}
 	return 'NULL'
