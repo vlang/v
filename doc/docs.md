@@ -10637,6 +10637,11 @@ More details in [call_v_from_c example](../examples/call_v_from_c).
 
 ### Passing C compilation flags
 
+Use `-dump-c-flags file.txt` to inspect the selected C compiler's flags, one argument per line.
+Use `-dump-c-flags -` for standard output. Monolithic bundled TCC builds share this flag plan
+with their actual command, including `-cstrict` warning options.
+On macOS, both the dump and TCC command resolve framework flags to their framework link files.
+
 Add `#flag` directives to the top of your V files to provide C compilation flags like:
 
 - `-I` for adding C include files search paths
