@@ -6594,6 +6594,12 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		if system_name in c_cache_system_header_struct_names {
 			return true
 		}
+		// Non-Windows bindings declare this checker-only compatibility stub.
+		// Cached SDK prefixes already own stat storage and its field macros.
+		// Windows and custom-libc units still need their binding's real layout.
+		if name == 'C.__stat64' && g.target.os != 'windows' && !g.target_libc_headers {
+			return true
+		}
 	}
 	return name in c_preamble_defined_structs || g.cocoa_nsfont_class(name)
 }

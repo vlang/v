@@ -202,8 +202,8 @@ pub fn test_synthetic_archive_with_a_prefixed_file() {
 }
 
 pub fn test_synthetic_archive_with_a_prefixed_directory() {
-	// NOTE: a directory is written with separator_after_prefix false, so the
-	// prefix and the name are concatenated with no '/'. Pinned as-is.
+	// Directories join prefix and name with '/' like files do (Go:
+	// prefix + '/' + name for every typeflag). Regression test for #30478.
 	res := sb_read([
 		sb_header_with_prefix('some/prefix', 'name/', `5`, 0),
 		sb_blank(),
@@ -212,7 +212,7 @@ pub fn test_synthetic_archive_with_a_prefixed_directory() {
 		assert false, 'unexpected error: ${err}'
 		SyntheticResult{}
 	}
-	assert res.dirs == ['some/prefixname/'], 'dirs ${res.dirs}'
+	assert res.dirs == ['some/prefix/name/'], 'dirs ${res.dirs}'
 }
 
 pub fn test_synthetic_archive_with_a_gnu_long_name() {
@@ -340,6 +340,18 @@ pub fn test_synthetic_archive_rejects_a_broken_directory_checksum() {
 	mut msg := ''
 	untar.read_all_blocks(sb_concat([bad, sb_blank(), sb_blank()])) or { msg = err.msg() }
 	assert msg == 'Checksum error: directory reading:(block_number:1 path: special:no stop_early:false)', 'msg "${msg}"'
+}
+
+pub fn test_synthetic_archive_rejects_a_broken_link_and_device_checksum() {
+	for typeflag in [`1`, `2`, `3`, `4`, `6`] {
+		mut bad := sb_header('link', typeflag, 0)
+		bad[0] = `B`
+		mut reader := &SyntheticReader{}
+		mut untar := new_untar(reader)
+		mut msg := ''
+		untar.read_all_blocks(sb_concat([bad, sb_blank(), sb_blank()])) or { msg = err.msg() }
+		assert msg.starts_with('Checksum error'), 'typeflag ${typeflag} msg "${msg}"'
+	}
 }
 
 pub fn test_synthetic_archive_rejects_block_size_errors() {

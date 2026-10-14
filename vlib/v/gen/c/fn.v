@@ -1484,11 +1484,11 @@ fn (g &FlatGen) fn_c_name_in_module(module_name string, name string) string {
 	if g.should_rename_user_main_for_tests(module_name, name) {
 		return g.test_user_main_c_name()
 	}
-	if g.main_export_needs_internal_name(module_name, name) {
-		return g.cname('main.${name}')
-	}
 	if shadow_name := g.main_runtime_shadow_fn_c_name(module_name, name) {
 		return shadow_name
+	}
+	if g.main_export_needs_internal_name(module_name, name) {
+		return g.cname('main.${name}')
 	}
 	return g.qualified_fn_name_in_module_c(module_name, name)
 }
@@ -1497,14 +1497,23 @@ const c_main_runtime_shadow_fn_names = {
 	'new_map': true
 	'accept':  true
 	'perror':  true
+	'sync':    true
+	'syncfs':  true
 	'id':      true
 	// The C preamble keeps `typedef uint8_t byte;`.
 	'byte':    true
 }
 
 fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?string {
+	// Use the reserved namespace so source names such as main__sync stay distinct.
+	if name in ['main.sync', 'main.syncfs'] {
+		return '__v3_internal_symbol_libc_${name[5..]}'
+	}
 	if module_name !in ['', 'main'] || name.starts_with('C.') {
 		return none
+	}
+	if name in ['sync', 'syncfs'] {
+		return '__v3_internal_symbol_libc_${name}'
 	}
 	c_type_name := !isnil(g.tc)
 		&& ('C.${name}' in g.tc.structs || 'C.${name}' in g.tc.c_typedef_structs)
@@ -17328,6 +17337,7 @@ const c_system_libc_preamble_declared_fns = {
 	'mkstemp':                       true
 	'mkdir':                         true
 	'mmap':                          true
+	'msync':                         true
 	'opendir':                       true
 	'popen':                         true
 	'printf':                        true
@@ -17975,6 +17985,7 @@ const c_winapi_extern_symbols = {
 	'LoadLibrary':                     true
 	'LoadLibraryW':                    true
 	'LocalFree':                       true
+	'MoveFileExW':                     true
 	'MoveFileW':                       true
 	'MultiByteToWideChar':             true
 	'OpenClipboard':                   true
