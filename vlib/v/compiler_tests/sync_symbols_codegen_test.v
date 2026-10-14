@@ -40,6 +40,10 @@ fn sync(settings Settings) int { return settings.value + 1 }
 fn syncfs(fd int) int { return fd + 2 }
 fn v_sync(settings Settings) int { return settings.value + 3 }
 fn v_syncfs(fd int) int { return fd + 4 }
+fn main__sync(settings Settings) int { return settings.value + 5 }
+fn main__syncfs(fd int) int { return fd + 6 }
+fn __v3_internal_symbol_libc_sync(settings Settings) int { return settings.value + 7 }
+fn __v3_internal_symbol_libc_syncfs(fd int) int { return fd + 8 }
 
 fn invoke_sync(callback fn (Settings) int, settings Settings) int {
  return callback(settings)
@@ -55,10 +59,18 @@ fn main() {
  assert syncfs(40) == 42
  assert v_sync(settings) == 43
  assert v_syncfs(40) == 44
+ assert main__sync(settings) == 45
+ assert main__syncfs(40) == 46
+ assert __v3_internal_symbol_libc_sync(settings) == 47
+ assert __v3_internal_symbol_libc_syncfs(40) == 48
  assert invoke_sync(sync, settings) == 41
  assert invoke_syncfs(syncfs, 40) == 42
  assert invoke_sync(v_sync, settings) == 43
  assert invoke_syncfs(v_syncfs, 40) == 44
+ assert invoke_sync(main__sync, settings) == 45
+ assert invoke_syncfs(main__syncfs, 40) == 46
+ assert invoke_sync(__v3_internal_symbol_libc_sync, settings) == 47
+ assert invoke_syncfs(__v3_internal_symbol_libc_syncfs, 40) == 48
  assert probe.invalid_fd_result() == -1
  println("sync symbols OK")
 }
@@ -73,6 +85,10 @@ fn main() {
 	assert feature_macro >= 0 && first_include > feature_macro
 	assert code.contains('main__sync(')
 	assert code.contains('main__syncfs(')
+	assert code.contains(' __v3_internal_symbol_libc_sync(')
+	assert code.contains(' __v3_internal_symbol_libc_syncfs(')
+	assert code.contains(' __v3_internal_symbol_source___v3_internal_symbol_libc_sync(')
+	assert code.contains(' __v3_internal_symbol_source___v3_internal_symbol_libc_syncfs(')
 	assert code.contains('v_sync(')
 	assert code.contains('v_syncfs(')
 	assert code.contains('return syncfs(-1);')
@@ -97,4 +113,5 @@ fn main() {
 	explicit_code := os.read_file(c_source)!
 	assert explicit_code.contains('= sync;')
 	assert explicit_code.contains('main__sync(')
+	assert explicit_code.contains(' __v3_internal_symbol_libc_sync(')
 }
