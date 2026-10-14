@@ -2529,6 +2529,34 @@ fn test_formatter_keeps_comments_after_defaults_with_their_attributes() {
 	assert vfmt('struct_field_trailing_default_comments_twice', out) == out
 }
 
+fn test_formatter_aligns_deferred_default_comments_on_the_first_pass() {
+	for tail in ['', ' // tail'] {
+		source := 'struct Comments {\n\ta int = 1 /* a */ @[x]${tail}\n\tb int = 2 /* b */ @[long]${tail}\n}\n'
+		want := 'struct Comments {\n\ta int = 1 @[x]    /* a */${tail}\n\tb int = 2 @[long] /* b */${tail}\n}\n'
+		out := vfmt('struct_field_deferred_comment_alignment', source)
+		assert out == want, out
+		assert vfmt('struct_field_deferred_comment_alignment_twice', out) == out
+	}
+}
+
+fn test_formatter_aligns_deferred_and_trailing_field_comments_together() {
+	source := 'struct Comments {\n\ta int = 1 /* a */ @[x]\n\tb int = 2 @[long] // b\n}\n'
+	want := 'struct Comments {\n\ta int = 1 @[x]    /* a */\n\tb int = 2 @[long] // b\n}\n'
+	out := vfmt('struct_field_mixed_deferred_trailing_comments', source)
+	assert out == want, out
+	assert vfmt('struct_field_mixed_deferred_trailing_comments_twice', out) == out
+}
+
+fn test_formatter_preserves_deferred_comment_groups_for_semicolon_fields() {
+	long_attr := 'long'.repeat(8)
+	shorter_attr := 'long'.repeat(7)
+	source := 'struct Comments { a int = 1 /* a */ @[x]; b int = 2 /* b */ @[${long_attr}]; c int = 3 /* c */ @[${shorter_attr}] }'
+	want := 'struct Comments {\n\ta int = 1 @[x] /* a */\n\tb int = 2 @[${long_attr}] /* b */\n\tc int = 3 @[${shorter_attr}]     /* c */\n}\n'
+	out := vfmt('struct_field_semicolon_deferred_comment_groups', source)
+	assert out == want, out
+	assert vfmt('struct_field_semicolon_deferred_comment_groups_twice', out) == out
+}
+
 fn test_formatter_keeps_multiple_default_comments_and_trailing_field_comments() {
 	source := 'struct Comments {\n\ta int = 1 /* note a */ /* second a */ @[a] // tail a\n\tb int = 123 /* note b */ @[b] // tail b\n}\n'
 	want := 'struct Comments {\n\ta int = 1   @[a] /* note a */ /* second a */ // tail a\n\tb int = 123 @[b] /* note b */ // tail b\n}\n'

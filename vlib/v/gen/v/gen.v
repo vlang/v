@@ -5064,6 +5064,7 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 	mut lines := map[int]int{}
 	mut previous := flat.empty_node
 	mut prev_state := 0
+	mut comment_groups := map[int]int{}
 	for fid in fields {
 		f := g.a.node(fid)
 		if f.kind != .field_decl || !f.pos.is_valid() {
@@ -5092,7 +5093,11 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 			suffix = '@[${gp[1..].join('; ')}]'.len
 			suffix_known = true
 		}
-		if suffix_known && g.has_trailing_comment(f.pos.end) {
+		// Inline comments between the root default and its attributes are emitted as suffixes.
+		has_deferred_comment := f.children_count > 0 && gp.len > 1
+			&& g.has_comment_between(g.a.child_node(f, 0).pos.end, f.pos.end)
+			&& g.has_trailing_comment(g.a.child_node(f, 0).pos.end)
+		if suffix_known && (has_deferred_comment || g.has_trailing_comment(f.pos.end)) {
 			// Comments only line up across fields that end the same way. A `= default` or an
 			// attribute makes the text in front of the comment a different shape, so the run
 			// restarts there instead of pushing the plain fields far to the right.
@@ -5109,6 +5114,7 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 				comment_align.add_info(suffix, line, has_break)
 			}
 			prev_state = state
+			comment_groups[int(fid)] = comment_align.infos.len - 1
 		}
 		entries << fid
 		lines[int(fid)] = line
@@ -5153,13 +5159,12 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 				attr_group_break = true
 			}
 		}
-		if (gp.len > 1 || f.children_count == 0 || g.struct_field_default_width(fid) > 0)
-			&& g.has_trailing_comment(f.pos.end) {
-			comments[int(fid)] = comment_align.max_len(line)
-		}
 	}
 	for fid, group in attr_groups {
 		attrs[fid] = attr_align.infos[group].max_len
+	}
+	for fid, group in comment_groups {
+		comments[fid] = comment_align.infos[group].max_len
 	}
 	return defaults, attrs, comments
 }
