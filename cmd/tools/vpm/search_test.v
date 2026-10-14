@@ -1,13 +1,10 @@
+// vtest build: network?
 // vtest retry: 3
 module main
 
 import test_utils { cmd_ok_args }
 
 fn testsuite_begin() {
-	$if !network ? {
-		eprintln('> skipping ${@FILE}, when `-d network` is missing')
-		exit(0)
-	}
 	unbuffer_stdout()
 }
 
