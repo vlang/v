@@ -360,7 +360,7 @@ fn (ctx &Context) write_tests_for_file(file string, functions []FunctionCoverage
 	}
 	// What is already there decides what to add, so the existing test file is
 	// read first: a function the author has written a test for is left alone.
-	existing_test := os.read_file(test_path) or { '' }
+	existing_test := if os.exists(test_path) { os.read_file(test_path)! } else { '' }
 	mut already := existing_test_names(existing_test)
 	mut blocks := []string{}
 	for function in functions {

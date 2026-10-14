@@ -63,6 +63,36 @@ fn test_writer_uses_import_aliases_and_preserves_backend_suffixes() {
 	assert source_module_name('fn answer() int { return 42 }') == 'main'
 }
 
+fn test_writer_preserves_existing_file_when_reading_fails() ! {
+	$if windows {
+		return
+	} $else {
+		if os.getuid() == 0 {
+			return
+		}
+		root := os.join_path(os.vtmp_dir(), 'vcover-read-failure-${rand.ulid()}')
+		os.mkdir_all(root)!
+		file := os.join_path(root, 'source.v')
+		test_path := test_file_for(file)
+		defer {
+			os.chmod(test_path, 0o600) or {}
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(file, 'module main\nfn answer() int { return 42 }\n')!
+		original := 'module main\n\nfn test_previous() { assert true }\n'
+		os.write_file(test_path, original)!
+		os.chmod(test_path, 0o200)!
+		ctx := Context{ working_folder: root }
+		mut refused := false
+		ctx.write_tests_for_file(file, [FunctionCoverage{ name: 'answer', file: file, line: 2 }]) or {
+			refused = true
+		}
+		os.chmod(test_path, 0o600)!
+		assert refused, 'an unreadable test file must not be overwritten'
+		assert os.read_file(test_path)! == original
+	}
+}
+
 fn test_writer_rejects_sibling_prefixes_and_symlink_destinations() ! {
 	root := os.join_path(os.vtmp_dir(), 'vcover-boundary-${rand.ulid()}')
 	os.mkdir_all(root)!
