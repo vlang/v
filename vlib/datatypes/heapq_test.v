@@ -14,8 +14,11 @@ fn test_heapify_matches_sorted() {
 fn test_heapify_empty_and_single() {
 	mut h := heapify([]int{})
 	assert h.len() == 0
-	h.pop() or { return }
-	assert false, 'empty heap pop must error'
+	if _ := h.pop() {
+		assert false, 'empty heap pop must error'
+	} else {
+		assert err.msg() == 'Heap is empty'
+	}
 	single := heapify([42])
 	assert single.peek()! == 42
 }
@@ -45,4 +48,29 @@ fn test_nsmallest() {
 	assert nsmallest(10, [4, 2, 8]) == [2, 4, 8]
 	assert nsmallest(0, [1, 2]).len == 0
 	assert nsmallest(2, [1, 1, 1]) == [1, 1], 'duplicates are kept'
+}
+
+fn test_heapq_edges_and_input_ownership() {
+	mut empty := heapify([]int{})
+	assert empty.pushpop(7)! == 7
+	assert empty.len() == 0
+	if _ := empty.replace(4) {
+		assert false, 'replace needs an existing element'
+	} else {
+		assert err.msg() == 'Heap is empty'
+	}
+	input := [3, 1, 2]
+	mut heap := heapify(input)
+	assert input == [3, 1, 2]
+	assert heap.pushpop(1)! == 1
+	assert heap.len() == 3
+	assert heap.pop()! == 1
+	assert heap.pushpop(4)! == 2
+	assert heap.pop()! == 3
+	assert heap.pop()! == 4
+	assert nlargest(2, ['b', 'a', 'c']) == ['c', 'b']
+	assert nsmallest(2, ['b', 'a', 'c']) == ['a', 'b']
+	assert nlargest(-1, input) == []int{}
+	assert nsmallest(-1, input) == []int{}
+	assert input == [3, 1, 2]
 }
