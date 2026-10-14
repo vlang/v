@@ -56,6 +56,7 @@ and `delete(key)` reports whether it removed an entry. `len()` and `is_empty()` 
 `min_key()` and `max_key()` return optional bounds; `keys()` returns all keys in ascending order.
 
 `range_keys(lo, hi)` and `iterate(lo, hi)` include both bounds.
+`iterate` returns `BTreeIter[BTreeEntry[K, V]]`, with `next()` returning an optional entry.
 The iterator captures entries when it is created; subsequent insertion or removal does not
 change that entry list. Values use ordinary V assignment semantics, without deep-cloning
 references inside them. `next()` returns `none` when the captured entries are exhausted.

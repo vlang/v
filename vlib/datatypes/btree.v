@@ -139,23 +139,23 @@ pub fn (m &BTree[K, V]) range_keys(lo K, hi K) []K {
 }
 
 // iterate returns an entry iterator over lo <= k <= hi (snapshot semantics).
-pub fn (m &BTree[K, V]) iterate(lo K, hi K) BTreeIter[K, V] {
+pub fn (m &BTree[K, V]) iterate(lo K, hi K) BTreeIter[BTreeEntry[K, V]] {
 	mut out := []BTreeEntry[K, V]{}
 	m.root.collect_range(lo, hi, mut out)
-	return BTreeIter[K, V]{
+	return BTreeIter[BTreeEntry[K, V]]{
 		entries: out
 	}
 }
 
 // BTreeIter iterates over BTree entries in ascending order.
-pub struct BTreeIter[K, V] {
+pub struct BTreeIter[E] {
 mut:
-	entries []BTreeEntry[K, V]
+	entries []E
 	pos     int
 }
 
 // next returns the next entry, or none when exhausted.
-pub fn (mut it BTreeIter[K, V]) next() ?BTreeEntry[K, V] {
+pub fn (mut it BTreeIter[E]) next() ?E {
 	if it.pos >= it.entries.len {
 		return none
 	}
