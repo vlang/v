@@ -265,12 +265,9 @@ pub fn (enc &Encoding) decode_string_to_string(src string) !string {
 // New line characters (\r and \n) are ignored.
 // Without padding, final groups of 1, 3 or 6 symbols are invalid.
 pub fn (enc &Encoding) decode(src []u8) ![]u8 {
-	mut buf := []u8{len: src.len}
-	// mut dst := unsafe { buf }
-	// l := strip_newlines(mut dst, src)
-	// n, _ := enc.decode_(src[..l], mut dst) or {
-	// src := strip_newlines(src_)
-	n, _ := enc.decode_(src, mut buf) or { return err }
+	stripped := strip_newlines(src)
+	mut buf := []u8{len: stripped.len}
+	n, _ := enc.decode_(stripped, mut buf) or { return err }
 	return buf[..n]
 }
 

@@ -32,7 +32,12 @@ fn test_missing_bundled_gc_library_reports_setup_failure() {
 		}
 	}
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, "fn main() { println('hello') }\n")!
+	os.write_file(source, 'fn main() {
+	mut messages := []string{}
+	messages << "hello"
+	println(messages[0])
+}
+')!
 	result := cmdexec.run_in(compiler, ['-nocache', '-cc', 'cc', '-gc', 'boehm', '-no-retry-compilation',
 		source], root)
 	assert result.exit_code != 0
@@ -52,4 +57,14 @@ fn test_missing_bundled_gc_library_reports_setup_failure() {
 	object := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-gc', 'boehm', '-cc', 'cc',
 		'-o', os.join_path(root, 'main.o'), source], root)
 	assert object.exit_code == 0, object.output
+	assert os.is_file(os.join_path(root, 'main.c'))
+	assert os.is_file(os.join_path(root, 'main.o'))
+	// Allocation-free literal output does not need the missing collector.
+	literal_source := os.join_path(root, 'literal.v')
+	os.write_file(literal_source, "fn main() { println('hello') }\n")!
+	assert !os.exists(os.join_path(root, 'thirdparty', 'tcc', 'lib', 'libgc.a'))
+	literal := cmdexec.run_in(compiler, ['-new-compiler', '-nocache', '-cc', 'cc', '-gc', 'boehm',
+		'-no-retry-compilation', 'run', literal_source], root)
+	assert literal.exit_code == 0, literal.output
+	assert literal.output == 'hello\n', literal.output
 }
