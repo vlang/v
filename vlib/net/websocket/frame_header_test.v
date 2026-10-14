@@ -17,11 +17,13 @@ fn frame_header_pair() !(&Client, &net.TcpConn) {
 			state: .open
 		}
 	}
-	return client, unsafe { &sender }
+	return client, sender
 }
 
 fn test_parse_frame_header_rejects_top_bit_64bit_length() ! {
 	mut client, mut sender := frame_header_pair()!
+	defer { sender.close() or {} }
+	defer { client.conn.close() or {} }
 	// binary frame, unmasked, 64-bit length with the top bit set. RFC 6455
 	// requires that bit to be 0; with it set, int(payload_len) goes negative
 	// and read_payload allocated a negative sized array
@@ -31,16 +33,61 @@ fn test_parse_frame_header_rejects_top_bit_64bit_length() ! {
 	} else {
 		assert err.msg() == 'websocket: noncanonical 64-bit frame length'
 	}
-	sender.close() or {}
 }
 
 fn test_parse_frame_header_short_frame_still_parses() ! {
 	mut client, mut sender := frame_header_pair()!
+	defer { sender.close() or {} }
+	defer { client.conn.close() or {} }
 	// a normal short binary frame, 'hi', must keep parsing
 	sender.write([u8(0x82), 0x02, `h`, `i`])!
 	frame := client.parse_frame_header()!
 	assert frame.opcode == .binary_frame
 	assert frame.payload_len == 2
 	assert frame.has_mask == false
-	sender.close() or {}
+}
+
+fn frame_length_header(length u64, masked bool) []u8 {
+	mut wire := [u8(0x82), if masked { u8(0xff) } else { u8(0x7f) }]
+	for shift := 56; shift >= 0; shift -= 8 {
+		wire << u8(length >> shift)
+	}
+	if masked { wire << [u8(1), 2, 3, 4] }
+	return wire
+}
+
+fn test_parse_frame_header_rejects_length_above_int_range() ! {
+	// With 64-bit ints the top-bit validation already covers this boundary.
+	if u64(max_int) == u64(0x7fff_ffff_ffff_ffff) { return }
+	for masked in [false, true] {
+		mut client, mut sender := frame_header_pair()!
+		defer { sender.close() or {} }
+		defer { client.conn.close() or {} }
+		wire := frame_length_header(u64(max_int) + 1, masked)
+		assert sender.write(wire)! == wire.len
+		if _ := client.parse_frame_header() {
+			assert false, 'a payload larger than max_int must be rejected before allocation'
+		} else {
+			assert err.msg() == 'websocket: 64-bit frame length exceeds int range'
+		}
+	}
+}
+
+fn test_parse_frame_header_valid_64bit_length_and_int_boundary() ! {
+	for masked in [false, true] {
+		for length in [u64(65536), u64(max_int)] {
+			mut client, mut sender := frame_header_pair()!
+			defer { sender.close() or {} }
+			defer { client.conn.close() or {} }
+			wire := frame_length_header(length, masked)
+			assert sender.write(wire)! == wire.len
+			frame := client.parse_frame_header()!
+			assert frame.opcode == .binary_frame
+			assert frame.payload_len == int(length)
+			assert frame.has_mask == masked
+			if masked {
+				assert frame.masking_key == [u8(1), 2, 3, 4]!
+			}
+		}
+	}
 }
