@@ -590,6 +590,15 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	for name in top_level_references.keys() {
 		used[name] = true
 	}
+	// A test build calls the test file's tests from the main it synthesizes.
+	if prefs.is_test {
+		for key, signature in functions {
+			name := key.all_after_last('.')
+			if signature.path.ends_with('_test.v') && fastc_is_test_harness_function(name) {
+				used[name] = true
+			}
+		}
+	}
 	// Operator overload declarations are emitted even when their symbolic names do
 	// not appear as ordinary call tokens. Treat those symbols as roots too, so the
 	// private helper methods called by an overload body are retained.

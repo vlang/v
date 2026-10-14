@@ -2128,7 +2128,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		body_pieces << fastc_piece(mono_definition)
 		body_len += mono_definition.len
 	}
-	synthesized_main := if has_entry_module && !entry_has_main {
+	if prefs.is_test {
+		// The test main synthesized below is this program's entry.
+		entry_has_main = true
+	}
+	synthesized_main := if prefs.is_test {
+		fastc_synthesized_test_main(functions, function_c_names, prefs.building_v, startup_initializers.len > 0,
+			module_cleanup_calls.len > 0)
+	} else if has_entry_module && !entry_has_main {
 		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0, module_cleanup_calls.len > 0)
 	} else {
 		''

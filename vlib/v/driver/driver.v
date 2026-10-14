@@ -11620,9 +11620,12 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			mut unsupported_modes := []string{}
-			if is_test_command || is_v3_test_file(input_file, backend, target)
-				|| is_v3_test_file(input_file, 'c', target) || is_checker_fixture {
+			if is_test_command || is_checker_fixture {
 				unsupported_modes << 'test/checker mode'
+			}
+			// A test file builds as a program whose main runs its tests.
+			if is_v3_test_file(input_file, backend, target) || is_v3_test_file(input_file, 'c', target) {
+				prefs.is_test = true
 			}
 			if is_prod {
 				unsupported_modes << '`-prod`'

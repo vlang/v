@@ -864,7 +864,10 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		'${receiver_key}.${name}'
 	}
-	is_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main'] && name == 'main'
+	is_program_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main']
+		&& name == 'main'
+	// A test build runs its tests from a main of its own; the program's is an ordinary function.
+	is_main := is_program_main && !g.prefs.is_test
 	is_module_init := !is_static_method && receiver_type == '' && name == 'init'
 	is_module_cleanup := !is_static_method && receiver_type == '' && name == 'cleanup'
 	if is_main {
@@ -910,7 +913,11 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		fastc_method_c_name(g.module_name, fastc_c_declared_type_name(receiver_key), name)
 	}
-	c_name := g.c_function_name_or(function_key, conventional_c_name)
+	c_name := if is_program_main && !is_main {
+		'v_fastc_program_main'
+	} else {
+		g.c_function_name_or(function_key, conventional_c_name)
+	}
 	g.last_function_c_name = c_name
 	c_return_type := if is_main { 'int' } else { fastc_output_c_type(return_type) }
 	c_params := if is_main && g.selfhost {
