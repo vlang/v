@@ -192,3 +192,48 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '1\n4'
 }
+
+// A generic left to on-demand instantiation is still never called through a parameter of its
+// name: `transform(2)` calls the callback, with the callback's argument and result types.
+fn test_fastc_parameter_shadowing_an_on_demand_generic_is_called_as_the_parameter() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_generic_fixture('on_demand_shadow', 'module main
+
+struct Box {
+	v int
+}
+
+fn transform[T](x T) T {
+	return x
+}
+
+fn hold(transform fn (int) int) int {
+	a := transform(2)
+	println(transform(3))
+	return a + transform(4)
+}
+
+fn double(x int) int {
+	return x * 2
+}
+
+fn main() {
+	b := Box{
+		v: 3
+	}
+	println(transform(b.v))
+	println(hold(double))
+}
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '3\n6\n12'
+}
