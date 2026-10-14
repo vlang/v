@@ -6,9 +6,9 @@ import math
 // probability proportional to (v + k)^(-s), for k in 0..n-1.
 pub struct ZipfConfig {
 pub:
-	// s is the exponent (must be > 0)
+	// s is the exponent (must be finite and > 0)
 	s f64 = 1.5
-	// v is the offset (must be >= 1)
+	// v is the offset (must be finite and >= 1)
 	v f64 = 1.0
 	// n is the number of ranks (must be >= 1)
 	n int = 100
@@ -25,11 +25,17 @@ mut:
 }
 
 // new_zipf builds a generator for the given configuration. Invalid configs
-// (s <= 0, v < 1, n < 1) are errors. Deterministic under the PRNG, so
+// (nonfinite s/v, s <= 0, v < 1, n < 1) are errors. Deterministic under the PRNG, so
 // reseeding reproduces sequences.
 pub fn (mut rng PRNG) new_zipf(conf ZipfConfig) !Zipf {
+	if math.is_nan(conf.s) || math.is_inf(conf.s, 0) {
+		return error('rand: Zipf exponent s must be finite')
+	}
 	if conf.s <= 0.0 {
 		return error('rand: Zipf exponent s must be > 0')
+	}
+	if math.is_nan(conf.v) || math.is_inf(conf.v, 0) {
+		return error('rand: Zipf offset v must be finite')
 	}
 	if conf.v < 1.0 {
 		return error('rand: Zipf offset v must be >= 1')
@@ -40,7 +46,9 @@ pub fn (mut rng PRNG) new_zipf(conf ZipfConfig) !Zipf {
 	mut cdf := []f64{len: conf.n, init: 0.0}
 	mut sum := 0.0
 	for k in 0 .. conf.n {
-		sum += math.pow(conf.v + f64(k), -conf.s)
+		// Divide all weights by v^(-s), keeping rank zero at one. log1p
+		// preserves the relative weight even when v + k rounds back to v.
+		sum += math.exp(-conf.s * math.log1p(f64(k) / conf.v))
 		cdf[k] = sum
 	}
 	// normalize to 1.0

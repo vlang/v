@@ -11,27 +11,50 @@ fn zipf_probability(v f64, s f64, k int, n int) f64 {
 	return num / total
 }
 
-fn test_zipf_range_and_invalid_config() {
+fn test_zipf_range() {
 	seed([u32(0x1234ABCD), u32(0x9E3779B9)])
 	for _ in 0 .. 200 {
 		k := zipf(s: 1.5, v: 1.0, n: 50)!
 		assert k >= 0 && k <= 49, 'rank must stay in 0..n-1'
 	}
-	zipf(s: 0.0, v: 1.0, n: 10) or {
-		assert err.msg().contains('s must be > 0')
-		return
+}
+
+fn test_zipf_rejects_invalid_config() {
+	configs := [ZipfConfig{ s: 0.0 }, ZipfConfig{ v: 0.5 }, ZipfConfig{ n: 0 }]
+	messages := ['s must be > 0', 'v must be >= 1', 'n must be positive']
+	for i, conf in configs {
+		if _ := zipf(conf) {
+			assert false, 'invalid configuration must be rejected: ${conf}'
+		} else {
+			assert err.msg().contains(messages[i])
+		}
 	}
-	assert false, 's <= 0 must error'
-	zipf(s: 1.0, v: 0.5, n: 10) or {
-		assert err.msg().contains('v must be >= 1')
-		return
+}
+
+fn test_zipf_rejects_nonfinite_config() {
+	for value in [math.nan(), math.inf(1), math.inf(-1)] {
+		for conf in [ZipfConfig{ s: value }, ZipfConfig{ v: value }] {
+			if _ := zipf(conf) {
+				assert false, 'nonfinite configuration must be rejected'
+			} else {
+				assert err.msg().contains('must be finite')
+			}
+		}
 	}
-	assert false, 'v < 1 must error'
-	zipf(s: 1.0, v: 1.0, n: 0) or {
-		assert err.msg().contains('n must be positive')
-		return
+}
+
+fn test_zipf_retains_relative_weights_at_extreme_parameters() {
+	mut rng := get_current_rng()
+	mut steep := rng.new_zipf(s: 1000.0, v: 10.0, n: 10)!
+	// All raw (10+k)^(-1000) weights underflow, but rank zero dominates.
+	for _ in 0 .. 100 {
+		assert steep.next() == 0
 	}
-	assert false, 'n < 1 must error'
+	mut huge := rng.new_zipf(s: 1e308, v: 1e308, n: 4)!
+	// (1 + k/v)^(-v) approaches exp(-k), rather than a uniform law.
+	expected_first := 1.0 / (1.0 + math.exp(-1.0) + math.exp(-2.0) + math.exp(-3.0))
+	assert math.abs(huge.cdf[0] - expected_first) < 1e-12
+	assert huge.cdf[3] == 1.0
 }
 
 fn test_zipf_matches_analytic_distribution() {
