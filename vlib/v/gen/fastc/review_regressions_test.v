@@ -102,6 +102,30 @@ fn main() {
 ', '10\n10\n20')
 }
 
+fn test_fastc_fixed_array_struct_copies_match_c() {
+	fastc_review_regression_matches_c('fixed_array_struct_copy', 'module main
+const names = ["alpha", "beta"]!
+struct Record {
+	names [2]string
+	fallback []int
+}
+fn make_names() [2]string { return ["gamma", "delta"]! }
+fn copy(record &Record) Record { return Record{names: record.names} }
+fn main() {
+	original := Record{names: ["field", "array"]!}
+	copied := copy(&original)
+	parenthesized := Record{names: (original.names)}
+	constant := Record{names: names}
+	returned := Record{names: make_names()}
+	assert copied.fallback.len == 0
+	println(copied.names[0])
+	println(parenthesized.names[1])
+	println(constant.names[0])
+	println(returned.names[0])
+}
+', 'field\narray\nalpha\ngamma')
+}
+
 fn test_fastc_constant_dependencies_ignore_inactive_comptime_branches() {
 	fastc_review_regression_matches_c('conditional_constant', 'module main
 fn initial() int { return 3 }

@@ -47,8 +47,13 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 				is_fixed_array:        true
 			}
 		}
-		value := g.render_call_argument_expression(value_tokens, expected_type) or { return none }
-		is_raw_fixed_array := value_tokens.len > 1 || (value_tokens.len == 1 && value_tokens[0].tok == .name && fastc_global_key(g.module_name, value_tokens[0].lit) in g.globals)
+		storage_tokens := fastc_strip_paren_tokens(value_tokens)
+		is_raw_fixed_array := g.fixed_array_uses_raw_storage(storage_tokens)
+		value := if is_raw_fixed_array {
+			g.render_member_receiver(storage_tokens) or { return none }
+		} else {
+			g.render_call_argument_expression(value_tokens, expected_type) or { return none }
+		}
 		copy_source := if is_raw_fixed_array {
 			value
 		} else if expected_type.ends_with('*') {
