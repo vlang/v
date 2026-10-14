@@ -3,6 +3,12 @@
 `asn1` is a pure V Language module for X.690 Abstract Syntax Notation One (ASN.1)
 Distinguished Encoding Rules (DER) encoding and decoding.
 
+`decode` and `decode_with_options` consume exactly one element and reject trailing bytes.
+`GeneralizedTime` currently accepts the `YYYYMMDDhhmmssZ` form, with `Z` terminating the value.
+
+`FieldOptions.install_default` requires `has_default` to be set. It returns success after
+installing a default value; replacing an existing default also requires `force` to be `true`.
+
 This module provides you with the ability to generate and parse ASN.1 encoded data.
 More precisely, it provides you with the ability to generate and parse data encoded 
 with ASN.1’s DER (Distinguished Encoding Rules) encoding. It does not support other than DER.

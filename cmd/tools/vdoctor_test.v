@@ -124,3 +124,47 @@ fn main() {
 }
 ')!
 }
+
+fn test_doctor_fetch_reaches_git_through_timeout() {
+	root := os.join_path(os.vtmp_dir(), 'doctor_fetch_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	stub_source := os.join_path(root, 'git.v')
+	os.write_file(stub_source, '
+import os
+fn main() {
+	args := os.args[1..]
+	if args == ["rev-parse", "--is-inside-work-tree"] {
+		println("true")
+	} else if args == ["-C", ".", "describe", "--abbrev=8", "--dirty", "--always", "--tags"] {
+		println("fixture")
+	} else if "fetch" in args {
+		assert args == ["-C", ".", "fetch", "V_REPO"], args.str()
+		os.write_file(os.getenv("DOCTOR_FETCH_TEST_MARKER"), "fetched")!
+	}
+}
+')!
+	stub := os.join_path(root, 'git' + $if windows { '.exe' } $else { '' })
+	build := os.exec([@VEXE, '-o', stub, stub_source])
+	assert build.exit_code == 0, build.output
+	marker := os.join_path(root, 'fetch.marker')
+	os.setenv('DOCTOR_FETCH_TEST_MARKER', marker, true)
+	os.setenv('DOCTOR_FETCH_TEST_DIR', root, true)
+	defer {
+		os.unsetenv('DOCTOR_FETCH_TEST_MARKER')
+		os.unsetenv('DOCTOR_FETCH_TEST_DIR')
+	}
+	run_doctor_with_main('fetch', '
+fn main() {
+	// Build/cache the real timeout tool before putting the git fixture on PATH.
+	warmup := os.exec([@VEXE, "timeout", "5.1", "--", @VEXE, "version"])
+	assert warmup.exit_code == 0, warmup.output
+	root := os.getenv("DOCTOR_FETCH_TEST_DIR")
+	delimiter := \$if windows { ";" } \$else { ":" }
+	os.setenv("PATH", root + delimiter + os.getenv("PATH"), true)
+	mut app := App{vexe: @VEXE}
+	assert app.git_info() == "fixture"
+	assert os.read_file(os.getenv("DOCTOR_FETCH_TEST_MARKER"))! == "fetched"
+}
+')!
+}

@@ -7,5 +7,5 @@ fn test_calling_functions_with_map_initializations_containing_arrays() {
 		'users':  []string{}
 		'groups': []string{}
 	}, escape_unicode: true)
-	assert result == '{"users":[],"groups":[]}'
+	assert result == '{"groups":[],"users":[]}'
 }

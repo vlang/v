@@ -20,13 +20,15 @@ import v.workers
 $if linux {
 	#include <sys/prctl.h>
 	#include <sys/syscall.h>
+	#flag @VEXEROOT/vlib/v/diagserver/syscalls_linux.o
 }
 
 fn C.waitpid(pid int, status &int, options int) int
 fn C.dup2(oldfd int, newfd int) int
 fn C._exit(code int)
 fn C.kill(pid int, sig int) int
-fn C.prctl(option int, arg2 voidptr, arg3 u64, arg4 u64, arg5 u64) int
+fn C.v3_linux_parent_death_signal(signal_number int) int
+fn C.v3_linux_memory_file(name &char) int
 fn C.lseek(fd int, offset i64, whence int) i64
 fn C.flock(i32, i32) i32
 fn C.pread(fd int, buf voidptr, count usize, offset i64) isize
@@ -244,7 +246,7 @@ pub fn serve() Request {
 			// the child asks: one that ended since the fork left the child to another
 			// parent, and the child ends at once.
 			$if linux {
-				if C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0) != 0 {
+				if C.v3_linux_parent_death_signal(C.SIGKILL) != 0 {
 					eprintln('v-diagnostics-server: a child cannot follow the server')
 					exit(2)
 				}
@@ -349,7 +351,7 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 		// and a child that ended since the fork leaves it to end at once, as
 		// serve's children do with the server.
 		$if linux {
-			if C.prctl(C.PR_SET_PDEATHSIG, voidptr(usize(C.SIGKILL)), 0, 0, 0) != 0 {
+			if C.v3_linux_parent_death_signal(C.SIGKILL) != 0 {
 				C._exit(2)
 			}
 		}
@@ -388,7 +390,7 @@ pub fn (mut r Request) diagnose_in_grandchild() bool {
 // descriptor, and returns that descriptor, or -1 where it cannot be made.
 fn memory_file(name &char) int {
 	$if linux {
-		return unsafe { int(C.syscall(C.SYS_memfd_create, name, voidptr(0))) }
+		return C.v3_linux_memory_file(name)
 	} $else {
 		return -1
 	}

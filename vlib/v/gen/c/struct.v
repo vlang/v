@@ -1155,7 +1155,10 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		has_field = g.gen_promoted_struct_defaults(promoted.root_type, c_field_name(promoted.root), mut promoted_set_fields, has_field)
 	}
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
-	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
+	// Caller types can retain a main. lock while checked fields remain bare-keyed.
+	// Resolve their declaration before selecting metadata for implicit defaults.
+	resolved_defaults_key := if info := g.find_struct_decl(sname) { info.full_name } else { sname }
+	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { resolved_defaults_key }
 	if defaults_key in g.tc.structs {
 		for f in g.tc.structs[defaults_key] {
 			if f.name in set_fields {
@@ -4452,7 +4455,7 @@ fn (mut g FlatGen) shared_dup_fns() {
 		g.writeln('#if defined(_VPREALLOC)')
 		g.writeln('\t${name}* dest = (${name}*)malloc((size_t)sz);')
 		g.writeln('#else')
-		g.writeln('\t${name}* dest = (${name}*)malloc_uncollectable((isize)sz);')
+		g.writeln('\t${name}* dest = (${name}*)malloc_uncollectable((ptrdiff_t)sz);')
 		g.writeln('#endif')
 		g.writeln('\tmemcpy(dest, src, (size_t)sz);')
 		g.writeln('\tsync__RwMutex__init(&dest->mtx);')
@@ -6540,6 +6543,12 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	if g.inlined_c_structs[name] {
 		return true
 	}
+	if name.starts_with('C.builtin__closure__') {
+		// This C view resolves to a V runtime type, whose complete layout owns it.
+		if 'closure.${name['C.builtin__closure__'.len..]}' in g.tc.structs {
+			return true
+		}
+	}
 	if name.starts_with('C.') {
 		// Match V1: `@[typedef]` C structs name types supplied by native code and
 		// must never get a synthesized V-owned declaration or body.
@@ -6553,10 +6562,10 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 			return true
 		}
 		if info := g.struct_decl_infos[name] {
-			// Platform binding files and plain V files with a header directive describe
-			// types supplied by native code. Keep the cheap V1 source-file heuristic;
-			// inspecting the included header itself is unnecessary.
-			if info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file) {
+			// Headerless vlib bindings supply their own complete C layouts.
+			// Keep externally supplied types opaque when headers own their definitions.
+			if (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
+				&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
 				return true
 			}
 		}
@@ -6588,6 +6597,12 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	if g.cache_split {
 		system_name := if name.starts_with('C.') { name[2..] } else { name }
 		if system_name in c_cache_system_header_struct_names {
+			return true
+		}
+		// Non-Windows bindings declare this checker-only compatibility stub.
+		// Cached SDK prefixes already own stat storage and its field macros.
+		// Windows and custom-libc units still need their binding's real layout.
+		if name == 'C.__stat64' && g.target.os != 'windows' && !g.target_libc_headers {
 			return true
 		}
 	}
