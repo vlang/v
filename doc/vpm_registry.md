@@ -99,7 +99,8 @@ The fields:
   recorded at or after it; the mark itself is included. A missing `since` is
   read as `0`, which means everything.
 - `/sbom.spdx.json` accepts `namespace` and `dl` as query parameters, defaulting
-  to `https://vpm.local/spdx/vpm-registry` and `https://vpm.local/downloads`.
+  to a fresh `urn:uuid:<UUID>` for each document and `https://vpm.local/downloads`.
+  An explicit namespace is preserved; its caller is responsible for keeping it unique.
 - `/signature.sig` returns the signature inside a JSON string.
 
 Any path the router does not match, and any module it cannot find, answers the
@@ -129,6 +130,9 @@ Data is stored in `os.getwd()/.vpm-registry`, from `registry_dir()` in
 - `artifacts/<module>/<version>.zip` — the published archives. Names and versions must be
   nonempty single path components without slashes, backslashes, colons, control separators,
   trailing spaces or trailing dots.
+  Allowed bytes are ASCII letters, digits and `-._~!$&'()*+,;=@[]`, subject to filesystem limits.
+  URL delimiters, percent escapes, whitespace and other control characters are rejected before
+  publication because the registry routes preserve raw path spelling.
 - `signing.key` — the hex ed25519 seed, read but never served.
 
 Only a missing index initializes an empty registry. Read and JSON decoding failures for an
@@ -157,6 +161,8 @@ Listening on http://127.0.0.1:9099
 
 Ports must contain decimal digits and be from 1 to 65535. Invalid text, numeric suffixes and
 out-of-range values are rejected before the server binds a socket.
+Bind errors also exit nonzero and report their cause. The success messages are printed only after
+the listener has bound successfully.
 
 ### Environment variables
 
@@ -176,6 +182,11 @@ out-of-range values are rejected before the server binds a socket.
   hostname and effective port). An unset registry disables the fallback. Public VPM requests,
   including public-server fallback after consulting a registry, receive no registry credentials.
   The registry server reads neither token variable: it authenticates nothing.
+- `VPM_REGISTRY_CA_FILE` — a trusted PEM CA file for authenticated registry HTTPS requests.
+  These HTTPS requests always check certificate chains and hostnames. An empty setting or a
+  missing or invalid custom CA file fails closed. Without a custom file, mbedTLS searches common
+  Unix PEM bundles; OpenSSL and native Windows SChannel use their default roots. A custom
+  file requires `-d no_vschannel` on Windows because the native HTTP backend cannot honor it.
 
 ## Publishing
 

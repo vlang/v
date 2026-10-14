@@ -20,6 +20,8 @@ Ports use decimal digits and must be from 1 to 65535; the default is 9090. The s
 Publishing and yanking remain in-process `Registry` methods.
 Only a missing index starts an empty registry. An unreadable or invalid existing index aborts
 startup with an error instead of serving an empty module list.
+The server binds its listener before printing the startup messages. A bind failure reports the
+underlying error and exits with a nonzero status.
 
 Unknown routes return HTTP 404, including conditional requests for missing metadata.
 Successful GET metadata supports ETag revalidation with case-insensitive HTTP header names.
@@ -107,6 +109,9 @@ Per-version entry (JSON):
 - Each version's source is stored as a zip file
 - Published module names and versions must each be one nonempty path component, without separators,
   drive prefixes, `.` or `..` components, trailing dots/spaces, or NUL/line-break characters
+- Components use ASCII letters, digits, or `-._~!$&'()*+,;=@[]`, subject to filesystem restrictions.
+  URL delimiters, percent escapes, whitespace and other control characters are rejected before
+  publishing, so the raw `.info` and `.zip` paths remain reachable.
 - The zip file's SHA-256 checksum is recorded in the metadata
 - Accepted raw, `sha256:`, `SHA256:`, and omitted checksums are stored as `sha256:<verified digest>`
 - The checksum is used for integrity verification on download
@@ -147,6 +152,10 @@ Per-version entry (JSON):
 
 - `GET /sbom.spdx.json` returns SPDX JSON for the versions in the registry index.
 - Query parameters `namespace` and `dl` customize the document namespace and download base URL.
+- Without `namespace`, each response gets a fresh `urn:uuid:<UUID>` document namespace. An explicit
+  namespace is preserved; the caller must keep it unique for the document and version it identifies.
+  This follows the [SPDX namespace requirements][spdx-namespace]. A newly generated default document
+  has a new ETag, so it does not revalidate a previous document with HTTP 304.
 - Includes license information
 - Includes checksums for all packages
 - JSON uses the SPDX 2.3 field names, with `filesAnalyzed: false` for registry metadata. Package IDs
@@ -154,6 +163,7 @@ Per-version entry (JSON):
 - Field names and package identifiers follow the [official SPDX JSON schema][spdx-schema].
 
 [spdx-schema]: https://github.com/spdx/spdx-spec/blob/v2.3.1/schemas/spdx-schema.json
+[spdx-namespace]: https://spdx.github.io/spdx-spec/v2.3.1/document-creation-information/
 
 ## Change Feed
 
@@ -170,6 +180,13 @@ authenticates nothing.
 - `Authorization: Bearer <token>` is set by the VPM client only.
 - Credentials are attached only to registry protocol requests. Public metadata, search, health,
   download-count requests, and public-server fallback requests receive no registry token.
+- Credential-bearing HTTPS requests validate the peer's certificate chain and hostname. Set
+  `VPM_REGISTRY_CA_FILE` to a trusted PEM CA file for a private CA. An empty setting, missing file,
+  or invalid certificate file fails the request; it never disables certificate validation.
+- Without that setting, mbedTLS uses an installed system PEM bundle from common Unix locations,
+  and reports an error requesting `VPM_REGISTRY_CA_FILE` if none is available. OpenSSL and native
+  Windows SChannel use their default trust stores. A per-request CA file requires a Windows build
+  with `-d no_vschannel`; VPM rejects this setting on the native HTTP backend, which ignores it.
 - The token comes from `VPM_TOKEN_<HOST>`, where `<HOST>` is the registry's hostname with `.` and
   `-` folded to `_` and uppercased, so `https://vpm.example.com/` reads
   `VPM_TOKEN_VPM_EXAMPLE_COM`. `VPM_TOKEN` is the fallback only for the configured `VPM_REGISTRY`

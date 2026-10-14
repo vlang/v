@@ -1,6 +1,7 @@
 module main
 
 import json2
+import uuid
 
 fn sbom_demo_info(name string, version string, license string, checksum string) ModuleInfo {
 	return ModuleInfo{
@@ -149,6 +150,53 @@ fn test_the_sbom_endpoint_answers_json() {
 	}
 	assert doc.spdx_version == 'SPDX-2.3'
 	assert doc.packages.len == 2
+}
+
+fn test_default_sbom_namespaces_identify_each_document_across_registry_instances() {
+	mut namespaces := map[string]bool{}
+	// Identical metadata and back-to-back requests must not share an identity,
+	// even when their creation timestamps happen to fall in the same second.
+	for registry in [new_sbom_demo_registry(), new_sbom_demo_registry()] {
+		for _ in 0 .. 8 {
+			body := handle_request(registry, 'GET', '/sbom.spdx.json', map[string]string{})
+			document := json2.decode[SpdxDocument](body)!
+			namespace := document.document_namespace
+			assert namespace.starts_with('urn:uuid:'), namespace
+			identifier := uuid.parse(namespace)!
+			assert identifier[6] >> 4 == 4
+			assert identifier[8] >> 6 == 2
+			assert namespace !in namespaces, 'different SPDX documents shared a namespace'
+			namespaces[namespace] = true
+		}
+	}
+	assert namespaces.len == 16
+}
+
+fn test_sbom_endpoint_preserves_an_explicit_namespace() {
+	registry := new_sbom_demo_registry()
+	for namespace in ['https://example.com/spdx/custom-document',
+		'urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6'] {
+		body := handle_request(registry, 'GET', '/sbom.spdx.json', {
+			'namespace': namespace
+		})
+		document := json2.decode[SpdxDocument](body)!
+		assert document.document_namespace == namespace
+	}
+}
+
+fn test_fresh_default_sbom_document_does_not_revalidate_a_previous_document() {
+	registry := new_sbom_demo_registry()
+	first := serve(registry, 'GET', '/sbom.spdx.json', map[string]string{}, map[string]string{})
+	assert first.status_code == 200
+	assert first.etag != ''
+	second := serve(registry, 'GET', '/sbom.spdx.json', map[string]string{}, {
+		'If-None-Match': first.etag
+	})
+	assert second.status_code == 200
+	assert second.etag != first.etag
+	first_document := json2.decode[SpdxDocument](first.body)!
+	second_document := json2.decode[SpdxDocument](second.body)!
+	assert first_document.document_namespace != second_document.document_namespace
 }
 
 fn test_spdx_json_uses_the_standard_field_names() {

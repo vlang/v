@@ -163,6 +163,36 @@ fn test_publish_rejects_artifact_paths_outside_the_store() {
 	}
 }
 
+fn test_publish_rejects_components_that_cannot_round_trip_in_raw_http_paths() {
+	archive := write_archive('module sources')
+	mut invalid := ['name?query', 'name#fragment', 'name%2Fpart', 'name%25part', 'name%ZZ',
+		'white space', ' leading', 'trailing ', 'quote"', 'angle<', 'angle>', 'pipe|', 'caret^',
+		'brace{', 'brace}', 'tick`', 'café', 'space\u00a0here']
+	for code in 0 .. 33 {
+		byte := [u8(code)].bytestr()
+		invalid << 'before${byte}after'
+	}
+	invalid << 'before${[u8(127)].bytestr()}after'
+	for value in invalid {
+		for info in [surface_info(value, '1.0.0', ''), surface_info('valid', value, '')] {
+			mut registry := new_registry()
+			before := registry.export_json()
+			registry.publish(info, archive) or {
+				assert err.msg().contains('artifact path components'), err.msg()
+				assert registry.export_json() == before
+				continue
+			}
+			assert false, 'an unroutable name or version was published: ${value.bytes()}'
+		}
+	}
+}
+
+fn test_artifact_components_preserve_routable_punctuation_and_opaque_versions() {
+	for value in ["module-._~!$&'()*+,;=@[]", 'release_2026+build.7', 'not-a-semver'] {
+		assert registry_artifact_component(value), value
+	}
+}
+
 fn test_artifact_endpoint_requires_metadata_for_existing_files() {
 	r := new_registry()
 	path := artifact_path('orphan', '1.0.0')

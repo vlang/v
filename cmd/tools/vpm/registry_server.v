@@ -4,6 +4,7 @@ module main
 // what turns it into something a third party can actually host. Without it the
 // protocol exists only as in-process functions and no registry can be stood up.
 
+import net
 import net.http
 import net.urllib
 import strconv
@@ -148,15 +149,21 @@ fn vpm_registry(query []string) {
 				vpm_error(err.msg())
 				exit(1)
 			}
-			println('Serving ${registry.modules.len} module(s) on port ${port}')
+			listener := net.listen_tcp(.ip, ':${port}') or {
+				vpm_error('failed to listen on port ${port}: ${err.msg()}')
+				exit(1)
+			}
 			mut srv := &http.Server{
 				addr:                 ':${port}'
+				listener:             listener
 				handler:              RegistryHandler{
 					registry: registry
 				}
 				show_startup_message: false
 			}
+			println('Serving ${registry.modules.len} module(s) on port ${port}')
 			println('Listening on http://127.0.0.1:${port}')
+			flush_stdout()
 			// Blocks until the process is stopped; there is nothing to return.
 			srv.listen_and_serve()
 		}

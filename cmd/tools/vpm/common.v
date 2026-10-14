@@ -93,6 +93,7 @@ fn vpm_http_post(url string, data string) !http.Response {
 // Registry credentials are only consulted by the registry protocol transport.
 // Host-scoped tokens take precedence over the configured origin's VPM_TOKEN.
 const vpm_token_env_prefix = 'VPM_TOKEN_'
+const registry_ca_file_env = 'VPM_REGISTRY_CA_FILE'
 
 // registry_http_get is the credential-bearing transport for registry protocol requests.
 fn registry_http_get(url string) !http.Response {
@@ -105,11 +106,18 @@ fn vpm_http_request(method http.Method, url string, data string, registry_reques
 	if token != '' {
 		header.add_custom('Authorization', 'Bearer ${token}') or {}
 	}
+	verify := if token != '' && url.to_lower().starts_with('https://') {
+		registry_tls_ca_file()!
+	} else {
+		''
+	}
 	resp := http.fetch(
 		method:                   method
 		url:                      url
 		data:                     data
 		header:                   header
+		validate:                 token != ''
+		verify:                   verify
 		read_timeout:             vpm_http_timeout
 		write_timeout:            vpm_http_timeout
 		max_retries:              1
@@ -121,6 +129,40 @@ fn vpm_http_request(method http.Method, url string, data string, registry_reques
 		require_registry_token(url, resp.status_code)!
 	}
 	return resp
+}
+
+// registry_tls_ca_file selects trust roots for credential-bearing HTTPS requests.
+// Empty lets OpenSSL and SChannel use their native system trust stores. mbedTLS
+// needs an explicit bundle; failing to find one must never disable validation.
+fn registry_tls_ca_file() !string {
+	if ca_file := os.getenv_opt(registry_ca_file_env) {
+		if ca_file == '' {
+			return error('${registry_ca_file_env} must name a trusted CA certificate file')
+		}
+		$if windows && !no_vschannel ? {
+			// The native HTTP backend ignores FetchConfig.verify. Do not silently
+			// replace an explicitly configured trust policy with the system store.
+			return error('${registry_ca_file_env} requires a VPM build with -d no_vschannel on Windows')
+		}
+		if !os.is_file(ca_file) {
+			return error('${registry_ca_file_env} is not a CA certificate file: ${ca_file}')
+		}
+		return ca_file
+	}
+	$if windows && !no_vschannel ? {
+		return ''
+	}
+	$if use_openssl ? {
+		return ''
+	}
+	for ca_file in ['/etc/ssl/cert.pem', '/etc/ssl/certs/ca-certificates.crt',
+		'/etc/pki/tls/certs/ca-bundle.crt', '/etc/ssl/ca-bundle.pem',
+		'/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem', '/usr/local/share/certs/ca-root-nss.crt'] {
+		if os.is_file(ca_file) {
+			return ca_file
+		}
+	}
+	return error('no system CA bundle was found; set ${registry_ca_file_env} to a trusted CA certificate file')
 }
 
 // registry_same_origin compares valid HTTP origins, including their effective ports.

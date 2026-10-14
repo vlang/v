@@ -9,6 +9,7 @@ import json2
 import os
 import semver
 import time
+import uuid
 
 const registry_key_env = 'VPM_REGISTRY_KEY'
 const registry_key_file_name = 'signing.key'
@@ -250,10 +251,19 @@ fn artifact_path(name string, version string) string {
 	return os.join_path(artifacts_dir(), name, '${safe}.zip')
 }
 
-// registry_artifact_component accepts one nonempty path component for an artifact.
+// registry_artifact_component accepts a filesystem component whose spelling
+// survives the HTTP client's raw path handling without URL escapes or delimiters.
 fn registry_artifact_component(value string) bool {
-	return value != '' && value !in ['.', '..'] && value.trim_right(' .') == value
-		&& !value.contains_any('/\\:\0\r\n')
+	if value == '' || value in ['.', '..'] || value.ends_with('.') {
+		return false
+	}
+	for c in value {
+		if !c.is_alnum() && c !in [`-`, `.`, `_`, `~`, `!`, `$`, `&`, `'`, `(`, `)`, `*`, `+`,
+			`,`, `;`, `=`, `@`, `[`, `]`] {
+			return false
+		}
+	}
+	return true
 }
 
 // registry_index_path returns the path to the registry index file.
@@ -551,7 +561,7 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 	// registry, so a consumer can audit what it is about to install without
 	// resolving the graph itself.
 	if path == '/sbom.spdx.json' && method == 'GET' {
-		namespace := query['namespace'] or { 'https://vpm.local/spdx/vpm-registry' }
+		namespace := query['namespace'] or { 'urn:uuid:${uuid.new_v4().str()}' }
 		download_base := query['dl'] or { 'https://vpm.local/downloads' }
 		return registry.spdx_json(namespace, download_base)
 	}
