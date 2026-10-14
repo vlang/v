@@ -1,5 +1,10 @@
 # UTF-8 utilities
 
+## Reversing a string
+
+`reverse` reverses decoded Unicode code points. Each invalid UTF-8 byte becomes the
+replacement character U+FFFD, including when the input contains only one byte.
+
 ## Decoding a rune
 
 `get_rune(s, index)` returns the rune that starts at the byte offset `index` of `s`.
