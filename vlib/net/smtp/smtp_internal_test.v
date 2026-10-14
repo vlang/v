@@ -1,6 +1,9 @@
 module smtp
 
 import encoding.base64
+import os
+import rand
+import time
 
 fn test_mail_message_data_with_attachment_has_valid_multipart_boundaries() {
 	mail := Mail{
@@ -368,4 +371,172 @@ fn test_format_addr_list() {
 	// each non-ASCII display name is encoded independently
 	assert format_addr_list('Иван Петров <ivan@ex.com>') == '=?utf-8?B?0JjQstCw0L0g0J/QtdGC0YDQvtCy?= <ivan@ex.com>'
 	assert format_addr_list('Иван <ivan@ex.com>; John <a@ex.com>') == '=?utf-8?B?0JjQstCw0L0=?= <ivan@ex.com>, "John" <a@ex.com>'
+}
+
+fn test_tls_hostname_normalizes_bracketed_ipv6() {
+	assert normalize_tls_hostname('[2001:db8::1]') == '2001:db8::1'
+	assert normalize_tls_hostname('2001:db8::1') == '2001:db8::1'
+	assert normalize_tls_hostname('smtp.example.com') == 'smtp.example.com'
+}
+
+fn test_send_auth_rejects_plaintext_credentials() {
+	mut client := Client{
+		Config: Config{
+			username: 'user'
+			password: 'password'
+		}
+	}
+	client.send_auth() or {
+		assert err.msg().contains('refusing to send credentials without TLS')
+		return
+	}
+	assert false, 'send_auth must enforce the TLS requirement itself'
+}
+
+fn test_tls_validation_rejects_untrusted_and_mismatched_certificates_before_auth() ! {
+	python := os.find_abs_path_of_executable('python3') or {
+		os.find_abs_path_of_executable('python') or {
+			eprintln('Skipping SMTP TLS integration test: Python is not installed')
+			return
+		}
+	}
+	cert_dir := os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert')
+	server_cert := os.join_path(cert_dir, 'server.crt')
+	server_key := os.join_path(cert_dir, 'server.key')
+	ca_bundle := os.join_path(cert_dir, 'ca.crt')
+	untrusted_bundle := os.join_path(cert_dir, 'client.crt')
+	assert os.exists(server_cert) && os.exists(server_key) && os.exists(ca_bundle)
+
+	for starttls in [false, true] {
+		assert smtp_tls_test_case(python, starttls, 'localhost', ca_bundle, server_cert,
+			server_key)! == 'CONNECTED:AUTH'
+		assert smtp_tls_test_case(python, starttls, '127.0.0.1', ca_bundle, server_cert,
+			server_key)! == 'REJECTED:NO_AUTH'
+		assert smtp_tls_test_case(python, starttls, 'localhost', untrusted_bundle, server_cert,
+			server_key)! == 'REJECTED:NO_AUTH'
+	}
+}
+
+fn smtp_tls_test_case(python string, starttls bool, hostname string, verify string, cert string,
+	key string) !string {
+	helper := os.join_path(@VMODROOT, 'vlib', 'net', 'smtp', 'smtp_tls_test_server.py')
+	assert os.exists(helper)
+	prefix := os.join_path(os.temp_dir(), 'v_smtp_tls_${rand.uuid_v4()}')
+	ready_path := '${prefix}.ready'
+	result_path := '${prefix}.result'
+	mut server := os.new_process(python)
+	server.set_work_folder(@VMODROOT)
+	server.set_args([
+		helper,
+		if starttls { 'starttls' } else { 'implicit' },
+		hostname,
+		cert,
+		key,
+		ready_path,
+		result_path,
+	])
+	server.run()
+	defer {
+		if server.is_alive() {
+			server.signal_kill()
+		}
+		server.wait()
+		server.close()
+		os.rm(ready_path) or {}
+		os.rm(result_path) or {}
+	}
+
+	mut ready := false
+	for _ in 0 .. 250 {
+		if os.exists(ready_path) {
+			ready = true
+			break
+		}
+		if !server.is_alive() {
+			return error('SMTP TLS test server exited before listening')
+		}
+		time.sleep(20 * time.millisecond)
+	}
+	if !ready {
+		return error('SMTP TLS test server did not become ready')
+	}
+	port := os.read_file(ready_path)!.trim_space().int()
+	mut client_state := 'CONNECTED'
+	mut client := new_client(Config{
+		server:   hostname
+		port:     port
+		username: 'smtp-test-user'
+		password: 'smtp-test-password'
+		ssl:      !starttls
+		starttls: starttls
+		verify:   verify
+		timeout:  5 * time.second
+	}) or {
+		client_state = 'REJECTED'
+		&Client{}
+	}
+	if client_state == 'CONNECTED' {
+		client.quit()!
+	}
+	server.wait()
+	if server.code != 0 {
+		return error('SMTP TLS test server failed with exit code ${server.code}')
+	}
+	server_result := os.read_file(result_path)!.trim_space()
+	return '${client_state}:${server_result}'
+}
+
+fn test_attachment_filename_crlf_cannot_inject_headers() {
+	// a filename containing CRLF must not break out of the
+	// Content-Disposition header: it is stripped, like strip_crlf does
+	// for other header values.
+	// See https://github.com/vlang/v/issues/30174
+	mail := Mail{
+		from:        'sender@example.com'
+		to:          'receiver@example.com'
+		subject:     'CRLF test'
+		body:        'message body'
+		attachments: [
+			Attachment{
+				filename: 'x"\r\nBcc: victim@example.com\r\nX'
+				bytes:    'data'.bytes()
+			},
+		]
+	}
+	message := mail.message_data()
+	assert !message.contains('\r\nBcc: victim@example.com\r\n')
+	assert message.contains('filename="x\\"Bcc: victim@example.comX"')
+}
+
+fn test_attachment_cid_and_filename_strip_single_newline_bytes() {
+	attachment := Attachment{
+		cid:      'image\r\nX-Test: injected\r\n\r\nend'
+		filename: 'a\\b"; name="other\r\n.txt'
+		bytes:    'data'.bytes()
+	}
+	data := attachment.to_string()
+	assert data.contains('Content-ID: <imageX-Test: injectedend>\r\n')
+	assert !data.contains('\r\nX-Test:')
+	assert data.contains('filename="a\\\\b\\"; name=\\"other.txt"\r\n')
+	assert data.ends_with('ZGF0YQ==')
+	for newline in ['\r', '\n'] {
+		clean := Attachment{ filename: 'a${newline}b', cid: 'c${newline}d' }.to_string()
+		assert clean.contains('filename="ab"\r\n')
+		assert clean.contains('Content-ID: <cd>\r\n')
+	}
+}
+
+fn test_attachment_clean_values_preserve_headers_and_payload() {
+	data := Attachment{
+		filename: 'report.txt'
+		cid:      'report@example.com'
+		bytes:    [
+			u8(0),
+			1,
+			255,
+		]
+	}.to_string()
+	assert data.contains('Content-ID: <report@example.com>\r\n')
+	assert data.contains('Content-Disposition: attachment; filename="report.txt"\r\n')
+	assert data.ends_with('AAH/')
 }
