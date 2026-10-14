@@ -72,7 +72,7 @@ pub fn answer() int {
 	generated_coverage_c := os.read_file(coverage_c)!
 	assert generated_coverage_c.contains('void _vcleanup_caller(void) {\n\tstatic bool once = false;\n\tif (once) { return; }\n\tonce = true;\n\t_vcleanup();\n\tv3_write_coverage_stats();\n}'), generated_coverage_c
 
-	out_lib := os.join_path(os.temp_dir(), 'v3_shared_flag_module_${os.getpid()}')
+	out_lib := os.join_path(os.vtmp_dir(), 'v3_shared_flag_module_${os.getpid()}')
 	out_path := out_lib + shared_flag_library_postfix()
 	os.rm(out_path) or {}
 	defer {
