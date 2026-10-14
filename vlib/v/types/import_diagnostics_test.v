@@ -79,7 +79,7 @@ fn test_synthetic_runtime_import_may_match_current_module() {
 	a.add_node(flat.Node{
 		kind:  .import_decl
 		value: 'sync'
-		typ:   'sync'
+		typ:   flat.source_type_id('sync')
 	})
 	mut tc := TypeChecker.new(a)
 	tc.collect(a)

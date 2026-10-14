@@ -28,7 +28,7 @@ fn test_sizeof_byte_expression_uses_operand_type_without_evaluating_it() {
 		operand := a.add_node(flat.Node{
 			kind:  .ident
 			value: 'byte'
-			typ:   typ
+			typ:   flat.source_type_id(typ)
 		})
 		start := a.children.len
 		a.children << operand
@@ -45,7 +45,7 @@ fn test_sizeof_byte_expression_uses_operand_type_without_evaluating_it() {
 	}
 	call := a.add_node(flat.Node{
 		kind: .call
-		typ:  'f64'
+		typ:  flat.source_type_id('f64')
 	})
 	start := a.children.len
 	a.children << call

@@ -5,7 +5,7 @@ import v.gen.c.naming
 import v.types
 
 fn enum_decl_is_flag(node flat.Node) bool {
-	return node.typ == 'flag'
+	return node.typ_text() == 'flag'
 }
 
 fn enum_decl_backing_type(node flat.Node) ?string {
@@ -21,7 +21,7 @@ fn (g &FlatGen) enum_backing_storage_c_type(backing string) string {
 
 fn (g &FlatGen) enum_emit_storage_c_type(enum_name string, backing string) string {
 	if info := g.enum_backing_info(enum_name) {
-		return info.storage_c_type
+		return info.storage_c_type_text()
 	}
 	return g.enum_backing_storage_c_type(backing)
 }
@@ -33,7 +33,7 @@ fn enum_storage_c_type_is_unsigned(storage_ct string) bool {
 fn (mut g FlatGen) register_enum_backing_info(enum_name string, backing string) {
 	info := EnumBackingInfo{
 		c_name:         g.enum_typedef_c_name(enum_name)
-		storage_c_type: g.enum_backing_storage_c_type(backing)
+		storage_c_type: flat.source_type_id(g.enum_backing_storage_c_type(backing))
 	}
 	g.enum_backing_infos[enum_name] = info
 	short := enum_name.all_after_last('.')
@@ -61,8 +61,8 @@ fn (g &FlatGen) enum_backing_info(enum_name string) ?EnumBackingInfo {
 fn (g &FlatGen) wide_enum_signature_c_type(t types.Type) ?string {
 	if t is types.Pointer {
 		if t.base_type is types.Enum {
-			if info := g.enum_backing_info(t.base_type.name) {
-				if info.storage_c_type !in ['int', 'i32'] {
+			if info := g.enum_backing_info(t.base_type.name()) {
+				if info.storage_c_type_text() !in ['int', 'i32'] {
 					return info.c_name + '*'
 				}
 			}
@@ -72,8 +72,8 @@ fn (g &FlatGen) wide_enum_signature_c_type(t types.Type) ?string {
 		return base + '*'
 	}
 	if t is types.Enum {
-		if info := g.enum_backing_info(t.name) {
-			if info.storage_c_type in ['i64', 'u64'] {
+		if info := g.enum_backing_info(t.name()) {
+			if info.storage_c_type_text() in ['i64', 'u64'] {
 				return info.c_name
 			}
 		}
@@ -82,15 +82,15 @@ fn (g &FlatGen) wide_enum_signature_c_type(t types.Type) ?string {
 }
 
 fn (g &FlatGen) enum_value_c_type(enum_type types.Enum) string {
-	if info := g.enum_backing_info(enum_type.name) {
+	if info := g.enum_backing_info(enum_type.name()) {
 		return info.c_name
 	}
 	return g.tc.c_type(enum_type)
 }
 
 fn (g &FlatGen) enum_storage_c_type(enum_type types.Enum) string {
-	if info := g.enum_backing_info(enum_type.name) {
-		return info.storage_c_type
+	if info := g.enum_backing_info(enum_type.name()) {
+		return info.storage_c_type_text()
 	}
 	return g.tc.c_type(enum_type)
 }
@@ -136,16 +136,16 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	}
 	safe_name := inner_ct.replace('*', 'ptr').replace(' ', '_')
 	opt_name := '${prefix}_${safe_name}'
-	g.needed_optional_types[opt_name] = inner_ct
+	g.needed_optional_types.set(opt_name, inner_ct)
 	mut pointee := cgen_unalias_type(base_type)
 	if pointee is types.Pointer {
 		for pointee is types.Pointer {
 			pointee = cgen_unalias_type(pointee.base_type)
 		}
-		if pointee is types.Struct && !pointee.name.starts_with('C.')
-			&& !types.is_builtin_type_name(pointee.name) && !type_references_thread(pointee) {
+		if pointee is types.Struct && !pointee.name().starts_with('C.')
+			&& !types.is_builtin_type_name(pointee.name()) && !type_references_thread(pointee) {
 			pointee_ct := g.optional_payload_c_type(pointee)
-			g.optional_pointer_struct_tags[pointee_ct] = if pointee.name in g.tc.unions {
+			g.optional_pointer_struct_tags[pointee_ct] = if pointee.name() in g.tc.unions {
 				'union'
 			} else {
 				'struct'
@@ -222,10 +222,10 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 			return qualified + pointer_suffix
 		}
 	}
-	if target := g.tc.type_aliases[ct] {
+	if target := g.tc.type_aliases.get(ct) {
 		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
 	}
-	if target := g.tc.type_aliases['main.${ct}'] {
+	if target := g.tc.type_aliases.get('main.${ct}') {
 		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
 	}
 	return ct
@@ -234,7 +234,7 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 fn type_references_thread(typ types.Type) bool {
 	return match typ {
 		types.Struct {
-			name := trimmed_space(typ.name)
+			name := trimmed_space(typ.name())
 			short_name := name.all_after_last('.')
 			name == 'thread' || name.starts_with('thread ') || name.starts_with('thread[')
 				|| short_name == 'thread' || short_name.starts_with('thread ')
@@ -261,7 +261,7 @@ fn type_references_thread(typ types.Type) bool {
 fn type_references_pthread(typ types.Type) bool {
 	return match typ {
 		types.Struct {
-			name := trimmed_space(typ.name)
+			name := trimmed_space(typ.name())
 			name.starts_with('C.pthread_') || name.all_after_last('.').starts_with('pthread_')
 		}
 		types.Array { type_references_pthread(typ.elem_type) }
@@ -277,7 +277,7 @@ fn type_references_pthread(typ types.Type) bool {
 		types.OptionType { type_references_pthread(typ.base_type) }
 		types.ResultType { type_references_pthread(typ.base_type) }
 		types.Alias {
-			name := trimmed_space(typ.name)
+			name := trimmed_space(typ.name())
 			name.starts_with('C.pthread_') || name.all_after_last('.').starts_with('pthread_')
 				|| type_references_pthread(typ.base_type)
 		}
@@ -320,7 +320,8 @@ fn (mut g FlatGen) precompute_thread_type_usage() {
 	for _, typ in g.fn_decl_ret_types {
 		g.note_thread_type_usage(typ)
 	}
-	for _, variants in g.tc.sum_types {
+	for _, variants_id in g.tc.sum_types.ids {
+		variants := variants_id.map(flat.source_type_name(it))
 		for variant in variants {
 			g.note_thread_type_usage(g.tc.parse_type(variant))
 		}
@@ -328,8 +329,8 @@ fn (mut g FlatGen) precompute_thread_type_usage() {
 }
 
 fn c_alias_value_c_type(typ types.Type) ?string {
-	if typ is types.Alias && typ.name.starts_with('C.') {
-		return typ.name['C.'.len..]
+	if typ is types.Alias && typ.name().starts_with('C.') {
+		return typ.name()['C.'.len..]
 	}
 	if typ is types.Pointer {
 		if base := c_alias_value_c_type(typ.base_type) {
@@ -345,10 +346,10 @@ fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
 		// Generic substitution can preserve a caller alias only as its type name
 		// after the specialized body has moved into the generic function's module.
 		// Recover the registered alias before selecting the C storage type.
-		if target := g.tc.type_aliases[clean_type.name] {
+		if target := g.tc.type_aliases.get(clean_type.name()) {
 			return cgen_unalias_type(g.tc.parse_type(target))
 		}
-		if target := g.tc.type_aliases['main.${clean_type.name}'] {
+		if target := g.tc.type_aliases.get('main.${clean_type.name()}') {
 			return cgen_unalias_type(g.tc.parse_type(target))
 		}
 	}
@@ -363,7 +364,7 @@ fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
 // `error: no member named 'len' in 'struct map'`.
 fn cgen_type_is_map(typ types.Type) bool {
 	clean := cgen_unalias_type(typ)
-	return clean is types.Map || (clean is types.Struct && clean.name == 'map')
+	return clean is types.Map || (clean is types.Struct && clean.name() == 'map')
 }
 
 fn cgen_unalias_type(typ types.Type) types.Type {
@@ -562,7 +563,7 @@ fn optional_payload_may_have_stale_interface_spelling(t types.Type) bool {
 	for clean is types.Pointer {
 		clean = cgen_unalias_type(clean.base_type)
 	}
-	return clean is types.Interface || (clean is types.Struct && !clean.name.contains('.'))
+	return clean is types.Interface || (clean is types.Struct && !clean.name().contains('.'))
 }
 
 fn optional_payload_struct_name(t types.Type) ?string {
@@ -571,7 +572,7 @@ fn optional_payload_struct_name(t types.Type) ?string {
 		clean = clean.base_type
 	}
 	if clean is types.Struct {
-		return clean.name
+		return clean.name()
 	}
 	return none
 }
@@ -583,14 +584,14 @@ fn (g &FlatGen) canonical_import_alias_type_text(typ string) string {
 @[heap]
 struct ImportFileTypeCache {
 mut:
-	texts  map[string]string
-	parsed map[string]types.Type
+	texts  TypeNameLookupCache
+	parsed map[u32]types.Type
 }
 
 @[heap]
 struct ImportTypeCache {
 mut:
-	unqualified_texts map[string]string
+	unqualified_texts TypeNameLookupCache
 	by_file           map[string]&ImportFileTypeCache
 	last_file         string
 	last              &ImportFileTypeCache = unsafe { nil }
@@ -616,11 +617,12 @@ fn (g &FlatGen) canonical_import_alias_type_in_file(typ string, file string) typ
 		return g.canonical_import_alias_type_in_file_uncached(typ, file)
 	}
 	mut entry := cache.for_file(file)
-	if result := entry.parsed[typ] {
+	id := entry.texts.texts.intern(typ)
+	if result := entry.parsed[id] {
 		return result
 	}
 	result := g.canonical_import_alias_type_in_file_uncached(typ, file)
-	entry.parsed[typ] = result
+	entry.parsed[id] = result
 	return result
 }
 
@@ -722,12 +724,12 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 			elem_type: g.exact_known_import_type_text(clean[2..])?
 		})
 	}
-	if clean in g.tc.type_aliases {
+	if g.tc.type_aliases.contains(clean) {
 		return g.tc.parse_canonical_type(clean)
 	}
 	if clean in g.tc.structs {
 		return types.Type(types.Struct{
-			name: clean
+			name_id: flat.source_type_id(clean)
 		})
 	}
 	if clean.contains('.') {
@@ -739,24 +741,24 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 		if info := g.struct_decl_infos[key] {
 			if info.module == module_name && info.node.value == short_name {
 				return types.Type(types.Struct{
-					name: clean
+					name_id: flat.source_type_id(clean)
 				})
 			}
 		}
 	}
 	if clean in g.tc.interface_names {
 		return types.Type(types.Interface{
-			name: clean
+			name_id: flat.source_type_id(clean)
 		})
 	}
-	if clean in g.tc.sum_types {
+	if g.tc.sum_types.contains(clean) {
 		return types.Type(types.SumType{
-			name: clean
+			name_id: flat.source_type_id(clean)
 		})
 	}
 	if clean in g.tc.enum_names {
 		return types.Type(types.Enum{
-			name:    clean
+			name_id: flat.source_type_id(clean)
 			is_flag: clean in g.tc.flag_enums
 		})
 	}
@@ -777,19 +779,19 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file(typ string, file string
 		}
 		// Wrapper and generic normalization is independent of the source file
 		// without a dotted name. Reuse it across file contexts in this worker.
-		if result := cache.unqualified_texts[typ] {
+		if result := cache.unqualified_texts.get(typ) {
 			return result
 		}
 		result := g.canonical_import_alias_type_text_in_file_uncached(typ, file)
-		cache.unqualified_texts[typ] = result
+		cache.unqualified_texts.put(typ, result)
 		return result
 	}
 	mut entry := cache.for_file(file)
-	if result := entry.texts[typ] {
+	if result := entry.texts.get(typ) {
 		return result
 	}
 	result := g.canonical_import_alias_type_text_in_file_uncached(typ, file)
-	entry.texts[typ] = result
+	entry.texts.put(typ, result)
 	return result
 }
 
@@ -884,7 +886,7 @@ fn optional_payload_is_bare_struct(t types.Type) bool {
 	for clean is types.Pointer {
 		clean = clean.base_type
 	}
-	return clean is types.Struct && !clean.name.contains('.')
+	return clean is types.Struct && !clean.name().contains('.')
 }
 
 // optional_typedefs supports optional typedefs handling for FlatGen.
@@ -899,7 +901,7 @@ fn (mut g FlatGen) optional_typedefs() {
 	mut names := g.needed_optional_types.keys()
 	names.sort()
 	for opt_name in names {
-		val_type := g.needed_optional_types[opt_name]
+		val_type := g.needed_optional_types.value(opt_name)
 		if g.emit_optional_typedef(opt_name, val_type) {
 			wrote = true
 		}
@@ -913,7 +915,8 @@ fn (mut g FlatGen) optional_typedefs() {
 // specialization is discarded. Its pointee needs only an opaque declaration.
 fn (mut g FlatGen) optional_pointer_struct_forward_decls() {
 	mut needed := map[string]bool{}
-	for _, payload in g.needed_optional_types {
+	for _, payload_id in g.needed_optional_types.ids {
+		payload := flat.source_type_name(payload_id)
 		needed[payload.trim_right('*')] = true
 	}
 	mut declared := map[string]bool{}
@@ -969,7 +972,7 @@ fn (mut g FlatGen) collect_sizeof_optional_types() {
 fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 	// Calls without a resolved expression type and `sizeof` operands are the only
 	// optional-type sources not covered by the shared declaration-signature scan.
-	mut seen_type_ids := []bool{len: 65536}
+	mut seen_type_ids := map[u32]bool{}
 	mut seen_type_texts := map[string]bool{}
 	for idx in g.type_metadata_nodes() {
 		node := g.a.nodes[idx]
@@ -979,16 +982,16 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 		// Only a complete type spelling that was not collected yet can add a
 		// typedef. Rule the rest out before the checker metadata below, which
 		// costs a map lookup per resolved call.
-		if node.typ.len == 0 || node.typ in ['int', 'array', 'map', 'unknown']
-			|| !cgen_type_text_is_complete(node.typ) {
+		if node.typ_text().len == 0 || node.typ_text() in ['int', 'array', 'map', 'unknown']
+			|| !cgen_type_text_is_complete(node.typ_text()) {
 			continue
 		}
 		type_id := node.type_text_id()
 		if type_id != 0 {
-			if seen_type_ids[int(type_id)] {
+			if seen_type_ids[type_id] {
 				continue
 			}
-		} else if node.typ in seen_type_texts {
+		} else if node.typ_text() in seen_type_texts {
 			continue
 		}
 		if idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx] {
@@ -1004,9 +1007,9 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 			}
 		}
 		if type_id != 0 {
-			seen_type_ids[int(type_id)] = true
+			seen_type_ids[type_id] = true
 		} else {
-			seen_type_texts[node.typ] = true
+			seen_type_texts[node.typ_text()] = true
 		}
 		g.collect_optional_typedef_type(g.parse_node_type(&node))
 	}
@@ -1115,7 +1118,7 @@ fn (mut g FlatGen) collect_specialized_declaration_signature_types() {
 			raw_type := if param_idx < typed_params.len {
 				typed_params[param_idx]
 			} else {
-				g.tc.parse_resolution_type(param.typ)
+				g.tc.parse_resolution_type(param.typ_text())
 			}
 			param_idx++
 			g.collect_declaration_signature_type(g.fn_node_effective_param_type(param, raw_type))
@@ -1236,7 +1239,7 @@ fn (mut g FlatGen) collect_selected_declaration_signature_types() {
 			raw_type := if param_idx < typed_params.len {
 				typed_params[param_idx]
 			} else {
-				g.tc.parse_resolution_type(param.typ)
+				g.tc.parse_resolution_type(param.typ_text())
 			}
 			param_idx++
 			g.collect_known_declaration_signature_type(g.fn_node_effective_param_type(param, raw_type))
@@ -1369,34 +1372,34 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			// Inferred anonymous literals are materialized during transform. Their
 			// earlier checker entry has no nominal storage type; prefer the concrete
 			// lowered annotation instead of emitting `v_struct` for its container.
-			if t.name.all_after_last('.') == 'struct' {
+			if t.name().all_after_last('.') == 'struct' {
 				return true
 			}
 			// A stale generic-call annotation can carry the concrete C function name
 			// as a nominal type. It is not a payload type and must not create an
 			// `__v_option_<function>` typedef in the program prefix.
-			if t.name.contains('_T_') && !g.type_name_known(t.name) {
+			if t.name().contains('_T_') && !g.type_name_known(t.name()) {
 				return true
 			}
-			if !g.skip_generics && t.name.contains('[') && type_name_is_unbound_generic_decl(t.name, g.struct_generic_params_for_name(t.name), t.name in g.tc.structs || g.tc.qualify_name(t.name) in g.tc.structs) {
+			if !g.skip_generics && t.name().contains('[') && type_name_is_unbound_generic_decl(t.name(), g.struct_generic_params_for_name(t.name()), t.name() in g.tc.structs || g.tc.qualify_name(t.name()) in g.tc.structs) {
 				return true
 			}
-			return g.type_name_contains_generic_placeholder(t.name)
+			return g.type_name_contains_generic_placeholder(t.name())
 		}
 		types.Interface {
-			return g.type_name_contains_generic_placeholder(t.name)
+			return g.type_name_contains_generic_placeholder(t.name())
 		}
 		types.Enum {
-			return g.type_name_contains_generic_placeholder(t.name)
+			return g.type_name_contains_generic_placeholder(t.name())
 		}
 		types.SumType {
-			if !g.skip_generics && t.name.contains('[') && type_name_is_unbound_generic_decl(t.name, g.sum_generic_params_for_name(t.name), t.name in g.tc.sum_types || g.tc.qualify_name(t.name) in g.tc.sum_types) {
+			if !g.skip_generics && t.name().contains('[') && type_name_is_unbound_generic_decl(t.name(), g.sum_generic_params_for_name(t.name()), t.name() in g.tc.sum_types.ids || g.tc.qualify_name(t.name()) in g.tc.sum_types.ids) {
 				return true
 			}
-			return g.type_name_contains_generic_placeholder(t.name)
+			return g.type_name_contains_generic_placeholder(t.name())
 		}
 		types.Alias {
-			return g.type_name_contains_generic_placeholder(t.name)
+			return g.type_name_contains_generic_placeholder(t.name())
 				|| g.type_contains_generic_placeholder(t.base_type)
 		}
 		types.MultiReturn {
@@ -1556,7 +1559,7 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	// is emitted first: sorted by name, `__v_option___v_option_i64` would come
 	// before the `__v_option_i64` it stores.
 	if val_type != opt_name {
-		if inner_val_type := g.needed_optional_types[val_type] {
+		if inner_val_type := g.needed_optional_types.get(val_type) {
 			g.emit_optional_typedef(val_type, inner_val_type)
 		}
 	}
@@ -1576,7 +1579,7 @@ fn (mut g FlatGen) write_optional_typedef(name string, value_type string) {
 }
 
 fn (g &FlatGen) is_known_sum_c_type(c_type string) bool {
-	for name, _ in g.tc.sum_types {
+	for name, _ in g.tc.sum_types.ids {
 		if g.cname(name) == c_type {
 			return true
 		}
@@ -1841,7 +1844,7 @@ fn (mut g FlatGen) enum_str_defs() {
 					continue
 				}
 				emitted[fn_cn] = true
-				if node.typ == 'flag' {
+				if node.typ_text() == 'flag' {
 					// `[flag]` enum: a value can combine several bits, so build the V
 					// `Enum{.a | .b}` form by testing each field bit instead of matching a
 					// single case (which would send any combination to the integer path).
@@ -2338,7 +2341,7 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 		}
 		arg_id := g.a.child(&call, arg_idx)
 		value := g.enum_field_expr_value_with_enum(arg_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
-		locals[param.value] = g.enum_comptime_integer_cast(value, param.typ)
+		locals[param.value] = g.enum_comptime_integer_cast(value, param.typ_text())
 		arg_idx++
 	}
 	for i in 0 .. fn_node.children_count {
@@ -2349,7 +2352,7 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 		}
 		if stmt.kind == .return_stmt && stmt.children_count > 0 {
 			value := g.enum_comptime_expr_value(g.a.child(stmt, 0), locals, enum_module)?
-			return g.enum_comptime_integer_cast(value, fn_node.typ)
+			return g.enum_comptime_integer_cast(value, fn_node.typ_text())
 		}
 	}
 	return none
@@ -2702,7 +2705,8 @@ fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
 			}
 		}
 	}
-	for name, target in g.tc.type_aliases {
+	for name, target_id in g.tc.type_aliases.ids {
+		target := flat.source_type_name(target_id)
 		if target.starts_with('fn_ptr:') || target.starts_with('C.') {
 			continue
 		}

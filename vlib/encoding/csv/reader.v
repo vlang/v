@@ -138,10 +138,10 @@ fn (mut r Reader) read_record() ![]string {
 				}
 				continue
 			} else if l[0] == r.comment {
-				if keep_raw {
-					line += '\n' + l
+				if !keep_raw {
+					continue
 				}
-				continue
+				line += '\n' + l
 			} else {
 				if keep_raw {
 					line += '\n'
