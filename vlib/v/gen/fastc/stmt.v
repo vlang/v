@@ -1613,6 +1613,7 @@ fn (g &Parser) render_translated_statement_expression(tokens []FastcExpressionTo
 }
 
 fn (mut g Parser) parse_assert_statement() ! {
+	assert_offset := g.s.pos + g.source_offset
 	g.next()
 	condition := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 	if condition == '' {
@@ -1627,6 +1628,25 @@ fn (mut g Parser) parse_assert_statement() ! {
 		}
 	}
 	g.consume_statement_end()
+	if g.selfhost && g.prefs.is_test {
+		// A failed assert in a test build fails the running test and moves on to the next,
+		// running the deferred blocks a return from here would run.
+		where := '${g.path}:${fastc_source_line(g.path, assert_offset)}: ${g.current_function}: assert'
+		where_literal := '"' + where.replace('\\', '\\\\').replace('"', '\\"') + '"'
+		if !g.has_deferred_blocks() {
+			g.protos.writeln('void v_fastc_test_assert_fail(string where, string message);')
+			g.write_line('if (!(${condition})) { v_fastc_test_assert_fail(_S(${where_literal}), ${message}); }')
+			return
+		}
+		g.protos.writeln('void v_fastc_test_assert_report(string where, string message);')
+		g.protos.writeln('void v_fastc_test_fail_transfer(void);')
+		g.write_line('if (!(${condition})) {')
+		g.write_line('v_fastc_test_assert_report(_S(${where_literal}), ${message});')
+		g.write_all_deferred_scopes()
+		g.write_line('v_fastc_test_fail_transfer();')
+		g.write_line('}')
+		return
+	}
 	if g.selfhost {
 		g.write_line('if (!(${condition})) { builtin__panic(${message}); }')
 	} else {

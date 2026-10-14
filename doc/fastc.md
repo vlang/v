@@ -56,7 +56,12 @@ and exits with an error instead of returning a zero value.
 This path supports standard-library imports such as `os` and `toml`,
 composite sum-type tests, integer interpolation formats, anonymous functions, and immutable
 closure captures. A single-file entry can select the same runtime with `-d fastc_real_builtin`;
-its module siblings are included.
+its module siblings are included. A test file entry (`foo_test.v`, `foo_test.c.v`, or an
+architecture-qualified one) always uses it, and builds as a program that runs its tests in
+source order between `testsuite_begin` and `testsuite_end`, each between `before_each` and
+`after_each`; a failed assert or a returned error fails that test, and the program exits with
+status 1 when any test failed. Tests and hooks require zero parameters. Failed assertions run
+the test's deferred statements before the harness continues.
 Target-specific files and test files are filtered when loading a directory.
 Fixed arrays and their aliases support checked indexing, including pointer elements.
 Pointer elements retain their identity when passed or copied. Omitted option fields are `none`.
