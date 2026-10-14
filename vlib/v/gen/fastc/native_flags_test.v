@@ -282,8 +282,11 @@ fn test_fastc_prepared_link_recognizes_native_c_sources() {
 		assert !fastc_libtcc_is_link_input(os.join_path(root, 'missing.c'))
 		assert !fastc_libtcc_is_link_input(root)
 		tcc_lib := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib')
+		sdk := cmdexec.macos_sdk_root()
+		assert sdk != ''
 		mut link := fastc_prepare_link(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe'),
-			tcc_lib, ['-B${tcc_lib}'], [])
+			tcc_lib, ['-std=gnu11', '-B${tcc_lib}', '-Werror=implicit-function-declaration'],
+			['-L${tcc_lib}', '-L${os.join_path(sdk, 'usr', 'lib')}'])
 		defer { fastc_discard_link(mut link) }
 		assert fastc_prepared_link_accepts_inputs(&link)
 	}
