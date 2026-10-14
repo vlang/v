@@ -1907,12 +1907,13 @@ fn parse_float_number[T](str string) !T {
 	}
 	$if T.unaliased_typ is f32 {
 		narrowed := f32(value)
-		if math.is_inf(f64(narrowed), 0) {
+		// Test the representation so finite-math optimizations cannot erase the guard.
+		if math.f32_bits(narrowed) & u32(0x7fffffff) == u32(0x7f800000) {
 			return error('number `${str}` exceeds ${T.name} range')
 		}
 		return T(narrowed)
 	} $else $if T.unaliased_typ is f64 {
-		if math.is_inf(value, 0) {
+		if math.f64_bits(value) & u64(0x7fffffffffffffff) == u64(0x7ff0000000000000) {
 			return error('number `${str}` exceeds ${T.name} range')
 		}
 		return T(value)
