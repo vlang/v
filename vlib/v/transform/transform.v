@@ -281,6 +281,7 @@ mut:
 	module_type_cache             &ModuleTypeCache         = unsafe { nil }
 	struct_guess_cache            &AliasCache              = unsafe { nil }
 	generic_unresolved_cache      &GenericUnresolvedCache  = unsafe { nil }
+	spec_args_misses              &SpecArgsMissCache       = unsafe { nil }
 	generic_spec_decode_cache     &LookupCache             = unsafe { nil }
 	struct_field_type_cache       &LookupCache             = unsafe { nil }
 	variant_short_name_cache      &AliasCache              = unsafe { nil }
@@ -2298,6 +2299,7 @@ fn (mut t Transformer) prepare() {
 	t.struct_guess_cache = &AliasCache{}
 	t.var_type_cache = &VarTypeIndexCache{}
 	t.generic_unresolved_cache = &GenericUnresolvedCache{}
+	t.spec_args_misses = &SpecArgsMissCache{}
 	t.generic_spec_decode_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -6418,8 +6420,10 @@ fn (t &Transformer) used_fn_contains_name(name string) bool {
 }
 
 fn (t &Transformer) used_fn_contains_in_module(name string, module_name string) bool {
-	if module_name != '' && module_name != 'main' && module_name != 'builtin'
-		&& name.starts_with('${module_name}.') {
+	plain_module := module_name == '' || module_name == 'main' || module_name == 'builtin'
+	// `name` starts with `module_name.`, tested without building that prefix.
+	if !plain_module && name.len > module_name.len && name[module_name.len] == `.`
+		&& name.starts_with(module_name) {
 		if t.used_fn_contains_name(name) {
 			return true
 		}
@@ -6428,16 +6432,10 @@ fn (t &Transformer) used_fn_contains_in_module(name string, module_name string) 
 			return true
 		}
 	}
+	// In a plain module the dotted name is `name` itself, so these two lookups
+	// are also the ones by the bare name and its C spelling.
 	dfn := transform_dotted_fn_name(module_name, name)
-	qfn := c_name(dfn)
-	if t.used_fn_contains_name(dfn) || t.used_fn_contains_name(qfn) {
-		return true
-	}
-	if module_name == '' || module_name == 'main' || module_name == 'builtin' {
-		cfn := c_name(name)
-		return t.used_fn_contains_name(name) || t.used_fn_contains_name(cfn)
-	}
-	return false
+	return t.used_fn_contains_name(dfn) || t.used_fn_contains_name(c_name(dfn))
 }
 
 fn transform_dotted_fn_name(mod string, name string) string {

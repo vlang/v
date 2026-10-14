@@ -1421,7 +1421,7 @@ fn fastc_composite_type_part(typ string) string {
 }
 
 fn fastc_fixed_array_type(length string, element_type string) string {
-	return 'FixedArray_${length}_FASTC_ARRAY_OF_${element_type}'
+	return 'FixedArray_${length}_FASTC_ARRAY_OF_${fastc_composite_type_part(element_type)}'
 }
 
 fn fastc_fixed_array_length(typ string) ?string {
@@ -1436,7 +1436,7 @@ fn fastc_fixed_array_element_type(typ string) ?string {
 	if !typ.starts_with('FixedArray_') || !typ.contains('_FASTC_ARRAY_OF_') {
 		return none
 	}
-	return typ.all_after('_FASTC_ARRAY_OF_')
+	return fastc_decode_ptr_element_type(typ.trim_right('*').all_after('_FASTC_ARRAY_OF_'))
 }
 
 fn fastc_decimal_integer_value(source string) ?int {

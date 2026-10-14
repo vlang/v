@@ -723,6 +723,10 @@ fn (g &Parser) struct_field_initializer_default(field FastcStructField) string {
 	mut value := ''
 	if field.default_value != '' {
 		value = field.default_value
+	} else if field.typ == 'Option' {
+		// An option field a literal leaves out is `none`; a zeroed Option would be a
+		// present value with no payload.
+		value = '(Option){.state=2}'
 	} else if !field.typ.ends_with('*') && g.struct_type_has_initializer_defaults(field.typ) {
 		value = g.render_empty_struct_initializer(field.typ)
 	}
@@ -744,7 +748,7 @@ fn (g &Parser) struct_type_has_initializer_defaults(c_type string) bool {
 		return false
 	}
 	for field in g.struct_field_info[layout_type] {
-		if field.default_value != '' {
+		if field.default_value != '' || field.typ == 'Option' {
 			return true
 		}
 		if field.typ != c_type && g.struct_type_has_initializer_defaults(field.typ) {
@@ -2970,6 +2974,40 @@ fn (g &Parser) render_mixed_integer_comparison_expression_impl(tokens []FastcExp
 	return none
 }
 
+// narrowed_subject_value_type is the value type of an operand that is exactly a subject
+// narrowed by `is`, which renders as a pointer to its variant (`((i64 *)tmp._object)`);
+// none for any other operand. An option local narrowed by `!= none` renders as its payload
+// value already, even when that value is a pointer.
+fn (g &Parser) narrowed_subject_value_type(tokens []FastcExpressionToken) ?string {
+	if g.member_smartcasts.len == 0 {
+		return none
+	}
+	path := fastc_indexed_member_chain_path(tokens) or { return none }
+	smartcast := g.member_smartcasts[path] or { return none }
+	if !smartcast.typ.ends_with('*') {
+		return none
+	}
+	if local := g.locals[path] {
+		if local.option_value_type != '' {
+			return none
+		}
+	}
+	if smartcast.value_type != '' {
+		return smartcast.value_type
+	}
+	return smartcast.typ[..smartcast.typ.len - 1]
+}
+
+// fastc_narrowed_variant_value reads the value of a narrowed variant from its variant pointer.
+// A pointer-like variant (`voidptr`) is stored directly in `_object`, so that pointer is the
+// value; any other variant is boxed behind it.
+fn fastc_narrowed_variant_value(source string, value_type string) string {
+	if fastc_is_pointer_type(value_type) {
+		return '((${value_type})(${source}))'
+	}
+	return '*(${source})'
+}
+
 // render_guard_comparison renders a top-level comparison guard (`expr.kind == .constant`)
 // by rendering each operand through render_comparison_operand, which reads any active
 // smart-cast on the left and resolves an enum-shorthand right operand against the left
@@ -2995,7 +3033,7 @@ fn (g &Parser) render_guard_comparison(tokens []FastcExpressionToken) ?string {
 		return none
 	}
 	left_tokens := tokens[..op_index]
-	left := if fastc_tokens_have_top_level_boolean_or_membership(left_tokens) {
+	mut left := if fastc_tokens_have_top_level_boolean_or_membership(left_tokens) {
 		g.render_call_argument_expression(left_tokens, 'bool') or { return none }
 	} else {
 		g.render_comparison_operand(left_tokens, '') or { return none }
@@ -3007,11 +3045,20 @@ fn (g &Parser) render_guard_comparison(tokens []FastcExpressionToken) ?string {
 	if member_type := g.infer_member_access_type(left_tokens, 0, left_tokens.len) {
 		left_type = member_type
 	}
+	// A subject narrowed earlier in this condition (`cv is i64 && cv != io_core`) renders as
+	// its variant pointer; the comparison is of the variant's value.
+	if value_type := g.narrowed_subject_value_type(left_tokens) {
+		left = fastc_narrowed_variant_value(left, value_type)
+		left_type = value_type
+	}
 	right_tokens := tokens[op_index + 1..]
-	right := if fastc_tokens_have_top_level_boolean_or_membership(right_tokens) {
+	mut right := if fastc_tokens_have_top_level_boolean_or_membership(right_tokens) {
 		g.render_call_argument_expression(right_tokens, 'bool') or { return none }
 	} else {
 		g.render_comparison_operand(right_tokens, left_type) or { return none }
+	}
+	if value_type := g.narrowed_subject_value_type(right_tokens) {
+		right = fastc_narrowed_variant_value(right, value_type)
 	}
 	if fastc_normalize_inferred_type(left_type) == 'string' {
 		if op == .eq {

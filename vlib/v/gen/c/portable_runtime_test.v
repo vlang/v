@@ -237,8 +237,18 @@ fn test_portable_gc_helper_preserves_linux_header_linkage() ! {
 	os.write_file(source, '#include <gc.h>\n#ifndef __linux__\n#define __linux__ 1\n#endif\n' + code)!
 	// Enable the Linux helper branch with the host SDK; this checks preprocessing,
 	// not execution of Linux-specific root registration on another platform.
-	preprocessed := cmdexec.run(cc, ['-E', '-P', '-I',
-		os.join_path(@VEXEROOT, 'thirdparty', 'libgc', 'include'), '-o', output, source])
+	mut args := ['-E', '-P', '-I', os.join_path(@VEXEROOT, 'thirdparty', 'libgc', 'include')]
+	$if !linux {
+		// The portable text also contains the Linux syscall facade. Supply its
+		// unavailable SDK include for preprocessing; this fixture does not compile
+		// or execute that facade, and Linux hosts keep using their real SDK.
+		sdk := os.join_path(root, 'linux_sdk')
+		os.mkdir_all(os.join_path(sdk, 'sys'))!
+		os.write_file(os.join_path(sdk, 'sys', 'prctl.h'), '#pragma once\nint prctl(int, ...);\n')!
+		args << ['-I', sdk]
+	}
+	args << ['-o', output, source]
+	preprocessed := cmdexec.run(cc, args)
 	assert preprocessed.exit_code == 0, preprocessed.output
 	text := os.read_file(output)!
 	assert text.contains('v_gc_can_register_main_data_roots_impl'), text

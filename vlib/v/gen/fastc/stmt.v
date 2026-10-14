@@ -2590,6 +2590,9 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 		// result type directly instead of inferring it back from the expression.
 		declaration_type = local_type
 	}
+	// A composite spelled here (`Map_string_Array_string` from a map literal) may be named by
+	// no signature or field; register it so it gets its typedef.
+	fastc_register_composite_type(declaration_type, mut g.composite_types)
 	if is_static {
 		// V function statics may have runtime initializers. Keep C static storage and guard
 		// the assignment so later calls (including at-exit callbacks) see the retained value.

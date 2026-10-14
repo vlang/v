@@ -959,6 +959,9 @@ struct FastcStructField {
 	is_skip              bool
 	is_function          bool
 	is_optional_function bool
+	// The field's type is spelled `voidptr`; fn types and erased type parameters are stored
+	// as `voidptr` too, and V3 accepts `nil` outside `unsafe` only for a real one.
+	is_declared_voidptr bool
 	// Shared map fields keep pointer identity even though FastC currently erases locking.
 	// Without this, copying their containing struct detaches subsequent map header updates.
 	is_shared_pointer bool
@@ -1269,7 +1272,9 @@ struct FastcLoopBlockResult {
 // member cannot be shadowed under its qualified source spelling, so member-chain rendering
 // consults this table while the branch is active.
 struct FastcMemberSmartcast {
-	typ           string
+	typ string
+	// The tested value type distinguishes a reference variant from boxed value storage.
+	value_type    string
 	source        string
 	variants      []string
 	tag_source    string
