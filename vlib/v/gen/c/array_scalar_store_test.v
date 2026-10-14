@@ -169,9 +169,19 @@ pub fn check() {
 	value := i64(42)
 	array_push(mut values, &value)
 }
+
+pub fn append(mut values []i64, value i64) {
+	values << value
+}
 ', [])!
 	body := scalar_array_body(generated, 'scalar_global__check')
+	assert body.contains('scalar_global__array_push('), body
 	assert !body.contains('scalar_push_base'), body
+	// An append lowered in that module is still an append, not a call of the global.
+	appended := scalar_array_body(generated, 'scalar_global__append')
+	assert appended.contains('scalar_push_base'), appended
+	assert appended.contains('else { array_push('), appended
+	assert !appended.contains('scalar_global__array_push('), appended
 }
 
 fn scalar_array_body(generated string, name string) string {
