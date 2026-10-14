@@ -17,6 +17,12 @@ fn test_log1p_base() {
 	assert math.log1p(math.e - 1) == 1.0
 }
 
+fn test_log1p_inf() {
+	assert math.log1p(math.inf(1)) == math.inf(1)
+	assert math.log1p(-1.0) == math.inf(-1)
+	assert math.is_nan(math.log1p(math.inf(-1)))
+}
+
 fn test_log_b_base() {
 	assert math.log_b(2.0) == 1.0
 }
