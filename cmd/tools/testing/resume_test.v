@@ -2,6 +2,7 @@ module testing
 
 import os
 import rand
+import time
 
 fn test_resume_records_only_matching_files_and_options() ! {
 	root := os.join_path(os.temp_dir(), 'vtest-resume-${rand.ulid()}')
@@ -132,4 +133,78 @@ fn test_resume_owner_excludes_nested_test_runners() {
 	assert os.getenv('VTEST_RESUME_OWNER') == os.getpid().str()
 	// A second session in the same process may use the same directory.
 	assert test_resume_dir() == os.abs_path(os.temp_dir())
+}
+
+// hold_record_open opens `path` as a reader does, reports on `opened` whether it could,
+// and releases the record after `delay`. The handle is owned by this thread alone.
+fn hold_record_open(path string, delay time.Duration, opened chan bool) {
+	mut held := os.open(path) or {
+		opened <- false
+		return
+	}
+	opened <- true
+	time.sleep(delay)
+	held.close()
+}
+
+// A reader that holds the record open only briefly must not fail the save on Windows.
+fn test_resume_replacement_waits_out_a_brief_reader() ! {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'vtest-resume-brief-${rand.ulid()}')
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		file := os.join_path(root, 'a_test.v')
+		os.write_file(file, 'fn test_ok() {}\n')!
+		ts := TestSession{
+			vexe:         os.executable()
+			will_compile: true
+			exec_mode:    .compile_and_run
+			resume_dir:   os.join_path(root, 'progress')
+		}
+		first := ts.test_resume(file)!
+		first.save()!
+		os.write_file(file, 'fn test_changed() {}\n')!
+		changed := ts.test_resume(file)!
+		opened := chan bool{cap: 1}
+		reader := spawn hold_record_open(first.path, 100 * time.millisecond, opened)
+		assert <-opened, 'the brief reader could not open the record'
+		changed.save()!
+		reader.wait()
+		assert os.read_file(first.path)! == changed.contents
+	}
+}
+
+// On Windows a record that another process holds open without delete sharing cannot be
+// replaced. The save must fail and leave the previous record exactly as it was.
+fn test_resume_refused_replacement_keeps_the_previous_record() ! {
+	$if windows {
+		root := os.join_path(os.temp_dir(), 'vtest-resume-replace-${rand.ulid()}')
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		file := os.join_path(root, 'a_test.v')
+		os.write_file(file, 'fn test_ok() {}\n')!
+		ts := TestSession{
+			vexe:         os.executable()
+			will_compile: true
+			exec_mode:    .compile_and_run
+			resume_dir:   os.join_path(root, 'progress')
+		}
+		first := ts.test_resume(file)!
+		first.save()!
+		previous := os.read_file(first.path)!
+		os.write_file(file, 'fn test_changed() {}\n')!
+		changed := ts.test_resume(file)!
+		mut held := os.open(first.path)!
+		mut refused := false
+		changed.save() or { refused = true }
+		held.close()
+		assert refused, 'a replacement of a record held open must be refused'
+		assert os.read_file(first.path)! == previous
+		changed.save()!
+		assert os.read_file(first.path)! == changed.contents
+	}
 }
