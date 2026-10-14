@@ -626,6 +626,28 @@ fn c_escape_into(mut out strings.Builder, s string) {
 	}
 }
 
+// c_literal_escape_into splits escaped literal bodies between complete escapes.
+// Even a four-byte octal escape fits within the source-line chunk bound.
+fn c_literal_escape_into(mut out strings.Builder, s string) {
+	max_bytes := c_string_literal_chunk_len / 4
+	mut start := 0
+	for start < s.len {
+		if start > 0 {
+			out.write_string('"\n"')
+		}
+		mut end := if s.len - start > max_bytes { start + max_bytes } else { s.len }
+		// Keep UTF-8 code points in one literal for C compilers that validate them.
+		for end > start && end < s.len && s[end] >= 0x80 && s[end] < 0xc0 {
+			end--
+		}
+		if end == start {
+			end = if s.len - start > max_bytes { start + max_bytes } else { s.len }
+		}
+		c_escape_into(mut out, s[start..end])
+		start = end
+	}
+}
+
 // c_string_literal_chunk_len bounds how much of an escaped byte string is written
 // before it is continued in the next adjacent literal, on the next source line.
 // Two separate implementation limits make that necessary, and only the pair of them

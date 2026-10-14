@@ -80,6 +80,32 @@ fn test_cross_string_literal_declarations_preserve_byte_lengths() {
 	}
 }
 
+fn test_long_string_literal_table_entries_split_without_changing_bytes() {
+	// The compiler's embedded C prelude exceeds MSVC's per-literal limit.
+	value := ('prelude\\\"\n\t\r\x00\x7f' + 'x'.repeat(501)).repeat(40)
+	for stable in [false, true] {
+		for split in [false, true] {
+			mut g := FlatGen.new()
+			g.cache_stable_symbols = stable
+			g.cache_split = split
+			g.ccompiler = 'msvc'
+			g.intern_string(value)
+			g.string_literals()
+			output := g.sb.str()
+			assert output.contains('"\n"')
+			for line in output.split_into_lines() {
+				assert line.len < 4095
+			}
+			joined := output.replace('"\n"', '')
+			if stable {
+				assert joined == 'static const string _str_0 = {"${c_escape(value)}", ${value.len}, 1};\n\n'
+			} else {
+				assert joined == '_SL(_str_0, "${c_escape(value)}", ${value.len});\n\n'
+			}
+		}
+	}
+}
+
 fn test_string_literal_ids_do_not_expand_c_struct_members() {
 	root := os.join_path(os.vtmp_dir(), 'string_literal_members_${os.getpid()}')
 	os.mkdir_all(root)!
