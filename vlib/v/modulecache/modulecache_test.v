@@ -7,6 +7,111 @@ import v.flat
 import v.parser
 import v.pref
 import v.types as vtypes
+import v.util.cache_refresh
+
+fn test_delegated_compilers_share_the_primary_isolated_cache() {
+	root := os.join_path(os.vtmp_dir(), 'v3_primary_isolated_cache_${os.getpid()}')
+	previous := os.environ()
+	defer {
+		for name in ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE', 'VEXE', 'V3_PRIMARY_VEXE'] {
+			if name in previous { os.setenv(name, previous[name], true) } else { os.unsetenv(name) }
+		}
+	}
+	os.unsetenv('V3CACHE')
+	os.setenv('VTMP', root, true)
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
+	primary := os.join_path(root, 'checkout', 'v')
+	vroot := os.dir(primary)
+	os.setenv('VEXE', os.join_path(root, 'tools', 'v3_ownership'), true)
+	os.setenv('V3_PRIMARY_VEXE', primary, true)
+	manager := new_manager(vroot, 'ownership', true, '', '')
+	assert os.dir(manager.dir) == cache_refresh.root_dir(vroot, primary)
+	assert os.dir(manager.dir) != cache_refresh.root_dir(vroot, os.executable())
+	os.unsetenv('VEXE')
+	os.unsetenv('V3_PRIMARY_VEXE')
+	fallback := new_manager(vroot, 'ownership', true, '', '')
+	assert os.dir(fallback.dir) == cache_refresh.root_dir(vroot, os.executable())
+}
+
+fn test_ownership_dispatch_refreshes_the_primary_isolated_cache() ! {
+	primary := os.real_path(@VEXE)
+	vroot := os.dir(primary)
+	root := os.join_path(os.vtmp_dir(), 'v3_ownership_dispatch_${os.getpid()}')
+	name := 'vup_ownership_${os.getpid()}'
+	module_root := os.join_path(vroot, 'vlib', name)
+	os.mkdir_all(module_root)!
+	os.mkdir_all(root)!
+	previous := os.environ()
+	variables := ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE', 'VEXE', 'V3_PRIMARY_VEXE', 'VFLAGS',
+		'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_ENTRY',
+		'V3_CACHE_REFRESH_PROJECT_FLAGS', 'V_SKIP_VVMRC', 'V_MACOS_V3_NO_FALLBACK']
+	defer {
+		for variable in variables {
+			if variable in previous {
+				os.setenv(variable, previous[variable], true)
+			} else {
+				os.unsetenv(variable)
+			}
+		}
+		os.rmdir_all(module_root) or {}
+		os.rmdir_all(root) or {}
+	}
+	os.unsetenv('V3CACHE')
+	os.setenv('VTMP', os.join_path(root, 'cache'), true)
+	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
+	os.setenv('VEXE', primary, true)
+	// A fresh primary invocation must replace an unrelated parent's identity,
+	// and its ownership helper must retain that replacement after exec.
+	os.setenv('V3_PRIMARY_VEXE', os.join_path(root, 'stale-parent'), true)
+	os.setenv('V_SKIP_VVMRC', '1', true)
+	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
+	for variable in ['VFLAGS', 'CFLAGS', 'LDFLAGS', 'V3_CACHE_REFRESH', 'V3_CACHE_REFRESH_ENTRY',
+		'V3_CACHE_REFRESH_PROJECT_FLAGS'] {
+		os.unsetenv(variable)
+	}
+	source := os.join_path(module_root, 'sample.v')
+	os.write_file(source, 'module ${name}\npub fn value() int { return 1 }\n')!
+	entry := os.join_path(root, 'main.v')
+	os.write_file(entry, 'import ${name}\nfn main() { println(${name}.value())\n' +
+		'println(\$env("VEXE"))\nprintln(\$env("V3_PRIMARY_VEXE")) }\n')!
+	mut builds := [][]string{}
+	for mode in ['-ownership', '-autofree'] {
+		for prod in [false, true] {
+			mut args := ['-cc', 'cc', '-gc', 'none', mode]
+			if prod { args << '-prod' }
+			args << ['-o', os.join_path(root, 'program'), 'run', entry]
+			cold := os.exec([primary, ...args])
+			assert cold.exit_code == 0, cold.output
+			lines := cold.output.trim_space().split_into_lines()
+			assert lines.len >= 3 && lines.last() == primary, cold.output
+			helper := lines[lines.len - 2]
+			assert helper != primary && helper.contains('v3_ownership') && os.is_file(helper), cold.output
+			matching := cache_refresh.collect(vroot, primary)!.filter(it.module == name
+				&& mode in it.args && ('-prod' in it.args) == prod)
+			if mode == '-autofree' {
+				// Autofree keeps full local metadata in a monolithic build.
+				assert matching.len == 0
+			} else {
+				assert matching.len > 0
+			}
+			assert cache_refresh.collect(vroot, helper)!.len == 0
+			builds << args
+		}
+	}
+	requests := cache_refresh.collect(vroot, primary)!.filter(it.module == name)
+	assert requests.len == builds.filter('-ownership' in it).len, requests.str()
+	os.write_file(source, 'module ${name}\npub fn value() int { return 2 }\n')!
+	cache_refresh.refresh(primary, requests)!
+	for args in builds {
+		warm := os.exec([primary, ...args[..args.len - 2], '-show-timings', entry])
+		assert warm.exit_code == 0, warm.output
+		assert !warm.output.contains('Caching module '), warm.output
+		run := os.exec([os.join_path(root, 'program')])
+		assert run.exit_code == 0, run.output
+		lines := run.output.trim_space().split_into_lines()
+		assert lines.len == 3 && lines[0] == '2' && lines.last() == primary, run.output
+	}
+}
 
 fn test_cached_vmod_roots_stop_at_project_boundaries() {
 	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_vmod_boundary_${os.getpid()}')
@@ -134,6 +239,33 @@ static string _v3_lit_1_44bd54d473cd3d44 = {"/", 1, 1};
 	cleaned := without_duplicate_static_string_definitions(source, existing)
 	assert !cleaned.contains('_v3_lit_1_44bd55d473cd3ef7')
 	assert cleaned.contains('_v3_lit_1_44bd54d473cd3d44')
+}
+
+fn test_cached_runtime_literal_rewrite_preserves_const_storage_and_sharing() {
+	old_symbol := cached_c_string_symbol('cold')
+	new_symbol := cached_c_string_symbol('done')
+	source := 'static const string ${old_symbol} = {"cold", 4, 1};\n${c_body_begin}\nvoid main(void) { use(${old_symbol}); use(${old_symbol}); }\n'
+	rewritten := rewrite_cached_runtime_strings(source, ['cold', 'cold'], ['done', 'done']) or {
+		panic('expected both occurrences of the shared literal to be rewritten')
+	}
+	definition := 'static const string ${new_symbol} = {"done", 4, 1};'
+	assert rewritten.count(definition) == 1
+	assert !rewritten.contains('"cold"')
+	assert !rewritten.contains(old_symbol)
+	assert rewritten.contains('use(${new_symbol}); use(${new_symbol});')
+	if _ := rewrite_cached_runtime_strings(source, ['cold', 'cold'], ['done', 'cold']) {
+		assert false, 'changing one occurrence must not rewrite an unchanged shared literal'
+	}
+}
+
+fn test_static_const_body_literals_are_preserved_and_deduplicated() {
+	first := 'static const string _v3_lit_1_44bd55d473cd3ef7 = {".", 1, 1};\n'
+	second := 'static const string _v3_lit_1_44bd54d473cd3d44 = {"/", 1, 1};\n'
+	source := first + second + 'void main__main(void) { println(_v3_lit_1_44bd54d473cd3d44); }\n'
+	assert static_string_definitions(source) == first + second
+	assert without_duplicate_static_string_definitions(source, first) == second + 'void main__main(void) { println(_v3_lit_1_44bd54d473cd3d44); }\n'
+	assert materialize_cached_body_string_definitions('// V3CACHE_BASELINE ' + first + second) == first + second
+	assert !prune_unreferenced_static_string_definitions(source).contains('_v3_lit_1_44bd55d473cd3ef7')
 }
 
 fn test_type_declarations_omit_functions_with_local_typedefs() {
@@ -1021,6 +1153,78 @@ fn header_of_source(root string, name string, source string) string {
 	return module_header(a, &tc, name, '', map[string]string{})
 }
 
+fn test_cached_struct_field_attributes_round_trip_without_warnings() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_cached_field_attrs_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'options.v')
+	os.write_file(source, "module options
+
+@[params]
+pub struct Options {
+pub:
+	tool int @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2026-12-31']
+	env_overwrite_var ?string = 'VDIFF_CMD' @[deprecated: 'use compare_files or compare_text'; deprecated_after: '2026-12-31']
+	name string @[required; json: 'display_name']
+	plain bool
+}
+")!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	tc := vtypes.TypeChecker.new(a)
+	header := module_header(a, &tc, 'options', '', map[string]string{})
+	header_path := os.join_path(root, 'options.vh')
+	os.write_file(header_path, header)!
+	mut header_parser := parser.Parser.new(pref.new_preferences())
+	reparsed := header_parser.parse_file(header_path)
+	assert header_parser.diagnostics.len == 0, header_parser.diagnostics.str()
+	original_fields := a.nodes.filter(it.kind == .field_decl)
+	cached_fields := reparsed.nodes.filter(it.kind == .field_decl)
+	assert original_fields.len == 4
+	assert cached_fields.len == original_fields.len
+	for i, original in original_fields {
+		cached := cached_fields[i]
+		assert cached.value == original.value
+		assert cached.typ == original.typ
+		assert cached.generic_params() == original.generic_params()
+		assert cached.children_count == original.children_count
+		if original.children_count > 0 {
+			assert expr_text(reparsed, reparsed.child(&cached, 0)) == expr_text(a, a.child(&original,
+				0))
+		}
+	}
+}
+
+fn test_cached_constant_tables_are_typed_declarations() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cached_const_declarations_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := header_of_source(root, 'tables', 'module tables
+pub const data = [u64(17), 29, 41]
+pub const fixed = [u8(1), 2, 3]!
+pub const width = 3
+pub const cast_width = i64(3)
+')
+	assert header.contains('pub const data []u64'), header
+	assert header.contains('pub const fixed [3]u8'), header
+	assert header.contains('pub const width = 3'), header
+	assert header.contains('pub const cast_width = i64(3)'), header
+	assert !header.contains('29'), header
+	path := os.join_path(root, 'tables.vh')
+	os.write_file(path, header)!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := vtypes.TypeChecker.new(a)
+	tc.collect(a)
+	assert (tc.const_types['tables.data'] or { panic('missing data') }).name() == '[]u64'
+	assert (tc.const_types['tables.fixed'] or { panic('missing fixed') }) is vtypes.ArrayFixed
+	assert 'tables.data' !in tc.const_exprs
+	assert 'tables.fixed' !in tc.const_exprs
+	assert 'tables.cast_width' in tc.const_exprs
+}
+
 // A header declares the functions of a module and leaves out their code. A
 // program that reaches a `recover()` in that code cannot tell from the header,
 // and the object of the module was compiled before the program did, so the header
@@ -1269,7 +1473,12 @@ fn test_pkg_config_answer_follows_an_edited_requirement() {
 	assert pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
 	assert fake.invocations().len == asked
 	foo_before := file_metadata_signature(os.join_path(fake.packages, 'foo.pc'))
-	os.write_file(dep, 'Name: dep\nVersion: 1\n') or { panic(err) }
+	// The edited file is a new one, as an installer leaves it: bytes of the same
+	// length that are written into a file within one step of the file system's
+	// clock leave its metadata as it was.
+	edited := dep + '.edited'
+	os.write_file(edited, 'Name: dep\nVersion: 1\n') or { panic(err) }
+	os.mv(edited, dep) or { panic(err) }
 	if !fake.settled('dep') {
 		return
 	}
@@ -1323,4 +1532,230 @@ fn test_pkg_config_answers_do_not_persist_for_an_unlistable_search_directory() {
 	assert !pkg_config_exists('foo', fake.cache_dir, &PkgConfigProbes{})
 	assert fake.invocations().filter(it == '--exists foo').len == 2
 	assert pkg_config_state_key(fake.cache_dir) == 0
+}
+
+fn program_executable_fixture(name string) (string, Manager, string, string) {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {}\n') or { panic(err) }
+	object := os.join_path(root, 'module.o')
+	os.write_file(object, 'object') or { panic(err) }
+	manager := Manager{
+		dir:          os.join_path(root, 'cache')
+		enabled:      true
+		salt:         'salt'
+		pkg_probes:   &PkgConfigProbes{}
+		source_paths: &SourcePaths{}
+	}
+	return root, manager, source, object
+}
+
+fn test_program_executable_is_restored_for_the_inputs_that_linked_it() {
+	root, manager, source, object := program_executable_fixture('program_executable')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	linked := os.join_path(root, 'linked')
+	os.write_file(linked, 'first executable')!
+	dependencies := {
+		'module:a': 'one'
+	}
+	missing := os.join_path(root, 'libabsent.a')
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'link') == none
+	object_identity := file_metadata_signature(object)
+	if object_identity == '' {
+		// This file system cannot tell a later edit apart: nothing is kept for it.
+		return
+	}
+	manager.write_program_executable([source], 'flags', dependencies, 'link', [object], [
+		object_identity,
+	], [missing], linked, 'notices\nof the build\n')!
+	cached := manager.valid_program_executable([source], 'flags', dependencies, 'link') or {
+		assert false, 'the executable of the same inputs is not found'
+		return
+	}
+	assert cached.notices == 'notices\nof the build\n'
+	restored := os.join_path(root, 'restored')
+	assert cached.restore(restored)
+	assert os.read_file(restored)! == 'first executable'
+	assert os.is_executable(restored)
+	// The restored file has the permissions of one that a linker creates: all
+	// that the umask of the caller leaves.
+	reference := os.join_path(root, 'reference')
+	mut created := os.open_file(reference, 'w', 0o777)!
+	created.close()
+	assert os.stat(restored)!.mode & 0o777 == os.stat(reference)!.mode & 0o777
+	// The copy does not share its file with the executable that was linked.
+	os.write_file(linked, 'changed after the build')!
+	assert cached.restore(restored)
+	assert os.read_file(restored)! == 'first executable'
+
+	// Each input of the build is part of what the executable is found by.
+	assert manager.valid_program_executable([source], 'other flags', dependencies, 'link') == none
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'other link') == none
+	assert manager.valid_program_executable([source], 'flags', {
+		'module:a': 'two'
+	}, 'link') == none
+	other := Manager{
+		...manager
+		salt: 'other salt'
+	}
+	assert other.valid_program_executable([source], 'flags', dependencies, 'link') == none
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'link') != none
+
+	// A library that appears where the link looked for one changes the link.
+	os.write_file(missing, 'library')!
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'link') == none
+	os.rm(missing)!
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'link') != none
+
+	// So does a link input that is another file than it was.
+	os.rm(object)!
+	os.write_file(object, 'another object')!
+	assert manager.valid_program_executable([source], 'flags', dependencies, 'link') == none
+}
+
+fn test_program_executable_follows_the_program_and_keeps_one_copy() {
+	root, manager, source, object := program_executable_fixture('program_executable_slot')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	linked := os.join_path(root, 'linked')
+	os.write_file(linked, 'first executable')!
+	no_dependencies := map[string]string{}
+	// A copy that no stamp commits, as an interrupted build leaves it.
+	os.mkdir_all(manager.dir)!
+	abandoned := manager.program_executable_slot([source]) + '_0123456789abcdef.exe'
+	os.write_file(abandoned, 'abandoned executable')!
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], [
+		file_metadata_signature(object),
+	], []string{}, linked, '')!
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') != none
+	assert !os.exists(abandoned)
+	assert os.walk_ext(manager.dir, '.exe').len == 1
+
+	// The same program text, saved again, is the same program.
+	os.write_file(source, 'fn main() {}\n')!
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') != none
+
+	os.write_file(source, 'fn main() { println(1) }\n')!
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') == none
+	os.write_file(linked, 'second executable')!
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], [
+		file_metadata_signature(object),
+	], []string{}, linked, '')!
+	second := manager.valid_program_executable([source], 'flags', no_dependencies, 'link') or {
+		assert false, 'the executable of the changed program is not found'
+		return
+	}
+	restored := os.join_path(root, 'restored')
+	assert second.restore(restored)
+	assert os.read_file(restored)! == 'second executable'
+	assert os.walk_ext(manager.dir, '.exe').len == 1
+
+	// A copy that is not the file that was recorded is not used. Another build
+	// puts a new file in its place, as here: bytes of the same length that are
+	// written into the file within one step of the file system's clock would
+	// leave its metadata as it was.
+	replacement := second.path + '.replacement'
+	os.write_file(replacement, 'second executable')!
+	os.mv(replacement, second.path)!
+	assert !second.restore(restored)
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') == none
+}
+
+fn test_program_executable_is_not_kept_for_an_input_without_an_identity() {
+	root, manager, source, object := program_executable_fixture('program_executable_identity')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	linked := os.join_path(root, 'linked')
+	os.write_file(linked, 'executable')!
+	no_dependencies := map[string]string{}
+	gone := os.join_path(root, 'gone.o')
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [gone], [
+		'',
+	], []string{}, linked, '') or {
+		assert err.msg().contains('cannot be told apart')
+		assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') == none
+		_ = object
+		return
+	}
+	assert false, 'a link input that is not there has no identity'
+}
+
+fn test_program_executable_is_not_kept_when_a_link_input_changed_during_the_link() {
+	root, manager, source, object := program_executable_fixture('program_executable_race')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	linked := os.join_path(root, 'linked')
+	os.write_file(linked, 'executable of the first object')!
+	no_dependencies := map[string]string{}
+	before := file_metadata_signature(object)
+	if before == '' {
+		return
+	}
+	absent := os.join_path(root, 'libabsent.a')
+	// The object is replaced after the linker read it, before the build records it.
+	replacement := os.join_path(root, 'replacement.o')
+	os.write_file(replacement, 'another object')!
+	os.mv(replacement, object)!
+	mut refused := false
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], [
+		before,
+	], [absent], linked, '') or {
+		assert err.msg().contains('changed while the program was linked'), err.msg()
+		refused = true
+	}
+	assert refused
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') == none
+	// So is a library that appeared where the linker had found none.
+	os.write_file(absent, 'library')!
+	refused = false
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], [
+		file_metadata_signature(object),
+	], [absent], linked, '') or {
+		assert err.msg().contains('appeared while the program was linked'), err.msg()
+		refused = true
+	}
+	assert refused
+	// With the identities of the files that were read, the executable is kept.
+	os.rm(absent)!
+	manager.write_program_executable([source], 'flags', no_dependencies, 'link', [object], [
+		file_metadata_signature(object),
+	], [absent], linked, '')!
+	assert manager.valid_program_executable([source], 'flags', no_dependencies, 'link') != none
+}
+
+fn test_real_source_paths_are_resolved_once_until_they_are_frozen() {
+	root, manager, source, _ := program_executable_fixture('real_source_paths')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	link := os.join_path(root, 'link.v')
+	os.symlink(source, link)!
+	assert manager.real_source_path(link) == os.real_path(source)
+	assert manager.real_source_paths([source, link]) == [os.real_path(source), os.real_path(source)]
+	// The answer of the build stays what it was while the build runs.
+	other := os.join_path(root, 'other.v')
+	os.write_file(other, 'fn other() {}\n')!
+	os.rm(link)!
+	os.symlink(other, link)!
+	assert manager.real_source_path(link) == os.real_path(source)
+	manager.remember_source_path('given.v', '/resolved/given.v')
+	assert manager.real_source_path('given.v') == '/resolved/given.v'
+	manager.freeze_source_paths()
+	// A frozen table still answers, and takes nothing new.
+	assert manager.real_source_path(link) == os.real_path(source)
+	late := os.join_path(root, 'late.v')
+	os.symlink(source, late)!
+	assert manager.real_source_path(late) == os.real_path(source)
+	os.rm(late)!
+	os.symlink(other, late)!
+	assert manager.real_source_path(late) == os.real_path(other)
+	manager.remember_source_path('late_given.v', '/resolved/late_given.v')
+	assert manager.real_source_path('late_given.v') == os.real_path('late_given.v')
 }

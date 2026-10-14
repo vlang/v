@@ -122,6 +122,13 @@ fn fastc_parameter_is_params_struct(parameter_type string, params_structs map[st
 }
 
 fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+	collect_function_signatures_at(source, 0, path, header, prefs, skips, declared_types,
+		declared_type_c_names, params_structs, mut functions)!
+}
+
+// collect_function_signatures_at collects the functions declared in `source`, which starts at
+// byte `source_offset` of the file at `path`.
+fn collect_function_signatures_at(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
@@ -160,6 +167,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 		}
 		if tok == .key_fn && brace_depth == 0 && previous_tok != .assign {
 			is_public := previous_tok == .key_pub
+			declaration_offset := source_offset + scan.pos
 			tok = scan.scan()
 			mut parameter_types := []string{}
 			mut parameter_mutability := []bool{}
@@ -398,6 +406,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				is_c_extern:              is_c_function && next_declaration_is_c_extern
 				module_name:              header.module_name
 				path:                     path
+				position:                 declaration_offset
 			}
 			if previous := functions[function_key] {
 				if !is_c_function {
@@ -440,7 +449,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 		tok = scan.scan()
 	}
 	if header.has_comptime_if {
-		fastc_collect_selected_comptime_function_signatures(source, path, header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
+		fastc_collect_selected_comptime_function_signatures(source, source_offset, path, header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
 	}
 }
 
@@ -528,63 +537,76 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	mut top_level_references := map[string]bool{}
 	fastc_collect_reference_partials(sources, prefs, available_names, mut references, mut top_level_references)
 	mut used := {
-		'main':                   true
-		'run':                    true
+		'main':                     true
+		'run':                      true
+		// Capturing literals and their scoped cleanup call these from generated C.
+		'closure_create_with_data': true
+		'closure_try_destroy':      true
+		'memdup':                   true
 		// `select` is a keyword, so a `sql db { select ... }` block does not surface a
 		// `.select(` reference the way `insert`/`update`/... do; seed it so a connection
 		// type's `select` method survives reachability pruning for the ORM lowering.
-		'select':                 true
+		'select':                   true
 		// `arr.sort(a < b)` lowers to a `sort_with_compare` call emitted in generated C,
 		// so no source `.sort_with_compare(` reference surfaces; seed it (its body pulls in
 		// vqsort transitively) so it survives reachability pruning.
-		'sort_with_compare':      true
+		'sort_with_compare':        true
 		// Channel send/receive (`ch <- v` / `<-ch`) lower to `builtin__chan_try_push`/
 		// `builtin__chan_try_pop` in generated C, so no source `.try_push(`/`.try_pop(`
 		// reference surfaces; seed them so the chan stubs survive reachability pruning.
-		'try_push':               true
-		'try_pop':                true
-		'panic_result_not_set':   true
-		'array_push':             true
-		'push':                   true
-		'push_many':              true
-		'array_slice':            true
-		'slice':                  true
-		'at':                     true
-		'keys':                   true
-		'get':                    true
-		'get_check':              true
-		'new_map':                true
-		'set':                    true
-		'values':                 true
-		'map_hash_string':        true
-		'map_eq_string':          true
-		'map_clone_string':       true
-		'map_free_string':        true
-		'map_free_nop':           true
-		'map_hash_int_1':         true
-		'map_hash_int_2':         true
-		'map_hash_int_4':         true
-		'map_hash_int_8':         true
-		'map_hash_int_16':        true
-		'map_eq_int_1':           true
-		'map_eq_int_2':           true
-		'map_eq_int_4':           true
-		'map_eq_int_8':           true
-		'map_eq_int_16':          true
-		'map_clone_int_1':        true
-		'map_clone_int_2':        true
-		'map_clone_int_4':        true
-		'map_clone_int_8':        true
-		'map_clone_int_16':       true
-		'new_array_from_c_array': true
-		'string_plus_many':       true
-		'v_fixed_index':          true
+		'try_push':                 true
+		'try_pop':                  true
+		'panic_result_not_set':     true
+		'array_push':               true
+		'push':                     true
+		'push_many':                true
+		'array_slice':              true
+		'slice':                    true
+		'at':                       true
+		'keys':                     true
+		'get':                      true
+		'get_check':                true
+		'new_map':                  true
+		'set':                      true
+		'values':                   true
+		'map_hash_string':          true
+		'map_eq_string':            true
+		'map_clone_string':         true
+		'map_free_string':          true
+		'map_free_nop':             true
+		'map_hash_int_1':           true
+		'map_hash_int_2':           true
+		'map_hash_int_4':           true
+		'map_hash_int_8':           true
+		'map_hash_int_16':          true
+		'map_eq_int_1':             true
+		'map_eq_int_2':             true
+		'map_eq_int_4':             true
+		'map_eq_int_8':             true
+		'map_eq_int_16':            true
+		'map_clone_int_1':          true
+		'map_clone_int_2':          true
+		'map_clone_int_4':          true
+		'map_clone_int_8':          true
+		'map_clone_int_16':         true
+		'new_array_from_c_array':   true
+		'string_plus_many':         true
+		'v_fixed_index':            true
 		// `m1 == m2` lowers to a `builtin__map_map_eq` call in generated C, so no source
 		// `.map_map_eq(` reference surfaces; seed it so it survives reachability pruning.
-		'map_map_eq':             true
+		'map_map_eq':               true
 	}
 	for name in top_level_references.keys() {
 		used[name] = true
+	}
+	// A test build calls the test file's tests from the main it synthesizes.
+	if prefs.is_test {
+		for key, signature in functions {
+			name := key.all_after_last('.')
+			if fastc_is_test_harness_function(name) && fastc_is_test_source(signature.path, prefs) {
+				used[name] = true
+			}
+		}
 	}
 	// Operator overload declarations are emitted even when their symbolic names do
 	// not appear as ordinary call tokens. Treat those symbols as roots too, so the
@@ -1356,7 +1378,7 @@ fn fastc_composite_type_part(typ string) string {
 }
 
 fn fastc_fixed_array_type(length string, element_type string) string {
-	return 'FixedArray_${length}_FASTC_ARRAY_OF_${element_type}'
+	return 'FixedArray_${length}_FASTC_ARRAY_OF_${fastc_composite_type_part(element_type)}'
 }
 
 fn fastc_fixed_array_length(typ string) ?string {
@@ -1371,7 +1393,7 @@ fn fastc_fixed_array_element_type(typ string) ?string {
 	if !typ.starts_with('FixedArray_') || !typ.contains('_FASTC_ARRAY_OF_') {
 		return none
 	}
-	return typ.all_after('_FASTC_ARRAY_OF_')
+	return fastc_decode_ptr_element_type(typ.trim_right('*').all_after('_FASTC_ARRAY_OF_'))
 }
 
 fn fastc_decimal_integer_value(source string) ?int {

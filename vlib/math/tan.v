@@ -15,7 +15,6 @@ const tan_q = [
 const tan_dp1 = 7.853981554508209228515625e-1
 const tan_dp2 = 7.94662735614792836714e-9
 const tan_dp3 = 3.06161699786838294307e-17
-const tan_lossth = 1.073741824e+9
 
 // tan calculates tangent of a number
 pub fn tan(a f64) f64 {
@@ -31,20 +30,24 @@ pub fn tan(a f64) f64 {
 		x = -x
 		sgn = -1
 	}
-	if x > tan_lossth {
-		return 0.0
+	mut y := 0.0
+	mut z := 0.0
+	mut octant := 0
+	if x >= reduce_threshold {
+		octant, z = trig_reduce(x)
+	} else {
+		// compute x mod pi_4
+		y = floor(x * 4.0 / pi) // strip high bits of integer part
+		z = ldexp(y, -3)
+		z = floor(z) // integer part of y/8
+		z = y - ldexp(z, 3) // y - 16 * (y/16) // integer and fractional part modulo one octant
+		octant = int(z) // map zeros and singularities to origin
+		if (octant & 1) == 1 {
+			octant++
+			y += 1.0
+		}
+		z = ((x - y * tan_dp1) - y * tan_dp2) - y * tan_dp3
 	}
-	// compute x mod pi_4
-	mut y := floor(x * 4.0 / pi) // strip high bits of integer part
-	mut z := ldexp(y, -3)
-	z = floor(z) // integer part of y/8
-	z = y - ldexp(z, 3) // y - 16 * (y/16) // integer and fractional part modulo one octant
-	mut octant := int(z) // map zeros and singularities to origin
-	if (octant & 1) == 1 {
-		octant++
-		y += 1.0
-	}
-	z = ((x - y * tan_dp1) - y * tan_dp2) - y * tan_dp3
 	zz := z * z
 	if zz > 1.0e-14 {
 		y = z + z * (zz * (((tan_p[0] * zz) + tan_p[1]) * zz + tan_p[2]) / ((((zz + tan_q[1]) * zz +
@@ -67,7 +70,7 @@ pub fn tanf(a f32) f32 {
 	return f32(tan(a))
 }
 
-// tan calculates cotangent of a number
+// cot calculates cotangent of a number
 pub fn cot(a f64) f64 {
 	mut x := a
 	if x == 0.0 {
@@ -78,20 +81,24 @@ pub fn cot(a f64) f64 {
 		x = -x
 		sgn = -1
 	}
-	if x > tan_lossth {
-		return 0.0
+	mut y := 0.0
+	mut z := 0.0
+	mut octant := 0
+	if x >= reduce_threshold {
+		octant, z = trig_reduce(x)
+	} else {
+		// compute x mod pi_4
+		y = floor(x * 4.0 / pi) // strip high bits of integer part
+		z = ldexp(y, -3)
+		z = floor(z) // integer part of y/8
+		z = y - ldexp(z, 3) // y - 16 * (y/16) // integer and fractional part modulo one octant
+		octant = int(z) // map zeros and singularities to origin
+		if (octant & 1) == 1 {
+			octant++
+			y += 1.0
+		}
+		z = ((x - y * tan_dp1) - y * tan_dp2) - y * tan_dp3
 	}
-	// compute x mod pi_4
-	mut y := floor(x * 4.0 / pi) // strip high bits of integer part
-	mut z := ldexp(y, -3)
-	z = floor(z) // integer part of y/8
-	z = y - ldexp(z, 3) // y - 16 * (y/16) // integer and fractional part modulo one octant
-	mut octant := int(z) // map zeros and singularities to origin
-	if (octant & 1) == 1 {
-		octant++
-		y += 1.0
-	}
-	z = ((x - y * tan_dp1) - y * tan_dp2) - y * tan_dp3
 	zz := z * z
 	if zz > 1.0e-14 {
 		y = z + z * (zz * (((tan_p[0] * zz) + tan_p[1]) * zz + tan_p[2]) / ((((zz + tan_q[1]) * zz +

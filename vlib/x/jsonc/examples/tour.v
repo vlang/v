@@ -3,14 +3,14 @@ module main
 import x.jsonc
 
 struct CompilerOptions {
-	out_dir string @[json5: 'outDir']
+	out_dir string @[json: 'outDir']
 	strict  bool
 }
 
 struct TsConfig {
 	// A tsconfig spells its keys in camelCase while V fields are snake_case, so
 	// the key is named explicitly.
-	compiler_opts CompilerOptions @[json5: 'compilerOptions']
+	compiler_opts CompilerOptions @[json: 'compilerOptions']
 	include       []string
 }
 

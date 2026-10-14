@@ -8,11 +8,12 @@ import v.pref
 import v.tempname
 import v.types
 import v.util
+import v.util.cache_refresh
 
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-56'
+const cache_format = 'v3-module-cache-57'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -28,6 +29,7 @@ const source_body_marker = '// v3cache: source bodies required'
 // build that reads it cannot tell otherwise that the program reaches that call.
 const recover_call_marker = '// v3cache: calls recover'
 const source_signature_cache_format = 'v3-source-signature-cache-9'
+const program_executable_format = 'v3-program-executable-2'
 
 // PkgConfigProbes remembers what `pkg-config --exists` answered in this compiler
 // process, and which recorded answers apply to it. A build validates the sources
@@ -216,11 +218,24 @@ fn pkg_config_record_answer(answers string, name string, available bool) {
 	write_atomic(answers, lines.join('\n') + '\n') or {}
 }
 
+// SourcePaths remembers the resolved path of each source file that a build asks
+// the cache about. A build validates the sources of a module several times, by
+// their resolved paths, and resolving one path costs a system call per component
+// of it. The table takes new paths until freeze_source_paths: later stages ask
+// from several threads and inside disposable allocation scopes, and read only.
+@[heap]
+struct SourcePaths {
+mut:
+	resolved map[string]string
+	frozen   bool
+}
+
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
 	build_pseudo_values   string
 	version_pseudo_values string
 	pkg_probes            &PkgConfigProbes = unsafe { nil }
+	source_paths          &SourcePaths     = unsafe { nil }
 pub:
 	dir     string
 	enabled bool
@@ -293,6 +308,15 @@ pub:
 	stamp            string
 }
 
+// ProgramExecutable is the linked executable that the cache keeps for a program,
+// with what its build printed about the program.
+pub struct ProgramExecutable {
+	metadata string
+pub:
+	path    string
+	notices string
+}
+
 // CSplit contains the declaration/runtime prefix and per-module C function bodies.
 pub struct CSplit {
 pub:
@@ -301,24 +325,66 @@ pub:
 }
 
 // new_manager creates a configuration-scoped persistent module cache manager.
+// Delegated compilers retain V3_PRIMARY_VEXE for isolated cache lookup.
 pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values string, version_pseudo_values string) Manager {
-	root_key := hash_text(os.real_path(vroot))
 	config_key := hash_text(cache_format + '\n' + salt)
-	base_dir := os.abs_path(os.getenv_opt('V3CACHE') or {
-		default_dir := os.vtmp_dir()
-		if os.getenv('V3_TEST_ISOLATE_CACHE') == '1' {
-			os.join_path(default_dir, 'v3_test_cache_${hash_text(os.real_path(os.executable()))}')
-		} else {
-			default_dir
-		}
-	})
+	primary := os.getenv_opt('V3_PRIMARY_VEXE') or { os.getenv_opt('VEXE') or { os.executable() } }
 	return Manager{
-		dir:                   os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
+		dir:                   os.join_path(cache_refresh.root_dir(vroot, primary), config_key)
 		enabled:               enabled
 		salt:                  salt
 		build_pseudo_values:   build_pseudo_values
 		version_pseudo_values: version_pseudo_values
 		pkg_probes:            &PkgConfigProbes{}
+		source_paths:          &SourcePaths{}
+	}
+}
+
+// real_source_path returns `os.real_path(path)` for a source file. The answer is
+// kept for the rest of the build when it is asked for before freeze_source_paths.
+pub fn (m &Manager) real_source_path(path string) string {
+	if isnil(m.source_paths) {
+		return os.real_path(path)
+	}
+	if resolved := m.source_paths.resolved[path] {
+		return resolved
+	}
+	resolved := os.real_path(path)
+	if !m.source_paths.frozen {
+		// The table is the one place a manager, handed around by value and by
+		// immutable reference, keeps the paths that it resolved.
+		mut known := unsafe { &SourcePaths(voidptr(m.source_paths)) }
+		known.resolved[path.clone()] = resolved
+	}
+	return resolved
+}
+
+// remember_source_path records that `resolved` is `os.real_path(path)`, for a caller
+// that has resolved the path already. It does nothing after freeze_source_paths.
+pub fn (m &Manager) remember_source_path(path string, resolved string) {
+	if isnil(m.source_paths) || m.source_paths.frozen || path in m.source_paths.resolved {
+		return
+	}
+	mut known := unsafe { &SourcePaths(voidptr(m.source_paths)) }
+	known.resolved[path.clone()] = resolved.clone()
+}
+
+// real_source_paths returns real_source_path of every file, in the order of `files`.
+pub fn (m &Manager) real_source_paths(files []string) []string {
+	mut paths := []string{cap: files.len}
+	for file in files {
+		paths << m.real_source_path(file)
+	}
+	return paths
+}
+
+// freeze_source_paths ends the recording of resolved source paths. Call it on the
+// thread that owns the build, outside any disposable allocation scope and before
+// other threads use the manager; what was resolved until then stays available.
+pub fn (m &Manager) freeze_source_paths() {
+	if !isnil(m.source_paths) {
+		mut known := unsafe { &SourcePaths(voidptr(m.source_paths)) }
+		known.frozen = true
 	}
 }
 
@@ -337,7 +403,7 @@ pub fn (m &Manager) ensure_dir() bool {
 pub fn (m &Manager) entry(module_name string, source_files []string) Entry {
 	mut source_root := module_name
 	if source_files.len > 0 {
-		source_root = os.dir(os.real_path(source_files[0]))
+		source_root = os.dir(m.real_source_path(source_files[0]))
 	}
 	id := '${sanitize_name(module_name)}_${hash_text(source_root)}'
 	return Entry{
@@ -396,7 +462,7 @@ pub fn (m &Manager) write_object_alias(module_name string, source_files []string
 
 // cgen_entry returns the artifact paths for one stable program source set.
 pub fn (m &Manager) cgen_entry(source_files []string) CgenEntry {
-	mut paths := source_files.map(os.real_path(it))
+	mut paths := m.real_source_paths(source_files)
 	paths.sort()
 	id := hash_text(paths.join('\n'))
 	base := os.join_path(m.dir, 'program_${id}')
@@ -863,8 +929,8 @@ fn (m &Manager) cacheable_source_signature(source_files []string) ?string {
 }
 
 fn (m &Manager) source_signature_details(source_files []string) SourceSignatureDetails {
-	return cached_source_signature_details_probed(m.dir, 'module', source_files, m.build_pseudo_values,
-		m.version_pseudo_values, m.pkg_probes)
+	return cached_source_signature_details_resolved(m.dir, 'module', m.real_source_paths(source_files),
+		m.build_pseudo_values, m.version_pseudo_values, m.pkg_probes)
 }
 
 // cached_source_signature returns a content signature while using precise file
@@ -879,7 +945,14 @@ fn cached_source_signature_details_with_build_values(cache_dir string, namespace
 }
 
 fn cached_source_signature_details_probed(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string, probes &PkgConfigProbes) SourceSignatureDetails {
-	mut paths := source_files.map(os.real_path(it))
+	return cached_source_signature_details_resolved(cache_dir, namespace, source_files.map(os.real_path(it)),
+		build_pseudo_values, version_pseudo_values, probes)
+}
+
+// cached_source_signature_details_resolved is cached_source_signature_details_probed
+// for source files that are given by their resolved paths.
+fn cached_source_signature_details_resolved(cache_dir string, namespace string, resolved_files []string, build_pseudo_values string, version_pseudo_values string, probes &PkgConfigProbes) SourceSignatureDetails {
+	mut paths := resolved_files.clone()
 	paths.sort()
 	cache_key := hash_text(namespace + '\n' + paths.join('\n'))
 	cache_path := os.join_path(cache_dir, '.source_signature_${cache_key}')
@@ -1077,11 +1150,13 @@ fn is_sha256_hex_digest(digest string) bool {
 	return true
 }
 
-fn source_digest_map(source_files []string, digests []string) map[string]string {
-	if source_files.len != digests.len {
+// source_digest_map maps the resolved paths of source files to their digests,
+// which are in the order of the sorted paths.
+fn source_digest_map(resolved_files []string, digests []string) map[string]string {
+	if resolved_files.len != digests.len {
 		return {}
 	}
-	mut paths := source_files.map(os.real_path(it))
+	mut paths := resolved_files.clone()
 	paths.sort()
 	mut result := map[string]string{}
 	for i, path in paths {
@@ -1461,7 +1536,7 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		source_bodies:       flags.source_bodies
 		source_bodies_known: true
 		calls_recover:       flags.calls_recover
-		source_digests:      source_digest_map(source_files, source_details.source_digests)
+		source_digests:      source_digest_map(m.real_source_paths(source_files), source_details.source_digests)
 	}
 }
 
@@ -1492,7 +1567,7 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 		source_bodies:       flags.source_bodies
 		source_bodies_known: true
 		calls_recover:       flags.calls_recover
-		source_digests:      source_digest_map(source_files, source_details.source_digests)
+		source_digests:      source_digest_map(m.real_source_paths(source_files), source_details.source_digests)
 	}
 }
 
@@ -1914,6 +1989,220 @@ pub fn (m &Manager) write_cgen_prepared_objects(entry CgenEntry, compile_signatu
 	content := 'stamp=${hash_text(stamp)}\n' + objects.join('\n') + '\n'
 	path := '${entry.prepared_objects}.${hash_text(compile_signature)}'
 	write_atomic(path, content)!
+}
+
+// program_executable_slot returns the path that every artifact of the linked
+// executable of one program source set starts with.
+fn (m &Manager) program_executable_slot(source_files []string) string {
+	return m.cgen_entry(source_files).source.all_before_last('.c')
+}
+
+// program_executable_identity is what a build knows of its executable before it
+// has generated any C: the inputs of the whole-program C plan, and what decides
+// the link besides them.
+fn (m &Manager) program_executable_identity(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string) ?string {
+	source_hash := m.cacheable_source_signature(source_files) or { return none }
+	return 'executable_format=${program_executable_format}\n' +
+		cgen_entry_stamp(m.salt, source_hash, dependency_inputs, generation_signature) +
+		'link=${hash_text(link_signature)}\n'
+}
+
+// valid_program_executable returns the executable that an earlier build linked from
+// the inputs that this build has: the same program sources, module interfaces,
+// native inputs and configuration (as for valid_cgen), the same `link_signature`,
+// and inputs of the C compiler and of the linker that are the files they were. The
+// headers that the compiler read and the files that the link read are compared by
+// their metadata, and a path where either looked for a file in vain has to be
+// absent still. Such a build has nothing left to generate, compile or link.
+pub fn (m &Manager) valid_program_executable(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string) ?ProgramExecutable {
+	if !m.enabled || source_files.len == 0 {
+		return none
+	}
+	slot := m.program_executable_slot(source_files)
+	stamp := os.read_file('${slot}.exe.stamp') or { return none }
+	identity := m.program_executable_identity(source_files, generation_signature, dependency_inputs,
+		link_signature) or { return none }
+	if !stamp.starts_with(identity) {
+		trace_program_executable_miss('the inputs of the program changed')
+		return none
+	}
+	mut executable_metadata := ''
+	mut pos := identity.len
+	for pos < stamp.len {
+		line_end := stamp.index_after_('\n', pos)
+		if line_end < 0 {
+			return none
+		}
+		line := stamp[pos..line_end]
+		pos = line_end + 1
+		if line.starts_with('input=') {
+			path, metadata := program_executable_stamp_pair(line['input='.len..]) or { return none }
+			if file_metadata_signature(path) != metadata {
+				trace_program_executable_miss('an input of the compiler or the linker changed: ${path}')
+				return none
+			}
+		} else if line.starts_with('missing=') {
+			if os.exists(line['missing='.len..]) {
+				trace_program_executable_miss('a file appeared where the compiler or the linker looks: ${line['missing='.len..]}')
+				return none
+			}
+		} else if line.starts_with('executable=') {
+			executable_metadata = line['executable='.len..]
+		} else if line.starts_with('notices=') {
+			// The notices are the rest of the stamp: nothing else follows them.
+			length := line['notices='.len..].int()
+			if executable_metadata.len == 0 || length != stamp.len - pos
+				|| line != 'notices=${length}' {
+				return none
+			}
+			executable := '${slot}_${hash_text(identity)}.exe'
+			if file_metadata_signature(executable) != executable_metadata {
+				trace_program_executable_miss('the cached executable is not the one that was recorded')
+				return none
+			}
+			return ProgramExecutable{
+				path:     executable
+				metadata: executable_metadata
+				notices:  stamp[pos..]
+			}
+		} else {
+			return none
+		}
+	}
+	return none
+}
+
+fn program_executable_stamp_pair(value string) ?(string, string) {
+	tab := value.last_index_u8(`\t`)
+	if tab <= 0 || tab + 1 >= value.len {
+		return none
+	}
+	return value[..tab], value[tab + 1..]
+}
+
+fn trace_program_executable_miss(reason string) {
+	if os.getenv('V3_CACHE_TRACE') != '' {
+		eprintln('  V3 program executable miss: ${reason}')
+	}
+}
+
+// restore copies the cached executable to `destination`, through a new file that
+// replaces `destination` when it is complete. It reports false, and leaves
+// `destination` alone, unless the bytes it copied are those of the executable that
+// valid_program_executable found: a build that publishes at the same moment
+// replaces that file, and never changes it in place.
+pub fn (e &ProgramExecutable) restore(destination string) bool {
+	if file_metadata_signature(e.path) != e.metadata {
+		return false
+	}
+	bytes := os.read_bytes(e.path) or { return false }
+	if file_metadata_signature(e.path) != e.metadata {
+		return false
+	}
+	tmp := '${destination}.tmp.${tempname.unique_token()}'
+	// A linker creates its output with every permission that the umask of the
+	// caller leaves: so does this, by asking for all of them.
+	mut file := os.open_file(tmp, 'w', 0o777) or { return false }
+	written := file.write(bytes) or { -1 }
+	file.close()
+	if written != bytes.len {
+		os.rm(tmp) or {}
+		return false
+	}
+	os.mv(tmp, destination) or {
+		os.rm(tmp) or {}
+		return false
+	}
+	return true
+}
+
+// write_program_executable keeps a copy of `executable`, which a build has just
+// linked, for the next build of the same inputs. `link_files` are the files that
+// the C compiler and the linker read besides the C of the build: headers, objects,
+// libraries. `link_identities` is the metadata that each of them had when it was
+// read, or before, `link_missing` the paths where a file would have been read too
+// if it had been there, and `notices` what the build printed about the program, in
+// a form that the driver can print again. A file that is no longer what it was
+// then, or a path that is no longer absent, may or may not be what was read:
+// nothing is kept then. One executable is kept for a program source
+// set: the copy of the previous one is removed.
+pub fn (m &Manager) write_program_executable(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string, link_files []string, link_identities []string, link_missing []string, executable string, notices string) ! {
+	if !m.ensure_dir() {
+		return error('v3 module cache directory is unavailable')
+	}
+	if link_files.len != link_identities.len {
+		return error('the link inputs have no identities')
+	}
+	slot := m.program_executable_slot(source_files)
+	identity := m.program_executable_identity(source_files, generation_signature, dependency_inputs,
+		link_signature) or { return error('the program sources cannot be cached') }
+	mut out := strings.new_builder(identity.len + 256 + link_files.len * 128 + notices.len)
+	out.write_string(identity)
+	for i, path in link_files {
+		metadata := link_identities[i]
+		if metadata.len == 0 || path.contains_any('\t\n') {
+			return error('link input ${path} cannot be told apart from a changed one')
+		}
+		if file_metadata_signature(path) != metadata {
+			return error('link input ${path} changed while the program was linked')
+		}
+		out.writeln('input=${path}\t${metadata}')
+	}
+	for path in link_missing {
+		if path.contains_any('\n') {
+			return error('library candidate ${path} cannot be recorded')
+		}
+		if os.exists(path) {
+			return error('${path} appeared while the program was linked')
+		}
+		out.writeln('missing=${path}')
+	}
+	stamp_path := '${slot}.exe.stamp'
+	cached := '${slot}_${hash_text(identity)}.exe'
+	// The stamp is the commit marker, and it names the copy by the identity of the
+	// build, so that it can never lead to the executable of another build.
+	previous := program_executable_of_stamp(os.read_file(stamp_path) or { '' }, slot)
+	os.rm(stamp_path) or {}
+	if previous.len == 0 {
+		// No stamp says which copy the slot holds: a build that was interrupted, or
+		// that published while another one did, may have left one behind.
+		copy_prefix := os.file_name(slot) + '_'
+		for name in os.ls(os.dir(slot)) or { []string{} } {
+			if name.starts_with(copy_prefix) && name.ends_with('.exe') {
+				os.rm(os.join_path_single(os.dir(slot), name)) or {}
+			}
+		}
+	} else if previous != cached {
+		os.rm(previous) or {}
+	}
+	tmp := '${cached}.tmp.${tempname.unique_token()}'
+	defer {
+		os.rm(tmp) or {}
+	}
+	// One read and one write: os.cp moves a file a kilobyte at a time. The copy
+	// is data: a build that restores it creates the executable anew.
+	os.write_file_array(tmp, os.read_bytes(executable)!)!
+	os.mv(tmp, cached)!
+	executable_metadata := file_metadata_signature(cached)
+	if executable_metadata.len == 0 {
+		os.rm(cached) or {}
+		return error('the cached executable cannot be told apart from a changed one')
+	}
+	out.writeln('executable=${executable_metadata}')
+	out.writeln('notices=${notices.len}')
+	out.write_string(notices)
+	write_atomic(stamp_path, out.str())!
+}
+
+// program_executable_of_stamp returns the path of the executable that `stamp`
+// commits, or '' for a stamp of another format.
+fn program_executable_of_stamp(stamp string, slot string) string {
+	link := stamp.index('\nlink=') or { return '' }
+	identity_end := stamp.index_after_('\n', link + 1)
+	if identity_end < 0 || !stamp.starts_with('executable_format=${program_executable_format}\n') {
+		return ''
+	}
+	return '${slot}_${hash_text(stamp[..identity_end + 1])}.exe'
 }
 
 // write_stamp refreshes a cache stamp after the object and header are durable.
@@ -2353,8 +2642,8 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 			continue
 		}
 		new_symbol := cached_c_string_symbol(new_value)
-		old_definition := 'static string ${old_symbol} = {"${cached_c_escape(old_value)}", ${old_value.len}, 1};'
-		new_definition := 'static string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
+		old_definition := 'static const string ${old_symbol} = {"${cached_c_escape(old_value)}", ${old_value.len}, 1};'
+		new_definition := 'static const string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
 		if cached_source.contains(new_definition) {
 			target_definitions_present[new_symbol] = true
 		}
@@ -2488,7 +2777,7 @@ pub fn prune_unreferenced_static_string_definitions(prefix string) string {
 pub fn static_string_definitions(source string) string {
 	mut out := strings.new_builder(4096)
 	for line in source.split_into_lines() {
-		if line.starts_with('static string _v3_lit_') {
+		if _ := generated_static_string_definition_symbol(line) {
 			out.writeln(line)
 		}
 	}
@@ -2498,8 +2787,9 @@ pub fn static_string_definitions(source string) string {
 // without_duplicate_static_string_definitions removes literal storage already
 // supplied by an earlier cached C prefix while retaining new body-only literals.
 pub fn without_duplicate_static_string_definitions(source string, existing_source string) string {
-	if !source.contains('static string _v3_lit_')
-		|| !existing_source.contains('static string _v3_lit_') {
+	if !(source.contains('static string _v3_lit_') || source.contains('static const string _v3_lit_'))
+		|| !(existing_source.contains('static string _v3_lit_')
+			|| existing_source.contains('static const string _v3_lit_')) {
 		return source.clone()
 	}
 	mut existing := map[string]bool{}
@@ -2562,7 +2852,11 @@ pub fn materialize_cached_body_string_definitions(source string) string {
 
 fn generated_static_string_definition_symbol(line string) ?string {
 	clean := line.trim_space()
-	prefix := 'static string '
+	prefix := if clean.starts_with('static const string ') {
+		'static const string '
+	} else {
+		'static string '
+	}
 	if !clean.starts_with(prefix) {
 		return none
 	}
@@ -5005,7 +5299,7 @@ fn module_header_const_storage_name(module_name string, name string) string {
 	return name
 }
 
-fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_order []string) (map[int]flat.NodeId, map[int]string) {
+fn module_header_const_replacements(a &flat.FlatAst, module_name string, file_ids []flat.NodeId, const_order []string) (map[int]flat.NodeId, map[int]string) {
 	mut replacements := map[int]flat.NodeId{}
 	mut files := map[int]string{}
 	if const_order.len == 0 {
@@ -5016,14 +5310,11 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_o
 		ranks[name] = i
 	}
 	mut declarations := []ModuleHeaderConstDecl{}
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0
-			|| file_module_name(a, file_node) != module_name {
-			continue
-		}
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				node := a.nodes[int(id)]
 				if node.kind != .const_decl {
@@ -5065,18 +5356,71 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_o
 	return replacements, files
 }
 
+struct ModuleHeaderIndex {
+	files           map[string][]flat.NodeId
+	modules         map[string][]flat.NodeId
+	imports         map[string][]flat.NodeId
+	attrs           map[int]CachedDeclarationAttrs
+	generic_callees map[string]bool
+}
+
+fn module_header_index(a &flat.FlatAst, tc &types.TypeChecker) ModuleHeaderIndex {
+	mut files := map[string][]flat.NodeId{}
+	mut modules := map[string][]flat.NodeId{}
+	mut imports := map[string][]flat.NodeId{}
+	mut stream_module := ''
+	for i, node in a.nodes {
+		match node.kind {
+			.file {
+				stream_module = file_module_name(a, node)
+				if node.children_count > 0 {
+					files[stream_module] << flat.NodeId(i)
+				}
+			}
+			.module_decl { modules[node.value] << flat.NodeId(i) }
+			.import_decl { imports[stream_module] << flat.NodeId(i) }
+			else {}
+		}
+	}
+	return ModuleHeaderIndex{
+		files:           files
+		modules:         modules
+		imports:         imports
+		attrs:           cached_declaration_attrs(a)
+		generic_callees: generic_specialization_callee_names(tc)
+	}
+}
+
+// module_headers_with_const_order generates module headers using one declaration index for the
+// checked AST, preserving the same source and constant order as module_header_with_const_order.
+pub fn module_headers_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, module_names []string, vroot string, import_paths map[string]string, const_order []string) map[string]string {
+	if module_names.len == 0 {
+		return map[string]string{}
+	}
+	index := module_header_index(a, tc)
+	mut headers := map[string]string{}
+	mut source_cache := map[string]string{}
+	for module_name in module_names {
+		headers[module_name] = module_header_indexed(a, tc, module_name, vroot, import_paths, const_order, index, mut source_cache)
+	}
+	return headers
+}
+
 // module_header_with_const_order preserves dependency ordering for runtime
 // constants whose helper bodies are intentionally omitted from warm headers.
 pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string, const_order []string) string {
+	index := module_header_index(a, tc)
+	mut source_cache := map[string]string{}
+	return module_header_indexed(a, tc, module_name, vroot, import_paths, const_order, index, mut source_cache)
+}
+
+fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string, const_order []string, index &ModuleHeaderIndex, mut source_cache map[string]string) string {
 	mut out := strings.new_builder(4096)
-	declaration_attrs := cached_declaration_attrs(a)
+	declaration_attrs := index.attrs
 	mut module_attr_lines := []string{}
 	mut seen_module_attrs := map[string]bool{}
-	for idx, node in a.nodes {
-		if node.kind != .module_decl || node.value != module_name {
-			continue
-		}
-		attrs := declaration_attrs[idx] or { continue }
+	for id in index.modules[module_name] {
+		attrs := declaration_attrs[int(id)] or { continue }
 		for line in cached_declaration_attrs_text(attrs).split_into_lines() {
 			if line.len == 0 || seen_module_attrs[line] {
 				continue
@@ -5089,25 +5433,22 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 		out.writeln(module_attr_lines.join('\n'))
 	}
 	out.writeln('module ${module_name.all_after_last('.')}')
-	generic_specialization_callees := generic_specialization_callee_names(tc)
-	needs_source_bodies := module_needs_source_bodies(a, tc, module_name, generic_specialization_callees)
-	mut source_cache := map[string]string{}
+	file_ids := index.files[module_name]
+	generic_specialization_callees := index.generic_callees
+	needs_source_bodies := module_needs_source_bodies(a, tc, file_ids, generic_specialization_callees)
 	embed_source_bodies := needs_source_bodies
-		&& module_source_bodies_are_embeddable(a, tc, module_name, generic_specialization_callees, mut source_cache)
+		&& module_source_bodies_are_embeddable(a, tc, file_ids, generic_specialization_callees, mut source_cache)
 	if needs_source_bodies && !embed_source_bodies {
 		out.writeln(source_body_marker)
 	}
 	out.writeln('')
 	mut trusted_c_fns := map[string]bool{}
 	mut calls_recover := false
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0
-			|| file_module_name(a, file_node) != module_name {
-			continue
-		}
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				node := a.nodes[int(id)]
 				if node.kind == .c_fn_decl && node.is_mut {
@@ -5124,18 +5465,12 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 		out.writeln('')
 	}
 	mut seen := map[string]bool{}
-	const_replacements, const_files := module_header_const_replacements(a, module_name, const_order)
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0 {
-			continue
-		}
-		file_module := file_module_name(a, file_node)
-		if file_module != module_name {
-			continue
-		}
+	const_replacements, const_files := module_header_const_replacements(a, module_name, file_ids, const_order)
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				effective_id := const_replacements[int(id)] or { id }
 				node := a.nodes[int(effective_id)]
@@ -5200,15 +5535,8 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 	// (`sync` for locks and `v.embed_file` for `$embed_file`). They are not file
 	// children, so preserve them separately or a warm header would omit the
 	// cached object's link dependencies.
-	mut stream_module := ''
-	for node in a.nodes {
-		if node.kind == .file {
-			stream_module = file_module_name(a, node)
-			continue
-		}
-		if node.kind != .import_decl || stream_module != module_name {
-			continue
-		}
+	for import_id in index.imports[module_name] {
+		node := a.node(import_id)
 		key := decl_key(a, node)
 		if seen[key] {
 			continue
@@ -5377,17 +5705,11 @@ fn append_declaration_nodes(a &flat.FlatAst, id flat.NodeId, mut declarations []
 	declarations << id
 }
 
-fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, module_name string, generic_callees map[string]bool) bool {
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0 {
-			continue
-		}
-		file_module := file_module_name(a, file_node)
-		if file_module != module_name {
-			continue
-		}
+fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, file_ids []flat.NodeId, generic_callees map[string]bool) bool {
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
-			id := a.child(&file_node, i)
+			id := a.child(file_node, i)
 			if declaration_node_needs_source(a, id)
 				|| node_creates_generic_specialization(a, tc, id, generic_callees) {
 				return true
@@ -5397,12 +5719,9 @@ fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, module_nam
 	return false
 }
 
-fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, module_name string, generic_callees map[string]bool, mut source_cache map[string]string) bool {
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0
-			|| file_module_name(a, file_node) != module_name {
-			continue
-		}
+fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, file_ids []flat.NodeId, generic_callees map[string]bool, mut source_cache map[string]string) bool {
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		// An embedded declaration is parsed again without the `#line` directives of its
 		// file, which would change the source locations that it reports.
 		uses_line_directives := if file := a.source_files[file_node.pos.id] {
@@ -5412,7 +5731,7 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, m
 		}
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				needs_source := declaration_node_needs_source(a, id)
 					|| node_creates_generic_specialization(a, tc, id, generic_callees)
@@ -6929,8 +7248,8 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 			out.writeln('${wanted}:')
 			section = wanted
 		}
-		for ai := 1; ai < field_params.len; ai++ {
-			out.writeln('\t@[${field_params[ai]}]')
+		if field_params.len > 1 {
+			out.writeln('\t@[${field_params[1..].join('; ')}]')
 		}
 		mut line := '\t${field.value}'
 		if field.typ.len > 0 && field.typ != field.value {
@@ -7026,18 +7345,17 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 		mut line := field.value
 		if field.children_count > 0 {
 			expr_id := a.child(field, 0)
-			mut value := expr_text(a, expr_id)
-			expr := a.node(expr_id)
-			if expr.kind == .array_literal {
-				typ := tc.resolve_type(expr_id)
-				if typ is types.Array {
-					// Cache headers are declaration inputs. A bare const literal uses
-					// fixed storage there and disagrees with the cached object's source ABI.
-					// Preserve the checked element type too: the raw `array.clone` header
-					// signature cannot reconstruct it from every declaration-only literal.
-					value = '${cached_array_literal_type_source_name(a, expr, typ)}(${value}).clone()'
-				}
+			typ := tc.resolve_type(expr_id)
+			if typ is types.Array || typ is types.ArrayFixed || typ is types.Map
+				|| typ is types.Struct || typ is types.Pointer || typ is types.Interface
+				|| typ is types.SumType || typ is types.OptionType || typ is types.ResultType
+				|| (a.node(expr_id).kind == .call && typ !is types.FnType) {
+				// Stored constants belong to the module object. Its interface needs
+				// the checked type, not the table or the code that initializes it.
+				lines << '${line} ${cached_type_source_name(typ)}'
+				continue
 			}
+			value := expr_text(a, expr_id)
 			if value.len > 0 {
 				line += ' = ${value}'
 			} else {
@@ -7061,16 +7379,6 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 	}
 	out.write_string(')')
 	return out.str()
-}
-
-fn cached_array_literal_type_source_name(a &flat.FlatAst, expr flat.Node, typ types.Array) string {
-	if expr.children_count > 0 {
-		first := a.child_node(&expr, 0)
-		if first.kind == .struct_init && first.value.len > 0 {
-			return '[]${first.value.trim_left('?')}'
-		}
-	}
-	return cached_type_source_name(typ)
 }
 
 fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, source_is_public bool) string {

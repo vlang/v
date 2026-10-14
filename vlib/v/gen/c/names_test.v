@@ -242,12 +242,17 @@ fn test_direct_call_does_not_prefix_synthetic_helper_with_owner_module() {
 	g.tc = &tc
 	g.non_generic_fn_names_by_module['ast\x01__v3_autostr_ast__Comment'] = true
 	g.non_generic_fn_names_by_module['ast\x01__v3_default_clone_json2__Any'] = true
+	g.non_generic_fn_names_by_module['ast\x01__v3_struct_eq_ast__Comment'] = true
 
 	assert g.direct_call_name_for_call(flat.empty_node, '__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
 	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
 	assert g.direct_call_name_for_call(flat.empty_node, '__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
 	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
 	assert g.fn_c_name_in_module('main', '__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
+	assert g.direct_call_name_for_call(flat.empty_node, '__v3_struct_eq_ast__Comment') == '__v3_struct_eq_ast__Comment'
+	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_struct_eq_ast__Comment') == '__v3_struct_eq_ast__Comment'
+	assert g.fn_c_name_in_module('ast', '__v3_struct_eq_ast__Comment') == '__v3_struct_eq_ast__Comment'
+	assert qualified_fn_name_in_module('ast', '__v3_struct_eq_ast__Comment') == '__v3_struct_eq_ast__Comment'
 }
 
 fn test_main_function_is_prefixed_when_preserved_c_header_owns_typedef_name() {
@@ -300,6 +305,31 @@ fn test_main_function_is_prefixed_when_objective_c_owns_id_name() {
 	assert g.fn_c_name_in_module('main', 'id') == 'main__id'
 	assert g.main_runtime_shadow_fn_c_name('main', 'id') or { '' } == 'main__id'
 	assert g.fn_c_name_in_module('database', 'id') == 'database__id'
+}
+
+fn test_main_sync_function_names_use_the_reserved_namespace() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for name in ['sync', 'syncfs'] {
+		internal := '__v3_internal_symbol_libc_${name}'
+		assert g.fn_c_name_in_module('main', name) == internal
+		assert g.fn_c_name_in_module('', name) == internal
+		assert g.direct_call_name(name) == internal
+		assert g.direct_call_name('main.${name}') == internal
+		assert g.callback_c_fn_name(name) == internal
+		assert g.callback_c_fn_name('main.${name}') == internal
+		assert g.fn_c_name_in_module('main', 'main__${name}') == 'main__${name}'
+		assert g.fn_c_name_in_module('main', internal) == '__v3_internal_symbol_source_${internal}'
+		assert g.fn_c_name_in_module('worker', name) == 'worker__${name}'
+		assert g.direct_call_name('C.${name}') == name
+		assert g.callback_c_fn_name('C.${name}') == name
+	}
+	tc.cur_module = 'worker'
+	assert g.direct_call_name('main.sync') == '__v3_internal_symbol_libc_sync'
+	assert g.direct_call_name('main.syncfs') == '__v3_internal_symbol_libc_syncfs'
 }
 
 fn test_target_libc_opaque_packed_struct_restores_packing() {
@@ -1021,5 +1051,80 @@ fn test_library_path_detection_ignores_non_linker_operands() {
 		'-include /opt/header.so', '-isystem /opt/headers.lib', '-DNAME=libext.a',
 		'-I /opt/include ## /opt/libext.a'] {
 		assert !c_flag_links_c_library(flag), flag
+	}
+}
+
+fn test_native_source_paths_keep_headerless_c_prototypes() {
+	for flag in ['helper.c', 'helper.cpp', 'helper.cc', 'helper.m', 'helper.mm', 'helper.o',
+		'helper.obj', '"/project/native sources/helper.m"'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
+		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+	}
+	for flag in ['-I /project/include.o', '-L /project/library.o', '-include api.c',
+		'-isystem /project/include.m', '-DNAME=helper.cpp', 'helper.cpp.h',
+		'-I /project/include ## ignored.o'] {
+		assert !c_flag_links_c_source(flag), flag
+	}
+}
+
+fn test_forced_native_source_language_keeps_headerless_prototypes() {
+	root := os.join_path(os.vtmp_dir(), 'forced_native_source_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	input := os.join_path(root, 'helper')
+	os.write_file(input, 'int native_api(void) { return 73; }\n') or { panic(err) }
+	quoted_input := os.quoted_path(input)
+	for flag in ['-x c ${quoted_input} -x none', '-xc ${quoted_input} -xnone'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
+		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+		g.note_c_include_directive('bindings', '/project/bindings.c.v')
+		assert !g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+	}
+	for flag in ['${quoted_input}', '-x c -x none ${quoted_input}',
+		'-x c -include ${quoted_input} -x none', '-x c -D ${quoted_input} -x none',
+		'-x c -I ${quoted_input} -x none'] {
+		assert !c_flag_links_c_source(flag), flag
+	}
+}
+
+fn test_force_loaded_archives_keep_headerless_prototypes() {
+	for flag in ['-Wl,-force_load,/project/libnative.a',
+		'"-Wl,-force_load,/project/native files/libnative.a"'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
+		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+		g.note_c_include_directive('bindings', '/project/header.c.v')
+		assert !g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+	}
+	for flag in ['-Wl,-rpath,/project/libnative.a', '-Wl,-force_load',
+		'-D -Wl,-force_load,/project/libnative.a', '-include /project/libnative.a'] {
+		assert !c_flag_links_c_library(flag), flag
+	}
+}
+
+fn test_linker_object_inputs_keep_headerless_prototypes() {
+	for flag in ['-Wl,/project/helper.o', '-Wl,/project/helper.obj',
+		'"-Wl,/project/native files/helper.o"', '-Wl,-rpath,/project/lib,/project/helper.o'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('bindings', '/project/bindings.c.v', flag)
+		assert g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+		g.note_c_include_directive('bindings', '/project/bindings.c.v')
+		assert !g.should_emit_c_extern_decl_from_file('native_api', '/project/bindings.c.v',
+			'bindings'), flag
+	}
+	for flag in ['-Wl,-rpath,/project/helper.o', '-Wl,-o,/project/helper.o',
+		'-Wl,-Map,/project/helper.o', '-Wl,-T,/project/helper.o', '-Wl,-install_name,/project/helper.o',
+		'-D -Wl,/project/helper.o'] {
+		assert !c_flag_links_c_source(flag), flag
 	}
 }
