@@ -29,3 +29,14 @@ fn test_malformed_chunk_size_is_an_error() {
 	// well-formed bodies still decode, including multi-chunk ones
 	assert decode('4\r\nWiki\r\n0\r\n\r\n')! == 'Wiki'
 }
+
+fn test_size_lines_and_large_chunks_are_checked() {
+	for bad in ['0Z\r\n\r\n', '4Z\r\nWiki\r\n0\r\n\r\n', '0', '0\r', 'FFFFFFFF\r\nx\r\n0\r\n\r\n',
+		'4\r\nWikiXX0\r\n\r\n'] {
+		if _ := decode(bad) {
+			assert false, 'malformed chunk must error: ${bad}'
+		}
+	}
+	assert decode('4;name=value\r\nWiki\r\n0;last=yes\r\n\r\n')! == 'Wiki'
+	assert decode('4\r\nWiki\r\n0\r\nX-Trailer: yes\r\n\r\n')! == 'Wiki'
+}
