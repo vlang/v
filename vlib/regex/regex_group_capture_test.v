@@ -251,3 +251,34 @@ fn test_nested_groups_are_numbered_outside_in() {
 	assert re.get_group_by_id('aabbbccccdd', 1) == 'bbb'
 	assert re.get_group_by_id('aabbbccccdd', 2) == 'dd'
 }
+
+fn test_unmatched_group_bounds_remain_negative_after_scanning() {
+	text := 'zzzzzzzzzzzzzzbza'
+	mut re := regex.regex_opt(r'(?P<x>a)(?P<y>b)?') or { panic(err) }
+	for from in [0, 10, 15] {
+		start, end := re.find_from(text, from)
+		assert start == 16 && end == 17
+		x_start, x_end := re.get_group_bounds_by_name('x')
+		assert x_start == 16 && x_end == 17
+		y_start, y_end := re.get_group_bounds_by_name('y')
+		assert y_start == -1 && y_end == -1
+	}
+	start, end := re.find(text)
+	assert start == 16 && end == 17
+	assert re.groups == [16, 17, -1, -1]
+}
+
+fn test_empty_groups_match_without_consuming_input() {
+	for pattern in [r'()', r'(?:)', r'(){3}', r'(?:)*', r'(())', r'(a{0})', r'((ab){0})'] {
+		for text in ['', 'abc'] {
+			mut re := regex.regex_opt(pattern) or { panic(err) }
+			start, end := re.match_string(text)
+			assert start == 0 && end == 0, '${pattern} on "${text}": ${start}, ${end}'
+		}
+	}
+	mut re := regex.regex_opt(r'()b') or { panic(err) }
+	start, end := re.find('ab')
+	assert start == 1 && end == 2
+	assert re.groups == [1, 1]
+	assert re.get_group_list() == [regex.Re_group{ start: 1, end: 1 }]
+}
