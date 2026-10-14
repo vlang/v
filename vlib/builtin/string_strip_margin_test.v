@@ -93,3 +93,38 @@ fn test_strip_margins_crlf() {
 
 	assert crlf == crlf_stripped
 }
+
+fn test_strip_margin_keeps_a_trailing_line_without_delimiter() {
+	assert 'a\nb'.strip_margin() == 'a\nb'
+	assert 'a\nb\nc\n'.strip_margin() == 'a\nb\nc\n'
+	assert 'a\r\nb\r\nc'.strip_margin() == 'a\r\nb\r\nc'
+	// a middle line without a delimiter is still dropped
+	assert 'a\nb\n|c'.strip_margin() == 'a\nc'
+	// a whitespace only tail is still dropped
+	assert 'a\n   '.strip_margin() == 'a\n'
+}
+
+fn test_strip_margin_long_unmarked_tail() {
+	tail := 'content\n'.repeat(10000)
+	assert tail.strip_margin() == tail
+	assert 'a\n|b\nremaining\n   '.strip_margin() == 'a\nb\nremaining\n'
+	assert 'a\n#b\nremaining'.strip_margin_custom(`#`) == 'a\nb\nremaining'
+}
+
+fn test_strip_margin_strips_leading_delimiter_on_first_line() {
+	// the first line drops everything up to its delimiter like every other
+	// line does; without one it is kept whole.
+	// See https://github.com/vlang/v/issues/30433
+	assert '|  a'.strip_margin() == '  a'
+	assert '|  a\n|  b'.strip_margin() == '  a\n  b'
+	assert 'Hello there,\n       |  this is a string,'.strip_margin() == 'Hello there,\n  this is a string,'
+	assert ''.strip_margin() == ''
+}
+
+fn test_strip_margin_first_line_prefix_and_custom_delimiter() {
+	assert 'prefix|body'.strip_margin() == 'body'
+	assert 'prefix#body'.strip_margin_custom(`#`) == 'body'
+	assert 'prefix|a\r\n|b'.strip_margin() == 'a\r\nb'
+	assert '|'.strip_margin() == ''
+	assert 'unmarked\n|marked'.strip_margin() == 'unmarked\nmarked'
+}

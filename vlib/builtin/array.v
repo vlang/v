@@ -1493,6 +1493,9 @@ pub fn (a array) map(callback fn (voidptr) voidptr) array
 // The expression uses 2 'magic' variables `a` and `b` as pointers to the two elements
 // being compared.
 // Equal elements keep their original relative order.
+// Without an argument, the order is ascending by `<`; float NaNs, which `<` cannot
+// order, come last, in their original relative order. A test expression is used
+// as given, so `sort(a < b)` does not order floats around a NaN.
 //
 // Example: mut aa := [5,2,1,10]; aa.sort(); assert aa == [1,2,5,10] // will sort the array in ascending order
 // Example: mut aa := [5,2,1,10]; aa.sort(b < a); assert aa == [10,5,2,1] // will sort the array in descending order
@@ -1502,6 +1505,7 @@ pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 // sorted returns a sorted copy of the original array. The original array is *NOT* modified.
 // See also .sort() .
 // Equal elements keep their original relative order.
+// Without an argument, float NaNs come last, as in .sort() .
 // Example: assert [9,1,6,3,9].sorted() == [1,3,6,9,9]
 // Example: assert [9,1,6,3,9].sorted(b < a) == [9,9,6,3,1]
 pub fn (a &array) sorted(callback fn (voidptr, voidptr) int) array
