@@ -81,12 +81,13 @@ non-empty body and `application/zip` on an archive.
 The fields:
 
 - `/config.json` serves `dl`, `api`, `auth_required` and `public_key`. `dl` and
-  `api` are the fixed strings `https://example.com/downloads` and
-  `https://example.com/api`, `auth_required` is always `false`, and `public_key`
+  `api` use the plain HTTP address from the request's Host header and its `/api` route.
+  Without an HTTP transport,
+  the in-process router returns `/` and `/api`. `auth_required` is always `false`, and `public_key`
   is `Registry.public_key_hex()`: the registry's own key, or `""` when it holds
   no signing key. `registry_archive_base` in `registry_client.v` reads `dl` for
-  the install path and refuses a base on an RFC 2606 documentation domain, which
-  is where that fixed value points.
+  the install path, resolves relative references against the registry URL, and refuses
+  a base on an RFC 2606 documentation domain or outside HTTP(S).
 - `/<module>/@v/list` returns versions sorted by semver, descending. An unknown
   module answers `200` with `[]`, not `404`.
 - `/<module>/@v/<version>.info` returns one `ModuleInfo`: name, version,
@@ -99,7 +100,7 @@ The fields:
   recorded at or after it; the mark itself is included. A missing `since` is
   read as `0`, which means everything.
 - `/sbom.spdx.json` accepts `namespace` and `dl` as query parameters, defaulting
-  to `https://vpm.local/spdx/vpm-registry` and `https://vpm.local/downloads`.
+  to `https://vpm.local/spdx/vpm-registry` and the same plain HTTP address as `/config.json`.
 - `/signature.sig` returns the signature inside a JSON string.
 
 Any path the router does not match, and any module it cannot find, answers the
@@ -133,6 +134,9 @@ Data is stored in `os.getwd()/.vpm-registry`, from `registry_dir()` in
 
 The default port is 9090 (`default_registry_port`). The server binds `:9090`,
 which is every interface, although the message it prints names loopback.
+It serves plain HTTP from the root path and advertises `http://<Host>` in `/config.json`
+and default SPDX archive links. TLS origins and mounted prefixes require configuration
+in the proxy outside this command; forwarded headers do not configure this server.
 
 ### The port flag reaches the parser
 
@@ -271,10 +275,7 @@ Trailing slashes on `dl` are removed before appending the route.
   and `yank` and `unyank` have no caller outside the tests.
 - No code calls `publish`, and no code calls `save()`, so the tool never writes
   an index.
-- `config.json` still returns fixed `https://example.com/...` values for `dl`
-  and `api` and a fixed `auth_required: false`; only `public_key` comes from the
-  registry's own state. The install path reads `dl` and refuses the placeholder,
-  but nothing configures it.
+- `config.json` always reports `auth_required: false`; the server does not authenticate requests.
 - No archive download. A module found in a registry is reported, not installed:
   `RegistryModule` carries no repository url, and nothing downloads and unpacks
   the archive. The resolution names the registry, the version and the archive

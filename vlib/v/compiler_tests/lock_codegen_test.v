@@ -469,7 +469,7 @@ fn main() {
 	dup_body := '(void* src, int sz) {\n#if defined(_VPREALLOC)\n'
 	assert c_code.contains(dup_body), c_code
 	assert c_code.contains('malloc((size_t)sz)'), c_code
-	assert c_code.contains('malloc_uncollectable((isize)sz)'), c_code
+	assert c_code.contains('malloc_uncollectable((ptrdiff_t)sz)'), c_code
 }
 
 fn test_shared_map_field_index_access_reads_payload() {
