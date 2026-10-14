@@ -21,3 +21,14 @@ current reader. Reader combinators reject negative counts or counts larger than 
 `read_full` fills the buffer, propagates reader errors, and errors on a zero-byte read.
 `read_byte` reads one byte. `BufferedReader.unread_byte` permits one undo of a successful
 buffered `read_byte`; another read operation, peek, or failed read clears that permission.
+
+`read_exact(mut reader, mut buffer)!` fills the supplied buffer across short reads.
+An empty buffer succeeds without reading. Early `Eof` or a zero-byte read returns `Eof`;
+other reader errors propagate. Negative counts or counts larger than the remaining buffer
+return errors. A failure may leave the bytes read so far in the buffer.
+
+`BufferedReader.lines()` produces a `LineIterator`; `next()` returns a line without its
+newline delimiter and handles CRLF and a final line without a newline.
+Iteration ends with `none` at EOF or any read error. The iterator uses the original reader,
+which must remain valid until iteration finishes.
+`Seeker` describes `seek(position, os.SeekMode)!`; `os.File` implements it.
