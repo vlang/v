@@ -322,6 +322,27 @@ fn test_validate_zlib_header_rejects_malformed_headers() {
 	}
 }
 
+fn test_validate_zlib_header_rejects_cinfo_above_7() {
+	// RFC 1950 s2: CINFO above 7 is forbidden. Both headers carry a correct
+	// FCHECK, so only the CINFO nibble differs from a legal header.
+	validate_zlib_header([u8(0x88), 0x1c, 0, 0, 0, 0, 0, 0, 0, 0]) or {
+		assert err.msg() == 'invalid zlib stream: invalid compression info'
+		return
+	}
+	assert false, 'CINFO=8 must be rejected'
+	validate_zlib_header([u8(0xf8), 0x00, 0, 0, 0, 0, 0, 0, 0, 0]) or {
+		assert err.msg() == 'invalid zlib stream: invalid compression info'
+		return
+	}
+	assert false, 'CINFO=15 must be rejected'
+}
+
+fn test_validate_zlib_header_accepts_two_byte_header() {
+	// Shortest valid zlib header: CM=8, CINFO=4, FCHECK passes.
+	header := validate_zlib_header([u8(0x48), 0x0d])!
+	assert header.payload_start == 2
+}
+
 fn test_validate_gzip_header_parses_all_optional_fields() {
 	header := validate_gzip_header(gzip_all_fields('header fields test'.bytes())!.bytes)!
 	assert header.flags == u8(0x1e)
