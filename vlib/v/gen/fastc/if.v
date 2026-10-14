@@ -35,7 +35,7 @@ fn (g &Parser) or_block_has_statements() bool {
 		return true
 	}
 	if g.tok in [.dollar, .key_return, .key_if, .key_for, .key_match, .key_mut, .key_defer, .key_break,
-		.key_continue] {
+		.key_continue, .key_assert] {
 		return true
 	}
 	mut lookahead := scanner.new_scanner(g.prefs, .normal)

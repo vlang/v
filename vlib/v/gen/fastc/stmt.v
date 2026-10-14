@@ -1524,6 +1524,12 @@ fn (mut g Parser) parse_simple_statement() ! {
 				assigned_value = '({ ${actual_type} ${box_value} = (${value}); v_fastc_interface_box(&${box_value}, sizeof(${actual_type})); })'
 			} else if g.selfhost && operator == .assign && actual_type == 'voidptr' && (resolved_expected_type.trim_right('*') in g.struct_fields || resolved_expected_type.trim_right('*').starts_with('Array_') || resolved_expected_type.trim_right('*').starts_with('Map_') || resolved_expected_type.trim_right('*').starts_with('FixedArray_')) {
 				assigned_value = '*((${resolved_expected_type} *)(${value}))'
+			} else if g.selfhost && operator == .assign
+				&& fastc_fixed_array_element_type(resolved_expected_type) != none
+				&& g.fixed_array_uses_raw_storage(g.last_expression) {
+				// A struct field or global keeps a fixed array as a raw C array; the local
+				// holds the wrapper struct of the same layout.
+				assigned_value = '*(${resolved_expected_type} *)(${value})'
 			}
 			g.write_line('${c_target}${operator.str()}${assigned_value};')
 			return
@@ -2416,6 +2422,10 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 		expression_tokens[..expression_tokens.len - 1]
 	} else {
 		expression_tokens
+	}
+	if g.selfhost && tokens.len > 0 && tokens.last().tok == .rpar && g.fastc_element_call_open(tokens) >= 0 {
+		// `arr[i](args)` calls the function value the element holds.
+		return true
 	}
 	for open in 1 .. tokens.len - 1 {
 		if tokens[open].tok != .lsbr || tokens[open - 1].tok != .name {

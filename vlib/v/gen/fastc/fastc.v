@@ -360,9 +360,12 @@ typedef _Bool bool;
 #endif
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* V __offsetof(T, field) */
+#define __offsetof(st, m) offsetof(st, m)
 #ifndef _WIN32
 #include <pthread.h>
 #include <unistd.h>
@@ -378,6 +381,7 @@ typedef _Bool bool;
 #include <fcntl.h>
 #include <dirent.h>
 #include <signal.h>
+#include <utime.h>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
@@ -545,9 +549,12 @@ static inline u64 wyhash(const void *key, size_t len, u64 seed, const u64 *secre
 // c_selfhost_preamble_includes is the header block of c_selfhost_preamble;
 // a header-free build replaces it with the target's C ABI prelude.
 const c_selfhost_preamble_includes = r'#include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* V __offsetof(T, field) */
+#define __offsetof(st, m) offsetof(st, m)
 #ifndef _WIN32
 #include <pthread.h>
 #include <unistd.h>
@@ -563,6 +570,7 @@ const c_selfhost_preamble_includes = r'#include <stdint.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <signal.h>
+#include <utime.h>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
