@@ -19729,7 +19729,10 @@ fn (mut g FlatGen) c99_feature_test_macros() {
 	// glibc hides the POSIX declarations this code needs, so always request them.
 	// A strict ISO `-std=` passed through `-cflags` or `#flag` hides them too: on
 	// Linux, `time.now()` then fails on the missing `struct tm.tm_gmtoff`.
-	if !g.output_cross_c && !c_effective_strict_iso_mode(g.c_flags, g.c99_mode) {
+	// `syncfs` needs GNU declarations even in GNU C modes. Request them before
+	// any header is loaded, including when its V declaration came from a cache.
+	uses_syncfs := !isnil(g.tc) && 'C.syncfs' in g.tc.fn_ret_types
+	if !g.output_cross_c && !c_effective_strict_iso_mode(g.c_flags, g.c99_mode) && !uses_syncfs {
 		return
 	}
 	g.writeln('#if defined(__linux__) && !defined(_GNU_SOURCE)')
