@@ -643,6 +643,7 @@ pub fn and_i64(addr &i64, mask i64) i64 {
 		  ecx
 		  ebx
 		  esi
+		  memory
 	}
 	return i64(u64(old_lo) | (u64(old_hi) << 32))
 }
@@ -685,6 +686,7 @@ pub fn and_u64(addr &u64, mask u64) u64 {
 		  ecx
 		  ebx
 		  esi
+		  memory
 	}
 	return u64(old_lo) | (u64(old_hi) << 32)
 }
@@ -727,6 +729,7 @@ pub fn or_i64(addr &i64, mask i64) i64 {
 		  ecx
 		  ebx
 		  esi
+		  memory
 	}
 	return i64(u64(old_lo) | (u64(old_hi) << 32))
 }
@@ -769,6 +772,7 @@ pub fn or_u64(addr &u64, mask u64) u64 {
 		  ecx
 		  ebx
 		  esi
+		  memory
 	}
 	return u64(old_lo) | (u64(old_hi) << 32)
 }

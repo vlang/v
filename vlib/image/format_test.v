@@ -52,6 +52,25 @@ fn test_match_with_wildcard() {
 	assert !match_magic('V?MG', 'WIMG'.bytes())
 }
 
+fn test_buffered_reader_delivers_bytes_before_pending_eof() {
+	mut reader := BufferedPeekReader{
+		reader: BytesReader{ data: 'abc'.bytes() }
+	}
+	if _ := reader.peek(4) {
+		assert false, 'accepted an incomplete peek'
+	} else {
+		assert err is io.Eof
+	}
+	mut buf := []u8{len: 5}
+	assert reader.read(mut buf)! == 3
+	assert buf[..3].bytestr() == 'abc'
+	if _ := reader.read(mut buf) {
+		assert false, 'lost the pending EOF'
+	} else {
+		assert err is io.Eof
+	}
+}
+
 fn test_register_decode_and_decode_config() {
 	register_format('vtest', 'VIMG?', fake_decode, fake_decode_config)
 

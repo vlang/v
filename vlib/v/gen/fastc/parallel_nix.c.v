@@ -1,7 +1,5 @@
 module fastc
 
-#include <unistd.h>
-
 fn C.sysconf(name int) i64
 
 // fastc_nr_cpus reports the host's online CPU count for parallel generation.

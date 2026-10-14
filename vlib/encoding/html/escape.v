@@ -1,8 +1,5 @@
 module html
 
-import encoding.hex
-import strconv
-
 @[params]
 pub struct EscapeConfig {
 pub:
@@ -13,6 +10,8 @@ pub:
 pub struct UnescapeConfig {
 	EscapeConfig
 pub:
+	// all decodes named and numeric references. Numeric references to zero, surrogates,
+	// or values above U+10FFFF become U+FFFD.
 	all bool
 }
 
@@ -35,16 +34,19 @@ pub fn escape(input string, config EscapeConfig) string {
 }
 
 // unescape converts entities like "&lt;" to "<". By default it is the converse of `escape`.
+// Each entity is decoded once; decoding `&amp;#34;` returns `&#34;`.
 // If `all` is set to true, it handles named, numeric, and hex values - for example,
 // `'&apos;'`, `'&#39;'`, and `'&#x27;'` then unescape to "'".
+// Unknown entities are preserved, including a trailing `&` or unterminated name.
 pub fn unescape(input string, config UnescapeConfig) string {
-	return if config.all {
-		unescape_all(input)
-	} else if config.quote {
-		input.replace_each(unescape_seq).replace_each(unescape_quote_seq)
-	} else {
-		input.replace_each(unescape_seq)
+	if config.all {
+		return unescape_all(input)
 	}
+	mut sequences := unescape_seq.clone()
+	if config.quote {
+		sequences << unescape_quote_seq
+	}
+	return input.replace_each(sequences)
 }
 
 fn unescape_all(input string) string {
@@ -57,29 +59,14 @@ fn unescape_all(input string) string {
 			for j < runes.len && runes[j] != `;` {
 				j++
 			}
+			end := if j < runes.len { j + 1 } else { j }
 			if j < runes.len && runes[i + 1] == `#` {
 				// Numeric escape sequences (e.g., &#39; or &#x27;)
-				if runes[i + 2] == `x` || runes[i + 2] == `X` {
-					// Hexadecimal escape sequence
-					if v := hex.decode(runes[i + 3..j].string()) {
-						mut n := u16(0)
-						for x in v {
-							n = n * 256 + x
-						}
-						result << n
-					} else {
-						// Leave invalid sequences unchanged
-						result << runes[i..j + 1]
-						i = j + 1
-					}
+				if v := unescape_numeric(runes[i + 2..j].string()) {
+					result << v
 				} else {
-					// Decimal escape sequence
-					if v := strconv.atoi(runes[i + 2..j].string()) {
-						result << v
-					} else {
-						// Leave invalid sequences unchanged
-						result << runes[i..j + 1]
-					}
+					// Leave invalid sequences unchanged
+					result << runes[i..j + 1]
 				}
 			} else {
 				// Named entity (e.g., &lt;)
@@ -88,14 +75,47 @@ fn unescape_all(input string) string {
 					result << v
 				} else {
 					// Leave unknown entities unchanged
-					result << runes[i..j + 1]
+					result << runes[i..end]
 				}
 			}
-			i = j + 1
+			i = end
 		} else {
 			result << runes[i]
 			i++
 		}
 	}
 	return result.string()
+}
+
+fn unescape_numeric(input string) ?rune {
+	mut base := u32(10)
+	mut start := 0
+	if input.len > 0 && (input[0] == `x` || input[0] == `X`) {
+		base = 16
+		start = 1
+	}
+	if start == input.len {
+		return none
+	}
+	mut value := u32(0)
+	for c in input[start..] {
+		mut digit := u32(0)
+		if c >= `0` && c <= `9` {
+			digit = u32(c - `0`)
+		} else if base == 16 && c >= `a` && c <= `f` {
+			digit = u32(c - `a`) + 10
+		} else if base == 16 && c >= `A` && c <= `F` {
+			digit = u32(c - `A`) + 10
+		} else {
+			return none
+		}
+		// Stop accumulating out-of-range values while still validating every digit.
+		if value <= 0x10ffff {
+			value = value * base + digit
+		}
+	}
+	if value == 0 || value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff) {
+		return rune(0xfffd)
+	}
+	return rune(value)
 }

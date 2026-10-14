@@ -37,7 +37,7 @@ fn test_module_cache_reuses_artifacts_after_unbuilt_compiler_source_changes() {
 		'cc', 'run', source]
 	first := cmdexec.run_in('env', args, root)
 	assert first.exit_code == 0, first.output
-	assert first.output.trim_space() == 'xxx', first.output
+	assert first.output.trim_space() == 'Caching module builtin...\nxxx', first.output
 	cache_roots := os.ls(cache)!.filter(it.starts_with('v3_module_cache_'))
 	assert cache_roots.len == 1, cache_roots.str()
 	cache_root := os.join_path(cache, cache_roots[0])
