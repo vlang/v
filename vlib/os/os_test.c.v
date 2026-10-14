@@ -559,6 +559,19 @@ fn test_realpath_follows_a_renamed_working_directory() {
 		'rp_before', 'inner', 'file.txt')
 }
 
+fn test_realpath_keeps_a_path_that_starts_with_a_nul_byte() {
+	$if windows {
+		return
+	}
+	os.mkdir_all('rp_dir') or { panic(err) }
+	// libc reads such a path as the empty one, which names nothing
+	for path in ['\x00', '\x00.', '\x00rp_dir'] {
+		assert os.real_path(path) == path
+	}
+	// a later one ends the path that libc reads
+	assert os.real_path('rp_dir\x00missing') == os.real_path('rp_dir')
+}
+
 // TODO: think much more about whether this is desirable:
 
 fn test_realpath_does_not_absolutize_non_existing_relative_paths() {

@@ -1096,7 +1096,9 @@ pub fn real_path(fpath string) string {
 	} $else {
 		mut ret := &char(unsafe { nil })
 		$if macos {
-			if fpath.len > 0 && fpath[0] != `/` {
+			// A path whose first byte is NUL is the empty path to libc, which names
+			// nothing. Behind the directory's name it would name the directory.
+			if fpath.len > 0 && fpath[0] != `/` && fpath[0] != 0 {
 				// A relative path is resolved against the working directory, which libc
 				// finds again on every call. The libc of macOS reads the parent directories
 				// for that, so the call costs as much as those directories are large.
