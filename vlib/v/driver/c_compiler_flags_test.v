@@ -2054,7 +2054,8 @@ fn test_v3_tcc_flags_dump_matches_monolithic_command() {
 	for source_text in sources {
 		os.write_file(source, source_text)!
 		for strict in [false, true] {
-			mut args := ['-new-compiler', '-nocache', '-cc', 'tcc', '-gc', 'none']
+			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'tcc', '-gc',
+				'none']
 			if strict {
 				args << '-cstrict'
 			}

@@ -1645,6 +1645,10 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	// A C helper does not inherit a standard intended for the C++ main unit.
 	args << object_flags.flags_for_compiler(compiler).filter(is_cpp
 		|| !(it.starts_with('-std=c++') || it.starts_with('-std=gnu++')))
+	if target.os == 'macos' && pref.ccompiler_is_tinycc(compiler) {
+		// Framework search paths are link flags that TCC also rejects in C helpers.
+		args = c_object_compile_flags(v3_tcc_macos_framework_flags(args, target.os, ''))
+	}
 	if language.len > 0 {
 		args << ['-x', language]
 	}
