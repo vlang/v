@@ -690,15 +690,28 @@ pub fn (a Integer) < (b Integer) bool {
 	return if signum < 0 { cmp > 0 } else { cmp < 0 }
 }
 
-// get_bit checks whether the bit at the given index is set.
+// get_bit checks whether the bit at the given index is set in the infinite
+// two's-complement representation. Negative integers have set bits above their magnitude.
 @[direct_array_access]
 pub fn (a Integer) get_bit(i u32) bool {
 	target_index := i / digit_bits
 	offset := i % digit_bits
 	if target_index >= a.digits.len {
-		return false
+		return a.signum < 0
 	}
-	return (a.digits[target_index] >> offset) & 1 != 0
+	mut digit := a.digits[target_index]
+	if a.signum < 0 {
+		// -a = ~(a - 1); a borrow reaches this digit only when all lower digits are zero.
+		mut borrow := u64(1)
+		for j in 0 .. int(target_index) {
+			if a.digits[j] != 0 {
+				borrow = 0
+				break
+			}
+		}
+		digit = ~(digit - borrow)
+	}
+	return (digit >> offset) & 1 != 0
 }
 
 // set_bit sets the bit at the given index to the given value.
