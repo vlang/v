@@ -16640,6 +16640,8 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
 			&& !g.used_fn_contains(raw_name) && !g.used_fn_contains(raw_cfn)
 			&& !g.used_fn_contains(cfn) && !referenced_c_externs[raw_name]
+			&& !(cur_module !in ['main', 'builtin']
+				&& g.used_fn_contains('${cur_module}.${node.value}'))
 			&& !referenced_c_externs[raw_cfn] && !referenced_c_externs[cfn] {
 			continue
 		}

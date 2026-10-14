@@ -233,3 +233,6 @@ March 10 at 01:30. A zero date adjustment preserves the original instant.
 
 `time.clock()` returns monotonic milliseconds with a platform-dependent origin. Subtract two
 readings to measure elapsed time; the value is not a Unix timestamp or a portable process age.
+
+Darwin clock initialization retains its native function declarations in cached and uncached C
+builds, preserving headerless output without adding a Mach SDK include to the module.
