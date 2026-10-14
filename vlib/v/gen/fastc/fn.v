@@ -1025,8 +1025,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 // each `T` treated as a `voidptr` placeholder. Most generic bodies lower fine that
 // way (e.g. `typeof(T).name` reflection). When one cannot (e.g. orm's
 // `QueryBuilder[T]`, which interpolates a `T`-typed struct), the partial output is
-// discarded and a trivial stub is emitted instead — a generic body is never called
-// un-monomorphized, so a stub is safe and keeps the surrounding module compiling.
+// discarded and a stub is emitted instead, which keeps the surrounding module compiling.
+// A call that reaches the stub had no instance made for it; the stub reports the call
+// and exits rather than return a zero value as if the body had run.
 // `body_end` is a scanner positioned just past the body's closing `}`, used to
 // resume after a discarded body. Returns whether the emitted body terminates.
 fn (mut g Parser) parse_generic_body_or_stub(return_type string, out_checkpoint int, saved_indent int, body_end scanner.Scanner, force_stub bool) bool {
@@ -1060,6 +1061,11 @@ fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, b
 	g.function_defer_declarations.clear()
 	g.s = body_end
 	g.next()
+	if g.selfhost {
+		// A call site no instance was made for reaches this stub; say so rather than
+		// return a zero value as if the body had run.
+		g.write_line('fprintf(stderr, "fastc: generic function `%s` was called without a concrete instance\\n", "${g.current_function}"); exit(1);')
+	}
 	if return_type != 'void' {
 		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 	}
