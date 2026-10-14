@@ -1705,6 +1705,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 fn (mut tc TypeChecker) sort_parallel_check_errors() {
 	tc.errors.sort_with_compare(compare_type_errors)
 	tc.notices.sort_with_compare(compare_type_notices)
+	tc.library_sorted_notice_count = tc.notices.len
 	if tc.errors.len < 2 {
 		return
 	}
@@ -4706,6 +4707,7 @@ fn par_check_clone_enabled() bool {
 	return os.getenv('V3_NO_PAR_CK_CLONE') == ''
 }
 
+@[direct_array_access]
 fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem) {
 	mut cache := CheckTypePromotionCache{}
 	mut names := CheckNamePromotionCache{}
