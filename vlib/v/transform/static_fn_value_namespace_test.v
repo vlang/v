@@ -38,7 +38,7 @@ fn test_static_fn_value_fallback_rejects_local_root_without_checker_metadata() {
 	}
 	assert resolved == name
 	// A local binding with the same spelling makes this an ordinary field.
-	t.set_var_type(root, 'Wrapper')
+	t.set_var_type(root, flat.source_type_id('Wrapper'))
 	assert t.static_assoc_fn_name(type_id, 'new') == none
 	assert t.static_fn_value_name(value_id, a.node(value_id)) == none
 	t.unset_var_type(root)

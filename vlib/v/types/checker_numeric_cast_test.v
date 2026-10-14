@@ -106,7 +106,7 @@ fn test_numeric_literal_cast_keeps_builtin_spelling_metadata_behavior() {
 		}
 		assert (tc.bare_generic_decl_type_name('u64') or { panic('missing generic declaration') }) == 'u64'
 		assert tc.qualify_name('u64') == 'u64'
-		assert tc.parse_type('u64').name() == 'u64'
+		assert tc.parse_type(flat.source_type_id('u64')).name() == 'u64'
 		tc.check_cast_expr(cast, *a.node(cast))
 		assert tc.errors.len == 1, tc.errors.str()
 		expected := if sum_type {

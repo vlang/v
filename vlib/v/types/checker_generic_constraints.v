@@ -36,7 +36,7 @@ struct SumConstraintStep {
 // generic_constraint_type resolves the constraint `text` of a type parameter
 // as a type, as written where `decl` declares it: in that file and that module.
 fn (tc &TypeChecker) generic_constraint_type(decl flat.Node, text string) Type {
-	file := tc.a.source_files[int(decl.pos.id)] or { return tc.parse_type(text) }
+	file := tc.a.source_files[int(decl.pos.id)] or { return tc.parse_type(flat.source_type_id(text)) }
 	decl_module := tc.file_modules[file.name] or { tc.cur_module }
 	mut scoped := tc.fork_type_parse_view(file.name, decl_module)
 	return scoped.parse_resolution_type(text)
@@ -168,10 +168,10 @@ fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type,
 	}
 	mut expanding := false
 	for variant in tc.sum_types.get(base) or { []string{} } {
-		concrete := tc.parse_type(tc.concrete_sum_variant_name(sum.name(), variant))
+		concrete := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(sum.name(), variant)))
 		inner := unalias_type(concrete)
 		if inner is SumType {
-			path << SumConstraintStep{ sum_name: flat.source_type_id(sum.name()), variant: flat.source_type_id(variant) }
+			path << SumConstraintStep{ sum_name: sum.source_type_id(), variant: flat.source_type_id(variant) }
 			if tc.collect_sum_constraint_types(inner, mut types, mut seen, mut active,
 				mut path) {
 				expanding = true
@@ -209,8 +209,8 @@ fn (tc &TypeChecker) sum_constraint_cycle_expands(base string, path []SumConstra
 				complete = false
 				break
 			}
-			variant := unalias_type(tc.parse_type(tc.concrete_sum_variant_name(instance,
-				next.variant_text())))
+			variant := unalias_type(tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(instance,
+				next.variant_text()))))
 			if variant is SumType {
 				instance = variant.name()
 			} else {
@@ -286,7 +286,7 @@ fn (tc &TypeChecker) sum_constraint_argument_contains(text string, nested string
 		return false
 	}
 	seen[text] = true
-	typ := unalias_type(tc.parse_type(text))
+	typ := unalias_type(tc.parse_type(flat.source_type_id(text)))
 	if typ.name() == nested {
 		return true
 	}
@@ -352,7 +352,7 @@ pub fn (tc &TypeChecker) generic_instance_satisfies_constraints(decl flat.Node, 
 			break
 		}
 		constraint := constraints[name] or { continue }
-		if !tc.generic_constraint_accepts(constraint, tc.parse_type(args[i])) {
+		if !tc.generic_constraint_accepts(constraint, tc.parse_type(flat.source_type_id(args[i]))) {
 			return false
 		}
 	}
@@ -519,7 +519,7 @@ fn (mut tc TypeChecker) check_generic_call_constraints(call_id flat.NodeId, call
 		}
 		constraint := tc.generic_constraint_with_args(decl, constraints[i], instantiation.generic_params,
 			instantiation.concrete_args_text()) or { continue }
-		actual := tc.parse_type(instantiation.concrete_args.at(k))
+		actual := tc.parse_type(flat.source_type_id(instantiation.concrete_args.at(k)))
 		if tc.generic_constraint_accepts(constraint, actual) {
 			continue
 		}
@@ -630,7 +630,7 @@ fn (mut tc TypeChecker) check_generic_type_constraints(id flat.NodeId, pos token
 			continue
 		}
 		bound := tc.generic_constraint_with_args(decl, text, params, args) or { constraint }
-		actual := tc.parse_type(args[i])
+		actual := tc.parse_type(flat.source_type_id(args[i]))
 		if tc.generic_constraint_accepts(bound, actual) {
 			continue
 		}
@@ -867,7 +867,7 @@ fn (mut tc TypeChecker) check_generic_fn_value_constraints(id flat.NodeId, node 
 		}
 		concrete := type_args.map(tc.explicit_generic_concrete_arg_text(it))
 		constraint := tc.generic_constraint_with_args(decl, text, params, concrete) or { continue }
-		actual := tc.parse_type(concrete[i])
+		actual := tc.parse_type(flat.source_type_id(concrete[i]))
 		if tc.generic_constraint_accepts(constraint, actual) {
 			continue
 		}
@@ -1099,7 +1099,7 @@ fn (mut tc TypeChecker) constraint_walk_lambda_arg_types(id flat.NodeId, node fl
 		if param_idx < first || param_idx >= param_texts.len {
 			continue
 		}
-		expected := unalias_type(tc.substitute_generic_type_values(tc.parse_type(param_texts[param_idx]),
+		expected := unalias_type(tc.substitute_generic_type_values(tc.parse_type(flat.source_type_id(param_texts[param_idx])),
 			args, binding.names))
 		if expected is FnType {
 			result[i] = expected.params
@@ -1446,7 +1446,7 @@ pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, m
 				continue
 			}
 			before := inferred.len
-			tc.infer_from_constraint(text, tc.parse_type(actual_text), missing, mut inferred)
+			tc.infer_from_constraint(text, tc.parse_type(flat.source_type_id(actual_text)), missing, mut inferred)
 			bound = bound || inferred.len > before
 		}
 		if !bound {
@@ -1472,7 +1472,7 @@ pub fn (mut tc TypeChecker) infer_type_params_from_interface(param_text string, 
 	if missing.len == 0 || !generic_type_application(param_text.trim_space()) {
 		return
 	}
-	tc.infer_from_constraint(param_text.trim_space(), tc.parse_type(actual_text), missing, mut
+	tc.infer_from_constraint(param_text.trim_space(), tc.parse_type(flat.source_type_id(actual_text)), missing, mut
 		inferred)
 }
 
@@ -1769,7 +1769,7 @@ fn (tc &TypeChecker) constraint_walk_named_type(name string) Type {
 		&& (name in tc.fn_context.generic_params || tc.active_generic_param(name)) {
 		return unknown_type('generic placeholder `${name}`')
 	}
-	return tc.parse_type(name)
+	return tc.parse_type(flat.source_type_id(name))
 }
 
 // constraint_walk_iterable_type is what a `for ... in` loop of the walk goes
@@ -2087,13 +2087,13 @@ fn (tc &TypeChecker) constraint_condition_term_types(term_text string, name stri
 			if part.starts_with('$') {
 				groups << part
 			} else {
-				named << tc.parse_type(part)
+				named << tc.parse_type(flat.source_type_id(part))
 			}
 		}
 	} else if rest.starts_with('$') {
 		groups << rest
 	} else {
-		named << tc.parse_type(rest)
+		named << tc.parse_type(flat.source_type_id(rest))
 	}
 	positive := op in ['is', 'in']
 	if constraint.is_interface {
