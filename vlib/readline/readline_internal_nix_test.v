@@ -26,3 +26,16 @@ fn test_delete_word_left_on_single_character_line() {
 	assert r.current == []rune{}
 	assert r.cursor == 0
 }
+
+fn test_delete_word_left_handles_empty_spaces_and_unicode() {
+	for text in ['', ' ', 'a ', 'ÿ', '日本語'] {
+		mut r := Readline{ current: text.runes(), cursor: text.runes().len }
+		r.delete_word_left()
+		assert r.current == []rune{}
+		assert r.cursor == 0
+	}
+	mut r := Readline{ current: 'left right'.runes(), cursor: 5 }
+	r.delete_word_left()
+	assert r.current.string() == 'right'
+	assert r.cursor == 0
+}
