@@ -2238,7 +2238,10 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 			tok = fastc_skip_attribute(mut scan)!
 			continue
 		}
-		if tok == .key_pub {
+		// `pub string` names a field `pub`; only `pub:` / `pub mut:` start a section.
+		mut pub_lookahead := scan
+		pub_starts_section := tok == .key_pub && pub_lookahead.scan() in [.key_mut, .colon]
+		if pub_starts_section {
 			fields_are_public = true
 			fields_are_mutable = false
 			tok = scan.scan()
@@ -2343,6 +2346,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 			is_optional_function = true
 		}
 		is_function_field := tok == .key_fn || is_optional_function
+		is_declared_voidptr := tok == .name && scan.lit == 'voidptr'
 		mut function_type := FastcFunctionTypeInfo{}
 		if is_function_field {
 			function_type = fastc_peek_function_type(function_scan, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
@@ -2404,6 +2408,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 				is_skip:               is_skip
 				is_function:           is_function_field
 				is_optional_function:  is_optional_function
+				is_declared_voidptr:   is_declared_voidptr
 				is_shared_pointer:     is_shared_pointer
 				module_name:           source_file.header.module_name
 				path:                  source_file.path

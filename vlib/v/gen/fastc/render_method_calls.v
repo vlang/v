@@ -524,6 +524,38 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				continue
 			}
+			if tokens[i].lit == 'str' && g.selfhost
+				&& fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)).starts_with('Map_') {
+				// `m.str()`: the map's generated `{'k': v}` formatter.
+				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+				if call_end != i + 2 {
+					continue
+				}
+				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+				mut w := unsafe { &Parser(g) }
+				helper := w.fastc_map_str_name(receiver_type) or { continue }
+				map_value := if receiver_type.ends_with('*') {
+					'*(${receiver.source})'
+				} else {
+					receiver.source
+				}
+				call_source := '${helper}(${map_value})'
+				if receiver_start == 0 && call_end == tokens.len - 1 {
+					return FastcRenderedExpression{
+						source: call_source
+						typ:    'string'
+					}
+				}
+				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
+					continue
+				}
+				replaced := fastc_replace(rendered, raw_call, call_source)
+				if replaced.str != rendered.str {
+					rendered = replaced
+					changed = true
+				}
+				continue
+			}
 			if tokens[i].lit == 'type_name' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
 				// `x.type_name()` on a sum type / interface: switch on the runtime tag.
 				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
@@ -589,7 +621,12 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 						continue
 					}
-					replaced := fastc_replace(rendered, raw_call, call_source)
+					mut replaced := fastc_replace_c_name(rendered, raw_call, call_source, true)
+					if replaced.str == rendered.str {
+						// Its arguments may already be rewritten (`m.id(i)` to `M_id(m,i)`), so
+						// the raw spelling no longer occurs; replace the call by its head instead.
+						replaced = fastc_replace_c_call_at_head(rendered, '${field_source}(', call_source)
+					}
 					if replaced.str != rendered.str {
 						rendered = replaced
 						changed = true
@@ -869,4 +906,46 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		source: rendered
 		typ:    g.infer_expression_type(tokens) or { '' }
 	}
+}
+
+// fastc_replace_c_call_at_head replaces the first call in `source` that starts with `head`
+// (`m->store.get(`, not preceded by a name character) through its closing `)`.
+// String and character literals are skipped while locating the call.
+fn fastc_replace_c_call_at_head(source string, head string, replacement string) string {
+	mut from := 0
+	for from < source.len {
+		if source[from] in [`'`, `"`] {
+			from = fastc_c_literal_end(source, from)
+			continue
+		}
+		if !source[from..].starts_with(head) {
+			from++
+			continue
+		}
+		index := from
+		from = index + head.len
+		if index > 0 && (source[index - 1].is_alnum() || source[index - 1] in [`_`, `.`, `>`]) {
+			continue
+		}
+		mut depth := 1
+		mut i := index + head.len
+		for i < source.len && depth > 0 {
+			c := source[i]
+			if c in [`'`, `"`] {
+				i = fastc_c_literal_end(source, i)
+				continue
+			}
+			if c == `(` {
+				depth++
+			} else if c == `)` {
+				depth--
+			}
+			i++
+		}
+		if depth != 0 {
+			return source
+		}
+		return source[..index] + replacement + source[i..]
+	}
+	return source
 }

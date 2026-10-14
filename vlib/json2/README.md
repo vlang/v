@@ -179,6 +179,10 @@ its integer value instead.
 Integer encoding preserves the width of the input type, including `int` and its aliases.
 An `int` is not narrowed to `i32` when written as a value, struct field, or collection element.
 
+Floats use decimal notation for zero and magnitudes from `1e-6` (inclusive) to
+`1e21` (exclusive), and scientific notation outside that range, matching Go's
+`encoding/json`. Exponents omit leading zeros, for example `1e-7`.
+
 Use `@[omitempty]` to omit empty struct fields. For boolean fields, including optional
 booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects encoding:
 `decode` still assigns an explicit empty value such as `0` or `""` from the input.
