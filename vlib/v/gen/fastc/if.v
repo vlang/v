@@ -3,6 +3,19 @@ module fastc
 import v.scanner
 import v.token
 
+// smartcast_payload_binding preserves direct pointer variants and references to boxed values.
+fn (g &Parser) smartcast_payload_binding(value_type string, object string, wants_reference bool) (string, string, bool) {
+	underlying := g.underlying_alias_type(value_type)
+	is_reference := wants_reference && !fastc_is_pointer_type(underlying)
+	if is_reference {
+		return value_type + '*', '(${value_type} *)${object}', true
+	}
+	source := if fastc_is_pointer_type(underlying) { object } else { '(${value_type} *)${object}' }
+	value := fastc_narrowed_variant_value(source, underlying)
+	return value_type, value, false
+}
+
+
 fn (g &Parser) optional_function_field_for_expression(tokens []FastcExpressionToken) ?FastcStructField {
 	if tokens.len < 3 || tokens[tokens.len - 2].tok != .dot || tokens.last().tok != .name {
 		return none
@@ -793,16 +806,8 @@ fn (mut g Parser) parse_if() !bool {
 			// to mutable subjects restore their boxed type and invalidate this view.
 			access := if smartcast_boxed_type.ends_with('*') { '->' } else { '.' }
 			branch_cast := g.temporary_name('if_cast')
-			is_pointer := fastc_is_pointer_type(g.underlying_alias_type(smartcast_type))
-			is_reference := !is_pointer && (smartcast_boxed_type.ends_with('*') || previous_smartcast.is_mut)
-			branch_type := if is_reference { smartcast_type + '*' } else { smartcast_type }
-			branch_value := if is_pointer {
-				'(${smartcast_type})${smartcast_storage}${access}_object'
-			} else if is_reference {
-				'(${smartcast_type} *)${smartcast_storage}${access}_object'
-			} else {
-				'*((${smartcast_type} *)${smartcast_storage}${access}_object)'
-			}
+			branch_type, branch_value, is_reference := g.smartcast_payload_binding(smartcast_type,
+				'${smartcast_storage}${access}_object', smartcast_boxed_type.ends_with('*') || previous_smartcast.is_mut)
 			g.write_line('${branch_type} ${branch_cast} = ${branch_value};')
 			g.set_scoped_local(smartcast_name, FastcLocal{
 				is_mut:                  previous_smartcast.is_mut
@@ -884,13 +889,8 @@ fn (mut g Parser) bind_else_type_test(name string, variant string, boxed string)
 	}
 	access := if boxed.ends_with('*') { '->' } else { '.' }
 	cast := g.temporary_name('else_cast')
-	is_reference := boxed.ends_with('*') || previous.is_mut
-	variant_type := if is_reference { variant + '*' } else { variant }
-	value := if is_reference {
-		'(${variant} *)${origin}${access}_object'
-	} else {
-		'*((${variant} *)${origin}${access}_object)'
-	}
+	variant_type, value, is_reference := g.smartcast_payload_binding(variant,
+		'${origin}${access}_object', boxed.ends_with('*') || previous.is_mut)
 	g.write_line('${variant_type} ${cast} = ${value};')
 	g.locals[name] = FastcLocal{
 		is_mut:                  previous.is_mut

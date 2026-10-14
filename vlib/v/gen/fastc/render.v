@@ -2983,6 +2983,16 @@ fn (g &Parser) render_mixed_integer_comparison_expression_impl(tokens []FastcExp
 	return none
 }
 
+// fastc_narrowed_variant_value reads the value of a narrowed variant from its variant pointer.
+// A pointer-like variant (`voidptr`) is stored directly in `_object`, so that pointer is the
+// value; any other variant is boxed behind it.
+fn fastc_narrowed_variant_value(source string, value_type string) string {
+	if fastc_is_pointer_type(value_type) {
+		return '((${value_type})(${source}))'
+	}
+	return '*(${source})'
+}
+
 // render_guard_comparison renders a top-level comparison guard (`expr.kind == .constant`)
 // by rendering each operand through render_comparison_operand, which reads any active
 // smart-cast on the left and resolves an enum-shorthand right operand against the left

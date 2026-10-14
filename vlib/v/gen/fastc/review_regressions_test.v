@@ -47,6 +47,16 @@ fn main() {
 	if value !is voidptr { return }
 	println(isnil(value))
 	println(usize(value))
+	mut alternate := Value(pointer)
+	if alternate !is voidptr {
+		assert false
+	} else {
+		println(usize(alternate))
+		alternate = Value(13)
+	}
+	if alternate is int { println(alternate) }
+	value = Value(12)
+	if value is int { println(value) }
 	number := 7
 	address := voidptr(&number)
 	mut nonnil := Value(address)
@@ -57,7 +67,7 @@ fn main() {
 	if scalar !is int { return }
 	println(scalar + 1)
 }
-', 'true\n0\nidentity\n10')
+', 'true\n0\n0\n13\n12\nidentity\n10')
 }
 
 fn test_fastc_voidptr_alias_local_can_be_reset_to_nil() {
