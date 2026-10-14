@@ -763,7 +763,7 @@ fn test_generic_receiver_pattern_index_survives_rebuild_and_worker_fork() {
 	}
 	assert matched.key == structured_key
 	assert matched.params == ['T']
-	assert matched.args == ['int']
+	assert matched.args_text() == ['int']
 
 	tc.rebuild_fn_param_suffix_index()
 	assert tc.generic_receiver_method_index['flatten'] == [structured_key]
@@ -924,7 +924,7 @@ fn test_disabled_resolution_views_keep_file_context_and_recursive_aliases() {
 	assert warm is Alias
 	assert (warm as Alias).base_type is Map
 	// A recursive edge must remain symbolic even after the complete alias was cached.
-	tc.type_cache.alias_parse_stack << 'Handlers'
+	tc.type_cache.alias_parse_stack << flat.source_type_id('Handlers')
 	recursive := tc.parse_resolution_type('Handlers')
 	tc.type_cache.alias_parse_stack.delete_last()
 	assert recursive is Alias

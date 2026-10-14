@@ -7599,7 +7599,7 @@ fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() 
 	assert !fixed.source.contains('builtin____new_array(0,0,sizeof(int))'), fixed.source
 	assert !fixed.source.contains('((FixedArray_2_int *)__vf_array_init.data)'), fixed.source
 
-	tokens[0].typ = 'Array_Array_int'
+	tokens[0].typ = flat.source_type_id('Array_Array_int')
 	dynamic := g.render_struct_literal_expression(tokens) or { panic('dynamic array literal was not rendered') }
 	assert dynamic.source.contains('builtin____new_array(0,0,sizeof(int))'), dynamic.source
 	assert dynamic.source.contains('((Array_int *)__vf_array_init.data)'), dynamic.source

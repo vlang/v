@@ -815,7 +815,7 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 		cur_file:   'main.v'
 	}
 	value := t.make_ident('pos')
-	t.stringify_stack << 'Wrapper'
+	t.stringify_stack << flat.source_type_id('Wrapper')
 	call := t.request_auto_str_helper(value, 'v.token.Pos')
 	callee := a.child_node(a.node(call), 0)
 
@@ -869,7 +869,7 @@ fn test_auto_str_helper_uses_interface_declaration_module() {
 			cur_file:   'datatypes/linked_list.v'
 		}
 		value := t.make_ident('view')
-		t.stringify_stack << 'Wrapper'
+		t.stringify_stack << flat.source_type_id('Wrapper')
 		for suffix in ['', '[int]', '[pkg.Item]'] {
 			application := name + suffix
 			t.request_auto_str_helper(value, application)
@@ -1020,11 +1020,11 @@ fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
 			},
 		]
 	}
-	t.stringify_stack << 'Root'
+	t.stringify_stack << flat.source_type_id('Root')
 
 	assert t.ref_value_str_reaches_large_circular_graph('Large')
 	t.stringify_stack.clear()
-	t.stringify_stack << 'SmallRoot'
+	t.stringify_stack << flat.source_type_id('SmallRoot')
 	assert !t.ref_value_str_reaches_large_circular_graph('Small')
 }
 
@@ -1072,9 +1072,9 @@ fn test_lowered_generic_operator_call_records_operator_use() {
 			key:    'Box.+'
 		}
 	}
-	specs := {
+	specs := flat.TypeTextBindings.from_names({
 		'Box[int]': 'Box'
-	}
+	})
 	mut indexer := Transformer{}
 	lowered_operator_uses := indexer.lowered_generic_struct_operator_uses_for_specs(specs, decls)
 	assert 'Box_int__plus' in lowered_operator_uses
@@ -1440,7 +1440,7 @@ fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
 	batch_tc.fn_variadic['main.generated'] = false
 	mut batch := master.fork_scoped_batch_worker(&a, batch_tc)
 	batch.set_fn_ret_type('main.generated', 'bool')
-	assert 'main.generated' !in master.fn_ret_types
+	assert !master.fn_ret_types.contains('main.generated')
 	assert 'main.generated' !in tc.fn_ret_types
 
 	master.absorb_scoped_batch(batch, unsafe { nil }, batch.a.nodes.len)

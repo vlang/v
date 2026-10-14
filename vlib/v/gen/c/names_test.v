@@ -863,10 +863,10 @@ fn test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator() {
 	assert voidptr(g.generic_app_cache.base) == voidptr(own_generic_app_cache)
 	g.unique_struct_ct_cache.put('Batch', 'main__Batch')
 	g.param_types_cache['batch'] = [types.Type(types.void_)]
-	g.import_type_cache.unqualified_texts['Batch'] = 'main.Batch'
+	g.import_type_cache.unqualified_texts.put('Batch', 'main.Batch')
 	mut batch_file := g.import_type_cache.for_file('batch.v')
-	batch_file.texts['Batch'] = 'main.Batch'
-	batch_file.parsed['Batch'] = types.Type(types.void_)
+	batch_file.texts.put('Batch', 'main.Batch')
+	batch_file.parsed[flat.source_type_id('Batch')] = types.Type(types.void_)
 	g.restore_scratch_lookup_caches(saved)
 	assert voidptr(g.unique_struct_ct_cache) == voidptr(own_unique_struct_ct_cache)
 	assert voidptr(g.struct_cname_cache) == voidptr(own_struct_cname_cache)
@@ -875,7 +875,7 @@ fn test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator() {
 	assert g.unique_struct_ct_cache.get('Batch') == none
 	assert 'batch' !in g.param_types_cache
 	// The per-file child cache the batch created is dropped with it.
-	assert g.import_type_cache.unqualified_texts.len == 0
+	assert g.import_type_cache.unqualified_texts.entries.len == 0
 	assert g.import_type_cache.by_file.len == 0
 	assert isnil(g.import_type_cache.last)
 }

@@ -220,7 +220,7 @@ fn test_generic_instantiation_falls_back_for_uncached_declarations() {
 		assert fallback.decl_id == cached.decl_id
 		assert fallback.generic_params == cached.generic_params
 		assert fallback.concrete_args_text() == cached.concrete_args_text()
-		assert fallback.symbol_types == cached.symbol_types
+		assert fallback.symbol_types.ids == cached.symbol_types.ids
 	}
 }
 

@@ -170,7 +170,7 @@ fn test_comptime_method_selector_preserves_type_namespace_function_values() {
 		}
 		value := substitute_reflected_method_receiver(mut t, receiver, MethodMeta{
 			name:        'sample'
-			receiver:    receiver_type
+			receiver:    flat.source_type_id(receiver_type)
 			module_name: 'main'
 			return_type: flat.source_type_id('int')
 			params:      [ParamMeta{ name: 'value', typ: flat.source_type_id('string') }]
@@ -575,12 +575,8 @@ fn test_comptime_method_attrs_index_cond_keeps_member_access_attached() {
 
 fn test_comptime_sum_variants_normalize_main_specialization_lock() {
 	mut a := flat.FlatAst.new()
-	t := Transformer{
-		a:         &a
-		sum_types: {
-			'Sum': ['int', 'string']
-		}
-	}
+	mut t := Transformer{ a: &a }
+	t.sum_types.set('Sum', ['int', 'string'])
 	variants := t.comptime_sum_variants('main.Sum')
 	assert variants.len == 2
 	assert variants[0].typ_text() == 'int'
@@ -1076,7 +1072,7 @@ fn test_comptime_method_metadata_observes_erased_generic_methods() {
 	t.cur_module = 'main'
 	initial := t.comptime_method_metas('Box[int]')
 	assert initial.map(it.name) == ['replace', 'keep']
-	assert initial[0].receiver == 'Box[T]'
+	assert flat.source_type_name(initial[0].receiver) == 'Box[T]'
 	assert initial[0].attrs == ['generic']
 	decl := GenericFnDecl{
 		id:     template_id
@@ -1093,7 +1089,7 @@ fn test_comptime_method_metadata_observes_erased_generic_methods() {
 	assert a.node(template_id).kind == .empty
 	after := t.comptime_method_metas('Box[int]')
 	assert after.map(it.name) == ['keep', 'replace']
-	assert after[1].receiver == 'Box[int]'
+	assert flat.source_type_name(after[1].receiver) == 'Box[int]'
 	assert after[1].return_type_text() == 'int'
 	assert after[1].params.len == 1
 	assert after[1].params[0].typ_text() == 'int'

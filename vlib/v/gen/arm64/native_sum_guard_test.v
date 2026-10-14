@@ -13,7 +13,7 @@ fn test_native_negative_sum_guards_preserve_enum_payload_fields() {
 			panic(err)
 		}
 		// Use the compiler's recursive Type layout and its actual Enum tag.
-		source := type_source.all_before('// clone_owned_type').replace('module types', 'module main') +
+		source := type_source.all_before('// clone_owned_type').replace('module types', 'module main').replace('import v.flat', '') +
 			r'
 fn C.exit(int)
 fn C.malloc(usize) voidptr
@@ -30,9 +30,20 @@ fn unalias_type(value Type) Type {
     if value is Alias { return unalias_type(value.base_type) }
     return value
 }
+fn fixture_type_name(id u32) string {
+    return match id {
+        1 { "Plain" }
+        2 { "Flag" }
+        3 { "Listed" }
+        4 { "Other" }
+        5 { "Aliased" }
+        6 { "changed" }
+        else { "other" }
+    }
+}
 fn (value Type) name() string {
-    if value is Enum { return value.name }
-    if value is Struct { return value.name }
+    if value is Enum { return fixture_type_name(value.name_id) }
+    if value is Struct { return fixture_type_name(value.name_id) }
     return "other"
 }
 fn needs_else(subject Type, flag_enums map[string]bool, diagnose bool) bool {
@@ -91,9 +102,9 @@ fn (tc &TypeChecker) fn_types_match_ignoring_module_qualification(expected FnTyp
 fn reassign_after_guard(subject Type) string {
     mut current := subject
     if current !is Enum { return "other" }
-    current = Struct{name: "changed"}
+    current = Struct{name_id: 6}
     if current !is Struct { return "wrong variant" }
-    return current.name
+    return fixture_type_name(current.name_id)
 }
 fn branch_join(subject Type, take_branch bool) string {
     if take_branch {
@@ -103,15 +114,15 @@ fn branch_join(subject Type, take_branch bool) string {
         if subject is Enum && subject.is_flag { return "flag" }
     }
     if subject !is Struct { return subject.name() }
-    return subject.name
+    return fixture_type_name(subject.name_id)
 }
 fn main() {
     flags := map[string]bool{"Listed": true}
-    plain := Type(Enum{name: "Plain", is_flag: false})
-    flag := Type(Enum{name: "Flag", is_flag: true})
-    listed := Type(Enum{name: "Listed", is_flag: false})
-    other := Type(Struct{name: "Other"})
-    alias := Type(Alias{name: "Aliased", base_type: plain})
+    plain := Type(Enum{name_id: 1, is_flag: false})
+    flag := Type(Enum{name_id: 2, is_flag: true})
+    listed := Type(Enum{name_id: 3, is_flag: false})
+    other := Type(Struct{name_id: 4})
+    alias := Type(Alias{name_id: 5, base_type: plain})
     if needs_else(plain, flags, true) { C.exit(1) }
     if !needs_else(flag, flags, true) { C.exit(2) }
     if !needs_else(listed, flags, true) { C.exit(3) }

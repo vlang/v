@@ -179,17 +179,17 @@ fn test_rebuild_scoped_transform_signatures_and_suffix_index_after_growth() {
 			name := 'generated.Box_${idx}.open'
 			ret := tc.fn_ret_types[name] or { Type(void_) }
 			assert ret is Struct
-			assert ret.name == 'GeneratedResult_${idx}'
+			assert ret.name() == 'GeneratedResult_${idx}'
 			params := tc.fn_param_types[name] or { []Type{} }
 			assert params.len == 1
 			param := params[0]
 			assert param is Struct
-			assert param.name == 'GeneratedParam_${idx}'
+			assert param.name() == 'GeneratedParam_${idx}'
 			suffix_params := tc.fn_param_types_for_name('Box_${idx}.open')
 			assert suffix_params.len == 1
 			suffix_param := suffix_params[0]
 			assert suffix_param is Struct
-			assert suffix_param.name == 'GeneratedParam_${idx}'
+			assert suffix_param.name() == 'GeneratedParam_${idx}'
 			assert !tc.fn_variadic[name]
 			assert tc.specialized_generic_fns[name]
 		}

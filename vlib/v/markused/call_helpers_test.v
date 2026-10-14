@@ -1241,9 +1241,9 @@ fn test_for_in_map_registers_key_and_value_types() {
 	mut names := {
 		'items': true
 	}
-	mut type_names := {
+	mut type_names := flat.TypeTextBindings.from_names({
 		'items': 'map[string]T'
-	}
+	})
 	collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{},
 		mut names, mut type_names)
 	assert type_names.value('key') == 'string'
@@ -1266,16 +1266,16 @@ fn test_for_in_binding_does_not_change_iterable_type_during_inference() {
 		mut names := {
 			'items': true
 		}
-		mut types_by_name := {
+		mut types_by_name := flat.TypeTextBindings.from_names({
 			'items': 'map[string]T'
-		}
+		})
 		collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{},
 			mut names, mut types_by_name)
 		if has_second {
-			assert types_by_name['items'] == 'string'
-			assert types_by_name['value'] == 'T'
+			assert types_by_name.value('items') == 'string'
+			assert types_by_name.value('value') == 'T'
 		} else {
-			assert types_by_name['items'] == 'T'
+			assert types_by_name.value('items') == 'T'
 		}
 	}
 }
@@ -1300,13 +1300,13 @@ fn test_for_in_reference_binding_preserves_pointer_type() {
 		mut names := {
 			'values': true
 		}
-		mut types_by_name := {
+		mut types_by_name := flat.TypeTextBindings.from_names({
 			'values': if mode == 'pointer' { '&[]T' } else { '[]T' }
-		}
+		})
 		collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{},
 			mut names, mut types_by_name)
 		expected := if mode == 'plain' { 'T' } else { '&T' }
-		assert types_by_name['value'] == expected, mode
+		assert types_by_name.value('value') == expected, mode
 	}
 }
 
@@ -2020,9 +2020,9 @@ fn test_factory_loop_bindings_resolve_the_iterable_before_shadowing_it() {
 		mut values := {
 			'items': true
 		}
-		mut local_types := {
+		mut local_types := flat.TypeTextBindings.from_names({
 			'items': form[0]
-		}
+		})
 		collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{}, mut values, mut local_types)
 		assert local_types.value('items') == form[1], form.str()
 		assert local_types.value('value') == form[2], form.str()
@@ -2249,12 +2249,12 @@ fn test_rhs_closure_type_bindings_restore_after_map_growth() {
 		map[string]string{})
 	assert local_types.value('item') == 'A'
 	assert local_types.value('copy') == 'A'
-	assert 'inner_127' !in local_types
+	assert !local_types.contains('inner_127')
 	assert ident_types.value(int(inner_item)) == 'B'
 	assert ident_types.value(int(inner_last)) == 'B'
 	assert ident_types.value(int(copy_rhs)) == 'A'
 	assert ident_types.value(int(outer_item)) == 'A'
-	assert int(outer_last) !in ident_types
+	assert !ident_types.contains(int(outer_last))
 }
 
 fn test_initializer_without_local_bindings_keeps_calls_refs_and_generics() {

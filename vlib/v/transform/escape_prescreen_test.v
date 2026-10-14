@@ -111,7 +111,7 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 			}
 			'reference_loop' {
 				container := t.make_ident('items')
-				a.nodes[int(container)].typ = '[2]int'
+				a.nodes[int(container)].typ = flat.source_type_id('[2]int')
 				body := t.make_block([]flat.NodeId{})
 				source = escape_prescreen_node(mut a, flat.Node{ kind: .for_in_stmt, value: '3', op: .amp }, [
 					value,

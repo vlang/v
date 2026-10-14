@@ -1586,7 +1586,7 @@ fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality
 	type_idx_call := add_runtime_metadata_call(mut metadata_ast, 'item', 'Item', 'type_idx', 'int')
 	mut metadata_tc := types.TypeChecker.new(&metadata_ast)
 	mut metadata_transformer := new_transformer(mut metadata_ast, &metadata_tc, map[string]bool{})
-	metadata_transformer.sum_types['Item'] = ['First', 'Second']
+	metadata_transformer.sum_types.set('Item', ['First', 'Second'])
 	assert metadata_transformer.fn_span_map_expansion_estimate(0, int(type_idx_call) + 1) > deferred_map_expansion_threshold
 
 	mut equality_ast := flat.FlatAst.new()
@@ -2806,7 +2806,7 @@ fn external_map_equality_expansion_estimate(operand_type string, metadata_type s
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	if !is_interface {
 		t.structs[metadata_type] = StructInfo{
-			name: metadata_type
+			name: flat.source_type_id(metadata_type)
 		}
 	}
 	return t.external_map_tree_expansion_estimate(root, 0, 0)
@@ -3288,7 +3288,7 @@ fn test_string_interp_expansion_estimate_defers_metadata_driven_selectors() {
 	t.sum_types.set('Item', ['First', 'Second'])
 	for variant in ['First', 'Second'] {
 		t.structs[variant] = StructInfo{
-			name:   variant
+			name:   flat.source_type_id(variant)
 			fields: [
 				FieldInfo{
 					name: 'value'
@@ -5126,7 +5126,7 @@ fn test_parallel_master_detaches_metadata_maps_before_writing() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
-	master.fn_ret_types.value('main.base') = 'int'
+	master.fn_ret_types.set('main.base', 'int')
 	tc.fn_param_types['main.base'] = [types.Type(types.int_)]
 	master.structs['main.Base'] = StructInfo{
 		name: flat.source_type_id('main.Base')
@@ -5146,7 +5146,7 @@ fn test_parallel_master_detaches_metadata_maps_before_writing() {
 	])
 
 	assert master.fn_ret_types.value('main.master_generated') == 'bool'
-	assert 'main.master_generated' !in worker.fn_ret_types
+	assert !worker.fn_ret_types.contains('main.master_generated')
 	assert 'main.master_generated' in master.tc.fn_param_types
 	assert 'main.master_generated' !in worker.tc.fn_param_types
 

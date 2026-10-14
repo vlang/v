@@ -125,7 +125,7 @@ fn test_parsed_ids_follow_generic_recursive_alias_and_worker_precedence() {
 	assert bound != integer
 	assert tc.type_name_by_id(bound) == 'string'
 	tc.type_param_texts.clear()
-	tc.type_cache.alias_parse_stack << 'u64'
+	tc.type_cache.alias_parse_stack << flat.source_type_id('u64')
 	recursive := tc.parse_type_id('u64') or { panic('missing recursive identity') }
 	assert recursive != integer
 	assert tc.type_by_id(recursive) or { panic('missing recursive alias') } is Alias

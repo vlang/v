@@ -46,7 +46,7 @@ fn test_node_type_memo_follows_smartcasts_and_module_context() {
 	tc.type_aliases.set('one.Item', 'int')
 	tc.type_aliases.set('two.Item', 'bool')
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('Collection', tc.sum_types['Collection'])
+	t.sum_types.set('Collection', tc.sum_types.value('Collection'))
 	t.set_var_type('value', 'Collection')
 	t.begin_node_type_memo(0, a.nodes.len - 1)
 	assert t.node_type(value) == 'Collection'

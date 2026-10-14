@@ -42,10 +42,10 @@ fn test_scalar_parser_keeps_recursive_alias_and_type_parameter_precedence() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	tc.set_fresh_type_cache(true)
-	tc.type_cache.alias_parse_stack << 'u64'
+	tc.type_cache.alias_parse_stack << flat.source_type_id('u64')
 	recursive := tc.parse_type('u64')
 	assert recursive is Alias
-	assert recursive.name == 'u64'
+	assert recursive.name() == 'u64'
 	assert recursive.base_type is Unknown
 	assert tc.type_cache.parse_entries.len == 0
 	assert tc.type_count() == 0

@@ -270,7 +270,7 @@ fn test_cache_demand_keeps_unused_constant_wrappers_and_their_field_graph_out() 
 	}
 	// Preparation discovers all cached signatures before body demand is known.
 	g.collect_checker_declaration_signature_types()
-	assert g.needed_optional_types.contains('sample__Unused').values()
+	assert 'sample__Unused' in g.needed_optional_types.values()
 	g.cache_decl_demand = true
 	g.cache_decl_refs[g.const_ident_c_name('sample.used')] = true
 	g.finish_cache_declaration_demand('')

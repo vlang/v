@@ -397,7 +397,7 @@ fn main() { values := [1, 2, 3]; assert values[0] == 1 }
 	assert !used['closure.closure_init']
 	full, _ := mark_used_with_generic_usage_full_runtime(a, tc)
 	assert full['closure.closure_init']
-	a.nodes[a.nodes.len - 1].typ = 'closure'
+	a.nodes[a.nodes.len - 1].typ = flat.source_type_id('closure')
 	explicit := mark_used(a, tc)
 	assert explicit['closure.closure_init']
 }
@@ -544,7 +544,7 @@ fn main() { values := [1, 2, 3]; assert values[0] == 1; ${call} }
 		mut a := p.parse_files([path, main_path])
 		for mut node in a.nodes {
 			if node.kind == .import_decl && node.value == 'builtin.closure' {
-				node.typ = '__v3_builtin_closure_runtime'
+				node.typ = flat.source_type_id('__v3_builtin_closure_runtime')
 			}
 		}
 		mut tc := types.TypeChecker.new(a)

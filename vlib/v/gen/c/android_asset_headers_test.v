@@ -46,7 +46,7 @@ fn android_asset_header_test_gen_with_cached_owner(program string, cached_owner 
 	g.used_fns = &used_fns
 	for header in ['<android/asset_manager.h>', '<android/asset_manager_jni.h>',
 		'<android/native_activity.h>'] {
-		g.collect_c_directive('os', flat.Node{ kind: .directive, value: 'include', typ: header },
+		g.collect_c_directive('os', flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id(header) },
 			if cached_owner.len > 0 { cached_header } else { binding }, false)
 	}
 	return g
@@ -90,7 +90,7 @@ fn test_android_asset_type_enum_and_function_uses_keep_sdk_headers() {
 fn test_android_asset_sdk_guards_preserve_explicit_user_headers_and_other_modes() {
 	mut g := android_asset_header_test_gen('import os\nfn main() {}')
 	assert g.omits_unused_android_asset_sdk()
-	g.collect_c_directive('main', flat.Node{ kind: .directive, value: 'include', typ: '<android/native_activity.h>' },
+	g.collect_c_directive('main', flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('<android/native_activity.h>') },
 		'/project/os_android_outside_termux.c.v', false)
 	assert g.c_directives.len == 1
 	g.set_output_cross_c(true)

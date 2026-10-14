@@ -246,9 +246,9 @@ fn test_checked_numeric_infix_requires_ordinary_checked_operands() {
 	t.active_generic_params = ['T']
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	t.active_generic_params = []string{}
-	t.active_specialization_args = ['int']
+	t.active_specialization_args = flat.TypeTextList.from_names(['int'])
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
-	t.active_specialization_args = []string{}
+	t.active_specialization_args = flat.TypeTextList{}
 	t.smartcast_stack = [SmartcastContext{}]
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 }
@@ -307,12 +307,12 @@ fn test_checked_numeric_infix_keeps_named_annotations_and_casts_on_operator_path
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	// Both textual candidates used by the original alias lookup must survive
 	// a primitive sidecar; only builtin annotations are free of nominal lookup.
-	a.nodes[int(lhs)].typ = 'Count'
+	a.nodes[int(lhs)].typ = flat.source_type_id('Count')
 	assert t.operator_alias_type_for_operand(lhs, .plus) or { '' } == 'Count'
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
-	a.nodes[int(lhs)].typ = 'int'
+	a.nodes[int(lhs)].typ = flat.source_type_id('int')
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
-	a.nodes[int(lhs)].typ = ''
+	a.nodes[int(lhs)].typ = flat.source_type_id('')
 	a.nodes[int(lhs)].kind = .cast_expr
 	a.nodes[int(lhs)].value = 'Count'
 	assert t.operator_alias_type_for_operand(lhs, .plus) or { '' } == 'Count'

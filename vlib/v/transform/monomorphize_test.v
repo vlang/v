@@ -359,9 +359,9 @@ fn test_flattened_generic_struct_types_materialize_from_recorded_args() {
 			key:    'arc.Arc'
 		}
 	}
-	mut specs := map[string]string{}
+	mut specs := flat.TypeTextBindings{}
 	t.collect_generic_struct_spec_from_type('arc.Arc_ResourceSum', 'main', '', decls, mut specs)
-	assert specs['arc.Arc[ResourceSum]'] == 'arc.Arc'
+	assert specs.value('arc.Arc[ResourceSum]') == 'arc.Arc'
 }
 
 fn test_flattened_generic_struct_arg_canonicalizes_to_source_application() {
@@ -590,7 +590,7 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 	t.cur_module = 'callee'
 	t.sum_types.set('Any', ['string', 'bool'])
 	t.sum_types.set('callee.Any', ['string', 'int'])
-	t.active_specialization_args = ['[][2]Any']
+	t.active_specialization_args = flat.TypeTextList.from_names(['[][2]Any'])
 	t.active_specialization_main_types = t.specialization_main_type_closure(t.active_specialization_args_text())
 	for typ in ['[][2]Any', '[][]Any', '[]map[string]Any'] {
 		id := a.add_node(flat.Node{ kind: .array_init, value: typ[2..], typ: flat.source_type_id(typ) })
@@ -625,7 +625,7 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 		assert !t.substituted_type_belongs_to_main_generic(typ), typ
 	}
 	for typ in ['?[]string', '?map[string]string', 'fn (?[]string) string'] {
-		t.active_specialization_args = [typ]
+		t.active_specialization_args = flat.TypeTextList.from_names([typ])
 		assert t.generic_inference_alias_target(typ, 'callee') == typ
 		assert t.generic_arg_for_decl_module(typ, 'callee') == typ
 		assert t.generic_arg_for_call_and_decl_module(typ, 'callee', 'other') == typ
@@ -758,9 +758,9 @@ fn test_imported_generic_alias_target_uses_declaration_module() {
 			key:    'a.Inner'
 		}
 	}
-	mut specs := map[string]string{}
+	mut specs := flat.TypeTextBindings{}
 	t.collect_generic_struct_spec_from_type('a.Box[int]', 'main', '', decls, mut specs)
-	assert specs['a.Inner[int]'] == 'a.Inner'
+	assert specs.value('a.Inner[int]') == 'a.Inner'
 }
 
 fn test_generic_method_decl_matches_embedded_receiver() {
@@ -938,13 +938,13 @@ fn test_contextless_generic_struct_spec_spelling_is_skipped() {
 			key:    'veb.Middleware'
 		}
 	}
-	mut specs := map[string]string{}
+	mut specs := flat.TypeTextBindings{}
 	t.collect_generic_struct_specs_range(decls, mut specs, 0, a.nodes.len)
 
-	assert 'veb.Middleware[Ctx]' in specs
-	assert 'veb.Middleware[model.Context]' in specs
-	assert 'veb.Middleware[Context]' !in specs
-	assert 'veb.Middleware[Scope]' !in specs
+	assert specs.contains('veb.Middleware[Ctx]')
+	assert specs.contains('veb.Middleware[model.Context]')
+	assert !specs.contains('veb.Middleware[Context]')
+	assert !specs.contains('veb.Middleware[Scope]')
 
 	assert type_text_has_unqualified_generic_arg('veb.Middleware[Context]')
 	assert type_text_has_unqualified_generic_arg('Map[string, Context]')

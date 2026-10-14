@@ -211,7 +211,7 @@ fn test_alias_target_parsing_preserves_declaration_module() {
 		}
 		parsed := tc.parse_alias_type('dep.Alias', text)
 		assert parsed is Alias
-		assert parsed.name == 'dep.Alias'
+		assert parsed.name() == 'dep.Alias'
 		assert parsed.base_type == expected
 	}
 	assert tc.parse_alias_target_type('dep.Alias', 'Item').name() == 'dep.Item'

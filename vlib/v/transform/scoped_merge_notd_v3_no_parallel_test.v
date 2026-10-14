@@ -86,7 +86,7 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	assert master.sum_eq_types['main.Node'].struct_name_text() == 'main.Node'
 	assert tc.sparse_resolved_call_names[10] == 'main.resolved'
 	assert master.generic_call_spec_cache[12].decl_key == 'main.generic'
-	assert master.generic_call_spec_cache[12].args == ['[]int']
+	assert master.generic_call_spec_cache[12].args_text() == ['[]int']
 }
 
 fn test_scoped_monomorph_specialization_args_are_deep_cloned() {
@@ -272,7 +272,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 		name := transform_qualified_fn_name(decl.module, a.node(root).value)
 		return_type := tc.fn_ret_types[name] or { panic('missing signature ${name}') }
 		assert return_type is types.FnType
-		assert (return_type as types.FnType).return_type_text().name() == arg
+		assert (return_type as types.FnType).return_type.name() == arg
 		assert (return_type as types.FnType).params[0].name() == arg
 	}
 	mut lifted := 0

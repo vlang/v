@@ -16,7 +16,7 @@ fn sql_expr_types(a &flat.FlatAst) []string {
 	mut types := []string{}
 	for node in a.nodes {
 		if node.kind == .sql_expr {
-			types << node.typ
+			types << node.typ_text()
 		}
 	}
 	return types
@@ -61,7 +61,7 @@ fn test_dynamic_orm_query_data_aliases_parse_braced_literals() {
 		'struct User {\n\tid int\n\tname string\n}\n\nfn main() {\n\tdb := 0\n\twhere_expr := {\n\t\tid == 1\n\t}\n\tset_expr := {\n\t\tname == "v"\n\t}\n\tupdate_expr := {\n\t\tname == "vv"\n\t}\n\t_ = sql db {\n\t\tdynamic select from User where where_expr\n\t\tdynamic update User set set_expr where update_expr\n\t}\n}\n')
 	mut sql_expr_count := 0
 	for node in a.nodes {
-		if node.kind == .sql_expr && node.typ == 'orm.QueryData' {
+		if node.kind == .sql_expr && node.typ_text() == 'orm.QueryData' {
 			sql_expr_count++
 		}
 	}
@@ -73,7 +73,7 @@ fn test_dynamic_orm_query_data_aliases_accept_arbitrary_names() {
 		'struct User {\n\tid int\n\tname string\n}\n\nfn main() {\n\tdb := 0\n\twhere_filter := {\n\t\tid == 1\n\t}\n\tupdate_filter := {\n\t\tname == "Ada"\n\t}\n\t_ = sql db {\n\t\tdynamic select from User where where_filter\n\t\tdynamic update User set update_filter where where_filter\n\t}\n}\n')
 	mut sql_expr_count := 0
 	for node in a.nodes {
-		if node.kind == .sql_expr && node.typ == 'orm.QueryData' {
+		if node.kind == .sql_expr && node.typ_text() == 'orm.QueryData' {
 			sql_expr_count++
 		}
 	}
@@ -86,7 +86,7 @@ fn test_dynamic_orm_query_data_alias_map_literal_is_not_ambiguous() {
 	mut sql_expr_count := 0
 	mut map_init_count := 0
 	for node in a.nodes {
-		if node.kind == .sql_expr && node.typ == 'orm.QueryData' {
+		if node.kind == .sql_expr && node.typ_text() == 'orm.QueryData' {
 			sql_expr_count++
 		}
 		if node.kind == .map_init {

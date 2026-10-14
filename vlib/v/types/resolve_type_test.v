@@ -55,11 +55,11 @@ fn test_integer_widening_updates_cached_ancestors_on_child_rewrite() {
 	tc.register_synth_type(outer, builtin_u64_type)
 	tc.trust_checked_expr_types = true
 	assert tc.resolve_type(outer).name() == 'u64'
-	a.nodes[int(right)].typ = 'u128'
+	a.nodes[int(right)].typ = flat.source_type_id('u128')
 	tc.invalidate_checked_expr_type(int(right))
 	assert tc.resolve_type(outer).name() == 'u128'
 	assert tc.expr_type_values[int(outer)].name() == 'u64'
-	a.nodes[int(right)].typ = 'u64'
+	a.nodes[int(right)].typ = flat.source_type_id('u64')
 	tc.invalidate_checked_expr_type(int(right))
 	assert tc.resolve_type(outer).name() == 'u64'
 }

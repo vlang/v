@@ -96,12 +96,12 @@ fn test_codegen_fork_keeps_frozen_interface_ids_after_late_collision() {
 }
 
 fn test_short_type_name_ambiguity_remains_sticky() {
-	mut index := map[string]string{}
+	mut index := flat.TypeTextBindings{}
 	index_short_type_name('first.Event', mut index)
 	index_short_type_name('second.Event', mut index)
 	index_short_type_name('third.Event', mut index)
-	assert 'Event' in index
-	assert index['Event'] == ''
+	assert index.contains('Event')
+	assert index.value('Event') == ''
 }
 
 fn test_interface_concrete_method_keys_include_dispatch_methods() {
