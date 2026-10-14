@@ -14,6 +14,7 @@ pub enum MmapMode {
 pub struct Mmap {
 mut:
 	data        []u8
+	mode        MmapMode
 	mapping     voidptr // Windows file-mapping handle; nil elsewhere
 	file_handle voidptr // Windows file handle retained for durable sync
 }
@@ -34,6 +35,7 @@ pub fn mmap_open(path string, mode MmapMode) !&Mmap {
 		addr, mapping, file_handle := mmap_map_windows(path, size, write, false)!
 		return &Mmap{
 			data:        unsafe { addr.vbytes(int(size)) }
+			mode:        mode
 			mapping:     mapping
 			file_handle: file_handle
 		}
@@ -41,6 +43,7 @@ pub fn mmap_open(path string, mode MmapMode) !&Mmap {
 		addr := mmap_map_nix(path, size, write, false)!
 		return &Mmap{
 			data: unsafe { addr.vbytes(int(size)) }
+			mode: mode
 		}
 	}
 }
@@ -53,6 +56,7 @@ pub fn mmap_create(path string, len u64) !&Mmap {
 		addr, mapping, file_handle := mmap_map_windows(path, len, true, true)!
 		return &Mmap{
 			data:        unsafe { addr.vbytes(int(len)) }
+			mode:        .read_write
 			mapping:     mapping
 			file_handle: file_handle
 		}
@@ -60,6 +64,7 @@ pub fn mmap_create(path string, len u64) !&Mmap {
 		addr := mmap_map_nix(path, len, true, true)!
 		return &Mmap{
 			data: unsafe { addr.vbytes(int(len)) }
+			mode: .read_write
 		}
 	}
 }
@@ -79,8 +84,10 @@ pub fn (m &Mmap) len() u64 {
 }
 
 // sync flushes writes through a read_write mapping to the file.
+// It returns an error for read-only or closed mappings.
 pub fn (mut m Mmap) sync() ! {
 	if m.data.len == 0 { return error('os.Mmap.sync: mapping is closed') }
+	if m.mode != .read_write { return error('os.Mmap.sync: mapping is read-only') }
 	mmap_sync_platform(voidptr(m.data.data), u64(m.data.len), m.file_handle)!
 }
 

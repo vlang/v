@@ -359,4 +359,5 @@ or truncation. Windows paths support Unicode.
 keep the mapping open, do not resize or free the view, and never modify a read-only mapping.
 The underlying file must not be truncated while a view is in use.
 `sync()` requests write-back of a read-write mapping; Windows also flushes the retained file handle.
+Read-only and closed mappings return an error from `sync()`.
 `close()` releases the mapping and invalidates all earlier views; repeated close calls are harmless.

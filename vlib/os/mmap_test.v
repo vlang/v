@@ -51,6 +51,31 @@ fn test_mmap_create() {
 	assert data == [u8(0), 0, 0, 42, 0, 0, 0, 0]
 }
 
+fn test_mmap_create_replaces_existing_contents_with_zeroes() {
+	path := mmap_tmp('v_mmap_existing.bin')
+	os.write_file(path, 'nonzero contents')!
+	defer { os.rm(path) or {} }
+	mut m := os.mmap_create(path, 8)!
+	// The read-write view is only read while the mapping remains open.
+	assert unsafe { m.bytes() } == []u8{len: 8}
+	m.sync()!
+	m.close()
+	assert os.read_bytes(path)! == []u8{len: 8}
+}
+
+fn test_mmap_sync_rejects_read_only_mapping() {
+	path := mmap_tmp('v_mmap_read_only_sync.bin')
+	os.write_file(path, 'read only')!
+	defer { os.rm(path) or {} }
+	mut m := os.mmap_open(path, .read_only)!
+	defer { m.close() }
+	m.sync() or {
+		assert err.msg().contains('read-only')
+		return
+	}
+	assert false, 'read-only mappings must reject sync consistently across platforms'
+}
+
 fn test_mmap_empty_errors() {
 	path := mmap_tmp('v_mmap_test_e.txt')
 	os.write_file(path, '') or { panic('must write: ${err}') }

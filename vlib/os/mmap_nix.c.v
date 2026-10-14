@@ -26,7 +26,7 @@ fn mmap_map_nix(path string, len u64, write bool, create bool) !voidptr {
 	prot := if write { C.PROT_READ | C.PROT_WRITE } else { C.PROT_READ }
 	addr := C.mmap(unsafe { nil }, usize(len), prot, C.MAP_SHARED, fd, 0)
 	C.close(fd)
-	if addr == C.MAP_FAILED {
+	if addr == voidptr(C.MAP_FAILED) {
 		return error('os: mmap of `${path}` failed')
 	}
 	return addr

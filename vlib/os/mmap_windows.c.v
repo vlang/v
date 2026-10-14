@@ -41,6 +41,10 @@ fn mmap_map_windows(path string, len u64, write bool, create bool) !(voidptr, vo
 		C.CloseHandle(h_file)
 		return error('os: cannot map view of `${path}`')
 	}
+	if create {
+		// File-backed mapping extensions are not guaranteed to contain zero bytes.
+		unsafe { vmemset(addr, 0, int(len)) }
+	}
 	return addr, h_map, h_file
 }
 
