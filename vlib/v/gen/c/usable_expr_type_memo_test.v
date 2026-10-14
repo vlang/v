@@ -9,7 +9,7 @@ fn test_usable_expr_type_uses_materialized_anonymous_storage() {
 		id := a.add_node(flat.Node{
 			kind:  .ident
 			value: 'rows'
-			typ:   '${prefix}Row'
+			typ:   flat.source_type_id('${prefix}Row')
 		})
 		mut tc := types.TypeChecker.new(&a)
 		tc.structs['Row'] = [types.StructField{ name: 'item', typ: types.Type(types.int_) }]

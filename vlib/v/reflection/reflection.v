@@ -291,7 +291,7 @@ pub fn get_interfaces() []Interface {
 
 // get_sum_types returns the registered sum types
 pub fn get_sum_types() []Type {
-	sumtype_idxs := g_reflection.type_symbols.filter(it.kind == .sum_type).map(it.idx)
+	sumtype_idxs := g_reflection.type_symbols.filter(it.kind == .sum_type_text()).map(it.idx)
 	return g_reflection.types.filter(it.idx in sumtype_idxs)
 }
 

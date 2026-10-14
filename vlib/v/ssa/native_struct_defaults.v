@@ -47,7 +47,7 @@ fn (mut b Builder) declared_field_default_value(struct_name string, field_name s
 			short := name[prefix.len..]
 			if !short.contains('.') {
 				b.vars[short] = address
-				b.var_type_names[short] = b.global_type_names[name]
+				b.var_type_names.set_id(short, b.global_type_names.type_id(name) or { 0 })
 			}
 		}
 	}
@@ -97,7 +97,7 @@ fn (mut b Builder) nested_struct_default_value(type_name string, storage_type Ty
 		return b.build_struct_init(flat.Node{
 			kind:  .struct_init
 			value: type_name
-			typ:   type_name
+			typ:   flat.source_type_id(type_name)
 		})
 	}
 	return none

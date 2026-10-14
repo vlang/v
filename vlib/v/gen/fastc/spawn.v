@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import strings
 import v.token
 
@@ -84,7 +85,7 @@ fn fastc_thread_value_type_from_name(thread_type string) ?string {
 
 fn (g &Parser) fastc_thread_value_type(thread_type string) ?string {
 	name := thread_type.trim_right('*')
-	if value_type := g.thread_value_types[name] {
+	if value_type := g.thread_value_types.get(name) {
 		return value_type
 	}
 	return fastc_thread_value_type_from_name(name)
@@ -154,10 +155,10 @@ fn (mut g Parser) read_spawn_expression() !string {
 			method_signature := g.functions[method_key] or {
 				return g.unsupported('spawn of undeclared method `${callee}.${method_name}`')
 			}
-			if method_signature.parameter_types.len == 0 {
+			if method_signature.parameter_types.ids.len == 0 {
 				return g.unsupported('spawn of method `${method_name}` without a receiver parameter')
 			}
-			expected_receiver := method_signature.parameter_types[0]
+			expected_receiver := method_signature.parameter_types.at(0)
 			receiver_is_pointer := receiver_type.ends_with('*')
 			receiver_arg = if expected_receiver.ends_with('*') && !receiver_is_pointer {
 				'&(${receiver.source})'
@@ -193,7 +194,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 	if signature.is_variadic {
 		return g.unsupported('spawn of variadic function `${callee}`')
 	}
-	if signature.return_types.len > 1 {
+	if signature.return_types.ids.len > 1 {
 		return g.unsupported('spawn of multi-return function `${callee}`')
 	}
 	if g.tok != .lpar {
@@ -219,7 +220,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 			is_named_param = lookahead.scan() == .colon
 		}
 		if is_named_param {
-			parameter_index := signature.parameter_types.len - 1
+			parameter_index := signature.parameter_types.ids.len - 1
 			if arguments.len != parameter_index {
 				return g.unsupported('spawn named params fields before all positional arguments')
 			}
@@ -227,7 +228,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 			if field_name in named_param_names {
 				return g.unsupported('duplicate spawn params field `${field_name}`')
 			}
-			parameter_type := signature.parameter_types.last()
+			parameter_type := signature.parameter_types_text().last()
 			field := g.struct_field_metadata(parameter_type, field_name) or {
 				return g.unsupported('unknown spawn params field `${field_name}`')
 			}
@@ -239,10 +240,10 @@ fn (mut g Parser) read_spawn_expression() !string {
 			if g.tok in [.comma, .rpar] {
 				return g.unsupported('empty spawn params field `${field_name}`')
 			}
-			previous_expected_type := g.expected_expression_type
+			previous_expected_type := g.expected_expression_type_text()
 			g.expected_expression_type = field.typ
 			_ = g.read_expression([token.Token.comma, token.Token.rpar])!
-			g.expected_expression_type = previous_expected_type
+			g.expected_expression_type = flat.source_type_id(previous_expected_type)
 			mut named_tokens := [
 				FastcExpressionToken{
 					tok: .name
@@ -270,15 +271,15 @@ fn (mut g Parser) read_spawn_expression() !string {
 			is_mut_argument = true
 			g.next()
 		}
-		expected_type := if arguments.len < signature.parameter_types.len {
-			signature.parameter_types[arguments.len]
+		expected_type := if arguments.len < signature.parameter_types.ids.len {
+			signature.parameter_types.at(arguments.len)
 		} else {
 			''
 		}
-		previous_expected_type := g.expected_expression_type
-		g.expected_expression_type = expected_type
+		previous_expected_type := g.expected_expression_type_text()
+		g.expected_expression_type = flat.source_type_id(expected_type)
 		mut argument := g.read_expression([token.Token.comma, token.Token.rpar])!
-		g.expected_expression_type = previous_expected_type
+		g.expected_expression_type = flat.source_type_id(previous_expected_type)
 		// Mirror ordinary calls: arguments that need contextual typing (enum
 		// shorthand, boxing) render through the parameter-typed pipeline.
 		argument_tokens := g.last_expression.clone()
@@ -308,30 +309,30 @@ fn (mut g Parser) read_spawn_expression() !string {
 	}
 	g.next()
 	if named_params.len > 0 {
-		parameter_type := signature.parameter_types.last()
+		parameter_type := signature.parameter_types_text().last()
 		named_initializer := g.render_named_struct_initializer(parameter_type, named_params) or {
 			return g.unsupported('spawn named params initializer for `${callee}`')
 		}
 		arguments << named_initializer
 	} else if signature.last_parameter_is_params
-		&& arguments.len + 1 == signature.parameter_types.len {
-		parameter_type := signature.parameter_types.last()
+		&& arguments.len + 1 == signature.parameter_types.ids.len {
+		parameter_type := signature.parameter_types_text().last()
 		arguments << g.render_empty_struct_initializer(parameter_type)
 	}
-	if arguments.len != signature.parameter_types.len {
-		return g.unsupported('spawn of `${callee}` with ${arguments.len} arguments, expected ${signature.parameter_types.len}')
+	if arguments.len != signature.parameter_types.ids.len {
+		return g.unsupported('spawn of `${callee}` with ${arguments.len} arguments, expected ${signature.parameter_types.ids.len}')
 	}
-	value_type := if signature.return_type in ['', 'void'] {
+	value_type := if signature.return_type_text() in ['', 'void'] {
 		''
 	} else {
-		signature.return_type
+		signature.return_type_text()
 	}
 	thread_type := g.fastc_unclaimed_generated_name(fastc_thread_type_name(value_type))
 	start_name := g.fastc_unclaimed_generated_name('__vf_spawn_start_${g.fastc_spawn_target_stem(function_key)}')
-	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types, start_name, method_target)
+	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types_text(), start_name, method_target)
 	g.last_expression = []FastcExpressionToken{}
-	g.last_expression_type = thread_type
-	g.last_multi_return_types = []string{}
+	g.last_expression_type = flat.source_type_id(thread_type)
+	g.last_multi_return_types = flat.TypeTextList.from_names([]string{})
 	return '${start_name}(${arguments.join(', ')})'
 }
 
@@ -368,7 +369,7 @@ fn (g &Parser) fastc_unclaimed_generated_name(base string) string {
 }
 
 fn (g &Parser) generated_name_is_claimed(candidate string) bool {
-	if candidate in g.declared_type_c_names {
+	if g.declared_type_c_names.contains(candidate) {
 		return true
 	}
 	for claimed in g.fastc_prefixed_c_names {
@@ -385,7 +386,7 @@ fn (g &Parser) generated_name_is_claimed(candidate string) bool {
 // call site produced the thread.
 fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string, value_type string, parameter_types []string, start_name string, target_c_name string) {
 	g.type_memo.clear()
-	g.thread_value_types[thread_type] = value_type
+	g.thread_value_types.set(thread_type, value_type)
 	if thread_type !in g.spawn_typedefs {
 		g.spawn_typedefs[thread_type] = 'typedef struct { pthread_t handle; void *packed; } ${thread_type};'
 		// Thread handles are routinely collected into arrays for joining.

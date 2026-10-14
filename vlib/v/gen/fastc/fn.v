@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import os
 import v.cmdexec
 import v.gen.c.naming
@@ -23,7 +24,7 @@ fn (mut g Parser) drain_pending_mono() ! {
 		req := g.pending_mono[0]
 		g.pending_mono = g.pending_mono[1..].clone()
 		src := g.generic_method_sources[req.source_key] or { continue }
-		mut instance := g.render_mono_method(src, req.concrete)
+		mut instance := g.render_mono_method(src, req.concrete_text())
 		if instance == '' {
 			continue
 		}
@@ -35,15 +36,15 @@ fn (mut g Parser) drain_pending_mono() ! {
 		}
 		start := g.out.len
 		g.parse_mono_instance(instance, src) or {
-			return error('generic instance `${req.source_key}[${req.concrete}]`: ${err.msg()}')
+			return error('generic instance `${req.source_key}[${req.concrete_text()}]`: ${err.msg()}')
 		}
 		definition := g.out.after(start)
 		if definition != '' {
-			mono_name := fastc_monomorphized_name(src.name, req.concrete)
-			c_name := if src.receiver_type == '' {
+			mono_name := fastc_monomorphized_name(src.name, req.concrete_text())
+			c_name := if src.receiver_type_text() == '' {
 				g.c_function_name_for_key(fastc_function_key(src.module_name, mono_name))
 			} else {
-				fastc_method_c_name(src.module_name, src.receiver_type, mono_name)
+				fastc_method_c_name(src.module_name, src.receiver_type_text(), mono_name)
 			}
 			g.generated_mono[c_name] = true
 			g.mono_definitions[c_name] = definition
@@ -56,7 +57,7 @@ fn (mut g Parser) drain_pending_mono() ! {
 // retain its specialized body.
 fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMethodSource) bool {
 	normalized_path := src.path.replace('\\', '/')
-	return req.concrete == 'voidptr' && src.name == 'check_element_type_valid' && (src.receiver_type == 'json2__Decoder' || src.receiver_type.ends_with('__json2__Decoder')) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
+	return req.concrete_text() == 'voidptr' && src.name == 'check_element_type_valid' && (src.receiver_type_text() == 'json2__Decoder' || src.receiver_type_text().ends_with('__json2__Decoder')) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
 }
 
 // reset_lookup_memos discards the per-file name lookup memos. They are keyed
@@ -64,10 +65,10 @@ fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMe
 // context and must be reset whenever the parser switches to another one.
 fn (mut g Parser) reset_lookup_memos() {
 	g.unqualified_key_memo = map[string]string{}
-	g.nonlocal_name_type_memo = map[string]string{}
+	g.nonlocal_name_type_memo = flat.TypeTextBindings{}
 	g.resolved_name_memo = map[string]string{}
-	g.declared_type_key_memo = map[string]FastcMemoEntry{}
-	g.type_memo = map[i64]string{}
+	g.declared_type_key_memo = map[u32]FastcMemoEntry{}
+	g.type_memo = map[i64]u32{}
 	g.method_key_memo = map[string]map[string]string{}
 	g.field_memo = map[string]map[string]FastcStructField{}
 	g.last_field_known = false
@@ -784,7 +785,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.locals[receiver_name] = FastcLocal{
 			is_mut:       receiver_is_mut
 			is_reference: receiver_is_reference
-			typ:          receiver_parameter_type
+			typ:          flat.source_type_id(receiver_parameter_type)
 		}
 	}
 	if g.tok != .name && !(g.tok.is_overloadable() || g.tok.is_keyword()) {
@@ -957,9 +958,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		}
 	}
 	previous_in_main := g.in_main
-	previous_return_type := g.return_type
-	previous_return_types := g.return_types.clone()
-	previous_option_return_type := g.option_return_type
+	previous_return_type := g.return_type_text()
+	previous_return_types := g.return_types_text().clone()
+	previous_option_return_type := g.option_return_type_text()
 	previous_function := g.current_function
 	previous_receiver := g.current_receiver
 	previous_method_is_static := g.current_method_is_static
@@ -983,11 +984,11 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.unsafe_depth = 1
 	}
 	g.in_main = is_main
-	g.return_type = return_type
-	g.return_types = return_types.clone()
-	g.option_return_type = option_return_type
+	g.return_type = flat.source_type_id(return_type)
+	g.return_types = flat.TypeTextList.from_names(return_types.clone())
+	g.option_return_type = flat.source_type_id(option_return_type)
 	g.current_function = name
-	g.current_receiver = receiver_key
+	g.current_receiver = flat.source_type_id(receiver_key)
 	g.current_method_is_static = is_static_method
 	g.deferred_lines.clear()
 	g.deferred_block_starts.clear()
@@ -1076,9 +1077,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.out.write_string(function_body)
 	}
 	g.in_main = previous_in_main
-	g.return_type = previous_return_type
-	g.return_types = previous_return_types.clone()
-	g.option_return_type = previous_option_return_type
+	g.return_type = flat.source_type_id(previous_return_type)
+	g.return_types = flat.TypeTextList.from_names(previous_return_types.clone())
+	g.option_return_type = flat.source_type_id(previous_option_return_type)
 	g.current_function = previous_function
 	g.current_receiver = previous_receiver
 	g.current_method_is_static = previous_method_is_static
@@ -1308,10 +1309,10 @@ fn (mut g Parser) parse_parameters() ![]string {
 			''
 		}
 		mut type_name := g.parse_type()!
-		option_value_type := g.pending_option_value_type
+		option_value_type := g.pending_option_value_type_text()
 		is_fn_pointer := g.pending_fn_pointer
-		fn_return_type := g.pending_fn_return_type
-		fn_option_value_type := g.pending_fn_option_value_type
+		fn_return_type := g.pending_fn_return_type_text()
+		fn_option_value_type := g.pending_fn_option_value_type_text()
 		fn_parameters := g.pending_fn_parameters
 		is_reference := is_mut && !type_name.ends_with('*')
 		if is_reference {
@@ -1334,9 +1335,9 @@ fn (mut g Parser) parse_parameters() ![]string {
 				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut:               is_mut
-					typ:                  type_name
-					fn_return_type:       fn_return_type
-					fn_option_value_type: fn_option_value_type
+					typ:                  flat.source_type_id(type_name)
+					fn_return_type:       flat.source_type_id(fn_return_type)
+					fn_option_value_type: flat.source_type_id(fn_option_value_type)
 				}
 			} else {
 				params << '${fastc_output_c_type(type_name)} ${c_name}'
@@ -1344,9 +1345,9 @@ fn (mut g Parser) parse_parameters() ![]string {
 				g.locals[parameter_name] = FastcLocal{
 					is_mut:            is_mut
 					is_reference:      is_reference
-					typ:               type_name
-					option_value_type: option_value_type
-					chan_element_type: channel_element
+					typ:               flat.source_type_id(type_name)
+					option_value_type: flat.source_type_id(option_value_type)
+					chan_element_type: flat.source_type_id(channel_element)
 				}
 			}
 		}
@@ -1366,10 +1367,10 @@ fn (mut g Parser) parse_parameters() ![]string {
 
 fn (mut g Parser) parse_type() !string {
 	first_lit := g.lit
-	g.pending_option_value_type = ''
+	g.pending_option_value_type = flat.source_type_id('')
 	g.pending_fn_pointer = false
-	g.pending_fn_return_type = ''
-	g.pending_fn_option_value_type = ''
+	g.pending_fn_return_type = flat.source_type_id('')
+	g.pending_fn_option_value_type = flat.source_type_id('')
 	g.pending_fn_parameters = ''
 	if g.tok == .question {
 		// Peek the wrapped value type of an option type `?T` before the main scan
@@ -1377,7 +1378,7 @@ fn (mut g Parser) parse_type() !string {
 		mut look := g.s
 		value_tok := look.scan()
 		if value_tok !in [.lcbr, .eof] {
-			g.pending_option_value_type = g.peek_option_value_type(mut look, value_tok)
+			g.pending_option_value_type = flat.source_type_id(g.peek_option_value_type(mut look, value_tok))
 		}
 	}
 	if g.tok == .key_fn {
@@ -1428,18 +1429,18 @@ fn (mut g Parser) peek_fn_pointer_signature() {
 		return_type = if tok == .not { '__v_result' } else { 'Option' }
 		value_tok := look.scan()
 		if value_tok !in [.lcbr, .semicolon, .comma, .rpar, .eof] {
-			g.pending_fn_option_value_type = g.peek_option_value_type(mut look, value_tok)
+			g.pending_fn_option_value_type = flat.source_type_id(g.peek_option_value_type(mut look, value_tok))
 		}
 	} else if tok !in [.lcbr, .semicolon, .comma, .rpar, .eof] {
 		scanned, _ := fastc_scan_type(mut look, tok, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return }
 		return_type = scanned
 	}
 	g.pending_fn_pointer = true
-	g.pending_fn_return_type = return_type
+	g.pending_fn_return_type = flat.source_type_id(return_type)
 	if signature := fastc_peek_function_type(g.s, g.path, g.module_name, g.imports, g.declared_types,
 		g.selfhost)
 	{
-		g.pending_fn_parameters = fastc_c_prototype_parameters(signature.parameter_types)
+		g.pending_fn_parameters = fastc_c_prototype_parameters(signature.parameter_types_text())
 	}
 }
 

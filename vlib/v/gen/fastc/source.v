@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import os
 import strings
 import time
@@ -1403,7 +1404,7 @@ fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map
 	for module_name in modules {
 		function_key := fastc_function_key(module_name, hook_name)
 		if signature := functions[function_key] {
-			if signature.parameter_types.len > 0 {
+			if signature.parameter_types.ids.len > 0 {
 				return error('fastc parser does not support module `${hook_name}` with parameters in ${signature.path}')
 			}
 			calls << if c_name := function_c_names[function_key] {

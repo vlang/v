@@ -2,10 +2,10 @@ module ssa
 
 import v.flat
 
-fn (mut b Builder) intersect_sum_guards(other map[ValueID]string) {
+fn (mut b Builder) intersect_sum_guards(other map[ValueID]u32) {
 	mut discard := []ValueID{}
 	for addr, variant in b.sum_guard_variants {
-		if other[addr] or { '' } != variant {
+		if other[addr] or { u32(0) } != variant {
 			discard << addr
 		}
 	}
@@ -78,12 +78,12 @@ fn (mut b Builder) preserve_sum_variant(expr_id flat.NodeId, variant_name string
 	sum_name := b.sum_name_for_type_id(b.deref_type(addr)) or { return }
 	if variant_name.len > 0 {
 		if variant := b.find_sum_variant(sum_name, variant_name) {
-			b.sum_guard_variants[addr] = variant
+			b.sum_guard_variants[addr] = flat.source_type_id(variant)
 		}
 		return
 	}
-	variants := b.sum_type_variants[sum_name] or { return }
+	variants := b.sum_type_variants.get(sum_name) or { return }
 	if tag > 0 && tag <= variants.len {
-		b.sum_guard_variants[addr] = variants[tag - 1]
+		b.sum_guard_variants[addr] = flat.source_type_id(variants[tag - 1])
 	}
 }

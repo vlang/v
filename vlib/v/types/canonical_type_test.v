@@ -41,6 +41,6 @@ fn test_parse_canonical_type_cached_does_not_reuse_typeof_across_scopes() {
 	assert tc.parse_canonical_type_cached('[]typeof(x)').name() == '[]string'
 	// Context-independent texts are still memoized.
 	assert tc.parse_canonical_type_cached('[]int').name() == '[]int'
-	assert '[]int' in tc.type_cache.canonical_texts
-	assert '[]typeof(x)' !in tc.type_cache.canonical_texts
+	assert flat.source_type_id('[]int') in tc.type_cache.canonical_texts
+	assert flat.source_type_id('[]typeof(x)') !in tc.type_cache.canonical_texts
 }

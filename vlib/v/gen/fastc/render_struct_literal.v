@@ -1,5 +1,7 @@
 module fastc
 
+import v.flat
+
 struct FastcStructLiteralFieldValue {
 	explicit_initializers []string
 	rendered_field        string
@@ -122,8 +124,8 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		return none
 	}
 	is_c_struct_literal := open == 3 && tokens[0].tok == .name && tokens[0].lit == 'C' && tokens[1].tok == .dot && tokens[2].tok == .name
-	mut c_type := if open == 1 && tokens[0].typ != '' {
-		tokens[0].typ
+	mut c_type := if open == 1 && tokens[0].typ_text() != '' {
+		tokens[0].typ_text()
 	} else {
 		g.type_from_expression_tokens(tokens[..open]) or { '' }
 	}
@@ -153,7 +155,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			} else {
 				'((${c_type})0)'
 			}
-			typ:    c_type
+			typ:    flat.source_type_id(c_type)
 		}
 	}
 	if c_type == '' || (!is_c_struct_literal && layout_type !in g.struct_fields && g.declared_kinds[g.semantic_type_key(c_type)] !in [
@@ -184,9 +186,9 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				} else {
 					FastcStructField{}
 				}
-				rendered_item := g.render_call_argument_expression(item, field.typ) or { return none }
+				rendered_item := g.render_call_argument_expression(item, field.typ_text()) or { return none }
 				values << if field.is_shared_pointer {
-					'({ ${field.typ} __vf_shared_field_value = (${rendered_item}); (${field.typ}*)v_fastc_interface_box(&__vf_shared_field_value, sizeof(${field.typ})); })'
+					'({ ${field.typ_text()} __vf_shared_field_value = (${rendered_item}); (${field.typ_text()}*)v_fastc_interface_box(&__vf_shared_field_value, sizeof(${field.typ_text()})); })'
 				} else {
 					rendered_item
 				}
@@ -198,7 +200,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			}
 			return FastcRenderedExpression{
 				source: source
-				typ:    c_type
+				typ:    flat.source_type_id(c_type)
 			}
 		}
 	}
@@ -318,7 +320,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		if expected_type == '' && !is_c_struct_literal {
 			if field := g.struct_field_metadata(c_type, field_name) {
 				field_metadata = field
-				expected_type = field.typ
+				expected_type = field.typ_text()
 				mut storage_path := field.storage_path.clone()
 				storage_path << field.name
 				mut c_storage_path := []string{}
@@ -330,9 +332,9 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				// Initializing an embedded field by its type name:
 				// `Derived{ Base: Base{...} }` sets the `__embedded_N` field.
 				for embed_field in g.struct_field_info[layout_type] {
-					if embed_field.name.starts_with('__embedded_') && (embed_field.typ == field_name || embed_field.typ.all_after_last('__') == field_name) {
+					if embed_field.name.starts_with('__embedded_') && (embed_field.typ_text() == field_name || embed_field.typ_text().all_after_last('__') == field_name) {
 						c_field_name = embed_field.name
-						expected_type = embed_field.typ
+						expected_type = embed_field.typ_text()
 						break
 					}
 				}
@@ -431,7 +433,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 		return FastcRenderedExpression{
 			source: value_source
-			typ:    c_type
+			typ:    flat.source_type_id(c_type)
 		}
 	}
 	if update_source != '' {
@@ -444,13 +446,13 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			copy_statements := fixed_array_copies.join(' ')
 			return FastcRenderedExpression{
 				source: '({ ${base_type} __vf_struct_update = *(${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__vf_struct_fixed', '__vf_struct_update')} (${c_type})v_fastc_interface_box(&__vf_struct_update, sizeof(${base_type})); })'
-				typ:    c_type
+				typ:    flat.source_type_id(c_type)
 			}
 		}
 		copy_statements := fixed_array_copies.join(' ')
 		return FastcRenderedExpression{
 			source: '({ ${c_type} __vf_struct_update = (${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__vf_struct_fixed', '__vf_struct_update')} __vf_struct_update; })'
-			typ:    c_type
+			typ:    flat.source_type_id(c_type)
 		}
 	}
 	if has_applied_defaults {
@@ -462,7 +464,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		copies := fixed_array_copies.join(' ').replace('__vf_struct_fixed.', '__vf_struct_with_fixed${access}')
 		return FastcRenderedExpression{
 			source: '({ ${c_type} __vf_struct_with_fixed = (${rendered.source}); ${copies} __vf_struct_with_fixed; })'
-			typ:    c_type
+			typ:    flat.source_type_id(c_type)
 		}
 	}
 	literal_source := if c_type.ends_with('*') {
@@ -480,17 +482,17 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 		return FastcRenderedExpression{
 			source: '({ ${explicit_initializers.join(' ')} ${base_type} __vf_struct_fixed = (${base_type}){${rendered_fields.join(',')}}; ${copies} ${result}; })'
-			typ:    c_type
+			typ:    flat.source_type_id(c_type)
 		}
 	}
 	if explicit_initializers.len > 0 {
 		return FastcRenderedExpression{
 			source: '({ ${explicit_initializers.join(' ')} ${literal_source}; })'
-			typ:    c_type
+			typ:    flat.source_type_id(c_type)
 		}
 	}
 	return FastcRenderedExpression{
 		source: literal_source
-		typ:    c_type
+		typ:    flat.source_type_id(c_type)
 	}
 }

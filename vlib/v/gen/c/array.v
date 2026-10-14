@@ -113,10 +113,10 @@ fn (g &FlatGen) fixed_array_type_from_alias_text(type_name string) ?types.ArrayF
 		if fixed := array_fixed_type(g.tc.parse_type(cur)) {
 			return fixed
 		}
-		mut next := g.tc.type_aliases[cur] or { '' }
+		mut next := g.tc.type_aliases.get(cur) or { '' }
 		if next.len == 0 {
 			qname := g.tc.qualify_name(cur)
-			next = g.tc.type_aliases[qname] or { '' }
+			next = g.tc.type_aliases.get(qname) or { '' }
 		}
 		if next.len == 0 || next == cur {
 			return none
@@ -128,7 +128,7 @@ fn (g &FlatGen) fixed_array_type_from_alias_text(type_name string) ?types.ArrayF
 
 fn runtime_array_struct_type(t types.Type) bool {
 	if t is types.Struct {
-		return t.name == 'array' || t.name == 'Array'
+		return t.name() == 'array' || t.name() == 'Array'
 	}
 	if t is types.Alias {
 		return runtime_array_struct_type(t.base_type)
@@ -405,7 +405,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 			return
 		}
 	}
-	annotated_is_fixed := node.typ.len > 0 && array_fixed_type(g.parse_node_type(&node)) != none
+	annotated_is_fixed := node.typ_text().len > 0 && array_fixed_type(g.parse_node_type(&node)) != none
 	if !annotated_is_fixed
 		&& fixed_array_option_payload_type(types.unwrap_pointer(g.usable_expr_type(id))) != none {
 		g.gen_expr(id)
@@ -980,7 +980,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			mut is_thread := false
 			elem := cgen_unalias_type(arr.elem_type)
 			if elem is types.Struct {
-				tn := trimmed_space(elem.name)
+				tn := trimmed_space(elem.name())
 				is_thread = tn == 'thread' || tn.starts_with('thread ')
 			}
 			if is_thread {
@@ -1007,7 +1007,7 @@ fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFix
 	if fn_node.kind != .selector || fn_node.value != 'to_fixed_size' || fn_node.children_count == 0 {
 		return none
 	}
-	if node.typ.len > 0 {
+	if node.typ_text().len > 0 {
 		if fixed := array_fixed_type(g.parse_node_type(&node)) {
 			return fixed
 		}
@@ -1120,7 +1120,7 @@ fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_
 	g.needs_thread_runtime = true
 	mut ret_name := ''
 	if elem_type is types.Struct {
-		trimmed := trimmed_space(elem_type.name)
+		trimmed := trimmed_space(elem_type.name())
 		if trimmed != 'thread' && trimmed.starts_with('thread ') {
 			ret_name = trimmed_space(trimmed[7..])
 		}

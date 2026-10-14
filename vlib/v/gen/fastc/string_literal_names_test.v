@@ -2,6 +2,7 @@ module fastc
 
 import os
 import v.cmdexec
+import v.flat
 
 // A constant is renamed to its C spelling wherever its name appears in the rendered C, but
 // never inside a string literal: `'x = "app"' + app` keeps the literal's `app`. A field
@@ -68,7 +69,7 @@ fn test_fastc_field_defaults_reference_constants_inside_interpolations() {
 		fields := {
 			'main.Item': [FastcStructField{
 				name:           'label'
-				typ:            'string'
+				typ:            flat.source_type_id('string')
 				default_source: default_source
 			}]
 		}

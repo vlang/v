@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import strings
 import v.token
 
@@ -124,7 +125,7 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 	saved_it := g.locals[it_name] or { FastcLocal{} }
 	it_c_name := fastc_c_identifier(it_name)
 	w.locals[it_name] = FastcLocal{
-		typ:    element_type
+		typ:    flat.source_type_id(element_type)
 		c_name: it_c_name
 	}
 	// A closure with a flow-sensitive `&&` narrowing (`it.expr is AnonFn && it.expr.decl.…`) must
@@ -181,7 +182,7 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 		function_key := w.unqualified_function_key(closure_tokens[0].lit)
 		if signature := w.functions[function_key] {
 			closure = '${closure}(${it_c_name})'
-			closure_type = signature.return_type
+			closure_type = signature.return_type_text()
 		}
 	}
 	if had_it {
@@ -216,7 +217,7 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 	}
 	return FastcRenderedExpression{
 		source: lowered
-		typ:    result_type
+		typ:    flat.source_type_id(result_type)
 	}
 }
 
@@ -442,7 +443,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		}
 		return FastcRenderedExpression{
 			source: slice_source
-			typ:    slice_type
+			typ:    flat.source_type_id(slice_type)
 		}
 	}
 	is_array_pointer := base_type.ends_with('*') && g.array_element_type(base_type) != none
@@ -460,12 +461,12 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		if g.direct_array_access && !base_type.ends_with('*') {
 			return FastcRenderedExpression{
 				source: '((${base_source}).str[${index_source}])'
-				typ:    element_type
+				typ:    flat.source_type_id(element_type)
 			}
 		}
 		return FastcRenderedExpression{
 			source: 'builtin__string_at(${base_source}, ${index_source})'
-			typ:    element_type
+			typ:    flat.source_type_id(element_type)
 		}
 	}
 	is_raw_fixed_array := base_type.starts_with('FixedArray_') && g.fixed_array_uses_raw_storage(base_tokens)
@@ -475,7 +476,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		if is_raw_fixed_array {
 			return FastcRenderedExpression{
 				source: '((${base_source})[${checked_index}])'
-				typ:    element_type
+				typ:    flat.source_type_id(element_type)
 			}
 		}
 		access := if base_type.ends_with('*') { '->' } else { '.' }
@@ -486,31 +487,31 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		}
 		return FastcRenderedExpression{
 			source: '((${base_source})${access}data[${checked_index}])'
-			typ:    pointee_element_type
+			typ:    flat.source_type_id(pointee_element_type)
 		}
 	}
 	if is_raw_fixed_array {
 		return FastcRenderedExpression{
 			source: '((${base_source})[${index_source}])'
-			typ:    element_type
+			typ:    flat.source_type_id(element_type)
 		}
 	}
 	if base_type.ends_with('*') && !is_array_pointer {
 		return FastcRenderedExpression{
 			source: '((${base_source})[${index_source}])'
-			typ:    element_type
+			typ:    flat.source_type_id(element_type)
 		}
 	}
 	array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
 	if g.direct_array_access {
 		return FastcRenderedExpression{
 			source: '(((${g.collection_storage_type(element_type)} *)(${array_value}).data)[${index_source}])'
-			typ:    element_type
+			typ:    flat.source_type_id(element_type)
 		}
 	}
 	return FastcRenderedExpression{
 		source: '(*(${g.collection_storage_type(element_type)} *)builtin__array_get(${array_value}, ${index_source}))'
-		typ:    element_type
+		typ:    flat.source_type_id(element_type)
 	}
 }
 
@@ -658,7 +659,7 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 	inferred_type := g.infer_expression_type(tokens) or { '' }
 	return FastcRenderedExpression{
 		source: rendered
-		typ:    inferred_type
+		typ:    flat.source_type_id(inferred_type)
 	}
 }
 
@@ -677,7 +678,7 @@ fn (g &Parser) render_indexed_member_receiver(tokens []FastcExpressionToken) ?Fa
 	}
 	indexed := g.render_array_access_expression(tokens[..close + 1]) or { return none }
 	mut source := indexed.source
-	mut current_type := indexed.typ
+	mut current_type := indexed.typ_text()
 	mut i := close + 1
 	for i < tokens.len {
 		if i + 1 >= tokens.len || tokens[i].tok != .dot || tokens[i + 1].tok != .name {
@@ -695,12 +696,12 @@ fn (g &Parser) render_indexed_member_receiver(tokens []FastcExpressionToken) ?Fa
 		separator := if current_type.ends_with('*') { '->' } else { '.' }
 		field_source := source + separator + fastc_c_identifier(field.name)
 		source = if field.is_shared_pointer { '*(${field_source})' } else { field_source }
-		current_type = field.typ
+		current_type = field.typ_text()
 		i += 2
 	}
 	return FastcRenderedExpression{
 		source: source
-		typ:    current_type
+		typ:    flat.source_type_id(current_type)
 	}
 }
 
@@ -1262,7 +1263,7 @@ fn fastc_array_initializer_c_type(array_type string) string {
 // only as a function return type, parameter, or struct field are spelled with this raw marker name
 // by the signature scanner but — unlike array literals — never pass through the expression renderer
 // that would register them, so their typedef would otherwise be missing.
-fn fastc_collect_referenced_fixed_array_types(source string, mut fixed_array_types map[string]string) {
+fn fastc_collect_referenced_fixed_array_types(source string, mut fixed_array_types flat.TypeTextBindings) {
 	mut i := 0
 	for i < source.len {
 		c := source[i]
@@ -1288,8 +1289,8 @@ fn fastc_collect_referenced_fixed_array_types(source string, mut fixed_array_typ
 					// Key on the same sanitized name the expression renderer uses, so a
 					// type reached both ways is registered once, not typedef'd twice.
 					key := fastc_array_initializer_c_type(name)
-					if key !in fixed_array_types {
-						fixed_array_types[key] = name
+					if !fixed_array_types.contains(key) {
+						fixed_array_types.set(key, name)
 					}
 				}
 			}
@@ -1298,12 +1299,12 @@ fn fastc_collect_referenced_fixed_array_types(source string, mut fixed_array_typ
 	}
 }
 
-fn fastc_generate_fixed_array_declarations(fixed_array_types map[string]string) string {
+fn fastc_generate_fixed_array_declarations(fixed_array_types flat.TypeTextBindings) string {
 	mut names := fixed_array_types.keys()
 	names.sort()
 	mut out := strings.new_builder(256)
 	for name in names {
-		array_type := fixed_array_types[name]
+		array_type := fixed_array_types.value(name)
 		length := fastc_fixed_array_length(array_type) or { continue }
 		element_type := fastc_fixed_array_element_type(array_type) or { continue }
 		declaration_name := if fastc_composite_type_part(array_type) == array_type {

@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import strings
 import v.token
 
@@ -33,8 +34,8 @@ fn (mut g Parser) fastc_default_struct_str_name(c_type string) ?string {
 	body += '\tstring res = _S("${display}{\\n");\n'
 	for field in g.struct_field_info[c_name] {
 		c_field := fastc_c_identifier(field.name)
-		formatted := g.fastc_struct_field_str_expression('it.${c_field}', field.typ) or {
-			'_S("<${field.typ}>")'
+		formatted := g.fastc_struct_field_str_expression('it.${c_field}', field.typ_text()) or {
+			'_S("<${field.typ_text()}>")'
 		}
 		body += '\tres = builtin__string_plus(res, _S("    ${field.name}: "));\n'
 		body += '\tres = builtin__string_plus(res, ${formatted});\n'
@@ -234,7 +235,7 @@ fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type
 	key := g.semantic_type_key(ft)
 	method_key := '${key}.str'
 	if method_signature := g.functions[method_key] {
-		expected_receiver := method_signature.parameter_types[0]
+		expected_receiver := method_signature.parameter_types.at(0)
 		receiver := if expected_receiver.ends_with('*') && !ft.ends_with('*') {
 			'&(${value_c})'
 		} else if !expected_receiver.ends_with('*') && ft.ends_with('*') {
@@ -275,7 +276,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 		g.expect(.lcbr)!
 		value := g.read_expression([token.Token.rcbr, token.Token.colon])!
 		value_tokens := g.last_expression.clone()
-		value_type := fastc_normalize_inferred_type(g.last_expression_type)
+		value_type := fastc_normalize_inferred_type(g.last_expression_type_text())
 		value_key := g.semantic_type_key(value_type)
 		alias_has_str_method := g.declared_kinds[value_key] == .alias_ && '${value_key}.str' in g.functions
 		interpolation_type := if alias_has_str_method {
@@ -375,7 +376,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 				enum_type := fastc_c_declared_type_name(enum_key)
 				method_key := '${enum_key}.str'
 				enum_name := if method_signature := g.functions[method_key] {
-					expected_receiver := method_signature.parameter_types[0]
+					expected_receiver := method_signature.parameter_types.at(0)
 					receiver := if expected_receiver.ends_with('*') && !interpolation_type.ends_with('*') {
 						'&(${value})'
 					} else if !expected_receiver.ends_with('*') && interpolation_type.ends_with('*') {
@@ -420,7 +421,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 				receiver_key := g.semantic_type_key(interpolation_type)
 				method_key := '${receiver_key}.str'
 				if method_signature := g.functions[method_key] {
-					expected_receiver := method_signature.parameter_types[0]
+					expected_receiver := method_signature.parameter_types.at(0)
 					receiver := if expected_receiver.ends_with('*') && !interpolation_type.ends_with('*') {
 						'&(${value})'
 					} else if !expected_receiver.ends_with('*') && interpolation_type.ends_with('*') {
@@ -451,7 +452,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 				} else {
 					local_type := if g.last_expression.len > 0 && g.last_expression[0].tok == .name {
 						local := g.locals[g.last_expression[0].lit] or { FastcLocal{} }
-						local.typ
+						local.typ_text()
 					} else {
 						''
 					}
@@ -467,7 +468,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 			g.next()
 		}
 	}
-	g.last_expression_type = 'string'
+	g.last_expression_type = flat.source_type_id('string')
 	g.last_expression = [FastcExpressionToken{
 		tok: .string
 		lit: first_literal

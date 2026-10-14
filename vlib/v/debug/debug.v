@@ -3,6 +3,7 @@
 @[has_globals]
 module debug
 
+import v.flat
 import os
 import readline
 import strings
@@ -46,7 +47,7 @@ mut:
 // DebugContextVar holds the scope variable information
 pub struct DebugContextVar {
 	name  string // var name
-	typ   string // its type name
+	typ   u32    // its type name
 	value string // its str value
 }
 
@@ -55,7 +56,7 @@ pub struct DebugContextInfo {
 	is_anon           bool                       // cur fn is anon?
 	is_generic        bool                       // cur fn is a generic?
 	is_method         bool                       // cur fn is a bool?
-	receiver_typ_name string                     // cur receiver type name (method only)
+	receiver_typ_name u32                        // cur receiver type name (method only)
 	line              int                        // cur line number
 	file              string                     // cur file name
 	mod               string                     // cur module name
@@ -71,7 +72,7 @@ fn flush_println(s string) {
 // show_variable prints the variable info if found into the cur context
 fn (d DebugContextInfo) show_variable(var_name string, is_watch bool) {
 	if info := d.scope[var_name] {
-		flush_println('${var_name} = ${info.value} (${info.typ})')
+		flush_println('${var_name} = ${info.value} (${info.typ_text()})')
 	} else if !is_watch {
 		eprintln('[error] var `${var_name}` not found')
 	}
@@ -86,7 +87,7 @@ fn (d DebugContextInfo) show_watched_vars(watch_vars []string) {
 // show_scope prints the cur context scope variables
 fn (d DebugContextInfo) show_scope() {
 	for k, v in d.scope {
-		flush_println('${k} = ${v.value} (${v.typ})')
+		flush_println('${k} = ${v.value} (${v.typ_text()})')
 	}
 }
 
@@ -94,7 +95,7 @@ fn (d DebugContextInfo) show_scope() {
 fn (d DebugContextInfo) ctx() string {
 	mut s := strings.new_builder(512)
 	if d.is_method {
-		s.write_string('[${d.mod}] (${d.receiver_typ_name}) ${d.fn_name}')
+		s.write_string('[${d.mod}] (${d.receiver_typ_name_text()}) ${d.fn_name}')
 	} else {
 		s.write_string('[${d.mod}] ${d.fn_name}')
 	}
@@ -287,4 +288,16 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 			}
 		}
 	}
+}
+
+// typ_text resolves the indexed source type spelling.
+@[inline]
+pub fn (value &DebugContextVar) typ_text() string {
+	return flat.source_type_name(value.typ)
+}
+
+// receiver_typ_name_text resolves the indexed source type spelling.
+@[inline]
+pub fn (value &DebugContextInfo) receiver_typ_name_text() string {
+	return flat.source_type_name(value.receiver_typ_name)
 }
