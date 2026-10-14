@@ -1705,6 +1705,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 fn (mut tc TypeChecker) sort_parallel_check_errors() {
 	tc.errors.sort_with_compare(compare_type_errors)
 	tc.notices.sort_with_compare(compare_type_notices)
+	tc.library_sorted_notice_count = tc.notices.len
 	if tc.errors.len < 2 {
 		return
 	}
@@ -2801,6 +2802,7 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 		tc.statement_nodes[idx] = true
 	}
 	for idx, typ in tc.sparse_expr_type_values {
+		tc.invalidate_checked_type_id(idx)
 		tc.expr_type_values[idx] = typ
 		tc.expr_type_set[idx] = true
 	}
@@ -3205,21 +3207,27 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		receiver_id := tc.a.child(&node, 0)
 		receiver := tc.a.node(receiver_id)
 		if receiver.kind == .param && receiver.op == .dot {
-			receiver_type := unwrap_pointer(tc.parse_type(receiver.typ))
+			receiver_type := unwrap_all_pointers(tc.parse_type(receiver.typ))
 			if unalias_type(receiver_type) is MultiReturn {
 				tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ))
 			}
-			is_non_local_builtin := match receiver_type {
+			is_non_local_type := tc.cur_module != 'builtin' && match receiver_type {
 				Primitive, String, Char, Rune, ISize, USize, Array, ArrayFixed, Channel, Map,
 				FnType {
 					true
+				}
+				Alias, Struct, Interface, Enum, SumType {
+					receiver_name := receiver_type.name()
+					!receiver_name.starts_with('C.') && !receiver_name.starts_with('JS.')
+						&& tc.type_name_known(receiver_name)
+						&& !tc.source_module_declares_type(receiver_name)
 				}
 				else {
 					false
 				}
 			}
 			is_builtin_array_override := receiver_type is Array && node.value.ends_with('.map')
-			is_local_collection := match receiver_type {
+			is_local_collection := is_non_local_type && !is_builtin_array_override && match receiver_type {
 				Array {
 					tc.receiver_collection_payload_is_local(receiver_type.elem_type)
 				}
@@ -3230,10 +3238,21 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 					false
 				}
 			}
-			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override
-				&& !is_local_collection {
+			if is_non_local_type && !is_builtin_array_override && !is_local_collection {
 				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
-				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
+				receiver_generics := tc.fn_context.generic_params.filter(type_text_contains_symbol(receiver.typ,
+					it))
+				alias_name := if receiver_generics.len == 0 {
+					'AliasName'
+				} else {
+					'AliasName[${receiver_generics.join(', ')}]'
+				}
+				receiver_hint := if receiver_generics.len == 0 {
+					''
+				} else {
+					', and use `${alias_name}` as the receiver with matching generic method parameters'
+				}
+				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type ${alias_name} = ${receiver_text}`${receiver_hint}', receiver_id, receiver_pos)
 			}
 		}
 	}
@@ -3394,25 +3413,16 @@ fn (tc &TypeChecker) source_module_declares_type(type_name string) bool {
 		}
 	}
 	base_name := qualified_base.all_after_last('.')
-	mut module_name := ''
-	for idx in tc.top_level_idx {
-		node := tc.a.nodes[idx]
-		match node.kind {
-			.file {
-				module_name = ''
-			}
-			.module_decl {
-				module_name = node.value
-			}
-			.struct_decl, .type_decl, .interface_decl, .enum_decl {
-				decl_module := if module_name in ['', 'main'] { 'main' } else { module_name }
-				modules_match := decl_module == current_module
-				if modules_match && node.value.all_before('[').all_after_last('.') == base_name {
-					return true
-				}
-			}
-			else {}
+	// Ownership is indexed by module, independently of the method's source file.
+	decl_name := qualify_decl_name_in_module(base_name, current_module)
+	if declaration := tc.declaration_visibility[decl_name] {
+		decl_module := if declaration.module_name in ['', 'main'] {
+			'main'
+		} else {
+			declaration.module_name
 		}
+		return decl_module == current_module
+			&& declaration.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl]
 	}
 	return false
 }
@@ -4697,6 +4707,7 @@ fn par_check_clone_enabled() bool {
 	return os.getenv('V3_NO_PAR_CK_CLONE') == ''
 }
 
+@[direct_array_access]
 fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem) {
 	mut cache := CheckTypePromotionCache{}
 	mut names := CheckNamePromotionCache{}
@@ -4831,6 +4842,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		}
 	}
 	for idx, typ in w.sparse_expr_type_values {
+		tc.invalidate_checked_type_id(idx)
 		owned_type := if scoped {
 			tc.promote_check_type(typ)
 		} else {

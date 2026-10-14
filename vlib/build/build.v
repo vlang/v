@@ -76,6 +76,7 @@ pub fn (mut context BuildContext) task(config TaskParams) {
 		name:       config.name
 		help:       config.help
 		depends:    config.depends
+		repeatable: config.repeatable
 	}
 }
 
