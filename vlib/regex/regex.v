@@ -723,9 +723,22 @@ fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
 		}
 
 		// A leading or trailing minus is a literal, rather than a range separator.
+		//
+		// And so is a minus that follows a *completed* range. In `[a-z-0-9]` the
+		// second `-` has no single character to start a range from - `a-z` is a
+		// range, not a char - so taking it as a separator makes the range-end
+		// branch below overwrite `cc[tmp_index-1]` with an empty interval:
+		// `a-z` becomes `a..0`, and the class silently stops matching the letters
+		// it is made of.
+		//
+		// The condition reads the entry this class has written so far, bounded by
+		// `res_index` so it can never see the previous class's entries. Real PCRE2
+		// and Python both treat this minus as a literal.
 		if ch == `-` && (status == .start
 			|| (status == .in_char && i + char_len < in_txt.len
-				&& in_txt[i + char_len] == `]`)) {
+				&& in_txt[i + char_len] == `]`)
+			|| (status == .in_char && tmp_index > res_index
+				&& re.cc[tmp_index - 1].cc_type == cc_int)) {
 			re.cc[tmp_index].cc_type = cc_char
 			re.cc[tmp_index].ch0 = char_tmp
 			re.cc[tmp_index].ch1 = char_tmp
@@ -1570,7 +1583,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 
 			// match jump, if an OR chain the next token will be an OR token
 			mut pc2 := pc1 + 2
-			for pc2 < pc - 1 {
+			for pc2 < pc {
 				ist := re.prog[pc2].ist
 				if ist == ist_group_start {
 					re.prog[pc1 + 1].rep_max = re.prog[pc2].goto_pc + 1
@@ -1582,10 +1595,6 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				}
 
 				pc2++
-			}
-			// special case query of few chars, the true can't go on the first instruction
-			if re.prog[pc1 + 1].rep_max == pc1 {
-				re.prog[pc1 + 1].rep_max = 3
 			}
 			// println("Compile OR postproc. [${pc1},OR ${pc1+1},${pc2}]")
 			pc1 = pc2
@@ -1890,6 +1899,7 @@ pub mut:
 	last_dot_pc int = -1 // last dot chat pc
 }
 
+// match_base matches the compiled token program against the supplied byte buffer.
 @[direct_array_access]
 pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 	// result status
@@ -2555,6 +2565,10 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				// println("ist_quant_ng GROUP CLOSED OK group_index: ${state.group_index}")
 
 				state.i = re.group_stack[state.group_index]
+				if rep > 0 {
+					// A failed alternative in the next iteration must not erase prior matches.
+					state.match_index = state.i - 1
+				}
 				state.pc = tmp_pc
 				state.group_index--
 				m_state = .ist_next
@@ -2580,8 +2594,10 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 				if state.group_index == 0 {
 					state.group_index--
-					state.pc = tmp_pc // TEST
-					m_state = .ist_next
+					state.pc = tmp_pc
+					// Do not continue after a group that has not reached its minimum.
+					result = no_match_found
+					m_state = .stop
 					continue
 				}
 
