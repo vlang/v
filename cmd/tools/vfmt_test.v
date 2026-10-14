@@ -529,6 +529,21 @@ fn test_fmt_preserves_first_field_attributes_crossing_directives() {
 	}
 }
 
+fn test_fmt_normalizes_crlf_before_first_field_directives() {
+	for i, declaration in ['a   int', 'a, b   int'] {
+		want := 'struct First {\n\t@[required]\n\t// vfmt off\n\t${declaration}\n\t// vfmt on\n\tc int @[c]\n}\n'
+		res, formatted := run_vfmt_write('first_field_directive_crlf_${i}', want.replace('\n',
+			'\r\n'), '')
+		assert res.exit_code == 0, res.output
+		assert formatted == want, formatted
+		assert !formatted.contains('\r'), formatted
+		second_res, twice := run_vfmt_write('first_field_directive_crlf_${i}_twice', formatted,
+			'')
+		assert second_res.exit_code == 0, second_res.output
+		assert twice == formatted
+	}
+}
+
 fn test_fmt_formats_enabled_leading_attributes_after_vfmt_on() {
 	declarations := ['@[a] value   int=1+2', '@[a] x, y   int']
 	formatted_fields := ['value int = 1 + 2 @[a]', 'x int @[a]\n\ty int @[a]']

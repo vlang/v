@@ -2680,6 +2680,20 @@ fn test_formatter_preserves_first_field_attributes_crossing_directives() {
 	}
 }
 
+fn test_formatter_normalizes_crlf_in_directive_crossing_field_prefixes() {
+	for preceding_field in ['', '\tz int\n'] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for ending in ['\t// vfmt on\n\tc int @[c]\n}\n', '}\n'] {
+				source := 'struct First {\n${preceding_field}\t@[required]\n\t// vfmt off\n\t${declaration}\n${ending}'
+				out := vfmt('struct_field_directive_crlf_prefix', source.replace('\n', '\r\n'))
+				assert out == source, out
+				assert !out.contains('\r'), out
+				assert vfmt('struct_field_directive_crlf_prefix_twice', out) == out
+			}
+		}
+	}
+}
+
 fn test_formatter_preserves_first_field_directive_attributes_with_header_comments() {
 	source := '@[heap]\nstruct /* { header } */ First {\n\t@[required]\n\t// vfmt off\n\ta   int\n\t// vfmt on\n\tc int @[c]\n}\n'
 	out := vfmt('struct_first_field_directives_header_comment', source)

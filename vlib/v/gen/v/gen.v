@@ -4495,7 +4495,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, body_start int, end int, comp
 			if g.on_newline && g.out.len > 0 && g.out.last_n(1) == '\n' {
 				g.out.go_back(1)
 			}
-			g.out.write_string(g.source[g.source_end..f.pos.end])
+			g.out.write_string(g.source[g.source_end..f.pos.end].replace('\r\n', '\n'))
 			g.on_newline = false
 			g.skip_comments_before(f.pos.end)
 			g.source_end = f.pos.end
