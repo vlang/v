@@ -888,12 +888,11 @@ fn (mut g Parser) parse_one_global_declaration(mut out strings.Builder, mut init
 		fastc_write_prealloc_tls_global(mut out, typ, c_name, g.header_free)
 		// TinyCC needs pthreads for the TLS slot even when the program never spawns.
 		g.uses_pthread_tls = g.prefs.target.os in ['macos', 'linux']
-	} else if element_type := fastc_fixed_array_element_type(typ) {
-		// A fixed-array global is raw C storage, as the `= [N]T{}` form above.
-		length := fastc_fixed_array_length(typ) or { return g.unsupported('global `${name}` length') }
-		out.writeln('static ${element_type} ${c_name}[${length}];')
+	} else if declaration := fastc_fixed_array_field_declaration(typ, c_name) {
+		// Global fixed arrays use the same raw storage as fixed-array fields.
+		out.writeln('static ${declaration};')
 	} else {
-		out.writeln('static ${typ} ${c_name};')
+		out.writeln('static ${fastc_output_c_type(typ)} ${c_name};')
 	}
 	g.global_types[key] = typ
 	if g.tok != .assign && g.selfhost {
@@ -1075,7 +1074,12 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 			// the assignment/argument paths; a bare `(Variant){}` is not assignable to a
 			// boxed `{_object,_typ}` field.
 			default_actual_type := gen.last_expression_type
-			if gen.should_box_variant(field.typ, default_actual_type) {
+			if field.typ == 'IError' && gen.last_expression.len == 1
+				&& gen.last_expression[0].tok == .key_none {
+				// `none` in an error interface is the None__ implementation, not an option.
+				field.default_value = gen.interface_value_expression(field.typ, 'None__',
+					gen.render_empty_struct_initializer('None__'))
+			} else if gen.should_box_variant(field.typ, default_actual_type) {
 				field.default_value = gen.interface_value_expression(field.typ, default_actual_type, field.default_value)
 			}
 			if gen.tok == .semicolon {
@@ -1650,6 +1654,7 @@ fn (mut g Parser) parse_one_constant(mut values []FastcConstantValue, stops []to
 		return g.unsupported('constant `${name}` requires `=` or `:=` after its name, got `${g.token_source()}`')
 	}
 	g.next()
+	expression_start := g.s.pos
 	value := g.read_expression(stops)!
 	if value.len == 0 {
 		return g.unsupported('empty constant `${name}`')
@@ -1658,6 +1663,8 @@ fn (mut g Parser) parse_one_constant(mut values []FastcConstantValue, stops []to
 	c_name := g.constants[key] or { return g.unsupported('unregistered constant `${name}`') }
 	typ := fastc_normalize_inferred_type(g.last_expression_type)
 	is_runtime := g.constant_expression_requires_runtime_storage(g.last_expression, value)
+	// An inserted EOF semicolon leaves pos at the final operand's start.
+	dependencies := g.constant_source_dependencies(g.s.src[expression_start..g.s.offset])
 	if typ == '' && is_runtime {
 		return g.unsupported('unverifiable constant `${name}` type')
 	}
@@ -1667,10 +1674,28 @@ fn (mut g Parser) parse_one_constant(mut values []FastcConstantValue, stops []to
 		module_name:  g.module_name
 		value:        value
 		typ:          typ
-		dependencies: g.constant_expression_dependencies(g.last_expression)
+		dependencies: dependencies
 		is_runtime:   is_runtime
 	}
 	g.constant_types[key] = typ
+}
+
+// constant_source_dependencies retains references inside lowered expressions,
+// including interpolation operands that no longer appear in last_expression.
+fn (g &Parser) constant_source_dependencies(source string) []string {
+	mut scan := scanner.new_scanner(g.prefs, .normal)
+	file := token.File.unindexed(g.path, source.len)
+	scan.init(file, source)
+	mut tokens := []FastcExpressionToken{}
+	mut tok := scan.scan()
+	for tok != .eof {
+		tokens << FastcExpressionToken{
+			tok: tok
+			lit: scan.lit
+		}
+		tok = scan.scan()
+	}
+	return g.constant_expression_dependencies(tokens)
 }
 
 fn (g &Parser) constant_expression_dependencies(tokens []FastcExpressionToken) []string {

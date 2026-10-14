@@ -47,8 +47,13 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 				is_fixed_array:        true
 			}
 		}
-		value := g.render_call_argument_expression(value_tokens, expected_type) or { return none }
-		is_raw_fixed_array := value_tokens.len > 1 || (value_tokens.len == 1 && value_tokens[0].tok == .name && fastc_global_key(g.module_name, value_tokens[0].lit) in g.globals)
+		storage_tokens := fastc_strip_paren_tokens(value_tokens)
+		is_raw_fixed_array := g.fixed_array_uses_raw_storage(storage_tokens)
+		value := if is_raw_fixed_array {
+			g.render_member_receiver(storage_tokens) or { return none }
+		} else {
+			g.render_call_argument_expression(value_tokens, expected_type) or { return none }
+		}
 		copy_source := if is_raw_fixed_array {
 			value
 		} else if expected_type.ends_with('*') {
@@ -137,7 +142,17 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	// the "struct literal" is really the primitive's zero value; C rejects the empty `{}`.
 	if c_type != '' && open + 1 == close && fastc_primitive_c_type(fastc_normalize_inferred_type(g.underlying_alias_type(c_type))) != none {
 		return FastcRenderedExpression{
-			source: '((${c_type})0)'
+			source: if fastc_normalize_inferred_type(g.underlying_alias_type(c_type)) in [
+				'array',
+				'map',
+				'Option',
+				'__v_result',
+			]
+				|| (g.selfhost && g.underlying_alias_type(c_type) == 'string') {
+				'(${c_type}){0}'
+			} else {
+				'((${c_type})0)'
+			}
 			typ:    c_type
 		}
 	}

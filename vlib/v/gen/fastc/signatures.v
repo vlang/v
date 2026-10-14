@@ -172,6 +172,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			tok = scan.scan()
 			mut parameter_types := []string{}
 			mut parameter_mutability := []bool{}
+			mut parameter_constness := []bool{}
 			mut receiver_type := ''
 			mut receiver_key := ''
 			if tok == .lpar {
@@ -288,18 +289,19 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 					}
 					parameter_types << parameter_type
 					parameter_mutability << false
+					parameter_constness << false
 					tok = next_token
 					if tok == .comma {
 						tok = scan.scan()
 					}
 					continue
 				}
-				if tok !in [.name, .key_shared] {
+				if !fastc_token_can_be_decl_name(tok) {
 					return error('fastc parser does not support function `${name}` parameter token `${tok.str()}` in ${path}')
 				}
 				parameter_name_or_type := scan.lit
 				tok = scan.scan()
-				mut parameter_name_count := 1
+				mut parameter_names := [parameter_name_or_type]
 				if is_c_function && tok == .dot {
 					tok = scan.scan()
 					if parameter_name_or_type != 'C' || tok != .name {
@@ -307,6 +309,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 					}
 					parameter_types << scan.lit
 					parameter_mutability << false
+					parameter_constness << false
 					tok = scan.scan()
 					if tok == .comma {
 						tok = scan.scan()
@@ -328,6 +331,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 					}
 					parameter_types << parameter_type
 					parameter_mutability << false
+					parameter_constness << false
 					if tok == .comma {
 						tok = scan.scan()
 					}
@@ -338,7 +342,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 					if !fastc_token_can_be_decl_name(tok) {
 						return error('fastc parser does not support grouped function parameter token `${tok.str()}` in ${path}')
 					}
-					parameter_name_count++
+					parameter_names << scan.lit
 					tok = scan.scan()
 				}
 				if tok == .ellipsis {
@@ -352,11 +356,12 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				} else {
 					parameter_type
 				}
-				for _ in 0 .. parameter_name_count {
+				for parameter_name in parameter_names {
 					parameter_types << stored_parameter_type
 					parameter_mutability << parameter_is_mut
+					parameter_constness << is_c_function && parameter_name.starts_with('const_')
 				}
-				tok = next_token
+				tok = fastc_scan_skip_semicolons(mut scan, next_token)
 				if tok == .comma {
 					tok = scan.scan()
 					continue
@@ -397,6 +402,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			signature := FastcFunctionSignature{
 				parameter_types:          parameter_types
 				parameter_mutability:     parameter_mutability
+				parameter_constness:      parameter_constness
 				return_type:              return_type
 				return_types:             return_types
 				option_type:              option_type
@@ -478,7 +484,7 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 			parameter_is_mut = true
 			tok = scan.scan()
 		}
-		if tok in [.name, .key_shared] {
+		if tok in [.name, .key_shared, .key_module, .key_type] {
 			mut lookahead := scan
 			next_token := lookahead.scan()
 			if next_token in [.name, .amp, .and, .mul, .question, .not, .key_fn, .lsbr] {
@@ -492,7 +498,7 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 			parameter_type
 		}
 		parameter_mutability << parameter_is_mut
-		tok = next_token
+		tok = fastc_scan_skip_semicolons(mut scan, next_token)
 	}
 	tok = scan.scan()
 	mut return_type := 'void'
@@ -552,9 +558,14 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 		// so no source `.sort_with_compare(` reference surfaces; seed it (its body pulls in
 		// vqsort transitively) so it survives reachability pruning.
 		'sort_with_compare':        true
-		// Channel send/receive (`ch <- v` / `<-ch`) lower to `builtin__chan_try_push`/
-		// `builtin__chan_try_pop` in generated C, so no source `.try_push(`/`.try_pop(`
-		// reference surfaces; seed them so the chan stubs survive reachability pruning.
+		// Channel operations are emitted directly by the scanner lowering.
+		'new_channel_st':           true
+		'pop':                      true
+		'closed_error':             true
+		'closed':                   true
+		'len':                      true
+		'channel_select_lang':      true
+		'free':                     true
 		'try_push':                 true
 		'try_pop':                  true
 		'panic_result_not_set':     true
@@ -839,7 +850,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 				// `handle(Request) Response`. When a leading plain name is followed by
 				// another type token it is the parameter name; otherwise the name
 				// itself starts the (unnamed) type.
-				if tok in [.name, .key_shared] {
+				if tok in [.name, .key_shared, .key_module, .key_type] {
 					mut lookahead := scan
 					after := lookahead.scan()
 					if after !in [.comma, .rpar, .dot] {
@@ -853,7 +864,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 					parameter_type
 				}
 				parameter_mutability << parameter_is_mut
-				tok = next_token
+				tok = fastc_scan_skip_semicolons(mut scan, next_token)
 				if tok == .comma {
 					tok = scan.scan()
 				}
@@ -1097,7 +1108,7 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		} else {
 			parameter_type
 		}
-		tok = next_token
+		tok = fastc_scan_skip_semicolons(mut look, next_token)
 	}
 	tok = look.scan()
 	mut return_type := 'void'

@@ -404,13 +404,14 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	free(t.packed);
 }'
 		} else {
-			waiter = 'static ${value_type} ${wait_name}(${thread_type} t) {
+			result_type := fastc_output_c_type(value_type)
+			waiter = 'static ${result_type} ${wait_name}(${thread_type} t) {
 	int join_code = pthread_join(t.handle, NULL);
 	if (join_code != 0) {
 		fprintf(stderr, "spawn: thread join failed (%d)\\n", join_code);
 		exit(1);
 	}
-	${value_type} result = *(${value_type} *)t.packed;
+	${result_type} result = *(${result_type} *)t.packed;
 	free(t.packed);
 	return result;
 }'
@@ -432,7 +433,7 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	run_name := g.fastc_unclaimed_generated_name('__vf_spawn_run_${target_stem}')
 	mut fields := ''
 	if value_type != '' {
-		fields += '\t${value_type} result;\n'
+		fields += '\t${fastc_output_c_type(value_type)} result;\n'
 	}
 	if value_type == '' && parameter_types.len == 0 {
 		// C forbids empty struct definitions.
@@ -442,12 +443,12 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	mut fills := ''
 	mut forwards := ''
 	for index, parameter_type in parameter_types {
-		fields += '\t${parameter_type} arg${index};\n'
+		fields += '\t${fastc_output_c_type(parameter_type)} arg${index};\n'
 		if index > 0 {
 			parameters += ', '
 			forwards += ', '
 		}
-		parameters += '${parameter_type} arg${index}'
+		parameters += '${fastc_output_c_type(parameter_type)} arg${index}'
 		fills += '\targs->arg${index} = arg${index};\n'
 		forwards += 'args->arg${index}'
 	}
