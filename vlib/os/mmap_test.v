@@ -76,6 +76,30 @@ fn test_mmap_sync_rejects_read_only_mapping() {
 	assert false, 'read-only mappings must reject sync consistently across platforms'
 }
 
+fn test_mmap_simultaneous_read_only_and_read_write_views() {
+	path := mmap_tmp('v_mmap_shared_views.bin')
+	os.write_file(path, 'aaaa')!
+	defer { os.rm(path) or {} }
+	mut reader := os.mmap_open(path, .read_only)!
+	defer { reader.close() }
+	mut first := os.mmap_open(path, .read_write)!
+	defer { first.close() }
+	mut second := os.mmap_open(path, .read_write)!
+	defer { second.close() }
+	// All views remain open; only the read-write views are modified.
+	read_view := unsafe { reader.bytes() }
+	mut first_view := unsafe { first.bytes() }
+	mut second_view := unsafe { second.bytes() }
+	first_view[0] = `b`
+	first.sync()!
+	assert read_view[0] == `b`
+	assert second_view[0] == `b`
+	second_view[1] = `c`
+	second.sync()!
+	assert read_view[1] == `c`
+	assert first_view[1] == `c`
+}
+
 fn test_mmap_empty_errors() {
 	path := mmap_tmp('v_mmap_test_e.txt')
 	os.write_file(path, '') or { panic('must write: ${err}') }

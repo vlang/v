@@ -17,6 +17,10 @@ values. If the operating system cannot provide an environment block, it returns 
 On Windows, `os.input()` supports both console and redirected standard input.
 It returns an empty string when the standard input handle is invalid.
 
+### Memory-mapped files
+
+See [memory-mapped files](mmap.md) for file mappings and safe use of their byte views.
+
 ### Path helpers
 
 Windows short-path expansion counts output capacity in UTF-16 characters and reports an
@@ -347,17 +351,3 @@ pipe does not append a previous chunk again. Commands with no output return an e
 
 `os.write_file_array()` closes its file even when writing fails, including when a device is full
 or a pipe reader closes. The write error is still returned to the caller.
-
-### Memory-mapped files
-
-`mmap_open(path, .read_only)` or `.read_write` maps an existing nonempty file.
-`mmap_create(path, length)` creates or truncates a file to a positive, zero-filled length
-and maps it read-write. Lengths larger than a V array can represent are rejected before creation
-or truncation. Windows paths support Unicode.
-
-`len()` reports mapped bytes. `bytes()` is unsafe because it returns a zero-copy view:
-keep the mapping open, do not resize or free the view, and never modify a read-only mapping.
-The underlying file must not be truncated while a view is in use.
-`sync()` requests write-back of a read-write mapping; Windows also flushes the retained file handle.
-Read-only and closed mappings return an error from `sync()`.
-`close()` releases the mapping and invalidates all earlier views; repeated close calls are harmless.

@@ -8,7 +8,7 @@ fn C.FlushViewOfFile(addr voidptr, nbytes usize) i32
 
 const mmap_generic_read = u32(0x80000000)
 const mmap_generic_write = u32(0x40000000)
-const mmap_file_share_read = u32(1)
+const mmap_file_share_read_write = u32(3)
 const mmap_open_existing = u32(3)
 const mmap_create_always = u32(2)
 const mmap_attr_normal = u32(0x80)
@@ -23,7 +23,7 @@ const mmap_map_write = u32(0x02)
 fn mmap_map_windows(path string, len u64, write bool, create bool) !(voidptr, voidptr, voidptr) {
 	access := if write { mmap_generic_read | mmap_generic_write } else { mmap_generic_read }
 	creation := if create { mmap_create_always } else { mmap_open_existing }
-	h_file := C.CreateFileW(path.to_wide(), access, mmap_file_share_read, unsafe { nil },
+	h_file := C.CreateFileW(path.to_wide(), access, mmap_file_share_read_write, unsafe { nil },
 		creation, mmap_attr_normal, unsafe { nil })
 	if h_file == voidptr(-1) {
 		return error('os: cannot open `${path}` for mapping')
