@@ -5587,7 +5587,10 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 		'runtime/used_memory_windows.c.v' { return include_arg == '<psapi.h>' }
 		'crypto/rand/internal/rand_windows.c.v' { return include_arg == '<bcrypt.h>' }
 		'time/timerfd.c.v' { return include_arg == '<sys/timerfd.h>' }
-		'v/workers/thread_nix.c.v' { return include_arg == '<sys/prctl.h>' }
+		'v/workers/thread_nix.c.v' {
+			return include_arg == '<sys/prctl.h>'
+				|| normalized_c_include_arg_path(include_arg) == root + '/vlib/v/pthread_helper.h'
+		}
 		'v/gen/fastc/unit_compile_nix.c.v' { return include_arg == '<signal.h>' }
 		'v/diagserver/diagserver_linux.c.v' {
 			return include_arg in ['<errno.h>', '<signal.h>', '<sys/file.h>', '<sys/wait.h>',
