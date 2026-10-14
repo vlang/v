@@ -179,7 +179,7 @@ pub fn answer() int {
 	out_lib := os.join_path(tmp_dir, 'shared_pic_dep')
 	out_path := out_lib + shared_flag_library_postfix()
 	compile_shared :=
-		os.exec([v3_bin, '-shared', '-o', '${out_lib}', lib_dir])
+		os.exec([v3_bin, '-v', '-shared', '-o', '${out_lib}', lib_dir])
 	assert compile_shared.exit_code == 0, compile_shared.output
 	assert compile_shared.output.contains('-fPIC'), compile_shared.output
 	cached_after_shared := shared_flag_cached_objects(obj_path)
