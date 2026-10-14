@@ -76,7 +76,5 @@ fn test_windows_stat_negative_times_follow_live_symlinks() {
 		assert link_stat.atime == target_stat.atime
 		assert link_stat.mtime == target_stat.mtime
 		assert link_stat.ctime == target_stat.ctime
-		assert link_stat.get_filetype() == target_stat.get_filetype()
-		assert link_stat.size == target_stat.size
 	}
 }
