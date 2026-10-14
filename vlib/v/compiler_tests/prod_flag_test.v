@@ -58,19 +58,23 @@ fn test_c99_flag_emits_linux_feature_macros_in_headerless_preamble() {
 	assert build.exit_code == 0, build.output
 
 	out_c := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_hello.c')
-	compile := os.exec([v3_bin, '-c99', '${hello_src}', '-o', '${out_c}'])
+	src := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_hello_${os.getpid()}.v')
+	os.write_file(src, "fn main() { message := 'hello world'; println(message) }\n")!
+	defer { os.rm(src) or {} }
+	compile := os.exec([v3_bin, '-c99', '-o', '${out_c}', '${src}'])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(out_c) or { panic(err) }
+	preamble := c_code[..if c_code.len < 200 { c_code.len } else { 200 }]
 	gnu_idx := c_code.index('#define _GNU_SOURCE') or { -1 }
 	posix_idx := c_code.index('#define _POSIX_C_SOURCE 200809L') or { -1 }
 	typedef_idx := c_code.index('typedef signed char i8;') or { -1 }
-	assert gnu_idx >= 0, c_code[..200]
-	assert posix_idx >= 0, c_code[..200]
-	assert typedef_idx >= 0, c_code[..200]
-	assert gnu_idx < typedef_idx, c_code[..200]
-	assert posix_idx < typedef_idx, c_code[..200]
-	assert !has_non_runtime_include(c_code), c_code[..200]
+	assert gnu_idx >= 0, preamble
+	assert posix_idx >= 0, preamble
+	assert typedef_idx >= 0, preamble
+	assert gnu_idx < typedef_idx, preamble
+	assert posix_idx < typedef_idx, preamble
+	assert !has_non_runtime_include(c_code), preamble
 }
 
 // test_c99_flag_uses_headerless_stdatomic_fallback validates this v3 regression case.

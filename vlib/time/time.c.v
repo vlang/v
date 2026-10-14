@@ -5,8 +5,6 @@ module time
 
 import strings
 
-#include <time.h>
-
 // C.timeval represents a C time value.
 pub struct C.timeval {
 pub:

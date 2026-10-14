@@ -1,54 +1,67 @@
 # vviewer
-Image viewer for V
 
-This is an example of a simple image viewer written in V.
+Image viewer for V, built with `gg`/sokol and the pure-V decoders from
+[`vlib/image/decoders`](../../vlib/image/decoders/README.md). No
+`stbi`/stb_image is involved: JPEG, PNG, BMP, WEBP, TIFF, and GIF bytes
+are decoded by our own V code.
+
+## Build and run
+
+From this directory:
+
+```sh
+v run .            # run
+v -prod .          # optimized build
+```
+
+A C compiler is required (the sokol backend is C). The viewer renders
+through the standard sokol backend (OpenGL on Linux, D3D11 on Windows,
+Metal on macOS); no custom shader compilation is needed.
 
 ## Usage
 
-The program can be invoked by the command line:
+Command line — mix files, folders, and zip archives:
 
-file list: `viewer img1.jpg inmg2.bmp img3.tga`
-folder list: `viewer folder1 folder2`
-zip list: `viewer folder1.zip folder2.zip`
+```sh
+viewer img1.jpg img2.bmp folder1 folder2.zip
+```
 
-All folders/zips are scanned for images.
-The user can mix files, folders, and zips.
+All folders and zips are scanned for images. You can also start the
+viewer with no arguments and drag and drop files, folders, or zips onto
+the window.
 
-mixed list: `viewer img1.jpg img2.bmp folder1 folder2 img2.tga folder1.zip` 
+Accepted extensions: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.gif`, `.webp`,
+`.tiff`, and `.zip` archives containing them.
 
-## Interactive usage
+## Controls
 
-Run the viewer then drag and drop files,folders and zips on it.
+| Input                    | Action                        |
+| ------------------------ | ----------------------------- |
+| `ESC` / `q`              | Quit                          |
+| `right` / `left`         | Next / previous image         |
+| `up` / `down`            | Next / previous folder        |
+| `F`                      | Toggle full screen            |
+| `R`                      | Rotate 90 degrees             |
+| `I`                      | Toggle info text              |
+| `P`                      | Pause / play animation        |
+| `H`                      | Toggle help                   |
+| `1` / `2` / `3`          | Sort by name / date / as loaded |
+| Mouse wheel              | Next / previous image         |
+| Left mouse button (hold) | Pan                           |
+| Right mouse button (hold)| Zoom                          |
+| Middle mouse button      | Reset view / fill window      |
 
-## Accepted image format
+Animation players and their encoded input are released when switching images,
+including builds with `-gc none`.
 
-JPEG, PNG, BMP, PSD, TGA, GIF (not animated), HDR, PIC, PNM
+## Limitations
 
-#### Functions
-The user can navigate through the files passed to the viewer.
-The following operations can be performed on each image:
-
-- **Pan**, move over the image
-- **Zoom**, magnify or reduce the image
-- **Rotate**, rotate by 90 degree steps
-
-## Key bindings		
-
-**H** - show this help
-
-**ESC/q** - Quit
-**cursor right**  - Next image
-**cursor  left**  - Previous image
-**cursor  up**    - Next folder
-**cursor  down**  - Previous folder
-**F** - Toggle full screen
-**R** - Rotate image of 90 degree
-**I** - Toggle the info text
-
-**mouse wheel** - next/previous images
-Hold **left  Mouse button** - Pan on the image
-Hold  **right Mouse button** - Zoom on the image
-
-#### Author:
-
-Dario Deledda 2021 (c)
+- Animated GIF and animated WEBP are played back frame by frame. APNG
+  files decode, but the viewer shows the static (first) frame only.
+- Multi-page TIFF files show the first page only.
+- 16-bit PNG and 12-bit JPEG are scaled down to 8-bit RGBA for display.
+- Zip archives opened through the bundled miniz library cannot be opened
+  directly from paths with non-ASCII characters on Windows; the viewer
+  works around this by copying the archive to an ASCII-only temp file.
+- The viewer displays images; it does not write or convert them. Use the
+  decoder packages directly for that.

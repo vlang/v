@@ -617,8 +617,8 @@ pub fn (t Time) clean() string {
 
 // clean12 returns a date string in a clean form.
 // It has the following format:
-// - a date string in "hh:mm" format (12h) for current day
-// - a date string in "MMM D hh:mm" format (12h) for date of current year
+// - a date string in "h:mm a.m./p.m." format (12h) for current day
+// - a date string in "MMM D h:mm a.m./p.m." format (12h) for date of current year
 // - a date string formatted with format function for other dates
 pub fn (t Time) clean12() string {
 	znow := now()

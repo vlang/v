@@ -90,7 +90,7 @@ fn fastc_constant_key(module_name string, name string) string {
 
 fn fastc_c_constant_name(module_name string, name string) string {
 	module_prefix := if module_name == '' { 'main' } else { module_name }
-	return '${module_prefix.replace('.', '__')}__${name}'
+	return '${fastc_c_module_name(module_prefix)}__${name}'
 }
 
 fn fastc_global_key(module_name string, name string) string {

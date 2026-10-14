@@ -1,6 +1,6 @@
 module bench
 
-#insert "@VMODROOT/vlib/v/bench/peak_rss.h"
+#flag @VMODROOT/vlib/v/bench/peak_rss.o
 
 fn C.v3_bench_peak_rss_kb() i64
 
