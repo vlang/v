@@ -348,6 +348,33 @@ fn main() {
 	assert !binary.contains('\x00gettid\x00')
 }
 
+// The gettid helper declares `syscall` itself: a strict feature mode such as
+// `-D_POSIX_C_SOURCE=200809L` hides glibc's declaration in <unistd.h>.
+fn test_fastc_glibc_gettid_helper_compiles_in_a_strict_feature_mode() {
+	$if !(linux && glibc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_strict_gettid_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'strict.c')
+	os.write_file(source, c_selfhost_preamble_includes + c_selfhost_post_directives +
+		'int main(void) { return gettid() == getpid() ? 0 : 1; }\n') or { panic(err) }
+	program := os.join_path(root, 'strict')
+	tcc_base := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib', 'tcc')
+	compiled := cmdexec.run(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe'), [
+		'-B${tcc_base}',
+		'-D_POSIX_C_SOURCE=200809L',
+		'-Werror=implicit-function-declaration',
+		'-o',
+		program,
+		source,
+	])
+	assert compiled.exit_code == 0, compiled.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+}
+
 fn test_fastc_glibc_gettid_declares_syscall_with_strict_feature_flags() {
 	$if !macos && !linux {
 		return

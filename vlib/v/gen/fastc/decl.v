@@ -1296,6 +1296,12 @@ fn fastc_v_code_names(source string, start int, nested bool, name string) (int, 
 			i = end
 		} else if c == `\`` {
 			i = fastc_c_literal_end(source, i)
+		} else if c == `/` && i + 1 < source.len && source[i + 1] == `/` {
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+		} else if c == `/` && i + 1 < source.len && source[i + 1] == `*` {
+			i = fastc_v_block_comment_end(source, i)
 		} else if c.is_alnum() || c == `_` {
 			mut end := i + 1
 			for end < source.len && (source[end].is_alnum() || source[end] == `_`) {
@@ -1329,6 +1335,28 @@ fn fastc_v_code_names(source string, start int, nested bool, name string) (int, 
 		}
 	}
 	return i, false
+}
+
+// fastc_v_block_comment_end returns the index just past the V block comment, which may
+// nest, that opens at `start`.
+fn fastc_v_block_comment_end(source string, start int) int {
+	mut depth := 0
+	mut i := start
+	for i + 1 < source.len {
+		if source[i] == `/` && source[i + 1] == `*` {
+			depth++
+			i += 2
+		} else if source[i] == `*` && source[i + 1] == `/` {
+			depth--
+			i += 2
+			if depth == 0 {
+				return i
+			}
+		} else {
+			i++
+		}
+	}
+	return source.len
 }
 
 // fastc_v_string_names searches the interpolations of the V string literal that opens at
