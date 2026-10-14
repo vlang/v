@@ -21,6 +21,8 @@ returns `true` for that round, identifying its leader. Other waits return `false
 A completed round resets the arrival count automatically. With one participant, every
 wait returns immediately with `true`.
 
+## Timers
+
 Use a timer when a wait needs to participate in a `select`:
 
 ```v
