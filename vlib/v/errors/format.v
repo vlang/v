@@ -14,8 +14,35 @@ fn formatted_message(kind string, message string) string {
 	return '${ansi.bold(ansi.color(kind, kind))} ${flat.demangle_named_variants(message)}'
 }
 
+// DiagnosticRun holds what the diagnostics of one report share: the working directory, the
+// resolved path of each file named so far and the text of the one named last. Resolving a
+// path and reading a file take system calls that cost far more than formatting a message,
+// and a report names the same few files again and again. A run assumes that neither the working directory nor
+// the reported files change while it is used.
+pub struct DiagnosticRun {
+mut:
+	paths_known  bool
+	absolute     bool
+	workdir      string
+	shown_paths  map[string]string
+	source_known bool
+	source_read  bool
+	source_name  string
+	source       string
+	// Where the line `cursor_line` of `source` starts, 0 when no line was located yet.
+	cursor_line   int
+	cursor_offset int
+}
+
 // formatted_error renders a compiler diagnostic with v1-compatible colors and source context.
 pub fn formatted_error(kind string, message string, a &flat.FlatAst, node flat.NodeId, pos token.Pos) string {
+	mut run := DiagnosticRun{}
+	return run.formatted_error(kind, message, a, node, pos)
+}
+
+// formatted_error renders a compiler diagnostic like the function of the same name, sharing
+// the work the diagnostics of this run have in common.
+pub fn (mut run DiagnosticRun) formatted_error(kind string, message string, a &flat.FlatAst, node flat.NodeId, pos token.Pos) string {
 	if pos.is_valid() {
 		file := a.source_files[pos.id] or { return formatted_message(kind, message) }
 		action_message := if action := a.template_actions[pos.id] {
@@ -23,8 +50,8 @@ pub fn formatted_error(kind string, message string, a &flat.FlatAst, node flat.N
 		} else {
 			message
 		}
-		result := formatted_source_error(kind, action_message, file, pos)
-		return append_template_call_stack(result, kind, a, pos)
+		result := run.formatted_source_error(kind, action_message, file, pos)
+		return run.append_template_call_stack(result, kind, a, pos)
 	}
 	if int(node) < 0 || int(node) >= a.nodes.len {
 		return formatted_message(kind, message)
@@ -36,8 +63,8 @@ pub fn formatted_error(kind string, message string, a &flat.FlatAst, node flat.N
 	} else {
 		message
 	}
-	result := formatted_source_error(kind, action_message, file, n.pos)
-	return append_template_call_stack(result, kind, a, n.pos)
+	result := run.formatted_source_error(kind, action_message, file, n.pos)
+	return run.append_template_call_stack(result, kind, a, n.pos)
 }
 
 // formatted_parser_error renders a parser diagnostic with template call-site context.
@@ -48,17 +75,18 @@ pub fn formatted_parser_error(message string, a &flat.FlatAst, pos token.Pos) st
 // formatted_parser_diagnostic renders a colored parser diagnostic with template call-site context.
 pub fn formatted_parser_diagnostic(kind string, message string, a &flat.FlatAst, pos token.Pos) string {
 	file := a.source_files[pos.id] or { return formatted_message(kind, message) }
-	result := formatted_source_error(kind, message, file, pos)
-	return append_template_call_stack(result, kind, a, pos)
+	mut run := DiagnosticRun{}
+	result := run.formatted_source_error(kind, message, file, pos)
+	return run.append_template_call_stack(result, kind, a, pos)
 }
 
-fn append_template_call_stack(result string, kind string, a &flat.FlatAst, pos token.Pos) string {
+fn (mut run DiagnosticRun) append_template_call_stack(result string, kind string, a &flat.FlatAst, pos token.Pos) string {
 	mut output := result
 	for call_pos in template_call_positions(a, pos) {
 		if call_file := a.source_files[call_pos.id] {
 			position := call_file.logical_position(call_pos)
-			path := relative_error_path(position.filename)
-			context_full := formatted_source_error(kind, '', call_file, call_pos)
+			path := run.relative_path(position.filename)
+			context_full := run.formatted_source_error(kind, '', call_file, call_pos)
 			context := context_full.all_after_first('\n')
 			output += '\ncalled from ${path}:${position.line}:${position.column}'
 			if context.len > 0 {
@@ -92,8 +120,13 @@ fn template_call_positions(a &flat.FlatAst, pos token.Pos) []token.Pos {
 // comes from the logical file, when it is another file that can be read, like C compilers
 // show it; otherwise it is just the source line of the span, numbered as its logical line.
 pub fn formatted_source_error(kind string, message string, file &token.File, pos token.Pos) string {
+	mut run := DiagnosticRun{}
+	return run.formatted_source_error(kind, message, file, pos)
+}
+
+fn (mut run DiagnosticRun) formatted_source_error(kind string, message string, file &token.File, pos token.Pos) string {
 	position := file.logical_position(pos)
-	path := relative_error_path(position.filename)
+	path := run.relative_path(position.filename)
 	mut result := strings.new_builder(message.len + 256)
 	reported_column := if pos.reported_column() > 0 {
 		pos.reported_column()
@@ -111,8 +144,9 @@ pub fn formatted_source_error(kind string, message string, file &token.File, pos
 		physical_line := file.find_line(pos.offset)
 		if position.filename != file.name || position.line != physical_line {
 			if position.filename != file.name {
-				if source := os.read_file(position.filename) {
-					lines := source.split_into_lines()
+				if source := run.read_source(position.filename) {
+					lines := run.source_lines_through(source, position.line - source_context_before,
+						position.line + source_context_after)
 					if position.line <= lines.len {
 						write_source_excerpt(mut result, kind, lines, position.line, span_start,
 							span_end)
@@ -120,8 +154,8 @@ pub fn formatted_source_error(kind string, message string, file &token.File, pos
 					}
 				}
 			}
-			source := os.read_file(file.name) or { return result.str().trim_right('\n') }
-			lines := source.split_into_lines()
+			source := run.read_source(file.name) or { return result.str().trim_right('\n') }
+			lines := run.source_lines_through(source, physical_line, physical_line)
 			if physical_line <= lines.len {
 				write_source_line(mut result, kind, lines[physical_line - 1], position.line, true,
 					true, span_start, span_end)
@@ -129,13 +163,97 @@ pub fn formatted_source_error(kind string, message string, file &token.File, pos
 			return result.str().trim_right('\n')
 		}
 	}
-	source := os.read_file(file.name) or { return result.str().trim_right('\n') }
-	lines := source.split_into_lines()
+	source := run.read_source(file.name) or { return result.str().trim_right('\n') }
+	lines := run.source_lines_through(source, position.line - source_context_before,
+		position.line + source_context_after)
 	if lines.len == 0 {
 		return result.str().trim_right('\n')
 	}
 	write_source_excerpt(mut result, kind, lines, position.line, span_start, span_end)
 	return result.str().trim_right('\n')
+}
+
+// source_lines_through returns the lines `source.split_into_lines()` holds up to the 1-based
+// line `last_line`: all of them when the source is shorter, the first `last_line` otherwise.
+// Lines before `first_line` are left empty. A diagnostic prints a few lines around its
+// position, so its whole file, often thousands of lines long, is not copied line by line.
+fn source_lines_through(source string, first_line int, last_line int) []string {
+	return source_lines_from(source, 0, 1, first_line, last_line)
+}
+
+// source_lines_from is source_lines_through for a source whose line `start_line`, no later
+// than `first_line` or the first line, is known to start at `start_offset`.
+@[direct_array_access]
+fn source_lines_from(source string, start_offset int, start_line int, first_line int, last_line int) []string {
+	mut lines := []string{len: start_line - 1}
+	// An empty source has no lines; any other has a first one to count.
+	limit := int_max(1, last_line)
+	mut line_start := start_offset
+	for i := start_offset; i < source.len; i++ {
+		if line_start > i {
+			continue
+		}
+		c := source[i]
+		if c != `\n` && c != `\r` {
+			continue
+		}
+		lines << if line_start == i || lines.len + 1 < first_line {
+			''
+		} else {
+			source[line_start..i]
+		}
+		line_start = if c == `\r` && i + 1 < source.len && source[i + 1] == `\n` {
+			i + 2
+		} else {
+			i + 1
+		}
+		if lines.len >= limit {
+			return lines
+		}
+	}
+	if line_start < source.len {
+		lines << if lines.len + 1 < first_line { '' } else { source[line_start..] }
+	}
+	return lines
+}
+
+// source_lines_through returns what the function of the same name does for the source
+// read last. The diagnostics of one file come in the order of their lines, so the search
+// for a line starts where the one before it was found rather than at the top of the file.
+@[direct_array_access]
+fn (mut run DiagnosticRun) source_lines_through(source string, first_line int, last_line int) []string {
+	if !run.source_read || source.str != run.source.str || source.len != run.source.len {
+		return source_lines_through(source, first_line, last_line)
+	}
+	target := int_min(int_max(1, first_line), int_max(1, last_line))
+	mut line := 1
+	mut line_start := 0
+	if run.cursor_line > 0 && run.cursor_line <= target {
+		line = run.cursor_line
+		line_start = run.cursor_offset
+	}
+	for i := line_start; line < target && i < source.len; i++ {
+		if line_start > i {
+			continue
+		}
+		c := source[i]
+		if c != `\n` && c != `\r` {
+			continue
+		}
+		line_start = if c == `\r` && i + 1 < source.len && source[i + 1] == `\n` {
+			i + 2
+		} else {
+			i + 1
+		}
+		line++
+	}
+	if line < target {
+		// The source ends before the first line asked for.
+		return []string{len: if line_start < source.len { line } else { line - 1 }}
+	}
+	run.cursor_line = line
+	run.cursor_offset = line_start
+	return source_lines_from(source, line_start, line, first_line, last_line)
 }
 
 // write_source_excerpt writes the lines around `target_line` of `lines`, and highlights
@@ -381,13 +499,47 @@ fn valid_utf8_sequence_len(text string, index int) int {
 }
 
 fn relative_error_path(path string) string {
+	mut run := DiagnosticRun{}
+	return run.relative_path(path)
+}
+
+// relative_path is the reported spelling of `path`: resolved, and relative to the working
+// directory unless VERROR_PATHS asks for absolute paths.
+fn (mut run DiagnosticRun) relative_path(path string) string {
+	if shown := run.shown_paths[path] {
+		return shown
+	}
 	mut normalized := os.real_path(path).replace('\\', '/')
-	if os.getenv('VERROR_PATHS') == 'absolute' {
-		return normalized
+	if !run.paths_known {
+		run.absolute = os.getenv('VERROR_PATHS') == 'absolute'
+		if !run.absolute {
+			run.workdir = os.getwd().replace('\\', '/').trim_right('/') + '/'
+		}
+		run.paths_known = true
 	}
-	workdir := os.getwd().replace('\\', '/').trim_right('/') + '/'
-	if normalized.starts_with(workdir) {
-		normalized = normalized[workdir.len..]
+	if !run.absolute && normalized.starts_with(run.workdir) {
+		normalized = normalized[run.workdir.len..]
 	}
+	run.shown_paths[path] = normalized
 	return normalized
+}
+
+// read_source reads `name` like os.read_file, once for consecutive diagnostics of one file.
+fn (mut run DiagnosticRun) read_source(name string) ?string {
+	if !run.source_known || run.source_name != name {
+		run.source_name = name
+		run.source_known = true
+		run.cursor_line = 0
+		if source := os.read_file(name) {
+			run.source = source
+			run.source_read = true
+		} else {
+			run.source = ''
+			run.source_read = false
+		}
+	}
+	if run.source_read {
+		return run.source
+	}
+	return none
 }
