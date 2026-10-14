@@ -265,6 +265,17 @@ fn test_split_empty_delimiter_is_rune_wise() {
 	assert 'ABCDEF'.split('') == ['A', 'B', 'C', 'D', 'E', 'F']
 }
 
+fn test_split_empty_delimiter_preserves_invalid_utf8_without_crossing_boundaries() {
+	bytes := [u8(0xe2), 0x82, `A`, 0xff, 0xc2]
+	text := bytes.bytestr()
+	parts := text.split('')
+	assert parts.map(it.bytes()) == bytes.map([it])
+	assert parts.join('') == text
+	assert text.rsplit('').map(it.bytes()) == bytes.reverse().map([it])
+	assert text.split_nth('', 2) == [text[..1], text[1..]]
+	assert text.rsplit_nth('', 2) == [text[4..], text[..4]]
+}
+
 fn test_rsplit_empty_delimiter_is_rune_wise() {
 	assert 'αβγδ'.rsplit('') == ['δ', 'γ', 'β', 'α']
 	assert '日本語'.rsplit('') == ['語', '本', '日']

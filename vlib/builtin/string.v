@@ -1157,7 +1157,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 			// whole character and the `nth` remainder slots on a rune boundary.
 			mut i := 0
 			for i < s.len {
-				_, char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+				_, mut char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
 				if char_len < 1 {
 					// Should not happen for valid UTF-8, but a zero or negative
 					// step would loop for ever, so advance defensively.
@@ -1217,6 +1217,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
 // When splitting at a nonempty delimiter, an end match produces an empty first part.
+// An empty delimiter splits complete UTF-8 runes in reverse order.
 @[direct_array_access]
 pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	mut res := []string{}
@@ -1230,7 +1231,7 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 			mut ends := []int{cap: 8}
 			mut i := 0
 			for i < s.len {
-				_, char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+				_, mut char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
 				if char_len < 1 {
 					char_len = 1
 				}

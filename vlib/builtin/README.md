@@ -47,6 +47,10 @@ String interpolation of a `voidptr` uses the hexadecimal address without the pre
 
 ### Splitting by characters
 
+With an empty delimiter, `split` and `rsplit` split complete UTF-8 runes, preserving malformed
+bytes as individual parts. Their `split_nth` and `rsplit_nth` variants keep the final remainder
+on a rune boundary. For example, `'αβγ'.split_nth('', 2)` produces `['α', 'βγ']`.
+
 `split_any` and `rsplit_any` match complete UTF-8 runes from their delimiter string.
 Malformed bytes are treated as U+FFFD, matching `string.runes()`. The reverse form
 returns parts in reverse order.
