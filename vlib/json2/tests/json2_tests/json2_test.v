@@ -21,7 +21,7 @@ fn test_fast_raw_decode() {
 		json.Any('')
 	}
 	str := o.str()
-	assert str == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
+	assert str == '{"age":28,"name":"Peter","salary":95000.5,"title":2}'
 }
 
 struct StructType[T] {
