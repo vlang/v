@@ -218,7 +218,7 @@ if !ERRORLEVEL! NEQ 0 (
 call :build_stage_with_clang
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
-"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!clang_exe!" -cflags "--target=!clang_target!" -o "%V_UPDATED%" cmd/v
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !clang_vflags! -o "%V_UPDATED%" cmd/v
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE%"
 if !stage_error! NEQ 0 goto :compile_error
@@ -500,13 +500,40 @@ if [!resolved_exe!] == [] (
 	exit /b 1
 )
 set "clang_exe=!resolved_exe!"
-if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set clang_target=i686-w64-mingw32 ) else ( set clang_target=x86_64-w64-mingw32 )
+REM Keep Clang's installed target and sysroot together. Visual Studio's Clang
+REM has an MSVC SDK, while LLVM-MinGW supplies its own GNU Windows runtime.
+set "clang_target="
+for /f "delims=" %%i in ('""!clang_exe!" -dumpmachine 2^>nul"') do set "clang_target=%%i"
+if [!clang_target!] == [] (
+	echo  ^> Could not determine Clang's default target
+	exit /b 1
+)
+call :configure_clang_target
+if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with Clang
-"!clang_exe!" %VC_BOOTSTRAP_DEFINE% --target=!clang_target! -std=c99 -municode -g -w -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+if !clang_msvc! EQU 1 (
+	"!clang_cl_exe!" /nologo %VC_BOOTSTRAP_DEFINE% /bigobj /MD /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
+) else (
+	"!clang_exe!" %VC_BOOTSTRAP_DEFINE% -std=c99 -municode -g -w -fwrapv -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,--stack=33554432
+)
 if !ERRORLEVEL! NEQ 0 (
-	echo In most cases, compile errors happen because the version of Clang installed is too old
+	echo Clang bootstrap failed for target !clang_target!. Check its Windows SDK, headers, and libraries.
 	"!clang_exe!" --version
 	exit /b 1
+)
+exit /b 0
+
+:configure_clang_target
+set clang_msvc=0
+set clang_vflags=-cc "!clang_exe!"
+if not "!clang_target:msvc=!" == "!clang_target!" (
+	set clang_msvc=1
+	for %%i in ("!clang_exe!") do set "clang_cl_exe=%%~dpiclang-cl.exe"
+	if not exist "!clang_cl_exe!" (
+		echo  ^> Clang targets MSVC but clang-cl.exe was not found beside it
+		exit /b 1
+	)
+	set clang_vflags=-cc "!clang_cl_exe!"
 )
 exit /b 0
 
@@ -552,11 +579,16 @@ call :try_delete "v_stage.obj"
 exit /b !stage_error!
 
 :build_stage_with_clang
-set stage_vflags=-cc "!clang_exe!" -cflags "--target=!clang_target!"
+set stage_vflags=!clang_vflags!
+if !clang_msvc! EQU 1 set stage_vflags=-cc msvc
 call :generate_stage_c
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with Clang
-"!clang_exe!" --target=!clang_target! -std=gnu11 -municode -g -w -fwrapv -Wno-int-conversion -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,--stack=33554432
+if !clang_msvc! EQU 1 (
+	"!clang_cl_exe!" /nologo /bigobj /MD /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
+) else (
+	"!clang_exe!" -std=gnu11 -municode -g -w -fwrapv -Wno-int-conversion -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,--stack=33554432
+)
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE_C%"
 exit /b !stage_error!
