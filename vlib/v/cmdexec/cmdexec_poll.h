@@ -15,4 +15,15 @@
 #include <poll.h>
 #endif
 
+// v_cmdexec_poll_revents polls fd for events without waiting. It returns the revents
+// of fd, or 0 when poll fails or reports nothing. V declares no struct pollfd of its
+// own, so the system definition is the only one in a unit that includes this header.
+static inline short v_cmdexec_poll_revents(int fd, short events) {
+	struct pollfd descriptor = {fd, events, 0};
+	if (poll(&descriptor, 1, 0) <= 0) {
+		return 0;
+	}
+	return descriptor.revents;
+}
+
 #endif
