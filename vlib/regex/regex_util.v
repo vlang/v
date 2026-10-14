@@ -126,7 +126,7 @@ pub fn (re &RE) get_group_list() []Re_group {
 @[direct_array_access]
 pub fn (re &RE) match_string(in_txt string) (int, int) {
 	unsafe {
-		start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
+		start, mut end := re.match_base(in_txt.str, in_txt.len)
 		if end > in_txt.len {
 			end = in_txt.len
 		}
@@ -177,7 +177,7 @@ fn (mut re RE) find_imp(in_txt string) (int,int) {
 	old_flag := re.flag
 	re.flag |= f_src  // enable search mode
 
-	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
+	start, mut end := re.match_base(in_txt.str, in_txt.len)
 	//print("Find [${start},${end}] '${in_txt[start..end]}'")
 	if end > in_txt.len {
 		end = in_txt.len
@@ -204,7 +204,7 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 		unsafe {
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
 			// println("Check: [${tmp_str}]")
-			s, e = re.match_base(in_txt.str + i, in_txt.len - i + 1)
+			s, e = re.match_base(in_txt.str + i, in_txt.len - i)
 
 			if s >= 0 && e >= s {
 				abs_start := i + s
@@ -306,7 +306,7 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 			// tmp_str := in_txt[i..]
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
 			// println("Check: [${tmp_str}]")
-			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
+			s, e = re.match_base(in_txt.str + i, in_txt.len - i)
 
 			if s >= 0 && e >= s {
 				abs_start := i + s
@@ -384,7 +384,7 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 			// tmp_str := in_txt[i..]
 			// tmp_str := tos(in_txt.str + i, in_txt.len - i)
 			// println("Check: [${tmp_str}]")
-			s, e = re.match_base(in_txt.str + i, in_txt.len + 1 - i)
+			s, e = re.match_base(in_txt.str + i, in_txt.len - i)
 
 			if s >= 0 && e >= s {
 				abs_start := i + s
