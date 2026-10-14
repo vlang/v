@@ -72,7 +72,7 @@ function coverage, not branch coverage.
 v cover vcov/ --json coverage.json
 ```
 
-The report carries both levels per file, with the line range and hit count of
+The report carries both levels per file, with the declaration line and hit count of
 each function, plus totals:
 
 ```json ignore
@@ -108,7 +108,7 @@ the `_test.v` file beside its source:
 ```v ignore
 fn test_parse_heading() {
 	// TODO: replace the zero values and the placeholder assertion.
-	// signature: fn parse_heading(text string, level int) ?string
+	// signature: fn parse_heading(text string, level int) string
 	_ = parse_heading('', 0)
 	assert true
 }
@@ -123,9 +123,13 @@ It writes only what is missing:
 - A function that already has a `test_` function in the file is left alone.
 - An existing `_test.v` is appended to, never rewritten.
 - A method is skipped: the call needs a receiver the generator cannot invent.
-- A parameter with no zero value a test may invent — a map, a pointer, a
-  generic — gets a comment naming the signature and no call, because a test that
+- A pointer, unknown parameter type, generic function, option or result return,
+  tuple return, or variadic signature gets a comment naming the signature and no call.
+  Arrays and maps of supported built-in types can use empty values. A test that
   does not compile is worse than a test that does not yet assert anything.
+
+Both source and destination paths must resolve inside the working directory; a
+symlink to a test file outside that directory is refused too.
 
 `--dry-run` prints what it would write and writes nothing.
 

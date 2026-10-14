@@ -36,7 +36,7 @@ mut:
 }
 
 // FunctionMeta is one function of a source file. `position` is its place in the
-// meta file's `functions` list, which is the key the `vfunctions_*.csv` files
+// meta file's `functions` list, which is the key the `vfunctions_*.fcount` files
 // record hits under.
 struct FunctionMeta {
 	name     string // the V name, as written

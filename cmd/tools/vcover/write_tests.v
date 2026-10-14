@@ -16,15 +16,23 @@ struct FnParam {
 // FnSignature is what a generated test needs of a function: its parameters, and
 // the source text of the whole declaration for the comment the author reads.
 struct FnSignature {
+	name        string
 	params      []FnParam
 	is_method   bool
 	is_variadic bool
+	is_generic  bool
+	return_type string
 	text        string
 }
 
 // test_file_for returns the `_test.v` path beside a V source file. V's test
 // runner discovers a test file by that name, next to the code it tests.
 fn test_file_for(source string) string {
+	for suffix in ['.c.v', '.js.v', '.wasm.v', '.native.v'] {
+		if source.ends_with(suffix) {
+			return '${source[..source.len - suffix.len]}_test${suffix}'
+		}
+	}
 	dot := source.last_index('.') or { return '${source}_test.v' }
 	return '${source[..dot]}_test.v'
 }
@@ -49,9 +57,13 @@ fn zero_value_for(typ string) ?string {
 		return "''"
 	}
 	if t.starts_with('[]') {
+		zero_value_for(t[2..]) or { return none }
 		return '${t}{}'
 	}
 	if t.starts_with('map[') {
+		close := t.index(']') or { return none }
+		zero_value_for(t[4..close]) or { return none }
+		zero_value_for(t[close + 1..]) or { return none }
 		return '${t}{}'
 	}
 	return none
@@ -125,8 +137,11 @@ fn fn_signature(lines []string, line int) ?FnSignature {
 			return none
 		}
 		segment := strip_line_comment(lines[index + offset])
+		if text.len > 0 {
+			text += ' '
+		}
 		segment_start := text.len
-		text += if segment_start == 0 { segment } else { ' ${segment}' }
+		text += segment
 		for i, c in segment {
 			if c == `{` && depth == 0 {
 				brace_index = segment_start + i
@@ -152,16 +167,20 @@ fn fn_signature(lines []string, line int) ?FnSignature {
 		return none
 	}
 	signature := text[..brace_index].trim_space()
-	// The last top-level parenthesised group is the parameter list. For a method
-	// the group before it holds the receiver, and for a generic function the
-	// `[T]` list is bracketed, so neither is mistaken for the parameters.
+	fn_start := signature.index('fn ') or { return none }
+	is_method := signature[fn_start + 3..].trim_left(' ').starts_with('(')
+	// The first group is the parameters, except for a method's receiver. Stop at
+	// its closing parenthesis so a tuple or function return type is not mistaken
+	// for another parameter list.
 	mut param_start := -1
 	mut param_end := -1
 	mut group_depth := 0
-	for i, c in signature {
+	mut groups := 0
+	for i := fn_start + 3; i < signature.len; i++ {
+		c := signature[i]
 		match c {
 			`(` {
-				if group_depth == 0 {
+				if group_depth == 0 && (!is_method || groups > 0) {
 					param_start = i
 				}
 				group_depth++
@@ -170,7 +189,11 @@ fn fn_signature(lines []string, line int) ?FnSignature {
 				if group_depth > 0 {
 					group_depth--
 					if group_depth == 0 {
-						param_end = i
+						groups++
+						if param_start >= 0 {
+							param_end = i
+							break
+						}
 					}
 				}
 			}
@@ -196,21 +219,29 @@ fn fn_signature(lines []string, line int) ?FnSignature {
 			typ:  typ
 		}
 	}
-	is_method := signature.after('fn ').trim_left(' ').starts_with('(')
 	return FnSignature{
+		name:        if is_method {
+			''
+		} else {
+			signature[fn_start + 3..param_start].trim_space().all_before('[')
+		}
 		params:      params
 		is_method:   is_method
 		is_variadic: is_variadic
+		is_generic:  signature[fn_start + 3..param_start].contains('[')
+		return_type: signature[param_end + 1..].trim_space()
 		text:        signature
 	}
 }
 
 // test_body_for builds one test function. A function whose parameters all have
-// zero values gets a call, so the test is real from the moment it exists; the
-// rest get the signature and an assertion the author replaces.
+// zero values gets a starter call. More complex signatures get a comment only;
+// the author must supply appropriate inputs and meaningful assertions.
 fn test_body_for(name string, signature FnSignature, content string, existing_test string) string {
 	mut call := ''
-	if !signature.is_method && !signature.is_variadic {
+	if !signature.is_method && !signature.is_variadic && !signature.is_generic
+		&& !signature.return_type.starts_with('!') && !signature.return_type.starts_with('?')
+		&& !signature.return_type.starts_with('(') && !signature.return_type.starts_with('fn ') {
 		mut args := []string{}
 		mut all_zeroable := true
 		for param in signature.params {
@@ -223,13 +254,15 @@ fn test_body_for(name string, signature FnSignature, content string, existing_te
 		}
 		if all_zeroable {
 			spelled := call_name_for(content, name, existing_test)
-			call = '_ = ${spelled}(${args.join(', ')})'
+			call = '${spelled}(${args.join(', ')})'
+			if signature.return_type != '' {
+				call = '_ = ' + call
+			}
 		}
 	}
 	mut lines := ['fn test_${name}() {']
 	if call == '' {
-		lines << '\t// TODO: no call was generated, because a parameter type has no'
-		lines << '\t// zero value a test may invent. Call it yourself below.'
+		lines << '\t// TODO: supply arguments and handle this signature yourself.'
 	} else {
 		lines << '\t// TODO: replace the zero values and the placeholder assertion.'
 	}
@@ -269,23 +302,6 @@ fn existing_test_names(content string) []string {
 	return names
 }
 
-// source_imports returns the module paths a source file imports.
-fn source_imports(content string) []string {
-	mut modules := []string{}
-	for line in content.split_into_lines() {
-		trimmed := line.trim_left(' \t')
-		if !trimmed.starts_with('import ') {
-			continue
-		}
-		module := trimmed.all_after('import ').all_before(' as ').all_before('{')
-			.trim_space()
-		if module.len > 0 {
-			modules << module
-		}
-	}
-	return modules
-}
-
 // source_module_name reads the module a source file declares.
 fn source_module_name(content string) string {
 	for line in content.split_into_lines() {
@@ -297,7 +313,7 @@ fn source_module_name(content string) string {
 			return trimmed.all_after('module ').all_before(' ').trim_space()
 		}
 	}
-	return ''
+	return 'main'
 }
 
 // call_name_for returns how a generated test must spell the call. A test file
@@ -311,9 +327,20 @@ fn call_name_for(source string, function_name string, test_content string) strin
 	if module == '' {
 		return function_name
 	}
-	for imported in source_imports(test_content) {
-		if imported == module {
-			return '${module}.${function_name}'
+	for line in test_content.split_into_lines() {
+		trimmed := line.trim_space()
+		if !trimmed.starts_with('import ') {
+			continue
+		}
+		imported := trimmed.all_after('import ').all_before('{').trim_space()
+		path := imported.all_before(' as ').trim_space()
+		if path.all_after_last('.') == module {
+			alias := if imported.contains(' as ') {
+				imported.all_after(' as ').trim_space()
+			} else {
+				module
+			}
+			return '${alias}.${function_name}'
 		}
 	}
 	return function_name
@@ -328,10 +355,13 @@ fn (ctx &Context) write_tests_for_file(file string, functions []FunctionCoverage
 	content := os.read_file(file)!
 	lines := content.split_into_lines()
 	test_path := test_file_for(file)
+	if !ctx.within_working_folder(test_path) {
+		return error('${test_path} is outside the working directory, so no test file is written')
+	}
 	// What is already there decides what to add, so the existing test file is
 	// read first: a function the author has written a test for is left alone.
 	existing_test := os.read_file(test_path) or { '' }
-	already := existing_test_names(existing_test)
+	mut already := existing_test_names(existing_test)
 	mut blocks := []string{}
 	for function in functions {
 		if function.name in already {
@@ -345,7 +375,12 @@ fn (ctx &Context) write_tests_for_file(file string, functions []FunctionCoverage
 			ctx.verbose('> skipping the method ${function.name}, which needs a receiver')
 			continue
 		}
+		if signature.name != function.name {
+			ctx.verbose('> skipping stale function metadata for ${function.name} at ${file}:${function.line}')
+			continue
+		}
 		blocks << test_body_for(function.name, signature, content, existing_test)
+		already << function.name
 	}
 	if blocks.len == 0 {
 		return 0
@@ -353,7 +388,8 @@ fn (ctx &Context) write_tests_for_file(file string, functions []FunctionCoverage
 	mut test_content := ''
 	trimmed_test := existing_test.trim_right(' \t\n')
 	if trimmed_test.len > 0 {
-		test_content = trimmed_test + '\n\n' + blocks.join('\n\n') + '\n'
+		separator := if existing_test.ends_with('\n') { '\n' } else { '\n\n' }
+		test_content = existing_test + separator + blocks.join('\n\n') + '\n'
 	} else {
 		module := source_module_name(content)
 		if module == '' {
@@ -376,10 +412,25 @@ fn (ctx &Context) write_tests_for_file(file string, functions []FunctionCoverage
 // was run from. A generated test goes next to its source, so a source outside
 // that directory would put a new file somewhere the caller did not look.
 fn (ctx &Context) within_working_folder(file string) bool {
-	if ctx.working_folder == '' || ctx.working_folder == '/' {
-		return true
+	if ctx.working_folder == '' {
+		return false
 	}
-	return file.starts_with(ctx.working_folder)
+	mut folder := normalize_path(os.real_path(ctx.working_folder)).trim_right('/')
+	mut target := normalize_path(os.real_path(file))
+	if !os.exists(file) {
+		parent := os.dir(file)
+		if os.is_link(file) || !os.is_dir(parent) {
+			return false
+		}
+		// real_path returns the original spelling when the leaf does not exist.
+		// Resolve its existing parent to handle backlinks and directory symlinks.
+		target = normalize_path(os.join_path(os.real_path(parent), os.file_name(file)))
+	}
+	$if windows {
+		folder = folder.to_lower()
+		target = target.to_lower()
+	}
+	return target.starts_with(folder + '/')
 }
 
 // write_tests_for_uncovered appends a test function for every function no run

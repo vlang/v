@@ -50,6 +50,7 @@ const function_counter_extension = '.fcount'
 // entered it. A function with 0 hits is one no test has ever called.
 struct FunctionCoverage {
 mut:
+	meta     string
 	file     string
 	name     string
 	line     int
@@ -66,6 +67,9 @@ fn (mut ctx Context) load_meta(folder string) {
 		mfile := omfile.replace('\\', '/')
 		content := os.read_file(mfile) or { '' }
 		meta := os.file_name(mfile.replace(metadata_extension, ''))
+		if meta in ctx.meta {
+			continue
+		}
 		mut data := json2.decode[MetaData](content) or {
 			log.error('${@METHOD} failed to load ${mfile}')
 			continue
@@ -80,6 +84,7 @@ fn (mut ctx Context) load_meta(folder string) {
 		ctx.all_lines_per_file[data.file] = arrays.distinct(lines_per_file)
 		for position, function in data.functions {
 			ctx.functions << FunctionCoverage{
+				meta:     meta
 				file:     data.file
 				name:     function.name
 				line:     function.start
@@ -151,12 +156,15 @@ fn (mut ctx Context) process_counter_rows(mut reader csv.Reader, tfile string) !
 	}
 }
 
-// process_function_rows sums the entry counters of a `vfunctions_*.csv` file
+// process_function_rows sums the entry counters of a `vfunctions_*.fcount` file
 // into the functions of the matching meta file. The same function can be
 // recorded by several runs, so hits are added rather than replaced.
 fn (mut ctx Context) process_function_rows(mut reader csv.Reader, tfile string) ! {
 	for {
 		row := reader.read() or { break }
+		if row.len != 3 {
+			return error('invalid function counter row in ${tfile}')
+		}
 		meta := row[0]
 		position := row[1].int()
 		hits := row[2].u64()
@@ -169,7 +177,7 @@ fn (mut ctx Context) process_function_rows(mut reader csv.Reader, tfile string) 
 			continue
 		}
 		for mut function in ctx.functions {
-			if function.file == m.file && function.position == position {
+			if function.meta == meta && function.position == position {
 				function.hits += hits
 			}
 		}
@@ -351,26 +359,16 @@ struct CoverageReport {
 
 fn (mut ctx Context) build_report(filters []string) CoverageReport {
 	mut files := []FileReport{}
+	reported := ctx.reported_functions(filters)
 	for file in ctx.sorted_files(filters) {
 		total_lines := ctx.all_lines_per_file[file].len
 		covered_lines := if lines := ctx.lines_per_file[file] { lines.len } else { 0 }
 		mut functions := []FunctionReport{}
 		mut covered_functions := 0
-		mut seen := map[string]bool{}
-		for function in ctx.functions {
+		for function in reported {
 			if function.file != file {
 				continue
 			}
-			if function.name.starts_with('test_') {
-				continue
-			}
-			// One function is recorded once per meta file; the first is the one
-			// reported, and `reported_functions` has already merged their hits.
-			key := '${function.line}:${function.name}'
-			if key in seen {
-				continue
-			}
-			seen[key] = true
 			if function.is_covered() {
 				covered_functions++
 			}
@@ -439,7 +437,7 @@ fn (mut ctx Context) write_json_report(filters []string) ! {
 }
 
 fn normalize_path(path string) string {
-	return path.replace(os.path_separator, '/')
+	return path.replace('\\', '/')
 }
 
 fn (ctx &Context) matches_filters(path string, filters []string) bool {

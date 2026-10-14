@@ -174,7 +174,7 @@ fn test_coverage_function_hits_are_written_with_a_reader_of_their_own() {
 	os.write_file(program, 'fn main() {\n\tassert answer() == 42\n}\n')!
 	cc := os.find_abs_path_of_executable('clang') or { return }
 	ran := os.exec([@VEXE, '-cc', cc, '-cstrict', '-gc', 'none', '-nocache', '-no-retry-compilation',
-		'-no-skip-unused', '-coverage', dir, 'run', program])
+		'-no-skip-unused', '-coverage', dir, 'run', dir])
 	assert ran.exit_code == 0, ran.output
 	line_counters := os.ls(dir)!.filter(it.ends_with('.csv'))
 	assert line_counters.len == 1, line_counters.str()
@@ -183,17 +183,23 @@ fn test_coverage_function_hits_are_written_with_a_reader_of_their_own() {
 	function_report := os.read_file(os.join_path(dir, function_counters[0]))!
 	assert function_report.contains('meta,position,hits\n'), function_report
 	function_lines := function_report.split_into_lines().filter(!it.starts_with('#'))
-	// Only `answer` was entered, so exactly one function line is recorded.
-	assert function_lines.len == 2, function_lines.str()
 	meta_files := os.ls(os.join_path(dir, 'meta'))!
 	assert meta_files.len > 0, meta_files.str()
+	mut found_source := false
 	for meta_name in meta_files {
 		meta := os.read_file(os.join_path(dir, 'meta', meta_name))!
 		if meta.contains('split.v') {
+			found_source = true
 			assert meta.contains('"functions": [{"name": "answer"'), meta
 			assert meta.contains('"name": "unused"'), meta
+			// Runtime initialization also enters standard-library functions. Only
+			// answer from this fixture was called, at position 0 in its metadata.
+			source_hash := meta_name.all_before_last('.json')
+			source_hits := function_lines.filter(it.starts_with('${source_hash},'))
+			assert source_hits == ['${source_hash},0,1'], source_hits.str()
 		}
 	}
+	assert found_source
 }
 
 fn test_windows_statistics_and_coverage_clock_avoids_direct_tick_count_import() {
