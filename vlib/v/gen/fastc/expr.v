@@ -2145,6 +2145,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			g.next()
 			continue
 		}
+		if g.tok == .key_nil {
+			g.validate_nil(expression_tokens, previous_token, paren_depth, bracket_depth, brace_depth, struct_types, struct_depths, struct_paren_depths)!
+		}
 		g.validate_expression_stream_token(expression_tokens, stops, allow_mutation_statement, allow_declaration_guard, paren_depth, bracket_depth, brace_depth, unsafe_expression_depth, source_token_count, mut operator_state)!
 		streamed := g.render_expression_stream_token(mut expression_tokens, stops, previous_token, previous_lit, previous_module_separator, shared_is_struct_field, spawn_is_field_name, keyword_is_field_name, brace_depth, previous_was_pointer_cast, next_token_is_mut_argument, source_token_count)!
 		mut piece := streamed.piece
@@ -2852,6 +2855,26 @@ fn fastc_c_literal_end(source string, start int) int {
 	return source.len
 }
 
+// fastc_innermost_open_index returns the index of the innermost unclosed `(`, `[` or `{`, or -1.
+fn fastc_innermost_open_index(tokens []FastcExpressionToken) int {
+	mut depth := 0
+	for i := tokens.len - 1; i >= 0; i-- {
+		match tokens[i].tok {
+			.rpar, .rsbr, .rcbr {
+				depth++
+			}
+			.lpar, .lsbr, .lcbr {
+				if depth == 0 {
+					return i
+				}
+				depth--
+			}
+			else {}
+		}
+	}
+	return -1
+}
+
 // fastc_token_continues_expression reports whether a token appearing right after an
 // auto-inserted `;` continues the previous expression (a binary/postfix operator),
 // so the `;` is a line continuation rather than a statement boundary. The token
@@ -2862,23 +2885,7 @@ fn fastc_c_literal_end(source string, start int) int {
 // function/method name), or '' when the enclosing `(` is a grouping paren or the callee is
 // unknown. Used to give an if/match-expression argument its parameter type mid-stream.
 fn (g &Parser) streaming_call_argument_type(tokens []FastcExpressionToken) string {
-	mut depth := 0
-	mut open := -1
-	for i := tokens.len - 1; i >= 0; i-- {
-		match tokens[i].tok {
-			.rpar, .rsbr, .rcbr {
-				depth++
-			}
-			.lpar, .lsbr, .lcbr {
-				if depth == 0 {
-					open = i
-					break
-				}
-				depth--
-			}
-			else {}
-		}
-	}
+	open := fastc_innermost_open_index(tokens)
 	if open <= 0 || tokens[open].tok != .lpar || tokens[open - 1].tok != .name {
 		return ''
 	}
