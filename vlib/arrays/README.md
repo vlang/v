@@ -27,3 +27,7 @@ These functions eagerly allocate all result rows; factorial or combinatorial out
 Repeated input values can produce repeated rows. Inputs and result rows have independent arrays.
 Empty input has one empty permutation; choosing zero elements has one empty combination.
 An invalid combination size or a product with either input empty returns no rows.
+
+`bisect_left(array, value)` and `bisect_right(array, value)` return insertion positions in an
+ascending sorted array, before or after existing equal values. `insort_left` and `insort_right`
+insert at those positions. Empty arrays return position zero; unsorted input is unsupported.
