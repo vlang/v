@@ -38,6 +38,10 @@ context.task(
 context.run()
 ```
 
+Tasks run once per build context by default, including shared dependencies.
+Set `repeatable: true` when a task must run each time it is requested or reached
+as a dependency. Its `should_run` decision is still cached for the build context.
+
 For portable `.vsh` scripts, prefer `#!/usr/bin/env v`.
 That works on BusyBox and OpenBSD too, where `/usr/bin/env -S` is not available.
 
