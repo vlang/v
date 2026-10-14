@@ -45,12 +45,14 @@ fn mmap_sync_nix(addr voidptr, len u64) ! {
 }
 
 // mmap_sync_platform flushes a mapping (nix side).
-fn mmap_sync_platform(addr voidptr, len u64) ! {
+fn mmap_sync_platform(addr voidptr, len u64, file_handle voidptr) ! {
+	_ = file_handle
 	return mmap_sync_nix(addr, len)
 }
 
 // mmap_unmap_platform releases a mapping (nix side; mapping handle unused).
-fn mmap_unmap_platform(addr voidptr, len u64, mapping voidptr) {
+fn mmap_unmap_platform(addr voidptr, len u64, mapping voidptr, file_handle voidptr) {
+	_ = file_handle
 	_ = mapping
 	mmap_unmap_nix(addr, len)
 }

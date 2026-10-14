@@ -13,8 +13,9 @@ pub enum MmapMode {
 @[heap]
 pub struct Mmap {
 mut:
-	data    []u8
-	mapping voidptr // Windows file-mapping handle; nil elsewhere
+	data        []u8
+	mapping     voidptr // Windows file-mapping handle; nil elsewhere
+	file_handle voidptr // Windows file handle retained for durable sync
 }
 
 // mmap_open maps the whole file at path. Missing and empty files are errors
@@ -27,12 +28,14 @@ pub fn mmap_open(path string, mode MmapMode) !&Mmap {
 	if size == 0 {
 		return error('os.mmap_open: cannot map empty file `${path}`')
 	}
+	mmap_check_length(size)!
 	write := mode == .read_write
 	$if windows {
-		addr, mapping := mmap_map_windows(path, size, write, false)!
+		addr, mapping, file_handle := mmap_map_windows(path, size, write, false)!
 		return &Mmap{
-			data:    unsafe { addr.vbytes(int(size)) }
-			mapping: mapping
+			data:        unsafe { addr.vbytes(int(size)) }
+			mapping:     mapping
+			file_handle: file_handle
 		}
 	} $else {
 		addr := mmap_map_nix(path, size, write, false)!
@@ -45,14 +48,13 @@ pub fn mmap_open(path string, mode MmapMode) !&Mmap {
 // mmap_create creates (or truncates) path to len bytes and maps it read-write,
 // zero-filled. len must be positive.
 pub fn mmap_create(path string, len u64) !&Mmap {
-	if len == 0 {
-		return error('os.mmap_create: length must be positive')
-	}
+	mmap_check_length(len)!
 	$if windows {
-		addr, mapping := mmap_map_windows(path, len, true, true)!
+		addr, mapping, file_handle := mmap_map_windows(path, len, true, true)!
 		return &Mmap{
-			data:    unsafe { addr.vbytes(int(len)) }
-			mapping: mapping
+			data:        unsafe { addr.vbytes(int(len)) }
+			mapping:     mapping
+			file_handle: file_handle
 		}
 	} $else {
 		addr := mmap_map_nix(path, len, true, true)!
@@ -62,7 +64,11 @@ pub fn mmap_create(path string, len u64) !&Mmap {
 	}
 }
 
-// bytes returns the mapped region as a byte view.
+// bytes returns the mapped region as a zero-copy byte view.
+// The caller must keep the mapping open while using the view, must not resize or
+// free the view, and must not mutate a read_only view. The file must not be truncated
+// while the mapping is in use.
+@[unsafe]
 pub fn (m &Mmap) bytes() []u8 {
 	return m.data
 }
@@ -74,7 +80,8 @@ pub fn (m &Mmap) len() u64 {
 
 // sync flushes writes through a read_write mapping to the file.
 pub fn (mut m Mmap) sync() ! {
-	mmap_sync_platform(voidptr(m.data.data), u64(m.data.len))!
+	if m.data.len == 0 { return error('os.Mmap.sync: mapping is closed') }
+	mmap_sync_platform(voidptr(m.data.data), u64(m.data.len), m.file_handle)!
 }
 
 // close unmaps the region and releases all handles. The bytes() view must
@@ -83,7 +90,16 @@ pub fn (mut m Mmap) close() {
 	if m.data.len == 0 {
 		return
 	}
-	mmap_unmap_platform(voidptr(m.data.data), u64(m.data.len), m.mapping)
+	mmap_unmap_platform(voidptr(m.data.data), u64(m.data.len), m.mapping, m.file_handle)
 	m.data = []
 	m.mapping = nil
+	m.file_handle = nil
+}
+
+// mmap_check_length rejects lengths that cannot be represented as V array lengths.
+fn mmap_check_length(len u64) ! {
+	if len == 0 { return error('os.mmap_create: length must be positive') }
+	if len > u64(max_int) || len > u64(max_i64) || u64(usize(len)) != len {
+		return error('os.mmap: length exceeds the supported array size')
+	}
 }
