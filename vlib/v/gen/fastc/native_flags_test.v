@@ -349,3 +349,72 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'backtrace preserved'
 }
+
+fn test_fastc_glibc_gettid_uses_the_system_call() {
+	$if !(linux && glibc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_glibc_gettid_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+fn main() {
+	assert v_gettid() == v_getpid()
+	println("main thread id")
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-gc', 'none', '-nocache', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'main thread id'
+	// glibc exports `gettid` only from 2.30 on, so the program must not import it.
+	binary := os.read_file(program) or { panic(err) }
+	assert !binary.contains('\x00gettid\x00')
+}
+
+// The gettid helper declares `syscall` itself: a strict feature mode such as
+// `-D_POSIX_C_SOURCE=200809L` hides glibc's declaration in <unistd.h>.
+fn test_fastc_glibc_gettid_helper_compiles_in_a_strict_feature_mode() {
+	$if !(linux && glibc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_strict_gettid_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'strict.c')
+	os.write_file(source, c_selfhost_preamble_includes + c_selfhost_post_directives +
+		'int main(void) { return gettid() == getpid() ? 0 : 1; }\n') or { panic(err) }
+	program := os.join_path(root, 'strict')
+	tcc_base := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib', 'tcc')
+	compiled := cmdexec.run(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe'), [
+		'-B${tcc_base}',
+		'-D_POSIX_C_SOURCE=200809L',
+		'-Werror=implicit-function-declaration',
+		'-o',
+		program,
+		source,
+	])
+	assert compiled.exit_code == 0, compiled.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_fastc_glibc_gettid_declares_syscall_with_strict_feature_flags() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_gettid_declaration_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	// A strict system header can hide syscall; check the actual preamble without its prototype.
+	source := '#include <stddef.h>\ntypedef int pid_t;\n#ifndef __linux__\n#define __linux__ 1\n#endif\n#ifndef __GLIBC__\n#define __GLIBC__ 2\n#endif\n#define SYS_gettid 186\n' + c_selfhost_post_directives.all_before('#ifndef memory_order_relaxed')
+	path := os.join_path(root, 'gettid.c')
+	os.write_file(path, source) or { panic(err) }
+	check := cmdexec.run('cc', ['-std=c11', '-D_POSIX_C_SOURCE=200809L',
+		'-Werror=implicit-function-declaration', '-fsyntax-only', path])
+	assert check.exit_code == 0, check.output
+}

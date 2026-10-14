@@ -589,6 +589,15 @@ struct FastcGenericCall {
 	concrete     string
 }
 
+// FastcCallScanScope holds an enclosing function's variables while the call scan is inside a
+// function literal, which opened at brace depth `depth`.
+struct FastcCallScanScope {
+	var_types     map[string]string
+	var_ambiguous map[string]bool
+	locals        map[string]bool
+	depth         int
+}
+
 struct FastcConcretePair {
 	name     string
 	concrete string
@@ -1176,6 +1185,11 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 	// types is marked ambiguous and no longer resolves (keeping inference safe).
 	mut var_types := map[string]string{}
 	mut var_ambiguous := map[string]bool{}
+	// The parameters of the current function: a call through one of these names calls the
+	// parameter, never a generic function of the same name.
+	mut locals := map[string]bool{}
+	mut scopes := []FastcCallScanScope{}
+	mut brace_depth := 0
 	mut pending_var := ''
 	// `name := Foo{...}` is confirmed a struct-literal local only once the `{` after
 	// the type name is seen; hold the candidate until the next token.
@@ -1190,6 +1204,24 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 	for tok != .eof {
 		if tok == .dot {
 			before_dot_receiver = previous_lit
+		}
+		if tok == .lcbr {
+			brace_depth++
+		} else if tok == .rcbr {
+			brace_depth--
+			// Leaving a function literal's body brings back the enclosing function's variables.
+			for scopes.len > 0 && scopes[scopes.len - 1].depth >= brace_depth {
+				scope := scopes.pop()
+				var_types = scope.var_types
+				var_ambiguous = scope.var_ambiguous
+				locals = scope.locals
+			}
+			// Leaving a top-level declaration ends its function's parameters and variables.
+			if brace_depth <= 0 {
+				var_types = map[string]string{}
+				var_ambiguous = map[string]bool{}
+				locals = map[string]bool{}
+			}
 		}
 		if pending_struct_var != '' {
 			if tok == .lcbr {
@@ -1212,12 +1244,21 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 			// Fall through: this token may still start (or be) a generic call.
 		}
 		if tok == .key_fn {
+			if brace_depth > 0 {
+				scopes << FastcCallScanScope{
+					var_types:     var_types
+					var_ambiguous: var_ambiguous
+					locals:        locals
+					depth:         brace_depth
+				}
+			}
 			var_types = map[string]string{}
 			var_ambiguous = map[string]bool{}
+			locals = map[string]bool{}
 			pending_var = ''
 			pending_struct_var = ''
 			pending_struct_type = ''
-			tok = fastc_collect_params(mut s, mut var_types, prefs)
+			tok = fastc_collect_params(mut s, mut var_types, mut locals, prefs)
 			previous = .rpar
 			previous_lit = ''
 			continue
@@ -1238,8 +1279,9 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				recv_type := var_types[before_dot_receiver] or { '' }
 				should_skip = previous != .dot || recv_type != probe.receiver_type
 			} else {
-				// A free generic function is never a `.`-qualified field/module access.
-				should_skip = previous == .dot
+				// A free generic function is never a `.`-qualified field/module access, nor a
+				// parameter that shadows it.
+				should_skip = previous == .dot || s.lit in locals
 			}
 		}
 		if should_skip {
@@ -1396,50 +1438,49 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 
 // fastc_collect_params records the single-name-typed parameters of the function
 // whose `fn` keyword was just consumed, so `f(param)` calls can infer their
-// concrete type. It returns the token just past the parameter list.
-fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string, prefs &pref.Preferences) token.Token {
+// concrete type, and every parameter name in `locals`; a closure's captures are
+// locals too. It returns the token just past the parameter list, or past a return
+// type that is itself a function type.
+fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string, mut locals map[string]bool, prefs &pref.Preferences) token.Token {
 	no_imports := map[string]string{}
 	no_declared_types := map[string]bool{}
 	mut tok := s.scan()
-	if tok == .lpar {
-		// Method receiver `(recv Type)`: skip it.
-		mut depth := 0
-		for {
-			if tok == .lpar {
-				depth++
-			} else if tok == .rpar {
-				depth--
-				if depth == 0 {
-					break
-				}
-			} else if tok == .eof {
-				return tok
-			}
-			tok = s.scan()
-		}
-		tok = s.scan()
-	}
-	if tok != .name {
-		return tok
-	}
-	tok = s.scan()
 	if tok == .lsbr {
-		// Generic `[T]`: skip it.
-		mut depth := 0
-		for {
-			if tok == .lsbr {
-				depth++
-			} else if tok == .rsbr {
-				depth--
-				if depth == 0 {
-					break
-				}
-			} else if tok == .eof {
-				return tok
+		// A closure's captures `[a, mut b]`; its parameter list follows.
+		tok = s.scan()
+		for tok !in [.rsbr, .eof] {
+			if tok == .name {
+				locals[s.lit] = true
 			}
 			tok = s.scan()
 		}
+		if tok == .eof {
+			return tok
+		}
 		tok = s.scan()
+	} else if tok == .lpar {
+		// A method receiver `(recv Type)` is skipped; a function literal's parameter list,
+		// followed by its return type and body rather than a method name, is read below.
+		mut look := s
+		after := fastc_skip_balanced(mut look, tok, .lpar, .rpar)
+		if after == .eof {
+			return after
+		}
+		mut body := look
+		if fastc_skip_type(mut body, after) != .lcbr {
+			s = look
+			tok = after
+			if tok != .name {
+				return tok
+			}
+		}
+	}
+	if tok == .name {
+		tok = s.scan()
+		if tok == .lsbr {
+			// Generic `[T]`: skip it.
+			tok = fastc_skip_balanced(mut s, tok, .lsbr, .rsbr)
+		}
 	}
 	if tok != .lpar {
 		return tok
@@ -1459,6 +1500,7 @@ fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string, 
 			break
 		}
 		parameter_name := s.lit
+		locals[parameter_name] = true
 		tok = s.scan()
 		if tok == .name {
 			type_name := s.lit
@@ -1476,9 +1518,76 @@ fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string, 
 		break
 	}
 	if tok == .rpar {
-		return s.scan()
+		return fastc_skip_function_return_type(mut s, s.scan())
 	}
 	return tok
+}
+
+// fastc_skip_balanced consumes the group that opens at `start` (an `open` token) and returns
+// the token after its matching `close`, or `.eof`.
+fn fastc_skip_balanced(mut s scanner.Scanner, start token.Token, open token.Token, close token.Token) token.Token {
+	mut tok := start
+	mut depth := 0
+	for tok != .eof {
+		if tok == open {
+			depth++
+		} else if tok == close {
+			depth--
+			if depth == 0 {
+				return s.scan()
+			}
+		}
+		tok = s.scan()
+	}
+	return tok
+}
+
+// fastc_skip_type consumes the V type that starts at `start`, if any, and returns the token
+// after it.
+fn fastc_skip_type(mut s scanner.Scanner, start token.Token) token.Token {
+	mut tok := start
+	for tok == .question || tok == .not || tok == .amp || tok == .mul {
+		tok = s.scan()
+	}
+	if tok == .lsbr {
+		return fastc_skip_type(mut s, fastc_skip_balanced(mut s, tok, .lsbr, .rsbr))
+	}
+	if tok == .lpar {
+		return fastc_skip_balanced(mut s, tok, .lpar, .rpar)
+	}
+	if tok == .key_fn {
+		tok = s.scan()
+		if tok != .lpar {
+			return tok
+		}
+		return fastc_skip_type(mut s, fastc_skip_balanced(mut s, tok, .lpar, .rpar))
+	}
+	if tok != .name {
+		return tok
+	}
+	is_map := s.lit == 'map'
+	tok = s.scan()
+	for tok == .dot {
+		tok = s.scan()
+		if tok != .name {
+			return tok
+		}
+		tok = s.scan()
+	}
+	if tok == .lsbr {
+		tok = fastc_skip_balanced(mut s, tok, .lsbr, .rsbr)
+		if is_map {
+			return fastc_skip_type(mut s, tok)
+		}
+	}
+	return tok
+}
+
+// fastc_skip_function_return_type consumes a function's return type, which belongs to the
+// signature before it: a `fn` inside it (`fn f() fn (int) int`, `[]fn (int) int`) does not start
+// another function. It returns the token after the return type, `start` when there is none.
+fn fastc_skip_function_return_type(mut s scanner.Scanner, start token.Token) token.Token {
+	return fastc_skip_type(mut s, start)
 }
 
 // fastc_skip_to_param_boundary advances to the next top-level `,` or the closing

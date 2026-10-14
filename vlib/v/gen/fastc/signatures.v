@@ -1098,14 +1098,8 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 			parameter_is_mut = true
 			tok = look.scan()
 		}
-		mut has_parameter_name := false
-		if tok in [.name, .key_module, .key_type] {
-			mut probe := look
-			next_token := probe.scan()
-			has_parameter_name = next_token in [.name, .amp, .and, .mul, .question, .not, .key_fn,
-				.lsbr]
-		}
-		if has_parameter_name {
+		if !fastc_parameter_is_type_only(look, tok, path, module_name, imports, declared_types,
+			allow_short_placeholders) {
 			tok = look.scan()
 		}
 		parameter_type, next_token := fastc_scan_type(mut look, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
@@ -1133,6 +1127,15 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		return_type:       return_type
 		option_value_type: option_value_type
 	}
+}
+
+// fastc_parameter_is_type_only recognizes one whole unnamed parameter type ending at a
+// separator. Parameters are classified separately because function types can mix names and types.
+fn fastc_parameter_is_type_only(scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) bool {
+	mut look := scan
+	_, next_token := fastc_scan_type(mut look, first, path, module_name, imports, declared_types,
+		allow_short_placeholders) or { return false }
+	return next_token in [.comma, .semicolon, .rpar]
 }
 
 fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) !(string, token.Token) {
