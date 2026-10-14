@@ -7,8 +7,26 @@ const windows_io_reparse_tag_symlink = u32(0xa000000c)
 const windows_filetime_ticks_per_second = u64(10_000_000)
 const windows_filetime_unix_epoch_seconds = i64(11_644_473_600)
 
+// Windows BY_HANDLE_FILE_INFORMATION layout: thirteen 32-bit words.
+struct WindowsFileInformation {
+mut:
+	file_attributes u32
+	creation_time   Filetime
+	access_time     Filetime
+	write_time      Filetime
+	volume_serial   u32
+	file_size_high  u32
+	file_size_low   u32
+	number_of_links u32
+	file_index_high u32
+	file_index_low  u32
+}
+
+fn C.GetFileInformationByHandle(handle voidptr, information voidptr) i32
+
 // stat returns metadata for the given file/folder.
 // It will return a POSIX error message, if it can not do so.
+// Pre-1970 timestamps are read from the target's Win32 file information.
 // C._wstat64() can be used on 32- and 64-bit Windows per
 // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/stat-functions?view=msvc-170
 pub fn stat(path string) !Stat {
@@ -31,20 +49,46 @@ pub fn stat(path string) !Stat {
 			mtime: s.st_mtime
 			ctime: s.st_ctime
 		}
-		// _wstat64() converts the FILETIME to local time before turning it into a
-		// time_t, so it returns -1 for any time before 1970-01-01 local. The floor it
-		// applies therefore moves with the timezone, and on a host ahead of UTC it is
-		// not the unix epoch at all. The Win32 FILETIMEs are absolute and reach back to
-		// 1601, so read the times back from them instead.
+		// The CRT clamps timestamps before its local epoch to -1. Query a handle
+		// to the same target; directory entries would describe a symlink itself.
 		if st.atime < 0 || st.mtime < 0 || st.ctime < 0 {
-			if find_data := windows_find_file_data(path) {
-				st.atime = windows_filetime_to_unix_seconds(find_data.ft_last_access_time)
-				st.mtime = windows_filetime_to_unix_seconds(find_data.ft_last_write_time)
-				st.ctime = windows_filetime_to_unix_seconds(find_data.ft_creation_time)
+			if information := windows_stat_file_information(path) {
+				st.atime = windows_filetime_to_unix_seconds(information.access_time)
+				st.mtime = windows_filetime_to_unix_seconds(information.write_time)
+				st.ctime = windows_filetime_to_unix_seconds(information.creation_time)
 			}
 		}
 		return st
 	}
+}
+
+fn windows_stat_file_information(path string) ?WindowsFileInformation {
+	normalized_path := path.replace('/', '\\')
+	root_len := win_root_len(normalized_path)
+	mut path_end := normalized_path.len
+	for path_end > root_len + 1 && normalized_path[path_end - 1] == `\\` {
+		path_end--
+	}
+	w_path := normalized_path[..path_end].to_wide()
+	defer {
+		// to_wide allocates the UTF-16 buffer passed to CreateFileW.
+		unsafe { free(w_path) }
+	}
+	share_mode := C.FILE_SHARE_READ | C.FILE_SHARE_WRITE | C.FILE_SHARE_DELETE
+	// Zero access requests metadata only; omitting OPEN_REPARSE_POINT follows links.
+	handle := C.CreateFileW(w_path, 0, share_mode, 0, C.OPEN_EXISTING,
+		C.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if handle == invalid_handle_value {
+		return none
+	}
+	defer {
+		C.CloseHandle(handle)
+	}
+	mut information := WindowsFileInformation{}
+	if C.GetFileInformationByHandle(handle, voidptr(&information)) == 0 {
+		return none
+	}
+	return information
 }
 
 // lstat is the same as stat() for Windows, including reporting symbolic links as regular files.
@@ -67,40 +111,10 @@ fn windows_should_try_dangling_symlink_stat(error_code int) bool {
 }
 
 fn windows_dangling_symlink_stat(path string) ?Stat {
-	if find_data := windows_find_file_data(path) {
-		if find_data.dw_file_attributes & windows_file_attribute_reparse_point == 0
-			|| find_data.dw_file_attributes & u32(C.FILE_ATTRIBUTE_DIRECTORY) != 0
-			|| find_data.dw_reserved0 != windows_io_reparse_tag_symlink {
-			return none
-		}
-		// windows_stat_from_find_data() derives the executable bit from
-		// os.file_ext(), which picks its path separator by whether the path
-		// holds a '/'. A mixed-separator path therefore resolves a different
-		// extension, and so a different mode, than the same path spelled with
-		// backslashes. Normalize first, as this function did before
-		// windows_find_file_data() was extracted.
-		normalized_path := path.replace('/', '\\')
-		return windows_stat_from_find_data(normalized_path, find_data)
-	}
-	return none
-}
-
-// windows_find_file_data returns the Win32 directory entry of the given path,
-// or none if FindFirstFileW() cannot describe it, i.e. for a path holding
-// wildcards, or for a volume root.
-fn windows_find_file_data(path string) ?Win32finddata {
-	mut normalized_path := path.replace('/', '\\')
+	normalized_path := path.replace('/', '\\')
 	wildcard_start := if normalized_path.starts_with('\\\\?\\') { 4 } else { 0 }
 	if normalized_path[wildcard_start..].contains_any('*?') {
 		return none
-	}
-	// FindFirstFileW() rejects a trailing separator ("C:\folder\"), so drop it,
-	// but keep it on a root like "C:\", where it is part of the path itself.
-	if normalized_path.ends_with('\\') {
-		trimmed_path := normalized_path.trim_right('\\')
-		if !trimmed_path.ends_with(':') && !trimmed_path.ends_with('\\') {
-			normalized_path = trimmed_path
-		}
 	}
 	w_path := normalized_path.to_wide()
 	defer {
@@ -116,7 +130,12 @@ fn windows_find_file_data(path string) ?Win32finddata {
 	defer {
 		C.FindClose(find_handle)
 	}
-	return find_data
+	if find_data.dw_file_attributes & windows_file_attribute_reparse_point == 0
+		|| find_data.dw_file_attributes & u32(C.FILE_ATTRIBUTE_DIRECTORY) != 0
+		|| find_data.dw_reserved0 != windows_io_reparse_tag_symlink {
+		return none
+	}
+	return windows_stat_from_find_data(normalized_path, find_data)
 }
 
 fn windows_stat_from_find_data(path string, find_data Win32finddata) Stat {
