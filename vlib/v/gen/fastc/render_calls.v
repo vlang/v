@@ -159,7 +159,8 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		if item.tok != .lpar || i <= type_start {
 			continue
 		}
-		if i >= 2 && tokens[i - 2].tok == .dot && !(i == type_qualifier_start + 3 && tokens[type_qualifier_start].tok == .name && (tokens[type_qualifier_start].lit in g.imports || tokens[type_qualifier_start].lit == 'C')) {
+		if i >= 2 && tokens[i - 2].tok == .dot
+			&& g.type_from_expression_tokens(tokens[type_start..i]) == none {
 			// `receiver.u32()` is a method even though its name is also a primitive
 			// type. Only a bare/qualified type at the start can introduce a cast.
 			continue
@@ -243,10 +244,9 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		}
 	}
 	inner_type := g.infer_expression_type(inner_tokens) or { '' }
-	// `voidptr(callback)` is a pointer reinterpretation, not a generic-value box.
-	// Rendering its function-alias operand against `voidptr` would allocate storage
-	// for the callback pointer and return that storage address, which is not callable.
-	inner_expected_type := if c_type == 'voidptr' && inner_type in g.fn_alias_return_types {
+	// Explicit voidptr casts reinterpret the operand's bits. Generic argument
+	// boxing would instead return the address of storage containing those bits.
+	inner_expected_type := if c_type == 'voidptr' {
 		inner_type
 	} else {
 		c_type
@@ -335,9 +335,14 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 				argument_index += 2
 				continue
 			}
-			piece := tokens[argument_index].tok.str()
+			item := tokens[argument_index]
+			piece := if item.tok in [.name, .number] { item.lit } else { item.tok.str() }
 			raw_argument.write_string(piece)
-			c_argument.write_string(piece)
+			c_argument.write_string(if item.tok == .name {
+				g.resolved_expression_name(item.lit, tokens[argument_index - 1].tok)
+			} else {
+				piece
+			})
 			argument_index++
 		}
 		method := tokens[i].lit

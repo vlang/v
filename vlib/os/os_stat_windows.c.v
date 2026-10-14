@@ -1,5 +1,7 @@
 module os
 
+#include <sys/stat.h>
+
 const windows_file_attribute_reparse_point = u32(0x00000400)
 const windows_io_reparse_tag_symlink = u32(0xa000000c)
 const windows_filetime_ticks_per_second = u64(10_000_000)

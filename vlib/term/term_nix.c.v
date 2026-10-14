@@ -4,8 +4,6 @@ import os
 import term.termios
 import time
 
-#include <sys/ioctl.h>
-
 pub struct C.winsize {
 pub:
 	ws_row    u16
