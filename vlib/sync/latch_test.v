@@ -1,4 +1,5 @@
 import sync
+import time
 
 // Waiters are released exactly when the counter reaches zero.
 fn test_latch_releases_at_zero() {
@@ -18,8 +19,14 @@ fn test_latch_releases_at_zero() {
 		l.count_down()
 		assert l.count() == n - 1 - i, 'counter must track countdowns'
 	}
-	// No waiter may have passed yet: counter is still 1. (There is no
-	// observable channel yet, so just record the count for the next assert.)
+	// No waiter may pass while the counter is still positive.
+	select {
+		_ := <-done_ch {
+			assert false, 'latch opened before the final countdown'
+		}
+		20 * time.millisecond {
+		}
+	}
 	assert l.count() == 1, 'counter must be 1 before the last countdown'
 	l.count_down()
 	for _ in 0 .. n {
@@ -35,7 +42,6 @@ fn test_latch_zero_starts_open() {
 	l.count_down() // no-op past zero
 	l.wait()
 	assert l.count() == 0, 'counter must stay at zero'
-	assert true, 'open latch must never block'
 }
 
 // Countdowns past zero are no-ops and never go negative.
