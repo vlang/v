@@ -15,8 +15,13 @@ pub fn max[T](a T, b T) T {
 	return if a > b { a } else { b }
 }
 
-// abs returns the absolute value of `a`
+// abs returns the absolute value of `a`. Floating point zero always becomes positive zero.
 @[inline]
 pub fn abs[T](a T) T {
+	$if T is $float {
+		if a == 0 {
+			return T(0)
+		}
+	}
 	return if a < 0 { -a } else { a }
 }
