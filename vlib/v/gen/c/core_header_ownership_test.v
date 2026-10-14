@@ -152,3 +152,18 @@ fn test_freebsd_bootstrap_constants_match_native_sdk() {
 	result := cmdexec.run('cc', ['-std=c11', '-Werror', '-fsyntax-only', source])
 	assert result.exit_code == 0, result.output
 }
+
+fn test_headerless_cmdexec_poll_uses_bionic_nfds_type() ! {
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'cmdexec_bionic_poll_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'poll.c')
+	os.write_file(source, '#include <stddef.h>\n' + headerless_cmdexec_poll +
+		'\n_Static_assert(__builtin_types_compatible_p(v_cmdexec_nfds_t, unsigned int), "Bionic nfds_t");\n' +
+		'_Static_assert(__builtin_types_compatible_p(__typeof__(&v_cmdexec_poll_sys), int (*)(struct v_cmdexec_pollfd*, unsigned int, int)), "Bionic poll prototype");\n')!
+	// Validate the emitted declaration without claiming execution on an Android device.
+	checked := cmdexec.run(cc, ['-std=gnu11', '-D__ANDROID__', '-U__APPLE__', '-Werror', '-fsyntax-only',
+		source])
+	assert checked.exit_code == 0, checked.output
+}

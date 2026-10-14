@@ -132,7 +132,7 @@ struct v_cmdexec_pollfd {
 	short events;
 	short revents;
 };
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__ANDROID__)
 typedef unsigned int v_cmdexec_nfds_t;
 #else
 typedef size_t v_cmdexec_nfds_t;
