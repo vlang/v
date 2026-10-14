@@ -32,3 +32,9 @@ respectively. `neg()` applies the corresponding negation policy.
 For signed minimum divided by `-1`, wrapping returns the minimum and saturation returns
 the maximum. Both `%` operators return zero for that pair without overflowing the backend's
 division operation. Zero divisors follow ordinary integer division behavior.
+
+`gcd(a, b)` and `lcm(a, b)` accept matching integer types from `i8` through `i64`,
+`u8` through `u64`, and `int`. They compute with unsigned magnitudes, including signed minimum
+values, and clamp an unrepresentable result to the type maximum.
+`gcd_many(values)` computes the common divisor before applying that clamp; its empty result is zero.
+`lcm_many(values)` returns one for an empty input and zero when any element is zero.
