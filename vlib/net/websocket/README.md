@@ -16,10 +16,17 @@ and the client's callbacks have been registered.
 
 ## Explicit write batching
 
+Opening handshakes reject empty input and malformed header lines with an error.
+Each nonempty header line needs a name followed by a colon; values may contain further colons.
+
 `client.write_messages([]websocket.Message)` sends the supplied complete frames
 in order without waiting to collect more traffic. It uses one socket write and
 returns the wire byte count, including headers. Empty batches are a no-op.
 Control frames must be at most 125 bytes; continuation frames are not accepted.
+The same control payload limit applies to `write`, `write_ptr`, and `close`.
+For `close`, the two-byte status code leaves at most 123 bytes for the reason.
+An oversized reason sends no frame bytes and returns an error; the usual socket shutdown,
+state reset, and close event still run.
 Close frames are not accepted; call `client.close(code, reason)` for the closing handshake.
 The entire batch is validated before any frames are sent.
 Socket writes, including pongs from the reader, are serialized per connection.

@@ -834,7 +834,11 @@ fn (mut tf TTF_File) read_cmap(offset u32) {
 ******************************************************************************/
 // map_code returns the glyph index for the `char_code` character code.
 // map_code returns `0` if the character code could not be found.
+// The supported format 0 and 4 character maps are limited to the BMP (0 .. 0xffff).
 pub fn (mut tf TTF_File) map_code(char_code int) u16 {
+	if char_code < 0 || char_code > 0xffff {
+		return 0
+	}
 	mut index := 0
 	for i in 0 .. tf.cmaps.len {
 		mut cmap := tf.cmaps[i]
