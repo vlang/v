@@ -519,6 +519,13 @@ mut:
 	node_context_text_ids  map[string]u16
 	node_module_map_nodes  int = -1
 	node_context_read_only bool
+	// The declaration nodes lowering appended behind the checker's top-level
+	// index, kept for the transformer of a monomorphization stage (see
+	// appended_declaration_scan).
+	appended_decls_kept  bool
+	appended_decls_from  int
+	appended_decls_until int
+	appended_decls       []int
 	// used_fns_log records names newly inserted into used_fns while the
 	// late-used-fn-bodies pass runs, so that pass can tell "was this name
 	// already used before the current body's transform" without cloning the
@@ -1816,7 +1823,7 @@ fn (mut t Transformer) late_transform_candidate_names_among(cands []LateFnCandid
 // file/module context. The per-candidate filtering (generic templates,
 // late-used matching) runs in scan_late_call_names_range, so it can be spread
 // across worker threads.
-fn (t &Transformer) collect_late_scan_candidates(limit int) []LateFnCandidate {
+fn (mut t Transformer) collect_late_scan_candidates(limit int) []LateFnCandidate {
 	mut cands := []LateFnCandidate{cap: 8192}
 	mut cur_module := ''
 	mut cur_file := ''
@@ -1824,11 +1831,20 @@ fn (t &Transformer) collect_late_scan_candidates(limit int) []LateFnCandidate {
 	if indexed_nodes > limit {
 		indexed_count, indexed_nodes = 0, 0
 	}
-	for scan_idx in 0 .. indexed_count + limit - indexed_nodes {
+	mut appended, mut streamed := t.appended_declaration_scan(indexed_nodes)
+	for appended.len > 0 && appended.last() >= limit {
+		appended.delete_last()
+	}
+	if streamed > 0 {
+		streamed = limit - indexed_nodes
+	}
+	for scan_idx in 0 .. indexed_count + appended.len + streamed {
 		i := if scan_idx < indexed_count {
 			int(t.tc.top_level_idx[scan_idx])
+		} else if scan_idx - indexed_count < appended.len {
+			appended[scan_idx - indexed_count]
 		} else {
-			indexed_nodes + scan_idx - indexed_count
+			indexed_nodes + scan_idx - indexed_count - appended.len
 		}
 		// Only the three declaration kinds below are read past their kind tag.
 		kind_id := int(t.a.nodes[i].kind)
@@ -1940,6 +1956,8 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr, cached_specs []MonomorphCacheSpec, after_transform bool) (map[string]bool, []string, []MonomorphCacheSpec) {
 	debug_started := time.ticks()
 	mut t := new_transformer(mut a, tc, used_fns)
+	// This transformer scans its declarations many times; keep the appended ones.
+	t.appended_decls_kept = true
 	// Checker fixtures fully re-check every specialized body
 	// (check_concrete_fn_semantics). Workers would do that through forked
 	// checkers that share mutable state with the master and keep their own
@@ -2731,6 +2749,9 @@ fn (mut t Transformer) set_node_value(idx int, value string) {
 
 @[inline]
 fn (mut t Transformer) set_node(idx int, node flat.Node) {
+	if t.appended_decls_kept {
+		t.note_declaration_write(idx, node.kind)
+	}
 	if t.base_write_allowed(idx) {
 		t.invalidate_node_type_memo(idx)
 		mut stored := node
@@ -2856,6 +2877,9 @@ fn (mut t Transformer) flush_deferred_base_writes() {
 				t.a.nodes[w.idx].value = w.str
 			}
 			2 {
+				if t.appended_decls_kept {
+					t.note_declaration_write(w.idx, w.node.kind)
+				}
 				mut stored := w.node
 				stored.set_type_text_id(t.a.node_type_text_id(stored.typ, stored.type_text_id()))
 				t.a.nodes[w.idx] = stored
@@ -3457,9 +3481,10 @@ fn (mut t Transformer) restore_var_type_scope(mark VarTypeScopeMark) {
 // top_level_scan_prefix tells a scan of the top-level declarations how much of
 // the tree it can read through the checker's declaration index instead of
 // streaming every node: the number of index entries, and the number of nodes
-// they cover. The nodes from that count on, which lowering appended, are
-// streamed. The index stands in for a stream only when it lists its nodes in
-// their order, as a stream reads them; `0, 0` asks for a stream of every node.
+// they cover. The declarations from that count on, which lowering appended,
+// come from appended_declaration_scan. The index stands in for a stream only
+// when it lists its nodes in their order, as a stream reads them; `0, 0` asks
+// for a scan of every node.
 @[direct_array_access]
 fn (t &Transformer) top_level_scan_prefix() (int, int) {
 	if isnil(t.tc) || t.tc.top_level_idx.len == 0 {
@@ -3479,6 +3504,55 @@ fn (t &Transformer) top_level_scan_prefix() (int, int) {
 	return t.tc.top_level_idx.len, covered
 }
 
+// node_kind_is_declaration tells the kinds of node a scan of the top-level
+// declarations reads: the file and module markers and the declarations.
+@[inline]
+fn node_kind_is_declaration(kind flat.NodeKind) bool {
+	return kind in [.file, .module_decl, .struct_decl, .type_decl, .enum_decl, .interface_decl,
+		.global_decl, .const_decl, .fn_decl, .c_fn_decl]
+}
+
+// appended_declaration_scan tells a scan of the top-level declarations, which
+// reads the nodes the checker indexed through its index, how to reach the
+// nodes from `from` on, which lowering appended: through the returned list of
+// those with a declaration kind, in node order, and by streaming the returned
+// number of nodes after it. The transformer of a monomorphization stage, which
+// scans its tree many times, keeps the list and extends it with the nodes
+// appended since its last call; any other transformer streams every node.
+// Lowering appends its declarations, so a kept entry can only go stale by
+// losing its declaration kind, which the scans test anyway;
+// note_declaration_write drops the list in the other case, a write that gives
+// a listed range's node a declaration kind.
+fn (mut t Transformer) appended_declaration_scan(from int) ([]int, int) {
+	if !t.appended_decls_kept {
+		return []int{}, t.a.nodes.len - from
+	}
+	if t.appended_decls_from != from || t.appended_decls_until > t.a.nodes.len {
+		t.appended_decls_from = from
+		t.appended_decls_until = from
+		t.appended_decls.clear()
+	}
+	for i in t.appended_decls_until .. t.a.nodes.len {
+		if node_kind_is_declaration(t.a.nodes[i].kind) {
+			t.appended_decls << i
+		}
+	}
+	t.appended_decls_until = t.a.nodes.len
+	// The caller iterates its own copy: a later call can drop and rebuild the list.
+	return t.appended_decls.clone(), 0
+}
+
+// note_declaration_write drops the kept list of appended declarations before a
+// write gives a node it has classified a declaration kind it did not have.
+@[inline]
+fn (mut t Transformer) note_declaration_write(idx int, kind flat.NodeKind) {
+	if idx >= t.appended_decls_from && idx < t.appended_decls_until
+		&& node_kind_is_declaration(kind) && !node_kind_is_declaration(t.a.nodes[idx].kind) {
+		t.appended_decls_until = t.appended_decls_from
+		t.appended_decls.clear()
+	}
+}
+
 // --- type collection ---
 
 // collect_types updates collect types state for transform.
@@ -3488,7 +3562,7 @@ fn (mut t Transformer) collect_types() {
 	// top-level index covers the AST, iterate it instead of streaming every
 	// node (same nodes, same order, ~100x fewer). Lowering appends behind the
 	// index, so a later stage reads the nodes it covers through it as well and
-	// streams only what was appended.
+	// the appended declarations through appended_declaration_scan.
 	use_idx := !isnil(t.tc) && t.tc.top_level_idx.len > 0
 		&& t.tc.top_level_idx_nodes_len == t.a.nodes.len
 	mut indexed_count := 0
@@ -3499,14 +3573,17 @@ fn (mut t Transformer) collect_types() {
 	} else {
 		indexed_count, indexed_nodes = t.top_level_scan_prefix()
 	}
-	count := indexed_count + t.a.nodes.len - indexed_nodes
+	appended, streamed := t.appended_declaration_scan(indexed_nodes)
+	count := indexed_count + appended.len + streamed
 	mut cur_mod := ''
 	mut cur_file := ''
 	for ii in 0 .. count {
 		node := if ii < indexed_count {
 			t.a.nodes[t.tc.top_level_idx[ii]]
+		} else if ii - indexed_count < appended.len {
+			t.a.nodes[appended[ii - indexed_count]]
 		} else {
-			t.a.nodes[indexed_nodes + ii - indexed_count]
+			t.a.nodes[indexed_nodes + ii - indexed_count - appended.len]
 		}
 		match node.kind {
 			.file {
@@ -3546,9 +3623,9 @@ fn (mut t Transformer) collect_types() {
 				info := StructInfo{
 					name:          node.value
 					module:        cur_mod
-					is_params:     'params' in node.typ.split(',')
+					is_params:     comma_list_has_item(node.typ, 'params')
 					is_aligned:    transform_struct_decl_alignment_is_set(node.typ)
-					is_c_anon:     'c_anon' in node.typ.split(',')
+					is_c_anon:     comma_list_has_item(node.typ, 'c_anon')
 					alignment:     transform_struct_decl_alignment_value(node.typ)
 					fields:        fields
 					field_indices: struct_field_indices(fields)
