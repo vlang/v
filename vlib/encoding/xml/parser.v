@@ -47,12 +47,21 @@ fn parse_attributes_with_entities(attribute_contents string, entities map[string
 
 	mut state := AttributeParserState.key
 	mut key_span, mut value_span := TextSpan{}, TextSpan{}
+	mut key := ''
+	mut quote := u8(0)
 
 	for index, ch in attribute_contents {
 		match state {
 			.key {
 				match ch {
 					`=` {
+						key = attribute_contents[key_span.start..key_span.end].trim_space()
+						if key.contains_any(' \t\r\n') {
+							return valueless_attribute_error(key, attribute_contents)
+						}
+						if key == '' {
+							return error('XML attribute is missing name.')
+						}
 						state = AttributeParserState.eq
 					}
 					else {
@@ -68,6 +77,7 @@ fn parse_attributes_with_entities(attribute_contents string, entities map[string
 					`'`, `"` {
 						state = AttributeParserState.value
 						value_span.start = index + 1
+						quote = ch
 					}
 					else {
 						return error('Invalid character in attribute string: "${attribute_contents}"')
@@ -76,10 +86,9 @@ fn parse_attributes_with_entities(attribute_contents string, entities map[string
 			}
 			.value {
 				match ch {
-					`'`, `"` {
+					quote {
 						state = AttributeParserState.key
 						value_span.end = index
-						key := attribute_contents[key_span.start..key_span.end].trim_space()
 						if key in attributes {
 							return error('Duplicate XML attribute: ${key}')
 						}
@@ -99,7 +108,25 @@ fn parse_attributes_with_entities(attribute_contents string, entities map[string
 		}
 	}
 
+	if state == .eq {
+		return valueless_attribute_error(key, attribute_contents)
+	}
+	if state == .value {
+		return error('Unterminated value of XML attribute "${key}".')
+	}
+	if key_span.end > key_span.start {
+		key = attribute_contents[key_span.start..key_span.end].trim_space()
+		if key != '' {
+			return valueless_attribute_error(key, attribute_contents)
+		}
+	}
 	return attributes
+}
+
+// valueless_attribute_error reports the first name with no attribute value.
+fn valueless_attribute_error(names string, contents string) IError {
+	name := names.split_any(' \t\r\n')[0]
+	return error('Attribute "${name}" has no value in attribute string: "${contents}"')
 }
 
 fn parse_comment(mut reader io.Reader) !XMLComment {
@@ -398,7 +425,9 @@ fn parse_document_start(first_char u8, mut reader io.Reader) !(DocumentType, []X
 				if next_char(mut reader, mut local_buf)! != `-` {
 					return error('Invalid comment.')
 				}
-				comments << parse_comment(mut reader)!
+				comments << parse_comment(mut reader) or {
+					return eof_error(err, 'XML Comment not closed.')
+				}
 			}
 			`D` {
 				if found_doctype {
@@ -408,7 +437,9 @@ fn parse_document_start(first_char u8, mut reader io.Reader) !(DocumentType, []X
 				if reader.read(mut doc_buf)! != 6 || doc_buf != doctype_chars {
 					return error('Invalid DOCTYPE.')
 				}
-				doctype = parse_doctype(mut reader)!
+				doctype = parse_doctype(mut reader) or {
+					return eof_error(err, 'DOCTYPE declaration not closed.')
+				}
 				found_doctype = true
 			}
 			else {
@@ -617,7 +648,9 @@ fn parse_children(name string, attributes map[string]string, entities map[string
 						}
 						if next_two == double_dash {
 							// Comment
-							comment := parse_comment(mut reader)!
+							comment := parse_comment(mut reader) or {
+								return eof_error(err, 'XML Comment not closed.')
+							}
 							pending << comment
 						} else if next_two == c_tag {
 							// <![CDATA -> DATA
@@ -628,7 +661,9 @@ fn parse_children(name string, attributes map[string]string, entities map[string
 							if cdata_buf != data_chars {
 								return error('Invalid XML. Expected "CDATA" after "<![C".')
 							}
-							cdata := parse_cdata(mut reader)!
+							cdata := parse_cdata(mut reader) or {
+								return eof_error(err, 'CDATA section not closed.')
+							}
 							pending << cdata
 						} else {
 							return error('Invalid XML. Unknown control sequence: ${next_two.bytestr()}')
@@ -687,22 +722,27 @@ pub fn parse_single_node(first_char u8, mut reader io.Reader) !XMLNode {
 }
 
 fn parse_node_with_entities(first_char u8, entities map[string]string, mut reader io.Reader) !XMLNode {
+	if first_char == `?` {
+		return error('XML processing instructions are not supported.')
+	}
 	mut contents := strings.new_builder(default_string_builder_cap)
-	contents.write_u8(first_char)
 
 	mut local_buf := [u8(0)]
-	for {
-		mut ch := next_char(mut reader, mut local_buf)!
-		if ch == `>` {
-			break
-		}
+	mut ch := first_char
+	for ch != `>` {
 		contents.write_u8(ch)
+		ch = next_char(mut reader, mut local_buf) or {
+			return eof_error(err, 'XML tag not closed. Expected ">".')
+		}
 	}
 
 	tag_contents := contents.str().trim_space()
 
 	parts := tag_contents.split_any(' \t\r\n')
-	name := parts[0].trim_right('/')
+	name := if parts.len > 0 { parts[0].trim_right('/') } else { '' }
+	if name == '' {
+		return error('XML node is missing name.')
+	}
 
 	// Check if it is a self-closing tag
 	if tag_contents.ends_with('/') {
@@ -716,7 +756,9 @@ fn parse_node_with_entities(first_char u8, entities map[string]string, mut reade
 	attribute_string := tag_contents[name.len..].trim_space()
 	attributes := parse_attributes_with_entities(attribute_string, entities)!
 
-	return parse_children(name, attributes, entities, mut reader)
+	return parse_children(name, attributes, entities, mut reader) or {
+		return eof_error(err, 'XML node <${name}> not closed.')
+	}
 }
 
 // XMLDocument.from_string parses an XML document and decodes entities in text and attributes.

@@ -400,6 +400,24 @@ fn test_zero_length_slice_and_pos() {
 	assert empty_bf.pos(needle) == 0
 }
 
+// Regression test: a negative start must not shift by a negative amount
+// and silently return the wrong bits (it is clamped to 0, like out of
+// range bounds are clamped to the size).
+fn test_slice_negative_start() {
+	bf := bitfield.from_str('1010101010')
+	assert bf.slice(0, 5).str() == '10101'
+	// a negative start is clamped to 0, not silently mistranslated
+	assert bf.slice(-3, 5).str() == '10101'
+	assert bf.slice(-1, 5).str() == '10101'
+	// bounds still clamped as before
+	assert bf.slice(2, 100).str() == '10101010'
+	assert bf.slice(7, 3).str() == ''
+	// empty results stay empty for negative bounds on both ends
+	assert bf.slice(2, -1).str() == ''
+	assert bf.slice(-3, -1).str() == ''
+	assert bf.slice(0, -10).str() == ''
+}
+
 fn test_string_bitfield_to_bytes() {
 	str := 'Hello, world!'
 	b_from_str := str.bytes()

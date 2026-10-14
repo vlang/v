@@ -416,3 +416,7 @@ sb.write(buffer)!
 
 unsafe { buffer.free() }
 ```
+
+`Scanner` and `ReaderScanner` join adjacent high/low UTF-16 `\uXXXX` escapes into one
+Unicode scalar value. An unpaired surrogate escape yields U+FFFD; malformed escapes
+still report an error. These scanner rules are separate from `json2.decode`.

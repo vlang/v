@@ -7,9 +7,6 @@
 //
 module termios
 
-#include <termios.h>
-#include <sys/ioctl.h>
-
 // https://github.com/apple/darwin-xnu/blob/main/bsd/sys/termios.h
 
 const cclen = 20
