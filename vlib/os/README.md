@@ -135,6 +135,9 @@ paths and reports Win32 error codes. Timestamps must use positive `FILETIME` tic
 2^63. The zero value (1601-01-01 00:00:00 UTC) is rejected because Windows treats it as
 "leave unchanged".
 
+On Windows, `os.stat()` reports pre-1970 file and directory timestamps as negative Unix
+timestamps, including when the path reaches the target through a symbolic link.
+
 On Windows, `os.rm()` clears a file's read-only attribute for deletion while preserving
 its other attributes. If removal fails, it attempts to restore the original attributes
 and reports the removal error. `os.rmdir_all()` continues after deletion errors and

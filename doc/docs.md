@@ -1018,6 +1018,9 @@ See
 [Format Placeholder Specification](https://en.wikipedia.org/wiki/Printf_format_string#Format_placeholder_specification)
 for more information.
 
+Scientific float interpolation (`e`, `E`, `g`, or `G`) uses at least two exponent digits,
+without additional leading zeroes, including when a precision is specified.
+
 ```v
 x := 123.4567
 println('[${x:.2}]') // round to two decimal places => [123.46]
@@ -5602,6 +5605,9 @@ A later declaration using a module type with the same name resolves to that modu
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
+When an imported generic constructs a caller's struct, omitted fields use that struct's defaults,
+including shared fields and fixed arrays. This applies to value and heap literals and
+Result returns.
 Inside a generic declaration, its type parameters take precedence over same-named concrete
 types. A concrete single-letter struct can still be passed as a generic type argument.
 
@@ -7355,6 +7361,10 @@ To disable formatting for a block of code, wrap it with `// vfmt off` and
 
 These directives retain their source order relative to struct field attributes.
 Attribute groups that cross a directive boundary retain the affected field's source text.
+This preservation also applies to the first field in a struct.
+Compile-time members also provide source boundaries for following field attributes.
+Header line comments stay on separate lines from preserved body text.
+CRLF line endings in preserved field prefixes are normalized to LF.
 A completed directive region before an attribute leaves the enabled field subject to formatting.
 
 ```bash
@@ -10368,8 +10378,14 @@ use `v help`, `v help build` and `v help build-c`.
 
 ### Native Backend binaries
 
-Currently there is no debugging support for binaries, created by the
-native backend (flag: `-b native`).
+`-b native` has been replaced by `-b arm64` for native ARM64 compilation on macOS.
+Enable the backend with `v -compile-backend arm64 self`, then compile with
+`v -b arm64 -gc none file.v`. The native ARM64 backend currently requires garbage collection
+to be disabled.
+A native AMD64 backend is not available yet; use `v -b c -arch amd64 file.v` for AMD64
+compilation through the C backend.
+
+Currently there is no debugging support for binaries created by the native ARM64 backend.
 
 ### Javascript Backend
 
@@ -10629,9 +10645,18 @@ Since V can compile to C, calling V code from C is very easy, once you know how.
 
 Use `v -o file.c your_file.v` to generate a C file, corresponding to the V code.
 
+Use `v -o file.o your_file.v` to generate an object file for a later link. Production object
+builds keep machine code instead of automatically enabling LTO. On Windows, `-cc msvc` stages
+a `.obj` file and moves it to the requested output path, including a `.o` path.
+
 More details in [call_v_from_c example](../examples/call_v_from_c).
 
 ### Passing C compilation flags
+
+Use `-dump-c-flags file.txt` to inspect the selected C compiler's flags, one argument per line.
+Use `-dump-c-flags -` for standard output. Monolithic bundled TCC builds share this flag plan
+with their actual command, including `-cstrict` warning options.
+On macOS, both the dump and TCC command resolve framework flags to their framework link files.
 
 Add `#flag` directives to the top of your V files to provide C compilation flags like:
 

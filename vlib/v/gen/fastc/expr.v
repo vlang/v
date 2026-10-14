@@ -110,7 +110,8 @@ fn fastc_or_operand_token_start(tokens []FastcExpressionToken) int {
 				}
 				depth--
 			}
-			.comma {
+			// A slice bound (`s[a..f() or { b }]`) is an operand of its own, like a list item.
+			.comma, .dotdot {
 				if depth == 0 && nearest_comma < 0 {
 					nearest_comma = i
 				}
@@ -672,7 +673,7 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 				}
 				grouping_prefix = !is_call_paren && before_content
 			}
-			if separator !in [.lpar, .lsbr, .comma] || grouping_prefix {
+			if separator !in [.lpar, .lsbr, .comma, .dotdot] || grouping_prefix {
 				scoped_operand_prefix = g.render_raw_expression_tokens(struct_field_prefix_tokens) or {
 					''
 				}
@@ -1931,6 +1932,34 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				continue
 			}
 		}
+		if g.selfhost && g.tok == .lcbr && previous_token == .assign && paren_depth == 0
+			&& bracket_depth == 0 && brace_depth == 0 && expression_tokens.len > 1 {
+			// `target = { key: value }` assigns a map literal of the target's type.
+			target_type := g.infer_expression_type(expression_tokens[..expression_tokens.len - 1]) or {
+				''
+			}
+			previous_expected_type := g.expected_expression_type
+			g.expected_expression_type = target_type
+			map_source := g.read_inferred_map_literal()!
+			map_type := g.last_expression_type
+			g.expected_expression_type = previous_expected_type
+			result.write_string(map_source)
+			expression_tokens << FastcExpressionToken{
+				tok:    .name
+				source: map_source
+				typ:    map_type
+			}
+			previous_token = .name
+			previous_lit = ''
+			previous_module_separator = false
+			previous_token_end = g.s.pos
+			continue
+		}
+		if g.tok == .key_return && expression_tokens.len > 0 && paren_depth == 0 && bracket_depth == 0
+			&& brace_depth == 0 && unsafe_expression_depth == 0 {
+			// `{ order << 0 return true }`: a statement ends where the next begins.
+			break
+		}
 		if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 && g.tok in stops {
 			if !(g.selfhost && g.tok == .lcbr && g.condition_brace_opens_struct_literal(expression_tokens, previous_token, previous_lit)) {
 				break
@@ -2144,6 +2173,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_token_end = g.s.offset
 			g.next()
 			continue
+		}
+		if g.tok == .key_nil {
+			g.validate_nil(expression_tokens, previous_token, paren_depth, bracket_depth, brace_depth, struct_types, struct_depths, struct_paren_depths)!
 		}
 		g.validate_expression_stream_token(expression_tokens, stops, allow_mutation_statement, allow_declaration_guard, paren_depth, bracket_depth, brace_depth, unsafe_expression_depth, source_token_count, mut operator_state)!
 		streamed := g.render_expression_stream_token(mut expression_tokens, stops, previous_token, previous_lit, previous_module_separator, shared_is_struct_field, spawn_is_field_name, keyword_is_field_name, brace_depth, previous_was_pointer_cast, next_token_is_mut_argument, source_token_count)!
@@ -2362,6 +2394,9 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 	}
 	rendered_expression = g.render_enum_alias_member_references(expression_tokens, rendered_expression)
 	rendered_expression = g.render_constant_references(expression_tokens, rendered_expression)
+	if g.selfhost {
+		rendered_expression = g.render_fixed_array_lengths(expression_tokens, rendered_expression)
+	}
 	if g.selfhost {
 		// `m[k].field = value`: a map value is not a C lvalue, so assign the field through a
 		// mutable pointer to the entry rather than the map-read spelling render_special yields.
@@ -2852,18 +2887,9 @@ fn fastc_c_literal_end(source string, start int) int {
 	return source.len
 }
 
-// fastc_token_continues_expression reports whether a token appearing right after an
-// auto-inserted `;` continues the previous expression (a binary/postfix operator),
-// so the `;` is a line continuation rather than a statement boundary. The token
-// equivalent of semicolon_continues_expression, used where only a lookahead scanner
-// (not the source cursor) is available.
-// streaming_call_argument_type returns the declared parameter type of the call argument the
-// streaming reader is currently inside (the innermost unmatched `(` whose preceding token is a
-// function/method name), or '' when the enclosing `(` is a grouping paren or the callee is
-// unknown. Used to give an if/match-expression argument its parameter type mid-stream.
-fn (g &Parser) streaming_call_argument_type(tokens []FastcExpressionToken) string {
+// fastc_innermost_open_index returns the index of the innermost unclosed `(`, `[` or `{`, or -1.
+fn fastc_innermost_open_index(tokens []FastcExpressionToken) int {
 	mut depth := 0
-	mut open := -1
 	for i := tokens.len - 1; i >= 0; i-- {
 		match tokens[i].tok {
 			.rpar, .rsbr, .rcbr {
@@ -2871,17 +2897,19 @@ fn (g &Parser) streaming_call_argument_type(tokens []FastcExpressionToken) strin
 			}
 			.lpar, .lsbr, .lcbr {
 				if depth == 0 {
-					open = i
-					break
+					return i
 				}
 				depth--
 			}
 			else {}
 		}
 	}
-	if open <= 0 || tokens[open].tok != .lpar || tokens[open - 1].tok != .name {
-		return ''
-	}
+	return -1
+}
+
+// fastc_call_argument_index returns the index of the argument being read in the call whose `(`
+// is at `open`: the commas at the call's own depth since then.
+fn fastc_call_argument_index(tokens []FastcExpressionToken, open int) int {
 	mut arg_index := 0
 	mut inner := 0
 	for i := open + 1; i < tokens.len; i++ {
@@ -2894,6 +2922,24 @@ fn (g &Parser) streaming_call_argument_type(tokens []FastcExpressionToken) strin
 			else {}
 		}
 	}
+	return arg_index
+}
+
+// fastc_token_continues_expression reports whether a token appearing right after an
+// auto-inserted `;` continues the previous expression (a binary/postfix operator),
+// so the `;` is a line continuation rather than a statement boundary. The token
+// equivalent of semicolon_continues_expression, used where only a lookahead scanner
+// (not the source cursor) is available.
+// streaming_call_argument_type returns the declared parameter type of the call argument the
+// streaming reader is currently inside (the innermost unmatched `(` whose preceding token is a
+// function/method name), or '' when the enclosing `(` is a grouping paren or the callee is
+// unknown. Used to give an if/match-expression argument its parameter type mid-stream.
+fn (g &Parser) streaming_call_argument_type(tokens []FastcExpressionToken) string {
+	open := fastc_innermost_open_index(tokens)
+	if open <= 0 || tokens[open].tok != .lpar || tokens[open - 1].tok != .name {
+		return ''
+	}
+	arg_index := fastc_call_argument_index(tokens, open)
 	name := tokens[open - 1].lit
 	if open >= 2 && tokens[open - 2].tok == .dot {
 		// `recv.method(…)`: resolve on the receiver's type; parameter_types[0] is the receiver.
@@ -3666,6 +3712,7 @@ fn (g &Parser) conjunction_narrowing(tokens []FastcExpressionToken) ?FastcConjun
 		return none
 	}
 	mut variant_c := ''
+	mut variant_value_type := ''
 	if is_idx + 2 == inner.len && inner[is_idx + 1].tok == .name {
 		if type_key := g.resolve_declared_type_key(inner[is_idx + 1].lit) {
 			variant_c = fastc_c_declared_type_name(type_key)
@@ -3673,7 +3720,8 @@ fn (g &Parser) conjunction_narrowing(tokens []FastcExpressionToken) ?FastcConjun
 			variant_c = inner[is_idx + 1].lit
 		}
 	} else if resolved := g.type_from_expression_tokens(inner[is_idx + 1..]) {
-		variant_c = fastc_normalize_inferred_type(resolved).trim_right('*')
+		variant_value_type = fastc_normalize_inferred_type(resolved)
+		variant_c = variant_value_type.trim_right('*')
 	}
 	if variant_c == '' {
 		return none
@@ -3700,8 +3748,9 @@ fn (g &Parser) conjunction_narrowing(tokens []FastcExpressionToken) ?FastcConjun
 	return FastcConjunctionNarrowing{
 		path:      path
 		smartcast: FastcMemberSmartcast{
-			typ:    variant_c + '*'
-			source: '((${variant_c} *)(${subject_source})${access}_object)'
+			typ:        variant_c + '*'
+			value_type: if variant_value_type != '' { variant_value_type } else { variant_c }
+			source:     '((${variant_c} *)(${subject_source})${access}_object)'
 		}
 	}
 }
@@ -4027,7 +4076,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 					} else if g.struct_equality_is_supported(element_type, []) {
 						// Struct elements (`typ in []StrType`) cannot be compared with C `==`; compare them
 						// field-wise, like `struct == struct`.
-						comparison = g.struct_equality_source(item_name, right_element, element_type, [])
+						comparison = g.struct_equality_source(item_name, right_element, element_type, [], 0)
 					}
 					// A hoisted predicate keeps this interpolation flat: the FastC
 					// selfhost parser renders nested `${if ... { '${...}' }}` blocks
@@ -4314,6 +4363,10 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 				'${deferred} builtin__panic_result_not_set(builtin__IError_msg(${temporary}.err));'
 			} else if g.return_type in ['Option', '__v_result'] {
 				'return ${temporary};'
+			} else if g.prefs.is_test {
+				g.test_propagation_failure(temporary, (g.infer_expression_type(inner_tokens) or {
+					''
+				}) == '__v_result')
 			} else {
 				'return 1;'
 			}
@@ -4683,6 +4736,32 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 	has_assignment := flags.has_assignment
 	has_membership := flags.has_membership
 	has_top_level_logical := flags.has_top_level_logical
+	if flags.has_lcbr && g.selfhost && tokens.last().tok == .rcbr
+		&& fastc_expression_tokens_contain(tokens, .ellipsis) {
+		// `T{...base, f: v}`: the streamed form would keep the spread as raw `...`.
+		if struct_update := g.render_struct_literal_expression(tokens) {
+			return struct_update
+		}
+	}
+	if has_lpar && g.selfhost && tokens.last().tok == .rpar {
+		if element_call := g.render_element_function_call(tokens) {
+			return element_call
+		}
+	}
+	if has_lpar && g.selfhost && fastc_reads_call_result(tokens) {
+		// `f(x).field`: the call's arguments render against its parameters.
+		if field_read := g.render_member_receiver(tokens) {
+			return FastcRenderedExpression{
+				source: field_read
+				typ:    fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { '' })
+			}
+		}
+	}
+	if has_comparison && g.selfhost {
+		if propagation_comparison := g.render_propagation_in_comparison(tokens) {
+			return propagation_comparison
+		}
+	}
 	if has_typeof {
 		if type_name := g.render_typeof_name_expression(tokens) {
 			return type_name
@@ -4991,4 +5070,236 @@ fn (g &Parser) expression_uses_member_smartcast(tokens []FastcExpressionToken) b
 		}
 	}
 	return false
+}
+
+// render_propagation_in_comparison lowers a comparison with a propagating operand
+// (`f()? == 2`, `a < g()!`) or one that reads a call's result (`f(x).n == 2`): each
+// operand renders on its own, which unwraps it or renders the call's arguments.
+fn (g &Parser) render_propagation_in_comparison(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	// Only a lone comparison: anything else at the top level binds looser or tighter
+	// than it and is not this renderer's to split.
+	mut depth := 0
+	mut comparisons := 0
+	for item in tokens {
+		if item.tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+		} else if item.tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+		} else if depth == 0 && (item.tok in [.and, .logical_or, .key_in, .not_in, .key_is, .not_is,
+			.key_or] || item.tok.is_assignment()) {
+			return none
+		} else if depth == 0 && item.tok in [.eq, .ne, .lt, .gt, .le, .ge] {
+			comparisons++
+		}
+	}
+	if comparisons != 1 {
+		return none
+	}
+	depth = 0
+	for i, item in tokens {
+		if item.tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+		} else if item.tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+		} else if depth == 0 && item.tok in [.eq, .ne, .lt, .gt, .le, .ge] && i > 1 && i + 1 < tokens.len {
+			left_tokens := fastc_question_as_not(tokens[..i])
+			right_tokens := fastc_question_as_not(tokens[i + 1..])
+			left_reads_call := fastc_reads_call_result(left_tokens)
+			right_reads_call := fastc_reads_call_result(right_tokens)
+			if left_tokens.last().tok != .not && right_tokens.last().tok != .not && !left_reads_call
+				&& !right_reads_call && !fastc_propagates_before_member(left_tokens)
+				&& !fastc_propagates_before_member(right_tokens) {
+				return none
+			}
+			if fastc_trailing_not_marks_fixed_array_literal(left_tokens)
+				|| fastc_trailing_not_marks_fixed_array_literal(right_tokens) {
+				return none
+			}
+			left_type := fastc_normalize_inferred_type(g.infer_expression_type(left_tokens) or {
+				return none
+			})
+			left_layout := g.underlying_alias_type(left_type)
+			is_string := left_layout == 'string'
+			if !is_string && !fastc_is_numeric_expression_type(left_layout) && left_layout != 'bool'
+				&& g.underlying_enum_type_key(g.semantic_type_key(left_type)) == none {
+				return none
+			}
+			left := if left_reads_call {
+				g.render_member_receiver(left_tokens) or { return none }
+			} else {
+				g.render_call_argument_expression(left_tokens, left_type) or { return none }
+			}
+			right := if right_reads_call {
+				g.render_member_receiver(right_tokens) or { return none }
+			} else {
+				g.render_call_argument_expression(right_tokens, left_type) or { return none }
+			}
+			operator := item.tok.str()
+			source := if !is_string {
+				'((${left}) ${operator} (${right}))'
+			} else if item.tok == .eq {
+				'builtin__string_eq(${left}, ${right})'
+			} else if item.tok == .ne {
+				'!builtin__string_eq(${left}, ${right})'
+			} else {
+				return none
+			}
+			return FastcRenderedExpression{
+				source: source
+				typ:    'bool'
+			}
+		}
+	}
+	return none
+}
+
+// fastc_question_as_not spells a trailing `?` as `!`: FastC propagates both alike.
+fn fastc_question_as_not(tokens []FastcExpressionToken) []FastcExpressionToken {
+	if tokens.len < 2 || tokens.last().tok != .question {
+		return tokens
+	}
+	mut normalized := tokens.clone()
+	last := tokens.last()
+	normalized[normalized.len - 1] = FastcExpressionToken{
+		...last
+		tok: .not
+	}
+	return normalized
+}
+
+// fastc_reads_call_result reports `f(args).field...`: a field read on a free call's result.
+fn fastc_reads_call_result(tokens []FastcExpressionToken) bool {
+	if tokens.len < 5 || tokens[0].tok != .name || tokens[1].tok != .lpar {
+		return false
+	}
+	close := fastc_matching_rpar(tokens, 1) or { return false }
+	if close + 2 >= tokens.len || tokens[close + 1].tok != .dot || tokens.last().tok != .name {
+		return false
+	}
+	// Fields and indexes only; a method call or propagation is another renderer's.
+	for item in tokens[close + 1..] {
+		if item.tok in [.lpar, .not, .question] {
+			return false
+		}
+	}
+	return true
+}
+
+// fastc_element_call_open is the `(` of `arr[i](args)` that spans to the end of `tokens`,
+// when the bracketed base is an array (not `f[T](x)`'s type arguments); -1 otherwise.
+fn (g &Parser) fastc_element_call_open(tokens []FastcExpressionToken) int {
+	for open in 1 .. tokens.len - 1 {
+		if tokens[open].tok != .lpar || tokens[open - 1].tok != .rsbr {
+			continue
+		}
+		if fastc_matching_rpar(tokens, open) or { -1 } != tokens.len - 1 {
+			continue
+		}
+		mut depth := 0
+		mut lsbr := -1
+		for j := open - 1; j >= 0; j-- {
+			if tokens[j].tok == .rsbr {
+				depth++
+			} else if tokens[j].tok == .lsbr {
+				depth--
+				if depth == 0 {
+					lsbr = j
+					break
+				}
+			}
+		}
+		if lsbr <= 0 {
+			return -1
+		}
+		base_type := g.infer_expression_type(tokens[..lsbr]) or { return -1 }
+		layout := fastc_trim_pointer_suffix(g.underlying_alias_type(base_type))
+		if layout.starts_with('Array_') || layout.starts_with('FixedArray_') {
+			return open
+		}
+		return -1
+	}
+	return -1
+}
+
+// render_element_function_call lowers `arr[i](args)`: a call through a function value
+// held in an array element.
+fn (g &Parser) render_element_function_call(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	open := g.fastc_element_call_open(tokens)
+	if open < 0 {
+		return none
+	}
+	element_tokens := tokens[..open]
+	element_type := fastc_normalize_inferred_type(g.infer_expression_type(element_tokens) or {
+		return none
+	})
+	signature := g.functions[element_type] or {
+		g.functions[g.semantic_type_key(element_type)] or { return none }
+	}
+	element := if member := g.render_member_receiver(element_tokens) {
+		member
+	} else {
+		access := g.render_array_access_expression(element_tokens) or { return none }
+		access.source
+	}
+	call_args := fastc_call_arguments(tokens, open, tokens.len - 1) or { return none }
+	if call_args.len != signature.parameter_types.len {
+		return none
+	}
+	mut arguments := []string{cap: call_args.len}
+	for k, argument in call_args {
+		arguments << g.render_call_argument_expression(argument, signature.parameter_types[k]) or {
+			return none
+		}
+	}
+	return FastcRenderedExpression{
+		source: '(${element})(${arguments.join(', ')})'
+		typ:    if signature.return_type == '' { 'void' } else { signature.return_type }
+	}
+}
+
+// fastc_propagates_before_member reports `f()!.field` / `f()?.x[i]`: a top-level `!` or `?`
+// that a member chain continues from.
+fn fastc_propagates_before_member(tokens []FastcExpressionToken) bool {
+	mut depth := 0
+	for i, item in tokens {
+		if item.tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+		} else if item.tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+		} else if depth == 0 && item.tok in [.not, .question] && i > 0 && i + 1 < tokens.len
+			&& tokens[i - 1].tok == .rpar && tokens[i + 1].tok == .dot {
+			return true
+		}
+	}
+	return false
+}
+
+// render_fixed_array_lengths spells `x.len` of a fixed array (a value, a `mut` parameter's
+// pointer, or a field) as its length: the C struct holds the elements only.
+fn (g &Parser) render_fixed_array_lengths(tokens []FastcExpressionToken, rendered string) string {
+	mut result := rendered
+	for i := 2; i < tokens.len; i++ {
+		if tokens[i].tok != .name || tokens[i].lit != 'len' || tokens[i - 1].tok != .dot {
+			continue
+		}
+		if i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
+			continue
+		}
+		start := fastc_method_receiver_start(tokens, i - 1)
+		if start >= i - 1 {
+			continue
+		}
+		receiver_tokens := tokens[start..i - 1]
+		receiver_type := g.infer_expression_type(receiver_tokens) or { continue }
+		layout := fastc_trim_pointer_suffix(g.underlying_alias_type(fastc_normalize_inferred_type(receiver_type)))
+		if !layout.starts_with('FixedArray_') {
+			continue
+		}
+		length := fastc_fixed_array_length(layout) or { continue }
+		receiver := g.render_member_receiver(receiver_tokens) or { continue }
+		for separator in ['->', '.'] {
+			result = fastc_replace_c_name(result, '${receiver}${separator}len', '(${length})', false)
+		}
+	}
+	return result
 }

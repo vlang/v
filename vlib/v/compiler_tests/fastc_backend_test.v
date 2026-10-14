@@ -794,20 +794,20 @@ fn main() {
 				os.join_path(root, 'warn_allocs'), valid_source]
 			expected: 'fastc parser does not support `-warn-about-allocs`'
 		},
-		UnsupportedFastCInvocation{
-			args:     ['-silent', '-skip-running', '-b', 'fastc', '-o',
-				os.join_path(root, 'discovered_test'), discovered_test_source]
-			expected: 'fastc parser does not support test/checker mode'
-		},
-		UnsupportedFastCInvocation{
-			args:     ['-silent', '-skip-running', '-b', 'fastc', '-o',
-				os.join_path(root, 'discovered_c_test'), discovered_c_test_source]
-			expected: 'fastc parser does not support test/checker mode'
-		},
 	] {
 		result := cmdexec.run(v3_bin, invocation.args)
 		assert result.exit_code != 0
 		assert result.output.contains(invocation.expected), result.output
+	}
+	// A test file builds as a program whose main runs its tests.
+	for discovered_source in [discovered_test_source, discovered_c_test_source] {
+		discovered_binary := discovered_source.all_before_last('.v') + '_program'
+		discovered_build := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', discovered_binary,
+			discovered_source])
+		assert discovered_build.exit_code == 0, discovered_build.output
+		discovered_run := cmdexec.run(discovered_binary, [])
+		assert discovered_run.exit_code == 1, discovered_run.output
+		assert discovered_run.output.contains('FAIL: test_must_run'), discovered_run.output
 	}
 }
 

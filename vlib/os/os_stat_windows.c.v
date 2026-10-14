@@ -7,8 +7,26 @@ const windows_io_reparse_tag_symlink = u32(0xa000000c)
 const windows_filetime_ticks_per_second = u64(10_000_000)
 const windows_filetime_unix_epoch_seconds = i64(11_644_473_600)
 
+// Windows BY_HANDLE_FILE_INFORMATION layout: thirteen 32-bit words.
+struct WindowsFileInformation {
+mut:
+	file_attributes u32
+	creation_time   Filetime
+	access_time     Filetime
+	write_time      Filetime
+	volume_serial   u32
+	file_size_high  u32
+	file_size_low   u32
+	number_of_links u32
+	file_index_high u32
+	file_index_low  u32
+}
+
+fn C.GetFileInformationByHandle(handle voidptr, information voidptr) i32
+
 // stat returns metadata for the given file/folder.
 // It will return a POSIX error message, if it can not do so.
+// Pre-1970 timestamps are read from the target's Win32 file information.
 // C._wstat64() can be used on 32- and 64-bit Windows per
 // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/stat-functions?view=msvc-170
 pub fn stat(path string) !Stat {
@@ -18,7 +36,7 @@ pub fn stat(path string) !Stat {
 		if res != 0 {
 			return error_posix()
 		}
-		return Stat{
+		mut st := Stat{
 			dev:   s.st_dev
 			inode: s.st_ino
 			nlink: s.st_nlink
@@ -31,7 +49,46 @@ pub fn stat(path string) !Stat {
 			mtime: s.st_mtime
 			ctime: s.st_ctime
 		}
+		// The CRT clamps timestamps before its local epoch to -1. Query a handle
+		// to the same target; directory entries would describe a symlink itself.
+		if st.atime < 0 || st.mtime < 0 || st.ctime < 0 {
+			if information := windows_stat_file_information(path) {
+				st.atime = windows_filetime_to_unix_seconds(information.access_time)
+				st.mtime = windows_filetime_to_unix_seconds(information.write_time)
+				st.ctime = windows_filetime_to_unix_seconds(information.creation_time)
+			}
+		}
+		return st
 	}
+}
+
+fn windows_stat_file_information(path string) ?WindowsFileInformation {
+	normalized_path := path.replace('/', '\\')
+	root_len := win_root_len(normalized_path)
+	mut path_end := normalized_path.len
+	for path_end > root_len + 1 && normalized_path[path_end - 1] == `\\` {
+		path_end--
+	}
+	w_path := normalized_path[..path_end].to_wide()
+	defer {
+		// to_wide allocates the UTF-16 buffer passed to CreateFileW.
+		unsafe { free(w_path) }
+	}
+	share_mode := C.FILE_SHARE_READ | C.FILE_SHARE_WRITE | C.FILE_SHARE_DELETE
+	// Zero access requests metadata only; omitting OPEN_REPARSE_POINT follows links.
+	handle := C.CreateFileW(w_path, 0, share_mode, 0, C.OPEN_EXISTING,
+		C.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if handle == invalid_handle_value {
+		return none
+	}
+	defer {
+		C.CloseHandle(handle)
+	}
+	mut information := WindowsFileInformation{}
+	if C.GetFileInformationByHandle(handle, voidptr(&information)) == 0 {
+		return none
+	}
+	return information
 }
 
 // lstat is the same as stat() for Windows, including reporting symbolic links as regular files.
