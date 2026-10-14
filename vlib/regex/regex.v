@@ -2226,12 +2226,6 @@ pub fn (mut re RE) match_base(in_txt &u8, text_len int) (int, int) {
 		}
 		// ist_load
 		else if m_state == .ist_load {
-			if state.i >= text_len && ist in [u32(ist_simple_char), ist_dot_char, ist_bsls_char,
-				ist_char_class_pos, ist_char_class_neg] {
-				m_state = .ist_quant_n
-				continue
-			}
-
 			// program end
 			if ist == ist_prog_end {
 				// if we are in match exit well
@@ -2317,6 +2311,13 @@ pub fn (mut re RE) match_base(in_txt &u8, text_len int) (int, int) {
 				m_state = .ist_load
 				continue
 			}
+			// Control instructions and zero-width tokens can still finish at EOF.
+			else if state.i >= text_len && ist in [u32(ist_simple_char), ist_dot_char, ist_bsls_char,
+				ist_char_class_pos, ist_char_class_neg] {
+				m_state = .ist_quant_n
+				continue
+			}
+
 			// check ist_dot_char
 			else if ist == ist_dot_char {
 				// println("ist_dot_char rep: ${re.prog[state.pc].rep}")
