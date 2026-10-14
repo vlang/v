@@ -62,6 +62,11 @@ fn test_varinttou64_u64tovarint() {
 		rn := conv.u64tovarint(k)!
 		assert rn == v
 	}
+	// 2^62 has no 8 byte encoding left, so it is rejected, not silently lost:
+	// its top bit would be overwritten by the msb marker and it decoded back as 0
+	if _ := conv.u64tovarint(u64(1) << 62) {
+		assert false, '2^62 must not be encodable'
+	}
 }
 
 fn test_reverse_bytes_u64() {

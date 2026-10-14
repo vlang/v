@@ -5,6 +5,7 @@ module http
 // transparent retry on stale pooled connections, idle eviction, and the
 // `disable_connection_reuse` opt-out. Each test runs its own loopback server
 // with an accept counter: the accept count is the proof of (non-)reuse.
+import io
 import net
 import net.mbedtls
 import sync
@@ -85,10 +86,12 @@ fn ka_srv_serve_conn(mut s KaSrv, mut conn net.TcpConn) {
 	conn.set_read_timeout(10 * time.second)
 	for {
 		head := ka_read_request_head(mut conn) or { return }
-		if s.drop_on_post && head.starts_with('POST ') {
+		if head.starts_with('POST ') {
 			s.mu.lock()
 			s.posts++
 			s.mu.unlock()
+		}
+		if s.drop_on_post && head.starts_with('POST ') {
 			// Drop the connection without responding: the request bytes were
 			// written, so this is not a stale-write.
 			return
@@ -272,6 +275,50 @@ fn test_h1_stale_pooled_connection_is_retried() {
 	}
 	assert srv.accept_count() == 2
 	stop_ka_srv(mut listener, th)
+}
+
+fn test_h1_server_closed_idle_connection_is_discarded_before_post() {
+	mut srv := &KaSrv{
+		close_after_each: true
+	}
+	port, mut listener, th := start_ka_srv(mut srv)!
+	defer {
+		stop_ka_srv(mut listener, th)
+	}
+	url := 'http://127.0.0.1:${port}/'
+	assert fetch(url: url)!.status_code == 200
+	mut pool := default_transport()
+	key := transport_pool_key(&Request{}, 'http', '127.0.0.1', port)
+	mut idle := pool.checkout(key)
+	assert idle != unsafe { nil }
+	// Observe the peer's EOF before returning this connection to the idle pool.
+	// This avoids depending on a sleep for the server's FIN to arrive.
+	idle.tcp.set_read_timeout(time.second)
+	mut buf := []u8{len: 1}
+	if _ := idle.tcp.read(mut buf) {
+		assert false, 'expected EOF on the idle connection'
+	} else {
+		assert err is io.Eof
+	}
+	pool.checkin(mut idle)
+	resp := fetch(method: .post, url: url)!
+	assert resp.status_code == 200
+	assert resp.body == 'hello'
+	assert srv.accept_count() == 2
+	assert srv.post_count() == 1
+}
+
+fn test_h1_healthy_idle_connection_is_reused_for_post() {
+	mut srv := &KaSrv{}
+	port, mut listener, th := start_ka_srv(mut srv)!
+	defer {
+		stop_ka_srv(mut listener, th)
+	}
+	url := 'http://127.0.0.1:${port}/'
+	assert fetch(url: url)!.status_code == 200
+	assert fetch(method: .post, url: url)!.status_code == 200
+	assert srv.accept_count() == 1
+	assert srv.post_count() == 1
 }
 
 // A non-idempotent request that fails on a reused keep-alive connection after

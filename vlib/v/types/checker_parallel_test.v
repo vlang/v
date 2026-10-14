@@ -101,7 +101,7 @@ fn test_parallel_fn_prep_recognizes_source_embedded_veb_context() {
 	a.add_node(flat.Node{
 		kind:  .type_decl
 		value: 'AliasContext'
-		typ:   'RegressionContext'
+		typ:   flat.source_type_id('RegressionContext')
 	})
 	tc.top_level_idx << a.nodes.len - 1
 	tc.build_type_declaration_index(&a)
@@ -176,7 +176,7 @@ fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
 	mut cache := CheckTypePromotionCache{}
 	mut originals := []Type{}
 	for i in 0 .. 600 {
-		typ := Type(Struct{ name: 'Item${i}' })
+		typ := Type(Struct{ name_id: flat.source_type_id('Item${i}') })
 		originals << typ
 		assert tc.cached_check_type_promotion(typ, mut cache, false, false) == none
 		promoted := tc.cached_check_type_promotion(typ, mut cache, true, false)?
@@ -260,7 +260,7 @@ fn test_checker_type_promotion_survives_batch_arena_release() {
 			if compatibility { tc.type_interner = unsafe { nil } }
 			scope := unsafe { prealloc_scope_begin() }
 			borrowed := Type(FnType{
-				params:      [Type(Struct{ name: 'ScopedItem'.clone() })]
+				params:      [Type(Struct{ name_id: flat.source_type_id('ScopedItem'.clone()) })]
 				params_mut:  [true]
 				return_type: Type(Array{ elem_type: Type(string_) })
 			})
@@ -368,9 +368,12 @@ fn test_fast_file_index_collects_translated_module_attribute() {
 }
 
 fn test_parent_metadata_replay_matches_full_scan() {
-	path := os.join_path(os.vtmp_dir(), 'v3_parent_metadata_${os.getpid()}.v')
+	fixture_dir := os.join_path(os.vtmp_dir(), 'v3_parent_metadata_${os.getpid()}')
+	defer { os.rmdir_all(fixture_dir) or {} }
+	os.mkdir_all(os.join_path(fixture_dir, 'v3_parent_headers')) or { panic(err) }
+	os.mkdir_all(os.join_path(fixture_dir, 'v3_parent_system')) or { panic(err) }
+	path := os.join_path(fixture_dir, 'main.v')
 	os.write_file(path, '@[translated]\nmodule main\nimport strings\n#flag -I @DIR/v3_parent_headers -D FEATURE\n#flag -isystem "@DIR/v3_parent_system" -Wall\n#flag -I @DIR/v3_parent_headers\n@[inline]\nfn make_builder() { mut b := strings.new_builder(10) }\n') or { panic(err) }
-	defer { os.rm(path) or {} }
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
@@ -676,11 +679,11 @@ fn test_generated_parent_fallback_does_not_allocate_per_ast_node() {
 	$if gcboehm ? {
 		mut a := flat.FlatAst.new()
 		for _ in 0 .. 8192 {
-			a.add_node(flat.Node{ kind: .int_literal, value: '0', typ: 'int' })
+			a.add_node(flat.Node{ kind: .int_literal, value: '0', typ: flat.source_type_id('int') })
 		}
 		mut tc := TypeChecker.new(&a)
 		tc.build_direct_parent_index(&a)
-		generated := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: 'int' })
+		generated := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: flat.source_type_id('int') })
 		before := gc_heap_usage().total_bytes
 		for _ in 0 .. 16 {
 			assert tc.direct_parent_id(generated) == flat.empty_node
@@ -695,7 +698,7 @@ fn test_generated_parent_fallback_does_not_allocate_per_ast_node() {
 		first := a.add_node(flat.Node{
 			kind:           .infix
 			op:             .plus
-			typ:            'int'
+			typ:            flat.source_type_id('int')
 			children_start: first_children
 			children_count: 2
 		})
@@ -760,7 +763,7 @@ fn test_generic_receiver_pattern_index_survives_rebuild_and_worker_fork() {
 	}
 	assert matched.key == structured_key
 	assert matched.params == ['T']
-	assert matched.args == ['int']
+	assert matched.args_text() == ['int']
 
 	tc.rebuild_fn_param_suffix_index()
 	assert tc.generic_receiver_method_index['flatten'] == [structured_key]
@@ -916,12 +919,12 @@ fn test_disabled_resolution_views_keep_file_context_and_recursive_aliases() {
 	assert tc.fn_context.generic_params == ['Item']
 	assert tc.resolution_type_mode
 
-	tc.type_aliases['Handlers'] = 'map[string]fn (Handlers) int'
+	tc.type_aliases.set('Handlers', 'map[string]fn (Handlers) int')
 	warm := tc.parse_resolution_type('Handlers')
 	assert warm is Alias
 	assert (warm as Alias).base_type is Map
 	// A recursive edge must remain symbolic even after the complete alias was cached.
-	tc.type_cache.alias_parse_stack << 'Handlers'
+	tc.type_cache.alias_parse_stack << flat.source_type_id('Handlers')
 	recursive := tc.parse_resolution_type('Handlers')
 	tc.type_cache.alias_parse_stack.delete_last()
 	assert recursive is Alias

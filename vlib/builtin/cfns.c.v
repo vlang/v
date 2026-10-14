@@ -3,6 +3,9 @@ module builtin
 @[typedef]
 pub struct C.FILE {}
 
+@[typedef]
+pub struct C.qsort_callback_func {}
+
 // Virtual C globals that are available through libc or generated C headers.
 __global C.errno int
 __global C.stdin &C.FILE
@@ -12,16 +15,16 @@ __global C.environ &&char
 __global C._wyp &u64
 
 // <string.h>
-@[noalloc]
+@[markused; noalloc]
 fn C.memcpy(dest voidptr, const_src voidptr, n usize) voidptr
 
-@[noalloc]
+@[markused; noalloc]
 fn C.memcmp(const_s1 voidptr, const_s2 voidptr, n usize) i32
 
-@[noalloc]
+@[markused; noalloc]
 fn C.memmove(dest voidptr, const_src voidptr, n usize) voidptr
 
-@[noalloc]
+@[markused; noalloc]
 fn C.memset(str voidptr, c i32, n usize) voidptr
 
 @[noalloc]
@@ -33,47 +36,54 @@ fn C.memmem(haystack voidptr, haystacklen usize, needle voidptr, needlelen usize
 @[noalloc]
 fn C.mempcpy(dest voidptr, src voidptr, n usize) voidptr
 
-@[trusted]
+@[markused; trusted]
 fn C.calloc(usize, usize) voidptr
 
 fn C.atoi(&char) i32
 
+@[markused]
 fn C.malloc(usize) voidptr
 
+@[markused]
 fn C.realloc(a voidptr, b usize) voidptr
 
-@[noalloc]
+@[markused; noalloc]
 fn C.free(ptr voidptr)
 
+@[markused]
 fn C.mmap(addr_length voidptr, length usize, prot i32, flags i32, fd i32, offset isize) voidptr
 
 // C.munmap releases a memory mapping created by C.mmap.
 fn C.munmap(addr_length voidptr, len usize) i32
+
+@[markused]
 fn C.mprotect(addr_length voidptr, len usize, prot i32) i32
 
+@[markused]
 fn C.aligned_alloc(align usize, size usize) voidptr
 
 // windows aligned memory functions
-fn C._aligned_malloc(size isize, align isize) voidptr
+fn C._aligned_malloc(size usize, align usize) voidptr
 fn C._aligned_free(voidptr)
-fn C._aligned_realloc(voidptr, size isize, align isize) voidptr
-fn C._aligned_offset_malloc(size isize, align isize, offset isize) voidptr
-fn C._aligned_offset_realloc(voidptr, size isize, align isize, offset isize) voidptr
-fn C._aligned_msize(voidptr, align isize, offset isize) isize
-fn C._aligned_recalloc(voidptr, num isize, size isize, align isize) voidptr
+fn C._aligned_realloc(voidptr, size usize, align usize) voidptr
+fn C._aligned_offset_malloc(size usize, align usize, offset usize) voidptr
+fn C._aligned_offset_realloc(voidptr, size usize, align usize, offset usize) voidptr
+fn C._aligned_msize(voidptr, align usize, offset usize) usize
+fn C._aligned_recalloc(voidptr, num usize, size usize, align usize) voidptr
 
 $if windows {
 	fn C.VirtualAlloc(voidptr, isize, u32, u32) voidptr
 	fn C.VirtualProtect(voidptr, isize, C.DWORD, &C.DWORD) bool
 }
 
-@[noreturn; trusted]
+@[markused; noreturn; trusted]
 fn C.exit(code i32)
 
+@[markused]
 fn C.qsort(base voidptr, items usize, item_size usize, cb C.qsort_callback_func)
 
-@[noalloc]
-fn C.strlen(s &char) usize
+@[markused; noalloc]
+fn C.strlen(const_s &char) usize
 
 @[trusted]
 fn C.isdigit(c i32) bool
@@ -89,26 +99,35 @@ fn C.realpath(const_path &char, resolved_path &char) &char
 // fn C.chmod(byteptr, mode_t) int
 fn C.chmod(path &char, mode u32) i32
 
+@[markused]
 fn C.printf(const_format &char, opt ...voidptr) i32
+
 fn C.dprintf(fd i32, const_format &char, opt ...voidptr) i32
+
+@[markused]
 fn C.fprintf(fstream &C.FILE, const_format &char, opt ...voidptr) i32
+
 fn C.sprintf(str &char, const_format &char, opt ...voidptr) i32
+
+@[markused]
 fn C.snprintf(str &char, size usize, const_format &char, opt ...voidptr) i32
+
 fn C.wprintf(const_format &u16, opt ...voidptr) i32
 
 // used by Android for (e)println to output to the Android log system / logcat
-pub fn C.android_print(fstream voidptr, format &char, opt ...voidptr)
+pub fn C.android_print(fstream voidptr, const_format &char, opt ...voidptr) i32
 
 fn C.sscanf(str &char, const_format &char, opt ...voidptr) i32
 fn C.scanf(const_format &char, opt ...voidptr) i32
 
-fn C.puts(msg &char) i32
+fn C.puts(const_msg &char) i32
 
 @[trusted]
 fn C.abs(f64) f64
 
 fn C.fputs(msg &char, fstream &C.FILE) i32
 
+@[markused]
 fn C.fflush(fstream &C.FILE) i32
 
 // TODO: define args in these functions
@@ -118,14 +137,18 @@ $if windows {
 	fn C.fseek(stream &C.FILE, offset isize, whence i32) i32
 }
 
+// Coverage and profiling writers call these without a V AST reference.
+@[markused]
 fn C.fopen(filename &char, mode &char) &C.FILE
 
 fn C.fileno(&C.FILE) i32
 
 fn C.fread(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 
-fn C.fwrite(ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
+@[markused]
+fn C.fwrite(const_ptr voidptr, item_size usize, items usize, stream &C.FILE) usize
 
+@[markused]
 fn C.fclose(stream &C.FILE) i32
 
 fn C.pclose(stream &C.FILE) i32
@@ -144,7 +167,7 @@ fn C.GetCurrentProcessId() u32
 @[trusted]
 fn C._getpid() i32
 
-@[trusted]
+@[markused; trusted]
 fn C.getpid() i32
 
 @[trusted]
@@ -173,7 +196,9 @@ fn C._execve(cmd_path &char, args voidptr, envs voidptr) i32
 
 fn C._execvp(cmd_path &char, args voidptr) i32
 
-fn C.strcmp(s1 &char, s2 &char) i32
+// The generated test runner compares environment values without V AST calls.
+@[markused; noalloc]
+fn C.strcmp(const_s1 &char, const_s2 &char) i32
 
 @[trusted]
 fn C.fork() i32
@@ -185,6 +210,7 @@ fn C.waitpid(pid i32, status &int, options i32) i32
 @[trusted]
 fn C.kill(pid i32, sig i32) i32
 
+@[markused]
 fn C.setenv(&char, &char, i32) i32
 
 fn C.unsetenv(&char) i32
@@ -320,8 +346,8 @@ fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecuri
 	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
 $if windows {
-	// The TCC-only declaration is guarded with `#ifdef __TINYC__` in the
-	// header, so it survives cross compilation; GCC/MSVC use the SDK header.
+	// The legacy bootstrap needs this TinyCC compatibility view. The V3 backend
+	// emits its prototype from the bodyless binding below without including it.
 	#insert "@VEXEROOT/vlib/builtin/cfns_windows_tcc.h"
 }
 
@@ -348,7 +374,7 @@ fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttribu
 
 fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead &u32, lpOverlapped voidptr) bool
 
-fn C.GetFileAttributesW(lpFileName &u8) u32
+fn C.GetFileAttributesW(const_lpFileName &u16) u32
 
 fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &u8, lpcbData &u32) i32
 
@@ -444,7 +470,7 @@ fn C.FormatMessageW(dwFlags u32, lpSource voidptr, dwMessageId u32, dwLanguageId
 
 fn C.CloseHandle(voidptr) i32
 
-fn C.GetExitCodeProcess(hProcess voidptr, lpExitCode &u32)
+fn C.GetExitCodeProcess(hProcess voidptr, lpExitCode &C.DWORD) bool
 
 @[trusted]
 fn C.GetTickCount() i64
@@ -470,10 +496,10 @@ fn C.URLDownloadToFile(i32, &u16, &u16, i32, i32)
 @[trusted]
 fn C.GetLastError() u32
 
-fn C.CreateDirectory(&u8, i32) bool
+fn C.CreateDirectory(const_path &u16, security_attributes voidptr) bool
 
 // win crypto
-fn C.BCryptGenRandom(i32, voidptr, i32, i32) i32
+fn C.BCryptGenRandom(voidptr, voidptr, u32, u32) i32
 
 // win synchronization
 fn C.CreateMutex(i32, bool, &u8) voidptr
@@ -499,22 +525,31 @@ $if windows {
 }
 
 // pthread.h
+@[markused]
 fn C.pthread_self() usize
 
+@[markused]
 fn C.pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32
 
+@[markused]
 fn C.pthread_join(thread voidptr, retval voidptr) i32
 
+@[markused]
 fn C.pthread_attr_init(attr voidptr) i32
 
+@[markused]
 fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) i32
 
+@[markused]
 fn C.pthread_attr_destroy(attr voidptr) i32
 
+@[markused]
 fn C.pthread_mutex_init(voidptr, voidptr) i32
 
+@[markused]
 fn C.pthread_mutex_lock(voidptr) i32
 
+@[markused]
 fn C.pthread_mutex_unlock(voidptr) i32
 
 fn C.pthread_mutex_destroy(voidptr) i32
@@ -577,7 +612,11 @@ fn C.dispatch_release(voidptr)
 // file descriptor based reading/writing
 fn C.read(fd i32, buf voidptr, count usize) i32
 
-fn C.write(fd i32, buf voidptr, count usize) i32
+$if windows {
+	fn C.write(fd i32, const_buf voidptr, count u32) i32
+} $else {
+	fn C.write(fd i32, const_buf voidptr, count usize) isize
+}
 
 fn C.close(fd i32) i32
 
@@ -586,26 +625,28 @@ fn C.pipe(pipefds &i32) i32
 
 fn C.dup2(oldfd i32, newfd i32) i32
 
+@[markused]
 fn C.fcntl(fd i32, cmd i32, arg ...voidptr) i32
 
 fn C.execlp(file &char, arg &char, va ...voidptr) i32
 
 fn C._exit(code i32)
 
+@[markused]
 fn C.signal(sig i32, handler voidptr) voidptr
 
 // used by gl, stbi, freetype
 fn C.glTexImage2D()
 
 // used by ios for println
-fn C.WrappedNSLog(str &u8)
+fn C.WrappedNSLog(const_format &char, opt ...voidptr)
 
 // absolute value
 @[trusted]
 fn C.abs(number i32) i32
 
 $if windows {
-	fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &u64, total_number_of_bytes &u64, total_number_of_free_bytes &u64) bool
+	fn C.GetDiskFreeSpaceExA(const_path &char, free_bytes_available_to_caller &C.ULARGE_INTEGER, total_number_of_bytes &C.ULARGE_INTEGER, total_number_of_free_bytes &C.ULARGE_INTEGER) bool
 
 	fn C.GetNativeSystemInfo(voidptr)
 
@@ -637,4 +678,74 @@ $if windows {
 	pub struct C.SRWLOCK {}
 }
 
+@[markused]
 fn C.sysconf(name i32) i32
+
+// Dependencies of the compiler's inline C runtime, not directly called by V code.
+@[markused]
+fn C.abort()
+
+@[markused]
+fn C.getenv(const_name &char) &char
+
+@[markused]
+fn C.pow(x f64, y f64) f64
+
+@[markused]
+fn C.fabs(x f64) f64
+
+@[markused]
+fn C.floor(x f64) f64
+
+@[markused]
+fn C.ceil(x f64) f64
+
+@[markused]
+fn C.__error() &i32
+
+@[markused]
+fn C.__errno() &i32
+
+@[markused]
+fn C.__errno_location() &i32
+
+@[markused]
+fn C._errno() &i32
+
+fn C._putenv_s(const_name &char, const_value &char) i32
+
+@[markused]
+fn C.___errno() &i32
+
+@[markused]
+fn C._errnop() &i32
+
+@[markused]
+fn C.__get_errno_ptr() &i32
+
+@[markused]
+fn C.pthread_equal(t1 voidptr, t2 voidptr) i32
+
+@[markused]
+fn C.pthread_key_create(key &usize, destructor voidptr) i32
+
+@[markused]
+fn C.pthread_getspecific(key usize) voidptr
+
+@[markused]
+fn C.pthread_setspecific(key usize, value voidptr) i32
+
+@[markused]
+fn C.pthread_once(control voidptr, init_routine voidptr) i32
+
+@[markused]
+fn C.pthread_attr_setdetachstate(attr voidptr, state i32) i32
+
+@[markused]
+fn C.pthread_detach(thread voidptr) i32
+
+fn C.clock() i64
+
+// The inline test statistics runtime uses this even when time is not imported.
+@[markused]
+fn C.clock_gettime(clock_id i32, tp voidptr) i32

@@ -8,6 +8,11 @@ The arguments should be at least 1 in number.
 
 Options:
   -h, --help                Show this help screen.
-  -t, --timeout <float>     Timeout in seconds (for all retries). Default: 600.0 seconds (10 minutes).
+  -t, --timeout <float>     Timeout in seconds (for all retries). Default: 900.0 seconds (15 minutes).
   -d, --delay <float>       Delay between each retry in seconds. Default: 1.0 second.
   -r, --retries <int>       Maximum number of retries. Default: 10.
+
+The compiled vretry tool can also be run directly with the same options and command:
+    vretry -r 1 -- PROGRAM ARGUMENT
+The first command argument is preserved, including a program named retry. Use -- to
+pass the command as literal arguments, or one quoted command string for shell syntax.

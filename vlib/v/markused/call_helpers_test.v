@@ -1,14 +1,68 @@
 module markused
 
+import os
 import v.flat
+import v.parser
+import v.pref
 import v.types
 import v.token
+
+fn test_warm_cache_keeps_ierror_methods_and_their_helpers() {
+	root := os.join_path(os.vtmp_dir(), 'cached_ierror_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	builtin_file := os.join_path(root, 'builtin.vh')
+	error_file := os.join_path(root, 'errors.v')
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(builtin_file, 'module builtin\npub interface IError {\nmsg() string\ncode() int\n}\n')!
+	os.write_file(error_file, 'module errors
+pub struct TestError {}
+fn message_helper() string { return "message" }
+fn code_helper() int { return 7 }
+fn (e TestError) msg() string { return message_helper() }
+fn (e TestError) code() int { return code_helper() }
+fn unused_helper() {}
+')!
+	os.write_file(main_file, 'import errors\nfn main() { _ := errors.TestError{} }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([builtin_file, error_file, main_file])
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	used := mark_used_for_cache(a, &tc, []string{}, map[string]bool{})
+	assert used['errors.TestError.msg']
+	assert used['errors.TestError.code']
+	assert used['errors.message_helper']
+	assert used['errors.code_helper']
+	assert !used['errors.unused_helper']
+}
+
+fn test_all_functions_keeps_generic_calls_outside_literal_main() {
+	root := os.join_path(os.vtmp_dir(), 'all_fn_literal_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	builtin_file := os.join_path(root, 'builtin.v')
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(builtin_file, 'module builtin\nfn generic_helper[T](value T) {}\nfn wrapper() { generic_helper(1) }\nfn println(value string) {}\n')!
+	os.write_file(main_file, 'fn main() { println("literal") }\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([builtin_file, main_file])
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnostic_files[main_file] = true
+	assert is_trivial_literal_output_program(a, tc.diagnostic_files)
+	used, uses_generics := mark_all_used_with_generic_usage(a, &tc, []string{})
+	assert uses_generics
+	assert used['wrapper']
+	assert used['generic_helper']
+}
 
 fn test_collection_alias_methods_keep_declared_and_inherited_precedence() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_module = 'unrelated'
-	tc.type_aliases['strings.Builder'] = '[]u8'
+	tc.type_aliases.set('strings.Builder', '[]u8')
 	tc.type_alias_modules['strings.Builder'] = 'strings'
 	tc.fn_ret_types['array.clear'] = types.Type(types.Void{})
 	tc.fn_ret_types['map.clear'] = types.Type(types.Void{})
@@ -17,7 +71,7 @@ fn test_collection_alias_methods_keep_declared_and_inherited_precedence() {
 	tc.fn_ret_types['strings.Builder.clear'] = types.Type(types.Void{})
 	assert collector.typed_receiver_method_name('strings.Builder', 'clear', 'strings')? == 'strings.Builder.clear'
 	tc.fn_ret_types.delete('strings.Builder.clear')
-	tc.type_aliases['strings.Outer'] = 'Builder'
+	tc.type_aliases.set('strings.Outer', 'Builder')
 	tc.type_alias_modules['strings.Outer'] = 'strings'
 	tc.fn_ret_types['strings.Builder.clear'] = types.Type(types.Void{})
 	assert collector.typed_receiver_method_name('strings.Outer', 'clear', 'main')? == 'strings.Builder.clear'
@@ -26,12 +80,12 @@ fn test_collection_alias_methods_keep_declared_and_inherited_precedence() {
 fn test_collection_alias_methods_use_owner_and_specialized_collections() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['dep.Outer'] = 'Inner'
+	tc.type_aliases.set('dep.Outer', 'Inner')
 	tc.type_alias_modules['dep.Outer'] = 'dep'
-	tc.type_aliases['dep.Inner'] = '[]u8'
+	tc.type_aliases.set('dep.Inner', '[]u8')
 	tc.type_alias_modules['dep.Inner'] = 'dep'
-	tc.type_aliases['Inner'] = 'map[string]int'
-	tc.type_aliases['dep.Values'] = 'map[string]int'
+	tc.type_aliases.set('Inner', 'map[string]int')
+	tc.type_aliases.set('dep.Values', 'map[string]int')
 	tc.type_alias_modules['dep.Values'] = 'dep'
 	for name in ['array.clear', 'map.clear', 'array.hex', '[]u8.hex', 'map.keys', 'map[string]int.keys',
 		'Inner.hex'] {
@@ -46,9 +100,9 @@ fn test_collection_alias_methods_use_owner_and_specialized_collections() {
 fn test_collection_alias_methods_preserve_canonical_owner_over_current_imports() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['dep.Bytes'] = '[]u8'
+	tc.type_aliases.set('dep.Bytes', '[]u8')
 	tc.type_alias_modules['dep.Bytes'] = 'dep'
-	tc.type_aliases['other.Bytes'] = 'map[string]int'
+	tc.type_aliases.set('other.Bytes', 'map[string]int')
 	tc.type_alias_modules['other.Bytes'] = 'other'
 	tc.fn_ret_types['array.clear'] = types.Type(types.Void{})
 	tc.fn_ret_types['map.clear'] = types.Type(types.Void{})
@@ -64,12 +118,12 @@ fn test_collection_alias_methods_preserve_canonical_owner_over_current_imports()
 fn test_collection_alias_methods_leave_cycles_generics_and_structs_conservative() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['CycleA'] = 'CycleB'
-	tc.type_aliases['CycleB'] = 'CycleA'
-	tc.type_aliases['Generic'] = '[]T'
+	tc.type_aliases.set('CycleA', 'CycleB')
+	tc.type_aliases.set('CycleB', 'CycleA')
+	tc.type_aliases.set('Generic', '[]T')
 	tc.type_alias_generic_params['Generic'] = ['T']
-	tc.type_aliases['Outer'] = 'Inner'
-	tc.type_aliases['Inner'] = 'Item'
+	tc.type_aliases.set('Outer', 'Inner')
+	tc.type_aliases.set('Inner', 'Item')
 	tc.structs['Item'] = []types.StructField{}
 	tc.fn_ret_types['array.clear'] = types.Type(types.Void{})
 	tc.fn_ret_types['Inner.clear'] = types.Type(types.Void{})
@@ -84,7 +138,7 @@ fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.fn_generic_params['gates.make_gate'] = ['U']
 	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Pointer{
-		base_type: types.Type(types.Struct{ name: 'gates.Gate[U]' })
+		base_type: types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	})
 	arg := a.add_val(.ident, 'T')
 	for imported in [false, true] {
@@ -101,12 +155,12 @@ fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 			'g': 'gates'
 		}
 		assert collector.top_level_call_return_type_name(call, 'gates', imports, map[string]bool{},
-			map[string]string{}, false) == 'gates.Gate[T]'
+			flat.TypeTextBindings.from_names({}), false) == 'gates.Gate[T]'
 		shadowed := if imported { 'g' } else { 'make_gate' }
 		assert collector.top_level_call_return_type_name(call, 'gates', imports, {
 			shadowed: true
 		},
-			map[string]string{}, false) == ''
+			flat.TypeTextBindings.from_names({}), false) == ''
 	}
 }
 
@@ -141,11 +195,11 @@ fn test_explicit_generic_factory_substitution_covers_nested_type_forms() {
 	]
 	for form in forms {
 		tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{
-			name: 'gates.Gate[${form[0]}]'
+			name_id: flat.source_type_id('gates.Gate[${form[0]}]')
 		})
 		collector := CallCollector{ a: &a, tc: &tc }
 		assert collector.top_level_call_return_type_name(call, 'gates', map[string]string{},
-			map[string]bool{}, map[string]string{}, false) == 'gates.Gate[${form[1]}]'
+			map[string]bool{}, flat.TypeTextBindings.from_names({}), false) == 'gates.Gate[${form[1]}]'
 	}
 }
 
@@ -156,7 +210,7 @@ fn test_generic_factory_inference_uses_call_site_shadowing() {
 			mut tc := types.TypeChecker.new(&a)
 			tc.fn_generic_params['gates.make_gate'] = ['U']
 			tc.fn_ret_types['gates.make_gate'] = types.Type(types.Pointer{
-				base_type: types.Type(types.Struct{ name: 'gates.Gate[U]' })
+				base_type: types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			})
 			shadow_name := if imported { 'g' } else { 'make_gate' }
 			shadow_lhs := a.add_val(.ident, shadow_name)
@@ -187,7 +241,7 @@ fn test_generic_factory_inference_uses_call_site_shadowing() {
 			_, local_types, _ := collector.local_value_info(a.node(fn_id), 'gates', {
 				'g': 'gates'
 			})
-			assert (local_types['gate'] or { '' }) == if placement == 'before' {
+			assert (local_types.get('gate') or { '' }) == if placement == 'before' {
 				''
 			} else {
 				'gates.Gate[T]'
@@ -216,7 +270,7 @@ fn test_checker_selected_generic_selector_factory_return_type() {
 		resolved := if imported_static { 'gates.Gate.make' } else { 'gates.Builder.make' }
 		tc.fn_generic_params[resolved] = ['U']
 		tc.fn_ret_types[resolved] = types.Type(types.Pointer{
-			base_type: types.Type(types.Struct{ name: 'gates.Gate[U]' })
+			base_type: types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		})
 		tc.sparse_resolved_call_names[int(call)] = resolved
 		collector := CallCollector{ a: &a, tc: &tc }
@@ -224,9 +278,9 @@ fn test_checker_selected_generic_selector_factory_return_type() {
 			'alias': 'gates'
 		}, {
 			'builder': true
-		}, {
+		}, flat.TypeTextBindings.from_names({
 			'builder': 'gates.Builder'
-		}, false) == 'gates.Gate[T]'
+		}), false) == 'gates.Gate[T]'
 	}
 }
 
@@ -300,16 +354,16 @@ fn array_literal_root_calls(mut a flat.FlatAst, c &CallCollector, kind flat.Node
 	root := call_helper_node(mut a, flat.Node{ kind: kind, value: name }, [expr])
 	mut calls := []string{}
 	c.collect_calls_with_locals(a.node(root), 'main', map[string]string{}, '', '', map[string]bool{},
-		map[string]string{}, map[int]bool{}, mut calls)
+		flat.TypeTextBindings.from_names({}), map[int]bool{}, mut calls)
 	return calls
 }
 
 fn test_dynamic_array_iteration_keeps_lowered_get_helper() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Names'] = '[]string'
+	tc.type_aliases.set('Names', '[]string')
 	tc.type_alias_modules['Names'] = 'main'
-	tc.type_aliases['NamesPointer'] = '&[]string'
+	tc.type_aliases.set('NamesPointer', '&[]string')
 	tc.type_alias_modules['NamesPointer'] = 'main'
 	collector := CallCollector{ a: &a, tc: &tc }
 	for type_name in ['[]string', '&[]string', 'Names', '&Names', 'NamesPointer', '&NamesPointer',
@@ -333,9 +387,9 @@ fn test_dynamic_array_iteration_keeps_lowered_get_helper() {
 						'names': true
 						'val':   true
 						'i':     true
-					}, {
+					}, flat.TypeTextBindings.from_names({
 						'names': type_name
-					}, map[int]bool{}, mut calls)
+					}), map[int]bool{}, mut calls)
 				expects_get := type_name in ['[]string', '&[]string', 'Names', '&Names', 'NamesPointer',
 					'&NamesPointer']
 				assert ('array.get' in calls) == expects_get, '${type_name}: ${calls}'
@@ -409,15 +463,15 @@ fn test_omitted_parameter_defaults_skip_receiver_and_named_arguments() {
 	mut a := flat.FlatAst.new()
 	default_ident := a.add_node(flat.Node{ kind: .ident, value: 'default_level' })
 	default_call := call_helper_node(mut a, flat.Node{ kind: .call }, [default_ident])
-	field := call_helper_node(mut a, flat.Node{ kind: .field_decl, value: 'level', typ: 'int' }, [
+	field := call_helper_node(mut a, flat.Node{ kind: .field_decl, value: 'level', typ: flat.source_type_id('int') }, [
 		default_call,
 	])
 	config := call_helper_node(mut a, flat.Node{ kind: .struct_decl, value: 'Config' }, [
 		field,
 	])
-	receiver := a.add_node(flat.Node{ kind: .param, value: 'self', typ: 'Receiver', op: .dot })
-	data := a.add_node(flat.Node{ kind: .param, value: 'data', typ: 'int' })
-	options := a.add_node(flat.Node{ kind: .param, value: 'options', typ: 'Config' })
+	receiver := a.add_node(flat.Node{ kind: .param, value: 'self', typ: flat.source_type_id('Receiver'), op: .dot })
+	data := a.add_node(flat.Node{ kind: .param, value: 'data', typ: flat.source_type_id('int') })
+	options := a.add_node(flat.Node{ kind: .param, value: 'options', typ: flat.source_type_id('Config') })
 	decl := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'consume' }, [
 		receiver,
 		data,
@@ -471,7 +525,7 @@ fn test_closure_runtime_import_marks_syntax_need() {
 	a.add_node(flat.Node{
 		kind:  .import_decl
 		value: 'closure'
-		typ:   '__v3_builtin_closure_runtime'
+		typ:   flat.source_type_id('__v3_builtin_closure_runtime')
 	})
 	assert markused_syntax_needs_closure_runtime(&a)
 }
@@ -480,7 +534,7 @@ fn test_explicit_generic_factory_resolves_nested_import_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.fn_generic_params['gates.make_gate'] = ['U']
-	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	imports := {
 		'alias': 'actual.module'
 		'other': 'other.module'
@@ -502,7 +556,7 @@ fn test_explicit_generic_factory_resolves_nested_import_aliases() {
 			form.replace('alias.', 'actual.module.').replace('other.', 'other.module.')
 		}
 		assert collector.top_level_call_return_type_name(call, 'gates', imports,
-			map[string]bool{}, map[string]string{}, false) == 'gates.Gate[${expected}]'
+			map[string]bool{}, flat.TypeTextBindings.from_names({}), false) == 'gates.Gate[${expected}]'
 	}
 }
 
@@ -512,7 +566,7 @@ fn test_explicit_generic_factory_qualifies_caller_types_and_selective_imports() 
 	a.source_files[3] = &token.File{ name: source_file }
 	mut tc := types.TypeChecker.new(&a)
 	tc.fn_generic_params['gates.make_gate'] = ['U']
-	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	for name in ['consumer.Payload', 'consumer.Box', 'items.Selected'] {
 		tc.structs[name] = []types.StructField{}
 	}
@@ -555,7 +609,7 @@ fn test_generic_factory_return_substitutes_receiver_and_method_arguments_togethe
 	] {
 		method := '${parts[0]}.make'
 		tc.fn_generic_params[method] = ['U']
-		tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[T, U]' })
+		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[T, U]') })
 		base := a.add_val(.ident, 'builder')
 		selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'make' }, [base])
 		mut indexed_children := [selector]
@@ -566,9 +620,9 @@ fn test_generic_factory_return_substitutes_receiver_and_method_arguments_togethe
 		collector := CallCollector{ a: &a, tc: &tc }
 		assert collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 			'builder': true
-		}, {
+		}, flat.TypeTextBindings.from_names({
 			'builder': parts[1]
-		}, false) == parts[3]
+		}), false) == parts[3]
 	}
 }
 
@@ -579,7 +633,7 @@ fn test_generic_factory_return_locks_main_module_type_arguments() {
 	tc.struct_modules['Payload'] = 'main'
 	tc.structs['gates.Payload'] = []types.StructField{}
 	tc.fn_generic_params['gates.make_gate'] = ['U']
-	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[main.Payload].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make_gate')
 	arg := a.add_val(.ident, 'Payload')
@@ -597,7 +651,7 @@ fn test_generic_factory_return_keeps_noncolliding_main_type_spelling() {
 	tc.structs['main.Payload'] = []types.StructField{}
 	tc.struct_modules['Payload'] = 'main'
 	tc.fn_generic_params['gates.make_gate'] = ['U']
-	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[Payload].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make_gate')
 	arg := a.add_val(.ident, 'Payload')
@@ -612,13 +666,13 @@ fn test_generic_factory_return_keeps_noncolliding_main_type_spelling() {
 fn test_generic_factory_return_locks_main_alias_when_target_collides() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Payload'] = 'Context'
+	tc.type_aliases.set('Payload', 'Context')
 	tc.type_alias_modules['Payload'] = 'main'
 	tc.structs['Context'] = []types.StructField{}
 	tc.struct_modules['Context'] = 'main'
 	tc.structs['gates.Context'] = []types.StructField{}
 	tc.fn_generic_params['gates.make_gate'] = ['U']
-	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types['gates.make_gate'] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[main.Payload].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make_gate')
 	arg := a.add_val(.ident, 'Payload')
@@ -639,14 +693,14 @@ fn test_promoted_generic_factory_return_substitutes_embedded_receiver() {
 	tc.structs['gates.Outer'] = [
 		types.StructField{
 			name:     'Builder'
-			typ:      types.Type(types.Struct{ name: 'gates.Builder[V]' })
+			typ:      types.Type(types.Struct{ name_id: flat.source_type_id('gates.Builder[V]') })
 			is_embed: true
 		},
 	]
 	tc.struct_generic_params['gates.Outer'] = ['V']
 	method := 'gates.Builder[T].make'
 	tc.fn_generic_params[method] = ['U']
-	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[T, U]' })
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[T, U]') })
 	tc.fn_ret_types['gates.Gate[int, string].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'outer')
 	selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'make' }, [base])
@@ -657,9 +711,9 @@ fn test_promoted_generic_factory_return_substitutes_embedded_receiver() {
 	collector := CallCollector{ a: &a, tc: &tc }
 	inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 		'outer': true
-	}, {
+	}, flat.TypeTextBindings.from_names({
 		'outer': 'gates.Outer[int]'
-	}, false)
+	}), false)
 	assert inferred == 'gates.Gate[int, string]'
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[int, string].backward'
 }
@@ -669,7 +723,7 @@ fn test_receiver_only_generic_factory_return_substitutes_explicit_receiver_arg()
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	method := 'gates.Builder[T].make'
-	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[T]' })
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[T]') })
 	tc.fn_ret_types['gates.Gate[int].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'builder')
 	selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'make' }, [base])
@@ -681,9 +735,9 @@ fn test_receiver_only_generic_factory_return_substitutes_explicit_receiver_arg()
 	assert collector.generic_fn_name_is_known(method, 'main')
 	inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 		'builder': true
-	}, {
+	}, flat.TypeTextBindings.from_names({
 		'builder': 'gates.Builder[int]'
-	}, false)
+	}), false)
 	assert inferred == 'gates.Gate[int]'
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[int].backward'
 	plain_call := call_helper_node(mut a, flat.Node{ kind: .call }, [selector])
@@ -691,9 +745,9 @@ fn test_receiver_only_generic_factory_return_substitutes_explicit_receiver_arg()
 	plain_inferred := collector.top_level_call_return_type_name(plain_call, 'main',
 		map[string]string{}, {
 			'builder': true
-		}, {
+		}, flat.TypeTextBindings.from_names({
 			'builder': 'gates.Builder[int]'
-		}, false)
+		}), false)
 	assert plain_inferred == 'gates.Gate[int]'
 	assert collector.typed_receiver_method_name(plain_inferred, 'backward', 'main')? == 'gates.Gate[int].backward'
 }
@@ -709,7 +763,7 @@ fn test_generic_factory_return_uses_placeholder_signature_text() {
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
 	unknown := types.Type(types.Unknown{ reason: 'generic U' })
 	for form in ['U', '?U', '!U'] {
-		tc.fn_ret_type_texts['gates.identity'] = form
+		tc.fn_ret_type_texts.set('gates.identity', form)
 		tc.fn_ret_types['gates.identity'] = match form[0] {
 			`?` { types.Type(types.OptionType{ base_type: unknown }) }
 			`!` { types.Type(types.ResultType{ base_type: unknown }) }
@@ -739,7 +793,7 @@ fn test_generic_factory_return_uses_nested_placeholder_signature_text() {
 	unknown := types.Type(types.Unknown{ reason: 'generic U' })
 	array_unknown := types.Type(types.Array{ elem_type: unknown })
 	for form in ['[]U', '?[]U', '![]U'] {
-		tc.fn_ret_type_texts['gates.make'] = form
+		tc.fn_ret_type_texts.set('gates.make', form)
 		tc.fn_ret_types['gates.make'] = match form[0] {
 			`?` { types.Type(types.OptionType{ base_type: array_unknown }) }
 			`!` { types.Type(types.ResultType{ base_type: array_unknown }) }
@@ -764,9 +818,9 @@ fn test_generic_factory_return_keeps_qualified_unknown_module_name() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.fn_generic_params['unknown_factory.make'] = ['U']
 	tc.fn_ret_types['unknown_factory.make'] = types.Type(types.Struct{
-		name: 'unknown_factory.Gate'
+		name_id: flat.source_type_id('unknown_factory.Gate')
 	})
-	tc.fn_ret_type_texts['unknown_factory.make'] = 'Gate'
+	tc.fn_ret_type_texts.set('unknown_factory.make', 'Gate')
 	tc.fn_ret_types['unknown_factory.Gate.backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make')
 	arg := a.add_val(.ident, 'int')
@@ -791,17 +845,17 @@ fn test_generic_factory_signature_text_uses_declaration_scope() {
 	collector := CallCollector{ a: &a, tc: &tc }
 	unknown := types.Type(types.Unknown{ reason: 'generic U' })
 	tc.fn_ret_types['gates.make'] = types.Type(types.Alias{
-		name:      'gates.Handler[U]'
+		name_id:   flat.source_type_id('gates.Handler[U]')
 		base_type: unknown
 	})
-	tc.fn_ret_type_texts['gates.make'] = 'Handler[U]'
+	tc.fn_ret_type_texts.set('gates.make', 'Handler[U]')
 	assert collector.generic_factory_return_type_name(a.node(indexed), 'gates.make', 'consumer',
 		map[string]string{}, false, '') == 'gates.Handler[int]'
 	tc.fn_ret_types['gates.make'] = types.Type(types.Map{
-		key_type:   types.Type(types.Struct{ name: 'gates.Key' })
+		key_type:   types.Type(types.Struct{ name_id: flat.source_type_id('gates.Key') })
 		value_type: unknown
 	})
-	tc.fn_ret_type_texts['gates.make'] = 'map[Key]U'
+	tc.fn_ret_type_texts.set('gates.make', 'map[Key]U')
 	assert collector.generic_factory_return_type_name(a.node(indexed), 'gates.make', 'consumer',
 		map[string]string{}, false, '') == 'map[gates.Key]int'
 }
@@ -812,10 +866,10 @@ fn test_generic_factory_signature_text_uses_declaration_imports() {
 	method := 'gates.make'
 	tc.fn_generic_params[method] = ['U']
 	tc.fn_ret_types[method] = types.Type(types.Alias{
-		name:      'external.Handler[U]'
+		name_id:   flat.source_type_id('external.Handler[U]')
 		base_type: types.Type(types.Unknown{ reason: 'generic U' })
 	})
-	tc.fn_ret_type_texts[method] = 'handler.Handler[U]'
+	tc.fn_ret_type_texts.set(method, 'handler.Handler[U]')
 	base := a.add_val(.ident, 'make')
 	arg := a.add_val(.ident, 'int')
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
@@ -840,8 +894,8 @@ fn test_unindexed_generic_factory_return_infers_argument_type() {
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
 	tc.fn_generic_params[method] = ['U']
-	tc.fn_param_type_texts[method] = ['U']
-	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_param_type_texts.set(method, ['U'])
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make_gate')
 	value := a.add_val(.ident, 'value')
@@ -850,9 +904,9 @@ fn test_unindexed_generic_factory_return_infers_argument_type() {
 	collector := CallCollector{ a: &a, tc: &tc }
 	inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 		'value': true
-	}, {
+	}, flat.TypeTextBindings.from_names({
 		'value': 'T'
-	}, false)
+	}), false)
 	assert inferred == 'gates.Gate[T]'
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
 }
@@ -863,7 +917,7 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
 	tc.fn_generic_params[method] = ['U']
-	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make_gate')
 	value := a.add_val(.ident, 'value')
@@ -884,12 +938,12 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 		['?U', 'T'],
 		['...U', 'T'],
 	] {
-		tc.fn_param_type_texts[method] = [forms[0]]
+		tc.fn_param_type_texts.set(method, [forms[0]])
 		inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 			'value': true
-		}, {
+		}, flat.TypeTextBindings.from_names({
 			'value': forms[1]
-		}, false)
+		}), false)
 		assert inferred == 'gates.Gate[T]'
 		assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
 	}
@@ -902,24 +956,24 @@ fn test_generic_factory_infers_semantic_channel_element_types() {
 	for pattern in ['chan U', 'chan []U', '[]chan U', 'map[string]chan U', '?chan U', '&chan U',
 		'chan ?U', 'chan map[string][]U'] {
 		actual := tc.parse_type(pattern.replace('U', 'Payload'))
-		mut inferred := map[string]string{}
+		mut inferred := flat.TypeTextBindings{}
 		markused_infer_alias_generic_type(pattern, actual, ['U'], mut inferred)
-		assert inferred['U'] == 'Payload', pattern
+		assert inferred.value('U') == 'Payload', pattern
 	}
-	channel := types.Type(types.Channel{ elem_type: types.Type(types.Struct{ name: 'Payload' }) })
+	channel := types.Type(types.Channel{ elem_type: types.Type(types.Struct{ name_id: flat.source_type_id('Payload') }) })
 	for actual in [channel, types.Type(types.Pointer{ base_type: channel }),
-		types.Type(types.Alias{ name: 'Mailbox', base_type: channel })] {
-		mut inferred := map[string]string{}
+		types.Type(types.Alias{ name_id: flat.source_type_id('Mailbox'), base_type: channel })] {
+		mut inferred := flat.TypeTextBindings{}
 		markused_infer_alias_generic_type('chan U', actual, ['U'], mut inferred)
-		assert inferred['U'] == 'Payload', actual.name()
+		assert inferred.value('U') == 'Payload', actual.name()
 	}
 	for actual in [
 		types.Type(types.Channel{ elem_type: types.Type(types.Unknown{}) }),
-		types.Type(types.Array{ elem_type: types.Type(types.Struct{ name: 'Payload' }) }),
+		types.Type(types.Array{ elem_type: types.Type(types.Struct{ name_id: flat.source_type_id('Payload') }) }),
 	] {
-		mut inferred := map[string]string{}
+		mut inferred := flat.TypeTextBindings{}
 		markused_infer_alias_generic_type('chan U', actual, ['U'], mut inferred)
-		assert inferred.len == 0
+		assert inferred.ids.len == 0
 	}
 }
 
@@ -928,14 +982,14 @@ fn test_unindexed_factory_infers_aliased_channel_element_type() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	tc.structs['Payload'] = []types.StructField{}
-	tc.type_aliases['Mailbox'] = 'chan Payload'
+	tc.type_aliases.set('Mailbox', 'chan Payload')
 	tc.type_alias_modules['Mailbox'] = 'main'
-	tc.type_aliases['MailboxRef'] = '&Mailbox'
+	tc.type_aliases.set('MailboxRef', '&Mailbox')
 	tc.type_alias_modules['MailboxRef'] = 'main'
 	method := 'gates.make_gate'
 	tc.fn_generic_params[method] = ['U']
-	tc.fn_param_type_texts[method] = ['chan U']
-	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_param_type_texts.set(method, ['chan U'])
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[Payload].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make_gate')
 	value := a.add_val(.ident, 'value')
@@ -945,9 +999,9 @@ fn test_unindexed_factory_infers_aliased_channel_element_type() {
 	for actual in ['Mailbox', '&Mailbox', 'MailboxRef'] {
 		inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 			'value': true
-		}, {
+		}, flat.TypeTextBindings.from_names({
 			'value': actual
-		}, false)
+		}), false)
 		assert inferred == 'gates.Gate[Payload]', actual
 		assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[Payload].backward'
 	}
@@ -969,8 +1023,8 @@ fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {
 		tc.parallel_check_sparse = true
 		method := 'gates.make_gate'
 		tc.fn_generic_params[method] = ['U']
-		tc.fn_param_type_texts[method] = [pattern]
-		tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+		tc.fn_param_type_texts.set(method, [pattern])
+		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		callee := a.add_val(.ident, 'make_gate')
 		value := a.add_val(.ident, 'value')
 		arg := if pattern == '...U' {
@@ -984,22 +1038,22 @@ fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {
 		actual := if pattern == '...U' { '[]T' } else { 'T' }
 		inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 			'value': true
-		}, {
+		}, flat.TypeTextBindings.from_names({
 			'value': actual
-		}, false)
+		}), false)
 		assert inferred == 'gates.Gate[T]', pattern
 	}
 }
 
 fn test_repeated_generic_parameter_keeps_first_alias_inference() {
-	mut inferred := map[string]string{}
+	mut inferred := flat.TypeTextBindings{}
 	for name in ['A', 'B'] {
 		markused_infer_alias_generic_type('U', types.Type(types.Alias{
-			name:      name
+			name_id:   flat.source_type_id(name)
 			base_type: types.Type(types.int_)
 		}), ['U'], mut inferred)
 	}
-	assert inferred['U'] == 'A'
+	assert inferred.value('U') == 'A'
 }
 
 fn test_unindexed_generic_factory_uses_prior_local_type() {
@@ -1008,8 +1062,8 @@ fn test_unindexed_generic_factory_uses_prior_local_type() {
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
 	tc.fn_generic_params[method] = ['U']
-	tc.fn_param_type_texts[method] = ['U']
-	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_param_type_texts.set(method, ['U'])
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.structs['Payload'] = []types.StructField{}
 	payload_lhs := a.add_val(.ident, 'payload')
 	payload_rhs := a.add_val(.struct_init, 'Payload')
@@ -1033,8 +1087,8 @@ fn test_unindexed_generic_factory_uses_prior_local_type() {
 		}
 	}
 	_, local_types, _ := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
-	assert local_types['payload'] == 'Payload'
-	assert local_types['gate'] == 'gates.Gate[Payload]'
+	assert local_types.value('payload') == 'Payload'
+	assert local_types.value('gate') == 'gates.Gate[Payload]'
 }
 
 fn test_generic_factory_uses_for_in_element_type() {
@@ -1043,10 +1097,10 @@ fn test_generic_factory_uses_for_in_element_type() {
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
 	tc.fn_generic_params[method] = ['U']
-	tc.fn_param_type_texts[method] = ['U']
-	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_param_type_texts.set(method, ['U'])
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
-	param := a.add_node(flat.Node{ kind: .param, value: 'values', typ: '[]T' })
+	param := a.add_node(flat.Node{ kind: .param, value: 'values', typ: flat.source_type_id('[]T') })
 	loop_value := a.add_val(.ident, 'value')
 	container := a.add_val(.ident, 'values')
 	gate_lhs := a.add_val(.ident, 'gate')
@@ -1074,8 +1128,8 @@ fn test_generic_factory_uses_for_in_element_type() {
 	])
 	collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
 	_, _, ident_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
-	assert ident_types[int(value_arg)] == 'T'
-	assert ident_types[int(gate_use)] == 'gates.Gate[T]'
+	assert ident_types.value(int(value_arg)) == 'T'
+	assert ident_types.value(int(gate_use)) == 'gates.Gate[T]'
 	assert 'gates.Gate[T].backward' in collector.collect_body(a.node(fn_id), 'main',
 		map[string]string{}).calls
 }
@@ -1086,14 +1140,14 @@ fn test_generic_factory_uses_custom_iterator_element_type() {
 	tc.parallel_check_sparse = true
 	factory := 'gates.make_gate'
 	tc.fn_generic_params[factory] = ['U']
-	tc.fn_param_type_texts[factory] = ['U']
-	tc.fn_ret_types[factory] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_param_type_texts.set(factory, ['U'])
+	tc.fn_ret_types[factory] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
 	tc.struct_generic_params['Iter'] = ['T']
 	tc.fn_ret_types['Iter[T].next'] = types.Type(types.OptionType{
-		base_type: types.Type(types.Struct{ name: 'T' })
+		base_type: types.Type(types.Struct{ name_id: flat.source_type_id('T') })
 	})
-	param := a.add_node(flat.Node{ kind: .param, value: 'iter', typ: 'Iter[T]' })
+	param := a.add_node(flat.Node{ kind: .param, value: 'iter', typ: flat.source_type_id('Iter[T]') })
 	loop_value := a.add_val(.ident, 'value')
 	container := a.add_val(.ident, 'iter')
 	callee := a.add_val(.ident, 'make_gate')
@@ -1121,8 +1175,8 @@ fn test_generic_factory_uses_custom_iterator_element_type() {
 	])
 	collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
 	_, _, ident_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
-	assert ident_types[int(value_arg)] == 'T'
-	assert ident_types[int(gate_use)] == 'gates.Gate[T]'
+	assert ident_types.value(int(value_arg)) == 'T'
+	assert ident_types.value(int(gate_use)) == 'gates.Gate[T]'
 	assert 'gates.Gate[T].backward' in collector.collect_body(a.node(fn_id), 'main',
 		map[string]string{}).calls
 }
@@ -1139,10 +1193,10 @@ fn assert_generic_factory_pipe_lambda_array_callback(callback string) {
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
 	tc.fn_generic_params[method] = ['U']
-	tc.fn_param_type_texts[method] = ['U']
-	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_param_type_texts.set(method, ['U'])
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
-	param := a.add_node(flat.Node{ kind: .param, value: 'values', typ: '[]T' })
+	param := a.add_node(flat.Node{ kind: .param, value: 'values', typ: flat.source_type_id('[]T') })
 	values := a.add_val(.ident, 'values')
 	array_selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: callback }, [
 		values,
@@ -1169,8 +1223,8 @@ fn assert_generic_factory_pipe_lambda_array_callback(callback string) {
 	])
 	collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
 	_, _, ident_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
-	assert ident_types[int(value_arg)] == 'T'
-	assert ident_types[int(gate_use)] == 'gates.Gate[T]'
+	assert ident_types.value(int(value_arg)) == 'T'
+	assert ident_types.value(int(gate_use)) == 'gates.Gate[T]'
 	assert 'gates.Gate[T].backward' in collector.collect_body(a.node(fn_id), 'main',
 		map[string]string{}).calls
 }
@@ -1187,13 +1241,13 @@ fn test_for_in_map_registers_key_and_value_types() {
 	mut names := {
 		'items': true
 	}
-	mut type_names := {
+	mut type_names := flat.TypeTextBindings.from_names({
 		'items': 'map[string]T'
-	}
+	})
 	collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{},
 		mut names, mut type_names)
-	assert type_names['key'] == 'string'
-	assert type_names['value'] == 'T'
+	assert type_names.value('key') == 'string'
+	assert type_names.value('value') == 'T'
 }
 
 fn test_for_in_binding_does_not_change_iterable_type_during_inference() {
@@ -1212,16 +1266,16 @@ fn test_for_in_binding_does_not_change_iterable_type_during_inference() {
 		mut names := {
 			'items': true
 		}
-		mut types_by_name := {
+		mut types_by_name := flat.TypeTextBindings.from_names({
 			'items': 'map[string]T'
-		}
+		})
 		collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{},
 			mut names, mut types_by_name)
 		if has_second {
-			assert types_by_name['items'] == 'string'
-			assert types_by_name['value'] == 'T'
+			assert types_by_name.value('items') == 'string'
+			assert types_by_name.value('value') == 'T'
 		} else {
-			assert types_by_name['items'] == 'T'
+			assert types_by_name.value('items') == 'T'
 		}
 	}
 }
@@ -1246,13 +1300,13 @@ fn test_for_in_reference_binding_preserves_pointer_type() {
 		mut names := {
 			'values': true
 		}
-		mut types_by_name := {
+		mut types_by_name := flat.TypeTextBindings.from_names({
 			'values': if mode == 'pointer' { '&[]T' } else { '[]T' }
-		}
+		})
 		collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{},
 			mut names, mut types_by_name)
 		expected := if mode == 'plain' { 'T' } else { '&T' }
-		assert types_by_name['value'] == expected, mode
+		assert types_by_name.value('value') == expected, mode
 	}
 }
 
@@ -1263,7 +1317,10 @@ fn test_generic_factory_multi_return_decl_uses_component_type() {
 	method := 'gates.make_pair'
 	tc.fn_generic_params[method] = ['U']
 	tc.fn_ret_types[method] = types.Type(types.MultiReturn{
-		types: [types.Type(types.Struct{ name: 'gates.Gate[U]' }), types.Type(types.int_)]
+		types: [
+			types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') }),
+			types.Type(types.int_),
+		]
 	})
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
 	callee := a.add_val(.ident, 'make_pair')
@@ -1288,9 +1345,9 @@ fn test_generic_factory_multi_return_decl_uses_component_type() {
 	collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
 	_, local_types, ident_types := collector.local_value_info(a.node(fn_id), 'main',
 		map[string]string{})
-	assert local_types['gate'] == 'gates.Gate[T]'
-	assert local_types['count'] == 'int'
-	assert ident_types[int(gate_use)] == 'gates.Gate[T]'
+	assert local_types.value('gate') == 'gates.Gate[T]'
+	assert local_types.value('count') == 'int'
+	assert ident_types.value(int(gate_use)) == 'gates.Gate[T]'
 	assert 'gates.Gate[T].backward' in collector.collect_body(a.node(fn_id), 'main',
 		map[string]string{}).calls
 }
@@ -1298,11 +1355,11 @@ fn test_generic_factory_multi_return_decl_uses_component_type() {
 fn test_local_type_inference_preserves_leaf_rhs_and_closure_scope() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: 'A' })
+	param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: flat.source_type_id('A') })
 	copy_lhs := a.add_val(.ident, 'copy')
 	copy_rhs := a.add_val(.ident, 'item')
 	copy_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [copy_lhs, copy_rhs])
-	closure_param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: 'B' })
+	closure_param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: flat.source_type_id('B') })
 	closure_use := a.add_val(.ident, 'item')
 	closure_body := call_helper_node(mut a, flat.Node{ kind: .block }, [closure_use])
 	closure := call_helper_node(mut a, flat.Node{ kind: .fn_literal }, [closure_param, closure_body])
@@ -1322,19 +1379,19 @@ fn test_local_type_inference_preserves_leaf_rhs_and_closure_scope() {
 	collector := CallCollector{ a: &a, tc: &tc }
 	_, local_types, ident_types := collector.local_value_info(a.node(fn_id), 'main',
 		map[string]string{})
-	assert local_types['item'] == 'A'
-	assert local_types['copy'] == 'A'
-	assert ident_types[int(copy_rhs)] == 'A'
-	assert ident_types[int(closure_use)] == 'B'
-	assert ident_types[int(outer_use)] == 'A'
-	assert ident_types[int(copy_use)] == 'A'
+	assert local_types.value('item') == 'A'
+	assert local_types.value('copy') == 'A'
+	assert ident_types.value(int(copy_rhs)) == 'A'
+	assert ident_types.value(int(closure_use)) == 'B'
+	assert ident_types.value(int(outer_use)) == 'A'
+	assert ident_types.value(int(copy_use)) == 'A'
 }
 
 fn test_local_type_inference_preserves_simultaneous_shadowed_bindings() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	first_param := a.add_node(flat.Node{ kind: .param, value: 'first', typ: 'A' })
-	second_param := a.add_node(flat.Node{ kind: .param, value: 'second', typ: 'B' })
+	first_param := a.add_node(flat.Node{ kind: .param, value: 'first', typ: flat.source_type_id('A') })
+	second_param := a.add_node(flat.Node{ kind: .param, value: 'second', typ: flat.source_type_id('B') })
 	first_lhs := a.add_val(.ident, 'first')
 	first_rhs := a.add_val(.ident, 'second')
 	second_lhs := a.add_val(.ident, 'second')
@@ -1359,14 +1416,14 @@ fn test_local_type_inference_preserves_simultaneous_shadowed_bindings() {
 	collector := CallCollector{ a: &a, tc: &tc }
 	_, local_types, ident_types := collector.local_value_info(a.node(fn_id), 'main',
 		map[string]string{})
-	assert local_types['first'] == 'A'
-	assert local_types['second'] == 'B'
-	assert ident_types[int(first_rhs)] == 'B'
-	assert ident_types[int(second_rhs)] == 'A'
-	assert ident_types[int(inner_first)] == 'B'
-	assert ident_types[int(inner_second)] == 'A'
-	assert ident_types[int(outer_first)] == 'A'
-	assert ident_types[int(outer_second)] == 'B'
+	assert local_types.value('first') == 'A'
+	assert local_types.value('second') == 'B'
+	assert ident_types.value(int(first_rhs)) == 'B'
+	assert ident_types.value(int(second_rhs)) == 'A'
+	assert ident_types.value(int(inner_first)) == 'B'
+	assert ident_types.value(int(inner_second)) == 'A'
+	assert ident_types.value(int(outer_first)) == 'A'
+	assert ident_types.value(int(outer_second)) == 'B'
 }
 
 fn test_nested_local_type_does_not_replace_outer_binding() {
@@ -1387,7 +1444,7 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 	])
 	inner_call := call_helper_node(mut a, flat.Node{ kind: .call }, [inner_method])
 	inner_block := call_helper_node(mut a, flat.Node{ kind: .block }, [inner_decl, inner_call])
-	closure_param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: 'C' })
+	closure_param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: flat.source_type_id('C') })
 	closure_use := a.add_val(.ident, 'item')
 	closure_method := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'method' }, [
 		closure_use,
@@ -1445,12 +1502,12 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 	}
 	local_values, local_types, ident_types := collector.local_value_info(a.node(fn_id), 'main',
 		map[string]string{})
-	assert local_types['item'] == 'A'
-	assert ident_types[int(inner_use)] == 'B'
-	assert ident_types[int(closure_use)] == 'C'
-	assert ident_types[int(later_arm_use)] == 'A'
-	assert ident_types[int(later_select_use)] == 'A'
-	assert ident_types[int(outer_use)] == 'A'
+	assert local_types.value('item') == 'A'
+	assert ident_types.value(int(inner_use)) == 'B'
+	assert ident_types.value(int(closure_use)) == 'C'
+	assert ident_types.value(int(later_arm_use)) == 'A'
+	assert ident_types.value(int(later_select_use)) == 'A'
+	assert ident_types.value(int(outer_use)) == 'A'
 	scoped := CallCollector{
 		...collector
 		local_ident_types: ident_types
@@ -1475,8 +1532,8 @@ fn test_unindexed_generic_factory_return_infers_callback_result() {
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
 	tc.fn_generic_params[method] = ['U']
-	tc.fn_param_type_texts[method] = ['fn () U']
-	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_param_type_texts.set(method, ['fn () U'])
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
 	base := a.add_val(.ident, 'make_gate')
 	callback := a.add_val(.ident, 'callback')
@@ -1485,9 +1542,9 @@ fn test_unindexed_generic_factory_return_infers_callback_result() {
 	collector := CallCollector{ a: &a, tc: &tc }
 	inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 		'callback': true
-	}, {
+	}, flat.TypeTextBindings.from_names({
 		'callback': 'fn () T'
-	}, false)
+	}), false)
 	assert inferred == 'gates.Gate[T]'
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
 }
@@ -1498,19 +1555,19 @@ fn test_unindexed_generic_factory_return_infers_interface_implementer() {
 	tc.parallel_check_sparse = true
 	method := 'gates.make_gate'
 	tc.fn_generic_params[method] = ['U']
-	tc.fn_param_type_texts[method] = ['Iterable[U]']
-	tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+	tc.fn_param_type_texts.set(method, ['Iterable[U]'])
+	tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 	tc.fn_ret_types['gates.Gate[int].backward'] = types.Type(types.int_)
 	tc.interface_names['Iterable'] = true
 	tc.interface_generic_params['Iterable'] = ['U']
 	tc.interface_fields['Iterable'] = [types.StructField{
 		name: 'item'
-		typ:  types.Type(types.Struct{ name: 'U' })
+		typ:  types.Type(types.Struct{ name_id: flat.source_type_id('U') })
 	}]
 	tc.struct_generic_params['List'] = ['T']
 	tc.structs['List'] = [types.StructField{
 		name: 'item'
-		typ:  types.Type(types.Struct{ name: 'T' })
+		typ:  types.Type(types.Struct{ name_id: flat.source_type_id('T') })
 	}]
 	base := a.add_val(.ident, 'make_gate')
 	source := a.add_val(.ident, 'source')
@@ -1519,9 +1576,9 @@ fn test_unindexed_generic_factory_return_infers_interface_implementer() {
 	collector := CallCollector{ a: &a, tc: &tc }
 	inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 		'source': true
-	}, {
+	}, flat.TypeTextBindings.from_names({
 		'source': 'List[int]'
-	}, false)
+	}), false)
 	assert inferred == 'gates.Gate[int]'
 	assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[int].backward'
 }
@@ -1535,12 +1592,12 @@ fn test_unindexed_generic_factory_infers_short_struct_fields_together() {
 		tc.parallel_check_sparse = true
 		method := 'gates.make_gate'
 		tc.fn_generic_params[method] = ['U']
-		tc.fn_param_type_texts[method] = ['Params[U]']
-		tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+		tc.fn_param_type_texts.set(method, ['Params[U]'])
+		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
 		tc.struct_generic_params['gates.Params'] = ['P']
-		count_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'count', typ: 'int' })
-		items_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'items', typ: pattern })
+		count_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'count', typ: flat.source_type_id('int') })
+		items_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'items', typ: flat.source_type_id(pattern) })
 		struct_id := call_helper_node(mut a, flat.Node{ kind: .struct_decl, value: 'Params' }, [
 			count_decl,
 			items_decl,
@@ -1570,9 +1627,9 @@ fn test_unindexed_generic_factory_infers_short_struct_fields_together() {
 		}
 		inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 			'values': true
-		}, {
+		}, flat.TypeTextBindings.from_names({
 			'values': pattern.replace('P', 'T')
-		}, false)
+		}), false)
 		if inferred != 'gates.Gate[T]' {
 			mismatches << '${pattern}: ${inferred}'
 		} else {
@@ -1591,8 +1648,8 @@ fn test_inferred_factory_callback_arguments_keep_caller_generic_names() {
 			tc.parallel_check_sparse = true
 			method := 'gates.make_gate'
 			tc.fn_generic_params[method] = ['U']
-			tc.fn_param_type_texts[method] = [pattern]
-			tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+			tc.fn_param_type_texts.set(method, [pattern])
+			tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			expected := 'gates.Gate[${caller}]'
 			tc.fn_ret_types['${expected}.backward'] = types.Type(types.int_)
 			base := a.add_val(.ident, 'make_gate')
@@ -1602,9 +1659,9 @@ fn test_inferred_factory_callback_arguments_keep_caller_generic_names() {
 			collector := CallCollector{ a: &a, tc: &tc }
 			inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 				'value': true
-			}, {
+			}, flat.TypeTextBindings.from_names({
 				'value': pattern.replace('U', caller)
-			}, false)
+			}), false)
 			if inferred != expected {
 				mismatches << '${pattern} / ${caller}: ${inferred}'
 			} else {
@@ -1631,20 +1688,20 @@ fn test_inferred_factory_interface_arguments_keep_caller_generic_names() {
 			tc.file_modules['gates.v'] = 'gates'
 			tc.file_imports['gates.v\niter'] = 'gates'
 			tc.fn_generic_params[method] = ['U']
-			tc.fn_param_type_texts[method] = [pattern]
-			tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+			tc.fn_param_type_texts.set(method, [pattern])
+			tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			expected := 'gates.Gate[${caller}]'
 			tc.fn_ret_types['${expected}.backward'] = types.Type(types.int_)
 			tc.interface_names['gates.Iterable'] = true
 			tc.interface_generic_params['gates.Iterable'] = ['E']
 			tc.interface_fields['gates.Iterable'] = [types.StructField{
 				name: 'item'
-				typ:  types.Type(types.Struct{ name: 'E' })
+				typ:  types.Type(types.Struct{ name_id: flat.source_type_id('E') })
 			}]
 			tc.struct_generic_params['consumer.List'] = ['E']
 			tc.structs['consumer.List'] = [types.StructField{
 				name: 'item'
-				typ:  types.Type(types.Struct{ name: 'E' })
+				typ:  types.Type(types.Struct{ name_id: flat.source_type_id('E') })
 			}]
 			base := a.add_val(.ident, 'make_gate')
 			value := a.add_val(.ident, 'value')
@@ -1653,9 +1710,9 @@ fn test_inferred_factory_interface_arguments_keep_caller_generic_names() {
 			collector := CallCollector{ a: &a, tc: &tc }
 			inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 				'value': true
-			}, {
+			}, flat.TypeTextBindings.from_names({
 				'value': 'consumer.List[${caller}]'
-			}, false)
+			}), false)
 			assert tc.cur_module == 'consumer'
 			if inferred != expected {
 				mismatches << '${pattern} / ${caller}: ${inferred}'
@@ -1674,8 +1731,8 @@ fn test_factory_local_inference_preserves_lexical_bindings() {
 		tc.parallel_check_sparse = true
 		factory := 'gates.make_gate'
 		tc.fn_generic_params[factory] = ['U']
-		tc.fn_param_type_texts[factory] = ['U']
-		tc.fn_ret_types[factory] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+		tc.fn_param_type_texts.set(factory, ['U'])
+		tc.fn_ret_types[factory] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		for name in ['A', 'B'] {
 			tc.structs[name] = []types.StructField{}
 			tc.fn_ret_types['${name}.method'] = types.Type(types.int_)
@@ -1699,11 +1756,11 @@ fn test_factory_local_inference_preserves_lexical_bindings() {
 		nested := match scope {
 			'closure' { call_helper_node(mut a, flat.Node{ kind: .fn_literal }, [inner_body]) }
 			'parameter' {
-				param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: 'B' })
+				param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: flat.source_type_id('B') })
 				call_helper_node(mut a, flat.Node{ kind: .fn_literal }, [param, inner_body])
 			}
 			'lambda' {
-				param := a.add_node(flat.Node{ kind: .ident, value: 'item', typ: 'B' })
+				param := a.add_node(flat.Node{ kind: .ident, value: 'item', typ: flat.source_type_id('B') })
 				call_helper_node(mut a, flat.Node{ kind: .lambda_expr }, [param, inner_call])
 			}
 			'if' {
@@ -1758,8 +1815,8 @@ fn test_unindexed_factory_infers_variadic_caller_types() {
 		tc.parallel_check_sparse = true
 		method := 'gates.make_gate'
 		tc.fn_generic_params[method] = ['U']
-		tc.fn_param_type_texts[method] = ['...U']
-		tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+		tc.fn_param_type_texts.set(method, ['...U'])
+		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		expected := 'gates.Gate[${actual}]'
 		tc.fn_ret_types['${expected}.backward'] = types.Type(types.int_)
 		base := a.add_val(.ident, 'make_gate')
@@ -1769,9 +1826,9 @@ fn test_unindexed_factory_infers_variadic_caller_types() {
 		collector := CallCollector{ a: &a, tc: &tc }
 		inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 			'value': true
-		}, {
+		}, flat.TypeTextBindings.from_names({
 			'value': actual
-		}, false)
+		}), false)
 		assert inferred == expected, actual
 		assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == '${expected}.backward'
 	}
@@ -1809,13 +1866,13 @@ fn test_factory_argument_inference_handles_spreads_modifiers_and_container_alias
 			'Number':  'int'
 			'Numbers': '[]Number'
 		} {
-			tc.type_aliases[name] = actual
+			tc.type_aliases.set(name, actual)
 			tc.type_alias_modules[name] = 'main'
 		}
 		method := 'gates.make_gate'
 		tc.fn_generic_params[method] = ['U']
-		tc.fn_param_type_texts[method] = [form[0]]
-		tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+		tc.fn_param_type_texts.set(method, [form[0]])
+		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		expected := 'gates.Gate[${form[2]}]'
 		tc.fn_ret_types['${expected}.backward'] = types.Type(types.int_)
 		base := a.add_val(.ident, 'make_gate')
@@ -1830,9 +1887,9 @@ fn test_factory_argument_inference_handles_spreads_modifiers_and_container_alias
 		collector := CallCollector{ a: &a, tc: &tc }
 		inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 			'value': true
-		}, {
+		}, flat.TypeTextBindings.from_names({
 			'value': form[1]
-		}, false)
+		}), false)
 		if inferred != expected {
 			failures << '${form}: got ${inferred}, wanted ${expected}'
 		} else {
@@ -1850,10 +1907,10 @@ fn test_factory_calls_used_directly_as_receivers_keep_specialized_methods() {
 			tc.parallel_check_sparse = true
 			method := 'gates.make_gate'
 			tc.fn_generic_params[method] = ['U']
-			tc.fn_param_type_texts[method] = ['U']
-			tc.fn_ret_types[method] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+			tc.fn_param_type_texts.set(method, ['U'])
+			tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
-			param := a.add_node(flat.Node{ kind: .param, value: 'value', typ: 'T' })
+			param := a.add_node(flat.Node{ kind: .param, value: 'value', typ: flat.source_type_id('T') })
 			base := a.add_val(.ident, 'make_gate')
 			callee := if explicit {
 				type_arg := a.add_val(.ident, 'T')
@@ -1865,7 +1922,7 @@ fn test_factory_calls_used_directly_as_receivers_keep_specialized_methods() {
 			factory := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value])
 			tc.sparse_resolved_call_names[int(factory)] = method
 			if cached_placeholder {
-				tc.sparse_expr_type_values[int(factory)] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+				tc.sparse_expr_type_values[int(factory)] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			}
 			selector := call_helper_node(mut a, flat.Node{ kind: .selector, value: 'backward' }, [factory])
 			method_call := call_helper_node(mut a, flat.Node{ kind: .call }, [selector])
@@ -1877,9 +1934,9 @@ fn test_factory_calls_used_directly_as_receivers_keep_specialized_methods() {
 			collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
 			assert collector.top_level_receiver_type_name(factory, 'main', map[string]string{}, {
 				'value': true
-			}, {
+			}, flat.TypeTextBindings.from_names({
 				'value': 'T'
-			}) == 'gates.Gate[T]', 'explicit=${explicit}, cached_placeholder=${cached_placeholder}'
+			})) == 'gates.Gate[T]', 'explicit=${explicit}, cached_placeholder=${cached_placeholder}'
 			assert 'gates.Gate[T].backward' in collector.collect_body(a.node(fn_id), 'main', map[string]string{}).calls, 'explicit=${explicit}, cached_placeholder=${cached_placeholder}'
 		}
 	}
@@ -1898,18 +1955,18 @@ fn test_factory_loop_bindings_use_iterator_next_and_checked_variable_types() {
 		tc.parallel_check_sparse = true
 		tc.structs['Iter'] = []types.StructField{}
 		tc.struct_generic_params['Iter'] = ['U']
-		tc.fn_ret_types['Iter[U].next'] = types.Type(types.OptionType{ base_type: types.Type(types.Struct{ name: 'U' }) })
-		tc.fn_ret_type_texts['Iter[U].next'] = '?U'
-		tc.fn_param_type_texts['Iter[U].next'] = ['&Iter[U]']
-		tc.type_aliases['IteratorAlias'] = 'Iter[int]'
+		tc.fn_ret_types['Iter[U].next'] = types.Type(types.OptionType{ base_type: types.Type(types.Struct{ name_id: flat.source_type_id('U') }) })
+		tc.fn_ret_type_texts.set('Iter[U].next', '?U')
+		tc.fn_param_type_texts.set('Iter[U].next', ['&Iter[U]'])
+		tc.type_aliases.set('IteratorAlias', 'Iter[int]')
 		tc.type_alias_modules['IteratorAlias'] = 'main'
 		factory := 'gates.make_gate'
 		tc.fn_generic_params[factory] = ['U']
-		tc.fn_param_type_texts[factory] = ['U']
-		tc.fn_ret_types[factory] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+		tc.fn_param_type_texts.set(factory, ['U'])
+		tc.fn_ret_types[factory] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		expected := 'gates.Gate[${form[1]}]'
 		tc.fn_ret_types['${expected}.backward'] = types.Type(types.int_)
-		param := a.add_node(flat.Node{ kind: .param, value: 'iter', typ: form[0] })
+		param := a.add_node(flat.Node{ kind: .param, value: 'iter', typ: flat.source_type_id(form[0]) })
 		binding := a.add_val(.ident, 'value')
 		container := a.add_val(.ident, 'iter')
 		value_arg := a.add_val(.ident, 'value')
@@ -1932,11 +1989,11 @@ fn test_factory_loop_bindings_use_iterator_next_and_checked_variable_types() {
 			body,
 		])
 		if form[2] == 'checked' {
-			tc.sparse_expr_type_values[int(binding)] = types.Type(types.Struct{ name: 'Payload' })
+			tc.sparse_expr_type_values[int(binding)] = types.Type(types.Struct{ name_id: flat.source_type_id('Payload') })
 		}
 		collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
 		_, _, ident_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
-		assert ident_types[int(value_arg)] == form[1], form.str()
+		assert ident_types.value(int(value_arg)) == form[1], form.str()
 		assert '${expected}.backward' in collector.collect_body(a.node(fn_id), 'main', map[string]string{}).calls, form.str()
 	}
 }
@@ -1963,12 +2020,12 @@ fn test_factory_loop_bindings_resolve_the_iterable_before_shadowing_it() {
 		mut values := {
 			'items': true
 		}
-		mut local_types := {
+		mut local_types := flat.TypeTextBindings.from_names({
 			'items': form[0]
-		}
+		})
 		collector.register_top_level_for_in_vars(a.node(loop), 'main', map[string]string{}, mut values, mut local_types)
-		assert local_types['items'] == form[1], form.str()
-		assert local_types['value'] == form[2], form.str()
+		assert local_types.value('items') == form[1], form.str()
+		assert local_types.value('value') == form[2], form.str()
 	}
 }
 
@@ -1987,15 +2044,15 @@ fn test_factory_local_inference_uses_loop_bindings() {
 			tc.parallel_check_sparse = true
 			factory := 'gates.make_gate'
 			tc.fn_generic_params[factory] = ['U']
-			tc.fn_param_type_texts[factory] = ['U']
-			tc.fn_ret_types[factory] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+			tc.fn_param_type_texts.set(factory, ['U'])
+			tc.fn_ret_types[factory] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 			expected := if use_key {
 				if container_type.starts_with('map[') { 'string' } else { 'int' }
 			} else {
 				value_type
 			}
 			tc.fn_ret_types['gates.Gate[${expected}].backward'] = types.Type(types.int_)
-			param := a.add_node(flat.Node{ kind: .param, value: 'items', typ: container_type })
+			param := a.add_node(flat.Node{ kind: .param, value: 'items', typ: flat.source_type_id(container_type) })
 			key := a.add_val(.ident, 'key')
 			value := a.add_val(.ident, 'value')
 			container := a.add_val(.ident, 'items')
@@ -2035,9 +2092,9 @@ fn test_factory_local_inference_decomposes_multi_return_declarations() {
 		tc.fn_generic_params[factory] = ['U']
 		tc.fn_ret_types[factory] = types.Type(types.MultiReturn{
 			types: [
-				types.Type(types.Struct{ name: 'gates.Gate[U]' }),
+				types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') }),
 				types.Type(types.int_),
-				types.Type(types.Struct{ name: 'gates.Gate[[]U]' }),
+				types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[[]U]') }),
 			]
 		})
 		for typ in ['T', '[]T'] {
@@ -2086,12 +2143,12 @@ fn test_factory_local_inference_preserves_range_integer_types() {
 				tc.parallel_check_sparse = true
 				factory := 'gates.make_gate'
 				tc.fn_generic_params[factory] = ['U']
-				tc.fn_param_type_texts[factory] = ['U']
-				tc.fn_ret_types[factory] = types.Type(types.Struct{ name: 'gates.Gate[U]' })
+				tc.fn_param_type_texts.set(factory, ['U'])
+				tc.fn_ret_types[factory] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 				expected := if literals == 'both' { 'int' } else { bound_type }
 				tc.fn_ret_types['gates.Gate[${expected}].backward'] = types.Type(types.int_)
-				low_param := a.add_node(flat.Node{ kind: .param, value: 'low', typ: bound_type })
-				high_param := a.add_node(flat.Node{ kind: .param, value: 'high', typ: bound_type })
+				low_param := a.add_node(flat.Node{ kind: .param, value: 'low', typ: flat.source_type_id(bound_type) })
+				high_param := a.add_node(flat.Node{ kind: .param, value: 'high', typ: flat.source_type_id(bound_type) })
 				zero := a.add_val(.int_literal, '0')
 				tc.const_exprs['zero'] = zero
 				low := if literals == 'constant' {
@@ -2153,15 +2210,15 @@ fn test_factory_local_inference_preserves_range_integer_types() {
 fn test_rhs_closure_type_bindings_restore_after_map_growth() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	outer_param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: 'A' })
+	outer_param := a.add_node(flat.Node{ kind: .param, value: 'item', typ: flat.source_type_id('A') })
 	mut closure_children := []flat.NodeId{}
-	closure_children << a.add_node(flat.Node{ kind: .param, value: 'item', typ: 'B' })
+	closure_children << a.add_node(flat.Node{ kind: .param, value: 'item', typ: flat.source_type_id('B') })
 	// Force the shared local-type table to grow while analyzing the RHS.
 	for i in 0 .. 128 {
 		closure_children << a.add_node(flat.Node{
 			kind:  .param
 			value: 'inner_${i}'
-			typ:   'B'
+			typ:   flat.source_type_id('B')
 		})
 	}
 	inner_item := a.add_val(.ident, 'item')
@@ -2190,14 +2247,14 @@ fn test_rhs_closure_type_bindings_restore_after_map_growth() {
 	collector := CallCollector{ a: &a, tc: &tc }
 	_, local_types, ident_types := collector.local_value_info(a.node(fn_id), 'main',
 		map[string]string{})
-	assert local_types['item'] == 'A'
-	assert local_types['copy'] == 'A'
-	assert 'inner_127' !in local_types
-	assert ident_types[int(inner_item)] == 'B'
-	assert ident_types[int(inner_last)] == 'B'
-	assert ident_types[int(copy_rhs)] == 'A'
-	assert ident_types[int(outer_item)] == 'A'
-	assert int(outer_last) !in ident_types
+	assert local_types.value('item') == 'A'
+	assert local_types.value('copy') == 'A'
+	assert !local_types.contains('inner_127')
+	assert ident_types.value(int(inner_item)) == 'B'
+	assert ident_types.value(int(inner_last)) == 'B'
+	assert ident_types.value(int(copy_rhs)) == 'A'
+	assert ident_types.value(int(outer_item)) == 'A'
+	assert !ident_types.contains(int(outer_last))
 }
 
 fn test_initializer_without_local_bindings_keeps_calls_refs_and_generics() {
@@ -2230,7 +2287,7 @@ fn test_initializer_without_local_bindings_keeps_calls_refs_and_generics() {
 	names, has_binders := markused_local_value_names(&a, a.node(field))
 	assert names.len == 0 && !has_binders
 	_, type_names, ident_types, visible := collector.local_value_info_with_visibility(a.node(field), 'main', map[string]string{})
-	assert type_names.len == 0 && ident_types.len == 0 && visible.len == 0
+	assert type_names.ids.len == 0 && ident_types.ids.len == 0 && visible.len == 0
 	mut calls := []string{}
 	assert collector.collect_calls_with_generic_usage(a.node(field), 'main', map[string]string{}, '', '', mut calls)
 	assert calls == ['factory', 'factory']
@@ -2244,7 +2301,7 @@ fn test_local_analysis_keeps_for_in_bindings_when_name_scan_is_empty() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.parallel_check_sparse = true
 	value := a.add_val(.ident, 'value')
-	tc.sparse_expr_type_values[int(value)] = types.Type(types.Struct{ name: 'Payload' })
+	tc.sparse_expr_type_values[int(value)] = types.Type(types.Struct{ name_id: flat.source_type_id('Payload') })
 	container := a.add_val(.ident, 'items')
 	use_value := a.add_val(.ident, 'value')
 	body := call_helper_node(mut a, flat.Node{ kind: .block }, [use_value])
@@ -2260,8 +2317,8 @@ fn test_local_analysis_keeps_for_in_bindings_when_name_scan_is_empty() {
 	names, has_binders := markused_local_value_names(&a, a.node(fn_id))
 	assert names.len == 0 && has_binders
 	_, type_names, ident_types := collector.local_value_info(a.node(fn_id), 'main', map[string]string{})
-	assert type_names.len == 0
-	assert ident_types[int(use_value)] == 'Payload'
+	assert type_names.ids.len == 0
+	assert ident_types.value(int(use_value)) == 'Payload'
 }
 
 fn test_reused_local_visibility_keeps_shadowed_callback_and_constant_edges() {
@@ -2278,7 +2335,7 @@ fn test_reused_local_visibility_keeps_shadowed_callback_and_constant_edges() {
 	const_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [const_lhs, const_rhs])
 	inner_const := a.add_val(.ident, 'answer')
 	block := call_helper_node(mut a, flat.Node{ kind: .block }, [decl, inner, const_decl, inner_const])
-	lambda_param := a.add_node(flat.Node{ kind: .ident, value: 'callback', typ: 'int' })
+	lambda_param := a.add_node(flat.Node{ kind: .ident, value: 'callback', typ: flat.source_type_id('int') })
 	lambda_use := a.add_val(.ident, 'callback')
 	lambda_body := call_helper_node(mut a, flat.Node{ kind: .block }, [lambda_use])
 	lambda := call_helper_node(mut a, flat.Node{ kind: .lambda_expr }, [lambda_param, lambda_body])

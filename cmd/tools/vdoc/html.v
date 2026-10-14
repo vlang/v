@@ -483,9 +483,7 @@ fn html_highlight(code string) string {
 			buf.write_string(escape_code(code[offset..highlighted.start]))
 		}
 		raw := code[highlighted.start..highlighted.end]
-		// Module and type names are not styled in HTML yet. `module_` is a guess, that also
-		// matches variables and fields before a `.`, so it is better not to publish it as a class.
-		if highlighted.typ in [.name, .module_, .type_name] {
+		if highlighted.typ == .name {
 			buf.write_string(escape_code(raw))
 		} else {
 			buf.write_string('<span class="token ${highlighted.typ}">${escape_code(raw)}</span>')

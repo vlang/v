@@ -4,8 +4,6 @@
 module time
 
 #flag darwin -I@VEXEROOT/thirdparty/legacy/include/LegacySupport
-#include <time.h>
-#include <errno.h>
 
 pub struct C.tm {
 pub mut:

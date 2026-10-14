@@ -212,7 +212,7 @@ fn (tc &TypeChecker) inline_asm_intel_operand_width(typ Type) ?int {
 		Char { 8 }
 		Rune { 32 }
 		ISize, USize, Pointer { platform_int_bits() }
-		Enum { tc.inline_asm_enum_backing_width(clean.name) }
+		Enum { tc.inline_asm_enum_backing_width(clean.name()) }
 		else { none }
 	}
 }
@@ -265,7 +265,7 @@ fn (tc &TypeChecker) inline_asm_intel_type_is_signed(typ Type) bool {
 		Primitive { clean.props.has(.integer) && !clean.props.has(.unsigned) }
 		Char, Rune, USize, Pointer { false }
 		ISize { true }
-		Enum { tc.inline_asm_intel_type_is_signed(tc.inline_asm_enum_backing_type(clean.name)) }
+		Enum { tc.inline_asm_intel_type_is_signed(tc.inline_asm_enum_backing_type(clean.name())) }
 		else { false }
 	}
 }

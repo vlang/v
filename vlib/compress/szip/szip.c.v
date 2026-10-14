@@ -115,10 +115,10 @@ pub fn (mut z Zip) close() {
 // open_entry opens an entry by name in the zip archive.
 // For zip archive opened in 'w' or 'a' mode the function will append
 // a new entry. In readonly mode the function tries to locate the entry
-// in global dictionary.
+// in global dictionary and returns an error if it does not exist.
 pub fn (mut zentry Zip) open_entry(name string) ! {
 	res := C.zip_entry_open(zentry, &char(name.str))
-	if res == -1 {
+	if res < 0 {
 		return error('szip: cannot open archive entry')
 	}
 }
@@ -184,9 +184,6 @@ pub fn (mut zentry Zip) crc32() u32 {
 
 // write_entry compresses an input buffer for the current zip entry.
 pub fn (mut zentry Zip) write_entry(data []u8) ! {
-	if data.len > 0 && int(data[0] & 0xff) == -1 {
-		return error('szip: cannot write entry')
-	}
 	res := C.zip_entry_write(zentry, data.data, data.len)
 	if res != 0 {
 		return error('szip: failed to write entry')

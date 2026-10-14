@@ -2,9 +2,6 @@ module c
 
 import os
 
-#include <sys/uio.h>
-#include <unistd.h>
-
 fn write_c_output_sequential(mut file os.File, prefix []u8, segments []string, tail string, separator string) ! {
 	if prefix.len > 0 {
 		unsafe { file.write_full_buffer(prefix.data, usize(prefix.len))! }

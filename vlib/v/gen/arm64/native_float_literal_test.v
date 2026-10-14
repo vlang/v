@@ -249,3 +249,39 @@ fn main() {
 		}
 	}
 }
+
+fn test_native_default_float_sort_keeps_nan_and_zero_identity() {
+	$if macos && arm64 {
+		path := os.join_path(os.vtmp_dir(), 'arm64_float_sort_${os.getpid()}.v')
+		output := path.all_before_last('.')
+		defer {
+			os.rm(path) or {}
+			os.rm(output) or {}
+		}
+		os.write_file(path, r'
+import math.bits
+
+fn main() {
+    neg64 := bits.f64_from_bits(0x8000000000000000)
+    nan64a := bits.f64_from_bits(0x7ff8000000000042)
+    nan64b := bits.f64_from_bits(0x7ff8000000000057)
+    mut values64 := [3.0, nan64a, 0.0, neg64, -2.0, 1.0, nan64b, neg64, 0.0, 1.0]
+    values64.sort()
+    expected64 := [u64(0xc000000000000000), 0, 0x8000000000000000, 0x8000000000000000, 0, 0x3ff0000000000000, 0x3ff0000000000000, 0x4008000000000000, 0x7ff8000000000042, 0x7ff8000000000057]
+    for i, x in values64 { assert bits.f64_bits(x) == expected64[i] }
+    neg32 := bits.f32_from_bits(0x80000000)
+    nan32a := bits.f32_from_bits(0x7fc00042)
+    nan32b := bits.f32_from_bits(0x7fc00057)
+    mut values32 := [f32(3.0), nan32a, f32(0.0), neg32, f32(-2.0), f32(1.0), nan32b, neg32, f32(0.0), f32(1.0)]
+    values32.sort()
+    expected32 := [u32(0xc0000000), 0, 0x80000000, 0x80000000, 0, 0x3f800000, 0x3f800000, 0x40400000, 0x7fc00042, 0x7fc00057]
+    for i, x in values32 { assert bits.f32_bits(x) == expected32[i] }
+}
+')!
+		compiled := exec_native([@VEXE, '-gc', 'none', '-nocache', '-b', 'arm64', '-o', output,
+			path])
+		assert compiled.exit_code == 0, compiled.output
+		result := os.exec([output])
+		assert result.exit_code == 0, 'exit ${result.exit_code}: ${result.output}'
+	}
+}
