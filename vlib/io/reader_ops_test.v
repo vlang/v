@@ -110,16 +110,16 @@ fn test_read_byte_and_full() {
 	mut rest := []u8{len: 1}
 	read_full(mut Reader(c), mut rest)!
 	assert rest.bytestr() == 'z'
-	read_byte(mut Reader(c)) or {
+	if _ := read_byte(mut Reader(c)) {
+		assert false, 'read_byte at Eof must error'
+	} else {
 		assert err is Eof
-		return
 	}
-	assert false, 'read_byte at Eof must error'
-	read_full(mut Reader(c), mut rest) or {
+	if _ := read_full(mut Reader(c), mut rest) {
+		assert false, 'read_full past Eof must error'
+	} else {
 		assert err is Eof
-		return
 	}
-	assert false, 'read_full past Eof must error'
 }
 
 fn test_buffered_read_byte_and_unread() {
@@ -135,13 +135,154 @@ fn test_buffered_read_byte_and_unread() {
 	br.unread_byte()!
 	assert br.read_byte()! == `e`
 	assert br.read_byte()! == `y`
-	br.read_byte() or {
+	if _ := br.read_byte() {
+		assert false, 'buffered read_byte at Eof must error'
+	} else {
 		assert err is Eof
-		return
 	}
-	assert false, 'buffered read_byte at Eof must error'
-	br.unread_byte() or {
-		return
+	if _ := br.unread_byte() {
+		assert false, 'unread after failed read must error'
+	} else {
+		assert err.msg().contains('no byte to unread')
 	}
-	assert false, 'unread with nothing read must error'
+}
+
+struct OpsCountReader {
+	count int
+}
+
+fn (mut r OpsCountReader) read(mut _buf []u8) !int {
+	return r.count
+}
+
+struct OpsShortWriter {}
+
+fn (mut w OpsShortWriter) write(buf []u8) !int {
+	return buf.len - 1
+}
+
+struct OpsRecoveringReader {
+mut:
+	step int
+}
+
+fn (mut r OpsRecoveringReader) read(mut buf []u8) !int {
+	r.step++
+	if r.step == 1 { return error('recoverable reader failure') }
+	if r.step == 2 { return 0 }
+	if r.step == 3 {
+		buf[0] = `a`
+		return 1
+	}
+	return Eof{}
+}
+
+fn test_reader_combinators_preserve_buffer_length() {
+	mut limited := limited_reader(&ChunkReader{ chunks: ['abcd'.bytes()] }, 2)
+	mut section := section_reader(&ChunkReader{ chunks: ['abcd'.bytes()] }, 2)
+	mut buf := []u8{len: 8, init: `x`}
+	assert limited.read(mut buf)! == 2
+	assert buf.len == 8
+	assert buf.bytestr() == 'abxxxxxx'
+	assert section.read(mut buf)! == 2
+	assert buf.len == 8
+	assert buf.bytestr() == 'abxxxxxx'
+}
+
+fn test_multi_reader_propagates_errors_and_preserves_zero_reads() {
+	mut multi := multi_reader([Reader(&OpsRecoveringReader{}),
+		Reader(&ChunkReader{ chunks: ['b'.bytes()] })])
+	mut buf := []u8{len: 4}
+	if _ := multi.read(mut buf) {
+		assert false, 'non-EOF reader errors must surface'
+	} else {
+		assert err.msg() == 'recoverable reader failure'
+	}
+	assert multi.read(mut buf)! == 0
+	assert multi.read(mut buf)! == 1
+	assert buf[0] == `a`
+	assert multi.read(mut buf)! == 1
+	assert buf[0] == `b`
+}
+
+fn test_tee_reader_rejects_short_writes() {
+	mut tee := tee_reader(&ChunkReader{ chunks: ['abc'.bytes()] }, &OpsShortWriter{})
+	mut buf := []u8{len: 4}
+	if _ := tee.read(mut buf) {
+		assert false, 'a short write must surface'
+	} else {
+		assert err.msg().contains('short or invalid write')
+	}
+}
+
+fn test_reader_combinators_reject_invalid_counts() {
+	for count in [-1, 5] {
+		mut buf := []u8{len: 4}
+		mut limited := limited_reader(&OpsCountReader{ count: count }, 2)
+		mut section := section_reader(&OpsCountReader{ count: count }, 2)
+		mut multi := multi_reader([Reader(&OpsCountReader{ count: count })])
+		mut tee := tee_reader(&OpsCountReader{ count: count }, &OpsShortWriter{})
+		mut readers := [Reader(limited), Reader(section), Reader(multi), Reader(tee)]
+		for mut reader in readers {
+			if _ := reader.read(mut buf) {
+				assert false
+			} else {
+				assert err.msg() == 'io: invalid read count'
+			}
+		}
+		mut reader := Reader(&OpsCountReader{ count: count })
+		if _ := read_byte(mut reader) {
+			assert false
+		} else {
+			assert err.msg() == 'io: invalid read count'
+		}
+		if _ := read_full(mut reader, mut buf) {
+			assert false
+		} else {
+			assert err.msg() == 'io: invalid read count'
+		}
+	}
+	mut zero := Reader(&OpsCountReader{})
+	mut buf := []u8{len: 1}
+	if _ := read_full(mut zero, mut buf) {
+		assert false
+	} else {
+		assert err.msg() == 'io: read_full: no progress'
+	}
+}
+
+fn test_buffered_unread_byte_tracks_last_operation() {
+	mut br := new_buffered_reader(reader: &ChunkReader{ chunks: ['abcdef'.bytes()] }, cap: 8)
+	defer { br.free() }
+	assert br.read_byte()! == `a`
+	assert br.total_read == 1
+	br.unread_byte()!
+	assert br.total_read == 0
+	if _ := br.unread_byte() {
+		assert false
+	} else {
+		assert err.msg().contains('no byte')
+	}
+	assert br.read_byte()! == `a`
+	mut buf := []u8{len: 1}
+	assert br.read(mut buf)! == 1
+	if _ := br.unread_byte() {
+		assert false
+	} else {
+		assert err.msg().contains('no byte')
+	}
+	assert br.read_byte()! == `c`
+	assert br.peek(1)! == [u8(`d`)]
+	if _ := br.unread_byte() {
+		assert false
+	} else {
+		assert err.msg().contains('no byte')
+	}
+	assert br.read_byte()! == `d`
+	assert br.read_line()! == 'ef'
+	if _ := br.unread_byte() {
+		assert false
+	} else {
+		assert err.msg().contains('no byte')
+	}
 }

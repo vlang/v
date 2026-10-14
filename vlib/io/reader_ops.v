@@ -5,7 +5,6 @@ module io
 // io.LimitedReader.
 @[heap]
 pub struct LimitedReader {
-	Reader
 mut:
 	r Reader
 	n i64
@@ -27,10 +26,11 @@ pub fn (mut l LimitedReader) read(mut buf []u8) !int {
 	if l.n <= 0 {
 		return Eof{}
 	}
-	if i64(buf.len) > l.n {
-		buf = buf[..int(l.n)]
-	}
-	n := l.r.read(mut buf)!
+	limit := if i64(buf.len) > l.n { int(l.n) } else { buf.len }
+	// Borrow the caller's storage without cloning or changing its array header.
+	mut view := unsafe { buf[..limit] }
+	n := l.r.read(mut view)!
+	validate_reader_count(n, limit)!
 	l.n -= i64(n)
 	return n
 }
@@ -39,7 +39,6 @@ pub fn (mut l LimitedReader) read(mut buf []u8) !int {
 // Write failures surface through read, like Go's io.TeeReader.
 @[heap]
 pub struct TeeReader {
-	Reader
 mut:
 	r Reader
 	w Writer
@@ -56,8 +55,12 @@ pub fn tee_reader(r Reader, w Writer) TeeReader {
 // read implements Reader for TeeReader.
 pub fn (mut t TeeReader) read(mut buf []u8) !int {
 	n := t.r.read(mut buf)!
+	validate_reader_count(n, buf.len)!
 	if n > 0 {
-		t.w.write(buf[..n]) or { return err }
+		written := t.w.write(buf[..n])!
+		if written != n {
+			return error('io: tee_reader: short or invalid write')
+		}
 	}
 	return n
 }
@@ -66,7 +69,6 @@ pub fn (mut t TeeReader) read(mut buf []u8) !int {
 // the next takes over (Go's io.MultiReader).
 @[heap]
 pub struct MultiReader {
-	Reader
 mut:
 	readers []Reader
 }
@@ -78,25 +80,22 @@ pub fn multi_reader(readers []Reader) MultiReader {
 	}
 }
 
-// read implements Reader for MultiReader: an exhausted (or failing) reader is
-// skipped, and once every reader is done its last error is returned.
+// read implements Reader for MultiReader. Only Eof advances to the next reader;
+// other errors and zero-byte reads leave the current reader in place.
 pub fn (mut m MultiReader) read(mut buf []u8) !int {
 	if buf.len == 0 {
 		return 0
 	}
 	for m.readers.len > 0 {
 		n := m.readers[0].read(mut buf) or {
-			first_err := err
-			m.readers.delete(0)
-			if m.readers.len == 0 {
-				return first_err
+			if err is Eof {
+				m.readers.delete(0)
+				continue
 			}
-			continue
+			return err
 		}
-		if n > 0 {
-			return n
-		}
-		m.readers.delete(0)
+		validate_reader_count(n, buf.len)!
+		return n
 	}
 	return Eof{}
 }
@@ -106,7 +105,6 @@ pub fn (mut m MultiReader) read(mut buf []u8) !int {
 // (read-only direction).
 @[heap]
 pub struct SectionReader {
-	Reader
 mut:
 	r     Reader
 	count i64
@@ -129,10 +127,12 @@ pub fn (mut s SectionReader) read(mut buf []u8) !int {
 	if s.off >= s.count {
 		return Eof{}
 	}
-	if i64(buf.len) > s.count - s.off {
-		buf = buf[..int(s.count - s.off)]
-	}
-	n := s.r.read(mut buf)!
+	remaining := s.count - s.off
+	limit := if i64(buf.len) > remaining { int(remaining) } else { buf.len }
+	// Borrow the caller's storage without cloning or changing its array header.
+	mut view := unsafe { buf[..limit] }
+	n := s.r.read(mut view)!
+	validate_reader_count(n, limit)!
 	s.off += i64(n)
 	return n
 }
@@ -142,6 +142,7 @@ pub fn (mut s SectionReader) read(mut buf []u8) !int {
 pub fn read_byte(mut r Reader) !u8 {
 	mut b := []u8{len: 1}
 	n := r.read(mut b)!
+	validate_reader_count(n, 1)!
 	if n == 0 {
 		return Eof{}
 	}
@@ -149,13 +150,17 @@ pub fn read_byte(mut r Reader) !u8 {
 }
 
 // read_full fills buf completely from r, returning Eof when the stream ends
-// before buf is full (Go's io.ReadFull).
+// before buf is full. A successful zero-byte read returns a no-progress error.
 pub fn read_full(mut r Reader, mut buf []u8) ! {
 	mut n := 0
 	for n < buf.len {
-		read := r.read(mut buf[n..])!
+		remaining := buf.len - n
+		// Borrow the unread suffix so writes fill the original caller buffer.
+		mut view := unsafe { buf[n..] }
+		read := r.read(mut view)!
+		validate_reader_count(read, remaining)!
 		if read == 0 {
-			return Eof{}
+			return error('io: read_full: no progress')
 		}
 		n += read
 	}
@@ -164,6 +169,7 @@ pub fn read_full(mut r Reader, mut buf []u8) ! {
 // read_byte returns the next byte from a buffered reader, or Eof at the end
 // of the stream (like bufio.Reader.ReadByte).
 pub fn (mut b BufferedReader) read_byte() !u8 {
+	b.can_unread_byte = false
 	if b.offset >= b.len {
 		if !b.fill_buffer() {
 			return Eof{}
@@ -171,15 +177,25 @@ pub fn (mut b BufferedReader) read_byte() !u8 {
 	}
 	ch := b.buf[b.offset]
 	b.offset++
+	b.total_read++
+	b.can_unread_byte = true
 	return ch
 }
 
 // unread_byte returns the last-read byte to the buffer, so the next read
-// returns it again. It errors when the buffer holds nothing to unread
-// (like bufio.Reader.UnreadByte).
+// returns it again. Only one unread after a successful read_byte is allowed;
+// other read operations, peeking, and failed reads invalidate that permission.
 pub fn (mut b BufferedReader) unread_byte() ! {
-	if b.offset <= 0 {
+	if !b.can_unread_byte || b.offset <= 0 {
 		return error('io: unread_byte: no byte to unread')
 	}
 	b.offset--
+	b.total_read--
+	b.can_unread_byte = false
+}
+
+fn validate_reader_count(n int, size int) ! {
+	if n < 0 || n > size {
+		return error('io: invalid read count')
+	}
 }
