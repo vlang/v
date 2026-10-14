@@ -1,6 +1,6 @@
 module strconv
 
-// parse_bool converts the strings Go/Python/Node accept for booleans:
+// parse_bool converts these boolean literals:
 // "1", "t", "T", "TRUE", "true", "True" -> true and
 // "0", "f", "F", "FALSE", "false", "False" -> false.
 // Anything else is an error (unlike string.bool(), which defaults to false).

@@ -19,10 +19,14 @@ pub fn (t Time) weekday() Weekday {
 }
 
 // add_date returns t shifted by the given number of years, months and days,
-// normalizing out-of-range values (Jan 31 + 1 month = Feb 28/29), like Go's
-// Time.AddDate. Only the calendar date moves; the time of day is preserved,
-// so no timezone conversion is involved.
+// normalizing months and clamping the day to the target month's last day.
+// The time of day, nanoseconds and location are preserved. Ambiguous wall
+// times prefer the input's UTC offset when valid; nonexistent wall times
+// use that offset, normalizing to a nearby valid time.
 pub fn (t Time) add_date(years int, months int, days int) Time {
+	if years == 0 && months == 0 && days == 0 {
+		return t
+	}
 	mut year := t.year + years + (t.month - 1 + months) / 12
 	mut month := (t.month - 1 + months) % 12
 	if month < 0 {
@@ -35,19 +39,35 @@ pub fn (t Time) add_date(years int, months int, days int) Time {
 	day := if t.day > dim { dim } else { t.day }
 	total_days := i64(days_from_civil(year, month, day)) + i64(days)
 	ny, nm, nd := civil_from_days(total_days)
-	return new(Time{
-		year:     ny
-		month:    nm
-		day:      nd
-		hour:     t.hour
-		minute:   t.minute
-		second:   t.second
-		is_local: t.is_local
+	calendar := new(Time{
+		year:       ny
+		month:      nm
+		day:        nd
+		hour:       t.hour
+		minute:     t.minute
+		second:     t.second
+		nanosecond: t.nanosecond
+		is_local:   t.is_local
 	})
+	if loc := t.location() {
+		wall := calendar.local_unix()
+		input_offset := loc.offset_at(t.unix()) or { panic(err.msg()) }
+		mut instant := wall - i64(input_offset)
+		target_offset := loc.offset_at(instant) or { panic(err.msg()) }
+		if target_offset != input_offset {
+			adjusted := wall - i64(target_offset)
+			// Keep the input offset in a gap, where neither candidate matches.
+			if (loc.offset_at(adjusted) or { panic(err.msg()) }) == target_offset {
+				instant = adjusted
+			}
+		}
+		return loc.unix_nanosecond_to_local(instant, t.nanosecond) or { panic(err.msg()) }
+	}
+	return calendar
 }
 
-// clock returns the number of milliseconds elapsed since process start,
-// from the monotonic clock (so it is unaffected by wall-clock changes).
+// clock returns a monotonic clock reading in milliseconds.
+// Its origin is platform-dependent; subtract readings to measure elapsed time.
 pub fn clock() i64 {
 	return i64(sys_mono_now() / 1_000_000)
 }

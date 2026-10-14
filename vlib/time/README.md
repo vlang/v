@@ -218,3 +218,18 @@ minus and must fit in `i64`. Empty, malformed, and overflowing values return an 
 timestamps, keeping `Time.nanosecond` in `0 .. 999_999_999`. `unix_nanosecond` and
 `unix_microsecond` carry out-of-range subsecond arguments into the seconds component.
 `Location.unix_nanosecond_to_local` applies the same normalization before choosing the zone.
+
+## Calendar arithmetic and monotonic readings
+
+`Time.weekday()` returns a `Weekday` enum using ISO numbering: Monday is 1 and Sunday is 7.
+`Time.add_date(years, months, days)` normalizes the requested month, clamps the original day
+to that month's last day, then applies the day offset. January 31 plus one month becomes
+February 28 or 29. The method preserves nanoseconds and the associated location.
+
+Ambiguous times prefer the original UTC offset when it remains valid. Nonexistent times use
+the original offset and normalize to a nearby valid time: in New York, advancing March 9,
+2024 at 02:30 by one day gives March 10 at 03:30; moving back from March 11 at 02:30 gives
+March 10 at 01:30. A zero date adjustment preserves the original instant.
+
+`time.clock()` returns monotonic milliseconds with a platform-dependent origin. Subtract two
+readings to measure elapsed time; the value is not a Unix timestamp or a portable process age.

@@ -45,16 +45,18 @@ fn test_add_date_months() {
 
 fn test_add_date_days_and_time_preserved() {
 	t := new(Time{
-		year:   2026
-		month:  12
-		day:    31
-		hour:   13
-		minute: 45
-		second: 30
+		year:       2026
+		month:      12
+		day:        31
+		hour:       13
+		minute:     45
+		second:     30
+		nanosecond: 123_456_789
 	})
 	next := t.add_date(0, 0, 1)
 	assert next.year == 2027 && next.month == 1 && next.day == 1
 	assert next.hour == 13 && next.minute == 45 && next.second == 30, 'time of day must be preserved'
+	assert next.nanosecond == t.nanosecond
 	back := t.add_date(0, 0, -31)
 	assert back.year == 2026 && back.month == 11 && back.day == 30
 	leap := new(Time{
@@ -87,4 +89,40 @@ fn test_clock_is_monotonic() {
 	}
 	after := clock()
 	assert after >= first, 'clock must never go backwards'
+}
+
+fn test_add_date_preserves_location_and_dst_wall_time() {
+	loc := load_location('America/New_York')!
+	// Noon on the day before the spring transition becomes noon after it.
+	before := loc.unix_nanosecond_to_local(1_710_003_600, 123_456_789)!
+	after := before.add_date(0, 0, 1)
+	assert after.hour == before.hour
+	assert after.day == before.day + 1
+	assert after.nanosecond == before.nanosecond
+	assert after.unix() - before.unix() == 23 * 3600
+	result_loc := after.location() or { panic('missing location') }
+	assert result_loc.name == loc.name
+}
+
+fn test_add_date_ambiguous_and_missing_wall_times() {
+	loc := load_location('America/New_York')!
+	// 02:30 on March 9 advances past the missing 02:30 on March 10.
+	before_gap := loc.unix_to_local(1_709_969_400)!
+	gap := before_gap.add_date(0, 0, 1)
+	assert gap.month == 3 && gap.day == 10 && gap.hour == 3 && gap.minute == 30
+	// Moving backward uses the input's daylight offset, selecting 01:30.
+	after_gap := loc.unix_to_local(1_710_138_600)!
+	reverse_gap := after_gap.add_date(0, 0, -1)
+	assert reverse_gap.month == 3 && reverse_gap.day == 10
+	assert reverse_gap.hour == 1 && reverse_gap.minute == 30
+	// Keep the original occurrence of the repeated 01:30 when it remains valid.
+	daylight := loc.unix_to_local(1_730_611_800)!
+	standard := loc.unix_to_local(1_730_615_400)!
+	assert daylight.hour == 1 && standard.hour == 1
+	assert daylight.add_date(0, 0, 0).unix() == daylight.unix()
+	assert standard.add_date(0, 0, 0).unix() == standard.unix()
+	previous_day := daylight.add_date(0, 0, -1)
+	assert previous_day.add_date(0, 0, 1).unix() == daylight.unix()
+	next_day := standard.add_date(0, 0, 1)
+	assert next_day.add_date(0, 0, -1).unix() == standard.unix()
 }

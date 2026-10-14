@@ -3,6 +3,7 @@ module time
 // A portable snapshot can be generated on Darwin and compiled on another OS.
 // Its clocks use the POSIX API instead of retaining Darwin-only initializers.
 $if !cross ? {
+	#include <mach/mach_time.h>
 	// start_time is needed on Darwin and Windows because of potential overflows
 	const start_time = C.mach_absolute_time()
 	const time_base = init_time_base()
