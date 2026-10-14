@@ -23,8 +23,8 @@ fn test_get_close_matches_empty() {
 }
 
 fn test_get_close_matches_equal_scores_keep_order() {
-	candidates := ['abd', 'abe', 'abf', 'abg', 'abh', 'abi', 'abj', 'abk', 'abl',
-		'abm', 'abn', 'abo', 'abp', 'abq', 'abr', 'abs', 'abt', 'abu', 'abv', 'abw']
+	candidates := ['abd', 'abe', 'abf', 'abg', 'abh', 'abi', 'abj', 'abk', 'abl', 'abm', 'abn',
+		'abo', 'abp', 'abq', 'abr', 'abs', 'abt', 'abu', 'abv', 'abw']
 	assert get_close_matches('abc', candidates, 60) == candidates
 	assert get_close_matches('', ['', 'a'], 100) == ['']
 }
