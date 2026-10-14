@@ -6,6 +6,12 @@ module fontstash
 #define FONTSTASH_IMPLEMENTATION
 
 $if gcboehm ? {
+	// The implementation header expands the collector's allocation macros.
+	$if tinyc && linux {
+		#include <gc/gc.h>
+	} $else {
+		#include <gc.h>
+	}
 	#define FONTSTASH_MALLOC GC_MALLOC
 	#define FONTSTASH_REALLOC GC_REALLOC
 	#define FONTSTASH_FREE GC_FREE
