@@ -1341,6 +1341,7 @@ pub fn is_atty(fd int) int {
 }
 
 // write_file_array writes the data in `buffer` to a file in `path`.
+// The file is closed on both success and write failure.
 pub fn write_file_array(path string, buffer array) ! {
 	mut f := create(path)!
 	defer {

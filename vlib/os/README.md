@@ -331,3 +331,8 @@ Explicit extensions are preserved.
 
 On Windows, `os.get_error_msg` removes the trailing CR/LF line break from system
 messages. Error text returned by operations using it retains the message's punctuation.
+
+### Writing arrays
+
+`os.write_file_array()` closes its file even when writing fails, including when a device is full
+or a pipe reader closes. The write error is still returned to the caller.
