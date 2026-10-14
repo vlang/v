@@ -5,7 +5,7 @@ consumes an immutable local initialized by a proven tree factory or fresh litera
 The append must be the local's only use after initialization. A field path of that local
 can qualify too, provided it does not traverse a pointer.
 
-The optimization excludes mutable locals, aliases initialized from another variable, and
+The optimization excludes mutable or static locals, aliases initialized from another variable, and
 locals read before or after the append. It also excludes appends separated from the
 initializer by loops, closures, deferred work, spawned work, or jumps.
 

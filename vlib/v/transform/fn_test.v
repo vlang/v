@@ -38,6 +38,28 @@ fn test_array_append_does_not_consume_a_pointer_local() {
 	assert !t.array_append_consumes_fresh_local(source)
 }
 
+fn test_array_append_does_not_consume_static_storage() {
+	mut a := flat.FlatAst.new()
+	lhs := a.add_val(.ident, 'value')
+	init := a.add_val(.struct_init, 'AppendNode')
+	decl := literal_binding_test_node(mut a, .decl_assign, [lhs, init])
+	a.nodes[int(decl)].value = 'static'
+	source := a.add_val(.ident, 'value')
+	destination := a.add_val(.ident, 'out')
+	append := literal_binding_test_node(mut a, .infix, [destination, source])
+	a.nodes[int(append)].op = .left_shift
+	stmt := literal_binding_test_node(mut a, .expr_stmt, [append])
+	literal_binding_test_node(mut a, .fn_decl, [decl, stmt])
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_source_parent_index()
+	assert !t.array_append_consumes_fresh_local(source)
+	mut locals := map[string]bool{}
+	mut uses := map[string]int{}
+	mut calls := []int{}
+	assert !t.array_append_factory_body_is_fresh(decl, mut locals, mut uses, mut calls)
+}
+
 fn test_array_append_does_not_trust_a_bodyless_factory() {
 	mut a := flat.FlatAst.new()
 	a.add_val(.fn_decl, 'opaque_factory')

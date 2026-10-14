@@ -1975,12 +1975,12 @@ fn (t &Transformer) array_append_consumes_fresh_local(source_id flat.NodeId) boo
 			break
 		}
 		root = t.unwrap_parens(t.a.child(&node, 0))
-		if t.node_type(root).starts_with('&') {
+		if flat.source_type_name(t.node_type(root)).starts_with('&') {
 			return false
 		}
 	}
 	root_node := t.a.nodes[int(root)]
-	if root_node.kind != .ident || t.node_type(root).starts_with('&') {
+	if root_node.kind != .ident || flat.source_type_name(t.node_type(root)).starts_with('&') {
 		return false
 	}
 	name := root_node.value
@@ -2030,7 +2030,7 @@ fn (t &Transformer) array_append_consumes_fresh_local(source_id flat.NodeId) boo
 			if child.kind == .decl_assign && child.children_count == 2 {
 				lhs := t.a.child_node(&child, 0)
 				if lhs.kind == .ident && lhs.value == name {
-					if child.is_mut || lhs.is_mut
+					if child.is_mut || lhs.is_mut || child.value == 'static'
 						|| !t.array_append_initializer_is_fresh(t.a.child(&child, 1)) {
 						return false
 					}
@@ -2149,6 +2149,35 @@ fn array_append_is_scalar(typ types.Type) bool {
 		|| clean is types.USize
 }
 
+// Literal and operator nodes need not have a cached checker type. Only built-in
+// scalar operators can use this fallback; storage-valued operands stay excluded.
+fn (t &Transformer) array_append_expr_is_scalar(id flat.NodeId, locals map[string]bool) bool {
+	node := t.a.nodes[int(id)]
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal] {
+		return true
+	}
+	if node.kind == .ident && node.value in locals {
+		return !locals[node.value]
+	}
+	if node.kind == .paren && node.children_count == 1 {
+		return t.array_append_expr_is_scalar(t.a.child(&node, 0), locals)
+	}
+	if (node.kind == .infix && node.children_count == 2
+		&& node.op in [.plus, .minus, .mul, .div, .mod, .eq, .ne, .lt, .le, .gt, .ge, .amp, .pipe,
+			.xor, .left_shift, .right_shift, .logical_and, .logical_or])
+		|| (node.kind == .prefix && node.children_count == 1
+			&& node.op in [.plus, .minus, .not, .bit_not]) {
+		for i in 0 .. node.children_count {
+			if !t.array_append_expr_is_scalar(t.a.child(&node, i), locals) {
+				return false
+			}
+		}
+		return true
+	}
+	typ := t.tc.expr_type(id) or { return false }
+	return array_append_is_scalar(typ)
+}
+
 fn (t &Transformer) array_append_factory_body_is_fresh(id flat.NodeId, mut locals map[string]bool, mut uses map[string]int, mut calls []int) bool {
 	node := t.a.nodes[int(id)]
 	if node.kind !in [.empty, .int_literal, .float_literal, .bool_literal, .char_literal,
@@ -2168,7 +2197,7 @@ fn (t &Transformer) array_append_factory_body_is_fresh(id flat.NodeId, mut local
 		return false
 	}
 	if node.kind == .decl_assign {
-		if node.children_count != 2 {
+		if node.children_count != 2 || node.value == 'static' {
 			return false
 		}
 		lhs := t.a.child_node(&node, 0)
@@ -2176,7 +2205,7 @@ fn (t &Transformer) array_append_factory_body_is_fresh(id flat.NodeId, mut local
 		if lhs.kind != .ident || lhs.value in locals {
 			return false
 		}
-		owns := t.array_append_expr_owns_storage(rhs)
+		owns := !t.array_append_expr_is_scalar(rhs, locals) && t.array_append_expr_owns_storage(rhs)
 		if owns && t.a.nodes[int(t.unwrap_parens(rhs))].kind !in [.call, .struct_init, .array_literal,
 			.array_init, .map_init, .string_literal] {
 			return false
@@ -2218,11 +2247,8 @@ fn (t &Transformer) array_append_factory_body_is_fresh(id flat.NodeId, mut local
 		// Appending consumes the RHS, without exposing the builder's storage.
 		start = 1
 	} else if node.kind in [.infix, .prefix] {
-		for i in 0 .. node.children_count {
-			typ := t.tc.expr_type(t.a.child(&node, i)) or { return false }
-			if !array_append_is_scalar(typ) {
-				return false
-			}
+		if !t.array_append_expr_is_scalar(id, locals) {
+			return false
 		}
 	}
 	for i in start .. node.children_count {
@@ -2263,11 +2289,19 @@ fn (t &Transformer) array_append_initializer_is_fresh(id flat.NodeId) bool {
 			|| t.a.child_node(&node, 0).value.all_after_last('.') != name.all_after_last('.') {
 			return false
 		}
+
 		if !t.array_append_tree_factories[name] {
 			return false
 		}
 		for i in 1 .. node.children_count {
-			if t.array_append_expr_owns_storage(t.a.child(&node, i)) {
+			arg := t.a.child(&node, i)
+			// Only the scalar result reaches the factory. Lowering can invalidate
+			// child caches of a checked arithmetic expression such as depth - 1.
+			if typ := t.tc.expr_type(arg) {
+				if !array_append_is_scalar(typ) {
+					return false
+				}
+			} else if !t.array_append_expr_is_scalar(arg, map[string]bool{}) {
 				return false
 			}
 		}
@@ -2289,11 +2323,11 @@ fn (t &Transformer) array_append_initializer_is_fresh(id flat.NodeId) bool {
 }
 
 fn (t &Transformer) array_append_type_has_observable_clone(typ string, seen []string) bool {
-	clean := t.normalize_type_alias(typ)
+	clean := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ)))
 	if clean in seen || clean.starts_with('&') {
 		return false
 	}
-	if t.tc.ownership_type_has_clone_method(t.tc.parse_type(clean))
+	if t.tc.ownership_type_has_clone_method(t.tc.parse_type(flat.source_type_id(clean)))
 		|| t.tc.named_type_implements_marker(clean, 'IClone') {
 		return true
 	}
@@ -2317,7 +2351,7 @@ fn (t &Transformer) array_append_type_has_observable_clone(typ string, seen []st
 		}
 		return false
 	}
-	parsed := types.unalias_type(t.tc.parse_type(clean))
+	parsed := types.unalias_type(t.tc.parse_type(flat.source_type_id(clean)))
 	return parsed !is types.Primitive && parsed !is types.Enum && parsed !is types.String
 		&& parsed !is types.ISize && parsed !is types.USize
 }

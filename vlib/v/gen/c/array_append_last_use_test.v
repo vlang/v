@@ -31,6 +31,17 @@ fn consume_field(mut out []AppendNode) {
 	value := AppendHolder{value: make_append_node()}
 	out << value.value
 }
+fn append_tree(depth int) AppendNode {
+	if depth == 0 {
+		return AppendNode{n: 1}
+	}
+	left := append_tree(depth - 1)
+	right := append_tree(depth - 1)
+	mut children := []AppendNode{}
+	children << left
+	children << right
+	return AppendNode{children: children}
+}
 fn retain_live_local(mut out []AppendNode) {
 	value := make_append_node()
 	out << value
@@ -111,6 +122,9 @@ fn main() {}
 		assert body.contains('array_push('), body
 		assert !body.contains('__derived_clone'), body
 	}
+	tree := code.all_after_last('main__AppendNode append_tree(').all_after('{').all_before('\n}')
+	assert tree.contains('array_push('), tree
+	assert !tree.contains('__derived_clone'), tree
 	for name in ['retain_live_local', 'retain_mutable_local', 'retain_alias', 'retain_variable_origin',
 		'retain_loop', 'retain_twice', 'retain_defer', 'retain_capture', 'retain_call_alias',
 		'retain_literal_alias', 'retain_shared_fields'] {
