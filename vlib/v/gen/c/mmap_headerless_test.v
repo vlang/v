@@ -66,7 +66,7 @@ fn test_mmap_constants_match_the_native_sdk() {
 	}
 	mut g := FlatGen.new()
 	g.headerless_mmap_constants($if macos { '0x1000' } $else { '0x20' }, $if macos { '0x0010' } $else { '0x4' })
-	mut code := '#include <sys/mman.h>\nenum { sdk_shared = MAP_SHARED, sdk_sync = MS_SYNC, sdk_anon = MAP_ANONYMOUS };\n'
+	mut code := '#define _GNU_SOURCE 1\n#include <sys/mman.h>\nenum { sdk_shared = MAP_SHARED, sdk_sync = MS_SYNC, sdk_anon = MAP_ANONYMOUS };\n'
 	for name in ['PROT_READ', 'PROT_WRITE', 'PROT_EXEC', 'MAP_SHARED', 'MAP_PRIVATE', 'MAP_FIXED',
 		'MAP_ANONYMOUS', 'MAP_ANON', 'MAP_FAILED', 'MS_SYNC'] {
 		code += '#undef ${name}\n'
