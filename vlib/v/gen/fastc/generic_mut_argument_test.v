@@ -237,3 +237,96 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '3\n6\n12'
 }
+
+// A single-file build calls a callback parameter, also one named like a generic, through
+// the parameter, with or without the real builtin.
+fn test_fastc_single_file_calls_callback_parameters() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_generic_fixture('single_file_callback', 'module main
+
+fn transform[T](x T) T {
+	return x
+}
+
+fn hold(transform fn (int) int) int {
+	return transform(2)
+}
+
+fn apply(cb fn (int) int) int {
+	return cb(3)
+}
+
+fn double(x int) int {
+	return x * 2
+}
+
+fn main() {
+	println(transform(1))
+	println(hold(double))
+	println(apply(double))
+}
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	program := os.join_path(root, 'program')
+	for defines in [[]string{}, ['-d', 'fastc_real_builtin']] {
+		build := cmdexec.run(@VEXE, ['-b', 'fastc', ...defines, '-o', program, source])
+		assert build.exit_code == 0, '${defines}: ${build.output}'
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '1\n4\n6', defines.str()
+	}
+}
+
+// A function literal's parameters, and those of a function returning a function type, shadow
+// a generic of the same name: `transform(2)` calls the callback.
+fn test_fastc_literal_parameter_shadowing_a_generic_is_called_as_the_parameter() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_generic_fixture('literal_shadow', 'module main
+
+fn transform[T](x T) T {
+	return x
+}
+
+fn double(x int) int {
+	return x * 2
+}
+
+fn make(transform fn (int) int) fn (int) int {
+	println(transform(5))
+	return double
+}
+
+fn main() {
+	apply := fn (transform fn (int) int) int {
+		return transform(2)
+	}
+	check := fn (transform fn (int) int) ?int {
+		return transform(3)
+	}
+	run := fn (transform fn (int) int) {
+		println(transform(4))
+	}
+	println(transform(1))
+	println(apply(double))
+	println(check(double) or { 0 })
+	run(double)
+	make(double)
+}
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '1\n4\n6\n8\n10'
+}

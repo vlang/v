@@ -49,16 +49,19 @@ fn main() {
 }
 
 // A struct field default depends on the constants its code names, also inside `${...}`, but
-// not on a constant's name spelled in string text.
+// not on a constant's name spelled in string text or in a comment.
 fn test_fastc_field_defaults_reference_constants_inside_interpolations() {
 	constants := {
 		'main.prefix': 'string'
 	}
 	for default_source, references in {
-		"'\${prefix}'":       true
-		"'\${'-' + prefix}'": true
-		"'prefix'":           false
-		"r'\${prefix}'":      false
+		"'\${prefix}'":                 true
+		"'\${'-' + prefix}'":           true
+		"'\${/* } */ prefix}'":         true
+		"'\${/* /* } */ } */ prefix}'": true
+		"'\${/* prefix */ 1}'":         false
+		"'prefix'":                     false
+		"r'\${prefix}'":                false
 	} {
 		fields := {
 			'main.Item': [FastcStructField{

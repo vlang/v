@@ -526,7 +526,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				i = call_end + 1
 				continue
 			}
-			if g.selfhost && (i == 0 || tokens[i - 1].tok != .dot) && name in g.locals {
+			if (i == 0 || tokens[i - 1].tok != .dot) && name in g.locals {
 				// Calling a local/parameter that holds a function pointer (`cb(x, y)`), e.g.
 				// vqsort's `sort_cb`: a plain identifier that is a local can only be called
 				// through its function-pointer value, which renders as a direct C call.

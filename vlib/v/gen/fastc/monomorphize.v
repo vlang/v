@@ -1366,51 +1366,49 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 
 // fastc_collect_params records the single-name-typed parameters of the function
 // whose `fn` keyword was just consumed, so `f(param)` calls can infer their
-// concrete type, and every parameter name in `locals`. It returns the token just
-// past the parameter list.
+// concrete type, and every parameter name in `locals`; a closure's captures are
+// locals too. It returns the token just past the parameter list, or past a return
+// type that is itself a function type.
 fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string, mut locals map[string]bool, prefs &pref.Preferences) token.Token {
 	no_imports := map[string]string{}
 	no_declared_types := map[string]bool{}
 	mut tok := s.scan()
-	if tok == .lpar {
-		// Method receiver `(recv Type)`: skip it.
-		mut depth := 0
-		for {
-			if tok == .lpar {
-				depth++
-			} else if tok == .rpar {
-				depth--
-				if depth == 0 {
-					break
-				}
-			} else if tok == .eof {
-				return tok
-			}
-			tok = s.scan()
-		}
-		tok = s.scan()
-	}
-	if tok != .name {
-		return tok
-	}
-	tok = s.scan()
 	if tok == .lsbr {
-		// Generic `[T]`: skip it.
-		mut depth := 0
-		for {
-			if tok == .lsbr {
-				depth++
-			} else if tok == .rsbr {
-				depth--
-				if depth == 0 {
-					break
-				}
-			} else if tok == .eof {
-				return tok
+		// A closure's captures `[a, mut b]`; its parameter list follows.
+		tok = s.scan()
+		for tok !in [.rsbr, .eof] {
+			if tok == .name {
+				locals[s.lit] = true
 			}
 			tok = s.scan()
 		}
+		if tok == .eof {
+			return tok
+		}
 		tok = s.scan()
+	} else if tok == .lpar {
+		// A method receiver `(recv Type)` is skipped; a function literal's parameter list,
+		// followed by its return type and body rather than a method name, is read below.
+		mut look := s
+		after := fastc_skip_balanced(mut look, tok, .lpar, .rpar)
+		if after == .eof {
+			return after
+		}
+		mut body := look
+		if fastc_skip_type(mut body, after) != .lcbr {
+			s = look
+			tok = after
+			if tok != .name {
+				return tok
+			}
+		}
+	}
+	if tok == .name {
+		tok = s.scan()
+		if tok == .lsbr {
+			// Generic `[T]`: skip it.
+			tok = fastc_skip_balanced(mut s, tok, .lsbr, .rsbr)
+		}
 	}
 	if tok != .lpar {
 		return tok
@@ -1448,8 +1446,86 @@ fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string, 
 		break
 	}
 	if tok == .rpar {
-		return s.scan()
+		return fastc_skip_function_return_type(mut s, s.scan())
 	}
+	return tok
+}
+
+// fastc_skip_balanced consumes the group that opens at `start` (an `open` token) and returns
+// the token after its matching `close`, or `.eof`.
+fn fastc_skip_balanced(mut s scanner.Scanner, start token.Token, open token.Token, close token.Token) token.Token {
+	mut tok := start
+	mut depth := 0
+	for tok != .eof {
+		if tok == open {
+			depth++
+		} else if tok == close {
+			depth--
+			if depth == 0 {
+				return s.scan()
+			}
+		}
+		tok = s.scan()
+	}
+	return tok
+}
+
+// fastc_skip_type consumes the V type that starts at `start`, if any, and returns the token
+// after it.
+fn fastc_skip_type(mut s scanner.Scanner, start token.Token) token.Token {
+	mut tok := start
+	for tok == .question || tok == .not || tok == .amp || tok == .mul {
+		tok = s.scan()
+	}
+	if tok == .lsbr {
+		return fastc_skip_type(mut s, fastc_skip_balanced(mut s, tok, .lsbr, .rsbr))
+	}
+	if tok == .lpar {
+		return fastc_skip_balanced(mut s, tok, .lpar, .rpar)
+	}
+	if tok == .key_fn {
+		tok = s.scan()
+		if tok != .lpar {
+			return tok
+		}
+		return fastc_skip_type(mut s, fastc_skip_balanced(mut s, tok, .lpar, .rpar))
+	}
+	if tok != .name {
+		return tok
+	}
+	is_map := s.lit == 'map'
+	tok = s.scan()
+	for tok == .dot {
+		tok = s.scan()
+		if tok != .name {
+			return tok
+		}
+		tok = s.scan()
+	}
+	if tok == .lsbr {
+		tok = fastc_skip_balanced(mut s, tok, .lsbr, .rsbr)
+		if is_map {
+			return fastc_skip_type(mut s, tok)
+		}
+	}
+	return tok
+}
+
+// fastc_skip_function_return_type consumes a return type that is a function type
+// (`fn f() fn (int) int`), which belongs to the signature before it rather than
+// starting another function, and returns the token after it; any other return type is
+// left unconsumed and `start` is returned.
+fn fastc_skip_function_return_type(mut s scanner.Scanner, start token.Token) token.Token {
+	mut look := s
+	mut tok := start
+	for tok == .question || tok == .not || tok == .amp {
+		tok = look.scan()
+	}
+	if tok != .key_fn {
+		return start
+	}
+	tok = fastc_skip_type(mut look, tok)
+	s = look
 	return tok
 }
 
