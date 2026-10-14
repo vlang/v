@@ -4430,7 +4430,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 	}
 	g.indent++
 	alignments := g.aggregate_field_alignments(fields, false)
-	default_align, attr_align, comment_align := g.struct_field_suffix_alignments(fields)
+	default_align, attr_align, comment_align := g.struct_field_suffix_alignments(fields, alignments)
 	mut cur_access := ''
 	mut previous := flat.empty_node
 	for fid in fields {
@@ -4499,12 +4499,14 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 				if pad := default_align[int(fid)] {
 					if pad > type_text.len {
 						g.write(' '.repeat(pad - type_text.len))
+						suffix_width = pad
 					}
 				}
 				g.write(' = ')
+				default_start := g.out.len
 				g.expr(g.a.child(f, 0))
 				suffix_width = if gp.len > 1 {
-					g.struct_field_attr_default_width(fid) + 1
+					suffix_width + 3 + g.out.len - default_start
 				} else {
 					g.struct_field_default_width(fid) + 2
 				}
@@ -5005,22 +5007,42 @@ fn (g &Gen) struct_field_default_width(fid flat.NodeId) int {
 	return g.array_expr_width(g.a.child(f, 0))
 }
 
-fn (g &Gen) struct_field_attr_default_width(fid flat.NodeId) int {
+// struct_field_attr_default_width measures the formatted default, including quotes and
+// normalized expression spacing, without consuming the enclosing declaration's comments.
+fn (g &Gen) struct_field_attr_default_width(fid flat.NodeId, column int) int {
 	f := g.a.node(fid)
 	if f.children_count == 0 {
 		return 0
 	}
 	value := g.a.child_node(f, 0)
-	if value.kind == .block && value.value == 'unsafe' {
-		return 'unsafe{}'.len
+	if g.has_comment_between(value.pos.offset, value.pos.end) {
+		return 0
 	}
-	return g.struct_field_default_width(fid)
+	mut preview := Gen{
+		a:               g.a
+		out:             strings.new_builder(64)
+		indent:          g.indent
+		file_id:         g.file_id
+		source:          g.source
+		is_new_int:      g.is_new_int
+		is_translated:   g.is_translated
+		backend:         g.backend
+		formatter_types: g.formatter_types
+		migrate_json2:   g.migrate_json2
+		json_qualifier:  g.json_qualifier
+		selective_json:  g.selective_json
+	}
+	// Wrapping decisions must see the same starting column as the field's actual output.
+	preview.write(' '.repeat(column))
+	preview.expr(g.a.child(f, 0))
+	formatted := preview.out.str()[column..]
+	return if formatted.contains('\n') || formatted.contains('\r') { 0 } else { formatted.len }
 }
 
 // struct_field_suffix_alignments returns the columns for the three things that can follow a
 // field's type: its `= default`, its inline attributes and its trailing comment. The name and
 // type columns are handled by aggregate_field_alignments; these three line up what comes after.
-fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId) (map[int]int, map[int]int, map[int]int) {
+fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments map[int]int) (map[int]int, map[int]int, map[int]int) {
 	mut default_align := FieldAlign{
 		use_threshold: true
 	}
@@ -5054,16 +5076,11 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId) (map[int]int
 		if f.children_count > 0 {
 			default_align.add_info(type_width, line, has_break)
 			default_width := g.struct_field_default_width(fid)
-			suffix = if gp.len > 1 {
-				g.struct_field_attr_default_width(fid) + 1
-			} else {
-				default_width + 2
-			}
+			suffix = default_width + 2
 			// A default that wraps over several lines has no single column to measure from.
 			suffix_known = default_width > 0
 		}
 		if gp.len > 1 {
-			attr_align.add_info(suffix, line, has_break)
 			suffix = '@[${gp[1..].join('; ')}]'.len
 			suffix_known = true
 		}
@@ -5092,6 +5109,7 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId) (map[int]int
 	mut defaults := map[int]int{}
 	mut attrs := map[int]int{}
 	mut comments := map[int]int{}
+	mut attr_fields := []flat.NodeId{}
 	for fid in entries {
 		f := g.a.node(fid)
 		line := lines[int(fid)]
@@ -5100,12 +5118,30 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId) (map[int]int
 			defaults[int(fid)] = default_align.max_len(line)
 		}
 		if gp.len > 1 {
-			attrs[int(fid)] = attr_align.max_len(line)
+			type_width := g.type_text(f.typ).len
+			padded_type_width := int_max(type_width, defaults[int(fid)] or { 0 })
+			flags := gp[0]
+			column := (g.indent + 1) * 4 + (alignments[int(fid)] or { f.value.len }) + 1 +
+				padded_type_width + 3 + if flags.contains('v') { 'volatile '.len } else { 0 }
+			default_width := g.struct_field_attr_default_width(fid, column)
+			if f.children_count == 0 || default_width > 0 {
+				// Defaults must be aligned before measuring the column for attributes.
+				suffix := if f.children_count > 0 {
+					padded_type_width + 3 + default_width
+				} else {
+					type_width
+				}
+				attr_align.add_info(suffix, line, false)
+				attr_fields << fid
+			}
 		}
 		if (gp.len > 1 || f.children_count == 0 || g.struct_field_default_width(fid) > 0)
 			&& g.has_trailing_comment(f.pos.end) {
 			comments[int(fid)] = comment_align.max_len(line)
 		}
+	}
+	for fid in attr_fields {
+		attrs[int(fid)] = attr_align.max_len(lines[int(fid)])
 	}
 	return defaults, attrs, comments
 }

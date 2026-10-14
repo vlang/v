@@ -7302,6 +7302,17 @@ The formatter checks syntax without requiring the code to pass semantic checks.
 For example, it preserves closure captures and loop binder mutability while you edit
 incomplete code.
 
+Adjacent struct fields align their inline attributes, including fields with default values.
+The alignment accounts for the type, the ` = ` separator, and the default value:
+
+```v
+struct SearchOptions {
+	quiet bool      @[long: quiet; short: q]
+	thold f64 = 0.9 @[long: thold; short: t]
+	query string    @[tail]
+}
+```
+
 Backend options before `fmt`, such as `v -b arm64 fmt file.v`, or in `VFLAGS` are honored.
 The `arm64` and `eval` backends use the same source formatting rules as `c`.
 

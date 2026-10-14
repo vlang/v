@@ -2449,10 +2449,35 @@ fn test_formatter_aligns_struct_field_defaults_and_comments() {
 
 fn test_formatter_aligns_struct_field_attributes_with_defaults() {
 	source := 'struct Foo {\n\ta    int    @[some_attr]\n\tbeta string @[another]\n\tpi   f32 = 3.14    @[yet_another]\n\td    f64 = 2.9999999    @[yet_another]\n}\n\nfn main() {}\n'
-	want := 'struct Foo {\n\ta    int        @[some_attr]\n\tbeta string     @[another]\n\tpi   f32 = 3.14      @[yet_another]\n\td    f64 = 2.9999999 @[yet_another]\n}\n\nfn main() {}\n'
+	want := 'struct Foo {\n\ta    int             @[some_attr]\n\tbeta string          @[another]\n\tpi   f32 = 3.14      @[yet_another]\n\td    f64 = 2.9999999 @[yet_another]\n}\n\nfn main() {}\n'
 	out := vfmt('struct_field_attribute_alignment', source)
 	assert out == want, out
 	assert vfmt('struct_field_attribute_alignment_twice', out) == want
+}
+
+fn test_formatter_aligns_struct_field_attributes_after_padded_defaults() {
+	source := "struct Defaults {\n\ta int = 1 @[one] // first\n\tbeta string = 'x' @[two] // second\n\tc bool @[three] // third\n\n\tx int @[one]\n\ty string @[two]\n}\n"
+	want := "struct Defaults {\n\ta    int    = 1   @[one]   // first\n\tbeta string = 'x' @[two]   // second\n\tc    bool         @[three] // third\n\n\tx int    @[one]\n\ty string @[two]\n}\n"
+	out := vfmt('struct_field_padded_default_attributes', source)
+	assert out == want, out
+	assert vfmt('struct_field_padded_default_attributes_twice', out) == out
+}
+
+fn test_formatter_aligns_struct_field_attributes_after_formatted_defaults() {
+	source := 'struct Expressions {\n\tn int=1+2 @[n]\n\ts string="" @[s]\n\tp voidptr=unsafe{nil} @[p]\n}\n'
+	want := "struct Expressions {\n\tn int     = 1 + 2          @[n]\n\ts string  = ''             @[s]\n\tp voidptr = unsafe { nil } @[p]\n}\n"
+	out := vfmt('struct_field_formatted_default_attributes', source)
+	assert out == want, out
+	assert vfmt('struct_field_formatted_default_attributes_twice', out) == out
+}
+
+fn test_formatter_does_not_align_attributes_across_wrapped_defaults() {
+	source := 'struct Wrapped {\n\textremely_long_field_name_with_many_characters_to_move_default_values_right bool @[plain]\n\tvalues []int=[1,2,3,4,5] @[values]\n}\n'
+	out := vfmt('struct_field_wrapped_default_attributes', source)
+	assert out.contains('bool @[plain]\n'), out
+	assert out.contains('[]int = [\n'), out
+	assert out.contains('] @[values]\n'), out
+	assert vfmt('struct_field_wrapped_default_attributes_twice', out) == out
 }
 
 // Enum members and interface members align their trailing comments the same way.

@@ -1934,6 +1934,42 @@ struct Hex2 {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_aligns_struct_field_attributes_with_defaults() {
+	source := 'struct ConfigSearch {
+pub mut:
+    show_help bool   @[long: help; short: h]
+    local     bool   @[long: local; short: l]
+    remote    bool   @[long: remote; short: r]
+    aur       bool   @[long: aur; short: a]
+    quiet     bool   @[long: quiet; short: q]
+    verbose   bool   @[long: verbose; short: v]
+    fuzzy     bool   @[long: fuzzy; short: f]
+    thold     f64 = 0.9   @[long: thold; short: t]
+    query     string @[tail]
+}
+'
+	expected := 'struct ConfigSearch {
+pub mut:
+	show_help bool      @[long: help; short: h]
+	local     bool      @[long: local; short: l]
+	remote    bool      @[long: remote; short: r]
+	aur       bool      @[long: aur; short: a]
+	quiet     bool      @[long: quiet; short: q]
+	verbose   bool      @[long: verbose; short: v]
+	fuzzy     bool      @[long: fuzzy; short: f]
+	thold     f64 = 0.9 @[long: thold; short: t]
+	query     string    @[tail]
+}
+'
+	res, formatted := run_vfmt_write('struct_field_attribute_alignment', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted == expected, formatted
+	second_res, formatted_twice :=
+		run_vfmt_write('struct_field_attribute_alignment_twice', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_keeps_comments_inside_fn_literals_with_v3() {
 	source := "fn main() {\n\tcomment_only := fn () {\n\t\t// only comment\n\t}\n\twith_statement := fn () {\n\t\tprintln('inside')\n\t\t// trailing comment\n\t}\n\t_ = comment_only\n\t_ = with_statement\n}\n"
 	res, formatted := run_vfmt_write('fn_literal_comments', source, '')
