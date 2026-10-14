@@ -44,6 +44,9 @@ fn test_mmap_header_ownership_is_limited_to_supported_shipped_bindings() {
 }
 
 fn test_mmap_sync_constants_follow_each_platform_abi() {
+	$if !macos && !linux {
+		return
+	}
 	mut g := FlatGen.new()
 	g.headerless_platform_constants()
 	root := os.join_path(os.vtmp_dir(), 'mmap_constants_${os.getpid()}')
@@ -147,6 +150,9 @@ fn main() {
 }
 
 fn test_32_bit_bsd_mmap_uses_the_native_sdk_offset_type() {
+	$if !macos && !linux {
+		return
+	}
 	root := os.join_path(os.vtmp_dir(), 'mmap_bsd32_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
