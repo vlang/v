@@ -58,9 +58,10 @@ composite sum-type tests, integer interpolation formats, anonymous functions, an
 closure captures. A single-file entry can select the same runtime with `-d fastc_real_builtin`;
 its module siblings are included.
 Target-specific files and test files are filtered when loading a directory.
-The full-runtime path accepts `nil` outside `unsafe` as a whole value for a field declared
-`voidptr` or a non-generic function's `voidptr` argument. Typed pointer and function fields
-still require `unsafe`.
+The full-runtime path accepts a bare `nil` outside `unsafe` in two forms: as the value of a
+field declared `voidptr` (assigned, or keyed or positional in a struct literal), and as the
+argument for a `voidptr` parameter of a non-generic function called by name or through an
+imported module. Other uses still require `unsafe` (#30550).
 
 Capturing callbacks proven local to a block release their runtime slot and captured context
 when the block exits, including through `return`, `break`, and `continue`. Callbacks that escape
