@@ -2815,6 +2815,7 @@ pub fn (s string) strip_margin() string {
 }
 
 // strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`.
+// The first line also drops its prefix through the delimiter, when present.
 // A trailing region without a delimiter is retained, except for its final whitespace-only lines.
 @[direct_array_access]
 pub fn (s string) strip_margin_custom(del u8) string {

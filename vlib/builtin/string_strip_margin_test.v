@@ -120,3 +120,11 @@ fn test_strip_margin_strips_leading_delimiter_on_first_line() {
 	assert 'Hello there,\n       |  this is a string,'.strip_margin() == 'Hello there,\n  this is a string,'
 	assert ''.strip_margin() == ''
 }
+
+fn test_strip_margin_first_line_prefix_and_custom_delimiter() {
+	assert 'prefix|body'.strip_margin() == 'body'
+	assert 'prefix#body'.strip_margin_custom(`#`) == 'body'
+	assert 'prefix|a\r\n|b'.strip_margin() == 'a\r\nb'
+	assert '|'.strip_margin() == ''
+	assert 'unmarked\n|marked'.strip_margin() == 'unmarked\nmarked'
+}
