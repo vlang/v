@@ -61,7 +61,8 @@ pub fn new_reader(data string, config ReaderConfig) &Reader {
 
 // read reads a row from the CSV data.
 // If successful, the result holds an array of each column's data.
-// A quote in an unquoted field returns an error.
+// A quote in an unquoted field returns an error. A closing quote must be
+// followed by the delimiter or the end of the record.
 // An unterminated quoted field returns a parse error rather than end of file.
 pub fn (mut r Reader) read() ![]string {
 	l := r.read_record()!
@@ -123,7 +124,6 @@ fn (mut r Reader) read_record() ![]string {
 	mut keep_raw := false
 	mut line := ''
 	mut fields := []string{}
-	mut i := -1
 	for {
 		if need_read {
 			l := r.read_line() or {
@@ -161,8 +161,7 @@ fn (mut r Reader) read_record() ![]string {
 			if j == line.len {
 				break
 			}
-			i = j
-			line = line[i + 1..]
+			line = line[j + 1..]
 			continue
 		} else { // quoted
 			mut need_more := true
@@ -203,9 +202,7 @@ fn (mut r Reader) read_record() ![]string {
 				}
 				continue
 			}
-		}
-		if i <= -1 && fields.len == 0 {
-			return &InvalidDelimiterError{}
+			return &BareQuoteError{}
 		}
 	}
 	return fields

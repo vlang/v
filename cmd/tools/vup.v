@@ -1,6 +1,8 @@
 module main
 
 import os
+import v.cmdexec
+import v.pref
 import v.skills
 import v.util.version
 import v.util.recompilation
@@ -35,7 +37,7 @@ const args = arguments()
 const usage = 'Usage: v up [options]\n' +
 	'\n' +
 	'Options:\n' +
-	'  -v                 Print more details about the update.\n' +
+	'  -v                 Print more details, including unchanged cache configurations.\n' +
 	'  -prod              Compile the updated V with the -prod flag.\n' +
 	'  -skills            Refresh the installed agent skills that fell behind.\n' +
 	'  -skip_v_self       Rebuild with make or makev.bat instead of `v self`.\n' +
@@ -159,10 +161,80 @@ fn main() {
 }
 
 fn (app App) refresh_cached_modules(requests []cache_refresh.Request) {
-	cache_refresh.refresh(app.current_vexe_path(), requests) or {
+	cache_refresh.refresh(app.current_vexe_path(), tcc_cache_requests(app.vroot, requests),
+		verbose: app.is_verbose
+	) or {
 		eprintln('v up: refreshing cached vlib modules failed: ${err}')
 		exit(1)
 	}
+}
+
+// tcc_cache_requests selects the default compiler's caches without rebuilding
+// configurations recorded for other C compilers. Those refresh on their next build.
+fn tcc_cache_requests(root string, requests []cache_refresh.Request) []cache_refresh.Request {
+	bundled := os.join_path(root, 'thirdparty', 'tcc', 'tcc.exe')
+	default_tcc := if os.is_executable(bundled) {
+		bundled
+	} else {
+		os.find_abs_path_of_executable('tcc') or { '' }
+	}
+	mut selected := []cache_refresh.Request{}
+	mut compiler_kinds := map[string]bool{}
+	for request in requests {
+		index := request.args.index('-cc')
+		if index < 0 {
+			if default_tcc != '' {
+				selected << cache_refresh.Request{
+					...request
+					args: [...request.args, '-cc', default_tcc]
+				}
+			}
+			continue
+		}
+		if index + 1 >= request.args.len { continue }
+		compiler := request.args[index + 1]
+		if compiler in ['tcc', 'tinyc'] {
+			selected << request
+			continue
+		}
+		path := if os.is_abs_path(compiler) {
+			compiler
+		} else if compiler.contains('/') || compiler.contains('\\') {
+			os.join_path(if request.cwd != '' { request.cwd } else { root }, compiler)
+		} else {
+			os.find_abs_path_of_executable(compiler) or { continue }
+		}
+		cwd := if request.cwd != '' { request.cwd } else { root }
+		key := path + '\x00' + cwd
+		is_tcc := compiler_kinds[key] or {
+			kind := is_tcc_cache_compiler(path, bundled, cwd)
+			compiler_kinds[key] = kind
+			kind
+		}
+		if is_tcc {
+			selected << request
+		}
+	}
+	return selected
+}
+
+fn is_tcc_cache_compiler(path string, bundled string, cwd string) bool {
+	resolved := os.real_path(path)
+	name := os.file_name(resolved).to_lower_ascii()
+	// Same file-name rule as the launcher and driver, so `notcc` or `distcc` is not TinyCC by name.
+	if resolved == os.real_path(bundled) || pref.tinycc_file_name(name) {
+		return true
+	}
+	// Match the driver's effective compiler classification, including renamed
+	// executables and wrappers whose version output identifies TinyCC.
+	if name.contains('clang') || name.contains('gcc') || name.contains('mingw')
+		|| name in ['cl', 'cl.exe'] || name.contains('msvc') || name.contains('++') {
+		return false
+	}
+	if os.user_os() in ['macos', 'ios'] && resolved == '/usr/bin/cc' { return false }
+	if !os.is_executable(path) { return false }
+	compiler_version := cmdexec.run_in(path, ['--version'], cwd).output.to_lower_ascii()
+	return pref.ccompiler_version_is_tinycc(compiler_version)
 }
 
 // skills_refresh_hint is what the report tells the user to run.

@@ -315,10 +315,39 @@ const string_colors = {
 
 // color_from_string returns a Color, corresponding to the given string
 // or black Color if string is not found in lookup table, or a hex color if starting with #
+// The hex form accepts the CSS shorthand notations: #RGB and #RGBA, where every digit
+// is doubled, as well as the full #RRGGBB and #RRGGBBAA forms.
+// Invalid hex digits or lengths return black.
 pub fn color_from_string(s string) Color {
 	if s.starts_with('#') {
-		mut hex_str := '0x' + s[1..]
-		return hex(hex_str.u32())
+		mut digits := s[1..]
+		for digit in digits {
+			if !digit.is_hex_digit() {
+				return black
+			}
+		}
+		if digits.len == 3 || digits.len == 4 {
+			// CSS hex shorthand: #RGB -> #RRGGBB and #RGBA -> #RRGGBBAA
+			mut expanded := []u8{cap: digits.len * 2}
+			for d in digits {
+				expanded << d
+				expanded << d
+			}
+			digits = expanded.bytestr()
+		}
+		if digits.len == 6 {
+			return hex(('0x' + digits).u32())
+		}
+		if digits.len == 8 {
+			value := ('0x' + digits).u32()
+			return Color{
+				r: u8((value >> 24) & 0xFF)
+				g: u8((value >> 16) & 0xFF)
+				b: u8((value >> 8) & 0xFF)
+				a: u8((value >> 0) & 0xFF)
+			}
+		}
+		return Color{}
 	} else {
 		return string_colors[s]
 	}

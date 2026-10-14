@@ -1583,7 +1583,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 
 			// match jump, if an OR chain the next token will be an OR token
 			mut pc2 := pc1 + 2
-			for pc2 < pc - 1 {
+			for pc2 < pc {
 				ist := re.prog[pc2].ist
 				if ist == ist_group_start {
 					re.prog[pc1 + 1].rep_max = re.prog[pc2].goto_pc + 1
@@ -1595,10 +1595,6 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				}
 
 				pc2++
-			}
-			// special case query of few chars, the true can't go on the first instruction
-			if re.prog[pc1 + 1].rep_max == pc1 {
-				re.prog[pc1 + 1].rep_max = 3
 			}
 			// println("Compile OR postproc. [${pc1},OR ${pc1+1},${pc2}]")
 			pc1 = pc2
@@ -1903,6 +1899,7 @@ pub mut:
 	last_dot_pc int = -1 // last dot chat pc
 }
 
+// match_base matches the compiled token program against the supplied byte buffer.
 @[direct_array_access]
 pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 	// result status
@@ -2568,6 +2565,10 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 				// println("ist_quant_ng GROUP CLOSED OK group_index: ${state.group_index}")
 
 				state.i = re.group_stack[state.group_index]
+				if rep > 0 {
+					// A failed alternative in the next iteration must not erase prior matches.
+					state.match_index = state.i - 1
+				}
 				state.pc = tmp_pc
 				state.group_index--
 				m_state = .ist_next
@@ -2593,8 +2594,10 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 
 				if state.group_index == 0 {
 					state.group_index--
-					state.pc = tmp_pc // TEST
-					m_state = .ist_next
+					state.pc = tmp_pc
+					// Do not continue after a group that has not reached its minimum.
+					result = no_match_found
+					m_state = .stop
 					continue
 				}
 

@@ -86,13 +86,20 @@ fn test_ownership_dispatch_refreshes_the_primary_isolated_cache() ! {
 			assert lines.len >= 3 && lines.last() == primary, cold.output
 			helper := lines[lines.len - 2]
 			assert helper != primary && helper.contains('v3_ownership') && os.is_file(helper), cold.output
-			assert cache_refresh.collect(vroot, primary)!.any(it.module == name && mode in it.args && ('-prod' in it.args) == prod)
+			matching := cache_refresh.collect(vroot, primary)!.filter(it.module == name
+				&& mode in it.args && ('-prod' in it.args) == prod)
+			if mode == '-autofree' {
+				// Autofree keeps full local metadata in a monolithic build.
+				assert matching.len == 0
+			} else {
+				assert matching.len > 0
+			}
 			assert cache_refresh.collect(vroot, helper)!.len == 0
 			builds << args
 		}
 	}
 	requests := cache_refresh.collect(vroot, primary)!.filter(it.module == name)
-	assert requests.len == builds.len, requests.str()
+	assert requests.len == builds.filter('-ownership' in it).len, requests.str()
 	os.write_file(source, 'module ${name}\npub fn value() int { return 2 }\n')!
 	cache_refresh.refresh(primary, requests)!
 	for args in builds {

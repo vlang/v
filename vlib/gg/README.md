@@ -405,3 +405,7 @@ https://github.com/vlang/v/blob/master/examples/gg/random_stars.v
 
 A third approach, is to only upload your changing inputs to the GPU, and do all
 the calculations and drawing there in shaders.
+
+`color_from_string` accepts CSS hexadecimal colors in `#RGB`, `#RGBA`, `#RRGGBB`, and
+`#RRGGBBAA` forms. Short forms repeat each digit; alpha is the last component. Invalid
+hexadecimal digits or lengths return black, as do unknown color names.

@@ -1,8 +1,5 @@
 module sync
 
-#include <time.h>
-#include <errno.h>
-
 pub struct C.timespec {
 pub mut:
 	tv_sec  i64

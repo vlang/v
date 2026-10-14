@@ -4,6 +4,18 @@ import json2
 import net.http
 import os
 
+fn test_registry_archive_base_resolves_configuration_url_references() {
+	assert resolve_registry_archive_base('https://registry.invalid/prefix', '/')! == 'https://registry.invalid'
+	assert resolve_registry_archive_base('https://registry.invalid/prefix', 'archives/')! == 'https://registry.invalid/prefix/archives'
+	assert resolve_registry_archive_base('https://registry.invalid', '//cdn.invalid/archives')! == 'https://cdn.invalid/archives'
+	assert resolve_registry_archive_base('https://registry.invalid', 'http://cdn.invalid/archives/')! == 'http://cdn.invalid/archives'
+	for invalid in ['', 'file:///archives', 'data:text/plain,archives', 'https://example.com/downloads'] {
+		if result := resolve_registry_archive_base('https://registry.invalid', invalid) {
+			assert false, 'accepted unusable archive base ${result}'
+		}
+	}
+}
+
 // These tests never bind a port. The protocol is exercised through the two pure
 // functions the fetches are built from, so a failure here names a field or a
 // status rule rather than a networking problem. What that leaves uncovered is the

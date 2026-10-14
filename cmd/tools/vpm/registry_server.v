@@ -41,7 +41,9 @@ fn (mut h RegistryHandler) handle(req http.Request) http.Response {
 	// the prefix stripped here, so it is normalised once, up front.
 	normalised := normalise_registry_path(path)
 
-	resp := serve(h.registry, req.method.str(), normalised, query, headers)
+	host := req.header.get(.host) or { '' }
+	base_url := if host == '' { '' } else { 'http://${host}' }
+	resp := serve(h.registry, req.method.str(), normalised, query, headers, base_url: base_url)
 	// `ResponseConfig` is immutable once built, so the body and its content type
 	// are decided before it is constructed rather than patched afterwards.
 	mut body := resp.body

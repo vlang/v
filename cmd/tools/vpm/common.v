@@ -28,7 +28,7 @@ struct ErrorOptions {
 	verbose bool // is used to only output the error message if the verbose setting is enabled.
 }
 
-const vexe = os.quoted_path(os.getenv('VEXE'))
+const vexe = os.getenv('VEXE')
 const home_dir = os.home_dir()
 const selected_server_url_env = 'VPM_SELECTED_SERVER_URL'
 const vpm_http_timeout = 10 * time.second

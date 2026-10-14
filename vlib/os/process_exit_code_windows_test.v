@@ -13,12 +13,15 @@ fn test_windows_child_exit_codes() {
 	}
 	source := os.join_path(dir, 'child.v')
 	child := os.join_path(dir, 'child.exe')
-	os.write_file(source, 'import os\nfn main() { os.exit(os.args[1].int()) }\n')!
+	os.write_file(source, 'import os\nfn main() { exit(os.args[1].int()) }\n')!
 	compiled := os.exec([@VEXE, '-o', child, source])
 	assert compiled.exit_code == 0, compiled.output
 	for case in [ExitCodeCase{'0', 0}, ExitCodeCase{'1', 1}, ExitCodeCase{'255', 255},
 		ExitCodeCase{'256', 256}, ExitCodeCase{'65535', 65535}, ExitCodeCase{'2147483647', 2147483647},
-		ExitCodeCase{'2147483648', -2147483648}, ExitCodeCase{'4294967295', -1}] {
+		// The child parses its argument with `.int()`, which saturates instead of
+		// wrapping, so the extreme codes have to be handed over in a form that is
+		// representable rather than as the decimal that would wrap to them.
+		ExitCodeCase{'-2147483648', -2147483648}, ExitCodeCase{'-1', -1}] {
 		direct := os.exec([child, case.argument])
 		assert direct.exit_code == case.expected, '${case.argument}: ${direct}'
 		shell := os.execute('${os.quoted_path(child)} ${case.argument}')

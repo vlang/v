@@ -16,9 +16,9 @@ fn test_headerless_wchar_prefers_compiler_type() {
 
 	src := os.join_path(os.temp_dir(), 'v3_headerless_wchar_${pid}.v')
 	c_out := os.join_path(os.temp_dir(), 'v3_headerless_wchar_${pid}.c')
-	os.write_file(src, "fn main() {\n\tprintln('ok')\n}\n") or { panic(err) }
+	os.write_file(src, "fn main() {\n\tmessage := 'ok'\n\tprintln(message)\n}\n") or { panic(err) }
 	os.rm(c_out) or {}
-	gen_c := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${c_out}'])
+	gen_c := os.exec([v3_bin, '-b', 'c', '-o', '${c_out}', '${src}'])
 	assert gen_c.exit_code == 0, gen_c.output
 
 	c_code := os.read_file(c_out) or { panic(err) }

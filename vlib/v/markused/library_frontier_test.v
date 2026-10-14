@@ -215,3 +215,58 @@ fn test_library_frontier_reports_later_errors_in_legacy_diagnostic_order() {
 		}
 	}
 }
+
+fn test_large_library_fork_keeps_lazy_reachability_equal_to_eager_collection() {
+	root := os.join_path(os.vtmp_dir(), 'v3_large_library_reachability_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or { panic(err) } }
+	main_path := os.join_path(root, 'main.v')
+	library_path := os.join_path(root, 'dependency.v')
+	os.write_file(main_path, 'module main
+import dependency
+fn main() {
+	println(dependency.identity(dependency.entry()))
+}
+') or { panic(err) }
+	mut library := 'module dependency
+pub fn identity[T](value T) T { return value }
+pub fn entry() int { return middle() }
+fn middle() int { return tail() }
+fn tail() int { return 42 }
+'
+	for i in 0 .. min_eager_markused_bodies {
+		library += 'fn unused_${i}() int { return ${i} }\n'
+	}
+	os.write_file(library_path, library) or { panic(err) }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_files([main_path, library_path])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.skip_unreachable_library_bodies({
+		library_path: true
+	}, seeded_fn_names(), true)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	defer { a.close_workers() }
+	for parallel in [false, true] {
+		if parallel { a.ensure_workers(2) }
+		mut forked := tc.fork_for_parallel_transform(a)
+		assert forked.skips_library_bodies
+		assert forked.library_files == tc.library_files
+		assert forked.reachable_library_fns == tc.reachable_library_fns
+		selected, selected_generic := mark_used_with_generic_usage(a, forked)
+		for name in ['entry', 'middle', 'tail', 'identity'] {
+			assert selected['dependency.${name}'], name
+		}
+		assert !selected['dependency.unused_0']
+		assert !selected['dependency.unused_${min_eager_markused_bodies - 1}']
+		assert selected_generic
+		// Compare collectors on the same checked AST, including the scoped driver path.
+		forked.skips_library_bodies = false
+		eager, eager_generic := mark_used_with_generic_usage(a, forked)
+		assert selected == eager
+		assert selected_generic == eager_generic
+		assert tc.skips_library_bodies
+	}
+}
