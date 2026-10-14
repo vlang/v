@@ -4,6 +4,9 @@
 
 On FreeBSD, mutexes store native `pthread_mutex_t` and `pthread_rwlock_t` values.
 
+On macOS and default pthread platforms, zero-value `RwMutex` try locks initialize the native lock
+and wait for concurrent first-use initialization to finish before acquiring it.
+
 Channels can carry function values, including aliases such as `type Task = fn ()`.
 Function channels support explicit capacities and default initialization in structs
 and globals. Arrays of channels can use an explicit `init` expression to initialize
@@ -43,3 +46,11 @@ hold a read lock or wait for a writer to finish. Optimistic access does not make
 concurrent reads and writes safe: use atomic data or other synchronization, and validate
 the stamp after reading. Use a regular read lock for non-atomic shared data. Locks are
 not reentrant and must be released once for each corresponding acquisition.
+
+## Latch
+
+`new_latch(n)` creates a one-shot countdown gate, with a nonnegative initial count.
+Each `count_down()` decrements a positive count. `wait()` blocks until the count reaches
+zero; all current and future waiters then pass immediately. Further countdowns do
+nothing. `count()` reads the remaining count under the latch's lock. Construct the latch
+with `new_latch`, and share the returned pointer between workers.

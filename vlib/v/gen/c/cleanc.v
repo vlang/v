@@ -15421,7 +15421,13 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			}
 		}
 		.prefix {
-			child := g.const_expr_to_string(g.a.child(&node, 0), seen)
+			child_id := g.a.child(&node, 0)
+			if node.op == .minus {
+				if literal := g.negated_long_long_literal(child_id) {
+					return '-${numeric_literal_c_text(&literal)}LL'
+				}
+			}
+			child := g.const_expr_to_string(child_id, seen)
 			'${g.op_str(node.op)}(${child})'
 		}
 		.paren {
@@ -19122,6 +19128,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define E_STRUCT')
 	g.writeln('#endif')
 	g.writeln('#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})')
+	g.writeln('#define _SL(id, s, n) static const string id = {s, n, 1}')
 	g.writeln('#if !defined(VNORETURN)')
 	g.writeln('#if defined(__TINYC__)')
 	g.writeln('#define VNORETURN __attribute__((noreturn))')
@@ -19408,6 +19415,9 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#include <sys/event.h>')
 	g.writeln('#endif')
+	g.writeln('#if defined(__FreeBSD__) || defined(__OpenBSD__)')
+	g.writeln('#include <sys/sysctl.h>')
+	g.writeln('#endif')
 	g.system_execinfo_declarations()
 	g.writeln('')
 }
@@ -19460,6 +19470,9 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('extern char** environ;')
 	g.writeln('#endif')
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
+	if g.target.os in ['freebsd', 'openbsd'] || g.output_cross_c {
+		g.collect_preserved_c_fns(['sysctl'])
+	}
 	g.collect_preserved_c_fns([
 		'kevent',
 		'kqueue',
@@ -25508,6 +25521,27 @@ fn numeric_literal_c_text(node &flat.Node) string {
 	return value
 }
 
+// negated_long_long_literal finds a wide integer operand through parentheses for signed C negation.
+fn (g &FlatGen) negated_long_long_literal(id flat.NodeId) ?flat.Node {
+	mut node := g.a.nodes[int(id)]
+	for node.kind == .paren && node.children_count == 1 {
+		node = g.a.nodes[int(g.a.child(&node, 0))]
+	}
+	if node.kind == .int_literal && int_literal_needs_long_long_suffix(&node) {
+		return node
+	}
+	return none
+}
+
+// int_literal_needs_long_long_suffix reports whether a literal above INT_MAX and within the
+// signed 64-bit range needs an `LL` suffix before it is negated. MSVC types such a literal as
+// unsigned long when it fits 32 bits, so an unsuffixed `-2147483648` widens to +2147483648.
+fn int_literal_needs_long_long_suffix(node &flat.Node) bool {
+	text := if node.value.contains_u8(`_`) { node.value.replace('_', '') } else { node.value }
+	value := strconv.parse_uint(text, util.v_literal_parse_base(text), 64) or { return false }
+	return value > 2147483647 && value <= 9223372036854775807
+}
+
 fn (mut g FlatGen) precompute_consts() string {
 	names := g.const_emission_order_owned()
 	return g.precompute_consts_in_order(names)
@@ -25994,6 +26028,13 @@ fn (g &FlatGen) shift_count_const_value(id flat.NodeId, seen []string) ?int {
 @[direct_array_access]
 fn (mut g FlatGen) gen_prefix_op_operand(op flat.Op, child_id flat.NodeId) {
 	g.write(g.op_str(op))
+	if op == .minus {
+		if literal := g.negated_long_long_literal(child_id) {
+			g.write(numeric_literal_c_text(&literal))
+			g.write('LL')
+			return
+		}
+	}
 	child := g.a.nodes[int(child_id)]
 	needs_paren := child.kind in [.infix, .in_expr]
 	if needs_paren {
