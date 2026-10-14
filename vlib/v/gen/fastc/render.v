@@ -1273,7 +1273,7 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 	element_comparison := if resolved_element == 'string' {
 		'builtin__string_eq(((${element_type} *)__vf_array_eq_left.data)[__vf_array_eq_index], ((${element_type} *)__vf_array_eq_right.data)[__vf_array_eq_index])'
 	} else if is_composite {
-		'({ ${element_type} __vf_element_left = ((${element_type} *)__vf_array_eq_left.data)[__vf_array_eq_index]; ${element_type} __vf_element_right = ((${element_type} *)__vf_array_eq_right.data)[__vf_array_eq_index]; ${g.stored_equality_source('__vf_element_left', '__vf_element_right', element_type, []string{})}; })'
+		'({ ${element_type} __vf_element_left = ((${element_type} *)__vf_array_eq_left.data)[__vf_array_eq_index]; ${element_type} __vf_element_right = ((${element_type} *)__vf_array_eq_right.data)[__vf_array_eq_index]; ${g.stored_equality_source('__vf_element_left', '__vf_element_right', element_type, []string{}, 0)}; })'
 	} else {
 		'(((${element_type} *)__vf_array_eq_left.data)[__vf_array_eq_index] == ((${element_type} *)__vf_array_eq_right.data)[__vf_array_eq_index])'
 	}
@@ -2015,8 +2015,8 @@ fn (g &Parser) struct_equality_is_supported(typ string, seen []string) bool {
 
 // stored_equality_source compares two values held as an array holds its elements: a fixed
 // array there is a `FixedArray_*` wrapper, its own elements wrappers too, where a struct field
-// is a raw C array.
-fn (g &Parser) stored_equality_source(left string, right string, typ string, seen []string) string {
+// is a raw C array. `depth` is the struct_equality_source array nesting it is inside of.
+fn (g &Parser) stored_equality_source(left string, right string, typ string, seen []string, depth int) string {
 	if !fastc_is_pointer_type(typ) {
 		layout_type := g.underlying_alias_type(typ)
 		if element_type := fastc_fixed_array_element_type(layout_type) {
@@ -2025,15 +2025,18 @@ fn (g &Parser) stored_equality_source(left string, right string, typ string, see
 			mut comparisons := []string{cap: length}
 			for index in 0 .. length {
 				comparisons << g.stored_equality_source('(${left}).data[${index}]', '(${right}).data[${index}]',
-					element_type, seen)
+					element_type, seen, depth)
 			}
 			return if comparisons.len == 0 { 'true' } else { '(${comparisons.join(' && ')})' }
 		}
 	}
-	return g.struct_equality_source(left, right, typ, seen)
+	return g.struct_equality_source(left, right, typ, seen, depth)
 }
 
-fn (g &Parser) struct_equality_source(left string, right string, typ string, seen []string) string {
+// struct_equality_source compares two values of type `typ` as V compares them. An array is
+// compared in a loop whose temporaries are named by `depth`, so the loop comparing its
+// elements, nested in it, does not shadow them.
+fn (g &Parser) struct_equality_source(left string, right string, typ string, seen []string, depth int) string {
 	if fastc_is_pointer_type(typ) {
 		return '((${left}) == (${right}))'
 	}
@@ -2049,18 +2052,19 @@ fn (g &Parser) struct_equality_source(left string, right string, typ string, see
 		length := g.fixed_array_length_value(length_source) or { return 'false' }
 		mut comparisons := []string{cap: length}
 		for index in 0 .. length {
-			comparisons << g.struct_equality_source('(${left})[${index}]', '(${right})[${index}]', element_type, seen)
+			comparisons << g.struct_equality_source('(${left})[${index}]', '(${right})[${index}]', element_type, seen, depth)
 		}
 		return if comparisons.len == 0 { 'true' } else { '(${comparisons.join(' && ')})' }
 	}
 	if element_type := g.array_element_type(layout_type) {
-		left_array := '__vf_array_eq_left'
-		right_array := '__vf_array_eq_right'
-		equal := '__vf_array_eq_equal'
-		index := '__vf_array_eq_index'
+		left_array := '__vf_array_eq_left_${depth}'
+		right_array := '__vf_array_eq_right_${depth}'
+		equal := '__vf_array_eq_equal_${depth}'
+		index := '__vf_array_eq_index_${depth}'
 		left_element := '((${element_type} *)${left_array}.data)[${index}]'
 		right_element := '((${element_type} *)${right_array}.data)[${index}]'
-		element_equality := g.stored_equality_source(left_element, right_element, element_type, seen)
+		element_equality := g.stored_equality_source(left_element, right_element, element_type, seen,
+			depth + 1)
 		return '({ ${layout_type} ${left_array} = (${left}); ${layout_type} ${right_array} = (${right}); bool ${equal} = ${left_array}.len == ${right_array}.len; for (int ${index} = 0; ${equal} && ${index} < ${left_array}.len; ${index}++) { if (!(${element_equality})) { ${equal} = false; } } ${equal}; })'
 	}
 	type_key := g.semantic_type_key(layout_type)
@@ -2075,7 +2079,7 @@ fn (g &Parser) struct_equality_source(left string, right string, typ string, see
 	mut comparisons := []string{}
 	for field in g.struct_field_info[layout_type] {
 		field_name := fastc_c_identifier(field.name)
-		comparisons << g.struct_equality_source('(${left}).${field_name}', '(${right}).${field_name}', field.typ, nested_seen)
+		comparisons << g.struct_equality_source('(${left}).${field_name}', '(${right}).${field_name}', field.typ, nested_seen, depth)
 	}
 	return if comparisons.len == 0 { 'true' } else { '(${comparisons.join(' && ')})' }
 }
@@ -2218,7 +2222,7 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 			}
 			left := g.render_comparison_operand(left_tokens, left_type) or { return none }
 			right := g.render_comparison_operand(right_tokens, right_type) or { return none }
-			equality := g.struct_equality_source('__vf_eq_left', '__vf_eq_right', left_type, []string{})
+			equality := g.struct_equality_source('__vf_eq_left', '__vf_eq_right', left_type, []string{}, 0)
 			result := if item.tok == .ne { '!(${equality})' } else { equality }
 			return FastcRenderedExpression{
 				source: '({ ${left_type} __vf_eq_left = (${left}); ${right_type} __vf_eq_right = (${right}); ${result}; })'
@@ -2290,7 +2294,7 @@ fn (g &Parser) render_sum_type_value_equality(left_tokens []FastcExpressionToken
 		if g.struct_equality_is_supported(variant, []string{}) {
 			left_value := '(*(${variant} *)${a}._object)'
 			right_value := '(*(${variant} *)${b}._object)'
-			concrete = g.struct_equality_source(left_value, right_value, variant, []string{})
+			concrete = g.struct_equality_source(left_value, right_value, variant, []string{}, 0)
 		} else if fastc_primitive_c_type(variant) != none {
 			concrete = '(*(${variant} *)${a}._object == *(${variant} *)${b}._object)'
 		}

@@ -833,6 +833,8 @@ struct FastcFunctionSignature {
 	is_c_extern              bool
 	module_name              string
 	path                     string
+	// position is the byte offset of the declaration's `fn` in the file at `path`.
+	position int
 }
 
 // fastc_multi_return_literal packs already-boxed components into a MultiReturn.
@@ -1212,6 +1214,8 @@ struct FastcComptimeCondition {
 struct FastcComptimeBlock {
 	source string
 	tok    token.Token
+	// offset is the byte offset of `source` in the source the block was scanned from.
+	offset int
 }
 
 struct FastcDeclarationAttribute {
@@ -2146,7 +2150,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	synthesized_main := if prefs.is_test {
 		fastc_synthesized_test_main(functions, function_c_names, prefs, startup_initializers.len > 0,
-			module_cleanup_calls.len > 0)
+			module_cleanup_calls.len > 0)!
 	} else if has_entry_module && !entry_has_main {
 		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0, module_cleanup_calls.len > 0)
 	} else {

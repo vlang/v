@@ -145,10 +145,102 @@ fn test_three() {
 	], run.output
 }
 
+// Tests run in the order they are declared, whatever a comment or string earlier in the file
+// spells, and a test returning an error reports the line of its own body. A failed assert runs
+// the deferred blocks a return from it would run, innermost first, before its test ends.
+fn test_fastc_test_file_declaration_order_and_assert_defers() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_test_mode_root('order')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	test_file := os.join_path(root, 'order_test.v')
+	os.write_file(test_file, "module main
+
+// fn test_late( is declared last
+const quoted = 'fn test_middle('
+
+fn test_early() {
+	defer {
+		println('early cleanup')
+	}
+	if quoted.len > 0 {
+		defer {
+			println('inner cleanup')
+		}
+		assert quoted.len == 0, 'early'
+	}
+	println('not reached')
+}
+
+fn test_middle() {
+	println('middle')
+}
+
+fn test_late() ! {
+	println('late')
+	return error('late failed')
+}
+") or { panic(err) }
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, test_file])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run_in_merged(program, [], '')
+	assert run.exit_code == 1, run.output
+	assert run.output.trim_space().split_into_lines().map(it.all_after('order_test.v:')) == [
+		'14: test_early: assert: early',
+		'inner cleanup',
+		'early cleanup',
+		'FAIL: test_early',
+		'middle',
+		'late',
+		'25: fn test_late failed propagation with error: late failed',
+		'FAIL: test_late',
+		'2 of 3 tests failed',
+	], run.output
+}
+
+// A test that takes parameters is refused as V refuses it; a method named like a test is not
+// a test.
+fn test_fastc_refuses_tests_with_parameters() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_test_mode_root('parameters')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	test_file := os.join_path(root, 'parameters_test.v')
+	os.write_file(test_file, 'module main
+
+struct Probe {}
+
+fn (p Probe) test_double(n int) int {
+	return n * 2
+}
+
+fn test_method_is_not_a_test() {
+	assert Probe{}.test_double(2) == 4
+}
+
+pub fn test_takes(n int) {
+	assert n > 0
+}
+') or { panic(err) }
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', os.join_path(root, 'program'), test_file])
+	assert build.exit_code == 1, build.output
+	assert build.output.trim_space().split_into_lines().map(it.all_after('parameters_test.v:')) == [
+		'13:5: error: invalid test signature: test functions should take 0 parameters',
+	], build.output
+}
+
 // Constructs blobly_emb's tests use, printed against the C backend's output: iterator
-// for-ins, a C-style for without an update, `f(x).len` and `== []`, nested array equality,
-// fixed arrays from raw storage and as `[N]T{init: v}`, an `or` on a slice bound, grouped
-// and container globals, `!` on a comparison operand, and equality of arrays of fixed arrays.
+// for-ins, a C-style for without an update, `f(x).len` and `== []`, nested array equality
+// (three levels deep too), fixed arrays from raw storage and as `[N]T{init: v}`, an `or` on a
+// slice bound, grouped and container globals, `!` on a comparison operand, and equality of
+// arrays of fixed arrays.
 fn test_fastc_test_suite_constructs_match_the_c_backend() {
 	$if !macos && !linux {
 		return
@@ -243,6 +335,8 @@ fn main() {
 	println('\${nested_equal} \${tail_empty} \${key_sum(h.key)} \${key_sum([4]u8{init: 2})}')
 	println('\${first_word('hi there')} \${first_word('solo')} \${order.len} \${counts['x']} \${slots[2]} \${total()!}')
 	println('\${pairs == [[1, 2]!, [3, 4]!]} \${pairs == [[1, 2]!, [3, 5]!]} \${grid == [[[1, 2]!, [3, 4]!]]}')
+	cube := [[[1, 2], [3]], [[4]]]
+	println('\${cube == [[[1, 2], [3]], [[4]]]} \${cube == [[[1, 2], [3]], [[5]]]}')
 }
 ") or { panic(err) }
 	program := os.join_path(root, 'program')
@@ -251,5 +345,5 @@ fn main() {
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['3 63 3 true', 'true true 4 8',
-		'hi solo 1 1 9 1', 'true false true']
+		'hi solo 1 1 9 1', 'true false true', 'true false']
 }
