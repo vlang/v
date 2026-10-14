@@ -2924,13 +2924,10 @@ fn (g &Parser) render_mixed_integer_comparison_expression_impl(tokens []FastcExp
 	return none
 }
 
-// render_guard_comparison renders a top-level comparison guard (`expr.kind == .constant`)
-// by rendering each operand through render_comparison_operand, which reads any active
-// smart-cast on the left and resolves an enum-shorthand right operand against the left
-// operand's type. Returns none when there is no top-level comparison operator.
 // narrowed_subject_value_type is the value type of an operand that is exactly a subject
-// narrowed by an earlier `is` of the same condition, which renders as a pointer to its
-// variant (`((i64 *)tmp._object)`); none for any other operand.
+// narrowed by `is`, which renders as a pointer to its variant (`((i64 *)tmp._object)`);
+// none for any other operand. An option local narrowed by `!= none` renders as its payload
+// value already, even when that value is a pointer.
 fn (g &Parser) narrowed_subject_value_type(tokens []FastcExpressionToken) ?string {
 	if g.member_smartcasts.len == 0 {
 		return none
@@ -2940,9 +2937,28 @@ fn (g &Parser) narrowed_subject_value_type(tokens []FastcExpressionToken) ?strin
 	if !smartcast.typ.ends_with('*') {
 		return none
 	}
+	if local := g.locals[path] {
+		if local.option_value_type != '' {
+			return none
+		}
+	}
 	return smartcast.typ[..smartcast.typ.len - 1]
 }
 
+// fastc_narrowed_variant_value reads the value of a narrowed variant from its variant pointer.
+// A pointer-like variant (`voidptr`) is stored directly in `_object`, so that pointer is the
+// value; any other variant is boxed behind it.
+fn fastc_narrowed_variant_value(source string, value_type string) string {
+	if fastc_is_pointer_type(value_type) {
+		return '((${value_type})(${source}))'
+	}
+	return '*(${source})'
+}
+
+// render_guard_comparison renders a top-level comparison guard (`expr.kind == .constant`)
+// by rendering each operand through render_comparison_operand, which reads any active
+// smart-cast on the left and resolves an enum-shorthand right operand against the left
+// operand's type. Returns none when there is no top-level comparison operator.
 fn (g &Parser) render_guard_comparison(tokens []FastcExpressionToken) ?string {
 	mut depth := 0
 	mut op_index := -1
@@ -2977,9 +2993,9 @@ fn (g &Parser) render_guard_comparison(tokens []FastcExpressionToken) ?string {
 		left_type = member_type
 	}
 	// A subject narrowed earlier in this condition (`cv is i64 && cv != io_core`) renders as
-	// its variant pointer; the comparison is of the value it points to.
+	// its variant pointer; the comparison is of the variant's value.
 	if value_type := g.narrowed_subject_value_type(left_tokens) {
-		left = '*(${left})'
+		left = fastc_narrowed_variant_value(left, value_type)
 		left_type = value_type
 	}
 	right_tokens := tokens[op_index + 1..]
@@ -2988,8 +3004,8 @@ fn (g &Parser) render_guard_comparison(tokens []FastcExpressionToken) ?string {
 	} else {
 		g.render_comparison_operand(right_tokens, left_type) or { return none }
 	}
-	if _ := g.narrowed_subject_value_type(right_tokens) {
-		right = '*(${right})'
+	if value_type := g.narrowed_subject_value_type(right_tokens) {
+		right = fastc_narrowed_variant_value(right, value_type)
 	}
 	if fastc_normalize_inferred_type(left_type) == 'string' {
 		if op == .eq {

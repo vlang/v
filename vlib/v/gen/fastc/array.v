@@ -447,9 +447,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		access := if base_type.ends_with('*') { '->' } else { '.' }
 		// `->` reads the trailing `*` as a pointer to the array (a `mut` fixed-array
 		// parameter), so its element type is the array's, without that `*`.
-		pointee_element_type := if base_type.ends_with('*') {
-			g.array_element_type(base_type[..base_type.len - 1]) or { element_type }
-		} else {
+		pointee_element_type := g.fixed_array_pointee_element_type(base_type, base_tokens) or {
 			element_type
 		}
 		return FastcRenderedExpression{
@@ -695,7 +693,7 @@ fn (g &Parser) render_membership_candidate(tokens []FastcExpressionToken, expect
 		&& g.expression_uses_member_smartcast(tokens) {
 		actual := fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { '' })
 		if actual == expected_type + '*' {
-			return '*(${rendered})'
+			return fastc_narrowed_variant_value(rendered, expected_type)
 		}
 	}
 	return rendered
