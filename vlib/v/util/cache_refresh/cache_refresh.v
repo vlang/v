@@ -6,6 +6,7 @@ import strconv
 import strings
 import time
 import v.cmdexec
+import v.pref
 import v.tempname
 
 const record_prefix = '.vup_refresh_'
@@ -16,6 +17,12 @@ const project_record_format = 'vup-cache-refresh-4'
 const object_record_format = 'vup-cache-refresh-3'
 const cwd_record_format = 'vup-cache-refresh-2'
 const legacy_record_format = 'vup-cache-refresh-1'
+
+// request_uses_prod_tcc applies the production restriction using the recorded compiler
+// paths and working directory, including context-sensitive compiler wrappers.
+fn request_uses_prod_tcc(request Request) bool {
+	return pref.tcc_with_prod_requested_in(request.args, request.cwd)
+}
 
 // FlagGroup preserves the ordering and deduplication of a project's C directives.
 pub struct FlagGroup {
@@ -550,7 +557,10 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // Live entries whose project source identity changed are skipped until rebuilt and recorded.
 // Legacy headers are marked migrated only after successful refreshes of their variants.
 // Disk-full failures stop remaining builds; child output is forwarded without buffering it all.
-pub fn refresh(vexe string, requests []Request) ! {
+// TinyCC production builds are never refreshed: the compiler refuses `-cc tcc` with `-prod`,
+// and records made before that rule still exist.
+pub fn refresh(vexe string, all_requests []Request) ! {
+	requests := all_requests.filter(!request_uses_prod_tcc(it))
 	if requests.len == 0 { return }
 	dir := os.join_path(os.vtmp_dir(), 'vup_cache_refresh_${tempname.unique_token()}')
 	os.mkdir_all(dir)!

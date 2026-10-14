@@ -1,4 +1,4 @@
-// vtest build: !musl? && !sanitized_job?
+// vtest build: network? && !musl? && !sanitized_job?
 // vtest retry: 3
 import os
 import rand
@@ -14,10 +14,6 @@ const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
 })
 
 fn testsuite_begin() {
-	$if !network ? {
-		eprintln('> skipping ${@FILE}, when `-d network` is missing')
-		exit(0)
-	}
 	dump(test_path)
 	test_utils.set_test_env(test_path)
 	// Explicitly disable fail on prompt.
