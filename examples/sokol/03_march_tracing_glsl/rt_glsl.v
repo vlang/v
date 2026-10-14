@@ -85,21 +85,6 @@ fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	return sg_img, sg_smp
 }
 
-fn destroy_texture(sg_img gfx.Image) {
-	gfx.destroy_image(sg_img)
-}
-
-// Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
-	sz := w * h * 4
-	mut tmp_sbc := gfx.ImageData{}
-	tmp_sbc.subimage[0][0] = gfx.Range{
-		ptr:  buf
-		size: usize(sz)
-	}
-	gfx.update_image(sg_img, &tmp_sbc)
-}
-
 /******************************************************************************
 * Draw functions
 ******************************************************************************
@@ -283,7 +268,7 @@ fn draw_cube_glsl(app App) {
 	// passing the view matrix as uniform
 	// res is a 4x4 matrix of f32 thus: 4*16 byte of size
 	vs_uniforms_range := gfx.Range{
-		ptr:  &tr_matrix
+		ptr:  unsafe { &tr_matrix }
 		size: usize(4 * 16)
 	}
 	gfx.apply_uniforms(.vs, C.SLOT_vs_params, &vs_uniforms_range)

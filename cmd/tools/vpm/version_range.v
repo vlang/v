@@ -29,9 +29,30 @@ fn is_version_range(version string) bool {
 	return wildcard
 }
 
+// The length of the digest component `version_tmp_name` derives from a Git ref.
+// A full 64-character SHA as one path component pushes a temp path over
+// `MAX_PATH` on Windows once `.git/objects/pack` sits beneath it, so it is cut
+// to a short digest of the complete ref rather than a prefix shared by distinct refs.
+const tmp_name_length = 12
+
+// is_hex_digest reports whether `value` is a long all-hex ref spelling.
+fn is_hex_digest(value string) bool {
+	if value.len < tmp_name_length {
+		return false
+	}
+	return value.bytes().all(it.is_digit() || (it >= u8(0x61) && it <= u8(0x66))
+		|| (it >= u8(0x41) && it <= u8(0x46)))
+}
+
 // version_tmp_name keeps range operators out of filesystem path components.
 fn version_tmp_name(version string) string {
-	return if is_version_range(version) { 'range-' + sha256.hexhash(version) } else { version }
+	if is_version_range(version) {
+		return 'range-' + sha256.hexhash(version)[0..tmp_name_length]
+	}
+	if is_hex_digest(version) {
+		return sha256.hexhash(version)[0..tmp_name_length]
+	}
+	return version
 }
 
 fn version_tag(tag string) !semver.Version {
@@ -158,11 +179,6 @@ fn release_age_seconds(value string) !i64 {
 	return amount * scale
 }
 
-fn is_tag_too_new(tag_date string, age string) !bool {
-	timestamp := time.parse_rfc3339(tag_date)!.unix()
-	return timestamp > time.now().unix() - release_age_seconds(age)!
-}
-
 fn tag_commit_date(url string, tag string) !string {
 	// Each discovery owns its directory, including concurrent calls for the same tag.
 	tmp_dir := get_tmp_path(settings.tmp_path, 'tag-date-' + rand.ulid())!
@@ -175,24 +191,6 @@ fn tag_commit_date(url string, tag string) !string {
 	date := date_res.output.trim_space()
 	time.parse_rfc3339(date)!
 	return date
-}
-
-// validate_range_destinations guards independent non-project selections from
-// overwriting the single-version module store. Project installs solve the graph jointly.
-fn validate_range_destinations(modules []Module) ! {
-	mut seen := map[string]Module{}
-	for m in modules {
-		mut destination := os.norm_path(real_path_with_missing_suffix(m.install_path))
-		$if windows {
-			destination = destination.to_lower()
-		}
-		if previous := seen[destination] {
-			if m.version_range != '' || previous.version_range != '' {
-				return error('multiple requirements for `${m.name}` at `${fmt_mod_path(destination)}`: `${previous.requested}` selected `${previous.version}`, while `${m.requested}` selected `${m.version}`; joint version-range resolution is not yet supported')
-			}
-		}
-		seen[destination] = m
-	}
 }
 
 fn release_tag_allowed(url string, tag string) !bool {

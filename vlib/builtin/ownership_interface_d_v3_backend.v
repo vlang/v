@@ -25,9 +25,8 @@ fn drop_owned_interface[T](value T) {
 
 fn drop_owned_result_error_interface(err IError) {
 	// Pointer-backed errors remain borrowed; only boxed concrete values are owned.
-	mut owned := err
-	raw_interface := unsafe { &OwnershipV3InterfacePayload(voidptr(&owned)) }
-	if raw_interface.is_boxed {
-		drop_owned(owned)
-	}
+	// Destroying one takes a branch for every error type of the program. That code
+	// is generated for the program, as an instance of the generic function, so
+	// that the object of this module is the same for every program.
+	drop_owned_interface(err)
 }

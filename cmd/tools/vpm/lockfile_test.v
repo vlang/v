@@ -7,7 +7,12 @@ import test_utils { cmd_fail_args, cmd_ok_args }
 
 // The tests in this file are fully offline: they build local git repositories
 // under `test_path` and install from those, never touching the network.
-const test_path = os.join_path(os.vtmp_dir(), 'vpm_lockfile_test_${rand.ulid()}')
+// The directory name is kept short on purpose. An install nests the module
+// store, vpm's temp namespace, the module name and then git's own
+// `.git/objects/<xx>/<38 hex>` underneath it, and on Windows a longer prefix
+// here pushes that total past `MAX_PATH` and git cannot stat its own object
+// files. The long form of this name was the difference between red and green.
+const test_path = os.join_path(os.vtmp_dir(), 'vpl_${rand.ulid()}')
 const v_exe = os.join_path(test_path, if os.user_os() == 'windows' { 'vpm.exe' } else { 'vpm' })
 
 fn testsuite_begin() {

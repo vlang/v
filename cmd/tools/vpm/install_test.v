@@ -1,4 +1,4 @@
-// vtest build: !musl? && !sanitized_job?
+// vtest build: network? && !musl? && !sanitized_job?
 // vtest retry: 3
 module main
 
@@ -12,10 +12,6 @@ import test_utils { cmd_fail_args, cmd_ok_args }
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_test_${rand.ulid()}')
 
 fn testsuite_begin() {
-	$if !network ? {
-		eprintln('> skipping ${@FILE}, when `-d network` is missing')
-		exit(0)
-	}
 	dump(test_path)
 	test_utils.set_test_env(test_path)
 }
@@ -57,7 +53,7 @@ fn test_install_from_git_url() {
 	assert res.output.contains('`http` is deprecated'), res.output
 	manifest = get_vmod(os.join_path('wertzui123', 'hashmap'))
 	res = cmd_ok_args(@LOCATION, [os.getenv('VEXE'), 'install', 'http://github.com/Wertzui123/HashMap'])
-	assert res.output.contains('Updating module `wertzui123.hashmap`'), res.output
+	assert res.output.contains('Module `HashMap` is already installed.'), res.output
 	assert res.output.contains('`http` is deprecated'), res.output
 	res = cmd_ok_args(@LOCATION, [os.getenv('VEXE'), 'install', 'https://gitlab.com/tobealive/webview'])
 	assert res.output.contains('Installed `webview`'), res.output
@@ -76,20 +72,20 @@ fn test_install_from_git_url_uses_registered_package_name() ! {
 	assert manifest.name == 'nedpals.args'
 
 	res = cmd_ok_args(@LOCATION, [os.getenv('VEXE'), 'install', 'https://github.com/nedpals/v-args'])
-	assert res.output.contains('Updating module `nedpals.args`'), res.output
+	assert res.output.contains('Module `nedpals.args` is already installed.'), res.output
 	manifest = get_vmod(os.join_path('nedpals', 'args'))
 	assert manifest.name == 'nedpals.args'
 }
 
 fn test_install_already_existent() {
 	mut res := cmd_ok_args(@LOCATION, [os.getenv('VEXE'), 'install', 'https://github.com/vlang/markdown'])
-	assert res.output.contains('Updating module `markdown`'), res.output
+	assert res.output.contains('Module `markdown` is already installed.'), res.output
 	manifest := get_vmod('markdown')
 	assert manifest.name == 'markdown'
 	assert manifest.dependencies == []string{}
 	// The same module but with the `.git` extension added.
 	res = cmd_ok_args(@LOCATION, [os.getenv('VEXE'), 'install', 'https://github.com/vlang/markdown.git'])
-	assert res.output.contains('Updating module `markdown`'), res.output
+	assert res.output.contains('Module `markdown` is already installed.'), res.output
 }
 
 fn test_install_once() {
