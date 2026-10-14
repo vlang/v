@@ -236,7 +236,7 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	tc.cur_scope.insert('buf', fixed_type)
 	buf_id := stmt_test_node(mut a, .ident, 'buf', [])
 	rhs_id := stmt_test_prefix(mut a, .amp, buf_id)
-	g.gen_decl_init_expr(rhs_id, a.nodes[int(rhs_id)], byte_pointer, 'u8*', true)
+	g.gen_decl_init_expr(rhs_id, a.nodes[int(rhs_id)], byte_pointer, 'u8*', true, '')
 	assert g.sb.str() == '((u8*)(buf))'
 	fixed_pointer := types.Type(types.Pointer{
 		base_type: fixed_type

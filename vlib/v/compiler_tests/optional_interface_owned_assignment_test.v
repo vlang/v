@@ -36,21 +36,24 @@ fn wrap(prefix string) Holder {
 	return holder
 }
 
-fn check(holder Holder, expected string) {
-	slot := holder.slot or { panic("missing value") }
-	assert slot.name == expected
-	assert slot.number() == 42
-}
-
 fn main() {
-	mut holder := wrap("content")
-	check(holder, "content:dynamic")
-	holder.slot = make_value("replacement")
-	check(holder, "replacement:dynamic")
-	holder.slot = none
-	assert holder.slot == none
+	holder := wrap("content")
+	slot := holder.slot or { panic("missing value") }
+	assert slot.name == "content:dynamic"
+	assert slot.number() == 42
+
+	mut replaced := wrap("old")
+	replaced.slot = make_value("replacement")
+	replacement := replaced.slot or { panic("missing replacement") }
+	assert replacement.name == "replacement:dynamic"
+	assert replacement.number() == 42
+
+	mut cleared := wrap("old")
+	cleared.slot = none
+	assert cleared.slot == none
 }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -ownership -gc none -cstrict -cc clang run ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-new-compiler', '-ownership', '-gc', 'none', '-cstrict', '-cc',
+		'clang', 'run', source])
 	assert result.exit_code == 0, result.output
 }
