@@ -82,6 +82,8 @@ Scalar array appends can use typed stores into spare capacity in library modules
 named `array_push` keep their own calls.
 
 Older bootstrap compilers use compatibility headers for their first compiler build.
+On FreeBSD and OpenBSD, these include `<sys/sysctl.h>` for the constants used by
+`os.executable()`.
 The current compiler supplies an internal capability define and omits those headers.
 
 Portable `-os cross` snapshots and `-is_o` objects embed their V-owned native runtime helpers,
