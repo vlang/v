@@ -57,3 +57,6 @@ If you want to fix this, you can "pre-compile" the buildscript by building the s
 > to your `.gitignore`
 
 > If you want maximum speed, you can also `v -prod build build.vsh`
+
+Task dependency cycles are rejected before execution. Indirect cycles report the dependency path
+(for example, `a -> b -> a`) and exit with status 1.

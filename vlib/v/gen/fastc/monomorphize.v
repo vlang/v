@@ -1277,6 +1277,10 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				continue
 			}
 			tok = s.scan()
+			if tok == .key_mut {
+				// `f(mut x)` passes `x` itself; its type is still the variable's.
+				tok = s.scan()
+			}
 			mut concrete := fastc_infer_literal_type(tok, s.lit)
 			if concrete == '' && tok in [.name, .key_shared] {
 				// A bare variable argument (`f(x)`) or a struct-literal argument

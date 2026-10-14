@@ -51,3 +51,7 @@ a pending quoted attribute value.
 
 Trailing text is retained when parsing ends, including text after a closing tag and text in an
 unclosed element. Text after a closing tag belongs to the surrounding element.
+
+Attribute names are case insensitive. Quoted and unquoted attribute values preserve their case,
+and both forms populate class selectors. HTML whitespace separates attributes; whitespace around
+`=` is accepted. Empty attribute names are omitted.
