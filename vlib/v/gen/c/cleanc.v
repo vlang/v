@@ -24100,8 +24100,20 @@ fn (mut g FlatGen) fn_capture_shared_global_c_type(name string) ?string {
 	return '${g.shared_wrapper_c_name(qualified)}*'
 }
 
+// global_init_optional_c_type returns the concrete `__v_option_T` / `__v_result_T`
+// C name a global must be declared with. A declared-by-type global
+// (`__global ( g ?int )`) has no initializer, but every use of it is typed, so the
+// declared option/result type is the authority; falling back to the generic
+// `__v_option` struct mismatches every assignment and read in C.
 fn (mut g FlatGen) global_init_optional_c_type(name string) ?string {
-	val_id := g.global_inits[name] or { return none }
+	val_id := g.global_inits[name] or {
+		typ := g.global_types[name] or { return none }
+		decl_typ := g.global_storage_type(name, typ)
+		if decl_typ is types.OptionType || decl_typ is types.ResultType {
+			return g.optional_type_name(decl_typ)
+		}
+		return none
+	}
 	init_type := g.usable_expr_type(val_id)
 	if init_type is types.OptionType || init_type is types.ResultType {
 		return g.optional_type_name(init_type)
