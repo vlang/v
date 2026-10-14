@@ -79,17 +79,22 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 	return t.try_expand_if_guard_with_tail(node, GuardReturnTail{})
 }
 
-// GuardReturnTail describes the `return` whose value a guarded `if` supplies. When it is
-// active, a guard expansion ends each branch with that return instead of leaving a value.
+// GuardReturnTail describes the return or multi-assignment supplied by a guarded `if`.
+// A guard expansion lowers each branch tail after introducing the unwrapped bindings.
 struct GuardReturnTail {
 	active            bool
 	ret_typ           u32
 	extra_return_vals []flat.NodeId
 	source_return_id  flat.NodeId
+	assign_lhs_ids    []flat.NodeId
 }
 
 // guard_branch_stmts lowers the body of a guard branch.
 fn (mut t Transformer) guard_branch_stmts(branch_id flat.NodeId, tail GuardReturnTail) []flat.NodeId {
+	if tail.assign_lhs_ids.len > 0 {
+		block_id := t.multi_if_assign_block(branch_id, tail.assign_lhs_ids)
+		return t.a.children_of(&t.a.nodes[int(block_id)]).clone()
+	}
 	if tail.active {
 		block_id := t.return_block_from_branch(branch_id, tail.ret_typ_text(), tail.extra_return_vals,
 			tail.source_return_id)
@@ -106,6 +111,9 @@ fn (mut t Transformer) guard_branch_stmts(branch_id flat.NodeId, tail GuardRetur
 fn (mut t Transformer) guard_else_stmts(else_id flat.NodeId, tail GuardReturnTail) []flat.NodeId {
 	else_node := t.a.nodes[int(else_id)]
 	if else_node.kind == .if_expr {
+		if tail.assign_lhs_ids.len > 0 {
+			return t.lower_multi_if_assign(else_node, tail.assign_lhs_ids)
+		}
 		if tail.active {
 			return [
 				t.build_return_if_chain(else_id, tail.ret_typ_text(), tail.extra_return_vals,
@@ -143,7 +151,7 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 				// build_return_map_index_if_guard_chain lowers returned map guards.
 				return none
 			}
-			return t.expand_map_index_if_guard(node, lhs.value, info)
+			return t.expand_map_index_if_guard(node, lhs.value, info, tail)
 		}
 		if info := t.array_index_info(rhs_id) {
 			return t.expand_array_index_if_guard(node, lhs.value, info, tail)
@@ -386,7 +394,7 @@ fn (mut t Transformer) transform_else_if_expr(else_id flat.NodeId, else_node fla
 }
 
 // expand_map_index_if_guard builds expand map index if guard data for transform.
-fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string, info MapIndexInfo) ?[]flat.NodeId {
+fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string, info MapIndexInfo, tail GuardReturnTail) ?[]flat.NodeId {
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	map_expr := t.stable_expr_for_reuse(info.base_id)
@@ -414,7 +422,6 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	}
 
 	then_id := t.a.child(&node, 1)
-	then_node := t.a.nodes[int(then_id)]
 	saved_var_types := t.var_types.clone()
 	saved_heaped_state := t.save_heaped_local_state()
 	mut then_children := []flat.NodeId{}
@@ -425,11 +432,7 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	if lhs_name != '_' {
 		then_children << t.make_guard_value_decls(lhs_name, value_expr, guard_value_type)
 	}
-	if then_node.kind == .block {
-		then_children << t.transform_stmts(t.a.children_of(&then_node))
-	} else {
-		then_children << t.transform_stmt(then_id)
-	}
+	then_children << t.guard_branch_stmts(then_id, tail)
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)
 	t.restore_heaped_local_state(saved_heaped_state)
@@ -437,9 +440,8 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	mut else_block := flat.empty_node
 	if node.children_count >= 3 {
 		else_id := t.a.child(&node, 2)
-		else_node := t.a.nodes[int(else_id)]
-		else_block = t.transform_map_index_if_guard_else_block(else_id, else_node, ptr_name,
-			info.value_type_text())
+		else_block = t.transform_map_index_if_guard_else_block(else_id, ptr_name,
+			info.value_type_text(), tail)
 	}
 	t.pending_stmts = outer_pending
 	mut expanded := []flat.NodeId{cap: prelude.len + 1}
@@ -450,7 +452,7 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	return expanded
 }
 
-fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, ptr_name string, value_type string) flat.NodeId {
+fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.NodeId, ptr_name string, value_type string, tail GuardReturnTail) flat.NodeId {
 	heaped_state := t.save_heaped_local_state()
 	defer {
 		t.restore_heaped_local_state(heaped_state)
@@ -477,13 +479,7 @@ fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.Node
 		missing_branch := t.make_block([t.make_assign(err_target, missing)])
 		children << t.make_if(found, present_branch, missing_branch)
 	}
-	if else_node.kind == .block {
-		children << t.transform_stmts(t.a.children_of(&else_node))
-	} else if else_node.kind == .if_expr {
-		children << t.transform_else_if_expr(else_id, else_node)
-	} else {
-		children << t.transform_stmt(else_id)
-	}
+	children << t.guard_else_stmts(else_id, tail)
 	t.leave_implicit_err_scope(err_scope)
 	return t.make_block(children)
 }

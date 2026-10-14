@@ -19208,6 +19208,11 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 	if node.children_count < 2 {
 		return []
 	}
+	if expanded := t.try_expand_if_guard_with_tail(node, GuardReturnTail{
+		assign_lhs_ids: lhs_ids
+	}) {
+		return expanded
+	}
 	cond_id := t.a.child(&node, 0)
 	then_id := t.a.child(&node, 1)
 	mut result := []flat.NodeId{}
