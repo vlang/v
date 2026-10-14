@@ -58,6 +58,10 @@ composite sum-type tests, integer interpolation formats, anonymous functions, an
 closure captures. A single-file entry can select the same runtime with `-d fastc_real_builtin`;
 its module siblings are included.
 Target-specific files and test files are filtered when loading a directory.
+Bare `nil` can reset concrete `voidptr` locals, including aliases, and declared `voidptr`
+fields. It can initialize declared `voidptr` fields and serve as an argument to `voidptr`
+and function-typed parameters. Function fields and erased generic fields require `unsafe`.
+Channel type declarations accept ordinary V whitespace.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context
 when the block exits, including through `return`, `break`, and `continue`. Callbacks that escape

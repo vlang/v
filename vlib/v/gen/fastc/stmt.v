@@ -1549,7 +1549,14 @@ fn (mut g Parser) parse_simple_statement() ! {
 			if g.selfhost && expected_type != '' {
 				g.expected_expression_type = expected_type
 			}
-			value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
+			previous_nil_assignment := g.allows_nil_local_assignment
+			g.allows_nil_local_assignment = !is_global && operator == .assign && g.underlying_alias_type(expected_type) == 'voidptr' && expected_type !in g.fn_alias_return_types && statement_local.fn_return_type == '' && !g.in_generic_placeholder && g.tok == .key_nil && g.nil_ends_value()
+			value := g.read_expression([token.Token.semicolon, token.Token.rcbr]) or {
+				g.allows_nil_local_assignment = previous_nil_assignment
+				g.expected_expression_type = previous_expected_type
+				return err
+			}
+			g.allows_nil_local_assignment = previous_nil_assignment
 			g.expected_expression_type = previous_expected_type
 			if value.len == 0 {
 				return g.unsupported('empty assignment to `${name}`')

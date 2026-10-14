@@ -3293,7 +3293,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		// map `.delete(key)` / generic argument) must still be boxed to a pointer, exactly as the
 		// non-synthetic path below does; otherwise a struct value is passed where `void*` is wanted.
 		// A function value is already a pointer.
-		if g.selfhost && expected_type == 'voidptr' && tokens[0].typ !in ['', 'voidptr', 'nil'] && !fastc_is_pointer_type(tokens[0].typ)
+		if g.selfhost && expected_type == 'voidptr' && tokens[0].typ !in ['', 'voidptr', 'nil'] && !fastc_is_pointer_type(g.underlying_alias_type(tokens[0].typ))
 			&& !g.is_function_value_type(tokens[0].typ) {
 			actual := fastc_normalize_inferred_type(g.underlying_alias_type(tokens[0].typ))
 			return '({ ${actual} __vf_generic_argument = (${tokens[0].source}); v_fastc_interface_box(&__vf_generic_argument, sizeof(${actual})); })'
@@ -3477,7 +3477,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { '' })
 	}
 	// A function value is already a pointer.
-	if expected_type == 'voidptr' && actual_type !in ['', 'voidptr', 'nil'] && !fastc_expression_is_zero(tokens) && !fastc_is_pointer_type(actual_type)
+	if expected_type == 'voidptr' && actual_type !in ['', 'voidptr', 'nil'] && !fastc_expression_is_zero(tokens) && !fastc_is_pointer_type(g.underlying_alias_type(actual_type))
 		&& !g.is_function_value_type(actual_type) {
 		box_value := '__vf_generic_argument'
 		return '({ ${actual_type} ${box_value} = (${rendered}); v_fastc_interface_box(&${box_value}, sizeof(${actual_type})); })'

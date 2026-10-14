@@ -108,9 +108,22 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 }
 
 fn fastc_header_with_channel_runtime(header FastcSourceHeader, source string, prefs &pref.Preferences) FastcSourceHeader {
-	if !prefs.building_v || header.module_name in ['sync', 'builtin'] || !source.contains('chan ') {
+	if !prefs.building_v || header.module_name in ['sync', 'builtin'] || !source.contains('chan') {
 		return header
 	}
+	mut scan := scanner.new_scanner(prefs, .normal)
+	file := token.File.unindexed('channel_runtime.v', source.len)
+	scan.init(file, source)
+	mut has_channel := false
+	mut tok := scan.scan()
+	for tok != .eof {
+		if tok == .name && scan.lit == 'chan' {
+			has_channel = true
+			break
+		}
+		tok = scan.scan()
+	}
+	if !has_channel { return header }
 	mut imports := header.imports.clone()
 	mut order := header.import_order.clone()
 	imports['__fastc_channels'] = 'sync'

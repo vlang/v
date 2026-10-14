@@ -956,6 +956,8 @@ struct FastcStructField {
 	is_skip              bool
 	is_function          bool
 	is_optional_function bool
+	// Keep the declared target separate from generic/function voidptr erasure.
+	is_declared_voidptr bool
 	// Shared map fields keep pointer identity even though FastC currently erases locking.
 	// Without this, copying their containing struct detaches subsequent map header updates.
 	is_shared_pointer bool
@@ -1382,7 +1384,9 @@ mut:
 	current_receiver         string
 	current_method_is_static bool
 	expected_expression_type string
-	capturing_defer          bool
+	// Scoped to a whole nil reset of a concrete local; erased function values are excluded.
+	allows_nil_local_assignment bool
+	capturing_defer             bool
 	// next_declaration_is_unsafe records a `@[unsafe]` attribute seen just before a
 	// top-level declaration, so a function so marked parses its body as unsafe.
 	next_declaration_is_unsafe bool
