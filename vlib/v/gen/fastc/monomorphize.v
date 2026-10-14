@@ -1308,9 +1308,11 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 			}
 			if concretes.len == 0 || concretes.len != generic.type_param.split(',').len {
 				mut inside_generic := false
-				for variable_type in var_types.values() {
-					if variable_type in type_param_names {
+				for _, enclosing in by_name {
+					if enclosing.source_index == source_index && name_pos >= enclosing.fn_start
+						&& name_pos < enclosing.def_end {
 						inside_generic = true
+						break
 					}
 				}
 				if !inside_generic {

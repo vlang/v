@@ -119,3 +119,56 @@ fn main() { println(first(1 + number(), 2)) }
 	assert build.output.contains('cannot infer generic type arguments for `first`'), build.output
 	assert build.output.contains('use explicit type arguments'), build.output
 }
+
+fn test_fastc_unknown_arguments_outside_generic_declarations_are_rejected() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_generic_context_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	for index, source in [
+		'module main
+struct T { value int }
+fn unused[T](value T) T { return value }
+fn first[A, B](value A, hint B) A { return value }
+fn number() f64 { return 0.5 }
+fn main() { marker := T{value: 1}; println(marker.value); println(first(1 + number(), 2)) }
+',
+		'module main
+fn first[A, B](value A, hint B) A { return value }
+fn number() f64 { return 0.5 }
+fn unused[T](value T) T { return value }
+const answer = first(1 + number(), 2)
+fn main() { println(answer) }
+',
+	] {
+		os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
+		build := cmdexec.run(@VEXE, ['-b', 'fastc', '-gc', 'none', '-nocache', '-o',
+			os.join_path(root, 'program_${index}'), root])
+		assert build.exit_code != 0, build.output
+		assert build.output.contains('cannot infer generic type arguments for `first`'), build.output
+	}
+}
+
+fn test_fastc_generic_body_calls_are_deferred_until_specialization() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_deferred_generic_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+fn first[A, B](value A, hint B) A { return value }
+fn outer[T](value T) T { return first(value, 2) }
+fn main() { println(outer(7)) }
+') or { panic(err) }
+	for backend in ['c', 'fastc'] {
+		program := os.join_path(root, 'program_${backend}')
+		build := cmdexec.run(@VEXE, ['-b', backend, '-gc', 'none', '-nocache', '-o', program, root])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '7', run.output
+	}
+}
