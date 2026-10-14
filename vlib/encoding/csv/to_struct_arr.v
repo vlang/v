@@ -28,9 +28,13 @@ pub fn decode[T](data string) []T {
 					} $else $if field.typ is int {
 						t_val.$(field.name) = items[col].int()
 					} $else $if field.typ is f32 {
-						t_val.$(field.name) = f32(strconv.atof64(items[col]) or { f32(0.0) })
+						t_val.$(field.name) = f32(strconv.atof64(items[col], allow_overflow: true) or {
+							f32(0.0)
+						})
 					} $else $if field.typ is f64 {
-						t_val.$(field.name) = strconv.atof64(items[col]) or { f64(0.0) }
+						t_val.$(field.name) = strconv.atof64(items[col], allow_overflow: true) or {
+							f64(0.0)
+						}
 					} $else $if field.typ is bool {
 						t_val.$(field.name) = string_to_bool(items[col])
 					}

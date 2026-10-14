@@ -1,5 +1,7 @@
 module c
 
+import os
+import v.cmdexec
 import v.flat
 import v.types
 
@@ -11,7 +13,7 @@ fn formatted_enum_interp_c_expr(format string) string {
 	g.a = &a
 	g.tc = &tc
 	assert g.gen_formatted_string_interp_child_expr(value_id, types.Enum{
-		name: 'Color'
+		name_id: flat.source_type_id('Color')
 	}, format)
 	return g.sb.str()
 }
@@ -32,7 +34,7 @@ fn test_voidptr_function_value_detection_prefers_explicit_node_type() {
 	stale_id := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'callback'
-		typ:   'fn ()'
+		typ:   flat.source_type_id('fn ()')
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['gg.WindowReadbackId'] = []types.StructField{}
@@ -43,17 +45,80 @@ fn test_voidptr_function_value_detection_prefers_explicit_node_type() {
 	value_node := flat.Node{
 		kind:  .ident
 		value: 'request'
-		typ:   'gg.WindowReadbackId'
+		typ:   flat.source_type_id('gg.WindowReadbackId')
 	}
 	assert type_is_fn_value(g.usable_expr_type(stale_id))
 	assert !g.node_is_fn_value_for_voidptr(stale_id, value_node)
 }
 
-fn test_string_literal_table_has_internal_const_linkage() {
+fn test_cached_string_literal_table_preserves_explicit_initializers() {
 	mut g := FlatGen.new()
+	g.cache_stable_symbols = true
 	g.intern_string('literal')
 	g.string_literals()
 	assert g.sb.str() == 'static const string _str_0 = {"literal", 7, 1};\n\n'
+}
+
+fn test_string_literal_table_uses_declaration_macros_in_regular_and_split_c_output() {
+	for split in [false, true] {
+		mut g := FlatGen.new()
+		g.cache_split = split
+		g.intern_string('literal')
+		g.string_literals()
+		assert g.sb.str() == '_SL(_str_0, "literal", 7);\n\n'
+	}
+}
+
+fn test_cross_string_literal_declarations_preserve_byte_lengths() {
+	for ccompiler in ['clang', 'gcc', 'tcc', 'msvc'] {
+		mut g := FlatGen.new()
+		g.ccompiler = ccompiler
+		g.set_output_cross_c(true)
+		g.intern_string('a\x00b')
+		g.string_literals()
+		assert g.sb.str() == '_SL(_str_0, "a\\000b", 3);\n\n'
+	}
+}
+
+fn test_string_literal_ids_do_not_expand_c_struct_members() {
+	root := os.join_path(os.vtmp_dir(), 'string_literal_members_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.c.v')
+	binary := os.join_path(root, 'main')
+	os.write_file(source, 'module main
+#include "@VEXEROOT/vlib/v/gen/c/testdata/string_literal_members.h"
+@[typedef]
+struct C.LiteralMembers {
+mut:
+	_str_0 int
+	_str_1 int
+}
+fn main() {
+	mut value := C.LiteralMembers{_str_0: 7, _str_1: 11}
+	value._str_0 += 1
+	println("member \${value._str_0}, \${value._str_1}")
+}
+')!
+	mut modes := [['-keepc'], ['-nocache'], ['-nocache', '-no-parallel']]
+	$if bsd || linux {
+		modes << ['-nocache', '-parallel-cc']
+	}
+	for mode in modes {
+		mut args := ['-new-compiler', '-gc', 'none', '-cc', 'clang', '-no-retry-compilation', '-showcc',
+			'-o', binary]
+		args << mode
+		args << source
+		compiled := cmdexec.run(@VEXE, args)
+		assert compiled.exit_code == 0, '${mode}: ${compiled.output}'
+		if '-parallel-cc' in mode {
+			assert compiled.output.contains('unit_0.c'), compiled.output
+			assert compiled.output.contains('unit_1.c'), compiled.output
+		}
+		run := cmdexec.run(binary, [])
+		assert run.exit_code == 0, run.output
+		assert run.output == 'member 8, 11\n', run.output
+	}
 }
 
 fn test_character_interpolation_uses_rune_text() {
@@ -69,7 +134,7 @@ fn test_character_interpolation_unwraps_integer_alias() {
 	g.a = &a
 	g.tc = &tc
 	assert g.gen_formatted_string_interp_child_expr(value_id, types.Alias{
-		name:      'Code'
+		name_id:   flat.source_type_id('Code')
 		base_type: types.Type(types.u8_)
 	}, 'c')
 	assert g.sb.str() == 'rune__str((u32)(65))'
@@ -87,7 +152,7 @@ fn test_ierror_interpolation_uses_dynamic_message_dispatch() {
 	err_id := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'err'
-		typ:   'IError'
+		typ:   flat.source_type_id('IError')
 	})
 	a.children << err_id
 	interp_id := a.add_node(flat.Node{
@@ -97,7 +162,7 @@ fn test_ierror_interpolation_uses_dynamic_message_dispatch() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.register_synth_type(err_id, types.Type(types.Interface{
-		name: 'IError'
+		name_id: flat.source_type_id('IError')
 	}))
 	mut g := FlatGen.new()
 	g.a = &a
@@ -112,7 +177,7 @@ fn test_lowered_string_join_keeps_source_identifiers_out_of_its_temporary_namesp
 	part := a.add_node(flat.Node{
 		kind:  .ident
 		value: name
-		typ:   'string'
+		typ:   flat.source_type_id('string')
 	})
 	a.children << part
 	a.children << part
@@ -124,7 +189,7 @@ fn test_lowered_string_join_keeps_source_identifiers_out_of_its_temporary_namesp
 	g.gen_string_interp(flat.Node{
 		kind:           .string_interp
 		value:          '__v3_string_join'
-		typ:            'string'
+		typ:            flat.source_type_id('string')
 		children_count: 2
 	})
 	output := g.sb.str()

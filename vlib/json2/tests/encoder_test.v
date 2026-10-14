@@ -100,13 +100,13 @@ fn test_encoder_prettify() {
 		}
 	}
 	assert json.encode(obj, prettify: true, indent_string: '  ') == '{
-  "hello": "world",
   "arr": [
     "im a string",
     [
       "3rd level"
     ]
   ],
+  "hello": "world",
   "obj": {
     "map": "map inside a map"
   }
@@ -175,9 +175,9 @@ fn test_encode_value() {
 	manifest['from_source'] = json.Any('from_source')
 
 	assert json.encode(manifest, prettify: true, indent_string: '  ') == r'{
-  "server_path": "new_path",
+  "from_source": "from_source",
   "last_updated": "timestamp.format_ss()",
-  "from_source": "from_source"
+  "server_path": "new_path"
 }'
 }
 
@@ -197,12 +197,12 @@ fn test_encode_float() {
 	// remove ending `.0`
 	assert json.encode(1.0) == '1'
 
-	// TODO: better generate `1e10` instead of `1e+10`
-	assert json.encode(1.0e+10) == '1e+10'
-	assert json.encode(1.0e10) == '1e+10'
-	assert json.encode(1.e10) == '1e+10'
+	// Floats in [1e-6, 1e21) use decimal notation, like Go's encoding/json.
+	assert json.encode(1.0e+10) == '10000000000'
+	assert json.encode(1.0e10) == '10000000000'
+	assert json.encode(1.e10) == '10000000000'
 	assert json.encode(1.0e-10) == '1e-10'
-	assert json.encode(1.1e10) == '1.1e+10'
+	assert json.encode(1.1e10) == '11000000000'
 }
 
 struct PrettifyEmptyCollectionsFixture {

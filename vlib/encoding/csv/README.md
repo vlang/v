@@ -18,5 +18,21 @@ It prints:
 ['a', 'b', 'c']
 ```
 
-Quoted fields can span multiple lines. If the input ends before a quoted field closes,
-`read()` returns `encoding.csv: unterminated quoted field`, distinct from normal end of file.
+Unquoted fields cannot contain double quotes. Enclose a field containing quotes in double
+quotes and escape each embedded quote by doubling it; `read()` returns an error for a bare quote.
+After a closing quote, only the delimiter or the end of the record is allowed; trailing text
+and whitespace return an error.
+
+The writer preserves carriage returns and line feeds inside quoted fields by default. With
+`use_crlf: true`, it drops carriage returns and writes each line feed as CRLF, matching the
+record terminator. The reader normalizes CRLF to LF inside quoted fields.
+
+The final record does not need a trailing line ending, including when the document contains
+only one record. Empty documents and comment-only input contain no records.
+
+A quoted field must have a closing quote, including in the final record. Truncated quoted
+fields return `encoding.csv: unterminated quoted field`; clean end of input returns
+`encoding.csv: end of file`.
+
+Quoted fields can span multiple lines. Comment markers inside a quoted field are field data,
+including on the line containing its closing quote.

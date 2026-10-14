@@ -20,7 +20,7 @@ fn test_discard_unused_capacity_allows_arena_teardown() {
 fn test_discard_unused_capacity_preserves_live_nodes_and_later_appends() {
 	mut a := FlatAst.new()
 	// Dirty the full backing, then discard the former worker append regions.
-	a.nodes = []Node{len: 50_000, init: Node{ kind: .ident, value: 'live', typ: 'int' }}
+	a.nodes = []Node{len: 50_000, init: Node{ kind: .ident, value: 'live', typ: source_type_id('int') }}
 	a.children = []NodeId{len: 400_000, init: NodeId(17)}
 	a.nodes.trim(73)
 	a.children.trim(113)
@@ -35,7 +35,7 @@ fn test_discard_unused_capacity_preserves_live_nodes_and_later_appends() {
 	for node in a.nodes {
 		assert node.kind == .ident
 		assert node.value == 'live'
-		assert node.typ == 'int'
+		assert node.typ_text() == 'int'
 	}
 	for child in a.children {
 		assert child == NodeId(17)
@@ -88,14 +88,14 @@ fn test_node_uses_compact_header_and_uncommon_payload() {
 fn test_canonical_comptime_type_payload_survives_owned_cloning() {
 	node := Node{
 		kind:    .comptime_for
-		typ:     'config.Cfg'
+		typ:     source_type_id('config.Cfg')
 		payload: canonical_comptime_type_payload
 	}
 	assert !isnil(node.payload_ptr())
 	assert node.generic_constraints().len == 0
 	assert node.generic_params().len == 0
 	cloned := node.clone_owned()
-	assert cloned.typ == 'config.Cfg'
+	assert cloned.typ_text() == 'config.Cfg'
 	assert cloned.payload == canonical_comptime_type_payload
 	assert !isnil(cloned.payload_ptr())
 	assert cloned.generic_params().len == 0
@@ -108,7 +108,7 @@ fn test_canonical_comptime_type_payload_survives_owned_cloning() {
 fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 	node := Node{
 		value:          'value'
-		typ:            '[]string'
+		typ:            source_type_id('[]string')
 		payload:        node_payload(['T'])
 		children_start: 12
 		children_count: 3
@@ -119,7 +119,7 @@ fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 	}
 	cloned := node.clone_owned()
 	assert cloned.value == node.value
-	assert cloned.typ == node.typ
+	assert cloned.typ_text() == node.typ_text()
 	assert cloned.generic_params() == ['T']
 	assert cloned.children_start == node.children_start
 	assert cloned.children_count == node.children_count
@@ -177,7 +177,7 @@ fn test_text_intern_passes_detach_reused_source_storage() {
 		}
 		ast.add_node(Node{
 			value:   borrowed
-			typ:     borrowed
+			typ:     source_type_id(borrowed)
 			payload: node_payload_with_constraints([borrowed, 'U'], [borrowed, ''])
 		})
 		if i % 2 == 0 {
@@ -189,11 +189,12 @@ fn test_text_intern_passes_detach_reused_source_storage() {
 	for i, name in names {
 		node := ast.nodes[i]
 		assert node.value == name
-		assert node.typ == name
+		assert node.typ_text() == name
 		assert node.generic_params() == [name, 'U']
 		assert node.generic_constraints() == [name, '']
-		assert ast.text(TextId(node.type_text_id())) == name
-		assert node.value.str == node.typ.str
+		assert source_type_name(node.type_text_id()) == name
+		assert node.typ == source_type_id(name)
+		assert node.typ_text().str == source_type_name(source_type_id(name)).str
 	}
 }
 
@@ -210,7 +211,7 @@ fn test_text_intern_passes_can_share_probe_caches() {
 		}
 		ast.add_node(Node{
 			value: borrowed
-			typ:   borrowed
+			typ:   source_type_id(borrowed)
 		})
 		// One pair of caches serves every pass, as a parser's does for the files of a
 		// batch: a pass must not reuse what the one before it found at the same address.
@@ -219,9 +220,10 @@ fn test_text_intern_passes_can_share_probe_caches() {
 	for i, name in names {
 		node := ast.nodes[i]
 		assert node.value == name
-		assert node.typ == name
-		assert ast.text(TextId(node.type_text_id())) == name
-		assert node.value.str == node.typ.str
+		assert node.typ_text() == name
+		assert source_type_name(node.type_text_id()) == name
+		assert node.typ == source_type_id(name)
+		assert node.typ_text().str == source_type_name(source_type_id(name)).str
 		assert node.value.str != borrowed.str
 	}
 	assert ast.nodes[0].value.str == ast.nodes[3].value.str
@@ -328,4 +330,17 @@ fn test_text_lookup_preserves_bounds_checks() {
 	assert a.text(TextId(0)) == ''
 	assert a.text(id + 1) == ''
 	assert a.text(TextId(0xffffffff)) == ''
+}
+
+fn test_clone_node_flags_keeps_borrowed_map_iteration_keys() {
+	source := Node{
+		kind:  .for_in_stmt
+		flags: node_flag_borrowed_map_key | node_flag_skip_ownership_drops
+	}
+	assert source.borrows_map_key()
+	copy := Node{ kind: .for_in_stmt, flags: clone_node_flags(&source, false) }
+	assert copy.borrows_map_key()
+	assert !copy.skip_ownership_drops()
+	assert !Node{ kind: .assign, flags: node_flag_freed_assignment }.borrows_map_key()
+	assert !Node{ kind: .for_in_stmt }.borrows_map_key()
 }

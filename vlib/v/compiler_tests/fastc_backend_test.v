@@ -199,11 +199,6 @@ fn test_v_self_accepts_fastc_backend() {
 	assert v2_repeated_build.output.count('V self compiling') == 2, v2_repeated_build.output
 	assert os.is_executable(deep_self_output)
 
-	prod_build := cmdexec.run(@VEXE, ['self', '-silent', '-prod', '-b', 'fastc', '-o',
-		os.join_path(root, 'v prod')])
-	assert prod_build.exit_code != 0
-	assert prod_build.output.contains('does not support `-prod`'), prod_build.output
-
 	source := os.join_path(root, 'main.v')
 	write_fastc_test_source(source, 'module main\nfn main() { println(42) }\n')
 	program := os.join_path(root, 'program')
@@ -214,6 +209,61 @@ fn test_v_self_accepts_fastc_backend() {
 	assert run.output.trim_space() == '42'
 }
 
+fn test_fastc_self_prefix_builds_repeated_generations() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc self prefix ${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for directory in ['cmd', 'vlib', 'thirdparty'] {
+		os.symlink(os.join_path(fastc_backend_vroot, directory), os.join_path(root, directory)) or {
+			panic(err)
+		}
+	}
+	compiler := os.join_path(root, 'v')
+	os.cp(@VEXE, compiler) or { panic(err) }
+	build := run_with_v_environment(compiler, ['-b', 'fastc', 'self', 'x3'], '', compiler)
+	assert build.exit_code == 0, build.output
+	assert build.output.count('V self compiling') == 3, build.output
+	assert build.output.contains('-b fastc'), build.output
+	assert os.is_executable(compiler)
+	repeated := run_with_v_environment(compiler, ['-nocache', 'self', 'x2'], '', compiler)
+	assert repeated.exit_code == 0, repeated.output
+	assert repeated.output.count('V self compiling') == 2, repeated.output
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'fastc_self_prefix' }") or {
+		panic(err)
+	}
+	// The resulting compiler must also retain native inputs and split linker flags.
+	os.mkdir_all(os.join_path(root, 'native libraries')) or { panic(err) }
+	os.write_file(os.join_path(root, 'native.c'), 'int native_answer(void) { return 42; }\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'native.h'), 'int native_answer(void);\n') or {
+		panic(err)
+	}
+	source := os.join_path(root, 'main.c.v')
+	write_fastc_test_source(source, r'module main
+#flag "@VMODROOT/native.c"
+#flag -L "@VMODROOT/native libraries"
+#include "@VMODROOT/native.h"
+fn C.native_answer() int
+__global native_calls int
+fn main() {
+	native_calls = C.native_answer()
+	println(native_calls)
+}
+')
+	program := os.join_path(root, 'program')
+	compile := cmdexec.run(compiler, ['-nocache', '-enable-globals', '-o', program, root])
+	assert compile.exit_code == 0, compile.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42', run.output
+}
+
 fn test_fastc_backend_parses_directly_to_c_without_ast_fallback() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_backend_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -222,8 +272,9 @@ fn test_fastc_backend_parses_directly_to_c_without_ast_fallback() {
 		os.rmdir_all(root) or {}
 	}
 	v3_bin := os.join_path(root, 'v3')
-	build := cmdexec.run(@VEXE, ['-gc', 'none', '-path', '${fastc_backend_vlib_dir}|@vlib|@vmodules',
-		'-o', v3_bin, fastc_backend_v3_source])
+	// A standalone vlib/v/v.v compiler includes the fastc backend only when it is built with it.
+	build := cmdexec.run(@VEXE, ['-gc', 'none', '-compile-backend', 'fastc', '-path',
+		'${fastc_backend_vlib_dir}|@vlib|@vmodules', '-o', v3_bin, fastc_backend_v3_source])
 	assert build.exit_code == 0, build.output
 
 	collision_source := os.join_path(root, 'collision.v')
@@ -256,8 +307,9 @@ fn main() {
 }
 ")
 	valid_binary := os.join_path(root, 'valid')
-	valid_compile := cmdexec.run(v3_bin, ['-macos-v3-compat-c99', '-b', 'fastc', '-o', valid_binary,
-		valid_source])
+	// Step lines are printed only with -show-timings (see the driver's bench setup).
+	valid_compile := cmdexec.run(v3_bin, ['-macos-v3-compat-c99', '-show-timings', '-b', 'fastc',
+		'-o', valid_binary, valid_source])
 	assert valid_compile.exit_code == 0, valid_compile.output
 	assert valid_compile.output.contains('fastc parse+gen'), valid_compile.output
 	assert !valid_compile.output.contains(' check'), valid_compile.output
@@ -724,11 +776,6 @@ fn main() {
 
 	for invocation in [
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-prod', '-b', 'fastc', '-o', os.join_path(root, 'prod'),
-				valid_source]
-			expected: 'fastc parser does not support `-prod`'
-		},
-		UnsupportedFastCInvocation{
 			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', no_main_output, valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
@@ -747,20 +794,20 @@ fn main() {
 				os.join_path(root, 'warn_allocs'), valid_source]
 			expected: 'fastc parser does not support `-warn-about-allocs`'
 		},
-		UnsupportedFastCInvocation{
-			args:     ['-silent', '-skip-running', '-b', 'fastc', '-o',
-				os.join_path(root, 'discovered_test'), discovered_test_source]
-			expected: 'fastc parser does not support test/checker mode'
-		},
-		UnsupportedFastCInvocation{
-			args:     ['-silent', '-skip-running', '-b', 'fastc', '-o',
-				os.join_path(root, 'discovered_c_test'), discovered_c_test_source]
-			expected: 'fastc parser does not support test/checker mode'
-		},
 	] {
 		result := cmdexec.run(v3_bin, invocation.args)
 		assert result.exit_code != 0
 		assert result.output.contains(invocation.expected), result.output
+	}
+	// A test file builds as a program whose main runs its tests.
+	for discovered_source in [discovered_test_source, discovered_c_test_source] {
+		discovered_binary := discovered_source.all_before_last('.v') + '_program'
+		discovered_build := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', discovered_binary,
+			discovered_source])
+		assert discovered_build.exit_code == 0, discovered_build.output
+		discovered_run := cmdexec.run(discovered_binary, [])
+		assert discovered_run.exit_code == 1, discovered_run.output
+		assert discovered_run.output.contains('FAIL: test_must_run'), discovered_run.output
 	}
 }
 

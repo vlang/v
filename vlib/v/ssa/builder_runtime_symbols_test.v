@@ -5,6 +5,55 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_retained_c_symbols_do_not_select_unreachable_v_library_functions() ! {
+	dir := os.join_path(os.vtmp_dir(), 'ssa_c_symbols_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	math_path := os.join_path(dir, 'math.v')
+	os_path := os.join_path(dir, 'os.v')
+	main_path := os.join_path(dir, 'main.v')
+	os.write_file(math_path, 'module math
+fn C.floor(f64) f64
+fn C.ceil(f64) f64
+fn floor(x f64) f64 { return x }
+fn ceil(x f64) f64 { return x }
+fn copysign(x f64, y f64) f64 { return x }
+')!
+	os.write_file(os_path, 'module os
+fn C.getenv(&char) &char
+fn getenv(key string) string { return key }
+')!
+	os.write_file(main_path, 'module main
+fn floor() int { return 17 }
+fn main() {}
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([math_path, os_path, main_path])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	for explicit in [false, true] {
+		mut used := {
+			'floor':         true
+			'ceil':          true
+			'getenv':        true
+			'math.copysign': true
+		}
+		if explicit {
+			used['math.floor'] = true
+			used['math.ceil'] = true
+			used['os.getenv'] = true
+		}
+		m := build_with_used(a, used, unsafe { nil })
+		for name in ['floor', 'ceil', 'getenv'] {
+			assert m.funcs.any(it.name == 'C.${name}' && it.is_c_extern), name
+		}
+		assert m.funcs.any(it.name == 'floor' && !it.is_c_extern && it.blocks.len > 0)
+		assert m.funcs.any(it.name == 'math.copysign' && it.blocks.len > 0)
+		for name in ['math.floor', 'math.ceil', 'os.getenv'] {
+			assert m.funcs.any(it.name == name && it.blocks.len > 0) == explicit, name
+		}
+	}
+}
+
 fn assert_runtime_symbol_source_body(m &Module, name string, expected string) {
 	mut found := 0
 	for f in m.funcs {

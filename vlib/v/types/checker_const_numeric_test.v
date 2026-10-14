@@ -88,15 +88,15 @@ fn main() {}
 
 fn test_independent_numeric_const_initializer_rejects_type_annotation_dependencies() {
 	mut a := flat.FlatAst.new()
-	literal := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: 'Number' })
+	literal := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: flat.source_type_id('Number') })
 	assert !independent_numeric_const_initializer(&a, literal)
-	a.nodes[int(literal)].typ = 'u64'
+	a.nodes[int(literal)].typ = flat.source_type_id('u64')
 	assert independent_numeric_const_initializer(&a, literal)
 	children := a.begin_children()
 	a.add_child(literal)
 	array := a.add_node(flat.Node{
 		kind:           .array_literal
-		typ:            '[bound]u64'
+		typ:            flat.source_type_id('[bound]u64')
 		children_start: children
 		children_count: 1
 	})

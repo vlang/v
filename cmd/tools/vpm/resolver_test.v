@@ -75,6 +75,23 @@ fn joint_retracted_tag(repo string, tag string, ranges []string) ! {
 	joint_git(repo, ['tag', tag])
 }
 
+fn test_joint_dependency_count_is_verbose_and_works_offline() {
+	leaf := joint_repo('verbose_dependencies', 'leaf')!
+	joint_tag(leaf, 'leaf', 'v1.0.0', [])!
+	other := joint_repo('verbose_dependencies', 'other')!
+	joint_tag(other, 'other', 'v1.0.0', [])!
+	parent := joint_repo('verbose_dependencies', 'parent')!
+	joint_tag(parent, 'parent', 'v1.0.0', [leaf + '@^1', other + '@^1'])!
+	joint_project('verbose_dependencies', [parent + '@^1'])!
+	verbose := joint_cli(['install', '-v'])
+	assert verbose.contains('Found 2 dependencies'), verbose
+	assert verbose.contains(leaf + '@^1'), verbose
+	assert verbose.contains(other + '@^1'), verbose
+	assert !verbose.contains('Found 0 dependencies'), verbose
+	quiet := joint_cli(['install'])
+	assert !quiet.contains('Found 2 dependencies'), quiet
+}
+
 fn test_joint_retractions_filter_resolution_and_outdated() {
 	repo := joint_repo('retracted', 'shared')!
 	old := joint_tag(repo, 'shared', 'v1.0.0', [])!

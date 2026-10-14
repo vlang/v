@@ -6,8 +6,6 @@ $if !nofloat ? {
 	import strconv
 }
 
-#include <float.h>
-
 // str returns a string representation of the given `f64` in a suitable notation.
 @[inline]
 pub fn (x f64) str() string {

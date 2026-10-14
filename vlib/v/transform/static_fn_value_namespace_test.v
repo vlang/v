@@ -27,7 +27,7 @@ fn test_static_fn_value_fallback_rejects_local_root_without_checker_metadata() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.structs['staticfnref.MyStruct'] = StructInfo{}
-	t.fn_ret_types[name] = 'staticfnref.MyStruct'
+	t.fn_ret_types.set(name, 'staticfnref.MyStruct')
 	// No checker expression types or resolved function value entry, as in a
 	// cloned generic body. An unbound namespace still names the static fn.
 	assert tc.expr_type(value_id) == none
@@ -42,10 +42,10 @@ fn test_static_fn_value_fallback_rejects_local_root_without_checker_metadata() {
 	assert t.static_assoc_fn_name(type_id, 'new') == none
 	assert t.static_fn_value_name(value_id, a.node(value_id)) == none
 	t.unset_var_type(root)
-	tc.const_types[root] = types.Type(types.Struct{ name: 'Wrapper' })
+	tc.const_types[root] = types.Type(types.Struct{ name_id: flat.source_type_id('Wrapper') })
 	assert t.static_fn_value_name(value_id, a.node(value_id)) == none
 	tc.const_types.delete(root)
-	t.globals[root] = 'Wrapper'
+	t.globals.set(root, 'Wrapper')
 	assert t.static_fn_value_name(value_id, a.node(value_id)) == none
 	t.cur_file = 'namespace.v'
 	tc.file_imports[file_import_key(t.cur_file, root)] = 'staticfnref'

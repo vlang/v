@@ -4,6 +4,32 @@ import os
 import v.pref
 import v.workers
 
+fn test_comptime_guard_file_index_matches_scan_and_incomplete_index() {
+	root := os.join_path(os.vtmp_dir(), 'comptime_file_index_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	consumer := os.join_path(root, 'consumer.v')
+	dependency := os.join_path(root, 'dependency.v')
+	os.write_file(consumer, "module main\nimport dependency\n\$if dependency.flag { const chosen = 'yes' } \$else { const chosen = 'no' }\n\$if chosen == 'yes' { fn selected() {} } \$else { fn rejected() {} }\n")!
+	os.write_file(dependency, "module dependency\nconst flag = 'GET /users'.starts_with('GET')\n")!
+	for mode in 0 .. 3 {
+		mut p := Parser.new(pref.new_preferences())
+		p.parse_into(consumer)
+		p.parse_into(dependency)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		if mode == 1 {
+			p.a.file_node_ids.clear()
+		} else if mode == 2 {
+			p.a.file_node_ids.delete_last()
+			p.a.file_index_incomplete = true
+		}
+		assert p.resolve_comptime_string_declarations().len == 0
+		assert p.comptime_const_values[comptime_const_value_key('main', 'chosen')] == "'yes'"
+		assert p.a.nodes.filter(it.kind == .fn_decl).map(it.value) == ['selected']
+		assert p.resolve_comptime_string_declarations().len == 0
+	}
+}
+
 fn test_parallel_unresolved_match_guards_do_not_publish_arm_constants() {
 	root := os.join_path(os.vtmp_dir(), 'comptime_parallel_match_guards_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -140,7 +166,7 @@ fn test_comptime_metadata_headers_do_not_leave_orphan_selectors() {
 			assert loop.children_count == 2
 			assert p.a.child_node(&loop, 1).kind == .call
 		} else {
-			assert loop.typ == 'T'
+			assert loop.typ_text() == 'T'
 			assert loop.children_count == 1
 		}
 	}
@@ -207,7 +233,7 @@ fn test_static_string_conditions_select_declarations_before_collection() {
 	for node in p.a.nodes {
 		if node.kind == .fn_decl { names << node.value }
 		assert node.kind != .comptime_if
-		assert node.typ != 'Unavailable'
+		assert node.typ_text() != 'Unavailable'
 	}
 	assert names == ['selected', 'fallback'], names.str()
 }

@@ -30,6 +30,9 @@ pub fn log10(x f64) f64 {
 // log1p returns log(1+x).
 @[inline]
 pub fn log1p(x f64) f64 {
+	if is_inf(x, 1) {
+		return x
+	}
 	return C.log1p(x)
 }
 

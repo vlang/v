@@ -9,6 +9,46 @@ import os
 import time
 import crypto.sha256
 
+fn test_tcc_dependency_scan_tracks_native_helper_headers() {
+	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(tcc) {
+		return
+	}
+	if cmdexec.run(tcc, ['-v']).exit_code != 0 {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'tcc_native_dependencies_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'helper.h')
+	source := os.join_path(root, 'helper.c')
+	os.write_file(header, '#define HELPER_VALUE 42\n')!
+	os.write_file(source, '#include "helper.h"\nint helper(void) { return HELPER_VALUE; }\n')!
+	deps := c_object_dependencies(tcc, [], source)
+	assert !deps.used_fallback
+	assert source in deps.files
+	assert header in deps.files
+}
+
+fn test_macos_tcc_accepts_generated_c_objects_but_rejects_foreign_objects() {
+	root := os.join_path(os.vtmp_dir(), 'tcc_object_provenance_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'helper.c')
+	request := os.join_path(root, 'helper.o')
+	resolved := [os.join_path(root, 'cache', 'helper_content_hash.o')]
+	os.write_file(source, 'int helper(void) { return 42; }\n')!
+	assert !v3_tcc_link_has_incompatible_objects(resolved, [request], '/tools/tcc.exe')
+	assert v3_tcc_link_has_incompatible_objects(resolved, [request], 'clang')
+	assert v3_tcc_link_has_incompatible_objects(resolved, [], '/tools/tcc.exe')
+	os.write_file(request, 'prebuilt object')!
+	assert v3_tcc_link_has_incompatible_objects(resolved, [request], '/tools/tcc.exe')
+}
+
 fn native_inputs_of(a &flat.FlatAst, user_c_flags []string) cgen.CacheNativeInputs {
 	return cgen.cache_native_inputs(a, @VEXEROOT, pref.host_target(), user_c_flags, map[string]string{},
 		map[string]bool{})
@@ -21,7 +61,7 @@ fn test_user_native_inputs_require_a_compiler_dependency_manifest() {
 	for directive in ['include', 'insert', 'preinclude', 'postinclude'] {
 		mut included := flat.FlatAst.new()
 		included.add_val(.file, '/project/main.v')
-		included.add_node(flat.Node{ kind: .directive, value: directive, typ: '"native.h"' })
+		included.add_node(flat.Node{ kind: .directive, value: directive, typ: flat.source_type_id('"native.h"') })
 		assert native_inputs_of(&included, []string{}).user_supplied == '"native.h"'
 	}
 	for flags in [['-I', '/project/include'], ['-I/project/include'], ['-isystem/project/include'],
@@ -30,11 +70,11 @@ fn test_user_native_inputs_require_a_compiler_dependency_manifest() {
 	}
 	mut flagged := flat.FlatAst.new()
 	flagged.add_val(.file, '/project/main.v')
-	flagged.add_node(flat.Node{ kind: .directive, value: 'flag', typ: '-I /project/include' })
+	flagged.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id('-I /project/include') })
 	assert native_inputs_of(&flagged, []string{}).user_supplied == '/project/include'
 	mut packaged := flat.FlatAst.new()
 	packaged.add_val(.file, '/project/main.v')
-	packaged.add_node(flat.Node{ kind: .directive, value: 'pkgconfig', typ: 'sdl2' })
+	packaged.add_node(flat.Node{ kind: .directive, value: 'pkgconfig', typ: flat.source_type_id('sdl2') })
 	assert native_inputs_of(&packaged, []string{}).user_supplied == '#pkgconfig sdl2'
 }
 
@@ -42,14 +82,14 @@ fn test_shipped_and_system_native_inputs_keep_the_caches() {
 	helper := os.real_path(os.join_path(@VEXEROOT, 'vlib', 'v', 'flat', 'flat_payload_helpers.h'))
 	mut a := flat.FlatAst.new()
 	a.add_val(.file, '/project/main.v')
-	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: '<stddef.h>' })
-	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: '"@VEXEROOT/vlib/v/flat/flat_payload_helpers.h"' })
-	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: '-I @VEXEROOT/thirdparty/stdatomic/nix -lm -DV_NATIVE_TEST=1' })
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('<stddef.h>') })
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"@VEXEROOT/vlib/v/flat/flat_payload_helpers.h"') })
+	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id('-I @VEXEROOT/thirdparty/stdatomic/nix -lm -DV_NATIVE_TEST=1') })
 	// A module shipped with V may leave a header to the C compiler's search path.
 	a.add_val(.file, os.join_path(@VEXEROOT, 'vlib', 'os', 'os.c.v'))
 	a.add_val(.module_decl, 'os')
-	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: '"not_shipped_system_header.h"' })
-	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: '-I/opt/native/include' })
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"not_shipped_system_header.h"') })
+	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id('-I/opt/native/include') })
 	inputs := native_inputs_of(&a, ['-g', '-O2', '-D GC_THREADS=1', '-lm'])
 	assert inputs.user_supplied == ''
 	assert inputs.module_inputs['main'] == [helper]
@@ -157,7 +197,7 @@ fn test_native_dependency_list_uses_compiler_manifest_without_reading_headers() 
 	os.chmod(compiler, 0o755)!
 	mut a := flat.FlatAst.new()
 	a.add_val(.file, os.join_path(root, 'main.c.v'))
-	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: '"@DIR/native.h"' })
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"@DIR/native.h"') })
 	prefs := pref.new_preferences()
 	mut expected := [header, nested].map(os.real_path(it))
 	expected.sort()
@@ -189,7 +229,7 @@ fn test_native_input_closure_tracks_nested_shipped_headers() {
 			real_outer: true
 		}
 	}
-	closure := v3_native_input_closure(&inputs, vroot, true)
+	closure := v3_native_input_closure(&inputs, vroot, true, '')
 	// An edit to the nested header has to reach the crun identity and the caches.
 	assert closure.inputs['scratch'] == [real_inner, real_outer].sorted()
 	assert closure.unassignable == ''
@@ -197,25 +237,190 @@ fn test_native_input_closure_tracks_nested_shipped_headers() {
 	// `#  include "gc_pthread_redirects.h"`.
 	for directive in ['# include', '#\tinclude', '#  include', '  #include'] {
 		os.write_file(outer, '${directive} "inner.h"\nstatic inline int outer_value(void) { return inner_value(); }\n')!
-		spaced := v3_native_input_closure(&inputs, vroot, true)
+		spaced := v3_native_input_closure(&inputs, vroot, true, '')
 		assert spaced.inputs['scratch'] == [real_inner, real_outer].sorted(), directive
 		assert spaced.unassignable == '', directive
 		os.write_file(outer, '${directive} "missing.h"\n')!
-		assert v3_native_input_closure(&inputs, vroot, true).unassignable == real_outer, directive
+		assert v3_native_input_closure(&inputs, vroot, true, '').unassignable == real_outer, directive
 	}
 	os.write_file(outer, '#include <stddef.h>\n#include "inner.h"\nstatic inline int outer_value(void) { return inner_value(); }\n')!
 	// A native source defines symbols that every cached object would duplicate.
 	real_source := os.real_path(source)
 	inputs.module_inputs['scratch'] = [real_source]
 	inputs.native_paths[real_source] = true
-	with_source := v3_native_input_closure(&inputs, vroot, true)
+	with_source := v3_native_input_closure(&inputs, vroot, true, '')
 	assert with_source.unassignable == real_source
 	assert real_inner in with_source.inputs['scratch']
 	// crun only needs the closure, not the replication check.
-	assert v3_native_input_closure(&inputs, vroot, false).unassignable == ''
+	assert v3_native_input_closure(&inputs, vroot, false, '').unassignable == ''
 	inputs.module_inputs['scratch'] = [real_outer]
 	inputs.implementation_define = 'STB_IMAGE_IMPLEMENTATION'
-	assert v3_native_input_closure(&inputs, vroot, true).unassignable == '#define STB_IMAGE_IMPLEMENTATION'
+	assert v3_native_input_closure(&inputs, vroot, true, '').unassignable == '#define STB_IMAGE_IMPLEMENTATION'
+}
+
+fn test_native_input_closure_is_recorded_until_a_header_changes() ! {
+	vroot := os.join_path(os.vtmp_dir(), 'v3_native_closure_record_${os.getpid()}')
+	os.rmdir_all(vroot) or {}
+	// Only the headers that V ships are followed: those below `vlib`, among others.
+	scratch := os.join_path(vroot, 'vlib', 'scratch')
+	os.mkdir_all(scratch)!
+	defer {
+		os.rmdir_all(vroot) or {}
+	}
+	records := os.join_path(vroot, 'records')
+	outer := os.join_path(scratch, 'outer.h')
+	inner := os.join_path(scratch, 'inner.h')
+	os.write_file(outer, '#include "inner.h"\nstatic inline int outer_value(void) { return inner_value(); }\n')!
+	os.write_file(inner, '#pragma once\nstatic inline int inner_value(void) { return 101; }\n')!
+	real_outer := os.real_path(outer)
+	real_inner := os.real_path(inner)
+	inputs := cgen.CacheNativeInputs{
+		module_inputs: {
+			'scratch': [real_outer]
+		}
+		native_paths:  {
+			real_outer: true
+		}
+	}
+	first := v3_native_input_closure(&inputs, vroot, true, records)
+	assert first.inputs['scratch'] == [real_inner, real_outer].sorted()
+	assert first.unassignable == ''
+	if modulecache.file_metadata_signature(real_inner) == '' {
+		// This file system cannot tell an edit by a file's metadata yet, so the
+		// expansion is not recorded.
+		return
+	}
+	assert (os.ls(records) or { []string{} }).len == 1
+	// The record answers for the files as they were.
+	second := v3_native_input_closure(&inputs, vroot, true, records)
+	assert second.inputs['scratch'] == first.inputs['scratch']
+	assert second.unassignable == ''
+	// A header that now defines storage is not replicable any more, and the record
+	// of its former text must not say otherwise.
+	os.write_file(inner, '#pragma once\nint inner_counter = 0;\nstatic inline int inner_value(void) { return inner_counter; }\n')!
+	changed := v3_native_input_closure(&inputs, vroot, true, records)
+	assert changed.unassignable == real_outer
+	// Without a record directory the answer is the same, and nothing is written.
+	recorded := (os.ls(records) or { []string{} }).len
+	assert v3_native_input_closure(&inputs, vroot, true, '').unassignable == real_outer
+	assert (os.ls(records) or { []string{} }).len == recorded
+}
+
+// An include directive names the first file that its lookup finds. A file that
+// appears earlier in that lookup changes what the header includes, without a
+// change to the header or to the file that it included until then.
+fn test_recorded_native_input_closure_follows_a_new_include_candidate() ! {
+	vroot := os.join_path(os.vtmp_dir(), 'v3_native_closure_candidates_${os.getpid()}')
+	os.rmdir_all(vroot) or {}
+	scratch := os.join_path(vroot, 'vlib', 'scratch')
+	shared := os.join_path(vroot, 'vlib', 'shared')
+	os.mkdir_all(scratch)!
+	os.mkdir_all(shared)!
+	defer {
+		os.rmdir_all(vroot) or {}
+	}
+	records := os.join_path(vroot, 'records')
+	outer := os.join_path(scratch, 'outer.h')
+	shared_inner := os.join_path(shared, 'inner.h')
+	os.write_file(outer, '#include <stddef.h>\n#include "inner.h"\nstatic inline int outer_value(void) { return inner_value(); }\n')!
+	os.write_file(shared_inner, '#pragma once\nstatic inline int inner_value(void) { return 101; }\n')!
+	real_outer := os.real_path(outer)
+	real_shared_inner := os.real_path(shared_inner)
+	inputs := cgen.CacheNativeInputs{
+		module_inputs: {
+			'scratch': [real_outer]
+		}
+		native_paths:  {
+			real_outer: true
+		}
+		include_dirs:  [os.real_path(shared)]
+	}
+	first := v3_native_input_closure(&inputs, vroot, true, records)
+	assert first.inputs['scratch'] == [real_outer, real_shared_inner].sorted()
+	assert first.unassignable == ''
+	if modulecache.file_metadata_signature(real_shared_inner) == '' {
+		return
+	}
+	assert (os.ls(records) or { []string{} }).len == 1
+	assert v3_native_input_closure(&inputs, vroot, true, records).inputs['scratch'] == first.inputs['scratch']
+	// The same name beside the including header wins the lookup of a quoted
+	// include, and this one keeps storage, so it cannot be replicated.
+	beside_inner := os.join_path(scratch, 'inner.h')
+	os.write_file(beside_inner, '#pragma once\nint inner_counter = 0;\nstatic inline int inner_value(void) { return inner_counter; }\n')!
+	real_beside_inner := os.real_path(beside_inner)
+	changed := v3_native_input_closure(&inputs, vroot, true, records)
+	assert changed.inputs['scratch'] == [real_beside_inner, real_outer].sorted()
+	assert changed.unassignable == real_outer
+	// A system header that the include directories did not hold is one that the
+	// C compiler finds; once V ships a file of that name there, it is expanded.
+	os.rm(beside_inner)!
+	assert v3_native_input_closure(&inputs, vroot, true, records).inputs['scratch'] == first.inputs['scratch']
+	shipped_stddef := os.join_path(shared, 'stddef.h')
+	os.write_file(shipped_stddef, '#pragma once\ntypedef unsigned long size_t;\n')!
+	with_stddef := v3_native_input_closure(&inputs, vroot, true, records)
+	assert os.real_path(shipped_stddef) in with_stddef.inputs['scratch']
+}
+
+// An include directive can find a symbolic link. Pointing the link at another
+// header changes what is included, while the header it pointed at until then is
+// still there, unchanged.
+fn test_recorded_native_input_closure_follows_a_retargeted_symbolic_link() ! {
+	$if windows {
+		return
+	}
+	vroot := os.join_path(os.vtmp_dir(), 'v3_native_closure_links_${os.getpid()}')
+	os.rmdir_all(vroot) or {}
+	scratch := os.join_path(vroot, 'vlib', 'scratch')
+	shared := os.join_path(vroot, 'vlib', 'shared')
+	outside := os.join_path(vroot, 'outside')
+	os.mkdir_all(scratch)!
+	os.mkdir_all(shared)!
+	os.mkdir_all(outside)!
+	defer {
+		os.rmdir_all(vroot) or {}
+	}
+	records := os.join_path(vroot, 'records')
+	outer := os.join_path(scratch, 'outer.h')
+	first := os.join_path(shared, 'first.h')
+	second := os.join_path(shared, 'second.h')
+	link := os.join_path(scratch, 'inner.h')
+	os.write_file(outer, '#include "inner.h"\n#include <extra.h>\nstatic inline int outer_value(void) { return inner_value(); }\n')!
+	os.write_file(first, '#pragma once\nstatic inline int inner_value(void) { return 101; }\n')!
+	os.write_file(second, '#pragma once\nstatic inline int inner_value(void) { return 202; }\n')!
+	os.symlink(first, link)!
+	// A header outside of what V ships is left to the C compiler.
+	extra := os.join_path(outside, 'extra.h')
+	os.write_file(extra, '#pragma once\n')!
+	real_outer := os.real_path(outer)
+	real_first := os.real_path(first)
+	real_second := os.real_path(second)
+	inputs := cgen.CacheNativeInputs{
+		module_inputs: {
+			'scratch': [real_outer]
+		}
+		native_paths:  {
+			real_outer: true
+		}
+		include_dirs:  [os.real_path(outside)]
+	}
+	before := v3_native_input_closure(&inputs, vroot, true, records)
+	assert before.inputs['scratch'] == [real_first, real_outer].sorted()
+	if modulecache.file_metadata_signature(real_first) == '' {
+		return
+	}
+	assert (os.ls(records) or { []string{} }).len == 1
+	assert v3_native_input_closure(&inputs, vroot, true, records).inputs['scratch'] == before.inputs['scratch']
+	os.rm(link)!
+	os.symlink(second, link)!
+	retargeted := v3_native_input_closure(&inputs, vroot, true, records)
+	assert retargeted.inputs['scratch'] == [real_outer, real_second].sorted()
+	assert v3_native_input_closure(&inputs, vroot, true, records).inputs['scratch'] == retargeted.inputs['scratch']
+	// The header that the C compiler was left with becomes a link to one that V
+	// ships: it is expanded from now on.
+	os.rm(extra)!
+	os.symlink(first, extra)!
+	shipped := v3_native_input_closure(&inputs, vroot, true, records)
+	assert shipped.inputs['scratch'] == [real_first, real_outer, real_second].sorted()
 }
 
 fn test_cached_native_owner_is_limited_to_the_builtin_signal_header() ! {
@@ -242,7 +447,7 @@ fn test_cached_native_owner_is_limited_to_the_builtin_signal_header() ! {
 			header: true
 		}
 	}
-	closure := v3_native_input_closure(&inputs, @VEXEROOT, true)
+	closure := v3_native_input_closure(&inputs, @VEXEROOT, true, '')
 	assert closure.unassignable == ''
 	assert header in closure.inputs['builtin']
 	mut state := V3ModuleCacheState{}
@@ -265,7 +470,7 @@ fn test_cached_native_owner_is_limited_to_the_builtin_signal_header() ! {
 			real_other: true
 		}
 	}
-	assert v3_native_input_closure(&other_inputs, root, true).unassignable == real_other
+	assert v3_native_input_closure(&other_inputs, root, true, '').unassignable == real_other
 }
 
 fn test_cached_signal_header_has_one_owner_with_shared_program_declarations() ! {
@@ -291,7 +496,7 @@ fn test_cached_signal_header_has_one_owner_with_shared_program_declarations() ! 
 			false))!
 		os.write_file(declarations_path, tcc_declarations)!
 		os.write_file(body_path, body)!
-		os.write_file(incremental_path, v3_incremental_main_source(declarations_path, body_path))!
+		os.write_file(incremental_path, v3_incremental_main_source(declarations_path, tcc_declarations, body))!
 		// A cached combined source may later be split for parallel compilation.
 		// The owner prelude copied into its declaration header cannot promote a body unit.
 		parallel_header, safe := v3_parallel_c_declaration_header(owner_source, []string{},
@@ -348,4 +553,28 @@ fn test_only_declaration_headers_are_replicated_into_cached_objects() {
 	assert !modulecache.c_source_is_replicable('static int foo_counters[FOO(1)];\n')
 	assert modulecache.c_source_is_replicable('static int foo_helper(int x);\n')
 	assert modulecache.c_source_is_replicable('static int foo_helper(int a[sizeof(int)]);\n')
+}
+
+fn test_incremental_program_keeps_one_owner_for_cached_and_new_literals() ! {
+	root := os.join_path(os.vtmp_dir(), 'incremental_literal_owner_${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	declarations := 'typedef struct { const char* str; int len; int literal; } string;\nstatic const string _v3_lit_cached = {"cached", 6, 1};\nstatic inline int cached_length(void) { return _v3_lit_cached.len; }\n'
+	declarations_path := os.join_path(root, 'declarations.h')
+	os.write_file(declarations_path, declarations)!
+	for length in [3, 7] {
+		// Inline prefix code must keep its storage before the body, while each
+		// edited body owns its new literal. The cached source remains reusable.
+		body := 'static const string _v3_lit_cached = {"cached", 6, 1};\nstatic const string _v3_lit_new = {"new", ${length}, 1};\nint main(void) { return cached_length() != 6 || _v3_lit_cached.len != 6 || _v3_lit_new.len != ${length}; }\n'
+		combined := v3_incremental_main_source(declarations_path, declarations, body)
+		assert !combined.contains('static const string _v3_lit_cached =')
+		assert combined.contains('static const string _v3_lit_new =')
+		assert os.read_file(declarations_path)! == declarations
+		source := os.join_path(root, 'main.c')
+		binary := os.join_path(root, 'main')
+		os.write_file(source, combined)!
+		compiled := cmdexec.run('cc', ['-std=c11', '-Werror', '-o', binary, source])
+		assert compiled.exit_code == 0, compiled.output
+		assert cmdexec.run(binary, []string{}).exit_code == 0
+	}
 }
