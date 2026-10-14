@@ -312,7 +312,7 @@ fn test_selfhost_grouped_keyword_parameter_names_are_collected() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	mut functions := map[string]FastcFunctionSignature{}
-	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, []int{}, map[string]bool{}, map[string]string{}, map[string]bool{}, mut functions) or { panic(err) }
+	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, []int{}, map[string]bool{}, flat.TypeTextBindings{}, map[string]bool{}, mut functions) or { panic(err) }
 	signature := functions['pair'] or { panic('missing pair signature') }
 	assert signature.parameter_types_text() == ['int', 'int']
 }
@@ -7222,13 +7222,13 @@ fn main() {}
 fn test_selfhost_composite_ordering_moves_one_line_interfaces_before_fields() {
 	source := 'struct Holder {\n\tWriter wr;\n};\n\nstruct Writer { void *_object; };\n'
 	ordered := fastc_order_c_composite_definitions(source, {
-		'Holder': {
+		'Holder': flat.TypeTextBindings.from_names({
 			'wr': 'Writer'
-		}
+		})
 	}, {
 		fastc_c_declared_type_name(fastc_type_key('main', 'Holder')): true
 		fastc_c_declared_type_name(fastc_type_key('main', 'Writer')): true
-	}, map[string]string{})
+	}, flat.TypeTextBindings{})
 	writer_index := ordered.index('struct Writer {') or { -1 }
 	holder_index := ordered.index('struct Holder {') or { -1 }
 	assert writer_index >= 0 && writer_index < holder_index, ordered
@@ -7237,15 +7237,15 @@ fn test_selfhost_composite_ordering_moves_one_line_interfaces_before_fields() {
 fn test_selfhost_composite_ordering_resolves_by_value_aliases() {
 	source := 'typedef Db DbAlias;\nstruct App {\n\tDbAlias db;\n};\n\nstruct Db { int id; };\n'
 	ordered := fastc_order_c_composite_definitions(source, {
-		'App': {
+		'App': flat.TypeTextBindings.from_names({
 			'db': 'DbAlias'
-		}
+		})
 	}, {
 		'App': true
 		'Db':  true
-	}, {
+	}, flat.TypeTextBindings.from_names({
 		'DbAlias': 'Db'
-	})
+	}))
 	db_index := ordered.index('struct Db {') or { -1 }
 	app_index := ordered.index('struct App {') or { -1 }
 	assert db_index >= 0 && db_index < app_index, ordered
@@ -7577,9 +7577,9 @@ fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() 
 		prefs:         prefs
 		s:             scanner.new_scanner(prefs, .normal)
 		struct_fields: {
-			'array': {
+			'array': flat.TypeTextBindings.from_names({
 				'len': 'int'
-			}
+			})
 		}
 	}
 	mut tokens := [
