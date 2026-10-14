@@ -42,7 +42,7 @@ pub fn decode_rune_at(s string, index int) (rune, int) {
 	} else {
 		return replacement_rune, 1
 	}
-	if index + ch_len > s.len {
+	if ch_len > s.len - index {
 		return replacement_rune, 1
 	}
 	b1 := s[index + 1]
