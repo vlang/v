@@ -1054,8 +1054,6 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		return error('fastc parser does not support function type in ${path}')
 	}
 	tok = look.scan()
-	types_only := fastc_parameters_are_types_only(look, tok, path, module_name, imports,
-		declared_types, allow_short_placeholders)
 	mut parameter_types := []string{}
 	for tok != .rpar {
 		if tok in [.comma, .semicolon] {
@@ -1067,7 +1065,8 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 			parameter_is_mut = true
 			tok = look.scan()
 		}
-		if !types_only {
+		if !fastc_parameter_is_type_only(look, tok, path, module_name, imports, declared_types,
+			allow_short_placeholders) {
 			tok = look.scan()
 		}
 		parameter_type, next_token := fastc_scan_type(mut look, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
@@ -1097,28 +1096,13 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 	}
 }
 
-// fastc_parameters_are_types_only reports whether a function type's parameter list, starting
-// at `first`, gives types without names (`fn (int, map[string]int, chan T)`): every entry is one
-// whole type, ended by `,` or `)`. A list with names (`fn (x int)`) is not.
-fn fastc_parameters_are_types_only(scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) bool {
+// fastc_parameter_is_type_only recognizes one whole unnamed parameter type ending at a
+// separator. Parameters are classified separately because function types can mix names and types.
+fn fastc_parameter_is_type_only(scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) bool {
 	mut look := scan
-	mut tok := first
-	for tok != .rpar {
-		if tok in [.comma, .semicolon] {
-			tok = look.scan()
-			continue
-		}
-		if tok == .key_mut {
-			tok = look.scan()
-		}
-		_, next_token := fastc_scan_type(mut look, tok, path, module_name, imports, declared_types,
-			allow_short_placeholders) or { return false }
-		if next_token !in [.comma, .semicolon, .rpar] {
-			return false
-		}
-		tok = next_token
-	}
-	return true
+	_, next_token := fastc_scan_type(mut look, first, path, module_name, imports, declared_types,
+		allow_short_placeholders) or { return false }
+	return next_token in [.comma, .semicolon, .rpar]
 }
 
 fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) !(string, token.Token) {

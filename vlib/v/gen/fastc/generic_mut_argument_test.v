@@ -506,3 +506,43 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '3\n-7\n-7\n11'
 }
+
+fn test_fastc_function_pointer_prototypes_allow_mixed_parameter_names() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_generic_fixture('mixed_callback_parameters', 'module main
+
+fn add_float(left f32, right f32) f32 { return left + right }
+fn add_int(left int, right int) int { return left + right }
+fn unnamed_first(cb fn (f32, right f32) f32) f32 { return cb(3.0, 4.0) }
+fn named_first(cb fn (left f32, f32) f32) f32 { return cb(3.0, 4.0) }
+
+struct Ops {
+	op fn (int, right int) int = unsafe { nil }
+	reverse fn (left int, int) int = unsafe { nil }
+}
+
+fn main() {
+	println(int(unnamed_first(add_float) * 10))
+	println(int(named_first(add_float) * 10))
+	ops := Ops{op: add_int, reverse: add_int}
+	left_result := ops.op(3, 4)
+	right_result := ops.reverse(3, 4)
+	println(left_result)
+	println(right_result)
+}
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for backend in ['c', 'fastc'] {
+		program := os.join_path(root, 'program_' + backend)
+		build := cmdexec.run(@VEXE, ['-new-compiler', '-b', backend, '-gc', 'none', '-nocache',
+			'-o', program, root])
+		assert build.exit_code == 0, '${backend}: ${build.output}'
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '70\n70\n7\n7', '${backend}: ${run.output}'
+	}
+}

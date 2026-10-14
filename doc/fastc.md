@@ -53,6 +53,7 @@ Directory entries select the full builtin runtime, including V strings, maps, er
 garbage collection. Generic calls infer their concrete type from a mutable variable argument.
 On glibc Linux, thread IDs use the system call without requiring glibc 2.30. Generic
 parameter shadowing ends with its function and does not affect later constants.
+Function-pointer fields and parameters support mixed named and unnamed parameter types.
 If a call reaches a generic placeholder without a concrete instance, it reports the function
 and exits with an error instead of returning a zero value.
 This path supports standard-library imports such as `os` and `toml`,
