@@ -633,3 +633,41 @@ pub fn (value Struct) name() string {
 pub fn (value SumType) name() string {
 	return flat.source_type_name(value.name_id)
 }
+
+// source_type_id returns an interned spelling, reusing nominal type identities directly.
+pub fn (t Type) source_type_id() u32 {
+	return match t {
+		Struct, Alias, Enum, Interface, SumType { t.name_id }
+		else { flat.source_type_id(t.name()) }
+	}
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Struct) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Alias) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Enum) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value Interface) source_type_id() u32 {
+	return value.name_id
+}
+
+// source_type_id returns this nominal type's interned spelling.
+@[inline]
+pub fn (value SumType) source_type_id() u32 {
+	return value.name_id
+}

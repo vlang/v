@@ -75,7 +75,7 @@ fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant string, is_re
 	}
 	payload := t.make_selector_op(value, flat.named_variant_payload_field, payload_name, .dot)
 	mut text := t.wrap_string_conversion(payload, payload_name)
-	clean_payload := t.normalize_type_alias(payload_name)
+	clean_payload := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(payload_name)))
 	if clean_payload == 'string' {
 		text = t.string_plus(t.string_plus(t.make_string_literal("'"), text), t.make_string_literal("'"))
 	} else if clean_payload == 'rune' {

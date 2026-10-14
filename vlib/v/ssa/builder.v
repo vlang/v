@@ -11978,7 +11978,7 @@ fn (mut b Builder) build_indirect_call(id flat.NodeId, node flat.Node, callee_id
 		})
 		if callee_type !is types.FnType {
 			// Transformed local callees can retain their type only on the binding.
-			callee_type = types.unalias_type(b.tc.parse_type(b.checked_expr_type_name(callee_id)))
+			callee_type = types.unalias_type(b.tc.parse_type(flat.source_type_id(b.checked_expr_type_name(callee_id))))
 		}
 		if callee_type is types.FnType {
 			for param_type in callee_type.params {

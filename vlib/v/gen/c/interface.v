@@ -13,7 +13,7 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 	g.writeln('\tu32 _pointer_variant_is_owned;')
 	g.writeln('\tunion {')
 	for v in variants {
-		variant_type := select_receive_unalias_type(g.tc.parse_canonical_type(v))
+		variant_type := select_receive_unalias_type(g.tc.parse_canonical_type(flat.source_type_id(v)))
 		ct := if variant_type is types.Pointer {
 			g.value_c_type(variant_type.base_type)
 		} else {
@@ -444,7 +444,7 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 // first component can be an import alias rather than part of a canonical name.
 fn (g &FlatGen) resolve_source_sum_name(sum_name string, file string) string {
 	if sum_name.contains('.') {
-		canonical_name := g.canonical_import_alias_type_text_in_file(sum_name, file)
+		canonical_name := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(sum_name), file))
 		if canonical_name != sum_name {
 			if resolved := g.sum_name_lookup[canonical_name] {
 				return flat.source_type_name(resolved)
@@ -765,10 +765,10 @@ fn (mut g FlatGen) register_specialized_interface_applications() {
 			// Preserve the concrete source application from specialized AST signatures
 			// before semantic parsing erases it, so its dispatch wrapper is emitted.
 			g.collect_specialized_interface_application_text(node.typ_text(), mut applications)
-			g.collect_specialized_interface_application(g.tc.parse_type(node.typ_text()), mut applications)
+			g.collect_specialized_interface_application(g.tc.parse_type(node.typ), mut applications)
 		}
 		if node.kind in [.cast_expr, .struct_init] && node.value.contains('[') {
-			g.collect_specialized_interface_application(g.tc.parse_type(node.value), mut
+			g.collect_specialized_interface_application(g.tc.parse_type(flat.source_type_id(node.value)), mut
 				applications)
 		}
 		if node.kind != .call || node.children_count == 0 {
@@ -784,7 +784,7 @@ fn (mut g FlatGen) register_specialized_interface_applications() {
 		}
 		application := g.specialized_interface_name_for_method_call(node, receiver_type.name(),
 			callee.value)
-		g.collect_specialized_interface_application(g.tc.parse_type(application), mut applications)
+		g.collect_specialized_interface_application(g.tc.parse_type(flat.source_type_id(application)), mut applications)
 	}
 	if applications.len > 0 {
 		// Declaration-type collection can run on a by-value generator fork. Detach
@@ -1060,7 +1060,7 @@ fn (g &FlatGen) ierror_method_signature_matches(name string, concrete string, me
 		return false
 	}
 	receiver := g.ierror_clean_type(params[0])
-	expected := g.ierror_clean_type(g.tc.parse_canonical_type(concrete))
+	expected := g.ierror_clean_type(g.tc.parse_canonical_type(flat.source_type_id(concrete)))
 	return g.type_names_match(receiver, expected)
 }
 
@@ -1122,7 +1122,7 @@ fn (g &FlatGen) ierror_promoted_method_call(concrete string, method string, mut 
 }
 
 fn (g &FlatGen) ierror_method_receiver_expr(concrete string, path []types.StructField, recv_is_ptr bool) string {
-	concrete_ct := g.tc.c_type(g.tc.parse_canonical_type(concrete))
+	concrete_ct := g.tc.c_type(g.tc.parse_canonical_type(flat.source_type_id(concrete)))
 	object := '(${concrete_ct}*)i->_object'
 	if path.len == 0 {
 		return if recv_is_ptr { object } else { '*${object}' }
@@ -1216,7 +1216,7 @@ fn (mut g FlatGen) ierror_from_expr_string(id flat.NodeId) ?string {
 		// A concrete error returned from a result function can carry the surrounding
 		// result type as its node annotation. The literal name still identifies the
 		// concrete IError implementation that must be boxed.
-		actual = g.tc.parse_type(node.value)
+		actual = g.tc.parse_type(flat.source_type_id(node.value))
 	} else if node.kind == .ident {
 		if param_type := g.current_param_type(node.value) {
 			actual = param_type
@@ -1236,7 +1236,7 @@ fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual type
 		return none
 	}
 	expr := g.expr_to_string(id)
-	concrete_ct := g.tc.c_type(g.tc.parse_canonical_type(concrete))
+	concrete_ct := g.tc.c_type(g.tc.parse_canonical_type(flat.source_type_id(concrete)))
 	pointer_object_is_owned := actual is types.Pointer
 		&& g.ierror_pointer_payload_creates_owned_object(node)
 	object := if actual is types.Pointer {
@@ -2419,7 +2419,7 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 				continue
 			}
 			mut obj_type := if field.typ_text().len > 0 {
-				g.tc.parse_type(field.typ_text())
+				g.tc.parse_type(field.typ)
 			} else {
 				g.tc.resolve_type(g.a.child(field, 0))
 			}
@@ -2537,13 +2537,13 @@ fn (g &FlatGen) interface_storage_c_type(typ types.Type) string {
 
 fn (g &FlatGen) interface_concrete_type(concrete string) types.Type {
 	if types.is_builtin_type_name(concrete) {
-		return g.tc.parse_type(concrete)
+		return g.tc.parse_type(flat.source_type_id(concrete))
 	}
 	for candidate in [concrete, g.tc.qualify_name(concrete)] {
 		if g.tc.type_aliases.contains(candidate) {
 			return types.Type(types.Alias{
 				name_id:   flat.source_type_id(candidate)
-				base_type: g.tc.parse_type(g.tc.type_aliases.value(candidate))
+				base_type: g.tc.parse_type(g.tc.type_aliases.value_id(candidate))
 			})
 		}
 		if candidate in g.tc.structs {
@@ -2567,7 +2567,7 @@ fn (g &FlatGen) interface_concrete_type(concrete string) types.Type {
 			})
 		}
 	}
-	return g.tc.parse_type(concrete)
+	return g.tc.parse_type(flat.source_type_id(concrete))
 }
 
 // short_module_type_texts_equal compares the module-stripped spellings without
@@ -2945,7 +2945,7 @@ fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, m
 	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${fallback}; switch (${tmp}.typ) {'
 	for variant in variants {
 		resolved := g.resolve_variant(sum_name, variant)
-		variant_type := g.tc.parse_type(resolved)
+		variant_type := g.tc.parse_type(flat.source_type_id(resolved))
 		idx := g.sum_type_index(sum_name, resolved)
 		field := g.sum_field_name(resolved)
 		value_expr := if variant_type is types.Pointer {

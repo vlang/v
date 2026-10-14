@@ -158,11 +158,11 @@ fn (t &Transformer) comptime_for_value_source_type(raw string) ?string {
 }
 
 fn (t &Transformer) comptime_for_var_source_type(name string) ?string {
-	raw_typ := trimmed_transform_text(t.raw_var_type(name))
+	raw_typ := trimmed_transform_text(flat.source_type_name(t.raw_var_type(name)))
 	if raw_typ.len > 0 {
 		return t.comptime_for_value_type_base(raw_typ)
 	}
-	typ := trimmed_transform_text(t.var_type(name))
+	typ := trimmed_transform_text(flat.source_type_name(t.var_type(name)))
 	if typ.len > 0 {
 		return t.comptime_for_value_type_base(typ)
 	}
@@ -442,7 +442,7 @@ fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
 	}
 	// Most names are not aliases. Settle that before allocating the cycle set or
 	// another trimmed copy.
-	normalized := t.normalize_type_alias(typ)
+	normalized := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ)))
 	if trimmed_text_equals(normalized, typ) {
 		return typ
 	}
@@ -451,7 +451,7 @@ fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
 	typ = trimmed_transform_text(normalized)
 	for typ.len > 0 && typ !in seen {
 		seen[typ] = true
-		next := trimmed_transform_text(t.normalize_type_alias(typ))
+		next := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ))))
 		if next == typ {
 			break
 		}
@@ -495,7 +495,7 @@ fn (t &Transformer) comptime_typeof_unaliased_type(raw string) string {
 	if clean.len == 0 || isnil(t.tc) {
 		return t.comptime_normalize_type_alias_chain(clean)
 	}
-	parsed := t.tc.parse_type(clean)
+	parsed := t.tc.parse_type(flat.source_type_id(clean))
 	if parsed is types.Unknown {
 		return t.comptime_normalize_type_alias_chain(clean)
 	}
@@ -1869,7 +1869,7 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 	}
 	clone := t.clone_method_subst_children(node, var_name, method, inner_vars)
 	if node.kind == .ident {
-		semantic_type := t.node_type(id)
+		semantic_type := flat.source_type_name(t.node_type(id))
 		if semantic_type.len > 0 && semantic_type != 'unknown' {
 			t.set_node_typ(int(clone), semantic_type)
 		}
@@ -2034,8 +2034,8 @@ fn (t &Transformer) comptime_method_receiver_names_type(receiver flat.NodeId) bo
 			} else {
 				raw_namespace
 			}
-			if type_text_without_main_locks(t.normalize_type_alias(checked_name)) !=
-				type_text_without_main_locks(t.normalize_type_alias(namespace_name)) {
+			if type_text_without_main_locks(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(checked_name)))) !=
+				type_text_without_main_locks(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(namespace_name)))) {
 				return false
 			}
 		}
@@ -2145,7 +2145,7 @@ fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId
 		return none
 	}
 	expected_type := t.trim_pointer_type(param_type)
-	mut actual_type := t.raw_var_type_for_expr(arg_id) or { t.node_type(arg_id) }
+	mut actual_type := t.raw_var_type_for_expr(arg_id) or { flat.source_type_name(t.node_type(arg_id)) }
 	if actual_type.len == 0 {
 		return none
 	}
@@ -2173,7 +2173,7 @@ fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId
 	embedded := t.embedded_receiver_base_for_type(base, actual_type, expected_type) or {
 		return none
 	}
-	if t.node_type(embedded).starts_with('&') {
+	if flat.source_type_name(t.node_type(embedded)).starts_with('&') {
 		t.set_node_typ(int(embedded), param_type)
 		return embedded
 	}
@@ -2217,7 +2217,7 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 		// `method.args[lo..hi]` is cloned after checking, so the new slice has no
 		// checker-side type entry. Keep the materialized metadata array type for
 		// for-in inference instead of letting the loop element degrade to `int`.
-		base_type := t.node_type(children[0])
+		base_type := flat.source_type_name(t.node_type(children[0]))
 		if base_type.starts_with('[]') {
 			typ = base_type
 		}
@@ -3520,11 +3520,11 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	if node.kind == .cast_expr && children.len == 1 {
 		target_sum := t.resolve_sum_name(node.value)
 		child := t.a.nodes[int(children[0])]
-		child_type := t.node_type(children[0])
+		child_type := flat.source_type_name(t.node_type(children[0]))
 		if t.sum_types.contains(target_sum) && child.kind == .ident
 			&& t.sum_target_accepts_variant_type(target_sum, item.typ_text())
 			&& (child_type.len == 0 || t.resolve_sum_name(child_type) == target_sum
-				|| t.normalize_type_alias(child_type) == t.normalize_type_alias(item.typ_text())) {
+				|| flat.source_type_name(t.normalize_type_alias(flat.source_type_id(child_type))) == flat.source_type_name(t.normalize_type_alias(item.typ))) {
 			t.set_node_typ(int(children[0]), item.typ_text())
 			return t.make_sum_literal(target_sum, item.typ_text(), children[0])
 		}
@@ -3544,14 +3544,14 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	if node.kind == .ident && smartcast_name != '' && node.value == smartcast_name {
 		typ = item.typ_text()
 	} else if node.kind == .ident && t.mut_param_values[node.value] {
-		storage_type := t.var_type(node.value)
+		storage_type := flat.source_type_name(t.var_type(node.value))
 		if storage_type.starts_with('&') {
 			typ = storage_type[1..]
 		} else if typ.starts_with('&') {
 			typ = typ[1..]
 		}
 	} else if node.kind == .ident && node.value.len > 0 {
-		local_type := t.raw_var_type(node.value)
+		local_type := flat.source_type_name(t.raw_var_type(node.value))
 		if local_type.len > 0 && !t.generic_arg_is_unresolved(local_type) {
 			typ = local_type
 		}
@@ -3562,14 +3562,14 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			&& rhs.typ_text().len > 0 {
 			rhs.typ_text()
 		} else {
-			t.node_type(children[1])
+			flat.source_type_name(t.node_type(children[1]))
 		}
 		if rhs_typ.len > 0 && rhs_typ !in ['unknown', 'generic'] {
 			typ = rhs_typ
 			t.set_node_typ(int(children[0]), rhs_typ)
 			lhs := t.a.nodes[int(children[0])]
 			if lhs.kind == .ident && lhs.value.len > 0 {
-				t.set_var_type(lhs.value, rhs_typ)
+				t.set_var_type(lhs.value, flat.source_type_id(rhs_typ))
 			}
 		}
 	}
@@ -4905,7 +4905,7 @@ fn (t &Transformer) subst_reflected_field_selector_cond(original string, substit
 				if !comptime_plain_ident(receiver) {
 					continue
 				}
-				receiver_type := trimmed_transform_text(t.var_type(receiver)).trim_left('&')
+				receiver_type := trimmed_transform_text(flat.source_type_name(t.var_type(receiver))).trim_left('&')
 				selector_type = t.lookup_struct_field_type(receiver_type, fm.name) or { continue }
 			}
 			resolved := trimmed_transform_text(substituted)
@@ -5003,7 +5003,7 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 	}
 	mut typ := t.clone_field_subst_type_text(node, var_name, fm)
 	if node.kind == .prefix && children.len == 1 {
-		child_type := t.node_type(children[0])
+		child_type := flat.source_type_name(t.node_type(children[0]))
 		if child_type.len > 0 && child_type !in ['unknown', 'generic'] {
 			if node.op == .amp {
 				typ = '&${child_type}'
@@ -5054,7 +5054,7 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 			&& !t.generic_arg_is_unresolved(rhs.typ_text()) {
 			rhs.typ_text()
 		} else {
-			t.node_type(children[1])
+			flat.source_type_name(t.node_type(children[1]))
 		}
 		if rhs_typ.len > 0 && rhs_typ !in ['unknown', 'generic'] {
 			typ = rhs_typ
