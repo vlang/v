@@ -33,14 +33,17 @@ source identities retire obsolete configurations after project source changes;
 a successful build records the current inputs. Older live records without source
 identities require rebuilding the project once.
 Ownership dispatch preserves V3_PRIMARY_VEXE independently of the helper's VEXE.
-Each module being cached is printed to stdout as `Caching module <name>...`.
-Before each refresh build, progress shows the cache record index and total,
-normal or production mode, program or test mode, and its original compiler flags.
-For example: `> Refreshing module cache [1/2] (normal program; -cc tcc).`
-Equivalent builds, unavailable inputs and production TinyCC builds are skipped, so progress
-indices can jump. TinyCC is not a `-prod` compiler.
-The final summary reports how many distinct build configurations were checked.
-The same module can be cached separately for different TinyCC build modes.
+Each module compiled into a new cached object is printed to stdout as
+`Caching module <name>...`. Different build configurations can compile the same
+module separately. Successful cache checks that produce no output remain quiet.
+When a refresh build produces output, its mode and original compiler flags appear
+before that output, for example:
+`> Refreshing module cache (normal program; -cc tcc).`
+A final summary counts the distinct build configurations checked, including reused
+ones, only when a build produced output. Pass -v to show every checked build's
+cache record index and total, and the summary even when all objects are reused.
+Verbose indices can jump as equivalent builds and unavailable inputs are skipped.
+Production TinyCC builds are skipped: TinyCC is not a `-prod` compiler.
 This also runs when the compiler itself is already updated. A cache refresh
 failure makes the update fail. TinyCC object failures are reported instead of
 retrying a program without caching. Older caches without recorded settings are
@@ -57,7 +60,7 @@ Usage:
   v up [options]
 
 Options:
-  -v                 Print more details about the update.
+  -v                 Print more details, including unchanged cache configurations.
   -prod              Compile the updated V with the -prod flag.
   -skills            Refresh the installed agent skills that fell behind, in
                      ~/.agents/skills, like `v skills update --global` does.
