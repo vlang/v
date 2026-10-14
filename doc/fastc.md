@@ -64,6 +64,10 @@ it, and builds as a program that runs its tests in source order between `testsui
 fails that test, and the program exits with status 1 when any test failed. Tests and hooks require
 zero parameters. Failed assertions run the test's deferred statements before the harness continues.
 Target-specific files and test files are filtered when loading a directory.
+The full-runtime path accepts a bare `nil` outside `unsafe` in two forms: as the value of a
+field declared `voidptr` (assigned, or keyed or positional in a struct literal), and as the
+argument for a `voidptr` or function-typed parameter of a non-generic function called by name
+or through an imported module. Other uses still require `unsafe` (#30550).
 Fixed arrays and their aliases support checked indexing, including pointer elements.
 Pointer elements retain their identity when passed or copied. Omitted option fields are `none`.
 Sum-type and interface tests narrow later operands of a conjunction, preserving pointer values.
