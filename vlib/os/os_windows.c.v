@@ -667,16 +667,18 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
 	buf := [4096]u8{}
-	mut bytes_read := u32(0)
 	mut read_data := strings.new_builder(1024)
 	for {
 		mut result := false
+		mut bytes_read := u32(0)
 		unsafe {
 			result = C.ReadFile(child_stdout_read, &buf[0], 1000, voidptr(&bytes_read), 0)
-			read_data.write_ptr(&buf[0], int(bytes_read))
 		}
-		if result == false || int(bytes_read) == 0 {
+		if result == false || bytes_read == 0 {
 			break
+		}
+		unsafe {
+			read_data.write_ptr(&buf[0], int(bytes_read))
 		}
 	}
 	soutput := decode_windows_captured_output(read_data.str())
