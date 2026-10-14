@@ -328,3 +328,8 @@ Explicit extensions are preserved.
 
 On Windows, `os.get_error_msg` removes the trailing CR/LF line break from system
 messages. Error text returned by operations using it retains the message's punctuation.
+
+### Child process output
+
+On Windows, `os.exec()` captures bytes from successful child-pipe reads only. Closing the output
+pipe does not append a previous chunk again. Commands with no output return an empty output string.
