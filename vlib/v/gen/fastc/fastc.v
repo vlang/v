@@ -382,6 +382,13 @@ typedef _Bool bool;
 #include <mach-o/dyld.h>
 #endif
 extern char **environ;
+/* builtin declares these with `fn C.` and no header; the C backend provides them the same way. */
+#if (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#include <execinfo.h>
+#endif
+#if defined(__linux__) && defined(__GLIBC__)
+extern pid_t gettid(void);
+#endif
 #endif
 
 /* `C.__V_architecture` (pref.get_host_arch) resolves the host arch at C-compile time;
@@ -560,6 +567,13 @@ const c_selfhost_preamble_includes = r'#include <stdint.h>
 #include <mach-o/dyld.h>
 #endif
 extern char **environ;
+/* builtin declares these with `fn C.` and no header; the C backend provides them the same way. */
+#if (defined(__linux__) && (defined(__GLIBC__) || defined(__GNU_LIBRARY__))) || defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__) || defined(__DragonFly__)
+#include <execinfo.h>
+#endif
+#if defined(__linux__) && defined(__GLIBC__)
+extern pid_t gettid(void);
+#endif
 #endif
 '
 
