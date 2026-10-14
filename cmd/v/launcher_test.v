@@ -18,12 +18,19 @@ fn test_v1_fallback_drops_private_restart_options() {
 	warning := '-v3-internal-implicit-tcc-warning=warning: implicit tcc failed'
 	assert v1_fallback_args([warning, '-v3-internal-parser-diagnostics-printed',
 		'-v3-internal-force-cache-source', '-macos-v3-internal-quiet', '-macos-v3-compat-c99',
-		'-show-timings', '-cc', 'cc', 'main.v', warning]) == ['-show-timings', '-cc', 'cc', 'main.v']
+		'-v3-internal-all-cached-declarations', '-v3-internal-future-option=enabled', '-show-timings',
+		'-cc', 'cc', 'main.v', warning]) == [
+		'-show-timings',
+		'-cc',
+		'cc',
+		'main.v',
+	]
 }
 
 fn test_v1_fallback_preserves_private_option_names_in_values() {
 	for private_option in ['-v3-internal-implicit-tcc-warning=message',
-		'-v3-internal-parser-diagnostics-printed', '-v3-internal-force-cache-source'] {
+		'-v3-internal-parser-diagnostics-printed', '-v3-internal-force-cache-source',
+		'-v3-internal-future-option=enabled'] {
 		for option in ['-o', '-cf', '-cflags', '-ldflags', '-d'] {
 			args := [option, private_option, 'main.v']
 			assert v1_fallback_args(args) == args
@@ -36,7 +43,7 @@ fn test_v1_fallback_preserves_private_option_names_in_values() {
 fn test_v1_fallback_preserves_private_option_names_in_program_arguments() {
 	private_args := ['-v3-internal-implicit-tcc-warning=message',
 		'-v3-internal-parser-diagnostics-printed', '-v3-internal-force-cache-source',
-		'-macos-v3-internal-quiet', '-macos-v3-compat-c99']
+		'-macos-v3-internal-quiet', '-macos-v3-compat-c99', '-v3-internal-future-option=enabled']
 	for prefix in [
 		['run', 'main.v'],
 		['run', 'run'],
@@ -134,6 +141,21 @@ fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 	]
 }
 
+fn test_self_launcher_keeps_replacement_backend_options_out_of_helper_build() {
+	prefix := ['-b', 'fastc', '-os', 'linux', '-arch', 'arm64', '-silent']
+	assert external_tool_compile_args('vself', prefix) == ['-silent', '-g', '-gc', 'none']
+	assert external_tool_runtime_args('self', prefix, ['self']) == [
+		'-b',
+		'fastc',
+		'-os',
+		'linux',
+		'-arch',
+		'arm64',
+		'-silent',
+		'self',
+	]
+}
+
 fn test_retry_runtime_args_preserve_a_command_named_retry() {
 	assert external_tool_runtime_args('retry', []string{}, ['retry', '-r', '1', '--', 'retry',
 		'argument']) == ['-r', '1', '--', 'retry', 'argument']
@@ -145,7 +167,7 @@ fn test_retry_runtime_args_preserve_a_command_named_retry() {
 }
 
 fn test_tools_that_own_their_name_receive_only_their_arguments() {
-	for name in ['diff', 'download', 'repeat', 'time', 'timeout'] {
+	for name in ['cover', 'diff', 'download', 'gret', 'repeat', 'time', 'timeout'] {
 		assert external_tool_runtime_args(name, []string{}, [name, '--version']) == ['--version'], name
 	}
 }
@@ -663,6 +685,58 @@ fn run_launcher_test_process(executable string, args []string, work_dir string,
 	return result
 }
 
+fn test_prod_with_tinycc_is_refused_before_any_compiler_runs() {
+	dir := os.join_path(os.vtmp_dir(), 'v_prod_tinycc_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'main.v')
+	os.write_file(source, 'fn main() {\n\tprintln(1)\n}\n') or { panic(err) }
+	output := os.join_path(dir, 'main')
+	// `-old-compiler` must not reach the compatibility compiler with this pair either.
+	for args in [['-prod', '-cc', 'tcc'], ['-cc=tinyc', '-prod'],
+		['-old-compiler', '-prod', '-cc', 'tcc']] {
+		result := os.exec([@VEXE, ...args, '-o', output, source])
+		assert result.exit_code == 1, '${args}: ${result.output}'
+		assert result.output.contains('tcc is not allowed with -prod'), '${args}: ${result.output}'
+	}
+}
+
+fn test_prod_refuses_tinycc_under_another_name_once_it_resolves() {
+	bundled := os.join_path(os.dir(@VEXE), 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(bundled) {
+		return
+	}
+	dir := os.join_path(os.vtmp_dir(), 'v_prod_tinycc_alias_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	// The name has no `tcc`, so only the resolved compiler gives it away.
+	alias_path := os.join_path(dir, 'cc_alias.exe')
+	os.cp(bundled, alias_path) or { panic(err) }
+	source := os.join_path(dir, 'main.v')
+	os.write_file(source, 'fn main() {\n\tprintln(1)\n}\n') or { panic(err) }
+	// `-old-compiler` must refuse the alias too, before the compatibility compiler is started.
+	for args in [['-prod', '-cc', alias_path], ['-old-compiler', '-prod', '-cc', alias_path]] {
+		result := os.exec([@VEXE, ...args, '-o', os.join_path(dir, 'main'), source])
+		assert result.exit_code == 1, '${args}: ${result.output}'
+		assert result.output.contains('tcc is not allowed with -prod'), '${args}: ${result.output}'
+		assert !result.output.contains('retrying with'), '${args}: ${result.output}'
+	}
+}
+
+fn test_prod_with_tinycc_in_vflags_does_not_block_version_or_help() {
+	mut environment := os.environ()
+	environment['VFLAGS'] = '-prod -cc tcc'
+	for args in [['version'], ['help']] {
+		result := run_launcher_test_process(@VEXE, args, os.getwd(), environment)
+		assert result.exit_code == 0, '${args}: ${result.output}'
+		assert !result.output.contains('tcc is not allowed with -prod'), '${args}: ${result.output}'
+	}
+}
+
 fn test_external_tools_do_not_use_the_v1_fallback() {
 	$if !windows {
 		false_executable := os.find_abs_path_of_executable('false') or { return }
@@ -914,4 +988,34 @@ fn test_v1_fallback_rejects_copied_current_launcher() {
 	assert result.exit_code == 0, result.output
 	assert result.output.starts_with('V ${v_version} ')
 	assert !v1_fallback_has_expected_version(copy)
+}
+
+fn test_private_tool_builds_keep_tools_available_with_tinycc_production_flags() {
+	assert external_tool_compile_args('vfmt', ['-prod', '-cc', 'tcc']) == ['-cc', 'tcc']
+	assert external_tool_args_without_prod(['-prod', '-o', '-prod', '-cc', 'tcc']) == [
+		'-o',
+		'-prod',
+		'-cc',
+		'tcc',
+	]
+	assert external_tool_runtime_args('self', ['-prod', '-cc', 'tcc'], ['self']) == [
+		'-prod',
+		'-cc',
+		'tcc',
+		'self',
+	]
+}
+
+fn test_cold_formatter_cache_accepts_tinycc_production_environment() {
+	if !os.is_executable(os.join_path(os.dir(@VEXE), 'thirdparty', 'tcc', 'tcc.exe')) { return }
+	root := os.join_path(os.vtmp_dir(), 'launcher_prod_tcc_tool_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut environment := os.environ()
+	environment['VFLAGS'] = '-prod -cc tcc -gc none'
+	environment['VTOOLS_CACHE_DIR'] = os.join_path(root, 'tools')
+	environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+	result := run_launcher_test_process(@VEXE, ['fmt', '--help'], os.getwd(), environment)
+	assert result.exit_code == 0, result.output
+	assert !result.output.contains('tcc is not allowed with -prod'), result.output
 }
