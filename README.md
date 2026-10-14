@@ -117,6 +117,10 @@ v up
 ```
 
 This also refreshes the bundled TCC binaries used for fast C compilation.
+Previously cached modules are validated with the updated compiler. Successful checks that
+produce no output remain quiet; `Caching module <name>...` reports actual C compilation.
+Different build configurations can compile the same module separately.
+Use `v up -v` to show progress for every checked cache configuration, including reused objects.
 
 > [!NOTE]
 > If you run into any trouble, or you have a different operating

@@ -54,16 +54,27 @@ garbage collection. Generic calls infer their concrete type from a mutable varia
 If a call reaches a generic placeholder without a concrete instance, it reports the function
 and exits with an error instead of returning a zero value.
 This path supports standard-library imports such as `os` and `toml`,
-composite sum-type tests, integer interpolation formats, anonymous functions, and immutable
-closure captures. A single-file entry can select the same runtime with `-d fastc_real_builtin`;
-its module siblings are included.
+composite sum-type tests, integer and floating point interpolation formats, anonymous functions,
+and immutable closure captures. Float formats support precision, width, left alignment, and the
+`f` suffix to retain trailing zeros. A single-file entry can select the same runtime with
+`-d fastc_real_builtin`; its module siblings are included.
+A test file entry (`foo_test.v`, `foo_test.c.v`, or an architecture-qualified one) always uses
+it, and builds as a program that runs its tests in source order between `testsuite_begin` and
+`testsuite_end`, each between `before_each` and `after_each`; a failed assert or a returned error
+fails that test, and the program exits with status 1 when any test failed. Tests and hooks require
+zero parameters. Failed assertions run the test's deferred statements before the harness continues.
 Target-specific files and test files are filtered when loading a directory.
+Generic arguments infer the complete type of literal arithmetic, including float promotion.
+Other compound arguments require explicit type arguments.
 Bare `nil` can reset concrete `voidptr` locals, including aliases, and declared `voidptr`
 fields. It can initialize declared `voidptr` fields and serve as an argument to `voidptr`
 and function-typed parameters. Function fields and erased generic fields require `unsafe`.
 Channel type declarations accept ordinary V whitespace.
 Negated sum-type guards retain pointer identity and read mutable scalar variants as values
 in arithmetic, including numeric aliases.
+Fixed arrays and their aliases support checked indexing, including pointer elements.
+Pointer elements retain their identity when passed or copied. Omitted option fields are `none`.
+Sum-type and interface tests narrow later operands of a conjunction, preserving pointer values.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context
 when the block exits, including through `return`, `break`, and `continue`. Callbacks that escape

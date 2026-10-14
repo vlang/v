@@ -1006,6 +1006,10 @@ fn (g &Parser) struct_direct_member_type(receiver_type string, field_name string
 }
 
 fn (g &Parser) struct_member_type(receiver_type string, field_name string) string {
+	if field_name == 'len' && fastc_trim_pointer_suffix(g.underlying_alias_type(receiver_type)).starts_with('FixedArray_') {
+		// A fixed array's `len` is its length, an int; the C struct has no such member.
+		return 'int'
+	}
 	direct_type := g.struct_direct_member_type(receiver_type, field_name)
 	if direct_type != '' {
 		return direct_type

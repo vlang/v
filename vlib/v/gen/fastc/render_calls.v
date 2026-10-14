@@ -323,6 +323,23 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			}
 		}
 	}
+	// A conversion into an alias of a fixed array (`Gf([16]i64{})`) only renames the C struct
+	// both types spell, and C cannot cast to a struct; `[N]T{}` is the zero value.
+	aliased := g.underlying_alias_type(c_type)
+	if !c_type.ends_with('*') && aliased != c_type && aliased.starts_with('FixedArray_') {
+		if inner_tokens.len >= 5 && inner_tokens[0].tok == .lsbr && inner_tokens[2].tok == .rsbr
+			&& inner_tokens[inner_tokens.len - 2].tok == .lcbr && inner_tokens.last().tok == .rcbr {
+			return FastcRenderedExpression{
+				source: '((${fastc_output_c_type(c_type)}){0})'
+				typ:    c_type
+			}
+		}
+		aliased_value := g.render_call_argument_expression(inner_tokens, aliased) or { return none }
+		return FastcRenderedExpression{
+			source: '(${aliased_value})'
+			typ:    c_type
+		}
+	}
 	inner_type := g.infer_expression_type(inner_tokens) or { '' }
 	// Explicit voidptr casts reinterpret the operand's bits. Generic argument
 	// boxing would instead return the address of storage containing those bits.

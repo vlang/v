@@ -1,6 +1,7 @@
 module fastc
 
 import os
+import strings
 import v.pref
 import v.scanner
 import v.token
@@ -122,6 +123,13 @@ fn fastc_parameter_is_params_struct(parameter_type string, params_structs map[st
 }
 
 fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+	collect_function_signatures_at(source, 0, path, header, prefs, skips, declared_types,
+		declared_type_c_names, params_structs, mut functions)!
+}
+
+// collect_function_signatures_at collects the functions declared in `source`, which starts at
+// byte `source_offset` of the file at `path`.
+fn collect_function_signatures_at(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
@@ -160,6 +168,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 		}
 		if tok == .key_fn && brace_depth == 0 && previous_tok != .assign {
 			is_public := previous_tok == .key_pub
+			declaration_offset := source_offset + scan.pos
 			tok = scan.scan()
 			mut parameter_types := []string{}
 			mut parameter_mutability := []bool{}
@@ -404,6 +413,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				is_c_extern:              is_c_function && next_declaration_is_c_extern
 				module_name:              header.module_name
 				path:                     path
+				position:                 declaration_offset
 			}
 			if previous := functions[function_key] {
 				if !is_c_function {
@@ -446,7 +456,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 		tok = scan.scan()
 	}
 	if header.has_comptime_if {
-		fastc_collect_selected_comptime_function_signatures(source, path, header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
+		fastc_collect_selected_comptime_function_signatures(source, source_offset, path, header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
 	}
 }
 
@@ -564,6 +574,9 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 		'push_many':                true
 		'array_slice':              true
 		'slice':                    true
+		// A gated slice `a#[i..j]` lowers to these, which no source text names.
+		'slice_ni':                 true
+		'substr_ni':                true
 		'at':                       true
 		'keys':                     true
 		'get':                      true
@@ -600,6 +613,15 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	}
 	for name in top_level_references.keys() {
 		used[name] = true
+	}
+	// A test build calls the test file's tests from the main it synthesizes.
+	if prefs.is_test {
+		for key, signature in functions {
+			name := key.all_after_last('.')
+			if fastc_is_test_harness_function(name) && fastc_is_test_source(signature.path, prefs) {
+				used[name] = true
+			}
+		}
 	}
 	// Operator overload declarations are emitted even when their symbolic names do
 	// not appear as ordinary call tokens. Treat those symbols as roots too, so the
@@ -1158,6 +1180,45 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 		if tok == .rsbr {
 			is_dynamic = true
 			tok = scan.scan()
+		} else if tok == .dollar {
+			// `[$d('name', 32)]T`: the `-d name=N` value, else the default.
+			mut define := ''
+			mut default_length := ''
+			tok = scan.scan()
+			if tok == .name && scan.lit == 'd' {
+				tok = scan.scan()
+				if tok == .lpar {
+					tok = scan.scan()
+					if tok == .string {
+						define = scan.lit.trim('\'"')
+						tok = scan.scan()
+					}
+					if tok == .comma {
+						tok = scan.scan()
+						if tok == .number {
+							default_length = scan.lit
+							tok = scan.scan()
+						}
+					}
+					if tok == .rpar {
+						tok = scan.scan()
+					}
+				}
+			}
+			if tok == .rsbr && define != '' && default_length != '' {
+				fixed_length = scan.compile_value(define) or { default_length }
+				tok = scan.scan()
+			} else {
+				mut depth := 1
+				for depth > 0 && tok != .eof {
+					if tok == .lsbr {
+						depth++
+					} else if tok == .rsbr {
+						depth--
+					}
+					tok = scan.scan()
+				}
+			}
 		} else if tok in [.name, .number] {
 			fixed_length = scan.lit
 			if tok == .name {
@@ -1421,9 +1482,94 @@ fn (g &Parser) fixed_array_length_value(source string) ?int {
 			return none
 		}
 		seen[key] = true
-		value = g.constant_values[key] or { return none }
+		value = g.constant_values[key] or { return g.c_integer_expression_value(key, 0) }
 	}
 	return none
+}
+
+// c_integer_expression_value folds a constant's C spelling such as
+// `(mod__a+mod__b*2)`: integers, constant names, `+ - * / %` and parentheses.
+fn (g &Parser) c_integer_expression_value(source string, depth int) ?int {
+	if depth > 16 {
+		return none
+	}
+	mut terms := []string{}
+	mut operators := []u8{}
+	mut i := 0
+	text := source.trim_space()
+	mut current := strings.new_builder(16)
+	mut paren := 0
+	for i < text.len {
+		c := text[i]
+		if c == `(` {
+			paren++
+		} else if c == `)` {
+			paren--
+		}
+		if paren == 0 && c in [`+`, `-`] && current.len > 0 {
+			terms << current.str().trim_space()
+			operators << c
+		} else if c != ` ` || paren > 0 {
+			current.write_u8(c)
+		}
+		i++
+	}
+	terms << current.str().trim_space()
+	mut total := 0
+	for k, term in terms {
+		value := g.c_integer_term_value(term, depth)?
+		total = if k == 0 || operators[k - 1] == `+` { total + value } else { total - value }
+	}
+	return total
+}
+
+fn (g &Parser) c_integer_term_value(term string, depth int) ?int {
+	mut factors := []string{}
+	mut operators := []u8{}
+	mut current := strings.new_builder(16)
+	mut paren := 0
+	for c in term {
+		if c == `(` {
+			paren++
+		} else if c == `)` {
+			paren--
+		}
+		if paren == 0 && c in [`*`, `/`, `%`] {
+			factors << current.str().trim_space()
+			operators << c
+		} else {
+			current.write_u8(c)
+		}
+	}
+	factors << current.str().trim_space()
+	mut product := 0
+	for k, factor in factors {
+		mut value := 0
+		if factor.starts_with('(') && factor.ends_with(')') {
+			value = g.c_integer_expression_value(factor[1..factor.len - 1], depth + 1)?
+		} else if decimal := fastc_decimal_integer_value(factor) {
+			value = decimal
+		} else {
+			constant := g.constant_values[factor] or { return none }
+			value = if decimal := fastc_decimal_integer_value(constant) {
+				decimal
+			} else {
+				g.c_integer_expression_value(constant, depth + 1)?
+			}
+		}
+		if k == 0 {
+			product = value
+		} else if operators[k - 1] == `*` {
+			product *= value
+		} else if value == 0 {
+			return none
+		} else if operators[k - 1] == `/` {
+			product /= value
+		} else {
+			product %= value
+		}
+	}
+	return product
 }
 
 fn fastc_array_c_type(element_type string) string {

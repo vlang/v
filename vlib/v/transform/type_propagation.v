@@ -210,7 +210,8 @@ fn decl_type_is_usable(typ string) bool {
 	if types.type_text_contains_typeof(typ) {
 		return false
 	}
-	clean := typ.replace(' ', '')
+	// `replace` copies the text even when it holds no space.
+	clean := if typ.contains_u8(` `) { typ.replace(' ', '') } else { typ }
 	return clean !in ['Option', '__v_option', 'Result'] && !clean.starts_with('Option_')
 		&& !clean.starts_with('__v_option_') && !clean.starts_with('Result_')
 }

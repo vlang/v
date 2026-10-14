@@ -944,6 +944,9 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			if base_layout == 'string' {
 				return 'u8'
 			}
+			if element_type := g.fixed_array_pointee_element_type(base_type, tokens[start..open_index]) {
+				return element_type
+			}
 			if element_type := g.array_element_type(base_type) {
 				return element_type
 			}
@@ -1275,6 +1278,8 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 			} else if current_layout.starts_with('Map_') {
 				_, value_type := g.map_key_value_types(current_type) or { return none }
 				current_type = value_type
+			} else if element_type := g.fixed_array_pointee_element_type(current_type, tokens[start..index]) {
+				current_type = element_type
 			} else if element_type := g.array_element_type(current_type) {
 				current_type = element_type
 			} else if current_type.ends_with('*') {
@@ -1511,7 +1516,7 @@ fn fastc_is_pointer_type(typ string) bool {
 
 fn fastc_array_element_type(typ string) ?string {
 	// Fixed-array element pointers are encoded as `_ptr`, so a trailing `*` belongs
-	// to the array container and does not change the element produced by indexing.
+	// to the array container rather than the element produced by indexing.
 	if typ.starts_with('FixedArray_') && typ.contains('_FASTC_ARRAY_OF_') {
 		if element_type := fastc_fixed_array_element_type(typ) {
 			return element_type
@@ -1551,6 +1556,23 @@ fn fastc_decode_ptr_element_type(element string) string {
 	return name + '*'.repeat(pointers)
 }
 
+// fixed_array_pointee_element_type is the element of a fixed array reached through a
+// pointer (a `mut x [N]T` parameter, `FixedArray_N_FASTC_ARRAY_OF_T*`), which
+// render_array_access_expression indexes with `->data`: the array's element, without
+// that `*`, so inference and rendering agree. Raw storage (a struct field or `__global`,
+// `T* values[N]`) is not reached through a pointer: there the `*` is its element's (`[N]&T`).
+fn (g &Parser) fixed_array_pointee_element_type(typ string, base_tokens []FastcExpressionToken) ?string {
+	if !typ.ends_with('*') {
+		return none
+	}
+	pointee := typ[..typ.len - 1]
+	_ := fastc_fixed_array_length(g.underlying_alias_type(pointee)) or { return none }
+	if typ.starts_with('FixedArray_') && g.fixed_array_uses_raw_storage(base_tokens) {
+		return none
+	}
+	return g.array_element_type(pointee)
+}
+
 fn (g &Parser) array_element_type(typ string) ?string {
 	if element_type := fastc_array_element_type(typ) {
 		return element_type
@@ -1558,6 +1580,11 @@ fn (g &Parser) array_element_type(typ string) ?string {
 	layout_type := fastc_trim_pointer_suffix(typ)
 	if fields := g.struct_fields[layout_type] {
 		return fields['__fastc_element_type'] or { none }
+	}
+	// An alias of an array type (`type Gf = [16]i64`) has the aliased array's elements.
+	aliased := g.underlying_alias_type(layout_type)
+	if aliased != layout_type {
+		return g.array_element_type(aliased)
 	}
 	return none
 }

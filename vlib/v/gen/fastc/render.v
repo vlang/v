@@ -774,6 +774,10 @@ fn (g &Parser) struct_field_initializer_default(field FastcStructField) string {
 	mut value := ''
 	if field.default_value != '' {
 		value = field.default_value
+	} else if field.typ == 'Option' {
+		// An option field a literal leaves out is `none`; a zeroed Option would be a
+		// present value with no payload.
+		value = '(Option){.state=2}'
 	} else if !field.typ.ends_with('*') && g.struct_type_has_initializer_defaults(field.typ) {
 		value = g.render_empty_struct_initializer(field.typ)
 	}
@@ -795,7 +799,7 @@ fn (g &Parser) struct_type_has_initializer_defaults(c_type string) bool {
 		return false
 	}
 	for field in g.struct_field_info[layout_type] {
-		if field.default_value != '' {
+		if field.default_value != '' || field.typ == 'Option' {
 			return true
 		}
 		if field.typ != c_type && g.struct_type_has_initializer_defaults(field.typ) {
@@ -1054,7 +1058,8 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 		// assigned); copy the source array's bytes instead. A by-value wrapper source keeps its
 		// array in `.data`, while another raw-storage source is already a bare array.
 		right_data := if g.fixed_array_uses_raw_storage(rhs_tokens) {
-			right
+			// The bare array, not the wrapper value an argument would be given.
+			g.render_member_receiver(rhs_tokens) or { right }
 		} else {
 			'(${right}).data'
 		}
@@ -1262,6 +1267,26 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 	if operator !in [.eq, .ne] {
 		return none
 	}
+	// `a == []` asks whether `a` is empty.
+	right_is_empty := right_tokens.len == 2 && right_tokens[0].tok == .lsbr && right_tokens[1].tok == .rsbr
+	left_is_empty := left_tokens.len == 2 && left_tokens[0].tok == .lsbr && left_tokens[1].tok == .rsbr
+	if right_is_empty != left_is_empty {
+		array_tokens := if right_is_empty { left_tokens } else { right_tokens }
+		array_type := fastc_normalize_inferred_type(g.infer_expression_type(array_tokens) or {
+			return none
+		})
+		if fastc_trim_pointer_suffix(g.underlying_alias_type(array_type)).starts_with('Array_') {
+			array_source := g.render_call_argument_expression(array_tokens, array_type) or {
+				return none
+			}
+			access := if fastc_is_pointer_type(array_type) { '->' } else { '.' }
+			comparison := if operator == .eq { '==' } else { '!=' }
+			return FastcRenderedExpression{
+				source: '((${array_source})${access}len ${comparison} 0)'
+				typ:    'bool'
+			}
+		}
+	}
 	left_type := fastc_normalize_inferred_type(g.infer_expression_type(left_tokens) or {
 		return none
 	})
@@ -1275,7 +1300,10 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 	element_type := g.array_element_type(left_type) or { return none }
 	resolved_element := fastc_trim_pointer_suffix(g.underlying_alias_type(element_type))
 	is_scalar := fastc_is_numeric_expression_type(resolved_element) || resolved_element == 'bool' || fastc_is_pointer_type(element_type) || g.underlying_enum_type_key(g.semantic_type_key(element_type)) != none
-	if resolved_element != 'string' && !is_scalar {
+	// Elements that are arrays or structs (`[][]u8`) compare as V compares them.
+	is_composite := resolved_element != 'string' && !is_scalar && !left_layout.starts_with('FixedArray_')
+		&& g.struct_equality_is_supported(element_type, []string{})
+	if resolved_element != 'string' && !is_scalar && !is_composite {
 		return none
 	}
 	if left_layout.starts_with('FixedArray_') {
@@ -1299,6 +1327,8 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 	right := g.render_call_argument_expression(right_tokens, right_type) or { return none }
 	element_comparison := if resolved_element == 'string' {
 		'builtin__string_eq(((${element_type} *)__vf_array_eq_left.data)[__vf_array_eq_index], ((${element_type} *)__vf_array_eq_right.data)[__vf_array_eq_index])'
+	} else if is_composite {
+		'({ ${element_type} __vf_element_left = ((${element_type} *)__vf_array_eq_left.data)[__vf_array_eq_index]; ${element_type} __vf_element_right = ((${element_type} *)__vf_array_eq_right.data)[__vf_array_eq_index]; ${g.stored_equality_source('__vf_element_left', '__vf_element_right', element_type, []string{}, 0)}; })'
 	} else {
 		'(((${element_type} *)__vf_array_eq_left.data)[__vf_array_eq_index] == ((${element_type} *)__vf_array_eq_right.data)[__vf_array_eq_index])'
 	}
@@ -2071,7 +2101,30 @@ fn (g &Parser) struct_equality_is_supported(typ string, seen []string) bool {
 	return true
 }
 
-fn (g &Parser) struct_equality_source(left string, right string, typ string, seen []string) string {
+// stored_equality_source compares two values held as an array holds its elements: a fixed
+// array there is a `FixedArray_*` wrapper, its own elements wrappers too, where a struct field
+// is a raw C array. `depth` is the struct_equality_source array nesting it is inside of.
+fn (g &Parser) stored_equality_source(left string, right string, typ string, seen []string, depth int) string {
+	if !fastc_is_pointer_type(typ) {
+		layout_type := g.underlying_alias_type(typ)
+		if element_type := fastc_fixed_array_element_type(layout_type) {
+			length_source := fastc_fixed_array_length(layout_type) or { return 'false' }
+			length := g.fixed_array_length_value(length_source) or { return 'false' }
+			mut comparisons := []string{cap: length}
+			for index in 0 .. length {
+				comparisons << g.stored_equality_source('(${left}).data[${index}]', '(${right}).data[${index}]',
+					element_type, seen, depth)
+			}
+			return if comparisons.len == 0 { 'true' } else { '(${comparisons.join(' && ')})' }
+		}
+	}
+	return g.struct_equality_source(left, right, typ, seen, depth)
+}
+
+// struct_equality_source compares two values of type `typ` as V compares them. An array is
+// compared in a loop whose temporaries are named by `depth`, so the loop comparing its
+// elements, nested in it, does not shadow them.
+fn (g &Parser) struct_equality_source(left string, right string, typ string, seen []string, depth int) string {
 	if fastc_is_pointer_type(typ) {
 		return '((${left}) == (${right}))'
 	}
@@ -2087,18 +2140,19 @@ fn (g &Parser) struct_equality_source(left string, right string, typ string, see
 		length := g.fixed_array_length_value(length_source) or { return 'false' }
 		mut comparisons := []string{cap: length}
 		for index in 0 .. length {
-			comparisons << g.struct_equality_source('(${left})[${index}]', '(${right})[${index}]', element_type, seen)
+			comparisons << g.struct_equality_source('(${left})[${index}]', '(${right})[${index}]', element_type, seen, depth)
 		}
 		return if comparisons.len == 0 { 'true' } else { '(${comparisons.join(' && ')})' }
 	}
 	if element_type := g.array_element_type(layout_type) {
-		left_array := '__vf_array_eq_left'
-		right_array := '__vf_array_eq_right'
-		equal := '__vf_array_eq_equal'
-		index := '__vf_array_eq_index'
+		left_array := '__vf_array_eq_left_${depth}'
+		right_array := '__vf_array_eq_right_${depth}'
+		equal := '__vf_array_eq_equal_${depth}'
+		index := '__vf_array_eq_index_${depth}'
 		left_element := '((${element_type} *)${left_array}.data)[${index}]'
 		right_element := '((${element_type} *)${right_array}.data)[${index}]'
-		element_equality := g.struct_equality_source(left_element, right_element, element_type, seen)
+		element_equality := g.stored_equality_source(left_element, right_element, element_type, seen,
+			depth + 1)
 		return '({ ${layout_type} ${left_array} = (${left}); ${layout_type} ${right_array} = (${right}); bool ${equal} = ${left_array}.len == ${right_array}.len; for (int ${index} = 0; ${equal} && ${index} < ${left_array}.len; ${index}++) { if (!(${element_equality})) { ${equal} = false; } } ${equal}; })'
 	}
 	type_key := g.semantic_type_key(layout_type)
@@ -2113,7 +2167,7 @@ fn (g &Parser) struct_equality_source(left string, right string, typ string, see
 	mut comparisons := []string{}
 	for field in g.struct_field_info[layout_type] {
 		field_name := fastc_c_identifier(field.name)
-		comparisons << g.struct_equality_source('(${left}).${field_name}', '(${right}).${field_name}', field.typ, nested_seen)
+		comparisons << g.struct_equality_source('(${left}).${field_name}', '(${right}).${field_name}', field.typ, nested_seen, depth)
 	}
 	return if comparisons.len == 0 { 'true' } else { '(${comparisons.join(' && ')})' }
 }
@@ -2256,7 +2310,7 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 			}
 			left := g.render_comparison_operand(left_tokens, left_type) or { return none }
 			right := g.render_comparison_operand(right_tokens, right_type) or { return none }
-			equality := g.struct_equality_source('__vf_eq_left', '__vf_eq_right', left_type, []string{})
+			equality := g.struct_equality_source('__vf_eq_left', '__vf_eq_right', left_type, []string{}, 0)
 			result := if item.tok == .ne { '!(${equality})' } else { equality }
 			return FastcRenderedExpression{
 				source: '({ ${left_type} __vf_eq_left = (${left}); ${right_type} __vf_eq_right = (${right}); ${result}; })'
@@ -2328,7 +2382,7 @@ fn (g &Parser) render_sum_type_value_equality(left_tokens []FastcExpressionToken
 		if g.struct_equality_is_supported(variant, []string{}) {
 			left_value := '(*(${variant} *)${a}._object)'
 			right_value := '(*(${variant} *)${b}._object)'
-			concrete = g.struct_equality_source(left_value, right_value, variant, []string{})
+			concrete = g.struct_equality_source(left_value, right_value, variant, []string{}, 0)
 		} else if fastc_primitive_c_type(variant) != none {
 			concrete = '(*(${variant} *)${a}._object == *(${variant} *)${b}._object)'
 		}
@@ -3018,6 +3072,30 @@ fn (g &Parser) render_mixed_integer_comparison_expression_impl(tokens []FastcExp
 	return none
 }
 
+// narrowed_subject_value_type is the value type of an operand that is exactly a subject
+// narrowed by `is`, which renders as a pointer to its variant (`((i64 *)tmp._object)`);
+// none for any other operand. An option local narrowed by `!= none` renders as its payload
+// value already, even when that value is a pointer.
+fn (g &Parser) narrowed_subject_value_type(tokens []FastcExpressionToken) ?string {
+	if g.member_smartcasts.len == 0 {
+		return none
+	}
+	path := fastc_indexed_member_chain_path(tokens) or { return none }
+	smartcast := g.member_smartcasts[path] or { return none }
+	if !smartcast.typ.ends_with('*') {
+		return none
+	}
+	if local := g.locals[path] {
+		if local.option_value_type != '' {
+			return none
+		}
+	}
+	if smartcast.value_type != '' {
+		return smartcast.value_type
+	}
+	return smartcast.typ[..smartcast.typ.len - 1]
+}
+
 // fastc_narrowed_variant_value reads the value of a narrowed variant from its variant pointer.
 // A pointer-like variant (`voidptr`) is stored directly in `_object`, so that pointer is the
 // value; any other variant is boxed behind it.
@@ -3053,7 +3131,7 @@ fn (g &Parser) render_guard_comparison(tokens []FastcExpressionToken) ?string {
 		return none
 	}
 	left_tokens := tokens[..op_index]
-	left := if fastc_tokens_have_top_level_boolean_or_membership(left_tokens) {
+	mut left := if fastc_tokens_have_top_level_boolean_or_membership(left_tokens) {
 		g.render_call_argument_expression(left_tokens, 'bool') or { return none }
 	} else {
 		g.render_comparison_operand(left_tokens, '') or { return none }
@@ -3065,11 +3143,20 @@ fn (g &Parser) render_guard_comparison(tokens []FastcExpressionToken) ?string {
 	if member_type := g.infer_member_access_type(left_tokens, 0, left_tokens.len) {
 		left_type = member_type
 	}
+	// A subject narrowed earlier in this condition (`cv is i64 && cv != io_core`) renders as
+	// its variant pointer; the comparison is of the variant's value.
+	if value_type := g.narrowed_subject_value_type(left_tokens) {
+		left = fastc_narrowed_variant_value(left, value_type)
+		left_type = value_type
+	}
 	right_tokens := tokens[op_index + 1..]
-	right := if fastc_tokens_have_top_level_boolean_or_membership(right_tokens) {
+	mut right := if fastc_tokens_have_top_level_boolean_or_membership(right_tokens) {
 		g.render_call_argument_expression(right_tokens, 'bool') or { return none }
 	} else {
 		g.render_comparison_operand(right_tokens, left_type) or { return none }
+	}
+	if value_type := g.narrowed_subject_value_type(right_tokens) {
+		right = fastc_narrowed_variant_value(right, value_type)
 	}
 	if fastc_normalize_inferred_type(left_type) == 'string' {
 		if op == .eq {
@@ -3420,6 +3507,19 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			// without the missing concrete type. At another erased boundary, forward
 			// that pointer representation directly.
 			return g.render_call_argument_expression(tokens[1..], expected_type)
+		}
+	}
+	if g.selfhost && tokens.len >= 5 && tokens[0].tok == .lsbr && tokens.last().tok == .rcbr {
+		if fixed := g.render_fixed_array_value(tokens) {
+			return fixed
+		}
+	}
+	if g.selfhost && expected_type.starts_with('FixedArray_') && g.fixed_array_uses_raw_storage(tokens)
+		&& fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { '' }) == expected_type {
+		// A struct field or global stores a fixed array as a raw C array; a parameter takes
+		// the wrapper struct of the same layout.
+		if raw := g.render_member_receiver(tokens) {
+			return '(*(${expected_type} *)(${raw}))'
 		}
 	}
 	if array_literal := g.render_array_literal_argument(tokens, expected_type) {
@@ -4648,6 +4748,8 @@ fn (g &Parser) render_option_propagation(inner_tokens []FastcExpressionToken) ?F
 		'${deferred} builtin__panic_result_not_set(${message});'
 	} else if g.return_type in ['Option', '__v_result'] {
 		'return ${temporary};'
+	} else if g.prefs.is_test {
+		g.test_propagation_failure(temporary, (g.infer_expression_type(inner_tokens) or { '' }) == '__v_result')
 	} else {
 		'return 1;'
 	}
@@ -5124,7 +5226,23 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 	}
 	mut source := ''
 	mut current_type := ''
-	if tokens[0].source != '' {
+	mut i := 1
+	// A field of a call's result (`f(x).len`) reads from the rendered call.
+	call_close := if tokens.len > 3 && tokens[1].tok == .lpar {
+		fastc_matching_rpar(tokens, 1) or { -1 }
+	} else {
+		-1
+	}
+	if call_close > 0 && call_close + 2 < tokens.len && tokens[call_close + 1].tok == .dot {
+		call_tokens := tokens[..call_close + 1]
+		// A free call renders its arguments against the parameter types.
+		call := g.render_missing_call_arguments(call_tokens) or {
+			g.render_method_receiver_expression(call_tokens) or { return none }
+		}
+		source = call.source
+		current_type = call.typ
+		i = call_close + 1
+	} else if tokens[0].source != '' {
 		// A synthetic base token (an `x()?`-unwrap folded upstream: `get()!.field`) carries its C
 		// spelling and type in `.source`/`.typ`, not `.lit`; use them so the member chain reads from
 		// the real unwrapped value instead of an empty base.
@@ -5134,7 +5252,7 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 		source = g.resolved_expression_name(tokens[0].lit, .unknown)
 		current_type = g.infer_expression_type(tokens[..1]) or { return none }
 	}
-	mut member_path := tokens[0].lit
+	mut member_path := if i == 1 { tokens[0].lit } else { '()' }
 	mut multi_variants := []string{}
 	mut multi_tag_source := ''
 	mut multi_object_source := ''
@@ -5147,7 +5265,6 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 		multi_tag_source = smartcast.tag_source
 		multi_object_source = smartcast.object_source
 	}
-	mut i := 1
 	for i < tokens.len {
 		if tokens[i].tok == .lsbr {
 			// A dynamic-array element inside the chain (`b.files[i].errors`) is reached
@@ -5155,6 +5272,30 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 			// is invalid — cast to the element pointer first.
 			close := fastc_matching_delimiter(tokens, i, .lsbr, .rsbr) or { return none }
 			layout := fastc_trim_pointer_suffix(g.underlying_alias_type(current_type))
+			if fixed_element := fastc_fixed_array_element_type(layout) {
+				// A fixed array is indexed in place: raw C storage (a field or global)
+				// directly, a wrapper value (a local or parameter) through `.data`.
+				index_source := g.render_membership_candidate(tokens[i + 1..close], 'int') or {
+					return none
+				}
+				storage := if g.fixed_array_uses_raw_storage(tokens[..i]) {
+					'(${source})'
+				} else if fastc_is_pointer_type(g.underlying_alias_type(current_type)) {
+					'(${source})->data'
+				} else {
+					'(${source}).data'
+				}
+				fixed_length := fastc_fixed_array_length(layout) or { '' }
+				source = if g.selfhost && fixed_length != '' {
+					'${storage}[builtin__v_fixed_index(${index_source}, ${fixed_length})]'
+				} else {
+					'${storage}[${index_source}]'
+				}
+				current_type = fixed_element
+				member_path += '[]'
+				i = close + 1
+				continue
+			}
 			if !layout.starts_with('Array_') {
 				return none
 			}
@@ -5358,4 +5499,35 @@ fn (g &Parser) is_function_value_type(typ string) bool {
 		return true
 	}
 	return typ in g.functions || g.semantic_type_key(typ) in g.functions
+}
+
+// render_fixed_array_value renders `[N]T{}` (zeroed) and `[N]T{init: value}` (every
+// element `value`, which may not read `index`) as a value of the fixed-array struct.
+fn (g &Parser) render_fixed_array_value(tokens []FastcExpressionToken) ?string {
+	close := fastc_matching_delimiter(tokens, 0, .lsbr, .rsbr) or { return none }
+	mut open := close + 1
+	for open < tokens.len && tokens[open].tok != .lcbr {
+		open++
+	}
+	if close < 2 || open >= tokens.len || open == close + 1
+		|| fastc_matching_delimiter(tokens, open, .lcbr, .rcbr) or { -1 } != tokens.len - 1 {
+		return none
+	}
+	typ := fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { return none })
+	element_type := fastc_fixed_array_element_type(typ) or { return none }
+	length := fastc_fixed_array_length(typ) or { return none }
+	body := tokens[open + 1..tokens.len - 1]
+	if body.len == 0 {
+		return '((${typ}){0})'
+	}
+	if body.len < 3 || body[0].tok != .name || body[0].lit != 'init' || body[1].tok != .colon {
+		return none
+	}
+	for item in body[2..] {
+		if item.tok == .name && item.lit == 'index' {
+			return none
+		}
+	}
+	value := g.render_call_argument_expression(body[2..], element_type) or { return none }
+	return '({ ${typ} __vf_fixed_value; for (int __vf_fixed_index = 0; __vf_fixed_index < ${length}; __vf_fixed_index++) { __vf_fixed_value.data[__vf_fixed_index] = (${value}); } __vf_fixed_value; })'
 }

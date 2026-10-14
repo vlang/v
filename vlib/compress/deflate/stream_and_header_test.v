@@ -311,15 +311,59 @@ fn test_validate_zlib_header_rejects_preset_dictionary() {
 }
 
 fn test_validate_zlib_header_rejects_malformed_headers() {
-	validate_zlib_header([u8(0x78), 0x9c]) or {
-		assert err.msg() == 'invalid zlib stream: too short'
+	for data in [[]u8{}, [u8(0x78)]] {
+		if _ := validate_zlib_header(data) {
+			assert false, 'truncated header must be rejected'
+		} else {
+			assert err.msg() == 'invalid zlib stream: too short'
+		}
 	}
-	validate_zlib_header([u8(0x79), 0x9c, 0x00, 0x00, 0x00, 0x01]) or {
-		assert err.msg() == 'invalid zlib stream: unsupported compression method'
+	for i, data in [[u8(0x79), 0x9c], [u8(0x78), 0x9d]] {
+		if _ := validate_zlib_header(data) {
+			assert false, 'malformed header must be rejected'
+		} else {
+			expected := ['unsupported compression method', 'bad header checksum'][i]
+			assert err.msg() == 'invalid zlib stream: ${expected}'
+		}
 	}
-	validate_zlib_header([u8(0x78), 0x9d, 0x00, 0x00, 0x00, 0x01]) or {
-		assert err.msg() == 'invalid zlib stream: bad header checksum'
+}
+
+fn test_validate_zlib_header_rejects_cinfo_above_7() {
+	// Both headers have a valid FCHECK, so validation must reject CINFO.
+	for data in [[u8(0x88), 0x1c], [u8(0xf8), 0x00]] {
+		if _ := validate_zlib_header(data) {
+			assert false, 'invalid CINFO must be rejected: ${data}'
+		} else {
+			assert err.msg() == 'invalid zlib stream: invalid compression info'
+		}
 	}
+}
+
+fn test_decompress_zlib_rejects_short_streams_after_valid_header() {
+	for len in 2 .. 6 {
+		mut data := []u8{len: len}
+		data[0] = 0x78
+		data[1] = 0x9c
+		if _ := decompress_zlib(data) {
+			assert false, 'truncated zlib stream must be rejected'
+		} else {
+			assert err.msg() == 'invalid zlib stream: too short'
+		}
+		mut acc := ChunkAcc{}
+		if _ := decompress_with_callback(data, count_chunk, &acc) {
+			assert false, 'truncated callback zlib stream must be rejected'
+		} else {
+			assert err.msg() == 'invalid zlib stream: too short'
+		}
+		assert acc.total == 0
+		assert acc.chunks == 0
+	}
+}
+
+fn test_validate_zlib_header_accepts_two_byte_header() {
+	// Shortest valid zlib header: CM=8, CINFO=4, FCHECK passes.
+	header := validate_zlib_header([u8(0x48), 0x0d])!
+	assert header.payload_start == 2
 }
 
 fn test_validate_gzip_header_parses_all_optional_fields() {

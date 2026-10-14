@@ -35,7 +35,7 @@ fn (g &Parser) or_block_has_statements() bool {
 		return true
 	}
 	if g.tok in [.dollar, .key_return, .key_if, .key_for, .key_match, .key_mut, .key_defer, .key_break,
-		.key_continue] {
+		.key_continue, .key_assert] {
 		return true
 	}
 	mut lookahead := scanner.new_scanner(g.prefs, .normal)
@@ -672,16 +672,11 @@ fn (mut g Parser) parse_if() !bool {
 	if smartcast_name != '' && !smartcast_negated {
 		// A pointer subject (`node &ast.Node`) reaches its boxed payload through `->`.
 		tmp_access := if smartcast_boxed_type.ends_with('*') { '->' } else { '.' }
-		smartcast_is_reference := local_start == 1 || smartcast_boxed_type.ends_with('*') || cond_tokens[local_start].is_mut_argument
+		wants_reference := local_start == 1 || smartcast_boxed_type.ends_with('*') || cond_tokens[local_start].is_mut_argument
 		// The narrowed value goes into a UNIQUELY named temporary, not a shadow of the subject's
 		// own C name, so a `defer` body (rendered at function scope) still binds the original.
 		branch_cast := g.temporary_name('if_cast')
-		branch_type := if smartcast_is_reference { smartcast_type + '*' } else { smartcast_type }
-		branch_value := if smartcast_is_reference {
-			'(${smartcast_type} *)${smartcast_tmp}${tmp_access}_object'
-		} else {
-			'*((${smartcast_type} *)${smartcast_tmp}${tmp_access}_object)'
-		}
+		branch_type, branch_value, smartcast_is_reference := g.smartcast_payload_binding(smartcast_type, '${smartcast_tmp}${tmp_access}_object', wants_reference)
 		g.write_line('${branch_type} ${branch_cast} = ${branch_value};')
 		g.locals[smartcast_name] = FastcLocal{
 			is_mut:                  previous_smartcast.is_mut
@@ -715,13 +710,8 @@ fn (mut g Parser) parse_if() !bool {
 				previous_local_plans[plan.path] = g.locals[plan.path] or { FastcLocal{} }
 			}
 			plan_shadow := g.temporary_name('if_cast')
-			plan_is_reference := plan.boxed_type.ends_with('*')
-			plan_type := if plan_is_reference { plan.type_c + '*' } else { plan.type_c }
-			plan_value := if plan_is_reference {
-				'(${plan.type_c} *)${plan.boxed_tmp}${plan_access}_object'
-			} else {
-				'*((${plan.type_c} *)${plan.boxed_tmp}${plan_access}_object)'
-			}
+			value_type := if plan.value_type != '' { plan.value_type } else { plan.type_c }
+			plan_type, plan_value, plan_is_reference := g.smartcast_payload_binding(value_type, '${plan.boxed_tmp}${plan_access}_object', plan.boxed_type.ends_with('*'))
 			g.write_line('${plan_type} ${plan_shadow} = ${plan_value};')
 			previous_plan_local := g.locals[plan.path] or { FastcLocal{} }
 			g.locals[plan.path] = FastcLocal{
@@ -742,8 +732,9 @@ fn (mut g Parser) parse_if() !bool {
 		}
 		g.write_line('${plan.type_c} *${plan.member_tmp} = (${plan.type_c} *)${plan.boxed_tmp}${plan_access}_object;')
 		g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-			typ:    plan.type_c + '*'
-			source: plan.member_tmp
+			typ:        plan.type_c + '*'
+			value_type: plan.value_type
+			source:     plan.member_tmp
 		}
 	}
 	// `if opt != none { opt.field }`: narrow each option local guaranteed non-none in the
@@ -1035,6 +1026,7 @@ fn (g &Parser) if_starts_final_block_expression() bool {
 struct FastcMemberSmartcastPlan {
 	path       string
 	type_c     string
+	value_type string
 	boxed_type string
 	source     string
 	boxed_tmp  string
@@ -1248,7 +1240,8 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 								left_source = origin.source
 							}
 						}
-						normalized_target := fastc_normalize_inferred_type(target_type)
+						value_type := fastc_normalize_inferred_type(target_type)
+						normalized_target := value_type.trim_right('*')
 						boxed_tmp := g.temporary_name('smartcast_subject')
 						member_tmp := g.temporary_name('smartcast_member')
 						// A pointer subject (`node &ast.Node`, or a nested variant already
@@ -1258,6 +1251,7 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 						plans << FastcMemberSmartcastPlan{
 							path:       path
 							type_c:     normalized_target
+							value_type: value_type
 							boxed_type: left_type
 							source:     left_source
 							boxed_tmp:  boxed_tmp
@@ -1274,8 +1268,9 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 							previous[path] = g.member_smartcasts[path] or { FastcMemberSmartcast{} }
 						}
 						g.member_smartcasts[path] = FastcMemberSmartcast{
-							typ:    normalized_target + '*'
-							source: '((${normalized_target} *)${boxed_tmp}${access}_object)'
+							typ:        normalized_target + '*'
+							value_type: value_type
+							source:     '((${normalized_target} *)${boxed_tmp}${access}_object)'
 						}
 						continue
 					}
@@ -1638,7 +1633,9 @@ fn (mut g Parser) read_if_expression() !string {
 				// A bare-local subject is shadowed as a concrete-variant VALUE, so a whole-value
 				// read of the local (`if x is T { x }` returning it) yields the variant — not the
 				// raw boxed subject, which would mis-box on the way out.
-				smartcast_bindings += '${plan.type_c} ${plan.member_tmp} = *((${plan.type_c} *)${plan.boxed_tmp}${plan_access}_object); '
+				value_type := if plan.value_type != '' { plan.value_type } else { plan.type_c }
+				plan_type, plan_value, _ := g.smartcast_payload_binding(value_type, '${plan.boxed_tmp}${plan_access}_object', false)
+				smartcast_bindings += '${plan_type} ${plan.member_tmp} = ${plan_value}; '
 			} else {
 				smartcast_bindings += '${plan.type_c} *${plan.member_tmp} = (${plan.type_c} *)${plan.boxed_tmp}${plan_access}_object; '
 			}
@@ -1668,7 +1665,7 @@ fn (mut g Parser) read_if_expression() !string {
 				previous_plan_local := g.locals[plan.path] or { FastcLocal{} }
 				g.locals[plan.path] = FastcLocal{
 					is_mut: previous_plan_local.is_mut
-					typ:    plan.type_c
+					typ:    if plan.value_type != '' { plan.value_type } else { plan.type_c }
 					c_name: plan.member_tmp
 				}
 				continue
@@ -1680,8 +1677,9 @@ fn (mut g Parser) read_if_expression() !string {
 				}
 			}
 			g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-				typ:    plan.type_c + '*'
-				source: plan.member_tmp
+				typ:        plan.type_c + '*'
+				value_type: plan.value_type
+				source:     plan.member_tmp
 			}
 		}
 	}
