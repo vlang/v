@@ -205,6 +205,12 @@ for collection when it is no longer needed.
 
 Struct field renaming attributes are also honored when compiling with `-autofree`.
 
+Floating-point values outside the target type's finite range return a decoding error.
+The overflow check also applies with C finite-math flags, such as `-cflags '-ffast-math'`.
+This also applies to numbers inside `json2.Any`, collections, and struct fields, and to
+quoted numeric strings accepted in default mode. Finite subnormal values remain valid;
+values too small to represent may round to zero.
+
 JSON object keys are decoded to the target map key type, including signed and unsigned
 integer keys. Nested maps and maps stored in struct fields follow the same conversion.
 Enum map keys, including enum type aliases, use member names as written by `encode`.
