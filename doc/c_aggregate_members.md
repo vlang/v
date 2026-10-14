@@ -11,3 +11,5 @@ refer to the native C member `type`.
 
 Ordinary V struct fields retain V's generated identifier spelling, even when an alias or
 pointer is used. This includes fields whose names overlap with C library functions.
+The name `complex` is escaped for V identifiers so including `<complex.h>` does not expand
+them as C macros. A C binding's `complex` member still retains its external spelling.
