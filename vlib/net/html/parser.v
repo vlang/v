@@ -129,8 +129,13 @@ pub fn (mut parser Parser) split_parse(data string) {
 					parser.lexical_attributes.open_code = false
 					// modify lexeme_builder to include script text as content in the next loop
 					parser.lexical_attributes.lexeme_builder.go_back(name_close_tag.len)
+					// the builder now holds exactly the body, since it was reset
+					// when the opening tag closed; keep it as the tag content
+					parser.lexical_attributes.current_tag.content = parser.builder_str()
 					parser.lexical_attributes.current_tag.closed = true
 					parser.lexical_attributes.current_tag.close_type = .new_tag
+					parser.lexical_attributes.lexeme_builder.go_back_to(0)
+					parser.generate_tag()
 				}
 			}
 		} else if parser.lexical_attributes.open_comment {
@@ -186,7 +191,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 				*/
 				if parser.lexical_attributes.current_tag.name == '' {
 					parser.lexical_attributes.current_tag.name = complete_lexeme
-				} else if complete_lexeme != '/' {
+				} else if complete_lexeme.len > 0 && complete_lexeme != '/' {
 					parser.lexical_attributes.current_tag.attributes[complete_lexeme] = ''
 				}
 				parser.lexical_attributes.open_tag = false
@@ -198,8 +203,13 @@ pub fn (mut parser Parser) split_parse(data string) {
 				// parser.print_debug(parser.lexical_attributes.current_tag.name)
 			} else if chr !in [u8(9), ` `, `=`, `\n`] { // Tab, space, = and \n
 				parser.lexical_attributes.lexeme_builder.write_u8(chr)
-			} else if chr != 10 {
+			} else {
+				// a newline separates like a space does: without this a tag
+				// split across lines glues its name to the first attribute
 				complete_lexeme := parser.builder_str().to_lower()
+				if complete_lexeme.len == 0 {
+					continue
+				}
 				if parser.lexical_attributes.current_tag.name == '' {
 					parser.lexical_attributes.current_tag.name = complete_lexeme
 				} else {
@@ -222,6 +232,9 @@ pub fn (mut parser Parser) split_parse(data string) {
 					&& !blank_string(temp_string) {
 					parser.lexical_attributes.text_after_tag = true
 				} else {
+					if parser.lexical_attributes.current_tag.name == '' {
+						parser.lexical_attributes.current_tag.name = 'text'
+					}
 					parser.lexical_attributes.current_tag.content = temp_string // verify later who has this content
 				}
 			}
@@ -272,21 +285,46 @@ pub fn (mut parser Parser) parse_html(data string) {
 		// After `split_into_lines()` we need to add `\n` again.
 		parser.split_parse(if index < lines.len - 1 { '${line}\n' } else { line })
 	}
-	parser.generate_tag()
+	parser.finalize()
 	parser.dom.debug_file = parser.debug_file
 	parser.dom.construct(parser.tags)
 }
 
-// finalize finishes the parsing stage .
+// finalize flushes pending text and finishes the parsing stage.
 @[inline]
 pub fn (mut parser Parser) finalize() {
+	if parser.lexical_attributes.open_code {
+		parser.lexical_attributes.current_tag.content = parser.builder_str()
+		parser.lexical_attributes.lexeme_builder.go_back_to(0)
+		parser.lexical_attributes.open_code = false
+	}
+	if !parser.lexical_attributes.open_code && !parser.lexical_attributes.open_tag
+		&& parser.lexical_attributes.lexeme_builder.len > 0 {
+		if parser.lexical_attributes.current_tag.name == ''
+			|| parser.lexical_attributes.current_tag.name[0] == `/` {
+			// trailing text after the last tag (or with no tags at all):
+			// it belongs to a new text node. Flush the closing tag first
+			// so construction attaches the text to the surrounding element.
+			parser.generate_tag()
+			parser.tags << &Tag{
+				name:         'text'
+				content:      parser.builder_str()
+				text_content: parser.builder_str()
+			}
+			parser.lexical_attributes.lexeme_builder.go_back_to(0)
+		} else {
+			// text inside an element that was never closed belongs to it
+			parser.lexical_attributes.current_tag.content += parser.builder_str()
+			parser.lexical_attributes.lexeme_builder.go_back_to(0)
+		}
+	}
 	parser.generate_tag()
 }
 
 // get_dom returns the parser's current DOM representation.
 pub fn (mut parser Parser) get_dom() DocumentObjectModel {
 	if !parser.dom.constructed {
-		parser.generate_tag()
+		parser.finalize()
 		parser.dom.construct(parser.tags)
 	}
 	return parser.dom

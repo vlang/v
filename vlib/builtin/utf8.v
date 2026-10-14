@@ -10,63 +10,71 @@ pub fn utf8_char_len(b u8) int {
 	return int(((u32(0xe5000000) >> ((b >> 3) & 0x1e)) & 3) + 1)
 }
 
-// Convert utf32 to utf8
-// utf32 == Codepoint
+// utf32_to_str returns the UTF-8 encoding of the code point `code` as a new string.
+// A value that is not a Unicode scalar value (a surrogate half in 0xD800..0xDFFF,
+// or anything above 0x10FFFF) is encoded as U+FFFD, the replacement character.
 pub fn utf32_to_str(code u32) string {
 	unsafe {
 		mut buffer := malloc_noscan(5)
-		res := utf32_to_str_no_malloc(code, mut buffer)
-		if res.len == 0 {
-			// the buffer was not used at all
-			free(buffer)
-		}
-		return res
+		return utf32_to_str_no_malloc(code, mut buffer)
 	}
 }
 
+// utf32_to_str_no_malloc writes the UTF-8 encoding of the code point `code` to `buf`,
+// followed by a 0 byte, and returns a string that uses `buf` as its storage.
+// `buf` must have room for at least 5 bytes.
+// See `utf32_decode_to_buffer` for what is written for an invalid `code`.
 @[manualfree; unsafe]
 pub fn utf32_to_str_no_malloc(code u32, mut buf &u8) string {
 	unsafe {
 		len := utf32_decode_to_buffer(code, mut buf)
-		if len == 0 {
-			return ''
-		}
 		buf[len] = 0
 		return tos(buf, len)
 	}
 }
 
+// utf32_decode_to_buffer writes the UTF-8 encoding of the code point `code` to `buf`,
+// which must have room for at least 4 bytes. It returns the number of bytes written,
+// which is always between 1 and 4.
+// A value that is not a Unicode scalar value (a surrogate half in 0xD800..0xDFFF,
+// or anything above 0x10FFFF) is encoded as U+FFFD, the replacement character.
 @[manualfree; unsafe]
 pub fn utf32_decode_to_buffer(code u32, mut buf &u8) int {
 	unsafe {
 		icode := int(code) // Prevents doing casts everywhere
 		mut buffer := &u8(buf)
-		if icode <= 127 {
+		// The ranges are checked on the unsigned `code`: where `int` has 32 bits,
+		// `icode` is negative for a `code` above 0x7FFFFFFF.
+		if code <= 127 {
 			// 0x7F
 			buffer[0] = u8(icode)
 			return 1
-		} else if icode <= 2047 {
+		} else if code <= 2047 {
 			// 0x7FF
 			buffer[0] = 192 | u8(icode >> 6) // 0xC0 - 110xxxxx
 			buffer[1] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
 			return 2
-		} else if icode <= 65535 {
-			// 0xFFFF
+		} else if code <= 65535 && (code < 0xd800 || code > 0xdfff) {
+			// 0xFFFF, without the surrogate halves
 			buffer[0] = 224 | u8(icode >> 12) // 0xE0 - 1110xxxx
 			buffer[1] = 128 | (u8(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[2] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
 			return 3
 		}
 		// 0x10FFFF
-		else if icode <= 1114111 {
+		else if code > 65535 && code <= 1114111 {
 			buffer[0] = 240 | u8(icode >> 18) // 0xF0 - 11110xxx
 			buffer[1] = 128 | (u8(icode >> 12) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[2] = 128 | (u8(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[3] = 128 | u8(icode & 63) // 0x80 - 0x3F - 10xxxxxx
 			return 4
 		}
+		// Not a Unicode scalar value: write U+FFFD, like the decoder does for invalid input.
+		buffer[0] = 0xef
+		buffer[1] = 0xbf
+		buffer[2] = 0xbd
 	}
-	return 0
+	return 3
 }
 
 // Convert utf8 to utf32
