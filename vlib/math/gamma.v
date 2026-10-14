@@ -128,13 +128,13 @@ fn gamma_too_small(x f64, z f64) f64 {
 	return z / ((1.0 + euler * x) * x)
 }
 
-// log_gamma returns the natural logarithm and sign (-1 or +1) of Gamma(x).
+// log_gamma returns the natural logarithm of the absolute value of Gamma(x).
 //
 // special ifs are:
 // log_gamma(+inf) = +inf
 // log_gamma(0) = +inf
 // log_gamma(-integer) = +inf
-// log_gamma(-inf) = -inf
+// log_gamma(-inf) = +inf
 // log_gamma(nan) = nan
 pub fn log_gamma(x f64) f64 {
 	y, _ := log_gamma_sign(x)

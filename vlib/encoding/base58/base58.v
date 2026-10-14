@@ -2,8 +2,6 @@
 
 module base58
 
-import math
-
 // encode_int encodes any integer type to base58 string with Bitcoin alphabet
 pub fn encode_int(input int) !string {
 	return encode_int_walpha(input, btc_alphabet)
@@ -103,20 +101,23 @@ pub fn decode_int(input string) !int {
 	return decode_int_walpha(input, btc_alphabet)
 }
 
-// decode_int_walpha decodes base58 string to an integer with custom alphabet
+// decode_int_walpha decodes base58 string to an integer with custom alphabet.
+// It returns an error, when the input contains a byte outside the alphabet, or
+// when its value does not fit in an `int`.
 pub fn decode_int_walpha(input string, alphabet Alphabet) !int {
+	alphabet_str := alphabet.encode.bytestr()
 	mut total := 0 // to hold the results
-	b58 := input.reverse()
-	for i, ch in b58 {
-		ch_i := alphabet.encode.bytestr().index_u8(ch)
+	for ch in input {
+		ch_i := alphabet_str.index_u8(ch)
 		if ch_i == -1 {
 			return error(@MOD + '.' + @FN +
 				': input string contains values not found in the provided alphabet')
 		}
-
-		val := ch_i * math.pow(58, i)
-
-		total += int(val)
+		// total * 58 + ch_i must not exceed max_int
+		if total > (max_int - ch_i) / 58 {
+			return error(@MOD + '.' + @FN + ': input value does not fit in an int')
+		}
+		total = total * 58 + ch_i
 	}
 
 	return total
@@ -164,11 +165,9 @@ pub fn decode_walpha_bytes(input []u8, alphabet Alphabet) ![]u8 {
 	mut outi := []u32{len: (b58sz + 3) / 4}
 
 	for _, r in input {
-		if r > 127 {
-			panic(@MOD + '.' + @FN +
-				': high-bit set on invalid digit; outside of ascii range (${r}). This should never happen.')
-		}
-		if alphabet.decode[r] == -1 {
+		// a byte above 127 is outside the 128 entry decode table, and it is
+		// not a valid digit either, so it is reported like any other one
+		if r > 127 || alphabet.decode[r] == -1 {
 			return error(@MOD + '.' + @FN + ': invalid base58 digit (${r})')
 		}
 

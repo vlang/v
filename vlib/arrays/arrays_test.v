@@ -156,6 +156,10 @@ fn test_chunk() {
 	z2 := chunk[string](y, 3)
 	assert z2 == [['a', 'b', 'c'], ['d', 'e', 'f']]
 	assert chunk[int]([]int{}, 2) == [][]int{}
+	// a non positive size cannot produce a chunk, like window's attributes
+	assert chunk[int](x, 0) == [][]int{}
+	assert chunk[int](x, -1) == [][]int{}
+	assert chunk[int]([]int{}, 0) == [][]int{}
 }
 
 fn test_chunk_while() {
@@ -312,7 +316,12 @@ fn test_concat_string() {
 fn test_binary_search() {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
 	assert binary_search(a, 3)! == 1
-	assert (binary_search(a, 0) or { -1 }) == -1
+	if _ := binary_search(a, 0) {
+		assert false, '0 is not in the array, binary_search should have failed'
+	} else {
+		// the message must not be empty, so `or { panic(err.msg()) }` is useful
+		assert err.msg() == '.binary_search: target 0 not found'
+	}
 }
 
 fn test_lower_bound() {
@@ -320,8 +329,17 @@ fn test_lower_bound() {
 	b := []int{}
 	c := [1, 2, 3]
 	assert lower_bound(a, 2)! == 3
-	assert (lower_bound(b, 4) or { -1 }) == -1
 	assert lower_bound(c, 3)! == 3
+	if _ := lower_bound(b, 4) {
+		assert false, 'lower_bound on an empty array should have failed'
+	} else {
+		assert err.msg() == '.lower_bound called on an empty array'
+	}
+	if _ := lower_bound(c, 4) {
+		assert false, 'no element is >= 4 in [1, 2, 3], lower_bound should have failed'
+	} else {
+		assert err.msg() == '.lower_bound: no element >= 4'
+	}
 }
 
 fn test_upper_bound() {
@@ -329,7 +347,16 @@ fn test_upper_bound() {
 	b := []int{}
 	c := [1, 2, 3]
 	assert upper_bound(a, 9)! == 8
-	assert (upper_bound(b, 4) or { -1 }) == -1
+	if _ := upper_bound(b, 4) {
+		assert false, 'upper_bound on an empty array should have failed'
+	} else {
+		assert err.msg() == '.upper_bound called on an empty array'
+	}
+	if _ := upper_bound(c, 0) {
+		assert false, 'no element is <= 0 in [1, 2, 3], upper_bound should have failed'
+	} else {
+		assert err.msg() == '.upper_bound: no element <= 0'
+	}
 	assert upper_bound(c, 2)! == 2
 }
 

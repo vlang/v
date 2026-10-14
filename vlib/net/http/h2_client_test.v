@@ -108,7 +108,7 @@ fn test_h2_response_to_http() {
 		headers: [H2HeaderField{'content-type', 'text/plain'}, H2HeaderField{'x-foo', 'bar'}]
 		body:    'hi'.bytes()
 	}
-	resp := h2_response_to_http(h2resp)
+	resp := h2_response_to_http(h2resp)!
 	assert resp.status_code == 200
 	assert resp.http_version == '2.0'
 	assert resp.version() == .v2_0

@@ -1,7 +1,5 @@
 module flat
 
-#include "@VEXEROOT/vlib/v/flat/flat_payload_helpers.h"
-
 // C interop behind the process-wide node payload table (see node_payload in
 // flat.v): the insert spin lock and the raw chunk allocations. The table and
 // its chunks must outlive every prealloc arena, and under a tracing GC they
@@ -21,9 +19,17 @@ fn C.atomic_store_u64(voidptr, u64)
 
 fn C.atomic_load_u64(voidptr) u64
 
-fn C.v_flat_payload_ptr_get(voidptr, usize) voidptr
+@[inline]
+fn payload_ptr_get(base voidptr, index usize) voidptr {
+	// The payload chunks are arrays of pointers with validated indices.
+	return unsafe { (&voidptr(base))[index] }
+}
 
-fn C.v_flat_payload_ptr_set(voidptr, usize, voidptr)
+@[inline]
+fn payload_ptr_set(base voidptr, index usize, value voidptr) {
+	// The caller owns the chunk and has reserved this index.
+	unsafe { (&voidptr(base))[index] = value }
+}
 
 // node_payload_table_load reads the published table pointer, or nil. The
 // pointer goes through the integer atomics of its width, like sync.stdatomic:

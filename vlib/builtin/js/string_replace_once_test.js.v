@@ -6,4 +6,8 @@ fn test_replace_once() {
 	assert 'abcabc'.replace_once('abc', 'X') == 'Xabc'
 	assert 'abc'.replace_once('missing', 'X') == 'abc'
 	assert 'é🙂'.replace_once('', '前') == '前é🙂'
+	assert 'abc'.replace_once('b', r'$&') == r'a$&c'
+	assert 'abc'.replace_once('b', r'$$') == r'a$$c'
+	assert 'abc'.replace_once('b', r'$`') == r'a$`c'
+	assert 'abc'.replace_once('b', r"$'") == r"a$'c"
 }

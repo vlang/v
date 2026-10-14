@@ -3,12 +3,23 @@
 `builtin` is a module that is implicitly imported by every V program.
 
 It implements the builtin V types `array`, `string`, `map`.
+With bounds checking enabled, `first()` and `last()` on an empty dynamic array panic with
+`array.first: array is empty` and `array.last: array is empty`, respectively.
+This also applies when writing through the returned element, such as `cells.last().field = value`.
+
+Default array `sort()` and `sorted()` keep equal elements in their original order.
+For floating point elements, NaNs follow all other values. Equal signed zeros and NaNs
+keep their original order; an explicit comparison controls its own ordering.
 Maps with empty struct values support growth, reservation, and deletion with every C compiler,
 including compilers where the empty struct occupies zero bytes.
 It also includes Unicode-aware string helpers such as `string.graphemes()`
 for splitting text into grapheme clusters.
 The `.string()` method converts dynamic and fixed arrays of runes to UTF-8 strings,
 including fixed arrays returned by `.map()`.
+
+Rune-to-string helpers encode surrogate halves and values above U+10FFFF as U+FFFD.
+UTF-16 helpers `string_from_wide` and `string_from_wide2` join valid surrogate pairs;
+unpaired UTF-16 units retain their three-byte WTF-8 representation for lossless interop.
 
 It also implements builtin functions like `println`, `eprintln`, `malloc`,
 `panic`, `print_backtrace`.
@@ -22,7 +33,19 @@ functions, please refer to the
 `string.replace_once(rep, with)` replaces only the first occurrence of `rep`.
 An empty `rep` inserts `with` at the start, including when the source string is empty:
 `'abc'.replace_once('', 'X')` returns `'Xabc'`, and `''.replace_once('', 'X')` returns `'X'`.
+The replacement is inserted literally, including dollar signs.
 If a nonempty `rep` is absent, the source string is returned unchanged.
+
+### Returning unused GC pages
+
+On macOS and Linux, the bundled Boehm collector built from source (including `-prod` builds)
+can return unused heap pages to the operating system. `gc_heap_usage().unmapped_bytes` reports
+the unmapped space. Collection still requires allocations or an explicit `gc_collect()` call;
+an idle application does not collect automatically.
+
+Set `GC_UNMAP_THRESHOLD` before starting the program to tune the number of collections before
+unused pages are unmapped. `GC_FORCE_UNMAP_ON_GCOLLECT=1` requests unmapping during explicit
+collections. These settings do not make live objects eligible for collection.
 
 ### Printing pointers
 
@@ -30,12 +53,30 @@ If a nonempty `rep` is absent, the source string is returned unchanged.
 The address is hexadecimal with the `0x` prefix: `println(voidptr(u64(42)))` prints `0x2a`.
 String interpolation of a `voidptr` uses the hexadecimal address without the prefix.
 
+### Splitting by characters
+
+With an empty delimiter, `split` and `rsplit` split complete UTF-8 runes, preserving malformed
+bytes as individual parts. Their `split_nth` and `rsplit_nth` variants keep the final remainder
+on a rune boundary. For example, `'αβγ'.split_nth('', 2)` produces `['α', 'βγ']`.
+
+`split_any` and `rsplit_any` match complete UTF-8 runes from their delimiter string.
+Malformed bytes are treated as U+FFFD, matching `string.runes()`. The reverse form
+returns parts in reverse order.
+
 ### String indexing
 
 String indexing checks signed and unsigned positions before reading a byte, including `i64`
 and `u64` positions without narrowing them to `int`. An index below zero or at least the string
 length panics. `unsafe` indexing, `@[direct_array_access]`, and `-no-bounds-checking` retain their
 explicit unchecked behavior.
+
+### Searching for an empty string
+
+`string.index('')` and `string.index_('')` return `0`, including for an empty source string.
+`string.last_index('')` returns the source string's byte length, so `''.last_index('')` returns `0`.
+These positions mark the start and end boundaries of the string.
+The delimiter helpers `before`, `all_before`, `all_before_last`, `all_after`, `all_after_first`,
+`all_after_last`, and `after` leave the source unchanged for an empty delimiter.
 
 ### Reusing a preallocated scope
 
@@ -57,3 +98,28 @@ ensure no allocation from a rewound or freed scope remains in use.
 scope, excluding allocator metadata and address gaps between blocks. It returns zero for a nil
 scope and saturates at `usize`'s maximum on overflow. This query is unsafe: no thread may add or
 remove blocks while it runs.
+
+`string.replace_each(pairs)` ignores pairs with an empty search string. An empty replacement
+string removes matches of a nonempty search string.
+
+`string.limit(max)` counts Unicode code points and returns an empty string for `max <= 0`.
+
+### String margins
+
+`string.strip_margin()` and `strip_margin_custom(del)` keep content after the last line break
+when no later delimiter exists. Final whitespace-only lines are discarded. Lines before a later
+delimiter keep their established removal behavior.
+
+The `string.is_bin()`, `is_oct()`, and `is_hex()` predicates accept both lowercase and uppercase
+prefixes (`0b`/`0B`, `0o`/`0O`, and `0x`/`0X`), including after an optional sign. Each prefix
+must be followed by at least one valid digit for its base.
+
+`string.is_lower()` requires at least one lowercase ASCII letter and rejects uppercase ASCII
+letters. Digits, whitespace, and punctuation do not determine the case: `'123abc'.is_lower()`
+is true, while digit-only or punctuation-only strings return false.
+
+### Reverse splitting
+
+`rsplit`, `rsplit_nth`, and `rsplit_once` recognize nonempty delimiters at the end of a string.
+Splitting at an end delimiter gives `rsplit` and `rsplit_nth` an empty first array element.
+Substring matches are selected from right to left without overlapping.

@@ -5,6 +5,26 @@ import v.flat
 import v.parser
 import v.pref
 
+fn test_cached_header_parameter_does_not_conflict_with_merged_imports() {
+	root := os.join_path(os.vtmp_dir(), 'v3_module_cache_import_params_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for file_name in ['sample.v', 'sample.vh'] {
+		path := os.join_path(root, file_name)
+		os.write_file(path, 'module sample\nimport math.bits\npub fn prime(bits int) int { return bits }\n')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_semantics()
+		if file_name.ends_with('.vh') {
+			assert tc.errors.len == 0, tc.errors.str()
+		} else {
+			assert tc.errors.any(it.msg == 'duplicate of an import symbol `bits`'), tc.errors.str()
+		}
+	}
+}
+
 fn test_cached_module_header_uses_original_source_identity() {
 	root := os.join_path(os.vtmp_dir(), 'v3_cached_module_identity_${os.getpid()}')
 	source := os.join_path(root, 'app', 'html', 'html.v')
@@ -59,7 +79,7 @@ fn test_synthetic_runtime_import_may_match_current_module() {
 	a.add_node(flat.Node{
 		kind:  .import_decl
 		value: 'sync'
-		typ:   'sync'
+		typ:   flat.source_type_id('sync')
 	})
 	mut tc := TypeChecker.new(a)
 	tc.collect(a)

@@ -2,7 +2,39 @@ module transform
 
 import os
 import v.flat
+import v.parser
+import v.pref
 import v.types
+
+fn test_generic_declaration_index_preserves_appended_templates_and_erasure() {
+	path := os.join_path(os.vtmp_dir(), 'generic_decl_index_${os.getpid()}.v')
+	os.write_file(path, 'module source\nstruct Box[T] { value T }\ntype Choice[T] = T | string\n')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	assert tc.top_level_idx.len > 0
+	a.add_val(.file, 'appended.v')
+	a.add_val(.module_decl, 'later')
+	mut appended := flat.Node{ kind: .struct_decl, value: 'Added' }
+	appended.set_generic_params(['T'])
+	added := a.add_node(appended)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	indexed_structs := t.collect_generic_struct_decls()
+	indexed_sums := t.collect_generic_sum_decls()
+	assert 'source.Box' in indexed_structs
+	assert indexed_structs['source.Box'].file == path
+	assert indexed_structs['later.Added'].id == added
+	assert indexed_structs['later.Added'].file == 'appended.v'
+	assert indexed_sums['source.Choice'].file == path
+	tc.top_level_idx.clear()
+	assert t.collect_generic_struct_decls() == indexed_structs
+	assert t.collect_generic_sum_decls() == indexed_sums
+	t.set_node(int(added), flat.Node{})
+	assert 'later.Added' !in t.collect_generic_struct_decls()
+}
 
 fn test_node_context_cache_growth_preserves_ids_and_initializes_new_slots() {
 	mut cache := []u16{}
@@ -25,14 +57,14 @@ fn test_specialized_fn_signature_types_are_recorded_once() {
 	param_id := a.add_node(flat.Node{
 		kind:  .param
 		value: 'value'
-		typ:   'T'
+		typ:   flat.source_type_id('T')
 	})
 	children_start := a.children.len
 	a.children << param_id
 	mut fn_node := flat.Node{
 		kind:           .fn_decl
 		value:          'identity'
-		typ:            'T'
+		typ:            flat.source_type_id('T')
 		children_start: children_start
 		children_count: 1
 	}
@@ -103,8 +135,8 @@ fn test_collision_locked_main_struct_is_a_concrete_generic_argument() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['T'] = StructInfo{ name: 'T', module: 'main' }
-	t.structs['S'] = StructInfo{ name: 'S', module: 'foreign' }
+	t.structs['T'] = StructInfo{ name: flat.source_type_id('T'), module: 'main' }
+	t.structs['S'] = StructInfo{ name: flat.source_type_id('S'), module: 'foreign' }
 	t.cur_module = 'foreign'
 
 	assert !t.generic_arg_is_unresolved('main.T')
@@ -152,7 +184,7 @@ fn test_generic_field_type_substitutes_fixed_array_length_expr() {
 fn test_zero_value_normalizes_generic_alias_but_preserves_generic_struct() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Values'] = '[]T'
+	tc.type_aliases.set('Values', '[]T')
 	tc.type_alias_generic_params['Values'] = ['T']
 	tc.structs['Box'] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -161,13 +193,13 @@ fn test_zero_value_normalizes_generic_alias_but_preserves_generic_struct() {
 	alias_zero := t.a.nodes[int(alias_zero_id)]
 	assert alias_zero.kind == .array_init
 	assert alias_zero.value == 'int'
-	assert alias_zero.typ == '[]int'
+	assert alias_zero.typ_text() == '[]int'
 
 	struct_zero_id := t.zero_value_for_type('Box[int]')
 	struct_zero := t.a.nodes[int(struct_zero_id)]
 	assert struct_zero.kind == .struct_init
 	assert struct_zero.value == 'Box[int]'
-	assert struct_zero.typ == 'Box[int]'
+	assert struct_zero.typ_text() == 'Box[int]'
 }
 
 fn test_explicit_generic_fn_value_candidates_resolve_selective_import() {
@@ -220,7 +252,7 @@ fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
 	mut values_alias := flat.Node{
 		kind:  .type_decl
 		value: 'Values'
-		typ:   '[]T'
+		typ:   flat.source_type_id('[]T')
 	}
 	values_alias.set_generic_params(['T'])
 	a.add_node(values_alias)
@@ -228,12 +260,12 @@ fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
 	value_field := a.add_node(flat.Node{
 		kind:  .field_decl
 		value: 'value'
-		typ:   'T'
+		typ:   flat.source_type_id('T')
 	})
 	values_field := a.add_node(flat.Node{
 		kind:  .field_decl
 		value: 'values'
-		typ:   'Values[T]'
+		typ:   flat.source_type_id('Values[T]')
 	})
 	children_start := a.children.len
 	a.children << value_field
@@ -249,8 +281,8 @@ fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
 
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_module = 'main'
-	tc.type_aliases['UserId'] = 'int'
-	tc.type_aliases['Values'] = '[]T'
+	tc.type_aliases.set('UserId', 'int')
+	tc.type_aliases.set('Values', '[]T')
 	tc.type_alias_generic_params['Values'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
@@ -277,7 +309,7 @@ fn test_materialized_imported_generic_struct_preserves_locked_main_generic_argum
 	value_field := a.add_node(flat.Node{
 		kind:  .field_decl
 		value: 'value'
-		typ:   'T'
+		typ:   flat.source_type_id('T')
 	})
 	children_start := a.children.len
 	a.children << value_field
@@ -316,7 +348,7 @@ fn test_flattened_generic_struct_types_materialize_from_recorded_args() {
 	arc_decl.set_generic_params(['T'])
 	arc_id := a.add_node(arc_decl)
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types['ResourceSum'] = ['Resource', 'int']
+	tc.sum_types.set('ResourceSum', ['Resource', 'int'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.record_generic_specialization_args_in_module('Arc', 'arc', ['ResourceSum'])
 	decls := {
@@ -327,9 +359,9 @@ fn test_flattened_generic_struct_types_materialize_from_recorded_args() {
 			key:    'arc.Arc'
 		}
 	}
-	mut specs := map[string]string{}
+	mut specs := flat.TypeTextBindings{}
 	t.collect_generic_struct_spec_from_type('arc.Arc_ResourceSum', 'main', '', decls, mut specs)
-	assert specs['arc.Arc[ResourceSum]'] == 'arc.Arc'
+	assert specs.value('arc.Arc[ResourceSum]') == 'arc.Arc'
 }
 
 fn test_flattened_generic_struct_arg_canonicalizes_to_source_application() {
@@ -367,14 +399,14 @@ fn test_short_fixed_array_generic_arg_canonicalizes_to_source_type() {
 
 	assert t.canonical_generic_specialization_arg('int_2') == '[2]int'
 	assert t.canonical_generic_specialization_arg('int_3_2') == '[2][3]int'
-	tc.type_aliases['int_2'] = 'int'
+	tc.type_aliases.set('int_2', 'int')
 	assert t.canonical_generic_specialization_arg('int_2') == 'int_2'
 }
 
 fn test_composite_generic_inference_preserves_nested_alias() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Distance'] = 'int'
+	tc.type_aliases.set('Distance', 'int')
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.build_generic_alias_name_index()
 
@@ -384,7 +416,7 @@ fn test_composite_generic_inference_preserves_nested_alias() {
 fn test_composite_generic_inference_still_expands_direct_alias() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Distances'] = '[]int'
+	tc.type_aliases.set('Distances', '[]int')
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.build_generic_alias_name_index()
 
@@ -401,15 +433,15 @@ fn test_concrete_generic_fn_alias_call_expands_multi_return_signature() {
 	a.children << callee_id
 	call_id := a.add_node(flat.Node{
 		kind:           .call
-		typ:            'fn(I) (O, R)[string, string, string]'
+		typ:            flat.source_type_id('fn(I) (O, R)[string, string, string]')
 		children_start: children_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['FnMultiReturn'] = 'fn (I) (O, R)'
+	tc.type_aliases.set('FnMultiReturn', 'fn (I) (O, R)')
 	tc.type_alias_generic_params['FnMultiReturn'] = ['I', 'O', 'R']
 	tc.fn_ret_types['make_splitter'] = types.Type(types.Alias{
-		name:      'FnMultiReturn[string, string, string]'
+		name_id:   flat.source_type_id('FnMultiReturn[string, string, string]')
 		base_type: types.Type(types.void_)
 	})
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -432,15 +464,15 @@ fn test_concrete_generic_fn_alias_call_expands_result_signature() {
 	a.children << callee_id
 	call_id := a.add_node(flat.Node{
 		kind:           .call
-		typ:            'fn(string) !ParseResult[T][string]'
+		typ:            flat.source_type_id('fn(string) !ParseResult[T][string]')
 		children_start: children_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['ParseFunction'] = 'fn (string) !ParseResult[T]'
+	tc.type_aliases.set('ParseFunction', 'fn (string) !ParseResult[T]')
 	tc.type_alias_generic_params['ParseFunction'] = ['T']
 	tc.fn_ret_types['literal'] = types.Type(types.Alias{
-		name:      'ParseFunction[string]'
+		name_id:   flat.source_type_id('ParseFunction[string]')
 		base_type: types.Type(types.void_)
 	})
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -515,7 +547,7 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	assert t.specialization_main_type_closure(['map[string]Event']) == {
 		'Event': true
 	}
-	tc.type_aliases['AliasContext'] = 'Context'
+	tc.type_aliases.set('AliasContext', 'Context')
 	assert t.specialization_main_type_closure(['AliasContext']) == {
 		'AliasContext': true
 		'Context':      true
@@ -532,9 +564,9 @@ fn test_lock_colliding_main_generic_type_text_locks_program_aliases() {
 	t.structs['callee.Cell'] = StructInfo{
 		module: 'callee'
 	}
-	tc.type_aliases['Cells'] = '[]Cell'
+	tc.type_aliases.set('Cells', '[]Cell')
 	tc.type_alias_modules['Cells'] = 'main'
-	tc.type_aliases['Ids'] = '[]int'
+	tc.type_aliases.set('Ids', '[]int')
 	tc.type_alias_modules['Ids'] = 'main'
 	// A program alias target is resolved where the alias is parsed, so an alias of a
 	// colliding program type is locked even when it is not an active specialization type.
@@ -542,11 +574,11 @@ fn test_lock_colliding_main_generic_type_text_locks_program_aliases() {
 	assert t.lock_colliding_main_generic_type_text('map[string]Cells', 'callee') == 'map[string]main.Cells'
 	// Without a colliding name or target the alias keeps its bare spelling.
 	assert t.lock_colliding_main_generic_type_text('Ids', 'callee') == 'Ids'
-	tc.type_aliases['callee.Ids'] = '[]u8'
+	tc.type_aliases.set('callee.Ids', '[]u8')
 	tc.type_alias_modules['callee.Ids'] = 'callee'
 	assert t.lock_colliding_main_generic_type_text('Ids', 'callee') == 'main.Ids'
 	// Module aliases are already qualified.
-	tc.type_aliases['other.Cells'] = '[]other.Cell'
+	tc.type_aliases.set('other.Cells', '[]other.Cell')
 	tc.type_alias_modules['other.Cells'] = 'other'
 	assert t.lock_colliding_main_generic_type_text('other.Cells', 'callee') == 'other.Cells'
 }
@@ -556,12 +588,12 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'callee'
-	t.sum_types['Any'] = ['string', 'bool']
-	t.sum_types['callee.Any'] = ['string', 'int']
-	t.active_specialization_args = ['[][2]Any']
-	t.active_specialization_main_types = t.specialization_main_type_closure(t.active_specialization_args)
+	t.sum_types.set('Any', ['string', 'bool'])
+	t.sum_types.set('callee.Any', ['string', 'int'])
+	t.active_specialization_args = flat.TypeTextList.from_names(['[][2]Any'])
+	t.active_specialization_main_types = t.specialization_main_type_closure(t.active_specialization_args_text())
 	for typ in ['[][2]Any', '[][]Any', '[]map[string]Any'] {
-		id := a.add_node(flat.Node{ kind: .array_init, value: typ[2..], typ: typ })
+		id := a.add_node(flat.Node{ kind: .array_init, value: typ[2..], typ: flat.source_type_id(typ) })
 		assert t.generic_call_type_arg_name(id) == typ
 		assert t.canonical_generic_specialization_arg(typ) == typ
 	}
@@ -579,7 +611,7 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 	}
 	assert t.generic_inference_alias_target('other.Box[map[string]Any]', 'callee') == 'other.Box[map[string]Any]'
 	assert t.generic_arg_for_decl_module('other.Box[[2]Any]', 'callee') == 'other.Box[[2]Any]'
-	tc.type_aliases['other.Items'] = 'other.Box[T]'
+	tc.type_aliases.set('other.Items', 'other.Box[T]')
 	tc.type_alias_generic_params['other.Items'] = ['T']
 	assert t.generic_inference_alias_target('other.Items[Any]', 'callee') == 'other.Items[Any]'
 	t.structs['callee.Box'] = StructInfo{ module: 'callee' }
@@ -593,7 +625,7 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 		assert !t.substituted_type_belongs_to_main_generic(typ), typ
 	}
 	for typ in ['?[]string', '?map[string]string', 'fn (?[]string) string'] {
-		t.active_specialization_args = [typ]
+		t.active_specialization_args = flat.TypeTextList.from_names([typ])
 		assert t.generic_inference_alias_target(typ, 'callee') == typ
 		assert t.generic_arg_for_decl_module(typ, 'callee') == typ
 		assert t.generic_arg_for_call_and_decl_module(typ, 'callee', 'other') == typ
@@ -605,11 +637,11 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.structs['Arc'] = StructInfo{
-		name:   'Arc'
+		name:   flat.source_type_id('Arc')
 		module: 'arc'
 	}
 	t.structs['arc.Arc'] = StructInfo{
-		name:   'Arc'
+		name:   flat.source_type_id('Arc')
 		module: 'arc'
 	}
 	assert t.lock_colliding_main_substitution_type_text('Arc[T]', 'Arc[Resource]', 'arc', [
@@ -624,6 +656,31 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 	assert t.lock_colliding_main_substitution_type_text('other.Box[map[other.Key]T]', 'other.Box[map[other.Key]Context]', 'arc', [
 		'T',
 	]) == 'other.Box[map[other.Key]main.Context]'
+	// A locked argument makes the spelling qualified, so the decl-module base must be too.
+	assert t.lock_colliding_main_substitution_type_text('&Arc[T]', '&Arc[Context]', 'arc', [
+		'T',
+	]) == '&arc.Arc[main.Context]'
+}
+
+fn test_collision_locked_signature_keeps_interface_and_alias_declaration_modules() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Item'] = StructInfo{}
+	t.structs['callee.Item'] = StructInfo{}
+	t.active_specialization_main_types['Item'] = true
+	tc.interface_names['callee.Reader'] = true
+	tc.interface_generic_params['callee.Reader'] = ['T']
+	tc.type_aliases.set('callee.Mapper', 'fn (T) int')
+	tc.type_alias_generic_params['callee.Mapper'] = ['T']
+	decl := GenericFnDecl{ module: 'callee' }
+	for base in ['Reader', 'Mapper'] {
+		for prefix in ['', '&', '[]', '?'] {
+			assert t.specialized_signature_type_text(decl, '${prefix}${base}[T]', ['Item'], ['T']) == '${prefix}callee.${base}[main.Item]'
+		}
+		assert t.specialized_signature_type_text(decl, 'other.${base}[T]', ['Item'], ['T']) == 'other.${base}[main.Item]'
+		assert t.specialized_signature_type_text(decl, '${base}[T]', ['int'], ['T']).contains('main.') == false
+	}
 }
 
 fn test_generic_fn_type_param_mode_payload_preserves_mutability() {
@@ -655,11 +712,11 @@ fn test_resolve_substituted_type_text_qualifies_local_generic_base() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'json2'
 	t.structs['Node'] = StructInfo{
-		name:   'Node'
+		name:   flat.source_type_id('Node')
 		module: 'main'
 	}
 	t.structs['json2.Node'] = StructInfo{
-		name:   'Node'
+		name:   flat.source_type_id('Node')
 		module: 'json2'
 	}
 
@@ -679,16 +736,16 @@ fn test_imported_generic_alias_target_uses_declaration_module() {
 	inner_decl.set_generic_params(['T'])
 	inner_id := a.add_node(inner_decl)
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['a.Box'] = 'Inner[T]'
+	tc.type_aliases.set('a.Box', 'Inner[T]')
 	tc.type_alias_generic_params['a.Box'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.structs['Inner'] = StructInfo{
-		name:   'Inner'
+		name:   flat.source_type_id('Inner')
 		module: 'main'
 	}
 	t.structs['a.Inner'] = StructInfo{
-		name:   'Inner'
+		name:   flat.source_type_id('Inner')
 		module: 'a'
 	}
 
@@ -701,9 +758,9 @@ fn test_imported_generic_alias_target_uses_declaration_module() {
 			key:    'a.Inner'
 		}
 	}
-	mut specs := map[string]string{}
+	mut specs := flat.TypeTextBindings{}
 	t.collect_generic_struct_spec_from_type('a.Box[int]', 'main', '', decls, mut specs)
-	assert specs['a.Inner[int]'] == 'a.Inner'
+	assert specs.value('a.Inner[int]') == 'a.Inner'
 }
 
 fn test_generic_method_decl_matches_embedded_receiver() {
@@ -713,16 +770,16 @@ fn test_generic_method_decl_matches_embedded_receiver() {
 	t.embedded_fields['Outer'] = [
 		FieldInfo{
 			name:        'Middle'
-			typ:         'Middle'
-			raw_typ:     'Middle'
+			typ:         flat.source_type_id('Middle')
+			raw_typ:     flat.source_type_id('Middle')
 			is_embedded: true
 		},
 	]
 	t.embedded_fields['Middle'] = [
 		FieldInfo{
 			name:        'Collector'
-			typ:         'Collector[int]'
-			raw_typ:     'Collector[int]'
+			typ:         flat.source_type_id('Collector[int]')
+			raw_typ:     flat.source_type_id('Collector[int]')
 			is_embedded: true
 		},
 	]
@@ -742,7 +799,7 @@ fn test_escaped_generic_method_indexes_unescaped_call_spelling() {
 	mut a := flat.FlatAst.new()
 	receiver_id := a.add_node(flat.Node{
 		kind: .param
-		typ:  '&Box[T]'
+		typ:  flat.source_type_id('&Box[T]')
 	})
 	children_start := a.children.len
 	a.children << receiver_id
@@ -843,7 +900,7 @@ fn test_contextless_generic_struct_spec_spelling_is_skipped() {
 	attached_id := a.add_node(flat.Node{
 		kind:  .struct_init
 		value: 'veb.Middleware[Ctx]'
-		typ:   'veb.Middleware[Ctx]'
+		typ:   flat.source_type_id('veb.Middleware[Ctx]')
 	})
 	children_start := a.children.len
 	a.children << attached_id
@@ -857,17 +914,17 @@ fn test_contextless_generic_struct_spec_spelling_is_skipped() {
 	a.add_node(flat.Node{
 		kind:  .struct_init
 		value: 'veb.Middleware[Context]'
-		typ:   'veb.Middleware[Context]'
+		typ:   flat.source_type_id('veb.Middleware[Context]')
 	})
 	a.add_node(flat.Node{
 		kind:  .struct_init
 		value: 'veb.Middleware[model.Context]'
-		typ:   'veb.Middleware[model.Context]'
+		typ:   flat.source_type_id('veb.Middleware[model.Context]')
 	})
 	mut params_node := flat.Node{
 		kind:  .struct_init
 		value: 'veb.Middleware'
-		typ:   'veb.Middleware'
+		typ:   flat.source_type_id('veb.Middleware')
 	}
 	params_node.set_generic_params(['Scope'])
 	a.add_node(params_node)
@@ -881,13 +938,13 @@ fn test_contextless_generic_struct_spec_spelling_is_skipped() {
 			key:    'veb.Middleware'
 		}
 	}
-	mut specs := map[string]string{}
+	mut specs := flat.TypeTextBindings{}
 	t.collect_generic_struct_specs_range(decls, mut specs, 0, a.nodes.len)
 
-	assert 'veb.Middleware[Ctx]' in specs
-	assert 'veb.Middleware[model.Context]' in specs
-	assert 'veb.Middleware[Context]' !in specs
-	assert 'veb.Middleware[Scope]' !in specs
+	assert specs.contains('veb.Middleware[Ctx]')
+	assert specs.contains('veb.Middleware[model.Context]')
+	assert !specs.contains('veb.Middleware[Context]')
+	assert !specs.contains('veb.Middleware[Scope]')
 
 	assert type_text_has_unqualified_generic_arg('veb.Middleware[Context]')
 	assert type_text_has_unqualified_generic_arg('Map[string, Context]')
@@ -937,9 +994,59 @@ fn test_record_monomorph_cache_spec_replaces_existing_entry() {
 		assert false, 'the re-recorded spec disappeared'
 		return
 	}
-	assert spec.args == ['iam.Token']
+	assert spec.args_text() == ['iam.Token']
 	assert spec.decl_key == 'main.f'
 	assert spec.module == 'main'
+}
+
+fn test_serial_monomorph_batches_share_source_reflected_loop_index() {
+	$if !v3_no_parallel ? {
+		path := os.join_path(os.vtmp_dir(), 'monomorph_reflected_loop_${os.getpid()}.v')
+		os.write_file(path, 'struct Item {
+	items []string
+}
+fn count[T](value T) int {
+	mut result := 0
+	\$for field in T.fields {
+		\$if field.typ is []string {
+			for key, text in value.\$(field.name) {
+				result += key + text.len
+			}
+		}
+	}
+	return result
+}
+fn main() {
+	assert count[Item](Item{items: ["a", "bb"]}) == 4
+}
+') or { panic(err) }
+		defer { os.rm(path) or {} }
+		mut p := parser.Parser.new(pref.new_preferences())
+		mut a := p.parse_file(path)
+		mut tc := types.TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_semantics()
+		assert tc.errors.len == 0, tc.errors.str()
+		mut t := new_transformer(mut a, &tc, {
+			'main': true
+		})
+		t.prepare()
+		decl := t.cached_generic_fn_decls()['count'] or { panic('missing count declaration') }
+		args := ['Item']
+		mut emitted := map[string]bool{}
+		mut generated := []string{}
+		assert t.run_scoped_monomorphize_specs([PendingGenericFnSpec{
+			decl: decl
+			args: flat.TypeTextList.from_names(args)
+			key:  generic_fn_spec_key(decl.key, args)
+		}], mut emitted, mut generated)
+		assert t.comptime_reflected_for_ready
+		assert t.comptime_reflected_for_roles['key'] == 1
+		assert t.comptime_reflected_for_roles['text'] == 2
+		worker := t.fork_scoped_batch_worker(a, &tc)
+		assert worker.comptime_reflected_for_ready
+		assert worker.comptime_reflected_for_roles == t.comptime_reflected_for_roles
+	}
 }
 
 fn test_generic_unresolved_function_type_checks_parameters_and_return() {
@@ -1011,4 +1118,156 @@ fn test_parameterized_typeof_value_display_preserves_source_names() {
 	marker := flat.Node{ kind: .typeof_expr, value: generic_type_name_marker('T') }
 	assert t.generic_comptime_typeof_display_name(marker, ['other.Payload'],
 		'other.Payload') == 'other.Payload'
+}
+
+fn test_monomorphize_after_transform_keeps_lowered_fn_bodies() {
+	path := os.join_path(os.vtmp_dir(), 'monomorphize_lowered_bodies_${os.getpid()}.v')
+	os.write_file(path, '@[heap]
+struct Frame {
+mut:
+	name string
+}
+
+struct Tag {
+mut:
+	others []Frame
+}
+
+fn (mut tag Tag) add_frame(frame Frame) {
+	tag.others << frame
+}
+
+fn fill[T](mut tag T) {
+	mut cur := &Frame{}
+	tag.add_frame(cur)
+}
+
+fn main() {
+	mut tag := Tag{}
+	fill[Tag](mut tag)
+}
+') or {
+		panic(err)
+	}
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	// Markused names a method by its V spelling only.
+	used := transform_with_used(mut a, &tc, {
+		'main':          true
+		'fill':          true
+		'Tag.add_frame': true
+	})
+	assert !used['Tag__add_frame']
+	mut add_frame_idx := -1
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == 'Tag.add_frame' {
+			add_frame_idx = i
+		}
+	}
+	assert add_frame_idx >= 0
+	lowered := a.nodes[add_frame_idx]
+	mono_used, errors, _ := monomorphize_with_used_checked_config_scoped_cached(mut a, &tc,
+		used, false, unsafe { nil }, []MonomorphCacheSpec{}, true)
+	assert errors.len == 0, errors.str()
+	// The call in `fill[Tag]` inserts the C spelling: that is not a new function.
+	assert mono_used['Tag__add_frame']
+	assert a.nodes[add_frame_idx].children_start == lowered.children_start
+	assert a.nodes[add_frame_idx].children_count == lowered.children_count
+}
+
+fn test_late_fn_bodies_pass_lowers_a_body_once_while_monomorphizing() {
+	path := os.join_path(os.vtmp_dir(), 'monomorphize_late_bodies_${os.getpid()}.v')
+	os.write_file(path, 'struct Tag {
+mut:
+	count int
+}
+
+fn (mut tag Tag) bump() {
+	tag.count++
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	used := transform_with_used(mut a, &tc, {
+		'main': true
+	})
+	mut bump_idx := -1
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == 'Tag.bump' {
+			bump_idx = i
+		}
+	}
+	assert bump_idx >= 0
+	parsed := a.nodes[bump_idx]
+	mut t := new_transformer(mut a, &tc, used)
+	t.prepare()
+	t.mark_used_fn_bodies_lowered()
+	limit := t.a.nodes.len
+	// Nothing named the method before: its first spelling gets its body lowered.
+	t.transform_late_used_fn_bodies(['Tag__bump'], 0, 1, limit)
+	lowered := t.a.nodes[bump_idx]
+	assert lowered.children_start != parsed.children_start
+	// Its other spelling, inserted in a later round, is not another function.
+	t.transform_late_used_fn_bodies(['Tag.bump'], 0, 1, limit)
+	assert t.a.nodes[bump_idx].children_start == lowered.children_start
+}
+
+fn test_scoped_late_fn_bodies_pass_records_lowered_bodies() {
+	path := os.join_path(os.vtmp_dir(), 'monomorphize_scoped_late_bodies_${os.getpid()}.v')
+	mut source := 'struct Tag {\nmut:\n\tcount int\n}\n'
+	mut names := []string{}
+	for i in 0 .. direct_late_transform_max_names + 1 {
+		source += 'fn (mut tag Tag) bump${i}() { tag.count++ }\n'
+		names << 'Tag__bump${i}'
+	}
+	source += 'fn main() {}\n'
+	os.write_file(path, source) or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	used := transform_with_used(mut a, &tc, {
+		'main': true
+	})
+	mut t := new_transformer(mut a, &tc, used)
+	t.prepare()
+	t.mark_used_fn_bodies_lowered()
+	// Monomorphization starts without the main transformer's body bookkeeping.
+	assert t.transformed_fns.len == 0
+	t.scope_parallel_workers = true
+	t.retain_worker_results = true
+	limit := t.a.nodes.len
+	// More than the direct-pass limit routes these bodies through scoped batches.
+	t.transform_late_used_fn_bodies(names, 0, names.len, limit)
+	mut lowered := map[int]int{}
+	for i in 0 .. limit {
+		node := t.a.nodes[i]
+		if node.kind == .fn_decl && node.value.starts_with('Tag.bump') {
+			assert t.lowered_fn_bodies[i], node.value
+			lowered[i] = node.children_start
+		}
+	}
+	assert lowered.len == names.len
+	// A later round discovers another spelling of a body that the batch lowered.
+	t.transform_late_used_fn_bodies(['Tag.bump0'], 0, 1, limit)
+	for idx, children_start in lowered {
+		assert t.a.nodes[idx].children_start == children_start
+	}
 }

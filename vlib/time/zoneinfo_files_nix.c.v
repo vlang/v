@@ -1,8 +1,6 @@
 @[has_globals]
 module time
 
-#include <pthread.h>
-
 // The time zone data is read with the C library directly, rather than through
 // `os`: every program that imports `time` would otherwise have to compile `os`,
 // and the modules it imports, too.
