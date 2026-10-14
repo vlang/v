@@ -126,7 +126,10 @@ fn main() {
 			assert !code.contains('i32 msync('), 'SDK owns the msync prototype'
 		} else {
 			assert !code.contains('#include'), 'native mmap must preserve the standalone preamble'
-			assert code.contains('i32 msync(void* addr, size_t len, i32 flags);'), 'missing native msync ABI'
+			os.write_file(c_file, code + '\n_Static_assert(__builtin_types_compatible_p(__typeof__(&msync), int (*)(void*, size_t, int)), "native msync ABI");\n')!
+			abi := cmdexec.run('clang', ['-fsyntax-only', '-Werror=implicit-function-declaration',
+				c_file])
+			assert abi.exit_code == 0, abi.output
 		}
 		compiled := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-cc', 'clang', '-cflags',
 			'-Werror=implicit-function-declaration', '-o', executable, source])
