@@ -51,3 +51,21 @@ fn test_match_expression_propagates_result_of_interface_pointer() {
 		assert false
 	}
 }
+
+fn make_shape_if(square bool, size int) !&Shape {
+	shape := if square { make_square(size)! } else { make_circle(size)! }
+	return shape
+}
+
+fn test_if_expression_propagates_result_of_interface_pointer() {
+	assert (make_shape_if(true, 2) or { panic(err) }).area() == 4
+	assert (make_shape_if(false, 1) or { panic(err) }).area() == 3
+	for square in [true, false] {
+		expected := if square { 'square' } else { 'circle' }
+		make_shape_if(square, -1) or {
+			assert err.msg() == expected
+			continue
+		}
+		assert false
+	}
+}
