@@ -1,11 +1,12 @@
 import os
+import rand
 import time
 
 fn fifo_path() string {
 	$if windows {
-		return 'v_test_fifo_x'
+		return 'v_test_fifo_' + rand.ulid()
 	} $else {
-		return os.join_path(os.temp_dir(), 'v_test_fifo_x')
+		return os.join_path(os.vtmp_dir(), 'v_test_fifo_' + rand.ulid())
 	}
 }
 
@@ -54,4 +55,28 @@ fn test_fifo_roundtrip() {
 	cli.write('ping'.bytes()) or { panic('write: ${err}') }
 	got := <-got_ch
 	assert got == 'ping'
+}
+
+fn test_fifo_missing_client_does_not_create_file() {
+	path := fifo_path()
+	os.fifo_client(path) or {
+		$if !windows {
+			assert !os.exists(path)
+		}
+		return
+	}
+	assert false, 'a missing endpoint must fail'
+}
+
+fn test_fifo_client_rejects_regular_file_without_truncating() {
+	$if !windows {
+		path := fifo_path()
+		os.write_file(path, 'keep this data')!
+		defer { os.rm(path) or {} }
+		os.fifo_client(path) or {
+			assert os.read_file(path)! == 'keep this data'
+			return
+		}
+		assert false, 'a regular file is not a fifo endpoint'
+	}
 }

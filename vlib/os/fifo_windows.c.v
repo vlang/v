@@ -1,7 +1,6 @@
 module os
 
-fn C.CreateNamedPipeA(name &char, open_mode u32, pipe_mode u32, max_instances u32, out_buf u32, in_buf u32, timeout u32, security voidptr) voidptr
-fn C.CreateFileA(name &char, access u32, share u32, security voidptr, creation u32, flags u32, template voidptr) voidptr
+fn C.CreateNamedPipeW(name &u16, open_mode u32, pipe_mode u32, max_instances u32, out_buf u32, in_buf u32, timeout u32, security voidptr) voidptr
 fn C.ConnectNamedPipe(h voidptr, overlapped voidptr) i32
 fn C.DisconnectNamedPipe(h voidptr) i32
 
@@ -23,7 +22,7 @@ fn fifo_pipe_name(path string) string {
 // as connected.
 fn fifo_server_windows(path string) !&Fifo {
 	name := fifo_pipe_name(path)
-	h := C.CreateNamedPipeA(&char(name.str), fifo_pipe_access_duplex, 0, 1, 65536,
+	h := C.CreateNamedPipeW(name.to_wide(), fifo_pipe_access_duplex, 0, 1, 65536,
 		65536, 0, unsafe { nil })
 	if h == voidptr(-1) {
 		return error('os: cannot create named pipe `${path}`')
@@ -43,7 +42,7 @@ fn fifo_server_windows(path string) !&Fifo {
 // fifo_client_windows connects to the named pipe for writing.
 fn fifo_client_windows(path string) !&Fifo {
 	name := fifo_pipe_name(path)
-	h := C.CreateFileA(&char(name.str), 0x40000000, 0, unsafe { nil }, 3, 0x80,
+	h := C.CreateFileW(name.to_wide(), 0x40000000, 0, unsafe { nil }, 3, 0x80,
 		unsafe { nil })
 	if h == voidptr(-1) {
 		return error('os: cannot open named pipe `${path}`')
@@ -55,18 +54,20 @@ fn fifo_client_windows(path string) !&Fifo {
 
 // fifo_read_windows reads up to buf.len bytes.
 fn fifo_read_windows(h voidptr, mut buf []u8) !int {
-	if buf.len == 0 {
-		return 0
-	}
+	if h == unsafe { nil } { return error_file_not_opened() }
+	if buf.len == 0 { return Eof{} }
 	mut got := u32(0)
 	if C.ReadFile(h, buf.data, u32(buf.len), &got, unsafe { nil }) == false {
+		if C.GetLastError() == 109 { return Eof{} }
 		return error('os: named pipe read failed')
 	}
+	if got == 0 { return Eof{} }
 	return int(got)
 }
 
 // fifo_write_windows writes buf.
 fn fifo_write_windows(h voidptr, buf []u8) !int {
+	if h == unsafe { nil } { return error_file_not_opened() }
 	mut wrote := u32(0)
 	if C.WriteFile(h, buf.data, u32(buf.len), &wrote, unsafe { nil }) == false {
 		return error('os: named pipe write failed')

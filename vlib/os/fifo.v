@@ -2,7 +2,7 @@ module os
 
 // Fifo is a named-pipe endpoint for IPC between related or unrelated
 // processes. The server creates the endpoint and blocks waiting for a client;
-// the client connects to it. Afterwards bytes flow in both... in one
+// the client connects to it. Afterwards bytes flow in one
 // direction: client writes, server reads (open a second pair for duplex).
 // It is the cross-platform form of POSIX fifos and Windows named pipes.
 @[heap]
@@ -40,7 +40,7 @@ pub fn (f &Fifo) read(mut buf []u8) !int {
 	$if windows {
 		return fifo_read_windows(f.handle, mut buf)
 	} $else {
-		return f.file.read(mut buf)
+		return fifo_read_nix(f.file, mut buf)
 	}
 }
 
@@ -49,7 +49,7 @@ pub fn (mut f Fifo) write(buf []u8) !int {
 	$if windows {
 		return fifo_write_windows(f.handle, buf)
 	} $else {
-		return f.file.write(buf)
+		return fifo_write_nix(f.file, buf)
 	}
 }
 
