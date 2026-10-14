@@ -84,12 +84,15 @@ pub fn (mut m Message) set_boundary(boundary string) {
 // only a text body, multipart/alternative for text+html, and multipart/mixed
 // once attachments are present.
 pub fn (m &Message) encode() !string {
-	for value in [m.from, m.subject, m.boundary] + m.to + m.cc {
+	mut header_values := [m.from, m.subject, m.boundary]
+	header_values << m.to
+	header_values << m.cc
+	for value in header_values {
 		validate_header_value(value)!
 	}
 	if !valid_boundary(m.boundary) { return error('mail: invalid MIME boundary') }
 	for body in [m.text_body, m.html_body] {
-		for line in body.replace('\r\n', '\n').split('\n') {
+		for line in body.replace('\r\n', '\n').replace('\r', '\n').split('\n') {
 			if line.trim_right(' \t') in ['--${m.boundary}', '--${m.boundary}--'] {
 				return error('mail: MIME boundary occurs in body')
 			}
@@ -136,7 +139,7 @@ pub fn (m &Message) encode() !string {
 		b.writeln('')
 		b.writeln(m.text_body)
 	}
-	return b.str().replace('\r\n', '\n').replace('\n', '\r\n')
+	return b.str().replace('\r\n', '\n').replace('\r', '\n').replace('\n', '\r\n')
 }
 
 fn validate_header_value(value string) ! {
@@ -318,12 +321,11 @@ fn valid_boundary(boundary string) bool {
 }
 
 fn split_entity(raw string) !(map[string]string, string) {
-	mut sep := raw.index('\r\n\r\n') or { -1 }
-	mut width := 4
-	if sep < 0 {
-		sep = raw.index('\n\n') or { return error('mail: missing header/body separator') }
-		width = 2
-	}
+	crlf_sep := raw.index('\r\n\r\n') or { -1 }
+	lf_sep := raw.index('\n\n') or { -1 }
+	if crlf_sep < 0 && lf_sep < 0 { return error('mail: missing header/body separator') }
+	sep := if lf_sep >= 0 && (crlf_sep < 0 || lf_sep < crlf_sep) { lf_sep } else { crlf_sep }
+	width := if sep == lf_sep { 2 } else { 4 }
 	return parse_headers(raw[..sep].replace('\r\n', '\n')), raw[sep + width..]
 }
 
