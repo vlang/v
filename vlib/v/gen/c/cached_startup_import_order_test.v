@@ -50,6 +50,18 @@ fn test_cached_module_initializers_follow_reordered_imports_and_uncached_cleanup
 	assert startup_cache_output(root, 'reordered') == expected
 	startup_cache_build(root, os.join_path(root, 'fresh-cache'), 'fresh', [])
 	assert startup_cache_output(root, 'fresh') == expected
+	// A wrapper can visit the second module before the root's direct imports.
+	// Cleanup must reverse that same traversal, rather than the hook list order.
+	for name in ['wrapper', 'library'] {
+		os.mkdir_all(os.join_path(root, name))!
+	}
+	os.write_file(os.join_path(root, 'wrapper', 'wrapper.v'), 'module wrapper\nimport initsecond\npub fn marker() { initsecond.marker() }\n')!
+	os.write_file(os.join_path(root, 'library', 'library.v'), 'module library\nimport wrapper\nimport initfirst\nimport initsecond\npub fn marker() { wrapper.marker() initfirst.marker() initsecond.marker() }\n')!
+	os.write_file(main, 'module main\nimport library\nfn main() { library.marker() println("done") }\n')!
+	for flags in [[]string{}, ['-nocache'], ['-b', 'c']] {
+		startup_cache_build(root, cache, 'wrapped', flags)
+		assert startup_cache_output(root, 'wrapped') == expected
+	}
 }
 
 fn test_wrapper_dependencies_outlive_cleanup_in_cached_and_uncached_builds() ! {
