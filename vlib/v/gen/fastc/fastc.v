@@ -392,7 +392,7 @@ extern char **environ;
 #include <execinfo.h>
 #endif
 #if defined(__linux__) && defined(__GLIBC__)
-extern pid_t gettid(void);
+#include <sys/syscall.h>
 #endif
 #endif
 
@@ -581,7 +581,7 @@ extern char **environ;
 #include <execinfo.h>
 #endif
 #if defined(__linux__) && defined(__GLIBC__)
-extern pid_t gettid(void);
+#include <sys/syscall.h>
 #endif
 #endif
 '
@@ -596,7 +596,15 @@ extern int backtrace(void **, int);
 extern char **backtrace_symbols(void *const *, int);
 extern void backtrace_symbols_fd(void *const *, int, int);
 #endif
+#if defined(__GLIBC__)
+/* glibc exports `gettid` only from 2.30 on; the system call works with any glibc.
+   Strict feature modes hide `syscall` in <unistd.h>, so it is declared here. */
+long syscall(long number, ...);
+static inline pid_t v_fastc_gettid(void) { return (pid_t)syscall(SYS_gettid); }
+#define gettid v_fastc_gettid
+#else
 extern int gettid(void);
+#endif
 extern void *aligned_alloc(size_t, size_t);
 #endif
 #ifndef memory_order_relaxed
@@ -1426,12 +1434,14 @@ mut:
 	// (`?T`), so the caller can record it on the declared local.
 	pending_option_value_type u32
 	// Set by `parse_type` when it parses a function type (`fn (...) R`): the C return
-	// type (`Option`/`string`/…) and, for an `!`/`?R` return, the wrapped value type.
-	// Lets a fn-typed parameter be declared as a real function pointer and its call
-	// results be type-inferred. `pending_fn_pointer` gates whether the others apply.
+	// type (`Option`/`string`/…), for an `!`/`?R` return the wrapped value type, and the
+	// C prototype of its parameters. Lets a fn-typed parameter be declared as a real
+	// function pointer and its call results be type-inferred. `pending_fn_pointer` gates
+	// whether the others apply.
 	pending_fn_pointer           bool
 	pending_fn_return_type       u32
 	pending_fn_option_value_type u32
+	pending_fn_parameters        string
 	c_flags                      []string
 	fixed_array_types            flat.TypeTextBindings
 	composite_types              map[string]bool

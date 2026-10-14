@@ -616,18 +616,15 @@ fn (mut g Parser) parse_if() !bool {
 	had_guard := guard_name in g.locals
 	if guard_name != '' {
 		if guard_function_source != '' {
-			parameters := if guard_function.fn_parameter_types.ids.len == 0 {
-				'void'
-			} else {
-				guard_function.fn_parameter_types_text().join(', ')
-			}
+			parameters := fastc_c_prototype_parameters(guard_function.fn_parameter_types_text())
 			return_type := if guard_function.fn_return_type_text() == '' {
 				'void'
 			} else {
 				guard_function.fn_return_type_text()
 			}
+			c_return_type := fastc_output_c_type(return_type)
 			name := fastc_c_identifier(guard_name)
-			g.write_line('${return_type} (*${name})(${parameters}) = (${return_type} (*)(${parameters}))(${guard_function_source});')
+			g.write_line('${c_return_type} (*${name})(${parameters}) = (${c_return_type} (*)(${parameters}))(${guard_function_source});')
 			g.locals[guard_name] = FastcLocal{
 				is_mut:               guard_is_mut
 				typ:                  flat.source_type_id('voidptr')

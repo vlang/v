@@ -1323,6 +1323,7 @@ fn (mut g Parser) parse_parameters() ![]string {
 		is_fn_pointer := g.pending_fn_pointer
 		fn_return_type := g.pending_fn_return_type_text()
 		fn_option_value_type := g.pending_fn_option_value_type_text()
+		fn_parameters := g.pending_fn_parameters
 		is_reference := is_mut && !type_name.ends_with('*')
 		if is_reference {
 			type_name += '*'
@@ -1338,9 +1339,9 @@ fn (mut g Parser) parse_parameters() ![]string {
 				fastc_c_identifier(parameter_name)
 			}
 			if is_fn_pointer {
-				// Declare a real function pointer with unspecified args so `f(x)`
-				// compiles as a direct call; the return C type is recovered above.
-				params << '${fastc_output_c_type(fn_return_type)} (*${c_name})()'
+				// Declare a real function pointer with the type's prototype, so `f(x)`
+				// converts its arguments and result as a direct call does.
+				params << '${fastc_output_c_type(fn_return_type)} (*${c_name})(${fn_parameters})'
 				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut:               is_mut
@@ -1378,6 +1379,7 @@ fn (mut g Parser) parse_type() !string {
 	g.pending_fn_pointer = false
 	g.pending_fn_return_type = flat.source_type_id('')
 	g.pending_fn_option_value_type = flat.source_type_id('')
+	g.pending_fn_parameters = ''
 	if g.tok == .question {
 		// Peek the wrapped value type of an option type `?T` before the main scan
 		// erases it to `Option`, so a caller can record it on the declared local.
@@ -1388,10 +1390,9 @@ fn (mut g Parser) parse_type() !string {
 		}
 	}
 	if g.tok == .key_fn {
-		// Peek a function type's return (`fn (params) R`) before the main scan erases
+		// Peek a function type's signature (`fn (params) R`) before the main scan erases
 		// it to `voidptr`, so a fn-typed parameter can be declared as a real function
-		// pointer and its call results inferred. Parameters are skipped (the pointer is
-		// declared with unspecified args), so only the return type is recovered.
+		// pointer and its call results inferred.
 		g.peek_fn_pointer_signature()
 	}
 	type_name, next_token := fastc_scan_type(mut g.s, g.tok, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return g.unsupported(err.msg()) }
@@ -1444,6 +1445,24 @@ fn (mut g Parser) peek_fn_pointer_signature() {
 	}
 	g.pending_fn_pointer = true
 	g.pending_fn_return_type = flat.source_type_id(return_type)
+	if signature := fastc_peek_function_type(g.s, g.path, g.module_name, g.imports, g.declared_types,
+		g.selfhost)
+	{
+		g.pending_fn_parameters = fastc_c_prototype_parameters(signature.parameter_types_text())
+	}
+}
+
+// fastc_c_prototype_parameters spells a function type's parameter types as a C prototype's
+// parameter list: `void` for none, V `int` as its C type.
+fn fastc_c_prototype_parameters(parameter_types []string) string {
+	if parameter_types.len == 0 {
+		return 'void'
+	}
+	mut c_types := []string{cap: parameter_types.len}
+	for parameter_type in parameter_types {
+		c_types << fastc_output_c_type(parameter_type)
+	}
+	return c_types.join(', ')
 }
 
 fn (mut g Parser) parse_multi_return_types() ![]string {

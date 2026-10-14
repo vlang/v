@@ -382,6 +382,8 @@ fn fastc_functions_declare_c(functions map[string]FastcFunctionSignature) bool {
 	return false
 }
 
+// function_key_for_call keys the function a call names. A bare name that is a local, such as
+// a parameter holding a callback, shadows every function of that name, so it keys none ('').
 fn (g &Parser) function_key_for_call(tokens []FastcExpressionToken, name_index int) string {
 	if name_index >= 2 && tokens[name_index - 1].tok == .dot && tokens[name_index - 2].tok == .name {
 		if static_key := g.static_function_key_for_call(tokens, name_index) {
@@ -393,6 +395,9 @@ fn (g &Parser) function_key_for_call(tokens []FastcExpressionToken, name_index i
 		if imported_module := g.imports[tokens[name_index - 2].lit] {
 			return fastc_function_key(g.resolve_module_alias(imported_module), tokens[name_index].lit)
 		}
+	}
+	if (name_index == 0 || tokens[name_index - 1].tok != .dot) && tokens[name_index].lit in g.locals {
+		return ''
 	}
 	return g.unqualified_function_key(tokens[name_index].lit)
 }
@@ -650,7 +655,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				i = call_end + 1
 				continue
 			}
-			if g.selfhost && (i == 0 || tokens[i - 1].tok != .dot) && name in g.locals {
+			if (i == 0 || tokens[i - 1].tok != .dot) && name in g.locals {
 				// Calling a local/parameter that holds a function pointer (`cb(x, y)`), e.g.
 				// vqsort's `sort_cb`: a plain identifier that is a local can only be called
 				// through its function-pointer value, which renders as a direct C call.

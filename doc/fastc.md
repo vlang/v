@@ -51,6 +51,9 @@ v -b fastc -enable-globals -o program path/to/project
 
 Directory entries select the full builtin runtime, including V strings, maps, errors, and
 garbage collection. Generic calls infer their concrete type from a mutable variable argument.
+On glibc Linux, thread IDs use the system call without requiring glibc 2.30. Generic
+parameter shadowing ends with its function and does not affect later constants.
+Function-pointer fields and parameters support mixed named and unnamed parameter types.
 If a call reaches a generic placeholder without a concrete instance, it reports the function
 and exits with an error instead of returning a zero value.
 This path supports standard-library imports such as `os` and `toml`,
@@ -89,7 +92,8 @@ Quoted candidate filenames can contain spaces and commas.
 This includes the optional atomic-library flags used on Linux.
 Linux GC builds load atomic support even without an explicit `sync` import. On Linux amd64
 with musl, TinyCC's helpers and the driver-prepared fence object provide this support.
-Native C helpers are linked before the static archives they call, including the bundled GC.
+Native C helpers are compiled before the static archives they call, including the bundled GC,
+for both serial builds and parallel builds using macOS's in-process linker.
 Under TinyCC on macOS and Linux, preallocation uses pthread storage to keep each thread's
 arena independent. The required pthread library is linked even without `spawn`.
 Dynamic array literals with complex element expressions evaluate those elements before copying
