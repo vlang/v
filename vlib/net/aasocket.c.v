@@ -105,7 +105,7 @@ fn C.getsockopt(sockfd i32, level i32, optname i32, optval voidptr, optlen &u32)
 // fn C.read() int
 // fn C.close() int
 
-fn C.ioctlsocket(s i32, cmd i32, argp &u32) i32
+fn C.ioctlsocket(s i32, cmd i32, argp voidptr) i32
 
 fn C.fcntl(fd i32, cmd i32, arg ...voidptr) i32
 

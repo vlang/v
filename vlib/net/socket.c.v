@@ -15,7 +15,9 @@ pub fn (s &Socket) address() !Addr {
 pub fn set_blocking(handle int, state bool) ! {
 	$if windows {
 		t := if state { u32(0) } else { u32(1) }
-		socket_error(C.ioctlsocket(handle, fionbio, &t))!
+		// winsock2.h takes u_long *, which is a different C type from u32 *;
+		// voidptr converts implicitly in C, so every compiler accepts it.
+		socket_error(C.ioctlsocket(handle, fionbio, voidptr(&t)))!
 	} $else {
 		mut flags := C.fcntl(handle, C.F_GETFL, 0)
 		if state {
