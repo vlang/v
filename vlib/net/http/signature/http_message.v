@@ -319,7 +319,7 @@ fn ensure_signature_label_available(h http.Header, label string) ! {
 
 // ensure_signature_header_capacity refuses to sign when the mutations that
 // follow would not fit in http.Header's fixed `max_headers` slot array, whose
-// writers index it without bounds-checking themselves.
+// writers drop or reject a field once it is full.
 //
 // It replays the mutations in the order the signing paths apply them instead
 // of only checking the final total: `append_dict_header` collapses the

@@ -121,3 +121,15 @@ notation is used throughout the function documentation to denote what numbers ra
 
 An example of `[0, max)` thus denotes a range with all possible values
 between `0` and `max` **including** 0 but **excluding** `max`.
+
+## Zipf distribution
+
+`rand.zipf(s: 1.5, v: 1.0, n: 1000)!` draws a rank from `0` through `n - 1`,
+with probability proportional to `(v + rank)^(-s)`. The exponent `s` must be finite
+and positive; the finite offset `v` must be at least one, and `n` must be positive.
+Invalid configurations return an error. Reseeding reproduces the sequence.
+
+For repeated draws, construct `mut z := rng.new_zipf(s: 1.5, v: 1.0, n: 1000)!`
+and call `z.next()`. Construction stores an O(n) cumulative distribution;
+each draw uses O(log n) binary search. The convenience `rand.zipf` call constructs
+a new distribution for every draw.

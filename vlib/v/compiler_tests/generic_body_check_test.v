@@ -38,6 +38,16 @@ fn check_form(name string, source string) []string {
 		&& (it.contains(': error: ') || it.contains(': warning: ')))
 }
 
+// check_fixture_form keeps fixture-mode deferral of constrained bodies while checking visibility.
+fn check_fixture_form(name string, source string) []string {
+	dir := os.join_path(work_dir, name)
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
+	res := cmdexec.run_in(@VEXE, ['-new-compiler', '-checker-fixture', '-check', '-nocolor', '.'], dir)
+	return res.output.split_into_lines().filter(it.starts_with('main.v:')
+		&& (it.contains(': error: ') || it.contains(': warning: ')))
+}
+
 // build builds `source` as the main.v of a directory of its own and returns the
 // lines of its errors. Its method form has to report the same.
 fn build(name string, source string) []string {
@@ -602,6 +612,69 @@ fn main() {
 }
 ")
 	assert errors == []string{}
+}
+
+fn test_a_generic_body_without_a_constraint_reports_what_is_private_to_another_module() {
+	// Whether a name of another module is private does not depend on `T`: a
+	// check and a build report it for the function, with an instance or without
+	// one, as for a function without type parameters. A member reached through
+	// `T` has no type there, and the rest of the body is left to the instances.
+	source := 'module main
+
+import privlib
+
+fn unused[T](mut s privlib.S, x T) T {
+	s.secret = 1
+	return x
+}
+
+fn used[T](mut s privlib.S, x T) T {
+	s.shown = privlib.private_fn() + s.private_method()
+	return x
+}
+
+fn through[T](mut s T) {
+	s.shown = 2
+}
+
+fn main() {
+	mut s := privlib.S{}
+	println(used(mut s, 1))
+	through(mut s)
+}
+'
+	for name, run in {
+		'private':         check_form
+		'private_build':   build_form
+		'private_fixture': check_fixture_form
+	} {
+		path := os.join_path(work_dir, name, 'privlib')
+		os.mkdir_all(path) or { panic(err) }
+		os.write_file(os.join_path(path, 'privlib.v'), 'module privlib
+
+pub struct S {
+	secret int
+pub mut:
+	shown int
+}
+
+fn private_fn() int {
+	return 1
+}
+
+fn (s S) private_method() int {
+	return s.secret
+}
+') or {
+			panic(err)
+		}
+		errors := run(name, source)
+		assert errors == [
+			'main.v:6:4: error: field `${name}.privlib.S.secret` is not public',
+			'main.v:11:20: error: function `${name}.privlib.private_fn` is private',
+			'main.v:11:37: error: method `privlib.S.private_method` is private',
+		], errors.str()
+	}
 }
 
 fn test_a_generic_body_reports_what_the_constraints_of_its_type_parameters_decide() {

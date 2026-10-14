@@ -305,12 +305,12 @@ fn (mut g FlatGen) reset_context_lookup_caches() {
 // generator on a pool thread out of the memo maps body lanes concurrently clone.
 // See begin_scratch_lookup_caches.
 struct ScratchLookupCaches {
-	interface_receiver_cache        &StringLookupCache
+	interface_receiver_cache        &TypeNameLookupCache
 	normalize_call_cache            &ContextStringLookupCache
-	flattened_generic_name_cache    &StringLookupCache
-	generic_struct_context_ct_cache &StringLookupCache
-	struct_cname_cache              &StringLookupCache
-	unique_struct_ct_cache          &StringLookupCache
+	flattened_generic_name_cache    &TypeNameLookupCache
+	generic_struct_context_ct_cache &TypeNameLookupCache
+	struct_cname_cache              &TypeNameLookupCache
+	unique_struct_ct_cache          &TypeNameLookupCache
 	alias_method_cache              &StringLookupCache
 	import_alias_cache              &ContextStringLookupCache
 	enum_selector_cache             &ContextStringLookupCache
@@ -356,12 +356,12 @@ fn (mut g FlatGen) begin_scratch_lookup_caches() ScratchLookupCaches {
 	}
 	// A cache the generator has disabled stays disabled, so this only changes
 	// where entries are written, never whether they are memoized at all.
-	g.interface_receiver_cache = scratch_string_lookup_cache(saved.interface_receiver_cache)
+	g.interface_receiver_cache = scratch_type_name_lookup_cache(saved.interface_receiver_cache)
 	g.normalize_call_cache = scratch_context_string_lookup_cache(saved.normalize_call_cache)
-	g.flattened_generic_name_cache = scratch_string_lookup_cache(saved.flattened_generic_name_cache)
-	g.generic_struct_context_ct_cache = scratch_string_lookup_cache(saved.generic_struct_context_ct_cache)
-	g.struct_cname_cache = scratch_string_lookup_cache(saved.struct_cname_cache)
-	g.unique_struct_ct_cache = scratch_string_lookup_cache(saved.unique_struct_ct_cache)
+	g.flattened_generic_name_cache = scratch_type_name_lookup_cache(saved.flattened_generic_name_cache)
+	g.generic_struct_context_ct_cache = scratch_type_name_lookup_cache(saved.generic_struct_context_ct_cache)
+	g.struct_cname_cache = scratch_type_name_lookup_cache(saved.struct_cname_cache)
+	g.unique_struct_ct_cache = scratch_type_name_lookup_cache(saved.unique_struct_ct_cache)
 	g.alias_method_cache = scratch_string_lookup_cache(saved.alias_method_cache)
 	g.import_alias_cache = scratch_context_string_lookup_cache(saved.import_alias_cache)
 	g.enum_selector_cache = scratch_context_string_lookup_cache(saved.enum_selector_cache)

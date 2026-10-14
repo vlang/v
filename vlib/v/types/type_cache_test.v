@@ -44,13 +44,13 @@ fn test_seeded_field_types_preserve_direct_precedence_and_generic_substitution()
 	mut tc := TypeChecker.new(&a)
 	tc.structs['Inner'] = [StructField{ name: 'value', typ: Type(bool_) }]
 	tc.structs['Outer'] = [
-		StructField{ name: 'Inner', typ: Type(Struct{ name: 'Inner' }), is_embed: true },
+		StructField{ name: 'Inner', typ: Type(Struct{ name_id: flat.source_type_id('Inner') }), is_embed: true },
 		StructField{ name: 'value', typ: Type(int_) },
 		StructField{ name: 'value', typ: Type(string_) },
 	]
 	tc.structs['Box'] = [StructField{ name: 'item', typ: unknown_type('T') }]
 	tc.structs['Promoted'] = [
-		StructField{ name: 'Inner', typ: Type(Struct{ name: 'Inner' }) },
+		StructField{ name: 'Inner', typ: Type(Struct{ name_id: flat.source_type_id('Inner') }) },
 	]
 	tc.struct_generic_params['Box'] = ['T']
 	mut expected := []string{}
@@ -126,16 +126,19 @@ fn test_parse_type_cache_keeps_context_components_without_joined_keys() {
 	tc.type_cache.parse_enabled = true
 	tc.cur_file = 'one.v'
 	tc.cur_module = 'one'
-	assert tc.parse_type('int').name() == 'int'
-	assert tc.parse_type('int').name() == 'int'
+	// Nominal names require the source context; builtin scalars do not.
+	tc.structs['one.Item'] = []StructField{}
+	tc.structs['two.Item'] = []StructField{}
+	assert tc.parse_type('Item').name() == 'one.Item'
+	assert tc.parse_type('Item').name() == 'one.Item'
 	assert tc.type_cache.parse_entries.len == 1
 
 	tc.cur_module = 'two'
-	assert tc.parse_type('int').name() == 'int'
+	assert tc.parse_type('Item').name() == 'two.Item'
 	assert tc.type_cache.parse_entries.len == 2
 
 	tc.cur_file = 'two.v'
-	assert tc.parse_type('int').name() == 'int'
+	assert tc.parse_type('Item').name() == 'two.Item'
 	assert tc.type_cache.parse_entries.len == 3
 }
 
@@ -208,7 +211,7 @@ fn test_alias_target_parsing_preserves_declaration_module() {
 		}
 		parsed := tc.parse_alias_type('dep.Alias', text)
 		assert parsed is Alias
-		assert parsed.name == 'dep.Alias'
+		assert parsed.name() == 'dep.Alias'
 		assert parsed.base_type == expected
 	}
 	assert tc.parse_alias_target_type('dep.Alias', 'Item').name() == 'dep.Item'
@@ -277,14 +280,14 @@ fn test_parse_resolution_main_alias_uses_alias_declaration_scope() {
 	tc.struct_modules['Context'] = 'main'
 	tc.structs['veb.Context'] = []StructField{}
 	tc.struct_modules['veb.Context'] = 'veb'
-	tc.type_aliases['AliasContext'] = 'Context'
+	tc.type_aliases.set('AliasContext', 'Context')
 	tc.type_alias_modules['AliasContext'] = 'main'
 	tc.cur_file = 'veb/veb.v'
 	tc.cur_module = 'veb'
 
 	locked := tc.parse_resolution_type('main.AliasContext')
 	if locked is Alias {
-		assert locked.name == 'AliasContext'
+		assert locked.name() == 'AliasContext'
 		assert locked.base_type is Struct
 		assert locked.base_type.name() == 'Context'
 	} else {
@@ -297,7 +300,7 @@ fn test_embedded_field_type_trusts_collected_embed_metadata() {
 	field := StructField{
 		name:     'Middleware[Context]'
 		typ:      Type(Struct{
-			name: 'veb.Middleware[veb.Context]'
+			name_id: flat.source_type_id('veb.Middleware[veb.Context]')
 		})
 		is_embed: true
 	}
@@ -312,20 +315,20 @@ fn test_receiver_embeds_through_alias() {
 		StructField{
 			name:     'Context'
 			typ:      Type(Struct{
-				name: 'veb.Context'
+				name_id: flat.source_type_id('veb.Context')
 			})
 			is_embed: true
 		},
 	]
 	actual := Type(Alias{
-		name:      'AliasContext'
+		name_id:   flat.source_type_id('AliasContext')
 		base_type: Type(Struct{
-			name: 'Context'
+			name_id: flat.source_type_id('Context')
 		})
 	})
 	expected := Type(Pointer{
 		base_type: Type(Struct{
-			name: 'veb.Context'
+			name_id: flat.source_type_id('veb.Context')
 		})
 	})
 	assert tc.receiver_embeds(actual, expected)
@@ -418,7 +421,7 @@ fn test_c_type_cache_uses_existing_named_type_identity() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	typ := Type(Struct{
-		name: 'sample.Item'
+		name_id: flat.source_type_id('sample.Item')
 	})
 	assert tc.c_type(typ) == 'sample__Item'
 	assert tc.c_type(typ) == 'sample__Item'
@@ -429,11 +432,11 @@ fn test_c_type_recent_cache_distinguishes_reassigned_sum_payloads() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	mut typ := Type(Struct{
-		name: 'mcp.Request'
+		name_id: flat.source_type_id('mcp.Request')
 	})
 	assert tc.c_type(typ) == 'mcp__Request'
 	typ = Type(Struct{
-		name: 'http.Request'
+		name_id: flat.source_type_id('http.Request')
 	})
 	assert tc.c_type(typ) == 'http__Request'
 }
@@ -457,11 +460,11 @@ fn test_semantic_type_interner_uses_structural_identity() {
 	assert semantic_types_equal(first, second)
 
 	int_alias, _ := tc.intern_type(Type(Alias{
-		name:      'sample.Number'
+		name_id:   flat.source_type_id('sample.Number')
 		base_type: Type(int_)
 	}))
 	string_alias, _ := tc.intern_type(Type(Alias{
-		name:      'sample.Number'
+		name_id:   flat.source_type_id('sample.Number')
 		base_type: Type(string_)
 	}))
 	assert int_alias != string_alias
@@ -509,7 +512,7 @@ fn test_c_type_cache_keys_composite_types_by_type_id() {
 	tc := TypeChecker.new(&a)
 	typ := Type(Pointer{
 		base_type: Type(Struct{
-			name: 'sample.Item'
+			name_id: flat.source_type_id('sample.Item')
 		})
 	})
 	assert tc.c_type(typ) == 'sample__Item*'
@@ -537,7 +540,7 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 fn test_recursive_callback_alias_parses_once_and_keeps_its_abi() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases['Handlers'] = 'map[string]fn (Handlers) int'
+	tc.type_aliases.set('Handlers', 'map[string]fn (Handlers) int')
 	tc.type_cache.parse_enabled = true
 
 	typ := tc.parse_type('Handlers')
@@ -548,7 +551,7 @@ fn test_recursive_callback_alias_parses_once_and_keeps_its_abi() {
 	assert callback is FnType
 	param := (callback as FnType).params[0]
 	assert param is Alias
-	assert (param as Alias).name == 'Handlers'
+	assert (param as Alias).name() == 'Handlers'
 	assert tc.c_type(param) == 'map'
 	assert tc.parse_type('Handlers').name() == 'Handlers'
 	assert tc.type_cache.alias_parse_stack.len == 0

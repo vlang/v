@@ -7,9 +7,15 @@ import sync.stdatomic
 @[params]
 pub struct EncoderOptions {
 pub:
-	prettify       bool
-	indent_string  string = '    '
-	newline_string string = '\n'
+	// json5 permits JSON5 output, including Infinity and NaN.
+	json5 bool
+	// These formatting options apply only when json5 is true.
+	single_quotes   bool
+	unquoted_keys   bool
+	trailing_commas bool
+	prettify        bool
+	indent_string   string = '    '
+	newline_string  string = '\n'
 
 	enum_as_int bool
 
@@ -32,7 +38,7 @@ mut:
 	output []u8 = []u8{cap: 2048}
 }
 
-// encode is a generic function that encodes a type into a JSON string.
+// encode encodes a value as JSON, or JSON5 with `json5: true`.
 pub fn encode[T](val T, config EncoderOptions) string {
 	mut encoder := Encoder{
 		EncoderOptions: config
@@ -90,7 +96,9 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_number(i8(val))
 	} $else $if T.unaliased_typ is i16 {
 		encoder.encode_number(i16(val))
-	} $else $if T.unaliased_typ is int || T.unaliased_typ is i32 {
+	} $else $if T.unaliased_typ is int {
+		encoder.encode_number(int(val))
+	} $else $if T.unaliased_typ is i32 {
 		encoder.encode_number(i32(val))
 	} $else $if T.unaliased_typ is i64 {
 		encoder.encode_number(i64(val))
@@ -112,8 +120,8 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		}
 	} $else $if T.unaliased_typ is $array_fixed {
 		encoder.output << `[`
-		// Only the legacy layout spreads a fixed size array like a dynamic one.
-		spread := encoder.prettify && encoder.legacy_layout
+		// JSON5 and the legacy layout spread fixed size arrays like dynamic arrays.
+		spread := encoder.prettify && (encoder.legacy_layout || encoder.json5)
 		if spread {
 			encoder.open_items(val.len, true)
 		}
@@ -127,27 +135,14 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 			}
 			encoder.encode_value(val[i])
 		}
-		if spread {
+		if spread || encoder.json5 {
 			encoder.close_items(val.len, true)
 		}
 		encoder.output << `]`
 	} $else $if T.unaliased_typ is $array {
 		encoder.encode_array(val)
 	} $else $if T.unaliased_typ is $map {
-		encoder.output << `{`
-		encoder.open_items(val.len, false)
-		mut mi := 0
-		for key, value in val {
-			if mi > 0 {
-				encoder.separate_items(false)
-			}
-			encoder.encode_string('${key}')
-			encoder.write_key_separator()
-			encoder.encode_value(value)
-			mi++
-		}
-		encoder.close_items(val.len, false)
-		encoder.output << `}`
+		encoder.encode_map(val)
 	} $else $if T.unaliased_typ is $enum {
 		if encoder.enum_as_int || enum_uses_json_as_number[T]() {
 			encoder.encode_enum_number(val)
@@ -192,7 +187,7 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 				}
 			}
 			encoder.output << `{`
-			is_first := encoder.encode_struct_fields[T](val, true, [], '')
+			is_first := encoder.encode_plain_struct_fields[T](val, true)
 			encoder.close_object(!is_first)
 		}
 	}
@@ -225,7 +220,12 @@ fn next_string_escape(val string, start int, escape_unicode bool) int {
 	return i
 }
 
+@[manualfree]
 fn (mut encoder Encoder) encode_string(val string) {
+	if encoder.json5 {
+		encoder.encode_json5_string(val)
+		return
+	}
 	encoder.output << `"`
 	mut buffer_start := 0
 	mut buffer_end := 0
@@ -288,12 +288,7 @@ fn (mut encoder Encoder) encode_string(val string) {
 					buffer_end++
 					buffer_start = buffer_end
 
-					encoder.output << `\\`
-					encoder.output << `u`
-
-					hex_string := '${character:04x}'
-
-					unsafe { encoder.output.push_many(hex_string.str, 4) }
+					encoder.encode_unicode_escape(u32(character), false)
 
 					continue
 				}
@@ -302,16 +297,15 @@ fn (mut encoder Encoder) encode_string(val string) {
 						encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start)
 					}
 					code_point, width := utf8_rune_at(val, buffer_end)
-					hex_string := if code_point > 0xffff {
+					if code_point > 0xffff {
 						unicode_point_low := u32(code_point) - 0x10000
-						'\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${0xDC00 + (unicode_point_low & 0x3FF):04x}'
+						encoder.encode_unicode_escape(0xD800 + ((unicode_point_low >> 10) & 0x3FF), true)
+						encoder.encode_unicode_escape(0xDC00 + (unicode_point_low & 0x3FF), false)
 					} else {
-						'\\u${u32(code_point):04x}'
+						encoder.encode_unicode_escape(u32(code_point), false)
 					}
 					buffer_end += width
 					buffer_start = buffer_end
-
-					unsafe { encoder.output.push_many(hex_string.str, hex_string.len) }
 
 					continue
 				}
@@ -323,6 +317,16 @@ fn (mut encoder Encoder) encode_string(val string) {
 	unsafe { encoder.output.push_many(val.str + buffer_start, buffer_end - buffer_start) }
 
 	encoder.output << `"`
+}
+
+// encode_unicode_escape writes a UTF-16 code unit without allocating formatted text.
+fn (mut encoder Encoder) encode_unicode_escape(code u32, uppercase bool) {
+	hex := if uppercase { '0123456789ABCDEF' } else { '0123456789abcdef' }
+	encoder.output << `\\`
+	encoder.output << `u`
+	for shift := 12; shift >= 0; shift -= 4 {
+		encoder.output << hex[int((code >> shift) & 0xf)]
+	}
 }
 
 // utf8_rune_at decodes the UTF-8 sequence at `val[i]` like `string.runes()` does: an
@@ -393,6 +397,7 @@ fn (mut encoder Encoder) encode_boolean(val bool) {
 	}
 }
 
+@[manualfree]
 fn (mut encoder Encoder) encode_number[T](val T) {
 	mut integer_val := ''
 	$if T is u8 {
@@ -407,7 +412,9 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 		integer_val = i8(val).str()
 	} $else $if T is i16 {
 		integer_val = i16(val).str()
-	} $else $if T is int || T is i32 {
+	} $else $if T is int {
+		integer_val = int(val).str()
+	} $else $if T is i32 {
 		integer_val = i32(val).str()
 	} $else $if T is i64 {
 		integer_val = i64(val).str()
@@ -416,15 +423,50 @@ fn (mut encoder Encoder) encode_number[T](val T) {
 	} $else $if T is isize {
 		integer_val = isize(val).str()
 	} $else $if T is f32 {
-		integer_val = f32(val).str()
+		$if js {
+			integer_val = f32(val).str()
+		} $else {
+			magnitude := f32_abs(val)
+			integer_val = if magnitude == 0 || (magnitude >= f32(1e-6) && magnitude < f32(1e21)) {
+				f32(val).strlong()
+			} else {
+				f32(val).str()
+			}
+		}
 	} $else $if T is f64 {
-		integer_val = f64(val).str()
+		$if js {
+			integer_val = f64(val).str()
+		} $else {
+			magnitude := f64_abs(val)
+			integer_val = if magnitude == 0 || (magnitude >= 1e-6 && magnitude < 1e21) {
+				f64(val).strlong()
+			} else {
+				f64(val).str()
+			}
+		}
 	}
+	defer { unsafe { integer_val.free() } }
 	$if T is $float {
 		// JSON has no NaN or infinity, which V formats as `nan`, `+inf` and `-inf`.
 		if integer_val == 'nan' || integer_val.ends_with('inf') {
-			encoder.encode_null()
+			if encoder.json5 {
+				special := if integer_val == 'nan' {
+					'NaN'
+				} else if integer_val.starts_with('-') {
+					'-Infinity'
+				} else {
+					'Infinity'
+				}
+				unsafe { encoder.output.push_many(special.str, special.len) }
+			} else {
+				encoder.encode_null()
+			}
 			return
+		}
+		// JSON uses compact exponents, so `1e-07` becomes `1e-7`.
+		if integer_val.len >= 4 && integer_val[integer_val.len - 4] == `e`
+			&& integer_val[integer_val.len - 2] == `0` {
+			integer_val = integer_val[..integer_val.len - 2] + integer_val[integer_val.len - 1..]
 		}
 		if integer_val.len > 2 && integer_val[integer_val.len - 2] == `.`
 			&& integer_val[integer_val.len - 1] == `0` { // ends in .0
@@ -469,18 +511,57 @@ fn (mut encoder Encoder) encode_pointer_array_item[T](item T) {
 	encoder.encode_value(*item)
 }
 
+struct EncoderMapKey[K] {
+	name string
+	key  K
+}
+
+@[manualfree]
 fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
+	source_keys := val.keys()
+	defer {
+		$if K.unaliased_typ is string {
+			for i in 0 .. source_keys.len {
+				unsafe { source_keys[i].free() }
+			}
+		}
+		unsafe { source_keys.free() }
+	}
+	mut keys := []EncoderMapKey[K]{cap: val.len}
+	defer {
+		$if K.unaliased_typ is string {
+			// Names borrow the owned source keys.
+		} $else {
+			for i in 0 .. keys.len {
+				unsafe { keys[i].name.free() }
+			}
+		}
+		unsafe { keys.free() }
+	}
+	for i in 0 .. source_keys.len {
+		key := &source_keys[i]
+		keys << EncoderMapKey[K]{
+			name: '${*key}'
+			key:  *key
+		}
+	}
+	// Compare the converted object names: integer keys also sort lexically.
+	keys.sort(a.name < b.name)
 	encoder.output << `{`
 	encoder.open_items(val.len, false)
-	mut i := 0
-	for key, value in val {
+	for i, entry in keys {
 		if i > 0 {
 			encoder.separate_items(false)
 		}
-		encoder.encode_string('${key}')
+		encoder.encode_key(entry.name)
 		encoder.write_key_separator()
-		encoder.encode_value[T](value)
-		i++
+		$if T is $option {
+			// `or` would unwrap the payload and discard a present none-valued entry.
+			encoder.encode_value[T](val[entry.key])
+		} $else {
+			item := val[entry.key] or { continue }
+			encoder.encode_value[T](item)
+		}
 	}
 	encoder.close_items(val.len, false)
 	encoder.output << `}`
@@ -598,7 +679,7 @@ fn (mut encoder Encoder) encode_object_key(is_first bool, key string) bool {
 	if encoder.prettify {
 		encoder.add_indent()
 	}
-	encoder.encode_string(key)
+	encoder.encode_key(key)
 	encoder.write_key_separator()
 	return false
 }
@@ -611,7 +692,7 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name st
 		}
 	}
 	encoder.output << `{`
-	mut is_first := unsafe { encoder.encode_struct_fields[T](val, true, [], '') }
+	mut is_first := unsafe { encoder.encode_plain_struct_fields[T](val, true) }
 	is_first = encoder.encode_object_key(is_first, '_type')
 	encoder.encode_string(variant_name)
 	encoder.close_object(!is_first)
@@ -637,8 +718,8 @@ fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
 // variant, laid out like `encode_value` lays out other fixed size arrays.
 fn (mut encoder Encoder) encode_fixed_array_of_sumtype_variants[A](val A) {
 	encoder.output << `[`
-	// Only the legacy layout spreads a fixed size array like a dynamic one.
-	spread := encoder.prettify && encoder.legacy_layout
+	// JSON5 and the legacy layout spread fixed size arrays like dynamic arrays.
+	spread := encoder.prettify && (encoder.legacy_layout || encoder.json5)
 	if spread {
 		encoder.open_items(val.len, true)
 	}
@@ -652,7 +733,7 @@ fn (mut encoder Encoder) encode_fixed_array_of_sumtype_variants[A](val A) {
 		}
 		encoder.encode_sumtype_array_item(val[i])
 	}
-	if spread {
+	if spread || encoder.json5 {
 		encoder.close_items(val.len, true)
 	}
 	encoder.output << `]`
@@ -911,7 +992,7 @@ fn struct_field_should_encode[T](field_info EncoderFieldInfo, val T) bool {
 // encode_cached_struct_key copies ordinary compact keys from immutable metadata.
 // Pretty layouts and keys requiring escaping use the existing encoder.
 fn (mut encoder Encoder) encode_cached_struct_key(is_first bool, field_info EncoderFieldInfo) bool {
-	if !encoder.prettify && field_info.compact_key.len > 0 {
+	if !encoder.prettify && !encoder.json5 && field_info.compact_key.len > 0 {
 		start := if is_first { 1 } else { 0 }
 		// The cached string always contains a comma, quotes, the key, and a colon.
 		unsafe {
@@ -982,51 +1063,34 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant_with_embeds[T](val T, var
 	encoder.close_object(!is_first)
 }
 
+// encode_plain_struct_field does not need embedded-field collision tracking. Its
+// typed value encoder is shared by all ordinary structs with the same field type.
+fn (mut encoder Encoder) encode_plain_struct_field[F](val F, field_info EncoderFieldInfo, is_first bool) bool {
+	if !struct_field_should_encode(field_info, val) {
+		return is_first
+	}
+	new_is_first := encoder.encode_cached_struct_key(is_first, field_info)
+	encoder.encode_struct_field_value(val)
+	return new_is_first
+}
+
 @[unsafe]
-fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used_keys []string, prefix string) bool {
+fn (mut encoder Encoder) encode_plain_struct_fields[T](val T, was_first bool) bool {
 	field_info_cache := encoder.cached_field_infos[T]()
 	mut is_first := was_first
-	mut used_keys := old_used_keys
 	mut i := 0
-	// Only embedded children consume the keys collected by this struct.
-	mut track_keys := false
 	$for field in T.fields {
-		$if field.is_embed {
-			track_keys = true
-		}
-	}
-
-	$for field in T.fields {
-		$if !field.is_embed {
-			if !field.attrs.contains('skip') {
-				$if field.typ is $shared {
-					shared field_value := unsafe { val.$(field.name) }
-					rlock field_value {
-						is_first = encoder.encode_struct_field(field_value, field_info_cache.field_infos[i],
-							is_first, mut used_keys, old_used_keys, prefix, false, track_keys)
-					}
-				} $else {
-					is_first = encoder.encode_struct_field(val.$(field.name), field_info_cache.field_infos[i],
-						is_first, mut used_keys, old_used_keys, prefix, false, track_keys)
-				}
-			}
-		}
-		i++
-	}
-	$for field in T.fields {
-		$if field.is_embed {
-			new_prefix := prefix + field.name + '.'
+		if !field.attrs.contains('skip') {
 			$if field.typ is $shared {
 				shared field_value := unsafe { val.$(field.name) }
 				rlock field_value {
-					is_first = encoder.encode_struct_fields(field_value, is_first, used_keys,
-						new_prefix)
+					is_first = encoder.encode_plain_struct_field(field_value, field_info_cache.field_infos[i], is_first)
 				}
 			} $else {
-				is_first = encoder.encode_struct_fields(val.$(field.name), is_first, used_keys,
-					new_prefix)
+				is_first = encoder.encode_plain_struct_field(val.$(field.name), field_info_cache.field_infos[i], is_first)
 			}
 		}
+		i++
 	}
 	return is_first
 }
@@ -1137,6 +1201,9 @@ fn (mut encoder Encoder) separate_items(is_array bool) {
 // close_items ends the members or elements started by open_items, before the `}`
 // or `]`.
 fn (mut encoder Encoder) close_items(count int, is_array bool) {
+	if encoder.json5 && encoder.trailing_commas && count > 0 {
+		encoder.output << `,`
+	}
 	if !encoder.prettify {
 		return
 	}

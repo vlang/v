@@ -39,7 +39,9 @@ fn main() {
 	mut direct := log.ThreadSafeLog{}
 	assert direct.get_level() == .debug
 	log.use_stdout()
-	assert log.get_level() == .debug
+	slevel := \$d("log_default_level", "info")
+	expected := log.level_from_tag(slevel.to_upper()) or { panic("invalid log level") }
+	assert log.get_level() == expected
 	log.info("logger-defaults-ok")
 }
 '

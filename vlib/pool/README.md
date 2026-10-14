@@ -88,6 +88,10 @@ my_pool.close()
 
 ### Dynamic Configuration Update
 
+Lowering `max_conns` below the current connection count is allowed. Existing connections
+remain usable and close through their normal lifecycle; maintenance adds no new connections
+until the count falls below the new limit.
+
 ```v ignore
 new_config := pool.ConnectionPoolConfig{
     max_conns: 100

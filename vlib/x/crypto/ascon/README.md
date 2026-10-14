@@ -15,3 +15,7 @@ the hash of the message can be selected by the user.
 string and choose the output size of the message hash.
 - `Ascon-AEAD128`, an Authenticated Encryption with Additional Data (AEAD) Scheme based
 on Ascon-family crypto.
+
+`Xof128.read` and `CXof128.read` continue the output stream across calls of any byte length.
+An empty destination leaves the state unchanged. The first nonempty read finalizes the input;
+call `reset` before writing another message. `sum` computes a checksum on an independent clone.

@@ -19,6 +19,11 @@ for compatibility. Their standard phrases are `Early Hints` (103) and `Too Early
 Status 203 uses `Non-Authoritative Information`, 207 uses `Multi-Status`, and 418 uses
 `I'm a teapot`.
 
+A server without an explicit `listener` opens a socket on its configured `addr`, even when
+standard input is a socket. An explicitly supplied listener may use descriptor zero. Closing
+the server clears the closed listener, so a later `listen_and_serve()` binds a new socket on
+the server's address. Failed accepts other than timeouts pause briefly before retrying.
+
 ## Making requests
 
 ```v ignore
@@ -48,6 +53,11 @@ resp := http.fetch(
 HTTPS requests use HTTP/1.1 by default. Set `enable_http2: true` in
 `http.fetch` or a `http.Request` to opt in to HTTP/2 when the server supports it.
 
+Cookies given in `cookies` of `http.fetch`, or added with `Request.add_cookie`, are sent in
+one `Cookie` header as `name=value` pairs. A value goes through `sanitize_cookie_value`. A
+cookie whose name is empty or contains `;`, `=`, a space, a control character or a non-ASCII
+byte is not sent. `Request.cookie_header_value` returns the header value that is sent.
+
 A positive `stop_copying_limit` caps the stored HTTP/1.1 or HTTP/2 response body in bytes,
 independently of response headers and network read boundaries. HTTP/1.1 preserves the full body
 for nonpositive limits. Chunked HTTP/1.1 responses count body bytes after removing chunk framing.
@@ -55,6 +65,11 @@ HTTP/1.1 still applies `Content-Encoding` decompression, and caps the resulting 
 If the bounded compressed prefix cannot be decompressed, it retains the encoded prefix, as with
 ordinary response parsing. The client still reads the full response and invokes progress callbacks,
 so streaming downloads can keep a bounded preview without losing data in the callbacks.
+
+An HTTP/2 or HTTP/3 response with a field that can not be delivered is an error, not a
+response without that field: a field name that is not a token, or a field value with CR, LF
+or NUL, makes the response malformed, and more than `http.max_headers` fields, trailers
+included, is an `http.HeaderLimitError`.
 
 ## Serving requests
 
@@ -87,6 +102,11 @@ Set `cert` and `cert_key` to terminate TLS (PEM strings when
 serve HTTP/2: on the TLS listener it advertises ALPN `h2, http/1.1`, and on the
 plain listener it accepts prior-knowledge cleartext h2c. Either way a client
 that does not ask for HTTP/2 keeps the ordinary HTTP/1.1 path.
+
+An HTTP/2 request with a field name that is not a token, or a field value with CR, LF or
+NUL, is malformed: its stream is reset and the handler is not called. A request with more
+than `http.max_headers` fields, counting the `Host` field that `:authority` becomes, is
+answered with `431 Request Header Fields Too Large`.
 
 ## Identifying the client
 
@@ -170,10 +190,74 @@ fn client_ip(req http.Request) string {
 
 ## Cookies, headers and multipart
 
-`Request.add_cookie`/`Request.cookie` and `Response.cookies` handle cookies;
+Header value validation also works in `-check-overflow` builds: permitted TAB bytes are kept.
+
+`Request.add_cookie`/`Request.cookie` and `Response.cookies` handle cookies.
+`Response.cookies` reads `Max-Age` as a decimal integer: a positive number of seconds is
+stored in `Cookie.max_age`, zero or a negative number as `-1` (delete now). Any other value
+remains in `Cookie.unparsed`, which holds only the attributes that were not read.
+`Response.cookies` parses `Expires` with `time.parse_http_header_string`. Invalid dates
+and years before 1601 remain in `Cookie.unparsed`; they do not replace a valid expiry.
+`Cookie.raw_expires` retains date text even when it cannot be parsed.
+`Cookie.str()` writes the attribute names `Path`, `Domain` and `Expires` as RFC 6265
+spells them; `Response.cookies` matches attribute names in any case.
+When serializing `Cookie`, IPv4 literals such as `127.0.0.1` are accepted as domains;
+invalid domains are omitted.
+`Cookie.str()` omits `SameSite` for `.same_site_not_set` and `.same_site_default_mode`.
+The explicit modes write `SameSite=Lax`, `SameSite=Strict` or `SameSite=None`.
+
+`Cookie.str()` writes a cookie only when its name is an RFC 9110 token: letters, digits
+and ``!#$%&'*+-.^_`|~``. For any other name, such as one with a space, `;`, `,`, `=` or
+`[`, it returns an empty string. Reading is more lenient: `Request.cookie`,
+`Response.cookies` and `read_cookies` return any name made of visible ASCII characters.
+
 `Header` provides both `CommonHeader` enum access (`get`, `set`, `add`) and
 string access (`get_custom`, `set_custom`, `add_custom`). `http.parse_form`,
 `http.parse_multipart_form` and `http.post_multipart_form` cover form bodies.
+
+A `Header` holds at most `http.max_headers` (50) fields. `add_custom` and `set_custom`
+return an `http.HeaderLimitError` for a field that does not fit, and so do
+`http.parse_request`, `http.parse_response` and the other parsers for a message that has
+more header fields. `add`, `set`, `new_header` and `join` have no error to return: they
+drop such a field.
+
+A field value can not contain CR, LF or NUL (RFC 9110 section 5.5): written as they are,
+these bytes end the field line. `add_custom` and `set_custom` return an
+`http.HeaderValueError` for such a value, and so do the parsers for a received field
+whose value has a bare CR or a NUL. `add`, `set`, `new_header` and `join` store a space
+in place of each of these bytes. `Request.do` and `http.fetch` return the error for a
+`user_agent` that contains one of them.
+
+`Cookie.str()` and `sanitize_cookie_value` remove invalid bytes from cookie values,
+including control characters, quotes, semicolons and backslashes. Spaces and commas
+are preserved; the sanitized value is quoted when it contains a space or comma.
+
+`Header.render(canonicalize: true)` writes each field name in a canonical spelling instead of
+the stored one. A name that has a `CommonHeader` is spelled like `CommonHeader.str()`, the
+spelling of the IANA HTTP Field Name Registry for the names registered there: `ETag`, `TE`,
+`WWW-Authenticate`. Any other name gets its first letter and each letter after a `-` in upper
+case and the rest in lower case: `x-request-id` becomes `X-Request-Id`. Go's
+`textproto.CanonicalMIMEHeaderKey` applies the second rule to every name, so it has `Etag`,
+`Te` and `Www-Authenticate` instead; field names are case-insensitive (RFC 9110, section 5.1),
+so both spellings name the same field.
+
+`add_custom` and `set_custom` return an error for a name that is not a valid HTTP field
+name: an empty one, or one with a space, a colon, a control character or any other byte
+that is not an RFC 9110 token character. The name is checked when it is added, because it
+is not checked again when the header is sent.
+
+`http.canonical_header_key(name)` returns the canonical spelling of a header name in any
+case, for example `Accept-Encoding` for `accept-ENCODING`. It never fails: like Go's
+`http.CanonicalHeaderKey`, it returns a name that is not valid unchanged.
+
+### Idle connection reuse
+
+Before reusing an idle plain TCP connection, the client checks for a server-side close.
+A closed connection is discarded before sending request bytes, so a POST can use a fresh
+connection safely. Healthy idle connections remain reusable.
+
+If a non-idempotent request fails after transmission starts, the client returns an error
+without replaying it: a missing response does not prove that the server ignored the request.
 
 ### Windows TLS handshake compatibility
 
@@ -185,3 +269,6 @@ Errors after sending a request do not trigger this backend fallback.
 
 The retry preserves certificate validation, configured certificates, HTTP/2 negotiation,
 request headers, method, and body. `-d no_vschannel` continues to select `net.ssl` directly.
+
+Redirect responses without a `Location` header, or with an empty `Location`, are returned
+to the caller without following another URL.

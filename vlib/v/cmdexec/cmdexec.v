@@ -169,6 +169,13 @@ fn expand_windows_env_vars(text string) string {
 }
 
 fn run_in_mode(program string, args []string, work_folder string, merge_output bool, timeout_ms i64) os.Result {
+	return run_in_mode_with_env(program, args, work_folder, merge_output, timeout_ms,
+		map[string]string{})
+}
+
+// run_in_mode_with_env is run_in_mode for a child that gets the variables of `env`
+// on top of the environment of this process.
+fn run_in_mode_with_env(program string, args []string, work_folder string, merge_output bool, timeout_ms i64, env map[string]string) os.Result {
 	executable := resolve_program(program) or {
 		return os.Result{
 			exit_code: 1
@@ -186,6 +193,13 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	}
 	if work_folder.len > 0 {
 		process.set_work_folder(work_folder)
+	}
+	if env.len > 0 {
+		mut child_env := os.environ()
+		for name, value in env {
+			child_env[name] = value
+		}
+		process.set_environment(child_env)
 	}
 	if timeout_ms > 0 {
 		// A bounded run must be able to take down everything the command
@@ -298,6 +312,13 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 // both stdout and stderr. Standard input is empty, as with run.
 pub fn run_in_merged(program string, args []string, work_folder string) os.Result {
 	return run_in_mode(program, args, work_folder, true, no_timeout)
+}
+
+// run_in_merged_with_env is run_in_merged for a command that gets the variables
+// of `env` on top of the environment of this process, as `LC_ALL` for a tool whose
+// messages are read.
+pub fn run_in_merged_with_env(program string, args []string, work_folder string, env map[string]string) os.Result {
+	return run_in_mode_with_env(program, args, work_folder, true, no_timeout, env)
 }
 
 // split_args parses a directive or tool response into literal argv elements.

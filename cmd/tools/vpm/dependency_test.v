@@ -1,17 +1,14 @@
+// vtest build: network?
 import os
 import time
 import rand
 import v.vmod
 import test_utils { cmd_ok_args }
 
-const v = os.quoted_path(@VEXE)
+const v = @VEXE
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test_${rand.ulid()}')
 
 fn testsuite_begin() {
-	$if !network ? {
-		eprintln('> skipping ${@FILE}, when `-d network` is missing')
-		exit(0)
-	}
 	dump(test_path)
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path) or {}

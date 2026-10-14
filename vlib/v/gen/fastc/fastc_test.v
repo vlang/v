@@ -2,6 +2,7 @@
 
 module fastc
 
+import v.flat
 import os
 import strings
 import v.cmdexec
@@ -271,7 +272,7 @@ fn main() {
 	assert c_source.contains('return shared+other;'), c_source
 	assert c_source.contains('return shared^2;'), c_source
 	assert !c_source.contains('return &shared'), c_source
-	assert c_source.contains('__auto_type __v0 = (shared);'), c_source
+	assert c_source.contains('Option __v0 = (shared);'), c_source
 	assert c_source.contains('__vf_m_x = (shared);'), c_source
 	assert c_source.count('return shared;') == 3, c_source
 	assert c_source.contains('if (shared)'), c_source
@@ -311,9 +312,9 @@ fn test_selfhost_grouped_keyword_parameter_names_are_collected() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	mut functions := map[string]FastcFunctionSignature{}
-	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, []int{}, map[string]bool{}, map[string]string{}, map[string]bool{}, mut functions) or { panic(err) }
+	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, []int{}, map[string]bool{}, flat.TypeTextBindings{}, map[string]bool{}, mut functions) or { panic(err) }
 	signature := functions['pair'] or { panic('missing pair signature') }
-	assert signature.parameter_types == ['int', 'int']
+	assert signature.parameter_types_text() == ['int', 'int']
 }
 
 fn test_selfhost_generic_calls_named_shared_are_monomorphized() {
@@ -429,7 +430,7 @@ fn main() {
 	_ := propagate() or { 0 }
 }
 ', 'selfhost_multiline_shared_result_propagation.v', prefs) or { panic(err) }
-	assert c_source.contains('__auto_type __vf_op = (shared);'), c_source
+	assert c_source.contains('__v_result __vf_op = (shared);'), c_source
 	assert !c_source.contains('shared!'), c_source
 }
 
@@ -667,8 +668,8 @@ fn test_fastc_window_ranges_keeps_content_appended_after_empty_file() {
 fn test_fastc_emits_explicit_c_extern_prototype() {
 	functions := {
 		'C.external_api': FastcFunctionSignature{
-			parameter_types: ['int', 'voidptr']
-			return_type:     'int'
+			parameter_types: flat.TypeTextList.from_names(['int', 'voidptr'])
+			return_type:     flat.source_type_id('int')
 			is_c_extern:     true
 		}
 	}
@@ -1922,7 +1923,7 @@ fn main() {
 	assert message.contains('nonliteral `:c` interpolation'), message
 }
 
-fn test_i64_codepoint_interpolation_requires_runtime_support() {
+fn test_i64_codepoint_interpolation_uses_real_builtin_runtime() {
 	prefs := pref.new_preferences()
 	mut message := ''
 	_ := generate(r"module main
@@ -1939,18 +1940,14 @@ fn main() {
 
 	mut selfhost_prefs := pref.new_preferences()
 	selfhost_prefs.building_v = true
-	mut selfhost_message := ''
-	_ := generate(r"module main
+	selfhost_c := generate(r"module main
 
 fn main() {
 	value := i64(65)
 	println('${value:c}')
 }
-", 'i64_codepoint_interpolation_selfhost.v', selfhost_prefs) or {
-		selfhost_message = err.msg()
-		''
-	}
-	assert selfhost_message.contains('interpolation of type `i64`'), selfhost_message
+", 'i64_codepoint_interpolation_selfhost.v', selfhost_prefs) or { panic(err) }
+	assert selfhost_c.contains('v_fastc_signed_format((long long)(value), "c")'), selfhost_c
 }
 
 fn test_zero_value_strings_print_as_empty_strings() {
@@ -2476,7 +2473,7 @@ fn main() {
 	_ := Tool.run(["one", "two"]).code
 }
 ', 'static_array_argument.v', prefs) or { panic(err) }
-	assert c_source.contains('Tool_run(((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('Tool_run(({ string __vf_array_literal['), c_source
 	assert !c_source.contains('Tool_run(['), c_source
 }
 
@@ -2566,7 +2563,7 @@ fn main() {
 	page.set_title([label(), "repo"])
 }
 ', 'method_context_array_argument.v', prefs) or { panic(err) }
-	assert c_source.contains('Page_set_title(&(page),((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('Page_set_title(&(page),({ string __vf_array_literal['), c_source
 	assert !c_source.contains('Page_set_title(&(page),['), c_source
 }
 
@@ -5768,7 +5765,7 @@ fn test_literal_membership_materializes_candidates_before_comparison() {
 		s:        scanner.new_scanner(prefs, .normal)
 		locals:   {
 			'subject': FastcLocal{
-				typ: 'int'
+				typ: flat.source_type_id('int')
 			}
 		}
 	}
@@ -7225,13 +7222,13 @@ fn main() {}
 fn test_selfhost_composite_ordering_moves_one_line_interfaces_before_fields() {
 	source := 'struct Holder {\n\tWriter wr;\n};\n\nstruct Writer { void *_object; };\n'
 	ordered := fastc_order_c_composite_definitions(source, {
-		'Holder': {
+		'Holder': flat.TypeTextBindings.from_names({
 			'wr': 'Writer'
-		}
+		})
 	}, {
 		fastc_c_declared_type_name(fastc_type_key('main', 'Holder')): true
 		fastc_c_declared_type_name(fastc_type_key('main', 'Writer')): true
-	}, map[string]string{})
+	}, flat.TypeTextBindings{})
 	writer_index := ordered.index('struct Writer {') or { -1 }
 	holder_index := ordered.index('struct Holder {') or { -1 }
 	assert writer_index >= 0 && writer_index < holder_index, ordered
@@ -7240,15 +7237,15 @@ fn test_selfhost_composite_ordering_moves_one_line_interfaces_before_fields() {
 fn test_selfhost_composite_ordering_resolves_by_value_aliases() {
 	source := 'typedef Db DbAlias;\nstruct App {\n\tDbAlias db;\n};\n\nstruct Db { int id; };\n'
 	ordered := fastc_order_c_composite_definitions(source, {
-		'App': {
+		'App': flat.TypeTextBindings.from_names({
 			'db': 'DbAlias'
-		}
+		})
 	}, {
 		'App': true
 		'Db':  true
-	}, {
+	}, flat.TypeTextBindings.from_names({
 		'DbAlias': 'Db'
-	})
+	}))
 	db_index := ordered.index('struct Db {') or { -1 }
 	app_index := ordered.index('struct App {') or { -1 }
 	assert db_index >= 0 && db_index < app_index, ordered
@@ -7580,16 +7577,16 @@ fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() 
 		prefs:         prefs
 		s:             scanner.new_scanner(prefs, .normal)
 		struct_fields: {
-			'array': {
+			'array': flat.TypeTextBindings.from_names({
 				'len': 'int'
-			}
+			})
 		}
 	}
 	mut tokens := [
 		FastcExpressionToken{
 			tok: .name
 			lit: 'array'
-			typ: 'Array_FixedArray_2_int'
+			typ: flat.source_type_id('Array_FixedArray_2_int')
 		},
 		fastc_test_expression_token(.lcbr, '{'),
 		fastc_test_expression_token(.name, 'len'),
@@ -7602,7 +7599,7 @@ fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() 
 	assert !fixed.source.contains('builtin____new_array(0,0,sizeof(int))'), fixed.source
 	assert !fixed.source.contains('((FixedArray_2_int *)__vf_array_init.data)'), fixed.source
 
-	tokens[0].typ = 'Array_Array_int'
+	tokens[0].typ = flat.source_type_id('Array_Array_int')
 	dynamic := g.render_struct_literal_expression(tokens) or { panic('dynamic array literal was not rendered') }
 	assert dynamic.source.contains('builtin____new_array(0,0,sizeof(int))'), dynamic.source
 	assert dynamic.source.contains('((Array_int *)__vf_array_init.data)'), dynamic.source
@@ -7671,9 +7668,12 @@ fn fastc_reset(mut c Cfg, name string) {
 	c.fields = [name]
 }
 
-fn main() {}
+fn main() {
+	mut c := Cfg{}
+	fastc_reset(mut c, "value")
+}
 ', 'nonempty_array_field.v', prefs) or { panic(err) }
-	assert c_source.contains('c->fields=((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('c->fields=({ string __vf_array_literal['), c_source
 	assert !c_source.contains('array_get(c->fields='), c_source
 }
 
@@ -8033,7 +8033,7 @@ type Callback = fn (shared int)
 
 fn main() {}
 ', 'selfhost_function_alias_shared_parameter.v', prefs) or { panic(err) }
-	assert c_source.contains('typedef void (*Callback)(int*);'), c_source
+	assert c_source.contains('typedef void (*Callback)(${fastc_platform_int_c_type}*);'), c_source
 }
 
 fn test_selfhost_static_option_constructor_propagates_payload_type() {
@@ -8129,7 +8129,7 @@ fn main() {
 	use(mut id, 2) or { return }
 }
 ', 'selfhost_option_array_arguments.v', prefs) or { panic(err) }
-	assert c_source.contains('insert(((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('insert(({ string __vf_array_literal['), c_source
 	assert !c_source.contains('insert([_S('), c_source
 }
 
@@ -8190,7 +8190,8 @@ fn main() {
 	make() or { return }
 }
 ', 'selfhost_nested_propagation_method.v', prefs) or { panic(err) }
-	assert c_source.contains('Clock_unix(now())'), c_source
+	// Typed call-result lowering may group the receiver before passing it to the method.
+	assert c_source.contains('Clock_unix(now())') || c_source.contains('Clock_unix((now()))'), c_source
 	assert !c_source.contains('now().unix()'), c_source
 }
 
@@ -8459,7 +8460,6 @@ fn test_expressions_without_safe_lowering_are_rejected() {
 		'module main\nfn divide(b int) { mut x := 1; x /= b; println(x) }\nfn main() { divide(0) }\n',
 		'module main\nfn modulo(b int) { mut x := 1; x %= b; println(x) }\nfn main() { modulo(0) }\n',
 		'module main\nfn main() { println(sizeof(string)) }\n',
-		"module main\nfn main() { s := 'abc'; println(s[0]) }\n",
 		"module main\nfn main() { println(c'a') }\n",
 		'module main\nfn main() { println(`A`) }\n',
 		'module main\nfn show(r rune) { println(r) }\nfn main() { show(65) }\n',
@@ -8972,8 +8972,11 @@ fn main() {
 	inspect(mut node)
 }
 ', 'mut_sum_type_smartcast_argument.v', prefs) or { panic(err) }
-	assert c_source.contains('inspect(__v0)'), c_source
-	assert !c_source.contains('inspect(__v3)'), c_source
+	inspect_body := c_source.all_after('void inspect(Node* node) {').all_before('\n}')
+	// The recursive mut call receives the original boxed parameter, while the
+	// narrowed Item pointer is used only for the field mutation.
+	assert inspect_body.contains('inspect(node);'), inspect_body
+	assert inspect_body.count('inspect(') == 1, inspect_body
 }
 
 fn test_mut_match_sum_type_smartcast_passes_original_box_to_mut_parameter() {
@@ -11047,9 +11050,9 @@ fn main() {
 }
 ', 'selfhost_fn_param.v', prefs) or { panic(err) }
 	// An inline function-typed parameter is declared as a real C function pointer with
-	// unspecified args (so `f(x)` compiles as a direct call), and its return type is
-	// recovered so `"got " + f(x)` resolves as a string concatenation.
-	assert c_source.contains('string (*f)()'), c_source
+	// its prototype (so `f(x)` converts its argument as a direct call does), and its
+	// return type is recovered so `"got " + f(x)` resolves as a string concatenation.
+	assert c_source.contains('string (*f)(${fastc_platform_int_c_type})'), c_source
 	assert c_source.contains('builtin__string_plus'), c_source
 }
 
@@ -11425,13 +11428,11 @@ fn main() {
 	}
 }
 ', 'selfhost_channel.v', prefs) or { panic(err) }
-	// Channel send lowers to `try_push` of the value address; receive pops via
-	// `try_pop` into an element-typed temp recovered from the `chan Item` field
-	// (so `<-p.items` yields `Item`, not the `int` fallback).
-	assert c_source.contains('builtin__chan_try_push'), c_source
-	assert c_source.contains('builtin__chan_try_pop'), c_source
-	assert c_source.contains('builtin__chan_close(ch,(Array_IError){0})'), c_source
-	assert c_source.contains('Item __vf_chan_recv'), c_source
+	// Send and receive use the blocking runtime with the field's element type.
+	assert c_source.contains(fastc_method_c_name('sync', 'sync__Channel', 'push')), c_source
+	assert c_source.contains(fastc_method_c_name('sync', 'sync__Channel', 'pop')), c_source
+	assert c_source.contains('sync__new_channel_st'), c_source
+	assert c_source.contains('= (Item){0}; if (!'), c_source
 	assert !c_source.contains('items.closed'), c_source
 }
 
@@ -12491,7 +12492,7 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 		locals:                 {
 			'result': FastcLocal{
 				is_mut: true
-				typ:    'voidptr'
+				typ:    flat.source_type_id('voidptr')
 			}
 		}
 		s:                      scanner.new_scanner(prefs, .normal)
@@ -12519,7 +12520,7 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 		assert g.local_scope_depth == 0
 		assert g.local_scope_changes.len == 0
 		assert 'local' !in g.locals
-		assert g.locals['result'].typ == 'voidptr'
+		assert g.locals['result'].typ_text() == 'voidptr'
 	}
 }
 
@@ -13088,7 +13089,7 @@ fn main() {
 }
 ', 'selfhost_option_field_guard.v', prefs) or { panic(err) }
 	// `if mut v := h.vsc {` where `vsc ?Conn`: the guard local `v` binds to the field`s
-	// wrapped value type (Conn) recovered from FastcStructField.option_value_type, so
+	// wrapped value type (Conn) recovered from FastcStructField.option_value_type_text(), so
 	// `v.close()` resolves to Conn_close rather than defaulting the receiver to int.
 	assert c_source.contains('Conn v = *((Conn *)'), c_source
 	assert c_source.contains('Conn_close(v)'), c_source
@@ -13455,7 +13456,7 @@ fn main() {
 	_ := kind(true)
 }
 ', 'selfhost_unaliased_typ.v', prefs) or { panic(err) }
-	// `$if T.unaliased_typ is int` (json2 encoder dispatch) resolves at comptime: the int
+	// `$if T.unaliased_typ_text() is int` (json2 encoder dispatch) resolves at comptime: the int
 	// instance takes the `1` branch, the bool instance the `0` branch.
 	assert c_source.contains('kind_mono_int'), c_source
 	assert c_source.contains('kind_mono_bool'), c_source
@@ -13870,7 +13871,7 @@ fn main() {
 	_ := pairs
 }
 ', 'selfhost_dynamic_array_positional_struct_literals.v', prefs) or { panic(err) }
-	assert c_source.contains('(Pair[]){(Pair){_S("left"),_S("right")}}'), c_source
+	assert c_source.contains('__vf_array_literal[0] = ((Pair){_S("left"),_S("right")});'), c_source
 }
 
 fn test_selfhost_nil_pointer_struct_field_is_cast_without_address_of() {

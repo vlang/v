@@ -55,6 +55,10 @@ pub fn (d Diagnostic) to_json() string {
 	return w.str()
 }
 
+// max_diagnostics_default caps how many diagnostics one tool response carries
+// before it truncates. Counts stay totals; only the array is paged.
+const max_diagnostics_default = 100
+
 // diagnostics_json renders a list of diagnostics as a JSON array.
 pub fn diagnostics_json(items []Diagnostic) string {
 	mut w := astjson.Writer{}
@@ -64,6 +68,18 @@ pub fn diagnostics_json(items []Diagnostic) string {
 	}
 	w.end_array()
 	return w.str()
+}
+
+// page_diagnostics keeps the head of `items` and reports how many were omitted.
+// The first error is usually the cause and the rest its cascade, so the head is
+// what an agent reads first. `max < 1` means the default. Counts computed
+// elsewhere stay totals; only the rendered array is paged.
+fn page_diagnostics(items []Diagnostic, max int) ([]Diagnostic, int) {
+	limit := if max < 1 { max_diagnostics_default } else { max }
+	if items.len <= limit {
+		return items, 0
+	}
+	return items[..limit], items.len - limit
 }
 
 // parse_diagnostics reads the compiler's output into records.

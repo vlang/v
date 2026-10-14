@@ -215,7 +215,7 @@ fn (m &Module) type_size_inner(typ_id ssa.TypeID, depth int) int {
 	if typ.width > 0 {
 		return (typ.width + 7) / 8
 	}
-	if typ.elem_type > 0 && typ.fields.len == 0 {
+	if typ.elem_type_text() > 0 && typ.fields.len == 0 {
 		return 8
 	}
 	if typ.fields.len == 0 {
@@ -275,7 +275,7 @@ fn (m &Module) type_align_inner(typ_id ssa.TypeID, depth int) int {
 		}
 		return 1
 	}
-	if typ.elem_type > 0 && typ.fields.len == 0 {
+	if typ.elem_type_text() > 0 && typ.fields.len == 0 {
 		return 8
 	}
 	if typ.fields.len > 0 {

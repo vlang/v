@@ -616,7 +616,7 @@ fn (mut p ConnectionPool) prune_connections() {
 	} else {
 		0
 	}
-	available_slots := max_conns - p.all_conns.len
+	available_slots := if max_conns > p.all_conns.len { max_conns - p.all_conns.len } else { 0 }
 	mut actual_to_add := if actual_needed > new_conns.len { new_conns.len } else { actual_needed }
 	actual_to_add = if actual_to_add > available_slots { available_slots } else { actual_to_add }
 
