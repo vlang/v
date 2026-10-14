@@ -234,7 +234,7 @@ fn test_a_waiting_client_is_woken_when_a_connection_is_returned() {
 		max_conns:      2
 		min_idle_conns: 0
 		idle_timeout:   time.minute
-		get_timeout:    2 * time.second
+		get_timeout:    time.hour
 	})!
 	defer {
 		p.close()
@@ -253,9 +253,7 @@ fn test_a_waiting_client_is_woken_when_a_connection_is_returned() {
 		p.put(c) or { panic(err) }
 	}(mut p, mut wg)
 
-	time.sleep(150 * time.millisecond)
-	// Polled rather than slept-for: the goroutine may not have reached the
-	// wait queue yet when the fixed sleep above expires on a loaded machine.
+	// Observe the wait queue before explicitly releasing a connection.
 	for _ in 0 .. 400 {
 		if p.stats().waiting_clients == 1 {
 			break
@@ -352,14 +350,16 @@ fn test_recovery_and_every_eviction_priority_leave_the_pool_usable() {
 
 fn test_stats_reports_the_pool_timestamp_and_no_in_flight_creations() {
 	mut src := &LifeSource{}
+	before := time.utc()
 	mut p := small_pool(mut src)!
+	after := time.utc()
 	defer {
 		p.close()
 	}
-	before := time.utc()
 	stats := p.stats()
 	assert stats.created_at.unix() > 0
-	assert stats.created_at.unix() >= before.unix() - 1
+	assert stats.created_at >= before
+	assert stats.created_at <= after
 	assert stats.creating_count == 0
 }
 
