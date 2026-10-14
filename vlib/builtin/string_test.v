@@ -414,6 +414,19 @@ fn test_rsplit() {
 	assert vals[1] == ''
 }
 
+fn test_rsplit_trailing_delim_30510() {
+	// A delimiter that ends the string must still be found (#30510).
+	assert 'abcabcabc'.rsplit('abc') == ['', '', '', '']
+	assert 'abc'.rsplit('abc') == ['', '']
+	assert 'abcabc'.rsplit('abc') == ['', '', '']
+	assert 'aaaa'.rsplit('aa') == ['', '', '']
+	assert 'ababa'.rsplit('aba') == ['', 'ab']
+	assert 'abcabcabc'.rsplit_nth('abc', 2) == ['', 'abcabc']
+	a, b := 'abcabcabc'.rsplit_once('abc') or { '', '' }
+	assert a == 'abcabc'
+	assert b == ''
+}
+
 fn test_split_any() {
 	assert 'ABC'.split_any('') == ['A', 'B', 'C']
 	assert ''.split_any(' ') == []
