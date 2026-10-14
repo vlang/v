@@ -382,7 +382,19 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 		} else {
 			mut converted_primitive := false
-			if !g.selfhost || format_specifier != '' {
+			if g.selfhost && interpolation_type in ['f64', 'f32'] {
+				// `${x:.1}`, `${x:8.2}`, `${x:-8.2}`, `${x:.2f}`: the C backend's float formats.
+				if float_format := fastc_float_interpolation_format(format_specifier) {
+					formatted := '${g.fastc_float_format_helper(float_format.fixed)}((double)(${value}), ${float_format.precision})'
+					parts << if float_format.width > 0 {
+						'v_fastc_string_pad(${formatted}, ${float_format.width}, ${float_format.left_align})'
+					} else {
+						formatted
+					}
+					converted_primitive = true
+				}
+			}
+			if !converted_primitive && (!g.selfhost || format_specifier != '') {
 				if primitive_conversion := fastc_primitive_interpolation_expression(interpolation_type, value, format_specifier) {
 					parts << primitive_conversion
 					converted_primitive = true
