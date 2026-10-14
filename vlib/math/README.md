@@ -16,6 +16,15 @@ The trigonometric functions `sin`, `cos`, `sincos`, `tan` and `cot` reduce large
 with multiword arithmetic before evaluation, including inputs near a multiple of pi/2 and
 values up to `math.max_f64`. Infinite angles produce NaN.
 
+`lgamma` aliases `log_gamma`. `remainder(x, y)` uses the IEEE nearest-integer,
+ties-to-even remainder and preserves the dividend's sign on zero. On the C backend,
+`fma(x, y, z)` computes one rounded multiply-add, including intermediate product overflow.
+The C backend uses its math library for both operations. Other backends use portable
+remainder and a two-round multiply-add fallback. `floor_mod(x, y)` instead follows the
+divisor's sign, including zero. `to_degrees` and `to_radians` convert angle units.
+`is_power_of_two` and `next_power_of_two` operate on `u64`; the latter returns zero when the
+next power cannot fit. `classify` distinguishes NaN, infinite, normal, subnormal and zero.
+
 `wrapping(value)` and `saturating(value)` create integer arithmetic wrappers for
 `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, and `int`.
 Their `+`, `-`, and `*` operators wrap modulo the integer width or clamp to its bounds,
