@@ -212,15 +212,15 @@ fn test_generic_instantiation_falls_back_for_uncached_declarations() {
 			panic('missing cached generic instantiation')
 		}
 		assert cached.generic_params == ['U']
-		assert cached.concrete_args == ['int']
+		assert cached.concrete_args_text() == ['int']
 		tc.enclosing_generic_params_by_node.delete(decl_id)
 		fallback := tc.generic_compile_error_instantiation(call, info) or {
 			panic('missing uncached generic instantiation')
 		}
 		assert fallback.decl_id == cached.decl_id
 		assert fallback.generic_params == cached.generic_params
-		assert fallback.concrete_args == cached.concrete_args
-		assert fallback.symbol_types == cached.symbol_types
+		assert fallback.concrete_args_text() == cached.concrete_args_text()
+		assert fallback.symbol_types.ids == cached.symbol_types.ids
 	}
 }
 
@@ -296,7 +296,7 @@ fn test_generic_method_metadata_routes_remain_independent() {
 fn test_plain_signatures_and_aliases_do_not_supply_generic_parameters() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases['Concrete'] = 'Box'
+	tc.type_aliases.set('Concrete', 'Box')
 	tc.fn_ret_types['Box.read'] = tc.parse_type('u64')
 	tc.fn_param_types['Box.read'] = []Type{}
 	assert tc.resolve_generic_struct_method('Box[u8]', 'read') == none

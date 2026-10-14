@@ -84,3 +84,7 @@ fn test_wasm_supported_array_elem() {
 		assert !wasm_supported_array_elem(t), t
 	}
 }
+
+fn test_wasm_gate_admits_pointer_to_primitive_field() {
+	assert wasm_gate_check('module main\nstruct P {\n\tvalue &int\n}\nfn main() {\n\tvalue := 42\n\tp := P{value: &value}\n\tprintln(*p.value)\n}\n') == ''
+}

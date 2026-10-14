@@ -295,6 +295,22 @@ fn test_day_of_week_follows_the_day_count() {
 	assert time.day_of_week(1970, 1, 1) == 4
 }
 
+fn test_day_of_week_does_not_allocate() {
+	// 11 Oct 2025 is a Saturday
+	assert time.day_of_week(2025, 10, 11) == 6
+	// the lookup table must not be heap allocated on every call
+	mut sum := 0
+	for _ in 0 .. 1000 {
+		sum += time.day_of_week(2025, 10, 11)
+	}
+	before := gc_heap_usage().total_bytes
+	for _ in 0 .. 10_000 {
+		sum += time.day_of_week(2025, 10, 11)
+	}
+	assert sum == 11_000 * 6
+	assert gc_heap_usage().total_bytes == before
+}
+
 fn test_week_of_year() {
 	// As windows use msvcrt.dll, which `strftime` does not support %V, so skip test
 	// TODO: newer version windows use ucrtbase.dll, which support %V

@@ -4,17 +4,32 @@
 command line arguments, reading/writing files, listing folders,
 handling processes etc.
 
+See [Named pipes](fifo.md) for client/server FIFO endpoints.
+
 On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
 application data.
 
 `os.user_os()` returns `wasm32_emscripten` when compiled for Emscripten.
+
+On Windows, `os.environ()` walks UTF-16 environment entries without losing non-ASCII names or
+values. If the operating system cannot provide an environment block, it returns an empty map.
 
 ### Console input
 
 On Windows, `os.input()` supports both console and redirected standard input.
 It returns an empty string when the standard input handle is invalid.
 
+### Memory-mapped files
+
+See [memory-mapped files](mmap.md) for file mappings and safe use of their byte views.
+
 ### Path helpers
+
+Windows short-path expansion counts output capacity in UTF-16 characters and reports an
+insufficient output buffer as an error.
+
+`os.executable()` returns the process executable path. On Linux, NetBSD, and DragonFly,
+it uses the exact byte count returned by `readlink`, without requiring a NUL terminator.
 
 `os.base()` removes all trailing separators before returning the final path element.
 For example, `os.base('a///')` returns `a`. An empty path returns `.`, and a path made
@@ -119,6 +134,9 @@ and directories using Unix timestamps in seconds. On Windows, it accepts Unicode
 paths and reports Win32 error codes. Timestamps must use positive `FILETIME` tick counts below
 2^63. The zero value (1601-01-01 00:00:00 UTC) is rejected because Windows treats it as
 "leave unchanged".
+
+On Windows, `os.stat()` reports pre-1970 file and directory timestamps as negative Unix
+timestamps, including when the path reaches the target through a symbolic link.
 
 On Windows, `os.rm()` clears a file's read-only attribute for deletion while preserving
 its other attributes. If removal fails, it attempts to restore the original attributes
@@ -328,3 +346,33 @@ Explicit extensions are preserved.
 
 On Windows, `os.get_error_msg` removes the trailing CR/LF line break from system
 messages. Error text returned by operations using it retains the message's punctuation.
+
+### Child process output
+
+On Windows, `os.exec()` captures bytes from successful child-pipe reads only. Closing the output
+pipe does not append a previous chunk again. Commands with no output return an empty output string.
+
+### Writing arrays
+
+`os.write_file_array()` closes its file even when writing fails, including when a device is full
+or a pipe reader closes. The write error is still returned to the caller.
+
+`os.cp` reports source read failures as `cp: failed to read from <source>` and closes both files.
+
+### File identity and user directories
+
+`is_absolute` requires a drive root or UNC volume on Windows. Drive-relative paths such as
+`C:file` and paths rooted on the current drive such as `/file` return false. `volume_name`
+returns the drive or UNC root on Windows and an empty string elsewhere.
+
+`same_file(a, b)` follows symbolic links and compares filesystem object identity. It supports
+Unicode paths and directories on Windows; missing or inaccessible paths return an error.
+`copy_file(src, dst)` follows source links, copies contents and basic permission bits (`0o777`),
+and reports read, write, or permission-setting errors. Copying to the source or a hard link to it
+is rejected.
+
+`user_home_dir` uses a nonempty `HOME` on POSIX or `USERPROFILE` on Windows, where
+`HOMEDRIVE` plus `HOMEPATH` is a fallback. `user_cache_dir` and `user_config_dir` use
+`LOCALAPPDATA` and `APPDATA` on Windows, falling back to `AppData/Local` and `AppData/Roaming`.
+On POSIX they use nonempty, absolute `XDG_CACHE_HOME` and `XDG_CONFIG_HOME`; empty values
+fall back to `~/.cache` and `~/.config`. Variables from the other platform are ignored.

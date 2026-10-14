@@ -30,7 +30,7 @@ pub struct Marker { value int }
 	mut a := p.parse_files([first, second, third])
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	// The resolver splices implicit imports into the stream, outside file children.
-	a.add_node(flat.Node{ kind: .import_decl, value: 'sync', typ: 'sync' })
+	a.add_node(flat.Node{ kind: .import_decl, value: 'sync', typ: flat.source_type_id('sync') })
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
 	names := ['first', 'second']

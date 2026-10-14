@@ -978,7 +978,7 @@ fn global_qualifier_test_field(mut a flat.FlatAst, name string, type_text string
 	return a.add_node(flat.Node{
 		kind:           .field_decl
 		value:          name
-		typ:            type_text
+		typ:            flat.source_type_id(type_text)
 		payload:        flat.node_payload(qualifiers)
 		children_start: i32(start)
 		children_count: flat.child_count(1)
@@ -1186,7 +1186,7 @@ pub:
 	for i, original in original_fields {
 		cached := cached_fields[i]
 		assert cached.value == original.value
-		assert cached.typ == original.typ
+		assert cached.typ_text() == original.typ_text()
 		assert cached.generic_params() == original.generic_params()
 		assert cached.children_count == original.children_count
 		if original.children_count > 0 {

@@ -45,6 +45,16 @@ collections. These settings do not make live objects eligible for collection.
 The address is hexadecimal with the `0x` prefix: `println(voidptr(u64(42)))` prints `0x2a`.
 String interpolation of a `voidptr` uses the hexadecimal address without the prefix.
 
+### Splitting by characters
+
+With an empty delimiter, `split` and `rsplit` split complete UTF-8 runes, preserving malformed
+bytes as individual parts. Their `split_nth` and `rsplit_nth` variants keep the final remainder
+on a rune boundary. For example, `'αβγ'.split_nth('', 2)` produces `['α', 'βγ']`.
+
+`split_any` and `rsplit_any` match complete UTF-8 runes from their delimiter string.
+Malformed bytes are treated as U+FFFD, matching `string.runes()`. The reverse form
+returns parts in reverse order.
+
 ### String indexing
 
 String indexing checks signed and unsigned positions before reading a byte, including `i64`
@@ -72,3 +82,28 @@ ensure no allocation from a rewound or freed scope remains in use.
 scope, excluding allocator metadata and address gaps between blocks. It returns zero for a nil
 scope and saturates at `usize`'s maximum on overflow. This query is unsafe: no thread may add or
 remove blocks while it runs.
+
+`string.replace_each(pairs)` ignores pairs with an empty search string. An empty replacement
+string removes matches of a nonempty search string.
+
+`string.limit(max)` counts Unicode code points and returns an empty string for `max <= 0`.
+
+### String margins
+
+`string.strip_margin()` and `strip_margin_custom(del)` keep content after the last line break
+when no later delimiter exists. Final whitespace-only lines are discarded. Lines before a later
+delimiter keep their established removal behavior.
+
+The `string.is_bin()`, `is_oct()`, and `is_hex()` predicates accept both lowercase and uppercase
+prefixes (`0b`/`0B`, `0o`/`0O`, and `0x`/`0X`), including after an optional sign. Each prefix
+must be followed by at least one valid digit for its base.
+
+`string.is_lower()` requires at least one lowercase ASCII letter and rejects uppercase ASCII
+letters. Digits, whitespace, and punctuation do not determine the case: `'123abc'.is_lower()`
+is true, while digit-only or punctuation-only strings return false.
+
+### Reverse splitting
+
+`rsplit`, `rsplit_nth`, and `rsplit_once` recognize nonempty delimiters at the end of a string.
+Splitting at an end delimiter gives `rsplit` and `rsplit_nth` an empty first array element.
+Substring matches are selected from right to left without overlapping.

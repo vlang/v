@@ -413,7 +413,7 @@ fn test_fused_parallel_prep_interns_body_string_literals() {
 	]
 	g.a.children = [flat.NodeId(1)]
 	mut stack := []flat.NodeId{}
-	mut type_text_cache := map[string]bool{}
+	mut type_text_cache := map[u32]bool{}
 	g.fn_item_cost_and_prep(0, mut stack, mut type_text_cache)
 	assert g.str_lits == ['worker literal']
 	assert g.str_lit_ids['worker literal'] == 0
@@ -441,14 +441,14 @@ fn test_type_metadata_scan_preserves_order_across_worker_shards() {
 		flat.Node{ kind: .file, value: 'first.v' },
 		flat.Node{ kind: .module_decl, value: 'first' },
 		flat.Node{ kind: .fn_decl, value: 'run' },
-		flat.Node{ kind: .param, typ: 'Map_string_int' },
-		flat.Node{ kind: .call, typ: '?int' },
+		flat.Node{ kind: .param, typ: flat.source_type_id('Map_string_int') },
+		flat.Node{ kind: .call, typ: flat.source_type_id('?int') },
 		flat.Node{ kind: .decl_assign, value: 'shared' },
-		flat.Node{ kind: .ident, typ: '[4]int' },
+		flat.Node{ kind: .ident, typ: flat.source_type_id('[4]int') },
 		flat.Node{ kind: .file, value: 'second.v' },
 		flat.Node{ kind: .module_decl, value: 'second' },
 		flat.Node{ kind: .cast_expr, value: '[2]string' },
-		flat.Node{ kind: .fn_literal, typ: 'Map_string_string' },
+		flat.Node{ kind: .fn_literal, typ: flat.source_type_id('Map_string_string') },
 	]
 	for i, id in indices {
 		g.a.nodes[id] = nodes[i]
@@ -481,7 +481,7 @@ fn test_type_metadata_keeps_interface_boxes_without_array_scratch_types() {
 	mut g, _ := parallel_worker_test_gen(false)
 	// Interface dispatch examines struct initializers, but their temporary type
 	// text must not be treated as an authoritative fixed-array declaration.
-	g.a.nodes = [flat.Node{ kind: .struct_init, typ: '[8]int' }]
+	g.a.nodes = [flat.Node{ kind: .struct_init, typ: flat.source_type_id('[8]int') }]
 	g.scan_collect_gen_info(true)
 	assert g.type_metadata_nodes() == [i32(0)]
 	assert g.collect_fixed_array_typedefs_needed().len == 0
@@ -578,16 +578,16 @@ fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
 	g.shared_generic_app_parts('Shared[string]')
 	dispatcher.shared_generic_app_parts('Shared[string]')
 	batch.shared_generic_app_parts('Shared[string]')
-	assert 'Shared[string]' in g.generic_app_cache.entries
-	assert 'Shared[string]' in dispatcher.generic_app_cache.entries
-	assert 'Shared[string]' in batch.generic_app_cache.entries
-	assert 'Shared[string]' !in frozen.entries
+	assert flat.source_type_id('Shared[string]') in g.generic_app_cache.entries
+	assert flat.source_type_id('Shared[string]') in dispatcher.generic_app_cache.entries
+	assert flat.source_type_id('Shared[string]') in batch.generic_app_cache.entries
+	assert flat.source_type_id('Shared[string]') !in frozen.entries
 }
 
 fn test_open_generic_receiver_template_bypasses_stale_generic_app_cache() {
 	mut g, _ := parallel_worker_test_gen(true)
 	mut cache := g.generic_app_cache
-	cache.entries['AtomicVal[T]'] = GenericAppInfo{}
+	cache.entries[flat.source_type_id('AtomicVal[T]')] = GenericAppInfo{}
 	node := flat.Node{
 		kind:  .fn_decl
 		value: 'AtomicVal[T].load'
@@ -613,8 +613,8 @@ fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
 
 fn test_parallel_type_declarations_preseed_function_type_aliases() {
 	mut g, mut tc := parallel_worker_test_gen(true)
-	tc.type_aliases['Callback'] = 'fn (int)'
-	callback_type := tc.parse_type(tc.type_aliases['Callback'])
+	tc.type_aliases.set('Callback', 'fn (int)')
+	callback_type := tc.parse_type(tc.type_aliases.value('Callback'))
 	encoded := tc.c_type(callback_type)
 	assert encoded.starts_with('fn_ptr:')
 	assert encoded !in g.fn_ptr_types

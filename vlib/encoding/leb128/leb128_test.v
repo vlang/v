@@ -2097,3 +2097,88 @@ const signed_data = [
 	PairI{-7772703118602814481, 'eff7eeb89ff6f390947f'},
 	PairI{-4518171459184852569, 'a783eaa7f0df8ea641'},
 ]
+
+fn test_decode_malformed_input() {
+	// a buffer whose continuation bits never end is truncated, not a zero
+	mut v, mut n := leb128.decode_u64([u8(0x80), 0x80, 0x80])
+	assert v == 0
+	assert n == 0
+	// an empty buffer holds no varint at all
+	v, n = leb128.decode_u64([]u8{})
+	assert v == 0
+	assert n == 0
+	// ten groups with a value past bit 63 do not fit in a u64
+	v, n = leb128.decode_u64([u8(0xff), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02])
+	assert v == 0
+	assert n == -10
+	// the one exactly representable ten group value still decodes
+	v, n = leb128.decode_u64([u8(0xff), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01])
+	assert v == 18446744073709551615
+	assert n == 10
+	// an eleventh group overflows too
+	v, n = leb128.decode_u64([u8(0x80), 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00])
+	assert v == 0
+	assert n == -10
+	// u32 twins
+	mut v32, mut n32 := leb128.decode_u32([u8(0x80), 0x80])
+	assert v32 == 0
+	assert n32 == 0
+	v32, n32 = leb128.decode_u32([u8(0xff), 0xff, 0xff, 0xff, 0x0f])
+	assert v32 == 4294967295
+	assert n32 == 5
+	v32, n32 = leb128.decode_u32([u8(0xff), 0xff, 0xff, 0xff, 0x10])
+	assert v32 == 0
+	assert n32 == -5
+	// signed forms report the same way
+	mut sv, mut sn := leb128.decode_i64([u8(0x80), 0x80])
+	assert sv == 0
+	assert sn == 0
+	// ten terminating groups with the top bits set are a valid negative
+	sv, sn = leb128.decode_i64([u8(0xff), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f])
+	assert sv == -1
+	assert sn == 10
+	// an eleventh group overflows
+	sv, sn = leb128.decode_i64([u8(0x80), 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+		0x00])
+	assert sv == 0
+	assert sn == -10
+	mut sv32, mut sn32 := leb128.decode_i32([u8(0x80)])
+	assert sv32 == 0
+	assert sn32 == 0
+	// well formed values keep their value and length
+	v, n = leb128.decode_u64([u8(0xe5), 0x8e, 0x26])
+	assert v == 624485
+	assert n == 3
+	sv, sn = leb128.decode_i64([u8(0xc0), 0xbb, 0x78])
+	assert sv == -123456
+	assert sn == 3
+}
+
+fn test_signed_terminal_payload_bits() {
+	for terminal in 0 .. 128 {
+		mut bytes32 := []u8{len: 4, init: u8(0x80)}
+		bytes32 << u8(terminal)
+		value32, used32 := leb128.decode_i32(bytes32)
+		if terminal <= 7 || terminal >= 0x78 {
+			assert used32 == 5
+			decoded, count := leb128.decode_i32(leb128.encode_i32(value32))
+			assert decoded == value32
+			assert count > 0
+		} else {
+			assert value32 == 0
+			assert used32 == -5
+		}
+		mut bytes64 := []u8{len: 9, init: u8(0x80)}
+		bytes64 << u8(terminal)
+		value64, used64 := leb128.decode_i64(bytes64)
+		if terminal == 0 || terminal == 0x7f {
+			assert used64 == 10
+			decoded, count := leb128.decode_i64(leb128.encode_i64(value64))
+			assert decoded == value64
+			assert count > 0
+		} else {
+			assert value64 == 0
+			assert used64 == -10
+		}
+	}
+}

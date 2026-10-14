@@ -1,8 +1,14 @@
 module pref
 
 import os
+import strings
 import time
 import v.cmdexec
+
+// native_backend_replacement_message explains how to replace the removed native backend option.
+pub const native_backend_replacement_message = '`-b native` has been replaced by `-b arm64` for native ARM64 compilation on macOS.\n' +
+	'Enable ARM64 support with `v -compile-backend arm64 self`, then use `v -b arm64 -gc none file.v`.\n' +
+	'The native AMD64 backend is not available yet; use `v -b c -arch amd64 file.v`.'
 
 const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
@@ -1222,7 +1228,7 @@ pub fn normalized_arch(target_arch string) string {
 // out an alias for tcc.
 pub fn ccompiler_can_assemble(ccompiler string) bool {
 	real_name := os.file_name(os.real_path(ccompiler)).to_lower_ascii()
-	if real_name.contains('tcc') || real_name.contains('tinyc') || real_name.contains('msvc')
+	if tinycc_file_name(real_name) || real_name.contains('msvc')
 		|| real_name in ['cl', 'cl.exe'] {
 		return false
 	}
@@ -1230,8 +1236,7 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 	for version_flag in ['--version', '-v'] {
 		res := os.exec([ccompiler, '${version_flag}'])
 		output := res.output.to_lower_ascii()
-		if output.contains('tiny c compiler') || output.contains('tinycc')
-			|| output.contains('\ntcc') || output.starts_with('tcc')
+		if ccompiler_version_is_tinycc(output)
 			|| output.contains('microsoft c/c++') || output.contains('msvc') {
 			return false
 		}
@@ -1241,6 +1246,194 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 		}
 	}
 	return false
+}
+
+// tcc_with_prod_requested reports whether a production C build selects TinyCC.
+// Compiler option values are skipped and the last compiler/backend options win.
+// Executable aliases follow ccompiler_is_tinycc in the caller's working directory.
+pub fn tcc_with_prod_requested(args []string) bool {
+	return tcc_with_prod_requested_in(args, '')
+}
+
+// tcc_with_prod_requested_in reports whether a production C build selects TinyCC in cwd.
+// Relative compiler paths and wrapper version queries use cwd without changing the caller's
+// working directory. Compiler option values are skipped and the last compiler/backend win.
+pub fn tcc_with_prod_requested_in(args []string, cwd string) bool {
+	mut prod := false
+	mut ccompiler := ''
+	mut backend := 'c'
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg == '-prod' {
+			prod = true
+		} else if arg in ['-cc', '-b', '-backend'] && i + 1 < args.len {
+			i++
+			if arg == '-cc' { ccompiler = args[i] } else { backend = args[i] }
+		} else if arg.starts_with('-cc=') {
+			ccompiler = arg['-cc='.len..]
+		} else if arg.starts_with('-b=') {
+			backend = arg['-b='.len..]
+		} else if arg.starts_with('-backend=') {
+			backend = arg['-backend='.len..]
+		} else if arg in ['-prof', '-profile'] {
+			if prod_profile_consumes_value(args, i) { i++ }
+		} else if arg == '-cf' || option_may_consume_value(arg) {
+			i++
+		}
+		i++
+	}
+	return prod && backend == 'c' && ccompiler != '' && ccompiler_is_tinycc_in(ccompiler, cwd)
+}
+
+// prod_profile_consumes_value follows the launcher's optional profiling output rule.
+fn prod_profile_consumes_value(args []string, index int) bool {
+	next := args[index + 1] or { return false }
+	if next == '-' { return true }
+	if next.starts_with('-') || next in ['run', 'build', 'test', 'doc']
+		|| next.ends_with('.v') || next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next) {
+		return false
+	}
+	return args[index + 2..].any(!it.starts_with('-'))
+}
+
+// ccompiler_is_tinycc reports whether `ccompiler` is TinyCC. It resolves the path and any
+// symlink, then checks the file name with tinycc_file_name. Any other executable is asked for
+// its version banner, so a copy of tcc under another name is still recognised. Mentions of
+// TinyCC in metadata such as an installed directory do not identify a compiler. A name that
+// does not resolve to an executable is judged by its name alone.
+// Local launchable files precede PATH. Windows also permits loadable PE files with other extensions.
+pub fn ccompiler_is_tinycc(ccompiler string) bool {
+	return ccompiler_is_tinycc_in(ccompiler, os.getwd())
+}
+
+fn ccompiler_is_tinycc_in(ccompiler string, cwd string) bool {
+	work_folder := if cwd == '' { os.getwd() } else { cwd }
+	path := ccompiler_path_in(ccompiler, work_folder)
+	if path == '' {
+		mut name := ccompiler
+		$if windows {
+			name = ccompiler_windows_expand_env_vars(name)
+		}
+		return tinycc_file_name(os.file_name(name))
+	}
+	resolved := os.real_path(path)
+	if tinycc_file_name(os.file_name(resolved)) {
+		return true
+	}
+	if !os.is_file(resolved) {
+		return false
+	}
+	$if !windows {
+		if !os.is_executable(resolved) { return false }
+	}
+	for flag in ['--version', '-v'] {
+		version := cmdexec.run_in(resolved, [flag], work_folder).output
+		if ccompiler_version_is_tinycc(version) {
+			return true
+		}
+	}
+	return false
+}
+
+// ccompiler_path_in resolves explicit paths and PATH entries in the requested directory.
+// Match cmdexec's local-file and explicit-path rules before searching PATH.
+fn ccompiler_path_in(ccompiler string, cwd string) string {
+	mut program := ccompiler
+	$if windows {
+		program = ccompiler_windows_expand_env_vars(program)
+	}
+	path := if os.is_abs_path(program) { program } else { os.join_path(cwd, program) }
+	if os.is_file(path) && os.is_executable(path) { return path }
+	mut explicit_path := os.is_abs_path(program) || program.contains('/')
+	$if windows {
+		explicit_path = explicit_path || program.contains('\\')
+	}
+	if explicit_path {
+		$if windows {
+			return ccompiler_windows_executable_path(path)
+		} $else {
+			return path
+		}
+	}
+	mut suffixes := ['']
+	$if windows {
+		suffixes = ['.com', '.exe', '.bat', '.cmd', '']
+		if os.file_ext(program).to_lower_ascii() in suffixes && os.file_ext(program) != '' {
+			suffixes = ['']
+		}
+	}
+	for suffix in suffixes {
+		for entry in os.getenv('PATH').split(os.path_delimiter) {
+			directory := if os.is_abs_path(entry) { entry } else { os.join_path(cwd, entry) }
+			candidate := os.join_path(directory, program + suffix)
+			if os.is_file(candidate) && os.is_executable(candidate) { return candidate }
+		}
+	}
+	return ''
+}
+
+// Explicit Windows paths have CreateProcessW's single implicit `.exe` suffix.
+// Nonstandard extensions can still contain a loadable PE image.
+fn ccompiler_windows_executable_path(candidate string) string {
+	if os.is_file(candidate) && os.is_executable(candidate) { return candidate }
+	if os.file_ext(candidate) != '' { return candidate }
+	probed := candidate + '.exe'
+	if os.is_file(probed) && os.is_executable(probed) { return probed }
+	return candidate
+}
+
+// Keep the same single-pass percent expansion as cmdexec's Windows launch path.
+fn ccompiler_windows_expand_env_vars(text string) string {
+	if !text.contains('%') { return text }
+	parts := text.split('%')
+	mut out := strings.new_builder(text.len)
+	for i in 0 .. parts.len {
+		if i % 2 == 0 {
+			out.write_string(parts[i])
+			continue
+		}
+		if i == parts.len - 1 {
+			out.write_string('%')
+			out.write_string(parts[i])
+			continue
+		}
+		name := parts[i]
+		value := if name == '' { '' } else { os.getenv(name) }
+		if value != '' {
+			out.write_string(value)
+			continue
+		}
+		out.write_string('%')
+		out.write_string(name)
+		out.write_string('%')
+	}
+	return out.str()
+}
+
+// ccompiler_version_is_tinycc reports whether output contains a TinyCC version or branding
+// banner line. Paths and other metadata containing the compiler's name are ignored.
+pub fn ccompiler_version_is_tinycc(output string) bool {
+	for line in output.to_lower_ascii().split_into_lines() {
+		banner := line.trim_space()
+		if banner in ['tcc', 'tinycc', 'tiny c compiler']
+			|| banner.starts_with('tcc version ') || banner.starts_with('tinycc version ')
+			|| banner.starts_with('tiny c compiler ') {
+			return true
+		}
+	}
+	return false
+}
+
+// tinycc_file_name reports whether `file_name` is tcc or tinyc, with an optional `.exe` and an
+// optional target prefix such as `x86_64-w64-mingw32-tcc`. A name that only contains tcc, such
+// as `distcc` or `notcc`, is not TinyCC.
+pub fn tinycc_file_name(file_name string) bool {
+	mut name := file_name.to_lower_ascii()
+	if name.ends_with('.exe') {
+		name = name[..name.len - '.exe'.len]
+	}
+	return name in ['tcc', 'tinyc', 'tinycc'] || name.ends_with('-tcc') || name.ends_with('-tinycc')
 }
 
 // find_system_assembler returns a GCC or Clang compatible compiler driver found

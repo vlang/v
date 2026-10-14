@@ -147,16 +147,17 @@ fn is_visibility_error(msg string) bool {
 struct GenericBodyError {
 	err TypeError
 mut:
-	types map[string][]string
+	types flat.TypeTextListBindings
 }
 
 // add_types notes the types of `combination`, a check that found the error.
 fn (mut e GenericBodyError) add_types(combination map[string]string) {
 	for name, text in combination {
-		mut taken := e.types[name] or { []string{} }
-		if text !in taken {
-			taken << text
-			e.types[name] = taken
+		id := flat.source_type_id(text)
+		mut taken := e.types.type_ids(name) or { []u32{} }
+		if id !in taken {
+			taken << id
+			e.types.set_ids(name, taken)
 		}
 	}
 }
@@ -191,13 +192,13 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 	w.cur_fn_node_id = fn_idx
 	if texts.len > 0 {
 		// A function without type parameters, whose types name the ones given.
-		w.type_param_texts = texts.clone()
+		w.type_param_texts = flat.TypeTextBindings.from_names(texts)
 		w.type_cache.parse_enabled = false
 		w.fn_context.generic_params = []string{}
-		return_text := if node.typ.ends_with('?') && !node.typ.starts_with('?') {
-			node.typ.trim_right('?')
+		return_text := if node.typ_text().ends_with('?') && !node.typ_text().starts_with('?') {
+			node.typ_text().trim_right('?')
 		} else {
-			node.typ
+			node.typ_text()
 		}
 		w.cur_fn_ret_type = w.parse_type(return_text)
 		w.fn_context.return_type = w.cur_fn_ret_type
@@ -229,10 +230,11 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 // check_generic_fn_body_as): each of them is its type there, and no parse comes
 // from the cache or goes to it, which holds the types of other functions.
 fn (tc &TypeChecker) parse_type_as_instance(typ string) Type {
-	mut names := []string{cap: tc.type_param_texts.len}
-	mut args := []string{cap: tc.type_param_texts.len}
+	mut names := []string{cap: tc.type_param_texts.ids.len}
+	mut args := []string{cap: tc.type_param_texts.ids.len}
 	mut name_set := map[string]bool{}
-	for name, text in tc.type_param_texts {
+	for name, text_id in tc.type_param_texts.ids {
+		text := flat.source_type_name(text_id)
 		if tc.type_params_expanding[name] {
 			continue
 		}
@@ -250,7 +252,7 @@ fn (tc &TypeChecker) parse_type_as_instance(typ string) Type {
 	// parses with these texts, on one thread.
 	mut fork := unsafe { tc }
 	mut expanding := []string{}
-	for name, _ in tc.type_param_texts {
+	for name, _ in tc.type_param_texts.ids {
 		mut one := map[string]bool{}
 		one[name] = true
 		if !tc.type_params_expanding[name] && args.any(type_text_names_any(it, one)) {
@@ -271,16 +273,16 @@ fn (tc &TypeChecker) parse_type_as_instance(typ string) Type {
 // `x` in `$if x is f64`, a parameter declared with a type parameter or a local.
 // Anything else is `text`.
 fn (tc &TypeChecker) instance_type_text(text string) string {
-	if tc.type_param_texts.len == 0 {
+	if tc.type_param_texts.ids.len == 0 {
 		return text
 	}
-	if instance := tc.type_param_texts[text] {
+	if instance := tc.type_param_texts.get(text) {
 		return instance
 	}
 	fn_id := flat.NodeId(tc.fn_context.node_id)
 	if tc.valid_node_id(fn_id) {
 		if param := tc.fn_param_type_param(tc.a.node(fn_id), text, tc.type_param_texts.keys()) {
-			return tc.type_param_texts[param] or { text }
+			return tc.type_param_texts.get(param) or { text }
 		}
 	}
 	if typ := tc.cur_scope.lookup(text) {
@@ -363,7 +365,7 @@ fn (tc &TypeChecker) type_param_instance_texts(node flat.Node, params map[string
 		constraint := constraints[name] or { return none }
 		mut options := []string{}
 		if constraint.is_interface {
-			options << constraint.iface.name
+			options << constraint.iface.name()
 			for tested in tc.comptime_tested_types(node, name, names) {
 				if tested !in options
 					&& tc.generic_constraint_accepts(constraint, tc.parse_type(tested)) {
@@ -856,21 +858,21 @@ fn close_type_param_text(text string, combination map[string]string, mut path ma
 // function: what the type parameters that decide it were. One that had every
 // type of `texts`, more than one, does not decide it, and is left out; one that
 // has only its interface is any type that implements it.
-fn type_param_occurrence_reason(types map[string][]string, texts map[string][]string, constraints map[string]GenericConstraint) string {
+fn type_param_occurrence_reason(types flat.TypeTextListBindings, texts map[string][]string, constraints map[string]GenericConstraint) string {
 	mut parts := []string{}
 	for name, options in texts {
-		taken := types[name] or { continue }
+		taken := types.get(name) or { continue }
 		constraint := constraints[name] or { continue }
 		if options.len > 1 && taken.len >= options.len {
 			continue
 		}
 		if constraint.is_interface {
-			implementers := taken.filter(it != constraint.iface.name)
+			implementers := taken.filter(it != constraint.iface.name())
 			if implementers.len == 0 || implementers.len < taken.len {
-				parts << '`${name}` is any type that implements `${constraint.name}`'
+				parts << '`${name}` is any type that implements `${constraint.name_text()}`'
 			} else {
 				verb := if implementers.len == 1 { 'implements' } else { 'implement' }
-				parts << 'when `${name}` is ${type_names_text(implementers, 'or')}, which ${verb} `${constraint.name}`'
+				parts << 'when `${name}` is ${type_names_text(implementers, 'or')}, which ${verb} `${constraint.name_text()}`'
 			}
 			continue
 		}
@@ -885,7 +887,7 @@ fn type_param_occurrence_reason(types map[string][]string, texts map[string][]st
 		} else {
 			type_names_text(taken, 'or')
 		}
-		parts << 'when `${name}` is ${what}, in its constraint `${constraint.name}`'
+		parts << 'when `${name}` is ${what}, in its constraint `${constraint.name_text()}`'
 	}
 	return parts.join(', and ')
 }
@@ -918,8 +920,8 @@ fn fold_type_param_expansions(msg string, constraints map[string]GenericConstrai
 	}
 	mut folds := map[string]string{}
 	for name, constraint in constraints {
-		if type_text_names_any(constraint.name, names) {
-			folds[constraint.name] = name
+		if type_text_names_any(constraint.name_text(), names) {
+			folds[constraint.name_text()] = name
 		}
 	}
 	if folds.len == 0 || !msg.contains('`') {
@@ -1007,7 +1009,7 @@ fn (tc &TypeChecker) type_param_dependent_names(fn_node flat.Node, params map[st
 		child_id := tc.a.child(&fn_node, i)
 		child := tc.a.node(child_id)
 		if child.kind == .param {
-			if child.value.len > 0 && type_text_names_any(child.typ, params) {
+			if child.value.len > 0 && type_text_names_any(child.typ_text(), params) {
 				names[child.value] = true
 			}
 		} else {
@@ -1042,7 +1044,7 @@ fn (tc &TypeChecker) type_param_dependent_names(fn_node flat.Node, params map[st
 					for i in 0 .. node.children_count {
 						param := tc.a.child_node(node, i)
 						if param.kind == .param && param.value.len > 0 && param.value !in names
-							&& type_text_names_any(param.typ, params) {
+							&& type_text_names_any(param.typ_text(), params) {
 							names[param.value] = true
 							changed = true
 						}
@@ -1144,7 +1146,7 @@ fn (tc &TypeChecker) subtree_depends_on_type_params(id flat.NodeId, names map[st
 		if node.kind == .ident && node.value in names {
 			return true
 		}
-		if type_text_names_any(node.typ, params) {
+		if type_text_names_any(node.typ_text(), params) {
 			return true
 		}
 		if node.kind !in [.string_literal, .char_literal, .int_literal, .float_literal]

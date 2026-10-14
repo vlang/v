@@ -347,3 +347,12 @@ fn main() {
 		assert guest.len == 1 && guest[0] == '42', 'option return gave `${wout}`, want 42'
 	}
 }
+
+fn test_tour_struct_primitive_pointer_field_roundtrips() {
+	source := 'struct Reading {\n\tvalue &int\n}\nfn main() {\n\tvalue := 42\n\treading := Reading{value: &value}\n\tprintln(*reading.value)\n}\n'
+	module := tour_compile('primitive_pointer', source) or { panic(err) }
+	_ := tour_node_bin() or { return }
+	out, code := tour_run('primitive_pointer', module)
+	assert code == 0, out
+	assert out.trim_space() == '42', out
+}
