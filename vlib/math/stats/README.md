@@ -13,3 +13,7 @@ interpolation between ascending sorted samples. At least two samples and `n >= 1
 mass. `pdf`, `cdf` and `inv_cdf` evaluate that distribution. Inverse probabilities must lie
 strictly between zero and one. Extreme-tail inverse values use a finite rational approximation;
 ordinary inputs also receive a Halley refinement. A NaN evaluation input returns NaN.
+
+Gaussian evaluation scales differences, densities, and affine inverse values to avoid
+intermediate overflow or underflow for finite parameters. Final values can still overflow or
+underflow when the mathematical result lies outside the floating-point range.

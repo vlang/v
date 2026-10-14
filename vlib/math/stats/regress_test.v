@@ -128,3 +128,23 @@ fn test_correlation_avoids_square_overflow_and_underflow() {
 	assert math.abs(huge.slope - 2.0) < 1e-15
 	assert math.abs(huge.predict(4e200) / 8e200 - 1.0) < 1e-15
 }
+
+fn test_normal_dist_finite_parameter_overflow_and_density_underflow() {
+	wide := new_normal_dist(0.0, math.max_f64)!
+	assert math.abs(wide.cdf(math.max_f64) - 0.8413447460685429) < 1e-15
+	assert wide.cdf(math.inf(1)) == 1.0
+	assert wide.cdf(math.inf(-1)) == 0.0
+	assert wide.pdf(0.0) > 0.0
+	assert math.abs(wide.pdf(0.0) * math.max_f64 - 0.3989422804014327) < 1e-14
+	assert math.abs(wide.pdf(math.max_f64) * math.max_f64 - 0.24197072451914337) < 1e-14
+	opposite := new_normal_dist(-math.max_f64, math.max_f64)!
+	assert math.abs(opposite.cdf(math.max_f64) - 0.9772498680518208) < 1e-15
+	inverse := opposite.inv_cdf(0.975)!
+	assert !math.is_inf(inverse, 0) && !math.is_nan(inverse)
+	assert math.abs(inverse / math.max_f64 - 0.959963984540054) < 1e-13
+	tiny := new_normal_dist(0.0, 1e-300)!
+	assert tiny.pdf(3.86e-299) > 0.0
+	assert math.abs(tiny.pdf(3.86e-299) / 1.1487008370544425e-24 - 1.0) < 1e-12
+	assert tiny.pdf(4e-299) > 0.0
+	assert math.abs(tiny.pdf(4e-299) / 1.4632702508383032e-48 - 1.0) < 1e-12
+}

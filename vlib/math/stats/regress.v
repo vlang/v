@@ -111,8 +111,14 @@ pub fn (nd &NormalDist) pdf(x f64) f64 {
 	if nd.std == 0 {
 		return if x == nd.mean { math.inf(1) } else { 0.0 }
 	}
-	z := (x - nd.mean) / nd.std
-	return math.exp(-0.5 * z * z) / (nd.std * math.sqrt(2 * math.pi))
+	z := nd.standardized_value(x)
+	exponent := -0.5 * z * z
+	density := math.exp(exponent)
+	if density < 2.2250738585072014e-308 && nd.std < 1 {
+		// Scaling a subnormal density can restore a normal result; use logarithms first.
+		return math.exp(exponent - math.log(nd.std) - 0.5 * math.log(2 * math.pi))
+	}
+	return density / math.sqrt(2 * math.pi) / nd.std
 }
 
 // cdf returns the cumulative probability P(X <= x).
@@ -121,7 +127,7 @@ pub fn (nd &NormalDist) cdf(x f64) f64 {
 	if nd.std == 0 {
 		return if x < nd.mean { 0.0 } else { 1.0 }
 	}
-	z := (x - nd.mean) / (nd.std * math.sqrt(2.0))
+	z := nd.standardized_value(x) / math.sqrt(2.0)
 	return 0.5 * math.erfc(-z)
 }
 
@@ -132,7 +138,22 @@ pub fn (nd &NormalDist) inv_cdf(p f64) !f64 {
 	if math.is_nan(p) || p <= 0.0 || p >= 1.0 {
 		return error('stats: inv_cdf needs 0 < p < 1')
 	}
-	return nd.mean + nd.std * inv_normal(p)
+	z := inv_normal(p)
+	product := nd.std * z
+	if math.is_inf(product, 0) {
+		// Combine in standard units when the mean can cancel product overflow.
+		return nd.std * (z + nd.mean / nd.std)
+	}
+	return nd.mean + product
+}
+
+// standardized_value avoids subtracting opposite finite extremes before scaling.
+fn (nd &NormalDist) standardized_value(x f64) f64 {
+	difference := x - nd.mean
+	if math.is_inf(difference, 0) && !math.is_inf(x, 0) {
+		return x / nd.std - nd.mean / nd.std
+	}
+	return difference / nd.std
 }
 
 // centered_sums shifts samples before scaling their centered products,
