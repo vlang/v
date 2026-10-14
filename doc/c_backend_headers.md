@@ -57,3 +57,7 @@ and `-no-builtin` use compatibility headers when complete V bindings are unavail
 Malformed embedded compatibility headers are diagnosed before C compilation in portable,
 object, and `-no-builtin` modes. Parallel builds can reuse a native object cache directory
 created by another compiler process; filesystem failures remain errors.
+
+Negated integer literals above `INT_MAX` and within the signed 64-bit range receive an `LL`
+suffix in C output, including parenthesized operands and constant initializers. This preserves
+their sign with MSVC.
