@@ -5,18 +5,20 @@ import strings
 
 struct LexicalAttributes {
 mut:
-	current_tag      &Tag = unsafe { nil }
-	open_tag         bool
-	open_code        bool
-	open_string      int
-	open_comment     bool
-	is_attribute     bool
-	opened_code_type string
-	line_count       int
-	outside_tag      bool
-	text_after_tag   bool
-	lexeme_builder   strings.Builder = strings.new_builder(100)
-	code_tags        map[string]bool = {
+	current_tag        &Tag = unsafe { nil }
+	open_tag           bool
+	open_code          bool
+	open_string        int
+	open_comment       bool
+	is_attribute       bool
+	pending_attribute  string
+	opened_code_type   string
+	line_count         int
+	outside_tag        bool
+	text_after_tag     bool
+	text_after_comment bool
+	lexeme_builder     strings.Builder = strings.new_builder(100)
+	code_tags          map[string]bool = {
 		'script': true
 		'style':  true
 	}
@@ -100,11 +102,32 @@ fn (mut parser Parser) generate_tag() {
 	if parser.lexical_attributes.open_tag {
 		return
 	}
-	if parser.lexical_attributes.current_tag.name != ''
+	if parser.lexical_attributes.text_after_comment
+		&& parser.lexical_attributes.lexeme_builder.len > 0 {
+		parser.lexical_attributes.current_tag.content = parser.builder_str()
+		parser.lexical_attributes.lexeme_builder.go_back_to(0)
+	}
+	if (parser.lexical_attributes.current_tag.name != ''
+		&& !parser.lexical_attributes.text_after_comment)
 		|| parser.lexical_attributes.current_tag.content.len > 0 {
 		parser.tags << parser.lexical_attributes.current_tag
 	}
+	parser.lexical_attributes.text_after_comment = false
 	parser.lexical_attributes.current_tag = &Tag{}
+}
+
+fn (mut parser Parser) set_attribute_value(value string) {
+	name := parser.lexical_attributes.current_tag.last_attribute
+	parser.lexical_attributes.current_tag.attributes[name] = value
+	if name == 'class' {
+		for class_name in value.split_any('\t\r\n \f') {
+			if class_name != '' {
+				parser.lexical_attributes.current_tag.class_set.add(class_name)
+			}
+		}
+	}
+	parser.lexical_attributes.current_tag.last_attribute = ''
+	parser.lexical_attributes.pending_attribute = ''
 }
 
 // split_parse parses the HTML fragment
@@ -129,8 +152,13 @@ pub fn (mut parser Parser) split_parse(data string) {
 					parser.lexical_attributes.open_code = false
 					// modify lexeme_builder to include script text as content in the next loop
 					parser.lexical_attributes.lexeme_builder.go_back(name_close_tag.len)
+					// the builder now holds exactly the body, since it was reset
+					// when the opening tag closed; keep it as the tag content
+					parser.lexical_attributes.current_tag.content = parser.builder_str()
 					parser.lexical_attributes.current_tag.closed = true
 					parser.lexical_attributes.current_tag.close_type = .new_tag
+					parser.lexical_attributes.lexeme_builder.go_back_to(0)
+					parser.generate_tag()
 				}
 			}
 		} else if parser.lexical_attributes.open_comment {
@@ -139,6 +167,11 @@ pub fn (mut parser Parser) split_parse(data string) {
 				parser.lexical_attributes.lexeme_builder.go_back_to(0)
 				parser.lexical_attributes.open_comment = false
 				parser.lexical_attributes.open_tag = false
+				parser.lexical_attributes.current_tag = &Tag{
+					name:   'text'
+					closed: true
+				}
+				parser.lexical_attributes.text_after_comment = true
 			} else {
 				parser.lexical_attributes.lexeme_builder.write_u8(chr)
 			}
@@ -148,18 +181,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 				parser.lexical_attributes.lexeme_builder.write_u8(chr)
 				temp_lexeme := parser.builder_str()
 				if parser.lexical_attributes.current_tag.last_attribute != '' {
-					lattr := parser.lexical_attributes.current_tag.last_attribute
-					nval := temp_lexeme.substr(1, temp_lexeme.len - 1)
-					// parser.print_debug(lattr + " = " + temp_lexeme)
-					parser.lexical_attributes.current_tag.attributes[lattr] = nval
-					if lattr == 'class' {
-						for class_name in nval.split_any('\t\r\n \x0D') {
-							if class_name != '' {
-								parser.lexical_attributes.current_tag.class_set.add(class_name)
-							}
-						}
-					}
-					parser.lexical_attributes.current_tag.last_attribute = ''
+					parser.set_attribute_value(temp_lexeme.substr(1, temp_lexeme.len - 1))
 				} else {
 					parser.lexical_attributes.current_tag.attributes[temp_lexeme.to_lower()] = ''
 					// parser.print_debug(temp_lexeme)
@@ -173,11 +195,11 @@ pub fn (mut parser Parser) split_parse(data string) {
 				parser.lexical_attributes.open_string = string_code
 				parser.lexical_attributes.lexeme_builder.write_u8(chr)
 			} else if chr == `>` {
-				complete_lexeme := parser.builder_str().to_lower()
-				parser.lexical_attributes.current_tag.closed = (complete_lexeme.len > 0
+				complete_lexeme := parser.builder_str()
+				parser.lexical_attributes.current_tag.closed = (parser.lexical_attributes.current_tag.last_attribute == '' && complete_lexeme.len > 0
 					&& complete_lexeme[complete_lexeme.len - 1] == `/`)
 				if complete_lexeme.len > 0 && complete_lexeme[0] == `/` {
-					parser.dom.close_tags[complete_lexeme] = true
+					parser.dom.close_tags[complete_lexeme.to_lower()] = true
 				}
 				/*
 				else if complete_lexeme.len > 0 && complete_lexeme[complete_lexeme.len - 1] == 47 { // if end tag like "/>"
@@ -185,10 +207,13 @@ pub fn (mut parser Parser) split_parse(data string) {
 				}
 				*/
 				if parser.lexical_attributes.current_tag.name == '' {
-					parser.lexical_attributes.current_tag.name = complete_lexeme
-				} else if complete_lexeme != '/' {
-					parser.lexical_attributes.current_tag.attributes[complete_lexeme] = ''
+					parser.lexical_attributes.current_tag.name = complete_lexeme.to_lower()
+				} else if parser.lexical_attributes.current_tag.last_attribute != '' {
+					parser.set_attribute_value(complete_lexeme)
+				} else if complete_lexeme != '' && complete_lexeme != '/' {
+					parser.lexical_attributes.current_tag.attributes[complete_lexeme.to_lower()] = ''
 				}
+				parser.lexical_attributes.pending_attribute = ''
 				parser.lexical_attributes.open_tag = false
 				parser.lexical_attributes.lexeme_builder.go_back_to(0) // if tag name is code
 				if parser.lexical_attributes.current_tag.name in parser.lexical_attributes.code_tags {
@@ -196,18 +221,34 @@ pub fn (mut parser Parser) split_parse(data string) {
 					parser.lexical_attributes.opened_code_type = parser.lexical_attributes.current_tag.name
 				}
 				// parser.print_debug(parser.lexical_attributes.current_tag.name)
-			} else if chr !in [u8(9), ` `, `=`, `\n`] { // Tab, space, = and \n
+			} else if chr == `=` && parser.lexical_attributes.current_tag.last_attribute != ''
+				&& parser.lexical_attributes.lexeme_builder.len > 0 {
 				parser.lexical_attributes.lexeme_builder.write_u8(chr)
-			} else if chr != 10 {
-				complete_lexeme := parser.builder_str().to_lower()
+			} else if chr !in [u8(9), ` `, `=`, `\n`, `\r`, `\f`] {
+				parser.lexical_attributes.lexeme_builder.write_u8(chr)
+			} else {
+				complete_lexeme := parser.builder_str()
 				if parser.lexical_attributes.current_tag.name == '' {
-					parser.lexical_attributes.current_tag.name = complete_lexeme
-				} else {
-					parser.lexical_attributes.current_tag.attributes[complete_lexeme] = ''
-					parser.lexical_attributes.current_tag.last_attribute = ''
-					if chr == `=` {
-						parser.lexical_attributes.current_tag.last_attribute = complete_lexeme
+					parser.lexical_attributes.current_tag.name = complete_lexeme.to_lower()
+				} else if parser.lexical_attributes.current_tag.last_attribute != '' {
+					if complete_lexeme != '' {
+						parser.set_attribute_value(complete_lexeme)
 					}
+				} else if chr == `=` {
+					name := if complete_lexeme != '' {
+						complete_lexeme.to_lower()
+					} else {
+						parser.lexical_attributes.pending_attribute
+					}
+					if name != '' {
+						parser.lexical_attributes.current_tag.attributes[name] = ''
+						parser.lexical_attributes.current_tag.last_attribute = name
+					}
+					parser.lexical_attributes.pending_attribute = ''
+				} else if complete_lexeme != '' {
+					name := complete_lexeme.to_lower()
+					parser.lexical_attributes.current_tag.attributes[name] = ''
+					parser.lexical_attributes.pending_attribute = name
 				}
 				parser.lexical_attributes.lexeme_builder.go_back_to(0)
 			}
@@ -222,6 +263,9 @@ pub fn (mut parser Parser) split_parse(data string) {
 					&& !blank_string(temp_string) {
 					parser.lexical_attributes.text_after_tag = true
 				} else {
+					if parser.lexical_attributes.current_tag.name == '' {
+						parser.lexical_attributes.current_tag.name = 'text'
+					}
 					parser.lexical_attributes.current_tag.content = temp_string // verify later who has this content
 				}
 			}
@@ -272,21 +316,46 @@ pub fn (mut parser Parser) parse_html(data string) {
 		// After `split_into_lines()` we need to add `\n` again.
 		parser.split_parse(if index < lines.len - 1 { '${line}\n' } else { line })
 	}
-	parser.generate_tag()
+	parser.finalize()
 	parser.dom.debug_file = parser.debug_file
 	parser.dom.construct(parser.tags)
 }
 
-// finalize finishes the parsing stage .
+// finalize flushes pending text and finishes the parsing stage.
 @[inline]
 pub fn (mut parser Parser) finalize() {
+	if parser.lexical_attributes.open_code {
+		parser.lexical_attributes.current_tag.content = parser.builder_str()
+		parser.lexical_attributes.lexeme_builder.go_back_to(0)
+		parser.lexical_attributes.open_code = false
+	}
+	if !parser.lexical_attributes.open_code && !parser.lexical_attributes.open_tag
+		&& parser.lexical_attributes.lexeme_builder.len > 0 {
+		if parser.lexical_attributes.current_tag.name == ''
+			|| parser.lexical_attributes.current_tag.name[0] == `/` {
+			// trailing text after the last tag (or with no tags at all):
+			// it belongs to a new text node. Flush the closing tag first
+			// so construction attaches the text to the surrounding element.
+			parser.generate_tag()
+			parser.tags << &Tag{
+				name:         'text'
+				content:      parser.builder_str()
+				text_content: parser.builder_str()
+			}
+			parser.lexical_attributes.lexeme_builder.go_back_to(0)
+		} else {
+			// text inside an element that was never closed belongs to it
+			parser.lexical_attributes.current_tag.content += parser.builder_str()
+			parser.lexical_attributes.lexeme_builder.go_back_to(0)
+		}
+	}
 	parser.generate_tag()
 }
 
 // get_dom returns the parser's current DOM representation.
 pub fn (mut parser Parser) get_dom() DocumentObjectModel {
 	if !parser.dom.constructed {
-		parser.generate_tag()
+		parser.finalize()
 		parser.dom.construct(parser.tags)
 	}
 	return parser.dom

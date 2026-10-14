@@ -63,3 +63,9 @@ together to avoid adding formatting whitespace inside text runs.
 
 The escaping and un-escaping can also be done manually using the `escape_text` and
 `unescape_text` methods.
+
+XML attributes require a name and a quoted value. Missing values, unterminated quotes and
+attributes without a name produce parse errors. Values may contain the other kind of quote.
+Text, comments and CDATA retain their document order and the separator whitespace between
+fragments. Truncated nodes and markup produce errors naming the construct that was left open.
+Processing instructions are reported as unsupported.

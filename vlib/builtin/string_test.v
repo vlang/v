@@ -447,6 +447,19 @@ fn test_rsplit() {
 	assert vals[1] == ''
 }
 
+fn test_rsplit_trailing_delim_30510() {
+	// A delimiter that ends the string must still be found (#30510).
+	assert 'abcabcabc'.rsplit('abc') == ['', '', '', '']
+	assert 'abc'.rsplit('abc') == ['', '']
+	assert 'abcabc'.rsplit('abc') == ['', '', '']
+	assert 'aaaa'.rsplit('aa') == ['', '', '']
+	assert 'ababa'.rsplit('aba') == ['', 'ab']
+	assert 'abcabcabc'.rsplit_nth('abc', 2) == ['', 'abcabc']
+	a, b := 'abcabcabc'.rsplit_once('abc') or { '', '' }
+	assert a == 'abcabc'
+	assert b == ''
+}
+
 fn test_split_any() {
 	assert 'ABC'.split_any('') == ['A', 'B', 'C']
 	assert ''.split_any(' ') == []
@@ -456,6 +469,11 @@ fn test_split_any() {
 	assert 'Ciao+come*stai? '.split_any('+*') == ['Ciao', 'come', 'stai? ']
 	assert 'Ciao+come*stai? '.split_any('+* ') == ['Ciao', 'come', 'stai?']
 	assert 'first row\nsecond row'.split_any(' \n') == ['first', 'row', 'second', 'row']
+	// #30512: cutset is a set of runes, not bytes; no input char is in the cutset here
+	assert '日本語テキスト'.split_any('あい') == ['日本語テキスト']
+	assert 'a　b'.split_any('あい') == ['a　b']
+	assert 'Ünïcödé tëst'.split_any('é') == ['Ünïcöd', ' tëst']
+	assert 'a,b;c'.split_any(',;') == ['a', 'b', 'c']
 }
 
 fn test_rsplit_any() {
@@ -467,6 +485,11 @@ fn test_rsplit_any() {
 	assert ' Ciao+come*stai?'.rsplit_any('+*') == ['stai?', 'come', ' Ciao']
 	assert ' Ciao+come*stai?'.rsplit_any('+* ') == ['stai?', 'come', 'Ciao']
 	assert 'first row\nsecond row'.rsplit_any(' \n') == ['row', 'second', 'row', 'first']
+	// #30512: cutset is a set of runes, not bytes; no input char is in the cutset here
+	assert '日本語テキスト'.rsplit_any('あい') == ['日本語テキスト']
+	assert 'a　b'.rsplit_any('あい') == ['a　b']
+	assert 'Ünïcödé tëst'.rsplit_any('é') == [' tëst', 'Ünïcöd']
+	assert 'a,b;c'.rsplit_any(',;') == ['c', 'b', 'a']
 }
 
 fn test_split_once() ? {
@@ -783,6 +806,12 @@ fn test_replace_each() {
 	assert y == 'bbbb'
 	s2 := 'hello_world hello'
 	assert s2.replace_each(['hello_world', 'aaa', 'hello', 'bbb']) == 'aaa bbb'
+	// an empty needle is skipped instead of looping forever
+	assert 'abc'.replace_each(['', 'X']) == 'abc'
+	assert 'abc'.replace_each(['', 'X', 'b', 'B', '', 'Y', 'c', 'C']) == 'aBC'
+	assert 'abc'.replace_each(['a', 'A', '', 'X']) == 'Abc'
+	assert ''.replace_each(['', 'X']) == ''
+	assert 'abc'.replace_each(['a', '', 'b', '']) == 'c'
 }
 
 fn test_format() {
@@ -1302,7 +1331,10 @@ fn test_limit() {
 	assert s.limit(2) == 'he'
 	assert s.limit(9) == s
 	assert s.limit(0) == ''
-	// assert s.limit(-1) == ''
+	assert s.limit(-1) == ''
+	assert ''.limit(-2147483648) == ''
+	assert 'é😊界'.limit(2) == 'é😊'
+	assert 'é😊界'.limit(-2147483648) == ''
 }
 
 fn test_repeat() {
@@ -1828,4 +1860,30 @@ fn test_integer_conveniences_keep_leading_zeros_decimal() {
 	if value := '08'.parse_uint(0, 64) {
 		assert false, 'invalid octal digits parsed as ${value}'
 	}
+}
+
+fn test_split_any_invalid_utf8_matches_replacement_runes() {
+	for bytes in [[u8(`a`), 0x80, `b`], [u8(`a`), 0xc0, 0x80, `b`], [u8(`a`), 0xe2, 0x82, `b`],
+		[u8(`a`), 0xf4, 0x90, 0x80, 0x80, `b`]] {
+		s := bytes.bytestr()
+		mut expected := ['a']
+		for _ in 0 .. bytes.len - 3 {
+			expected << ''
+		}
+		expected << 'b'
+		assert s.split_any('�') == expected
+		assert s.rsplit_any('�') == expected.reverse()
+	}
+	assert 'a😀b😀c'.split_any('😀') == ['a', 'b', 'c']
+	assert 'a😀b😀c'.rsplit_any('😀') == ['c', 'b', 'a']
+	bad_delim := [u8(0x80)].bytestr()
+	assert 'a�b'.split_any(bad_delim) == ['a', 'b']
+	assert 'a�b'.rsplit_any(bad_delim) == ['b', 'a']
+	mut bytes := []u8{len: 4096, init: 0x80}
+	bytes.insert(0, `a`)
+	bytes << `b`
+	s := bytes.bytestr()
+	parts := s.split_any('�')
+	assert parts.len == 4097
+	assert s.rsplit_any('�') == parts.reverse()
 }

@@ -1155,7 +1155,10 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		has_field = g.gen_promoted_struct_defaults(promoted.root_type, c_field_name(promoted.root), mut promoted_set_fields, has_field)
 	}
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
-	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
+	// Caller types can retain a main. lock while checked fields remain bare-keyed.
+	// Resolve their declaration before selecting metadata for implicit defaults.
+	resolved_defaults_key := if info := g.find_struct_decl(sname) { info.full_name } else { sname }
+	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { resolved_defaults_key }
 	if defaults_key in g.tc.structs {
 		for f in g.tc.structs[defaults_key] {
 			if f.name in set_fields {
@@ -6594,6 +6597,12 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	if g.cache_split {
 		system_name := if name.starts_with('C.') { name[2..] } else { name }
 		if system_name in c_cache_system_header_struct_names {
+			return true
+		}
+		// Non-Windows bindings declare this checker-only compatibility stub.
+		// Cached SDK prefixes already own stat storage and its field macros.
+		// Windows and custom-libc units still need their binding's real layout.
+		if name == 'C.__stat64' && g.target.os != 'windows' && !g.target_libc_headers {
 			return true
 		}
 	}

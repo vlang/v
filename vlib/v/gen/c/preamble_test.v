@@ -539,6 +539,20 @@ fn test_gnu_c_flags_keep_default_feature_macros() {
 	}
 }
 
+fn test_syncfs_binding_requests_linux_gnu_feature_macros() {
+	for flags in [[]string{}, ['-std=gnu11'], ['-std=c99', '-std=gnu99']] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.fn_ret_types['C.syncfs'] = types.Type(types.int_)
+		mut g := FlatGen.new()
+		g.tc = &tc
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert c_code.contains('#if defined(__linux__) && !defined(_GNU_SOURCE)\n#define _GNU_SOURCE\n#endif'), '${flags}: ${c_code}'
+	}
+}
+
 fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
@@ -791,6 +805,22 @@ fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {
 	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
 	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')
 	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')
+}
+
+fn test_system_libc_headers_provide_posix_file_lock_flags() ! {
+	$if windows || freestanding {
+		return
+	}
+	mut g := FlatGen.new()
+	g.compiler_vroot = @VEXEROOT
+	g.system_libc_headers()
+	dir := os.join_path(os.vtmp_dir(), 'system_file_lock_headers_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'lock.c')
+	os.write_file(source, g.sb.str() + '\nint (*lock_file)(int, int) = flock;\nint main(void) { return (LOCK_EX | LOCK_NB | LOCK_SH | LOCK_UN) == 0; }\n')!
+	compiled := os.exec(['cc', '-D_GNU_SOURCE=1', '-std=gnu11', '-Werror', '-fsyntax-only', source])
+	assert compiled.exit_code == 0, compiled.output
 }
 
 fn test_system_libc_headers_leave_the_msvc_only_headers_to_the_c_preprocessor() {

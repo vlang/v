@@ -230,3 +230,57 @@ fn test_scrypt() {
 		assert results == c.expected_result, '${c.name} failed'
 	}
 }
+
+fn test_scrypt_oversized_parameters_error() {
+	// n is only bounded by being a power of 2, so 128 * r * n can exceed u32
+	// (here 2^67) and used to wrap the work buffer to 0 and panic in smix with
+	// 'array.slice: slice bounds out of range'. It now reports the buffer length.
+	r := u32(1) << 20
+	if _ := scrypt('pw'.bytes(), 'salt'.bytes(), u64(1) << 40, r, u32(1), 32) {
+		assert false, 'scrypt with an oversized 128*r*n must fail, not succeed'
+	} else {
+		assert err is OutputBufferLengthError
+	}
+	// the product guard is unchanged, and still fires on its own
+	r2 := u32(1) << 20
+	p2 := u32(1) << 20
+	if _ := scrypt('pw'.bytes(), 'salt'.bytes(), 2, r2, p2, 32) {
+		assert false, 'r*p >= 2^30 must fail'
+	} else {
+		assert err is BlocksizeParallelProductError
+	}
+}
+
+fn test_scrypt_rejects_buffers_that_do_not_fit_array_lengths() {
+	// Each parameter passes the RFC product guard, but a separate allocation
+	// exceeds V's signed int length. These must fail before any large allocation.
+	for parameters in [[u64(2), 1, 1, u64(1) << 31], [u64(1) << 24, 1, 1, 32],
+		[u64(2), u64(1) << 24, 1, 32], [u64(2), 1, u64(1) << 24, 32]] {
+		if _ := scrypt('pw'.bytes(), 'salt'.bytes(), parameters[0], u32(parameters[1]),
+			u32(parameters[2]), parameters[3]) {
+			assert false, 'oversized array parameters must fail: ${parameters}'
+		} else {
+			assert err is OutputBufferLengthError
+			assert err.msg().contains(max_array_buffer_length.str())
+		}
+	}
+}
+
+fn test_scrypt_rejects_zero_parameters() {
+	for parameters in [[u32(0), 1, 32], [u32(1), 0, 32], [u32(1), 1, 0]] {
+		if _ := scrypt('pw'.bytes(), 'salt'.bytes(), 2, parameters[0], parameters[1],
+			u64(parameters[2])) {
+			assert false, 'zero r, p and dk_len must fail'
+		} else {
+			assert err.msg() == 'scrypt: r, p and dk_len must be positive'
+		}
+	}
+}
+
+fn test_scrypt_output_can_exceed_the_parallel_buffer() {
+	// Independently generated with Node.js crypto.scryptSync('pw', 'salt', 160,
+	// { N: 2, r: 1, p: 1 }).toString('hex').
+	key := scrypt('pw'.bytes(), 'salt'.bytes(), 2, 1, 1, 160)!
+	assert key.hex() == 'a22ef056777184a8f40be275b0749299418e34463e09cfa1553dc200c17c06df5fbfbf2fb0e6bbf81c73282841772c1e6621eb21bd760c0fb3564731bd204c64a45a827a96614c2a67aea246f2184e6537da39bddacf0fd21026ef9c91f723613e60cf0af787d3fd0fc49f69ce176289d9acc2e0e4f6925b588503a9043c81fcdb118285b55e1e7a574e4e66daa064fe79094df356b9f2cbf526aebf3db4b125'
+	assert scrypt('pw'.bytes(), 'salt'.bytes(), 2, 1, 1, 32)! == key[..32]
+}

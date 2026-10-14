@@ -69,7 +69,9 @@ its checkpoints, so the following invocation starts from the beginning.
 
 The aggregate `ci` command sets `VTEST_FAIL_FAST=1` and `VJOBS=1`, overriding inherited
 values. Test and example-build sessions stop at the first reported failure, with no
-other files already running in parallel. `test-cleancode` also stops after a failed
+other files already running in parallel. The `self_tests` task retains this single-worker
+setting; standalone GitHub Actions self-test tasks still use every available CPU.
+`test-cleancode` also stops after a failed
 vetting session instead of starting formatting checks. The failed task's checkpoint
 is retained. Existing per-test retry and known-flaky-test policies are unchanged.
 

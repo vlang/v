@@ -46,6 +46,7 @@ struct FlatCgenCostArgs {
 	start     int
 	end       int
 	g         voidptr // &FlatGen, non-nil in fused prep mode (read-only access)
+	windows   bool    // Windows target, for the scan that runs without a FlatGen
 mut:
 	refs  map[string]bool
 	cands []FlatCgenPrepCandidate
@@ -302,7 +303,7 @@ fn flat_cgen_cost_range(mut a FlatCgenCostArgs) {
 	}
 	for idx in a.start .. a.end {
 		unsafe {
-			cost, needs_prelude_scan := exact_flat_fn_gen_item_cost(a.a, items[idx].node_id, mut a.refs, mut stack)
+			cost, needs_prelude_scan := exact_flat_fn_gen_item_cost(a.a, items[idx].node_id, a.windows, mut a.refs, mut stack)
 			items[idx].cost = cost
 			items[idx].skip_prelude_scan = !needs_prelude_scan
 		}
@@ -1045,6 +1046,7 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 			start:     boundaries[job]
 			end:       boundaries[job + 1]
 			g:         prep_g
+			windows:   g.target.os == 'windows'
 		}
 	}
 	for job in 0 .. n_jobs {
@@ -2393,7 +2395,7 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 					raw_cfn := naming.c_name(raw_name)
 					c_extern_refs[raw_name] = true
 					c_extern_refs[raw_cfn] = true
-					c_extern_refs[c_winapi_wide_export_name(raw_cfn)] = true
+					c_extern_refs[g.c_extern_export_name(raw_cfn)] = true
 				}
 			}
 		}
@@ -3156,6 +3158,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		has_builtins:                          g.tc.has_builtins
 		resolution_type_mode:                  g.tc.resolution_type_mode
 		trust_checked_expr_types:              g.tc.trust_checked_expr_types
+		qualify_name_cache:                    &types.QualifyNameCache{}
 		cur_module:                            g.tc.cur_module
 		cur_file:                              g.tc.cur_file
 		errors:                                g.tc.errors.clone()

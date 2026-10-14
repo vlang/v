@@ -16,6 +16,7 @@ import v.util.cache_refresh
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
+const array_accessor_index_marker = '__v3_array_accessor_index'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const manual_c_headers_source = $embed_file('manual_stdlib_c_headers.h').to_string()
 const c_objective_c_bridge_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer']
@@ -77,6 +78,7 @@ pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, pref
 	g.output_cross_c = prefs.output_cross_c
 	g.no_builtin = prefs.no_builtin
 	g.object_file_mode = object_file_mode
+	g.set_compile_defines(prefs.user_defines)
 	g.compiler_vroot = prefs.vroot
 	g.compile_values = prefs.compile_values
 	g.c99_mode = prefs.c99
@@ -652,6 +654,7 @@ mut:
 	module_cleanup_fns             []string            // C names of module-level `cleanup()` fns, in source order
 	module_cleanup_fn_modules      map[string]string   // C cleanup fn name -> V module name
 	module_imports                 map[string][]string // module -> imported modules
+	core_header_directives         []DeferredCoreHeader
 	c_directives                   []CDirective
 	preinclude_directives          []string
 	postinclude_directives         []string
@@ -785,6 +788,7 @@ mut:
 	inside_trace_call               bool
 	skip_generics                   bool
 	skip_enum_autostr               bool
+	literal_output_only             bool
 	placeholder_check_forced        bool
 	cur_fn_name                     string
 	cur_fn_source_file              string
@@ -997,6 +1001,11 @@ struct CDirective {
 	text          string
 	before_import bool
 	late          bool
+}
+
+struct DeferredCoreHeader {
+	source_file string
+	directive   CDirective
 }
 
 struct NativeSourceContextDirective {
@@ -3285,6 +3294,7 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	g.a = a
+	g.literal_output_only = false
 	effective_no_parallel := no_parallel || g.profile_file.len > 0 || g.coverage_dir.len > 0
 		|| !g.parallel_codegen_available()
 	// The preparation choices below must agree with the dispatch mode the stages
@@ -3397,6 +3407,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.module_cleanup_fn_modules.clear()
 	g.module_imports.clear()
 	g.c_directives = []CDirective{}
+	g.core_header_directives = []DeferredCoreHeader{}
 	g.preinclude_directives = []string{}
 	g.postinclude_directives = []string{}
 	g.early_c_source_directives.clear()
@@ -3546,15 +3557,25 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.tc.a == unsafe { nil } {
 		g.tc.collect(a)
 	}
+	if source := g.literal_output_program() {
+		// Literal output has no V allocations or runtime initialization. Avoid
+		// collecting builtin C flags, which would also link the unused collector.
+		g.c_flags = g.literal_output_c_flags()
+		g.literal_output_only = true
+		if g.output_path.len > 0 {
+			os.write_file(g.output_path, source) or { g.output_error = err.msg() }
+			unsafe { source.free() }
+			return ''
+		}
+		return source
+	}
 	mut cgsw := time.new_stopwatch()
 	g.tc.precompute_source_error_embed_index()
 	g.timing_profile('  [ttime]   ci embed idx     ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	if g.skip_generics {
-		// The declared-type tables are static for the whole generic-free cgen
-		// phase, so qualify_name is memoizable per (module, file) context.
-		// Worker forks receive their own instances (fork_for_parallel_codegen).
-		g.tc.qualify_name_cache = &types.QualifyNameCache{}
-	}
+	// Qualification tracks the source context and declared-type table growth,
+	// including concrete types registered while emitting generic programs.
+	// Worker forks receive independent caches.
+	g.tc.qualify_name_cache = &types.QualifyNameCache{}
 	defer {
 		g.tc.qualify_name_cache = unsafe { nil }
 	}
@@ -4025,9 +4046,19 @@ fn (mut g FlatGen) write_parallel_cc_unit_marker() {
 
 fn (mut g FlatGen) gen_pre_body_support_declarations() {
 	g.fixed_array_map_key_forward_decls()
+	support_start := g.sb.len
 	g.fixed_array_map_key_definitions()
 	g.gen_ownership_recursive_drop_helpers()
-	g.cached_header_forward_decls()
+	if g.cache_decl_demand {
+		// Support helpers can be the only callers of cached builtin functions.
+		// Select and emit those prototypes before the helper definitions.
+		support := g.sb.cut_to(support_start)
+		g.cache_collect_declaration_refs(support)
+		g.cached_header_forward_decls()
+		g.write(support)
+	} else {
+		g.cached_header_forward_decls()
+	}
 	g.interface_method_forward_decls()
 	g.shared_dup_fns()
 	if !g.skip_enum_autostr {
@@ -4068,7 +4099,7 @@ fn (mut g FlatGen) emit_translation_unit_include_directives() {
 	g.writeln('#if defined(_WIN32) && !defined(WIN32_FULL) && !defined(WIN32_LEAN_AND_MEAN)')
 	g.writeln('#define WIN32_LEAN_AND_MEAN\n#endif')
 	windows_header_emitted = g.emit_preserved_c_directives_scoped(windows_header_emitted)
-	if g.target.os == 'windows' && !windows_header_emitted {
+	if g.target.os == 'windows' && !windows_header_emitted && g.c_directives_use_system_libc() {
 		// Winsock2 must precede windows.h, which otherwise includes legacy winsock.h.
 		g.writeln('#include <windows.h>')
 	}
@@ -4122,6 +4153,15 @@ fn (mut g FlatGen) gen_global_declaration_block() {
 // immutable after cgen preparation. Parallel self-host cgen can build it on the
 // caller while the persistent worker pool emits function bodies.
 fn (mut g FlatGen) gen_type_declaration_block() {
+	// The final function selection can add wrapped tuple signatures after cache
+	// demand collection. Discover them before emitting their payload layouts.
+	g.collect_selected_declaration_signature_types()
+	if g.cache_decl_demand {
+		mut seen := map[string]bool{}
+		for typ in g.multi_return_types {
+			g.cache_require_declaration_type(typ, mut seen)
+		}
+	}
 	g.enum_decls()
 	g.type_forward_decls()
 	g.type_alias_decls(false)
@@ -5041,6 +5081,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		}
 	}
 	g.modules['strings'] = 'strings'
+	g.restore_core_header_directives_for_system_libc()
 	g.materialize_objective_cpp_sources()
 	g.add_macos_shared_export_linker_flags()
 	ccio_sw := time.new_stopwatch()
@@ -5503,7 +5544,88 @@ fn (g &FlatGen) c_source_file_is_in_vlib(source_file string) bool {
 	if root.len == 0 {
 		return false
 	}
-	return source_file.replace('\\', '/').starts_with('${root}/vlib/')
+	source := if isnil(g.a) {
+		source_file
+	} else {
+		g.a.cached_header_sources[source_file] or { source_file }
+	}
+	return source.replace('\\', '/').starts_with('${root}/vlib/')
+}
+
+// core_native_header_is_redeclared matches shipped bindings whose complete storage
+// and constants are supplied by the standalone preamble. Explicit user headers,
+// third-party bindings and general portable snapshots retain their normal SDK headers.
+fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg string) bool {
+	if g.no_builtin || (g.output_cross_c && !g.headerless_compiler_bootstrap())
+		|| g.object_file_mode || g.target_libc_headers {
+		return false
+	}
+	source := if isnil(g.a) {
+		source_file
+	} else {
+		g.a.cached_header_sources[source_file] or { source_file }
+	}
+	root := g.compiler_vroot.replace('\\', '/').trim_right('/')
+	path := source.replace('\\', '/')
+	if root.len == 0 || !path.starts_with(root + '/vlib/') {
+		return false
+	}
+	relative := path[root.len + 6..]
+	if relative.starts_with('term/termios/termios_') && relative.ends_with('.c.v') {
+		return include_arg in ['<termios.h>', '<sys/ioctl.h>']
+	}
+	match relative {
+		'builtin/builtin_windows.c.v' { return include_arg in ['<io.h>', '<fcntl.h>'] }
+		'builtin/closure/closure_windows.c.v' { return include_arg == '<synchapi.h>' }
+		'os/fd.c.v' { return include_arg == '<winsock2.h>' }
+		'os/mmap_nix.c.v' {
+			return g.target.pointer_bits == 64 && g.target.os in ['macos', 'linux', 'android',
+				'termux', 'freebsd', 'openbsd', 'dragonfly']
+				&& include_arg == '<sys/mman.h>'
+		}
+		'os/os_stat_windows.c.v' { return include_arg == '<sys/stat.h>' }
+		'os/os_windows.c.v' { return include_arg in ['<process.h>', '<sys/utime.h>'] }
+		'os/password_windows.c.v', 'v/driver/windows_icon_windows.c.v',
+		'v/driver/replace_file_windows.c.v',
+		'v/cmdexec/cmdexec_pipe.c.v' {
+			return include_arg == '<windows.h>'
+		}
+		'time/time_windows.c.v' { return include_arg == '<time.h>' }
+		'sync/sync_windows.c.v' { return include_arg in ['<synchapi.h>', '<time.h>'] }
+		'runtime/used_memory_windows.c.v' { return include_arg == '<psapi.h>' }
+		'crypto/rand/internal/rand_windows.c.v' { return include_arg == '<bcrypt.h>' }
+		'time/timerfd.c.v' { return include_arg == '<sys/timerfd.h>' }
+		'v/workers/thread_nix.c.v' {
+			return include_arg == '<sys/prctl.h>'
+				|| normalized_c_include_arg_path(include_arg) == root + '/vlib/v/pthread_helper.h'
+		}
+		'v/gen/fastc/unit_compile_nix.c.v' { return include_arg == '<signal.h>' }
+		'v/diagserver/diagserver_linux.c.v' {
+			return include_arg in ['<errno.h>', '<signal.h>', '<sys/file.h>', '<sys/wait.h>',
+				'<unistd.h>', '<sys/prctl.h>', '<sys/syscall.h>']
+		}
+		'sync/sync_default.c.v' { return include_arg == '<semaphore.h>' }
+		'sync/sync_freebsd.c.v' {
+			return include_arg in ['<semaphore.h>', '<pthread_np.h>', '<errno.h>']
+		}
+		'runtime/used_memory_openbsd.c.v', 'runtime/used_memory_freebsd.c.v' {
+			return include_arg == '<sys/resource.h>'
+		}
+		else { return false }
+	}
+}
+
+// restore_core_header_directives_for_system_libc keeps SDK ownership when another
+// binding explicitly requests headers, regardless of the source collection order.
+fn (mut g FlatGen) restore_core_header_directives_for_system_libc() {
+	if !g.c_directives_use_system_libc() {
+		return
+	}
+	for pending in g.core_header_directives {
+		g.note_c_include_directive(pending.directive.module, pending.source_file)
+		g.add_c_directive(pending.directive.module, pending.directive.text, pending.directive.before_import)
+	}
+	g.core_header_directives.clear()
 }
 
 // note_c_include_directive records that a file (and, for user code, its module)
@@ -5916,8 +6038,27 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 				return true
 			}
 		}
-		g.note_c_include_directive(module_name, source_file)
+		if g.target.os == 'android' && g.is_android_asset_binding(source_file)
+			&& include_arg in ['<android/asset_manager.h>', '<android/asset_manager_jni.h>',
+				'<android/native_activity.h>'] {
+			// These are SDK-owned records, never complete V-owned layouts.
+			g.collect_preserved_c_structs(['AAsset', 'AAssetManager', 'ANativeActivity'])
+			if g.omits_unused_android_asset_sdk() {
+				return true
+			}
+		}
 		include_dirs := c_flag_include_dirs(g.c_flags)
+		if node.value == 'include' && g.core_native_header_is_redeclared(source_file, include_arg) {
+			// Native objects still compile against their SDK; only the generated V
+			// translation unit uses the bodyless declarations and ABI preamble.
+			g.add_native_source_context_directive(module_name, c_native_source_context_header_include(include_arg, g.compiler_vroot, source_file, include_dirs), before_import)
+			g.core_header_directives << DeferredCoreHeader{
+				source_file: source_file
+				directive:   CDirective{ module: module_name, text: g.c_include_directive_text(node_idx, cross_prefix_condition, include_arg, source_file), before_import: before_import }
+			}
+			return true
+		}
+		g.note_c_include_directive(module_name, source_file)
 		// `#insert` is an explicit request to inline the source text. Delay only
 		// ordinary source includes until after generated type declarations.
 		if node.value == 'include' && c_include_arg_is_source_file(include_arg) {
@@ -6018,6 +6159,7 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 // boundary, so an unrelated user header that merely shares a basename (its own
 // `filelock_helpers.h`, or a `my_stdatomic_wrapper.h`) is never dropped.
 const c_builtin_abi_helper_header_paths = [
+	'/vlib/builtin/cfns_windows_tcc.h',
 	'/vlib/builtin/prealloc_atomics.h',
 	'/vlib/os/filelock/filelock_helpers.h',
 	'/vlib/sync/stdatomic/tcc_compat_aliases.h',
@@ -10035,19 +10177,6 @@ pub fn module_const_init_order(a &flat.FlatAst, tc &types.TypeChecker) []string 
 	return g.const_emission_order()
 }
 
-// ordered_module_init_fns supports ordered module init fns handling for FlatGen.
-fn (g &FlatGen) ordered_module_init_fns() []string {
-	module_to_init := g.module_init_fn_map()
-	mut result := []string{}
-	mut visiting := map[string]bool{}
-	mut visited := map[string]bool{}
-	for init_fn in g.module_init_fns {
-		mod := g.module_init_fn_modules[init_fn] or { '' }
-		g.visit_module_init(mod, module_to_init, mut visiting, mut visited, mut result)
-	}
-	return result
-}
-
 fn (g &FlatGen) module_init_fn_map() map[string]string {
 	mut module_to_init := map[string]string{}
 	for init_fn in g.module_init_fns {
@@ -10060,11 +10189,10 @@ fn (g &FlatGen) module_init_fn_map() map[string]string {
 fn (g &FlatGen) ordered_module_cleanup_fns() []string {
 	module_to_cleanup := g.module_cleanup_fn_map()
 	mut result := []string{}
-	mut visiting := map[string]bool{}
-	mut visited := map[string]bool{}
-	for cleanup_fn in g.module_cleanup_fns {
-		mod := g.module_cleanup_fn_modules[cleanup_fn] or { '' }
-		g.visit_module_init(mod, module_to_cleanup, mut visiting, mut visited, mut result)
+	for mod in g.ordered_startup_modules(module_to_cleanup) {
+		if cleanup_fn := module_to_cleanup[mod] {
+			result << cleanup_fn
+		}
 	}
 	return result
 }
@@ -10089,6 +10217,12 @@ fn (g &FlatGen) ordered_startup_modules(module_to_init map[string]string) []stri
 			module_order << mod
 		}
 	}
+	for cleanup_fn in g.module_cleanup_fns {
+		mod := g.module_cleanup_fn_modules[cleanup_fn] or { '' }
+		if mod !in module_order {
+			module_order << mod
+		}
+	}
 	for mod in g.const_runtime_init_modules {
 		if mod !in module_order {
 			module_order << mod
@@ -10109,6 +10243,21 @@ fn (g &FlatGen) ordered_startup_modules(module_to_init map[string]string) []stri
 	mut result := []string{}
 	mut visiting := map[string]bool{}
 	mut visited := map[string]bool{}
+	// Cached object names are sorted independently of source imports. Begin
+	// at root importers, even ones without an initializer, so their dependency
+	// traversal owns the order before the cached-module fallback below.
+	mut imported_modules := map[string]bool{}
+	for _, imports in g.module_imports {
+		for dep in imports {
+			imported_modules[g.startup_dependency_module(dep, startup_modules)] = true
+		}
+	}
+	g.visit_startup_module('builtin', startup_modules, mut visiting, mut visited, mut result)
+	for mod, _ in g.module_imports {
+		if mod !in imported_modules {
+			g.visit_startup_module(mod, startup_modules, mut visiting, mut visited, mut result)
+		}
+	}
 	for mod in module_order {
 		g.visit_startup_module(mod, startup_modules, mut visiting, mut visited, mut result)
 	}
@@ -10192,27 +10341,6 @@ fn (mut g FlatGen) queue_runtime_init(line string) {
 fn (mut g FlatGen) queue_runtime_init_for_module(line string, init_module string) {
 	g.runtime_inits << line
 	g.runtime_init_modules << init_module
-}
-
-// visit_module_init updates visit module init state for FlatGen.
-fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
-	if mod in visited || mod in visiting {
-		return
-	}
-	visiting[mod] = true
-	for dep in g.module_imports[mod] or { []string{} } {
-		dep_module := if dep in module_to_init || dep in g.module_imports {
-			dep
-		} else {
-			startup_module_key(dep)
-		}
-		g.visit_module_init(dep_module, module_to_init, mut visiting, mut visited, mut result)
-	}
-	visiting.delete(mod)
-	visited[mod] = true
-	if init_fn := module_to_init[mod] {
-		result << init_fn
-	}
 }
 
 fn (g &FlatGen) ordered_c_directives(late bool) []string {
@@ -15384,7 +15512,13 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			}
 		}
 		.prefix {
-			child := g.const_expr_to_string(g.a.child(&node, 0), seen)
+			child_id := g.a.child(&node, 0)
+			if node.op == .minus {
+				if literal := g.negated_long_long_literal(child_id) {
+					return '-${numeric_literal_c_text(&literal)}LL'
+				}
+			}
+			child := g.const_expr_to_string(child_id, seen)
 			'${g.op_str(node.op)}(${child})'
 		}
 		.paren {
@@ -16941,7 +17075,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_selector_enum
 			}
 			if base.kind == .ident && base.value == 'C' {
-				g.write(c_winapi_wide_export_name(g.c_namespace_global_c_name(node.value)))
+				g.write(g.c_extern_export_name(g.c_namespace_global_c_name(node.value)))
 			} else if enum_selector_qbase.len > 0 {
 				ekey := '${enum_selector_qbase}.${node.value}'
 				if expr := g.enum_value_expr_for_key(ekey) {
@@ -17361,14 +17495,23 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 							g.write(')))')
 							return
 						}
-						g.write('(*(${c_elem}*)array_get(')
+						// An lvalue `first()`/`last()` calls the builtin method, which reports an
+						// empty array under its own name, in place of `array.get`.
+						accessor := g.array_accessor_index_method(node)
+						if accessor.len > 0 {
+							g.write('(*(${c_elem}*)array__${accessor}(')
+						} else {
+							g.write('(*(${c_elem}*)array_get(')
+						}
 						base_node := g.a.nodes[int(base_id)]
 						if is_ptr && !(base_node.kind == .ident && g.local_ident_is_shared_wrapper(base_node.value)) {
 							g.write('*')
 						}
 						g.gen_expr(base_id)
-						g.write(', ')
-						g.gen_expr(g.a.child(node, 1))
+						if accessor.len == 0 {
+							g.write(', ')
+							g.gen_expr(g.a.child(node, 1))
+						}
 						g.write('))')
 					} else {
 						is_runtime_array, runtime_is_ptr := runtime_array_struct_index_info(index_base_type)
@@ -19076,6 +19219,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define E_STRUCT')
 	g.writeln('#endif')
 	g.writeln('#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})')
+	g.writeln('#define _SL(id, s, n) static const string id = {s, n, 1}')
 	g.writeln('#if !defined(VNORETURN)')
 	g.writeln('#if defined(__TINYC__)')
 	g.writeln('#define VNORETURN __attribute__((noreturn))')
@@ -19127,6 +19271,9 @@ fn (mut g FlatGen) preamble() {
 		g.system_libc_preamble()
 	} else {
 		g.headerless_libc_preamble()
+		if g.headerless_compiler_bootstrap() {
+			g.portable_native_runtime_helpers()
+		}
 	}
 	g.thread_signal_stack_runtime()
 	g.write_arch_macros()
@@ -19194,6 +19341,10 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	if !(g.output_cross_c || g.object_file_mode) || g.no_builtin || g.target_libc_headers {
 		return
 	}
+	if g.headerless_compiler_bootstrap() {
+		g.headerless_compiler_runtime_helpers()
+		return
+	}
 	if 'gcboehm' in g.compile_defines {
 		gc_source := $embed_file('@VEXEROOT/vlib/builtin/gc_boehm_helpers.c').to_string()
 		gc_header := $embed_file('@VEXEROOT/vlib/builtin/gc_debugger_linux.h').to_string()
@@ -19204,6 +19355,9 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	g.writeln('#ifndef _WIN32')
 	g.write($embed_file('@VEXEROOT/vlib/v/pthread_helper.h').to_string())
 	g.write($embed_file('@VEXEROOT/vlib/sync/thread_helper.h').to_string())
+	// The prototype generated for `fn C.v3_bench_peak_rss_kb() i64` returns `i64`,
+	// which is `int64_t` here and not `long long` on every target.
+	g.writeln('#define V_PEAK_RSS_INT i64')
 	g.write($embed_file('@VEXEROOT/vlib/v/bench/peak_rss.h').to_string())
 	capture_source := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.c').to_string()
 	capture_header := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.h').to_string()
@@ -19215,12 +19369,22 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	g.write(free_memory_source.replace('int v_runtime_free_memory_darwin(',
 		'static int v_runtime_free_memory_darwin('))
 	g.writeln('#endif')
+	g.writeln('#if defined(__linux__) && !defined(__ANDROID__)')
+	g.write($embed_file('@VEXEROOT/vlib/v/diagserver/syscalls_linux.c').to_string().replace('int v3_linux_', 'static int v3_linux_'))
+	g.writeln('#endif')
+	if g.target.os == 'openbsd' {
+		g.writeln('#ifdef __OpenBSD__')
+		g.write($embed_file('@VEXEROOT/vlib/runtime/free_memory_openbsd.c').to_string().replace('int v_runtime_', 'static int v_runtime_'))
+		g.writeln('#endif')
+	}
 	metadata_source := $embed_file('@VEXEROOT/vlib/v/modulecache/file_metadata.c').to_string()
 	g.write(metadata_source.replace('int v3_modulecache_file_metadata(',
 		'static int v3_modulecache_file_metadata('))
 	// Native definitions retain qualifiers that these bodyless V views cannot express.
-	g.collect_preserved_c_fns(['v3_modulecache_file_metadata', 'v_os_exec_capture_start',
-		'v_os_execute_capture_start', 'v_os_exec_capture_input_start', 'v_os_fd_write_all'])
+	g.collect_preserved_c_fns(['v3_linux_parent_death_signal', 'v3_linux_memory_file',
+		'v3_linux_name_worker', 'v_runtime_openbsd_free_memory', 'v3_modulecache_file_metadata',
+		'v_os_exec_capture_start', 'v_os_execute_capture_start', 'v_os_exec_capture_input_start',
+		'v_os_fd_write_all'])
 	if 'no_segfault_handler' !in g.compile_defines && g.target.os != 'vinix' {
 		signal_source := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.c').to_string()
 		signal_header := $embed_file('@VEXEROOT/vlib/builtin/segfault_handler_nix.h').to_string()
@@ -19229,10 +19393,18 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 			.replace('defined(V_GCBOEHM_NATIVE)', 'defined(CUSTOM_DEFINE_gcboehm)')
 			.replace('#include <gc.h>', '#include <gc/gc.h>')
 			.replace('#include "segfault_handler_nix.h"', signal_header)
+			.replace('#define V_SEGFAULT_HANDLER_SCOPE\n', '#define V_SEGFAULT_HANDLER_SCOPE static\n')
 			.replace('void* v_thread_', 'static void* v_thread_')
 			.replace('void v_thread_', 'static void v_thread_'))
 		g.writeln('#endif')
 	}
+}
+
+// headerless_compiler_bootstrap identifies the portable compiler snapshot whose
+// runtime declarations and helper definitions are supplied entirely by V.
+fn (g &FlatGen) headerless_compiler_bootstrap() bool {
+	return g.output_cross_c && !g.no_builtin && !g.object_file_mode && !g.target_libc_headers
+		&& 'v3_headerless_bootstrap' in g.compile_defines
 }
 
 fn (g &FlatGen) c_directives_use_system_libc() bool {
@@ -19244,7 +19416,16 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 	if g.target_libc_headers {
 		return false
 	}
+	if g.headerless_compiler_bootstrap() {
+		return false
+	}
 	if g.no_builtin || g.output_cross_c || g.object_file_mode {
+		return true
+	}
+	// These targets need SDK symbol renames, storage or constants that the
+	// standalone preamble does not yet describe completely. Keep their native
+	// declarations instead of applying another platform's libc ABI.
+	if g.target.os in ['netbsd', 'solaris', 'haiku', 'qnx', 'serenity', 'vinix', 'wasm32_emscripten'] {
 		return true
 	}
 	for directive in g.preinclude_directives {
@@ -19320,6 +19501,9 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#include <io.h>')
 	g.writeln('#include <process.h>')
 	g.writeln('#include <windows.h>')
+	g.writeln('#ifdef __TINYC__')
+	g.writeln('DWORD WINAPI GetFinalPathNameByHandleW(HANDLE, unsigned short*, DWORD, DWORD);')
+	g.writeln('#endif')
 	// Guarded by the C preprocessor, not by `g.ccompiler`: the generated C is
 	// compiled by whatever C compiler the user picked, which is not necessarily
 	// the one V generated it for. `vc/v_win.c` is generated with `-cc msvc` (see
@@ -19334,9 +19518,10 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#endif')
 	g.writeln('#else')
 	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
-		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/ioctl.h', 'sys/mman.h', 'sys/resource.h',
-		'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h', 'sys/utsname.h',
-		'sys/un.h', 'sys/uio.h', 'sys/ptrace.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
+		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/file.h', 'sys/ioctl.h', 'sys/mman.h',
+		'sys/resource.h', 'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h',
+		'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/ptrace.h', 'sys/wait.h', 'termios.h', 'unistd.h',
+		'utime.h'] {
 		g.writeln('#include <${header}>')
 	}
 	g.writeln('#if defined(__linux__) && defined(__GLIBC__)')
@@ -19357,6 +19542,9 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#endif')
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#include <sys/event.h>')
+	g.writeln('#endif')
+	g.writeln('#if defined(__FreeBSD__) || defined(__OpenBSD__)')
+	g.writeln('#include <sys/sysctl.h>')
 	g.writeln('#endif')
 	g.system_execinfo_declarations()
 	g.writeln('')
@@ -19410,6 +19598,9 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('extern char** environ;')
 	g.writeln('#endif')
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
+	if g.target.os in ['freebsd', 'openbsd'] || g.output_cross_c {
+		g.collect_preserved_c_fns(['sysctl'])
+	}
 	g.collect_preserved_c_fns([
 		'kevent',
 		'kqueue',
@@ -19553,7 +19744,10 @@ fn (mut g FlatGen) c99_feature_test_macros() {
 	// glibc hides the POSIX declarations this code needs, so always request them.
 	// A strict ISO `-std=` passed through `-cflags` or `#flag` hides them too: on
 	// Linux, `time.now()` then fails on the missing `struct tm.tm_gmtoff`.
-	if !g.output_cross_c && !c_effective_strict_iso_mode(g.c_flags, g.c99_mode) {
+	// `syncfs` needs GNU declarations even in GNU C modes. Request them before
+	// any header is loaded, including when its V declaration came from a cache.
+	uses_syncfs := !isnil(g.tc) && 'C.syncfs' in g.tc.fn_ret_types
+	if !g.output_cross_c && !c_effective_strict_iso_mode(g.c_flags, g.c99_mode) && !uses_syncfs {
 		return
 	}
 	g.writeln('#if defined(__linux__) && !defined(_GNU_SOURCE)')
@@ -19763,7 +19957,11 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define EOF (-1)')
 	g.writeln('#endif')
 	g.writeln('#ifndef RAND_MAX')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('#define RAND_MAX 32767')
+	g.writeln('#else')
 	g.writeln('#define RAND_MAX 2147483647')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('#ifndef FLT_EPSILON')
 	g.writeln('#define FLT_EPSILON 1.19209290e-7F')
@@ -19853,7 +20051,8 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define stdin ((FILE*)__stdin)')
 	g.writeln('#define stdout ((FILE*)__stdout)')
 	g.writeln('#define stderr ((FILE*)__stderr)')
-	g.writeln('extern int errno;')
+	g.emit_c_runtime_declarations(['__errno'])
+	g.writeln('#define errno (*__errno())')
 	g.writeln('#elif defined(__NetBSD__)')
 	g.writeln('#if defined(__LP64__) || defined(_LP64)')
 	g.writeln('struct __netbsd_FILE_stub { unsigned char _opaque[152]; };')
@@ -19864,25 +20063,46 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#define stdin ((FILE*)&__sF[0])')
 	g.writeln('#define stdout ((FILE*)&__sF[1])')
 	g.writeln('#define stderr ((FILE*)&__sF[2])')
-	g.writeln('extern int errno;')
+	g.emit_c_runtime_declarations(['__errno'])
+	g.writeln('#define errno (*__errno())')
 	g.writeln('#elif defined(__ANDROID__)')
 	g.writeln('extern FILE* stdin;')
 	g.writeln('extern FILE* stdout;')
 	g.writeln('extern FILE* stderr;')
 	g.emit_c_runtime_declarations(['__errno'])
 	g.writeln('#define errno (*__errno())')
-	g.writeln('#elif defined(__linux__)')
+	g.writeln('#elif defined(__linux__) || defined(__EMSCRIPTEN__)')
 	g.writeln('extern FILE* stdin;')
 	g.writeln('extern FILE* stdout;')
 	g.writeln('extern FILE* stderr;')
 	g.emit_c_runtime_declarations(['__errno_location'])
 	g.writeln('#define errno (*__errno_location())')
 	g.writeln('#elif defined(_WIN32)')
+	g.writeln('void* v_builtin_windows_stream(unsigned int);')
+	g.writeln('#define stdin ((FILE*)v_builtin_windows_stream(0))')
+	g.writeln('#define stdout ((FILE*)v_builtin_windows_stream(1))')
+	g.writeln('#define stderr ((FILE*)v_builtin_windows_stream(2))')
+	g.emit_c_runtime_declarations(['_putenv_s'])
+	g.emit_c_runtime_declarations(['_errno'])
+	g.writeln('#define errno (*_errno())')
+	g.writeln('#elif defined(__sun)')
 	g.writeln('extern FILE* stdin;')
 	g.writeln('extern FILE* stdout;')
 	g.writeln('extern FILE* stderr;')
-	g.emit_c_runtime_declarations(['_errno'])
-	g.writeln('#define errno (*_errno())')
+	g.emit_c_runtime_declarations(['___errno'])
+	g.writeln('#define errno (*___errno())')
+	g.writeln('#elif defined(__HAIKU__)')
+	g.writeln('extern FILE* stdin;')
+	g.writeln('extern FILE* stdout;')
+	g.writeln('extern FILE* stderr;')
+	g.emit_c_runtime_declarations(['_errnop'])
+	g.writeln('#define errno (*_errnop())')
+	g.writeln('#elif defined(__QNX__) || defined(__QNXNTO__)')
+	g.writeln('extern FILE* stdin;')
+	g.writeln('extern FILE* stdout;')
+	g.writeln('extern FILE* stderr;')
+	g.emit_c_runtime_declarations(['__get_errno_ptr'])
+	g.writeln('#define errno (*__get_errno_ptr())')
 	g.writeln('#else')
 	g.writeln('extern FILE* stdin;')
 	g.writeln('extern FILE* stdout;')
@@ -20024,7 +20244,11 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	g.writeln('#ifndef FD_SET')
 	g.writeln('#ifndef FD_SETSIZE')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('#define FD_SETSIZE 64')
+	g.writeln('#else')
 	g.writeln('#define FD_SETSIZE 1024')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.headerless_fd_set_struct()
 	g.writeln('#endif')
@@ -20176,9 +20400,18 @@ fn (mut g FlatGen) headerless_windows_sdk_types() {
 	g.writeln('#endif')
 	g.writeln('#ifdef _WIN32')
 	g.writeln('#if !defined(_WINDEF_) && !defined(_MINWINDEF_)')
-	g.writeln('typedef unsigned long DWORD;')
+	g.writeln('typedef u32 DWORD;')
 	g.writeln('typedef int BOOL;')
 	g.writeln('typedef void* HANDLE;')
+	g.writeln('#endif')
+	g.writeln('#define ERROR_INSUFFICIENT_BUFFER 122')
+	g.writeln('int _close(int);')
+	g.writeln('void _exit(int);')
+	g.writeln('#define close _close')
+	g.writeln('#ifdef _MSC_VER')
+	g.writeln('unsigned char _BitScanForward(unsigned long*, unsigned long);')
+	g.writeln('unsigned char _BitScanForward64(unsigned long*, u64);')
+	g.writeln('u64 __lzcnt64(u64);')
 	g.writeln('#endif')
 	g.writeln('#if !defined(_SECURITY_ATTRIBUTES_DEFINED) && !defined(_SECURITY_ATTRIBUTES)')
 	g.writeln('#define _SECURITY_ATTRIBUTES_DEFINED')
@@ -20189,6 +20422,11 @@ fn (mut g FlatGen) headerless_windows_sdk_types() {
 	g.writeln('typedef struct OVERLAPPED { uintptr_t Internal; uintptr_t InternalHigh; union { struct { DWORD Offset; DWORD OffsetHigh; }; void* Pointer; }; HANDLE hEvent; } OVERLAPPED;')
 	g.writeln('#endif')
 	g.writeln('#endif')
+	g.headerless_windows_core_declarations()
+	if g.target.os == 'windows' {
+		g.collect_preserved_c_fns(['_BitScanForward', '_BitScanForward64', '__lzcnt64', 'close',
+			'_close', '_exit'])
+	}
 }
 
 fn (mut g FlatGen) headerless_stdarg_decls() {
@@ -20343,7 +20581,9 @@ fn (mut g FlatGen) headerless_dirent_struct() {
 }
 
 fn (mut g FlatGen) headerless_statvfs_struct() {
-	g.writeln('#ifdef __NetBSD__')
+	g.writeln('#ifdef __APPLE__')
+	g.writeln('struct statvfs { unsigned long f_bsize; unsigned long f_frsize; u32 f_blocks; u32 f_bfree; u32 f_bavail; u32 f_files; u32 f_ffree; u32 f_favail; unsigned long f_fsid; unsigned long f_flag; unsigned long f_namemax; };')
+	g.writeln('#elif defined(__NetBSD__)')
 	g.writeln('struct statvfs { unsigned long f_flag; unsigned long f_bsize; unsigned long f_frsize; unsigned long f_iosize; u64 f_blocks; u64 f_bfree; u64 f_bavail; u64 f_bresvd; u64 f_files; u64 f_ffree; u64 f_favail; u64 f_fresvd; u64 f_syncreads; u64 f_syncwrites; u64 f_asyncreads; u64 f_asyncwrites; struct { i32 __fsid_val[2]; } f_fsidx; unsigned long f_fsid; unsigned long f_namemax; u32 f_owner; u64 f_spare[4]; char f_fstypename[32]; char f_mntonname[1024]; char f_mntfromname[1024]; char f_mntfromlabel[1024]; };')
 	g.writeln('#else')
 	g.writeln('struct statvfs { unsigned long f_bsize; unsigned long f_frsize; unsigned long f_blocks; unsigned long f_bfree; unsigned long f_bavail; unsigned long f_files; unsigned long f_ffree; unsigned long f_favail; unsigned long f_fsid; unsigned long f_flag; unsigned long f_namemax; int __f_spare[6]; };')
@@ -20362,7 +20602,11 @@ fn (mut g FlatGen) headerless_timeval_struct() {
 }
 
 fn (mut g FlatGen) headerless_rusage_struct() {
-	g.writeln('struct rusage { struct timeval ru_utime; struct timeval ru_stime; long ru_maxrss; long ru_ixrss; long ru_idrss; long ru_isrss; long ru_minflt; long ru_majflt; long ru_nswap; long ru_inblock; long ru_oublock; long ru_msgsnd; long ru_msgrcv; long ru_nsignals; long ru_nvcsw; long ru_nivcsw; };')
+	g.writeln('struct rusage { struct timeval ru_utime; struct timeval ru_stime; long ru_maxrss; long ru_ixrss; long ru_idrss; long ru_isrss; long ru_minflt; long ru_majflt; long ru_nswap; long ru_inblock; long ru_oublock; long ru_msgsnd; long ru_msgrcv; long ru_nsignals; long ru_nvcsw; long ru_nivcsw;')
+	g.writeln('#if defined(__linux__) && defined(CUSTOM_DEFINE_musl)')
+	g.writeln('long __reserved[16];')
+	g.writeln('#endif')
+	g.writeln('};')
 }
 
 fn (mut g FlatGen) headerless_timespec_struct() {
@@ -20380,7 +20624,11 @@ fn (mut g FlatGen) headerless_timespec_struct() {
 	g.writeln('typedef long clock_t;')
 	g.writeln('#endif')
 	g.writeln('#ifndef CLOCKS_PER_SEC')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('#define CLOCKS_PER_SEC 1000')
+	g.writeln('#else')
 	g.writeln('#define CLOCKS_PER_SEC 1000000')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.emit_c_runtime_declarations(['clock'])
 	g.writeln('#ifndef _WIN32')
@@ -20434,7 +20682,9 @@ fn (mut g FlatGen) headerless_utsname_struct() {
 }
 
 fn (mut g FlatGen) headerless_stat_struct() {
-	g.writeln('#ifdef __APPLE__')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('struct stat { u32 st_dev; u16 st_ino; u16 st_mode; i16 st_nlink; i16 st_uid; i16 st_gid; u32 st_rdev; long st_size; i64 st_atime; i64 st_mtime; i64 st_ctime; };')
+	g.writeln('#elif defined(__APPLE__)')
 	g.writeln('struct stat { int st_dev; unsigned short st_mode; unsigned short st_nlink; u64 st_ino; u32 st_uid; u32 st_gid; int st_rdev; i64 st_atime; i64 st_atimensec; i64 st_mtime; i64 st_mtimensec; i64 st_ctime; i64 st_ctimensec; i64 st_birthtime; i64 st_birthtimensec; i64 st_size; i64 st_blocks; int st_blksize; u32 st_flags; u32 st_gen; int st_lspare; i64 st_qspare[2]; };')
 	g.writeln('#elif defined(__linux__)')
 	g.headerless_linux_stat_struct()
@@ -20556,13 +20806,13 @@ fn (mut g FlatGen) headerless_platform_constants() {
 	g.writeln('#elif defined(_WIN32)')
 	g.headerless_windows_constants()
 	g.writeln('#elif defined(__FreeBSD__)')
-	g.headerless_bsd_constants('0x00100000', '12', '13', '4', '47', '28', '0x00020000', '0x0800', true)
+	g.headerless_freebsd_constants()
 	g.writeln('#elif defined(__OpenBSD__)')
-	g.headerless_bsd_constants('0x10000', '8', '9', '3', '28', '24', '0x0400', '', false)
+	g.headerless_bsd_constants('0x10000', '8', '9', '3', '28', '24', '0x0400', '', '0x2', false)
 	g.writeln('#elif defined(__NetBSD__)')
-	g.headerless_bsd_constants('0x00400000', '8', '9', '3', '28', '24', '0x0400', '0x0800', false)
+	g.headerless_bsd_constants('0x00400000', '8', '9', '3', '28', '24', '0x0400', '0x0800', '0x4', false)
 	g.writeln('#elif defined(__DragonFly__)')
-	g.headerless_bsd_constants('0x00020000', '8', '9', '4', '47', '28', '0x0400', '0x0800', false)
+	g.headerless_bsd_constants('0x00020000', '8', '9', '4', '47', '28', '0x0400', '0x0800', '0x0', false)
 	g.writeln('#elif defined(__sun)')
 	g.headerless_solaris_constants()
 	g.writeln('#elif defined(__QNX__) || defined(__QNXNTO__)')
@@ -20589,6 +20839,7 @@ fn (mut g FlatGen) headerless_signal_constants() {
 	g.writeln('#define SIGTERM 15')
 	g.writeln('#define SIGPIPE 13')
 	g.writeln('#define SIGTTOU 22')
+	g.writeln('#define SIG_DFL ((void*)0)')
 	g.writeln('#define SIG_IGN ((void*)1)')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#define SIGSTOP 19')
@@ -20632,15 +20883,19 @@ fn (mut g FlatGen) headerless_sysctl_constants() {
 	g.writeln('#endif')
 }
 
-fn (mut g FlatGen) headerless_mmap_constants(map_anonymous string) {
+fn (mut g FlatGen) headerless_mmap_constants(map_anonymous string, ms_sync string) {
 	g.writeln('#define PROT_READ 0x1')
 	g.writeln('#define PROT_WRITE 0x2')
 	g.writeln('#define PROT_EXEC 0x4')
+	g.writeln('#define MAP_SHARED 0x0001')
 	g.writeln('#define MAP_PRIVATE 0x0002')
 	g.writeln('#define MAP_FIXED 0x10')
 	g.writeln('#define MAP_ANONYMOUS ${map_anonymous}')
 	g.writeln('#define MAP_ANON MAP_ANONYMOUS')
 	g.writeln('#define MAP_FAILED ((void*)-1)')
+	if ms_sync.len > 0 {
+		g.writeln('#define MS_SYNC ${ms_sync}')
+	}
 }
 
 fn (mut g FlatGen) headerless_linux_syscall_constants() {
@@ -20774,7 +21029,7 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 	g.writeln('#define TASK_BASIC_INFO 4')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	g.headerless_mmap_constants('0x1000')
+	g.headerless_mmap_constants('0x1000', '0x0010')
 	g.headerless_darwin_kqueue_constants()
 	g.writeln('#define FIONREAD 0x4004667f')
 	g.writeln('#define TIOCGWINSZ 0x40087468')
@@ -20839,7 +21094,17 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 	g.writeln('struct flock { off_t l_start; off_t l_len; pid_t l_pid; short l_type; short l_whence; };')
 }
 
-fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_setlkw string, clock_monotonic string, sc_pagesize string, af_inet6 string, msg_nosignal string, so_nosigpipe string, flock_sysid bool) {
+fn (mut g FlatGen) headerless_freebsd_constants() {
+	g.headerless_bsd_constants('0x00100000', '12', '13', '4', '47', '28', '0x00020000', '0x0800', '0x0', true)
+	g.writeln('#define O_NOFOLLOW 0x0100')
+	g.writeln('#define O_DIRECTORY 0x00020000')
+	g.writeln('#define AT_FDCWD -100')
+	g.writeln('#define AT_REMOVEDIR 0x0800')
+	g.writeln('#define _SC_NPROCESSORS_ONLN 58')
+	g.writeln('#define _SC_PHYS_PAGES 121')
+}
+
+fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_setlkw string, clock_monotonic string, sc_pagesize string, af_inet6 string, msg_nosignal string, so_nosigpipe string, ms_sync string, flock_sysid bool) {
 	g.writeln('#define O_RDONLY 0x0000')
 	g.writeln('#define O_WRONLY 0x0001')
 	g.writeln('#define O_RDWR 0x0002')
@@ -20877,7 +21142,7 @@ fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_
 	g.writeln('#define CLOCK_REALTIME 0')
 	g.writeln('#define CLOCK_MONOTONIC ${clock_monotonic}')
 	g.writeln('#define _SC_PAGESIZE ${sc_pagesize}')
-	g.headerless_mmap_constants('0x1000')
+	g.headerless_mmap_constants('0x1000', ms_sync)
 	g.headerless_kqueue_common_constants()
 	g.writeln('#define FIONREAD 0x4004667f')
 	g.writeln('#define TIOCGWINSZ 0x40087468')
@@ -20983,7 +21248,7 @@ fn (mut g FlatGen) headerless_solaris_constants() {
 	g.writeln('#define CLOCK_REALTIME 0')
 	g.writeln('#define CLOCK_MONOTONIC 4')
 	g.writeln('#define _SC_PAGESIZE 11')
-	g.headerless_mmap_constants('0x100')
+	g.headerless_mmap_constants('0x100', '0x4')
 	g.writeln('#define FIONREAD 0x4004667f')
 	g.writeln("#define TIOCGWINSZ (('T' << 8) | 104)")
 	g.writeln("#define TCSANOW (('T' << 8) | 14)")
@@ -21084,7 +21349,7 @@ fn (mut g FlatGen) headerless_qnx_constants() {
 	g.writeln('#define CLOCK_REALTIME 0')
 	g.writeln('#define CLOCK_MONOTONIC 2')
 	g.writeln('#define _SC_PAGESIZE 11')
-	g.headerless_mmap_constants('0x00080000')
+	g.headerless_mmap_constants('0x00080000', '')
 	g.writeln('#define FIONREAD 0x4004667f')
 	g.writeln('#define TIOCGWINSZ 0x40087468')
 	g.writeln('#define TCSANOW 0x0001')
@@ -21269,8 +21534,14 @@ fn (mut g FlatGen) headerless_windows_constants() {
 }
 
 fn (mut g FlatGen) headerless_linux_constants() {
+	g.writeln('#define MADV_DONTNEED 4')
+	g.writeln('#if defined(__aarch64__) || defined(__arm__)')
+	g.writeln('#define O_DIRECTORY 0x4000')
+	g.writeln('#define O_NOFOLLOW 0x8000')
+	g.writeln('#else')
 	g.writeln('#define O_DIRECTORY 0x10000')
 	g.writeln('#define O_NOFOLLOW 0x20000')
+	g.writeln('#endif')
 	g.writeln('#define AT_FDCWD -100')
 	g.writeln('#define AT_REMOVEDIR 0x200')
 
@@ -21318,7 +21589,7 @@ fn (mut g FlatGen) headerless_linux_constants() {
 	g.writeln('#define CLOCK_REALTIME 0')
 	g.writeln('#define CLOCK_MONOTONIC 1')
 	g.headerless_linux_sysconf_constants()
-	g.headerless_mmap_constants('0x20')
+	g.headerless_mmap_constants('0x20', '0x4')
 	g.headerless_linux_syscall_constants()
 	g.writeln('#define FIONREAD 0x541b')
 	g.writeln('#define TIOCGWINSZ 0x5413')
@@ -22069,12 +22340,20 @@ fn (mut g FlatGen) map_equality_fallback_decls() {
 	g.writeln('static inline bool v3_map_map_eq(map a, map b) { if (a.data->count != b.data->count) return false; for (int i = 0; i < a.data->key_values.len; ++i) { if (a.data->key_values.deletes != 0 && a.data->key_values.all_deleted != 0 && a.data->key_values.all_deleted[i] != 0) continue; void* ak = (void*)(a.data->key_values.keys + i * a.data->key_values.key_bytes); if (!map__exists(&b, ak)) return false; void* av = (void*)(a.data->key_values.values + i * a.data->key_values.value_bytes); void* bv = map__get(&b, ak, av); if (!v3_map_value_eq(av, bv, a.data->value_bytes)) return false; } return true; }')
 }
 
+// float_exponent_helpers emits precision formatters with portable exponent padding.
+fn (mut g FlatGen) float_exponent_helpers() {
+	// Some Windows CRTs zero-pad exponents to three digits. Keep V's two-digit minimum.
+	g.writeln("static inline int v3_float_normalize_exponent(char* text, int n) { int digits = n; while (digits > 0 && text[digits - 1] >= '0' && text[digits - 1] <= '9') --digits; if (digits < 2 || (text[digits - 1] != '+' && text[digits - 1] != '-') || (text[digits - 2] != 'e' && text[digits - 2] != 'E')) return n; int first = digits; while (n - first > 2 && text[first] == '0') ++first; if (first > digits) { memmove(text + digits, text + first, (size_t)(n - first + 1)); n -= first - digits; } return n; }")
+	g.writeln('static inline string v3_f64_exp(double x, int precision, int upper) { char tmp[128]; int n = upper ? snprintf(tmp, sizeof(tmp), "%.*E", precision, x) : snprintf(tmp, sizeof(tmp), "%.*e", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { n = v3_float_normalize_exponent(tmp, n); u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); if (upper) snprintf((char*)out, (size_t)n + 1, "%.*E", precision, x); else snprintf((char*)out, (size_t)n + 1, "%.*e", precision, x); n = v3_float_normalize_exponent((char*)out, n); return (string){.str = out, .len = n, .is_lit = 0}; }')
+	g.writeln('static inline string v3_f64_general(double x, int precision, int upper) { char tmp[128]; int n = upper ? snprintf(tmp, sizeof(tmp), "%.*G", precision, x) : snprintf(tmp, sizeof(tmp), "%.*g", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { n = v3_float_normalize_exponent(tmp, n); u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); if (upper) snprintf((char*)out, (size_t)n + 1, "%.*G", precision, x); else snprintf((char*)out, (size_t)n + 1, "%.*g", precision, x); n = v3_float_normalize_exponent((char*)out, n); return (string){.str = out, .len = n, .is_lit = 0}; }')
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
 	}
 	g.libc_compat_decls()
-	g.writeln('#if !defined(PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
+	g.writeln('#if !defined(PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP) || defined(CUSTOM_DEFINE_musl) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) (0)')
 	g.writeln('#endif')
 	g.filelock_compat_decls()
@@ -22155,9 +22434,11 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
 	g.writeln('void* memdup(void* src, ptrdiff_t sz);')
 	g.writeln('static inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }')
+	// Integer types only: `qsort` is not stable, which only floats could show (see
+	// `array_default_sort_runtime_helper` in the transformer).
 	for sort_spec in ['int|${g.int_ct}', 'i8|signed char', 'i16|short', 'i64|long long',
 		'u8|unsigned char', 'u16|unsigned short', 'u32|unsigned', 'u64|unsigned long long',
-		'isize|ptrdiff_t', 'usize|size_t', 'f32|float', 'f64|double', 'rune|unsigned', 'char|char'] {
+		'isize|ptrdiff_t', 'usize|size_t', 'rune|unsigned', 'char|char'] {
 		sort_type := sort_spec.all_before('|')
 		c_type := sort_spec.all_after('|')
 		g.writeln('static int v3_array_sort_${sort_type}_cmp(const void* a, const void* b) { ${c_type} av = *(const ${c_type}*)a; ${c_type} bv = *(const ${c_type}*)b; return (av > bv) - (av < bv); }')
@@ -22268,8 +22549,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision > 0 && precision < 16) { double scale = 1.0; for (int i = 0; i < precision; ++i) scale *= 10.0; double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
 		g.writeln('static inline string v3_f64_fixed(double x, int precision) { if (precision >= 16) { char base[128]; int b = snprintf(base, sizeof(base), "%.16g", x); if (b >= 0 && b < (int)sizeof(base)) { int dot = -1; int has_exp = 0; for (int i = 0; i < b; ++i) { if (base[i] == \'.\') dot = i; if (base[i] == \'e\' || base[i] == \'E\') has_exp = 1; } if (!has_exp) { int frac = dot >= 0 ? b - dot - 1 : 0; if (frac <= precision) { int n = b + (dot < 0 ? 1 : 0) + (precision - frac); u8* out = malloc_noscan(n + 1); memcpy(out, base, b); int pos = b; if (dot < 0) out[pos++] = \'.\'; while (frac++ < precision) out[pos++] = \'0\'; out[pos] = 0; return (string){.str = out, .len = n, .is_lit = 0}; } } } } double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')
 	}
-	g.writeln('static inline string v3_f64_exp(double x, int precision, int upper) { char tmp[128]; int n = upper ? snprintf(tmp, sizeof(tmp), "%.*E", precision, x) : snprintf(tmp, sizeof(tmp), "%.*e", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); if (upper) snprintf((char*)out, (size_t)n + 1, "%.*E", precision, x); else snprintf((char*)out, (size_t)n + 1, "%.*e", precision, x); return (string){.str = out, .len = n, .is_lit = 0}; }')
-	g.writeln('static inline string v3_f64_general(double x, int precision, int upper) { char tmp[128]; int n = upper ? snprintf(tmp, sizeof(tmp), "%.*G", precision, x) : snprintf(tmp, sizeof(tmp), "%.*g", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); if (upper) snprintf((char*)out, (size_t)n + 1, "%.*G", precision, x); else snprintf((char*)out, (size_t)n + 1, "%.*g", precision, x); return (string){.str = out, .len = n, .is_lit = 0}; }')
+	g.float_exponent_helpers()
 	// A float precision with no `f` verb: `precision` decimals with trailing zeros trimmed,
 	// or the exponent form with `precision - 1` decimals outside [1e-5, 999999).
 	g.writeln('static inline string v3_f64_trimmed(double x, int precision) { if (x == 0.0) return signbit(x) ? v3_c_lit("-0", 2) : v3_c_lit("0", 1); double d = fabs(x); string s = !isfinite(x) || (d < 999999.0 && d >= 0.00001) ? v3_f64_fixed(x, precision) : v3_f64_exp(x, precision > 0 ? precision - 1 : 0, 0); if (s.is_lit) return s; int mant = s.len; int dot = -1; for (int i = 0; i < s.len; ++i) { if (s.str[i] == \'.\') dot = i; if (s.str[i] == \'e\') { mant = i; break; } } if (dot < 0) return s; int end = mant; while (end > dot + 1 && s.str[end - 1] == \'0\') --end; if (end == dot + 1) --end; memmove(s.str + end, s.str + mant, (size_t)(s.len - mant)); s.len -= mant - end; s.str[s.len] = 0; return s; }')
@@ -23823,12 +24103,27 @@ fn (mut g FlatGen) global_init_optional_c_type(name string) ?string {
 	return none
 }
 
+// test_failure_helpers emits the helpers that write the report of a failed assert or
+// test to stderr, in the order that `eprint` and `eprintln` in builtin keep: stdout and
+// stderr are flushed before the text is written, and stderr is flushed after it. stderr
+// is not unbuffered everywhere: the C runtime on Windows buffers it, when it is a pipe or
+// a file. `v3_eprintf` takes the arguments of `printf`. The flushes are in functions, so
+// that each report line in the program costs two calls, and not three inlined flushes.
 fn (mut g FlatGen) test_failure_helpers() {
+	g.writeln('static FILE* v3_eprint_begin(void) {')
+	g.writeln('\tfflush(stdout);')
+	g.writeln('\tfflush(stderr);')
+	g.writeln('\treturn stderr;')
+	g.writeln('}')
+	g.writeln('static void v3_eprint_end(void) {')
+	g.writeln('\tfflush(stderr);')
+	g.writeln('}')
+	g.writeln('#define v3_eprintf(...) do { fprintf(v3_eprint_begin(), __VA_ARGS__); v3_eprint_end(); } while (0)')
 	g.writeln('static void v3_eprint_lit(const char* s) {')
-	g.writeln('\tfprintf(stderr, "%s", s);')
+	g.writeln('\tv3_eprintf("%s", s);')
 	g.writeln('}')
 	g.writeln('static void v3_eprintln_string(string s) {')
-	g.writeln('\tfprintf(stderr, "%.*s\\n", s.len, (char*)s.str);')
+	g.writeln('\tv3_eprintf("%.*s\\n", s.len, (char*)s.str);')
 	g.writeln('}')
 	g.writeln('')
 }
@@ -25388,7 +25683,15 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		return
 	}
 	if g.is_const_expr(val_id) && !(node.kind == .prefix && node.op == .amp) {
+		// Enum shorthands like `.b` resolve against the expected enum; without it
+		// they fall back to the first enum in the program that has such a value.
+		old_expected_enum := g.expected_enum
+		unaliased_elem := default_init_unalias_type(elem_type)
+		if unaliased_elem is types.Enum {
+			g.expected_enum = unaliased_elem.name
+		}
 		const_val := g.const_expr_to_string(val_id, []string{})
+		g.expected_enum = old_expected_enum
 		if trimmed_space(const_val).len > 0 {
 			builder.write_string(const_val)
 			return
@@ -25439,6 +25742,27 @@ fn numeric_literal_c_text(node &flat.Node) string {
 		}
 	}
 	return value
+}
+
+// negated_long_long_literal finds a wide integer operand through parentheses for signed C negation.
+fn (g &FlatGen) negated_long_long_literal(id flat.NodeId) ?flat.Node {
+	mut node := g.a.nodes[int(id)]
+	for node.kind == .paren && node.children_count == 1 {
+		node = g.a.nodes[int(g.a.child(&node, 0))]
+	}
+	if node.kind == .int_literal && int_literal_needs_long_long_suffix(&node) {
+		return node
+	}
+	return none
+}
+
+// int_literal_needs_long_long_suffix reports whether a literal above INT_MAX and within the
+// signed 64-bit range needs an `LL` suffix before it is negated. MSVC types such a literal as
+// unsigned long when it fits 32 bits, so an unsuffixed `-2147483648` widens to +2147483648.
+fn int_literal_needs_long_long_suffix(node &flat.Node) bool {
+	text := if node.value.contains_u8(`_`) { node.value.replace('_', '') } else { node.value }
+	value := strconv.parse_uint(text, util.v_literal_parse_base(text), 64) or { return false }
+	return value > 2147483647 && value <= 9223372036854775807
 }
 
 fn (mut g FlatGen) precompute_consts() string {
@@ -25927,6 +26251,13 @@ fn (g &FlatGen) shift_count_const_value(id flat.NodeId, seen []string) ?int {
 @[direct_array_access]
 fn (mut g FlatGen) gen_prefix_op_operand(op flat.Op, child_id flat.NodeId) {
 	g.write(g.op_str(op))
+	if op == .minus {
+		if literal := g.negated_long_long_literal(child_id) {
+			g.write(numeric_literal_c_text(&literal))
+			g.write('LL')
+			return
+		}
+	}
 	child := g.a.nodes[int(child_id)]
 	needs_paren := child.kind in [.infix, .in_expr]
 	if needs_paren {
