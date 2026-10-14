@@ -721,9 +721,9 @@ fn (t &Transformer) mut_param_address_source_type(id flat.NodeId) ?string {
 	if base_type.len == 0 {
 		base_type = t.raw_var_type(child.value)
 	}
-	base_type = base_type.trim_space()
+	base_type = trimmed_transform_text(base_type)
 	if base_type.starts_with('mut ') {
-		base_type = base_type[4..].trim_space()
+		base_type = trimmed_transform_text(base_type[4..])
 	}
 	if base_type.len == 0 {
 		return none
@@ -1032,7 +1032,7 @@ fn (t &Transformer) type_is_pointer_to_interface(typ types.Type, iface_name stri
 }
 
 fn (t &Transformer) type_text_is_pointer_to_interface(typ string, iface_name string) bool {
-	clean := typ.trim_space()
+	clean := trimmed_transform_text(typ)
 	if clean.starts_with('&') {
 		return t.resolve_interface_type_name(clean[1..]) == iface_name
 	}
