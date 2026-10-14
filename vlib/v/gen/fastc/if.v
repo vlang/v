@@ -793,9 +793,12 @@ fn (mut g Parser) parse_if() !bool {
 			// to mutable subjects restore their boxed type and invalidate this view.
 			access := if smartcast_boxed_type.ends_with('*') { '->' } else { '.' }
 			branch_cast := g.temporary_name('if_cast')
-			is_reference := smartcast_boxed_type.ends_with('*') || previous_smartcast.is_mut
+			is_pointer := fastc_is_pointer_type(g.underlying_alias_type(smartcast_type))
+			is_reference := !is_pointer && (smartcast_boxed_type.ends_with('*') || previous_smartcast.is_mut)
 			branch_type := if is_reference { smartcast_type + '*' } else { smartcast_type }
-			branch_value := if is_reference {
+			branch_value := if is_pointer {
+				'(${smartcast_type})${smartcast_storage}${access}_object'
+			} else if is_reference {
 				'(${smartcast_type} *)${smartcast_storage}${access}_object'
 			} else {
 				'*((${smartcast_type} *)${smartcast_storage}${access}_object)'
