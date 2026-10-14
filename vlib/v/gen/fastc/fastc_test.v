@@ -271,7 +271,7 @@ fn main() {
 	assert c_source.contains('return shared+other;'), c_source
 	assert c_source.contains('return shared^2;'), c_source
 	assert !c_source.contains('return &shared'), c_source
-	assert c_source.contains('__auto_type __v0 = (shared);'), c_source
+	assert c_source.contains('Option __v0 = (shared);'), c_source
 	assert c_source.contains('__vf_m_x = (shared);'), c_source
 	assert c_source.count('return shared;') == 3, c_source
 	assert c_source.contains('if (shared)'), c_source
@@ -429,7 +429,7 @@ fn main() {
 	_ := propagate() or { 0 }
 }
 ', 'selfhost_multiline_shared_result_propagation.v', prefs) or { panic(err) }
-	assert c_source.contains('__auto_type __vf_op = (shared);'), c_source
+	assert c_source.contains('__v_result __vf_op = (shared);'), c_source
 	assert !c_source.contains('shared!'), c_source
 }
 
@@ -1922,7 +1922,7 @@ fn main() {
 	assert message.contains('nonliteral `:c` interpolation'), message
 }
 
-fn test_i64_codepoint_interpolation_requires_runtime_support() {
+fn test_i64_codepoint_interpolation_uses_real_builtin_runtime() {
 	prefs := pref.new_preferences()
 	mut message := ''
 	_ := generate(r"module main
@@ -1939,18 +1939,14 @@ fn main() {
 
 	mut selfhost_prefs := pref.new_preferences()
 	selfhost_prefs.building_v = true
-	mut selfhost_message := ''
-	_ := generate(r"module main
+	selfhost_c := generate(r"module main
 
 fn main() {
 	value := i64(65)
 	println('${value:c}')
 }
-", 'i64_codepoint_interpolation_selfhost.v', selfhost_prefs) or {
-		selfhost_message = err.msg()
-		''
-	}
-	assert selfhost_message.contains('interpolation of type `i64`'), selfhost_message
+", 'i64_codepoint_interpolation_selfhost.v', selfhost_prefs) or { panic(err) }
+	assert selfhost_c.contains('v_fastc_signed_format((long long)(value), "c")'), selfhost_c
 }
 
 fn test_zero_value_strings_print_as_empty_strings() {
@@ -2476,7 +2472,7 @@ fn main() {
 	_ := Tool.run(["one", "two"]).code
 }
 ', 'static_array_argument.v', prefs) or { panic(err) }
-	assert c_source.contains('Tool_run(((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('Tool_run(({ string __vf_array_literal['), c_source
 	assert !c_source.contains('Tool_run(['), c_source
 }
 
@@ -2566,7 +2562,7 @@ fn main() {
 	page.set_title([label(), "repo"])
 }
 ', 'method_context_array_argument.v', prefs) or { panic(err) }
-	assert c_source.contains('Page_set_title(&(page),((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('Page_set_title(&(page),({ string __vf_array_literal['), c_source
 	assert !c_source.contains('Page_set_title(&(page),['), c_source
 }
 
@@ -7671,9 +7667,12 @@ fn fastc_reset(mut c Cfg, name string) {
 	c.fields = [name]
 }
 
-fn main() {}
+fn main() {
+	mut c := Cfg{}
+	fastc_reset(mut c, "value")
+}
 ', 'nonempty_array_field.v', prefs) or { panic(err) }
-	assert c_source.contains('c->fields=((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('c->fields=({ string __vf_array_literal['), c_source
 	assert !c_source.contains('array_get(c->fields='), c_source
 }
 
@@ -8129,7 +8128,7 @@ fn main() {
 	use(mut id, 2) or { return }
 }
 ', 'selfhost_option_array_arguments.v', prefs) or { panic(err) }
-	assert c_source.contains('insert(((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('insert(({ string __vf_array_literal['), c_source
 	assert !c_source.contains('insert([_S('), c_source
 }
 
@@ -13869,7 +13868,7 @@ fn main() {
 	_ := pairs
 }
 ', 'selfhost_dynamic_array_positional_struct_literals.v', prefs) or { panic(err) }
-	assert c_source.contains('(Pair[]){(Pair){_S("left"),_S("right")}}'), c_source
+	assert c_source.contains('__vf_array_literal[0] = ((Pair){_S("left"),_S("right")});'), c_source
 }
 
 fn test_selfhost_nil_pointer_struct_field_is_cast_without_address_of() {

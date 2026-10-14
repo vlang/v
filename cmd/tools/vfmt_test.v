@@ -503,6 +503,35 @@ fn test_fmt_preserves_comments_with_v3() {
 	assert formatted.contains("fn format_me() { println('yes') }"), formatted
 }
 
+fn test_fmt_preserves_vfmt_directives_before_default_attributes() {
+	source := 'struct Directives {\n\ta int = 1 // vfmt off\n\t@[a]\n\t// vfmt on\n\tb int = 2 @[b]\n}\n'
+	res, formatted := run_vfmt_write('field_attribute_vfmt_directives', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	assert formatted.count('@[a]') == 1, formatted
+	second_res, twice := run_vfmt_write('field_attribute_vfmt_directives_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert twice == formatted, twice
+}
+
+fn test_fmt_formats_enabled_leading_attributes_after_vfmt_on() {
+	declarations := ['@[a] value   int=1+2', '@[a] x, y   int']
+	formatted_fields := ['value int = 1 + 2 @[a]', 'x int @[a]\n\ty int @[a]']
+	for i, declaration in declarations {
+		source := 'struct Completed {\n\tbefore int\n\t// vfmt off\n\t// vfmt on\n\t${declaration}\n}\n'
+		want := 'struct Completed {\n\tbefore int\n\t// vfmt off\n\t// vfmt on\n\t${formatted_fields[i]}\n}\n'
+		res, formatted := run_vfmt_write('completed_directive_leading_attrs_${i}', source,
+			'')
+		assert res.exit_code == 0, res.output
+		assert formatted == want, formatted
+		second_res, twice := run_vfmt_write('completed_directive_leading_attrs_${i}_twice',
+			formatted, '')
+		assert second_res.exit_code == 0, second_res.output
+		assert twice == formatted, twice
+	}
+}
+
 fn test_fmt_keeps_regular_comments_attached_with_v3() {
 	source := '// docs\nfn main(){\n\tx := 1 // inline\n\t_ = x\n}\n'
 	res, formatted := run_vfmt_write('regular_comments', source, '')
@@ -1930,6 +1959,66 @@ struct Hex2 {
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
 	second_res, formatted_twice := run_vfmt_write('selective_import_and_field_layout_twice', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_ends_comment_groups_at_wrapping_attributed_defaults() {
+	field_name := 'extremely_long_field_name_with_many_characters_to_move_default_values_right'
+	source := 'struct Comments { a usize = 1 /* a */ @[x]; ${field_name} []int = [1, 2, 3] /* middle */ @[long]; c usize = 2 /* c */ @[x]; d usize = 3 /* d */ @[xx] }'
+	res, formatted := run_vfmt_write('wrapped_default_comment_groups', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('[]int = [\n'), formatted
+	assert formatted.contains('@[x]  /* c */\n'), formatted
+	assert formatted.contains('@[xx] /* d */\n'), formatted
+	second_res, twice := run_vfmt_write('wrapped_default_comment_groups_twice', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert twice == formatted
+}
+
+fn test_fmt_aligns_attributes_across_mixed_volatile_fields() {
+	source := 'type MyAlias = int\n\nstruct Mixed {\n\tvolatile a MyAlias @[a]\n\tb MyAlias = 0 @[b]\n}\n'
+	want := 'type MyAlias = int\n\nstruct Mixed {\n\tvolatile a MyAlias @[a]\n\tb MyAlias = 0      @[b]\n}\n'
+	res, formatted := run_vfmt_write('mixed_volatile_field_attributes', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted == want, formatted
+	second_res, twice := run_vfmt_write('mixed_volatile_field_attributes_twice', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert twice == formatted
+}
+
+fn test_fmt_aligns_struct_field_attributes_with_defaults() {
+	source := 'struct ConfigSearch {
+pub mut:
+    show_help bool   @[long: help; short: h]
+    local     bool   @[long: local; short: l]
+    remote    bool   @[long: remote; short: r]
+    aur       bool   @[long: aur; short: a]
+    quiet     bool   @[long: quiet; short: q]
+    verbose   bool   @[long: verbose; short: v]
+    fuzzy     bool   @[long: fuzzy; short: f]
+    thold     f64 = 0.9   @[long: thold; short: t]
+    query     string @[tail]
+}
+'
+	expected := 'struct ConfigSearch {
+pub mut:
+	show_help bool      @[long: help; short: h]
+	local     bool      @[long: local; short: l]
+	remote    bool      @[long: remote; short: r]
+	aur       bool      @[long: aur; short: a]
+	quiet     bool      @[long: quiet; short: q]
+	verbose   bool      @[long: verbose; short: v]
+	fuzzy     bool      @[long: fuzzy; short: f]
+	thold     f64 = 0.9 @[long: thold; short: t]
+	query     string    @[tail]
+}
+'
+	res, formatted := run_vfmt_write('struct_field_attribute_alignment', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted == expected, formatted
+	second_res, formatted_twice :=
+		run_vfmt_write('struct_field_attribute_alignment_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
