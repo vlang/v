@@ -467,7 +467,7 @@ fn (t &Transformer) promoted_field_raw_type(struct_type string, field_name strin
 }
 
 fn (t &Transformer) is_shared_map_type_text(typ string) bool {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	if !clean.starts_with('shared ') {
 		return false
 	}

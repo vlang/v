@@ -36,6 +36,10 @@ fn main() {
 	scores.sort()
 	println(scores.map(int(it)))
 	println([Score(2), Score(1), Score(3)].sorted().map(int(it)))
+	println([Score(2), Score(1), Score(3)].sorted(a < b).map(int(it)))
+	println([Score(2), Score(1), Score(3)].sorted(b < a).map(int(it)))
+	println(([Score(2), Score(1), Score(3)]).sorted().map(int(it)))
+	println([UUID([u8(9), 0]!), UUID([u8(1), 5]!), UUID([u8(1), 2]!)].sorted().map(it[0] * 10 + it[1]))
 }
 '
 
@@ -54,5 +58,6 @@ fn test_sort_calls_the_less_than_of_an_alias() {
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines() == ['[12, 15, 90]', '[90, 15, 12]', '[12, 15, 90]',
-		'[90, 15, 12]', '[3, 2, 1]', '[3, 2, 1]', '[3, 2, 1]']
+		'[90, 15, 12]', '[3, 2, 1]', '[3, 2, 1]', '[3, 2, 1]', '[3, 2, 1]', '[1, 2, 3]', '[3, 2, 1]',
+		'[12, 15, 90]']
 }

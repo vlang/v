@@ -3148,8 +3148,10 @@ fn (mut b Builder) register_array_runtime_stubs() {
 		b.generate_array_repeat_to_depth_body(array_repeat_id)
 	}
 
-	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32',
-		'f64', 'rune', 'char'] {
+	// Integer types only, like the C backend: the transformer lowers a float sort
+	// to its stable merge sort.
+	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'rune',
+		'char'] {
 		elem_type := match sort_type {
 			'int', 'rune' { b.i32_type }
 			'i8' { b.i8_type }
@@ -3158,9 +3160,7 @@ fn (mut b Builder) register_array_runtime_stubs() {
 			'u8', 'char' { b.u8_type }
 			'u16' { b.u16_type }
 			'u32' { b.u32_type }
-			'u64', 'usize' { b.u64_type }
-			'f32' { b.f32_type }
-			else { b.f64_type }
+			else { b.u64_type }
 		}
 		mut sort_params := []TypeID{}
 		sort_params << ptr_array
@@ -6968,7 +6968,9 @@ fn (b &Builder) fn_is_used_for_decl(name string, qualified_method bool) bool {
 	}
 	normalized_name := name.replace('__', '.')
 	used_short_name := normalized_name.all_after_last('.')
-	if !qualified_method && used_short_name in b.used_fns {
+	// A retained C prototype is tracked by its bare symbol name. It does not
+	// make a same-named V function in another module reachable.
+	if !qualified_method && used_short_name in b.used_fns && used_short_name !in b.c_fn_ids {
 		return true
 	}
 	if name in b.used_fn_suffixes {
@@ -6980,7 +6982,8 @@ fn (b &Builder) fn_is_used_for_decl(name string, qualified_method bool) bool {
 		suffix_start = dot + 1
 		if suffix_start < normalized_name.len {
 			suffix := normalized_name[suffix_start..]
-			if (!qualified_method || suffix.contains('.')) && suffix in b.used_fn_normalized {
+			if (!qualified_method || suffix.contains('.')) && suffix in b.used_fn_normalized
+				&& (suffix.contains('.') || suffix !in b.c_fn_ids) {
 				return true
 			}
 		}

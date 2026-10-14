@@ -195,7 +195,7 @@ fn (app &App) draw_glsl_shader(shader_name string) {
 	// passing the view matrix as uniform
 	// res is a 4x4 matrix of f32 thus: 4*16 byte of size
 	vs_uniforms_range := gfx.Range{
-		ptr: &tr_matrix
+		ptr: unsafe { &tr_matrix }
 		size: usize(4 * 16)
 	}
 	gfx.apply_uniforms(.vs, C.SLOT_vs_params_m, &vs_uniforms_range)
@@ -303,7 +303,7 @@ fn (mut app App) on_init() {
 /******************************************************************************
 * events handling
 ******************************************************************************/
-fn (mut app App) on_event(ev &gg.Event, x voidptr) {
+fn (mut app App) on_event(ev &gg.Event, _x voidptr) {
 	if ev.typ == .mouse_down {
 		app.mouse_down = true
 	}

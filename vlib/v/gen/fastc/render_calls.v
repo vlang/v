@@ -159,7 +159,8 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 		if item.tok != .lpar || i <= type_start {
 			continue
 		}
-		if i >= 2 && tokens[i - 2].tok == .dot && !(i == type_qualifier_start + 3 && tokens[type_qualifier_start].tok == .name && (tokens[type_qualifier_start].lit in g.imports || tokens[type_qualifier_start].lit == 'C')) {
+		if i >= 2 && tokens[i - 2].tok == .dot
+			&& g.type_from_expression_tokens(tokens[type_start..i]) == none {
 			// `receiver.u32()` is a method even though its name is also a primitive
 			// type. Only a bare/qualified type at the start can introduce a cast.
 			continue
@@ -242,11 +243,27 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			}
 		}
 	}
+	// A conversion into an alias of a fixed array (`Gf([16]i64{})`) only renames the C struct
+	// both types spell, and C cannot cast to a struct; `[N]T{}` is the zero value.
+	aliased := g.underlying_alias_type(c_type)
+	if !c_type.ends_with('*') && aliased != c_type && aliased.starts_with('FixedArray_') {
+		if inner_tokens.len >= 5 && inner_tokens[0].tok == .lsbr && inner_tokens[2].tok == .rsbr
+			&& inner_tokens[inner_tokens.len - 2].tok == .lcbr && inner_tokens.last().tok == .rcbr {
+			return FastcRenderedExpression{
+				source: '((${fastc_output_c_type(c_type)}){0})'
+				typ:    c_type
+			}
+		}
+		aliased_value := g.render_call_argument_expression(inner_tokens, aliased) or { return none }
+		return FastcRenderedExpression{
+			source: '(${aliased_value})'
+			typ:    c_type
+		}
+	}
 	inner_type := g.infer_expression_type(inner_tokens) or { '' }
-	// `voidptr(callback)` is a pointer reinterpretation, not a generic-value box.
-	// Rendering its function-alias operand against `voidptr` would allocate storage
-	// for the callback pointer and return that storage address, which is not callable.
-	inner_expected_type := if c_type == 'voidptr' && inner_type in g.fn_alias_return_types {
+	// Explicit voidptr casts reinterpret the operand's bits. Generic argument
+	// boxing would instead return the address of storage containing those bits.
+	inner_expected_type := if c_type == 'voidptr' {
 		inner_type
 	} else {
 		c_type
@@ -335,9 +352,14 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 				argument_index += 2
 				continue
 			}
-			piece := tokens[argument_index].tok.str()
+			item := tokens[argument_index]
+			piece := if item.tok in [.name, .number] { item.lit } else { item.tok.str() }
 			raw_argument.write_string(piece)
-			c_argument.write_string(piece)
+			c_argument.write_string(if item.tok == .name {
+				g.resolved_expression_name(item.lit, tokens[argument_index - 1].tok)
+			} else {
+				piece
+			})
 			argument_index++
 		}
 		method := tokens[i].lit

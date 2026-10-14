@@ -3,6 +3,27 @@ module c
 import v.flat
 import v.types
 
+fn test_usable_expr_type_uses_materialized_anonymous_storage() {
+	for prefix in ['', '[]', '[][]'] {
+		mut a := flat.FlatAst.new()
+		id := a.add_node(flat.Node{
+			kind:  .ident
+			value: 'rows'
+			typ:   '${prefix}Row'
+		})
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs['Row'] = [types.StructField{ name: 'item', typ: types.Type(types.int_) }]
+		tc.register_synth_type(id, tc.parse_type('${prefix}struct'))
+		mut g := FlatGen.new()
+		g.a = &a
+		g.tc = &tc
+		assert g.usable_expr_type(id).name() == '${prefix}Row'
+		// A concrete checked type keeps its authority over the textual annotation.
+		tc.register_synth_type(id, tc.parse_type('${prefix}string'))
+		assert g.usable_expr_type(id).name() == '${prefix}string'
+	}
+}
+
 fn test_usable_expr_type_memo_node_zero_starts_empty_and_reuses_its_result() {
 	mut a := flat.FlatAst.new()
 	id := a.add_val(.ident, 'value')

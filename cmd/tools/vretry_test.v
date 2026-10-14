@@ -138,3 +138,52 @@ fn test_retry_keeps_a_quoted_argument_whole() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().ends_with('one two'), res.output
 }
+
+// Direct and launcher runs both pass the first user argument to the parser.
+// Cover a first flag, the vector separator, and a real command named retry.
+fn test_retry_binary_run_directly_keeps_its_first_argument() {
+	log.use_stdout()
+	tpath := os.join_path(os.vtmp_dir(), 'vretry direct test ${os.getpid()}')
+	os.rmdir_all(tpath) or {}
+	os.mkdir_all(tpath)!
+	defer {
+		os.rmdir_all(tpath) or {}
+	}
+	mut binary := os.join_path(tpath, 'vretry')
+	$if windows {
+		binary += '.exe'
+	}
+	build := os.exec([vexe, '-cc', @CCOMPILER, '-o', binary,
+		os.join_path(vroot, 'cmd', 'tools', 'vretry.v')])
+	assert build.exit_code == 0, build.output
+
+	first_flag := os.exec([binary, '-r', '1', '--', vexe, 'version'])
+	dump_on_ci(first_flag)
+	assert first_flag.exit_code == 0, first_flag.output
+
+	first_dashdash := os.exec([binary, '--', vexe, 'version'])
+	dump_on_ci(first_dashdash)
+	assert first_dashdash.exit_code == 0, first_dashdash.output
+
+	limit := os.exec([binary, '-r', '2', '--', 'vretry-command-that-does-not-exist'])
+	dump_on_ci(limit)
+	assert limit.exit_code != 0
+	assert limit.output.contains('exceeded maximum number of retries (2)!'), limit.output
+
+	// A bare `retry` is a command name, including when no options precede it.
+	$if windows {
+		os.write_file(os.join_path(tpath, 'retry.cmd'), '@echo direct-retry-command:%1\r\n')!
+	} $else {
+		command := os.join_path(tpath, 'retry')
+		os.write_file(command, '#!/bin/sh\nprintf "direct-retry-command:%s\\n" "$1"\n')!
+		os.chmod(command, 0o700)!
+	}
+	old_path := os.getenv('PATH')
+	os.setenv('PATH', tpath + os.path_delimiter + old_path, true)
+	defer { os.setenv('PATH', old_path, true) }
+	for command_args in [[binary, 'retry', 'kept'], [vexe, 'retry', 'retry', 'kept']] {
+		result := os.exec(command_args)
+		assert result.exit_code == 0, result.output
+		assert result.output.trim_space() == 'direct-retry-command:kept', result.output
+	}
+}

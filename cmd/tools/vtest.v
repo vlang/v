@@ -4,7 +4,6 @@ import os
 import os.cmdline
 import testing
 import v.pref
-import v.util.vflags
 import v.util.vtest
 
 struct Context {
@@ -35,18 +34,23 @@ fn main() {
 	}
 	backend_pos := args_before.index('-b')
 	backend := if backend_pos == -1 { '.c' } else { args_before[backend_pos + 1] }
-	requested_vflags := os.getenv('VFLAGS')
-	mut requested_args := vflags.tokenize_to_args(requested_vflags)
-	requested_args << args_before
-	strict_v3 := ('-new-compiler' in requested_args && '-old-compiler' !in requested_args)
+	requested_args := os.split_args(os.getenv('VFLAGS')) or { panic(err) }
+	mut all_requested_args := requested_args.clone()
+	all_requested_args << args_before
+	strict_v3 := ('-new-compiler' in all_requested_args && '-old-compiler' !in all_requested_args)
 		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
-	mut session_vargs := args_before.join(' ')
+	mut session_args := args_before.clone()
 	if strict_v3 {
-		// Apply strict V3 flags to each top-level test compilation without leaking
-		// compiler-only flags into test binaries and the tools they launch.
-		session_vargs = '${requested_vflags} ${session_vargs}'
+		// The launcher forwards VFLAGS as a complete prefix. A standalone vtest
+		// still needs the environment flags; preserve option/value pairs and order.
+		if args_before.len < requested_args.len
+			|| args_before[..requested_args.len] != requested_args {
+			session_args = requested_args.clone()
+			session_args << args_before
+		}
 		os.unsetenv('VFLAGS')
 	}
+	session_vargs := session_args.map(test_session_argument(it)).join(' ')
 
 	mut ts := testing.new_test_session(session_vargs, true)
 	ts.exec_mode = .compile_and_run
@@ -94,6 +98,14 @@ fn main() {
 	if ts.has_failures() {
 		exit(1)
 	}
+}
+
+// test_session_argument preserves literal argv through the runner's directive parser.
+fn test_session_argument(arg string) string {
+	if arg != '' && !arg.contains_any(' \t\r\n\\\'"') {
+		return arg
+	}
+	return '"' + arg.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
 
 fn show_usage() {

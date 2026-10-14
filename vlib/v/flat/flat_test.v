@@ -329,3 +329,16 @@ fn test_text_lookup_preserves_bounds_checks() {
 	assert a.text(id + 1) == ''
 	assert a.text(TextId(0xffffffff)) == ''
 }
+
+fn test_clone_node_flags_keeps_borrowed_map_iteration_keys() {
+	source := Node{
+		kind:  .for_in_stmt
+		flags: node_flag_borrowed_map_key | node_flag_skip_ownership_drops
+	}
+	assert source.borrows_map_key()
+	copy := Node{ kind: .for_in_stmt, flags: clone_node_flags(&source, false) }
+	assert copy.borrows_map_key()
+	assert !copy.skip_ownership_drops()
+	assert !Node{ kind: .assign, flags: node_flag_freed_assignment }.borrows_map_key()
+	assert !Node{ kind: .for_in_stmt }.borrows_map_key()
+}

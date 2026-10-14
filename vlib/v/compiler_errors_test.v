@@ -106,7 +106,9 @@ fn test_all() {
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
 	global_tests := get_tests_in_dir(global_dir, false)
 	global_run_tests := get_tests_in_dir(global_run_dir, false)
-	module_tests := get_tests_in_dir(module_dir, true)
+	// These fixtures exercise V3's checks of uninstantiated generic bodies.
+	v3_module_tests := ['generic_fn_own_module_private_access', 'generic_fn_private_access_err']
+	module_tests := get_tests_in_dir(module_dir, true).filter(it !in v3_module_tests)
 	run_tests := get_tests_in_dir(run_dir, false)
 	su_dir_tests := get_tests_in_dir(su_dir, false)
 	no_closures_tests := get_tests_in_dir(no_closures_dir, false)
@@ -183,6 +185,7 @@ fn test_all() {
 	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests, false)
 	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
+	tasks.add('', module_dir, '-new-compiler -prod run', '.out', v3_module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
 	tasks.add('', checker_dir, '-disable-explicit-mutability run', '.disable_explicit_mutability.run.out', disable_explicit_mutability_tests, false)
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests, false)

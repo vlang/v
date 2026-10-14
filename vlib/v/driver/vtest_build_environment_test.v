@@ -109,6 +109,27 @@ fn test_user_defines_are_recorded_by_name() {
 	})
 }
 
+fn test_precise_gc_records_platform_compiler_facts() {
+	with_clean_build_environment(fn () {
+		facts := vtest_build_environment(@VEXEROOT, ['-d', 'no_gc_thread_local_alloc']).facts
+		assert 'tinyc' !in facts, facts.str()
+		assert 'gcc' in facts || 'clang' in facts, facts.str()
+	})
+}
+
+fn test_disabled_precise_gc_keeps_default_compiler_facts() {
+	with_clean_build_environment(fn () {
+		for base in [['-gc', 'none'], ['-cross']] {
+			ordinary := vtest_build_environment(@VEXEROOT, base).facts
+			mut precise_args := base.clone()
+			precise_args << ['-d', 'no_gc_thread_local_alloc']
+			assert vtest_build_environment(@VEXEROOT, precise_args).facts == ordinary
+		}
+		ordinary := vtest_build_environment(@VEXEROOT, []).facts
+		assert vtest_build_environment(@VEXEROOT, ['-d', 'no_gc_thread_local_alloc=']).facts == ordinary
+	})
+}
+
 fn test_options_starting_with_d_are_not_defines() {
 	with_clean_build_environment(fn () {
 		defines := vtest_build_environment(@VEXEROOT, ['-dump-c-flags', 'flags.txt', '-dump-files',

@@ -4,6 +4,18 @@ import v.flat
 import v.token
 import v.types
 
+fn test_anonymous_struct_placeholders_inside_fixed_arrays_are_unresolved() {
+	for skip_generics in [false, true] {
+		t := Transformer{ skip_generics: skip_generics }
+		for typ in ['[2]struct', '[2][3]struct', '[][2]struct', '?[2]struct', 'map[string][2]struct'] {
+			assert t.generic_arg_is_unresolved(typ), typ
+		}
+		for typ in ['[2]int', '[2][3]string', '[][2]int', '?[2]int'] {
+			assert !t.generic_arg_is_unresolved(typ), typ
+		}
+	}
+}
+
 fn add_inferred_anonymous_struct(mut a flat.FlatAst, file_id int) (flat.NodeId, flat.NodeId) {
 	pos := token.new_pos(file_id, 0)
 	value_id := a.add_node(flat.Node{

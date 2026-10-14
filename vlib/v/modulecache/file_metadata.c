@@ -3,26 +3,26 @@
 #if defined(__APPLE__) || defined(__linux__)
 #include <sys/stat.h>
 
-static int v3_modulecache_file_metadata(const char *path, u64 *device, u64 *inode,
-	u64 *size, u64 *mtime_seconds, u64 *mtime_nanoseconds,
-	u64 *ctime_seconds, u64 *ctime_nanoseconds) {
+int v3_modulecache_file_metadata(const char *path, uint64_t *device, uint64_t *inode,
+	uint64_t *size, uint64_t *mtime_seconds, uint64_t *mtime_nanoseconds,
+	uint64_t *ctime_seconds, uint64_t *ctime_nanoseconds) {
 	struct stat info;
 	if (stat(path, &info) != 0) {
 		return 0;
 	}
-	*device = (u64)info.st_dev;
-	*inode = (u64)info.st_ino;
-	*size = (u64)info.st_size;
+	*device = (uint64_t)info.st_dev;
+	*inode = (uint64_t)info.st_ino;
+	*size = (uint64_t)info.st_size;
 #if defined(__APPLE__)
-	*mtime_seconds = (u64)info.st_mtimespec.tv_sec;
-	*mtime_nanoseconds = (u64)info.st_mtimespec.tv_nsec;
-	*ctime_seconds = (u64)info.st_ctimespec.tv_sec;
-	*ctime_nanoseconds = (u64)info.st_ctimespec.tv_nsec;
+	*mtime_seconds = (uint64_t)info.st_mtimespec.tv_sec;
+	*mtime_nanoseconds = (uint64_t)info.st_mtimespec.tv_nsec;
+	*ctime_seconds = (uint64_t)info.st_ctimespec.tv_sec;
+	*ctime_nanoseconds = (uint64_t)info.st_ctimespec.tv_nsec;
 #else
-	*mtime_seconds = (u64)info.st_mtim.tv_sec;
-	*mtime_nanoseconds = (u64)info.st_mtim.tv_nsec;
-	*ctime_seconds = (u64)info.st_ctim.tv_sec;
-	*ctime_nanoseconds = (u64)info.st_ctim.tv_nsec;
+	*mtime_seconds = (uint64_t)info.st_mtim.tv_sec;
+	*mtime_nanoseconds = (uint64_t)info.st_mtim.tv_nsec;
+	*ctime_seconds = (uint64_t)info.st_ctim.tv_sec;
+	*ctime_nanoseconds = (uint64_t)info.st_ctim.tv_nsec;
 #endif
 	return 1;
 }
@@ -33,8 +33,8 @@ static int v3_modulecache_file_metadata(const char *path, u64 *device, u64 *inod
 // v3_modulecache_filetime_parts splits a Windows file time (100 ns ticks since
 // 1601) into whole seconds since the Unix epoch plus the leftover nanoseconds,
 // matching the stat() fields above.
-static void v3_modulecache_filetime_parts(u64 ticks, u64 *seconds, u64 *nanoseconds) {
-	const u64 ticks_1601_to_1970 = 116444736000000000ULL;
+static void v3_modulecache_filetime_parts(uint64_t ticks, uint64_t *seconds, uint64_t *nanoseconds) {
+	const uint64_t ticks_1601_to_1970 = 116444736000000000ULL;
 	if (ticks < ticks_1601_to_1970) {
 		*seconds = 0;
 		*nanoseconds = 0;
@@ -63,7 +63,7 @@ typedef BOOL (WINAPI *v3_modulecache_get_file_information_by_handle_ex_fn)(HANDL
 // change time is available: FAT and exFAT report 0, and the query itself can
 // fail. The function is looked up at run time because the kernel32 import list
 // bundled with tcc has no GetFileInformationByHandleEx.
-static u64 v3_modulecache_change_time(HANDLE handle) {
+static uint64_t v3_modulecache_change_time(HANDLE handle) {
 	HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
 	if (kernel32 == NULL) {
 		return 0;
@@ -79,16 +79,16 @@ static u64 v3_modulecache_change_time(HANDLE handle) {
 	if (!get_info(handle, 0, &info, sizeof(info)) || info.change_time.QuadPart <= 0) {
 		return 0;
 	}
-	return (u64)info.change_time.QuadPart;
+	return (uint64_t)info.change_time.QuadPart;
 }
 
 // The CRT's stat() reports st_ino == 0 on Windows, so a stat-based signature
 // would make every file on the volume share one identity. Go to the file handle
 // instead: the volume serial number and the 64 bit file index are the real
 // device/inode pair, and they come from the same call as the size and times.
-static int v3_modulecache_file_metadata(const char *path, u64 *device, u64 *inode,
-	u64 *size, u64 *mtime_seconds, u64 *mtime_nanoseconds,
-	u64 *ctime_seconds, u64 *ctime_nanoseconds) {
+int v3_modulecache_file_metadata(const char *path, uint64_t *device, uint64_t *inode,
+	uint64_t *size, uint64_t *mtime_seconds, uint64_t *mtime_nanoseconds,
+	uint64_t *ctime_seconds, uint64_t *ctime_nanoseconds) {
 	int wide_length = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
 	if (wide_length <= 0) {
 		return 0;
@@ -116,9 +116,9 @@ static int v3_modulecache_file_metadata(const char *path, u64 *device, u64 *inod
 		CloseHandle(handle);
 		return 0;
 	}
-	u64 change_time = v3_modulecache_change_time(handle);
+	uint64_t change_time = v3_modulecache_change_time(handle);
 	CloseHandle(handle);
-	u64 file_index = ((u64)info.nFileIndexHigh << 32) | (u64)info.nFileIndexLow;
+	uint64_t file_index = ((uint64_t)info.nFileIndexHigh << 32) | (uint64_t)info.nFileIndexLow;
 	if (file_index == 0 || change_time == 0) {
 		// Some network redirectors report no file index, and FAT and exFAT keep no
 		// change time. A zero inode would make distinct files compare equal, and
@@ -126,18 +126,18 @@ static int v3_modulecache_file_metadata(const char *path, u64 *device, u64 *inod
 		// unseen, so decline and let the caller compare the contents instead.
 		return 0;
 	}
-	*device = (u64)info.dwVolumeSerialNumber;
+	*device = (uint64_t)info.dwVolumeSerialNumber;
 	*inode = file_index;
-	*size = ((u64)info.nFileSizeHigh << 32) | (u64)info.nFileSizeLow;
-	v3_modulecache_filetime_parts(((u64)info.ftLastWriteTime.dwHighDateTime << 32)
-		| (u64)info.ftLastWriteTime.dwLowDateTime, mtime_seconds, mtime_nanoseconds);
+	*size = ((uint64_t)info.nFileSizeHigh << 32) | (uint64_t)info.nFileSizeLow;
+	v3_modulecache_filetime_parts(((uint64_t)info.ftLastWriteTime.dwHighDateTime << 32)
+		| (uint64_t)info.ftLastWriteTime.dwLowDateTime, mtime_seconds, mtime_nanoseconds);
 	v3_modulecache_filetime_parts(change_time, ctime_seconds, ctime_nanoseconds);
 	return 1;
 }
 #else
-static int v3_modulecache_file_metadata(const char *path, u64 *device, u64 *inode,
-	u64 *size, u64 *mtime_seconds, u64 *mtime_nanoseconds,
-	u64 *ctime_seconds, u64 *ctime_nanoseconds) {
+int v3_modulecache_file_metadata(const char *path, uint64_t *device, uint64_t *inode,
+	uint64_t *size, uint64_t *mtime_seconds, uint64_t *mtime_nanoseconds,
+	uint64_t *ctime_seconds, uint64_t *ctime_nanoseconds) {
 	(void)path;
 	(void)device;
 	(void)inode;
