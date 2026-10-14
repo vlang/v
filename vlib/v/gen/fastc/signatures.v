@@ -1054,6 +1054,8 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		return error('fastc parser does not support function type in ${path}')
 	}
 	tok = look.scan()
+	types_only := fastc_parameters_are_types_only(look, tok, path, module_name, imports,
+		declared_types, allow_short_placeholders)
 	mut parameter_types := []string{}
 	for tok != .rpar {
 		if tok in [.comma, .semicolon] {
@@ -1065,17 +1067,7 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 			parameter_is_mut = true
 			tok = look.scan()
 		}
-		mut has_parameter_name := false
-		if tok == .name {
-			mut probe := look
-			next_token := probe.scan()
-			has_parameter_name = next_token in [.name, .amp, .and, .mul, .question, .not, .key_fn,
-				.lsbr]
-			if next_token == .lsbr {
-				has_parameter_name = !fastc_bracketed_name_is_type(look.lit, mut probe)
-			}
-		}
-		if has_parameter_name {
+		if !types_only {
 			tok = look.scan()
 		}
 		parameter_type, next_token := fastc_scan_type(mut look, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
@@ -1105,30 +1097,28 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 	}
 }
 
-// fastc_bracketed_name_is_type reports whether a `name[` in a parameter list starts a type
-// (`map[K]V`, or a generic `Box[int]` that ends the parameter) rather than a parameter name
-// followed by an array type (`xs []int`, `xs [4]int`). `probe` is positioned after the `[`.
-fn fastc_bracketed_name_is_type(name string, mut probe scanner.Scanner) bool {
-	if name == 'map' {
-		return true
-	}
-	mut depth := 1
-	mut tok := probe.scan()
-	for depth > 0 {
-		if tok == .eof {
+// fastc_parameters_are_types_only reports whether a function type's parameter list, starting
+// at `first`, gives types without names (`fn (int, map[string]int, chan T)`): every entry is one
+// whole type, ended by `,` or `)`. A list with names (`fn (x int)`) is not.
+fn fastc_parameters_are_types_only(scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) bool {
+	mut look := scan
+	mut tok := first
+	for tok != .rpar {
+		if tok in [.comma, .semicolon] {
+			tok = look.scan()
+			continue
+		}
+		if tok == .key_mut {
+			tok = look.scan()
+		}
+		_, next_token := fastc_scan_type(mut look, tok, path, module_name, imports, declared_types,
+			allow_short_placeholders) or { return false }
+		if next_token !in [.comma, .semicolon, .rpar] {
 			return false
 		}
-		if tok == .lsbr {
-			depth++
-		} else if tok == .rsbr {
-			depth--
-			if depth == 0 {
-				break
-			}
-		}
-		tok = probe.scan()
+		tok = next_token
 	}
-	return probe.scan() in [.comma, .rpar]
+	return true
 }
 
 fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) !(string, token.Token) {

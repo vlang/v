@@ -1511,22 +1511,11 @@ fn fastc_skip_type(mut s scanner.Scanner, start token.Token) token.Token {
 	return tok
 }
 
-// fastc_skip_function_return_type consumes a return type that is a function type
-// (`fn f() fn (int) int`), which belongs to the signature before it rather than
-// starting another function, and returns the token after it; any other return type is
-// left unconsumed and `start` is returned.
+// fastc_skip_function_return_type consumes a function's return type, which belongs to the
+// signature before it: a `fn` inside it (`fn f() fn (int) int`, `[]fn (int) int`) does not start
+// another function. It returns the token after the return type, `start` when there is none.
 fn fastc_skip_function_return_type(mut s scanner.Scanner, start token.Token) token.Token {
-	mut look := s
-	mut tok := start
-	for tok == .question || tok == .not || tok == .amp {
-		tok = look.scan()
-	}
-	if tok != .key_fn {
-		return start
-	}
-	tok = fastc_skip_type(mut look, tok)
-	s = look
-	return tok
+	return fastc_skip_type(mut s, start)
 }
 
 // fastc_skip_to_param_boundary advances to the next top-level `,` or the closing

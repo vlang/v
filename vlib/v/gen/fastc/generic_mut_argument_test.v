@@ -438,6 +438,15 @@ struct Box[T] {
 	v T
 }
 
+struct Event {
+	a int
+	b int
+}
+
+fn take_events(ch chan Event) int {
+	return 11
+}
+
 fn total(m map[string]int) int {
 	mut t := 0
 	for _, v in m {
@@ -470,6 +479,10 @@ fn apply_arr(cb fn ([]int) int, xs []int) int {
 	return cb(xs)
 }
 
+fn apply_chan(cb fn (chan Event) int, ch chan Event) int {
+	return cb(ch)
+}
+
 fn main() {
 	println(apply_map(total, {
 		"a": 1
@@ -479,6 +492,8 @@ fn main() {
 		v: -7
 	}))
 	println(apply_arr(sum, [1, 2, -10]))
+	events := chan Event{cap: 1}
+	println(apply_chan(take_events, events))
 }
 ')
 	defer {
@@ -489,5 +504,5 @@ fn main() {
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '3\n-7\n-7'
+	assert run.output.trim_space() == '3\n-7\n-7\n11'
 }
