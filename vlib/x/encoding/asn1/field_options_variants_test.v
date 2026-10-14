@@ -245,6 +245,8 @@ fn test_install_default_refuses_to_replace_a_value_without_force() {
 		assert err.msg() == 'set force to overide'
 	}
 	assert rejected, 'a second install_default without force should have failed'
+	unchanged := fo.default_value or { Element(Null{}) }
+	assert unchanged.equal(Element(wrapped_object))
 
 	fo.install_default(Utf8String.new('xx')!, true)!
 	installed := fo.default_value or { Element(Null{}) }
