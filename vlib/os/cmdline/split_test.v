@@ -20,6 +20,7 @@ fn test_split_escapes() {
 	assert cmdline.split('"a\$b"')! == ['a\$b']
 	assert cmdline.split('"a\\nb"')! == ['a\\nb']
 	assert cmdline.split('a\\\nb')! == ['ab']
+	assert cmdline.split('"a\\`b"')! == ['a`b']
 }
 
 fn test_split_unicode_passthrough() {
@@ -34,11 +35,17 @@ fn test_split_empty_and_errors() {
 		return
 	}
 	assert false, 'unbalanced single quote must error'
+}
+
+fn test_split_unbalanced_double_quote_error() {
 	cmdline.split('"abc') or {
 		assert err.msg() == 'cmdline.split: unbalanced quote'
 		return
 	}
 	assert false, 'unbalanced double quote must error'
+}
+
+fn test_split_trailing_backslash_error() {
 	cmdline.split('abc\\') or {
 		assert err.msg() == 'cmdline.split: trailing backslash'
 		return

@@ -83,7 +83,7 @@ pub fn only_options(args []string) []string {
 
 // Byte codes used in split below, to keep the lexer readable without
 // char-literal escaping: 9 tab, 10 LF, 13 CR, 32 space, 34 double quote,
-// 36 dollar, 39 single quote, 92 backslash.
+// 36 dollar, 39 single quote, 92 backslash, 96 backtick.
 
 // split breaks s into shell-like words, e.g.
 // s: 'v run "my prog.v" --flag=value'
@@ -122,7 +122,7 @@ pub fn split(s string) ![]string {
 			}
 			if c == 92 && i + 1 < b.len {
 				n := b[i + 1]
-				if n == 36 || n == 34 || n == 92 || n == 10 {
+				if n == 36 || n == 34 || n == 92 || n == 96 || n == 10 {
 					if n != 10 {
 						cur << n
 					}
