@@ -38,6 +38,10 @@ context.task(
 context.run()
 ```
 
+Tasks run once per build context by default, including shared dependencies.
+Set `repeatable: true` when a task must run each time it is requested or reached
+as a dependency. Its `should_run` decision is still cached for the build context.
+
 For portable `.vsh` scripts, prefer `#!/usr/bin/env v`.
 That works on BusyBox and OpenBSD too, where `/usr/bin/env -S` is not available.
 
@@ -53,3 +57,6 @@ If you want to fix this, you can "pre-compile" the buildscript by building the s
 > to your `.gitignore`
 
 > If you want maximum speed, you can also `v -prod build build.vsh`
+
+Task dependency cycles are rejected before execution. Indirect cycles report the dependency path
+(for example, `a -> b -> a`) and exit with status 1.

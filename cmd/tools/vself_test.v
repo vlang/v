@@ -42,6 +42,7 @@ fn main() {
 		eprintln(err)
 		exit(1)
 	}
+	os.chmod(output, 0o755) or { panic(err) }
 	println(os.args.last())
 }
 "
@@ -347,6 +348,65 @@ fn test_self_build_keeps_fastc_backend() {
 			'/tmp/vself_fastc_vflags_test'])
 	assert vflags_result.exit_code == 0, vflags_result.output
 	assert !vflags_result.output.contains('-compile-backend'), vflags_result.output
+}
+
+fn test_self_bootstrap_handles_the_old_peak_rss_return_type() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vself_bootstrap_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'vc'))!
+	defer { os.rmdir_all(root) or {} }
+	os.symlink(os.join_path(vroot, 'cmd'), os.join_path(root, 'cmd'))!
+	mock_source := os.join_path(root, 'mock_compiler.v')
+	os.write_file(mock_source, vself_mock_compiler_source())!
+	mock := os.join_path(root, 'stage2')
+	mock_build := os.exec([vexe, '-o', mock, mock_source])
+	assert mock_build.exit_code == 0, mock_build.output
+	tool := os.join_path(root, 'vself')
+	build := os.exec([vexe, '-o', tool, os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
+	assert build.exit_code == 0, build.output
+	// Force the first self-build to fail and exercise the C bootstrap fallback.
+	broken := os.join_path(root, 'v')
+	os.write_file(broken, '#!/bin/sh\nexit 1\n')!
+	os.chmod(broken, 0o755)!
+	os.write_file(os.join_path(root, 'vc', 'v.c'), '#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+typedef long i64;
+#define V_PEAK_RSS_SCOPE
+V_PEAK_RSS_SCOPE long long v3_bench_peak_rss_kb(void) { return 42; }
+i64 v3_bench_peak_rss_kb(void);
+int main(int argc, char **argv) {
+    const char *output = NULL;
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "-o") == 0) output = argv[i + 1];
+    }
+    if (!output || v3_bench_peak_rss_kb() != 42) return 1;
+    FILE *input = fopen(getenv("VSELF_TEST_STAGE2"), "rb");
+    FILE *dest = fopen(output, "wb");
+    if (!input || !dest) return 1;
+    int byte;
+    while ((byte = fgetc(input)) != EOF) fputc(byte, dest);
+    fclose(input);
+    if (fclose(dest) != 0 || chmod(output, 0755) != 0) return 1;
+    return 0;
+}
+')!
+	output := os.join_path(root, 'replacement')
+	// Make any attempt to launch Bash fail while leaving the system tools available.
+	no_bash := os.join_path(root, 'no_bash')
+	os.mkdir_all(no_bash)!
+	bash := os.join_path(no_bash, 'bash')
+	os.write_file(bash, '#!/bin/sh\nexit 127\n')!
+	os.chmod(bash, 0o755)!
+	result := os.exec(['env', 'PATH=${no_bash}:${os.getenv('PATH')}', 'VFLAGS=', 'VEXE=${broken}',
+		'VSELF_TEST_STAGE2=${mock}', 'VSELF_TEST_FULL_CLI=${vexe}', tool, 'self', '-o', output])
+	assert result.exit_code == 0, result.output
+	assert os.is_executable(output), result.output
+	assert !os.exists(os.join_path(root, '.vself_bootstrap_v1'))
+	assert !os.exists(os.join_path(root, '.vself_bootstrap_v2'))
 }
 
 fn test_arm64_self_build_preserves_native_options_and_full_cli() {
