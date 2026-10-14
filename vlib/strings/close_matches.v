@@ -1,12 +1,11 @@
 module strings
 
-// get_close_matches returns the candidates most similar to word, best first
-// (Python's difflib.get_close_matches). Similarity is the existing
-// `levenshtein_distance_percentage`, whose scale is 0..100, so `cutoff` uses
-// the same scale — the default of 60 mirrors Python's `ratio`-based default
-// of 0.6. Cutoffs outside 0..100 panic.
+// get_close_matches returns candidates above the required cutoff, most similar first.
+// Scores use levenshtein_distance_percentage on the 0..100 scale. Equal scores
+// retain candidate order. A cutoff of 60 is a typical fuzzy threshold; no default
+// argument is supplied. Panics if cutoff is NaN or outside 0..100.
 pub fn get_close_matches(word string, candidates []string, cutoff f32) []string {
-	if cutoff < 0 || cutoff > 100 {
+	if !(cutoff >= 0 && cutoff <= 100) {
 		panic('strings.get_close_matches: cutoff must be in 0..100, got ${cutoff}')
 	}
 	mut scored := []MatchScore{cap: candidates.len}
