@@ -149,6 +149,7 @@ pub fn (m &Message) encode() !string {
 		b.writeln('--${m.boundary}--')
 	} else {
 		b.writeln('Content-Type: text/plain; charset=utf-8')
+		b.writeln('Content-Transfer-Encoding: 8bit')
 		b.writeln('')
 		b.writeln(m.text_body)
 	}
@@ -172,6 +173,8 @@ fn write_part(mut b strings.Builder, boundary string, content_type string, dispo
 	if disposition != '' {
 		b.writeln('Content-Disposition: ${disposition}')
 		b.writeln('Content-Transfer-Encoding: base64')
+	} else if content_type.starts_with('text/') {
+		b.writeln('Content-Transfer-Encoding: 8bit')
 	}
 	b.writeln('')
 	b.writeln(body)
@@ -376,6 +379,9 @@ fn (mut m Message) fill_from_parts(parts []string, depth int) ! {
 		filename := content_param(disposition, 'filename') or { content_param(ct, 'name') or { '' } }
 		is_attachment := disposition.all_before(';').trim_space().to_lower() == 'attachment' || filename != ''
 		if ctype.starts_with('multipart/') && !is_attachment {
+			if enc !in ['7bit', '8bit', 'binary'] {
+				return error('mail: unsupported multipart transfer encoding `${enc}`')
+			}
 			boundary := content_param(ct, 'boundary') or { return error('mail: multipart without boundary') }
 			m.fill_from_parts(split_parts(body, boundary)!, depth + 1)!
 			continue

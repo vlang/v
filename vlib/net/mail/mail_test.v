@@ -181,3 +181,11 @@ fn test_mail_multiline_base64_attachment_roundtrip() {
 	parsed := parse(m.encode()!)!
 	assert parsed.attachments[0].data == data
 }
+
+fn test_mail_utf8_body_declares_8bit_encoding() {
+	mut m := new_message()
+	m.text_body = 'Hello, 世界'
+	raw := m.encode()!
+	assert raw.contains('Content-Transfer-Encoding: 8bit')
+	assert parse(raw)!.text_body == m.text_body
+}
