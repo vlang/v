@@ -166,7 +166,7 @@ fn test_comptime_metadata_headers_do_not_leave_orphan_selectors() {
 			assert loop.children_count == 2
 			assert p.a.child_node(&loop, 1).kind == .call
 		} else {
-			assert loop.typ == 'T'
+			assert loop.typ_text() == 'T'
 			assert loop.children_count == 1
 		}
 	}
@@ -233,7 +233,7 @@ fn test_static_string_conditions_select_declarations_before_collection() {
 	for node in p.a.nodes {
 		if node.kind == .fn_decl { names << node.value }
 		assert node.kind != .comptime_if
-		assert node.typ != 'Unavailable'
+		assert node.typ_text() != 'Unavailable'
 	}
 	assert names == ['selected', 'fallback'], names.str()
 }

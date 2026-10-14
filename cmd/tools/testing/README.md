@@ -8,3 +8,7 @@ a separate element. The command string versions are deprecated with migration hi
 
 Each selected test gets its own temporary folder. If the runner cannot create that folder,
 it reports a failed test with the path and filesystem error, and skips compilation for that file.
+
+Resume records replace the previous record only after the new contents are complete.
+On Windows, saving retries temporary sharing errors for about half a second. A refused
+replacement preserves the previous record and reports a failed test.

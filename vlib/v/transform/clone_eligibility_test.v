@@ -11,20 +11,20 @@ fn test_default_clone_eligibility_includes_ordinary_struct_fields() {
 	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.structs['MapValue'] = StructInfo{
-		fields: [FieldInfo{ name: 'm', typ: 'map[string]i16' }]
+		fields: [FieldInfo{ name: 'm', typ: flat.source_type_id('map[string]i16') }]
 	}
 	t.structs['NestedValue'] = StructInfo{
-		fields: [FieldInfo{ name: 'values', typ: '[2]MapValue' }]
+		fields: [FieldInfo{ name: 'values', typ: flat.source_type_id('[2]MapValue') }]
 	}
 	t.structs['PlainValue'] = StructInfo{
-		fields: [FieldInfo{ name: 'n', typ: 'int' }]
+		fields: [FieldInfo{ name: 'n', typ: flat.source_type_id('int') }]
 	}
 	t.structs['ReferenceValue'] = StructInfo{
-		fields: [FieldInfo{ name: 'value', typ: '&MapValue' }]
+		fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('&MapValue') }]
 	}
 	// Even cyclic metadata must not make the classification recurse forever.
 	t.structs['RecursiveValue'] = StructInfo{
-		fields: [FieldInfo{ name: 'value', typ: 'RecursiveValue' }]
+		fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('RecursiveValue') }]
 	}
 	assert t.compiler_default_clone_type_needs_work('MapValue')
 	assert t.compiler_default_clone_type_needs_work('NestedValue')

@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import v.token
 
 fn fastc_matching_rpar(tokens []FastcExpressionToken, open int) ?int {
@@ -391,21 +392,21 @@ fn fastc_typeof_generic_field_type(tokens []FastcExpressionToken, start int, end
 // extend those tables while parsing, so they always recompute.
 fn (g &Parser) nonlocal_name_type(name string) string {
 	if !g.declaration_initializer_mode {
-		if cached := g.nonlocal_name_type_memo[name] {
+		if cached := g.nonlocal_name_type_memo.get(name) {
 			return cached
 		}
 	}
-	typ := if constant_type := g.constant_types[fastc_constant_key(g.module_name, name)] {
+	typ := if constant_type := g.constant_types.get(fastc_constant_key(g.module_name, name)) {
 		constant_type
-	} else if constant_type := g.constant_types[fastc_constant_key('builtin', name)] {
+	} else if constant_type := g.constant_types.get(fastc_constant_key('builtin', name)) {
 		constant_type
 	} else if fastc_constant_key(g.module_name, name) in g.constants {
 		'integer literal'
 	} else if fastc_constant_key('builtin', name) in g.constants {
 		'integer literal'
-	} else if global_type := g.global_types[fastc_global_key(g.module_name, name)] {
+	} else if global_type := g.global_types.get(fastc_global_key(g.module_name, name)) {
 		global_type
-	} else if global_type := g.global_types[fastc_global_key('builtin', name)] {
+	} else if global_type := g.global_types.get(fastc_global_key('builtin', name)) {
 		global_type
 	} else if global_type := g.resolve_cross_module_global_type(name) {
 		global_type
@@ -416,7 +417,7 @@ fn (g &Parser) nonlocal_name_type(name string) string {
 	}
 	if !g.declaration_initializer_mode {
 		mut w := unsafe { &Parser(g) }
-		w.nonlocal_name_type_memo[name] = typ
+		w.nonlocal_name_type_memo.set(name, typ)
 	}
 	return typ
 }
@@ -442,13 +443,13 @@ fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expres
 	memo_key := fastc_comparison_memo_range_key(tokens, expression_start, expression_end, 2)
 	if memo_key != 0 {
 		if cached := g.type_memo[memo_key] {
-			return cached
+			return flat.source_type_name(cached)
 		}
 	}
 	inferred := g.infer_expression_type_range_impl(tokens, expression_start, expression_end)!
 	if memo_key != 0 {
 		mut w := unsafe { &Parser(g) }
-		w.type_memo[memo_key] = inferred
+		w.type_memo[memo_key] = flat.source_type_id(inferred)
 	}
 	return inferred
 }
@@ -472,16 +473,16 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	}
 	if end - start == 1 {
 		item := tokens[start]
-		if item.typ != '' {
-			return item.typ
+		if item.typ_text() != '' {
+			return item.typ_text()
 		}
 		return match item.tok {
 			.name {
 				if smartcast := g.member_smartcasts[item.lit] {
 					// A bare local narrowed by `x is T` reads as the concrete variant.
-					smartcast.typ
+					smartcast.typ_text()
 				} else if local := g.locals[item.lit] {
-					local.typ
+					g.narrowed_numeric_operand_type(tokens[start..end], local.typ_text())
 				} else {
 					g.nonlocal_name_type(item.lit)
 				}
@@ -541,8 +542,8 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	if operator_index := fastc_lowest_precedence_operator_index(tokens, start, end) {
 		return g.infer_boolean_binary_expression_type(tokens, start, end, operator_index)!
 	}
-	if end - start == 2 && tokens[start].tok == .dot && tokens[start + 1].typ != '' {
-		return tokens[start + 1].typ
+	if end - start == 2 && tokens[start].tok == .dot && tokens[start + 1].typ_text() != '' {
+		return tokens[start + 1].typ_text()
 	}
 	if end - start == 5 && tokens[start].tok == .name && tokens[start + 1].tok == .dot && tokens[start + 2].tok == .name && tokens[start + 3].tok == .dot && tokens[start + 4].tok == .name {
 		if imported_module := g.imports[tokens[start].lit] {
@@ -579,14 +580,14 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 		if imported_module := g.imports[tokens[start].lit] {
-			if constant_type := g.constant_types[fastc_constant_key(imported_module, tokens[start + 2].lit)] {
+			if constant_type := g.constant_types.get(fastc_constant_key(imported_module, tokens[start + 2].lit)) {
 				return constant_type
 			}
 			if fastc_constant_key(imported_module, tokens[start + 2].lit) in g.constants {
 				return 'integer literal'
 			}
 			global_name := tokens[start + 2].lit
-			if global_type := g.global_types[fastc_global_key(imported_module, global_name)] {
+			if global_type := g.global_types.get(fastc_global_key(imported_module, global_name)) {
 				g.validate_imported_global_visibility(imported_module, global_name)!
 				return global_type
 			}
@@ -634,6 +635,13 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	}
 	if start + 3 < end && tokens[start].tok == .name && tokens[start + 1].tok == .dot && tokens[start + 2].tok == .name && tokens[start + 3].tok == .lcbr {
 		// A module-qualified struct literal `mod.Type{...}`.
+		if tokens[start].lit == 'C' {
+			if close := fastc_matching_delimiter_before(tokens, start + 3, end, .lcbr, .rcbr) {
+				if close == end - 1 {
+					return g.type_from_expression_tokens(tokens[start..start + 3]) or { '' }
+				}
+			}
+		}
 		if imported_module := g.imports[tokens[start].lit] {
 			if close := fastc_matching_delimiter_before(tokens, start + 3, end, .lcbr, .rcbr) {
 				if close == end - 1 {
@@ -661,17 +669,17 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				} else {
 					g.mono_functions[function_key] or { FastcFunctionSignature{} }
 				}
-				if signature.return_type != '' {
-					return signature.return_type
+				if signature.return_type_text() != '' {
+					return signature.return_type_text()
 				}
 				if call_name_index == start {
 					if local := g.locals[name] {
-						if local.fn_return_type != '' {
+						if local.fn_return_type_text() != '' {
 							// Calling a function-pointer parameter (`f(x)`).
-							return local.fn_return_type
+							return local.fn_return_type_text()
 						}
 						// Calling a value whose type is a `type X = fn (...) Ret` alias.
-						if ret := g.fn_alias_return_types[fastc_trim_pointer_suffix(local.typ)] {
+						if ret := g.fn_alias_return_types.get(fastc_trim_pointer_suffix(local.typ_text())) {
 							return ret
 						}
 					}
@@ -746,7 +754,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				had_it := it_name in g.locals
 				saved_it := g.locals[it_name] or { FastcLocal{} }
 				w.locals[it_name] = FastcLocal{
-					typ: element_type
+					typ: flat.source_type_id(element_type)
 				}
 				closure_type := g.infer_expression_type_range(tokens, closure_start, close) or {
 					''
@@ -786,10 +794,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			// the local's boxed origin, as the method renderer does — so a `base.tname() == 'u8'`
 			// string comparison is typed as string and not left a raw pointer `==`.
 			if local := g.locals[tokens[receiver_start].lit] {
-				origin := if local.smartcast_origin_type != '' {
-					local.smartcast_origin_type
+				origin := if local.smartcast_origin_type_text() != '' {
+					local.smartcast_origin_type_text()
 				} else {
-					local.typ
+					local.typ_text()
 				}
 				if origin != '' && origin != receiver_type {
 					origin_key, _ := g.resolve_method(origin, tokens[i].lit)
@@ -802,15 +810,15 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 		if static_key := g.static_function_key_for_call(tokens, i) {
 			if signature := g.functions[static_key] {
-				return signature.return_type
+				return signature.return_type_text()
 			}
 		}
 		if signature := g.functions[function_key] {
 			return g.specialized_method_return_type(method_receiver_type, function_key, signature)
 		}
 		if field := g.struct_field_metadata(receiver_type, tokens[i].lit) {
-			if function_alias := g.functions[field.typ] {
-				return function_alias.return_type
+			if function_alias := g.functions[field.typ_text()] {
+				return function_alias.return_type_text()
 			}
 		}
 		if tokens[i].lit == 'str' && g.can_generate_default_struct_str(receiver_type) {
@@ -835,12 +843,12 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			// as `x.args[].expr`, reads the member as the concrete variant).
 			if member_path := fastc_indexed_member_chain_path(tokens[start..end]) {
 				if smartcast := g.member_smartcasts[member_path] {
-					return smartcast.typ
+					return smartcast.typ_text()
 				}
 			}
 			receiver_type := g.infer_expression_type_range(tokens, start, end - 2)!
 			if field := g.struct_field_metadata(receiver_type, tokens[end - 1].lit) {
-				return field.typ
+				return field.typ_text()
 			}
 			// A field shared by every variant of a boxed sum type (`node.name` where
 			// `node` is `ast.TypeDecl`) resolves to that common field's type.
@@ -864,7 +872,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if tokens[start].tok == .amp && end - start == 2 && tokens[start + 1].tok == .name {
 			if local := g.locals[tokens[start + 1].lit] {
 				if local.is_reference {
-					return local.typ
+					return local.typ_text()
 				}
 			}
 		}
@@ -921,7 +929,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if open_index > start {
 			base_type := g.infer_expression_type_range(tokens, start, open_index)!
 			base_layout := fastc_trim_pointer_suffix(base_type)
-			if fastc_expression_tokens_contain_range(tokens, open_index + 1, end - 1, .dotdot) {
+			if fastc_top_level_token_index(tokens, open_index + 1, end - 1, .dotdot) != none {
 				// Slicing a fixed array yields a dynamic array of its element type.
 				if base_layout.starts_with('FixedArray_') {
 					if element := g.array_element_type(base_layout) {
@@ -1090,6 +1098,20 @@ fn fastc_expression_tokens_contain_range(tokens []FastcExpressionToken, start in
 	return false
 }
 
+fn fastc_top_level_token_index(tokens []FastcExpressionToken, start int, end int, wanted token.Token) ?int {
+	mut depth := 0
+	for i in start .. end {
+		if tokens[i].tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+		} else if tokens[i].tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+		} else if depth == 0 && tokens[i].tok == wanted {
+			return i
+		}
+	}
+	return none
+}
+
 // fastc_member_chain_path returns the dotted path (`a.b.c`) for a pure member
 // chain `name (. name)*` spanning tokens[start..end], or none for anything else.
 fn fastc_member_chain_path(tokens []FastcExpressionToken, start int, end int) ?string {
@@ -1186,8 +1208,8 @@ fn (g &Parser) sumtype_common_field_type(sum_type string, field_name string) ?st
 			return none
 		}
 		if common_type == '' {
-			common_type = field.typ
-		} else if field.typ != common_type {
+			common_type = field.typ_text()
+		} else if field.typ_text() != common_type {
 			return none
 		}
 	}
@@ -1202,7 +1224,8 @@ fn (g &Parser) sumtype_common_field_type(sum_type string, field_name string) ?st
 // module than the declaring one (`global_table` in v.ast, used from v.checker) still resolves.
 fn (g &Parser) resolve_cross_module_global_type(name string) ?string {
 	suffix := '.${name}'
-	for key, global_type in g.global_types {
+	for key, global_type_id in g.global_types.ids {
+		global_type := flat.source_type_name(global_type_id)
 		if key == name || key.ends_with(suffix) {
 			return global_type
 		}
@@ -1216,12 +1239,12 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 	}
 	mut current_type := ''
 	if local := g.locals[tokens[start].lit] {
-		current_type = local.typ
-	} else if global_type := g.global_types[fastc_global_key(g.module_name, tokens[start].lit)] {
+		current_type = local.typ_text()
+	} else if global_type := g.global_types.get(fastc_global_key(g.module_name, tokens[start].lit)) {
 		current_type = global_type
-	} else if constant_type := g.constant_types[fastc_constant_key(g.module_name, tokens[start].lit)] {
+	} else if constant_type := g.constant_types.get(fastc_constant_key(g.module_name, tokens[start].lit)) {
 		current_type = constant_type
-	} else if constant_type := g.constant_types[fastc_constant_key('builtin', tokens[start].lit)] {
+	} else if constant_type := g.constant_types.get(fastc_constant_key('builtin', tokens[start].lit)) {
 		current_type = constant_type
 	} else if global_type := g.resolve_cross_module_global_type(tokens[start].lit) {
 		current_type = global_type
@@ -1233,7 +1256,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 	// `x != none`) reshapes it before any field access, exactly as render_member_receiver
 	// does when producing the matching source.
 	if smartcast := g.member_smartcasts[member_path] {
-		current_type = smartcast.typ
+		current_type = smartcast.typ_text()
 	}
 	mut index := start + 1
 	for index < end {
@@ -1242,7 +1265,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 				return none
 			}
 			current_layout := fastc_trim_pointer_suffix(current_type)
-			if fastc_expression_tokens_contain_range(tokens, index + 1, close, .dotdot) {
+			if fastc_top_level_token_index(tokens, index + 1, close, .dotdot) != none {
 				if current_layout != 'string' && g.array_element_type(current_type) == none {
 					return none
 				}
@@ -1270,7 +1293,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 			// indexed chain (`right.args[0].expr is T` → `right.args[].expr`) is found below.
 			member_path += '[]'
 			if smartcast := g.member_smartcasts[member_path] {
-				current_type = smartcast.typ
+				current_type = smartcast.typ_text()
 			}
 			index = close + 1
 			continue
@@ -1285,7 +1308,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 		}
 		member_path += '.' + field_name
 		if smartcast := g.member_smartcasts[member_path] {
-			current_type = smartcast.typ
+			current_type = smartcast.typ_text()
 		}
 		index += 2
 	}
@@ -1324,7 +1347,7 @@ fn fastc_trim_pointer_suffix(typ string) string {
 
 fn (g &Parser) semantic_type_key(c_type string) string {
 	base := fastc_trim_pointer_suffix(c_type)
-	if key := g.declared_type_c_names[base] {
+	if key := g.declared_type_c_names.get(base) {
 		return key
 	}
 	return base
@@ -1334,13 +1357,13 @@ fn (g &Parser) underlying_alias_type(c_type string) string {
 	return fastc_underlying_alias_type(c_type, g.alias_base_types)
 }
 
-fn fastc_underlying_alias_type(c_type string, alias_base_types map[string]string) string {
+fn fastc_underlying_alias_type(c_type string, alias_base_types flat.TypeTextBindings) string {
 	// Fast path: most types are not aliases, so resolve the first hop before
 	// allocating the cycle-guard map. underlying_alias_type is called for
 	// nearly every inferred expression type; the unconditional map allocation
 	// showed up as a hot allocation site under -prealloc.
 	base0 := fastc_trim_pointer_suffix(c_type)
-	first := alias_base_types[base0] or { return c_type }
+	first := alias_base_types.get(base0) or { return c_type }
 	mut resolved := first + c_type[base0.len..]
 	mut seen := map[string]bool{}
 	seen[base0] = true
@@ -1349,7 +1372,7 @@ fn fastc_underlying_alias_type(c_type string, alias_base_types map[string]string
 		if base in seen {
 			return resolved
 		}
-		alias_base := alias_base_types[base] or { return resolved }
+		alias_base := alias_base_types.get(base) or { return resolved }
 		seen[base] = true
 		resolved = alias_base + resolved[base.len..]
 	}
@@ -1515,8 +1538,8 @@ fn fastc_array_element_type(typ string) ?string {
 }
 
 // fastc_decode_ptr_element_type reverses the `*`→`_ptr` composite-name encoding for an
-// array/channel element: `Stream_ptr` (not a real C type) → `Stream*`, `char_ptr` →
-// `char*`. Non-pointer element names are returned unchanged.
+// array/channel element, including the spaces in tagged C types:
+// `Stream_ptr` → `Stream*`, `struct_iovec` → `struct iovec`.
 fn fastc_decode_ptr_element_type(element string) string {
 	mut name := element
 	mut pointers := 0
@@ -1524,9 +1547,14 @@ fn fastc_decode_ptr_element_type(element string) string {
 		name = name[..name.len - '_ptr'.len]
 		pointers++
 	}
-	if pointers == 0 {
-		return element
+	for tag in ['struct', 'union', 'enum'] {
+		prefix := tag + '_'
+		if name.starts_with(prefix) {
+			name = tag + ' ' + name[prefix.len..]
+			break
+		}
 	}
+	if name == 'unsigned_int' { name = 'unsigned int' }
 	return name + '*'.repeat(pointers)
 }
 
@@ -1553,7 +1581,7 @@ fn (g &Parser) array_element_type(typ string) ?string {
 	}
 	layout_type := fastc_trim_pointer_suffix(typ)
 	if fields := g.struct_fields[layout_type] {
-		return fields['__fastc_element_type'] or { none }
+		return fields.get('__fastc_element_type') or { none }
 	}
 	// An alias of an array type (`type Gf = [16]i64`) has the aliased array's elements.
 	aliased := g.underlying_alias_type(layout_type)
