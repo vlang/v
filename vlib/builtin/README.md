@@ -83,3 +83,7 @@ string removes matches of a nonempty search string.
 `string.strip_margin()` and `strip_margin_custom(del)` keep content after the last line break
 when no later delimiter exists. Final whitespace-only lines are discarded. Lines before a later
 delimiter keep their established removal behavior.
+
+`string.is_lower()` requires at least one lowercase ASCII letter and rejects uppercase ASCII
+letters. Digits, whitespace, and punctuation do not determine the case: `'123abc'.is_lower()`
+is true, while digit-only or punctuation-only strings return false.
