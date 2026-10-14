@@ -56,7 +56,7 @@ fn main() {
     out.write_rune(rune(0))
     out.write_rune(rune(1114112))
     result := out.str()
-    if result.len != 11 || result != "Aé€🙂\0" { C.exit(5) }
+    if result.len != 14 || result != "Aé€🙂\0\ufffd" { C.exit(5) }
 }
 '
 		path := os.join_path(os.vtmp_dir(), 'arm64_rune_${os.getpid()}.v')

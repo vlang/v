@@ -223,7 +223,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	// A pre-rendered synthetic base atom (e.g. a string interpolation `'${x}'[0]`, folded into
 	// one token carrying its C text in `.source`) is `.string`, not `.name`; accept it too so
 	// the index applies to the rendered string rather than reaching the raw renderer.
-	if tokens.len < 4 || (tokens[0].tok !in [.name, .string, .lpar] && tokens[0].source == '') || tokens.last().tok != .rsbr {
+	if tokens.len < 4 || (tokens[0].tok !in [.name, .string, .lpar, .lsbr] && tokens[0].source == '') || tokens.last().tok != .rsbr {
 		return none
 	}
 	mut open := -1
@@ -248,7 +248,8 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 			prefix_depth++
 		} else if item.tok in [.rpar, .rsbr, .rcbr] {
 			prefix_depth--
-		} else if prefix_depth == 0 && item.tok.is_assignment() {
+		} else if prefix_depth == 0 && (item.tok.is_assignment()
+			|| item.tok in [.key_in, .not_in]) {
 			// `target = [value]` ends in `]`, but its bracket pair is an array literal,
 			// not an index applied to the assignment prefix.
 			return none
@@ -287,6 +288,8 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		'*(${inner})'
 	} else if base_tokens.len == 1 {
 		g.resolved_root_expression_name(base_tokens[0].lit)
+	} else if literal_base := g.render_array_literal_argument(base_tokens, base_type) {
+		literal_base.source
 	} else if nested_base := g.render_array_access_expression(base_tokens) {
 		nested_base.source
 	} else if map_base := g.render_map_expression(base_tokens) {
@@ -1189,9 +1192,13 @@ fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int
 			.rcbr {
 				braces--
 			}
-			.comma {
+			.comma, .semicolon {
 				if parens == 0 && brackets == 0 && braces == 0 {
 					if item_start == i {
+						if tokens[i].tok == .semicolon {
+							item_start = i + 1
+							continue
+						}
 						return error('empty expression-list item')
 					}
 					// Items are consumed while `tokens` is alive and never mutated, so views are safe.

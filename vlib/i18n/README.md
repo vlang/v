@@ -100,3 +100,22 @@ Translations that come from somewhere else, such as a database or a download, ca
 loaded with `load_tr_map_from_files`, which takes a map from each file's path inside
 the translations directory (`en.tr`, `zh/dashboard.json`) to its text. The paths may
 use `/` or `\` between their parts.
+
+## Formatting
+
+`new_formatter(tag)` supports `en`/`en-US`, `de`/`de-DE`, and `fr`/`fr-FR`. Unsupported tags
+return an error. The formatter provides `number_int`, `number`, `currency`, `percent`, and
+`date`. Numbers use locale grouping and decimal separators. `number(x, decimals)` accepts
+0 through 9 fractional digits, rounds the shortest decimal representation half away from zero,
+and normalizes negative zero. NaN and infinity retain their ordinary string representations.
+
+Currency formatting recognizes USD, EUR, GBP, JPY, CHF, CNY, CAD, and AUD; unknown codes use
+the code as a symbol and two fractional digits. Negative amounts put the sign before a prefixed
+currency symbol. Percent formatting multiplies a ratio by 100
+and uses one fractional digit. Dates omit time and use month/day/year for English,
+day.month.year for German, and day/month/year for French.
+
+`compare_collated` and `sort_collated` use ASCII case folding, selected Latin accent and
+ligature mappings, and ignore combining marks U+0300 through U+036F. Original UTF-8 byte order
+breaks ties. Other characters retain their code point order. This is a deterministic limited
+Latin ordering, not full Unicode or locale-specific collation.
