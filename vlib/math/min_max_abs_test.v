@@ -35,6 +35,30 @@ fn test_min_max_nan() {
 	assert math.is_nan(math.max(1.0, math.nan()))
 	assert math.is_nan(math.min(math.nan(), math.nan()))
 	assert math.is_nan(math.max(math.nan(), math.nan()))
+	nan32 := f32(math.nan())
+	assert math.is_nan(math.min(nan32, f32(1)))
+	assert math.is_nan(math.min(f32(1), nan32))
+	assert math.is_nan(math.max(nan32, f32(1)))
+	assert math.is_nan(math.max(f32(1), nan32))
+	assert math.is_nan(math.min(nan32, nan32))
+	assert math.is_nan(math.max(nan32, nan32))
+}
+
+type MinMaxFloat64 = f64
+
+type MinMaxFloat32 = f32
+
+fn test_min_max_float_alias_nan() {
+	nan64 := MinMaxFloat64(math.nan())
+	nan32 := MinMaxFloat32(math.nan())
+	assert math.is_nan(f64(math.min(nan64, MinMaxFloat64(1))))
+	assert math.is_nan(f64(math.min(MinMaxFloat64(1), nan64)))
+	assert math.is_nan(f64(math.max(nan64, MinMaxFloat64(1))))
+	assert math.is_nan(f64(math.max(MinMaxFloat64(1), nan64)))
+	assert math.is_nan(f32(math.min(nan32, MinMaxFloat32(1))))
+	assert math.is_nan(f32(math.min(MinMaxFloat32(1), nan32)))
+	assert math.is_nan(f32(math.max(nan32, MinMaxFloat32(1))))
+	assert math.is_nan(f32(math.max(MinMaxFloat32(1), nan32)))
 }
 
 // The non-float branch must keep returning a value of the argument type and
@@ -46,15 +70,16 @@ fn test_min_max_abs_non_float_types() {
 	assert math.abs(-10) == 10
 }
 
-// Known remaining divergence from Go, recorded rather than pinned so it is not
-// mistaken for a decision. `+0.0` and `-0.0` compare equal, so the tie falls
-// through to `return a` here, while Go's builtins follow IEEE 754
-// minNum/maxNum and always pick -0.0 / +0.0 regardless of order. Out of scope
-// for https://github.com/vlang/v/issues/29833, which is about NaN.
-fn test_min_max_zero_tie_breaks_diverge_from_go() {
+// Equal non-NaN arguments retain the existing choice of the second argument.
+fn test_min_max_preserve_signed_zero_tie_breaks() {
 	nz := -0.0
-	assert math.f64_bits(math.min(0.0, nz)) == math.f64_bits(0.0)
-	assert math.f64_bits(math.min(nz, 0.0)) == math.f64_bits(nz)
-	assert math.f64_bits(math.max(0.0, nz)) == math.f64_bits(0.0)
-	assert math.f64_bits(math.max(nz, 0.0)) == math.f64_bits(nz)
+	assert math.f64_bits(math.min(0.0, nz)) == math.f64_bits(nz)
+	assert math.f64_bits(math.min(nz, 0.0)) == math.f64_bits(0.0)
+	assert math.f64_bits(math.max(0.0, nz)) == math.f64_bits(nz)
+	assert math.f64_bits(math.max(nz, 0.0)) == math.f64_bits(0.0)
+	nz32 := f32(nz)
+	assert math.f32_bits(math.min(f32(0), nz32)) == math.f32_bits(nz32)
+	assert math.f32_bits(math.min(nz32, f32(0))) == math.f32_bits(f32(0))
+	assert math.f32_bits(math.max(f32(0), nz32)) == math.f32_bits(nz32)
+	assert math.f32_bits(math.max(nz32, f32(0))) == math.f32_bits(f32(0))
 }

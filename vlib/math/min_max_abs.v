@@ -4,50 +4,33 @@
 module math
 
 // min returns the minimum of `a` and `b`.
-// For floating point types, if either argument is NaN the result is NaN,
-// matching Go's `min` builtin, which returns NaN regardless of argument order.
-// See https://github.com/vlang/v/issues/29833 .
+// For floating point types, if either argument is NaN the result is NaN.
 @[inline]
 pub fn min[T](a T, b T) T {
-	$if T is f32 || T is f64 {
-		// A comparison against NaN is false, so without this guard the plain
-		// `if a < b` below would return `b` unchanged and the result would
-		// depend on which argument held the NaN.
-		if a != a || b != b {
-			return T(math.nan())
+	$if T is $float {
+		if a != a {
+			return a
 		}
-		if b < a {
+		if b != b {
 			return b
 		}
-		return a
-	} $else {
-		if b < a {
-			return b
-		}
-		return a
 	}
+	return if a < b { a } else { b }
 }
 
 // max returns the maximum of `a` and `b`.
-// For floating point types, if either argument is NaN the result is NaN,
-// matching Go's `max` builtin, which returns NaN regardless of argument order.
-// See https://github.com/vlang/v/issues/29833 .
+// For floating point types, if either argument is NaN the result is NaN.
 @[inline]
 pub fn max[T](a T, b T) T {
-	$if T is f32 || T is f64 {
-		if a != a || b != b {
-			return T(math.nan())
+	$if T is $float {
+		if a != a {
+			return a
 		}
-		if b > a {
+		if b != b {
 			return b
 		}
-		return a
-	} $else {
-		if b > a {
-			return b
-		}
-		return a
 	}
+	return if a > b { a } else { b }
 }
 
 // abs returns the absolute value of `a`. Floating point zero always becomes positive zero.
