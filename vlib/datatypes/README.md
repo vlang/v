@@ -30,3 +30,9 @@ println(stack)
 - [x] Quadtree
 - [x] Bloom filter
 - [ ] ...
+
+`heapify(items)` builds a minimum heap from a copy of the input. `pushpop(item)` returns the
+smallest of the item and heap contents; an empty heap returns the item unchanged.
+`replace(item)` removes the existing minimum before inserting the item and errors on an empty
+heap. `nlargest(n, items)` and `nsmallest(n, items)` return sorted copies with at most `n`
+elements; nonpositive counts return an empty array.

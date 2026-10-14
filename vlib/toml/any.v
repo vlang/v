@@ -3,6 +3,36 @@
 // that can be found in the LICENSE file.
 module toml
 
+import strings
+
+// escape_basic_string escapes a string for use in a TOML basic string:
+// quotation marks, backslashes and control characters are emitted with
+// their escape sequences, everything else passes through unchanged.
+fn escape_basic_string(s string) string {
+	mut sb := strings.new_builder(s.len)
+	for c in s.bytes() {
+		match c {
+			`"` { sb.write_string('\\"') }
+			`\\` { sb.write_string('\\\\') }
+			`\b` { sb.write_string('\\b') }
+			`\t` { sb.write_string('\\t') }
+			`\n` { sb.write_string('\\n') }
+			`\f` { sb.write_string('\\f') }
+			`\r` { sb.write_string('\\r') }
+			else {
+				if c < 0x20 || c == 0x7f {
+					sb.write_string('\\u00')
+					sb.write_u8('0123456789ABCDEF'[c >> 4])
+					sb.write_u8('0123456789ABCDEF'[c & 0xf])
+				} else {
+					sb.write_u8(c)
+				}
+			}
+		}
+	}
+	return sb.str()
+}
+
 // Pretty much all the same builtin types as the `json2.Any` type plus `DateTime`,`Date`,`Time`
 pub type Any = Date
 	| DateTime
@@ -51,7 +81,7 @@ pub fn (a Any) to_toml() string {
 		// ... certain call-patterns to this function will cause a memory corruption.
 		// See `tests/toml_memory_corruption_test.v` for a matching regression test.
 		string {
-			return '"' + (a as string).clone() + '"'
+			return '"' + escape_basic_string(a as string) + '"'
 		}
 		DateTime {
 			return a.str().clone()
