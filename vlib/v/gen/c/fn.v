@@ -17328,6 +17328,7 @@ const c_system_libc_preamble_declared_fns = {
 	'mkstemp':                       true
 	'mkdir':                         true
 	'mmap':                          true
+	'msync':                         true
 	'opendir':                       true
 	'popen':                         true
 	'printf':                        true

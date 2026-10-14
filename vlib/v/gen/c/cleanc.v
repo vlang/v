@@ -5576,6 +5576,11 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 		'builtin/builtin_windows.c.v' { return include_arg in ['<io.h>', '<fcntl.h>'] }
 		'builtin/closure/closure_windows.c.v' { return include_arg == '<synchapi.h>' }
 		'os/fd.c.v' { return include_arg == '<winsock2.h>' }
+		'os/mmap_nix.c.v' {
+			return g.target.pointer_bits == 64 && g.target.os in ['macos', 'linux', 'android',
+				'termux', 'freebsd', 'openbsd', 'dragonfly']
+				&& include_arg == '<sys/mman.h>'
+		}
 		'os/os_stat_windows.c.v' { return include_arg == '<sys/stat.h>' }
 		'os/os_windows.c.v' { return include_arg in ['<process.h>', '<sys/utime.h>'] }
 		'os/password_windows.c.v', 'v/driver/windows_icon_windows.c.v',
@@ -20770,13 +20775,13 @@ fn (mut g FlatGen) headerless_platform_constants() {
 	g.writeln('#elif defined(_WIN32)')
 	g.headerless_windows_constants()
 	g.writeln('#elif defined(__FreeBSD__)')
-	g.headerless_bsd_constants('0x00100000', '12', '13', '4', '47', '28', '0x00020000', '0x0800', true)
+	g.headerless_bsd_constants('0x00100000', '12', '13', '4', '47', '28', '0x00020000', '0x0800', '0x0', true)
 	g.writeln('#elif defined(__OpenBSD__)')
-	g.headerless_bsd_constants('0x10000', '8', '9', '3', '28', '24', '0x0400', '', false)
+	g.headerless_bsd_constants('0x10000', '8', '9', '3', '28', '24', '0x0400', '', '0x2', false)
 	g.writeln('#elif defined(__NetBSD__)')
-	g.headerless_bsd_constants('0x00400000', '8', '9', '3', '28', '24', '0x0400', '0x0800', false)
+	g.headerless_bsd_constants('0x00400000', '8', '9', '3', '28', '24', '0x0400', '0x0800', '0x4', false)
 	g.writeln('#elif defined(__DragonFly__)')
-	g.headerless_bsd_constants('0x00020000', '8', '9', '4', '47', '28', '0x0400', '0x0800', false)
+	g.headerless_bsd_constants('0x00020000', '8', '9', '4', '47', '28', '0x0400', '0x0800', '0x0', false)
 	g.writeln('#elif defined(__sun)')
 	g.headerless_solaris_constants()
 	g.writeln('#elif defined(__QNX__) || defined(__QNXNTO__)')
@@ -20847,15 +20852,19 @@ fn (mut g FlatGen) headerless_sysctl_constants() {
 	g.writeln('#endif')
 }
 
-fn (mut g FlatGen) headerless_mmap_constants(map_anonymous string) {
+fn (mut g FlatGen) headerless_mmap_constants(map_anonymous string, ms_sync string) {
 	g.writeln('#define PROT_READ 0x1')
 	g.writeln('#define PROT_WRITE 0x2')
 	g.writeln('#define PROT_EXEC 0x4')
+	g.writeln('#define MAP_SHARED 0x0001')
 	g.writeln('#define MAP_PRIVATE 0x0002')
 	g.writeln('#define MAP_FIXED 0x10')
 	g.writeln('#define MAP_ANONYMOUS ${map_anonymous}')
 	g.writeln('#define MAP_ANON MAP_ANONYMOUS')
 	g.writeln('#define MAP_FAILED ((void*)-1)')
+	if ms_sync.len > 0 {
+		g.writeln('#define MS_SYNC ${ms_sync}')
+	}
 }
 
 fn (mut g FlatGen) headerless_linux_syscall_constants() {
@@ -20989,7 +20998,7 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 	g.writeln('#define TASK_BASIC_INFO 4')
 	g.writeln('#endif')
 	g.writeln('#endif')
-	g.headerless_mmap_constants('0x1000')
+	g.headerless_mmap_constants('0x1000', '0x0010')
 	g.headerless_darwin_kqueue_constants()
 	g.writeln('#define FIONREAD 0x4004667f')
 	g.writeln('#define TIOCGWINSZ 0x40087468')
@@ -21054,7 +21063,7 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 	g.writeln('struct flock { off_t l_start; off_t l_len; pid_t l_pid; short l_type; short l_whence; };')
 }
 
-fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_setlkw string, clock_monotonic string, sc_pagesize string, af_inet6 string, msg_nosignal string, so_nosigpipe string, flock_sysid bool) {
+fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_setlkw string, clock_monotonic string, sc_pagesize string, af_inet6 string, msg_nosignal string, so_nosigpipe string, ms_sync string, flock_sysid bool) {
 	g.writeln('#define O_RDONLY 0x0000')
 	g.writeln('#define O_WRONLY 0x0001')
 	g.writeln('#define O_RDWR 0x0002')
@@ -21092,7 +21101,7 @@ fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_
 	g.writeln('#define CLOCK_REALTIME 0')
 	g.writeln('#define CLOCK_MONOTONIC ${clock_monotonic}')
 	g.writeln('#define _SC_PAGESIZE ${sc_pagesize}')
-	g.headerless_mmap_constants('0x1000')
+	g.headerless_mmap_constants('0x1000', ms_sync)
 	g.headerless_kqueue_common_constants()
 	g.writeln('#define FIONREAD 0x4004667f')
 	g.writeln('#define TIOCGWINSZ 0x40087468')
@@ -21198,7 +21207,7 @@ fn (mut g FlatGen) headerless_solaris_constants() {
 	g.writeln('#define CLOCK_REALTIME 0')
 	g.writeln('#define CLOCK_MONOTONIC 4')
 	g.writeln('#define _SC_PAGESIZE 11')
-	g.headerless_mmap_constants('0x100')
+	g.headerless_mmap_constants('0x100', '0x4')
 	g.writeln('#define FIONREAD 0x4004667f')
 	g.writeln("#define TIOCGWINSZ (('T' << 8) | 104)")
 	g.writeln("#define TCSANOW (('T' << 8) | 14)")
@@ -21299,7 +21308,7 @@ fn (mut g FlatGen) headerless_qnx_constants() {
 	g.writeln('#define CLOCK_REALTIME 0')
 	g.writeln('#define CLOCK_MONOTONIC 2')
 	g.writeln('#define _SC_PAGESIZE 11')
-	g.headerless_mmap_constants('0x00080000')
+	g.headerless_mmap_constants('0x00080000', '')
 	g.writeln('#define FIONREAD 0x4004667f')
 	g.writeln('#define TIOCGWINSZ 0x40087468')
 	g.writeln('#define TCSANOW 0x0001')
@@ -21539,7 +21548,7 @@ fn (mut g FlatGen) headerless_linux_constants() {
 	g.writeln('#define CLOCK_REALTIME 0')
 	g.writeln('#define CLOCK_MONOTONIC 1')
 	g.headerless_linux_sysconf_constants()
-	g.headerless_mmap_constants('0x20')
+	g.headerless_mmap_constants('0x20', '0x4')
 	g.headerless_linux_syscall_constants()
 	g.writeln('#define FIONREAD 0x541b')
 	g.writeln('#define TIOCGWINSZ 0x5413')
