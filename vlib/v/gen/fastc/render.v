@@ -3446,7 +3446,10 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 	if expected_type.ends_with('*') && fastc_expression_is_zero(tokens) {
 		return 'NULL'
 	}
-	if expected_type.ends_with('*') && actual_type == expected_type.trim_right('*') {
+	// A `voidptr` converts to any pointer type as it is (`C.backtrace_symbols(voidptr(p), n)`
+	// for an `&voidptr` parameter); taking its address would pass a different pointer.
+	if expected_type.ends_with('*') && actual_type == expected_type.trim_right('*')
+		&& actual_type != 'voidptr' {
 		return '&(${rendered})'
 	}
 	if expected_type.ends_with('*') && g.should_box_variant(expected_type.trim_right('*'), actual_type) {

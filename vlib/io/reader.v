@@ -85,6 +85,26 @@ pub fn read_any(mut r Reader) ![]u8 {
 	return b[..read]
 }
 
+// read_exact reads exactly buf.len bytes into buf, looping over short reads.
+// It returns an Eof error if the stream ends before buf is full.
+// Invalid read counts are rejected; other reader errors propagate unchanged.
+pub fn read_exact(mut r Reader, mut buf []u8) ! {
+	mut read := 0
+	for read < buf.len {
+		new_read := r.read(mut buf[read..])!
+		if new_read < 0 {
+			return error('io.read_exact: reader returned a negative read count (${new_read})')
+		}
+		if new_read > buf.len - read {
+			return error('io.read_exact: reader returned a read count larger than the buffer (${new_read})')
+		}
+		if new_read == 0 {
+			return Eof{}
+		}
+		read += new_read
+	}
+}
+
 // RandomReader represents a stream of readable data from at a random location.
 pub interface RandomReader {
 	read_from(pos u64, mut buf []u8) !int

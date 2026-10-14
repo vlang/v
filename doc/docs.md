@@ -7302,6 +7302,25 @@ The formatter checks syntax without requiring the code to pass semantic checks.
 For example, it preserves closure captures and loop binder mutability while you edit
 incomplete code.
 
+Adjacent struct fields align their inline attributes, including fields with default values.
+Mixed volatile and non-volatile fields account for the width of the `volatile ` prefix.
+The alignment accounts for the type, the ` = ` separator, and the default value:
+
+```v
+struct SearchOptions {
+	quiet bool      @[long: quiet; short: q]
+	thold f64 = 0.9 @[long: thold; short: t]
+	query string    @[tail]
+}
+```
+
+Fields written on one line with semicolons retain their attribute alignment after formatting.
+An attributed default that spans several lines separates the attribute alignment groups around it.
+Comments between a default value and its attributes stay with that field, after its attributes.
+Deferred inline comments align with neighboring trailing field comments on the first pass.
+Fields following a multiline attributed default start a fresh trailing comment alignment group.
+Comments inside a default expression remain inside that expression.
+
 Backend options before `fmt`, such as `v -b arm64 fmt file.v`, or in `VFLAGS` are honored.
 The `arm64` and `eval` backends use the same source formatting rules as `c`.
 
@@ -7333,6 +7352,10 @@ so it may rewrite a file accepted by either check mode.
 
 To disable formatting for a block of code, wrap it with `// vfmt off` and
 `// vfmt on` comments.
+
+These directives retain their source order relative to struct field attributes.
+Attribute groups that cross a directive boundary retain the affected field's source text.
+A completed directive region before an attribute leaves the enabled field subject to formatting.
 
 ```bash
 // Not affected by fmt
