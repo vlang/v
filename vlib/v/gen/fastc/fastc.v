@@ -833,6 +833,8 @@ struct FastcFunctionSignature {
 	is_c_extern              bool
 	module_name              string
 	path                     string
+	// position is the byte offset of the declaration's `fn` in the file at `path`.
+	position int
 }
 
 // fastc_multi_return_literal packs already-boxed components into a MultiReturn.
@@ -957,6 +959,9 @@ struct FastcStructField {
 	is_skip              bool
 	is_function          bool
 	is_optional_function bool
+	// The field's type is spelled `voidptr`; fn types and erased type parameters are stored
+	// as `voidptr` too, and V3 accepts `nil` outside `unsafe` only for a real one.
+	is_declared_voidptr bool
 	// Shared map fields keep pointer identity even though FastC currently erases locking.
 	// Without this, copying their containing struct detaches subsequent map header updates.
 	is_shared_pointer bool
@@ -1212,6 +1217,8 @@ struct FastcComptimeCondition {
 struct FastcComptimeBlock {
 	source string
 	tok    token.Token
+	// offset is the byte offset of `source` in the source the block was scanned from.
+	offset int
 }
 
 struct FastcDeclarationAttribute {
@@ -1898,7 +1905,11 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// methods. Copy them onto B (with the receiver re-keyed to B) so calls on a B
 	// value resolve and B gets its own dispatch table entries.
 	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut interface_methods)
-	function_c_names := fastc_compact_function_c_names(functions, prefs.building_v)
+	mut function_c_names := fastc_compact_function_c_names(functions, prefs.building_v)
+	if prefs.is_test && 'main' in functions {
+		// A test build's main runs its tests; the program's own is an ordinary function.
+		function_c_names['main'] = 'v_fastc_program_main'
+	}
 	mut has_entry_module := false
 	for source_file in sources {
 		if source_file.header.module_name in ['', 'main'] {
@@ -2140,7 +2151,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		body_pieces << fastc_piece(mono_definition)
 		body_len += mono_definition.len
 	}
-	synthesized_main := if has_entry_module && !entry_has_main {
+	if prefs.is_test {
+		// The test main synthesized below is this program's entry.
+		entry_has_main = true
+	}
+	synthesized_main := if prefs.is_test {
+		fastc_synthesized_test_main(functions, function_c_names, prefs, startup_initializers.len > 0,
+			module_cleanup_calls.len > 0)!
+	} else if has_entry_module && !entry_has_main {
 		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0, module_cleanup_calls.len > 0)
 	} else {
 		''

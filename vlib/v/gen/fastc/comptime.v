@@ -124,6 +124,7 @@ fn fastc_scan_comptime_block(mut scan scanner.Scanner, first token.Token, path s
 				return FastcComptimeBlock{
 					source: scan.src[start..scan.pos]
 					tok:    scan.scan()
+					offset: start
 				}
 			}
 		}
@@ -143,6 +144,7 @@ fn fastc_scan_skip_semicolons(mut scan scanner.Scanner, first token.Token) token
 fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Token, path string, prefs &pref.Preferences) !FastcComptimeBlock {
 	mut tok := first
 	mut selected := ''
+	mut selected_offset := 0
 	mut branch_selected := false
 	for {
 		if tok != .key_if {
@@ -152,6 +154,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 		block := fastc_scan_comptime_block(mut scan, condition.tok, path)!
 		if condition.value && !branch_selected {
 			selected = block.source
+			selected_offset = block.offset
 			branch_selected = true
 		}
 		tok = fastc_scan_skip_semicolons(mut scan, block.tok)
@@ -159,6 +162,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 			return FastcComptimeBlock{
 				source: selected
 				tok:    tok
+				offset: selected_offset
 			}
 		}
 		mut lookahead := scan
@@ -166,6 +170,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 			return FastcComptimeBlock{
 				source: selected
 				tok:    tok
+				offset: selected_offset
 			}
 		}
 		_ = scan.scan()
@@ -177,16 +182,18 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 		else_block := fastc_scan_comptime_block(mut scan, tok, path)!
 		if !branch_selected {
 			selected = else_block.source
+			selected_offset = else_block.offset
 		}
 		return FastcComptimeBlock{
 			source: selected
 			tok:    fastc_scan_skip_semicolons(mut scan, else_block.tok)
+			offset: selected_offset
 		}
 	}
 	return FastcComptimeBlock{}
 }
 
-fn fastc_collect_selected_comptime_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+fn fastc_collect_selected_comptime_function_signatures(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
@@ -198,7 +205,7 @@ fn fastc_collect_selected_comptime_function_signatures(source string, path strin
 			if lookahead.scan() == .key_if {
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
-					collect_function_signatures(selected.source, path, header, prefs, []int{}, declared_types, declared_type_c_names, params_structs, mut functions)!
+					collect_function_signatures_at(selected.source, source_offset + selected.offset, path, header, prefs, []int{}, declared_types, declared_type_c_names, params_structs, mut functions)!
 				}
 				tok = selected.tok
 				continue
