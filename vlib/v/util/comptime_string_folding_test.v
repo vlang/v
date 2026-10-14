@@ -81,10 +81,7 @@ fn test_comptime_string_bound_accepts_only_exact_integers() {
 	assert comptime_string_bound('0o17') or { -1 } == 15
 	assert comptime_string_bound('2147483647') or { -1 } == 2147483647
 	assert comptime_string_bound('-2147483648') or { 0 } == -2147483648
-	for raw in ['abc', '12abc', '1.5', '2147483648', '-2147483649', '0x', '--1', ' 1', '1 '] {
+	for raw in ['', 'abc', '12abc', '1.5', '2147483648', '-2147483649', '0x', '--1', ' 1', '1 '] {
 		assert comptime_string_bound(raw) == none, '`${raw}` should not parse as a bound'
 	}
-	// NOTE: an empty bound reads as 0, not none - `strconv.parse_int` accepts an
-	// empty string as zero, and nothing here rejects it.
-	assert comptime_string_bound('') or { -1 } == 0
 }
