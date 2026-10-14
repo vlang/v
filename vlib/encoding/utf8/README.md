@@ -1,5 +1,8 @@
 # UTF-8 utilities
 
+`reverse` reverses decoded Unicode code points. Each invalid UTF-8 byte becomes the
+replacement character U+FFFD, including when the input contains only one byte.
+
 The letter, number and punctuation predicates use Unicode 15.0.0 general categories:
 `is_letter` recognizes category `L`, `is_number` recognizes `N`, and `is_punct` and
 `is_rune_punct` recognize all `P` categories.
