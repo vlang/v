@@ -298,10 +298,13 @@ pub fn (mut parser Parser) finalize() {
 		if parser.lexical_attributes.current_tag.name == ''
 			|| parser.lexical_attributes.current_tag.name[0] == `/` {
 			// trailing text after the last tag (or with no tags at all):
-			// it belongs to a new text node
+			// it belongs to a new text node. Flush the closing tag first
+			// so construction attaches the text to the surrounding element.
+			parser.generate_tag()
 			parser.tags << &Tag{
-				name:    'text'
-				content: parser.builder_str()
+				name:         'text'
+				content:      parser.builder_str()
+				text_content: parser.builder_str()
 			}
 			parser.lexical_attributes.lexeme_builder.go_back_to(0)
 		} else {
