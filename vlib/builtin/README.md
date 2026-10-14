@@ -47,6 +47,10 @@ String interpolation of a `voidptr` uses the hexadecimal address without the pre
 
 ### Splitting by characters
 
+With an empty delimiter, `split` and `rsplit` split complete UTF-8 runes, preserving malformed
+bytes as individual parts. Their `split_nth` and `rsplit_nth` variants keep the final remainder
+on a rune boundary. For example, `'αβγ'.split_nth('', 2)` produces `['α', 'βγ']`.
+
 `split_any` and `rsplit_any` match complete UTF-8 runes from their delimiter string.
 Malformed bytes are treated as U+FFFD, matching `string.runes()`. The reverse form
 returns parts in reverse order.
@@ -89,6 +93,10 @@ string removes matches of a nonempty search string.
 `string.strip_margin()` and `strip_margin_custom(del)` keep content after the last line break
 when no later delimiter exists. Final whitespace-only lines are discarded. Lines before a later
 delimiter keep their established removal behavior.
+
+The `string.is_bin()`, `is_oct()`, and `is_hex()` predicates accept both lowercase and uppercase
+prefixes (`0b`/`0B`, `0o`/`0O`, and `0x`/`0X`), including after an optional sign. Each prefix
+must be followed by at least one valid digit for its base.
 
 `string.is_lower()` requires at least one lowercase ASCII letter and rejects uppercase ASCII
 letters. Digits, whitespace, and punctuation do not determine the case: `'123abc'.is_lower()`

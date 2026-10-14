@@ -2,6 +2,86 @@ module fastc
 
 import strings
 
+fn (g &Parser) render_call_result_member_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if tokens.len < 5 || tokens[0].tok != .name { return none }
+	mut open := -1
+	for i := 1; i < tokens.len; i++ {
+		if tokens[i].tok == .lpar {
+			open = i
+			break
+		}
+		if (i % 2 == 1 && tokens[i].tok != .dot)
+			|| (i % 2 == 0 && tokens[i].tok != .name) {
+			return none
+		}
+	}
+	if open < 0 { return none }
+	close := fastc_matching_rpar(tokens, open) or { return none }
+	if close + 2 >= tokens.len || tokens[close + 1].tok != .dot { return none }
+	// Compound expressions render their operands separately, preserving boolean
+	// result types and the short-circuit evaluation order.
+	mut depth := 0
+	for item in tokens {
+		if item.tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+		} else if item.tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+		} else if depth == 0 && (item.tok.is_infix() || item.tok.is_assignment()) {
+			return none
+		}
+	}
+	base_tokens := tokens[..close + 1]
+	raw := g.render_raw_expression_tokens(base_tokens) or { return none }
+	call := g.render_static_call_expression(base_tokens, raw) or {
+		g.render_missing_call_arguments(base_tokens) or {
+			g.render_method_call_expression(base_tokens, raw) or { return none }
+		}
+	}
+	// Fold the fully typed call before lowering fields or methods on its result.
+	mut members := [FastcExpressionToken{
+		tok:    .name
+		lit:    call.source
+		source: '(' + call.source + ')'
+		typ:    call.typ
+	}]
+	members << tokens[close + 1..]
+	if indexed := g.render_array_access_expression(members) {
+		return indexed
+	}
+	member_source := g.render_raw_expression_tokens(members) or { return none }
+	if method := g.render_method_call_expression(members, member_source) { return method }
+	source := g.render_member_receiver(members) or { return none }
+	return FastcRenderedExpression{
+		source: source
+		typ:    g.infer_expression_type(members) or { return none }
+	}
+}
+
+fn fastc_expression_has_pointer_type_sizeof(tokens []FastcExpressionToken) bool {
+	if tokens.len < 5 {
+		return false
+	}
+	for i in 0 .. tokens.len - 2 {
+		if tokens[i].tok == .key_sizeof && tokens[i + 1].tok == .lpar
+			&& tokens[i + 2].tok in [.amp, .and] {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Parser) render_pointer_type_sizeof(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if tokens.len < 5 || tokens[0].tok != .key_sizeof || tokens[1].tok != .lpar
+		|| tokens[2].tok !in [.amp, .and] || tokens.last().tok != .rpar {
+		return none
+	}
+	ctype := g.type_from_expression_tokens(tokens[2..tokens.len - 1]) or { return none }
+	return FastcRenderedExpression{
+		source: 'sizeof(${fastc_output_c_type(ctype)})'
+		typ:    'int'
+	}
+}
+
 // render_typeof_generic_expression lowers `typeof[T]().idx` and `typeof[T]().name`
 // (compile-time type reflection, used by vlib/orm) to a constant int / string.
 fn (g &Parser) render_typeof_generic_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {

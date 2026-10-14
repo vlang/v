@@ -288,8 +288,7 @@ static inline bool v_fastc_us_le(u64 a, i64 b) { return b >= 0 && a <= (u64)b; }
 
 '
 
-// Keep source identifiers distinct from C keywords while preserving the same
-// spelling used by the conventional C generator.
+// Keep V identifiers distinct from C keywords, library macros, and memory helpers.
 const fastc_c_reserved_identifiers = {
 	'array':    true
 	'asm':      true
@@ -305,6 +304,7 @@ const fastc_c_reserved_identifiers = {
 	'double':   true
 	'else':     true
 	'enum':     true
+	'errno':    true
 	'extern':   true
 	'false':    true
 	'float':    true
@@ -314,6 +314,9 @@ const fastc_c_reserved_identifiers = {
 	'inline':   true
 	'int':      true
 	'long':     true
+	'memcpy':   true
+	'memmove':  true
+	'memset':   true
 	'register': true
 	'restrict': true
 	'return':   true
@@ -448,7 +451,8 @@ typedef double f64;
 typedef void *voidptr;
 typedef unsigned char *byteptr;
 typedef char *charptr;
-typedef void *chan;
+struct sync__Channel;
+typedef struct sync__Channel *chan;
 /* One multi-return component. Values up to 32 bytes are stored inline; larger
    ones are boxed and referenced through `ptr`, so no component size can
    overflow the slot. */
@@ -831,6 +835,7 @@ enum FastcDeclaredTypeKind {
 struct FastcFunctionSignature {
 	parameter_types          []string
 	parameter_mutability     []bool
+	parameter_constness      []bool
 	return_type              string
 	return_types             []string
 	option_type              string
@@ -937,6 +942,8 @@ struct FastcExpressionToken {
 	is_mut_argument      bool
 	is_statement         bool
 	is_capturing_closure bool
+	chan_element_type    string
+	option_value_type    string
 mut:
 	lit string
 	typ string
@@ -1400,7 +1407,9 @@ mut:
 	current_receiver         string
 	current_method_is_static bool
 	expected_expression_type string
-	capturing_defer          bool
+	// Scoped to a whole nil reset of a concrete local; erased function values are excluded.
+	allows_nil_local_assignment bool
+	capturing_defer             bool
 	// next_declaration_is_unsafe records a `@[unsafe]` attribute seen just before a
 	// top-level declaration, so a function so marked parses its body as unsafe.
 	next_declaration_is_unsafe bool
@@ -1408,6 +1417,7 @@ mut:
 	// expression is captured here (typed by `or_value_expected_type`) instead of being
 	// rejected as a value-only statement.
 	or_value_capture            bool
+	or_value_scope_depth        int
 	or_value_captured           string
 	or_value_expected_type      string
 	defer_depth                 int
@@ -2428,7 +2438,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	pieces << fastc_piece(type_declarations)
 	pieces << late_composite_declarations.str()
 	pieces << fastc_piece(fixed_array_declarations)
-	pieces << fastc_c_extern_prototypes(functions)
+	pieces << fastc_c_extern_prototypes_for_inputs(functions, c_flags)
 	extern_indexes << pieces.len
 	extern_texts << fastc_extern_declarations(constant_output.declarations, true)
 	define_texts << fastc_extern_declarations(constant_output.declarations, false)
@@ -2687,18 +2697,50 @@ fn fastc_definition_prototypes(text string) string {
 // Such symbols come from linked system libraries rather than an included header, so C99 must
 // see their V-declared ABI before a call (matching the main C backend's behavior).
 fn fastc_c_extern_prototypes(functions map[string]FastcFunctionSignature) string {
+	return fastc_c_extern_prototypes_for_inputs(functions, [])
+}
+
+fn fastc_c_declaration_has_native_input(path string, inputs []string) bool {
+	if !path.ends_with('.c.v') {
+		return false
+	}
+	stem := path[..path.len - 4]
+	mut platform_stem := stem
+	for suffix in ['_nix', '_windows', '_linux', '_macos', '_darwin', '_default', '_freebsd', '_netbsd',
+		'_openbsd'] {
+		if stem.ends_with(suffix) {
+			platform_stem = stem[..stem.len - suffix.len]
+			break
+		}
+	}
+	for input in inputs {
+		if (input.ends_with('.c') || input.ends_with('.o'))
+			&& input[..input.len - 2] in [stem, platform_stem] {
+			return true
+		}
+	}
+	return false
+}
+
+fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignature, inputs []string) string {
 	mut keys := functions.keys()
 	keys.sort()
 	mut out := strings.new_builder(128)
 	for key in keys {
 		signature := functions[key]
-		if !key.starts_with('C.') || !signature.is_c_extern || signature.is_disabled {
+		if !key.starts_with('C.') || signature.is_disabled
+			|| (!signature.is_c_extern && !fastc_c_declaration_has_native_input(signature.path, inputs)) {
 			continue
 		}
 		name := key.all_after_first('C.')
 		mut parameters := []string{cap: signature.parameter_types.len + 1}
-		for parameter_type in signature.parameter_types {
-			parameters << parameter_type
+		for i, parameter_type in signature.parameter_types {
+			parameters << if i < signature.parameter_constness.len
+				&& signature.parameter_constness[i] {
+				'const ${parameter_type}'
+			} else {
+				parameter_type
+			}
 		}
 		if signature.is_variadic {
 			parameters << '...'

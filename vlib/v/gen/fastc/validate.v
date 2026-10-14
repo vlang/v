@@ -84,6 +84,9 @@ fn (g &Parser) validate_nil(tokens []FastcExpressionToken, previous token.Token,
 	if g.unsafe_depth > 0 || g.in_mono_drain {
 		return
 	}
+	if g.selfhost && g.allows_nil_local_assignment && previous == .unknown && tokens.len == 0 && g.nil_ends_value() {
+		return
+	}
 	if g.selfhost && g.nil_ends_value()
 		&& g.nil_target_is_voidptr(tokens, previous, paren_depth, bracket_depth, brace_depth, struct_types, struct_depths, struct_paren_depths) {
 		return
@@ -95,6 +98,11 @@ fn (g &Parser) validate_nil(tokens []FastcExpressionToken, previous token.Token,
 // a field declared `voidptr`, initializes one in a struct literal, or is a `voidptr` argument.
 fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous token.Token, paren_depth int, bracket_depth int, brace_depth int, struct_types []string, struct_depths []int, struct_paren_depths []int) bool {
 	if previous == .assign && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
+		// A concrete voidptr local keeps the existing safe reset support.
+		if tokens.len == 2 && tokens[0].tok == .name {
+			local := g.locals[tokens[0].lit] or { return false }
+			return !g.in_generic_placeholder && g.underlying_alias_type(local.typ) == 'voidptr' && local.typ !in g.fn_alias_return_types && local.fn_return_type == ''
+		}
 		// `receiver.field =`
 		if tokens.len < 4 || tokens.last().tok != .assign {
 			return false
