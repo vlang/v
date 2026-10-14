@@ -70,3 +70,28 @@ fn main() {
 }
 ', 'identity')
 }
+
+fn test_fastc_narrowed_interface_references_preserve_whole_branch_values() {
+	$if !macos && !linux {
+		return
+	}
+	fastc_assert_pointer_program('interface_body', r'module main
+interface INode { tag() int }
+struct Node { n int }
+fn (n Node) tag() int { return n.n }
+fn main() {
+	p := &Node{n: 7}
+	q := &Node{n: 9}
+	x := INode(p)
+	z := INode(q)
+	if x is &Node && true { assert x == p; println(x.n) }
+	if x is &Node && z is &Node { assert x == p; assert z == q; println(z.n) }
+	y := if x is &Node && true { x } else { p }
+	assert y == p
+	println(y.n)
+	w := if x is &Node && z is &Node { z } else { q }
+	assert w == q
+	println(w.n)
+}
+', '7\n9\n7\n9')
+}
