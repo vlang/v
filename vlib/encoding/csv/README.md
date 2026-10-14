@@ -33,3 +33,6 @@ only one record. Empty documents and comment-only input contain no records.
 A quoted field must have a closing quote, including in the final record. Truncated quoted
 fields return `encoding.csv: unterminated quoted field`; clean end of input returns
 `encoding.csv: end of file`.
+
+Quoted fields can span multiple lines. Comment markers inside a quoted field are field data,
+including on the line containing its closing quote.
