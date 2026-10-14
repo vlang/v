@@ -899,10 +899,15 @@ fn get_long_path(path string) !string {
 		unsafe { free(input_short_path) }
 	}
 	long_path_buf := [4096]u16{}
-	res := C.GetLongPathName(input_short_path, &long_path_buf[0], sizeof(long_path_buf))
+	// nNumberOfCharacters counts WCHARs, not bytes: sizeof would claim room
+	// for 8192 characters in a 4096 element buffer.
+	res := C.GetLongPathName(input_short_path, &long_path_buf[0], u32(long_path_buf.len))
 	if res == 0 {
 		code := int(C.GetLastError())
 		return error_win32(code: code)
+	}
+	if res >= u32(long_path_buf.len) {
+		return error_win32(code: C.ERROR_INSUFFICIENT_BUFFER)
 	}
 	long_path := wide_ptr_to_string(&long_path_buf[0])
 	return long_path

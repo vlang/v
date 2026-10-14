@@ -19,6 +19,9 @@ It returns an empty string when the standard input handle is invalid.
 
 ### Path helpers
 
+Windows short-path expansion counts output capacity in UTF-16 characters and reports an
+insufficient output buffer as an error.
+
 `os.executable()` returns the process executable path. On Linux, NetBSD, and DragonFly,
 it uses the exact byte count returned by `readlink`, without requiring a NUL terminator.
 
