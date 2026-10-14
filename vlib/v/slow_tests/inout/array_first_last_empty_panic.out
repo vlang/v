@@ -1,0 +1,33 @@
+local first: array.first: array is empty
+local last: array.last: array is empty
+field first: array.first: array is empty
+field last: array.last: array is empty
+call result first: array.first: array is empty
+call result last: array.last: array is empty
+method chain first: array.first: array is empty
+method chain last: array.last: array is empty
+generic first: array.first: array is empty
+generic last: array.last: array is empty
+mut param first: array.first: array is empty
+mut param last: array.last: array is empty
+struct field of first: array.first: array is empty
+struct field of last: array.last: array is empty
+string first: array.first: array is empty
+pointer last: array.last: array is empty
+nested last: array.last: array is empty
+alias first: array.first: array is empty
+direct_array_access last: array.last: array is empty
+assign field of first: array.first: array is empty
+assign field of last: array.last: array is empty
+assign in method: array.last: array is empty
+append to last: array.last: array is empty
+append if to last: array.last: array is empty
+append to field of first: array.first: array is empty
+index of last: array.last: array is empty
+mut argument last: array.last: array is empty
+assign nested last: array.last: array is empty
+first: receiver evaluated 1 time(s)
+last: receiver evaluated 1 time(s)
+assign field of last: receiver evaluated 1 time(s)
+11 20 3
+not empty: no panic

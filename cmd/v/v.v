@@ -142,6 +142,16 @@ fn main() {
 		eprintln('unknown option `-usecache`; caching is enabled by default, use `-nocache` to disable it')
 		exit(1)
 	}
+	// TinyCC is not a -prod compiler. Refuse the pair before any compiler starts, including the
+	// compatibility compiler that `-old-compiler` selects.
+	if command !in external_commands
+		&& command !in ['version', '-version', '--version', 'help', '-h', '--help', 'new', 'init',
+			'install', 'link', 'list', 'outdated', 'remove', 'registry', 'search', 'show', 'unlink',
+			'update', 'upgrade', 'vlib-docs', 'get', 'interpret']
+		&& pref.tcc_with_prod_requested(compiler_args) {
+		eprintln('tcc is not allowed with -prod')
+		exit(1)
+	}
 	if command in ['version', '-version', '--version'] {
 		println('V ${v_version} ${@VCURRENTHASH}')
 		return
@@ -567,8 +577,9 @@ fn install_external_tool_modules(tool_name string, tool_source string, compile_a
 // they can start even when libgc cannot allocate executable pages or cannot be loaded.
 fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 	mut compile_args := clean_compiler_selection_flags(prefix_args)
-	if tool_name == 'vfmt' {
-		// Backend options select formatting rules, not the formatter executable's target.
+	if tool_name in ['vfmt', 'vself'] {
+		// Backend/target options describe formatting rules or the replacement
+		// compiler. The launcher helper itself must run on the host C backend.
 		_, native_args := split_tool_backend_args(compile_args)
 		compile_args = external_tool_args_without_target(native_args)
 	}
@@ -579,7 +590,32 @@ fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 		}
 		compile_args << ['-gc', 'none']
 	}
+	if pref.tcc_with_prod_requested(compile_args) {
+		compile_args = external_tool_args_without_prod(compile_args)
+	}
 	return compile_args
+}
+
+// external_tool_args_without_prod removes only the private helper's production option.
+// Tool runtime arguments retain the caller's requested compiler configuration.
+fn external_tool_args_without_prod(args []string) []string {
+	mut result := []string{cap: args.len}
+	mut value_follows := false
+	for i, arg in args {
+		if value_follows {
+			result << arg
+			value_follows = false
+			continue
+		}
+		if arg == '-prod' { continue }
+		result << arg
+		value_follows = if arg in ['-prof', '-profile'] {
+			v1_fallback_profile_option_consumes_value(args, i)
+		} else {
+			arg == '-cf' || pref.option_may_consume_value(arg)
+		}
+	}
+	return result
 }
 
 fn external_tool_args_without_target(args []string) []string {
@@ -857,9 +893,8 @@ fn v1_fallback_args(args []string) []string {
 			option_value_follows = false
 			continue
 		}
-		if arg in ['-macos-v3-internal-quiet', '-macos-v3-compat-c99',
-			'-v3-internal-parser-diagnostics-printed', '-v3-internal-force-cache-source']
-			|| arg.starts_with('-v3-internal-implicit-tcc-warning=') {
+		if arg.starts_with('-v3-internal-') || arg in ['-macos-v3-internal-quiet',
+			'-macos-v3-compat-c99'] {
 			continue
 		}
 		result << arg

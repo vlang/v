@@ -16,6 +16,7 @@ import v.util.cache_refresh
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const bound_method_array_index_marker = '__v3_bound_method_array_index'
+const array_accessor_index_marker = '__v3_array_accessor_index'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const manual_c_headers_source = $embed_file('manual_stdlib_c_headers.h').to_string()
 const c_objective_c_bridge_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer']
@@ -3570,12 +3571,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	mut cgsw := time.new_stopwatch()
 	g.tc.precompute_source_error_embed_index()
 	g.timing_profile('  [ttime]   ci embed idx     ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	if g.skip_generics {
-		// The declared-type tables are static for the whole generic-free cgen
-		// phase, so qualify_name is memoizable per (module, file) context.
-		// Worker forks receive their own instances (fork_for_parallel_codegen).
-		g.tc.qualify_name_cache = &types.QualifyNameCache{}
-	}
+	// Qualification tracks the source context and declared-type table growth,
+	// including concrete types registered while emitting generic programs.
+	// Worker forks receive independent caches.
+	g.tc.qualify_name_cache = &types.QualifyNameCache{}
 	defer {
 		g.tc.qualify_name_cache = unsafe { nil }
 	}
@@ -4046,9 +4045,19 @@ fn (mut g FlatGen) write_parallel_cc_unit_marker() {
 
 fn (mut g FlatGen) gen_pre_body_support_declarations() {
 	g.fixed_array_map_key_forward_decls()
+	support_start := g.sb.len
 	g.fixed_array_map_key_definitions()
 	g.gen_ownership_recursive_drop_helpers()
-	g.cached_header_forward_decls()
+	if g.cache_decl_demand {
+		// Support helpers can be the only callers of cached builtin functions.
+		// Select and emit those prototypes before the helper definitions.
+		support := g.sb.cut_to(support_start)
+		g.cache_collect_declaration_refs(support)
+		g.cached_header_forward_decls()
+		g.write(support)
+	} else {
+		g.cached_header_forward_decls()
+	}
 	g.interface_method_forward_decls()
 	g.shared_dup_fns()
 	if !g.skip_enum_autostr {
@@ -4143,6 +4152,15 @@ fn (mut g FlatGen) gen_global_declaration_block() {
 // immutable after cgen preparation. Parallel self-host cgen can build it on the
 // caller while the persistent worker pool emits function bodies.
 fn (mut g FlatGen) gen_type_declaration_block() {
+	// The final function selection can add wrapped tuple signatures after cache
+	// demand collection. Discover them before emitting their payload layouts.
+	g.collect_selected_declaration_signature_types()
+	if g.cache_decl_demand {
+		mut seen := map[string]bool{}
+		for typ in g.multi_return_types {
+			g.cache_require_declaration_type(typ, mut seen)
+		}
+	}
 	g.enum_decls()
 	g.type_forward_decls()
 	g.type_alias_decls(false)
@@ -15496,7 +15514,13 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			}
 		}
 		.prefix {
-			child := g.const_expr_to_string(g.a.child(&node, 0), seen)
+			child_id := g.a.child(&node, 0)
+			if node.op == .minus {
+				if literal := g.negated_long_long_literal(child_id) {
+					return '-${numeric_literal_c_text(&literal)}LL'
+				}
+			}
+			child := g.const_expr_to_string(child_id, seen)
 			'${g.op_str(node.op)}(${child})'
 		}
 		.paren {
@@ -17473,14 +17497,23 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 							g.write(')))')
 							return
 						}
-						g.write('(*(${c_elem}*)array_get(')
+						// An lvalue `first()`/`last()` calls the builtin method, which reports an
+						// empty array under its own name, in place of `array.get`.
+						accessor := g.array_accessor_index_method(node)
+						if accessor.len > 0 {
+							g.write('(*(${c_elem}*)array__${accessor}(')
+						} else {
+							g.write('(*(${c_elem}*)array_get(')
+						}
 						base_node := g.a.nodes[int(base_id)]
 						if is_ptr && !(base_node.kind == .ident && g.local_ident_is_shared_wrapper(base_node.value)) {
 							g.write('*')
 						}
 						g.gen_expr(base_id)
-						g.write(', ')
-						g.gen_expr(g.a.child(node, 1))
+						if accessor.len == 0 {
+							g.write(', ')
+							g.gen_expr(g.a.child(node, 1))
+						}
 						g.write('))')
 					} else {
 						is_runtime_array, runtime_is_ptr := runtime_array_struct_index_info(index_base_type)
@@ -19188,6 +19221,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define E_STRUCT')
 	g.writeln('#endif')
 	g.writeln('#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})')
+	g.writeln('#define _SL(id, s, n) static const string id = {s, n, 1}')
 	g.writeln('#if !defined(VNORETURN)')
 	g.writeln('#if defined(__TINYC__)')
 	g.writeln('#define VNORETURN __attribute__((noreturn))')
@@ -19316,6 +19350,9 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 	g.writeln('#ifndef _WIN32')
 	g.write($embed_file('@VEXEROOT/vlib/v/pthread_helper.h').to_string())
 	g.write($embed_file('@VEXEROOT/vlib/sync/thread_helper.h').to_string())
+	// The prototype generated for `fn C.v3_bench_peak_rss_kb() i64` returns `i64`,
+	// which is `int64_t` here and not `long long` on every target.
+	g.writeln('#define V_PEAK_RSS_INT i64')
 	g.write($embed_file('@VEXEROOT/vlib/v/bench/peak_rss.h').to_string())
 	capture_source := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.c').to_string()
 	capture_header := $embed_file('@VEXEROOT/vlib/os/execute_capture_nix.h').to_string()
@@ -19356,6 +19393,7 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 			.replace('defined(V_GCBOEHM_NATIVE)', 'defined(CUSTOM_DEFINE_gcboehm)')
 			.replace('#include <gc.h>', '#include <gc/gc.h>')
 			.replace('#include "segfault_handler_nix.h"', signal_header)
+			.replace('#define V_SEGFAULT_HANDLER_SCOPE\n', '#define V_SEGFAULT_HANDLER_SCOPE static\n')
 			.replace('void* v_thread_', 'static void* v_thread_')
 			.replace('void v_thread_', 'static void v_thread_'))
 		g.writeln('#endif')
@@ -19495,6 +19533,9 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#include <sys/event.h>')
 	g.writeln('#endif')
+	g.writeln('#if defined(__FreeBSD__) || defined(__OpenBSD__)')
+	g.writeln('#include <sys/sysctl.h>')
+	g.writeln('#endif')
 	g.system_execinfo_declarations()
 	g.writeln('')
 }
@@ -19547,6 +19588,9 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('extern char** environ;')
 	g.writeln('#endif')
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
+	if g.target.os in ['freebsd', 'openbsd'] || g.output_cross_c {
+		g.collect_preserved_c_fns(['sysctl'])
+	}
 	g.collect_preserved_c_fns([
 		'kevent',
 		'kqueue',
@@ -22340,9 +22384,11 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
 	g.writeln('void* memdup(void* src, ptrdiff_t sz);')
 	g.writeln('static inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }')
+	// Integer types only: `qsort` is not stable, which only floats could show (see
+	// `array_default_sort_runtime_helper` in the transformer).
 	for sort_spec in ['int|${g.int_ct}', 'i8|signed char', 'i16|short', 'i64|long long',
 		'u8|unsigned char', 'u16|unsigned short', 'u32|unsigned', 'u64|unsigned long long',
-		'isize|ptrdiff_t', 'usize|size_t', 'f32|float', 'f64|double', 'rune|unsigned', 'char|char'] {
+		'isize|ptrdiff_t', 'usize|size_t', 'rune|unsigned', 'char|char'] {
 		sort_type := sort_spec.all_before('|')
 		c_type := sort_spec.all_after('|')
 		g.writeln('static int v3_array_sort_${sort_type}_cmp(const void* a, const void* b) { ${c_type} av = *(const ${c_type}*)a; ${c_type} bv = *(const ${c_type}*)b; return (av > bv) - (av < bv); }')
@@ -24008,12 +24054,27 @@ fn (mut g FlatGen) global_init_optional_c_type(name string) ?string {
 	return none
 }
 
+// test_failure_helpers emits the helpers that write the report of a failed assert or
+// test to stderr, in the order that `eprint` and `eprintln` in builtin keep: stdout and
+// stderr are flushed before the text is written, and stderr is flushed after it. stderr
+// is not unbuffered everywhere: the C runtime on Windows buffers it, when it is a pipe or
+// a file. `v3_eprintf` takes the arguments of `printf`. The flushes are in functions, so
+// that each report line in the program costs two calls, and not three inlined flushes.
 fn (mut g FlatGen) test_failure_helpers() {
+	g.writeln('static FILE* v3_eprint_begin(void) {')
+	g.writeln('\tfflush(stdout);')
+	g.writeln('\tfflush(stderr);')
+	g.writeln('\treturn stderr;')
+	g.writeln('}')
+	g.writeln('static void v3_eprint_end(void) {')
+	g.writeln('\tfflush(stderr);')
+	g.writeln('}')
+	g.writeln('#define v3_eprintf(...) do { fprintf(v3_eprint_begin(), __VA_ARGS__); v3_eprint_end(); } while (0)')
 	g.writeln('static void v3_eprint_lit(const char* s) {')
-	g.writeln('\tfprintf(stderr, "%s", s);')
+	g.writeln('\tv3_eprintf("%s", s);')
 	g.writeln('}')
 	g.writeln('static void v3_eprintln_string(string s) {')
-	g.writeln('\tfprintf(stderr, "%.*s\\n", s.len, (char*)s.str);')
+	g.writeln('\tv3_eprintf("%.*s\\n", s.len, (char*)s.str);')
 	g.writeln('}')
 	g.writeln('')
 }
@@ -25626,6 +25687,27 @@ fn numeric_literal_c_text(node &flat.Node) string {
 	return value
 }
 
+// negated_long_long_literal finds a wide integer operand through parentheses for signed C negation.
+fn (g &FlatGen) negated_long_long_literal(id flat.NodeId) ?flat.Node {
+	mut node := g.a.nodes[int(id)]
+	for node.kind == .paren && node.children_count == 1 {
+		node = g.a.nodes[int(g.a.child(&node, 0))]
+	}
+	if node.kind == .int_literal && int_literal_needs_long_long_suffix(&node) {
+		return node
+	}
+	return none
+}
+
+// int_literal_needs_long_long_suffix reports whether a literal above INT_MAX and within the
+// signed 64-bit range needs an `LL` suffix before it is negated. MSVC types such a literal as
+// unsigned long when it fits 32 bits, so an unsuffixed `-2147483648` widens to +2147483648.
+fn int_literal_needs_long_long_suffix(node &flat.Node) bool {
+	text := if node.value.contains_u8(`_`) { node.value.replace('_', '') } else { node.value }
+	value := strconv.parse_uint(text, util.v_literal_parse_base(text), 64) or { return false }
+	return value > 2147483647 && value <= 9223372036854775807
+}
+
 fn (mut g FlatGen) precompute_consts() string {
 	names := g.const_emission_order_owned()
 	return g.precompute_consts_in_order(names)
@@ -26112,6 +26194,13 @@ fn (g &FlatGen) shift_count_const_value(id flat.NodeId, seen []string) ?int {
 @[direct_array_access]
 fn (mut g FlatGen) gen_prefix_op_operand(op flat.Op, child_id flat.NodeId) {
 	g.write(g.op_str(op))
+	if op == .minus {
+		if literal := g.negated_long_long_literal(child_id) {
+			g.write(numeric_literal_c_text(&literal))
+			g.write('LL')
+			return
+		}
+	}
 	child := g.a.nodes[int(child_id)]
 	needs_paren := child.kind in [.infix, .in_expr]
 	if needs_paren {

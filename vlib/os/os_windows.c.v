@@ -5,7 +5,6 @@ import encoding.utf8.validate
 
 #flag windows -l advapi32
 #include <process.h>
-#include <sys/utime.h>
 
 // path_separator is the platform specific separator string, used between the folders, and filenames in a path. It is '/' on POSIX, and '\\' on Windows.
 pub const path_separator = '\\'
@@ -245,11 +244,6 @@ fn decode_windows_captured_output(raw string) string {
 	return res
 }
 
-pub struct C._utimbuf {
-	actime  i64
-	modtime i64
-}
-
 fn C.SetFileTime(voidptr, voidptr, voidptr, voidptr) i32
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
@@ -383,6 +377,9 @@ fn windows_filetime_from_unix_seconds(seconds i64) !Filetime {
 }
 
 // ls returns the names of the files and directories in path.
+// The entries come in the order the operating system reports them, which os.ls does not sort.
+// That order differs between platforms and filesystems, so call `.sort()` on the result when
+// a stable order is needed.
 pub fn ls(path string) ![]string {
 	if path == '' {
 		return error('ls() expects a folder, not an empty string')
@@ -474,16 +471,8 @@ pub fn get_module_filename(handle HANDLE) !string {
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-FormatMessageWa#parameters
 const format_message_allocate_buffer = 0x00000100
-const format_message_argument_array = 0x00002000
-const format_message_from_hmodule = 0x00000800
-const format_message_from_string = 0x00000400
 const format_message_from_system = 0x00001000
 const format_message_ignore_inserts = 0x00000200
-
-// Ref - winnt.h
-const sublang_neutral = 0x00
-const sublang_default = 0x01
-const lang_neutral = sublang_neutral
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes--12000-15999-
 const max_error_code = 15841
@@ -502,6 +491,8 @@ fn ptr_win_get_error_msg(code u32) voidptr {
 }
 
 // get_error_msg return error code representation in string.
+// The line break that FormatMessageW puts at the end of a system message is not
+// part of the result.
 pub fn get_error_msg(code int) string {
 	if code < 0 { // skip negative
 		return ''
@@ -512,7 +503,8 @@ pub fn get_error_msg(code int) string {
 	}
 	msg := wide_ptr_to_string(&u16(ptr_text))
 	C.LocalFree(ptr_text)
-	return msg
+	// Only the terminating "\r\n" is removed; the text keeps its final period.
+	return msg.trim_right('\r\n')
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
@@ -675,16 +667,18 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
 	buf := [4096]u8{}
-	mut bytes_read := u32(0)
 	mut read_data := strings.new_builder(1024)
 	for {
 		mut result := false
+		mut bytes_read := u32(0)
 		unsafe {
 			result = C.ReadFile(child_stdout_read, &buf[0], 1000, voidptr(&bytes_read), 0)
-			read_data.write_ptr(&buf[0], int(bytes_read))
 		}
-		if result == false || int(bytes_read) == 0 {
+		if result == false || bytes_read == 0 {
 			break
+		}
+		unsafe {
+			read_data.write_ptr(&buf[0], int(bytes_read))
 		}
 	}
 	soutput := decode_windows_captured_output(read_data.str())
@@ -905,10 +899,15 @@ fn get_long_path(path string) !string {
 		unsafe { free(input_short_path) }
 	}
 	long_path_buf := [4096]u16{}
-	res := C.GetLongPathName(input_short_path, &long_path_buf[0], sizeof(long_path_buf))
+	// nNumberOfCharacters counts WCHARs, not bytes: sizeof would claim room
+	// for 8192 characters in a 4096 element buffer.
+	res := C.GetLongPathName(input_short_path, &long_path_buf[0], u32(long_path_buf.len))
 	if res == 0 {
 		code := int(C.GetLastError())
 		return error_win32(code: code)
+	}
+	if res >= u32(long_path_buf.len) {
+		return error_win32(code: C.ERROR_INSUFFICIENT_BUFFER)
 	}
 	long_path := wide_ptr_to_string(&long_path_buf[0])
 	return long_path

@@ -3158,6 +3158,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		has_builtins:                          g.tc.has_builtins
 		resolution_type_mode:                  g.tc.resolution_type_mode
 		trust_checked_expr_types:              g.tc.trust_checked_expr_types
+		qualify_name_cache:                    &types.QualifyNameCache{}
 		cur_module:                            g.tc.cur_module
 		cur_file:                              g.tc.cur_file
 		errors:                                g.tc.errors.clone()

@@ -3488,6 +3488,12 @@ V doesn't have classes, but you can define methods on types.
 A method is a function with a special receiver argument.
 The receiver appears in its own argument list between the `fn` keyword and the method name.
 Methods must be in the same module as the receiver type.
+This also applies to receivers with any number of pointer levels
+and to types imported under another name.
+To add methods for an imported type, declare a local type alias and use it as the receiver.
+For a generic receiver such as `other.Box[T]`, the alias must also declare its type parameters:
+`type LocalBox[T] = other.Box[T]`. Use `LocalBox[T]` as the receiver and repeat `T` in the method's
+generic parameter list.
 
 In this example, the `can_register` method has a receiver of type `User` named `u`.
 The convention is not to use receiver names like `self` or `this`,
@@ -9415,6 +9421,12 @@ Zero-value references, or nil pointers, will **NOT** be supported in the future,
 for now data structures such as Linked Lists or Binary Trees that rely on reference
 fields that can use the value `0`, understanding that it is unsafe, and that it can
 cause a panic.
+
+A null reference has to be written as `unsafe { nil }`: outside `unsafe`, the compiler
+rejects direct `nil`, `0` and `voidptr(0)` constants where a non-option reference is expected.
+The same rule applies to explicitly typed global initializers when globals are enabled.
+Raw `voidptr` targets, C declarations, `.c.v` files and translated code retain their
+C interop rules. Comparisons with null values and optional references remain accepted.
 
 ```v
 struct Node {

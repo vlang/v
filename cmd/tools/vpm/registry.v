@@ -338,7 +338,7 @@ pub mut:
 // It computes the entity tag of the answer and replies `304 Not Modified`
 // when the client's cached copy is still current, so an unchanged index costs
 // a header exchange rather than a full retransmission.
-pub fn serve(registry Registry, method string, path string, query map[string]string, headers map[string]string) RegistryResponse {
+pub fn serve(registry Registry, method string, path string, query map[string]string, headers map[string]string, opts RequestOptions) RegistryResponse {
 	// An archive is streamed, so it never has a body to hash for an entity tag
 	// and never answers a conditional request.
 	if method == 'GET' {
@@ -346,7 +346,7 @@ pub fn serve(registry Registry, method string, path string, query map[string]str
 			return artifact
 		}
 	}
-	mut resp := route(registry, method, path, query)
+	mut resp := route(registry, method, path, query, opts)
 	etag := etag_of(resp.body)
 	if method == 'GET' && resp.status_code == 200
 		&& etag_matches(headers['If-None-Match'] or { '' }, etag) {
@@ -409,6 +409,8 @@ pub struct RequestOptions {
 pub:
 	// body is the JSON payload of a PUT, empty for reads.
 	body string
+	// base_url is the HTTP transport's origin, used by configuration and SPDX links.
+	base_url string
 }
 
 // artifact_request answers `GET /<module>/@v/<version>.zip`, the route that
@@ -475,8 +477,8 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 	// GET /config.json
 	if path == '/config.json' && method == 'GET' {
 		return json2.encode(RegistryConfig{
-			dl:            'https://example.com/downloads'
-			api:           'https://example.com/api'
+			dl:            if opts.base_url == '' { '/' } else { opts.base_url.trim_right('/') }
+			api:           '${opts.base_url.trim_right('/')}/api'
 			auth_required: false
 			public_key:    registry.public_key_hex()
 		})
@@ -524,7 +526,7 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 	// resolving the graph itself.
 	if path == '/sbom.spdx.json' && method == 'GET' {
 		namespace := query['namespace'] or { 'https://vpm.local/spdx/vpm-registry' }
-		download_base := query['dl'] or { 'https://vpm.local/downloads' }
+		download_base := query['dl'] or { opts.base_url }
 		return registry.spdx_json(namespace, download_base)
 	}
 

@@ -99,6 +99,44 @@ fn main() {
 	assert run.output == 'OK\n', run.output
 }
 
+fn test_bsd_executable_retains_sysctl_header() {
+	$if windows || freestanding || vinix {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'bsd_executable_headers_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.c.v')
+	c_file := os.join_path(root, 'main.c')
+	program := 'import os\nfn main() {\n executable := os.executable()\n assert os.is_file(executable)\n assert os.real_path(executable) == os.real_path(os.args[0])\n}\n'
+	for with_explicit_header in [false, true] {
+		os.write_file(source, if with_explicit_header {
+			'#include <time.h>\n' + program
+		} else {
+			program
+		})!
+		for target in ['freebsd', 'openbsd'] {
+			generated := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-os', target, '-o', c_file,
+				source])
+			assert generated.exit_code == 0, generated.output
+			code := os.read_file(c_file)!
+			assert code.contains('sysctl('), target
+			assert code.contains('#include <sys/sysctl.h>'), '${target}: system headers must supply the executable path sysctl constants'
+		}
+		$if freebsd || openbsd {
+			mut compilers := ['cc']
+			$if freebsd {
+				compilers << 'tcc'
+			}
+			for cc in compilers {
+				run := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-cc', cc, '-no-retry-compilation',
+					'run', source])
+				assert run.exit_code == 0, run.output
+			}
+		}
+	}
+}
+
 fn test_headerless_boehm_registers_spawned_threads() {
 	$if windows || freestanding || vinix {
 		return
