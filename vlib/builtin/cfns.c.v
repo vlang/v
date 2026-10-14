@@ -63,13 +63,13 @@ fn C.mprotect(addr_length voidptr, len usize, prot i32) i32
 fn C.aligned_alloc(align usize, size usize) voidptr
 
 // windows aligned memory functions
-fn C._aligned_malloc(size isize, align isize) voidptr
+fn C._aligned_malloc(size usize, align usize) voidptr
 fn C._aligned_free(voidptr)
-fn C._aligned_realloc(voidptr, size isize, align isize) voidptr
-fn C._aligned_offset_malloc(size isize, align isize, offset isize) voidptr
-fn C._aligned_offset_realloc(voidptr, size isize, align isize, offset isize) voidptr
-fn C._aligned_msize(voidptr, align isize, offset isize) isize
-fn C._aligned_recalloc(voidptr, num isize, size isize, align isize) voidptr
+fn C._aligned_realloc(voidptr, size usize, align usize) voidptr
+fn C._aligned_offset_malloc(size usize, align usize, offset usize) voidptr
+fn C._aligned_offset_realloc(voidptr, size usize, align usize, offset usize) voidptr
+fn C._aligned_msize(voidptr, align usize, offset usize) usize
+fn C._aligned_recalloc(voidptr, num usize, size usize, align usize) voidptr
 
 $if windows {
 	fn C.VirtualAlloc(voidptr, isize, u32, u32) voidptr
@@ -115,7 +115,7 @@ fn C.snprintf(str &char, size usize, const_format &char, opt ...voidptr) i32
 fn C.wprintf(const_format &u16, opt ...voidptr) i32
 
 // used by Android for (e)println to output to the Android log system / logcat
-pub fn C.android_print(fstream voidptr, format &char, opt ...voidptr)
+pub fn C.android_print(fstream voidptr, const_format &char, opt ...voidptr) i32
 
 fn C.sscanf(str &char, const_format &char, opt ...voidptr) i32
 fn C.scanf(const_format &char, opt ...voidptr) i32
@@ -346,8 +346,8 @@ fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecuri
 	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
 $if windows {
-	// The TCC-only declaration is guarded with `#ifdef __TINYC__` in the
-	// header, so it survives cross compilation; GCC/MSVC use the SDK header.
+	// The legacy bootstrap needs this TinyCC compatibility view. The V3 backend
+	// emits its prototype from the bodyless binding below without including it.
 	#insert "@VEXEROOT/vlib/builtin/cfns_windows_tcc.h"
 }
 
@@ -374,7 +374,7 @@ fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttribu
 
 fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead &u32, lpOverlapped voidptr) bool
 
-fn C.GetFileAttributesW(lpFileName &u8) u32
+fn C.GetFileAttributesW(const_lpFileName &u16) u32
 
 fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &u8, lpcbData &u32) i32
 
@@ -496,10 +496,10 @@ fn C.URLDownloadToFile(i32, &u16, &u16, i32, i32)
 @[trusted]
 fn C.GetLastError() u32
 
-fn C.CreateDirectory(&u8, i32) bool
+fn C.CreateDirectory(const_path &u16, security_attributes voidptr) bool
 
 // win crypto
-fn C.BCryptGenRandom(i32, voidptr, i32, i32) i32
+fn C.BCryptGenRandom(voidptr, voidptr, u32, u32) i32
 
 // win synchronization
 fn C.CreateMutex(i32, bool, &u8) voidptr
@@ -639,7 +639,7 @@ fn C.signal(sig i32, handler voidptr) voidptr
 fn C.glTexImage2D()
 
 // used by ios for println
-fn C.WrappedNSLog(str &u8)
+fn C.WrappedNSLog(const_format &char, opt ...voidptr)
 
 // absolute value
 @[trusted]
@@ -711,6 +711,17 @@ fn C.__errno_location() &i32
 
 @[markused]
 fn C._errno() &i32
+
+fn C._putenv_s(const_name &char, const_value &char) i32
+
+@[markused]
+fn C.___errno() &i32
+
+@[markused]
+fn C._errnop() &i32
+
+@[markused]
+fn C.__get_errno_ptr() &i32
 
 @[markused]
 fn C.pthread_equal(t1 voidptr, t2 voidptr) i32

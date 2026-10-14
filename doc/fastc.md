@@ -58,7 +58,15 @@ composite sum-type tests, integer and floating point interpolation formats, anon
 and immutable closure captures. Float formats support precision, width, left alignment, and the
 `f` suffix to retain trailing zeros. A single-file entry can select the same runtime with
 `-d fastc_real_builtin`; its module siblings are included.
+A test file entry (`foo_test.v`, `foo_test.c.v`, or an architecture-qualified one) always uses
+it, and builds as a program that runs its tests in source order between `testsuite_begin` and
+`testsuite_end`, each between `before_each` and `after_each`; a failed assert or a returned error
+fails that test, and the program exits with status 1 when any test failed. Tests and hooks require
+zero parameters. Failed assertions run the test's deferred statements before the harness continues.
 Target-specific files and test files are filtered when loading a directory.
+Fixed arrays and their aliases support checked indexing, including pointer elements.
+Pointer elements retain their identity when passed or copied. Omitted option fields are `none`.
+Sum-type and interface tests narrow later operands of a conjunction, preserving pointer values.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context
 when the block exits, including through `return`, `break`, and `continue`. Callbacks that escape

@@ -22,8 +22,10 @@ fn (mut g Parser) parse_for() !bool {
 		g.next()
 		condition := g.read_condition_expression([token.Token.semicolon])!
 		g.expect(.semicolon)!
-		update := g.read_statement_expression([token.Token.lcbr])!
-		if update == '' || !g.last_expression_is_statement() {
+		// `for ; cond; {` has no update.
+		has_update := g.tok != .lcbr
+		update := if has_update { g.read_statement_expression([token.Token.lcbr])! } else { '' }
+		if has_update && (update == '' || !g.last_expression_is_statement()) {
 			return g.unsupported('C-style for update expression')
 		}
 		g.expect(.lcbr)!
@@ -172,6 +174,15 @@ fn (mut g Parser) parse_for() !bool {
 				}
 				g.write_line('}')
 				return false
+			}
+			if !item_is_mut && collection_layout_type.trim_right('*') != 'string'
+				&& g.array_element_type(collection_layout_type) == none {
+				if iterator := g.iterator_next_method(collection_layout_type) {
+					g.next()
+					g.parse_for_in_iterator(iterator, start, start_expression_type, collection_layout_type,
+						name, value_name)!
+					return false
+				}
 			}
 			element_type := if collection_layout_type.trim_right('*') == 'string' {
 				'u8'
@@ -423,4 +434,72 @@ fn (g &Parser) mutable_collection_expression(tokens []FastcExpressionToken) bool
 		return item.unsafe_depth > 0 && global_key in g.globals
 	}
 	return false
+}
+
+// FastcIteratorNext is the `next() ?T` method that makes a value iterable in a for-in.
+struct FastcIteratorNext {
+	c_name       string
+	element_type string
+	by_pointer   bool
+}
+
+// iterator_next_method finds the `next() ?T` method of `collection_type`, if it has one.
+fn (g &Parser) iterator_next_method(collection_type string) ?FastcIteratorNext {
+	key, path := g.resolve_method(fastc_trim_pointer_suffix(collection_type), 'next')
+	signature := g.functions[key] or { return none }
+	if path.len > 0 || signature.parameter_types.len != 1 || signature.return_type != 'Option'
+		|| signature.option_type in ['', 'void', 'MultiReturn'] {
+		return none
+	}
+	receiver := signature.parameter_types[0]
+	return FastcIteratorNext{
+		c_name:       g.c_function_name_or(key, fastc_method_c_name(signature.module_name, receiver,
+			'next'))
+		element_type: signature.option_type
+		by_pointer:   receiver.ends_with('*')
+	}
+}
+
+// parse_for_in_iterator lowers `for x in it {` and `for i, x in it {` over an iterator:
+// `next()` is called on a copy of `it` until it returns none.
+fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string, start_type string, layout_type string, name string, value_name string) ! {
+	iterator_name := g.temporary_name('iterator')
+	option_name := g.temporary_name('iterator_next')
+	index_name := if value_name != '' && name != '_' {
+		fastc_c_identifier(name)
+	} else {
+		g.temporary_name('index')
+	}
+	is_pointer := layout_type.ends_with('*')
+	receiver := if iterator.by_pointer && !is_pointer {
+		'&${iterator_name}'
+	} else if !iterator.by_pointer && is_pointer {
+		'*${iterator_name}'
+	} else {
+		iterator_name
+	}
+	g.write_line('${g.declaration_c_type(start_type, start)} ${iterator_name} = (${start});')
+	g.write_line('for (int ${index_name} = 0;; ${index_name}++) {')
+	g.indent++
+	g.write_line('Option ${option_name} = ${iterator.c_name}(${receiver});')
+	g.write_line('if (${option_name}.state != 0) break;')
+	value := if value_name == '' { name } else { value_name }
+	if value != '_' {
+		g.write_line('${iterator.element_type} ${fastc_c_identifier(value)} = *((${iterator.element_type} *)${option_name}.data);')
+		g.locals[value] = FastcLocal{
+			typ: iterator.element_type
+		}
+	}
+	if value_name != '' && name != '_' {
+		g.locals[name] = FastcLocal{
+			typ: 'int'
+		}
+	}
+	_ = g.parse_loop_block_body()!
+	g.indent--
+	g.locals.delete(name)
+	if value_name != '' {
+		g.locals.delete(value_name)
+	}
+	g.write_line('}')
 }

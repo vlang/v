@@ -2,6 +2,264 @@ module c
 
 import os
 import v.cmdexec
+import v.flat
+import v.parser
+import v.pref
+import v.types
+
+fn windows_literal_output_source(program string) ?string {
+	return platform_literal_output_source(program, 'windows')
+}
+
+fn platform_literal_output_source(program string, target_os string) ?string {
+	root := os.join_path(os.vtmp_dir(), '${target_os}_literal_gen_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	bindings := os.join_path(root, 'bindings.c.v')
+	source := os.join_path(root, 'main.v')
+	os.write_file(bindings, 'module builtin
+fn C.puts(const_msg &char) i32
+fn C.write(fd i32, const_buf voidptr, count u32) i32
+fn C._setmode(int, int) int
+fn C.__android_log_print(priority i32, const_tag &char, const_format &char, opt ...voidptr) i32
+fn C.WrappedNSLog(const_format &char, opt ...voidptr)
+') or { panic(err) }
+	os.write_file(source, program) or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from(target_os, 'amd64') or { panic(err) }
+	mut p := parser.Parser.new(prefs)
+	p.parse_file(bindings)
+	p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut a := p.a
+	mut tc := types.TypeChecker.new(a)
+	tc.diagnostic_files[source] = true
+	mut g := FlatGen.new()
+	g.a = a
+	g.tc = &tc
+	g.set_target(prefs.target)
+	g.set_ccompiler('msvc')
+	g.set_skip_enum_autostr(true)
+	return g.literal_output_program()
+}
+
+fn test_windows_literal_hello_has_no_headers_or_gc() {
+	code := windows_literal_output_source('fn main() { println("hello world") }') or {
+		panic('Windows ASCII hello must use minimal output')
+	}
+	assert code.len < 256, code
+	assert code.contains('int puts(const char* const_msg);'), code
+	assert code.contains('_setmode(1, 0x8000);'), code
+	assert !code.contains('#include') && !code.contains('GC_') && !code.contains('malloc'), code
+	assert !code.contains('__SIZE_TYPE__') && !code.contains('__PTRDIFF_TYPE__'), code
+	if _ := windows_literal_output_source('fn main() { println("привет") }') {
+		assert false, 'Unicode console output needs the ordinary Windows runtime'
+	}
+}
+
+fn test_windows_literal_output_retries_writes_and_preserves_bytes_and_order() ! {
+	code := windows_literal_output_source('fn main() { print("a\\x00b"); eprintln("c"); print("d") }') or {
+		panic('Windows ASCII stream output must use minimal output')
+	}
+	assert code.contains('int _write(int fd, const void* const_buf, unsigned int count);'), code
+	assert !code.contains('#include') && !code.contains('GC_'), code
+	assert !code.contains('__SIZE_TYPE__') && !code.contains('__PTRDIFF_TYPE__'), code
+	stub := '#include <assert.h>
+#include <string.h>
+int literal_main(void);
+static int modes;
+static int calls;
+static const unsigned char expected[] = {97, 0, 98, 99, 10, 100};
+static const int fds[] = {1, 1, 2, 1};
+static const unsigned int counts[] = {3, 1, 2, 1};
+static unsigned int consumed;
+int _setmode(int fd, int mode) { assert(fd == ++modes && mode == 0x8000); return 0; }
+int _write(int fd, const void* data, unsigned int count) {
+ assert(calls < 4 && fd == fds[calls] && count == counts[calls]);
+ unsigned int size = count > 2 ? 2 : count;
+ assert(memcmp(data, expected + consumed, size) == 0);
+ consumed += size;
+ calls++;
+ return (int)size;
+}
+int main(void) {
+ assert(literal_main() == 0);
+ assert(modes == 2 && calls == 4 && consumed == sizeof(expected));
+ return 0;
+}
+'
+	run_literal_native_stub('ordered', code, stub, [])!
+}
+
+fn test_windows_literal_output_caps_crt_count_at_int_max() ! {
+	code := windows_literal_output_source('print("x")') or { panic('missing minimal output') }
+	// Inject a large remaining length without allocating a multi-gigabyte literal.
+	// The failing sink must see the bounded CRT count before the loop exits.
+	large := code.replace('unsigned long long n = 1;', 'unsigned long long n = 2147483648ULL;')
+	assert large != code
+	stub := '#include <assert.h>
+int literal_main(void);
+static int calls;
+int _setmode(int fd, int mode) { assert(fd == 1 && mode == 0x8000); return 0; }
+int _write(int fd, const void* data, unsigned int count) {
+ assert(fd == 1 && data && count == 2147483647U);
+ calls++;
+ return -1;
+}
+int main(void) { assert(literal_main() == 0 && calls == 1); return 0; }
+'
+	run_literal_native_stub('large', large, stub, [])!
+}
+
+fn run_literal_native_stub(name string, code string, stub string, extra_flags []string) ! {
+	root := os.join_path(os.vtmp_dir(), 'literal_native_stub_${name}_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	generated := os.join_path(root, 'generated.c')
+	sink := os.join_path(root, 'sink.c')
+	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
+	os.write_file(generated, code.replace('int main(void)', 'int literal_main(void)'))!
+	os.write_file(sink, stub)!
+	compiler := $if windows { 'gcc' } $else { 'cc' }
+	compiled := cmdexec.run(compiler, ['-std=c11', '-Werror', '-Wall', '-Wextra', ...extra_flags,
+		'-o', binary, generated, sink])
+	assert compiled.exit_code == 0, compiled.output
+	run := cmdexec.run(binary, [])
+	assert run.exit_code == 0, run.output
+}
+
+fn test_android_literal_output_preserves_log_priority_format_tag_and_order() ! {
+	code := platform_literal_output_source('fn main() { print("100%"); println("a\\x00b"); eprint("c"); eprintln("d") }', 'android') or {
+		panic('Android literals must use the native logger')
+	}
+	assert code.contains('int __android_log_print('), code
+	assert !code.contains('#include') && !code.contains('GC_') && !code.contains('puts('), code
+	stub := '#include <assert.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+#ifndef EXPECTED_TAG
+#define EXPECTED_TAG "\\\"V\\\""
+#endif
+int literal_main(void);
+static int calls;
+static const int priorities[] = {4, 4, 6, 6};
+static const char* formats[] = {"%.*s\\n", "%.*s\\n", "%.*s", "%.*s\\n"};
+static const char* messages[] = {"100%\\n", "a\\n", "c", "d\\n"};
+int __android_log_print(int priority, const char* tag, const char* format, ...) {
+ assert(calls < 4 && priority == priorities[calls]);
+ assert(strcmp(tag, EXPECTED_TAG) == 0 && strcmp(format, formats[calls]) == 0);
+ char output[32];
+ va_list args;
+ va_start(args, format);
+ int result = vsnprintf(output, sizeof(output), format, args);
+ va_end(args);
+ assert(strcmp(output, messages[calls]) == 0);
+ calls++;
+ return result;
+}
+int main(void) { assert(literal_main() == 0 && calls == 4); return 0; }
+'
+	for flags in [([]string{}), ['-DAPPNAME=sample', '-DEXPECTED_TAG="sample"'],
+		['-DV_ANDROID_LOG_TAG=chosen', '-DEXPECTED_TAG="chosen"']] {
+		run_literal_native_stub('android', code, stub, flags)!
+	}
+}
+
+fn test_ios_literal_output_preserves_native_logger_and_order() ! {
+	code := platform_literal_output_source('fn main() { print("a"); eprint("b"); println("c"); eprintln("привет") }', 'ios') or {
+		panic('iOS literals must use the native logger')
+	}
+	assert code.contains('void WrappedNSLog(const char* const_format, ...);'), code
+	assert !code.contains('#include') && !code.contains('GC_') && !code.contains('puts('), code
+	if _ := platform_literal_output_source('println("100%")', 'ios') {
+		assert false, 'format directives need the ordinary iOS runtime'
+	}
+	stub := '#include <assert.h>
+#include <string.h>
+int literal_main(void);
+static int calls;
+static const char* messages[] = {"a", "b", "c", "привет"};
+void WrappedNSLog(const char* format, ...) {
+ assert(calls < 4 && strcmp(format, messages[calls]) == 0);
+ calls++;
+}
+int main(void) { assert(literal_main() == 0 && calls == 4); return 0; }
+'
+	run_literal_native_stub('ios', code, stub, [])!
+}
+
+fn test_literal_platform_loggers_link_only_their_native_dependencies() {
+	mut g := FlatGen.new()
+	g.compiler_vroot = @VEXEROOT
+	g.set_target(pref.target_from('android', 'arm64')!)
+	assert g.literal_output_c_flags() == ['-llog']
+	g.set_target(pref.target_from('ios', 'arm64')!)
+	assert g.literal_output_c_flags() == [
+		os.join_path(@VEXEROOT, 'thirdparty', 'ios', 'ios.o'),
+		'-framework',
+		'Foundation',
+	]
+	for source in [os.join_path(@VEXEROOT, 'vlib', 'builtin', 'cfns.c.v'), '/cache/builtin.vh'] {
+		mut a := flat.FlatAst.new()
+		a.add_node(flat.Node{ kind: .file, value: source })
+		a.add_node(flat.Node{ kind: .c_fn_decl, value: 'WrappedNSLog' })
+		if source.ends_with('.vh') {
+			a.cached_header_sources[source] = os.join_path(@VEXEROOT, 'vlib', 'builtin', 'array.v')
+		}
+		g.a = &a
+		g.compiler_vroot = ''
+		assert g.literal_output_c_flags()[0] == os.join_path(@VEXEROOT, 'thirdparty', 'ios', 'ios.o')
+	}
+}
+
+fn test_windows_literal_cli_output_matches_native_crt_declarations() ! {
+	root := os.join_path(os.vtmp_dir(), 'windows_literal_cli_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	c_file := os.join_path(root, 'main.c')
+	oracle := os.join_path(root, 'oracle.c')
+	object := os.join_path(root, 'main.o')
+	mingw := os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc') or { '' }
+	for program in ['fn main() { println("hello world") }',
+		'fn main() { print("a\\x00b"); eprintln("c"); print("d") }'] {
+		os.write_file(source, program)!
+		for cc in ['clang', 'msvc'] {
+			generated := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-os', 'windows', '-arch',
+				'amd64', '-cc', cc, '-o', c_file, source])
+			assert generated.exit_code == 0, generated.output
+			code := os.read_file(c_file)!
+			assert code.len < 2048, code
+			assert !code.contains('#include') && !code.contains('GC_') && !code.contains('malloc'), code
+			assert !code.contains('__SIZE_TYPE__') && !code.contains('__PTRDIFF_TYPE__'), code
+			if mingw.len > 0 {
+				// Rename only the oracle's declarations: SDK dllimport attributes concern
+				// linkage, while typed pointer assignments check the generated ABI.
+				renamed := code.replace_each(['_setmode(', 'oracle_setmode(', '_write(', 'oracle_write(',
+					'puts(', 'oracle_puts('])
+				mut checks := '\n__typeof__(&oracle_setmode) abi_setmode = &_setmode;\n'
+				if code.contains('_write(') {
+					checks += '__typeof__(&oracle_write) abi_write = &_write;\n'
+				}
+				if code.contains('puts(') {
+					checks += '__typeof__(&oracle_puts) abi_puts = &puts;\n'
+				}
+				os.write_file(oracle, '#include <stdio.h>\n#include <io.h>\n#include <fcntl.h>\n#if _O_BINARY != 0x8000\n#error unexpected binary mode\n#endif\n' + renamed + checks)!
+				for file in [c_file, oracle] {
+					compiled := cmdexec.run(mingw, ['-std=c11', '-Werror', '-Wall', '-Wextra',
+						'-c', file, '-o', object])
+					assert compiled.exit_code == 0, compiled.output
+				}
+			}
+		}
+	}
+	os.write_file(source, 'fn main() { println("привет") }')!
+	generated := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-os', 'windows',
+		'-arch', 'amd64', '-o', c_file, source])
+	assert generated.exit_code == 0, generated.output
+	assert os.read_file(c_file)!.contains('MultiByteToWideChar'), 'Unicode console support must remain reachable'
+}
 
 fn test_portable_literal_output_retains_snapshot_runtime_and_metadata() {
 	$if !macos && !linux && !freebsd && !openbsd {

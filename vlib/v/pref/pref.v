@@ -5,6 +5,11 @@ import strings
 import time
 import v.cmdexec
 
+// native_backend_replacement_message explains how to replace the removed native backend option.
+pub const native_backend_replacement_message = '`-b native` has been replaced by `-b arm64` for native ARM64 compilation on macOS.\n' +
+	'Enable ARM64 support with `v -compile-backend arm64 self`, then use `v -b arm64 -gc none file.v`.\n' +
+	'The native AMD64 backend is not available yet; use `v -b c -arch amd64 file.v`.'
+
 const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
