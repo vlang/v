@@ -188,7 +188,7 @@ fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 		}
 		if clean_sum is types.SumType {
 			variant_name := g.resolve_variant(clean_sum.name(), cond.value)
-			variant_type := g.tc.parse_type(variant_name)
+			variant_type := g.tc.parse_type(flat.source_type_id(variant_name))
 			if variant_type is types.Void {
 				return
 			}

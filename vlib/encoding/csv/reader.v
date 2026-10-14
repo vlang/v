@@ -202,7 +202,7 @@ fn (mut r Reader) read_record() ![]string {
 				}
 				continue
 			}
-			return &BareQuoteError{}
+			return &UnexpectedCharacterAfterQuoteError{}
 		}
 	}
 	return fields
@@ -226,4 +226,12 @@ fn (err BareQuoteError) msg() string {
 
 fn valid_delim(b u8) bool {
 	return b != 0 && b != `"` && b != `\r` && b != `\n`
+}
+
+struct UnexpectedCharacterAfterQuoteError {
+	Error
+}
+
+fn (err UnexpectedCharacterAfterQuoteError) msg() string {
+	return 'encoding.csv: unexpected character after closing quote'
 }

@@ -16,7 +16,7 @@ fn enum_decl_backing_type(node flat.Node) ?string {
 }
 
 fn (g &FlatGen) enum_backing_storage_c_type(backing string) string {
-	return g.tc.c_type(g.tc.parse_type(backing))
+	return g.tc.c_type(g.tc.parse_type(flat.source_type_id(backing)))
 }
 
 fn (g &FlatGen) enum_emit_storage_c_type(enum_name string, backing string) string {
@@ -223,10 +223,10 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		}
 	}
 	if target := g.tc.type_aliases.get(ct) {
-		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
+		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(flat.source_type_id(target))))
 	}
 	if target := g.tc.type_aliases.get('main.${ct}') {
-		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
+		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(flat.source_type_id(target))))
 	}
 	return ct
 }
@@ -323,7 +323,7 @@ fn (mut g FlatGen) precompute_thread_type_usage() {
 	for _, variants_id in g.tc.sum_types.ids {
 		variants := variants_id.map(flat.source_type_name(it))
 		for variant in variants {
-			g.note_thread_type_usage(g.tc.parse_type(variant))
+			g.note_thread_type_usage(g.tc.parse_type(flat.source_type_id(variant)))
 		}
 	}
 }
@@ -347,10 +347,10 @@ fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
 		// after the specialized body has moved into the generic function's module.
 		// Recover the registered alias before selecting the C storage type.
 		if target := g.tc.type_aliases.get(clean_type.name()) {
-			return cgen_unalias_type(g.tc.parse_type(target))
+			return cgen_unalias_type(g.tc.parse_type(flat.source_type_id(target)))
 		}
 		if target := g.tc.type_aliases.get('main.${clean_type.name()}') {
-			return cgen_unalias_type(g.tc.parse_type(target))
+			return cgen_unalias_type(g.tc.parse_type(flat.source_type_id(target)))
 		}
 	}
 	return clean_type
@@ -526,7 +526,7 @@ fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 		pointer_suffix += '*'
 	}
 	if source_name := optional_payload_struct_name(t) {
-		canonical_name := g.canonical_import_alias_type_text(source_name)
+		canonical_name := flat.source_type_name(g.canonical_import_alias_type_text(flat.source_type_id(source_name)))
 		lookup_name := if canonical_name.starts_with('main.') {
 			canonical_name['main.'.len..]
 		} else {
@@ -577,8 +577,8 @@ fn optional_payload_struct_name(t types.Type) ?string {
 	return none
 }
 
-fn (g &FlatGen) canonical_import_alias_type_text(typ string) string {
-	return g.canonical_import_alias_type_text_in_file(typ, g.tc.cur_file)
+fn (g &FlatGen) canonical_import_alias_type_text(type_id u32) u32 {
+	return g.canonical_import_alias_type_text_in_file(type_id, g.tc.cur_file)
 }
 
 @[heap]
@@ -611,23 +611,20 @@ fn (mut cache ImportTypeCache) for_file(file string) &ImportFileTypeCache {
 	return entry
 }
 
-fn (g &FlatGen) canonical_import_alias_type_in_file(typ string, file string) types.Type {
+fn (g &FlatGen) canonical_import_alias_type_in_file(type_id u32, file string) types.Type {
 	mut cache := g.import_type_cache
-	if !g.skip_generics || isnil(cache) || typ.contains('typeof') {
-		return g.canonical_import_alias_type_in_file_uncached(typ, file)
+	if !g.skip_generics || isnil(cache) || flat.source_type_shape(type_id).has(.typeof_name) {
+		return g.canonical_import_alias_type_in_file_uncached(flat.source_type_name(type_id), file)
 	}
 	mut entry := cache.for_file(file)
-	id := entry.texts.texts.intern(typ)
-	if result := entry.parsed[id] {
-		return result
-	}
-	result := g.canonical_import_alias_type_in_file_uncached(typ, file)
-	entry.parsed[id] = result
+	if result := entry.parsed[type_id] { return result }
+	result := g.canonical_import_alias_type_in_file_uncached(flat.source_type_name(type_id), file)
+	entry.parsed[type_id] = result
 	return result
 }
 
 fn (g &FlatGen) canonical_import_alias_type_in_file_uncached(typ string, file string) types.Type {
-	canonical := g.canonical_import_alias_type_text_in_file(typ, file)
+	canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(typ), file))
 	if canonical != typ {
 		if exact := g.exact_known_import_type_text(canonical) {
 			return exact
@@ -650,7 +647,7 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.
 	// Only dotted names can reference an import alias. Primitive and local
 	// type spellings do not need a walk through synthesized child nodes.
 	file := if source.contains('.') { g.node_source_file(node) } else { '' }
-	canonical := g.canonical_import_alias_type_text_in_file(source, file)
+	canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(source), file))
 	if canonical != source {
 		if exact := g.exact_known_import_type_text(canonical) {
 			return exact
@@ -685,7 +682,7 @@ fn type_has_import_alias_text(typ types.Type) bool {
 
 fn (mut g FlatGen) sizeof_target_in_file(value string, file string) string {
 	target := g.generic_default_type_text(value)
-	canonical := g.canonical_import_alias_type_text_in_file(target, file)
+	canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(target), file))
 	if canonical != target {
 		if exact := g.exact_known_import_type_text(canonical) {
 			return g.value_sizeof_target(exact)
@@ -695,7 +692,7 @@ fn (mut g FlatGen) sizeof_target_in_file(value string, file string) string {
 }
 
 fn (mut g FlatGen) import_alias_sizeof_target_in_file(value string, file string) ?string {
-	canonical := g.canonical_import_alias_type_text_in_file(value, file)
+	canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(value), file))
 	if canonical == value {
 		return none
 	}
@@ -725,7 +722,7 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 		})
 	}
 	if g.tc.type_aliases.contains(clean) {
-		return g.tc.parse_canonical_type(clean)
+		return g.tc.parse_canonical_type(flat.source_type_id(clean))
 	}
 	if clean in g.tc.structs {
 		return types.Type(types.Struct{
@@ -765,33 +762,25 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 	return none
 }
 
-fn (g &FlatGen) canonical_import_alias_type_text_in_file(typ string, file string) string {
-	// Import tables are immutable during C generation. Each worker owns its
-	// cache, with separate entries for source files visited by synthesized nodes.
+fn (g &FlatGen) canonical_import_alias_type_text_in_file(type_id u32, file string) u32 {
 	mut cache := g.import_type_cache
 	if isnil(cache) {
-		return g.canonical_import_alias_type_text_in_file_uncached(typ, file)
+		return flat.source_type_id(g.canonical_import_alias_type_text_in_file_uncached(flat.source_type_name(type_id), file))
 	}
-	if !typ.contains('.') {
-		if !typ.contains('[') && !typ.starts_with('&') && !typ.starts_with('?')
-			&& !typ.starts_with('!') {
-			return g.canonical_import_alias_type_text_in_file_uncached(typ, file)
+	shape := flat.source_type_shape(type_id)
+	if !shape.has(.dotted) {
+		if !shape.has(.bracketed) && !shape.has(.wrapped) {
+			return flat.source_type_id(g.canonical_import_alias_type_text_in_file_uncached(flat.source_type_name(type_id), file))
 		}
-		// Wrapper and generic normalization is independent of the source file
-		// without a dotted name. Reuse it across file contexts in this worker.
-		if result := cache.unqualified_texts.get(typ) {
-			return result
-		}
-		result := g.canonical_import_alias_type_text_in_file_uncached(typ, file)
-		cache.unqualified_texts.put(typ, result)
+		if result := cache.unqualified_texts.get_id(type_id) { return result }
+		result := flat.source_type_id(g.canonical_import_alias_type_text_in_file_uncached(flat.source_type_name(type_id), file))
+		cache.unqualified_texts.put_id(type_id, result)
 		return result
 	}
 	mut entry := cache.for_file(file)
-	if result := entry.texts.get(typ) {
-		return result
-	}
-	result := g.canonical_import_alias_type_text_in_file_uncached(typ, file)
-	entry.texts.put(typ, result)
+	if result := entry.texts.get_id(type_id) { return result }
+	result := flat.source_type_id(g.canonical_import_alias_type_text_in_file_uncached(flat.source_type_name(type_id), file))
+	entry.texts.put_id(type_id, result)
 	return result
 }
 
@@ -800,7 +789,7 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	for prefix in ['&', '?', '!', '[]'] {
 		if clean.starts_with(prefix) {
 			inner := clean[prefix.len..]
-			canonical := g.canonical_import_alias_type_text_in_file(inner, file)
+			canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(inner), file))
 			if inner == canonical {
 				return clean
 			}
@@ -813,8 +802,8 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	if clean.starts_with('map[') {
 		bracket_end := shared_generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len - 1 {
-			key := g.canonical_import_alias_type_text_in_file(clean[4..bracket_end], file)
-			value := g.canonical_import_alias_type_text_in_file(clean[bracket_end + 1..], file)
+			key := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(clean[4..bracket_end]), file))
+			value := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(clean[bracket_end + 1..]), file))
 			return 'map[${key}]${value}'
 		}
 	}
@@ -822,9 +811,9 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	if ok {
 		mut canonical_args := []string{cap: args.len}
 		for arg in args {
-			canonical_args << g.canonical_import_alias_type_text_in_file(arg, file)
+			canonical_args << flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(arg), file))
 		}
-		canonical_base := g.canonical_import_alias_type_text_in_file(base, file)
+		canonical_base := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(base), file))
 		return '${canonical_base}[${canonical_args.join(', ')}]'
 	}
 	if clean.contains('.') {
@@ -962,7 +951,7 @@ fn (mut g FlatGen) collect_sizeof_optional_types() {
 		} else if node.kind == .module_decl {
 			g.tc.cur_module = node.value
 		} else if is_optional_sizeof_node(&node) {
-			g.collect_optional_typedef_type(g.tc.parse_type(node.value))
+			g.collect_optional_typedef_type(g.tc.parse_type(flat.source_type_id(node.value)))
 		}
 	}
 	g.tc.cur_file = old_file
@@ -2362,7 +2351,7 @@ fn (g &FlatGen) enum_comptime_integer_cast(value i64, typ string) i64 {
 	resolved := if isnil(g.tc) || typ.len == 0 {
 		typ
 	} else {
-		types.unalias_type(g.tc.parse_type(typ)).name()
+		types.unalias_type(g.tc.parse_type(flat.source_type_id(typ))).name()
 	}
 	return types.comptime_enum_integer_cast(value, resolved)
 }
@@ -2574,7 +2563,7 @@ fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_modu
 			if node.children_count == 0 {
 				return none
 			}
-			target_type := g.tc.parse_type(g.generic_default_type_text(node.value))
+			target_type := g.tc.parse_type(flat.source_type_id(g.generic_default_type_text(node.value)))
 			mut ct := g.cast_c_type(target_type)
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
@@ -2716,7 +2705,7 @@ fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
 		if g.tc.autofree_mode && !main_aliases[name] {
 			continue
 		}
-		parsed_target := g.tc.parse_type(target)
+		parsed_target := g.tc.parse_type(flat.source_type_id(target))
 		mut ct := if parsed_target is types.FnType {
 			g.fn_ptr_type_key(parsed_target)
 		} else {

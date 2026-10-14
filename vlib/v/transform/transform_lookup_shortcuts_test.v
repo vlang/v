@@ -7,32 +7,32 @@ fn test_var_type_scope_restores_like_a_copy() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.set_var_type('outer', 'int')
-	t.set_var_type('shadowed', 'string')
+	t.set_var_type('outer', flat.source_type_id('int'))
+	t.set_var_type('shadowed', flat.source_type_id('string'))
 	expected := t.var_types.clone()
 	t.var_type_undo_active = true
 	scope := t.mark_var_type_scope()
-	t.set_var_type('inner', 'u8')
-	t.set_var_type('shadowed', 'f64')
+	t.set_var_type('inner', flat.source_type_id('u8'))
+	t.set_var_type('shadowed', flat.source_type_id('f64'))
 	nested := t.mark_var_type_scope()
-	t.set_var_type('inner', '[]int')
-	t.set_var_type('deep', 'bool')
-	t.set_var_type('outer', 'i64')
-	t.set_var_type('outer', 'u64')
+	t.set_var_type('inner', flat.source_type_id('[]int'))
+	t.set_var_type('deep', flat.source_type_id('bool'))
+	t.set_var_type('outer', flat.source_type_id('i64'))
+	t.set_var_type('outer', flat.source_type_id('u64'))
 	t.restore_var_type_scope(nested)
-	assert t.var_type('inner') == 'u8'
-	assert t.var_type('outer') == 'int'
-	assert t.var_type('shadowed') == 'f64'
-	assert t.var_type('deep') == ''
+	assert flat.source_type_name(t.var_type('inner')) == 'u8'
+	assert flat.source_type_name(t.var_type('outer')) == 'int'
+	assert flat.source_type_name(t.var_type('shadowed')) == 'f64'
+	assert flat.source_type_name(t.var_type('deep')) == ''
 	t.restore_var_type_scope(scope)
 	t.var_type_undo_active = false
 	assert t.var_types == expected
 	assert t.var_type_indices.len == expected.len
 	assert t.var_type_index('inner') == -1
-	assert t.var_type('shadowed') == 'string'
+	assert flat.source_type_name(t.var_type('shadowed')) == 'string'
 	assert t.var_type_undo_log.len == 0
 	// Outside such a walk a rebinding leaves no record behind.
-	t.set_var_type('outer', 'i8')
+	t.set_var_type('outer', flat.source_type_id('i8'))
 	assert t.var_type_undo_log.len == 0
 }
 

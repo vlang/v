@@ -33,7 +33,7 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	tc.structs['OtherFault'] = tc.structs['Fault'].clone()
 	tc.params_structs['CloneParams'] = true
 	tc.interface_names['IError'] = true
-	fault := tc.parse_type('Fault')
+	fault := tc.parse_type(flat.source_type_id('Fault'))
 	fault_pointer := types.Type(types.Pointer{ base_type: fault })
 	tc.type_aliases.set('FaultRef', '&Fault')
 	tc.type_aliases.set('FaultRefAlias', 'FaultRef')
@@ -47,11 +47,13 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 		tc.fn_ret_types['Fault.clone'] = match clone_kind {
 			'value', 'extra_argument' { fault }
 			'pointer' { fault_pointer }
-			'pointer_alias' { tc.parse_type('FaultRef') }
-			'pointer_alias_chain' { tc.parse_type('FaultRefAlias') }
-			'value_alias' { tc.parse_type('FaultValueAlias') }
+			'pointer_alias' { tc.parse_type(flat.source_type_id('FaultRef')) }
+			'pointer_alias_chain' { tc.parse_type(flat.source_type_id('FaultRefAlias')) }
+			'value_alias' { tc.parse_type(flat.source_type_id('FaultValueAlias')) }
 			'wrong_pointer' { types.Type(types.Pointer{ base_type: types.Type(types.int_) }) }
-			'other_pointer' { types.Type(types.Pointer{ base_type: tc.parse_type('OtherFault') }) }
+			'other_pointer' {
+				types.Type(types.Pointer{ base_type: tc.parse_type(flat.source_type_id('OtherFault')) })
+			}
 			else { types.Type(types.int_) }
 		}
 		if clone_kind == 'extra_argument' {
@@ -72,10 +74,10 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 				tc.fn_variadic['Fault.clone'] = true
 			}
 			'params' {
-				tc.fn_param_types['Fault.clone'] << tc.parse_type('CloneParams')
+				tc.fn_param_types['Fault.clone'] << tc.parse_type(flat.source_type_id('CloneParams'))
 			}
 			'params_pointer' {
-				tc.fn_param_types['Fault.clone'] << types.Type(types.Pointer{ base_type: tc.parse_type('CloneParams') })
+				tc.fn_param_types['Fault.clone'] << types.Type(types.Pointer{ base_type: tc.parse_type(flat.source_type_id('CloneParams')) })
 			}
 			else {}
 		}

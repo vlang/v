@@ -48,7 +48,7 @@ fn (tc &TypeChecker) vls_constraint_set_types(id flat.NodeId) ?[]Type {
 		if decl_id := tc.vls_local_declaration(id) {
 			decl := tc.a.node(decl_id)
 			if decl.kind == .param {
-				typ = tc.parse_type(decl.typ_text())
+				typ = tc.parse_type(decl.typ)
 			}
 		}
 	}

@@ -4,7 +4,7 @@ import v.flat
 import v.types
 
 fn voidptr_variadic_test_storage(mut t Transformer, typ string) string {
-	t.set_var_type('arg', typ)
+	t.set_var_type('arg', flat.source_type_id(typ))
 	return t.voidptr_variadic_storage_type(t.a.add_node(flat.Node{ kind: .ident, value: 'arg' }))
 }
 

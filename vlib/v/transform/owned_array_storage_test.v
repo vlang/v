@@ -13,7 +13,7 @@ fn test_owned_array_storage_void_wrappers_preserve_the_source() {
 	assert t.optional_base_type('![]int') == '[]int'
 	assert t.optional_base_type('?[]int') == '[]int'
 	for wrapper in ['!', '?', '!void', '?void'] {
-		t.set_var_type('source', wrapper)
+		t.set_var_type('source', flat.source_type_id(wrapper))
 		source := t.make_ident('source')
 		nodes_before := a.nodes.len
 		for clone_owned_value in [false, true] {
@@ -55,7 +55,7 @@ fn configure_owned_array_storage_checker(mut tc types.TypeChecker) {
 	tc.type_aliases.set('ArrayResult', '![]Res')
 	tc.type_aliases.set('ArrayResultAlias', 'ArrayResult')
 	tc.type_aliases.set('ArrayOption', '?[]Res')
-	assert tc.ownership_type_requires_destruction(tc.parse_type('Res'))
+	assert tc.ownership_type_requires_destruction(tc.parse_type(flat.source_type_id('Res')))
 }
 
 fn test_owned_array_result_storage_clones_only_the_active_owner() {
@@ -67,7 +67,7 @@ fn test_owned_array_result_storage_clones_only_the_active_owner() {
 		mut tc := types.TypeChecker.new(&a)
 		configure_owned_array_storage_checker(mut tc)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.set_var_type('source', wrapper)
+		t.set_var_type('source', flat.source_type_id(wrapper))
 		source := t.make_ident('source')
 		owned := t.clone_owned_array_value_for_capture(source, wrapper)
 		assert t.is_owned_array_storage_value(owned)
@@ -89,7 +89,7 @@ fn test_owned_array_result_sum_storage_keeps_error_acquisition_inside_its_varian
 	tc.sum_types.set('Storage', ['ArrayResultAlias', 'int'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.sum_types.set('Storage', ['ArrayResultAlias', 'int'])
-	t.set_var_type('source', 'Storage')
+	t.set_var_type('source', flat.source_type_id('Storage'))
 	owned := t.clone_owned_array_value_for_capture(t.make_ident('source'), 'Storage')
 	assert t.is_owned_array_storage_value(owned)
 	mut result_branches := []flat.NodeId{}
@@ -121,7 +121,7 @@ fn test_owned_array_optional_and_borrowed_result_storage_do_not_clone_absent_err
 		mut tc := types.TypeChecker.new(&a)
 		configure_owned_array_storage_checker(mut tc)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.set_var_type('source', wrapper)
+		t.set_var_type('source', flat.source_type_id(wrapper))
 		if wrapper == 'ArrayResultAlias' {
 			t.clone_owned_array_view_for_storage(t.make_ident('source'), wrapper)
 		} else {
@@ -148,7 +148,7 @@ fn test_owned_array_storage_preserves_explicit_array_references() {
 		mut tc := types.TypeChecker.new(&a)
 		configure_owned_array_storage_checker(mut tc)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.set_var_type('source', wrapper)
+		t.set_var_type('source', flat.source_type_id(wrapper))
 		source := t.make_ident('source')
 		assert t.clone_owned_array_view_for_storage(source, wrapper) == source
 		assert t.clone_owned_array_value_for_capture(source, wrapper) == source
@@ -165,7 +165,7 @@ fn test_owned_array_reference_wrappers_keep_data_borrowed() {
 		mut tc := types.TypeChecker.new(&a)
 		configure_owned_array_storage_checker(mut tc)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.set_var_type('source', wrapper)
+		t.set_var_type('source', flat.source_type_id(wrapper))
 		t.clone_owned_array_view_for_storage(t.make_ident('source'), wrapper)
 		assert t.pending_stmts.len == 2
 		branch := t.pending_stmts.last()
@@ -183,7 +183,7 @@ fn test_owned_array_synthetic_pointer_acquisition_still_copies() {
 	mut tc := types.TypeChecker.new(&a)
 	configure_owned_array_storage_checker(mut tc)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.set_var_type('source', '&[]Res')
+	t.set_var_type('source', flat.source_type_id('&[]Res'))
 	source := t.make_ident('source')
 	assert t.clone_owned_array_storage_value(source, '&[]Res', true) != source
 	assert t.pending_stmts.len == 2
@@ -280,8 +280,8 @@ fn test_owned_sum_reassignment_keeps_declared_storage_under_smartcast() {
 	tc.sum_types.set('Value', ['First', 'Second'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.sum_types.set('Value', ['First', 'Second'])
-	t.set_var_type('value', 'Value')
-	t.set_var_type('replacement', 'Value')
+	t.set_var_type('value', flat.source_type_id('Value'))
+	t.set_var_type('replacement', flat.source_type_id('Value'))
 	t.push_smartcast('value', 'First', 'Value')
 	assignment := t.make_assign(t.make_ident('value'), t.make_ident('replacement'))
 	statements := t.transform_stmt(assignment)
@@ -309,8 +309,8 @@ fn test_blank_assignment_has_no_previous_owner_to_drop() {
 	configure_owned_array_storage_checker(mut tc)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	// Earlier discard expressions can leave an inferred type for this spelling.
-	t.set_var_type('_', 'Res')
-	t.set_var_type('items', '[]int')
+	t.set_var_type('_', flat.source_type_id('Res'))
+	t.set_var_type('items', flat.source_type_id('[]int'))
 	assignment := t.make_assign(t.make_ident('_'), t.make_ident('items'))
 	statements := t.transform_stmt(assignment)
 	assert statements.len == 1

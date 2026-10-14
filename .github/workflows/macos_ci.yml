@@ -44,6 +44,9 @@ jobs:
       VFLAGS: -cc clang
       VTEST_SELF_SHARD_INDEX: '0'
       VTEST_SELF_SHARD_COUNT: '3'
+      # Stop a failing test session at its first failure instead of running the
+      # whole suite to completion; the remaining files add no signal.
+      VTEST_FAIL_FAST: '1'
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
@@ -332,6 +335,9 @@ jobs:
       VFLAGS: -cc clang
       VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
       VTEST_SELF_SHARD_COUNT: '3'
+      # Stop a failing test session at its first failure instead of running the
+      # whole suite to completion; the remaining files add no signal.
+      VTEST_FAIL_FAST: '1'
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
