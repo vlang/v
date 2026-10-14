@@ -3436,7 +3436,7 @@ fn test_cached_object_rebuilds_when_import_resolves_to_new_header() {
 
 pub struct Item {
 pub:
-	value int
+	value i64
 }
 
 pub fn marker() int {
@@ -5530,7 +5530,7 @@ fn test_module_cache_reuses_headers_and_rebuilds_only_changed_module() {
 
 pub struct Item {
 pub:
-	value int
+	value i64
 }
 
 pub const answer = 21
@@ -5620,7 +5620,7 @@ fn main() {
 
 pub struct Item {
 pub:
-	value int
+	value i64
 }
 
 pub const answer = 21
@@ -5645,7 +5645,7 @@ pub fn unused_but_cached() int {
 
 pub struct Item {
 pub:
-	value int
+	value i64
 	extra i64
 }
 
