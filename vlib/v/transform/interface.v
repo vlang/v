@@ -284,6 +284,16 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			return lowered
 		}
 	}
+	if target_is_ptr && node.kind == .match_stmt {
+		if lowered := t.transform_match_expr_for_type(id, node, target_type) {
+			return lowered
+		}
+	}
+	if target_is_ptr && node.kind == .if_expr {
+		if lowered := t.try_expand_if_expr_value_for_type(id, node, target_type) {
+			return lowered
+		}
+	}
 	// IError has bespoke handling (built via `error()`, fields accessed directly);
 	// do not route it through the generic interface boxing.
 	if t.is_builtin_ierror_interface_name(iface_name) {
