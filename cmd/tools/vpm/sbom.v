@@ -5,6 +5,7 @@ module main
 // the tools that consume it, rather than by V alone.
 
 import json2
+import net.urllib
 import time
 
 // The SPDX specification this document declares itself against.
@@ -67,10 +68,11 @@ fn spdx_id_for(name string, version string) string {
 // other supply-chain tools use, so a consumer can join this bill of materials
 // against its own without knowing V's registry layout.
 fn spdx_purl(name string, version string) string {
-	// A PURL percent-encodes anything outside its allowed set; `/` is the
-	// separator, so a name containing one would otherwise change the shape.
-	encoded := name.replace('/', '%2F')
-	return 'pkg:vpm/${encoded}@${version}'
+	// PURL components preserve unreserved characters and colons. Query escaping
+	// encodes other bytes; spaces must use %20 rather than form encoding's +.
+	encoded_name := urllib.query_escape(name).replace('+', '%20').replace('%3A', ':')
+	encoded_version := urllib.query_escape(version).replace('+', '%20').replace('%3A', ':')
+	return 'pkg:vpm/${encoded_name}@${encoded_version}'
 }
 
 // spdx_cpe is a CPE 2.3 name, which is how vulnerability databases refer to a

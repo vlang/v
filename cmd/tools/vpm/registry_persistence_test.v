@@ -126,3 +126,57 @@ fn test_loading_an_existing_dangling_index_link_fails() {
 		assert false, 'an existing dangling index link was treated as a missing registry'
 	}
 }
+
+fn persistence_registry_identity(key string, entry_name string, module_name string, version string) Registry {
+	mut modules := map[string]RegistryEntry{}
+	modules[key] = RegistryEntry{
+		name:     entry_name
+		versions: [ModuleInfo{ name: module_name, version: version }]
+	}
+	return Registry{ modules: modules }
+}
+
+fn assert_invalid_persisted_registry(registry Registry) {
+	data := registry.export_json()
+	mut refused_import := false
+	import_json(data) or {
+		assert err.msg().contains('registry'), err.msg()
+		refused_import = true
+	}
+	assert refused_import, 'import accepted inconsistent or unroutable registry metadata'
+	os.write_file(registry_index_path(), data) or { panic(err) }
+	load_registry() or {
+		assert err.msg().contains('failed to load registry index'), err.msg()
+		stored := os.read_file(registry_index_path()) or { panic(err) }
+		assert stored == data
+		return
+	}
+	assert false, 'loading accepted invalid persisted registry metadata'
+}
+
+fn test_import_and_load_reject_unroutable_identity_fields() {
+	reset_persisted_registry()
+	os.mkdir_all(registry_dir())!
+	for value in ['', '.', '..', 'name.', 'name?query', 'name#fragment', 'name%2fpart', 'white space',
+		'name/part', 'name\\part', 'name:part', 'control\tbyte', 'café'] {
+		assert_invalid_persisted_registry(persistence_registry_identity(value, value, value, '1.0.0'))
+		assert_invalid_persisted_registry(persistence_registry_identity('valid', value, 'valid', '1.0.0'))
+		assert_invalid_persisted_registry(persistence_registry_identity('valid', 'valid', value, '1.0.0'))
+		assert_invalid_persisted_registry(persistence_registry_identity('valid', 'valid', 'valid', value))
+	}
+}
+
+fn test_import_and_load_reject_mismatched_but_individually_routable_names() {
+	reset_persisted_registry()
+	os.mkdir_all(registry_dir())!
+	assert_invalid_persisted_registry(persistence_registry_identity('alpha', 'beta', 'alpha', '1.0.0'))
+	assert_invalid_persisted_registry(persistence_registry_identity('alpha', 'alpha', 'beta', '1.0.0'))
+}
+
+fn test_import_preserves_routable_names_and_opaque_versions() {
+	registry := persistence_registry_identity('module+meta', 'module+meta', 'module+meta',
+		'release_2026+build.7')
+	imported := import_json(registry.export_json())!
+	assert imported.export_json() == registry.export_json()
+	assert imported.get_info('module+meta', 'release_2026+build.7') != none
+}

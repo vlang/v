@@ -101,6 +101,8 @@ The fields:
 - `/sbom.spdx.json` accepts `namespace` and `dl` as query parameters, defaulting
   to a fresh `urn:uuid:<UUID>` for each document and `https://vpm.local/downloads`.
   An explicit namespace is preserved; its caller is responsible for keeping it unique.
+  Package URLs percent-encode reserved bytes in both name and version: `acme@internal` at
+  `1.0.0+build` becomes `pkg:vpm/acme%40internal@1.0.0%2Bbuild`.
 - `/signature.sig` returns the signature inside a JSON string.
 
 Any path the router does not match, and any module it cannot find, answers the
@@ -136,7 +138,9 @@ Data is stored in `os.getwd()/.vpm-registry`, from `registry_dir()` in
 - `signing.key` — the hex ed25519 seed, read but never served.
 
 Only a missing index initializes an empty registry. Read and JSON decoding failures for an
-existing index abort startup and report the error.
+existing index abort startup and report the error. Imported module keys, entry names, version names,
+and versions must satisfy the same component rules as publication. The key and every name within
+its entry must agree; inconsistent or unroutable metadata is rejected.
 
 The default port is 9090 (`default_registry_port`). The server binds `:9090`,
 which is every interface, although the message it prints names loopback.
@@ -182,6 +186,10 @@ the listener has bound successfully.
   hostname and effective port). An unset registry disables the fallback. Public VPM requests,
   including public-server fallback after consulting a registry, receive no registry credentials.
   The registry server reads neither token variable: it authenticates nothing.
+  Requests carrying tokens require HTTPS and reject plaintext HTTP before connecting.
+- `VPM_REGISTRY_ALLOW_INSECURE_LOOPBACK` — set to exactly `1` to allow authenticated HTTP
+  for local development, only at the literal address `127.0.0.1`. The exception
+  does not accept DNS names, other addresses or HTTPS certificate failures.
 - `VPM_REGISTRY_CA_FILE` — a trusted PEM CA file for authenticated registry HTTPS requests.
   These HTTPS requests always check certificate chains and hostnames. An empty setting or a
   missing or invalid custom CA file fails closed. Without a custom file, mbedTLS searches common
@@ -203,12 +211,16 @@ What `publish` does:
 - records every accepted digest spelling as `sha256:<digest>`, including an empty checksum,
   while retaining the publication's other metadata;
 - refuses to replace a version that is already published, unless the checksum is
-  unchanged after normalization, in which case the call is a no-op and records no change;
+  unchanged after normalization. A matching repeat verifies the stored archive and restores it
+  if missing or corrupt, without changing the original metadata, yank state or change log;
 - writes the archive to `artifacts/<module>/<version>.zip`;
 - appends a `publish` entry to the change log.
 
 `publish` does not persist the index, and neither does anything else: `save()`
 has no caller in this branch, and the server reads `index.json` once at startup.
+`save()` writes a unique temporary file beside `index.json` and atomically replaces the index
+after the complete write succeeds. A failed write or replacement preserves the previous index.
+Temporary files start private; existing regular-file permissions are retained on Unix.
 A registry's contents are therefore fixed for the lifetime of the process, and
 replacing `index.json` underneath a running server has no effect until restart.
 

@@ -20,8 +20,8 @@ mut:
 }
 
 fn registry_tls_clear_env() {
-	for name in [registry_url_env, registry_ca_file_env, 'VPM_TOKEN', 'VPM_TOKEN_LOCALHOST',
-		'VPM_TOKEN_127_0_0_1', 'SSL_CERT_FILE', 'SSL_CERT_DIR'] {
+	for name in [registry_url_env, registry_ca_file_env, registry_insecure_loopback_env, 'VPM_TOKEN',
+		'VPM_TOKEN_LOCALHOST', 'VPM_TOKEN_127_0_0_1', 'SSL_CERT_FILE', 'SSL_CERT_DIR'] {
 		os.unsetenv(name)
 	}
 }
@@ -169,6 +169,8 @@ fn test_registry_rejects_an_untrusted_tls_peer_before_sending_the_token() {
 		registry_tls_clear_env()
 	}
 	registry_tls_configure_token(running.base)
+	// The development HTTP exception must not relax any HTTPS validation.
+	os.setenv(registry_insecure_loopback_env, '1', true)
 	registry_tls_expect_rejection(running.base)
 	running.close()
 	registry_tls_no_http(running.requests)

@@ -99,6 +99,41 @@ fn test_purl_is_well_formed() {
 	assert spdx_purl('my/lib', '2.0.0') == 'pkg:vpm/my%2Flib@2.0.0'
 }
 
+fn test_purl_encodes_reserved_bytes_in_both_components() {
+	cases := {
+		"-._~!$&'()*+,;=@[]": '-._~%21%24%26%27%28%29%2A%2B%2C%3B%3D%40%5B%5D'
+		'@/?#%':              '%40%2F%3F%23%25'
+		'%2F':                '%252F'
+		'a b+c':              'a%20b%2Bc'
+		'café本':             'caf%C3%A9%E6%9C%AC'
+		'build:one':          'build:one'
+	}
+	for component, expected in cases {
+		assert spdx_purl(component, '1.0.0') == 'pkg:vpm/${expected}@1.0.0'
+		assert spdx_purl('serde', component) == 'pkg:vpm/serde@${expected}'
+	}
+}
+
+fn test_purl_delimiters_do_not_conflate_package_identities() {
+	assert spdx_purl('acme@internal', '1.0.0') == 'pkg:vpm/acme%40internal@1.0.0'
+	assert spdx_purl('acme', 'internal@1.0.0') == 'pkg:vpm/acme@internal%401.0.0'
+	assert spdx_purl('acme@internal', '1.0.0') != spdx_purl('acme', 'internal@1.0.0')
+	assert spdx_purl('my/lib', '1.0.0') != spdx_purl('my%2Flib', '1.0.0')
+}
+
+fn test_spdx_json_emits_encoded_purls_without_changing_package_metadata() {
+	mut registry := new_registry()
+	registry.add_module(sbom_demo_info('acme@internal', '1.0.0+build@tag', 'MIT', ''))
+	document := json2.decode[SpdxDocument](registry.spdx_json(sbom_namespace, sbom_download_base))!
+	assert document.packages.len == 1
+	package := document.packages[0]
+	assert package.name == 'acme@internal'
+	assert package.version_info == '1.0.0+build@tag'
+	assert package.external_refs.len == 1
+	assert package.external_refs[0].reference_type == 'purl'
+	assert package.external_refs[0].reference_locator == 'pkg:vpm/acme%40internal@1.0.0%2Bbuild%40tag'
+}
+
 fn test_cpe_is_well_formed() {
 	assert spdx_cpe('serde', '1.0.0') == 'cpe:2.3:a:vpm:serde:1.0.0:*:*:*:*:*:*:*'
 	// CPE requires `:` be escaped in the product part.

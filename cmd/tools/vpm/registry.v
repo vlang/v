@@ -223,12 +223,33 @@ pub fn (r &Registry) export_json() string {
 	return json2.encode(r, prettify: true)
 }
 
-// import_json imports a registry from JSON.
+// import_json imports a registry from JSON, rejecting unroutable or inconsistent
+// module identities before they become reachable through the registry API.
 pub fn import_json(data string) !Registry {
 	r := json2.decode[Registry](data) or {
 		return error('failed to parse registry JSON: ${err.msg()}')
 	}
+	r.validate_registry_entries()!
 	return r
+}
+
+fn (r &Registry) validate_registry_entries() ! {
+	for name, entry in r.modules {
+		if !registry_artifact_component(name) {
+			return error('invalid registry module key `${name}`')
+		}
+		if !registry_artifact_component(entry.name) || entry.name != name {
+			return error('registry entry name `${entry.name}` does not match module key `${name}`')
+		}
+		for info in entry.versions {
+			if !registry_artifact_component(info.name) || info.name != name {
+				return error('registry version module name `${info.name}` does not match module key `${name}`')
+			}
+			if !registry_artifact_component(info.version) {
+				return error('invalid registry version `${info.version}` for module `${name}`')
+			}
+		}
+	}
 }
 
 // registry_dir returns the directory where registry data is stored.
@@ -297,15 +318,18 @@ pub fn (mut r Registry) publish(info ModuleInfo, archive_path string) ! {
 	// an existing lockfile points at, so it is refused rather than overwritten.
 	if existing := r.get_info(info.name, info.version) {
 		if existing.checksum.trim_string_left('sha256:').trim_string_left('SHA256:') == actual {
+			// A retry restores missing/corrupt artifact bytes, but never rewrites
+			// the published metadata, yank state, or change history.
+			if read_registry_artifact(r, info.name, info.version,
+				artifact_path(info.name, info.version)) != none {
+				return
+			}
+			r.store_registry_artifact(info.name, info.version, content)!
 			return
 		}
 		return error('`${info.name}@${info.version}` is already published; a version cannot be replaced')
 	}
-	dest := artifact_path(info.name, info.version)
-	os.mkdir_all(os.dir(dest)) or {}
-	os.write_file(dest, content) or {
-		return error('failed to store the archive for `${info.name}@${info.version}`: ${err.msg()}')
-	}
+	r.store_registry_artifact(info.name, info.version, content)!
 	// Record verified bytes with the spelling used by downloads and SPDX consumers.
 	r.add_module(ModuleInfo{
 		...info
@@ -313,13 +337,24 @@ pub fn (mut r Registry) publish(info ModuleInfo, archive_path string) ! {
 	})
 }
 
-// save persists the registry to disk.
+fn (r &Registry) store_registry_artifact(name string, version string, content string) ! {
+	dest := artifact_path(name, version)
+	os.mkdir_all(os.dir(dest)) or {
+		return error('failed to create artifact directory: ${err.msg()}')
+	}
+	registry_store_file(dest, content) or {
+		return error('failed to store the archive for `${name}@${version}`: ${err.msg()}')
+	}
+}
+
+// save persists a complete registry through an atomic same-directory replacement.
+// A failed write, close, or rename leaves the previous index intact.
 pub fn (r &Registry) save() ! {
 	dir := registry_dir()
 	os.mkdir_all(dir) or {
 		return error('failed to create registry directory: ${err.msg()}')
 	}
-	os.write_file(registry_index_path(), r.export_json()) or {
+	registry_store_file(registry_index_path(), r.export_json()) or {
 		return error('failed to write registry index: ${err.msg()}')
 	}
 }

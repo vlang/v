@@ -94,6 +94,7 @@ fn vpm_http_post(url string, data string) !http.Response {
 // Host-scoped tokens take precedence over the configured origin's VPM_TOKEN.
 const vpm_token_env_prefix = 'VPM_TOKEN_'
 const registry_ca_file_env = 'VPM_REGISTRY_CA_FILE'
+const registry_insecure_loopback_env = 'VPM_REGISTRY_ALLOW_INSECURE_LOOPBACK'
 
 // registry_http_get is the credential-bearing transport for registry protocol requests.
 fn registry_http_get(url string) !http.Response {
@@ -101,8 +102,11 @@ fn registry_http_get(url string) !http.Response {
 }
 
 fn vpm_http_request(method http.Method, url string, data string, registry_request bool) !http.Response {
-	mut header := http.Header{}
 	token := if registry_request { registry_token(url) } else { '' }
+	if token != '' {
+		require_registry_secure_transport(url)!
+	}
+	mut header := http.Header{}
 	if token != '' {
 		header.add_custom('Authorization', 'Bearer ${token}') or {}
 	}
@@ -129,6 +133,23 @@ fn vpm_http_request(method http.Method, url string, data string, registry_reques
 		require_registry_token(url, resp.status_code)!
 	}
 	return resp
+}
+
+// require_registry_secure_transport refuses to expose bearer tokens over HTTP.
+// The development exception accepts only the literal 127.0.0.1 address with an
+// explicit opt-in; names resolving to loopback and other IP forms are excluded.
+fn require_registry_secure_transport(url string) ! {
+	parsed := urllib.parse(url)!
+	scheme := parsed.scheme.to_lower()
+	host := parsed.hostname()
+	if scheme == 'https' && host != '' {
+		return
+	}
+	if scheme == 'http' && host == '127.0.0.1'
+		&& os.getenv(registry_insecure_loopback_env) == '1' {
+		return
+	}
+	return error('registry bearer tokens require HTTPS; development HTTP requires a literal 127.0.0.1 host and ${registry_insecure_loopback_env}=1')
 }
 
 // registry_tls_ca_file selects trust roots for credential-bearing HTTPS requests.

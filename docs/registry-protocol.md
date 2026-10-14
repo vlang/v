@@ -111,10 +111,16 @@ Per-version entry (JSON):
   drive prefixes, `.` or `..` components, trailing dots/spaces, or NUL/line-break characters
 - Components use ASCII letters, digits, or `-._~!$&'()*+,;=@[]`, subject to filesystem restrictions.
   URL delimiters, percent escapes, whitespace and other control characters are rejected before
-  publishing, so the raw `.info` and `.zip` paths remain reachable.
+  publishing or importing an index, so the raw `.info` and `.zip` paths remain reachable.
+  Imported map keys, entry names, and per-version names must agree; all names and versions
+  must satisfy these component rules.
 - The zip file's SHA-256 checksum is recorded in the metadata
 - Accepted raw, `sha256:`, `SHA256:`, and omitted checksums are stored as `sha256:<verified digest>`
 - The checksum is used for integrity verification on download
+- Republishing identical bytes verifies the stored archive and repairs missing or corrupt bytes
+  without changing existing version metadata, yank state, or change history
+- Saving the index uses a unique temporary file in the same directory and an atomic replacement
+  after a successful complete write; write or replacement failures preserve the previous index
 - Artifact downloads require a recorded version and a matching, nonempty checksum; orphan files
   are never served
 - A transparency log records all published checksums
@@ -161,6 +167,8 @@ Per-version entry (JSON):
 - JSON uses the SPDX 2.3 field names, with `filesAnalyzed: false` for registry metadata. Package IDs
   encode both module name and version, so each package version has a distinct identifier.
 - Field names and package identifiers follow the [official SPDX JSON schema][spdx-schema].
+- Package URLs encode reserved bytes in both the module name and version. For example,
+  `acme@internal` at `1.0.0+build` is `pkg:vpm/acme%40internal@1.0.0%2Bbuild`.
 
 [spdx-schema]: https://github.com/spdx/spdx-spec/blob/v2.3.1/schemas/spdx-schema.json
 [spdx-namespace]: https://spdx.github.io/spdx-spec/v2.3.1/document-creation-information/
@@ -180,6 +188,10 @@ authenticates nothing.
 - `Authorization: Bearer <token>` is set by the VPM client only.
 - Credentials are attached only to registry protocol requests. Public metadata, search, health,
   download-count requests, and public-server fallback requests receive no registry token.
+- Credential-bearing requests require HTTPS; plaintext HTTP is rejected before connecting.
+  For local development, `VPM_REGISTRY_ALLOW_INSECURE_LOOPBACK=1` permits authenticated HTTP
+  only to the literal address `127.0.0.1`. DNS names and other addresses are excluded.
+  This opt-in does not disable certificate validation for HTTPS.
 - Credential-bearing HTTPS requests validate the peer's certificate chain and hostname. Set
   `VPM_REGISTRY_CA_FILE` to a trusted PEM CA file for a private CA. An empty setting, missing file,
   or invalid certificate file fails the request; it never disables certificate validation.

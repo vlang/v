@@ -191,11 +191,15 @@ fn start_token_echo() !RunningTokenEcho {
 }
 
 fn start_token_echo_handler(handler TokenEchoHandler) !RunningTokenEcho {
+	return start_token_echo_handler_at(handler, '127.0.0.1:0')
+}
+
+fn start_token_echo_handler_at(handler TokenEchoHandler, addr string) !RunningTokenEcho {
 	// The server is held by reference for the reason `start_registry` holds it:
 	// `listen_and_serve` takes it by `mut`, and spawning a method on a by-value
 	// receiver does not compile.
 	mut srv := &http.Server{
-		addr:                 '127.0.0.1:0'
+		addr:                 addr
 		handler:              handler
 		show_startup_message: false
 	}
@@ -220,9 +224,12 @@ const wire_other_host_token_var = 'VPM_TOKEN_VPM_EXAMPLE_COM'
 // leak its token into the next.
 fn clear_wire_tokens() {
 	os.unsetenv(registry_url_env)
+	os.unsetenv(registry_insecure_loopback_env)
 	os.unsetenv(wire_scoped_token_var)
 	os.unsetenv(wire_fallback_token_var)
 	os.unsetenv(wire_other_host_token_var)
+	os.unsetenv('VPM_TOKEN_LOCALHOST')
+	os.unsetenv('VPM_TOKEN_127_0_0_2')
 }
 
 // authorization_on_the_wire asks the echo server for a protocol route and
@@ -235,6 +242,7 @@ fn authorization_on_the_wire(base string) !string {
 // scoped name is not only parsed but carried across the connection.
 fn test_the_scoped_token_reaches_the_server() {
 	clear_wire_tokens()
+	os.setenv(registry_insecure_loopback_env, '1', true)
 	mut running := start_token_echo() or {
 		assert false, 'the echo server did not start: ${err.msg()}'
 		return
@@ -255,6 +263,7 @@ fn test_the_scoped_token_reaches_the_server() {
 // registry, and it is carried the same way.
 fn test_the_fallback_token_reaches_the_server() {
 	clear_wire_tokens()
+	os.setenv(registry_insecure_loopback_env, '1', true)
 	mut running := start_token_echo() or {
 		assert false, 'the echo server did not start: ${err.msg()}'
 		return
@@ -336,6 +345,7 @@ fn test_public_transports_do_not_send_global_or_scoped_registry_tokens() {
 
 fn test_unqualified_token_is_not_sent_without_the_matching_registry_origin() {
 	clear_wire_tokens()
+	os.setenv(registry_insecure_loopback_env, '1', true)
 	mut running := start_token_echo()!
 	defer {
 		running.server.close()
@@ -364,6 +374,7 @@ fn test_public_401_is_not_reported_as_registry_authentication() {
 		panic('missing captured Authorization header')
 	}
 	assert seen == 'absent'
+	os.setenv(registry_insecure_loopback_env, '1', true)
 	mut rejected := false
 	registry_get(running.base, '/alpha/@v/list') or {
 		rejected = true
@@ -385,6 +396,7 @@ fn assert_token_wire_capture(requests chan string, expected string) {
 
 fn test_authenticated_cross_origin_redirect_never_contacts_the_target() {
 	clear_wire_tokens()
+	os.setenv(registry_insecure_loopback_env, '1', true)
 	target_requests := chan string{cap: 4}
 	source_requests := chan string{cap: 4}
 	mut target := start_token_echo_handler(TokenEchoHandler{
@@ -422,6 +434,7 @@ fn test_authenticated_cross_origin_redirect_never_contacts_the_target() {
 
 fn test_authenticated_same_origin_redirect_retains_its_token() {
 	clear_wire_tokens()
+	os.setenv(registry_insecure_loopback_env, '1', true)
 	requests := chan string{cap: 4}
 	mut running := start_token_echo_handler(TokenEchoHandler{
 		redirect_to:     '/capture'
@@ -464,4 +477,75 @@ fn test_public_cross_origin_redirect_carries_no_registry_token() {
 	}
 	assert seen == 'absent'
 	assert_token_wire_capture(requests, '')
+}
+
+fn assert_registry_wire_transport_rejected(base string) {
+	mut rejected := false
+	registry_get(base, '/alpha/@v/list') or {
+		assert err.msg().contains('require HTTPS'), err.msg()
+		rejected = true
+	}
+	assert rejected, 'an insecure request unexpectedly reached `${base}`'
+}
+
+fn assert_no_token_wire_requests(requests chan string) {
+	select {
+		seen := <-requests {
+			assert false, 'a rejected HTTP peer received a request with Authorization `${seen}`'
+		}
+		else {
+			assert true
+		}
+	}
+}
+
+fn test_http_loopback_bearer_is_rejected_before_network_until_explicit_opt_in() {
+	clear_wire_tokens()
+	requests := chan string{cap: 8}
+	mut running := start_token_echo_handler(TokenEchoHandler{
+		record_requests: true
+		requests:        requests
+	})!
+	defer {
+		running.server.close()
+		clear_wire_tokens()
+	}
+	os.setenv(registry_url_env, running.base, true)
+	os.setenv(wire_fallback_token_var, 'tok-global', true)
+	os.setenv(wire_scoped_token_var, 'tok-scoped', true)
+	assert_registry_wire_transport_rejected(running.base)
+	for value in ['', '0', 'true', 'yes', '01', '1 '] {
+		os.setenv(registry_insecure_loopback_env, value, true)
+		assert_registry_wire_transport_rejected(running.base)
+	}
+	assert_no_token_wire_requests(requests)
+	os.setenv(registry_insecure_loopback_env, '1', true)
+	assert authorization_on_the_wire(running.base)! == 'Bearer tok-scoped'
+	assert_token_wire_capture(requests, 'Bearer tok-scoped')
+}
+
+fn test_http_dns_names_and_other_addresses_are_rejected_even_with_opt_in() {
+	clear_wire_tokens()
+	requests := chan string{cap: 8}
+	mut running := start_token_echo_handler_at(TokenEchoHandler{
+		record_requests: true
+		requests:        requests
+	}, '0.0.0.0:0')!
+	defer {
+		running.server.close()
+		clear_wire_tokens()
+	}
+	port := running.server.listener.addr()!.port()!
+	os.setenv(registry_insecure_loopback_env, '1', true)
+	os.setenv(wire_fallback_token_var, 'tok-global', true)
+	for host in ['localhost', '127.0.0.2'] {
+		base := 'http://${host}:${port}'
+		os.setenv(registry_url_env, base, true)
+		assert_registry_wire_transport_rejected(base)
+	}
+	assert_no_token_wire_requests(requests)
+	// Prove the capture peer is live using the allowed literal address.
+	os.setenv(registry_url_env, running.base, true)
+	assert authorization_on_the_wire(running.base)! == 'Bearer tok-global'
+	assert_token_wire_capture(requests, 'Bearer tok-global')
 }

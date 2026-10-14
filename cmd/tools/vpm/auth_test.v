@@ -13,6 +13,7 @@ fn testsuite_end() {
 
 fn clear_auth_environment() {
 	os.unsetenv(registry_url_env)
+	os.unsetenv(registry_insecure_loopback_env)
 	os.unsetenv('VPM_TOKEN')
 	os.unsetenv('VPM_TOKEN_VPM_EXAMPLE_COM')
 	os.unsetenv('VPM_TOKEN_MY_REGISTRY_IO')
@@ -150,4 +151,49 @@ fn test_authenticated_redirects_stay_within_the_registry_origin() {
 		url: 'https://vpm.example.com/package'
 	}
 	vpm_registry_redirect(&public, 0, 'https://other.example.com/package')!
+}
+
+fn assert_registry_transport_rejected(url string) {
+	mut rejected := false
+	require_registry_secure_transport(url) or {
+		assert err.msg().contains('require HTTPS'), err.msg()
+		rejected = true
+	}
+	assert rejected, url
+}
+
+fn test_bearer_transport_requires_https_without_a_development_opt_in() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
+	require_registry_secure_transport('https://vpm.example.com/package')!
+	for url in ['http://127.0.0.1/package', 'http://[::1]/package', 'http://localhost/package',
+		'http://vpm.example.com/package', 'ftp://127.0.0.1/package'] {
+		assert_registry_transport_rejected(url)
+	}
+}
+
+fn test_development_http_exception_accepts_only_the_exact_ipv4_loopback_literal() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
+	os.setenv(registry_insecure_loopback_env, '1', true)
+	for url in ['http://127.0.0.1/package', 'http://127.0.0.1:8080/package',
+		'https://vpm.example.com/package'] {
+		require_registry_secure_transport(url)!
+	}
+	for host in ['localhost', '127.0.0.2', '127.1', '2130706433', '0x7f000001', '0177.0.0.1',
+		'127.0.0.1.example.com', '[::1]', '[::1]:8080', '[::ffff:127.0.0.1]', '[0:0:0:0:0:0:0:1]',
+		'[::1%25lo0]', '0.0.0.0', '192.0.2.1', '[::]', '127.0.0.1@example.com'] {
+		assert_registry_transport_rejected('http://${host}/package')
+	}
+	assert_registry_transport_rejected('ftp://127.0.0.1/package')
+}
+
+fn test_development_http_exception_requires_the_exact_opt_in_value() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
+	for value in ['', '0', 'true', 'yes', '01', '1 '] {
+		os.setenv(registry_insecure_loopback_env, value, true)
+		assert_registry_transport_rejected('http://127.0.0.1/package')
+		assert_registry_transport_rejected('http://[::1]/package')
+	}
 }
