@@ -1,4 +1,4 @@
-module c
+module main
 
 import os
 import v.cmdexec
