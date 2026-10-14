@@ -28,7 +28,7 @@ pub fn permutations[T](items []T) [][]T {
 	return res
 }
 
-// combinations returns all C(n, k) k-sized subsets of items in lexicographic
+// combinations returns all C(n, k) k-sized subsets of items in input-index
 // order. Out-of-range k yields no rows; k == 0 yields one empty row.
 // It is the V-idiomatic equivalent of Python's `itertools.combinations`.
 pub fn combinations[T](items []T, k int) [][]T {
