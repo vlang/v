@@ -4,6 +4,8 @@
 command line arguments, reading/writing files, listing folders,
 handling processes etc.
 
+See [Named pipes](fifo.md) for client/server FIFO endpoints.
+
 On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
 application data.
 
@@ -16,6 +18,10 @@ values. If the operating system cannot provide an environment block, it returns 
 
 On Windows, `os.input()` supports both console and redirected standard input.
 It returns an empty string when the standard input handle is invalid.
+
+### Memory-mapped files
+
+See [memory-mapped files](mmap.md) for file mappings and safe use of their byte views.
 
 ### Path helpers
 
@@ -342,3 +348,10 @@ messages. Error text returned by operations using it retains the message's punct
 
 On Windows, `os.exec()` captures bytes from successful child-pipe reads only. Closing the output
 pipe does not append a previous chunk again. Commands with no output return an empty output string.
+
+### Writing arrays
+
+`os.write_file_array()` closes its file even when writing fails, including when a device is full
+or a pipe reader closes. The write error is still returned to the caller.
+
+`os.cp` reports source read failures as `cp: failed to read from <source>` and closes both files.

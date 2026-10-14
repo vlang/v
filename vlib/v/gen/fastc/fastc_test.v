@@ -2472,7 +2472,7 @@ fn main() {
 	_ := Tool.run(["one", "two"]).code
 }
 ', 'static_array_argument.v', prefs) or { panic(err) }
-	assert c_source.contains('Tool_run(((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('Tool_run(({ string __vf_array_literal['), c_source
 	assert !c_source.contains('Tool_run(['), c_source
 }
 
@@ -2562,7 +2562,7 @@ fn main() {
 	page.set_title([label(), "repo"])
 }
 ', 'method_context_array_argument.v', prefs) or { panic(err) }
-	assert c_source.contains('Page_set_title(&(page),((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('Page_set_title(&(page),({ string __vf_array_literal['), c_source
 	assert !c_source.contains('Page_set_title(&(page),['), c_source
 }
 
@@ -7667,9 +7667,12 @@ fn fastc_reset(mut c Cfg, name string) {
 	c.fields = [name]
 }
 
-fn main() {}
+fn main() {
+	mut c := Cfg{}
+	fastc_reset(mut c, "value")
+}
 ', 'nonempty_array_field.v', prefs) or { panic(err) }
-	assert c_source.contains('c->fields=((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('c->fields=({ string __vf_array_literal['), c_source
 	assert !c_source.contains('array_get(c->fields='), c_source
 }
 
@@ -8125,7 +8128,7 @@ fn main() {
 	use(mut id, 2) or { return }
 }
 ', 'selfhost_option_array_arguments.v', prefs) or { panic(err) }
-	assert c_source.contains('insert(((Array_string)builtin__new_array_from_c_array'), c_source
+	assert c_source.contains('insert(({ string __vf_array_literal['), c_source
 	assert !c_source.contains('insert([_S('), c_source
 }
 
@@ -13865,7 +13868,7 @@ fn main() {
 	_ := pairs
 }
 ', 'selfhost_dynamic_array_positional_struct_literals.v', prefs) or { panic(err) }
-	assert c_source.contains('(Pair[]){(Pair){_S("left"),_S("right")}}'), c_source
+	assert c_source.contains('__vf_array_literal[0] = ((Pair){_S("left"),_S("right")});'), c_source
 }
 
 fn test_selfhost_nil_pointer_struct_field_is_cast_without_address_of() {
