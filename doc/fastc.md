@@ -80,12 +80,28 @@ arena independent. The required pthread library is linked even without `spawn`.
 Dynamic array literals with complex element expressions evaluate those elements before copying
 the array, avoiding nested C aggregate initializers unsupported by bundled Linux TinyCC.
 Their temporaries avoid collisions with local and parameter names.
+Channels on this path use the standard channel runtime for buffered and unbuffered
+sends and receives, `select`, closing, and channel properties.
+Spawned threads and arrays of threads support waiting for void and typed results.
 
 The full-runtime path remains experimental. Mutable and expression closure captures and
 128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.
 
-Build a FastC compiler with `v -b fastc self`. Its `self` command keeps FastC for subsequent
-generations; use `v -b fastc self x2` to check repeated replacement builds.
+Build the full V compiler, including its regular C backend, directly from `cmd/v`:
+
+```sh
+v -b fastc -nocache -o v_fastc1 cmd/v
+./v_fastc1 -b fastc -nocache -o v_fastc2 cmd/v
+./v_fastc2 -b fastc -nocache -o v_fastc3 cmd/v
+./v_fastc3 -b c run examples/hello_world.v
+```
+
+Each generation retains the full command-line entry and can compile programs with either
+the C or FastC backend. `-nocache` forces each generation to rebuild its generated C units.
+
+`v -b fastc self` builds a smaller standalone FastC compiler from `vlib/v/v.v`.
+Its `self` command keeps FastC for subsequent generations; use `v -b fastc self x2` to
+check repeated replacement builds. This standalone compiler only supports the FastC backend.
 Standalone replacements accept directory entries and `-enable-globals`. Their `-nocache`
 option disables TinyCC object and executable caching, including in repeated self-builds.
 The launcher helper runs on the host C backend. Native source flags are retained during

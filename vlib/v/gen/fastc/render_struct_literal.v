@@ -137,7 +137,17 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	// the "struct literal" is really the primitive's zero value; C rejects the empty `{}`.
 	if c_type != '' && open + 1 == close && fastc_primitive_c_type(fastc_normalize_inferred_type(g.underlying_alias_type(c_type))) != none {
 		return FastcRenderedExpression{
-			source: '((${c_type})0)'
+			source: if fastc_normalize_inferred_type(g.underlying_alias_type(c_type)) in [
+				'array',
+				'map',
+				'Option',
+				'__v_result',
+			]
+				|| (g.selfhost && g.underlying_alias_type(c_type) == 'string') {
+				'(${c_type}){0}'
+			} else {
+				'((${c_type})0)'
+			}
 			typ:    c_type
 		}
 	}
