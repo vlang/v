@@ -2516,7 +2516,10 @@ fn (mut b Builder) register_v3_string_format_stubs() {
 		p_f64 << b.f64_type
 		p_f64 << b.i32_type
 		if fixed_id := b.register_runtime_function('v3_f64_fixed', b.str_type, p_f64) {
-			b.generate_const_string_body(fixed_id, '0.0')
+			// Keep the unsupported helper bodyless so Wasm rejects it instead of
+			// formatting every input as a constant. Source functions with the same
+			// name retain their independent bodies.
+			b.m.funcs[fixed_id].is_prototype = true
 		}
 
 		mut p_int := []TypeID{}
@@ -2748,6 +2751,7 @@ fn (mut b Builder) generate_string_int_body(func_id int) {
 	ascii_zero_i64 := b.m.get_or_add_const(b.i64_type, '48')
 	max_i32 := b.m.get_or_add_const(b.i64_type, '2147483647')
 	min_i32 := b.m.get_or_add_const(b.i64_type, '-2147483648')
+	max_u32 := b.m.get_or_add_const(b.i64_type, '4294967295')
 	ascii_minus := b.m.get_or_add_const(b.i8_type, '45')
 	ascii_plus := b.m.get_or_add_const(b.i8_type, '43')
 	ascii_underscore := b.m.get_or_add_const(b.i8_type, '95')
@@ -2908,8 +2912,12 @@ fn (mut b Builder) generate_string_int_body(func_id int) {
 	scale_base := b.block_instr1(.load, accumulate, b.i64_type, base_slot)
 	scaled := b.block_instr2(.mul, accumulate, b.i64_type, cur, scale_base)
 	accumulated := b.block_instr2(.add, accumulate, b.i64_type, scaled, folded)
-	b.block_instr2(.store, accumulate, b.void_type, accumulated, result_slot)
-	b.block_instr1(.jmp, accumulate, b.void_type, ValueID(step))
+	// The reference stops immediately on u32 overflow, before inspecting any suffix.
+	// Keeping this bound also prevents the next multiply/add from overflowing i64.
+	overflow := b.block_instr2(.gt, accumulate, b.i1_type, accumulated, max_u32)
+	bounded := b.block_instr3(.select, accumulate, b.i64_type, overflow, max_u32, accumulated)
+	b.block_instr2(.store, accumulate, b.void_type, bounded, result_slot)
+	b.block_instr3(.br, accumulate, b.void_type, overflow, ValueID(stop), ValueID(step))
 
 	step_next_i := b.block_instr2(.add, step, b.i64_type, body_i, one64)
 	b.block_instr2(.store, step, b.void_type, step_next_i, i_slot)

@@ -356,3 +356,13 @@ fn test_tour_struct_primitive_pointer_field_roundtrips() {
 	assert code == 0, out
 	assert out.trim_space() == '42', out
 }
+
+fn test_tour_fixed_float_is_refused_not_misanswered() {
+	source := 'fn main() {\n\tf := 1.5\n\tprintln("\${f:.2f}")\n}\n'
+	tour_compile('fixed_float', source) or {
+		assert err.msg().contains('wasm: unsupported external function'), err.msg()
+		assert err.msg().contains('v3_f64_fixed'), err.msg()
+		return
+	}
+	assert false, 'fixed float formatting must be rejected until it is implemented'
+}

@@ -775,6 +775,32 @@ fn stub_cases() []StubCase {
 				'12\n1000\n2147483647\n49\n'
 		},
 		StubCase{
+			tag:    'string_int_overflow'
+			stub:   'string.int stops at unsigned 32-bit overflow before signed clamping'
+			source: '
+fn parse(prefix string, last int, suffix string) int {
+	s := prefix + last.str() + suffix
+	return s.int()
+}
+
+fn main() {
+	println(parse("1844674407370955161", 6, ""))
+	println(parse("-1844674407370955161", 6, ""))
+	println(parse("1844674407370955161", 5, ""))
+	println(parse("429496729", 5, "_"))
+	println(parse("429496729", 6, "_"))
+	println(parse("-429496729", 6, "_"))
+	println(parse("214748364", 8, "_"))
+	println(parse("-214748364", 9, "_"))
+	println(parse("0x1000000000000000", 0, ""))
+	println(parse("-0x1000000000000000", 0, ""))
+	println(parse("0b111111111111111111111111111111111111111111111111111111111111111", 1, ""))
+	println(parse("0o777777777777777777777", 7, ""))
+}
+'
+			native: '2147483647\n-2147483648\n2147483647\n0\n2147483647\n-2147483648\n0\n0\n2147483647\n-2147483648\n2147483647\n2147483647\n'
+		},
+		StubCase{
 			tag:    'string_plus'
 			stub:   'string__plus / string_plus_many'
 			source: stub_source_string_plus
@@ -789,10 +815,11 @@ fn stub_cases() []StubCase {
 				'00009\n5\nZ\n1\n952\n932\n748\n845\n748\n390\n'
 		},
 		StubCase{
-			tag:    'interp_float_fixed'
-			stub:   'v3_f64_fixed'
-			source: stub_source_interp_float
-			native: '[1.50]\n[2]\n[     1.500]\n[1.500     ]\n[0.1250]\n' +
+			tag:     'interp_float_fixed'
+			refuses: 'wasm: unsupported external function ' + '`v3_f64_fixed`'
+			stub:    'v3_f64_fixed'
+			source:  stub_source_interp_float
+			native:  '[1.50]\n[2]\n[     1.500]\n[1.500     ]\n[0.1250]\n' +
 				'[1234.6]\n649\n350\n1232\n'
 		},
 		StubCase{

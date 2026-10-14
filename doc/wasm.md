@@ -43,6 +43,9 @@ structs whose fields all have a lowering, options and results are supported; map
 nested arrays, aggregate array elements, and structs holding an unlifted field type are not, and
 still produce a compiler error rather than a wrong answer.
 
+Floating-point calculations are supported, but formatting a float as text remains unsupported.
+Fixed float interpolation is rejected instead of returning a placeholder value.
+
 Host functions can be declared in a `.wasm.v` file with a module import namespace:
 
 ```v
