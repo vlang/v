@@ -63,7 +63,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				// anonymous structs with this field shape. Keep that nominal identity;
 				// transform_struct_init will apply it when this literal is lowered.
 				if checked_type := t.tc.expr_type(flat.NodeId(idx)) {
-					if transform_is_anonymous_struct_name(t.tc.type_name(checked_type)) {
+					if transform_is_anonymous_struct_name(flat.source_type_name(t.tc.type_name(checked_type))) {
 						continue
 					}
 				}
@@ -78,7 +78,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 					}
 					value_id := t.a.child(field, 0)
 					field_type := t.tc.expr_type(value_id) or { t.tc.resolve_type(value_id) }
-					field_type_name := t.tc.type_name(field_type)
+					field_type_name := flat.source_type_name(t.tc.type_name(field_type))
 					if field_type is types.Unknown || field_type is types.Void
 						|| field_type_name in ['', 'unknown', 'void', 'struct'] {
 						valid = false
@@ -94,7 +94,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				}
 				mut shape_parts := []string{cap: semantic_fields.len}
 				for semantic_field in semantic_fields {
-					field_type_name := t.tc.type_name(semantic_field.typ)
+					field_type_name := flat.source_type_name(t.tc.type_name(semantic_field.typ))
 					shape_parts << '${semantic_field.name.len}:${semantic_field.name}:${field_type_name.len}:${field_type_name}'
 				}
 				shape := '${cur_module.len}:${cur_module}:${shape_parts.join(',')}'
@@ -113,7 +113,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 					field_ids << t.a.add_node(flat.Node{
 						kind:  .field_decl
 						value: semantic_field.name
-						typ:   flat.source_type_id(t.tc.type_name(semantic_field.typ))
+						typ:   t.tc.type_name(semantic_field.typ)
 						pos:   source_field.pos
 					})
 				}

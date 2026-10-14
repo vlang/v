@@ -78,3 +78,30 @@ fn test_ast_type_ids_use_the_shared_spelling_namespace() {
 	assert first.node_type_text_id('', changed) == 0
 	assert first.type_text_id('') == 0
 }
+
+fn test_source_type_shapes_and_builtin_ids_share_the_spelling_table() {
+	assert source_type_int == source_type_id('int'.clone())
+	assert source_type_name(source_type_string) == 'string'
+	assert source_type_shape(source_type_int).has(.builtin_alias)
+	shape := source_type_shape(source_type_id('?[]pkg.Item'))
+	assert shape.has(.wrapped)
+	assert shape.has(.bracketed)
+	assert shape.has(.dotted)
+	assert !shape.has(.typeof_expr)
+	assert source_type_shape(source_type_id('typeof(value)')).has(.typeof_expr)
+	assert !source_type_shape(0).has(.builtin_alias)
+}
+
+fn test_binding_value_ids_preserve_present_empty_bindings() {
+	mut bindings := TypeTextBindings{}
+	bindings.set('empty', '')
+	bindings.set_id('value', source_type_int)
+	assert bindings.value_id('missing') == 0
+	assert bindings.value_id('empty') == 0
+	assert bindings.contains('empty')
+	assert bindings.value_id('value') == source_type_int
+	mut nodes := NodeTypeTextBindings{}
+	nodes.set_id(12, source_type_string)
+	assert nodes.value_id(12) == source_type_string
+	assert nodes.value_id(13) == 0
+}

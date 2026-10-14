@@ -34,10 +34,11 @@ fn (mut t Transformer) named_variant_binding_decls(match_expr_id flat.NodeId, br
 	if subject.len == 0 {
 		return []flat.NodeId{}
 	}
-	payload_name := t.tc.type_name(payload_type)
+	payload_name_source_id := t.tc.type_name(payload_type)
+	payload_name := flat.source_type_name(payload_name_source_id)
 	base := t.make_ident(subject)
 	t.set_node_typ(int(base), sc.variant_name_text())
-	payload := t.make_selector_op(base, flat.named_variant_payload_field, payload_name, .dot)
+	payload := t.make_selector_op(base, flat.named_variant_payload_field, payload_name_source_id, .dot)
 	return [t.make_decl_assign_typed(binding, payload, payload_name)]
 }
 
@@ -67,18 +68,20 @@ fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant string, is_re
 	defer {
 		t.stringify_stack.delete_last()
 	}
-	payload_name := t.tc.type_name(payload_type)
+	payload_name_source_id := t.tc.type_name(payload_type)
+	payload_name := flat.source_type_name(payload_name_source_id)
 	mut value := expr
 	if is_ref {
 		value = t.make_prefix(.mul, expr)
 		t.set_node_typ(int(value), variant)
 	}
-	payload := t.make_selector_op(value, flat.named_variant_payload_field, payload_name, .dot)
+	payload := t.make_selector_op(value, flat.named_variant_payload_field, payload_name_source_id, .dot)
 	mut text := t.wrap_string_conversion(payload, payload_name)
-	clean_payload := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(payload_name)))
-	if clean_payload == 'string' {
+	clean_payload_source_id := t.normalize_type_alias(payload_name_source_id)
+
+	if clean_payload_source_id == flat.source_type_string {
 		text = t.string_plus(t.string_plus(t.make_string_literal("'"), text), t.make_string_literal("'"))
-	} else if clean_payload == 'rune' {
+	} else if clean_payload_source_id == flat.source_type_rune {
 		text = t.string_plus(t.string_plus(t.make_string_literal('`'), text), t.make_string_literal('`'))
 	}
 	return t.string_plus(t.string_plus(t.make_string_literal('${display}('), text), t.make_string_literal(')'))

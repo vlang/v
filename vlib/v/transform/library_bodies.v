@@ -298,7 +298,9 @@ fn (mut t Transformer) library_type_parts(text string) ?[]string {
 		for variant in variants {
 			parts << library_type_text(variant)
 		}
-	} else if target := t.tc.type_aliases.get(name) {
+	} else if target_source_id := t.tc.type_aliases.type_id(name) {
+		target := flat.source_type_name(target_source_id)
+
 		parts << library_type_text(target)
 	} else if name !in t.tc.enum_names {
 		return none

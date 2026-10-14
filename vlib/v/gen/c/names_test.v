@@ -202,7 +202,7 @@ fn test_struct_init_main_alias_target_keeps_declaration_scope() {
 	tc.struct_modules['Context'] = 'main'
 	tc.structs['veb.Context'] = []types.StructField{}
 	tc.struct_modules['veb.Context'] = 'veb'
-	tc.type_aliases.set('AliasContext', 'Context')
+	tc.type_aliases.set_id('AliasContext', flat.source_type_id('Context'))
 	tc.type_alias_modules['AliasContext'] = 'main'
 	tc.cur_module = 'veb'
 	mut g := FlatGen.new()

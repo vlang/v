@@ -39,7 +39,7 @@ fn (tc &TypeChecker) generic_constraint_type(decl flat.Node, text string) Type {
 	file := tc.a.source_files[int(decl.pos.id)] or { return tc.parse_type(flat.source_type_id(text)) }
 	decl_module := tc.file_modules[file.name] or { tc.cur_module }
 	mut scoped := tc.fork_type_parse_view(file.name, decl_module)
-	return scoped.parse_resolution_type(text)
+	return scoped.parse_resolution_type(flat.source_type_id(text))
 }
 
 // generic_constraint resolves the constraint `text` of a type parameter of
@@ -132,7 +132,7 @@ fn (tc &TypeChecker) constraint_family_holds(constraint GenericConstraint, membe
 // is_family_struct reports whether `member`, a type of `constraint`, is its
 // family struct, which stands for the structs that embed it too.
 fn (tc &TypeChecker) is_family_struct(constraint GenericConstraint, member Type) bool {
-	return constraint.family_struct_text().len > 0 && member is Struct
+	return constraint.family_struct != 0 && member is Struct
 		&& member.name() == constraint.family_struct_text()
 }
 
@@ -365,7 +365,7 @@ fn (mut tc TypeChecker) record_generic_constraint_error(constraint GenericConstr
 			id, pos)
 		return
 	}
-	reason := if constraint.family_struct_text().len > 0 && constraint.types.len == 1 {
+	reason := if constraint.family_struct != 0 && constraint.types.len == 1 {
 		'it is not `${constraint.name_text()}` and does not embed it'
 	} else {
 		'it is not in its constraint `${constraint.name_text()}`'
@@ -698,8 +698,8 @@ struct WrittenTypeItem {
 // the casts, the tests and `sizeof` or `typeof` of a type.
 fn written_type_texts(node flat.Node) []string {
 	mut texts := []string{}
-	if node.typ_text().len > 0 && node.kind in [.param, .fn_decl, .interface_field, .field_decl,
-		.type_decl, .global_decl, .const_field, .fn_literal, .array_init, .decl_assign] {
+	if node.typ != 0 && node.kind in [.param, .fn_decl, .interface_field, .field_decl, .type_decl,
+		.global_decl, .const_field, .fn_literal, .array_init, .decl_assign] {
 		texts << node.typ_text()
 	}
 	// The variants of a sum type, `type Sum = Box[int] | string`.
@@ -707,7 +707,7 @@ fn written_type_texts(node flat.Node) []string {
 		texts << node.value
 	}
 	// An interface that an interface embeds, `Shelf[T]`, written as its name.
-	if node.kind == .interface_field && node.op != .dot && node.typ_text().len == 0
+	if node.kind == .interface_field && node.op != .dot && node.typ == 0
 		&& node.value.contains('[') {
 		texts << node.value
 	}
@@ -1504,7 +1504,7 @@ fn (mut tc TypeChecker) infer_from_constraint(text string, actual Type, missing 
 			continue
 		}
 		if member.op != .dot {
-			if member.typ_text().len > 0 {
+			if member.typ != 0 {
 				field := tc.struct_field_type(concrete, member.value) or { continue }
 				tc.infer_generic_type_text_from_type(subst_generic_text(member.typ_text(), bound_args,
 					params), field, missing, mut inferred)
@@ -1512,14 +1512,14 @@ fn (mut tc TypeChecker) infer_from_constraint(text string, actual Type, missing 
 			continue
 		}
 		ret, method_params := tc.concrete_method_types(concrete, member.value) or { continue }
-		if member.typ_text().len > 0 {
+		if member.typ != 0 {
 			tc.infer_generic_type_text_from_type(subst_generic_text(member.typ_text(), bound_args,
 				params), ret, missing, mut inferred)
 		}
 		mut k := 0
 		for j in 0 .. member.children_count {
 			param := tc.a.child_node(member, j)
-			if param.kind != .param || param.typ_text().len == 0 {
+			if param.kind != .param || param.typ == 0 {
 				continue
 			}
 			if k < method_params.len {
@@ -2932,7 +2932,7 @@ fn (tc &TypeChecker) constraint_operator_types(constraint GenericConstraint) []T
 	if constraint.is_interface {
 		return [constraint.iface]
 	}
-	if constraint.family_struct_text().len > 0 {
+	if constraint.family_struct != 0 {
 		// What any struct takes, for the family struct: a struct that embeds it
 		// does not get the operators it declares.
 		mut types := []Type{cap: constraint.types.len}

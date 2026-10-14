@@ -129,7 +129,7 @@ fn (mut tc TypeChecker) check_named_variant_init(id flat.NodeId, node flat.Node)
 	}
 	if payload_type := tc.named_variant_payload_type(node.value) {
 		if node.children_count == 0 {
-			tc.record_error_at(.assignment_mismatch, '`${display}` needs a payload of type `${tc.type_name(payload_type)}`, e.g. `${display}(value)`',
+			tc.record_error_at(.assignment_mismatch, '`${display}` needs a payload of type `${flat.source_type_name(tc.type_name(payload_type))}`, e.g. `${display}(value)`',
 				id, node.pos)
 			tc.register_synth_type(id, variant_type)
 			return false

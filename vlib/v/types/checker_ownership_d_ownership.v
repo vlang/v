@@ -30,7 +30,7 @@ struct MovedVar {
 	is_fn_call    bool
 	suggest_clone bool = true
 	fn_name       string
-	type_name     u32 = flat.source_type_id('string')
+	type_name     u32 = flat.source_type_string
 }
 
 struct BorrowInfo {
@@ -2491,7 +2491,7 @@ fn (mut tc TypeChecker) ownership_collect_fn_signature(node flat.Node) {
 		return
 	}
 	recv := tc.a.child_node(&node, 0)
-	if recv.kind != .param || recv.typ_text().len == 0 || recv.typ_text().starts_with('&') || recv.op == .amp {
+	if recv.kind != .param || recv.typ == 0 || recv.typ_text().starts_with('&') || recv.op == .amp {
 		return
 	}
 	short_type := recv.typ_text().all_after_last('.')
@@ -2599,7 +2599,7 @@ fn (mut tc TypeChecker) ownership_prescan_fn_returns(items []OwnershipFnScanItem
 			tc.cur_file = item.file
 			tc.cur_module = item.module
 			node := tc.a.nodes[item.idx]
-			if node.typ_text().len == 0 || node.typ_text() == 'void' {
+			if node.typ == 0 || node.typ == flat.source_type_void {
 				continue
 			}
 			tc.ownership_prescan_fn_return_node(item.name, node)
@@ -3892,7 +3892,7 @@ fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnS
 	mut initial_items := 0
 	for item_idx, item in items {
 		node := tc.a.nodes[item.idx]
-		if node.typ_text().len == 0 || node.typ_text() == 'void' || tc.ownership_node_contains_defer(node)
+		if node.typ == 0 || node.typ == flat.source_type_void || tc.ownership_node_contains_defer(node)
 			|| tc.ownership_fn_has_owned_param_state(item.name, node) {
 			pending[item_idx] = true
 			initial_items++
@@ -9653,7 +9653,7 @@ fn (mut tc TypeChecker) ownership_clone_nonowned_string_call_arg(fn_name string,
 		|| tc.ownership_builtin_string_arg_escapes(fn_name, param_idx, expected)
 	if !param_owned {
 		for desc in st.ownership_fn_param_descs[fn_name] {
-			if desc.param_idx == param_idx && desc.suffix == suffix && desc.type_name_text() == 'string' {
+			if desc.param_idx == param_idx && desc.suffix == suffix && desc.type_name == flat.source_type_string {
 				param_owned = true
 				break
 			}
@@ -12387,7 +12387,7 @@ fn (mut tc TypeChecker) ownership_report_moved(name string, info MovedVar, id fl
 	if tc.autofree_mode {
 		return
 	}
-	tname := if info.type_name_text().len > 0 { info.type_name_text() } else { 'string' }
+	tname := if info.type_name != 0 { info.type_name_text() } else { 'string' }
 	mut msg := 'use of moved value: `${name}`'
 	msg += '; move occurs because `${name}` has type `${tname}`, which does not implement `Copy`'
 	if info.is_fn_call {

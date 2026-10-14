@@ -1269,7 +1269,7 @@ fn (mut l MsvcLowerer) lower_logical(i int, j int, ops []int, is_or bool) MsvcLo
 			text:     'int ${flag};'
 			decl:     'int ${flag}'
 			name:     flag
-			type_txt: flat.source_type_id('int')
+			type_txt: flat.source_type_int
 		}
 		res.pre << MsvcPre{
 			text: '${flag} = !!(${acc});'
@@ -1339,7 +1339,7 @@ fn (mut l MsvcLowerer) lower_conditional(i int, question int, j int) MsvcLowered
 		text:     'int ${flag};'
 		decl:     'int ${flag}'
 		name:     flag
-		type_txt: flat.source_type_id('int')
+		type_txt: flat.source_type_int
 	}
 	res.pre << MsvcPre{
 		text: '${flag} = !!(${cond.text});'

@@ -1420,7 +1420,7 @@ fn (g &FlatGen) iface_type_id_for_concrete(iface string, concrete types.Type) in
 	mut alias_id := 0
 	mut matches := 0
 	for impl in g.iface_impls[iface] or { []string{} } {
-		target := g.tc.type_aliases.get(impl) or { continue }
+		target := flat.source_type_name(g.tc.type_aliases.type_id(impl) or { continue })
 		if target == concrete_name || g.tc.qualify_name(target) == g.tc.qualify_name(concrete_name) {
 			alias_id = g.iface_type_id(iface, impl)
 			matches++
@@ -2382,7 +2382,9 @@ fn (g &FlatGen) interface_boxed_type_collected_for_dispatch(iface_name string, c
 		return true
 	}
 	for candidate in [concrete, g.tc.qualify_name(concrete)] {
-		if target := g.tc.type_aliases.get(candidate) {
+		if target_source_id := g.tc.type_aliases.type_id(candidate) {
+			target := flat.source_type_name(target_source_id)
+
 			if g.interface_boxed_types['${iface_name}::${target}']
 				|| g.interface_boxed_types['${iface_name}::${c_name(target)}']
 				|| g.interface_boxed_types['${iface_name}::${target.all_after_last('.')}'] {
@@ -2418,7 +2420,7 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 			if field.kind != .field_init || field.value != '_object' || field.children_count == 0 {
 				continue
 			}
-			mut obj_type := if field.typ_text().len > 0 {
+			mut obj_type := if field.typ != 0 {
 				g.tc.parse_type(field.typ)
 			} else {
 				g.tc.resolve_type(g.a.child(field, 0))

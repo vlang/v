@@ -1320,7 +1320,7 @@ fn (mut g FlatGen) declare_local_c_type(owner types.ScopeBindingOwner, c_type st
 		return
 	}
 	if c_type.len > 0 {
-		g.local_c_type_by_owner.set(key, c_type)
+		g.local_c_type_by_owner.set_id(key, flat.source_type_id(c_type))
 	} else {
 		g.local_c_type_by_owner.delete(key)
 	}
@@ -1386,7 +1386,7 @@ fn (g &FlatGen) local_storage_c_type(name string) ?string {
 		return none
 	}
 	owner := g.local_storage_owner(name) or { return none }
-	return g.local_c_type_by_owner.get(owner.storage_key()) or { none }
+	return flat.source_type_name(g.local_c_type_by_owner.type_id(owner.storage_key())?)
 }
 
 fn (g &FlatGen) local_pointer_alias_source(name string) ?string {
@@ -1411,7 +1411,7 @@ fn (mut g FlatGen) declare_local_raw_type(owner types.ScopeBindingOwner, raw_typ
 		return
 	}
 	if raw_type.len > 0 {
-		g.local_raw_type_by_owner.set(key, raw_type)
+		g.local_raw_type_by_owner.set_id(key, flat.source_type_id(raw_type))
 	} else {
 		g.local_raw_type_by_owner.delete(key)
 	}
@@ -1422,7 +1422,7 @@ fn (g &FlatGen) local_storage_raw_type(name string) ?string {
 		return none
 	}
 	owner := g.local_storage_owner(name) or { return none }
-	return g.local_raw_type_by_owner.get(owner.storage_key()) or { none }
+	return flat.source_type_name(g.local_raw_type_by_owner.type_id(owner.storage_key())?)
 }
 
 fn (mut g FlatGen) declare_local_indirect_value_type(owner types.ScopeBindingOwner, typ types.Type) {
@@ -1487,7 +1487,7 @@ fn (g &FlatGen) local_storage_is_shared(name string) bool {
 	}
 	qname := qualify_name_in_module(g.tc.cur_module, name)
 	for candidate in [qname, name] {
-		raw := g.global_raw_type_texts.get(candidate) or { continue }
+		raw := flat.source_type_name(g.global_raw_type_texts.type_id(candidate) or { continue })
 		if _ := shared_inner_type_text(raw) {
 			return true
 		}
@@ -2171,7 +2171,7 @@ pub fn cache_native_flag_input_files(a &flat.FlatAst, vroot string, target pref.
 			cur_file = node.value
 			continue
 		}
-		if node.kind != .directive || node.value != 'flag' || node.typ_text().len == 0 {
+		if node.kind != .directive || node.value != 'flag' || node.typ == 0 {
 			continue
 		}
 		for flag in c_flag_args(node.typ_text(), vroot, cur_file, target) {
@@ -2276,7 +2276,7 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 				relevant << node_idx
 			}
 			.directive {
-				if node.typ_text().len == 0 {
+				if node.typ == 0 {
 					continue
 				}
 				if node.value in ['include', 'insert', 'preinclude', 'postinclude'] {
@@ -2620,7 +2620,7 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 			continue
 		}
 		if node.kind != .directive
-			|| node.value !in ['include', 'insert', 'preinclude', 'postinclude'] || node.typ_text().len == 0 {
+			|| node.value !in ['include', 'insert', 'preinclude', 'postinclude'] || node.typ == 0 {
 			continue
 		}
 		include_arg := c_include_arg_for_target(node.typ_text(), vroot, cur_file, target)
@@ -4647,7 +4647,7 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 		raw_pt := if param_idx < typed_params.len {
 			typed_params[param_idx]
 		} else {
-			g.tc.parse_resolution_type(child.typ_text())
+			g.tc.parse_resolution_type(child.typ)
 		}
 		mut pt := raw_pt
 		if shared_alias_ptr := g.cached_shared_alias_pointer_type_from_text(child.typ_text()) {
@@ -4671,7 +4671,7 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 			pt = g.explicit_mut_pointer_param_type(child, pt)
 		}
 		mut is_shared_param := false
-		if child.typ_text().len > 0 && child.typ_text()[0] in [`s`, ` `, `\t`, `\n`, `\r`] {
+		if child.typ != 0 && child.typ_text()[0] in [`s`, ` `, `\t`, `\n`, `\r`] {
 			if _ := shared_inner_type_text(child.typ_text()) {
 				is_shared_param = true
 			}
@@ -4931,7 +4931,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 							g.global_volatile_names[f.value] = true
 						}
 						g.global_types[f.value] = ft
-						g.global_raw_type_texts.set(f.value, f.typ_text())
+						g.global_raw_type_texts.set_id(f.value, f.typ)
 						g.global_modules[f.value] = cur_module
 						g.global_files[f.value] = cur_file
 						g.global_init_order << f.value
@@ -4963,7 +4963,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					g.global_volatile_names[qname] = true
 				}
 				g.global_types[qname] = ft
-				g.global_raw_type_texts.set(qname, f.typ_text())
+				g.global_raw_type_texts.set_id(qname, f.typ)
 				g.global_modules[f.value] = cur_module
 				g.global_modules[qname] = cur_module
 				g.global_files[qname] = cur_file
@@ -5034,7 +5034,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		if kind_id == 65 {
 			for i in 0 .. node.children_count {
 				f := g.a.child_node(node_ref, i)
-				if node_kind_id(f) == 66 && (f.children_count > 0 || f.typ_text().len > 0) {
+				if node_kind_id(f) == 66 && (f.children_count > 0 || f.typ != 0) {
 					qname := g.const_storage_name(cur_module, f.value)
 					value_id := if f.children_count > 0 {
 						g.a.child(f, 0)
@@ -5393,7 +5393,7 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			cur_module = node.value
 			continue
 		}
-		if node.kind != .directive || node.typ_text().len == 0 {
+		if node.kind != .directive || node.typ == 0 {
 			continue
 		}
 		mut flags := []string{}
@@ -5543,7 +5543,7 @@ fn cache_directive_flag_groups(a &flat.FlatAst, vroot string, target pref.Target
 			cur_module = node.value
 			continue
 		}
-		if node.kind != .directive || node.typ_text().len == 0 || node_idx in skipped {
+		if node.kind != .directive || node.typ == 0 || node_idx in skipped {
 			continue
 		}
 		mut flags := []string{}
@@ -6028,7 +6028,7 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		}
 	}
 	if node.value in ['preinclude', 'postinclude'] {
-		if node.typ_text().len == 0 {
+		if node.typ == 0 {
 			return true
 		}
 		include_arg := c_include_arg_for_target_with_values(directive_raw, g.compiler_vroot,
@@ -6053,7 +6053,7 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		return true
 	}
 	if node.value in ['include', 'insert'] {
-		if node.typ_text().len == 0 {
+		if node.typ == 0 {
 			return true
 		}
 		include_arg := c_include_arg_for_target_with_values(directive_raw, g.compiler_vroot,
@@ -10200,7 +10200,7 @@ pub fn module_const_init_order(a &flat.FlatAst, tc &types.TypeChecker) []string 
 				}
 			}
 			.import_decl {
-				if node.typ_text().len > 0 && node.value.len > 0 {
+				if node.typ != 0 && node.value.len > 0 {
 					g.modules[node.typ_text()] = node.value
 				}
 				if cur_module.len > 0 && node.value.len > 0
@@ -12255,7 +12255,7 @@ fn (g &FlatGen) enum_selector_base_name_uncached(name string) ?string {
 fn (g &FlatGen) enum_selector_alias_target(name string) ?string {
 	mut cur := name
 	for _ in 0 .. 16 {
-		target := g.tc.type_aliases.get(cur) or { return none }
+		target := flat.source_type_name(g.tc.type_aliases.type_id(cur) or { return none })
 		if target == cur {
 			return none
 		}
@@ -12953,8 +12953,8 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		}
 	}
 	if node.kind == .selector {
-		if node.typ_text().len > 0 && (node.typ_text().starts_with('?') || node.typ_text().starts_with('!')) {
-			actual = g.tc.parse_resolution_type(node.typ_text())
+		if node.typ != 0 && (node.typ_text().starts_with('?') || node.typ_text().starts_with('!')) {
+			actual = g.tc.parse_resolution_type(node.typ)
 		} else if declared_type := g.selector_declared_type(id) {
 			actual = declared_type
 		}
@@ -13315,9 +13315,9 @@ fn (g &FlatGen) cast_alias_matches_expected_storage(alias_name string, expected 
 	if alias_name.len == 0 {
 		return false
 	}
-	mut target_name := g.tc.type_aliases.get(alias_name) or { '' }
+	mut target_name := flat.source_type_name(g.tc.type_aliases.type_id(alias_name) or { u32(0) })
 	if target_name.len == 0 {
-		target_name = g.tc.type_aliases.get(g.tc.qualify_name(alias_name)) or { '' }
+		target_name = flat.source_type_name(g.tc.type_aliases.type_id(g.tc.qualify_name(alias_name)) or { u32(0) })
 	}
 	if target_name.len == 0 {
 		return false
@@ -13859,7 +13859,7 @@ fn (g &FlatGen) selector_declared_type(id flat.NodeId) ?types.Type {
 	base_id := g.a.child(&node, 0)
 	mut resolved_base_type := g.selector_base_expr_type(base_id)
 	base_node := g.a.nodes[int(base_id)]
-	if base_node.typ_text().len > 0 {
+	if base_node.typ != 0 {
 		annotated_base_type := g.parse_node_type(&base_node)
 		if annotated_base_type !is types.Unknown && annotated_base_type !is types.Void && !g.type_contains_generic_placeholder(annotated_base_type) && (resolved_base_type is types.Unknown || resolved_base_type is types.Void || g.type_contains_generic_placeholder(resolved_base_type)) {
 			resolved_base_type = annotated_base_type
@@ -15671,7 +15671,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 						mut variant := ''
 						if field.typ_text().starts_with('&') {
 							variant = field.typ_text()[1..]
-						} else if field.typ_text().len > 0 {
+						} else if field.typ != 0 {
 							variant = field.typ_text()
 						} else {
 							for v in g.tc.sum_types.value(sum_name) {
@@ -16081,7 +16081,7 @@ fn (g &FlatGen) infix_channel_type(id flat.NodeId, fallback types.Type) types.Ty
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		node_ref := g.a.node(id)
 		node := g.a.nodes[int(id)]
-		if node.typ_text().len > 0 {
+		if node.typ != 0 {
 			annotated := concrete_receiver_type(g.parse_node_type(node_ref))
 			if annotated is types.Channel {
 				return annotated
@@ -16279,7 +16279,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(g.const_ident_c_name(const_name))
 			} else if global_name.len > 0 {
 				g.write(g.global_c_name(global_name))
-				if raw := g.global_raw_type_texts.get(global_name) {
+				if raw_source_id := g.global_raw_type_texts.type_id(global_name) {
+					raw := flat.source_type_name(raw_source_id)
+
 					if _ := shared_inner_type_text(raw) {
 						g.write('->val')
 					}
@@ -16319,14 +16321,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(expr)
 				return
 			}
-			if node.typ_text().len > 0 {
+			if node.typ != 0 {
 				short_name := node.value.trim_left('.').all_after_last('.')
 				if expr := g.enum_value_expr_for_type(node.typ_text(), short_name) {
 					g.write(expr)
 					return
 				}
 			}
-			if g.expected_enum_text().len > 0 {
+			if g.expected_enum != 0 {
 				ekey := '${g.expected_enum_text()}.${node.value}'
 				if expr := g.enum_value_expr_for_key(ekey) {
 					g.write(expr)
@@ -16758,7 +16760,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			} else if node.op == .amp && g.gen_current_mut_param_address(id) {
 				return
-			} else if node.op == .amp && node.typ_text().len > 0 && g.gen_sum_pointer_value_expr(id, g.parse_node_type(node)) {
+			} else if node.op == .amp && node.typ != 0 && g.gen_sum_pointer_value_expr(id, g.parse_node_type(node)) {
 				return
 			} else if node.op == .amp && child.kind == .struct_init {
 				g.gen_heap_struct_init(child)
@@ -17065,7 +17067,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					&& base.value in [expected.name().all_after_last('.'),
 						g.expected_expr_type.name().all_after_last('.')] {
 					enum_selector_qbase = expected.name()
-				} else if g.expected_enum_text().len > 0
+				} else if g.expected_enum != 0
 					&& g.expected_enum_text().all_after_last('.') == base.value {
 					enum_selector_qbase = g.expected_enum_text()
 				}
@@ -17565,7 +17567,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						if is_runtime_array || local_is_runtime_array {
 							mut index_type := g.usable_expr_type(id)
 							if index_type is types.Unknown || index_type is types.Void {
-								if node.typ_text().len > 0 && node.typ_text() != 'unknown' {
+								if node.typ != 0 && node.typ != flat.source_type_unknown {
 									index_type = g.parse_node_type(node)
 								}
 							}
@@ -18020,7 +18022,7 @@ fn (mut g FlatGen) gen_checked_integer_postfix(child_id flat.NodeId, op flat.Op)
 	normalize_bool := g.translated_bool_destination(child_id, value_type)
 	helper_type := if g.expr_is_in_translated_file(child_id)
 		&& cgen_unalias_type(value_type).name() == 'int' {
-		g.tc.parse_type(flat.source_type_id('i32'))
+		g.tc.parse_type(flat.source_type_i32)
 	} else {
 		value_type
 	}
@@ -18888,14 +18890,14 @@ fn (g &FlatGen) array_equality_literal_elem_type(id flat.NodeId) ?types.Type {
 				return types.Type(types.Rune{})
 			}
 			.float_literal {
-				return g.tc.parse_type(flat.source_type_id(if child.typ_text() == 'f32' {
+				return g.tc.parse_type(flat.source_type_id(if child.typ == flat.source_type_f32 {
 					'f32'
 				} else {
 					'f64'
 				}))
 			}
 			.bool_literal {
-				return g.tc.parse_type(flat.source_type_id('bool'))
+				return g.tc.parse_type(flat.source_type_bool)
 			}
 			else {}
 		}
@@ -22739,7 +22741,7 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 			continue
 		}
 		g.tc.cur_module = module_from_qualified_name(name)
-		alias_type := g.tc.parse_type(flat.source_type_id(target))
+		alias_type := g.tc.parse_type(target_id)
 		if fixed_array_type_first_seen(alias_type, g.tc.cur_module, mut type_seen) {
 			g.collect_fixed_array_typedef(alias_type, g.tc.cur_module, mut needed)
 		}
@@ -22956,9 +22958,8 @@ fn (mut g FlatGen) populate_fixed_array_ret_wrappers() {
 		}
 	}
 	for name, target_id in g.tc.type_aliases.ids {
-		target := flat.source_type_name(target_id)
 		g.tc.cur_module = module_from_qualified_name(name)
-		g.collect_fn_type_fixed_array_return_wrappers(g.tc.parse_type(flat.source_type_id(target)))
+		g.collect_fn_type_fixed_array_return_wrappers(g.tc.parse_type(target_id))
 	}
 	for name, fields in g.tc.structs {
 		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
@@ -23821,7 +23822,9 @@ fn (mut g FlatGen) global_decls() {
 		} else {
 			''
 		}
-		if raw := g.global_raw_type_texts.get(name) {
+		if raw_source_id := g.global_raw_type_texts.type_id(name) {
+			raw := flat.source_type_name(raw_source_id)
+
 			if inner := shared_inner_type_text(raw) {
 				qualified := g.shared_qualify_type_text(inner, g.tc.cur_module)
 				wrapper := g.shared_wrapper_c_name(qualified)
@@ -24124,7 +24127,7 @@ fn (mut g FlatGen) fn_capture_shared_global_c_type(name string) ?string {
 	if !g.cname(name).contains('__anon_fn_') {
 		return none
 	}
-	raw := g.global_raw_type_texts.get(name) or { return none }
+	raw := flat.source_type_name(g.global_raw_type_texts.type_id(name) or { return none })
 	inner := shared_inner_type_text(raw) or { return none }
 	mod := g.global_modules[name] or { g.tc.cur_module }
 	qualified := g.shared_qualify_type_text(inner, mod)
@@ -24241,7 +24244,9 @@ fn (mut g FlatGen) emit_global_inits() {
 		} else {
 			g.tc.cur_file = old_file
 		}
-		if raw := g.global_raw_type_texts.get(qname) {
+		if raw_source_id := g.global_raw_type_texts.type_id(qname) {
+			raw := flat.source_type_name(raw_source_id)
+
 			if inner := shared_inner_type_text(raw) {
 				if typ := g.global_types[qname] {
 					if val_id := g.global_inits[qname] {
@@ -25044,7 +25049,7 @@ fn (g &FlatGen) const_call_receiver_type_name(base_id flat.NodeId) string {
 		return name
 	}
 	base := g.a.nodes[int(base_id)]
-	if base.typ_text().len > 0 && base.typ_text() !in ['void', 'unknown'] {
+	if base.typ != 0 && base.typ_text() !in ['void', 'unknown'] {
 		return base.typ_text().trim_left('&')
 	}
 	if base.kind == .struct_init {
@@ -26577,7 +26582,7 @@ fn (mut g FlatGen) gen_checked_integer_infix(id flat.NodeId, node flat.Node, lhs
 		result_type := cgen_unalias_type(g.usable_expr_type(id))
 		if result_type.is_integer() {
 			helper_type = if result_type.name() == 'int' {
-				g.tc.parse_type(flat.source_type_id('i32'))
+				g.tc.parse_type(flat.source_type_i32)
 			} else {
 				result_type
 			}

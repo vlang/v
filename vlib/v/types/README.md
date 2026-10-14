@@ -3,10 +3,10 @@
 Compiler stages can retain a checked expression's semantic identity with
 `TypeChecker.checked_expr_type_id(node)`. The returned `TypeId` belongs to that checker's
 interner; a different worker can assign the same number to a different type.
-Use `type_by_id(id)` for the canonical semantic value and `type_name_by_id(id)` only where
-existing code still needs a textual spelling. `c_type_by_id(id)` reads the C layout cache by
+Use `type_by_id(id)` for the canonical semantic value and `type_name_by_id(id)` for its
+interned source spelling. `c_type_by_id(id)` reads the C layout cache by
 identity without hashing the semantic type again. Rewriting or retyping a node invalidates its
-cached identity. `parse_type_id(text)` resolves source text at an indexed type boundary;
+cached identity. `parse_type_id(source_id)` resolves an interned source spelling;
 its scalar cache keeps both the semantic ID and compatibility value across source contexts.
 Source annotations and dynamically resolved call types remain separate.
 
@@ -21,12 +21,25 @@ spelling at an integration boundary. Equality, hashing, and owned copies retain 
 identity. This spelling identity is shared across workers; semantic `TypeId` values still belong
 to a particular checker's interner.
 
+`parse_type`, `parse_type_ref`, `parse_canonical_type`, `parse_canonical_type_cached`,
+`parse_resolution_type`, and `parse_resolution_type_in_file` accept these source spelling IDs.
+Intern new source text with `flat.source_type_id(text)` at a parsing boundary. An AST annotation
+already carries that ID in `node.typ`. Parsing still observes imports, generic bindings, and the
+declaration context; identical spelling IDs can resolve to different semantic types.
+`Type.source_type_id()`, `TypeChecker.type_name(value)`, and `type_name_by_id(id)` return spelling
+IDs. Resolve bytes with `flat.source_type_name(id)` for diagnostics, spelling syntax, or emission.
+Builtin spelling constants in `v.flat` avoid repeated interning of scalar names.
+`fn_signature_type(name, source_id)` resolves an interned annotation in its declaration context.
+
 Alias targets, generic binding values, and original return annotations use `flat.TypeTextBindings`.
 Parameter annotations, sum variants, implemented interfaces, and interface embeddings use
 `flat.TypeTextListBindings`. Binding keys retain declaration names; values carry source IDs.
 `InterfaceImplIndex` retains its ordered implementation names in a `TypeTextList`;
 `names_text()` resolves them for diagnostics and emission while preserving interface tag order.
 Canonical name caches, recursive-alias stacks, and deferred return annotations also retain IDs.
+`TypeTextBindings.value_id(name)` and `NodeTypeTextBindings.value_id(node)` read a stored ID
+directly, returning zero for an absent or empty spelling. Use `type_id` or `contains` when the
+distinction between an absent binding and a present empty binding matters.
 
 Generic constraints, frozen interface implementation lists, and cached C type representations
 also retain numeric spelling identities. AST and worker publication copy these indexes and their

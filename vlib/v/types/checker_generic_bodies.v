@@ -229,7 +229,8 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 // its type parameters as types that their constraints admit (see
 // check_generic_fn_body_as): each of them is its type there, and no parse comes
 // from the cache or goes to it, which holds the types of other functions.
-fn (tc &TypeChecker) parse_type_as_instance(typ string) Type {
+fn (tc &TypeChecker) parse_type_as_instance(typ_id u32) Type {
+	typ := flat.source_type_name(typ_id)
 	mut names := []string{cap: tc.type_param_texts.ids.len}
 	mut args := []string{cap: tc.type_param_texts.ids.len}
 	mut name_set := map[string]bool{}
@@ -276,13 +277,15 @@ fn (tc &TypeChecker) instance_type_text(text string) string {
 	if tc.type_param_texts.ids.len == 0 {
 		return text
 	}
-	if instance := tc.type_param_texts.get(text) {
+	if instance_source_id := tc.type_param_texts.type_id(text) {
+		instance := flat.source_type_name(instance_source_id)
+
 		return instance
 	}
 	fn_id := flat.NodeId(tc.fn_context.node_id)
 	if tc.valid_node_id(fn_id) {
 		if param := tc.fn_param_type_param(tc.a.node(fn_id), text, tc.type_param_texts.keys()) {
-			return tc.type_param_texts.get(param) or { text }
+			return flat.source_type_name(tc.type_param_texts.type_id(param) or { flat.source_type_id(text) })
 		}
 	}
 	if typ := tc.cur_scope.lookup(text) {

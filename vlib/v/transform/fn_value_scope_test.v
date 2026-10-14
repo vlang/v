@@ -14,7 +14,7 @@ fn test_monomorphization_callback_inference_uses_checked_binding() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('initial', flat.source_type_id('fn (string) string'))
 	t.in_monomorphize_scan = true
-	callback_type := t.fn_value_type_name(argument) or { '' }
+	callback_type := flat.source_type_name(t.fn_value_type_name(argument) or { u32(0) })
 	assert callback_type.replace(' ', '') == 'fn(int)int'
 }
 
@@ -26,8 +26,8 @@ fn test_specialization_callback_inference_uses_live_parameter_binding() {
 	t.in_monomorphize_scan = true
 	t.cloning_generic_fn_depth = 1
 	t.set_var_type('initial', flat.source_type_id('fn (string) string'))
-	assert t.fn_value_type_name(argument) or { '' } == 'fn (string) string'
-	t.set_var_type('initial', flat.source_type_id('int'))
+	assert flat.source_type_name(t.fn_value_type_name(argument) or { u32(0) }) == 'fn (string) string'
+	t.set_var_type('initial', flat.source_type_int)
 	tc.fn_param_types['initial'] = [types.Type(types.int_)]
 	tc.fn_ret_types['initial'] = types.int_
 	assert t.fn_value_type_name(argument) == none

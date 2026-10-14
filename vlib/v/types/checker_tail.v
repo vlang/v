@@ -1378,7 +1378,7 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 		tc.check_lvalue_mutability_with_translated_rules(child_id, postfix_is_translated)
 	}
 	if node.op == .not && child.kind == .array_literal {
-		fixed_type := if child.typ_text().len > 0 {
+		fixed_type := if child.typ != 0 {
 			parsed := tc.parse_type(child.typ)
 			if parsed is ArrayFixed {
 				Type(parsed)
@@ -3430,7 +3430,7 @@ fn (tc &TypeChecker) expr_calls_invalid_option_void_fn(id flat.NodeId) bool {
 		return false
 	}
 	name := tc.resolved_call_name(id) or { tc.assignment_rhs_call_name(id) or { return false } }
-	return trimmed_space(tc.fn_ret_type_texts.get(name) or { '' }) == '?void'
+	return trimmed_space(flat.source_type_name(tc.fn_ret_type_texts.type_id(name) or { u32(0) })) == '?void'
 }
 
 fn (mut tc TypeChecker) multi_expr_tail_return_compatible(return_id flat.NodeId, expr_id flat.NodeId, expected []Type, wrapper Type) ?bool {
@@ -5978,7 +5978,7 @@ fn (mut tc TypeChecker) record_empty_array_generic_call_errors(node flat.Node, i
 	for i in 1 .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		arg := tc.a.node(arg_id)
-		if arg.kind == .array_literal && arg.children_count == 0 && arg.typ_text().len == 0 {
+		if arg.kind == .array_literal && arg.children_count == 0 && arg.typ == 0 {
 			has_empty_array = true
 			break
 		}
@@ -6007,7 +6007,7 @@ fn (mut tc TypeChecker) record_empty_array_generic_call_errors(node flat.Node, i
 	for i in 1 .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		arg := tc.a.node(arg_id)
-		if arg.kind == .array_literal && arg.children_count == 0 && arg.typ_text().len == 0 {
+		if arg.kind == .array_literal && arg.children_count == 0 && arg.typ == 0 {
 			param_idx := i - 1 - info.arg_offset + (if info.has_receiver { 1 } else { 0 })
 			if param_idx >= 0 && param_idx < info.params.len
 				&& !generic_semantic_type_has_placeholder(info.params[param_idx])
@@ -6383,7 +6383,7 @@ fn (tc &TypeChecker) instantiated_generic_decl_expr_type(id flat.NodeId, decl fl
 			param := tc.a.child_node(&decl, i)
 			if param.kind == .param && param.value == node.value {
 				type_text := subst_generic_text(param.typ_text(), instantiation.concrete_args_text(), instantiation.generic_params)
-				return tc.parse_fn_signature_type(info.name, type_text)
+				return tc.parse_fn_signature_type(info.name, flat.source_type_id(type_text))
 			}
 		}
 	}
@@ -7146,7 +7146,7 @@ fn (tc &TypeChecker) cur_fn_is_generic_template() bool {
 			}
 			continue
 		}
-		if child.kind == .param && child.typ_text().len > 0
+		if child.kind == .param && child.typ != 0
 			&& tc.type_text_has_generic_placeholder(child.typ_text()) {
 			return true
 		}
@@ -7204,7 +7204,7 @@ fn (tc &TypeChecker) call_receiver_is_open_generic(base_id flat.NodeId, base_typ
 	}
 	if int(base_id) >= 0 && int(base_id) < tc.a.nodes.len {
 		node := tc.a.nodes[int(base_id)]
-		if node.typ_text().len > 0 && tc.type_text_has_generic_placeholder(node.typ_text()) {
+		if node.typ != 0 && tc.type_text_has_generic_placeholder(node.typ_text()) {
 			return true
 		}
 	}
@@ -8500,7 +8500,7 @@ fn (tc &TypeChecker) global_decl_infers_type(name string) bool {
 		}
 		for i in 0 .. node.children_count {
 			field := tc.a.child_node(&node, i)
-			if field.kind == .field_decl && field.value == name && field.typ_text().len == 0 {
+			if field.kind == .field_decl && field.value == name && field.typ == 0 {
 				return true
 			}
 		}
@@ -8992,7 +8992,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 	}
 	fn_node := tc.a.child_node(&node, 0)
 	if fn_node.kind == .selector && '__v3_comptime_method_selector' in fn_node.generic_params()
-		&& fn_node.typ_text().len > 0 {
+		&& fn_node.typ != 0 {
 		return CallInfo{
 			name:         fn_node.value
 			params:       []Type{}
@@ -10983,11 +10983,12 @@ fn (tc &TypeChecker) explicit_generic_call_info(name string, has_receiver bool, 
 	}
 	mut sub_params := []Type{}
 	for param_text in param_texts {
-		sub_params << tc.parse_fn_signature_type(name, subst_generic_signature_param_text(param_text, concrete_args, generic_params))
+		sub_params << tc.parse_fn_signature_type(name, flat.source_type_id(subst_generic_signature_param_text(param_text, concrete_args, generic_params)))
 	}
-	ret_text := tc.fn_ret_type_texts.get(name) or { '' }
-	sub_ret := if ret_text.len > 0 {
-		tc.parse_fn_signature_type(name, subst_generic_text(ret_text, concrete_args, generic_params))
+	ret_text_source_id := tc.fn_ret_type_texts.type_id(name) or { u32(0) }
+	ret_text := flat.source_type_name(ret_text_source_id)
+	sub_ret := if ret_text_source_id != 0 {
+		tc.parse_fn_signature_type(name, flat.source_type_id(subst_generic_text(ret_text, concrete_args, generic_params)))
 	} else {
 		tc.fn_ret_types[name] or { builtin_void_type }
 	}
@@ -11152,7 +11153,7 @@ fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) string {
 			return '${base}[${args.join(', ')}]'
 		}
 		.array_init {
-			if node.typ_text().len > 0 {
+			if node.typ != 0 {
 				return node.typ_text()
 			}
 			if node.value.len > 0 {
@@ -11261,12 +11262,12 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 }
 
 fn (tc &TypeChecker) alias_return_type_from_text(fn_name string) ?Type {
-	ret_text := tc.fn_ret_type_texts.get(fn_name) or { return none }
+	ret_text := flat.source_type_name(tc.fn_ret_type_texts.type_id(fn_name) or { return none })
 	clean := trimmed_space(ret_text)
 	if clean.len == 0 {
 		return none
 	}
-	if _ := tc.type_aliases.get(clean) {
+	if _ := tc.type_aliases.type_id(clean) {
 		return tc.parse_canonical_type(flat.source_type_id(clean))
 	}
 	if clean.contains('.') {
@@ -11277,7 +11278,7 @@ fn (tc &TypeChecker) alias_return_type_from_text(fn_name string) ?Type {
 		return none
 	}
 	qname := '${mod}.${clean}'
-	_ := tc.type_aliases.get(qname) or { return none }
+	_ := flat.source_type_name(tc.type_aliases.type_id(qname) or { return none })
 	return tc.parse_canonical_type(flat.source_type_id(qname))
 }
 
@@ -14846,7 +14847,7 @@ fn (mut tc TypeChecker) check_valid_call_arg_types(id flat.NodeId, node flat.Nod
 			}
 			check_node := tc.a.node(check_arg_id)
 			if check_node.kind == .array_literal && check_node.children_count == 0
-				&& check_node.typ_text().len == 0 && array_like_elem_type(expected) != none {
+				&& check_node.typ == 0 && array_like_elem_type(expected) != none {
 				tc.register_synth_type(check_arg_id, expected)
 			}
 			tc.check_node_with_expected_context(check_arg_id, expected)
@@ -15549,7 +15550,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			check_node := tc.a.node(check_arg_id)
 			if check_node.kind == .array_literal && check_node.children_count == 0
-				&& check_node.typ_text().len == 0 && array_like_elem_type(expected_for_check) != none {
+				&& check_node.typ == 0 && array_like_elem_type(expected_for_check) != none {
 				tc.register_synth_type(check_arg_id, expected_for_check)
 			}
 			$if ownership ? {
@@ -17600,7 +17601,7 @@ fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, ca
 		tc.push_scope()
 		for i in 0 .. 2 {
 			param := tc.a.child_node(&arg, i)
-			param_type := if param.typ_text().len > 0 {
+			param_type := if param.typ != 0 {
 				tc.parse_type(flat.source_type_id(normalize_fn_type_param_text(param.typ_text())))
 			} else {
 				array_type.elem_type
@@ -18496,17 +18497,18 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		if generic_type_application(param_text) {
 			// Named applications such as `Box[T]` lose their arguments in the
 			// open parsed type, so retain the textual reconstruction for them.
-			sub_params << tc.parse_fn_signature_type(info.name, subst_generic_signature_param_text(param_text, signature_args, signature_params))
+			sub_params << tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_signature_param_text(param_text, signature_args, signature_params)))
 		} else if i < info.params.len {
 			sub_params << tc.substitute_generic_type_values(info.params[i], concrete_types, generic_params)
 		} else {
-			sub_params << tc.parse_fn_signature_type(info.name, subst_generic_signature_param_text(param_text, concrete_args, generic_params))
+			sub_params << tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_signature_param_text(param_text, concrete_args, generic_params)))
 		}
 	}
-	ret_text := tc.fn_ret_type_texts.get(info.name) or { '' }
-	sub_ret := if ret_text.len > 0 {
+	ret_text_source_id_3 := tc.fn_ret_type_texts.type_id(info.name) or { u32(0) }
+	ret_text := flat.source_type_name(ret_text_source_id_3)
+	sub_ret := if ret_text_source_id_3 != 0 {
 		if generic_type_application(ret_text) || ret_text.starts_with('(') {
-			tc.parse_fn_signature_type(info.name, subst_generic_text(ret_text, signature_args, signature_params))
+			tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_text(ret_text, signature_args, signature_params)))
 		} else {
 			tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
 		}
@@ -18657,12 +18659,12 @@ fn (mut tc TypeChecker) contextual_generic_lambda_type(id flat.NodeId, expected 
 	tc.push_scope()
 	for i in 0 .. param_count {
 		param := tc.a.child_node(node, i)
-		param_type := if param.typ_text().len > 0 {
+		param_type := if param.typ != 0 {
 			tc.parse_type(flat.source_type_id(normalize_fn_type_param_text(param.typ_text())))
 		} else {
 			fn_param_type(expected_fn, i)
 		}
-		binding_type := if param.typ_text().len == 0 {
+		binding_type := if param.typ == 0 {
 			fn_compatible_param_type(expected_fn, i)
 		} else if param.is_mut && param_type !is Pointer {
 			Type(Pointer{
@@ -18733,28 +18735,29 @@ fn generic_variadic_elem_param_text(param_text string) string {
 	return clean
 }
 
-fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
+fn (tc &TypeChecker) parse_fn_signature_type(name string, typ_id u32) Type {
+	typ := flat.source_type_name(typ_id)
 	if context_independent_type_text(typ) {
-		return tc.parse_type(flat.source_type_id(typ))
+		return tc.parse_type(typ_id)
 	}
-	decl_file := tc.fn_type_files[name] or { return tc.parse_type(flat.source_type_id(typ)) }
+	decl_file := tc.fn_type_files[name] or { return tc.parse_type(typ_id) }
 	decl_module := tc.fn_type_modules[name] or { tc.file_modules[decl_file] or { tc.cur_module } }
 	// A declaration normally lives in its file's module: reuse that file's cached
 	// import-aware view instead of forking a checker view for every signature.
 	if !isnil(tc.resolution_type_views) && decl_module == (tc.file_modules[decl_file] or { '' }) {
-		return tc.parse_resolution_type_in_file(typ, decl_file)
+		return tc.parse_resolution_type_in_file(typ_id, decl_file)
 	}
 	mut scoped := tc.fork_type_parse_view(decl_file, decl_module)
 	// Fully qualify symbols owned by the declaration module before parsing the
 	// substituted signature. A bare concrete type can belong to the generic
 	// call site (notably a type from `main`), so resolution deliberately leaves
 	// that spelling bare and the neutral parse context preserves its authority.
-	return scoped.parse_resolution_type(typ)
+	return scoped.parse_resolution_type(typ_id)
 }
 
 // fn_signature_type resolves a raw function signature type in its declaration module.
-pub fn (tc &TypeChecker) fn_signature_type(name string, typ string) Type {
-	return tc.parse_fn_signature_type(name, typ)
+pub fn (tc &TypeChecker) fn_signature_type(name string, typ_id u32) Type {
+	return tc.parse_fn_signature_type(name, typ_id)
 }
 
 // generic_param_type_text resolves a declared type base in the declaration's
@@ -19032,7 +19035,7 @@ fn (mut tc TypeChecker) generic_interface_implementation_type_args(iface_name st
 			tc.infer_generic_type_value_from_type(param_text, actual_info.params[i], interface_params, mut inferred_types)
 		}
 		expected_ret := tc.fn_ret_types[expected_key] or { builtin_void_type }
-		ret_text := tc.fn_ret_type_texts.get(expected_key) or { expected_ret.name() }
+		ret_text := flat.source_type_name(tc.fn_ret_type_texts.type_id(expected_key) or { expected_ret.source_type_id() })
 		tc.infer_generic_type_text_from_type(ret_text, actual_info.return_type, interface_params, mut inferred_text)
 		tc.infer_generic_type_value_from_type(ret_text, actual_info.return_type, interface_params, mut inferred_types)
 	}
@@ -19682,8 +19685,8 @@ fn (tc &TypeChecker) call_receiver_array_type(node flat.Node) ?Array {
 			return arr
 		}
 	}
-	if base_node.typ_text().len > 0 {
-		if arr := call_receiver_array_from_type(tc.parse_resolution_type(base_node.typ_text())) {
+	if base_node.typ != 0 {
+		if arr := call_receiver_array_from_type(tc.parse_resolution_type(base_node.typ)) {
 			return arr
 		}
 	}
@@ -20579,7 +20582,7 @@ fn (tc &TypeChecker) selector_fn_base_type(base_id flat.NodeId) ?Type {
 	if base_node.kind in [.string_literal, .string_interp] {
 		return builtin_string_type
 	}
-	if base_node.typ_text().len > 0 && base_node.typ_text() != 'unknown' {
+	if base_node.typ != 0 && base_node.typ != flat.source_type_unknown {
 		return tc.parse_type(base_node.typ)
 	}
 	if base_node.kind == .call {
@@ -21222,7 +21225,7 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 			}
 		}
 	}
-	if node.typ_text().len > 0 {
+	if node.typ != 0 {
 		if fn_node.kind == .index && fn_node.value != 'range' {
 			return tc.explicit_generic_call_target_is_known(node)
 		}

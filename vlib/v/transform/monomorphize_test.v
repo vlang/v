@@ -126,9 +126,9 @@ fn test_generic_unresolved_type_detects_multi_return_placeholders() {
 	mut tc := types.TypeChecker.new(&a)
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
-	assert t.generic_arg_is_unresolved('(T, T)')
-	assert t.generic_arg_is_unresolved('([]T, map[string]T)')
-	assert !t.generic_arg_is_unresolved('(f64, f64)')
+	assert t.generic_arg_is_unresolved(flat.source_type_id('(T, T)'))
+	assert t.generic_arg_is_unresolved(flat.source_type_id('([]T, map[string]T)'))
+	assert !t.generic_arg_is_unresolved(flat.source_type_id('(f64, f64)'))
 }
 
 fn test_collision_locked_main_struct_is_a_concrete_generic_argument() {
@@ -139,13 +139,13 @@ fn test_collision_locked_main_struct_is_a_concrete_generic_argument() {
 	t.structs['S'] = StructInfo{ name: flat.source_type_id('S'), module: 'foreign' }
 	t.cur_module = 'foreign'
 
-	assert !t.generic_arg_is_unresolved('main.T')
-	assert !t.generic_arg_is_unresolved('[]main.T')
+	assert !t.generic_arg_is_unresolved(flat.source_type_id('main.T'))
+	assert !t.generic_arg_is_unresolved(flat.source_type_id('[]main.T'))
 	assert t.explicit_generic_arg_is_known_type('main.T', 'foreign')
 	assert t.explicit_generic_arg_is_known_type('[]main.T', 'foreign')
-	assert t.generic_arg_is_unresolved('main.S')
+	assert t.generic_arg_is_unresolved(flat.source_type_id('main.S'))
 	assert !t.explicit_generic_arg_is_known_type('main.S', 'foreign')
-	assert t.generic_arg_is_unresolved('main.U')
+	assert t.generic_arg_is_unresolved(flat.source_type_id('main.U'))
 	assert !t.explicit_generic_arg_is_known_type('main.U', 'foreign')
 
 	tc.imports['main'] = 'other'
@@ -177,14 +177,14 @@ fn test_generic_field_type_substitutes_fixed_array_length_expr() {
 	tc.struct_generic_params['PaddedSlot'] = ['T']
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
-	assert t.normalize_field_type('[32 - sizeof(T)]u8', 'PaddedSlot[int]') ==
+	assert flat.source_type_name(t.normalize_field_type(flat.source_type_id('[32 - sizeof(T)]u8'), flat.source_type_id('PaddedSlot[int]'))) ==
 		'[32 - sizeof(int)]u8'
 }
 
 fn test_zero_value_normalizes_generic_alias_but_preserves_generic_struct() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('Values', '[]T')
+	tc.type_aliases.set_id('Values', flat.source_type_id('[]T'))
 	tc.type_alias_generic_params['Values'] = ['T']
 	tc.structs['Box'] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -281,8 +281,8 @@ fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
 
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_module = 'main'
-	tc.type_aliases.set('UserId', 'int')
-	tc.type_aliases.set('Values', '[]T')
+	tc.type_aliases.set_id('UserId', flat.source_type_int)
+	tc.type_aliases.set_id('Values', flat.source_type_id('[]T'))
 	tc.type_alias_generic_params['Values'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
@@ -399,14 +399,14 @@ fn test_short_fixed_array_generic_arg_canonicalizes_to_source_type() {
 
 	assert t.canonical_generic_specialization_arg('int_2') == '[2]int'
 	assert t.canonical_generic_specialization_arg('int_3_2') == '[2][3]int'
-	tc.type_aliases.set('int_2', 'int')
+	tc.type_aliases.set_id('int_2', flat.source_type_int)
 	assert t.canonical_generic_specialization_arg('int_2') == 'int_2'
 }
 
 fn test_composite_generic_inference_preserves_nested_alias() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('Distance', 'int')
+	tc.type_aliases.set_id('Distance', flat.source_type_int)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.build_generic_alias_name_index()
 
@@ -416,7 +416,7 @@ fn test_composite_generic_inference_preserves_nested_alias() {
 fn test_composite_generic_inference_still_expands_direct_alias() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('Distances', '[]int')
+	tc.type_aliases.set_id('Distances', flat.source_type_id('[]int'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.build_generic_alias_name_index()
 
@@ -438,7 +438,7 @@ fn test_concrete_generic_fn_alias_call_expands_multi_return_signature() {
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('FnMultiReturn', 'fn (I) (O, R)')
+	tc.type_aliases.set_id('FnMultiReturn', flat.source_type_id('fn (I) (O, R)'))
 	tc.type_alias_generic_params['FnMultiReturn'] = ['I', 'O', 'R']
 	tc.fn_ret_types['make_splitter'] = types.Type(types.Alias{
 		name_id:   flat.source_type_id('FnMultiReturn[string, string, string]')
@@ -469,7 +469,7 @@ fn test_concrete_generic_fn_alias_call_expands_result_signature() {
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('ParseFunction', 'fn (string) !ParseResult[T]')
+	tc.type_aliases.set_id('ParseFunction', flat.source_type_id('fn (string) !ParseResult[T]'))
 	tc.type_alias_generic_params['ParseFunction'] = ['T']
 	tc.fn_ret_types['literal'] = types.Type(types.Alias{
 		name_id:   flat.source_type_id('ParseFunction[string]')
@@ -547,7 +547,7 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	assert t.specialization_main_type_closure(['map[string]Event']) == {
 		'Event': true
 	}
-	tc.type_aliases.set('AliasContext', 'Context')
+	tc.type_aliases.set_id('AliasContext', flat.source_type_id('Context'))
 	assert t.specialization_main_type_closure(['AliasContext']) == {
 		'AliasContext': true
 		'Context':      true
@@ -564,9 +564,9 @@ fn test_lock_colliding_main_generic_type_text_locks_program_aliases() {
 	t.structs['callee.Cell'] = StructInfo{
 		module: 'callee'
 	}
-	tc.type_aliases.set('Cells', '[]Cell')
+	tc.type_aliases.set_id('Cells', flat.source_type_id('[]Cell'))
 	tc.type_alias_modules['Cells'] = 'main'
-	tc.type_aliases.set('Ids', '[]int')
+	tc.type_aliases.set_id('Ids', flat.source_type_id('[]int'))
 	tc.type_alias_modules['Ids'] = 'main'
 	// A program alias target is resolved where the alias is parsed, so an alias of a
 	// colliding program type is locked even when it is not an active specialization type.
@@ -574,11 +574,11 @@ fn test_lock_colliding_main_generic_type_text_locks_program_aliases() {
 	assert t.lock_colliding_main_generic_type_text('map[string]Cells', 'callee') == 'map[string]main.Cells'
 	// Without a colliding name or target the alias keeps its bare spelling.
 	assert t.lock_colliding_main_generic_type_text('Ids', 'callee') == 'Ids'
-	tc.type_aliases.set('callee.Ids', '[]u8')
+	tc.type_aliases.set_id('callee.Ids', flat.source_type_id('[]u8'))
 	tc.type_alias_modules['callee.Ids'] = 'callee'
 	assert t.lock_colliding_main_generic_type_text('Ids', 'callee') == 'main.Ids'
 	// Module aliases are already qualified.
-	tc.type_aliases.set('other.Cells', '[]other.Cell')
+	tc.type_aliases.set_id('other.Cells', flat.source_type_id('[]other.Cell'))
 	tc.type_alias_modules['other.Cells'] = 'other'
 	assert t.lock_colliding_main_generic_type_text('other.Cells', 'callee') == 'other.Cells'
 }
@@ -611,7 +611,7 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 	}
 	assert t.generic_inference_alias_target('other.Box[map[string]Any]', 'callee') == 'other.Box[map[string]Any]'
 	assert t.generic_arg_for_decl_module('other.Box[[2]Any]', 'callee') == 'other.Box[[2]Any]'
-	tc.type_aliases.set('other.Items', 'other.Box[T]')
+	tc.type_aliases.set_id('other.Items', flat.source_type_id('other.Box[T]'))
 	tc.type_alias_generic_params['other.Items'] = ['T']
 	assert t.generic_inference_alias_target('other.Items[Any]', 'callee') == 'other.Items[Any]'
 	t.structs['callee.Box'] = StructInfo{ module: 'callee' }
@@ -671,7 +671,7 @@ fn test_collision_locked_signature_keeps_interface_and_alias_declaration_modules
 	t.active_specialization_main_types['Item'] = true
 	tc.interface_names['callee.Reader'] = true
 	tc.interface_generic_params['callee.Reader'] = ['T']
-	tc.type_aliases.set('callee.Mapper', 'fn (T) int')
+	tc.type_aliases.set_id('callee.Mapper', flat.source_type_id('fn (T) int'))
 	tc.type_alias_generic_params['callee.Mapper'] = ['T']
 	decl := GenericFnDecl{ module: 'callee' }
 	for base in ['Reader', 'Mapper'] {
@@ -736,7 +736,7 @@ fn test_imported_generic_alias_target_uses_declaration_module() {
 	inner_decl.set_generic_params(['T'])
 	inner_id := a.add_node(inner_decl)
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('a.Box', 'Inner[T]')
+	tc.type_aliases.set_id('a.Box', flat.source_type_id('Inner[T]'))
 	tc.type_alias_generic_params['a.Box'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
@@ -1055,10 +1055,10 @@ fn test_generic_unresolved_function_type_checks_parameters_and_return() {
 	t := new_transformer(mut a, &tc, map[string]bool{})
 	for typ in ['fn () T', 'fn (T) int', 'fn (value []T) string', 'fn (fn () T) int', 'Cell[fn () T]',
 		'fn () unknown'] {
-		assert t.generic_arg_is_unresolved(typ), typ
+		assert t.generic_arg_is_unresolved(flat.source_type_id(typ)), typ
 	}
 	for typ in ['fn ()', 'fn () int', 'fn (string) int', 'Cell[fn () int]'] {
-		assert !t.generic_arg_is_unresolved(typ), typ
+		assert !t.generic_arg_is_unresolved(flat.source_type_id(typ)), typ
 	}
 }
 
@@ -1069,9 +1069,9 @@ fn test_nested_generic_field_arguments_preserve_declaration_modules() {
 	tc.struct_generic_params['inner.Box'] = ['T']
 	tc.struct_generic_params['inner.Pair'] = ['T']
 	t := new_transformer(mut a, &tc, map[string]bool{})
-	assert t.normalize_field_type('T', 'outer.Cell[inner.Box[inner.Pair[int]]]') ==
+	assert flat.source_type_name(t.normalize_field_type(flat.source_type_id('T'), flat.source_type_id('outer.Cell[inner.Box[inner.Pair[int]]]'))) ==
 		'inner.Box[inner.Pair[int]]'
-	assert t.normalize_field_type('outer.Cell[inner.Box[inner.Pair[string]]]', 'inner.Owner') ==
+	assert flat.source_type_name(t.normalize_field_type(flat.source_type_id('outer.Cell[inner.Box[inner.Pair[string]]]'), flat.source_type_id('inner.Owner'))) ==
 		'outer.Cell[inner.Box[inner.Pair[string]]]'
 }
 

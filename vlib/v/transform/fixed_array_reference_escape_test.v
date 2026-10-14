@@ -31,7 +31,7 @@ fn test_fixed_array_reference_iteration_escape_uses_checked_backing_types() {
 				tc.const_types['time.second'] = types.Type(types.int_)
 				t.collect_const_suffixes()
 				if source == 'stale_local' {
-					t.set_var_type('second', flat.source_type_id('int'))
+					t.set_var_type('second', flat.source_type_int)
 				}
 			}
 			// Source identifiers have checker types, without a lowered local annotation.
@@ -161,7 +161,7 @@ fn test_fixed_array_reference_generic_call_uses_conservative_escape_scan() {
 	t.set_var_type('holder', flat.source_type_id('Holder'))
 	arg := t.make_ident('holder')
 	tc.register_synth_type(arg, types.Type(types.Struct{ name_id: flat.source_type_id('Holder') }))
-	call := t.make_call_typed('forward', [arg], '[]int')
+	call := t.make_call_typed('forward', [arg], flat.source_type_id('[]int'))
 	t.set_resolved_call_entry(int(call), 'forward')
 	t.fast_escape_precheck = true
 	t.item_escape_scan_known = true
@@ -213,7 +213,7 @@ fn test_fixed_array_reference_pointer_field_does_not_promote_its_containing_valu
 	tc.trust_checked_expr_types = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('dispatch', flat.source_type_id('Dispatch'))
-	field := t.make_selector(t.make_ident('dispatch'), 'coordinator', '&Coordinator')
+	field := t.make_selector(t.make_ident('dispatch'), 'coordinator', flat.source_type_id('&Coordinator'))
 	tc.register_synth_type(field, coordinator_ptr)
 	t.mark_fixed_array_reference_argument_escape(field, coordinator_ptr, map[string]bool{}, map[string][]string{}, map[string]string{}, {
 		'dispatch': true
@@ -278,7 +278,7 @@ fn test_fixed_array_reference_mutable_iteration_pointer_keeps_its_backing() {
 	tc.register_synth_type(rows, rows_type)
 	row := t.make_ident('row')
 	tc.register_synth_type(row, types.Type(types.Pointer{ base_type: fixed }))
-	call := t.make_call_typed('retain', [row], '&[]int')
+	call := t.make_call_typed('retain', [row], flat.source_type_id('&[]int'))
 	t.set_resolved_call_entry(int(call), 'retain')
 	body := t.make_block([t.make_expr_stmt(call)])
 	start := a.children.len
@@ -306,7 +306,7 @@ fn test_fixed_array_reference_stack_pointer_projections_keep_original_root() {
 	ptr := t.make_ident('p')
 	deref := t.make_prefix(.mul, ptr)
 	t.set_node_typ(int(deref), 'Holder')
-	field := t.make_selector(deref, 'values', '[2]int')
+	field := t.make_selector(deref, 'values', flat.source_type_id('[2]int'))
 	tc.register_synth_type(field, fixed)
 	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
 	t.mark_fixed_array_reference_argument_escape(field, array_ref, {
@@ -323,8 +323,8 @@ fn test_fixed_array_reference_stack_pointer_projections_keep_original_root() {
 	// inline owner of the selected fixed array.
 	t.escaping_fixed_array_view_sources.clear()
 	t.set_var_type('rows', flat.source_type_id('[]Holder'))
-	row := t.make_index(t.make_ident('rows'), t.make_int_literal(0), 'Holder')
-	row_field := t.make_selector(row, 'values', '[2]int')
+	row := t.make_index(t.make_ident('rows'), t.make_int_literal(0), flat.source_type_id('Holder'))
+	row_field := t.make_selector(row, 'values', flat.source_type_id('[2]int'))
 	tc.register_synth_type(row_field, fixed)
 	t.mark_fixed_array_reference_argument_escape(row_field, array_ref, map[string]bool{}, map[string][]string{}, map[string]string{}, {
 		'rows': true
@@ -340,8 +340,8 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('fixed', flat.source_type_id('[3]int'))
 	tc.cur_scope.insert('fixed', fixed)
-	tc.type_aliases.set('FixedPtr', '&[3]int')
-	tc.type_aliases.set('FixedPtrAlias', 'FixedPtr')
+	tc.type_aliases.set_id('FixedPtr', flat.source_type_id('&[3]int'))
+	tc.type_aliases.set_id('FixedPtrAlias', flat.source_type_id('FixedPtr'))
 	for parenthesized in [false, true] {
 		value := t.make_ident('fixed')
 		tc.register_synth_type(value, fixed)
@@ -364,7 +364,7 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 		tc.register_synth_type(value, fixed)
 		addr := t.make_prefix(.amp, value)
 		t.set_node_typ(int(addr), '&[3]int')
-		cast := t.make_cast(cast_type, t.make_paren(addr), cast_type)
+		cast := t.make_cast(flat.source_type_id(cast_type), t.make_paren(addr), flat.source_type_id(cast_type))
 		deref := t.make_prefix(.mul, cast)
 		t.set_node_typ(int(deref), '[3]int')
 		tc.register_synth_type(deref, fixed)
@@ -450,7 +450,7 @@ fn test_fixed_array_reference_variadic_arguments_promote_each_tail_source() {
 		args << arg
 		locals[name] = true
 	}
-	call_id := t.make_call_typed('retain', args, '&[]int')
+	call_id := t.make_call_typed('retain', args, flat.source_type_id('&[]int'))
 	t.set_resolved_call_entry(int(call_id), 'retain')
 	t.fast_escape_precheck = true
 	t.item_escape_scan_known = true
@@ -465,7 +465,7 @@ fn test_fixed_array_reference_variadic_arguments_promote_each_tail_source() {
 		types.Type(types.Array{ elem_type: ref_alias })]
 	tc.fn_ret_types['retain_alias'] = array_ref
 	tc.fn_variadic['retain_alias'] = true
-	alias_call := t.make_call_typed('retain_alias', args, '&[]int')
+	alias_call := t.make_call_typed('retain_alias', args, flat.source_type_id('&[]int'))
 	t.set_resolved_call_entry(int(alias_call), 'retain_alias')
 	t.mark_fixed_array_reference_argument_escapes(alias_call, t.a.nodes[int(alias_call)], map[string]bool{}, map[string][]string{}, map[string]string{}, locals)
 	for name in locals.keys() {
@@ -476,16 +476,16 @@ fn test_fixed_array_reference_variadic_arguments_promote_each_tail_source() {
 	t.escaping_fixed_array_view_sources.clear()
 	tc.fn_param_types['retain_array'] = tc.fn_param_types['retain'].clone()
 	tc.fn_ret_types['retain_array'] = array_ref
-	ordinary := t.make_call_typed('retain_array', args[..2], '&[]int')
+	ordinary := t.make_call_typed('retain_array', args[..2], flat.source_type_id('&[]int'))
 	t.set_resolved_call_entry(int(ordinary), 'retain_array')
 	t.mark_fixed_array_reference_argument_escapes(ordinary, t.a.nodes[int(ordinary)], map[string]bool{}, map[string][]string{}, map[string]string{}, locals)
 	assert t.escaping_fixed_array_view_sources.len == 0
 	t.set_var_type('array_fn', flat.source_type_id('fn (int, []&[]int) &[]int'))
-	ordinary_value := t.make_call_typed('array_fn', args[..2], '&[]int')
+	ordinary_value := t.make_call_typed('array_fn', args[..2], flat.source_type_id('&[]int'))
 	t.mark_fixed_array_reference_argument_escapes(ordinary_value, t.a.nodes[int(ordinary_value)], map[string]bool{}, map[string][]string{}, map[string]string{}, locals)
 	assert t.escaping_fixed_array_view_sources.len == 0
 	t.set_var_type('retain_fn', flat.source_type_id('fn (int, []&[]int) &[]int'))
-	fn_value_call := t.make_call_typed('retain_fn', args, '&[]int')
+	fn_value_call := t.make_call_typed('retain_fn', args, flat.source_type_id('&[]int'))
 	t.a.nodes[int(fn_value_call)].flags |= flat.node_flag_variadic_call
 	assert (flat.clone_node_flags(&t.a.nodes[int(fn_value_call)], false) & flat.node_flag_variadic_call) != 0
 	t.mark_fixed_array_reference_argument_escapes(fn_value_call, t.a.nodes[int(fn_value_call)], map[string]bool{}, map[string][]string{}, map[string]string{}, locals)
@@ -510,13 +510,13 @@ fn test_promoted_fixed_array_storage_preserves_nested_element_alignment() {
 fn test_fixed_array_argument_ordering_handles_variadic_tail_and_reference_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('Slice', '[]int')
-	tc.type_aliases.set('SliceRef', '&[]int')
+	tc.type_aliases.set_id('Slice', flat.source_type_id('[]int'))
+	tc.type_aliases.set_id('SliceRef', flat.source_type_id('&[]int'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type('fixed', flat.source_type_id('[2]int'))
 	t.set_var_type('dynamic', flat.source_type_id('&[]int'))
 	call_id := t.make_call_typed('retain', [t.make_int_literal(0), t.make_ident('dynamic'),
-		t.make_ident('fixed')], '&[]int')
+		t.make_ident('fixed')], flat.source_type_id('&[]int'))
 	call := t.a.nodes[int(call_id)]
 	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
 	params := [types.Type(types.int_), types.Type(types.Array{ elem_type: array_ref })]
@@ -528,7 +528,7 @@ fn test_fixed_array_argument_ordering_handles_variadic_tail_and_reference_aliase
 		types.Type(types.OptionType{ base_type: array_ref }),
 		types.Type(types.ResultType{ base_type: array_ref }),
 	] {
-		aliased_call := t.make_call_typed('keep_alias', [t.make_ident('fixed')], '&[]int')
+		aliased_call := t.make_call_typed('keep_alias', [t.make_ident('fixed')], flat.source_type_id('&[]int'))
 		assert t.call_has_mut_fixed_array_args(t.a.nodes[int(aliased_call)], [param], 0, -1)
 	}
 }
@@ -551,7 +551,7 @@ fn test_fixed_array_optional_reference_arguments_promote_successful_payload_sour
 		types.Type(types.Alias{ name_id: flat.source_type_id('ResultSliceRef'), base_type: result_ref })] {
 		tc.fn_param_types['retain_optional'] = [param]
 		tc.fn_ret_types['retain_optional'] = param
-		call := t.make_call_typed('retain_optional', [value], '?&[]int')
+		call := t.make_call_typed('retain_optional', [value], flat.source_type_id('?&[]int'))
 		t.set_resolved_call_entry(int(call), 'retain_optional')
 		t.fast_escape_precheck = true
 		t.item_escape_scan_known = true
@@ -562,7 +562,7 @@ fn test_fixed_array_optional_reference_arguments_promote_successful_payload_sour
 		tc.fn_param_types['retain_optional_tail'] = [types.Type(types.Array{ elem_type: param })]
 		tc.fn_ret_types['retain_optional_tail'] = param
 		tc.fn_variadic['retain_optional_tail'] = true
-		tail_call := t.make_call_typed('retain_optional_tail', [value, value], '?&[]int')
+		tail_call := t.make_call_typed('retain_optional_tail', [value, value], flat.source_type_id('?&[]int'))
 		t.set_resolved_call_entry(int(tail_call), 'retain_optional_tail')
 		t.escaping_fixed_array_view_sources.clear()
 		t.mark_escaping_amp_ptrs([tail_call])
@@ -571,7 +571,7 @@ fn test_fixed_array_optional_reference_arguments_promote_successful_payload_sour
 	t.escaping_fixed_array_view_sources.clear()
 	no_value := t.make_optional_none('?&[]int')
 	tc.register_synth_type(no_value, option_ref)
-	no_value_call := t.make_call_typed('retain_optional', [no_value], '?&[]int')
+	no_value_call := t.make_call_typed('retain_optional', [no_value], flat.source_type_id('?&[]int'))
 	t.set_resolved_call_entry(int(no_value_call), 'retain_optional')
 	t.mark_escaping_amp_ptrs([no_value_call])
 	assert t.escaping_fixed_array_view_sources.len == 0

@@ -130,7 +130,7 @@ fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.Nod
 			}
 		}
 	}
-	if field.typ_text().len > 0 && field.typ_text() != 'unknown' {
+	if field.typ != 0 && field.typ != flat.source_type_unknown {
 		return field.typ_text()
 	}
 	expr := b.a.node(expr_id)
@@ -155,7 +155,7 @@ fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.Nod
 	if expr.kind == .call && expr.children_count > 0 {
 		callee := b.qualified_expr_name(b.a.child(expr, 0))
 		for node in b.a.nodes {
-			if node.kind == .fn_decl && node.value == callee && node.typ_text().len > 0 {
+			if node.kind == .fn_decl && node.value == callee && node.typ != 0 {
 				return qualify_type_ref_name(node.typ_text(), module_name)
 			}
 		}
@@ -221,7 +221,7 @@ fn (mut b Builder) build_native_initializer_functions() {
 		initializer.function = b.register_synthetic_function('__ssa_init_' + ssa_c_name(name),
 			b.void_type, [])
 		b.cur_func = initializer.function
-		b.cur_func_ret_type = flat.source_type_id('')
+		b.cur_func_ret_type = u32(0)
 		b.cur_module = initializer.module_name
 		b.reset_function_state()
 		b.cur_block = b.m.add_block(initializer.function, 'entry')

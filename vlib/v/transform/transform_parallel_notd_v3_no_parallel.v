@@ -1639,7 +1639,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 	t.fn_ret_types = shared_fn_ret_types.move()
 	t.receiver_method_suffix_index = shared_receiver_index.move()
 	for name, ret_id in master_fn_ret_types.ids {
-		t.fn_ret_types.set(name, master_fn_ret_types.texts.text(ret_id))
+		t.fn_ret_types.set_id(name, ret_id)
 	}
 	for name, receiver in master_receiver_index {
 		t.receiver_method_suffix_index[name] = receiver

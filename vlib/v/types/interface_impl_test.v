@@ -18,8 +18,8 @@ fn test_interface_fixed_array_callback_lengths_resolve_constants() {
 fn test_empty_interface_impl_names_deduplicate_builtin_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases.set('byte', 'u8')
-	tc.type_aliases.set('builtin.byte', 'u8')
+	tc.type_aliases.set_id('byte', flat.source_type_u8)
+	tc.type_aliases.set_id('builtin.byte', flat.source_type_u8)
 
 	impls := tc.interface_impl_names('Any')
 	assert impls.filter(it == 'byte').len == 1

@@ -55,7 +55,7 @@ fn (t &Transformer) map_init_expansion_estimate(id flat.NodeId, node flat.Node) 
 	if !isnil(t.tc) {
 		mut map_type := if node.value.len > 0 {
 			node.value
-		} else if node.typ_text().len > 0 {
+		} else if node.typ != 0 {
 			node.typ_text()
 		} else {
 			flat.source_type_name(t.node_type(id))
@@ -84,7 +84,7 @@ fn (t &Transformer) map_init_spread_requires_deferral(id flat.NodeId, node flat.
 	}
 	mut map_type := if node.value.len > 0 {
 		node.value
-	} else if node.typ_text().len > 0 {
+	} else if node.typ != 0 {
 		node.typ_text()
 	} else {
 		flat.source_type_name(t.node_type(id))
@@ -127,7 +127,7 @@ fn (t &Transformer) array_literal_spread_requires_deferral(id flat.NodeId, node 
 	if !has_spread {
 		return false
 	}
-	mut array_type := if node.typ_text().len > 0 {
+	mut array_type := if node.typ != 0 {
 		node.typ_text()
 	} else if node.value.len > 0 {
 		node.value
@@ -142,7 +142,7 @@ fn (t &Transformer) fixed_array_init_expansion_estimate(id flat.NodeId, node fla
 	if node.kind != .array_init {
 		return 0
 	}
-	raw_type := if node.typ_text().len > 0 {
+	raw_type := if node.typ != 0 {
 		node.typ_text()
 	} else if node.value.len > 0 {
 		node.value
@@ -177,7 +177,7 @@ fn (t &Transformer) dynamic_array_init_requires_deferral(id flat.NodeId, node fl
 	if node.kind != .array_init {
 		return false
 	}
-	raw_type := if node.typ_text().len > 0 {
+	raw_type := if node.typ != 0 {
 		node.typ_text()
 	} else if node.value.len > 0 {
 		node.value
@@ -218,7 +218,8 @@ fn (t &Transformer) dynamic_array_init_requires_deferral(id flat.NodeId, node fl
 }
 
 fn (t &Transformer) fixed_array_empty_init_requires_deferral(elem_type string) bool {
-	clean_type := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(elem_type)))
+	clean_type_source_id := t.normalize_type_alias(flat.source_type_id(elem_type))
+	clean_type := flat.source_type_name(clean_type_source_id)
 	if t.is_fixed_array_type(clean_type) {
 		return true
 	}
@@ -230,11 +231,12 @@ fn (t &Transformer) fixed_array_empty_init_requires_deferral(elem_type string) b
 	}
 	// Struct defaults can recursively synthesize collection literals that are not
 	// represented by children of the external initializer.
-	return types.unalias_type(t.tc.parse_type(flat.source_type_id(clean_type))) is types.Struct
+	return types.unalias_type(t.tc.parse_type(clean_type_source_id)) is types.Struct
 }
 
 fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type string) bool {
-	clean_type := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(elem_type)))
+	clean_type_source_id := t.normalize_type_alias(flat.source_type_id(elem_type))
+	clean_type := flat.source_type_name(clean_type_source_id)
 	if clean_type.starts_with('[]') || clean_type.ends_with('[]') || clean_type.starts_with('map[')
 		|| clean_type.starts_with('chan ') {
 		return true
@@ -251,7 +253,7 @@ fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type string) bool {
 	}
 	// Struct fields can carry runtime defaults. Treat every struct conservatively here;
 	// this estimate only decides whether lowering should leave the bounded worker arena.
-	return types.unalias_type(t.tc.parse_type(flat.source_type_id(clean_type))) is types.Struct
+	return types.unalias_type(t.tc.parse_type(clean_type_source_id)) is types.Struct
 }
 
 // external_map_tree_expansion_estimate counts writes caused by lowering an initializer
@@ -490,7 +492,7 @@ fn (t &Transformer) compiler_collection_clone_call_expands(node flat.Node) bool 
 	base_id := t.a.child(fn_node, 0)
 	mut base_type := flat.source_type_name(t.node_type(base_id))
 	if base_type.len == 0 {
-		base_type = t.lvalue_type(base_id)
+		base_type = flat.source_type_name(t.lvalue_type(base_id))
 	}
 	mut clean := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type))))
 	for clean.starts_with('shared ') {
@@ -538,16 +540,16 @@ fn (t &Transformer) compiler_owned_map_items_call_expands(node flat.Node) bool {
 	base_id := t.a.child(fn_node, 0)
 	mut base_type := flat.source_type_name(t.node_type(base_id))
 	if base_type.len == 0 {
-		base_type = t.lvalue_type(base_id)
+		base_type = flat.source_type_name(t.lvalue_type(base_id))
 	}
 	clean_type := t.clean_map_type(base_type)
 	if !clean_type.starts_with('map[') {
 		return false
 	}
 	elem_type := if fn_node.value == 'keys' {
-		t.map_key_type(clean_type)
+		flat.source_type_name(t.map_key_type(flat.source_type_id(clean_type)))
 	} else {
-		t.map_value_type(clean_type)
+		flat.source_type_name(t.map_value_type(flat.source_type_id(clean_type)))
 	}
 	if elem_type.len == 0 || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(elem_type)))
 		|| !t.compiler_default_clone_type_needs_work(elem_type) {
@@ -568,7 +570,7 @@ fn (t &Transformer) compiler_array_search_call_expands(node flat.Node) bool {
 	base_id := t.a.child(fn_node, 0)
 	mut base_type := flat.source_type_name(t.node_type(base_id))
 	if base_type.len == 0 {
-		base_type = t.lvalue_type(base_id)
+		base_type = flat.source_type_name(t.lvalue_type(base_id))
 	}
 	clean_type := transform_unshared_receiver_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type)))).trim_left('&')
 	elem_type := if clean_type.starts_with('[]') {
@@ -593,7 +595,7 @@ fn (t &Transformer) compiler_owned_array_accessor_call_expands(node flat.Node) b
 	base_id := t.a.child(fn_node, 0)
 	mut base_type := flat.source_type_name(t.node_type(base_id))
 	if base_type.len == 0 {
-		base_type = t.lvalue_type(base_id)
+		base_type = flat.source_type_name(t.lvalue_type(base_id))
 	}
 	clean_type := transform_unshared_receiver_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type)))).trim_left('&')
 	elem_type := if clean_type.starts_with('[]') {
@@ -621,7 +623,7 @@ fn (t &Transformer) compiler_owned_array_filter_call_expands(node flat.Node) boo
 	base_id := t.a.child(fn_node, 0)
 	mut base_type := flat.source_type_name(t.node_type(base_id))
 	if base_type.len == 0 {
-		base_type = t.lvalue_type(base_id)
+		base_type = flat.source_type_name(t.lvalue_type(base_id))
 	}
 	clean_type := transform_unshared_receiver_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type)))).trim_left('&')
 	if !clean_type.starts_with('[]') {
@@ -644,7 +646,7 @@ fn (t &Transformer) compiler_owned_array_map_call_expands(node flat.Node) bool {
 	base_id := t.a.child(fn_node, 0)
 	mut base_type := flat.source_type_name(t.node_type(base_id))
 	if base_type.len == 0 {
-		base_type = t.lvalue_type(base_id)
+		base_type = flat.source_type_name(t.lvalue_type(base_id))
 	}
 	clean_base := transform_unshared_receiver_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type)))).trim_left('&')
 	clean_result :=
@@ -670,7 +672,7 @@ fn (t &Transformer) compiler_collection_str_call_expands(node flat.Node) bool {
 	base_id := t.a.child(fn_node, 0)
 	mut base_type := flat.source_type_name(t.node_type(base_id))
 	if base_type.len == 0 {
-		base_type = t.lvalue_type(base_id)
+		base_type = flat.source_type_name(t.lvalue_type(base_id))
 	}
 	if _ := t.resolve_receiver_method_for_type(base_type, 'str') {
 		return false
@@ -795,14 +797,14 @@ fn (mut t Transformer) disabled_call_zero_value_expansion_estimate(id flat.NodeI
 	}
 	mut result_type := flat.source_type_name(t.node_type(id))
 	if result_type.len == 0 || result_type in ['array', 'map', 'unknown']
-		|| t.generic_arg_is_unresolved(result_type) {
-		result_type = t.get_call_return_type(id, node)
+		|| t.generic_arg_is_unresolved(flat.source_type_id(result_type)) {
+		result_type = flat.source_type_name(t.get_call_return_type(id, node))
 	}
 	if result_type == 'void' {
 		return 0
 	}
 	if result_type.len == 0 || result_type in ['array', 'map', 'unknown']
-		|| t.generic_arg_is_unresolved(result_type) {
+		|| t.generic_arg_is_unresolved(flat.source_type_id(result_type)) {
 		return deferred_map_expansion_threshold + 1
 	}
 	return t.zero_value_expansion_estimate(id, result_type)
@@ -814,15 +816,16 @@ fn (mut t Transformer) disabled_struct_operator_zero_value_expansion_estimate(id
 	}
 	lhs_id := t.a.child(&node, 0)
 	mut lhs_type := flat.source_type_name(t.node_type(lhs_id))
-	checker_lhs_type := t.checker_node_type(lhs_id)
+	checker_lhs_type_source_id := t.checker_node_type(lhs_id)
+	checker_lhs_type := flat.source_type_name(checker_lhs_type_source_id)
 	lhs_key := t.expr_key(lhs_id)
 	if lhs_key.len > 0 {
 		if sc := t.find_smartcast(lhs_key) {
-			lhs_type = t.smartcast_target_type(sc)
+			lhs_type = flat.source_type_name(t.smartcast_target_type(sc))
 		}
 	}
 	if lhs_type.len == 0
-		|| (t.generic_arg_is_unresolved(lhs_type) && !t.generic_arg_is_unresolved(checker_lhs_type)) {
+		|| (t.generic_arg_is_unresolved(flat.source_type_id(lhs_type)) && !t.generic_arg_is_unresolved(checker_lhs_type_source_id)) {
 		lhs_type = checker_lhs_type
 	}
 	lhs_node := t.a.nodes[int(lhs_id)]
@@ -856,7 +859,7 @@ fn (mut t Transformer) disabled_struct_operator_zero_value_expansion_estimate(id
 		return 0
 	}
 	if result_type.len == 0 || result_type in ['array', 'map', 'unknown']
-		|| t.generic_arg_is_unresolved(result_type) {
+		|| t.generic_arg_is_unresolved(flat.source_type_id(result_type)) {
 		return deferred_map_expansion_threshold + 1
 	}
 	return t.zero_value_expansion_estimate(id, result_type)
@@ -1033,8 +1036,9 @@ fn (mut t Transformer) ownership_method_value_clone_expands(id flat.NodeId, node
 	if method_params.len == 0 || method_params[0] is types.Pointer {
 		return false
 	}
-	receiver_type_name := flat.source_type_name(t.node_type(base_id))
-	receiver_type := t.tc.parse_type(flat.source_type_id(receiver_type_name))
+	receiver_type_name_source_id := t.node_type(base_id)
+	receiver_type_name := flat.source_type_name(receiver_type_name_source_id)
+	receiver_type := t.tc.parse_type(receiver_type_name_source_id)
 	return t.tc.ownership_type_requires_destruction(receiver_type)
 		&& t.tc.ownership_default_clone_missing_method(receiver_type) == none
 		&& t.compiler_default_clone_type_needs_work(receiver_type_name)
@@ -1198,7 +1202,7 @@ fn (mut t Transformer) if_expr_zero_value_expansion_estimate(id flat.NodeId, nod
 	if node.children_count < 3 {
 		return estimate
 	}
-	mut result_type := t.if_expr_result_type(id, node)
+	mut result_type := flat.source_type_name(t.if_expr_result_type(id, node))
 	if guard_result_type := t.if_expr_guard_result_type(node) {
 		result_type = guard_result_type
 	}
@@ -1217,9 +1221,9 @@ fn (mut t Transformer) match_expr_zero_value_expansion_estimate(id flat.NodeId, 
 		return 0
 	}
 	mut estimate := t.multi_return_match_zero_value_expansion_estimate(id, node)
-	mut result_type := t.match_expr_type(node)
-	if (result_type.len == 0 || result_type == 'void' || t.generic_arg_is_unresolved(result_type))
-		&& decl_type_is_usable(node.typ_text()) && !t.generic_arg_is_unresolved(node.typ_text()) {
+	mut result_type := flat.source_type_name(t.match_expr_type(node))
+	if (result_type.len == 0 || result_type == 'void' || t.generic_arg_is_unresolved(flat.source_type_id(result_type)))
+		&& decl_type_is_usable(node.typ_text()) && !t.generic_arg_is_unresolved(node.typ) {
 		result_type = node.typ_text()
 	}
 	estimate += t.zero_value_expansion_estimate(id, result_type)
@@ -1231,10 +1235,10 @@ fn (mut t Transformer) or_expr_zero_value_expansion_estimate(id flat.NodeId, nod
 		return 0
 	}
 	expr_id := t.a.child(&node, 0)
-	fallback_type := if decl_type_is_usable(node.typ_text()) && !t.generic_arg_is_unresolved(node.typ_text()) {
+	fallback_type := if decl_type_is_usable(node.typ_text()) && !t.generic_arg_is_unresolved(node.typ) {
 		node.typ_text()
 	} else {
-		t.stmt_value_type(t.a.child(&node, 1))
+		flat.source_type_name(t.stmt_value_type(t.a.child(&node, 1)))
 	}
 	expr_type, value_type := t.or_expr_types(expr_id, fallback_type)
 	mut estimate := if t.is_optional_type_name(expr_type) {
@@ -1323,7 +1327,7 @@ fn (t &Transformer) array_membership_equality_expands(node flat.Node) bool {
 	rhs_id := t.a.child(&node, 1)
 	mut rhs_type := flat.source_type_name(t.node_type(rhs_id))
 	if rhs_type.len == 0 {
-		rhs_type = t.lvalue_type(rhs_id)
+		rhs_type = flat.source_type_name(t.lvalue_type(rhs_id))
 	}
 	container_type := t.membership_container_type(rhs_type)
 	element_type := if container_type.starts_with('[]') {
@@ -1345,11 +1349,12 @@ fn (mut t Transformer) forwarded_fixed_array_return_expansion_estimate(node flat
 	} else {
 		node.typ_text()
 	}
-	actual_name := flat.source_type_name(t.node_type(t.a.child(&node, 0)))
+	actual_name_source_id := t.node_type(t.a.child(&node, 0))
+	actual_name := flat.source_type_name(actual_name_source_id)
 	if !decl_type_is_usable(actual_name) || !decl_type_is_usable(expected_name) {
 		return 0
 	}
-	actual_type := t.tc.parse_type(flat.source_type_id(actual_name))
+	actual_type := t.tc.parse_type(actual_name_source_id)
 	expected_type := t.tc.parse_type(flat.source_type_id(expected_name))
 	return t.forwarded_return_conversion_expansion_estimate(actual_type, expected_type, 0)
 }
@@ -1384,7 +1389,7 @@ fn (mut t Transformer) forwarded_return_conversion_expansion_estimate(actual_typ
 			return deferred_map_expansion_threshold + 1
 		}
 		conversion_estimate := key_estimate + value_estimate
-		lookup_zero_estimate := t.zero_value_expansion_estimate(flat.NodeId(-1), t.semantic_type_name(actual.value_type))
+		lookup_zero_estimate := t.zero_value_expansion_estimate(flat.NodeId(-1), flat.source_type_name(t.semantic_type_name(actual.value_type)))
 		if lookup_zero_estimate > deferred_map_expansion_threshold - conversion_estimate {
 			return deferred_map_expansion_threshold + 1
 		}
@@ -1590,7 +1595,7 @@ fn (t &Transformer) map_type_parts(map_type string) (string, string) {
 	if !clean.starts_with('map[') {
 		return '', ''
 	}
-	return t.map_key_type(clean), t.map_value_type(clean)
+	return flat.source_type_name(t.map_key_type(flat.source_type_id(clean))), flat.source_type_name(t.map_value_type(flat.source_type_id(clean)))
 }
 
 fn (t &Transformer) map_key_storage_type(key_type string) string {
@@ -1607,13 +1612,17 @@ fn (t &Transformer) map_key_backing_type(key_type string) ?string {
 		if candidate.len == 0 {
 			continue
 		}
-		if backing := t.enum_backing_types.get(candidate) {
+		if backing_source_id := t.enum_backing_types.type_id(candidate) {
+			backing := flat.source_type_name(backing_source_id)
+
 			return backing
 		}
 		if !candidate.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 			&& t.cur_module != 'builtin' {
 			qname := '${t.cur_module}.${candidate}'
-			if backing := t.enum_backing_types.get(qname) {
+			if backing_source_id := t.enum_backing_types.type_id(qname) {
+				backing := flat.source_type_name(backing_source_id)
+
 				return backing
 			}
 		}
@@ -1625,7 +1634,7 @@ fn (t &Transformer) map_key_backing_type(key_type string) ?string {
 	// alias. The transform's own struct mirror holds first-wins bare aliases
 	// for unrelated modules, so only a checker-declared struct blocks this.
 	if !isnil(t.tc) && !clean.contains('.') && clean !in t.tc.structs {
-		mut alias_target := t.tc.type_aliases.get(clean) or { '' }
+		mut alias_target := flat.source_type_name(t.tc.type_aliases.type_id(clean) or { u32(0) })
 		if alias_target.len == 0 {
 			mut matches := 0
 			// Only module-qualified aliases, i.e. those ending in `.${clean}`.
@@ -1657,30 +1666,30 @@ fn (mut t Transformer) make_new_map_call(map_type string) flat.NodeId {
 	key_storage_type := t.map_key_storage_type(key_type)
 	hash_fn, eq_fn, clone_fn, free_fn := t.map_callback_names_for_type(key_storage_type)
 	mut args := []flat.NodeId{}
-	args << t.make_sizeof_type(key_storage_type)
-	args << t.make_sizeof_type(value_type)
+	args << t.make_sizeof_type(flat.source_type_id(key_storage_type))
+	args << t.make_sizeof_type(flat.source_type_id(value_type))
 	args << t.make_ident(hash_fn)
 	args << t.make_ident(eq_fn)
 	args << t.make_ident(clone_fn)
 	args << t.make_ident(free_fn)
-	return t.make_call_typed('new_map', args, map_type)
+	return t.make_call_typed('new_map', args, flat.source_type_id(map_type))
 }
 
-fn (t &Transformer) new_map_call_type(node flat.Node) string {
+fn (t &Transformer) new_map_call_type(node flat.Node) u32 {
 	if node.kind != .call || node.children_count < 3 {
-		return ''
+		return u32(0)
 	}
 	callee := t.a.child_node(&node, 0)
 	if callee.kind != .ident || callee.value != 'new_map' {
-		return ''
+		return u32(0)
 	}
 	key_size := t.a.child_node(&node, 1)
 	value_size := t.a.child_node(&node, 2)
 	if key_size.kind != .sizeof_expr || value_size.kind != .sizeof_expr || key_size.value.len == 0
 		|| value_size.value.len == 0 {
-		return ''
+		return u32(0)
 	}
-	return 'map[${key_size.value}]${value_size.value}'
+	return flat.source_type_id('map[${key_size.value}]${value_size.value}')
 }
 
 // map_callback_names supports map callback names handling for transform.
@@ -1747,7 +1756,7 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 		local_type := flat.source_type_name(t.var_type(base_node.value))
 		local_map_type := t.clean_map_type(local_type)
 		if local_map_type.starts_with('map[') && !local_map_type.contains('unknown')
-			&& !t.generic_arg_is_unresolved(local_map_type) {
+			&& !t.generic_arg_is_unresolved(flat.source_type_id(local_map_type)) {
 			base_type = if trimmed_transform_text(local_type).starts_with('&') {
 				'&${local_map_type}'
 			} else {
@@ -1755,11 +1764,11 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 			}
 		}
 	}
-	checker_base_type := t.raw_checker_node_type(base_id)
+	checker_base_type := flat.source_type_name(t.raw_checker_node_type(base_id))
 	checker_map_type := t.clean_map_type(checker_base_type)
 	local_map_type := t.clean_map_type(base_type)
 	local_map_is_concrete := local_map_type.starts_with('map[')
-		&& !local_map_type.contains('unknown') && !t.generic_arg_is_unresolved(local_map_type)
+		&& !local_map_type.contains('unknown') && !t.generic_arg_is_unresolved(flat.source_type_id(local_map_type))
 	if !local_map_is_concrete && checker_map_type.starts_with('map[')
 		&& !checker_map_type.contains('unknown') {
 		base_type = if trimmed_transform_text(checker_base_type).starts_with('&') {
@@ -1811,8 +1820,8 @@ fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type string,
 		effective_value_type
 	}
 	call := t.make_call_typed('map__get', [t.runtime_addr(map_expr, base_type),
-		t.make_prefix(.amp, t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(zero_name))], 'voidptr')
-	cast := t.make_cast('&${clean_value_type}', call, '&${clean_value_type}')
+		t.make_prefix(.amp, t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(zero_name))], flat.source_type_voidptr)
+	cast := t.make_cast(flat.source_type_id('&${clean_value_type}'), call, flat.source_type_id('&${clean_value_type}'))
 	result := t.make_prefix(.mul, cast)
 	t.set_node_typ(int(result), clean_value_type)
 	return result
@@ -1825,7 +1834,7 @@ fn (mut t Transformer) make_map_lookup_value(map_expr flat.NodeId, base_type str
 		ptr_name := t.new_temp('map_value_ptr')
 		prelude << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr, base_type, key_name), 'voidptr')
 		clean_value_type := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(value_type)))
-		found := t.make_prefix(.mul, t.make_cast('&${clean_value_type}', t.make_ident(ptr_name), '&${clean_value_type}'))
+		found := t.make_prefix(.mul, t.make_cast(flat.source_type_id('&${clean_value_type}'), t.make_ident(ptr_name), flat.source_type_id('&${clean_value_type}')))
 		cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
 		then_block := t.make_block([t.make_expr_stmt(found)])
 		else_block := t.make_block([
@@ -1858,26 +1867,26 @@ fn (t &Transformer) fixed_array_type_contains_map(typ string) bool {
 // make_map_get_check_expr builds make map get check expr data for transform.
 fn (mut t Transformer) make_map_get_check_expr(map_expr flat.NodeId, base_type string, key_name string) flat.NodeId {
 	return t.make_call_typed('map__get_check', [t.runtime_addr(map_expr, base_type),
-		t.make_prefix(.amp, t.make_ident(key_name))], 'voidptr')
+		t.make_prefix(.amp, t.make_ident(key_name))], flat.source_type_voidptr)
 }
 
 fn (mut t Transformer) make_map_get_key_check_expr(map_expr flat.NodeId, base_type string, key_name string) flat.NodeId {
 	return t.make_call_typed('map__get_key_check', [
 		t.runtime_addr(map_expr, base_type),
 		t.make_prefix(.amp, t.make_ident(key_name)),
-	], 'voidptr')
+	], flat.source_type_voidptr)
 }
 
 // make_map_exists_expr builds make map exists expr data for transform.
 fn (mut t Transformer) make_map_exists_expr(map_expr flat.NodeId, base_type string, key_name string) flat.NodeId {
 	return t.make_call_typed('map__exists', [t.runtime_addr(map_expr, base_type),
-		t.make_prefix(.amp, t.make_ident(key_name))], 'bool')
+		t.make_prefix(.amp, t.make_ident(key_name))], flat.source_type_bool)
 }
 
 // make_map_set_stmt builds make map set stmt data for transform.
 fn (mut t Transformer) make_map_set_stmt(map_expr flat.NodeId, base_type string, key_name string, value_name string) flat.NodeId {
 	call := t.make_call_typed('map__set', [t.runtime_addr(map_expr, base_type),
-		t.make_prefix(.amp, t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(value_name))], 'void')
+		t.make_prefix(.amp, t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(value_name))], flat.source_type_void)
 	return t.make_expr_stmt(call)
 }
 
@@ -1953,7 +1962,7 @@ fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
 		stmts << t.make_decl_assign_typed(lookup_key_name, lookup_key, info.key_storage_type_text())
 		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', [
 			t.make_ident(lookup_key_name),
-		], 'void'))
+		], flat.source_type_void))
 		defer_body := t.make_block([deferred_drop])
 		defer_start := t.a.children.len
 		t.a.children << defer_body
@@ -1971,7 +1980,7 @@ fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
 		t.runtime_addr(map_expr, info.base_type_text()),
 		t.make_prefix(.amp, t.make_ident(key_name)),
 		t.make_prefix(.amp, t.make_ident(zero_name)),
-	], 'voidptr')
+	], flat.source_type_voidptr)
 	insert := t.make_block([
 		t.make_decl_assign_typed(zero_name, t.zero_value_for_type(info.value_type_text()), info.value_type_text()),
 		t.make_assign(t.make_ident(slot_name), get_and_set),
@@ -2007,7 +2016,7 @@ fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
 		t.runtime_addr(map_expr, info.base_type_text()),
 		t.make_prefix(.amp, t.make_ident(reinsert_key_name)),
 		t.make_prefix(.amp, t.make_ident(new_zero_name)),
-	], 'voidptr')
+	], flat.source_type_voidptr)
 	missing_stmts << t.make_decl_assign_typed(new_zero_name, t.zero_value_for_type(info.value_type_text()),
 		info.value_type_text())
 	missing_stmts << t.make_expr_stmt(reinsert)
@@ -2017,7 +2026,7 @@ fn (mut t Transformer) map_index_inner_map_slot(id flat.NodeId) ?flat.NodeId {
 	current_slot := t.make_if(t.make_map_exists_expr(map_expr, info.base_type_text(), lookup_key_name),
 		t.make_block([t.make_expr_stmt(found)]), missing_block)
 	t.set_node_typ(int(current_slot), 'voidptr')
-	inner := t.make_prefix(.mul, t.make_cast('&${value_type}', current_slot, '&${value_type}'))
+	inner := t.make_prefix(.mul, t.make_cast(flat.source_type_id('&${value_type}'), current_slot, flat.source_type_id('&${value_type}')))
 	t.set_node_typ(int(inner), value_type)
 	return inner
 }
@@ -2065,7 +2074,7 @@ fn (mut t Transformer) lower_map_membership_expr(map_id flat.NodeId, key_id flat
 	clean_type := t.clean_map_type(map_type)
 	mut key_type := ''
 	if clean_type.starts_with('map[') {
-		key_type = t.map_key_type(clean_type)
+		key_type = flat.source_type_name(t.map_key_type(flat.source_type_id(clean_type)))
 	}
 	if key_type.len == 0 {
 		key_type = flat.source_type_name(t.node_type(key_id))
@@ -2100,7 +2109,7 @@ fn (mut t Transformer) lower_map_membership_expr(map_id flat.NodeId, key_id flat
 		t.pending_stmts << t.make_decl_assign_typed(result_name, exists, 'bool')
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
 			t.make_ident(key_name),
-		], 'void'))
+		], flat.source_type_void))
 		return t.make_ident(result_name)
 	}
 	return exists
@@ -2152,7 +2161,7 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 		if cleanup_key {
 			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
 				t.make_ident(key_name),
-			], 'void'))
+			], flat.source_type_void))
 		}
 		return result
 	}
@@ -2163,12 +2172,12 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 		if cleanup_key {
 			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
 				t.make_ident(key_name),
-			], 'void'))
+			], flat.source_type_void))
 		}
 		if source_is_owned_temporary {
 			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
 				map_expr,
-			], 'void'))
+			], flat.source_type_void))
 		}
 		result := t.make_ident(result_name)
 		t.set_node_typ(int(result), value_type)
@@ -2190,7 +2199,7 @@ fn (mut t Transformer) lower_owned_map_index_move(source_id flat.NodeId, map_exp
 	} else {
 		value_type
 	}
-	stored_read := t.make_prefix(.mul, t.make_cast('&${clean_value_type}', t.make_ident(ptr_name), '&${clean_value_type}'))
+	stored_read := t.make_prefix(.mul, t.make_cast(flat.source_type_id('&${clean_value_type}'), t.make_ident(ptr_name), flat.source_type_id('&${clean_value_type}')))
 	body := [t.make_assign(t.make_ident(result_name), stored_read),
 		t.make_clear_map_ptr_value(ptr_name, value_type)]
 	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
@@ -2205,7 +2214,7 @@ fn (mut t Transformer) lower_owned_map_index_move(source_id flat.NodeId, map_exp
 		flags:          flat.node_flag_skip_ownership_drops
 	})
 	if !map_type.starts_with('&') && !t.expr_can_take_address(source_id) {
-		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [map_expr], 'void'))
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [map_expr], flat.source_type_void))
 	}
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), value_type)
@@ -2257,10 +2266,10 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 	}
 	if t.map_value_type_is_optional(node.typ_text()) {
 		optional_target := t.map_optional_target_type(node.typ_text())
-		body_type := t.stmt_value_type(body_id)
+		body_type := flat.source_type_name(t.stmt_value_type(body_id))
 		body_keeps_optional := t.or_body_is_none(body_id) || t.map_value_type_is_optional(body_type)
 		if (!source_is_optional || body_keeps_optional)
-			&& flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.map_optional_value_base_type(optional_target)))) == flat.source_type_name(t.normalize_type_alias(flat.source_type_id(source_value_type))) {
+			&& t.normalize_type_alias(flat.source_type_id(t.map_optional_value_base_type(optional_target))) == t.normalize_type_alias(flat.source_type_id(source_value_type)) {
 			result_type = optional_target
 			wrap_found_value = true
 		}
@@ -2271,7 +2280,7 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(info.key_type)) {
 		prelude << t.make_expr_stmt(t.make_call_typed('drop_owned', [
 			t.make_ident(key_name),
-		], 'void'))
+		], flat.source_type_void))
 	}
 	prelude << t.make_staging_value_decl(val_name, result_type)
 	move_found_value := !isnil(t.tc) && t.tc.ownership_index_read_moves_value(expr_id)
@@ -2281,18 +2290,18 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 	found_cond := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
 	failure := if node.value == '!'
 		|| flat.source_type_name(t.normalize_type_alias(info.value_type)).starts_with('!') {
-		t.make_call_typed('error', [t.make_string_literal('map key does not exist')], 'IError')
+		t.make_call_typed('error', [t.make_string_literal('map key does not exist')], flat.source_type_id('IError'))
 	} else {
 		flat.empty_node
 	}
 	else_block := t.make_block(t.lower_map_or_body_to_stmts(body_id, val_name, result_type,
 		node.value, failure))
-	ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type_text()}', t.make_ident(ptr_name), '&${info.value_type_text()}'))
+	ptr_value := t.make_prefix(.mul, t.make_cast(flat.source_type_id('&${info.value_type_text()}'), t.make_ident(ptr_name), flat.source_type_id('&${info.value_type_text()}')))
 	then_block := if source_is_optional {
 		opt_name := t.new_temp('map_opt')
 		opt_decl := t.make_decl_assign_typed(opt_name, ptr_value, info.value_type_text())
 		mut ok_stmts := []flat.NodeId{}
-		opt_value := t.make_selector(t.make_ident(opt_name), 'value', source_value_type)
+		opt_value := t.make_selector(t.make_ident(opt_name), 'value', flat.source_type_id(source_value_type))
 		acquired_value := if !move_found_value {
 			t.clone_borrowed_projection(expr_id, opt_value, source_value_type)
 		} else {
@@ -2309,7 +2318,7 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 		if move_found_value {
 			ok_stmts << t.make_clear_map_ptr_value(ptr_name, info.value_type_text())
 		}
-		ok_cond := t.make_selector(t.make_ident(opt_name), 'ok', 'bool')
+		ok_cond := t.make_selector(t.make_ident(opt_name), 'ok', flat.source_type_bool)
 		opt_err_expr := t.result_error_expr(t.make_ident(opt_name))
 		mut opt_else_stmts := []flat.NodeId{}
 		if move_found_value && node.value in ['?', '!'] {
@@ -2353,7 +2362,7 @@ fn (mut t Transformer) make_clear_map_ptr_value(ptr_name string, value_type stri
 	} else {
 		value_type
 	}
-	stored := t.make_prefix(.mul, t.make_cast('&${clean_value_type}', t.make_ident(ptr_name), '&${clean_value_type}'))
+	stored := t.make_prefix(.mul, t.make_cast(flat.source_type_id('&${clean_value_type}'), t.make_ident(ptr_name), flat.source_type_id('&${clean_value_type}')))
 	return t.make_assign(stored, t.zero_value_for_type(value_type))
 }
 
@@ -2394,7 +2403,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 		child_id := t.a.child(&body, i)
 		child := t.a.nodes[int(child_id)]
 		is_last := i == body.children_count - 1
-		if is_last && child.kind == .if_expr && flat.source_type_name(t.node_type(child_id)) != 'void' {
+		if is_last && child.kind == .if_expr && t.node_type(child_id) != flat.source_type_void {
 			// A trailing `if` is the `or` block's value, and it reaches here unwrapped by
 			// an expr_stmt. Lowering it as a plain statement would emit each branch's value
 			// as a bare expression and drop it, leaving the target at its zero value.
@@ -2420,7 +2429,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 				result << t.make_return(inner_id, t.cur_fn_ret_type_text())
 				continue
 			}
-			if flat.source_type_name(t.node_type(inner_id)) == 'void' {
+			if t.node_type(inner_id) == flat.source_type_void {
 				expanded := t.transform_stmt(child_id)
 				t.drain_pending(mut result)
 				for eid in expanded {
@@ -2566,7 +2575,7 @@ fn (mut t Transformer) append_owned_map_set_key_cleanup(key_name string, cleanup
 	}
 	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', [
 		t.make_ident(key_name),
-	], 'void'))
+	], flat.source_type_void))
 	if existing_name == '' {
 		result << drop_stmt
 		return
@@ -2657,10 +2666,10 @@ fn (mut t Transformer) append_map_value_drop_before_set(map_expr flat.NodeId, ma
 	ptr := t.make_map_get_check_expr(map_expr, map_type, key_name)
 	result << t.make_decl_assign_typed(ptr_name, ptr, 'voidptr')
 	ptr_ident := t.make_ident(ptr_name)
-	old_value_ptr := t.make_cast('&${value_type_name}', ptr_ident, '&${value_type_name}')
+	old_value_ptr := t.make_cast(flat.source_type_id('&${value_type_name}'), ptr_ident, flat.source_type_id('&${value_type_name}'))
 	old_value := t.make_prefix(.mul, old_value_ptr)
 	t.set_node_typ(int(old_value), value_type_name)
-	drop_call := t.make_call_typed('drop_owned', [old_value], 'void')
+	drop_call := t.make_call_typed('drop_owned', [old_value], flat.source_type_void)
 	found := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
 	result << t.make_if(found, t.make_block([t.make_expr_stmt(drop_call)]), t.make_empty())
 }
@@ -2862,13 +2871,13 @@ fn (mut t Transformer) try_lower_nested_map_delete_call(node flat.Node, base_id 
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('map__delete', [
 			t.runtime_addr(inner_map_expr, inner_map_type),
 			t.make_prefix(.amp, t.make_ident(inner_key_name)),
-		], 'void'))
+		], flat.source_type_void))
 	}
 	if inner_key_is_owned && !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(inner_key_type))) {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
 			t.make_ident(inner_key_name),
-		], 'void'))
+		], flat.source_type_void))
 	}
 	t.pending_stmts << t.make_map_set_stmt(map_expr, outer_info.base_type_text(), outer_key_name, inner_name)
 	mut cleanup := []flat.NodeId{}
@@ -2936,7 +2945,7 @@ fn (mut t Transformer) try_lower_map_index_fixed_array_assign(node flat.Node) ?[
 			return none
 		}
 		index := if nested { indices[i] } else { t.transform_expr(index_id) }
-		target = t.make_index(target, index, elem_type)
+		target = t.make_index(target, index, flat.source_type_id(elem_type))
 		cur_type = elem_type
 	}
 	if nested {
@@ -3015,8 +3024,9 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	}
 	base_id := t.a.child(&lhs, 0)
 	info := t.map_index_info(base_id) or { return none }
-	field_type := t.lvalue_type(lhs_id)
-	if field_type.len == 0 {
+	field_type_source_id := t.lvalue_type(lhs_id)
+	field_type := flat.source_type_name(field_type_source_id)
+	if field_type_source_id == 0 {
 		return none
 	}
 	// Field assignment must not insert missing ancestor keys. Save all keys in
@@ -3098,7 +3108,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	}
 	cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned, info.key_type_text(), map_expr, info.base_type_text(), key_name, mut result)
 	mut current_existed := flat.empty_node
-	if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(field_type))) {
+	if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(field_type_source_id)) {
 		if existing_key_name.len > 0 {
 			current_existed = t.make_ident(existing_key_name)
 		} else {
@@ -3108,7 +3118,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 		}
 	}
 	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
-	field := t.make_selector(t.make_ident(current_name), lhs.value, field_type)
+	field := t.make_selector(t.make_ident(current_name), lhs.value, field_type_source_id)
 	t.append_owned_lvalue_drop_before_assign_if(field, field_type, current_existed, mut result)
 	result << t.make_assign_after_owned_drop(field, t.make_ident(rhs_name))
 	result << t.make_map_set_stmt(map_expr, info.base_type_text(), key_name, current_name)
@@ -3121,7 +3131,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 
 fn (mut t Transformer) make_map_key_drop_defer(key_name string, guard_name string) flat.NodeId {
 	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', [t.make_ident(key_name)],
-		'void'))
+		flat.source_type_void))
 	guarded_stmt := if guard_name.len > 0 {
 		t.make_if(t.make_ident(guard_name), t.make_block([drop_stmt]), t.make_empty())
 	} else {
@@ -3150,7 +3160,7 @@ fn (mut t Transformer) append_owned_lvalue_drop_before_assign_if(lvalue flat.Nod
 	if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(type_name))) {
 		return
 	}
-	drop_call := t.make_call_typed('drop_owned', [lvalue], 'void')
+	drop_call := t.make_call_typed('drop_owned', [lvalue], flat.source_type_void)
 	drop_stmt := t.make_expr_stmt(drop_call)
 	if int(guard) >= 0 {
 		result << t.make_if(guard, t.make_block([drop_stmt]), t.make_empty())
@@ -3219,9 +3229,10 @@ fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map
 	if t.map_index_yields_map(info.base_id) {
 		// A side-effecting RHS can replace the stored inner map. Evaluate it
 		// before reading the value to be updated.
-		rhs_type := flat.source_type_name(t.node_type(rhs_id))
-		if info.value_type_text() == 'string' && op == .plus && !isnil(t.tc)
-			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(rhs_type))) {
+		rhs_type_source_id := t.node_type(rhs_id)
+		rhs_type := flat.source_type_name(rhs_type_source_id)
+		if info.value_type == flat.source_type_string && op == .plus && !isnil(t.tc)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(rhs_type_source_id)) {
 			rhs_node := t.a.nodes[int(t.unwrap_parens(rhs_id))]
 			if t.map_key_expr_creates_owned_value(rhs_id, rhs_type)
 				|| (rhs_node.kind == .call && !t.expr_can_take_address(rhs_id)) {
@@ -3247,8 +3258,8 @@ fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map
 		rhs = t.transform_expr(rhs_id)
 	}
 	lhs := t.make_ident(current_name)
-	new_value := if info.value_type_text() == 'string' && op == .plus {
-		t.make_call_typed('string__plus', [lhs, rhs], 'string')
+	new_value := if info.value_type == flat.source_type_string && op == .plus {
+		t.make_call_typed('string__plus', [lhs, rhs], flat.source_type_string)
 	} else {
 		t.make_infix(op, lhs, rhs)
 	}
@@ -3257,7 +3268,7 @@ fn (mut t Transformer) lower_map_index_compound_with_info(info MapIndexInfo, map
 	if staged_owned_string_name.len > 0 {
 		result << t.make_expr_stmt(t.make_call_typed('drop_owned', [
 			t.make_ident(staged_owned_string_name),
-		], 'void'))
+		], flat.source_type_void))
 	}
 	t.append_map_value_drop_before_set(map_expr, info.base_type_text(), key_name, info.value_type_text(), mut result)
 	result << t.make_map_set_stmt(map_expr, info.base_type_text(), key_name, current_name)
@@ -3387,7 +3398,7 @@ fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapInde
 				}
 			} else if staged_scalar_was_cloned {
 				// Scalar append clones the staged lvalue before inserting it.
-				result << t.make_expr_stmt(t.make_call_typed('drop_owned', [staged_rhs], 'void'))
+				result << t.make_expr_stmt(t.make_call_typed('drop_owned', [staged_rhs], flat.source_type_void))
 			}
 		}
 	} else {
@@ -3535,16 +3546,16 @@ fn (t &Transformer) resolve_type_text_import_aliases(typ string) string {
 fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {
 	mut map_type := if node.value.len > 0 {
 		node.value
-	} else if node.typ_text().len > 0 {
+	} else if node.typ != 0 {
 		node.typ_text()
 	} else {
 		flat.source_type_name(t.node_type(id))
 	}
 	map_type = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.resolve_type_text_import_aliases(map_type))))
-	if t.generic_arg_is_unresolved(map_type) {
-		inferred_type :=
-			flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.resolve_type_text_import_aliases(t.infer_map_init_entry_type(node)))))
-		if inferred_type.starts_with('map[') && !t.generic_arg_is_unresolved(inferred_type) {
+	if t.generic_arg_is_unresolved(flat.source_type_id(map_type)) {
+		inferred_type_source_id := t.normalize_type_alias(flat.source_type_id(t.resolve_type_text_import_aliases(t.infer_map_init_entry_type(node))))
+		inferred_type := flat.source_type_name(inferred_type_source_id)
+		if inferred_type.starts_with('map[') && !t.generic_arg_is_unresolved(inferred_type_source_id) {
 			map_type = inferred_type
 		}
 	}
@@ -3612,7 +3623,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 			t.make_prefix(.amp, t.make_ident(tmp_name)),
 			t.make_prefix(.amp, t.make_ident(key_name)),
 			t.make_prefix(.amp, t.make_ident(value_name)),
-		], 'void')
+		], flat.source_type_void)
 		t.pending_stmts << t.make_expr_stmt(call)
 		if int(value_id) in t.local_closure_field_cleanups {
 			t.pending_stmts << t.make_local_closure_cleanup_defer(value_name)
@@ -3675,8 +3686,9 @@ fn (t &Transformer) refine_map_init_fixed_array_value_type(node flat.Node, map_t
 }
 
 fn (t &Transformer) refine_fixed_array_map_init_scalar_value_type(node flat.Node, key_type string, value_type string, map_type string) string {
-	elem_type := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(fixed_array_elem_type(value_type))))
-	if elem_type.len == 0 {
+	elem_type_source_id := t.normalize_type_alias(flat.source_type_id(fixed_array_elem_type(value_type)))
+	elem_type := flat.source_type_name(elem_type_source_id)
+	if elem_type_source_id == 0 {
 		return map_type
 	}
 	mut saw_value := false
@@ -3696,7 +3708,7 @@ fn (t &Transformer) refine_fixed_array_map_init_scalar_value_type(node flat.Node
 		}
 		mut actual := flat.source_type_name(t.node_type(value_id))
 		if actual.len == 0 {
-			actual = t.resolve_expr_type(value_id)
+			actual = flat.source_type_name(t.resolve_expr_type(value_id))
 		}
 		actual = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(actual)))
 		if actual.len == 0 || actual != elem_type {
@@ -3773,8 +3785,9 @@ fn (t &Transformer) fixed_array_literal_elem_type_from_syntax(id flat.NodeId) ?s
 			return t.refine_map_init_fixed_array_value_type(node, map_type)
 		}
 	}
-	node_type := flat.source_type_name(t.node_type(id))
-	if node_type.len > 0 {
+	node_type_source_id := t.node_type(id)
+	node_type := flat.source_type_name(node_type_source_id)
+	if node_type_source_id != 0 {
 		return node_type
 	}
 	return none

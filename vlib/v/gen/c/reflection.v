@@ -649,7 +649,7 @@ fn (mut g FlatGen) gen_reflection_data() {
 			if name.contains('.') { name.all_before_last('.') } else { 'main' }
 		}
 		module_name := if raw_module_name.len > 0 { raw_module_name } else { 'main' }
-		g.gen_reflection_type(name, module_name, 32, reflection_alias_info(g.tc.type_aliases.value(name),
+		g.gen_reflection_type(name, module_name, 32, reflection_alias_info(flat.source_type_name(g.tc.type_aliases.value_id(name)),
 			module_name), g.reflection_methods(reflection_type_key(name, module_name)), mut seen_ids)
 	}
 

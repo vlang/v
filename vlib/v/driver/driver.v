@@ -14041,7 +14041,7 @@ pub fn run(args []string) {
 						if node.value.len > 0 && scoped_value_owned(transform_scope, node.value.str) {
 							leaked_nv++
 						}
-						if node.typ_text().len > 0 && scoped_value_owned(transform_scope, node.typ_text().str) {
+						if node.typ != 0 && scoped_value_owned(transform_scope, node.typ_text().str) {
 							leaked_nt++
 						}
 					}
@@ -21253,7 +21253,7 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 				|| (node.kind == .struct_init && node.value.starts_with('chan '))
 				|| (node.kind == .infix && node.op == .arrow)
 				|| (node.kind == .prefix && node.op == .arrow)
-				|| (node.typ_text().len > 0 && type_text_is_channel(node.typ_text())) {
+				|| (node.typ != 0 && type_text_is_channel(node.typ_text())) {
 				scan.needs_sync = true
 			}
 		}
@@ -21738,7 +21738,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				local_names[child.value] = true
 				if bindings.contains(child.value) {
 					ambiguous[child.value] = true
-				} else if child.typ_text().len > 0 {
+				} else if child.typ != 0 {
 					bindings.set(child.value, implicit_normalize_type(child.typ_text(), index))
 				}
 			} else {
@@ -21850,7 +21850,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 			bindings.clear()
 			for child_idx in 0 .. fn_node.children_count {
 				child := a.child_node(&fn_node, child_idx)
-				if child.kind == .param && child.typ_text().len > 0 && !bindings.contains(child.value) {
+				if child.kind == .param && child.typ != 0 && !bindings.contains(child.value) {
 					bindings.set(child.value, implicit_normalize_type(child.typ_text(), index))
 				}
 			}
@@ -21952,7 +21952,7 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 		node_ref := a.node(flat.NodeId(idx))
 		match node.kind {
 			.import_decl {
-				alias := if node.typ_text().len > 0 {
+				alias := if node.typ != 0 {
 					node.typ_text()
 				} else {
 					node.value.all_after_last('.')
@@ -21967,7 +21967,7 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				}
 			}
 			.type_decl {
-				if node.value.len > 0 && node.typ_text().len > 0 {
+				if node.value.len > 0 && node.typ != 0 {
 					index.write(ImplicitIndexOp{
 						kind:  .alias
 						key:   node.value
@@ -22011,7 +22011,7 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				}
 			}
 			.fn_decl, .c_fn_decl {
-				if node.value.len == 0 || node.typ_text().len == 0 {
+				if node.value.len == 0 || node.typ == 0 {
 					continue
 				}
 				index.write(ImplicitIndexOp{
@@ -22041,7 +22041,7 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 			if field.kind != .const_field || field.children_count == 0 {
 				continue
 			}
-			typ := if field.typ_text().len > 0 {
+			typ := if field.typ != 0 {
 				field.typ_text()
 			} else {
 				implicit_expr_type(a, a.child(field, 0), index.globals, ImplicitFieldScanIndex{
@@ -22067,7 +22067,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 		return ''
 	}
 	node := a.node(id)
-	if node.typ_text().len > 0 {
+	if node.typ != 0 {
 		return implicit_normalize_type(node.typ_text(), index)
 	}
 	match node.kind {
@@ -22115,7 +22115,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 			return '[]void'
 		}
 		.map_init {
-			return if node.typ_text().len > 0 { node.typ_text() } else { 'map[void]void' }
+			return if node.typ != 0 { node.typ_text() } else { 'map[void]void' }
 		}
 		.struct_init {
 			return implicit_normalize_type(node.value, index)
@@ -22227,7 +22227,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 			}
 		}
 		.cast_expr, .as_expr {
-			if node.typ_text().len > 0 {
+			if node.typ != 0 {
 				return implicit_normalize_type(node.typ_text(), index)
 			}
 			if node.value.len > 0 {

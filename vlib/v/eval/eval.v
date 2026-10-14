@@ -618,7 +618,7 @@ fn (mut e Eval) register_files() ! {
 						if module_name in ['main', 'builtin'] {
 							e.sum_types.set(child.value, variants)
 						}
-					} else if child.typ_text().len > 0 {
+					} else if child.typ != 0 {
 						info := TypeAliasInfo{
 							params:      child.generic_params().clone()
 							module_name: module_name
@@ -691,7 +691,7 @@ fn (mut e Eval) run_implicit_main() ![]Value {
 		module_name: 'main'
 		file_name:   if e.implicit_main.len > 0 { e.implicit_main[0].file_name } else { '' }
 		fn_name:     'main'
-		return_type: flat.source_type_id('void')
+		return_type: flat.source_type_void
 		scope_idx:   scope_idx
 	}
 	e.call_stack << frame
@@ -702,7 +702,7 @@ fn (mut e Eval) run_implicit_main() ![]Value {
 			module_name: stmt.module_name
 			file_name:   stmt.file_name
 			fn_name:     'main'
-			return_type: flat.source_type_id('void')
+			return_type: flat.source_type_void
 			scope_idx:   scope_idx
 		}
 		e.call_stack[e.call_stack.len - 1] = frame
@@ -1617,7 +1617,7 @@ fn (e &Eval) infer_expr_type_name(id flat.NodeId) string {
 	if node.kind in [.struct_init, .cast_expr, .as_expr] {
 		return e.qualify_nested_type_name(e.current_module_name(), node.value)
 	}
-	if node.typ_text().len > 0 {
+	if node.typ != 0 {
 		return e.qualify_expected_type_name(e.current_module_name(), node.typ_text())
 	}
 	match node.kind {
@@ -1786,7 +1786,7 @@ fn (e &Eval) infer_call_return_type_name(callee_id flat.NodeId, allow_locals boo
 }
 
 fn (e &Eval) array_literal_elem_type_name(node &flat.Node) string {
-	if node.typ_text().len > 0 {
+	if node.typ != 0 {
 		return array_elem_type_name_from_type(node.typ_text())
 	}
 	if node.value.len > 0 {
@@ -2008,7 +2008,7 @@ fn (e &Eval) array_append_rhs_spreads(rhs_id flat.NodeId, rhs ArrayValue, elem_t
 	if rhs_type_name.len > 0 {
 		return e.array_type_spreads_into_elem(rhs_type_name, elem_type_name)
 	}
-	if rhs.elem_type_name_text().len > 0 {
+	if rhs.elem_type_name != 0 {
 		return e.type_name_matches(rhs.elem_type_name_text(), elem_type_name)
 	}
 	return false
@@ -3488,7 +3488,7 @@ fn (mut e Eval) disabled_function_zero_value(module_name string, fn_name string,
 
 fn (mut e Eval) zero_value_for_disabled_function(call_node &flat.Node, target FunctionDef) Value {
 	target_node := e.node(target.node)
-	return e.zero_value_for_disabled_return_type(if call_node.typ_text().len > 0 {
+	return e.zero_value_for_disabled_return_type(if call_node.typ != 0 {
 		call_node.typ_text()
 	} else {
 		target_node.typ_text()
@@ -4144,7 +4144,7 @@ fn (mut e Eval) eval_array_init(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_array_init_flow(node &flat.Node) !FlowSignal {
-	array_type_name := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
+	array_type_name := if node.typ != 0 { node.typ_text() } else { node.value }
 	is_fixed_array := is_fixed_array_type_name(array_type_name)
 	elem_type_name := if is_fixed_array {
 		fixed_array_elem_type_name(array_type_name)
@@ -4284,7 +4284,7 @@ fn (mut e Eval) eval_map_init(node &flat.Node) !Value {
 }
 
 fn (mut e Eval) eval_map_init_flow(node &flat.Node) !FlowSignal {
-	map_type := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
+	map_type := if node.typ != 0 { node.typ_text() } else { node.value }
 	mut key_type, mut value_type := split_map_type(map_type)
 	children := e.children(node)
 	mut keys := []Value{}
@@ -4780,7 +4780,7 @@ fn (e &Eval) match_target_enum_type_name(target_id flat.NodeId) ?string {
 			if typ := e.lookup_var_type(target.value) {
 				return typ
 			}
-			if target.typ_text().len > 0 {
+			if target.typ != 0 {
 				return e.normalize_type_name(target.typ_text())
 			}
 		}
@@ -6245,10 +6245,10 @@ fn (e &Eval) declaration_type_context(module_name string, file_name string) Eval
 
 fn (e &Eval) infer_sizeof_operand_type_name(id flat.NodeId, seen []flat.NodeId, from_const bool) string {
 	node := e.node(id)
-	if from_const && node.kind == .ident && node.typ_text().len == 0 {
+	if from_const && node.kind == .ident && node.typ == 0 {
 		return e.sizeof_const_type_name(node.value, seen) or { '' }
 	}
-	if node.typ_text().len == 0 && node.kind == .selector && node.children_count > 0 {
+	if node.typ == 0 && node.kind == .selector && node.children_count > 0 {
 		base := e.node(e.child(node, 0))
 		if base.kind == .ident && (from_const || !e.lookup_var(base.value).found) {
 			module_name := e.resolve_module_name(base.value)
@@ -6257,17 +6257,17 @@ fn (e &Eval) infer_sizeof_operand_type_name(id flat.NodeId, seen []flat.NodeId, 
 		base_type := e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
 		if base_type.len > 0 { return e.struct_field_type_name_by_type(base_type, node.value) }
 	}
-	if node.typ_text().len == 0 && node.kind == .paren && node.children_count > 0 {
+	if node.typ == 0 && node.kind == .paren && node.children_count > 0 {
 		return e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
 	}
-	if node.typ_text().len == 0 && node.kind == .prefix && node.children_count > 0 {
+	if node.typ == 0 && node.kind == .prefix && node.children_count > 0 {
 		typ := e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
 		if typ.len > 0 {
 			if node.op == .amp { return '&${typ}' }
 			if node.op == .mul { return e.dereferenced_type_name(typ) }
 		}
 	}
-	if node.typ_text().len == 0 && node.kind == .index && node.children_count > 0 {
+	if node.typ == 0 && node.kind == .index && node.children_count > 0 {
 		typ := e.infer_sizeof_operand_type_name(e.child(node, 0), seen, from_const)
 		if typ.starts_with('[]') { return typ[2..] }
 		if is_fixed_array_type_name(typ) { return fixed_array_elem_type_name(typ) }
@@ -6276,7 +6276,7 @@ fn (e &Eval) infer_sizeof_operand_type_name(id flat.NodeId, seen []flat.NodeId, 
 			return value_type
 		}
 	}
-	if from_const && node.kind == .call && node.typ_text().len == 0 && node.children_count > 0 {
+	if from_const && node.kind == .call && node.typ == 0 && node.children_count > 0 {
 		return e.infer_call_return_type_name(e.child(node, 0), false)
 	}
 	typ := e.infer_expr_type_name(id)
@@ -6298,7 +6298,7 @@ fn (e &Eval) sizeof_const_type_name(name string, seen []flat.NodeId) ?string {
 		if entry.node in seen { return none }
 		context := e.declaration_type_context(entry.module_name, entry.file_name)
 		node := e.node(entry.node)
-		if node.typ_text().len > 0 {
+		if node.typ != 0 {
 			return context.qualify_nested_type_name(entry.module_name, node.typ_text())
 		}
 		if node.children_count > 0 {

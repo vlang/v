@@ -59,7 +59,7 @@ fn test_integer_widening_updates_cached_ancestors_on_child_rewrite() {
 	tc.invalidate_checked_expr_type(int(right))
 	assert tc.resolve_type(outer).name() == 'u128'
 	assert tc.expr_type_values[int(outer)].name() == 'u64'
-	a.nodes[int(right)].typ = flat.source_type_id('u64')
+	a.nodes[int(right)].typ = flat.source_type_u64
 	tc.invalidate_checked_expr_type(int(right))
 	assert tc.resolve_type(outer).name() == 'u64'
 }
@@ -134,7 +134,7 @@ fn test_infix_primitive_keeps_alias_operator_and_primitive_fallback() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
 	alias := Type(Alias{ name_id: flat.source_type_id('Count'), base_type: Type(u64_) })
-	tc.type_aliases.set('Count', 'u64')
+	tc.type_aliases.set_id('Count', flat.source_type_u64)
 	tc.fn_ret_types['Count.+'] = alias
 	tc.fn_param_types['Count.+'] = [alias, alias]
 	signature := tc.infix_operator_signature(.plus, alias) or { panic('missing alias operator') }
@@ -154,7 +154,7 @@ fn test_infix_primitive_keeps_generic_struct_phantom_and_concrete_operators() {
 	tc.structs['Box'] = []StructField{}
 	tc.struct_generic_params['Box'] = ['T']
 	tc.fn_ret_types['Box[T].+'] = Type(Struct{ name_id: flat.source_type_id('Box') })
-	tc.fn_ret_type_texts.set('Box[T].+', 'Box[T]')
+	tc.fn_ret_type_texts.set_id('Box[T].+', flat.source_type_id('Box[T]'))
 	tc.fn_param_types['Box[T].+'] = [
 		Type(Struct{ name_id: flat.source_type_id('Box') }),
 		Type(Struct{ name_id: flat.source_type_id('Box') }),
@@ -201,7 +201,7 @@ fn test_infix_primitive_keeps_generic_alias_redirect_metadata() {
 		mut a := flat.FlatAst.new()
 		mut tc := TypeChecker.new(&a)
 		tc.cur_module = 'dep'
-		tc.type_aliases.set(alias_key, 'Box[int]')
+		tc.type_aliases.set_id(alias_key, flat.source_type_id('Box[int]'))
 		tc.struct_generic_params['Box'] = ['T']
 		tc.structs['Box'] = []StructField{}
 		tc.fn_ret_types['Box[T].+'] = Type(u64_)

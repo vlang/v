@@ -17,7 +17,7 @@ fn test_default_clone_eligibility_includes_ordinary_struct_fields() {
 		fields: [FieldInfo{ name: 'values', typ: flat.source_type_id('[2]MapValue') }]
 	}
 	t.structs['PlainValue'] = StructInfo{
-		fields: [FieldInfo{ name: 'n', typ: flat.source_type_id('int') }]
+		fields: [FieldInfo{ name: 'n', typ: flat.source_type_int }]
 	}
 	t.structs['ReferenceValue'] = StructInfo{
 		fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('&MapValue') }]

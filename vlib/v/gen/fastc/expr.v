@@ -227,7 +227,7 @@ fn (mut g Parser) read_statement_expression_with_prefix(prefix string, stops []t
 
 fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.Token, allow_mutation_statement bool, allow_declaration_guard bool) !string {
 	if g.expression_depth == 0 {
-		g.last_option_value_type = flat.source_type_id('')
+		g.last_option_value_type = u32(0)
 	}
 	g.expression_depth++
 	if g.expression_depth == 1 {
@@ -360,7 +360,7 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 			}
 			// The closure type is independent of the surrounding assignment type.
 			saved_closure_expected := g.expected_expression_type_text()
-			g.expected_expression_type = flat.source_type_id('')
+			g.expected_expression_type = u32(0)
 			mut closure := g.read_expression([token.Token.rpar])!
 			g.expected_expression_type = flat.source_type_id(saved_closure_expected)
 			mut closure_type := g.last_expression_type_text()
@@ -499,7 +499,7 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 			expression_tokens << FastcExpressionToken{
 				tok:          .name
 				lit:          lowered
-				typ:          flat.source_type_id('void')
+				typ:          flat.source_type_void
 				is_statement: true
 			}
 			return FastcHigherOrderExpression{
@@ -1614,7 +1614,7 @@ fn (mut g Parser) read_compound_expression_atom(expression_tokens []FastcExpress
 			if arg_type != '' && g.declared_kinds[g.semantic_type_key(arg_type)] == .enum_ {
 				g.expected_expression_type = flat.source_type_id(arg_type)
 			} else {
-				g.expected_expression_type = flat.source_type_id('')
+				g.expected_expression_type = u32(0)
 			}
 		}
 		conditional := g.read_if_expression()!
@@ -2081,7 +2081,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				tok:    .string
 				lit:    literal
 				source: interpolation
-				typ:    flat.source_type_id('string')
+				typ:    flat.source_type_string
 			}
 			previous_token = .string
 			previous_lit = literal
@@ -2269,7 +2269,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				tok:    .string
 				lit:    pseudo_name
 				source: pseudo
-				typ:    flat.source_type_id('string')
+				typ:    flat.source_type_string
 			}
 			previous_token = .string
 			previous_lit = pseudo_name
@@ -2479,7 +2479,7 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 	// at the `=` and register a stale smart-cast that the RHS then re-applies (double unwrap).
 	if g.selfhost && !fastc_tokens_have_top_level_assignment(expression_tokens) {
 		if narrowed := g.render_narrowing_boolean_expression(expression_tokens) {
-			g.last_expression_type = flat.source_type_id('bool')
+			g.last_expression_type = flat.source_type_bool
 			g.last_expression = expression_tokens
 			return g.render_constant_references(expression_tokens, narrowed)
 		}
@@ -2560,7 +2560,7 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 	if return_types.len > 0 {
 		g.last_multi_return_types = flat.TypeTextList.from_names(return_types.clone())
 	}
-	if !g.selfhost && g.last_expression_type_text() == 'bool' && fastc_expression_tokens_contain_boolean_operator(expression_tokens) {
+	if !g.selfhost && g.last_expression_type == flat.source_type_bool && fastc_expression_tokens_contain_boolean_operator(expression_tokens) {
 		// C comparison and logical operators produce int. Preserve V's bool
 		// expression type for inferred declarations and generic dispatch.
 		return '((bool)(${rendered_expression}))'
@@ -3595,7 +3595,7 @@ fn (g &Parser) render_boolean_is_expression(tokens []FastcExpressionToken) ?Fast
 					}
 					return FastcRenderedExpression{
 						source: '((${left}) ${op} (${right}))'
-						typ:    flat.source_type_id('bool')
+						typ:    flat.source_type_bool
 					}
 				}
 			}
@@ -3657,7 +3657,7 @@ fn (g &Parser) render_boolean_is_expression(tokens []FastcExpressionToken) ?Fast
 	operator := if inner[is_idx].tok == .key_is { '==' } else { '!=' }
 	return FastcRenderedExpression{
 		source: '(((${lhs_source})${access}_typ) ${operator} __v_typeid_${variant_c})'
-		typ:    flat.source_type_id('bool')
+		typ:    flat.source_type_bool
 	}
 }
 
@@ -4213,7 +4213,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 					predicate := if item.tok == .not_in { '!(${found})' } else { '(${found})' }
 					return FastcRenderedExpression{
 						source: '({ ${range_c_type} ${value_name} = (${value}); ${fastc_output_c_type(lower_type)} ${lower_name} = (${lower}); ${fastc_output_c_type(upper_type)} ${upper_name} = (${upper}); ${predicate}; })'
-						typ:    flat.source_type_id('bool')
+						typ:    flat.source_type_bool
 					}
 				}
 				// `x in [Type1, Type2, …]` where `x` is a boxed sum type is a membership
@@ -4247,7 +4247,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 							}
 							return FastcRenderedExpression{
 								source: '({ ${left_boxed_type} ${subject_name} = (${subject}); ${predicate}; })'
-								typ:    flat.source_type_id('bool')
+								typ:    flat.source_type_bool
 							}
 						}
 					}
@@ -4281,7 +4281,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 					predicate := if item.tok == .not_in { '!(${found})' } else { found }
 					return FastcRenderedExpression{
 						source: '({ string ${substring_name} = (${substring}); string ${value_name} = (${value}); ${predicate}; })'
-						typ:    flat.source_type_id('bool')
+						typ:    flat.source_type_bool
 					}
 				}
 				if fastc_trim_pointer_suffix(right_type).starts_with('Map_') {
@@ -4301,7 +4301,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 					predicate := if item.tok == .not_in { '!(${found})' } else { found }
 					return FastcRenderedExpression{
 						source: '({ ${g.collection_runtime_type(key_type)} ${key_name} = (${key_source}); ${g.collection_runtime_type(right_type)} ${map_name} = (${map_source}); ${predicate}; })'
-						typ:    flat.source_type_id('bool')
+						typ:    flat.source_type_bool
 					}
 				}
 				right_layout := fastc_trim_pointer_suffix(right_type)
@@ -4352,7 +4352,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 					}
 					return FastcRenderedExpression{
 						source: '({ ${g.collection_storage_type(element_type)} ${item_name} = (${candidate}); ${collection_c_type} ${collection_name} = (${collection}); bool ${found_name} = false; for (int ${index_name} = 0; ${index_name} < ${collection_length}; ${index_name}++) { if (${comparison}) { ${found_name} = true; break; } } ${predicate}; })'
-						typ:    flat.source_type_id('bool')
+						typ:    flat.source_type_bool
 					}
 				}
 				array_end := if tokens.last().tok == .not { tokens.len - 1 } else { tokens.len }
@@ -4366,7 +4366,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 				if items.len == 0 {
 					return FastcRenderedExpression{
 						source: if item.tok == .key_in { 'false' } else { 'true' }
-						typ:    flat.source_type_id('bool')
+						typ:    flat.source_type_bool
 					}
 				}
 				lhs_source := g.render_membership_candidate(tokens[..i], lhs_type) or {
@@ -4396,7 +4396,7 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 				joiner := if item.tok == .key_in { ' || ' } else { ' && ' }
 				return FastcRenderedExpression{
 					source: '({ ${value_type} ${lhs_name} = (${lhs_source}); ${initializers.join(' ')} (${comparisons.join(joiner)}); })'
-					typ:    flat.source_type_id('bool')
+					typ:    flat.source_type_bool
 				}
 			}
 		}
@@ -4575,7 +4575,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 			inner := g.render_call_argument_expression(tokens[1..], 'bool') or { return none }
 			return FastcRenderedExpression{
 				source: '!(${inner})'
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 
@@ -4611,7 +4611,7 @@ fn (g &Parser) render_selfhost_special_expression(tokens []FastcExpressionToken,
 				if guard := g.render_guard_comparison(tokens) {
 					return FastcRenderedExpression{
 						source: guard
-						typ:    flat.source_type_id('bool')
+						typ:    flat.source_type_bool
 					}
 				}
 			}
@@ -4773,7 +4773,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 		lhs_type := if is_synth_subject && tokens[0].typ_text() != '' {
 			fastc_normalize_inferred_type(tokens[0].typ_text())
 		} else if local := g.locals[tokens[0].lit] {
-			if local.smartcast_origin_type_text() != '' {
+			if local.smartcast_origin_type != u32(0) {
 				local.smartcast_origin_type_text()
 			} else {
 				local.typ_text()
@@ -4810,7 +4810,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 		}
 		return FastcRenderedExpression{
 			source: '((${subject}${access}_typ) ${operator} __v_typeid_${variant_c})'
-			typ:    flat.source_type_id('bool')
+			typ:    flat.source_type_bool
 		}
 	}
 	if g.selfhost && has_as {
@@ -4916,7 +4916,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 			literal_source := fastc_take_string(mut literals)
 			return FastcRenderedExpression{
 				source: '_S(${literal_source})'
-				typ:    flat.source_type_id('string')
+				typ:    flat.source_type_string
 			}
 		}
 	}
@@ -4956,7 +4956,7 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 					}
 					return FastcRenderedExpression{
 						source: combined
-						typ:    flat.source_type_id('string')
+						typ:    flat.source_type_string
 					}
 				}
 			}
@@ -5214,7 +5214,7 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 			if guard := g.render_guard_comparison(tokens) {
 				return FastcRenderedExpression{
 					source: guard
-					typ:    flat.source_type_id('bool')
+					typ:    flat.source_type_bool
 				}
 			}
 		}
@@ -5225,7 +5225,7 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 			if guard := g.render_guard_comparison(tokens) {
 				return FastcRenderedExpression{
 					source: guard
-					typ:    flat.source_type_id('bool')
+					typ:    flat.source_type_bool
 				}
 			}
 		}
@@ -5235,7 +5235,7 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 			if guard := g.render_guard_comparison(tokens) {
 				return FastcRenderedExpression{
 					source: guard
-					typ:    flat.source_type_id('bool')
+					typ:    flat.source_type_bool
 				}
 			}
 		}
@@ -5246,7 +5246,7 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 			if guard := g.render_guard_comparison(tokens) {
 				return FastcRenderedExpression{
 					source: guard
-					typ:    flat.source_type_id('bool')
+					typ:    flat.source_type_bool
 				}
 			}
 		}
@@ -5475,7 +5475,7 @@ fn (g &Parser) render_propagation_in_comparison(tokens []FastcExpressionToken) ?
 			}
 			return FastcRenderedExpression{
 				source: source
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 	}
@@ -5583,7 +5583,7 @@ fn (g &Parser) render_element_function_call(tokens []FastcExpressionToken) ?Fast
 	return FastcRenderedExpression{
 		source: '(${element})(${arguments.join(', ')})'
 		typ:    if signature.return_type == 0 {
-			flat.source_type_id('void')
+			flat.source_type_void
 		} else {
 			signature.return_type
 		}

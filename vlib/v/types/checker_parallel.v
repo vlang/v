@@ -349,9 +349,9 @@ mut:
 fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 	is_open_generic := node.generic_params().len > 0 || node.value.contains('[')
 	ret_type := if is_open_generic {
-		tc.parse_scope_param_type(node.typ_text())
+		tc.parse_scope_param_type(node.typ)
 	} else {
-		tc.parse_resolution_type(node.typ_text())
+		tc.parse_resolution_type(node.typ)
 	}
 	mut ptypes := []Type{}
 	mut param_texts := []string{}
@@ -379,9 +379,9 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 			}
 		}
 		raw_parsed_param_type := if is_open_generic {
-			tc.parse_scope_param_type(param_type)
+			tc.parse_scope_param_type(flat.source_type_id(param_type))
 		} else {
-			tc.parse_resolution_type(param_type)
+			tc.parse_resolution_type(flat.source_type_id(param_type))
 		}
 		ptypes << if child.is_mut {
 			mut_param_semantic_type(raw_parsed_param_type)
@@ -3092,7 +3092,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 					} else {
 						param.typ_text()
 					}
-					raw_param_type := tc.parse_scope_param_type(diagnostic_type_text)
+					raw_param_type := tc.parse_scope_param_type(flat.source_type_id(diagnostic_type_text))
 					if tc.is_params_struct_type(raw_param_type) {
 						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
 					}
@@ -3297,9 +3297,9 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	}
 	if raw_return_type.starts_with('!') {
 		alias_name := raw_return_type[1..]
-		alias_target := tc.type_aliases.get(alias_name) or {
-			tc.type_aliases.get(tc.qualify_name(alias_name)) or { '' }
-		}
+		alias_target := flat.source_type_name(tc.type_aliases.type_id(alias_name) or {
+			tc.type_aliases.type_id(tc.qualify_name(alias_name)) or { u32(0) }
+		})
 		if alias_target.starts_with('?') {
 			tc.record_error_at(.return_mismatch, 'the fn returns type `${raw_return_type}`, but type `${alias_name}` is an Option alias, you can not mix them', id, tc.fn_return_type_diagnostic_pos(node))
 		}

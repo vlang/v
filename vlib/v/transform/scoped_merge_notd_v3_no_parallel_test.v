@@ -143,12 +143,12 @@ fn test_generic_unresolved_cache_owns_scoped_module() {
 	scoped_module := 'cloud'.clone()
 	transform_worker_scope_leave(scope)
 	t.cur_module = scoped_module
-	assert !t.generic_arg_is_unresolved('int')
+	assert !t.generic_arg_is_unresolved(flat.source_type_int)
 	assert !transform_scope_owns(scope, t.generic_unresolved_cache.module.str)
 
 	t.cur_module = 'main'
 	transform_worker_scope_free(scope)
-	assert !t.generic_arg_is_unresolved('int')
+	assert !t.generic_arg_is_unresolved(flat.source_type_int)
 }
 
 fn test_transform_fork_reads_and_merges_source_fn_values() {
@@ -284,7 +284,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 		lifted++
 		assert node.typ_text() in ['int', 'string']
 		for name in [node.value, transform_qualified_fn_name(decl.module, node.value)] {
-			assert t.fn_ret_types.value(name) == node.typ_text()
+			assert flat.source_type_name(t.fn_ret_types.value_id(name)) == node.typ_text()
 			assert (tc.fn_ret_types[name] or { panic('missing lifted return ${name}') }).name() == node.typ_text()
 			params := tc.fn_param_types[name] or { panic('missing lifted params ${name}') }
 			assert params.len == 1

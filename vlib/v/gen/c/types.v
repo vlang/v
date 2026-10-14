@@ -136,7 +136,7 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	}
 	safe_name := inner_ct.replace('*', 'ptr').replace(' ', '_')
 	opt_name := '${prefix}_${safe_name}'
-	g.needed_optional_types.set(opt_name, inner_ct)
+	g.needed_optional_types.set_id(opt_name, flat.source_type_id(inner_ct))
 	mut pointee := cgen_unalias_type(base_type)
 	if pointee is types.Pointer {
 		for pointee is types.Pointer {
@@ -222,11 +222,11 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 			return qualified + pointer_suffix
 		}
 	}
-	if target := g.tc.type_aliases.get(ct) {
-		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(flat.source_type_id(target))))
+	if target_source_id := g.tc.type_aliases.type_id(ct) {
+		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target_source_id)))
 	}
-	if target := g.tc.type_aliases.get('main.${ct}') {
-		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(flat.source_type_id(target))))
+	if target_source_id := g.tc.type_aliases.type_id('main.${ct}') {
+		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target_source_id)))
 	}
 	return ct
 }
@@ -346,11 +346,11 @@ fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
 		// Generic substitution can preserve a caller alias only as its type name
 		// after the specialized body has moved into the generic function's module.
 		// Recover the registered alias before selecting the C storage type.
-		if target := g.tc.type_aliases.get(clean_type.name()) {
-			return cgen_unalias_type(g.tc.parse_type(flat.source_type_id(target)))
+		if target_source_id := g.tc.type_aliases.type_id(clean_type.name()) {
+			return cgen_unalias_type(g.tc.parse_type(target_source_id))
 		}
-		if target := g.tc.type_aliases.get('main.${clean_type.name()}') {
-			return cgen_unalias_type(g.tc.parse_type(flat.source_type_id(target)))
+		if target_source_id := g.tc.type_aliases.type_id('main.${clean_type.name()}') {
+			return cgen_unalias_type(g.tc.parse_type(target_source_id))
 		}
 	}
 	return clean_type
@@ -658,7 +658,7 @@ fn (g &FlatGen) canonical_import_alias_type_in_file_uncached(typ string, file st
 			return exact
 		}
 	}
-	return g.tc.parse_resolution_type_in_file(typ, file)
+	return g.tc.parse_resolution_type_in_file(flat.source_type_id(typ), file)
 }
 
 fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.Node) types.Type {
@@ -918,7 +918,7 @@ fn (mut g FlatGen) optional_typedefs() {
 	mut names := g.needed_optional_types.keys()
 	names.sort()
 	for opt_name in names {
-		val_type := g.needed_optional_types.value(opt_name)
+		val_type := flat.source_type_name(g.needed_optional_types.value_id(opt_name))
 		if g.emit_optional_typedef(opt_name, val_type) {
 			wrote = true
 		}
@@ -999,7 +999,7 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 		// Only a complete type spelling that was not collected yet can add a
 		// typedef. Rule the rest out before the checker metadata below, which
 		// costs a map lookup per resolved call.
-		if node.typ_text().len == 0 || node.typ_text() in ['int', 'array', 'map', 'unknown']
+		if node.typ == 0 || node.typ_text() in ['int', 'array', 'map', 'unknown']
 			|| !cgen_type_text_is_complete(node.typ_text()) {
 			continue
 		}
@@ -1135,7 +1135,7 @@ fn (mut g FlatGen) collect_specialized_declaration_signature_types() {
 			raw_type := if param_idx < typed_params.len {
 				typed_params[param_idx]
 			} else {
-				g.tc.parse_resolution_type(param.typ_text())
+				g.tc.parse_resolution_type(param.typ)
 			}
 			param_idx++
 			g.collect_declaration_signature_type(g.fn_node_effective_param_type(param, raw_type))
@@ -1256,7 +1256,7 @@ fn (mut g FlatGen) collect_selected_declaration_signature_types() {
 			raw_type := if param_idx < typed_params.len {
 				typed_params[param_idx]
 			} else {
-				g.tc.parse_resolution_type(param.typ_text())
+				g.tc.parse_resolution_type(param.typ)
 			}
 			param_idx++
 			g.collect_known_declaration_signature_type(g.fn_node_effective_param_type(param, raw_type))
@@ -1576,7 +1576,9 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	// is emitted first: sorted by name, `__v_option___v_option_i64` would come
 	// before the `__v_option_i64` it stores.
 	if val_type != opt_name {
-		if inner_val_type := g.needed_optional_types.get(val_type) {
+		if inner_val_type_source_id := g.needed_optional_types.type_id(val_type) {
+			inner_val_type := flat.source_type_name(inner_val_type_source_id)
+
 			g.emit_optional_typedef(val_type, inner_val_type)
 		}
 	}
@@ -2733,7 +2735,7 @@ fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
 		if g.tc.autofree_mode && !main_aliases[name] {
 			continue
 		}
-		parsed_target := g.tc.parse_type(flat.source_type_id(target))
+		parsed_target := g.tc.parse_type(target_id)
 		mut ct := if parsed_target is types.FnType {
 			g.fn_ptr_type_key(parsed_target)
 		} else {

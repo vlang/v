@@ -54,7 +54,7 @@ fn test_single_shadow_declaration_reads_incoming_heap_storage_before_rebinding()
 		t.a.children << [t.make_ident(target), value]
 		decl := t.a.add_node(flat.Node{
 			kind:           .decl_assign
-			typ:            flat.source_type_id('int')
+			typ:            flat.source_type_int
 			children_start: start
 			children_count: 2
 			pos:            token.new_span(1, 1, 10)
@@ -122,7 +122,7 @@ fn test_heap_moved_source_declaration_keeps_its_mutability() {
 		t.a.children << [lhs, t.make_int_literal(1)]
 		decl := t.a.add_node(flat.Node{
 			kind:           .decl_assign
-			typ:            flat.source_type_id('int')
+			typ:            flat.source_type_int
 			children_start: start
 			children_count: 2
 			pos:            token.new_span(1, 1, 10)

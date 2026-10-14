@@ -11,8 +11,9 @@ fn (mut t Transformer) match_has_sum_type_subject(node flat.Node) bool {
 		return false
 	}
 	subject_id := t.a.child(&node, 0)
-	subject_type := t.resolve_expr_type(subject_id)
-	if subject_type.len == 0 {
+	subject_type_source_id := t.resolve_expr_type(subject_id)
+	subject_type := flat.source_type_name(subject_type_source_id)
+	if subject_type_source_id == 0 {
 		return false
 	}
 	return t.sum_types.contains(subject_type)
@@ -25,7 +26,7 @@ fn (mut t Transformer) resolve_match_subject_type(node flat.Node) string {
 		return ''
 	}
 	subject_id := t.a.child(&node, 0)
-	return t.resolve_expr_type(subject_id)
+	return flat.source_type_name(t.resolve_expr_type(subject_id))
 }
 
 // transform_match_branch_body transforms a match branch body with smartcast

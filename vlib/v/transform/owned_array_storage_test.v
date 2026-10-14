@@ -52,9 +52,9 @@ fn configure_owned_array_storage_checker(mut tc types.TypeChecker) {
 		typ:  types.Type(types.string_)
 	}]
 	tc.interface_names['IError'] = true
-	tc.type_aliases.set('ArrayResult', '![]Res')
-	tc.type_aliases.set('ArrayResultAlias', 'ArrayResult')
-	tc.type_aliases.set('ArrayOption', '?[]Res')
+	tc.type_aliases.set_id('ArrayResult', flat.source_type_id('![]Res'))
+	tc.type_aliases.set_id('ArrayResultAlias', flat.source_type_id('ArrayResult'))
+	tc.type_aliases.set_id('ArrayOption', flat.source_type_id('?[]Res'))
 	assert tc.ownership_type_requires_destruction(tc.parse_type(flat.source_type_id('Res')))
 }
 

@@ -570,6 +570,39 @@ fn prim_name_from(props Properties, size u8) string {
 	return 'int'
 }
 
+fn primitive_source_type_id(props Properties, size u8) u32 {
+	if props.has(.boolean) {
+		return flat.source_type_bool
+	}
+	if props.has(.integer) {
+		if props.has(.unsigned) {
+			return match size {
+				8 { flat.source_type_u8 }
+				16 { flat.source_type_u16 }
+				32 { flat.source_type_u32 }
+				64 { flat.source_type_u64 }
+				else { flat.source_type_id('u${size}') }
+			}
+		}
+		return match size {
+			0 { flat.source_type_int }
+			8 { flat.source_type_i8 }
+			16 { flat.source_type_i16 }
+			32 { flat.source_type_i32 }
+			64 { flat.source_type_i64 }
+			else { flat.source_type_id('i${size}') }
+		}
+	}
+	if props.has(.float) {
+		return match size {
+			32 { flat.source_type_f32 }
+			64 { flat.source_type_f64 }
+			else { flat.source_type_id('f${size}') }
+		}
+	}
+	return flat.source_type_int
+}
+
 // prim_name supports prim name handling for types.
 fn prim_name(t Primitive) string {
 	if t.props.has(.boolean) {
@@ -638,6 +671,16 @@ pub fn (value SumType) name() string {
 pub fn (t Type) source_type_id() u32 {
 	return match t {
 		Struct, Alias, Enum, Interface, SumType { t.name_id }
+		Void { flat.source_type_void }
+		Unknown { flat.source_type_unknown }
+		Nil { flat.source_type_nil }
+		None { flat.source_type_none }
+		String { flat.source_type_string }
+		Char { flat.source_type_char }
+		Rune { flat.source_type_rune }
+		ISize { flat.source_type_isize }
+		USize { flat.source_type_usize }
+		Primitive { primitive_source_type_id(t.props, t.size) }
 		else { flat.source_type_id(t.name()) }
 	}
 }

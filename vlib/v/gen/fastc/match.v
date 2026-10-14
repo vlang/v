@@ -29,7 +29,7 @@ fn fastc_match_multi_variant_value(subject string, access string, variants []str
 fn (mut g Parser) read_match_expression() !string {
 	outer_expected_type := g.expected_expression_type_text()
 	g.expect(.key_match)!
-	g.expected_expression_type = flat.source_type_id('')
+	g.expected_expression_type = u32(0)
 	// `read_expression` consumes the `mut` modifier and keeps only the referenced
 	// name in `last_expression`, so remember it before parsing the subject.
 	subject_is_mut := g.tok == .key_mut
@@ -423,7 +423,7 @@ fn (mut g Parser) read_block_expression_value() !string {
 	}
 	statements := g.captured_defer_lines.clone()
 	if g.tok == .rcbr {
-		g.last_expression_type = flat.source_type_id('')
+		g.last_expression_type = u32(0)
 		g.last_expression = []FastcExpressionToken{}
 		return '({ ${statements.join(' ')} 0; })'
 	}

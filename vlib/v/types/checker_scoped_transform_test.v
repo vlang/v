@@ -225,7 +225,7 @@ fn test_type_qualification_preserves_channel_and_thread_wrappers() {
 	assert tc.qualify_type_text('[]chan bool') == '[]chan bool'
 	assert tc.qualify_type_text('thread int') == 'thread int'
 
-	channel_type := tc.parse_resolution_type('chan bool')
+	channel_type := tc.parse_resolution_type(flat.source_type_id('chan bool'))
 	if channel_type is Channel {
 		assert channel_type.elem_type is Primitive
 	} else {

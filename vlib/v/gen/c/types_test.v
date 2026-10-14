@@ -243,7 +243,7 @@ fn test_specialized_generic_struct_default_value_preserves_field_defaults() {
 	x_field := ast.add_node(flat.Node{
 		kind:           .field_decl
 		value:          'x'
-		typ:            flat.source_type_id('int')
+		typ:            flat.source_type_int
 		children_start: field_start
 		children_count: 1
 	})
@@ -291,7 +291,7 @@ fn test_specialized_generic_struct_default_value_preserves_field_defaults() {
 	size_field := ast.add_node(flat.Node{
 		kind:           .field_decl
 		value:          'size'
-		typ:            flat.source_type_id('int')
+		typ:            flat.source_type_int
 		children_start: size_field_start
 		children_count: 1
 	})
@@ -312,7 +312,7 @@ fn test_specialized_generic_struct_default_value_preserves_field_defaults() {
 	name_field := ast.add_node(flat.Node{
 		kind:           .field_decl
 		value:          'name'
-		typ:            flat.source_type_id('string')
+		typ:            flat.source_type_string
 		children_start: name_field_start
 		children_count: 1
 	})
@@ -432,11 +432,11 @@ fn test_void_pointer_predicate_preserves_alias_and_named_type_rules() {
 	void_alias := types.Type(types.Alias{ name_id: flat.source_type_id('Nothing'), base_type: types.Type(types.void_) })
 	for typ in [types.Type(types.voidptr_), types.Type(types.Pointer{ base_type: void_alias }),
 		types.Type(types.Alias{ name_id: flat.source_type_id('Opaque'), base_type: types.Type(types.voidptr_) }),
-		types.Type(types.Alias{ name_id: flat.source_type_id('voidptr'), base_type: types.Type(types.int_) }),
-		types.Type(types.Struct{ name_id: flat.source_type_id('voidptr') }),
-		types.Type(types.Enum{ name_id: flat.source_type_id('voidptr') }),
-		types.Type(types.Interface{ name_id: flat.source_type_id('voidptr') }),
-		types.Type(types.SumType{ name_id: flat.source_type_id('voidptr') })] {
+		types.Type(types.Alias{ name_id: flat.source_type_voidptr, base_type: types.Type(types.int_) }),
+		types.Type(types.Struct{ name_id: flat.source_type_voidptr }),
+		types.Type(types.Enum{ name_id: flat.source_type_voidptr }),
+		types.Type(types.Interface{ name_id: flat.source_type_voidptr }),
+		types.Type(types.SumType{ name_id: flat.source_type_voidptr })] {
 		assert type_is_void_pointer(typ)
 	}
 	for typ in [types.Type(types.int_), types.Type(types.void_), void_alias,
@@ -564,7 +564,7 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 		base_type: value_type
 	})
 	assert g.optional_type_name(result_type) == '__v_result_json2__StructKeyDecodeResult_TestEchoArgs'
-	assert g.needed_optional_types.value('__v_result_json2__StructKeyDecodeResult_TestEchoArgs') == 'json2__StructKeyDecodeResult_TestEchoArgs'
+	assert flat.source_type_name(g.needed_optional_types.value_id('__v_result_json2__StructKeyDecodeResult_TestEchoArgs')) == 'json2__StructKeyDecodeResult_TestEchoArgs'
 }
 
 fn test_concrete_optional_enum_uses_common_int_abi() {
@@ -911,7 +911,7 @@ fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_su
 	tc.interface_names['pkg.iface_mod.Any'] = true
 	tc.structs['struct_mod.Any'] = []types.StructField{}
 	tc.enum_names['enum_mod.Any'] = true
-	tc.type_aliases.set('alias_mod.Any', 'struct_mod.Any')
+	tc.type_aliases.set_id('alias_mod.Any', flat.source_type_id('struct_mod.Any'))
 	tc.cur_file = 'main.v'
 	tc.file_imports['main.v\niface_mod'] = 'pkg.iface_mod'
 	tc.file_imports['main.v\npkg'] = 'unrelated.module'
@@ -1206,9 +1206,10 @@ fn test_import_alias_canonicalization_is_idempotent_for_module_path_prefix() {
 	g.tc = &tc
 	for source in ['tsc.CompileTimes', '&tsc.CompileTimes', 'gort.Cell[tsc.CompileTimes]',
 		'map[string][]tsc.CompileTimes'] {
-		canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(source), 'other.v'))
+		canonical_source_id := g.canonical_import_alias_type_text_in_file(flat.source_type_id(source), 'other.v')
+		canonical := flat.source_type_name(canonical_source_id)
 		assert canonical.contains('tsc.execute.tsc.CompileTimes')
-		assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(canonical), 'other.v')) == canonical
+		assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(canonical_source_id, 'other.v')) == canonical
 		assert g.canonical_import_alias_type_text_in_file_uncached(canonical, 'other.v') == canonical
 	}
 }

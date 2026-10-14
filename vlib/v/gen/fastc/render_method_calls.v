@@ -252,7 +252,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		// method) is not on the variant, so dispatch it on the boxed original C variable.
 		if unnarrowed_receiver == '' && receiver_tokens.len == 1 && receiver_tokens[0].tok == .name {
 			if local := g.locals[receiver_tokens[0].lit] {
-				if local.smartcast_origin_type_text() != '' && local.smartcast_origin_type_text() != receiver_type {
+				if local.smartcast_origin_type != u32(0) && local.smartcast_origin_type_text() != receiver_type {
 					narrowed_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 					if narrowed_key !in g.functions && narrowed_key !in g.mono_functions {
 						origin_key, _ := g.resolve_method(local.smartcast_origin_type_text(), tokens[i].lit)
@@ -302,7 +302,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			if receiver_start == 0 && call_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: call_source
-					typ:    flat.source_type_id('bool')
+					typ:    flat.source_type_bool
 				}
 			}
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -348,7 +348,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ:    flat.source_type_id('int')
+						typ:    flat.source_type_int
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -465,7 +465,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ:    flat.source_type_id('string')
+						typ:    flat.source_type_string
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -495,7 +495,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ:    flat.source_type_id('string')
+						typ:    flat.source_type_string
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -531,7 +531,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ:    flat.source_type_id('string')
+						typ:    flat.source_type_string
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -556,7 +556,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ:    flat.source_type_id('void')
+						typ:    flat.source_type_void
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -588,7 +588,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ:    flat.source_type_id('string')
+						typ:    flat.source_type_string
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -619,7 +619,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ:    flat.source_type_id('string')
+						typ:    flat.source_type_string
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -647,7 +647,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 						arguments << g.render_call_argument_expression(argument, field.fn_parameter_types.at(argument_index)) or { continue }
 					}
 					parameter_types := fastc_c_prototype_parameters(field.fn_parameter_types_text())
-					return_type := if field.fn_return_type_text() == '' {
+					return_type := if field.fn_return_type == u32(0) {
 						'void'
 					} else {
 						field.fn_return_type_text()

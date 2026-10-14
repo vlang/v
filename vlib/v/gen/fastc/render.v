@@ -291,7 +291,7 @@ fn (g &Parser) render_map_value_field_assignment(tokens []FastcExpressionToken) 
 	}
 	return FastcRenderedExpression{
 		source: '({ ${value_type} *__vf_map_field_ptr = (${ptr.source}); __vf_map_field_ptr${field_access} = (${value_source}); (void)0; })'
-		typ:    flat.source_type_id('void')
+		typ:    flat.source_type_void
 	}
 }
 
@@ -346,7 +346,7 @@ fn (g &Parser) render_map_value_field_inc_dec(tokens []FastcExpressionToken) ?Fa
 	}
 	return FastcRenderedExpression{
 		source: '({ ${value_type} *__vf_map_field_ptr = (${ptr.source}); __vf_map_field_ptr${field_access}${op}; (void)0; })'
-		typ:    flat.source_type_id('void')
+		typ:    flat.source_type_void
 	}
 }
 
@@ -519,7 +519,7 @@ fn (g &Parser) render_ordinary_collection_print_expression(tokens []FastcExpress
 	function_name := if typ == 'bool' { 'v_fastc_${tokens[0].lit}_bool' } else { tokens[0].lit }
 	return FastcRenderedExpression{
 		source: '${function_name}(${value})'
-		typ:    flat.source_type_id('void')
+		typ:    flat.source_type_void
 	}
 }
 
@@ -553,7 +553,7 @@ fn (g &Parser) render_bool_print_expression(tokens []FastcExpressionToken) ?Fast
 	}
 	return FastcRenderedExpression{
 		source: '${function_name}((bool)(${argument}))'
-		typ:    flat.source_type_id('void')
+		typ:    flat.source_type_void
 	}
 }
 
@@ -579,7 +579,7 @@ fn (g &Parser) render_ordinary_string_print_expression(tokens []FastcExpressionT
 	argument := g.render_call_argument_expression(call_arguments[0], 'string') or { return none }
 	return FastcRenderedExpression{
 		source: '${tokens[0].lit}(${argument})'
-		typ:    flat.source_type_id('void')
+		typ:    flat.source_type_void
 	}
 }
 
@@ -606,7 +606,7 @@ fn (g &Parser) render_enum_print_expression(tokens []FastcExpressionToken) ?Fast
 		} else {
 			'false'
 		}})'
-		typ:    flat.source_type_id('void')
+		typ:    flat.source_type_void
 	}
 }
 
@@ -690,7 +690,7 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 		return none
 	}
 	signature := g.functions[method_key] or { return none }
-	if signature.parameter_types.ids.len == 0 || signature.return_type_text() != 'string' {
+	if signature.parameter_types.ids.len == 0 || signature.return_type != flat.source_type_string {
 		return none
 	}
 	expected_receiver := signature.parameter_types.at(0)
@@ -705,7 +705,7 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 	string_value := '${method_c_name}(${receiver_argument})'
 	return FastcRenderedExpression{
 		source: 'builtin__${tokens[0].lit}(${string_value})'
-		typ:    flat.source_type_id('void')
+		typ:    flat.source_type_void
 	}
 }
 
@@ -1264,7 +1264,7 @@ fn (g &Parser) render_overloaded_comparison_expression(left_tokens []FastcExpres
 	call := '${method_c_name}(${receiver},${argument})'
 	return FastcRenderedExpression{
 		source: if negate { '!(${call})' } else { call }
-		typ:    flat.source_type_id('bool')
+		typ:    flat.source_type_bool
 	}
 }
 
@@ -1288,7 +1288,7 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 			comparison := if operator == .eq { '==' } else { '!=' }
 			return FastcRenderedExpression{
 				source: '((${array_source})${access}len ${comparison} 0)'
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 	}
@@ -1325,7 +1325,7 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 		result := if operator == .ne { '!__vf_array_equal' } else { '__vf_array_equal' }
 		return FastcRenderedExpression{
 			source: '({ ${element_type} *__vf_array_eq_left = (${element_type} *)(${left_data}); ${element_type} *__vf_array_eq_right = (${element_type} *)(${right_data}); bool __vf_array_equal = true; for (int __vf_array_eq_index = 0; __vf_array_eq_index < ${length}; __vf_array_eq_index++) { if (!(${element_comparison})) { __vf_array_equal = false; break; } } ${result}; })'
-			typ:    flat.source_type_id('bool')
+			typ:    flat.source_type_bool
 		}
 	}
 	left := g.render_call_argument_expression(left_tokens, left_type) or { return none }
@@ -1340,7 +1340,7 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 	result := if operator == .ne { '!__vf_array_equal' } else { '__vf_array_equal' }
 	return FastcRenderedExpression{
 		source: '({ ${left_type} __vf_array_eq_left = (${left}); ${right_type} __vf_array_eq_right = (${right}); bool __vf_array_equal = __vf_array_eq_left.len == __vf_array_eq_right.len; if (__vf_array_equal) { for (int __vf_array_eq_index = 0; __vf_array_eq_index < __vf_array_eq_left.len; __vf_array_eq_index++) { if (!(${element_comparison})) { __vf_array_equal = false; break; } } } ${result}; })'
-		typ:    flat.source_type_id('bool')
+		typ:    flat.source_type_bool
 	}
 }
 
@@ -1435,7 +1435,7 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 			right := g.render_call_argument_expression(right_tokens, right_type) or { return none }
 			return FastcRenderedExpression{
 				source: '((${left})${operator.str()}(${right}))'
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 		mut left_special := FastcRenderedExpression{}
@@ -1449,14 +1449,14 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		if left_special.source != '' || right_special.source != '' {
 			left_expected := if operator in [.and, .logical_or] {
 				'bool'
-			} else if left_special.typ_text() != '' {
+			} else if left_special.typ != u32(0) {
 				left_special.typ_text()
 			} else {
 				g.infer_expression_type(left_tokens) or { '' }
 			}
 			right_expected := if operator in [.and, .logical_or] {
 				'bool'
-			} else if right_special.typ_text() != '' {
+			} else if right_special.typ != u32(0) {
 				right_special.typ_text()
 			} else {
 				g.infer_expression_type(right_tokens) or { '' }
@@ -1473,7 +1473,7 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 			}
 			return FastcRenderedExpression{
 				source: '((${left})${operator.str()}(${right}))'
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 		return none
@@ -1549,7 +1549,7 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		if operator == '+' && (fastc_trim_pointer_suffix(g.underlying_alias_type(left_type)) == 'string' || fastc_trim_pointer_suffix(g.underlying_alias_type(right_type)) == 'string') {
 			return FastcRenderedExpression{
 				source: 'builtin__string_plus((${left}),(${right}))'
-				typ:    flat.source_type_id('string')
+				typ:    flat.source_type_string
 			}
 		}
 		return FastcRenderedExpression{
@@ -2032,7 +2032,7 @@ fn (g &Parser) render_refined_enum_logical_expression(left_tokens []FastcExpress
 	}
 	return FastcRenderedExpression{
 		source: '((${type_test})&&(${right_source}))'
-		typ:    flat.source_type_id('bool')
+		typ:    flat.source_type_bool
 	}
 }
 
@@ -2052,7 +2052,7 @@ fn (g &Parser) render_logical_expression(tokens []FastcExpressionToken) ?FastcRe
 	right := g.render_call_argument_expression(tokens[index + 1..], 'bool') or { return none }
 	return FastcRenderedExpression{
 		source: '((${left})${if operator == .and { '&&' } else { '||' }}(${right}))'
-		typ:    flat.source_type_id('bool')
+		typ:    flat.source_type_bool
 	}
 }
 
@@ -2199,7 +2199,7 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 			}
 			return FastcRenderedExpression{
 				source: '((${inner.source}))'
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 	}
@@ -2235,7 +2235,7 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 			}
 			return FastcRenderedExpression{
 				source: '((${left}) ${if item.tok == .and { '&&' } else { '||' }} (${right}))'
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 	}
@@ -2243,7 +2243,7 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 		inner := g.render_struct_comparison_expression(tokens[1..]) or { return none }
 		return FastcRenderedExpression{
 			source: '!(${inner.source})'
-			typ:    flat.source_type_id('bool')
+			typ:    flat.source_type_bool
 		}
 	}
 	depth = 0
@@ -2272,7 +2272,7 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 					source := if item.tok == .ne { '!(${sum_eq})' } else { sum_eq }
 					return FastcRenderedExpression{
 						source: source
-						typ:    flat.source_type_id('bool')
+						typ:    flat.source_type_bool
 					}
 				}
 				// Two sum-type VALUES (`node.stmt != ast.empty_stmt`, neither a variant cast):
@@ -2281,7 +2281,7 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 					source := if item.tok == .ne { '!(${sum_eq})' } else { sum_eq }
 					return FastcRenderedExpression{
 						source: source
-						typ:    flat.source_type_id('bool')
+						typ:    flat.source_type_bool
 					}
 				}
 				return none
@@ -2295,7 +2295,7 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 				result := if item.tok == .ne { '!(${equality})' } else { equality }
 				return FastcRenderedExpression{
 					source: result
-					typ:    flat.source_type_id('bool')
+					typ:    flat.source_type_bool
 				}
 			}
 			left_key := g.semantic_type_key(left_layout)
@@ -2308,7 +2308,7 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 			result := if item.tok == .ne { '!(${equality})' } else { equality }
 			return FastcRenderedExpression{
 				source: '({ ${left_type} __vf_eq_left = (${left}); ${right_type} __vf_eq_right = (${right}); ${result}; })'
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 	}
@@ -2435,7 +2435,7 @@ fn (g &Parser) render_as_cast_member_access(tokens []FastcExpressionToken) ?Fast
 				string_source := if current_type.ends_with('*') { '*(${source})' } else { source }
 				return FastcRenderedExpression{
 					source: 'builtin__string_at(${string_source}, ${index_source})'
-					typ:    flat.source_type_id('u8')
+					typ:    flat.source_type_u8
 				}
 			}
 			if layout.starts_with('Array_') {
@@ -2710,7 +2710,7 @@ fn (g &Parser) render_enum_comparison_expression(tokens []FastcExpressionToken) 
 				enum_type := left_type.trim_right('*')
 				return FastcRenderedExpression{
 					source: '((${left}) ${item.tok.str()} (${enum_type}__${right_tokens[1].lit}))'
-					typ:    flat.source_type_id('bool')
+					typ:    flat.source_type_bool
 				}
 			}
 			if g.declared_kinds[g.semantic_type_key(right_type)] == .enum_ && left_tokens.len == 2 && left_tokens[0].tok == .dot && left_tokens[1].tok == .name {
@@ -2720,7 +2720,7 @@ fn (g &Parser) render_enum_comparison_expression(tokens []FastcExpressionToken) 
 				enum_type := right_type.trim_right('*')
 				return FastcRenderedExpression{
 					source: '((${enum_type}__${left_tokens[1].lit}) ${item.tok.str()} (${right}))'
-					typ:    flat.source_type_id('bool')
+					typ:    flat.source_type_bool
 				}
 			}
 		}
@@ -2752,7 +2752,7 @@ fn (g &Parser) render_option_none_comparison(tokens []FastcExpressionToken) ?Fas
 					right := g.render_call_argument_expression(right_tokens, 'bool') or { return none }
 					return FastcRenderedExpression{
 						source: '((${left}) ${item.tok.str()} (${right}))'
-						typ:    flat.source_type_id('bool')
+						typ:    flat.source_type_bool
 					}
 				}
 				return none
@@ -2762,7 +2762,7 @@ fn (g &Parser) render_option_none_comparison(tokens []FastcExpressionToken) ?Fas
 			operator := if item.tok == .eq { '==' } else { '!=' }
 			return FastcRenderedExpression{
 				source: '((${value}).state ${operator} 2)'
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 	}
@@ -2801,7 +2801,7 @@ fn (g &Parser) render_nil_comparison(tokens []FastcExpressionToken) ?FastcRender
 				operator := if item.tok == .eq { '==' } else { '!=' }
 				return FastcRenderedExpression{
 					source: '((${pointer}) ${operator} NULL)'
-					typ:    flat.source_type_id('bool')
+					typ:    flat.source_type_bool
 				}
 			}
 			else {}
@@ -2849,7 +2849,7 @@ fn (g &Parser) render_string_comparison_expression(tokens []FastcExpressionToken
 		}
 		return FastcRenderedExpression{
 			source: '(${left_source}${if item.tok == .and { '&&' } else { '||' }}${right_source})'
-			typ:    flat.source_type_id('bool')
+			typ:    flat.source_type_bool
 		}
 	}
 	depth = 0
@@ -2887,7 +2887,7 @@ fn (g &Parser) render_string_comparison_expression(tokens []FastcExpressionToken
 		}
 		return FastcRenderedExpression{
 			source: source
-			typ:    flat.source_type_id('bool')
+			typ:    flat.source_type_bool
 		}
 	}
 	return none
@@ -2952,7 +2952,7 @@ fn (g &Parser) render_mixed_integer_comparison_expression_impl(tokens []FastcExp
 			}
 			return FastcRenderedExpression{
 				source: '((${inner.source}))'
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 	}
@@ -3002,14 +3002,14 @@ fn (g &Parser) render_mixed_integer_comparison_expression_impl(tokens []FastcExp
 		}
 		return FastcRenderedExpression{
 			source: '((${left_source})${if item.tok == .and { '&&' } else { '||' }}(${right_source}))'
-			typ:    flat.source_type_id('bool')
+			typ:    flat.source_type_bool
 		}
 	}
 	if tokens.len > 1 && tokens[0].tok == .not {
 		inner := g.render_mixed_integer_comparison_expression(tokens[1..]) or { return none }
 		return FastcRenderedExpression{
 			source: '!(${inner.source})'
-			typ:    flat.source_type_id('bool')
+			typ:    flat.source_type_bool
 		}
 	}
 	depth = 0
@@ -3064,7 +3064,7 @@ fn (g &Parser) render_mixed_integer_comparison_expression_impl(tokens []FastcExp
 		}
 		return FastcRenderedExpression{
 			source: 'v_fastc_us_${operation}((u64)(${unsigned_source}), (i64)(${signed_source}))'
-			typ:    flat.source_type_id('bool')
+			typ:    flat.source_type_bool
 		}
 	}
 	return none
@@ -3084,11 +3084,11 @@ fn (g &Parser) narrowed_subject_value_type(tokens []FastcExpressionToken) ?strin
 		return none
 	}
 	if local := g.locals[path] {
-		if local.option_value_type_text() != '' {
+		if local.option_value_type != u32(0) {
 			return none
 		}
 	}
-	if smartcast.value_type_text() != '' {
+	if smartcast.value_type != u32(0) {
 		return smartcast.value_type_text()
 	}
 	return smartcast.typ_text()[..smartcast.typ_text().len - 1]
@@ -3566,7 +3566,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 	raw := g.render_raw_expression_tokens(tokens) or { return none }
 	if tokens.len == 1 && tokens[0].tok == .name {
 		if local := g.locals[tokens[0].lit] {
-			if local.smartcast_origin_type_text() != '' && local.smartcast_origin_source != '' && expected_type != '' {
+			if local.smartcast_origin_type != u32(0) && local.smartcast_origin_source != '' && expected_type != '' {
 				origin_type := fastc_normalize_inferred_type(local.smartcast_origin_type_text())
 				if expected_type == origin_type {
 					return local.smartcast_origin_source
@@ -4275,7 +4275,7 @@ fn (g &Parser) render_array_lookup_option_expression(tokens []FastcExpressionTok
 		string_source := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
 		return FastcRenderedExpression{
 			source: '({ int __vf_str_index = (${index_source}); string __vf_str = (${string_source}); bool __vf_str_missing = __vf_str_index < 0 || __vf_str_index >= __vf_str.len; u8 *__vf_str_value = __vf_str_missing ? NULL : (u8 *)(__vf_str.str + __vf_str_index); (Option){.data=__vf_str_value, .state=__vf_str_missing ? 2 : 0}; })'
-			typ:    flat.source_type_id('u8')
+			typ:    flat.source_type_u8
 		}
 	}
 	if !base_layout.starts_with('Array_') {
@@ -4473,7 +4473,7 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 					}
 					return FastcRenderedExpression{
 						source: '({ ${map_push} 0; })'
-						typ:    flat.source_type_id('void')
+						typ:    flat.source_type_void
 					}
 				}
 			}
@@ -4501,12 +4501,12 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 					if is_array_append {
 						return FastcRenderedExpression{
 							source: '({ ${left_type.trim_right('*')} ${temporary} = (${right_source}); ${left_type.trim_right('*')} *__vf_append_array_target = ${target}; builtin__array_push_many((array *)__vf_append_array_target, ${temporary}.data, ${temporary}.len); 0; })'
-							typ:    flat.source_type_id('void')
+							typ:    flat.source_type_void
 						}
 					}
 					return FastcRenderedExpression{
 						source: '({ ${element_type} ${temporary} = (${right_source}); ${left_type.trim_right('*')} *__vf_append_array_target = ${target}; builtin__array_push((array *)__vf_append_array_target, &${temporary}); 0; })'
-						typ:    flat.source_type_id('void')
+						typ:    flat.source_type_void
 					}
 				}
 			}
@@ -4575,7 +4575,7 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 				value_decl := if is_array_append { left_type.trim_right('*') } else { element_type }
 				return FastcRenderedExpression{
 					source: '({ array ${arr_tmp} = (${array_value}); ${norm_elem} *${elem_tmp} = (${norm_elem} *)builtin__array_get(${arr_tmp}, ${index}); ${value_decl} ${temporary} = (${right_source}); ${push} 0; })'
-					typ:    flat.source_type_id('void')
+					typ:    flat.source_type_void
 				}
 			}
 		}
@@ -4595,12 +4595,12 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 		}
 		return FastcRenderedExpression{
 			source: '({ ${left_type.trim_right('*')} ${temporary} = (${right_source}); builtin__array_push_many(${array_target}, ${temporary}.data, ${temporary}.len); 0; })'
-			typ:    flat.source_type_id('void')
+			typ:    flat.source_type_void
 		}
 	}
 	return FastcRenderedExpression{
 		source: '({ ${g.declaration_c_type(element_type, right_source)} ${temporary} = (${right_source}); builtin__array_push((array *)&(${left_source}), &${temporary}); 0; })'
-		typ:    flat.source_type_id('void')
+		typ:    flat.source_type_void
 	}
 }
 
@@ -4672,7 +4672,7 @@ fn (g &Parser) render_composed_string_concatenation(tokens []FastcExpressionToke
 	}
 	return FastcRenderedExpression{
 		source: combined
-		typ:    flat.source_type_id('string')
+		typ:    flat.source_type_string
 	}
 }
 
@@ -5151,7 +5151,7 @@ fn (g &Parser) render_sumtype_common_field_assignment(tokens []FastcExpressionTo
 	source := '({ ${receiver_type} ${subject} = (${receiver_source}); ${field_type} ${value_var} = (${value_source}); switch (${subject}${access}_typ) { ${cases.join(' ')} default: break; } (void)0; })'
 	return FastcRenderedExpression{
 		source: source
-		typ:    flat.source_type_id('void')
+		typ:    flat.source_type_void
 	}
 }
 
@@ -5192,13 +5192,13 @@ fn (g &Parser) render_common_field_comparison_expression(tokens []FastcExpressio
 		if op == .eq {
 			return FastcRenderedExpression{
 				source: 'builtin__string_eq(${left_source}, ${right_source})'
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 		if op == .ne {
 			return FastcRenderedExpression{
 				source: '(!builtin__string_eq(${left_source}, ${right_source}))'
-				typ:    flat.source_type_id('bool')
+				typ:    flat.source_type_bool
 			}
 		}
 	}
@@ -5215,7 +5215,7 @@ fn (g &Parser) render_common_field_comparison_expression(tokens []FastcExpressio
 	}
 	return FastcRenderedExpression{
 		source: '((${left_source}) ${c_op} (${right_source}))'
-		typ:    flat.source_type_id('bool')
+		typ:    flat.source_type_bool
 	}
 }
 

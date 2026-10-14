@@ -9,7 +9,7 @@ import v.types
 fn build_namespace_call(mut t Transformer, base_name string, base_type string, method string) (flat.NodeId, flat.Node) {
 	base := t.a.add_val(.ident, base_name)
 	t.set_node_typ(int(base), base_type)
-	callee := t.make_selector_op(base, method, 'string', .dot)
+	callee := t.make_selector_op(base, method, flat.source_type_string, .dot)
 
 	cond := t.a.add_val(.bool_literal, 'true')
 	then_val := t.a.add_val(.int_literal, '1')
@@ -22,7 +22,7 @@ fn build_namespace_call(mut t Transformer, base_name string, base_type string, m
 		kind:           .if_expr
 		children_start: branch_start
 		children_count: 3
-		typ:            flat.source_type_id('int')
+		typ:            flat.source_type_int
 	})
 
 	call_start := t.a.children.len
@@ -141,7 +141,7 @@ fn test_callee_base_runtime_value_classification() {
 
 	// An unresolved operand that is not a bare identifier stays snapshotted too.
 	inner := t.a.add_val(.ident, 'holder')
-	field_base := t.make_selector_op(inner, 'field', 'unknown', .dot)
+	field_base := t.make_selector_op(inner, 'field', flat.source_type_unknown, .dot)
 	assert !t.callee_base_is_not_a_runtime_value(field_base)
 
 	typed_base := t.a.add_val(.ident, 'builder')

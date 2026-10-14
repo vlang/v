@@ -2592,7 +2592,7 @@ fn markused_fn_has_receiver_param(a &flat.FlatAst, node flat.Node) bool {
 		return false
 	}
 	first := a.child_node(&node, 0)
-	if first.kind != .param || first.typ_text().len == 0 {
+	if first.kind != .param || first.typ == 0 {
 		return false
 	}
 	receiver := node.value.all_before_last('.').all_after_last('.')
@@ -3091,7 +3091,7 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 				scan.needs_map_runtime = scan.type_needs_map_runtime(tc.resolve_type(flat.NodeId(node_idx)), tc)
 			}
 		}
-		if node.typ_text().len > 0 {
+		if node.typ != 0 {
 			if !scan.needs_channel_helpers && markused_type_text_is_channel(node.typ_text()) {
 				scan.needs_channel_helpers = true
 			}
@@ -6226,7 +6226,7 @@ fn (c &CallCollector) checked_local_bindings(root &flat.Node, cur_module string,
 			}
 		}
 		if node.kind == .decl_assign {
-			if node.typ_text().len > 0 {
+			if node.typ != 0 {
 				if _ := c.contextual_alias_type_name(node.typ_text(), cur_module, imports) {
 					return none
 				}
@@ -6396,7 +6396,7 @@ fn (c &CallCollector) local_value_info_for_names(node &flat.Node, cur_module str
 		child_id := c.a.child(node, i)
 		if int(child_id) >= 0 {
 			param := c.a.node(child_id)
-			if param.kind == .param && param.value.len > 0 && param.typ_text().len > 0 {
+			if param.kind == .param && param.value.len > 0 && param.typ != 0 {
 				type_names.set(param.value, param_types.get(param.value) or {
 					markused_resolve_imported_type_name(param.typ_text(), imports)
 				})
@@ -6589,7 +6589,7 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 			}
 			continue
 		}
-		if child.kind == .param && child.value.len > 0 && child.typ_text().len > 0 {
+		if child.kind == .param && child.value.len > 0 && child.typ != 0 {
 			if !root || !type_names.contains(child.value) {
 				markused_set_local_type(child.value, markused_resolve_imported_type_name(child.typ_text(), imports), mut type_names, mut changes)
 			}
@@ -6645,7 +6645,7 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 				if int(rhs_id) < 0 {
 					continue
 				}
-				type_name := if lhs_count == 1 && child.typ_text().len > 0 {
+				type_name := if lhs_count == 1 && child.typ != 0 {
 					c.local_decl_type_name(child.typ_text(), rhs_id, cur_module, imports, pre_types)
 				} else {
 					c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, names, pre_types)
@@ -6697,7 +6697,7 @@ fn (c &CallCollector) seed_lambda_param_types(id flat.NodeId, lambda &flat.Node,
 			continue
 		}
 		mut typ := if i < param_types.len { param_types[i] } else { '' }
-		if typ.len == 0 && param.typ_text().len > 0 {
+		if typ.len == 0 && param.typ != 0 {
 			typ = markused_resolve_imported_type_name(param.typ_text(), imports)
 		}
 		if typ.len > 0 {
@@ -7880,7 +7880,7 @@ fn (c &CallCollector) generic_alias_local_type_names(fn_node &flat.Node, cur_mod
 		child_id := c.a.child(fn_node, i)
 		if int(child_id) >= 0 {
 			child := c.a.node(child_id)
-			if child.kind == .param && child.value.len > 0 && child.typ_text().len > 0 {
+			if child.kind == .param && child.value.len > 0 && child.typ != 0 {
 				result.set(child.value, markused_resolve_imported_type_name(markused_substitute_alias_generics(child.typ_text(), inferred), imports))
 			}
 			stack << child_id
@@ -7889,7 +7889,7 @@ fn (c &CallCollector) generic_alias_local_type_names(fn_node &flat.Node, cur_mod
 	for stack.len > 0 {
 		id := stack.pop()
 		child := c.a.node(id)
-		if child.kind == .param && child.value.len > 0 && child.typ_text().len > 0 {
+		if child.kind == .param && child.value.len > 0 && child.typ != 0 {
 			result.set(child.value, markused_resolve_imported_type_name(markused_substitute_alias_generics(child.typ_text(), inferred), imports))
 		} else if child.kind == .decl_assign {
 			mut i := 0
@@ -7899,7 +7899,7 @@ fn (c &CallCollector) generic_alias_local_type_names(fn_node &flat.Node, cur_mod
 				if int(lhs_id) >= 0 && int(rhs_id) >= 0 {
 					lhs := c.a.node(lhs_id)
 					if lhs.kind == .ident && lhs.value.len > 0 {
-						type_name := if child.children_count == 2 && child.typ_text().len > 0 {
+						type_name := if child.children_count == 2 && child.typ != 0 {
 							c.local_decl_type_name(markused_substitute_alias_generics(child.typ_text(), inferred), rhs_id, cur_module, imports, result)
 						} else {
 							c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, map[string]bool{}, result)
@@ -8192,8 +8192,10 @@ fn (c &CallCollector) top_level_receiver_type_name(base_id flat.NodeId, cur_modu
 			if inner_type.len > 0 {
 				struct_name := c.struct_lookup_name(inner_type, cur_module)
 				lookup := if struct_name.len > 0 { struct_name } else { inner_type }
-				if field_type := c.tc.struct_field_type_name(lookup, base.value) {
-					if field_type.len > 0 {
+				if field_type_source_id := c.tc.struct_field_type_name(flat.source_type_id(lookup), base.value) {
+					field_type := flat.source_type_name(field_type_source_id)
+
+					if field_type_source_id != 0 {
 						return field_type
 					}
 				}
@@ -8736,7 +8738,7 @@ fn (c &CallCollector) generic_factory_type_arg(id flat.NodeId) string {
 			return '${base}[${args.join(', ')}]'
 		}
 		.array_init {
-			return if node.typ_text().len > 0 {
+			return if node.typ != 0 {
 				node.typ_text()
 			} else if node.value.starts_with('[') {
 				node.value
@@ -9396,7 +9398,7 @@ fn (c &CallCollector) fn_value_selector_names(node &flat.Node, cur_module string
 		}
 	}
 	mut type_names := [resolve_type_name(c.node_type(base_id))]
-	if base.typ_text().len > 0 {
+	if base.typ != 0 {
 		annotated_name := resolve_type_name(c.tc.parse_type(base.typ))
 		if annotated_name.len > 0 && annotated_name !in type_names {
 			type_names << annotated_name
@@ -9741,8 +9743,10 @@ fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string,
 			if inner_type.len > 0 {
 				struct_name := c.struct_lookup_name(inner_type, cur_module)
 				lookup := if struct_name.len > 0 { struct_name } else { inner_type }
-				if field_type := c.tc.struct_field_type_name(lookup, base.value) {
-					if field_type.len > 0 {
+				if field_type_source_id := c.tc.struct_field_type_name(flat.source_type_id(lookup), base.value) {
+					field_type := flat.source_type_name(field_type_source_id)
+
+					if field_type_source_id != 0 {
 						return field_type
 					}
 				}
@@ -10610,7 +10614,7 @@ fn (c &CallCollector) specialized_struct_default_type(type_text string, id flat.
 	// Canonical bare argument names belong to main; protect them from an imported declaration's scope.
 	qualified_type := c.generic_factory_qualified_type_text(substituted_type, id, 'main', map[string]string{})
 	// All names are semantic now; no declaration-file import may capture them.
-	return types.unalias_type(c.tc.parse_resolution_type_in_file(qualified_type, ''))
+	return types.unalias_type(c.tc.parse_resolution_type_in_file(flat.source_type_id(qualified_type), ''))
 }
 
 struct SourceTypes {
@@ -10649,7 +10653,7 @@ fn (c &CallCollector) value_type_in_source(type_text string, node &flat.Node, im
 			if type_id := file.types[text_id] {
 				if typ := c.tc.type_by_id(type_id) { return typ }
 			}
-			typ := types.unalias_type(c.tc.parse_resolution_type_in_file(type_text.trim_space(), source.name))
+			typ := types.unalias_type(c.tc.parse_resolution_type_in_file(flat.source_type_id(type_text.trim_space()), source.name))
 			if !markused_type_has_unknown(typ) {
 				if type_id := c.tc.semantic_type_id(typ) {
 					file.types[text_id] = type_id
@@ -10660,7 +10664,7 @@ fn (c &CallCollector) value_type_in_source(type_text string, node &flat.Node, im
 	}
 	clean := type_text.trim_space()
 	return types.unalias_type(if source_file := c.a.source_files[node.pos.id] {
-		c.tc.parse_resolution_type_in_file(clean, source_file.name)
+		c.tc.parse_resolution_type_in_file(flat.source_type_id(clean), source_file.name)
 	} else {
 		c.tc.parse_canonical_type(flat.source_type_id(markused_resolve_imported_type_name(clean, imports)))
 	})
@@ -10756,7 +10760,7 @@ fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module st
 			has_len = true
 		}
 	}
-	typ := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
+	typ := if node.typ != 0 { node.typ_text() } else { node.value }
 	array_type := c.value_type_in_source(typ, node, imports)
 	element_type := if array_type is types.Array {
 		if !has_len {
@@ -10779,9 +10783,9 @@ fn (c &CallCollector) collect_array_default_calls(node &flat.Node, cur_module st
 // array_init_element_type_text returns the value type initialized by an array literal.
 // Fixed-array elements initialize their contents too, but nested dynamic arrays remain empty.
 fn array_init_element_type_text(node &flat.Node) string {
-	mut typ := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
+	mut typ := if node.typ != 0 { node.typ_text() } else { node.value }
 	// Strip the literal's outer dimension once; further dynamic dimensions are containers.
-	if node.typ_text().len > 0 && typ.starts_with('[') {
+	if node.typ != 0 && typ.starts_with('[') {
 		close := markused_matching_bracket(typ, 0)
 		if close == typ.len {
 			return ''

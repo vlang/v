@@ -463,14 +463,14 @@ fn test_omitted_parameter_defaults_skip_receiver_and_named_arguments() {
 	mut a := flat.FlatAst.new()
 	default_ident := a.add_node(flat.Node{ kind: .ident, value: 'default_level' })
 	default_call := call_helper_node(mut a, flat.Node{ kind: .call }, [default_ident])
-	field := call_helper_node(mut a, flat.Node{ kind: .field_decl, value: 'level', typ: flat.source_type_id('int') }, [
+	field := call_helper_node(mut a, flat.Node{ kind: .field_decl, value: 'level', typ: flat.source_type_int }, [
 		default_call,
 	])
 	config := call_helper_node(mut a, flat.Node{ kind: .struct_decl, value: 'Config' }, [
 		field,
 	])
 	receiver := a.add_node(flat.Node{ kind: .param, value: 'self', typ: flat.source_type_id('Receiver'), op: .dot })
-	data := a.add_node(flat.Node{ kind: .param, value: 'data', typ: flat.source_type_id('int') })
+	data := a.add_node(flat.Node{ kind: .param, value: 'data', typ: flat.source_type_int })
 	options := a.add_node(flat.Node{ kind: .param, value: 'options', typ: flat.source_type_id('Config') })
 	decl := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'consume' }, [
 		receiver,
@@ -1596,7 +1596,7 @@ fn test_unindexed_generic_factory_infers_short_struct_fields_together() {
 		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
 		tc.struct_generic_params['gates.Params'] = ['P']
-		count_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'count', typ: flat.source_type_id('int') })
+		count_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'count', typ: flat.source_type_int })
 		items_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'items', typ: flat.source_type_id(pattern) })
 		struct_id := call_helper_node(mut a, flat.Node{ kind: .struct_decl, value: 'Params' }, [
 			count_decl,
@@ -2335,7 +2335,7 @@ fn test_reused_local_visibility_keeps_shadowed_callback_and_constant_edges() {
 	const_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [const_lhs, const_rhs])
 	inner_const := a.add_val(.ident, 'answer')
 	block := call_helper_node(mut a, flat.Node{ kind: .block }, [decl, inner, const_decl, inner_const])
-	lambda_param := a.add_node(flat.Node{ kind: .ident, value: 'callback', typ: flat.source_type_id('int') })
+	lambda_param := a.add_node(flat.Node{ kind: .ident, value: 'callback', typ: flat.source_type_int })
 	lambda_use := a.add_val(.ident, 'callback')
 	lambda_body := call_helper_node(mut a, flat.Node{ kind: .block }, [lambda_use])
 	lambda := call_helper_node(mut a, flat.Node{ kind: .lambda_expr }, [lambda_param, lambda_body])

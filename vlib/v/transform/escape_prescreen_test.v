@@ -25,13 +25,13 @@ fn ordinary_escape_fixture_c(mode string, prescreen bool) string {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.ordinary_escape_precheck = prescreen
 	t.cur_module = 'main'
-	param := a.add_node(flat.Node{ kind: .param, value: 'input', typ: flat.source_type_id('int') })
+	param := a.add_node(flat.Node{ kind: .param, value: 'input', typ: flat.source_type_int })
 	value := t.make_ident('input')
 	tc.register_synth_type(value, types.Type(types.int_))
 	decl := t.make_decl_assign_typed('value', value, 'int')
 	mut stmts := [decl]
 	if mode == 'call' {
-		call := t.make_call_typed('identity', [t.make_ident('value')], 'int')
+		call := t.make_call_typed('identity', [t.make_ident('value')], flat.source_type_int)
 		stmts << t.make_expr_stmt(call)
 	} else if mode == 'aggregate' {
 		array := escape_prescreen_node(mut a, flat.Node{ kind: .array_literal, typ: flat.source_type_id('[]int') }, [
@@ -48,7 +48,7 @@ fn ordinary_escape_fixture_c(mode string, prescreen bool) string {
 	}
 	stmts << t.make_return(t.make_ident('value'), 'int')
 	body := t.make_block(stmts)
-	fn_id := escape_prescreen_node(mut a, flat.Node{ kind: .fn_decl, value: 'compute', typ: flat.source_type_id('int') }, [
+	fn_id := escape_prescreen_node(mut a, flat.Node{ kind: .fn_decl, value: 'compute', typ: flat.source_type_int }, [
 		param,
 		body,
 	])
@@ -95,19 +95,19 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.cur_module = 'main'
-		t.set_cur_fn_ret_type('int')
+		t.set_cur_fn_ret_type(flat.source_type_int)
 		value := t.make_ident('value')
 		mut source := value
 		match mode {
 			'address' {
-				t.set_var_type('value', flat.source_type_id('int'))
-				t.set_cur_fn_ret_type('&int')
+				t.set_var_type('value', flat.source_type_int)
+				t.set_cur_fn_ret_type(flat.source_type_id('&int'))
 				source = t.make_prefix(.amp, value)
 				tc.register_synth_type(source, types.Type(types.Pointer{ base_type: types.Type(types.int_) }))
 			}
 			'selector' {
 				// Includes standalone bound methods, even without an explicit &.
-				source = t.make_selector(value, 'read', 'fn () int')
+				source = t.make_selector(value, 'read', flat.source_type_id('fn () int'))
 			}
 			'reference_loop' {
 				container := t.make_ident('items')
@@ -131,7 +131,7 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 				}, [body])
 			}
 			'spawn' {
-				call := t.make_call_typed('retain', [value], 'int')
+				call := t.make_call_typed('retain', [value], flat.source_type_int)
 				source = escape_prescreen_node(mut a, flat.Node{ kind: .spawn_expr }, [call])
 			}
 			else {
@@ -165,7 +165,7 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 						value,
 					])
 				} else {
-					source = t.make_call_typed('retain', [value], 'int')
+					source = t.make_call_typed('retain', [value], flat.source_type_int)
 				}
 			}
 		}
@@ -207,7 +207,7 @@ fn test_ordinary_escape_prescreen_rejects_inferred_generic_reference_signature()
 	_ = escape_prescreen_node(mut a, flat.Node{
 		kind:    .fn_decl
 		value:   'retain'
-		typ:     flat.source_type_id('int')
+		typ:     flat.source_type_int
 		payload: flat.node_payload(['T'])
 	}, [param, fn_body])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -215,7 +215,7 @@ fn test_ordinary_escape_prescreen_rejects_inferred_generic_reference_signature()
 	t.set_var_type('value', flat.source_type_id('&[2]int'))
 	value := t.make_ident('value')
 	tc.register_synth_type(value, tc.parse_type(flat.source_type_id('&[2]int')))
-	call := t.make_call_typed('retain', [value], 'int')
+	call := t.make_call_typed('retain', [value], flat.source_type_int)
 	call_node := a.nodes[int(call)]
 	declared := t.call_param_types_for_node('retain', call_node)
 	assert declared.len == 1
@@ -269,7 +269,7 @@ fn test_ordinary_escape_proof_keeps_closure_cleanup_fallback_metadata() {
 		tc.register_synth_type(value, types.Type(types.Struct{ name_id: flat.source_type_id('Thing') }))
 		mut creator := flat.empty_node
 		if mode in ['selector', 'wrapped_selector'] {
-			creator = t.make_selector(value, 'read', 'fn () int')
+			creator = t.make_selector(value, 'read', flat.source_type_id('fn () int'))
 			if mode == 'wrapped_selector' {
 				creator = escape_prescreen_node(mut a, flat.Node{ kind: .paren }, [creator])
 			}

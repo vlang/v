@@ -113,10 +113,10 @@ fn (g &FlatGen) fixed_array_type_from_alias_text(type_name string) ?types.ArrayF
 		if fixed := array_fixed_type(g.tc.parse_type(flat.source_type_id(cur))) {
 			return fixed
 		}
-		mut next := g.tc.type_aliases.get(cur) or { '' }
+		mut next := flat.source_type_name(g.tc.type_aliases.type_id(cur) or { u32(0) })
 		if next.len == 0 {
 			qname := g.tc.qualify_name(cur)
-			next = g.tc.type_aliases.get(qname) or { '' }
+			next = flat.source_type_name(g.tc.type_aliases.type_id(qname) or { u32(0) })
 		}
 		if next.len == 0 || next == cur {
 			return none
@@ -405,7 +405,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 			return
 		}
 	}
-	annotated_is_fixed := node.typ_text().len > 0 && array_fixed_type(g.parse_node_type(&node)) != none
+	annotated_is_fixed := node.typ != 0 && array_fixed_type(g.parse_node_type(&node)) != none
 	if !annotated_is_fixed
 		&& fixed_array_option_payload_type(types.unwrap_pointer(g.usable_expr_type(id))) != none {
 		g.gen_expr(id)
@@ -1007,7 +1007,7 @@ fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFix
 	if fn_node.kind != .selector || fn_node.value != 'to_fixed_size' || fn_node.children_count == 0 {
 		return none
 	}
-	if node.typ_text().len > 0 {
+	if node.typ != 0 {
 		if fixed := array_fixed_type(g.parse_node_type(&node)) {
 			return fixed
 		}

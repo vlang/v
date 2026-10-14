@@ -669,7 +669,7 @@ fn test_fastc_emits_explicit_c_extern_prototype() {
 	functions := {
 		'C.external_api': FastcFunctionSignature{
 			parameter_types: flat.TypeTextList.from_names(['int', 'voidptr'])
-			return_type:     flat.source_type_id('int')
+			return_type:     flat.source_type_int
 			is_c_extern:     true
 		}
 	}
@@ -5765,7 +5765,7 @@ fn test_literal_membership_materializes_candidates_before_comparison() {
 		s:        scanner.new_scanner(prefs, .normal)
 		locals:   {
 			'subject': FastcLocal{
-				typ: flat.source_type_id('int')
+				typ: flat.source_type_int
 			}
 		}
 	}
@@ -12492,7 +12492,7 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 		locals:                 {
 			'result': FastcLocal{
 				is_mut: true
-				typ:    flat.source_type_id('voidptr')
+				typ:    flat.source_type_voidptr
 			}
 		}
 		s:                      scanner.new_scanner(prefs, .normal)

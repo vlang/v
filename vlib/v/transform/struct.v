@@ -45,7 +45,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 	mut field_types := map[string]string{}
 	if !t.lean_struct_init_fields {
 		for f in info.fields {
-			field_types[f.name] = t.lookup_struct_field_type(node.value, f.name) or { f.typ_text() }
+			field_types[f.name] = flat.source_type_name(t.lookup_struct_field_type(flat.source_type_id(node.value), f.name) or { f.typ })
 		}
 	}
 	mut field_ids := []flat.NodeId{}
@@ -87,9 +87,9 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			}
 			mut target_field_name := field_name
 			mut field_type := if t.lean_struct_init_fields {
-				t.lookup_struct_field_type(node.value, field_name) or {
-					struct_info_field_type(info, field_name)
-				}
+				flat.source_type_name(t.lookup_struct_field_type(flat.source_type_id(node.value), field_name) or {
+					flat.source_type_id(struct_info_field_type(info, field_name))
+				})
 			} else {
 				field_types[field_name] or { '' }
 			}
@@ -102,7 +102,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 					if f.name != field_name && embedded_selector_matches(field_name, f.name) {
 						target_field_name = f.name
 						field_type = if t.lean_struct_init_fields {
-							t.lookup_struct_field_type(node.value, f.name) or { f.typ_text() }
+							flat.source_type_name(t.lookup_struct_field_type(flat.source_type_id(node.value), f.name) or { f.typ })
 						} else {
 							field_types[f.name] or { f.typ_text() }
 						}
@@ -126,9 +126,9 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 								}
 							}
 						}
-						field_type = t.lookup_struct_field_raw_type(embedded_owner, target_field_name) or {
-							t.checker_struct_field_type_name(node.value, field_name) or { '' }
-						}
+						field_type = flat.source_type_name(t.lookup_struct_field_raw_type(flat.source_type_id(embedded_owner), target_field_name) or {
+							t.checker_struct_field_type_name(flat.source_type_id(node.value), field_name) or { u32(0) }
+						})
 					}
 				}
 			}
@@ -258,7 +258,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 		}
 		field_ids << t.make_promoted_struct_field_init(path, promoted)
 	}
-	output_typ := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
+	output_typ := if node.typ != 0 { node.typ_text() } else { node.value }
 	new_id := if t.inplace_struct_fields && t.rewrite_children_in_place(id, field_ids) {
 		if output_typ != node.typ_text() {
 			t.set_node_typ(int(id), output_typ)
@@ -357,7 +357,8 @@ fn (mut t Transformer) clone_promoted_default_in_decl_scope(id flat.NodeId, modu
 }
 
 fn (mut t Transformer) promoted_struct_init_field_value(field FieldInfo, init flat.NodeId, materialized bool) flat.NodeId {
-	normalized_type := flat.source_type_name(t.normalize_type_alias(field.typ))
+	normalized_type_source_id := t.normalize_type_alias(field.typ)
+	normalized_type := flat.source_type_name(normalized_type_source_id)
 	if !normalized_type.starts_with('&') {
 		return init
 	}
@@ -365,7 +366,7 @@ fn (mut t Transformer) promoted_struct_init_field_value(field FieldInfo, init fl
 	if materialized {
 		pointee_type := t.trim_pointer_type(normalized_type)
 		dup := t.make_memdup_call_for_type(value, pointee_type)
-		return t.make_cast(normalized_type, dup, normalized_type)
+		return t.make_cast(normalized_type_source_id, dup, normalized_type_source_id)
 	}
 	t.set_node_typ(int(value), normalized_type)
 	return value
@@ -432,10 +433,11 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 				default_value := t.a.nodes[int(default_value_id)]
 				provided_value := t.a.nodes[int(provided_value_id)]
 				if default_value.kind == .struct_init && provided_value.kind == .struct_init {
-					field_type := t.lookup_struct_field_type(struct_type, field_name) or {
-						field.typ_text()
+					field_type_source_id := t.lookup_struct_field_type(flat.source_type_id(struct_type), field_name) or {
+						field.typ
 					}
-					child_type := t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(field_type))))
+					field_type := flat.source_type_name(field_type_source_id)
+					child_type := t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(field_type_source_id)))
 					merged_child := t.merge_promoted_struct_default(provided_value_id,
 						default_value_id, child_type)
 					child_start := t.a.children.len
@@ -447,7 +449,7 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 						children_count: 1
 						pos:            provided_field.pos
 						value:          field_name
-						typ:            flat.source_type_id(if provided_field.typ_text().len > 0 {
+						typ:            flat.source_type_id(if provided_field.typ != 0 {
 							provided_field.typ_text()
 						} else {
 							field_type
@@ -459,7 +461,7 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 		}
 		mut missing_id := field_id
 		if field.kind == .field_init && field.children_count > 0 {
-			field_type := t.lookup_struct_field_type(struct_type, field_name) or { field.typ_text() }
+			field_type := flat.source_type_name(t.lookup_struct_field_type(flat.source_type_id(struct_type), field_name) or { field.typ })
 			default_value_id := t.a.child(&field, 0)
 			if source_file := t.a.source_files[field.pos.id] {
 				t.cur_file = source_file.name
@@ -484,7 +486,7 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 				children_count: 1
 				pos:            field.pos
 				value:          field_name
-				typ:            flat.source_type_id(if field.typ_text().len > 0 {
+				typ:            flat.source_type_id(if field.typ != 0 {
 					field.typ_text()
 				} else {
 					field_type
@@ -568,9 +570,10 @@ fn (mut t Transformer) materialize_promoted_struct_default(init_id flat.NodeId, 
 		if field_name.len == 0 {
 			continue
 		}
-		field_type := t.lookup_struct_field_type(struct_type, field_name) or { field.typ_text() }
+		field_type_source_id := t.lookup_struct_field_type(flat.source_type_id(struct_type), field_name) or { field.typ }
+
 		value := t.a.child(field, 0)
-		selector := t.make_selector(t.make_ident(tmp_name), field_name, field_type)
+		selector := t.make_selector(t.make_ident(tmp_name), field_name, field_type_source_id)
 		t.pending_stmts << t.make_assign(selector, value)
 	}
 	result := t.make_ident(tmp_name)
@@ -670,7 +673,7 @@ fn (mut t Transformer) transform_struct_children(id flat.NodeId, node flat.Node)
 		}
 	}
 	if t.inplace_struct_fields && t.rewrite_children_in_place(id, field_ids) {
-		output_typ := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
+		output_typ := if node.typ != 0 { node.typ_text() } else { node.value }
 		if output_typ != node.typ_text() {
 			t.set_node_typ(int(id), output_typ)
 		}
@@ -687,7 +690,7 @@ fn (mut t Transformer) transform_struct_children(id flat.NodeId, node flat.Node)
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            flat.source_type_id(if node.typ_text().len > 0 {
+		typ:            flat.source_type_id(if node.typ != 0 {
 			node.typ_text()
 		} else {
 			node.value
@@ -735,7 +738,7 @@ fn (mut t Transformer) infer_bare_generic_struct_init_type(node flat.Node) ?stri
 	mut args := []string{cap: params.len}
 	for param in params {
 		arg := inferred[param] or { return none }
-		if arg.len == 0 || t.generic_arg_is_unresolved(arg) {
+		if arg.len == 0 || t.generic_arg_is_unresolved(flat.source_type_id(arg)) {
 			return none
 		}
 		args << arg
@@ -779,8 +782,9 @@ fn (t &Transformer) nested_generic_defaults_need_lowering(type_name string, mut 
 	if type_name.len == 0 || type_name[0] in [`&`, `?`, `!`] || type_name.starts_with('map[') || type_name.starts_with('[]') || type_name in visited {
 		return false
 	}
-	normalized := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(type_name)))
-	if normalized.len == 0 || normalized[0] in [`&`, `?`, `!`] || normalized.starts_with('map[') || normalized.starts_with('[]') {
+	normalized_source_id := t.normalize_type_alias(flat.source_type_id(type_name))
+	normalized := flat.source_type_name(normalized_source_id)
+	if normalized_source_id == 0 || normalized[0] in [`&`, `?`, `!`] || normalized.starts_with('map[') || normalized.starts_with('[]') {
 		return false
 	}
 	if t.is_fixed_array_type(normalized) {
@@ -798,7 +802,7 @@ fn (t &Transformer) nested_generic_defaults_need_lowering(type_name string, mut 
 			if generic && args.len > 0 { return true }
 			continue
 		}
-		field_type := t.lookup_struct_field_type(normalized, field.name) or { field.typ_text() }
+		field_type := flat.source_type_name(t.lookup_struct_field_type(normalized_source_id, field.name) or { field.typ })
 		if t.nested_generic_defaults_need_lowering(field_type, mut visited) { return true }
 	}
 	return false
@@ -832,17 +836,19 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 			missing_defaults[field.name] = field.default_expr
 			continue
 		}
-		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ_text() }
+		field_type_source_id := t.lookup_struct_field_type(flat.source_type_id(node.value), field.name) or { field.typ }
+		field_type := flat.source_type_name(field_type_source_id)
 		mut visited := map[string]bool{}
 		if t.nested_generic_defaults_need_lowering(field_type, mut visited) {
-			normalized_field_type := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(field_type)))
+			normalized_field_type_source_id := t.normalize_type_alias(field_type_source_id)
+			normalized_field_type := flat.source_type_name(normalized_field_type_source_id)
 			missing_defaults[field.name] = if t.is_fixed_array_type(normalized_field_type) {
-				t.make_fixed_array_init(normalized_field_type)
+				t.make_fixed_array_init(normalized_field_type_source_id)
 			} else {
 				t.a.add_node(flat.Node{
 					kind:  .struct_init
 					value: field_type
-					typ:   flat.source_type_id(field_type)
+					typ:   field_type_source_id
 					pos:   node.pos
 				})
 			}
@@ -855,7 +861,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		}
 		// The node passes through untouched, but downstream consumers (e.g.
 		// the sum-wrap decision for `return SNull{}`) need its type text.
-		if node.typ_text().len == 0 && node.value.len > 0 {
+		if node.typ == 0 && node.value.len > 0 {
 			t.set_node_typ(int(id), node.value)
 		}
 		return id
@@ -907,7 +913,8 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 			continue
 		}
 		t.cur_file = old_file
-		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ_text() }
+		field_type_source_id_2 := t.lookup_struct_field_type(flat.source_type_id(node.value), field.name) or { field.typ }
+		field_type := flat.source_type_name(field_type_source_id_2)
 		default_id := t.specialize_struct_default_expr(resolved_node_type, missing_defaults[field.name])
 		default_node := t.a.nodes[int(default_id)]
 		if source_file := t.a.source_files[default_node.pos.id] {
@@ -938,7 +945,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 			children_start: fi_start
 			children_count: 1
 			value:          field.name
-			typ:            flat.source_type_id(field_type)
+			typ:            field_type_source_id_2
 		})
 		provided[field.name] = true
 		added = true
@@ -959,7 +966,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		}
 		// The node passes through untouched, but downstream consumers (e.g.
 		// the sum-wrap decision for `return SNull{}`) need its type text.
-		if node.typ_text().len == 0 && node.value.len > 0 {
+		if node.typ == 0 && node.value.len > 0 {
 			t.set_node_typ(int(id), node.value)
 		}
 		return id
@@ -975,7 +982,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            flat.source_type_id(if node.typ_text().len > 0 {
+		typ:            flat.source_type_id(if node.typ != 0 {
 			node.typ_text()
 		} else {
 			node.value
@@ -1178,7 +1185,7 @@ fn (t &Transformer) unique_qualified_struct_for_short(name string) ?string {
 		return none
 	}
 	if t.struct_short_name_index_ready {
-		qualified := t.struct_short_name_index.get(name) or { return none }
+		qualified := flat.source_type_name(t.struct_short_name_index.type_id(name) or { return none })
 		if qualified != struct_short_name_ambiguous && !qualified.contains('[') {
 			return qualified
 		}
@@ -1303,7 +1310,9 @@ fn (t &Transformer) lookup_struct_info_direct(name string) ?StructInfo {
 			}
 		}
 	} else if t.struct_short_name_index_ready {
-		if qualified := t.struct_short_name_index.get(name) {
+		if qualified_source_id := t.struct_short_name_index.type_id(name) {
+			qualified := flat.source_type_name(qualified_source_id)
+
 			if qualified != struct_short_name_ambiguous {
 				return t.structs[qualified]
 			}
@@ -1401,7 +1410,9 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		base_type = flat.source_type_name(t.node_type(base_id))
 	}
 	mut assoc_type := node.value
-	if checked_type := t.checker_expr_type_name(id) {
+	if checked_type_source_id := t.checker_expr_type_name(id) {
+		checked_type := flat.source_type_name(checked_type_source_id)
+
 		if assoc_type.len == 0 || checked_type.all_after_last('.') == assoc_type.all_after_last('.') {
 			assoc_type = checked_type
 		}
@@ -1428,9 +1439,9 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 	if info := t.lookup_struct_info(assoc_type) {
 		assoc_module = info.module
 		for field in info.fields {
-			field_types[field.name] = t.lookup_struct_field_type(assoc_type, field.name) or {
-				field.typ_text()
-			}
+			field_types[field.name] = flat.source_type_name(t.lookup_struct_field_type(flat.source_type_id(assoc_type), field.name) or {
+				field.typ
+			})
 		}
 	}
 
@@ -1484,7 +1495,7 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 			value = t.clone_borrowed_storage_projection(value_id, value, field_type)
 		}
 		t.drain_pending(mut prelude)
-		prelude << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.value, field_type),
+		prelude << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.value, flat.source_type_id(field_type)),
 			value)
 	}
 
@@ -1500,7 +1511,7 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 fn (mut t Transformer) assoc_mapped_base_init(base flat.NodeId, base_type string, assoc_type string, mut prelude []flat.NodeId) ?flat.NodeId {
 	source_type := t.trim_pointer_type(base_type)
 	if source_type.len == 0 || assoc_type == ''
-		|| flat.source_type_name(t.normalize_type_alias(flat.source_type_id(source_type))) == flat.source_type_name(t.normalize_type_alias(flat.source_type_id(assoc_type))) {
+		|| t.normalize_type_alias(flat.source_type_id(source_type)) == t.normalize_type_alias(flat.source_type_id(assoc_type)) {
 		return none
 	}
 	target_info := t.lookup_struct_info(assoc_type) or { return none }
@@ -1517,14 +1528,16 @@ fn (mut t Transformer) assoc_mapped_base_init(base flat.NodeId, base_type string
 	mut field_ids := []flat.NodeId{}
 	for field in target_info.fields {
 		source_field := source_fields[field.name] or { continue }
-		target_type := t.lookup_struct_field_type(assoc_type, field.name) or { field.typ_text() }
-		source_field_type := t.lookup_struct_field_type(source_type, source_field.name) or {
-			source_field.typ_text()
+		target_type_source_id := t.lookup_struct_field_type(flat.source_type_id(assoc_type), field.name) or { field.typ }
+		target_type := flat.source_type_name(target_type_source_id)
+		source_field_type_source_id := t.lookup_struct_field_type(flat.source_type_id(source_type), source_field.name) or {
+			source_field.typ
 		}
-		if flat.source_type_name(t.normalize_type_alias(flat.source_type_id(target_type))) != flat.source_type_name(t.normalize_type_alias(flat.source_type_id(source_field_type))) {
+
+		if t.normalize_type_alias(target_type_source_id) != t.normalize_type_alias(source_field_type_source_id) {
 			continue
 		}
-		value := t.make_selector(t.make_ident(source_name), source_field.name, source_field_type)
+		value := t.make_selector(t.make_ident(source_name), source_field.name, source_field_type_source_id)
 		field_ids << t.make_named_field_init(field.name, value, target_type)
 	}
 	if field_ids.len == 0 {
@@ -1573,7 +1586,7 @@ fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node f
 	if !ptr_type.starts_with('&') {
 		ptr_type = '&${value_type}'
 	}
-	cast := t.make_cast(ptr_type, dup, ptr_type)
+	cast := t.make_cast(flat.source_type_id(ptr_type), dup, flat.source_type_id(ptr_type))
 	t.set_node_typ(int(cast), ptr_type)
 	return cast
 }
@@ -1741,7 +1754,7 @@ fn (mut t Transformer) fixed_array_value_to_owned_array(value_id flat.NodeId, fi
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	source_elem := t.make_index(source, t.make_ident(idx_name), elem_type)
+	source_elem := t.make_index(source, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	pending_start := t.pending_stmts.len
 	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
 	mut body := t.pending_stmts[pending_start..].clone()
@@ -1751,7 +1764,7 @@ fn (mut t Transformer) fixed_array_value_to_owned_array(value_id flat.NodeId, fi
 	body << t.make_expr_stmt(t.make_call_typed('array_push', [
 		t.make_prefix(.amp, t.make_ident(out_name)),
 		t.make_prefix(.amp, t.make_ident(value_name)),
-	], 'void'))
+	], flat.source_type_void))
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
 		flags: flat.node_flag_skip_ownership_drops
 	})
@@ -1771,9 +1784,9 @@ fn (mut t Transformer) fixed_array_data_to_array_no_alloc(data_id flat.NodeId, f
 	return t.make_call_typed('new_array_from_c_array_no_alloc', [
 		len_expr,
 		len_expr,
-		t.make_sizeof_type(elem_type),
+		t.make_sizeof_type(flat.source_type_id(elem_type)),
 		data_id,
-	], array_type)
+	], flat.source_type_id(array_type))
 }
 
 fn (mut t Transformer) fixed_array_data_to_array(data_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
@@ -1782,9 +1795,9 @@ fn (mut t Transformer) fixed_array_data_to_array(data_id flat.NodeId, fixed_type
 	return t.make_call_typed('new_array_from_c_array', [
 		len_expr,
 		len_expr,
-		t.make_sizeof_type(elem_type),
+		t.make_sizeof_type(flat.source_type_id(elem_type)),
 		data_id,
-	], array_type)
+	], flat.source_type_id(array_type))
 }
 
 // transform_array_init_expr transforms .array_init nodes (e.g. `[]int{len: n}`).
@@ -1828,7 +1841,7 @@ fn (mut t Transformer) transform_array_init_expr(id flat.NodeId, node flat.Node)
 fn (mut t Transformer) transform_map_init_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	raw_type := if node.value.len > 0 {
 		node.value
-	} else if node.typ_text().len > 0 {
+	} else if node.typ != 0 {
 		node.typ_text()
 	} else {
 		flat.source_type_name(t.node_type(id))

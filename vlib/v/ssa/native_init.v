@@ -14,7 +14,7 @@ fn (mut b Builder) build_native_initialization() {
 	b.build_native_initializer_functions()
 	init_id := b.register_synthetic_function('__ssa_init', b.void_type, [])
 	b.cur_func = init_id
-	b.cur_func_ret_type = flat.source_type_id('')
+	b.cur_func_ret_type = u32(0)
 	b.cur_module = 'main'
 	b.reset_function_state()
 	b.cur_block = b.m.add_block(init_id, 'entry')
