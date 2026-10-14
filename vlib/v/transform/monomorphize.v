@@ -1516,6 +1516,9 @@ fn (mut t Transformer) specialize_generic_struct_methods(specs map[string]string
 	if !t.needs_generic_struct_method_specialization(decls) {
 		return false
 	}
+	if specs.len == 0 {
+		return false
+	}
 	used_method_names := t.used_generic_method_names()
 	mut any := false
 	for spec, base in specs {
@@ -3245,6 +3248,10 @@ fn generic_type_decl_key(name string, module_name string) string {
 
 fn (mut t Transformer) collect_generic_struct_specs(decls map[string]GenericStructDecl, mut specs map[string]string) {
 	t.ensure_node_module_map()
+	if decls.len == 0 {
+		// A spelling is recorded only as a specialization of one of `decls`.
+		return
+	}
 	for _, target in t.tc.type_aliases {
 		t.collect_generic_struct_spec_from_type(target, '', '', decls, mut specs)
 	}
@@ -3372,16 +3379,37 @@ fn is_plain_type_name_text(text string) bool {
 
 fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]GenericStructDecl, mut specs map[string]string, start int, end int) {
 	t.ensure_node_module_map()
+	if decls.len == 0 {
+		// A spelling is recorded only as a specialization of one of `decls`.
+		return
+	}
 	safe_start := if start < 0 { 0 } else { start }
 	safe_end := if end > t.a.nodes.len { t.a.nodes.len } else { end }
 	mut type_context_module := ''
 	mut type_context_file := ''
 	mut seen_context_types := map[string]bool{}
+	// Nodes share their type texts. The byte test of a text is kept by its
+	// address and length: no text is changed or released during this loop.
+	mut tested_texts := []usize{len: 4096}
+	mut tested_lens := []int{len: 4096}
+	mut tested_results := []bool{len: 4096}
 	for node_idx in safe_start .. safe_end {
 		// The scan appends no node, and most nodes cannot spell a specialization:
 		// only a candidate is copied.
 		scanned := unsafe { &t.a.nodes[node_idx] }
-		mut may_contain_spec := type_text_has_bracket_or_underscore(scanned.typ)
+		mut may_contain_spec := false
+		if scanned.typ.len > 0 {
+			text := usize(scanned.typ.str)
+			slot := int((text >> 3) & 4095)
+			if tested_texts[slot] == text && tested_lens[slot] == scanned.typ.len {
+				may_contain_spec = tested_results[slot]
+			} else {
+				may_contain_spec = type_text_has_bracket_or_underscore(scanned.typ)
+				tested_texts[slot] = text
+				tested_lens[slot] = scanned.typ.len
+				tested_results[slot] = may_contain_spec
+			}
+		}
 		if !may_contain_spec && scanned.kind !in [.sql_expr, .struct_init, .array_init, .map_init,
 			.cast_expr, .as_expr, .sizeof_expr, .offsetof_expr, .typeof_expr, .is_expr] {
 			continue
