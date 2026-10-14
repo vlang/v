@@ -91,7 +91,7 @@ fn (mut t Transformer) prepare_library_bodies() {
 			continue
 		}
 		receiver := key[..dot]
-		if receiver in t.tc.structs || receiver in t.tc.sum_types || receiver in t.tc.type_aliases
+		if receiver in t.tc.structs || t.tc.sum_types.contains(receiver) || t.tc.type_aliases.contains(receiver)
 			|| receiver in t.tc.enum_names {
 			t.library_bodies.methods[receiver] << key
 		}
@@ -113,7 +113,7 @@ fn (mut t Transformer) generic_decl_receiver_is_generic(decl GenericFnDecl) bool
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind == .param {
-			t.collect_generic_param_names_from_type(child.typ, decl.module, mut params)
+			t.collect_generic_param_names_from_type(child.typ_text(), decl.module, mut params)
 			break
 		}
 	}
@@ -294,11 +294,11 @@ fn (mut t Transformer) library_type_parts(text string) ?[]string {
 			parts << library_type_text(substitute_generic_type_text_with_params(field.typ.name(),
 				args, params))
 		}
-	} else if variants := t.tc.sum_types[name] {
+	} else if variants := t.tc.sum_types.get(name) {
 		for variant in variants {
 			parts << library_type_text(variant)
 		}
-	} else if target := t.tc.type_aliases[name] {
+	} else if target := t.tc.type_aliases.get(name) {
 		parts << library_type_text(target)
 	} else if name !in t.tc.enum_names {
 		return none

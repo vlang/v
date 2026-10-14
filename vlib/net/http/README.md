@@ -203,6 +203,8 @@ and years before 1601 remain in `Cookie.unparsed`; they do not replace a valid e
 spells them; `Response.cookies` matches attribute names in any case.
 When serializing `Cookie`, IPv4 literals such as `127.0.0.1` are accepted as domains;
 invalid domains are omitted.
+`Cookie.str()` omits `SameSite` for `.same_site_not_set` and `.same_site_default_mode`.
+The explicit modes write `SameSite=Lax`, `SameSite=Strict` or `SameSite=None`.
 
 `Cookie.str()` writes a cookie only when its name is an RFC 9110 token: letters, digits
 and ``!#$%&'*+-.^_`|~``. For any other name, such as one with a space, `;`, `,`, `=` or
@@ -247,6 +249,15 @@ is not checked again when the header is sent.
 `http.canonical_header_key(name)` returns the canonical spelling of a header name in any
 case, for example `Accept-Encoding` for `accept-ENCODING`. It never fails: like Go's
 `http.CanonicalHeaderKey`, it returns a name that is not valid unchanged.
+
+### Idle connection reuse
+
+Before reusing an idle plain TCP connection, the client checks for a server-side close.
+A closed connection is discarded before sending request bytes, so a POST can use a fresh
+connection safely. Healthy idle connections remain reusable.
+
+If a non-idempotent request fails after transmission starts, the client returns an error
+without replaying it: a missing response does not prove that the server ignored the request.
 
 ### Windows TLS handshake compatibility
 

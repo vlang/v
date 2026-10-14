@@ -28,7 +28,7 @@ fn test_empty_array_generic_diagnostic_prescreen() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_val(.ident, 'consume')
 	empty := a.add_node(flat.Node{ kind: .array_literal })
-	typed := a.add_node(flat.Node{ kind: .array_literal, typ: '[]int' })
+	typed := a.add_node(flat.Node{ kind: .array_literal, typ: flat.source_type_id('[]int') })
 	value := a.add_val(.int_literal, '1')
 	wrapped_start := a.begin_children()
 	a.add_child(empty)

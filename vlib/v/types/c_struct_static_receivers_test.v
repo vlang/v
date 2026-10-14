@@ -94,7 +94,7 @@ fn test_static_c_receiver_metadata_keeps_canonical_declaration_in_both_orders() 
 			mut param := flat.Node{
 				kind:  .param
 				value: 'c'
-				typ:   'C.Counter'
+				typ:   flat.source_type_id('C.Counter')
 			}
 			if module_name == 'main' {
 				param.op = .dot
@@ -109,7 +109,7 @@ fn test_static_c_receiver_metadata_keeps_canonical_declaration_in_both_orders() 
 				} else {
 					'Counter.read'
 				}
-				typ:            'int'
+				typ:            flat.source_type_id('int')
 				children_start: start
 				children_count: 1
 			}))
@@ -119,9 +119,9 @@ fn test_static_c_receiver_metadata_keeps_canonical_declaration_in_both_orders() 
 		tc.build_fn_name_indexes(&a)
 		assert tc.fn_key_is_static_associated('bridge.C.Counter.read')
 		assert !tc.fn_key_is_static_associated('C.Counter.read')
-		assert !tc.method_can_be_called_on_receiver(Type(Struct{ name: 'C.Counter' }),
+		assert !tc.method_can_be_called_on_receiver(Type(Struct{ name_id: flat.source_type_id('C.Counter') }),
 			'read', 'bridge.C.Counter.read')
-		assert tc.method_can_be_called_on_receiver(Type(Struct{ name: 'C.Counter' }), 'read',
+		assert tc.method_can_be_called_on_receiver(Type(Struct{ name_id: flat.source_type_id('C.Counter') }), 'read',
 			'C.Counter.read')
 	}
 }

@@ -29,3 +29,6 @@ fn main() {
 
 `big.jacobi(a, n)` returns the Jacobi symbol `-1`, `0`, or `1`. The modulus `n` must be
 positive and odd; invalid moduli cause a panic.
+
+`integer_from_string` and `integer_from_radix` accept an optional leading sign followed by
+at least one digit. Empty strings and bare `+` or `-` signs return an error.

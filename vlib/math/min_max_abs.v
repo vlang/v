@@ -3,15 +3,33 @@
 // that can be found in the LICENSE file.
 module math
 
-// min returns the minimum of `a` and `b`
+// min returns the minimum of `a` and `b`.
+// For floating point types, if either argument is NaN the result is NaN.
 @[inline]
 pub fn min[T](a T, b T) T {
+	$if T is $float {
+		if a != a {
+			return a
+		}
+		if b != b {
+			return b
+		}
+	}
 	return if a < b { a } else { b }
 }
 
-// max returns the maximum of `a` and `b`
+// max returns the maximum of `a` and `b`.
+// For floating point types, if either argument is NaN the result is NaN.
 @[inline]
 pub fn max[T](a T, b T) T {
+	$if T is $float {
+		if a != a {
+			return a
+		}
+		if b != b {
+			return b
+		}
+	}
 	return if a > b { a } else { b }
 }
 

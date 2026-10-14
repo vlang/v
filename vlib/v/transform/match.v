@@ -15,7 +15,7 @@ fn (mut t Transformer) match_has_sum_type_subject(node flat.Node) bool {
 	if subject_type.len == 0 {
 		return false
 	}
-	return subject_type in t.sum_types
+	return t.sum_types.contains(subject_type)
 }
 
 // resolve_match_subject_type determines the type of a match subject expression.

@@ -403,7 +403,8 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 			g.cache_collect_declaration_refs(encoded)
 		}
 	}
-	for _, payload in g.needed_optional_types {
+	for _, payload_id in g.needed_optional_types.ids {
+		payload := flat.source_type_name(payload_id)
 		g.cache_collect_declaration_refs(payload)
 	}
 	mut seen := map[string]bool{}
@@ -425,15 +426,15 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 	}
 	for name, _ in g.tc.structs {
 		if g.cache_struct_declaration_needed(name) {
-			g.cache_require_declaration_type(types.Struct{ name: name }, mut seen)
+			g.cache_require_declaration_type(types.Struct{ name_id: flat.source_type_id(name) }, mut seen)
 		}
 	}
 	for name, _ in g.interfaces {
-		g.cache_require_declaration_type(types.Interface{ name: name }, mut seen)
+		g.cache_require_declaration_type(types.Interface{ name_id: flat.source_type_id(name) }, mut seen)
 	}
-	for name, _ in g.tc.sum_types {
+	for name, _ in g.tc.sum_types.ids {
 		if g.cache_decl_refs[g.cname(name)] {
-			g.cache_require_declaration_type(types.SumType{ name: name }, mut seen)
+			g.cache_require_declaration_type(types.SumType{ name_id: flat.source_type_id(name) }, mut seen)
 		}
 	}
 	g.collect_referenced_pruned_cache_functions()
@@ -472,18 +473,18 @@ fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[s
 	g.cache_collect_declaration_refs(g.tc.c_type(typ))
 	match typ {
 		types.Struct {
-			g.cache_decl_refs[g.struct_cname(typ.name)] = true
-			for field in g.tc.structs[typ.name] or { []types.StructField{} } {
+			g.cache_decl_refs[g.struct_cname(typ.name())] = true
+			for field in g.tc.structs[typ.name()] or { []types.StructField{} } {
 				g.cache_require_declaration_type(field.typ, mut seen)
 			}
 		}
 		types.Interface {
-			for field in g.tc.interface_field_list(typ.name) {
+			for field in g.tc.interface_field_list(typ.name()) {
 				g.cache_require_declaration_type(field.typ, mut seen)
 			}
 		}
 		types.SumType {
-			for variant in g.tc.sum_types[typ.name] or { []string{} } {
+			for variant in g.tc.sum_types.get(typ.name()) or { []string{} } {
 				g.cache_require_declaration_type(g.tc.parse_type(variant), mut seen)
 			}
 		}
