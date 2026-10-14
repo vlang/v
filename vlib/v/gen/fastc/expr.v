@@ -301,7 +301,8 @@ fn (mut g Parser) lower_higher_order_expression(mut result strings.Builder, mut 
 					}
 				}
 				g.expected_expression_type = previous_expected
-				receiver_source = '((${receiver_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${norm_element}), (${norm_element}[]){${rendered_items.join(',')}}))'
+				receiver_source = g.dynamic_array_literal_source(receiver_type, norm_element,
+					rendered_items)
 				if receiver_start == 0 {
 					result.clear()
 				} else {
@@ -4546,7 +4547,8 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 			}
 		}
 		return FastcRenderedExpression{
-			source: '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${g.collection_storage_type(fastc_normalize_inferred_type(element_type))}), (${g.collection_storage_type(fastc_normalize_inferred_type(element_type))}[]){${rendered_items.join(',')}}))'
+			source: g.dynamic_array_literal_source(array_type,
+				g.collection_storage_type(fastc_normalize_inferred_type(element_type)), rendered_items)
 			typ:    array_type
 		}
 	}
