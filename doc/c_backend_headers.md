@@ -41,11 +41,22 @@ Wrappers that expand Boehm allocation macros include the collector header explic
 Warm incremental builds share the cached declaration prefix's string storage and retain
 new program literals and cleanup hooks after source edits.
 
+Regular generated C declares interned strings with `_SL(_str_N, "...", byte_length)`.
+The macro expands to a `static const string` with a plain brace initializer. V supplies the byte
+length, including embedded NUL bytes, so the C compiler needs no compound literal or `sizeof`.
+Literal IDs remain ordinary identifiers so they do not expand C struct member names. This form also
+works in portable snapshots and MSVC output. Cached modules retain explicit literal initializers
+for sharing and rewriting through their declaration prefix.
+
 Generated C still needs the native objects and library flags when linked. Use V to build
 executables, or `-generate-c-project` to export a build command with the native sources
 and library flags.
 
 Autofree uses a monolithic build so cleanup retains complete local-variable metadata.
+
+Scalar array appends can use typed stores into spare capacity in library modules as well as
+`main`. Growth and slice handling retain the runtime append helper. User functions and callbacks
+named `array_push` keep their own calls.
 
 Older bootstrap compilers use compatibility headers for their first compiler build.
 The current compiler supplies an internal capability define and omits those headers.
