@@ -24108,7 +24108,7 @@ fn (mut g FlatGen) fn_capture_shared_global_c_type(name string) ?string {
 fn (mut g FlatGen) global_init_optional_c_type(name string) ?string {
 	val_id := g.global_inits[name] or {
 		typ := g.global_types[name] or { return none }
-		decl_typ := g.global_storage_type(name, typ)
+		decl_typ := cgen_unalias_type(g.global_storage_type(name, typ))
 		if decl_typ is types.OptionType || decl_typ is types.ResultType {
 			return g.optional_type_name(decl_typ)
 		}

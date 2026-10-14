@@ -9994,6 +9994,8 @@ specification &ndash; as in the example [above](#atomics).
 
 An initializer for global variables must be explicitly converted to the
 desired target type. If no initializer is given a default initialization is done.
+Option and result globals can also be declared by type, such as `__global current ?int`
+and `__global status !int`, and assigned or reassigned later.
 Global map references can be initialized with empty or populated map literals, such as
 `&map[string]bool{}` or `&{'enabled': true}`. The referenced map is allocated and initialized
 before the declaring module's `init()` function runs.
