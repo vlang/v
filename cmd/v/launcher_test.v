@@ -18,7 +18,8 @@ fn test_v1_fallback_drops_private_restart_options() {
 	warning := '-v3-internal-implicit-tcc-warning=warning: implicit tcc failed'
 	assert v1_fallback_args([warning, '-v3-internal-parser-diagnostics-printed',
 		'-v3-internal-force-cache-source', '-macos-v3-internal-quiet', '-macos-v3-compat-c99',
-		'-v3-internal-all-cached-declarations', '-show-timings', '-cc', 'cc', 'main.v', warning]) == [
+		'-v3-internal-all-cached-declarations', '-v3-internal-future-option=enabled', '-show-timings',
+		'-cc', 'cc', 'main.v', warning]) == [
 		'-show-timings',
 		'-cc',
 		'cc',
@@ -28,7 +29,8 @@ fn test_v1_fallback_drops_private_restart_options() {
 
 fn test_v1_fallback_preserves_private_option_names_in_values() {
 	for private_option in ['-v3-internal-implicit-tcc-warning=message',
-		'-v3-internal-parser-diagnostics-printed', '-v3-internal-force-cache-source'] {
+		'-v3-internal-parser-diagnostics-printed', '-v3-internal-force-cache-source',
+		'-v3-internal-future-option=enabled'] {
 		for option in ['-o', '-cf', '-cflags', '-ldflags', '-d'] {
 			args := [option, private_option, 'main.v']
 			assert v1_fallback_args(args) == args
@@ -41,7 +43,7 @@ fn test_v1_fallback_preserves_private_option_names_in_values() {
 fn test_v1_fallback_preserves_private_option_names_in_program_arguments() {
 	private_args := ['-v3-internal-implicit-tcc-warning=message',
 		'-v3-internal-parser-diagnostics-printed', '-v3-internal-force-cache-source',
-		'-macos-v3-internal-quiet', '-macos-v3-compat-c99']
+		'-macos-v3-internal-quiet', '-macos-v3-compat-c99', '-v3-internal-future-option=enabled']
 	for prefix in [
 		['run', 'main.v'],
 		['run', 'run'],
