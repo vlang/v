@@ -925,22 +925,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		params.join(', ')
 	}
 	g.protos.writeln('${c_return_type} ${c_name}(${c_params});')
-	if g.selfhost && g.open_block_contains_select_statement() {
-		// `select { … }` (channel multiplexing) has no C lowering. Emit a trivial stub rather
-		// than skipping the function, so a genuinely referenced select-using function (the
-		// parallel `Pool.run`) still links. FastC channels are erased, so the select path is
-		// dead and a caller reaching this falls back to its synchronous branch.
-		g.write_line('${c_return_type} ${c_name}(${c_params}) {')
-		g.indent++
-		if return_type != 'void' {
-			g.write_line('return (${return_type}){0};')
-		}
-		g.indent--
-		g.write_line('}')
-		g.out.writeln('')
-		g.skip_balanced(.lcbr, .rcbr)!
-		return
-	}
+
 	if !enabled {
 		g.write_line('${c_return_type} ${c_name}(${c_params}) {')
 		g.indent++
@@ -1304,7 +1289,7 @@ fn (mut g Parser) parse_parameters() ![]string {
 			is_mut = true
 			g.next()
 		}
-		if g.tok !in [.name, .key_shared] {
+		if !fastc_token_can_be_decl_name(g.tok) {
 			return g.unsupported('function parameters')
 		}
 		name := g.lit
@@ -1317,6 +1302,11 @@ fn (mut g Parser) parse_parameters() ![]string {
 			}
 			names << g.lit
 			g.next()
+		}
+		channel_element := if g.tok == .name && g.lit == 'chan' {
+			fastc_peek_chan_element(g.s, g.path, g.module_name, g.imports, g.declared_types, g.selfhost)
+		} else {
+			''
 		}
 		mut type_name := g.parse_type()!
 		option_value_type := g.pending_option_value_type_text()
@@ -1357,9 +1347,11 @@ fn (mut g Parser) parse_parameters() ![]string {
 					is_reference:      is_reference
 					typ:               flat.source_type_id(type_name)
 					option_value_type: flat.source_type_id(option_value_type)
+					chan_element_type: flat.source_type_id(channel_element)
 				}
 			}
 		}
+		g.skip_semicolons()
 		if g.tok == .comma {
 			g.next()
 			g.skip_semicolons()

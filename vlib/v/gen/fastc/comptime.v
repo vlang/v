@@ -1091,6 +1091,8 @@ fn (mut g Parser) read_comptime_embed_file() !string {
 	}
 	g.expect(.rpar)!
 	embed_path := fastc_string_literal_content(path_literal)
+		.replace('@VEXEROOT', g.prefs.vroot)
+		.replace('@VMODROOT', fastc_vmod_root_for_file(g.path))
 	resolved := if os.is_abs_path(embed_path) {
 		embed_path
 	} else {
@@ -1258,6 +1260,15 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	if condition {
 		value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 		value_type := g.last_expression_type_text()
+		option_value_type := if value_type in ['Option', '__v_result'] {
+			if g.last_expression.len > 0 {
+				g.option_value_type_for_expression(g.last_expression)
+			} else {
+				g.last_option_value_type_text()
+			}
+		} else {
+			''
+		}
 		g.skip_semicolons()
 		g.expect(.rcbr)!
 		if g.tok == .dollar {
@@ -1271,6 +1282,7 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 			}
 		}
 		g.last_expression_type = flat.source_type_id(value_type)
+		g.last_option_value_type = flat.source_type_id(option_value_type)
 		g.last_expression = []FastcExpressionToken{}
 		return value
 	}
@@ -1286,9 +1298,19 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	g.expect(.lcbr)!
 	value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 	value_type := g.last_expression_type_text()
+	option_value_type := if value_type in ['Option', '__v_result'] {
+		if g.last_expression.len > 0 {
+			g.option_value_type_for_expression(g.last_expression)
+		} else {
+			g.last_option_value_type_text()
+		}
+	} else {
+		''
+	}
 	g.skip_semicolons()
 	g.expect(.rcbr)!
 	g.last_expression_type = flat.source_type_id(value_type)
+	g.last_option_value_type = flat.source_type_id(option_value_type)
 	g.last_expression = []FastcExpressionToken{}
 	return value
 }

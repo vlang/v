@@ -482,7 +482,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 					// A bare local narrowed by `x is T` reads as the concrete variant.
 					smartcast.typ_text()
 				} else if local := g.locals[item.lit] {
-					local.typ_text()
+					g.narrowed_numeric_operand_type(tokens[start..end], local.typ_text())
 				} else {
 					g.nonlocal_name_type(item.lit)
 				}
@@ -635,6 +635,13 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	}
 	if start + 3 < end && tokens[start].tok == .name && tokens[start + 1].tok == .dot && tokens[start + 2].tok == .name && tokens[start + 3].tok == .lcbr {
 		// A module-qualified struct literal `mod.Type{...}`.
+		if tokens[start].lit == 'C' {
+			if close := fastc_matching_delimiter_before(tokens, start + 3, end, .lcbr, .rcbr) {
+				if close == end - 1 {
+					return g.type_from_expression_tokens(tokens[start..start + 3]) or { '' }
+				}
+			}
+		}
 		if imported_module := g.imports[tokens[start].lit] {
 			if close := fastc_matching_delimiter_before(tokens, start + 3, end, .lcbr, .rcbr) {
 				if close == end - 1 {
@@ -922,7 +929,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if open_index > start {
 			base_type := g.infer_expression_type_range(tokens, start, open_index)!
 			base_layout := fastc_trim_pointer_suffix(base_type)
-			if fastc_expression_tokens_contain_range(tokens, open_index + 1, end - 1, .dotdot) {
+			if fastc_top_level_token_index(tokens, open_index + 1, end - 1, .dotdot) != none {
 				// Slicing a fixed array yields a dynamic array of its element type.
 				if base_layout.starts_with('FixedArray_') {
 					if element := g.array_element_type(base_layout) {
@@ -1091,6 +1098,20 @@ fn fastc_expression_tokens_contain_range(tokens []FastcExpressionToken, start in
 	return false
 }
 
+fn fastc_top_level_token_index(tokens []FastcExpressionToken, start int, end int, wanted token.Token) ?int {
+	mut depth := 0
+	for i in start .. end {
+		if tokens[i].tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+		} else if tokens[i].tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+		} else if depth == 0 && tokens[i].tok == wanted {
+			return i
+		}
+	}
+	return none
+}
+
 // fastc_member_chain_path returns the dotted path (`a.b.c`) for a pure member
 // chain `name (. name)*` spanning tokens[start..end], or none for anything else.
 fn fastc_member_chain_path(tokens []FastcExpressionToken, start int, end int) ?string {
@@ -1244,7 +1265,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 				return none
 			}
 			current_layout := fastc_trim_pointer_suffix(current_type)
-			if fastc_expression_tokens_contain_range(tokens, index + 1, close, .dotdot) {
+			if fastc_top_level_token_index(tokens, index + 1, close, .dotdot) != none {
 				if current_layout != 'string' && g.array_element_type(current_type) == none {
 					return none
 				}
@@ -1517,8 +1538,8 @@ fn fastc_array_element_type(typ string) ?string {
 }
 
 // fastc_decode_ptr_element_type reverses the `*`→`_ptr` composite-name encoding for an
-// array/channel element: `Stream_ptr` (not a real C type) → `Stream*`, `char_ptr` →
-// `char*`. Non-pointer element names are returned unchanged.
+// array/channel element, including the spaces in tagged C types:
+// `Stream_ptr` → `Stream*`, `struct_iovec` → `struct iovec`.
 fn fastc_decode_ptr_element_type(element string) string {
 	mut name := element
 	mut pointers := 0
@@ -1526,9 +1547,14 @@ fn fastc_decode_ptr_element_type(element string) string {
 		name = name[..name.len - '_ptr'.len]
 		pointers++
 	}
-	if pointers == 0 {
-		return element
+	for tag in ['struct', 'union', 'enum'] {
+		prefix := tag + '_'
+		if name.starts_with(prefix) {
+			name = tag + ' ' + name[prefix.len..]
+			break
+		}
 	}
+	if name == 'unsigned_int' { name = 'unsigned int' }
 	return name + '*'.repeat(pointers)
 }
 

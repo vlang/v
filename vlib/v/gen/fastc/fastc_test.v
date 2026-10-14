@@ -8190,7 +8190,8 @@ fn main() {
 	make() or { return }
 }
 ', 'selfhost_nested_propagation_method.v', prefs) or { panic(err) }
-	assert c_source.contains('Clock_unix(now())'), c_source
+	// Typed call-result lowering may group the receiver before passing it to the method.
+	assert c_source.contains('Clock_unix(now())') || c_source.contains('Clock_unix((now()))'), c_source
 	assert !c_source.contains('now().unix()'), c_source
 }
 
@@ -8971,8 +8972,11 @@ fn main() {
 	inspect(mut node)
 }
 ', 'mut_sum_type_smartcast_argument.v', prefs) or { panic(err) }
-	assert c_source.contains('inspect(__v0)'), c_source
-	assert !c_source.contains('inspect(__v3)'), c_source
+	inspect_body := c_source.all_after('void inspect(Node* node) {').all_before('\n}')
+	// The recursive mut call receives the original boxed parameter, while the
+	// narrowed Item pointer is used only for the field mutation.
+	assert inspect_body.contains('inspect(node);'), inspect_body
+	assert inspect_body.count('inspect(') == 1, inspect_body
 }
 
 fn test_mut_match_sum_type_smartcast_passes_original_box_to_mut_parameter() {
@@ -11424,13 +11428,11 @@ fn main() {
 	}
 }
 ', 'selfhost_channel.v', prefs) or { panic(err) }
-	// Channel send lowers to `try_push` of the value address; receive pops via
-	// `try_pop` into an element-typed temp recovered from the `chan Item` field
-	// (so `<-p.items` yields `Item`, not the `int` fallback).
-	assert c_source.contains('builtin__chan_try_push'), c_source
-	assert c_source.contains('builtin__chan_try_pop'), c_source
-	assert c_source.contains('builtin__chan_close(ch,(Array_IError){0})'), c_source
-	assert c_source.contains('Item __vf_chan_recv'), c_source
+	// Send and receive use the blocking runtime with the field's element type.
+	assert c_source.contains(fastc_method_c_name('sync', 'sync__Channel', 'push')), c_source
+	assert c_source.contains(fastc_method_c_name('sync', 'sync__Channel', 'pop')), c_source
+	assert c_source.contains('sync__new_channel_st'), c_source
+	assert c_source.contains('= (Item){0}; if (!'), c_source
 	assert !c_source.contains('items.closed'), c_source
 }
 

@@ -460,7 +460,11 @@ fn (mut g Parser) parse_if() !bool {
 	] {
 		smartcast_negated = cond_tokens[local_start + 1].tok == .not_is
 		if local := g.locals[cond_tokens[local_start].lit] {
-			boxed := fastc_normalize_inferred_type(local.typ_text())
+			boxed := fastc_normalize_inferred_type(if local.smartcast_origin_type_text() != '' {
+				local.smartcast_origin_type_text()
+			} else {
+				local.typ_text()
+			})
 			if g.is_boxed_type(boxed) {
 				// The variant type spans from just after `is` up to the first top-level
 				// `&&`/`||`; a trailing boolean guard (`x is T && cond`) must not be handed
@@ -484,14 +488,14 @@ fn (mut g Parser) parse_if() !bool {
 					if variant_key := g.resolve_declared_type_key(cond_tokens[local_start + 2].lit) {
 						smartcast_name = cond_tokens[local_start].lit
 						smartcast_type = fastc_c_declared_type_name(variant_key)
-						smartcast_boxed_type = local.typ_text()
+						smartcast_boxed_type = boxed
 						smartcast_tmp = g.temporary_name('smartcast_subject')
 					} else if fastc_primitive_c_type(cond_tokens[local_start + 2].lit) != none {
 						// A primitive sum-type variant (`if v is u64`) narrows to that
 						// primitive; its own spelling is the smart-cast C type and tag.
 						smartcast_name = cond_tokens[local_start].lit
 						smartcast_type = cond_tokens[local_start + 2].lit
-						smartcast_boxed_type = local.typ_text()
+						smartcast_boxed_type = boxed
 						smartcast_tmp = g.temporary_name('smartcast_subject')
 					}
 				} else if resolved_target := g.type_from_expression_tokens(cond_tokens[local_start + 2..type_end]) {
@@ -504,12 +508,12 @@ fn (mut g Parser) parse_if() !bool {
 						fastc_register_composite_type(target, mut g.composite_types)
 						smartcast_name = cond_tokens[local_start].lit
 						smartcast_type = target
-						smartcast_boxed_type = local.typ_text()
+						smartcast_boxed_type = boxed
 						smartcast_tmp = g.temporary_name('smartcast_subject')
 					} else if target != '' {
 						smartcast_name = cond_tokens[local_start].lit
 						smartcast_type = target
-						smartcast_boxed_type = local.typ_text()
+						smartcast_boxed_type = boxed
 						smartcast_tmp = g.temporary_name('smartcast_subject')
 					}
 				}
@@ -600,7 +604,10 @@ fn (mut g Parser) parse_if() !bool {
 	if smartcast_name != '' && !smartcast_negated {
 		// Copy the boxed value out before the branch so the shadowing cast below
 		// does not reference its own uninitialized declaration.
-		g.write_line('${smartcast_boxed_type} ${smartcast_tmp} = ${g.local_c_name(smartcast_name)};')
+		origin := g.narrowed_local_origin(smartcast_name) or {
+			FastcRenderedExpression{ source: g.local_c_name(smartcast_name) }
+		}
+		g.write_line('${smartcast_boxed_type} ${smartcast_tmp} = ${origin.source};')
 	}
 	for plan in member_smartcast_plans {
 		boxed_zero := if plan.boxed_type_text().ends_with('*') {
@@ -614,7 +621,7 @@ fn (mut g Parser) parse_if() !bool {
 	g.indent++
 	previous_guard := g.locals[guard_name] or { FastcLocal{} }
 	had_guard := guard_name in g.locals
-	if guard_name != '' {
+	if guard_name != '' && guard_name != '_' {
 		if guard_function_source != '' {
 			parameters := fastc_c_prototype_parameters(guard_function.fn_parameter_types_text())
 			return_type := if guard_function.fn_return_type_text() == '' {
@@ -655,6 +662,11 @@ fn (mut g Parser) parse_if() !bool {
 	}
 	previous_smartcast := g.locals[smartcast_name] or { FastcLocal{} }
 	had_smartcast := smartcast_name in g.locals
+	smartcast_storage := if previous_smartcast.smartcast_origin_source != '' {
+		previous_smartcast.smartcast_origin_source
+	} else {
+		g.local_c_name(smartcast_name)
+	}
 	if smartcast_name != '' && !smartcast_negated {
 		// A pointer subject (`node &ast.Node`) reaches its boxed payload through `->`.
 		tmp_access := if smartcast_boxed_type.ends_with('*') { '->' } else { '.' }
@@ -670,7 +682,7 @@ fn (mut g Parser) parse_if() !bool {
 			typ:                     flat.source_type_id(branch_type)
 			c_name:                  branch_cast
 			smartcast_origin_type:   flat.source_type_id(smartcast_boxed_type)
-			smartcast_origin_source: smartcast_tmp
+			smartcast_origin_source: smartcast_storage
 		}
 	}
 	mut previous_member_smartcasts := map[string]FastcMemberSmartcast{}
@@ -779,21 +791,23 @@ fn (mut g Parser) parse_if() !bool {
 	g.indent--
 	if g.tok != .key_else {
 		g.write_line('}')
-		if smartcast_negated && smartcast_name != '' && then_terminates && !condition_has_top_level_and && !previous_smartcast.is_mut {
+		if smartcast_negated && smartcast_name != '' && then_terminates && !condition_has_top_level_and {
 			// `if x !is Variant { return }`: reaching past the block proves `x` IS the
 			// variant, so narrow it to a value shadow scoped to the rest of the block,
-			// mirroring the positive `is` branch but in the fall-through path. A `mut`
-			// subject is excluded: a later `x = …` reassignment widens the smart-cast in V,
-			// but the value shadow would keep pointing at the stale narrowed variant.
+			// mirroring the positive `is` branch but in the fall-through path. Assignments
+			// to mutable subjects restore their boxed type and invalidate this view.
 			access := if smartcast_boxed_type.ends_with('*') { '->' } else { '.' }
 			branch_cast := g.temporary_name('if_cast')
-			g.write_line('${smartcast_type} ${branch_cast} = *((${smartcast_type} *)${g.local_c_name(smartcast_name)}${access}_object);')
+			branch_type, branch_value, is_reference := g.smartcast_payload_binding(smartcast_type,
+				'${smartcast_storage}${access}_object', smartcast_boxed_type.ends_with('*') || previous_smartcast.is_mut)
+			g.write_line('${branch_type} ${branch_cast} = ${branch_value};')
 			g.set_scoped_local(smartcast_name, FastcLocal{
 				is_mut:                  previous_smartcast.is_mut
-				typ:                     flat.source_type_id(smartcast_type)
+				is_reference:            is_reference
+				typ:                     flat.source_type_id(branch_type)
 				c_name:                  branch_cast
 				smartcast_origin_type:   flat.source_type_id(smartcast_boxed_type)
-				smartcast_origin_source: g.local_c_name(smartcast_name)
+				smartcast_origin_source: smartcast_storage
 			})
 		}
 		return false
@@ -810,7 +824,13 @@ fn (mut g Parser) parse_if() !bool {
 				typ: flat.source_type_id('IError')
 			}
 		}
+		if smartcast_negated && smartcast_name != '' && !condition_has_top_level_and {
+			g.bind_else_type_test(smartcast_name, smartcast_type, smartcast_boxed_type)
+		}
 		else_terminates := g.parse_if()!
+		if smartcast_negated && smartcast_name != '' && !condition_has_top_level_and {
+			g.locals[smartcast_name] = previous_smartcast
+		}
 		if guard_option != '' {
 			if had_err {
 				g.locals['err'] = previous_err
@@ -833,7 +853,13 @@ fn (mut g Parser) parse_if() !bool {
 			typ: flat.source_type_id('IError')
 		}
 	}
+	if smartcast_negated && smartcast_name != '' && !condition_has_top_level_and {
+		g.bind_else_type_test(smartcast_name, smartcast_type, smartcast_boxed_type)
+	}
 	else_terminates := g.parse_block_body()!
+	if smartcast_negated && smartcast_name != '' && !condition_has_top_level_and {
+		g.locals[smartcast_name] = previous_smartcast
+	}
 	if guard_option != '' {
 		if had_err {
 			g.locals['err'] = previous_err
@@ -844,6 +870,28 @@ fn (mut g Parser) parse_if() !bool {
 	g.indent--
 	g.write_line('}')
 	return then_terminates && else_terminates
+}
+
+fn (mut g Parser) bind_else_type_test(name string, variant string, boxed string) {
+	previous := g.locals[name] or { FastcLocal{} }
+	origin := if previous.smartcast_origin_source != '' {
+		previous.smartcast_origin_source
+	} else {
+		g.local_c_name(name)
+	}
+	access := if boxed.ends_with('*') { '->' } else { '.' }
+	cast := g.temporary_name('else_cast')
+	variant_type, value, is_reference := g.smartcast_payload_binding(variant,
+		'${origin}${access}_object', boxed.ends_with('*') || previous.is_mut)
+	g.write_line('${variant_type} ${cast} = ${value};')
+	g.locals[name] = FastcLocal{
+		is_mut:                  previous.is_mut
+		is_reference:            is_reference
+		typ:                     flat.source_type_id(variant_type)
+		c_name:                  cast
+		smartcast_origin_type:   flat.source_type_id(boxed)
+		smartcast_origin_source: origin
+	}
 }
 
 // parse_if_multi_return_guard lowers `if a, b := opt_fn() { ... }`: the option's
@@ -919,7 +967,8 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 }
 
 fn (g &Parser) if_starts_final_block_expression() bool {
-	mut lookahead := scanner.new_scanner(g.prefs, .normal)
+	// Interpolation braces belong to the string, not the condition's branch block.
+	mut lookahead := scanner.new_scanner(g.prefs, .skip_interpolation)
 	lookahead.init(g.s.current_file(), g.s.src)
 	lookahead.offset = g.s.offset
 	mut prev := token.Token.unknown
@@ -1179,9 +1228,20 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 				if member_type := g.infer_member_access_type(left_tokens, 0, left_tokens.len) {
 					left_type = fastc_normalize_inferred_type(member_type)
 				}
+				if left_tokens.len == 1 {
+					if origin := g.narrowed_local_origin(left_tokens[0].lit) {
+						left_type = origin.typ_text()
+					}
+				}
 				target_type := g.type_from_expression_tokens(conjunct[is_idx + 1..]) or { '' }
 				if left_type != '' && target_type != '' && g.is_boxed_type(left_type) {
-					if left_source := g.render_member_receiver(left_tokens) {
+					if rendered_left := g.render_member_receiver(left_tokens) {
+						mut left_source := rendered_left
+						if left_tokens.len == 1 {
+							if origin := g.narrowed_local_origin(left_tokens[0].lit) {
+								left_source = origin.source
+							}
+						}
 						value_type := fastc_normalize_inferred_type(target_type)
 						normalized_target := value_type.trim_right('*')
 						boxed_tmp := g.temporary_name('smartcast_subject')
@@ -1344,7 +1404,7 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 // immediately followed by the block's closing `}`), so it is a value rather than a
 // standalone statement. Mirrors if_starts_final_block_expression for `match`.
 fn (g &Parser) match_starts_final_block_expression() bool {
-	mut lookahead := scanner.new_scanner(g.prefs, .normal)
+	mut lookahead := scanner.new_scanner(g.prefs, .skip_interpolation)
 	lookahead.init(g.s.current_file(), g.s.src)
 	lookahead.offset = g.s.offset
 	mut tok := lookahead.scan()
@@ -1556,12 +1616,21 @@ fn (mut g Parser) read_if_expression() !string {
 	member_smartcast_plans, member_smartcast_condition := g.detect_member_smartcasts(g.last_expression, condition)
 	use_member_smartcasts := guard_name == '' && member_smartcast_condition != ''
 	mut smartcast_decls := ''
+	mut smartcast_bindings := ''
 	if use_member_smartcasts {
 		condition = member_smartcast_condition
 		for plan in member_smartcast_plans {
 			// A pointer subject (`mut node ast.TypeDecl` is `TypeDecl*`) reaches its boxed
 			// payload through `->`, not `.`.
 			plan_access := if plan.boxed_type_text().ends_with('*') { '->' } else { '.' }
+			boxed_zero := if plan.boxed_type_text().ends_with('*') {
+				'NULL'
+			} else {
+				'(${plan.boxed_type_text()}){0}'
+			}
+			// The condition captures its subject at the type-test conjunct, so an
+			// earlier false guard never evaluates an indexed or pointer member.
+			smartcast_decls += '${plan.boxed_type_text()} ${plan.boxed_tmp} = ${boxed_zero}; '
 			if g.fastc_plan_is_bare_local(plan) {
 				// A bare-local subject is shadowed as a concrete-variant VALUE, so a whole-value
 				// read of the local (`if x is T { x }` returning it) yields the variant — not the
@@ -1572,9 +1641,9 @@ fn (mut g Parser) read_if_expression() !string {
 					plan.type_c_text()
 				}
 				plan_type, plan_value, _ := g.smartcast_payload_binding(value_type, '${plan.boxed_tmp}${plan_access}_object', false)
-				smartcast_decls += '${plan.boxed_type_text()} ${plan.boxed_tmp} = ${plan.source}; ${plan_type} ${plan.member_tmp} = ${plan_value}; '
+				smartcast_bindings += '${plan_type} ${plan.member_tmp} = ${plan_value}; '
 			} else {
-				smartcast_decls += '${plan.boxed_type_text()} ${plan.boxed_tmp} = ${plan.source}; ${plan.type_c_text()} *${plan.member_tmp} = (${plan.type_c_text()} *)${plan.boxed_tmp}${plan_access}_object; '
+				smartcast_bindings += '${plan.type_c_text()} *${plan.member_tmp} = (${plan.type_c_text()} *)${plan.boxed_tmp}${plan_access}_object; '
 			}
 		}
 	}
@@ -1625,6 +1694,9 @@ fn (mut g Parser) read_if_expression() !string {
 	} else {
 		g.read_block_expression_value()!
 	}
+	if smartcast_bindings != '' {
+		then_expression = '({ ${smartcast_bindings}${then_expression}; })'
+	}
 	if use_member_smartcasts {
 		for path, present in had_local_shadows {
 			if present {
@@ -1642,7 +1714,9 @@ fn (mut g Parser) read_if_expression() !string {
 		}
 	}
 	if guard_name != '' {
-		then_expression = '({ ${guard_type} ${fastc_c_identifier(guard_name)} = *((${guard_type} *)${guard_option}.data); ${then_expression}; })'
+		if guard_name != '_' {
+			then_expression = '({ ${guard_type} ${fastc_c_identifier(guard_name)} = *((${guard_type} *)${guard_option}.data); ${then_expression}; })'
+		}
 		if had_guard {
 			g.locals[guard_name] = previous_guard
 		} else {
@@ -1792,8 +1866,8 @@ fn (mut g Parser) read_if_expression() !string {
 	g.last_option_value_type = flat.source_type_id(if g.last_expression_type_text() in [
 		'Option',
 		'__v_result',
-	] && then_option_value_type != '' && then_option_value_type == else_option_value_type {
-		then_option_value_type
+	] && (then_option_value_type == else_option_value_type || then_option_value_type == '' || else_option_value_type == '') {
+		if then_option_value_type != '' { then_option_value_type } else { else_option_value_type }
 	} else {
 		''
 	})

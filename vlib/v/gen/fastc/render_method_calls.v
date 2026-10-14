@@ -194,6 +194,41 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				continue
 			}
 		}
+		if receiver_type == 'chan' && tokens[i].lit in ['close', 'try_push', 'try_pop'] {
+			call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+			call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
+			receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+			mut arguments := []string{}
+			for argument in call_args {
+				arguments << g.render_call_argument_expression(argument, if tokens[i].lit == 'close' {
+					'IError'
+				} else {
+					'voidptr'
+				}) or { continue }
+			}
+			packed := if tokens[i].lit == 'close' && arguments.len == 0 {
+				'(Array_IError){0}'
+			} else if tokens[i].lit == 'close' {
+				g.dynamic_array_literal_source('Array_IError', 'IError', arguments)
+			} else {
+				arguments.join(',')
+			}
+			call_source := '${g.channel_runtime_name(tokens[i].lit)}((chan)(${receiver.source}), ${packed})'
+			if receiver_start == 0 && call_end == tokens.len - 1 {
+				return FastcRenderedExpression{
+					source: call_source
+					typ:    flat.source_type_id(if tokens[i].lit == 'close' {
+						'void'
+					} else {
+						'ChanState'
+					})
+				}
+			}
+			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or { continue }
+			rendered = fastc_replace(rendered, raw_call, call_source)
+			changed = true
+			continue
+		}
 		// A method defined on the whole sum type (`fn (e Expr) is_blank_ident()`) stays
 		// callable after the value is narrowed to a variant. When the narrowed type lacks the
 		// method but the receiver is a bare local whose declared (un-narrowed) type has it,
@@ -334,7 +369,11 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				value_type := g.fastc_thread_value_type(element) or { continue }
-				result_type := fastc_array_c_type(value_type)
+				result_type := if value_type == '' {
+					'void'
+				} else {
+					fastc_array_c_type(value_type)
+				}
 				mut w := unsafe { &Parser(g) }
 				fastc_register_composite_type(result_type, mut w.composite_types)
 				wait_helper := g.fastc_unclaimed_generated_name(fastc_thread_wait_name(element))
@@ -344,7 +383,11 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					receiver.source
 				}
 				receiver_decl_type := g.declaration_c_type(receiver_type.trim_right('*'), recv_src)
-				wait_all := '({ ${receiver_decl_type} __vf_threads = (${recv_src}); ${result_type} __vf_results = (${result_type})builtin____new_array(0, __vf_threads.len, sizeof(${value_type})); for (int __vf_ti = 0; __vf_ti < __vf_threads.len; __vf_ti++) { ${value_type} __vf_tv = ${wait_helper}(((${element} *)__vf_threads.data)[__vf_ti]); builtin__array_push((array *)&__vf_results, &__vf_tv); } __vf_results; })'
+				wait_all := if value_type == '' {
+					'({ ${receiver_decl_type} __vf_threads = (${recv_src}); for (int __vf_ti = 0; __vf_ti < __vf_threads.len; __vf_ti++) { ${wait_helper}(((${element} *)__vf_threads.data)[__vf_ti]); } })'
+				} else {
+					'({ ${receiver_decl_type} __vf_threads = (${recv_src}); ${result_type} __vf_results = (${result_type})builtin____new_array(0, __vf_threads.len, sizeof(${value_type})); for (int __vf_ti = 0; __vf_ti < __vf_threads.len; __vf_ti++) { ${value_type} __vf_tv = ${wait_helper}(((${element} *)__vf_threads.data)[__vf_ti]); builtin__array_push((array *)&__vf_results, &__vf_tv); } __vf_results; })'
+				}
 				if receiver_start == 0 && wait_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: wait_all
@@ -742,7 +785,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			effective_is_pointer = false
 		}
 		receiver_argument := if expected_receiver.ends_with('*') && !effective_is_pointer {
-			'&(${effective_receiver_source})'
+			g.value_address_expression(expected_receiver.trim_right('*'), effective_receiver_source,
+				receiver_tokens)
 		} else if !expected_receiver.ends_with('*') && effective_is_pointer {
 			'*(${effective_receiver_source})'
 		} else {
