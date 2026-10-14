@@ -22,8 +22,9 @@ Do not use the autoconf/source package here, and do not rename
 `sqlite3.c` to `sqlite3.cpp`.
 
 On **macOS**, V can also fall back to the system `libsqlite3`
-when `pkg-config` is not available, so an extra install is often
-not needed.
+when `pkg-config` is not available. It includes `sqlite3.h` from
+the macOS SDK and links the system library, so an extra SQLite install is not needed.
+Install Xcode Command Line Tools if the SDK headers are missing.
 
 On **Linux**, you can also install the system development package
 instead:
