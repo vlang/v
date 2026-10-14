@@ -9,12 +9,12 @@ const shared_flag_v3_src = os.join_path(shared_flag_v3_dir, 'v.v')
 
 // test_shared_flag_builds_no_main_module validates this v3 regression case.
 fn test_shared_flag_builds_no_main_module() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_shared_flag_test_${os.getpid()}')
+	v3_bin := os.join_path(os.vtmp_dir(), 'v3_shared_flag_test_${os.getpid()}')
 	build :=
 		os.exec([shared_flag_vexe, '-gc', 'none', '-o', v3_bin, '${shared_flag_v3_src}'])
 	assert build.exit_code == 0, build.output
 
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_shared_flag_module_${os.getpid()}')
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v3_shared_flag_module_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir)!
 	defer {
@@ -118,12 +118,12 @@ fn test_shared_flag_builds_object_dependencies_as_pic() {
 		return
 	}
 	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_shared_flag_pic_test_${pid}')
+	v3_bin := os.join_path(os.vtmp_dir(), 'v3_shared_flag_pic_test_${pid}')
 	build :=
 		os.exec([shared_flag_vexe, '-gc', 'none', '-o', v3_bin, '${shared_flag_v3_src}'])
 	assert build.exit_code == 0, build.output
 
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_shared_flag_pic_${pid}')
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v3_shared_flag_pic_${pid}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir)!
 	defer {
