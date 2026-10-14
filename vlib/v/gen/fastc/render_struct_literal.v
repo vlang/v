@@ -369,7 +369,8 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 		rendered_fields = ordered_fields.clone()
 	}
-	if layout_type == 'array' {
+	if layout_type == 'array' && update_source == ''
+		&& c_type.trim_right('*').starts_with('Array_') {
 		array_type := c_type.trim_right('*')
 		element_type := g.array_element_type(array_type) or { return none }
 		length := field_values['len'] or { '0' }

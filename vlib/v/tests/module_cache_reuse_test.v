@@ -238,7 +238,7 @@ fn test_default_cache_keeps_the_closure_runtime_when_module_bodies_are_not_parse
 	}
 }
 
-fn test_tcc_retries_programs_that_cannot_use_cached_declarations() {
+fn test_tcc_uses_cached_declarations_for_anonymous_and_fixed_arrays() {
 	$if !linux && !macos {
 		return
 	}
@@ -257,10 +257,13 @@ fn test_tcc_retries_programs_that_cannot_use_cached_declarations() {
 		os.setenv('V3CACHE', os.join_path(root, 'cache${i}'), true)
 		for fixture in fixtures {
 			os.write_file(main_file, os.read_file(os.join_path(@VEXEROOT, 'vlib/v/tests', fixture))!)!
-			for _ in 0 .. 2 {
+			for iteration in 0 .. 2 {
 				output := build(root, flags, main_file, 'program')
-				assert output.contains('the bundled TinyCC could not compile or link the cached program'), output
+				assert !output.contains('the bundled TinyCC could not compile or link the cached program'), output
 				assert !output.contains('implicit tcc could not be used'), output
+				if iteration == 1 {
+					assert_reused_modules(output)
+				}
 				_ := run_built(root, 'program')
 			}
 		}
@@ -857,6 +860,69 @@ exec ${os.quoted_path(cc)} "$@"
 	os.setenv('PATH', dir + os.path_delimiter + os.getenv('PATH'), true)
 	os.setenv('V_CACHE_DECLARATION_TEST_C', os.join_path(root, 'program.c'), true)
 	return saved
+}
+
+fn test_warm_tuple_signatures_retain_nested_struct_payload_layouts() {
+	$if windows {
+		return
+	}
+	for flags in [['-cc', 'cc'], ['-cc', 'tcc']] {
+		root := new_project('module_cache_tuple_payload_${flags[1]}')
+		mut saved := pin_module_cache(os.join_path(root, 'cache'))
+		saved << save_env('VMODULES')
+		if flags[1] == 'cc' { saved << capture_cached_program_c(root) }
+		os.setenv('VMODULES', os.join_path(root, 'modules'), true)
+		defer {
+			for env in saved { env.restore() }
+			os.rmdir_all(root) or {}
+		}
+		os.mkdir_all(os.join_path(root, 'modules', 'cachetuple'))!
+		os.write_file(os.join_path(root, 'modules', 'cachetuple', 'cachetuple.v'), 'module cachetuple
+pub struct Child {
+pub:
+	value int
+}
+pub struct Box {
+pub:
+	child Child
+}
+pub struct Unused { value int }
+pub fn marker() int { return 1 }
+pub fn optional_pair() ?(Box, string) { return Box{ child: Child{ value: 41 } }, "option" }
+pub fn result_pair() !(Box, string) { return Box{ child: Child{ value: 42 } }, "result" }
+')!
+		main_file := os.join_path(root, 'main.v')
+		os.write_file(main_file, 'import cachetuple\nfn main() { println(cachetuple.marker()) }\n')!
+		build(root, flags, main_file, 'cold')
+		assert run_built(root, 'cold') == '1'
+		published := module_objects(root)
+		program := 'import cachetuple
+fn main() {
+	option_box, option_label := cachetuple.optional_pair() or { panic("none") }
+	result_box, result_label := cachetuple.result_pair() or { panic(err) }
+	println("\${option_box.child.value} \${option_label} \${result_box.child.value} \${result_label}")
+}
+'
+		for i in 0 .. 2 {
+			os.write_file(main_file, program + '\nfn added_${i}() {}\n')!
+			mut warm_flags := flags.clone()
+			if i == 1 { warm_flags << '-no-parallel' }
+			warm := build(root, warm_flags, main_file, 'warm')
+			assert_reused_modules(warm)
+			assert module_objects(root) == published
+			assert run_built(root, 'warm') == '41 option 42 result'
+			if flags[1] == 'cc' {
+				output := os.read_file(os.join_path(root, 'program.c'))!
+				child_position := output.index('struct cachetuple__Child {') or { -1 }
+				box_position := output.index('struct cachetuple__Box {') or { -1 }
+				tuple_position := output.index('struct multi_return_cachetuple__Box_string {') or { -1 }
+				assert child_position >= 0, output
+				assert box_position > child_position, output
+				assert tuple_position > box_position, output
+				assert !output.contains('struct cachetuple__Unused {'), output
+			}
+		}
+	}
 }
 
 fn test_unused_cached_option_and_result_constants_do_not_pull_in_payload_declarations() {

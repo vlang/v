@@ -1,9 +1,6 @@
 module closure
 
 $if !freestanding && !vinix {
-	#include <sys/mman.h>
-	#include <pthread.h>
-
 	@[typedef]
 	struct C.pthread_mutex_t {}
 
