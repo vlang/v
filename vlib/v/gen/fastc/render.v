@@ -1547,20 +1547,9 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 				typ:    'string'
 			}
 		}
-		left_result_type := if left_special.typ != '' { left_special.typ } else { left_value_type }
-		right_result_type := if right_special.typ != '' {
-			right_special.typ
-		} else {
-			right_value_type
-		}
-		arithmetic_type := fastc_common_arithmetic_type(g.underlying_alias_type(left_result_type), g.underlying_alias_type(right_result_type))
 		return FastcRenderedExpression{
 			source: '((${left})${operator}(${right}))'
-			typ:    if arithmetic_type != '' {
-				arithmetic_type
-			} else {
-				g.infer_expression_type(tokens) or { left_type }
-			}
+			typ:    g.infer_expression_type(tokens) or { left_type }
 		}
 	}
 	signature := g.functions[method_key]
