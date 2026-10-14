@@ -3245,6 +3245,23 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		return tokens[0].source
 	}
 	if tokens.len > 1 && tokens[0].tok == .amp && tokens[0].is_mut_argument {
+		interface_type := expected_type.trim_right('*')
+		if g.selfhost && expected_type.ends_with('*')
+			&& g.declared_kinds[g.semantic_type_key(interface_type)] == .interface_ {
+			// `f(mut value)` for a `mut x Interface` parameter: the interface refers to the
+			// caller's value itself, so the callee's mutations reach it (never a boxed copy).
+			actual_type := fastc_normalize_inferred_type(g.infer_expression_type(tokens[1..]) or {
+				''
+			})
+			actual_key := g.semantic_type_key(actual_type)
+			if actual_type != '' && !fastc_is_pointer_type(actual_type)
+				&& g.declared_kinds[actual_key] == .struct_ {
+				target := g.render_call_argument_expression(tokens[1..], actual_type) or {
+					return none
+				}
+				return '&((${interface_type}){._object=(void*)(&(${target})), ._typ=__v_typeid_${fastc_c_declared_type_name(actual_key)}})'
+			}
+		}
 		if g.selfhost && expected_type == 'voidptr*' {
 			actual_type := g.infer_expression_type(tokens[1..]) or { '' }
 			if actual_type !in ['', 'voidptr'] {
