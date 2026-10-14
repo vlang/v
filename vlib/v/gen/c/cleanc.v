@@ -10072,19 +10072,6 @@ pub fn module_const_init_order(a &flat.FlatAst, tc &types.TypeChecker) []string 
 	return g.const_emission_order()
 }
 
-// ordered_module_init_fns supports ordered module init fns handling for FlatGen.
-fn (g &FlatGen) ordered_module_init_fns() []string {
-	module_to_init := g.module_init_fn_map()
-	mut result := []string{}
-	mut visiting := map[string]bool{}
-	mut visited := map[string]bool{}
-	for init_fn in g.module_init_fns {
-		mod := g.module_init_fn_modules[init_fn] or { '' }
-		g.visit_module_init(mod, module_to_init, mut visiting, mut visited, mut result)
-	}
-	return result
-}
-
 fn (g &FlatGen) module_init_fn_map() map[string]string {
 	mut module_to_init := map[string]string{}
 	for init_fn in g.module_init_fns {
@@ -10097,11 +10084,10 @@ fn (g &FlatGen) module_init_fn_map() map[string]string {
 fn (g &FlatGen) ordered_module_cleanup_fns() []string {
 	module_to_cleanup := g.module_cleanup_fn_map()
 	mut result := []string{}
-	mut visiting := map[string]bool{}
-	mut visited := map[string]bool{}
-	for cleanup_fn in g.module_cleanup_fns {
-		mod := g.module_cleanup_fn_modules[cleanup_fn] or { '' }
-		g.visit_module_init(mod, module_to_cleanup, mut visiting, mut visited, mut result)
+	for mod in g.ordered_startup_modules(module_to_cleanup) {
+		if cleanup_fn := module_to_cleanup[mod] {
+			result << cleanup_fn
+		}
 	}
 	return result
 }
@@ -10122,6 +10108,12 @@ fn (g &FlatGen) ordered_startup_modules(module_to_init map[string]string) []stri
 	module_order << const_modules
 	for init_fn in g.module_init_fns {
 		mod := g.module_init_fn_modules[init_fn] or { '' }
+		if mod !in module_order {
+			module_order << mod
+		}
+	}
+	for cleanup_fn in g.module_cleanup_fns {
+		mod := g.module_cleanup_fn_modules[cleanup_fn] or { '' }
 		if mod !in module_order {
 			module_order << mod
 		}
@@ -10244,27 +10236,6 @@ fn (mut g FlatGen) queue_runtime_init(line string) {
 fn (mut g FlatGen) queue_runtime_init_for_module(line string, init_module string) {
 	g.runtime_inits << line
 	g.runtime_init_modules << init_module
-}
-
-// visit_module_init updates visit module init state for FlatGen.
-fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
-	if mod in visited || mod in visiting {
-		return
-	}
-	visiting[mod] = true
-	for dep in g.module_imports[mod] or { []string{} } {
-		dep_module := if dep in module_to_init || dep in g.module_imports {
-			dep
-		} else {
-			startup_module_key(dep)
-		}
-		g.visit_module_init(dep_module, module_to_init, mut visiting, mut visited, mut result)
-	}
-	visiting.delete(mod)
-	visited[mod] = true
-	if init_fn := module_to_init[mod] {
-		result << init_fn
-	}
 }
 
 fn (g &FlatGen) ordered_c_directives(late bool) []string {

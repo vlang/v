@@ -8,3 +8,5 @@ For a single module, `module_header_with_const_order` provides the same header t
 Cached builds preserve the same module initialization order as uncached builds.
 Dependencies initialize before their importers, and direct imports are visited
 in source order even when the importer has no `init()` function of its own.
+Cleanup hooks run in reverse module order, including dependencies reached
+through modules without initialization or cleanup hooks.
