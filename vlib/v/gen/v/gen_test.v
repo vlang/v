@@ -2524,6 +2524,32 @@ fn test_formatter_keeps_multiple_default_comments_and_trailing_field_comments() 
 	assert vfmt('struct_field_multiple_default_comments_twice', out) == out
 }
 
+fn test_formatter_preserves_attribute_groups_for_semicolon_fields() {
+	source := 'struct S { a int @[a]; b int = 1234567890123456789012 @[b]; c int = 123456789012345 @[c] }'
+	want := 'struct S {\n\ta int @[a]\n\tb int = 1234567890123456789012 @[b]\n\tc int = 123456789012345        @[c]\n}\n'
+	out := vfmt('struct_field_semicolon_attribute_groups', source)
+	assert out == want, out
+	assert vfmt('struct_field_semicolon_attribute_groups_twice', out) == out
+}
+
+fn test_formatter_keeps_nested_default_comments_inside_calls() {
+	for tail in ['', ' // tail'] {
+		source := 'struct Comments {\n\tvalue int = make(inner(1 /* unit */)) /* after */ @[x]${tail}\n}\n'
+		want := 'struct Comments {\n\tvalue int = make(inner(1 /* unit */\n\t)) @[x] /* after */${tail}\n}\n'
+		out := vfmt('struct_field_nested_default_comments', source)
+		assert out == want, out
+		assert vfmt('struct_field_nested_default_comments_twice', out) == out
+	}
+}
+
+fn test_formatter_defers_comments_after_the_last_default_operand() {
+	source := 'struct Comments {\n\tvalue int = 1 + 2 /* after */ @[x]\n}\n'
+	want := 'struct Comments {\n\tvalue int = 1 + 2 @[x] /* after */\n}\n'
+	out := vfmt('struct_field_last_operand_default_comments', source)
+	assert out == want, out
+	assert vfmt('struct_field_last_operand_default_comments_twice', out) == out
+}
+
 // Enum members and interface members align their trailing comments the same way.
 fn test_formatter_aligns_enum_and_interface_trailing_comments() {
 	source := 'enum Stage {\n\tcompile_begin // before\n\tcompile_end   // after\n\tcmd_begin     // before run\n}\n\ninterface Reporter {\n\tsession_start(message string) // at the start\n\tstop()                        // at the end\n}\n'

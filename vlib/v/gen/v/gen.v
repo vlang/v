@@ -137,6 +137,9 @@ mut:
 	// suppress_trailing_comments defers comments that belong after a surrounding
 	// delimiter, such as the opening brace of a loop.
 	suppress_trailing_comments int
+	// trailing_comment_limit holds comments after a field's root default until its
+	// suffix is written, while allowing comments inside that default to be emitted.
+	trailing_comment_limit int = -1
 	// attrs maps a declaration node id to its `@[...]` attribute strings. The parser stores
 	// attributes on a separate floating `.directive` node rather than as a child, so they are
 	// collected up-front in collect_attrs. attr_sources retains formatter-only source groups.
@@ -186,6 +189,7 @@ pub fn (mut g Gen) reset() {
 	g.in_index = false
 	g.in_string_interp = false
 	g.suppress_trailing_comments = 0
+	g.trailing_comment_limit = -1
 }
 
 // format_file parses-independent convenience: format the file whose trailing
@@ -4475,14 +4479,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		g.source_end = int_max(g.source_end, f.pos.offset)
 		is_embed := flags.contains('e')
 		mut suffix_width := 0
-		// While a comment column is being reached, the trailing comment must not be printed
-		// by the default expression's own pass: it would land before the padding.
 		pads_comment := int(fid) in comment_align
-		// Comments after an attributed default must wait until its attributes are written.
-		suppress_comments := pads_comment || (f.children_count > 0 && gp.len > 1)
-		if suppress_comments {
-			g.suppress_trailing_comments++
-		}
 		if is_embed {
 			g.write(g.type_text(f.value))
 		} else {
@@ -4506,7 +4503,12 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 				}
 				g.write(' = ')
 				default_start := g.out.len
+				previous_comment_limit := g.trailing_comment_limit
+				if pads_comment || gp.len > 1 {
+					g.trailing_comment_limit = g.a.child_node(f, 0).pos.end
+				}
 				g.expr(g.a.child(f, 0))
+				g.trailing_comment_limit = previous_comment_limit
 				suffix_width = if gp.len > 1 {
 					suffix_width + 3 + g.out.len - default_start
 				} else {
@@ -4523,9 +4525,6 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 			}
 			g.write(' ${attr_text}')
 			suffix_width = attr_text.len
-		}
-		if suppress_comments {
-			g.suppress_trailing_comments--
 		}
 		if pads_comment {
 			pad := comment_align[int(fid)] or { 0 }
@@ -5118,7 +5117,7 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 	mut defaults := map[int]int{}
 	mut attrs := map[int]int{}
 	mut comments := map[int]int{}
-	mut attr_fields := []flat.NodeId{}
+	mut attr_groups := map[int]int{}
 	for fid in entries {
 		f := g.a.node(fid)
 		line := lines[int(fid)]
@@ -5141,7 +5140,8 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 					type_width
 				}
 				attr_align.add_info(suffix, line, false)
-				attr_fields << fid
+				// Semicolon-separated fields can open distinct groups on the same source line.
+				attr_groups[int(fid)] = attr_align.infos.len - 1
 			}
 		}
 		if (gp.len > 1 || f.children_count == 0 || g.struct_field_default_width(fid) > 0)
@@ -5149,8 +5149,8 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 			comments[int(fid)] = comment_align.max_len(line)
 		}
 	}
-	for fid in attr_fields {
-		attrs[int(fid)] = attr_align.max_len(lines[int(fid)])
+	for fid, group in attr_groups {
+		attrs[fid] = attr_align.infos[group].max_len
 	}
 	return defaults, attrs, comments
 }
@@ -5585,6 +5585,9 @@ fn (mut g Gen) emit_comments_before(limit int) {
 fn (mut g Gen) emit_trailing_comments(end int) {
 	for g.comment_i < g.comments.len {
 		comment := g.comments[g.comment_i]
+		if g.trailing_comment_limit >= 0 && comment.pos.offset >= g.trailing_comment_limit {
+			return
+		}
 		if comment.pos.offset < end || g.source_line(comment.pos.offset) != g.source_line(end)
 			|| comment.pos.offset > g.source.len
 			|| g.source[end..comment.pos.offset].trim_space().len > 0 {
