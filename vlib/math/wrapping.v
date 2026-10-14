@@ -98,8 +98,13 @@ fn wrap_div[T](a T, b T) T {
 	return a / b
 }
 
-// wrap_mod returns a % b. No input overflows (min % -1 is 0), so this matches
-// plain remainder; division by zero still panics.
+// wrap_mod returns a % b, handling min % -1 before the backend's division
+// operation can overflow. Division by zero still panics.
 fn wrap_mod[T](a T, b T) T {
+	mn := minof[T]()
+	z := T(0)
+	if a == mn && mn != z && b == z - T(1) {
+		return z
+	}
 	return a % b
 }

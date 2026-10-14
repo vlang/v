@@ -83,3 +83,12 @@ fn test_saturating_other_widths() {
 	assert (math.saturating[i32](-2147483648) / math.saturating[i32](-1)).value == 2147483647
 	assert math.saturating[i32](-3).str() == '-3'
 }
+
+fn test_minimum_remainder_negative_one() {
+	min_i64 := math.minof[i64]()
+	assert (math.wrapping[i64](min_i64) % math.wrapping[i64](-1)).value == 0
+	assert (math.saturating[i64](min_i64) % math.saturating[i64](-1)).value == 0
+	assert (math.wrapping[i32](math.minof[i32]()) % math.wrapping[i32](-1)).value == 0
+	assert (math.saturating[i32](math.minof[i32]()) % math.saturating[i32](-1)).value == 0
+	assert (math.saturating[i8](-128) % math.saturating[i8](-1)).value == 0
+}

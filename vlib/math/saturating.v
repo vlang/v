@@ -125,8 +125,13 @@ fn sat_div[T](a T, b T) T {
 	return a / b
 }
 
-// sat_mod returns a % b. No input overflows, so this matches plain remainder;
-// division by zero still panics.
+// sat_mod returns a % b, handling min % -1 before the backend's division
+// operation can overflow. Division by zero still panics.
 fn sat_mod[T](a T, b T) T {
+	mn := minof[T]()
+	z := T(0)
+	if a == mn && mn != z && b == z - T(1) {
+		return z
+	}
 	return a % b
 }
