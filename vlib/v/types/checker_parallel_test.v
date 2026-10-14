@@ -368,9 +368,12 @@ fn test_fast_file_index_collects_translated_module_attribute() {
 }
 
 fn test_parent_metadata_replay_matches_full_scan() {
-	path := os.join_path(os.vtmp_dir(), 'v3_parent_metadata_${os.getpid()}.v')
+	fixture_dir := os.join_path(os.vtmp_dir(), 'v3_parent_metadata_${os.getpid()}')
+	defer { os.rmdir_all(fixture_dir) or {} }
+	os.mkdir_all(os.join_path(fixture_dir, 'v3_parent_headers')) or { panic(err) }
+	os.mkdir_all(os.join_path(fixture_dir, 'v3_parent_system')) or { panic(err) }
+	path := os.join_path(fixture_dir, 'main.v')
 	os.write_file(path, '@[translated]\nmodule main\nimport strings\n#flag -I @DIR/v3_parent_headers -D FEATURE\n#flag -isystem "@DIR/v3_parent_system" -Wall\n#flag -I @DIR/v3_parent_headers\n@[inline]\nfn make_builder() { mut b := strings.new_builder(10) }\n') or { panic(err) }
-	defer { os.rm(path) or {} }
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
