@@ -1212,15 +1212,16 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 		}
 		else {
 			mut rbound := s.len
-			for i := s.len - 1; i >= 0; i-- {
-				is_delim := i - delim.len >= 0 && s[i - delim.len..i] == delim
-				if is_delim {
+			for i := s.len - delim.len; i >= 0; i-- {
+				if unsafe { s.substr_unsafe(i, i + delim.len) } == delim {
 					if nth > 0 && res.len == nth - 1 {
 						break
 					}
-					res << s[i..rbound]
-					i -= delim.len
+					res << s[i + delim.len..rbound]
 					rbound = i
+					// Step past the delimiter; the loop's own `i--`
+					// then lands on the next non-overlapping start.
+					i -= delim.len - 1
 				}
 			}
 			if nth < 1 || res.len < nth {
