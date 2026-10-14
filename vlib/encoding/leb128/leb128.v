@@ -75,8 +75,8 @@ pub fn decode_i32(value []u8) (i32, int) {
 	mut shift := 0
 	for i, b in value {
 		if i == 4 {
-			// a fifth group must terminate the value
-			if b & 0x80 != 0 {
+			// Unused payload bits must repeat the signed value's sign bit.
+			if b & 0x80 != 0 || (b > 0x07 && b < 0x78) {
 				return 0, -(i + 1)
 			}
 		}
@@ -101,9 +101,8 @@ pub fn decode_i64(value []u8) (i64, int) {
 	mut shift := 0
 	for i, b in value {
 		if i == 9 {
-			// a tenth group must terminate the value; any terminating tenth
-			// group is a valid i64, since negatives need the top bits set
-			if b & 0x80 != 0 {
+			// Only bit 63 remains; the other payload bits are sign extension.
+			if b != 0x00 && b != 0x7f {
 				return 0, -(i + 1)
 			}
 		}

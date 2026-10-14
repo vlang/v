@@ -2153,3 +2153,32 @@ fn test_decode_malformed_input() {
 	assert sv == -123456
 	assert sn == 3
 }
+
+fn test_signed_terminal_payload_bits() {
+	for terminal in 0 .. 128 {
+		mut bytes32 := []u8{len: 4, init: u8(0x80)}
+		bytes32 << u8(terminal)
+		value32, used32 := leb128.decode_i32(bytes32)
+		if terminal <= 7 || terminal >= 0x78 {
+			assert used32 == 5
+			decoded, count := leb128.decode_i32(leb128.encode_i32(value32))
+			assert decoded == value32
+			assert count > 0
+		} else {
+			assert value32 == 0
+			assert used32 == -5
+		}
+		mut bytes64 := []u8{len: 9, init: u8(0x80)}
+		bytes64 << u8(terminal)
+		value64, used64 := leb128.decode_i64(bytes64)
+		if terminal == 0 || terminal == 0x7f {
+			assert used64 == 10
+			decoded, count := leb128.decode_i64(leb128.encode_i64(value64))
+			assert decoded == value64
+			assert count > 0
+		} else {
+			assert value64 == 0
+			assert used64 == -10
+		}
+	}
+}

@@ -473,14 +473,53 @@ and builds with bundled TinyCC on macOS and Linux. TinyCC builds and links its o
 objects. Pass `-nocache` or `--no-cache` to disable caching. A first TinyCC build can be
 faster without the cache, while later builds reuse the cached modules and executable.
 The former `-usecache` flag is no longer accepted.
+The C backend rejects `-prod` with TinyCC, including compiler aliases and renamed copies.
+Use Clang or GCC for production builds. Help, formatter, and other tool commands remain available
+with those flags. `v.pref.ccompiler_version_is_tinycc` recognizes TinyCC banner lines;
+mentions in metadata such as Clang's `InstalledDir` do not identify TinyCC.
+Compiler probes follow the launch path, including executable files in the working directory
+before `PATH`. Windows explicit paths use the implicit `.exe` suffix and expand `%NAME%` variables;
+renamed PE files with other extensions can also be queried.
+
+Cached programs retain the element layouts required by fixed-array aliases and option payloads.
+Cached standard-library headers retain their source classification so headerless C bindings keep
+their complete layouts, including the Boehm GC stack type used by interface stringification.
+Generated fixed-array map-key helpers declare their cached builtin callees before their definitions.
+Inferred anonymous fixed arrays use their materialized element types, including nested arrays.
+Literal-output programs still instantiate retained generic helpers with `-no-skip-unused`.
+Merged imports in cached headers do not create parameter-name conflicts across source files.
+Warm builds retain every `IError` implementer's `msg` and `code` methods and their helpers,
+including calls made by dispatchers inside cached objects.
+Selected option/result tuple signatures retain nested struct payload layouts, including signatures
+discovered after cache demand collection, and declare them before their tuples and wrappers.
+Shared wrappers retain their payload layouts even when only compile-time reflection visits them.
+Recursive interface string helpers belong to the interface's declaration module, including generic
+applications whose arguments name types from other modules.
+Warm builds preserve generic interface parameter metadata after temporary compiler arenas are freed.
+Translated programs regenerate their C prefixes after body edits so new runtime helpers are present;
+their module and executable caches remain enabled.
+Portable cross output keeps its embedded signal-handler installer local so cached builds can
+also link the native helper object.
 With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
 before compiling a new module object, including during `run`. Ordinary builds and warm builds
 print no cache creation notices; `-silent` suppresses them too.
 This applies to SHA3 and other imported modules with TinyCC too.
 `v up` refreshes cached modules once per equivalent import sequence and build configuration.
 It preserves import order for module C flags and reuses the same records on repeated updates.
+Both original entries and temporary importers stop after module object validation,
+before compiling program objects or linking an executable.
+`v up` refreshes only TinyCC cache configurations, retaining recorded test modes.
+Production TinyCC records made by older compilers are skipped.
+`v.pref.tcc_with_prod_requested_in` checks compiler wrappers in the record's working directory
+and resolves relative compiler paths and `PATH` entries there without changing the caller's
+directory or environment.
+Caches for other C compilers are refreshed by the next build that uses that compiler.
+Compiler updates validate fresh module interfaces and reuse compiled objects when the generated C,
+C compiler, flags, and native inputs still match. Reused objects print no cache creation notices.
+Objects and their generated C are shared between configurations to avoid duplicate storage.
 Refresh progress labels each build's compiler flags and normal/production and program/test modes.
 Record indices can jump when builds are grouped or skipped; the final summary counts checked builds.
+Refresh stops on a disk-full error so remaining configurations do not keep attempting writes.
 If TinyCC cannot compile or link a cached program unit, V retries the original sources
 without module caching before changing C compilers or reporting a compilation failure.
 Programs importing `v.reflection` parse original module sources to preserve source-file
@@ -536,6 +575,8 @@ are embedded in the `.vh` interface, so a warm cached build parses `.v` files on
 program's directory; the `.v` list makes an unexpected module-cache miss visible. After
 successfully populating module objects, a cold build with timings enabled prints a hint that
 unchanged modules will not be recompiled on the next run.
+Development compiler cache identity includes every embedded runtime header and native C helper
+source. Editing any of these inputs invalidates cached artifacts without rebuilding the compiler.
 Third-party C objects retain dependency manifests, so warm builds verify each unique source or
 header once without launching a dependency-scanner process per object. Unchanged inputs use
 nanosecond-resolution file metadata; a metadata change falls back to the recorded content hash.
@@ -936,3 +977,21 @@ Both populated and empty map references retain valid storage after initializatio
 
 The special lowering for `strings.Builder` applies to that module’s type.
 Types named `Builder` in other modules keep their own methods.
+
+For diagnostics-only generic checks, `V_CHECK_LIBRARY_BODIES=all` retains every imported
+library instance body. Other values use reachability to omit irrelevant library bodies.
+`V_DIAGNOSTICS_TRACE` appends check tracing to an absolute path on each supported platform.
+
+### Numeric infix differential control
+
+Set `V3_NO_CHECKED_NUMERIC_INFIX=1` to disable the checked numeric infix shortcut during
+both initial function lowering and later monomorphization. This is a diagnostic control for
+comparing generated C through the full dispatch path; ordinary compilation keeps the shortcut.
+
+### Transform batch arenas
+
+Function bodies are lowered in batches that share one scratch arena, rewound between batches.
+Batches that run one at a time keep up to 64 MiB of it mapped, so that the next batch does not
+fault its pages in again; build the compiler with `-d transform_sole_batch_arena_keep_mb=N` to
+change that bound. Helpers that run side by side keep 1 MiB each
+(`-d transform_batch_arena_keep_mb=N`), since every idle arena adds to the peak.
