@@ -342,3 +342,8 @@ messages. Error text returned by operations using it retains the message's punct
 
 On Windows, `os.exec()` captures bytes from successful child-pipe reads only. Closing the output
 pipe does not append a previous chunk again. Commands with no output return an empty output string.
+
+### Writing arrays
+
+`os.write_file_array()` closes its file even when writing fails, including when a device is full
+or a pipe reader closes. The write error is still returned to the caller.

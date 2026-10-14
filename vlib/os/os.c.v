@@ -1341,10 +1341,13 @@ pub fn is_atty(fd int) int {
 }
 
 // write_file_array writes the data in `buffer` to a file in `path`.
+// The file is closed on both success and write failure.
 pub fn write_file_array(path string, buffer array) ! {
 	mut f := create(path)!
+	defer {
+		f.close()
+	}
 	unsafe { f.write_full_buffer(buffer.data, usize(buffer.len * buffer.element_size))! }
-	f.close()
 }
 
 // glob function searches for all the pathnames matching patterns and returns a

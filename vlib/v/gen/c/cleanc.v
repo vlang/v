@@ -19415,6 +19415,9 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#include <sys/event.h>')
 	g.writeln('#endif')
+	g.writeln('#if defined(__FreeBSD__) || defined(__OpenBSD__)')
+	g.writeln('#include <sys/sysctl.h>')
+	g.writeln('#endif')
 	g.system_execinfo_declarations()
 	g.writeln('')
 }
@@ -19467,6 +19470,9 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('extern char** environ;')
 	g.writeln('#endif')
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
+	if g.target.os in ['freebsd', 'openbsd'] || g.output_cross_c {
+		g.collect_preserved_c_fns(['sysctl'])
+	}
 	g.collect_preserved_c_fns([
 		'kevent',
 		'kqueue',
