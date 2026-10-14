@@ -1494,10 +1494,8 @@ fn fastc_is_pointer_type(typ string) bool {
 }
 
 fn fastc_array_element_type(typ string) ?string {
-	// A `FixedArray_<len>_FASTC_ARRAY_OF_<elem>` name carries the raw element type after the
-	// marker, and that element may itself be a pointer (`[N]&T` -> `..._FASTC_ARRAY_OF_T*`).
-	// Extract it before any trailing-`*` trim mistakes the element's pointer for a suffix on
-	// the whole array type.
+	// Fixed-array element pointers are encoded as `_ptr`, so a trailing `*` belongs
+	// to the array container rather than the element produced by indexing.
 	if typ.starts_with('FixedArray_') && typ.contains('_FASTC_ARRAY_OF_') {
 		if element_type := fastc_fixed_array_element_type(typ) {
 			return element_type

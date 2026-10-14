@@ -2942,6 +2942,9 @@ fn (g &Parser) narrowed_subject_value_type(tokens []FastcExpressionToken) ?strin
 			return none
 		}
 	}
+	if smartcast.value_type != '' {
+		return smartcast.value_type
+	}
 	return smartcast.typ[..smartcast.typ.len - 1]
 }
 

@@ -3666,6 +3666,7 @@ fn (g &Parser) conjunction_narrowing(tokens []FastcExpressionToken) ?FastcConjun
 		return none
 	}
 	mut variant_c := ''
+	mut variant_value_type := ''
 	if is_idx + 2 == inner.len && inner[is_idx + 1].tok == .name {
 		if type_key := g.resolve_declared_type_key(inner[is_idx + 1].lit) {
 			variant_c = fastc_c_declared_type_name(type_key)
@@ -3673,7 +3674,8 @@ fn (g &Parser) conjunction_narrowing(tokens []FastcExpressionToken) ?FastcConjun
 			variant_c = inner[is_idx + 1].lit
 		}
 	} else if resolved := g.type_from_expression_tokens(inner[is_idx + 1..]) {
-		variant_c = fastc_normalize_inferred_type(resolved).trim_right('*')
+		variant_value_type = fastc_normalize_inferred_type(resolved)
+		variant_c = variant_value_type.trim_right('*')
 	}
 	if variant_c == '' {
 		return none
@@ -3700,8 +3702,9 @@ fn (g &Parser) conjunction_narrowing(tokens []FastcExpressionToken) ?FastcConjun
 	return FastcConjunctionNarrowing{
 		path:      path
 		smartcast: FastcMemberSmartcast{
-			typ:    variant_c + '*'
-			source: '((${variant_c} *)(${subject_source})${access}_object)'
+			typ:        variant_c + '*'
+			value_type: if variant_value_type != '' { variant_value_type } else { variant_c }
+			source:     '((${variant_c} *)(${subject_source})${access}_object)'
 		}
 	}
 }

@@ -718,8 +718,9 @@ fn (mut g Parser) parse_if() !bool {
 		}
 		g.write_line('${plan.type_c} *${plan.member_tmp} = (${plan.type_c} *)${plan.boxed_tmp}${plan_access}_object;')
 		g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-			typ:    plan.type_c + '*'
-			source: plan.member_tmp
+			typ:        plan.type_c + '*'
+			value_type: plan.value_type
+			source:     plan.member_tmp
 		}
 	}
 	// `if opt != none { opt.field }`: narrow each option local guaranteed non-none in the
@@ -974,6 +975,7 @@ fn (g &Parser) if_starts_final_block_expression() bool {
 struct FastcMemberSmartcastPlan {
 	path       string
 	type_c     string
+	value_type string
 	boxed_type string
 	source     string
 	boxed_tmp  string
@@ -1176,7 +1178,8 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 				target_type := g.type_from_expression_tokens(conjunct[is_idx + 1..]) or { '' }
 				if left_type != '' && target_type != '' && g.is_boxed_type(left_type) {
 					if left_source := g.render_member_receiver(left_tokens) {
-						normalized_target := fastc_normalize_inferred_type(target_type)
+						value_type := fastc_normalize_inferred_type(target_type)
+						normalized_target := value_type.trim_right('*')
 						boxed_tmp := g.temporary_name('smartcast_subject')
 						member_tmp := g.temporary_name('smartcast_member')
 						// A pointer subject (`node &ast.Node`, or a nested variant already
@@ -1186,6 +1189,7 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 						plans << FastcMemberSmartcastPlan{
 							path:       path
 							type_c:     normalized_target
+							value_type: value_type
 							boxed_type: left_type
 							source:     left_source
 							boxed_tmp:  boxed_tmp
@@ -1202,8 +1206,9 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 							previous[path] = g.member_smartcasts[path] or { FastcMemberSmartcast{} }
 						}
 						g.member_smartcasts[path] = FastcMemberSmartcast{
-							typ:    normalized_target + '*'
-							source: '((${normalized_target} *)${boxed_tmp}${access}_object)'
+							typ:        normalized_target + '*'
+							value_type: value_type
+							source:     '((${normalized_target} *)${boxed_tmp}${access}_object)'
 						}
 						continue
 					}
@@ -1599,8 +1604,9 @@ fn (mut g Parser) read_if_expression() !string {
 				}
 			}
 			g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-				typ:    plan.type_c + '*'
-				source: plan.member_tmp
+				typ:        plan.type_c + '*'
+				value_type: plan.value_type
+				source:     plan.member_tmp
 			}
 		}
 	}
