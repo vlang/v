@@ -111,6 +111,9 @@ assert encoded == 'host = "localhost"\nport = 5432\napp_name = "app"'
 assert toml.decode[Config](encoded)! == config
 ```
 
+String values are encoded as TOML basic strings with quotes, backslashes, and control characters
+escaped. Non-ASCII text is preserved.
+
 Map fields support string, boolean, and integer keys up to 64 bits. TOML keys are strings;
 integer keys are parsed as decimal numbers with the destination type's range,
 including full-width `i64` and `u64` keys. Invalid or out-of-range keys are skipped,
@@ -212,3 +215,7 @@ array = [
 doc := toml.parse_text(toml_text) or { panic(err) }
 assert to.json(doc) == '{ "val": true, "table": { "array": [ { "a": "A" }, { "b": "B" } ] } }'
 ```
+
+`toml.scanner.Scanner.peek(0)` returns the byte at the current scanner position without
+advancing it, or `end_of_text` when the position is at the end of the input.
+Negative offsets look behind that position. An offset outside the input returns `end_of_text`.
