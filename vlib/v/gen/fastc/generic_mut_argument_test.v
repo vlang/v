@@ -81,3 +81,76 @@ fn main() {
 	assert run.exit_code != 0, run.output
 	assert run.output.contains('generic function `pass` was called without a concrete instance'), run.output
 }
+
+// A parameter named like a generic function is the parameter: `pass(mut s)` calls the
+// callback it holds, not the generic `pass`.
+fn test_fastc_parameter_shadowing_a_generic_is_called_as_the_parameter() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_generic_fixture('shadow', fastc_generic_sink + '
+fn bump(mut s Sink, x int) {
+	s.n += 10 * x
+}
+
+fn invoke(pass fn (mut Sink, int), mut s Sink) {
+	pass(mut s, 1)
+}
+
+fn main() {
+	mut s := Sink{}
+	invoke(bump, mut s)
+	pass(mut s, 2)
+	println(s.n)
+}
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '12'
+}
+
+// A function literal's own `s` ends with the literal: the `pass(mut s)` after it is
+// instantiated for the enclosing `s`.
+fn test_fastc_generic_after_a_function_literal_uses_the_enclosing_variable() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_generic_fixture('literal', fastc_generic_sink + '
+struct Other {
+mut:
+	pad [4]i64
+	n   int
+}
+
+fn (mut o Other) send(x int) {
+	o.n += x
+}
+
+fn main() {
+	mut s := Sink{}
+	cb := fn () {
+		mut s := Other{}
+		pass(mut s, 5)
+		println(s.n)
+	}
+	cb()
+	pass(mut s, 2)
+	println(s.n)
+}
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '5\n2'
+}

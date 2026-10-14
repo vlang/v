@@ -586,6 +586,15 @@ struct FastcGenericCall {
 	concrete     string
 }
 
+// FastcCallScanScope holds an enclosing function's variables while the call scan is inside a
+// function literal, which opened at brace depth `depth`.
+struct FastcCallScanScope {
+	var_types     map[string]string
+	var_ambiguous map[string]bool
+	locals        map[string]bool
+	depth         int
+}
+
 struct FastcConcretePair {
 	name     string
 	concrete string
@@ -1154,6 +1163,11 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 	// types is marked ambiguous and no longer resolves (keeping inference safe).
 	mut var_types := map[string]string{}
 	mut var_ambiguous := map[string]bool{}
+	// The parameters of the current function: a call through one of these names calls the
+	// parameter, never a generic function of the same name.
+	mut locals := map[string]bool{}
+	mut scopes := []FastcCallScanScope{}
+	mut brace_depth := 0
 	mut pending_var := ''
 	// `name := Foo{...}` is confirmed a struct-literal local only once the `{` after
 	// the type name is seen; hold the candidate until the next token.
@@ -1168,6 +1182,18 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 	for tok != .eof {
 		if tok == .dot {
 			before_dot_receiver = previous_lit
+		}
+		if tok == .lcbr {
+			brace_depth++
+		} else if tok == .rcbr {
+			brace_depth--
+			// Leaving a function literal's body brings back the enclosing function's variables.
+			for scopes.len > 0 && scopes[scopes.len - 1].depth >= brace_depth {
+				scope := scopes.pop()
+				var_types = scope.var_types
+				var_ambiguous = scope.var_ambiguous
+				locals = scope.locals
+			}
 		}
 		if pending_struct_var != '' {
 			if tok == .lcbr {
@@ -1190,12 +1216,21 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 			// Fall through: this token may still start (or be) a generic call.
 		}
 		if tok == .key_fn {
+			if brace_depth > 0 {
+				scopes << FastcCallScanScope{
+					var_types:     var_types
+					var_ambiguous: var_ambiguous
+					locals:        locals
+					depth:         brace_depth
+				}
+			}
 			var_types = map[string]string{}
 			var_ambiguous = map[string]bool{}
+			locals = map[string]bool{}
 			pending_var = ''
 			pending_struct_var = ''
 			pending_struct_type = ''
-			tok = fastc_collect_params(mut s, mut var_types, prefs)
+			tok = fastc_collect_params(mut s, mut var_types, mut locals, prefs)
 			previous = .rpar
 			previous_lit = ''
 			continue
@@ -1216,8 +1251,9 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				recv_type := var_types[before_dot_receiver] or { '' }
 				should_skip = previous != .dot || recv_type != probe.receiver_type
 			} else {
-				// A free generic function is never a `.`-qualified field/module access.
-				should_skip = previous == .dot
+				// A free generic function is never a `.`-qualified field/module access, nor a
+				// parameter that shadows it.
+				should_skip = previous == .dot || s.lit in locals
 			}
 		}
 		if should_skip {
@@ -1324,8 +1360,9 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 
 // fastc_collect_params records the single-name-typed parameters of the function
 // whose `fn` keyword was just consumed, so `f(param)` calls can infer their
-// concrete type. It returns the token just past the parameter list.
-fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string, prefs &pref.Preferences) token.Token {
+// concrete type, and every parameter name in `locals`. It returns the token just
+// past the parameter list.
+fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string, mut locals map[string]bool, prefs &pref.Preferences) token.Token {
 	no_imports := map[string]string{}
 	no_declared_types := map[string]bool{}
 	mut tok := s.scan()
@@ -1387,6 +1424,7 @@ fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string, 
 			break
 		}
 		parameter_name := s.lit
+		locals[parameter_name] = true
 		tok = s.scan()
 		if tok == .name {
 			type_name := s.lit
