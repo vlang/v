@@ -26,9 +26,9 @@ pub:
 	// registry authenticates nothing: the field is hardcoded to `false` and no
 	// code reads it, so it describes no behaviour of this server.
 	auth_required bool
-	// public_key is the hex-encoded ed25519 key that vouches for the metadata
-	// served by this registry. A mirror cannot be forged against it, because it
-	// holds no key of its own to sign with.
+	// public_key advertises the registry's hex-encoded ed25519 signing key.
+	// This document is not a trust root: a mirror can replace both the key and
+	// the signature. Verifiers must obtain their trusted key independently.
 	public_key string
 }
 
@@ -314,10 +314,37 @@ pub fn (r &Registry) save() ! {
 	}
 }
 
-// load_registry loads the registry from disk, or returns an empty registry.
-pub fn load_registry() Registry {
-	data := os.read_file(registry_index_path()) or { return new_registry() }
-	return import_json(data) or { new_registry() }
+// load_registry loads the registry from disk, returning an empty registry only
+// when its index does not exist. Existing unreadable or invalid indexes fail.
+pub fn load_registry() !Registry {
+	dir := registry_dir()
+	os.lstat(dir) or {
+		// Windows lstat can report a dangling directory link as missing.
+		if os.is_not_exist(err) && !os.is_link(dir) {
+			return new_registry()
+		}
+		return error('failed to inspect registry directory `${dir}`: ${err.msg()}')
+	}
+	dir_stat := os.stat(dir) or {
+		return error('failed to inspect registry directory `${dir}`: ${err.msg()}')
+	}
+	if dir_stat.get_filetype() != .directory {
+		return error('registry directory `${dir}` is not a directory')
+	}
+	path := registry_index_path()
+	// lstat distinguishes a missing index from an existing dangling symlink.
+	os.lstat(path) or {
+		if os.is_not_exist(err) && !os.is_link(path) {
+			return new_registry()
+		}
+		return error('failed to inspect registry index `${path}`: ${err.msg()}')
+	}
+	data := os.read_file(path) or {
+		return error('failed to read registry index `${path}`: ${err.msg()}')
+	}
+	return import_json(data) or {
+		return error('failed to load registry index `${path}`: ${err.msg()}')
+	}
 }
 
 // RegistryResponse is one registry answer as it goes over the wire: a status,
@@ -478,7 +505,7 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 			dl:            'https://example.com/downloads'
 			api:           'https://example.com/api'
 			auth_required: false
-			// A client learns the key used for the registry signature from this config.
+			// Discovery only; clients must pin a key obtained independently.
 			public_key:    registry.public_key_hex()
 		})
 	}
@@ -540,8 +567,8 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 	// are verified against the checksum the index recorded before being served,
 	// so a corrupted or tampered store is caught here rather than at the client.
 	// GET /signature.sig serves the ed25519 signature over the registry index.
-	// A client that knows the public key can tell a mirror apart from the
-	// origin, because a mirror has no key to sign with.
+	// A verifier must pin the origin's public key through a trusted external
+	// channel. A mirror can sign substituted contents using its own key.
 	if path == '/${registry_signature_file_name}' && method == 'GET' {
 		return json2.encode(registry.signature())
 	}
@@ -564,8 +591,8 @@ fn (r &Registry) signing_key() ?ed25519.PrivateKey {
 	return ed25519.new_key_from_seed(seed)
 }
 
-// public_key_hex returns the hex-encoded public key that vouches for this
-// registry, or '' when it holds no signing key.
+// public_key_hex returns the hex-encoded public key for the configured signing
+// key, or '' when no signing key is configured.
 pub fn (r &Registry) public_key_hex() string {
 	key := r.signing_key() or { return '' }
 	return key.public_key().hex()
@@ -628,11 +655,13 @@ pub fn (r &Registry) signature() string {
 }
 
 // verify_signature reports whether `sig_hex` over this registry's canonical
-// form was produced by the holder of `public_key_hex`. A registry whose
-// contents were edited after signing fails, because the canonical form no
-// longer matches what was signed.
-pub fn (r &Registry) verify_signature(public_key_hex string, sig_hex string) bool {
-	public_bytes := hexcode.decode(public_key_hex) or { return false }
+// form was produced by the holder of `trusted_public_key_hex`. The caller must
+// supply a public key pinned through a trusted external channel, such as a trusted
+// local file. Reading the key from the same registry's config does not establish
+// trust: a malicious mirror can replace the index, signature and advertised key.
+// This check is explicit; registry fetch and install helpers do not invoke it.
+pub fn (r &Registry) verify_signature(trusted_public_key_hex string, sig_hex string) bool {
+	public_bytes := hexcode.decode(trusted_public_key_hex) or { return false }
 	sig := hexcode.decode(sig_hex) or { return false }
 	return ed25519.verify(public_bytes, r.canonical_json().bytes(), sig) or { false }
 }

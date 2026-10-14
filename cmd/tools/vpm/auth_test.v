@@ -4,50 +4,112 @@ import os
 import net.http
 
 fn testsuite_begin() {
-	os.unsetenv('VPM_TOKEN')
-	os.unsetenv('VPM_TOKEN_VPM_EXAMPLE_COM')
-	os.unsetenv('VPM_TOKEN_MY_REGISTRY_IO')
+	clear_auth_environment()
 }
 
 fn testsuite_end() {
+	clear_auth_environment()
+}
+
+fn clear_auth_environment() {
+	os.unsetenv(registry_url_env)
 	os.unsetenv('VPM_TOKEN')
 	os.unsetenv('VPM_TOKEN_VPM_EXAMPLE_COM')
 	os.unsetenv('VPM_TOKEN_MY_REGISTRY_IO')
 }
 
 fn test_public_registry_needs_no_token() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
+	os.setenv('VPM_TOKEN', 'private-token', true)
 	assert registry_token('https://vpm.vlang.io/a_module') == ''
 }
 
 fn test_unqualified_vpm_token_covers_one_private_registry() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
 	os.setenv('VPM_TOKEN', 'tok-all', true)
+	os.setenv(registry_url_env, 'https://vpm.example.com', true)
 	assert registry_token('https://vpm.example.com/a_module') == 'tok-all'
+}
+
+fn test_unqualified_token_is_limited_to_the_configured_http_origin() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
+	os.setenv('VPM_TOKEN', 'private-token', true)
+	os.setenv(registry_url_env, 'https://VPM.EXAMPLE.COM:443/registry/', true)
+	for url in ['https://vpm.example.com/a', 'https://VPM.EXAMPLE.COM:443/b'] {
+		assert registry_token(url) == 'private-token', url
+	}
+	for url in ['https://other.example.com/a', 'http://vpm.example.com/a',
+		'https://vpm.example.com:8443/a', 'https://vpm.example.com@other.example.com/a',
+		'ftp://vpm.example.com/a', '//vpm.example.com/a', '/relative', 'https:///a'] {
+		assert registry_token(url) == '', url
+	}
+	os.setenv(registry_url_env, 'http://vpm.example.com', true)
+	assert registry_token('http://VPM.EXAMPLE.COM:80/a') == 'private-token'
+	assert registry_token('http://vpm.example.com:8080/a') == ''
+	assert registry_token('https://vpm.example.com/a') == ''
+}
+
+fn test_unqualified_token_requires_a_valid_configured_registry() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
+	os.setenv('VPM_TOKEN', 'private-token', true)
+	assert registry_token('https://vpm.example.com/a') == ''
+	for configured in ['', '::::not a url::::', '/relative', 'https:///missing',
+		'file://vpm.example.com/a', '//vpm.example.com'] {
+		os.setenv(registry_url_env, configured, true)
+		assert registry_token('https://vpm.example.com/a') == '', configured
+	}
 }
 
 // A scoped token must win over the unqualified one, because a machine holding
 // tokens for several private registries must not send one registry's token to
 // another.
 fn test_scoped_token_wins_over_the_unqualified_one() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
 	os.setenv('VPM_TOKEN', 'tok-all', true)
+	os.setenv(registry_url_env, 'https://vpm.example.com', true)
 	os.setenv('VPM_TOKEN_VPM_EXAMPLE_COM', 'tok-example', true)
 	assert registry_token('https://vpm.example.com/a_module') == 'tok-example'
-	// ... and the other registry keeps the fallback, not example's token.
-	assert registry_token('https://vpm.other.io/a_module') == 'tok-all'
+	assert registry_token('https://vpm.other.io/a_module') == ''
+	os.unsetenv(registry_url_env)
+	assert registry_token('https://VPM.EXAMPLE.COM/a_module') == 'tok-example'
+}
+
+fn test_empty_scoped_token_disables_the_unqualified_fallback() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
+	os.setenv(registry_url_env, 'https://vpm.example.com', true)
+	os.setenv('VPM_TOKEN', 'private-token', true)
+	os.setenv('VPM_TOKEN_VPM_EXAMPLE_COM', '', true)
+	assert registry_token('https://vpm.example.com/a') == ''
 }
 
 // An environment name may not hold `.` or `-`, so both fold to `_`.
 fn test_host_punctuation_folds_into_underscores() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
 	os.setenv('VPM_TOKEN_MY_REGISTRY_IO', 'tok-my', true)
 	assert registry_token('https://my-registry.io/a_module') == 'tok-my'
 }
 
 fn test_unparseable_url_asks_for_no_token() {
+	clear_auth_environment()
+	defer { clear_auth_environment() }
+	os.setenv(registry_url_env, 'https://vpm.example.com', true)
+	os.setenv('VPM_TOKEN', 'private-token', true)
+	os.setenv('VPM_TOKEN_VPM_EXAMPLE_COM', 'scoped-token', true)
 	assert registry_token('::::not a url::::') == ''
+	assert registry_token('file://vpm.example.com/a') == ''
+	assert registry_token('//vpm.example.com/a') == ''
 }
 
 fn test_401_without_a_token_is_reported_as_an_auth_requirement() {
-	os.unsetenv('VPM_TOKEN')
-	os.unsetenv('VPM_TOKEN_VPM_EXAMPLE_COM')
+	clear_auth_environment()
+	defer { clear_auth_environment() }
 	require_registry_token('https://vpm.example.com/a_module', 401) or {
 		assert err.msg().contains('requires authentication'), err.msg()
 		return
@@ -56,7 +118,9 @@ fn test_401_without_a_token_is_reported_as_an_auth_requirement() {
 }
 
 fn test_401_with_a_token_is_reported_as_a_rejection() {
-	os.unsetenv('VPM_TOKEN')
+	clear_auth_environment()
+	defer { clear_auth_environment() }
+	os.setenv(registry_url_env, 'https://vpm.example.com', true)
 	os.setenv('VPM_TOKEN', 'tok-all', true)
 	require_registry_token('https://vpm.example.com/a_module', 401) or {
 		assert err.msg().contains('rejected the configured token'), err.msg()

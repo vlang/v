@@ -4,6 +4,10 @@ import crypto.ed25519
 import json2
 import os
 
+const signing_root = os.join_path(os.vtmp_dir(), 'vpm_registry_signing_${os.getpid()}')
+const signing_original_dir = os.getwd()
+const signing_original_environment = os.environ()
+
 fn signing_demo_info(name string, version string) ModuleInfo {
 	return ModuleInfo{
 		name:         name
@@ -24,17 +28,39 @@ fn new_demo_registry() Registry {
 }
 
 fn testsuite_begin() {
+	os.mkdir_all(signing_root)!
+	os.chdir(signing_root)!
 	os.unsetenv('VPM_REGISTRY_KEY')
 }
 
 fn testsuite_end() {
-	os.unsetenv('VPM_REGISTRY_KEY')
+	if previous := signing_original_environment[registry_key_env] {
+		os.setenv(registry_key_env, previous, true)
+	} else {
+		os.unsetenv(registry_key_env)
+	}
+	os.chdir(signing_original_dir) or {}
+	os.rmdir_all(signing_root) or {}
 }
 
 fn test_an_unsigned_registry_vouches_for_nothing() {
+	os.unsetenv('VPM_REGISTRY_KEY')
 	r := new_demo_registry()
 	assert r.signature() == '', 'an unsigned registry produced a signature'
 	assert r.public_key_hex() == '', 'an unsigned registry produced a public key'
+}
+
+fn test_signing_uses_the_registry_key_file_without_an_environment_key() {
+	os.unsetenv(registry_key_env)
+	public_key, private_key := ed25519.generate_key()!
+	os.mkdir_all(registry_dir())!
+	os.write_file(registry_key_path(), private_key.seed().hex())!
+	defer {
+		os.rm(registry_key_path()) or {}
+	}
+	registry := new_demo_registry()
+	assert registry.public_key_hex() == public_key.hex()
+	assert registry.verify_signature(public_key.hex(), registry.signature())
 }
 
 fn test_a_signed_registry_verifies_against_its_own_key() {
@@ -52,8 +78,7 @@ fn test_a_signed_registry_verifies_against_its_own_key() {
 }
 
 // A mirror that edits a checkout before serving it changes the canonical form,
-// so the original signature no longer verifies. That is the whole point of
-// signing: the mirror has no key of its own to re-sign with.
+// so the original signature no longer verifies against the pinned origin key.
 fn test_editing_the_registry_after_signing_breaks_verification() {
 	os.unsetenv('VPM_REGISTRY_KEY')
 	r := new_demo_registry()
@@ -143,10 +168,8 @@ fn test_configuration_exposes_the_key_that_signs_the_registry() {
 	assert config.public_key != ''
 }
 
-// A client that has only the served config must be able to learn which key
-// vouches for the registry, or it cannot check `signature.sig` at all and a
-// mirror is indistinguishable from the origin it copied.
-fn test_the_config_route_names_the_vouching_key() {
+// The advertised key identifies the signer but does not establish trust.
+fn test_the_config_route_names_the_advertised_signing_key() {
 	os.unsetenv('VPM_REGISTRY_KEY')
 	r := new_demo_registry()
 	vouching_public, private := ed25519.generate_key() or {
@@ -156,4 +179,34 @@ fn test_the_config_route_names_the_vouching_key() {
 	os.setenv('VPM_REGISTRY_KEY', private.seed().hex(), true)
 	result := handle_request(r, 'GET', '/config.json', map[string]string{})
 	assert result.contains(vouching_public.hex()), result
+}
+
+fn test_a_mirror_cannot_replace_an_independently_pinned_origin_key() {
+	origin_public, origin_private := ed25519.generate_key()!
+	os.setenv('VPM_REGISTRY_KEY', origin_private.seed().hex(), true)
+	origin := new_demo_registry()
+	// The verifier gets this key through a trusted channel, before contacting
+	// either the origin or the mirror. It never replaces it from config.json.
+	pinned_key_path := os.join_path(signing_root, 'pinned.pub')
+	os.write_file(pinned_key_path, origin_public.hex() + '\n')!
+	defer {
+		os.rm(pinned_key_path) or {}
+	}
+	pinned_public_key := os.read_file(pinned_key_path)!.trim_space()
+	assert origin.verify_signature(pinned_public_key, origin.signature())
+
+	mirror_public, mirror_private := ed25519.generate_key()!
+	os.setenv('VPM_REGISTRY_KEY', mirror_private.seed().hex(), true)
+	mut mirror := new_demo_registry()
+	mirror.add_module(signing_demo_info('injected', '9.9.9'))
+	config := json2.decode[RegistryConfig](handle_request(mirror, 'GET', '/config.json',
+		map[string]string{}))!
+	signature := json2.decode[string](handle_request(mirror, 'GET', '/signature.sig',
+		map[string]string{}))!
+	assert config.public_key == mirror_public.hex()
+	assert config.public_key != pinned_public_key
+	// The substituted index is self-consistent under the attacker's key. This
+	// is why trusting a key discovered from the mirror would accept the forgery.
+	assert mirror.verify_signature(config.public_key, signature)
+	assert !mirror.verify_signature(pinned_public_key, signature), 'a mirror replaced the independently pinned signing key'
 }

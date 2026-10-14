@@ -4,13 +4,8 @@ import json2
 import net.http
 import os
 
-// These tests never bind a port. The protocol is exercised through the two pure
-// functions the fetches are built from, so a failure here names a field or a
-// status rule rather than a networking problem. What that leaves uncovered is the
-// request itself, which route is asked for and under which token:
-// registry_server_test.v asserts the routes against a bound port, but no test in
-// this tree asserts that the `Authorization` header `vpm_http_request` builds
-// actually reaches the server. The tests at the foot of this file cover that hop.
+// The initial cases exercise protocol decoding through pure functions. The
+// loopback tests below also check which requests carry registry credentials.
 //
 // The bodies below are copied from what `registry.v` puts on the wire. Keeping
 // them literal rather than deriving them from `json2.encode` is the point: only a
@@ -141,21 +136,46 @@ fn test_an_empty_version_list_is_not_an_error() {
 
 // Everything above is either a pure function or a route answered without a
 // credential, so nothing has yet observed the one hop that matters for a private
-// registry: the header `vpm_http_request` builds from `registry_token` leaving
+// registry: the header `registry_http_get` builds from `registry_token` leaving
 // the process. These tests bind a real port, send a real request through
-// `vpm_http_get` and read back the header the server received, so the assertion
+// `registry_get` and read back the header the server received, so the assertion
 // is about bytes on a socket rather than about which variable was parsed.
 //
 // The handler answers with the `Authorization` header it was sent instead of
 // recording it in a field. The value has then crossed a socket in both
 // directions, which is the thing under test, and a value read back from a
 // response needs no lock against the thread that served it.
-struct TokenEchoHandler {}
+struct TokenEchoHandler {
+	redirect_to     string
+	status_code     int = 200
+	record_requests bool
+	requests        chan string
+}
+
+const wire_seen_authorization_header = 'X-Vpm-Seen-Authorization'
 
 fn (mut h TokenEchoHandler) handle(req http.Request) http.Response {
+	authorization := req.header.get(.authorization) or { '' }
+	if h.record_requests {
+		h.requests <- authorization
+	}
+	mut header := http.Header{}
+	header.add_custom(wire_seen_authorization_header, if authorization == '' {
+		'absent'
+	} else {
+		authorization
+	}) or { panic(err) }
+	if req.url == '/redirect' && h.redirect_to != '' {
+		header.add(.location, h.redirect_to)
+		return http.Response{
+			status_code: 302
+			header:      header
+		}
+	}
 	return http.Response{
-		status_code: 200
-		body:        req.header.get(.authorization) or { '' }
+		status_code: h.status_code
+		header:      header
+		body:        authorization
 	}
 }
 
@@ -167,12 +187,16 @@ mut:
 }
 
 fn start_token_echo() !RunningTokenEcho {
+	return start_token_echo_handler(TokenEchoHandler{})
+}
+
+fn start_token_echo_handler(handler TokenEchoHandler) !RunningTokenEcho {
 	// The server is held by reference for the reason `start_registry` holds it:
 	// `listen_and_serve` takes it by `mut`, and spawning a method on a by-value
 	// receiver does not compile.
 	mut srv := &http.Server{
-		addr:                 ':0'
-		handler:              TokenEchoHandler{}
+		addr:                 '127.0.0.1:0'
+		handler:              handler
 		show_startup_message: false
 	}
 	spawn srv.listen_and_serve()
@@ -195,6 +219,7 @@ const wire_other_host_token_var = 'VPM_TOKEN_VPM_EXAMPLE_COM'
 // environment the suite started with cannot decide a case and one case cannot
 // leak its token into the next.
 fn clear_wire_tokens() {
+	os.unsetenv(registry_url_env)
 	os.unsetenv(wire_scoped_token_var)
 	os.unsetenv(wire_fallback_token_var)
 	os.unsetenv(wire_other_host_token_var)
@@ -203,8 +228,7 @@ fn clear_wire_tokens() {
 // authorization_on_the_wire asks the echo server for a protocol route and
 // returns the `Authorization` header it received, or '' when it received none.
 fn authorization_on_the_wire(base string) !string {
-	resp := vpm_http_get('${base}/alpha/@v/list')!
-	return resp.body.trim_space()
+	return registry_get(base, '/alpha/@v/list')!.trim_space()
 }
 
 // A token scoped to the host being asked is what the server reads, so the
@@ -236,6 +260,7 @@ fn test_the_fallback_token_reaches_the_server() {
 		return
 	}
 	os.setenv(wire_fallback_token_var, 'tok-fallback', true)
+	os.setenv(registry_url_env, running.base, true)
 	defer {
 		running.server.close()
 		clear_wire_tokens()
@@ -248,7 +273,7 @@ fn test_the_fallback_token_reaches_the_server() {
 }
 
 // With nothing configured the header is absent rather than empty, because
-// `vpm_http_request` adds it only when `registry_token` returns something.
+// `registry_http_get` adds it only when `registry_token` returns something.
 fn test_no_configured_token_sends_no_authorization_header() {
 	clear_wire_tokens()
 	mut running := start_token_echo() or {
@@ -284,4 +309,159 @@ fn test_a_token_scoped_to_another_host_is_not_sent() {
 		return
 	}
 	assert seen == '', 'the server received `${seen}`, a token scoped to another host'
+}
+
+fn test_public_transports_do_not_send_global_or_scoped_registry_tokens() {
+	clear_wire_tokens()
+	mut running := start_token_echo()!
+	defer {
+		running.server.close()
+		clear_wire_tokens()
+	}
+	os.setenv(registry_url_env, running.base, true)
+	os.setenv(wire_fallback_token_var, 'tok-global', true)
+	os.setenv(wire_scoped_token_var, 'tok-scoped', true)
+	for path in ['/jsmod/alpha', '/search?q=alpha', '/health', '/archives/alpha.zip', '/alpha/@v/list'] {
+		url := running.base + path
+		responses := [vpm_http_get(url)!, vpm_http_head(url)!, vpm_http_post(url, 'payload')!]
+		for response in responses {
+			assert response.status_code == 200
+			seen := response.header.get_custom(wire_seen_authorization_header) or {
+				panic('missing captured Authorization header')
+			}
+			assert seen == 'absent', path
+		}
+	}
+}
+
+fn test_unqualified_token_is_not_sent_without_the_matching_registry_origin() {
+	clear_wire_tokens()
+	mut running := start_token_echo()!
+	defer {
+		running.server.close()
+		clear_wire_tokens()
+	}
+	os.setenv(wire_fallback_token_var, 'tok-global', true)
+	assert authorization_on_the_wire(running.base)! == ''
+	os.setenv(registry_url_env, running.base.replace('http://', 'https://'), true)
+	assert authorization_on_the_wire(running.base)! == ''
+	os.setenv(registry_url_env, running.base, true)
+	assert authorization_on_the_wire(running.base)! == 'Bearer tok-global'
+}
+
+fn test_public_401_is_not_reported_as_registry_authentication() {
+	clear_wire_tokens()
+	mut running := start_token_echo_handler(TokenEchoHandler{ status_code: 401 })!
+	defer {
+		running.server.close()
+		clear_wire_tokens()
+	}
+	os.setenv(registry_url_env, running.base, true)
+	os.setenv(wire_scoped_token_var, 'tok-scoped', true)
+	response := vpm_http_get(running.base + '/health')!
+	assert response.status_code == 401
+	seen := response.header.get_custom(wire_seen_authorization_header) or {
+		panic('missing captured Authorization header')
+	}
+	assert seen == 'absent'
+	mut rejected := false
+	registry_get(running.base, '/alpha/@v/list') or {
+		rejected = true
+		assert err.msg().contains('rejected the configured token'), err.msg()
+	}
+	assert rejected
+}
+
+fn assert_token_wire_capture(requests chan string, expected string) {
+	select {
+		seen := <-requests {
+			assert seen == expected
+		}
+		else {
+			assert false, 'the loopback server did not capture the expected request'
+		}
+	}
+}
+
+fn test_authenticated_cross_origin_redirect_never_contacts_the_target() {
+	clear_wire_tokens()
+	target_requests := chan string{cap: 4}
+	source_requests := chan string{cap: 4}
+	mut target := start_token_echo_handler(TokenEchoHandler{
+		record_requests: true
+		requests:        target_requests
+	})!
+	defer { target.server.close() }
+	mut source := start_token_echo_handler(TokenEchoHandler{
+		redirect_to:     target.base + '/capture'
+		record_requests: true
+		requests:        source_requests
+	})!
+	defer {
+		source.server.close()
+		clear_wire_tokens()
+	}
+	os.setenv(registry_url_env, source.base, true)
+	os.setenv(wire_fallback_token_var, 'tok-global', true)
+	os.setenv(wire_scoped_token_var, 'tok-scoped', true)
+	mut rejected := false
+	registry_get(source.base, '/redirect') or {
+		rejected = true
+		assert err.msg().contains('different origin'), err.msg()
+	}
+	assert rejected
+	assert_token_wire_capture(source_requests, 'Bearer tok-scoped')
+	select {
+		seen := <-target_requests {
+			assert false, 'a rejected redirect reached the target with `${seen}`'
+		}
+		else {
+		}
+	}
+}
+
+fn test_authenticated_same_origin_redirect_retains_its_token() {
+	clear_wire_tokens()
+	requests := chan string{cap: 4}
+	mut running := start_token_echo_handler(TokenEchoHandler{
+		redirect_to:     '/capture'
+		record_requests: true
+		requests:        requests
+	})!
+	defer {
+		running.server.close()
+		clear_wire_tokens()
+	}
+	os.setenv(registry_url_env, running.base, true)
+	os.setenv(wire_fallback_token_var, 'tok-global', true)
+	assert registry_get(running.base, '/redirect')! == 'Bearer tok-global'
+	assert_token_wire_capture(requests, 'Bearer tok-global')
+	assert_token_wire_capture(requests, 'Bearer tok-global')
+}
+
+fn test_public_cross_origin_redirect_carries_no_registry_token() {
+	clear_wire_tokens()
+	requests := chan string{cap: 4}
+	mut target := start_token_echo_handler(TokenEchoHandler{
+		record_requests: true
+		requests:        requests
+	})!
+	defer { target.server.close() }
+	mut source := start_token_echo_handler(TokenEchoHandler{
+		redirect_to: target.base + '/capture'
+	})!
+	defer {
+		source.server.close()
+		clear_wire_tokens()
+	}
+	os.setenv(registry_url_env, source.base, true)
+	os.setenv(wire_fallback_token_var, 'tok-global', true)
+	os.setenv(wire_scoped_token_var, 'tok-scoped', true)
+	response := vpm_http_get(source.base + '/redirect')!
+	assert response.status_code == 200
+	seen := response.header.get_custom(wire_seen_authorization_header) or {
+		panic('missing captured Authorization header')
+	}
+	assert seen == 'absent'
+	assert_token_wire_capture(requests, '')
 }

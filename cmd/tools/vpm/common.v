@@ -79,25 +79,29 @@ fn preferred_server_urls(preferred_url string, fallback_urls []string) []string 
 }
 
 fn vpm_http_get(url string) !http.Response {
-	return vpm_http_request(.get, url, '')
+	return vpm_http_request(.get, url, '', false)
 }
 
 fn vpm_http_head(url string) !http.Response {
-	return vpm_http_request(.head, url, '')
+	return vpm_http_request(.head, url, '', false)
 }
 
 fn vpm_http_post(url string, data string) !http.Response {
-	return vpm_http_request(.post, url, data)
+	return vpm_http_request(.post, url, data, false)
 }
 
-// A token is read from the registry-scoped `VPM_TOKEN_<HOST>` first, so that a
-// machine holding tokens for several private registries does not leak one to
-// another, and from the unqualified `VPM_TOKEN` when only one is configured.
+// Registry credentials are only consulted by the registry protocol transport.
+// Host-scoped tokens take precedence over the configured origin's VPM_TOKEN.
 const vpm_token_env_prefix = 'VPM_TOKEN_'
 
-fn vpm_http_request(method http.Method, url string, data string) !http.Response {
+// registry_http_get is the credential-bearing transport for registry protocol requests.
+fn registry_http_get(url string) !http.Response {
+	return vpm_http_request(.get, url, '', true)
+}
+
+fn vpm_http_request(method http.Method, url string, data string, registry_request bool) !http.Response {
 	mut header := http.Header{}
-	token := registry_token(url)
+	token := if registry_request { registry_token(url) } else { '' }
 	if token != '' {
 		header.add_custom('Authorization', 'Bearer ${token}') or {}
 	}
@@ -113,8 +117,19 @@ fn vpm_http_request(method http.Method, url string, data string) !http.Response 
 		disable_connection_reuse: true
 		on_redirect:              vpm_registry_redirect
 	)!
-	require_registry_token(url, resp.status_code)!
+	if registry_request {
+		require_registry_token(url, resp.status_code)!
+	}
 	return resp
+}
+
+// registry_same_origin compares valid HTTP origins, including their effective ports.
+fn registry_same_origin(first urllib.URL, second urllib.URL) bool {
+	scheme := first.scheme.to_lower()
+	host := first.hostname().to_lower()
+	return scheme in ['http', 'https'] && host != '' && scheme == second.scheme.to_lower()
+		&& host == second.hostname().to_lower()
+		&& registry_http_port(first) == registry_http_port(second)
 }
 
 // registry_http_port normalizes the default port for HTTP origin comparisons.
@@ -135,9 +150,7 @@ fn vpm_registry_redirect(request &http.Request, _ int, next_url string) ! {
 	request.header.get(.authorization) or { return }
 	original := urllib.parse(request.url)!
 	target := urllib.parse(next_url)!
-	if original.scheme.to_lower() != target.scheme.to_lower()
-		|| original.hostname().to_lower() != target.hostname().to_lower()
-		|| registry_http_port(original) != registry_http_port(target) {
+	if !registry_same_origin(original, target) {
 		return error('refusing to send a registry token to a different origin after a redirect')
 	}
 }
@@ -145,17 +158,22 @@ fn vpm_registry_redirect(request &http.Request, _ int, next_url string) ! {
 // registry_token returns the bearer token configured for the registry that
 // serves `url`, or '' when it needs none. The host part of the url gives the
 // name of the scoped variable, so `https://vpm.example.com/a` reads
-// `VPM_TOKEN_VPM_EXAMPLE_COM`.
+// `VPM_TOKEN_VPM_EXAMPLE_COM`. The unqualified VPM_TOKEN is only eligible for
+// the origin configured by VPM_REGISTRY, including its scheme and port.
 fn registry_token(url string) string {
 	parsed := urllib.parse(url) or { return '' }
 	host := parsed.hostname()
-	if host == '' {
-		return os.getenv_opt('VPM_TOKEN') or { '' }
+	if host == '' || parsed.scheme.to_lower() !in ['http', 'https'] {
+		return ''
 	}
 	// An environment name may not hold `.` or `-`, so both become `_`.
 	scoped_name := '${vpm_token_env_prefix}${host.replace('.', '_').replace('-', '_').to_upper()}'
 	if scoped := os.getenv_opt(scoped_name) {
 		return scoped
+	}
+	configured := urllib.parse(registry_url()) or { return '' }
+	if !registry_same_origin(parsed, configured) {
+		return ''
 	}
 	return os.getenv_opt('VPM_TOKEN') or { '' }
 }
@@ -170,7 +188,7 @@ fn require_registry_token(url string, status_code int) ! {
 	if registry_token(url) != '' {
 		return error('the registry at `${url}` rejected the configured token (401 Unauthorized).')
 	}
-	return error('the registry at `${url}` requires authentication (401 Unauthorized). Set ${vpm_token_env_prefix}<HOST> for it, for example ${vpm_token_env_prefix}VPM_EXAMPLE_COM, or VPM_TOKEN when only one private registry is used.')
+	return error('the registry at `${url}` requires authentication (401 Unauthorized). Set ${vpm_token_env_prefix}<HOST> for it, for example ${vpm_token_env_prefix}VPM_EXAMPLE_COM, or VPM_TOKEN for the origin configured by VPM_REGISTRY.')
 }
 
 // registry_url names the registry whose protocol is asked before the vpm

@@ -150,6 +150,53 @@ fn test_the_sbom_route_is_reachable() {
 	assert rsp.body.contains('SPDX-2.3'), rsp.body
 }
 
+fn test_search_decodes_query_keys_and_values_over_http() {
+	mut r := new_registry()
+	r.add_module(srv_info('foo bar', '1.0.0', ''))
+	r.add_module(srv_info('foo+bar', '1.0.0', ''))
+	mut running := start_registry(r)!
+	defer { running.server.close() }
+	for query in ['q=foo%20bar', 'q=foo+bar', '%71=foo%20bar'] {
+		resp := http.get('${running.base}/api/search?${query}')!
+		assert resp.status_code == 200
+		entries := json2.decode[[]RegistryEntry](resp.body)!
+		assert entries.len == 1
+		assert entries[0].name == 'foo bar'
+	}
+	resp := http.get('${running.base}/api/search?q=foo%2Bbar')!
+	assert resp.status_code == 200
+	entries := json2.decode[[]RegistryEntry](resp.body)!
+	assert entries.len == 1
+	assert entries[0].name == 'foo+bar'
+}
+
+fn test_sbom_decodes_namespace_and_download_url_over_http() {
+	mut r := new_registry()
+	r.add_module(srv_info('bommed', '1.0.0', ''))
+	mut running := start_registry(r)!
+	defer { running.server.close() }
+	resp := http.get('${running.base}/sbom.spdx.json?%6Eamespace=https%3A%2F%2Fx%2Fregistry%3Fid%3Da%26b%3Dc&dl=https%3A%2F%2Fx%2Fdownloads%2Bstable')!
+	assert resp.status_code == 200
+	doc := json2.decode[SpdxDocument](resp.body)!
+	assert doc.document_namespace == 'https://x/registry?id=a&b=c'
+	assert doc.packages.len == 1
+	assert doc.packages[0].download_location == 'https://x/downloads+stable/bommed/1.0.0.zip'
+}
+
+fn test_registry_reports_query_parsing_errors() {
+	mut handler := RegistryHandler{
+		registry: new_registry()
+	}
+	for query in ['q=%', '%', 'q=valid&other=%'] {
+		resp := handler.handle(http.Request{
+			method: .get
+			url:    '/api/search?${query}'
+		})
+		assert resp.status_code == 400
+		assert resp.body.contains('invalid query encoding')
+	}
+}
+
 fn test_the_config_route_is_reachable() {
 	r := new_registry()
 	mut running := start_registry(r)!

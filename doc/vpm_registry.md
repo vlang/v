@@ -131,6 +131,9 @@ Data is stored in `os.getwd()/.vpm-registry`, from `registry_dir()` in
   trailing spaces or trailing dots.
 - `signing.key` — the hex ed25519 seed, read but never served.
 
+Only a missing index initializes an empty registry. Read and JSON decoding failures for an
+existing index abort startup and report the error.
+
 The default port is 9090 (`default_registry_port`). The server binds `:9090`,
 which is every interface, although the message it prints names loopback.
 
@@ -169,8 +172,10 @@ out-of-range values are rejected before the server binds a socket.
   for the server. `registry_token` in `common.v` builds the scoped name from the
   host, replacing `.` and `-` with `_` and uppercasing it, so
   `https://vpm.example.com/a` reads `VPM_TOKEN_VPM_EXAMPLE_COM`, and falls back
-  to `VPM_TOKEN` when that is unset. The registry server reads neither: it
-  authenticates nothing.
+  to `VPM_TOKEN` when that is unset only for the configured `VPM_REGISTRY` origin (scheme,
+  hostname and effective port). An unset registry disables the fallback. Public VPM requests,
+  including public-server fallback after consulting a registry, receive no registry credentials.
+  The registry server reads neither token variable: it authenticates nothing.
 
 ## Publishing
 
@@ -214,11 +219,16 @@ replacing `index.json` underneath a running server has no effect until restart.
   JSON string. Measured with no key configured, that endpoint's body is `""`,
   two characters.
 - An unsigned registry also reports `public_key_hex()` as `""`.
-- `verify_signature(public_key_hex, sig_hex)` is the check a client runs; it has
-  no caller in the tool.
-- `/config.json` serves the key as `public_key`, so a client learns which key
-  vouches for the registry from the same document that tells it where the API
-  is, rather than having to be given the key out of band.
+- `verify_signature(trusted_public_key_hex, sig_hex)` checks a registry snapshot against an
+  independently trusted key. Obtain the origin key over a trusted channel and pin it in locally
+  managed configuration before accepting a mirror's metadata. Update the pin only through an
+  independently authenticated process.
+- `/config.json` serves `public_key` for discovery only. A malicious mirror can replace its key,
+  signature and metadata together; a key taken from that response cannot authenticate the mirror.
+  Always pass the locally pinned origin key to `verify_signature`.
+- The helper has no caller in the tool. Automatic snapshot verification and a client key-pinning
+  CLI are not implemented; fetching the configuration and signature alone provides no mirror
+  authentication.
 
 ## Caching
 
@@ -249,8 +259,13 @@ Two details:
 - Archive transports verify the exact bytes sent against indexed metadata, even if the file
   changes after routing. Unknown metadata and missing or mismatched checksums refuse the archive.
 - Request paths retain their percent-encoded spelling; routing removes trailing slashes.
+- Query keys and values follow `urllib.parse_query`: percent escapes are decoded and `+` means
+  space. Query parsing errors return HTTP 400 before routing.
 
 ## SPDX output
+
+Request `GET /sbom.spdx.json` from the running registry to obtain the document. The `namespace`
+and `dl` query parameters customize its namespace and download base. There is no `v sbom` command.
 
 The SBOM uses the [SPDX 2.3 JSON field names][spdx-schema], including `SPDXID`, `spdxVersion`,
 `downloadLocation` and `checksumValue`. Package IDs encode both name and version without collisions.

@@ -43,11 +43,10 @@ fn registry_answer_is_absent(status_code int, body string) bool {
 }
 
 // registry_get requests `path` from the registry at `url` and returns the body of
-// the 200 answer. The request goes through `vpm_http_get`, which attaches the
-// bearer token `registry_token` finds for the host, so a private registry is
-// authenticated exactly as every other vpm request is.
+// the 200 answer. Only this registry transport attaches credentials; public
+// metadata, search, health and download requests use the unauthenticated helpers.
 fn registry_get(url string, path string) !string {
-	resp := vpm_http_get(url + path) or {
+	resp := registry_http_get(url + path) or {
 		return error('the registry at `${url}` did not answer a request for `${path}`: ${err.msg()}')
 	}
 	if registry_answer_is_absent(resp.status_code, resp.body) {

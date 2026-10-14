@@ -5,6 +5,7 @@ module main
 // protocol exists only as in-process functions and no registry can be stood up.
 
 import net.http
+import net.urllib
 import strconv
 
 const default_registry_port = 9090
@@ -22,9 +23,14 @@ fn (mut h RegistryHandler) handle(req http.Request) http.Response {
 	path := req.url.all_before('?')
 	mut query := map[string]string{}
 	if req.url.contains('?') {
-		for pair in req.url.all_after('?').split('&') {
-			key, value := pair.split_once('=') or { continue }
-			query[key] = value
+		values := urllib.parse_query(req.url.all_after('?')) or {
+			return http.new_response(http.ResponseConfig{
+				status: http.Status.bad_request
+				body:   '{"error": "invalid query encoding"}'
+			})
+		}
+		for pair in values.data {
+			query[pair.key] = pair.value
 		}
 	}
 	// The routing only reads `If-None-Match`, so only that one is passed on.
@@ -138,7 +144,10 @@ fn vpm_registry(query []string) {
 				)
 				exit(1)
 			}
-			registry := load_registry()
+			registry := load_registry() or {
+				vpm_error(err.msg())
+				exit(1)
+			}
 			println('Serving ${registry.modules.len} module(s) on port ${port}')
 			mut srv := &http.Server{
 				addr:                 ':${port}'

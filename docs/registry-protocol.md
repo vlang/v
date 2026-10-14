@@ -18,11 +18,15 @@ The standalone tool also accepts `vpm registry serve [--port <port>]`, with `-p`
 Ports use decimal digits and must be from 1 to 65535; the default is 9090. The server loads
 `.vpm-registry/index.json` and artifacts from the working directory and listens on all interfaces.
 Publishing and yanking remain in-process `Registry` methods.
+Only a missing index starts an empty registry. An unreadable or invalid existing index aborts
+startup with an error instead of serving an empty module list.
 
 Unknown routes return HTTP 404, including conditional requests for missing metadata.
 Successful GET metadata supports ETag revalidation with case-insensitive HTTP header names.
 Archive transports verify the exact bytes sent against recorded metadata.
 Paths retain percent-encoded spelling; the server removes trailing slashes before routing.
+Query keys and values follow `urllib.parse_query`: percent escapes are decoded and `+` means space.
+Query parsing errors return HTTP 400.
 
 ## Design Goals
 
@@ -30,7 +34,7 @@ Paths retain percent-encoded spelling; the server removes trailing slashes befor
 - **Content-addressed artifacts**: Immutable once published, like Zig's hash-as-version or Go's
   immutable zips
 - **Scalable**: Per-file fetch, not full clone (like Cargo's sparse protocol)
-- **Signed registry**: Mirrors don't need to be trusted (like Hex's signed protobuf registry)
+- **Signed registry**: Verification against an independently pinned origin key
 - **Checksum transparency log**: Append-only Merkle tree for all published hashes, like Go's
   sum.golang.org
 - **Private registries**: Token-based authentication (like Cargo or Packagist)
@@ -113,9 +117,15 @@ Per-version entry (JSON):
 ## Registry Signing
 
 - The registry signs its metadata with a private key
-- `config.json` includes the registry's signing public key
-- Mirrors serve the signed metadata without needing to be trusted
-- Clients verify the signature before accepting metadata
+- `config.json` includes the server's public key for discovery, not as a trust root. A mirror can
+  replace this key along with the metadata and signature.
+- Before verifying a mirror's metadata, obtain the origin's public key through a separate trusted
+  channel and pin it in locally managed configuration. Pass that pinned value as
+  `trusted_public_key_hex` to `Registry.verify_signature`; never use the mirrored `public_key` as
+  the expected key. An origin key change requires an independently authenticated pin update.
+- The verification helper checks the supplied registry snapshot against that key and signature.
+  The VPM client does not automatically fetch or verify signed snapshots, and has no key-pinning
+  CLI. Merely fetching `config.json` and `signature.sig` does not authenticate a mirror.
 - Signing sorts module, dependency, and feature map keys; map insertion order does not affect the
   signed bytes. Array order remains significant, and the change log is excluded.
 
@@ -135,8 +145,8 @@ Per-version entry (JSON):
 
 ## SBOM/SPDX Output
 
-- `v sbom` command outputs SPDX JSON format
-- Includes all transitive dependencies
+- `GET /sbom.spdx.json` returns SPDX JSON for the versions in the registry index.
+- Query parameters `namespace` and `dl` customize the document namespace and download base URL.
 - Includes license information
 - Includes checksums for all packages
 - JSON uses the SPDX 2.3 field names, with `filesAnalyzed: false` for registry metadata. Package IDs
@@ -158,25 +168,27 @@ its own registry requests. The registry server in this repository reads no crede
 authenticates nothing.
 
 - `Authorization: Bearer <token>` is set by the VPM client only.
+- Credentials are attached only to registry protocol requests. Public metadata, search, health,
+  download-count requests, and public-server fallback requests receive no registry token.
 - The token comes from `VPM_TOKEN_<HOST>`, where `<HOST>` is the registry's hostname with `.` and
   `-` folded to `_` and uppercased, so `https://vpm.example.com/` reads
-  `VPM_TOKEN_VPM_EXAMPLE_COM`. `VPM_TOKEN` is the fallback when no scoped variable is set, and
-  covers a machine with a single private registry. `registry_token` in
-  `cmd/tools/vpm/common.v:149` builds the name; `vpm_http_request` at `common.v:98` attaches the
-  header when it is non-empty, so a registry that needs none receives no such header at all.
+  `VPM_TOKEN_VPM_EXAMPLE_COM`. `VPM_TOKEN` is the fallback only for the configured `VPM_REGISTRY`
+  origin, matching its scheme, hostname and effective port. With `VPM_REGISTRY` unset, this fallback
+  is unused. `registry_token` builds the name; `registry_http_get` selects authenticated transport.
 - There is no login endpoint, and nothing obtains or issues a token. No route in this repository
   accepts credentials. A token is provisioned in the environment by whoever configures it, which is
   why it is a VPM client variable and not part of the protocol.
 - The registry server authenticates nothing. `auth_required` is a field of `RegistryConfig`
-  (`registry.v:26`) that is hardcoded to `false` (`registry.v:478`) and that no code reads, so no
+  that is hardcoded to `false` and that no code reads, so no
   endpoint can require a credential. It is present in `/config.json` so that a client can parse the
   document, not because anything checks it.
-- A registry answering `401` is reported by `require_registry_token` (`common.v:166`) as an error
+- A registry answering `401` is reported by `require_registry_token` as an error
   naming the variable to set, rather than as an opaque transport failure. This repository's registry
-  answers only `200`, `304` and `404`, so that path is reached against a third-party registry.
+  never answers `401`, so that path is reached against a third-party registry.
 - Authenticated HTTP redirects keep the registry's scheme, host and effective port
-  (`vpm_registry_redirect`, `common.v:133`), so `http://` and `https://` are different origins, as
-  are a default port and an explicit one. A request that would cross an origin fails rather than
+  (`vpm_registry_redirect`), so `http://` and `https://` are different origins, as
+  are different effective ports. Omitted ports match their explicit defaults. A cross-origin request
+  fails rather than
   leaking the token to the new target. Unauthenticated requests are unaffected: the check is skipped
   when the request carries no `Authorization` header.
 
