@@ -77,3 +77,37 @@ fn test_concurrent_map_hammer() {
 	})
 	assert total.load() == i64(2000 * 1999 / 2), 'every value must be visited exactly once in sum'
 }
+
+struct ConcurrentMapMutableKey {
+mut:
+	n int
+}
+
+fn test_concurrent_map_pointer_keys_keep_identity_after_mutation() {
+	mut key := &ConcurrentMapMutableKey{ n: 1 }
+	mut other := &ConcurrentMapMutableKey{ n: 1 }
+	m := sync.new_concurrent_map[&ConcurrentMapMutableKey, string]()
+	m.store(key, 'first')
+	m.store(other, 'second')
+	key.n = 2026
+	assert m.load(key)? == 'first'
+	assert m.load(other)? == 'second'
+	value, loaded := m.load_or_store(key, 'wrong')
+	assert loaded
+	assert value == 'first'
+	m.delete(key)
+	assert m.load(key) == none
+	assert m.len() == 1
+}
+
+fn test_concurrent_map_callback_can_mutate_map() {
+	m := sync.new_concurrent_map[int, int]()
+	m.store(1, 2)
+	m.range(fn [m] (key int, value int) bool {
+		assert key == 1
+		assert value == 2
+		m.delete(key)
+		return true
+	})
+	assert m.len() == 0
+}

@@ -46,3 +46,14 @@ hold a read lock or wait for a writer to finish. Optimistic access does not make
 concurrent reads and writes safe: use atomic data or other synchronization, and validate
 the stamp after reading. Use a regular read lock for non-atomic shared data. Locks are
 not reentrant and must be released once for each corresponding acquisition.
+
+### Concurrent maps
+
+`sync.new_concurrent_map[K, V]()` creates a map with 32 independently locked shards.
+Use `store`, `load`, `load_or_store`, and `delete` for concurrent access. Key types follow
+builtin maps; pointer keys use pointer identity even when their pointed-to data changes.
+`load_or_store` atomically returns the existing value (with `true`) or stores its argument
+(with `false`). `len` visits shards separately and may reflect concurrent changes.
+`range` snapshots each shard before calling the callback, so callbacks can mutate the map.
+It visits each snapshot entry until the callback returns `false`; concurrent additions and
+removals may or may not be reflected. Locks protect map operations, not objects stored as values.

@@ -18,6 +18,7 @@ mut:
 // the V-idiomatic equivalent of Go's `sync.Map` / .NET's
 // `ConcurrentDictionary`. Key types follow the same constraints as builtin
 // `map[K]V`.
+@[noinit]
 pub struct ConcurrentMap[K, V] {
 mut:
 	shards []&ConcurrentShard[K, V]
@@ -35,9 +36,14 @@ pub fn new_concurrent_map[K, V]() &ConcurrentMap[K, V] {
 }
 
 // shard_for maps a key to its partition. String keys use their first byte
-// mixed with their length; other key types hash through their string form.
+// mixed with their length; pointer keys use their stable address, while
+// other scalar key types hash through their string form.
 fn (m &ConcurrentMap[K, V]) shard_for(key K) &ConcurrentShard[K, V] {
-	$if K is string {
+	$if K is $pointer {
+		address := u64(usize(key))
+		h := address ^ (address >> 5) ^ (address >> 17)
+		return m.shards[h % u64(concurrent_map_shards)]
+	} $else $if K is string {
 		s := key
 		mut h := u64(s.len)
 		if s.len > 0 {
