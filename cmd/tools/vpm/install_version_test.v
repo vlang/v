@@ -1,4 +1,4 @@
-// vtest build: !musl? && !sanitized_job?
+// vtest build: network? && !musl? && !sanitized_job?
 // vtest retry: 3
 module main
 
@@ -10,10 +10,6 @@ import test_utils { cmd_fail_args, cmd_ok_args }
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_version_test_${rand.ulid()}')
 
 fn testsuite_begin() {
-	$if !network ? {
-		eprintln('> skipping ${@FILE}, when `-d network` is missing')
-		exit(0)
-	}
 	dump(test_path)
 	test_utils.set_test_env(test_path)
 }
@@ -41,7 +37,7 @@ fn test_install_from_vpm_with_git_version_tag() {
 	assert manifest.version == '0.6.0'
 	// Install same version without force flag.
 	res = cmd_ok_args(@LOCATION, [vexe, 'install', '${ident}' + '@' + '${tag}'])
-	assert res.output.contains('Module `${ident}@${tag}` is already installed, use --force to overwrite'), res.output
+	assert res.output.contains('Module `${ident}@${tag}` is already installed.'), res.output
 	// Install another version, add force flag to surpass confirmation.
 	tag = 'v0.5.0'
 	res = cmd_ok_args(@LOCATION, [vexe, 'install', '-f', '${ident}' + '@' + '${tag}'])
@@ -52,18 +48,18 @@ fn test_install_from_vpm_with_git_version_tag() {
 	// Install invalid version.
 	tag = '6.0'
 	res = cmd_fail_args(@LOCATION, [vexe, 'install', '-f', '${ident}' + '@' + '${tag}'])
-	assert res.output.contains('failed to install `${ident}`'), res.output
+	assert res.output.contains('failed to install `${ident}@${tag}`'), res.output
 
 	// Install invalid version verbose.
 	res = cmd_fail_args(@LOCATION, [vexe, 'install', '-f', '-v', '${ident}' + '@' + '${tag}'])
-	assert res.output.contains('failed to install `${ident}`'), res.output
+	assert res.output.contains('failed to install `${ident}@${tag}`'), res.output
 	assert res.output.contains('Remote branch 6.0 not found in upstream origin'), res.output
 	// Install without version tag after a version was installed
 	res = cmd_ok_args(@LOCATION, [vexe, 'install', '-f', '${ident}'])
 	assert res.output.contains('Installing `${ident}`'), res.output
-	// Re-install latest version (without a tag). Should trigger an update, force should not be required.
+	// Re-install latest version (without a tag). The same revision is already installed, so it is skipped without force.
 	res = cmd_ok_args(@LOCATION, [vexe, 'install', '${ident}'])
-	assert res.output.contains('Updating module `${ident}`'), res.output
+	assert res.output.contains('Module `${ident}` is already installed.'), res.output
 }
 
 fn test_install_from_git_url_with_version_tag() {
@@ -77,7 +73,7 @@ fn test_install_from_git_url_with_version_tag() {
 	assert manifest.version == '0.1.50'
 	// Install same version without force flag.
 	res = cmd_ok_args(@LOCATION, [vexe, 'install', '${url}' + '@' + '${tag}'])
-	assert res.output.contains('Module `vsl@${tag}` is already installed, use --force to overwrite'), res.output
+	assert res.output.contains('Module `vsl@${tag}` is already installed.'), res.output
 	// Install another version, add force flag to surpass confirmation.
 	tag = 'v0.1.47'
 	res = cmd_ok_args(@LOCATION, [vexe, 'install', '-f', '${url}' + '@' + '${tag}'])
