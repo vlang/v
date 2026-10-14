@@ -6,6 +6,7 @@ c_compiler_selection.md
 closure_sum_returns.md
 codelite.md
 compile_error_messages.md
+compile_time_messages.md
 compiler-fallback.md
 compiler_output.md
 comptime-reflection-sources.md
