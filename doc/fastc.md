@@ -60,7 +60,8 @@ its module siblings are included. A test file entry (`foo_test.v`, `foo_test.c.v
 architecture-qualified one) always uses it, and builds as a program that runs its tests in
 source order between `testsuite_begin` and `testsuite_end`, each between `before_each` and
 `after_each`; a failed assert or a returned error fails that test, and the program exits with
-status 1 when any test failed.
+status 1 when any test failed. Tests and hooks require zero parameters. Failed assertions run
+the test's deferred statements before the harness continues.
 Target-specific files and test files are filtered when loading a directory.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context
