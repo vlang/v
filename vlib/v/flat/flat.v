@@ -268,16 +268,16 @@ pub fn node_payload_with_constraints(generic_params []string, generic_constraint
 		node_payload_unlock()
 		panic('v3: too many node payloads (${idx})')
 	}
-	mut chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(chunk_idx))
+	mut chunk := payload_ptr_get(voidptr(table), usize(chunk_idx))
 	if isnil(chunk) {
 		chunk = node_payload_new_chunk()
-		C.v_flat_payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
+		payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
 		if isnil(chunk) {
 			node_payload_unlock()
 			panic('v3: could not allocate a node payload chunk')
 		}
 	}
-	C.v_flat_payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
+	payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
 	node_payload_count_publish(table, u32(idx + 1))
 	node_payload_unlock()
 	return u32(idx + 1)
@@ -297,8 +297,8 @@ pub fn node_payload_at(id u32) &NodePayload {
 	if isnil(table) || idx >= int(node_payload_count_load(table)) {
 		return &NodePayload(unsafe { nil })
 	}
-	chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
-	return unsafe { &NodePayload(C.v_flat_payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
+	chunk := payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
+	return unsafe { &NodePayload(payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
 }
 
 // node_flag_skip_ownership_drops marks a block/if/for/fn node whose scope must
@@ -886,9 +886,107 @@ pub fn (mut a FlatAst) intern_node_texts_range(start int, end int) {
 	if start >= end {
 		return
 	}
+	if end - start >= wide_text_probe_min_nodes {
+		a.intern_node_texts_range_wide(start, end)
+		return
+	}
 	mut value_cache := new_text_probe_cache()
 	mut type_cache := new_text_probe_cache()
 	a.intern_node_texts_range_cached(start, end, mut value_cache, mut type_cache)
+}
+
+// wide_text_probe_slots is the size of the pointer probe of a pass over a whole
+// tree. Such a pass meets tens of thousands of distinct texts, which overwrite
+// the 4096 slots of a TextProbeCache many times over, and every probe that
+// misses hashes the text for the table. It must be a power of two.
+const wide_text_probe_slots = 65536
+
+// wide_text_probe_min_nodes is the range from which the wide probe pays for
+// clearing its keys.
+const wide_text_probe_min_nodes = 65536
+
+// WideTextProbe is the scratch of intern_node_texts_range_wide. Node values and
+// node types are texts of one table, so they share its slots.
+struct WideTextProbe {
+mut:
+	ptrs &voidptr = unsafe { nil }
+	vals &string  = unsafe { nil }
+	ids  &u16     = unsafe { nil }
+}
+
+// intern_node_texts_range_wide is intern_node_texts_range_cached for a range that
+// covers most of a tree, with the probe widened to wide_text_probe_slots slots.
+@[direct_array_access]
+fn (mut a FlatAst) intern_node_texts_range_wide(start int, end int) {
+	first := if start < 0 { 0 } else { start }
+	if first >= end {
+		return
+	}
+	// A slot's text and identity are read only once its nonzero pointer key
+	// matches, so the keys alone start out cleared.
+	mut probe := WideTextProbe{
+		ptrs: unsafe { &voidptr(vcalloc_noscan(isize(wide_text_probe_slots) * isize(sizeof(voidptr)))) }
+		vals: unsafe { &string(malloc_noscan(isize(wide_text_probe_slots) * isize(sizeof(string)))) }
+		ids:  unsafe { &u16(malloc_noscan(isize(wide_text_probe_slots) * isize(sizeof(u16)))) }
+	}
+	defer {
+		// These buffers borrow the AST's canonical text; release only the scratch storage.
+		unsafe {
+			free(probe.ptrs)
+			free(probe.vals)
+			free(probe.ids)
+		}
+	}
+	for idx in first .. end {
+		// Interning grows the text tables, never the node array, so this slot stays valid.
+		mut node := &a.nodes[idx]
+		_, node.value = a.intern_text_ptr_probed(node.value, mut probe)
+		type_id, canonical_type := a.intern_text_ptr_probed(node.typ, mut probe)
+		node.typ = canonical_type
+		node.set_type_text_id(type_id)
+		if node.payload == 0 {
+			continue
+		}
+		payload := node.payload_ptr()
+		params := payload.generic_params
+		if params.len > 0 {
+			// Always rebuild the payload, as intern_node_texts_one does.
+			mut canonical_params := []string{cap: params.len}
+			for item in params {
+				_, canonical := a.intern_text_ptr_probed(item, mut probe)
+				canonical_params << canonical
+			}
+			constraints := payload.generic_constraints
+			mut canonical_constraints := []string{cap: constraints.len}
+			for item in constraints {
+				_, canonical := a.intern_text_ptr_probed(item, mut probe)
+				canonical_constraints << canonical
+			}
+			node.set_generic_params_and_constraints(canonical_params, canonical_constraints)
+		}
+	}
+}
+
+// intern_text_ptr_probed interns `value` through the wide probe and returns the
+// compact identity intern_type_text_ptr_cached gives a type, and the canonical
+// text.
+@[inline]
+fn (mut a FlatAst) intern_text_ptr_probed(value string, mut probe WideTextProbe) (u16, string) {
+	if value.len == 0 {
+		return 0, ''
+	}
+	slot := int((u64(voidptr(value.str)) >> 4) & u64(wide_text_probe_slots - 1))
+	unsafe {
+		if probe.ptrs[slot] == voidptr(value.str) && probe.vals[slot].len == value.len {
+			return probe.ids[slot], probe.vals[slot]
+		}
+		id, canonical := a.intern_text(value)
+		compact_id := if id <= 65535 { u16(id) } else { u16(0) }
+		probe.ptrs[slot] = voidptr(value.str)
+		probe.vals[slot] = canonical
+		probe.ids[slot] = compact_id
+		return compact_id, canonical
+	}
 }
 
 // intern_node_texts_range_cached is intern_node_texts_range with the probe

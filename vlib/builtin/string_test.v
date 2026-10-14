@@ -750,6 +750,12 @@ fn test_replace_each() {
 	assert y == 'bbbb'
 	s2 := 'hello_world hello'
 	assert s2.replace_each(['hello_world', 'aaa', 'hello', 'bbb']) == 'aaa bbb'
+	// an empty needle is skipped instead of looping forever
+	assert 'abc'.replace_each(['', 'X']) == 'abc'
+	assert 'abc'.replace_each(['', 'X', 'b', 'B', '', 'Y', 'c', 'C']) == 'aBC'
+	assert 'abc'.replace_each(['a', 'A', '', 'X']) == 'Abc'
+	assert ''.replace_each(['', 'X']) == ''
+	assert 'abc'.replace_each(['a', '', 'b', '']) == 'c'
 }
 
 fn test_format() {
@@ -1269,7 +1275,10 @@ fn test_limit() {
 	assert s.limit(2) == 'he'
 	assert s.limit(9) == s
 	assert s.limit(0) == ''
-	// assert s.limit(-1) == ''
+	assert s.limit(-1) == ''
+	assert ''.limit(-2147483648) == ''
+	assert 'é😊界'.limit(2) == 'é😊'
+	assert 'é😊界'.limit(-2147483648) == ''
 }
 
 fn test_repeat() {

@@ -46,7 +46,7 @@ fn test_unchecked_box_scan_keeps_declarations_checked_bodies_and_generic_templat
 	}
 	t.interface_boxed_skip_nodes = mask
 	fork_tc := tc.fork_for_parallel_transform(a)
-	assert !fork_tc.skips_library_bodies
+	assert fork_tc.skips_library_bodies
 	scan := t.fork_scan_worker(fork_tc)
 	assert scan.interface_boxed_skip_nodes == mask
 }

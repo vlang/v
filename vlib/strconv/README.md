@@ -19,6 +19,8 @@ assert strconv.parse_int('0777', 10, 64)! == 777
 
 Digits must be valid for the selected base, so `08` and `09` fail with base 0.
 An explicit prefix, with its optional underscore separator, must be followed by digits.
+Empty strings and a sign without digits are syntax errors for `parse_int` and `parse_uint`.
+The string conveniences `.int()`, `.i64()` and their narrower variants still return 0 for `''`.
 V integer literal analysis keeps bare leading zeros decimal; octal literals use `0o`.
 
 Bit size 0 uses the width of `int` in the selected target and backend, as given by

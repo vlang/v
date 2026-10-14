@@ -45,6 +45,9 @@ fn (mut s Server) handle_server_handshake(mut c Client) !(string, &ServerClient)
 fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) !(string, &ServerClient) {
 	s.logger.debug('server-> client handshake:\n${client_handshake}')
 	lines := client_handshake.split_into_lines()
+	if lines.len == 0 {
+		return error_with_code('unexpected empty client handshake', 1)
+	}
 	get_tokens := lines[0].split(' ')
 	if get_tokens.len < 3 {
 		return error_with_code('unexpected get operation, ${get_tokens}', 1)
@@ -62,7 +65,11 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 		if lines[i].len <= 0 || lines[i] == '\r\n' {
 			continue
 		}
-		keys := lines[i].split(':').map(it.trim_space())
+		keys := lines[i].split_nth(':', 2).map(it.trim_space())
+		if keys.len < 2 || keys[0] == '' {
+			return error_with_code('malformed header line in client handshake: `${lines[i]}`',
+				9)
+		}
 		match keys[0].to_lower() {
 			'upgrade' {
 				flags << .has_upgrade
@@ -128,6 +135,9 @@ fn (mut ws Client) read_handshake(seckey string) ! {
 fn (mut ws Client) check_handshake_response(handshake_response string, seckey string) ! {
 	ws.debug_log('handshake response:\n${handshake_response}')
 	lines := handshake_response.split_into_lines()
+	if lines.len == 0 {
+		return error_with_code('handshake_handler: empty HTTP status response', 6)
+	}
 	header := lines[0]
 	if !header.starts_with('HTTP/1.1 101') && !header.starts_with('HTTP/1.0 101') {
 		return error_with_code('handshake_handler: invalid HTTP status response code, ${header}', 6)
@@ -136,7 +146,11 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 		if lines[i].len <= 0 || lines[i] == '\r\n' {
 			continue
 		}
-		keys := lines[i].split(':').map(it.trim_space())
+		keys := lines[i].split_nth(':', 2).map(it.trim_space())
+		if keys.len < 2 || keys[0] == '' {
+			return error_with_code('malformed header line in handshake response: `${lines[i]}`',
+				9)
+		}
 		match keys[0].to_lower() {
 			'upgrade' {
 				ws.flags << .has_upgrade
