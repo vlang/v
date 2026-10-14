@@ -87,3 +87,61 @@ fn test_resolve_source_paths_freezes_the_table() {
 	assert a.resolved_source_paths.len == 1
 	assert late !in a.resolved_source_paths
 }
+
+// record_listed_source_path must answer like os.real_path for every kind of
+// directory entry: it resolves a plain file through its directory, and a link,
+// a missing entry, or a file in a linked directory the way os.real_path does.
+fn test_record_listed_source_path_matches_os_real_path() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_flat_listed_source_path_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'real')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	plain := os.join_path(root, 'real', 'plain.v')
+	other := os.join_path(root, 'real', 'other.v')
+	os.write_file(plain, 'module main\n')!
+	os.write_file(other, 'module main\n')!
+	linked_file := os.join_path(root, 'real', 'linked.v')
+	os.symlink(other, linked_file)!
+	linked_dir := os.join_path(root, 'linked')
+	os.symlink(os.join_path(root, 'real'), linked_dir)!
+	through_link := os.join_path(linked_dir, 'plain.v')
+	dotted := root + '/real/../real/plain.v'
+	missing := os.join_path(root, 'real', 'missing.v')
+	directory := os.join_path(root, 'real')
+	mut a := FlatAst.new()
+	for path in [plain, linked_file, through_link, dotted, missing, directory, 'plain.v', '/'] {
+		assert a.record_listed_source_path(path) == os.real_path(path), path
+		// The answer is recorded, and record_source_path gives the same one.
+		assert a.resolved_source_paths[path] == os.real_path(path), path
+		assert a.record_source_path(path) == os.real_path(path), path
+	}
+	// The link resolves to its target, not to a file of that name in the directory.
+	assert a.record_listed_source_path(linked_file) == os.real_path(other)
+	// One resolved directory answers for the plain files in it.
+	mut b := FlatAst.new()
+	b.resolved_source_paths[directory] = '/recorded'
+	assert b.record_listed_source_path(plain) == '/recorded/plain.v'
+	assert b.record_listed_source_path(other) == '/recorded/other.v'
+	assert b.record_listed_source_path(linked_file) == os.real_path(other)
+}
+
+// Like record_source_path, it only reads the table once the table is frozen.
+fn test_record_listed_source_path_does_not_grow_a_frozen_table() {
+	root := os.join_path(os.vtmp_dir(), 'v3_flat_listed_frozen_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	late := os.join_path(root, 'late.v')
+	os.write_file(late, 'module main\n')!
+	mut a := FlatAst.new()
+	a.resolve_source_paths()
+	assert a.record_listed_source_path(late) == os.real_path(late)
+	assert a.resolved_source_paths.len == 0
+}

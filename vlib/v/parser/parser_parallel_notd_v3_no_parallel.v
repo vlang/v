@@ -146,18 +146,26 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		return p.parse_files_with_starts(paths), false
 	}
 	pdsw := time.new_stopwatch()
-	mut sizes := []i64{cap: paths.len}
-	mut total_bytes := i64(0)
-	for path in paths {
-		size := i64(os.file_size(path))
-		sizes << size
-		total_bytes += size
-	}
 	if isnil(p.a.worker_pool) {
 		p.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 	}
 	n_jobs := parse_job_count(p.a.worker_pool.size() + 1, paths.len)
-	if n_jobs <= 1 || total_bytes < min_parallel_parse_bytes {
+	if n_jobs <= 1 {
+		// One job parses the batch in order: the sizes below only split it.
+		return p.parse_files_with_starts(paths), false
+	}
+	mut sizes := []i64{cap: paths.len}
+	mut total_bytes := i64(0)
+	for path in paths {
+		size := if path in p.preloaded_sources {
+			i64(p.preloaded_sources[path].len)
+		} else {
+			i64(os.file_size(path))
+		}
+		sizes << size
+		total_bytes += size
+	}
+	if total_bytes < min_parallel_parse_bytes {
 		return p.parse_files_with_starts(paths), false
 	}
 	// More chunks than workers: the pool queue packs them dynamically, so
@@ -193,6 +201,11 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		w.next_file_id = dispatch_file_id_start + bounds[ci + 1]
 		w.quick_source_sums = p.quick_source_sums
 		w.no_source_digests = p.no_source_digests
+		w.keep_source_texts = p.keep_source_texts
+		if p.preloaded_sources.len > 0 {
+			// The workers only read the table, and the texts stay with the master.
+			w.preloaded_sources = p.preloaded_sources.clone()
+		}
 		w.comptime_string_consts = prepass_const_names.clone()
 		mut chunk_bytes := i64(0)
 		for i in bounds[ci + 1] .. bounds[ci + 2] {
@@ -369,6 +382,19 @@ fn (mut p Parser) remap_worker_file_ids(first_file_id int, delta int) {
 		source_files[shifted_id] = file
 	}
 	p.a.source_files = source_files.move()
+	// The kept texts are keyed like the files they are the text of.
+	if p.a.source_texts.len > 0 {
+		mut source_texts := map[int]string{}
+		for file_id, text in p.a.source_texts {
+			shifted_id := if file_id >= first_file_id && file_id < old_next_file_id {
+				file_id + delta
+			} else {
+				file_id
+			}
+			source_texts[shifted_id] = text
+		}
+		p.a.source_texts = source_texts.move()
+	}
 	mut template_call_sites := map[int]token.Pos{}
 	for file_id, call_site in p.a.template_call_sites {
 		shifted_id := if file_id >= first_file_id && file_id < old_next_file_id {
@@ -409,7 +435,8 @@ fn (mut p Parser) parallel_comptime_const_names(paths []string) map[string]bool 
 	// ordered prefixes, so disabled and later declarations cannot enter their scope.
 	mut names := p.comptime_string_consts.clone()
 	for path in paths {
-		src := read_source_file_raw(path) or { continue }
+		// The same text the full parse takes: a preloaded source, or else the file.
+		src := p.read_source_file(path) or { continue }
 		mut files := token.FileSet.new()
 		file := files.add_file(path, src.len)
 		mut s := scanner.new_scanner(p.prefs, .normal)
@@ -436,7 +463,7 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 	for path in paths[start..end] {
 		// The full parse records the structured I/O diagnostic. The prepass only
 		// supplies ordered const snapshots and must not consume a failed read.
-		src := read_source_file_raw(path) or { continue }
+		src := p.read_source_file(path) or { continue }
 		if src.len == 0 {
 			continue
 		}
@@ -1022,6 +1049,9 @@ fn apply_parallel_comptime_const_decls(mut values map[string]string, decls []Com
 struct PendingSourceFile {
 	file_id int
 	file    &token.File
+	// The text of the file, when its worker kept it (Parser.keep_source_texts).
+	text     string
+	has_text bool
 }
 
 struct ParseMergeCopyArgs {
@@ -1132,9 +1162,13 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		// template parsing stores the generated V source separately from the
 		// real template file registered for diagnostic remapping.
 		for file_id, file in w.a.source_files {
+			// The text goes with the line table: both leave the worker's arena here.
+			has_text := file_id in w.a.source_texts
 			ma.pending_files << PendingSourceFile{
-				file_id: file_id
-				file:    clone_parser_source_file(file)
+				file_id:  file_id
+				file:     clone_parser_source_file(file)
+				text:     if has_text { w.a.source_texts[file_id].clone() } else { '' }
+				has_text: has_text
 			}
 		}
 	}
@@ -1393,6 +1427,9 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		// remain order-sensitive.
 		for pf in pending_files {
 			p.a.source_files[pf.file_id] = pf.file
+			if pf.has_text {
+				p.a.source_texts[pf.file_id] = pf.text
+			}
 		}
 	} else if worker_scope == unsafe { nil } {
 		for source in w.a.source_buffers {
@@ -1406,12 +1443,18 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 		for file_id, file in w.a.source_files {
 			p.a.source_files[file_id] = file
 		}
+		for file_id, text in w.a.source_texts {
+			p.a.source_texts[file_id] = text
+		}
 	} else {
 		// Node and metadata text has already been promoted into the master text
 		// table. Keep only the compact line indexes needed by diagnostics and let
 		// the much larger worker source buffers die with the task arena.
 		for file_id, file in w.a.source_files {
 			p.a.source_files[file_id] = clone_parser_source_file(file)
+		}
+		for file_id, text in w.a.source_texts {
+			p.a.source_texts[file_id] = text.clone()
 		}
 	}
 	for key, value in w.comptime_const_values {
