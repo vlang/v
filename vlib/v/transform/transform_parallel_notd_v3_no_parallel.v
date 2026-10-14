@@ -1820,8 +1820,16 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		base_children := t.a.children.len
 		node_headroom := (end - start) * 8192 + 262144
 		child_headroom := (end - start) * 10240 + 393216
-		t.a.nodes.ensure_cap(base_nodes + node_headroom)
-		t.a.children.ensure_cap(base_children + child_headroom)
+		if t.a.nodes.cap < base_nodes + node_headroom
+			|| t.a.children.cap < base_children + child_headroom {
+			// The tree outlives this stage, so its storage grows in the arena that
+			// holds it. Grown in the stage arena, the whole tree would have to be
+			// copied out again before that arena is released.
+			parent_state := transform_stage_scope_suspend(t.stage_scope)
+			t.a.nodes.ensure_cap(base_nodes + node_headroom)
+			t.a.children.ensure_cap(base_children + child_headroom)
+			transform_stage_scope_resume(t.stage_scope, parent_state)
+		}
 		for spec in specs[start..end] {
 			if !t.generic_specialization_registered(spec.decl, spec.args) {
 				value := specialized_generic_fn_value(spec.decl.node.value, spec.args)
@@ -1942,7 +1950,18 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		}
 		if t.stage_scope != unsafe { nil } {
 			parent_state := transform_stage_scope_suspend(t.stage_scope)
+			// A batch leaves its texts in a few nodes. A node without a payload
+			// whose texts both lie outside the addresses of the batch arena owns
+			// nothing there, which two comparisons tell.
+			scope_lo, scope_hi := transform_scope_address_range(scope)
 			for idx in 0 .. t.a.nodes.len {
+				node := unsafe { &t.a.nodes[idx] }
+				value_address := usize(node.value.str)
+				type_address := usize(node.typ.str)
+				if node.payload == 0 && (value_address < scope_lo || value_address >= scope_hi)
+					&& (type_address < scope_lo || type_address >= scope_hi) {
+					continue
+				}
 				t.clone_scoped_worker_node(idx, scope)
 			}
 			transform_stage_scope_resume(t.stage_scope, parent_state)

@@ -5571,11 +5571,15 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 
 fn write_comptime_cond_string(mut out strings.Builder, value string) {
 	out.write_u8(`'`)
-	for i := 0; i < value.len; i++ {
-		if value[i] == `\\` || value[i] == `'` {
-			out.write_u8(`\\`)
+	if !value.contains('\\') && !value.contains("'") {
+		out.write_string(value)
+	} else {
+		for i := 0; i < value.len; i++ {
+			if value[i] == `\\` || value[i] == `'` {
+				out.write_u8(`\\`)
+			}
+			out.write_u8(value[i])
 		}
-		out.write_u8(value[i])
 	}
 	out.write_u8(`'`)
 }

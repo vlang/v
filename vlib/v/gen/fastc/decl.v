@@ -630,6 +630,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
+	mut uses_pthread_tls := false
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := map[string]string{}
 	helper_has_c_functions := fastc_functions_declare_c(functions)
@@ -686,6 +687,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 		gen.s.init(file, global_source)
 		gen.next()
 		gen.parse_selected_global_declarations(mut out, mut initializers, false)!
+		uses_pthread_tls = uses_pthread_tls || gen.uses_pthread_tls
 		global_types = gen.global_types.move()
 		for name, _ in gen.composite_types {
 			composite_types[name] = true
@@ -703,6 +705,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 	}
 	return FastcGlobalDeclarations{
 		declarations:        out.str()
+		uses_pthread_tls:    uses_pthread_tls
 		module_initializers: module_initializers
 		composite_types:     composite_types
 		fixed_array_types:   fixed_array_types
@@ -788,11 +791,10 @@ fn fastc_prealloc_enabled(prefs &pref.Preferences) bool {
 // fastc_write_prealloc_tls_global emits the arena root `g_memory_block` as
 // per-thread storage, so the parallel per-file generator's worker threads each
 // bump-allocate from their own chunk instead of racing one shared global. This
-// mirrors gen/c's `write_prealloc_tls_global`: bundled TinyCC on macOS has no
-// working thread-local storage, so there the identifier is redirected to a
-// pthread-key slot; every other target uses `_Thread_local`.
+// uses a pthread-key slot on macOS and Linux under TinyCC, which lacks usable
+// language-level thread-local storage. Other compilers use their native TLS.
 fn fastc_write_prealloc_tls_global(mut out strings.Builder, styp string, c_name string, header_free bool) {
-	out.writeln('#if defined(__TINYC__) && defined(__APPLE__)')
+	out.writeln('#if defined(__TINYC__) && (defined(__APPLE__) || defined(__linux__))')
 	if !header_free {
 		// A header-free build declares the pthread API in its prelude.
 		out.writeln('#include <pthread.h>')
@@ -821,8 +823,24 @@ fn fastc_write_prealloc_tls_global(mut out strings.Builder, styp string, c_name 
 fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initializers strings.Builder) ! {
 	g.expect(.key_global)!
 	if g.tok == .lpar {
-		return g.unsupported('grouped globals')
+		// `__global ( a int  b = 1 )` declares each entry as its own `__global`.
+		g.next()
+		g.skip_semicolons()
+		for g.tok != .rpar {
+			if g.tok == .eof {
+				return g.unsupported('unterminated grouped globals')
+			}
+			g.parse_one_global_declaration(mut out, mut initializers)!
+			g.skip_semicolons()
+		}
+		g.next()
+		g.skip_semicolons()
+		return
 	}
+	g.parse_one_global_declaration(mut out, mut initializers)!
+}
+
+fn (mut g Parser) parse_one_global_declaration(mut out strings.Builder, mut initializers strings.Builder) ! {
 	if g.tok != .name {
 		return g.unsupported('global name')
 	}
@@ -868,10 +886,30 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initiali
 		// The prealloc arena root must be per-thread; a shared global would be
 		// corrupted by the parallel per-file generator's concurrent bump-allocations.
 		fastc_write_prealloc_tls_global(mut out, typ, c_name, g.header_free)
+		// TinyCC needs pthreads for the TLS slot even when the program never spawns.
+		g.uses_pthread_tls = g.prefs.target.os in ['macos', 'linux']
+	} else if element_type := fastc_fixed_array_element_type(typ) {
+		// A fixed-array global is raw C storage, as the `= [N]T{}` form above.
+		length := fastc_fixed_array_length(typ) or { return g.unsupported('global `${name}` length') }
+		out.writeln('static ${element_type} ${c_name}[${length}];')
 	} else {
 		out.writeln('static ${typ} ${c_name};')
 	}
 	g.global_types[key] = typ
+	if g.tok != .assign && g.selfhost {
+		// An array or map global starts empty, not as zeroed memory.
+		container := g.underlying_alias_type(typ)
+		if container.starts_with('Array_') {
+			if element_type := g.array_element_type(container) {
+				initializers.writeln('\t${c_name} = ((${typ})builtin____new_array(0, 0, sizeof(${element_type})));')
+			}
+		} else if container.starts_with('Map_') {
+			map_default := fastc_map_field_default(container, g.prefs.target.pointer_bits, g.declared_kinds)
+			if map_default != '' {
+				initializers.writeln('\t${c_name} = ${map_default};')
+			}
+		}
+	}
 	if g.tok == .assign {
 		g.next()
 		mut initializer := g.read_expression([token.Token.semicolon])!
@@ -2305,6 +2343,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 			is_optional_function = true
 		}
 		is_function_field := tok == .key_fn || is_optional_function
+		is_declared_voidptr := tok == .name && scan.lit == 'voidptr'
 		mut function_type := FastcFunctionTypeInfo{}
 		if is_function_field {
 			function_type = fastc_peek_function_type(function_scan, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
@@ -2366,6 +2405,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 				is_skip:               is_skip
 				is_function:           is_function_field
 				is_optional_function:  is_optional_function
+				is_declared_voidptr:   is_declared_voidptr
 				is_shared_pointer:     is_shared_pointer
 				module_name:           source_file.header.module_name
 				path:                  source_file.path

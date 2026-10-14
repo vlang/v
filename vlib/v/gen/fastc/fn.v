@@ -181,6 +181,11 @@ fn (mut g Parser) parse_c_directive() ! {
 				}
 				rest = rest.all_after(qualifier).trim_space()
 			}
+			expanded, enabled := fastc_expand_existing_path_macros(rest, g.prefs.vroot, g.path)!
+			if !enabled {
+				return
+			}
+			rest = expanded
 			// Retain native inputs and link/header search flags for TinyCC.
 			if fastc_flag_is_skippable(rest) {
 				g.c_flags << fastc_c_flag_args(rest, g.prefs.vroot, g.path)!
@@ -227,7 +232,8 @@ fn (mut g Parser) parse_c_directive() ! {
 		&& g.prefs.target.arch == 'arm64' {
 		// TinyCC emits C99 extern-inline ARM64 support functions in each split
 		// unit. Weak definitions let the linker share those identical helpers.
-		g.out.writeln('#define inline __attribute__((weak)) inline')
+		// glibc can define __attribute__ as an empty macro for TinyCC.
+		g.out.writeln('#define inline __attribute((weak)) inline')
 		g.out.writeln('#${c_directive}')
 		g.out.writeln('#undef inline')
 		return
@@ -236,7 +242,11 @@ fn (mut g Parser) parse_c_directive() ! {
 }
 
 fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
-	expanded := fastc_resolve_c_pseudo_paths(raw, vroot, source_file)
+	selected, enabled := fastc_expand_existing_path_macros(raw, vroot, source_file)!
+	if !enabled {
+		return []string{}
+	}
+	expanded := fastc_resolve_c_pseudo_paths(selected, vroot, source_file)
 	mut args := cmdexec.split_args(expanded) or {
 		return error('fastc parser cannot split C build flag `${raw}`')
 	}
@@ -275,6 +285,85 @@ fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
 		}
 	}
 	return args
+}
+
+// fastc_expand_existing_path_macros selects the first existing native input or
+// search path. An unmatched optional macro disables the entire flag directive.
+fn fastc_expand_existing_path_macros(raw string, vroot string, source_file string) !(string, bool) {
+	mut result := raw
+	for {
+		first_index := result.index(r'$first_existing') or { -1 }
+		when_index := result.index(r'$when_first_existing') or { -1 }
+		if first_index < 0 && when_index < 0 {
+			return result, true
+		}
+		optional := when_index >= 0 && (first_index < 0 || when_index < first_index)
+		index := if optional { when_index } else { first_index }
+		macro_name := if optional { r'$when_first_existing' } else { r'$first_existing' }
+		open_index := index + macro_name.len
+		if open_index >= result.len || result[open_index] != `(` {
+			return error('fastc parser requires parentheses after `${macro_name}`')
+		}
+		mut quote := u8(0)
+		mut close_index := -1
+		for i := open_index + 1; i < result.len; i++ {
+			ch := result[i]
+			if ch in [`'`, `"`] {
+				if quote == 0 {
+					quote = ch
+				} else if quote == ch {
+					quote = 0
+				}
+			} else if ch == `)` && quote == 0 {
+				close_index = i
+				break
+			}
+		}
+		if close_index < 0 {
+			return error('fastc parser cannot close `${macro_name}`')
+		}
+		mut selected := ''
+		mut candidates := []string{}
+		for value in fastc_existing_path_candidates(result[open_index + 1..close_index]) {
+			path := fastc_resolve_c_pseudo_paths(value.trim(' \t\r\n\'"'), vroot, source_file)
+			if path == '' {
+				continue
+			}
+			candidates << path
+			if selected == '' && os.exists(path) {
+				selected = path
+			}
+		}
+		if selected == '' {
+			if optional {
+				return '', false
+			}
+			return error('none of the paths ${candidates} exist')
+		}
+		result = result[..index] + os.quoted_path(selected) + result[close_index + 1..]
+	}
+	return result, true
+}
+
+// fastc_existing_path_candidates splits candidates at commas outside quoted filenames.
+fn fastc_existing_path_candidates(text string) []string {
+	mut values := []string{}
+	mut quote := u8(0)
+	mut start := 0
+	for i, ch in text {
+		if ch in [`'`, `"`] {
+			if quote == 0 {
+				quote = ch
+			} else if quote == ch {
+				quote = 0
+			}
+		} else if ch == `,` && quote == 0 {
+			values << text[start..i]
+			start = i + 1
+		}
+	}
+	values << text[start..]
+	return values
 }
 
 fn fastc_pkgconfig_flags(raw string) ![]string {
@@ -775,7 +864,10 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		'${receiver_key}.${name}'
 	}
-	is_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main'] && name == 'main'
+	is_program_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main']
+		&& name == 'main'
+	// A test build runs its tests from a main of its own; the program's is an ordinary function.
+	is_main := is_program_main && !g.prefs.is_test
 	is_module_init := !is_static_method && receiver_type == '' && name == 'init'
 	is_module_cleanup := !is_static_method && receiver_type == '' && name == 'cleanup'
 	if is_main {
@@ -1025,8 +1117,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 // each `T` treated as a `voidptr` placeholder. Most generic bodies lower fine that
 // way (e.g. `typeof(T).name` reflection). When one cannot (e.g. orm's
 // `QueryBuilder[T]`, which interpolates a `T`-typed struct), the partial output is
-// discarded and a trivial stub is emitted instead — a generic body is never called
-// un-monomorphized, so a stub is safe and keeps the surrounding module compiling.
+// discarded and a stub is emitted instead, which keeps the surrounding module compiling.
+// A call that reaches the stub had no instance made for it; the stub reports the call
+// and exits rather than return a zero value as if the body had run.
 // `body_end` is a scanner positioned just past the body's closing `}`, used to
 // resume after a discarded body. Returns whether the emitted body terminates.
 fn (mut g Parser) parse_generic_body_or_stub(return_type string, out_checkpoint int, saved_indent int, body_end scanner.Scanner, force_stub bool) bool {
@@ -1060,6 +1153,11 @@ fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, b
 	g.function_defer_declarations.clear()
 	g.s = body_end
 	g.next()
+	if g.selfhost {
+		// A call site no instance was made for reaches this stub; say so rather than
+		// return a zero value as if the body had run.
+		g.write_line('fprintf(stderr, "fastc: generic function `%s` was called without a concrete instance\\n", "${g.current_function}"); exit(1);')
+	}
 	if return_type != 'void' {
 		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 	}

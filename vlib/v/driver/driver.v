@@ -1645,6 +1645,10 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	// A C helper does not inherit a standard intended for the C++ main unit.
 	args << object_flags.flags_for_compiler(compiler).filter(is_cpp
 		|| !(it.starts_with('-std=c++') || it.starts_with('-std=gnu++')))
+	if target.os == 'macos' && pref.ccompiler_is_tinycc(compiler) {
+		// Framework search paths are link flags that TCC also rejects in C helpers.
+		args = c_object_compile_flags(v3_tcc_macos_framework_flags(args, target.os, ''))
+	}
 	if language.len > 0 {
 		args << ['-x', language]
 	}
@@ -2503,6 +2507,7 @@ struct V3CCompilerFlagOptions {
 	link_c_standard     string
 	dependencies        []string
 	warn_args           []string
+	tcc_resources       ?V3TccResourceFlags
 	vroot               string
 	target_os           string
 	target_arch         string
@@ -3679,7 +3684,13 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	if options.link_c_standard.len > 0 {
 		before_inputs << options.link_c_standard
 	}
-	before_inputs << v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options, options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining, options.is_tcc)
+	optimization_flags := v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options, options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining, options.is_tcc)
+	// Standalone objects must contain machine code for a later independent link.
+	before_inputs << if options.is_o {
+		optimization_flags.filter(it != '-flto')
+	} else {
+		optimization_flags
+	}
 	if options.pic_flag.len > 0 {
 		before_inputs << options.pic_flag
 	}
@@ -3690,16 +3701,21 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	mut tcc_includes := ''
 	if options.is_tcc {
-		tcc_resources := v3_tcc_resource_flags(options.vroot)
+		tcc_resources := options.tcc_resources or { v3_tcc_resource_flags(options.vroot) }
 		tcc_includes = tcc_resources.include_arg
-		before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
-		before_inputs << v3_tcc_host_system_flags(options.target_os, options.macos_sdk_root)
+		if tcc_resources.base_arg != '' {
+			before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg,
+				tcc_resources.library_arg]
+			before_inputs << v3_tcc_host_system_flags(options.target_os, options.macos_sdk_root)
+		}
 		if v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
 			before_inputs << '-bt25'
 		}
 	}
 	before_inputs << options.warn_args
-	before_inputs << '-Wno-int-conversion'
+	if '-Wno-int-conversion' !in before_inputs {
+		before_inputs << '-Wno-int-conversion'
+	}
 	if options.target_os == 'macos' && !options.is_shared && !options.is_tcc {
 		before_inputs << '-Wl,-stack_size,0x4000000'
 	}
@@ -3725,6 +3741,8 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	mut after_inputs := if options.is_o {
 		c_object_compile_flags(options.dependencies)
+	} else if options.is_tcc {
+		tcc_monolithic_dependency_flags(options.dependencies, false)
 	} else {
 		c_link_dependency_flags(options.dependencies)
 	}
@@ -4147,6 +4165,9 @@ fn c_executable_bin_file_for_target(path string, target_os string, is_shared boo
 }
 
 fn c_compiler_output_name_for_target(target_os string, is_shared bool, is_o bool) string {
+	if is_o && pref.normalized_os(target_os) == 'windows' {
+		return 'out.obj'
+	}
 	if !is_shared && !is_o && pref.normalized_os(target_os) == 'windows' {
 		return 'out.exe'
 	}
@@ -7375,10 +7396,11 @@ fn promote_scoped_ast_nodes_flagged(mut ast flat.FlatAst, base_nodes int, new_en
 	}
 }
 
-// release_transform_helper_scopes canonicalizes every node text still owned by
-// one of the self-host transform helper arenas (preparation and pre-scan
-// indexes) and then frees those arenas.
-fn release_transform_helper_scopes(mut a flat.FlatAst, scopes []voidptr) {
+// publish_transform_helper_scope_texts canonicalizes every node text still
+// owned by one of the self-host transform helper arenas (preparation and
+// pre-scan indexes). The caller frees the arenas once nothing names their
+// memory any more: the type cache of the transform stage can.
+fn publish_transform_helper_scope_texts(mut a flat.FlatAst, scopes []voidptr) {
 	mut flags := []u8{len: a.nodes.len}
 	if transform.scan_scoped_text_flags_parallel_multi(a, scopes, mut flags) {
 		mut canon_cache := flat.TextProbeCache{}
@@ -7403,9 +7425,6 @@ fn release_transform_helper_scopes(mut a flat.FlatAst, scopes []voidptr) {
 		}
 	}
 	unsafe { flags.free() }
-	for scope in scopes {
-		prealloc_scope_free_for_v3(scope)
-	}
 }
 
 // canonicalize_scoped_node_cached is canonicalize_scoped_node with a pointer
@@ -8678,6 +8697,8 @@ const v3_cache_compiler_runtime_inputs = [
 	'vlib/os/execute_capture_nix.c',
 	'vlib/os/execute_capture_nix.h',
 	'vlib/runtime/free_memory_darwin.c',
+	'vlib/runtime/free_memory_openbsd.c',
+	'vlib/v/diagserver/syscalls_linux.c',
 	'vlib/v/modulecache/file_metadata.c',
 	'vlib/builtin/segfault_handler_nix.c',
 	'vlib/builtin/segfault_handler_nix.h',
@@ -9439,7 +9460,8 @@ fn v3_fallback_backend_specific_builtin_source(path string, builtin_root string)
 
 fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Preferences, is_test_command bool, is_checker_fixture bool) bool {
 	if prefs.backend != 'c' || prefs.output_cross_c || prefs.target.os !in ['macos', 'linux', 'freebsd',
-		'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku'] || is_test_command || is_checker_fixture
+		'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku', 'windows', 'android', 'termux', 'ios',
+		'qnx', 'serenity', 'wasm32_emscripten'] || is_test_command || is_checker_fixture
 		|| !(input_file.ends_with('.v') || input_file.ends_with('.vv')) || !os.is_file(input_file)
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
@@ -9464,7 +9486,49 @@ fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Pref
 		}
 	}
 	return candidate_files.len == 1
-		&& markused.is_trivial_literal_output_program(candidate_ast, candidate_files)
+		&& is_trivial_literal_output_program_for_target(candidate_ast, candidate_files, prefs.target)
+}
+
+fn is_trivial_literal_output_program_for_target(a &flat.FlatAst, diagnostic_files map[string]bool, target pref.Target) bool {
+	if !markused.is_trivial_literal_output_program(a, diagnostic_files) {
+		return false
+	}
+	if target.os !in ['windows', 'ios'] {
+		return true
+	}
+	// Windows' regular printing runtime converts console output to UTF-16.
+	// CRT byte writes can replace it only when the literals are ASCII.
+	for id, node in a.nodes {
+		if node.kind == .file && node.value in diagnostic_files
+			&& !literal_output_node_supports_console(a, flat.NodeId(id), target.os) {
+			return false
+		}
+	}
+	return true
+}
+
+fn literal_output_node_supports_console(a &flat.FlatAst, id flat.NodeId, target_os string) bool {
+	node := a.node(id)
+	if node.kind == .string_literal {
+		if target_os == 'ios' {
+			// The native logger interprets percent directives as format arguments.
+			if node.value.contains('%') {
+				return false
+			}
+		} else {
+			for byte in node.value {
+				if byte >= 128 {
+					return false
+				}
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if !literal_output_node_supports_console(a, a.child(node, i), target_os) {
+			return false
+		}
+	}
+	return true
 }
 
 fn is_minimal_literal_output_builtin_file(path string) bool {
@@ -9930,11 +9994,13 @@ $if !skip_fastc ? {
 		}
 		base_link_args := c_dylib_link_flags(cc_args)
 		user_link_args := c_dylib_link_flags(user_c_flags)
-		mut final_args := base_link_args.clone()
-		final_args << user_link_args
 		native_sources := cc_args.filter(c_flag_is_c_source_file(it))
-		final_args << native_sources
+		// Native helpers must introduce their references before static archives
+		// are searched, including the bundled GC's C wrappers on Linux.
+		mut final_args := native_sources.clone()
 		final_args << user_c_flags.filter(c_flag_is_c_source_file(it))
+		final_args << base_link_args
+		final_args << user_link_args
 		final_args << v3_fastc_default_linker_flags(prefs.normalized_target_os(), uses_threads)
 		atomic_arg := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
 		if atomic_arg.len > 0 {
@@ -10859,6 +10925,11 @@ pub fn run(args []string) {
 			i++
 		}
 	}
+	if backend == 'native' {
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		eprintln(pref.native_backend_replacement_message)
+		exit(1)
+	}
 	if compiler_errors.json_output() {
 		// The details of a diagnostic are text, whatever `-color` asked for.
 		ansi.set_colors_enabled(false)
@@ -11195,10 +11266,14 @@ pub fn run(args []string) {
 	}
 	cmd_v_module_input := input_loads_cmd_v_module(input_file)
 	compiler_tree_input := input_is_compiler_tree(input_file)
-	if backend == 'fastc' && ('fastc_real_builtin' in user_defines || os.is_dir(input_file)) {
+	fastc_test_file := backend == 'fastc' && (is_v3_test_file(input_file, backend, target)
+		|| is_v3_test_file(input_file, 'c', target))
+	if backend == 'fastc' && ('fastc_real_builtin' in user_defines || os.is_dir(input_file)
+		|| fastc_test_file) {
 		// Opt-in: compile an ordinary program through FastC's real-`builtin` path
 		// (real `struct string`, error system, and the full runtime) instead of the
-		// bootstrap `const char*` runtime. Directory entries use the same path.
+		// bootstrap `const char*` runtime. Directory entries use the same path, and so
+		// does a test file, whose harness reports through V strings and errors.
 		building_v = true
 	}
 	// Large serial compiler-module builds create the same transform and C-generation
@@ -11522,6 +11597,15 @@ pub fn run(args []string) {
 	if backend != 'fastc' {
 		record_user_define(mut user_defines, mut compile_values, 'v3_c_extern_declarations')
 	}
+	if cmd_v_build && output_cross_c && backend == 'c' && !no_builtin && !is_o
+		&& !target_libc_headers
+		&& target.os in ['macos', 'linux', 'freebsd', 'openbsd', 'dragonfly', 'windows', 'android',
+			'termux', 'ios'] {
+		// vc/v.c must bootstrap without platform headers or checkout-local objects.
+		// Keep the signal-context ABI out of this portable compiler snapshot.
+		record_user_define(mut user_defines, mut compile_values, 'v3_headerless_bootstrap')
+		record_user_define(mut user_defines, mut compile_values, 'no_segfault_handler')
+	}
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot).map(os.abs_path(it))
@@ -11611,9 +11695,12 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			mut unsupported_modes := []string{}
-			if is_test_command || is_v3_test_file(input_file, backend, target)
-				|| is_v3_test_file(input_file, 'c', target) || is_checker_fixture {
+			if is_test_command || is_checker_fixture {
 				unsupported_modes << 'test/checker mode'
+			}
+			// A test file builds as a program whose main runs its tests.
+			if fastc_test_file {
+				prefs.is_test = true
 			}
 			if is_prod {
 				unsupported_modes << '`-prod`'
@@ -12990,6 +13077,9 @@ pub fn run(args []string) {
 	mut retained_transform_scope := unsafe { nil }
 	mut retained_transform_prepare_scope := unsafe { nil }
 	mut retained_transform_prescan_scopes := []voidptr{}
+	// Helper arenas of the transform stage whose texts are published, kept until
+	// the type cache that can name their memory is dropped.
+	mut transform_helper_scopes := []voidptr{}
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
@@ -13008,14 +13098,16 @@ pub fn run(args []string) {
 		set_diagnostic_files(mut pre_tc, user_files)
 		// The C generator has a dedicated literal-output path. The SSA/native backend
 		// still builds ordinary builtin bodies, so it needs their full dependency set.
-		// So does MSVC: its backtraces demangle symbols with string slices, which only
-		// become `string.substr` calls after markused.
+		// MSVC's regular runtime demangles backtraces with string slices, which only
+		// become `string.substr` calls after markused. Proven Windows ASCII output
+		// emits no runtime and can omit those dependencies too.
 		// A module cache build checks and compiles whole modules, also for a program
 		// that only prints literals: the interfaces and the objects it publishes
 		// serve every other program.
 		trivial_literal_output = !prefs.output_cross_c && !is_trace_calls && !no_skip_unused && backend != 'arm64' && test_files.len == 0 && !is_checker_fixture
-			&& effective_c_compiler != 'msvc' && !cache_state.manager.enabled
-			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
+			&& (effective_c_compiler != 'msvc' || (target.os == 'windows' && minimal_literal_output))
+			&& !cache_state.manager.enabled
+			&& is_trivial_literal_output_program_for_target(a, pre_tc.diagnostic_files, target)
 		if verbose {
 			eprintln('  [ttime]   ck trivial gate  ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
@@ -13530,9 +13622,10 @@ pub fn run(args []string) {
 		} else if library_body_frontiers {
 			used_fns, uses_generics = markused.mark_used_checking_library_bodies(a, mut pre_tc,
 				check_may_be_parallel)
-		} else if effective_c_compiler == 'msvc' {
-			// Keep the runtime seeds that a literal-output program would drop; see
-			// `trivial_literal_output` above.
+		} else if effective_c_compiler == 'msvc'
+			|| (target.os in ['windows', 'ios'] && markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)) {
+			// Retain MSVC backtrace dependencies and Windows' Unicode console output
+			// when the minimal literal path cannot replace the ordinary runtime.
 			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a, markused_tc)
 		} else {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
@@ -13785,7 +13878,11 @@ pub fn run(args []string) {
 					helper_scopes << retained_transform_prepare_scope
 				}
 				helper_scopes << retained_transform_prescan_scopes
-				release_transform_helper_scopes(mut a, helper_scopes)
+				publish_transform_helper_scope_texts(mut a, helper_scopes)
+				// The type cache of this stage holds lookups keyed by the texts of
+				// these arenas. It is dropped before the transform arena is released,
+				// or kept with that arena through Cgen: release them with it.
+				transform_helper_scopes << helper_scopes
 				retained_transform_prepare_scope = unsafe { nil }
 				retained_transform_prescan_scopes = []voidptr{}
 			}
@@ -13966,6 +14063,10 @@ pub fn run(args []string) {
 					eprintln('  [leakcheck] tf scope: rc ${leaked_rc} fv ${leaked_fv} node.value ${leaked_nv} node.typ ${leaked_nt} first_rc ${first_leak}')
 				}
 				prealloc_scope_free_for_v3(transform_scope)
+				for scope in transform_helper_scopes {
+					prealloc_scope_free_for_v3(scope)
+				}
+				transform_helper_scopes = []voidptr{}
 				if verbose {
 					eprintln('  [ttime] promote checker    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 					post_sw.restart()
@@ -14190,8 +14291,6 @@ pub fn run(args []string) {
 				eprintln('mono AST before pass: ${a.nodes.len}/${a.nodes.cap} nodes, ${a.children.len}/${a.children.cap} children')
 			}
 			base_monomorph_nodes := a.nodes.len
-			monomorph_nodes_cap := a.nodes.cap
-			monomorph_children_cap := a.children.cap
 			base_specialized_fns := a.specialized_fn_nodes.len
 			monomorph_scope := prealloc_scope_begin_for_v3()
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a, &pre_tc, monomorph_input_used, !current_no_parallel
@@ -14203,10 +14302,10 @@ pub fn run(args []string) {
 				eprintln('mono AST after pass: ${a.nodes.len}/${a.nodes.cap} nodes, ${a.children.len}/${a.children.cap} children')
 			}
 			// The scoped transformer interns every escaping node payload while the
-			// parent arena is temporarily current. Only an unexpected AST backing
-			// growth still needs a full promotion clone.
-			if a.nodes.cap != monomorph_nodes_cap || a.children.cap != monomorph_children_cap
-				|| scoped_value_owned(monomorph_scope, a.nodes.data)
+			// parent arena is temporarily current, and it grows the AST backing in
+			// that arena as well. Only a backing that still ended up in the
+			// disposable arena needs a full promotion clone.
+			if scoped_value_owned(monomorph_scope, a.nodes.data)
 				|| scoped_value_owned(monomorph_scope, a.children.data) {
 				a = clone_flat_ast_after_transform_from_scope(a, monomorph_scope)
 				pre_tc.rebind_ast(a)
@@ -14984,6 +15083,15 @@ pub fn run(args []string) {
 			}
 			shared_link_ld_flags << '-Wl,--version-script,${exports_script}'
 		}
+		planned_tcc_compiler := if explicit_tcc && c_compiler in ['tcc', 'tinyc'] && bundled_tcc_available {
+			bundled_tcc
+		} else {
+			c_compiler
+		}
+		if effective_tcc && pruned_declarations.count > 0
+			&& '-Werror=implicit-function-declaration' !in warn_args {
+			warn_args << '-Werror=implicit-function-declaration'
+		}
 		c_flag_options := V3CCompilerFlagOptions{
 			environment_c_flags: environment_c_flags
 			link_ld_flags:       shared_link_ld_flags
@@ -14991,6 +15099,7 @@ pub fn run(args []string) {
 			link_c_standard:     link_c_standard
 			dependencies:        resolved_c_flags
 			warn_args:           warn_args
+			tcc_resources:       v3_tcc_resource_flags_for_compiler(prefs.vroot, planned_tcc_compiler, bundled_tcc, bundled_tcc_available)
 			vroot:               prefs.vroot
 			target_os:           prefs.normalized_target_os()
 			target_arch:         prefs.normalized_target_arch()
@@ -15053,7 +15162,11 @@ pub fn run(args []string) {
 		if dump_c_flags.len > 0 {
 			mut dump_support_flags := v3_c_source_mode_flags(needs_objective_c)
 			dump_support_flags << native_support_inputs
-			dumped_flags := c_flag_plan.all_flags(dump_support_flags)
+			dumped_flags := if effective_tcc {
+				v3_tcc_macos_framework_flags(c_flag_plan.all_flags(dump_support_flags), prefs.normalized_target_os(), flag_plan_sdk_root)
+			} else {
+				c_flag_plan.all_flags(dump_support_flags)
+			}
 			output := if dumped_flags.len > 0 {
 				dumped_flags.join('\n') + '\n'
 			} else {
@@ -15673,66 +15786,25 @@ pub fn run(args []string) {
 				implicit_tcc
 			}
 			tcc_resources := v3_tcc_resource_flags_for_compiler(prefs.vroot, tcc_path, bundled_tcc, bundled_tcc_available)
-			mut tcc_args := environment_c_flags.clone()
-			tcc_args << v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc,
-				large_prod_c_unit, limit_large_unit_inlining, true)
-			if link_c_standard.len > 0 {
-				tcc_args << link_c_standard
-			}
-			if pic_flag.len > 0 {
-				tcc_args << pic_flag
-			}
-			if tcc_resources.base_arg != '' {
-				tcc_args << [tcc_resources.base_arg, tcc_resources.include_arg,
-					tcc_resources.library_arg]
-			}
 			tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
 				macos_sdk_root_cache.get()
 			} else {
 				''
 			}
-			if tcc_resources.base_arg != '' {
-				tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), tcc_sdk_root)
-			}
-			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), is_shared) {
-				tcc_args << '-bt25'
-			}
-			tcc_args << warn_args
-			if is_shared {
-				tcc_args << '-shared'
-			} else if is_o {
-				tcc_args << '-c'
-			}
-			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o, prefs.subsystem, windows_gui_entry_point)
 			tcc_source := if cache_full_tcc_source.len > 0 {
 				os.base(cache_full_tcc_source)
 			} else {
 				'src.c'
 			}
-			if pruned_declarations.count > 0 {
-				// A call of a function that this build left out must not pass for a
-				// call of an undeclared one, which TinyCC takes to return `int`.
-				tcc_args << '-Werror=implicit-function-declaration'
-			}
-			tcc_args << ['-o', cc_output_name, tcc_source]
+			mut tcc_support_inputs := []string{}
 			if cache_with_tcc && cache_state.manager.enabled {
 				// The program unit, with the objects of the modules it was split from.
-				tcc_args << cached_objects
+				tcc_support_inputs << cached_objects
 			}
 			if !is_o {
-				if !generated_literal_output_only {
-					atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
-					if atomic_s.len > 0 {
-						tcc_args << atomic_s
-					}
-				}
-				tcc_args << embed_incbin_objects
+				tcc_support_inputs << native_support_inputs
 			}
-			tcc_args << tcc_monolithic_dependency_flags(resolved_c_flags, is_o)
-			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
-			if !is_o {
-				tcc_args << link_ld_flags
-			}
+			mut tcc_args := c_flag_plan.compiler_args(cc_output_name, [tcc_source], tcc_support_inputs)
 			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
 				tcc_sdk_root)
 			if verbose || show_cc {
@@ -15906,7 +15978,8 @@ pub fn run(args []string) {
 				compiler_inputs << ['-D__TINYC__', '-Wno-implicit-function-declaration',
 					fallback_source]
 			} else {
-				if pruned_declarations.count > 0 {
+				if pruned_declarations.count > 0
+					&& '-Werror=implicit-function-declaration' !in c_flag_plan.before_inputs {
 					compiler_inputs << '-Werror=implicit-function-declaration'
 				}
 				compiler_inputs << v3_c_source_inputs(fallback_source, needs_objective_c)
@@ -15932,6 +16005,10 @@ pub fn run(args []string) {
 				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, cc_output_name, verbose || show_cc, parallel_c_job_count, parallel_c_unit_count, is_shared, building_v && is_bsd_host && is_prod && !no_cache && !is_shared, prefs.target, prefs.vroot, mut c_object_cache_stats)
 			} else {
 				mut cc_args := c_flag_plan.compiler_args(cc_output_name, compiler_inputs, [])
+				if effective_tcc {
+					cc_args = v3_tcc_macos_framework_flags(cc_args, prefs.normalized_target_os(),
+						flag_plan_sdk_root)
+				}
 				if effective_c_compiler == 'msvc' {
 					cc_args = msvc_cl_args(cc_args, prefs.normalized_target_os())
 				}
@@ -16238,6 +16315,10 @@ Please install the corresponding development package/libraries and make sure the
 		prealloc_scope_free_for_v3(retained_transform_prepare_scope)
 		retained_transform_prepare_scope = unsafe { nil }
 	}
+	for scope in transform_helper_scopes {
+		prealloc_scope_free_for_v3(scope)
+	}
+	transform_helper_scopes = []voidptr{}
 	if show_test_stats {
 		println('checker summary: 0 V errors, ${checker_warning_count} V warnings, ${checker_notice_count} V notices')
 	}

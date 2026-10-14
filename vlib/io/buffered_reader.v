@@ -3,12 +3,13 @@ module io
 // BufferedReader provides a buffered interface for a reader.
 pub struct BufferedReader {
 mut:
-	reader Reader
-	buf    []u8
-	offset int // current offset in the buffer
-	len    int
-	fails  int // how many times fill_buffer has read 0 bytes in a row
-	mfails int // maximum fails, after which we can assume that the stream has ended
+	reader          Reader
+	buf             []u8
+	offset          int // current offset in the buffer
+	len             int
+	can_unread_byte bool
+	fails           int // how many times fill_buffer has read 0 bytes in a row
+	mfails          int // maximum fails, after which we can assume that the stream has ended
 pub mut:
 	end_of_stream bool // whether we reached the end of the upstream reader
 	total_read    int  // total number of bytes read
@@ -59,6 +60,7 @@ fn (mut r BufferedReader) copy_unread(mut buf []u8) !int {
 
 // read fufills the Reader interface.
 pub fn (mut r BufferedReader) read(mut buf []u8) !int {
+	r.can_unread_byte = false
 	if buf.len == 0 {
 		return 0
 	}
@@ -117,6 +119,7 @@ fn (mut r BufferedReader) fill_buffer_keep_unread() ! {
 // returns an error if n < 0.
 // returns an array with less than n bytes if n > capacity.
 pub fn (mut r BufferedReader) peek(n int) ![]u8 {
+	r.can_unread_byte = false
 	if n < 0 {
 		return error('cannot peek a negative number of bytes')
 	}
@@ -147,6 +150,7 @@ pub fn (mut r BufferedReader) peek(n int) ![]u8 {
 
 // free deallocates the memory for a buffered reader's internal buffer.
 pub fn (mut r BufferedReader) free() {
+	r.can_unread_byte = false
 	unsafe {
 		r.buf.free()
 	}
@@ -199,6 +203,7 @@ pub fn (r BufferedReader) end_of_stream() bool {
 // With the default delimiter `\n`, both `\n` and `\r\n` line endings are
 // accepted, and neither terminator byte is included in the returned string.
 pub fn (mut r BufferedReader) read_line(config BufferedReadLineConfig) !string {
+	r.can_unread_byte = false
 	if r.end_of_stream && r.offset == r.len {
 		return Eof{}
 	}

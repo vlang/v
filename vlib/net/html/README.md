@@ -30,6 +30,10 @@ fn main() {
 
 More examples found on [`parser_test.v`](parser_test.v) and [`html_test.v`](html_test.v)
 
+Comments are omitted from the parsed tree. Text before and after comments remains in order,
+including text wrapped by hydration markers such as `<!--[-->hello<!--]-->`. Comments do not
+create empty text nodes or change the surrounding elements.
+
 Calling `get_tag_by_class_name` without class names returns `none`;
 `get_tags_by_class_name` without class names returns an empty array.
 
@@ -51,3 +55,7 @@ a pending quoted attribute value.
 
 Trailing text is retained when parsing ends, including text after a closing tag and text in an
 unclosed element. Text after a closing tag belongs to the surrounding element.
+
+Attribute names are case insensitive. Quoted and unquoted attribute values preserve their case,
+and both forms populate class selectors. HTML whitespace separates attributes; whitespace around
+`=` is accepted. Empty attribute names are omitted.

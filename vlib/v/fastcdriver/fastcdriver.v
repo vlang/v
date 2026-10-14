@@ -484,7 +484,9 @@ pub fn run(args []string) {
 	// (the C carries no headers): it is an error, not a warning.
 	cc_args << '-Werror=implicit-function-declaration'
 	native_inputs := generation.c_flags.filter(fastc.fastc_flag_is_native_input(it))
-	mut link_libs := native_inputs.clone()
+	// C helpers can introduce references satisfied by later static archives.
+	mut link_libs := native_inputs.filter(it.ends_with('.c'))
+	link_libs << native_inputs.filter(!it.ends_with('.c'))
 	if generation.uses_threads {
 		// The emitted spawn runtime calls pthread functions, which live outside
 		// libc on Linux with glibc before 2.34 and on the BSDs.

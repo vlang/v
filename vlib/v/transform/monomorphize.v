@@ -1516,6 +1516,9 @@ fn (mut t Transformer) specialize_generic_struct_methods(specs map[string]string
 	if !t.needs_generic_struct_method_specialization(decls) {
 		return false
 	}
+	if specs.len == 0 {
+		return false
+	}
 	used_method_names := t.used_generic_method_names()
 	mut any := false
 	for spec, base in specs {
@@ -3116,7 +3119,8 @@ fn (mut t Transformer) expand_generic_materialization_specs(decls map[string]Gen
 }
 
 // declaration_scan_prefix reuses the checker's declaration index for its
-// original AST prefix. Nodes appended by lowering still need a full scan.
+// original AST prefix. Declarations appended by lowering come from
+// appended_declaration_scan.
 fn (t &Transformer) declaration_scan_prefix() (int, int) {
 	if !isnil(t.tc) && t.tc.top_level_idx.len > 0 && t.tc.top_level_idx_nodes_len > 0
 		&& t.tc.top_level_idx_nodes_len <= t.a.nodes.len {
@@ -3132,11 +3136,14 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 	mut cur_file := ''
 	mut cur_module := ''
 	indexed_count, indexed_nodes := t.declaration_scan_prefix()
-	for scan_idx in 0 .. indexed_count + t.a.nodes.len - indexed_nodes {
+	appended, streamed := t.appended_declaration_scan(indexed_nodes)
+	for scan_idx in 0 .. indexed_count + appended.len + streamed {
 		i := if scan_idx < indexed_count {
 			int(t.tc.top_level_idx[scan_idx])
+		} else if scan_idx - indexed_count < appended.len {
+			appended[scan_idx - indexed_count]
 		} else {
-			indexed_nodes + scan_idx - indexed_count
+			indexed_nodes + scan_idx - indexed_count - appended.len
 		}
 		kind := t.a.nodes[i].kind
 		if kind != .file && kind != .module_decl && kind != .struct_decl {
@@ -3153,7 +3160,7 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 				cur_module = node.value
 			}
 			.struct_decl {
-				if node.generic_params().len == 0 && 'generic' !in node.typ.split(',') {
+				if node.generic_params().len == 0 && !comma_list_has_item(node.typ, 'generic') {
 					continue
 				}
 				module_name := t.node_module_or(i, cur_module)
@@ -3187,11 +3194,14 @@ fn (mut t Transformer) collect_generic_sum_decls() map[string]GenericSumDecl {
 	mut cur_file := ''
 	mut cur_module := ''
 	indexed_count, indexed_nodes := t.declaration_scan_prefix()
-	for scan_idx in 0 .. indexed_count + t.a.nodes.len - indexed_nodes {
+	appended, streamed := t.appended_declaration_scan(indexed_nodes)
+	for scan_idx in 0 .. indexed_count + appended.len + streamed {
 		i := if scan_idx < indexed_count {
 			int(t.tc.top_level_idx[scan_idx])
+		} else if scan_idx - indexed_count < appended.len {
+			appended[scan_idx - indexed_count]
 		} else {
-			indexed_nodes + scan_idx - indexed_count
+			indexed_nodes + scan_idx - indexed_count - appended.len
 		}
 		kind := t.a.nodes[i].kind
 		if kind != .file && kind != .module_decl && kind != .type_decl {
@@ -3238,6 +3248,10 @@ fn generic_type_decl_key(name string, module_name string) string {
 
 fn (mut t Transformer) collect_generic_struct_specs(decls map[string]GenericStructDecl, mut specs map[string]string) {
 	t.ensure_node_module_map()
+	if decls.len == 0 {
+		// A spelling is recorded only as a specialization of one of `decls`.
+		return
+	}
 	for _, target in t.tc.type_aliases {
 		t.collect_generic_struct_spec_from_type(target, '', '', decls, mut specs)
 	}
@@ -3365,16 +3379,42 @@ fn is_plain_type_name_text(text string) bool {
 
 fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]GenericStructDecl, mut specs map[string]string, start int, end int) {
 	t.ensure_node_module_map()
+	if decls.len == 0 {
+		// A spelling is recorded only as a specialization of one of `decls`.
+		return
+	}
 	safe_start := if start < 0 { 0 } else { start }
 	safe_end := if end > t.a.nodes.len { t.a.nodes.len } else { end }
 	mut type_context_module := ''
 	mut type_context_file := ''
 	mut seen_context_types := map[string]bool{}
+	// Nodes share their type texts. The byte test of a text is kept by its
+	// address and length: no text is changed or released during this loop.
+	mut tested_texts := []usize{len: 4096}
+	mut tested_lens := []int{len: 4096}
+	mut tested_results := []bool{len: 4096}
 	for node_idx in safe_start .. safe_end {
-		node := t.a.nodes[node_idx]
-		type_has_bracket := node.typ.contains('[')
-		type_has_flat := !type_has_bracket && node.typ.contains('_')
-		mut may_contain_spec := type_has_bracket || type_has_flat
+		// The scan appends no node, and most nodes cannot spell a specialization:
+		// only a candidate is copied.
+		scanned := unsafe { &t.a.nodes[node_idx] }
+		mut may_contain_spec := false
+		if scanned.typ.len > 0 {
+			text := usize(scanned.typ.str)
+			slot := int((text >> 3) & 4095)
+			if tested_texts[slot] == text && tested_lens[slot] == scanned.typ.len {
+				may_contain_spec = tested_results[slot]
+			} else {
+				may_contain_spec = type_text_has_bracket_or_underscore(scanned.typ)
+				tested_texts[slot] = text
+				tested_lens[slot] = scanned.typ.len
+				tested_results[slot] = may_contain_spec
+			}
+		}
+		if !may_contain_spec && scanned.kind !in [.sql_expr, .struct_init, .array_init, .map_init,
+			.cast_expr, .as_expr, .sizeof_expr, .offsetof_expr, .typeof_expr, .is_expr] {
+			continue
+		}
+		node := *scanned
 		if !may_contain_spec {
 			may_contain_spec = match node.kind {
 				.sql_expr {
@@ -3425,6 +3465,35 @@ fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]Gener
 		}
 		t.collect_generic_struct_specs_from_node(node, node_module, node_file, scan_node_type, decls, mut specs)
 	}
+}
+
+// type_text_has_bracket_or_underscore reports whether `typ` contains a `[` or
+// a `_`, the two bytes a spelling of a generic specialization needs, in one pass.
+@[direct_array_access]
+fn type_text_has_bracket_or_underscore(typ string) bool {
+	for i in 0 .. typ.len {
+		if typ[i] == `[` || typ[i] == `_` {
+			return true
+		}
+	}
+	return false
+}
+
+// comma_list_has_item reports whether `item` is one of the comma-separated
+// fields of `list`, as `item in list.split(',')` does, without splitting it.
+fn comma_list_has_item(list string, item string) bool {
+	mut start := 0
+	for start <= list.len {
+		mut end := start
+		for end < list.len && list[end] != `,` {
+			end++
+		}
+		if end - start == item.len && unsafe { vmemcmp(list.str + start, item.str, item.len) } == 0 {
+			return true
+		}
+		start = end + 1
+	}
+	return false
 }
 
 fn (mut t Transformer) collect_generic_struct_specs_from_node(node flat.Node, module_name string, file_name string, scan_node_type bool, decls map[string]GenericStructDecl, mut specs map[string]string) {
@@ -4080,7 +4149,16 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 	t.ensure_node_module_map()
 	mut cur_file := ''
 	mut cur_module := ''
-	for i in 0 .. t.a.nodes.len {
+	indexed_count, indexed_nodes := t.top_level_scan_prefix()
+	appended, streamed := t.appended_declaration_scan(indexed_nodes)
+	for scan_idx in 0 .. indexed_count + appended.len + streamed {
+		i := if scan_idx < indexed_count {
+			int(t.tc.top_level_idx[scan_idx])
+		} else if scan_idx - indexed_count < appended.len {
+			appended[scan_idx - indexed_count]
+		} else {
+			indexed_nodes + scan_idx - indexed_count - appended.len
+		}
 		kind := t.a.nodes[i].kind
 		if kind != .file && kind != .module_decl && kind != .fn_decl {
 			continue
@@ -4127,7 +4205,16 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 	}
 	old_module := t.cur_module
 	t.cur_module = ''
-	for i in 0 .. t.a.nodes.len {
+	indexed_count, indexed_nodes := t.top_level_scan_prefix()
+	appended, streamed := t.appended_declaration_scan(indexed_nodes)
+	for scan_idx in 0 .. indexed_count + appended.len + streamed {
+		i := if scan_idx < indexed_count {
+			int(t.tc.top_level_idx[scan_idx])
+		} else if scan_idx - indexed_count < appended.len {
+			appended[scan_idx - indexed_count]
+		} else {
+			indexed_nodes + scan_idx - indexed_count - appended.len
+		}
 		kind := t.a.nodes[i].kind
 		if kind != .module_decl && kind != .fn_decl {
 			continue
@@ -4351,27 +4438,38 @@ fn (mut t Transformer) collect_node_subtree_ids(id flat.NodeId, mut nodes map[in
 	}
 }
 
+@[direct_array_access]
 fn (mut t Transformer) collect_node_subtree_flags(id flat.NodeId, mut nodes []bool, mut stack []flat.NodeId) {
-	stack.clear()
-	stack << id
-	for stack.len > 0 {
-		current := stack.pop()
-		idx := int(current)
-		if idx < 0 || idx >= t.a.nodes.len || idx >= nodes.len || nodes[idx] {
+	limit := if nodes.len < t.a.nodes.len { nodes.len } else { t.a.nodes.len }
+	// `stack` only lends its storage: the pending ids are stack[..top], kept by
+	// hand because this walk visits every node of the unused functions.
+	if stack.len == 0 {
+		stack << id
+	} else {
+		stack[0] = id
+	}
+	mut top := 1
+	for top > 0 {
+		top--
+		idx := int(stack[top])
+		if idx < 0 || idx >= limit || nodes[idx] {
 			continue
 		}
 		nodes[idx] = true
-		node := t.a.node(flat.NodeId(idx))
-		start := node.children_start
+		node := &t.a.nodes[idx]
+		start := int(node.children_start)
 		end := start + int(node.children_count)
 		if start < 0 || end > t.a.children.len {
 			continue
 		}
+		if top + (end - start) > stack.len {
+			stack << []flat.NodeId{len: top + (end - start) - stack.len + 256}
+		}
 		for i in start .. end {
-			// The child range is checked above; avoid bounds checks in this hot walk.
-			child_id := unsafe { t.a.children[i] }
+			child_id := t.a.children[i]
 			if int(child_id) >= 0 {
-				stack << child_id
+				stack[top] = child_id
+				top++
 			}
 		}
 	}
@@ -15585,7 +15683,47 @@ fn (t &Transformer) canonical_short_fixed_array_arg(arg string) ?string {
 	return candidate
 }
 
+// SpecArgsMissCache keeps the spellings recorded_generic_specialization_args
+// found nothing for. Specialization arguments are only ever recorded under new
+// keys, so a miss holds until the recorded maps grow or the parent map changes.
+@[heap]
+struct SpecArgsMissCache {
+mut:
+	misses     map[string]bool
+	local_len  int = -1
+	parent_len int = -1
+	parent     voidptr
+}
+
 fn (t &Transformer) recorded_generic_specialization_args(typ string) ?[]string {
+	mut cache := t.spec_args_misses
+	if isnil(cache) {
+		return t.recorded_generic_specialization_args_uncached(typ)
+	}
+	parent := voidptr(t.generic_specialization_args_parent)
+	parent_len := if isnil(t.generic_specialization_args_parent) {
+		-1
+	} else {
+		unsafe { t.generic_specialization_args_parent.len }
+	}
+	if cache.local_len != t.generic_specialization_args.len || cache.parent_len != parent_len
+		|| cache.parent != parent {
+		cache.misses.clear()
+		cache.local_len = t.generic_specialization_args.len
+		cache.parent_len = parent_len
+		cache.parent = parent
+	}
+	if cache.misses[typ] {
+		return none
+	}
+	if args := t.recorded_generic_specialization_args_uncached(typ) {
+		return args
+	}
+	cache.misses[typ] = true
+	return none
+}
+
+fn (t &Transformer) recorded_generic_specialization_args_uncached(typ string) ?[]string {
 	trimmed := trimmed_transform_text(typ)
 	clean := if trimmed.starts_with('&') { trimmed.trim_left('&') } else { trimmed }
 	if clean.len == 0 {

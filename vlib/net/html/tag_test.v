@@ -33,8 +33,7 @@ fn test_search_tag_by_type() {
 	tag := dom.get_tags(name: 'body')[0]
 	assert tag.get_tag('div')?.attributes['id'] == '1st'
 	assert tag.get_tag_by_attribute('href')?.content == 'V'
-	// TODO: update after improved parsing to not add trailing white space to attribute values
-	assert tag.get_tag_by_attribute_value('id', '3rd')?.str() == '<div id="3rd" ></div>'
+	assert tag.get_tag_by_attribute_value('id', '3rd')?.str() == '<div id="3rd"></div>'
 	assert tag.get_tag_by_class_name('foo')?.attributes['class'] == 'foo bar'
 }
 

@@ -270,7 +270,9 @@ fn (mut a App) git_info() string {
 	).trim_space()
 	os.exec(['git', '-C', '.', 'remote', 'add', 'V_REPO', 'https://github.com/vlang/v']) // ignore failure (i.e. remote exists)
 	if '-skip-github' !in os.args {
-		os.exec([a.vexe, 'timeout', '5.1', 'git -C . fetch V_REPO']) // usually takes ~0.6s; 5 seconds should be enough for even the slowest networks
+		// `--` separates v timeout's own flags from the git command's,
+		// which starts with the -C flag
+		os.exec([a.vexe, 'timeout', '5.1', '--', 'git', '-C', '.', 'fetch', 'V_REPO']) // usually takes ~0.6s; 5 seconds should be enough for even the slowest networks
 	}
 	commit_count := a.cmd(
 		command: ['git', 'rev-list', '@{0}...V_REPO/master', '--right-only', '--count']
