@@ -74,3 +74,14 @@ fn test_lazy_lock_initializes_once() {
 	assert calls.load() == 1, 'lazy initializer must run exactly once'
 	assert bad.load() == 0, 'all callers must observe the same value'
 }
+
+fn test_once_lock_preserves_set_value_without_running_initializer() {
+	mut cell := sync.new_once_lock[int]()
+	mut calls := new_atomic(0)
+	assert cell.set(7)
+	assert cell.get_or_init(fn [mut calls] () int {
+		calls.add(1)
+		return 42
+	}) == 7
+	assert calls.load() == 0
+}

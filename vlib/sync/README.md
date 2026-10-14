@@ -46,3 +46,20 @@ hold a read lock or wait for a writer to finish. Optimistic access does not make
 concurrent reads and writes safe: use atomic data or other synchronization, and validate
 the stamp after reading. Use a regular read lock for non-atomic shared data. Locks are
 not reentrant and must be released once for each corresponding acquisition.
+
+## OnceLock and LazyLock
+
+`new_once_lock[T]()` creates an initially empty cell. `set(value)` stores the first value
+and returns `true`; subsequent sets return `false` and keep that value. `get()` returns
+`none` before initialization. `get_or_init(f)` runs one initializer and returns its value
+to every caller. All three methods acquire the same mutex, so a `get()` during
+initialization waits for the initializer to finish. The initializer must not call any
+method on the same cell, since that would deadlock.
+
+`new_lazy_lock(f)` binds an initializer to a cell. Its `get()` runs the initializer on
+first use and returns the cached value thereafter. Concurrent calls wait for the same
+initialization. The initializer must not reenter `get()` on the same LazyLock.
+
+Construct these cells with their factory functions and share the returned pointers.
+The locks protect initialization and retrieval; a returned pointer, map, or array may
+alias the stored data. Synchronize any later mutation of shared returned data separately.
