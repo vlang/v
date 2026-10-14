@@ -884,9 +884,91 @@ pub fn (mut a FlatAst) intern_node_texts_range(start int, end int) {
 	if start >= end {
 		return
 	}
+	if end - start >= wide_text_probe_min_nodes {
+		a.intern_node_texts_range_wide(start, end)
+		return
+	}
 	mut value_cache := new_text_probe_cache()
 	mut type_cache := new_text_probe_cache()
 	a.intern_node_texts_range_cached(start, end, mut value_cache, mut type_cache)
+}
+
+// wide_text_probe_slots is the size of the pointer probe of a pass over a whole
+// tree. Such a pass meets tens of thousands of distinct texts, which overwrite
+// the 4096 slots of a TextProbeCache many times over, and every probe that
+// misses hashes the text for the table. It must be a power of two.
+const wide_text_probe_slots = 65536
+
+// wide_text_probe_min_nodes is the range from which the wide probe pays for
+// clearing its keys.
+const wide_text_probe_min_nodes = 65536
+
+// WideTextProbe is the scratch of intern_node_texts_range_wide.
+// It canonicalizes ordinary node and declaration payloads; type IDs are already owned.
+struct WideTextProbe {
+mut:
+	ptrs &voidptr = unsafe { nil }
+	vals &string  = unsafe { nil }
+}
+
+// intern_node_texts_range_wide is intern_node_texts_range_cached for a range that
+// covers most of a tree, with the probe widened to wide_text_probe_slots slots.
+@[direct_array_access]
+fn (mut a FlatAst) intern_node_texts_range_wide(start int, end int) {
+	first := if start < 0 { 0 } else { start }
+	if first >= end {
+		return
+	}
+	// A slot's text and identity are read only once its nonzero pointer key
+	// matches, so the keys alone start out cleared.
+	mut probe := WideTextProbe{
+		ptrs: unsafe { &voidptr(vcalloc_noscan(isize(wide_text_probe_slots) * isize(sizeof(voidptr)))) }
+		vals: unsafe { &string(malloc_noscan(isize(wide_text_probe_slots) * isize(sizeof(string)))) }
+	}
+	defer {
+		// These buffers borrow the AST's canonical text; release only the scratch storage.
+		unsafe {
+			free(probe.ptrs)
+			free(probe.vals)
+		}
+	}
+	for idx in first .. end {
+		// Interning grows the text tables, never the node array, so this slot stays valid.
+		mut node := &a.nodes[idx]
+		node.value = a.intern_text_ptr_probed(node.value, mut probe)
+		if node.payload == 0 {
+			continue
+		}
+		payload := node.payload_ptr()
+		params := payload.generic_params
+		if params.len > 0 {
+			// Always rebuild the payload, as intern_node_texts_one does.
+			mut canonical_params := []string{cap: params.len}
+			for item in params {
+				canonical := a.intern_text_ptr_probed(item, mut probe)
+				canonical_params << canonical
+			}
+			node.payload = node_payload_with_type_constraints(canonical_params, payload.generic_constraints.clone())
+		}
+	}
+}
+
+// intern_text_ptr_probed canonicalizes `value` through the wide payload probe.
+@[inline]
+fn (mut a FlatAst) intern_text_ptr_probed(value string, mut probe WideTextProbe) string {
+	if value.len == 0 {
+		return ''
+	}
+	slot := int((u64(voidptr(value.str)) >> 4) & u64(wide_text_probe_slots - 1))
+	unsafe {
+		if probe.ptrs[slot] == voidptr(value.str) && probe.vals[slot].len == value.len {
+			return probe.vals[slot]
+		}
+		_, canonical := a.intern_text(value)
+		probe.ptrs[slot] = voidptr(value.str)
+		probe.vals[slot] = canonical
+		return canonical
+	}
 }
 
 // intern_node_texts_range_cached is intern_node_texts_range with the probe

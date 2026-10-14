@@ -4,6 +4,7 @@ import os
 import time
 import v.cmdexec
 import v.pref
+import v.gen.c as cgen
 import v.util.cache_refresh
 
 fn test_refresh_records_entry_only_for_project_interface_scopes() {
@@ -2010,4 +2011,135 @@ fn test_v3_host_rejecting_tcc_executables_never_selects_tcc_implicitly() {
 		c_compiler:          'tcc'
 		c_compiler_explicit: true
 	})
+}
+
+fn test_v3_cstrict_flag_plan_has_one_conversion_warning_override() {
+	for compiler in ['gcc', 'clang', 'tinyc'] {
+		for strict in [false, true] {
+			plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+				c_compiler: compiler
+				is_tcc:     compiler == 'tinyc'
+				target_os:  'linux'
+				warn_args:  if strict {
+					['-Wall', '-Werror=implicit-function-declaration', '-Wno-int-conversion']
+				} else {
+					['-w']
+				}
+			})
+			assert plan.before_inputs.filter(it == '-Wno-int-conversion').len == 1
+		}
+	}
+}
+
+fn test_v3_tcc_flags_dump_matches_monolithic_command() {
+	$if windows {
+		return
+	}
+	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(tcc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'tcc_flag_dump_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main')
+	dump_file := os.join_path(root, 'flags.txt')
+	mut sources := ['fn main() {}\n']
+	$if macos {
+		sources << '#flag -F${root}\n#flag -framework CoreFoundation\nfn main() {}\n'
+	}
+	for source_text in sources {
+		os.write_file(source, source_text)!
+		for strict in [false, true] {
+			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', 'tcc', '-gc',
+				'none']
+			if strict {
+				args << '-cstrict'
+			}
+			mut dump_args := args.clone()
+			dump_args << ['-dump-c-flags', '-', '-o', output, source]
+			flags_dump := cmdexec.run(v3_driver_test_executable(), dump_args)
+			assert flags_dump.exit_code == 0, flags_dump.output
+			expected := flags_dump.output.split_into_lines().filter(it.len > 0)
+			for with_dump in [false, true] {
+				mut build_args := args.clone()
+				build_args << ['-showcc', '-o', output, source]
+				if with_dump {
+					build_args << ['-dump-c-flags', dump_file]
+				}
+				build := cmdexec.run(v3_driver_test_executable(), build_args)
+				assert build.exit_code == 0, build.output
+				commands := build.output.split_into_lines().filter(it.trim_space().starts_with('> ')
+					&& it.contains('-o out'))
+				assert commands.len == 1, build.output
+				command := cgen.tokenize_c_flag(commands[0].trim_space().trim_left('> '))
+				output_index := command.index('-o')
+				assert output_index > 0, commands[0]
+				mut actual := command[1..output_index].clone()
+				actual << command[output_index + 3..]
+				assert actual == expected, '${flags_dump.output}\n${commands[0]}'
+				if source_text.contains('-framework') {
+					assert actual.any(it.contains('CoreFoundation.framework'))
+					assert !actual.any(it.starts_with('-F'))
+				}
+				if with_dump {
+					assert os.read_lines(dump_file)! == expected
+				}
+			}
+		}
+	}
+}
+
+fn test_v3_production_object_flag_plan_retains_machine_code() {
+	for compiler in ['gcc', 'clang', 'msvc', 'tinyc'] {
+		for large in [false, true] {
+			options := V3CCompilerFlagOptions{
+				is_prod:      true
+				is_o:         true
+				target_os:    'windows'
+				c_compiler:   compiler
+				large_c_unit: large
+				is_tcc:       compiler == 'tinyc'
+			}
+			plan := v3_c_compiler_flag_plan(options)
+			assert '-flto' !in plan.before_inputs
+			assert '-c' in plan.before_inputs
+			assert (if large { '-O2' } else { '-O3' }) in plan.before_inputs
+		}
+	}
+	program := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{ is_prod: true })
+	assert '-flto' in program.before_inputs
+}
+
+fn test_v3_production_object_links_with_independent_c_main() {
+	$if windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'prod_object_link_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'object_probe.v')
+	object := os.join_path(root, 'object_probe.o')
+	main_c := os.join_path(root, 'main.c')
+	exe := os.join_path(root, 'main')
+	os.write_file(source, "module object_probe\n\n@[export: 'v3_object_probe']\n@[markused]\nfn add(a i32, b i32) i32 { return a + b }\n")!
+	compiled := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-prod', '-cc', clang,
+		'-gc', 'none', '-o', object, source])
+	assert compiled.exit_code == 0, compiled.output
+	data := os.read_bytes(object)!
+	assert data.len >= 4
+	// Clang's raw bitcode and bitcode-wrapper magic must not replace machine code.
+	assert data[..4] != [u8(0x42), 0x43, 0xc0, 0xde]
+	assert data[..4] != [u8(0xde), 0xc0, 0x17, 0x0b]
+	os.write_file(main_c, '#include <stdint.h>\nextern int32_t v3_object_probe(int32_t, int32_t);\nint main(void) { return v3_object_probe(20, 22) == 42 ? 0 : 1; }\n')!
+	linked := cmdexec.run(clang, [main_c, object, '-lm', '-o', exe])
+	assert linked.exit_code == 0, linked.output
+	ran := cmdexec.run(exe, [])
+	assert ran.exit_code == 0, ran.output
 }

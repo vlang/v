@@ -464,6 +464,18 @@ fn (mut g FlatGen) string_literals_from(start int) {
 // output builder: escaping into a temporary and interpolating the line would
 // leave two copies of every literal behind in the cgen arena.
 fn (mut g FlatGen) write_string_literal_def(id int, s string) {
+	// Cached modules rewrite and share literal storage through their declaration prefix.
+	// The declaration macro keeps the original initializer and V's byte length.
+	if !g.cache_stable_symbols {
+		g.write('_SL(_str_')
+		g.sb.write_decimal(i64(id))
+		g.sb.write_string(', "')
+		c_escape_into(mut g.sb, s)
+		g.sb.write_string('", ')
+		g.sb.write_decimal(i64(s.len))
+		g.writeln(');')
+		return
+	}
 	g.write('static const string _str_')
 	g.sb.write_decimal(i64(id))
 	g.sb.write_string(' = {"')

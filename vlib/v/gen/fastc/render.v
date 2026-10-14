@@ -3235,8 +3235,10 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		// A pre-rendered value (e.g. an interpolation) passed where a `voidptr` is expected (a
 		// map `.delete(key)` / generic argument) must still be boxed to a pointer, exactly as the
 		// non-synthetic path below does; otherwise a struct value is passed where `void*` is wanted.
+		// A function value is already a pointer.
 		if g.selfhost && expected_type == 'voidptr' && tokens[0].typ_text() !in ['', 'voidptr',
-			'nil'] && !fastc_is_pointer_type(tokens[0].typ_text()) {
+			'nil'] && !fastc_is_pointer_type(tokens[0].typ_text())
+			&& !g.is_function_value_type(tokens[0].typ_text()) {
 			actual := fastc_normalize_inferred_type(g.underlying_alias_type(tokens[0].typ_text()))
 			return '({ ${actual} __vf_generic_argument = (${tokens[0].source}); v_fastc_interface_box(&__vf_generic_argument, sizeof(${actual})); })'
 		}
@@ -3255,6 +3257,23 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		return tokens[0].source
 	}
 	if tokens.len > 1 && tokens[0].tok == .amp && tokens[0].is_mut_argument {
+		interface_type := expected_type.trim_right('*')
+		if g.selfhost && expected_type.ends_with('*')
+			&& g.declared_kinds[g.semantic_type_key(interface_type)] == .interface_ {
+			// `f(mut value)` for a `mut x Interface` parameter: the interface refers to the
+			// caller's value itself, so the callee's mutations reach it (never a boxed copy).
+			actual_type := fastc_normalize_inferred_type(g.infer_expression_type(tokens[1..]) or {
+				''
+			})
+			actual_key := g.semantic_type_key(actual_type)
+			if actual_type != '' && !fastc_is_pointer_type(actual_type)
+				&& g.declared_kinds[actual_key] == .struct_ {
+				target := g.render_call_argument_expression(tokens[1..], actual_type) or {
+					return none
+				}
+				return '&((${interface_type}){._object=(void*)(&(${target})), ._typ=__v_typeid_${fastc_c_declared_type_name(actual_key)}})'
+			}
+		}
 		if g.selfhost && expected_type == 'voidptr*' {
 			actual_type := g.infer_expression_type(tokens[1..]) or { '' }
 			if actual_type !in ['', 'voidptr'] {
@@ -3401,7 +3420,9 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 	} else {
 		fastc_normalize_inferred_type(g.infer_expression_type(tokens) or { '' })
 	}
-	if expected_type == 'voidptr' && actual_type !in ['', 'voidptr', 'nil'] && !fastc_expression_is_zero(tokens) && !fastc_is_pointer_type(actual_type) {
+	// A function value is already a pointer.
+	if expected_type == 'voidptr' && actual_type !in ['', 'voidptr', 'nil'] && !fastc_expression_is_zero(tokens) && !fastc_is_pointer_type(actual_type)
+		&& !g.is_function_value_type(actual_type) {
 		box_value := '__vf_generic_argument'
 		return '({ ${actual_type} ${box_value} = (${rendered}); v_fastc_interface_box(&${box_value}, sizeof(${actual_type})); })'
 	}
@@ -3427,10 +3448,18 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 	if expected_type.ends_with('*') && actual_type == 'voidptr' && rendered.trim_space() == 'NULL' {
 		return 'NULL'
 	}
+	if expected_type.ends_with('*') && actual_type == 'voidptr' {
+		// An erased pointer is already an address, including an explicit cast
+		// in a C call. Taking its address would produce an invalid pointer rvalue.
+		return '((${expected_type})(${rendered}))'
+	}
 	if expected_type.ends_with('*') && fastc_expression_is_zero(tokens) {
 		return 'NULL'
 	}
-	if expected_type.ends_with('*') && actual_type == expected_type.trim_right('*') {
+	// A `voidptr` converts to any pointer type as it is (`C.backtrace_symbols(voidptr(p), n)`
+	// for an `&voidptr` parameter); taking its address would pass a different pointer.
+	if expected_type.ends_with('*') && actual_type == expected_type.trim_right('*')
+		&& actual_type != 'voidptr' {
 		return '&(${rendered})'
 	}
 	if expected_type.ends_with('*') && g.should_box_variant(expected_type.trim_right('*'), actual_type) {
@@ -3513,7 +3542,7 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 		}
 	}
 	return FastcRenderedExpression{
-		source: '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${normalized_element}), (${normalized_element}[]){${rendered_items.join(',')}}))'
+		source: g.dynamic_array_literal_source(array_type, normalized_element, rendered_items)
 		typ:    flat.source_type_id(array_type)
 	}
 }
@@ -5221,4 +5250,13 @@ fn fastc_split_top_level_c_plus(source string) []string {
 @[inline]
 fn (value &FastcMapAssignmentWrap) value_type_text() string {
 	return flat.source_type_name(value.value_type)
+}
+
+// is_function_value_type reports a function value's type: `fn (...) T`, or an alias of one
+// (`type Handler = fn (voidptr)`), which C holds as a function pointer.
+fn (g &Parser) is_function_value_type(typ string) bool {
+	if typ.starts_with('fn ') || typ.starts_with('fn(') {
+		return true
+	}
+	return typ in g.functions || g.semantic_type_key(typ) in g.functions
 }

@@ -50,7 +50,10 @@ v -b fastc -enable-globals -o program path/to/project
 ```
 
 Directory entries select the full builtin runtime, including V strings, maps, errors, and
-garbage collection. This path supports standard-library imports such as `os` and `toml`,
+garbage collection. Generic calls infer their concrete type from a mutable variable argument.
+If a call reaches a generic placeholder without a concrete instance, it reports the function
+and exits with an error instead of returning a zero value.
+This path supports standard-library imports such as `os` and `toml`,
 composite sum-type tests, integer interpolation formats, anonymous functions, and immutable
 closure captures. A single-file entry can select the same runtime with `-d fastc_real_builtin`;
 its module siblings are included.
@@ -63,6 +66,20 @@ Blank imports retain their native inputs for initialization side effects. Native
 are also retained when their side effects cannot be proven unused. Executable link caching is
 disabled whenever native source or binary inputs are present, so replacing an input at the same
 path takes effect on the next build.
+
+Native flags support `$first_existing(...)` and `$when_first_existing(...)`, including
+library inputs and include/search path prefixes. They select the first existing candidate;
+an unmatched `$when_first_existing` omits the flag, while `$first_existing` reports an error.
+Quoted candidate filenames can contain spaces and commas.
+This includes the optional atomic-library flags used on Linux.
+Linux GC builds load atomic support even without an explicit `sync` import. On Linux amd64
+with musl, TinyCC's helpers and the driver-prepared fence object provide this support.
+Native C helpers are linked before the static archives they call, including the bundled GC.
+Under TinyCC on macOS and Linux, preallocation uses pthread storage to keep each thread's
+arena independent. The required pthread library is linked even without `spawn`.
+Dynamic array literals with complex element expressions evaluate those elements before copying
+the array, avoiding nested C aggregate initializers unsupported by bundled Linux TinyCC.
+Their temporaries avoid collisions with local and parameter names.
 
 The full-runtime path remains experimental. Mutable and expression closure captures and
 128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.
