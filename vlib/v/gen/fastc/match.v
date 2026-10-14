@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import v.token
 
 fn fastc_match_common_numeric_variant(variants []string) string {
@@ -26,14 +27,14 @@ fn fastc_match_multi_variant_value(subject string, access string, variants []str
 }
 
 fn (mut g Parser) read_match_expression() !string {
-	outer_expected_type := g.expected_expression_type
+	outer_expected_type := g.expected_expression_type_text()
 	g.expect(.key_match)!
-	g.expected_expression_type = ''
+	g.expected_expression_type = flat.source_type_id('')
 	// `read_expression` consumes the `mut` modifier and keeps only the referenced
 	// name in `last_expression`, so remember it before parsing the subject.
 	subject_is_mut := g.tok == .key_mut
 	subject := g.read_expression([token.Token.lcbr])!
-	subject_type := g.last_expression_type
+	subject_type := g.last_expression_type_text()
 	if subject == '' || subject_type == '' {
 		return g.unsupported('unverifiable match expression subject')
 	}
@@ -111,7 +112,7 @@ fn (mut g Parser) read_match_expression() !string {
 			}
 		} else {
 			for {
-				g.expected_expression_type = subject_type
+				g.expected_expression_type = flat.source_type_id(subject_type)
 				start := g.read_expression([token.Token.comma, token.Token.lcbr, token.Token.dotdot,
 					token.Token.ellipsis])!
 				start_tokens := g.last_expression.clone()
@@ -144,7 +145,7 @@ fn (mut g Parser) read_match_expression() !string {
 			}
 		}
 		g.expect(.lcbr)!
-		g.expected_expression_type = outer_expected_type
+		g.expected_expression_type = flat.source_type_id(outer_expected_type)
 		// A single-type branch smart-casts to that variant. A branch listing several
 		// array variants (`[]int, []string { value.len }`) cannot pick one concrete
 		// element type, but every V array shares the generic `array` layout, so casting
@@ -172,11 +173,11 @@ fn (mut g Parser) read_match_expression() !string {
 			g.locals[subject_local] = FastcLocal{
 				is_mut:       smartcast_saved.is_mut
 				is_reference: smartcast_is_reference
-				typ:          if smartcast_is_reference {
+				typ:          flat.source_type_id(if smartcast_is_reference {
 					smartcast_type + '*'
 				} else {
 					smartcast_type
-				}
+				})
 			}
 		}
 		projection_path := if subject_member_path != '' {
@@ -195,15 +196,19 @@ fn (mut g Parser) read_match_expression() !string {
 				FastcMemberSmartcast{}
 			}
 			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
-				typ:           smartcast_type + '*'
+				typ:           flat.source_type_id(smartcast_type + '*')
 				source:        '((${smartcast_type} *)${temporary}${boxed_access}_object)'
-				variants:      if multi_struct_smartcast { branch_variants.clone() } else { [] }
+				variants:      if multi_struct_smartcast {
+					flat.TypeTextList.from_names(branch_variants)
+				} else {
+					flat.TypeTextList{}
+				}
 				tag_source:    '${temporary}${boxed_access}_typ'
 				object_source: '${temporary}${boxed_access}_object'
 			}
 		}
 		mut value := g.read_match_block_expression_value()!
-		mut value_type := g.last_expression_type
+		mut value_type := g.last_expression_type_text()
 		if member_smartcast_active {
 			if member_smartcast_present {
 				g.member_smartcasts[projection_path] = member_smartcast_saved
@@ -240,7 +245,7 @@ fn (mut g Parser) read_match_expression() !string {
 		}
 		g.expect(.rcbr)!
 		g.skip_semicolons()
-		if g.selfhost && value_type.trim_right('*') == 'IError' && g.return_type == '__v_result' {
+		if g.selfhost && value_type.trim_right('*') == 'IError' && g.return_type_text() == '__v_result' {
 			error_result_type := if result_type != '' {
 				result_type
 			} else {
@@ -294,7 +299,7 @@ fn (mut g Parser) read_match_expression() !string {
 		}
 	}
 	g.expect(.rcbr)!
-	g.expected_expression_type = outer_expected_type
+	g.expected_expression_type = flat.source_type_id(outer_expected_type)
 	if !has_else && !g.selfhost {
 		return g.unsupported('non-exhaustive match expression without `else`')
 	}
@@ -305,7 +310,11 @@ fn (mut g Parser) read_match_expression() !string {
 	for i := conditions.len - 1; i >= 0; i-- {
 		expression = '((${conditions[i]}) ? (${values[i]}) : (${expression}))'
 	}
-	g.last_expression_type = if result_type == '' { outer_expected_type } else { result_type }
+	g.last_expression_type = flat.source_type_id(if result_type == '' {
+		outer_expected_type
+	} else {
+		result_type
+	})
 	g.last_expression = []FastcExpressionToken{}
 	subject_decl_type := g.declaration_c_type(subject_type, subject)
 	return '({ ${subject_decl_type} ${temporary} = (${subject}); ${expression}; })'
@@ -342,7 +351,7 @@ fn (mut g Parser) read_match_block_expression_value() !string {
 	for {
 		value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 		values << value
-		value_types << fastc_normalize_inferred_type(g.last_expression_type)
+		value_types << fastc_normalize_inferred_type(g.last_expression_type_text())
 		if g.tok != .comma {
 			break
 		}
@@ -355,9 +364,9 @@ fn (mut g Parser) read_match_block_expression_value() !string {
 	for value in values {
 		packed_values << 'V_FASTC_MULTI_VALUE((${value}))'
 	}
-	g.last_expression_type = 'MultiReturn'
+	g.last_expression_type = flat.source_type_id('MultiReturn')
 	g.last_expression = []FastcExpressionToken{}
-	g.last_multi_return_types = value_types.clone()
+	g.last_multi_return_types = flat.TypeTextList.from_names(value_types.clone())
 	return fastc_multi_return_literal(packed_values)
 }
 
@@ -377,19 +386,19 @@ fn (mut g Parser) read_block_expression_value() !string {
 			return first
 		}
 		mut values := [first]
-		mut value_types := [fastc_normalize_inferred_type(g.last_expression_type)]
+		mut value_types := [fastc_normalize_inferred_type(g.last_expression_type_text())]
 		for g.tok == .comma {
 			g.next()
 			values << g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
-			value_types << fastc_normalize_inferred_type(g.last_expression_type)
+			value_types << fastc_normalize_inferred_type(g.last_expression_type_text())
 		}
 		mut packed_values := []string{cap: values.len}
 		for value in values {
 			packed_values << 'V_FASTC_MULTI_VALUE((${value}))'
 		}
-		g.last_expression_type = 'MultiReturn'
+		g.last_expression_type = flat.source_type_id('MultiReturn')
 		g.last_expression = []FastcExpressionToken{}
-		g.last_multi_return_types = value_types.clone()
+		g.last_multi_return_types = flat.TypeTextList.from_names(value_types.clone())
 		return fastc_multi_return_literal(packed_values)
 	}
 	previous_capture := g.capturing_defer
@@ -414,7 +423,7 @@ fn (mut g Parser) read_block_expression_value() !string {
 	}
 	statements := g.captured_defer_lines.clone()
 	if g.tok == .rcbr {
-		g.last_expression_type = ''
+		g.last_expression_type = flat.source_type_id('')
 		g.last_expression = []FastcExpressionToken{}
 		return '({ ${statements.join(' ')} 0; })'
 	}
@@ -432,7 +441,7 @@ fn (mut g Parser) read_block_expression_value() !string {
 		// compressed-static match): pack the comma-separated values into a MultiReturn,
 		// mirroring the single-line branch path above.
 		mut values := [value]
-		mut value_types := [fastc_normalize_inferred_type(g.last_expression_type)]
+		mut value_types := [fastc_normalize_inferred_type(g.last_expression_type_text())]
 		for g.tok == .comma {
 			g.next()
 			part := if g.tok == .name {
@@ -444,15 +453,15 @@ fn (mut g Parser) read_block_expression_value() !string {
 				g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 			}
 			values << part
-			value_types << fastc_normalize_inferred_type(g.last_expression_type)
+			value_types << fastc_normalize_inferred_type(g.last_expression_type_text())
 		}
 		mut packed_values := []string{cap: values.len}
 		for packed_value in values {
 			packed_values << 'V_FASTC_MULTI_VALUE((${packed_value}))'
 		}
-		g.last_expression_type = 'MultiReturn'
+		g.last_expression_type = flat.source_type_id('MultiReturn')
 		g.last_expression = []FastcExpressionToken{}
-		g.last_multi_return_types = value_types.clone()
+		g.last_multi_return_types = flat.TypeTextList.from_names(value_types.clone())
 		return '({ ${statements.join(' ')} ${fastc_multi_return_literal(packed_values)}; })'
 	}
 	if g.tok == .name {

@@ -16,10 +16,10 @@ fn escaped_c_field_test_node(mut a flat.FlatAst, kind flat.NodeKind, value strin
 
 fn test_escaped_c_field_names_follow_the_resolved_owner() {
 	g := FlatGen.new()
-	c_struct := types.Type(types.Struct{ name: 'C.EscapedFields' })
-	alias := types.Type(types.Alias{ name: 'Fields', base_type: c_struct })
+	c_struct := types.Type(types.Struct{ name_id: flat.source_type_id('C.EscapedFields') })
+	alias := types.Type(types.Alias{ name_id: flat.source_type_id('Fields'), base_type: c_struct })
 	pointer := types.Type(types.Pointer{ base_type: alias })
-	pointer_alias := types.Type(types.Alias{ name: 'FieldsPtr', base_type: pointer })
+	pointer_alias := types.Type(types.Alias{ name_id: flat.source_type_id('FieldsPtr'), base_type: pointer })
 	for owner in [c_struct, alias, pointer, pointer_alias] {
 		assert g.field_c_name(owner, '@type') == 'type'
 		assert g.field_c_name(owner, '@module') == 'module'
@@ -34,8 +34,8 @@ fn test_escaped_c_field_names_follow_the_resolved_owner() {
 
 fn test_escaped_v_field_names_keep_their_existing_spelling() {
 	g := FlatGen.new()
-	v_struct := types.Type(types.Struct{ name: 'EscapedFields' })
-	alias := types.Type(types.Alias{ name: 'Fields', base_type: v_struct })
+	v_struct := types.Type(types.Struct{ name_id: flat.source_type_id('EscapedFields') })
+	alias := types.Type(types.Alias{ name_id: flat.source_type_id('Fields'), base_type: v_struct })
 	pointer := types.Type(types.Pointer{ base_type: alias })
 	for owner in [v_struct, alias, pointer] {
 		for field in ['@type', '@struct', '@select', '_v_type', 'type', 'index', 'select', 'malloc',
@@ -50,7 +50,7 @@ fn test_escaped_c_initializer_field_names_resolve_aliases() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['C.EscapedFields'] = []types.StructField{}
 	tc.structs['EscapedFields'] = []types.StructField{}
-	tc.type_aliases['Fields'] = 'C.EscapedFields'
+	tc.type_aliases.set('Fields', 'C.EscapedFields')
 	tc.type_alias_modules['Fields'] = 'main'
 	tc.cur_module = 'main'
 	mut g := FlatGen.new()
@@ -72,8 +72,8 @@ fn test_sizeof_c_field_names_follow_alias_pointer_owners() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['C.Record'] = [types.StructField{ name: 'index', typ: types.Type(types.u64_) }]
 	tc.structs['Record'] = tc.structs['C.Record']
-	tc.type_aliases['RecordAlias'] = 'C.Record'
-	tc.type_aliases['RecordPointer'] = '&RecordAlias'
+	tc.type_aliases.set('RecordAlias', 'C.Record')
+	tc.type_aliases.set('RecordPointer', '&RecordAlias')
 	tc.type_alias_modules['RecordAlias'] = 'main'
 	tc.type_alias_modules['RecordPointer'] = 'main'
 	tc.cur_module = 'main'
@@ -100,8 +100,8 @@ fn test_escaped_c_callback_selector_assignment_keeps_c_abi_adapter() {
 		})
 		tc.cur_module = 'main'
 		tc.structs['C.CallbackHolder'] = [types.StructField{ name: 'type', typ: callback_type, is_mut: true }]
-		tc.type_aliases['CallbackAlias'] = 'C.CallbackHolder'
-		tc.type_aliases['CallbackPointerAlias'] = '&CallbackAlias'
+		tc.type_aliases.set('CallbackAlias', 'C.CallbackHolder')
+		tc.type_aliases.set('CallbackPointerAlias', '&CallbackAlias')
 		tc.type_alias_modules['CallbackAlias'] = 'main'
 		tc.type_alias_modules['CallbackPointerAlias'] = 'main'
 		tc.struct_field_c_abi_fns['C.CallbackHolder\ntype'] = 'fn_ptr:int|int'

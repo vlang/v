@@ -43,11 +43,11 @@ fn test_map_codegen_callbacks_unwrap_alias_keys() {
 			types.Type(types.isize_), types.Type(types.usize_), types.Type(types.voidptr_),
 			types.Type(types.ArrayFixed{ elem_type: types.Type(types.u64_), len: 2 })] {
 			alias := types.Type(types.Alias{
-				name:      'MapKey'
+				name_id:   flat.source_type_id('MapKey')
 				base_type: key
 			})
 			nested := types.Type(types.Alias{
-				name:      'NestedMapKey'
+				name_id:   flat.source_type_id('NestedMapKey')
 				base_type: alias
 			})
 			expected := map_codegen_callback_test_names(g, key)

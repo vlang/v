@@ -20,10 +20,14 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 			if node.children_count != 0 {
 				return none
 			}
-			return ComptimeStringScalar{'string', node.value}
+			return ComptimeStringScalar{flat.source_type_id('string'), node.value}
 		}
 		.int_literal, .bool_literal {
-			return ComptimeStringScalar{if node.kind == .bool_literal { 'bool' } else { 'int' }, node.value}
+			return ComptimeStringScalar{flat.source_type_id(if node.kind == .bool_literal {
+				'bool'
+			} else {
+				'int'
+			}), node.value}
 		}
 		.ident {
 			if allow_locals {
@@ -44,8 +48,8 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 		.selector {
 			if node.value == 'len' && node.children_count == 1 {
 				base := t.comptime_scalar_expr_in_context(t.a.child(&node, 0), depth + 1, module_name, file, allow_locals) or { return none }
-				if base.typ == 'string' {
-					return ComptimeStringScalar{'int', base.value.len.str()}
+				if base.typ_text() == 'string' {
+					return ComptimeStringScalar{flat.source_type_id('int'), base.value.len.str()}
 				}
 			}
 			if node.children_count == 1 {
@@ -59,54 +63,58 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 			if node.children_count != 2 { return none }
 			left := t.comptime_scalar_expr_in_context(t.a.child(&node, 0), depth + 1, module_name, file, allow_locals)?
 			right := t.comptime_scalar_expr_in_context(t.a.child(&node, 1), depth + 1, module_name, file, allow_locals)?
-			if left.typ != right.typ { return none }
-			if left.typ == 'string' && node.op == .plus {
-				return ComptimeStringScalar{'string', left.value + right.value}
+			if left.typ_text() != right.typ_text() { return none }
+			if left.typ_text() == 'string' && node.op == .plus {
+				return ComptimeStringScalar{flat.source_type_id('string'), left.value + right.value}
 			}
 			if node.op in [.eq, .ne] {
-				equal := if left.typ == 'int' {
+				equal := if left.typ_text() == 'int' {
 					l := util.comptime_string_bound(left.value)?
 					r := util.comptime_string_bound(right.value)?
 					l == r
 				} else {
 					left.value == right.value
 				}
-				return ComptimeStringScalar{'bool', (if node.op == .eq { equal } else { !equal }).str()}
+				return ComptimeStringScalar{flat.source_type_id('bool'), (if node.op == .eq {
+					equal
+				} else {
+					!equal
+				}).str()}
 			}
-			if left.typ == 'bool' && node.op in [.logical_and, .logical_or] {
+			if left.typ_text() == 'bool' && node.op in [.logical_and, .logical_or] {
 				value := if node.op == .logical_and {
 					left.value == 'true' && right.value == 'true'
 				} else {
 					left.value == 'true' || right.value == 'true'
 				}
-				return ComptimeStringScalar{'bool', value.str()}
+				return ComptimeStringScalar{flat.source_type_id('bool'), value.str()}
 			}
 		}
 		.prefix {
 			if node.op == .not && node.children_count == 1 {
 				value := t.comptime_scalar_expr_in_context(t.a.child(&node, 0), depth + 1, module_name, file, allow_locals)?
-				if value.typ == 'bool' {
-					return ComptimeStringScalar{'bool', (value.value == 'false').str()}
+				if value.typ_text() == 'bool' {
+					return ComptimeStringScalar{flat.source_type_id('bool'), (value.value == 'false').str()}
 				}
 			}
 		}
 		.in_expr {
 			if node.children_count != 2 { return none }
 			needle := t.comptime_scalar_expr_in_context(t.a.child(&node, 0), depth + 1, module_name, file, allow_locals)?
-			if needle.typ != 'string' { return none }
+			if needle.typ_text() != 'string' { return none }
 			right := t.a.child_node(&node, 1)
 			if right.kind == .array_literal {
 				mut found := false
 				for child in t.a.children_of(right) {
 					value := t.comptime_scalar_expr_in_context(child, depth + 1, module_name, file, allow_locals)?
-					if value.typ != 'string' { return none }
+					if value.typ_text() != 'string' { return none }
 					found = found || value.value == needle.value
 				}
-				return ComptimeStringScalar{'bool', found.str()}
+				return ComptimeStringScalar{flat.source_type_id('bool'), found.str()}
 			}
 			value := t.comptime_scalar_expr_in_context(t.a.child(&node, 1), depth + 1, module_name, file, allow_locals)?
-			if value.typ == 'string' {
-				return ComptimeStringScalar{'bool', value.value.contains(needle.value).str()}
+			if value.typ_text() == 'string' {
+				return ComptimeStringScalar{flat.source_type_id('bool'), value.value.contains(needle.value).str()}
 			}
 		}
 		.call {
@@ -118,13 +126,13 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 				return none
 			}
 			receiver := t.comptime_scalar_expr_in_context(t.a.child(callee, 0), depth + 1, module_name, file, allow_locals) or { return none }
-			if receiver.typ != 'string' {
+			if receiver.typ_text() != 'string' {
 				return none
 			}
 			mut args := []string{}
 			for i in 1 .. node.children_count {
 				arg := t.comptime_scalar_expr_in_context(t.a.child(&node, i), depth + 1, module_name, file, allow_locals) or { return none }
-				if arg.typ != 'string' {
+				if arg.typ_text() != 'string' {
 					return none
 				}
 				args << arg.value
@@ -137,13 +145,13 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 			}
 			base := t.comptime_scalar_expr_in_context(t.a.child(&node, 0), depth + 1, module_name, file, allow_locals) or { return none }
 			low := t.comptime_scalar_expr_in_context(t.a.child(&node, 1), depth + 1, module_name, file, allow_locals) or { return none }
-			if base.typ != 'string' || low.typ != 'int' {
+			if base.typ_text() != 'string' || low.typ_text() != 'int' {
 				return none
 			}
 			mut high := base.value.len
 			if node.children_count == 3 {
 				bound := t.comptime_scalar_expr_in_context(t.a.child(&node, 2), depth + 1, module_name, file, allow_locals) or { return none }
-				if bound.typ != 'int' {
+				if bound.typ_text() != 'int' {
 					return none
 				}
 				high = util.comptime_string_bound(bound.value) or { return none }
@@ -152,7 +160,7 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 			if start < 0 || high < start || high > base.value.len {
 				return none
 			}
-			return ComptimeStringScalar{'string', base.value[start..high]}
+			return ComptimeStringScalar{flat.source_type_id('string'), base.value[start..high]}
 		}
 		else {}
 	}
@@ -173,7 +181,7 @@ fn (t &Transformer) comptime_scalar_named_const(name string, depth int, module_n
 	// Explicit imports are namespaces; other selectors can refer to owner globals.
 	imported := name.contains('.') && t.file_import_module(file, base) != none
 	same_owner := owner == module_name || (owner in ['', 'main'] && module_name in ['', 'main'])
-	if !imported && global_name in t.globals
+	if !imported && t.globals.contains(global_name)
 		&& (name.contains('.') || !same_owner) {
 		return none
 	}
@@ -183,7 +191,7 @@ fn (t &Transformer) comptime_scalar_named_const(name string, depth int, module_n
 }
 
 fn (mut t Transformer) make_comptime_scalar_literal(value ComptimeStringScalar) flat.NodeId {
-	return match value.typ {
+	return match value.typ_text() {
 		'string' { t.make_string_literal(value.value) }
 		'bool' { t.make_bool_literal(value.value == 'true') }
 		else { t.make_int_literal(value.value.int()) }
@@ -301,7 +309,7 @@ fn (t &Transformer) subst_comptime_scalar_locals(cond string) string {
 			}
 			if prev == 0 || cond[prev - 1] !in [`.`, `$`] {
 				if value := t.comptime_scalar_locals[name] {
-					out.write_string(if value.typ == 'string' {
+					out.write_string(if value.typ_text() == 'string' {
 						comptime_cond_string_literal(value.value)
 					} else {
 						value.value
@@ -322,7 +330,7 @@ fn (t &Transformer) subst_comptime_scalar_locals(cond string) string {
 					mut replaced_constant := false
 					for constant_name.contains('.') {
 						if value := t.comptime_scalar_named_const(constant_name, 0, t.cur_module, t.cur_file) {
-							out.write_string(if value.typ == 'string' {
+							out.write_string(if value.typ_text() == 'string' {
 								comptime_cond_string_literal(value.value)
 							} else {
 								value.value
@@ -338,7 +346,7 @@ fn (t &Transformer) subst_comptime_scalar_locals(cond string) string {
 						continue
 					}
 					if value := t.comptime_scalar_named_const(name, 0, t.cur_module, t.cur_file) {
-						out.write_string(if value.typ == 'string' {
+						out.write_string(if value.typ_text() == 'string' {
 							comptime_cond_string_literal(value.value)
 						} else {
 							value.value
@@ -423,7 +431,7 @@ fn (t &Transformer) comptime_string_source(id flat.NodeId) ?[]string {
 		return none
 	}
 	receiver := t.comptime_scalar_expr(t.a.child(callee, 0), 0) or { return none }
-	if receiver.typ != 'string' {
+	if receiver.typ_text() != 'string' {
 		return none
 	}
 	if callee.value == 'fields' && node.children_count == 1 {
@@ -433,7 +441,7 @@ fn (t &Transformer) comptime_string_source(id flat.NodeId) ?[]string {
 		return none
 	}
 	arg := t.comptime_scalar_expr(t.a.child(&node, 1), 0) or { return none }
-	if arg.typ != 'string' {
+	if arg.typ_text() != 'string' {
 		return none
 	}
 	return if callee.value == 'split' {

@@ -78,8 +78,8 @@ fn test_inferred_anonymous_struct_uses_position_source_file() {
 	assert tc.struct_modules[dep_name] == 'dep'
 	assert tc.struct_files[main_name] == main_file
 	assert tc.struct_modules[main_name] == 'main'
-	assert a.nodes[int(dep_struct_id)].typ == dep_name
-	assert a.nodes[int(main_struct_id)].typ == main_name
+	assert a.nodes[int(dep_struct_id)].typ_text() == dep_name
+	assert a.nodes[int(main_struct_id)].typ_text() == main_name
 }
 
 fn test_inferred_anonymous_structs_reuse_their_semantic_shape() {
@@ -107,9 +107,9 @@ fn test_inferred_anonymous_structs_reuse_their_semantic_shape() {
 	assert t.materialize_inferred_anonymous_structs()
 
 	shared_name := 'AnonStruct_v3_inferred_${first_struct_id}'
-	assert a.nodes[int(first_struct_id)].typ == shared_name
-	assert a.nodes[int(second_struct_id)].typ == shared_name
-	assert a.nodes[int(different_struct_id)].typ != shared_name
+	assert a.nodes[int(first_struct_id)].typ_text() == shared_name
+	assert a.nodes[int(second_struct_id)].typ_text() == shared_name
+	assert a.nodes[int(different_struct_id)].typ_text() != shared_name
 	mut synthesized_declarations := 0
 	for node in a.nodes {
 		if node.kind == .struct_decl && node.value == shared_name {
@@ -147,7 +147,7 @@ fn test_inferred_anonymous_struct_name_does_not_replace_user_struct() {
 	assert t.materialize_inferred_anonymous_structs()
 
 	generated_name := '${colliding_name}_1'
-	assert a.nodes[int(struct_id)].typ == generated_name
+	assert a.nodes[int(struct_id)].typ_text() == generated_name
 	assert tc.structs[colliding_name] == user_fields
 	assert tc.structs[generated_name][0].name == 'item'
 }
@@ -173,6 +173,6 @@ fn test_prepared_selfhost_transform_materializes_before_preparing() {
 	transform_worker_scope_free(prepared.take_scope())
 
 	assert errors.len == 0
-	assert a.nodes[int(struct_id)].typ == name
+	assert a.nodes[int(struct_id)].typ_text() == name
 	assert name in tc.structs
 }

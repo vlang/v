@@ -27,7 +27,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 		if child.kind == .directive && child.value == 'string_interp_format'
 			&& child.children_count > 0 {
 			expr_id = g.a.child(&child, 0)
-			format = child.typ
+			format = child.typ_text()
 			child = g.a.nodes[int(expr_id)]
 		}
 		if child.kind == .string_literal {
@@ -36,7 +36,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 		} else {
 			typ := g.string_interp_child_type(expr_id, child)
 			typ_name := types.Type(typ).name()
-			if child.typ == 'string' || typ is types.String {
+			if child.typ_text() == 'string' || typ is types.String {
 				if format.len > 0 {
 					g.gen_formatted_string_interp_child_expr(expr_id, typ, format)
 				} else {
@@ -61,25 +61,25 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Enum {
-				g.write('${g.enum_autostr_c_name(typ.name)}__autostr(')
+				g.write('${g.enum_autostr_c_name(typ.name())}__autostr(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Interface {
-				str_key := '${typ.name}.str'
+				str_key := '${typ.name()}.str'
 				if str_key in g.tc.fn_ret_types {
 					g.write('${g.cname(str_key)}(')
 					g.gen_string_interp_child_expr(child_id)
 					g.write(')')
 				} else {
-					sid := g.intern_string('${typ.name.all_after_last('.')}{}')
+					sid := g.intern_string('${typ.name().all_after_last('.')}{}')
 					g.write('_str_${sid}')
 				}
 			} else if typ is types.Struct {
-				g.write('${g.cname(typ.name)}__str(')
+				g.write('${g.cname(typ.name())}__str(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.SumType {
-				g.write('${g.cname(typ.name)}__str(')
+				g.write('${g.cname(typ.name())}__str(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else {
@@ -268,7 +268,7 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		} else if f.width > 0 {
 			g.write('v3_string_pad(')
 		}
-		g.write('${g.enum_autostr_c_name(typ.name)}__autostr(')
+		g.write('${g.enum_autostr_c_name(typ.name())}__autostr(')
 		g.gen_string_interp_child_expr(child_id)
 		g.write(')')
 		if f.zero && f.width > 0 {

@@ -10,8 +10,8 @@ fn test_rebuilt_pointer_field_selector_preserves_mutable_argument() {
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.set_var_type('holder', '&Holder')
 		t.structs['Holder'] = StructInfo{
-			name:   'Holder'
-			fields: [FieldInfo{ name: 'value', typ: '&int' }]
+			name:   flat.source_type_id('Holder')
+			fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('&int') }]
 		}
 		base := t.make_ident('holder')
 		field := t.make_selector(base, 'value', '&int')

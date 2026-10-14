@@ -6,14 +6,14 @@ import v.types
 fn test_nested_generic_defaults_skip_pointer_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['BoxPointer'] = '&Box[int]'
-	tc.type_aliases['BoxPointerChain'] = 'BoxPointer'
+	tc.type_aliases.set('BoxPointer', '&Box[int]')
+	tc.type_aliases.set('BoxPointerChain', 'BoxPointer')
 	mut t := new_transformer(mut a, &tc, {
 		'main': true
 	})
 	t.structs['Box'] = StructInfo{
-		name:   'Box'
-		fields: [FieldInfo{ name: 'value', typ: 'int', default_expr: 0 }]
+		name:   flat.source_type_id('Box')
+		fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('int'), default_expr: 0 }]
 	}
 	for alias in ['BoxPointer', 'BoxPointerChain'] {
 		mut visited := map[string]bool{}
@@ -27,12 +27,12 @@ fn test_struct_field_lookup_preserves_first_field_and_missing_names() {
 		for i in 0 .. count {
 			fields << FieldInfo{
 				name:    'field_${i}'
-				typ:     'int'
-				raw_typ: 'Counter'
+				typ:     flat.source_type_id('int')
+				raw_typ: flat.source_type_id('Counter')
 			}
 		}
 		if count > 0 {
-			fields << FieldInfo{ name: 'field_0', typ: 'string' }
+			fields << FieldInfo{ name: 'field_0', typ: flat.source_type_id('string') }
 		}
 		info := StructInfo{
 			fields:        fields
@@ -43,8 +43,8 @@ fn test_struct_field_lookup_preserves_first_field_and_missing_names() {
 		assert owned.field('missing') == none
 		for i in 0 .. count {
 			field := info.field('field_${i}') or { panic('missing field ${i}') }
-			assert field.typ == 'int'
-			assert field.raw_typ == 'Counter'
+			assert field.typ_text() == 'int'
+			assert field.raw_typ_text() == 'Counter'
 			assert owned.field('field_${i}')? == field
 		}
 	}
@@ -56,7 +56,7 @@ fn test_owned_field_index_survives_worker_arena_release() {
 		scope := unsafe { prealloc_scope_begin() }
 		mut fields := []FieldInfo{}
 		for i in 0 .. 32 {
-			fields << FieldInfo{ name: 'field_${i}', typ: 'Type${i}' }
+			fields << FieldInfo{ name: 'field_${i}', typ: flat.source_type_id('Type${i}') }
 		}
 		borrowed := StructInfo{
 			fields:        fields
@@ -66,7 +66,7 @@ fn test_owned_field_index_survives_worker_arena_release() {
 		owned := clone_struct_info_owned(borrowed)
 		unsafe { prealloc_scope_free_after(scope) }
 		for i in 0 .. 32 {
-			assert owned.field('field_${i}')?.typ == 'Type${i}'
+			assert owned.field('field_${i}')?.typ_text() == 'Type${i}'
 		}
 		assert owned.field('missing') == none
 	}

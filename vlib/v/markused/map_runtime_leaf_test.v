@@ -45,7 +45,7 @@ fn test_map_runtime_wrappers_preserve_leaf_and_map_results() {
 	})] {
 		expected := elem is types.Map
 		for typ in [
-			types.Type(types.Alias{ name: 'Values', base_type: elem }),
+			types.Type(types.Alias{ name_id: flat.source_type_id('Values'), base_type: elem }),
 			types.Type(types.Pointer{ base_type: elem }),
 			types.Type(types.OptionType{ base_type: elem }),
 			types.Type(types.ResultType{ base_type: elem }),
@@ -67,7 +67,7 @@ fn test_map_runtime_mixed_signatures_and_recursive_structs_keep_maps() {
 		key_type:   types.Type(types.String{})
 		value_type: types.Type(types.int_)
 	})
-	self_type := types.Type(types.Struct{ name: 'Recursive' })
+	self_type := types.Type(types.Struct{ name_id: flat.source_type_id('Recursive') })
 	tc.structs['Recursive'] = [
 		types.StructField{ name: 'marker', typ: types.Type(types.int_) },
 		types.StructField{ name: 'next', typ: types.Type(types.Pointer{ base_type: self_type }) },
@@ -102,7 +102,7 @@ fn test_map_runtime_generic_placeholders_and_unknowns_keep_existing_results() {
 	assert scan.type_needs_map_runtime(generic, &tc)
 	assert !scan.type_needs_map_runtime(unknown, &tc)
 	assert scan.type_needs_map_runtime(types.Type(types.Alias{
-		name:      'Deferred'
+		name_id:   flat.source_type_id('Deferred')
 		base_type: generic
 	}), &tc)
 	assert scan.type_needs_map_runtime(generic, &tc)
@@ -119,7 +119,7 @@ fn test_map_runtime_nominal_primitive_spelling_keeps_semantic_cache_order() {
 	// Hand-built metadata can reuse a primitive spelling; its semantic tag differs.
 	for leaf in [types.Type(types.int_), types.Type(types.String{})] {
 		name := leaf.name()
-		nominal := types.Type(types.Struct{ name: name })
+		nominal := types.Type(types.Struct{ name_id: flat.source_type_id(name) })
 		tc.structs[name] = [types.StructField{ name: 'values', typ: mapped }]
 		for leaf_first in [false, true] {
 			mut scan := RuntimeHelpersScan{}

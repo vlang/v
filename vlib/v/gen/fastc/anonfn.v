@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import os
 import v.scanner
 import v.token
@@ -34,7 +35,7 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 			local := g.locals[capture_name] or {
 				return g.unsupported('closure capture `${capture_name}` without a local value')
 			}
-			capture_type := fastc_normalize_inferred_type(local.typ)
+			capture_type := fastc_normalize_inferred_type(local.typ_text())
 			capture_source_type := g.capture_type_source(capture_type) or {
 				return g.unsupported('closure capture `${capture_name}` of type `${capture_type}`')
 			}
@@ -181,13 +182,13 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 		initializers << '.${field_name}=(${capture_values[i]})'
 		call_args << '__vf_ctx->${field_name}'
 	}
-	for i, parameter_type in signature.parameter_types {
+	for i, parameter_type in signature.parameter_types_text() {
 		wrapper_params << '${fastc_output_c_type(parameter_type)} __vf_arg_${i}'
 		call_args << '__vf_arg_${i}'
 	}
 	closure_global := g.globals[fastc_global_key('builtin.closure', 'g_closure')]
 	create_function := g.c_function_name_for_key(fastc_function_key('builtin.closure', 'closure_create_with_data'))
-	return_type := fastc_output_c_type(signature.return_type)
+	return_type := fastc_output_c_type(signature.return_type_text())
 	return_prefix := if return_type == 'void' { '' } else { 'return ' }
 	g.spawn_helpers[context_name] = 'typedef struct { ${fields.join(' ')} } ${context_name};\n'
 	g.spawn_helpers[wrapper_name] = '${return_type} ${wrapper_name}(${if wrapper_params.len == 0 {
@@ -195,10 +196,10 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	} else {
 		wrapper_params.join(', ')
 	}}) {\n${context_name} *__vf_ctx = (${context_name} *)((voidptr (*)(void))${closure_global}.closure_get_data)();\n${return_prefix}${c_name}(${call_args.join(', ')});\n}\n'
-	return '({ ${context_name} __vf_capture_value = {${initializers.join(', ')}}; (${return_type} (*)(${if signature.parameter_types.len == 0 {
+	return '({ ${context_name} __vf_capture_value = {${initializers.join(', ')}}; (${return_type} (*)(${if signature.parameter_types.ids.len == 0 {
 		'void'
 	} else {
-		signature.parameter_types.map(fastc_output_c_type(it)).join(', ')
+		signature.parameter_types_text().map(fastc_output_c_type(it)).join(', ')
 	}}))${create_function}((voidptr)${wrapper_name}, builtin__memdup(&__vf_capture_value, sizeof(__vf_capture_value)), true); })', c_name, true
 }
 

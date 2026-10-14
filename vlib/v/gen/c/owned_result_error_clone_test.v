@@ -5,13 +5,13 @@ import v.types
 
 fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs_drop bool, tail_kind string) string {
 	mut a := flat.FlatAst.new()
-	default_value := a.add_node(flat.Node{ kind: .int_literal, value: '7', typ: 'int' })
+	default_value := a.add_node(flat.Node{ kind: .int_literal, value: '7', typ: flat.source_type_id('int') })
 	field_start := a.children.len
 	a.children << default_value
 	field := a.add_node(flat.Node{
 		kind:           .field_decl
 		value:          'limit'
-		typ:            'int'
+		typ:            flat.source_type_id('int')
 		children_start: field_start
 		children_count: 1
 	})
@@ -35,9 +35,9 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	tc.interface_names['IError'] = true
 	fault := tc.parse_type('Fault')
 	fault_pointer := types.Type(types.Pointer{ base_type: fault })
-	tc.type_aliases['FaultRef'] = '&Fault'
-	tc.type_aliases['FaultRefAlias'] = 'FaultRef'
-	tc.type_aliases['FaultValueAlias'] = 'Fault'
+	tc.type_aliases.set('FaultRef', '&Fault')
+	tc.type_aliases.set('FaultRefAlias', 'FaultRef')
+	tc.type_aliases.set('FaultValueAlias', 'Fault')
 	if needs_drop {
 		tc.fn_param_types['Fault.drop'] = [fault_pointer]
 		tc.fn_ret_types['Fault.drop'] = types.Type(types.void_)
@@ -95,7 +95,7 @@ fn owned_result_error_clone_code(clone_kind string, pointer_receiver bool, needs
 	source := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'borrowed_error'
-		typ:   'IError'
+		typ:   flat.source_type_id('IError')
 	})
 	g.gen_ownership_clone_ierror(source)
 	return g.sb.str()

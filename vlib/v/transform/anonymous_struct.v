@@ -4,7 +4,7 @@ import v.flat
 import v.types
 
 fn inferred_anonymous_struct_type_exists(tc &types.TypeChecker, name string) bool {
-	return name in tc.structs || name in tc.type_aliases || name in tc.sum_types
+	return name in tc.structs || tc.type_aliases.contains(name) || tc.sum_types.contains(name)
 		|| name in tc.enum_names || name in tc.interface_names
 }
 
@@ -100,10 +100,10 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				shape := '${cur_module.len}:${cur_module}:${shape_parts.join(',')}'
 				if semantic_name := inferred_by_shape[shape] {
 					t.a.nodes[idx].value = semantic_name.all_after_last('.')
-					t.a.nodes[idx].typ = semantic_name
+					t.a.nodes[idx].set_type_text(semantic_name)
 					t.mark_scoped_owned_base_node(idx)
 					t.tc.register_synth_type(flat.NodeId(idx), types.Struct{
-						name: semantic_name
+						name_id: flat.source_type_id(semantic_name)
 					})
 					continue
 				}
@@ -113,7 +113,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 					field_ids << t.a.add_node(flat.Node{
 						kind:  .field_decl
 						value: semantic_field.name
-						typ:   t.tc.type_name(semantic_field.typ)
+						typ:   flat.source_type_id(t.tc.type_name(semantic_field.typ))
 						pos:   source_field.pos
 					})
 				}
@@ -161,10 +161,10 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				t.tc.register_short_type_name(semantic_name)
 				inferred_by_shape[shape] = semantic_name
 				t.a.nodes[idx].value = name
-				t.a.nodes[idx].typ = semantic_name
+				t.a.nodes[idx].set_type_text(semantic_name)
 				t.mark_scoped_owned_base_node(idx)
 				t.tc.register_synth_type(flat.NodeId(idx), types.Struct{
-					name: semantic_name
+					name_id: flat.source_type_id(semantic_name)
 				})
 				materialized = true
 			}

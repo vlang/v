@@ -1,0 +1,63 @@
+module flat
+
+fn test_type_text_forks_share_immutable_spelling_ids() {
+	mut parent := TypeTextBindings{}
+	parent.set('value', 'pkg.Sum')
+	mut left := parent.fork()
+	mut right := parent.fork()
+	left.set('value', '?pkg.Left[T]')
+	right.set('value', 'map[string]pkg.Right')
+	left_id := left.type_id('value') or { panic('missing left binding') }
+	right_id := right.type_id('value') or { panic('missing right binding') }
+	assert left_id != right_id
+	assert parent.texts.text(right_id) == right.value('value')
+	assert left.value('value') == '?pkg.Left[T]'
+	assert right.value('value') == 'map[string]pkg.Right'
+	assert parent.value('value') == 'pkg.Sum'
+	parent.set_id('imported', right_id)
+	assert parent.value('imported') == 'map[string]pkg.Right'
+}
+
+fn test_indexed_scope_shadowing_keeps_empty_bindings_present() {
+	mut outer := TypeTextBindings{}
+	outer.set('placeholder', '')
+	outer.set('value', 'pkg.Alias')
+	mut inner := outer.clone()
+	inner.set('value', '[]T')
+	inner.delete('placeholder')
+	assert inner.value('value') == '[]T'
+	assert outer.value('value') == 'pkg.Alias'
+	assert outer.contains('placeholder')
+	assert outer.get('placeholder') or { panic('empty binding was lost') } == ''
+	assert !inner.contains('placeholder')
+}
+
+fn test_type_text_pointer_probe_validates_reused_input_bytes() {
+	mut texts := TypeTextTable{}
+	mut bytes := '[]First'.bytes()
+	// Borrow one buffer deliberately to exercise reuse of the same input address.
+	borrowed := unsafe { tos(bytes.data, bytes.len) }
+	first := texts.intern(borrowed)
+	for i, value in '[]Other'.bytes() {
+		bytes[i] = value
+	}
+	second := texts.intern(borrowed)
+	assert first != second
+	assert texts.text(first) == '[]First'
+	assert texts.text(second) == '[]Other'
+}
+
+fn test_ast_type_ids_use_the_shared_spelling_namespace() {
+	mut first := FlatAst.new()
+	first.intern_text('ordinary payload')
+	second := FlatAst.new()
+	id := first.type_text_id('pkg.Source[T]')
+	assert id == second.type_text_id('pkg.Source[T]')
+	assert source_type_name(id) == 'pkg.Source[T]'
+	assert first.node_type_text_id('pkg.Source[T]', id) == id
+	changed := first.node_type_text_id('pkg.Other', id)
+	assert changed != id
+	assert source_type_name(changed) == 'pkg.Other'
+	assert first.node_type_text_id('', changed) == 0
+	assert first.type_text_id('') == 0
+}

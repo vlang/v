@@ -41,16 +41,18 @@ fn test_lambda_capture_collector_scans_callee_and_range_bound() {
 		children_count: 2
 	})
 
+	mut type_texts_44 := &flat.TypeTextTable{}
 	mut t := Transformer{
-		a:         &a
-		var_types: [
+		var_type_texts: type_texts_44
+		a:              &a
+		var_types:      [
 			VarTypeBinding{
 				name: 'cb'
-				typ:  'fn (int) int'
+				typ:  type_texts_44.intern('fn (int) int')
 			},
 			VarTypeBinding{
 				name: 'limit'
-				typ:  'int'
+				typ:  type_texts_44.intern('int')
 			},
 		]
 	}

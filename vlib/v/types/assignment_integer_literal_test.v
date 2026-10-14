@@ -57,7 +57,7 @@ fn test_float_assignment_does_not_treat_typed_integers_as_literals() {
 	cast := a.add_node(flat.Node{
 		kind:           .cast_expr
 		value:          'int'
-		typ:            'int'
+		typ:            flat.source_type_id('int')
 		children_start: children_start
 		children_count: 1
 	})

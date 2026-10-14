@@ -132,11 +132,11 @@ fn test_rebuild_scoped_transform_signatures_and_suffix_index_after_growth() {
 		for i in 0 .. 4096 {
 			name := 'generated.Box_${i}.open'
 			tc.fn_ret_types[name] = Type(Struct{
-				name: 'GeneratedResult_${i}'
+				name_id: flat.source_type_id('GeneratedResult_${i}')
 			})
 			tc.register_generated_fn_param_types(name, [
 				Type(Struct{
-					name: 'GeneratedParam_${i}'
+					name_id: flat.source_type_id('GeneratedParam_${i}')
 				}),
 			])
 			tc.fn_variadic[name] = false

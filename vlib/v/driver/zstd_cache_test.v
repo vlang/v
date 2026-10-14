@@ -125,7 +125,7 @@ fn test_native_config_override_logical_directives() {
 	assert v3_native_text_overrides_mbedtls('#define inline extern inline')
 	assert !v3_native_text_overrides_mbedtls('#define V_MBEDTLS_HELPERS_H\nmbedtls_ssl_context* context;')
 	mut ast := flat.FlatAst.new()
-	ast.add_node(flat.Node{ kind: .directive, value: 'define', typ: 'MBEDTLS_CONFIG_FILE "custom.h"' })
+	ast.add_node(flat.Node{ kind: .directive, value: 'define', typ: flat.source_type_id('MBEDTLS_CONFIG_FILE "custom.h"') })
 	assert !v3_mbedtls_default_header_context(&ast, [])
 }
 
@@ -181,13 +181,13 @@ fn test_preprocessed_sdk_inline_annotation_preserves_replication_guards() {
 	})
 	assert !v3_mbedtls_default_header_context(&renamed, [])
 	mut aliased := flat.FlatAst.new()
-	aliased.add_node(flat.Node{ kind: .directive, value: 'define', typ: '__sputc custom_sputc' })
+	aliased.add_node(flat.Node{ kind: .directive, value: 'define', typ: flat.source_type_id('__sputc custom_sputc') })
 	assert !v3_mbedtls_default_header_context(&aliased, [])
 	mut builtin_wrappers := flat.FlatAst.new()
 	builtin_wrappers.add_node(flat.Node{
 		kind:  .directive
 		value: 'define'
-		typ:   'v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))'
+		typ:   flat.source_type_id('v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))')
 	})
 	assert v3_mbedtls_default_header_context(&builtin_wrappers, [])
 }

@@ -4,7 +4,7 @@ import v.flat
 import v.types
 
 struct IteratorForInInfo {
-	elem_type   string
+	elem_type   u32
 	next_method string
 }
 
@@ -84,7 +84,7 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 		}
 	}
 	for info in cond_smartcasts {
-		t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
+		t.push_smartcast(info.expr_name, info.variant_name_text(), info.sum_type_name_text())
 	}
 	mut new_body := t.transform_scope_stmts(body_ids)
 	mut synthetic_continue_label := ''
@@ -824,7 +824,11 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		children_count: flat.child_count(ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            if iter_type.len > 0 { iter_type } else { node.typ }
+		typ:            flat.source_type_id(if iter_type.len > 0 {
+			iter_type
+		} else {
+			node.typ_text()
+		})
 		flags:          flat.node_flags(node.skip_ownership_drops(), false)
 	})
 	if cleanup_owned_container {
@@ -943,7 +947,7 @@ fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
 	}
 	if clean == 'RunesIterator' || clean == 'builtin.RunesIterator' {
 		return IteratorForInInfo{
-			elem_type:   'rune'
+			elem_type:   flat.source_type_id('rune')
 			next_method: 'RunesIterator.next'
 		}
 	}
@@ -970,7 +974,7 @@ fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
 		next_method = '${concrete_receiver}.${info.name.all_after_last('.')}'
 	}
 	return IteratorForInInfo{
-		elem_type:   elem_type
+		elem_type:   flat.source_type_id(elem_type)
 		next_method: next_method
 	}
 }
@@ -1089,7 +1093,7 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	} else {
 		t.make_empty()
 	}
-	elem_type := info.elem_type
+	elem_type := info.elem_type_text()
 	t.mark_fn_used_name(info.next_method)
 	next_receiver := if trimmed_transform_text(iter_type).starts_with('&') {
 		t.make_ident(iter_name)
@@ -1441,19 +1445,19 @@ fn (t &Transformer) for_in_container_is_interface_smartcast(container_id flat.No
 
 fn (mut t Transformer) fixed_array_map_index_for_in_container(container_id flat.NodeId, mut prefix []flat.NodeId) ?flat.NodeId {
 	info := t.map_index_info(container_id) or { return none }
-	if !t.is_fixed_array_type(info.value_type) {
+	if !t.is_fixed_array_type(info.value_type_text()) {
 		return none
 	}
 	map_expr := t.stable_expr_for_reuse(info.base_id)
 	t.drain_pending(mut prefix)
 	key_name := t.new_temp('map_key')
-	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
+	key_expr := t.transform_expr_for_type(info.key_id, info.key_type_text())
 	t.drain_pending(mut prefix)
-	prefix << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
+	prefix << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type_text())
 	zero_name := t.new_temp('map_zero')
-	prefix << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(info.value_type),
-		info.value_type)
-	return t.make_map_get_expr(map_expr, info.base_type, key_name, zero_name, info.value_type)
+	prefix << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(info.value_type_text()),
+		info.value_type_text())
+	return t.make_map_get_expr(map_expr, info.base_type_text(), key_name, zero_name, info.value_type_text())
 }
 
 fn (t &Transformer) for_in_container_is_shared_array_pointer(for_id flat.NodeId, container_id flat.NodeId) bool {
@@ -1575,14 +1579,14 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		iter_type := t.node_type(iter_id)
 		if iter_type.len > 0 {
 			iter_payload := for_iter_payload_type(iter_type)
-			if node.typ.len == 0 || for_iter_type_has_generic_placeholder(node.typ)
+			if node.typ_text().len == 0 || for_iter_type_has_generic_placeholder(node.typ_text())
 				|| for_iter_type_is_container(iter_payload) {
 				return iter_payload
 			}
 		}
 	}
-	if node.typ.len > 0 {
-		return node.typ
+	if node.typ_text().len > 0 {
+		return node.typ_text()
 	}
 	return ''
 }
@@ -1629,7 +1633,7 @@ fn (mut t Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?st
 	}
 	candidates << node.value
 	for candidate in candidates {
-		if typ := t.globals[candidate] {
+		if typ := t.globals.get(candidate) {
 			normalized := t.normalize_type_alias(typ)
 			if t.is_fixed_array_type(normalized) {
 				return normalized
@@ -1742,7 +1746,7 @@ fn (t &Transformer) declared_for_in_elem_type(container_id flat.NodeId, node fla
 			container_type = container_type[1..]
 			continue
 		}
-		if target := t.tc.type_aliases[container_type] {
+		if target := t.tc.type_aliases.get(container_type) {
 			if target == container_type {
 				break
 			}
@@ -1751,7 +1755,7 @@ fn (t &Transformer) declared_for_in_elem_type(container_id flat.NodeId, node fla
 		}
 		if !container_type.contains('.') {
 			qualified := t.tc.qualify_name(container_type)
-			if target := t.tc.type_aliases[qualified] {
+			if target := t.tc.type_aliases.get(qualified) {
 				if target == container_type {
 					break
 				}
@@ -1855,4 +1859,10 @@ fn for_in_fixed_array_len_text(s string) string {
 		return ''
 	}
 	return trimmed_transform_text(clean[open + 1..open + 1 + close_rel])
+}
+
+// elem_type_text resolves the indexed source type spelling.
+@[inline]
+fn (value &IteratorForInInfo) elem_type_text() string {
+	return flat.source_type_name(value.elem_type)
 }

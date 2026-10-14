@@ -41,9 +41,9 @@ fn (mut tc TypeChecker) declare_named_variant_binding(subject_type Type, branch 
 	// An earlier `is` check can already narrow the subject to a variant struct.
 	// Resolve patterns against its owning sum so payload bindings still work.
 	sum_name := if subject_type is SumType {
-		subject_type.name
+		subject_type.name()
 	} else if subject_type is Struct {
-		owner, _ := flat.decode_named_variant_type_name(subject_type.name) or { return }
+		owner, _ := flat.decode_named_variant_type_name(subject_type.name()) or { return }
 		owner
 	} else {
 		return
@@ -90,7 +90,7 @@ fn (tc &TypeChecker) named_variant_diagnostic(msg string, node flat.NodeId) stri
 // named_sum_variant_names returns the variant names of a sum type declared with
 // named variants, or an empty list for any other type.
 fn (tc &TypeChecker) named_sum_variant_names(sum_name string) []string {
-	variants := tc.sum_types[sum_name] or { return []string{} }
+	variants := tc.sum_types.get(sum_name) or { return []string{} }
 	mut names := []string{cap: variants.len}
 	for variant in variants {
 		_, name := flat.decode_named_variant_type_name(variant) or { return []string{} }
@@ -110,7 +110,7 @@ fn (mut tc TypeChecker) check_named_variant_init(id flat.NodeId, node flat.Node)
 	if variant_type !is Struct
 		|| (base_name !in tc.structs && tc.qualify_name(base_name) !in tc.structs) {
 		sum_type := tc.parse_type(sum_text)
-		sum_name := if sum_type is SumType { sum_type.name } else { '' }
+		sum_name := if sum_type is SumType { sum_type.name() } else { '' }
 		names := if sum_name.len > 0 { tc.named_sum_variant_names(sum_name) } else { []string{} }
 		message := if names.len > 0 {
 			'`${sum_text}` has no variant `${variant}`; its variants are: ${names.map('`${it}`').join(', ')}'

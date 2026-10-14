@@ -1,5 +1,36 @@
 The `flat` module stores compact syntax tree nodes for the compiler.
 
+`Node.typ` stores a `u32` source-spelling identity. `Node.typ_text()` resolves the spelling;
+`Node.set_type_text()` indexes a new annotation. These spellings preserve unresolved generics,
+nominal aliases, and parser metadata. They differ from a checker's semantic `types.TypeId`.
+Resolving an unqualified spelling still requires its module and import context.
+
+`source_type_id` and `source_type_name` cross the spelling boundary. Zero denotes empty text.
+`FlatAst.type_text_id` and `node_type_text_id` use this same `u32` namespace, independently
+of the AST table used for ordinary text payloads.
+The process owns immutable spellings in nonmoving chunks. Insertion is synchronized; readers
+observe published entries without taking the insertion lock. IDs remain valid across workers
+and disposable arenas, so copying a node requires no type-string promotion or ID remapping.
+The table retains unique spellings until process exit; IDs are not serialized across processes.
+
+`TypeTextTable` provides a private lookup cache over these shared identities. `TypeTextBindings`
+and `NodeTypeTextBindings` store binding values as indexes. `get` resolves a present binding,
+including one whose spelling is empty. `type_id` and `set_id` pass an index without formatting it.
+`clone` copies lexical bindings while sharing their lookup cache. `fork` copies both bindings
+and the private cache for a worker; immutable IDs can be copied directly between workers.
+Do not concurrently mutate the same binding map or private lookup cache.
+
+`TypeTextList` stores an ordered sequence of IDs. `at` resolves one element without creating
+an intermediate string array; `names` resolves the sequence for a consumer that accepts text.
+Numeric copies preserve identities without cloning spelling storage. Generic constraints in
+`NodePayload` also use this list; `Node.generic_constraints()` supplies text to syntax consumers.
+
+`TypeTextListBindings` stores ordered lists of source IDs. `set_ids` copies a caller's list;
+`type_ids` provides its numeric values for read-only use. `set` and `get` are spelling boundaries.
+Cloning copies both the map and numeric lists, preserving independent mutation in workers.
+`clone_owned` on either binding container also copies declaration keys into the current arena,
+so compiler stages can retire a temporary arena without retaining its key storage.
+
 `canonical_comptime_type_payload` is a reserved node payload id for a reflection source whose
 type already identifies its declaring module. Generic specialization uses it to preserve that
 identity through later import resolution. It requires no allocation, `Node.clone_owned` keeps it,

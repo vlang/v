@@ -62,10 +62,10 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 	tc.fn_context.generic_params = generic_params
 	tc.vls_enter_file(int(node.pos.id))
 	tc.cur_scope = tc.file_scope
-	return_text := if node.typ.ends_with('?') && !node.typ.starts_with('?') {
-		node.typ.trim_right('?')
+	return_text := if node.typ_text().ends_with('?') && !node.typ_text().starts_with('?') {
+		node.typ_text().trim_right('?')
 	} else {
-		node.typ
+		node.typ_text()
 	}
 	tc.cur_fn_ret_type = tc.parse_type(return_text)
 	tc.fn_context.return_type = tc.cur_fn_ret_type
@@ -109,7 +109,7 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 		current := order[i]
 		n := tc.a.node(current)
 		mut depending := (n.kind == .ident && n.value in dependent)
-			|| type_text_names_any(n.typ, params)
+			|| type_text_names_any(n.typ_text(), params)
 			|| (n.kind !in [.string_literal, .char_literal, .int_literal, .float_literal]
 				&& type_text_names_any(n.value, params))
 		mut generic_call := n.kind == .call && tc.vls_calls_generic(current, *n)
@@ -201,7 +201,7 @@ fn vls_open_type_holds(typ Type, params map[string]bool) bool {
 			return true
 		}
 		Struct, Interface, SumType {
-			return vls_type_text_params_hold(typ.name, params)
+			return vls_type_text_params_hold(typ.name(), params)
 		}
 		else {
 			return true
@@ -276,7 +276,7 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 	} else {
 		*callee
 	}
-	param_texts := tc.fn_param_type_texts[target] or { []string{} }
+	param_texts := tc.fn_param_type_texts.get(target) or { []string{} }
 	mut first := 0
 	if method.kind == .selector && method.children_count > 0 {
 		if receiver := tc.vls_unconstrained_type(tc.a.child(&method, 0)) {
@@ -385,9 +385,9 @@ fn (tc &TypeChecker) vls_bind_type_params(text string, actual Type, names []stri
 // struct, an interface or a sum type.
 fn (tc &TypeChecker) vls_type_name(typ Type) string {
 	return match typ {
-		Struct { typ.name }
-		Interface { typ.name }
-		SumType { typ.name }
+		Struct { typ.name() }
+		Interface { typ.name() }
+		SumType { typ.name() }
 		else { typ.name() }
 	}
 }

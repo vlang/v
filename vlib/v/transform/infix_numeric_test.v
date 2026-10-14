@@ -265,7 +265,7 @@ fn test_checked_numeric_infix_recovers_index_alias_overrides_from_raw_element_ty
 	a.children << [lhs, rhs]
 	id := a.add_node(flat.Node{ kind: .infix, op: .plus, children_start: start, children_count: 2 })
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Count'] = 'int'
+	tc.type_aliases.set('Count', 'int')
 	// A flattened index sidecar alone must not hide a declared alias operator.
 	tc.register_synth_type(lhs, types.Type(types.int_))
 	tc.register_synth_type(rhs, types.Type(types.int_))
@@ -273,9 +273,9 @@ fn test_checked_numeric_infix_recovers_index_alias_overrides_from_raw_element_ty
 	t.skip_generics = true
 	t.cur_module = 'main'
 	t.set_var_type_with_raw('values', '[]int', '[]Count')
-	t.fn_ret_types['Count.+'] = 'Count'
-	t.fn_ret_types['Count.=='] = 'bool'
-	t.fn_ret_types['Count.<'] = 'bool'
+	t.fn_ret_types.set('Count.+', 'Count')
+	t.fn_ret_types.set('Count.==', 'bool')
+	t.fn_ret_types.set('Count.<', 'bool')
 	for op in [flat.Op.plus, .eq, .ne, .lt, .gt, .le, .ge] {
 		a.nodes[int(id)].op = op
 		assert t.operator_alias_type_for_operand(lhs, op) or { '' } == 'Count'
@@ -297,13 +297,13 @@ fn test_checked_numeric_infix_keeps_named_annotations_and_casts_on_operator_path
 	a.children << [lhs, rhs]
 	id := a.add_node(flat.Node{ kind: .infix, op: .plus, children_start: start, children_count: 2 })
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Count'] = 'int'
+	tc.type_aliases.set('Count', 'int')
 	tc.register_synth_type(lhs, types.Type(types.int_))
 	tc.register_synth_type(rhs, types.Type(types.int_))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.skip_generics = true
 	t.cur_module = 'main'
-	t.fn_ret_types['Count.+'] = 'Count'
+	t.fn_ret_types.set('Count.+', 'Count')
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	// Both textual candidates used by the original alias lookup must survive
 	// a primitive sidecar; only builtin annotations are free of nominal lookup.

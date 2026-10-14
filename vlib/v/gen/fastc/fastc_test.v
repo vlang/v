@@ -2,6 +2,7 @@
 
 module fastc
 
+import v.flat
 import os
 import strings
 import v.cmdexec
@@ -313,7 +314,7 @@ fn test_selfhost_grouped_keyword_parameter_names_are_collected() {
 	mut functions := map[string]FastcFunctionSignature{}
 	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, []int{}, map[string]bool{}, map[string]string{}, map[string]bool{}, mut functions) or { panic(err) }
 	signature := functions['pair'] or { panic('missing pair signature') }
-	assert signature.parameter_types == ['int', 'int']
+	assert signature.parameter_types_text() == ['int', 'int']
 }
 
 fn test_selfhost_generic_calls_named_shared_are_monomorphized() {
@@ -667,8 +668,8 @@ fn test_fastc_window_ranges_keeps_content_appended_after_empty_file() {
 fn test_fastc_emits_explicit_c_extern_prototype() {
 	functions := {
 		'C.external_api': FastcFunctionSignature{
-			parameter_types: ['int', 'voidptr']
-			return_type:     'int'
+			parameter_types: flat.TypeTextList.from_names(['int', 'voidptr'])
+			return_type:     flat.source_type_id('int')
 			is_c_extern:     true
 		}
 	}
@@ -5764,7 +5765,7 @@ fn test_literal_membership_materializes_candidates_before_comparison() {
 		s:        scanner.new_scanner(prefs, .normal)
 		locals:   {
 			'subject': FastcLocal{
-				typ: 'int'
+				typ: flat.source_type_id('int')
 			}
 		}
 	}
@@ -7585,7 +7586,7 @@ fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() 
 		FastcExpressionToken{
 			tok: .name
 			lit: 'array'
-			typ: 'Array_FixedArray_2_int'
+			typ: flat.source_type_id('Array_FixedArray_2_int')
 		},
 		fastc_test_expression_token(.lcbr, '{'),
 		fastc_test_expression_token(.name, 'len'),
@@ -12486,7 +12487,7 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 		locals:                 {
 			'result': FastcLocal{
 				is_mut: true
-				typ:    'voidptr'
+				typ:    flat.source_type_id('voidptr')
 			}
 		}
 		s:                      scanner.new_scanner(prefs, .normal)
@@ -12514,7 +12515,7 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 		assert g.local_scope_depth == 0
 		assert g.local_scope_changes.len == 0
 		assert 'local' !in g.locals
-		assert g.locals['result'].typ == 'voidptr'
+		assert g.locals['result'].typ_text() == 'voidptr'
 	}
 }
 
@@ -13083,7 +13084,7 @@ fn main() {
 }
 ', 'selfhost_option_field_guard.v', prefs) or { panic(err) }
 	// `if mut v := h.vsc {` where `vsc ?Conn`: the guard local `v` binds to the field`s
-	// wrapped value type (Conn) recovered from FastcStructField.option_value_type, so
+	// wrapped value type (Conn) recovered from FastcStructField.option_value_type_text(), so
 	// `v.close()` resolves to Conn_close rather than defaulting the receiver to int.
 	assert c_source.contains('Conn v = *((Conn *)'), c_source
 	assert c_source.contains('Conn_close(v)'), c_source
@@ -13450,7 +13451,7 @@ fn main() {
 	_ := kind(true)
 }
 ', 'selfhost_unaliased_typ.v', prefs) or { panic(err) }
-	// `$if T.unaliased_typ is int` (json2 encoder dispatch) resolves at comptime: the int
+	// `$if T.unaliased_typ_text() is int` (json2 encoder dispatch) resolves at comptime: the int
 	// instance takes the `1` branch, the bool instance the `0` branch.
 	assert c_source.contains('kind_mono_int'), c_source
 	assert c_source.contains('kind_mono_bool'), c_source

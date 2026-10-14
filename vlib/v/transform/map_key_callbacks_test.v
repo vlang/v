@@ -70,7 +70,7 @@ fn test_map_callbacks_resolve_aliases_and_keep_fixed_array_helpers() {
 			'BlockKey':  '[2]u64'
 		}
 		for name, base in aliases {
-			tc.type_aliases[name] = base
+			tc.type_aliases.set(name, base)
 			tc.type_alias_modules[name] = 'main'
 		}
 		t := Transformer{

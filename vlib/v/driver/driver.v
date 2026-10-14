@@ -4815,7 +4815,7 @@ fn v3_mbedtls_default_header_context(a &flat.FlatAst, flags []string) bool {
 		}
 		if node.value in ['define', 'undef'] {
 			// These builtin callback wrappers do not alter header declarations.
-			if node.value != 'define' || node.typ !in [
+			if node.value != 'define' || node.typ_text() !in [
 				'v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))',
 				'v_gc_get_warn_proc() ((void *)GC_get_warn_proc())',
 				'v_gc_set_abort_func(cb) GC_set_abort_func((GC_abort_func)(cb))',
@@ -6508,7 +6508,7 @@ fn c_hash_monomorph_node(initial u64, a &flat.FlatAst, id flat.NodeId, cacheable
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
 		u8(node.skip_ownership_drops()), u8(node.is_static_type_method())])
 	hash = c_hash_tag(hash, node.children_count)
-	hash = c_hash_bytes(hash, node.typ.bytes())
+	hash = c_hash_bytes(hash, node.typ_text().bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
 	if idx >= cacheable_strings.len || !cacheable_strings[idx] {
 		hash = c_hash_bytes(hash, node.value.bytes())
@@ -6618,7 +6618,7 @@ fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
 		u8(node.skip_ownership_drops()), u8(node.is_static_type_method())])
 	hash = c_hash_tag(hash, node.children_count)
-	hash = c_hash_bytes(hash, node.typ.bytes())
+	hash = c_hash_bytes(hash, node.typ_text().bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
 	if include_value {
 		hash = c_hash_bytes(hash, node.value.bytes())
@@ -6634,7 +6634,7 @@ fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool
 fn incremental_hash_fn_declaration(initial u64, node &flat.Node) u64 {
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
 		u8(node.skip_ownership_drops()), u8(node.is_static_type_method())])
-	hash = c_hash_bytes(hash, node.typ.bytes())
+	hash = c_hash_bytes(hash, node.typ_text().bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
 	hash = c_hash_bytes(hash, node.value.bytes())
 	hash = c_hash_bytes(hash, [u8(0xff)])
@@ -7161,7 +7161,7 @@ fn encode_monomorph_cache_specs(specs []transform.MonomorphCacheSpec) string {
 		if spec.module in ['', 'main'] {
 			continue
 		}
-		lines << '${spec.decl_key}\t${spec.module}\t${spec.args.join('\x1f')}'
+		lines << '${spec.decl_key}\t${spec.module}\t${spec.args_text().join('\x1f')}'
 	}
 	return lines.join('\n')
 }
@@ -7181,7 +7181,7 @@ fn decode_monomorph_cache_specs(encoded string) []transform.MonomorphCacheSpec {
 		specs << transform.MonomorphCacheSpec{
 			decl_key: parts[0].clone()
 			module:   parts[1].clone()
-			args:     clone_string_list(raw_args)
+			args:     flat.TypeTextList.from_names(clone_string_list(raw_args))
 		}
 	}
 	return specs
@@ -7218,7 +7218,7 @@ fn clone_monomorph_cache_specs(specs []transform.MonomorphCacheSpec) []transform
 		cloned << transform.MonomorphCacheSpec{
 			decl_key: spec.decl_key.clone()
 			module:   spec.module.clone()
-			args:     clone_string_list(spec.args)
+			args:     spec.args.clone()
 		}
 	}
 	return cloned
@@ -7227,11 +7227,11 @@ fn clone_monomorph_cache_specs(specs []transform.MonomorphCacheSpec) []transform
 fn merge_monomorph_cache_specs(cached []transform.MonomorphCacheSpec, generated []transform.MonomorphCacheSpec) []transform.MonomorphCacheSpec {
 	mut by_key := map[string]transform.MonomorphCacheSpec{}
 	for spec in cached {
-		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args.join('\x1f')}'
+		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args_text().join('\x1f')}'
 		by_key[key] = spec
 	}
 	for spec in generated {
-		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args.join('\x1f')}'
+		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args_text().join('\x1f')}'
 		by_key[key] = spec
 	}
 	mut keys := by_key.keys()
@@ -7242,7 +7242,7 @@ fn merge_monomorph_cache_specs(cached []transform.MonomorphCacheSpec, generated 
 		merged << transform.MonomorphCacheSpec{
 			decl_key: spec.decl_key.clone()
 			module:   spec.module.clone()
-			args:     clone_string_list(spec.args)
+			args:     spec.args.clone()
 		}
 	}
 	return merged
@@ -7283,9 +7283,6 @@ fn scoped_value_owned(scope voidptr, ptr voidptr) bool {
 fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
 		node.value = node.value.clone()
-	}
-	if node.typ.len > 0 && scoped_value_owned(scope, node.typ.str) {
-		node.typ = node.typ.clone()
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
@@ -7419,12 +7416,6 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
 		node.value = ast.intern_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
 	}
-	if node.typ.len > 0 && scoped_value_owned(scope, node.typ.str) {
-		node.typ = ast.intern_text_ptr_cached(node.typ, mut cache_ptrs, mut cache_vals)
-	}
-	if node.type_text_id() == 0 && node.typ.len > 0 {
-		node.set_type_text_id(ast.type_text_id(node.typ))
-	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
 		return
@@ -7459,12 +7450,6 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 	mut node := unsafe { &ast.nodes[idx] }
 	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
 		_, node.value = ast.intern_text(node.value)
-	}
-	if node.typ.len > 0 && scoped_value_owned(scope, node.typ.str) {
-		_, node.typ = ast.intern_text(node.typ)
-	}
-	if node.type_text_id() == 0 && node.typ.len > 0 {
-		node.set_type_text_id(ast.type_text_id(node.typ))
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
@@ -7658,8 +7643,8 @@ fn clone_string_list_map(values map[string][]string) map[string][]string {
 fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	// Transform and specialization can grow these maps inside a disposable arena,
 	// so move both their storage and string payloads before releasing that arena.
-	tc.fn_ret_type_texts = clone_string_string_map(tc.fn_ret_type_texts)
-	tc.fn_param_type_texts = clone_string_list_map(tc.fn_param_type_texts)
+	tc.fn_ret_type_texts = tc.fn_ret_type_texts.clone_owned()
+	tc.fn_param_type_texts = tc.fn_param_type_texts.clone_owned()
 	tc.fn_generic_params = clone_string_list_map(tc.fn_generic_params)
 	tc.mut_receiver_methods = clone_string_bool_map(tc.mut_receiver_methods)
 	tc.c_variadic_fns = clone_string_bool_map(tc.c_variadic_fns)
@@ -7675,7 +7660,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.struct_error_embeds_shadow_builtin =
 		clone_string_bool_map(tc.struct_error_embeds_shadow_builtin)
 	tc.struct_generic_params = clone_string_list_map(tc.struct_generic_params)
-	tc.struct_implements = clone_string_list_map(tc.struct_implements)
+	tc.struct_implements = tc.struct_implements.clone_owned()
 	tc.struct_shared_fields = clone_string_bool_map(tc.struct_shared_fields)
 	tc.struct_field_c_abi_fns = clone_string_string_map(tc.struct_field_c_abi_fns)
 	tc.unions = clone_string_bool_map(tc.unions)
@@ -7683,7 +7668,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.c_typedef_structs = clone_string_bool_map(tc.c_typedef_structs)
 	tc.type_alias_generic_params = clone_string_list_map(tc.type_alias_generic_params)
 	tc.type_alias_c_abi_fns = clone_string_string_map(tc.type_alias_c_abi_fns)
-	tc.sum_types = clone_string_list_map(tc.sum_types)
+	tc.sum_types = tc.sum_types.clone_owned()
 	tc.sum_generic_params = clone_string_list_map(tc.sum_generic_params)
 	tc.enum_names = clone_string_bool_map(tc.enum_names)
 	tc.enum_fields = clone_string_list_map(tc.enum_fields)
@@ -7691,7 +7676,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.interface_names = clone_string_bool_map(tc.interface_names)
 	tc.interface_generic_params = clone_string_list_map(tc.interface_generic_params)
 	tc.interface_fields = clone_struct_field_map(tc.interface_fields)
-	tc.interface_embeds = clone_string_list_map(tc.interface_embeds)
+	tc.interface_embeds = tc.interface_embeds.clone_owned()
 	tc.interface_abstract_methods = clone_string_list_map(tc.interface_abstract_methods)
 }
 
@@ -8772,7 +8757,7 @@ fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, r
 				}
 			}
 		}
-		mut type_names := [node.typ, node.value]
+		mut type_names := [node.typ_text(), node.value]
 		if node.generic_params().len > 0 && node.value.len > 0 {
 			type_names << '${node.value}[${node.generic_params().join(', ')}]'
 		}
@@ -9112,7 +9097,7 @@ fn v3_ast_node_uses_interop_namespace(a &flat.FlatAst, node &flat.Node, namespac
 		&& node.value.starts_with(namespace + '.') {
 		return true
 	}
-	return v3_type_text_uses_interop_namespace(node.typ, namespace)
+	return v3_type_text_uses_interop_namespace(node.typ_text(), namespace)
 }
 
 fn v3_explicit_interop_fn_namespace(node &flat.Node, file string, mut source_cache map[string]string) string {
@@ -13922,7 +13907,7 @@ pub fn run(args []string) {
 				// disposable arena is active. Re-own the table before releasing that arena;
 				// interface snapshotting below iterates every alias, including otherwise
 				// unreachable callback aliases.
-				pre_tc.type_aliases = clone_string_string_map(pre_tc.type_aliases)
+				pre_tc.type_aliases = pre_tc.type_aliases.clone_owned()
 				// Transform-time type queries can append diagnostics while the stage arena
 				// is active. Rehome both the containers and their text before releasing it;
 				// annotation consults existing errors when resolving lowered expressions.
@@ -13959,7 +13944,7 @@ pub fn run(args []string) {
 						if node.value.len > 0 && scoped_value_owned(transform_scope, node.value.str) {
 							leaked_nv++
 						}
-						if node.typ.len > 0 && scoped_value_owned(transform_scope, node.typ.str) {
+						if node.typ_text().len > 0 && scoped_value_owned(transform_scope, node.typ_text().str) {
 							leaked_nt++
 						}
 					}
@@ -14319,7 +14304,7 @@ pub fn run(args []string) {
 	// Transform and monomorphization can synthesize or rewrite payload text.
 	// They run with private/arena-backed worker state; publish only canonical,
 	// compilation-owned strings after all worker merges are complete.
-	// Type annotation can rewrite node.typ after the transform arenas have been
+	// Type annotation can rewrite node.typ_text() after the transform arenas have been
 	// promoted, so preallocated builds must republish those final strings — but
 	// annotation only runs outside -building-v builds. Self-host builds skip
 	// it, and their transform-canonical texts are already final, so this
@@ -16272,7 +16257,7 @@ fn checker_fixture_missing_header(a &flat.FlatAst, user_files []string, c_compil
 		if node.kind != .directive || node.value != 'include' {
 			continue
 		}
-		raw_target, explanation := checker_fixture_include_target_message(node.typ)
+		raw_target, explanation := checker_fixture_include_target_message(node.typ_text())
 		target := checker_fixture_resolve_include_define(raw_target, user_defines)
 		if target.len < 3 || checker_fixture_header_exists(target, current_file, c_compiler) {
 			continue
@@ -19891,7 +19876,7 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 		diagnose_aggregates := tc.diagnostic_files.len == 0 || root_file in tc.diagnostic_files
 		fallback_location := backend_fn_location(a, node)
 		if backend == 'wasm' && diagnose_aggregates {
-			return_type := tc.parse_resolution_type(node.typ)
+			return_type := tc.parse_resolution_type(node.typ_text())
 			if return_type is types.OptionType {
 				return '${fallback_location}error: option types are not implemented by the V wasm backend'
 			}
@@ -20014,7 +19999,7 @@ fn wasm_struct_origin_type(a &flat.FlatAst, id flat.NodeId) string {
 	}
 	node := a.nodes[idx]
 	if node.kind == .struct_init {
-		return node.typ.trim_string_left('main.')
+		return node.typ_text().trim_string_left('main.')
 	}
 	if node.kind in [.selector, .cast_expr, .paren] && node.children_count > 0 {
 		return wasm_struct_origin_type(a, a.child(&node, 0))
@@ -20352,14 +20337,14 @@ fn is_supported_test_harness_fn(a &flat.FlatAst, tc &types.TypeChecker, node &fl
 	if test_harness_fn_param_count(a, node) != 0 {
 		return false
 	}
-	return test_harness_fn_return_supported(tc.parse_type(node.typ))
+	return test_harness_fn_return_supported(tc.parse_type(node.typ_text()))
 }
 
 fn is_supported_test_harness_hook(a &flat.FlatAst, tc &types.TypeChecker, node &flat.Node) bool {
 	if node.generic_params().len > 0 {
 		return false
 	}
-	return test_harness_fn_param_count(a, node) == 0 && tc.parse_type(node.typ) is types.Void
+	return test_harness_fn_param_count(a, node) == 0 && tc.parse_type(node.typ_text()) is types.Void
 }
 
 fn test_harness_fn_param_count(a &flat.FlatAst, node &flat.Node) int {
@@ -20594,12 +20579,12 @@ fn skipped_backend_module_groups(prefs &pref.Preferences) [][]string {
 
 struct ImplicitFieldScanIndex {
 mut:
-	aliases     map[string]string
+	aliases     flat.TypeTextBindings
 	imports     map[string]bool
-	fields      map[string]map[string]string
+	fields      map[string]flat.TypeTextBindings
 	enum_fields map[string]map[string]bool
-	fn_returns  map[string]string
-	globals     map[string]string
+	fn_returns  flat.TypeTextBindings
+	globals     flat.TypeTextBindings
 	// record, when set, notes the writes to this index, and the keys asked of
 	// it (see PreparedScan).
 	record &ImplicitIndexRecord = unsafe { nil }
@@ -20626,8 +20611,8 @@ mut:
 struct ImplicitIndexOp {
 	kind        ImplicitIndexOpKind
 	key         string
-	value       string
-	fields      map[string]string
+	value       u32
+	fields      flat.TypeTextBindings
 	enum_fields map[string]bool
 }
 
@@ -20677,7 +20662,7 @@ fn (mut index ImplicitFieldScanIndex) apply(op ImplicitIndexOp) {
 			index.imports[op.key] = true
 		}
 		.alias {
-			index.aliases[op.key] = op.value
+			index.aliases.set_id(op.key, op.value)
 		}
 		.fields {
 			index.fields[op.key] = op.fields.clone()
@@ -20686,28 +20671,28 @@ fn (mut index ImplicitFieldScanIndex) apply(op ImplicitIndexOp) {
 			index.enum_fields[op.key] = op.enum_fields.clone()
 		}
 		.fn_return {
-			if old := index.fn_returns[op.key] {
+			if old := index.fn_returns.type_id(op.key) {
 				if old != op.value {
-					index.fn_returns[op.key] = ''
+					index.fn_returns.set_id(op.key, 0)
 				}
 			} else {
-				index.fn_returns[op.key] = op.value
+				index.fn_returns.set_id(op.key, op.value)
 			}
 		}
 		.global {
-			index.globals[op.key] = op.value
+			index.globals.set_id(op.key, op.value)
 		}
 	}
 }
 
 fn (index &ImplicitFieldScanIndex) clone() ImplicitFieldScanIndex {
 	return ImplicitFieldScanIndex{
-		aliases:     index.aliases.clone()
+		aliases:     index.aliases.fork()
 		imports:     index.imports.clone()
 		fields:      index.fields.clone()
 		enum_fields: index.enum_fields.clone()
-		fn_returns:  index.fn_returns.clone()
-		globals:     index.globals.clone()
+		fn_returns:  index.fn_returns.fork()
+		globals:     index.globals.fork()
 	}
 }
 
@@ -20891,7 +20876,7 @@ fn sync_import_node() flat.Node {
 	return flat.Node{
 		kind:  .import_decl
 		value: 'sync'
-		typ:   'sync'
+		typ:   flat.source_type_id('sync')
 	}
 }
 
@@ -20993,7 +20978,7 @@ fn embed_file_import_node() flat.Node {
 	return flat.Node{
 		kind:  .import_decl
 		value: 'v.embed_file'
-		typ:   'embed_file'
+		typ:   flat.source_type_id('embed_file')
 	}
 }
 
@@ -21004,7 +20989,7 @@ fn closure_import_node() flat.Node {
 		// This node is appended in the last user file's scope. A compiler-private
 		// alias prevents it from overwriting a user import named `closure`; generated
 		// runtime calls already use the resolved `closure.*` declaration keys.
-		typ:   closure_runtime_import_alias
+		typ:   flat.source_type_id(closure_runtime_import_alias)
 	}
 }
 
@@ -21012,7 +20997,7 @@ fn debugger_import_node() flat.Node {
 	return flat.Node{
 		kind:  .import_decl
 		value: 'v.debug'
-		typ:   '__v3_debugger_runtime'
+		typ:   flat.source_type_id('__v3_debugger_runtime')
 	}
 }
 
@@ -21020,7 +21005,7 @@ fn overflow_import_node() flat.Node {
 	return flat.Node{
 		kind:  .import_decl
 		value: 'builtin.overflow'
-		typ:   '__v3_builtin_overflow_runtime'
+		typ:   flat.source_type_id('__v3_builtin_overflow_runtime')
 	}
 }
 
@@ -21043,7 +21028,7 @@ fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool, builtin_
 		a.nodes << flat.Node{
 			kind:  .import_decl
 			value: import_path
-			typ:   import_path.all_after_last('.')
+			typ:   flat.source_type_id(import_path.all_after_last('.'))
 		}
 	}
 	a.intern_node_texts_from(start)
@@ -21104,12 +21089,12 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		}
 		if !scan.needs_sync {
 			if node.kind == .lock_expr
-				|| (node.kind in [.field_decl, .param] && type_text_is_shared(node.typ))
+				|| (node.kind in [.field_decl, .param] && type_text_is_shared(node.typ_text()))
 				|| (node.kind == .decl_assign && decl_assign_value_is_shared(node.value))
 				|| (node.kind == .struct_init && node.value.starts_with('chan '))
 				|| (node.kind == .infix && node.op == .arrow)
 				|| (node.kind == .prefix && node.op == .arrow)
-				|| (node.typ.len > 0 && type_text_is_channel(node.typ)) {
+				|| (node.typ_text().len > 0 && type_text_is_channel(node.typ_text())) {
 				scan.needs_sync = true
 			}
 		}
@@ -21567,7 +21552,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 	mut selectors := map[int]bool{}
 	// The maps and lists of one function, emptied for the next: a program has
 	// thousands of functions.
-	mut bindings := map[string]string{}
+	mut bindings := flat.TypeTextBindings{}
 	mut ambiguous := map[string]bool{}
 	mut local_names := map[string]bool{}
 	mut candidates := []flat.NodeId{}
@@ -21592,10 +21577,10 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 			child := a.node(child_id)
 			if child.kind == .param {
 				local_names[child.value] = true
-				if child.value in bindings {
+				if bindings.contains(child.value) {
 					ambiguous[child.value] = true
-				} else if child.typ.len > 0 {
-					bindings[child.value] = implicit_normalize_type(child.typ, index)
+				} else if child.typ_text().len > 0 {
+					bindings.set(child.value, implicit_normalize_type(child.typ_text(), index))
 				}
 			} else {
 				stack << child_id
@@ -21620,7 +21605,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 					if lhs.kind == .ident {
 						local_names[lhs.value] = true
 					}
-					if lhs.kind == .ident && lhs.value in bindings {
+					if lhs.kind == .ident && bindings.contains(lhs.value) {
 						ambiguous[lhs.value] = true
 					}
 				}
@@ -21677,13 +21662,13 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 							continue
 						}
 						normalized := implicit_normalize_type(typ, index)
-						if old := bindings[lhs.value] {
+						if old := bindings.get(lhs.value) {
 							if old != normalized {
 								ambiguous[lhs.value] = true
 								dropped = true
 							}
 						} else {
-							bindings[lhs.value] = normalized
+							bindings.set(lhs.value, normalized)
 							changed = true
 						}
 					}
@@ -21694,7 +21679,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 			}
 			if !dropped {
 				for name in untyped {
-					if name in bindings && name !in ambiguous {
+					if bindings.contains(name) && name !in ambiguous {
 						ambiguous[name] = true
 						dropped = true
 					}
@@ -21706,8 +21691,8 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 			bindings.clear()
 			for child_idx in 0 .. fn_node.children_count {
 				child := a.child_node(&fn_node, child_idx)
-				if child.kind == .param && child.typ.len > 0 && child.value !in bindings {
-					bindings[child.value] = implicit_normalize_type(child.typ, index)
+				if child.kind == .param && child.typ_text().len > 0 && !bindings.contains(child.value) {
+					bindings.set(child.value, implicit_normalize_type(child.typ_text(), index))
 				}
 			}
 		}
@@ -21808,7 +21793,11 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 		node_ref := a.node(flat.NodeId(idx))
 		match node.kind {
 			.import_decl {
-				alias := if node.typ.len > 0 { node.typ } else { node.value.all_after_last('.') }
+				alias := if node.typ_text().len > 0 {
+					node.typ_text()
+				} else {
+					node.value.all_after_last('.')
+				}
 				if file := a.source_files[node.pos.id] {
 					key := '${file.name}\n${alias}'
 					index.write(ImplicitIndexOp{
@@ -21819,24 +21808,24 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				}
 			}
 			.type_decl {
-				if node.value.len > 0 && node.typ.len > 0 {
+				if node.value.len > 0 && node.typ_text().len > 0 {
 					index.write(ImplicitIndexOp{
 						kind:  .alias
 						key:   node.value
 						value: node.typ
 					})
-					index.aliases[node.value] = node.typ
+					index.aliases.set_id(node.value, node.typ)
 				}
 			}
 			.struct_decl {
-				mut declared := map[string]string{}
+				mut declared := flat.TypeTextBindings{}
 				for child_idx in 0 .. node.children_count {
 					field := a.child_node(node_ref, child_idx)
 					if field.kind == .field_decl && field.value.len > 0 {
-						declared[field.value] = field.typ
+						declared.set_id(field.value, field.typ)
 					}
 				}
-				if declared.len > 0 {
+				if declared.ids.len > 0 {
 					index.write(ImplicitIndexOp{
 						kind:   .fields
 						key:    node.value
@@ -21863,7 +21852,7 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				}
 			}
 			.fn_decl, .c_fn_decl {
-				if node.value.len == 0 || node.typ.len == 0 {
+				if node.value.len == 0 || node.typ_text().len == 0 {
 					continue
 				}
 				index.write(ImplicitIndexOp{
@@ -21871,12 +21860,12 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 					key:   node.value
 					value: node.typ
 				})
-				if old := index.fn_returns[node.value] {
+				if old := index.fn_returns.type_id(node.value) {
 					if old != node.typ {
-						index.fn_returns[node.value] = ''
+						index.fn_returns.set_id(node.value, 0)
 					}
 				} else {
-					index.fn_returns[node.value] = node.typ
+					index.fn_returns.set_id(node.value, node.typ)
 				}
 			}
 			else {}
@@ -21893,8 +21882,8 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 			if field.kind != .const_field || field.children_count == 0 {
 				continue
 			}
-			typ := if field.typ.len > 0 {
-				field.typ
+			typ := if field.typ_text().len > 0 {
+				field.typ_text()
 			} else {
 				implicit_expr_type(a, a.child(field, 0), index.globals, ImplicitFieldScanIndex{
 					...index
@@ -21906,32 +21895,32 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				index.write(ImplicitIndexOp{
 					kind:  .global
 					key:   field.value
-					value: global_type
+					value: flat.source_type_id(global_type)
 				})
-				index.globals[field.value] = global_type
+				index.globals.set(field.value, global_type)
 			}
 		}
 	}
 }
 
-fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {
+fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) string {
 	if int(id) < 0 || depth > 12 {
 		return ''
 	}
 	node := a.node(id)
-	if node.typ.len > 0 {
-		return implicit_normalize_type(node.typ, index)
+	if node.typ_text().len > 0 {
+		return implicit_normalize_type(node.typ_text(), index)
 	}
 	match node.kind {
 		.ident {
 			if index.bindings_are_globals {
 				index.read('g:', node.value)
 			}
-			if typ := bindings[node.value] {
+			if typ := bindings.get(node.value) {
 				return typ
 			}
 			index.read('g:', node.value)
-			if typ := index.globals[node.value] {
+			if typ := index.globals.get(node.value) {
 				return typ
 			}
 			index.read('f:', node.value)
@@ -21967,7 +21956,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 			return '[]void'
 		}
 		.map_init {
-			return if node.typ.len > 0 { node.typ } else { 'map[void]void' }
+			return if node.typ_text().len > 0 { node.typ_text() } else { 'map[void]void' }
 		}
 		.struct_init {
 			return implicit_normalize_type(node.value, index)
@@ -22079,8 +22068,8 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 			}
 		}
 		.cast_expr, .as_expr {
-			if node.typ.len > 0 {
-				return implicit_normalize_type(node.typ, index)
+			if node.typ_text().len > 0 {
+				return implicit_normalize_type(node.typ_text(), index)
 			}
 			if node.value.len > 0 {
 				return implicit_normalize_type(node.value, index)
@@ -22095,7 +22084,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 // implicit_match_type types a `match` used as a value like an `if`: every branch value
 // must have the same type. A branch that yields the matched variable under a single
 // struct type pattern yields it smartcast to that type.
-fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {
+fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) string {
 	if node.children_count < 2 {
 		return ''
 	}
@@ -22140,14 +22129,14 @@ fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings map[string]str
 	return typ
 }
 
-fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {
+fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) string {
 	if call.children_count == 0 {
 		return ''
 	}
 	callee := a.child_node(call, 0)
 	if callee.kind == .ident {
 		index.read('r:', callee.value)
-		if typ := index.fn_returns[callee.value] {
+		if typ := index.fn_returns.get(callee.value) {
 			return implicit_normalize_type(typ, index)
 		}
 		return ''
@@ -22168,7 +22157,7 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[stri
 	if base_type.len > 0 {
 		for key in ['${base_type}.${callee.value}', '${base_type.all_after_last('.')}.${callee.value}'] {
 			index.read('r:', key)
-			if typ := index.fn_returns[key] {
+			if typ := index.fn_returns.get(key) {
 				return implicit_normalize_type(typ, index)
 			}
 		}
@@ -22208,7 +22197,7 @@ fn implicit_field_type(raw_type string, field string, index ImplicitFieldScanInd
 	}
 	index.read('f:', typ)
 	if declared := index.fields[typ] {
-		if field_type := declared[field] {
+		if field_type := declared.get(field) {
 			return implicit_normalize_type(field_type, index)
 		}
 	}
@@ -22233,7 +22222,7 @@ fn implicit_normalize_type(raw string, index ImplicitFieldScanIndex) string {
 			}
 		}
 		index.read('a:', typ)
-		if target := index.aliases[typ] {
+		if target := index.aliases.get(typ) {
 			typ = implicit_trim_space(target)
 			changed = true
 		}
@@ -24151,7 +24140,6 @@ fn set_node_value_canonical(mut a flat.FlatAst, idx int, value string) {
 fn canonical_node_texts(mut a flat.FlatAst, node flat.Node) flat.Node {
 	mut canonical := node
 	_, canonical.value = a.intern_text(node.value)
-	_, canonical.typ = a.intern_text(node.typ)
 	return canonical
 }
 

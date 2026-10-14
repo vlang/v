@@ -176,7 +176,7 @@ fn main() {}
 			typ := tc.const_types['values'] or { panic('missing values') }
 			array_type := tc.expr_type(array_id) or { panic('missing array') }
 			assert tc.known_numeric_const_initializer(id, typ)
-			tc.register_synth_type(array_id, Type(Alias{ name: 'Wrapped', base_type: array_type }))
+			tc.register_synth_type(array_id, Type(Alias{ name_id: flat.source_type_id('Wrapped'), base_type: array_type }))
 			assert !tc.known_numeric_const_initializer(id, typ)
 			tc.register_synth_type(array_id, Type(OptionType{ base_type: array_type }))
 			assert !tc.known_numeric_const_initializer(id, typ)

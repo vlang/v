@@ -143,7 +143,11 @@ pub fn (mut g Gen) ssa_configuration() SSAConfiguration {
 		} else if node.kind == .module_decl && node.value !in ['', 'main', 'builtin'] {
 			source_modules[file] = g.module_path_for_file(file)
 		} else if node.kind == .import_decl && node.value.len > 0 {
-			alias := if node.typ.len > 0 { node.typ } else { node.value.all_after_last('.') }
+			alias := if node.typ_text().len > 0 {
+				node.typ_text()
+			} else {
+				node.value.all_after_last('.')
+			}
 			source_imports[file][alias] = node.value
 		}
 	}
@@ -462,13 +466,13 @@ fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file stri
 		if p.kind != .param || p.value.len == 0 {
 			continue
 		}
-		pt := g.tc.parse_type(p.typ)
+		pt := g.tc.parse_type(p.typ_text())
 		w := prim_wtype(pt) or { return none }
 		params << w
 	}
 	mut ret := WType.void
-	if node.typ.len > 0 && node.typ != 'void' {
-		rt := g.tc.parse_type(node.typ)
+	if node.typ_text().len > 0 && node.typ_text() != 'void' {
+		rt := g.tc.parse_type(node.typ_text())
 		ret = prim_wtype(rt) or { return none }
 	}
 	return FnInfo{
@@ -535,7 +539,7 @@ fn (mut g Gen) emit_user_fn(f FnInfo) {
 			continue
 		}
 		w := f.params[pi]
-		pt := g.tc.parse_type(p.typ)
+		pt := g.tc.parse_type(p.typ_text())
 		g.var_index[p.value] = pi
 		g.var_wtype[p.value] = w
 		g.var_unsigned[p.value] = type_is_unsigned(pt)
@@ -695,9 +699,9 @@ fn (mut g Gen) gen_decl_assign(node flat.Node) {
 	}
 	lhs := g.a.child_node(&node, 0)
 	rhs_id := g.a.child(&node, 1)
-	w := g.expr_wtype(rhs_id, node.typ)
-	uns := g.decl_is_unsigned(rhs_id, node.typ)
-	width := g.decl_width(rhs_id, node.typ)
+	w := g.expr_wtype(rhs_id, node.typ_text())
+	uns := g.decl_is_unsigned(rhs_id, node.typ_text())
+	width := g.decl_width(rhs_id, node.typ_text())
 	if lhs.kind == .ident {
 		// Emit the initializer before binding the new name, so a shadowing
 		// `x := x + 1` reads the outer x rather than the fresh zero local.
@@ -720,15 +724,15 @@ fn (mut g Gen) gen_multi_decl(node flat.Node) {
 		lhs := g.a.child_node(&node, i)
 		rhs_id := g.a.child(&node, i + 1)
 		if lhs.kind == .ident {
-			w := g.expr_wtype(rhs_id, node.typ)
+			w := g.expr_wtype(rhs_id, node.typ_text())
 			g.gen_expr_as(rhs_id, w)
 			t := g.alloc_temp(w)
 			g.cur.local_set(t)
 			temps << t
 			names << lhs.value
 			ws << w
-			unss << g.decl_is_unsigned(rhs_id, node.typ)
-			widths << g.decl_width(rhs_id, node.typ)
+			unss << g.decl_is_unsigned(rhs_id, node.typ_text())
+			widths << g.decl_width(rhs_id, node.typ_text())
 		}
 		i += 2
 	}
@@ -1339,7 +1343,7 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 	// arithmetic / bitwise: in V both operands share the result type, so combine
 	// the node's own type with the operand-derived width (the latter recovers
 	// i64/float when the node type is missing).
-	ow := combine_wtype(g.expr_wtype(id, node.typ), g.operand_wtype(lhs_id, rhs_id))
+	ow := combine_wtype(g.expr_wtype(id, node.typ_text()), g.operand_wtype(lhs_id, rhs_id))
 	// div/rem opcode signedness must follow the promoted result, so an unsigned
 	// operand (e.g. `4000000000 / u32(2)`) selects div_u/rem_u, not the lhs.
 	signed := !g.is_unsigned(id) && !g.is_unsigned(lhs_id) && !g.is_unsigned(rhs_id)
@@ -1634,11 +1638,11 @@ fn (mut g Gen) collect_imports() {
 			cur_file = node.value
 		} else if node.kind == .import_decl && node.value.len > 0 {
 			g.import_paths << node.value
-			if node.typ.len > 0 {
+			if node.typ_text().len > 0 {
 				if cur_file !in g.file_aliases {
 					g.file_aliases[cur_file] = map[string]string{}
 				}
-				g.file_aliases[cur_file][node.typ] = node.value
+				g.file_aliases[cur_file][node.typ_text()] = node.value
 			}
 		}
 	}
@@ -1704,8 +1708,8 @@ fn (mut g Gen) collect_globals() {
 			}
 			// Type from the declaration, or inferred from the initializer.
 			mut t := types.Type(types.Void{})
-			if f.typ.len > 0 {
-				t = g.tc.parse_type(f.typ)
+			if f.typ_text().len > 0 {
+				t = g.tc.parse_type(f.typ_text())
 			} else if f.children_count > 0 {
 				t = g.tc.resolve_type(g.a.child(f, 0))
 			}

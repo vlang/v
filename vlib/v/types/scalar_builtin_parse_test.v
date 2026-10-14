@@ -51,7 +51,7 @@ fn test_scalar_parser_keeps_recursive_alias_and_type_parameter_precedence() {
 	assert tc.type_count() == 0
 	tc.type_cache.alias_parse_stack.clear()
 	assert tc.parse_type('u64') == builtin_type_value('u64')
-	tc.type_param_texts['u64'] = 'string'
+	tc.type_param_texts.set('u64', 'string')
 	assert tc.parse_type('u64') is String
 	assert tc.type_cache.parse_entries.len == 1
 }
@@ -61,9 +61,9 @@ fn test_scalar_parser_keeps_builtin_nominal_precedence_and_array_map_context() {
 	mut tc := TypeChecker.new(&a)
 	tc.set_fresh_type_cache(true)
 	tc.cur_module = 'shadow'
-	tc.type_aliases['u64'] = 'string'
-	tc.type_aliases['shadow.u64'] = 'string'
-	tc.sum_types['u64'] = ['string', 'int']
+	tc.type_aliases.set('u64', 'string')
+	tc.type_aliases.set('shadow.u64', 'string')
+	tc.sum_types.set('u64', ['string', 'int'])
 	tc.interface_names['u64'] = true
 	assert tc.parse_type('u64') == builtin_type_value('u64')
 	assert tc.parse_type('&u64') is Pointer

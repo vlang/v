@@ -202,7 +202,7 @@ fn test_native_c_tm_uses_the_platform_abi_layout() {
 fn test_native_task_basic_info_uses_the_platform_abi_layout() {
 	abi := native_c_struct_abi('C.task_basic_info', 8) or { panic('missing task info ABI') }
 	assert abi.field_names[1] == 'resident_size'
-	assert abi.field_types == ['u64', 'u64', 'u64', 'i32', 'i32', 'i32', 'i32', 'i32', 'i32']
+	assert abi.field_types_text() == ['u64', 'u64', 'u64', 'i32', 'i32', 'i32', 'i32', 'i32', 'i32']
 	assert native_c_struct_abi('C.other', 8) == none
 }
 
@@ -210,8 +210,8 @@ fn test_native_task_basic_info_uses_the_platform_abi_layout() {
 fn test_native_rusage_uses_the_platform_abi_layout() {
 	abi := native_c_struct_abi('C.rusage', 8) or { panic('missing rusage ABI') }
 	assert abi.field_names[4] == 'ru_maxrss'
-	assert abi.field_types.len == 18
-	assert abi.field_types.all(it == 'i64')
+	assert abi.field_types_text().len == 18
+	assert abi.field_types_text().all(it == 'i64')
 	assert '_proc_pid_rusage' in arm64_force_external_syms
 }
 
@@ -226,7 +226,7 @@ fn test_native_darwin_pthread_types_use_the_platform_abi_layout() {
 	for name, field_type in expected {
 		abi := native_c_struct_abi(name, 8) or { panic('missing ${name} ABI') }
 		assert abi.field_names == ['opaque']
-		assert abi.field_types == [field_type]
+		assert abi.field_types_text() == [field_type]
 	}
 }
 
@@ -323,7 +323,7 @@ fn test_map_clone_uses_the_runtime_pointer_abi() {
 		assert f.params.len == 1
 		param_type := m.type_store.types[m.values[f.params[0]].typ]
 		assert param_type.kind == .ptr_t
-		assert m.type_store.types[param_type.elem_type].kind == .struct_t
+		assert m.type_store.types[param_type.elem_type_text()].kind == .struct_t
 		return
 	}
 	assert false, 'missing native map clone helper'

@@ -61,7 +61,7 @@ fn test_user_native_inputs_require_a_compiler_dependency_manifest() {
 	for directive in ['include', 'insert', 'preinclude', 'postinclude'] {
 		mut included := flat.FlatAst.new()
 		included.add_val(.file, '/project/main.v')
-		included.add_node(flat.Node{ kind: .directive, value: directive, typ: '"native.h"' })
+		included.add_node(flat.Node{ kind: .directive, value: directive, typ: flat.source_type_id('"native.h"') })
 		assert native_inputs_of(&included, []string{}).user_supplied == '"native.h"'
 	}
 	for flags in [['-I', '/project/include'], ['-I/project/include'], ['-isystem/project/include'],
@@ -70,11 +70,11 @@ fn test_user_native_inputs_require_a_compiler_dependency_manifest() {
 	}
 	mut flagged := flat.FlatAst.new()
 	flagged.add_val(.file, '/project/main.v')
-	flagged.add_node(flat.Node{ kind: .directive, value: 'flag', typ: '-I /project/include' })
+	flagged.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id('-I /project/include') })
 	assert native_inputs_of(&flagged, []string{}).user_supplied == '/project/include'
 	mut packaged := flat.FlatAst.new()
 	packaged.add_val(.file, '/project/main.v')
-	packaged.add_node(flat.Node{ kind: .directive, value: 'pkgconfig', typ: 'sdl2' })
+	packaged.add_node(flat.Node{ kind: .directive, value: 'pkgconfig', typ: flat.source_type_id('sdl2') })
 	assert native_inputs_of(&packaged, []string{}).user_supplied == '#pkgconfig sdl2'
 }
 
@@ -82,14 +82,14 @@ fn test_shipped_and_system_native_inputs_keep_the_caches() {
 	helper := os.real_path(os.join_path(@VEXEROOT, 'vlib', 'v', 'flat', 'flat_payload_helpers.h'))
 	mut a := flat.FlatAst.new()
 	a.add_val(.file, '/project/main.v')
-	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: '<stddef.h>' })
-	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: '"@VEXEROOT/vlib/v/flat/flat_payload_helpers.h"' })
-	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: '-I @VEXEROOT/thirdparty/stdatomic/nix -lm -DV_NATIVE_TEST=1' })
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('<stddef.h>') })
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"@VEXEROOT/vlib/v/flat/flat_payload_helpers.h"') })
+	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id('-I @VEXEROOT/thirdparty/stdatomic/nix -lm -DV_NATIVE_TEST=1') })
 	// A module shipped with V may leave a header to the C compiler's search path.
 	a.add_val(.file, os.join_path(@VEXEROOT, 'vlib', 'os', 'os.c.v'))
 	a.add_val(.module_decl, 'os')
-	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: '"not_shipped_system_header.h"' })
-	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: '-I/opt/native/include' })
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"not_shipped_system_header.h"') })
+	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id('-I/opt/native/include') })
 	inputs := native_inputs_of(&a, ['-g', '-O2', '-D GC_THREADS=1', '-lm'])
 	assert inputs.user_supplied == ''
 	assert inputs.module_inputs['main'] == [helper]
@@ -197,7 +197,7 @@ fn test_native_dependency_list_uses_compiler_manifest_without_reading_headers() 
 	os.chmod(compiler, 0o755)!
 	mut a := flat.FlatAst.new()
 	a.add_val(.file, os.join_path(root, 'main.c.v'))
-	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: '"@DIR/native.h"' })
+	a.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"@DIR/native.h"') })
 	prefs := pref.new_preferences()
 	mut expected := [header, nested].map(os.real_path(it))
 	expected.sort()

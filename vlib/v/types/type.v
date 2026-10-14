@@ -1,5 +1,7 @@
 module types
 
+import v.flat
+
 // Type aliases type values used by types.
 pub type Type = Void
 	| Unknown
@@ -147,32 +149,32 @@ pub:
 // Struct represents struct data used by types.
 pub struct Struct {
 pub:
-	name string
+	name_id u32
 }
 
 // Interface represents interface data used by types.
 pub struct Interface {
 pub:
-	name string
+	name_id u32
 }
 
 // Enum represents enum data used by types.
 pub struct Enum {
 pub:
-	name    string
+	name_id u32
 	is_flag bool
 }
 
 // SumType represents sum type data used by types.
 pub struct SumType {
 pub:
-	name string
+	name_id u32
 }
 
 // Alias represents alias data used by types.
 pub struct Alias {
 pub:
-	name      string
+	name_id   u32
 	base_type Type
 }
 
@@ -269,28 +271,28 @@ pub fn clone_owned_type(value Type) Type {
 		}
 		Struct {
 			Type(Struct{
-				name: value.name.clone()
+				name_id: value.name_id
 			})
 		}
 		Interface {
 			Type(Interface{
-				name: value.name.clone()
+				name_id: value.name_id
 			})
 		}
 		Enum {
 			Type(Enum{
-				name:    value.name.clone()
+				name_id: value.name_id
 				is_flag: value.is_flag
 			})
 		}
 		SumType {
 			Type(SumType{
-				name: value.name.clone()
+				name_id: value.name_id
 			})
 		}
 		Alias {
 			Type(Alias{
-				name:      value.name.clone()
+				name_id:   value.name_id
 				base_type: clone_owned_type(value.base_type)
 			})
 		}
@@ -412,10 +414,10 @@ pub fn (t Type) name() string {
 		return 'void'
 	}
 	if t is Struct {
-		return t.name
+		return flat.source_type_name(t.name_id)
 	}
 	if t is Alias {
-		return t.name
+		return flat.source_type_name(t.name_id)
 	}
 	if t is Primitive {
 		return prim_name_from(t.props, t.size)
@@ -430,13 +432,13 @@ pub fn (t Type) name() string {
 		return '[]${nested_type_name(t.elem_type)}'
 	}
 	if t is Interface {
-		return t.name
+		return flat.source_type_name(t.name_id)
 	}
 	if t is Enum {
-		return t.name
+		return flat.source_type_name(t.name_id)
 	}
 	if t is SumType {
-		return t.name
+		return flat.source_type_name(t.name_id)
 	}
 	if t is String {
 		return 'string'
@@ -600,4 +602,34 @@ fn prim_name(t Primitive) string {
 		}
 	}
 	return 'int'
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Alias) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Enum) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Interface) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value Struct) name() string {
+	return flat.source_type_name(value.name_id)
+}
+
+// name returns the canonical spelling of this nominal type.
+@[inline]
+pub fn (value SumType) name() string {
+	return flat.source_type_name(value.name_id)
 }

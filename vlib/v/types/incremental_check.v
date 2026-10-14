@@ -386,7 +386,7 @@ fn incremental_write_node(mut b strings.Builder, node &flat.Node, children int) 
 	b.write_u8(if node.is_mut { `m` } else { `-` })
 	b.write_decimal(i64(children))
 	b.write_u8(0)
-	b.write_string(node.typ)
+	b.write_string(node.typ_text())
 	b.write_u8(0)
 	b.write_string(node.value)
 	b.write_u8(0)
@@ -398,7 +398,7 @@ fn incremental_write_node(mut b strings.Builder, node &flat.Node, children int) 
 				b.write_u8(1)
 			}
 			b.write_u8(2)
-			for constraint in payload.generic_constraints {
+			for constraint in payload.generic_constraints.names() {
 				b.write_string(constraint)
 				b.write_u8(1)
 			}
@@ -988,7 +988,7 @@ fn (tc &TypeChecker) incremental_touches_generics(f IncrementalFunction, generic
 		if node.kind in [.ident, .selector] && incremental_names_generic_fn(node.value, generic_fns) {
 			return true
 		}
-		if type_text_mentions_generic_application(node.typ) {
+		if type_text_mentions_generic_application(node.typ_text()) {
 			return true
 		}
 		id := flat.NodeId(idx)
@@ -1029,10 +1029,10 @@ fn incremental_names_generic_fn(name string, generic_fns map[string]bool) bool {
 // instance of a generic type, as `Box[int]` and `[]Box[int]` do.
 fn type_mentions_generic_application(typ Type) bool {
 	return match typ {
-		Struct { typ.name.contains('[') }
-		Interface { typ.name.contains('[') }
-		SumType { typ.name.contains('[') }
-		Alias { typ.name.contains('[') || type_mentions_generic_application(typ.base_type) }
+		Struct { typ.name().contains('[') }
+		Interface { typ.name().contains('[') }
+		SumType { typ.name().contains('[') }
+		Alias { typ.name().contains('[') || type_mentions_generic_application(typ.base_type) }
 		Array { type_mentions_generic_application(typ.elem_type) }
 		ArrayFixed { type_mentions_generic_application(typ.elem_type) }
 		Channel { type_mentions_generic_application(typ.elem_type) }

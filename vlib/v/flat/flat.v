@@ -198,7 +198,7 @@ pub:
 	// The constraint each type parameter names, `Named` in `[T Named]`, as it is
 	// written: empty for a parameter without one, and no list at all when none
 	// of them names one.
-	generic_constraints []string
+	generic_constraints TypeTextList
 }
 
 // Comment retains source comments for syntax-preserving tools such as vfmt.
@@ -210,7 +210,7 @@ pub:
 
 // Node payloads live in one process-wide table: a node carries a 4-byte id
 // (0 = none) instead of a pointer, so copying a node copies the id and the
-// node header stays 80 bytes. The table only grows (payloads are rare and
+// node header stays compact. The table only grows (payloads are rare and
 // tiny), its chunks outlive every arena, and ids are handed out under a spin
 // lock while lookups are lock-free: an insert writes the chunk pointer and
 // the entry first and then publishes the new count with a release store, and
@@ -245,7 +245,11 @@ pub fn node_payload(generic_params []string) u32 {
 // they name (see NodePayload), and returns the payload id, or 0 when both are
 // empty.
 pub fn node_payload_with_constraints(generic_params []string, generic_constraints []string) u32 {
-	if generic_params.len == 0 && generic_constraints.len == 0 {
+	return node_payload_with_type_constraints(generic_params, TypeTextList.from_names(generic_constraints))
+}
+
+fn node_payload_with_type_constraints(generic_params []string, generic_constraints TypeTextList) u32 {
+	if generic_params.len == 0 && generic_constraints.ids.len == 0 {
 		return 0
 	}
 	payload := &NodePayload{
@@ -361,7 +365,7 @@ pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
 pub struct Node {
 pub mut:
 	value          string
-	typ            string
+	typ            u32
 	children_start i32
 	payload        u32 // payload id or canonical_comptime_type_payload; 0 = none
 	is_mut         bool
@@ -370,6 +374,17 @@ pub mut:
 	flags          u8 // node_flag_* bits; see skip_ownership_drops/is_static_type_method
 	children_count i32
 	pos            token.Pos
+}
+
+// typ_text resolves a node's indexed annotation at a source or emission boundary.
+@[inline]
+pub fn (n &Node) typ_text() string {
+	return source_type_name(n.typ)
+}
+
+// set_type_text replaces a node annotation with an owned, stable spelling ID.
+pub fn (mut n Node) set_type_text(text string) {
+	n.typ = source_type_id(text)
 }
 
 // is_detached_spawn reports whether this `spawn` has its thread handle discarded:
@@ -464,18 +479,10 @@ pub fn (n &Node) payload_ptr() &NodePayload {
 	return node_payload_at(n.payload)
 }
 
-// type_text_id returns the compact canonical identity carried in this node's
-// otherwise-unused source-position metadata.
+// type_text_id returns the stable u32 source-spelling identity of this annotation.
 @[inline]
-pub fn (n &Node) type_text_id() u16 {
-	return n.pos.type_text_id()
-}
-
-// set_type_text_id updates the compact type identity without disturbing a
-// diagnostic reported-column override.
-@[inline]
-pub fn (mut n Node) set_type_text_id(id u16) {
-	n.pos = n.pos.with_type_text_id(id)
+pub fn (n &Node) type_text_id() u32 {
+	return n.typ
 }
 
 // generic_params returns this node's uncommon generic/attribute metadata.
@@ -494,7 +501,7 @@ pub fn (n &Node) generic_constraints() []string {
 	if n.payload == 0 {
 		return []string{}
 	}
-	return node_payload_at(n.payload).generic_constraints
+	return node_payload_at(n.payload).generic_constraints.names()
 }
 
 // set_generic_params replaces this node's uncommon managed payload. The
@@ -502,11 +509,15 @@ pub fn (n &Node) generic_constraints() []string {
 // passes that move the params to longer-lived memory rebuild the payload.
 @[inline]
 pub fn (mut n Node) set_generic_params(params []string) {
-	constraints := n.generic_constraints()
-	n.payload = node_payload_with_constraints(params, if constraints.len == params.len {
-		constraints
+	constraints := if n.payload == 0 {
+		TypeTextList{}
 	} else {
-		[]string{}
+		node_payload_at(n.payload).generic_constraints
+	}
+	n.payload = node_payload_with_type_constraints(params, if constraints.ids.len == params.len {
+		constraints.clone()
+	} else {
+		TypeTextList{}
 	})
 }
 
@@ -819,32 +830,19 @@ pub fn (a &FlatAst) text_count() int {
 	return a.text_values.len
 }
 
-// type_text_id returns the compact canonical identity for value, or 0 when it
-// has not been interned or the compilation's text table exceeds u16 range.
-pub fn (a &FlatAst) type_text_id(value string) u16 {
-	if value.len == 0 {
-		return 0
-	}
-	if id := a.text_ids[value] {
-		if id <= 65535 {
-			return u16(id)
-		}
-	}
-	return 0
+// type_text_id returns value's stable source-spelling identity, or zero for empty text.
+// Type annotations no longer share the AST's ordinary string-payload namespace.
+pub fn (a &FlatAst) type_text_id(value string) u32 {
+	return source_type_id(value)
 }
 
-// node_type_text_id preserves an already-matching identity without a map
-// lookup. A changed or newly synthesized spelling is assigned during the
-// ordered canonicalization pass after worker merge.
+// node_type_text_id retains a matching source-spelling identity or indexes a new spelling.
 @[inline]
-pub fn (a &FlatAst) node_type_text_id(value string, current u16) u16 {
-	if current != 0 {
-		canonical := a.text(TextId(current))
-		if canonical.len == value.len && canonical.str == value.str {
-			return current
-		}
+pub fn (a &FlatAst) node_type_text_id(value string, current u32) u32 {
+	if current != 0 && source_type_name(current) == value {
+		return current
 	}
-	return 0
+	return source_type_id(value)
 }
 
 // intern_node_texts_from canonicalizes managed payloads in nodes[start..].
@@ -930,9 +928,6 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, 
 	// Interning grows the text tables, never the node array, so this slot stays valid.
 	mut node := &a.nodes[idx]
 	node.value = a.intern_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
-	type_id, canonical_type := a.intern_type_text_ptr_cached(node.typ, mut type_cache_ptrs, mut type_cache_vals, mut type_cache_ids)
-	node.typ = canonical_type
-	node.set_type_text_id(type_id)
 	if node.payload == 0 {
 		return
 	}
@@ -945,16 +940,7 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, 
 		for item in params {
 			canonical_params << a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
 		}
-		constraints := payload.generic_constraints
-		mut canonical_constraints := []string{cap: constraints.len}
-		for item in constraints {
-			canonical_constraints << if item.len > 0 {
-				a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
-			} else {
-				''
-			}
-		}
-		node.set_generic_params_and_constraints(canonical_params, canonical_constraints)
+		node.payload = node_payload_with_type_constraints(canonical_params, payload.generic_constraints.clone())
 	}
 }
 
@@ -1145,7 +1131,7 @@ pub fn (n Node) with_pos(pos token.Pos) Node {
 		value:          n.value
 		typ:            n.typ
 		payload:        n.payload
-		pos:            pos.with_type_text_id(n.type_text_id())
+		pos:            pos
 		children_start: n.children_start
 		children_count: n.children_count
 		kind:           n.kind
@@ -1161,17 +1147,18 @@ pub fn (n Node) clone_owned() Node {
 	for param in n.generic_params() {
 		params << param.clone()
 	}
-	mut constraints := []string{cap: n.generic_constraints().len}
-	for constraint in n.generic_constraints() {
-		constraints << constraint.clone()
+	constraints := if n.payload == 0 {
+		TypeTextList{}
+	} else {
+		node_payload_at(n.payload).generic_constraints.clone()
 	}
 	return Node{
 		value:          n.value.clone()
-		typ:            n.typ.clone()
+		typ:            n.typ
 		payload:        if n.payload == canonical_comptime_type_payload {
 			canonical_comptime_type_payload
 		} else {
-			node_payload_with_constraints(params, constraints)
+			node_payload_with_type_constraints(params, constraints)
 		}
 		pos:            n.pos
 		children_start: n.children_start
@@ -1187,7 +1174,6 @@ pub fn (n Node) clone_owned() Node {
 pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	id := NodeId(a.nodes.len)
 	mut stored := node
-	stored.set_type_text_id(a.node_type_text_id(stored.typ, stored.type_text_id()))
 	if a.nodes.len < a.nodes.cap {
 		unsafe {
 			mut slot := &Node(&u8(a.nodes.data) + usize(a.nodes.len) * sizeof(Node))
@@ -1286,8 +1272,8 @@ pub fn (a &FlatAst) print_tree(id NodeId, indent int) {
 	if node.op != .none {
 		info += ' op=${node.op}'
 	}
-	if node.typ.len > 0 {
-		info += ' typ=${node.typ}'
+	if node.typ_text().len > 0 {
+		info += ' typ=${node.typ_text()}'
 	}
 	println('${prefix}${info}')
 	for i in 0 .. node.children_count {

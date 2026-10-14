@@ -48,7 +48,7 @@ fn (tc &TypeChecker) vls_constraint_set_types(id flat.NodeId) ?[]Type {
 		if decl_id := tc.vls_local_declaration(id) {
 			decl := tc.a.node(decl_id)
 			if decl.kind == .param {
-				typ = tc.parse_type(decl.typ)
+				typ = tc.parse_type(decl.typ_text())
 			}
 		}
 	}
@@ -132,7 +132,7 @@ fn (tc &TypeChecker) vls_type_details(typ Type) []VlsDetail {
 		if t is Pointer {
 			t = t.base_type
 		} else if t is Alias {
-			alias_name := t.name
+			alias_name := t.name()
 			t = t.base_type
 			tc.vls_method_details(alias_name, mut details, mut seen)
 		} else {

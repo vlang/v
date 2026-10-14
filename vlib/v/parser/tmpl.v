@@ -1218,7 +1218,7 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	return p.add_node(flat.Node{
 		kind:  .veb_template
 		value: path
-		typ:   if is_html { 'html' } else { 'tmpl' }
+		typ:   flat.source_type_id(if is_html { 'html' } else { 'tmpl' })
 		pos:   p.span_to(call_start)
 	})
 }
@@ -1722,7 +1722,7 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 		child := p.a.nodes[int(child_id)]
 		if child.kind == .veb_template {
 			bname, mut src, source_lines := p.veb_template_builder_source(child)
-			src += if child.typ == 'html' {
+			src += if child.typ_text() == 'html' {
 				'\nreturn ${p.veb_context_name()}.html(${bname})\n'
 			} else {
 				'\nreturn ${bname}\n'
@@ -1761,7 +1761,7 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 			// lowered as an immutable local and reject later mutation of `x`.
 			mut_prefix := if node.kind == .decl_assign && node.is_mut { 'mut ' } else { '' }
 			bname, mut src, source_lines := p.veb_template_builder_source(rhs)
-			value_expr := if rhs.typ == 'html' {
+			value_expr := if rhs.typ_text() == 'html' {
 				'${p.veb_context_name()}.html(${bname})'
 			} else {
 				bname
@@ -2034,17 +2034,17 @@ fn (mut p Parser) veb_template_iife_replacement(tmpl flat.Node) ?flat.NodeId {
 		p.collect_template_free_idents(bid, mut declared, mut seen, mut names, mut mut_names)
 	}
 	ctx_name := p.veb_context_name()
-	value_expr := if tmpl.typ == 'html' { '${ctx_name}.html(${bname})' } else { bname }
-	ret_type := if tmpl.typ == 'html' { 'veb.Result' } else { 'string' }
+	value_expr := if tmpl.typ_text() == 'html' { '${ctx_name}.html(${bname})' } else { bname }
+	ret_type := if tmpl.typ_text() == 'html' { 'veb.Result' } else { 'string' }
 	mut captures := []string{}
-	if tmpl.typ == 'html' {
+	if tmpl.typ_text() == 'html' {
 		// The html value expression calls the request context's `html` method, so the
 		// closure must capture that binding even when the template body never references
 		// it — and mutably, since `Context.html` has a mut receiver. Put it first.
 		captures << 'mut ${ctx_name}'
 	}
 	for name in names {
-		if tmpl.typ == 'html' && name == ctx_name {
+		if tmpl.typ_text() == 'html' && name == ctx_name {
 			continue
 		}
 		// A name used mutably (`@{fill(mut buf)}`) must be captured `mut`, or the
@@ -2338,6 +2338,6 @@ fn (mut p Parser) parse_veb_template_replacement_expr(src string, tmpl flat.Node
 fn (mut p Parser) veb_template_builder_source(tmpl flat.Node) (string, string, []TemplateSourceLine) {
 	bname := 'v3tmpl_${p.veb_tmpl_counter}'
 	p.veb_tmpl_counter++
-	source, source_lines := p.compile_template_file(tmpl.value, bname, tmpl.typ == 'html')
+	source, source_lines := p.compile_template_file(tmpl.value, bname, tmpl.typ_text() == 'html')
 	return bname, source, source_lines
 }

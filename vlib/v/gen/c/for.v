@@ -606,7 +606,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 }
 
 fn (g &FlatGen) for_in_container_type(node flat.Node, container_id flat.NodeId) types.Type {
-	if node.typ.starts_with('map[') {
+	if node.typ_text().starts_with('map[') {
 		typ := g.parse_node_type(&node)
 		if typ is types.Map {
 			return typ

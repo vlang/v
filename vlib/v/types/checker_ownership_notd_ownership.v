@@ -7,8 +7,14 @@ struct OwnershipState {}
 pub struct OwnershipDropEntry {
 pub:
 	name             string
-	type_name        string
+	type_name        u32
 	optional_wrapper bool
+}
+
+// type_name_text resolves the indexed type spelling of a cleanup entry.
+@[inline]
+pub fn (entry &OwnershipDropEntry) type_name_text() string {
+	return flat.source_type_name(entry.type_name)
 }
 
 // ownership_drop_entries_at_return returns no destructor entries when ownership checking is disabled.
@@ -133,3 +139,9 @@ pub fn (tc &TypeChecker) ownership_default_clone_missing_method(_ Type) ?string 
 
 // inherit_ownership_codegen_metadata_from is a no-op when ownership checking is disabled.
 pub fn (mut tc TypeChecker) inherit_ownership_codegen_metadata_from(_ &TypeChecker) {}
+
+// type_name_text resolves the indexed source type spelling.
+@[inline]
+fn (value &OwnershipState) type_name_text() string {
+	return flat.source_type_name(value.type_name)
+}

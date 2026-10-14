@@ -9,19 +9,19 @@ fn test_local_decl_type_before_pos_uses_indexed_same_file_function() {
 	first_lhs := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'int'
+		typ:   flat.source_type_id('int')
 	})
 	first_rhs := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   'int'
+		typ:   flat.source_type_id('int')
 	})
 	first_children := a.children.len
 	a.children << first_lhs
 	a.children << first_rhs
 	a.add_node(flat.Node{
 		kind:           .decl_assign
-		typ:            'int'
+		typ:            flat.source_type_id('int')
 		pos:            token.new_pos(1, 20)
 		children_start: first_children
 		children_count: 2
@@ -34,19 +34,19 @@ fn test_local_decl_type_before_pos_uses_indexed_same_file_function() {
 	other_lhs := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'string'
+		typ:   flat.source_type_id('string')
 	})
 	other_rhs := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'other'
-		typ:   'string'
+		typ:   flat.source_type_id('string')
 	})
 	other_children := a.children.len
 	a.children << other_lhs
 	a.children << other_rhs
 	a.add_node(flat.Node{
 		kind:           .decl_assign
-		typ:            'string'
+		typ:            flat.source_type_id('string')
 		pos:            token.new_pos(2, 80)
 		children_start: other_children
 		children_count: 2
@@ -123,7 +123,7 @@ fn test_comptime_option_unwrap_uses_indexed_alias_and_if_body() {
 		pos: token.new_pos(1, 150)
 	}, FieldMeta{
 		is_option:    true
-		comptime_typ: '?int'
+		comptime_typ: flat.source_type_id('?int')
 	})? == 'int'
 }
 

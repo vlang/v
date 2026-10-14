@@ -27,8 +27,8 @@ fn test_frozen_parallel_promotion_reuses_canonical_payloads_and_defers_misses() 
 	interner.buckets[type_hash_tag(target_key, 0x5bd1e995)] = target_id
 	worker_target := Type(ArrayFixed{ elem_type: Type(int_), len: 17 })
 	worker_other := Type(ArrayFixed{ elem_type: Type(int_), len: 18 })
-	missing_first := Type(Struct{ name: 'FrozenFirstMissing' })
-	missing_second := Type(Struct{ name: 'FrozenSecondMissing' })
+	missing_first := Type(Struct{ name_id: flat.source_type_id('FrozenFirstMissing') })
+	missing_second := Type(Struct{ name_id: flat.source_type_id('FrozenSecondMissing') })
 	assert !frozen_promotion_same_payload(worker_target, target)
 	assert frozen_promotion_same_payload(interner.probe(worker_target)?, target)
 	tc.expr_type_values = [worker_target, worker_other, missing_first, worker_target, missing_second,
@@ -81,7 +81,7 @@ fn test_frozen_parallel_promotion_reuses_canonical_payloads_and_defers_misses() 
 
 fn test_frozen_probe_preserves_empty_and_invalid_bucket_misses() {
 	mut interner := new_type_interner()
-	typ := Type(Struct{ name: 'FrozenMissing' })
+	typ := Type(Struct{ name_id: flat.source_type_id('FrozenMissing') })
 	assert interner.probe_frozen(typ) == none
 	assert interner.probe(typ) == none
 	interner.buckets[semantic_type_hash(typ)] = TypeId(123)

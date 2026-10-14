@@ -39,16 +39,16 @@ fn main() {
 			if typ.field_names != ['ok', 'value'] || typ.fields.len != 2 { continue }
 			payload_pointer := m.type_store.types[typ.fields[1]]
 			if payload_pointer.kind != .ptr_t { continue }
-			payload := m.type_store.types[payload_pointer.elem_type]
+			payload := m.type_store.types[payload_pointer.elem_type_text()]
 			if payload.field_names != ['roots', 'count'] { continue }
 			assert m.type_size(typ.fields[1]) == 8
-			assert m.type_size(payload_pointer.elem_type) == 40
+			assert m.type_size(payload_pointer.elem_type_text()) == 40
 			main_function := m.funcs.filter(it.name == 'main')[0]
 			for block_id in main_function.blocks {
 				for value_id in m.blocks[block_id].instrs {
 					instruction := m.instrs[m.values[value_id].index]
 					if instruction.op == .load {
-						assert m.values[value_id].typ != payload_pointer.elem_type, 'none must not load the pointed payload as its optional value'
+						assert m.values[value_id].typ != payload_pointer.elem_type_text(), 'none must not load the pointed payload as its optional value'
 					}
 				}
 			}

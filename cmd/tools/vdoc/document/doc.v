@@ -382,16 +382,16 @@ fn flat_decl_rhs_id(a &flat.FlatAst, node &flat.Node, index int) flat.NodeId {
 
 fn scoped_type_name(a &flat.FlatAst, checker &types.TypeChecker, id flat.NodeId, fallback flat.NodeId, module_name string) string {
 	node := a.node(id)
-	mut name := if node.kind == .param && node.typ != '' {
-		node.typ
+	mut name := if node.kind == .param && node.typ_text() != '' {
+		node.typ_text()
 	} else {
 		checker.resolve_type(id).name()
 	}
 	if name in ['', 'unknown'] && int(fallback) >= 0 {
 		name = checker.resolve_type(fallback).name()
 	}
-	if name in ['', 'unknown'] && node.typ != '' {
-		name = node.typ
+	if name in ['', 'unknown'] && node.typ_text() != '' {
+		name = node.typ_text()
 	}
 	name = name.all_after('&')
 	if module_name != '' {
@@ -622,7 +622,7 @@ fn (d &Doc) node_from_flat(a &flat.FlatAst, source string, id flat.NodeId, path 
 		kind:        kind
 		tags:        tags
 		parent_name: parent_name
-		return_type: if node.kind == .fn_decl { node.typ } else { '' }
+		return_type: if node.kind == .fn_decl { node.typ_text() } else { '' }
 		attrs:       attrs
 		is_pub:      is_pub
 		platform:    platform_from_filename(path)

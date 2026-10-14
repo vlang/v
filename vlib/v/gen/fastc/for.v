@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import v.token
 
 fn (mut g Parser) parse_for() !bool {
@@ -69,7 +70,7 @@ fn (mut g Parser) parse_for() !bool {
 			} else {
 				g.read_expression([token.Token.dotdot, token.Token.lcbr])!
 			}
-			start_expression_type := g.last_expression_type
+			start_expression_type := g.last_expression_type_text()
 			start_expression := g.last_expression
 			if g.tok == .dotdot {
 				if item_is_mut || value_name != '' {
@@ -77,7 +78,7 @@ fn (mut g Parser) parse_for() !bool {
 				}
 				g.next()
 				end := g.read_expression([token.Token.lcbr])!
-				end_expression_type := g.last_expression_type
+				end_expression_type := g.last_expression_type_text()
 				end_expression := g.last_expression
 				if start_value := fastc_integer_literal_value(start_expression) {
 					if end_value := fastc_integer_literal_value(end_expression) {
@@ -104,7 +105,7 @@ fn (mut g Parser) parse_for() !bool {
 				g.write_line('for (${start_type} ${c_name} = (${start_name}); ${c_name} < (${end_name}); ${c_name}++) {')
 				if name != '_' {
 					g.locals[name] = FastcLocal{
-						typ: fastc_normalize_inferred_type(start_expression_type)
+						typ: flat.source_type_id(fastc_normalize_inferred_type(start_expression_type))
 					}
 				}
 				g.indent++
@@ -154,14 +155,14 @@ fn (mut g Parser) parse_for() !bool {
 				if name != '_' {
 					g.write_line('${key_type} ${fastc_c_identifier(name)} = ((${key_type} *)${keys_name}.data)[${index_name}];')
 					g.locals[name] = FastcLocal{
-						typ: key_type
+						typ: flat.source_type_id(key_type)
 					}
 				}
 				if value_name != '' && value_name != '_' {
 					g.write_line('${map_value_type} ${fastc_c_identifier(value_name)} = ((${map_value_type} *)${values_name}.data)[${index_name}];')
 					g.locals[value_name] = FastcLocal{
 						is_mut: value_is_mut
-						typ:    map_value_type
+						typ:    flat.source_type_id(map_value_type)
 					}
 				}
 				_ = g.parse_loop_block_body()!
@@ -242,36 +243,36 @@ fn (mut g Parser) parse_for() !bool {
 						g.write_line('${element_type} ${c_value_name} = ((${element_type} *)${collection_data})[${index_name}];')
 						g.locals[actual_value_name] = FastcLocal{
 							is_mut: true
-							typ:    element_type
+							typ:    flat.source_type_id(element_type)
 						}
 					} else {
 						g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_data})[${index_name}]);')
 						g.locals[actual_value_name] = FastcLocal{
 							is_mut:       true
 							is_reference: true
-							typ:          element_type + '*'
+							typ:          flat.source_type_id(element_type + '*')
 						}
 					}
 				} else if is_ordinary_string {
 					g.write_line('u8 ${c_value_name} = ((const unsigned char *)${collection_name})[${index_name}];')
 					g.locals[actual_value_name] = FastcLocal{
-						typ: 'u8'
+						typ: flat.source_type_id('u8')
 					}
 				} else if !is_fixed_array && collection_layout_type.ends_with('*') && collection_layout_type.trim_right('*') != 'string' {
 					g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_data})[${index_name}]);')
 					g.locals[actual_value_name] = FastcLocal{
-						typ: element_type + '*'
+						typ: flat.source_type_id(element_type + '*')
 					}
 				} else {
 					g.write_line('${element_type} ${c_value_name} = ((${element_type} *)${collection_data})[${index_name}];')
 					g.locals[actual_value_name] = FastcLocal{
-						typ: element_type
+						typ: flat.source_type_id(element_type)
 					}
 				}
 			}
 			if value_name != '' && name != '_' {
 				g.locals[name] = FastcLocal{
-					typ: 'int'
+					typ: flat.source_type_id('int')
 				}
 			}
 			_ = g.parse_loop_block_body()!
@@ -298,12 +299,12 @@ fn (mut g Parser) parse_for() !bool {
 			}
 			g.next()
 			initial := g.read_expression([token.Token.semicolon])!
-			initial_type := fastc_normalize_inferred_type(g.last_expression_type)
+			initial_type := fastc_normalize_inferred_type(g.last_expression_type_text())
 			g.expect(.semicolon)!
 			if is_declaration {
 				g.locals[name] = FastcLocal{
 					is_mut: true
-					typ:    initial_type
+					typ:    flat.source_type_id(initial_type)
 				}
 			}
 			condition := g.read_expression([token.Token.semicolon])!
@@ -371,19 +372,19 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 	g.write_line('while (1) {')
 	g.indent++
 	for plan in plans {
-		boxed_zero := if plan.boxed_type.ends_with('*') {
+		boxed_zero := if plan.boxed_type_text().ends_with('*') {
 			'NULL'
 		} else {
-			'(${plan.boxed_type}){0}'
+			'(${plan.boxed_type_text()}){0}'
 		}
-		g.write_line('${plan.boxed_type} ${plan.boxed_tmp} = ${boxed_zero};')
+		g.write_line('${plan.boxed_type_text()} ${plan.boxed_tmp} = ${boxed_zero};')
 	}
 	g.write_line('if (!(${loop_condition})) { break; }')
 	mut previous_member_smartcasts := map[string]FastcMemberSmartcast{}
 	mut had_member_smartcasts := map[string]bool{}
 	for plan in plans {
-		plan_access := if plan.boxed_type.ends_with('*') { '->' } else { '.' }
-		g.write_line('${plan.type_c} *${plan.member_tmp} = (${plan.type_c} *)${plan.boxed_tmp}${plan_access}_object;')
+		plan_access := if plan.boxed_type_text().ends_with('*') { '->' } else { '.' }
+		g.write_line('${plan.type_c_text()} *${plan.member_tmp} = (${plan.type_c_text()} *)${plan.boxed_tmp}${plan_access}_object;')
 		if plan.path !in previous_member_smartcasts {
 			had_member_smartcasts[plan.path] = plan.path in g.member_smartcasts
 			previous_member_smartcasts[plan.path] = g.member_smartcasts[plan.path] or {
@@ -391,7 +392,7 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 			}
 		}
 		g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-			typ:    plan.type_c + '*'
+			typ:    flat.source_type_id(plan.type_c_text() + '*')
 			source: plan.member_tmp
 		}
 	}

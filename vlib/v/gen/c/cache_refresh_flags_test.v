@@ -9,8 +9,8 @@ fn test_refresh_keeps_updated_module_flags_and_project_group_order() {
 	mut a := flat.FlatAst.new()
 	a.add_node(flat.Node{ kind: .file, value: os.join_path(@VEXEROOT, 'vlib', 'sample', 'sample.v') })
 	a.add_node(flat.Node{ kind: .module_decl, value: 'sample' })
-	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: '-DMODULE=new' })
-	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: '-DADDED' })
+	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id('-DMODULE=new') })
+	a.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id('-DADDED') })
 	project := [
 		cache_refresh.FlagGroup{ flags: ['-DSTART'], at_start: true, in_main: true },
 		cache_refresh.FlagGroup{ flags: ['-DPROJECT', '-include', 'config.h'], in_main: true },
@@ -43,11 +43,11 @@ fn test_project_flag_inventory_excludes_vlib_and_keeps_vlib_entry_files() {
 		a.add_node(flat.Node{
 			kind:  .directive
 			value: 'flag'
-			typ:   if file == module_file {
+			typ:   flat.source_type_id(if file == module_file {
 				'-DMODULE'
 			} else {
 				'-DPROJECT'
-			}
+			})
 		})
 	}
 	groups := cache_project_flag_groups(&a, @VEXEROOT, pref.target_from('linux', 'amd64') or { panic(err) }, map[string]string{}, {

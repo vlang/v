@@ -7,14 +7,14 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 	mut a := flat.FlatAst.new()
 	id := a.add_val(.ident, 'callback')
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['SharedCb'] = 'fn (shared int)'
-	tc.type_aliases['PlainCb'] = 'fn (int)'
-	tc.type_aliases['SharedHandlers'] = 'map[string]fn (shared int)'
-	tc.type_aliases['PlainHandlers'] = 'map[string]fn (int)'
-	tc.type_aliases['FastFn'] = 'fn (int)'
-	tc.type_aliases['CdeclFn'] = 'fn (int)'
-	tc.type_aliases['FastBox'] = 'Box[FastFn]'
-	tc.type_aliases['CdeclBox'] = 'Box[CdeclFn]'
+	tc.type_aliases.set('SharedCb', 'fn (shared int)')
+	tc.type_aliases.set('PlainCb', 'fn (int)')
+	tc.type_aliases.set('SharedHandlers', 'map[string]fn (shared int)')
+	tc.type_aliases.set('PlainHandlers', 'map[string]fn (int)')
+	tc.type_aliases.set('FastFn', 'fn (int)')
+	tc.type_aliases.set('CdeclFn', 'fn (int)')
+	tc.type_aliases.set('FastBox', 'Box[FastFn]')
+	tc.type_aliases.set('CdeclBox', 'Box[CdeclFn]')
 	fast_decl := a.add_node(flat.Node{ kind: .type_decl, value: 'FastFn' })
 	cdecl_decl := a.add_node(flat.Node{ kind: .type_decl, value: 'CdeclFn' })
 	tc.type_declaration_ids['FastFn'] = [int(fast_decl)]
@@ -178,16 +178,16 @@ fn test_specialized_callbacks_keep_alias_modes_after_semantic_resolution() {
 	] {
 		alias := 'ModeCallback${idx}'
 		chain := 'ChainedCallback${idx}'
-		tc.type_aliases[alias] = forms[0]
-		tc.type_aliases[chain] = alias
+		tc.type_aliases.set(alias, forms[0])
+		tc.type_aliases.set(chain, alias)
 		for raw in [alias, chain] {
-			id := t.a.add_node(flat.Node{ kind: .ident, value: 'callback${idx}${raw}', typ: raw })
+			id := t.a.add_node(flat.Node{ kind: .ident, value: 'callback${idx}${raw}', typ: flat.source_type_id(raw) })
 			assert !t.resolved_receiver_arg_compatible(id, forms[1], forms[1]), raw
 			assert t.resolved_receiver_arg_compatible(id, forms[1], alias), raw
 			assert t.resolved_receiver_arg_compatible(id, forms[1], raw), raw
 		}
 	}
-	tc.type_aliases['UnrelatedCallback'] = 'fn (shared string)'
-	unrelated := t.a.add_node(flat.Node{ kind: .ident, value: 'unrelated', typ: 'UnrelatedCallback' })
+	tc.type_aliases.set('UnrelatedCallback', 'fn (shared string)')
+	unrelated := t.a.add_node(flat.Node{ kind: .ident, value: 'unrelated', typ: flat.source_type_id('UnrelatedCallback') })
 	assert t.resolved_receiver_arg_compatible(unrelated, 'fn (int)', 'fn (int)')
 }

@@ -75,18 +75,18 @@ fn worker_type_cache_key(t Type, type_remap []TypeID) string {
 			'f${t.width}'
 		}
 		.ptr_t {
-			remapped := if int(t.elem_type) < type_remap.len {
-				type_remap[int(t.elem_type)]
+			remapped := if int(t.elem_type_text()) < type_remap.len {
+				type_remap[int(t.elem_type_text())]
 			} else {
-				t.elem_type
+				t.elem_type_text()
 			}
 			'p${remapped}'
 		}
 		.array_t {
-			remapped := if int(t.elem_type) < type_remap.len {
-				type_remap[int(t.elem_type)]
+			remapped := if int(t.elem_type_text()) < type_remap.len {
+				type_remap[int(t.elem_type_text())]
 			} else {
-				t.elem_type
+				t.elem_type_text()
 			}
 			'a${remapped}_${t.len}'
 		}
@@ -134,7 +134,7 @@ pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, se
 			kind:        wt.kind
 			width:       wt.width
 			is_unsigned: wt.is_unsigned
-			elem_type:   remap_t(wt.elem_type, type_remap, seed_types)
+			elem_type:   remap_t(wt.elem_type_text(), type_remap, seed_types)
 			len:         wt.len
 			fields:      new_fields
 			field_names: wt.field_names

@@ -5,7 +5,7 @@ import v.types
 
 fn test_monomorphization_callback_inference_uses_checked_binding() {
 	mut a := flat.FlatAst.new()
-	argument := a.add_node(flat.Node{ kind: .ident, value: 'initial', typ: 'fn (int) int' })
+	argument := a.add_node(flat.Node{ kind: .ident, value: 'initial', typ: flat.source_type_id('fn (int) int') })
 	mut tc := types.TypeChecker.new(&a)
 	tc.register_synth_type(argument, types.Type(types.FnType{
 		params:      [types.Type(types.int_)]
@@ -20,7 +20,7 @@ fn test_monomorphization_callback_inference_uses_checked_binding() {
 
 fn test_specialization_callback_inference_uses_live_parameter_binding() {
 	mut a := flat.FlatAst.new()
-	argument := a.add_node(flat.Node{ kind: .ident, value: 'initial', typ: 'T' })
+	argument := a.add_node(flat.Node{ kind: .ident, value: 'initial', typ: flat.source_type_id('T') })
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.in_monomorphize_scan = true
@@ -35,14 +35,14 @@ fn test_specialization_callback_inference_uses_live_parameter_binding() {
 
 fn test_raw_generic_callback_specialization_ignores_previous_function_locals() {
 	mut a := flat.FlatAst.new()
-	argument := a.add_node(flat.Node{ kind: .ident, value: 'initial', typ: 'fn (int) int' })
-	parameter := a.add_node(flat.Node{ kind: .param, value: 'value', typ: 'T' })
+	argument := a.add_node(flat.Node{ kind: .ident, value: 'initial', typ: flat.source_type_id('fn (int) int') })
+	parameter := a.add_node(flat.Node{ kind: .param, value: 'value', typ: flat.source_type_id('T') })
 	declaration_start := a.children.len
 	a.children << parameter
 	mut function := flat.Node{
 		kind:           .fn_decl
 		value:          'duplicate'
-		typ:            'T'
+		typ:            flat.source_type_id('T')
 		children_start: declaration_start
 		children_count: 1
 	}

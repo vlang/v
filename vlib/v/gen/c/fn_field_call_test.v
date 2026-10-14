@@ -12,7 +12,7 @@ fn fn_field_call_test_output(pointer_storage bool, pointer_type bool, pointer_fi
 	g.tc = &tc
 	g.push_scope()
 
-	value_type := types.Type(types.Struct{ name: 'FnFieldHolder' })
+	value_type := types.Type(types.Struct{ name_id: flat.source_type_id('FnFieldHolder') })
 	base_type := if pointer_type {
 		types.Type(types.Pointer{ base_type: value_type })
 	} else {

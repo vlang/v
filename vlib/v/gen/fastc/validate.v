@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import v.token
 
 fn (g &Parser) expression_token(previous token.Token, previous_lit string, qualified_name_owner string, module_separator bool) !string {
@@ -297,7 +298,7 @@ fn (g &Parser) static_function_key_for_call(tokens []FastcExpressionToken, name_
 
 fn (g &Parser) local_is_pointer(name string) bool {
 	local := g.locals[name] or { return false }
-	return local.typ.ends_with('*')
+	return local.typ_text().ends_with('*')
 }
 
 fn (g &Parser) is_enum_type_name(name string) bool {
@@ -444,7 +445,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			}
 			argument_offset := if is_method_call { 1 } else { 0 }
 			is_variadic := signature.is_variadic
-			expected_arguments := signature.parameter_types.len - argument_offset - if is_variadic {
+			expected_arguments := signature.parameter_types.ids.len - argument_offset - if is_variadic {
 				1
 			} else {
 				0
@@ -461,12 +462,12 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			}
 			// Trailing named args collapse into the callee's last struct parameter — V allows
 			// this for any struct last-parameter (`time.new(year: ...)`), not just `@[params]`.
-			provides_params_struct := expected_arguments > 0 && named_argument_start == expected_arguments - 1 && (signature.last_parameter_is_params || g.fastc_type_is_declared_struct(signature.parameter_types[named_argument_start + argument_offset]))
+			provides_params_struct := expected_arguments > 0 && named_argument_start == expected_arguments - 1 && (signature.last_parameter_is_params || g.fastc_type_is_declared_struct(signature.parameter_types.at(named_argument_start + argument_offset)))
 			uses_default_array_sort := function_key == 'array.sort' && call_args.len == 0
 			if (!is_variadic && call_args.len != expected_arguments && !omits_params_struct && !provides_params_struct && !uses_default_array_sort) || (is_variadic && call_args.len < expected_arguments) {
 				return g.unsupported('function `${name}` call with ${call_args.len} arguments instead of ${expected_arguments}')
 			}
-			if is_method_call && signature.parameter_types.len > 0 {
+			if is_method_call && signature.parameter_types.ids.len > 0 {
 				receiver_is_mut := signature.parameter_mutability.len > 0 && signature.parameter_mutability[0]
 				if receiver_is_mut {
 					receiver_start := fastc_method_receiver_start(tokens, i - 1)
@@ -479,7 +480,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				}
 				is_variadic_argument := is_variadic && argument_index >= expected_arguments
 				parameter_index := if is_variadic_argument {
-					signature.parameter_types.len - 1
+					signature.parameter_types.ids.len - 1
 				} else {
 					argument_index + argument_offset
 				}
@@ -686,7 +687,7 @@ fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []Fas
 			continue
 		}
 		interface_signature := g.functions[interface_method_key]
-		if interface_signature.parameter_types.len == 0 || interface_signature.parameter_types[0] != interface_type {
+		if interface_signature.parameter_types.ids.len == 0 || interface_signature.parameter_types.at(0) != interface_type {
 			continue
 		}
 		method_name := interface_method_key.all_after_last('.')
@@ -696,10 +697,10 @@ fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []Fas
 			}
 			return g.unsupported('type `${actual_type}` does not implement interface `${interface_type}` method `${method_name}`')
 		}
-		if candidate_signature.parameter_types.len != interface_signature.parameter_types.len {
+		if candidate_signature.parameter_types.ids.len != interface_signature.parameter_types.ids.len {
 			return g.unsupported('type `${actual_type}` has an incompatible parameter count for interface `${interface_type}` method `${method_name}`')
 		}
-		for i in 0 .. interface_signature.parameter_types.len {
+		for i in 0 .. interface_signature.parameter_types.ids.len {
 			interface_parameter_is_mut := i < interface_signature.parameter_mutability.len && interface_signature.parameter_mutability[i]
 			candidate_parameter_is_mut := i < candidate_signature.parameter_mutability.len && candidate_signature.parameter_mutability[i]
 			if candidate_parameter_is_mut != interface_parameter_is_mut {
@@ -812,13 +813,13 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 	}
 	if local := g.locals[root_name] {
 		can_mutate_root = can_mutate_root || g.translated || (g.selfhost
-			&& fastc_is_pointer_type(g.underlying_alias_type(local.typ)))
+			&& fastc_is_pointer_type(g.underlying_alias_type(local.typ_text())))
 		if !local.is_mut && lvalue[0].unsafe_depth == 0 && !can_mutate_root {
 			return g.unsupported('mutation of immutable or unknown name `${root_name}`')
 		}
 	} else if global_key !in g.globals && !can_mutate_root {
 		return g.unsupported('mutation of immutable or unknown name `${root_name}`')
-	} else if global_type := g.global_types[global_key] {
+	} else if global_type := g.global_types.get(global_key) {
 		can_mutate_root = can_mutate_root || g.translated || (g.selfhost
 			&& fastc_is_pointer_type(g.underlying_alias_type(global_type)))
 	}
@@ -864,7 +865,7 @@ fn (g &Parser) struct_direct_member_type(receiver_type string, field_name string
 		layout_type = 'map'
 	}
 	if fields := g.struct_fields[layout_type] {
-		return fields[field_name] or { '' }
+		return fields.get(field_name) or { '' }
 	}
 	return ''
 }
@@ -875,11 +876,11 @@ fn (g &Parser) struct_member_type(receiver_type string, field_name string) strin
 		return direct_type
 	}
 	field := g.struct_field_metadata(receiver_type, field_name) or { return '' }
-	return field.typ
+	return field.typ_text()
 }
 
 fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?FastcStructField {
-	if g.last_field_known && receiver_type == g.last_field_receiver && field_name == g.last_field_name {
+	if g.last_field_known && receiver_type == g.last_field_receiver_text() && field_name == g.last_field_name {
 		if g.last_field.name == '' {
 			return none
 		}
@@ -890,7 +891,7 @@ fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?F
 	// Return those without copying them into every file parser's recursive
 	// embedded-field memo.
 	if field := g.direct_struct_field_metadata(receiver_type, field_name) {
-		w.last_field_receiver = receiver_type
+		w.last_field_receiver = flat.source_type_id(receiver_type)
 		w.last_field_name = field_name
 		w.last_field = field
 		w.last_field_known = true
@@ -898,7 +899,7 @@ fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?F
 	}
 	if by_name := g.field_memo[receiver_type] {
 		if cached := by_name[field_name] {
-			w.last_field_receiver = receiver_type
+			w.last_field_receiver = flat.source_type_id(receiver_type)
 			w.last_field_name = field_name
 			w.last_field = cached
 			w.last_field_known = true
@@ -913,7 +914,7 @@ fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?F
 	}
 	if field := g.struct_field_metadata_impl(receiver_type, field_name) {
 		w.field_memo[receiver_type][field_name] = field
-		w.last_field_receiver = receiver_type
+		w.last_field_receiver = flat.source_type_id(receiver_type)
 		w.last_field_name = field_name
 		w.last_field = field
 		w.last_field_known = true
@@ -921,7 +922,7 @@ fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?F
 	}
 	miss := FastcStructField{}
 	w.field_memo[receiver_type][field_name] = miss
-	w.last_field_receiver = receiver_type
+	w.last_field_receiver = flat.source_type_id(receiver_type)
 	w.last_field_name = field_name
 	w.last_field = miss
 	w.last_field_known = true
@@ -954,7 +955,7 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type string, field_name strin
 	if direct_type != '' {
 		return FastcStructField{
 			name:       field_name
-			typ:        direct_type
+			typ:        flat.source_type_id(direct_type)
 			is_public:  true
 			is_mutable: true
 		}
@@ -965,12 +966,12 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type string, field_name strin
 		}
 		// Accessing the embed itself by its type name (`d.SilentStreamingDownloader`):
 		// resolve to the `__embedded_N` field, keeping its concrete type.
-		if field.typ == field_name || field.typ.all_after_last('__') == field_name {
+		if field.typ_text() == field_name || field.typ_text().all_after_last('__') == field_name {
 			// The `__embedded_N` field IS the target; its name already renders the
 			// access, so return it as-is (no extra storage path).
 			return field
 		}
-		if embedded := g.struct_field_metadata(field.typ, field_name) {
+		if embedded := g.struct_field_metadata(field.typ_text(), field_name) {
 			mut promoted := embedded
 			mut storage_path := [field.name]
 			storage_path << embedded.storage_path
@@ -1006,14 +1007,14 @@ fn (g &Parser) dot_piece(previous token.Token, previous_lit string, module_separ
 // Returns '' when the field is a direct member or cannot be resolved.
 fn (g &Parser) embedded_dot_piece_for_local(receiver_name string) string {
 	local := g.locals[receiver_name] or { return '' }
-	if local.typ == '' {
+	if local.typ_text() == '' {
 		return ''
 	}
 	mut look := g.s
 	if look.scan() != .name {
 		return ''
 	}
-	return g.embedded_field_dot_piece_for_type(local.typ, look.lit)
+	return g.embedded_field_dot_piece_for_type(local.typ_text(), look.lit)
 }
 
 // embedded_field_dot_piece_for_type returns the C separator-and-path that replaces
@@ -1166,7 +1167,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 		} else {
 			[field_token]
 		}
-		if fastc_fixed_array_element_type(field.typ) != none {
+		if fastc_fixed_array_element_type(field.typ_text()) != none {
 			g.validate_fixed_array_struct_field_length(c_type, field, value_tokens)!
 		}
 	}
@@ -1181,7 +1182,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 }
 
 fn (g &Parser) validate_fixed_array_struct_field_length(c_type string, field FastcStructField, value_tokens []FastcExpressionToken) ! {
-	element_type := fastc_fixed_array_element_type(field.typ) or {
+	element_type := fastc_fixed_array_element_type(field.typ_text()) or {
 		return g.unsupported('unverifiable fixed-array type for struct field `${field.name}`')
 	}
 	array_end := if value_tokens.len > 0 && value_tokens.last().tok == .not {
@@ -1194,7 +1195,7 @@ fn (g &Parser) validate_fixed_array_struct_field_length(c_type string, field Fas
 		return
 	}
 	items := fastc_expression_list_items(value_tokens, 1, array_end - 1)!
-	expected_length_source := fastc_fixed_array_length(field.typ) or {
+	expected_length_source := fastc_fixed_array_length(field.typ_text()) or {
 		return g.unsupported('unverifiable fixed-array length for struct field `${type_name}.${field.name}`')
 	}
 	if expected_length := g.fixed_array_length_value(expected_length_source) {
@@ -1206,7 +1207,7 @@ fn (g &Parser) validate_fixed_array_struct_field_length(c_type string, field Fas
 		for item in items {
 			nested_field := FastcStructField{
 				name: field.name
-				typ:  element_type
+				typ:  flat.source_type_id(element_type)
 			}
 			g.validate_fixed_array_struct_field_length(c_type, nested_field, item)!
 		}

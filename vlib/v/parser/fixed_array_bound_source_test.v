@@ -19,7 +19,7 @@ fn test_fixed_array_bounds_preserve_comptime_source_without_node_spans() {
 		mut found := false
 		for node in p.a.nodes {
 			if node.kind == .field_decl && node.value == 'data' {
-				assert node.typ == "[\$env('${key}')]int", node.typ
+				assert node.typ_text() == "[\$env('${key}')]int", node.typ_text()
 				found = true
 			}
 		}

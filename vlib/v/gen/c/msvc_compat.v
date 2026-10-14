@@ -1,5 +1,6 @@
 module c
 
+import v.flat
 import strings
 
 // MSVC's C compiler rejects several GNU C extensions that the generated C relies on.
@@ -40,7 +41,7 @@ struct MsvcPre {
 	decl     string // the declaration without its initializer
 	name     string
 	init     string
-	type_txt string
+	type_txt u32
 	dims     string
 }
 
@@ -1268,7 +1269,7 @@ fn (mut l MsvcLowerer) lower_logical(i int, j int, ops []int, is_or bool) MsvcLo
 			text:     'int ${flag};'
 			decl:     'int ${flag}'
 			name:     flag
-			type_txt: 'int'
+			type_txt: flat.source_type_id('int')
 		}
 		res.pre << MsvcPre{
 			text: '${flag} = !!(${acc});'
@@ -1338,7 +1339,7 @@ fn (mut l MsvcLowerer) lower_conditional(i int, question int, j int) MsvcLowered
 		text:     'int ${flag};'
 		decl:     'int ${flag}'
 		name:     flag
-		type_txt: 'int'
+		type_txt: flat.source_type_id('int')
 	}
 	res.pre << MsvcPre{
 		text: '${flag} = !!(${cond.text});'
@@ -1397,9 +1398,9 @@ fn msvc_guarded_text(pre []MsvcPre) string {
 		init := p.init.trim_space()
 		if init.starts_with('{') {
 			if p.dims.len > 0 {
-				parts << 'memcpy(${p.name}, (${p.type_txt}${p.dims})${init}, sizeof(${p.name}));'
+				parts << 'memcpy(${p.name}, (${p.type_txt_text()}${p.dims})${init}, sizeof(${p.name}));'
 			} else {
-				parts << '${p.name} = (${p.type_txt})${init};'
+				parts << '${p.name} = (${p.type_txt_text()})${init};'
 			}
 		} else {
 			parts << '${p.name} = ${init};'
@@ -1670,8 +1671,14 @@ fn (mut l MsvcLowerer) lower_decl_stmt(i int, j int) []MsvcPre {
 		decl:      decl
 		name:      l.dirty_text[name_idx]
 		init:      init.text
-		type_txt:  type_txt
+		type_txt:  flat.source_type_id(type_txt)
 		dims:      dims
 	}
 	return pre
+}
+
+// type_txt_text resolves the indexed source type spelling.
+@[inline]
+fn (value &MsvcPre) type_txt_text() string {
+	return flat.source_type_name(value.type_txt)
 }

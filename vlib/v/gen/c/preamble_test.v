@@ -395,9 +395,9 @@ fn test_manual_stdlib_header_usage_matches_headerless_and_target_header_modes() 
 	prefs.target = pref.host_target()
 	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
 	ast.add_node(flat.Node{ kind: .module_decl, value: 'builtin' })
-	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '<pthread.h>' })
+	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('<pthread.h>') })
 	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
-	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '<stdio.h>' })
+	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('<stdio.h>') })
 	assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
 	prefs.target_libc_headers = true
 	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
@@ -412,7 +412,7 @@ fn test_manual_stdlib_header_usage_matches_include_collection() {
 			prefs.target = pref.host_target()
 			ast.add_node(flat.Node{ kind: .file, value: '/project/main.v' })
 			ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
-			ast.add_node(flat.Node{ kind: .directive, value: kind, typ: header })
+			ast.add_node(flat.Node{ kind: .directive, value: kind, typ: flat.source_type_id(header) })
 			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false) == (header != 'windows <windows.h>'
 				|| prefs.target.os == 'windows')
 			// Portable C includes retain a preprocessor guard for the target C compiler.
@@ -444,7 +444,7 @@ fn test_manual_stdlib_header_usage_resolves_native_sources_with_cli_include_dirs
 			prefs.output_cross_c = portable
 			ast.add_node(flat.Node{ kind: .file, value: os.join_path(root, 'main.v') })
 			ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
-			ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '"helper.c"' })
+			ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"helper.c"') })
 			// Portable runtime helpers require compatibility headers even when the
 			// application's native source has no includes of its own.
 			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, ['-I', include_dir], false)

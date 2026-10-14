@@ -14,7 +14,7 @@ import v.token
 
 // GenericConstraint is what the constraint of a type parameter names.
 struct GenericConstraint {
-	name         string // as written, for the messages
+	name         u32 // source spelling, resolved for messages
 	is_interface bool
 	iface        Interface
 	// The types of a set, when it names no interface: an interface among them
@@ -25,12 +25,12 @@ struct GenericConstraint {
 	// `[T User]`: the struct among the types that stands for itself and the
 	// structs that embed it, which get its fields and methods but not its
 	// operators.
-	family_struct string
+	family_struct u32
 }
 
 struct SumConstraintStep {
-	sum_name string
-	variant  string
+	sum_name u32
+	variant  u32
 }
 
 // generic_constraint_type resolves the constraint `text` of a type parameter
@@ -65,7 +65,7 @@ fn (tc &TypeChecker) generic_constraint(decl flat.Node, text string) ?GenericCon
 	}
 	if named is Interface {
 		return GenericConstraint{
-			name:         text
+			name:         flat.source_type_id(text)
 			is_interface: true
 			iface:        named
 		}
@@ -78,15 +78,15 @@ fn (tc &TypeChecker) generic_constraint(decl flat.Node, text string) ?GenericCon
 		expanding := tc.collect_sum_constraint_types(named, mut types, mut seen, mut active,
 			mut path)
 		return GenericConstraint{
-			name:          text
+			name:          flat.source_type_id(text)
 			types:         types
 			expanding_sum: expanding
 		}
 	}
 	return GenericConstraint{
-		name:          text
+		name:          flat.source_type_id(text)
 		types:         [typ]
-		family_struct: if typ is Struct { typ.name } else { '' }
+		family_struct: flat.source_type_id(if typ is Struct { typ.name() } else { '' })
 	}
 }
 
@@ -124,7 +124,7 @@ fn (tc &TypeChecker) constraint_family_holds(constraint GenericConstraint, membe
 	}
 	if tc.is_family_struct(constraint, member) {
 		clean := unwrap_pointer(actual)
-		return clean is Struct && tc.struct_embeds(clean.name, member.name())
+		return clean is Struct && tc.struct_embeds(clean.name(), member.name())
 	}
 	return false
 }
@@ -132,8 +132,8 @@ fn (tc &TypeChecker) constraint_family_holds(constraint GenericConstraint, membe
 // is_family_struct reports whether `member`, a type of `constraint`, is its
 // family struct, which stands for the structs that embed it too.
 fn (tc &TypeChecker) is_family_struct(constraint GenericConstraint, member Type) bool {
-	return constraint.family_struct.len > 0 && member is Struct
-		&& member.name() == constraint.family_struct
+	return constraint.family_struct_text().len > 0 && member is Struct
+		&& member.name() == constraint.family_struct_text()
 }
 
 // is_constraint_family reports whether `member`, a type of `constraint`, stands
@@ -146,19 +146,19 @@ fn (tc &TypeChecker) is_constraint_family(constraint GenericConstraint, member T
 // `sum`, bound to its type arguments, and in place of a variant that is a sum
 // type, its variants.
 fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type, mut seen map[string]bool, mut active map[string]string, mut path []SumConstraintStep) bool {
-	base := tc.sum_base_name(sum.name)
-	if seen[sum.name] {
+	base := tc.sum_base_name(sum.name())
+	if seen[sum.name()] {
 		return false
 	}
 	previous := active[base] or { '' }
 	// A repeated base may peel a finite nested argument, such as Part[Part[int]].
 	// Report this bound to declaration checking rather than silently accepting a partial set.
-	if previous.len > 0 && !tc.sum_constraint_has_nested_instance(previous, sum.name)
+	if previous.len > 0 && !tc.sum_constraint_has_nested_instance(previous, sum.name())
 		&& tc.sum_constraint_cycle_expands(base, path) {
 		return true
 	}
-	seen[sum.name] = true
-	active[base] = sum.name
+	seen[sum.name()] = true
+	active[base] = sum.name()
 	defer {
 		if previous.len > 0 {
 			active[base] = previous
@@ -167,11 +167,11 @@ fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type,
 		}
 	}
 	mut expanding := false
-	for variant in tc.sum_types[base] or { []string{} } {
-		concrete := tc.parse_type(tc.concrete_sum_variant_name(sum.name, variant))
+	for variant in tc.sum_types.get(base) or { []string{} } {
+		concrete := tc.parse_type(tc.concrete_sum_variant_name(sum.name(), variant))
 		inner := unalias_type(concrete)
 		if inner is SumType {
-			path << SumConstraintStep{ sum_name: sum.name, variant: variant }
+			path << SumConstraintStep{ sum_name: flat.source_type_id(sum.name()), variant: flat.source_type_id(variant) }
 			if tc.collect_sum_constraint_types(inner, mut types, mut seen, mut active,
 				mut path) {
 				expanding = true
@@ -199,20 +199,20 @@ fn (tc &TypeChecker) sum_constraint_cycle_expands(base string, path []SumConstra
 		symbols << tc.qualify_name('__v_constraint_argument_${i}__')
 	}
 	for start, step in path {
-		if tc.sum_base_name(step.sum_name) != base {
+		if tc.sum_base_name(step.sum_name_text()) != base {
 			continue
 		}
 		mut instance := '${base}[${symbols.join(', ')}]'
 		mut complete := true
 		for next in path[start..] {
-			if tc.sum_base_name(instance) != tc.sum_base_name(next.sum_name) {
+			if tc.sum_base_name(instance) != tc.sum_base_name(next.sum_name_text()) {
 				complete = false
 				break
 			}
 			variant := unalias_type(tc.parse_type(tc.concrete_sum_variant_name(instance,
-				next.variant)))
+				next.variant_text())))
 			if variant is SumType {
-				instance = variant.name
+				instance = variant.name()
 			} else {
 				complete = false
 				break
@@ -365,10 +365,10 @@ fn (mut tc TypeChecker) record_generic_constraint_error(constraint GenericConstr
 			id, pos)
 		return
 	}
-	reason := if constraint.family_struct.len > 0 && constraint.types.len == 1 {
-		'it is not `${constraint.name}` and does not embed it'
+	reason := if constraint.family_struct_text().len > 0 && constraint.types.len == 1 {
+		'it is not `${constraint.name_text()}` and does not embed it'
 	} else {
-		'it is not in its constraint `${constraint.name}`'
+		'it is not in its constraint `${constraint.name_text()}`'
 	}
 	tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual.name().all_after_last('.')}` as `${param}`: ${reason}',
 		id, pos)
@@ -398,7 +398,7 @@ fn (tc &TypeChecker) generic_constraints_of(decl flat.Node) map[string]GenericCo
 	if receiver.kind != .param {
 		return interfaces
 	}
-	receiver_type := receiver.typ.trim_left('&').all_after('mut ').trim_space()
+	receiver_type := receiver.typ_text().trim_left('&').all_after('mut ').trim_space()
 	if !receiver_type.contains('[') || !receiver_type.ends_with(']') {
 		return interfaces
 	}
@@ -514,12 +514,12 @@ fn (mut tc TypeChecker) check_generic_call_constraints(call_id flat.NodeId, call
 			continue
 		}
 		k := instantiation.generic_params.index(name)
-		if k < 0 || k >= instantiation.concrete_args.len {
+		if k < 0 || k >= instantiation.concrete_args.ids.len {
 			continue
 		}
 		constraint := tc.generic_constraint_with_args(decl, constraints[i], instantiation.generic_params,
-			instantiation.concrete_args) or { continue }
-		actual := tc.parse_type(instantiation.concrete_args[k])
+			instantiation.concrete_args_text()) or { continue }
+		actual := tc.parse_type(instantiation.concrete_args.at(k))
 		if tc.generic_constraint_accepts(constraint, actual) {
 			continue
 		}
@@ -552,7 +552,7 @@ fn (tc &TypeChecker) generic_param_binding_site(call_id flat.NodeId, call flat.N
 			break
 		}
 		arg_id := tc.call_arg_value(tc.a.child(&call, arg_index))
-		if param.typ.trim_left('&').all_after('mut ').trim_space() == name {
+		if param.typ_text().trim_left('&').all_after('mut ').trim_space() == name {
 			return arg_id, tc.call_argument_diagnostic_pos(arg_id)
 		}
 		arg_index++
@@ -698,16 +698,16 @@ struct WrittenTypeItem {
 // the casts, the tests and `sizeof` or `typeof` of a type.
 fn written_type_texts(node flat.Node) []string {
 	mut texts := []string{}
-	if node.typ.len > 0 && node.kind in [.param, .fn_decl, .interface_field, .field_decl, .type_decl,
-		.global_decl, .const_field, .fn_literal, .array_init, .decl_assign] {
-		texts << node.typ
+	if node.typ_text().len > 0 && node.kind in [.param, .fn_decl, .interface_field, .field_decl,
+		.type_decl, .global_decl, .const_field, .fn_literal, .array_init, .decl_assign] {
+		texts << node.typ_text()
 	}
 	// The variants of a sum type, `type Sum = Box[int] | string`.
 	if node.kind == .ident && node.value.contains('[') && node.pos.end > 0 {
 		texts << node.value
 	}
 	// An interface that an interface embeds, `Shelf[T]`, written as its name.
-	if node.kind == .interface_field && node.op != .dot && node.typ.len == 0
+	if node.kind == .interface_field && node.op != .dot && node.typ_text().len == 0
 		&& node.value.contains('[') {
 		texts << node.value
 	}
@@ -964,7 +964,7 @@ fn (mut tc TypeChecker) check_generic_fn_constraint_members(fn_node flat.Node) {
 				for i in 0 .. node.children_count {
 					param := tc.a.child_node(node, i)
 					if param.kind == .param && param.value.len > 0 {
-						tc.cur_scope.insert(param.value, tc.constraint_walk_named_type(param.typ))
+						tc.cur_scope.insert(param.value, tc.constraint_walk_named_type(param.typ_text()))
 					}
 				}
 			}
@@ -1088,7 +1088,7 @@ fn (mut tc TypeChecker) constraint_walk_lambda_arg_types(id flat.NodeId, node fl
 		return result
 	}
 	binding := tc.constraint_walk_call_bindings(id, node) or { return result }
-	param_texts := tc.fn_param_type_texts[binding.info.name] or { return result }
+	param_texts := tc.fn_param_type_texts.get(binding.info.name) or { return result }
 	first := if binding.info.has_receiver && param_texts.len > 0 { 1 } else { 0 }
 	mut args := []Type{cap: binding.names.len}
 	for name in binding.names {
@@ -1271,7 +1271,7 @@ fn (mut tc TypeChecker) constraint_walk_interface_method_type(node flat.Node) ?T
 	for i in 0 .. decl.children_count {
 		member := tc.a.child_node(&decl, i)
 		if member.kind == .interface_field && member.op == .dot && member.value == callee.value {
-			return tc.constraint_walk_named_type(subst_generic_text(member.typ, args.map(it.trim_space()),
+			return tc.constraint_walk_named_type(subst_generic_text(member.typ_text(), args.map(it.trim_space()),
 				params))
 		}
 	}
@@ -1296,7 +1296,7 @@ fn (mut tc TypeChecker) constraint_walk_call_bindings(id flat.NodeId, node flat.
 	}
 	info := tc.constraint_walk_call_info(id, node) or { return none }
 	fn_params := tc.fn_generic_params[info.name] or { []string{} }
-	param_texts := tc.fn_param_type_texts[info.name] or { []string{} }
+	param_texts := tc.fn_param_type_texts.get(info.name) or { []string{} }
 	mut names := fn_params.clone()
 	callee := tc.a.child_node(&node, 0)
 	mut receiver_id := flat.NodeId(-1)
@@ -1504,26 +1504,26 @@ fn (mut tc TypeChecker) infer_from_constraint(text string, actual Type, missing 
 			continue
 		}
 		if member.op != .dot {
-			if member.typ.len > 0 {
+			if member.typ_text().len > 0 {
 				field := tc.struct_field_type(concrete, member.value) or { continue }
-				tc.infer_generic_type_text_from_type(subst_generic_text(member.typ, bound_args,
+				tc.infer_generic_type_text_from_type(subst_generic_text(member.typ_text(), bound_args,
 					params), field, missing, mut inferred)
 			}
 			continue
 		}
 		ret, method_params := tc.concrete_method_types(concrete, member.value) or { continue }
-		if member.typ.len > 0 {
-			tc.infer_generic_type_text_from_type(subst_generic_text(member.typ, bound_args,
+		if member.typ_text().len > 0 {
+			tc.infer_generic_type_text_from_type(subst_generic_text(member.typ_text(), bound_args,
 				params), ret, missing, mut inferred)
 		}
 		mut k := 0
 		for j in 0 .. member.children_count {
 			param := tc.a.child_node(member, j)
-			if param.kind != .param || param.typ.len == 0 {
+			if param.kind != .param || param.typ_text().len == 0 {
 				continue
 			}
 			if k < method_params.len {
-				tc.infer_generic_type_text_from_type(subst_generic_text(param.typ, bound_args,
+				tc.infer_generic_type_text_from_type(subst_generic_text(param.typ_text(), bound_args,
 					params), method_params[k], missing, mut inferred)
 			}
 			k++
@@ -1576,7 +1576,7 @@ fn (tc &TypeChecker) type_param_scope(node flat.Node) TypeParamScope {
 	if node.kind == .fn_decl {
 		if node.children_count > 0 && node.value.contains('.') {
 			receiver := tc.a.child_node(&node, 0)
-			receiver_type := receiver.typ.trim_left('&').all_after('mut ').trim_space()
+			receiver_type := receiver.typ_text().trim_left('&').all_after('mut ').trim_space()
 			if receiver.kind == .param && receiver_type.contains('[')
 				&& receiver_type.ends_with(']') {
 				for name in split_params(receiver_type.all_after('[').all_before_last(']')) {
@@ -1621,30 +1621,30 @@ fn (tc &TypeChecker) constraint_unmet_reason(constraints map[string]GenericConst
 	}
 	if have.is_interface {
 		if !need.is_interface {
-			return 'its constraint `${have.name}` is not a set of types'
+			return 'its constraint `${have.name_text()}` is not a set of types'
 		}
-		if have.name.contains('[') || display.contains('[') {
+		if have.name_text().contains('[') || display.contains('[') {
 			// A generic interface, `Comparable[U]`, with its own type arguments.
-			if have.name.replace(' ', '') == display.replace(' ', '') {
+			if have.name_text().replace(' ', '') == display.replace(' ', '') {
 				return none
 			}
-		} else if tc.interface_metadata_name(have.iface.name) == tc.interface_metadata_name(need.iface.name)
+		} else if tc.interface_metadata_name(have.iface.name()) == tc.interface_metadata_name(need.iface.name())
 			|| tc.type_implements_interface(Type(have.iface), need.iface) {
 			return none
 		}
-		return 'its constraint `${have.name}` does not'
+		return 'its constraint `${have.name_text()}` does not'
 	}
 	for typ in have.types {
 		verb := if need.is_interface { 'does not' } else { 'is not' }
 		if tc.is_family_struct(have, typ) && !need.is_interface {
 			// The structs that embed it too: `need` must take them all.
 			if !tc.constraint_takes_family(need, typ) {
-				return 'a struct that embeds `${typ.name().all_after_last('.')}`, in its constraint `${have.name}`, ${verb}'
+				return 'a struct that embeds `${typ.name().all_after_last('.')}`, in its constraint `${have.name_text()}`, ${verb}'
 			}
 			continue
 		}
 		if !tc.generic_constraint_accepts(need, typ) {
-			return '`${typ.name().all_after_last('.')}`, in its constraint `${have.name}`, ${verb}'
+			return '`${typ.name().all_after_last('.')}`, in its constraint `${have.name_text()}`, ${verb}'
 		}
 	}
 	return none
@@ -1694,7 +1694,7 @@ fn (mut tc TypeChecker) check_generic_call_in_body(id flat.NodeId, node flat.Nod
 			for own_name in own {
 				bound_texts << binding_text(binding, own_name)
 			}
-			display := subst_generic_text(need.name, bound_texts, own)
+			display := subst_generic_text(need.name_text(), bound_texts, own)
 			if reason := tc.constraint_unmet_reason(constraints, param, need, display) {
 				callee := binding.info.name.all_after_last('.')
 				tc.record_error_at(.call_arg_mismatch, '`${callee}` needs `${param}` to ${constraint_need(need, display)}: ${reason}', id, pos)
@@ -1721,7 +1721,7 @@ fn binding_text(binding CallBinding, name string) string {
 // parameter is of the type parameter `name`, `a` in `longest(a, b)`; the call
 // otherwise.
 fn (tc &TypeChecker) generic_param_arg_pos(node flat.Node, info CallInfo, name string) token.Pos {
-	texts := tc.fn_param_type_texts[info.name] or { []string{} }
+	texts := tc.fn_param_type_texts.get(info.name) or { []string{} }
 	first := if info.has_receiver { 1 } else { 0 }
 	for param_idx in first .. texts.len {
 		if trimmed_space(texts[param_idx]) != name {
@@ -1962,7 +1962,7 @@ fn (tc &TypeChecker) fn_param_type_param(fn_node flat.Node, name string, names [
 		if param.kind != .param || param.value != name {
 			continue
 		}
-		mut typ := param.typ.trim_space()
+		mut typ := param.typ_text().trim_space()
 		if param.is_mut && param.op != .amp && typ.starts_with('&') {
 			typ = typ[1..]
 		}
@@ -2273,18 +2273,18 @@ fn (tc &TypeChecker) constraint_match_type_pattern(node flat.Node) ?flat.NodeId 
 // is a sum type.
 fn constraint_runtime_type_test_reason(constraint GenericConstraint) string {
 	if constraint.is_interface {
-		return 'a type that implements `${constraint.name}` does not have to be one'
+		return 'a type that implements `${constraint.name_text()}` does not have to be one'
 	}
 	for typ in constraint.types {
 		clean := unalias_type(typ)
 		if clean !is SumType && clean !is Interface {
-			return '`${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, is neither'
+			return '`${typ.name().all_after_last('.')}`, in its constraint `${constraint.name_text()}`, is neither'
 		}
 	}
 	// `type Two = Named | Greeter` allows the types that implement `Named`.
 	for typ in constraint.types {
 		if unalias_type(typ) is Interface {
-			return 'a type that implements `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, does not have to be one'
+			return 'a type that implements `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name_text()}`, does not have to be one'
 		}
 	}
 	return ''
@@ -2317,7 +2317,7 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 				continue
 			}
 			what := if is_call { 'method `${member}`' } else { 'field named `${member}`' }
-			message := 'type `${param}` has no ${what}: `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, does not have it'
+			message := 'type `${param}` has no ${what}: `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name_text()}`, does not have it'
 			if is_call {
 				tc.record_error_at(.unknown_fn, message, node_id, tc.method_call_name_pos(node, sel))
 			} else {
@@ -2327,9 +2327,9 @@ fn (mut tc TypeChecker) check_constraint_member(node_id flat.NodeId, node flat.N
 		}
 		return
 	}
-	iface_name := tc.interface_metadata_name(constraint.iface.name)
+	iface_name := tc.interface_metadata_name(constraint.iface.name())
 	// The constraint as written, `Value` for `type Value = Named`.
-	display := constraint.name
+	display := constraint.name_text()
 	if member in tc.interface_abstract_method_names(iface_name) {
 		return
 	}
@@ -2365,7 +2365,7 @@ fn (tc &TypeChecker) constraint_member_pos(sel_id flat.NodeId, sel flat.Node) to
 fn (tc &TypeChecker) type_has_member(typ Type, member string, is_call bool) bool {
 	clean := unalias_and_unwrap_pointer_type(typ)
 	if clean is Interface {
-		iface_name := tc.interface_metadata_name(clean.name)
+		iface_name := tc.interface_metadata_name(clean.name())
 		if member in tc.interface_abstract_method_names(iface_name) {
 			return true
 		}
@@ -2932,7 +2932,7 @@ fn (tc &TypeChecker) constraint_operator_types(constraint GenericConstraint) []T
 	if constraint.is_interface {
 		return [constraint.iface]
 	}
-	if constraint.family_struct.len > 0 {
+	if constraint.family_struct_text().len > 0 {
 		// What any struct takes, for the family struct: a struct that embeds it
 		// does not get the operators it declares.
 		mut types := []Type{cap: constraint.types.len}
@@ -2948,11 +2948,11 @@ fn (tc &TypeChecker) constraint_operator_types(constraint GenericConstraint) []T
 // `typ` of `constraint` does not take, with the constraint that decides it.
 fn (mut tc TypeChecker) record_constraint_operator_error(id flat.NodeId, pos token.Pos, what string, constraint GenericConstraint, typ Type) {
 	message := if constraint.is_interface {
-		'${what}: its constraint `${constraint.name}` does not declare it'
-	} else if typ is Struct && typ.name == '' {
-		'${what}: a struct that embeds `${constraint.family_struct.all_after_last('.')}` does not have it'
+		'${what}: its constraint `${constraint.name_text()}` does not declare it'
+	} else if typ is Struct && typ.name() == '' {
+		'${what}: a struct that embeds `${constraint.family_struct_text().all_after_last('.')}` does not have it'
 	} else {
-		'${what}: `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name}`, does not have it'
+		'${what}: `${typ.name().all_after_last('.')}`, in its constraint `${constraint.name_text()}`, does not have it'
 	}
 	tc.record_error_at(.assignment_mismatch, message, id, pos)
 }
@@ -2988,4 +2988,28 @@ fn (tc &TypeChecker) constraint_bracket_pos(node flat.Node, base flat.Node) toke
 		}
 	}
 	return node.pos
+}
+
+// family_struct_text resolves the indexed source type spelling.
+@[inline]
+fn (value &GenericConstraint) family_struct_text() string {
+	return flat.source_type_name(value.family_struct)
+}
+
+// sum_name_text resolves the indexed source type spelling.
+@[inline]
+fn (value &SumConstraintStep) sum_name_text() string {
+	return flat.source_type_name(value.sum_name)
+}
+
+// variant_text resolves the indexed source type spelling.
+@[inline]
+fn (value &SumConstraintStep) variant_text() string {
+	return flat.source_type_name(value.variant)
+}
+
+// name_text resolves the generic constraint source spelling.
+@[inline]
+fn (constraint &GenericConstraint) name_text() string {
+	return flat.source_type_name(constraint.name)
 }

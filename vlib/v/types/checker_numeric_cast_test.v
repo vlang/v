@@ -82,7 +82,7 @@ fn test_numeric_literal_cast_retains_generic_target_declaration_validation() {
 	cast := a.add_node(flat.Node{ kind: .cast_expr, value: 'Choice', children_start: children, children_count: 1 })
 	mut tc := TypeChecker.new(&a)
 	tc.diagnose_unknown_calls = true
-	tc.sum_types['Choice'] = ['int']
+	tc.sum_types.set('Choice', ['int'])
 	tc.sum_generic_params['Choice'] = ['T']
 	tc.check_cast_expr(cast, *a.node(cast))
 	assert tc.errors.len == 1, tc.errors.str()
@@ -98,7 +98,7 @@ fn test_numeric_literal_cast_keeps_builtin_spelling_metadata_behavior() {
 	for sum_type in [true, false] {
 		mut tc := TypeChecker.new(&a)
 		tc.diagnose_unknown_calls = true
-		tc.type_aliases['u64'] = 'i8'
+		tc.type_aliases.set('u64', 'i8')
 		if sum_type {
 			tc.sum_generic_params['u64'] = ['T']
 		} else {

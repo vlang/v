@@ -52,9 +52,9 @@ fn configure_owned_array_storage_checker(mut tc types.TypeChecker) {
 		typ:  types.Type(types.string_)
 	}]
 	tc.interface_names['IError'] = true
-	tc.type_aliases['ArrayResult'] = '![]Res'
-	tc.type_aliases['ArrayResultAlias'] = 'ArrayResult'
-	tc.type_aliases['ArrayOption'] = '?[]Res'
+	tc.type_aliases.set('ArrayResult', '![]Res')
+	tc.type_aliases.set('ArrayResultAlias', 'ArrayResult')
+	tc.type_aliases.set('ArrayOption', '?[]Res')
 	assert tc.ownership_type_requires_destruction(tc.parse_type('Res'))
 }
 
@@ -86,9 +86,9 @@ fn test_owned_array_result_sum_storage_keeps_error_acquisition_inside_its_varian
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	configure_owned_array_storage_checker(mut tc)
-	tc.sum_types['Storage'] = ['ArrayResultAlias', 'int']
+	tc.sum_types.set('Storage', ['ArrayResultAlias', 'int'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types['Storage'] = ['ArrayResultAlias', 'int']
+	t.sum_types.set('Storage', ['ArrayResultAlias', 'int'])
 	t.set_var_type('source', 'Storage')
 	owned := t.clone_owned_array_value_for_capture(t.make_ident('source'), 'Storage')
 	assert t.is_owned_array_storage_value(owned)
@@ -277,9 +277,9 @@ fn test_owned_sum_reassignment_keeps_declared_storage_under_smartcast() {
 		typ:  types.Type(types.string_)
 	}]
 	tc.structs['Second'] = tc.structs['First']
-	tc.sum_types['Value'] = ['First', 'Second']
+	tc.sum_types.set('Value', ['First', 'Second'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types['Value'] = ['First', 'Second']
+	t.sum_types.set('Value', ['First', 'Second'])
 	t.set_var_type('value', 'Value')
 	t.set_var_type('replacement', 'Value')
 	t.push_smartcast('value', 'First', 'Value')
@@ -292,7 +292,7 @@ fn test_owned_sum_reassignment_keeps_declared_storage_under_smartcast() {
 		if node.kind == .decl_assign && node.children_count == 2 {
 			binding := a.child_node(&node, 0)
 			if binding.value.starts_with('__drop_assign') {
-				assert node.typ == 'Value', node.typ
+				assert node.typ_text() == 'Value', node.typ_text()
 				saw_replacement = true
 			}
 		}

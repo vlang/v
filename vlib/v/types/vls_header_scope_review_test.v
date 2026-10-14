@@ -44,7 +44,7 @@ fn test_bodyless_generic_header_keeps_function_return_types_in_scope() {
 				decl := flat.Node{
 					kind:   .fn_decl
 					pos:    token.new_pos(1, 0)
-					typ:    return_type
+					typ:    flat.source_type_id(return_type)
 					is_mut: true
 				}
 				inside := signature.last_index('T') or { panic('missing return T') }
