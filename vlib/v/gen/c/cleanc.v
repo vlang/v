@@ -5588,6 +5588,7 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 		'crypto/rand/internal/rand_windows.c.v' { return include_arg == '<bcrypt.h>' }
 		'time/timerfd.c.v' { return include_arg == '<sys/timerfd.h>' }
 		'v/workers/thread_nix.c.v' { return include_arg == '<sys/prctl.h>' }
+		'v/gen/fastc/unit_compile_nix.c.v' { return include_arg == '<signal.h>' }
 		'v/diagserver/diagserver_linux.c.v' {
 			return include_arg in ['<errno.h>', '<signal.h>', '<sys/file.h>', '<sys/wait.h>',
 				'<unistd.h>', '<sys/prctl.h>', '<sys/syscall.h>']

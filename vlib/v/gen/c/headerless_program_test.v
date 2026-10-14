@@ -233,6 +233,7 @@ fn test_self_c_has_no_include_directives() {
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(c_file)!
 	$if !windows {
+		assert code.split_into_lines().any(it.starts_with('DIR* fdopendir(')), 'the CLI needs the pointer-returning POSIX fdopendir binding'
 		assert code.split_into_lines().any(it.starts_with('DIR* opendir(')), 'the CLI needs the pointer-returning POSIX opendir binding'
 	}
 	for line in code.split_into_lines() {
