@@ -72,6 +72,16 @@ int main(void) {
                     const char* format = general ? (upper ? "%.*G" : "%.*g")
                         : (upper ? "%.*E" : "%.*e");
                     int n = snprintf(expected, sizeof(expected), format, precisions[p], values[v]);
+                    /* Rebuild the integer exponent independently of CRT float padding. */
+                    char* exponent = strrchr(expected, upper ? 69 : 101);
+                    if (exponent != NULL) {
+                        int power = (int)strtol(exponent + 1, NULL, 10);
+                        size_t offset = (size_t)(exponent - expected);
+                        int digits = snprintf(exponent, sizeof(expected) - offset, "%c%+03d",
+                            upper ? 69 : 101, power);
+                        assert(digits > 0);
+                        n = (int)offset + digits;
+                    }
                     string actual = general ? v3_f64_general(values[v], precisions[p], upper)
                         : v3_f64_exp(values[v], precisions[p], upper);
                     assert(actual.len == n);
