@@ -155,3 +155,37 @@ fn test_parse_repeated_newlines_inside_tag() {
 	assert span.attributes['id'] == 'y'
 	assert '' !in span.attributes
 }
+
+fn test_parse_trailing_text_after_last_tag() {
+	// text after the last tag must survive parsing instead of being
+	// dropped: it becomes a text node following the tags.
+	// See https://github.com/vlang/v/issues/30161
+	mut dom := parse('<p>a</p>trailing')
+	mut found := false
+	for t in dom.get_tags() {
+		if t.name == 'text' && t.text_content == 'trailing' {
+			found = true
+		}
+	}
+	assert found, 'trailing text was dropped'
+}
+
+fn test_parse_unclosed_tag_keeps_text() {
+	// text inside an element that is never closed belongs to it.
+	// See https://github.com/vlang/v/issues/30161
+	mut dom := parse('<div><p>unclosed')
+	mut p := dom.get_tags(name: 'p')[0]
+	assert p.text_content == 'unclosed'
+}
+
+fn test_parse_trailing_text_belongs_to_the_surrounding_element() {
+	dom := parse('<div><p>a</p>trailing')
+	p := dom.get_tags(name: 'p')[0]
+	assert p.text() == 'a'
+	assert p.children.len == 0
+	texts := dom.get_tags(name: 'text')
+	assert texts.len == 1
+	assert texts[0].text() == 'trailing'
+	assert texts[0].parent.name == 'div'
+	assert dom.get_root().text() == 'atrailing'
+}

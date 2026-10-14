@@ -48,3 +48,6 @@ Unterminated script and style elements retain their collected body when parsing 
 
 Newlines inside tags separate names and attributes like spaces. Consecutive separators preserve
 a pending quoted attribute value.
+
+Trailing text is retained when parsing ends, including text after a closing tag and text in an
+unclosed element. Text after a closing tag belongs to the surrounding element.
