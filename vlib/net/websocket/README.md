@@ -47,3 +47,6 @@ send handles, backpressure, deadlines, and graceful shutdown. The existing `Clie
 and `Server` APIs keep their execution model.
 See [the reactor documentation](REACTOR.md) for ownership, callbacks, and limits.
 See [text validation](FRAME_VALIDATION.md) for the ASCII fast path and Unicode fallback.
+
+Incoming 64-bit frame lengths must have the most significant bit clear and fit in
+V's `int` range. Oversized lengths are rejected before allocating the payload buffer.

@@ -3247,6 +3247,23 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		return tokens[0].source
 	}
 	if tokens.len > 1 && tokens[0].tok == .amp && tokens[0].is_mut_argument {
+		interface_type := expected_type.trim_right('*')
+		if g.selfhost && expected_type.ends_with('*')
+			&& g.declared_kinds[g.semantic_type_key(interface_type)] == .interface_ {
+			// `f(mut value)` for a `mut x Interface` parameter: the interface refers to the
+			// caller's value itself, so the callee's mutations reach it (never a boxed copy).
+			actual_type := fastc_normalize_inferred_type(g.infer_expression_type(tokens[1..]) or {
+				''
+			})
+			actual_key := g.semantic_type_key(actual_type)
+			if actual_type != '' && !fastc_is_pointer_type(actual_type)
+				&& g.declared_kinds[actual_key] == .struct_ {
+				target := g.render_call_argument_expression(tokens[1..], actual_type) or {
+					return none
+				}
+				return '&((${interface_type}){._object=(void*)(&(${target})), ._typ=__v_typeid_${fastc_c_declared_type_name(actual_key)}})'
+			}
+		}
 		if g.selfhost && expected_type == 'voidptr*' {
 			actual_type := g.infer_expression_type(tokens[1..]) or { '' }
 			if actual_type !in ['', 'voidptr'] {
@@ -3421,10 +3438,18 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 	if expected_type.ends_with('*') && actual_type == 'voidptr' && rendered.trim_space() == 'NULL' {
 		return 'NULL'
 	}
+	if expected_type.ends_with('*') && actual_type == 'voidptr' {
+		// An erased pointer is already an address, including an explicit cast
+		// in a C call. Taking its address would produce an invalid pointer rvalue.
+		return '((${expected_type})(${rendered}))'
+	}
 	if expected_type.ends_with('*') && fastc_expression_is_zero(tokens) {
 		return 'NULL'
 	}
-	if expected_type.ends_with('*') && actual_type == expected_type.trim_right('*') {
+	// A `voidptr` converts to any pointer type as it is (`C.backtrace_symbols(voidptr(p), n)`
+	// for an `&voidptr` parameter); taking its address would pass a different pointer.
+	if expected_type.ends_with('*') && actual_type == expected_type.trim_right('*')
+		&& actual_type != 'voidptr' {
 		return '&(${rendered})'
 	}
 	if expected_type.ends_with('*') && g.should_box_variant(expected_type.trim_right('*'), actual_type) {
@@ -3507,7 +3532,7 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 		}
 	}
 	return FastcRenderedExpression{
-		source: '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${normalized_element}), (${normalized_element}[]){${rendered_items.join(',')}}))'
+		source: g.dynamic_array_literal_source(array_type, normalized_element, rendered_items)
 		typ:    array_type
 	}
 }

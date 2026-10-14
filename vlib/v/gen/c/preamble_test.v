@@ -793,6 +793,22 @@ fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {
 	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')
 }
 
+fn test_system_libc_headers_provide_posix_file_lock_flags() ! {
+	$if windows || freestanding {
+		return
+	}
+	mut g := FlatGen.new()
+	g.compiler_vroot = @VEXEROOT
+	g.system_libc_headers()
+	dir := os.join_path(os.vtmp_dir(), 'system_file_lock_headers_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'lock.c')
+	os.write_file(source, g.sb.str() + '\nint (*lock_file)(int, int) = flock;\nint main(void) { return (LOCK_EX | LOCK_NB | LOCK_SH | LOCK_UN) == 0; }\n')!
+	compiled := os.exec(['cc', '-D_GNU_SOURCE=1', '-std=gnu11', '-Werror', '-fsyntax-only', source])
+	assert compiled.exit_code == 0, compiled.output
+}
+
 fn test_system_libc_headers_leave_the_msvc_only_headers_to_the_c_preprocessor() {
 	// The generated C is compiled by whatever C compiler the user picked, which is
 	// not the one V generated it for: `vc/v_win.c` comes out of
