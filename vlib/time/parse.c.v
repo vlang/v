@@ -465,6 +465,8 @@ pub fn parse(s string) !Time {
 // |        | ss     | second, 0..59 |
 // |AM/PM   | A      | AM or PM; hour must be 1..12 |
 // |        | a      | am or pm; hour must be 1..12 |
+// Unpadded clock tokens H, h, k, m and s accept one or two digits; their doubled forms
+// require exactly two digits. Leading zeros are accepted for clock tokens.
 pub fn parse_format(s string, format string) !Time {
 	if s == '' {
 		return error_invalid_time(0, 'datetime string is empty')

@@ -340,7 +340,7 @@ fn (tc &TypeChecker) vls_selector_definition(node flat.Node) ?VlsPos {
 	if enum_name := tc.vls_enum_receiver(receiver) {
 		qualified := if enum_name.contains('.') { enum_name } else { tc.qualify_name(enum_name) }
 		return tc.vls_enum_value_definition(Type(Enum{
-			name: qualified
+			name_id: flat.source_type_id(qualified)
 		}), node.value)
 	}
 	if receiver.kind == .ident && tc.expr_type(receiver_id) == none {
@@ -394,7 +394,7 @@ fn (tc &TypeChecker) vls_enum_value_definition(typ Type, value string) ?VlsPos {
 	if typ !is Enum {
 		return none
 	}
-	name := (typ as Enum).name
+	name := (typ as Enum).name()
 	index := tc.first_type_declaration_ids[name] or { return none }
 	decl := tc.a.nodes[index]
 	for i in 0 .. decl.children_count {

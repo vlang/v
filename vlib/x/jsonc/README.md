@@ -45,6 +45,9 @@ fn main() {
 ```
 
 `parse_file` reads the document from disk.
+`Doc.str()` renders compact JSONC without comments or trailing commas. Valid decimal numbers
+that overflow `f64`, such as `1e400`, remain signed infinity in the dynamic tree and render as
+`1e999` or `-1e999`, so the rendered document can be parsed again without losing the overflow.
 
 ## Validate
 `is_valid` answers whether a document is JSONC, and `violation` returns the first
@@ -64,12 +67,12 @@ fn main() {
 
 ## Decode into V types
 `decode` reads a document into a struct. The rules are the ones
-[`x.json5`](https://github.com/vlang/v/tree/master/vlib/x/json5) uses, because
+[`json2`](https://github.com/vlang/v/tree/master/vlib/json2) uses, because
 the same decoder does the work: structs with embedded structs flattened into the
 parent, enums by name or by value, `map[string]T`, arrays, options, and every
 scalar width.
 
-A field is matched by name, or by an `@[json5: 'name']` attribute when the
+A field is matched by name, or by an `@[json: 'name']` attribute when the
 document spells it differently, which is the usual case for a camelCase config
 key. A missing key leaves the field at its default, and an explicit `null` clears
 an option field.
@@ -78,12 +81,12 @@ an option field.
 import x.jsonc
 
 struct CompilerOptions {
-	out_dir string @[json5: 'outDir']
+	out_dir string @[json: 'outDir']
 	strict  bool
 }
 
 struct TsConfig {
-	compiler_opts CompilerOptions @[json5: 'compilerOptions']
+	compiler_opts CompilerOptions @[json: 'compilerOptions']
 	include       []string
 }
 
@@ -99,7 +102,10 @@ fn main() {
 ```
 
 `decode_file` reads the document from disk, and `decode_any` converts a tree
-that was parsed already.
+that was parsed already. Typed decoding preserves 64-bit integers; dynamic trees
+use `json2.Any`, whose default numeric variant is `f64` and has floating-point
+precision limits. Use `str()` and `as_array()` to read strings and arrays.
+`decode_any` preserves overflowing numbers as signed infinity, consistently with `decode`.
 
 The dialect is checked before the decoder runs, so a document with a JSON5-only
 construct is refused even when the target struct has a field for it.
@@ -111,6 +117,7 @@ the whole offending text: the token, the character that is not whitespace, the
 escape sequence from its backslash, or the single-quoted string from quote to
 quote. It never ends inside a multi-byte character, so slicing the original text
 with it is safe. A byte that is not valid UTF-8 counts as one character.
+CR, LF, U+2028 and U+2029 advance the line and reset the column; CRLF counts once.
 
 When several violations are present, the one reported is the first in the
 document.
@@ -151,9 +158,9 @@ fn main() {
 The option relaxes that one rule and nothing else.
 
 ## Stripping comments
-`strip_comments` replaces every comment with spaces. The replacement is byte for
-byte and keeps the line terminators inside a comment, so every remaining
-character keeps the offset it had in the input and the result still parses.
+`strip_comments` replaces comment contents with spaces, byte for byte, preserving
+CR, LF, U+2028 and U+2029 exactly. Remaining characters keep their original byte offsets
+and line numbers, including after Unicode line separators inside block comments.
 
 ```v
 import x.jsonc
@@ -165,9 +172,10 @@ fn main() {
 }
 ```
 
-Use it when the comments have to go before the text reaches something that only
-speaks strict JSON. Note that `vlib/json2` rejects comments outright, so a
-JSONC document has to be stripped before it is handed to it.
+`json2` rejects comments by default. Strip them first to parse the remaining text
+as ordinary JSON, or pass `json5: true` to accept the comments directly.
+Unicode separators retained from comments are not RFC 8259 whitespace between tokens;
+parse stripped output containing them with `json5: true`.
 
 ## What is accepted and what is refused
 Accepted, because they are JSONC:
@@ -175,6 +183,7 @@ Accepted, because they are JSONC:
 - `//` line comments and `/* */` block comments;
 - a leading byte order mark;
 - every escape in RFC 8259, including `\uXXXX`;
+- unescaped U+2028 and U+2029 inside quoted strings;
 - the four characters RFC 8259 allows between tokens: space, tab, CR and LF;
 - a trailing comma, when `allow_trailing_comma` is set.
 
@@ -195,7 +204,7 @@ Refused, because they are JSON5 extensions rather than JSONC:
 | `\'`, `\v`, `\0`, `\xNN` | `"\v"` |
 | ES6 `\u{...}` escape | `"\u{1F600}"` |
 | escaped line break | `"a\<newline>b"` |
-| unescaped control character | a raw newline inside a string |
+| unescaped control character | a raw tab inside a string |
 
 Refused, because RFC 8259 does not allow them between tokens even though the
 JSON5 scanner skips them as whitespace:
@@ -204,7 +213,7 @@ JSON5 scanner skips them as whitespace:
 | --- | --- |
 | vertical tab, form feed | `U+000B`, `U+000C` |
 | no-break space | `U+00A0` |
-| Unicode space above U+2000 | `U+202F`, `U+205F`, `U+2028` |
+| Unicode space separators and line terminators | `U+1680`, `U+2000`, `U+202F`, `U+2028` |
 | an interior byte order mark | `{"a": 1<FEFF>}` |
 
 A byte order mark is accepted only at the very start of the document. These
@@ -212,18 +221,18 @@ characters remain legal inside a comment, which is opaque, and inside a string,
 where the string rules decide.
 
 ## Errors
-Two kinds of problem are reported, and they are told apart by their prefix.
+Dialect violations and malformed input use different error types.
 
 A `ParseError`, prefixed `jsonc:`, is well formed JSON5 that is not valid JSONC.
 It is the `ParseError` above, with a position.
 
 Anything else is malformed input, and the error comes from the JSON5 parser
-unchanged, prefixed `json5:`. That happens before the dialect is considered, so
+as a `json2.JsonScanError`. That happens before the dialect is considered, so
 a syntax error is never reported as a dialect problem.
+Raw LF and CR inside a quoted string are syntax errors in the shared JSON5 parser.
 
-Decoding errors are the JSON5 decoder's own, also prefixed `json5:`: they are
-about the shape of a value rather than the dialect, and the decoder is shared
-with `x.json5` rather than duplicated here.
+Decoding errors come from `json2` and describe the value that does not fit the target type.
+The decoder is shared with JSON and JSON5.
 
 ## Examples
 See the [examples](examples/) directory for a complete runnable program.

@@ -443,6 +443,7 @@ struct RepIndex {
 }
 
 // replace_each replaces all occurrences of the string pairs given in `vals`.
+// Pairs with an empty search string are ignored; empty replacement strings remove matches.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 @[direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
@@ -466,6 +467,11 @@ pub fn (s string) replace_each(vals []string) string {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
 		rep := vals[rep_i]
 		with := vals[rep_i + 1]
+		if rep.len == 0 {
+			// an empty needle matches at every position without advancing
+			// the scan below, so skip it instead of looping forever
+			continue
+		}
 
 		for {
 			idx = s_.index_after_(rep, idx)
@@ -743,13 +749,13 @@ pub fn (s string) i64() i64 {
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
 @[inline]
 pub fn (s string) f32() f32 {
-	return f32(strconv.atof64(s, allow_extra_chars: true) or { 0 })
+	return f32(strconv.atof64(s, allow_extra_chars: true, allow_overflow: true) or { 0 })
 }
 
 // f64 returns the value of the string as f64 `'1.0'.f64() == f64(1)`.
 @[inline]
 pub fn (s string) f64() f64 {
-	return strconv.atof64(s, allow_extra_chars: true) or { 0 }
+	return strconv.atof64(s, allow_extra_chars: true, allow_overflow: true) or { 0 }
 }
 
 // u8_array returns the value of the hex/bin string as u8 array.
@@ -987,7 +993,7 @@ fn (s string) plus_two(a string, b string) string {
 	return res
 }
 
-// split_any splits the string to an array by any of the `delim` chars.
+// split_any splits the string to an array by any of the UTF-8 runes in `delim`.
 // If the delimiter string is empty then `.split()` is used.
 // Example: assert "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
 @[direct_array_access]
@@ -1002,14 +1008,22 @@ pub fn (s string) split_any(delim string) []string {
 		if delim.len <= 0 {
 			return s.split('')
 		}
-		for index, ch in s {
-			for delim_ch in delim {
-				if ch == delim_ch {
-					res << s[i..index]
-					i = index + 1
+		delim_runes := delim.runes()
+		mut j := 0
+		for j < s.len {
+			r, char_len := utf8_decode_rune(unsafe { &s.str[j] }, s.len - j)
+			mut is_delim := false
+			for delim_rune in delim_runes {
+				if r == delim_rune {
+					is_delim = true
 					break
 				}
 			}
+			if is_delim {
+				res << s[i..j]
+				i = j + char_len
+			}
+			j += char_len
 		}
 		if i < s.len {
 			res << s[i..]
@@ -1018,7 +1032,7 @@ pub fn (s string) split_any(delim string) []string {
 	return res
 }
 
-// rsplit_any splits the string to an array by any of the `delim` chars in reverse order.
+// rsplit_any splits the string by UTF-8 runes in `delim`, in reverse order.
 // If the delimiter string is empty then `.rsplit()` is used.
 // Example: assert "first row\nsecond row".rsplit_any(" \n") == ['row', 'second', 'row', 'first']
 @[direct_array_access]
@@ -1032,15 +1046,31 @@ pub fn (s string) rsplit_any(delim string) []string {
 			return s.rsplit('')
 		}
 		mut rbound := s.len
+		delim_runes := delim.runes()
 		for i >= 0 {
-			for delim_ch in delim {
-				if s[i] == delim_ch {
-					res << s[i + 1..rbound]
-					rbound = i
+			// find the start of the rune ending at byte `i`
+			mut start := i
+			for start > 0 && i - start < 3 && utf8_is_continuation(s[start]) {
+				start--
+			}
+			mut r, mut char_len := utf8_decode_rune(unsafe { &s.str[start] }, s.len - start)
+			if start + char_len != i + 1 {
+				// Decode exactly one in-bounds byte of the malformed suffix as a replacement.
+				start = i
+				r, char_len = utf8_decode_rune(unsafe { &s.str[start] }, 1)
+			}
+			mut is_delim := false
+			for delim_rune in delim_runes {
+				if r == delim_rune {
+					is_delim = true
 					break
 				}
 			}
-			i--
+			if is_delim {
+				res << s[start + char_len..rbound]
+				rbound = start
+			}
+			i = start - 1
 		}
 		if rbound > 0 {
 			res << s[..rbound]
@@ -1113,6 +1143,9 @@ pub fn (s string) split_n(delim string, n int) []string {
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
+// With an empty `delim` each part is one rune, not one byte, so a multi-byte
+// character is never split across parts; see https://github.com/vlang/v/issues/29834 .
+// Example: assert 'αβγ'.split('') == ['α', 'β', 'γ']
 @[direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
@@ -1120,12 +1153,22 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	defer { unsafe { res.flags.clear(.noslices) } }
 	match delim.len {
 		0 {
-			for i, ch in s {
+			// Walk runes, keeping the byte offset of each, so a part is always a
+			// whole character and the `nth` remainder slots on a rune boundary.
+			mut i := 0
+			for i < s.len {
+				_, mut char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+				if char_len < 1 {
+					// Should not happen for valid UTF-8, but a zero or negative
+					// step would loop for ever, so advance defensively.
+					char_len = 1
+				}
 				if nth > 0 && res.len == nth - 1 {
 					res << s[i..]
 					break
 				}
-				res << ch.ascii_str()
+				res << s[i..i + char_len]
+				i += char_len
 			}
 		}
 		1 {
@@ -1169,10 +1212,12 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	return res
 }
 
-// rsplit_nth splits the string based on the passed `delim` substring in revese order.
+// rsplit_nth splits the string based on the passed `delim` substring in reverse order.
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
+// When splitting at a nonempty delimiter, an end match produces an empty first part.
+// An empty delimiter splits complete UTF-8 runes in reverse order.
 @[direct_array_access]
 pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	mut res := []string{}
@@ -1180,12 +1225,26 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	defer { unsafe { res.flags.clear(.noslices) } }
 	match delim.len {
 		0 {
-			for i := s.len - 1; i >= 0; i-- {
+			// Collect the rune boundaries forward, then walk them back, so the
+			// `nth` remainder is the leading runes rather than a byte prefix.
+			mut starts := []int{cap: 8}
+			mut ends := []int{cap: 8}
+			mut i := 0
+			for i < s.len {
+				_, mut char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+				if char_len < 1 {
+					char_len = 1
+				}
+				starts << i
+				ends << i + char_len
+				i += char_len
+			}
+			for j := ends.len - 1; j >= 0; j-- {
 				if nth > 0 && res.len == nth - 1 {
-					res << s[..i + 1]
+					res << s[..ends[j]]
 					break
 				}
-				res << s[i].ascii_str()
+				res << s[starts[j]..ends[j]]
 			}
 		}
 		1 {
@@ -1206,15 +1265,16 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 		}
 		else {
 			mut rbound := s.len
-			for i := s.len - 1; i >= 0; i-- {
-				is_delim := i - delim.len >= 0 && s[i - delim.len..i] == delim
-				if is_delim {
+			for i := s.len - delim.len; i >= 0; i-- {
+				if unsafe { s.substr_unsafe(i, i + delim.len) } == delim {
 					if nth > 0 && res.len == nth - 1 {
 						break
 					}
-					res << s[i..rbound]
-					i -= delim.len
+					res << s[i + delim.len..rbound]
 					rbound = i
+					// Step past the delimiter; the loop's own `i--`
+					// then lands on the next non-overlapping start.
+					i -= delim.len - 1
 				}
 			}
 			if nth < 1 || res.len < nth {
@@ -1782,20 +1842,25 @@ pub fn (s string) to_lower() string {
 	return runes.string()
 }
 
-// is_lower returns `true`, if all characters in the string are lowercase.
+// is_lower returns `true` if all ASCII letters in the string are lowercase,
+// and the string contains at least one lowercase ASCII letter.
 // It only works when the input is composed entirely from ASCII characters.
 // Example: assert 'hello developer'.is_lower() == true
 @[direct_array_access]
 pub fn (s string) is_lower() bool {
-	if s == '' || s[0].is_digit() {
+	if s == '' {
 		return false
 	}
+	mut has_lower := false
 	for i in 0 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
 		}
+		if s[i] >= `a` && s[i] <= `z` {
+			has_lower = true
+		}
 	}
-	return true
+	return has_lower
 }
 
 // to_upper_ascii returns the string in all UPPERCASE characters.
@@ -2308,7 +2373,7 @@ pub fn (str string) is_oct() bool {
 		return false
 	}
 
-	if i < str.len && str[i] == `o` {
+	if i < str.len && (str[i] == `o` || str[i] == `O`) {
 		i++
 	} else {
 		return false
@@ -2351,7 +2416,7 @@ pub fn (str string) is_bin() bool {
 		return false
 	}
 
-	if i < str.len && str[i] == `b` {
+	if i < str.len && (str[i] == `b` || str[i] == `B`) {
 		i++
 	} else {
 		return false
@@ -2394,7 +2459,7 @@ pub fn (str string) is_hex() bool {
 		return false
 	}
 
-	if i < str.len && str[i] == `x` {
+	if i < str.len && (str[i] == `x` || str[i] == `X`) {
 		i++
 	} else {
 		return false
@@ -2694,9 +2759,13 @@ pub fn (s string) reverse() string {
 }
 
 // limit returns a portion of the string, starting at `0` and extending for a given number of characters afterward.
+// A non-positive limit returns an empty string.
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
 pub fn (s string) limit(max int) string {
+	if max <= 0 {
+		return ''
+	}
 	u := s.runes()
 	if u.len <= max {
 		return s.clone()
@@ -2804,7 +2873,9 @@ pub fn (s string) strip_margin() string {
 	return s.strip_margin_custom(`|`)
 }
 
-// strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
+// strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`.
+// The first line also drops its prefix through the delimiter, when present.
+// A trailing region without a delimiter is retained, except for its final whitespace-only lines.
 @[direct_array_access]
 pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
@@ -2817,7 +2888,19 @@ pub fn (s string) strip_margin_custom(del u8) string {
 	// can be is this big
 	mut ret := unsafe { malloc_noscan(s.len + 1) }
 	mut count := 0
-	for i := 0; i < s.len; i++ {
+	mut exhausted := false
+	mut tail_content_end := s.len - 1
+	// The first line drops everything up to its delimiter like every other
+	// line does; without one it is kept whole.
+	mut start := 0
+	mut j := 0
+	for j < s.len && s[j] != sep && s[j] != 10 && s[j] != 13 {
+		j++
+	}
+	if j < s.len && s[j] == sep {
+		start = j + 1
+	}
+	for i := start; i < s.len; i++ {
 		if s[i] in [10, 13] {
 			unsafe {
 				ret[count] = s[i]
@@ -2831,11 +2914,24 @@ pub fn (s string) strip_margin_custom(del u8) string {
 				count++
 				i++
 			}
-			for s[i] != sep {
-				i++
-				if i >= s.len {
-					break
+			if !exhausted {
+				mut j := i + 1
+				for j < s.len && s[j] != sep {
+					j++
 				}
+				if j < s.len {
+					// Keep the established removal of lines before the next delimiter.
+					i = j
+					continue
+				}
+				// Search the unmarked tail only once, even when it contains many lines.
+				exhausted = true
+				for tail_content_end > i && s[tail_content_end] in [u8(9), 10, 13, 32] {
+					tail_content_end--
+				}
+			}
+			if i >= tail_content_end {
+				i = s.len
 			}
 		} else {
 			unsafe {

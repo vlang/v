@@ -196,20 +196,27 @@ fn count_leading(s string, c u8) int {
 }
 
 // expand_tabs converts leading tabs in s to spaces (tab stop = 4 columns).
+// Only the leading whitespace run is expanded: tabs elsewhere (notably
+// inside fenced and indented code blocks) are literal content and must be
+// preserved byte for byte.
 fn expand_tabs(s string) string {
 	if !s.contains('\t') {
 		return s
 	}
 	mut sb := strings.new_builder(s.len)
 	mut col := 0
+	mut leading := true
 	for i := 0; i < s.len; i++ {
-		if s[i] == `\t` {
+		if leading && s[i] == `\t` {
 			spaces := 4 - (col % 4)
 			for _ in 0 .. spaces {
 				sb.write_u8(` `)
 			}
 			col += spaces
 		} else {
+			if s[i] != ` ` && s[i] != `\t` {
+				leading = false
+			}
 			sb.write_u8(s[i])
 			col++
 		}

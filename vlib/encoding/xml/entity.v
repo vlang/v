@@ -44,7 +44,9 @@ pub:
 }
 
 // unescape_text replaces all entities in the given string with their respective
-// original characters or strings. See default_entities_reverse, which can be overridden.
+// original characters or strings. Decimal and hexadecimal character references are also decoded.
+// Unknown entities and invalid XML character references return an error.
+// See default_entities, which can be overridden.
 pub fn unescape_text(content string, config UnescapeConfig) !string {
 	mut buffer := strings.new_builder(content.len)
 	mut index := 0
@@ -64,7 +66,10 @@ pub fn unescape_text(content string, config UnescapeConfig) !string {
 				}
 				// Did we find a valid entity?
 				entity := entity_buf.str()
-				if entity in config.entities {
+				if entity.starts_with('#') {
+					buffer.write_rune(parse_character_reference(entity)!)
+					index += offset
+				} else if entity in config.entities {
 					buffer.write_string(config.entities[entity])
 					index += offset
 				} else {
@@ -79,4 +84,30 @@ pub fn unescape_text(content string, config UnescapeConfig) !string {
 		index++
 	}
 	return buffer.str()
+}
+
+fn parse_character_reference(entity string) !rune {
+	base := if entity.starts_with('#x') { u32(16) } else { u32(10) }
+	start := if base == 16 { 2 } else { 1 }
+	if entity.len == start {
+		return error('Invalid XML character reference: &${entity};')
+	}
+	mut value := u32(0)
+	for ch in entity[start..] {
+		digit := match ch {
+			`0`...`9` { u32(ch - `0`) }
+			`a`...`f` { u32(ch - `a` + 10) }
+			`A`...`F` { u32(ch - `A` + 10) }
+			else { u32(16) }
+		}
+		if digit >= base || value > (u32(0x10ffff) - digit) / base {
+			return error('Invalid XML character reference: &${entity};')
+		}
+		value = value * base + digit
+	}
+	if value !in [u32(9), 10, 13] && !(value >= 0x20 && value <= 0xd7ff)
+		&& !(value >= 0xe000 && value <= 0xfffd) && !(value >= 0x10000 && value <= 0x10ffff) {
+		return error('Invalid XML character reference: &${entity};')
+	}
+	return rune(value)
 }

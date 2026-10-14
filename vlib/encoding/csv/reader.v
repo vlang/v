@@ -30,14 +30,6 @@ fn (err EndOfFileError) msg() string {
 	return 'encoding.csv: end of file'
 }
 
-struct InvalidLineEndingError {
-	Error
-}
-
-fn (err InvalidLineEndingError) msg() string {
-	return 'encoding.csv: could not find any valid line endings'
-}
-
 struct Reader {
 	// not used yet
 	// has_header        bool
@@ -58,7 +50,7 @@ pub:
 }
 
 // new_reader initializes a Reader with string data to parse and,
-// optionally, a custom delimiter.
+// optionally, a custom delimiter. The final record may omit its line ending.
 pub fn new_reader(data string, config ReaderConfig) &Reader {
 	return &Reader{
 		data:      data
@@ -69,7 +61,9 @@ pub fn new_reader(data string, config ReaderConfig) &Reader {
 
 // read reads a row from the CSV data.
 // If successful, the result holds an array of each column's data.
-// A closing quote must be followed by the delimiter or the end of the record.
+// A quote in an unquoted field returns an error. A closing quote must be
+// followed by the delimiter or the end of the record.
+// An unterminated quoted field returns a parse error rather than end of file.
 pub fn (mut r Reader) read() ![]string {
 	l := r.read_record()!
 	return l
@@ -103,12 +97,10 @@ fn (mut r Reader) read_line() !string {
 			i = r.data.index_after('\r', r.row_pos) or { -1 }
 			if i != -1 {
 				r.is_mac_pre_osx_le = true
-			} else {
-				// no valid line endings found
-				return &InvalidLineEndingError{}
 			}
-		} else {
-			// No line ending on file
+		}
+		if i == -1 {
+			// The final record does not need a line ending.
 			i = r.data.len
 		}
 	}
@@ -132,10 +124,14 @@ fn (mut r Reader) read_record() ![]string {
 	mut keep_raw := false
 	mut line := ''
 	mut fields := []string{}
-	mut i := -1
 	for {
 		if need_read {
-			l := r.read_line()!
+			l := r.read_line() or {
+				if keep_raw && err is EndOfFileError {
+					return &UnterminatedQuotedFieldError{}
+				}
+				return err
+			}
 			if l.len <= 0 {
 				if keep_raw {
 					line += '\n'
@@ -156,14 +152,16 @@ fn (mut r Reader) read_record() ![]string {
 			keep_raw = false
 		}
 		if line.len == 0 || line[0] != `"` { // not quoted
-			j := line.index(r.delimiter.ascii_str()) or {
-				// last
-				fields << line[..line.len]
+			j := line.index(r.delimiter.ascii_str()) or { line.len }
+			field := line[..j]
+			if field.contains('"') {
+				return &BareQuoteError{}
+			}
+			fields << field
+			if j == line.len {
 				break
 			}
-			i = j
-			fields << line[..i]
-			line = line[i + 1..]
+			line = line[j + 1..]
 			continue
 		} else { // quoted
 			mut need_more := true
@@ -206,11 +204,28 @@ fn (mut r Reader) read_record() ![]string {
 			}
 			return &UnexpectedCharacterAfterQuoteError{}
 		}
-		if i <= -1 && fields.len == 0 {
-			return &InvalidDelimiterError{}
-		}
 	}
 	return fields
+}
+
+struct BareQuoteError {
+	Error
+}
+
+struct UnterminatedQuotedFieldError {
+	Error
+}
+
+fn (err UnterminatedQuotedFieldError) msg() string {
+	return 'encoding.csv: unterminated quoted field'
+}
+
+fn (err BareQuoteError) msg() string {
+	return 'encoding.csv: bare quote in non-quoted field'
+}
+
+fn valid_delim(b u8) bool {
+	return b != 0 && b != `"` && b != `\r` && b != `\n`
 }
 
 struct UnexpectedCharacterAfterQuoteError {
@@ -219,8 +234,4 @@ struct UnexpectedCharacterAfterQuoteError {
 
 fn (err UnexpectedCharacterAfterQuoteError) msg() string {
 	return 'encoding.csv: unexpected character after closing quote'
-}
-
-fn valid_delim(b u8) bool {
-	return b != 0 && b != `"` && b != `\r` && b != `\n`
 }

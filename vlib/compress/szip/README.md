@@ -4,3 +4,5 @@
 which in turn is "Single C source file zlib-replacement library,
 originally from code.google.com/p/miniz".
 It provides utility functions for reading/writing .zip files.
+
+Opening an entry by name in read-only mode returns an error when that entry is missing.

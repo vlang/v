@@ -5,14 +5,6 @@ module main
 
 import os
 
-#include <fcntl.h>
-
-#include <dirent.h>
-
-#include <sys/stat.h>
-
-#include <unistd.h>
-
 fn C.open(const_path &char, flags i32, mode ...int) i32
 
 fn C.openat(directory i32, const_path &char, flags i32, mode ...int) i32

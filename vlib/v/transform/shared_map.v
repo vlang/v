@@ -79,7 +79,7 @@ fn (mut t Transformer) shared_map_rlock_expr(id flat.NodeId, base_id flat.NodeId
 	return t.a.add_node(flat.Node{
 		kind:           .lock_expr
 		value:          'rlock'
-		typ:            typ
+		typ:            flat.source_type_id(typ)
 		children_start: start
 		children_count: 2
 		pos:            t.a.nodes[int(id)].pos
@@ -454,11 +454,11 @@ fn (t &Transformer) promoted_field_raw_type(struct_type string, field_name strin
 	}
 	info := t.lookup_struct_info(struct_type) or { return none }
 	if field := info.field(field_name) {
-		return if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+		return if field.raw_typ_text().len > 0 { field.raw_typ_text() } else { field.typ_text() }
 	}
 	for field in info.fields {
 		if field.is_embedded {
-			if typ := t.promoted_field_raw_type(field.typ.trim_left('&'), field_name, depth + 1) {
+			if typ := t.promoted_field_raw_type(field.typ_text().trim_left('&'), field_name, depth + 1) {
 				return typ
 			}
 		}
@@ -467,7 +467,7 @@ fn (t &Transformer) promoted_field_raw_type(struct_type string, field_name strin
 }
 
 fn (t &Transformer) is_shared_map_type_text(typ string) bool {
-	mut clean := typ.trim_space()
+	mut clean := trimmed_transform_text(typ)
 	if !clean.starts_with('shared ') {
 		return false
 	}

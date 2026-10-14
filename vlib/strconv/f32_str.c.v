@@ -47,9 +47,10 @@ const maxexp32 = 255
 // -3.40282346638528859811704183484516925440e+38
 @[direct_array_access]
 pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string {
-	n_digit := i_n_digit + 1
+	n_digit := if i_n_digit < 1 { 1 } else { i_n_digit + 1 }
 	pad_digit := i_pad_digit + 1
 	mut out := d.m
+	mut d_exp := d.e
 	// mut out_len      := decimal_len_32(out)
 	mut out_len := dec_digits(out)
 	out_len_original := out_len
@@ -59,7 +60,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 		fw_zeros = pad_digit - out_len
 	}
 
-	mut buf := []u8{len: int(out_len + 5 + 1 + 1)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
+	mut buf := []u8{len: int(out_len + 5 + 1 + 1 + fw_zeros)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
 	mut i := 0
 
 	if neg {
@@ -81,6 +82,12 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 		// println("orig: ${out_len_original}")
 		out += ten_pow_table_32[out_len - n_digit - 1] * 5 // round to up
 		out /= ten_pow_table_32[out_len - n_digit]
+		out_div := d.m / ten_pow_table_32[out_len - n_digit]
+		if out_div < out && dec_digits(out_div) < dec_digits(out) {
+			// from `99` to `100`, will need d_exp+1, and the new last digit is dropped
+			d_exp++
+			out /= 10
+		}
 		out_len = n_digit
 	}
 
@@ -91,14 +98,6 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 		out /= 10
 		i++
 		x++
-	}
-
-	// no decimal digits needed, end here
-	if i_n_digit == 0 {
-		unsafe {
-			buf[i] = 0
-			return tos(memdup(&buf[0], i + 1), i)
-		}
 	}
 
 	if out_len > 1 || fw_zeros > 0 {
@@ -121,7 +120,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	buf[i] = `e`
 	i++
 
-	mut exp := d.e + out_len_original - 1
+	mut exp := d_exp + out_len_original - 1
 	if exp < 0 {
 		buf[i] = `-`
 		i++
@@ -344,7 +343,14 @@ pub fn f32_to_str(f f32, n_digit int) string {
 	return d.get_string_32(neg, n_digit, 0)
 }
 
-// f32_to_str_pad returns a `string` in scientific notation with max `n_digit` after the dot.
+// f32_to_str_pad returns `f` as a `string` in scientific notation with `n_digit` digits after the dot.
+// The digits are the ones of the shortest decimal number that converts back to `f`: they are
+// rounded half up when there are more than `n_digit` of them after the dot, and zeros are appended
+// when there are fewer. The result is thus not always the correctly rounded exact value of `f`,
+// that C's `printf("%.*e")` prints: `f32_to_str_pad(0.1, 10)` is `1.0000000000e-01`
+// (and not `1.0000000149e-01`), and `f32_to_str_pad(9.95, 1)` is `1.0e+01` (and not `9.9e+00`).
+// Example: assert strconv.f32_to_str_pad(1234.5, 2) == '1.23e+03'
+// Example: assert strconv.f32_to_str_pad(1.5, 4) == '1.5000e+00'
 pub fn f32_to_str_pad(f f32, n_digit int) string {
 	mut u1 := Uf32{}
 	u1.f = f
@@ -357,8 +363,13 @@ pub fn f32_to_str_pad(f f32, n_digit int) string {
 	// println("${neg} ${mant} e ${exp-bias32}")
 
 	// Exit early for easy cases.
-	if exp == maxexp32 || (exp == 0 && mant == 0) {
-		return get_string_special(neg, exp == 0, mant == 0)
+	if exp == maxexp32 {
+		return get_string_special(neg, false, mant == 0)
+	}
+	if exp == 0 && mant == 0 {
+		// zero gets its digits after the dot too
+		zero := Dec32{}
+		return zero.get_string_32(neg, n_digit, n_digit)
 	}
 
 	mut d, ok := f32_to_decimal_exact_int(mant, exp)
