@@ -32,3 +32,9 @@ positive and odd; invalid moduli cause a panic.
 
 `integer_from_string` and `integer_from_radix` accept an optional leading sign followed by
 at least one digit. Empty strings and bare `+` or `-` signs return an error.
+
+`Integer.mod_pow` and `Integer.big_mod_pow` reduce negative bases into nonnegative
+residues less than the absolute modulus. `mod_pow` panics for a zero modulus;
+`big_mod_pow` returns zero for a zero modulus or an absolute modulus of one.
+`Integer.mod_inverse(n)` requires `n > 1` and returns a nonnegative inverse less than `n`,
+also when the operand is negative. `%` continues to return a truncated remainder.
