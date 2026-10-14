@@ -84,3 +84,9 @@ fn test_ttl_reset_and_purge() {
 	assert t.purge_expired() == 2, 'a and c both expired'
 	assert t.len() == 0
 }
+
+fn test_ttl_default_clock_constructor() {
+	mut t := new_ttl[string, int](time.hour)
+	t.set('key', 42)
+	assert t.get('key') or { -1 } == 42
+}

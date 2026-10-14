@@ -93,7 +93,7 @@ struct TtlEntry[V] {
 }
 
 // Ttl[K, V] is a time-to-live cache: entries disappear after ttl elapses.
-// Expiry uses millisecond timestamps from now (time.ticks by default), so a
+// Expiry uses millisecond timestamps from now (a monotonic clock by default), so a
 // fake clock can be injected for deterministic tests. Single-threaded.
 pub struct Ttl[K, V] {
 mut:
@@ -104,8 +104,8 @@ mut:
 
 // new_ttl creates a Ttl expiring entries ttl after each set.
 pub fn new_ttl[K, V](ttl time.Duration) Ttl[K, V] {
-	return new_ttl_with_clock(ttl, fn () i64 {
-		return time.ticks()
+	return new_ttl_with_clock[K, V](ttl, fn () i64 {
+		return i64(time.sys_mono_now() / u64(time.millisecond))
 	})
 }
 
