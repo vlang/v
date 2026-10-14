@@ -1842,20 +1842,25 @@ pub fn (s string) to_lower() string {
 	return runes.string()
 }
 
-// is_lower returns `true`, if all characters in the string are lowercase.
+// is_lower returns `true` if all ASCII letters in the string are lowercase,
+// and the string contains at least one lowercase ASCII letter.
 // It only works when the input is composed entirely from ASCII characters.
 // Example: assert 'hello developer'.is_lower() == true
 @[direct_array_access]
 pub fn (s string) is_lower() bool {
-	if s == '' || s[0].is_digit() {
+	if s == '' {
 		return false
 	}
+	mut has_lower := false
 	for i in 0 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
 		}
+		if s[i] >= `a` && s[i] <= `z` {
+			has_lower = true
+		}
 	}
-	return true
+	return has_lower
 }
 
 // to_upper_ascii returns the string in all UPPERCASE characters.

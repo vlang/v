@@ -98,6 +98,10 @@ The `string.is_bin()`, `is_oct()`, and `is_hex()` predicates accept both lowerca
 prefixes (`0b`/`0B`, `0o`/`0O`, and `0x`/`0X`), including after an optional sign. Each prefix
 must be followed by at least one valid digit for its base.
 
+`string.is_lower()` requires at least one lowercase ASCII letter and rejects uppercase ASCII
+letters. Digits, whitespace, and punctuation do not determine the case: `'123abc'.is_lower()`
+is true, while digit-only or punctuation-only strings return false.
+
 ### Reverse splitting
 
 `rsplit`, `rsplit_nth`, and `rsplit_once` recognize nonempty delimiters at the end of a string.

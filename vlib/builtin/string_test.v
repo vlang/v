@@ -1186,6 +1186,16 @@ fn test_lower() {
 	s = 'hi'
 	assert s.is_lower()
 	assert s.to_lower() == 'hi'
+	// a leading digit no longer decides the whole string
+	assert '123abc'.is_lower()
+	assert '1a'.is_lower()
+	assert '1, 2, 3, 4 go!'.is_lower()
+	assert 'a1b2'.is_lower()
+	assert ' 123abc!'.is_lower()
+	assert !'!@#$'.is_lower()
+	assert !'   '.is_lower()
+	assert !'1A'.is_lower()
+	assert !'1a2B'.is_lower()
 	assert 'aloha!'[0] == `a`
 	assert 'aloha!'[5] == `!`
 	s = '123'
