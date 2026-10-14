@@ -199,11 +199,6 @@ fn test_v_self_accepts_fastc_backend() {
 	assert v2_repeated_build.output.count('V self compiling') == 2, v2_repeated_build.output
 	assert os.is_executable(deep_self_output)
 
-	prod_build := cmdexec.run(@VEXE, ['self', '-silent', '-prod', '-b', 'fastc', '-o',
-		os.join_path(root, 'v prod')])
-	assert prod_build.exit_code != 0
-	assert prod_build.output.contains('does not support `-prod`'), prod_build.output
-
 	source := os.join_path(root, 'main.v')
 	write_fastc_test_source(source, 'module main\nfn main() { println(42) }\n')
 	program := os.join_path(root, 'program')
@@ -277,8 +272,9 @@ fn test_fastc_backend_parses_directly_to_c_without_ast_fallback() {
 		os.rmdir_all(root) or {}
 	}
 	v3_bin := os.join_path(root, 'v3')
-	build := cmdexec.run(@VEXE, ['-gc', 'none', '-path', '${fastc_backend_vlib_dir}|@vlib|@vmodules',
-		'-o', v3_bin, fastc_backend_v3_source])
+	// A standalone vlib/v/v.v compiler includes the fastc backend only when it is built with it.
+	build := cmdexec.run(@VEXE, ['-gc', 'none', '-compile-backend', 'fastc', '-path',
+		'${fastc_backend_vlib_dir}|@vlib|@vmodules', '-o', v3_bin, fastc_backend_v3_source])
 	assert build.exit_code == 0, build.output
 
 	collision_source := os.join_path(root, 'collision.v')
@@ -311,8 +307,9 @@ fn main() {
 }
 ")
 	valid_binary := os.join_path(root, 'valid')
-	valid_compile := cmdexec.run(v3_bin, ['-macos-v3-compat-c99', '-b', 'fastc', '-o', valid_binary,
-		valid_source])
+	// Step lines are printed only with -show-timings (see the driver's bench setup).
+	valid_compile := cmdexec.run(v3_bin, ['-macos-v3-compat-c99', '-show-timings', '-b', 'fastc',
+		'-o', valid_binary, valid_source])
 	assert valid_compile.exit_code == 0, valid_compile.output
 	assert valid_compile.output.contains('fastc parse+gen'), valid_compile.output
 	assert !valid_compile.output.contains(' check'), valid_compile.output
@@ -778,11 +775,6 @@ fn main() {
 	}
 
 	for invocation in [
-		UnsupportedFastCInvocation{
-			args:     ['-silent', '-prod', '-b', 'fastc', '-o', os.join_path(root, 'prod'),
-				valid_source]
-			expected: 'fastc parser does not support `-prod`'
-		},
 		UnsupportedFastCInvocation{
 			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', no_main_output, valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
