@@ -3,13 +3,6 @@ module builtin
 
 #insert "@VEXEROOT/vlib/builtin/prealloc_atomics.h"
 
-$if !freestanding && !vinix {
-	$if !windows {
-		#include <sys/mman.h>
-		#include <unistd.h>
-	}
-}
-
 fn C.v_prealloc_atomic_add_i32(ptr &i32, delta int) int
 
 fn C.v_prealloc_atomic_load_i32(ptr &i32) int

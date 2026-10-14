@@ -28,6 +28,15 @@ import encoding.xml
 doc := xml.XMLDocument.from_file('test/sample.xml')!
 ```
 
+Attribute names must be unique within an element. Repeated attribute names produce a parse error.
+
+### External DOCTYPE Identifiers
+
+`SYSTEM` and `PUBLIC` DOCTYPE identifiers are accepted with or without an XML declaration.
+`DocumentType.external_id` retains the quoted identifier for serialization. An optional internal
+subset is retained in `DocumentType.dtd`. External DTD resources are not loaded or fetched.
+Malformed or unterminated identifiers produce a descriptive parse error.
+
 ### Validating XML Documents
 
 Simply call `validate` on the parsed XML document.
@@ -38,11 +47,25 @@ Check the `get_element...` methods defined on the XMLDocument struct.
 
 ### Escaping and Un-escaping XML Entities
 
-When the `validate` method is called, the XML document is parsed and all text
-nodes are un-escaped. This means that the text nodes will contain the actual
-text and not the escaped version of the text.
+Parsing decodes predefined entities, decimal and hexadecimal character references, and
+entities declared in the document's internal DTD in text and attribute values. Unknown entities
+and references to invalid XML characters produce an error. Numeric references to whitespace
+are preserved, including at the edges of text nodes. CDATA is left unchanged.
+Literal formatting whitespace is trimmed at element boundaries. Comments and CDATA split
+text fragments without removing separator whitespace inside the same text run.
 
-When the XML document is serialized (using `str` or `pretty_str`), all text nodes are escaped.
+`validate` checks the parsed tree without decoding its text again.
+
+When the XML document is serialized (using `str` or `pretty_str`), text and attributes are escaped.
+Significant whitespace at text edges and carriage returns are written as character references
+so parsing the serialized document preserves them. Adjacent text, comments, and CDATA are kept
+together to avoid adding formatting whitespace inside text runs.
 
 The escaping and un-escaping can also be done manually using the `escape_text` and
 `unescape_text` methods.
+
+XML attributes require a name and a quoted value. Missing values, unterminated quotes and
+attributes without a name produce parse errors. Values may contain the other kind of quote.
+Text, comments and CDATA retain their document order and the separator whitespace between
+fragments. Truncated nodes and markup produce errors naming the construct that was left open.
+Processing instructions are reported as unsupported.

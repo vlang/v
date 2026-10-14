@@ -76,9 +76,9 @@ fn h2_response_field_is_forbidden(lkey string) bool {
 
 // h2_request_field_error returns a non-empty reason when a regular (non-pseudo)
 // request header field is malformed per RFC 9113 §8.2: names must be lowercase
-// and non-empty, values must not contain NUL/CR/LF, connection-specific fields
-// are forbidden, and TE may only carry the value "trailers". An empty return
-// means the field is valid.
+// and non-empty tokens, values must not contain NUL/CR/LF, connection-specific
+// fields are forbidden, and TE may only carry the value "trailers". An empty
+// return means the field is valid.
 fn h2_request_field_error(name string, value string) string {
 	if name.len == 0 {
 		return 'empty header field name'
@@ -86,6 +86,10 @@ fn h2_request_field_error(name string, value string) string {
 	if name != name.to_lower() {
 		return 'uppercase header field name "${name}"'
 	}
+	// Header.add_custom refuses a name that is not a token (one with a space, a
+	// colon, a control or a non-ASCII byte): without this check build_request
+	// would hand the request to the handler without the field.
+	is_valid(name) or { return 'invalid header field name "${name}"' }
 	if h2_field_value_has_forbidden_octet(value) {
 		return 'forbidden NUL/CR/LF octet in value of "${name}"'
 	}
@@ -894,6 +898,16 @@ fn (mut c H2ServerConn) on_data(frame H2DataFrame, mut handler Handler) ! {
 
 fn (mut c H2ServerConn) run_request(mut s H2ServerStream, mut handler Handler) ! {
 	req := c.build_request(s) or {
+		if err is HeaderLimitError {
+			// The request is not malformed, it has more fields than a Header
+			// holds. It is complete (END_STREAM was received), so it can get an
+			// ordinary response: 431, as veb answers such an HTTP/1.1 request.
+			mut too_many_fields := Response{}
+			too_many_fields.set_status(.request_header_fields_too_large)
+			c.send_response(s.id, too_many_fields, mut handler)!
+			c.streams.delete(s.id)
+			return
+		}
 		c.send_rst_stream(s.id, .protocol_error)!
 		c.mark_locally_reset(s.id)
 		c.streams.delete(s.id)
@@ -947,7 +961,9 @@ fn (mut c H2ServerConn) build_request(s &H2ServerStream) !Request {
 					}
 					content_length = cl
 				}
-				req.header.add_custom(f.name, f.value) or {}
+				// A field that does not fit in the Header (HeaderLimitError) fails
+				// the request: the handler must not get it without that field.
+				req.header.add_custom(f.name, f.value)!
 			}
 		}
 	}
@@ -958,7 +974,9 @@ fn (mut c H2ServerConn) build_request(s &H2ServerStream) !Request {
 	}
 	req.method = method_from_str(method)
 	if authority != '' && !req.header.contains(.host) {
-		req.header.add(.host, authority)
+		// add_custom, not add: the Host field needs a place in the Header as
+		// well, and add drops a field that does not fit.
+		req.header.add_custom(CommonHeader.host.str(), authority)!
 	}
 	// Match the HTTP/1.1 path: req.url is the request-target (the :path
 	// pseudo-header), so handlers see the same shape on both transports.

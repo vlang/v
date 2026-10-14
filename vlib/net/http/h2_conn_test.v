@@ -394,7 +394,7 @@ fn test_h2_fetch_glue_roundtrip() {
 	h2req := req.to_h2_request(.get, 'example.com', '/', '', new_header())
 	mut c := new_h2_conn(t)
 	h2resp := c.do(h2req)!
-	resp := h2_response_to_http(h2resp)
+	resp := h2_response_to_http(h2resp)!
 	assert resp.status_code == 200
 	assert resp.version() == .v2_0
 	assert resp.body == ' world'
