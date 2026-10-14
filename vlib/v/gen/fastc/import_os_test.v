@@ -3,7 +3,25 @@ module fastc
 import os
 import v.cmdexec
 
+const nil_util_module = 'module util
+
+pub struct Node {
+pub:
+	x int
+}
+
+pub fn is_null(p voidptr) bool {
+	return isnil(p)
+}
+
+pub fn take(n &Node) int {
+	return n.x
+}
+'
+
 const nil_program_prelude = 'module main
+
+import util
 
 struct Node {
 	x int
@@ -16,6 +34,12 @@ mut:
 	cb   fn () = unsafe { nil }
 }
 
+struct Slots {
+	ptr  voidptr
+	node &Node
+	next voidptr
+}
+
 fn take(n &Node) int {
 	return n.x
 }
@@ -25,14 +49,16 @@ fn is_null(p voidptr) bool {
 }
 '
 
-// fastc_build_directory_program builds `source` as the main.v of a directory program, which
-// FastC compiles against the real vlib. It returns the directory and the build result.
+// fastc_build_directory_program builds `source` as the main.v of a directory program with the
+// `util` module beside it, which FastC compiles against the real vlib. It returns the directory
+// and the build result.
 fn fastc_build_directory_program(name string, source string) (string, os.Result) {
 	root := os.join_path(os.vtmp_dir(), 'fastc_${name}_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'util')) or { panic(err) }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'fastc_${name}' }") or {
 		panic(err)
 	}
+	os.write_file(os.join_path(root, 'util', 'util.v'), nil_util_module) or { panic(err) }
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	return root, cmdexec.run(@VEXE, ['-b', 'fastc', '-o', os.join_path(root, 'program'), root])
 }
@@ -70,7 +96,8 @@ fn main() {
 }
 
 // `nil` outside `unsafe` is accepted as the whole value of a field declared `voidptr`, in an
-// assignment or a struct literal, and of a `voidptr` argument, as V3 accepts it.
+// assignment or a keyed or positional struct literal, and of a `voidptr` argument to a function
+// of this module or of an imported one, as V3 accepts it.
 fn test_fastc_accepts_nil_for_a_declared_voidptr() {
 	$if !macos && !linux {
 		return
@@ -83,7 +110,10 @@ fn main() {
 	k := Handle{
 		ptr: nil
 	}
-	println(isnil(h.ptr).str() + " " + isnil(k.ptr).str() + " " + is_null(nil).str())
+	s := Slots{nil, &Node{}, nil}
+	println(isnil(h.ptr).str() + " " + isnil(k.ptr).str() + " " + is_null(nil).str() + " " +
+		util.is_null(nil).str() + " " + isnil(s.ptr).str() + " " + isnil(s.node).str() + " " +
+		isnil(s.next).str())
 }
 ')
 	defer {
@@ -92,7 +122,7 @@ fn main() {
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(os.join_path(root, 'program'), [])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'true true true'
+	assert run.output.trim_space() == 'true true true true true false true'
 }
 
 // `nil` outside `unsafe` stays refused where V3 refuses it: as a non-void reference argument or
@@ -102,10 +132,12 @@ fn test_fastc_refuses_nil_where_v3_does() {
 		return
 	}
 	for name, statement in {
-		'reference_argument': 'println(take(nil))'
-		'reference_field':    'h.node = nil'
-		'fn_field':           'h.cb = nil'
-		'reference_literal':  'h = Handle{node: nil}'
+		'reference_argument':           'println(take(nil))'
+		'imported_reference_argument':  'println(util.take(nil))'
+		'reference_field':              'h.node = nil'
+		'fn_field':                     'h.cb = nil'
+		'reference_literal':            'h = Handle{node: nil}'
+		'positional_reference_literal': 'println(isnil(Slots{nil, nil, nil}.ptr))'
 	} {
 		root, build := fastc_build_directory_program('nil_${name}', nil_program_prelude + '
 fn main() {

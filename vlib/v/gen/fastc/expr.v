@@ -2875,6 +2875,24 @@ fn fastc_innermost_open_index(tokens []FastcExpressionToken) int {
 	return -1
 }
 
+// fastc_call_argument_index returns the index of the argument being read in the call whose `(`
+// is at `open`: the commas at the call's own depth since then.
+fn fastc_call_argument_index(tokens []FastcExpressionToken, open int) int {
+	mut arg_index := 0
+	mut inner := 0
+	for i := open + 1; i < tokens.len; i++ {
+		match tokens[i].tok {
+			.lpar, .lsbr, .lcbr { inner++ }
+			.rpar, .rsbr, .rcbr { inner-- }
+			.comma {
+				if inner == 0 { arg_index++ }
+			}
+			else {}
+		}
+	}
+	return arg_index
+}
+
 // fastc_token_continues_expression reports whether a token appearing right after an
 // auto-inserted `;` continues the previous expression (a binary/postfix operator),
 // so the `;` is a line continuation rather than a statement boundary. The token
@@ -2889,18 +2907,7 @@ fn (g &Parser) streaming_call_argument_type(tokens []FastcExpressionToken) strin
 	if open <= 0 || tokens[open].tok != .lpar || tokens[open - 1].tok != .name {
 		return ''
 	}
-	mut arg_index := 0
-	mut inner := 0
-	for i := open + 1; i < tokens.len; i++ {
-		match tokens[i].tok {
-			.lpar, .lsbr, .lcbr { inner++ }
-			.rpar, .rsbr, .rcbr { inner-- }
-			.comma {
-				if inner == 0 { arg_index++ }
-			}
-			else {}
-		}
-	}
+	arg_index := fastc_call_argument_index(tokens, open)
 	name := tokens[open - 1].lit
 	if open >= 2 && tokens[open - 2].tok == .dot {
 		// `recv.method(…)`: resolve on the receiver's type; parameter_types[0] is the receiver.
