@@ -158,7 +158,7 @@ The published variants are:
 | `:alpine` | Alpine | musl; use this one for static executables |
 | `:nix` | `nixos/nix` | pinned nixpkgs toolchain; `nix-shell -p <pkg>` works inside |
 | `:static` | `scratch` | a static V compiler, for running already-compiled programs |
-| `:<dist>-dev` | the `-build` image | a full V checkout, for working on V itself |
+| `:<dist>-dev` | the `-build` image | a full V checkout; excludes the `scratch` static variant |
 
 Both `linux/amd64` and `linux/arm64` are published. Podman reads the same
 Dockerfiles and needs no daemon, so `podman build -f ... .` works too;
