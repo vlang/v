@@ -8095,6 +8095,10 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			v_type = g.canonical_import_alias_type_for_node(v_type, &rhs)
 			semantic_v_type := cgen_unalias_type(v_type)
+			// Ownership replacement temporaries carry the destination type. Box before
+			// the concrete payload type is lost, preserving the later drop and store.
+			boxed_optional := g.optional_interface_assignment_boxes_payload(semantic_v_type,
+				optional_result_unalias_type(g.usable_expr_type(rhs_id)), rhs_id) or { '' }
 			ct0 := if rhs.kind == .struct_init
 				&& g.struct_init_effective_type_name(rhs_id, rhs).starts_with('chan ') {
 				'chan'
@@ -8112,7 +8116,9 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			} else {
 				g.value_c_type(v_type)
 			}
-			ct := if semantic_v_type is types.OptionType || semantic_v_type is types.ResultType {
+			ct := if boxed_optional.len > 0 {
+				g.optional_type_name(semantic_v_type)
+			} else if semantic_v_type is types.OptionType || semantic_v_type is types.ResultType {
 				g.optional_type_name_for_expr(rhs_id, semantic_v_type)
 			} else {
 				ct0
@@ -8127,7 +8133,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					g.write('void* ${storage_tmp} = __builtin_alloca(sizeof(${ct}) + ${align_tmp} - 1); ')
 					g.write('${ct}* ${value_tmp} = (${ct}*)((((uintptr_t)${storage_tmp} + ${align_tmp} - 1) / ${align_tmp}) * ${align_tmp}); ')
 					g.write('*${value_tmp} = ')
-					g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, true)
+					g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, true, boxed_optional)
 					g.writeln('; ${value_tmp}; });')
 					owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
 					g.track_local_pointer_storage_decl(lhs, owner, v_type, '${ct}*')
@@ -8180,10 +8186,10 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				// the statements of a checked operation.
 				old_static_c_initializer := g.static_c_initializer
 				g.static_c_initializer = true
-				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
+				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture, boxed_optional)
 				g.static_c_initializer = old_static_c_initializer
 			} else {
-				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
+				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture, boxed_optional)
 			}
 			g.writeln(';')
 			if lhs.kind == .ident {
@@ -8760,7 +8766,11 @@ fn (mut g FlatGen) fixed_array_init_block_type(node flat.Node) ?types.ArrayFixed
 }
 
 // gen_decl_init_expr emits decl init expr output for c.
-fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type, c_type string, is_declaration bool) {
+fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type, c_type string, is_declaration bool, boxed_optional string) {
+	if boxed_optional.len > 0 {
+		g.write(boxed_optional)
+		return
+	}
 	if rhs.kind == .int_literal && rhs.value == '0' && v_type !is types.OptionType
 		&& v_type !is types.ResultType && g.is_aggregate_zero_init_type(v_type, c_type) {
 		if is_declaration {
