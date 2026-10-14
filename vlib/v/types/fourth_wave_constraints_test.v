@@ -100,11 +100,11 @@ fn test_fourth_constraints_accept_deep_struct_embedding_families() {
 fn test_fourth_constraints_struct_embedding_cycles_terminate() {
 	tc := TypeChecker{
 		a:                      &flat.FlatAst{}
-		struct_embed_receivers: {
+		struct_embed_receivers: flat.TypeTextListBindings.from_names({
 			'CycleA': ['CycleB', 'Exit']
 			'CycleB': ['CycleA']
 			'Exit':   ['Base']
-		}
+		})
 	}
 	assert tc.struct_embeds('CycleA', 'Base')
 	assert !tc.struct_embeds('CycleA', 'Missing')

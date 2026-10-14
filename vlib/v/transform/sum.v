@@ -4,7 +4,7 @@ import v.flat
 import v.types
 
 struct FixedArraySumLiteral {
-	variant string
+	variant u32
 	expr    flat.NodeId
 }
 
@@ -25,7 +25,7 @@ fn (t &Transformer) trim_all_pointer_type(typ string) string {
 }
 
 fn interface_pattern_is_collapsed_container_type(name string) bool {
-	clean := name.trim_space()
+	clean := trimmed_transform_text(name)
 	return clean.starts_with('[]') || clean.starts_with('map[')
 }
 
@@ -138,29 +138,30 @@ fn (t &Transformer) resolve_sum_name(sum_name string) string {
 		return t.resolve_sum_name_uncached(sum_name)
 	}
 	mut c := t.sum_cache
+	type_id := c.text_id(sum_name)
 	if !same_transform_text(c.module, t.cur_module) {
 		c.module = t.cur_module
 		c.entries.clear()
 		c.clear_recent()
 	}
-	recent_slot := alias_cache_slot(sum_name)
+	recent_slot := int(type_id & 1023)
 	if c.recent_generations[recent_slot] == c.recent_generation
-		&& same_transform_text(c.recent_types[recent_slot], sum_name) {
-		return c.recent_results[recent_slot]
+		&& c.recent_types[recent_slot] == type_id {
+		return c.texts.text(c.recent_results[recent_slot])
 	}
-	if cached := c.entries[sum_name] {
+	if cached := c.lookup_id(type_id) {
 		c.put_recent(sum_name, cached)
 		return cached
 	}
 	result := t.resolve_sum_name_uncached(sum_name)
-	c.entries[sum_name] = result
+	c.remember_id(type_id, result)
 	c.put_recent(sum_name, result)
 	return result
 }
 
 // resolve_sum_name_uncached resolves resolve sum name uncached information for transform.
 fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
-	if sum_name in t.sum_types {
+	if t.sum_types.contains(sum_name) {
 		return sum_name
 	}
 	// Do not let a short/suffix fallback reinterpret an exact concrete type as an
@@ -172,14 +173,15 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 	if resolved_c_name := t.resolve_sum_name_from_c_name(sum_name) {
 		return resolved_c_name
 	}
-	// A container of a sum type is not itself a sum type: `[]ast.Value` must
+	// A container or function involving a sum type is not itself a sum type: `[]ast.Value` must
 	// not resolve to `ast.Value` (the short-name and generic-application
 	// fallbacks below would), or an or/assign lowering boxes the whole array
 	// into one sum value.
-	if sum_name.starts_with('[]') || sum_name.starts_with('map[') || sum_name.starts_with('[') {
+	if sum_name.starts_with('[]') || sum_name.starts_with('map[') || sum_name.starts_with('[')
+		|| sum_name.starts_with('fn(') || sum_name.starts_with('fn (') {
 		return ''
 	}
-	if !isnil(t.tc) && sum_name in t.tc.sum_types {
+	if !isnil(t.tc) && t.tc.sum_types.contains(sum_name) {
 		return sum_name
 	}
 	generic_base, generic_args, is_generic := generic_app_parts(sum_name)
@@ -189,10 +191,10 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 			return concrete_sum
 		}
 		resolved_base := t.resolve_sum_name_uncached(generic_base)
-		if resolved_base in t.sum_types {
+		if t.sum_types.contains(resolved_base) {
 			return resolved_base
 		}
-		if !isnil(t.tc) && resolved_base in t.tc.sum_types {
+		if !isnil(t.tc) && t.tc.sum_types.contains(resolved_base) {
 			return resolved_base
 		}
 	}
@@ -205,7 +207,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		suffix := '.' + sum_name
 		mut suffix_match := ''
 		mut suffix_ambiguous := false
-		for key, _ in t.sum_types {
+		for key, _ in t.sum_types.ids {
 			if key.ends_with(suffix) {
 				if suffix_match != '' && suffix_match != key {
 					suffix_ambiguous = true
@@ -215,7 +217,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 			}
 		}
 		if !suffix_ambiguous && !isnil(t.tc) {
-			for key, _ in t.tc.sum_types {
+			for key, _ in t.tc.sum_types.ids {
 				if key.ends_with(suffix) {
 					if suffix_match.len > 0 && suffix_match != key {
 						suffix_ambiguous = true
@@ -229,19 +231,19 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 			return suffix_match
 		}
 		short_sum := short_name_view(sum_name)
-		if short_sum in t.sum_types {
+		if t.sum_types.contains(short_sum) {
 			return short_sum
 		}
 	}
 	if !has_dot && t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qsum := '${t.cur_module}.${sum_name}'
-		if qsum in t.sum_types {
+		if t.sum_types.contains(qsum) {
 			return qsum
 		}
 	}
 	if !has_dot {
 		mut found := ''
-		for key, _ in t.sum_types {
+		for key, _ in t.sum_types.ids {
 			if key.contains('.') && short_name_view(key) == sum_name {
 				if found != '' && found != key {
 					found = ''
@@ -255,24 +257,24 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		}
 	}
 	if !isnil(t.tc) {
-		if sum_name in t.tc.sum_types {
+		if t.tc.sum_types.contains(sum_name) {
 			return sum_name
 		}
 		if has_dot {
 			short_sum := short_name_view(sum_name)
-			if short_sum in t.tc.sum_types {
+			if t.tc.sum_types.contains(short_sum) {
 				return short_sum
 			}
 		}
 		if !has_dot && t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qsum := '${t.cur_module}.${sum_name}'
-			if qsum in t.tc.sum_types {
+			if t.tc.sum_types.contains(qsum) {
 				return qsum
 			}
 		}
 		if !has_dot {
 			mut found := ''
-			for key, _ in t.tc.sum_types {
+			for key, _ in t.tc.sum_types.ids {
 				if key.contains('.') && short_name_view(key) == sum_name {
 					if found != '' && found != key {
 						found = ''
@@ -293,13 +295,13 @@ fn (t &Transformer) resolve_sum_name_from_c_name(sum_name string) ?string {
 	if sum_name.contains('[') || !sum_name.contains('_') {
 		return none
 	}
-	for key, _ in t.sum_types {
+	for key, _ in t.sum_types.ids {
 		if key.contains('[') && c_name(key) == sum_name {
 			return key
 		}
 	}
 	if !isnil(t.tc) {
-		for key, _ in t.tc.sum_types {
+		for key, _ in t.tc.sum_types.ids {
 			if key.contains('[') && c_name(key) == sum_name {
 				return key
 			}
@@ -313,7 +315,7 @@ fn (t &Transformer) resolve_concrete_generic_sum_name(sum_name string, base stri
 	if !base.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qspec := '${t.cur_module}.${base}[${args_text}]'
-		if qspec in t.sum_types || (!isnil(t.tc) && qspec in t.tc.sum_types) {
+		if t.sum_types.contains(qspec) || (!isnil(t.tc) && t.tc.sum_types.contains(qspec)) {
 			return qspec
 		}
 	}
@@ -326,7 +328,7 @@ fn (t &Transformer) resolve_concrete_generic_sum_name(sum_name string, base stri
 	resolved_base := t.resolve_sum_name_uncached(base)
 	if resolved_base.len > 0 && resolved_base != base {
 		resolved_spec := '${resolved_base}[${args_text}]'
-		if resolved_spec in t.sum_types || (!isnil(t.tc) && resolved_spec in t.tc.sum_types) {
+		if t.sum_types.contains(resolved_spec) || (!isnil(t.tc) && t.tc.sum_types.contains(resolved_spec)) {
 			return resolved_spec
 		}
 	}
@@ -335,7 +337,7 @@ fn (t &Transformer) resolve_concrete_generic_sum_name(sum_name string, base stri
 
 fn (t &Transformer) find_sum_type_with_short_name(short_name string) string {
 	mut found := ''
-	for key, _ in t.sum_types {
+	for key, _ in t.sum_types.ids {
 		if key.contains('.') && key.all_after_last('.') == short_name {
 			if found != '' && found != key {
 				return ''
@@ -344,7 +346,7 @@ fn (t &Transformer) find_sum_type_with_short_name(short_name string) string {
 		}
 	}
 	if !isnil(t.tc) {
-		for key, _ in t.tc.sum_types {
+		for key, _ in t.tc.sum_types.ids {
 			if key.contains('.') && key.all_after_last('.') == short_name {
 				if found.len > 0 && found != key {
 					return ''
@@ -357,7 +359,7 @@ fn (t &Transformer) find_sum_type_with_short_name(short_name string) string {
 }
 
 fn (t &Transformer) sum_subject_type_candidates(subject_type string) []string {
-	clean := t.trim_pointer_type(t.normalize_type_alias(subject_type)).trim_space()
+	clean := trimmed_transform_text(t.trim_pointer_type(t.normalize_type_alias(subject_type)))
 	if clean.len == 0 {
 		return []string{}
 	}
@@ -414,7 +416,7 @@ fn (t &Transformer) sum_subject_type_args_in_scope(args []string) []string {
 }
 
 fn (t &Transformer) sum_subject_type_arg_in_scope(arg string) string {
-	clean := arg.trim_space()
+	clean := trimmed_transform_text(arg)
 	if clean.len == 0 {
 		return clean
 	}
@@ -470,9 +472,9 @@ fn (t &Transformer) sum_subject_type_arg_base_in_scope(name string) string {
 	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
 		[]string{}
 	} {
-		if candidate in t.tc.type_aliases || candidate in t.tc.structs
+		if t.tc.type_aliases.contains(candidate) || candidate in t.tc.structs
 			|| candidate in t.tc.interface_names || candidate in t.tc.flag_enums
-			|| candidate in t.tc.enum_names || candidate in t.tc.sum_types {
+			|| candidate in t.tc.enum_names || t.tc.sum_types.contains(candidate) {
 			return candidate
 		}
 	}
@@ -480,7 +482,7 @@ fn (t &Transformer) sum_subject_type_arg_base_in_scope(name string) string {
 }
 
 fn push_sum_subject_type_candidate(mut candidates []string, mut seen map[string]bool, candidate string) {
-	clean := candidate.trim_space()
+	clean := trimmed_transform_text(candidate)
 	if clean.len == 0 || clean in seen {
 		return
 	}
@@ -494,7 +496,7 @@ fn (t &Transformer) is_sum_type_name(name string) bool {
 		return false
 	}
 	resolved := t.resolve_sum_name(name)
-	return resolved in t.sum_types
+	return t.sum_types.contains(resolved)
 }
 
 fn (t &Transformer) sum_target_accepts_variant_type(target_type string, variant_type string) bool {
@@ -502,8 +504,8 @@ fn (t &Transformer) sum_target_accepts_variant_type(target_type string, variant_
 		return false
 	}
 	resolved_raw_target := t.resolve_sum_name(t.trim_pointer_type(target_type))
-	if resolved_raw_target in t.sum_types {
-		for variant in t.sum_types[resolved_raw_target] {
+	if t.sum_types.contains(resolved_raw_target) {
+		for variant in t.sum_types.value(resolved_raw_target) {
 			if t.variant_names_match(variant, t.trim_pointer_type(variant_type)) {
 				return true
 			}
@@ -518,7 +520,7 @@ fn (t &Transformer) sum_target_accepts_variant_type(target_type string, variant_
 		return false
 	}
 	resolved_target := t.resolve_sum_name(clean_target)
-	if resolved_target.len == 0 || resolved_target !in t.sum_types {
+	if resolved_target.len == 0 || !t.sum_types.contains(resolved_target) {
 		return false
 	}
 	if t.resolve_sum_name(clean_variant) == resolved_target {
@@ -589,16 +591,16 @@ fn (t &Transformer) interface_variant_type(variant string) string {
 
 // smartcast_target_type supports smartcast target type handling for Transformer.
 fn (t &Transformer) smartcast_target_type(sc SmartcastContext) string {
-	if sc.sum_type_name == option_unwrap_marker {
-		return sc.variant_name
+	if sc.sum_type_name_text() == option_unwrap_marker {
+		return sc.variant_name_text()
 	}
-	if sc.variant_name.starts_with('&') {
-		return '&' + t.resolve_variant(sc.sum_type_name, sc.variant_name[1..])
+	if sc.variant_name_text().starts_with('&') {
+		return '&' + t.resolve_variant(sc.sum_type_name_text(), sc.variant_name_text()[1..])
 	}
-	if t.is_interface_type_name(sc.sum_type_name) {
-		return t.interface_variant_type(sc.variant_name)
+	if t.is_interface_type_name(sc.sum_type_name_text()) {
+		return t.interface_variant_type(sc.variant_name_text())
 	}
-	return t.resolve_variant(sc.sum_type_name, sc.variant_name)
+	return t.resolve_variant(sc.sum_type_name_text(), sc.variant_name_text())
 }
 
 // sum_type_index supports sum type index handling for Transformer.
@@ -607,8 +609,8 @@ fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 	if variants.len == 0 {
 		return 0
 	}
-	concrete_variant := if t.active_specialization_args.len > 0 {
-		t.subst_type(variant, t.active_specialization_args)
+	concrete_variant := if t.active_specialization_args_text().len > 0 {
+		t.subst_type(variant, t.active_specialization_args_text())
 	} else {
 		variant
 	}
@@ -621,8 +623,8 @@ fn (t &Transformer) sum_type_variants_for_index(sum_name string) []string {
 	// would rebind it to a same-named sum of the current module (`Any` -> `json2.Any`)
 	// and tag the value with that sum's variant indices.
 	if !isnil(t.tc) && t.cur_module !in ['', 'main', 'builtin'] && !sum_name.contains('.')
-		&& sum_name in t.tc.sum_types && '${t.cur_module}.${sum_name}' in t.tc.sum_types {
-		if variants := t.sum_types[sum_name] {
+		&& t.tc.sum_types.contains(sum_name) && '${t.cur_module}.${sum_name}' in t.tc.sum_types.ids {
+		if variants := t.sum_types.get(sum_name) {
 			return variants
 		}
 	}
@@ -638,11 +640,11 @@ fn (t &Transformer) concrete_sum_name_and_variants(sum_name string) (string, []s
 		}
 	}
 	resolved_sum := t.resolve_sum_name(sum_name)
-	if variants := t.sum_types[resolved_sum] {
+	if variants := t.sum_types.get(resolved_sum) {
 		return resolved_sum, variants
 	}
 	if !isnil(t.tc) {
-		if variants := t.tc.sum_types[resolved_sum] {
+		if variants := t.tc.sum_types.get(resolved_sum) {
 			return resolved_sum, variants
 		}
 	}
@@ -651,7 +653,7 @@ fn (t &Transformer) concrete_sum_name_and_variants(sum_name string) (string, []s
 
 fn (t &Transformer) concrete_sum_variants_for_candidate(sum_name string) []string {
 	base, args, is_generic := generic_app_parts(sum_name)
-	if variants := t.sum_types[sum_name] {
+	if variants := t.sum_types.get(sum_name) {
 		if is_generic {
 			params := t.sum_generic_params_for_base(base)
 			if params.len == args.len && params.len > 0 {
@@ -661,7 +663,7 @@ fn (t &Transformer) concrete_sum_variants_for_candidate(sum_name string) []strin
 		return variants
 	}
 	if !isnil(t.tc) {
-		if variants := t.tc.sum_types[sum_name] {
+		if variants := t.tc.sum_types.get(sum_name) {
 			if is_generic {
 				params := t.sum_generic_params_for_base(base)
 				if params.len == args.len && params.len > 0 {
@@ -679,11 +681,11 @@ fn (t &Transformer) concrete_sum_variants_for_candidate(sum_name string) []strin
 		if params.len == 0 || params.len != args.len {
 			continue
 		}
-		if variants := t.sum_types[base_candidate] {
+		if variants := t.sum_types.get(base_candidate) {
 			return substitute_sum_variant_list(variants, args, params)
 		}
 		if !isnil(t.tc) {
-			if variants := t.tc.sum_types[base_candidate] {
+			if variants := t.tc.sum_types.get(base_candidate) {
 				return substitute_sum_variant_list(variants, args, params)
 			}
 		}
@@ -742,7 +744,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 		&& !t.validate_specialized_is_expr(concrete_expr_type, resolved_expr_sum, node.value) {
 		return t.make_bool_literal(false)
 	}
-	clean_type := if clean_type0 in t.sum_types {
+	clean_type := if t.sum_types.contains(clean_type0) {
 		clean_type0
 	} else if _ := t.resolve_sum_variant_pattern_for_subject(clean_type0, node.value) {
 		clean_type0
@@ -798,14 +800,14 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 				value:          pattern
 				children_start: is_start
 				children_count: 1
-				typ:            'bool'
+				typ:            flat.source_type_id('bool')
 			})
 		}
 		object := t.make_selector_op(new_expr, '_object', 'voidptr', op)
 		return t.make_infix(.ne, object, t.a.add(.nil_literal))
 	}
 	resolved_clean_type := t.resolve_sum_name(clean_type)
-	if clean_type.len == 0 || resolved_clean_type !in t.sum_types {
+	if clean_type.len == 0 || !t.sum_types.contains(resolved_clean_type) {
 		return t.make_bool_literal(true)
 	}
 	// Route a value-context `match`/`if` subject (e.g. `(match n { First { make_circle()!
@@ -820,7 +822,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	if check_expr_type.len == 0 || check_expr_type == 'unknown' {
 		check_expr_type = expr_type
 	}
-	if node.typ != 'match_exact' {
+	if node.typ_text() != 'match_exact' {
 		if check := t.make_sum_type_alias_pattern_check(new_expr, check_expr_type, clean_type,
 			node.value)
 		{
@@ -878,19 +880,19 @@ fn (t &Transformer) sum_alias_equivalent_variants(sum_name string, pattern strin
 // AliasEquivalentForms holds a type name, its spelling normalized in the current
 // module, and the short names of both.
 struct AliasEquivalentForms {
-	name             string
-	normalized       string
-	short            string
-	normalized_short string
+	name             u32
+	normalized       u32
+	short            u32
+	normalized_short u32
 }
 
 fn (t &Transformer) alias_equivalent_forms(name string) AliasEquivalentForms {
 	normalized := t.normalize_type_in_module(name, t.cur_module)
 	return AliasEquivalentForms{
-		name:             name
-		normalized:       normalized
-		short:            t.variant_short_name(name)
-		normalized_short: t.variant_short_name(normalized)
+		name:             flat.source_type_id(name)
+		normalized:       flat.source_type_id(normalized)
+		short:            flat.source_type_id(t.variant_short_name(name))
+		normalized_short: flat.source_type_id(t.variant_short_name(normalized))
 	}
 }
 
@@ -914,8 +916,8 @@ fn (mut t Transformer) smartcasted_sum_is_expr_check(expr_id flat.NodeId, patter
 	sc := t.find_smartcast(key) or { return none }
 	raw_sum := t.trim_pointer_type(t.raw_expr_type_without_smartcast(expr_id))
 	resolved_sum := t.resolve_sum_name(raw_sum)
-	if resolved_sum.len == 0 || resolved_sum !in t.sum_types
-		|| t.resolve_sum_name(sc.sum_type_name) != resolved_sum {
+	if resolved_sum.len == 0 || !t.sum_types.contains(resolved_sum)
+		|| t.resolve_sum_name(sc.sum_type_name_text()) != resolved_sum {
 		return none
 	}
 	if _ := t.resolve_sum_variant_pattern_for_subject(raw_sum, pattern) {
@@ -930,7 +932,7 @@ fn (mut t Transformer) validate_specialized_is_expr(subject_type string, resolve
 		|| t.type_text_has_generic_placeholder(subject_type, t.cur_module) {
 		return true
 	}
-	if resolved_sum in t.sum_types {
+	if t.sum_types.contains(resolved_sum) {
 		if pattern == '' || t.type_text_has_generic_placeholder(pattern, t.cur_module) {
 			return true
 		}
@@ -973,7 +975,7 @@ fn (t &Transformer) specialized_is_pattern_known(pattern string) bool {
 		if types.is_builtin_type_name(candidate) || t.interface_pattern_candidate_known(candidate) {
 			return true
 		}
-		clean := candidate.trim_space()
+		clean := trimmed_transform_text(candidate)
 		if clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('[')
 			|| clean.starts_with('fn ') || clean.starts_with('fn(') {
 			if t.tc.parse_type(clean).name() != 'unknown' {
@@ -1005,7 +1007,7 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	if !requested_qualified {
 		for impl_iface in iface_candidates {
 			impl_index := t.interface_impl_indexes[impl_iface] or { continue }
-			for impl_name in impl_index.names {
+			for impl_name in impl_index.names_text() {
 				if impl_name.all_after_last('.') == concrete.all_after_last('.') {
 					return impl_index.ids[impl_name]
 				}
@@ -1074,11 +1076,11 @@ fn (t &Transformer) interface_container_cast_type_id(iface_name string, target_n
 		return int(u32(type_idx) | (u32(1) << 31))
 	}
 	index := t.interface_impl_index_for_transform(iface)
-	mut impls := index.names.clone()
+	mut impls := index.names_text().clone()
 	if concrete !in impls {
 		impls << concrete
 	}
-	ids := types.stable_interface_type_ids_preserving_prefix(index.names, impls)
+	ids := types.stable_interface_type_ids_preserving_prefix(index.names_text(), impls)
 	return ids[concrete] or { none }
 }
 
@@ -1131,11 +1133,11 @@ fn (t &Transformer) interface_alias_equivalent_names(name string) []string {
 		cache.file = t.cur_file
 		cache.entries.clear()
 	}
-	if names := cache.entries[name] {
+	if names := cache.entries.get(name) {
 		return names
 	}
 	names := t.interface_alias_equivalent_names_uncached(name)
-	cache.entries[name] = names
+	cache.entries.set(name, names)
 	return names
 }
 
@@ -1153,7 +1155,8 @@ fn (t &Transformer) interface_alias_equivalent_names_uncached(name string) []str
 	allow_short_match := !name.contains('.') && !normalized.contains('.')
 	name_short := t.variant_short_name(name)
 	normalized_short := t.variant_short_name(normalized)
-	for alias, target in t.tc.type_aliases {
+	for alias, target_id in t.tc.type_aliases.ids {
+		target := flat.source_type_name(target_id)
 		target_normalized := t.normalize_type_in_module(target, t.cur_module)
 		target_short := t.variant_short_name(target)
 		target_normalized_short := t.variant_short_name(target_normalized)
@@ -1216,12 +1219,12 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 	}
 	base, _, is_generic_app := generic_app_parts(name)
 	if is_generic_app && !t.generic_arg_is_unresolved(name) {
-		if base in t.tc.structs || base in t.tc.type_aliases {
+		if base in t.tc.structs || t.tc.type_aliases.contains(base) {
 			return name
 		}
 		if !base.contains('.') && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 			qualified_base := '${t.cur_module}.${base}'
-			if qualified_base in t.tc.structs || qualified_base in t.tc.type_aliases {
+			if qualified_base in t.tc.structs || t.tc.type_aliases.contains(qualified_base) {
 				return '${qualified_base}${name[base.len..]}'
 			}
 		}
@@ -1231,19 +1234,19 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
 				[]string{}
 			} {
-				if candidate in t.tc.structs || candidate in t.tc.type_aliases {
+				if candidate in t.tc.structs || t.tc.type_aliases.contains(candidate) {
 					return candidate
 				}
 			}
 		}
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qname := '${t.cur_module}.${name}'
-			if qname in t.tc.structs || qname in t.tc.type_aliases {
+			if qname in t.tc.structs || t.tc.type_aliases.contains(qname) {
 				return qname
 			}
 		}
 	}
-	if name in t.tc.structs || name in t.tc.type_aliases {
+	if name in t.tc.structs || t.tc.type_aliases.contains(name) {
 		return name
 	}
 	for struct_name, _ in t.tc.structs {
@@ -1251,7 +1254,7 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 			return struct_name
 		}
 	}
-	for alias_name, _ in t.tc.type_aliases {
+	for alias_name, _ in t.tc.type_aliases.ids {
 		if alias_name.all_after_last('.') == name {
 			return alias_name
 		}
@@ -1260,15 +1263,15 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 }
 
 fn (t &Transformer) function_alias_impl_name(name string) ?string {
-	clean := name.trim_space()
+	clean := trimmed_transform_text(name)
 	if !clean.starts_with('fn(') && !clean.starts_with('fn ') {
 		return none
 	}
 	mut aliases := t.tc.type_aliases.keys()
 	aliases.sort()
 	for alias in aliases {
-		target := t.tc.type_aliases[alias] or { continue }
-		if target.trim_space() == clean {
+		target := t.tc.type_aliases.get(alias) or { continue }
+		if trimmed_transform_text(target) == clean {
 			return alias
 		}
 	}
@@ -1317,7 +1320,7 @@ fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut 
 	}
 	for direct in variants {
 		direct_sum := t.resolve_sum_name(t.trim_pointer_type(direct))
-		if direct_sum == resolved_sum || direct_sum !in t.sum_types {
+		if direct_sum == resolved_sum || !t.sum_types.contains(direct_sum) {
 			continue
 		}
 		nested := t.sum_variant_path_inner(direct_sum, variant, mut visited)
@@ -1448,7 +1451,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 			return value
 		}
 		resolved_payload := t.resolve_sum_name(t.trim_pointer_type(payload_type))
-		if resolved_payload in t.sum_types {
+		if t.sum_types.contains(resolved_payload) {
 			qv := t.resolve_variant(resolved_payload, node.value)
 			if qv.len > 0 && t.sum_target_accepts_variant_type(resolved_payload, qv) {
 				use_ptr := t.variant_references_sum(qv, resolved_payload)
@@ -1546,7 +1549,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 			}
 		}
 	}
-	clean_type := if clean_type0 in t.sum_types {
+	clean_type := if t.sum_types.contains(clean_type0) {
 		clean_type0
 	} else if _ := t.resolve_sum_variant_pattern_for_subject(clean_type0, node.value) {
 		clean_type0
@@ -1554,7 +1557,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		t.find_sum_type_for_variant(node.value)
 	}
 	resolved_clean_type := t.resolve_sum_name(clean_type)
-	if clean_type.len == 0 || resolved_clean_type !in t.sum_types {
+	if clean_type.len == 0 || !t.sum_types.contains(resolved_clean_type) {
 		child := t.transform_expr(expr_id)
 		start := t.a.children.len
 		t.a.children << child
@@ -1576,9 +1579,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		contexts := t.smartcasts_for(sc_key)
 		mut matched_contexts := []SmartcastContext{}
 		for i, sc in contexts {
-			mut sc_variant := sc.variant_name
-			if sc.variant_name.contains('.') {
-				sc_variant = sc.variant_name.all_after_last('.')
+			mut sc_variant := sc.variant_name_text()
+			if sc.variant_name_text().contains('.') {
+				sc_variant = sc.variant_name_text().all_after_last('.')
 			}
 			mut target_variant := node.value
 			if node.value.contains('.') {
@@ -1658,9 +1661,9 @@ fn (t &Transformer) sum_as_display_type(name string) string {
 	if name.len == 0 || name.contains('.') {
 		return name
 	}
-	is_named_type := name in t.structs || name in t.sum_types || name in t.enum_types
+	is_named_type := name in t.structs || t.sum_types.contains(name) || name in t.enum_types
 		|| (!isnil(t.tc)
-			&& (name in t.tc.interface_names || name in t.tc.type_aliases))
+			&& (name in t.tc.interface_names || t.tc.type_aliases.contains(name)))
 	if !is_named_type {
 		return name
 	}
@@ -1672,10 +1675,10 @@ fn (t &Transformer) sum_as_display_type(name string) string {
 fn (mut t Transformer) wrap_sum_return_expr(expr_id flat.NodeId) flat.NodeId {
 	was_return_expr := t.in_return_expr
 	t.in_return_expr = true
-	result := if t.cur_fn_ret_type.len == 0 || t.cur_fn_ret_type !in t.sum_types {
+	result := if t.cur_fn_ret_type_text().len == 0 || t.cur_fn_ret_type_text() !in t.sum_types.ids {
 		t.transform_expr(expr_id)
 	} else {
-		t.wrap_sum_value(expr_id, t.cur_fn_ret_type)
+		t.wrap_sum_value(expr_id, t.cur_fn_ret_type_text())
 	}
 	t.in_return_expr = was_return_expr
 	return result
@@ -1691,7 +1694,7 @@ fn (mut t Transformer) fixed_array_sum_literal_expr(expr_id flat.NodeId, expr fl
 	if literal.kind != .array_literal {
 		return none
 	}
-	variants := t.sum_types[resolved_sum] or { return none }
+	variants := t.sum_types.get(resolved_sum) or { return none }
 	literal_len := int(literal.children_count)
 	literal_elem := t.array_literal_elem_type(literal)
 	mut fallback_variant := ''
@@ -1719,7 +1722,7 @@ fn (mut t Transformer) fixed_array_sum_literal_expr(expr_id flat.NodeId, expr fl
 				continue
 			}
 			return FixedArraySumLiteral{
-				variant: variant
+				variant: flat.source_type_id(variant)
 				expr:    expr2
 			}
 		}
@@ -1734,7 +1737,7 @@ fn (mut t Transformer) fixed_array_sum_literal_expr(expr_id flat.NodeId, expr fl
 			return none
 		}
 		return FixedArraySumLiteral{
-			variant: fallback_variant
+			variant: flat.source_type_id(fallback_variant)
 			expr:    expr2
 		}
 	}
@@ -1786,7 +1789,7 @@ fn (mut t Transformer) wrap_sum_value_for_storage(expr_id flat.NodeId, target_su
 
 fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_sum string, storage_boundary bool) flat.NodeId {
 	resolved_sum := t.resolve_sum_name(target_sum)
-	if resolved_sum.len == 0 || resolved_sum !in t.sum_types {
+	if resolved_sum.len == 0 || !t.sum_types.contains(resolved_sum) {
 		return t.transform_expr(expr_id)
 	}
 	detach_array_payload := storage_boundary && !t.borrowed_projection_clone_required(expr_id, target_sum)
@@ -1806,11 +1809,11 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		}
 	}
 	if fixed := t.fixed_array_sum_literal_expr(expr_id, expr, resolved_sum) {
-		return t.make_sum_literal(resolved_sum, fixed.variant, fixed.expr)
+		return t.make_sum_literal(resolved_sum, fixed.variant_text(), fixed.expr)
 	}
 	mut expr_type := t.node_type(expr_id)
-	if expr.typ.len > 0 && t.sum_target_accepts_variant_type(resolved_sum, expr.typ) {
-		expr_type = expr.typ
+	if expr.typ_text().len > 0 && t.sum_target_accepts_variant_type(resolved_sum, expr.typ_text()) {
+		expr_type = expr.typ_text()
 	}
 	if expr.kind in [.ident, .selector] {
 		if expr.kind == .ident && expr.value.len > 0 {
@@ -1849,8 +1852,8 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		}
 	}
 	has_expr_smartcast := expr_smartcast.expr_name.len > 0
-	if has_expr_smartcast && t.resolve_sum_name(expr_smartcast.sum_type_name) == resolved_sum {
-		variant = t.resolve_variant(expr_smartcast.sum_type_name, expr_smartcast.variant_name)
+	if has_expr_smartcast && t.resolve_sum_name(expr_smartcast.sum_type_name_text()) == resolved_sum {
+		variant = t.resolve_variant(expr_smartcast.sum_type_name_text(), expr_smartcast.variant_name_text())
 	}
 	if expr.kind == .prefix && expr.op == .mul && expr.children_count > 0 {
 		inner_type := t.node_type(t.a.child(&expr, 0))
@@ -1916,8 +1919,8 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		}
 	}
 	if has_expr_smartcast {
-		smartcast_variant := t.resolve_variant(expr_smartcast.sum_type_name,
-			expr_smartcast.variant_name)
+		smartcast_variant := t.resolve_variant(expr_smartcast.sum_type_name_text(),
+			expr_smartcast.variant_name_text())
 		if wrapper_value := t.single_value_wrapper_sum_value(expr_id, smartcast_variant,
 			resolved_sum)
 		{
@@ -1932,7 +1935,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		|| t.is_fixed_array_type(clean_variant)
 	mut matches := false
 	mut matched_variant := clean_variant
-	for v in t.sum_types[resolved_sum] {
+	for v in t.sum_types.value(resolved_sum) {
 		short_v := t.variant_short_name(v)
 		v_is_container := v.starts_with('[]') || v.starts_with('map[') || t.is_fixed_array_type(v)
 		// Container element/value types are storage-significant. Do not make
@@ -1946,7 +1949,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		}
 	}
 	if !matches {
-		for v in t.sum_types[resolved_sum] {
+		for v in t.sum_types.value(resolved_sum) {
 			if t.sum_variant_type_accepts_value_type(v, clean_variant) {
 				matches = true
 				matched_variant = v
@@ -1956,7 +1959,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	}
 	if !matches && t.is_integer_type_name(clean_variant) {
 		mut enum_variant := ''
-		for v in t.sum_types[resolved_sum] {
+		for v in t.sum_types.value(resolved_sum) {
 			if t.enum_type_name_for_expected(v, t.cur_module).len == 0 {
 				continue
 			}
@@ -1978,7 +1981,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 			matched_variant = path[0]
 		} else if path.len > 1 {
 			nested_sum := t.resolve_sum_name(t.trim_pointer_type(path[0]))
-			if nested_sum.len > 0 && nested_sum in t.sum_types {
+			if nested_sum.len > 0 && t.sum_types.contains(nested_sum) {
 				nested_value := t.wrap_sum_value_with_storage(expr_id, nested_sum, detach_array_payload)
 				return t.make_sum_literal(resolved_sum, path[0], nested_value)
 			}
@@ -2033,7 +2036,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		value:          storage_sum
 		children_start: start
 		children_count: 1
-		typ:            storage_sum
+		typ:            flat.source_type_id(storage_sum)
 	})
 	return if t.is_owned_array_storage_value(inner) {
 		t.mark_owned_array_storage_value(cast, storage_sum)
@@ -2051,7 +2054,7 @@ fn (t &Transformer) sum_literal_type_name(target_sum string, resolved_sum string
 	if is_generic && t.resolve_sum_name(base) == resolved_sum {
 		return clean
 	}
-	if clean in t.sum_types {
+	if t.sum_types.contains(clean) {
 		return clean
 	}
 	return resolved_sum
@@ -2187,7 +2190,7 @@ fn (mut t Transformer) make_sum_literal(sum_name string, variant string, value f
 		children_start: start
 		children_count: 2
 		value:          sum_name
-		typ:            sum_name
+		typ:            flat.source_type_id(sum_name)
 	})
 	return if t.is_owned_array_storage_value(payload) {
 		t.mark_owned_array_storage_value(literal, sum_name)
@@ -2210,7 +2213,7 @@ fn (mut t Transformer) make_sum_ref_literal(sum_name string, variant string, val
 		children_start: start
 		children_count: 2
 		value:          sum_name
-		typ:            sum_name
+		typ:            flat.source_type_id(sum_name)
 	})
 }
 
@@ -2223,6 +2226,12 @@ fn (mut t Transformer) make_sum_literal_field(name string, value flat.NodeId, ty
 		children_start: start
 		children_count: 1
 		value:          name
-		typ:            typ
+		typ:            flat.source_type_id(typ)
 	})
+}
+
+// variant_text resolves the indexed source type spelling.
+@[inline]
+fn (value &FixedArraySumLiteral) variant_text() string {
+	return flat.source_type_name(value.variant)
 }

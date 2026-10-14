@@ -198,7 +198,7 @@ pub:
 	// The constraint each type parameter names, `Named` in `[T Named]`, as it is
 	// written: empty for a parameter without one, and no list at all when none
 	// of them names one.
-	generic_constraints []string
+	generic_constraints TypeTextList
 }
 
 // Comment retains source comments for syntax-preserving tools such as vfmt.
@@ -210,7 +210,7 @@ pub:
 
 // Node payloads live in one process-wide table: a node carries a 4-byte id
 // (0 = none) instead of a pointer, so copying a node copies the id and the
-// node header stays 80 bytes. The table only grows (payloads are rare and
+// node header stays compact. The table only grows (payloads are rare and
 // tiny), its chunks outlive every arena, and ids are handed out under a spin
 // lock while lookups are lock-free: an insert writes the chunk pointer and
 // the entry first and then publishes the new count with a release store, and
@@ -245,7 +245,11 @@ pub fn node_payload(generic_params []string) u32 {
 // they name (see NodePayload), and returns the payload id, or 0 when both are
 // empty.
 pub fn node_payload_with_constraints(generic_params []string, generic_constraints []string) u32 {
-	if generic_params.len == 0 && generic_constraints.len == 0 {
+	return node_payload_with_type_constraints(generic_params, TypeTextList.from_names(generic_constraints))
+}
+
+fn node_payload_with_type_constraints(generic_params []string, generic_constraints TypeTextList) u32 {
+	if generic_params.len == 0 && generic_constraints.ids.len == 0 {
 		return 0
 	}
 	payload := &NodePayload{
@@ -268,16 +272,16 @@ pub fn node_payload_with_constraints(generic_params []string, generic_constraint
 		node_payload_unlock()
 		panic('v3: too many node payloads (${idx})')
 	}
-	mut chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(chunk_idx))
+	mut chunk := payload_ptr_get(voidptr(table), usize(chunk_idx))
 	if isnil(chunk) {
 		chunk = node_payload_new_chunk()
-		C.v_flat_payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
+		payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
 		if isnil(chunk) {
 			node_payload_unlock()
 			panic('v3: could not allocate a node payload chunk')
 		}
 	}
-	C.v_flat_payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
+	payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
 	node_payload_count_publish(table, u32(idx + 1))
 	node_payload_unlock()
 	return u32(idx + 1)
@@ -297,8 +301,8 @@ pub fn node_payload_at(id u32) &NodePayload {
 	if isnil(table) || idx >= int(node_payload_count_load(table)) {
 		return &NodePayload(unsafe { nil })
 	}
-	chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
-	return unsafe { &NodePayload(C.v_flat_payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
+	chunk := payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
+	return unsafe { &NodePayload(payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
 }
 
 // node_flag_skip_ownership_drops marks a block/if/for/fn node whose scope must
@@ -311,6 +315,9 @@ pub const node_flag_static_type_method = u8(2)
 pub const node_flag_embed_payload = u8(4)
 // node_flag_freed_assignment marks an assignment annotated with `@[freed]`.
 pub const node_flag_freed_assignment = u8(8)
+// node_flag_borrowed_map_key marks a generated read-only map iteration whose
+// key cannot escape. The bit is shared with the assignment-only flag above.
+pub const node_flag_borrowed_map_key = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
@@ -358,7 +365,7 @@ pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
 pub struct Node {
 pub mut:
 	value          string
-	typ            string
+	typ            u32
 	children_start i32
 	payload        u32 // payload id or canonical_comptime_type_payload; 0 = none
 	is_mut         bool
@@ -367,6 +374,17 @@ pub mut:
 	flags          u8 // node_flag_* bits; see skip_ownership_drops/is_static_type_method
 	children_count i32
 	pos            token.Pos
+}
+
+// typ_text resolves a node's indexed annotation at a source or emission boundary.
+@[inline]
+pub fn (n &Node) typ_text() string {
+	return source_type_name(n.typ)
+}
+
+// set_type_text replaces a node annotation with an owned, stable spelling ID.
+pub fn (mut n Node) set_type_text(text string) {
+	n.typ = source_type_id(text)
 }
 
 // is_detached_spawn reports whether this `spawn` has its thread handle discarded:
@@ -381,6 +399,12 @@ pub fn (n &Node) is_detached_spawn() bool {
 @[inline]
 pub fn (n &Node) skip_ownership_drops() bool {
 	return (n.flags & node_flag_skip_ownership_drops) != 0
+}
+
+// borrows_map_key reports whether a generated map loop only borrows its key.
+@[inline]
+pub fn (n &Node) borrows_map_key() bool {
+	return n.kind == .for_in_stmt && (n.flags & node_flag_borrowed_map_key) != 0
 }
 
 // set_skip_ownership_drops updates the skip-ownership-drops flag.
@@ -455,18 +479,10 @@ pub fn (n &Node) payload_ptr() &NodePayload {
 	return node_payload_at(n.payload)
 }
 
-// type_text_id returns the compact canonical identity carried in this node's
-// otherwise-unused source-position metadata.
+// type_text_id returns the stable u32 source-spelling identity of this annotation.
 @[inline]
-pub fn (n &Node) type_text_id() u16 {
-	return n.pos.type_text_id()
-}
-
-// set_type_text_id updates the compact type identity without disturbing a
-// diagnostic reported-column override.
-@[inline]
-pub fn (mut n Node) set_type_text_id(id u16) {
-	n.pos = n.pos.with_type_text_id(id)
+pub fn (n &Node) type_text_id() u32 {
+	return n.typ
 }
 
 // generic_params returns this node's uncommon generic/attribute metadata.
@@ -485,7 +501,7 @@ pub fn (n &Node) generic_constraints() []string {
 	if n.payload == 0 {
 		return []string{}
 	}
-	return node_payload_at(n.payload).generic_constraints
+	return node_payload_at(n.payload).generic_constraints.names()
 }
 
 // set_generic_params replaces this node's uncommon managed payload. The
@@ -493,11 +509,15 @@ pub fn (n &Node) generic_constraints() []string {
 // passes that move the params to longer-lived memory rebuild the payload.
 @[inline]
 pub fn (mut n Node) set_generic_params(params []string) {
-	constraints := n.generic_constraints()
-	n.payload = node_payload_with_constraints(params, if constraints.len == params.len {
-		constraints
+	constraints := if n.payload == 0 {
+		TypeTextList{}
 	} else {
-		[]string{}
+		node_payload_at(n.payload).generic_constraints
+	}
+	n.payload = node_payload_with_type_constraints(params, if constraints.ids.len == params.len {
+		constraints.clone()
+	} else {
+		TypeTextList{}
 	})
 }
 
@@ -810,32 +830,19 @@ pub fn (a &FlatAst) text_count() int {
 	return a.text_values.len
 }
 
-// type_text_id returns the compact canonical identity for value, or 0 when it
-// has not been interned or the compilation's text table exceeds u16 range.
-pub fn (a &FlatAst) type_text_id(value string) u16 {
-	if value.len == 0 {
-		return 0
-	}
-	if id := a.text_ids[value] {
-		if id <= 65535 {
-			return u16(id)
-		}
-	}
-	return 0
+// type_text_id returns value's stable source-spelling identity, or zero for empty text.
+// Type annotations no longer share the AST's ordinary string-payload namespace.
+pub fn (a &FlatAst) type_text_id(value string) u32 {
+	return source_type_id(value)
 }
 
-// node_type_text_id preserves an already-matching identity without a map
-// lookup. A changed or newly synthesized spelling is assigned during the
-// ordered canonicalization pass after worker merge.
+// node_type_text_id retains a matching source-spelling identity or indexes a new spelling.
 @[inline]
-pub fn (a &FlatAst) node_type_text_id(value string, current u16) u16 {
-	if current != 0 {
-		canonical := a.text(TextId(current))
-		if canonical.len == value.len && canonical.str == value.str {
-			return current
-		}
+pub fn (a &FlatAst) node_type_text_id(value string, current u32) u32 {
+	if current != 0 && source_type_name(current) == value {
+		return current
 	}
-	return 0
+	return source_type_id(value)
 }
 
 // intern_node_texts_from canonicalizes managed payloads in nodes[start..].
@@ -877,9 +884,91 @@ pub fn (mut a FlatAst) intern_node_texts_range(start int, end int) {
 	if start >= end {
 		return
 	}
+	if end - start >= wide_text_probe_min_nodes {
+		a.intern_node_texts_range_wide(start, end)
+		return
+	}
 	mut value_cache := new_text_probe_cache()
 	mut type_cache := new_text_probe_cache()
 	a.intern_node_texts_range_cached(start, end, mut value_cache, mut type_cache)
+}
+
+// wide_text_probe_slots is the size of the pointer probe of a pass over a whole
+// tree. Such a pass meets tens of thousands of distinct texts, which overwrite
+// the 4096 slots of a TextProbeCache many times over, and every probe that
+// misses hashes the text for the table. It must be a power of two.
+const wide_text_probe_slots = 65536
+
+// wide_text_probe_min_nodes is the range from which the wide probe pays for
+// clearing its keys.
+const wide_text_probe_min_nodes = 65536
+
+// WideTextProbe is the scratch of intern_node_texts_range_wide.
+// It canonicalizes ordinary node and declaration payloads; type IDs are already owned.
+struct WideTextProbe {
+mut:
+	ptrs &voidptr = unsafe { nil }
+	vals &string  = unsafe { nil }
+}
+
+// intern_node_texts_range_wide is intern_node_texts_range_cached for a range that
+// covers most of a tree, with the probe widened to wide_text_probe_slots slots.
+@[direct_array_access]
+fn (mut a FlatAst) intern_node_texts_range_wide(start int, end int) {
+	first := if start < 0 { 0 } else { start }
+	if first >= end {
+		return
+	}
+	// A slot's text and identity are read only once its nonzero pointer key
+	// matches, so the keys alone start out cleared.
+	mut probe := WideTextProbe{
+		ptrs: unsafe { &voidptr(vcalloc_noscan(isize(wide_text_probe_slots) * isize(sizeof(voidptr)))) }
+		vals: unsafe { &string(malloc_noscan(isize(wide_text_probe_slots) * isize(sizeof(string)))) }
+	}
+	defer {
+		// These buffers borrow the AST's canonical text; release only the scratch storage.
+		unsafe {
+			free(probe.ptrs)
+			free(probe.vals)
+		}
+	}
+	for idx in first .. end {
+		// Interning grows the text tables, never the node array, so this slot stays valid.
+		mut node := &a.nodes[idx]
+		node.value = a.intern_text_ptr_probed(node.value, mut probe)
+		if node.payload == 0 {
+			continue
+		}
+		payload := node.payload_ptr()
+		params := payload.generic_params
+		if params.len > 0 {
+			// Always rebuild the payload, as intern_node_texts_one does.
+			mut canonical_params := []string{cap: params.len}
+			for item in params {
+				canonical := a.intern_text_ptr_probed(item, mut probe)
+				canonical_params << canonical
+			}
+			node.payload = node_payload_with_type_constraints(canonical_params, payload.generic_constraints.clone())
+		}
+	}
+}
+
+// intern_text_ptr_probed canonicalizes `value` through the wide payload probe.
+@[inline]
+fn (mut a FlatAst) intern_text_ptr_probed(value string, mut probe WideTextProbe) string {
+	if value.len == 0 {
+		return ''
+	}
+	slot := int((u64(voidptr(value.str)) >> 4) & u64(wide_text_probe_slots - 1))
+	unsafe {
+		if probe.ptrs[slot] == voidptr(value.str) && probe.vals[slot].len == value.len {
+			return probe.vals[slot]
+		}
+		_, canonical := a.intern_text(value)
+		probe.ptrs[slot] = voidptr(value.str)
+		probe.vals[slot] = canonical
+		return canonical
+	}
 }
 
 // intern_node_texts_range_cached is intern_node_texts_range with the probe
@@ -921,9 +1010,6 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, 
 	// Interning grows the text tables, never the node array, so this slot stays valid.
 	mut node := &a.nodes[idx]
 	node.value = a.intern_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
-	type_id, canonical_type := a.intern_type_text_ptr_cached(node.typ, mut type_cache_ptrs, mut type_cache_vals, mut type_cache_ids)
-	node.typ = canonical_type
-	node.set_type_text_id(type_id)
 	if node.payload == 0 {
 		return
 	}
@@ -936,16 +1022,7 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, 
 		for item in params {
 			canonical_params << a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
 		}
-		constraints := payload.generic_constraints
-		mut canonical_constraints := []string{cap: constraints.len}
-		for item in constraints {
-			canonical_constraints << if item.len > 0 {
-				a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
-			} else {
-				''
-			}
-		}
-		node.set_generic_params_and_constraints(canonical_params, canonical_constraints)
+		node.payload = node_payload_with_type_constraints(canonical_params, payload.generic_constraints.clone())
 	}
 }
 
@@ -1136,7 +1213,7 @@ pub fn (n Node) with_pos(pos token.Pos) Node {
 		value:          n.value
 		typ:            n.typ
 		payload:        n.payload
-		pos:            pos.with_type_text_id(n.type_text_id())
+		pos:            pos
 		children_start: n.children_start
 		children_count: n.children_count
 		kind:           n.kind
@@ -1152,17 +1229,18 @@ pub fn (n Node) clone_owned() Node {
 	for param in n.generic_params() {
 		params << param.clone()
 	}
-	mut constraints := []string{cap: n.generic_constraints().len}
-	for constraint in n.generic_constraints() {
-		constraints << constraint.clone()
+	constraints := if n.payload == 0 {
+		TypeTextList{}
+	} else {
+		node_payload_at(n.payload).generic_constraints.clone()
 	}
 	return Node{
 		value:          n.value.clone()
-		typ:            n.typ.clone()
+		typ:            n.typ
 		payload:        if n.payload == canonical_comptime_type_payload {
 			canonical_comptime_type_payload
 		} else {
-			node_payload_with_constraints(params, constraints)
+			node_payload_with_type_constraints(params, constraints)
 		}
 		pos:            n.pos
 		children_start: n.children_start
@@ -1178,7 +1256,6 @@ pub fn (n Node) clone_owned() Node {
 pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	id := NodeId(a.nodes.len)
 	mut stored := node
-	stored.set_type_text_id(a.node_type_text_id(stored.typ, stored.type_text_id()))
 	if a.nodes.len < a.nodes.cap {
 		unsafe {
 			mut slot := &Node(&u8(a.nodes.data) + usize(a.nodes.len) * sizeof(Node))
@@ -1277,8 +1354,8 @@ pub fn (a &FlatAst) print_tree(id NodeId, indent int) {
 	if node.op != .none {
 		info += ' op=${node.op}'
 	}
-	if node.typ.len > 0 {
-		info += ' typ=${node.typ}'
+	if node.typ_text().len > 0 {
+		info += ' typ=${node.typ_text()}'
 	}
 	println('${prefix}${info}')
 	for i in 0 .. node.children_count {

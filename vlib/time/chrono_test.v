@@ -15,6 +15,16 @@ fn test_days_from_unix_epoch() {
 	assert days_from_unix_epoch(1970, 2, 1) == 31
 	assert days_from_unix_epoch(1970, 3, 1) == 59
 	assert days_from_unix_epoch(2022, 11, 10) == 19306
+	// years before 1, in the proleptic Gregorian calendar; the year 0 is a leap year
+	assert days_from_unix_epoch(1, 1, 1) == -719162
+	assert days_from_unix_epoch(0, 12, 31) == -719163
+	assert days_from_unix_epoch(0, 3, 1) == -719468
+	assert days_from_unix_epoch(0, 2, 29) == -719469
+	assert days_from_unix_epoch(0, 1, 1) == -719528
+	assert days_from_unix_epoch(-1, 12, 31) == -719529
+	assert days_from_unix_epoch(-4, 1, 1) == -720989
+	assert days_from_unix_epoch(-400, 3, 1) == -719468 - days_per_400_years
+	assert days_from_unix_epoch(-401, 12, 31) == -865626
 }
 
 fn test_date_from_days_after_unix_epoch() {

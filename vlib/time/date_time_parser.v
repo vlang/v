@@ -324,7 +324,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				}
 			}
 			'k' {
-				hour_ = p.must_be_int(1) or {
+				hour_ = p.must_be_int_with_minimum_length(1, 2, true) or {
 					return error_invalid_time(0,
 						'end of string reached before hours where specified')
 				}
@@ -342,7 +342,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				}
 			}
 			'm' {
-				minute_ = p.must_be_int(1) or {
+				minute_ = p.must_be_int_with_minimum_length(1, 2, true) or {
 					return error_invalid_time(0,
 						'end of string reached before minutes where specified')
 				}
@@ -360,7 +360,7 @@ fn (mut p DateTimeParser) parse() !Time {
 				}
 			}
 			's' {
-				second_ = p.must_be_int(1) or {
+				second_ = p.must_be_int_with_minimum_length(1, 2, true) or {
 					return error_invalid_time(0,
 						'end of string reached before seconds where specified')
 				}

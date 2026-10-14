@@ -110,3 +110,64 @@ const xof128_test_data = [
 		md:    'b4ca30047dc94ed770e45f4fa07b25a049d4a149a78227e25625cec2cbee7cfdd7d3cfb2635a38770e04009de348726364f648984ef47e9bc90c2a3c0526b227'
 	},
 ]
+
+fn test_xof128_read_advances() {
+	msg := hex.decode('00')!
+	md := hex.decode('51430e0438ecdf642b393630d977625f5f337656ba58ab1e960784ac32a16e0d446405551f5469384f8ea283cf12e64fa72c426bfebaea3aa1529e2c4ab23a2f')!
+	mut x := ascon.new_xof128(64)
+	x.write(msg)!
+	// two consecutive reads must continue the stream, not restart it
+	mut d1 := []u8{len: 32}
+	mut d2 := []u8{len: 32}
+	x.read(mut d1)!
+	x.read(mut d2)!
+	assert d1 == md[..32]
+	assert d2 == md[32..]
+	// reading the same stream in one go must give the same bytes
+	mut whole := []u8{len: 64}
+	x.reset()
+	x.write(msg)!
+	x.read(mut whole)!
+	assert whole == md
+}
+
+fn test_xof128_read_in_eight_byte_blocks() {
+	msg := hex.decode('00')!
+	md := hex.decode('51430e0438ecdf642b393630d977625f5f337656ba58ab1e960784ac32a16e0d446405551f5469384f8ea283cf12e64fa72c426bfebaea3aa1529e2c4ab23a2f')!
+	mut x := ascon.new_xof128(64)
+	x.write(msg)!
+	mut acc := []u8{}
+	for _ in 0 .. 8 {
+		mut c := []u8{len: 8}
+		x.read(mut c)!
+		acc << c
+	}
+	assert acc == md
+}
+
+fn test_xof128_read_partial_blocks() ! {
+	for item in xof128_test_data {
+		msg := hex.decode(item.msg)!
+		md := hex.decode(item.md)!
+		for size in [1, 3, 7, 8, 9] {
+			mut x := ascon.new_xof128(64)
+			x.write(msg)!
+			mut empty := []u8{}
+			assert x.read(mut empty)! == 0
+			mut out := []u8{}
+			for out.len < md.len {
+				n := if md.len - out.len < size { md.len - out.len } else { size }
+				mut part := []u8{len: n}
+				assert x.read(mut part)! == n
+				out << part
+				assert x.read(mut empty)! == 0
+			}
+			assert out == md
+			x.reset()
+			x.write(msg)!
+			mut whole := []u8{len: md.len}
+			x.read(mut whole)!
+			assert whole == md
+		}
+	}
+}

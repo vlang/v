@@ -7,6 +7,10 @@
 
 #include <windows.h>
 
+#ifndef V_TOOLCACHE_WINDOWS_SCOPE
+#define V_TOOLCACHE_WINDOWS_SCOPE static
+#endif
+
 /* The bundled TinyCC ships no aclapi.h/accctrl.h, so the bootstrap (makev.bat -tcc,
  * vc/v_win.c) would fail with "include file 'aclapi.h' not found". Only two items
  * from those headers are used below; declare them when the header is unavailable.
@@ -110,32 +114,32 @@ DWORD WINAPI GetNamedSecurityInfoW(LPCWSTR object_name, SE_OBJECT_TYPE object_ty
 	PACL *sacl, PSECURITY_DESCRIPTOR *security_descriptor);
 #endif
 
-static int v_toolcache_move_file_ex_w(const unsigned short *existing,
+V_TOOLCACHE_WINDOWS_SCOPE int v_toolcache_move_file_ex_w(const unsigned short *existing,
 	const unsigned short *replacement, unsigned int flags) {
 	return MoveFileExW((LPCWSTR)existing, (LPCWSTR)replacement, (DWORD)flags);
 }
 
-static void *v_toolcache_create_file_w(const unsigned short *path,
+V_TOOLCACHE_WINDOWS_SCOPE void *v_toolcache_create_file_w(const unsigned short *path,
 	unsigned int desired_access, unsigned int share_mode,
 	unsigned int creation_disposition, unsigned int flags_and_attributes) {
 	return CreateFileW((LPCWSTR)path, (DWORD)desired_access, (DWORD)share_mode,
 		NULL, (DWORD)creation_disposition, (DWORD)flags_and_attributes, NULL);
 }
 
-static int v_toolcache_get_file_information(void *handle, void *information) {
+V_TOOLCACHE_WINDOWS_SCOPE int v_toolcache_get_file_information(void *handle, void *information) {
 	return GetFileInformationByHandle((HANDLE)handle,
 		(LPBY_HANDLE_FILE_INFORMATION)information);
 }
 
-static int v_toolcache_close_handle(void *handle) {
+V_TOOLCACHE_WINDOWS_SCOPE int v_toolcache_close_handle(void *handle) {
 	return CloseHandle((HANDLE)handle);
 }
 
-static int v_toolcache_file_is_disk(void *handle) {
+V_TOOLCACHE_WINDOWS_SCOPE int v_toolcache_file_is_disk(void *handle) {
 	return GetFileType((HANDLE)handle) == FILE_TYPE_DISK;
 }
 
-static int v_toolcache_read_file(void *handle, void *buffer, unsigned int size,
+V_TOOLCACHE_WINDOWS_SCOPE int v_toolcache_read_file(void *handle, void *buffer, unsigned int size,
 	unsigned int *read) {
 	return ReadFile((HANDLE)handle, buffer, (DWORD)size, (LPDWORD)read, NULL);
 }
@@ -148,7 +152,7 @@ static int v_toolcache_sid_can_write(PSID sid, PSID owner) {
 		|| IsWellKnownSid(sid, (WELL_KNOWN_SID_TYPE)71); /* WinOwnerRightsSid */
 }
 
-static int v_toolcache_root_is_private(const unsigned short *path) {
+V_TOOLCACHE_WINDOWS_SCOPE int v_toolcache_root_is_private(const unsigned short *path) {
 	PSECURITY_DESCRIPTOR security_descriptor = NULL;
 	PSID owner = NULL;
 	PACL dacl = NULL;

@@ -27,6 +27,51 @@ fn test_implicit_tcc_preflight_preserves_semantic_errors() {
 	with_implicit_tcc_environment(check_implicit_tcc_preflight_preserves_semantic_errors)
 }
 
+fn test_implicit_tcc_preflight_selects_platform_quietly_for_macos_objects() {
+	with_implicit_tcc_environment(check_implicit_tcc_preflight_selects_platform_quietly_for_macos_objects)
+}
+
+fn check_implicit_tcc_preflight_selects_platform_quietly_for_macos_objects() ! {
+	$if !macos {
+		return
+	}
+	vexe := @VEXE
+	tcc := os.join_path(os.dir(vexe), 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(tcc) {
+		return
+	}
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	dir := os.join_path(os.vtmp_dir(), 'v_tcc_preflight_macos_objects_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	native := os.join_path(dir, 'native.c')
+	pending := os.join_path(dir, 'native.o')
+	existing := os.join_path(dir, 'existing.o')
+	os.write_file(native, 'int preflight_answer(void) { return 42; }\n')!
+	compiled := cmdexec.run(cc, ['-c', native, '-o', existing])
+	assert compiled.exit_code == 0, compiled.output
+	source := os.join_path(dir, 'main.c.v')
+	exe := os.join_path(dir, 'main')
+	for object in [pending, existing] {
+		os.write_file(source, '#flag "${object}"\nfn C.preflight_answer() int\nfn identity[T](value T) T { return value }\nfn main() {\n \$if tinyc { println(identity(0)) } \$else { println(identity(C.preflight_answer())) }\n}\n')!
+		build := cmdexec.run(vexe, ['-new-compiler', '-gc', 'none', '-nocache', '-o', exe, source])
+		assert build.exit_code == 0, build.output
+		assert build.output.trim_space() == '', build.output
+		run := cmdexec.run(exe, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '42'
+	}
+	verbose := cmdexec.run(vexe, ['-new-compiler', '-gc', 'none', '-v', '-nocache', '-o', exe,
+		source])
+	assert verbose.exit_code == 0, verbose.output
+	assert verbose.output.contains('native inputs require linking external objects on macOS'), verbose.output
+	assert verbose.output.count('=== V compiler benchmark ===') == 1, verbose.output
+	assert pipeline_stage_count(verbose.output, 'transform') == 1, verbose.output
+	assert pipeline_stage_count(verbose.output, 'monomorphize') == 1, verbose.output
+}
+
 fn check_implicit_tcc_preflight_preserves_semantic_errors() ! {
 	vexe := @VEXE
 	vroot := os.dir(vexe)
@@ -117,6 +162,9 @@ fn check_implicit_tcc_preflight_selects_platform_before_transform() ! {
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, '#flag "${native}"\nfn C.preflight_value() int\nfn identity[T](value T) T { return value }\nfn main() {\n\t\$if tinyc { println(identity(0)) } \$else { println(identity(C.preflight_value())) }\n}\n')!
 	exe := os.join_path(dir, 'main')
+	quiet := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-o', exe, source])
+	assert quiet.exit_code == 0, quiet.output
+	assert !quiet.output.contains('implicit tcc could not be used'), quiet.output
 	build := cmdexec.run(vexe, ['-new-compiler', '-v', '-nocache', '-o', exe, source])
 	assert build.exit_code == 0, build.output
 	assert build.output.contains('implicit tcc could not be used'), build.output

@@ -1,6 +1,8 @@
 // vtest vflags: -prealloc -gc none
 module types
 
+import v.flat
+
 fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
 	$if prealloc {
 		mut interner := new_type_interner()
@@ -8,15 +10,15 @@ fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
 		borrowed := Type(FnType{
 			params:      [Type(ArrayFixed{
 				elem_type: Type(Struct{
-					name: 'C.WorkerPayload'.clone()
+					name_id: flat.source_type_id('C.WorkerPayload'.clone())
 				})
 				len_expr:  'worker_count'.clone()
 			})]
 			params_mut:  [true]
 			return_type: Type(Alias{
-				name:      'WorkerResult'.clone()
+				name_id:   flat.source_type_id('WorkerResult'.clone())
 				base_type: Type(Struct{
-					name: 'C.WorkerResult'.clone()
+					name_id: flat.source_type_id('C.WorkerResult'.clone())
 				})
 			})
 		})
@@ -32,24 +34,24 @@ fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
 		assert !unsafe { prealloc_scope_owns(scope, param.len_expr.str) }
 		elem := param.elem_type
 		assert elem is Struct
-		assert !unsafe { prealloc_scope_owns(scope, elem.name.str) }
+		assert !unsafe { prealloc_scope_owns(scope, elem.name().str) }
 		result := canonical.return_type
 		assert result is Alias
-		assert !unsafe { prealloc_scope_owns(scope, result.name.str) }
+		assert !unsafe { prealloc_scope_owns(scope, result.name().str) }
 		unsafe { prealloc_scope_free_after(scope) }
 
 		expected := Type(FnType{
 			params:      [Type(ArrayFixed{
 				elem_type: Type(Struct{
-					name: 'C.WorkerPayload'
+					name_id: flat.source_type_id('C.WorkerPayload')
 				})
 				len_expr:  'worker_count'
 			})]
 			params_mut:  [true]
 			return_type: Type(Alias{
-				name:      'WorkerResult'
+				name_id:   flat.source_type_id('WorkerResult')
 				base_type: Type(Struct{
-					name: 'C.WorkerResult'
+					name_id: flat.source_type_id('C.WorkerResult')
 				})
 			})
 		})

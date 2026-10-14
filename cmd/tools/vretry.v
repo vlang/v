@@ -10,22 +10,6 @@ mut:
 	retries   int
 }
 
-// arg_needs_no_quoting reports whether `arg` survives a trip through the shell
-// unchanged. Everything else is quoted rather than enumerated, so a character that
-// is special on only some shells is still handled.
-fn arg_needs_no_quoting(arg string) bool {
-	if arg.len == 0 {
-		return false
-	}
-	for c in arg {
-		if c.is_alnum() || c in [`_`, `-`, `.`, `/`, `:`, `=`, `@`, `+`, `,`, `%`] {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
 // seconds_to_duration converts a fractional number of seconds, as given on the
 // command line, to a Duration. The scaling is done in floating point so that a
 // value like `--delay 0.5` keeps its sub-second part.
@@ -35,14 +19,13 @@ fn seconds_to_duration(seconds f64) time.Duration {
 
 fn main() {
 	mut context := Context{}
-	args := os.args#[1..]
+	args := os.args[1..]
 	// dump(args)
 	mut fp := flag.new_flag_parser(args)
 	fp.application('v retry')
 	fp.version('0.0.1')
 	fp.description('Run the command CMD in a loop, until it succeeds, or until a predetermined amount of seconds pass.')
 	fp.arguments_description('CMD')
-	fp.skip_executable()
 	fp.limit_free_args_to_at_least(1)!
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.timeout = seconds_to_duration(fp.float('timeout', `t`, 900.0,

@@ -7,9 +7,7 @@ module builtin
 #include <io.h>
 #include <fcntl.h>
 
-// Cast the V callback to the Windows SDK callback type. Clang 20 treats the
-// otherwise-compatible struct pointer mismatch as a hard error for v_win.c.
-#define v_set_unhandled_exception_filter(handler) SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER)(handler))
+#flag @VEXEROOT/vlib/builtin/core_windows.o
 
 // See https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types
 // See https://www.codeproject.com/KB/string/cppstringguide1.aspx
@@ -48,12 +46,20 @@ pub type C.LPCTSTR = &C.TCHAR
 
 type C.DWORD = u32
 
+@[typedef]
+pub struct C.ULARGE_INTEGER {
+pub mut:
+	QuadPart u64
+}
+
 fn C.WriteConsoleW(voidptr, &u16, C.DWORD, &C.DWORD, voidptr) bool
 fn C.WriteFile(voidptr, &u8, C.DWORD, &C.DWORD, voidptr) bool
 fn C.ExitProcess(u32)
 fn C.GetProcessHeap() voidptr
 fn C.HeapAlloc(voidptr, u32, usize) voidptr
 fn C.HeapFree(voidptr, u32, voidptr) bool
+fn C.CreateThread(attributes voidptr, stack_size usize, start_routine voidptr, arg voidptr, flags u32, thread_id &u32) voidptr
+fn C.v_builtin_windows_stream(index u32) voidptr
 
 fn C._setmode(int, int) int
 
@@ -100,7 +106,7 @@ const std_output_handle = u32(0xfffffff5)
 const std_error_handle = u32(0xfffffff4)
 const enable_processed_output = 1
 const enable_wrap_at_eol_output = 2
-const evable_virtual_terminal_processing = 4
+const enable_virtual_terminal_processing = 4
 
 // Write UTF-8 directly as UTF-16 for console hosts instead of changing the console code page.
 @[manualfree]
@@ -295,9 +301,9 @@ fn builtin_init() {
 		set_stream_binary_mode(C.stderr)
 		if is_terminal(1) > 0 {
 			C.SetConsoleMode(C.GetStdHandle(std_output_handle),
-				enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
+				enable_processed_output | enable_wrap_at_eol_output | enable_virtual_terminal_processing)
 			C.SetConsoleMode(C.GetStdHandle(std_error_handle),
-				enable_processed_output | enable_wrap_at_eol_output | evable_virtual_terminal_processing)
+				enable_processed_output | enable_wrap_at_eol_output | enable_virtual_terminal_processing)
 			unsafe {
 				set_stream_unbuffered(C.stdout)
 				set_stream_unbuffered(C.stderr)
@@ -398,6 +404,7 @@ fn is_address_in_executable(address voidptr) bool {
 }
 
 fn C.__debugbreak()
+fn C.v_builtin_windows_debugbreak()
 
 fn break_if_debugger_attached() {
 	$if tinyc {
@@ -408,7 +415,7 @@ fn break_if_debugger_attached() {
 		}
 	} $else {
 		if C.IsDebuggerPresent() {
-			C.__debugbreak()
+			C.v_builtin_windows_debugbreak()
 		}
 	}
 }

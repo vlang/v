@@ -155,7 +155,9 @@ fn main() {
 	println(read_value("generic"))
 }
 '
-	c_code := cross_generate_with('-no-retry-compilation -cross -cc ${generation_cc} -gc none',
+	// This fixture links C directly to test preserved generic method values.
+	// Ordinary V builds supply the native signal helper separately.
+	c_code := cross_generate_with('-no-retry-compilation -d no_segfault_handler -cross -cc ${generation_cc} -gc none',
 		'method_values', source)
 	dir := os.join_path(os.vtmp_dir(), 'v3_cross_method_values_${os.getpid()}')
 	os.mkdir_all(dir)!
@@ -527,6 +529,23 @@ fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
 		only_here := includes.filter(it !in reference)
 		only_there := reference.filter(it !in includes)
 		assert only_here.len == 0 && only_there.len == 0, '-cc ${ccompiler} emits ${only_here} but the msvc spelling emits ${only_there} instead'
+	}
+}
+
+fn test_cross_windows_literal_initializers_are_c_compiler_independent() {
+	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc'] {
+		code := cross_generate_with('-nocache -cross -os windows -cc ${ccompiler}',
+			'literals_${ccompiler}', 'module main
+fn message() string { return "snapshot literal" }
+fn main() { println(message()) }
+')
+		assert code.contains('#define _SL(id, s, n) static const string id = {s, n, 1}')
+		definitions := code.split_into_lines().filter(it.starts_with('_SL(_str_'))
+		assert definitions.len > 0, '-cc ${ccompiler}: missing literal table'
+		assert definitions.any(it.ends_with(', "snapshot literal", 16);')), '-cc ${ccompiler}: missing snapshot literal'
+		for definition in definitions {
+			assert !definition.contains(' = _S('), '-cc ${ccompiler}: ${definition}'
+		}
 	}
 }
 

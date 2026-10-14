@@ -18,9 +18,19 @@ It prints:
 ['a', 'b', 'c']
 ```
 
-## Writer line endings
+Unquoted fields cannot contain double quotes. Enclose a field containing quotes in double
+quotes and escape each embedded quote by doubling it; `read()` returns an error for a bare quote.
+After a closing quote, only the delimiter or the end of the record is allowed; trailing text
+and whitespace return an error.
 
-By default, the writer ends records with `\n` and preserves `\r` and `\n` inside quoted fields.
-With `csv.new_writer(use_crlf: true)`, records end with `\r\n`, and embedded `\n` is written as
-`\r\n`. Existing `\r\n` pairs are preserved without adding another `\r`.
-Bare `\r` is also preserved.
+The writer preserves carriage returns and line feeds inside quoted fields by default. With
+`use_crlf: true`, it preserves bare carriage returns and existing CRLF pairs, and writes each
+other line feed as CRLF, matching the record terminator. The reader normalizes CRLF to LF
+inside quoted fields.
+
+The final record does not need a trailing line ending, including when the document contains
+only one record. Empty documents and comment-only input contain no records.
+
+A quoted field must have a closing quote, including in the final record. Truncated quoted
+fields return `encoding.csv: unterminated quoted field`; clean end of input returns
+`encoding.csv: end of file`.
