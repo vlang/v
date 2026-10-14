@@ -423,6 +423,11 @@ fn test_split_any() {
 	assert 'Ciao+come*stai? '.split_any('+*') == ['Ciao', 'come', 'stai? ']
 	assert 'Ciao+come*stai? '.split_any('+* ') == ['Ciao', 'come', 'stai?']
 	assert 'first row\nsecond row'.split_any(' \n') == ['first', 'row', 'second', 'row']
+	// #30512: cutset is a set of runes, not bytes; no input char is in the cutset here
+	assert '日本語テキスト'.split_any('あい') == ['日本語テキスト']
+	assert 'a　b'.split_any('あい') == ['a　b']
+	assert 'Ünïcödé tëst'.split_any('é') == ['Ünïcöd', ' tëst']
+	assert 'a,b;c'.split_any(',;') == ['a', 'b', 'c']
 }
 
 fn test_rsplit_any() {
@@ -434,6 +439,11 @@ fn test_rsplit_any() {
 	assert ' Ciao+come*stai?'.rsplit_any('+*') == ['stai?', 'come', ' Ciao']
 	assert ' Ciao+come*stai?'.rsplit_any('+* ') == ['stai?', 'come', 'Ciao']
 	assert 'first row\nsecond row'.rsplit_any(' \n') == ['row', 'second', 'row', 'first']
+	// #30512: cutset is a set of runes, not bytes; no input char is in the cutset here
+	assert '日本語テキスト'.rsplit_any('あい') == ['日本語テキスト']
+	assert 'a　b'.rsplit_any('あい') == ['a　b']
+	assert 'Ünïcödé tëst'.rsplit_any('é') == [' tëst', 'Ünïcöd']
+	assert 'a,b;c'.rsplit_any(',;') == ['c', 'b', 'a']
 }
 
 fn test_split_once() ? {

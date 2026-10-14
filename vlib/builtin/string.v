@@ -1008,14 +1008,22 @@ pub fn (s string) split_any(delim string) []string {
 		if delim.len <= 0 {
 			return s.split('')
 		}
-		for index, ch in s {
-			for delim_ch in delim {
-				if ch == delim_ch {
-					res << s[i..index]
-					i = index + 1
+		delim_runes := delim.runes()
+		mut j := 0
+		for j < s.len {
+			r, char_len := utf8_decode_rune(unsafe { &s.str[j] }, s.len - j)
+			mut is_delim := false
+			for delim_rune in delim_runes {
+				if r == delim_rune {
+					is_delim = true
 					break
 				}
 			}
+			if is_delim {
+				res << s[i..j]
+				i = j + char_len
+			}
+			j += char_len
 		}
 		if i < s.len {
 			res << s[i..]
@@ -1038,15 +1046,26 @@ pub fn (s string) rsplit_any(delim string) []string {
 			return s.rsplit('')
 		}
 		mut rbound := s.len
+		delim_runes := delim.runes()
 		for i >= 0 {
-			for delim_ch in delim {
-				if s[i] == delim_ch {
-					res << s[i + 1..rbound]
-					rbound = i
+			// find the start of the rune ending at byte `i`
+			mut start := i
+			for start > 0 && utf8_is_continuation(s[start]) {
+				start--
+			}
+			r, char_len := utf8_decode_rune(unsafe { &s.str[start] }, s.len - start)
+			mut is_delim := false
+			for delim_rune in delim_runes {
+				if r == delim_rune {
+					is_delim = true
 					break
 				}
 			}
-			i--
+			if is_delim {
+				res << s[start + char_len..rbound]
+				rbound = start
+			}
+			i = start - 1
 		}
 		if rbound > 0 {
 			res << s[..rbound]
