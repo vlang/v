@@ -2092,3 +2092,54 @@ fn test_v3_tcc_flags_dump_matches_monolithic_command() {
 		}
 	}
 }
+
+fn test_v3_production_object_flag_plan_retains_machine_code() {
+	for compiler in ['gcc', 'clang', 'msvc', 'tinyc'] {
+		for large in [false, true] {
+			options := V3CCompilerFlagOptions{
+				is_prod:      true
+				is_o:         true
+				target_os:    'windows'
+				c_compiler:   compiler
+				large_c_unit: large
+				is_tcc:       compiler == 'tinyc'
+			}
+			plan := v3_c_compiler_flag_plan(options)
+			assert '-flto' !in plan.before_inputs
+			assert '-c' in plan.before_inputs
+			assert (if large { '-O2' } else { '-O3' }) in plan.before_inputs
+		}
+	}
+	program := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{ is_prod: true })
+	assert '-flto' in program.before_inputs
+}
+
+fn test_v3_production_object_links_with_independent_c_main() {
+	$if windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'prod_object_link_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'object_probe.v')
+	object := os.join_path(root, 'object_probe.o')
+	main_c := os.join_path(root, 'main.c')
+	exe := os.join_path(root, 'main')
+	os.write_file(source, "module object_probe\n\n@[export: 'v3_object_probe']\n@[markused]\nfn add(a i32, b i32) i32 { return a + b }\n")!
+	compiled := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-prod', '-cc', clang,
+		'-gc', 'none', '-o', object, source])
+	assert compiled.exit_code == 0, compiled.output
+	data := os.read_bytes(object)!
+	assert data.len >= 4
+	// Clang's raw bitcode and bitcode-wrapper magic must not replace machine code.
+	assert data[..4] != [u8(0x42), 0x43, 0xc0, 0xde]
+	assert data[..4] != [u8(0xde), 0xc0, 0x17, 0x0b]
+	os.write_file(main_c, '#include <stdint.h>\nextern int32_t v3_object_probe(int32_t, int32_t);\nint main(void) { return v3_object_probe(20, 22) == 42 ? 0 : 1; }\n')!
+	linked := cmdexec.run(clang, [main_c, object, '-lm', '-o', exe])
+	assert linked.exit_code == 0, linked.output
+	ran := cmdexec.run(exe, [])
+	assert ran.exit_code == 0, ran.output
+}

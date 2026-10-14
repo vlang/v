@@ -929,6 +929,14 @@ fn (mut a FlatAst) intern_node_texts_range_wide(start int, end int) {
 		vals: unsafe { &string(malloc_noscan(isize(wide_text_probe_slots) * isize(sizeof(string)))) }
 		ids:  unsafe { &u16(malloc_noscan(isize(wide_text_probe_slots) * isize(sizeof(u16)))) }
 	}
+	defer {
+		// These buffers borrow the AST's canonical text; release only the scratch storage.
+		unsafe {
+			free(probe.ptrs)
+			free(probe.vals)
+			free(probe.ids)
+		}
+	}
 	for idx in first .. end {
 		// Interning grows the text tables, never the node array, so this slot stays valid.
 		mut node := &a.nodes[idx]

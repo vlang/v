@@ -66,68 +66,100 @@ pub fn encode_u32(value u32) []u8 {
 	return result
 }
 
-// decode_i32 decodes an i32 and returns the number of bytes used from the given leb128 encoded array `value`
+// decode_i32 decodes an i32 and returns the number of bytes used from the given leb128 encoded array `value`.
+// A non-positive length means the input did not hold a complete value:
+// 0 for a truncated or empty buffer, and a negative length for an
+// overflowing one, like Go's encoding/binary varint functions.
 pub fn decode_i32(value []u8) (i32, int) {
 	mut result := u32(0)
 	mut shift := 0
-	for b in value {
+	for i, b in value {
+		if i == 4 {
+			// Unused payload bits must repeat the signed value's sign bit.
+			if b & 0x80 != 0 || (b > 0x07 && b < 0x78) {
+				return 0, -(i + 1)
+			}
+		}
 		result |= u32(b & 0x7f) << shift
 		shift += 7
 		if b & 0x80 == 0 {
 			if shift < 32 && b & 0x40 != 0 {
 				result |= u32(~0) << shift
 			}
-			break
+			return i32(result), i + 1
 		}
 	}
-	return i32(result), shift / 7
+	return 0, 0
 }
 
-// decode_i64 decodes an i64 and returns the number of bytes used from the given leb128 encoded array `value`
+// decode_i64 decodes an i64 and returns the number of bytes used from the given leb128 encoded array `value`.
+// A non-positive length means the input did not hold a complete value:
+// 0 for a truncated or empty buffer, and a negative length for an
+// overflowing one, like Go's encoding/binary varint functions.
 pub fn decode_i64(value []u8) (i64, int) {
 	mut result := u64(0)
 	mut shift := 0
-	for b in value {
+	for i, b in value {
+		if i == 9 {
+			// Only bit 63 remains; the other payload bits are sign extension.
+			if b != 0x00 && b != 0x7f {
+				return 0, -(i + 1)
+			}
+		}
 		result |= u64(b & 0x7f) << shift
 		shift += 7
 		if b & 0x80 == 0 {
 			if shift < 64 && b & 0x40 != 0 {
 				result |= ~u64(0) << shift
 			}
-			break
+			return i64(result), i + 1
 		}
 	}
-	return i64(result), shift / 7
+	return 0, 0
 }
 
-// decode_u64 decodes an u64 and returns the number of bytes used from the given leb128 encoded array `value`
+// decode_u64 decodes an u64 and returns the number of bytes used from the given leb128 encoded array `value`.
+// A non-positive length means the input did not hold a complete value:
+// 0 for a truncated or empty buffer, and a negative length for an
+// overflowing one, like Go's encoding/binary.Uvarint.
 pub fn decode_u64(value []u8) (u64, int) {
 	mut result := u64(0)
 	mut shift := 0
-	mut used := 0
-	for b in value {
-		result |= u64(b & 0x7f) << shift
-		used++
-		if b & 0x80 == 0 {
-			break
+	for i, b in value {
+		if i == 9 {
+			// the tenth group can only fill bit 63
+			if b & 0x7f > 1 || b & 0x80 != 0 {
+				return 0, -(i + 1)
+			}
 		}
+		result |= u64(b & 0x7f) << shift
 		shift += 7
+		if b & 0x80 == 0 {
+			return result, i + 1
+		}
 	}
-	return result, used
+	return 0, 0
 }
 
-// decode_u32 decodes an u32 and returns the number of bytes used from the given leb128 encoded array `value`
+// decode_u32 decodes an u32 and returns the number of bytes used from the given leb128 encoded array `value`.
+// A non-positive length means the input did not hold a complete value:
+// 0 for a truncated or empty buffer, and a negative length for an
+// overflowing one, like Go's encoding/binary.Uvarint.
 pub fn decode_u32(value []u8) (u32, int) {
 	mut result := u32(0)
 	mut shift := 0
-	mut used := 0
-	for b in value {
-		result |= u32(b & 0x7f) << shift
-		used++
-		if b & 0x80 == 0 {
-			break
+	for i, b in value {
+		if i == 4 {
+			// the fifth group can only fill bits 28..31
+			if b & 0x70 != 0 || b & 0x80 != 0 {
+				return 0, -(i + 1)
+			}
 		}
+		result |= u32(b & 0x7f) << shift
 		shift += 7
+		if b & 0x80 == 0 {
+			return result, i + 1
+		}
 	}
-	return result, used
+	return 0, 0
 }

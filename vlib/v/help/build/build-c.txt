@@ -322,7 +322,9 @@ see also `v help build`.
       larger program, potentially written in another language.
       The flag can also be combined with `-o file.c`, to generate C source that can be
       compiled and linked together with other `-is_o` generated V units.
-      Note: this option currently works with gcc/clang/tcc, but not msvc.
+      This also applies to -o file.o. Production objects retain machine code
+      rather than automatically enabling LTO. On Windows, MSVC writes a staged
+      .obj file, which V moves to the requested output path.
       Note: use either -no-skip-unused or tag the functions you expect to be publicly
       usable in the .o file with `@[markused]` . Adding `-gc none` may be also needed,
       unless you plan to link with -lgc later.
