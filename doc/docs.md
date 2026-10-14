@@ -1018,6 +1018,9 @@ See
 [Format Placeholder Specification](https://en.wikipedia.org/wiki/Printf_format_string#Format_placeholder_specification)
 for more information.
 
+Scientific float interpolation (`e`, `E`, `g`, or `G`) uses at least two exponent digits,
+without additional leading zeroes, including when a precision is specified.
+
 ```v
 x := 123.4567
 println('[${x:.2}]') // round to two decimal places => [123.46]
