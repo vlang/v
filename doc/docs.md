@@ -5605,6 +5605,9 @@ A later declaration using a module type with the same name resolves to that modu
 
 Generic calls keep the identity of caller types even when an imported module declares a type
 with the same short name.
+When an imported generic constructs a caller's struct, omitted fields use that struct's defaults,
+including shared fields and fixed arrays. This applies to value and heap literals and
+Result returns.
 Inside a generic declaration, its type parameters take precedence over same-named concrete
 types. A concrete single-letter struct can still be passed as a generic type argument.
 
