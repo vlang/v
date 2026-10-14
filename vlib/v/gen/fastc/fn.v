@@ -913,11 +913,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		fastc_method_c_name(g.module_name, fastc_c_declared_type_name(receiver_key), name)
 	}
-	c_name := if is_program_main && !is_main {
-		'v_fastc_program_main'
-	} else {
-		g.c_function_name_or(function_key, conventional_c_name)
-	}
+	c_name := g.c_function_name_or(function_key, conventional_c_name)
 	g.last_function_c_name = c_name
 	c_return_type := if is_main { 'int' } else { fastc_output_c_type(return_type) }
 	c_params := if is_main && g.selfhost {
