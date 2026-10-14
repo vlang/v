@@ -15422,14 +15422,13 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 		}
 		.prefix {
 			child_id := g.a.child(&node, 0)
-			child_node := g.a.nodes[int(child_id)]
-			if node.op == .minus && child_node.kind == .int_literal
-				&& int_literal_needs_long_long_suffix(&child_node) {
-				'-${numeric_literal_c_text(&child_node)}LL'
-			} else {
-				child := g.const_expr_to_string(child_id, seen)
-				'${g.op_str(node.op)}(${child})'
+			if node.op == .minus {
+				if literal := g.negated_long_long_literal(child_id) {
+					return '-${numeric_literal_c_text(&literal)}LL'
+				}
 			}
+			child := g.const_expr_to_string(child_id, seen)
+			'${g.op_str(node.op)}(${child})'
 		}
 		.paren {
 			child := g.const_expr_to_string(g.a.child(&node, 0), seen)
@@ -25515,6 +25514,18 @@ fn numeric_literal_c_text(node &flat.Node) string {
 	return value
 }
 
+// negated_long_long_literal finds a wide integer operand through parentheses for signed C negation.
+fn (g &FlatGen) negated_long_long_literal(id flat.NodeId) ?flat.Node {
+	mut node := g.a.nodes[int(id)]
+	for node.kind == .paren && node.children_count == 1 {
+		node = g.a.nodes[int(g.a.child(&node, 0))]
+	}
+	if node.kind == .int_literal && int_literal_needs_long_long_suffix(&node) {
+		return node
+	}
+	return none
+}
+
 // int_literal_needs_long_long_suffix reports whether a literal above INT_MAX and within the
 // signed 64-bit range needs an `LL` suffix before it is negated. MSVC types such a literal as
 // unsigned long when it fits 32 bits, so an unsuffixed `-2147483648` widens to +2147483648.
@@ -26010,12 +26021,14 @@ fn (g &FlatGen) shift_count_const_value(id flat.NodeId, seen []string) ?int {
 @[direct_array_access]
 fn (mut g FlatGen) gen_prefix_op_operand(op flat.Op, child_id flat.NodeId) {
 	g.write(g.op_str(op))
-	child := g.a.nodes[int(child_id)]
-	if op == .minus && child.kind == .int_literal && int_literal_needs_long_long_suffix(&child) {
-		g.write(numeric_literal_c_text(&child))
-		g.write('LL')
-		return
+	if op == .minus {
+		if literal := g.negated_long_long_literal(child_id) {
+			g.write(numeric_literal_c_text(&literal))
+			g.write('LL')
+			return
+		}
 	}
+	child := g.a.nodes[int(child_id)]
 	needs_paren := child.kind in [.infix, .in_expr]
 	if needs_paren {
 		g.write('(')

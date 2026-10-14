@@ -22,6 +22,8 @@ fn test_negative_literals_above_int_max() {
 	assert i64(-0o20000000000).str() == '-2147483648'
 	assert i64(-2147483648) < 0
 	assert neg_wide_literal.str() == '-3000000000'
+	assert i64(-(2147483648)).str() == '-2147483648'
+	assert i64(-(0x80000000)).str() == '-2147483648'
 }
 
 fn test_str_methods() {
