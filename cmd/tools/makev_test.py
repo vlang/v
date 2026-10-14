@@ -8,6 +8,7 @@ installation delays stubbed. File replacement uses real temporary files.
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -73,6 +74,13 @@ class BootstrapConfigurationTests(unittest.TestCase):
             if line.startswith('"%V_BOOTSTRAP%" ')
         )
         self.assertIn("-gc none", generate)
+
+    def test_tcc_stage_links_the_math_runtime_requested_by_vlib(self):
+        body = routine("build_stage_with_tcc")
+        link = next(line for line in body.splitlines() if line.startswith('"!tcc_exe!" '))
+        self.assertIn('"%tcc_dir%\\lib\\openlibm.o"', link)
+        for compiler in ("clang", "gcc", "msvc"):
+            self.assertNotIn("openlibm.o", routine("build_stage_with_" + compiler))
 
     def test_bootstrap_only_emits_c_and_never_spawns_a_stage_compiler(self):
         commands = [
@@ -144,6 +152,43 @@ class BootstrapConfigurationTests(unittest.TestCase):
         # quotes every argument on Windows, so `%1` is `"latest_tcc"` there.
         self.assertIn("set target=%~1&", routine("verifyopt"))
         self.assertNotIn("set target=%1&", SOURCE)
+
+
+class NativeHelperTests(unittest.TestCase):
+    def test_windows_runtime_api_headers_match_the_linked_helpers(self):
+        compiler = shutil.which("gcc" if os.name == "nt" else "x86_64-w64-mingw32-gcc")
+        if compiler is None:
+            self.skipTest("requires MinGW GCC or its Windows cross compiler")
+        with tempfile.TemporaryDirectory(prefix="makev native helpers ") as directory:
+            workdir = Path(directory)
+            source = workdir / "facades.c"
+            source.write_text(
+                '#include "vlib/builtin/core_windows.h"\n'
+                '#include "vlib/time/ticks_windows_api.h"\n'
+                'static int callback(struct ExceptionPointers *exception) { return exception != 0; }\n'
+                'int main(void) {\n'
+                '  v_set_unhandled_exception_filter(callback);\n'
+                '  return v_time_ticks_ms() == 0;\n'
+                '}\n', encoding="utf-8",
+            )
+            for arch in ("-m64", "-m32"):
+                with self.subTest(arch=arch):
+                    inputs = [str(source), str(ROOT / "vlib/builtin/core_windows.c"),
+                              str(ROOT / "vlib/time/ticks_windows.c")]
+                    flags = ["-std=c11", "-Werror=implicit-function-declaration",
+                             "-Werror=incompatible-pointer-types", "-I", str(ROOT)]
+                    # A 64-bit cross compiler need not ship 32-bit import libraries.
+                    # Syntax-check both ABIs, then link with its installed runtime.
+                    result = subprocess.run(
+                        [compiler, arch, "-fsyntax-only"] + flags + inputs,
+                        capture_output=True, text=True, errors="replace", timeout=30, check=False,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            result = subprocess.run(
+                [compiler] + flags + inputs + ["-o", str(workdir / "facades.exe")],
+                capture_output=True, text=True, errors="replace", timeout=30, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 @unittest.skipUnless(os.name == "nt", "requires the Windows cmd.exe interpreter")

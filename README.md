@@ -101,6 +101,7 @@ The compatibility filter uses the system `sh`; Bash is not required.
 
 On Windows, `makev.bat` generates the first compiler stage as C and links it directly.
 This also works with older bootstrap snapshots whose process-spawn code is broken.
+The direct TCC stage links the bundled OpenLibm object for math functions such as `remainder`.
 
 (Like the note above says, on Windows, use `makev.bat`, instead of `make`.)
 
