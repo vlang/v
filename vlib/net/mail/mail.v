@@ -339,6 +339,9 @@ fn valid_boundary(boundary string) bool {
 }
 
 fn split_entity(raw string) !(map[string]string, string) {
+	if raw == '' { return map[string]string{}, '' }
+	if raw.starts_with('\r\n') { return map[string]string{}, raw[2..] }
+	if raw.starts_with('\n') { return map[string]string{}, raw[1..] }
 	crlf_sep := raw.index('\r\n\r\n') or { -1 }
 	lf_sep := raw.index('\n\n') or { -1 }
 	if crlf_sep < 0 && lf_sep < 0 { return error('mail: missing header/body separator') }

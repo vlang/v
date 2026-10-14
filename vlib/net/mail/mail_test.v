@@ -189,3 +189,16 @@ fn test_mail_utf8_body_declares_8bit_encoding() {
 	assert raw.contains('Content-Transfer-Encoding: 8bit')
 	assert parse(raw)!.text_body == m.text_body
 }
+
+fn test_mail_headerless_multipart_parts_default_to_plain_text() {
+	for newline in ['\r\n', '\n'] {
+		raw := 'Content-Type: multipart/mixed; boundary="x"${newline}${newline}' +
+			'--x${newline}${newline}hello${newline}--x--${newline}'
+		parsed := parse(raw)!
+		assert parsed.text_body == 'hello'
+		assert parsed.attachments.len == 0
+		empty := 'Content-Type: multipart/mixed; boundary="x"${newline}${newline}' +
+			'--x${newline}${newline}--x--${newline}'
+		assert parse(empty)!.text_body == ''
+	}
+}
