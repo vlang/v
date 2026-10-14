@@ -7137,6 +7137,69 @@ fn (g &FlatGen) type_names_match(a types.Type, b types.Type) bool {
 	return short_module_type_texts_equal(a_name, b_name)
 }
 
+// optional_interface_assignment_boxes_payload returns the C expression boxing a
+// successful `?T` payload into a `?I` on assignment, mirroring what
+// gen_interface_dispatch_wrapped_return already does for a returning method.
+// Without it the option is copied as-is, and the interface loses its metadata.
+fn (mut g FlatGen) optional_interface_assignment_boxes_payload(lhs_optional types.Type, rhs_optional types.Type, rhs_id flat.NodeId) ?string {
+	if lhs_optional !is types.OptionType || rhs_optional !is types.OptionType {
+		return none
+	}
+	lhs_iface_type := cgen_unalias_type(optional_result_wrapped_base(lhs_optional))
+	if lhs_iface_type !is types.Interface {
+		return none
+	}
+	expected_iface := lhs_iface_type as types.Interface
+	rhs_clean := cgen_unalias_type(optional_result_wrapped_base(rhs_optional))
+	actual_value := if rhs_clean is types.Pointer {
+		rhs_clean.base_type
+	} else {
+		rhs_clean
+	}
+	if cgen_unalias_type(actual_value) is types.Interface {
+		return none
+	}
+	type_id := g.iface_type_id_for_concrete(expected_iface.name(), actual_value)
+	if type_id == 0 {
+		return none
+	}
+	source_ct := g.optional_type_name_for_expr(rhs_id, rhs_optional)
+	destination_ct := g.optional_type_name(lhs_optional)
+	src := g.tmp_name()
+	out := g.tmp_name()
+	iface_ct := g.tc.c_type(lhs_iface_type)
+	concrete_ct := g.tc.c_type(actual_value)
+	expr := g.expr_to_string_with_expected_type(rhs_id, g.usable_expr_type(rhs_id))
+	mut boxed := ''
+	if rhs_clean is types.Pointer {
+		boxed = '${src}.value, ._object_is_boxed = false'
+	} else {
+		boxed = 'memdup(&${src}.value, sizeof(${concrete_ct})), ._object_is_boxed = true'
+	}
+	for field in g.interface_cached_fields(expected_iface.name()) {
+		field_ct := g.tc.c_type(field.typ)
+		field_name := g.cname(field.name)
+		if rhs_clean is types.Pointer {
+			boxed += ', .${field_name} = ${src}.value ? ${src}.value->${field_name} : (${field_ct}){0}'
+		} else {
+			boxed += ', .${field_name} = ${src}.value.${field_name}'
+		}
+	}
+	return '({ ${source_ct} ${src} = ${expr}; ${destination_ct} ${out} = {.ok = ${src}.ok}; if (${src}.ok) { ${out}.value = (${iface_ct}){._typ = ${type_id}, ._object = ${boxed}}; } ${out}; })'
+}
+
+fn optional_result_wrapped_base(typ types.Type) types.Type {
+	clean := cgen_unalias_type(typ)
+	match clean {
+		types.OptionType, types.ResultType {
+			return cgen_unalias_type(clean.base_type)
+		}
+		else {
+			return types.Type(types.void_)
+		}
+	}
+}
+
 fn (g &FlatGen) array_abi_types_match(a types.Type, b types.Type) bool {
 	a0 := if a is types.Alias { a.base_type } else { a }
 	b0 := if b is types.Alias { b.base_type } else { b }
@@ -8032,6 +8095,10 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			v_type = g.canonical_import_alias_type_for_node(v_type, &rhs)
 			semantic_v_type := cgen_unalias_type(v_type)
+			// Ownership replacement temporaries carry the destination type. Box before
+			// the concrete payload type is lost, preserving the later drop and store.
+			boxed_optional := g.optional_interface_assignment_boxes_payload(semantic_v_type,
+				optional_result_unalias_type(g.usable_expr_type(rhs_id)), rhs_id) or { '' }
 			ct0 := if rhs.kind == .struct_init
 				&& g.struct_init_effective_type_name(rhs_id, rhs).starts_with('chan ') {
 				'chan'
@@ -8049,7 +8116,9 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			} else {
 				g.value_c_type(v_type)
 			}
-			ct := if semantic_v_type is types.OptionType || semantic_v_type is types.ResultType {
+			ct := if boxed_optional.len > 0 {
+				g.optional_type_name(semantic_v_type)
+			} else if semantic_v_type is types.OptionType || semantic_v_type is types.ResultType {
 				g.optional_type_name_for_expr(rhs_id, semantic_v_type)
 			} else {
 				ct0
@@ -8064,7 +8133,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					g.write('void* ${storage_tmp} = __builtin_alloca(sizeof(${ct}) + ${align_tmp} - 1); ')
 					g.write('${ct}* ${value_tmp} = (${ct}*)((((uintptr_t)${storage_tmp} + ${align_tmp} - 1) / ${align_tmp}) * ${align_tmp}); ')
 					g.write('*${value_tmp} = ')
-					g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, true)
+					g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, true, boxed_optional)
 					g.writeln('; ${value_tmp}; });')
 					owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
 					g.track_local_pointer_storage_decl(lhs, owner, v_type, '${ct}*')
@@ -8117,10 +8186,10 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				// the statements of a checked operation.
 				old_static_c_initializer := g.static_c_initializer
 				g.static_c_initializer = true
-				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
+				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture, boxed_optional)
 				g.static_c_initializer = old_static_c_initializer
 			} else {
-				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
+				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture, boxed_optional)
 			}
 			g.writeln(';')
 			if lhs.kind == .ident {
@@ -8697,7 +8766,11 @@ fn (mut g FlatGen) fixed_array_init_block_type(node flat.Node) ?types.ArrayFixed
 }
 
 // gen_decl_init_expr emits decl init expr output for c.
-fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type, c_type string, is_declaration bool) {
+fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type, c_type string, is_declaration bool, boxed_optional string) {
+	if boxed_optional.len > 0 {
+		g.write(boxed_optional)
+		return
+	}
 	if rhs.kind == .int_literal && rhs.value == '0' && v_type !is types.OptionType
 		&& v_type !is types.ResultType && g.is_aggregate_zero_init_type(v_type, c_type) {
 		if is_declaration {
@@ -9501,6 +9574,16 @@ fn (mut g FlatGen) gen_optional_abi_assignment(lhs_id flat.NodeId, rhs_id flat.N
 		(rhs_optional as types.ResultType).base_type
 	}
 	if !g.type_names_match(lhs_base, rhs_base) {
+		// Assigning `?&S` to a `?I` field still needs the payload boxed: the two
+		// options hold different payload types, so a bare copy leaves the interface
+		// without its method table.
+		if assigned_expr := g.optional_interface_assignment_boxes_payload(lhs_optional,
+			rhs_optional, rhs_id)
+		{
+			g.gen_expr(lhs_id)
+			g.writeln(' = ${assigned_expr};')
+			return true
+		}
 		return false
 	}
 	expr := g.expr_to_string_with_expected_type(rhs_id, rhs_type)
