@@ -39,8 +39,10 @@ fn C.sem_trywait(voidptr) i32
 fn C.sem_timedwait(voidptr, voidptr) i32
 fn C.sem_destroy(voidptr) i32
 
+@[typedef]
 pub struct C.pthread_mutex_t {}
 
+@[typedef]
 pub struct C.pthread_rwlock_t {}
 
 @[typedef]
