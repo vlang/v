@@ -58,6 +58,9 @@ composite sum-type tests, integer interpolation formats, anonymous functions, an
 closure captures. A single-file entry can select the same runtime with `-d fastc_real_builtin`;
 its module siblings are included.
 Target-specific files and test files are filtered when loading a directory.
+Fixed arrays and their aliases support checked indexing, including pointer elements.
+Pointer elements retain their identity when passed or copied. Omitted option fields are `none`.
+Sum-type and interface tests narrow later operands of a conjunction, preserving pointer values.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context
 when the block exits, including through `return`, `break`, and `continue`. Callbacks that escape
