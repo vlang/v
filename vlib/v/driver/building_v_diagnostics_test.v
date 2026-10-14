@@ -11,6 +11,14 @@ fn test_building_v_detection_requires_compiler_entry_paths() {
 	assert !input_implies_building_v(os.join_path(os.vtmp_dir(), 'ordinary_program', 'v.v'))
 }
 
+// diagnostics_without_input_path replaces the path of `input_file` in compiler `output` with
+// a placeholder. Diagnostics spell paths with `/`, while os.real_path() uses `\` on Windows,
+// so both are compared with `/`.
+fn diagnostics_without_input_path(output string, input_file string) string {
+	return output.replace('\\', '/').replace(os.real_path(input_file).replace('\\', '/'),
+		'<input>')
+}
+
 fn test_ordinary_v_v_file_has_the_same_checker_errors_as_app_v() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_building_v_name_${os.getpid()}')
 	os.mkdir_all(dir)!
@@ -30,8 +38,8 @@ fn test_ordinary_v_v_file_has_the_same_checker_errors_as_app_v() {
 		assert v.exit_code != 0, v.output
 		assert app.output.contains('field `name` of struct `Foo` is immutable'), app.output
 		assert app.output.contains('`f` is immutable'), app.output
-		assert app.output.replace(os.real_path(app_file), '<input>') == v.output.replace(os.real_path(v_file),
-			'<input>'), v.output
+		assert diagnostics_without_input_path(app.output, app_file) == diagnostics_without_input_path(v.output,
+			v_file), v.output
 		forced := os.exec([@VEXE, '-new-compiler', '-nocache', '-nocolor', '-building-v',
 			...(os.split_args(mode) or { panic(err) }), v_file])
 		assert forced.exit_code != 0, forced.output
