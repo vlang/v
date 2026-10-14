@@ -9,6 +9,9 @@ application data.
 
 `os.user_os()` returns `wasm32_emscripten` when compiled for Emscripten.
 
+On Windows, `os.environ()` walks UTF-16 environment entries without losing non-ASCII names or
+values. If the operating system cannot provide an environment block, it returns an empty map.
+
 ### Console input
 
 On Windows, `os.input()` supports both console and redirected standard input.
