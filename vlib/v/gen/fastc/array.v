@@ -31,11 +31,15 @@ fn (g &Parser) render_fixed_array_dynamic_argument(tokens []FastcExpressionToken
 	if g.underlying_alias_type(element_type) != g.underlying_alias_type(expected_element) {
 		return none
 	}
-	value := g.render_call_argument_expression(tokens, actual_type) or { return none }
 	size := 'sizeof(${g.collection_storage_type(element_type)})'
-	if g.fixed_array_uses_raw_storage(fastc_strip_paren_tokens(tokens)) {
-		return '((${expected_type})builtin__new_array_from_c_array(${length}, ${length}, ${size}, ${value}))'
+	storage_tokens := fastc_strip_paren_tokens(tokens)
+	if g.fixed_array_uses_raw_storage(storage_tokens) {
+		// Fixed-array parameters use a wrapper value, but this conversion needs
+		// the original field/global storage as its C-array source.
+		raw := g.render_member_receiver(storage_tokens) or { return none }
+		return '((${expected_type})builtin__new_array_from_c_array(${length}, ${length}, ${size}, ${raw}))'
 	}
+	value := g.render_call_argument_expression(tokens, actual_type) or { return none }
 	temporary := g.temporary_namespace('fixed_argument') + '_value'
 	access := if actual_layout.ends_with('*') { '->' } else { '.' }
 	return '({ ${actual_type} ${temporary} = (${value}); ((${expected_type})builtin__new_array_from_c_array(${length}, ${length}, ${size}, ${temporary}${access}data)); })'
