@@ -83,6 +83,8 @@ Their temporaries avoid collisions with local and parameter names.
 Channels on this path use the standard channel runtime for buffered and unbuffered
 sends and receives, `select`, closing, and channel properties.
 Spawned threads and arrays of threads support waiting for void and typed results.
+`nil` can reset `voidptr` fields and locals. Typed pointer `nil` literals still
+require an `unsafe` block.
 
 The full-runtime path remains experimental. Mutable and expression closure captures and
 128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.

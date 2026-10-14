@@ -47,7 +47,7 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 			'((bool)false)'
 		}
 		.key_nil {
-			g.nil_expression()!
+			g.nil_expression(previous)!
 		}
 		.key_none {
 			if g.selfhost {
@@ -76,8 +76,12 @@ fn (g &Parser) expression_token(previous token.Token, previous_lit string, quali
 	}
 }
 
-fn (g &Parser) nil_expression() !string {
-	if g.unsafe_depth == 0 && !g.in_mono_drain {
+fn (g &Parser) nil_expression(previous token.Token) !string {
+	// Assigning nil directly to voidptr is safe. Do not carry the enclosing
+	// assignment's type into a nested call's typed-pointer argument.
+	voidptr_assignment := previous in [.unknown, .assign]
+		&& g.underlying_alias_type(g.expected_expression_type) == 'voidptr'
+	if g.unsafe_depth == 0 && !g.in_mono_drain && !voidptr_assignment {
 		return g.unsupported('`nil` outside an `unsafe` block')
 	}
 	return 'NULL'
