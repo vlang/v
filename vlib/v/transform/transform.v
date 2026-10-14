@@ -203,6 +203,7 @@ mut:
 	variadic_suffix_index         map[string]i8
 	const_suffixes                map[string]string
 	source_parent_ids             []i32
+	array_append_tree_factories   map[string]bool // immutable freshness proof, shared by workers
 	shared_local_decl_names       map[string]bool
 	has_shared_decls              bool            // any `shared` variable, parameter, global or field, see shared_map_autolock_possible
 	shared_field_names            map[string]bool // names of `shared` fields and globals
@@ -2400,6 +2401,7 @@ fn (mut t Transformer) prepare() {
 	if !t.defer_fixed_array_borrow_prep {
 		t.prepare_fixed_array_borrow_params()
 	}
+	t.prepare_array_append_tree_factories()
 }
 
 fn (mut t Transformer) rebuild_embedded_fields_index() {
@@ -5060,6 +5062,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		variadic_suffix_index:               t.variadic_suffix_index
 		const_suffixes:                      t.const_suffixes
 		source_parent_ids:                   t.source_parent_ids
+		array_append_tree_factories:         t.array_append_tree_factories
 		shared_local_decl_names:             t.shared_local_decl_names
 		has_shared_decls:                    t.has_shared_decls
 		shared_field_names:                  t.shared_field_names
