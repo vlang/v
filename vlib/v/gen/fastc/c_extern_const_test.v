@@ -2,6 +2,7 @@ module fastc
 
 import os
 import v.cmdexec
+import v.flat
 import v.pref
 
 fn test_fastc_c_extern_preserves_const_parameter_names() {
@@ -15,7 +16,7 @@ fn test_fastc_c_extern_preserves_const_parameter_names() {
 fn C.renameat(old_directory i32, const_old_path &char, new_directory i32, const_new_path &char) i32
 @[c_extern]
 fn C.const_pair(const_left &char, right &char)
-', 'const_c_extern.v', header, prefs, []int{}, map[string]bool{}, map[string]string{},
+', 'const_c_extern.v', header, prefs, []int{}, map[string]bool{}, flat.TypeTextBindings{},
 		map[string]bool{}, mut functions) or { panic(err) }
 	declarations := fastc_c_extern_prototypes(functions)
 	assert declarations.contains('extern i32 renameat(i32, const char*, i32, const char*);'), declarations
