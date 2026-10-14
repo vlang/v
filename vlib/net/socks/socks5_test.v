@@ -1,32 +1,59 @@
 module socks
 
 import net
-import time
 
-fn serve_greeting_then_close(mut l net.TcpListener) {
-	mut conn := l.accept() or { return }
-	mut greeting := []u8{len: 3}
-	if conn.read(mut greeting) or { return } != 3 {
-		return
-	}
-	// answer the method selection with 'no authentication, accepted'
-	conn.write([u8(socks_version5), u8(0)]) or { return }
-	// give the client time to consume the answer before the socket goes away
-	time.sleep(100 * time.millisecond)
-	conn.close() or {}
+struct Socks5TestConnection {
+mut:
+	writes [][]u8
+	closed bool
 }
 
-fn test_socks5_dial_rejects_ipv6_destination() ! {
-	// the IPv6 branch was empty, so an IPv6 destination wrote no ATYP and no
-	// address, producing '05 01 00 <port>' instead of a valid CONNECT request
-	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
-	defer { listener.close() or {} }
-	mut served := spawn serve_greeting_then_close(mut listener)
-	proxy := listener.addr()!.str()
-	if conn := socks5_dial(proxy, '::1:80', '', '') {
-		assert false, 'an IPv6 destination must be rejected, not sent'
-	} else {
-		assert err.msg() == 'IPv6 SOCKS5 destinations are not supported'
+fn (c &Socks5TestConnection) addr() !net.Addr { return error('unused test address') }
+
+fn (c &Socks5TestConnection) peer_addr() !net.Addr { return error('unused test address') }
+
+fn (mut c Socks5TestConnection) read(mut buf []u8) !int {
+	assert buf.len >= 2
+	buf[0] = socks_version5
+	buf[1] = no_auth
+	return 2
+}
+
+fn (mut c Socks5TestConnection) write(data []u8) !int {
+	c.writes << data.clone()
+	return data.len
+}
+
+fn (mut c Socks5TestConnection) close() ! { c.closed = true }
+
+fn test_socks5_handshake_rejects_ipv6_and_closes_connection() {
+	for host in ['::1:80', '[::1]:80', '2001:db8::dead:BEEF:80', '[fe80::1%en0]:80'] {
+		mut conn := &Socks5TestConnection{}
+		if _ := handshake(mut conn, host, '', '') {
+			assert false, 'IPv6 destinations must be rejected'
+		} else {
+			assert err.msg() == 'IPv6 SOCKS5 destinations are not supported'
+		}
+		assert conn.closed, 'a failed IPv6 handshake must close the proxy connection'
+		assert conn.writes == [[socks_version5, u8(1), no_auth]], 'only the greeting may be written'
 	}
-	served.wait()
+}
+
+fn test_socks5_handshake_hexadecimal_domains_remain_domains() ! {
+	for domain in ['cafe', 'abc', 'deadbeef'] {
+		mut conn := &Socks5TestConnection{}
+		_ := handshake(mut conn, '${domain}:80', '', '')!
+		mut request := [socks_version5, u8(1), u8(0), addr_type_fqdn, u8(domain.len)]
+		request << domain.bytes()
+		request << [u8(0), u8(80)]
+		assert conn.writes.len == 2
+		assert conn.writes[1] == request
+		assert !conn.closed
+	}
+}
+
+fn test_parse_ipv4() {
+	assert parse_ipv4('255.255.255.255')! == [u8(255), 255, 255, 255]
+	assert parse_ipv4('127.0.0.1')! == [u8(127), 0, 0, 1]
+	parse_ipv4('1.2..2') or { assert err.msg() == 'Ip address not valid' }
 }
