@@ -1645,6 +1645,10 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	// A C helper does not inherit a standard intended for the C++ main unit.
 	args << object_flags.flags_for_compiler(compiler).filter(is_cpp
 		|| !(it.starts_with('-std=c++') || it.starts_with('-std=gnu++')))
+	if target.os == 'macos' && pref.ccompiler_is_tinycc(compiler) {
+		// Framework search paths are link flags that TCC also rejects in C helpers.
+		args = c_object_compile_flags(v3_tcc_macos_framework_flags(args, target.os, ''))
+	}
 	if language.len > 0 {
 		args << ['-x', language]
 	}
@@ -2503,6 +2507,7 @@ struct V3CCompilerFlagOptions {
 	link_c_standard     string
 	dependencies        []string
 	warn_args           []string
+	tcc_resources       ?V3TccResourceFlags
 	vroot               string
 	target_os           string
 	target_arch         string
@@ -3679,7 +3684,13 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	if options.link_c_standard.len > 0 {
 		before_inputs << options.link_c_standard
 	}
-	before_inputs << v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options, options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining, options.is_tcc)
+	optimization_flags := v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options, options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining, options.is_tcc)
+	// Standalone objects must contain machine code for a later independent link.
+	before_inputs << if options.is_o {
+		optimization_flags.filter(it != '-flto')
+	} else {
+		optimization_flags
+	}
 	if options.pic_flag.len > 0 {
 		before_inputs << options.pic_flag
 	}
@@ -3690,16 +3701,21 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	mut tcc_includes := ''
 	if options.is_tcc {
-		tcc_resources := v3_tcc_resource_flags(options.vroot)
+		tcc_resources := options.tcc_resources or { v3_tcc_resource_flags(options.vroot) }
 		tcc_includes = tcc_resources.include_arg
-		before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
-		before_inputs << v3_tcc_host_system_flags(options.target_os, options.macos_sdk_root)
+		if tcc_resources.base_arg != '' {
+			before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg,
+				tcc_resources.library_arg]
+			before_inputs << v3_tcc_host_system_flags(options.target_os, options.macos_sdk_root)
+		}
 		if v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
 			before_inputs << '-bt25'
 		}
 	}
 	before_inputs << options.warn_args
-	before_inputs << '-Wno-int-conversion'
+	if '-Wno-int-conversion' !in before_inputs {
+		before_inputs << '-Wno-int-conversion'
+	}
 	if options.target_os == 'macos' && !options.is_shared && !options.is_tcc {
 		before_inputs << '-Wl,-stack_size,0x4000000'
 	}
@@ -3725,6 +3741,8 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	mut after_inputs := if options.is_o {
 		c_object_compile_flags(options.dependencies)
+	} else if options.is_tcc {
+		tcc_monolithic_dependency_flags(options.dependencies, false)
 	} else {
 		c_link_dependency_flags(options.dependencies)
 	}
@@ -4147,6 +4165,9 @@ fn c_executable_bin_file_for_target(path string, target_os string, is_shared boo
 }
 
 fn c_compiler_output_name_for_target(target_os string, is_shared bool, is_o bool) string {
+	if is_o && pref.normalized_os(target_os) == 'windows' {
+		return 'out.obj'
+	}
 	if !is_shared && !is_o && pref.normalized_os(target_os) == 'windows' {
 		return 'out.exe'
 	}
@@ -4815,7 +4836,7 @@ fn v3_mbedtls_default_header_context(a &flat.FlatAst, flags []string) bool {
 		}
 		if node.value in ['define', 'undef'] {
 			// These builtin callback wrappers do not alter header declarations.
-			if node.value != 'define' || node.typ !in [
+			if node.value != 'define' || node.typ_text() !in [
 				'v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))',
 				'v_gc_get_warn_proc() ((void *)GC_get_warn_proc())',
 				'v_gc_set_abort_func(cb) GC_set_abort_func((GC_abort_func)(cb))',
@@ -6508,7 +6529,7 @@ fn c_hash_monomorph_node(initial u64, a &flat.FlatAst, id flat.NodeId, cacheable
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
 		u8(node.skip_ownership_drops()), u8(node.is_static_type_method())])
 	hash = c_hash_tag(hash, node.children_count)
-	hash = c_hash_bytes(hash, node.typ.bytes())
+	hash = c_hash_bytes(hash, node.typ_text().bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
 	if idx >= cacheable_strings.len || !cacheable_strings[idx] {
 		hash = c_hash_bytes(hash, node.value.bytes())
@@ -6618,7 +6639,7 @@ fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
 		u8(node.skip_ownership_drops()), u8(node.is_static_type_method())])
 	hash = c_hash_tag(hash, node.children_count)
-	hash = c_hash_bytes(hash, node.typ.bytes())
+	hash = c_hash_bytes(hash, node.typ_text().bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
 	if include_value {
 		hash = c_hash_bytes(hash, node.value.bytes())
@@ -6634,7 +6655,7 @@ fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool
 fn incremental_hash_fn_declaration(initial u64, node &flat.Node) u64 {
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
 		u8(node.skip_ownership_drops()), u8(node.is_static_type_method())])
-	hash = c_hash_bytes(hash, node.typ.bytes())
+	hash = c_hash_bytes(hash, node.typ_text().bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
 	hash = c_hash_bytes(hash, node.value.bytes())
 	hash = c_hash_bytes(hash, [u8(0xff)])
@@ -7161,7 +7182,7 @@ fn encode_monomorph_cache_specs(specs []transform.MonomorphCacheSpec) string {
 		if spec.module in ['', 'main'] {
 			continue
 		}
-		lines << '${spec.decl_key}\t${spec.module}\t${spec.args.join('\x1f')}'
+		lines << '${spec.decl_key}\t${spec.module}\t${spec.args_text().join('\x1f')}'
 	}
 	return lines.join('\n')
 }
@@ -7181,7 +7202,7 @@ fn decode_monomorph_cache_specs(encoded string) []transform.MonomorphCacheSpec {
 		specs << transform.MonomorphCacheSpec{
 			decl_key: parts[0].clone()
 			module:   parts[1].clone()
-			args:     clone_string_list(raw_args)
+			args:     flat.TypeTextList.from_names(clone_string_list(raw_args))
 		}
 	}
 	return specs
@@ -7218,7 +7239,7 @@ fn clone_monomorph_cache_specs(specs []transform.MonomorphCacheSpec) []transform
 		cloned << transform.MonomorphCacheSpec{
 			decl_key: spec.decl_key.clone()
 			module:   spec.module.clone()
-			args:     clone_string_list(spec.args)
+			args:     spec.args.clone()
 		}
 	}
 	return cloned
@@ -7227,11 +7248,11 @@ fn clone_monomorph_cache_specs(specs []transform.MonomorphCacheSpec) []transform
 fn merge_monomorph_cache_specs(cached []transform.MonomorphCacheSpec, generated []transform.MonomorphCacheSpec) []transform.MonomorphCacheSpec {
 	mut by_key := map[string]transform.MonomorphCacheSpec{}
 	for spec in cached {
-		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args.join('\x1f')}'
+		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args_text().join('\x1f')}'
 		by_key[key] = spec
 	}
 	for spec in generated {
-		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args.join('\x1f')}'
+		key := '${spec.decl_key}\x00${spec.module}\x00${spec.args_text().join('\x1f')}'
 		by_key[key] = spec
 	}
 	mut keys := by_key.keys()
@@ -7242,7 +7263,7 @@ fn merge_monomorph_cache_specs(cached []transform.MonomorphCacheSpec, generated 
 		merged << transform.MonomorphCacheSpec{
 			decl_key: spec.decl_key.clone()
 			module:   spec.module.clone()
-			args:     clone_string_list(spec.args)
+			args:     spec.args.clone()
 		}
 	}
 	return merged
@@ -7283,9 +7304,6 @@ fn scoped_value_owned(scope voidptr, ptr voidptr) bool {
 fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
 		node.value = node.value.clone()
-	}
-	if node.typ.len > 0 && scoped_value_owned(scope, node.typ.str) {
-		node.typ = node.typ.clone()
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
@@ -7417,12 +7435,6 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
 		node.value = ast.intern_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
 	}
-	if node.typ.len > 0 && scoped_value_owned(scope, node.typ.str) {
-		node.typ = ast.intern_text_ptr_cached(node.typ, mut cache_ptrs, mut cache_vals)
-	}
-	if node.type_text_id() == 0 && node.typ.len > 0 {
-		node.set_type_text_id(ast.type_text_id(node.typ))
-	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
 		return
@@ -7457,12 +7469,6 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 	mut node := unsafe { &ast.nodes[idx] }
 	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
 		_, node.value = ast.intern_text(node.value)
-	}
-	if node.typ.len > 0 && scoped_value_owned(scope, node.typ.str) {
-		_, node.typ = ast.intern_text(node.typ)
-	}
-	if node.type_text_id() == 0 && node.typ.len > 0 {
-		node.set_type_text_id(ast.type_text_id(node.typ))
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
@@ -7656,8 +7662,8 @@ fn clone_string_list_map(values map[string][]string) map[string][]string {
 fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	// Transform and specialization can grow these maps inside a disposable arena,
 	// so move both their storage and string payloads before releasing that arena.
-	tc.fn_ret_type_texts = clone_string_string_map(tc.fn_ret_type_texts)
-	tc.fn_param_type_texts = clone_string_list_map(tc.fn_param_type_texts)
+	tc.fn_ret_type_texts = tc.fn_ret_type_texts.clone_owned()
+	tc.fn_param_type_texts = tc.fn_param_type_texts.clone_owned()
 	tc.fn_generic_params = clone_string_list_map(tc.fn_generic_params)
 	tc.mut_receiver_methods = clone_string_bool_map(tc.mut_receiver_methods)
 	tc.c_variadic_fns = clone_string_bool_map(tc.c_variadic_fns)
@@ -7673,7 +7679,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.struct_error_embeds_shadow_builtin =
 		clone_string_bool_map(tc.struct_error_embeds_shadow_builtin)
 	tc.struct_generic_params = clone_string_list_map(tc.struct_generic_params)
-	tc.struct_implements = clone_string_list_map(tc.struct_implements)
+	tc.struct_implements = tc.struct_implements.clone_owned()
 	tc.struct_shared_fields = clone_string_bool_map(tc.struct_shared_fields)
 	tc.struct_field_c_abi_fns = clone_string_string_map(tc.struct_field_c_abi_fns)
 	tc.unions = clone_string_bool_map(tc.unions)
@@ -7681,7 +7687,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.c_typedef_structs = clone_string_bool_map(tc.c_typedef_structs)
 	tc.type_alias_generic_params = clone_string_list_map(tc.type_alias_generic_params)
 	tc.type_alias_c_abi_fns = clone_string_string_map(tc.type_alias_c_abi_fns)
-	tc.sum_types = clone_string_list_map(tc.sum_types)
+	tc.sum_types = tc.sum_types.clone_owned()
 	tc.sum_generic_params = clone_string_list_map(tc.sum_generic_params)
 	tc.enum_names = clone_string_bool_map(tc.enum_names)
 	tc.enum_fields = clone_string_list_map(tc.enum_fields)
@@ -7689,7 +7695,7 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	tc.interface_names = clone_string_bool_map(tc.interface_names)
 	tc.interface_generic_params = clone_string_list_map(tc.interface_generic_params)
 	tc.interface_fields = clone_struct_field_map(tc.interface_fields)
-	tc.interface_embeds = clone_string_list_map(tc.interface_embeds)
+	tc.interface_embeds = tc.interface_embeds.clone_owned()
 	tc.interface_abstract_methods = clone_string_list_map(tc.interface_abstract_methods)
 }
 
@@ -8676,6 +8682,8 @@ const v3_cache_compiler_runtime_inputs = [
 	'vlib/os/execute_capture_nix.c',
 	'vlib/os/execute_capture_nix.h',
 	'vlib/runtime/free_memory_darwin.c',
+	'vlib/runtime/free_memory_openbsd.c',
+	'vlib/v/diagserver/syscalls_linux.c',
 	'vlib/v/modulecache/file_metadata.c',
 	'vlib/builtin/segfault_handler_nix.c',
 	'vlib/builtin/segfault_handler_nix.h',
@@ -8770,7 +8778,7 @@ fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, r
 				}
 			}
 		}
-		mut type_names := [node.typ, node.value]
+		mut type_names := [node.typ_text(), node.value]
 		if node.generic_params().len > 0 && node.value.len > 0 {
 			type_names << '${node.value}[${node.generic_params().join(', ')}]'
 		}
@@ -9110,7 +9118,7 @@ fn v3_ast_node_uses_interop_namespace(a &flat.FlatAst, node &flat.Node, namespac
 		&& node.value.starts_with(namespace + '.') {
 		return true
 	}
-	return v3_type_text_uses_interop_namespace(node.typ, namespace)
+	return v3_type_text_uses_interop_namespace(node.typ_text(), namespace)
 }
 
 fn v3_explicit_interop_fn_namespace(node &flat.Node, file string, mut source_cache map[string]string) string {
@@ -9437,7 +9445,8 @@ fn v3_fallback_backend_specific_builtin_source(path string, builtin_root string)
 
 fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Preferences, is_test_command bool, is_checker_fixture bool) bool {
 	if prefs.backend != 'c' || prefs.output_cross_c || prefs.target.os !in ['macos', 'linux', 'freebsd',
-		'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku'] || is_test_command || is_checker_fixture
+		'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku', 'windows', 'android', 'termux', 'ios',
+		'qnx', 'serenity', 'wasm32_emscripten'] || is_test_command || is_checker_fixture
 		|| !(input_file.ends_with('.v') || input_file.ends_with('.vv')) || !os.is_file(input_file)
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
@@ -9462,7 +9471,49 @@ fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Pref
 		}
 	}
 	return candidate_files.len == 1
-		&& markused.is_trivial_literal_output_program(candidate_ast, candidate_files)
+		&& is_trivial_literal_output_program_for_target(candidate_ast, candidate_files, prefs.target)
+}
+
+fn is_trivial_literal_output_program_for_target(a &flat.FlatAst, diagnostic_files map[string]bool, target pref.Target) bool {
+	if !markused.is_trivial_literal_output_program(a, diagnostic_files) {
+		return false
+	}
+	if target.os !in ['windows', 'ios'] {
+		return true
+	}
+	// Windows' regular printing runtime converts console output to UTF-16.
+	// CRT byte writes can replace it only when the literals are ASCII.
+	for id, node in a.nodes {
+		if node.kind == .file && node.value in diagnostic_files
+			&& !literal_output_node_supports_console(a, flat.NodeId(id), target.os) {
+			return false
+		}
+	}
+	return true
+}
+
+fn literal_output_node_supports_console(a &flat.FlatAst, id flat.NodeId, target_os string) bool {
+	node := a.node(id)
+	if node.kind == .string_literal {
+		if target_os == 'ios' {
+			// The native logger interprets percent directives as format arguments.
+			if node.value.contains('%') {
+				return false
+			}
+		} else {
+			for byte in node.value {
+				if byte >= 128 {
+					return false
+				}
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if !literal_output_node_supports_console(a, a.child(node, i), target_os) {
+			return false
+		}
+	}
+	return true
 }
 
 fn is_minimal_literal_output_builtin_file(path string) bool {
@@ -10859,6 +10910,11 @@ pub fn run(args []string) {
 			i++
 		}
 	}
+	if backend == 'native' {
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		eprintln(pref.native_backend_replacement_message)
+		exit(1)
+	}
 	if compiler_errors.json_output() {
 		// The details of a diagnostic are text, whatever `-color` asked for.
 		ansi.set_colors_enabled(false)
@@ -11195,10 +11251,14 @@ pub fn run(args []string) {
 	}
 	cmd_v_module_input := input_loads_cmd_v_module(input_file)
 	compiler_tree_input := input_is_compiler_tree(input_file)
-	if backend == 'fastc' && ('fastc_real_builtin' in user_defines || os.is_dir(input_file)) {
+	fastc_test_file := backend == 'fastc' && (is_v3_test_file(input_file, backend, target)
+		|| is_v3_test_file(input_file, 'c', target))
+	if backend == 'fastc' && ('fastc_real_builtin' in user_defines || os.is_dir(input_file)
+		|| fastc_test_file) {
 		// Opt-in: compile an ordinary program through FastC's real-`builtin` path
 		// (real `struct string`, error system, and the full runtime) instead of the
-		// bootstrap `const char*` runtime. Directory entries use the same path.
+		// bootstrap `const char*` runtime. Directory entries use the same path, and so
+		// does a test file, whose harness reports through V strings and errors.
 		building_v = true
 	}
 	// Large serial compiler-module builds create the same transform and C-generation
@@ -11522,6 +11582,15 @@ pub fn run(args []string) {
 	if backend != 'fastc' {
 		record_user_define(mut user_defines, mut compile_values, 'v3_c_extern_declarations')
 	}
+	if cmd_v_build && output_cross_c && backend == 'c' && !no_builtin && !is_o
+		&& !target_libc_headers
+		&& target.os in ['macos', 'linux', 'freebsd', 'openbsd', 'dragonfly', 'windows', 'android',
+			'termux', 'ios'] {
+		// vc/v.c must bootstrap without platform headers or checkout-local objects.
+		// Keep the signal-context ABI out of this portable compiler snapshot.
+		record_user_define(mut user_defines, mut compile_values, 'v3_headerless_bootstrap')
+		record_user_define(mut user_defines, mut compile_values, 'no_segfault_handler')
+	}
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = pref.expand_module_search_paths(module_search_path_spec, prefs.vroot).map(os.abs_path(it))
@@ -11611,9 +11680,12 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			mut unsupported_modes := []string{}
-			if is_test_command || is_v3_test_file(input_file, backend, target)
-				|| is_v3_test_file(input_file, 'c', target) || is_checker_fixture {
+			if is_test_command || is_checker_fixture {
 				unsupported_modes << 'test/checker mode'
+			}
+			// A test file builds as a program whose main runs its tests.
+			if fastc_test_file {
+				prefs.is_test = true
 			}
 			if is_prod {
 				unsupported_modes << '`-prod`'
@@ -13011,14 +13083,16 @@ pub fn run(args []string) {
 		set_diagnostic_files(mut pre_tc, user_files)
 		// The C generator has a dedicated literal-output path. The SSA/native backend
 		// still builds ordinary builtin bodies, so it needs their full dependency set.
-		// So does MSVC: its backtraces demangle symbols with string slices, which only
-		// become `string.substr` calls after markused.
+		// MSVC's regular runtime demangles backtraces with string slices, which only
+		// become `string.substr` calls after markused. Proven Windows ASCII output
+		// emits no runtime and can omit those dependencies too.
 		// A module cache build checks and compiles whole modules, also for a program
 		// that only prints literals: the interfaces and the objects it publishes
 		// serve every other program.
 		trivial_literal_output = !prefs.output_cross_c && !is_trace_calls && !no_skip_unused && backend != 'arm64' && test_files.len == 0 && !is_checker_fixture
-			&& effective_c_compiler != 'msvc' && !cache_state.manager.enabled
-			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
+			&& (effective_c_compiler != 'msvc' || (target.os == 'windows' && minimal_literal_output))
+			&& !cache_state.manager.enabled
+			&& is_trivial_literal_output_program_for_target(a, pre_tc.diagnostic_files, target)
 		if verbose {
 			eprintln('  [ttime]   ck trivial gate  ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
@@ -13533,9 +13607,10 @@ pub fn run(args []string) {
 		} else if library_body_frontiers {
 			used_fns, uses_generics = markused.mark_used_checking_library_bodies(a, mut pre_tc,
 				check_may_be_parallel)
-		} else if effective_c_compiler == 'msvc' {
-			// Keep the runtime seeds that a literal-output program would drop; see
-			// `trivial_literal_output` above.
+		} else if effective_c_compiler == 'msvc'
+			|| (target.os in ['windows', 'ios'] && markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)) {
+			// Retain MSVC backtrace dependencies and Windows' Unicode console output
+			// when the minimal literal path cannot replace the ordinary runtime.
 			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a, markused_tc)
 		} else {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
@@ -13929,7 +14004,7 @@ pub fn run(args []string) {
 				// disposable arena is active. Re-own the table before releasing that arena;
 				// interface snapshotting below iterates every alias, including otherwise
 				// unreachable callback aliases.
-				pre_tc.type_aliases = clone_string_string_map(pre_tc.type_aliases)
+				pre_tc.type_aliases = pre_tc.type_aliases.clone_owned()
 				// Transform-time type queries can append diagnostics while the stage arena
 				// is active. Rehome both the containers and their text before releasing it;
 				// annotation consults existing errors when resolving lowered expressions.
@@ -13966,7 +14041,7 @@ pub fn run(args []string) {
 						if node.value.len > 0 && scoped_value_owned(transform_scope, node.value.str) {
 							leaked_nv++
 						}
-						if node.typ.len > 0 && scoped_value_owned(transform_scope, node.typ.str) {
+						if node.typ_text().len > 0 && scoped_value_owned(transform_scope, node.typ_text().str) {
 							leaked_nt++
 						}
 					}
@@ -14328,7 +14403,7 @@ pub fn run(args []string) {
 	// Transform and monomorphization can synthesize or rewrite payload text.
 	// They run with private/arena-backed worker state; publish only canonical,
 	// compilation-owned strings after all worker merges are complete.
-	// Type annotation can rewrite node.typ after the transform arenas have been
+	// Type annotation can rewrite node.typ_text() after the transform arenas have been
 	// promoted, so preallocated builds must republish those final strings — but
 	// annotation only runs outside -building-v builds. Self-host builds skip
 	// it, and their transform-canonical texts are already final, so this
@@ -14993,6 +15068,15 @@ pub fn run(args []string) {
 			}
 			shared_link_ld_flags << '-Wl,--version-script,${exports_script}'
 		}
+		planned_tcc_compiler := if explicit_tcc && c_compiler in ['tcc', 'tinyc'] && bundled_tcc_available {
+			bundled_tcc
+		} else {
+			c_compiler
+		}
+		if effective_tcc && pruned_declarations.count > 0
+			&& '-Werror=implicit-function-declaration' !in warn_args {
+			warn_args << '-Werror=implicit-function-declaration'
+		}
 		c_flag_options := V3CCompilerFlagOptions{
 			environment_c_flags: environment_c_flags
 			link_ld_flags:       shared_link_ld_flags
@@ -15000,6 +15084,7 @@ pub fn run(args []string) {
 			link_c_standard:     link_c_standard
 			dependencies:        resolved_c_flags
 			warn_args:           warn_args
+			tcc_resources:       v3_tcc_resource_flags_for_compiler(prefs.vroot, planned_tcc_compiler, bundled_tcc, bundled_tcc_available)
 			vroot:               prefs.vroot
 			target_os:           prefs.normalized_target_os()
 			target_arch:         prefs.normalized_target_arch()
@@ -15062,7 +15147,11 @@ pub fn run(args []string) {
 		if dump_c_flags.len > 0 {
 			mut dump_support_flags := v3_c_source_mode_flags(needs_objective_c)
 			dump_support_flags << native_support_inputs
-			dumped_flags := c_flag_plan.all_flags(dump_support_flags)
+			dumped_flags := if effective_tcc {
+				v3_tcc_macos_framework_flags(c_flag_plan.all_flags(dump_support_flags), prefs.normalized_target_os(), flag_plan_sdk_root)
+			} else {
+				c_flag_plan.all_flags(dump_support_flags)
+			}
 			output := if dumped_flags.len > 0 {
 				dumped_flags.join('\n') + '\n'
 			} else {
@@ -15682,66 +15771,25 @@ pub fn run(args []string) {
 				implicit_tcc
 			}
 			tcc_resources := v3_tcc_resource_flags_for_compiler(prefs.vroot, tcc_path, bundled_tcc, bundled_tcc_available)
-			mut tcc_args := environment_c_flags.clone()
-			tcc_args << v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc,
-				large_prod_c_unit, limit_large_unit_inlining, true)
-			if link_c_standard.len > 0 {
-				tcc_args << link_c_standard
-			}
-			if pic_flag.len > 0 {
-				tcc_args << pic_flag
-			}
-			if tcc_resources.base_arg != '' {
-				tcc_args << [tcc_resources.base_arg, tcc_resources.include_arg,
-					tcc_resources.library_arg]
-			}
 			tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
 				macos_sdk_root_cache.get()
 			} else {
 				''
 			}
-			if tcc_resources.base_arg != '' {
-				tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), tcc_sdk_root)
-			}
-			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), is_shared) {
-				tcc_args << '-bt25'
-			}
-			tcc_args << warn_args
-			if is_shared {
-				tcc_args << '-shared'
-			} else if is_o {
-				tcc_args << '-c'
-			}
-			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o, prefs.subsystem, windows_gui_entry_point)
 			tcc_source := if cache_full_tcc_source.len > 0 {
 				os.base(cache_full_tcc_source)
 			} else {
 				'src.c'
 			}
-			if pruned_declarations.count > 0 {
-				// A call of a function that this build left out must not pass for a
-				// call of an undeclared one, which TinyCC takes to return `int`.
-				tcc_args << '-Werror=implicit-function-declaration'
-			}
-			tcc_args << ['-o', cc_output_name, tcc_source]
+			mut tcc_support_inputs := []string{}
 			if cache_with_tcc && cache_state.manager.enabled {
 				// The program unit, with the objects of the modules it was split from.
-				tcc_args << cached_objects
+				tcc_support_inputs << cached_objects
 			}
 			if !is_o {
-				if !generated_literal_output_only {
-					atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
-					if atomic_s.len > 0 {
-						tcc_args << atomic_s
-					}
-				}
-				tcc_args << embed_incbin_objects
+				tcc_support_inputs << native_support_inputs
 			}
-			tcc_args << tcc_monolithic_dependency_flags(resolved_c_flags, is_o)
-			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
-			if !is_o {
-				tcc_args << link_ld_flags
-			}
+			mut tcc_args := c_flag_plan.compiler_args(cc_output_name, [tcc_source], tcc_support_inputs)
 			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
 				tcc_sdk_root)
 			if verbose || show_cc {
@@ -15915,7 +15963,8 @@ pub fn run(args []string) {
 				compiler_inputs << ['-D__TINYC__', '-Wno-implicit-function-declaration',
 					fallback_source]
 			} else {
-				if pruned_declarations.count > 0 {
+				if pruned_declarations.count > 0
+					&& '-Werror=implicit-function-declaration' !in c_flag_plan.before_inputs {
 					compiler_inputs << '-Werror=implicit-function-declaration'
 				}
 				compiler_inputs << v3_c_source_inputs(fallback_source, needs_objective_c)
@@ -15941,6 +15990,10 @@ pub fn run(args []string) {
 				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, cc_output_name, verbose || show_cc, parallel_c_job_count, parallel_c_unit_count, is_shared, building_v && is_bsd_host && is_prod && !no_cache && !is_shared, prefs.target, prefs.vroot, mut c_object_cache_stats)
 			} else {
 				mut cc_args := c_flag_plan.compiler_args(cc_output_name, compiler_inputs, [])
+				if effective_tcc {
+					cc_args = v3_tcc_macos_framework_flags(cc_args, prefs.normalized_target_os(),
+						flag_plan_sdk_root)
+				}
 				if effective_c_compiler == 'msvc' {
 					cc_args = msvc_cl_args(cc_args, prefs.normalized_target_os())
 				}
@@ -16285,7 +16338,7 @@ fn checker_fixture_missing_header(a &flat.FlatAst, user_files []string, c_compil
 		if node.kind != .directive || node.value != 'include' {
 			continue
 		}
-		raw_target, explanation := checker_fixture_include_target_message(node.typ)
+		raw_target, explanation := checker_fixture_include_target_message(node.typ_text())
 		target := checker_fixture_resolve_include_define(raw_target, user_defines)
 		if target.len < 3 || checker_fixture_header_exists(target, current_file, c_compiler) {
 			continue
@@ -19904,7 +19957,7 @@ fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns ma
 		diagnose_aggregates := tc.diagnostic_files.len == 0 || root_file in tc.diagnostic_files
 		fallback_location := backend_fn_location(a, node)
 		if backend == 'wasm' && diagnose_aggregates {
-			return_type := tc.parse_resolution_type(node.typ)
+			return_type := tc.parse_resolution_type(node.typ_text())
 			if return_type is types.OptionType {
 				return '${fallback_location}error: option types are not implemented by the V wasm backend'
 			}
@@ -20027,7 +20080,7 @@ fn wasm_struct_origin_type(a &flat.FlatAst, id flat.NodeId) string {
 	}
 	node := a.nodes[idx]
 	if node.kind == .struct_init {
-		return node.typ.trim_string_left('main.')
+		return node.typ_text().trim_string_left('main.')
 	}
 	if node.kind in [.selector, .cast_expr, .paren] && node.children_count > 0 {
 		return wasm_struct_origin_type(a, a.child(&node, 0))
@@ -20365,14 +20418,14 @@ fn is_supported_test_harness_fn(a &flat.FlatAst, tc &types.TypeChecker, node &fl
 	if test_harness_fn_param_count(a, node) != 0 {
 		return false
 	}
-	return test_harness_fn_return_supported(tc.parse_type(node.typ))
+	return test_harness_fn_return_supported(tc.parse_type(node.typ_text()))
 }
 
 fn is_supported_test_harness_hook(a &flat.FlatAst, tc &types.TypeChecker, node &flat.Node) bool {
 	if node.generic_params().len > 0 {
 		return false
 	}
-	return test_harness_fn_param_count(a, node) == 0 && tc.parse_type(node.typ) is types.Void
+	return test_harness_fn_param_count(a, node) == 0 && tc.parse_type(node.typ_text()) is types.Void
 }
 
 fn test_harness_fn_param_count(a &flat.FlatAst, node &flat.Node) int {
@@ -20607,12 +20660,12 @@ fn skipped_backend_module_groups(prefs &pref.Preferences) [][]string {
 
 struct ImplicitFieldScanIndex {
 mut:
-	aliases     map[string]string
+	aliases     flat.TypeTextBindings
 	imports     map[string]bool
-	fields      map[string]map[string]string
+	fields      map[string]flat.TypeTextBindings
 	enum_fields map[string]map[string]bool
-	fn_returns  map[string]string
-	globals     map[string]string
+	fn_returns  flat.TypeTextBindings
+	globals     flat.TypeTextBindings
 	// record, when set, notes the writes to this index, and the keys asked of
 	// it (see PreparedScan).
 	record &ImplicitIndexRecord = unsafe { nil }
@@ -20639,8 +20692,8 @@ mut:
 struct ImplicitIndexOp {
 	kind        ImplicitIndexOpKind
 	key         string
-	value       string
-	fields      map[string]string
+	value       u32
+	fields      flat.TypeTextBindings
 	enum_fields map[string]bool
 }
 
@@ -20690,7 +20743,7 @@ fn (mut index ImplicitFieldScanIndex) apply(op ImplicitIndexOp) {
 			index.imports[op.key] = true
 		}
 		.alias {
-			index.aliases[op.key] = op.value
+			index.aliases.set_id(op.key, op.value)
 		}
 		.fields {
 			index.fields[op.key] = op.fields.clone()
@@ -20699,28 +20752,28 @@ fn (mut index ImplicitFieldScanIndex) apply(op ImplicitIndexOp) {
 			index.enum_fields[op.key] = op.enum_fields.clone()
 		}
 		.fn_return {
-			if old := index.fn_returns[op.key] {
+			if old := index.fn_returns.type_id(op.key) {
 				if old != op.value {
-					index.fn_returns[op.key] = ''
+					index.fn_returns.set_id(op.key, 0)
 				}
 			} else {
-				index.fn_returns[op.key] = op.value
+				index.fn_returns.set_id(op.key, op.value)
 			}
 		}
 		.global {
-			index.globals[op.key] = op.value
+			index.globals.set_id(op.key, op.value)
 		}
 	}
 }
 
 fn (index &ImplicitFieldScanIndex) clone() ImplicitFieldScanIndex {
 	return ImplicitFieldScanIndex{
-		aliases:     index.aliases.clone()
+		aliases:     index.aliases.fork()
 		imports:     index.imports.clone()
 		fields:      index.fields.clone()
 		enum_fields: index.enum_fields.clone()
-		fn_returns:  index.fn_returns.clone()
-		globals:     index.globals.clone()
+		fn_returns:  index.fn_returns.fork()
+		globals:     index.globals.fork()
 	}
 }
 
@@ -20904,7 +20957,7 @@ fn sync_import_node() flat.Node {
 	return flat.Node{
 		kind:  .import_decl
 		value: 'sync'
-		typ:   'sync'
+		typ:   flat.source_type_id('sync')
 	}
 }
 
@@ -21006,7 +21059,7 @@ fn embed_file_import_node() flat.Node {
 	return flat.Node{
 		kind:  .import_decl
 		value: 'v.embed_file'
-		typ:   'embed_file'
+		typ:   flat.source_type_id('embed_file')
 	}
 }
 
@@ -21017,7 +21070,7 @@ fn closure_import_node() flat.Node {
 		// This node is appended in the last user file's scope. A compiler-private
 		// alias prevents it from overwriting a user import named `closure`; generated
 		// runtime calls already use the resolved `closure.*` declaration keys.
-		typ:   closure_runtime_import_alias
+		typ:   flat.source_type_id(closure_runtime_import_alias)
 	}
 }
 
@@ -21025,7 +21078,7 @@ fn debugger_import_node() flat.Node {
 	return flat.Node{
 		kind:  .import_decl
 		value: 'v.debug'
-		typ:   '__v3_debugger_runtime'
+		typ:   flat.source_type_id('__v3_debugger_runtime')
 	}
 }
 
@@ -21033,7 +21086,7 @@ fn overflow_import_node() flat.Node {
 	return flat.Node{
 		kind:  .import_decl
 		value: 'builtin.overflow'
-		typ:   '__v3_builtin_overflow_runtime'
+		typ:   flat.source_type_id('__v3_builtin_overflow_runtime')
 	}
 }
 
@@ -21056,7 +21109,7 @@ fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool, builtin_
 		a.nodes << flat.Node{
 			kind:  .import_decl
 			value: import_path
-			typ:   import_path.all_after_last('.')
+			typ:   flat.source_type_id(import_path.all_after_last('.'))
 		}
 	}
 	a.intern_node_texts_from(start)
@@ -21117,12 +21170,12 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		}
 		if !scan.needs_sync {
 			if node.kind == .lock_expr
-				|| (node.kind in [.field_decl, .param] && type_text_is_shared(node.typ))
+				|| (node.kind in [.field_decl, .param] && type_text_is_shared(node.typ_text()))
 				|| (node.kind == .decl_assign && decl_assign_value_is_shared(node.value))
 				|| (node.kind == .struct_init && node.value.starts_with('chan '))
 				|| (node.kind == .infix && node.op == .arrow)
 				|| (node.kind == .prefix && node.op == .arrow)
-				|| (node.typ.len > 0 && type_text_is_channel(node.typ)) {
+				|| (node.typ_text().len > 0 && type_text_is_channel(node.typ_text())) {
 				scan.needs_sync = true
 			}
 		}
@@ -21580,7 +21633,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 	mut selectors := map[int]bool{}
 	// The maps and lists of one function, emptied for the next: a program has
 	// thousands of functions.
-	mut bindings := map[string]string{}
+	mut bindings := flat.TypeTextBindings{}
 	mut ambiguous := map[string]bool{}
 	mut local_names := map[string]bool{}
 	mut candidates := []flat.NodeId{}
@@ -21605,10 +21658,10 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 			child := a.node(child_id)
 			if child.kind == .param {
 				local_names[child.value] = true
-				if child.value in bindings {
+				if bindings.contains(child.value) {
 					ambiguous[child.value] = true
-				} else if child.typ.len > 0 {
-					bindings[child.value] = implicit_normalize_type(child.typ, index)
+				} else if child.typ_text().len > 0 {
+					bindings.set(child.value, implicit_normalize_type(child.typ_text(), index))
 				}
 			} else {
 				stack << child_id
@@ -21633,7 +21686,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 					if lhs.kind == .ident {
 						local_names[lhs.value] = true
 					}
-					if lhs.kind == .ident && lhs.value in bindings {
+					if lhs.kind == .ident && bindings.contains(lhs.value) {
 						ambiguous[lhs.value] = true
 					}
 				}
@@ -21690,13 +21743,13 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 							continue
 						}
 						normalized := implicit_normalize_type(typ, index)
-						if old := bindings[lhs.value] {
+						if old := bindings.get(lhs.value) {
 							if old != normalized {
 								ambiguous[lhs.value] = true
 								dropped = true
 							}
 						} else {
-							bindings[lhs.value] = normalized
+							bindings.set(lhs.value, normalized)
 							changed = true
 						}
 					}
@@ -21707,7 +21760,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 			}
 			if !dropped {
 				for name in untyped {
-					if name in bindings && name !in ambiguous {
+					if bindings.contains(name) && name !in ambiguous {
 						ambiguous[name] = true
 						dropped = true
 					}
@@ -21719,8 +21772,8 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 			bindings.clear()
 			for child_idx in 0 .. fn_node.children_count {
 				child := a.child_node(&fn_node, child_idx)
-				if child.kind == .param && child.typ.len > 0 && child.value !in bindings {
-					bindings[child.value] = implicit_normalize_type(child.typ, index)
+				if child.kind == .param && child.typ_text().len > 0 && !bindings.contains(child.value) {
+					bindings.set(child.value, implicit_normalize_type(child.typ_text(), index))
 				}
 			}
 		}
@@ -21821,7 +21874,11 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 		node_ref := a.node(flat.NodeId(idx))
 		match node.kind {
 			.import_decl {
-				alias := if node.typ.len > 0 { node.typ } else { node.value.all_after_last('.') }
+				alias := if node.typ_text().len > 0 {
+					node.typ_text()
+				} else {
+					node.value.all_after_last('.')
+				}
 				if file := a.source_files[node.pos.id] {
 					key := '${file.name}\n${alias}'
 					index.write(ImplicitIndexOp{
@@ -21832,24 +21889,24 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				}
 			}
 			.type_decl {
-				if node.value.len > 0 && node.typ.len > 0 {
+				if node.value.len > 0 && node.typ_text().len > 0 {
 					index.write(ImplicitIndexOp{
 						kind:  .alias
 						key:   node.value
 						value: node.typ
 					})
-					index.aliases[node.value] = node.typ
+					index.aliases.set_id(node.value, node.typ)
 				}
 			}
 			.struct_decl {
-				mut declared := map[string]string{}
+				mut declared := flat.TypeTextBindings{}
 				for child_idx in 0 .. node.children_count {
 					field := a.child_node(node_ref, child_idx)
 					if field.kind == .field_decl && field.value.len > 0 {
-						declared[field.value] = field.typ
+						declared.set_id(field.value, field.typ)
 					}
 				}
-				if declared.len > 0 {
+				if declared.ids.len > 0 {
 					index.write(ImplicitIndexOp{
 						kind:   .fields
 						key:    node.value
@@ -21876,7 +21933,7 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				}
 			}
 			.fn_decl, .c_fn_decl {
-				if node.value.len == 0 || node.typ.len == 0 {
+				if node.value.len == 0 || node.typ_text().len == 0 {
 					continue
 				}
 				index.write(ImplicitIndexOp{
@@ -21884,12 +21941,12 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 					key:   node.value
 					value: node.typ
 				})
-				if old := index.fn_returns[node.value] {
+				if old := index.fn_returns.type_id(node.value) {
 					if old != node.typ {
-						index.fn_returns[node.value] = ''
+						index.fn_returns.set_id(node.value, 0)
 					}
 				} else {
-					index.fn_returns[node.value] = node.typ
+					index.fn_returns.set_id(node.value, node.typ)
 				}
 			}
 			else {}
@@ -21906,8 +21963,8 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 			if field.kind != .const_field || field.children_count == 0 {
 				continue
 			}
-			typ := if field.typ.len > 0 {
-				field.typ
+			typ := if field.typ_text().len > 0 {
+				field.typ_text()
 			} else {
 				implicit_expr_type(a, a.child(field, 0), index.globals, ImplicitFieldScanIndex{
 					...index
@@ -21919,32 +21976,32 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				index.write(ImplicitIndexOp{
 					kind:  .global
 					key:   field.value
-					value: global_type
+					value: flat.source_type_id(global_type)
 				})
-				index.globals[field.value] = global_type
+				index.globals.set(field.value, global_type)
 			}
 		}
 	}
 }
 
-fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {
+fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) string {
 	if int(id) < 0 || depth > 12 {
 		return ''
 	}
 	node := a.node(id)
-	if node.typ.len > 0 {
-		return implicit_normalize_type(node.typ, index)
+	if node.typ_text().len > 0 {
+		return implicit_normalize_type(node.typ_text(), index)
 	}
 	match node.kind {
 		.ident {
 			if index.bindings_are_globals {
 				index.read('g:', node.value)
 			}
-			if typ := bindings[node.value] {
+			if typ := bindings.get(node.value) {
 				return typ
 			}
 			index.read('g:', node.value)
-			if typ := index.globals[node.value] {
+			if typ := index.globals.get(node.value) {
 				return typ
 			}
 			index.read('f:', node.value)
@@ -21980,7 +22037,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 			return '[]void'
 		}
 		.map_init {
-			return if node.typ.len > 0 { node.typ } else { 'map[void]void' }
+			return if node.typ_text().len > 0 { node.typ_text() } else { 'map[void]void' }
 		}
 		.struct_init {
 			return implicit_normalize_type(node.value, index)
@@ -22092,8 +22149,8 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 			}
 		}
 		.cast_expr, .as_expr {
-			if node.typ.len > 0 {
-				return implicit_normalize_type(node.typ, index)
+			if node.typ_text().len > 0 {
+				return implicit_normalize_type(node.typ_text(), index)
 			}
 			if node.value.len > 0 {
 				return implicit_normalize_type(node.value, index)
@@ -22108,7 +22165,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 // implicit_match_type types a `match` used as a value like an `if`: every branch value
 // must have the same type. A branch that yields the matched variable under a single
 // struct type pattern yields it smartcast to that type.
-fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {
+fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) string {
 	if node.children_count < 2 {
 		return ''
 	}
@@ -22153,14 +22210,14 @@ fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings map[string]str
 	return typ
 }
 
-fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[string]string, index ImplicitFieldScanIndex, depth int) string {
+fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) string {
 	if call.children_count == 0 {
 		return ''
 	}
 	callee := a.child_node(call, 0)
 	if callee.kind == .ident {
 		index.read('r:', callee.value)
-		if typ := index.fn_returns[callee.value] {
+		if typ := index.fn_returns.get(callee.value) {
 			return implicit_normalize_type(typ, index)
 		}
 		return ''
@@ -22181,7 +22238,7 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[stri
 	if base_type.len > 0 {
 		for key in ['${base_type}.${callee.value}', '${base_type.all_after_last('.')}.${callee.value}'] {
 			index.read('r:', key)
-			if typ := index.fn_returns[key] {
+			if typ := index.fn_returns.get(key) {
 				return implicit_normalize_type(typ, index)
 			}
 		}
@@ -22221,7 +22278,7 @@ fn implicit_field_type(raw_type string, field string, index ImplicitFieldScanInd
 	}
 	index.read('f:', typ)
 	if declared := index.fields[typ] {
-		if field_type := declared[field] {
+		if field_type := declared.get(field) {
 			return implicit_normalize_type(field_type, index)
 		}
 	}
@@ -22246,7 +22303,7 @@ fn implicit_normalize_type(raw string, index ImplicitFieldScanIndex) string {
 			}
 		}
 		index.read('a:', typ)
-		if target := index.aliases[typ] {
+		if target := index.aliases.get(typ) {
 			typ = implicit_trim_space(target)
 			changed = true
 		}
@@ -24164,7 +24221,6 @@ fn set_node_value_canonical(mut a flat.FlatAst, idx int, value string) {
 fn canonical_node_texts(mut a flat.FlatAst, node flat.Node) flat.Node {
 	mut canonical := node
 	_, canonical.value = a.intern_text(node.value)
-	_, canonical.typ = a.intern_text(node.typ)
 	return canonical
 }
 

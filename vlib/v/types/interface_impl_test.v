@@ -18,8 +18,8 @@ fn test_interface_fixed_array_callback_lengths_resolve_constants() {
 fn test_empty_interface_impl_names_deduplicate_builtin_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases['byte'] = 'u8'
-	tc.type_aliases['builtin.byte'] = 'u8'
+	tc.type_aliases.set('byte', 'u8')
+	tc.type_aliases.set('builtin.byte', 'u8')
 
 	impls := tc.interface_impl_names('Any')
 	assert impls.filter(it == 'byte').len == 1
@@ -96,12 +96,12 @@ fn test_codegen_fork_keeps_frozen_interface_ids_after_late_collision() {
 }
 
 fn test_short_type_name_ambiguity_remains_sticky() {
-	mut index := map[string]string{}
+	mut index := flat.TypeTextBindings{}
 	index_short_type_name('first.Event', mut index)
 	index_short_type_name('second.Event', mut index)
 	index_short_type_name('third.Event', mut index)
-	assert 'Event' in index
-	assert index['Event'] == ''
+	assert index.contains('Event')
+	assert index.value('Event') == ''
 }
 
 fn test_interface_concrete_method_keys_include_dispatch_methods() {
@@ -120,11 +120,11 @@ fn test_generic_interface_signature_substitutes_named_return_types() {
 	tc.interface_generic_params['BoxedValue'] = ['T']
 	tc.fn_param_types['BoxedValue.get'] = [
 		Type(Interface{
-			name: 'BoxedValue[T]'
+			name_id: flat.source_type_id('BoxedValue[T]')
 		}),
 	]
 	tc.fn_ret_types['BoxedValue.get'] = Type(Struct{
-		name: 'Box[T]'
+		name_id: flat.source_type_id('Box[T]')
 	})
 
 	struct_params, struct_ret := tc.specialized_interface_method_signature('BoxedValue[int]',
@@ -133,13 +133,13 @@ fn test_generic_interface_signature_substitutes_named_return_types() {
 	assert struct_ret.name() == 'Box[int]'
 
 	tc.fn_ret_types['BoxedValue.get'] = Type(SumType{
-		name: 'Maybe[T]'
+		name_id: flat.source_type_id('Maybe[T]')
 	})
 	_, sum_ret := tc.specialized_interface_method_signature('BoxedValue[int]', 'BoxedValue.get')
 	assert sum_ret.name() == 'Maybe[int]'
 
 	interface_type := tc.substitute_generic_type(Type(Interface{
-		name: 'BoxedValue[T]'
+		name_id: flat.source_type_id('BoxedValue[T]')
 	}), ['int'], ['T'])
 	assert interface_type.name() == 'BoxedValue[int]'
 }
@@ -150,7 +150,7 @@ fn test_interface_metadata_name_keeps_same_named_structs_out_of_interfaces() {
 	tc.interface_names['io.Reader'] = true
 	tc.structs['csv.Reader'] = []StructField{}
 	tc.enum_names['colors.Reader'] = true
-	tc.sum_types['nodes.Reader'] = ['nodes.A', 'nodes.B']
+	tc.sum_types.set('nodes.Reader', ['nodes.A', 'nodes.B'])
 	assert tc.interface_metadata_name('io.Reader') == 'io.Reader'
 	// https://github.com/vlang/v/issues/28834
 	assert tc.interface_metadata_name('csv.Reader') == 'csv.Reader'
@@ -185,7 +185,7 @@ fn test_undeclared_ierror_does_not_make_every_type_an_error_payload() {
 	mut tc := TypeChecker.new(&a)
 	tc.enum_names['Foo'] = true
 	assert !tc.type_compatible_with_ierror_payload(Type(Enum{
-		name: 'Foo'
+		name_id: flat.source_type_id('Foo')
 	}))
 	assert !tc.type_compatible_with_ierror_payload(Type(int_))
 	assert !tc.named_type_compatible_with_ierror('Foo')
@@ -193,7 +193,7 @@ fn test_undeclared_ierror_does_not_make_every_type_an_error_payload() {
 	// interface with that short name.
 	tc.interface_names['pkg.IError'] = true
 	assert !tc.type_compatible_with_ierror_payload(Type(Enum{
-		name: 'Foo'
+		name_id: flat.source_type_id('Foo')
 	}))
 	assert !tc.type_compatible_with_ierror_payload(Type(int_))
 	assert !tc.named_type_compatible_with_ierror('Foo')

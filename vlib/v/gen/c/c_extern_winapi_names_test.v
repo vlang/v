@@ -13,6 +13,7 @@ fn winapi_names_project(name string) !string {
 	os.write_file(os.join_path(root, 'winapi_names.c'), 'int Sleep(int ms) { return ms + 1; }
 int CloseHandle(int handle) { return handle * 2; }
 int CreateFile(int flags) { return flags + 100; }
+int GetFileInformationByHandle(void* handle, void* information) { return 42; }
 ')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main
 
@@ -21,11 +22,13 @@ int CreateFile(int flags) { return flags + 100; }
 fn C.Sleep(ms int) int
 fn C.CloseHandle(handle int) int
 fn C.CreateFile(flags int) int
+fn C.GetFileInformationByHandle(handle voidptr, information voidptr) i32
 
 fn main() {
 	println(C.Sleep(41))
 	println(C.CloseHandle(21))
 	println(C.CreateFile(1))
+	println(C.GetFileInformationByHandle(unsafe { nil }, unsafe { nil }))
 	create_file := voidptr(&C.CreateFile)
 	println(create_file != unsafe { nil })
 }
@@ -48,8 +51,9 @@ fn test_win32_api_names_keep_their_win32_meaning_only_for_windows_targets() {
 		call_conv := if target_os == 'windows' { 'WINAPI ' } else { '' }
 		create_file := if target_os == 'windows' { 'CreateFileW' } else { 'CreateFile' }
 		for line in ['int ${call_conv}Sleep(int ms);', 'int ${call_conv}CloseHandle(int handle);',
-			'int ${call_conv}${create_file}(int flags);', '\tprintln(int__str(${create_file}(1)));',
-			'\tvoid* create_file = ${create_file};'] {
+			'int ${call_conv}${create_file}(int flags);',
+			'i32 ${call_conv}GetFileInformationByHandle(void* handle, void* information);',
+			'\tprintln(int__str(${create_file}(1)));', '\tvoid* create_file = ${create_file};'] {
 			assert line in generated, '${target_os}: ${line}'
 		}
 	}
@@ -68,5 +72,5 @@ fn test_program_links_its_own_c_functions_named_like_win32_apis() {
 	assert build.exit_code == 0, build.output
 	run := os.exec([executable])
 	assert run.exit_code == 0, run.output
-	assert run.output.split_into_lines() == ['42', '42', '101', 'true'], run.output
+	assert run.output.split_into_lines() == ['42', '42', '101', '42', 'true'], run.output
 }

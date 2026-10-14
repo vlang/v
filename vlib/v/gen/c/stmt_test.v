@@ -124,7 +124,7 @@ fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
 	deref_id := a.add_node(flat.Node{
 		kind:           .prefix
 		op:             .mul
-		typ:            '&int'
+		typ:            flat.source_type_id('&int')
 		children_start: i32(children_start)
 		children_count: 1
 	})
@@ -187,8 +187,8 @@ fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
 	g.tc = &tc
 	// Distinct logical ownership keys can refer to the same runtime struct after
 	// lifetime erasure. Only one C helper definition may be emitted for it.
-	g.recursive_drop_helpers['struct:pkg.Sink[^p,^s,Writer]'] = 'pkg.Sink[Writer]'
-	g.recursive_drop_helpers['struct:pkg.Sink[^s,^s,Writer]'] = 'pkg.Sink[Writer]'
+	g.recursive_drop_helpers.set('struct:pkg.Sink[^p,^s,Writer]', 'pkg.Sink[Writer]')
+	g.recursive_drop_helpers.set('struct:pkg.Sink[^s,^s,Writer]', 'pkg.Sink[Writer]')
 	g.gen_ownership_recursive_drop_helpers()
 	assert g.sb.str().count('static void __v3_ownership_drop_pkg__Sink_Writer(') == 1
 }
@@ -196,26 +196,26 @@ fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
 fn test_usable_resolved_sum_type_requires_exact_qualified_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types['bar.Result'] = ['bar.Failed', 'bar.Ok']
-	tc.sum_types['foo.Choice'] = ['foo.Left', 'foo.Right']
+	tc.sum_types.set('bar.Result', ['bar.Failed', 'bar.Ok'])
+	tc.sum_types.set('foo.Choice', ['foo.Left', 'foo.Right'])
 	mut g := FlatGen.new()
 	g.tc = &tc
 	g.precompute_sum_name_lookup()
 
 	preserved := g.usable_resolved_sum_type(types.Type(types.Struct{
-		name: 'foo.Result'
+		name_id: flat.source_type_id('foo.Result')
 	}))
 	assert preserved is types.Struct
 	if preserved is types.Struct {
-		assert preserved.name == 'foo.Result'
+		assert preserved.name() == 'foo.Result'
 	}
 
 	exact := g.usable_resolved_sum_type(types.Type(types.Struct{
-		name: 'foo.Choice'
+		name_id: flat.source_type_id('foo.Choice')
 	}))
 	assert exact is types.SumType
 	if exact is types.SumType {
-		assert exact.name == 'foo.Choice'
+		assert exact.name() == 'foo.Choice'
 	}
 }
 
@@ -539,24 +539,24 @@ fn test_heap_local_memdup_expr_uses_aligned_memdup_for_aligned_structs() {
 	g.tc = &tc
 	g.register_struct_decl_info('Aligned', 'Aligned', 'main', '', flat.Node{
 		value: 'Aligned'
-		typ:   'aligned=64'
+		typ:   flat.source_type_id('aligned=64')
 	})
 	aligned_type := types.Type(types.Struct{
-		name: 'Aligned'
+		name_id: flat.source_type_id('Aligned')
 	})
 	pointer_copy := g.heap_local_memdup_expr('p', aligned_type, 'Aligned', true)
 	assert pointer_copy == '(Aligned*)v3_aligned_memdup(p, sizeof(Aligned), 64)'
 	value_copy := g.heap_local_memdup_expr('x', aligned_type, 'Aligned', false)
 	assert value_copy == '(Aligned*)v3_aligned_memdup(&x, sizeof(Aligned), 64)'
 	plain_type := types.Type(types.Struct{
-		name: 'Plain'
+		name_id: flat.source_type_id('Plain')
 	})
 	assert g.heap_local_memdup_expr('p', plain_type, 'Plain', true) == '(Plain*)memdup(p, sizeof(Plain))'
 	tc.structs['Holder'] = [types.StructField{
 		name: 'values'
 		typ:  types.Type(types.ArrayFixed{ elem_type: aligned_type, len: 2 })
 	}]
-	holder_type := types.Type(types.Struct{ name: 'Holder' })
+	holder_type := types.Type(types.Struct{ name_id: flat.source_type_id('Holder') })
 	assert g.heap_local_memdup_expr('h', holder_type, 'Holder', false) == '(Holder*)v3_aligned_memdup(&h, sizeof(Holder), __alignof__(Holder))'
 	assert g.pointer_free_needs_aligned_free(types.Type(types.Pointer{ base_type: holder_type }))
 	assert !g.pointer_free_needs_aligned_free(types.Type(types.Pointer{ base_type: plain_type }))
@@ -594,7 +594,7 @@ fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
 	g.tc = &tc
 	int_type := types.Type(types.int_)
 	struct_type := types.Type(types.Struct{
-		name: 'S'
+		name_id: flat.source_type_id('S')
 	})
 	struct_ptr := types.Type(types.Pointer{
 		base_type: struct_type
@@ -789,7 +789,7 @@ fn test_lowered_ident_annotation_precedes_outer_checker_binding() {
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'err'
-		typ:   'int'
+		typ:   flat.source_type_id('int')
 	})
 	assert g.usable_expr_type(value) == types.Type(types.int_)
 }

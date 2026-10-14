@@ -71,13 +71,13 @@ pub fn f64_to_str_l_with_dot(f f64) string {
 
 // fxx_to_str_l_parse returns a `string` in decimal notation converted from a
 // floating-point `string` in scientific notation.
+// The special values `inf`, `+inf`, `-inf`, and `nan` are returned unchanged.
 //
 // Example: assert strconv.fxx_to_str_l_parse('34.22e+00') == '34.22'
 @[direct_array_access; manualfree]
 pub fn fxx_to_str_l_parse(s string) string {
-	// check for +inf -inf Nan. The exponent letter is skipped by the signed start,
-	// so 'inf' (no sign) has the 'i' at index 0, while '-inf' has it at index 1.
-	if s.len > 2 && (s[0] == `n` || s[0] == `i` || s[1] == `i`) {
+	// Unsigned infinity has no sign before its `i`.
+	if s == 'inf' || (s.len > 2 && (s[0] == `n` || s[1] == `i`)) {
 		return s.clone()
 	}
 
@@ -207,13 +207,14 @@ pub fn fxx_to_str_l_parse(s string) string {
 
 // fxx_to_str_l_parse_with_dot returns a `string` in decimal notation converted from a
 // floating-point `string` in scientific notation.
+// The special values `inf`, `+inf`, `-inf`, and `nan` are returned unchanged.
 // If the decimal digits after the dot are zero, a '.0' is appended for clarity.
 //
 // Example: assert strconv.fxx_to_str_l_parse_with_dot ('34.e+01') == '340.0'
 @[direct_array_access; manualfree]
 pub fn fxx_to_str_l_parse_with_dot(s string) string {
-	// check for +inf -inf Nan. Same shape as fxx_to_str_l_parse above.
-	if s.len > 2 && (s[0] == `n` || s[0] == `i` || s[1] == `i`) {
+	// Unsigned infinity has no sign before its `i`.
+	if s == 'inf' || (s.len > 2 && (s[0] == `n` || s[1] == `i`)) {
 		return s.clone()
 	}
 

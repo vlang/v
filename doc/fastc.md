@@ -51,13 +51,33 @@ v -b fastc -enable-globals -o program path/to/project
 
 Directory entries select the full builtin runtime, including V strings, maps, errors, and
 garbage collection. Generic calls infer their concrete type from a mutable variable argument.
+On glibc Linux, thread IDs use the system call without requiring glibc 2.30. Generic
+parameter shadowing ends with its function and does not affect later constants.
+Function-pointer fields and parameters support mixed named and unnamed parameter types.
 If a call reaches a generic placeholder without a concrete instance, it reports the function
 and exits with an error instead of returning a zero value.
 This path supports standard-library imports such as `os` and `toml`,
-composite sum-type tests, integer interpolation formats, anonymous functions, and immutable
-closure captures. A single-file entry can select the same runtime with `-d fastc_real_builtin`;
-its module siblings are included.
+composite sum-type tests, integer and floating point interpolation formats, anonymous functions,
+and immutable closure captures. Float formats support precision, width, left alignment, and the
+`f` suffix to retain trailing zeros. A single-file entry can select the same runtime with
+`-d fastc_real_builtin`; its module siblings are included.
+A test file entry (`foo_test.v`, `foo_test.c.v`, or an architecture-qualified one) always uses
+it, and builds as a program that runs its tests in source order between `testsuite_begin` and
+`testsuite_end`, each between `before_each` and `after_each`; a failed assert or a returned error
+fails that test, and the program exits with status 1 when any test failed. Tests and hooks require
+zero parameters. Failed assertions run the test's deferred statements before the harness continues.
 Target-specific files and test files are filtered when loading a directory.
+Generic arguments infer the complete type of literal arithmetic, including float promotion.
+Other compound arguments require explicit type arguments.
+Bare `nil` can reset concrete `voidptr` locals, including aliases, and declared `voidptr`
+fields. It can initialize declared `voidptr` fields and serve as an argument to `voidptr`
+and function-typed parameters. Function fields and erased generic fields require `unsafe`.
+Channel type declarations accept ordinary V whitespace.
+Negated sum-type guards retain pointer identity and read mutable scalar variants as values
+in arithmetic, including numeric aliases.
+Fixed arrays and their aliases support checked indexing, including pointer elements.
+Pointer elements retain their identity when passed or copied. Omitted option fields are `none`.
+Sum-type and interface tests narrow later operands of a conjunction, preserving pointer values.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context
 when the block exits, including through `return`, `break`, and `continue`. Callbacks that escape
@@ -74,18 +94,37 @@ Quoted candidate filenames can contain spaces and commas.
 This includes the optional atomic-library flags used on Linux.
 Linux GC builds load atomic support even without an explicit `sync` import. On Linux amd64
 with musl, TinyCC's helpers and the driver-prepared fence object provide this support.
-Native C helpers are linked before the static archives they call, including the bundled GC.
+Native C helpers are compiled before the static archives they call, including the bundled GC,
+for both serial builds and parallel builds using macOS's in-process linker.
 Under TinyCC on macOS and Linux, preallocation uses pthread storage to keep each thread's
 arena independent. The required pthread library is linked even without `spawn`.
 Dynamic array literals with complex element expressions evaluate those elements before copying
 the array, avoiding nested C aggregate initializers unsupported by bundled Linux TinyCC.
 Their temporaries avoid collisions with local and parameter names.
+Channels on this path use the standard channel runtime for buffered and unbuffered
+sends and receives, `select`, closing, and channel properties.
+Spawned threads and arrays of threads support waiting for void and typed results.
+`nil` can reset `voidptr` fields and locals. Typed pointer `nil` literals still
+require an `unsafe` block.
 
 The full-runtime path remains experimental. Mutable and expression closure captures and
 128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.
 
-Build a FastC compiler with `v -b fastc self`. Its `self` command keeps FastC for subsequent
-generations; use `v -b fastc self x2` to check repeated replacement builds.
+Build the full V compiler, including its regular C backend, directly from `cmd/v`:
+
+```sh
+v -b fastc -nocache -o v_fastc1 cmd/v
+./v_fastc1 -b fastc -nocache -o v_fastc2 cmd/v
+./v_fastc2 -b fastc -nocache -o v_fastc3 cmd/v
+./v_fastc3 -b c run examples/hello_world.v
+```
+
+Each generation retains the full command-line entry and can compile programs with either
+the C or FastC backend. `-nocache` forces each generation to rebuild its generated C units.
+
+`v -b fastc self` builds a smaller standalone FastC compiler from `vlib/v/v.v`.
+Its `self` command keeps FastC for subsequent generations; use `v -b fastc self x2` to
+check repeated replacement builds. This standalone compiler only supports the FastC backend.
 Standalone replacements accept directory entries and `-enable-globals`. Their `-nocache`
 option disables TinyCC object and executable caching, including in repeated self-builds.
 The launcher helper runs on the host C backend. Native source flags are retained during

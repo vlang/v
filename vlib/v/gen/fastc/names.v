@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import v.gen.c.naming
 
 const fastc_module_type_prefix = 'v.gen.fastc.'
@@ -50,25 +51,25 @@ fn fastc_c_module_name(module_name string) string {
 // query, allocating each candidate's C spelling on the way; that scan dominated
 // selfhost code generation. The first key registered for a spelling wins,
 // matching the old first-match scan over the insertion-ordered key list.
-fn fastc_declared_type_c_names(declared_types map[string]bool) map[string]string {
-	mut index := map[string]string{}
+fn fastc_declared_type_c_names(declared_types map[string]bool) flat.TypeTextBindings {
+	mut index := flat.TypeTextBindings{}
 	for key in declared_types.keys() {
 		c_name := fastc_c_declared_type_name(key)
-		if c_name !in index {
-			index[c_name] = key
+		if !index.contains(c_name) {
+			index.set(c_name, key)
 		}
 	}
 	return index
 }
 
-fn fastc_declared_type_key_by_name(declared_types map[string]bool) map[string]string {
-	mut index := map[string]string{}
+fn fastc_declared_type_key_by_name(declared_types map[string]bool) flat.TypeTextBindings {
+	mut index := flat.TypeTextBindings{}
 	for key in declared_types.keys() {
 		name := key.all_after_last('.')
-		if name in index {
-			index[name] = ''
+		if index.contains(name) {
+			index.set_id(name, 0)
 		} else {
-			index[name] = key
+			index.set(name, key)
 		}
 	}
 	return index
