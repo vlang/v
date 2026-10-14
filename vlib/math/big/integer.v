@@ -225,6 +225,11 @@ fn validate_string(characters string, radix u32) ! {
 
 	start_index := if sign_present { 1 } else { 0 }
 
+	// a sign on its own is not a number, nor is an empty string
+	if start_index >= characters.len {
+		return error('math.big: No digits in the given string')
+	}
+
 	for index := start_index; index < characters.len; index++ {
 		digit := characters[index]
 		value := digit_array.index(digit)

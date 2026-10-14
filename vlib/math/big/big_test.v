@@ -634,6 +634,32 @@ fn test_integer_from() {
 	}
 }
 
+fn test_integer_from_string_rejects_no_digits() {
+	// an empty digit sequence is not a number: Go's big.Int.SetString
+	// returns _, false for all three
+	mut had_empty_err := false
+	if _ := big.integer_from_string('') {
+		assert false, 'integer_from_string("") should fail'
+	} else {
+		had_empty_err = true
+	}
+	assert had_empty_err
+	mut had_plus_err := false
+	if _ := big.integer_from_string('+') {
+		assert false, 'integer_from_string("+") should fail'
+	} else {
+		had_plus_err = true
+	}
+	assert had_plus_err
+	mut had_minus_err := false
+	if _ := big.integer_from_string('-') {
+		assert false, 'integer_from_string("-") should fail'
+	} else {
+		had_minus_err = true
+	}
+	assert had_minus_err
+}
+
 fn test_bytes() {
 	for t in bytes_test_data {
 		r, s := t.value.parse().bytes()
