@@ -621,7 +621,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
 						continue
 					}
-					mut replaced := fastc_replace(rendered, raw_call, call_source)
+					mut replaced := fastc_replace_c_name(rendered, raw_call, call_source, true)
 					if replaced.str == rendered.str {
 						// Its arguments may already be rewritten (`m.id(i)` to `M_id(m,i)`), so
 						// the raw spelling no longer occurs; replace the call by its head instead.
@@ -910,13 +910,19 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 
 // fastc_replace_c_call_at_head replaces the first call in `source` that starts with `head`
 // (`m->store.get(`, not preceded by a name character) through its closing `)`.
+// String and character literals are skipped while locating the call.
 fn fastc_replace_c_call_at_head(source string, head string, replacement string) string {
 	mut from := 0
-	for {
-		index := fastc_index_of(source, head, from)
-		if index < 0 {
-			return source
+	for from < source.len {
+		if source[from] in [`'`, `"`] {
+			from = fastc_c_literal_end(source, from)
+			continue
 		}
+		if !source[from..].starts_with(head) {
+			from++
+			continue
+		}
+		index := from
 		from = index + head.len
 		if index > 0 && (source[index - 1].is_alnum() || source[index - 1] in [`_`, `.`, `>`]) {
 			continue

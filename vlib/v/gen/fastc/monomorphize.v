@@ -630,7 +630,7 @@ fn fastc_is_entry_module(sources []FastcSourceFile, module_name string, prefs &p
 		return false
 	}
 	for source_file in sources {
-		if source_file.header.module_name == module_name && source_file.path.ends_with('_test.v') {
+		if source_file.header.module_name == module_name && fastc_is_test_source(source_file.path, prefs) {
 			return true
 		}
 	}
@@ -712,7 +712,7 @@ fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Pref
 		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
 			continue
 		}
-		fastc_scan_generic_calls(source_file.source, source_file.path, prefs, i, by_name, mut calls, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)
+		fastc_scan_generic_calls(source_file.source, source_file.path, prefs, i, by_name, mut calls, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)!
 	}
 	// A generic is monomorphized only when every call resolves.
 	mut active := map[string]bool{}
@@ -1154,7 +1154,7 @@ fn fastc_infer_literal_type(tok token.Token, lit string) string {
 // type it resolves to, or marks the generic unresolvable when a call cannot be
 // resolved at source level (a non-literal implicit argument, a bare function
 // reference, or a malformed explicit type argument).
-fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, mut calls []FastcGenericCall, mut unresolvable map[string]bool, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) {
+fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, mut calls []FastcGenericCall, mut unresolvable map[string]bool, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) ! {
 	file := token.File.unindexed(path, source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
@@ -1307,6 +1307,15 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				concretes << concrete_type
 			}
 			if concretes.len == 0 || concretes.len != generic.type_param.split(',').len {
+				mut inside_generic := false
+				for variable_type in var_types.values() {
+					if variable_type in type_param_names {
+						inside_generic = true
+					}
+				}
+				if !inside_generic {
+					return error('fastc cannot infer generic type arguments for `${name}` in ${path}; use explicit type arguments')
+				}
 				unresolvable[name] = true
 				previous = .lpar
 				previous_lit = ''
@@ -2083,7 +2092,7 @@ fn fastc_params_exact_type_param_indexes(params_source string, type_param string
 		tok = s.scan()
 		mut type_tokens := 0
 		mut type_name := ''
-		mut depth := 0
+		mut depth := if first_tok in [.lpar, .lsbr, .lcbr] { 1 } else { 0 }
 		for tok != .eof {
 			if tok in [.lsbr, .lpar] {
 				depth++
@@ -2130,20 +2139,41 @@ fn fastc_call_argument_simple_types(mut s scanner.Scanner, var_types map[string]
 		first_tok := tok
 		tok = s.scan()
 		mut single := true
-		if argument_type == '' && first_tok == .name && tok == .lcbr {
+		mut numeric_expression := argument_type in ['int', 'f64'] || first_tok in [
+			.lpar,
+			.plus,
+			.minus,
+		]
+		mut numeric_type := if argument_type == 'f64' { 'f64' } else { 'int' }
+		mut struct_literal := argument_type == '' && first_tok == .name && tok == .lcbr
+		mut literal_closed := false
+		if struct_literal {
 			argument_type = first_lit
 		}
 		mut depth := 0
 		for tok != .eof {
+			if depth == 0 && tok in [.rpar, .rsbr, .rcbr, .comma] {
+				break
+			}
+			if literal_closed {
+				struct_literal = false
+			}
+			if numeric_expression {
+				literal_type := fastc_infer_literal_type(tok, s.lit)
+				if literal_type == 'f64' {
+					numeric_type = 'f64'
+				} else if literal_type != 'int' && tok !in [.plus, .minus, .mul, .div, .mod, .lpar,
+					.rpar] {
+					numeric_expression = false
+				}
+			}
 			if tok in [.lpar, .lsbr, .lcbr] {
 				depth++
 			} else if tok in [.rpar, .rsbr, .rcbr] {
-				if depth == 0 {
-					break
-				}
 				depth--
-			} else if depth == 0 && tok == .comma {
-				break
+				if tok == .rcbr && depth == 0 {
+					literal_closed = true
+				}
 			}
 			single = false
 			tok = s.scan()
@@ -2151,9 +2181,19 @@ fn fastc_call_argument_simple_types(mut s scanner.Scanner, var_types map[string]
 		if argument_type == '' && single && first_tok == .name && first_lit !in var_ambiguous {
 			argument_type = var_types[first_lit] or { '' }
 		}
+		// Infer the complete numeric expression; its first literal alone can have a different type.
+		if !single {
+			if numeric_expression {
+				argument_type = numeric_type
+			} else if !(struct_literal && literal_closed) {
+				argument_type = ''
+			}
+		}
 		types << argument_type
 		if tok == .comma {
 			tok = s.scan()
+		} else if tok !in [.rpar, .eof] {
+			break
 		}
 	}
 	return types

@@ -62,6 +62,8 @@ source order between `testsuite_begin` and `testsuite_end`, each between `before
 `after_each`; a failed assert or a returned error fails that test, and the program exits with
 status 1 when any test failed.
 Target-specific files and test files are filtered when loading a directory.
+Generic arguments infer the complete type of literal arithmetic, including float promotion.
+Other compound arguments require explicit type arguments.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context
 when the block exits, including through `return`, `break`, and `continue`. Callbacks that escape
