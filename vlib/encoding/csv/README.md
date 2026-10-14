@@ -1,3 +1,17 @@
+## Writer example
+
+```v
+import encoding.csv
+
+mut writer := csv.new_writer()
+writer.write(['   ', 'b'])!
+assert writer.str() == '"   ",b\n'
+```
+
+The writer quotes fields that contain the delimiter, double quotes, carriage returns, or newlines.
+It also quotes fields that begin with Unicode whitespace, including spaces and tabs, preserving
+them when read by CSV readers that trim unquoted leading whitespace.
+
 ## Reader example
 
 ```v
@@ -21,7 +35,7 @@ It prints:
 Unquoted fields cannot contain double quotes. Enclose a field containing quotes in double
 quotes and escape each embedded quote by doubling it; `read()` returns an error for a bare quote.
 After a closing quote, only the delimiter or the end of the record is allowed; trailing text
-and whitespace return an error.
+and whitespace return `encoding.csv: unexpected character after closing quote`.
 
 The writer preserves carriage returns and line feeds inside quoted fields by default. With
 `use_crlf: true`, it preserves bare carriage returns and existing CRLF pairs, and writes each

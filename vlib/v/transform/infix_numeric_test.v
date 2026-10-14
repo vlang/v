@@ -272,7 +272,7 @@ fn test_checked_numeric_infix_recovers_index_alias_overrides_from_raw_element_ty
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.skip_generics = true
 	t.cur_module = 'main'
-	t.set_var_type_with_raw('values', '[]int', '[]Count')
+	t.set_var_type_with_raw('values', flat.source_type_id('[]int'), flat.source_type_id('[]Count'))
 	t.fn_ret_types.set('Count.+', 'Count')
 	t.fn_ret_types.set('Count.==', 'bool')
 	t.fn_ret_types.set('Count.<', 'bool')

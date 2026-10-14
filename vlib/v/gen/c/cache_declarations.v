@@ -418,7 +418,7 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 	old_module := g.tc.cur_module
 	for _, info in g.shared_type_names {
 		g.tc.cur_module = info.module
-		g.cache_require_declaration_type(g.tc.parse_type(info.inner), mut seen)
+		g.cache_require_declaration_type(g.tc.parse_type(flat.source_type_id(info.inner)), mut seen)
 	}
 	g.tc.cur_module = old_module
 	for typ in g.multi_return_types {
@@ -485,7 +485,7 @@ fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[s
 		}
 		types.SumType {
 			for variant in g.tc.sum_types.get(typ.name()) or { []string{} } {
-				g.cache_require_declaration_type(g.tc.parse_type(variant), mut seen)
+				g.cache_require_declaration_type(g.tc.parse_type(flat.source_type_id(variant)), mut seen)
 			}
 		}
 		types.Pointer, types.OptionType, types.ResultType, types.Alias {

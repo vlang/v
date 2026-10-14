@@ -110,7 +110,7 @@ fn (g &FlatGen) fixed_array_type_from_alias_text(type_name string) ?types.ArrayF
 		if cur.len == 0 {
 			return none
 		}
-		if fixed := array_fixed_type(g.tc.parse_type(cur)) {
+		if fixed := array_fixed_type(g.tc.parse_type(flat.source_type_id(cur))) {
 			return fixed
 		}
 		mut next := g.tc.type_aliases.get(cur) or { '' }
@@ -466,7 +466,7 @@ fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, a
 	if sizeof_node.kind != .sizeof_expr || sizeof_node.value.len == 0 {
 		return false
 	}
-	elem_type := g.tc.parse_type(sizeof_node.value)
+	elem_type := g.tc.parse_type(flat.source_type_id(sizeof_node.value))
 	g.gen_fixed_array_data_arg(arg_id, types.ArrayFixed{
 		elem_type: elem_type
 	})
@@ -1140,7 +1140,7 @@ fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_
 fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	is_void := ret_name.len == 0
 	if !is_void {
-		ret_type := cgen_unalias_type(g.tc.parse_type(ret_name))
+		ret_type := cgen_unalias_type(g.tc.parse_type(flat.source_type_id(ret_name)))
 		if ret_type is types.OptionType || ret_type is types.ResultType {
 			return g.ensure_thread_optional_arr_wait_fn(ret_type)
 		}
@@ -1148,7 +1148,11 @@ fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	// Match the ABI return type the spawn wrapper stores (gen_spawn_expr): an
 	// option/result payload is `__v_option_T`, a fixed-array payload its `_v_ret_*`
 	// wrapper — not the bare `c_type`, or the malloc'd and read-back layouts diverge.
-	ret_ct := if is_void { 'void' } else { g.fn_return_type_name(g.tc.parse_type(ret_name)) }
+	ret_ct := if is_void {
+		'void'
+	} else {
+		g.fn_return_type_name(g.tc.parse_type(flat.source_type_id(ret_name)))
+	}
 	key := 'threadwait|${ret_ct}'
 	if name := g.spawn_wrapper_names[key] {
 		return name
@@ -1569,7 +1573,7 @@ fn (mut g FlatGen) gen_slice_index_array_value(node flat.Node, elem_type types.T
 }
 
 fn (mut g FlatGen) gen_slice_index_value_from_index_range(node flat.Node) {
-	slice_type := g.tc.parse_type('SliceIndex')
+	slice_type := g.tc.parse_type(flat.source_type_id('SliceIndex'))
 	ct := g.value_c_type(slice_type)
 	g.write('(${ct}){.is_range = true')
 	if node.children_count > 1 {
@@ -1594,7 +1598,7 @@ fn (mut g FlatGen) gen_slice_index_value_from_index_range(node flat.Node) {
 }
 
 fn (mut g FlatGen) gen_slice_index_value(id flat.NodeId) {
-	slice_type := g.tc.parse_type('SliceIndex')
+	slice_type := g.tc.parse_type(flat.source_type_id('SliceIndex'))
 	ct := g.value_c_type(slice_type)
 	if int(id) < 0 {
 		g.write('(${ct}){0}')

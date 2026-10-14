@@ -2900,7 +2900,7 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 fn (tc &TypeChecker) member_of_an_alias_argument(msg string, args []string) bool {
 	type_name, member := concrete_member_error_parts(msg) or { return false }
 	for arg in args {
-		typ := unwrap_pointer(tc.parse_type(arg))
+		typ := unwrap_pointer(tc.parse_type(flat.source_type_id(arg)))
 		if typ is Alias && unalias_type(typ).name() == type_name
 			&& tc.alias_declares_method(typ, member) {
 			return true
@@ -3040,7 +3040,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 	} else {
 		node.typ_text()
 	}
-	tc.cur_fn_ret_type = tc.parse_type(checked_return_type)
+	tc.cur_fn_ret_type = tc.parse_type(flat.source_type_id(checked_return_type))
 	tc.fn_context.return_type = tc.cur_fn_ret_type
 	tc.fn_context.node_id = fn_idx
 	// Full expression validation queries local declarations even when self-host
@@ -3207,7 +3207,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		receiver_id := tc.a.child(&node, 0)
 		receiver := tc.a.node(receiver_id)
 		if receiver.kind == .param && receiver.op == .dot {
-			receiver_type := unwrap_all_pointers(tc.parse_type(receiver.typ_text()))
+			receiver_type := unwrap_all_pointers(tc.parse_type(receiver.typ))
 			if unalias_type(receiver_type) is MultiReturn {
 				tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ_text()))
 			}
@@ -3266,7 +3266,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if raw_return_type.ends_with('?') && !raw_return_type.starts_with('?') {
 		tc.record_error_at(.return_mismatch, 'wrong syntax, it must be ?${raw_return_type.trim_right('?')}, not ${raw_return_type}', id, tc.suffix_option_return_type_diagnostic_pos(node))
 	}
-	signature_return_type := unalias_type(tc.parse_type(node.typ_text()))
+	signature_return_type := unalias_type(tc.parse_type(node.typ))
 	if signature_return_type is MultiReturn {
 		for typ in signature_return_type.types {
 			if is_ierror_type(unalias_type(typ)) {
@@ -3279,7 +3279,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		receiver := tc.a.child_node(&node, 0)
 		receiver_name := node.value.all_before_last('.').all_after_last('.')
 		if receiver.kind == .param && receiver.op == .dot {
-			receiver_type := unalias_type(tc.parse_type(receiver.typ_text()))
+			receiver_type := unalias_type(tc.parse_type(receiver.typ))
 			if receiver_type is Interface
 				&& node.value.all_after_last('.') in tc.interface_abstract_method_names(receiver_type.name()) {
 				tc.record_error_at(.duplicate_decl, 'interface `${receiver_type.name()}` cannot implement its own interface method `${node.value.all_after_last('.')}`', id, tc.fn_declaration_diagnostic_pos(node))
@@ -3333,8 +3333,8 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			if param.is_mut {
 				tc.record_error_at(.call_arg_mismatch, 'argument cannot be `mut` for operator overloading', id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			raw_receiver_type := tc.parse_type(receiver.typ_text())
-			raw_param_type := tc.parse_type(param.typ_text())
+			raw_receiver_type := tc.parse_type(receiver.typ)
+			raw_param_type := tc.parse_type(param.typ)
 			receiver_type := unwrap_pointer(raw_receiver_type)
 			param_type := unwrap_pointer(raw_param_type)
 			if !receiver.is_mut && !param.is_mut && receiver_type.name() == param_type.name()
@@ -3348,14 +3348,14 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			}
 		}
 	}
-	parsed_return_type := tc.parse_type(node.typ_text())
+	parsed_return_type := tc.parse_type(node.typ)
 	return_type := unalias_type(parsed_return_type)
 	if return_type is OptionType || return_type is ResultType {
 		tc.record_error_at(.return_mismatch, 'return type cannot be Option or Result', id, tc.fn_return_type_diagnostic_pos(node))
 	}
 	if node.children_count > 0 && operator in ['+', '-', '*', '/', '%', '<<', '>>', '&', '|', '^'] {
 		receiver := tc.a.child_node(&node, 0)
-		receiver_type := tc.parse_type(receiver.typ_text())
+		receiver_type := tc.parse_type(receiver.typ)
 		if receiver_type is Alias && (infix_power_type_is_numeric(receiver_type.base_type)
 			|| unalias_type(receiver_type.base_type) is String)
 			&& parsed_return_type.name() != receiver_type.name() && operator_params_match {

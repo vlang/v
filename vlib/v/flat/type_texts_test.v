@@ -16,6 +16,8 @@ fn test_type_text_forks_share_immutable_spelling_ids() {
 	assert parent.value('value') == 'pkg.Sum'
 	parent.set_id('imported', right_id)
 	assert parent.value('imported') == 'map[string]pkg.Right'
+	assert parent.value_id('imported') == right_id
+	assert parent.value_id('absent') == 0
 }
 
 fn test_indexed_scope_shadowing_keeps_empty_bindings_present() {
@@ -30,6 +32,21 @@ fn test_indexed_scope_shadowing_keeps_empty_bindings_present() {
 	assert outer.contains('placeholder')
 	assert outer.get('placeholder') or { panic('empty binding was lost') } == ''
 	assert !inner.contains('placeholder')
+	assert outer.value_id('placeholder') == 0
+	assert outer.type_id('placeholder') or { panic('empty identity was lost') } == 0
+}
+
+fn test_source_type_shape_preserves_exact_spelling_probes() {
+	wrapped := source_type_shape(source_type_id('map[string][]pkg.Item'))
+	assert wrapped.has(.dotted)
+	assert wrapped.has(.bracketed)
+	assert !wrapped.has(.wrapped)
+	assert source_type_shape(source_type_id('?pkg.Item')).has(.wrapped)
+	assert source_type_shape(source_type_id('[]typeof(x)')).has(.typeof_expr)
+	assert source_type_shape(source_type_id('typeof_field')).has(.typeof_name)
+	assert !source_type_shape(source_type_id('typeof_field')).has(.typeof_expr)
+	assert !source_type_shape(source_type_id('typeof (x)')).has(.typeof_expr)
+	assert !source_type_shape(0).has(.dotted)
 }
 
 fn test_type_text_pointer_probe_validates_reused_input_bytes() {

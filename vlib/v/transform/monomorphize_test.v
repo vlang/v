@@ -749,7 +749,7 @@ fn test_imported_generic_alias_target_uses_declaration_module() {
 		module: 'a'
 	}
 
-	assert t.normalize_type_alias('a.Box[int]') == 'a.Inner[int]'
+	assert flat.source_type_name(t.normalize_type_alias(flat.source_type_id('a.Box[int]'))) == 'a.Inner[int]'
 	decls := {
 		'a.Inner': GenericStructDecl{
 			id:     inner_id
