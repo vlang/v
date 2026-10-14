@@ -11307,6 +11307,14 @@ events can poll instead (`-d veb_livereload_polling`, with
 [veb README](https://github.com/vlang/v/tree/master/vlib/veb/README.md#quick-start)
 for the full list of options.
 
+#### Per-function reloading with `@[live]`
+
+Note: `@[live]` reloading currently has no effect with the default
+compiler (see [vlang/v#30198](https://github.com/vlang/v/issues/30198));
+use `v watch`, described above, to rebuild and restart the program.
+Restarting the program also resets its runtime state.
+The following example and commands describe the per-function mechanism.
+
 ```v live
 module main
 
@@ -11325,8 +11333,6 @@ fn main() {
 }
 ```
 
-#### Per-function reloading with `@[live]`
-
 Build this example with `v -live message.v`.
 
 You can also run this example with `v -live run message.v`.
@@ -11334,10 +11340,6 @@ Make sure that in command you use a path to a V's file,
 **not** a path to a folder (like `v -live run .`) -
 in that case you need to modify content of a folder (add new file, for example),
 because changes in *message.v* will have no effect.
-
-Note: `@[live]` reloading currently has no effect with the default
-compiler (see vlang/v#30198); `v watch`, described above, is the
-working alternative.
 
 Functions that you want to be reloaded must have `@[live]` attribute
 before their definition.
