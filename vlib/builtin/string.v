@@ -993,7 +993,7 @@ fn (s string) plus_two(a string, b string) string {
 	return res
 }
 
-// split_any splits the string to an array by any of the `delim` chars.
+// split_any splits the string to an array by any of the UTF-8 runes in `delim`.
 // If the delimiter string is empty then `.split()` is used.
 // Example: assert "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
 @[direct_array_access]
@@ -1032,7 +1032,7 @@ pub fn (s string) split_any(delim string) []string {
 	return res
 }
 
-// rsplit_any splits the string to an array by any of the `delim` chars in reverse order.
+// rsplit_any splits the string by UTF-8 runes in `delim`, in reverse order.
 // If the delimiter string is empty then `.rsplit()` is used.
 // Example: assert "first row\nsecond row".rsplit_any(" \n") == ['row', 'second', 'row', 'first']
 @[direct_array_access]
@@ -1050,10 +1050,15 @@ pub fn (s string) rsplit_any(delim string) []string {
 		for i >= 0 {
 			// find the start of the rune ending at byte `i`
 			mut start := i
-			for start > 0 && utf8_is_continuation(s[start]) {
+			for start > 0 && i - start < 3 && utf8_is_continuation(s[start]) {
 				start--
 			}
-			r, char_len := utf8_decode_rune(unsafe { &s.str[start] }, s.len - start)
+			mut r, mut char_len := utf8_decode_rune(unsafe { &s.str[start] }, s.len - start)
+			if start + char_len != i + 1 {
+				// Decode exactly one in-bounds byte of the malformed suffix as a replacement.
+				start = i
+				r, char_len = utf8_decode_rune(unsafe { &s.str[start] }, 1)
+			}
 			mut is_delim := false
 			for delim_rune in delim_runes {
 				if r == delim_rune {

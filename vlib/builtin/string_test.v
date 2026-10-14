@@ -1815,3 +1815,29 @@ fn test_integer_conveniences_keep_leading_zeros_decimal() {
 		assert false, 'invalid octal digits parsed as ${value}'
 	}
 }
+
+fn test_split_any_invalid_utf8_matches_replacement_runes() {
+	for bytes in [[u8(`a`), 0x80, `b`], [u8(`a`), 0xc0, 0x80, `b`], [u8(`a`), 0xe2, 0x82, `b`],
+		[u8(`a`), 0xf4, 0x90, 0x80, 0x80, `b`]] {
+		s := bytes.bytestr()
+		mut expected := ['a']
+		for _ in 0 .. bytes.len - 3 {
+			expected << ''
+		}
+		expected << 'b'
+		assert s.split_any('�') == expected
+		assert s.rsplit_any('�') == expected.reverse()
+	}
+	assert 'a😀b😀c'.split_any('😀') == ['a', 'b', 'c']
+	assert 'a😀b😀c'.rsplit_any('😀') == ['c', 'b', 'a']
+	bad_delim := [u8(0x80)].bytestr()
+	assert 'a�b'.split_any(bad_delim) == ['a', 'b']
+	assert 'a�b'.rsplit_any(bad_delim) == ['b', 'a']
+	mut bytes := []u8{len: 4096, init: 0x80}
+	bytes.insert(0, `a`)
+	bytes << `b`
+	s := bytes.bytestr()
+	parts := s.split_any('�')
+	assert parts.len == 4097
+	assert s.rsplit_any('�') == parts.reverse()
+}
