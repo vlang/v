@@ -5118,6 +5118,7 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 	mut attrs := map[int]int{}
 	mut comments := map[int]int{}
 	mut attr_groups := map[int]int{}
+	mut attr_group_break := false
 	for fid in entries {
 		f := g.a.node(fid)
 		line := lines[int(fid)]
@@ -5139,9 +5140,17 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 				} else {
 					type_width
 				}
-				attr_align.add_info(suffix, line, false)
+				if attr_group_break {
+					attr_align.add_new_info(suffix, line)
+				} else {
+					attr_align.add_info(suffix, line, false)
+				}
+				attr_group_break = false
 				// Semicolon-separated fields can open distinct groups on the same source line.
 				attr_groups[int(fid)] = attr_align.infos.len - 1
+			} else {
+				// A multiline default separates its neighbors even on the same source line.
+				attr_group_break = true
 			}
 		}
 		if (gp.len > 1 || f.children_count == 0 || g.struct_field_default_width(fid) > 0)

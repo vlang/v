@@ -2480,6 +2480,19 @@ fn test_formatter_does_not_align_attributes_across_wrapped_defaults() {
 	assert vfmt('struct_field_wrapped_default_attributes_twice', out) == out
 }
 
+fn test_formatter_ends_attribute_groups_at_skipped_wrapped_defaults() {
+	field_name := 'extremely_long_field_name_with_many_characters_to_move_default_values_right'
+	for separator in ['; ', '\n\t'] {
+		source := 'struct Wrapped { a I @[a]${separator}${field_name} []int = [1, 2, 3] @[values]${separator}c Other @[c]${separator}d I @[d] }'
+		out := vfmt('struct_field_skipped_wrapped_default_groups', source)
+		assert out.contains(' I @[a]\n'), out
+		assert out.contains('[]int = [\n'), out
+		assert out.contains(' Other @[c]\n'), out
+		assert out.contains(' I     @[d]\n'), out
+		assert vfmt('struct_field_skipped_wrapped_default_groups_twice', out) == out
+	}
+}
+
 fn test_formatter_aligns_attributes_at_array_default_wrap_boundary() {
 	// The first array element reaches column 85 with the field's actual indentation.
 	field_name := 'array_field_name_to_place_the_default_near_the_array_wrapping_boundary'
