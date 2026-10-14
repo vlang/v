@@ -1968,7 +1968,7 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 }
 
 // unchecked_library_box_nodes snapshots only unchecked concrete library body ranges.
-// The owning transformer builds this before scan forks lose the checker's body-selection policy.
+// The owning transformer shares this snapshot with its scan workers.
 fn (t &Transformer) unchecked_library_box_nodes() []bool {
 	$if ownership ? {
 		return []bool{}
