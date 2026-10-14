@@ -1,5 +1,6 @@
 module eval
 
+import v.flat
 import os
 import v.parser
 
@@ -419,7 +420,7 @@ fn test_eval_declared_pointer_metadata_keeps_module_and_depth() {
 	e.call_stack << CallFrame{ module_name: 'worker' }
 	e.declare_var_typed('byte', Value(i64(0)), '&&Holder')
 	assert e.lookup_var_type('byte') or { '' } == '&&worker.Holder'
-	e.set_var_type('byte', '&u8')
+	e.set_var_type('byte', flat.source_type_id('&u8'))
 	assert e.lookup_var_type('byte') or { '' } == '&u8'
 	assert e.qualify_nested_type_name('worker', '[2]&u16') == '[2]&u16'
 }

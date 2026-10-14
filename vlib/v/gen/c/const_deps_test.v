@@ -62,7 +62,7 @@ fn test_scoped_const_order_does_not_populate_live_checker_cache() {
 	// The fixture must actually exercise type memoization during traversal.
 	assert g.const_emission_order() == ['value']
 	assert tc.type_cache_stats().parse_misses > before.parse_misses
-	assert tc.parse_type('[]int').name() == '[]int'
+	assert tc.parse_type(flat.source_type_id('[]int')).name() == '[]int'
 }
 
 fn test_const_helper_shadows_follow_lexical_scope_and_declaration_order() {

@@ -224,7 +224,7 @@ fn (tc &TypeChecker) vls_condition_value_hover_at(file_id int, offset int, sourc
 	for i in 0 .. decl.children_count {
 		param := tc.a.child_node(&decl, i)
 		if param.kind == .param && param.value == word && param.typ_text().len > 0 {
-			declared := tc.parse_type(param.typ_text())
+			declared := tc.parse_type(param.typ)
 			if type_contains_unknown(declared) {
 				return tc.vls_generic_value_text(id, word, param.typ_text())
 			}

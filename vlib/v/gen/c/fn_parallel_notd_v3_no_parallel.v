@@ -1110,7 +1110,7 @@ fn (mut g FlatGen) replay_prep_candidates(args []FlatCgenCostArgs) {
 				}
 			} else {
 				if g.should_preseed_parallel_type_id_cached(cand.text, mut type_text_cache) {
-					g.preseed_parallel_fn_ptr_type(g.tc.parse_type(flat.source_type_name(cand.text)))
+					g.preseed_parallel_fn_ptr_type(g.tc.parse_type(cand.text))
 				}
 			}
 		}

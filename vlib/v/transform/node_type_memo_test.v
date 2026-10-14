@@ -19,23 +19,23 @@ fn test_node_type_memo_follows_binding_changes_and_rewritten_descendants() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	configure_transformer(mut t, false, false, false, false, false, unsafe { nil })
 	assert t.memo_node_types
-	t.set_var_type('values', '[]int')
-	t.set_var_type('other', '[]bool')
+	t.set_var_type('values', flat.source_type_id('[]int'))
+	t.set_var_type('other', flat.source_type_id('[]bool'))
 	t.begin_node_type_memo(0, a.nodes.len - 1)
-	assert t.node_type(lookup) == 'int'
-	assert t.node_type(lookup) == 'int'
-	t.set_var_type('values', '[]string')
-	assert t.node_type(lookup) == 'string'
+	assert flat.source_type_name(t.node_type(lookup)) == 'int'
+	assert flat.source_type_name(t.node_type(lookup)) == 'int'
+	t.set_var_type('values', flat.source_type_id('[]string'))
+	assert flat.source_type_name(t.node_type(lookup)) == 'string'
 	// Only the leaf changes. Its cached index ancestor must be resolved again.
 	t.set_node_value(int(values), 'other')
-	assert t.node_type(lookup) == 'bool'
+	assert flat.source_type_name(t.node_type(lookup)) == 'bool'
 	t.set_node_value(int(values), 'values')
-	assert t.node_type(lookup) == 'string'
+	assert flat.source_type_name(t.node_type(lookup)) == 'string'
 	saved := t.var_types.clone()
-	t.set_var_type('values', '[]u8')
-	assert t.node_type(lookup) == 'u8'
+	t.set_var_type('values', flat.source_type_id('[]u8'))
+	assert flat.source_type_name(t.node_type(lookup)) == 'u8'
 	t.restore_var_types(saved)
-	assert t.node_type(lookup) == 'string'
+	assert flat.source_type_name(t.node_type(lookup)) == 'string'
 }
 
 fn test_node_type_memo_follows_smartcasts_and_module_context() {
@@ -47,22 +47,22 @@ fn test_node_type_memo_follows_smartcasts_and_module_context() {
 	tc.type_aliases.set('two.Item', 'bool')
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.sum_types.set('Collection', tc.sum_types.value('Collection'))
-	t.set_var_type('value', 'Collection')
+	t.set_var_type('value', flat.source_type_id('Collection'))
 	t.begin_node_type_memo(0, a.nodes.len - 1)
-	assert t.node_type(value) == 'Collection'
+	assert flat.source_type_name(t.node_type(value)) == 'Collection'
 	for variant in ['[]int', 'map[string]bool'] {
 		t.push_smartcast('value', variant, 'Collection')
-		assert t.node_type(value) == variant
+		assert flat.source_type_name(t.node_type(value)) == variant
 		t.pop_smartcast()
-		assert t.node_type(value) == 'Collection'
+		assert flat.source_type_name(t.node_type(value)) == 'Collection'
 	}
 	t.cur_module = 'one'
-	t.set_var_type('value', 'Item')
-	assert t.node_type(value) == 'int'
+	t.set_var_type('value', flat.source_type_id('Item'))
+	assert flat.source_type_name(t.node_type(value)) == 'int'
 	t.cur_module = 'two'
-	assert t.node_type(value) == 'bool'
+	assert flat.source_type_name(t.node_type(value)) == 'bool'
 	t.cur_module = 'one'
-	assert t.node_type(value) == 'int'
+	assert flat.source_type_name(t.node_type(value)) == 'int'
 }
 
 fn test_node_type_memo_epoch_wrap_does_not_restore_old_results() {
@@ -70,16 +70,16 @@ fn test_node_type_memo_epoch_wrap_does_not_restore_old_results() {
 	value := a.add_node(flat.Node{ kind: .ident, value: 'value' })
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.set_var_type('value', 'int')
+	t.set_var_type('value', flat.source_type_id('int'))
 	t.begin_node_type_memo(0, 0)
-	assert t.node_type(value) == 'int'
+	assert flat.source_type_name(t.node_type(value)) == 'int'
 	assert t.node_type_memo.filled[0] == 1
 	t.node_type_memo.generation = u32(0xffffffff)
 	t.clear_node_type_memo()
 	assert t.node_type_memo.generation == 1
 	assert t.node_type_memo.filled[0] == 0
-	t.set_var_type('value', 'bool')
-	assert t.node_type(value) == 'bool'
+	t.set_var_type('value', flat.source_type_id('bool'))
+	assert flat.source_type_name(t.node_type(value)) == 'bool'
 }
 
 fn test_struct_guess_comparison_follows_checked_ids_and_call_annotation_precedence() {

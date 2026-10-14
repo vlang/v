@@ -67,7 +67,7 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 	} else {
 		node.typ_text()
 	}
-	tc.cur_fn_ret_type = tc.parse_type(return_text)
+	tc.cur_fn_ret_type = tc.parse_type(flat.source_type_id(return_text))
 	tc.fn_context.return_type = tc.cur_fn_ret_type
 	w := tc.checked_generic_fn_body(node, int(fn_id), map[string]string{}, true)
 	tc.fn_context = saved_context
@@ -266,7 +266,7 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 				bound[fn_params[k]] = if is_bare_generic_param(text.trim_space()) {
 					unknown_type('generic placeholder `${text.trim_space()}`')
 				} else {
-					tc.parse_type(text)
+					tc.parse_type(flat.source_type_id(text))
 				}
 			}
 		}
@@ -375,7 +375,7 @@ fn (tc &TypeChecker) vls_bind_type_params(text string, actual Type, names []stri
 		arg_type := if is_bare_generic_param(arg_text) {
 			unknown_type('generic placeholder `${arg_text}`')
 		} else {
-			tc.parse_type(arg_text)
+			tc.parse_type(flat.source_type_id(arg_text))
 		}
 		tc.vls_bind_type_params(arg, arg_type, names, mut bound)
 	}

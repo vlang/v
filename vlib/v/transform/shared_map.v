@@ -411,7 +411,7 @@ fn (t &Transformer) shared_map_base(id flat.NodeId) ?flat.NodeId {
 		if node.value.len == 0 {
 			return none
 		}
-		mut typ := t.raw_var_type(node.value)
+		mut typ := flat.source_type_name(t.raw_var_type(node.value))
 		if typ.len == 0 {
 			typ = t.current_module_global_type(node.value) or { '' }
 		}
@@ -435,7 +435,7 @@ fn (t &Transformer) shared_map_base(id flat.NodeId) ?flat.NodeId {
 		typ := t.raw_selector_field_type(id) or {
 			mut base_type := t.original_expr_type(base_id)
 			if base_type.len == 0 {
-				base_type = t.node_type(base_id)
+				base_type = flat.source_type_name(t.node_type(base_id))
 			}
 			t.promoted_field_raw_type(base_type.trim_left('&'), node.value, 0) or { return none }
 		}
@@ -475,5 +475,5 @@ fn (t &Transformer) is_shared_map_type_text(typ string) bool {
 	for clean.starts_with('&') {
 		clean = clean[1..]
 	}
-	return clean.starts_with('map[') || t.normalize_type_alias(clean).starts_with('map[')
+	return clean.starts_with('map[') || flat.source_type_name(t.normalize_type_alias(flat.source_type_id(clean))).starts_with('map[')
 }

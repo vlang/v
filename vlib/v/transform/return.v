@@ -158,7 +158,7 @@ fn (t &Transformer) current_return_multi_count() int {
 	if isnil(t.tc) || t.cur_fn_ret_type_text().len == 0 {
 		return 0
 	}
-	items := multi_return_types_from_type(t.tc.parse_type(t.cur_fn_ret_type_text()), 0) or { return 0 }
+	items := multi_return_types_from_type(t.tc.parse_type(flat.source_type_id(t.cur_fn_ret_type_text())), 0) or { return 0 }
 	return items.len
 }
 
@@ -171,7 +171,7 @@ fn (mut t Transformer) return_values_from_ids(ids []flat.NodeId) []flat.NodeId {
 }
 
 fn (mut t Transformer) transformed_branch_error_return(value_id flat.NodeId, ret_typ string, source_return_id flat.NodeId) ?flat.NodeId {
-	if !t.normalize_type_alias(ret_typ).starts_with('!') {
+	if !flat.source_type_name(t.normalize_type_alias(flat.source_type_id(ret_typ))).starts_with('!') {
 		return none
 	}
 	payload_type := t.optional_base_type(t.qualify_optional_type(ret_typ))
@@ -278,7 +278,7 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) string {
 			node.value
 		}
 		.ident {
-			t.var_type(node.value)
+			flat.source_type_name(t.var_type(node.value))
 		}
 		.call {
 			t.get_call_return_type(id, node)
@@ -291,7 +291,7 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) string {
 		return typ
 	}
 	for typ in [node.typ_text(), t.raw_checker_node_type(id), t.original_expr_type(id),
-		t.node_type(id)] {
+		flat.source_type_name(t.node_type(id))] {
 		if candidate := t.return_ierror_type_candidate(typ) {
 			return candidate
 		}
@@ -362,8 +362,8 @@ fn (mut t Transformer) optional_types_match(a string, b string) bool {
 	if !t.is_optional_type_name(a) || !t.is_optional_type_name(b) || a[0] != b[0] {
 		return false
 	}
-	a_base := t.normalize_type_alias(t.optional_base_type(a))
-	b_base := t.normalize_type_alias(t.optional_base_type(b))
+	a_base := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.optional_base_type(a))))
+	b_base := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.optional_base_type(b))))
 	if a_base == b_base {
 		return true
 	}
@@ -374,8 +374,8 @@ fn (mut t Transformer) optional_types_match(a string, b string) bool {
 	old_tc_module := t.tc.cur_module
 	t.tc.cur_file = t.cur_file
 	t.tc.cur_module = t.cur_module
-	a_type := t.tc.parse_type(a_base)
-	b_type := t.tc.parse_type(b_base)
+	a_type := t.tc.parse_type(flat.source_type_id(a_base))
+	b_type := t.tc.parse_type(flat.source_type_id(b_base))
 	t.tc.cur_file = old_tc_file
 	t.tc.cur_module = old_tc_module
 	if a_type is types.Unknown || b_type is types.Unknown {
@@ -427,10 +427,10 @@ fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.
 	if isnil(t.tc) {
 		return none
 	}
-	actual_types := multi_return_types_from_type(t.tc.parse_type(actual_wrapper), 0) or {
+	actual_types := multi_return_types_from_type(t.tc.parse_type(flat.source_type_id(actual_wrapper)), 0) or {
 		return none
 	}
-	expected_types := multi_return_types_from_type(t.tc.parse_type(expected_wrapper), 0) or {
+	expected_types := multi_return_types_from_type(t.tc.parse_type(flat.source_type_id(expected_wrapper)), 0) or {
 		return none
 	}
 	if actual_types.len != expected_types.len {
@@ -496,14 +496,14 @@ fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 		}
 		// Interface selector calls can have no canonical call name while their
 		// checker annotation still carries the exact Option/Result return type.
-		return t.is_optional_type_name(t.node_type(id))
+		return t.is_optional_type_name(flat.source_type_name(t.node_type(id)))
 	}
 	if node.kind == .ident {
-		typ := t.var_type(node.value)
+		typ := flat.source_type_name(t.var_type(node.value))
 		return t.is_optional_type_name(typ) || t.is_optional_type_name(node.typ_text())
 	}
 	if node.kind in [.selector, .index, .if_expr, .match_stmt, .or_expr] {
-		return t.is_optional_type_name(t.node_type(id))
+		return t.is_optional_type_name(flat.source_type_name(t.node_type(id)))
 	}
 	return t.is_optional_type_name(node.typ_text())
 }
@@ -527,7 +527,7 @@ fn (mut t Transformer) try_expand_forwarded_multi_return(source_return_id flat.N
 	if node.children_count != 1 || isnil(t.tc) || t.is_optional_type_name(t.cur_fn_ret_type_text()) {
 		return none
 	}
-	expected_types := multi_return_types_from_type(t.tc.parse_type(t.cur_fn_ret_type_text()), 0) or {
+	expected_types := multi_return_types_from_type(t.tc.parse_type(flat.source_type_id(t.cur_fn_ret_type_text())), 0) or {
 		return none
 	}
 	value_id := t.a.child(&node, 0)
@@ -631,7 +631,7 @@ fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expec
 	// per-element copy here is not just wasted work — the copy loop rebuilds the
 	// array with cap==len, silently discarding reserved capacity (which broke
 	// the self-host transform arena reserves).
-	if t.normalize_type_alias(t.semantic_type_name(actual_base)) == t.normalize_type_alias(t.semantic_type_name(expected_base)) {
+	if flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.semantic_type_name(actual_base)))) == flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.semantic_type_name(expected_base)))) {
 		return false
 	}
 	if actual_base.is_integer() && expected_base.is_integer() {
@@ -1301,7 +1301,7 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 	}
 	mut ret_val := t.transform_return_child(actual_tail, 0, 1)
 	direct_fn_value := tail_expr_node.kind == .ident && t.is_optional_type_name(ret_typ)
-		&& t.is_fn_pointer_type_name(t.normalize_type_alias(t.optional_base_type(ret_typ)))
+		&& t.is_fn_pointer_type_name(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.optional_base_type(ret_typ)))))
 		&& t.resolved_ident_fn_value(tail_expr, tail_expr_node.value) != none
 	if t.is_optional_type_name(ret_typ) && tail_expr_node.kind != .none_expr
 		&& !t.is_error_call(tail_expr_node) && direct_fn_value {
@@ -1471,13 +1471,13 @@ fn (mut t Transformer) try_expand_return_match(source_return_id flat.NodeId, nod
 	mut actual_expr_id := flat.empty_node
 	if needs_temp {
 		tmp_name := t.new_temp('match')
-		match_type := t.node_type(match_expr_id)
+		match_type := flat.source_type_name(t.node_type(match_expr_id))
 		new_expr := t.transform_expr(match_expr_id)
 		t.drain_pending(mut result)
 		result << t.make_decl_assign_typed(tmp_name, new_expr, match_type)
 		actual_expr_id = t.make_ident(tmp_name)
 		t.set_node_typ(int(actual_expr_id), match_type)
-		t.set_var_type(tmp_name, match_type)
+		t.set_var_type(tmp_name, flat.source_type_id(match_type))
 	} else {
 		actual_expr_id = t.transform_expr(match_expr_id)
 		t.drain_pending(mut result)
