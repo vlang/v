@@ -39,11 +39,12 @@ fn test_host_serve_static_rejects_an_extension_less_file() {
 		os.rmdir_all(root) or {}
 	}
 	mut sh := StaticHandler{}
+	mut rejected := false
 	sh.host_serve_static('cov.example', '/x/plain', os.join_path(root, 'plain')) or {
+		rejected = true
 		assert err.msg() == 'unknown MIME type for file extension "". You can register your MIME type in `app.static_mime_types`'
-		return
 	}
-	assert false, 'an extension-less file must be rejected'
+	assert rejected, 'an extension-less file must be rejected'
 	assert sh.static_files.len == 0
 	assert sh.static_hosts.len == 0
 }

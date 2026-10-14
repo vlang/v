@@ -155,11 +155,7 @@ fn test_a_path_escaping_the_base_folder_is_forbidden() {
 	assert inside.body == 'hello world'
 }
 
-// NOTE: the traversal guard is a string prefix test
-// (`requested_file_path.starts_with(h.params.folder)`), not a boundary test, so
-// a sibling directory whose name begins with the served folder's name passes
-// it. Measured here rather than fixed.
-fn test_the_prefix_guard_also_admits_a_sibling_with_a_shared_name_prefix() {
+fn test_a_sibling_with_a_shared_name_prefix_is_forbidden() {
 	os.rmdir_all(probe_root) or {}
 	os.mkdir_all(probe_root) or { panic(err) }
 	sibling := '${probe_root}_secret'
@@ -171,9 +167,48 @@ fn test_the_prefix_guard_also_admits_a_sibling_with_a_shared_name_prefix() {
 	}
 	folder := os.norm_path(os.real_path(probe_root))
 	mut h := handler(folder, 'index.html', true)
-	r := fetch(mut h, '/../${os.file_name(sibling)}/leak.txt')
+	for parent in ['..', '%2e%2e'] {
+		r := fetch(mut h, '/${parent}/${os.file_name(sibling)}/leak.txt')
+		assert r.status_code == 403
+		assert r.body == '<h1>forbidden</h1>'
+	}
+}
+
+fn test_symlinks_cannot_escape_the_served_folder() {
+	$if windows {
+		return
+	}
+	folder := fixture_folder()
+	sibling := '${folder}_secret'
+	os.mkdir_all(sibling)!
+	os.write_file(os.join_path(sibling, 'leak.txt'), 'leaked')!
+	defer {
+		os.rmdir_all(folder) or {}
+		os.rmdir_all(sibling) or {}
+	}
+	os.symlink(sibling, os.join_path(folder, 'outside'))!
+	os.symlink(os.join_path(folder, 'sub'), os.join_path(folder, 'inside'))!
+	mut h := handler(folder, 'index.html', true)
+	outside := fetch(mut h, '/outside/leak.txt')
+	assert outside.status_code == 403
+	assert outside.body == '<h1>forbidden</h1>'
+	inside := fetch(mut h, '/inside/deep.txt')
+	assert inside.status_code == 200
+	assert inside.body == 'deep'
+}
+
+fn test_serving_the_filesystem_root_preserves_descendant_access() {
+	$if windows {
+		return
+	}
+	folder := fixture_folder()
+	defer {
+		os.rmdir_all(folder) or {}
+	}
+	mut h := handler(os.path_separator, 'index.html', false)
+	r := fetch(mut h, '${folder}/hello.txt')
 	assert r.status_code == 200
-	assert r.body == 'leaked'
+	assert r.body == 'hello world'
 }
 
 // NOTE: the parent-directory cell is emitted as

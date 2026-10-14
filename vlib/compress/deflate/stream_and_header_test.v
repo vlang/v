@@ -298,11 +298,11 @@ fn test_validate_zlib_header_reports_payload_start() {
 fn test_validate_zlib_header_rejects_preset_dictionary() {
 	// 0x78bb satisfies (CMF*256+FLG) % 31 == 0 while setting FDICT.
 	preset := [u8(0x78), 0xbb, 0x03, 0x00, 0x00, 0x00, 0x01]
-	validate_zlib_header(preset) or {
+	if _ := validate_zlib_header(preset) {
+		assert false, 'header should reject a preset dictionary'
+	} else {
 		assert err.msg() == 'invalid zlib stream: preset dictionary not supported'
-		return
 	}
-	assert false
 	decompress(preset) or {
 		assert err.msg() == 'invalid zlib stream: preset dictionary not supported'
 		return

@@ -300,11 +300,11 @@ fn test_universal_tag_type_maps_the_known_numbers() {
 
 fn test_universal_tag_type_rejects_other_classes_and_reserved_numbers() {
 	private_tag := Tag.new(.private, false, 5)!
-	private_tag.universal_tag_type() or {
+	if _ := private_tag.universal_tag_type() {
+		assert false, 'universal_tag_type on a private tag should have failed'
+	} else {
 		assert err.msg() == 'Not universal class type'
-		return
 	}
-	assert false, 'universal_tag_type on a private tag should have failed'
 
 	// 15 sits inside the reserved gap of the universal table.
 	reserved := Tag.new(.universal, false, 15)!
@@ -362,11 +362,11 @@ fn test_is_sequence_of_checks_every_field() {
 // The assertions below record that current behaviour.
 fn test_into_sequence_of_currently_rejects_a_matching_sequence() {
 	seq := Sequence.from_list([Element(Integer.from_int(5)), Element(Integer.from_int(6))])!
-	seq.into_sequence_of[Integer]() or {
+	if _ := seq.into_sequence_of[Integer]() {
+		assert false, 'into_sequence_of[T] on a SequenceOf[T] should have failed on this tree'
+	} else {
 		assert err.msg() == 'This sequence is not SequenceOf[T]'
-		return
 	}
-	assert false, 'into_sequence_of[T] on a SequenceOf[T] should have failed on this tree'
 
 	empty := Sequence.new()!
 	empty.into_sequence_of[Integer]() or {
@@ -399,11 +399,11 @@ fn test_raw_element_inner_element_round_trips_an_explicit_wrapper() {
 fn test_raw_element_inner_element_requires_a_tag_and_a_non_universal_class() {
 	plain := RawElement.new(Tag.new(.private, false, 3)!, [u8(1)])!
 	assert plain.inner_tag() == none
-	plain.inner_element() or {
+	if _ := plain.inner_element() {
+		assert false, 'inner_element without an inner_tag should have failed'
+	} else {
 		assert err.msg() == 'You dont set an inner_tag'
-		return
 	}
-	assert false, 'inner_element without an inner_tag should have failed'
 
 	universal := RawElement.new(Tag.new(.universal, false, 2)!, [u8(1)])!
 	universal.inner_element() or {
@@ -414,11 +414,11 @@ fn test_raw_element_inner_element_requires_a_tag_and_a_non_universal_class() {
 }
 
 fn test_raw_element_new_rejects_a_constructed_universal_tag_that_is_not_a_sequence() {
-	RawElement.new(Tag.new(.universal, true, 4)!, [u8(1)]) or {
+	if _ := RawElement.new(Tag.new(.universal, true, 4)!, [u8(1)]) {
+		assert false, 'RawElement.new with a constructed universal OCTET STRING tag should have failed'
+	} else {
 		assert err.msg() == 'unexpected_tag_value required sequence or set number'
-		return
 	}
-	assert false, 'RawElement.new with a constructed universal OCTET STRING tag should have failed'
 
 	// The same number in primitive form is accepted as a plain raw element.
 	RawElement.new(Tag.new(.universal, false, 4)!, [u8(1)]) or {

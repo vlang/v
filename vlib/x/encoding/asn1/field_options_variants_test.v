@@ -239,11 +239,12 @@ fn test_install_default_rejects_options_without_the_has_default_flag() {
 fn test_install_default_refuses_to_replace_a_value_without_force() {
 	mut fo := FieldOptions.from_string('has_default')!
 	fo.install_default(wrapped_object, false)!
+	mut rejected := false
 	fo.install_default(Utf8String.new('xx')!, false) or {
+		rejected = true
 		assert err.msg() == 'set force to overide'
-		return
 	}
-	assert false, 'a second install_default without force should have failed'
+	assert rejected, 'a second install_default without force should have failed'
 
 	fo.install_default(Utf8String.new('xx')!, true)!
 	installed := fo.default_value or { Element(Null{}) }

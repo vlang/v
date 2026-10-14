@@ -42,11 +42,11 @@ fn test_vfopen_rejects_empty_path_and_missing_file() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	os.vfopen('', 'r') or {
+	if _ := os.vfopen('', 'r') {
+		assert false, 'vfopen("") should have failed'
+	} else {
 		assert err.msg() == 'vfopen called with ""'
-		return
 	}
-	assert false, 'vfopen("") should have failed'
 
 	missing := os.join_path(root, 'missing.bin')
 	os.vfopen(missing, 'r') or {

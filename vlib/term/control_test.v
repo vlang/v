@@ -10,7 +10,7 @@ const capture_marker = 'term-stdout-capture'
 // self-test below detects that case instead of failing every assertion.
 fn capture_stdout(action fn ()) string {
 	flush_stdout()
-	mut capture := os.stdio_capture() or { return '' }
+	mut capture := os.stdio_capture() or { panic(err) }
 	action()
 	flush_stdout()
 	lines, _ := capture.finish()
@@ -18,9 +18,17 @@ fn capture_stdout(action fn ()) string {
 }
 
 fn stdout_is_capturable() bool {
-	return capture_stdout(fn () {
+	capturable := capture_stdout(fn () {
 		print(capture_marker)
 	}) == capture_marker
+	$if windows {
+		if !capturable {
+			eprintln('Skipping terminal output assertion: Windows console output bypasses stdout capture')
+		}
+	} $else {
+		assert capturable, 'stdout capture self-test failed'
+	}
+	return capturable
 }
 
 fn assert_terminal_output(expected string, action fn ()) {

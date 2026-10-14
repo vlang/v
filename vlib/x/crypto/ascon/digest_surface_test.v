@@ -64,11 +64,11 @@ fn test_xof128_rejects_size_above_max_hash_size() {
 	assert max_hash_size == 4096
 
 	short := []u8{len: max_hash_size + 1}
-	xof128(short, max_hash_size + 1) or {
+	if _ := xof128(short, max_hash_size + 1) {
+		assert false, 'xof128 accepted a size above max_hash_size'
+	} else {
 		assert err.msg() == 'xof128: invalid size'
-		return
 	}
-	assert false, 'xof128 accepted a size above max_hash_size'
 
 	at_limit := []u8{len: max_hash_size}
 	out := xof128(at_limit, max_hash_size)!
@@ -83,11 +83,11 @@ fn test_xof128_rejects_size_above_max_hash_size() {
 fn test_xof_constructors_disagree_on_bad_size() {
 	assert max_hash_size == 4096
 
-	new_cxof128(0, 'cs'.bytes()) or {
+	if _ := new_cxof128(0, 'cs'.bytes()) {
+		assert false, 'new_cxof128 accepted size 0'
+	} else {
 		assert err.msg() == 'CXof128: invalid size'
-		return
 	}
-	assert false, 'new_cxof128 accepted size 0'
 
 	new_cxof128(default_xof_size, []u8{len: max_cxof128_cstring + 1}) or {
 		assert err.msg() == 'CXof128: custom string length exceed limit'

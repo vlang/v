@@ -10,7 +10,7 @@ const capture_probe = 'ui-stdout-capture'
 // self-test below detects that case instead of failing every assertion.
 fn with_captured_stdout(action fn ()) string {
 	flush_stdout()
-	mut capture := os.stdio_capture() or { return '' }
+	mut capture := os.stdio_capture() or { panic(err) }
 	action()
 	flush_stdout()
 	lines, _ := capture.finish()
@@ -18,9 +18,17 @@ fn with_captured_stdout(action fn ()) string {
 }
 
 fn stdout_is_capturable() bool {
-	return with_captured_stdout(fn () {
+	capturable := with_captured_stdout(fn () {
 		print(capture_probe)
 	}) == capture_probe
+	$if windows {
+		if !capturable {
+			eprintln('Skipping terminal output assertion: Windows console output bypasses stdout capture')
+		}
+	} $else {
+		assert capturable, 'stdout capture self-test failed'
+	}
+	return capturable
 }
 
 fn test_context_defaults() {
@@ -171,7 +179,7 @@ fn test_flush_writes_the_buffer_and_clears_it() {
 		return
 	}
 	flush_stdout()
-	mut capture := os.stdio_capture() or { return }
+	mut capture := os.stdio_capture() or { panic(err) }
 	ctx.flush()
 	flush_stdout()
 	lines, _ := capture.finish()
@@ -185,7 +193,7 @@ fn test_flush_of_an_empty_buffer_writes_nothing() {
 	}
 	mut ctx := Context{}
 	flush_stdout()
-	mut capture := os.stdio_capture() or { return }
+	mut capture := os.stdio_capture() or { panic(err) }
 	ctx.flush()
 	flush_stdout()
 	lines, _ := capture.finish()
@@ -199,7 +207,7 @@ fn test_set_window_title_writes_an_osc_sequence() {
 	}
 	mut ctx := Context{}
 	flush_stdout()
-	mut capture := os.stdio_capture() or { return }
+	mut capture := os.stdio_capture() or { panic(err) }
 	ctx.set_window_title('v')
 	flush_stdout()
 	lines, _ := capture.finish()
@@ -213,7 +221,7 @@ fn test_set_window_title_writes_nothing_when_the_title_is_unsupported() {
 	mut ctx := Context{}
 	ctx.supports_window_title = false
 	flush_stdout()
-	mut capture := os.stdio_capture() or { return }
+	mut capture := os.stdio_capture() or { panic(err) }
 	ctx.set_window_title('v')
 	flush_stdout()
 	lines, _ := capture.finish()

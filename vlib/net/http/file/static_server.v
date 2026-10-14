@@ -77,7 +77,8 @@ fn (mut h StaticHttpHandler) handle(req http.Request) http.Response {
 	mut uri_path := url.all_after_first('/').all_before('?').trim_right('/')
 	requested_file_path :=
 		os.norm_path(os.real_path(os.join_path_single(h.params.folder, uri_path)))
-	if !requested_file_path.starts_with(h.params.folder) {
+	folder_prefix := h.params.folder.trim_right(os.path_separator) + os.path_separator
+	if requested_file_path != h.params.folder && !requested_file_path.starts_with(folder_prefix) {
 		log.warn('forbidden request; base folder: ${h.params.folder}, requested_file_path: ${requested_file_path}, ')
 		res.set_status(.forbidden)
 		res.body = '<h1>forbidden</h1>'

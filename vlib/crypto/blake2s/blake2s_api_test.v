@@ -358,11 +358,11 @@ fn test_new_digest_accepts_every_size_1_to_32() {
 }
 
 fn test_new_digest_rejects_out_of_range_hash_size() {
-	blake2s.new_digest(0, []u8{}) or {
+	if _ := blake2s.new_digest(0, []u8{}) {
+		assert false, 'hash size 0 was accepted'
+	} else {
 		assert err.msg() == 'Hash size 0 must be between 1 and 32'
-		return
 	}
-	assert false, 'hash size 0 was accepted'
 
 	blake2s.new_digest(33, []u8{}) or {
 		assert err.msg() == 'Hash size 33 must be between 1 and 32'
