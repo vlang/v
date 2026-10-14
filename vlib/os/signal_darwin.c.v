@@ -2,7 +2,6 @@
 module os
 
 #flag -lpthread
-#include <signal.h>
 
 fn C.pthread_self() usize
 
