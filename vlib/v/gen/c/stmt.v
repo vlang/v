@@ -7572,26 +7572,32 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			if node.typ.len > 0 {
 				decl_type := g.tc.parse_resolution_type(node.typ)
-				if _ := array_like_type(decl_type) {
-					rhs_v_type = decl_type
-				} else if _ := array_fixed_type(decl_type) {
-					rhs_v_type = decl_type
+				if !g.type_contains_generic_placeholder(decl_type) {
+					if _ := array_like_type(decl_type) {
+						rhs_v_type = decl_type
+					} else if _ := array_fixed_type(decl_type) {
+						rhs_v_type = decl_type
+					}
 				}
 			}
 			if lhs.typ.len > 0 {
 				lhs_decl_type := g.parse_node_type(&lhs)
-				if _ := array_like_type(lhs_decl_type) {
-					rhs_v_type = lhs_decl_type
-				} else if _ := array_fixed_type(lhs_decl_type) {
-					rhs_v_type = lhs_decl_type
+				if !g.type_contains_generic_placeholder(lhs_decl_type) {
+					if _ := array_like_type(lhs_decl_type) {
+						rhs_v_type = lhs_decl_type
+					} else if _ := array_fixed_type(lhs_decl_type) {
+						rhs_v_type = lhs_decl_type
+					}
 				}
 			}
 			if lhs.kind == .ident {
 				lhs_type := g.usable_expr_type(lhs_id)
-				if _ := array_like_type(lhs_type) {
-					rhs_v_type = lhs_type
-				} else if _ := array_fixed_type(lhs_type) {
-					rhs_v_type = lhs_type
+				if !g.type_contains_generic_placeholder(lhs_type) {
+					if _ := array_like_type(lhs_type) {
+						rhs_v_type = lhs_type
+					} else if _ := array_fixed_type(lhs_type) {
+						rhs_v_type = lhs_type
+					}
 				}
 			}
 			if arr := array_like_type(rhs_v_type) {
