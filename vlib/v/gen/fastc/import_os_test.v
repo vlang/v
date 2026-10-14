@@ -151,3 +151,23 @@ fn main() {
 		assert build.output.contains('`nil` outside an `unsafe` block'), '${name}: ${build.output}'
 	}
 }
+
+fn test_fastc_callback_nil_arguments_match_the_c_backend() {
+	$if !macos && !linux {
+		return
+	}
+	root, fastc_build := fastc_build_directory_program('nil_callback_argument', nil_program_prelude + '
+fn accept_callback(callback fn ()) bool { return isnil(callback) }
+fn main() { println(accept_callback(nil)) }
+')
+	defer { os.rmdir_all(root) or {} }
+	assert fastc_build.exit_code == 0, fastc_build.output
+	for backend in ['c', 'fastc'] {
+		program := os.join_path(root, 'callback_${backend}')
+		build := cmdexec.run(@VEXE, ['-b', backend, '-gc', 'none', '-nocache', '-o', program, root])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'true', run.output
+	}
+}
