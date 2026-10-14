@@ -4411,7 +4411,8 @@ fn (g &Gen) struct_body_start(n &flat.Node) int {
 		return -1
 	}
 	mut cursor := n.pos.offset
-	for comment in g.comments {
+	for i := g.comment_i; i < g.comments.len; i++ {
+		comment := g.comments[i]
 		if comment.pos.offset >= n.pos.end {
 			break
 		}

@@ -2694,6 +2694,26 @@ fn test_formatter_normalizes_crlf_in_directive_crossing_field_prefixes() {
 	}
 }
 
+fn test_formatter_formats_doc_commented_structs_with_pending_header_comments() {
+	mut declarations := []string{cap: 256}
+	for i in 0 .. 256 {
+		declarations << '// Empty${i} is documented.\nstruct Empty${i} {}'
+	}
+	prefix := declarations.join('\n\n') + '\n\n'
+	source := prefix + '// Last is documented.\nstruct /* { header } */ Last {\n\t@[required]\n\t// vfmt off\n\ta   int\n\t// vfmt on\n\tc int @[c]\n}\n'
+	for line_ending in ['\n', '\r\n'] {
+		out := vfmt('doc_commented_structs_header_comments', source.replace('\n', line_ending))
+		assert out.starts_with(prefix), out
+		assert out.count('// Last is documented.') == 1, out
+		assert out.count('/* { header } */') == 1, out
+		assert out.count('struct Last {') == 1, out
+		assert out.count('@[required]') == 1, out
+		assert out.contains('\n\t@[required]\n\t// vfmt off\n\ta   int\n'), out
+		assert reparse_diagnostics('doc_commented_structs_header_comments', out) == 0
+		assert vfmt('doc_commented_structs_header_comments_twice', out) == out
+	}
+}
+
 fn test_formatter_preserves_first_field_directive_attributes_with_header_comments() {
 	source := '@[heap]\nstruct /* { header } */ First {\n\t@[required]\n\t// vfmt off\n\ta   int\n\t// vfmt on\n\tc int @[c]\n}\n'
 	out := vfmt('struct_first_field_directives_header_comment', source)
