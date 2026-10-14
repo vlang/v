@@ -4,6 +4,8 @@
 command line arguments, reading/writing files, listing folders,
 handling processes etc.
 
+See [Named pipes](fifo.md) for client/server FIFO endpoints.
+
 On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
 application data.
 
