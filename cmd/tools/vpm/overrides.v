@@ -86,24 +86,6 @@ fn override_constraint_matches(o Override) bool {
 	return v.satisfies(o.constraint)
 }
 
-// build_graph reads the dependencies of every module and returns a map from a module
-// name to the names it depends on. This is the graph the selector form of an override
-// needs: `vsl>c: 1.0.2` can only be applied where vsl actually asks for c.
-fn build_graph(modules map[string]Module) map[string][]string {
-	mut graph := map[string][]string{}
-	for _, m in modules {
-		mut deps := []string{}
-		for dep in m.manifest.dependencies {
-			name := dep.all_before('@').trim_space()
-			if name != '' {
-				deps << name
-			}
-		}
-		graph[m.name] = deps
-	}
-	return graph
-}
-
 // apply_overrides adjusts parsed graph metadata for callers that display a graph.
 // Installation resolves overrides before cloning and does not use this helper to
 // change the version recorded for already selected sources.

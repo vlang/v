@@ -9,6 +9,23 @@ fn test_const() {
 	assert u == 1 // make sure this works without the cast
 }
 
+const neg_wide_literal = i64(-3000000000)
+
+// Negated literals above INT_MAX must keep their sign: MSVC types the unsuffixed
+// decimal (and hex/octal) spelling as unsigned long, which wraps when negated.
+fn test_negative_literals_above_int_max() {
+	// Compare through str(): an `==` against another negative literal would share the bug.
+	assert i64(-2147483648).str() == '-2147483648'
+	assert i64(-2147483649).str() == '-2147483649'
+	assert i64(-3000000000).str() == '-3000000000'
+	assert i64(-0x80000000).str() == '-2147483648'
+	assert i64(-0o20000000000).str() == '-2147483648'
+	assert i64(-2147483648) < 0
+	assert neg_wide_literal.str() == '-3000000000'
+	assert i64(-(2147483648)).str() == '-2147483648'
+	assert i64(-(0x80000000)).str() == '-2147483648'
+}
+
 fn test_str_methods() {
 	assert i8(1).str() == '1'
 	assert i8(-1).str() == '-1'
