@@ -441,12 +441,16 @@ pub fn (bf BitField) pos(needle BitField) int {
 }
 
 // slice returns a sub-array of bits between `_start` (included) and `_end` (excluded).
+// A negative start is clamped to zero, and an end beyond the size is clamped to the size.
 pub fn (bf BitField) slice(_start int, _end int) BitField {
 	// boundary checks
 	mut start := _start
 	mut end := _end
 	if end > bf.size {
 		end = bf.size // or panic?
+	}
+	if start < 0 {
+		start = 0 // or panic?
 	}
 	if start > end {
 		start = end // or panic?

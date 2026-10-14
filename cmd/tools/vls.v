@@ -351,9 +351,17 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 
 	upd.is_help = fp.bool('help', `h`, false, "Show this updater's help text. To show the help text for the language server, pass the `--ls` flag before it.")
 
-	if !upd.is_help && !upd.pass_to_ls {
+	if !upd.is_help && !upd.pass_to_ls && !upd.is_check {
 		// automatically set the cli launcher to language server mode
 		upd.pass_to_ls = true
+	}
+
+	if upd.is_check && upd.ls_path == '' {
+		if ls_path := upd.find_ls_path() {
+			if os.is_executable(ls_path) {
+				upd.ls_path = ls_path
+			}
+		}
 	}
 
 	if upd.pass_to_ls {
