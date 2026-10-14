@@ -3421,6 +3421,11 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 	if expected_type.ends_with('*') && actual_type == 'voidptr' && rendered.trim_space() == 'NULL' {
 		return 'NULL'
 	}
+	if expected_type.ends_with('*') && actual_type == 'voidptr' {
+		// An erased pointer is already an address, including an explicit cast
+		// in a C call. Taking its address would produce an invalid pointer rvalue.
+		return '((${expected_type})(${rendered}))'
+	}
 	if expected_type.ends_with('*') && fastc_expression_is_zero(tokens) {
 		return 'NULL'
 	}
@@ -3507,7 +3512,7 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 		}
 	}
 	return FastcRenderedExpression{
-		source: '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${normalized_element}), (${normalized_element}[]){${rendered_items.join(',')}}))'
+		source: g.dynamic_array_literal_source(array_type, normalized_element, rendered_items)
 		typ:    array_type
 	}
 }

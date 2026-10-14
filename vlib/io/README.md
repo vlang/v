@@ -13,3 +13,11 @@ on underflow, including negative or oversized byte counts, without moving the cu
 bytes, and `clear()` discards all bytes. `remaining()` counts unread bytes; `len()` counts
 all buffered bytes. There is no separate limit or write mode: puts always append and
 reads consume the region from the cursor through the current length.
+
+`limited_reader` and `section_reader` cap the remaining bytes without changing the caller's
+buffer length. `tee_reader` mirrors read bytes and reports write errors or short writes.
+`multi_reader` advances only at `Eof`; it preserves other errors and zero-byte reads from the
+current reader. Reader combinators reject negative counts or counts larger than the buffer.
+`read_full` fills the buffer, propagates reader errors, and errors on a zero-byte read.
+`read_byte` reads one byte. `BufferedReader.unread_byte` permits one undo of a successful
+buffered `read_byte`; another read operation, peek, or failed read clears that permission.
