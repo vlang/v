@@ -223,7 +223,7 @@ fn test_parse_unquoted_values_preserve_case_and_class_lookup() {
 		'data-x':  'A=B'
 		'checked': ''
 	}
-	assert dom.get_tag_by_class_name('Hero')?.attributes['id'] == 'Mixed'
+	assert dom.get_tags_by_class_name('Hero')[0].attributes['id'] == 'Mixed'
 }
 
 fn test_parse_unquoted_values_separated_by_html_whitespace() {
