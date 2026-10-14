@@ -142,6 +142,10 @@ fn main() {
 		eprintln('unknown option `-usecache`; caching is enabled by default, use `-nocache` to disable it')
 		exit(1)
 	}
+	if selected_backend(compiler_args_before_program(option_args), false) == 'native' {
+		eprintln(pref.native_backend_replacement_message)
+		exit(1)
+	}
 	// TinyCC is not a -prod compiler. Refuse the pair before any compiler starts, including the
 	// compatibility compiler that `-old-compiler` selects.
 	if command !in external_commands
@@ -1060,6 +1064,10 @@ fn v1_fallback_compiler_prefix_len(args []string) int {
 }
 
 fn v1_fallback_selected_backend(args []string) string {
+	return selected_backend(args, true)
+}
+
+fn selected_backend(args []string, include_compile_backends bool) string {
 	mut backend := 'c'
 	mut backend_value_follows := false
 	mut option_value_follows := false
@@ -1073,11 +1081,15 @@ fn v1_fallback_selected_backend(args []string) string {
 			option_value_follows = false
 			continue
 		}
-		if arg in ['-b', '-backend', '-compile-backend', '--compile-backend'] {
+		if arg in ['-b', '-backend']
+			|| (include_compile_backends && arg in ['-compile-backend', '--compile-backend']) {
 			backend_value_follows = true
 			continue
 		}
 		for option in ['-b=', '-backend=', '-compile-backend=', '--compile-backend='] {
+			if !include_compile_backends && option in ['-compile-backend=', '--compile-backend='] {
+				continue
+			}
 			if arg.starts_with(option) {
 				backend = arg.all_after(option)
 				break
