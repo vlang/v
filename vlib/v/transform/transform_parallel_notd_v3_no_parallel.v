@@ -399,7 +399,7 @@ fn transform_chunk_thread(arg voidptr) voidptr {
 	items := unsafe { &[]FnWorkItem(a.items_ptr) }
 	if w.scope_parallel_workers && w.retain_worker_results {
 		batches := if w.building_v { scoped_selfhost_transform_batches } else { 1 }
-		w.transform_scoped_helper_batches(*items, batches)
+		w.transform_scoped_helper_batches(*items, batches, false)
 	} else {
 		w.transform_pure_items_serial(*items)
 	}
@@ -441,7 +441,7 @@ fn shared_chunk_thread(arg voidptr) voidptr {
 	items := unsafe { &[]FnWorkItem(a.items_ptr) }
 	mut csw := time.new_stopwatch()
 	if w.scope_parallel_workers && (!a.is_master || w.retain_worker_results) {
-		w.transform_scoped_helper_batches(*items, shared_helper_batch_count(*items, w.building_v))
+		w.transform_scoped_helper_batches(*items, shared_helper_batch_count(*items, w.building_v), false)
 	} else {
 		w.transform_pure_items_serial(*items)
 	}
@@ -1547,6 +1547,9 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		w.generic_fn_decls_cache = decls.clone()
 		w.generic_fn_decls_ready = true
 		w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
+		w.generic_decl_name_tails = t.generic_decl_name_tails.clone()
+		w.generic_static_method_names = t.generic_static_method_names.clone()
+		w.generic_decl_name_tails_count = t.generic_decl_name_tails_count
 		args[ci] = MonomorphChunkArgs{
 			worker:        voidptr(w)
 			claims:        claims
@@ -1793,6 +1796,9 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 	// Classify array constants in the parent arena before forking, so every
 	// batch shares one read-only cache instead of rescanning the AST.
 	t.precompute_const_array_fixed_storage()
+	// Serial batches need the same immutable reflected-loop index as parallel
+	// workers; otherwise each batch rescans the entire growing AST for JSON fields.
+	t.prepare_comptime_reflected_for_roles()
 	// A scoped transformer can itself be a fork whose signature tables still
 	// point at its parent's read-only base. Detach before pre-registering the
 	// batch, rather than mutating storage another worker may be reading.
@@ -1814,8 +1820,16 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		base_children := t.a.children.len
 		node_headroom := (end - start) * 8192 + 262144
 		child_headroom := (end - start) * 10240 + 393216
-		t.a.nodes.ensure_cap(base_nodes + node_headroom)
-		t.a.children.ensure_cap(base_children + child_headroom)
+		if t.a.nodes.cap < base_nodes + node_headroom
+			|| t.a.children.cap < base_children + child_headroom {
+			// The tree outlives this stage, so its storage grows in the arena that
+			// holds it. Grown in the stage arena, the whole tree would have to be
+			// copied out again before that arena is released.
+			parent_state := transform_stage_scope_suspend(t.stage_scope)
+			t.a.nodes.ensure_cap(base_nodes + node_headroom)
+			t.a.children.ensure_cap(base_children + child_headroom)
+			transform_stage_scope_resume(t.stage_scope, parent_state)
+		}
 		for spec in specs[start..end] {
 			if !t.generic_specialization_registered(spec.decl, spec.args) {
 				value := specialized_generic_fn_value(spec.decl.node.value, spec.args)
@@ -1840,6 +1854,9 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		w.generic_fn_decls_cache = decls.clone()
 		w.generic_fn_decls_ready = true
 		w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
+		w.generic_decl_name_tails = t.generic_decl_name_tails.clone()
+		w.generic_static_method_names = t.generic_static_method_names.clone()
+		w.generic_decl_name_tails_count = t.generic_decl_name_tails_count
 		w.parallel_monomorph_worker = true
 		w.generic_signatures_pre_registered = false
 		w.defer_nested_generic_emissions = true
@@ -1933,7 +1950,18 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		}
 		if t.stage_scope != unsafe { nil } {
 			parent_state := transform_stage_scope_suspend(t.stage_scope)
+			// A batch leaves its texts in a few nodes. A node without a payload
+			// whose texts both lie outside the addresses of the batch arena owns
+			// nothing there, which two comparisons tell.
+			scope_lo, scope_hi := transform_scope_address_range(scope)
 			for idx in 0 .. t.a.nodes.len {
+				node := unsafe { &t.a.nodes[idx] }
+				value_address := usize(node.value.str)
+				type_address := usize(node.typ.str)
+				if node.payload == 0 && (value_address < scope_lo || value_address >= scope_hi)
+					&& (type_address < scope_lo || type_address >= scope_hi) {
+					continue
+				}
 				t.clone_scoped_worker_node(idx, scope)
 			}
 			transform_stage_scope_resume(t.stage_scope, parent_state)
@@ -2206,11 +2234,21 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	if old_params.len == 0 {
 		return
 	}
+	old_constraints := node.generic_constraints()
 	mut needs_owned_params := transform_scope_owns(scope, node.payload_ptr())
 		|| transform_scope_owns(scope, old_params.data)
+		|| (old_constraints.len > 0 && transform_scope_owns(scope, old_constraints.data))
 	if !needs_owned_params {
 		for param in old_params {
 			if param.len > 0 && transform_scope_owns(scope, param.str) {
+				needs_owned_params = true
+				break
+			}
+		}
+	}
+	if !needs_owned_params {
+		for constraint in old_constraints {
+			if constraint.len > 0 && transform_scope_owns(scope, constraint.str) {
 				needs_owned_params = true
 				break
 			}
@@ -2228,7 +2266,15 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 			params << param
 		}
 	}
-	node.set_generic_params(params)
+	mut constraints := []string{cap: old_constraints.len}
+	for constraint in old_constraints {
+		if constraint.len > 0 && transform_scope_owns(scope, constraint.str) {
+			constraints << t.promote_scoped_result_text(constraint)
+		} else {
+			constraints << constraint
+		}
+	}
+	node.set_generic_params_and_constraints(params, constraints)
 	transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
 }
 
@@ -2342,24 +2388,17 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		t.end_promote_text_window()
 	}
 	t.merge_worker_signatures(batch)
-	if t.skip_generics {
-		// Non-generic workers mutate only newly appended nodes and slots recorded by
-		// the setter log. This avoids a full, growing-AST scan after every batch.
-		for idx in new_node_start .. batch.a.nodes.len {
-			t.promote_scoped_node_to_current(idx, scope)
-		}
-		for idx in batch.scoped_owned_base_nodes.keys() {
-			t.promote_scoped_node_to_current(idx, scope)
-		}
-		for idx in batch.scoped_owned_base_log {
-			t.promote_scoped_node_to_current(int(idx), scope)
-		}
-	} else {
-		// Generic lowering can rewrite nodes reached indirectly through late calls.
-		// Keep the exhaustive fallback for those transforms.
-		for idx in 0 .. batch.a.nodes.len {
-			t.promote_scoped_node_to_current(idx, scope)
-		}
+	// Setters record writes to every pre-existing node, including nodes reached
+	// indirectly by generic lowering. Publish those and the appended region;
+	// scanning the growing AST after each batch makes publication quadratic.
+	for idx in new_node_start .. batch.a.nodes.len {
+		t.promote_scoped_node_to_current(idx, scope)
+	}
+	for idx in batch.scoped_owned_base_nodes.keys() {
+		t.promote_scoped_node_to_current(idx, scope)
+	}
+	for idx in batch.scoped_owned_base_log {
+		t.promote_scoped_node_to_current(int(idx), scope)
 	}
 	for idx in batch.scoped_owned_base_nodes.keys() {
 		t.scoped_owned_base_log << flat.NodeId(idx)
@@ -2379,6 +2418,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		if name !in t.sum_eq_types {
 			t.sum_eq_types[t.promote_scoped_result_text(name)] = SumEqRequest{
 				sum_name:      t.promote_scoped_result_text(req.sum_name)
+				struct_name:   t.promote_scoped_result_text(req.struct_name)
 				module:        t.promote_scoped_result_text(req.module)
 				file:          t.promote_scoped_result_text(req.file)
 				helper_module: t.promote_scoped_result_text(req.helper_module)
@@ -2458,7 +2498,9 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 // transform_scoped_helper_batches keeps one worker-pool dispatch but bounds
 // scratch lifetime within each helper. A fresh Transformer/TypeChecker fork per
 // batch prevents caches from retaining pointers into the released arena.
-fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_batches int) {
+// `alone` says that no other helper runs batches at the same time.
+fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_batches int, alone bool) {
+	_ = t.cached_generic_fn_decls()
 	t.retain_current_worker_scope_all()
 	// Only helper accumulators use this arena. The master continues using the
 	// stage arena because its semantic results survive through code generation.
@@ -2487,7 +2529,13 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 	t.call_param_types_decl_shared = true
 	// Batches reuse one scratch arena: each batch's results are published into
 	// longer-lived storage before the next batch starts, so the arena is rewound
-	// instead of being freed and faulted in again for every batch.
+	// instead of being freed and faulted in again for every batch. With helpers
+	// running beside this one only a floor stays mapped.
+	keep_bytes := if alone {
+		transform_sole_batch_arena_keep_bytes
+	} else {
+		transform_batch_arena_keep_bytes
+	}
 	mut scratch_scope := unsafe { nil }
 	mut start := 0
 	mut batch_idx := 0
@@ -2503,7 +2551,14 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		spec_nodes_len := t.a.specialized_fn_nodes.len
 		spec_modules_len := t.a.specialized_fn_modules.len
 		spec_files_len := t.a.specialized_fn_files.len
-		if scratch_scope == unsafe { nil } || !transform_worker_scope_reenter(scratch_scope) {
+		if t.merge_scratch_scope == unsafe { nil } {
+			// The stage arena is current here and outlives every batch checker. An
+			// earlier batch may have published signatures since the last list.
+			t.tc.refresh_transform_static_method_names()
+			t.refresh_alias_receiver_fns()
+		}
+		if scratch_scope == unsafe { nil }
+			|| !transform_worker_scope_reenter(scratch_scope, keep_bytes) {
 			transform_worker_scope_free(scratch_scope)
 			scratch_scope = transform_worker_scope_begin(true)
 		}
@@ -2540,6 +2595,8 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		batch_idx++
 	}
 	transform_worker_scope_free(scratch_scope)
+	// The checker outlives the stage arena that holds its list of static methods.
+	t.tc.forget_transform_static_method_names()
 	// AST payloads outlive the helper. Merge bookkeeping is released after join.
 	transform_worker_scope_leave(t.merge_scratch_scope)
 	t.worker_scope = unsafe { nil }
@@ -2614,6 +2671,9 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 			idx := candidates[ci].idx
 			if idx >= 0 && idx < t.transformed_fns.len {
 				t.transformed_fns[idx] = true
+			}
+			if idx >= 0 && idx < t.lowered_fn_bodies.len {
+				t.lowered_fn_bodies[idx] = true
 			}
 			t.cur_file = candidates[ci].file
 			t.cur_module = candidates[ci].module
@@ -2690,6 +2750,7 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 // threads when there is enough work, otherwise serially. Returns whether threads
 // were actually used.
 fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int, base_children int) bool {
+	_ = t.cached_generic_fn_decls()
 
 	// Generic body lowering can discover signatures, so generic builds use the
 	// cloned-worker path below. Skip-generic builds, including self-hosts, can use
@@ -2707,7 +2768,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// function's temporary allocations until the entire stage finishes.
 		if t.scope_parallel_workers && t.retain_worker_results {
 			t.prepare_parallel_call_param_types()
-			t.transform_scoped_helper_batches(items, scoped_transform_batches)
+			t.transform_scoped_helper_batches(items, scoped_transform_batches, true)
 		} else {
 			t.transform_pure_items_serial(items)
 		}
@@ -3301,6 +3362,7 @@ struct LateScanChunkArgs {
 	cands_ptr       voidptr // &[]LateFnCandidate
 	used            &map[string]bool = unsafe { nil }
 	candidate_names &map[string]bool = unsafe { nil }
+	gate            &LateScanGate    = unsafe { nil }
 	results_ptr     voidptr // &[][]string
 	index           int
 	start           int
@@ -3313,7 +3375,7 @@ fn late_scan_chunk_thread(arg voidptr) voidptr {
 	mut w := unsafe { &Transformer(args.worker) }
 	cands := unsafe { &[]LateFnCandidate(args.cands_ptr) }
 	mut results := unsafe { &[][]string(args.results_ptr) }
-	res := w.scan_late_call_names_range(*cands, args.used, args.candidate_names, args.start, args.end)
+	res := w.scan_late_call_names_range(*cands, args.used, args.candidate_names, args.gate, args.start, args.end)
 	unsafe {
 		(*results)[args.index] = res
 	}
@@ -3326,8 +3388,9 @@ fn late_scan_chunk_thread(arg voidptr) voidptr {
 // results are concatenated in range order. The downstream late-work queue
 // deduplicates matching names.
 fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, used &map[string]bool, candidate_names &map[string]bool) []string {
+	gate := t.new_late_scan_gate(candidate_names)
 	if !t.parallel_enabled {
-		return t.scan_late_call_names_range(cands, used, candidate_names, 0, cands.len)
+		return t.scan_late_call_names_range(cands, used, candidate_names, gate, 0, cands.len)
 	}
 	// The scan clones no ASTs (workers share the merged AST read-only), so it
 	// is not bound by the clone-memory ceiling of the transform workers.
@@ -3342,7 +3405,7 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 		n_jobs = cands.len
 	}
 	if cands.len < 256 || n_jobs <= 1 {
-		return t.scan_late_call_names_range(cands, used, candidate_names, 0, cands.len)
+		return t.scan_late_call_names_range(cands, used, candidate_names, gate, 0, cands.len)
 	}
 	t.tc.freeze_type_cache_for_forks()
 	bounds := late_scan_chunk_bounds(t.a, cands, n_jobs)
@@ -3355,6 +3418,7 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 		cands_ptr:       unsafe { voidptr(&cands) }
 		used:            unsafe { used }
 		candidate_names: unsafe { candidate_names }
+		gate:            gate
 		results_ptr:     unsafe { voidptr(&results) }
 		index:           0
 		start:           bounds[0]
@@ -3372,6 +3436,7 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 			cands_ptr:       unsafe { voidptr(&cands) }
 			used:            unsafe { used }
 			candidate_names: unsafe { candidate_names }
+			gate:            gate
 			results_ptr:     unsafe { voidptr(&results) }
 			index:           ci + 1
 			start:           bounds[ci + 1]

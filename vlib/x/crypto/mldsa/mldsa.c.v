@@ -26,11 +26,14 @@ module mldsa
 #flag openbsd -L/usr/local/lib/eopenssl35 -Wl,-rpath,/usr/local/lib/eopenssl35
 
 // Installed through choco:
-#flag windows -IC:/Program Files/OpenSSL-Win64/include
-#flag windows -LC:/Program Files/OpenSSL-Win64/lib/VC/x64/MD
+// The paths contain a space, so they must be quoted: unquoted, the compiler
+// splits `C:/Program` from `Files/OpenSSL-Win64/include` and hands the second
+// half to the linker as an input file.
+#flag windows -I"C:/Program Files/OpenSSL-Win64/include"
+#flag windows -L"C:/Program Files/OpenSSL-Win64/lib/VC/x64/MD"
 // Installed on the CI:
-#flag windows -IC:/Program Files/OpenSSL/include
-#flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
+#flag windows -I"C:/Program Files/OpenSSL/include"
+#flag windows -L"C:/Program Files/OpenSSL/lib/VC/x64/MD"
 #flag windows -l libcrypto
 
 #include <openssl/obj_mac.h>

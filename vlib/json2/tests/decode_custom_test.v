@@ -82,7 +82,7 @@ fn test_custom() {
 
 fn test_null() {
 	assert json.decode[json.Any]('null]')! == json.Any(json.null)
-	assert json.decode[json.Any]('{"hi": 90, "bye": ["lol", -1, null]}')!.str() == '{"hi":90,"bye":["lol",-1,null]}'
+	assert json.decode[json.Any]('{"hi": 90, "bye": ["lol", -1, null]}')!.str() == '{"bye":["lol",-1,null],"hi":90}'
 }
 
 fn test_big() {
