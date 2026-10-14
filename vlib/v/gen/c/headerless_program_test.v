@@ -65,7 +65,8 @@ fn test_posix_hello_world_c_has_no_includes() {
 		assert run.exit_code == 0, run.output
 		assert run.output == 'Hello, World!\n', run.output
 	}
-	for target in ['linux', 'macos', 'freebsd'] {
+	for target in ['linux', 'macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku',
+		'qnx', 'serenity', 'termux', 'wasm32_emscripten', 'windows'] {
 		generated := cmdexec.run(@VEXE, ['-nocache', '-os', target, '-o', c_file, source])
 		assert generated.exit_code == 0, generated.output
 		assert !os.read_file(c_file)!.contains('#include'), target
@@ -211,8 +212,8 @@ fn main() {
 	assert run.output == 'OK\n', run.output
 }
 
-fn test_macos_self_c_has_no_include_directives() {
-	$if !macos {
+fn test_self_c_has_no_include_directives() {
+	$if !(macos || linux || windows || freebsd || openbsd || dragonfly || android || termux || ios) || freestanding {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'headerless_self_${os.getpid()}')
@@ -223,7 +224,9 @@ fn test_macos_self_c_has_no_include_directives() {
 		'fastc', '-o', c_file, os.join_path(@VEXEROOT, 'cmd', 'v')])
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(c_file)!
-	assert code.contains('DIR* fdopendir('), 'the CLI needs the pointer-returning POSIX binding'
+	$if !windows {
+		assert code.contains('DIR* fdopendir('), 'the CLI needs the pointer-returning POSIX binding'
+	}
 	for line in code.split_into_lines() {
 		// Compiler string literals still contain text used to generate other C files.
 		assert !line.trim_space().starts_with('#include'), line
