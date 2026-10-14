@@ -2666,6 +2666,110 @@ fn test_formatter_formats_leading_attributes_after_completed_directives() {
 	}
 }
 
+fn test_formatter_preserves_first_field_attributes_crossing_directives() {
+	for attribute in ['@[required]', "@[json: 'value']"] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for ending in ['\t// vfmt on\n\tc int @[c]\n}\n', '}\n'] {
+				source := 'struct First {\n\t${attribute}\n\t// vfmt off\n\t${declaration}\n${ending}'
+				out := vfmt('struct_first_field_attribute_directives', source)
+				assert out == source, out
+				assert out.count(attribute) == 1, out
+				assert vfmt('struct_first_field_attribute_directives_twice', out) == out
+			}
+		}
+	}
+}
+
+fn test_formatter_normalizes_crlf_in_directive_crossing_field_prefixes() {
+	for preceding_field in ['', '\tz int\n'] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for ending in ['\t// vfmt on\n\tc int @[c]\n}\n', '}\n'] {
+				source := 'struct First {\n${preceding_field}\t@[required]\n\t// vfmt off\n\t${declaration}\n${ending}'
+				out := vfmt('struct_field_directive_crlf_prefix', source.replace('\n', '\r\n'))
+				assert out == source, out
+				assert !out.contains('\r'), out
+				assert vfmt('struct_field_directive_crlf_prefix_twice', out) == out
+			}
+		}
+	}
+}
+
+fn test_formatter_formats_doc_commented_structs_with_pending_header_comments() {
+	mut declarations := []string{cap: 256}
+	for i in 0 .. 256 {
+		declarations << '// Empty${i} is documented.\nstruct Empty${i} {}'
+	}
+	prefix := declarations.join('\n\n') + '\n\n'
+	source := prefix + '// Last is documented.\nstruct /* { header } */ Last {\n\t@[required]\n\t// vfmt off\n\ta   int\n\t// vfmt on\n\tc int @[c]\n}\n'
+	for line_ending in ['\n', '\r\n'] {
+		out := vfmt('doc_commented_structs_header_comments', source.replace('\n', line_ending))
+		assert out.starts_with(prefix), out
+		assert out.count('// Last is documented.') == 1, out
+		assert out.count('/* { header } */') == 1, out
+		assert out.count('struct Last {') == 1, out
+		assert out.count('@[required]') == 1, out
+		assert out.contains('\n\t@[required]\n\t// vfmt off\n\ta   int\n'), out
+		assert reparse_diagnostics('doc_commented_structs_header_comments', out) == 0
+		assert vfmt('doc_commented_structs_header_comments_twice', out) == out
+	}
+}
+
+fn test_formatter_preserves_first_field_directive_attributes_with_header_comments() {
+	source := '@[heap]\nstruct /* { header } */ First {\n\t@[required]\n\t// vfmt off\n\ta   int\n\t// vfmt on\n\tc int @[c]\n}\n'
+	out := vfmt('struct_first_field_directives_header_comment', source)
+	assert out.count('/* { header } */') == 1, out
+	assert out.contains('\n\t@[required]\n\t// vfmt off\n\ta   int\n'), out
+	assert out.count('@[heap]') == 1, out
+	assert out.count('struct First {') == 1, out
+	assert vfmt('struct_first_field_directives_header_comment_twice', out) == out
+}
+
+fn test_formatter_preserves_directive_attributes_after_comptime_members() {
+	for attribute in ['@[required]', "@[json: 'value']"] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for ending in ['\t// vfmt on\n\tc int @[c]\n}\n', '}\n'] {
+				source := 'struct After {\n\t\$if linux {\n\t}\n\t${attribute}\n\t// vfmt off\n\t${declaration}\n${ending}'
+				for line_ending in ['\n', '\r\n'] {
+					out := vfmt('struct_directive_attrs_after_comptime', source.replace('\n',
+						line_ending))
+					assert out == source, out
+					assert out.count(attribute) == 1, out
+					assert vfmt('struct_directive_attrs_after_comptime_twice', out) == out
+				}
+			}
+		}
+	}
+}
+
+fn test_formatter_keeps_header_line_comments_separate_from_directive_attributes() {
+	for header in ['struct First\n\t// header\n{', 'struct First // header\n{',
+		'struct // header\nFirst {'] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for attribute_prefix in [' @[required]\n', '\n\t@[required]\n'] {
+				source := '${header}${attribute_prefix}\t// vfmt off\n\t${declaration}\n\t// vfmt on\n\tc int @[c]\n}\n'
+				for line_ending in ['\n', '\r\n'] {
+					out := vfmt('struct_header_line_comment_directive_attrs', source.replace('\n',
+						line_ending))
+					assert out.split_into_lines().filter(it.trim_space() == '@[required]').len == 1, out
+					assert !out.contains('// header\n\n'), out
+					assert out.count('@[required]') == 1, out
+					assert out.count('// header') == 1, out
+					assert reparse_diagnostics('struct_header_line_comment_directive_attrs', out) == 0
+					assert vfmt('struct_header_line_comment_directive_attrs_twice', out) == out
+				}
+			}
+		}
+	}
+}
+
+fn test_formatter_formats_first_field_after_completed_directives() {
+	source := 'struct First {\n\t// vfmt off\n\t// vfmt on\n\t@[required] a, b   int\n}\n'
+	want := 'struct First {\n\t// vfmt off\n\t// vfmt on\n\ta int @[required]\n\tb int @[required]\n}\n'
+	out := vfmt('struct_first_field_completed_directives', source)
+	assert out == want, out
+	assert vfmt('struct_first_field_completed_directives_twice', out) == out
+}
+
 fn test_formatter_preserves_grouped_fields_crossing_attribute_directives_once() {
 	source := 'struct Crossing {\n\tbefore int\n\t@[a]\n\t// vfmt off\n\t// vfmt on\n\tx, y   int\n}\n'
 	out := vfmt('struct_grouped_field_attribute_directives', source)

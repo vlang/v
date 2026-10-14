@@ -79,8 +79,29 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, true)
 	prefs.target = pref.target_from('linux', 'arm64')!
 	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	for target in ['freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku', 'qnx', 'serenity',
+		'termux', 'wasm32_emscripten'] {
+		prefs.target = pref.target_from(target, if target == 'wasm32_emscripten' {
+			'wasm32'
+		} else {
+			'arm64'
+		})!
+		assert input_uses_minimal_literal_output_builtin(source, prefs, false, false), target
+	}
 	prefs.target = pref.target_from('windows', 'amd64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { println('привет') }\n")!
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { print('hello') }\n")!
+	prefs.target = pref.target_from('vinix', 'amd64')!
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.target = pref.target_from('android', 'arm64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	prefs.target = pref.target_from('ios', 'arm64')!
+	assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { println('100%') }\n")!
+	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	os.write_file(source, "fn main() { print('hello') }\n")!
 	prefs.target = pref.target_from('macos', 'arm64')!
 	prefs.backend = 'arm64'
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)

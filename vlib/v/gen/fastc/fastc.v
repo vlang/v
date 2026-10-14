@@ -360,9 +360,12 @@ typedef _Bool bool;
 #endif
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* V __offsetof(T, field) */
+#define __offsetof(st, m) offsetof(st, m)
 #ifndef _WIN32
 #include <pthread.h>
 #include <unistd.h>
@@ -378,6 +381,7 @@ typedef _Bool bool;
 #include <fcntl.h>
 #include <dirent.h>
 #include <signal.h>
+#include <utime.h>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
@@ -387,7 +391,7 @@ extern char **environ;
 #include <execinfo.h>
 #endif
 #if defined(__linux__) && defined(__GLIBC__)
-extern pid_t gettid(void);
+#include <sys/syscall.h>
 #endif
 #endif
 
@@ -545,9 +549,12 @@ static inline u64 wyhash(const void *key, size_t len, u64 seed, const u64 *secre
 // c_selfhost_preamble_includes is the header block of c_selfhost_preamble;
 // a header-free build replaces it with the target's C ABI prelude.
 const c_selfhost_preamble_includes = r'#include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* V __offsetof(T, field) */
+#define __offsetof(st, m) offsetof(st, m)
 #ifndef _WIN32
 #include <pthread.h>
 #include <unistd.h>
@@ -563,6 +570,7 @@ const c_selfhost_preamble_includes = r'#include <stdint.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <signal.h>
+#include <utime.h>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
@@ -572,7 +580,7 @@ extern char **environ;
 #include <execinfo.h>
 #endif
 #if defined(__linux__) && defined(__GLIBC__)
-extern pid_t gettid(void);
+#include <sys/syscall.h>
 #endif
 #endif
 '
@@ -587,7 +595,15 @@ extern int backtrace(void **, int);
 extern char **backtrace_symbols(void *const *, int);
 extern void backtrace_symbols_fd(void *const *, int, int);
 #endif
+#if defined(__GLIBC__)
+/* glibc exports `gettid` only from 2.30 on; the system call works with any glibc.
+   Strict feature modes hide `syscall` in <unistd.h>, so it is declared here. */
+long syscall(long number, ...);
+static inline pid_t v_fastc_gettid(void) { return (pid_t)syscall(SYS_gettid); }
+#define gettid v_fastc_gettid
+#else
 extern int gettid(void);
+#endif
 extern void *aligned_alloc(size_t, size_t);
 #endif
 #ifndef memory_order_relaxed
@@ -825,6 +841,8 @@ struct FastcFunctionSignature {
 	is_c_extern              bool
 	module_name              string
 	path                     string
+	// position is the byte offset of the declaration's `fn` in the file at `path`.
+	position int
 }
 
 // fastc_multi_return_literal packs already-boxed components into a MultiReturn.
@@ -949,6 +967,9 @@ struct FastcStructField {
 	is_skip              bool
 	is_function          bool
 	is_optional_function bool
+	// The field's type is spelled `voidptr`; fn types and erased type parameters are stored
+	// as `voidptr` too, and V3 accepts `nil` outside `unsafe` only for a real one.
+	is_declared_voidptr bool
 	// Shared map fields keep pointer identity even though FastC currently erases locking.
 	// Without this, copying their containing struct detaches subsequent map header updates.
 	is_shared_pointer bool
@@ -1204,6 +1225,8 @@ struct FastcComptimeCondition {
 struct FastcComptimeBlock {
 	source string
 	tok    token.Token
+	// offset is the byte offset of `source` in the source the block was scanned from.
+	offset int
 }
 
 struct FastcDeclarationAttribute {
@@ -1257,7 +1280,9 @@ struct FastcLoopBlockResult {
 // member cannot be shadowed under its qualified source spelling, so member-chain rendering
 // consults this table while the branch is active.
 struct FastcMemberSmartcast {
-	typ           string
+	typ string
+	// The tested value type distinguishes a reference variant from boxed value storage.
+	value_type    string
 	source        string
 	variants      []string
 	tag_source    string
@@ -1408,12 +1433,14 @@ mut:
 	// (`?T`), so the caller can record it on the declared local.
 	pending_option_value_type string
 	// Set by `parse_type` when it parses a function type (`fn (...) R`): the C return
-	// type (`Option`/`string`/…) and, for an `!`/`?R` return, the wrapped value type.
-	// Lets a fn-typed parameter be declared as a real function pointer and its call
-	// results be type-inferred. `pending_fn_pointer` gates whether the others apply.
+	// type (`Option`/`string`/…), for an `!`/`?R` return the wrapped value type, and the
+	// C prototype of its parameters. Lets a fn-typed parameter be declared as a real
+	// function pointer and its call results be type-inferred. `pending_fn_pointer` gates
+	// whether the others apply.
 	pending_fn_pointer           bool
 	pending_fn_return_type       string
 	pending_fn_option_value_type string
+	pending_fn_parameters        string
 	c_flags                      []string
 	fixed_array_types            map[string]string
 	composite_types              map[string]bool
@@ -1886,7 +1913,11 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// methods. Copy them onto B (with the receiver re-keyed to B) so calls on a B
 	// value resolve and B gets its own dispatch table entries.
 	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut interface_methods)
-	function_c_names := fastc_compact_function_c_names(functions, prefs.building_v)
+	mut function_c_names := fastc_compact_function_c_names(functions, prefs.building_v)
+	if prefs.is_test && 'main' in functions {
+		// A test build's main runs its tests; the program's own is an ordinary function.
+		function_c_names['main'] = 'v_fastc_program_main'
+	}
 	mut has_entry_module := false
 	for source_file in sources {
 		if source_file.header.module_name in ['', 'main'] {
@@ -2128,7 +2159,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		body_pieces << fastc_piece(mono_definition)
 		body_len += mono_definition.len
 	}
-	synthesized_main := if has_entry_module && !entry_has_main {
+	if prefs.is_test {
+		// The test main synthesized below is this program's entry.
+		entry_has_main = true
+	}
+	synthesized_main := if prefs.is_test {
+		fastc_synthesized_test_main(functions, function_c_names, prefs, startup_initializers.len > 0,
+			module_cleanup_calls.len > 0)!
+	} else if has_entry_module && !entry_has_main {
 		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0, module_cleanup_calls.len > 0)
 	} else {
 		''

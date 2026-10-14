@@ -1524,6 +1524,12 @@ fn (mut g Parser) parse_simple_statement() ! {
 				assigned_value = '({ ${actual_type} ${box_value} = (${value}); v_fastc_interface_box(&${box_value}, sizeof(${actual_type})); })'
 			} else if g.selfhost && operator == .assign && actual_type == 'voidptr' && (resolved_expected_type.trim_right('*') in g.struct_fields || resolved_expected_type.trim_right('*').starts_with('Array_') || resolved_expected_type.trim_right('*').starts_with('Map_') || resolved_expected_type.trim_right('*').starts_with('FixedArray_')) {
 				assigned_value = '*((${resolved_expected_type} *)(${value}))'
+			} else if g.selfhost && operator == .assign
+				&& fastc_fixed_array_element_type(resolved_expected_type) != none
+				&& g.fixed_array_uses_raw_storage(g.last_expression) {
+				// A struct field or global keeps a fixed array as a raw C array; the local
+				// holds the wrapper struct of the same layout.
+				assigned_value = '*(${resolved_expected_type} *)(${value})'
 			}
 			g.write_line('${c_target}${operator.str()}${assigned_value};')
 			return
@@ -1613,6 +1619,7 @@ fn (g &Parser) render_translated_statement_expression(tokens []FastcExpressionTo
 }
 
 fn (mut g Parser) parse_assert_statement() ! {
+	assert_offset := g.s.pos + g.source_offset
 	g.next()
 	condition := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 	if condition == '' {
@@ -1627,6 +1634,25 @@ fn (mut g Parser) parse_assert_statement() ! {
 		}
 	}
 	g.consume_statement_end()
+	if g.selfhost && g.prefs.is_test {
+		// A failed assert in a test build fails the running test and moves on to the next,
+		// running the deferred blocks a return from here would run.
+		where := '${g.path}:${fastc_source_line(g.path, assert_offset)}: ${g.current_function}: assert'
+		where_literal := '"' + where.replace('\\', '\\\\').replace('"', '\\"') + '"'
+		if !g.has_deferred_blocks() {
+			g.protos.writeln('void v_fastc_test_assert_fail(string where, string message);')
+			g.write_line('if (!(${condition})) { v_fastc_test_assert_fail(_S(${where_literal}), ${message}); }')
+			return
+		}
+		g.protos.writeln('void v_fastc_test_assert_report(string where, string message);')
+		g.protos.writeln('void v_fastc_test_fail_transfer(void);')
+		g.write_line('if (!(${condition})) {')
+		g.write_line('v_fastc_test_assert_report(_S(${where_literal}), ${message});')
+		g.write_all_deferred_scopes()
+		g.write_line('v_fastc_test_fail_transfer();')
+		g.write_line('}')
+		return
+	}
 	if g.selfhost {
 		g.write_line('if (!(${condition})) { builtin__panic(${message}); }')
 	} else {
@@ -2397,6 +2423,10 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 	} else {
 		expression_tokens
 	}
+	if g.selfhost && tokens.len > 0 && tokens.last().tok == .rpar && g.fastc_element_call_open(tokens) >= 0 {
+		// `arr[i](args)` calls the function value the element holds.
+		return true
+	}
 	for open in 1 .. tokens.len - 1 {
 		if tokens[open].tok != .lsbr || tokens[open - 1].tok != .name {
 			continue
@@ -2560,6 +2590,9 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 		// result type directly instead of inferring it back from the expression.
 		declaration_type = local_type
 	}
+	// A composite spelled here (`Map_string_Array_string` from a map literal) may be named by
+	// no signature or field; register it so it gets its typedef.
+	fastc_register_composite_type(declaration_type, mut g.composite_types)
 	if is_static {
 		// V function statics may have runtime initializers. Keep C static storage and guard
 		// the assignment so later calls (including at-exit callbacks) see the retained value.

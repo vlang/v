@@ -54,3 +54,7 @@ Stored blocks following Huffman blocks retain any complete bytes read ahead by t
 decoder. With an otherwise intact zlib or gzip stream, checksum-only corruption is reported
 as an Adler-32, CRC-32 or uncompressed-size mismatch by one-shot decoding and callbacks that
 read the whole stream.
+
+`validate_zlib_header` accepts the two-byte RFC 1950 header and rejects compression
+info values above 7. Decompression separately rejects streams shorter than the header
+and Adler-32 trailer, including the callback entry point.

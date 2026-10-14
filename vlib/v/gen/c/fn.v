@@ -1484,11 +1484,11 @@ fn (g &FlatGen) fn_c_name_in_module(module_name string, name string) string {
 	if g.should_rename_user_main_for_tests(module_name, name) {
 		return g.test_user_main_c_name()
 	}
-	if g.main_export_needs_internal_name(module_name, name) {
-		return g.cname('main.${name}')
-	}
 	if shadow_name := g.main_runtime_shadow_fn_c_name(module_name, name) {
 		return shadow_name
+	}
+	if g.main_export_needs_internal_name(module_name, name) {
+		return g.cname('main.${name}')
 	}
 	return g.qualified_fn_name_in_module_c(module_name, name)
 }
@@ -1497,14 +1497,23 @@ const c_main_runtime_shadow_fn_names = {
 	'new_map': true
 	'accept':  true
 	'perror':  true
+	'sync':    true
+	'syncfs':  true
 	'id':      true
 	// The C preamble keeps `typedef uint8_t byte;`.
 	'byte':    true
 }
 
 fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?string {
+	// Use the reserved namespace so source names such as main__sync stay distinct.
+	if name in ['main.sync', 'main.syncfs'] {
+		return '__v3_internal_symbol_libc_${name[5..]}'
+	}
 	if module_name !in ['', 'main'] || name.starts_with('C.') {
 		return none
+	}
+	if name in ['sync', 'syncfs'] {
+		return '__v3_internal_symbol_libc_${name}'
 	}
 	c_type_name := !isnil(g.tc)
 		&& ('C.${name}' in g.tc.structs || 'C.${name}' in g.tc.c_typedef_structs)
@@ -16525,6 +16534,10 @@ fn (mut g FlatGen) emit_c_runtime_declarations(required []string) {
 		g.tc.cur_file = file
 		g.tc.cur_module = mod
 	}
+	// Match ordinary extern declaration selection when a program supplies a more
+	// specific view than builtin's fallback, such as its own C.CloseHandle(int).
+	mut decls := map[string]CExternForwardDecl{}
+	mut names := []string{}
 	for idx in g.top_level_nodes() {
 		node := g.a.nodes[idx]
 		if node.kind == .file {
@@ -16541,9 +16554,27 @@ fn (mut g FlatGen) emit_c_runtime_declarations(required []string) {
 			if name in g.inlined_c_declared_fns {
 				continue
 			}
-			g.writeln(g.c_extern_decl_line(node, name))
-			g.inlined_c_declared_fns[name] = true
+			if name !in decls {
+				names << name
+			}
+			program_decl_priority := if g.cache_program_files[g.tc.cur_file] { 1000 } else { 0 }
+			specificity := program_decl_priority + c_extern_decl_specificity(g.a, node)
+			if name !in decls || specificity > decls[name].specificity {
+				decls[name] = CExternForwardDecl{
+					node_idx:    int(idx)
+					file:        g.tc.cur_file
+					module_name: g.tc.cur_module
+					specificity: specificity
+				}
+			}
 		}
+	}
+	for name in names {
+		decl := decls[name]
+		g.tc.cur_file = decl.file
+		g.tc.cur_module = decl.module_name
+		g.writeln(g.c_extern_decl_line(g.a.nodes[decl.node_idx], name))
+		g.inlined_c_declared_fns[name] = true
 	}
 }
 
@@ -16874,6 +16905,13 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 		return false
 	}
 	if cfn in ['va_arg', 'va_start', 'va_end', 'va_copy'] {
+		return false
+	}
+	if g.target.os == 'windows' && g.c_directives_use_system_libc()
+		&& cfn in c_winapi_extern_symbols && !cfn.starts_with('Sym')
+		&& cfn !in ['BCryptGenRandom', 'WSAAddressToStringA'] {
+		// The headed Windows preamble loads windows.h. Its exact SDK types own
+		// these declarations, even when a bodyless V view lives in another file.
 		return false
 	}
 	// Compiler builtins (`__atomic_fetch_add`, `__builtin_expect`, `__sync_*`)
@@ -17216,6 +17254,16 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 	if !g.should_emit_c_extern_decl(cfn) {
 		return false
 	}
+	if g.files_linking_c_sources[source_file]
+		&& ((g.c_source_file_is_in_vlib(source_file)
+			&& (cfn.starts_with('v3_') || cfn.starts_with('v_runtime_')
+				|| cfn.starts_with('v_time_') || cfn.starts_with('v_builtin_')
+				|| cfn.starts_with('v_set_'))) || (g.c_source_file_is_compiler_main(source_file)
+			&& cfn.starts_with('v_toolcache_'))) {
+		// These shipped native objects export the bodyless V view. An unrelated
+		// SDK header in the same source file cannot declare their private facade.
+		return true
+	}
 	// These stdlib bindings remain necessary when unrelated modules use headers.
 	if g.c_source_file_is_in_vlib(source_file)
 		&& cfn in ['_Exit', 'flock', 'v_os_fd_write_all', 'v_os_execute_capture_start',
@@ -17289,6 +17337,7 @@ const c_system_libc_preamble_declared_fns = {
 	'mkstemp':                       true
 	'mkdir':                         true
 	'mmap':                          true
+	'msync':                         true
 	'opendir':                       true
 	'popen':                         true
 	'printf':                        true
@@ -17718,7 +17767,15 @@ fn (g &FlatGen) is_c_extern_fn_name_arg(arg_id flat.NodeId) bool {
 fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
 	mut sb := strings.new_builder(96)
 	ret_type := g.parse_node_type(&node)
-	sb.write_string(g.c_extern_interop_type_name(ret_type) or { g.fn_return_type_name(ret_type) })
+	return_name := g.c_extern_interop_type_name(ret_type) or { g.fn_return_type_name(ret_type) }
+	if g.target.os == 'windows' && cfn == 'CreateSymbolicLinkW' {
+		sb.write_string('u8')
+	} else if g.target.os == 'windows' && cfn in c_winapi_extern_symbols && return_name == 'bool' {
+		// BOOL is a four-byte integer. V converts its nonzero value to bool at use sites.
+		sb.write_string('BOOL')
+	} else {
+		sb.write_string(return_name)
+	}
 	sb.write_string(' ')
 	call_conv := g.c_extern_calling_convention(cfn)
 	if call_conv.len > 0 {
@@ -17825,138 +17882,167 @@ fn c_winapi_wide_export_name(cfn string) string {
 }
 
 const c_winapi_extern_symbols = {
-	'AddVectoredExceptionHandler':   true
-	'CaptureStackBackTrace':         true
-	'CloseClipboard':                true
-	'CloseHandle':                   true
-	'CopyFile':                      true
-	'CopyFileW':                     true
-	'CreateDirectory':               true
-	'CreateDirectoryW':              true
-	'CreateFile':                    true
-	'CreateFileW':                   true
-	'CreateHardLinkW':               true
-	'CreatePipe':                    true
-	'CreateProcessW':                true
-	'CreateSymbolicLinkW':           true
-	'CreateWindowEx':                true
-	'CreateWindowExW':               true
-	'DefWindowProc':                 true
-	'DefWindowProcW':                true
-	'DeleteFileW':                   true
-	'DestroyWindow':                 true
-	'EmptyClipboard':                true
-	'ExpandEnvironmentStringsW':     true
-	'FindClose':                     true
-	'FindFirstFile':                 true
-	'FindFirstFileW':                true
-	'FindNextFile':                  true
-	'FindNextFileW':                 true
-	'FormatMessageW':                true
-	'FreeEnvironmentStringsW':       true
-	'GenerateConsoleCtrlEvent':      true
-	'GetClipboardData':              true
-	'GetClipboardOwner':             true
-	'GetCommandLine':                true
-	'GetCommandLineW':               true
-	'GetComputerNameW':              true
-	'GetConsoleMode':                true
-	'GetConsoleScreenBufferInfo':    true
-	'GetCurrentDirectoryW':          true
-	'GetCurrentProcess':             true
-	'GetCurrentThreadId':            true
-	'GetEnvironmentStringsW':        true
-	'GetExitCodeProcess':            true
-	'GetFinalPathNameByHandleW':     true
-	'GetFileAttributesW':            true
-	'GetFileSizeEx':                 true
-	'GetFileType':                   true
-	'GetFullPathName':               true
-	'GetFullPathNameW':              true
-	'GetLastError':                  true
-	'GetLongPathName':               true
-	'GetLongPathNameW':              true
-	'GetModuleFileName':             true
-	'GetModuleFileNameW':            true
-	'GetModuleHandleA':              true
-	'GetNumberOfConsoleInputEvents': true
-	'GetProcAddress':                true
-	'GetProcessHeap':                true
-	'GetShortPathNameW':             true
-	'GetStdHandle':                  true
-	'GetSystemTimeAsFileTime':       true
-	'GetTempFileNameW':              true
-	'GetTempPathW':                  true
-	'GetTickCount':                  true
-	'GetUserNameW':                  true
-	'GlobalAlloc':                   true
-	'GlobalFree':                    true
-	'GlobalLock':                    true
-	'GlobalUnlock':                  true
-	'HeapAlloc':                     true
-	'HeapFree':                      true
-	'InitializeConditionVariable':   true
-	'IsDebuggerPresent':             true
-	'LoadLibrary':                   true
-	'LoadLibraryW':                  true
-	'LocalFree':                     true
-	'MoveFileW':                     true
-	'MultiByteToWideChar':           true
-	'OpenClipboard':                 true
-	'PeekNamedPipe':                 true
-	'ReadConsole':                   true
-	'ReadConsoleInput':              true
-	'ReadConsoleW':                  true
-	'ReadFile':                      true
-	'RegCloseKey':                   true
-	'RegOpenKeyEx':                  true
-	'RegOpenKeyExW':                 true
-	'RegQueryValueEx':               true
-	'RegQueryValueExW':              true
-	'RegSetValueEx':                 true
-	'RegSetValueExW':                true
-	'RegisterClassEx':               true
-	'RegisterClassExW':              true
-	'RemoveDirectory':               true
-	'RemoveDirectoryW':              true
-	'ScrollConsoleScreenBuffer':     true
-	'SetClipboardData':              true
-	'SetConsoleCursorPosition':      true
-	'SetConsoleMode':                true
-	'SetConsoleTitle':               true
-	'SetConsoleTitleW':              true
-	'SetCurrentDirectoryW':          true
-	'SetEndOfFile':                  true
-	'SetFileAttributesW':            true
-	'SetFilePointerEx':              true
-	'SetHandleInformation':          true
-	'SetLastError':                  true
-	'SetUnhandledExceptionFilter':   true
-	'Sleep':                         true
-	'SleepConditionVariableSRW':     true
-	'SendMessageTimeout':            true
-	'SendMessageTimeoutW':           true
-	'SymCleanup':                    true
-	'SymFromAddr':                   true
-	'SymGetLineFromAddr64':          true
-	'SymInitialize':                 true
-	'SymSetOptions':                 true
-	'TerminateProcess':              true
-	'TlsAlloc':                      true
-	'TlsFree':                       true
-	'TlsGetValue':                   true
-	'TlsSetValue':                   true
-	'TryAcquireSRWLockExclusive':    true
-	'TryAcquireSRWLockShared':       true
-	'VirtualAlloc':                  true
-	'VirtualFree':                   true
-	'VirtualProtect':                true
-	'WSAAddressToStringA':           true
-	'WaitForSingleObject':           true
-	'WakeConditionVariable':         true
-	'WriteConsole':                  true
-	'WriteConsoleW':                 true
-	'WriteFile':                     true
+	'AcquireSRWLockExclusive':         true
+	'AcquireSRWLockShared':            true
+	'BCryptGenRandom':                 true
+	'BeginUpdateResourceW':            true
+	'EndUpdateResourceW':              true
+	'FileTimeToSystemTime':            true
+	'GetDiskFreeSpaceExA':             true
+	'GetDynamicTimeZoneInformation':   true
+	'GetModuleHandleW':                true
+	'GetNativeSystemInfo':             true
+	'GetSystemDirectoryW':             true
+	'GetSystemInfo':                   true
+	'GetTimeZoneInformation':          true
+	'GetTimeZoneInformationForYear':   true
+	'GetWindowsDirectoryW':            true
+	'GlobalMemoryStatus':              true
+	'InitializeSRWLock':               true
+	'K32GetProcessMemoryInfo':         true
+	'QueryPerformanceCounter':         true
+	'QueryPerformanceFrequency':       true
+	'ReleaseSRWLockExclusive':         true
+	'ReleaseSRWLockShared':            true
+	'SetFileTime':                     true
+	'SystemTimeToTzSpecificLocalTime': true
+	'UpdateResourceW':                 true
+	'VirtualQuery':                    true
+	'AddVectoredExceptionHandler':     true
+	'CaptureStackBackTrace':           true
+	'CloseClipboard':                  true
+	'CloseHandle':                     true
+	'CopyFile':                        true
+	'CopyFileW':                       true
+	'CreateDirectory':                 true
+	'CreateDirectoryW':                true
+	'CreateFile':                      true
+	'CreateFileW':                     true
+	'CreateHardLinkW':                 true
+	'CreatePipe':                      true
+	'CreateProcessW':                  true
+	'CreateSymbolicLinkW':             true
+	'CreateThread':                    true
+	'CreateWindowEx':                  true
+	'CreateWindowExW':                 true
+	'DefWindowProc':                   true
+	'DefWindowProcW':                  true
+	'DeleteFileW':                     true
+	'DestroyWindow':                   true
+	'EmptyClipboard':                  true
+	'ExpandEnvironmentStringsW':       true
+	'FindClose':                       true
+	'FindFirstFile':                   true
+	'FindFirstFileW':                  true
+	'FindNextFile':                    true
+	'FindNextFileW':                   true
+	'FormatMessageW':                  true
+	'FreeEnvironmentStringsW':         true
+	'GenerateConsoleCtrlEvent':        true
+	'GetClipboardData':                true
+	'GetClipboardOwner':               true
+	'GetCommandLine':                  true
+	'GetCommandLineW':                 true
+	'GetComputerNameW':                true
+	'GetConsoleMode':                  true
+	'GetConsoleScreenBufferInfo':      true
+	'GetCurrentDirectoryW':            true
+	'GetCurrentProcess':               true
+	'GetCurrentThreadId':              true
+	'GetEnvironmentStringsW':          true
+	'GetExitCodeProcess':              true
+	'GetFinalPathNameByHandleW':       true
+	'GetFileAttributesW':              true
+	'GetFileInformationByHandle':      true
+	'GetFileSizeEx':                   true
+	'GetFileType':                     true
+	'GetFullPathName':                 true
+	'GetFullPathNameW':                true
+	'GetLastError':                    true
+	'GetLongPathName':                 true
+	'GetLongPathNameW':                true
+	'GetModuleFileName':               true
+	'GetModuleFileNameW':              true
+	'GetModuleHandleA':                true
+	'GetNumberOfConsoleInputEvents':   true
+	'GetProcAddress':                  true
+	'GetProcessHeap':                  true
+	'GetShortPathNameW':               true
+	'GetStdHandle':                    true
+	'GetSystemTimeAsFileTime':         true
+	'GetTempFileNameW':                true
+	'GetTempPathW':                    true
+	'GetTickCount':                    true
+	'GetUserNameW':                    true
+	'GlobalAlloc':                     true
+	'GlobalFree':                      true
+	'GlobalLock':                      true
+	'GlobalUnlock':                    true
+	'HeapAlloc':                       true
+	'HeapFree':                        true
+	'InitializeConditionVariable':     true
+	'IsDebuggerPresent':               true
+	'LoadLibrary':                     true
+	'LoadLibraryW':                    true
+	'LocalFree':                       true
+	'MoveFileExW':                     true
+	'MoveFileW':                       true
+	'MultiByteToWideChar':             true
+	'OpenClipboard':                   true
+	'PeekNamedPipe':                   true
+	'ReadConsole':                     true
+	'ReadConsoleInput':                true
+	'ReadConsoleW':                    true
+	'ReadFile':                        true
+	'RegCloseKey':                     true
+	'RegOpenKeyEx':                    true
+	'RegOpenKeyExW':                   true
+	'RegQueryValueEx':                 true
+	'RegQueryValueExW':                true
+	'RegSetValueEx':                   true
+	'RegSetValueExW':                  true
+	'RegisterClassEx':                 true
+	'RegisterClassExW':                true
+	'RemoveDirectory':                 true
+	'RemoveDirectoryW':                true
+	'ScrollConsoleScreenBuffer':       true
+	'SetClipboardData':                true
+	'SetConsoleCursorPosition':        true
+	'SetConsoleMode':                  true
+	'SetConsoleTitle':                 true
+	'SetConsoleTitleW':                true
+	'SetCurrentDirectoryW':            true
+	'SetEndOfFile':                    true
+	'SetFileAttributesW':              true
+	'SetFilePointerEx':                true
+	'SetHandleInformation':            true
+	'SetLastError':                    true
+	'SetUnhandledExceptionFilter':     true
+	'Sleep':                           true
+	'SleepConditionVariableSRW':       true
+	'SendMessageTimeout':              true
+	'SendMessageTimeoutW':             true
+	'SymCleanup':                      true
+	'SymFromAddr':                     true
+	'SymGetLineFromAddr64':            true
+	'SymInitialize':                   true
+	'SymSetOptions':                   true
+	'TerminateProcess':                true
+	'TlsAlloc':                        true
+	'TlsFree':                         true
+	'TlsGetValue':                     true
+	'TlsSetValue':                     true
+	'TryAcquireSRWLockExclusive':      true
+	'TryAcquireSRWLockShared':         true
+	'VirtualAlloc':                    true
+	'VirtualFree':                     true
+	'VirtualProtect':                  true
+	'WSAAddressToStringA':             true
+	'WaitForSingleObject':             true
+	'WakeConditionVariable':           true
+	'WriteConsole':                    true
+	'WriteConsoleW':                   true
+	'WriteFile':                       true
 }
 
 fn (mut g FlatGen) c_extern_decl_params(node flat.Node) string {

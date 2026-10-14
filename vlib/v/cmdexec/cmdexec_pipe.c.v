@@ -7,17 +7,9 @@ $if windows {
 
 	fn C.PeekNamedPipe(handle voidptr, buffer voidptr, size i32, bytes_read voidptr, bytes_available voidptr, bytes_left voidptr) bool
 } $else {
-	struct C.pollfd {
-		fd      i32
-		events  i16
-		revents i16
-	}
+	#include "@VMODROOT/vlib/v/cmdexec/cmdexec_poll.h"
 
-	$if macos {
-		fn C.poll(fds &C.pollfd, nfds u32, timeout i32) i32
-	} $else {
-		fn C.poll(fds &C.pollfd, nfds usize, timeout i32) i32
-	}
+	fn C.v_cmdexec_poll_revents(fd int, events i16) i16
 }
 
 // read_process_pipe reads without waiting and distinguishes EOF from an empty
@@ -48,14 +40,11 @@ fn read_process_pipe(mut process os.Process, kind os.ChildProcessPipeKind) (stri
 		}
 		// FIONREAD (used by os.fd_is_pending) reports zero for both an empty
 		// open pipe and EOF. poll also reports the last writer's hangup.
-		mut descriptor := C.pollfd{
-			fd:     fd
-			events: i16(1)
-		}
-		if C.poll(&descriptor, 1, 0) <= 0 {
+		revents := C.v_cmdexec_poll_revents(fd, i16(1))
+		if revents == 0 {
 			return '', false
 		}
-		if descriptor.revents & i16(0x20) != 0 {
+		if revents & i16(0x20) != 0 {
 			return '', true
 		}
 		text, count := os.fd_read(fd, 4096)

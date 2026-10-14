@@ -49,6 +49,13 @@ pub:
 	legacy_headers  map[string]string // Legacy header paths and content signatures awaiting migration.
 }
 
+// RefreshOptions controls progress reporting during module cache validation.
+@[params]
+pub struct RefreshOptions {
+pub:
+	verbose bool // Report every checked configuration, including unchanged modules.
+}
+
 // root_dir returns the cache shared by the configurations of this V checkout,
 // using vexe to identify the compiler's isolated cache rather than its helpers.
 pub fn root_dir(vroot string, vexe string) string {
@@ -552,14 +559,15 @@ pub fn collect(vroot string, vexe string) ![]Request {
 // Equivalent synthetic import sequences and live entry commands run once per configuration.
 // Both stop after module object validation, before compiling or linking a program unit.
 // Object compilation failures are reported even when an ordinary build could fall back.
-// Progress identifies the record being checked, its compiler flags, production mode and test mode.
+// Progress identifies configurations producing output, their compiler flags and build modes.
+// Successful unchanged configurations are silent unless verbose reporting is requested.
 // Records with vanished working directories, required inputs or compilers are skipped.
 // Live entries whose project source identity changed are skipped until rebuilt and recorded.
 // Legacy headers are marked migrated only after successful refreshes of their variants.
 // Disk-full failures stop remaining builds; child output is forwarded without buffering it all.
 // TinyCC production builds are never refreshed: the compiler refuses `-cc tcc` with `-prod`,
 // and records made before that rule still exist.
-pub fn refresh(vexe string, all_requests []Request) ! {
+pub fn refresh(vexe string, all_requests []Request, options RefreshOptions) ! {
 	requests := all_requests.filter(!request_uses_prod_tcc(it))
 	if requests.len == 0 { return }
 	dir := os.join_path(os.vtmp_dir(), 'vup_cache_refresh_${tempname.unique_token()}')
@@ -584,6 +592,7 @@ pub fn refresh(vexe string, all_requests []Request) ! {
 	mut migrated_headers := map[string]string{}
 	mut incomplete_headers := map[string]bool{}
 	mut checked_configurations := 0
+	mut reported_progress := false
 	for index, request in requests {
 		if !valid_module(request.module) { return error('invalid module ${request.module}') }
 		for path, signature in request.legacy_headers { migrated_headers[path] = signature }
@@ -670,11 +679,15 @@ pub fn refresh(vexe string, all_requests []Request) ! {
 			environment.delete('VTEST_ONLY_FN')
 		}
 		command << ['-skip-running', '-o', os.join_path(dir, 'refresh'), source]
-		println('> Refreshing module cache [${index + 1}/${requests.len}] (${refresh_configuration(request)}).')
-		// Keep the configuration above its child's cache notices in redirected output too.
-		flush_stdout()
+		progress := if options.verbose {
+			'> Refreshing module cache [${index + 1}/${requests.len}] (${refresh_configuration(request)}).'
+		} else {
+			'> Refreshing module cache (${refresh_configuration(request)}).'
+		}
 		checked_configurations++
-		code, disk_full := run_refresh_command(vexe, command, request.cwd, environment)
+		code, disk_full, reported := run_refresh_command(vexe, command, request.cwd, environment,
+			progress, options.verbose)
+		reported_progress = reported_progress || reported
 		if code != 0 {
 			failures << '${request.module} (${request.args.join(' ')})'
 			eprintln('> Module cache refresh failed [${index + 1}/${requests.len}] (${refresh_configuration(request)}; exit ${code}).')
@@ -696,12 +709,17 @@ pub fn refresh(vexe string, all_requests []Request) ! {
 			return err
 		}
 	}
-	if checked_configurations > 0 {
+	if checked_configurations > 0 && reported_progress {
 		println('> Module cache refresh complete: ${checked_configurations} build configurations checked.')
 	}
 }
 
-fn run_refresh_command(vexe string, command []string, cwd string, environment map[string]string) (int, bool) {
+fn run_refresh_command(vexe string, command []string, cwd string, environment map[string]string, progress string, verbose bool) (int, bool, bool) {
+	mut reported_progress := verbose
+	if reported_progress {
+		println(progress)
+		flush_stdout()
+	}
 	mut process := os.new_process(vexe)
 	process.set_args(command)
 	if cwd != '' { process.set_work_folder(cwd) }
@@ -715,6 +733,12 @@ fn run_refresh_command(vexe string, command []string, cwd string, environment ma
 		chunks := [process.stdout_read(), process.stderr_read()]
 		for index, chunk in chunks {
 			if chunk == '' { continue }
+			if !reported_progress {
+				// Print context before the first child output without buffering the build log.
+				println(progress)
+				flush_stdout()
+				reported_progress = true
+			}
 			if index == 0 {
 				print(chunk)
 				flush_stdout()
@@ -733,7 +757,7 @@ fn run_refresh_command(vexe string, command []string, cwd string, environment ma
 	process.wait()
 	code := process.code
 	process.close()
-	return code, disk_full
+	return code, disk_full, reported_progress
 }
 
 fn refresh_configuration(request Request) string {

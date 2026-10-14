@@ -4405,6 +4405,35 @@ fn (g &Gen) receiver_type(rn &flat.Node) string {
 	return t
 }
 
+// struct_body_start finds the opening brace without mistaking header comments for the body.
+fn (g &Gen) struct_body_start(n &flat.Node) int {
+	if !n.pos.is_valid() || n.pos.end > g.source.len {
+		return -1
+	}
+	mut cursor := n.pos.offset
+	for i := g.comment_i; i < g.comments.len; i++ {
+		comment := g.comments[i]
+		if comment.pos.offset >= n.pos.end {
+			break
+		}
+		if comment.pos.end <= cursor {
+			continue
+		}
+		if comment.pos.offset > cursor {
+			brace := g.source[cursor..comment.pos.offset].index('{') or { -1 }
+			if brace >= 0 {
+				return cursor + brace + 1
+			}
+		}
+		cursor = comment.pos.end
+	}
+	if cursor < n.pos.end {
+		brace := g.source[cursor..n.pos.end].index('{') or { return -1 }
+		return cursor + brace + 1
+	}
+	return -1
+}
+
 fn (mut g Gen) struct_decl(id flat.NodeId) {
 	n := g.a.node(id)
 	g.emit_attrs(id)
@@ -4423,10 +4452,10 @@ fn (mut g Gen) struct_decl(id flat.NodeId) {
 	fields := g.a.children_of(n)
 	compact := fields.len == 0 && g.empty_braced_body_is_compact(n, n.pos.end)
 		&& !g.has_comment_between(n.pos.offset, n.pos.end)
-	g.struct_fields(fields, n.pos.end, compact)
+	g.struct_fields(fields, g.struct_body_start(n), n.pos.end, compact)
 }
 
-fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
+fn (mut g Gen) struct_fields(fields []flat.NodeId, body_start int, end int, compact bool) {
 	if fields.len > 0 || !compact {
 		g.writeln(' {')
 	} else {
@@ -4434,7 +4463,8 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 	}
 	g.indent++
 	alignments := g.aggregate_field_alignments(fields, false)
-	default_align, attr_align, comment_align := g.struct_field_suffix_alignments(fields, alignments)
+	default_align, attr_align, comment_align := g.struct_field_suffix_alignments(fields,
+		alignments, body_start)
 	mut cur_access := ''
 	mut previous := flat.empty_node
 	mut preserved_end := -1
@@ -4457,12 +4487,23 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 		}
 		gp := f.generic_params()
 		flags := if gp.len > 0 { gp[0] } else { '' }
-		if g.struct_field_preserves_attr_prefix(fid, previous) {
+		if g.struct_field_preserves_attr_prefix(fid, previous, body_start) {
 			// Keep leading attributes on their original side of a formatting directive.
-			if g.on_newline && g.out.len > 0 && g.out.last_n(1) == '\n' {
+			comment_i := g.comment_i
+			if int(previous) < 0 {
+				g.emit_comments_before(body_start)
+				g.source_end = int_max(g.source_end, body_start)
+			}
+			emitted_line_comment := g.comment_i > comment_i
+				&& g.comments[g.comment_i - 1].text.starts_with('//')
+			prefix := g.source[g.source_end..f.pos.end].replace('\r\n', '\n')
+			needs_comment_separator := emitted_line_comment && prefix.all_before('\n').trim_space().len > 0
+			// Retain the separator that terminates a header line comment.
+			if g.on_newline && g.out.len > 0 && g.out.last_n(1) == '\n'
+				&& (!needs_comment_separator || g.out.last_n(2) == '\n\n') {
 				g.out.go_back(1)
 			}
-			g.out.write_string(g.source[g.source_end..f.pos.end])
+			g.out.write_string(prefix)
 			g.on_newline = false
 			g.skip_comments_before(f.pos.end)
 			g.source_end = f.pos.end
@@ -5073,18 +5114,22 @@ fn (g &Gen) struct_field_preserves_attr_suffix(fid flat.NodeId) bool {
 		&& g.has_vfmt_directive_between(g.a.child_node(f, 0).pos.end, f.pos.end)
 }
 
-fn (g &Gen) struct_field_preserves_attr_prefix(fid flat.NodeId, previous flat.NodeId) bool {
+fn (g &Gen) struct_field_preserves_attr_prefix(fid flat.NodeId, previous flat.NodeId, body_start int) bool {
 	f := g.a.node(fid)
-	if int(previous) < 0 || f.generic_params().len < 2 {
+	if f.generic_params().len < 2 {
 		return false
 	}
-	p := g.a.node(previous)
-	if p.kind != .field_decl || p.pos.end < 0 || p.pos.end > f.pos.offset
-		|| f.pos.end > g.source.len || !g.has_vfmt_directive_between(p.pos.end, f.pos.offset) {
+	mut start := body_start
+	if int(previous) >= 0 {
+		p := g.a.node(previous)
+		start = p.pos.end
+	}
+	if start < 0 || start > f.pos.offset || f.pos.end > g.source.len
+		|| !g.has_vfmt_directive_between(start, f.pos.offset) {
 		return false
 	}
 	// Ignore attribute-like text in comments and directives before the first real attribute.
-	mut cursor := p.pos.end
+	mut cursor := start
 	for comment in g.comments {
 		if comment.pos.offset >= f.pos.offset {
 			break
@@ -5144,7 +5189,7 @@ fn (g &Gen) struct_field_attr_default_width(fid flat.NodeId, column int) int {
 // struct_field_suffix_alignments returns the columns for the three things that can follow a
 // field's type: its `= default`, its inline attributes and its trailing comment. The name and
 // type columns are handled by aggregate_field_alignments; these three line up what comes after.
-fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments map[int]int) (map[int]int, map[int]int, map[int]int) {
+fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments map[int]int, body_start int) (map[int]int, map[int]int, map[int]int) {
 	mut default_align := FieldAlign{
 		use_threshold: true
 	}
@@ -5182,7 +5227,7 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 		line := g.source_line(f.pos.offset)
 		has_break := g.field_alignment_break(previous, fid)
 		source_previous := if field_i > 0 { fields[field_i - 1] } else { flat.empty_node }
-		preserves_prefix := g.struct_field_preserves_attr_prefix(fid, source_previous)
+		preserves_prefix := g.struct_field_preserves_attr_prefix(fid, source_previous, body_start)
 		preserves_attrs := preserves_prefix || g.struct_field_preserves_attr_suffix(fid)
 		if preserves_prefix {
 			preserved_end = f.pos.end
