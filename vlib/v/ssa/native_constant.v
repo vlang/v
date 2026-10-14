@@ -108,7 +108,7 @@ fn (mut b Builder) register_native_initializers() {
 				typ := b.resolve_struct_storage_type(type_name, module_name)
 				addr := b.m.add_global('__const_' + ssa_c_name(name), typ)
 				b.global_vars[name] = addr
-				b.global_type_names[name] = type_name
+				b.global_type_names.set(name, type_name)
 				b.global_aliases[module_name + '.' + field.value] = name
 			}
 			b.native_initializers[name] = NativeInitializer{
@@ -130,13 +130,13 @@ fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.Nod
 			}
 		}
 	}
-	if field.typ.len > 0 && field.typ != 'unknown' {
-		return field.typ
+	if field.typ_text().len > 0 && field.typ_text() != 'unknown' {
+		return field.typ_text()
 	}
 	expr := b.a.node(expr_id)
 	if expr.kind == .array_literal {
-		if b.is_fixed_array_type_name(expr.typ) {
-			return expr.typ
+		if b.is_fixed_array_type_name(expr.typ_text()) {
+			return expr.typ_text()
 		}
 		element := if expr.children_count > 0 {
 			b.native_const_storage_type_name(flat.Node{}, b.a.child(expr, 0), module_name)
@@ -155,8 +155,8 @@ fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.Nod
 	if expr.kind == .call && expr.children_count > 0 {
 		callee := b.qualified_expr_name(b.a.child(expr, 0))
 		for node in b.a.nodes {
-			if node.kind == .fn_decl && node.value == callee && node.typ.len > 0 {
-				return qualify_type_ref_name(node.typ, module_name)
+			if node.kind == .fn_decl && node.value == callee && node.typ_text().len > 0 {
+				return qualify_type_ref_name(node.typ_text(), module_name)
 			}
 		}
 	}
@@ -221,7 +221,7 @@ fn (mut b Builder) build_native_initializer_functions() {
 		initializer.function = b.register_synthetic_function('__ssa_init_' + ssa_c_name(name),
 			b.void_type, [])
 		b.cur_func = initializer.function
-		b.cur_func_ret_type = ''
+		b.cur_func_ret_type = flat.source_type_id('')
 		b.cur_module = initializer.module_name
 		b.reset_function_state()
 		b.cur_block = b.m.add_block(initializer.function, 'entry')

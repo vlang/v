@@ -26,13 +26,13 @@ type Count = int
 
 	assert aliases[0].value == 'Pointer'
 	assert aliases[0].generic_params() == ['T']
-	assert aliases[0].typ == '&T'
+	assert aliases[0].typ_text() == '&T'
 
 	assert aliases[1].value == 'MiddlewareHandler'
 	assert aliases[1].generic_params() == ['T']
 	assert aliases[1].op == .arrow
-	assert aliases[1].typ.starts_with('fn')
-	assert aliases[1].typ.ends_with('bool')
+	assert aliases[1].typ_text().starts_with('fn')
+	assert aliases[1].typ_text().ends_with('bool')
 
 	assert aliases[2].value == 'Mapper'
 	assert aliases[2].generic_params() == ['A', 'B']
@@ -40,5 +40,5 @@ type Count = int
 	// A following non-generic alias must not inherit the previous parameters.
 	assert aliases[3].value == 'Count'
 	assert aliases[3].generic_params().len == 0
-	assert aliases[3].typ == 'int'
+	assert aliases[3].typ_text() == 'int'
 }

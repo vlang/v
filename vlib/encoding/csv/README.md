@@ -24,8 +24,9 @@ After a closing quote, only the delimiter or the end of the record is allowed; t
 and whitespace return an error.
 
 The writer preserves carriage returns and line feeds inside quoted fields by default. With
-`use_crlf: true`, it drops carriage returns and writes each line feed as CRLF, matching the
-record terminator. The reader normalizes CRLF to LF inside quoted fields.
+`use_crlf: true`, it preserves bare carriage returns and existing CRLF pairs, and writes each
+other line feed as CRLF, matching the record terminator. The reader normalizes CRLF to LF
+inside quoted fields.
 
 The final record does not need a trailing line ending, including when the document contains
 only one record. Empty documents and comment-only input contain no records.
@@ -33,3 +34,6 @@ only one record. Empty documents and comment-only input contain no records.
 A quoted field must have a closing quote, including in the final record. Truncated quoted
 fields return `encoding.csv: unterminated quoted field`; clean end of input returns
 `encoding.csv: end of file`.
+
+Quoted fields can span multiple lines. Comment markers inside a quoted field are field data,
+including on the line containing its closing quote.

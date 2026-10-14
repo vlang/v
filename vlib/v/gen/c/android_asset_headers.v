@@ -35,7 +35,7 @@ fn (g &FlatGen) omits_unused_android_asset_sdk() bool {
 		if binding_file || node.kind in [.string_literal, .string_interp, .directive] {
 			continue
 		}
-		if android_asset_reference(node.value) || android_asset_reference(node.typ) {
+		if android_asset_reference(node.value) || android_asset_reference(node.typ_text()) {
 			return false
 		}
 	}

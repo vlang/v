@@ -1,5 +1,6 @@
 module fastc
 
+import v.flat
 import os
 import strings
 import time
@@ -92,18 +93,43 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 			error_message: err.msg()
 		}
 	}
-	header := fastc_scan_source_header(source, path, prefs) or {
+	mut header := fastc_scan_source_header(source, path, prefs) or {
 		return FastcLoadedSource{
 			path:          path
 			failed:        true
 			error_message: err.msg()
 		}
 	}
+	header = fastc_header_with_channel_runtime(header, source, prefs)
 	return FastcLoadedSource{
 		path:   path
 		source: source
 		header: header
 	}
+}
+
+fn fastc_header_with_channel_runtime(header FastcSourceHeader, source string, prefs &pref.Preferences) FastcSourceHeader {
+	if !prefs.building_v || header.module_name in ['sync', 'builtin'] || !source.contains('chan') {
+		return header
+	}
+	mut scan := scanner.new_scanner(prefs, .normal)
+	file := token.File.unindexed('channel_runtime.v', source.len)
+	scan.init(file, source)
+	mut has_channel := false
+	mut tok := scan.scan()
+	for tok != .eof {
+		if tok == .name && scan.lit == 'chan' {
+			has_channel = true
+			break
+		}
+		tok = scan.scan()
+	}
+	if !has_channel { return header }
+	mut imports := header.imports.clone()
+	mut order := header.import_order.clone()
+	imports['__fastc_channels'] = 'sync'
+	if 'sync' !in order { order << 'sync' }
+	return FastcSourceHeader{ ...header, imports: imports, import_order: order }
 }
 
 // fastc_resolve_source_files resolves the sources of `paths` and writes the
@@ -552,7 +578,7 @@ fn fastc_resolve_memo_path_of_real(real_paths []string, prefs &pref.Preferences)
 	}
 	mut hash := u64(14695981039346656037)
 	// The resolver version separates memo layouts and implicit dependencies.
-	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-3')
+	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-4')
 	hash = fastc_fnv_hash(hash, prefs.vroot)
 	hash = fastc_fnv_hash(hash, prefs.target.os)
 	hash = fastc_fnv_hash(hash, prefs.target.arch)
@@ -962,13 +988,14 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 
 // fastc_load_source_text header-scans already read source text.
 fn fastc_load_source_text(path string, source string, prefs &pref.Preferences) FastcLoadedSource {
-	header := fastc_scan_source_header(source, path, prefs) or {
+	mut header := fastc_scan_source_header(source, path, prefs) or {
 		return FastcLoadedSource{
 			path:          path
 			failed:        true
 			error_message: err.msg()
 		}
 	}
+	header = fastc_header_with_channel_runtime(header, source, prefs)
 	return FastcLoadedSource{
 		path:   path
 		source: source
@@ -1377,7 +1404,7 @@ fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map
 	for module_name in modules {
 		function_key := fastc_function_key(module_name, hook_name)
 		if signature := functions[function_key] {
-			if signature.parameter_types.len > 0 {
+			if signature.parameter_types.ids.len > 0 {
 				return error('fastc parser does not support module `${hook_name}` with parameters in ${signature.path}')
 			}
 			calls << if c_name := function_c_names[function_key] {
@@ -1592,6 +1619,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 			import_order << 'sync.stdatomic'
 		}
 	}
+
 	if prefs.building_v && !prefs.selfhost && fastc_source_uses_captures(source, prefs) {
 		imports['__fastc_closure'] = 'builtin.closure'
 		if 'builtin.closure' !in import_order {

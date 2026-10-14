@@ -5570,8 +5570,8 @@ fn cached_declaration_attrs(a &flat.FlatAst) map[int]CachedDeclarationAttrs {
 		}
 		result[decl_id] = CachedDeclarationAttrs{
 			attrs: params.clone()
-			kinds: if node.typ.len > 0 {
-				node.typ.split(',').map(it.int())
+			kinds: if node.typ_text().len > 0 {
+				node.typ_text().split(',').map(it.int())
 			} else {
 				[]int{}
 			}
@@ -6755,7 +6755,7 @@ fn fn_decl_has_generic_receiver(a &flat.FlatAst, node flat.Node) bool {
 	if receiver.kind != .param {
 		return false
 	}
-	receiver_type := clean_receiver_type(receiver.typ)
+	receiver_type := clean_receiver_type(receiver.typ_text())
 	declared_receiver := node.value.all_before_last('.')
 	if receiver_type != declared_receiver
 		&& receiver_type.all_after_last('.') != declared_receiver.all_after_last('.') {
@@ -6781,7 +6781,7 @@ fn decl_key(a &flat.FlatAst, node flat.Node) string {
 			for i in 0 .. node.children_count {
 				selected << a.child_node(&node, i).value
 			}
-			'import:${node.value}:${node.typ}:${selected.join(',')}'
+			'import:${node.value}:${node.typ_text()}:${selected.join(',')}'
 		}
 		.fn_decl, .c_fn_decl, .struct_decl, .enum_decl, .type_decl, .interface_decl {
 			'${int(node.kind)}:${node.value}'
@@ -6840,7 +6840,7 @@ fn cached_directive_text(node flat.Node, vroot string, source_file string) strin
 		'if', 'elif', 'else', 'endif', 'pragma', 'error', 'warning'] {
 		return ''
 	}
-	value := cached_directive_value(node.value, node.typ, vroot, source_file)
+	value := cached_directive_value(node.value, node.typ_text(), vroot, source_file)
 	return if value.len > 0 { '#${node.value} ${value}' } else { '#${node.value}' }
 }
 
@@ -7002,8 +7002,8 @@ fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) 
 	import_path := import_paths[node.value] or { node.value }
 	mut text := 'import ${import_path}'
 	default_alias := import_path.all_after_last('.')
-	if node.typ.len > 0 && node.typ != default_alias {
-		text += ' as ${node.typ}'
+	if node.typ_text().len > 0 && node.typ_text() != default_alias {
+		text += ' as ${node.typ_text()}'
 	}
 	if node.children_count > 0 {
 		mut names := []string{}
@@ -7038,12 +7038,12 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 	mut param_start := 0
 	if !is_c && !node.is_static_type_method() && name.contains('.') && params.len > 0 {
 		receiver_type := name.all_before_last('.')
-		first_type := clean_receiver_type(params[0].typ)
+		first_type := clean_receiver_type(params[0].typ_text())
 		if first_type == receiver_type
 			|| first_type.all_after_last('.') == receiver_type.all_after_last('.') {
 			receiver := params[0]
 			receiver_name := if receiver.value.len > 0 { receiver.value } else { 'it' }
-			mut receiver_decl_type := receiver.typ
+			mut receiver_decl_type := receiver.typ_text()
 			mut receiver_prefix := ''
 			if receiver.is_mut {
 				receiver_prefix = 'mut '
@@ -7067,7 +7067,7 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		if pname.len == 0 {
 			pname = 'arg${i - param_start}'
 		}
-		mut ptype := p.typ
+		mut ptype := p.typ_text()
 		mut prefix := ''
 		if p.is_mut && p.op == .amp {
 			prefix = 'mut '
@@ -7081,8 +7081,8 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		ptexts << '${prefix}${pname} ${ptype}'
 	}
 	head += '(${ptexts.join(', ')})'
-	if node.typ.len > 0 && node.typ != 'void' {
-		head += ' ${node.typ}'
+	if node.typ_text().len > 0 && node.typ_text() != 'void' {
+		head += ' ${node.typ_text()}'
 	}
 	mut attr_lines := []string{}
 	if fn_is_disabled(a, module_name, decl_name) {
@@ -7203,15 +7203,15 @@ fn append_struct_field_nodes(a &flat.FlatAst, id flat.NodeId, mut fields []flat.
 }
 
 fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, source_is_public bool) string {
-	kind := if node.typ.split(',').contains('union') { 'union' } else { 'struct' }
+	kind := if node.typ_text().split(',').contains('union') { 'union' } else { 'struct' }
 	visibility := if source_is_public { 'pub ' } else { '' }
 	mut head := '${visibility}${kind} ${node.value}${generic_suffix(node.generic_params())}'
-	for part in node.typ.split(',') {
+	for part in node.typ_text().split(',') {
 		if part.starts_with('implements=') {
 			head += ' implements ' + part.all_after('=').replace('|', ', ')
 		}
 	}
-	if node.typ.split(',').contains('params')
+	if node.typ_text().split(',').contains('params')
 		&& !cached_declaration_has_attr(declaration_attrs, 'params') {
 		head = '@[params]\n${head}'
 	}
@@ -7252,8 +7252,8 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 			out.writeln('\t@[${field_params[1..].join('; ')}]')
 		}
 		mut line := '\t${field.value}'
-		if field.typ.len > 0 && field.typ != field.value {
-			line += ' ${field.typ}'
+		if field.typ_text().len > 0 && field.typ_text() != field.value {
+			line += ' ${field.typ_text()}'
 		}
 		if field.children_count > 0 {
 			value := expr_text(a, a.child(field, 0))
@@ -7286,7 +7286,7 @@ fn global_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node 
 			line += 'volatile '
 		}
 		line += field.value
-		mut field_type := field.typ
+		mut field_type := field.typ_text()
 		if field_type.len == 0 {
 			field_type = cached_global_type_name(tc, module_name, field.value)
 		}
@@ -7361,8 +7361,8 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 			} else {
 				line += ' int'
 			}
-		} else if field.typ.len > 0 {
-			line += ' ${field.typ}'
+		} else if field.typ_text().len > 0 {
+			line += ' ${field.typ_text()}'
 		} else {
 			line += ' int'
 		}
@@ -7383,7 +7383,7 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 
 fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, source_is_public bool) string {
 	mut out := strings.new_builder(128)
-	if node.typ == 'flag' && !cached_declaration_has_attr(declaration_attrs, 'flag') {
+	if node.typ_text() == 'flag' && !cached_declaration_has_attr(declaration_attrs, 'flag') {
 		out.writeln('@[flag]')
 	}
 	params := node.generic_params()
@@ -7419,7 +7419,7 @@ fn type_text(a &flat.FlatAst, node flat.Node, source_is_public bool) string {
 	visibility := if source_is_public { 'pub ' } else { '' }
 	head := '${visibility}type ${node.value}${generic_suffix(node.generic_params())} = '
 	if node.children_count == 0 {
-		return head + node.typ
+		return head + node.typ_text()
 	}
 	mut variants := []string{}
 	for i in 0 .. node.children_count {
@@ -7460,7 +7460,7 @@ fn interface_field_text(a &flat.FlatAst, field &flat.Node) string {
 		for pi in 0 .. field.children_count {
 			param := a.child_node(field, pi)
 			mut prefix := ''
-			mut param_type := param.typ
+			mut param_type := param.typ_text()
 			if param.is_mut {
 				prefix = 'mut '
 				if param.op == .amp {
@@ -7473,11 +7473,11 @@ fn interface_field_text(a &flat.FlatAst, field &flat.Node) string {
 			}
 			params << '${prefix}arg${pi} ${param_type}'
 		}
-		ret := if field.typ.len > 0 { ' ${field.typ}' } else { '' }
+		ret := if field.typ_text().len > 0 { ' ${field.typ_text()}' } else { '' }
 		return '\t${field.value}(${params.join(', ')})${ret}'
 	}
-	if field.typ.len > 0 {
-		return '\t${field.value} ${field.typ}'
+	if field.typ_text().len > 0 {
+		return '\t${field.value} ${field.typ_text()}'
 	}
 	return '\t${field.value}'
 }
@@ -7533,7 +7533,7 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 			call_expr_text(a, node)
 		}
 		.cast_expr, .as_expr {
-			target := if node.typ.len > 0 { node.typ } else { node.value }
+			target := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
 			'${target}(${expr_text(a, a.child(&node, 0))})'
 		}
 		.sizeof_expr {
@@ -7603,7 +7603,7 @@ fn expr_can_serialize(a &flat.FlatAst, id flat.NodeId) bool {
 			expr_children_can_serialize(a, node)
 		}
 		.map_init {
-			(node.value.len > 0 || node.typ.len > 0) && node.children_count % 2 == 0
+			(node.value.len > 0 || node.typ_text().len > 0) && node.children_count % 2 == 0
 				&& expr_children_can_serialize(a, node)
 		}
 		.cast_expr, .as_expr {
@@ -7636,7 +7636,7 @@ fn array_init_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	typ := if node.typ.len > 0 { node.typ } else { node.value }
+	typ := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
 	return '${typ}{${values.join(', ')}}'
 }
 
@@ -7657,7 +7657,7 @@ fn list_expr_text(a &flat.FlatAst, node flat.Node, open string, close string) st
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	prefix := if node.typ.len > 0 { node.typ } else { '' }
+	prefix := if node.typ_text().len > 0 { node.typ_text() } else { '' }
 	return '${prefix}${open}${values.join(', ')}${close}'
 }
 
@@ -7668,8 +7668,8 @@ fn map_expr_text(a &flat.FlatAst, node flat.Node) string {
 	}
 	prefix := if node.value.len > 0 {
 		node.value
-	} else if node.typ.len > 0 {
-		node.typ
+	} else if node.typ_text().len > 0 {
+		node.typ_text()
 	} else {
 		'map[string]string'
 	}

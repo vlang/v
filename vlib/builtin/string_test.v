@@ -253,6 +253,50 @@ fn test_rsplit_nth() {
 	assert e.rsplit_nth(',', 3).len == 3
 }
 
+// An empty delimiter must split on runes, not bytes, so a multi-byte
+// character is never torn across two parts. Every existing test of an empty
+// delimiter used ASCII, where one byte and one rune are the same thing.
+// See https://github.com/vlang/v/issues/29834 .
+fn test_split_empty_delimiter_is_rune_wise() {
+	assert 'αβγδ'.split('') == ['α', 'β', 'γ', 'δ']
+	assert '日本語'.split('') == ['日', '本', '語']
+	assert 'Ünïcödé'.split('') == ['Ü', 'n', 'ï', 'c', 'ö', 'd', 'é']
+	// ASCII is unchanged: one byte is one rune
+	assert 'ABCDEF'.split('') == ['A', 'B', 'C', 'D', 'E', 'F']
+}
+
+fn test_split_empty_delimiter_preserves_invalid_utf8_without_crossing_boundaries() {
+	bytes := [u8(0xe2), 0x82, `A`, 0xff, 0xc2]
+	text := bytes.bytestr()
+	parts := text.split('')
+	assert parts.map(it.bytes()) == bytes.map([it])
+	assert parts.join('') == text
+	assert text.rsplit('').map(it.bytes()) == bytes.reverse().map([it])
+	assert text.split_nth('', 2) == [text[..1], text[1..]]
+	assert text.rsplit_nth('', 2) == [text[4..], text[..4]]
+}
+
+fn test_rsplit_empty_delimiter_is_rune_wise() {
+	assert 'αβγδ'.rsplit('') == ['δ', 'γ', 'β', 'α']
+	assert '日本語'.rsplit('') == ['語', '本', '日']
+	assert 'ABCDEF'.rsplit('') == ['F', 'E', 'D', 'C', 'B', 'A']
+}
+
+// The `nth` remainder must slot on a rune boundary, so the last part is the
+// remaining whole runes rather than a byte prefix.
+fn test_split_nth_empty_delimiter_is_rune_wise() {
+	assert 'αβγδ'.split_nth('', 2) == ['α', 'βγδ']
+	assert '日本語テキスト'.split_nth('', 3) == ['日', '本', '語テキスト']
+	// The `nth` remainder is the leading runes, not their reverse.
+	assert 'αβγδ'.rsplit_nth('', 2) == ['δ', 'αβγ']
+	// an empty string still splits to nothing
+	assert ''.split('') == []
+	assert ''.rsplit('') == []
+	// and the ASCII expectations the old tests pinned still hold
+	assert '123'.split_nth('', 2) == ['1', '23']
+	assert '123'.rsplit_nth('', 2) == ['3', '12']
+}
+
 fn test_split_nth_values() {
 	line := 'CMD=eprintln(phase=1)'
 
@@ -518,6 +562,13 @@ fn test_is_bin() {
 	assert '0.34'.is_bin() == false
 	assert '0o23'.is_bin() == false
 	assert 'vlang'.is_bin() == false
+	// the prefix characters are accepted in either case, like .int()
+	assert '0B1'.is_bin() == true
+	assert '0B0'.is_bin() == true
+	assert '-0B1'.is_bin() == true
+	assert '+0B1101'.is_bin() == true
+	assert '0B'.is_bin() == false
+	assert '-0B'.is_bin() == false
 }
 
 fn test_is_oct() {
@@ -528,6 +579,13 @@ fn test_is_oct() {
 	assert '-0o0'.is_oct() == true
 	assert '-0o1'.is_oct() == true
 	assert '-0o2'.is_oct() == true
+	// the prefix characters are accepted in either case, like .int()
+	assert '0O0'.is_oct() == true
+	assert '0O1'.is_oct() == true
+	assert '-0O1'.is_oct() == true
+	assert '+0O23'.is_oct() == true
+	assert '0O'.is_oct() == false
+	assert '0O8'.is_oct() == false
 
 	assert '0o04'.is_oct() == true
 	assert '0o16'.is_oct() == true
@@ -592,6 +650,15 @@ fn test_is_hex() {
 	assert '0.34'.is_hex() == false
 	assert '0o23'.is_hex() == false
 	assert 'vlang'.is_hex() == false
+	// the prefix characters are accepted in either case, like .int()
+	assert '0X1'.is_hex() == true
+	assert '0X1A'.is_hex() == true
+	assert '-0X1'.is_hex() == true
+	assert '-0X1A'.is_hex() == true
+	assert '+0X1'.is_hex() == true
+	assert '+0XFF'.is_hex() == true
+	assert '0X'.is_hex() == false
+	assert '0XG'.is_hex() == false
 }
 
 fn test_is_int() {
@@ -1119,6 +1186,16 @@ fn test_lower() {
 	s = 'hi'
 	assert s.is_lower()
 	assert s.to_lower() == 'hi'
+	// a leading digit no longer decides the whole string
+	assert '123abc'.is_lower()
+	assert '1a'.is_lower()
+	assert '1, 2, 3, 4 go!'.is_lower()
+	assert 'a1b2'.is_lower()
+	assert ' 123abc!'.is_lower()
+	assert !'!@#$'.is_lower()
+	assert !'   '.is_lower()
+	assert !'1A'.is_lower()
+	assert !'1a2B'.is_lower()
 	assert 'aloha!'[0] == `a`
 	assert 'aloha!'[5] == `!`
 	s = '123'
@@ -1706,6 +1783,42 @@ fn test_index_u8() {
 	assert 'abc'.index_u8(`A`) == -1
 	assert 'abc'.index_u8(`B`) == -1
 	assert 'abc'.index_u8(`C`) == -1
+}
+
+fn test_index_empty_needle() {
+	for s in ['abc', '', 'é🙂', string{}] {
+		for needle in ['', string{}] {
+			assert s.contains(needle)
+			assert s.index_(needle) == 0
+			assert s.index(needle)? == 0
+		}
+	}
+	assert 'abcabc'.index('bc')? == 1
+	assert 'abc'.index('missing') == none
+	assert ''.index('a') == none
+}
+
+fn test_last_index_empty_needle() {
+	for s in ['abc', '', 'é🙂', string{}] {
+		for needle in ['', string{}] {
+			assert s.last_index(needle)? == s.len
+		}
+	}
+	assert ''.last_index('a') == none
+}
+
+fn test_empty_delimiter_helpers() {
+	for s in ['abc', '', 'é🙂'] {
+		assert s.before('') == s
+		assert s.all_before('') == s
+		assert s.all_before_last('') == s
+		assert s.all_after('') == s
+		assert s.all_after_first('') == s
+		assert s.all_after_last('') == s
+		assert s.after('') == s
+		assert s.find_between('', ']') == ''
+		assert s.find_between('[', '') == ''
+	}
 }
 
 fn test_last_index() {

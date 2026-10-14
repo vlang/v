@@ -2,6 +2,16 @@ module types
 
 import v.flat
 
+// semantic_type_id interns a semantic value in this checker view's type table.
+// The resulting identity must only be used with this view or a view sharing its table.
+pub fn (tc &TypeChecker) semantic_type_id(value Type) ?TypeId {
+	if isnil(tc.type_interner) {
+		return none
+	}
+	id, _ := tc.intern_type(value)
+	return id
+}
+
 fn (tc &TypeChecker) indexed_type_cache() &IndexedTypeCache {
 	mut cache := unsafe { tc.type_cache }
 	if isnil(cache.indexed_types) || cache.indexed_types.owner != tc.type_interner {
@@ -83,14 +93,14 @@ pub fn (tc &TypeChecker) type_name_by_id(id TypeId) string {
 	mut cache := tc.indexed_type_cache()
 	slot := int(u32(id) & 4095)
 	if cache.name_set[slot] && cache.name_ids[slot] == id {
-		return cache.names[slot]
+		return flat.source_type_name(cache.names[slot])
 	}
 	mut interner := unsafe { tc.type_interner }
 	name := interner.name(id)
 	// An out-of-range identity can become valid after the interner grows.
 	if name != 'unknown' {
 		cache.name_ids[slot] = id
-		cache.names[slot] = name
+		cache.names[slot] = flat.source_type_id(name)
 		cache.name_set[slot] = true
 	}
 	return name
@@ -117,12 +127,12 @@ pub fn (tc &TypeChecker) parse_type_id(text string) ?TypeId {
 		return none
 	}
 	value := tc.parse_type(text)
-	if tc.type_param_texts.len == 0 && !isnil(tc.type_cache)
+	if tc.type_param_texts.ids.len == 0 && !isnil(tc.type_cache)
 		&& tc.type_cache.alias_parse_stack.len == 0 {
 		cache := tc.type_cache.parsed_scalars
 		if !isnil(cache) && cache.owner == tc.type_interner && text.len > 0 {
 			slot := parsed_scalar_slot(text)
-			if parse_type_cache_string_matches(cache.texts[slot], text) {
+			if parse_type_cache_string_matches(flat.source_type_name(cache.texts[slot]), text) {
 				return cache.ids[slot]
 			}
 		}
@@ -152,7 +162,7 @@ fn (tc &TypeChecker) parsed_scalar_type(text string) ?Type {
 		return none
 	}
 	slot := parsed_scalar_slot(text)
-	if parse_type_cache_string_matches(cache.texts[slot], text) {
+	if parse_type_cache_string_matches(flat.source_type_name(cache.texts[slot]), text) {
 		return cache.values[slot]
 	}
 	return none
@@ -174,7 +184,7 @@ fn (tc &TypeChecker) remember_parsed_scalar_type(text string, id TypeId, value T
 	}
 	mut cache := type_cache.parsed_scalars
 	slot := parsed_scalar_slot(text)
-	cache.texts[slot] = text.clone()
+	cache.texts[slot] = flat.source_type_id(text)
 	cache.ids[slot] = id
 	cache.values[slot] = value
 }

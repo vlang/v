@@ -102,7 +102,7 @@ fn fastc_synthesized_test_main(functions map[string]FastcFunctionSignature, func
 			|| !fastc_is_test_source(signature.path, prefs) {
 			continue
 		}
-		if signature.parameter_types.len > 0 {
+		if signature.parameter_types.ids.len > 0 {
 			invalid << FastcTestFunction{
 				name:     name
 				path:     signature.path
@@ -124,7 +124,7 @@ fn fastc_synthesized_test_main(functions map[string]FastcFunctionSignature, func
 			path:         signature.path
 			position:     signature.position
 			failure_line: fastc_test_failure_line(texts[signature.path], signature.position)
-			return_type:  signature.return_type
+			return_type:  signature.return_type_text()
 		}
 	}
 	tests.sort_with_compare(fastc_compare_test_functions)

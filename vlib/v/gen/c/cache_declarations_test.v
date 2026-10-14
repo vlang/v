@@ -10,7 +10,7 @@ fn test_final_cached_signatures_declare_tuple_payloads_before_wrappers() {
 		mut tc := types.TypeChecker.new(&a)
 		tc.structs['dep.Box'] = [types.StructField{
 			name: 'child'
-			typ:  types.Struct{ name: 'dep.Child' }
+			typ:  types.Struct{ name_id: flat.source_type_id('dep.Child') }
 		}]
 		tc.structs['dep.Child'] = [types.StructField{
 			name: 'value'
@@ -18,7 +18,10 @@ fn test_final_cached_signatures_declare_tuple_payloads_before_wrappers() {
 		}]
 		tc.structs['dep.Unused'] = []types.StructField{}
 		payload := types.Type(types.MultiReturn{
-			types: [types.Type(types.Struct{ name: 'dep.Box' }), types.Type(types.string_)]
+			types: [
+				types.Type(types.Struct{ name_id: flat.source_type_id('dep.Box') }),
+				types.Type(types.string_),
+			]
 		})
 		tc.fn_ret_types['dep.pair'] = if is_result {
 			types.Type(types.ResultType{ base_type: payload })
@@ -84,7 +87,7 @@ fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 			params:      [types.Type(types.Map{
 				key_type:   types.Type(types.string_)
 				value_type: types.Type(types.OptionType{
-					base_type: types.Type(types.Struct{ name: 'sample.Child' })
+					base_type: types.Type(types.Struct{ name_id: flat.source_type_id('sample.Child') })
 				})
 			})]
 			return_type: types.Type(types.void_)
@@ -93,7 +96,7 @@ fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 	tc.structs['sample.Child'] = [types.StructField{
 		name: 'parent'
 		typ:  types.Pointer{
-			base_type: types.Type(types.Struct{ name: 'sample.Parent' })
+			base_type: types.Type(types.Struct{ name_id: flat.source_type_id('sample.Parent') })
 		}
 	}]
 	tc.structs['sample.Unused'] = []types.StructField{}
@@ -102,7 +105,7 @@ fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 	g.tc = &tc
 	g.cache_decl_demand = true
 	mut seen := map[string]bool{}
-	g.cache_require_declaration_type(types.Struct{ name: 'sample.Parent' }, mut seen)
+	g.cache_require_declaration_type(types.Struct{ name_id: flat.source_type_id('sample.Parent') }, mut seen)
 	names := g.c_struct_decl_names()
 	assert 'sample.Parent' in names
 	assert 'sample.Child' in names
@@ -114,7 +117,7 @@ fn test_cache_demand_keeps_fixed_array_alias_element_layouts() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['sample.Box'] = []types.StructField{}
 	tc.structs['sample.Unused'] = []types.StructField{}
-	tc.type_aliases['sample.Boxes'] = '[2]sample.Box'
+	tc.type_aliases.set('sample.Boxes', '[2]sample.Box')
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -149,7 +152,7 @@ fn test_cache_map_key_helpers_follow_their_builtin_prototypes() {
 	fn_id := a.add_node(flat.Node{
 		kind:   .fn_decl
 		value:  'fast_string_eq'
-		typ:    'bool'
+		typ:    flat.source_type_id('bool')
 		is_mut: true
 	})
 	mut tc := types.TypeChecker.new(&a)
@@ -179,10 +182,10 @@ fn test_cache_signature_collection_omits_unused_function_payloads() {
 	tc.structs['sample.Used'] = []types.StructField{}
 	tc.structs['sample.Unused'] = []types.StructField{}
 	tc.fn_ret_types['sample.used'] = types.OptionType{
-		base_type: types.Type(types.Struct{ name: 'sample.Used' })
+		base_type: types.Type(types.Struct{ name_id: flat.source_type_id('sample.Used') })
 	}
 	tc.fn_ret_types['sample.unused'] = types.OptionType{
-		base_type: types.Type(types.Struct{ name: 'sample.Unused' })
+		base_type: types.Type(types.Struct{ name_id: flat.source_type_id('sample.Unused') })
 	}
 	tc.fn_type_modules['sample.used'] = 'sample'
 	tc.fn_type_modules['sample.unused'] = 'sample'
@@ -240,20 +243,20 @@ fn test_cache_demand_keeps_unused_constant_wrappers_and_their_field_graph_out() 
 	tc.structs['sample.Used'] = []types.StructField{}
 	tc.structs['sample.Unused'] = [types.StructField{
 		name: 'child'
-		typ:  types.Struct{ name: 'sample.UnusedChild' }
+		typ:  types.Struct{ name_id: flat.source_type_id('sample.UnusedChild') }
 	}]
 	tc.structs['sample.UnusedChild'] = [types.StructField{
 		name: 'parent'
-		typ:  types.Pointer{ base_type: types.Type(types.Struct{ name: 'sample.Unused' }) }
+		typ:  types.Pointer{ base_type: types.Type(types.Struct{ name_id: flat.source_type_id('sample.Unused') }) }
 	}]
 	tc.const_types['sample.used'] = types.OptionType{
-		base_type: types.Type(types.Struct{ name: 'sample.Used' })
+		base_type: types.Type(types.Struct{ name_id: flat.source_type_id('sample.Used') })
 	}
 	tc.const_types['sample.unused'] = types.OptionType{
-		base_type: types.Type(types.Struct{ name: 'sample.Unused' })
+		base_type: types.Type(types.Struct{ name_id: flat.source_type_id('sample.Unused') })
 	}
 	tc.const_types['sample.unused_result'] = types.ResultType{
-		base_type: types.Type(types.Struct{ name: 'sample.Unused' })
+		base_type: types.Type(types.Struct{ name_id: flat.source_type_id('sample.Unused') })
 	}
 	// A constant and a function can share a V name but use different C symbols.
 	tc.fn_ret_types['sample.used'] = types.int_
