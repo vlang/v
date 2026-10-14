@@ -2557,6 +2557,20 @@ fn test_formatter_preserves_deferred_comment_groups_for_semicolon_fields() {
 	assert vfmt('struct_field_semicolon_deferred_comment_groups_twice', out) == out
 }
 
+fn test_formatter_ends_comment_groups_at_wrapping_attributed_defaults() {
+	field_name := 'extremely_long_field_name_with_many_characters_to_move_default_values_right'
+	for separator in ['; ', '\n\t'] {
+		for middle_comment in [' /* middle */', ''] {
+			source := 'struct Comments { a usize = 1 /* a */ @[x]${separator}${field_name} []int = [1, 2, 3]${middle_comment} @[long]${separator}c usize = 2 /* c */ @[x]${separator}d usize = 3 /* d */ @[xx] }'
+			out := vfmt('struct_field_wrapped_default_comment_groups', source)
+			assert out.contains('[]int = [\n'), out
+			assert out.contains('@[x]  /* c */\n'), out
+			assert out.contains('@[xx] /* d */\n'), out
+			assert vfmt('struct_field_wrapped_default_comment_groups_twice', out) == out
+		}
+	}
+}
+
 fn test_formatter_keeps_multiple_default_comments_and_trailing_field_comments() {
 	source := 'struct Comments {\n\ta int = 1 /* note a */ /* second a */ @[a] // tail a\n\tb int = 123 /* note b */ @[b] // tail b\n}\n'
 	want := 'struct Comments {\n\ta int = 1   @[a] /* note a */ /* second a */ // tail a\n\tb int = 123 @[b] /* note b */ // tail b\n}\n'

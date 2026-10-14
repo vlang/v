@@ -1963,6 +1963,19 @@ struct Hex2 {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_ends_comment_groups_at_wrapping_attributed_defaults() {
+	field_name := 'extremely_long_field_name_with_many_characters_to_move_default_values_right'
+	source := 'struct Comments { a usize = 1 /* a */ @[x]; ${field_name} []int = [1, 2, 3] /* middle */ @[long]; c usize = 2 /* c */ @[x]; d usize = 3 /* d */ @[xx] }'
+	res, formatted := run_vfmt_write('wrapped_default_comment_groups', source, '')
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('[]int = [\n'), formatted
+	assert formatted.contains('@[x]  /* c */\n'), formatted
+	assert formatted.contains('@[xx] /* d */\n'), formatted
+	second_res, twice := run_vfmt_write('wrapped_default_comment_groups_twice', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert twice == formatted
+}
+
 fn test_fmt_aligns_struct_field_attributes_with_defaults() {
 	source := 'struct ConfigSearch {
 pub mut:

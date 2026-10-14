@@ -5152,7 +5152,9 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 	mut entries := []flat.NodeId{}
 	mut lines := map[int]int{}
 	mut previous := flat.empty_node
-	mut prev_state := 0
+	mut comment_suffixes := map[int]int{}
+	mut comment_states := map[int]int{}
+	mut comment_breaks := map[int]bool{}
 	mut comment_groups := map[int]int{}
 	mut preserved_fields := map[int]bool{}
 	mut preserved_end := -1
@@ -5213,13 +5215,9 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 			} else {
 				3
 			}
-			if prev_state != state {
-				comment_align.add_new_info(suffix, line)
-			} else {
-				comment_align.add_info(suffix, line, has_break)
-			}
-			prev_state = state
-			comment_groups[int(fid)] = comment_align.infos.len - 1
+			comment_suffixes[int(fid)] = suffix
+			comment_states[int(fid)] = state
+			comment_breaks[int(fid)] = has_break
 		}
 		entries << fid
 		lines[int(fid)] = line
@@ -5230,10 +5228,13 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 	mut comments := map[int]int{}
 	mut attr_groups := map[int]int{}
 	mut attr_group_break := false
+	mut comment_group_break := false
+	mut prev_state := 0
 	for fid in entries {
 		f := g.a.node(fid)
 		line := lines[int(fid)]
 		gp := f.generic_params()
+		mut wraps_default := false
 		if f.children_count > 0 {
 			defaults[int(fid)] = default_align.max_len(line)
 		}
@@ -5266,7 +5267,23 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId, alignments m
 			} else {
 				// A multiline default separates its neighbors even on the same source line.
 				attr_group_break = true
+				wraps_default = true
 			}
+		}
+		if suffix := comment_suffixes[int(fid)] {
+			state := comment_states[int(fid)]
+			if comment_group_break || prev_state != state {
+				comment_align.add_new_info(suffix, line)
+			} else {
+				comment_align.add_info(suffix, line, comment_breaks[int(fid)])
+			}
+			prev_state = state
+			comment_group_break = false
+			comment_groups[int(fid)] = comment_align.infos.len - 1
+		}
+		// The next field starts several output lines later, even in compact source.
+		if wraps_default {
+			comment_group_break = true
 		}
 	}
 	for fid, group in attr_groups {

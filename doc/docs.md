@@ -7317,6 +7317,7 @@ Fields written on one line with semicolons retain their attribute alignment afte
 An attributed default that spans several lines separates the attribute alignment groups around it.
 Comments between a default value and its attributes stay with that field, after its attributes.
 Deferred inline comments align with neighboring trailing field comments on the first pass.
+Fields following a multiline attributed default start a fresh trailing comment alignment group.
 Comments inside a default expression remain inside that expression.
 
 Backend options before `fmt`, such as `v -b arm64 fmt file.v`, or in `VFLAGS` are honored.
