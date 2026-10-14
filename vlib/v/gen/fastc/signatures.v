@@ -598,7 +598,7 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	if prefs.is_test {
 		for key, signature in functions {
 			name := key.all_after_last('.')
-			if signature.path.ends_with('_test.v') && fastc_is_test_harness_function(name) {
+			if fastc_is_test_harness_function(name) && fastc_is_test_source(signature.path, prefs) {
 				used[name] = true
 			}
 		}

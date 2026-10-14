@@ -1273,7 +1273,7 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 	element_comparison := if resolved_element == 'string' {
 		'builtin__string_eq(((${element_type} *)__vf_array_eq_left.data)[__vf_array_eq_index], ((${element_type} *)__vf_array_eq_right.data)[__vf_array_eq_index])'
 	} else if is_composite {
-		'({ ${element_type} __vf_element_left = ((${element_type} *)__vf_array_eq_left.data)[__vf_array_eq_index]; ${element_type} __vf_element_right = ((${element_type} *)__vf_array_eq_right.data)[__vf_array_eq_index]; ${g.struct_equality_source('__vf_element_left', '__vf_element_right', element_type, []string{})}; })'
+		'({ ${element_type} __vf_element_left = ((${element_type} *)__vf_array_eq_left.data)[__vf_array_eq_index]; ${element_type} __vf_element_right = ((${element_type} *)__vf_array_eq_right.data)[__vf_array_eq_index]; ${g.stored_equality_source('__vf_element_left', '__vf_element_right', element_type, []string{})}; })'
 	} else {
 		'(((${element_type} *)__vf_array_eq_left.data)[__vf_array_eq_index] == ((${element_type} *)__vf_array_eq_right.data)[__vf_array_eq_index])'
 	}
@@ -2013,6 +2013,26 @@ fn (g &Parser) struct_equality_is_supported(typ string, seen []string) bool {
 	return true
 }
 
+// stored_equality_source compares two values held as an array holds its elements: a fixed
+// array there is a `FixedArray_*` wrapper, its own elements wrappers too, where a struct field
+// is a raw C array.
+fn (g &Parser) stored_equality_source(left string, right string, typ string, seen []string) string {
+	if !fastc_is_pointer_type(typ) {
+		layout_type := g.underlying_alias_type(typ)
+		if element_type := fastc_fixed_array_element_type(layout_type) {
+			length_source := fastc_fixed_array_length(layout_type) or { return 'false' }
+			length := g.fixed_array_length_value(length_source) or { return 'false' }
+			mut comparisons := []string{cap: length}
+			for index in 0 .. length {
+				comparisons << g.stored_equality_source('(${left}).data[${index}]', '(${right}).data[${index}]',
+					element_type, seen)
+			}
+			return if comparisons.len == 0 { 'true' } else { '(${comparisons.join(' && ')})' }
+		}
+	}
+	return g.struct_equality_source(left, right, typ, seen)
+}
+
 fn (g &Parser) struct_equality_source(left string, right string, typ string, seen []string) string {
 	if fastc_is_pointer_type(typ) {
 		return '((${left}) == (${right}))'
@@ -2040,7 +2060,7 @@ fn (g &Parser) struct_equality_source(left string, right string, typ string, see
 		index := '__vf_array_eq_index'
 		left_element := '((${element_type} *)${left_array}.data)[${index}]'
 		right_element := '((${element_type} *)${right_array}.data)[${index}]'
-		element_equality := g.struct_equality_source(left_element, right_element, element_type, seen)
+		element_equality := g.stored_equality_source(left_element, right_element, element_type, seen)
 		return '({ ${layout_type} ${left_array} = (${left}); ${layout_type} ${right_array} = (${right}); bool ${equal} = ${left_array}.len == ${right_array}.len; for (int ${index} = 0; ${equal} && ${index} < ${left_array}.len; ${index}++) { if (!(${element_equality})) { ${equal} = false; } } ${equal}; })'
 	}
 	type_key := g.semantic_type_key(layout_type)
