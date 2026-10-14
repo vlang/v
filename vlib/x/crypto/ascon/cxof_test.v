@@ -143,3 +143,31 @@ const cxof128_test_data = [
 		md:    '17756044b742028b508d797c2c75a0722dde763c59d3fe5f70435b82faca5a80fe9c5ec9f3c59072ae48f37a241281c25d2e903c9d9290128265f1fe92b80bed'
 	},
 ]
+
+fn test_cxof128_read_partial_blocks() ! {
+	for item in cxof128_test_data {
+		msg := hex.decode(item.msg)!
+		cs := hex.decode(item.z)!
+		md := hex.decode(item.md)!
+		for size in [1, 3, 7, 8, 9] {
+			mut x := ascon.new_cxof128(64, cs)!
+			x.write(msg)!
+			mut empty := []u8{}
+			assert x.read(mut empty)! == 0
+			mut out := []u8{}
+			for out.len < md.len {
+				n := if md.len - out.len < size { md.len - out.len } else { size }
+				mut part := []u8{len: n}
+				assert x.read(mut part)! == n
+				out << part
+				assert x.read(mut empty)! == 0
+			}
+			assert out == md
+			x.reset()
+			x.write(msg)!
+			mut whole := []u8{len: md.len}
+			x.read(mut whole)!
+			assert whole == md
+		}
+	}
+}
