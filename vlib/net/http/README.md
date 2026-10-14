@@ -203,6 +203,8 @@ and years before 1601 remain in `Cookie.unparsed`; they do not replace a valid e
 spells them; `Response.cookies` matches attribute names in any case.
 When serializing `Cookie`, IPv4 literals such as `127.0.0.1` are accepted as domains;
 invalid domains are omitted.
+`Cookie.str()` omits `SameSite` for `.same_site_not_set` and `.same_site_default_mode`.
+The explicit modes write `SameSite=Lax`, `SameSite=Strict` or `SameSite=None`.
 
 `Cookie.str()` writes a cookie only when its name is an RFC 9110 token: letters, digits
 and ``!#$%&'*+-.^_`|~``. For any other name, such as one with a space, `;`, `,`, `=` or

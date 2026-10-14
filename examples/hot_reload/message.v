@@ -1,6 +1,9 @@
 module main
 
-// Build this example with `v -live message.v`
+// Run this example with `v watch run message.v`, then modify the message
+// below while it is running to see the changes take effect on restart.
+// (The older `v -live` workflow is described in the Hot code reloading
+// section of doc/docs.md.)
 import time
 import v.live
 
