@@ -52,11 +52,11 @@ fn test_wrapped_arrays_with_different_element_types_are_not_slot_compatible() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	for wrapped in ['?', 'chan '] {
-		ints := tc.parse_type('${wrapped}[]int')
-		strings := tc.parse_type('${wrapped}[]string')
+		ints := tc.parse_type(flat.source_type_id('${wrapped}[]int'))
+		strings := tc.parse_type(flat.source_type_id('${wrapped}[]string'))
 		assert !tc.slot_value_compatible(ints, strings), wrapped
 		assert !tc.slot_value_compatible(strings, ints), wrapped
-		assert tc.slot_value_compatible(ints, tc.parse_type('${wrapped}[]int')), wrapped
+		assert tc.slot_value_compatible(ints, tc.parse_type(flat.source_type_id('${wrapped}[]int'))), wrapped
 	}
 }
 

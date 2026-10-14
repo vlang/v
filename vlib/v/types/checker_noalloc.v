@@ -560,14 +560,14 @@ fn (mut s NoAllocScan) check_argument_storage(call flat.Node, target NoAllocFunc
 		if file := s.tc.a.source_files[fn_node.pos.id] {
 			s.tc.cur_file = file.name
 		}
-		expected := s.tc.parse_type(param.typ_text())
+		expected := s.tc.parse_type(param.typ)
 		s.tc.cur_module = old_module
 		s.tc.cur_file = old_file
 		if s.boxed_storage(expected) {
 			s.report(argument_id, chain, anchor, 'argument conversion may allocate interface or sum-type storage')
 		}
 		if param.is_mut || expected is Pointer {
-			actual := s.tc.parse_type(s.type_name(argument_id, parameters))
+			actual := s.tc.parse_type(flat.source_type_id(s.type_name(argument_id, parameters)))
 			if expected is Pointer && actual !is Pointer && unalias_type(actual) is Struct {
 				s.report(argument_id, chain, anchor, 'implicit reference to local aggregate may move it to the heap')
 			}
@@ -594,7 +594,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 		.array_literal, .array_init {
 			typ := s.type_name(id, parameters)
 			inferred_fixed := node.kind == .array_literal && s.tc.array_literal_is_inferred_fixed(id)
-			mut array_type := s.tc.parse_type(typ)
+			mut array_type := s.tc.parse_type(flat.source_type_id(typ))
 			if inferred_fixed {
 				array_type = ArrayFixed{
 					elem_type: s.tc.array_literal_elem_type(*node)
@@ -643,7 +643,11 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			}
 		}
 		.cast_expr, .as_expr {
-			target := s.tc.parse_type(if node.value != '' { node.value } else { node.typ_text() })
+			target := s.tc.parse_type(flat.source_type_id(if node.value != '' {
+				node.value
+			} else {
+				node.typ_text()
+			}))
 			mut seen := map[string]bool{}
 			if s.boxed_storage(target) {
 				reason = 'conversion to an interface or sum type may allocate a box'
@@ -652,7 +656,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			}
 		}
 		.struct_init, .assoc {
-			typ := s.tc.parse_type(s.type_name(id, parameters))
+			typ := s.tc.parse_type(flat.source_type_id(s.type_name(id, parameters)))
 			mut seen := map[string]bool{}
 			if s.owning_storage(typ, mut seen) {
 				reason = 'initializing aggregate owning storage may allocate or clone defaults'
@@ -670,8 +674,8 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 		}
 		.field_init {
 			if node.typ_text() != '' && node.children_count > 0 {
-				expected := unalias_type(s.tc.parse_type(node.typ_text()))
-				actual := unalias_type(s.tc.parse_type(s.type_name(s.tc.a.child(node, 0), parameters)))
+				expected := unalias_type(s.tc.parse_type(node.typ))
+				actual := unalias_type(s.tc.parse_type(flat.source_type_id(s.type_name(s.tc.a.child(node, 0), parameters))))
 				if s.boxed_storage(expected) && actual.name() != expected.name() {
 					reason = 'field conversion may allocate interface or sum-type storage'
 				}
@@ -687,7 +691,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 					}
 				}
 				if node.children_count > 0 {
-					base := s.tc.parse_type(s.type_name(s.tc.a.child(node, 0), parameters))
+					base := s.tc.parse_type(flat.source_type_id(s.type_name(s.tc.a.child(node, 0), parameters)))
 					clean := unalias_type(unwrap_pointer(base))
 					if clean is Unknown || clean is Map || clean is Struct || clean is Interface || clean is SumType {
 						reason = 'indexing this type cannot be proven nonallocating'
@@ -701,10 +705,10 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			}
 			if node.children_count >= 2 {
 				lhs := s.tc.a.child(node, 0)
-				typ := s.tc.parse_type(s.type_name(lhs, parameters))
+				typ := s.tc.parse_type(flat.source_type_id(s.type_name(lhs, parameters)))
 				clean := unalias_type(unwrap_pointer(typ))
 				if node.op == .left_shift && clean is Array {
-					rhs := unalias_type(s.tc.parse_type(s.type_name(s.tc.a.child(node, 1), parameters)))
+					rhs := unalias_type(s.tc.parse_type(flat.source_type_id(s.type_name(s.tc.a.child(node, 1), parameters))))
 					mut seen := map[string]bool{}
 					if s.boxed_storage(clean) {
 						reason = 'array element conversion may allocate interface or sum-type storage'
@@ -727,7 +731,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			for i := 0; i + 1 < node.children_count; i += 2 {
 				lhs := s.tc.a.child(node, i)
 				rhs := s.tc.a.child(node, i + 1)
-				typ := s.tc.parse_type(s.type_name(lhs, parameters))
+				typ := s.tc.parse_type(flat.source_type_id(s.type_name(lhs, parameters)))
 				mut seen := map[string]bool{}
 				if s.boxed_storage(typ) {
 					reason = 'assignment conversion may allocate interface or sum-type storage'
@@ -746,7 +750,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 		}
 		.postfix {
 			if node.children_count > 0 {
-				typ := s.tc.parse_type(s.type_name(s.tc.a.child(node, 0), parameters))
+				typ := s.tc.parse_type(flat.source_type_id(s.type_name(s.tc.a.child(node, 0), parameters)))
 				operator := match node.op {
 					.inc { flat.Op.plus }
 					.dec { flat.Op.minus }
@@ -759,7 +763,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 		}
 		.in_expr {
 			for i in 0 .. node.children_count {
-				typ := s.tc.parse_type(s.type_name(s.tc.a.child(node, i), parameters))
+				typ := s.tc.parse_type(flat.source_type_id(s.type_name(s.tc.a.child(node, i), parameters)))
 				if s.tc.comparison_calls_operator_method(typ, .eq) || s.custom_operator_storage(typ) {
 					reason = 'membership operation cannot be proven nonallocating'
 				}
@@ -767,7 +771,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 		}
 		.return_stmt {
 			fn_node := s.tc.a.node(decl.id)
-			result_type := s.tc.parse_type(fn_node.typ_text())
+			result_type := s.tc.parse_type(fn_node.typ)
 			mut seen := map[string]bool{}
 			if s.owning_storage(result_type, mut seen) {
 				if node.children_count != 1 || s.tc.a.child_node(node, 0).kind != .string_literal
@@ -777,7 +781,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			}
 			if result_type is Pointer {
 				for i in 0 .. node.children_count {
-					actual := s.tc.parse_type(s.type_name(s.tc.a.child(node, i), parameters))
+					actual := s.tc.parse_type(flat.source_type_id(s.type_name(s.tc.a.child(node, i), parameters)))
 					if actual !is Pointer {
 						reason = 'returning an implicit reference may move storage to the heap'
 					}
@@ -786,7 +790,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			if result_type is ResultType {
 				base := unalias_type(result_type.base_type)
 				for i in 0 .. node.children_count {
-					actual := unalias_type(s.tc.parse_type(s.type_name(s.tc.a.child(node, i), parameters)))
+					actual := unalias_type(s.tc.parse_type(flat.source_type_id(s.type_name(s.tc.a.child(node, i), parameters))))
 					concrete := unalias_type(unwrap_pointer(actual))
 					if actual.name() != base.name()
 						&& s.tc.named_type_compatible_with_ierror(concrete.name()) {
@@ -799,7 +803,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			// The header is key, value, iterable, followed by direct body statements.
 			if node.children_count >= 3 && node.value != '4'
 				&& s.tc.a.child_node(node, 2).kind != .range {
-				typ := unalias_type(s.tc.parse_type(s.type_name(s.tc.a.child(node, 2), parameters)))
+				typ := unalias_type(s.tc.parse_type(flat.source_type_id(s.type_name(s.tc.a.child(node, 2), parameters))))
 				if typ is Unknown || typ is Map || typ is Struct || typ is Interface || typ is SumType || typ is Channel {
 					reason = 'iteration may allocate a snapshot or call an unknown iterator'
 				}
@@ -824,8 +828,8 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 				}
 			}
 			if callee.kind == .selector && callee.children_count > 0 {
-				receiver := unalias_type(unwrap_pointer(s.tc.parse_type(s.type_name(s.tc.a.child(callee,
-					0), parameters))))
+				receiver := unalias_type(unwrap_pointer(s.tc.parse_type(flat.source_type_id(s.type_name(s.tc.a.child(callee,
+					0), parameters)))))
 				if receiver is Interface {
 					indirect = true
 				} else if receiver is Struct {
@@ -850,7 +854,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 				&& s.array_parameter(s.tc.a.child(node, 1), mutable_arrays) {
 				// Only growth of an existing mutable parameter is the default policy exception.
 				buffer_growth = true
-				buffer_type := unalias_type(unwrap_pointer(s.tc.parse_type(s.type_name(s.tc.a.child(node, 1), parameters))))
+				buffer_type := unalias_type(unwrap_pointer(s.tc.parse_type(flat.source_type_id(s.type_name(s.tc.a.child(node, 1), parameters)))))
 				if s.boxed_storage(buffer_type) {
 					reason = 'array element conversion may allocate interface or sum-type storage'
 				} else if buffer_type is Array {

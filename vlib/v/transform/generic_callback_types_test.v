@@ -70,7 +70,7 @@ fn test_specialized_receiver_callback_uses_function_type_compatibility() {
 		'map[string]Box[%s]'] {
 		actual := wrapper.replace('%s', 'FastFn')
 		expected := wrapper.replace('%s', 'CdeclFn')
-		assert !tc.fn_type_callconv_compatible(tc.parse_type('fn (${actual})'), tc.parse_type('fn (${expected})'))
+		assert !tc.fn_type_callconv_compatible(tc.parse_type(flat.source_type_id('fn (${actual})')), tc.parse_type(flat.source_type_id('fn (${expected})')))
 		assert !t.resolved_receiver_arg_compatible(id, 'fn (${actual})', 'fn (${expected})')
 		assert !t.resolved_receiver_arg_compatible(id, 'fn () ${actual}', 'fn () ${expected}')
 		assert t.resolved_receiver_arg_compatible(id, 'fn (${actual})', 'fn (${actual})')
@@ -118,7 +118,7 @@ fn test_specialized_callbacks_preserve_abi_identical_scalar_payloads() {
 	for wrapper in ['&%s', '[]%s', 'map[string]%s', 'chan %s', '?%s', '!%s', '[][2]%s'] {
 		actual := 'fn (${wrapper.replace('%s', 'rune')})'
 		expected := 'fn (${wrapper.replace('%s', 'u32')})'
-		assert tc.slot_value_compatible(tc.parse_type(actual), tc.parse_type(expected))
+		assert tc.slot_value_compatible(tc.parse_type(flat.source_type_id(actual)), tc.parse_type(flat.source_type_id(expected)))
 		assert t.resolved_receiver_arg_compatible(id, actual, expected)
 		assert t.resolved_receiver_arg_compatible(id, expected, actual)
 		assert !t.resolved_receiver_arg_compatible(id, actual, 'fn (${wrapper.replace('%s', 'u64')})')
@@ -137,8 +137,8 @@ fn test_nested_callback_parameter_modes_and_return_pointer_identity() {
 		assert !t.resolved_receiver_arg_compatible(id, immutable, mutable)
 		assert t.resolved_receiver_arg_compatible(id, mutable, mutable)
 		referenced := 'fn (${wrapper.replace('%s', 'fn (&int)')})'
-		assert t.resolved_receiver_arg_compatible(id, mutable, referenced) == tc.slot_value_compatible(tc.parse_type(mutable), tc.parse_type(referenced))
-		assert t.resolved_receiver_arg_compatible(id, referenced, mutable) == tc.slot_value_compatible(tc.parse_type(referenced), tc.parse_type(mutable))
+		assert t.resolved_receiver_arg_compatible(id, mutable, referenced) == tc.slot_value_compatible(tc.parse_type(flat.source_type_id(mutable)), tc.parse_type(flat.source_type_id(referenced)))
+		assert t.resolved_receiver_arg_compatible(id, referenced, mutable) == tc.slot_value_compatible(tc.parse_type(flat.source_type_id(referenced)), tc.parse_type(flat.source_type_id(mutable)))
 		typed_return := 'fn (${wrapper.replace('%s', 'fn () &int')})'
 		void_return := 'fn (${wrapper.replace('%s', 'fn () voidptr')})'
 		assert !t.resolved_receiver_arg_compatible(id, typed_return, void_return)

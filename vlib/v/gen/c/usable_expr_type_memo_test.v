@@ -13,13 +13,13 @@ fn test_usable_expr_type_uses_materialized_anonymous_storage() {
 		})
 		mut tc := types.TypeChecker.new(&a)
 		tc.structs['Row'] = [types.StructField{ name: 'item', typ: types.Type(types.int_) }]
-		tc.register_synth_type(id, tc.parse_type('${prefix}struct'))
+		tc.register_synth_type(id, tc.parse_type(flat.source_type_id('${prefix}struct')))
 		mut g := FlatGen.new()
 		g.a = &a
 		g.tc = &tc
 		assert g.usable_expr_type(id).name() == '${prefix}Row'
 		// A concrete checked type keeps its authority over the textual annotation.
-		tc.register_synth_type(id, tc.parse_type('${prefix}string'))
+		tc.register_synth_type(id, tc.parse_type(flat.source_type_id('${prefix}string')))
 		assert g.usable_expr_type(id).name() == '${prefix}string'
 	}
 }
