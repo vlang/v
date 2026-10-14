@@ -705,7 +705,7 @@ fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {
 			os.quoted_path(vc_source), '-lws2_32', '-lbcrypt']
 	} else {
 		compat_script := os.join_path(os.dir(os.dir(vc_source)), 'cmd', 'tools', 'vc_compat.sh')
-		parts << ['bash', os.quoted_path(compat_script), os.quoted_path(vc_source), os.quoted_path(cc),
+		parts << ['sh', os.quoted_path(compat_script), os.quoted_path(vc_source), os.quoted_path(cc),
 			'-DCUSTOM_DEFINE_v1_fallback']
 		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary), '--', '-lm', '-lpthread']
 	}

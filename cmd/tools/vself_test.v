@@ -395,8 +395,14 @@ int main(int argc, char **argv) {
 }
 ')!
 	output := os.join_path(root, 'replacement')
-	result := os.exec(['env', 'VFLAGS=', 'VEXE=${broken}', 'VSELF_TEST_STAGE2=${mock}',
-		'VSELF_TEST_FULL_CLI=${vexe}', tool, 'self', '-o', output])
+	// Make any attempt to launch Bash fail while leaving the system tools available.
+	no_bash := os.join_path(root, 'no_bash')
+	os.mkdir_all(no_bash)!
+	bash := os.join_path(no_bash, 'bash')
+	os.write_file(bash, '#!/bin/sh\nexit 127\n')!
+	os.chmod(bash, 0o755)!
+	result := os.exec(['env', 'PATH=${no_bash}:${os.getenv('PATH')}', 'VFLAGS=', 'VEXE=${broken}',
+		'VSELF_TEST_STAGE2=${mock}', 'VSELF_TEST_FULL_CLI=${vexe}', tool, 'self', '-o', output])
 	assert result.exit_code == 0, result.output
 	assert os.is_executable(output), result.output
 	assert !os.exists(os.join_path(root, '.vself_bootstrap_v1'))

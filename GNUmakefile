@@ -249,7 +249,7 @@ ifdef LEGACY
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
 # Stream compatibility fixes for stale snapshots to the compiler, keeping one v.c.
-	bash "$(VROOT)/cmd/tools/vc_compat.sh" "$(VC)/$(VCFILE)" $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) -- $(BOOTSTRAP_VC_EXTRA_SOURCES) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+	sh "$(VROOT)/cmd/tools/vc_compat.sh" "$(VC)/$(VCFILE)" $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) -- $(BOOTSTRAP_VC_EXTRA_SOURCES) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif
