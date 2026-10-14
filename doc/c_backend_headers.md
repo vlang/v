@@ -16,6 +16,10 @@ imports no standard library modules.
 Mach task APIs declared by the application also keep their prototypes in headerless C.
 An explicit Mach SDK header remains authoritative when supplied by the application.
 
+On FreeBSD and OpenBSD, builds with system headers include `<sys/sysctl.h>` for
+`os.executable()` and retain its native `sysctl` declaration. Headerless builds supply
+the sysctl constants and prototype directly.
+
 Win32 API names in headerless C declarations receive `WINAPI` and their wide export
 names only for Windows targets. On other targets, names such as `Sleep` and `CreateFile`
 keep the spelling and calling convention of the program's own C functions.
