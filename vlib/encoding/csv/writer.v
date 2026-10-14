@@ -28,7 +28,7 @@ pub fn new_writer(config WriterConfig) &Writer {
 	}
 }
 
-// write writes a single record
+// write writes a single record, preserving carriage returns unless use_crlf is enabled.
 pub fn (mut w Writer) write(record []string) !bool {
 	if !valid_delim(w.delimiter) {
 		return &InvalidDelimiterError{}
@@ -55,7 +55,12 @@ pub fn (mut w Writer) write(record []string) !bool {
 				z := field[0]
 				match z {
 					`"` { w.sb.write_string('""') }
-					`\r`, `\n` { w.sb.write_string(le) }
+					`\r` {
+						if !w.use_crlf {
+							w.sb.write_u8(`\r`)
+						}
+					}
+					`\n` { w.sb.write_string(le) }
 					else {}
 				}
 

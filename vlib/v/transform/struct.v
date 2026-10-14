@@ -787,8 +787,10 @@ fn (mut t Transformer) specialize_struct_default_expr(struct_type string, defaul
 		return default_id
 	}
 	old_params := t.active_generic_params.clone()
+	t.clear_node_type_memo()
 	t.active_generic_params = params
 	clone_id := t.clone_generic_node(default_id, args)
+	t.clear_node_type_memo()
 	t.active_generic_params = old_params
 	return clone_id
 }
@@ -1374,7 +1376,7 @@ fn (t &Transformer) embedded_field_for_direct_selector(info StructInfo, field_na
 }
 
 fn embedded_selector_matches(field_name string, embedded_name string) bool {
-	clean := embedded_name.trim_space().trim_left('&')
+	clean := trimmed_transform_text(embedded_name).trim_left('&')
 	if clean.len == 0 {
 		return false
 	}
@@ -1682,7 +1684,7 @@ fn split_sum_union_text(s string) []string {
 			}
 			`|` {
 				if depth == 0 {
-					part := s[start..i].trim_space()
+					part := trimmed_transform_text(s[start..i])
 					if part.len > 0 {
 						parts << part
 					}
@@ -1692,7 +1694,7 @@ fn split_sum_union_text(s string) []string {
 			else {}
 		}
 	}
-	part := s[start..].trim_space()
+	part := trimmed_transform_text(s[start..])
 	if part.len > 0 {
 		parts << part
 	}

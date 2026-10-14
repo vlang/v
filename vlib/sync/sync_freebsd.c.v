@@ -39,9 +39,11 @@ fn C.sem_trywait(voidptr) i32
 fn C.sem_timedwait(voidptr, voidptr) i32
 fn C.sem_destroy(voidptr) i32
 
-pub struct C.pthread_mutex {}
+@[typedef]
+pub struct C.pthread_mutex_t {}
 
-pub struct C.pthread_rwlock {}
+@[typedef]
+pub struct C.pthread_rwlock_t {}
 
 @[typedef]
 pub struct C.pthread_rwlockattr_t {}
@@ -52,12 +54,12 @@ pub struct C.sem_t {}
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 @[heap]
 pub struct Mutex {
-	mutex &C.pthread_mutex = unsafe { nil }
+	mutex C.pthread_mutex_t
 }
 
 @[heap]
 pub struct RwMutex {
-	mutex  &C.pthread_rwlock = unsafe { nil }
+	mutex  C.pthread_rwlock_t
 	inited u32
 	writer u32 // tid of current write-lock holder, 0 when none; used for self-deadlock detection
 }

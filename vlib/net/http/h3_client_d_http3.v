@@ -61,18 +61,13 @@ fn (req &Request) to_h3_request(method Method, authority string, path string, da
 		}
 	}
 	// Cookies: the request's own cookie map plus any Cookie header values,
-	// joined into one field (RFC 9114 §4.2 also permits splitting).
-	mut cookie_parts := []string{}
-	for k, v in req.cookies {
-		cookie_parts << '${k}=${v}'
-	}
-	for cv in header.values(.cookie) {
-		cookie_parts << cv
-	}
-	if cookie_parts.len > 0 {
+	// joined into one field (RFC 9114 §4.2 also permits splitting). The value
+	// is the one the HTTP/1.1 and HTTP/2 clients send, sanitized in one place.
+	cookie_value := req.cookie_header_value_with_header(header)
+	if cookie_value != '' || header.contains(.cookie) {
 		extra << quic.QpackFieldLine{
 			name:  'cookie'
-			value: cookie_parts.join('; ')
+			value: cookie_value
 		}
 	}
 	return H3ClientRequest{
@@ -87,10 +82,21 @@ fn (req &Request) to_h3_request(method Method, authority string, path string, da
 
 // h3_response_to_http converts an HTTP/3 response into a net.http Response,
 // decoding any Content-Encoding the same way the HTTP/1.1/2 paths do.
-fn h3_response_to_http(h3resp H3ClientResponse) Response {
+// A field that the Header can not store is an error, not a Response without
+// that field: a `HeaderLimitError`, as from the HTTP/1.1 parser, for a response
+// whose header and trailer sections hold more than `max_headers` fields, and a
+// malformed response for a field that `add_custom` refuses. H3MuxConn rejects
+// such a field when it receives it (h3_response_field_error), so the second
+// case is left for an H3ClientResponse that was not read by it.
+fn h3_response_to_http(h3resp H3ClientResponse) !Response {
 	mut h := new_header()
 	for f in h3resp.headers {
-		h.add_custom(f.name, f.value) or {}
+		h.add_custom(f.name, f.value) or {
+			if err is HeaderLimitError {
+				return err
+			}
+			return error('h3: malformed response: ${err.msg()}')
+		}
 	}
 	body := decode_response_body(h3resp.body.bytestr(), h.get(.content_encoding) or { '' })
 	status := status_from_int(h3resp.status)

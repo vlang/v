@@ -98,6 +98,51 @@ fn test_formatter_keeps_the_spacing_of_compile_time_conditions() {
 	assert vfmt('comptime_condition_spacing', source) == source
 }
 
+fn test_formatter_keeps_binary_ampersands_after_array_literals() {
+	// `v fmt` wrote `assert a == []&&b{} == []`: the `&&` after the `]` was read as the
+	// reference prefix of an element type.
+	source := 'module main
+
+struct Foo {}
+
+fn takes(value bool) bool {
+	return value
+}
+
+fn f(a []int, b []int, c bool, n int) bool {
+	assert a == [] && b == []
+	assert a != [] && b != []
+	assert a == [] || b == []
+	assert c && a == [] && b == [1]
+	if a == [] && c {
+		return takes(a == [] && b == [])
+	}
+	for a == [] && c {
+		break
+	}
+	x := (a == [] && b == [])
+	y := [1]! == [n]! && c
+	_ = [] & n
+	_ = a == [n] & n
+	return x && y && a == [] && b == []
+}
+
+fn g(n int) {
+	_ = []&Foo{}
+	_ = []&&Foo{}
+	_ = [3]&Foo{}
+	_ = [3]&&Foo{}
+	_ = [][]&Foo{len: n}
+	_ = []&Foo{} == [] && []&&Foo{} == []
+}
+'
+	assert vfmt('array_literal_ampersand', source) == source
+	// An operator that is detached on one side only is still an operator for `&&`, and
+	// still a reference prefix for `&`.
+	out := vfmt('array_literal_ampersand_spacing', 'struct Foo {}\n\nfn f(a []int, c bool) {\n\t_ = a == []&& c\n\t_ = a == [1] &&c\n\t_ = [] &Foo{}\n}\n')
+	assert out.contains('\t_ = a == [] && c\n\t_ = a == [1] && c\n\t_ = []&Foo{}\n'), out
+}
+
 fn test_formatter_keeps_generic_constraints() {
 	// `v fmt` used to delete them: `fn longest[T Named]` became `fn longest[T]`.
 	source := 'module m
@@ -2585,4 +2630,14 @@ fn test_format_text_recovers_after_invalid_input() {
 		return
 	}
 	assert false, 'expected a parser error'
+}
+
+fn test_formatter_multiline_parenthesized_condition_with_comments() {
+	source := "fn main() {\n one := 1\n two := 2\n three := 3\n if (one == 1 // one is one\n || two == 2) // two is two\n && three == 3 { // three is three\n println('hello')\n }\n}\n"
+	formatted := vfmt('commented_parenthesized_condition', source)
+	assert reparse_diagnostics('commented_parenthesized_condition', formatted) == 0
+	for comment in ['one is one', 'two is two', 'three is three'] {
+		assert formatted.count('// ' + comment) == 1
+	}
+	assert vfmt('commented_parenthesized_condition_again', formatted) == formatted
 }

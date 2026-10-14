@@ -457,6 +457,11 @@ see also `v help build`.
    -showcc
       Prints the C command that is used to build the program.
 
+   -nocache, --no-cache
+      Disable the module cache, which is enabled by default for supported builds,
+      including builds with bundled TinyCC on macOS and Linux. Imported modules
+      are normally compiled once into objects that later builds reuse.
+
    -show-c-output
       Prints the output, that your C compiler produced, while compiling your program.
 
