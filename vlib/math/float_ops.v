@@ -1,104 +1,43 @@
 module math
 
-// lanczos_g and the lanczos_p coefficients implement the Lanczos
-// approximation (g=7, n=9, ~1e-15 relative accuracy).
-const lanczos_g = 7.0
-const lanczos_p = [
-	f64(0.99999999999980993),
-	676.5203681218851,
-	-1259.1392167224028,
-	771.32342877765313,
-	-176.61502916214059,
-	12.507343278686905,
-	-0.13857109526572012,
-	9.9843695780195716e-6,
-	1.5056327351493116e-7,
-]
-
-// lgamma returns the natural logarithm of the absolute value of the gamma
-// function. Poles at non-positive integers return +inf. It is the
-// V-idiomatic equivalent of Go's math.Lgamma / C's lgamma (sign of Gamma is
-// dropped, as in both), implemented with the Lanczos approximation plus the
-// reflection formula for x < 0.5.
+// lgamma returns the natural logarithm of the absolute value of Gamma(x).
+// It is an alias of log_gamma, including its NaN, infinity, and pole behavior.
 pub fn lgamma(x f64) f64 {
-	if x != x {
-		return nan()
-	}
-	if x == inf(1) {
-		return inf(1)
-	}
-	if x < 0.5 {
-		// reflection: ln|Gamma(x)| = ln(pi/|sin(pi x)|) - ln|Gamma(1-x)|
-		if floor(x) == x {
-			return inf(1)
-		}
-		s := sin(pi * x)
-		if s == 0 {
-			return inf(1)
-		}
-		return log(pi / abs(s)) - lgamma(1 - x)
-	}
-	z := x - 1.0
-	mut sum := lanczos_p[0]
-	for i in 1 .. lanczos_p.len {
-		sum += lanczos_p[i] / (z + f64(i))
-	}
-	t := z + lanczos_g + 0.5
-	return 0.5 * log(2 * pi) + (z + 0.5) * log(t) - t + log(sum)
+	return log_gamma(x)
 }
 
-// remainder returns the IEEE 754 remainder of x/y: x - n*y with n the nearest
-// integer to x/y, ties rounded to even. Unlike fmod the result is in
-// [-y/2, y/2]. It is the V-idiomatic equivalent of Go's math.Remainder /
-// C's remainder. x/y overflow and y == 0 return nan, as in both.
+// remainder returns the nearest-integer, ties-to-even remainder without
+// dividing x by y, preserving finite inputs even when their quotient overflows.
 pub fn remainder(x f64, y f64) f64 {
-	if x != x || y != y || y == 0 || x == inf(1) || x == inf(-1) {
-		return nan()
+	if is_nan(x) || is_nan(y) || y == 0 || is_inf(x, 0) { return nan() }
+	if is_inf(y, 0) { return x }
+	divisor := abs(y)
+	mut r := abs(fmod(x, divisor))
+	if r == 0 { return copysign(0.0, x) }
+	other := divisor - r
+	if r > other || (r == other && abs(fmod(x, 2.0 * divisor)) > divisor) {
+		r -= divisor
 	}
-	if y == inf(1) || y == inf(-1) {
-		return x
-	}
-	q := x / y
-	n := round_half_even(q)
-	return x - n * y
+	return if signbit(x) { -r } else { r }
 }
 
-// round_half_even rounds to the nearest integer, ties to even.
-fn round_half_even(x f64) f64 {
-	if x != x || x == inf(1) || x == inf(-1) {
-		return x
-	}
-	f := floor(x)
-	d := x - f
-	if d < 0.5 {
-		return f
-	}
-	if d > 0.5 {
-		return f + 1
-	}
-	// tie: round to even
-	if int(f) % 2 == 0 {
-		return f
-	}
-	return f + 1
-}
-
-// fma returns x*y + z. Note: computed as two rounded steps, so unlike the
-// single-rounded IEEE 754 fma it may differ in the last ulp; vlib targets
-// platforms where C fma is not always available (tcc), and the two-step form
-// is exact for all practical ranges in tests.
+// fma returns x*y + z. The C backend overrides this with a single-rounded
+// math-library operation; other backends retain two ordinary rounded steps.
 pub fn fma(x f64, y f64, z f64) f64 {
 	return x * y + z
 }
 
 // floor_mod returns x mod y floored toward negative infinity, so the result
-// always has the sign of y for y > 0 (Python's % / Go's math.Mod behavior).
+// has the sign of y, including an exact zero (Python's floating-point %).
 pub fn floor_mod(x f64, y f64) f64 {
 	if y == 0 || x != x || y != y {
 		return nan()
 	}
 	r := fmod(x, y)
-	if r != 0 && (r < 0) != (y < 0) {
+	if r == 0 {
+		return copysign(0.0, y)
+	}
+	if (r < 0) != (y < 0) {
 		return r + y
 	}
 	return r
@@ -147,8 +86,8 @@ pub enum FloatClass {
 	zero
 }
 
-// smallest_normal is the smallest positive normal f64 (2^-1022).
-const smallest_normal = 2.2250738585072014e-308
+// float_ops_smallest_normal is the smallest positive normal f64 (2^-1022).
+const float_ops_smallest_normal = 2.2250738585072014e-308
 
 // classify reports the class of x.
 pub fn classify(x f64) FloatClass {
@@ -162,7 +101,7 @@ pub fn classify(x f64) FloatClass {
 	if a == 0 {
 		return .zero
 	}
-	if a < smallest_normal {
+	if a < float_ops_smallest_normal {
 		return .subnormal
 	}
 	return .normal

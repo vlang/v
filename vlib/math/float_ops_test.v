@@ -76,3 +76,35 @@ fn test_classify() {
 	assert classify(1e-320) == .subnormal // below 2.2250738585072014e-308
 	assert classify(2.2250738585072014e-308) == .normal
 }
+
+fn test_ieee_remainder_large_quotients_and_zero() {
+	assert remainder(4294967297.5, 1.0) == -0.5
+	assert remainder(-4294967297.5, 1.0) == 0.5
+	assert remainder(max_f64, 1.0) == 0.0
+	assert remainder(max_f64, 0.5) == 0.0, 'finite division overflow must not produce NaN'
+	assert remainder(1.0, inf(1)) == 1.0
+	assert signbit(remainder(-4.0, 2.0))
+	assert signbit(remainder(-0.0, 3.0))
+	assert !signbit(remainder(4.0, -2.0))
+	assert signbit(floor_mod(4.0, -2.0))
+	assert !signbit(floor_mod(-4.0, 2.0))
+	assert is_nan(remainder(inf(1), 1.0))
+	assert is_nan(remainder(1.0, 0.0))
+}
+
+fn test_fma_single_rounding_and_finite_overflow_cancellation() {
+	x := 1.0 + exp2(-27.0)
+	y := 1.0 - exp2(-27.0)
+	assert fma(x, y, -1.0) == -exp2(-54.0)
+	assert fma(max_f64, 2.0, -max_f64) == max_f64
+	assert is_nan(fma(0.0, inf(1), 1.0))
+	assert signbit(fma(-0.0, 2.0, -0.0))
+}
+
+fn test_lgamma_existing_special_values_and_large_inputs() {
+	for x in [inf(-1), inf(1), -1000000.5, 1000000.0, -0.0000000001] {
+		assert lgamma(x) == log_gamma(x)
+	}
+	assert is_nan(lgamma(nan()))
+	assert is_inf(lgamma(-2.0), 1)
+}
