@@ -169,13 +169,13 @@ endif
 # on a Unix-like host. Keep the temporary v1 on the full compatibility path so
 # it can create v2 before either the compiler driver or v1_fallback exists.
 BOOTSTRAP_VC_CC_CFLAGS += -DCUSTOM_DEFINE_v1_fallback
-BOOTSTRAP_VC_SOURCES := $(VC)/$(VCFILE)
+BOOTSTRAP_VC_EXTRA_SOURCES :=
 # Portable vc snapshots generated before the OpenBSD entropy and semaphore guards
 # still reference two libc symbols that OpenBSD does not provide. Supply the small
 # bootstrap-only compatibility implementations until vc is regenerated.
 ifdef OPENBSD
 BOOTSTRAP_VC_CC_CFLAGS += -DSYS_getrandom=0
-BOOTSTRAP_VC_SOURCES += $(VROOT)/cmd/tools/openbsd_vc_compat.c
+BOOTSTRAP_VC_EXTRA_SOURCES += $(VROOT)/cmd/tools/openbsd_vc_compat.c
 endif
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
 BOOTSTRAP_CCOMPILER_VFLAG :=
@@ -248,12 +248,8 @@ ifdef LEGACY
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
-ifdef MAC
-# Stream guards for stale snapshots directly to the compiler, keeping one v.c.
-	bash "$(VROOT)/cmd/tools/macos_vc_compat.sh" "$(VC)/$(VCFILE)" $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
-else
-	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) $(BOOTSTRAP_VC_SOURCES) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
-endif
+# Stream compatibility fixes for stale snapshots to the compiler, keeping one v.c.
+	sh "$(VROOT)/cmd/tools/vc_compat.sh" "$(VC)/$(VCFILE)" $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) -- $(BOOTSTRAP_VC_EXTRA_SOURCES) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif

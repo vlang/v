@@ -37,8 +37,19 @@ mut:
 	namespace   string
 }
 
+// resolver_tmp_namespace keeps only random ULID characters in the short namespace.
+fn resolver_tmp_namespace(id string) string {
+	return os.join_path('resolver', id[id.len - tmp_name_length..])
+}
+
 fn resolve_module_query(query []string, mut selector VpmInstallServerSelector, mut scope LockScope, prefer_lock bool, precise map[string]string) ![]Module {
-	namespace := os.join_path('resolver', rand.ulid())
+	// The namespace separates this resolver's temp clones from any other vpm
+	// process's, so it only has to be unique among the ones running now. A
+	// full ULID is 26 characters, and that length sits directly in the temp
+	// path a clone is checked out into; on Windows, with `.git/objects` and a
+	// long module name underneath, it is enough to push past `MAX_PATH`. The
+	// same length is used for the other short components below.
+	namespace := resolver_tmp_namespace(rand.ulid())
 	mut overrides := []Override{}
 	project := vmod.get_cache().get_by_folder(os.getwd())
 	root_file := if scope.active { os.join_path(scope.dir, 'v.mod') } else { project.vmod_file }
@@ -199,7 +210,12 @@ fn (mut r Resolver) candidate(id string, version string, revision string) !Modul
 		return m
 	}
 	mut m := r.sources[id]
-	path := get_tmp_path(settings.tmp_path, os.join_path(r.namespace, sha256.hexhash(key)))!
+	// The component is a digest of the candidate key, cut to a short prefix for
+	// the same reason as `version_tmp_name`: a full SHA-256 as one path
+	// component pushes the temp path over `MAX_PATH` on Windows. The 48 bits
+	// that remain separate the candidates of one resolution comfortably.
+	path := get_tmp_path(settings.tmp_path, os.join_path(r.namespace,
+		sha256.hexhash(key)[0..tmp_name_length]))!
 	r.paths << path
 	vcs := m.vcs or { settings.vcs }
 	clone_ref := if !is_git_commit_hash(version) && (revision == '' || (version != '' && version == r.sources[id].version)) {

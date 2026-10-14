@@ -638,6 +638,29 @@ fn test_c_flag_start_markers_keep_linked_object_files() {
 	assert g.files_linking_c_sources[source]
 }
 
+fn test_c_flag_linkage_uses_resolved_target_arguments() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_c_flag_linkage_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'helper.o'), '') or { panic(err) }
+	inactive_target := if os.user_os() == 'windows' { 'linux' } else { 'windows' }
+	for i, flag in ['\$first_existing("@DIR/missing.o", "@DIR/helper.o")',
+		'${inactive_target} @DIR/helper.o', '-include @DIR/helper.o'] {
+		source := os.join_path(dir, 'main_${i}.v')
+		os.write_file(source, 'module main\n#flag ${flag}\n') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.target = pref.host_target()
+		mut p := parser.Parser.new(prefs)
+		mut g := FlatGen.new()
+		g.a = p.parse_files([source])
+		g.target = prefs.target
+		g.collect_c_flags_from_directives()
+		assert g.should_emit_c_extern_decl_from_file('native_api', source, 'main') == (i == 0)
+	}
+}
+
 fn assert_c_flag_directive_order(main_flags string, sys_flags string, expected []string) {
 	dir := os.join_path(os.vtmp_dir(), 'v3_c_flag_start_markers_${os.getpid()}')
 	os.rmdir_all(dir) or {}

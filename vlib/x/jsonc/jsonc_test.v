@@ -1,6 +1,8 @@
 module jsonc
 
 import os
+import json2
+import math
 
 struct Server {
 	host string
@@ -14,6 +16,13 @@ struct Options {
 		strict  bool
 	}
 	include  []string
+}
+
+struct OverflowingNumbers {
+	positive f64
+	negative f64
+	finite   f64
+	values   []f64
 }
 
 fn test_is_valid_accepts_jsonc() {
@@ -40,6 +49,36 @@ fn test_is_valid_rejects_malformed_json() {
 	assert !is_valid('/* unterminated')
 }
 
+fn test_public_api_rejects_unescaped_newlines_as_syntax_errors() {
+	for quote in ['"', "'"] {
+		for separator in ['\n', '\r', '\r\n'] {
+			text := '{"name":' + quote + 'a' + separator + 'b' + quote + '}'
+			assert !is_valid(text)
+			assert violation(text) == none
+			parse_text(text) or {
+				assert err is json2.JsonScanError
+				assert err.msg().contains('unescaped line terminator')
+				continue
+			}
+			assert false, 'expected a syntax error'
+		}
+	}
+}
+
+fn test_public_api_accepts_unescaped_unicode_line_separators_in_strings() {
+	for separator in ['\u2028', '\u2029'] {
+		text := '{"name":"a' + separator + 'b"}'
+		assert is_valid(text)
+		assert violation(text) == none
+		assert parse_text(text)!.value('name').str() == 'a' + separator + 'b'
+		bad := '{"name":"a' + separator + 'b",clé:1}'
+		v := violation(bad) or { panic('expected an unquoted key violation') }
+		assert v.pos.line == 2
+		assert v.pos.col == 4
+		assert bad[v.pos.offset..v.pos.end_offset] == 'clé'
+	}
+}
+
 fn test_is_valid_opts_honours_trailing_comma() {
 	opts := ParseOpts{
 		allow_trailing_comma: true
@@ -51,7 +90,76 @@ fn test_is_valid_opts_honours_trailing_comma() {
 fn test_parse_text_returns_a_document() {
 	doc := parse_text('{"name": "srv", "port": 1}') or { panic(err) }
 	assert doc.str() == '{"name":"srv","port":1}'
-	assert doc.value('name').string() == 'srv'
+	assert doc.value('name').str() == 'srv'
+}
+
+fn test_parse_text_rendering_round_trips_overflowing_numbers() {
+	for literal in ['1e400', '-1e400', '1E+400', '-1E+400'] {
+		sign := if literal.starts_with('-') { -1 } else { 1 }
+		assert is_valid(literal)
+		assert violation(literal) == none
+		doc := parse_text(literal)!
+		assert math.is_inf(doc.root.f64(), sign)
+		rendered := doc.str()
+		assert is_valid(rendered), rendered
+		assert math.is_inf(parse(rendered)!.f64(), sign)
+		shared := json2.Doc(doc)
+		assert math.is_inf(shared.decode[f64]()!, sign)
+	}
+}
+
+fn test_decode_any_preserves_overflowing_numbers() {
+	for literal in ['1e400', '-1e400'] {
+		sign := if literal.starts_with('-') { -1 } else { 1 }
+		value := parse(literal)!
+		assert math.is_inf(decode[f64](literal)!, sign)
+		assert math.is_inf(decode_any[f64](value)!, sign)
+		assert math.is_inf(decode_any[f32](value)!, sign)
+		decode_any[i64](value) or { continue }
+		assert false, 'expected integer decoding to reject infinity'
+	}
+}
+
+fn test_nested_overflow_survives_rendering_and_typed_tree_decoding() {
+	input := r'{"positive":1e400,"negative":-1e400,"finite":42.5,"values":[1e400,-1e400,1e-400],"Infinity":"Infinity \"NaN\" \\ -Infinity","NaN":"NaN","nested":{"value":1e400}}'
+	doc := parse_text(input)!
+	rendered := doc.str()
+	assert is_valid(rendered), rendered
+	again := parse_text(rendered)!
+	assert math.is_inf(again.value('positive').f64(), 1)
+	assert math.is_inf(again.value('negative').f64(), -1)
+	assert math.is_inf(again.value('nested.value').f64(), 1)
+	assert again.value('Infinity').str() == 'Infinity "NaN" \\ -Infinity'
+	assert again.value('NaN').str() == 'NaN'
+	numbers := decode_any[OverflowingNumbers](doc.to_any())!
+	assert math.is_inf(numbers.positive, 1)
+	assert math.is_inf(numbers.negative, -1)
+	assert numbers.finite == 42.5
+	assert math.is_inf(numbers.values[0], 1)
+	assert math.is_inf(numbers.values[1], -1)
+	assert numbers.values[2] == 0.0
+	shared := json2.Doc(doc)
+	assert math.is_inf(shared.decode[OverflowingNumbers]()!.positive, 1)
+	assert math.is_inf(shared.reflect[OverflowingNumbers]().negative, -1)
+}
+
+fn test_overflow_rendering_with_trailing_comma_option() {
+	doc := parse_text_opts('{"values":[1e400,-1e400,],}', ParseOpts{
+		allow_trailing_comma: true
+	})!
+	assert doc.str() == '{"values":[1e999,-1e999]}'
+	assert is_valid(doc.str())
+	assert math.is_inf(parse_text(doc.str())!.value('values[1]').f64(), -1)
+}
+
+fn test_document_rendering_of_wrapped_nonfinite_values() {
+	root := json2.Any([json2.Any(math.inf(1)), json2.Any(math.inf(-1)), json2.Any(math.nan()),
+		json2.Any('Infinity NaN')])
+	doc := Doc(json2.new_doc(root, json5: true))
+	assert doc.str() == '[1e999,-1e999,null,"Infinity NaN"]'
+	assert is_valid(doc.str())
+	// JSON5 document rendering retains its own dialect.
+	assert json2.Doc(doc).str() == '[Infinity,-Infinity,NaN,"Infinity NaN"]'
 }
 
 fn test_parse_text_supports_path_lookup() {
@@ -66,12 +174,12 @@ fn test_parse_text_accepts_comments() {
 	"host": "localhost"
 }') or { panic(err) }
 	assert doc.value('port').int() == 8080
-	assert doc.value('host').string() == 'localhost'
+	assert doc.value('host').str() == 'localhost'
 }
 
 fn test_parse_returns_the_root_value() {
 	value := parse('{"a": [1, 2]}') or { panic(err) }
-	assert value.as_map()['a'] or { panic('no a') }.array().len == 2
+	assert value.as_map()['a'] or { panic('no a') }.as_array().len == 2
 }
 
 fn test_parse_opts_accepts_trailing_comma() {
@@ -79,7 +187,7 @@ fn test_parse_opts_accepts_trailing_comma() {
 		allow_trailing_comma: true
 	}
 	value := parse_opts('{"a": [1, 2,],}', opts) or { panic(err) }
-	assert value.as_map()['a'] or { panic('no a') }.array().len == 2
+	assert value.as_map()['a'] or { panic('no a') }.as_array().len == 2
 }
 
 fn test_decode_reads_a_struct_through_comments() {
@@ -122,16 +230,16 @@ fn test_decode_any_converts_a_parsed_tree() {
 	assert server.port == 1
 }
 
-fn test_errors_from_the_decoder_carry_the_json5_prefix() {
-	// The decoder belongs to x.json5 and its type errors are returned unchanged,
-	// so a value that does not fit is reported as `json5:` while a dialect
-	// violation is reported as `jsonc:`.
-	server := decode[Server]('{"port": "abc"}') or {
-		assert err.msg().contains('json5:')
-		assert err.msg().contains('integer')
+fn test_errors_from_the_decoder_come_from_json2() {
+	text := '{"port": "abc"}'
+	mut expected := ''
+	json2.decode[Server](text) or { expected = err.msg() }
+	assert expected != ''
+	decode[Server](text) or {
+		assert err.msg() == expected
 		return
 	}
-	assert false, 'expected a type error, got ${server.port}'
+	assert false, 'expected a type error'
 }
 
 // ch returns `code` as a one-character string, so a test can name a code point
@@ -186,6 +294,28 @@ fn test_public_api_byte_range_is_a_usable_slice() {
 		return
 	}
 	assert false, 'expected an unquoted multibyte key to be reported'
+}
+
+fn test_public_api_token_positions_after_carriage_returns() {
+	for separator in ['\n', '\r', '\r\n'] {
+		for indent in ['', '  '] {
+			text := '// heading' + separator + '{' + separator + indent + 'clé: 1}'
+			start := text.index('clé') or { panic('missing key') }
+			v := violation(text) or { panic('expected an unquoted key violation') }
+			assert v.pos.line == 3
+			assert v.pos.col == indent.len + 1
+			assert v.pos.offset == start
+			assert v.pos.end_offset == start + 'clé'.len
+			assert v.pos.end_offset <= text.len
+			assert text[v.pos.offset..v.pos.end_offset] == 'clé'
+			parse_text(text) or {
+				assert err is ParseError
+				assert err.msg() == v.msg()
+				continue
+			}
+			assert false, 'expected a JSONC dialect violation'
+		}
+	}
 }
 
 // slice_of returns the bytes the violation in `text` covers.
@@ -342,7 +472,7 @@ fn test_strip_comments_output_parses() {
 	stripped := strip_comments(text)
 	assert stripped.len == text.len
 	value := parse(stripped) or { panic(err) }
-	assert value.as_map()['host'] or { panic('no host') }.string() == 'h'
+	assert value.as_map()['host'] or { panic('no host') }.str() == 'h'
 }
 
 fn test_parse_file_and_decode_file() {
@@ -356,7 +486,7 @@ fn test_parse_file_and_decode_file() {
 		os.rm(path) or { panic(err) }
 	}
 	doc := parse_file(path) or { panic(err) }
-	assert doc.value('host').string() == 'from-disk'
+	assert doc.value('host').str() == 'from-disk'
 	server := decode_file[Server](path) or { panic(err) }
 	assert server.port == 3
 }
@@ -376,4 +506,9 @@ fn test_parse_error_reports_a_dialect_violation() {
 		return
 	}
 	assert false, 'expected an unquoted key to be rejected'
+}
+
+fn test_decode_preserves_64_bit_integer_precision() {
+	assert decode[u64]('18446744073709551615')! == u64(18446744073709551615)
+	assert decode[i64]('9007199254740993')! == i64(9007199254740993)
 }

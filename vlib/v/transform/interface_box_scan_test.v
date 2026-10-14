@@ -115,3 +115,36 @@ fn test_interface_box_param_predicate_preserves_container_and_callback_types() {
 		}
 	}
 }
+
+fn test_interface_array_spread_classification_and_box_scan() {
+	string_type := types.Type(types.String{})
+	array_type := types.Type(types.Array{ elem_type: string_type })
+	fixed_type := types.Type(types.ArrayFixed{ elem_type: string_type, len: 2 })
+	for i, actual in [types.Type(types.int_), string_type, array_type, fixed_type, types.Type(types.Alias{
+		name:      'Codes'
+		base_type: array_type
+	}), types.Type(types.Alias{ name: 'FixedCodes', base_type: fixed_type })] {
+		mut a := flat.FlatAst.new()
+		lhs := a.add_val(.ident, 'values')
+		value := a.add_val(.ident, 'source')
+		spread := interface_box_scan_node(mut a, .prefix, '...', '', [value])
+		append := interface_box_scan_node(mut a, .infix, '', '', [lhs, spread])
+		mut tc := types.TypeChecker.new(&a)
+		tc.interface_names['Value'] = true
+		tc.register_synth_type(lhs, types.Type(types.Array{
+			elem_type: types.Type(types.Interface{ name: 'Value' })
+		}))
+		tc.register_synth_type(value, actual)
+		tc.register_synth_type(spread, actual)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+
+		assert t.array_append_rhs_is_push_many(lhs, spread, actual.name(), 'Value') == (i >= 2)
+		t.collect_interface_append_boxes(a.nodes[int(append)])
+
+		boxed_type := if actual is types.Primitive { 'int' } else { 'string' }
+		assert t.interface_boxed_types['Value\n${boxed_type}']
+		expected_keys := ['Value\n${boxed_type}', 'Value\n${c_name(boxed_type)}']
+		assert t.interface_boxed_types.keys().all(it in expected_keys)
+	}
+}
