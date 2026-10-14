@@ -589,6 +589,7 @@ extern void backtrace_symbols_fd(void *const *, int, int);
 #endif
 #if defined(__GLIBC__)
 /* glibc exports `gettid` only from 2.30 on; the system call works with any glibc. */
+extern long syscall(long, ...);
 static inline pid_t v_fastc_gettid(void) { return (pid_t)syscall(SYS_gettid); }
 #define gettid v_fastc_gettid
 #else

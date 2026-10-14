@@ -1194,6 +1194,12 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				var_ambiguous = scope.var_ambiguous
 				locals = scope.locals
 			}
+			if brace_depth == 0 {
+				// Function parameters and locals cannot shadow later top-level declarations.
+				var_types = map[string]string{}
+				var_ambiguous = map[string]bool{}
+				locals = map[string]bool{}
+			}
 		}
 		if pending_struct_var != '' {
 			if tok == .lcbr {

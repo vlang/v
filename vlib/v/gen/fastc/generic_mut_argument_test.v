@@ -154,3 +154,26 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '5\n2'
 }
+
+fn test_fastc_generic_in_top_level_constant_does_not_inherit_parameter_shadowing() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_generic_fixture('constant_scope', 'module main
+fn transform[T](value T) T { return value }
+fn hold(transform fn (int) int) {}
+const answer = transform(7)
+fn main() { println(answer) }
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for backend in ['c', 'fastc'] {
+		program := os.join_path(root, 'program_${backend}')
+		build := cmdexec.run(@VEXE, ['-b', backend, '-gc', 'none', '-nocache', '-o', program, root])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '7', run.output
+	}
+}
