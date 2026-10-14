@@ -135,6 +135,20 @@ fn test_resume_owner_excludes_nested_test_runners() {
 	assert test_resume_dir() == os.abs_path(os.temp_dir())
 }
 
+fn test_resume_failed_replacement_keeps_the_previous_contents() ! {
+	root := os.join_path(os.temp_dir(), 'vtest-resume-missing-${rand.ulid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	destination := os.join_path(root, 'progress')
+	os.write_file(destination, 'previous record')!
+	mut refused := false
+	replace_record(os.join_path(root, 'missing'), destination) or { refused = true }
+	assert refused
+	assert os.read_file(destination)! == 'previous record'
+}
+
 // hold_record_open opens `path` as a reader does, reports on `opened` whether it could,
 // and releases the record after `delay`. The handle is owned by this thread alone.
 fn hold_record_open(path string, delay time.Duration, opened chan bool) {
