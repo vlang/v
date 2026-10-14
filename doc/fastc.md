@@ -50,7 +50,10 @@ v -b fastc -enable-globals -o program path/to/project
 ```
 
 Directory entries select the full builtin runtime, including V strings, maps, errors, and
-garbage collection. This path supports standard-library imports such as `os` and `toml`,
+garbage collection. Generic calls infer their concrete type from a mutable variable argument.
+If a call reaches a generic placeholder without a concrete instance, it reports the function
+and exits with an error instead of returning a zero value.
+This path supports standard-library imports such as `os` and `toml`,
 composite sum-type tests, integer interpolation formats, anonymous functions, and immutable
 closure captures. A single-file entry can select the same runtime with `-d fastc_real_builtin`;
 its module siblings are included.
