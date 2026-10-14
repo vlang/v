@@ -120,7 +120,7 @@ pub fn new_ttl_with_clock[K, V](ttl time.Duration, now fn () i64) Ttl[K, V] {
 
 // set stores value, (re)starting its ttl.
 pub fn (mut t Ttl[K, V]) set(key K, value V) {
-	t.items[key] = TtlEntry[V]{value, t.now() + t.ttl.milliseconds()}
+	t.items[key] = TtlEntry[V]{value, t.now() + i64(t.ttl / time.millisecond)}
 }
 
 // get returns the value for key, or none if absent or expired (expired
