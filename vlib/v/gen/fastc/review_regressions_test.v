@@ -109,21 +109,24 @@ struct Record {
 	names [2]string
 	fallback []int
 }
-fn make_names() [2]string { return ["gamma", "delta"]! }
-fn copy(record &Record) Record { return Record{names: record.names} }
+fn make_names(mut calls int) [2]string { calls++; return ["gamma", "delta"]! }
+fn copy_record(record &Record) Record { return Record{names: record.names} }
 fn main() {
 	original := Record{names: ["field", "array"]!}
-	copied := copy(&original)
+	copied := copy_record(&original)
 	parenthesized := Record{names: (original.names)}
 	constant := Record{names: names}
-	returned := Record{names: make_names()}
+	mut calls := 0
+	returned := Record{names: make_names(mut calls)}
 	assert copied.fallback.len == 0
+	assert calls == 1
 	println(copied.names[0])
 	println(parenthesized.names[1])
 	println(constant.names[0])
 	println(returned.names[0])
+	println(calls)
 }
-', 'field\narray\nalpha\ngamma')
+', 'field\narray\nalpha\ngamma\n1')
 }
 
 fn test_fastc_constant_dependencies_ignore_inactive_comptime_branches() {
