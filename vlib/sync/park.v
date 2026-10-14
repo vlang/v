@@ -43,7 +43,7 @@ pub fn (mut p Parker) park() {
 
 // unpark wakes the thread currently parked with the given thread id. If no
 // thread is parked with that id yet, a permit is stored so its next `park`
-// returns immediately.
+// returns immediately. Repeated unparks without a waiting thread retain one permit.
 pub fn (mut p Parker) unpark(tid u64) {
 	p.mutex.lock()
 	defer {

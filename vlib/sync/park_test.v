@@ -64,3 +64,42 @@ fn test_parker_unpark_multiple_workers() {
 	}
 	assert finished.load() == n, 'all workers must be woken'
 }
+
+fn test_parker_repeated_early_unparks_retain_one_permit() {
+	mut p := sync.new_parker()
+	tid := sync.thread_id()
+	p.unpark(tid)
+	p.unpark(tid)
+	p.park()
+	// The second park must wait for a new unpark.
+	mut second_returned := new_atomic(false)
+	mut waker := spawn fn [mut p, tid, mut second_returned] () {
+		time.sleep(20 * time.millisecond)
+		assert !second_returned.load(), 'early unparks must coalesce'
+		p.unpark(tid)
+	}()
+	p.park()
+	second_returned.store(true)
+	waker.wait()
+}
+
+fn test_parker_reuses_a_worker_id_for_multiple_cycles() {
+	mut p := sync.new_parker()
+	tid_ch := chan u64{cap: 1}
+	done_ch := chan bool{}
+	defer { tid_ch.close() }
+	defer { done_ch.close() }
+	mut worker := spawn fn [mut p, tid_ch, done_ch] () {
+		tid_ch <- sync.thread_id()
+		for _ in 0 .. 20 {
+			p.park()
+			done_ch <- true
+		}
+	}()
+	tid := <-tid_ch
+	for _ in 0 .. 20 {
+		p.unpark(tid)
+		assert <-done_ch
+	}
+	worker.wait()
+}

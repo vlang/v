@@ -46,3 +46,13 @@ hold a read lock or wait for a writer to finish. Optimistic access does not make
 concurrent reads and writes safe: use atomic data or other synchronization, and validate
 the stamp after reading. Use a regular read lock for non-atomic shared data. Locks are
 not reentrant and must be released once for each corresponding acquisition.
+
+## Parker
+
+Share a `new_parker()` pointer between a worker and its waker. The worker calls `park()`,
+and the waker calls `unpark(worker_id)` with the worker's `sync.thread_id()`. An unpark
+wakes a registered waiter; otherwise it retains one permit for that thread's next park.
+Repeated unparks before a park coalesce into one permit. A wake consumes the current
+park's permit, so another unpark may permit the next park even before the worker resumes.
+Each thread's permits and waits are independent. Keep a Parker scoped to the workers
+using it: permits for exited threads are not automatically removed.
