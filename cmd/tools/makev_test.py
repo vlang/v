@@ -42,6 +42,19 @@ class BootstrapConfigurationTests(unittest.TestCase):
                 self.assertEqual(len(commands), 1)
                 self.assertIn("%VC_BOOTSTRAP_DEFINE%", commands[0])
 
+    def test_all_portable_bootstraps_link_the_native_runtime(self):
+        for compiler in ("tcc", "clang", "gcc", "msvc"):
+            with self.subTest(compiler=compiler):
+                commands = [line for line in routine("build_bootstrap_with_" + compiler).splitlines()
+                            if '"%V_C_FILE%"' in line and "%VC_BOOTSTRAP_DEFINE%" in line]
+                self.assertTrue(commands)
+                for command in commands:
+                    self.assertIn("%V_STAGE_NATIVE%", command)
+                    if compiler == "tcc":
+                        self.assertIn('"%tcc_dir%\\lib\\openlibm.o"', command)
+                    else:
+                        self.assertNotIn("openlibm.o", command)
+
     def test_msvc_bootstrap_selects_v1(self):
         # MSVC's cl.exe is invoked directly (there is no "!msvc_exe!" variable
         # the way the other three bootstraps have), so this needs its own
