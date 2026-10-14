@@ -7,7 +7,7 @@ import os
 
 #flag windows -l advapi32
 
-#include "@VMODROOT/cmd/v/toolcache_windows_helpers.h"
+#flag @VMODROOT/cmd/v/toolcache_windows_helpers.o
 
 fn C.v_toolcache_move_file_ex_w(const_existing &u16, const_new &u16, flags u32) int
 

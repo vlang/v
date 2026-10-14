@@ -3,6 +3,28 @@ module fastc
 import strings
 import v.token
 
+// dynamic_array_literal_source keeps complex element expressions out of
+// C aggregate initializers, which bundled TinyCC on Linux cannot nest safely.
+fn (g &Parser) dynamic_array_literal_source(array_type string, element_type string, items []string) string {
+	is_scalar := fastc_is_numeric_expression_type(element_type)
+		|| element_type in ['bool', 'char', 'voidptr', 'byteptr', 'charptr']
+		|| element_type.ends_with('*')
+	if is_scalar && !items.any(it.contains('{')) {
+		return '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${element_type}), (${element_type}[]){${items.join(',')}}))'
+	}
+	values_name := g.temporary_namespace('array') + '_literal'
+	return fastc_array_values_call_source(element_type, items, values_name,
+		'((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${element_type}), ${values_name}))')
+}
+
+fn fastc_array_values_call_source(element_type string, items []string, values_name string, call_source string) string {
+	mut statements := ['${element_type} ${values_name}[${items.len}];']
+	for i, item in items {
+		statements << '${values_name}[${i}] = (${item});'
+	}
+	return '({ ${statements.join(' ')} ${call_source}; })'
+}
+
 // render_higher_order_method_expression lowers a trailing `.map/.filter/.any/.all/.count`
 // closure method that appears inside a larger expression (`x in arr.map(it.f)`), rather than as
 // the whole statement the streaming reader lowers inline. It renders the receiver and the
@@ -223,7 +245,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	// A pre-rendered synthetic base atom (e.g. a string interpolation `'${x}'[0]`, folded into
 	// one token carrying its C text in `.source`) is `.string`, not `.name`; accept it too so
 	// the index applies to the rendered string rather than reaching the raw renderer.
-	if tokens.len < 4 || (tokens[0].tok !in [.name, .string, .lpar] && tokens[0].source == '') || tokens.last().tok != .rsbr {
+	if tokens.len < 4 || (tokens[0].tok !in [.name, .string, .lpar, .lsbr] && tokens[0].source == '') || tokens.last().tok != .rsbr {
 		return none
 	}
 	mut open := -1
@@ -248,7 +270,8 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 			prefix_depth++
 		} else if item.tok in [.rpar, .rsbr, .rcbr] {
 			prefix_depth--
-		} else if prefix_depth == 0 && item.tok.is_assignment() {
+		} else if prefix_depth == 0 && (item.tok.is_assignment()
+			|| item.tok in [.key_in, .not_in]) {
 			// `target = [value]` ends in `]`, but its bracket pair is an array literal,
 			// not an index applied to the assignment prefix.
 			return none
@@ -287,6 +310,8 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		'*(${inner})'
 	} else if base_tokens.len == 1 {
 		g.resolved_root_expression_name(base_tokens[0].lit)
+	} else if literal_base := g.render_array_literal_argument(base_tokens, base_type) {
+		literal_base.source
 	} else if nested_base := g.render_array_access_expression(base_tokens) {
 		nested_base.source
 	} else if map_base := g.render_map_expression(base_tokens) {
@@ -1189,9 +1214,13 @@ fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int
 			.rcbr {
 				braces--
 			}
-			.comma {
+			.comma, .semicolon {
 				if parens == 0 && brackets == 0 && braces == 0 {
 					if item_start == i {
+						if tokens[i].tok == .semicolon {
+							item_start = i + 1
+							continue
+						}
 						return error('empty expression-list item')
 					}
 					// Items are consumed while `tokens` is alive and never mutated, so views are safe.

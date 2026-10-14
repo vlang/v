@@ -13,13 +13,13 @@ fn write_project_file(root string, rel string, src string) {
 }
 
 fn test_qualified_positional_struct_init_keeps_later_imported_fn() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_qualified_positional_struct_init_test')
+	v3_bin := os.join_path(os.vtmp_dir(), 'v3_qualified_positional_struct_init_test_${os.getpid()}')
 	build :=
 		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
-	root := os.join_path(os.temp_dir(), 'v3_qualified_positional_struct_init_project')
+	root := os.join_path(os.vtmp_dir(), 'v3_qualified_positional_struct_init_project_${os.getpid()}')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -53,14 +53,24 @@ pub:
 }
 ')
 
-	bin := os.join_path(os.temp_dir(), 'v3_qualified_positional_struct_init_bin')
+	bin := os.join_path(os.vtmp_dir(), 'v3_qualified_positional_struct_init_bin_${os.getpid()}')
 	main_path := os.join_path(root, 'main.v')
-	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', bin])
+	defer {
+		os.rmdir_all(root) or {}
+		os.rm(v3_bin) or {}
+		os.rm(bin) or {}
+		os.rm(bin + '.c') or {}
+	}
+	compile := os.exec([v3_bin, '-b', 'c', '-keepc', '-o', bin, main_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('unknown function `m.after`'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('(geom__Color){'), c_code
+	// The qualified positional init reaches the C backend as a designated-initializer
+	// struct definition rather than an unnamed C compound literal, which is the
+	// correct form for a const declaration. What matters is that the four positional
+	// values survive the import resolution, so pin them rather than the literal form.
+	assert c_code.contains('m__shade = {.r = 1.0, .g = 2.0, .b = 3.0, .a = 4.0}'), c_code
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }
