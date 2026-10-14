@@ -154,3 +154,30 @@ fn test_mail_transfer_and_boundary_errors() {
 		}
 	}
 }
+
+fn test_mail_mixed_body_uses_nested_alternatives() {
+	mut m := new_message()
+	m.text_body = 'plain'
+	m.html_body = '<b>html</b>'
+	m.add_attachment('file.bin', [u8(1), 2, 3], 'application/octet-stream')
+	raw := m.encode()!
+	assert raw.contains('--${m.boundary}\r\nContent-Type: multipart/alternative;')
+	parsed := parse(raw)!
+	assert parsed.text_body == 'plain'
+	assert parsed.html_body == '<b>html</b>'
+	assert parsed.attachments[0].data == [u8(1), 2, 3]
+}
+
+fn test_mail_lf_headers_do_not_consume_binary_body_separator() {
+	payload := 'first\r\n\r\nlast'
+	parsed := parse('Content-Type: application/octet-stream\nContent-Disposition: attachment; filename="x"\nContent-Transfer-Encoding: binary\n\n${payload}')!
+	assert parsed.attachments[0].data == payload.bytes()
+}
+
+fn test_mail_multiline_base64_attachment_roundtrip() {
+	mut m := new_message()
+	data := []u8{len: 256, init: u8(index)}
+	m.add_attachment('many.bin', data, '')
+	parsed := parse(m.encode()!)!
+	assert parsed.attachments[0].data == data
+}

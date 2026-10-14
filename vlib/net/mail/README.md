@@ -2,7 +2,7 @@
 Create a message with `new_message()`, set `from`, recipients, `subject`, and text/HTML bodies,
 then attach files with `add_attachment(filename, data, mime_type)` and call `encode()`.
 Encoding uses CRLF endings, multipart/alternative for text plus HTML, and multipart/mixed
-when attachments are present. Every attachment uses base64, including text attachments.
+when attachments are present, nesting the text/HTML alternatives inside it. Every attachment uses base64, including text attachments.
 Filenames are quoted and escaped. Header CR/LF/NUL characters, invalid boundaries, and boundary
 lines present in text bodies return errors. Use `set_boundary()` to choose another delimiter.
 

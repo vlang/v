@@ -91,10 +91,17 @@ pub fn (m &Message) encode() !string {
 		validate_header_value(value)!
 	}
 	if !valid_boundary(m.boundary) { return error('mail: invalid MIME boundary') }
+	stem := m.boundary[..if m.boundary.len < 56 { m.boundary.len } else { 56 }]
+	candidate := stem + '-alternative'
+	alternative_boundary := if candidate == m.boundary { 'v-mail-alternative' } else { candidate }
+	mut boundaries := [m.boundary]
+	if m.attachments.len > 0 && m.html_body != '' { boundaries << alternative_boundary }
 	for body in [m.text_body, m.html_body] {
 		for line in body.replace('\r\n', '\n').replace('\r', '\n').split('\n') {
-			if line.trim_right(' \t') in ['--${m.boundary}', '--${m.boundary}--'] {
-				return error('mail: MIME boundary occurs in body')
+			for boundary in boundaries {
+				if line.trim_right(' \t') in ['--${boundary}', '--${boundary}--'] {
+					return error('mail: MIME boundary occurs in body')
+				}
 			}
 		}
 	}
@@ -119,9 +126,15 @@ pub fn (m &Message) encode() !string {
 	if m.attachments.len > 0 {
 		b.writeln('Content-Type: multipart/mixed; boundary="${m.boundary}"')
 		b.writeln('')
-		write_part(mut b, m.boundary, 'text/plain; charset=utf-8', '', m.text_body)
 		if m.html_body != '' {
-			write_part(mut b, m.boundary, 'text/html; charset=utf-8', '', m.html_body)
+			b.writeln('--${m.boundary}')
+			b.writeln('Content-Type: multipart/alternative; boundary="${alternative_boundary}"')
+			b.writeln('')
+			write_part(mut b, alternative_boundary, 'text/plain; charset=utf-8', '', m.text_body)
+			write_part(mut b, alternative_boundary, 'text/html; charset=utf-8', '', m.html_body)
+			b.writeln('--${alternative_boundary}--')
+		} else {
+			write_part(mut b, m.boundary, 'text/plain; charset=utf-8', '', m.text_body)
 		}
 		for a in m.attachments {
 			write_part(mut b, m.boundary, '${a.mime_type}; name="${quote_param(a.filename)}"',
@@ -285,7 +298,9 @@ fn split_parts(body string, boundary string) ![]string {
 		} else {
 			body.len
 		}
-		delimiter := body[position..line_end].trim_right('\r \t')
+		line := body[position..line_end]
+		without_cr := if line.ends_with('\r') { line[..line.len - 1] } else { line }
+		delimiter := without_cr.trim_right(' \t')
 		if delimiter == '--${boundary}' || delimiter == '--${boundary}--' {
 			if part_start >= 0 {
 				mut part := body[part_start..position]
