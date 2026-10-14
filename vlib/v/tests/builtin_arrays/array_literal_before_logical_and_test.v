@@ -59,7 +59,7 @@ fn test_empty_array_literal_before_logical_and_in_conditions() {
 		else { 100 }
 	}
 	assert hits == 3
-	assert 1 in [1] && flag
+	assert 1 in [1, 2] && flag
 	assert 1 !in [] && flag
 }
 
@@ -98,8 +98,8 @@ fn test_comments_separate_logical_and_after_array_literals() {
 	assert a == [] && // separator
 	flag
 	assert a == [] /* separator */
-	 && flag
+		&& flag
 	fixed := [1]!
 	assert fixed == [1]! /* separator */
-	 && flag
+		&& flag
 }
