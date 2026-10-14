@@ -265,3 +265,17 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'archive', run.output
 }
+
+fn test_fastc_existing_path_macros_preserve_quoted_commas() {
+	root := os.join_path(os.vtmp_dir(), 'fastc_quoted_paths_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'native, helper.a')
+	os.write_file(path, '') or { panic(err) }
+	selected, enabled := fastc_expand_existing_path_macros('PRE\$first_existing("@DIR/missing", "@DIR/native, helper.a")POST', root, os.join_path(root, 'main.v')) or { panic(err) }
+	assert enabled
+	assert selected == 'PRE' + os.quoted_path(path) + 'POST'
+	optional, optional_enabled := fastc_expand_existing_path_macros(r"-L$when_first_existing('@DIR/native, helper.a', '@DIR/missing')", root, os.join_path(root, 'main.v')) or { panic(err) }
+	assert optional_enabled
+	assert optional == '-L' + os.quoted_path(path)
+}

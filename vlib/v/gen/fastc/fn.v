@@ -324,7 +324,7 @@ fn fastc_expand_existing_path_macros(raw string, vroot string, source_file strin
 		}
 		mut selected := ''
 		mut candidates := []string{}
-		for value in result[open_index + 1..close_index].split(',') {
+		for value in fastc_existing_path_candidates(result[open_index + 1..close_index]) {
 			path := fastc_resolve_c_pseudo_paths(value.trim(' \t\r\n\'"'), vroot, source_file)
 			if path == '' {
 				continue
@@ -343,6 +343,27 @@ fn fastc_expand_existing_path_macros(raw string, vroot string, source_file strin
 		result = result[..index] + os.quoted_path(selected) + result[close_index + 1..]
 	}
 	return result, true
+}
+
+// fastc_existing_path_candidates splits candidates at commas outside quoted filenames.
+fn fastc_existing_path_candidates(text string) []string {
+	mut values := []string{}
+	mut quote := u8(0)
+	mut start := 0
+	for i, ch in text {
+		if ch in [`'`, `"`] {
+			if quote == 0 {
+				quote = ch
+			} else if quote == ch {
+				quote = 0
+			}
+		} else if ch == `,` && quote == 0 {
+			values << text[start..i]
+			start = i + 1
+		}
+	}
+	values << text[start..]
+	return values
 }
 
 fn fastc_pkgconfig_flags(raw string) ![]string {

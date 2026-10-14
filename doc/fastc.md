@@ -67,6 +67,7 @@ path takes effect on the next build.
 Native flags support `$first_existing(...)` and `$when_first_existing(...)`, including
 library inputs and include/search path prefixes. They select the first existing candidate;
 an unmatched `$when_first_existing` omits the flag, while `$first_existing` reports an error.
+Quoted candidate filenames can contain spaces and commas.
 This includes the optional atomic-library flags used on Linux.
 Linux GC builds load atomic support even without an explicit `sync` import. On Linux amd64
 with musl, TinyCC's helpers and the driver-prepared fence object provide this support.
