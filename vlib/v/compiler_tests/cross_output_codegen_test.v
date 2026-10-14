@@ -532,6 +532,23 @@ fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
 	}
 }
 
+fn test_cross_windows_literal_initializers_are_c_compiler_independent() {
+	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc'] {
+		code := cross_generate_with('-nocache -cross -os windows -cc ${ccompiler}',
+			'literals_${ccompiler}', 'module main
+fn message() string { return "snapshot literal" }
+fn main() { println(message()) }
+')
+		assert code.contains('#define _SL(id, s, n) static const string id = {s, n, 1}')
+		definitions := code.split_into_lines().filter(it.starts_with('_SL(_str_'))
+		assert definitions.len > 0, '-cc ${ccompiler}: missing literal table'
+		assert definitions.any(it.ends_with(', "snapshot literal", 16);')), '-cc ${ccompiler}: missing snapshot literal'
+		for definition in definitions {
+			assert !definition.contains(' = _S('), '-cc ${ccompiler}: ${definition}'
+		}
+	}
+}
+
 // enclosing_guards_at returns the active branch directives at `at`, outermost first.
 // An `#elif` replaces the preceding branch and an `#else` negates it. Earlier sibling
 // conditions are omitted: only an explicit positive directive proves MSVC-only use.

@@ -907,7 +907,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
 		return res
 	}
 	$if dragonfly {
@@ -916,7 +916,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
 		return res
 	}
 	$if linux {
@@ -925,7 +925,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
 		return res
 	}
 	$if solaris {
@@ -1341,10 +1341,13 @@ pub fn is_atty(fd int) int {
 }
 
 // write_file_array writes the data in `buffer` to a file in `path`.
+// The file is closed on both success and write failure.
 pub fn write_file_array(path string, buffer array) ! {
 	mut f := create(path)!
+	defer {
+		f.close()
+	}
 	unsafe { f.write_full_buffer(buffer.data, usize(buffer.len * buffer.element_size))! }
-	f.close()
 }
 
 // glob function searches for all the pathnames matching patterns and returns a
