@@ -11,6 +11,7 @@ fn test_core_header_ownership_preserves_application_and_thirdparty_headers() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.compiler_vroot = '/vroot'
+	g.set_target(pref.host_target())
 	assert g.core_native_header_is_redeclared('/vroot/vlib/time/timerfd.c.v', '<sys/timerfd.h>')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/os/mmap_nix.c.v', '<sys/mman.h>')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/v/driver/replace_file_windows.c.v', '<windows.h>')
@@ -19,6 +20,12 @@ fn test_core_header_ownership_preserves_application_and_thirdparty_headers() {
 	assert g.core_native_header_is_redeclared('/vroot/vlib/v/workers/thread_nix.c.v', '"/vroot/vlib/v/pthread_helper.h"')
 	assert !g.core_native_header_is_redeclared('/vroot/vlib/v/workers/thread_nix.c.v', '"/project/vlib/v/pthread_helper.h"')
 	assert !g.core_native_header_is_redeclared('/project/v/workers/thread_nix.c.v', '"/vroot/vlib/v/pthread_helper.h"')
+	assert g.core_native_header_is_redeclared('/vroot/vlib/v/cmdexec/cmdexec_pipe.c.v', '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"')
+	assert !g.core_native_header_is_redeclared('/project/v/cmdexec/cmdexec_pipe.c.v', '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"')
+	assert !g.core_native_header_is_redeclared('/vroot/vlib/v/cmdexec/cmdexec_pipe.c.v', '"/project/vlib/v/cmdexec/cmdexec_poll.h"')
+	assert !g.core_native_header_is_redeclared('/vroot/vlib/v/cmdexec/cmdexec_pipe.c.v', '<poll.h>')
+	a.cached_header_sources['/cache/cmdexec.vh'] = '/vroot/vlib/v/cmdexec/cmdexec_pipe.c.v'
+	assert g.core_native_header_is_redeclared('/cache/cmdexec.vh', '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/v/gen/fastc/unit_compile_nix.c.v', '<signal.h>')
 	assert !g.core_native_header_is_redeclared('/project/v/gen/fastc/unit_compile_nix.c.v', '<signal.h>')
 	assert !g.core_native_header_is_redeclared('/project/time/timerfd.c.v', '<sys/timerfd.h>')
@@ -30,9 +37,17 @@ fn test_core_header_ownership_preserves_application_and_thirdparty_headers() {
 	assert g.c_source_file_is_in_vlib('/cache/worker.vh')
 	g.output_cross_c = true
 	assert !g.core_native_header_is_redeclared('/cache/worker.vh', '<sys/prctl.h>')
+	assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"')
 	g.output_cross_c = false
 	g.target_libc_headers = true
 	assert !g.core_native_header_is_redeclared('/cache/worker.vh', '<sys/prctl.h>')
+	g.target_libc_headers = false
+	for sdk_mode in ['object', 'no_builtin'] {
+		g.object_file_mode = sdk_mode == 'object'
+		g.no_builtin = sdk_mode == 'no_builtin'
+		assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"')
+	}
+	assert !g.core_native_header_is_redeclared('/cache/cmdexec.vh', '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"')
 }
 
 fn test_core_headers_are_restored_after_an_unrelated_explicit_sdk_header() {
@@ -70,6 +85,7 @@ fn test_unverified_libc_abis_keep_native_sdk_declarations() {
 			'amd64'
 		}) or { panic(err) })
 		assert g.c_directives_use_system_libc(), target
+		assert !g.core_native_header_is_redeclared('/vroot/vlib/v/cmdexec/cmdexec_pipe.c.v', '"/vroot/vlib/v/cmdexec/cmdexec_poll.h"'), target
 	}
 }
 
@@ -135,4 +151,19 @@ fn test_freebsd_bootstrap_constants_match_native_sdk() {
 	os.write_file(source, code)!
 	result := cmdexec.run('cc', ['-std=c11', '-Werror', '-fsyntax-only', source])
 	assert result.exit_code == 0, result.output
+}
+
+fn test_headerless_cmdexec_poll_uses_bionic_nfds_type() ! {
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'cmdexec_bionic_poll_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'poll.c')
+	os.write_file(source, '#include <stddef.h>\n' + headerless_cmdexec_poll +
+		'\n_Static_assert(__builtin_types_compatible_p(v_cmdexec_nfds_t, unsigned int), "Bionic nfds_t");\n' +
+		'_Static_assert(__builtin_types_compatible_p(__typeof__(&v_cmdexec_poll_sys), int (*)(struct v_cmdexec_pollfd*, unsigned int, int)), "Bionic poll prototype");\n')!
+	// Validate the emitted declaration without claiming execution on an Android device.
+	checked := cmdexec.run(cc, ['-std=gnu11', '-D__ANDROID__', '-U__APPLE__', '-Werror', '-fsyntax-only',
+		source])
+	assert checked.exit_code == 0, checked.output
 }
