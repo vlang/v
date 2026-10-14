@@ -12,6 +12,17 @@ Function channels support explicit capacities and default initialization in stru
 and globals. Arrays of channels can use an explicit `init` expression to initialize
 each channel. A received function value can be called normally.
 
+## Barrier
+
+`new_barrier(n)` creates a reusable rendezvous for a positive, fixed number of
+participants. Share the returned pointer between workers. Each participant calls
+`wait()` once per round; all wait until the last participant arrives. Exactly one wait
+returns `true` for that round, identifying its leader. Other waits return `false`.
+A completed round resets the arrival count automatically. With one participant, every
+wait returns immediately with `true`.
+
+## Timers
+
 Use a timer when a wait needs to participate in a `select`:
 
 ```v
