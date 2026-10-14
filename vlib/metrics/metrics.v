@@ -1,6 +1,7 @@
 module metrics
 
 import sync
+import math
 
 // Labels are a metric's dimension set, e.g. {'route': '/api/users'}.
 // label_key renders a canonical encoding so equal label sets share a series.
@@ -9,7 +10,8 @@ fn label_key(labels map[string]string) string {
 	keys.sort()
 	mut out := []string{}
 	for k in keys {
-		out << '${k}=${labels[k]}'
+		assert valid_name(k, false), 'metrics: invalid label name ${k}'
+		out << '${k}="${escape_label(labels[k])}"'
 	}
 	return out.join(',')
 }
@@ -28,7 +30,7 @@ fn series_map_key(id SeriesId) string {
 @[heap]
 pub struct Counter {
 mut:
-	mutex &sync.Mutex
+	mutex &sync.Mutex = sync.new_mutex()
 	vals  map[string]f64
 }
 
@@ -36,7 +38,7 @@ mut:
 @[heap]
 pub struct Gauge {
 mut:
-	mutex &sync.Mutex
+	mutex &sync.Mutex = sync.new_mutex()
 	vals  map[string]f64
 }
 
@@ -45,7 +47,7 @@ mut:
 @[heap]
 pub struct Histogram {
 mut:
-	mutex   &sync.Mutex
+	mutex   &sync.Mutex = sync.new_mutex()
 	bounds  []f64
 	buckets map[string][]u64
 	sums    map[string]f64
@@ -57,6 +59,7 @@ mut:
 @[heap]
 pub struct Registry {
 mut:
+	mutex      &sync.Mutex = sync.new_mutex()
 	counters   map[string]&Counter
 	gauges     map[string]&Gauge
 	histograms map[string]&Histogram
@@ -69,6 +72,11 @@ pub fn new_registry() &Registry {
 
 // counter returns the named counter, creating it on first use.
 pub fn (mut r Registry) counter(name string) &Counter {
+	assert valid_name(name, true), 'metrics: invalid instrument name ${name}'
+	r.mutex.lock()
+	defer { r.mutex.unlock() }
+	assert name !in r.gauges, 'metrics: instrument name already used'
+	assert name !in r.histograms, 'metrics: instrument name already used'
 	if name !in r.counters {
 		r.counters[name] = &Counter{
 			mutex: sync.new_mutex()
@@ -79,6 +87,11 @@ pub fn (mut r Registry) counter(name string) &Counter {
 
 // gauge returns the named gauge, creating it on first use.
 pub fn (mut r Registry) gauge(name string) &Gauge {
+	assert valid_name(name, true), 'metrics: invalid instrument name ${name}'
+	r.mutex.lock()
+	defer { r.mutex.unlock() }
+	assert name !in r.counters, 'metrics: instrument name already used'
+	assert name !in r.histograms, 'metrics: instrument name already used'
 	if name !in r.gauges {
 		r.gauges[name] = &Gauge{
 			mutex: sync.new_mutex()
@@ -88,8 +101,21 @@ pub fn (mut r Registry) gauge(name string) &Gauge {
 }
 
 // histogram returns the named histogram with the given bucket upper bounds
-// (must be ascending), creating it on first use.
+// (must be finite and strictly ascending), creating it on first use.
+// Reusing a name requires the same bounds. Invalid configuration panics.
 pub fn (mut r Registry) histogram(name string, bounds []f64) &Histogram {
+	assert valid_name(name, true), 'metrics: invalid instrument name ${name}'
+	r.mutex.lock()
+	defer { r.mutex.unlock() }
+	assert name !in r.counters, 'metrics: instrument name already used'
+	assert name !in r.gauges, 'metrics: instrument name already used'
+	for i, bound in bounds {
+		assert !math.is_nan(bound) && !math.is_inf(bound, 0), 'metrics: bucket bounds must be finite'
+		assert i == 0 || bound > bounds[i - 1], 'metrics: bucket bounds must be strictly ascending'
+	}
+	if name in r.histograms {
+		assert r.histograms[name].bounds == bounds, 'metrics: bucket bounds differ'
+	}
 	if name !in r.histograms {
 		r.histograms[name] = &Histogram{
 			mutex:  sync.new_mutex()
@@ -99,9 +125,10 @@ pub fn (mut r Registry) histogram(name string, bounds []f64) &Histogram {
 	return r.histograms[name]
 }
 
-// add increments the labeled series by v (negative values are permitted by
-// the data model; use a gauge for levels).
+// add increments the labeled series by v. Negative or NaN increments panic;
+// use a gauge for values that decrease.
 pub fn (mut c Counter) add(v f64, labels map[string]string) {
+	assert v >= 0, 'metrics: counter increments must be nonnegative'
 	k := series_map_key(SeriesId{'', label_key(labels)})
 	c.mutex.lock()
 	defer {
@@ -152,6 +179,7 @@ pub fn (g &Gauge) get(labels map[string]string) f64 {
 
 // record adds one observation to the labeled series' buckets, sum and count.
 pub fn (mut h Histogram) record(v f64, labels map[string]string) {
+	assert 'le' !in labels, 'metrics: histogram label le is reserved'
 	k := series_map_key(SeriesId{'', label_key(labels)})
 	h.mutex.lock()
 	defer {
@@ -206,18 +234,24 @@ pub fn (h &Histogram) count(labels map[string]string) u64 {
 // to_prometheus renders all series in Prometheus text exposition format:
 // one HELP/TYPE header pair per instrument plus one line per labeled series.
 pub fn (mut r Registry) to_prometheus() string {
+	r.mutex.lock()
+	defer { r.mutex.unlock() }
 	mut out := []string{}
 	for name in r.counters.keys() {
 		mut c := r.counters[name]
 		out << '# HELP ${name} counter'
 		out << '# TYPE ${name} counter'
+		c.mutex.lock()
 		out << r.render_samples(name, c.vals)
+		c.mutex.unlock()
 	}
 	for name in r.gauges.keys() {
 		mut g := r.gauges[name]
 		out << '# HELP ${name} gauge'
 		out << '# TYPE ${name} gauge'
+		g.mutex.lock()
 		out << r.render_samples(name, g.vals)
+		g.mutex.unlock()
 	}
 	for name in r.histograms.keys() {
 		mut h := r.histograms[name]
@@ -227,12 +261,13 @@ pub fn (mut r Registry) to_prometheus() string {
 		keys := h.buckets.keys()
 		for k in keys {
 			lbl := render_labels(k)
+			prefix := if lbl == '' { '' } else { lbl + ',' }
 			counts := h.buckets[k]
 			for i, b in h.bounds {
-				out << '${name}_bucket{${lbl}${bucket_le(b)}} ${counts[i]}'
+				out << '${name}_bucket{${prefix}${bucket_le(b)}} ${counts[i]}'
 			}
-			out << '${name}_bucket{${lbl}${bucket_le_inf()}} ${counts[counts.len - 1]}'
-			out << '${name}_sum{${lbl}} ${h.sums[k]}'
+			out << '${name}_bucket{${prefix}${bucket_le_inf()}} ${counts[counts.len - 1]}'
+			out << '${name}_sum{${lbl}} ${sample_value(h.sums[k])}'
 			out << '${name}_count{${lbl}} ${h.counts[k]}'
 		}
 		h.mutex.unlock()
@@ -246,9 +281,9 @@ fn (mut r Registry) render_samples(name string, vals map[string]f64) string {
 	for k, v in vals {
 		lbl := render_labels(k)
 		if lbl == '' {
-			out << '${name} ${v}'
+			out << '${name} ${sample_value(v)}'
 		} else {
-			out << '${name}{${lbl}} ${v}'
+			out << '${name}{${lbl}} ${sample_value(v)}'
 		}
 	}
 	return out.join('\n')
@@ -256,16 +291,30 @@ fn (mut r Registry) render_samples(name string, vals map[string]f64) string {
 
 // render_labels decodes the canonical label encoding back to `k="v"` pairs.
 fn render_labels(k string) string {
-	body := k.all_after('\x00')
-	if body == '' {
-		return ''
+	return k.all_after('\x00')
+}
+
+fn escape_label(value string) string {
+	return value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+}
+
+fn valid_name(name string, metric bool) bool {
+	if name == '' { return false }
+	for i, ch in name {
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || ch == `_`
+			|| (metric && ch == `:`) || (i > 0 && ch >= `0` && ch <= `9`) {
+			continue
+		}
+		return false
 	}
-	mut parts := []string{}
-	for pair in body.split(',') {
-		eq := pair.index('=') or { continue }
-		parts << '${pair[..eq]}="${pair[eq + 1..]}"'
-	}
-	return parts.join(',')
+	return true
+}
+
+fn sample_value(value f64) string {
+	if math.is_nan(value) { return 'NaN' }
+	if math.is_inf(value, 1) { return '+Inf' }
+	if math.is_inf(value, -1) { return '-Inf' }
+	return value.str()
 }
 
 // bucket_le renders the le="bound" label fragment.
