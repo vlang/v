@@ -188,6 +188,8 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 					t.specialized_expr_type_name(new_val)
 				}
 				if actual.len > 0 && actual != 'unknown' && !t.generic_arg_is_unresolved(actual)
+					&& !t.tc.expr_subtree_has_node_error(val_id)
+					&& !t.tc.expr_subtree_has_node_error(new_val)
 					&& !t.tc.expr_compatible(val_id, t.tc.parse_type(actual), t.tc.parse_type(field_type)) {
 					t.tc.record_transform_error(child_id, val_node.pos, 'cannot assign to field `${field_name}`: expected `${field_type}`, not `${actual}`')
 				}

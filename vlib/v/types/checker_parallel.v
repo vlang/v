@@ -3769,6 +3769,15 @@ fn (tc &TypeChecker) expr_subtree_has_error(id flat.NodeId) bool {
 			return true
 		}
 	}
+	return tc.expr_subtree_has_node_error(id)
+}
+
+// expr_subtree_has_node_error reports errors attached to an expression's node IDs.
+// Source positions alone cannot distinguish separate generic instantiations.
+pub fn (tc &TypeChecker) expr_subtree_has_node_error(id flat.NodeId) bool {
+	if tc.errors.len == 0 || !tc.valid_node_id(id) {
+		return false
+	}
 	mut stack := []flat.NodeId{}
 	stack << id
 	for stack.len > 0 {

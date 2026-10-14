@@ -103,6 +103,28 @@ fn main() {
 	assert run.exit_code == 0, run.output
 }
 
+fn test_numeric_field_errors_remain_separate_across_generic_instances() ! {
+	directory := os.join_path(os.vtmp_dir(), 'numeric_field_diagnostics_${os.getpid()}')
+	os.mkdir_all(directory)!
+	defer { os.rmdir_all(directory) or {} }
+	source := 'module main
+type NamedInt = int
+fn (value NamedInt) name() string { return "named" }
+struct Number { width int }
+fn number[T](value T) Number { return Number{width: value.name()} }
+fn main() {
+    _ = number[int](1)
+    _ = number[NamedInt](NamedInt(1))
+}'
+	for check in [false, true] {
+		result := generic_numeric_field_program(directory, 'instances_${check}', source, check)
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('unknown method `int.name`'), result.output
+		assert result.output.count('cannot assign to field `width`') == 1, result.output
+		assert result.output.contains('expected `int`, not `string`'), result.output
+	}
+}
+
 fn test_imported_numeric_alias_fields_validate_generic_values() ! {
 	directory := os.join_path(os.vtmp_dir(), 'imported_numeric_fields_${os.getpid()}')
 	os.mkdir_all(os.join_path(directory, 'numeric_fields'))!
