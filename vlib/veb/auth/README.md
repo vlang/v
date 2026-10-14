@@ -69,6 +69,11 @@ pub fn (mut app App) register_user(mut ctx Context, name string, password string
 @[post]
 pub fn (mut app App) login_post(mut ctx Context, name string, password string) veb.Result {
 	user := app.find_user_by_name(name) or {
+		// Match the password work for existing accounts even when the name is absent.
+		dummy := 'pbkdf2-sha256$v1$600000$' +
+			'766c616e672d64756d6d792d70617373776f72642d73616c74$' +
+			'84073472e34c1db40fc75b61455a6be5bc505c84804af6359fcf9e471c81b67c'
+		_ = auth.compare_password_with_hash(password, '', dummy)
 		ctx.error('Bad credentials')
 		return ctx.redirect('/login')
 	}
@@ -112,6 +117,9 @@ After a successful legacy login, replace the stored verifier with `hash_password
 and persist it before discarding the old salt. Identify legacy verifiers by their 64-character
 length. Legacy verification is provided only for migration; new hashes always use PBKDF2.
 Applications remain responsible for persisting updated verifiers and limiting login attempts.
+For unknown accounts, perform verification against a fixed dummy verifier with the same work
+factor as current accounts before returning the same error. Update the dummy verifier when
+changing that work factor. Legacy accounts still need migration to equalize their password work.
 
 The default work factor follows the PBKDF2-HMAC-SHA256 guidance in the
 [OWASP Password Storage Cheat Sheet][password-storage].
