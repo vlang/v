@@ -7,6 +7,8 @@ as streams. This module covers the reading of the basic sections of archives pro
 like Linux command `tar -xvf` but in memory instead modifying the filesystem. Parses directories, 
 files, and file's content and manage paths longer than 100 chars.
 
+Header checksums are verified for files, directories, links, devices, and FIFOs.
+
 ### Read Efficiency
 
 An entire tar file can be read in memory or by chunks. Keeps in memory a single decompressed 
