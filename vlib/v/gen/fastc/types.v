@@ -552,12 +552,19 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 	}
-	if end - start >= 5 && tokens[start].tok == .lsbr && tokens[start + 1].tok == .rsbr && tokens[start + 2].tok == .name && tokens[start + 3].tok == .lpar && tokens[end - 1].tok == .rpar {
-		mut element_type := tokens[start + 2].lit
-		if primitive := fastc_primitive_c_type(element_type) {
-			element_type = primitive
+	if tokens[start].tok in [.lsbr, .amp, .and] && tokens[end - 1].tok == .rpar {
+		for open in start + 1 .. end {
+			if tokens[open].tok != .lpar {
+				continue
+			}
+			if cast_type := g.type_from_expression_tokens(tokens[start..open]) {
+				close := fastc_matching_rpar_before(tokens, open, end) or { break }
+				if cast_type.trim_right('*').starts_with('Array_') && close == end - 1 {
+					return cast_type
+				}
+			}
+			break
 		}
-		return fastc_array_c_type(element_type)
 	}
 	if end - start == 3 && tokens[start].tok == .name && tokens[start + 1].tok == .dot && tokens[start + 2].tok == .name {
 		if imported_module := g.imports[tokens[start].lit] {
@@ -594,10 +601,18 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 	}
 	array_end := if tokens[end - 1].tok == .not { end - 1 } else { end }
-	if tokens[start].tok == .lsbr && tokens[array_end - 1].tok == .rsbr {
+	array_literal_close := if tokens[start].tok == .lsbr {
+		fastc_matching_delimiter_before(tokens, start, array_end, .lsbr, .rsbr) or { -1 }
+	} else {
+		-1
+	}
+	if array_literal_close == array_end - 1 && tokens[start].tok == .lsbr {
 		items := fastc_expression_list_items(tokens, start + 1, array_end - 1)!
 		if items.len == 0 {
 			return ''
+		}
+		if items[0].len > 1 && items[0][0].tok == .ellipsis {
+			return g.infer_expression_type(items[0][1..])!
 		}
 		element_type := fastc_normalize_inferred_type(g.infer_expression_type(items[0])!)
 		if element_type == '' {
@@ -804,7 +819,8 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if tokens[i].lit == 'str' && g.declared_kinds[g.semantic_type_key(receiver_type)] == .enum_ {
 			return 'string'
 		}
-		if tokens[i].lit == 'str' && receiver_type.trim_right('*').starts_with('Array_') {
+		if tokens[i].lit == 'str' && (receiver_type.trim_right('*').starts_with('Array_')
+			|| receiver_type.trim_right('*') in g.sum_types) {
 			return 'string'
 		}
 		if tokens[i].lit == 'type_name' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
