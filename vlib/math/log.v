@@ -67,6 +67,9 @@ pub fn log2(x f64) f64 {
 
 // log1p returns log(1+x)
 pub fn log1p(x f64) f64 {
+	if is_inf(x, 1) {
+		return x
+	}
 	y := 1.0 + x
 	z := y - 1.0
 	return log(y) - (z - x) / y // cancels errors with IEEE arithmetic
