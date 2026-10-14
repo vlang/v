@@ -515,6 +515,20 @@ fn test_fmt_preserves_vfmt_directives_before_default_attributes() {
 	assert twice == formatted, twice
 }
 
+fn test_fmt_preserves_first_field_attributes_crossing_directives() {
+	for i, declaration in ['a   int', 'a, b   int'] {
+		source := 'struct First {\n\t@[required]\n\t// vfmt off\n\t${declaration}\n\t// vfmt on\n\tc int @[c]\n}\n'
+		res, formatted := run_vfmt_write('first_field_directive_attrs_${i}', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted == source, formatted
+		assert formatted.count('@[required]') == 1, formatted
+		second_res, twice := run_vfmt_write('first_field_directive_attrs_${i}_twice', formatted,
+			'')
+		assert second_res.exit_code == 0, second_res.output
+		assert twice == formatted
+	}
+}
+
 fn test_fmt_formats_enabled_leading_attributes_after_vfmt_on() {
 	declarations := ['@[a] value   int=1+2', '@[a] x, y   int']
 	formatted_fields := ['value int = 1 + 2 @[a]', 'x int @[a]\n\ty int @[a]']

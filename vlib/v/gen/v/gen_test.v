@@ -2666,6 +2666,38 @@ fn test_formatter_formats_leading_attributes_after_completed_directives() {
 	}
 }
 
+fn test_formatter_preserves_first_field_attributes_crossing_directives() {
+	for attribute in ['@[required]', "@[json: 'value']"] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for ending in ['\t// vfmt on\n\tc int @[c]\n}\n', '}\n'] {
+				source := 'struct First {\n\t${attribute}\n\t// vfmt off\n\t${declaration}\n${ending}'
+				out := vfmt('struct_first_field_attribute_directives', source)
+				assert out == source, out
+				assert out.count(attribute) == 1, out
+				assert vfmt('struct_first_field_attribute_directives_twice', out) == out
+			}
+		}
+	}
+}
+
+fn test_formatter_preserves_first_field_directive_attributes_with_header_comments() {
+	source := '@[heap]\nstruct /* { header } */ First {\n\t@[required]\n\t// vfmt off\n\ta   int\n\t// vfmt on\n\tc int @[c]\n}\n'
+	out := vfmt('struct_first_field_directives_header_comment', source)
+	assert out.count('/* { header } */') == 1, out
+	assert out.contains('\n\t@[required]\n\t// vfmt off\n\ta   int\n'), out
+	assert out.count('@[heap]') == 1, out
+	assert out.count('struct First {') == 1, out
+	assert vfmt('struct_first_field_directives_header_comment_twice', out) == out
+}
+
+fn test_formatter_formats_first_field_after_completed_directives() {
+	source := 'struct First {\n\t// vfmt off\n\t// vfmt on\n\t@[required] a, b   int\n}\n'
+	want := 'struct First {\n\t// vfmt off\n\t// vfmt on\n\ta int @[required]\n\tb int @[required]\n}\n'
+	out := vfmt('struct_first_field_completed_directives', source)
+	assert out == want, out
+	assert vfmt('struct_first_field_completed_directives_twice', out) == out
+}
+
 fn test_formatter_preserves_grouped_fields_crossing_attribute_directives_once() {
 	source := 'struct Crossing {\n\tbefore int\n\t@[a]\n\t// vfmt off\n\t// vfmt on\n\tx, y   int\n}\n'
 	out := vfmt('struct_grouped_field_attribute_directives', source)
