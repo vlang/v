@@ -9361,7 +9361,7 @@ fn (mut tc TypeChecker) check_wrapped_infix_operand(lhs_id flat.NodeId, lhs_type
 		if unalias_and_unwrap_pointer_type(lhs_type) is Struct && interface_base is Interface {
 			parent_id := tc.direct_parent_id(rhs_id)
 			if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .infix {
-				tc.record_error(.assignment_mismatch, 'infix expr: cannot use `${interface_base.name}` (right expression) as `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}`', parent_id)
+				tc.record_error(.assignment_mismatch, 'infix expr: cannot use `${interface_base.name()}` (right expression) as `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}`', parent_id)
 			}
 		}
 		return true
@@ -15608,7 +15608,7 @@ fn (mut tc TypeChecker) check_for_in_mutable_container(loop flat.Node, key_id fl
 		base_id := tc.a.child(container, 0)
 		base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(base_id))
 		if base_type is Struct {
-			tc.record_error_at(.assignment_mismatch, 'field `${base_type.name}.${container.value}` is immutable, it cannot be changed', container_id, tc.node_value_diagnostic_pos(diagnostic_id))
+			tc.record_error_at(.assignment_mismatch, 'field `${base_type.name()}.${container.value}` is immutable, it cannot be changed', container_id, tc.node_value_diagnostic_pos(diagnostic_id))
 			return
 		}
 	}
@@ -16757,14 +16757,14 @@ fn (tc &TypeChecker) builtin_receiver_collection_type(id flat.NodeId) ?Type {
 fn (tc &TypeChecker) collection_elements_are_known(collection Type) bool {
 	clean := unalias_type(collection)
 	if clean is Array {
-		return unalias_type(clean.elem_type_text()) !is Unknown
+		return unalias_type(clean.elem_type) !is Unknown
 	}
 	if clean is ArrayFixed {
-		return unalias_type(clean.elem_type_text()) !is Unknown
+		return unalias_type(clean.elem_type) !is Unknown
 	}
 	if clean is Map {
-		return unalias_type(clean.value_type_text()) !is Unknown
-			&& unalias_type(clean.key_type_text()) !is Unknown
+		return unalias_type(clean.value_type) !is Unknown
+			&& unalias_type(clean.key_type) !is Unknown
 	}
 	return false
 }

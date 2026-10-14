@@ -1066,9 +1066,9 @@ fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 
 fn ownership_drop_expansion_key(typ types.Type) string {
 	return match typ {
-		types.Struct { 'struct:${typ.name}' }
-		types.Interface { 'interface:${typ.name}' }
-		types.SumType { 'sum:${typ.name}' }
+		types.Struct { 'struct:${typ.name()}' }
+		types.Interface { 'interface:${typ.name()}' }
+		types.SumType { 'sum:${typ.name()}' }
 		else { '' }
 	}
 }
@@ -1277,23 +1277,23 @@ fn (g &FlatGen) ownership_drop_type_reaches_recursive_struct(typ types.Type, tar
 	}
 	match typ {
 		types.Alias {
-			return g.ownership_drop_type_reaches_recursive_struct(typ.base_type_text(), target_key, crossed_dynamic_boundary, depth + 1, mut seen)
+			return g.ownership_drop_type_reaches_recursive_struct(typ.base_type, target_key, crossed_dynamic_boundary, depth + 1, mut seen)
 		}
 		types.OptionType {
-			return g.ownership_drop_type_reaches_recursive_struct(typ.base_type_text(), target_key, crossed_dynamic_boundary, depth + 1, mut seen)
+			return g.ownership_drop_type_reaches_recursive_struct(typ.base_type, target_key, crossed_dynamic_boundary, depth + 1, mut seen)
 		}
 		types.ResultType {
-			return g.ownership_drop_type_reaches_recursive_struct(typ.base_type_text(), target_key, crossed_dynamic_boundary, depth + 1, mut seen)
+			return g.ownership_drop_type_reaches_recursive_struct(typ.base_type, target_key, crossed_dynamic_boundary, depth + 1, mut seen)
 		}
 		types.Array {
-			return g.ownership_drop_type_reaches_recursive_struct(typ.elem_type_text(), target_key, true, depth + 1, mut seen)
+			return g.ownership_drop_type_reaches_recursive_struct(typ.elem_type, target_key, true, depth + 1, mut seen)
 		}
 		types.ArrayFixed {
-			return g.ownership_drop_type_reaches_recursive_struct(typ.elem_type_text(), target_key, crossed_dynamic_boundary, depth + 1, mut seen)
+			return g.ownership_drop_type_reaches_recursive_struct(typ.elem_type, target_key, crossed_dynamic_boundary, depth + 1, mut seen)
 		}
 		types.Map {
-			return g.ownership_drop_type_reaches_recursive_struct(typ.key_type_text(), target_key, true, depth + 1, mut seen)
-				|| g.ownership_drop_type_reaches_recursive_struct(typ.value_type_text(), target_key, true, depth + 1, mut seen)
+			return g.ownership_drop_type_reaches_recursive_struct(typ.key_type, target_key, true, depth + 1, mut seen)
+				|| g.ownership_drop_type_reaches_recursive_struct(typ.value_type, target_key, true, depth + 1, mut seen)
 		}
 		types.Struct {
 			if g.resolve_method_name(typ.name(), g.ownership_destructor_method_name()).len > 0 {
@@ -1303,7 +1303,7 @@ fn (g &FlatGen) ownership_drop_type_reaches_recursive_struct(typ types.Type, tar
 				if g.tc.struct_field_is_shared(typ.name(), field.name) {
 					continue
 				}
-				if g.ownership_drop_type_reaches_recursive_struct(field.typ_text(), target_key, crossed_dynamic_boundary, depth + 1, mut seen) {
+				if g.ownership_drop_type_reaches_recursive_struct(field.typ, target_key, crossed_dynamic_boundary, depth + 1, mut seen) {
 					return true
 				}
 			}
@@ -1328,7 +1328,7 @@ fn (g &FlatGen) ownership_drop_type_reaches_recursive_struct(typ types.Type, tar
 				resolved_variant := g.resolve_variant(sum_name, variant)
 				variant_type := select_receive_unalias_type(g.tc.parse_type(resolved_variant))
 				if variant_type is types.Pointer {
-					if g.ownership_drop_type_reaches_recursive_struct(variant_type.base_type_text(), target_key, true, depth + 1, mut seen) {
+					if g.ownership_drop_type_reaches_recursive_struct(variant_type.base_type, target_key, true, depth + 1, mut seen) {
 						return true
 					}
 				} else if g.ownership_drop_type_reaches_recursive_struct(variant_type, target_key, true, depth + 1, mut seen) {
@@ -1847,37 +1847,37 @@ fn (g &FlatGen) ownership_type_needs_drop(typ types.Type, depth int) bool {
 	}
 	match typ {
 		types.Alias {
-			return g.ownership_type_needs_drop(typ.base_type_text(), depth + 1)
+			return g.ownership_type_needs_drop(typ.base_type, depth + 1)
 		}
 		types.OptionType {
-			return g.ownership_type_needs_drop(typ.base_type_text(), depth + 1)
+			return g.ownership_type_needs_drop(typ.base_type, depth + 1)
 		}
 		types.ResultType {
-			return g.ownership_type_needs_drop(typ.base_type_text(), depth + 1)
+			return g.ownership_type_needs_drop(typ.base_type, depth + 1)
 		}
 		types.Array {
-			return g.ownership_type_needs_drop(typ.elem_type_text(), depth + 1)
+			return g.ownership_type_needs_drop(typ.elem_type, depth + 1)
 		}
 		types.ArrayFixed {
-			return g.ownership_type_needs_drop(typ.elem_type_text(), depth + 1)
+			return g.ownership_type_needs_drop(typ.elem_type, depth + 1)
 		}
 		types.Map {
-			return g.ownership_type_needs_drop(typ.key_type_text(), depth + 1)
-				|| g.ownership_type_needs_drop(typ.value_type_text(), depth + 1)
+			return g.ownership_type_needs_drop(typ.key_type, depth + 1)
+				|| g.ownership_type_needs_drop(typ.value_type, depth + 1)
 		}
 		types.SumType {
-			for variant in g.tc.sum_types.get(g.resolve_sum_name(typ.name)) or { []string{} } {
+			for variant in g.tc.sum_types.get(g.resolve_sum_name(typ.name())) or { []string{} } {
 				if g.ownership_type_needs_drop(g.tc.parse_type(variant), depth + 1) {
 					return true
 				}
 			}
 		}
 		types.Struct {
-			if g.resolve_method_name(typ.name, g.ownership_destructor_method_name()).len > 0 {
+			if g.resolve_method_name(typ.name(), g.ownership_destructor_method_name()).len > 0 {
 				return true
 			}
-			for field in g.tc.struct_fields_for_type(typ.name) {
-				if g.ownership_type_needs_drop(field.typ_text(), depth + 1) {
+			for field in g.tc.struct_fields_for_type(typ.name()) {
+				if g.ownership_type_needs_drop(field.typ, depth + 1) {
 					return true
 				}
 			}

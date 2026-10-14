@@ -139,9 +139,3 @@ pub fn (tc &TypeChecker) ownership_default_clone_missing_method(_ Type) ?string 
 
 // inherit_ownership_codegen_metadata_from is a no-op when ownership checking is disabled.
 pub fn (mut tc TypeChecker) inherit_ownership_codegen_metadata_from(_ &TypeChecker) {}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipState) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}

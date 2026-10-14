@@ -35,7 +35,7 @@ fn main() { println(message) }
 	assert stores == 2
 	assert called_init
 	message := m.values.filter(it.kind == .global && it.name == 'message')[0]
-	assert m.type_store.types[message.typ].elem_type_text() == m.funcs.filter(it.name == 'tos3')[0].typ
+	assert m.type_store.types[message.typ].elem_type == m.funcs.filter(it.name == 'tos3')[0].typ
 }
 
 fn test_native_module_initialization_orders_dependencies_once() {
@@ -93,7 +93,7 @@ fn main() {}
 	for instruction in native_startup_instructions(m) {
 		if instruction.op == .store && instruction.operands[1] == number.id {
 			value := m.values[instruction.operands[0]]
-			assert value.typ == m.type_store.types[number.typ].elem_type_text()
+			assert value.typ == m.type_store.types[number.typ].elem_type
 			found = true
 		}
 	}
@@ -117,7 +117,7 @@ fn main() {}
 	argv := m.globals.filter(it.name == 'g_main_argv')[0]
 	assert m.type_size(argc.typ) == 8
 	assert m.type_store.types[argv.typ].kind == .ptr_t
-	assert m.type_store.types[m.type_store.types[argv.typ].elem_type_text()].kind == .ptr_t
+	assert m.type_store.types[m.type_store.types[argv.typ].elem_type].kind == .ptr_t
 	startup := m.funcs.filter(it.name == '__ssa_init')[0]
 	for block in startup.blocks {
 		for id in m.blocks[block].instrs {

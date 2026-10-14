@@ -29,9 +29,9 @@ fn array_fixed_type(t types.Type) ?types.ArrayFixed {
 }
 
 fn fixed_array_pointer_type(t types.Type) ?types.ArrayFixed {
-	clean := if t is types.Alias { t.base_type_text() } else { t }
+	clean := if t is types.Alias { t.base_type } else { t }
 	if clean is types.Pointer {
-		return array_fixed_type(clean.base_type_text())
+		return array_fixed_type(clean.base_type)
 	}
 	return none
 }

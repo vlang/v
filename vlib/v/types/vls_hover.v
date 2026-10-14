@@ -178,7 +178,7 @@ fn (tc &TypeChecker) vls_method_target(receiver_id flat.NodeId, method string) ?
 	// call: `a.describe` with `fn (a Alias) describe()`.
 	alias_receiver := unwrap_all_pointers(receiver_type)
 	if alias_receiver is Alias {
-		alias_method := '${alias_receiver.name}.${method}'
+		alias_method := '${alias_receiver.name()}.${method}'
 		if alias_method in tc.fn_type_files {
 			return alias_method
 		}
@@ -735,7 +735,7 @@ fn (tc &TypeChecker) vls_type_param_hover(id flat.NodeId, word string) ?string {
 		line := tc.vls_type_param_line(word, narrowed) or { return '[${word}]' }
 		return '[${word}]\n${line}'
 	}
-	head := '[${word} ${declared.name}]'
+	head := '[${word} ${declared.name_text()}]'
 	if !tc.vls_constraint_known(decl, declared) {
 		return head
 	}

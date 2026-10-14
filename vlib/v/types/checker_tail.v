@@ -690,7 +690,7 @@ fn (tc &TypeChecker) compound_index_overload_value_params_match(setter CallInfo,
 	if setter.params.len < 3 {
 		return true
 	}
-	return tc.type_compatible(getter.return_type_text(), setter.params[2])
+	return tc.type_compatible(getter.return_type, setter.params[2])
 }
 
 fn assignment_op_reads_lhs(op flat.Op) bool {
@@ -17577,8 +17577,8 @@ fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, ca
 		receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
 		if array_type := array_like_type_for_method(receiver_type, 'sort') {
 			elem_type := unalias_type(array_type.elem_type)
-			if elem_type is Struct && '${elem_type.name}.<' !in tc.fn_ret_types {
-				tc.record_error_at(.call_arg_mismatch, 'custom sorting condition must be supplied for type `${elem_type.name}`', id, tc.method_call_name_pos(node, callee))
+			if elem_type is Struct && '${elem_type.name()}.<' !in tc.fn_ret_types {
+				tc.record_error_at(.call_arg_mismatch, 'custom sorting condition must be supplied for type `${elem_type.name()}`', id, tc.method_call_name_pos(node, callee))
 			}
 		}
 		return
@@ -21304,7 +21304,7 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 			return 'string.${fn_node.value}' in tc.fn_ret_types
 		}
 		if clean_type is Alias {
-			mname := '${clean_type.name}.${fn_node.value}'
+			mname := '${clean_type.name()}.${fn_node.value}'
 			if mname in tc.fn_ret_types {
 				return true
 			}
@@ -21318,20 +21318,20 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 			}
 		}
 		if clean_type is Struct {
-			return '${clean_type.name}.${fn_node.value}' in tc.fn_ret_types
+			return '${clean_type.name()}.${fn_node.value}' in tc.fn_ret_types
 				|| (fn_node.value == 'clone' && tc.type_has_compiler_default_clone(clean_type))
 		}
 		if clean_type is Interface {
-			return '${clean_type.name}.${fn_node.value}' in tc.fn_ret_types
+			return '${clean_type.name()}.${fn_node.value}' in tc.fn_ret_types
 		}
 		if clean_type is SumType {
-			return '${clean_type.name}.${fn_node.value}' in tc.fn_ret_types
+			return '${clean_type.name()}.${fn_node.value}' in tc.fn_ret_types
 		}
 		if clean_type is Enum {
 			if fn_node.value == 'str' {
 				return true
 			}
-			return '${clean_type.name}.${fn_node.value}' in tc.fn_ret_types
+			return '${clean_type.name()}.${fn_node.value}' in tc.fn_ret_types
 		}
 		if clean_type is Primitive {
 			mname := '${prim_c_type_from(clean_type.props, clean_type.size)}.${fn_node.value}'
@@ -21388,7 +21388,7 @@ fn (tc &TypeChecker) is_known_array_receiver_method(receiver Type, method string
 fn (tc &TypeChecker) alias_declares_method(typ Type, method string) bool {
 	mut current := unwrap_pointer(typ)
 	for current is Alias {
-		if '${current.name}.${method}' in tc.fn_ret_types {
+		if '${current.name()}.${method}' in tc.fn_ret_types {
 			return true
 		}
 		current = unwrap_pointer(current.base_type)

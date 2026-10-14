@@ -78,7 +78,7 @@ fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []
 			for j in 0 .. field.children_count {
 				param := a.child_node(field, j)
 				if param.kind == .param {
-					params << param.typ
+					params << param.typ_text()
 				}
 			}
 			return params
@@ -96,7 +96,7 @@ fn fn_decl_param_pairs(a &flat.FlatAst, kind flat.NodeKind, name string) []strin
 		for i in 0 .. node.children_count {
 			param := a.child_node(&node, i)
 			if param.kind == .param {
-				pairs << '${param.value}:${param.typ}'
+				pairs << '${param.value}:${param.typ_text()}'
 			}
 		}
 		return pairs
@@ -721,10 +721,10 @@ fn test_local_sibling_types_are_predeclared_before_fields() {
 				continue
 			}
 			if node.value == local_a {
-				a_fields << '${field.value}:${field.typ}'
+				a_fields << '${field.value}:${field.typ_text()}'
 			}
 			if node.value == local_b {
-				b_fields << '${field.value}:${field.typ}'
+				b_fields << '${field.value}:${field.typ_text()}'
 			}
 		}
 	}

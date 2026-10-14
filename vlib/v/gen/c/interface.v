@@ -371,7 +371,7 @@ fn (g &FlatGen) variant_refs_sum_inner(variant string, sum_name string, mut visi
 	}
 	if lookup in g.tc.structs {
 		for f in g.tc.structs[lookup] {
-			if g.type_references_sum(f.typ_text(), sum_name, mut visited) {
+			if g.type_references_sum(f.typ, sum_name, mut visited) {
 				return true
 			}
 		}
@@ -399,22 +399,22 @@ fn (g &FlatGen) normalize_variant_name(name string) string {
 fn (g &FlatGen) type_references_sum(typ types.Type, sum_name string, mut visited map[string]bool) bool {
 	resolved_sum := g.resolve_sum_name(sum_name)
 	clean := types.unwrap_pointer(typ)
-	if clean is types.Struct && g.resolve_sum_name(clean.name) == resolved_sum {
+	if clean is types.Struct && g.resolve_sum_name(clean.name()) == resolved_sum {
 		return true
 	}
-	if clean is types.SumType && g.resolve_sum_name(clean.name) == resolved_sum {
+	if clean is types.SumType && g.resolve_sum_name(clean.name()) == resolved_sum {
 		return true
 	}
 	if clean is types.SumType {
 		return true
 	}
 	if clean is types.Struct {
-		if g.variant_refs_sum_inner(clean.name, resolved_sum, mut visited) {
+		if g.variant_refs_sum_inner(clean.name(), resolved_sum, mut visited) {
 			return true
 		}
 	}
 	if clean is types.Array {
-		return g.type_references_sum(clean.elem_type_text(), resolved_sum, mut visited)
+		return g.type_references_sum(clean.elem_type, resolved_sum, mut visited)
 	}
 	return false
 }

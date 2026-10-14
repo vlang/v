@@ -13191,14 +13191,14 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_addr(id flat.NodeId, expected ty
 		return false
 	}
 	target_alias := target_type as types.Alias
-	base_type := target_alias.base_type_text()
+	base_type := target_alias.base_type
 	// `&U8(-1)`, with an alias of an integer type, is a pointer cast like `&u8(-1)`.
 	if base_type is types.Pointer || cgen_unalias_type(base_type).is_integer() {
 		return false
 	}
 	target_ct := g.value_c_type(base_type)
-	expected_ct := g.value_c_type(expected.base_type_text())
-	if expected_ct != target_ct && !g.type_names_match(expected.base_type_text(), target_type) {
+	expected_ct := g.value_c_type(expected.base_type)
+	if expected_ct != target_ct && !g.type_names_match(expected.base_type, target_type) {
 		return false
 	}
 	value_expr := g.expr_to_string(g.a.child(child, 0))

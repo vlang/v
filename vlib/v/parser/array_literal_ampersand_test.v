@@ -18,7 +18,7 @@ fn array_expression_shape(path string, statement string, is_fmt bool) string {
 	for node in a.nodes {
 		match node.kind {
 			.array_literal { shape << 'literal' }
-			.array_init { shape << 'init ${node.typ}' }
+			.array_init { shape << 'init ${node.typ_text()}' }
 			.infix { shape << node.op.str() }
 			else {}
 		}

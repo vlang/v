@@ -67,11 +67,8 @@ fn main() {}
 }
 
 fn test_native_field_type_lookup_preserves_containers_through_pointer_receivers() {
-	b := Builder{
-		struct_field_types: {
-			'Checker.ids': 'map[string][]int'
-		}
-	}
+	mut b := Builder{}
+	b.struct_field_types.set('Checker.ids', 'map[string][]int')
 	for receiver in ['Checker', '&Checker', '&&Checker', 'types.Checker', '&types.Checker'] {
 		assert b.field_type_name(receiver, 'ids') == 'map[string][]int'
 	}
@@ -323,7 +320,7 @@ fn test_map_clone_uses_the_runtime_pointer_abi() {
 		assert f.params.len == 1
 		param_type := m.type_store.types[m.values[f.params[0]].typ]
 		assert param_type.kind == .ptr_t
-		assert m.type_store.types[param_type.elem_type_text()].kind == .struct_t
+		assert m.type_store.types[param_type.elem_type].kind == .struct_t
 		return
 	}
 	assert false, 'missing native map clone helper'
@@ -519,7 +516,7 @@ fn test_wasm32_indirect_call_numeric_parameter_types() {
 		callee_id := a.child(&node, 0)
 		if a.nodes[int(callee_id)].value == 'callback' {
 			// Transformed local callees recover their signature from the binding.
-			a.nodes[int(callee_id)].typ = ''
+			a.nodes[int(callee_id)].set_type_text('')
 			tc.expr_type_set[int(callee_id)] = false
 		}
 	}

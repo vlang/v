@@ -15,7 +15,7 @@ fn staging_container_decl_source(kind flat.NodeKind, typ types.Type, marker stri
 	lhs := a.add_node(flat.Node{ kind: .ident, value: 'staged', typ: flat.source_type_id(typ.name()) })
 	rhs := a.add_node(flat.Node{
 		kind:  kind
-		value: if typ is types.Array { typ.elem_type_text().name() } else { typ.name() }
+		value: if typ is types.Array { typ.elem_type.name() } else { typ.name() }
 		typ:   flat.source_type_id(typ.name())
 	})
 	tc.register_synth_type(rhs, typ)

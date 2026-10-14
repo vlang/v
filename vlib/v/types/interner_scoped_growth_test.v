@@ -34,10 +34,10 @@ fn test_type_interner_owns_payloads_from_a_left_worker_scope() {
 		assert !unsafe { prealloc_scope_owns(scope, param.len_expr.str) }
 		elem := param.elem_type
 		assert elem is Struct
-		assert !unsafe { prealloc_scope_owns(scope, elem.name.str) }
+		assert !unsafe { prealloc_scope_owns(scope, elem.name().str) }
 		result := canonical.return_type
 		assert result is Alias
-		assert !unsafe { prealloc_scope_owns(scope, result.name.str) }
+		assert !unsafe { prealloc_scope_owns(scope, result.name().str) }
 		unsafe { prealloc_scope_free_after(scope) }
 
 		expected := Type(FnType{

@@ -2851,7 +2851,7 @@ fn (mut tc TypeChecker) record_multi_pattern_return_mismatch(subject SumType, br
 		if tc.expr_key(value_id) != subject_key {
 			continue
 		}
-		tc.record_error_at(.return_mismatch, 'cannot use `${actual_name}` as type `${expected_sum.name}` in return argument', value_id, tc.a.node(value_id).pos)
+		tc.record_error_at(.return_mismatch, 'cannot use `${actual_name}` as type `${expected_sum.name()}` in return argument', value_id, tc.a.node(value_id).pos)
 	}
 }
 
@@ -14280,7 +14280,7 @@ fn (tc &TypeChecker) method_call_info_signature_compatible(actual CallInfo, expe
 		}
 	}
 	expected_ret := tc.fn_ret_types[expected_key] or { builtin_void_type }
-	return tc.method_return_signature_compatible(actual.return_type_text(), expected_ret)
+	return tc.method_return_signature_compatible(actual.return_type, expected_ret)
 }
 
 fn (tc &TypeChecker) method_call_info_signature_compatible_for_interface(actual CallInfo, expected_key string, iface_name string) bool {
@@ -15000,7 +15000,7 @@ fn (tc &TypeChecker) nested_sum_variant_type_for_pattern(concrete string, candid
 
 fn (tc &TypeChecker) match_sum_variant_type(subject Type, pattern string) ?Type {
 	if subject is SumType {
-		variants := tc.sum_types.get(subject.name) or { return none }
+		variants := tc.sum_types.get(subject.name()) or { return none }
 		variant_short := short_type_name(pattern)
 		for variant in variants {
 			if variant == pattern || short_type_name(variant) == variant_short {

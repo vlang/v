@@ -6776,16 +6776,16 @@ fn (g &FlatGen) struct_decl_value_dependency_c_type(typ types.Type) string {
 			return ''
 		}
 		types.ArrayFixed {
-			return g.struct_decl_value_dependency_c_type(typ.elem_type_text())
+			return g.struct_decl_value_dependency_c_type(typ.elem_type)
 		}
 		types.OptionType {
-			return g.struct_decl_value_dependency_c_type(typ.base_type_text())
+			return g.struct_decl_value_dependency_c_type(typ.base_type)
 		}
 		types.ResultType {
-			return g.struct_decl_value_dependency_c_type(typ.base_type_text())
+			return g.struct_decl_value_dependency_c_type(typ.base_type)
 		}
 		types.Alias {
-			return g.struct_decl_value_dependency_c_type(typ.base_type_text())
+			return g.struct_decl_value_dependency_c_type(typ.base_type)
 		}
 		else {
 			return g.tc.c_type(typ)

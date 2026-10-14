@@ -1627,7 +1627,7 @@ fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[stri
 		for field in fields {
 			owned_fields << types.StructField{
 				name:        field.name.clone()
-				typ:         types.clone_owned_type(field.typ_text())
+				typ:         types.clone_owned_type(field.typ)
 				has_default: field.has_default
 				is_embed:    field.is_embed
 				is_mut:      field.is_mut

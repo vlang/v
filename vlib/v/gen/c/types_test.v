@@ -720,10 +720,10 @@ fn test_unqualified_type_normalization_cache_preserves_spacing_and_nesting() {
 			assert g.canonical_import_alias_type_text_in_file(input.clone(), file) == expected
 		}
 	}
-	assert g.import_type_cache.unqualified_texts.len > 0
+	assert g.import_type_cache.unqualified_texts.entries.len > 0
 	assert g.import_type_cache.by_file.len == 0
 	g.reset_context_lookup_caches()
-	assert g.import_type_cache.unqualified_texts.len == 0
+	assert g.import_type_cache.unqualified_texts.entries.len == 0
 }
 
 fn test_import_alias_type_normalization_preserves_primitive_containers_and_named_types() {
@@ -1042,7 +1042,7 @@ fn test_optional_value_info_preserves_pointer_payload_abi() {
 	payload_ct, payload_type := g.optional_value_info(option_type, '__v_option_Dataptr')
 	assert payload_ct == 'Data*'
 	assert payload_type is types.Pointer
-	assert (payload_type as types.Pointer).base_type_text().name() == 'Data'
+	assert (payload_type as types.Pointer).base_type.name() == 'Data'
 }
 
 fn test_array_equality_depth_follows_the_resolved_element_type() {

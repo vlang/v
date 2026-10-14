@@ -132,7 +132,7 @@ fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
 	actual := g.usable_expr_type(deref_id)
 	assert actual is types.Pointer
 	if actual is types.Pointer {
-		assert actual.base_type_text() == types.Type(types.int_)
+		assert actual.base_type == types.Type(types.int_)
 	}
 }
 
@@ -187,8 +187,8 @@ fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
 	g.tc = &tc
 	// Distinct logical ownership keys can refer to the same runtime struct after
 	// lifetime erasure. Only one C helper definition may be emitted for it.
-	g.recursive_drop_helpers['struct:pkg.Sink[^p,^s,Writer]'] = 'pkg.Sink[Writer]'
-	g.recursive_drop_helpers['struct:pkg.Sink[^s,^s,Writer]'] = 'pkg.Sink[Writer]'
+	g.recursive_drop_helpers.set('struct:pkg.Sink[^p,^s,Writer]', 'pkg.Sink[Writer]')
+	g.recursive_drop_helpers.set('struct:pkg.Sink[^s,^s,Writer]', 'pkg.Sink[Writer]')
 	g.gen_ownership_recursive_drop_helpers()
 	assert g.sb.str().count('static void __v3_ownership_drop_pkg__Sink_Writer(') == 1
 }
@@ -207,7 +207,7 @@ fn test_usable_resolved_sum_type_requires_exact_qualified_name() {
 	}))
 	assert preserved is types.Struct
 	if preserved is types.Struct {
-		assert preserved.name == 'foo.Result'
+		assert preserved.name() == 'foo.Result'
 	}
 
 	exact := g.usable_resolved_sum_type(types.Type(types.Struct{
@@ -215,7 +215,7 @@ fn test_usable_resolved_sum_type_requires_exact_qualified_name() {
 	}))
 	assert exact is types.SumType
 	if exact is types.SumType {
-		assert exact.name == 'foo.Choice'
+		assert exact.name() == 'foo.Choice'
 	}
 }
 

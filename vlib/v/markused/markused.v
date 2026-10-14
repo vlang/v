@@ -4210,10 +4210,10 @@ fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut 
 	}
 	match typ {
 		types.Alias {
-			enqueue_implicit_str_type_helpers(typ.base_type_text(), tc, mut used, mut queue, mut seen)
+			enqueue_implicit_str_type_helpers(typ.base_type, tc, mut used, mut queue, mut seen)
 		}
 		types.Pointer {
-			enqueue_implicit_str_type_helpers(typ.base_type_text(), tc, mut used, mut queue, mut seen)
+			enqueue_implicit_str_type_helpers(typ.base_type, tc, mut used, mut queue, mut seen)
 		}
 		types.Primitive, types.Rune, types.Char, types.ISize, types.USize {
 			enqueue_stringified_primitive_helpers(key, mut used, mut queue)
@@ -4223,31 +4223,31 @@ fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut 
 		}
 		types.Struct {
 			for field in tc.structs[key] or { []types.StructField{} } {
-				enqueue_implicit_str_type_helpers(field.typ_text(), tc, mut used, mut queue, mut seen)
+				enqueue_implicit_str_type_helpers(field.typ, tc, mut used, mut queue, mut seen)
 			}
 		}
 		types.Array {
 			enqueue('string__plus', mut used, mut queue)
 			enqueue('array.get', mut used, mut queue)
 			enqueue('array__get', mut used, mut queue)
-			enqueue_implicit_str_type_helpers(typ.elem_type_text(), tc, mut used, mut queue, mut seen)
+			enqueue_implicit_str_type_helpers(typ.elem_type, tc, mut used, mut queue, mut seen)
 		}
 		types.ArrayFixed {
 			enqueue('string__plus', mut used, mut queue)
-			enqueue_implicit_str_type_helpers(typ.elem_type_text(), tc, mut used, mut queue, mut seen)
+			enqueue_implicit_str_type_helpers(typ.elem_type, tc, mut used, mut queue, mut seen)
 		}
 		types.OptionType {
 			enqueue('string__plus', mut used, mut queue)
-			enqueue_implicit_str_type_helpers(typ.base_type_text(), tc, mut used, mut queue, mut seen)
+			enqueue_implicit_str_type_helpers(typ.base_type, tc, mut used, mut queue, mut seen)
 		}
 		types.ResultType {
 			enqueue('string__plus', mut used, mut queue)
-			enqueue_implicit_str_type_helpers(typ.base_type_text(), tc, mut used, mut queue, mut seen)
+			enqueue_implicit_str_type_helpers(typ.base_type, tc, mut used, mut queue, mut seen)
 		}
 		types.Map {
 			enqueue_implicit_map_str_helpers(mut used, mut queue)
-			enqueue_implicit_str_type_helpers(typ.key_type_text(), tc, mut used, mut queue, mut seen)
-			enqueue_implicit_str_type_helpers(typ.value_type_text(), tc, mut used, mut queue, mut seen)
+			enqueue_implicit_str_type_helpers(typ.key_type, tc, mut used, mut queue, mut seen)
+			enqueue_implicit_str_type_helpers(typ.value_type, tc, mut used, mut queue, mut seen)
 		}
 		else {}
 	}
