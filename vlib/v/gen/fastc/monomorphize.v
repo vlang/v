@@ -2092,7 +2092,7 @@ fn fastc_params_exact_type_param_indexes(params_source string, type_param string
 		tok = s.scan()
 		mut type_tokens := 0
 		mut type_name := ''
-		mut depth := if first_tok in [.lpar, .lsbr, .lcbr] { 1 } else { 0 }
+		mut depth := 0
 		for tok != .eof {
 			if tok in [.lsbr, .lpar] {
 				depth++
@@ -2150,7 +2150,7 @@ fn fastc_call_argument_simple_types(mut s scanner.Scanner, var_types map[string]
 		if struct_literal {
 			argument_type = first_lit
 		}
-		mut depth := 0
+		mut depth := if first_tok in [.lpar, .lsbr, .lcbr] { 1 } else { 0 }
 		for tok != .eof {
 			if depth == 0 && tok in [.rpar, .rsbr, .rcbr, .comma] {
 				break
