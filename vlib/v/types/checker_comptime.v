@@ -8138,7 +8138,15 @@ fn comptime_condition_scalar_value(raw string) ?string {
 }
 
 fn (tc &TypeChecker) comptime_type_matches(actual string, expected string) ?bool {
-	clean_actual := tc.instance_type_text(trimmed_space(actual))
+	mut clean_actual := tc.instance_type_text(trimmed_space(actual))
+	if smartcast := tc.smartcasts[clean_actual] {
+		clean_actual = smartcast.name()
+	} else if local_type := tc.non_file_scope_type(clean_actual) {
+		semantic_type := tc.mut_param_base_for_current_ident(clean_actual, local_type) or {
+			local_type
+		}
+		clean_actual = semantic_type.name()
+	}
 	clean_expected := trimmed_space(expected)
 	if clean_actual.len == 0 || clean_expected.len == 0
 		|| (is_bare_generic_param(clean_actual) && !tc.type_name_known(clean_actual)) {
@@ -19648,6 +19656,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		} $else {
 			tc.check_node_with_expected_context(rhs_id, expected_type)
 		}
+		if node.op == .assign {
+			tc.record_null_constant_reference_error(.assignment_mismatch, rhs_id, expected_type)
+		}
 		if lhs_node.kind == .ident && tc.ident_is_mutable_lvalue(lhs_node.value) {
 			tc.check_mutable_array_immutable_references(rhs_id)
 		}
@@ -20899,6 +20910,9 @@ fn (mut tc TypeChecker) check_instantiated_comptime_method_args(call_id flat.Nod
 	mut w := tc.fork_for_parallel_check()
 	w.valid_diagnostic_fast = false
 	w.valid_resolution_fast = false
+	// Argument validation follows imported generic forwarders too. The caller's
+	// selected-file filter applies when the reflected argument errors return below.
+	w.diagnostic_files = map[string]bool{}
 	w.cur_module = tc.fn_type_modules[info.name] or { tc.cur_module }
 	w.cur_file = tc.fn_type_files[info.name] or { tc.cur_file }
 	checked := w.check_generic_fn_body_as(fn_node, int(instantiation.decl_id), texts)

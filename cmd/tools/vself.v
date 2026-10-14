@@ -696,17 +696,18 @@ fn initial_bootstrap_args(args []string) []string {
 
 fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {
 	mut parts := []string{cap: 8}
-	parts << os.quoted_path(cc)
 	// Portable VC snapshots have the full V1 compiler but no embedded V3 driver.
-	parts << '-DCUSTOM_DEFINE_v1_fallback'
 	if os.user_os() == 'windows' {
+		parts << [os.quoted_path(cc), '-DCUSTOM_DEFINE_v1_fallback']
 		// vc/v_win.c calls BCryptGenRandom, so -lws2_32 alone fails to link, the same
 		// way GNUmakefile and makev.bat need -lbcrypt for this snapshot.
 		parts << ['-std=c99', '-municode', '-w', '-o', os.quoted_path(out_binary),
 			os.quoted_path(vc_source), '-lws2_32', '-lbcrypt']
 	} else {
-		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary), os.quoted_path(vc_source),
-			'-lm', '-lpthread']
+		compat_script := os.join_path(os.dir(os.dir(vc_source)), 'cmd', 'tools', 'vc_compat.sh')
+		parts << ['sh', os.quoted_path(compat_script), os.quoted_path(vc_source), os.quoted_path(cc),
+			'-DCUSTOM_DEFINE_v1_fallback']
+		parts << ['-std=c99', '-w', '-o', os.quoted_path(out_binary), '--', '-lm', '-lpthread']
 	}
 	return parts.join(' ')
 }

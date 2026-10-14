@@ -551,7 +551,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		// values are shallow copies. First clone destructible entries here so deleting from
 		// the source map cannot invalidate an unvisited snapshot binding.
 		key_type, value_type := t.map_type_parts(map_iter_type)
-		key_needs_clone := t.normalize_type_alias(key_type).trim_space() != 'string'
+		key_needs_clone := trimmed_transform_text(t.normalize_type_alias(key_type)) != 'string'
 			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
 		value_needs_clone := t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type))
 		keys_are_cloneable := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(key_type)) == none
@@ -680,7 +680,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		if has_index {
 			key_source_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 			key_name := binding_names[key_source_name] or { key_source_name }
-			if t.normalize_type_alias(key_type).trim_space() != 'string' {
+			if trimmed_transform_text(t.normalize_type_alias(key_type)) != 'string' {
 				binding_clones << t.make_for_in_binding_clone(key_name, key_type)
 			}
 			value_source_name := if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
@@ -937,7 +937,7 @@ fn (t &Transformer) ownership_for_in_type_needs_clone(typ string) bool {
 }
 
 fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
-	mut clean := iter_type.trim_space()
+	mut clean := trimmed_transform_text(iter_type)
 	if clean.starts_with('&') {
 		clean = clean[1..]
 	}
@@ -1091,7 +1091,7 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	}
 	elem_type := info.elem_type
 	t.mark_fn_used_name(info.next_method)
-	next_receiver := if iter_type.trim_space().starts_with('&') {
+	next_receiver := if trimmed_transform_text(iter_type).starts_with('&') {
 		t.make_ident(iter_name)
 	} else {
 		t.make_prefix(.amp, t.make_ident(iter_name))
@@ -1138,7 +1138,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	}
 	checker_container_type := t.raw_checker_node_type(container_id)
 	raw_container_type := if container_node.kind == .ident
-		&& t.var_type(container_node.value).trim_space().starts_with('?') {
+		&& trimmed_transform_text(t.var_type(container_node.value)).starts_with('?') {
 		t.var_type(container_node.value)
 	} else {
 		checker_container_type
@@ -1466,7 +1466,7 @@ fn (t &Transformer) for_in_container_is_shared_array_pointer(for_id flat.NodeId,
 	}
 	raw_type := t.raw_var_type(container.value)
 	typ := if raw_type.len > 0 { raw_type } else { t.var_type(container.value) }
-	if typ.trim_space().starts_with('shared ') {
+	if trimmed_transform_text(typ).starts_with('shared ') {
 		return true
 	}
 	return t.local_decl_is_shared_before(container.value, for_id)
@@ -1550,6 +1550,17 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 				return concrete_payload
 			}
 		}
+		if iter_node.kind == .index && (iter_node.value == 'range'
+			|| (iter_node.children_count > 1 && t.a.child_node(&iter_node, 1).kind == .range)) {
+			// Late generic reachability can leave checker slice metadata resolved
+			// outside this function's local scope. Resolve the slice from its current
+			// container before mistaking an array of strings for string iteration.
+			slice_type := for_iter_payload_type(t.node_type(iter_id))
+			if for_iter_type_is_container(slice_type) {
+				t.set_node_typ(int(iter_id), slice_type)
+				return slice_type
+			}
+		}
 		checker_type := t.raw_checker_node_type(iter_id)
 		if checker_type.len > 0 {
 			checker_payload := for_iter_payload_type(checker_type)
@@ -1577,7 +1588,7 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 }
 
 fn for_iter_type_is_container(iter_type string) bool {
-	clean := iter_type.trim_space()
+	clean := trimmed_transform_text(iter_type)
 	return clean in ['string', '&string'] || clean.starts_with('[]') || clean.starts_with('&[')
 		|| clean.starts_with('...') || clean.starts_with('map[') || clean.starts_with('&map[')
 		|| clean.starts_with('[')
@@ -1591,9 +1602,9 @@ fn for_iter_payload_type(iter_type string) string {
 }
 
 fn for_iter_optional_payload_type(iter_type string) ?string {
-	clean := iter_type.trim_space()
+	clean := trimmed_transform_text(iter_type)
 	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {
-		return clean[1..].trim_space()
+		return trimmed_transform_text(clean[1..])
 	}
 	return none
 }
@@ -1643,7 +1654,7 @@ fn (mut t Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?st
 }
 
 fn for_iter_type_has_generic_placeholder(iter_type string) bool {
-	clean := iter_type.trim_space()
+	clean := trimmed_transform_text(iter_type)
 	if clean.len == 0 {
 		return false
 	}
@@ -1718,9 +1729,9 @@ fn (t &Transformer) declared_for_in_elem_type(container_id flat.NodeId, node fla
 	}
 	container := t.a.nodes[int(container_id)]
 	mut container_type := if container.kind == .ident {
-		t.raw_var_type(container.value).trim_space()
+		trimmed_transform_text(t.raw_var_type(container.value))
 	} else {
-		t.raw_checker_node_type(container_id).trim_space()
+		trimmed_transform_text(t.raw_checker_node_type(container_id))
 	}
 	if container_type.len == 0 {
 		return none
@@ -1759,7 +1770,7 @@ fn (t &Transformer) declared_for_in_elem_type(container_id flat.NodeId, node fla
 
 fn (t &Transformer) for_in_declared_ref_type(binding_id flat.NodeId, elem_type string) string {
 	if int(binding_id) >= 0 {
-		checker_type := t.raw_checker_node_type(binding_id).trim_space()
+		checker_type := trimmed_transform_text(t.raw_checker_node_type(binding_id))
 		clean_checker := t.normalize_type_alias(checker_type)
 		if clean_checker.starts_with('&') || t.is_optional_type_name(clean_checker) {
 			return checker_type
@@ -1791,7 +1802,7 @@ fn (mut t Transformer) make_for_in_fixed_array_len_expr(s string) flat.NodeId {
 }
 
 fn for_in_fixed_array_elem_type(s string) string {
-	clean := s.trim_space()
+	clean := trimmed_transform_text(s)
 	if clean.starts_with('[') {
 		mut pos := 0
 		for pos < clean.len && clean[pos] == `[` {
@@ -1817,7 +1828,7 @@ fn for_in_fixed_array_elem_type(s string) string {
 }
 
 fn for_in_fixed_array_len_text(s string) string {
-	clean := s.trim_space()
+	clean := trimmed_transform_text(s)
 	if clean.starts_with('[') {
 		mut pos := 0
 		for pos < clean.len && clean[pos] == `[` {
@@ -1830,7 +1841,7 @@ fn for_in_fixed_array_len_text(s string) string {
 		if clean.ends_with(']') {
 			open := transform_trailing_matching_bracket_start(clean, clean.len)
 			if open >= pos {
-				return clean[open + 1..clean.len - 1].trim_space()
+				return trimmed_transform_text(clean[open + 1..clean.len - 1])
 			}
 		}
 		return clean.all_after('[').all_before(']').trim_space()
@@ -1843,5 +1854,5 @@ fn for_in_fixed_array_len_text(s string) string {
 	if close_rel < 0 {
 		return ''
 	}
-	return clean[open + 1..open + 1 + close_rel].trim_space()
+	return trimmed_transform_text(clean[open + 1..open + 1 + close_rel])
 }

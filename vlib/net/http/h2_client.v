@@ -84,10 +84,22 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 
 // h2_response_to_http converts an HTTP/2 response into a net.http Response,
 // decoding any Content-Encoding the same way the HTTP/1.1 path does.
-fn h2_response_to_http(h2resp H2ClientResponse) Response {
+// A field that the Header can not store is an error, not a Response without
+// that field: a `HeaderLimitError`, as from the HTTP/1.1 parser, for a response
+// whose header and trailer sections hold more than `max_headers` fields, and a
+// malformed response for a field that `add_custom` refuses. Both clients reject
+// such a field when they receive it (h2_response_field_with_value_error), so
+// the second case is left for an H2ClientResponse that was not read by one of
+// them.
+fn h2_response_to_http(h2resp H2ClientResponse) !Response {
 	mut h := new_header()
 	for f in h2resp.headers {
-		h.add_custom(f.name, f.value) or {}
+		h.add_custom(f.name, f.value) or {
+			if err is HeaderLimitError {
+				return err
+			}
+			return error('h2: malformed response: ${err.msg()}')
+		}
 	}
 	body := decode_response_body(h2resp.body.bytestr(), h.get(.content_encoding) or { '' })
 	status := status_from_int(h2resp.status)

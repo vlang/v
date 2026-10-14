@@ -188,11 +188,7 @@ fn (mut g Parser) queue_mono_method(receiver_type string, method string, concret
 		source := g.generic_method_sources[source_key] or { FastcGenericMethodSource{} }
 		base_key := '${g.semantic_type_key(receiver_type)}.${method}'
 		base := g.functions[base_key] or { FastcFunctionSignature{} }
-		mut parameter_types := base.parameter_types.clone()
-		parameter_index := source.type_param_parameter_index + 1
-		if source.type_param_parameter_index >= 0 && parameter_index < parameter_types.len {
-			parameter_types[parameter_index] = fastc_specialized_generic_parameter_type(parameter_types[parameter_index], concrete)
-		}
+		parameter_types := g.mono_parameter_types(source, concrete, base)
 		return_source := source.return_type_source.trim_space()
 		mut return_type := base.return_type
 		mut return_types := base.return_types.clone()
@@ -370,10 +366,7 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete string) ?str
 	mono_key := fastc_function_key(source.module_name, mono)
 	if mono_key !in g.mono_functions {
 		base := g.functions[function_key] or { return none }
-		mut parameter_types := base.parameter_types.clone()
-		if source.type_param_parameter_index >= 0 && source.type_param_parameter_index < parameter_types.len {
-			parameter_types[source.type_param_parameter_index] = fastc_specialized_generic_parameter_type(parameter_types[source.type_param_parameter_index], concrete)
-		}
+		parameter_types := g.mono_parameter_types(source, concrete, base)
 		return_source := source.return_type_source.trim_space()
 		mut return_type := base.return_type
 		mut return_types := base.return_types.clone()
@@ -405,8 +398,25 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete string) ?str
 	return mono
 }
 
-fn fastc_specialized_generic_parameter_type(erased string, concrete string) string {
-	return fastc_specialized_generic_result_type(erased, concrete)
+fn (g &Parser) mono_parameter_types(source FastcGenericMethodSource, concrete string, base FastcFunctionSignature) []string {
+	// Re-read the specialized declaration so every T parameter is concrete while
+	// ordinary voidptr parameters keep their declared type.
+	mut fallback := base.parameter_types.clone()
+	index := source.type_param_parameter_index + if source.receiver_type == '' { 0 } else { 1 }
+	if source.type_param_parameter_index >= 0 && index < fallback.len {
+		fallback[index] = fastc_specialized_generic_result_type(fallback[index], concrete)
+	}
+	mut signatures := map[string]FastcFunctionSignature{}
+	collect_function_signatures(g.render_mono_method(source, concrete), source.path,
+		FastcSourceHeader{
+			module_name: source.module_name
+			imports:     source.imports
+		}, g.prefs, []int{}, g.declared_types, g.declared_type_c_names, map[string]bool{},
+		mut signatures) or { return fallback }
+	for _, signature in signatures {
+		return signature.parameter_types.clone()
+	}
+	return fallback
 }
 
 // fastc_infer_generic_type_from_parameter extracts the concrete type argument from
@@ -1267,6 +1277,10 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				continue
 			}
 			tok = s.scan()
+			if tok == .key_mut {
+				// `f(mut x)` passes `x` itself; its type is still the variable's.
+				tok = s.scan()
+			}
 			mut concrete := fastc_infer_literal_type(tok, s.lit)
 			if concrete == '' && tok in [.name, .key_shared] {
 				// A bare variable argument (`f(x)`) or a struct-literal argument

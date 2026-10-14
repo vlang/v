@@ -15,4 +15,12 @@ fn reload_from_file_at_runtime(mut ed EmbedFileData) {
 	}
 	ed.uncompressed = bytes.data
 	ed.free_uncompressed = true
+	// The file can differ from the one that was there when the program was compiled.
+	// Callers copy `len` bytes from `uncompressed`, so a stale size would cut a file
+	// that grew, and read past the end of one that shrank. `len` is read-only for the
+	// users of an `EmbedFileData`, hence the pointer.
+	unsafe {
+		mut size := &int(&ed.len)
+		*size = bytes.len
+	}
 }

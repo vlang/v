@@ -11,6 +11,14 @@ fn violation_in(text string) &ParseError {
 	return validate(text, ParseOpts{})
 }
 
+fn assert_parse_error_contains(text string, message string) {
+	parse_text(text) or {
+		assert err.msg().contains(message), err.msg()
+		return
+	}
+	assert false, 'expected `${text}` to be rejected'
+}
+
 fn test_validate_accepts_plain_json() {
 	assert violation_in('{"a": 1, "b": [1, 2], "c": {"d": null}}') == nil
 	assert violation_in('[]') == nil
@@ -44,6 +52,22 @@ fn test_validate_rejects_unquoted_keys() {
 	assert violation_in('{"x": 1, b: 2}').message.contains('not quoted')
 }
 
+fn test_validate_escaped_unquoted_keys_keep_original_spans() {
+	for key in [r'\u0061', r'clé\u0031', r'\u0074rue', r'Inf\u0069nity'] {
+		text := '/* 🎼 */{\r\n  ' + key + ': 1}'
+		v := violation_in(text)
+		assert v != nil
+		assert v.message.contains('not quoted')
+		assert v.pos.line == 2
+		assert v.pos.col == 3
+		start := text.index(key) or { panic('missing key') }
+		assert v.pos.offset == start
+		assert v.pos.end_offset == start + key.len
+		assert text[v.pos.offset..v.pos.end_offset] == key
+		assert_parse_error_contains(text, 'not quoted')
+	}
+}
+
 fn test_validate_rejects_non_string_keys() {
 	assert violation_in('{1: 1}').message.contains('not quoted')
 	assert violation_in('{0x10: 1}').message.contains('not quoted')
@@ -66,10 +90,8 @@ fn test_validate_rejects_json5_numbers() {
 }
 
 fn test_validate_rejects_incomplete_number_grammar() {
-	// RFC 8259 wants a digit after a decimal point and after the `e`, and it does
-	// not allow a leading zero. Testing only the last character of the literal
-	// misses all of these, because the shared scanner hands every one of them
-	// over as a number token.
+	// RFC 8259 wants a digit after a decimal point. The shared JSON5 scanner
+	// accepts trailing dots, so validate owns these grammar failures.
 	assert violation_in('{"a": 5.}').message.contains('no digit after the decimal point')
 	assert violation_in('{"a": 1.}').message.contains('no digit after the decimal point')
 	assert violation_in('{"a": 1.e2}').message.contains('no digit after the decimal point')
@@ -78,13 +100,16 @@ fn test_validate_rejects_incomplete_number_grammar() {
 	// itself, so no number token is ever produced and `validate` returns nil.
 	// Through parse_text they are reported by the JSON5 parser, which is covered
 	// in jsonc_test.v.
-	assert violation_in('{"a": 01}').message.contains('leading zero')
-	assert violation_in('{"a": 00.5}').message.contains('leading zero')
-	assert violation_in('{"a": -01}').message.contains('leading zero')
-	assert violation_in('{"a": 00}').message.contains('leading zero')
 	// Inside an array too, where a number is a value rather than a key.
 	assert violation_in('[1.e2]').message.contains('no digit after the decimal point')
-	assert violation_in('[01]').message.contains('leading zero')
+}
+
+fn test_validate_leaves_leading_zero_errors_to_scanner() {
+	for text in ['{"a": 01}', '{"a": 00.5}', '{"a": -01}', '{"a": 00}', '[01]'] {
+		// Malformed JSON5 never reaches validation through parse_text.
+		assert violation_in(text) == nil
+		assert_parse_error_contains(text, 'leading zero')
+	}
 }
 
 fn test_validate_rejects_infinity_and_nan() {
@@ -144,6 +169,23 @@ fn test_validate_positions_recover_byte_offsets() {
 	assert v.pos.col == 3
 	assert v.pos.offset == 14
 	assert v.pos.end_offset == 15
+}
+
+fn test_validate_positions_after_all_json5_line_terminators() {
+	for separator in ['\n', '\r', '\r\n', '\u2028', '\u2029'] {
+		// Unicode line separators are legal inside comments, which the rune pass ignores.
+		text := '\uFEFF{/* heading' + separator + separator + ' */\tclé: 1}'
+		v := violation_in(text)
+		start := text.index('clé') or { panic('missing key') }
+		assert v != nil
+		assert v.message.contains('not quoted')
+		assert v.pos.line == 3
+		assert v.pos.col == 5
+		assert v.pos.offset == start
+		assert v.pos.end_offset == start + 'clé'.len
+		assert v.pos.end_offset <= text.len
+		assert text[v.pos.offset..v.pos.end_offset] == 'clé'
+	}
 }
 
 fn test_validate_positions_account_for_a_byte_order_mark() {

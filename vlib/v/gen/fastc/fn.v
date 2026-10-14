@@ -168,11 +168,6 @@ fn (mut g Parser) parse_c_directive() ! {
 	directive := g.lit.trim_space()
 	g.next()
 	if directive == 'flag' || directive.starts_with('flag ') || directive == 'pkgconfig' || directive.starts_with('pkgconfig ') {
-		// FastC's compiler invocation supplies its own target flags. The bootstrap
-		// dependency set only uses these directives for optional libraries.
-		if g.prefs.selfhost {
-			return
-		}
 		if directive.starts_with('flag ') {
 			mut rest := directive['flag '.len..].trim_space()
 			// A platform-qualified `#flag <os> ...` that names a different target is
@@ -186,11 +181,12 @@ fn (mut g Parser) parse_c_directive() ! {
 				}
 				rest = rest.all_after(qualifier).trim_space()
 			}
-			// FastC drives its own tcc link line (it already links pthread, libm and
-			// the host system libraries), so a bare `#flag -lfoo`/`-L`/`-framework`
-			// only names extra link libraries, and `-I<path>` only adds a header search
-			// path (FastC's bundled tcc already resolves the system headers these C
-			// files include). Skip such flags instead of rejecting the whole program.
+			expanded, enabled := fastc_expand_existing_path_macros(rest, g.prefs.vroot, g.path)!
+			if !enabled {
+				return
+			}
+			rest = expanded
+			// Retain native inputs and link/header search flags for TinyCC.
 			if fastc_flag_is_skippable(rest) {
 				g.c_flags << fastc_c_flag_args(rest, g.prefs.vroot, g.path)!
 				return
@@ -231,11 +227,26 @@ fn (mut g Parser) parse_c_directive() ! {
 	if c_directive == '' {
 		return g.unsupported('empty C directive')
 	}
+	if c_directive.starts_with('include ')
+		&& c_directive.contains('/thirdparty/stdatomic/nix/atomic.h')
+		&& g.prefs.target.arch == 'arm64' {
+		// TinyCC emits C99 extern-inline ARM64 support functions in each split
+		// unit. Weak definitions let the linker share those identical helpers.
+		// glibc can define __attribute__ as an empty macro for TinyCC.
+		g.out.writeln('#define inline __attribute((weak)) inline')
+		g.out.writeln('#${c_directive}')
+		g.out.writeln('#undef inline')
+		return
+	}
 	g.out.writeln('#${c_directive}')
 }
 
 fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
-	expanded := fastc_resolve_c_pseudo_paths(raw, vroot, source_file)
+	selected, enabled := fastc_expand_existing_path_macros(raw, vroot, source_file)!
+	if !enabled {
+		return []string{}
+	}
+	expanded := fastc_resolve_c_pseudo_paths(selected, vroot, source_file)
 	mut args := cmdexec.split_args(expanded) or {
 		return error('fastc parser cannot split C build flag `${raw}`')
 	}
@@ -262,7 +273,7 @@ fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
 				break
 			}
 		}
-		if (arg.ends_with('.o') || arg.ends_with('.a') || arg.ends_with('.obj') || arg.ends_with('.lib')) && !os.is_abs_path(arg) {
+		if fastc_flag_is_native_input(arg) && !os.is_abs_path(arg) {
 			args[i] = os.join_path(base_dir, arg)
 		}
 		resolved_arg := args[i]
@@ -274,6 +285,85 @@ fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
 		}
 	}
 	return args
+}
+
+// fastc_expand_existing_path_macros selects the first existing native input or
+// search path. An unmatched optional macro disables the entire flag directive.
+fn fastc_expand_existing_path_macros(raw string, vroot string, source_file string) !(string, bool) {
+	mut result := raw
+	for {
+		first_index := result.index(r'$first_existing') or { -1 }
+		when_index := result.index(r'$when_first_existing') or { -1 }
+		if first_index < 0 && when_index < 0 {
+			return result, true
+		}
+		optional := when_index >= 0 && (first_index < 0 || when_index < first_index)
+		index := if optional { when_index } else { first_index }
+		macro_name := if optional { r'$when_first_existing' } else { r'$first_existing' }
+		open_index := index + macro_name.len
+		if open_index >= result.len || result[open_index] != `(` {
+			return error('fastc parser requires parentheses after `${macro_name}`')
+		}
+		mut quote := u8(0)
+		mut close_index := -1
+		for i := open_index + 1; i < result.len; i++ {
+			ch := result[i]
+			if ch in [`'`, `"`] {
+				if quote == 0 {
+					quote = ch
+				} else if quote == ch {
+					quote = 0
+				}
+			} else if ch == `)` && quote == 0 {
+				close_index = i
+				break
+			}
+		}
+		if close_index < 0 {
+			return error('fastc parser cannot close `${macro_name}`')
+		}
+		mut selected := ''
+		mut candidates := []string{}
+		for value in fastc_existing_path_candidates(result[open_index + 1..close_index]) {
+			path := fastc_resolve_c_pseudo_paths(value.trim(' \t\r\n\'"'), vroot, source_file)
+			if path == '' {
+				continue
+			}
+			candidates << path
+			if selected == '' && os.exists(path) {
+				selected = path
+			}
+		}
+		if selected == '' {
+			if optional {
+				return '', false
+			}
+			return error('none of the paths ${candidates} exist')
+		}
+		result = result[..index] + os.quoted_path(selected) + result[close_index + 1..]
+	}
+	return result, true
+}
+
+// fastc_existing_path_candidates splits candidates at commas outside quoted filenames.
+fn fastc_existing_path_candidates(text string) []string {
+	mut values := []string{}
+	mut quote := u8(0)
+	mut start := 0
+	for i, ch in text {
+		if ch in [`'`, `"`] {
+			if quote == 0 {
+				quote = ch
+			} else if quote == ch {
+				quote = 0
+			}
+		} else if ch == `,` && quote == 0 {
+			values << text[start..i]
+			start = i + 1
+		}
+	}
+	values << text[start..]
+	return values
 }
 
 fn fastc_pkgconfig_flags(raw string) ![]string {
@@ -292,13 +382,17 @@ fn fastc_pkgconfig_flags(raw string) ![]string {
 	}
 }
 
-// fastc_flag_is_skippable reports whether a `#flag` payload only names link
-// libraries/search paths/frameworks or header include paths. Such flags affect
-// linking or header lookup, not C generation, so FastC can safely skip them (it
-// manages its own tcc link line and ships the system headers these C files include).
-// Anything else (`-D`, `-std=...`) still reaches the unsupported path.
+// fastc_flag_is_native_input reports whether a flag is a native source or link input.
+pub fn fastc_flag_is_native_input(flag string) bool {
+	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.o')
+		|| flag.ends_with('.a') || flag.ends_with('.obj') || flag.ends_with('.lib')
+		|| flag.ends_with('.dylib') || flag.ends_with('.so') || flag.contains('.so.'))
+}
+
+// fastc_flag_is_skippable reports whether a `#flag` payload only affects native
+// compilation or linking, so the parser can leave it to the TinyCC driver.
 fn fastc_flag_is_skippable(flag string) bool {
-	tokens := flag.fields()
+	tokens := cmdexec.split_args(flag) or { return false }
 	if tokens.len == 0 {
 		return false
 	}
@@ -320,10 +414,8 @@ fn fastc_flag_is_skippable(flag string) bool {
 			i += 2
 			continue
 		}
-		// A bare object / static-library link input (`@VEXEROOT/.../cJSON.o`): FastC drives
-		// its own tcc link line and does not add these, so skip it. If a live reference to
-		// its symbols survives reachability, the link fails explicitly instead.
-		if part.ends_with('.o') || part.ends_with('.a') || part.ends_with('.obj') || part.ends_with('.lib') {
+		// Bare native inputs are resolved and passed to the TinyCC driver.
+		if fastc_flag_is_native_input(part) {
 			i++
 			continue
 		}
@@ -772,7 +864,10 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		'${receiver_key}.${name}'
 	}
-	is_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main'] && name == 'main'
+	is_program_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main']
+		&& name == 'main'
+	// A test build runs its tests from a main of its own; the program's is an ordinary function.
+	is_main := is_program_main && !g.prefs.is_test
 	is_module_init := !is_static_method && receiver_type == '' && name == 'init'
 	is_module_cleanup := !is_static_method && receiver_type == '' && name == 'cleanup'
 	if is_main {
@@ -1022,8 +1117,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 // each `T` treated as a `voidptr` placeholder. Most generic bodies lower fine that
 // way (e.g. `typeof(T).name` reflection). When one cannot (e.g. orm's
 // `QueryBuilder[T]`, which interpolates a `T`-typed struct), the partial output is
-// discarded and a trivial stub is emitted instead — a generic body is never called
-// un-monomorphized, so a stub is safe and keeps the surrounding module compiling.
+// discarded and a stub is emitted instead, which keeps the surrounding module compiling.
+// A call that reaches the stub had no instance made for it; the stub reports the call
+// and exits rather than return a zero value as if the body had run.
 // `body_end` is a scanner positioned just past the body's closing `}`, used to
 // resume after a discarded body. Returns whether the emitted body terminates.
 fn (mut g Parser) parse_generic_body_or_stub(return_type string, out_checkpoint int, saved_indent int, body_end scanner.Scanner, force_stub bool) bool {
@@ -1057,6 +1153,11 @@ fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, b
 	g.function_defer_declarations.clear()
 	g.s = body_end
 	g.next()
+	if g.selfhost {
+		// A call site no instance was made for reaches this stub; say so rather than
+		// return a zero value as if the body had run.
+		g.write_line('fprintf(stderr, "fastc: generic function `%s` was called without a concrete instance\\n", "${g.current_function}"); exit(1);')
+	}
 	if return_type != 'void' {
 		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
 	}

@@ -33,3 +33,15 @@ fn test_unescape() ! {
 	entities['copy'] = '©'
 	assert xml.unescape_text('Do unescape &copy;.', entities: entities)! == 'Do unescape ©.'
 }
+
+fn test_unescape_numeric_references() {
+	assert xml.unescape_text('&#9;&#10;&#13;&#32;&#x41;&#128512;')! == '\t\n\r A😀'
+	for reference in ['&#0;', '&#xD800;', '&#xFFFE;', '&#x110000;', '&#;', '&#x;', '&#-1;',
+		'&#999999999999999999999;'] {
+		if text := xml.unescape_text(reference) {
+			assert false, 'accepted ${reference}: ${text}'
+		} else {
+			assert err.msg().starts_with('Invalid XML character reference: ')
+		}
+	}
+}

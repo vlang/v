@@ -396,6 +396,168 @@ fn test_parse_headers() ! {
 	}
 }
 
+// full_header returns a Header that holds `max_headers` fields.
+fn full_header() Header {
+	mut h := new_header()
+	for i in 0 .. max_headers {
+		h.add_custom('X-Field-${i}', 'v${i}') or { panic(err) }
+	}
+	return h
+}
+
+// header_lines returns `n` header lines, as they are sent in a message.
+fn header_lines(n int) string {
+	mut lines := []string{cap: n}
+	for i in 0 .. n {
+		lines << 'X-Field-${i}: v${i}'
+	}
+	return lines.join('\r\n')
+}
+
+fn test_header_holds_max_headers_fields() {
+	h := full_header()
+	assert h.cur_pos == max_headers
+	assert h.keys().len == max_headers
+	assert h.get_custom('X-Field-0') or { '' } == 'v0'
+	assert h.get_custom('X-Field-${max_headers - 1}') or { '' } == 'v${max_headers - 1}'
+}
+
+fn test_add_to_a_full_header_drops_the_field() {
+	mut h := full_header()
+	before := h.render()
+	h.add(.accept, 'text/html')
+	h.add_map({
+		CommonHeader.expires: 'yesterday'
+	})
+	assert !h.contains(.accept)
+	assert !h.contains(.expires)
+	assert h.cur_pos == max_headers
+	assert h.render() == before
+}
+
+fn test_add_custom_to_a_full_header_fails() {
+	mut h := full_header()
+	before := h.render()
+	mut failed := false
+	h.add_custom('X-One-More', 'v') or {
+		assert err is HeaderLimitError
+		assert err.msg() == 'too many header fields: http.Header holds at most ${max_headers}'
+		failed = true
+	}
+	assert failed
+	failed = false
+	h.add_custom_map({
+		'X-One-More': 'v'
+	}) or {
+		assert err is HeaderLimitError
+		failed = true
+	}
+	assert failed
+	assert !h.contains_custom('X-One-More')
+	assert h.cur_pos == max_headers
+	assert h.render() == before
+}
+
+fn test_set_on_a_full_header() {
+	mut h := new_header(key: .accept, value: 'one')
+	for i in 1 .. max_headers {
+		h.add_custom('X-Field-${i}', 'v${i}')!
+	}
+	// a key that is present is replaced
+	h.set(.accept, 'two')
+	assert h.values(.accept) == ['two']
+	// a new key does not fit
+	h.set(.expires, 'yesterday')
+	assert !h.contains(.expires)
+	assert h.cur_pos == max_headers
+}
+
+fn test_set_custom_on_a_full_header() {
+	mut h := full_header()
+	// a key that is present is replaced
+	h.set_custom('x-field-1', 'new')!
+	assert h.custom_values('X-Field-1') == ['new']
+	// a new key does not fit
+	mut failed := false
+	h.set_custom('X-One-More', 'v') or {
+		assert err is HeaderLimitError
+		failed = true
+	}
+	assert failed
+	assert !h.contains_custom('X-One-More')
+	assert h.cur_pos == max_headers
+}
+
+fn test_new_header_stores_at_most_max_headers_fields() {
+	kvs := []HeaderConfig{len: max_headers + 5, init: HeaderConfig{
+		key:   .set_cookie
+		value: 'c${index}'
+	}}
+	h := new_header(...kvs)
+	values := h.values(.set_cookie)
+	assert values.len == max_headers
+	assert values[0] == 'c0'
+	assert values.last() == 'c${max_headers - 1}'
+}
+
+fn test_new_custom_header_from_map_with_too_many_fields_fails() {
+	mut kvs := map[string]string{}
+	for i in 0 .. max_headers {
+		kvs['X-Field-${i}'] = 'v${i}'
+	}
+	assert new_custom_header_from_map(kvs)!.cur_pos == max_headers
+	kvs['X-One-More'] = 'v'
+	if h := new_custom_header_from_map(kvs) {
+		assert false, 'should have errored, but got ${h.cur_pos} fields'
+	} else {
+		assert err is HeaderLimitError
+	}
+}
+
+fn test_header_join_drops_the_fields_that_do_not_fit() {
+	mut h1 := new_header()
+	for i in 0 .. max_headers - 1 {
+		h1.add_custom('X-Field-${i}', 'v${i}')!
+	}
+	mut h2 := new_header()
+	h2.add_custom('Server', 'Veb')!
+	h2.add_custom('foo', 'bar')!
+	h3 := h1.join(h2)
+	assert h3.cur_pos == max_headers
+	assert h3.get_custom('X-Field-0') or { '' } == 'v0'
+	assert h3.get_custom('Server') or { '' } == 'Veb'
+	assert !h3.contains_custom('foo')
+	// h1 is unchanged
+	assert h1.cur_pos == max_headers - 1
+	assert !h1.contains_custom('Server')
+	// nothing fits in a full header
+	full := full_header()
+	assert full.join(h2).render() == full.render()
+}
+
+fn test_parse_headers_with_too_many_fields_fails() ! {
+	h := parse_headers(header_lines(max_headers))!
+	assert h.cur_pos == max_headers
+	assert h.get_custom('X-Field-${max_headers - 1}') or { '' } == 'v${max_headers - 1}'
+	if x := parse_headers(header_lines(max_headers + 1)) {
+		return error('should have errored, but got ${x.cur_pos} fields')
+	} else {
+		assert err is HeaderLimitError
+	}
+}
+
+fn test_parse_response_with_too_many_header_fields_fails() ! {
+	status_line := 'HTTP/1.1 200 OK\r\n'
+	resp := parse_response(status_line + header_lines(max_headers) + '\r\n\r\nbody')!
+	assert resp.header.cur_pos == max_headers
+	assert resp.body == 'body'
+	if x := parse_response(status_line + header_lines(max_headers + 1) + '\r\n\r\nbody') {
+		return error('should have errored, but got ${x.header.cur_pos} fields')
+	} else {
+		assert err is HeaderLimitError
+	}
+}
+
 fn test_set_cookie() {
 	// multiple Set-Cookie headers should be sent when rendered
 	mut h := new_header()
