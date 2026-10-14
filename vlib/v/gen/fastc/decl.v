@@ -1271,37 +1271,23 @@ fn fastc_field_defaults_reference_constants(struct_field_info map[string][]Fastc
 	return false
 }
 
-// fastc_v_source_names reports whether `name` is a whole identifier in the V source `source`
-// outside string text; the code of a `${...}` interpolation is searched like any other.
+// fastc_v_source_names reports whether the V source `source` may name `name`: as a whole
+// identifier outside string text, or anywhere when it holds an interpolation or a comment,
+// whose contents are not parsed here.
 fn fastc_v_source_names(source string, name string) bool {
 	if name == '' || !fastc_contains(source, name) {
 		return false
 	}
-	_, found := fastc_v_code_names(source, 0, false, name)
-	return found
-}
-
-// fastc_v_code_names searches V code from `start` for `name`, up to the end of `source` or,
-// with `nested`, up to the `}` that closes the interpolation; it returns where it stopped.
-fn fastc_v_code_names(source string, start int, nested bool, name string) (int, bool) {
-	mut depth := 0
-	mut i := start
+	if fastc_contains(source, '\${') || fastc_contains(source, '//') || fastc_contains(source, '/*') {
+		return true
+	}
+	mut i := 0
 	for i < source.len {
 		c := source[i]
 		if c in [`'`, `"`] {
-			end, found := fastc_v_string_names(source, i, false, name)
-			if found {
-				return end, true
-			}
-			i = end
+			i = fastc_v_string_end(source, i, false)
 		} else if c == `\`` {
 			i = fastc_c_literal_end(source, i)
-		} else if c == `/` && i + 1 < source.len && source[i + 1] == `/` {
-			for i < source.len && source[i] != `\n` {
-				i++
-			}
-		} else if c == `/` && i + 1 < source.len && source[i + 1] == `*` {
-			i = fastc_v_block_comment_end(source, i)
 		} else if c.is_alnum() || c == `_` {
 			mut end := i + 1
 			for end < source.len && (source[end].is_alnum() || source[end] == `_`) {
@@ -1310,79 +1296,30 @@ fn fastc_v_code_names(source string, start int, nested bool, name string) (int, 
 			// `r'...'` and `c'...'` are string literals, not names.
 			if end == i + 1 && c in [`r`, `c`] && end < source.len
 				&& (source[end] == `'` || source[end] == `"`) {
-				string_end, found := fastc_v_string_names(source, end, c == `r`, name)
-				if found {
-					return string_end, true
-				}
-				i = string_end
+				i = fastc_v_string_end(source, end, c == `r`)
 				continue
 			}
 			if end - i == name.len && unsafe { vmemcmp(source.str + i, name.str, name.len) } == 0 {
-				return end, true
+				return true
 			}
 			i = end
-		} else if c == `{` {
-			depth++
-			i++
-		} else if c == `}` {
-			if nested && depth == 0 {
-				return i, false
-			}
-			depth--
-			i++
 		} else {
 			i++
 		}
 	}
-	return i, false
+	return false
 }
 
-// fastc_v_block_comment_end returns the index just past the V block comment, which may
-// nest, that opens at `start`.
-fn fastc_v_block_comment_end(source string, start int) int {
-	mut depth := 0
-	mut i := start
-	for i + 1 < source.len {
-		if source[i] == `/` && source[i + 1] == `*` {
-			depth++
-			i += 2
-		} else if source[i] == `*` && source[i + 1] == `/` {
-			depth--
-			i += 2
-			if depth == 0 {
-				return i
-			}
-		} else {
-			i++
-		}
-	}
-	return source.len
-}
-
-// fastc_v_string_names searches the interpolations of the V string literal that opens at
-// `quote` for `name`; it returns the index just past the literal.
-fn fastc_v_string_names(source string, quote int, raw bool, name string) (int, bool) {
+// fastc_v_string_end returns the index just past the V string literal that opens at `quote`.
+fn fastc_v_string_end(source string, quote int, raw bool) int {
 	mut i := quote + 1
 	for i < source.len {
-		c := source[i]
-		if c == source[quote] {
-			return i + 1, false
+		if source[i] == source[quote] {
+			return i + 1
 		}
-		if !raw && c == `\\` {
-			i += 2
-			continue
-		}
-		if !raw && c == `$` && i + 1 < source.len && source[i + 1] == `{` {
-			end, found := fastc_v_code_names(source, i + 2, true, name)
-			if found {
-				return end, true
-			}
-			i = end + 1
-			continue
-		}
-		i++
+		i += if !raw && source[i] == `\\` { 2 } else { 1 }
 	}
-	return source.len, false
+	return source.len
 }
 
 fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, sum_types map[string]bool, sum_type_variants map[string]bool, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, initial_parallel_results []FastcConstantFileResult, mut constant_types map[string]string) !FastcConstantDeclarations {
@@ -3133,11 +3070,7 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 	} else if tok !in [.semicolon, .eof] {
 		return_type, tok = fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
 	}
-	out.writeln('typedef ${return_type} (*${c_name})(${if parameter_types.len == 0 {
-		'void'
-	} else {
-		parameter_types.join(', ')
-	}});')
+	out.writeln('typedef ${fastc_output_c_type(return_type)} (*${c_name})(${fastc_c_prototype_parameters(parameter_types)});')
 	// Record the alias's return type so a call through a value of this fn type
 	// (`resolver(path)` where `resolver SomeFnAlias`) can infer its result type.
 	fn_alias_return_types[c_name] = return_type

@@ -1416,12 +1416,14 @@ mut:
 	// (`?T`), so the caller can record it on the declared local.
 	pending_option_value_type string
 	// Set by `parse_type` when it parses a function type (`fn (...) R`): the C return
-	// type (`Option`/`string`/…) and, for an `!`/`?R` return, the wrapped value type.
-	// Lets a fn-typed parameter be declared as a real function pointer and its call
-	// results be type-inferred. `pending_fn_pointer` gates whether the others apply.
+	// type (`Option`/`string`/…), for an `!`/`?R` return the wrapped value type, and the
+	// C prototype of its parameters. Lets a fn-typed parameter be declared as a real
+	// function pointer and its call results be type-inferred. `pending_fn_pointer` gates
+	// whether the others apply.
 	pending_fn_pointer           bool
 	pending_fn_return_type       string
 	pending_fn_option_value_type string
+	pending_fn_parameters        string
 	c_flags                      []string
 	fixed_array_types            map[string]string
 	composite_types              map[string]bool

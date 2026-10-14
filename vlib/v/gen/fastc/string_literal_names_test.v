@@ -48,20 +48,22 @@ fn main() {
 	assert run.output.trim_space() == 'x = "app"TAIL\ny = \'app\'TAIL\nz = appTAIL\n<TAIL>'
 }
 
-// A struct field default depends on the constants its code names, also inside `${...}`, but
-// not on a constant's name spelled in string text or in a comment.
+// A struct field default depends on the constants its code names; one with an interpolation
+// or a comment is taken to, since their contents are not parsed, but a constant's name in
+// plain string text is not a reference.
 fn test_fastc_field_defaults_reference_constants_inside_interpolations() {
 	constants := {
 		'main.prefix': 'string'
 	}
 	for default_source, references in {
-		"'\${prefix}'":                 true
-		"'\${'-' + prefix}'":           true
-		"'\${/* } */ prefix}'":         true
-		"'\${/* /* } */ } */ prefix}'": true
-		"'\${/* prefix */ 1}'":         false
-		"'prefix'":                     false
-		"r'\${prefix}'":                false
+		'prefix':                   true
+		"'\${prefix}'":             true
+		"'\${'-' + prefix}'":       true
+		"'\${/* note /*/ prefix}'": true
+		"r'\${prefix}'":            true
+		"'prefix' /* note */":      true
+		"'prefix'":                 false
+		"r'C:\\' + 'prefix'":       false
 	} {
 		fields := {
 			'main.Item': [FastcStructField{

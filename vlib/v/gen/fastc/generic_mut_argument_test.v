@@ -330,3 +330,77 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '1\n4\n6\n8\n10'
 }
+
+// A call through a function-typed parameter, alias or field converts its arguments and
+// result to the function type's C types, as a direct call does: a negative `int`, an `f32`
+// and an `int` past 32 bits reach the callee intact.
+fn test_fastc_function_pointer_calls_use_the_prototype() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_generic_fixture('function_pointer_prototype', 'module main
+
+type Scale = fn (int) int
+
+fn hold(cb fn (int) int) int {
+	return cb(-2)
+}
+
+fn halve(cb fn (f32) f32) f32 {
+	return cb(3.0)
+}
+
+fn scale(cb Scale) int {
+	return cb(1500000000)
+}
+
+fn double(x int) int {
+	return x * 2
+}
+
+fn half(x f32) f32 {
+	return x * 0.5
+}
+
+fn main() {
+	println(hold(double))
+	println(int(halve(half) * 10))
+	println(scale(double))
+}
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	program := os.join_path(root, 'program')
+	for arguments in [[root], [source], ['-d', 'fastc_real_builtin', source]] {
+		build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, ...arguments])
+		assert build.exit_code == 0, '${arguments}: ${build.output}'
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '-4\n15\n3000000000', arguments.str()
+	}
+	os.write_file(source, 'module main
+
+struct Ops {
+	op fn (int) int = unsafe { nil }
+}
+
+fn double(x int) int {
+	return x * 2
+}
+
+fn main() {
+	ops := Ops{
+		op: double
+	}
+	big := ops.op(3000000000)
+	println(big)
+}
+') or { panic(err) }
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '6000000000'
+}

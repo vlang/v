@@ -569,17 +569,13 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					for argument_index, argument in call_args {
 						arguments << g.render_call_argument_expression(argument, field.fn_parameter_types[argument_index]) or { continue }
 					}
-					parameter_types := if field.fn_parameter_types.len == 0 {
-						'void'
-					} else {
-						field.fn_parameter_types.join(', ')
-					}
+					parameter_types := fastc_c_prototype_parameters(field.fn_parameter_types)
 					return_type := if field.fn_return_type == '' {
 						'void'
 					} else {
 						field.fn_return_type
 					}
-					call_source := '((${return_type} (*)(${parameter_types}))(${field_source}))(${arguments.join(', ')})'
+					call_source := '((${fastc_output_c_type(return_type)} (*)(${parameter_types}))(${field_source}))(${arguments.join(', ')})'
 					if receiver_start == 0 && call_end == tokens.len - 1 {
 						return FastcRenderedExpression{
 							source: call_source
