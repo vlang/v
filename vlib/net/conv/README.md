@@ -12,3 +12,6 @@ To avoid mismatches due to that, the network byte order is used by
 convention to send network data in a manner that will be received
 coherently, regardless of the endianness of the sender system and
 the receiver system.
+
+`u64tovarint` encodes QUIC variable-length integers from zero through `2^62 - 1`.
+Values at or above `2^62` return an error, as required by RFC 9000, section 16.

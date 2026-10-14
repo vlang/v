@@ -162,29 +162,32 @@ fn test_dump_flags_after_cached_incbin_build_uses_arrays() {
 	assert !flags.contains('_v_embed_blob_'), flags
 }
 
-fn test_macos_tcc_build_keeps_the_array_form() {
+fn assert_tcc_prod_build_rejected(name string) {
+	exe := os.join_path(incbin_workspace, name)
+	main_file := os.join_path(incbin_workspace, 'main.v')
+	build := os.exec([incbin_vexe, '-prod', '-cc', 'tcc', '-no-retry-compilation', '-o', exe,
+		main_file])
+	assert build.exit_code != 0, build.output
+	assert build.output.contains('tcc is not allowed with -prod'), build.output
+	assert !os.exists(exe + $if windows { '.exe' } $else { '' })
+}
+
+fn test_macos_tcc_prod_build_is_rejected_before_creating_output() {
 	$if macos {
 		bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
 		if !os.is_file(bundled_tcc) {
 			return
 		}
-		build, output := build_and_run('app_tcc', '-cc tcc -no-retry-compilation')
-		assert output == expected_output()
-		assert !build.output.contains('.S -o'), build.output
+		assert_tcc_prod_build_rejected('app_tcc_prod_rejected')
 	}
 }
 
-fn test_windows_tcc_build_keeps_the_array_form() {
+fn test_windows_tcc_prod_build_is_rejected_before_creating_output() {
 	$if windows {
 		bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
 		if !os.is_file(bundled_tcc) {
 			return
 		}
-		// `-no-retry-compilation` turns off the retry that would hide the problem: TCC
-		// rejects the object the host assembler produced for the payload, so with the
-		// incbin path this build only succeeds through a fallback to that host.
-		build, output := build_and_run('app_tcc', '-cc tcc -no-retry-compilation')
-		assert output == expected_output()
-		assert !build.output.contains('.S -o'), build.output
+		assert_tcc_prod_build_rejected('app_tcc_prod_rejected')
 	}
 }

@@ -217,7 +217,6 @@ fn main() {
 	fp.version('0.0.2')
 	fp.description('Analyze & make reports, based on cover files, produced by running programs and tests, compiled with `-coverage folder/`')
 	fp.arguments_description('[folder1/ file2 ...]')
-	fp.skip_executable()
 	ctx.show_help = fp.bool('help', `h`, false, 'Show this help text.')
 	ctx.be_verbose = fp.bool('verbose', `v`, false,
 		'Be more verbose while processing the coverages.')
