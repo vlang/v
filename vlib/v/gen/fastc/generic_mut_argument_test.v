@@ -427,3 +427,67 @@ fn main() { println(answer) }
 		assert run.output.trim_space() == '7', run.output
 	}
 }
+
+fn test_fastc_function_pointer_prototype_reads_type_only_bracketed_parameters() {
+	$if !macos && !linux {
+		return
+	}
+	root := fastc_generic_fixture('function_pointer_bracketed', 'module main
+
+struct Box[T] {
+	v T
+}
+
+fn total(m map[string]int) int {
+	mut t := 0
+	for _, v in m {
+		t += v
+	}
+	return t
+}
+
+fn unbox(b Box[int]) int {
+	return b.v
+}
+
+fn sum(xs []int) int {
+	mut t := 0
+	for x in xs {
+		t += x
+	}
+	return t
+}
+
+fn apply_map(cb fn (map[string]int) int, values map[string]int) int {
+	return cb(values)
+}
+
+fn apply_box(cb fn (Box[int]) int, b Box[int]) int {
+	return cb(b)
+}
+
+fn apply_arr(cb fn ([]int) int, xs []int) int {
+	return cb(xs)
+}
+
+fn main() {
+	println(apply_map(total, {
+		"a": 1
+		"b": 2
+	}))
+	println(apply_box(unbox, Box[int]{
+		v: -7
+	}))
+	println(apply_arr(sum, [1, 2, -10]))
+}
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '3\n-7\n-7'
+}

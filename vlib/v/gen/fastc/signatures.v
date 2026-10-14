@@ -1071,6 +1071,9 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 			next_token := probe.scan()
 			has_parameter_name = next_token in [.name, .amp, .and, .mul, .question, .not, .key_fn,
 				.lsbr]
+			if next_token == .lsbr {
+				has_parameter_name = !fastc_bracketed_name_is_type(look.lit, mut probe)
+			}
 		}
 		if has_parameter_name {
 			tok = look.scan()
@@ -1100,6 +1103,32 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		return_type:       return_type
 		option_value_type: option_value_type
 	}
+}
+
+// fastc_bracketed_name_is_type reports whether a `name[` in a parameter list starts a type
+// (`map[K]V`, or a generic `Box[int]` that ends the parameter) rather than a parameter name
+// followed by an array type (`xs []int`, `xs [4]int`). `probe` is positioned after the `[`.
+fn fastc_bracketed_name_is_type(name string, mut probe scanner.Scanner) bool {
+	if name == 'map' {
+		return true
+	}
+	mut depth := 1
+	mut tok := probe.scan()
+	for depth > 0 {
+		if tok == .eof {
+			return false
+		}
+		if tok == .lsbr {
+			depth++
+		} else if tok == .rsbr {
+			depth--
+			if depth == 0 {
+				break
+			}
+		}
+		tok = probe.scan()
+	}
+	return probe.scan() in [.comma, .rpar]
 }
 
 fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) !(string, token.Token) {
