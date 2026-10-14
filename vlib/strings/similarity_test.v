@@ -1,5 +1,13 @@
 import strings
 
+fn test_levenshtein_distance_percentage_empty_strings() {
+	assert strings.levenshtein_distance_percentage('', '') == 100.0
+	assert strings.levenshtein_distance_percentage('same', 'same') == 100.0
+	assert strings.levenshtein_distance_percentage('', 'a') == 0.0
+	assert strings.levenshtein_distance_percentage('a', '') == 0.0
+	assert strings.levenshtein_distance_percentage('cats', 'hats') == 75.0
+}
+
 fn test_levenshtein_distance() {
 	assert strings.levenshtein_distance('', '') == 0
 	assert strings.levenshtein_distance('one', 'one') == 0

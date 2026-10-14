@@ -100,15 +100,17 @@ pub fn (mut bmp BitMap) init_filler() {
 	// dprintln("Init filler: ${bmp.filler.len} rows")
 }
 
-// clear_filler clears the internal `filler` buffer.
+// clear_filler initializes the internal `filler` buffer if needed, then clears it.
 pub fn (mut bmp BitMap) clear_filler() {
+	bmp.init_filler()
 	for i in 0 .. bmp.height {
 		bmp.filler[i].clear()
 	}
 }
 
-// exec_filler plots the pixels of the `BitMap` to the internal buffer.
+// exec_filler plots the pixels of the `BitMap`, initializing missing filler rows if needed.
 pub fn (mut bmp BitMap) exec_filler() {
+	bmp.init_filler()
 	for y in 0 .. bmp.height {
 		if bmp.filler[y].len > 0 {
 			bmp.filler[y].sort()

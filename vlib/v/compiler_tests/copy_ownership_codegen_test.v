@@ -450,6 +450,8 @@ struct AlignedHolder { values [2]AlignedCell label string }
 struct NestedHolder { inner AlignedHolder }
 fn inspect(values &[]PlainCell) int { return values[0].value }
 fn inspect_aligned(values &[]AlignedCell) int { return values[0].value }
+fn retain(values &[]PlainCell) &[]PlainCell { return values }
+fn retain_aligned(values &[]AlignedCell) &[]AlignedCell { return values }
 fn grow(mut values []PlainCell) {
 	values.ensure_cap(1)
 	values.grow_cap(1)
@@ -463,19 +465,27 @@ fn make_aligned() AlignedHolder {
 }
 fn plain_scope() {
 	holder := make_plain()
-	assert inspect(holder.values) == 1
+	assert inspect(retain(holder.values)) == 1
 }
 fn aligned_call_scope() {
 	holder := make_aligned()
-	assert inspect_aligned(holder.values) == 1
+	assert inspect_aligned(retain_aligned(holder.values)) == 1
 }
 fn aligned_literal_scope() {
 	holder := AlignedHolder{[AlignedCell{1}, AlignedCell{2}]!, "label".repeat(4)}
-	assert inspect_aligned(holder.values) == 1
+	assert inspect_aligned(retain_aligned(holder.values)) == 1
 }
 fn nested_literal_scope() {
 	holder := NestedHolder{make_aligned()}
-	assert inspect_aligned(holder.inner.values) == 1
+	assert inspect_aligned(retain_aligned(holder.inner.values)) == 1
+}
+fn plain_borrow_scope() {
+	holder := make_plain()
+	assert inspect(holder.values) == 1
+}
+fn aligned_borrow_scope() {
+	holder := make_aligned()
+	assert inspect_aligned(holder.values) == 1
 }
 fn main() {
 	mut empty := []PlainCell{}
@@ -484,6 +494,9 @@ fn main() {
 	aligned_call_scope()
 	aligned_literal_scope()
 	nested_literal_scope()
+	plain_borrow_scope()
+	aligned_borrow_scope()
+	println("ok")
 }
 ')!
 	build := os.exec(['${copy_ownership_v3}', '-ownership', '-d', 'ownership', '-no-parallel',
@@ -505,6 +518,14 @@ fn main() {
 		assert body.contains('v3_aligned_free(holder);'), body
 		assert !body.contains('v_free(holder);'), body
 	}
+	// Scalar reads borrow the root; returning the header above must still promote it.
+	for name in ['plain_borrow_scope', 'aligned_borrow_scope'] {
+		body := generated.all_after('void ${name}(void) {').all_before('\n}')
+		assert !body.contains('memdup('), body
+		assert !body.contains('v_free(holder);'), body
+		assert !body.contains('v3_aligned_free(holder);'), body
+	}
+	assert copy_ownership_run('fixed_root_runtime', os.read_file(path)!) == 'ok'
 }
 
 fn test_owned_fixed_views_keep_retained_headers_and_captures_alive() {
