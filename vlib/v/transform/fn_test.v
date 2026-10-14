@@ -109,7 +109,7 @@ fn test_nested_fn_literal_restores_outer_binding_containers_after_growth() {
 	t.cur_fn_name = 'outer'
 	t.set_cur_fn_ret_type('void')
 	for i in 0 .. 128 {
-		t.set_var_type_with_raw('outer_${i}', 'int', 'OuterInt')
+		t.set_var_type_with_raw('outer_${i}', flat.source_type_id('int'), flat.source_type_id('OuterInt'))
 	}
 	t.mark_var_as_ref_param('outer_0')
 	t.var_types[0] = VarTypeBinding{
@@ -316,8 +316,8 @@ fn test_enum_autostr_keeps_checked_types_and_resolves_declaration_spellings() {
 	assert t.source_enum_elem_type(file, '[]token.Kind') == '[]toml.token.Kind'
 	assert t.source_enum_elem_type(file, 'string') == 'string'
 
-	t.set_var_type_with_raw('declared', '[]b.Kind', '[]a.Kind')
-	t.set_var_type('inferred', '[]a.Kind')
+	t.set_var_type_with_raw('declared', flat.source_type_id('[]b.Kind'), flat.source_type_id('[]a.Kind'))
+	t.set_var_type('inferred', flat.source_type_id('[]a.Kind'))
 	assert (t.declared_var_spelling('declared') or { '' }) == '[]a.Kind'
 	assert (t.declared_var_spelling('inferred') or { '' }) == ''
 }
@@ -1315,7 +1315,7 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	tc.fn_implicit_veb_ctx['App.show'] = true
 	tc.fn_param_types['App.show'] = [
 		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
-		tc.parse_type('mut Context'),
+		tc.parse_type(flat.source_type_id('mut Context')),
 		types.Type(types.String{}),
 	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -1334,7 +1334,7 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	assert t.call_param_offset_for_node('App.show', a.node(reflected_route_call), reflected_params) == 2
 	interface_params := [
 		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
-		tc.parse_type('mut Context'),
+		tc.parse_type(flat.source_type_id('mut Context')),
 		types.Type(types.Interface{ name_id: flat.source_type_id('RouteArg') }),
 	]
 	assert t.call_param_offset_for_node('App.show', a.node(main_ctx_call), interface_params) == 2
@@ -1385,7 +1385,7 @@ fn test_non_veb_reflected_call_keeps_receiver_param_offset() {
 	tc.params_structs['Config'] = true
 	tc.fn_param_types['Value.run'] = [
 		types.Type(types.Struct{ name_id: flat.source_type_id('Value') }),
-		tc.parse_type('?string'),
+		tc.parse_type(flat.source_type_id('?string')),
 	]
 	tc.fn_param_types['Value.configure'] = [
 		types.Type(types.Struct{ name_id: flat.source_type_id('Value') }),
@@ -1562,7 +1562,7 @@ fn test_immediate_closure_generic_struct_pointer_result_may_alias_capture() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['Box'] = [types.StructField{
 		name: 'value'
-		typ:  tc.parse_type('T')
+		typ:  tc.parse_type(flat.source_type_id('T'))
 	}]
 	tc.struct_generic_params['Box'] = ['T']
 	t := new_transformer(mut a, &tc, map[string]bool{})
@@ -1604,7 +1604,7 @@ fn test_immediate_closure_thread_result_may_alias_capture() {
 	tc.structs['Worker'] = [
 		types.StructField{
 			name: 'handle'
-			typ:  tc.parse_type('thread int')
+			typ:  tc.parse_type(flat.source_type_id('thread int'))
 		},
 	]
 	with_checker := Transformer{
@@ -1663,8 +1663,8 @@ fn test_alias_cache_distinguishes_collisions_and_owned_spellings() {
 	// These distinct spellings share the sampled bytes used for the cache slot.
 	for _ in 0 .. 3 {
 		for name in ['abc.Def', 'axc.Dof'] {
-			assert t.normalize_type_alias(name.clone()) == name
-			assert t.normalize_type_alias(name.clone()) == name
+			assert flat.source_type_name(t.normalize_type_alias(flat.source_type_id(name.clone()))) == name
+			assert flat.source_type_name(t.normalize_type_alias(flat.source_type_id(name.clone()))) == name
 		}
 	}
 }

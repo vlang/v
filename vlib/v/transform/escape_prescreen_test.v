@@ -100,7 +100,7 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 		mut source := value
 		match mode {
 			'address' {
-				t.set_var_type('value', 'int')
+				t.set_var_type('value', flat.source_type_id('int'))
 				t.set_cur_fn_ret_type('&int')
 				source = t.make_prefix(.amp, value)
 				tc.register_synth_type(source, types.Type(types.Pointer{ base_type: types.Type(types.int_) }))
@@ -212,9 +212,9 @@ fn test_ordinary_escape_prescreen_rejects_inferred_generic_reference_signature()
 	}, [param, fn_body])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	t.set_var_type('value', '&[2]int')
+	t.set_var_type('value', flat.source_type_id('&[2]int'))
 	value := t.make_ident('value')
-	tc.register_synth_type(value, tc.parse_type('&[2]int'))
+	tc.register_synth_type(value, tc.parse_type(flat.source_type_id('&[2]int')))
 	call := t.make_call_typed('retain', [value], 'int')
 	call_node := a.nodes[int(call)]
 	declared := t.call_param_types_for_node('retain', call_node)
@@ -265,7 +265,7 @@ fn test_ordinary_escape_proof_keeps_closure_cleanup_fallback_metadata() {
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.cur_module = 'main'
 		value := t.make_ident('value')
-		t.set_var_type('value', 'Thing')
+		t.set_var_type('value', flat.source_type_id('Thing'))
 		tc.register_synth_type(value, types.Type(types.Struct{ name_id: flat.source_type_id('Thing') }))
 		mut creator := flat.empty_node
 		if mode in ['selector', 'wrapped_selector'] {

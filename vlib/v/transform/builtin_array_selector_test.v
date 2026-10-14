@@ -40,7 +40,7 @@ fn test_builtin_array_fields_do_not_inherit_unrelated_struct_field_types() {
 			'element_size': 'int'
 		} {
 			selector := array_selector_test_node(mut a, receiver, field)
-			assert t.node_type(selector) == expected
+			assert flat.source_type_name(t.node_type(selector)) == expected
 		}
 	}
 }

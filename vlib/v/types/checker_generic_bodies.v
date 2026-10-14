@@ -200,7 +200,7 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 		} else {
 			node.typ_text()
 		}
-		w.cur_fn_ret_type = w.parse_type(return_text)
+		w.cur_fn_ret_type = w.parse_type(flat.source_type_id(return_text))
 		w.fn_context.return_type = w.cur_fn_ret_type
 	} else {
 		w.fn_context.generic_params = tc.fn_context.generic_params.clone()
@@ -368,7 +368,7 @@ fn (tc &TypeChecker) type_param_instance_texts(node flat.Node, params map[string
 			options << constraint.iface.name()
 			for tested in tc.comptime_tested_types(node, name, names) {
 				if tested !in options
-					&& tc.generic_constraint_accepts(constraint, tc.parse_type(tested)) {
+					&& tc.generic_constraint_accepts(constraint, tc.parse_type(flat.source_type_id(tested))) {
 					options << tested
 				}
 			}
@@ -521,7 +521,7 @@ fn (tc &TypeChecker) type_param_branch_classes(node flat.Node, texts map[string]
 		}
 		mut option_names := []string{cap: options.len}
 		for option in options {
-			option_names << tc.parse_type(option).name()
+			option_names << tc.parse_type(flat.source_type_id(option)).name()
 		}
 		// The terms that each type meets, a mark for each term.
 		mut marks := []string{len: options.len}

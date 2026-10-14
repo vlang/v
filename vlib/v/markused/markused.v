@@ -1830,7 +1830,7 @@ fn enqueue_implicit_global_container_roots(a &flat.FlatAst, tc &types.TypeChecke
 			if field.children_count > 0 {
 				continue
 			}
-			mut typ := tc.parse_type(field.typ_text())
+			mut typ := tc.parse_type(field.typ)
 			for _ in 0 .. 32 {
 				if typ is types.Alias {
 					typ = typ.base_type
@@ -2583,7 +2583,7 @@ fn markused_fn_returns_veb_result(tc &types.TypeChecker, node flat.Node) bool {
 	if node.typ_text() == 'veb.Result' {
 		return true
 	}
-	ret := tc.parse_type(node.typ_text())
+	ret := tc.parse_type(node.typ)
 	return ret.name() == 'veb.Result'
 }
 
@@ -3072,9 +3072,9 @@ fn (mut scan RuntimeHelpersScan) enqueue_nodes(a &flat.FlatAst, tc &types.TypeCh
 					'${cur_module}.${field.value}'
 				}
 				global_type := if field.value.starts_with('C.') {
-					tc.c_globals[field.value] or { tc.parse_type(field.typ_text()) }
+					tc.c_globals[field.value] or { tc.parse_type(field.typ) }
 				} else {
-					tc.file_scope.lookup(global_name) or { tc.parse_type(field.typ_text()) }
+					tc.file_scope.lookup(global_name) or { tc.parse_type(field.typ) }
 				}
 				if scan.type_needs_map_runtime(global_type, tc) {
 					scan.needs_map_runtime = true
@@ -3515,7 +3515,7 @@ fn markused_type_equality_uses_ierror_uncached(typ types.Type, tc &types.TypeChe
 		}
 		types.SumType {
 			for variant in markused_sum_variants(typ.name(), tc) {
-				if markused_type_equality_uses_ierror(tc.parse_type(variant), tc, mut cache) {
+				if markused_type_equality_uses_ierror(tc.parse_type(flat.source_type_id(variant)), tc, mut cache) {
 					return true
 				}
 			}
@@ -3525,7 +3525,7 @@ fn markused_type_equality_uses_ierror_uncached(typ types.Type, tc &types.TypeChe
 				return true
 			}
 			for concrete in markused_interface_impl_names(typ.name(), tc) {
-				if markused_type_equality_uses_ierror(tc.parse_type(concrete), tc, mut cache) {
+				if markused_type_equality_uses_ierror(tc.parse_type(flat.source_type_id(concrete)), tc, mut cache) {
 					return true
 				}
 			}
@@ -3600,7 +3600,7 @@ fn (mut scan RuntimeHelpersScan) type_needs_map_runtime(typ types.Type, tc &type
 		}
 		types.SumType {
 			for variant in markused_sum_variants(typ.name(), tc) {
-				if scan.type_needs_map_runtime(tc.parse_type(variant), tc) {
+				if scan.type_needs_map_runtime(tc.parse_type(flat.source_type_id(variant)), tc) {
 					needed = true
 					break
 				}
@@ -3608,7 +3608,7 @@ fn (mut scan RuntimeHelpersScan) type_needs_map_runtime(typ types.Type, tc &type
 		}
 		types.Interface {
 			for impl in markused_interface_impl_names(typ.name(), tc) {
-				if scan.type_needs_map_runtime(tc.parse_type(impl), tc) {
+				if scan.type_needs_map_runtime(tc.parse_type(flat.source_type_id(impl)), tc) {
 					needed = true
 					break
 				}
@@ -3733,7 +3733,7 @@ fn markused_type_stringifies_channel_uncached(typ types.Type, cur_module string,
 				return false
 			}
 			for variant in markused_sum_variants(typ.name(), tc) {
-				if markused_type_stringifies_channel(tc.parse_type(variant), cur_module, tc, mut cache) {
+				if markused_type_stringifies_channel(tc.parse_type(flat.source_type_id(variant)), cur_module, tc, mut cache) {
 					return true
 				}
 			}
@@ -3743,7 +3743,7 @@ fn markused_type_stringifies_channel_uncached(typ types.Type, cur_module string,
 				return false
 			}
 			for concrete in markused_interface_impl_names(typ.name(), tc) {
-				if markused_type_stringifies_channel(tc.parse_type(concrete), cur_module, tc, mut cache) {
+				if markused_type_stringifies_channel(tc.parse_type(flat.source_type_id(concrete)), cur_module, tc, mut cache) {
 					return true
 				}
 			}
@@ -3881,7 +3881,7 @@ fn markused_type_name_lowers_to_map_str(type_name string, tc &types.TypeChecker)
 	if markused_clean_map_type(type_name).starts_with('map[') {
 		return true
 	}
-	return markused_type_lowers_to_map_str(tc.parse_type(type_name))
+	return markused_type_lowers_to_map_str(tc.parse_type(flat.source_type_id(type_name)))
 }
 
 fn markused_type_lowers_to_map_str(typ0 types.Type) bool {
@@ -4039,7 +4039,7 @@ fn enqueue_stringified_type_dependencies(typ types.Type, cur_module string, tc &
 				return
 			}
 			for variant in markused_sum_variants(type_name, tc) {
-				enqueue_stringified_type_dependencies(tc.parse_type(variant), cur_module, tc,
+				enqueue_stringified_type_dependencies(tc.parse_type(flat.source_type_id(variant)), cur_module, tc,
 					skipped_fields, mut used, mut queue, mut seen)
 			}
 		}
@@ -4094,7 +4094,7 @@ fn enqueue_implicit_interface_str_helpers_for_impl(iface_name string, method str
 	if method_key in tc.fn_param_types || markused_c_name(method_key) in tc.fn_param_types {
 		return
 	}
-	enqueue_implicit_interface_str_helpers(tc.parse_type(impl), tc, mut used, mut queue)
+	enqueue_implicit_interface_str_helpers(tc.parse_type(flat.source_type_id(impl)), tc, mut used, mut queue)
 }
 
 fn enqueue_implicit_interface_str_helpers(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
@@ -4171,13 +4171,13 @@ fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeCh
 				return
 			}
 			for variant in markused_sum_variants(typ.name(), tc) {
-				enqueue_implicit_interface_str_helpers_inner(tc.parse_type(variant), tc, mut used,
+				enqueue_implicit_interface_str_helpers_inner(tc.parse_type(flat.source_type_id(variant)), tc, mut used,
 					mut queue, mut seen)
 			}
 		}
 		types.Interface {
 			for impl in markused_interface_impl_names(typ.name(), tc) {
-				enqueue_implicit_interface_str_helpers_inner(tc.parse_type(impl), tc, mut used,
+				enqueue_implicit_interface_str_helpers_inner(tc.parse_type(flat.source_type_id(impl)), tc, mut used,
 					mut queue, mut seen)
 			}
 		}
@@ -4195,7 +4195,7 @@ fn enqueue_implicit_interface_str_dispatch_helpers(iface_name string, tc &types.
 			continue
 		}
 		mut seen := map[string]bool{}
-		enqueue_implicit_str_type_helpers(tc.parse_type(impl), tc, mut used, mut queue, mut seen)
+		enqueue_implicit_str_type_helpers(tc.parse_type(flat.source_type_id(impl)), tc, mut used, mut queue, mut seen)
 	}
 }
 
@@ -4343,7 +4343,7 @@ fn enqueue_enum_str_method(type_name string, cur_module string, tc &types.TypeCh
 	if has_custom_method {
 		return
 	}
-	parsed := tc.parse_type(type_name)
+	parsed := tc.parse_type(flat.source_type_id(type_name))
 	if parsed is types.Enum {
 		enqueue('${markused_c_name(parsed.name())}__autostr', mut used, mut queue)
 	}
@@ -4658,7 +4658,7 @@ fn (c &CallCollector) emitted_type_declarations_use_generics() bool {
 			continue
 		}
 		for variant in variants {
-			if c.parsed_type_uses_concrete_generics(c.tc.parse_type(variant), 0) {
+			if c.parsed_type_uses_concrete_generics(c.tc.parse_type(flat.source_type_id(variant)), 0) {
 				return true
 			}
 		}
@@ -5740,7 +5740,7 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 											calls << qualify_fn(cur_module, base.value + '.' + callee.value)
 											if base.value.len > 0 && base.value[0] >= `A`
 												&& base.value[0] <= `Z` {
-												named_type := c.tc.parse_type(base.value)
+												named_type := c.tc.parse_type(flat.source_type_id(base.value))
 												named_type_name := resolve_type_name(named_type)
 												if named_type_name.len > 0 {
 													calls << named_type_name + '.' + callee.value
@@ -5797,7 +5797,7 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 					container_id := c.a.child(child, 2)
 					type_name := c.top_level_expr_type_name(container_id, cur_module, imports,
 						local_values, local_types, true)
-					mut container_type := types.unwrap_pointer(c.tc.parse_canonical_type(type_name))
+					mut container_type := types.unwrap_pointer(c.tc.parse_canonical_type(flat.source_type_id(type_name)))
 					for container_type is types.Alias {
 						container_type = types.unwrap_pointer(container_type.base_type)
 					}
@@ -6160,7 +6160,7 @@ fn (c &CallCollector) checked_local_bindings(root &flat.Node, cur_module string,
 		result.type_names.set(param.value, '')
 		if param_index < params.len && markused_direct_sum_type(params[param_index]) {
 			result.sum_types[param.value] = c.tc.semantic_type_id(params[param_index]) or { return none }
-			result.type_names.set(param.value, c.tc.type_name_by_id(result.sum_types[param.value]))
+			result.type_names.set(param.value, flat.source_type_name(c.tc.type_name_by_id(result.sum_types[param.value])))
 		}
 		param_index++
 	}
@@ -6256,7 +6256,7 @@ fn (c &CallCollector) checked_local_bindings(root &flat.Node, cur_module string,
 						return none
 					}
 					result.type_names.set(lhs.value, if declared := result.sum_types[lhs.value] {
-						c.tc.type_name_by_id(declared)
+						flat.source_type_name(c.tc.type_name_by_id(declared))
 					} else {
 						''
 					})
@@ -6320,7 +6320,7 @@ fn (c &CallCollector) checked_local_type_id(id flat.NodeId) ?types.TypeId {
 
 fn (c &CallCollector) checked_local_type_name(id flat.NodeId) ?string {
 	type_id := c.checked_local_type_id(id) or { return none }
-	return c.tc.type_name_by_id(type_id)
+	return flat.source_type_name(c.tc.type_name_by_id(type_id))
 }
 
 fn markused_checked_local_type(typ types.Type) bool {
@@ -6738,7 +6738,7 @@ fn (c &CallCollector) local_decl_type_name(declared string, rhs_id flat.NodeId, 
 	if contextual_alias := c.contextual_alias_type_name(declared, cur_module, imports) {
 		return contextual_alias
 	}
-	declared_type := c.tc.parse_canonical_type(declared)
+	declared_type := c.tc.parse_canonical_type(flat.source_type_id(declared))
 	if declared_type is types.Alias {
 		return declared_type.name()
 	}
@@ -6746,7 +6746,7 @@ fn (c &CallCollector) local_decl_type_name(declared string, rhs_id flat.NodeId, 
 	if rhs_name.len == 0 {
 		return declared
 	}
-	rhs_type := c.tc.parse_canonical_type(rhs_name)
+	rhs_type := c.tc.parse_canonical_type(flat.source_type_id(rhs_name))
 	if rhs_type is types.Alias && markused_alias_base_matches_type(c.tc, rhs_type, declared_type) {
 		return rhs_type.name()
 	}
@@ -7272,7 +7272,7 @@ fn (c &CallCollector) collect_top_level_stringification_calls(id flat.NodeId, cu
 	if type_name.len == 0 {
 		return
 	}
-	typ := c.tc.parse_canonical_type(type_name)
+	typ := c.tc.parse_canonical_type(flat.source_type_id(type_name))
 	mut used := map[string]bool{}
 	mut seen := map[string]bool{}
 	enqueue_stringified_type_dependencies(typ, cur_module, c.tc, c.auto_str_skipped_fields,
@@ -7608,7 +7608,7 @@ fn (c &CallCollector) alias_aware_expr_type(id flat.NodeId, cur_module string, i
 	}
 	type_name := c.top_level_expr_type_name(id, cur_module, imports, local_values, local_types, false)
 	if type_name.len > 0 {
-		typ := c.tc.parse_type(type_name)
+		typ := c.tc.parse_type(flat.source_type_id(type_name))
 		if typ !is types.Unknown && typ !is types.Void {
 			return typ
 		}
@@ -7661,7 +7661,7 @@ fn (c &CallCollector) syntax_alias_expr_type(id flat.NodeId, cur_module string, 
 		.cast_expr {
 			if node.value.len > 0 {
 				if contextual_alias := c.contextual_alias_type_name(node.value, cur_module, imports) {
-					return c.tc.parse_canonical_type(contextual_alias)
+					return c.tc.parse_canonical_type(flat.source_type_id(contextual_alias))
 				}
 				if alias_type := c.alias_type_from_name(node.value, cur_module, imports) {
 					return alias_type
@@ -7696,7 +7696,7 @@ fn (c &CallCollector) alias_type_from_name(name string, cur_module string, impor
 	resolved := markused_resolve_imported_type_name(name, imports)
 	for candidate in markused_alias_type_candidates(resolved, name, cur_module) {
 		if c.tc.type_aliases.contains(candidate) {
-			return c.tc.parse_canonical_type(candidate)
+			return c.tc.parse_canonical_type(flat.source_type_id(candidate))
 		}
 	}
 	return none
@@ -8075,7 +8075,7 @@ fn (c &CallCollector) collect_top_level_selector_fallback(base &flat.Node, metho
 		calls << mod_name + '.' + method
 		calls << qualify_fn(cur_module, base.value + '.' + method)
 		if base.value.len > 0 && base.value[0] >= `A` && base.value[0] <= `Z` {
-			named_type := c.tc.parse_type(base.value)
+			named_type := c.tc.parse_type(flat.source_type_id(base.value))
 			named_type_name := resolve_type_name(named_type)
 			if named_type_name.len > 0 {
 				calls << named_type_name + '.' + method
@@ -8355,7 +8355,7 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		for candidate in candidates {
 			type_name := c.top_level_expr_type_name(candidate, cur_module, imports,
 				container_values, container_types, false)
-			if types.unalias_type(c.tc.parse_canonical_type(type_name)).is_integer() {
+			if types.unalias_type(c.tc.parse_canonical_type(flat.source_type_id(type_name))).is_integer() {
 				local_types.set(value_var, type_name)
 				break
 			}
@@ -8374,10 +8374,10 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		container_values, container_types) {
 		if elem.len > 0 {
 			mut value_type := elem
-			collection := types.unalias_type(types.unwrap_pointer(c.tc.parse_canonical_type(container_type)))
+			collection := types.unalias_type(types.unwrap_pointer(c.tc.parse_canonical_type(flat.source_type_id(container_type))))
 			if (node.op == .amp || container_is_ref || container_type.starts_with('&'))
 				&& (collection is types.Array || collection is types.ArrayFixed || collection is types.Map) {
-				clean_elem := types.unalias_type(c.tc.parse_canonical_type(elem))
+				clean_elem := types.unalias_type(c.tc.parse_canonical_type(flat.source_type_id(elem)))
 				if clean_elem !is types.Pointer && clean_elem !is types.OptionType {
 					value_type = '&${elem}'
 				}
@@ -8428,7 +8428,7 @@ fn (c &CallCollector) top_level_for_in_key_type_name(container_id flat.NodeId, c
 			return type_name[4..end]
 		}
 	}
-	container := types.unwrap_pointer(c.tc.parse_canonical_type(type_name))
+	container := types.unwrap_pointer(c.tc.parse_canonical_type(flat.source_type_id(type_name)))
 	if container is types.Map {
 		return container.key_type.name()
 	}
@@ -8456,7 +8456,7 @@ fn (c &CallCollector) top_level_for_in_elem_type_name(container_id flat.NodeId, 
 			return type_name[end + 1..]
 		}
 	}
-	ct := types.unwrap_pointer(c.tc.parse_canonical_type(type_name))
+	ct := types.unwrap_pointer(c.tc.parse_canonical_type(flat.source_type_id(type_name)))
 	if ct is types.Array {
 		return ct.elem_type.name()
 	}
@@ -8478,7 +8478,7 @@ fn (c &CallCollector) top_level_index_elem_type_name(id flat.NodeId, cur_module 
 	if base_type_name.len == 0 {
 		return none
 	}
-	base_type := types.unwrap_pointer(c.tc.parse_canonical_type(base_type_name))
+	base_type := types.unwrap_pointer(c.tc.parse_canonical_type(flat.source_type_id(base_type_name)))
 	if base_type is types.Array {
 		return base_type.elem_type.name()
 	}
@@ -9023,7 +9023,7 @@ fn (c &CallCollector) operator_lhs_type(lhs_id flat.NodeId, local_types flat.Typ
 				}
 			}
 			if local_type := local_types.get(lhs.value) {
-				typ := c.tc.parse_canonical_type(local_type)
+				typ := c.tc.parse_canonical_type(flat.source_type_id(local_type))
 				if typ !is types.Unknown && typ !is types.Void {
 					return typ
 				}
@@ -9397,7 +9397,7 @@ fn (c &CallCollector) fn_value_selector_names(node &flat.Node, cur_module string
 	}
 	mut type_names := [resolve_type_name(c.node_type(base_id))]
 	if base.typ_text().len > 0 {
-		annotated_name := resolve_type_name(c.tc.parse_type(base.typ_text()))
+		annotated_name := resolve_type_name(c.tc.parse_type(base.typ))
 		if annotated_name.len > 0 && annotated_name !in type_names {
 			type_names << annotated_name
 		}
@@ -9632,7 +9632,7 @@ fn (c &CallCollector) flag_enum_intrinsic_receiver_method(type_name string, meth
 		candidates << qualified
 	}
 	for candidate in candidates {
-		parsed := types.unalias_type(types.unwrap_pointer(c.tc.parse_type(candidate)))
+		parsed := types.unalias_type(types.unwrap_pointer(c.tc.parse_type(flat.source_type_id(candidate))))
 		if parsed is types.Enum && parsed.is_flag {
 			// Flag-enum receiver methods are lowered by the compiler and do not have a
 			// source declaration to retain. Treat the typed call as resolved so the
@@ -9819,7 +9819,7 @@ fn (mut module_methods MarkusedModuleMethods) method_id(method string) u32 {
 
 fn (c &CallCollector) typed_receiver_method_id(type_id types.TypeId, method string, cur_module string) ?string {
 	if isnil(c.receiver_method_cache) {
-		return c.typed_receiver_method_name_uncached(c.tc.type_name_by_id(type_id), method, cur_module)
+		return c.typed_receiver_method_name_uncached(flat.source_type_name(c.tc.type_name_by_id(type_id)), method, cur_module)
 	}
 	mut module_methods := c.receiver_method_module(cur_module)
 	key := (u64(type_id) << 32) | u64(module_methods.method_id(method))
@@ -9828,7 +9828,7 @@ fn (c &CallCollector) typed_receiver_method_id(type_id types.TypeId, method stri
 		return name
 	}
 	// A semantic receiver only crosses the spelling boundary on a cache miss.
-	name := c.typed_receiver_method_name_uncached(c.tc.type_name_by_id(type_id), method, cur_module) or {
+	name := c.typed_receiver_method_name_uncached(flat.source_type_name(c.tc.type_name_by_id(type_id)), method, cur_module) or {
 		module_methods.semantic_methods[key] = ''
 		return none
 	}
@@ -9924,7 +9924,7 @@ fn (c &CallCollector) collection_alias_receiver_method_name(type_name string, me
 				return lowered
 			}
 		}
-		parsed := types.unalias_type(types.unwrap_all_pointers(types.unalias_type(c.tc.parse_canonical_type(alias_name))))
+		parsed := types.unalias_type(types.unwrap_all_pointers(types.unalias_type(c.tc.parse_canonical_type(flat.source_type_id(alias_name)))))
 		mut candidates := []string{}
 		if parsed is types.Array {
 			candidates << markused_array_receiver_method_candidates(parsed.name(), method, owner)
@@ -10662,7 +10662,7 @@ fn (c &CallCollector) value_type_in_source(type_text string, node &flat.Node, im
 	return types.unalias_type(if source_file := c.a.source_files[node.pos.id] {
 		c.tc.parse_resolution_type_in_file(clean, source_file.name)
 	} else {
-		c.tc.parse_canonical_type(markused_resolve_imported_type_name(clean, imports))
+		c.tc.parse_canonical_type(flat.source_type_id(markused_resolve_imported_type_name(clean, imports)))
 	})
 }
 

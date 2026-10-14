@@ -230,7 +230,7 @@ fn (tc &TypeChecker) inline_asm_enum_backing_width(name string) int {
 			continue
 		}
 		if decl.generic_params().len > 0 && decl.generic_params()[0].len > 0 {
-			if width := tc.inline_asm_intel_operand_width(tc.parse_type(decl.generic_params()[0])) {
+			if width := tc.inline_asm_intel_operand_width(tc.parse_type(flat.source_type_id(decl.generic_params()[0]))) {
 				return width
 			}
 		}
@@ -252,7 +252,7 @@ fn (tc &TypeChecker) inline_asm_enum_backing_type(name string) Type {
 			continue
 		}
 		if decl.generic_params().len > 0 && decl.generic_params()[0].len > 0 {
-			return tc.parse_type(decl.generic_params()[0])
+			return tc.parse_type(flat.source_type_id(decl.generic_params()[0]))
 		}
 		break
 	}

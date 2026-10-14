@@ -109,8 +109,8 @@ fn test_collection_alias_methods_preserve_canonical_owner_over_current_imports()
 	tc.cur_module = 'unrelated'
 	tc.cur_file = 'unrelated.v'
 	tc.register_file_import('dep', 'other')
-	assert types.unalias_type(tc.parse_type('dep.Bytes')) is types.Map
-	assert types.unalias_type(tc.parse_canonical_type('dep.Bytes')) is types.Array
+	assert types.unalias_type(tc.parse_type(flat.source_type_id('dep.Bytes'))) is types.Map
+	assert types.unalias_type(tc.parse_canonical_type(flat.source_type_id('dep.Bytes'))) is types.Array
 	collector := CallCollector{ a: &a, tc: &tc }
 	assert collector.typed_receiver_method_name('dep.Bytes', 'clear', 'main')? == 'array.clear'
 }
@@ -955,7 +955,7 @@ fn test_generic_factory_infers_semantic_channel_element_types() {
 	tc.structs['Payload'] = []types.StructField{}
 	for pattern in ['chan U', 'chan []U', '[]chan U', 'map[string]chan U', '?chan U', '&chan U',
 		'chan ?U', 'chan map[string][]U'] {
-		actual := tc.parse_type(pattern.replace('U', 'Payload'))
+		actual := tc.parse_type(flat.source_type_id(pattern.replace('U', 'Payload')))
 		mut inferred := flat.TypeTextBindings{}
 		markused_infer_alias_generic_type(pattern, actual, ['U'], mut inferred)
 		assert inferred.value('U') == 'Payload', pattern
