@@ -20,7 +20,7 @@ fn (mut t Transformer) transform_return_with_sumtype_wrap(id flat.NodeId, node f
 		return [id]
 	}
 	// Check if current function returns a sum type
-	if t.cur_fn_ret_type_text().len == 0 || t.cur_fn_ret_type_text() !in t.sum_types {
+	if t.cur_fn_ret_type_text().len == 0 || !t.sum_types.contains(t.cur_fn_ret_type_text()) {
 		return [id]
 	}
 	// Check if the return value is a struct init whose type is a variant

@@ -8,7 +8,7 @@ fn test_wide_text_interning_detaches_source_and_preserves_payload() {
 	for i in 0 .. wide_text_probe_min_nodes {
 		ast.add_node(Node{
 			value:   borrowed
-			typ:     borrowed
+			typ:     source_type_id(borrowed)
 			payload: if i == 0 {
 				node_payload_with_constraints([borrowed, 'U'], [borrowed, ''])
 			} else {
@@ -21,9 +21,10 @@ fn test_wide_text_interning_detaches_source_and_preserves_payload() {
 	for idx in [0, wide_text_probe_min_nodes - 1] {
 		node := ast.nodes[idx]
 		assert node.value == 'alpha'
-		assert node.typ == 'alpha'
+		assert node.typ_text() == 'alpha'
+		assert node.typ_text().str != borrowed.str
 		assert node.value.str != borrowed.str
-		assert ast.text(TextId(node.type_text_id())) == 'alpha'
+		assert source_type_name(node.type_text_id()) == 'alpha'
 	}
 	assert ast.nodes[0].generic_params() == ['alpha', 'U']
 	assert ast.nodes[0].generic_constraints() == ['alpha', '']
@@ -34,7 +35,7 @@ fn test_wide_text_probe_repeated_passes_keep_canonical_text() {
 	mut ast := FlatAst.new()
 	_, canonical := ast.intern_text('alpha')
 	for _ in 0 .. wide_text_probe_min_nodes {
-		ast.add_node(Node{ value: canonical, typ: canonical })
+		ast.add_node(Node{ value: canonical, typ: source_type_id(canonical) })
 	}
 	for pass in 0 .. 3 {
 		$if trace_free ? {
@@ -45,7 +46,7 @@ fn test_wide_text_probe_repeated_passes_keep_canonical_text() {
 			eprintln('wide scratch end')
 		}
 		assert ast.nodes[0].value == 'alpha'
-		assert ast.nodes.last().typ == 'alpha'
+		assert ast.nodes.last().typ_text() == 'alpha'
 		assert ast.text_count() == 1
 		assert ast.nodes[0].value.str == canonical.str
 		_ = pass

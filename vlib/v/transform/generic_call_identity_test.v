@@ -29,7 +29,7 @@ fn test_rewritten_generic_call_keeps_caller_type_in_foreign_scan() {
 	t.cur_file = 'callee.v'
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(id, 'main', 'main.v')
-	t.generic_specialization_args['callee.run_T_Context'] = ['Context']
+	t.generic_specialization_args.set('callee.run_T_Context', ['Context'])
 	t.generic_call_spec_cache[int(id)] = GenericCallSpec{
 		decl_key: 'callee.run'
 		args:     flat.TypeTextList.from_names(['main.Context'])

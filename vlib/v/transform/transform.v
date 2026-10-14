@@ -304,6 +304,7 @@ mut:
 	module_type_cache             &ModuleTypeCache         = unsafe { nil }
 	struct_guess_cache            &AliasCache              = unsafe { nil }
 	generic_unresolved_cache      &GenericUnresolvedCache  = unsafe { nil }
+	spec_args_misses              &SpecArgsMissCache       = unsafe { nil }
 	generic_spec_decode_cache     &TypeLookupCache         = unsafe { nil }
 	struct_field_type_cache       &TypeLookupCache         = unsafe { nil }
 	variant_short_name_cache      &AliasCache              = unsafe { nil }
@@ -2365,6 +2366,7 @@ fn (mut t Transformer) prepare() {
 	t.struct_guess_cache = &AliasCache{}
 	t.var_type_cache = &VarTypeIndexCache{}
 	t.generic_unresolved_cache = &GenericUnresolvedCache{}
+	t.spec_args_misses = &SpecArgsMissCache{}
 	t.generic_spec_decode_cache = &TypeLookupCache{
 		entries: map[u32]u32{}
 		misses:  map[u32]bool{}
@@ -2372,8 +2374,8 @@ fn (mut t Transformer) prepare() {
 	t.receiver_method_cache = &ReceiverMethodCache{}
 	t.promote_text_cache = &PromoteTextCache{}
 	t.struct_field_type_cache = &TypeLookupCache{
-		entries: map[string]u32{}
-		misses:  map[u64]bool{}
+		entries: map[u32]u32{}
+		misses:  map[u32]bool{}
 	}
 	t.variant_short_name_cache = &AliasCache{}
 	t.selector_type_cache = &SelectorTypeCache{}
@@ -4771,8 +4773,8 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.receiver_method_cache = &ReceiverMethodCache{}
 	w.promote_text_cache = &PromoteTextCache{}
 	w.struct_field_type_cache = &TypeLookupCache{
-		entries: map[string]u32{}
-		misses:  map[u64]bool{}
+		entries: map[u32]u32{}
+		misses:  map[u32]bool{}
 	}
 	w.variant_short_name_cache = &AliasCache{}
 	w.selector_type_cache = &SelectorTypeCache{}
@@ -4920,8 +4922,8 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.receiver_method_cache = &ReceiverMethodCache{}
 	w.promote_text_cache = &PromoteTextCache{}
 	w.struct_field_type_cache = &TypeLookupCache{
-		entries: map[string]u32{}
-		misses:  map[u64]bool{}
+		entries: map[u32]u32{}
+		misses:  map[u32]bool{}
 	}
 	w.variant_short_name_cache = &AliasCache{}
 	w.selector_type_cache = &SelectorTypeCache{}
@@ -6493,8 +6495,10 @@ fn (t &Transformer) used_fn_contains_name(name string) bool {
 }
 
 fn (t &Transformer) used_fn_contains_in_module(name string, module_name string) bool {
-	if module_name != '' && module_name != 'main' && module_name != 'builtin'
-		&& name.starts_with('${module_name}.') {
+	plain_module := module_name == '' || module_name == 'main' || module_name == 'builtin'
+	// `name` starts with `module_name.`, tested without building that prefix.
+	if !plain_module && name.len > module_name.len && name[module_name.len] == `.`
+		&& name.starts_with(module_name) {
 		if t.used_fn_contains_name(name) {
 			return true
 		}
@@ -6503,16 +6507,10 @@ fn (t &Transformer) used_fn_contains_in_module(name string, module_name string) 
 			return true
 		}
 	}
+	// In a plain module the dotted name is `name` itself, so these two lookups
+	// are also the ones by the bare name and its C spelling.
 	dfn := transform_dotted_fn_name(module_name, name)
-	qfn := c_name(dfn)
-	if t.used_fn_contains_name(dfn) || t.used_fn_contains_name(qfn) {
-		return true
-	}
-	if module_name == '' || module_name == 'main' || module_name == 'builtin' {
-		cfn := c_name(name)
-		return t.used_fn_contains_name(name) || t.used_fn_contains_name(cfn)
-	}
-	return false
+	return t.used_fn_contains_name(dfn) || t.used_fn_contains_name(c_name(dfn))
 }
 
 fn transform_dotted_fn_name(mod string, name string) string {
@@ -27686,7 +27684,7 @@ fn (t &Transformer) tc_variant_refs_sum_inner(variant string, sum_name string, m
 	}
 	if lookup in t.tc.structs {
 		for f in t.tc.structs[lookup] {
-			if t.tc_type_references_sum(f.typ_text(), sum_name, mut visited) {
+			if t.tc_type_references_sum(f.typ, sum_name, mut visited) {
 				return true
 			}
 		}
@@ -27697,22 +27695,22 @@ fn (t &Transformer) tc_variant_refs_sum_inner(variant string, sum_name string, m
 // tc_type_references_sum supports tc type references sum handling for Transformer.
 fn (t &Transformer) tc_type_references_sum(typ types.Type, sum_name string, mut visited map[string]bool) bool {
 	clean := types.unwrap_pointer(typ)
-	if clean is types.Struct && clean.name == sum_name {
+	if clean is types.Struct && clean.name() == sum_name {
 		return true
 	}
-	if clean is types.SumType && clean.name == sum_name {
+	if clean is types.SumType && clean.name() == sum_name {
 		return true
 	}
 	if clean is types.SumType {
 		return true
 	}
 	if clean is types.Struct {
-		if t.tc_variant_refs_sum_inner(clean.name, sum_name, mut visited) {
+		if t.tc_variant_refs_sum_inner(clean.name(), sum_name, mut visited) {
 			return true
 		}
 	}
 	if clean is types.Array {
-		return t.tc_type_references_sum(clean.elem_type_text(), sum_name, mut visited)
+		return t.tc_type_references_sum(clean.elem_type, sum_name, mut visited)
 	}
 	return false
 }
