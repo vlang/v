@@ -65,3 +65,13 @@ Each `count_down()` decrements a positive count. `wait()` blocks until the count
 zero; all current and future waiters then pass immediately. Further countdowns do
 nothing. `count()` reads the remaining count under the latch's lock. Construct the latch
 with `new_latch`, and share the returned pointer between workers.
+
+## Parker
+
+Share a `new_parker()` pointer between a worker and its waker. The worker calls `park()`,
+and the waker calls `unpark(worker_id)` with the worker's `sync.thread_id()`. An unpark
+wakes a registered waiter; otherwise it retains one permit for that thread's next park.
+Repeated unparks before a park coalesce into one permit. A wake consumes the current
+park's permit, so another unpark may permit the next park even before the worker resumes.
+Each thread's permits and waits are independent. Keep a Parker scoped to the workers
+using it: permits for exited threads are not automatically removed.
