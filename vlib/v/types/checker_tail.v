@@ -6055,9 +6055,10 @@ struct GenericCompileErrorInstantiation {
 }
 
 struct InstantiatedCompileWarning {
-	message string
-	node    flat.NodeId
-	pos     token.Pos
+	message   string
+	node      flat.NodeId
+	pos       token.Pos
+	is_notice bool
 }
 
 // Reuse the immutable binding while the walks leave diagnostics unchanged.
@@ -6117,7 +6118,11 @@ fn (mut tc TypeChecker) check_instantiated_generic_compile_warnings(instantiatio
 	tc.collect_instantiated_compile_warnings(instantiation.decl_id, instantiation, mut warnings)
 	for warning in warnings {
 		if !tc.has_type_notice(.compile_error, warning.message, warning.node) {
-			tc.record_warning_at(.compile_error, warning.message, warning.node, warning.pos)
+			if warning.is_notice {
+				tc.record_notice_at(.compile_error, warning.message, warning.node, warning.pos)
+			} else {
+				tc.record_warning_at(.compile_error, warning.message, warning.node, warning.pos)
+			}
 		}
 	}
 }
@@ -6318,13 +6323,14 @@ fn (mut tc TypeChecker) collect_instantiated_compile_warnings(id flat.NodeId, in
 	}
 	if node.kind == .call && node.children_count > 0 {
 		callee := tc.a.child_node(node, 0)
-		if callee.kind == .ident && callee.value == '__v_compile_warn' {
+		if callee.kind == .ident && callee.value in ['__v_compile_warn', '__v_compile_notice'] {
 			message := tc.instantiated_compile_warning_message(id, instantiation)
 			if !warnings.any(it.node == id && it.message == message) {
 				warnings << InstantiatedCompileWarning{
-					message: message
-					node:    id
-					pos:     node.pos
+					message:   message
+					node:      id
+					pos:       node.pos
+					is_notice: callee.value == '__v_compile_notice'
 				}
 			}
 			return
