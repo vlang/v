@@ -8,6 +8,30 @@ struct ResaveContext {
 	sessions.CurrentSession[string]
 }
 
+fn test_resave_replaces_a_pre_session_cookie_and_preserves_other_cookies() {
+	mut s := sessions.Sessions[string]{
+		secret:             'resave-secret'.bytes()
+		store:              sessions.MemoryStore[string]{}
+		save_uninitialized: true
+		cookie_options:     sessions.CookieOptions{ cookie_name: 'custom_sid' }
+	}
+	mut ctx := ResaveContext{}
+	ctx.set_cookie(http.Cookie{ name: 'theme', value: 'dark', path: '/' })
+	old_sid := s.set_session_id(mut ctx)
+	s.resave(mut ctx, 'authenticated')!
+	assert ctx.session_id != old_sid
+	assert s.get(ctx)! == 'authenticated'
+	cookies := ctx.res.cookies()
+	assert cookies.len == 2
+	assert cookies[0].name == 'theme'
+	assert cookies[0].value == 'dark'
+	assert cookies[0].path == '/'
+	assert cookies[1].name == 'custom_sid'
+	new_sid, valid := sessions.verify_session_id(cookies[1].value, s.secret)
+	assert valid
+	assert new_sid == ctx.session_id
+}
+
 fn test_resave_rotates_session_id_and_destroys_old_data() {
 	for save_uninitialized in [false, true] {
 		mut s := sessions.Sessions[string]{

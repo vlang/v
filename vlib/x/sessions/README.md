@@ -162,6 +162,8 @@ be sure that a new session id is generated when you save data, you can use the `
 method. This method will save the data and *always* set a new session id. It destroys the
 old session data and sends the new signed id in a cookie, so the previous id cannot retrieve
 the saved data. Use `resave` when authentication or authorization changes.
+If middleware already issued a session cookie in the current response, rotation replaces it
+while preserving cookies with other names.
 
 **Example:**
 

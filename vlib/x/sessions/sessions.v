@@ -86,11 +86,20 @@ pub mut:
 	store Store[T] @[required]
 }
 
-// set_session_id generates a new session id and set a Set-Cookie header on the response.
+// set_session_id generates a new session id and sets its Set-Cookie header on the response.
+// It replaces earlier response cookies with the session cookie name, preserving other cookies.
 pub fn (mut s Sessions[T]) set_session_id[X](mut ctx X) string {
 	sid, signed := new_session_id(s.secret)
 	ctx.CurrentSession.session_id = sid
 
+	// Middleware may have issued a pre-session cookie earlier in this response.
+	cookies := ctx.res.header.values(.set_cookie)
+	ctx.res.header.delete(.set_cookie)
+	for cookie in cookies {
+		if cookie.all_before('=').trim_space() != s.cookie_options.cookie_name {
+			ctx.res.header.add(.set_cookie, cookie)
+		}
+	}
 	ctx.set_cookie(http.Cookie{
 		value:     signed
 		max_age:   int(s.max_age / time.second)
