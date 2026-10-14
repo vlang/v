@@ -19254,9 +19254,9 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 		}
 	}
 	t.clear_node_type_memo()
-	t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
-	t.clear_node_type_memo()
 	t.invalidated_smartcasts = branch_invalidated.move()
+	t.clear_node_type_memo()
+	t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 	t.restore_var_types(saved_var_types)
 	result << t.make_if(new_cond, then_block, else_block)
 	return result

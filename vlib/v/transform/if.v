@@ -89,6 +89,42 @@ struct GuardReturnTail {
 	assign_lhs_ids    []flat.NodeId
 }
 
+struct GuardSmartcastState {
+	stack       []SmartcastContext
+	invalidated map[string]bool
+}
+
+fn (t &Transformer) save_guard_smartcasts() GuardSmartcastState {
+	return GuardSmartcastState{
+		stack:       t.smartcast_stack.clone()
+		invalidated: t.invalidated_smartcasts.clone()
+	}
+}
+
+// Restore the incoming narrowing before lowering a sibling branch.
+fn (mut t Transformer) reset_guard_smartcasts(state GuardSmartcastState) map[string]bool {
+	invalidated := t.invalidated_smartcasts.clone()
+	t.clear_node_type_memo()
+	t.smartcast_stack = state.stack.clone()
+	t.clear_node_type_memo()
+	t.invalidated_smartcasts = state.invalidated.clone()
+	return invalidated
+}
+
+// A write in either branch invalidates the narrowing after the guard.
+fn (mut t Transformer) merge_guard_smartcasts(state GuardSmartcastState, then_invalidated map[string]bool) {
+	mut invalidated := then_invalidated.clone()
+	for key, value in t.invalidated_smartcasts {
+		if value {
+			invalidated[key] = true
+		}
+	}
+	t.clear_node_type_memo()
+	t.invalidated_smartcasts = invalidated.move()
+	t.clear_node_type_memo()
+	t.smartcast_stack = t.non_invalidated_smartcasts(state.stack)
+}
+
 // guard_branch_stmts lowers the body of a guard branch.
 fn (mut t Transformer) guard_branch_stmts(branch_id flat.NodeId, tail GuardReturnTail) []flat.NodeId {
 	if tail.assign_lhs_ids.len > 0 {
@@ -183,8 +219,10 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 	t.drain_pending(mut prelude)
 	tmp_decl := t.make_decl_assign_typed(tmp_name, rhs_expr, rhs_type)
 	ok_cond := t.make_selector(t.make_ident(tmp_name), 'ok', 'bool')
+	source_clear_stmts := t.if_guard_source_clear_stmts(source_clear)
 	saved_var_types := t.var_types.clone()
 	heaped_state := t.save_heaped_local_state()
+	smartcasts := t.save_guard_smartcasts()
 	defer {
 		t.restore_var_types(saved_var_types)
 		t.restore_heaped_local_state(heaped_state)
@@ -215,6 +253,7 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 	}
 	then_children << t.guard_branch_stmts(then_id, tail)
 	then_block := t.make_block_prefix_scope_drops(then_children)
+	then_invalidated := t.reset_guard_smartcasts(smartcasts)
 	// The saved bindings are restored again on return, and the `else` branch changes the
 	// restored ones in place (its `err`), so it must not get the saved array itself.
 	t.restore_var_types(saved_var_types.clone())
@@ -225,12 +264,13 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 		else_id := t.a.child(&node, 2)
 		else_block = t.transform_if_guard_else_block(else_id, tmp_name, tail)
 	}
+	t.merge_guard_smartcasts(smartcasts, then_invalidated)
 	mut expanded := []flat.NodeId{cap: prelude.len + 3}
 	for stmt in prelude {
 		expanded << stmt
 	}
 	expanded << tmp_decl
-	expanded << t.if_guard_source_clear_stmts(source_clear)
+	expanded << source_clear_stmts
 	expanded << t.make_if(ok_cond, then_block, else_block)
 	return expanded
 }
@@ -259,11 +299,13 @@ fn (mut t Transformer) expand_channel_receive_if_guard(node flat.Node, lhs_name 
 	then_id := t.a.child(&node, 1)
 	saved_var_types := t.var_types.clone()
 	saved_heaped_state := t.save_heaped_local_state()
+	smartcasts := t.save_guard_smartcasts()
 	mut then_children := []flat.NodeId{}
 	if lhs_name != '_' {
 		then_children << t.make_guard_value_decls(lhs_name, t.make_ident(val_name), info.value_type_text())
 	}
 	then_children << t.guard_branch_stmts(then_id, tail)
+	then_invalidated := t.reset_guard_smartcasts(smartcasts)
 	t.restore_var_types(saved_var_types)
 	t.restore_heaped_local_state(saved_heaped_state)
 	then_block := t.make_block(then_children)
@@ -272,6 +314,7 @@ fn (mut t Transformer) expand_channel_receive_if_guard(node flat.Node, lhs_name 
 	if node.children_count >= 3 {
 		else_block = t.guard_else_block(t.a.child(&node, 2), tail)
 	}
+	t.merge_guard_smartcasts(smartcasts, then_invalidated)
 	t.pending_stmts = outer_pending
 	mut expanded := []flat.NodeId{cap: prelude.len + 1}
 	for stmt in prelude {
@@ -424,6 +467,7 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	then_id := t.a.child(&node, 1)
 	saved_var_types := t.var_types.clone()
 	saved_heaped_state := t.save_heaped_local_state()
+	smartcasts := t.save_guard_smartcasts()
 	mut then_children := []flat.NodeId{}
 	// A discarded binding (`if _ := m[k]`) only tests key presence; the value is
 	// never read, so skip the value dereference. That deref would otherwise cast to
@@ -434,6 +478,7 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	}
 	then_children << t.guard_branch_stmts(then_id, tail)
 	then_block := t.make_block_prefix_scope_drops(then_children)
+	then_invalidated := t.reset_guard_smartcasts(smartcasts)
 	t.restore_var_types(saved_var_types)
 	t.restore_heaped_local_state(saved_heaped_state)
 
@@ -443,6 +488,7 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 		else_block = t.transform_map_index_if_guard_else_block(else_id, ptr_name,
 			info.value_type_text(), tail)
 	}
+	t.merge_guard_smartcasts(smartcasts, then_invalidated)
 	t.pending_stmts = outer_pending
 	mut expanded := []flat.NodeId{cap: prelude.len + 1}
 	for stmt in prelude {
@@ -503,6 +549,7 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 	then_id := t.a.child(&node, 1)
 	saved_var_types := t.var_types.clone()
 	saved_heaped_state := t.save_heaped_local_state()
+	smartcasts := t.save_guard_smartcasts()
 	mut then_children := []flat.NodeId{}
 	mut guard_value_type := info.value_type_text()
 	mut value_expr := t.make_index(array_expr, t.make_ident(index_name), info.value_type_text())
@@ -514,6 +561,7 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 	}
 	then_children << t.make_guard_value_decls(lhs_name, value_expr, guard_value_type)
 	then_children << t.guard_branch_stmts(then_id, tail)
+	then_invalidated := t.reset_guard_smartcasts(smartcasts)
 	t.restore_var_types(saved_var_types)
 	t.restore_heaped_local_state(saved_heaped_state)
 	then_block := t.make_block_prefix_scope_drops(then_children)
@@ -522,6 +570,7 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 	if node.children_count >= 3 {
 		else_block = t.guard_else_block(t.a.child(&node, 2), tail)
 	}
+	t.merge_guard_smartcasts(smartcasts, then_invalidated)
 	mut selected_block := then_block
 	if t.is_optional_type_name(info.value_type_text()) && then_children.len > 0 {
 		opt_decl := then_children[0]
