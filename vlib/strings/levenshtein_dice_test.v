@@ -8,11 +8,9 @@ fn test_levenshtein_distance_percentage_identical_strings_score_one() {
 	assert strings.levenshtein_distance_percentage('a', 'a') == 100.0
 }
 
-// NOTE: two empty strings make the divisor zero, so the result is NaN rather
-// than the 100.0 the doc comment implies. `x != x` is the portable NaN test.
-fn test_levenshtein_distance_percentage_both_empty_is_nan() {
+fn test_levenshtein_distance_percentage_both_empty_is_identical() {
 	both_empty := strings.levenshtein_distance_percentage('', '')
-	assert both_empty != both_empty
+	assert both_empty == 100.0
 }
 
 fn test_levenshtein_distance_percentage_disjoint_strings_score_zero() {
@@ -57,9 +55,6 @@ fn test_levenshtein_distance_percentage_stays_within_bounds() {
 	for left in words {
 		for right in words {
 			score := strings.levenshtein_distance_percentage(left, right)
-			if left.len == 0 && right.len == 0 {
-				continue
-			}
 			assert score >= 0.0 && score <= 100.0, '(${left}, ${right}) gave ${score}'
 		}
 	}

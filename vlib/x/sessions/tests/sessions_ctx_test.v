@@ -209,7 +209,7 @@ fn test_set_session_id_sets_the_context_and_a_cookie() {
 	// the cookie carries the signed value, the Context the bare id
 	cookie := ctx.res.header.get(.set_cookie) or { panic('no Set-Cookie header') }
 	assert cookie.starts_with('sid=${sid}.')
-	assert cookie.contains('path=/')
+	assert cookie.contains('Path=/')
 	assert cookie.contains('Max-Age=2592000')
 	assert cookie.contains('HttpOnly')
 	assert cookie.contains('SameSite=Strict')
@@ -234,9 +234,7 @@ fn test_set_session_id_honours_the_configured_cookie_name() {
 	cookie := ctx.res.header.get(.set_cookie) or { panic('no Set-Cookie header') }
 	assert cookie.starts_with('SESSION_ID=')
 	assert cookie.contains('Secure')
-	// NOTE: `path` and `domain` are lower cased while the other attributes are
-	// not; that is what net.http's Cookie.str() emits.
-	assert cookie.contains('domain=example.com')
+	assert cookie.contains('Domain=example.com')
 }
 
 fn test_set_session_id_uses_the_configured_max_age() {
@@ -331,10 +329,6 @@ fn test_save_stores_data_for_an_existing_session() {
 	assert s.get(ctx)! == default_user
 }
 
-// NOTE: the branch at sessions.v:149 tests `save_uninitialized == false`, which
-// is the opposite of the documented meaning of the flag ("set to true if you
-// want to create a session if there isn't any data stored yet"). This pins the
-// behaviour as implemented, not as documented.
 fn test_save_creates_a_session_when_save_uninitialized_is_false() {
 	mut s := new_sessions()
 	mut ctx := Context{}
@@ -344,7 +338,7 @@ fn test_save_creates_a_session_when_save_uninitialized_is_false() {
 	assert s.get(ctx)! == default_user
 }
 
-fn test_save_creates_nothing_when_save_uninitialized_is_true() {
+fn test_save_creates_a_session_when_save_uninitialized_is_true() {
 	mut s := sessions.Sessions[User]{
 		store:              sessions.MemoryStore[User]{}
 		secret:             test_secret
@@ -352,8 +346,9 @@ fn test_save_creates_nothing_when_save_uninitialized_is_true() {
 	}
 	mut ctx := Context{}
 	s.save(mut ctx, default_user)!
-	assert ctx.session_id == ''
-	assert ctx.session_data == none
+	assert ctx.session_id.len == 32
+	assert session_data_of(mut ctx) == default_user
+	assert s.get(ctx)! == default_user
 }
 
 fn test_save_stores_under_a_session_id_taken_from_a_cookie() {
@@ -412,7 +407,7 @@ fn test_logout_expires_the_cookie_and_clears_the_data() {
 	assert !store_has(mut s, sid)
 	cookie := ctx.res.header.get(.set_cookie) or { panic('no Set-Cookie header') }
 	assert cookie.starts_with('sid=;')
-	assert cookie.contains('expires=Thu, 01 Jan 1970 00:00:00 GMT')
+	assert cookie.contains('Expires=Thu, 01 Jan 1970 00:00:00 GMT')
 }
 
 fn test_logout_without_a_session_only_expires_the_cookie() {

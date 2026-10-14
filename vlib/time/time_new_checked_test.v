@@ -63,7 +63,7 @@ fn test_time_new_accepts_the_extreme_years() {
 	assert Time.new(Time{ year: 9999, month: 12, day: 31, hour: 23, minute: 59, second: 59 }).unix() == 253402300799
 	assert Time.new(Time{ year: -9999, month: 1, day: 1 }).unix() == -377705116800
 	assert Time.new(Time{ year: 1, month: 1, day: 1 }).unix() == -62135596800
-	assert Time.new(Time{}).unix() == -62167132800
+	assert Time.new(Time{}).unix() == -62167219200
 }
 
 // When `unix` is already set, `Time.new` keeps it rather than recomputing it

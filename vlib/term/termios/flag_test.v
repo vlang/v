@@ -20,18 +20,20 @@ fn test_invert_is_its_own_inverse() {
 }
 
 fn test_termios_keeps_the_flag_fields() {
-	t := Termios{
+	mut t := Termios{
 		c_iflag:  flag(1)
 		c_oflag:  flag(2)
 		c_cflag:  flag(4)
 		c_lflag:  flag(8)
-		c_line:   Cc(3)
 		c_ispeed: Speed(9600)
 		c_ospeed: Speed(9600)
 	}
+	$if linux || windows {
+		t.c_line = Cc(3)
+		assert t.c_line == Cc(3)
+	}
 	assert t.c_iflag == flag(1)
 	assert t.c_lflag == flag(8)
-	assert t.c_line == Cc(3)
 	assert t.c_ispeed == Speed(9600)
 }
 

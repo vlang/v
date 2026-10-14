@@ -163,7 +163,9 @@ fn test_include_emits_the_absolute_file_path_of_a_walked_asset() {
 	}
 	assert '${am.include(.css, os.join_path('static', 'a.css'))}' == '<link rel="stylesheet" href="${css_path}">'
 	assert '${am.include(.js, os.join_path('static', 'b.js'))}' == '<script src="${js_path}"></script>'
-	// The forward-slash spelling is not the same include name on Windows,
-	// where `add_asset_directory` joined the prefix with `os.join_path`.
-	assert '${am.include(.css, 'static/a.css')}' == ''
+	$if windows {
+		assert '${am.include(.css, 'static/a.css')}' == ''
+	} $else {
+		assert '${am.include(.css, 'static/a.css')}' == '<link rel="stylesheet" href="${css_path}">'
+	}
 }

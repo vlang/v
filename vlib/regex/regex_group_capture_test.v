@@ -64,10 +64,6 @@ const capture_find_cases = [
 	},
 ]
 
-// A quantified group whose body is a bare OR never matches: the group_rep
-// bookkeeping is only reached through the OR's jump table.
-// NOTE: this is a limitation, not a documented rule. The workaround is to wrap
-// each branch in its own group, as `((a)|(b))+` does.
 const quantified_bare_or_cases = [r'(a|b)+', r'(a|b)*', r'(?:a|b)+', r'(?:a|b)*']
 
 fn test_or_operator_works_on_single_tokens() {
@@ -138,12 +134,12 @@ fn test_group_count_and_ids() {
 	assert plain.get_group_list() == []regex.Re_group{}
 }
 
-fn test_quantified_group_with_a_bare_or_never_matches() {
+fn test_quantified_group_with_a_bare_or_matches_alternatives() {
 	for pattern in quantified_bare_or_cases {
 		mut re := regex.regex_opt(pattern) or { panic(err) }
-		assert !re.matches_string('abab'), 'pattern "${pattern}" unexpectedly matched "abab"'
-		start, _ := re.match_string('abab')
-		assert start == regex.no_match_found, 'pattern "${pattern}" gave start ${start}'
+		assert re.matches_string('abab'), pattern
+		start, end := re.match_string('abab')
+		assert start == 0 && end == 4, pattern
 	}
 }
 

@@ -53,7 +53,6 @@ fn test_display_leaves_plain_arguments_unquoted() {
 fn test_display_quotes_only_an_argument_that_needs_it() {
 	quoted := os.quoted_path('a b')
 	assert display('cc', ['a b']) == 'cc ${quoted}'
-	assert display('cc', ['a b']) == 'cc "a b"'
 	assert display('cc', ['a"b']) != display('cc', ['a b'])
 	assert display('cc', ['a b']) != display('cc', ['a  b'])
 }

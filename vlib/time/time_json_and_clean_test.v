@@ -100,18 +100,12 @@ fn test_from_json_string_accepts_rfc3339_and_a_unix_timestamp() {
 	assert false, 'from_json_string() should have rejected a non-time string'
 }
 
-fn test_from_json_string_rejects_the_quoted_form_that_to_json_produces() {
-	// NOTE: `to_json()` returns the rfc3339 form wrapped in quotes, but
-	// `from_json_string()` does not strip quotes, so the pair does not round
-	// trip on its own. json2 hands the decoder the unquoted value, so this is
-	// only reachable by calling the pair directly.
+fn test_from_json_string_round_trips_the_quoted_form() {
 	t := fixed_instant()
 	mut decoded := time.Time{}
-	decoded.from_json_string(t.to_json()) or {
-		assert err.msg() == 'Expected iso8601/rfc3339/unix time but got: ${t.to_json()}'
-		return
-	}
-	assert false, 'from_json_string() should have rejected the quoted form'
+	decoded.from_json_string(t.to_json())!
+	assert decoded.unix() == t.unix()
+	assert decoded.unix_nano() == t.unix_nano()
 }
 
 fn test_stopwatch_restart_zeros_the_elapsed_time() {

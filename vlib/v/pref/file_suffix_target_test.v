@@ -115,7 +115,11 @@ fn test_expand_module_search_paths_expands_placeholders_and_delimiters() {
 	assert expand_module_search_paths('@vroot/examples', vroot) == [vroot + '/examples']
 	assert expand_module_search_paths('@vroot|@vroot/x', vroot) == [vroot, vroot + '/x']
 	assert expand_module_search_paths('a|b', vroot) == ['a', 'b']
-	assert expand_module_search_paths('a;b', vroot) == ['a', 'b']
+	$if windows {
+		assert expand_module_search_paths('a;b', vroot) == ['a', 'b']
+	} $else {
+		assert expand_module_search_paths('a;b', vroot) == ['a;b']
+	}
 	assert expand_module_search_paths('a|@vroot|b', vroot) == ['a', vroot, 'b']
 	assert expand_module_search_paths('plain', vroot) == ['plain']
 	// `@vmodules` is the global module folders, which this machine does have.

@@ -2,6 +2,8 @@ module term
 
 import os
 
+fn C.clearerr(stream &C.FILE)
+
 // utf8_getchars_from feeds `input` to utf8_getchar through a pipe standing in
 // for stdin, and returns every rune it decodes before the input runs out.
 fn utf8_getchars_from(input string) ![]rune {
@@ -12,6 +14,7 @@ fn utf8_getchars_from(input string) ![]rune {
 	defer {
 		os.fd_dup2(original, 0)
 		os.fd_close(original)
+		C.clearerr(C.stdin)
 	}
 	mut pipe := os.pipe()!
 	pipe.write_string(input)!
@@ -21,6 +24,7 @@ fn utf8_getchars_from(input string) ![]rune {
 		return error('could not redirect stdin')
 	}
 	os.fd_close(pipe.read_fd)
+	C.clearerr(C.stdin)
 	mut runes := []rune{}
 	for runes.len < 8 {
 		r := utf8_getchar() or { break }

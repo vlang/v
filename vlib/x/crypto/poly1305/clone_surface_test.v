@@ -9,19 +9,8 @@ import x.crypto.poly1305
 // is compared against new + update + finish, with clone used to fork in the
 // middle. No expected value is invented.
 //
-// Two facts about this module, both measured rather than reasoned, decide what
-// these tests can safely assert, so they are stated up front:
-//
-//  1. clone() copies the struct field by field, and `buffer` is a V array, so
-//     the clone and its parent share one backing allocation. A fork therefore
-//     only works if no update() and no finish() runs on either side after the
-//     other has absorbed something different. The safe orderings tested below
-//     are "fork, one side finishes, the other side never absorbs again" and
-//     "fork, the side that goes first absorbs everything, the other finishes from
-//     the forked state".
-//  2. finish() is single use: it calls reset(), which sets the done flag and
-//     zeroes the accumulator and the buffer. A second finish panics, so a parent
-//     is checked through its own clone rather than finished twice.
+// Clones retain independent buffers, so each side may continue absorbing after a fork.
+// finish consumes its instance; use another clone when checking the same state twice.
 
 // rfc8439_key is the one-time Poly1305 key from RFC 8439 A.3 test vector 2.
 fn rfc8439_key() ![]u8 {
@@ -82,9 +71,7 @@ fn test_poly1305_clone_of_fresh_instance() ! {
 	assert finish_of(mut po.clone()) == tag_of([]u8{}, key)!
 }
 
-// The clone absorbs the whole message from the forked state; the parent is left
-// alone afterwards, which is the only ordering that works given the shared
-// buffer. Verified across the block boundary in every position.
+// The clone absorbs the whole message from the forked state across block boundaries.
 fn test_poly1305_clone_absorbs_from_the_fork() ! {
 	key := ladder_key()!
 	msg := ladder_msg()
@@ -119,7 +106,7 @@ fn test_poly1305_clone_leaves_the_parent_intact() ! {
 }
 
 // The published vector, reached through a fork at the midpoint rather than in one
-// update. Only the clone finishes, so this is the safe ordering.
+// update. The clone then finishes independently.
 fn test_poly1305_clone_converges_on_published_vector() ! {
 	key := rfc8439_key()!
 	msg := rfc8439_msg()
@@ -146,10 +133,6 @@ fn test_poly1305_clone_preserves_verify() ! {
 	assert cl.verify(tag)
 	assert po.verify(tag), 'verify consumed the instance it was called on'
 
-	// The clone finishes correctly, and the parent — which has a 5-byte partial
-	// block pending in the shared buffer — is not finished at all here, because
-	// finishing the clone first resets the shared buffer under it. The parent's
-	// own correctness is covered by test_poly1305_clone_leaves_the_parent_intact.
 	assert finish_of(mut cl) == tag
 
 	// A wrong tag must not verify, whichever instance it is checked against.
@@ -179,31 +162,11 @@ fn test_poly1305_clone_of_clone() ! {
 	assert finish_of(mut c) == tag_of(msg[..8], key)!, 'clone of clone'
 }
 
-// NOTE (measured, asserted as the current behaviour because the rule is to pin
-// the code as it stands rather than what it should do): clone() shares the
-// parent's `buffer`, so a fork where both sides go on to absorb different bytes
-// silently corrupts the side that lost the race. Measured with the compiler at
-// 5bd6709, ladder_key over an 85-byte message:
-//
-//   fork at n; parent.update(msg[n..]); clone.update(msg[n..])
-//     parent == full        (the parent wins the shared buffer, always)
-//     clone  != full        (the clone hashes the parent's copy of the bytes)
-//
-// The same one-sided measurement shows the parent is always right, which is the
-// signature of a shared allocation rather than of a copy.
-//
-// The consequence is that a fork is only usable when exactly one side keeps
-// absorbing, and that is what every test above assumes. Two forgotten leftovers
-// on the same 16-byte buffer is not a contract this module makes, so this file
-// does not pretend to test it.
-fn test_poly1305_clone_shares_buffer_with_its_parent() ! {
+fn test_poly1305_clone_has_an_independent_buffer() ! {
 	key := ladder_key()!
 	msg := ladder_msg()
 
-	// Both sides absorb the whole message from the fork. The documented result
-	// would be full for both; the measured result is full for the parent and
-	// something else for the clone, which localises the defect to the shared
-	// buffer. This asserts the measurement so a fix shows up as a changed value.
+	// Interleaving writes on both sides must preserve the complete message.
 	for n in [0, 8, 16] {
 		full := tag_of(msg, key)!
 
@@ -216,6 +179,6 @@ fn test_poly1305_clone_shares_buffer_with_its_parent() ! {
 		parent := finish_of(mut po)
 		clone := finish_of(mut cl)
 		assert parent == full, 'parent after a fork at ${n} bytes'
-		assert clone != full, 'clone after a fork at ${n} bytes was not disturbed'
+		assert clone == full, 'clone after a fork at ${n} bytes'
 	}
 }

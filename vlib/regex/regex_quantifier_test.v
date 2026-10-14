@@ -57,7 +57,7 @@ const quantifiable_token_cases = [
 	QuantCase{r'.{2}', 'a\nbc', 0, 2},
 	QuantCase{r'(ab){2}', 'ababab', 0, 4},
 	QuantCase{r'(ab){2}', 'abab', 0, 4},
-	QuantCase{r'(ab){2}', 'ab', 0, 2},
+	QuantCase{r'(ab){2}', 'ab', -1, 2},
 ]
 
 const invalid_quantifier_patterns = [

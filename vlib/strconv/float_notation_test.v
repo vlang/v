@@ -12,7 +12,7 @@ fn test_f32_to_str_pad_uses_scientific_notation() {
 }
 
 fn test_f32_to_str_pad_handles_zero_and_negatives() {
-	assert f32_to_str_pad(f32(0.0), 4) == '0e+00'
+	assert f32_to_str_pad(f32(0.0), 4) == '0.0000e+00'
 	assert f32_to_str_pad(f32(-1.5), 2) == '-1.50e+00'
 }
 
@@ -32,7 +32,7 @@ fn test_f64_to_str_pad_uses_scientific_notation() {
 }
 
 fn test_f64_to_str_pad_handles_zero_and_negatives() {
-	assert f64_to_str_pad(0.0, 4) == '0e+00'
+	assert f64_to_str_pad(0.0, 4) == '0.0000e+00'
 	assert f64_to_str_pad(-1.5, 2) == '-1.50e+00'
 }
 

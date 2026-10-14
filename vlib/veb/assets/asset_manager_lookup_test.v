@@ -6,9 +6,7 @@
 // decides whether `add` should replace an entry.
 //
 // `minify_css` and `minify_js` are pure string functions, so their behaviour
-// is asserted exactly. Both are marked `TODO: implement proper minification`
-// upstream: they only drop blank lines, and the note at the end records what
-// that does to the text.
+// is asserted exactly. Both trim and join non-empty lines with spaces.
 import os
 import veb.assets
 
@@ -117,13 +115,12 @@ fn test_get_assets_of_an_empty_manager_is_empty() {
 // ---------------------------------------------------------------------
 
 fn test_minify_css_trims_each_line() {
-	// Every line is trimmed and the non-empty ones are concatenated with no
-	// separator at all, not even a newline.
-	assert assets.minify_css('.one {\n\tcolor: #336699;\n}\n') == '.one {color: #336699;}'
+	// Each non-empty line keeps a separating space so CSS tokens stay distinct.
+	assert assets.minify_css('.one {\n\tcolor: #336699;\n}\n') == '.one { color: #336699; }'
 }
 
 fn test_minify_css_drops_blank_lines() {
-	assert assets.minify_css('a { b: c }\n\n\nd { e: f }\n') == 'a { b: c }d { e: f }'
+	assert assets.minify_css('a { b: c }\n\n\nd { e: f }\n') == 'a { b: c } d { e: f }'
 	assert assets.minify_css('   \n\t\n  \n') == ''
 	assert assets.minify_css('\n\n') == ''
 	assert assets.minify_css('') == ''
@@ -133,11 +130,11 @@ fn test_minify_css_keeps_a_single_line_as_is() {
 	assert assets.minify_css('no newline') == 'no newline'
 	// `trim_space` removes the carriage return as well, so a CRLF document
 	// minifies to the same as an LF one.
-	assert assets.minify_css('\r\n a \r\n b \r\n') == 'ab'
+	assert assets.minify_css('\r\n a \r\n b \r\n') == 'a b'
 }
 
 fn test_minify_js_joins_lines_with_a_space() {
-	assert assets.minify_js('var a = 1;\nvar b = 2;\n') == 'var a = 1; var b = 2; '
+	assert assets.minify_js('var a = 1;\nvar b = 2;\n') == 'var a = 1; var b = 2;'
 	assert assets.minify_js('') == ''
 }
 
@@ -147,7 +144,7 @@ fn test_minifiers_only_drop_blank_lines() {
 	// still `TODO: implement proper minification` upstream. This asserts what
 	// the code does today rather than what a minifier should do.
 	css := 'a {\n  /* keep */\n  color: red;\n}\n'
-	assert assets.minify_css(css) == 'a {/* keep */color: red;}'
+	assert assets.minify_css(css) == 'a { /* keep */ color: red; }'
 	js := '// note\nvar a = 1;\n'
-	assert assets.minify_js(js) == '// note var a = 1; '
+	assert assets.minify_js(js) == '// note var a = 1;'
 }

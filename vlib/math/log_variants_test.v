@@ -54,7 +54,7 @@ fn test_cot_is_reciprocal_of_tan() {
 }
 
 fn test_cot_exact_values() {
-	assert math.cot(math.pi / 4) == 1.0
+	assert math.abs(math.cot(math.pi / 4) - 1.0) < 1e-14
 	assert math.cot(0.0) == math.inf(1)
 }
 

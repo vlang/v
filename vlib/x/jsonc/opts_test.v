@@ -11,6 +11,7 @@
 module jsonc
 
 import os
+import json2
 
 const trailing_comma = '{"a": 1,}'
 
@@ -51,7 +52,7 @@ fn test_parse_text_opts_agrees_with_parse_text_for_a_clean_document() {
 	from_opts := parse_text_opts(strict_doc, ParseOpts{})!
 	direct := parse_text(strict_doc)!
 	assert from_opts.str() == direct.str()
-	assert from_opts.root.kind() == .object
+	assert from_opts.root is map[string]json2.Any
 	assert from_opts.value('a').int() == 1
 	// The document decodes into a plain V type through the JSON5 decoder.
 	assert decode[map[string]int](strict_doc)! == {
@@ -78,9 +79,13 @@ fn test_parse_text_opts_returns_the_json5_error_for_malformed_input() {
 	}) {
 		assert false, 'malformed input must be refused'
 	} else {
-		// Measured: the JSON5 parser owns this one, so the prefix is `json5:`
-		// rather than `jsonc:`.
-		assert err.msg().starts_with('json5:')
+		if err is json2.JsonScanError {
+			assert err.line == 1
+			assert err.character == 6
+			assert err.message.contains('value')
+		} else {
+			assert false, err.msg()
+		}
 	}
 }
 

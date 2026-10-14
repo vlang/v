@@ -77,10 +77,7 @@ fn test_modf_special_cases() {
 	mzi, mzf := modf(-0.0)
 	assert mzi == 0.0
 	assert mzf == 0.0
-	// NOTE: the doc comment says both parts carry the sign of f, but for f = -0.0 the
-	// integer part comes back as +0.0 while the fraction keeps the sign. Current
-	// behaviour is asserted here rather than changed.
-	assert !signbit(mzi)
+	assert signbit(mzi)
 	assert signbit(mzf)
 	// Any other negative value, however small, does give a negative integer part.
 	tiny_i, tiny_f := modf(-1e-20)
@@ -108,7 +105,7 @@ fn test_modf_large_values_are_already_integers() {
 		i, f := modf(x)
 		assert i == x
 		assert f == 0.0
-		assert !signbit(f)
+		assert signbit(f) == signbit(x)
 	}
 }
 

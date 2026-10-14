@@ -463,14 +463,12 @@ fn test_truncated_digests_are_not_prefixes() {
 	assert blake2s.sum128(abc) != full[..blake2s.size128]
 }
 
-// NOTE: checksum finalizes the digest in place, so a second call hashes the
-// zero padded remainder of the previous block and returns something else.
-// That is what the implementation does today and no caller in the tree relies
-// on it, so this pins the current contract rather than the desirable one.
-fn test_checksum_is_single_use() {
+fn test_checksum_is_idempotent_and_keeps_streaming() {
 	mut d := blake2s.new256()!
 	d.write('abc'.bytes())!
 	first := d.checksum()
 	assert first == blake2s.sum256('abc'.bytes())
-	assert d.checksum() != first
+	assert d.checksum() == first
+	d.write('def'.bytes())!
+	assert d.checksum() == blake2s.sum256('abcdef'.bytes())
 }

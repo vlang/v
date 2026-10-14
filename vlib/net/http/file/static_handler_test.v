@@ -22,9 +22,10 @@ fn fixture_folder() string {
 fn handler(folder string, index_file string, auto_index bool) StaticHttpHandler {
 	return StaticHttpHandler{
 		params: StaticServeParams{
-			folder:     folder
-			index_file: index_file
-			auto_index: auto_index
+			folder:       folder
+			index_file:   index_file
+			auto_index:   auto_index
+			filter_myexe: false
 		}
 	}
 }

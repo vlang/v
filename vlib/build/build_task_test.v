@@ -146,13 +146,7 @@ fn test_a_task_that_already_ran_is_not_run_again() {
 	assert ran.n == 1
 }
 
-// NOTE: `BuildContext.task` at vlib/build/build.v:73 does not forward
-// `config.repeatable` into the Task it appends, while `artifact` at :94 does.
-// The observable consequence, measured here, is that `repeatable: true` on a
-// plain task has no effect - the second exec is skipped - whereas the same
-// option on an artifact lets it run repeatedly. Current behaviour is asserted
-// rather than changed.
-fn test_repeatable_is_forwarded_by_artifact_but_dropped_by_task() {
+fn test_repeatable_is_forwarded_by_tasks_and_artifacts() {
 	mut task_runs := &Counter{}
 	mut ctx := context()
 	ctx.task(
@@ -162,7 +156,7 @@ fn test_repeatable_is_forwarded_by_artifact_but_dropped_by_task() {
 	)
 	ctx.exec('t')
 	ctx.exec('t')
-	assert task_runs.n == 1
+	assert task_runs.n == 2
 
 	mut art_runs := &Counter{}
 	mut actx := context()
@@ -177,7 +171,7 @@ fn test_repeatable_is_forwarded_by_artifact_but_dropped_by_task() {
 }
 
 fn test_artifact_default_should_run_is_file_absence() {
-	abs_path := os.join_path(os.temp_dir(), artifact_name)
+	abs_path := os.join_path(os.vtmp_dir(), '${artifact_name}_${os.getpid()}')
 	os.rm(abs_path) or {}
 	defer {
 		os.rm(abs_path) or {}

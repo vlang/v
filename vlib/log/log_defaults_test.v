@@ -12,12 +12,6 @@ fn (mut w RecordingWriter) write(buf []u8) !int {
 	return buf.len
 }
 
-// `use_stdout()` builds its `ThreadSafeLog` from the struct default rather than
-// through `new_thread_safe_log()`, so it does not read `-d log_default_level`
-// and its logger starts at `.debug` where `new_thread_safe_log()` starts at
-// `.info`.
-const use_stdout_level = Level.debug
-
 fn messages_that_passed(mut l Log) []string {
 	mut w := RecordingWriter{}
 	l.set_output_stream(&w)
@@ -93,10 +87,12 @@ fn test_set_logger_swaps_the_default_logger() {
 }
 
 fn test_use_stdout_installs_a_fresh_usable_default_logger() {
+	slevel := $d('log_default_level', 'info')
+	expected := level_from_tag(slevel.to_upper()) or { panic('invalid test log level') }
 	use_stdout()
-	assert get_level() == use_stdout_level
+	assert get_level() == expected
 	set_level(.warn)
 	assert get_level() == .warn
-	set_level(use_stdout_level)
-	assert get_level() == use_stdout_level
+	set_level(expected)
+	assert get_level() == expected
 }

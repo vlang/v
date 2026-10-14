@@ -20,7 +20,7 @@ fn test_nearest_vmod_root_finds_the_manifest_at_or_above_the_path() {
 	os.mkdir_all(root)!
 	project := make_project(root, 2)!
 	defer {
-		os.rmdir_all(os.parent_dir(project)) or {}
+		os.rmdir_all(project) or {}
 	}
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'module main\n')!
@@ -60,7 +60,7 @@ fn test_nearest_vmod_root_stops_at_a_project_boundary() {
 		os.mkdir_all(os.join_path(root, 'src'))!
 		project := make_project(root, 1)!
 		defer {
-			os.rmdir_all(os.parent_dir(project)) or {}
+			os.rmdir_all(project) or {}
 		}
 		os.write_file(os.join_path(root, marker), '')!
 		assert is_project_boundary_dir(root), marker

@@ -36,9 +36,15 @@ fn test_tokenize_c_flag_honours_a_backslash_escape() {
 }
 
 fn test_quote_path_and_args_quote_paths() {
-	assert quote_path('plain.v') == '"plain.v"'
-	assert quote_path('with space.v') == '"with space.v"'
-	assert args_quote_paths(['a.v', 'b c.v']) == '"a.v" "b c.v"'
+	$if windows {
+		assert quote_path('plain.v') == '"plain.v"'
+		assert quote_path('with space.v') == '"with space.v"'
+		assert args_quote_paths(['a.v', 'b c.v']) == '"a.v" "b c.v"'
+	} $else {
+		assert quote_path('plain.v') == "'plain.v'"
+		assert quote_path('with space.v') == "'with space.v'"
+		assert args_quote_paths(['a.v', 'b c.v']) == "'a.v' 'b c.v'"
+	}
 	assert args_quote_paths([]string{}) == ''
 }
 

@@ -26,6 +26,7 @@ fn test_new_mod_file_cacher_starts_with_no_recorded_folders() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
+	os.write_file(os.join_path(root, '.v.mod.stop'), '') or { panic(err) }
 	os.write_file(os.join_path(root, 'project', 'v.mod'), '') or { panic(err) }
 	mut cacher := new_mod_file_cacher()
 	answer := cacher.get_by_folder(os.join_path(root, 'project'))

@@ -307,12 +307,7 @@ fn test_open_rejects_an_empty_archive_name() {
 	assert false, 'an empty archive name was accepted'
 }
 
-// NOTE: open_entry on a name that is not in the archive does not report an
-// error, and leaves the archive positioned nowhere: name() is empty, size()
-// is 0, and both index() and is_dir() report their own "no current entry"
-// errors. That is what the implementation does today, so this pins it rather
-// than the desirable "unknown entry" error from open_entry itself.
-fn test_open_entry_with_an_unknown_name_succeeds_silently() {
+fn test_open_entry_with_an_unknown_name_returns_an_error() {
 	root := scratch('unknown')
 	defer {
 		os.rmdir_all(root) or {}
@@ -321,7 +316,12 @@ fn test_open_entry_with_an_unknown_name_succeeds_silently() {
 	make_archive(archive)
 
 	mut z := szip.open(archive, .no_compression, .read_only) or { panic(err) }
-	z.open_entry('missing.txt') or { panic('open_entry returned an error for an unknown name') }
+	defer { z.close() }
+	if _ := z.open_entry('missing.txt') {
+		assert false, 'an unknown archive entry must not open'
+	} else {
+		assert err.msg() == 'szip: cannot open archive entry'
+	}
 	assert z.name() == ''
 	assert z.size() == 0
 
@@ -332,6 +332,4 @@ fn test_open_entry_with_an_unknown_name_succeeds_silently() {
 	mut index_msg := 'no error'
 	z.index() or { index_msg = err.msg() }
 	assert index_msg == 'szip: cannot get current index of zip entry'
-
-	z.close()
 }
