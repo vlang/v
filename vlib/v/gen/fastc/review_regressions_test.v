@@ -88,6 +88,20 @@ fn main() {
 ', 'true\ntrue')
 }
 
+fn test_fastc_negated_mutable_sum_numeric_alias_reads_value() {
+	fastc_review_regression_matches_c('numeric_alias_sum', 'module main
+type Count = int
+type Value = Count | voidptr
+fn main() {
+	mut scalar := Value(Count(9))
+	if scalar !is Count { return }
+	println(scalar + 1)
+	println(1 + scalar)
+	println((scalar + 1) * 2)
+}
+', '10\n10\n20')
+}
+
 fn test_fastc_constant_dependencies_ignore_inactive_comptime_branches() {
 	fastc_review_regression_matches_c('conditional_constant', 'module main
 fn initial() int { return 3 }

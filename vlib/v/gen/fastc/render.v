@@ -1351,7 +1351,7 @@ fn (g &Parser) narrowed_numeric_operand_type(tokens []FastcExpressionToken, infe
 	if tokens.len == 1 && tokens[0].tok == .name {
 		if local := g.locals[tokens[0].lit] {
 			value_type := local.typ.trim_right('*')
-			if local.is_reference && local.smartcast_origin_type != '' && fastc_is_numeric_expression_type(value_type) {
+			if local.is_reference && local.smartcast_origin_type != '' && fastc_is_numeric_expression_type(g.underlying_alias_type(value_type)) {
 				return value_type
 			}
 		}
@@ -1478,7 +1478,7 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		right_value_type := g.narrowed_numeric_operand_type(right_tokens, right_type)
 		// Mutable scalar smartcasts point at boxed storage. Read each value before
 		// arithmetic, rather than dereferencing the result of pointer arithmetic.
-		reference_arithmetic := left_value_type != left_type || right_value_type != right_type
+		reference_arithmetic := g.narrowed_numeric_operand_type(left_tokens, '') != '' || g.narrowed_numeric_operand_type(right_tokens, '') != ''
 		mut left_special := FastcRenderedExpression{}
 		if rendered := g.render_overloaded_binary_expression(left_tokens) {
 			left_special = rendered
@@ -1523,7 +1523,7 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		} else {
 			right_value_type
 		}
-		arithmetic_type := fastc_common_arithmetic_type(left_result_type, right_result_type)
+		arithmetic_type := fastc_common_arithmetic_type(g.underlying_alias_type(left_result_type), g.underlying_alias_type(right_result_type))
 		return FastcRenderedExpression{
 			source: '((${left})${operator}(${right}))'
 			typ:    if arithmetic_type != '' {
