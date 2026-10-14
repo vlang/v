@@ -46,8 +46,61 @@ fn testsuite_end() {
 fn test_an_unsigned_registry_vouches_for_nothing() {
 	os.unsetenv('VPM_REGISTRY_KEY')
 	r := new_demo_registry()
+	loaded := r.checked_signing_key()!
+	assert loaded.key == none
 	assert r.signature() == '', 'an unsigned registry produced a signature'
 	assert r.public_key_hex() == '', 'an unsigned registry produced a public key'
+}
+
+fn test_invalid_environment_keys_do_not_fall_back_to_a_valid_key_file() {
+	_, private := ed25519.generate_key()!
+	os.mkdir_all(registry_dir())!
+	os.write_file(registry_key_path(), private.seed().hex())!
+	defer {
+		os.rm(registry_key_path()) or {}
+		os.unsetenv(registry_key_env)
+	}
+	registry := new_demo_registry()
+	for raw in ['', ' \t\n', 'not-a-hexadecimal-private-seed', '0', '00'.repeat(31), '00'.repeat(33)] {
+		$if windows {
+			if raw == '' {
+				// _wputenv deletes an empty value; the CLI child-environment test
+				// supplies a real KEY= entry without this setter limitation.
+				continue
+			}
+		}
+		os.setenv(registry_key_env, raw, true)
+		mut refused := false
+		registry.checked_signing_key() or {
+			assert err.msg().contains(registry_key_env), err.msg()
+			if raw.len > 10 {
+				assert !err.msg().contains(raw), 'a key error disclosed the configured seed'
+			}
+			refused = true
+		}
+		assert refused, 'invalid environment key was treated as unsigned or fell back to the key file'
+	}
+}
+
+fn test_invalid_key_files_are_errors_rather_than_unsigned_registries() {
+	os.unsetenv(registry_key_env)
+	os.mkdir_all(registry_dir())!
+	defer {
+		os.rm(registry_key_path()) or {}
+	}
+	registry := new_demo_registry()
+	for raw in ['', ' \t\n', 'not-a-hexadecimal-private-seed', '0', '00'.repeat(31), '00'.repeat(33)] {
+		os.write_file(registry_key_path(), raw)!
+		mut refused := false
+		registry.checked_signing_key() or {
+			assert err.msg().contains('signing key file'), err.msg()
+			if raw.len > 10 {
+				assert !err.msg().contains(raw), 'a key error disclosed the configured seed'
+			}
+			refused = true
+		}
+		assert refused, 'invalid key file was treated as an unsigned registry'
+	}
 }
 
 fn test_signing_uses_the_registry_key_file_without_an_environment_key() {

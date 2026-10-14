@@ -241,6 +241,7 @@ fn (r &Registry) validate_registry_entries() ! {
 		if !registry_artifact_component(entry.name) || entry.name != name {
 			return error('registry entry name `${entry.name}` does not match module key `${name}`')
 		}
+		mut seen_versions := map[string]bool{}
 		for info in entry.versions {
 			if !registry_artifact_component(info.name) || info.name != name {
 				return error('registry version module name `${info.name}` does not match module key `${name}`')
@@ -248,6 +249,10 @@ fn (r &Registry) validate_registry_entries() ! {
 			if !registry_artifact_component(info.version) {
 				return error('invalid registry version `${info.version}` for module `${name}`')
 			}
+			if info.version in seen_versions {
+				return error('duplicate registry version `${info.version}` for module `${name}`')
+			}
+			seen_versions[info.version] = true
 		}
 	}
 }
@@ -621,19 +626,59 @@ pub fn handle_request(registry Registry, method string, path string, query map[s
 	return not_found_body
 }
 
-// signing_key loads the registry's private key seed, from `VPM_REGISTRY_KEY`
-// when set and from the key file beside the index otherwise. Both hold hex.
-fn (r &Registry) signing_key() ?ed25519.PrivateKey {
-	raw := os.getenv_opt(registry_key_env) or { os.read_file(registry_key_path()) or { return none } }
+// This private wrapper distinguishes an unsigned registry from an invalid key
+// without adding secret material to the serializable Registry structure.
+struct RegistrySigningKey {
+	key ?ed25519.PrivateKey
+}
+
+// checked_signing_key treats only an absent environment variable and a genuinely
+// missing key file as unsigned. A configured value must contain a valid seed.
+fn (r &Registry) checked_signing_key() !RegistrySigningKey {
+	if raw := os.getenv_opt(registry_key_env) {
+		return registry_signing_key_from_hex(raw, 'environment variable ${registry_key_env}')
+	}
+	path := registry_key_path()
+	os.lstat(path) or {
+		// Windows lstat can report a dangling directory link as missing.
+		if os.is_not_exist(err) && !os.is_link(path) {
+			return RegistrySigningKey{}
+		}
+		return error('failed to inspect registry signing key file `${path}`')
+	}
+	stat := os.stat(path) or {
+		return error('failed to inspect registry signing key file `${path}`')
+	}
+	if stat.get_filetype() != .regular {
+		return error('registry signing key file `${path}` is not a regular file')
+	}
+	raw := os.read_file(path) or {
+		return error('failed to read registry signing key file `${path}`')
+	}
+	return registry_signing_key_from_hex(raw, 'registry signing key file `${path}`')
+}
+
+fn registry_signing_key_from_hex(raw string, source string) !RegistrySigningKey {
 	hex := raw.trim_space()
 	if hex == '' {
-		return none
+		return error('invalid ${source}: signing seed is empty')
 	}
-	seed := hexcode.decode(hex) or { return none }
+	seed := hexcode.decode(hex) or {
+		return error('invalid ${source}: signing seed must be hexadecimal')
+	}
 	if seed.len != ed25519.seed_size {
-		return none
+		return error('invalid ${source}: signing seed must contain exactly ${ed25519.seed_size} bytes')
 	}
-	return ed25519.new_key_from_seed(seed)
+	return RegistrySigningKey{
+		key: ed25519.new_key_from_seed(seed)
+	}
+}
+
+// The public string helpers retain their existing signatures. The CLI checks
+// configuration before binding, while these helpers continue to load per call.
+fn (r &Registry) signing_key() ?ed25519.PrivateKey {
+	loaded := r.checked_signing_key() or { return none }
+	return loaded.key
 }
 
 // public_key_hex returns the hex-encoded public key for the configured signing

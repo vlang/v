@@ -16,10 +16,16 @@ Run the server from the repository root:
 
 The standalone tool also accepts `vpm registry serve [--port <port>]`, with `-p` as a port alias.
 Ports use decimal digits and must be from 1 to 65535; the default is 9090. The server loads
-`.vpm-registry/index.json` and artifacts from the working directory and listens on all interfaces.
+`.vpm-registry/index.json` and artifacts from the working directory. It binds `0.0.0.0`, all IPv4
+interfaces, and its startup message states that it performs no authentication. Other hosts able
+to reach the port can read its metadata and archives.
 Publishing and yanking remain in-process `Registry` methods.
 Only a missing index starts an empty registry. An unreadable or invalid existing index aborts
-startup with an error instead of serving an empty module list.
+startup with an error instead of serving an empty module list. Repeated version strings within
+a module are rejected, including identical duplicates; the same version may occur in other modules.
+Invalid configured signing keys also abort startup before binding. An empty or malformed
+`VPM_REGISTRY_KEY` does not fall back to `signing.key`. Unsigned operation requires an unset
+environment variable and a genuinely missing key file.
 The server binds its listener before printing the startup messages. A bind failure reports the
 underlying error and exits with a nonzero status.
 
@@ -66,13 +72,19 @@ There are none. No route in this repository accepts or issues credentials, so th
 log in to and no token to obtain from one. What the client sends, and what the server does with it,
 is described under Authentication below.
 
-### Publishing
+### Planned write routes
 
-| Endpoint | Purpose |
-|----------|---------|
-| `PUT /api/publish` | Publish a new module version |
-| `PUT /api/yank/<module>/<version>` | Yank a version |
-| `PUT /api/unyank/<module>/<version>` | Unyank a version |
+| Endpoint | Purpose | Status |
+|----------|---------|--------|
+| `PUT /api/publish` | Publish a new module version | Planned |
+| `PUT /api/yank/<module>/<version>` | Yank a version | Planned |
+| `PUT /api/unyank/<module>/<version>` | Unyank a version | Planned |
+
+The reference server does not implement these HTTP write routes; requests to them return 404.
+Populate `.vpm-registry/index.json` and `artifacts/<module>/<version>.zip` before starting the
+server, following the [index population documentation](../doc/vpm_registry.md#publishing).
+Publishing, yanking, and unyanking are currently in-process `Registry` methods; they are not
+HTTP operations. Save index changes and restart the server to expose updated metadata.
 
 ### Search and Discovery
 
@@ -128,6 +140,9 @@ Per-version entry (JSON):
 ## Registry Signing
 
 - The registry signs its metadata with a private key
+- `VPM_REGISTRY_KEY` takes precedence over `signing.key`; configured values must decode to an
+  exactly 32-byte ed25519 seed. Invalid or unreadable configured keys stop startup, and only an
+  unset variable plus a missing key file select an unsigned registry.
 - `config.json` includes the server's public key for discovery, not as a trust root. A mirror can
   replace this key along with the metadata and signature.
 - Before verifying a mirror's metadata, obtain the origin's public key through a separate trusted

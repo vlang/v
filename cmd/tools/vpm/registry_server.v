@@ -149,6 +149,10 @@ fn vpm_registry(query []string) {
 				vpm_error(err.msg())
 				exit(1)
 			}
+			registry.checked_signing_key() or {
+				vpm_error(err.msg())
+				exit(1)
+			}
 			listener := net.listen_tcp(.ip, ':${port}') or {
 				vpm_error('failed to listen on port ${port}: ${err.msg()}')
 				exit(1)
@@ -162,7 +166,7 @@ fn vpm_registry(query []string) {
 				show_startup_message: false
 			}
 			println('Serving ${registry.modules.len} module(s) on port ${port}')
-			println('Listening on http://127.0.0.1:${port}')
+			println('Listening on http://0.0.0.0:${port} (all IPv4 interfaces; no authentication)')
 			flush_stdout()
 			// Blocks until the process is stopped; there is nothing to return.
 			srv.listen_and_serve()

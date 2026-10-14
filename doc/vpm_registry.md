@@ -122,7 +122,7 @@ It prints the number of modules it loaded and the address it bound:
 
 ```
 Serving 1 module(s) on port 9090
-Listening on http://127.0.0.1:9090
+Listening on http://0.0.0.0:9090 (all IPv4 interfaces; no authentication)
 ```
 
 Data is stored in `os.getwd()/.vpm-registry`, from `registry_dir()` in
@@ -140,10 +140,12 @@ Data is stored in `os.getwd()/.vpm-registry`, from `registry_dir()` in
 Only a missing index initializes an empty registry. Read and JSON decoding failures for an
 existing index abort startup and report the error. Imported module keys, entry names, version names,
 and versions must satisfy the same component rules as publication. The key and every name within
-its entry must agree; inconsistent or unroutable metadata is rejected.
+its entry must agree; inconsistent or unroutable metadata is rejected. Each version string must
+occur only once within a module, even when duplicate records have identical metadata.
 
-The default port is 9090 (`default_registry_port`). The server binds `:9090`,
-which is every interface, although the message it prints names loopback.
+The default port is 9090 (`default_registry_port`). The server binds every IPv4 interface,
+reported as `0.0.0.0:9090`. It performs no authentication: other hosts that can reach this port
+can read the registry metadata and archives. The startup message states this exposure explicitly.
 
 ### The port flag reaches the parser
 
@@ -160,7 +162,7 @@ read as a registry argument.
 ```
 $ ./v registry serve --port 9099
 Serving 0 module(s) on port 9099
-Listening on http://127.0.0.1:9099
+Listening on http://0.0.0.0:9099 (all IPv4 interfaces; no authentication)
 ```
 
 Ports must contain decimal digits and be from 1 to 65535. Invalid text, numeric suffixes and
@@ -171,8 +173,10 @@ the listener has bound successfully.
 ### Environment variables
 
 - `VPM_REGISTRY_KEY` — a hex-encoded ed25519 seed. It takes precedence over
-  `signing.key`; the seed must be exactly 32 bytes or the registry is treated as
-  unsigned. With neither, `signature()` returns `""`.
+  `signing.key`; the seed must be exactly 32 bytes. An empty, malformed, wrong-length, or
+  unreadable configured key aborts startup before binding. An explicitly set environment variable
+  never falls back to the key file, including when empty or invalid. Only an unset variable and
+  genuinely absent key file select unsigned operation, where `signature()` returns `""`.
 - `VPM_REGISTRY` — the base url of the registry `v install` asks before the vpm
   servers, read per resolution and normalised like a server url. Unset means
   there is no registry, and then no registry route is requested at all. Unlike a
@@ -228,7 +232,8 @@ replacing `index.json` underneath a running server has no effect until restart.
 
 - Algorithm: ed25519, from `crypto.ed25519`. The key is a 32-byte seed, hex
   encoded, loaded from `VPM_REGISTRY_KEY` when set and from `signing.key`
-  otherwise.
+  otherwise. Configured keys are validated before the server binds; invalid keys stop startup
+  instead of silently selecting unsigned operation.
 - The signed bytes are `canonical_json()`, which is `json2.encode` of
   `SignedIndex{ modules }`, with module, dependency and feature map keys sorted. Version and
   feature arrays retain their order, and serialization leaves the registry unchanged.
