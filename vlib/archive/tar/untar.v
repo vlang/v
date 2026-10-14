@@ -150,6 +150,9 @@ fn (mut u Untar) read_header() ! {
 			}
 		}
 		.hard_link, .sym_link, .char_dev, .block_dev, .fifo {
+			if !u.checksum_ok() {
+				return error('Checksum error link/device reading:${u.read}')
+			}
 			u.read.special = .ignore
 			u.reader.other_block(mut u.read, block_header.str())
 		}

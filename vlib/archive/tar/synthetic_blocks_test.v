@@ -342,6 +342,18 @@ pub fn test_synthetic_archive_rejects_a_broken_directory_checksum() {
 	assert msg == 'Checksum error: directory reading:(block_number:1 path: special:no stop_early:false)', 'msg "${msg}"'
 }
 
+pub fn test_synthetic_archive_rejects_a_broken_link_and_device_checksum() {
+	for typeflag in [`1`, `2`, `3`, `4`, `6`] {
+		mut bad := sb_header('link', typeflag, 0)
+		bad[0] = `B`
+		mut reader := &SyntheticReader{}
+		mut untar := new_untar(reader)
+		mut msg := ''
+		untar.read_all_blocks(sb_concat([bad, sb_blank(), sb_blank()])) or { msg = err.msg() }
+		assert msg.starts_with('Checksum error'), 'typeflag ${typeflag} msg "${msg}"'
+	}
+}
+
 pub fn test_synthetic_archive_rejects_block_size_errors() {
 	mut reader := &SyntheticReader{}
 	mut untar := new_untar(reader)
