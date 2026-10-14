@@ -404,3 +404,15 @@ fn test_encode_escapes_special_characters_in_strings() {
 		assert decoded.text == original
 	}
 }
+
+fn test_encode_escapes_all_control_bytes_and_preserves_unicode() {
+	for c in 0 .. 32 {
+		original := [u8(c)].bytestr()
+		encoded := toml.encode(EscapedStrings{ text: original })
+		assert toml.decode[EscapedStrings](encoded)!.text == original
+	}
+	for original in ['こんにちは 😀', '\r\n\b\f', '\\\\\"'] {
+		encoded := toml.encode(EscapedStrings{ text: original })
+		assert toml.decode[EscapedStrings](encoded)!.text == original
+	}
+}
