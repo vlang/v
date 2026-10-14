@@ -10,6 +10,8 @@ fn test_core_header_ownership_preserves_application_and_thirdparty_headers() {
 	g.compiler_vroot = '/vroot'
 	assert g.core_native_header_is_redeclared('/vroot/vlib/time/timerfd.c.v', '<sys/timerfd.h>')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/v/workers/thread_nix.c.v', '<sys/prctl.h>')
+	assert g.core_native_header_is_redeclared('/vroot/vlib/v/gen/fastc/unit_compile_nix.c.v', '<signal.h>')
+	assert !g.core_native_header_is_redeclared('/project/v/gen/fastc/unit_compile_nix.c.v', '<signal.h>')
 	assert !g.core_native_header_is_redeclared('/project/time/timerfd.c.v', '<sys/timerfd.h>')
 	assert !g.core_native_header_is_redeclared('/vroot/vlib/time/timerfd.c.v', '<custom.h>')
 	assert !g.core_native_header_is_redeclared('/vroot/vlib/compress/brotli/brotli.c.v', '<stdio.h>')

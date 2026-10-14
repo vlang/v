@@ -52,7 +52,7 @@ fn test_win32_api_names_keep_their_win32_meaning_only_for_windows_targets() {
 		create_file := if target_os == 'windows' { 'CreateFileW' } else { 'CreateFile' }
 		for line in ['int ${call_conv}Sleep(int ms);', 'int ${call_conv}CloseHandle(int handle);',
 			'int ${call_conv}${create_file}(int flags);',
-			'int ${call_conv}GetFileInformationByHandle(void* handle, void* information);',
+			'i32 ${call_conv}GetFileInformationByHandle(void* handle, void* information);',
 			'\tprintln(int__str(${create_file}(1)));', '\tvoid* create_file = ${create_file};'] {
 			assert line in generated, '${target_os}: ${line}'
 		}

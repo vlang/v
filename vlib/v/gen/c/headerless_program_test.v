@@ -99,7 +99,7 @@ fn main() {
 	assert run.output == 'OK\n', run.output
 }
 
-fn test_bsd_executable_retains_sysctl_header() {
+fn test_bsd_executable_uses_native_sysctl_ownership() {
 	$if windows || freestanding || vinix {
 		return
 	}
@@ -121,7 +121,15 @@ fn test_bsd_executable_retains_sysctl_header() {
 			assert generated.exit_code == 0, generated.output
 			code := os.read_file(c_file)!
 			assert code.contains('sysctl('), target
-			assert code.contains('#include <sys/sysctl.h>'), '${target}: system headers must supply the executable path sysctl constants'
+			if with_explicit_header {
+				assert code.contains('#include <sys/sysctl.h>'), '${target}: native headers own sysctl declarations'
+			} else {
+				assert !code.contains('#include <sys/sysctl.h>'), '${target}: standalone builds provide the core ABI'
+				assert code.contains('i32 sysctl('), '${target}: standalone builds need the sysctl prototype'
+				assert code.contains('#define CTL_KERN 1'), target
+				assert code.contains('#define KERN_PROC_PATHNAME 12'), target
+				assert code.contains('#define KERN_PROC_ARGS 55'), target
+			}
 		}
 		$if freebsd || openbsd {
 			mut compilers := ['cc']
@@ -225,7 +233,8 @@ fn test_self_c_has_no_include_directives() {
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(c_file)!
 	$if !windows {
-		assert code.contains('DIR* fdopendir('), 'the CLI needs the pointer-returning POSIX binding'
+		assert code.split_into_lines().any(it.starts_with('DIR* fdopendir(')), 'the CLI needs the pointer-returning POSIX fdopendir binding'
+		assert code.split_into_lines().any(it.starts_with('DIR* opendir(')), 'the CLI needs the pointer-returning POSIX opendir binding'
 	}
 	for line in code.split_into_lines() {
 		// Compiler string literals still contain text used to generate other C files.
