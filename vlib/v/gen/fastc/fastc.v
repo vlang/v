@@ -1834,6 +1834,10 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut global_sources := map[string]string{}
 	generic_method_sources := fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
 	timer.mark('declaration_indexes')
+	// builtin declares IError as `pub struct C.IError`, which the index does not record, so
+	// signatures such as `fn f() IError` in selfhost sources would be undeclared. The arm64 path
+	// records the same intrinsic error interface.
+	declared_types['IError'] = true
 	// The type declarations depend only on the declaration index, so they are
 	// rendered on a worker while the signatures are collected below; the
 	// composite typedefs that precede them need both and are rendered after.
