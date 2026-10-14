@@ -84,7 +84,13 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 		temporary
 	}
 	return FastcStructLiteralFieldValue{
-		explicit_initializers: ['${field_decl_type} ${temporary} = (${value});']
+		explicit_initializers: if value.contains('({') {
+			// TinyCC cannot keep an outer aggregate initializer active while
+			// evaluating a statement expression with its own initializers.
+			['${field_decl_type} ${temporary}; ${temporary} = (${value});']
+		} else {
+			['${field_decl_type} ${temporary} = (${value});']
+		}
 		rendered_field:        '.${c_field_name}=(${stored_value})'
 		field_value:           stored_value
 	}

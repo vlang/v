@@ -181,6 +181,11 @@ fn (mut g Parser) parse_c_directive() ! {
 				}
 				rest = rest.all_after(qualifier).trim_space()
 			}
+			expanded, enabled := fastc_expand_existing_path_macros(rest, g.prefs.vroot, g.path)!
+			if !enabled {
+				return
+			}
+			rest = expanded
 			// Retain native inputs and link/header search flags for TinyCC.
 			if fastc_flag_is_skippable(rest) {
 				g.c_flags << fastc_c_flag_args(rest, g.prefs.vroot, g.path)!
@@ -227,7 +232,8 @@ fn (mut g Parser) parse_c_directive() ! {
 		&& g.prefs.target.arch == 'arm64' {
 		// TinyCC emits C99 extern-inline ARM64 support functions in each split
 		// unit. Weak definitions let the linker share those identical helpers.
-		g.out.writeln('#define inline __attribute__((weak)) inline')
+		// glibc can define __attribute__ as an empty macro for TinyCC.
+		g.out.writeln('#define inline __attribute((weak)) inline')
 		g.out.writeln('#${c_directive}')
 		g.out.writeln('#undef inline')
 		return
@@ -236,7 +242,11 @@ fn (mut g Parser) parse_c_directive() ! {
 }
 
 fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
-	expanded := fastc_resolve_c_pseudo_paths(raw, vroot, source_file)
+	selected, enabled := fastc_expand_existing_path_macros(raw, vroot, source_file)!
+	if !enabled {
+		return []string{}
+	}
+	expanded := fastc_resolve_c_pseudo_paths(selected, vroot, source_file)
 	mut args := cmdexec.split_args(expanded) or {
 		return error('fastc parser cannot split C build flag `${raw}`')
 	}
@@ -275,6 +285,85 @@ fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
 		}
 	}
 	return args
+}
+
+// fastc_expand_existing_path_macros selects the first existing native input or
+// search path. An unmatched optional macro disables the entire flag directive.
+fn fastc_expand_existing_path_macros(raw string, vroot string, source_file string) !(string, bool) {
+	mut result := raw
+	for {
+		first_index := result.index(r'$first_existing') or { -1 }
+		when_index := result.index(r'$when_first_existing') or { -1 }
+		if first_index < 0 && when_index < 0 {
+			return result, true
+		}
+		optional := when_index >= 0 && (first_index < 0 || when_index < first_index)
+		index := if optional { when_index } else { first_index }
+		macro_name := if optional { r'$when_first_existing' } else { r'$first_existing' }
+		open_index := index + macro_name.len
+		if open_index >= result.len || result[open_index] != `(` {
+			return error('fastc parser requires parentheses after `${macro_name}`')
+		}
+		mut quote := u8(0)
+		mut close_index := -1
+		for i := open_index + 1; i < result.len; i++ {
+			ch := result[i]
+			if ch in [`'`, `"`] {
+				if quote == 0 {
+					quote = ch
+				} else if quote == ch {
+					quote = 0
+				}
+			} else if ch == `)` && quote == 0 {
+				close_index = i
+				break
+			}
+		}
+		if close_index < 0 {
+			return error('fastc parser cannot close `${macro_name}`')
+		}
+		mut selected := ''
+		mut candidates := []string{}
+		for value in fastc_existing_path_candidates(result[open_index + 1..close_index]) {
+			path := fastc_resolve_c_pseudo_paths(value.trim(' \t\r\n\'"'), vroot, source_file)
+			if path == '' {
+				continue
+			}
+			candidates << path
+			if selected == '' && os.exists(path) {
+				selected = path
+			}
+		}
+		if selected == '' {
+			if optional {
+				return '', false
+			}
+			return error('none of the paths ${candidates} exist')
+		}
+		result = result[..index] + os.quoted_path(selected) + result[close_index + 1..]
+	}
+	return result, true
+}
+
+// fastc_existing_path_candidates splits candidates at commas outside quoted filenames.
+fn fastc_existing_path_candidates(text string) []string {
+	mut values := []string{}
+	mut quote := u8(0)
+	mut start := 0
+	for i, ch in text {
+		if ch in [`'`, `"`] {
+			if quote == 0 {
+				quote = ch
+			} else if quote == ch {
+				quote = 0
+			}
+		} else if ch == `,` && quote == 0 {
+			values << text[start..i]
+			start = i + 1
+		}
+	}
+	values << text[start..]
+	return values
 }
 
 fn fastc_pkgconfig_flags(raw string) ![]string {
