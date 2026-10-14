@@ -25,8 +25,17 @@ pub fn (s string) substr(start int, end int) string {
 	return s.slice(start, end)
 }
 
+// after returns the contents after the last occurrence of `dot`, or the source when absent.
+// An empty delimiter leaves the source unchanged.
 pub fn (s string) after(dot string) string {
-	return string(s.str.slice(JS.Number(int(s.str.lastIndexOf(dot.str)) + 1), s.str.length))
+	if dot.len == 0 {
+		return s.clone()
+	}
+	pos := int(s.str.lastIndexOf(dot.str))
+	if pos == -1 {
+		return s.clone()
+	}
+	return string(s.str.slice(JS.Number(pos + int(dot.str.length)), s.str.length))
 }
 
 pub fn (s string) after_char(dot u8) string {
