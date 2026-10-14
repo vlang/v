@@ -38,3 +38,27 @@ fn test_default_map() {
 	m.set('s', [9])
 	assert m.get('s') == [9]
 }
+
+struct DefaultFactoryCalls {
+mut:
+	count int
+}
+
+fn test_default_map_factory_is_lazy_and_called_once_per_key() {
+	mut calls := &DefaultFactoryCalls{}
+	mut m := maps.new_default_map[string, int](fn [mut calls] () int {
+		calls.count++
+		return calls.count
+	})
+	assert m.get_opt('a') == none
+	assert calls.count == 0
+	assert m.len() == 0
+	assert m.get('a') == 1
+	assert m.get('a') == 1
+	assert calls.count == 1
+	m.set('b', 99)
+	assert m.get('b') == 99
+	assert calls.count == 1
+	assert m.get('c') == 2
+	assert calls.count == 2
+}

@@ -77,7 +77,7 @@ pub fn (c &Counter[T]) most_common(n int) []CounterEntry[T] {
 pub struct DefaultMap[K, V] {
 mut:
 	m      map[K]V
-	create fn () V
+	create fn () V @[required]
 }
 
 // new_default_map creates an empty DefaultMap using factory for new keys.
