@@ -546,6 +546,11 @@ fn (g &Parser) method_uses_undefined_receiver() bool {
 					}
 				}
 			}
+			previous = tok
+			lookahead = ahead
+			tok = next
+			lit = lookahead.lit
+			continue
 		}
 		previous = tok
 		tok = lookahead.scan()

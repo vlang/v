@@ -3344,7 +3344,7 @@ fn fastc_render_c_unit(pieces []string, units &FastcUnitLayout, g int, first_uni
 	for k in units.unit_starts[first_unit] .. units.unit_starts[end_unit] {
 		out.write_string(pieces[k])
 	}
-	return out.str()
+	return fastc_take_string(mut out)
 }
 
 fn fastc_descending_size_order(sizes []int) []int {

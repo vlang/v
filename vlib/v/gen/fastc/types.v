@@ -1281,9 +1281,8 @@ fn (g &Parser) resolve_cross_module_global_type(name string) ?string {
 	}
 	suffix := '.${name}'
 	for key, global_type_id in g.global_types.ids {
-		global_type := flat.source_type_name(global_type_id)
 		if key == name || key.ends_with(suffix) {
-			return global_type
+			return flat.source_type_name(global_type_id)
 		}
 	}
 	return none

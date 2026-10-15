@@ -2553,10 +2553,11 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 		g.validate_expression_field_visibility(expression_tokens)!
 		g.validate_expression_calls(expression_tokens)!
 	}
+	mut flags := fastc_special_token_flags(expression_tokens)
 	mut rendered_expression := fastc_take_trimmed(mut result)
-	if g.selfhost && (expression_tokens.any(it.tok == .name && it.source != '')
+	if g.selfhost && (flags.has_source_name
 		|| fastc_expression_has_pointer_type_sizeof(expression_tokens))
-		&& !expression_tokens.any(it.tok.is_assignment()) {
+		&& !flags.has_assignment {
 		// Rebuild enclosing casts and calls after lowering an operand to a typed atom.
 		// Their opening delimiters may have been consumed by the operand's `or` block.
 		// Pointer types inside sizeof also need the typed raw renderer in ordinary arithmetic.
@@ -2578,6 +2579,7 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 			lit:             last_token.lit
 			typ:             last_token.typ
 		}
+		flags.has_not = true
 	}
 	// A boolean `is` expression with a flow-sensitive `&&` narrowing is handled first, on the
 	// original tokens: its operands (including any `(x as T).field`) must render with the
@@ -2585,23 +2587,26 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 	// assignment (`x = a is T && …`) is left to render_assignment_expression, which routes its
 	// RHS through the same narrowing renderer; handling the whole `x = …` here would mis-split
 	// at the `=` and register a stale smart-cast that the RHS then re-applies (double unwrap).
-	if g.selfhost && !fastc_tokens_have_top_level_assignment(expression_tokens) {
+	if g.selfhost && flags.has_type_test && flags.has_logical
+		&& !flags.has_top_level_assignment {
 		if narrowed := g.render_narrowing_boolean_expression(expression_tokens) {
 			g.last_expression_type = flat.source_type_bool
 			g.last_expression = expression_tokens
 			return g.render_constant_references(expression_tokens, narrowed)
 		}
 	}
-	if g.selfhost {
+	if g.selfhost && flags.has_as {
 		if rewritten := g.rewrite_embedded_as_casts(expression_tokens) {
 			expression_tokens = rewritten.clone()
+			// Cast folding replaces token ranges with typed atoms, so later
+			// dispatch must use the resulting token shapes.
+			flags = fastc_special_token_flags(expression_tokens)
 			rendered_expression = g.render_raw_expression_tokens(expression_tokens) or {
 				rendered_expression
 			}
 		}
 	}
-	if g.selfhost && expression_tokens.any(it.tok == .name && it.source != '')
-		&& fastc_tokens_have_top_level_assignment(expression_tokens) {
+	if g.selfhost && flags.has_source_name && flags.has_top_level_assignment {
 		if assignment := g.render_map_expression(expression_tokens) {
 			g.last_expression_type = assignment.typ
 			g.last_expression = expression_tokens
@@ -2621,39 +2626,53 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 	if g.selfhost && expression_tokens.len > 1 && expression_tokens.last().tok == .not && rendered_expression.ends_with('?') {
 		rendered_expression = rendered_expression[..rendered_expression.len - 1] + '!'
 	}
-	rendered_expression = g.render_enum_alias_member_references(expression_tokens, rendered_expression)
+	if flags.has_dot {
+		rendered_expression = g.render_enum_alias_member_references(expression_tokens, rendered_expression)
+	}
 	rendered_expression = g.render_constant_references(expression_tokens, rendered_expression)
 	if g.selfhost {
-		rendered_expression = g.render_fixed_array_lengths(expression_tokens, rendered_expression)
-		if indexed_mutation := g.render_array_inc_dec_expression(expression_tokens) {
-			g.last_expression_type = indexed_mutation.typ
-			g.last_expression = expression_tokens
-			return g.render_constant_references(expression_tokens, indexed_mutation.source)
+		if flags.has_dot {
+			rendered_expression = g.render_fixed_array_lengths(expression_tokens, rendered_expression)
+		}
+		if flags.has_lsbr && expression_tokens.len > 0
+			&& expression_tokens.last().tok in [.inc, .dec] {
+			if indexed_mutation := g.render_array_inc_dec_expression(expression_tokens) {
+				g.last_expression_type = indexed_mutation.typ
+				g.last_expression = expression_tokens
+				return g.render_constant_references(expression_tokens, indexed_mutation.source)
+			}
 		}
 	}
-	if g.selfhost {
+	if g.selfhost && flags.has_dot {
 		// `m[k].field = value`: a map value is not a C lvalue, so assign the field through a
 		// mutable pointer to the entry rather than the map-read spelling render_special yields.
-		if map_field := g.render_map_value_field_assignment(expression_tokens) {
-			g.last_expression_type = map_field.typ
-			g.last_expression = expression_tokens
-			return g.render_constant_references(expression_tokens, map_field.source)
+		if flags.has_lsbr && flags.has_top_level_assignment {
+			if map_field := g.render_map_value_field_assignment(expression_tokens) {
+				g.last_expression_type = map_field.typ
+				g.last_expression = expression_tokens
+				return g.render_constant_references(expression_tokens, map_field.source)
+			}
 		}
 		// `m[k].field++` / `m[k].field--`: same lvalue problem, incremented through the entry.
-		if map_field := g.render_map_value_field_inc_dec(expression_tokens) {
-			g.last_expression_type = map_field.typ
-			g.last_expression = expression_tokens
-			return g.render_constant_references(expression_tokens, map_field.source)
+		if flags.has_lsbr && expression_tokens.len > 0
+			&& expression_tokens.last().tok in [.inc, .dec] {
+			if map_field := g.render_map_value_field_inc_dec(expression_tokens) {
+				g.last_expression_type = map_field.typ
+				g.last_expression = expression_tokens
+				return g.render_constant_references(expression_tokens, map_field.source)
+			}
 		}
 		// `x.field = value` where `field` is common to every variant of the boxed sum type `x`:
 		// dispatch on the runtime tag and write through the matched variant, not the box.
-		if common_assign := g.render_sumtype_common_field_assignment(expression_tokens) {
-			g.last_expression_type = common_assign.typ
-			g.last_expression = expression_tokens
-			return g.render_constant_references(expression_tokens, common_assign.source)
+		if flags.has_top_level_assignment {
+			if common_assign := g.render_sumtype_common_field_assignment(expression_tokens) {
+				g.last_expression_type = common_assign.typ
+				g.last_expression = expression_tokens
+				return g.render_constant_references(expression_tokens, common_assign.source)
+			}
 		}
 	}
-	if special := g.render_special_expression(expression_tokens, rendered_expression) {
+	if special := g.render_special_expression_with_flags(expression_tokens, rendered_expression, flags) {
 		g.last_expression_type = special.typ
 		g.last_expression = expression_tokens
 		return_types := g.multi_return_types_for_expression(expression_tokens)
@@ -3558,21 +3577,24 @@ fn (g &Parser) expected_call_argument_type(tokens []FastcExpressionToken) string
 // of letting each of them rescan the expression.
 struct FastcTokenFlags {
 mut:
-	has_dot               bool
-	has_lpar              bool
-	has_lsbr              bool
-	has_lcbr              bool
-	has_logical           bool
-	has_comparison        bool
-	has_binary            bool
-	has_assignment        bool
-	has_not               bool
-	has_plus              bool
-	has_typeof            bool
-	has_left_shift        bool
-	has_as                bool
-	has_membership        bool
-	has_top_level_logical bool
+	has_dot                  bool
+	has_lpar                 bool
+	has_lsbr                 bool
+	has_lcbr                 bool
+	has_logical              bool
+	has_comparison           bool
+	has_binary               bool
+	has_assignment           bool
+	has_not                  bool
+	has_plus                 bool
+	has_typeof               bool
+	has_left_shift           bool
+	has_as                   bool
+	has_membership           bool
+	has_top_level_logical    bool
+	has_top_level_assignment bool
+	has_type_test            bool
+	has_source_name          bool
 }
 
 // The guarded_* wrappers below skip a lowering when the expression lacks a
@@ -4243,6 +4265,12 @@ fn fastc_special_token_flags(tokens []FastcExpressionToken) FastcTokenFlags {
 	for item in tokens {
 		if item.tok.is_assignment() {
 			flags.has_assignment = true
+			if delimiter_depth == 0 {
+				flags.has_top_level_assignment = true
+			}
+		}
+		if item.tok == .name && item.source != '' {
+			flags.has_source_name = true
 		}
 		if item.lit == 'typeof' {
 			flags.has_typeof = true
@@ -4285,9 +4313,14 @@ fn fastc_special_token_flags(tokens []FastcExpressionToken) FastcTokenFlags {
 					flags.has_top_level_logical = true
 				}
 			}
-			.eq, .ne, .gt, .lt, .ge, .le, .key_is, .not_is {
+			.eq, .ne, .gt, .lt, .ge, .le {
 				flags.has_binary = true
 				flags.has_comparison = true
+			}
+			.key_is, .not_is {
+				flags.has_binary = true
+				flags.has_comparison = true
+				flags.has_type_test = true
 			}
 			.key_in, .not_in {
 				flags.has_binary = true
@@ -5122,11 +5155,17 @@ fn (g &Parser) render_special_expression_fallback(tokens []FastcExpressionToken,
 }
 
 fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
-	special := g.render_special_expression_impl(tokens, rendered_expression) or {
-		if g.selfhost { return g.render_channel_property_expression(tokens, rendered_expression) }
+	return g.render_special_expression_with_flags(tokens, rendered_expression, fastc_special_token_flags(tokens))
+}
+
+fn (g &Parser) render_special_expression_with_flags(tokens []FastcExpressionToken, rendered_expression string, flags FastcTokenFlags) ?FastcRenderedExpression {
+	special := g.render_special_expression_impl(tokens, rendered_expression, flags) or {
+		if g.selfhost && flags.has_dot {
+			return g.render_channel_property_expression(tokens, rendered_expression)
+		}
 		return none
 	}
-	if g.selfhost {
+	if g.selfhost && flags.has_dot {
 		if properties := g.render_channel_property_expression(tokens, special.source) {
 			return FastcRenderedExpression{ source: properties.source, typ: special.typ }
 		}
@@ -5134,7 +5173,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 	return special
 }
 
-fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
+fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, rendered_expression string, flags FastcTokenFlags) ?FastcRenderedExpression {
 	if tokens.len == 2 && tokens[0].tok == .amp && tokens[1].tok == .name {
 		if local := g.locals[tokens[1].lit] {
 			if local.is_reference {
@@ -5190,7 +5229,6 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 			return interface_object
 		}
 	}
-	flags := fastc_special_token_flags(tokens)
 	has_typeof := flags.has_typeof
 	has_lpar := flags.has_lpar
 	has_binary := flags.has_binary
