@@ -10818,6 +10818,10 @@ fn (mut tc TypeChecker) check_result_propagation(id flat.NodeId, source_id flat.
 		tc.record_error_at(.return_mismatch, 'unexpected `!`, the function `${tc.call_display_name(*source)}` does not return a Result', id, tc.propagation_operator_pos(source_id, id, '!'))
 		return
 	}
+	if tc.a.node(tc.unwrap_paren_expr_id(source_id)).kind == .map_init {
+		tc.record_error_at(.return_mismatch, 'unexpected `!`, expression of type `${source_type.name()}` does not return a Result', id, tc.propagation_operator_pos(source_id, id, '!'))
+		return
+	}
 	if source.kind == .call && clean_source_type is ResultType && clean_return_type !is ResultType
 		&& !tc.current_fn_is_main() && !tc.current_fn_is_test() {
 		tc.record_nested_propagation_return_errors(id, source_id, 'Result', '!')
@@ -18200,7 +18204,8 @@ fn (mut tc TypeChecker) record_decl_map_or_unwrap_copy(rhs_id flat.NodeId) bool 
 	}
 	source_id := tc.a.child(or_expr, 0)
 	source := tc.a.node(source_id)
-	if source.kind == .call {
+	if source.kind == .call || (or_expr.value == '!'
+		&& tc.a.node(tc.unwrap_paren_expr_id(source_id)).kind == .map_init) {
 		return false
 	}
 	if or_expr.value in ['?', '!'] {

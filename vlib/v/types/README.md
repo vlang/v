@@ -100,3 +100,6 @@ Each `_test.v` file must contain at least one active `test_` function. A file wh
 are all excluded by conditional compilation reports a missing-test error. When the file
 has no active function declarations, this diagnostic points to the start of the file;
 a helper-only file points to its helper function.
+
+Map literals cannot use postfix `!`: they are ordinary map values and do not return a Result.
+This rule also applies to map literals in constant declarations.
