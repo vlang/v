@@ -775,7 +775,7 @@ fn (t &Transformer) mut_param_address_source_type(id flat.NodeId) ?u32 {
 	if base_type == 0 {
 		base_type = t.raw_var_type(child.value)
 	}
-	base_type = flat.source_type_id(trimmed_transform_text(flat.source_type_name(base_type)))
+	base_type = t.trimmed_type_id(base_type)
 	if flat.source_type_shape(base_type).has(.mutable_type) {
 		base_type = flat.source_type_id(trimmed_transform_text(flat.source_type_name(base_type)[4..]))
 	}

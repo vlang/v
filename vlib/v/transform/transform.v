@@ -9,6 +9,9 @@ import v.pref
 import v.types
 import v.util
 
+const transform_source_type_i128 = flat.source_type_id('i128')
+const transform_source_type_u128 = flat.source_type_id('u128')
+
 @[inline]
 fn same_transform_text(a string, b string) bool {
 	if a.len != b.len {
@@ -11169,7 +11172,7 @@ fn (t &Transformer) address_expr_type_name(id flat.NodeId) u32 {
 	if typ == 0 && node.kind == .ident {
 		typ = t.var_type(node.value)
 	}
-	return flat.source_type_id(trimmed_transform_text(flat.source_type_name(typ)))
+	return t.trimmed_type_id(typ)
 }
 
 fn address_expr_base_is_indirect_storage(typ string) bool {
@@ -15742,8 +15745,9 @@ fn (mut t Transformer) compound_assign_operator_type(lhs_id flat.NodeId, lhs_typ
 	if isnil(t.tc) || lhs_type_id == u32(0) {
 		return none
 	}
-	clean_lhs_type := flat.source_type_name(t.trim_pointer_type(flat.source_type_id(trimmed_transform_text(lhs_type))))
-	if is_numeric_type_name(clean_lhs_type)
+	clean_lhs_type_source_id := t.trim_pointer_type(flat.source_type_id(trimmed_transform_text(lhs_type)))
+	clean_lhs_type := flat.source_type_name(clean_lhs_type_source_id)
+	if is_numeric_type_name(clean_lhs_type_source_id)
 		|| clean_lhs_type in ['bool', 'char', 'string', 'voidptr', 'byteptr', 'charptr'] {
 		return none
 	}
@@ -15770,11 +15774,12 @@ fn (t &Transformer) compound_assign_operator_type_candidate(candidate_id u32, op
 	clean_source_id := t.trim_pointer_type(flat.source_type_id(trimmed_transform_text(candidate)))
 	clean_comparison_type_id_4 := clean_source_id
 	clean_source_id_2 := clean_comparison_type_id_4
-	clean := flat.source_type_name(clean_source_id_2)
+	clean_source_id_6 := clean_source_id_2
+	clean := flat.source_type_name(clean_source_id_6)
 	if clean_source_id == 0 {
 		return none
 	}
-	if is_numeric_type_name(clean)
+	if is_numeric_type_name(clean_source_id_6)
 		|| clean in ['bool', 'char', 'string', 'voidptr', 'byteptr', 'charptr'] {
 		return none
 	}
@@ -16200,7 +16205,7 @@ fn (mut t Transformer) struct_field_selector_for_type(base flat.NodeId, struct_t
 }
 
 fn (t &Transformer) struct_field_path_for_field(struct_type_id u32, field string) ?[]FieldInfo {
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
 	if path := t.struct_field_path_for_field_inner(struct_type_id, field, false, mut seen) {
 		return path
 	}
@@ -16211,10 +16216,10 @@ fn (t &Transformer) struct_field_path_for_field(struct_type_id u32, field string
 	return none
 }
 
-fn (t &Transformer) struct_field_path_for_field_inner(struct_type_id u32, field string, c_owner_only bool, mut seen map[string]bool) ?[]FieldInfo {
+fn (t &Transformer) struct_field_path_for_field_inner(struct_type_id u32, field string, c_owner_only bool, mut seen map[u32]bool) ?[]FieldInfo {
 	clean_source_id := t.trim_pointer_type(t.normalize_type_alias(struct_type_id))
 	clean_source_id_4 := clean_source_id
-	clean := flat.source_type_name(clean_source_id_4)
+
 	info := t.lookup_struct_info(clean_source_id_4) or { return none }
 	mut lookup_key := t.alias_target_type_preserving_main_lock(clean_source_id) or { clean_source_id }
 	if !flat.source_type_shape(lookup_key).has(.dotted) && info.module.len > 0 && info.module !in [
@@ -16226,10 +16231,10 @@ fn (t &Transformer) struct_field_path_for_field_inner(struct_type_id u32, field 
 	if lookup_key == u32(0) {
 		lookup_key = info.name
 	}
-	if flat.source_type_name(lookup_key) in seen {
+	if lookup_key in seen {
 		return none
 	}
-	seen[flat.source_type_name(lookup_key)] = true
+	seen[lookup_key] = true
 	for f in info.fields {
 		if f.name == field && (!c_owner_only || flat.source_type_name(lookup_key).starts_with('C.')) {
 			return []FieldInfo{}
@@ -16239,12 +16244,13 @@ fn (t &Transformer) struct_field_path_for_field_inner(struct_type_id u32, field 
 		if !t.is_embedded_field(f) {
 			continue
 		}
-		owner_type := if clean.contains('.') || info.module in ['', 'main', 'builtin'] {
-			clean
+		owner_type := if flat.source_type_shape(clean_source_id).has(.dotted) || info.module in ['',
+			'main', 'builtin'] {
+			clean_source_id
 		} else {
-			'${info.module}.${clean}'
+			flat.source_type_id('${info.module}.${flat.source_type_name(clean_source_id)}')
 		}
-		embedded_field_type_source_id := t.normalize_field_type(f.typ, flat.source_type_id(owner_type))
+		embedded_field_type_source_id := t.normalize_field_type(f.typ, owner_type)
 
 		embedded_type_source_id := t.trim_pointer_type(embedded_field_type_source_id)
 
@@ -17641,7 +17647,7 @@ fn (t &Transformer) array_accessor_call_can_take_address(node flat.Node) bool {
 	if base_type == 0 {
 		base_type = t.original_expr_type(base_id)
 	}
-	clean_shape := flat.source_type_shape(t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type).trim_left('&'))))
+	clean_shape := flat.source_type_shape(t.normalize_type_alias(t.trim_all_pointer_type(base_type)))
 	return clean_shape.has(.array_type) && t.expr_can_take_address(base_id)
 }
 
@@ -22184,8 +22190,9 @@ fn (t &Transformer) checked_numeric_infix_operand(id flat.NodeId, op flat.Op, is
 	} else {
 		// String comparisons/addition query both node types; the remaining
 		// operators reach the struct handler's LHS type query instead.
-		name := flat.source_type_name(t.node_type(id))
-		if !is_numeric_type_name(name) || name in ['i128', 'u128'] {
+		name_source_id_4 := t.node_type(id)
+		name := flat.source_type_name(name_source_id_4)
+		if !is_numeric_type_name(name_source_id_4) || name in ['i128', 'u128'] {
 			return false
 		}
 		if !is_lhs && op !in [.eq, .ne] {
@@ -23171,7 +23178,7 @@ fn (mut t Transformer) lower_owned_array_index_move(source_id flat.NodeId, index
 		base_type = t.original_expr_type(base_id)
 	}
 	is_pointer := flat.source_type_shape(base_type).has(.pointer)
-	clean_base_type_source_id := t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type).trim_left('&')))
+	clean_base_type_source_id := t.normalize_type_alias(t.trim_all_pointer_type(base_type))
 	clean_base_type_shape := flat.source_type_shape(clean_base_type_source_id)
 	if !clean_base_type_shape.has(.array_type) && !t.is_fixed_array_type(clean_base_type_source_id) {
 		return index_id
@@ -29098,7 +29105,7 @@ fn (t &Transformer) array_literal_elem_type(node flat.Node) u32 {
 	if elem_type.len == 0 {
 		return u32(0)
 	}
-	if !is_numeric_type_name(elem_type) {
+	if !is_numeric_type_name(flat.source_type_id(elem_type)) {
 		return flat.source_type_id(elem_type)
 	}
 	mut has_f32 := false
@@ -29107,8 +29114,9 @@ fn (t &Transformer) array_literal_elem_type(node flat.Node) u32 {
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		child_type_source_id_2 := t.array_literal_child_elem_type(child_id)
-		child_type := flat.source_type_name(child_type_source_id_2)
-		if !is_numeric_type_name(child_type) {
+		child_type_source_id_3 := child_type_source_id_2
+
+		if !is_numeric_type_name(child_type_source_id_3) {
 			return flat.source_type_id(elem_type)
 		}
 		if child_type_source_id_2 == flat.source_type_f32 {
@@ -29230,18 +29238,16 @@ fn (t &Transformer) is_untyped_float_literal_expr_with_const_path(id flat.NodeId
 	}
 }
 
-fn is_numeric_type_name(name string) bool {
-	return is_integer_type_name(name) || is_float_type_name(name)
+fn is_numeric_type_name(name_id u32) bool {
+	return is_integer_type_name(name_id) || is_float_type_name(name_id)
 }
 
-fn is_integer_type_name(name string) bool {
-	return name == 'int' || name == 'i8' || name == 'i16' || name == 'i64' || name == 'u8'
-		|| name == 'u16' || name == 'u32' || name == 'u64' || name == 'isize'
-		|| name == 'usize' || name == 'rune' || name == 'i128' || name == 'u128'
+fn is_integer_type_name(name_id u32) bool {
+	return name_id == flat.source_type_int || name_id == flat.source_type_i8 || name_id == flat.source_type_i16 || name_id == flat.source_type_i64 || name_id == flat.source_type_u8 || name_id == flat.source_type_u16 || name_id == flat.source_type_u32 || name_id == flat.source_type_u64 || name_id == flat.source_type_isize || name_id == flat.source_type_usize || name_id == flat.source_type_rune || name_id == transform_source_type_i128 || name_id == transform_source_type_u128
 }
 
-fn is_float_type_name(name string) bool {
-	return name == 'f32' || name == 'f64'
+fn is_float_type_name(name_id u32) bool {
+	return name_id == flat.source_type_f32 || name_id == flat.source_type_f64
 }
 
 fn call_is_wait_selector(a &flat.FlatAst, node flat.Node) bool {

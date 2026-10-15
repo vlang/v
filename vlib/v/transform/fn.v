@@ -347,9 +347,7 @@ fn (t &Transformer) smartcast_receiver_type_name(base_id flat.NodeId) ?u32 {
 	}
 	sc := t.find_smartcast(key) or { return none }
 	mut target := t.smartcast_target_type(sc)
-	for flat.source_type_shape(target).has(.pointer) {
-		target = flat.source_type_id(flat.source_type_name(target)[1..])
-	}
+	target = t.trim_all_pointer_type(target)
 	if target == 0 {
 		return none
 	}
@@ -1026,9 +1024,7 @@ fn (t &Transformer) alias_receiver_type_matches(base_type_id u32, alias_type_id 
 
 // is_integer_type_name reports whether is integer type name applies in transform.
 fn (t &Transformer) is_integer_type_name(typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
-	return typ in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'rune', 'isize',
-		'usize', 'i128', 'u128']
+	return typ_id == flat.source_type_int || typ_id == flat.source_type_i8 || typ_id == flat.source_type_i16 || typ_id == flat.source_type_i32 || typ_id == flat.source_type_i64 || typ_id == flat.source_type_u8 || typ_id == flat.source_type_u16 || typ_id == flat.source_type_u32 || typ_id == flat.source_type_u64 || typ_id == flat.source_type_rune || typ_id == flat.source_type_isize || typ_id == flat.source_type_usize || typ_id == transform_source_type_i128 || typ_id == transform_source_type_u128
 }
 
 // raw_var_type_for_expr supports raw var type for expr handling for Transformer.
@@ -1416,16 +1412,17 @@ fn (t &Transformer) index_callee_is_value_index(index_node flat.Node) bool {
 		// the `string` parameter type cached for `json2.decode`).
 		return false
 	}
-	if t.type_name_is_indexable(base.typ_text())
-		|| t.type_name_is_indexable(flat.source_type_name(t.raw_checker_node_type(base_id))) {
+	if t.type_name_is_indexable(base.typ)
+		|| t.type_name_is_indexable(t.raw_checker_node_type(base_id)) {
 		return true
 	}
-	if base.kind == .ident && t.type_name_is_indexable(flat.source_type_name(t.var_type(base.value))) {
+	if base.kind == .ident && t.type_name_is_indexable(t.var_type(base.value)) {
 		return true
 	}
 	if base.kind == .ident || base.kind == .selector {
-		base_type := flat.source_type_name(t.resolve_expr_type(base_id))
-		if t.type_name_is_indexable(base_type) {
+		base_type_source_id_6 := t.resolve_expr_type(base_id)
+
+		if t.type_name_is_indexable(base_type_source_id_6) {
 			return true
 		}
 	}
@@ -1442,8 +1439,8 @@ fn (t &Transformer) index_callee_is_value_index(index_node flat.Node) bool {
 	return false
 }
 
-fn (t &Transformer) type_name_is_indexable(name string) bool {
-	mut clean := t.normalize_type_alias(flat.source_type_id(name))
+fn (t &Transformer) type_name_is_indexable(name_id u32) bool {
+	mut clean := t.normalize_type_alias(name_id)
 	if clean == 0 {
 		return false
 	}
@@ -8605,7 +8602,7 @@ fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {
 	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal] {
 		return false
 	}
-	if t.is_optional_type_name(flat.source_type_id(trimmed_transform_text(flat.source_type_name(t.reliable_stringify_type(id))))) {
+	if t.is_optional_type_name(t.trimmed_type_id(t.reliable_stringify_type(id))) {
 		return true
 	}
 	if node.kind == .ident {
@@ -12655,7 +12652,7 @@ fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeI
 	if base_type == 0 {
 		base_type = t.lvalue_type(base_id)
 	}
-	clean_base_type_source_id := t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type).trim_left('&')))
+	clean_base_type_source_id := t.normalize_type_alias(t.trim_all_pointer_type(base_type))
 	clean_base_type := flat.source_type_name(clean_base_type_source_id)
 	if !clean_base_type.starts_with('[]') {
 		return none
@@ -14377,7 +14374,7 @@ fn (mut t Transformer) pointer_alias_direct_str_call(base_id flat.NodeId, alias_
 
 fn (mut t Transformer) alias_custom_str_method_in_chain(alias_name_id u32) ?(u32, string) {
 	mut current := if flat.source_type_shape(alias_name_id).has(.padded) {
-		flat.source_type_id(trimmed_transform_text(flat.source_type_name(alias_name_id)))
+		t.trimmed_type_id(alias_name_id)
 	} else {
 		alias_name_id
 	}
@@ -14389,7 +14386,7 @@ fn (mut t Transformer) alias_custom_str_method_in_chain(alias_name_id u32) ?(u32
 		}
 		_, target := t.lookup_str_alias(current) or { return none }
 		clean_target := if flat.source_type_shape(target).has(.padded) {
-			flat.source_type_id(trimmed_transform_text(flat.source_type_name(target)))
+			t.trimmed_type_id(target)
 		} else {
 			target
 		}
@@ -14584,7 +14581,7 @@ fn (t &Transformer) copy_source_is_temporary(id flat.NodeId) bool {
 
 // unaliased_value_type returns the type of an expression without pointers and aliases.
 fn (t &Transformer) unaliased_value_type(id flat.NodeId) u32 {
-	return flat.source_type_id(flat.source_type_name(t.alias_str_resolved_base_type(flat.source_type_id(flat.source_type_name(t.node_type(id)).trim_left('&')))).trim_left('&'))
+	return flat.source_type_id(flat.source_type_name(t.alias_str_resolved_base_type(t.trim_all_pointer_type(t.node_type(id)))).trim_left('&'))
 }
 
 // fixed_array_reference_arg_type preserves explicit fixed literals when expected
@@ -17637,9 +17634,7 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 		return true
 	}
 	mut checker_base_type := t.raw_checker_node_type(base_id)
-	for flat.source_type_shape(checker_base_type).has(.pointer) {
-		checker_base_type = flat.source_type_id(flat.source_type_name(checker_base_type)[1..])
-	}
+	checker_base_type = t.trim_all_pointer_type(checker_base_type)
 	if receiver_name == flat.source_type_name(checker_base_type) {
 		return true
 	}
@@ -17647,9 +17642,7 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 	if base_type == 0 && !isnil(t.tc) {
 		base_type = t.semantic_type_name(t.tc.resolve_type(base_id))
 	}
-	for flat.source_type_shape(base_type).has(.pointer) {
-		base_type = flat.source_type_id(flat.source_type_name(base_type)[1..])
-	}
+	base_type = t.trim_all_pointer_type(base_type)
 	base_type = t.normalize_type_alias(base_type)
 	if base_type == 0 {
 		return true

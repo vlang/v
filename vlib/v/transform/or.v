@@ -136,9 +136,7 @@ fn (mut t Transformer) array_index_info_from_parts(base_id flat.NodeId, index_ex
 		&& t.normalize_type_alias(base_type) != flat.source_type_string && !t.is_fixed_array_type(base_type) {
 		base_type = literal_base_type_source_id_2
 	}
-	for flat.source_type_shape(base_type).has(.pointer) {
-		base_type = flat.source_type_id(flat.source_type_name(base_type)[1..])
-	}
+	base_type = t.trim_all_pointer_type(base_type)
 	for flat.source_type_shape(base_type).has(.shared_type) {
 		base_type = flat.source_type_id(trimmed_transform_text(flat.source_type_name(base_type)[7..]))
 	}
@@ -332,7 +330,7 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 	if channel_type == 0 {
 		channel_type = t.node_type(channel_id)
 	}
-	channel_type = flat.source_type_id(trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(channel_type))))
+	channel_type = t.trimmed_type_id(t.normalize_type_alias(channel_type))
 	fallback_needs_deref := flat.source_type_shape(channel_type).has(.pointer)
 	for flat.source_type_shape(channel_type).has(.pointer) {
 		channel_type = flat.source_type_id(trimmed_transform_text(flat.source_type_name(channel_type)[1..]))
@@ -391,7 +389,7 @@ fn (mut t Transformer) channel_receive_source_needs_deref(channel_id flat.NodeId
 	if source_type == 0 {
 		source_type = t.node_type(channel_id)
 	}
-	source_type = flat.source_type_id(trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(source_type))))
+	source_type = t.trimmed_type_id(t.normalize_type_alias(source_type))
 	return flat.source_type_shape(source_type).has(.pointer)
 }
 

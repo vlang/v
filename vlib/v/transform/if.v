@@ -1077,8 +1077,9 @@ fn (t &Transformer) if_expr_branch_result_type(node flat.Node) u32 {
 
 fn (t &Transformer) translated_if_numeric_type(name_id u32) bool {
 	name_comparison_type_id := name_id
-	name := flat.source_type_name(name_comparison_type_id)
-	return is_numeric_type_name(name) || name_comparison_type_id in [
+	name_source_id := name_comparison_type_id
+	name := flat.source_type_name(name_source_id)
+	return is_numeric_type_name(name_source_id) || name_comparison_type_id in [
 		flat.source_type_i32,
 		flat.source_type_char,
 	] || name in t.enum_types

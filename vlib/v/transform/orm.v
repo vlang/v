@@ -3651,9 +3651,7 @@ fn (t &Transformer) sql_insert_value_is_scalar_struct(value_name string, table_n
 		return false
 	}
 	mut typ := t.sql_insert_value_type_name(value_name)
-	for flat.source_type_shape(typ).has(.pointer) {
-		typ = flat.source_type_id(flat.source_type_name(typ)[1..])
-	}
+	typ = t.trim_all_pointer_type(typ)
 	if typ == 0 || flat.source_type_shape(typ).has(.array_type) {
 		return false
 	}

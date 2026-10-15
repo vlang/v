@@ -208,9 +208,7 @@ fn (t &Transformer) for_loop_var_unsigned_type(name string) u32 {
 			typ = current.source_type_id()
 		}
 	}
-	for flat.source_type_shape(typ).has(.pointer) {
-		typ = flat.source_type_id(flat.source_type_name(typ)[1..])
-	}
+	typ = t.trim_all_pointer_type(typ)
 	if flat.source_type_name(typ) in ['u8', 'u16', 'u32', 'u64', 'usize'] {
 		return typ
 	}

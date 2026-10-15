@@ -1158,7 +1158,7 @@ fn (t &Transformer) owned_array_index_zero_value_expansion_estimate(node flat.No
 		return 0
 	}
 	base_id := t.a.child(&node, 0)
-	base_type_source_id := t.normalize_type_alias(flat.source_type_id(flat.source_type_name(t.node_type(base_id)).trim_left('&')))
+	base_type_source_id := t.normalize_type_alias(t.trim_all_pointer_type(t.node_type(base_id)))
 	base_type_shape := flat.source_type_shape(base_type_source_id)
 	if !base_type_shape.has(.array_type) && !t.is_fixed_array_type(base_type_source_id) {
 		return 0

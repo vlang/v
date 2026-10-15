@@ -94,7 +94,7 @@ fn (t &Transformer) ownership_array_repeat_call_expands(node flat.Node) bool {
 	if fn_node.kind != .selector || fn_node.value != 'repeat' || fn_node.children_count == 0 {
 		return false
 	}
-	base_type := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(flat.source_type_name(t.node_type(t.a.child(fn_node, 0))).trim_left('&'))))
+	base_type := flat.source_type_name(t.normalize_type_alias(t.trim_all_pointer_type(t.node_type(t.a.child(fn_node, 0)))))
 	if !base_type.starts_with('[]') {
 		return false
 	}
@@ -2203,7 +2203,7 @@ fn (mut t Transformer) clone_owned_array_storage_value_with_pointer_borrow(value
 		storage_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(storage_type))
 	}
 	array_type := if flat.source_type_shape(storage_type).has(.pointer) {
-		flat.source_type_id(flat.source_type_name(storage_type).trim_left('&'))
+		t.trim_all_pointer_type(storage_type)
 	} else {
 		storage_type
 	}

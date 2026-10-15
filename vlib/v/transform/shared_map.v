@@ -437,7 +437,7 @@ fn (t &Transformer) shared_map_base(id flat.NodeId) ?flat.NodeId {
 			if base_type == 0 {
 				base_type = t.node_type(base_id)
 			}
-			t.promoted_field_raw_type(flat.source_type_id(flat.source_type_name(base_type).trim_left('&')), node.value, 0) or { return none }
+			t.promoted_field_raw_type(t.trim_all_pointer_type(base_type), node.value, 0) or { return none }
 		}
 
 		if t.is_shared_map_type_text(typ_source_id) {
