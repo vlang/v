@@ -1218,3 +1218,56 @@ fn test_scalar_constant_lookup_respects_global_owners_and_import_namespaces() {
 	assert (t.comptime_scalar_named_const('route', 0, '', 'main.v') or { panic('implicit main owner') }).value == 'a b'
 	assert t.subst_comptime_scalar_locals('registry.value == 7') == 'registry.value == 7'
 }
+
+fn test_reflected_method_escape_analysis_restores_ast_buffers() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	add_comptime_test_method(mut a, 'App', 'first', 'int', '')
+	add_comptime_test_method(mut a, 'App', 'second', 'int', '')
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['App'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	body := t.make_block([t.make_int_literal(7)])
+	start := a.children.len
+	a.children << body
+	loop := a.add_node(flat.Node{
+		kind:           .comptime_for
+		value:          'method|methods'
+		typ:            flat.source_type_id('App')
+		children_start: start
+		children_count: 1
+	})
+	a.nodes.ensure_cap(a.nodes.len + 1024)
+	a.children.ensure_cap(a.children.len + 1024)
+	a.nodes.flags.set(.nogrow)
+	a.children.flags.set(.nogrow)
+	initial_nodes := a.nodes.len
+	initial_children := a.children.len
+	initial_nodes_cap := a.nodes.cap
+	initial_children_cap := a.children.cap
+	initial_nodes_data := a.nodes.data
+	initial_children_data := a.children.data
+	for _ in 0 .. 3 {
+		mut amp_ptrs := map[string]bool{}
+		mut amp_sources := map[string][]string{}
+		mut ptr_aliases := map[string]string{}
+		mut method_receivers := map[string]string{}
+		mut capture_aliases := map[string][]string{}
+		mut interface_boxes := map[string]bool{}
+		mut returned := map[string]bool{}
+		mut local_names := map[string]bool{}
+		mut local_added := []string{}
+		mut backing_sources := map[string][]string{}
+		t.scan_escape_pass(loop, mut amp_ptrs, mut amp_sources, mut ptr_aliases,
+			mut method_receivers, mut capture_aliases, mut interface_boxes, mut returned,
+			mut local_names, mut local_added, mut backing_sources, false)
+		assert a.nodes.len == initial_nodes
+		assert a.children.len == initial_children
+		assert a.nodes.cap == initial_nodes_cap
+		assert a.children.cap == initial_children_cap
+		assert a.nodes.data == initial_nodes_data
+		assert a.children.data == initial_children_data
+		assert a.node(loop).kind == .comptime_for
+	}
+}
