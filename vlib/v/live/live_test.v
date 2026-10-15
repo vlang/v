@@ -168,7 +168,7 @@ fn wait_for_file(new string) {
 		}
 		time.sleep(1 * time.millisecond)
 	}
-	assert false, "timed out waiting for ${expected_file}"
+	assert false, 'timed out waiting for ${expected_file}'
 }
 
 fn setup_cycles_environment() {

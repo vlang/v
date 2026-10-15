@@ -782,7 +782,7 @@ mut:
 	runtime_init_modules          []string
 	compiler_vroot                string
 	compiler_vexe                 string
-	live_source_path               string
+	live_source_path              string
 	compiler_vexe_env_setup       bool = true
 	ccompiler                     string
 	target                        pref.Target

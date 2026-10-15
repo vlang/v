@@ -2937,7 +2937,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		compiler_vroot:                     g.compiler_vroot
 		compiler_vexe:                      g.compiler_vexe
-		live_source_path:                    g.live_source_path
+		live_source_path:                   g.live_source_path
 		compiler_vexe_env_setup:            g.compiler_vexe_env_setup
 		ccompiler:                          g.ccompiler
 		is_shared:                          g.is_shared
