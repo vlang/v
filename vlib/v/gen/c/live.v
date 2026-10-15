@@ -101,12 +101,12 @@ fn (mut g FlatGen) gen_live_initialization() {
 		''
 	}}'
 	g.writeln('{')
-	g.writeln('live__LiveReloadInfo* live_info = executable__new_live_reload_info(builtin__tos2((u8*)"${reflection_c_string(g.live_source_path)}"), builtin__tos2((u8*)"${reflection_c_string(g.compiler_vexe)}"), builtin__tos2((u8*)"${reflection_c_string(options)}"), v_live_fn_mutex_ptr(), v_bind_live_symbols);')
+	g.writeln('live__LiveReloadInfo* live_info = executable__new_live_reload_info(_S("${reflection_c_string(g.live_source_path)}"), _S("${reflection_c_string(g.compiler_vexe)}"), _S("${reflection_c_string(options)}"), v_live_fn_mutex_ptr(), v_bind_live_symbols);')
 	mut files := map[string]bool{}
 	for item in functions {
 		path := os.real_path(item.file)
 		if path !in files {
-			g.writeln('executable__add_live_monitored_file(live_info, builtin__tos2((u8*)"${reflection_c_string(path)}"));')
+			g.writeln('executable__add_live_monitored_file(live_info, _S("${reflection_c_string(path)}"));')
 			files[path] = true
 		}
 	}
