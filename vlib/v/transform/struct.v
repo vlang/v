@@ -133,13 +133,14 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 					}
 				}
 			}
-			if val_node.kind == .array_literal && t.is_fixed_array_type(field_type) {
+			if val_node.kind == .array_literal && t.is_fixed_array_type(flat.source_type_id(field_type)) {
 				t.set_node_typ(int(val_id), flat.source_type_id(field_type))
 			}
-			value_type := flat.source_type_name(t.node_type(val_id))
+			value_type_source_id := t.node_type(val_id)
+			value_type := flat.source_type_name(value_type_source_id)
 			sum_field_type := t.struct_field_sum_type(field_type, info.module)
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
-			fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type)
+			fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type_source_id)
 			shared_interface_source := !isnil(t.tc) && t.is_interface_type(flat.source_type_id(field_type))
 				&& t.tc.struct_field_is_shared(node.value, target_field_name)
 				&& t.expr_is_shared_value(val_id)
@@ -365,8 +366,9 @@ fn (mut t Transformer) promoted_struct_init_field_value(field FieldInfo, init fl
 	}
 	value := t.make_prefix(.amp, init)
 	if materialized {
-		pointee_type := flat.source_type_name(t.trim_pointer_type(normalized_type_source_id))
-		dup := t.make_memdup_call_for_type(value, pointee_type)
+		pointee_type_source_id := t.trim_pointer_type(normalized_type_source_id)
+
+		dup := t.make_memdup_call_for_type(value, pointee_type_source_id)
 		return t.make_cast(normalized_type_source_id, dup, normalized_type_source_id)
 	}
 	t.set_node_typ(int(value), normalized_type_source_id)
@@ -790,7 +792,7 @@ fn (t &Transformer) nested_generic_defaults_need_lowering(type_name string, mut 
 	if normalized_source_id == 0 || normalized[0] in [`&`, `?`, `!`] || normalized.starts_with('map[') || normalized.starts_with('[]') {
 		return false
 	}
-	if t.is_fixed_array_type(normalized) {
+	if t.is_fixed_array_type(normalized_source_id) {
 		return t.nested_generic_defaults_need_lowering(fixed_array_elem_type(normalized), mut visited)
 	}
 	if normalized in visited {
@@ -844,8 +846,8 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		mut visited := map[string]bool{}
 		if t.nested_generic_defaults_need_lowering(field_type, mut visited) {
 			normalized_field_type_source_id := t.normalize_type_alias(field_type_source_id)
-			normalized_field_type := flat.source_type_name(normalized_field_type_source_id)
-			missing_defaults[field.name] = if t.is_fixed_array_type(normalized_field_type) {
+
+			missing_defaults[field.name] = if t.is_fixed_array_type(normalized_field_type_source_id) {
 				t.make_fixed_array_init(normalized_field_type_source_id)
 			} else {
 				t.a.add_node(flat.Node{
@@ -1476,13 +1478,14 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		value_id := t.a.child(&field, 0)
 		value_node := t.a.nodes[int(value_id)]
 		field_type := field_types[field.value] or { '' }
-		if value_node.kind == .array_literal && t.is_fixed_array_type(field_type) {
+		if value_node.kind == .array_literal && t.is_fixed_array_type(flat.source_type_id(field_type)) {
 			t.set_node_typ(int(value_id), flat.source_type_id(field_type))
 		}
-		value_type := flat.source_type_name(t.node_type(value_id))
+		value_type_source_id_ := t.node_type(value_id)
+		value_type := flat.source_type_name(value_type_source_id_)
 		enum_field_type := t.enum_type_name_for_expected(field_type, assoc_module)
 		sum_field_type := t.struct_field_sum_type(field_type, assoc_module)
-		fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type)
+		fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type_source_id_)
 		mut value := if value_node.kind == .enum_val && enum_field_type.len > 0 {
 			t.transform_enum_shorthand(value_id, value_node, enum_field_type)
 		} else if fixed_to_dynamic {
@@ -1582,7 +1585,7 @@ fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node f
 		return none
 	}
 	addr := t.make_prefix(.amp, value)
-	dup := t.make_memdup_call_for_type(addr, value_type)
+	dup := t.make_memdup_call_for_type(addr, flat.source_type_id(value_type))
 	mut ptr_type := target_type
 	if ptr_type.len == 0 {
 		ptr_type = node.typ_text()
@@ -1603,7 +1606,7 @@ fn (t &Transformer) struct_field_sum_type(field_type string, owner_module string
 		}
 	}
 	if field_type.starts_with('[]') || field_type.starts_with('map[')
-		|| t.is_fixed_array_type(field_type) {
+		|| t.is_fixed_array_type(flat.source_type_id(field_type)) {
 		return ''
 	}
 	if t.is_sum_type_name(field_type) {
@@ -1662,7 +1665,7 @@ fn (t &Transformer) union_variant_text_matches(a string, b string) bool {
 	if t.variant_names_match(a, b) {
 		return true
 	}
-	if t.is_fixed_array_type(a) && t.is_fixed_array_type(b) {
+	if t.is_fixed_array_type(flat.source_type_id(a)) && t.is_fixed_array_type(flat.source_type_id(b)) {
 		return t.resolved_fixed_array_canonical_type(a) == t.resolved_fixed_array_canonical_type(b)
 	}
 	return false
@@ -1749,7 +1752,7 @@ fn (mut t Transformer) fixed_array_value_to_owned_array(value_id flat.NodeId, fi
 	}
 	elem_type := fixed_array_elem_type(fixed_type)
 	len_expr := t.make_fixed_array_len_expr(fixed_type)
-	source := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id), fixed_type,
+	source := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id), flat.source_type_id(fixed_type),
 		'borrowed_fixed_array_source')
 	out_name := t.new_temp('borrowed_fixed_array')
 	idx_name := t.new_temp('borrowed_fixed_array_idx')

@@ -189,13 +189,13 @@ fn test_zero_value_normalizes_generic_alias_but_preserves_generic_struct() {
 	tc.structs['Box'] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
-	alias_zero_id := t.zero_value_for_type('Values[int]')
+	alias_zero_id := t.zero_value_for_type(flat.source_type_id('Values[int]'))
 	alias_zero := t.a.nodes[int(alias_zero_id)]
 	assert alias_zero.kind == .array_init
 	assert alias_zero.value == 'int'
 	assert alias_zero.typ_text() == '[]int'
 
-	struct_zero_id := t.zero_value_for_type('Box[int]')
+	struct_zero_id := t.zero_value_for_type(flat.source_type_id('Box[int]'))
 	struct_zero := t.a.nodes[int(struct_zero_id)]
 	assert struct_zero.kind == .struct_init
 	assert struct_zero.value == 'Box[int]'
@@ -1301,4 +1301,20 @@ fn test_recorded_generic_arg_ids_preserve_ownership_and_invalidate_misses() {
 	t.generic_specialization_args_parent = &second_parent
 	assert t.recorded_type_specialization_args(parent_key) or { []u32{} } == [flat.source_type_string]
 	assert t.recorded_generic_specialization_args('Second_string') or { []u32{} } == [flat.source_type_string]
+}
+
+fn test_numeric_specialized_type_decoder_preserves_cached_argument_storage() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['Box'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	name := flat.source_type_id('Box_int')
+	mut args := t.decode_single_generic_specialized_type_args(name) or { panic('missing decoded arguments') }
+	assert args == [flat.source_type_int]
+	args[0] = flat.source_type_string
+	assert t.decode_single_generic_specialized_type_args(name) or { []u32{} } == [flat.source_type_int]
+	assert t.generic_specialized_source_type_name(flat.source_type_id(' & Box_int ')) or { u32(0) } == flat.source_type_id('&Box[int]')
+	missing := flat.source_type_id('NotMaterialized')
+	assert t.decode_single_generic_specialized_type_args(missing) == none
+	assert t.generic_spec_decode_cache.misses[missing]
 }

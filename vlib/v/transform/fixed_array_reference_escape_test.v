@@ -500,7 +500,7 @@ fn test_promoted_fixed_array_storage_preserves_nested_element_alignment() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.structs['Aligned'] = StructInfo{ name: flat.source_type_id('Aligned'), is_aligned: true, alignment: '64' }
 	for typ in ['Aligned', '[2]Aligned', '[2][3]Aligned'] {
-		call := t.make_memdup_call_for_type(t.make_ident('source'), typ)
+		call := t.make_memdup_call_for_type(t.make_ident('source'), flat.source_type_id(typ))
 		node := t.a.nodes[int(call)]
 		assert t.a.child_node(&node, 0).value == 'v3_aligned_memdup'
 		assert t.a.child_node(&node, 3).value == '64'

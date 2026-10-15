@@ -54,8 +54,9 @@ fn (mut t Transformer) make_guard_value_decls(name string, value flat.NodeId, va
 }
 
 fn (t &Transformer) guard_value_needs_heap_storage(name string, value_type string) bool {
-	clean_type := flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(value_type)))
-	is_fixed_array := t.is_fixed_array_type(clean_type)
+	clean_type_source_id := t.comptime_normalize_type_alias_chain(flat.source_type_id(value_type))
+	clean_type := flat.source_type_name(clean_type_source_id)
+	is_fixed_array := t.is_fixed_array_type(clean_type_source_id)
 	needs_escape_storage := name in t.escaping_amp_sources
 		&& (t.heapable_value_type(clean_type) || is_fixed_array)
 	needs_fixed_view_storage := name in t.escaping_fixed_array_view_sources
@@ -415,7 +416,7 @@ fn (mut t Transformer) expand_channel_receive_if_guard(node flat.Node, lhs_name 
 	channel_expr := t.transform_expr(info.channel_id)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
-	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.value_type_text()), info.value_type)
+	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.value_type), info.value_type)
 	mut channel_source := channel_expr
 	if info.needs_deref {
 		channel_source = t.make_prefix(.mul, channel_source)
@@ -931,11 +932,11 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) u32 {
 		&& node_typ in ['', 'unknown'] && t.if_expr_has_c_macro_values(node) {
 		return flat.source_type_int
 	}
-	if branch_typ.starts_with('[]') && t.is_fixed_array_type(checked_typ)
+	if branch_typ.starts_with('[]') && t.is_fixed_array_type(flat.source_type_id(checked_typ))
 		&& fixed_array_elem_type(checked_typ) == branch_typ[2..] {
 		return flat.source_type_id(branch_typ)
 	}
-	if branch_typ.starts_with('[]') && t.is_fixed_array_type(node_typ)
+	if branch_typ.starts_with('[]') && t.is_fixed_array_type(flat.source_type_id(node_typ))
 		&& fixed_array_elem_type(node_typ) == branch_typ[2..] {
 		return flat.source_type_id(branch_typ)
 	}
@@ -1013,8 +1014,8 @@ fn (t &Transformer) if_expr_branch_type_overrides(branch_typ string, stale_typ s
 			return true
 		}
 	}
-	if stale_typ.starts_with('[]') || t.is_fixed_array_type(stale_typ) {
-		return !branch_typ.starts_with('[]') && !t.is_fixed_array_type(branch_typ)
+	if stale_typ.starts_with('[]') || t.is_fixed_array_type(flat.source_type_id(stale_typ)) {
+		return !branch_typ.starts_with('[]') && !t.is_fixed_array_type(flat.source_type_id(branch_typ))
 	}
 	if stale_typ.starts_with('map[') {
 		return !branch_typ.starts_with('map[')
@@ -1312,11 +1313,11 @@ fn (t &Transformer) merge_if_expr_types(current string, next string) string {
 	if next == 'array' && current.starts_with('[]') {
 		return current
 	}
-	if current.starts_with('[]') && t.is_fixed_array_type(next)
+	if current.starts_with('[]') && t.is_fixed_array_type(flat.source_type_id(next))
 		&& current[2..] == fixed_array_elem_type(next) {
 		return current
 	}
-	if next.starts_with('[]') && t.is_fixed_array_type(current)
+	if next.starts_with('[]') && t.is_fixed_array_type(flat.source_type_id(current))
 		&& next[2..] == fixed_array_elem_type(current) {
 		return next
 	}

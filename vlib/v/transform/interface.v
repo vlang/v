@@ -44,7 +44,7 @@ fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name str
 			tmp_name := t.new_temp('iface_ref')
 			t.pending_stmts << t.make_decl_assign_typed(tmp_name, current, flat.source_type_id(current_type))
 			addr := t.make_prefix(.amp, t.make_ident(tmp_name))
-			dup := t.make_memdup_call_for_type(addr, current_type)
+			dup := t.make_memdup_call_for_type(addr, flat.source_type_id(current_type))
 			current_type = '&${current_type}'
 			current = t.make_cast(flat.source_type_id(current_type), dup, flat.source_type_id(current_type))
 		}
@@ -60,7 +60,7 @@ fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name str
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, expr, flat.source_type_id(iface_name))
 	addr := t.make_prefix(.amp, t.make_ident(tmp_name))
 	size := t.make_sizeof_type(flat.source_type_id(iface_name))
-	dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], 'voidptr')
+	dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], flat.source_type_voidptr)
 	cast := t.make_cast(flat.source_type_id(target_type), dup, flat.source_type_id(target_type))
 	t.set_node_typ(int(cast), flat.source_type_id(target_type))
 	return cast
@@ -105,8 +105,9 @@ fn (t &Transformer) interface_pointer_source_root_is_local(id flat.NodeId) bool 
 				return false
 			}
 			base_id := t.a.child(&node, 0)
-			base_type := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.address_expr_type_name(base_id))))
-			if !t.is_fixed_array_type(base_type) {
+			base_type_source_id := t.normalize_type_alias(flat.source_type_id(t.address_expr_type_name(base_id)))
+
+			if !t.is_fixed_array_type(base_type_source_id) {
 				return false
 			}
 			return t.interface_pointer_source_root_is_local(base_id)
@@ -521,7 +522,7 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 		return none
 	}
 	source_carries_fields := t.source_interface_carries_target_fields(source_iface, target_iface)
-	base := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_cast')
+	base := t.stable_transformed_expr_for_reuse(source_expr, flat.source_type_id(source_type), 'iface_cast')
 	op := if source_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
 	object := t.make_selector_op(base, '_object', flat.source_type_voidptr, op)
 	init := if source_carries_fields {
@@ -784,7 +785,7 @@ fn (t &Transformer) heaped_amp_local_address_child(id flat.NodeId) ?flat.NodeId 
 fn (mut t Transformer) null_safe_interface_pointer_field(source flat.NodeId, value flat.NodeId, field_type string) flat.NodeId {
 	cond := t.make_infix(.ne, source, t.a.add(.nil_literal))
 	then_block := t.make_block([t.make_expr_stmt(value)])
-	else_block := t.make_block([t.make_expr_stmt(t.zero_value_for_type(field_type))])
+	else_block := t.make_block([t.make_expr_stmt(t.zero_value_for_type(flat.source_type_id(field_type)))])
 	start := t.a.children.len
 	t.a.children << cond
 	t.a.children << then_block
@@ -879,7 +880,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	} else {
 		t.transform_expr(source_id)
 	}
-	mut source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
+	mut source := t.stable_transformed_expr_for_reuse(source_expr, flat.source_type_id(source_type), 'iface_src')
 	normalized_source_type_source_id := t.normalize_type_alias(flat.source_type_id(source_type))
 	normalized_source_type := flat.source_type_name(normalized_source_type_source_id)
 	source_is_pointer_alias := !source_type.starts_with('&')
@@ -890,7 +891,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	if source_is_pointer_alias && !share_source
 		&& t.interface_pointer_alias_source_needs_heap_copy(id) {
 		pointee_type := normalized_source_type[1..]
-		dup := t.make_memdup_call_for_type(source, pointee_type)
+		dup := t.make_memdup_call_for_type(source, flat.source_type_id(pointee_type))
 		copied := t.make_cast(normalized_source_type_source_id, dup, normalized_source_type_source_id)
 		tmp_name := t.new_temp('iface_ptr')
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, copied, flat.source_type_id(source_type))
@@ -937,7 +938,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		// The temporary holding that pointer can expire before the interface does.
 		addr := t.make_prefix(.amp, source)
 		size := t.make_sizeof_type(flat.source_type_id(concrete_type))
-		dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], 'voidptr')
+		dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], flat.source_type_voidptr)
 		if t.interface_box_object_cast_needs_raw_call(concrete_type) {
 			t.set_node_typ(int(dup), flat.source_type_id('&${concrete_type}'))
 			dup
@@ -968,7 +969,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		field_type_source_id := t.normalize_type_alias(field.typ.source_type_id())
 		field_type := flat.source_type_name(field_type_source_id)
 		mut field_value := if concrete_type == 'voidptr' {
-			t.zero_value_for_type(field_type)
+			t.zero_value_for_type(field_type_source_id)
 		} else {
 			t.make_selector(field_base, field.name, field_type_source_id)
 		}

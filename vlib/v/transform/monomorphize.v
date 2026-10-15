@@ -606,7 +606,7 @@ fn (mut t Transformer) explicit_generic_method_value_specialization(id flat.Node
 	receiver_params := t.generic_receiver_param_names(decl)
 	declaring_receiver := t.generic_method_value_declaring_receiver(receiver_type, decl,
 		module_name) or { GenericMethodValueReceiver{ typ: receiver_type_source_id } }
-	mut fixed := t.receiver_fixed_type_args(decl, declaring_receiver.typ_text())
+	mut fixed := t.receiver_fixed_type_args(decl, declaring_receiver.typ)
 	if decl.node.children_count > 0 {
 		receiver_param := t.a.child_node(&decl.node, 0)
 		t.infer_generic_receiver_suffix_args(receiver_param.typ_text(), declaring_receiver.typ_text(), mut fixed)
@@ -6594,18 +6594,23 @@ fn (mut t Transformer) rewrite_generic_plain_call(id flat.NodeId, node flat.Node
 	t.record_generic_specialization_args_for_names([spec_name, c_name(spec_name)], concrete_args_source_ids)
 	ret_typ_source_id := t.specialized_fn_return_type_text(decl, concrete_args_source_ids)
 
-	param_types := flat.TypeTextList{ ids: t.specialized_generic_call_param_type_texts(decl, concrete_args_source_ids) }.names()
+	param_types_source_ids_ := t.specialized_generic_call_param_type_texts(decl, concrete_args_source_ids)
+
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	children << t.make_ident(spec_name)
 	for i in 1 .. node.children_count {
 		arg_id := t.a.child(&node, i)
 		param_idx := i - 1
-		param_type := if param_idx < param_types.len { param_types[param_idx] } else { '' }
+		param_type := if param_idx < param_types_source_ids_.len {
+			flat.source_type_name(param_types_source_ids_[param_idx])
+		} else {
+			''
+		}
 		children << t.specialize_generic_fn_value_arg(arg_id, param_type, false) or {
 			t.retype_generic_call_literal_arg(arg_id, param_type)
 		}
 	}
-	t.append_missing_specialized_params_struct_args(mut children, param_types, decl.module)
+	t.append_missing_specialized_params_struct_args(mut children, param_types_source_ids_.clone(), decl.module)
 	start := t.a.children.len
 	for child in children {
 		t.a.children << child
@@ -6727,7 +6732,7 @@ fn (mut t Transformer) retype_generic_call_literal_arg(arg_id flat.NodeId, param
 		for i in 0 .. node.children_count {
 			values << t.a.child(&node, i)
 		}
-		return t.make_array_literal_typed(values, param_type)
+		return t.make_array_literal_typed(values, flat.source_type_id(param_type))
 	}
 	if node.kind == .ident && node.value.contains('arr_lit') && node.typ_text().starts_with('[]')
 		&& param_type.starts_with('[]') && node.typ_text() != param_type {
@@ -7008,7 +7013,7 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 
 	t.clear_node_type_memo()
 	t.active_generic_params = old_params
-	param_types := flat.TypeTextList{ ids: t.specialized_generic_call_param_type_texts(decl, concrete_args_source_ids) }.names()
+	param_types_source_ids__ := t.specialized_generic_call_param_type_texts(decl, concrete_args_source_ids)
 
 	mut children := []flat.NodeId{cap: int(node.children_count) + 1}
 	children << t.make_ident(spec_name)
@@ -7016,9 +7021,9 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 		// Receiver is embedded in the selector callee; explicit args are children 1..n.
 		if recv_id := t.generic_call_receiver_id(node) {
 			mut receiver_arg := recv_id
-			if param_types.len > 0 {
+			if param_types_source_ids__.len > 0 {
 				base_type := flat.source_type_name(t.generic_call_arg_type_for_inference(recv_id))
-				mut expected_type := trimmed_transform_text(param_types[0])
+				mut expected_type := trimmed_transform_text(flat.source_type_name(param_types_source_ids__[0]))
 				if expected_type.starts_with('mut ') {
 					expected_type = trimmed_transform_text(expected_type[4..])
 				}
@@ -7034,7 +7039,11 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 		mut i := 1
 		for i < node.children_count {
 			arg_id := t.a.child(&node, i)
-			param_type := if i < param_types.len { param_types[i] } else { '' }
+			param_type := if i < param_types_source_ids__.len {
+				flat.source_type_name(param_types_source_ids__[i])
+			} else {
+				''
+			}
 			arg := t.a.nodes[int(arg_id)]
 			if arg.kind == .field_init {
 				if packed_arg := t.transform_params_struct_call_arg(node, i, param_type) {
@@ -7059,7 +7068,11 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 		for i < node.children_count {
 			arg_id := t.a.child(&node, i)
 			param_idx := i - 1
-			param_type := if param_idx < param_types.len { param_types[param_idx] } else { '' }
+			param_type := if param_idx < param_types_source_ids__.len {
+				flat.source_type_name(param_types_source_ids__[param_idx])
+			} else {
+				''
+			}
 			arg := t.a.nodes[int(arg_id)]
 			if arg.kind == .field_init {
 				if packed_arg := t.transform_params_struct_call_arg(node, i, param_type) {
@@ -7079,7 +7092,7 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 			i++
 		}
 	}
-	t.append_missing_specialized_params_struct_args(mut children, param_types, decl.module)
+	t.append_missing_specialized_params_struct_args(mut children, param_types_source_ids__.clone(), decl.module)
 	start := t.a.children.len
 	for child in children {
 		t.a.children << child
@@ -7096,11 +7109,12 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 	t.clear_resolved_call(id)
 }
 
-fn (mut t Transformer) append_missing_specialized_params_struct_args(mut children []flat.NodeId, param_types []string, decl_module string) {
+fn (mut t Transformer) append_missing_specialized_params_struct_args(mut children []flat.NodeId, param_types_ids []u32, decl_module string) {
 	mut param_idx := children.len - 1
-	for param_idx < param_types.len {
-		param_type := param_types[param_idx]
-		mut struct_type := flat.source_type_name(t.params_struct_type_name(flat.source_type_id(param_type)) or { u32(0) })
+	for param_idx < param_types_ids.len {
+		param_type_source_id := param_types_ids[param_idx]
+		param_type := flat.source_type_name(param_type_source_id)
+		mut struct_type := flat.source_type_name(t.params_struct_type_name(param_type_source_id) or { u32(0) })
 		if struct_type.len == 0 && !param_type.contains('.') && decl_module != ''
 			&& decl_module !in ['main', 'builtin'] {
 			struct_type = flat.source_type_name(t.params_struct_type_name(flat.source_type_id('${decl_module}.${param_type}')) or { u32(0) })
@@ -7108,7 +7122,7 @@ fn (mut t Transformer) append_missing_specialized_params_struct_args(mut childre
 		if struct_type.len == 0 {
 			break
 		}
-		children << t.zero_value_for_type(struct_type)
+		children << t.zero_value_for_type(flat.source_type_id(struct_type))
 		param_idx++
 	}
 }
@@ -8949,7 +8963,7 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 		[]string{}
 	}
 	if t.expected_expr_node == int(_id) && t.expected_expr_type != 0 {
-		t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(t.expected_expr_type_text()), mut inferred, receiver_params)
+		t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(t.expected_expr_type), mut inferred, receiver_params)
 	}
 	mut param_idx := 0
 	param_count := t.generic_decl_param_count(decl.node)
@@ -9057,10 +9071,10 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 		param_idx++
 	}
 	ret_source_id_2 := t.node_type(_id)
-	ret := flat.source_type_name(ret_source_id_2)
+
 	if ret_source_id_2 != 0 {
-		t.infer_generic_return_type_args(decl, ret, mut inferred, receiver_params)
-		t.infer_missing_generic_receiver_args_from_return(decl, ret, receiver_params, mut inferred)
+		t.infer_generic_return_type_args(decl, ret_source_id_2, mut inferred, receiver_params)
+		t.infer_missing_generic_receiver_args_from_return(decl, ret_source_id_2, receiver_params, mut inferred)
 	}
 	for name, typ_source_id in pinned {
 		inferred[name] = typ_source_id
@@ -9084,8 +9098,9 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	return args.clone()
 }
 
-fn (mut t Transformer) infer_missing_generic_receiver_args_from_return(decl GenericFnDecl, ret string, receiver_params []string, mut inferred map[string]u32) {
-	if decl.node.typ == 0 || ret == '' || receiver_params.len == 0 {
+fn (mut t Transformer) infer_missing_generic_receiver_args_from_return(decl GenericFnDecl, ret_id u32, receiver_params []string, mut inferred map[string]u32) {
+	ret := flat.source_type_name(ret_id)
+	if decl.node.typ == 0 || ret_id == u32(0) || receiver_params.len == 0 {
 		return
 	}
 	mut ret_inferred := map[string]u32{}
@@ -9102,8 +9117,9 @@ fn (mut t Transformer) infer_missing_generic_receiver_args_from_return(decl Gene
 	}
 }
 
-fn (mut t Transformer) infer_generic_return_type_args(decl GenericFnDecl, ret string, mut inferred map[string]u32, skip []string) {
-	if decl.node.typ == 0 || ret == '' {
+fn (mut t Transformer) infer_generic_return_type_args(decl GenericFnDecl, ret_id u32, mut inferred map[string]u32, skip []string) {
+	ret := flat.source_type_name(ret_id)
+	if decl.node.typ == 0 || ret_id == u32(0) {
 		return
 	}
 	mut ret_inferred := map[string]u32{}
@@ -9872,7 +9888,7 @@ fn (t &Transformer) generic_type_text_contains_fixed_array_alias(typ string, mod
 		return false
 	}
 	if t.generic_arg_is_alias_name(clean, module_name) {
-		return t.is_fixed_array_type(flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(clean), module_name)))
+		return t.is_fixed_array_type(t.normalize_type_in_module(flat.source_type_id(clean), module_name))
 	}
 	if clean.starts_with('&') {
 		return t.generic_type_text_contains_fixed_array_alias(clean[1..], module_name)
@@ -10258,7 +10274,7 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) u32 {
 		if base_type.starts_with('[]') || base_type_source_id_______ == flat.source_type_string {
 			return base_type_source_id_______
 		}
-		if t.is_fixed_array_type(base_type) {
+		if t.is_fixed_array_type(base_type_source_id_______) {
 			return flat.source_type_id('[]${fixed_array_elem_type(base_type)}')
 		}
 	}
@@ -11150,7 +11166,7 @@ fn (mut t Transformer) generic_const_string_value(id flat.NodeId, args_ids []u32
 }
 
 fn (mut t Transformer) clone_generic_fn_node(node flat.Node, args_ids []u32) flat.NodeId {
-	return t.clone_generic_node_from(node, args_ids, true, '')
+	return t.clone_generic_node_from(node, args_ids, true, u32(0))
 }
 
 // clone_generic_fn_header clones the generic function `node` without its body:
@@ -11168,21 +11184,21 @@ fn (mut t Transformer) clone_generic_fn_header(node flat.Node, args_ids []u32) f
 		children_start: start
 		children_count: flat.child_count(t.a.children.len - start)
 	}
-	return t.clone_generic_node_from(header, args_ids, true, '')
+	return t.clone_generic_node_from(header, args_ids, true, u32(0))
 }
 
 @[direct_array_access]
 fn (mut t Transformer) clone_generic_node(id flat.NodeId, args_ids []u32) flat.NodeId {
-	return t.clone_generic_node_with_return_context(id, args_ids, '')
+	return t.clone_generic_node_with_return_context(id, args_ids, u32(0))
 }
 
 @[direct_array_access]
-fn (mut t Transformer) clone_generic_node_with_return_context(id flat.NodeId, args_ids []u32, return_context string) flat.NodeId {
+fn (mut t Transformer) clone_generic_node_with_return_context(id flat.NodeId, args_ids []u32, return_context_id u32) flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return id
 	}
 	node := t.a.nodes[int(id)]
-	clone_id := t.clone_generic_node_from(node, args_ids, false, return_context)
+	clone_id := t.clone_generic_node_from(node, args_ids, false, return_context_id)
 	t.copy_cloned_resolution(id, clone_id)
 	if node.kind == .decl_assign {
 		cloned_decl := t.a.nodes[int(clone_id)]
@@ -11204,7 +11220,8 @@ fn (mut t Transformer) clone_generic_node_with_return_context(id flat.NodeId, ar
 	return clone_id
 }
 
-fn (mut t Transformer) clone_specialized_comptime_new_marker(node flat.Node, target string) flat.NodeId {
+fn (mut t Transformer) clone_specialized_comptime_new_marker(node flat.Node, target_id u32) flat.NodeId {
+	target := flat.source_type_name(target_id)
 	type_expr := t.a.add_node(flat.Node{
 		kind:  .ident
 		value: target
@@ -11223,24 +11240,30 @@ fn (mut t Transformer) clone_specialized_comptime_new_marker(node flat.Node, tar
 	return t.make_cast(flat.source_type_id('&${target}'), marker, flat.source_type_id('&${target}'))
 }
 
-fn (mut t Transformer) generic_clone_child_return_context(node flat.Node, child_index int, return_context string, argument_types []string) string {
+fn (mut t Transformer) generic_clone_child_return_context(node flat.Node, child_index int, return_context_id u32, argument_types_ids []u32) u32 {
 	if node.kind == .return_stmt && node.children_count == 1 && child_index == 0 {
-		return t.cur_fn_ret_type_text()
+		return t.cur_fn_ret_type
 	}
-	if node.kind == .call && child_index > 0 && argument_types.len > 0 {
+	if node.kind == .call && child_index > 0 && argument_types_ids.len > 0 {
 		index := child_index - 1
-		if index < argument_types.len {
-			return argument_types[index].trim_string_left('...')
+		if index < argument_types_ids.len {
+			return t.variadic_parameter_base_type(argument_types_ids[index])
 		}
-		if argument_types.last().starts_with('...') {
-			return argument_types.last()[3..]
+		last := argument_types_ids.last()
+		if flat.source_type_shape(last).has(.variadic) {
+			return t.variadic_parameter_base_type(last)
 		}
 	}
-	return if t.generic_clone_child_is_return_value(node, child_index, return_context) {
-		return_context
+	return if t.generic_clone_child_is_return_value(node, child_index, return_context_id) {
+		return_context_id
 	} else {
-		''
+		u32(0)
 	}
+}
+
+fn (t &Transformer) variadic_parameter_base_type(type_id u32) u32 {
+	if !flat.source_type_shape(type_id).has(.variadic) { return type_id }
+	return flat.source_type_id(flat.source_type_name(type_id).trim_string_left('...'))
 }
 
 fn (mut t Transformer) generic_clone_argument_type(id flat.NodeId, args_ids []u32) u32 {
@@ -11257,7 +11280,7 @@ fn (mut t Transformer) generic_clone_argument_type(id flat.NodeId, args_ids []u3
 		decls := t.cached_generic_fn_decls()
 		if key := t.generic_call_decl_key(id, *node, t.cur_module, decls) {
 			if decl := decls[key] {
-				call_args_source_ids := t.generic_clone_call_type_args(*node, decl, args_ids, '')
+				call_args_source_ids := t.generic_clone_call_type_args(*node, decl, args_ids, u32(0))
 
 				if call_args_source_ids.len == 0 { return u32(0) }
 				return t.specialized_fn_return_type_text(decl, call_args_source_ids)
@@ -11267,7 +11290,7 @@ fn (mut t Transformer) generic_clone_argument_type(id flat.NodeId, args_ids []u3
 	return flat.source_type_id(t.resolve_substituted_type_text(t.subst_type(flat.source_type_name(t.generic_call_arg_type_for_inference(id)), args_ids)))
 }
 
-fn (mut t Transformer) generic_clone_call_type_args(node flat.Node, decl GenericFnDecl, args_ids []u32, return_context string) []u32 {
+fn (mut t Transformer) generic_clone_call_type_args(node flat.Node, decl GenericFnDecl, args_ids []u32, return_context_id u32) []u32 {
 	param_names := t.generic_fn_param_names(decl.node, decl.module)
 	is_receiver := t.generic_decl_is_receiver_method(decl.node)
 		&& !t.generic_call_is_static_assoc_selector(node, decl)
@@ -11312,8 +11335,8 @@ fn (mut t Transformer) generic_clone_call_type_args(node flat.Node, decl Generic
 			return preserved_source_ids.clone()
 		}
 	}
-	if return_context.len > 0 {
-		t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(return_context), mut inferred, receiver_params)
+	if return_context_id != 0 {
+		t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(return_context_id), mut inferred, receiver_params)
 	}
 	mut call_args := []u32{cap: param_names.len}
 	for name in param_names {
@@ -11327,15 +11350,15 @@ fn (mut t Transformer) generic_clone_call_type_args(node flat.Node, decl Generic
 	return call_args.clone()
 }
 
-fn (mut t Transformer) generic_clone_call_param_types(node flat.Node, args_ids []u32, return_context string) []u32 {
+fn (mut t Transformer) generic_clone_call_param_types(node flat.Node, args_ids []u32, return_context_id u32) []u32 {
 	if node.kind != .call || node.children_count < 2 || t.skip_generics
-		|| return_context.len == 0 || t.cloning_comptime_for_depth > 0 {
+		|| return_context_id == 0 || t.cloning_comptime_for_depth > 0 {
 		return flat.TypeTextList.from_names([]string{}).ids
 	}
 	decls := t.cached_generic_fn_decls()
 	key := t.generic_call_decl_key(flat.empty_node, node, t.cur_module, decls) or { return flat.TypeTextList.from_names([]string{}).ids }
 	decl := decls[key] or { return flat.TypeTextList.from_names([]string{}).ids }
-	call_args_source_ids := t.generic_clone_call_type_args(node, decl, args_ids, return_context)
+	call_args_source_ids := t.generic_clone_call_type_args(node, decl, args_ids, return_context_id)
 
 	if call_args_source_ids.len == 0 { return flat.TypeTextList.from_names([]string{}).ids }
 	param_types_source_ids := t.specialized_generic_call_param_type_texts(decl, call_args_source_ids)
@@ -11348,9 +11371,9 @@ fn (mut t Transformer) generic_clone_call_param_types(node flat.Node, args_ids [
 	return param_types_source_ids.clone()
 }
 
-fn (mut t Transformer) generic_clone_child_is_return_value(node flat.Node, child_index int, return_context string) bool {
-	if return_context.len > 0 && node.kind in [.prefix, .infix] {
-		mut expected := t.generic_inference_expected_type(return_context)
+fn (mut t Transformer) generic_clone_child_is_return_value(node flat.Node, child_index int, return_context_id u32) bool {
+	if return_context_id != 0 && node.kind in [.prefix, .infix] {
+		mut expected := flat.source_type_name(t.generic_inference_expected_type(return_context_id))
 		for expected.starts_with('?') || expected.starts_with('!') {
 			expected = trimmed_transform_text(expected[1..])
 		}
@@ -11403,23 +11426,23 @@ fn (mut t Transformer) generic_clone_child_is_return_value(node flat.Node, child
 		return result_type.is_string() && node.op == .plus
 	}
 	return (node.kind == .return_stmt && node.children_count == 1 && child_index == 0)
-		|| (return_context.len > 0 && node.kind in [.paren, .postfix, .expr_stmt, .dump_expr]
+		|| (return_context_id != 0 && node.kind in [.paren, .postfix, .expr_stmt, .dump_expr]
 			&& node.children_count == 1 && child_index == 0)
-		|| (return_context.len > 0 && node.kind == .or_expr)
-		|| (return_context.len > 0 && node.kind in [.if_expr, .match_stmt] && child_index > 0)
-		|| (return_context.len > 0 && node.kind == .comptime_if)
-		|| (return_context.len > 0 && node.kind in [.block, .match_branch, .lock_expr]
+		|| (return_context_id != 0 && node.kind == .or_expr)
+		|| (return_context_id != 0 && node.kind in [.if_expr, .match_stmt] && child_index > 0)
+		|| (return_context_id != 0 && node.kind == .comptime_if)
+		|| (return_context_id != 0 && node.kind in [.block, .match_branch, .lock_expr]
 			&& child_index == node.children_count - 1)
 }
 
 @[direct_array_access]
-fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, is_root bool, return_context string) flat.NodeId {
+fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, is_root bool, return_context_id u32) flat.NodeId {
 	args := flat.TypeTextList{ ids: args_ids }.names()
 	if node.kind == .string_literal && node.children_count == 1
 		&& node.value in ['__v3_comptime_zero', '__v3_comptime_new'] {
 		if target := t.generic_comptime_type_expr(t.a.child(&node, 0), args_ids) {
 			return if node.value == '__v3_comptime_new' {
-				t.clone_specialized_comptime_new_marker(node, target)
+				t.clone_specialized_comptime_new_marker(node, flat.source_type_id(target))
 			} else {
 				t.comptime_zero_value(target)
 			}
@@ -11465,7 +11488,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 					for variant in variants {
 						ids << t.make_int_literal(t.comptime_field_type_id(variant, t.cur_module))
 					}
-					return t.make_array_literal_typed(ids, '[]int')
+					return t.make_array_literal_typed(ids, flat.source_type_id('[]int'))
 				}
 			}
 		}
@@ -11485,7 +11508,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 			if branch_index >= int(node.children_count) {
 				return t.make_empty()
 			}
-			return t.clone_generic_node_with_return_context(t.a.child(&node, branch_index), args_ids, return_context)
+			return t.clone_generic_node_with_return_context(t.a.child(&node, branch_index), args_ids, return_context_id)
 		}
 	}
 	if node.kind == .comptime_if && t.cloning_comptime_for_depth == 0 {
@@ -11499,7 +11522,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 			t.active_generic_params << binding
 			mut bound_args := flat.TypeTextList.from_names(args.clone()).ids
 			bound_args << flat.source_type_id(pointee)
-			result := t.clone_generic_node_with_return_context(t.a.child(&node, branch_index), bound_args, return_context)
+			result := t.clone_generic_node_with_return_context(t.a.child(&node, branch_index), bound_args, return_context_id)
 			t.clear_node_type_memo()
 			t.active_generic_params = old_params
 			return result
@@ -11509,7 +11532,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 			if branch_index >= int(node.children_count) {
 				return t.make_empty()
 			}
-			return t.clone_generic_node_with_return_context(t.a.child(&node, branch_index), args_ids, return_context)
+			return t.clone_generic_node_with_return_context(t.a.child(&node, branch_index), args_ids, return_context_id)
 		}
 	}
 	if node.kind == .typeof_expr {
@@ -11533,7 +11556,8 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		loop_var, _ := comptime_for_parts(node.value)
 		t.cloning_comptime_for_vars << loop_var
 	}
-	argument_types := flat.TypeTextList{ ids: t.generic_clone_call_param_types(node, args_ids, return_context) }.names()
+	argument_types_source_ids := t.generic_clone_call_param_types(node, args_ids, return_context_id)
+
 	scratch_start := t.generic_clone_children.len
 	for _ in 0 .. node.children_count {
 		t.generic_clone_children << flat.empty_node
@@ -11552,9 +11576,10 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 				match_smartcasts++
 			}
 		}
-		child_context := t.generic_clone_child_return_context(node, i, return_context, argument_types)
+		child_context_source_id := t.generic_clone_child_return_context(node, i, return_context_id, argument_types_source_ids.clone())
+
 		child := t.clone_generic_node_with_return_context(t.a.child(&node, i), args_ids,
-			child_context)
+			child_context_source_id)
 		for _ in 0 .. match_smartcasts {
 			t.pop_smartcast()
 		}
@@ -11645,7 +11670,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		is_fixed_init := if array_substituted != node.value {
 			node.value.starts_with('[') && !node.value.starts_with('[]')
 		} else {
-			t.is_fixed_array_type(array_value)
+			t.is_fixed_array_type(flat.source_type_id(array_value))
 				|| (array_value.starts_with('[') && !array_value.starts_with('[]'))
 		}
 		cloned_typ = if is_fixed_init { array_value } else { '[]${array_value}' }
@@ -11681,7 +11706,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 			struct_value_source_id := t.normalize_type_alias(flat.source_type_id(struct_value0))
 			struct_value := flat.source_type_name(struct_value_source_id)
 			parsed := t.tc.parse_resolution_type(struct_value_source_id)
-			cloned_typ = if t.is_fixed_array_type(struct_value0) {
+			cloned_typ = if t.is_fixed_array_type(flat.source_type_id(struct_value0)) {
 				t.resolved_fixed_array_canonical_type(struct_value0)
 			} else if t.generic_arg_is_alias_name(struct_value0, t.cur_module) {
 				struct_value0
@@ -11844,7 +11869,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 	t.retarget_cloned_fn_value_generic_call(node, mut children)
 	static_assoc_typ_source_id := t.retarget_cloned_static_assoc_call(node, mut children, args_ids)
 	static_assoc_typ := flat.source_type_name(static_assoc_typ_source_id)
-	retargeted_typ_source_id := t.retarget_cloned_generic_call(node, mut children, args_ids, flat.source_type_id(return_context))
+	retargeted_typ_source_id := t.retarget_cloned_generic_call(node, mut children, args_ids, return_context_id)
 	retargeted_typ := flat.source_type_name(retargeted_typ_source_id)
 	final_typ := if retargeted_typ_source_id != 0 {
 		retargeted_typ
@@ -12248,7 +12273,8 @@ fn (t &Transformer) generic_comptime_typeof_display_name(node flat.Node, args_id
 }
 
 fn (mut t Transformer) generic_comptime_type_member(raw string, member string) ?string {
-	clean := flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(raw)))
+	clean_source_id_ := t.comptime_normalize_type_alias_chain(flat.source_type_id(raw))
+	clean := flat.source_type_name(clean_source_id_)
 	match member {
 		'payload_type' {
 			if clean.starts_with('?') || clean.starts_with('!') {
@@ -12276,7 +12302,7 @@ fn (mut t Transformer) generic_comptime_type_member(raw string, member string) ?
 			if clean.starts_with('[]') {
 				return clean[2..]
 			}
-			if t.is_fixed_array_type(clean) {
+			if t.is_fixed_array_type(clean_source_id_) {
 				return fixed_array_elem_type(clean)
 			}
 		}
@@ -12509,45 +12535,31 @@ fn is_lowered_map_key_temp_name(name string) bool {
 // to that type: `b.own[int]()` in the instance of a generic function where `b`
 // is a `Box[string]` (see types.TypeChecker.explicit_receiver_type_args).
 // `callee_id` is the cloned callee. A build leaves them as they are.
-fn (mut t Transformer) hold_receiver_type_args(decl GenericFnDecl, callee_id flat.NodeId, node flat.Node, param_names []string, mut call_args []string) {
+fn (mut t Transformer) hold_receiver_type_args(decl GenericFnDecl, callee_id flat.NodeId, node flat.Node, param_names []string, mut call_args []u32) {
 	if isnil(t.tc) || !t.tc.check_concrete_generic_bodies || call_args.len != param_names.len
 		|| int(callee_id) < 0 || int(callee_id) >= t.a.nodes.len {
 		return
 	}
 	receiver_params := t.generic_receiver_param_names(decl)
-	if !param_names.any(it in receiver_params) {
-		return
-	}
+	if !param_names.any(it in receiver_params) { return }
 	mut callee := t.a.nodes[int(callee_id)]
 	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
 		callee = t.a.nodes[int(t.a.child(&callee, 0))]
 	}
-	if callee.kind != .selector || callee.children_count == 0 {
-		return
-	}
-	receiver_type_source_id_ := t.generic_call_arg_type_for_inference(t.a.child(&callee, 0))
-	receiver_type := flat.source_type_name(receiver_type_source_id_)
-	if receiver_type_source_id_ == 0 || t.generic_arg_is_unresolved(receiver_type_source_id_) {
-		return
-	}
-	fixed := t.receiver_fixed_type_args(decl, receiver_type)
+	if callee.kind != .selector || callee.children_count == 0 { return }
+	receiver_type_id := t.generic_call_arg_type_for_inference(t.a.child(&callee, 0))
+	if receiver_type_id == 0 || t.generic_arg_is_unresolved(receiver_type_id) { return }
+	fixed := t.receiver_fixed_type_args(decl, receiver_type_id)
 	for i, param in param_names {
-		if param !in receiver_params {
-			continue
-		}
-		receiver_arg_source_id := fixed[param] or { continue }
-		receiver_arg := flat.source_type_name(receiver_arg_source_id)
-		if receiver_arg == call_args[i] {
-			continue
-		}
-		expected := t.tc.parse_type(receiver_arg_source_id).name()
-		given := t.tc.parse_type(flat.source_type_id(call_args[i])).name()
-		if expected == given {
-			continue
-		}
+		if param !in receiver_params { continue }
+		receiver_arg_id := fixed[param] or { continue }
+		if receiver_arg_id == call_args[i] { continue }
+		expected := t.tc.parse_type(receiver_arg_id).name()
+		given := t.tc.parse_type(call_args[i]).name()
+		if expected == given { continue }
 		t.tc.report_receiver_type_arg_mismatch(t.cur_file, node.pos, decl.node.value.all_after_last('.'),
-			param, t.tc.parse_type(receiver_type_source_id_).name().trim_left('&'), expected, given)
-		call_args[i] = receiver_arg
+			param, t.tc.parse_type(receiver_type_id).name().trim_left('&'), expected, given)
+		call_args[i] = receiver_arg_id
 	}
 }
 
@@ -12555,7 +12567,8 @@ fn (mut t Transformer) hold_receiver_type_args(decl GenericFnDecl, callee_id fla
 // `receiver_type` gives the type parameters of the receiver of the method
 // `decl`: `T` is `string` for a `Box[string]` and `fn (b Box[T]) own[T]() T`,
 // also through an embedded `Box[string]`.
-fn (mut t Transformer) receiver_fixed_type_args(decl GenericFnDecl, receiver_type string) map[string]u32 {
+fn (mut t Transformer) receiver_fixed_type_args(decl GenericFnDecl, receiver_type_id u32) map[string]u32 {
+	receiver_type := flat.source_type_name(receiver_type_id)
 	mut fixed := map[string]u32{}
 	for i in 0 .. decl.node.children_count {
 		receiver_param := t.a.child_node(&decl.node, i)
@@ -12572,7 +12585,6 @@ fn (mut t Transformer) receiver_fixed_type_args(decl GenericFnDecl, receiver_typ
 }
 
 fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children []flat.NodeId, args_ids []u32, return_context_id u32) u32 {
-	return_context := flat.source_type_name(return_context_id)
 	if node.kind != .call || children.len == 0 || t.skip_generics {
 		return u32(0)
 	}
@@ -12588,7 +12600,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 	if param_names.len == 0 {
 		return u32(0)
 	}
-	mut call_args := []string{}
+	mut call_args := []u32{}
 	if explicit_source_ids := t.explicit_generic_call_args(node, t.cur_module) {
 		if is_receiver && explicit_source_ids.len < param_names.len {
 			// A partial method list pins only method-level parameters; the receiver's
@@ -12598,7 +12610,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		for arg_source_id in explicit_source_ids {
 			arg := flat.source_type_name(arg_source_id)
 
-			call_args << t.resolve_substituted_type_text(t.subst_type(arg, args_ids))
+			call_args << flat.source_type_id(t.resolve_substituted_type_text(t.subst_type(arg, args_ids)))
 		}
 		// A full list spells the receiver's parameters too: the cloned receiver
 		// fixes them.
@@ -12694,11 +12706,11 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			if t.callee_matches_generic_args(callee, decl, preserved_source_ids) {
 				return u32(0)
 			}
-			call_args = preserved.clone()
+			call_args = flat.TypeTextList.from_names(preserved.clone()).ids
 		} else {
 			if inferred.len < param_names.len && return_context_id != 0 {
 				mut return_inferred := map[string]u32{}
-				mut expected_return := t.generic_inference_expected_type(return_context)
+				mut expected_return := flat.source_type_name(t.generic_inference_expected_type(return_context_id))
 				for expected_return.starts_with('?') || expected_return.starts_with('!') {
 					expected_return = trimmed_transform_text(expected_return[1..])
 				}
@@ -12722,7 +12734,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 					} else {
 						[]string{}
 					}
-					t.infer_generic_return_type_args(decl, inference_return, mut return_inferred,
+					t.infer_generic_return_type_args(decl, flat.source_type_id(inference_return), mut return_inferred,
 						receiver_params)
 				}
 				for name, inferred_type_source_id in return_inferred {
@@ -12740,14 +12752,14 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 					args_ids[idx]
 				}
 
-				call_args << flat.source_type_name(t.inherited_generic_arg_for_decl_module(arg_source_id___, decl.module, args_ids))
+				call_args << t.inherited_generic_arg_for_decl_module(arg_source_id___, decl.module, args_ids)
 			}
 		}
 	}
-	if call_args.len == 0 || t.generic_args_have_placeholders(flat.TypeTextList.from_names(call_args).ids) {
+	if call_args.len == 0 || t.generic_args_have_placeholders(call_args) {
 		return u32(0)
 	}
-	concrete_call_args_source_ids := t.canonical_generic_specialization_args(flat.TypeTextList.from_names(call_args).ids)
+	concrete_call_args_source_ids := t.canonical_generic_specialization_args(call_args)
 
 	if !t.generic_specialization_registered(decl, concrete_call_args_source_ids)
 		&& !t.generic_specialization_in_progress(decl, concrete_call_args_source_ids) {
@@ -12765,7 +12777,8 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		c_name(spec_value),
 		c_name(qualified_spec),
 	], concrete_call_args_source_ids)
-	param_types := flat.TypeTextList{ ids: t.specialized_generic_call_param_type_texts(decl, concrete_call_args_source_ids) }.names()
+	param_types_source_ids___ := t.specialized_generic_call_param_type_texts(decl, concrete_call_args_source_ids)
+
 	if is_receiver {
 		mut callee := t.a.nodes[int(children[0])]
 		if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
@@ -12775,9 +12788,9 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			return u32(0)
 		}
 		mut receiver := t.a.child(&callee, 0)
-		if param_types.len > 0 {
+		if param_types_source_ids___.len > 0 {
 			base_type := flat.source_type_name(t.generic_call_arg_type_for_inference(receiver))
-			mut expected_type := trimmed_transform_text(param_types[0])
+			mut expected_type := trimmed_transform_text(flat.source_type_name(param_types_source_ids___[0]))
 			if expected_type.starts_with('mut ') {
 				expected_type = trimmed_transform_text(expected_type[4..])
 			}
@@ -12795,7 +12808,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 	} else {
 		children[0] = t.make_ident(qualified_spec)
 	}
-	t.append_missing_specialized_params_struct_args(mut children, param_types, decl.module)
+	t.append_missing_specialized_params_struct_args(mut children, param_types_source_ids___.clone(), decl.module)
 	return t.specialized_fn_return_type_text(decl, concrete_call_args_source_ids)
 }
 
@@ -13027,7 +13040,7 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 		} else {
 			if inferred.len < param_names.len && t.cur_fn_ret_type != 0 {
 				mut return_inferred := map[string]u32{}
-				t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(t.cur_fn_ret_type_text()), mut return_inferred, receiver_params)
+				t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(t.cur_fn_ret_type), mut return_inferred, receiver_params)
 				for name, inferred_type_source_id in return_inferred {
 					if name !in inferred {
 						inferred[name] = inferred_type_source_id
@@ -15106,13 +15119,11 @@ fn generic_inference_param_type(param &flat.Node) string {
 	return clean
 }
 
-fn (t &Transformer) generic_inference_expected_type(typ string) string {
-	if source_source_id := t.generic_specialized_source_type_name(flat.source_type_id(typ)) {
-		source := flat.source_type_name(source_source_id)
-
-		return source
+fn (t &Transformer) generic_inference_expected_type(typ_id u32) u32 {
+	if source_source_id := t.generic_specialized_source_type_name(typ_id) {
+		return source_source_id
 	}
-	return typ
+	return typ_id
 }
 
 fn generic_type_indirections(typ string) int {
@@ -15748,7 +15759,7 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 	if t.generic_arg_is_alias_name(clean, '') {
 		normalized_alias_source_id := t.normalize_type_alias(clean_id)
 		normalized_alias := flat.source_type_name(normalized_alias_source_id)
-		if normalized_alias != clean && t.is_fixed_array_type(normalized_alias) {
+		if normalized_alias != clean && t.is_fixed_array_type(normalized_alias_source_id) {
 			return t.canonical_generic_specialization_arg(normalized_alias_source_id)
 		}
 		return clean_id

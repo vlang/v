@@ -241,15 +241,15 @@ fn (mut t Transformer) sql_fallback_value(_id flat.NodeId, node flat.Node) flat.
 		opt_type_source_id := t.qualify_optional_type(flat.source_type_id(typ))
 
 		value_type_source_id_2 := t.optional_base_type(opt_type_source_id)
-		value_type := flat.source_type_name(value_type_source_id_2)
+
 		value := if value_type_source_id_2 != 0 && value_type_source_id_2 != flat.source_type_void {
-			t.zero_value_for_type(value_type)
+			t.zero_value_for_type(value_type_source_id_2)
 		} else {
 			flat.empty_node
 		}
 		return t.make_optional_some(value, opt_type_source_id)
 	}
-	return t.zero_value_for_type(typ)
+	return t.zero_value_for_type(flat.source_type_id(typ))
 }
 
 fn sql_node_is_aggregate_expr(node flat.Node) bool {
@@ -807,7 +807,7 @@ fn (mut t Transformer) sql_string_array(values []string) flat.NodeId {
 	for value in values {
 		ids << t.make_string_literal(value)
 	}
-	return t.make_array_literal_typed(ids, '[]string')
+	return t.make_array_literal_typed(ids, flat.source_type_id('[]string'))
 }
 
 fn (t &Transformer) sql_initialized_fields(value_name string) []string {
@@ -825,7 +825,7 @@ fn (mut t Transformer) sql_where_params_array(table SqlTransformTableInfo, param
 	for param in params {
 		ids << t.sql_primitive_from_token_for_field(table, param.field, param.value)
 	}
-	return t.make_array_literal_typed(ids, '[]orm.Primitive')
+	return t.make_array_literal_typed(ids, flat.source_type_id('[]orm.Primitive'))
 }
 
 fn (mut t Transformer) sql_dynamic_data_expr(table SqlTransformTableInfo, data SqlTransformDynamicData, kind SqlDynamicDataKind) flat.NodeId {
@@ -1110,8 +1110,8 @@ fn (t &Transformer) sql_dynamic_value_type(tokens []string) string {
 }
 
 fn (mut t Transformer) sql_dynamic_if_value_expr(tokens []string, typ string) flat.NodeId {
-	open_idx := sql_find_top_level_token(tokens, '{', 1) or { return t.zero_value_for_type(typ) }
-	close_idx := sql_matching_brace(tokens, open_idx) or { return t.zero_value_for_type(typ) }
+	open_idx := sql_find_top_level_token(tokens, '{', 1) or { return t.zero_value_for_type(flat.source_type_id(typ)) }
+	close_idx := sql_matching_brace(tokens, open_idx) or { return t.zero_value_for_type(flat.source_type_id(typ)) }
 	mut else_idx := -1
 	for i in close_idx + 1 .. tokens.len {
 		if tokens[i] == 'else' {
@@ -1120,10 +1120,10 @@ fn (mut t Transformer) sql_dynamic_if_value_expr(tokens []string, typ string) fl
 		}
 	}
 	if else_idx < 0 || else_idx + 1 >= tokens.len || tokens[else_idx + 1] != '{' {
-		return t.zero_value_for_type(typ)
+		return t.zero_value_for_type(flat.source_type_id(typ))
 	}
 	else_close_idx := sql_matching_brace(tokens, else_idx + 1) or {
-		return t.zero_value_for_type(typ)
+		return t.zero_value_for_type(flat.source_type_id(typ))
 	}
 	cond := t.sql_dynamic_condition_expr(tokens[1..open_idx])
 	then_expr := t.sql_dynamic_value_expr(tokens[open_idx + 1..close_idx], typ)
@@ -1938,7 +1938,7 @@ fn (t &Transformer) sql_index_elem_type(base flat.NodeId) string {
 	if base_type.starts_with('[]') {
 		return flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type[2..])))
 	}
-	if t.is_fixed_array_type(base_type) {
+	if t.is_fixed_array_type(flat.source_type_id(base_type)) {
 		return flat.source_type_name(t.normalize_type_alias(flat.source_type_id(for_in_fixed_array_elem_type(base_type))))
 	}
 	if base_type.starts_with('map[') {

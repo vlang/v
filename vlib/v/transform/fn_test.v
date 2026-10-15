@@ -230,7 +230,7 @@ fn test_zeroed_staging_values_keep_heap_structs_on_the_stack() {
 	staging := t.make_staging_value_decl('staging', 'HeapValue')
 	t.transform_decl_assign_stmt(staging, a.nodes[int(staging)])
 	assert 'staging' !in t.heaped_amp_locals
-	ordinary := t.make_decl_assign_typed('ordinary', t.zero_value_for_type('HeapValue'), flat.source_type_id('HeapValue'))
+	ordinary := t.make_decl_assign_typed('ordinary', t.zero_value_for_type(flat.source_type_id('HeapValue')), flat.source_type_id('HeapValue'))
 	t.transform_decl_assign_stmt(ordinary, a.nodes[int(ordinary)])
 	assert 'ordinary' in t.heaped_amp_locals
 }

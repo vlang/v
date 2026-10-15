@@ -865,7 +865,7 @@ fn (t &Transformer) builtin_selector_type(base_type_id u32, field_name string) ?
 			else { none }
 		}
 	}
-	if field_name == 'len' && (clean_source_id == flat.source_type_string || clean.starts_with('map[') || t.is_fixed_array_type(clean)
+	if field_name == 'len' && (clean_source_id == flat.source_type_string || clean.starts_with('map[') || t.is_fixed_array_type(clean_source_id)
 		|| clean == 'chan' || clean.starts_with('chan ')) {
 		return flat.source_type_int
 	}
@@ -1977,7 +1977,7 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) u32 {
 		// A `mut map`/`mut []T` param is a pointer to the container; indexing it must
 		// still yield the element/value type, so fall through to the container cases.
 		if !ptr_elem_type.starts_with('[]') && !ptr_elem_type.starts_with('map[')
-			&& !t.is_fixed_array_type(ptr_elem_type) {
+			&& !t.is_fixed_array_type(ptr_elem_type_source_id) {
 			return ptr_elem_type_source_id
 		}
 		base_type = ptr_elem_type
@@ -1993,14 +1993,14 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) u32 {
 		}
 		// A range/slice of a fixed array (`arr[..]`, `arr[a..b]`) yields a dynamic
 		// `[]T`, not the fixed array or a bogus `range` type.
-		if t.is_fixed_array_type(base_type) {
+		if t.is_fixed_array_type(flat.source_type_id(base_type)) {
 			return flat.source_type_id('[]${flat.source_type_name(t.normalize_type_alias(flat.source_type_id(for_in_fixed_array_elem_type(base_type))))}')
 		}
 	}
 	if base_type.starts_with('[]') {
 		return t.normalize_type_alias(flat.source_type_id(base_type[2..]))
 	}
-	if t.is_fixed_array_type(base_type) {
+	if t.is_fixed_array_type(flat.source_type_id(base_type)) {
 		return t.normalize_type_alias(flat.source_type_id(for_in_fixed_array_elem_type(base_type)))
 	}
 	if base_type.starts_with('map[') {
@@ -2024,7 +2024,7 @@ fn (t &Transformer) index_expr_type(id flat.NodeId, node flat.Node) u32 {
 	if resolved_elem_type_source_id == flat.source_type_u8 || (is_slice && resolved_elem_type_source_id != 0) {
 		return resolved_elem_type_source_id
 	}
-	if t.is_fixed_array_type(resolved_elem_type)
+	if t.is_fixed_array_type(resolved_elem_type_source_id)
 		&& t.fixed_array_type_contains_map(resolved_elem_type) {
 		return resolved_elem_type_source_id
 	}
@@ -2132,7 +2132,7 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 			elem_type_source_id := t.array_literal_elem_type(node)
 			elem_type := flat.source_type_name(elem_type_source_id)
 			if decl_type_is_usable(elem_type) && !t.generic_arg_is_unresolved(elem_type_source_id) {
-				if t.is_fixed_array_type(resolved) {
+				if t.is_fixed_array_type(resolved_source_id) {
 					return flat.source_type_id('[${fixed_array_len_text(resolved)}]${elem_type}')
 				}
 				return flat.source_type_id('[]${elem_type}')

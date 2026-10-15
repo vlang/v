@@ -41,12 +41,12 @@ fn ordinary_escape_fixture_c(mode string, prescreen bool) string {
 		stmts << t.make_decl_assign_typed('values', array, flat.source_type_id('[]int'))
 	} else if mode == 'branch' {
 		cond := a.add_val(.bool_literal, 'true')
-		then_block := t.make_block([t.make_return(t.make_int_literal(3), 'int')])
-		else_block := t.make_block([t.make_return(t.make_int_literal(4), 'int')])
+		then_block := t.make_block([t.make_return(t.make_int_literal(3), flat.source_type_int)])
+		else_block := t.make_block([t.make_return(t.make_int_literal(4), flat.source_type_int)])
 		stmts << escape_prescreen_node(mut a, flat.Node{ kind: .if_expr }, [cond, then_block,
 			else_block])
 	}
-	stmts << t.make_return(t.make_ident('value'), 'int')
+	stmts << t.make_return(t.make_ident('value'), flat.source_type_int)
 	body := t.make_block(stmts)
 	fn_id := escape_prescreen_node(mut a, flat.Node{ kind: .fn_decl, value: 'compute', typ: flat.source_type_int }, [
 		param,
@@ -170,7 +170,7 @@ fn test_ordinary_escape_prescreen_rejects_every_address_source_category() {
 			}
 		}
 		body := if mode == 'address' {
-			t.make_block([t.make_return(source, '&int')])
+			t.make_block([t.make_return(source, flat.source_type_id('&int'))])
 		} else {
 			t.make_block([t.make_expr_stmt(source)])
 		}

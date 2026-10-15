@@ -1985,24 +1985,24 @@ fn (t &Transformer) method_const_string_value(id flat.NodeId, var_name string, m
 
 fn (mut t Transformer) make_attribute_array_literal(attrs []AttributeMeta) flat.NodeId {
 	if attrs.len == 0 {
-		return t.zero_value_for_type('[]VAttribute')
+		return t.zero_value_for_type(flat.source_type_id('[]VAttribute'))
 	}
 	mut ids := []flat.NodeId{cap: attrs.len}
 	for attr in attrs {
 		ids << t.make_attribute_literal(attr)
 	}
-	return t.make_array_literal_typed(ids, '[]VAttribute')
+	return t.make_array_literal_typed(ids, flat.source_type_id('[]VAttribute'))
 }
 
 fn (mut t Transformer) make_param_array_literal(params []ParamMeta, module_name string) flat.NodeId {
 	if params.len == 0 {
-		return t.zero_value_for_type('[]FunctionParam')
+		return t.zero_value_for_type(flat.source_type_id('[]FunctionParam'))
 	}
 	mut ids := []flat.NodeId{cap: params.len}
 	for param in params {
 		ids << t.make_param_data_literal_in_module(param, module_name)
 	}
-	return t.make_array_literal_typed(ids, '[]FunctionParam')
+	return t.make_array_literal_typed(ids, flat.source_type_id('[]FunctionParam'))
 }
 
 fn (t &Transformer) comptime_method_receiver_names_type(receiver flat.NodeId) bool {
@@ -3413,10 +3413,10 @@ fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId 
 // variable its dual meaning: a VariantData value in ordinary expressions and a concrete type in
 // `is`/`$if`/`typeof(variant.typ_text())` compile-time positions.
 fn (mut t Transformer) clone_variant_subst(id flat.NodeId, var_name string, item VariantMeta) ?flat.NodeId {
-	return t.clone_variant_subst_with_smartcast(id, var_name, item, '', '', []string{})
+	return t.clone_variant_subst_with_smartcast(id, var_name, item, '', u32(0), []string{})
 }
 
-fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_name string, item VariantMeta, smartcast_name string, return_context string, inner_vars []string) ?flat.NodeId {
+fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_name string, item VariantMeta, smartcast_name string, return_context_id u32, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
 	}
@@ -3497,7 +3497,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 					if branch_idx >= int(node.children_count) {
 						return none
 					}
-					return t.clone_variant_subst_with_smartcast(t.a.child(&node, branch_idx), var_name, item, smartcast_name, return_context, inner_vars)
+					return t.clone_variant_subst_with_smartcast(t.a.child(&node, branch_idx), var_name, item, smartcast_name, return_context_id, inner_vars)
 				}
 			}
 			if !t.comptime_condition_needs_local_value(cond, node) {
@@ -3517,7 +3517,8 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			}
 		}
 	}
-	argument_types := flat.TypeTextList{ ids: t.generic_clone_call_param_types(node, t.active_specialization_args.ids, return_context) }.names()
+	argument_types_source_ids := t.generic_clone_call_param_types(node, t.active_specialization_args.ids, return_context_id)
+
 	child_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
@@ -3526,7 +3527,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		} else {
 			smartcast_name
 		}
-		if child := t.clone_variant_subst_with_smartcast(t.a.child(&node, i), var_name, item, child_smartcast, t.generic_clone_child_return_context(node, i, return_context, argument_types), child_vars) {
+		if child := t.clone_variant_subst_with_smartcast(t.a.child(&node, i), var_name, item, child_smartcast, t.generic_clone_child_return_context(node, i, return_context_id, argument_types_source_ids.clone()), child_vars) {
 			children << child
 		}
 	}
@@ -3540,7 +3541,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			&& (child_type_source_id == 0 || t.resolve_sum_name(child_type) == target_sum
 				|| t.normalize_type_alias(child_type_source_id) == t.normalize_type_alias(item.typ)) {
 			t.set_node_typ(int(children[0]), item.typ)
-			return t.make_sum_literal(target_sum, item.typ_text(), children[0])
+			return t.make_sum_literal(flat.source_type_id(target_sum), item.typ, children[0])
 		}
 	}
 	mut call_node := node
@@ -3550,7 +3551,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		call_node.value = ''
 	}
 	retargeted_call_type := if node.kind == .call && smartcast_name != '' {
-		flat.source_type_name(t.retarget_cloned_generic_call(call_node, mut children, t.active_specialization_args.ids, flat.source_type_id(return_context)))
+		flat.source_type_name(t.retarget_cloned_generic_call(call_node, mut children, t.active_specialization_args.ids, return_context_id))
 	} else {
 		''
 	}
@@ -4146,7 +4147,7 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		is_option:          is_option
 		is_embed:           is_embed
 		is_array:           unaliased_core.starts_with('[]')
-			|| t.is_fixed_array_type(unaliased_core)
+			|| t.is_fixed_array_type(flat.source_type_id(unaliased_core))
 		is_map:             unaliased_core.starts_with('map[')
 		is_chan:            unaliased_core.starts_with('chan ')
 		is_struct:          t.comptime_field_type_is_struct(unaliased_core)
@@ -4304,7 +4305,7 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 			return core[..bracket_end + 1] + elem
 		}
 	}
-	if t.is_fixed_array_type(core) {
+	if t.is_fixed_array_type(flat.source_type_id(core)) {
 		elem, dims := transform_postfix_fixed_array_parts(core)
 		if elem.len > 0 && dims.len > 0 {
 			mut out := t.comptime_field_type_id_key(elem, decl_module)
@@ -4454,7 +4455,7 @@ fn (mut t Transformer) comptime_zero_value(typ string) flat.NodeId {
 			zero_type = t.lock_colliding_main_generic_type_text(target, t.cur_module)
 		}
 	}
-	zero_id := t.zero_value_for_type(zero_type)
+	zero_id := t.zero_value_for_type(flat.source_type_id(zero_type))
 	// `nil` is a `voidptr` on its own, so a pointer zero is cast too: a generic call
 	// then infers `&&int` from `$zero(E.pointee_type)`, not `voidptr`.
 	if typ !in ['', 'void', 'int', 'f64', 'string', 'bool']
@@ -4582,7 +4583,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		if pointee.starts_with('&') {
 			pointee = trimmed_transform_text(pointee[1..])
 		}
-		zero := t.zero_value_for_type(pointee)
+		zero := t.zero_value_for_type(flat.source_type_id(pointee))
 		start := t.a.children.len
 		t.a.children << zero
 		return t.a.add_node(flat.Node{
@@ -5143,12 +5144,12 @@ fn (mut t Transformer) comptime_field_type_accessor(id flat.NodeId, var_name str
 }
 
 fn (mut t Transformer) comptime_new_value(typ string) flat.NodeId {
-	value := t.transform_expr(t.zero_value_for_type(typ))
+	value := t.transform_expr(t.zero_value_for_type(flat.source_type_id(typ)))
 	tmp_name := t.new_temp('new')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, flat.source_type_id(typ))
 	addr := t.make_prefix(.amp, t.make_ident(tmp_name))
 	t.set_node_typ(int(addr), flat.source_type_id('&${typ}'))
-	allocation := t.make_memdup_call_for_type(addr, typ)
+	allocation := t.make_memdup_call_for_type(addr, flat.source_type_id(typ))
 	return t.make_cast(flat.source_type_id('&${typ}'), allocation, flat.source_type_id('&${typ}'))
 }
 
@@ -5194,13 +5195,13 @@ fn (mut t Transformer) field_member_value(member string, fm FieldMeta) ?flat.Nod
 // materializing `field.attrs`.
 fn (mut t Transformer) make_string_array_literal(values []string) flat.NodeId {
 	if values.len == 0 {
-		return t.zero_value_for_type('[]string')
+		return t.zero_value_for_type(flat.source_type_id('[]string'))
 	}
 	mut ids := []flat.NodeId{cap: values.len}
 	for v in values {
 		ids << t.make_string_literal(comptime_attr_display(v))
 	}
-	return t.make_array_literal_typed(ids, '[]string')
+	return t.make_array_literal_typed(ids, flat.source_type_id('[]string'))
 }
 
 // subst_value_cond textually substitutes `<var>.name`/`<var>.value` inside a comptime condition
