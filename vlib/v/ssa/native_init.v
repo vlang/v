@@ -165,7 +165,7 @@ fn (mut b Builder) build_native_global_initializer(field flat.Node) {
 	typ := b.deref_type(addr)
 	if b.m.type_store.types[typ].kind == .array_t {
 		mut fixed_expr := *expr
-		fixed_expr.value = b.global_type_names.value(name)
+		fixed_expr.value = flat.source_type_name(b.global_type_names.value_id(name))
 		value := if expr.kind in [.array_init, .array_literal] {
 			b.build_fixed_array_init(fixed_expr)
 		} else {

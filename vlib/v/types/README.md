@@ -18,6 +18,9 @@ Markused passes source IDs through local type queries and binding accessors. Its
 keeps source and semantic IDs in separate maps; method names remain strings.
 The C backend retains source IDs through struct-field lookup and source qualification. C type
 encodings and generated identifiers remain strings.
+SSA type queries and source bindings also carry spelling IDs. SSA `TypeID` belongs to its
+`TypeStore` and identifies a lowered layout; it is separate from both spelling IDs and checker
+semantic `TypeId`. Resolve spelling bytes when lowering to that layout or looking up declarations.
 
 Nominal `Struct`, `Interface`, `Enum`, `SumType`, and `Alias` descriptors store their source
 identity in `name_id`, a `u32` assigned by `flat.source_type_id`. Use `name()` to resolve a
