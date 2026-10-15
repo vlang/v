@@ -1464,7 +1464,8 @@ fn (mut t Transformer) comptime_method_metas(base_type_id u32) []MethodMeta {
 			continue
 		}
 		seen[name] = true
-		generic_args, generic_params := t.comptime_method_receiver_generic_args(first.typ_text(), requested, normalized)
+		generic_args_source_ids, generic_params := t.comptime_method_receiver_generic_args(first.typ_text(), requested, normalized)
+
 		mut params := []ParamMeta{}
 		for i in 1 .. node.children_count {
 			param := t.a.child_node(node, i)
@@ -1476,7 +1477,7 @@ fn (mut t Transformer) comptime_method_metas(base_type_id u32) []MethodMeta {
 			}
 			params << ParamMeta{
 				name:        param.value
-				typ:         flat.source_type_id(substitute_generic_type_text_with_params(param.typ_text(), flat.TypeTextList.from_names(generic_args).ids, generic_params))
+				typ:         flat.source_type_id(substitute_generic_type_text_with_params(param.typ_text(), generic_args_source_ids, generic_params))
 				module_name: decl.module_name
 			}
 		}
@@ -1484,7 +1485,7 @@ fn (mut t Transformer) comptime_method_metas(base_type_id u32) []MethodMeta {
 			node.typ_text()
 		} else {
 			'void'
-		}, flat.TypeTextList.from_names(generic_args).ids, generic_params)
+		}, generic_args_source_ids, generic_params)
 		raw_attr_data := t.comptime_node_raw_attribute_data(decl.id)
 		if decl.file_name !in t.comptime_method_line_offsets {
 			t.comptime_method_line_offsets[decl.file_name] = comptime_source_line_offsets(decl.file_name)
@@ -1538,10 +1539,10 @@ fn (t &Transformer) comptime_method_requested_module(raw string) string {
 	return t.cur_module
 }
 
-fn (t &Transformer) comptime_method_receiver_generic_args(receiver string, requested string, normalized string) ([]string, []string) {
+fn (t &Transformer) comptime_method_receiver_generic_args(receiver string, requested string, normalized string) ([]u32, []string) {
 	_, params, is_generic := generic_app_parts(comptime_method_receiver_type(receiver))
 	if !is_generic || params.len == 0 {
-		return []string{}, []string{}
+		return []u32{}, []string{}
 	}
 	mut candidates := [requested, normalized]
 	for candidate in [requested, normalized] {
@@ -1553,11 +1554,12 @@ fn (t &Transformer) comptime_method_receiver_generic_args(receiver string, reque
 	}
 	for candidate in candidates {
 		_, args, ok := generic_app_parts(comptime_method_receiver_type(candidate))
-		if ok && args.len == params.len && !t.generic_args_have_placeholders(flat.TypeTextList.from_names(args).ids) {
-			return args, params
+		if ok && args.len == params.len {
+			arg_ids := flat.TypeTextList.from_names(args).ids
+			if !t.generic_args_have_placeholders(arg_ids) { return arg_ids, params }
 		}
 	}
-	return []string{}, []string{}
+	return []u32{}, []string{}
 }
 
 fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, method MethodMeta) ?flat.NodeId {

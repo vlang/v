@@ -3572,10 +3572,13 @@ fn (mut t Transformer) box_membership_interface_eq_rhs(rhs flat.NodeId, interfac
 // correctly at any depth — the helper is generated after the transform pass.
 fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, sum_type_id u32, seen []string) flat.NodeId {
 	_ = seen
-	clean_sum, variants := t.sum_eq_type_and_variants(t.trim_pointer_type(sum_type_id)) or {
+	clean_sum_source_id, variants_source_ids_2 := t.sum_eq_type_and_variants(t.trim_pointer_type(sum_type_id)) or {
 		return t.make_memcmp_eq_expr(lhs, rhs, sum_type_id, 'eq')
 	}
-	if variants.len == 0 {
+	clean_sum_source_id_2 := clean_sum_source_id
+	clean_sum := flat.source_type_name(clean_sum_source_id_2)
+
+	if variants_source_ids_2.len == 0 {
 		return t.make_memcmp_eq_expr(lhs, rhs, sum_type_id, 'eq')
 	}
 	// A concrete generic specialization is emitted in main even while it is
@@ -3592,7 +3595,7 @@ fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 	helper := sum_eq_helper_name_in_module(clean_sum, helper_module)
 	if helper !in t.sum_eq_types {
 		t.sum_eq_types[helper] = SumEqRequest{
-			sum_name:      flat.source_type_id(clean_sum)
+			sum_name:      clean_sum_source_id_2
 			module:        t.cur_module
 			file:          t.cur_file
 			helper_module: helper_module
@@ -3602,26 +3605,13 @@ fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 	return t.make_call_typed(helper, [lhs, rhs], flat.source_type_bool)
 }
 
-fn (t &Transformer) sum_eq_type_and_variants(sum_type_id u32) ?(string, []string) {
-	clean_source_id_2 := t.normalize_type_alias(sum_type_id)
-	clean_comparison_type_id_5 := clean_source_id_2
-	clean := flat.source_type_name(clean_comparison_type_id_5)
-	if clean_source_id_2 == 0 {
-		return none
-	}
-	if variants_source_ids := t.sum_eq_variants(clean_comparison_type_id_5) {
-		variants := flat.TypeTextList{ ids: variants_source_ids }.names()
-
-		return clean, variants
-	}
-	resolved_comparison_type_id := t.resolve_sum_name(clean_source_id_2)
-	resolved := flat.source_type_name(resolved_comparison_type_id)
-	if resolved_comparison_type_id != clean_comparison_type_id_5 {
-		if variants_source_ids := t.sum_eq_variants(resolved_comparison_type_id) {
-			variants := flat.TypeTextList{ ids: variants_source_ids }.names()
-
-			return resolved, variants
-		}
+fn (t &Transformer) sum_eq_type_and_variants(sum_type_id u32) ?(u32, []u32) {
+	clean := t.normalize_type_alias(sum_type_id)
+	if clean == 0 { return none }
+	if variants := t.sum_eq_variants(clean) { return clean, variants }
+	resolved := t.resolve_sum_name(clean)
+	if resolved != clean {
+		if variants := t.sum_eq_variants(resolved) { return resolved, variants }
 	}
 	return none
 }

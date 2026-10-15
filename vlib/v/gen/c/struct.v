@@ -298,7 +298,8 @@ fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_
 	if g.gen_embed_file_uncompressed_field(value_id, struct_name, field_name) {
 		return
 	}
-	if raw, module_name := g.shared_array_field_raw_type(flat.source_type_id(struct_name), field_name) {
+	if raw_source_id, module_name := g.shared_array_field_raw_type(flat.source_type_id(struct_name), field_name) {
+		raw := flat.source_type_name(raw_source_id)
 		value := g.a.node(value_id)
 		if info := g.shared_array_info_from_raw(raw, module_name, false) {
 			if value.kind in [.array_init, .array_literal, .struct_init]
@@ -684,7 +685,8 @@ fn default_init_unalias_type(typ types.Type) types.Type {
 
 fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name string, field_type types.Type, field_c_name string, has_field bool) bool {
 	mut has := has_field
-	if raw, module_name := g.shared_array_field_raw_type(flat.source_type_id(struct_name), field_name) {
+	if raw_source_id_2, module_name := g.shared_array_field_raw_type(flat.source_type_id(struct_name), field_name) {
+		raw := flat.source_type_name(raw_source_id_2)
 		if shared_array_raw_is_ptr(raw) {
 			return has
 		}
@@ -4244,12 +4246,12 @@ fn (mut g FlatGen) shared_array_info_from_raw(raw string, module_name string, is
 	}
 }
 
-fn (mut g FlatGen) shared_array_field_raw_type(type_name_id u32, field_name string) ?(string, string) {
+fn (mut g FlatGen) shared_array_field_raw_type(type_name_id u32, field_name string) ?(u32, string) {
 	info := g.find_struct_decl(type_name_id) or { return none }
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
 		if field.kind == .field_decl && field.value == field_name {
-			return field.typ_text(), info.module
+			return field.typ, info.module
 		}
 	}
 	return none
@@ -4290,9 +4292,10 @@ fn (mut g FlatGen) shared_array_info_for_expr(id flat.NodeId) ?SharedArrayInfo {
 		}
 		if base_type is types.Struct {
 			struct_type := base_type as types.Struct
-			raw, module_name := g.shared_array_field_raw_type(struct_type.source_type_id(), node.value) or {
+			raw_source_id_3, module_name := g.shared_array_field_raw_type(struct_type.source_type_id(), node.value) or {
 				return none
 			}
+			raw := flat.source_type_name(raw_source_id_3)
 			return g.shared_array_info_from_raw(raw, module_name, shared_array_raw_is_ptr(raw))
 		}
 	}

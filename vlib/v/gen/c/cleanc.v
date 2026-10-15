@@ -24038,7 +24038,8 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 // dynamic array, map, channel or `shared` field. C's zero initialization of a
 // global leaves those fields unusable.
 fn (mut g FlatGen) global_struct_unset_field_value(struct_name string, field_name string, field_type types.Type) ?string {
-	if raw, module_name := g.shared_array_field_raw_type(flat.source_type_id(struct_name), field_name) {
+	if raw_source_id_2, module_name := g.shared_array_field_raw_type(flat.source_type_id(struct_name), field_name) {
+		raw := flat.source_type_name(raw_source_id_2)
 		if shared_array_raw_is_ptr(raw) {
 			return none
 		}

@@ -223,7 +223,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			if t.node_file_or(i, '').len == 0 {
 				continue
 			}
-			decl_key, args := t.explicit_generic_fn_value_specialization(flat.NodeId(i), node, t.node_module_or(i, ''), decls) or {
+			decl_key, args_source_ids_3 := t.explicit_generic_fn_value_specialization(flat.NodeId(i), node, t.node_module_or(i, ''), decls) or {
 				// A generic method named on a value with its type arguments.
 				if asked := t.bind_explicit_generic_method_value(flat.NodeId(i), node,
 					t.node_module_or(i, ''), decls)
@@ -232,8 +232,9 @@ fn (mut t Transformer) monomorphize_pass() []string {
 				}
 				continue
 			}
+
 			decl := decls[decl_key] or { continue }
-			concrete_args_source_ids := t.canonical_generic_specialization_args(flat.TypeTextList.from_names(args).ids)
+			concrete_args_source_ids := t.canonical_generic_specialization_args(args_source_ids_3)
 
 			if !t.generic_specialization_registered(decl, concrete_args_source_ids) {
 				t.request_generic_fn_specialization(decl, concrete_args_source_ids)
@@ -324,9 +325,9 @@ fn (mut t Transformer) monomorphize_pass() []string {
 				if t.node_file_or(i, '').len == 0 {
 					continue
 				}
-				if decl_key, args := t.explicit_generic_fn_value_specialization(flat.NodeId(i), node, t.node_module_or(i, ''), decls) {
+				if decl_key, args_source_ids_4 := t.explicit_generic_fn_value_specialization(flat.NodeId(i), node, t.node_module_or(i, ''), decls) {
 					decl := decls[decl_key] or { continue }
-					concrete_args_source_ids_2 := t.canonical_generic_specialization_args(flat.TypeTextList.from_names(args).ids)
+					concrete_args_source_ids_2 := t.canonical_generic_specialization_args(args_source_ids_4)
 
 					if !t.generic_specialization_registered(decl, concrete_args_source_ids_2) {
 						t.request_generic_fn_specialization(decl, concrete_args_source_ids_2)
@@ -506,7 +507,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	return generated
 }
 
-fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []string) {
+fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []u32) {
 	if node.kind != .index || node.children_count < 2 || node.value == 'range' {
 		return none
 	}
@@ -521,7 +522,7 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, 
 		decls)
 }
 
-fn (mut t Transformer) explicit_generic_fn_value_specialization_of(id flat.NodeId, node flat.Node, base_id flat.NodeId, base flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []string) {
+fn (mut t Transformer) explicit_generic_fn_value_specialization_of(id flat.NodeId, node flat.Node, base_id flat.NodeId, base flat.Node, module_name string, decls map[string]GenericFnDecl) ?(string, []u32) {
 	// Empty for a value index too.
 	type_arg_text := t.generic_call_type_args_name(node)
 	if type_arg_text.len == 0 {
@@ -545,7 +546,7 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization_of(id flat.NodeI
 			continue
 		}
 		args_source_ids := t.generic_call_args_for_decl(raw_args_source_ids, module_name, decl.module)
-		args := flat.TypeTextList{ ids: args_source_ids }.names()
+
 		if t.generic_args_have_placeholders(args_source_ids) {
 			return none
 		}
@@ -556,7 +557,7 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization_of(id flat.NodeI
 				return none
 			}
 		}
-		return decl_key, args
+		return decl_key, args_source_ids.clone()
 	}
 	return none
 }
@@ -566,7 +567,7 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization_of(id flat.NodeI
 // and without a call, `h.first[int]`, which the check typed as a method value
 // (see types.TypeChecker.check_generic_method_value), and the types of all its
 // type parameters: those its receiver gives, and those written.
-fn (mut t Transformer) explicit_generic_method_value_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(GenericFnDecl, []string) {
+fn (mut t Transformer) explicit_generic_method_value_specialization(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?(GenericFnDecl, []u32) {
 	if isnil(t.tc) || node.children_count < 2 || node.value == 'range' {
 		return none
 	}
@@ -633,11 +634,11 @@ fn (mut t Transformer) explicit_generic_method_value_specialization(id flat.Node
 		return none
 	}
 	scoped_source_ids := t.generic_call_args_for_decl(args, module_name, decl.module)
-	scoped := flat.TypeTextList{ ids: scoped_source_ids }.names()
+
 	if t.generic_args_have_placeholders(scoped_source_ids) {
 		return none
 	}
-	return decl, scoped
+	return decl, scoped_source_ids.clone()
 }
 
 struct GenericMethodValueReceiver {
@@ -715,9 +716,10 @@ fn (mut t Transformer) generic_method_decl_of(receiver_type_id u32, method strin
 // returns none for another index, and otherwise whether it asked for the
 // instance.
 fn (mut t Transformer) bind_explicit_generic_method_value(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?bool {
-	decl, args := t.explicit_generic_method_value_specialization(id, node, module_name, decls) or {
+	decl, args_source_ids_5 := t.explicit_generic_method_value_specialization(id, node, module_name, decls) or {
 		return none
 	}
+
 	selector := *t.a.child_node(&node, 0)
 	mut receiver := t.a.child(&selector, 0)
 	base_type_source_id := t.generic_call_arg_type_for_inference(receiver)
@@ -738,7 +740,7 @@ fn (mut t Transformer) bind_explicit_generic_method_value(id flat.NodeId, node f
 			is_pointer = field_type.starts_with('&')
 		}
 	}
-	concrete_args_source_ids := t.canonical_generic_specialization_args(flat.TypeTextList.from_names(args).ids)
+	concrete_args_source_ids := t.canonical_generic_specialization_args(args_source_ids_5)
 
 	mut asked := false
 	if !t.generic_specialization_registered(decl, concrete_args_source_ids) {

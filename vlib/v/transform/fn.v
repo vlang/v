@@ -14315,8 +14315,8 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 }
 
 fn (mut t Transformer) pointer_alias_direct_str_call(base_id flat.NodeId, alias_name string) ?flat.NodeId {
-	if declaring_alias, str_fn := t.alias_custom_str_method_in_chain(alias_name) {
-		return t.make_pointer_alias_str_call(base_id, declaring_alias, str_fn)
+	if declaring_alias_source_id, str_fn := t.alias_custom_str_method_in_chain(flat.source_type_id(alias_name)) {
+		return t.make_pointer_alias_str_call(base_id, declaring_alias_source_id, str_fn)
 	}
 	mut current := trimmed_transform_text(alias_name)
 	mut seen := map[string]bool{}
@@ -14328,8 +14328,8 @@ fn (mut t Transformer) pointer_alias_direct_str_call(base_id flat.NodeId, alias_
 		clean_target := trimmed_transform_text(target)
 		if clean_target.starts_with('&') {
 			pointee := trimmed_transform_text(clean_target[1..])
-			if declaring_alias, str_fn := t.alias_custom_str_method_in_chain(pointee) {
-				return t.make_pointer_alias_str_call(base_id, declaring_alias, str_fn)
+			if declaring_alias_source_id_2, str_fn := t.alias_custom_str_method_in_chain(flat.source_type_id(pointee)) {
+				return t.make_pointer_alias_str_call(base_id, declaring_alias_source_id_2, str_fn)
 			}
 			return none
 		}
@@ -14341,19 +14341,25 @@ fn (mut t Transformer) pointer_alias_direct_str_call(base_id flat.NodeId, alias_
 	return none
 }
 
-fn (mut t Transformer) alias_custom_str_method_in_chain(alias_name string) ?(string, string) {
-	mut current := trimmed_transform_text(alias_name)
-	mut seen := map[string]bool{}
-	for current.len > 0 && !seen[current] {
+fn (mut t Transformer) alias_custom_str_method_in_chain(alias_name_id u32) ?(u32, string) {
+	mut current := if flat.source_type_shape(alias_name_id).has(.padded) {
+		flat.source_type_id(trimmed_transform_text(flat.source_type_name(alias_name_id)))
+	} else {
+		alias_name_id
+	}
+	mut seen := map[u32]bool{}
+	for current != 0 && !seen[current] {
 		seen[current] = true
-		if str_fn := t.alias_custom_str_method_name(current) {
+		if str_fn := t.alias_custom_str_method_name(flat.source_type_name(current)) {
 			return current, str_fn
 		}
-		_, target_source_id_6 := t.lookup_str_alias(flat.source_type_id(current)) or { return none }
-		target := flat.source_type_name(target_source_id_6)
-
-		clean_target := trimmed_transform_text(target)
-		if clean_target.starts_with('&') || !t.is_type_alias_name(flat.source_type_id(clean_target)) {
+		_, target := t.lookup_str_alias(current) or { return none }
+		clean_target := if flat.source_type_shape(target).has(.padded) {
+			flat.source_type_id(trimmed_transform_text(flat.source_type_name(target)))
+		} else {
+			target
+		}
+		if flat.source_type_shape(clean_target).has(.pointer) || !t.is_type_alias_name(clean_target) {
 			return none
 		}
 		current = clean_target
@@ -14361,13 +14367,13 @@ fn (mut t Transformer) alias_custom_str_method_in_chain(alias_name string) ?(str
 	return none
 }
 
-fn (mut t Transformer) make_pointer_alias_str_call(base_id flat.NodeId, declaring_alias string, str_fn string) flat.NodeId {
+fn (mut t Transformer) make_pointer_alias_str_call(base_id flat.NodeId, declaring_alias_id u32, str_fn string) flat.NodeId {
 	t.mark_fn_used_name(str_fn)
 	mut receiver := t.transform_expr(base_id)
-	declaring_base_shape := flat.source_type_shape(t.alias_str_resolved_base_type(flat.source_type_id(declaring_alias)))
+	declaring_base_shape := flat.source_type_shape(t.alias_str_resolved_base_type(declaring_alias_id))
 	if !t.str_method_has_pointer_receiver(str_fn) && !declaring_base_shape.has(.pointer) {
 		receiver = t.make_prefix(.mul, receiver)
-		t.set_node_typ(int(receiver), flat.source_type_id(declaring_alias))
+		t.set_node_typ(int(receiver), declaring_alias_id)
 	}
 	return t.make_generic_str_method_call(str_fn, generic_fn_decl_base_value(str_fn), [receiver])
 }
