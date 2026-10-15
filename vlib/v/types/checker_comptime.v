@@ -4,6 +4,9 @@ import strconv
 import strings
 import v.errors as compiler_errors
 import v.flat
+
+const comptime_source_type_byte = flat.source_type_id('byte')
+
 import v.pref
 import v.scanner
 import v.token
@@ -1113,7 +1116,7 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				return none
 			}
 			value := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
-			return comptime_enum_integer_cast(value, cast_type.name())
+			return comptime_enum_integer_cast(value, cast_type.source_type_id())
 		}
 		.call {
 			return tc.comptime_static_enum_call_value(id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
@@ -1138,8 +1141,8 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 			mut right := tc.comptime_static_enum_field_value(tc.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
 			if node.op in [.div, .mod] {
 				typ := unalias_type(tc.comptime_enum_local_expr_type(id, map[string]Type{})).name()
-				left = comptime_enum_integer_cast(left, typ)
-				right = comptime_enum_integer_cast(right, typ)
+				left = comptime_enum_integer_cast(left, flat.source_type_id(typ))
+				right = comptime_enum_integer_cast(right, flat.source_type_id(typ))
 			}
 			if (node.op == .div || node.op == .mod) && right == 0 {
 				return none
@@ -1153,10 +1156,10 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				.minus { left - right }
 				.mul { left * right }
 				.div {
-					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, map[string]Type{})).name(), false)
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, map[string]Type{})).source_type_id(), false)
 				}
 				.mod {
-					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, map[string]Type{})).name(), true)
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, map[string]Type{})).source_type_id(), true)
 				}
 				.left_shift { i64(u64(left) << right) }
 				.right_shift {
@@ -1164,7 +1167,7 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
 				}
 				.right_shift_unsigned {
-					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(&node, 0), map[string]Type{})).name())
+					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(&node, 0), map[string]Type{})).source_type_id())
 				}
 				.amp { left & right }
 				.pipe { left | right }
@@ -1213,7 +1216,7 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 		arg_id := tc.a.child(call, arg_idx)
 		arg := tc.comptime_static_enum_field_value(arg_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
 		local_types[param.value] = tc.parse_type(param.typ)
-		locals[param.value] = comptime_enum_integer_cast(arg, unalias_type(local_types[param.value]).name())
+		locals[param.value] = comptime_enum_integer_cast(arg, unalias_type(local_types[param.value]).source_type_id())
 		arg_idx++
 	}
 	for i in 0 .. fn_node.children_count {
@@ -1224,7 +1227,7 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 		}
 		if stmt.kind == .return_stmt && stmt.children_count > 0 {
 			value := tc.comptime_static_enum_local_expr_value(tc.a.child(stmt, 0), locals, local_types, enum_module) or { return none }
-			return comptime_enum_integer_cast(value, unalias_type(tc.parse_type(fn_node.typ)).name())
+			return comptime_enum_integer_cast(value, unalias_type(tc.parse_type(fn_node.typ)).source_type_id())
 		}
 	}
 	return none
@@ -1249,44 +1252,40 @@ pub fn comptime_enum_integer_literal(value string) ?i64 {
 }
 
 // comptime_enum_integer_division uses unsigned arithmetic for unsigned 64-bit operands.
-pub fn comptime_enum_integer_division(left i64, right i64, typ string, remainder bool) i64 {
-	if typ in ['u64', 'usize'] {
+// typ_id is a process-wide source-spelling ID.
+pub fn comptime_enum_integer_division(left i64, right i64, typ_id u32, remainder bool) i64 {
+	if typ_id in [flat.source_type_u64, flat.source_type_usize] {
 		return if remainder { i64(u64(left) % u64(right)) } else { i64(u64(left) / u64(right)) }
 	}
 	return if remainder { left % right } else { left / right }
 }
 
 // comptime_enum_integer_cast applies the conversion used at integer parameter/return boundaries.
-pub fn comptime_enum_integer_cast(value i64, typ string) i64 {
-	return match typ {
-		'u8', 'byte' { i64(u8(value)) }
-		'i8' { i64(i8(value)) }
-		'u16' { i64(u16(value)) }
-		'i16' { i64(i16(value)) }
-		'u32' { i64(u32(value)) }
-		'i32' { i64(i32(value)) }
-		'int' {
-			if platform_int_bits() == 32 { i64(i32(value)) } else { value }
-		}
-		else { value }
-	}
+// typ_id is a process-wide source-spelling ID.
+pub fn comptime_enum_integer_cast(value i64, typ_id u32) i64 {
+	if typ_id in [flat.source_type_u8, comptime_source_type_byte] { return i64(u8(value)) }
+	if typ_id == flat.source_type_i8 { return i64(i8(value)) }
+	if typ_id == flat.source_type_u16 { return i64(u16(value)) }
+	if typ_id == flat.source_type_i16 { return i64(i16(value)) }
+	if typ_id == flat.source_type_u32 { return i64(u32(value)) }
+	if typ_id == flat.source_type_i32 { return i64(i32(value)) }
+	if typ_id == flat.source_type_int && platform_int_bits() == 32 { return i64(i32(value)) }
+	return value
 }
 
 // comptime_enum_unsigned_right_shift shifts the bit pattern at the operand's storage width.
-pub fn comptime_enum_unsigned_right_shift(value i64, shift i64, typ string) i64 {
-	return match typ {
-		'i8', 'u8', 'byte' { i64(u64(u8(value)) >> shift) }
-		'i16', 'u16' { i64(u64(u16(value)) >> shift) }
-		'i32', 'u32' { i64(u64(u32(value)) >> shift) }
-		'int' {
-			if platform_int_bits() == 32 {
-				i64(u64(u32(value)) >> shift)
-			} else {
-				i64(u64(value) >> shift)
-			}
-		}
-		else { i64(u64(value) >> shift) }
+// typ_id is a process-wide source-spelling ID.
+pub fn comptime_enum_unsigned_right_shift(value i64, shift i64, typ_id u32) i64 {
+	if typ_id in [flat.source_type_i8, flat.source_type_u8, comptime_source_type_byte] {
+		return i64(u64(u8(value)) >> shift)
 	}
+	if typ_id in [flat.source_type_i16, flat.source_type_u16] {
+		return i64(u64(u16(value)) >> shift)
+	}
+	if typ_id in [flat.source_type_i32, flat.source_type_u32] || (typ_id == flat.source_type_int && platform_int_bits() == 32) {
+		return i64(u64(u32(value)) >> shift)
+	}
+	return i64(u64(value) >> shift)
 }
 
 fn (tc &TypeChecker) comptime_static_enum_helper_fn_id(callee_name string, enum_module string) ?flat.NodeId {
@@ -1342,7 +1341,7 @@ fn (tc &TypeChecker) comptime_static_enum_update_locals(stmt flat.Node, mut loca
 					} else {
 						local_types[lhs.value] or { tc.comptime_enum_local_expr_type(rhs_id, local_types) }
 					}
-					locals[lhs.value] = comptime_enum_integer_cast(value, unalias_type(typ).name())
+					locals[lhs.value] = comptime_enum_integer_cast(value, unalias_type(typ).source_type_id())
 					local_types[lhs.value] = typ
 				} else {
 					locals.delete(lhs.value)
@@ -1378,7 +1377,7 @@ fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, local
 			}
 			value := tc.comptime_static_enum_local_expr_value(tc.a.child(node, 0), locals, local_types, enum_module) or { return none }
 			return if node.kind == .cast_expr {
-				comptime_enum_integer_cast(value, unalias_type(tc.parse_type(flat.source_type_id(node.value))).name())
+				comptime_enum_integer_cast(value, unalias_type(tc.parse_type(flat.source_type_id(node.value))).source_type_id())
 			} else {
 				value
 			}
@@ -1396,11 +1395,17 @@ fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, local
 			}
 			// C promotes narrow integer operands for unary arithmetic.
 			typ := unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name()
-			return comptime_enum_integer_cast(result, if typ in ['i8', 'u8', 'byte', 'i16', 'u16'] {
+			return comptime_enum_integer_cast(result, flat.source_type_id(if typ in [
+				'i8',
+				'u8',
+				'byte',
+				'i16',
+				'u16',
+			] {
 				'int'
 			} else {
 				typ
-			})
+			}))
 		}
 		.infix {
 			if node.children_count < 2 {
@@ -1411,8 +1416,8 @@ fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, local
 			if node.op in [.div, .mod] {
 				// The runtime division helpers convert operands to the expression type first.
 				typ := unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name()
-				left = comptime_enum_integer_cast(left, typ)
-				right = comptime_enum_integer_cast(right, typ)
+				left = comptime_enum_integer_cast(left, flat.source_type_id(typ))
+				right = comptime_enum_integer_cast(right, flat.source_type_id(typ))
 			}
 			if (node.op in [.div, .mod] && right == 0)
 				|| (node.op in [.left_shift, .right_shift, .right_shift_unsigned] && (right < 0
@@ -1425,10 +1430,10 @@ fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, local
 				.mul { left * right }
 				.power { i64(const_int_power(int(left), int(right))) }
 				.div {
-					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name(), false)
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).source_type_id(), false)
 				}
 				.mod {
-					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name(), true)
+					comptime_enum_integer_division(left, right, unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).source_type_id(), true)
 				}
 				.amp { left & right }
 				.pipe { left | right }
@@ -1439,11 +1444,11 @@ fn (tc &TypeChecker) comptime_static_enum_local_expr_value(id flat.NodeId, local
 					if typ in ['u64', 'usize'] { i64(u64(left) >> right) } else { left >> right }
 				}
 				.right_shift_unsigned {
-					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types)).name())
+					comptime_enum_unsigned_right_shift(left, right, unalias_type(tc.comptime_enum_local_expr_type(tc.a.child(node, 0), local_types)).source_type_id())
 				}
 				else { return none }
 			}
-			return comptime_enum_integer_cast(result, unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).name())
+			return comptime_enum_integer_cast(result, unalias_type(tc.comptime_enum_local_expr_type(id, local_types)).source_type_id())
 		}
 		else {
 			return none

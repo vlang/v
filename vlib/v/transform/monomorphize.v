@@ -4734,7 +4734,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args_i
 		t.tc.check_concrete_fn_semantics(int(clone_id), decl.file, decl.module)
 	} else if !isnil(t.tc) && t.tc.check_concrete_generic_bodies && instance_satisfies
 		&& decl.file in t.tc.diagnostic_files {
-		t.tc.check_concrete_instance_members(int(clone_id), decl.file, decl.module, concrete_args)
+		t.tc.check_concrete_instance_members(int(clone_id), decl.file, decl.module, concrete_args_source_ids)
 	}
 	// A check only looks at the program's own instances. A library clone stays as
 	// it was cloned, so the calls in its body start no specializations to lower.
@@ -15303,7 +15303,7 @@ fn (t &Transformer) subst_comptime_type_operand(raw string, args_ids []u32) stri
 	if clean.starts_with('sizeof(') && clean.ends_with(')') {
 		inner := clean['sizeof('.len..clean.len - 1].trim_space()
 		concrete := t.resolve_substituted_type_text(flat.source_type_name(t.subst_type(flat.source_type_id(inner), args_ids)))
-		if layout := t.comptime_type_layout(concrete, []string{}) {
+		if layout := t.comptime_type_layout(flat.source_type_id(concrete), []u32{}) {
 			return layout.size.str()
 		}
 	}
@@ -15394,11 +15394,11 @@ fn (t &Transformer) subst_comptime_type_test_operand(raw string, args_ids []u32)
 	return substituted
 }
 
-fn (t &Transformer) comptime_type_layout(raw string, seen []string) ?ComptimeTypeLayout {
+fn (t &Transformer) comptime_type_layout(raw_id u32, seen_ids []u32) ?ComptimeTypeLayout {
 	if isnil(t.tc) {
 		return none
 	}
-	typ := t.tc.parse_type(flat.source_type_id(raw))
+	typ := t.tc.parse_type(raw_id)
 	return match typ {
 		types.Primitive {
 			size := int(typ.size) / 8
@@ -15418,23 +15418,23 @@ fn (t &Transformer) comptime_type_layout(raw string, seen []string) ?ComptimeTyp
 			ComptimeTypeLayout{8, 8}
 		}
 		types.ArrayFixed {
-			elem := t.comptime_type_layout(typ.elem_type.name(), seen) or { return none }
+			elem := t.comptime_type_layout(typ.elem_type.source_type_id(), seen_ids) or { return none }
 			ComptimeTypeLayout{elem.size * typ.len, elem.align}
 		}
 		types.Alias {
-			t.comptime_type_layout(typ.base_type.name(), seen)
+			t.comptime_type_layout(typ.base_type.source_type_id(), seen_ids)
 		}
 		types.Struct {
-			if typ.name() in seen {
+			if typ.source_type_id() in seen_ids {
 				return none
 			}
 			fields := t.tc.structs[typ.name()] or { return none }
-			mut next_seen := seen.clone()
-			next_seen << typ.name()
+			mut next_seen := seen_ids.clone()
+			next_seen << typ.source_type_id()
 			mut size := 0
 			mut align := 1
 			for field in fields {
-				field_layout := t.comptime_type_layout(field.typ.name(), next_seen) or {
+				field_layout := t.comptime_type_layout(field.typ.source_type_id(), next_seen) or {
 					return none
 				}
 				align = int_max(align, field_layout.align)

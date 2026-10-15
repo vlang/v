@@ -11738,42 +11738,33 @@ fn (t &Transformer) compiler_default_clone_field_type(owner_id u32, field FieldI
 }
 
 fn (t &Transformer) compiler_default_clone_type_needs_work(typ_id u32) bool {
-	return t.compiler_default_clone_type_needs_work_seen(typ_id, []string{})
+	return t.compiler_default_clone_type_needs_work_seen(typ_id, []u32{})
 }
 
-fn (t &Transformer) compiler_default_clone_type_needs_work_seen(typ_id u32, seen []string) bool {
-	clean := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(typ_id)))
-	if clean.len == 0 || clean.starts_with('&') || clean in seen {
+fn (t &Transformer) compiler_default_clone_type_needs_work_seen(typ_id u32, seen_ids []u32) bool {
+	clean := t.trimmed_type_id(t.normalize_type_alias(typ_id))
+	shape := flat.source_type_shape(clean)
+	if clean == 0 || shape.has(.pointer) || clean in seen_ids { return false }
+	if !isnil(t.tc) && types.unalias_type(t.tc.parse_type(clean)) is types.Enum { return false }
+	if clean in [transform_source_type_thread, transform_source_type_chan] || shape.has(.thread_type) || shape.has(.channel_type) {
 		return false
 	}
-	if !isnil(t.tc) && types.unalias_type(t.tc.parse_type(flat.source_type_id(clean))) is types.Enum {
-		return false
+	if shape.has(.optional) { return true }
+	if t.is_fixed_array_type(clean) {
+		return t.compiler_default_clone_type_needs_work_seen(flat.source_type_id(fixed_array_elem_type(flat.source_type_name(clean))), seen_ids)
 	}
-	if clean == 'thread' || clean.starts_with('thread ') || clean == 'chan'
-		|| clean.starts_with('chan ') {
-		return false
-	}
-	if clean.starts_with('!') {
+	if clean == flat.source_type_string || shape.has(.array_type) || shape.has(.map_type) {
 		return true
 	}
-	if clean.starts_with('?') {
-		return true
-	}
-	if t.is_fixed_array_type(flat.source_type_id(clean)) {
-		return t.compiler_default_clone_type_needs_work_seen(flat.source_type_id(fixed_array_elem_type(clean)), seen)
-	}
-	if clean == 'string' || clean.starts_with('[]') || clean.starts_with('map[') {
-		return true
-	}
+	name := flat.source_type_name(clean)
 	if !isnil(t.tc) {
-		parsed := t.tc.parse_type(flat.source_type_id(clean))
-		if t.tc.ownership_type_requires_destruction(parsed)
-			|| t.tc.named_type_implements_marker(clean, 'IClone') {
+		parsed := t.tc.parse_type(clean)
+		if t.tc.ownership_type_requires_destruction(parsed) || t.tc.named_type_implements_marker(name, 'IClone') {
 			return true
 		}
 	}
-	if clean in t.structs || t.sum_types.contains(clean) {
-		clone_name := '${clean}.clone'
+	if name in t.structs || t.sum_types.contains(name) {
+		clone_name := '${name}.clone'
 		if t.fn_ret_types.contains(clone_name) || (!isnil(t.tc) && clone_name in t.tc.fn_ret_types) {
 			return true
 		}
@@ -11781,13 +11772,11 @@ fn (t &Transformer) compiler_default_clone_type_needs_work_seen(typ_id u32, seen
 	// Ordinary structs can own collection storage even when ownership checking is
 	// disabled. Inspect their fields so an array append does not silently copy a
 	// pointer-backed map header instead of cloning the stored value.
-	if info := t.lookup_struct_info(flat.source_type_id(clean)) {
-		mut next_seen := seen.clone()
+	if info := t.lookup_struct_info(clean) {
+		mut next_seen := seen_ids.clone()
 		next_seen << clean
 		for field in info.fields {
-			field_type_source_id := t.compiler_default_clone_field_type(flat.source_type_id(clean), field)
-
-			if t.compiler_default_clone_type_needs_work_seen(field_type_source_id, next_seen) {
+			if t.compiler_default_clone_type_needs_work_seen(t.compiler_default_clone_field_type(clean, field), next_seen) {
 				return true
 			}
 		}
@@ -12416,59 +12405,52 @@ fn (mut t Transformer) lower_owned_array_detach_call(node flat.Node, base_id fla
 
 // Promoted storage and synthetic borrowed headers have no checker cleanup snapshot.
 // Keep concrete destructors reachable for explicit destruction of their element owners.
-fn (mut t Transformer) mark_fixed_array_element_drops(typ_id u32, seen []string) {
-	if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(typ_id)) {
-		return
-	}
-	clean := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(typ_id)))
-	if clean.len == 0 || clean.starts_with('&') || clean in seen {
-		return
-	}
-	mut visited := seen.clone()
+fn (mut t Transformer) mark_fixed_array_element_drops(typ_id u32, seen_ids []u32) {
+	if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(typ_id)) { return }
+	clean := t.trimmed_type_id(t.normalize_type_alias(typ_id))
+	shape := flat.source_type_shape(clean)
+	if clean == 0 || shape.has(.pointer) || clean in seen_ids { return }
+	mut visited := seen_ids.clone()
 	visited << clean
-	if clean.starts_with('?') || clean.starts_with('!') {
-		t.mark_fixed_array_element_drops(t.optional_base_type(flat.source_type_id(clean)), visited)
-		if clean.starts_with('!') {
+	if shape.has(.optional) {
+		t.mark_fixed_array_element_drops(t.optional_base_type(clean), visited)
+		if shape.has(.result_type) {
 			for concrete in t.tc.ierror_impl_names() {
 				t.mark_fixed_array_element_drops(flat.source_type_id(concrete), visited)
 			}
 		}
 		return
 	}
-	if clean.starts_with('[]') || t.is_fixed_array_type(flat.source_type_id(clean)) {
-		elem_type := (if clean.starts_with('[]') {
-			flat.source_type_id(clean[2..])
+	if shape.has(.array_type) || t.is_fixed_array_type(clean) {
+		elem_type := if shape.has(.array_type) {
+			t.array_elem_type(clean)
 		} else {
-			flat.source_type_id(fixed_array_elem_type(clean))
-		})
+			flat.source_type_id(fixed_array_elem_type(flat.source_type_name(clean)))
+		}
 		t.mark_fixed_array_element_drops(elem_type, visited)
 		return
 	}
-	if clean.starts_with('map[') {
-		key_type_source_id_5, value_type_source_id_4 := t.map_type_parts(flat.source_type_id(clean))
-
-		t.mark_fixed_array_element_drops(key_type_source_id_5, visited)
-		t.mark_fixed_array_element_drops(value_type_source_id_4, visited)
+	if shape.has(.map_type) {
+		key_type, value_type := t.map_type_parts(clean)
+		t.mark_fixed_array_element_drops(key_type, visited)
+		t.mark_fixed_array_element_drops(value_type, visited)
 		return
 	}
 	method := if t.tc.autofree_mode { 'free' } else { 'drop' }
-	if signature := t.tc.concrete_method_signature_key(clean, method) {
+	if signature := t.tc.concrete_method_signature_key(flat.source_type_name(clean), method) {
 		t.mark_fn_used_name(signature)
 		return
 	}
-	if t.is_sum_type_name(flat.source_type_id(clean)) {
-		resolved_source_id := t.resolve_sum_name(flat.source_type_id(clean))
-		resolved := flat.source_type_name(resolved_source_id)
-		for variant_source_id_6 in t.sum_types.type_ids(resolved) or { []u32{} } {
-			variant_source_id_8 := variant_source_id_6
-
-			t.mark_fixed_array_element_drops(t.resolve_variant(resolved_source_id, variant_source_id_8), visited)
+	if t.is_sum_type_name(clean) {
+		resolved := t.resolve_sum_name(clean)
+		for variant in t.sum_types.type_ids(flat.source_type_name(resolved)) or { []u32{} } {
+			t.mark_fixed_array_element_drops(t.resolve_variant(resolved, variant), visited)
 		}
 		return
 	}
-	if info := t.lookup_struct_info(flat.source_type_id(clean)) {
+	if info := t.lookup_struct_info(clean) {
 		for field in info.fields {
-			t.mark_fixed_array_element_drops(t.compiler_default_clone_field_type(flat.source_type_id(clean), field), visited)
+			t.mark_fixed_array_element_drops(t.compiler_default_clone_field_type(clean, field), visited)
 		}
 	}
 }
@@ -14785,7 +14767,7 @@ fn (mut t Transformer) fixed_array_mut_arg(view flat.NodeId, array_type_id u32, 
 fn (mut t Transformer) fixed_array_mut_arg_backing(value_id flat.NodeId, fixed_type_id u32, array_type_id u32) flat.NodeId {
 	fixed_type := flat.source_type_name(fixed_type_id)
 	array_type := flat.source_type_name(array_type_id)
-	t.mark_fixed_array_element_drops(flat.source_type_id(array_type[2..]), []string{})
+	t.mark_fixed_array_element_drops(flat.source_type_id(array_type[2..]), []u32{})
 	mut source_id := t.unwrap_parens(value_id)
 	source_node := t.a.nodes[int(source_id)]
 	if source_node.kind == .prefix && source_node.op == .amp && source_node.children_count == 1 {

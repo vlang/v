@@ -949,10 +949,10 @@ fn test_program_sum_equality_helper_does_not_collide_with_cached_module_helper()
 	rhs := t.make_ident('rhs')
 	t.set_node_typ(int(lhs), flat.source_type_id('orm.Primitive'))
 	t.set_node_typ(int(rhs), flat.source_type_id('orm.Primitive'))
-	t.make_sum_semantic_eq_expr(lhs, rhs, flat.source_type_id('orm.Primitive'), []string{})
+	t.make_sum_semantic_eq_expr(lhs, rhs, flat.source_type_id('orm.Primitive'), []EqualityTypeVisit{})
 
 	t.sum_eq_helper_module = 'main'
-	t.make_sum_semantic_eq_expr(lhs, rhs, flat.source_type_id('orm.Primitive'), []string{})
+	t.make_sum_semantic_eq_expr(lhs, rhs, flat.source_type_id('orm.Primitive'), []EqualityTypeVisit{})
 
 	module_helper := sum_eq_helper_name('orm.Primitive')
 	program_helper := '${module_helper}__v3_program'

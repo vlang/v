@@ -6428,7 +6428,7 @@ fn (c &CallCollector) local_value_info_for_names(node &flat.Node, cur_module str
 			param := c.a.node(child_id)
 			if param.kind == .param && param.value.len > 0 && param.typ != 0 {
 				type_names.set_id(param.value, param_types.type_id(param.value) or {
-					flat.source_type_id(markused_resolve_imported_type_name(param.typ_text(), imports))
+					markused_resolve_imported_source_type(param.typ, imports)
 				})
 			}
 		}
@@ -6533,18 +6533,21 @@ struct LocalTypeChange {
 	present bool
 }
 
-fn markused_set_local_type(name string, typ string, mut type_names flat.TypeTextBindings, mut changes []LocalTypeChange) {
-	mut texts := type_names.texts
-	id := texts.intern(typ)
+// markused_resolve_imported_source_type keeps a source spelling numeric across import resolution.
+fn markused_resolve_imported_source_type(typ_id u32, imports map[string]string) u32 {
+	name := flat.source_type_name(typ_id)
+	resolved := markused_resolve_imported_type_name(name, imports)
+	return if resolved == name { typ_id } else { flat.source_type_id(resolved) }
+}
+
+fn markused_set_local_type(name string, typ_id u32, mut type_names flat.TypeTextBindings, mut changes []LocalTypeChange) {
 	if previous := type_names.type_id(name) {
-		if previous == id {
-			return
-		}
+		if previous == typ_id { return }
 		changes << LocalTypeChange{ name: name, typ: previous, present: true }
 	} else {
 		changes << LocalTypeChange{ name: name }
 	}
-	type_names.set_id(name, id)
+	type_names.set_id(name, typ_id)
 }
 
 fn markused_restore_local_types(mark int, mut type_names flat.TypeTextBindings, mut changes []LocalTypeChange) {
@@ -6621,7 +6624,7 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 		}
 		if child.kind == .param && child.value.len > 0 && child.typ != 0 {
 			if !root || !type_names.contains(child.value) {
-				markused_set_local_type(child.value, markused_resolve_imported_type_name(child.typ_text(), imports), mut type_names, mut changes)
+				markused_set_local_type(child.value, markused_resolve_imported_source_type(child.typ, imports), mut type_names, mut changes)
 			}
 			continue
 		}
@@ -6641,9 +6644,7 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 					}
 					if rhs.kind == .ident {
 						if typ_source_id := type_names.type_id(rhs.value) {
-							typ := flat.source_type_name(typ_source_id)
-
-							ident_types.set(int(rhs_id), typ)
+							ident_types.set_id(int(rhs_id), typ_source_id)
 						}
 					}
 				}
@@ -6651,13 +6652,13 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 			// All RHS bindings have been restored. Multiple LHS bindings still
 			// need a snapshot so an earlier write cannot affect later RHS types.
 			pre_types := markused_decl_type_snapshot(type_names, lhs_count)
-			mut parts := []string{}
+			mut parts := []u32{}
 			if rhs_count == 1 && lhs_count > 1 {
 				rhs_id := c.a.child(child, 1)
 				tuple := flat.source_type_name(c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, names,
 					pre_types))
 				if tuple.starts_with('(') && tuple.ends_with(')') {
-					parts = markused_split_generic_args(tuple[1..tuple.len - 1])
+					parts = flat.TypeTextList.from_names(markused_split_generic_args(tuple[1..tuple.len - 1])).ids
 				}
 			}
 			for j in 0 .. lhs_count {
@@ -6678,11 +6679,11 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 					continue
 				}
 				type_name := if lhs_count == 1 && child.typ != 0 {
-					flat.source_type_name(c.local_decl_type_name(child.typ, rhs_id, cur_module, imports, pre_types))
+					c.local_decl_type_name(child.typ, rhs_id, cur_module, imports, pre_types)
 				} else {
-					flat.source_type_name(c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, names, pre_types))
+					c.top_level_decl_rhs_type_name(rhs_id, cur_module, imports, names, pre_types)
 				}
-				if type_name.len > 0 {
+				if type_name != 0 {
 					markused_set_local_type(lhs.value, type_name, mut type_names, mut changes)
 				}
 			}
@@ -6690,9 +6691,7 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 		}
 		if child.kind == .ident {
 			if typ_source_id := type_names.type_id(child.value) {
-				typ := flat.source_type_name(typ_source_id)
-
-				ident_types.set(int(id), typ)
+				ident_types.set_id(int(id), typ_source_id)
 			}
 		}
 		if child.children_count > 0 {
@@ -6703,11 +6702,15 @@ fn (c &CallCollector) infer_local_type_bindings_scoped(node &flat.Node, cur_modu
 }
 
 fn (c &CallCollector) seed_lambda_param_types(id flat.NodeId, lambda &flat.Node, parent &flat.Node, cur_module string, imports map[string]string, outer_types flat.TypeTextBindings, mut nested_types flat.TypeTextBindings) {
-	mut param_types := []string{}
+	mut param_types := []u32{}
 	if fn_type := c.tc.expr_type(id) {
 		if fn_type is types.FnType {
 			for param in fn_type.params {
-				param_types << if markused_type_has_unknown(param) { '' } else { param.name() }
+				param_types << if markused_type_has_unknown(param) {
+					u32(0)
+				} else {
+					param.source_type_id()
+				}
 			}
 		}
 	}
@@ -6715,13 +6718,10 @@ fn (c &CallCollector) seed_lambda_param_types(id flat.NodeId, lambda &flat.Node,
 		callee := c.a.child_node(parent, 0)
 		if callee.kind == .selector && callee.value in ['map', 'filter', 'any', 'all', 'count'] && callee.children_count > 0 {
 			receiver_id := c.a.child(callee, 0)
-			if elem_source_id := c.top_level_for_in_elem_type_name(receiver_id, cur_module, imports,
-				map[string]bool{}, outer_types) {
-				elem := flat.source_type_name(elem_source_id)
-
+			if elem := c.top_level_for_in_elem_type_name(receiver_id, cur_module, imports, map[string]bool{}, outer_types) {
 				if param_types.len == 0 {
 					param_types << elem
-				} else if param_types[0].len == 0 {
+				} else if param_types[0] == 0 {
 					param_types[0] = elem
 				}
 			}
@@ -6729,15 +6729,13 @@ fn (c &CallCollector) seed_lambda_param_types(id flat.NodeId, lambda &flat.Node,
 	}
 	for i in 0 .. lambda.children_count - 1 {
 		param := c.a.child_node(lambda, i)
-		if param.kind != .ident || param.value.len == 0 {
-			continue
+		if param.kind != .ident || param.value.len == 0 { continue }
+		mut typ := if i < param_types.len { param_types[i] } else { u32(0) }
+		if typ == 0 && param.typ != 0 {
+			typ = markused_resolve_imported_source_type(param.typ, imports)
 		}
-		mut typ := if i < param_types.len { param_types[i] } else { '' }
-		if typ.len == 0 && param.typ != 0 {
-			typ = markused_resolve_imported_type_name(param.typ_text(), imports)
-		}
-		if typ.len > 0 {
-			nested_types.set(param.value, typ)
+		if typ != 0 {
+			nested_types.set_id(param.value, typ)
 		} else {
 			nested_types.delete(param.value)
 		}

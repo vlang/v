@@ -28438,7 +28438,7 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) u32 {
 				return sum_constructor_type_source_id_2
 			}
 		}
-		if t.decl_type_should_override_fallback(rhs_authority, node.typ_text(), rhs) {
+		if t.decl_type_should_override_fallback(flat.source_type_id(rhs_authority), node.typ, rhs) {
 			return flat.source_type_id(rhs_authority)
 		}
 	}
