@@ -61,3 +61,10 @@ fn test_run_and_inline_forward_termination_and_clean_files() ! {
 		}
 	}
 }
+
+fn test_run_signal_helper_has_a_portable_windows_stub() {
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	source := os.join_path(@VEXEROOT, 'vlib', 'v', 'driver', 'run_signals_nix.c')
+	result := os.exec([cc, '-D_WIN32', '-Wall', '-Wextra', '-Werror', '-fsyntax-only', source])
+	assert result.exit_code == 0, result.output
+}

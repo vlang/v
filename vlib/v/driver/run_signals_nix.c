@@ -1,38 +1,46 @@
+#ifdef _WIN32
+int v3_run_signals_begin(void) { return 0; }
+void v3_run_signals_set_pid(int child_pid) { (void)child_pid; }
+int v3_run_signals_finish(void) { return 0; }
+#else
+/* Keep BSD signal semantics even when a consumer selects strict POSIX features. */
+#if defined(__linux__) && !defined(_DEFAULT_SOURCE)
+#define _DEFAULT_SOURCE 1
+#endif
 #include <errno.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <unistd.h>
 
+typedef void (*v3_run_signal_handler)(int);
 static volatile sig_atomic_t v3_run_child_pid;
 static volatile sig_atomic_t v3_run_received_signal;
-static struct sigaction v3_run_previous_term;
-static struct sigaction v3_run_previous_hup;
+static v3_run_signal_handler v3_run_previous_term;
+static v3_run_signal_handler v3_run_previous_hup;
+/* These match os.Signal on every supported Unix target. */
+enum { v3_run_hup = 1, v3_run_term = 15 };
 
 static void v3_run_forward_signal(int signal_number) {
     int saved_errno = errno;
     v3_run_received_signal = signal_number;
     sig_atomic_t child_pid = v3_run_child_pid;
     if (child_pid > 0) {
-        kill((pid_t)child_pid, signal_number);
+        kill((int)child_pid, signal_number);
     }
     errno = saved_errno;
 }
 
 int v3_run_signals_begin(void) {
-    struct sigaction action = {0};
-    action.sa_handler = v3_run_forward_signal;
-    action.sa_flags = SA_RESTART;
-    sigemptyset(&action.sa_mask);
-    sigaddset(&action.sa_mask, SIGTERM);
-    sigaddset(&action.sa_mask, SIGHUP);
     v3_run_child_pid = 0;
     v3_run_received_signal = 0;
-    if (sigaction(SIGTERM, &action, &v3_run_previous_term) != 0) {
+    v3_run_previous_term = (v3_run_signal_handler)signal(v3_run_term, v3_run_forward_signal);
+    if (v3_run_previous_term == (v3_run_signal_handler)-1) {
         return -1;
     }
-    if (sigaction(SIGHUP, &action, &v3_run_previous_hup) != 0) {
+    v3_run_previous_hup = (v3_run_signal_handler)signal(v3_run_hup, v3_run_forward_signal);
+    if (v3_run_previous_hup == (v3_run_signal_handler)-1) {
         int saved_errno = errno;
-        sigaction(SIGTERM, &v3_run_previous_term, 0);
+        signal(v3_run_term, v3_run_previous_term);
         errno = saved_errno;
         return -1;
     }
@@ -43,14 +51,15 @@ void v3_run_signals_set_pid(int child_pid) {
     v3_run_child_pid = child_pid;
     sig_atomic_t signal_number = v3_run_received_signal;
     if (signal_number != 0 && child_pid > 0) {
-        kill((pid_t)child_pid, signal_number);
+        kill(child_pid, signal_number);
     }
 }
 
 int v3_run_signals_finish(void) {
     v3_run_child_pid = 0;
     int received_signal = v3_run_received_signal;
-    sigaction(SIGHUP, &v3_run_previous_hup, 0);
-    sigaction(SIGTERM, &v3_run_previous_term, 0);
+    signal(v3_run_hup, v3_run_previous_hup);
+    signal(v3_run_term, v3_run_previous_term);
     return received_signal;
 }
+#endif
