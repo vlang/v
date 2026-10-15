@@ -4019,24 +4019,27 @@ fn (mut t Transformer) build_struct_field_decl_metas_cache() {
 	count := if use_idx { t.tc.top_level_idx.len } else { t.a.nodes.len }
 	for ii in 0 .. count {
 		node_idx := if use_idx { t.tc.top_level_idx[ii] } else { ii }
-		node := t.a.nodes[node_idx]
-		node_ref := t.a.node(flat.NodeId(node_idx))
-		if use_idx && node.kind == .file {
-			cur_mod = t.tc.file_modules[node.value] or { 'main' }
+		// Without the index this visits every node; read one in place, and copy
+		// only a struct declaration.
+		scanned := unsafe { &t.a.nodes[node_idx] }
+		if use_idx && scanned.kind == .file {
+			cur_mod = t.tc.file_modules[scanned.value] or { 'main' }
 			continue
 		}
-		if !use_idx && node.pos.id > 0 && node.pos.id != cur_file_id {
-			cur_file_id = node.pos.id
+		if !use_idx && scanned.pos.id > 0 && scanned.pos.id != cur_file_id {
+			cur_file_id = scanned.pos.id
 			// Files without an explicit module declaration belong to main.
 			cur_mod = 'main'
 		}
-		if node.kind == .module_decl {
-			cur_mod = node.value
+		if scanned.kind == .module_decl {
+			cur_mod = scanned.value
 			continue
 		}
-		if node.kind != .struct_decl {
+		if scanned.kind != .struct_decl {
 			continue
 		}
+		node := *scanned
+		node_ref := t.a.node(flat.NodeId(node_idx))
 		mut fields := map[string]FieldDeclMeta{}
 		for i in 0 .. node.children_count {
 			field := t.a.child_node(node_ref, i)
