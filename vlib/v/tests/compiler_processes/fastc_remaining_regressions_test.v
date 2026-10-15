@@ -4,15 +4,15 @@ import os
 import v.cmdexec
 
 struct FastcRemainingCase {
- name string
- source string
- expected string
- bootstrap bool
+	name      string
+	source    string
+	expected  string
+	bootstrap bool
 }
 
 fn test_fastc_remaining_pointer_array_and_default_regressions() {
- cases := [
-FastcRemainingCase{'voidptr_variant', r'module main
+	cases := [
+		FastcRemainingCase{'voidptr_variant', r'module main
 type Val = int | voidptr
 fn main() {
  x := 5
@@ -25,7 +25,7 @@ fn main() {
  }
 }
 ', 'int\np\nnil', false},
-FastcRemainingCase{'fixed_pointer_literal', r'module main
+		FastcRemainingCase{'fixed_pointer_literal', r'module main
 struct Named { mut: name string }
 fn main() {
  mut x := &Named{"a"}
@@ -37,7 +37,7 @@ fn main() {
  assert arr[1] == y
 }
 ', 'changed', false},
-FastcRemainingCase{'bootstrap_defaults', r'module main
+		FastcRemainingCase{'bootstrap_defaults', r'module main
 struct Cfg {
  n int = 7
  s int = 3
@@ -47,7 +47,7 @@ fn main() {
  println(c.n + c.s)
 }
 ', '10', true},
-FastcRemainingCase{'empty_fixed_pointer_array', r'module main
+		FastcRemainingCase{'empty_fixed_pointer_array', r'module main
 struct Named { name string }
 fn main() {
  mut a := [4]&Named{}
@@ -57,7 +57,7 @@ fn main() {
  println(a[0].name)
 }
 ', 'first', false},
-FastcRemainingCase{'function_literal_array', r'module main
+		FastcRemainingCase{'function_literal_array', r'module main
 fn main() {
  fs := [fn (x int) int { return x + 1 }, fn (x int) int { return x * 2 }]
  assert fs[0](41) == 42
@@ -67,7 +67,7 @@ fn main() {
  println("functions work")
 }
 ', 'functions work', false},
-FastcRemainingCase{'fixed_array_membership', r'module main
+		FastcRemainingCase{'fixed_array_membership', r'module main
 fn main() {
  assert [3, 4]! in [[1, 2]!, [3, 4]!]
  assert [5, 6]! !in [[1, 2]!, [3, 4]!]
@@ -77,21 +77,22 @@ fn main() {
  println("membership works")
 }
 ', 'membership works', false},
- ]
- for case in cases {
-  root := os.join_path(os.vtmp_dir(), 'fastc_remaining_${case.name}_${os.getpid()}')
-  os.mkdir_all(root)!
-  defer { os.rmdir_all(root) or {} }
-  source := os.join_path(root, 'main.v')
-  os.write_file(source, case.source)!
-  for backend in ['c', 'fastc'] {
-   executable := os.join_path(root, 'program_${backend}')
-   target := if backend == 'fastc' && case.bootstrap { source } else { root }
-   build := cmdexec.run(@VEXE, ['-b', backend, '-nocache', '-gc', 'none', '-o', executable, target])
-   assert build.exit_code == 0, '${case.name} ${backend}: ${build.output}'
-   run := cmdexec.run(executable, [])
-   assert run.exit_code == 0, '${case.name} ${backend}: ${run.output}'
-   assert run.output.trim_space() == case.expected, '${case.name} ${backend}: ${run.output}'
-  }
- }
+	]
+	for case in cases {
+		root := os.join_path(os.vtmp_dir(), 'fastc_remaining_${case.name}_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, case.source)!
+		for backend in ['c', 'fastc'] {
+			executable := os.join_path(root, 'program_${backend}')
+			target := if backend == 'fastc' && case.bootstrap { source } else { root }
+			build := cmdexec.run(@VEXE, ['-b', backend, '-nocache', '-gc', 'none', '-o', executable,
+				target])
+			assert build.exit_code == 0, '${case.name} ${backend}: ${build.output}'
+			run := cmdexec.run(executable, [])
+			assert run.exit_code == 0, '${case.name} ${backend}: ${run.output}'
+			assert run.output.trim_space() == case.expected, '${case.name} ${backend}: ${run.output}'
+		}
+	}
 }
