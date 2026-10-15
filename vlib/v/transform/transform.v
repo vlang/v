@@ -29866,6 +29866,7 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 	// Each function gets its own visitation epoch without allocating another map.
 	mut visited := []u32{len: limit}
 	mut epoch := u32(0)
+	holders := t.match_holding_fns()
 	// Read after `limit` is taken: lowering appends nodes while this loop runs.
 	indexed_count, indexed_nodes := t.top_level_scan_prefix()
 	for scan_idx in 0 .. indexed_count + limit - indexed_nodes {
@@ -29875,7 +29876,8 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 			indexed_nodes + scan_idx - indexed_count
 		}
 		if t.a.nodes[i].kind != .fn_decl
-			|| (i < t.match_lowered_fns.len && t.match_lowered_fns[i]) {
+			|| (i < t.match_lowered_fns.len && t.match_lowered_fns[i])
+			|| (holders.len > 0 && (i >= holders.len || !holders[i])) {
 			continue
 		}
 		if i >= t.match_lowered_fns.len {
@@ -29905,6 +29907,38 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
+}
+
+// match_holding_fns flags every function declaration above a match node, the
+// only bodies lower_remaining_matches_in_used_fns can find a match in. The walk
+// reads the bodies the transform stage lowered, which keep the shape the parent
+// index records, so a match node under no function there is in none of them.
+// The result is empty, for a walk of every function, when a match node was
+// appended after the index was built.
+@[direct_array_access]
+fn (t &Transformer) match_holding_fns() []bool {
+	covered := int_min(t.source_parent_ids.len, t.a.nodes.len)
+	mut holders := []bool{len: covered}
+	for idx in 0 .. t.a.nodes.len {
+		if t.a.nodes[idx].kind != .match_stmt {
+			continue
+		}
+		if idx >= covered {
+			return []bool{}
+		}
+		mut cursor := idx
+		// The bound only guards against a cycle in a rewritten tree.
+		for _ in 0 .. 1 << 16 {
+			cursor = int(t.source_parent_ids[cursor])
+			if cursor < 0 || cursor >= covered {
+				break
+			}
+			if t.a.nodes[cursor].kind == .fn_decl {
+				holders[cursor] = true
+			}
+		}
+	}
+	return holders
 }
 
 @[direct_array_access]
