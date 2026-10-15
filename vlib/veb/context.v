@@ -514,6 +514,18 @@ pub fn (mut ctx Context) not_found() Result {
 	return ctx.send_response_to_client('text/plain', '404 Not Found')
 }
 
+// method_not_allowed returns a HTTP 405 response, listing the methods the
+// matched route does accept in the `Allow` header.
+pub fn (mut ctx Context) method_not_allowed(allowed []http.Method) Result {
+	ctx.res.set_status(.method_not_allowed)
+	if allowed.len > 0 {
+		// The key is a literal and the values come from the Method enum, so a
+		// header-write failure here is not reachable, but the API is a Result.
+		ctx.res.header.add_custom('Allow', allowed.map(it.str()).join(',')) or {}
+	}
+	return ctx.send_response_to_client('text/plain', '405 Method Not Allowed')
+}
+
 // Gets a cookie by a key
 pub fn (ctx &Context) get_cookie(key string) ?string {
 	if cookie := ctx.req.cookie(key) {
