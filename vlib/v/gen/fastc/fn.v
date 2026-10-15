@@ -66,12 +66,14 @@ fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMe
 // context and must be reset whenever the parser switches to another one.
 fn (mut g Parser) reset_lookup_memos() {
 	g.unqualified_key_memo = map[string]string{}
+	g.global_key_memo = map[string]string{}
 	g.nonlocal_name_type_memo = flat.TypeTextBindings{}
 	g.resolved_name_memo = map[string]string{}
 	g.declared_type_key_memo = map[u32]FastcMemoEntry{}
 	g.type_memo = map[i64]u32{}
 	g.method_key_memo = map[string]map[string]string{}
-	g.field_memo = map[string]map[string]FastcStructField{}
+	g.field_memo = map[string]map[string]&FastcStructField{}
+	g.last_field = unsafe { nil }
 	g.last_field_known = false
 }
 

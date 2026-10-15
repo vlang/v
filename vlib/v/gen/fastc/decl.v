@@ -714,6 +714,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 		mut gen := Parser{
 			prefs:                        unsafe { prefs }
 			unqualified_key_memo:         map[string]string{}
+			global_key_memo:              map[string]string{}
 			c_function_name_memo:         map[string]string{}
 			nonlocal_name_type_memo:      flat.TypeTextBindings{}
 			resolved_name_memo:           map[string]string{}
@@ -730,7 +731,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			comparison_memo:              map[i64]FastcRenderedExpression{}
 			type_memo:                    map[i64]u32{}
 			method_key_memo:              map[string]map[string]string{}
-			field_memo:                   map[string]map[string]FastcStructField{}
+			field_memo:                   map[string]map[string]&FastcStructField{}
 			spawn_typedefs:               map[string]string{}
 			spawn_helpers:                map[string]string{}
 			thread_value_types:           flat.TypeTextBindings{}
@@ -1202,7 +1203,7 @@ fn fastc_map_field_default(typ string, pointer_bits int, declared_kinds map[stri
 // rendered and its by-name index, or the first error rendering them.
 struct FastcFieldDefaultsResult {
 	struct_field_info map[string][]FastcStructField
-	lookup            map[string]map[string]FastcStructField
+	lookup            map[string]map[string]&FastcStructField
 	failed            bool
 	error_message     string
 }
@@ -1270,6 +1271,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 			mut gen := Parser{
 				prefs:                        unsafe { prefs }
 				unqualified_key_memo:         map[string]string{}
+				global_key_memo:              map[string]string{}
 				c_function_name_memo:         map[string]string{}
 				nonlocal_name_type_memo:      flat.TypeTextBindings{}
 				resolved_name_memo:           map[string]string{}
@@ -1288,7 +1290,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				comparison_memo:              map[i64]FastcRenderedExpression{}
 				type_memo:                    map[i64]u32{}
 				method_key_memo:              map[string]map[string]string{}
-				field_memo:                   map[string]map[string]FastcStructField{}
+				field_memo:                   map[string]map[string]&FastcStructField{}
 				spawn_typedefs:               map[string]string{}
 				spawn_helpers:                map[string]string{}
 				thread_value_types:           flat.TypeTextBindings{}
@@ -1413,6 +1415,7 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 	mut gen := Parser{
 		prefs:                        unsafe { prefs }
 		unqualified_key_memo:         map[string]string{}
+		global_key_memo:              map[string]string{}
 		c_function_name_memo:         map[string]string{}
 		nonlocal_name_type_memo:      flat.TypeTextBindings{}
 		resolved_name_memo:           map[string]string{}
@@ -1429,7 +1432,7 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 		comparison_memo:              map[i64]FastcRenderedExpression{}
 		type_memo:                    map[i64]u32{}
 		method_key_memo:              map[string]map[string]string{}
-		field_memo:                   map[string]map[string]FastcStructField{}
+		field_memo:                   map[string]map[string]&FastcStructField{}
 		spawn_typedefs:               map[string]string{}
 		spawn_helpers:                map[string]string{}
 		thread_value_types:           flat.TypeTextBindings{}
@@ -2376,7 +2379,12 @@ fn fastc_c_type_attributes_end(source string, start int) ?int {
 		for i < source.len && source[i].is_space() {
 			i++
 		}
-		if i >= source.len || !source[i..].starts_with('__attribute__') {
+		attribute_end := i + '__attribute__'.len
+		if attribute_end > source.len {
+			return i
+		}
+		// This temporary prefix view avoids copying the whole declaration tail.
+		if !(unsafe { source[i..attribute_end] }).starts_with('__attribute__') {
 			return i
 		}
 		i += '__attribute__'.len

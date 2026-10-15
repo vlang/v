@@ -25,7 +25,7 @@ fn (g &Parser) optional_function_field_for_expression(tokens []FastcExpressionTo
 	if !field.is_optional_function {
 		return none
 	}
-	return field
+	return *field
 }
 
 fn (g &Parser) or_block_has_statements() bool {

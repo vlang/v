@@ -167,7 +167,8 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 }
 
 fn fastc_header_with_channel_runtime(header FastcSourceHeader, source string, prefs &pref.Preferences) FastcSourceHeader {
-	if !prefs.building_v || header.module_name in ['sync', 'builtin'] || !source.contains('chan') {
+	if !prefs.building_v || header.module_name in ['sync', 'builtin']
+		|| !fastc_source_contains_word(source, 'chan') {
 		return header
 	}
 	mut scan := scanner.new_scanner(prefs, .normal)
@@ -1597,8 +1598,24 @@ fn fastc_source_file_matches_backend(path string) bool {
 	return !path.ends_with('.arm64.v') && !path.ends_with('.amd64.v') && !path.ends_with('.native.v') && !path.ends_with('.wasm.v') && !path.ends_with('.rv64.v') && !path.ends_with('.js.v')
 }
 
+// fastc_source_has_capture_syntax is a byte-level superset of a `fn` token
+// followed by `[`. Comments and string literals remain scanner candidates.
+fn fastc_source_has_capture_syntax(source string) bool {
+	mut start := 0
+	for {
+		index := source.index_after_('fn', start)
+		if index < 0 { return false }
+		if fastc_source_word_at(source, index, 'fn') {
+			after := fastc_source_skip_blank(source, index + 2)
+			if after < source.len && source[after] == `[` { return true }
+		}
+		start = index + 2
+	}
+	return false
+}
+
 fn fastc_source_uses_captures(source string, prefs &pref.Preferences) bool {
-	if !source.contains('fn') || !source.contains('[') {
+	if !fastc_source_has_capture_syntax(source) {
 		return false
 	}
 	mut scan := scanner.new_scanner(prefs, .normal)
@@ -1631,7 +1648,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	mut brace_depth := 0
 	// Imports can follow declarations. A byte bound keeps ordinary files from
 	// tokenizing function bodies once their final possible import is behind us.
-	last_import_offset := source.last_index('import') or { -1 }
+	last_import_offset := fastc_source_last_word_index(source, 'import')
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
@@ -1869,6 +1886,31 @@ mut:
 	has_select              bool
 }
 
+// fastc_source_contains_word is a byte-level superset check: words in comments
+// and strings remain candidates for the scanner to disambiguate.
+fn fastc_source_contains_word(source string, word string) bool {
+	if word.len == 0 { return false }
+	mut start := 0
+	for {
+		index := source.index_after_(word, start)
+		if index < 0 { return false }
+		if fastc_source_word_at(source, index, word) { return true }
+		start = index + word.len
+	}
+	return false
+}
+
+// fastc_source_last_word_index bounds keyword scans without treating longer
+// identifiers, such as `imports`, as possible keyword occurrences.
+@[direct_array_access]
+fn fastc_source_last_word_index(source string, word string) int {
+	if word.len == 0 { return -1 }
+	for i := source.len - word.len; i >= 0; i-- {
+		if source[i] == word[0] && fastc_source_word_at(source, i, word) { return i }
+	}
+	return -1
+}
+
 @[direct_array_access]
 fn fastc_source_word_at(source string, i int, word string) bool {
 	if i + word.len > source.len {
@@ -1906,11 +1948,12 @@ fn fastc_source_skip_blank(source string, start int) int {
 				j++
 			}
 		} else if c == `/` && j + 1 < source.len && source[j + 1] == `*` {
-			// Block comments nest, as in the scanner.
+			// Match Scanner.comment, including its `/*/` and `//*/` closing idioms.
 			mut depth := 1
 			j += 2
 			for j < source.len && depth > 0 {
-				if source[j] == `/` && j + 1 < source.len && source[j + 1] == `*` {
+				if source[j] == `/` && j + 1 < source.len && source[j + 1] == `*`
+					&& (j + 2 >= source.len || source[j + 2] != `/`) {
 					depth++
 					j += 2
 				} else if source[j] == `*` && j + 1 < source.len && source[j + 1] == `/` {
@@ -2054,7 +2097,7 @@ fn fastc_identifier_byte(value u8) bool {
 // block (statement or expression form). `sql` is not a keyword, so it is matched as a
 // name not preceded by `.` and followed by a connection expression and then `{`.
 fn fastc_source_uses_sql(source string, prefs &pref.Preferences) bool {
-	if !source.contains('sql') {
+	if !fastc_source_contains_word(source, 'sql') {
 		return false
 	}
 	file := token.File.unindexed('orm_sql_probe', source.len)

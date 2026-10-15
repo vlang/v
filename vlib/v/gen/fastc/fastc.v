@@ -1260,7 +1260,7 @@ mut:
 	// The struct fields with their defaults rendered, and their by-name index:
 	// the defaults are rendered on a worker while the constants are pre-parsed.
 	struct_field_info   map[string][]FastcStructField
-	struct_field_lookup map[string]map[string]FastcStructField
+	struct_field_lookup map[string]map[string]&FastcStructField
 }
 
 // fastc_note_field_defaults_use records that the parser consulted rendered
@@ -1399,7 +1399,7 @@ struct Parser {
 	sum_type_variants   map[string]bool
 	struct_fields       map[string]flat.TypeTextBindings
 	struct_field_info   map[string][]FastcStructField
-	struct_field_lookup map[string]map[string]FastcStructField
+	struct_field_lookup map[string]map[string]&FastcStructField
 	interface_fields    map[string]FastcInterfaceField
 	constants           map[string]string
 	constant_values     map[string]string
@@ -1452,6 +1452,7 @@ mut:
 	// tables (module, imports, functions, constants, globals, declared types)
 	// and are asked again for the same short name many times per file.
 	unqualified_key_memo       map[string]string
+	global_key_memo            map[string]string
 	c_function_name_memo       map[string]string
 	nonlocal_name_type_memo    flat.TypeTextBindings
 	resolved_name_memo         map[string]string
@@ -1533,14 +1534,14 @@ mut:
 	// Method keys memoized per receiver type and method name; the key only
 	// depends on the file-level tables, so it is reset with the other memos.
 	method_key_memo map[string]map[string]string
-	// Struct field lookups memoized per receiver type and field name (a field
-	// with an empty name records a miss); reset with the other memos.
-	field_memo map[string]map[string]FastcStructField
+	// Promoted struct fields memoized per receiver type and field name (nil
+	// records a miss); each record is allocated separately from the maps.
+	field_memo map[string]map[string]&FastcStructField
 	// The render and inference passes commonly ask for the same field several
 	// times in succession. Keep that entry outside the nested maps.
 	last_field_receiver u32
 	last_field_name     string
-	last_field          FastcStructField
+	last_field          &FastcStructField = unsafe { nil }
 	last_field_known    bool
 	// used_field_defaults records that a rendered struct field default was
 	// consulted (see fastc_note_field_defaults_use).
@@ -1551,6 +1552,11 @@ mut:
 	spawn_typedefs     map[string]string
 	spawn_helpers      map[string]string
 	thread_value_types flat.TypeTextBindings
+	// Spawn pre-scans share one word check for the current scanner buffer.
+	spawn_source_pointer  voidptr
+	spawn_source_length   int
+	spawn_source_checked  bool
+	spawn_source_has_word bool
 	// Declaration-initializer parsers (constants, globals, struct field
 	// defaults) discard spawn registrations, so spawn is rejected there.
 	declaration_initializer_mode bool
@@ -1698,7 +1704,7 @@ struct FastcFileGenContext {
 	sum_type_variants         map[string]bool
 	struct_fields             map[string]flat.TypeTextBindings
 	struct_field_info         map[string][]FastcStructField
-	struct_field_lookup       map[string]map[string]FastcStructField
+	struct_field_lookup       map[string]map[string]&FastcStructField
 	interface_fields          map[string]FastcInterfaceField
 	constants                 map[string]string
 	constant_values           map[string]string
@@ -1790,6 +1796,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	mut gen := Parser{
 		prefs:                     unsafe { prefs }
 		unqualified_key_memo:      map[string]string{}
+		global_key_memo:           map[string]string{}
 		c_function_name_memo:      map[string]string{}
 		nonlocal_name_type_memo:   flat.TypeTextBindings{}
 		resolved_name_memo:        map[string]string{}
@@ -1808,7 +1815,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		comparison_memo:           map[i64]FastcRenderedExpression{}
 		type_memo:                 map[i64]u32{}
 		method_key_memo:           map[string]map[string]string{}
-		field_memo:                map[string]map[string]FastcStructField{}
+		field_memo:                map[string]map[string]&FastcStructField{}
 		member_smartcasts:         map[string]FastcMemberSmartcast{}
 		spawn_typedefs:            map[string]string{}
 		spawn_helpers:             map[string]string{}
@@ -3610,13 +3617,14 @@ fn fastc_generic_method_names(generic_method_sources map[string]FastcGenericMeth
 	return names
 }
 
-// fastc_build_struct_field_lookup indexes every struct's fields by name.
-fn fastc_build_struct_field_lookup(struct_field_info map[string][]FastcStructField) map[string]map[string]FastcStructField {
-	mut struct_field_lookup := map[string]map[string]FastcStructField{}
+// fastc_build_struct_field_lookup owns the immutable records indexed by name.
+// Separate allocations keep pointers stable when the index maps grow.
+fn fastc_build_struct_field_lookup(struct_field_info map[string][]FastcStructField) map[string]map[string]&FastcStructField {
+	mut struct_field_lookup := map[string]map[string]&FastcStructField{}
 	for layout_type, fields in struct_field_info {
-		mut fields_by_name := map[string]FastcStructField{}
+		mut fields_by_name := map[string]&FastcStructField{}
 		for field in fields {
-			fields_by_name[field.name] = field
+			fields_by_name[field.name] = &FastcStructField{ ...field }
 		}
 		struct_field_lookup[layout_type] = fields_by_name.move()
 	}

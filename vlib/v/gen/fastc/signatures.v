@@ -520,7 +520,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 		tok = scan.scan()
 	}
 	if header.has_comptime_if {
-		fastc_collect_selected_comptime_function_signatures(source, source_offset, path, header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
+		fastc_collect_selected_comptime_function_signatures(source, source_offset, path, header, prefs, skips, declared_types, declared_type_c_names, params_structs, mut functions)!
 	}
 }
 

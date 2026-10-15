@@ -218,7 +218,7 @@ self-builds, and a missing `.o` input is compiled from its matching `.c` source 
 Use `-keepc` to retain generated C, including when TinyCC rejects it.
 
 For throughput measurements, first build a production compiler with `v -prod -cc clang self`.
-Measure a complete uncached executable build with an external timer:
+On macOS, measure a complete uncached executable build with an external timer:
 
 ```sh
 FASTC_BENCH=1 /usr/bin/time -l v -b fastc -nocache -o v_fastc_bench cmd/v

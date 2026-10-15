@@ -1510,9 +1510,11 @@ fn (g &Parser) narrowed_numeric_operand_type(tokens []FastcExpressionToken, infe
 	}
 	if tokens.len == 1 && tokens[0].tok == .name {
 		if local := g.locals[tokens[0].lit] {
-			value_type := local.typ_text().trim_right('*')
-			if local.is_reference && local.smartcast_origin_type != 0 && fastc_is_numeric_expression_type(g.underlying_alias_type(value_type)) {
-				return value_type
+			if local.is_reference && local.smartcast_origin_type != 0 {
+				value_type := fastc_trim_pointer_suffix(flat.source_type_name(local.typ))
+				if fastc_is_numeric_expression_type(g.underlying_alias_type(value_type)) {
+					return value_type
+				}
 			}
 		}
 	}
@@ -4398,10 +4400,11 @@ fn (g &Parser) render_map_lookup_option_expression(tokens []FastcExpressionToken
 		}
 		start++
 	}
-	mut lookup_tokens := tokens[start..].clone()
+	// Only the slice header changes; the renderers read these caller-owned tokens.
+	mut lookup_tokens := unsafe { tokens[start..] }
 	address_of_value := lookup_tokens.len > 1 && lookup_tokens[0].tok in [.amp, .and] && fastc_token_is_prefix_operator(lookup_tokens, 0)
 	if address_of_value {
-		lookup_tokens = lookup_tokens[1..].clone()
+		lookup_tokens = unsafe { lookup_tokens[1..] }
 	}
 	if lookup_tokens.len < 4 || lookup_tokens.last().tok != .rsbr {
 		return none
@@ -4676,7 +4679,7 @@ fn (g &Parser) render_explicit_generic_call_expression(tokens []FastcExpressionT
 	if g.fastc_element_call_open(tokens) > 0 {
 		return none
 	}
-	mut normalized := []FastcExpressionToken{cap: tokens.len}
+	mut normalized := []FastcExpressionToken{}
 	mut changed := false
 	mut i := 0
 	for i < tokens.len {
@@ -4694,13 +4697,19 @@ fn (g &Parser) render_explicit_generic_call_expression(tokens []FastcExpressionT
 					}
 				}
 				if close + 1 < tokens.len && tokens[close + 1].tok == .lpar && valid_types {
+					if !changed {
+						normalized = []FastcExpressionToken{cap: tokens.len}
+						normalized << tokens[..i]
+					}
 					i = close + 1
 					changed = true
 					continue
 				}
 			}
 		}
-		normalized << tokens[i]
+		if changed {
+			normalized << tokens[i]
+		}
 		i++
 	}
 	if !changed {

@@ -194,11 +194,12 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 	return FastcComptimeBlock{}
 }
 
-fn fastc_collect_selected_comptime_function_signatures(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+fn fastc_collect_selected_comptime_function_signatures(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
+	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && tok == .dollar {
@@ -209,6 +210,14 @@ fn fastc_collect_selected_comptime_function_signatures(source string, source_off
 					collect_function_signatures_at(selected.source, source_offset + selected.offset, path, header, prefs, []int{}, declared_types, declared_type_c_names, params_structs, mut functions)!
 				}
 				tok = selected.tok
+				continue
+			}
+		}
+		if tok == .lcbr && brace_depth == 0 {
+			skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
+			skip_index = next_skip
+			if skipped {
+				tok = scan.scan()
 				continue
 			}
 		}

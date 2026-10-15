@@ -16,14 +16,26 @@ fn (mut g Parser) promote_spawn_parameter_storage() {
 		g.locals[name] = FastcLocal{
 			...local
 			is_reference: true
-			typ: flat.source_type_id(local.typ_text() + '*')
-			c_name: storage
+			typ:          flat.source_type_id(local.typ_text() + '*')
+			c_name:       storage
 		}
 	}
 	g.type_memo.clear()
 }
 
 fn (g &Parser) spawn_escaping_parameters() []string {
+	// Source buffers are immutable. Anonymous and generic functions temporarily
+	// replace them, so share the byte check only while this exact buffer is current.
+	source_pointer := voidptr(g.s.src.str)
+	if !g.spawn_source_checked || g.spawn_source_pointer != source_pointer
+		|| g.spawn_source_length != g.s.src.len {
+		mut w := unsafe { &Parser(g) }
+		w.spawn_source_pointer = source_pointer
+		w.spawn_source_length = g.s.src.len
+		w.spawn_source_has_word = fastc_source_contains_word(g.s.src, 'spawn')
+		w.spawn_source_checked = true
+	}
+	if !g.spawn_source_has_word { return [] }
 	mut names := []string{}
 	mut scan := g.s
 	mut tok := g.tok
