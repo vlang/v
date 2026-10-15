@@ -11,8 +11,31 @@ const source_type_chunk_size = 1 << source_type_chunk_bits
 const source_type_chunk_count = 16384
 
 struct SourceTypeEntry {
-	text string
-	hash u64
+	text  string
+	hash  u64
+	shape SourceTypeShape
+}
+
+// SourceTypeShape records spelling syntax once when a type is interned.
+@[flag]
+pub enum SourceTypeShape {
+	dotted
+	bracketed
+	wrapped
+	typeof_name
+	typeof_expr
+}
+
+fn source_type_spelling_shape(text string) SourceTypeShape {
+	mut shape := unsafe { SourceTypeShape(0) } // The empty set has no syntax flags.
+	if text.contains('.') { shape.set(.dotted) }
+	if text.contains('[') { shape.set(.bracketed) }
+	if text.starts_with('&') || text.starts_with('?') || text.starts_with('!') {
+		shape.set(.wrapped)
+	}
+	if text.contains('typeof') { shape.set(.typeof_name) }
+	if text.contains('typeof(') { shape.set(.typeof_expr) }
+	return shape
 }
 
 struct SourceTypeTable {
@@ -140,8 +163,9 @@ pub fn source_type_id(text string) u32 {
 		vmemcpy(bytes, text.str, text.len)
 		entry := &SourceTypeEntry(chunk) + (idx & (source_type_chunk_size - 1))
 		*entry = SourceTypeEntry{
-			text: tos(bytes, text.len)
-			hash: hashed
+			text:  tos(bytes, text.len)
+			hash:  hashed
+			shape: source_type_spelling_shape(text)
 		}
 		table.slots[slot] = id
 	}
@@ -160,4 +184,15 @@ pub fn source_type_name(id u32) string {
 		panic('invalid source type ID')
 	}
 	return source_type_entry(table, id).text
+}
+
+// source_type_shape returns syntax properties without resolving spelling bytes.
+@[inline]
+pub fn source_type_shape(id u32) SourceTypeShape {
+	if id == 0 { return unsafe { SourceTypeShape(0) } }
+	table := source_type_table_load()
+	if isnil(table) || id > C.atomic_load_u32(&table.count) {
+		panic('invalid source type ID')
+	}
+	return source_type_entry(table, id).shape
 }

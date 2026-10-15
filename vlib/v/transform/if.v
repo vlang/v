@@ -157,7 +157,7 @@ fn (mut t Transformer) stage_guard_assignments(tail GuardReturnTail, has_error b
 		name := t.new_temp('guard_assign')
 		decls << t.make_staging_value_decl(name, typ)
 		targets << t.make_ident(name)
-		if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(typ)) {
+		if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(typ))) {
 			move_flags[i] = t.new_temp('guard_moved')
 			decls << t.make_decl_assign_typed(move_flags[i], t.make_bool_literal(false), 'bool')
 		}
@@ -315,7 +315,7 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 	value_type := t.optional_base_type(rhs_type)
 	tmp_name := t.new_temp('if_guard')
 	mut rhs_expr, source_clear := t.transform_if_guard_wrapper_source(rhs_id, rhs_type)
-	if !t.is_optional_type_name(t.node_type(rhs_expr)) {
+	if !t.is_optional_type_name(flat.source_type_name(t.node_type(rhs_expr))) {
 		rhs_node := t.a.nodes[int(rhs_expr)]
 		if rhs_node.kind == .selector && rhs_node.children_count > 0 {
 			rhs_expr = t.make_selector_op(t.a.child(&rhs_node, 0), rhs_node.value, rhs_type, rhs_node.op)
@@ -470,7 +470,7 @@ fn (mut t Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 			}
 		}
 	}
-	return t.node_type(id)
+	return flat.source_type_name(t.node_type(id))
 }
 
 fn (t &Transformer) optional_type_name_from_type(typ types.Type) ?string {
@@ -618,7 +618,7 @@ fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.Node
 	defer {
 		t.restore_heaped_local_state(heaped_state)
 	}
-	is_result := t.normalize_type_alias(value_type).starts_with('!')
+	is_result := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(value_type))).starts_with('!')
 	staging := t.stage_guard_assignments(tail, is_result)
 	err_scope := t.enter_implicit_err_scope(is_result)
 	mut children := []flat.NodeId{}
@@ -760,7 +760,7 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 	saved_heaped_state := t.save_heaped_local_state()
 	if lhs.value != '_' && value_type != 'void' {
 		t.clear_heaped_local_binding(lhs.value)
-		t.set_var_type(lhs.value, value_type)
+		t.set_var_type(lhs.value, flat.source_type_id(value_type))
 	}
 	then_type := t.stmt_value_type(t.a.child(&node, 1))
 	t.restore_var_types(saved_var_types)
@@ -782,10 +782,10 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 
 	mut result := ''
 	if then_type.len > 0 {
-		result = t.merge_if_expr_types(result, t.normalize_type_alias(then_type))
+		result = t.merge_if_expr_types(result, flat.source_type_name(t.normalize_type_alias(flat.source_type_id(then_type))))
 	}
 	if else_type.len > 0 {
-		result = t.merge_if_expr_types(result, t.normalize_type_alias(else_type))
+		result = t.merge_if_expr_types(result, flat.source_type_name(t.normalize_type_alias(flat.source_type_id(else_type))))
 	}
 	if result.len == 0 || result == 'void' || result == 'unknown' {
 		return none
@@ -869,7 +869,7 @@ fn (t &Transformer) if_expr_branch_overrides_sum_target(branch_type string, targ
 fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) string {
 	mut node_typ := ''
 	if node.typ_text().len > 0 {
-		typ := t.normalize_type_alias(node.typ_text())
+		typ := flat.source_type_name(t.normalize_type_alias(node.typ))
 		if typ !in ['array', 'map'] {
 			node_typ = typ
 		}
@@ -879,7 +879,7 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) string {
 		if typ := t.tc.expr_type(id) {
 			name := typ.name()
 			if name.len > 0 {
-				checked_typ = t.normalize_type_alias(name)
+				checked_typ = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(name)))
 			}
 		}
 	}
@@ -887,7 +887,7 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) string {
 	if !isnil(t.tc) {
 		if file := t.a.source_files[node.pos.id] {
 			if t.tc.translated_files[file.name] {
-				resolved := t.normalize_type_alias(t.tc.resolve_type(id).name())
+				resolved := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.tc.resolve_type(id).name())))
 				if t.translated_if_numeric_type(branch_typ)
 					&& t.translated_if_numeric_type(resolved) {
 					return resolved
@@ -968,7 +968,7 @@ fn (t &Transformer) if_expr_branch_type_overrides(branch_typ string, stale_typ s
 	}
 	if t.is_optional_type_name(stale_typ) && !t.is_optional_type_name(branch_typ) {
 		stale_payload := t.optional_base_type(stale_typ)
-		return t.normalize_type_alias(stale_payload) == t.normalize_type_alias(branch_typ)
+		return flat.source_type_name(t.normalize_type_alias(flat.source_type_id(stale_payload))) == flat.source_type_name(t.normalize_type_alias(flat.source_type_id(branch_typ)))
 	}
 	if stale_typ in t.enum_types && branch_typ == 'int' {
 		return false
@@ -997,7 +997,7 @@ fn (t &Transformer) if_expr_branch_result_type(node flat.Node) string {
 			t.smartcast_contexts_from_is_exprs(t.extract_all_is_exprs(t.a.child(&node, 0)))
 		then_type := t.stmt_value_type_with_smartcasts(t.a.child(&node, 1), then_smartcasts)
 		if then_type.len > 0 {
-			result = t.merge_translated_if_expr_types(node, result, t.normalize_type_alias(then_type))
+			result = t.merge_translated_if_expr_types(node, result, flat.source_type_name(t.normalize_type_alias(flat.source_type_id(then_type))))
 		}
 	}
 	if node.children_count >= 3 {
@@ -1009,7 +1009,7 @@ fn (t &Transformer) if_expr_branch_result_type(node flat.Node) string {
 			t.stmt_value_type(else_id)
 		}
 		if else_type.len > 0 {
-			result = t.merge_translated_if_expr_types(node, result, t.normalize_type_alias(else_type))
+			result = t.merge_translated_if_expr_types(node, result, flat.source_type_name(t.normalize_type_alias(flat.source_type_id(else_type))))
 		}
 	}
 	return result
@@ -1102,19 +1102,19 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 					}
 				}
 			}
-			return t.node_type(id)
+			return flat.source_type_name(t.node_type(id))
 		}
 		.call {
 			if node.children_count > 0 {
 				callee := t.a.child_node(&node, 0)
 				if callee.kind == .selector && callee.value == 'clone' && callee.children_count > 0 {
 					base_id := t.a.child(callee, 0)
-					raw_base_type := t.node_type(base_id)
+					raw_base_type := flat.source_type_name(t.node_type(base_id))
 					narrowed_base_type := t.node_type_with_smartcasts(base_id, contexts)
-					call_type := t.node_type(id)
+					call_type := flat.source_type_name(t.node_type(id))
 					if t.is_optional_type_name(raw_base_type) && t.is_optional_type_name(call_type)
 						&& !t.is_optional_type_name(narrowed_base_type)
-						&& t.normalize_type_alias(t.optional_base_type(call_type)) == t.normalize_type_alias(narrowed_base_type) {
+						&& flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.optional_base_type(call_type)))) == flat.source_type_name(t.normalize_type_alias(flat.source_type_id(narrowed_base_type))) {
 						return narrowed_base_type
 					}
 				}
@@ -1132,17 +1132,17 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			if call_ret.len > 0 && call_ret !in ['unknown', 'void'] {
 				return call_ret
 			}
-			return t.node_type(id)
+			return flat.source_type_name(t.node_type(id))
 		}
 		.ident {
 			if sc := t.find_smartcast_in_context(node.value, contexts) {
 				return t.smartcast_target_type(sc)
 			}
-			return t.node_type(id)
+			return flat.source_type_name(t.node_type(id))
 		}
 		.selector {
 			if node.children_count == 0 {
-				return t.node_type(id)
+				return flat.source_type_name(t.node_type(id))
 			}
 			full_key := t.expr_key(id)
 			if full_key.len > 0 {
@@ -1171,11 +1171,11 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			if ftyp := t.lookup_struct_field_type(clean_base, node.value) {
 				return ftyp
 			}
-			return t.node_type(id)
+			return flat.source_type_name(t.node_type(id))
 		}
 		.prefix {
 			if node.children_count == 0 {
-				return t.node_type(id)
+				return flat.source_type_name(t.node_type(id))
 			}
 			child_id := t.a.child(&node, 0)
 			child_type := t.node_type_with_smartcasts(child_id, contexts)
@@ -1194,17 +1194,17 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			if node.op == .not {
 				return 'bool'
 			}
-			return t.node_type(id)
+			return flat.source_type_name(t.node_type(id))
 		}
 		.paren {
 			if node.children_count > 0 {
 				return t.node_type_with_smartcasts(t.a.child(&node, 0), contexts)
 			}
-			return t.node_type(id)
+			return flat.source_type_name(t.node_type(id))
 		}
 		.array_literal {
 			if node.typ_text().len > 0 {
-				typ := t.normalize_type_alias(node.typ_text())
+				typ := flat.source_type_name(t.normalize_type_alias(node.typ))
 				if typ != 'array' {
 					return typ
 				}
@@ -1215,7 +1215,7 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 					return '[]${elem_type}'
 				}
 			}
-			return t.node_type(id)
+			return flat.source_type_name(t.node_type(id))
 		}
 		.index {
 			base_type := if node.children_count > 0 {
@@ -1229,7 +1229,7 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			if base_type.starts_with('[]') {
 				return base_type[2..]
 			}
-			return t.node_type(id)
+			return flat.source_type_name(t.node_type(id))
 		}
 		.if_expr {
 			return t.if_expr_result_type(id, node)
@@ -1238,7 +1238,7 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			return t.match_expr_type(node)
 		}
 		else {
-			return t.node_type(id)
+			return flat.source_type_name(t.node_type(id))
 		}
 	}
 }
@@ -1288,7 +1288,7 @@ fn (t &Transformer) merge_if_expr_types(current string, next string) string {
 		if base in ['void', 'unknown'] {
 			return current[..1] + next
 		}
-		if t.normalize_type_alias(base) == t.normalize_type_alias(next) {
+		if flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base))) == flat.source_type_name(t.normalize_type_alias(flat.source_type_id(next))) {
 			return current
 		}
 	}
@@ -1297,7 +1297,7 @@ fn (t &Transformer) merge_if_expr_types(current string, next string) string {
 		if base in ['void', 'unknown'] {
 			return next[..1] + current
 		}
-		if t.normalize_type_alias(base) == t.normalize_type_alias(current) {
+		if flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base))) == flat.source_type_name(t.normalize_type_alias(flat.source_type_id(current))) {
 			return next
 		}
 	}
@@ -1424,7 +1424,7 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	else_id := t.a.child(&if_node, 2)
 	else_node := t.a.nodes[int(else_id)]
 	mut err_decls := []flat.NodeId{cap: 1}
-	err_scope := t.enter_implicit_err_scope(t.node_type(t.make_ident(tmp_name)).starts_with('!'))
+	err_scope := t.enter_implicit_err_scope(flat.source_type_name(t.node_type(t.make_ident(tmp_name))).starts_with('!'))
 	t.append_implicit_err_decl(mut err_decls, t.result_error_expr(t.make_ident(tmp_name)))
 	else_block0 := if else_node.kind == .if_expr {
 		t.make_block(t.build_if_value_chain(else_id, target_name, target_type))
@@ -1610,7 +1610,7 @@ fn (mut t Transformer) if_value_branch_block(branch_id flat.NodeId, target_name 
 			}
 			return t.make_block(result)
 		}
-		if t.node_type(inner_id) == 'void' {
+		if flat.source_type_name(t.node_type(inner_id)) == 'void' {
 			tail_stmts := t.transform_stmt(tail_id)
 			t.drain_pending(mut result)
 			for stmt in tail_stmts {
@@ -1717,7 +1717,7 @@ fn (t &Transformer) if_value_branch_tail_has_no_value(id flat.NodeId) bool {
 	if node.kind == .call && t.is_noreturn_call(id) {
 		return true
 	}
-	return t.node_type(id) == 'void'
+	return flat.source_type_name(t.node_type(id)) == 'void'
 }
 
 // transform_if_branch_value transforms transform if branch value data for transform.
@@ -2294,7 +2294,7 @@ fn (t &Transformer) option_none_cmp_info(cond flat.Node) ?IsExprInfo {
 	if !t.is_optional_type_name(expr_type) {
 		opt_node := t.a.node(opt_id)
 		if opt_node.kind == .ident {
-			expr_type = t.raw_var_type(opt_node.value)
+			expr_type = flat.source_type_name(t.raw_var_type(opt_node.value))
 		}
 	}
 	if !t.is_optional_type_name(expr_type) {

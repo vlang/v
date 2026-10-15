@@ -8,7 +8,7 @@ fn test_guard_staging_ends_error_scope_before_pointer_backed_destination() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.interface_names['IError'] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.set_var_type('err', '&string')
+	t.set_var_type('err', flat.source_type_id('&string'))
 	t.heaped_amp_locals['err'] = true
 	tail := GuardReturnTail{
 		assign_lhs_ids: [t.make_ident('err'), t.make_ident('_')]
@@ -49,8 +49,8 @@ fn test_owned_guard_staging_preserves_moves_through_branch_tails() {
 		tc.collect(tc.a)
 		tc.interface_names['IError'] = true
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.set_var_type('err', 'IError')
-		t.set_var_type('value', 'string')
+		t.set_var_type('err', flat.source_type_id('IError'))
+		t.set_var_type('value', flat.source_type_id('string'))
 		tail := GuardReturnTail{
 			assign_lhs_ids: [t.make_ident('err'), t.make_ident('value')]
 		}
@@ -66,9 +66,10 @@ fn test_owned_guard_staging_preserves_moves_through_branch_tails() {
 		assert t.multi_if_assign_target_was_moved(staging.tail, 1, values)
 		mut branch := flat.empty_node
 		if tail_kind == 'call' {
-			tc.fn_param_types['pair'] = [tc.parse_type('IError'), types.Type(types.string_)]
+			tc.fn_param_types['pair'] = [tc.parse_type(flat.source_type_id('IError')),
+				types.Type(types.string_)]
 			tc.fn_ret_types['pair'] = types.Type(types.MultiReturn{
-				types: [tc.parse_type('IError'), types.Type(types.string_)]
+				types: [tc.parse_type(flat.source_type_id('IError')), types.Type(types.string_)]
 			})
 			call := t.make_call_typed('pair', values, '(IError, string)')
 			branch = t.make_block([t.make_expr_stmt(call)])

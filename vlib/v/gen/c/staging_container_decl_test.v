@@ -12,11 +12,11 @@ fn staging_container_decl_source(kind flat.NodeKind, typ types.Type, marker stri
 	if captured {
 		g.defer_capture_types['staged'] = typ
 	}
-	lhs := a.add_node(flat.Node{ kind: .ident, value: 'staged', typ: flat.source_type_id(typ.name()) })
+	lhs := a.add_node(flat.Node{ kind: .ident, value: 'staged', typ: typ.source_type_id() })
 	rhs := a.add_node(flat.Node{
 		kind:  kind
 		value: if typ is types.Array { typ.elem_type.name() } else { typ.name() }
-		typ:   flat.source_type_id(typ.name())
+		typ:   typ.source_type_id()
 	})
 	tc.register_synth_type(rhs, typ)
 	start := a.children.len
@@ -24,7 +24,7 @@ fn staging_container_decl_source(kind flat.NodeKind, typ types.Type, marker stri
 	decl := flat.Node{
 		kind:           .decl_assign
 		value:          marker
-		typ:            flat.source_type_id(typ.name())
+		typ:            typ.source_type_id()
 		children_start: i32(start)
 		children_count: 2
 	}

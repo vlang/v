@@ -60,6 +60,12 @@ pub fn (bindings &TypeTextBindings) value(name string) string {
 	return bindings.get(name) or { '' }
 }
 
+// value_id returns a binding's source identity, or zero when it is absent.
+@[inline]
+pub fn (bindings &TypeTextBindings) value_id(name string) u32 {
+	return bindings.ids[name] or { 0 }
+}
+
 // type_id returns the numeric source-spelling identity of a present binding.
 pub fn (bindings &TypeTextBindings) type_id(name string) ?u32 {
 	return bindings.ids[name] or { return none }
@@ -169,6 +175,12 @@ pub fn (bindings &NodeTypeTextBindings) get(node int) ?string {
 // value returns a node binding's spelling, or an empty spelling when it is absent.
 pub fn (bindings &NodeTypeTextBindings) value(node int) string {
 	return bindings.get(node) or { '' }
+}
+
+// value_id returns a node binding's source identity, or zero when it is absent.
+@[inline]
+pub fn (bindings &NodeTypeTextBindings) value_id(node int) u32 {
+	return bindings.ids[node] or { 0 }
 }
 
 // set interns a source spelling and records its identity for the binding.

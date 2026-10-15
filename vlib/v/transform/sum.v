@@ -50,7 +50,11 @@ fn (mut t Transformer) pointer_sum_access_expr(expr_id flat.NodeId, expr_type st
 		access_type = access_type[1..]
 		t.set_node_typ(int(access), access_type)
 	}
-	mut value_type := if has_smartcast { access_type } else { t.node_type(access) }
+	mut value_type := if has_smartcast {
+		access_type
+	} else {
+		flat.source_type_name(t.node_type(access))
+	}
 	if value_type.len == 0 {
 		value_type = access_type
 	}
@@ -359,7 +363,7 @@ fn (t &Transformer) find_sum_type_with_short_name(short_name string) string {
 }
 
 fn (t &Transformer) sum_subject_type_candidates(subject_type string) []string {
-	clean := trimmed_transform_text(t.trim_pointer_type(t.normalize_type_alias(subject_type)))
+	clean := trimmed_transform_text(t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(subject_type)))))
 	if clean.len == 0 {
 		return []string{}
 	}
@@ -514,8 +518,8 @@ fn (t &Transformer) sum_target_accepts_variant_type(target_type string, variant_
 			}
 		}
 	}
-	clean_target := t.trim_pointer_type(t.normalize_type_alias(target_type))
-	clean_variant := t.trim_pointer_type(t.normalize_type_alias(variant_type))
+	clean_target := t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(target_type))))
+	clean_variant := t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(variant_type))))
 	if clean_target.len == 0 || clean_variant.len == 0 {
 		return false
 	}
@@ -539,8 +543,8 @@ fn (t &Transformer) sum_target_accepts_variant_type(target_type string, variant_
 }
 
 fn (t &Transformer) sum_variant_type_accepts_value_type(variant_type string, value_type string) bool {
-	mut clean_variant_type := t.trim_pointer_type(t.normalize_type_alias(variant_type))
-	mut clean_value_type := t.trim_pointer_type(t.normalize_type_alias(value_type))
+	mut clean_variant_type := t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(variant_type))))
+	mut clean_value_type := t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(value_type))))
 	if t.variant_names_match(clean_variant_type, clean_value_type) {
 		return true
 	}
@@ -734,9 +738,9 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	if check := t.smartcasted_sum_is_expr_check(expr_id, node.value) {
 		return check
 	}
-	expr_type := t.node_type(expr_id)
+	expr_type := flat.source_type_name(t.node_type(expr_id))
 	clean_type0 := t.trim_pointer_type(expr_type)
-	concrete_expr_type := t.normalize_type_alias(clean_type0)
+	concrete_expr_type := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(clean_type0)))
 	resolved_expr_sum := t.resolve_sum_name(concrete_expr_type)
 	// Inside a `$for v in T.variants` body the pattern is the loop variable;
 	// the unroll substitutes it later, so there is nothing to validate yet.
@@ -818,7 +822,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	// Mutable array/map loop bindings are storage pointers, but their rvalue
 	// transform above already loads the sum value. Build the tag/path checks from
 	// the transformed storage type so the value is not dereferenced twice.
-	mut check_expr_type := t.node_type(new_expr)
+	mut check_expr_type := flat.source_type_name(t.node_type(new_expr))
 	if check_expr_type.len == 0 || check_expr_type == 'unknown' {
 		check_expr_type = expr_type
 	}
@@ -978,7 +982,7 @@ fn (t &Transformer) specialized_is_pattern_known(pattern string) bool {
 		clean := trimmed_transform_text(candidate)
 		if clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('[')
 			|| clean.starts_with('fn ') || clean.starts_with('fn(') {
-			if t.tc.parse_type(clean).name() != 'unknown' {
+			if t.tc.parse_type(flat.source_type_id(clean)).name() != 'unknown' {
 				return true
 			}
 		}
@@ -1186,14 +1190,14 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 		return alias
 	}
 	if name.starts_with('[]') {
-		typ := t.tc.parse_type(name)
+		typ := t.tc.parse_type(flat.source_type_id(name))
 		canonical := typ.name()
 		if typ is types.Array {
 			return canonical
 		}
 	}
 	if name.starts_with('map[') {
-		typ := t.tc.parse_type(name)
+		typ := t.tc.parse_type(flat.source_type_id(name))
 		canonical := typ.name()
 		if typ is types.Map {
 			return canonical
@@ -1388,7 +1392,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		// `as` conversion over that temp (mirrors the option-source path below).
 		mut operand_type := t.raw_expr_type_without_smartcast(first_child)
 		if operand_type.len == 0 {
-			operand_type = t.node_type(first_child)
+			operand_type = flat.source_type_name(t.node_type(first_child))
 		}
 		if operand_type.len == 0 {
 			operand_type = t.resolve_expr_type(first_child)
@@ -1412,7 +1416,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		source_id := t.a.child(&expr_node, 0)
 		mut source_type := t.raw_expr_type_without_smartcast(source_id)
 		if source_type.len == 0 {
-			source_type = t.node_type(source_id)
+			source_type = flat.source_type_name(t.node_type(source_id))
 		}
 		if t.is_optional_type_name(source_type) {
 			expr_id = source_id
@@ -1425,13 +1429,13 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	// the RHS (for example `layout as Widget`).
 	mut expr_type := t.raw_expr_type_without_smartcast(expr_id)
 	if expr_type.len == 0 {
-		expr_type = t.node_type(expr_id)
+		expr_type = flat.source_type_name(t.node_type(expr_id))
 	}
 	if t.is_optional_type_name(expr_type) {
 		optional_type := t.qualify_optional_type(expr_type)
 		target_type := t.qualify_optional_type(node.value)
 		if t.is_optional_type_name(target_type)
-			&& t.normalize_type_alias(optional_type) == t.normalize_type_alias(target_type) {
+			&& flat.source_type_name(t.normalize_type_alias(flat.source_type_id(optional_type))) == flat.source_type_name(t.normalize_type_alias(flat.source_type_id(target_type))) {
 			return t.make_plain_expr_for_smartcast(expr_id)
 		}
 		payload_type := t.optional_base_type(optional_type)
@@ -1447,7 +1451,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 			t.transform_expr(expr_id)
 		}
 		value := t.make_selector(source, 'value', payload_type)
-		if t.normalize_type_alias(payload_type) == t.normalize_type_alias(node.value) {
+		if flat.source_type_name(t.normalize_type_alias(flat.source_type_id(payload_type))) == flat.source_type_name(t.normalize_type_alias(flat.source_type_id(node.value))) {
 			return value
 		}
 		resolved_payload := t.resolve_sum_name(t.trim_pointer_type(payload_type))
@@ -1530,7 +1534,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		if interface_pattern_is_collapsed_container_type(node.value)
 			&& t.tc.interface_abstract_method_names(clean_type0).len == 0
 			&& t.tc.interface_field_list(clean_type0).len == 0 {
-			target_type := t.tc.parse_type(node.value).name()
+			target_type := t.tc.parse_type(flat.source_type_id(node.value)).name()
 			if type_id := t.interface_container_cast_type_id(clean_type0, target_type) {
 				child := t.transform_expr(expr_id)
 				source := t.stable_transformed_expr_for_reuse(child, expr_type, 'iface_as')
@@ -1571,7 +1575,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		})
 	}
 	qv := t.resolve_variant(clean_type, node.value)
-	if qv.len > 0 && t.normalize_type_alias(clean_type0) == t.normalize_type_alias(qv) {
+	if qv.len > 0 && flat.source_type_name(t.normalize_type_alias(flat.source_type_id(clean_type0))) == flat.source_type_name(t.normalize_type_alias(flat.source_type_id(qv))) {
 		return t.transform_expr(expr_id)
 	}
 	sc_key := t.expr_key(expr_id)
@@ -1701,7 +1705,7 @@ fn (mut t Transformer) fixed_array_sum_literal_expr(expr_id flat.NodeId, expr fl
 	mut fallback_type := ''
 	mut fallback_count := 0
 	for variant in variants {
-		fixed_type := t.normalize_type_alias(variant)
+		fixed_type := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(variant)))
 		if !t.is_fixed_array_type(fixed_type) {
 			continue
 		}
@@ -1748,8 +1752,8 @@ fn (t &Transformer) fixed_array_sum_literal_elem_matches(literal_elem string, va
 	if t.fixed_array_sum_literal_elem_unknown(literal_elem) {
 		return true
 	}
-	clean_literal := t.normalize_type_alias(literal_elem)
-	clean_variant := t.normalize_type_alias(variant_elem)
+	clean_literal := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(literal_elem)))
+	clean_variant := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(variant_elem)))
 	return clean_literal == clean_variant || t.variant_names_match(clean_literal, clean_variant)
 }
 
@@ -1811,13 +1815,13 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	if fixed := t.fixed_array_sum_literal_expr(expr_id, expr, resolved_sum) {
 		return t.make_sum_literal(resolved_sum, fixed.variant_text(), fixed.expr)
 	}
-	mut expr_type := t.node_type(expr_id)
+	mut expr_type := flat.source_type_name(t.node_type(expr_id))
 	if expr.typ_text().len > 0 && t.sum_target_accepts_variant_type(resolved_sum, expr.typ_text()) {
 		expr_type = expr.typ_text()
 	}
 	if expr.kind in [.ident, .selector] {
 		if expr.kind == .ident && expr.value.len > 0 {
-			local_type := t.raw_var_type(expr.value)
+			local_type := flat.source_type_name(t.raw_var_type(expr.value))
 			if local_type.len > 0 && t.sum_target_accepts_variant_type(resolved_sum, local_type) {
 				expr_type = local_type
 			}
@@ -1856,7 +1860,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		variant = t.resolve_variant(expr_smartcast.sum_type_name_text(), expr_smartcast.variant_name_text())
 	}
 	if expr.kind == .prefix && expr.op == .mul && expr.children_count > 0 {
-		inner_type := t.node_type(t.a.child(&expr, 0))
+		inner_type := flat.source_type_name(t.node_type(t.a.child(&expr, 0)))
 		if inner_type.starts_with('&') {
 			variant = inner_type[1..]
 		}
@@ -1868,11 +1872,11 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	} else if expr.kind == .assoc && expr.value.len > 0 {
 		variant = expr.value
 	} else if expr.kind == .assoc && expr.children_count > 0 {
-		variant = t.node_type(t.a.child(&expr, 0))
+		variant = flat.source_type_name(t.node_type(t.a.child(&expr, 0)))
 	}
 	if expr.kind == .ident && expr.value.len > 0 {
 		if smartcasted := t.smartcast_ident_value(expr.value) {
-			smartcasted_type := t.node_type(smartcasted)
+			smartcasted_type := flat.source_type_name(t.node_type(smartcasted))
 			if wrapper_value := t.single_value_wrapper_expr_value(smartcasted, smartcasted_type,
 				resolved_sum)
 			{
@@ -1910,7 +1914,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	}
 	if expr.kind == .ident && expr.value.len > 0 {
 		if smartcasted := t.smartcast_ident_value(expr.value) {
-			smartcasted_type := t.node_type(smartcasted)
+			smartcasted_type := flat.source_type_name(t.node_type(smartcasted))
 			if wrapper_value := t.single_value_wrapper_expr_value(smartcasted, smartcasted_type,
 				resolved_sum)
 			{
@@ -1996,14 +2000,14 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	if expr.kind == .prefix && expr.op == .mul && expr.children_count > 0 {
 		pointer_variant_child = t.a.child(&expr, 0)
 	}
-	matched_clean := t.trim_pointer_type(t.normalize_type_alias(matched_variant))
-	value_clean := t.trim_pointer_type(t.normalize_type_alias(clean_variant))
+	matched_clean := t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(matched_variant))))
+	value_clean := t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(clean_variant))))
 	needs_variant_conversion := matched_clean != value_clean
 		&& t.sum_variant_type_accepts_value_type(matched_clean, value_clean)
 	mut source_pointer_value := false
 	mut source_pointer_type := ''
 	if expr.kind == .ident && expr.value.len > 0 {
-		source_type := t.var_type(expr.value)
+		source_type := flat.source_type_name(t.var_type(expr.value))
 		source_pointer_type = source_type
 		source_pointer_value = source_type.starts_with('&')
 			&& t.variant_names_match(source_type[1..], matched_variant)
@@ -2046,7 +2050,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 }
 
 fn (t &Transformer) sum_literal_type_name(target_sum string, resolved_sum string) string {
-	clean := t.trim_pointer_type(t.normalize_type_alias(target_sum))
+	clean := t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(target_sum))))
 	if clean.len == 0 {
 		return resolved_sum
 	}
@@ -2069,7 +2073,7 @@ fn (mut t Transformer) single_value_wrapper_sum_value(expr_id flat.NodeId, wrapp
 		return none
 	}
 	value_type := t.lookup_struct_field_type(wrapper_type, 'value') or { return none }
-	if t.resolve_sum_name(t.normalize_type_alias(value_type)) != target_sum {
+	if t.resolve_sum_name(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(value_type)))) != target_sum {
 		return none
 	}
 	wrapper := t.transform_expr(expr_id)
@@ -2087,7 +2091,7 @@ fn (mut t Transformer) single_value_wrapper_expr_value(wrapper flat.NodeId, wrap
 		return none
 	}
 	value_type := t.lookup_struct_field_type(wrapper_type, 'value') or { return none }
-	if t.resolve_sum_name(t.normalize_type_alias(value_type)) != target_sum {
+	if t.resolve_sum_name(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(value_type)))) != target_sum {
 		return none
 	}
 	value := t.make_selector(wrapper, 'value', value_type)
@@ -2097,7 +2101,7 @@ fn (mut t Transformer) single_value_wrapper_expr_value(wrapper flat.NodeId, wrap
 
 // ensure_sum_variant_ref supports ensure sum variant ref handling for Transformer.
 fn (mut t Transformer) ensure_sum_variant_ref(value flat.NodeId, variant string) flat.NodeId {
-	mut value_type := t.node_type(value)
+	mut value_type := flat.source_type_name(t.node_type(value))
 	if value_type.starts_with('&') {
 		return value
 	}
@@ -2119,7 +2123,7 @@ fn (mut t Transformer) ensure_sum_variant_ref(value flat.NodeId, variant string)
 
 // make_default_sum_value initializes a sum type with the zero value of its first variant.
 fn (mut t Transformer) make_default_sum_value(typ string) ?flat.NodeId {
-	resolved_sum, variants := t.concrete_sum_name_and_variants(t.normalize_type_alias(typ))
+	resolved_sum, variants := t.concrete_sum_name_and_variants(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ))))
 	if variants.len == 0 {
 		return none
 	}
@@ -2139,7 +2143,7 @@ fn (mut t Transformer) make_default_sum_value(typ string) ?flat.NodeId {
 // header; nested sums also need independent active payload boxes before boxing.
 fn (mut t Transformer) sum_owned_value_payload(value flat.NodeId, variant string) flat.NodeId {
 	variant_type := t.comptime_normalize_type_alias_chain(variant)
-	value_type := t.comptime_normalize_type_alias_chain(t.node_type(value))
+	value_type := t.comptime_normalize_type_alias_chain(flat.source_type_name(t.node_type(value)))
 	mut payload_type := variant_type
 	for t.is_optional_type_name(payload_type) {
 		payload_type = t.comptime_normalize_type_alias_chain(t.optional_base_type(payload_type))
@@ -2151,8 +2155,8 @@ fn (mut t Transformer) sum_owned_value_payload(value flat.NodeId, variant string
 			return t.mark_owned_array_storage_value(payload, variant)
 		}
 		if t.is_sum_type_name(variant_type) && !isnil(t.tc)
-			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(variant_type)) {
-			if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(variant_type)) {
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(variant_type))) {
+			if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(flat.source_type_id(variant_type))) {
 				// An empty borrowed array can still be retained; its runtime guard rejects
 				// nonempty uncloneable payloads without destroying the caller's boxes.
 				return t.clone_owned_sum_array_views_for_storage(payload, variant, false, true)
@@ -2171,7 +2175,7 @@ fn (mut t Transformer) make_sum_literal(sum_name string, variant string, value f
 	typ_field := t.make_sum_literal_field('typ', t.make_int_literal(t.sum_type_index(sum_name,
 		qvariant)), 'int')
 	payload := t.sum_owned_value_payload(value, qvariant)
-	raw_value_type := t.node_type(payload)
+	raw_value_type := flat.source_type_name(t.node_type(payload))
 	mut value_type := if raw_value_type.starts_with('&') {
 		raw_value_type
 	} else {

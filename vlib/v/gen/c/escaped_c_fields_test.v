@@ -78,9 +78,9 @@ fn test_sizeof_c_field_names_follow_alias_pointer_owners() {
 	tc.type_alias_modules['RecordPointer'] = 'main'
 	tc.cur_module = 'main'
 	tc.push_scope()
-	tc.cur_scope.insert('record', tc.parse_type('RecordAlias'))
-	tc.cur_scope.insert('pointer', tc.parse_type('RecordPointer'))
-	tc.cur_scope.insert('value', tc.parse_type('Record'))
+	tc.cur_scope.insert('record', tc.parse_type(flat.source_type_id('RecordAlias')))
+	tc.cur_scope.insert('pointer', tc.parse_type(flat.source_type_id('RecordPointer')))
+	tc.cur_scope.insert('value', tc.parse_type(flat.source_type_id('Record')))
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -108,7 +108,7 @@ fn test_escaped_c_callback_selector_assignment_keeps_c_abi_adapter() {
 		tc.fn_param_types['callback'] = [types.Type(types.int_)]
 		tc.fn_ret_types['callback'] = types.Type(types.int_)
 		tc.push_scope()
-		tc.cur_scope.insert('holder', tc.parse_type(owner_name))
+		tc.cur_scope.insert('holder', tc.parse_type(flat.source_type_id(owner_name)))
 		mut g := FlatGen.new()
 		g.a = &a
 		g.tc = &tc
