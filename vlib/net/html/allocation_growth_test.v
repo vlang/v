@@ -31,7 +31,7 @@ fn allocation_growth_bytes(fragment string, count int) usize {
 fn test_parse_allocations_grow_with_input_size() {
 	$if gcboehm ? {
 		_ = parse('<div>text</div>')
-		for fragment in ['<div>text</div>', '<div><span>t</span></div>'] {
+		for fragment in ['<div>text</div>', '<div><span>t</span></div>', '<div><span>t</span>'] {
 			small := allocation_growth_bytes(fragment, 256)
 			large := allocation_growth_bytes(fragment, 1024)
 			assert small > 0
