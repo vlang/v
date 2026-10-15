@@ -13,6 +13,7 @@ int v3_run_signals_finish(void) { return 0; }
 #include <unistd.h>
 
 typedef void (*v3_run_signal_handler)(int);
+static volatile sig_atomic_t v3_run_owner_pid;
 static volatile sig_atomic_t v3_run_child_pid;
 static volatile sig_atomic_t v3_run_received_signal;
 static v3_run_signal_handler v3_run_previous_term;
@@ -22,6 +23,10 @@ enum { v3_run_hup = 1, v3_run_term = 15 };
 
 static void v3_run_forward_signal(int signal_number) {
     int saved_errno = errno;
+    /* A forked child inherits this handler until exec replaces its image. */
+    if (getpid() != v3_run_owner_pid) {
+        _exit(128 + signal_number);
+    }
     v3_run_received_signal = signal_number;
     sig_atomic_t child_pid = v3_run_child_pid;
     if (child_pid > 0) {
@@ -31,6 +36,7 @@ static void v3_run_forward_signal(int signal_number) {
 }
 
 int v3_run_signals_begin(void) {
+    v3_run_owner_pid = getpid();
     v3_run_child_pid = 0;
     v3_run_received_signal = 0;
     v3_run_previous_term = (v3_run_signal_handler)signal(v3_run_term, v3_run_forward_signal);

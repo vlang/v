@@ -158,7 +158,7 @@ fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
 	mut source := $embed_file('@VEXEROOT/vlib/v/driver/run_signals_nix.c').to_string()
 	if headerless {
 		g.writeln('#ifndef _WIN32')
-		g.emit_c_runtime_declarations(['signal', 'kill'])
+		g.emit_c_runtime_declarations(['signal', 'kill', 'getpid', '_exit'])
 		g.writeln('#endif')
 		mut lines := []string{}
 		for line in source.split_into_lines() {
