@@ -5854,7 +5854,7 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 		}
 		rhs := t.a.nodes[int(rhs_id)]
 		mut specialized_call_or := false
-		mut concrete_rhs_type := rhs.typ_text()
+		mut concrete_rhs_type := rhs.typ
 		if rhs.kind == .or_expr {
 			if rhs.children_count == 0 {
 				continue
@@ -5869,26 +5869,28 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 				specialized_call_or = callee.kind == .ident
 					&& t.generic_callee_is_specialization(callee.value)
 			}
-			_, concrete_rhs_type = t.or_expr_types(call_id, rhs.typ)
+			_, concrete_rhs_type_source_id := t.or_expr_types(call_id, rhs.typ)
+			concrete_rhs_type = concrete_rhs_type_source_id
 		} else if rhs.kind != .call {
 			continue
 		}
-		if concrete_rhs_type.len == 0 || t.generic_arg_is_unresolved(flat.source_type_id(concrete_rhs_type)) {
+		if concrete_rhs_type == 0 || t.generic_arg_is_unresolved(concrete_rhs_type) {
 			continue
 		}
 		// A specialized generic result can replace an otherwise usable stale annotation.
-		if !(specialized_call_or && node.typ_text() != concrete_rhs_type)
+		if !(specialized_call_or && node.typ_text() != flat.source_type_name(concrete_rhs_type))
 			&& decl_type_is_usable(node.typ)
 			&& !t.generic_arg_is_unresolved(node.typ) {
 			continue
 		}
-		decl_type := concrete_rhs_type
-		t.set_node_typ(i, flat.source_type_id(decl_type))
+		decl_type_source_id_2 := concrete_rhs_type
+
+		t.set_node_typ(i, decl_type_source_id_2)
 		changed = true
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident {
-			t.set_node_typ(int(lhs_id), flat.source_type_id(decl_type))
-			t.set_var_type_with_raw(lhs.value, flat.source_type_id(concrete_rhs_type), flat.source_type_id(decl_type))
+			t.set_node_typ(int(lhs_id), decl_type_source_id_2)
+			t.set_var_type_with_raw(lhs.value, concrete_rhs_type, decl_type_source_id_2)
 		}
 	}
 	return changed
@@ -7536,7 +7538,6 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 		return none
 	}
 	decl_key, args_source_ids := t.generic_call_specialization(id, node, module_name, decls) or { return none }
-	args := flat.TypeTextList{ ids: args_source_ids }.names()
 
 	t.generic_call_spec_cache[idx] = GenericCallSpec{
 		decl_key: decl_key
@@ -7569,7 +7570,6 @@ fn (mut t Transformer) missing_specialized_plain_generic_call(node flat.Node, mo
 		return none
 	}
 	decl := decls[spec.decl_key] or { return none }
-	exact := spec.args_text()
 	if t.generic_specialization_registered(decl, spec.args.ids) {
 		return none
 	}
@@ -7774,7 +7774,6 @@ fn (mut t Transformer) specialized_plain_generic_call_specialization(node flat.N
 		}
 	}
 	args_source_ids := t.specialized_plain_generic_call_args(node, decl, module_name) or { return none }
-	args := flat.TypeTextList{ ids: args_source_ids }.names()
 	if args_source_ids.len == 0 || t.generic_args_have_placeholders(args_source_ids) {
 		return none
 	}

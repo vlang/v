@@ -1424,7 +1424,6 @@ fn sql_generic_type_suffix(typ string) string {
 }
 
 fn (mut t Transformer) sql_infix_primitive_from_token_for_field(field string, column string, token string, typ_id u32) ?flat.NodeId {
-	typ := flat.source_type_name(typ_id)
 	op_text, right_text := sql_split_leading_field_math_token(token, field) or { return none }
 	right_expr := t.sql_expr_from_token_for_type(right_text, typ_id)
 	right_primitive := t.sql_primitive_from_expr(right_expr)

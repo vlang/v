@@ -902,9 +902,7 @@ struct AliasEquivalentForms {
 }
 
 fn (t &Transformer) alias_equivalent_forms(name_id u32) AliasEquivalentForms {
-	name := flat.source_type_name(name_id)
 	normalized_source_id := t.normalize_type_in_module(name_id, t.cur_module)
-	normalized := flat.source_type_name(normalized_source_id)
 	return AliasEquivalentForms{
 		name:             name_id
 		normalized:       normalized_source_id
@@ -914,7 +912,6 @@ fn (t &Transformer) alias_equivalent_forms(name_id u32) AliasEquivalentForms {
 }
 
 fn (t &Transformer) type_name_matches_any_alias_equivalent(name_id u32, candidates []AliasEquivalentForms) bool {
-	name := flat.source_type_name(name_id)
 	n := t.alias_equivalent_forms(name_id)
 	for c in candidates {
 		if n.name == c.name || n.name == c.normalized || n.normalized == c.name

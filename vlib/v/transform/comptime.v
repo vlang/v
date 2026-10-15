@@ -3763,7 +3763,6 @@ fn (mut t Transformer) make_field_data_literal(fm FieldMeta) flat.NodeId {
 }
 
 fn (mut t Transformer) make_named_field_init(field string, value flat.NodeId, typ_id u32) flat.NodeId {
-	typ := flat.source_type_name(typ_id)
 	start := t.a.children.len
 	t.a.children << value
 	return t.a.add_node(flat.Node{
@@ -3782,7 +3781,6 @@ fn (mut t Transformer) clone_node_preserving_children(node flat.Node) flat.NodeI
 }
 
 fn (mut t Transformer) clone_node_preserving_children_with_type(node flat.Node, typ_id u32) flat.NodeId {
-	typ := flat.source_type_name(typ_id)
 	start := t.a.children.len
 	for i in 0 .. node.children_count {
 		t.a.children << t.a.child(&node, i)

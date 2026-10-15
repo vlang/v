@@ -1437,8 +1437,12 @@ fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.No
 		return none
 	}
 	rhs_id := t.a.child(&append, 1)
-	expr_type, value_type := t.or_expr_types(rhs_id, node.typ)
-	if !t.is_optional_type_name(flat.source_type_id(expr_type)) || value_type.len == 0 || value_type == 'void' {
+	expr_type_source_id, value_type_source_id_3 := t.or_expr_types(rhs_id, node.typ)
+	expr_type_source_id_3 := expr_type_source_id
+
+	value_type_source_id_5 := value_type_source_id_3
+
+	if !t.is_optional_type_name(expr_type_source_id_3) || value_type_source_id_5 == 0 || value_type_source_id_5 == flat.source_type_void {
 		return none
 	}
 	or_start := t.a.children.len
@@ -1451,7 +1455,7 @@ fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.No
 		children_count: 2
 		pos:            node.pos
 		value:          node.value
-		typ:            flat.source_type_id(value_type)
+		typ:            value_type_source_id_5
 	})
 	pending_start := t.pending_stmts.len
 	unwrapped_rhs := t.lower_or_expr_to_temp(rhs_or_id, t.a.nodes[int(rhs_or_id)])
@@ -1851,11 +1855,15 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	if !t.optional_selector_lvalue_source(source_id) {
 		return none
 	}
-	expr_type, value_type := t.or_expr_types(source_id, lhs_node.typ)
-	if !t.is_optional_type_name(flat.source_type_id(expr_type)) {
+	expr_type_source_id_2, value_type_source_id_4 := t.or_expr_types(source_id, lhs_node.typ)
+	expr_type_source_id_4 := expr_type_source_id_2
+
+	value_type_source_id_6 := value_type_source_id_4
+
+	if !t.is_optional_type_name(expr_type_source_id_4) {
 		return none
 	}
-	array_type_source_id := t.clean_array_append_lhs_type(flat.source_type_id(value_type))
+	array_type_source_id := t.clean_array_append_lhs_type(value_type_source_id_6)
 	array_type := flat.source_type_name(array_type_source_id)
 	if !array_type.starts_with('[]') {
 		return none
@@ -2287,7 +2295,6 @@ struct OwnedArraySumVariant {
 // Acquire a fresh literal's payload before boxing it. Its boxes have not been
 // emitted yet, whereas a copied mutable sum borrows boxes owned by its caller.
 fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, typ_id u32) ?flat.NodeId {
-	typ := flat.source_type_name(typ_id)
 	node := t.a.node(t.unwrap_parens(value))
 	resolved_sum_source_id_2, variants_source_ids := t.concrete_sum_name_and_variants(typ_id)
 	resolved_sum := flat.source_type_name(resolved_sum_source_id_2)
@@ -2374,8 +2381,6 @@ fn (mut t Transformer) clone_owned_sum_array_views_for_storage(value flat.NodeId
 }
 
 fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_type_id u32, root flat.NodeId, root_type_id u32, guards []flat.NodeId, path []OwnedArraySumVariant, seen []string, drop_old_root bool, clone_owned_value bool) []flat.NodeId {
-	sum_type := flat.source_type_name(sum_type_id)
-
 	resolved_sum_source_id_3, variants_source_ids_2 := t.concrete_sum_name_and_variants(sum_type_id)
 	resolved_sum := flat.source_type_name(resolved_sum_source_id_3)
 
@@ -2384,8 +2389,6 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 	next_seen << resolved_sum
 	mut branches := []flat.NodeId{}
 	for variant_source_id in variants_source_ids_2 {
-		variant := flat.source_type_name(variant_source_id)
-
 		qvariant_source_id_2 := t.resolve_variant(resolved_sum_source_id_3, variant_source_id)
 		qvariant := flat.source_type_name(qvariant_source_id_2)
 		if qvariant_source_id_2 == 0 { continue }
@@ -2956,7 +2959,6 @@ fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id fla
 // array_rhs_is_push_many selects bulk insertion when the source element types match.
 fn (t &Transformer) array_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type_id u32, elem_type_id u32) bool {
 	rhs_type := flat.source_type_name(rhs_type_id)
-	elem_type := flat.source_type_name(elem_type_id)
 	rhs_node := t.a.nodes[int(rhs_id)]
 	if rhs_node.kind == .spawn_expr {
 		return false
@@ -3102,7 +3104,6 @@ fn (t &Transformer) array_append_rhs_is_builtin_map_call(rhs_id flat.NodeId) boo
 }
 
 fn (t &Transformer) array_append_rhs_builtin_map_elem_matches(rhs_id flat.NodeId, elem_type_id u32) bool {
-	elem_type := flat.source_type_name(elem_type_id)
 	if !t.array_append_rhs_is_builtin_map_call(rhs_id) {
 		return false
 	}
@@ -6718,9 +6719,7 @@ fn (t &Transformer) array_map_bound_method_info(node flat.Node, elem_name string
 		return none
 	}
 	receiver_type_source_id := t.bound_builtin_method_receiver_type(elem_type_id, node.value) or { return none }
-	receiver_type := flat.source_type_name(receiver_type_source_id)
 	return_type_source_id := t.local_fn_value_return_type_from_type(result_elem_type_id) or { return none }
-	return_type := flat.source_type_name(return_type_source_id)
 	if return_type_source_id == flat.source_type_void {
 		return none
 	}

@@ -1277,8 +1277,12 @@ fn (mut t Transformer) or_expr_zero_value_expansion_estimate(id flat.NodeId, nod
 	} else {
 		flat.source_type_name(t.stmt_value_type(t.a.child(&node, 1)))
 	}
-	expr_type, value_type := t.or_expr_types(expr_id, flat.source_type_id(fallback_type))
-	mut estimate := if t.is_optional_type_name(flat.source_type_id(expr_type)) {
+	expr_type_source_id, value_type_source_id_15 := t.or_expr_types(expr_id, flat.source_type_id(fallback_type))
+	expr_type_source_id_3 := expr_type_source_id
+
+	value_type_source_id_17 := value_type_source_id_15
+	value_type := flat.source_type_name(value_type_source_id_17)
+	mut estimate := if t.is_optional_type_name(expr_type_source_id_3) {
 		0
 	} else {
 		t.nested_optional_leaf_zero_value_expansion_estimate(expr_id, 0)
@@ -1286,7 +1290,7 @@ fn (mut t Transformer) or_expr_zero_value_expansion_estimate(id flat.NodeId, nod
 	if value_type in ['', 'void', '__v_option', '!', '?'] {
 		return estimate
 	}
-	estimate += t.zero_value_expansion_estimate(id, flat.source_type_id(value_type))
+	estimate += t.zero_value_expansion_estimate(id, value_type_source_id_17)
 	return estimate
 }
 
@@ -1295,9 +1299,13 @@ fn (mut t Transformer) nested_optional_leaf_zero_value_expansion_estimate(id fla
 		return 0
 	}
 	source_id := t.nested_optional_leaf_source_id(id)
-	expr_type, value_type := t.or_expr_types(source_id, u32(0))
-	if t.is_optional_type_name(flat.source_type_id(expr_type)) {
-		return t.zero_value_expansion_estimate(source_id, flat.source_type_id(value_type))
+	expr_type_source_id_2, value_type_source_id_16 := t.or_expr_types(source_id, u32(0))
+	expr_type_source_id_4 := expr_type_source_id_2
+
+	value_type_source_id_18 := value_type_source_id_16
+
+	if t.is_optional_type_name(expr_type_source_id_4) {
+		return t.zero_value_expansion_estimate(source_id, value_type_source_id_18)
 	}
 	node := t.a.nodes[int(id)]
 	mut estimate := 0
@@ -1828,7 +1836,6 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 		return none
 	}
 	key_type_source_id_8, raw_value_type_source_id_2 := t.map_type_parts(map_type_source_id)
-	key_type := flat.source_type_name(key_type_source_id_8)
 	raw_value_type := flat.source_type_name(raw_value_type_source_id_2)
 	if key_type_source_id_8 == 0 || raw_value_type_source_id_2 == 0 {
 		return none

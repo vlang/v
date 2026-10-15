@@ -1034,7 +1034,6 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ_i
 // build_return_if_chain recursively converts an if_expr (possibly an else-if
 // chain) into an if-statement whose branch tails are `return` statements.
 fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ_id u32, extra_return_vals []flat.NodeId, source_return_id flat.NodeId) flat.NodeId {
-	ret_typ := flat.source_type_name(ret_typ_id)
 	if_node := t.a.nodes[int(if_id)]
 	if expanded := t.build_return_map_index_if_guard_chain(if_node, ret_typ_id, extra_return_vals, source_return_id) {
 		return expanded

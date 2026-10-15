@@ -1611,7 +1611,6 @@ fn (mut t Transformer) build_type_alias_suffix_index() {
 	t.type_alias_suffixes = map[string]u32{}
 	mut by_short := map[string][]TypeAliasEntry{}
 	for name, target_id in t.tc.type_aliases.ids {
-		target := flat.source_type_name(target_id)
 		short := if name.contains('.') { name.all_after_last('.') } else { name }
 		if existing := t.type_alias_suffixes[short] {
 			if existing != target_id {
@@ -1656,7 +1655,6 @@ fn (t &Transformer) type_aliases_with_short_name(short string) []TypeAliasEntry 
 	}
 	mut entries := []TypeAliasEntry{}
 	for name, target_id in t.tc.type_aliases.ids {
-		target := flat.source_type_name(target_id)
 		if short_name_view(name) == short {
 			entries << TypeAliasEntry{
 				name:   name

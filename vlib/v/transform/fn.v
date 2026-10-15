@@ -1633,7 +1633,6 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 				variadic_type := params[variadic_idx]
 				if variadic_type is types.Array {
 					elem_type_source_id := t.semantic_type_name(variadic_type.elem_type)
-					elem_type := flat.source_type_name(elem_type_source_id)
 					if flat.source_type_shape(t.normalize_type_alias_chain(elem_type_source_id)).has(.pointer) {
 						new_children << t.pack_variadic_args(node, i, variadic_type.elem_type)
 						variadic_tail_supplied = true
@@ -2331,7 +2330,6 @@ fn (mut t Transformer) transform_variadic_spread_arg_for_param(spread_id flat.No
 }
 
 fn (mut t Transformer) make_range_index(base flat.NodeId, start_id flat.NodeId, end_id flat.NodeId, typ_id u32) flat.NodeId {
-	typ := flat.source_type_name(typ_id)
 	mut children := []flat.NodeId{cap: 3}
 	children << base
 	children << start_id
@@ -5675,7 +5673,6 @@ fn (mut t Transformer) transform_variadic_struct_fields(node flat.Node, field_st
 
 // make_array_literal_typed builds make array literal typed data for transform.
 fn (mut t Transformer) make_array_literal_typed(values []flat.NodeId, typ_id u32) flat.NodeId {
-	typ := flat.source_type_name(typ_id)
 	start := t.a.children.len
 	for value in values {
 		t.a.children << value
@@ -14393,8 +14390,10 @@ fn (mut t Transformer) or_expr_receiver_unwrapped_type(id flat.NodeId) ?u32 {
 
 		return t.optional_base_type(decode_type_source_id_2)
 	}
-	_, unwrapped_type := t.or_expr_types(expr_id, node.typ)
-	return flat.source_type_id(unwrapped_type)
+	_, unwrapped_type_source_id_4 := t.or_expr_types(expr_id, node.typ)
+	unwrapped_type_source_id_5 := unwrapped_type_source_id_4
+
+	return unwrapped_type_source_id_5
 }
 
 fn (t &Transformer) pointer_str_receiver_type(id flat.NodeId) ?u32 {
@@ -14407,23 +14406,23 @@ fn (t &Transformer) pointer_str_receiver_type(id flat.NodeId) ?u32 {
 	}
 	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
 		child_id := t.a.child(&node, 0)
-		mut child_type := flat.source_type_name(t.node_type(child_id))
-		if child_type.len == 0 {
-			child_type = flat.source_type_name(t.lvalue_type(child_id))
+		mut child_type := t.node_type(child_id)
+		if child_type == 0 {
+			child_type = t.lvalue_type(child_id)
 		}
-		if child_type.len == 0 {
-			child_type = flat.source_type_name(t.raw_checker_node_type(child_id))
+		if child_type == 0 {
+			child_type = t.raw_checker_node_type(child_id)
 		}
-		if child_type.len > 0 {
-			return flat.source_type_id('&${child_type}')
+		if child_type != 0 {
+			return flat.source_type_id('&${flat.source_type_name(child_type)}')
 		}
 	}
-	mut typ := flat.source_type_name(t.node_type(id))
-	if typ.len == 0 {
-		typ = flat.source_type_name(t.raw_checker_node_type(id))
+	mut typ := t.node_type(id)
+	if typ == 0 {
+		typ = t.raw_checker_node_type(id)
 	}
-	if typ.starts_with('&') {
-		return flat.source_type_id(typ)
+	if flat.source_type_shape(typ).has(.pointer) {
+		return typ
 	}
 	return none
 }

@@ -2865,7 +2865,7 @@ fn (mut g FlatGen) struct_default_field_type_for_source(
 	field flat.Node
 ) types.Type {
 	field_type := if source.params.len > 0 && source.params.len == source.args.ids.len {
-		substitute_shared_generic_type_text(field.typ_text(), source.params, source.args_text())
+		substitute_shared_generic_type_text(field.typ_text(), source.params, source.args.ids)
 	} else {
 		field.typ_text()
 	}
@@ -2903,7 +2903,7 @@ fn (g &FlatGen) generic_default_type_text(type_text string) string {
 	if g.struct_default_generic_params.len > 0
 		&& g.struct_default_generic_params.len == g.struct_default_generic_args_text().len {
 		return substitute_shared_generic_type_text(type_text, g.struct_default_generic_params,
-			g.struct_default_generic_args_text())
+			g.struct_default_generic_args.ids)
 	}
 	return type_text
 }
@@ -3676,7 +3676,7 @@ fn shared_split_generic_args(s string) []string {
 	return parts
 }
 
-fn substitute_shared_generic_type_text(typ string, params []string, args []string) string {
+fn substitute_shared_generic_type_text(typ string, params []string, args []u32) string {
 	clean := trimmed_space(typ)
 	if clean.len == 0 || args.len == 0 {
 		return typ
@@ -3684,7 +3684,7 @@ fn substitute_shared_generic_type_text(typ string, params []string, args []strin
 	for i, param in params {
 		if clean == param {
 			if i < args.len {
-				return args[i]
+				return flat.source_type_name(args[i])
 			}
 			return clean
 		}
@@ -3754,7 +3754,7 @@ fn substitute_shared_generic_type_text(typ string, params []string, args []strin
 	return clean
 }
 
-fn substitute_shared_generic_fn_type_text(typ string, params []string, args []string) string {
+fn substitute_shared_generic_fn_type_text(typ string, params []string, args []u32) string {
 	open := typ.index_u8(`(`)
 	if open < 0 {
 		return typ
@@ -3778,7 +3778,7 @@ fn substitute_shared_generic_fn_type_text(typ string, params []string, args []st
 	return resolved
 }
 
-fn substitute_shared_generic_fn_param_text(param string, params []string, args []string) string {
+fn substitute_shared_generic_fn_param_text(param string, params []string, args []u32) string {
 	clean := trimmed_space(param)
 	if clean.starts_with('mut ') {
 		return 'mut ' + substitute_shared_generic_fn_param_text(clean[4..], params, args)
@@ -4142,21 +4142,20 @@ fn struct_decl_has_shared_fields(a &flat.FlatAst, node flat.Node) bool {
 }
 
 fn (mut g FlatGen) collect_shared_type_names_from_info(info StructDeclInfo, args_ids []u32) {
-	args := flat.TypeTextList{ ids: args_ids }.names()
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
 		if field.kind != .field_decl {
 			continue
 		}
 		if array_inner := shared_array_inner_type_text(field.typ_text()) {
-			concrete_inner := substitute_shared_generic_type_text(array_inner, info.node.generic_params(), args)
+			concrete_inner := substitute_shared_generic_type_text(array_inner, info.node.generic_params(), args_ids)
 			qualified_inner := flat.source_type_name(g.shared_qualify_type_text(flat.source_type_id(concrete_inner), info.module))
 			g.register_shared_type_name(qualified_inner, info.module)
 			continue
 		}
 		inner := shared_inner_type_text(field.typ_text()) or { continue }
 		concrete_inner :=
-			substitute_shared_generic_type_text(inner, info.node.generic_params(), args)
+			substitute_shared_generic_type_text(inner, info.node.generic_params(), args_ids)
 		qualified_inner := flat.source_type_name(g.shared_qualify_type_text(flat.source_type_id(concrete_inner), info.module))
 		g.register_shared_type_name(qualified_inner, info.module)
 	}
@@ -4392,7 +4391,7 @@ fn (mut g FlatGen) generic_shared_field_info(type_name_id u32, field_name string
 		}
 		inner := shared_inner_type_text(field.typ_text()) or { return none }
 		concrete_inner :=
-			substitute_shared_generic_type_text(inner, info.node.generic_params(), args)
+			substitute_shared_generic_type_text(inner, info.node.generic_params(), flat.TypeTextList.from_names(args).ids)
 		qualified_inner := flat.source_type_name(g.shared_qualify_type_text(flat.source_type_id(concrete_inner), info.module))
 		return SharedFieldInfo{
 			inner:   qualified_inner

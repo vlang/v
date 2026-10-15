@@ -58,6 +58,7 @@ list storage directly; only ordinary declaration payloads require string promoti
 Transformer builders, expected-type coercion, and deferred AST type writes also carry spelling IDs.
 Callback, tuple-branch, iterator, and local type queries return source IDs, including optional and
 list results. Comptime sum variants retain those IDs when constructing reflection metadata.
+Option/result queries also return numeric wrapper and payload pairs through coercion and lowering.
 Signature preparation and deferred return registration retain source IDs across workers;
 parameter and variant lists use numeric binding accessors and copy IDs into owned storage.
 Generic substitution and explicit call arguments also use numeric lists. C generation retains

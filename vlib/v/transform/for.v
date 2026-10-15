@@ -979,7 +979,6 @@ fn (t &Transformer) iterator_for_in_info(iter_type_id u32) ?IteratorForInInfo {
 	}
 	info := t.tc.iterator_for_in_next_call_info_text(clean) or { return none }
 	elem_type_source_id := t.iterator_for_in_elem_type_from_next_return(info.return_type) or { return none }
-	elem_type := flat.source_type_name(elem_type_source_id)
 	mut next_method := info.name
 	generic_base, generic_args, is_generic := generic_app_parts(clean)
 	is_generic_interface := is_generic && (generic_base in t.tc.interface_names

@@ -14,7 +14,7 @@ fn test_codegen_generic_inference_retains_source_ids_and_first_binding() {
 	assert inferred['U'] == flat.source_type_string
 	infer_codegen_generic_type_args(flat.source_type_id('T'), flat.source_type_f64, mut inferred)
 	assert inferred['T'] == flat.source_type_int
-	infer_codegen_generic_type_args(flat.source_type_id('V'), flat.source_type_id('unknown'), mut inferred)
+	infer_codegen_generic_type_args(flat.source_type_id('V'), flat.source_type_unknown, mut inferred)
 	assert 'V' !in inferred
 	assert codegen_variadic_elem_param_text(flat.source_type_id('... int ')) == flat.source_type_int
 	assert codegen_generic_arg_is_unresolved(flat.source_type_id('map[string][]T'))
@@ -375,10 +375,10 @@ fn test_specialized_generic_struct_default_value_preserves_field_defaults() {
 }
 
 fn test_generic_text_substitution_preserves_fn_field_type_params() {
-	assert substitute_shared_generic_type_text('fn (T) u32', ['T'], ['int']) == 'fn (int) u32'
-	mut_fn := substitute_shared_generic_type_text('fn (mut T, []T) ?T', ['T'], ['string'])
+	assert substitute_shared_generic_type_text('fn (T) u32', ['T'], flat.TypeTextList.from_names(['int']).ids) == 'fn (int) u32'
+	mut_fn := substitute_shared_generic_type_text('fn (mut T, []T) ?T', ['T'], flat.TypeTextList.from_names(['string']).ids)
 	assert mut_fn == 'fn (mut string, []string) ?string'
-	nested_fn := substitute_shared_generic_type_text('fn (next fn (T) T) T', ['T'], ['int'])
+	nested_fn := substitute_shared_generic_type_text('fn (next fn (T) T) T', ['T'], flat.TypeTextList.from_names(['int']).ids)
 	assert nested_fn == 'fn (next fn (int) int) int'
 	assert shared_type_text_uses_generic_params('fn (mut it T) T', ['T'])
 	assert shared_fn_param_type_text('mut it &Dog') == '&Dog'

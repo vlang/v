@@ -7362,7 +7362,6 @@ fn (mut t Transformer) make_memdup_call_for_type(addr flat.NodeId, type_name_id 
 }
 
 fn (mut t Transformer) make_non_aliasing_allocation_call(name string, args []flat.NodeId, typ_id u32) flat.NodeId {
-	typ := flat.source_type_name(typ_id)
 	start := t.a.children.len
 	t.a.children << t.make_ident(name)
 	for arg in args {
@@ -12670,8 +12669,9 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 		}
 	}
 	if child_node.kind == .or_expr && child_node.children_count > 0 {
-		_, value_type := t.or_expr_types(t.a.child(&child_node, 0), child_node.typ)
-		if value_type.len > 0 && value_type != 'unknown' && !t.generic_arg_is_unresolved(flat.source_type_id(value_type)) {
+		_, value_type_source_id_6 := t.or_expr_types(t.a.child(&child_node, 0), child_node.typ)
+		value_type := flat.source_type_name(value_type_source_id_6)
+		if value_type_source_id_6 != 0 && value_type_source_id_6 != flat.source_type_unknown && !t.generic_arg_is_unresolved(value_type_source_id_6) {
 			typ = value_type
 		}
 	}
@@ -15612,12 +15612,16 @@ fn (mut t Transformer) lower_optional_selector_lvalue_from_or(id flat.NodeId, no
 	if !t.optional_selector_lvalue_source(source_id) {
 		return none
 	}
-	expr_type, value_type := t.or_expr_types(source_id, base.typ)
-	if !t.is_optional_type_name(flat.source_type_id(expr_type)) || value_type.len == 0 || value_type == 'void' {
+	expr_type_source_id, value_type_source_id_7 := t.or_expr_types(source_id, base.typ)
+	expr_type_source_id_6 := expr_type_source_id
+
+	value_type_source_id_10 := value_type_source_id_7
+	value_type_shape := flat.source_type_shape(value_type_source_id_10)
+	if !t.is_optional_type_name(expr_type_source_id_6) || value_type_source_id_10 == 0 || value_type_source_id_10 == flat.source_type_void {
 		return none
 	}
 	source := t.transform_lvalue(source_id)
-	value_base := t.make_selector(source, 'value', flat.source_type_id(value_type))
+	value_base := t.make_selector(source, 'value', value_type_source_id_10)
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	new_children << value_base
 	for i in 1 .. node.children_count {
@@ -15631,7 +15635,7 @@ fn (mut t Transformer) lower_optional_selector_lvalue_from_or(id flat.NodeId, no
 	lhs_type := flat.source_type_name(lhs_type_source_id_3)
 	lowered := t.a.add_node(flat.Node{
 		kind:           .selector
-		op:             if value_type.starts_with('&') { flat.Op.arrow } else { node.op }
+		op:             if value_type_shape.has(.pointer) { flat.Op.arrow } else { node.op }
 		children_start: start
 		children_count: flat.child_count(new_children.len)
 		pos:            node.pos
@@ -17929,10 +17933,12 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 					} else {
 						t.stmt_value_type(or_body_id)
 					}
-					expr_type, value_type := t.or_expr_types(or_source_id, fallback_type)
-					if t.is_optional_type_name(flat.source_type_id(expr_type)) && value_type.len > 0
-						&& value_type != 'void' {
-						typ = flat.source_type_id(value_type)
+					expr_type_source_id_2, value_type_source_id_8 := t.or_expr_types(or_source_id, fallback_type)
+					expr_type_source_id_7 := expr_type_source_id_2
+
+					if t.is_optional_type_name(expr_type_source_id_7) && value_type_source_id_8 != 0
+						&& value_type_source_id_8 != flat.source_type_void {
+						typ = value_type_source_id_8
 					}
 				}
 			}
@@ -19840,9 +19846,11 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 		}
 		if child.children_count > 0 {
 			expr_id := t.a.child(&child, 0)
-			expr_type, _ := t.or_expr_types(expr_id, child.typ)
+			expr_type_source_id_3, _ := t.or_expr_types(expr_id, child.typ)
+			expr_type_source_id_8 := expr_type_source_id_3
+
 			expr_node := t.a.nodes[int(expr_id)]
-			if !t.is_optional_type_name(flat.source_type_id(expr_type)) || expr_node.kind == .infix {
+			if !t.is_optional_type_name(expr_type_source_id_8) || expr_node.kind == .infix {
 				if lowered := t.transform_nested_optional_or_expr(expr_id, child) {
 					return t.with_pending_before(t.make_expr_stmt(lowered))
 				}
@@ -24615,14 +24623,18 @@ fn (mut t Transformer) transform_or_expr(id flat.NodeId, node flat.Node) flat.No
 	} else {
 		flat.source_type_name(t.stmt_value_type(t.a.child(&node, 1)))
 	}
-	expr_type, value_type := t.or_expr_types(expr_id, flat.source_type_id(fallback_type))
+	expr_type_source_id_4, value_type_source_id_9 := t.or_expr_types(expr_id, flat.source_type_id(fallback_type))
+	expr_type_source_id_9 := expr_type_source_id_4
+	expr_type := flat.source_type_name(expr_type_source_id_9)
+	value_type_source_id_11 := value_type_source_id_9
+	value_type := flat.source_type_name(value_type_source_id_11)
 	if expr_type.contains('unknown') || value_type.contains('unknown')
-		|| t.type_text_has_generic_placeholder(flat.source_type_id(expr_type), t.cur_module)
-		|| t.type_text_has_generic_placeholder(flat.source_type_id(value_type), t.cur_module) {
+		|| t.type_text_has_generic_placeholder(expr_type_source_id_9, t.cur_module)
+		|| t.type_text_has_generic_placeholder(value_type_source_id_11, t.cur_module) {
 		return id
 	}
 	expr_node := t.a.nodes[int(expr_id)]
-	if !t.is_optional_type_name(flat.source_type_id(expr_type)) || expr_node.kind == .infix {
+	if !t.is_optional_type_name(expr_type_source_id_9) || expr_node.kind == .infix {
 		if lowered := t.transform_nested_optional_or_expr(expr_id, node) {
 			return lowered
 		}
@@ -24636,7 +24648,7 @@ fn (mut t Transformer) transform_or_expr(id flat.NodeId, node flat.Node) flat.No
 	if t.is_string_slice_or_expr(node) {
 		return t.transform_string_slice_or_expr(id, node)
 	}
-	if !t.is_optional_type_name(flat.source_type_id(expr_type)) {
+	if !t.is_optional_type_name(expr_type_source_id_9) {
 		return t.preserve_or_expr_for_codegen(id, node)
 	}
 	return t.lower_or_expr_to_temp(id, node)
@@ -24717,7 +24729,9 @@ fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node fl
 	body_id := t.a.child(&node, 1)
 	body_type_source_id := t.stmt_value_type(body_id)
 
-	expr_type, _ := t.or_expr_types(match_expr_id, body_type_source_id)
+	expr_type_source_id_5, _ := t.or_expr_types(match_expr_id, body_type_source_id)
+	expr_type_source_id_10 := expr_type_source_id_5
+
 	match_or_start := t.a.children.len
 	t.a.children << match_expr_id
 	t.a.children << body_id
@@ -24728,7 +24742,7 @@ fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node fl
 		children_count: 2
 		pos:            node.pos
 		value:          node.value
-		typ:            flat.source_type_id(expr_type)
+		typ:            expr_type_source_id_10
 	})
 	mut children := []flat.NodeId{cap: int(match_node.children_count)}
 	children << match_or_id
@@ -25519,7 +25533,6 @@ fn (t &Transformer) raw_expr_type_without_smartcast(id flat.NodeId) u32 {
 	match node.kind {
 		.ident {
 			typ_source_id := t.normalize_type_alias(t.raw_var_type(node.value))
-			typ := flat.source_type_name(typ_source_id)
 			if typ_source_id != 0 {
 				return typ_source_id
 			}
@@ -27371,7 +27384,6 @@ fn (t &Transformer) original_expr_type(id flat.NodeId) u32 {
 	match node.kind {
 		.ident {
 			typ_source_id := t.normalized_var_type(node.value)
-			typ := flat.source_type_name(typ_source_id)
 			if typ_source_id != 0 {
 				return typ_source_id
 			}

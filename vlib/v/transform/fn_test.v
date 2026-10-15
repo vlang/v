@@ -505,6 +505,18 @@ fn test_or_payload_type_qualifies_imported_generic_base() {
 	assert flat.source_type_name(t.normalize_or_expr_value_type(flat.source_type_id('&QueryBuilder[AggregateEntry]'))) == '&orm.QueryBuilder[AggregateEntry]'
 }
 
+fn test_or_query_pairs_preserve_empty_and_void_payload_identities() {
+	t := Transformer{}
+	empty_expr, empty_payload := t.canonical_or_expr_types(0)
+	assert empty_expr == 0
+	assert empty_payload == 0
+	for wrapper in ['?', '!'] {
+		expr, payload := t.canonical_or_expr_types(flat.source_type_id(wrapper))
+		assert expr == flat.source_type_id('${wrapper}void')
+		assert payload == flat.source_type_void
+	}
+}
+
 fn test_or_payload_type_qualifies_generic_base_in_own_module() {
 	mut t := Transformer{
 		cur_module: 'orm'
@@ -516,10 +528,14 @@ fn test_or_payload_type_qualifies_generic_base_in_own_module() {
 	t.structs['QueryBuilder'] = info
 	t.structs['orm.QueryBuilder'] = info
 	assert flat.source_type_name(t.normalize_or_expr_value_type(flat.source_type_id('&QueryBuilder[AggregateEntry]'))) == '&orm.QueryBuilder[AggregateEntry]'
-	expr_type, value_type := t.specialized_or_expr_types(flat.source_type_id('!QueryBuilder[sapp.Event]'))
+	expr_type_source_id, value_type_source_id := t.specialized_or_expr_types(flat.source_type_id('!QueryBuilder[sapp.Event]'))
+	expr_type := flat.source_type_name(expr_type_source_id)
+	value_type := flat.source_type_name(value_type_source_id)
 	assert expr_type == '!orm.QueryBuilder[sapp.Event]'
 	assert value_type == 'orm.QueryBuilder[sapp.Event]'
-	tuple_expr_type, tuple_value_type := t.specialized_or_expr_types(flat.source_type_id('!(&ui.QNode, map[string]ui.VmlEvent)'))
+	tuple_expr_type_source_id, tuple_value_type_source_id := t.specialized_or_expr_types(flat.source_type_id('!(&ui.QNode, map[string]ui.VmlEvent)'))
+	tuple_expr_type := flat.source_type_name(tuple_expr_type_source_id)
+	tuple_value_type := flat.source_type_name(tuple_value_type_source_id)
 	assert tuple_expr_type == '!(&ui.QNode, map[string]ui.VmlEvent)'
 	assert tuple_value_type == '(&ui.QNode, map[string]ui.VmlEvent)'
 }
@@ -1698,7 +1714,7 @@ fn test_numeric_sum_and_variant_caches_preserve_collisions_and_module_context() 
 	for _ in 0 .. 3 {
 		for id in [first, second] {
 			assert t.resolve_sum_name(id) == id
-			assert t.variant_short_name(id) == id.all_after_last('.')
+			assert t.variant_short_name(id) == flat.source_type_id(flat.source_type_name(id).all_after_last('.'))
 		}
 	}
 	t.sum_types.set('one.Value', ['int'])

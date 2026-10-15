@@ -13602,7 +13602,7 @@ fn (g &FlatGen) generic_call_return_type_text_for_inference(id flat.NodeId, node
 	}
 	ret_type := g.tc.fn_ret_type_texts.type_id(base) or { node.typ }
 	if ret_type == 0 { return none }
-	ret := flat.source_type_id(substitute_shared_generic_type_text(flat.source_type_name(ret_type), params, flat.TypeTextList{ ids: args }.names()))
+	ret := flat.source_type_id(substitute_shared_generic_type_text(flat.source_type_name(ret_type), params, args))
 	if codegen_type_text_is_usable_for_generic_inference(ret) { return ret }
 	return none
 }
