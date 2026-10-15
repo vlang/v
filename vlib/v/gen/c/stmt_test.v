@@ -349,7 +349,7 @@ fn test_fn_decl_signature_registration_preserves_call_name_aliases() {
 	full_name := qualify_name_in_module(tc.cur_module, name)
 	params := [types.Type(types.int_)]
 	shared_flags := [true]
-	g.register_fn_decl_signature(name, full_name, params, shared_flags, true, true, 'int')
+	g.register_fn_decl_signature(name, full_name, params, shared_flags, true, true, flat.source_type_int)
 	aliases := [
 		fn_decl_module_key(tc.cur_module, name),
 		name,

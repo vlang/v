@@ -104,7 +104,8 @@ fn (mut g FlatGen) gen_fixed_array_index(index_id flat.NodeId, len string) {
 	g.write(', ${len})')
 }
 
-fn (g &FlatGen) fixed_array_type_from_alias_text(type_name string) ?types.ArrayFixed {
+fn (g &FlatGen) fixed_array_type_from_alias_text(type_name_id u32) ?types.ArrayFixed {
+	type_name := flat.source_type_name(type_name_id)
 	mut cur := trimmed_space(type_name)
 	for _ in 0 .. 16 {
 		if cur.len == 0 {
@@ -1289,7 +1290,7 @@ fn (mut g FlatGen) array_method_fallback_for_receiver(method string, base_id fla
 	// Falling back through the erased array type can select an unrelated method
 	// that happens to have the same short name.
 	if receiver_type is types.Alias {
-		alias_method := g.resolve_method_name(receiver_name, method)
+		alias_method := g.resolve_method_name(flat.source_type_id(receiver_name), method)
 		if alias_method.len > 0 {
 			g.array_method_cache[key] = alias_method
 			return alias_method
@@ -1824,10 +1825,10 @@ fn (g &FlatGen) index_operator_call_name(info types.CallInfo, base_type types.Ty
 	if receiver_name.len == 0 {
 		return info.name
 	}
-	if resolved := g.resolve_concrete_generic_method_name(receiver_name, method) {
+	if resolved := g.resolve_concrete_generic_method_name(flat.source_type_id(receiver_name), method) {
 		return resolved
 	}
-	resolved := g.resolve_method_name(receiver_name, method)
+	resolved := g.resolve_method_name(flat.source_type_id(receiver_name), method)
 	if resolved.len > 0 {
 		return resolved
 	}

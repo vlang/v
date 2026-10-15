@@ -654,7 +654,7 @@ fn (g &FlatGen) canonical_import_alias_type_in_file(type_id u32, file string) ty
 fn (g &FlatGen) canonical_import_alias_type_in_file_uncached(type_id u32, file string) types.Type {
 	canonical := g.canonical_import_alias_type_text_in_file(type_id, file)
 	if canonical != type_id {
-		if exact := g.exact_known_import_type_text(flat.source_type_name(canonical)) {
+		if exact := g.exact_known_import_type_text(canonical) {
 			return exact
 		}
 	}
@@ -669,15 +669,16 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.
 	// This function receives a semantic Type, not raw source text. Preserve an
 	// exact registered name before repairing stale alias-qualified spellings;
 	// otherwise a current file import can retarget a canonical type from a call.
-	if exact := g.exact_known_import_type_text(source) {
+	if exact := g.exact_known_import_type_text(flat.source_type_id(source)) {
 		return exact
 	}
 	// Only dotted names can reference an import alias. Primitive and local
 	// type spellings do not need a walk through synthesized child nodes.
 	file := if source.contains('.') { g.node_source_file(node) } else { '' }
-	canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(source), file))
+	canonical_source_id := g.canonical_import_alias_type_text_in_file(flat.source_type_id(source), file)
+	canonical := flat.source_type_name(canonical_source_id)
 	if canonical != source {
-		if exact := g.exact_known_import_type_text(canonical) {
+		if exact := g.exact_known_import_type_text(canonical_source_id) {
 			return exact
 		}
 	}
@@ -710,9 +711,10 @@ fn type_has_import_alias_text(typ types.Type) bool {
 
 fn (mut g FlatGen) sizeof_target_in_file(value string, file string) string {
 	target := g.generic_default_type_text(value)
-	canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(target), file))
+	canonical_source_id := g.canonical_import_alias_type_text_in_file(flat.source_type_id(target), file)
+	canonical := flat.source_type_name(canonical_source_id)
 	if canonical != target {
-		if exact := g.exact_known_import_type_text(canonical) {
+		if exact := g.exact_known_import_type_text(canonical_source_id) {
 			return g.value_sizeof_target(exact)
 		}
 	}
@@ -720,33 +722,35 @@ fn (mut g FlatGen) sizeof_target_in_file(value string, file string) string {
 }
 
 fn (mut g FlatGen) import_alias_sizeof_target_in_file(value string, file string) ?string {
-	canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(value), file))
+	canonical_source_id := g.canonical_import_alias_type_text_in_file(flat.source_type_id(value), file)
+	canonical := flat.source_type_name(canonical_source_id)
 	if canonical == value {
 		return none
 	}
-	return g.value_sizeof_target(g.exact_known_import_type_text(canonical)?)
+	return g.value_sizeof_target(g.exact_known_import_type_text(canonical_source_id)?)
 }
 
-fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
+fn (g &FlatGen) exact_known_import_type_text(typ_id u32) ?types.Type {
+	typ := flat.source_type_name(typ_id)
 	clean := trimmed_space(typ)
 	if clean.starts_with('&') {
 		return types.Type(types.Pointer{
-			base_type: g.exact_known_import_type_text(clean[1..])?
+			base_type: g.exact_known_import_type_text(flat.source_type_id(clean[1..]))?
 		})
 	}
 	if clean.starts_with('?') {
 		return types.Type(types.OptionType{
-			base_type: g.exact_known_import_type_text(clean[1..])?
+			base_type: g.exact_known_import_type_text(flat.source_type_id(clean[1..]))?
 		})
 	}
 	if clean.starts_with('!') {
 		return types.Type(types.ResultType{
-			base_type: g.exact_known_import_type_text(clean[1..])?
+			base_type: g.exact_known_import_type_text(flat.source_type_id(clean[1..]))?
 		})
 	}
 	if clean.starts_with('[]') {
 		return types.Type(types.Array{
-			elem_type: g.exact_known_import_type_text(clean[2..])?
+			elem_type: g.exact_known_import_type_text(flat.source_type_id(clean[2..]))?
 		})
 	}
 	if g.tc.type_aliases.contains(clean) {
@@ -2191,7 +2195,7 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 				return none
 			}
 			value := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
-			return g.enum_comptime_integer_cast(value, node.value)
+			return g.enum_comptime_integer_cast(value, flat.source_type_id(node.value))
 		}
 		.call {
 			return g.enum_comptime_call_value(id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)
@@ -2216,8 +2220,8 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			mut right := g.enum_field_expr_value_with_enum(g.a.child(&node, 1), enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
 			if node.op in [.div, .mod] && !isnil(g.tc) {
 				typ := types.unalias_type(g.usable_expr_type(id)).name()
-				left = g.enum_comptime_integer_cast(left, typ)
-				right = g.enum_comptime_integer_cast(right, typ)
+				left = g.enum_comptime_integer_cast(left, flat.source_type_id(typ))
+				right = g.enum_comptime_integer_cast(right, flat.source_type_id(typ))
 			}
 			if (node.op == .div || node.op == .mod) && right == 0 {
 				return none
@@ -2273,7 +2277,7 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			}
 			prefix := g.enum_decl_selector_base_text(g.a.child(&node, 0))
 			if enum_type := g.enum_selector_base_name(prefix) {
-				if value := g.enum_value_for_type(enum_type, node.value) {
+				if value := g.enum_value_for_type(flat.source_type_id(enum_type), node.value) {
 					return i64(value)
 				}
 			}
@@ -2365,7 +2369,7 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 		}
 		arg_id := g.a.child(&call, arg_idx)
 		value := g.enum_field_expr_value_with_enum(arg_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving)?
-		locals[param.value] = g.enum_comptime_integer_cast(value, param.typ_text())
+		locals[param.value] = g.enum_comptime_integer_cast(value, param.typ)
 		arg_idx++
 	}
 	for i in 0 .. fn_node.children_count {
@@ -2376,17 +2380,18 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 		}
 		if stmt.kind == .return_stmt && stmt.children_count > 0 {
 			value := g.enum_comptime_expr_value(g.a.child(stmt, 0), locals, enum_module)?
-			return g.enum_comptime_integer_cast(value, fn_node.typ_text())
+			return g.enum_comptime_integer_cast(value, fn_node.typ)
 		}
 	}
 	return none
 }
 
-fn (g &FlatGen) enum_comptime_integer_cast(value i64, typ string) i64 {
+fn (g &FlatGen) enum_comptime_integer_cast(value i64, typ_id u32) i64 {
+	typ := flat.source_type_name(typ_id)
 	resolved := if isnil(g.tc) || typ.len == 0 {
 		typ
 	} else {
-		types.unalias_type(g.tc.parse_type(flat.source_type_id(typ))).name()
+		types.unalias_type(g.tc.parse_type(typ_id)).name()
 	}
 	return types.comptime_enum_integer_cast(value, resolved)
 }
@@ -2405,7 +2410,7 @@ fn (g &FlatGen) enum_comptime_update_locals(stmt flat.Node, mut locals map[strin
 					locals[lhs.value] = if isnil(g.tc) {
 						value
 					} else {
-						g.enum_comptime_integer_cast(value, g.usable_expr_type(g.a.child(&stmt, i)).name())
+						g.enum_comptime_integer_cast(value, g.usable_expr_type(g.a.child(&stmt, i)).source_type_id())
 					}
 				} else {
 					locals.delete(lhs.value)
@@ -2440,7 +2445,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 			}
 			value := g.enum_comptime_expr_value(g.a.child(&node, 0), locals, enum_module)?
 			return if node.kind == .cast_expr {
-				g.enum_comptime_integer_cast(value, node.value)
+				g.enum_comptime_integer_cast(value, flat.source_type_id(node.value))
 			} else {
 				value
 			}
@@ -2477,8 +2482,8 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 			if node.op in [.div, .mod] && !isnil(g.tc) {
 				// The runtime division helpers convert operands to the expression type first.
 				typ := types.unalias_type(g.usable_expr_type(id)).name()
-				left = g.enum_comptime_integer_cast(left, typ)
-				right = g.enum_comptime_integer_cast(right, typ)
+				left = g.enum_comptime_integer_cast(left, flat.source_type_id(typ))
+				right = g.enum_comptime_integer_cast(right, flat.source_type_id(typ))
 			}
 			if (node.op in [.div, .mod] && right == 0)
 				|| (node.op in [.left_shift, .right_shift, .right_shift_unsigned] && (right < 0

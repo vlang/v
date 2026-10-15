@@ -2569,17 +2569,17 @@ fn (g &FlatGen) should_preseed_parallel_type_id_cached(id u32, mut cache map[u32
 	if cached := cache[id] {
 		return cached
 	}
-	verdict := g.should_preseed_parallel_type_text(flat.source_type_name(id))
+	verdict := g.should_preseed_parallel_type_text(id)
 	cache[id] = verdict
 	return verdict
 }
 
 // should_preseed_parallel_type_text reports whether should preseed parallel type text applies in c.
-fn (g &FlatGen) should_preseed_parallel_type_text(typ string) bool {
-	if typ.len == 0 {
+fn (g &FlatGen) should_preseed_parallel_type_text(typ_id u32) bool {
+	if typ_id == 0 {
 		return false
 	}
-	clean := g.parallel_base_type_text(typ)
+	clean := flat.source_type_name(g.parallel_base_type_text(typ_id))
 	if clean.contains('fn(') || clean.contains('fn (') {
 		return true
 	}
@@ -2591,7 +2591,8 @@ fn (g &FlatGen) should_preseed_parallel_type_text(typ string) bool {
 }
 
 // parallel_base_type_text supports parallel base type text handling for FlatGen.
-fn (g &FlatGen) parallel_base_type_text(typ string) string {
+fn (g &FlatGen) parallel_base_type_text(typ_id u32) u32 {
+	typ := flat.source_type_name(typ_id)
 	mut clean := trimmed_space(typ)
 	for clean.len > 0 {
 		if clean.starts_with('shared ') {
@@ -2606,7 +2607,7 @@ fn (g &FlatGen) parallel_base_type_text(typ string) string {
 			break
 		}
 	}
-	return clean
+	return flat.source_type_id(clean)
 }
 
 // preseed_parallel_fn_ptr_type supports preseed parallel fn ptr type handling for FlatGen.

@@ -1098,7 +1098,7 @@ fn (g &FlatGen) ierror_promoted_method_call(concrete string, method string, mut 
 		return none
 	}
 	seen[concrete] = true
-	for field in g.struct_embedded_fields(concrete) {
+	for field in g.struct_embedded_fields(flat.source_type_id(concrete)) {
 		embedded_name := g.embedded_field_type_name(field)
 		if embedded_name.len == 0 {
 			continue
@@ -2880,7 +2880,7 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 	if struct_name in stack {
 		return g.interface_str_lit(empty_struct)
 	}
-	fields := g.struct_fields_for_type(struct_name) or { return none }
+	fields := g.struct_fields_for_type(flat.source_type_id(struct_name)) or { return none }
 	if fields.len == 0 {
 		return g.interface_str_lit(empty_struct)
 	}

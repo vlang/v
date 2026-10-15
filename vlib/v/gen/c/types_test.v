@@ -186,16 +186,16 @@ fn test_field_type_cache_preserves_collisions_and_module_context() {
 	g.struct_decl_pref_cache = &StructDeclPrefCache{}
 	for _ in 0 .. 3 {
 		tc.cur_module = 'one'
-		assert g.struct_field_type('Box'.clone(), 'abba'.clone())? == types.Type(types.int_)
-		assert g.struct_field_type('Box', 'acca')? == types.Type(types.string_)
-		assert g.struct_field_type('Box', 'adda') == none
-		assert g.direct_struct_field_exists('Box', 'acca')
-		assert !g.direct_struct_field_exists('Box', 'adda')
+		assert g.struct_field_type(flat.source_type_id('Box'.clone()), 'abba'.clone())? == types.Type(types.int_)
+		assert g.struct_field_type(flat.source_type_id('Box'), 'acca')? == types.Type(types.string_)
+		assert g.struct_field_type(flat.source_type_id('Box'), 'adda') == none
+		assert g.direct_struct_field_exists(flat.source_type_id('Box'), 'acca')
+		assert !g.direct_struct_field_exists(flat.source_type_id('Box'), 'adda')
 		tc.cur_module = 'two'
-		assert g.struct_field_type('Box', 'abba')? == types.Type(types.bool_)
-		assert g.struct_field_type('Box', 'acca') == none
-		assert g.direct_struct_field_exists('Box', 'abba')
-		assert !g.direct_struct_field_exists('Box', 'acca')
+		assert g.struct_field_type(flat.source_type_id('Box'), 'abba')? == types.Type(types.bool_)
+		assert g.struct_field_type(flat.source_type_id('Box'), 'acca') == none
+		assert g.direct_struct_field_exists(flat.source_type_id('Box'), 'abba')
+		assert !g.direct_struct_field_exists(flat.source_type_id('Box'), 'acca')
 	}
 }
 
@@ -390,14 +390,14 @@ fn test_struct_default_generic_args_preserve_caller_module() {
 
 	args := g.struct_default_canonical_generic_args(['Local', '&Local', 'fn (Local) Local'])
 	assert args == ['main.Local', '&main.Local', 'fn (main.Local) main.Local']
-	resolved := g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], args[0])
+	resolved := g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], flat.source_type_id(args[0]))
 	assert resolved.name() == 'main.Local'
 	// Builtin types are never program types, even with a builtin struct entry.
 	tc.structs['string'] = []types.StructField{}
 	assert g.struct_default_canonical_generic_args(['string', '[]int']) == ['string', '[]int']
 	// A bare field type of a `lib` struct still resolves in `lib` first, not to
 	// the program's same-named type.
-	lib_local := g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], 'Local')
+	lib_local := g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], flat.source_type_id('Local'))
 	assert lib_local.name() == 'lib.Local'
 }
 
@@ -664,15 +664,15 @@ fn test_exact_import_type_lookup_uses_qualified_declaration_keys() {
 			kind:  .struct_decl
 			value: 'Item'
 		})
-		resolved := g.exact_known_import_type_text('${module_name}.Item') or { panic('missing declaration') }
+		resolved := g.exact_known_import_type_text(flat.source_type_id('${module_name}.Item')) or { panic('missing declaration') }
 		assert resolved is types.Struct
 		assert resolved.name() == '${module_name}.Item'
 	}
-	assert g.exact_known_import_type_text('other.Item') == none
+	assert g.exact_known_import_type_text(flat.source_type_id('other.Item')) == none
 	// The bare declaration now belongs to builtin, so it cannot satisfy main.
-	assert g.exact_known_import_type_text('main.Item') == none
+	assert g.exact_known_import_type_text(flat.source_type_id('main.Item')) == none
 	tc.sum_types.set('dep.Value', ['int', 'string'])
-	assert g.exact_known_import_type_text('dep.Value')? is types.SumType
+	assert g.exact_known_import_type_text(flat.source_type_id('dep.Value'))? is types.SumType
 }
 
 fn test_import_type_cache_keeps_file_contexts_separate() {
@@ -1189,7 +1189,7 @@ fn test_promoted_root_declared_default_recovers_generic_source() {
 	// owed by the root's declared initializer.
 	mut set := map[string]bool{}
 	set['Inner.b'] = true
-	assert g.gen_promoted_root_declared_default('Outer[i64]', 'Inner', 'Inner', 'Inner', mut set, false)
+	assert g.gen_promoted_root_declared_default(flat.source_type_id('Outer[i64]'), 'Inner', flat.source_type_id('Inner'), 'Inner', mut set, false)
 	out := g.sb.str()
 	assert out == '.Inner.a = sizeof(i64)'
 	assert g.struct_default_generic_params.len == 0

@@ -142,6 +142,6 @@ fn test_c_callback_metadata_fallback_keeps_v_field_identity() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	assert g.struct_field_c_abi_fn_ptr_type('Holder', '@type') == none
-	assert g.struct_field_c_abi_fn_ptr_type('C.Holder', '@type') or { '' } == 'fn_ptr:int|void*'
+	assert g.struct_field_c_abi_fn_ptr_type(flat.source_type_id('Holder'), '@type') == none
+	assert g.struct_field_c_abi_fn_ptr_type(flat.source_type_id('C.Holder'), '@type') or { '' } == 'fn_ptr:int|void*'
 }

@@ -16,6 +16,8 @@ lookups by numeric type and method indexes. Unresolved source spellings use thei
 so a semantic ID must not be substituted for a source-spelling ID.
 Markused passes source IDs through local type queries and binding accessors. Its receiver cache
 keeps source and semantic IDs in separate maps; method names remain strings.
+The C backend retains source IDs through struct-field lookup and source qualification. C type
+encodings and generated identifiers remain strings.
 
 Nominal `Struct`, `Interface`, `Enum`, `SumType`, and `Alias` descriptors store their source
 identity in `name_id`, a `u32` assigned by `flat.source_type_id`. Use `name()` to resolve a
