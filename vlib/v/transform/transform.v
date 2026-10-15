@@ -20916,17 +20916,7 @@ fn (mut t Transformer) transform_select_expr(id flat.NodeId, node flat.Node) fla
 			defer {
 				t.restore_heaped_local_state(heaped_state)
 			}
-			mut body := []flat.NodeId{}
-			for i in 0 .. branch.children_count {
-				child_id := t.a.child(branch, i)
-				child := t.a.node(child_id)
-				if t.is_stmt_kind_id(int(child.kind)) {
-					body << t.transform_stmt(child_id)
-				} else {
-					body << t.transform_expr(child_id)
-				}
-			}
-			return t.make_block(body)
+			return t.make_block(t.transform_select_branch_body(*branch, 0))
 		}
 	}
 	// A later send case whose value hoists a value branch materializes its prelude into
@@ -21088,17 +21078,7 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 			}
 		}
 	}
-	for i in body_start .. branch.children_count {
-		child_id := t.a.child(&branch, i)
-		child := t.a.nodes[int(child_id)]
-		if t.is_stmt_kind_id(int(child.kind)) {
-			for expanded in t.transform_stmt(child_id) {
-				children << expanded
-			}
-		} else {
-			children << t.transform_expr(child_id)
-		}
-	}
+	children << t.transform_select_branch_body(branch, body_start)
 	if bound_name.len > 0 {
 		t.restore_var_types(saved_var_types)
 		if saved_smartcasts.len > 0 {
@@ -21120,6 +21100,20 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId, order_cases bool)
 		value:          branch.value
 		typ:            branch.typ
 	})
+}
+
+// transform_select_branch_body keeps statement preludes beside the branch locals
+// they use. Case operand preludes remain outside the select in evaluation order.
+fn (mut t Transformer) transform_select_branch_body(branch flat.Node, start int) []flat.NodeId {
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	mut body := []flat.NodeId{cap: int(branch.children_count) - start}
+	for i in start .. branch.children_count {
+		body << t.a.child(&branch, i)
+	}
+	result := t.transform_stmts(body)
+	t.restore_outer_pending(outer_pending)
+	return result
 }
 
 // select_case_hoists_value_branch reports whether a select case's channel or send value hoists
