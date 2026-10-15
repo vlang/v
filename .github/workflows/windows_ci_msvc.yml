@@ -44,9 +44,12 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Install OpenSSL
+        id: install_openssl
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           $opensslBin = 'C:\Program Files\OpenSSL\bin'
           $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
@@ -85,9 +88,13 @@ jobs:
           Write-Host "OpenSSL install:"
           Get-ChildItem $libDir
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        id: uses_msvc_dev_cmd_0b201ec74fa43914dc39ae48a89fd1d8cb592756_v1_13_0
+        if: ${{ success() && !cancelled() && steps.install_openssl.outcome == 'success' }}
         with:
           arch: x64
       - name: Verify MSVC tools
+        id: verify_msvc_tools
+        if: ${{ success() && !cancelled() && steps.uses_msvc_dev_cmd_0b201ec74fa43914dc39ae48a89fd1d8cb592756_v1_13_0.outcome == 'success' }}
         run: |
           where.exe cl.exe
           where.exe link.exe
@@ -98,6 +105,7 @@ jobs:
           }
           Write-Host "Found d3d11.h at $($headers[0])"
       - name: Build
+        if: ${{ success() && !cancelled() && steps.verify_msvc_tools.outcome == 'success' }}
         id: build
         run: |
           echo %VFLAGS%
@@ -108,11 +116,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: All code is formatted
         id: all_code_is_formatted
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: v -silent test-cleancode
       - name: Build and run hello world with -b fastc
         id: build_and_run_hello_world_with_b_fastc
-        if: ${{ !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
         env:
           # FastC always compiles with the bundled TinyCC and rejects `-cc`.
           VFLAGS: ''
@@ -131,7 +139,7 @@ jobs:
           Remove-Item hello_fastc.exe, hello_fastc.c -ErrorAction SilentlyContinue
       - name: Pkg-config regressions (MSVC dynamic isolation)
         id: pkg_config_regressions_msvc_dynamic_isolation
-        if: ${{ !cancelled() && steps.build_and_run_hello_world_with_b_fastc.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_and_run_hello_world_with_b_fastc.outcome == 'success' }}
         run: |
           $tests = @(
             'vlib\v\pkgconfig\pkgconfig_static_test.v'
@@ -147,11 +155,11 @@ jobs:
           }
       - name: Legacy gg import multiwindow isolation
         id: legacy_gg_import_multiwindow_isolation
-        if: ${{ !cancelled() && steps.pkg_config_regressions_msvc_dynamic_isolation.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.pkg_config_regressions_msvc_dynamic_isolation.outcome == 'success' }}
         run: v -cc msvc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Prepare multiwindow Job Object watchdog
         id: prepare_multiwindow_job_object_watchdog
-        if: ${{ !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
         shell: pwsh
         run: |
           $source = Join-Path $env:RUNNER_TEMP 'multiwindow_ci_watchdog.v'
@@ -230,7 +238,7 @@ jobs:
           }
       - name: Multiwindow D3D11 WARP regressions and runtime probes
         id: multiwindow_d3d11_warp_regressions_and_runtime_probes
-        if: ${{ !cancelled() && steps.prepare_multiwindow_job_object_watchdog.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.prepare_multiwindow_job_object_watchdog.outcome == 'success' }}
         shell: pwsh
         env:
           VFLAGS: -cc msvc -d gg_multiwindow_d3d11_warp
@@ -289,57 +297,57 @@ jobs:
           }
       - name: Test -cc msvc works
         id: test_cc_msvc_works
-        if: ${{ !cancelled() && steps.multiwindow_d3d11_warp_regressions_and_runtime_probes.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.multiwindow_d3d11_warp_regressions_and_runtime_probes.outcome == 'success' }}
         run: v -no-retry-compilation run examples/hello_world.v
       - name: Install dependencies
         id: install_dependencies
-        if: ${{ !cancelled() && steps.test_cc_msvc_works.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_cc_msvc_works.outcome == 'success' }}
         run: |
           v retry -- v setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
       - name: v doctor
         id: v_doctor
-        if: ${{ !cancelled() && steps.install_dependencies.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: |
           v doctor
       - name: Verify `v test` works
         id: verify_v_test_works
-        if: ${{ !cancelled() && steps.v_doctor.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_doctor.outcome == 'success' }}
         run: |
           echo $VFLAGS
           v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Test pure V math module
         id: test_pure_v_math_module
-        if: ${{ !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
       - name: Test fasthttp module
         id: test_fasthttp_module
-        if: ${{ !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
         run: v -silent test vlib/fasthttp/
       - name: Self tests
         id: self_tests
-        if: ${{ !cancelled() && steps.test_fasthttp_module.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_fasthttp_module.outcome == 'success' }}
         run: v -silent test-self vlib
       - name: Test v->js
         id: test_v_js
-        if: ${{ !cancelled() && steps.self_tests.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
         run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         id: test_v_binaries
-        if: ${{ !cancelled() && steps.test_v_js.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_v_js.outcome == 'success' }}
         run: v build-vbinaries
       - name: Build examples
         id: build_examples
-        if: ${{ !cancelled() && steps.test_v_binaries.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_v_binaries.outcome == 'success' }}
         run: v build-examples
       - name: Compile and run the veb example (fasthttp) and check its HTML
         id: compile_and_run_the_veb_example_fasthttp_and_check_its_html
-        if: ${{ !cancelled() && steps.build_examples.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_examples.outcome == 'success' }}
         run: v run .github/workflows/veb_example_windows_smoke.v
       - name: v2 self compilation
         id: v2_self_compilation
-        if: ${{ !cancelled() && steps.compile_and_run_the_veb_example_fasthttp_and_check_its_html.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.compile_and_run_the_veb_example_fasthttp_and_check_its_html.outcome == 'success' }}
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   msvc-multiwindow:
@@ -356,12 +364,17 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        id: uses_msvc_dev_cmd_0b201ec74fa43914dc39ae48a89fd1d8cb592756_v1_13_0
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         with:
           arch: x64
       - name: Verify MSVC tools
+        id: verify_msvc_tools
+        if: ${{ success() && !cancelled() && steps.uses_msvc_dev_cmd_0b201ec74fa43914dc39ae48a89fd1d8cb592756_v1_13_0.outcome == 'success' }}
         run: |
           where.exe cl.exe
           where.exe link.exe
@@ -372,6 +385,7 @@ jobs:
           }
           Write-Host "Found d3d11.h at $($headers[0])"
       - name: Build
+        if: ${{ success() && !cancelled() && steps.verify_msvc_tools.outcome == 'success' }}
         id: build
         run: |
           echo %VFLAGS%
@@ -382,15 +396,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Legacy gg import multiwindow isolation
         id: legacy_gg_import_multiwindow_isolation
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: v -cc msvc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Public gg Win32 services no-flag contract
         id: public_gg_win32_services_no_flag_contract
-        if: ${{ !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
         run: v -cc msvc test vlib/gg/multiwindow_win32_public_services_contract_windows_test.v
       - name: Win32 W3 native/public GREEN contracts
         id: win32_w3_native_public_green_contracts
-        if: ${{ !cancelled() && steps.public_gg_win32_services_no_flag_contract.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.public_gg_win32_services_no_flag_contract.outcome == 'success' }}
         shell: pwsh
         run: |
           .\.github\workflows\run_multiwindow_win32_w3_green.ps1 -Compiler msvc `
@@ -398,12 +412,12 @@ jobs:
             -ExpectedRunnerSha256 'a0e080811b904d44113e024aa9cb831475d0ad91d33f92c2d8b57491015646d6'
       - name: Package 2 native Win32 RED matrix
         id: package_2_native_win32_red_matrix
-        if: ${{ !cancelled() && steps.win32_w3_native_public_green_contracts.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.win32_w3_native_public_green_contracts.outcome == 'success' }}
         shell: pwsh
         run: .\.github\workflows\run_multiwindow_win32_package2_red.ps1 -Compiler msvc
       - name: Win32 W4 clipboard contracts
         id: win32_w4_clipboard_contracts
-        if: ${{ !cancelled() && steps.package_2_native_win32_red_matrix.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.package_2_native_win32_red_matrix.outcome == 'success' }}
         shell: pwsh
         env:
           VFLAGS: ''
@@ -425,7 +439,7 @@ jobs:
             -ExpectedRunnerSha256 'adaab1bcabdce34ae6f9b103d770c6fab0b6a63870a90829e56b245e2b245835'
       - name: Win32 W5 raw-input A0 preflight
         id: win32_w5_raw_input_a0_preflight
-        if: ${{ !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}
         shell: pwsh
         run: |
           .\.github\workflows\run_multiwindow_win32_w5_a0.ps1 -Compiler msvc `
@@ -435,7 +449,7 @@ jobs:
             -ExpectedRunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68'
       - name: Win32 W5 raw-input A1 public GREEN
         id: win32_w5_raw_input_a1_public_green
-        if: ${{ !cancelled() && steps.win32_w5_raw_input_a0_preflight.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a0_preflight.outcome == 'success' }}
         shell: pwsh
         env:
           VFLAGS: ''
@@ -470,7 +484,7 @@ jobs:
             -ExpectedRunnerSha256 'f9b63749bad6064f8de48744ef8d828ba6fe31b53c6a224568c6bf10805aae5e'
       - name: Prepare multiwindow Job Object watchdog
         id: prepare_multiwindow_job_object_watchdog
-        if: ${{ !cancelled() && steps.win32_w5_raw_input_a1_public_green.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a1_public_green.outcome == 'success' }}
         shell: pwsh
         run: |
           $source = Join-Path $env:RUNNER_TEMP 'multiwindow_ci_watchdog.v'
@@ -549,7 +563,7 @@ jobs:
           }
       - name: Multiwindow D3D11 WARP regressions and runtime probes
         id: multiwindow_d3d11_warp_regressions_and_runtime_probes
-        if: ${{ !cancelled() && steps.prepare_multiwindow_job_object_watchdog.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.prepare_multiwindow_job_object_watchdog.outcome == 'success' }}
         shell: pwsh
         env:
           VFLAGS: -cc msvc -d gg_multiwindow_d3d11_warp

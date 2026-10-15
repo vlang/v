@@ -44,9 +44,12 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Install OpenSSL
+        id: install_openssl
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           $opensslBin = 'C:\Program Files\OpenSSL\bin'
           $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
@@ -131,6 +134,7 @@ jobs:
             }
           }
       - name: Build with makev.bat -tcc
+        if: ${{ success() && !cancelled() && steps.install_openssl.outcome == 'success' }}
         id: build_with_makev_bat_tcc
         run: |
           .\makev.bat -tcc
@@ -139,11 +143,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: All code is formatted
         id: all_code_is_formatted
-        if: ${{ !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}
         run: v -silent test-cleancode
       - name: Build and run hello world with -b fastc
         id: build_and_run_hello_world_with_b_fastc
-        if: ${{ !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
         env:
           # FastC always compiles with the bundled TinyCC and rejects `-cc`.
           VFLAGS: ''
@@ -162,7 +166,7 @@ jobs:
           Remove-Item hello_fastc.exe, hello_fastc.c -ErrorAction SilentlyContinue
       - name: Pkg-config regression (TCC dynamic isolation)
         id: pkg_config_regression_tcc_dynamic_isolation
-        if: ${{ !cancelled() && steps.build_and_run_hello_world_with_b_fastc.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_and_run_hello_world_with_b_fastc.outcome == 'success' }}
         run: |
           .\v.exe -cc tcc -no-retry-compilation test vlib\v\checker\pkgconfig_static_mode_test.v
           if ($LASTEXITCODE -ne 0) {
@@ -170,7 +174,7 @@ jobs:
           }
       - name: Test new v.c
         id: test_new_v_c
-        if: ${{ !cancelled() && steps.pkg_config_regression_tcc_dynamic_isolation.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.pkg_config_regression_tcc_dynamic_isolation.outcome == 'success' }}
         run: |
           v -o v.c cmd/v
           $direct_c_flags = @(
@@ -187,76 +191,76 @@ jobs:
           .\thirdparty\tcc\tcc.exe -Werror -w @direct_c_flags -ladvapi32 -lws2_32 -bt10 '-Wl,-stack=33554432' v.c
       - name: Install dependencies
         id: install_dependencies
-        if: ${{ !cancelled() && steps.test_new_v_c.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_new_v_c.outcome == 'success' }}
         run: |
           v retry -- v setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
       - name: v -g self
         id: v_g_self
-        if: ${{ !cancelled() && steps.install_dependencies.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: v -g self
       - name: v doctor
         id: v_doctor
-        if: ${{ !cancelled() && steps.v_g_self.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_g_self.outcome == 'success' }}
         run: |
           v doctor
       - name: Verify `v test` works
         id: verify_v_test_works
-        if: ${{ !cancelled() && steps.v_doctor.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_doctor.outcome == 'success' }}
         run: |
           v cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
       - name: Legacy gg import multiwindow isolation
         id: legacy_gg_import_multiwindow_isolation
-        if: ${{ !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: v test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Verify a C generator unit test works
         id: verify_a_c_generator_unit_test_works
-        if: ${{ !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
         run: v vlib/v/gen/c/target_test.v
       - name: Make sure running TCC64 instead of TCC32
         id: make_sure_running_tcc64_instead_of_tcc32
-        if: ${{ !cancelled() && steps.verify_a_c_generator_unit_test_works.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.verify_a_c_generator_unit_test_works.outcome == 'success' }}
         run: v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
       - name: Test ./v doc -v clipboard *BEFORE building tools*
         id: test_v_doc_v_clipboard_before_building_tools
-        if: ${{ !cancelled() && steps.make_sure_running_tcc64_instead_of_tcc32.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.make_sure_running_tcc64_instead_of_tcc32.outcome == 'success' }}
         run: v doc -v clipboard
       - name: Test v build-tools
         id: test_v_build_tools
-        if: ${{ !cancelled() && steps.test_v_doc_v_clipboard_before_building_tools.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_v_doc_v_clipboard_before_building_tools.outcome == 'success' }}
         run: v -silent -W build-tools
       - name: Test pure V math module
         id: test_pure_v_math_module
-        if: ${{ !cancelled() && steps.test_v_build_tools.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_v_build_tools.outcome == 'success' }}
         run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
       - name: Multiwindow render runtime contract
         id: multiwindow_render_runtime_contract
-        if: ${{ !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
         run: .\v.exe -silent vlib\gg\multiwindow_render_runtime_contract_test.v
       - name: Self tests
         id: self_tests
-        if: ${{ !cancelled() && steps.multiwindow_render_runtime_contract.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.multiwindow_render_runtime_contract.outcome == 'success' }}
         run: v -silent test-self vlib
       - name: Test v->js
         id: test_v_js
-        if: ${{ !cancelled() && steps.self_tests.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
         run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
         id: test_v_binaries
-        if: ${{ !cancelled() && steps.test_v_js.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_v_js.outcome == 'success' }}
         run: v build-vbinaries
       - name: Build examples
         id: build_examples
-        if: ${{ !cancelled() && steps.test_v_binaries.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_v_binaries.outcome == 'success' }}
         run: v build-examples
       - name: Compile and run the veb example (fasthttp) and check its HTML
         id: compile_and_run_the_veb_example_fasthttp_and_check_its_html
-        if: ${{ !cancelled() && steps.build_examples.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_examples.outcome == 'success' }}
         run: v run .github/workflows/veb_example_windows_smoke.v
       - name: v2 self compilation
         id: v2_self_compilation
-        if: ${{ !cancelled() && steps.compile_and_run_the_veb_example_fasthttp_and_check_its_html.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.compile_and_run_the_veb_example_fasthttp_and_check_its_html.outcome == 'success' }}
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v && .\v3.exe -o v4.exe cmd/v
 
   tcc-multiwindow:
@@ -272,9 +276,11 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build with makev.bat -tcc
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         id: build_with_makev_bat_tcc
         run: |
           .\makev.bat -tcc
@@ -283,7 +289,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Checkout pinned Windows TCC bundle
         id: checkout_pinned_windows_tcc_bundle
-        if: ${{ !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_with_makev_bat_tcc.outcome == 'success' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: vlang/tccbin
@@ -292,7 +298,7 @@ jobs:
           persist-credentials: false
       - name: Route TCC validation to pinned bundle
         id: route_tcc_validation_to_pinned_bundle
-        if: ${{ !cancelled() && steps.checkout_pinned_windows_tcc_bundle.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.checkout_pinned_windows_tcc_bundle.outcome == 'success' }}
         shell: pwsh
         run: |
           $expectedSha = 'f48b48b2a2a027ee91cec7634395d1ec48d3e325'
@@ -323,7 +329,7 @@ jobs:
             -Value "VFLAGS=-cc $tcc -no-retry-compilation"
       - name: Verify pinned TCC command resolution
         id: verify_pinned_tcc_command_resolution
-        if: ${{ !cancelled() && steps.route_tcc_validation_to_pinned_bundle.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.route_tcc_validation_to_pinned_bundle.outcome == 'success' }}
         shell: pwsh
         run: |
           $resolvedTcc = (Get-Command tcc.exe -CommandType Application -ErrorAction Stop).Source
@@ -333,15 +339,15 @@ jobs:
           Write-Host "Pinned TCC command: $resolvedTcc"
       - name: Legacy gg import multiwindow isolation
         id: legacy_gg_import_multiwindow_isolation
-        if: ${{ !cancelled() && steps.verify_pinned_tcc_command_resolution.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.verify_pinned_tcc_command_resolution.outcome == 'success' }}
         run: v test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Public gg Win32 services no-flag contract
         id: public_gg_win32_services_no_flag_contract
-        if: ${{ !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
         run: v test vlib/gg/multiwindow_win32_public_services_contract_windows_test.v
       - name: Win32 W3 native/public GREEN contracts
         id: win32_w3_native_public_green_contracts
-        if: ${{ !cancelled() && steps.public_gg_win32_services_no_flag_contract.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.public_gg_win32_services_no_flag_contract.outcome == 'success' }}
         shell: pwsh
         run: |
           .\.github\workflows\run_multiwindow_win32_w3_green.ps1 -Compiler tcc `
@@ -349,11 +355,11 @@ jobs:
             -ExpectedRunnerSha256 'a0e080811b904d44113e024aa9cb831475d0ad91d33f92c2d8b57491015646d6'
       - name: Multiwindow render runtime contract
         id: multiwindow_render_runtime_contract
-        if: ${{ !cancelled() && steps.win32_w3_native_public_green_contracts.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.win32_w3_native_public_green_contracts.outcome == 'success' }}
         run: .\v.exe -silent vlib\gg\multiwindow_render_runtime_contract_test.v
       - name: Public gg Win32 proven W1 services enabled contract
         id: public_gg_win32_proven_w1_services_enabled_contract
-        if: ${{ !cancelled() && steps.multiwindow_render_runtime_contract.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.multiwindow_render_runtime_contract.outcome == 'success' }}
         shell: pwsh
         run: |
           $testFile = (Resolve-Path `
@@ -469,12 +475,12 @@ jobs:
           }
       - name: Package 2 native Win32 RED matrix
         id: package_2_native_win32_red_matrix
-        if: ${{ !cancelled() && steps.public_gg_win32_proven_w1_services_enabled_contract.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.public_gg_win32_proven_w1_services_enabled_contract.outcome == 'success' }}
         shell: pwsh
         run: .\.github\workflows\run_multiwindow_win32_package2_red.ps1 -Compiler tcc
       - name: Win32 W4 clipboard contracts
         id: win32_w4_clipboard_contracts
-        if: ${{ !cancelled() && steps.package_2_native_win32_red_matrix.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.package_2_native_win32_red_matrix.outcome == 'success' }}
         shell: pwsh
         env:
           VFLAGS: ''
@@ -496,7 +502,7 @@ jobs:
             -ExpectedRunnerSha256 'adaab1bcabdce34ae6f9b103d770c6fab0b6a63870a90829e56b245e2b245835'
       - name: Win32 W5 raw-input A0 preflight
         id: win32_w5_raw_input_a0_preflight
-        if: ${{ !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}
         shell: pwsh
         run: |
           .\.github\workflows\run_multiwindow_win32_w5_a0.ps1 -Compiler tcc `
@@ -506,7 +512,7 @@ jobs:
             -ExpectedRunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68'
       - name: Win32 W5 raw-input A1 public GREEN
         id: win32_w5_raw_input_a1_public_green
-        if: ${{ !cancelled() && steps.win32_w5_raw_input_a0_preflight.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a0_preflight.outcome == 'success' }}
         shell: pwsh
         env:
           VFLAGS: ''
