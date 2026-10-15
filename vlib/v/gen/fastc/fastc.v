@@ -2221,7 +2221,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	generation_sources := fastc_wait_generation_fragments(mut pending_fragments)
 	timer.mark('wait_fragments')
 	generation := fastc_generate_file_outputs(&ctx, generation_sources)
-	outputs := generation.outputs
+	mut outputs := generation.outputs.clone()
+	fastc_deduplicate_fragment_prototypes(mut outputs, generation_sources)
 	timer.mark('file_outputs')
 	for output in outputs {
 		if output.failed {
@@ -2798,6 +2799,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	return pieces, spawn_typedefs.len > 0 || global_output.uses_pthread_tls, c_flags
 }
 
+@[direct_array_access]
 fn fastc_collect_native_name_ids(text string, ids map[string]int, mut refs []int) {
 	mut i := 0
 	for i < text.len {
@@ -2819,7 +2821,9 @@ fn fastc_collect_native_name_ids(text string, ids map[string]int, mut refs []int
 			for i < text.len && fastc_identifier_byte(text[i]) {
 				i++
 			}
-			if id := ids[text[start..i]] {
+			// The lookup does not retain the key, so borrow the live C text.
+			name := unsafe { tos(text.str + start, i - start) }
+			if id := ids[name] {
 				refs << id
 			}
 		} else {
@@ -2880,12 +2884,12 @@ fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignat
 }
 
 fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctionSignature, inputs []string, context FastcNativeSourceContext) string {
-	mut keys := functions.keys()
+	mut keys := functions.keys().filter(it.starts_with('C.'))
 	keys.sort()
 	mut out := strings.new_builder(128)
 	for key in keys {
 		signature := functions[key]
-		if !key.starts_with('C.') || signature.is_disabled {
+		if signature.is_disabled {
 			continue
 		}
 		name := key.all_after_first('C.')

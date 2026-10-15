@@ -140,8 +140,12 @@ fn fastc_wait_generation_fragments(mut pending FastcPendingFragments) []FastcSou
 
 fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) FastcFileGenResult {
 	mut outputs := []FastcFileGenOutput{cap: sources.len}
+	mut scratch := FastcFileScratch{}
+	defer {
+		scratch.free()
+	}
 	for source_file in sources {
-		outputs << fastc_generate_single_file(ctx, source_file)
+		outputs << scratch.generate(ctx, source_file)
 	}
 	return fastc_file_gen_result(outputs)
 }

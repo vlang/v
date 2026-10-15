@@ -344,7 +344,14 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 	os.mkdir_all(cache_dir) or { return atomic_s }
 	build_path := '${object_path}.tmp.${os.getpid()}'
 	args << ['-c', atomic_s, '-o', build_path]
-	result := cmdexec.run(tcc_path, args)
+	mut result := os.Result{}
+	$if !skip_fastc ?&& !windows {
+		// This runs after generation: use posix_spawn instead of forking the
+		// compiler's large address space just to assemble the atomic helpers.
+		result = fastc.fastc_run_command(tcc_path, args)
+	} $else {
+		result = cmdexec.run(tcc_path, args)
+	}
 	if result.exit_code != 0 || !os.is_file(build_path) {
 		os.rm(build_path) or {}
 		return atomic_s

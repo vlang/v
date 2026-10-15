@@ -2541,6 +2541,8 @@ fn (g &Parser) multi_return_types_for_expression(tokens []FastcExpressionToken) 
 	return signature.return_types_text().clone()
 }
 
+// Read scalar type IDs without taking metadata addresses: pointer receivers
+// would heap-promote each field or signature copied from a lookup.
 fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) string {
 	if tokens.len >= 3 && tokens[0].tok == .lpar && tokens.last().tok == .rpar {
 		if close := fastc_matching_rpar(tokens, 0) {
@@ -2550,13 +2552,13 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) s
 		}
 	}
 	if signature := g.function_alias_call_signature(tokens) {
-		return signature.option_type_text()
+		return flat.source_type_name(signature.option_type)
 	}
 	element_call_open := g.fastc_element_call_open(tokens)
 	if element_call_open > 0 {
 		if signature := g.callable_signature_for_expression(tokens[..element_call_open]) {
 			if signature.callable_index_depth == 0 {
-				return signature.option_type_text()
+				return flat.source_type_name(signature.option_type)
 			}
 		}
 	}
@@ -2570,10 +2572,10 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) s
 		}
 	}
 	if map_lookup := g.render_map_lookup_option_expression(tokens) {
-		return map_lookup.typ_text()
+		return flat.source_type_name(map_lookup.typ)
 	}
 	if array_lookup := g.render_array_lookup_option_expression(tokens) {
-		return array_lookup.typ_text()
+		return flat.source_type_name(array_lookup.typ)
 	}
 	if generic_type := g.erased_generic_option_value_type_for_expression(tokens) {
 		return generic_type
@@ -2607,11 +2609,12 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) s
 	// A bare option variable (`if x := opt`): recover the wrapped value type recorded
 	// when the variable was declared, since its C type is the type-erased `Option`.
 	if tokens.len == 1 && tokens[0].tok == .name {
-		if tokens[0].option_value_type_text() != '' {
-			return tokens[0].option_value_type_text()
+		option_value_type := flat.source_type_name(tokens[0].option_value_type)
+		if option_value_type != '' {
+			return option_value_type
 		}
 		local := g.locals[tokens[0].lit] or { return '' }
-		return local.option_value_type_text()
+		return flat.source_type_name(local.option_value_type)
 	}
 	// A member access to an option FIELD (`if mut v := x.f {` where `f ?T`): the field's
 	// erased C type is `Option`, so recover the wrapped value type recorded on the field.
@@ -2623,7 +2626,7 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) s
 			if fields := g.struct_field_info[receiver_layout] {
 				for field in fields {
 					if field.name == field_name && field.option_value_type != u32(0) {
-						return field.option_value_type_text()
+						return flat.source_type_name(field.option_value_type)
 					}
 				}
 			}
@@ -2649,16 +2652,15 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) s
 			}
 			if field := g.struct_field_metadata(receiver_type, tokens[i].lit) {
 				if field.is_function && field.fn_option_value_type != u32(0) {
-					return field.fn_option_value_type_text()
+					return flat.source_type_name(field.fn_option_value_type)
 				}
-				if alias := g.functions[fastc_trim_pointer_suffix(field.typ_text())] {
-					return alias.option_type_text()
+				if alias := g.functions[fastc_trim_pointer_suffix(flat.source_type_name(field.typ))] {
+					return flat.source_type_name(alias.option_type)
 				}
 			}
 			method_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 			if method_key in g.functions {
-				method_signature := g.functions[method_key]
-				return method_signature.option_type_text()
+				return flat.source_type_name(g.functions[method_key].option_type)
 			}
 			break
 		}
@@ -2683,16 +2685,15 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) s
 		// Calling an option-returning function-pointer parameter (`f(x) or {…}`).
 		if local := g.locals[tokens[0].lit] {
 			if local.fn_option_value_type != u32(0) {
-				return local.fn_option_value_type_text()
+				return flat.source_type_name(local.fn_option_value_type)
 			}
-			if alias := g.functions[fastc_trim_pointer_suffix(local.typ_text())] {
-				return alias.option_type_text()
+			if alias := g.functions[fastc_trim_pointer_suffix(flat.source_type_name(local.typ))] {
+				return flat.source_type_name(alias.option_type)
 			}
 		}
 	}
 	if static_key := g.static_function_key_for_call(tokens, name_index) {
-		static_signature := g.functions[static_key]
-		return static_signature.option_type_text()
+		return flat.source_type_name(g.functions[static_key].option_type)
 	}
 	function_key := if name_index == 2 && tokens[0].lit !in g.imports && tokens[0].lit != 'C' {
 		receiver_type := g.infer_expression_type(tokens[..1]) or { return '' }
@@ -2701,12 +2702,11 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) s
 	} else {
 		g.function_key_for_call(tokens, name_index)
 	}
-	signature := if function_key in g.functions {
-		g.functions[function_key]
-	} else {
-		g.mono_functions[function_key] or { return '' }
+	if function_key in g.functions {
+		return flat.source_type_name(g.functions[function_key].option_type)
 	}
-	return signature.option_type_text()
+	signature := g.mono_functions[function_key] or { return '' }
+	return flat.source_type_name(signature.option_type)
 }
 
 fn (g &Parser) erased_generic_option_value_type_for_expression(tokens []FastcExpressionToken) ?string {
@@ -2736,8 +2736,8 @@ fn (g &Parser) erased_generic_option_value_type_for_expression(tokens []FastcExp
 		receiver_type := g.infer_expression_type(receiver_tokens) or { return none }
 		method_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 		signature := g.functions[method_key] or { return none }
-		if signature.return_type_text() in ['Option', '__v_result'] && signature.option_type == flat.source_type_voidptr {
-			return field.generic_argument_type_text()
+		if flat.source_type_name(signature.return_type) in ['Option', '__v_result'] && signature.option_type == flat.source_type_voidptr {
+			return flat.source_type_name(field.generic_argument_type)
 		}
 		return none
 	}

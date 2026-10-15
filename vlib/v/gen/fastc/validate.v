@@ -1124,7 +1124,7 @@ fn (g &Parser) struct_direct_member_type(receiver_type string, field_name string
 	interface_key := g.semantic_type_key(receiver_type)
 	if g.declared_kinds[interface_key] == .interface_ {
 		if field := g.interface_fields['${interface_key}.${field_name}'] {
-			return field.typ_text()
+			return flat.source_type_name(field.typ)
 		}
 	}
 	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
@@ -1134,7 +1134,7 @@ fn (g &Parser) struct_direct_member_type(receiver_type string, field_name string
 		layout_type = 'map'
 	}
 	if fields := g.struct_fields[layout_type] {
-		return fields.get(field_name) or { '' }
+		return flat.source_type_name(fields.ids[field_name] or { u32(0) })
 	}
 	return ''
 }
@@ -1149,7 +1149,7 @@ fn (g &Parser) struct_member_type(receiver_type string, field_name string) strin
 		return direct_type
 	}
 	field := g.struct_field_metadata(receiver_type, field_name) or { return '' }
-	return field.typ_text()
+	return flat.source_type_name(field.typ)
 }
 
 fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?FastcStructField {

@@ -102,9 +102,10 @@ mut:
 	declaration_paths  map[string][]string
 }
 
-fn fastc_native_source_context(sources []FastcSourceFile, prefs &pref.Preferences) FastcNativeSourceContext {
+fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Preferences, start int, end int) FastcNativeSourceContext {
 	mut context := FastcNativeSourceContext{}
-	for source in sources {
+	for i in start .. end {
+		source := sources[i]
 		mut declarations := map[string]bool{}
 		if fastc_target_collect_native_context(source.source, source.path, prefs, mut context.references, mut declarations) {
 			context.files_with_headers[source.path] = true
@@ -116,6 +117,22 @@ fn fastc_native_source_context(sources []FastcSourceFile, prefs &pref.Preference
 		}
 	}
 	return context
+}
+
+// Merge contiguous source chunks in order so duplicate declarations retain
+// every origin in the same order as the serial scanner.
+fn fastc_merge_native_source_context(mut context FastcNativeSourceContext, chunk FastcNativeSourceContext) {
+	for name, _ in chunk.references {
+		context.references[name] = true
+	}
+	for path, _ in chunk.files_with_headers {
+		context.files_with_headers[path] = true
+	}
+	for name, chunk_paths in chunk.declaration_paths {
+		mut paths := context.declaration_paths[name] or { []string{} }
+		paths << chunk_paths
+		context.declaration_paths[name] = paths
+	}
 }
 
 // fastc_target_libc_declares leaves the standard headers' exact qualifiers

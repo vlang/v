@@ -619,6 +619,10 @@ fn fastc_file_generation_order(sources []FastcSourceFile) []int {
 // shared and read-only. It runs as a value-returning spawn: under -prealloc, V
 // frees a void thread's arena on exit, so outputs travel through the return value.
 fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile, order []int, queue &FastcGenQueue) FastcFileGenWorkerResult {
+	mut scratch := FastcFileScratch{}
+	defer {
+		scratch.free()
+	}
 	mut outputs := []FastcIndexedFileGenOutput{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := flat.TypeTextBindings{}
@@ -636,7 +640,7 @@ fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile
 		}
 		file_index := order[claimed]
 		start_us := sw.elapsed().microseconds()
-		output := fastc_generate_single_file(ctx, sources[file_index])
+		output := scratch.generate(ctx, sources[file_index])
 		for name, _ in output.composite_types {
 			composite_types[name] = true
 		}
@@ -659,7 +663,7 @@ fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile
 	}
 }
 
-const fastc_generation_fragment_size = 16 * 1024
+const fastc_generation_fragment_size = 32 * 1024
 
 fn fastc_generation_fragment_is_followed_by_comptime_else(scan scanner.Scanner) bool {
 	mut lookahead := scan
@@ -766,7 +770,7 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 }
 
 fn fastc_source_needs_fragmentation(source_file FastcSourceFile, prefs &pref.Preferences) bool {
-	return prefs.building_v && source_file.header.module_name.ends_with('fastc') && source_file.source.len > fastc_generation_fragment_size
+	return prefs.building_v && source_file.source.len > fastc_generation_fragment_size
 }
 
 struct FastcFragmentedSource {
@@ -933,8 +937,12 @@ fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFi
 	jobs := fastc_parallel_jobs(sources, ctx.prefs)
 	if jobs <= 1 {
 		mut outputs := []FastcFileGenOutput{cap: sources.len}
+		mut scratch := FastcFileScratch{}
+		defer {
+			scratch.free()
+		}
 		for source_file in sources {
-			outputs << fastc_generate_single_file(ctx, source_file)
+			outputs << scratch.generate(ctx, source_file)
 		}
 		return fastc_file_gen_result(outputs)
 	}

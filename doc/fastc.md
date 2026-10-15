@@ -216,3 +216,24 @@ option disables TinyCC object and executable caching, including in repeated self
 The launcher helper runs on the host C backend. Native source flags are retained during
 self-builds, and a missing `.o` input is compiled from its matching `.c` source when available.
 Use `-keepc` to retain generated C, including when TinyCC rejects it.
+
+For throughput measurements, first build a production compiler with `v -prod -cc clang self`.
+Measure a complete uncached executable build with an external timer:
+
+```sh
+FASTC_BENCH=1 /usr/bin/time -l v -b fastc -nocache -o v_fastc_bench cmd/v
+```
+
+Count physical lines in the selected V source files, including blank lines and comments.
+Divide that count by the external elapsed time to include compiler startup, C generation,
+TinyCC compilation, linking, signing, retained C output, and process exit. The internal
+`FASTC_BENCH` total omits early command-line processing and final output publication.
+Generated C lines and C header lines are not V source lines. FastC does not scan C headers.
+
+Keep the source snapshot, compiler build options, toolchain, worker count, and output paths
+fixed when comparing revisions. Warm both compiler executables before timing; on macOS,
+replacing an executable can add first-execution validation time. Then retain two warmups
+and ten alternating baseline/candidate pairs. Compare retired instructions, elapsed time,
+and peak memory, and verify that both revisions generate equivalent C. Record whether
+third-party helper objects were already built; `-nocache` rebuilds generated V units but
+does not remove those toolchain dependencies.

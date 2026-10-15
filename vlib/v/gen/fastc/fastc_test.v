@@ -955,6 +955,83 @@ fn test_fastc_fragmented_generation_matches_serial_output() {
 	assert fragmented_length == sources[0].source.len
 }
 
+fn test_fastc_fragmented_dependency_preserves_imports_and_source_positions() {
+	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
+	dependency := 'module transform\nimport math\npub fn first() int {\n${large_comment}\n\tx := 1.25\n\tprintln("\${x:.2f}")\n\tprintln(["first"].str())\n\treturn 1\n}\n' + r'pub fn second() int {
+	println(@LINE)
+	println(@COLUMN)
+	println(@FILE_LINE)
+	println(@LOCATION)
+	x := 1.25
+	println("${x:.2f}")
+	println(["second"].str())
+	plain := fn (value int) int { return value * 2 }
+	base := 7
+	captured := fn [base] (value int) int {
+		nested := fn (inner int) int { return inner + 1 }
+		println(@LINE)
+		return base + nested(value)
+	}
+	return plain(captured(int(math.sqrt(16)))) + Identity{}.callback(2)
+}
+struct Identity {}
+fn (identity Identity) callback[T](value T) int {
+	callback := fn [value] () int { return int(value) }
+	return callback()
+}
+'
+	root := os.join_path(os.vtmp_dir(), 'fastc_fragmented_dependency_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'transform')) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main\nimport transform\nfn main() {\n\tassert transform.first() == 1\n\tassert transform.second() == 26\n}\n') or {
+		panic(err)
+	}
+	path := os.join_path(root, 'transform', 'large.v')
+	os.write_file(path, dependency) or { panic(err) }
+	mut parallel_prefs := pref.new_preferences()
+	parallel_prefs.vroot = @VEXEROOT
+	parallel_prefs.building_v = true
+	parallel_prefs.backend = 'fastc'
+	parallel_prefs.ccompiler = 'clang'
+	parallel_prefs.user_defines = ['gc_none', 'no_backtrace', 'v3_backend']
+	parallel := generate_files([root], parallel_prefs) or { panic(err) }
+	mut serial_prefs := pref.new_preferences()
+	serial_prefs.vroot = @VEXEROOT
+	serial_prefs.building_v = true
+	serial_prefs.no_parallel = true
+	serial_prefs.backend = 'fastc'
+	serial_prefs.ccompiler = 'clang'
+	serial_prefs.user_defines = ['gc_none', 'no_backtrace', 'v3_backend']
+	serial := generate_files([root], serial_prefs) or { panic(err) }
+	assert parallel == serial
+	plain_offset := dependency.index('fn (value') or { panic('missing plain callback') }
+	capture_offset := dependency.index('fn [base]') or { panic('missing captured callback') }
+	assert parallel.contains('__vf_anon_transform_large_v_${plain_offset}')
+	assert parallel.contains('__vf_anon_transform_large_v_${capture_offset}')
+	$if macos || linux {
+		c_path := os.join_path(root, 'program.c')
+		program := os.join_path(root, 'program')
+		os.write_file(c_path, parallel) or { panic(err) }
+		build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-include', 'math.h', '-o', program,
+			c_path, '-lm'])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+	}
+	fragments := fastc_source_generation_fragments(FastcSourceFile{
+		path:   path
+		source: dependency
+		header: FastcSourceHeader{
+			module_name: 'transform'
+			imports:     {
+				'math': 'math'
+			}
+		}
+	}, parallel_prefs)
+	assert fragments.len == 2
+	assert fragments[1].header.imports['math'] == 'math'
+}
+
 fn test_fastc_generation_fragments_keep_top_level_comptime_chain_together() {
 	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
 	source := 'module fastc\n\$if linux {\n\tfn fastc_fragment_comptime_branch() {\n\t\t${large_comment}\n\t}\n} \$else \$if windows {\n\tfn fastc_fragment_comptime_else_if() {}\n} \$else {\n\tfn fastc_fragment_comptime_else() {}\n}\nfn fastc_fragment_after_chain() {}\n'

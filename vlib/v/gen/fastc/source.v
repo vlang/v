@@ -1241,7 +1241,7 @@ fn fastc_memo_body(text string) string {
 
 // fastc_source_load_chunk_size is the number of files one loader thread reads;
 // reads are short syscalls, so a few per spawn amortize the thread start.
-const fastc_source_load_chunk_size = 4
+const fastc_source_load_chunk_size = 12
 
 // fastc_resolve_module_dir resolves and memoizes the directory of an imported
 // module. A directory below the canonical vlib root is canonical already.

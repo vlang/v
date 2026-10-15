@@ -477,16 +477,16 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	}
 	if end - start == 1 {
 		item := tokens[start]
-		if item.typ_text() != '' {
-			return item.typ_text()
+		if flat.source_type_name(item.typ) != '' {
+			return flat.source_type_name(item.typ)
 		}
 		return match item.tok {
 			.name {
 				if smartcast := g.member_smartcasts[item.lit] {
 					// A bare local narrowed by `x is T` reads as the concrete variant.
-					smartcast.typ_text()
+					flat.source_type_name(smartcast.typ)
 				} else if local := g.locals[item.lit] {
-					g.narrowed_numeric_operand_type(tokens[start..end], local.typ_text())
+					g.narrowed_numeric_operand_type(tokens[start..end], flat.source_type_name(local.typ))
 				} else {
 					g.nonlocal_name_type(item.lit)
 				}
@@ -519,7 +519,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 	}
 	if signature := g.function_alias_call_signature(tokens[start..end]) {
-		return signature.return_type_text()
+		return flat.source_type_name(signature.return_type)
 	}
 	// `X as T` yields the target type `T` (so `(x as T).field` resolves).
 	if as_index := fastc_bare_as_cast_index(tokens, start, end) {
@@ -576,12 +576,12 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if open > 0 {
 			element_type := g.infer_expression_type_range(tokens, start, start + open)!
 			if signature := g.mono_functions[element_type] {
-				return signature.return_type_text()
+				return flat.source_type_name(signature.return_type)
 			}
 		}
 	}
-	if end - start == 2 && tokens[start].tok == .dot && tokens[start + 1].typ_text() != '' {
-		return tokens[start + 1].typ_text()
+	if end - start == 2 && tokens[start].tok == .dot && flat.source_type_name(tokens[start + 1].typ) != '' {
+		return flat.source_type_name(tokens[start + 1].typ)
 	}
 	if end - start == 5 && tokens[start].tok == .name && tokens[start + 1].tok == .dot && tokens[start + 2].tok == .name && tokens[start + 3].tok == .dot && tokens[start + 4].tok == .name {
 		if imported_module := g.imports[tokens[start].lit] {
@@ -696,7 +696,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	if element_call_open > 0 {
 		if signature := g.callable_signature_for_expression(tokens[start..start + element_call_open]) {
 			if signature.callable_index_depth == 0 {
-				return signature.return_type_text()
+				return flat.source_type_name(signature.return_type)
 			}
 		}
 	}
@@ -715,17 +715,17 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 				} else {
 					g.mono_functions[function_key] or { FastcFunctionSignature{} }
 				}
-				if signature.return_type_text() != '' {
-					return signature.return_type_text()
+				if flat.source_type_name(signature.return_type) != '' {
+					return flat.source_type_name(signature.return_type)
 				}
 				if call_name_index == start {
 					if local := g.locals[name] {
-						if local.fn_return_type_text() != '' {
+						if flat.source_type_name(local.fn_return_type) != '' {
 							// Calling a function-pointer parameter (`f(x)`).
-							return local.fn_return_type_text()
+							return flat.source_type_name(local.fn_return_type)
 						}
 						// Calling a value whose type is a `type X = fn (...) Ret` alias.
-						if ret := g.fn_alias_return_types.get(fastc_trim_pointer_suffix(local.typ_text())) {
+						if ret := g.fn_alias_return_types.get(fastc_trim_pointer_suffix(flat.source_type_name(local.typ))) {
 							return ret
 						}
 					}
@@ -840,10 +840,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			// the local's boxed origin, as the method renderer does — so a `base.tname() == 'u8'`
 			// string comparison is typed as string and not left a raw pointer `==`.
 			if local := g.locals[tokens[receiver_start].lit] {
-				origin := if local.smartcast_origin_type_text() != '' {
-					local.smartcast_origin_type_text()
+				origin := if flat.source_type_name(local.smartcast_origin_type) != '' {
+					flat.source_type_name(local.smartcast_origin_type)
 				} else {
-					local.typ_text()
+					flat.source_type_name(local.typ)
 				}
 				if origin != '' && origin != receiver_type {
 					origin_key, _ := g.resolve_method(origin, tokens[i].lit)
@@ -856,18 +856,18 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 		if static_key := g.static_function_key_for_call(tokens, i) {
 			if signature := g.functions[static_key] {
-				return signature.return_type_text()
+				return flat.source_type_name(signature.return_type)
 			}
 		}
 		if signature := g.functions[function_key] {
 			return g.specialized_method_return_type(method_receiver_type, function_key, signature)
 		}
 		if field := g.struct_field_metadata(receiver_type, tokens[i].lit) {
-			if field.is_function && field.fn_return_type_text() != '' {
-				return field.fn_return_type_text()
+			if field.is_function && flat.source_type_name(field.fn_return_type) != '' {
+				return flat.source_type_name(field.fn_return_type)
 			}
-			if function_alias := g.functions[field.typ_text()] {
-				return function_alias.return_type_text()
+			if function_alias := g.functions[flat.source_type_name(field.typ)] {
+				return flat.source_type_name(function_alias.return_type)
 			}
 		}
 		if tokens[i].lit == 'str' && g.can_generate_default_struct_str(receiver_type) {
@@ -892,12 +892,16 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			// as `x.args[].expr`, reads the member as the concrete variant).
 			if member_path := fastc_indexed_member_chain_path(tokens[start..end]) {
 				if smartcast := g.member_smartcasts[member_path] {
-					return smartcast.typ_text()
+					return flat.source_type_name(smartcast.typ)
 				}
 			}
 			receiver_type := g.infer_expression_type_range(tokens, start, end - 2)!
+			direct_type := g.struct_direct_member_type(receiver_type, tokens[end - 1].lit)
+			if direct_type != '' {
+				return direct_type
+			}
 			if field := g.struct_field_metadata(receiver_type, tokens[end - 1].lit) {
-				return field.typ_text()
+				return flat.source_type_name(field.typ)
 			}
 			// A field shared by every variant of a boxed sum type (`node.name` where
 			// `node` is `ast.TypeDecl`) resolves to that common field's type.
@@ -921,7 +925,7 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if tokens[start].tok == .amp && end - start == 2 && tokens[start + 1].tok == .name {
 			if local := g.locals[tokens[start + 1].lit] {
 				if local.is_reference {
-					return local.typ_text()
+					return flat.source_type_name(local.typ)
 				}
 			}
 		}
@@ -1307,10 +1311,10 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 		index = call_close + 1
 	} else if tokens[start].tok != .name {
 		return none
-	} else if tokens[start].typ_text() != '' {
-		current_type = tokens[start].typ_text()
+	} else if flat.source_type_name(tokens[start].typ) != '' {
+		current_type = flat.source_type_name(tokens[start].typ)
 	} else if local := g.locals[tokens[start].lit] {
-		current_type = local.typ_text()
+		current_type = flat.source_type_name(local.typ)
 	} else if global_type := g.global_types.get(fastc_global_key(g.module_name, tokens[start].lit)) {
 		current_type = global_type
 	} else if constant_type := g.constant_types.get(fastc_constant_key(g.module_name, tokens[start].lit)) {
@@ -1327,7 +1331,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 	// `x != none`) reshapes it before any field access, exactly as render_member_receiver
 	// does when producing the matching source.
 	if smartcast := g.member_smartcasts[member_path] {
-		current_type = smartcast.typ_text()
+		current_type = flat.source_type_name(smartcast.typ)
 	}
 	for index < end {
 		if tokens[index].tok == .lsbr {
@@ -1363,7 +1367,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 			// indexed chain (`right.args[0].expr is T` → `right.args[].expr`) is found below.
 			member_path += '[]'
 			if smartcast := g.member_smartcasts[member_path] {
-				current_type = smartcast.typ_text()
+				current_type = flat.source_type_name(smartcast.typ)
 			}
 			index = close + 1
 			continue
@@ -1378,7 +1382,7 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 		}
 		member_path += '.' + field_name
 		if smartcast := g.member_smartcasts[member_path] {
-			current_type = smartcast.typ_text()
+			current_type = flat.source_type_name(smartcast.typ)
 		}
 		index += 2
 	}

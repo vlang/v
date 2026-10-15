@@ -2720,6 +2720,9 @@ fn (g &Parser) render_as_cast_member_access(tokens []FastcExpressionToken) ?Fast
 // as a boolean/comparison operand would reach the raw renderer with `as` left intact. Returns
 // none when the expression has no embedded `as` cast to lower.
 fn (g &Parser) rewrite_embedded_as_casts(tokens []FastcExpressionToken) ?[]FastcExpressionToken {
+	if !fastc_expression_tokens_contain(tokens, .key_as) {
+		return none
+	}
 	mut result := tokens.clone()
 	mut changed := false
 	for _ in 0 .. 64 {
@@ -2740,11 +2743,11 @@ fn (g &Parser) rewrite_embedded_as_casts(tokens []FastcExpressionToken) ?[]Fastc
 				i++
 				continue
 			}
-			inner := result[i + 1..close].clone()
-			if fastc_bare_as_cast_index(inner, 0, inner.len) == none {
+			if fastc_bare_as_cast_index(result, i + 1, close) == none {
 				i++
 				continue
 			}
+			inner := result[i + 1..close].clone()
 			mut end := close + 1
 			for end + 1 < result.len && result[end].tok == .dot && result[end + 1].tok == .name && !(end + 2 < result.len && result[end + 2].tok == .lpar) {
 				end += 2
@@ -3698,10 +3701,10 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		// map `.delete(key)` / generic argument) must still be boxed to a pointer, exactly as the
 		// non-synthetic path below does; otherwise a struct value is passed where `void*` is wanted.
 		// A function value is already a pointer.
-		if g.selfhost && expected_type == 'voidptr' && tokens[0].typ_text() !in ['', 'voidptr',
-			'nil'] && !fastc_is_pointer_type(g.underlying_alias_type(tokens[0].typ_text()))
-			&& !g.is_function_value_type(tokens[0].typ_text()) {
-			actual := fastc_normalize_inferred_type(g.underlying_alias_type(tokens[0].typ_text()))
+		if g.selfhost && expected_type == 'voidptr' && flat.source_type_name(tokens[0].typ) !in ['',
+			'voidptr', 'nil'] && !fastc_is_pointer_type(g.underlying_alias_type(flat.source_type_name(tokens[0].typ)))
+			&& !g.is_function_value_type(flat.source_type_name(tokens[0].typ)) {
+			actual := fastc_normalize_inferred_type(g.underlying_alias_type(flat.source_type_name(tokens[0].typ)))
 			return '({ ${actual} __vf_generic_argument = (${tokens[0].source}); v_fastc_interface_box(&__vf_generic_argument, sizeof(${actual})); })'
 		}
 		// An if/match-expression argument was pre-rendered to a ternary during streaming with the
@@ -3874,7 +3877,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 	if tokens.len == 1 && tokens[0].tok == .name {
 		if local := g.locals[tokens[0].lit] {
 			if local.smartcast_origin_type != u32(0) && local.smartcast_origin_source != '' && expected_type != '' {
-				origin_type := fastc_normalize_inferred_type(local.smartcast_origin_type_text())
+				origin_type := fastc_normalize_inferred_type(flat.source_type_name(local.smartcast_origin_type))
 				if expected_type == origin_type {
 					return local.smartcast_origin_source
 				}
@@ -3886,15 +3889,15 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 				}
 			}
 			if local.is_reference {
-				if g.should_box_variant(expected_type, local.typ_text())
+				if g.should_box_variant(expected_type, flat.source_type_name(local.typ))
 					|| (expected_type.ends_with('*')
-						&& g.should_box_variant(expected_type.trim_right('*'), local.typ_text())) {
+						&& g.should_box_variant(expected_type.trim_right('*'), flat.source_type_name(local.typ))) {
 					// A `mut value T` parameter is a C `T*`. Interface conversion must
 					// preserve that pointer as the boxed object instead of auto-dereferencing
 					// it to the value used by ordinary by-value arguments.
-					return g.interface_value_expression(expected_type, local.typ_text(), raw)
+					return g.interface_value_expression(expected_type, flat.source_type_name(local.typ), raw)
 				}
-				storage_type := local.typ_text()
+				storage_type := flat.source_type_name(local.typ)
 				if expected_type == storage_type {
 					return raw
 				}
@@ -3909,7 +3912,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 				if fastc_is_pointer_type(expected_type) {
 					return raw
 				}
-			} else if tokens[0].is_mut_argument && expected_type == local.typ_text() + '*' {
+			} else if tokens[0].is_mut_argument && expected_type == flat.source_type_name(local.typ) + '*' {
 				return '&(${raw})'
 			}
 		}
@@ -3928,7 +3931,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 	if rendered == '' {
 		if special := g.render_special_expression(tokens, raw) {
 			rendered = special.source
-			rendered_type = special.typ_text()
+			rendered_type = flat.source_type_name(special.typ)
 		} else {
 			rendered = g.render_membership_candidate(tokens, expected_type) or { return none }
 		}
@@ -5663,7 +5666,7 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 		// A free call renders its arguments against the parameter types.
 		call := g.render_member_root_expression(call_tokens) or { return none }
 		source = '(${call.source})'
-		current_type = call.typ_text()
+		current_type = flat.source_type_name(call.typ)
 		i = call_close + 1
 	} else if tokens[0].tok != .name {
 		return none
@@ -5672,7 +5675,7 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 		// spelling and type in `.source`/`.typ_text()`, not `.lit`; use them so the member chain reads from
 		// the real unwrapped value instead of an empty base.
 		source = tokens[0].source
-		current_type = tokens[0].typ_text()
+		current_type = flat.source_type_name(tokens[0].typ)
 	} else {
 		source = g.resolved_expression_name(tokens[0].lit, .unknown)
 		current_type = g.infer_expression_type(tokens[..1]) or { return none }
@@ -5685,7 +5688,7 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 	// applies before the first field access.
 	if smartcast := g.member_smartcasts[member_path] {
 		source = smartcast.source
-		current_type = smartcast.typ_text()
+		current_type = flat.source_type_name(smartcast.typ)
 		multi_variants = smartcast.variants_text()
 		multi_tag_source = smartcast.tag_source
 		multi_object_source = smartcast.object_source
@@ -5755,7 +5758,7 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 			if close + 1 < tokens.len {
 				if smartcast := g.member_smartcasts[member_path] {
 					source = smartcast.source
-					current_type = smartcast.typ_text()
+					current_type = flat.source_type_name(smartcast.typ)
 					multi_variants = smartcast.variants_text()
 					multi_tag_source = smartcast.tag_source
 					multi_object_source = smartcast.object_source
@@ -5770,12 +5773,12 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 		if multi_variants.len > 1 {
 			projected := g.render_multi_variant_field_projection(multi_variants, multi_tag_source, multi_object_source, tokens[i + 1].lit) or { return none }
 			source = projected.source
-			current_type = projected.typ_text()
+			current_type = flat.source_type_name(projected.typ)
 			multi_variants = []
 			member_path += '.' + tokens[i + 1].lit
 			if smartcast := g.member_smartcasts[member_path] {
 				source = smartcast.source
-				current_type = smartcast.typ_text()
+				current_type = flat.source_type_name(smartcast.typ)
 				multi_variants = smartcast.variants_text()
 				multi_tag_source = smartcast.tag_source
 				multi_object_source = smartcast.object_source
@@ -5787,8 +5790,8 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 			// An interface FIELD (`iface.file`) is not a member of the boxed `{_object,_typ,…}`
 			// struct; read it through a runtime `_typ` switch over the interface's implementers.
 			if iface_field := g.interface_fields['${g.semantic_type_key(current_type)}.${tokens[i + 1].lit}'] {
-				source = g.fastc_interface_field_switch_source(current_type, source, iface_field.name, iface_field.typ_text()) or { return none }
-				current_type = fastc_normalize_inferred_type(iface_field.typ_text())
+				source = g.fastc_interface_field_switch_source(current_type, source, iface_field.name, flat.source_type_name(iface_field.typ)) or { return none }
+				current_type = fastc_normalize_inferred_type(flat.source_type_name(iface_field.typ))
 				member_path += '.' + tokens[i + 1].lit
 				i += 2
 				continue
@@ -5826,11 +5829,11 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 		}
 		field_source := source + separator + fastc_c_identifier(field.name)
 		source = if field.is_shared_pointer { '*(${field_source})' } else { field_source }
-		current_type = field.typ_text()
+		current_type = flat.source_type_name(field.typ)
 		member_path += '.' + tokens[i + 1].lit
 		if smartcast := g.member_smartcasts[member_path] {
 			source = smartcast.source
-			current_type = smartcast.typ_text()
+			current_type = flat.source_type_name(smartcast.typ)
 			multi_variants = smartcast.variants_text()
 			multi_tag_source = smartcast.tag_source
 			multi_object_source = smartcast.object_source

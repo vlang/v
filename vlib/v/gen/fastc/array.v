@@ -1326,25 +1326,17 @@ fn fastc_array_initializer_c_type(array_type string) string {
 fn fastc_collect_referenced_fixed_array_types(source string, mut fixed_array_types flat.TypeTextBindings) {
 	mut i := 0
 	for i < source.len {
-		c := source[i]
-		if !(c.is_letter() || c == `_`) {
-			i++
+		i = source.index_after('FixedArray_', i) or { break }
+		if i > 0 && fastc_identifier_byte(source[i - 1]) {
+			i += 'FixedArray_'.len
 			continue
 		}
-		if i > 0 {
-			p := source[i - 1]
-			if p.is_letter() || p.is_digit() || p == `_` {
-				i++
-				continue
-			}
-		}
-		mut end := i
-		for end < source.len && (source[end].is_letter() || source[end].is_digit() || source[end] == `_`) {
+		mut end := i + 'FixedArray_'.len
+		for end < source.len && fastc_identifier_byte(source[end]) {
 			end++
 		}
 		name := source[i..end]
-		if name.starts_with('FixedArray_') && fastc_contains(name, '_FASTC_ARRAY_OF_')
-			&& !fixed_array_types.contains(name) {
+		if fastc_contains(name, '_FASTC_ARRAY_OF_') && !fixed_array_types.contains(name) {
 			// A registered nested initializer alias contains its element's marker;
 			// it already names a valid wrapper, rather than a new scanner type.
 			fastc_register_fixed_array_type(name, mut fixed_array_types)

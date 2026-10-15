@@ -13,7 +13,7 @@ import v.token
 // definition is captured out of `g.out` and stored alongside the mono instances
 // so it is emitted at top level; the enclosing expression only keeps the name.
 fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
-	anon_start := g.s.pos
+	anon_start := g.source_offset + g.s.pos
 	// Advance the main scanner past the whole literal: `fn`, an optional parameter
 	// list, the return type, and the balanced body block. `body_end` marks the byte
 	// just past the closing `}`.
@@ -117,6 +117,9 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	resume_s := g.s
 	resume_tok := g.tok
 	resume_lit := g.lit
+	resume_source_offset := g.source_offset
+	resume_source_line_offset := g.source_line_offset
+	resume_source_column_offset := g.source_column_offset
 	saved_locals := g.locals.clone()
 	saved_temp_id := g.temp_id
 	saved_indent := g.indent
@@ -134,12 +137,18 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	file.index_lines_without_digest(synthetic)
 	g.s = scanner.new_scanner(g.prefs, .normal)
 	g.s.init(file, synthetic)
+	g.source_offset = 0
+	g.source_line_offset = 0
+	g.source_column_offset = 0
 	g.next()
 	g.parse_function(true) or {
 		// Restore before propagating so the outer parse can report cleanly.
 		g.s = resume_s
 		g.tok = resume_tok
 		g.lit = resume_lit
+		g.source_offset = resume_source_offset
+		g.source_line_offset = resume_source_line_offset
+		g.source_column_offset = resume_source_column_offset
 		g.locals = saved_locals.clone()
 		g.temp_id = saved_temp_id
 		g.indent = saved_indent
@@ -160,6 +169,9 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	g.s = resume_s
 	g.tok = resume_tok
 	g.lit = resume_lit
+	g.source_offset = resume_source_offset
+	g.source_line_offset = resume_source_line_offset
+	g.source_column_offset = resume_source_column_offset
 	g.locals = saved_locals.clone()
 	g.temp_id = saved_temp_id
 	g.indent = saved_indent
