@@ -1646,7 +1646,7 @@ fn (mut t Transformer) comptime_method_call_args_match_with_ctx(node flat.Node, 
 			expected = type_text_without_main_locks(expected)
 			actual = type_text_without_main_locks(actual)
 		}
-		if !t.resolved_receiver_arg_compatible(arg_id, actual, expected) {
+		if !t.resolved_receiver_arg_compatible(arg_id, flat.source_type_id(actual), flat.source_type_id(expected)) {
 			return false
 		}
 	}
@@ -1654,9 +1654,10 @@ fn (mut t Transformer) comptime_method_call_args_match_with_ctx(node flat.Node, 
 }
 
 fn (mut t Transformer) comptime_method_field_group_matches(node flat.Node, first_field_id flat.NodeId, expected string) bool {
-	struct_type := flat.source_type_name(t.params_struct_type_name(flat.source_type_id(expected)) or {
+	struct_type_source_id := t.params_struct_type_name(flat.source_type_id(expected)) or {
 		t.struct_arg_type_name(flat.source_type_id(expected)) or { return false }
-	})
+	}
+
 	mut field_start := -1
 	for i in 1 .. node.children_count {
 		if t.a.child(&node, i) == first_field_id {
@@ -1667,7 +1668,7 @@ fn (mut t Transformer) comptime_method_field_group_matches(node flat.Node, first
 	if field_start < 0 {
 		return false
 	}
-	return t.specialized_struct_field_args_match(node, field_start, struct_type, false)
+	return t.specialized_struct_field_args_match(node, field_start, struct_type_source_id, false)
 }
 
 fn (t &Transformer) comptime_method_call_arg_matches_hidden_veb_ctx(arg_id flat.NodeId, method MethodMeta) bool {
@@ -2160,7 +2161,7 @@ fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId
 		actual_type = '&${actual_type}'
 	}
 	actual_base_source_id := t.trim_pointer_type(flat.source_type_id(actual_type))
-	actual_base := flat.source_type_name(actual_base_source_id)
+
 	actual_identity := type_text_without_main_locks(flat.source_type_name(t.normalize_type_in_module(actual_base_source_id,
 		t.cur_module)))
 	expected_identity := if param_module in ['', 'main'] {
@@ -2171,13 +2172,13 @@ fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId
 	if actual_identity == expected_identity {
 		return none
 	}
-	_ := t.embedded_receiver_path(actual_base, expected_type) or { return none }
+	_ := t.embedded_receiver_path(actual_base_source_id, expected_type_source_id) or { return none }
 	base := if actual_type.starts_with('&') && arg.kind == .ident {
 		t.transform_expr_preserving_pointer_value(arg_id)
 	} else {
 		t.transform_expr(arg_id)
 	}
-	embedded := t.embedded_receiver_base_for_type(base, actual_type, expected_type) or {
+	embedded := t.embedded_receiver_base_for_type(base, actual_type, expected_type_source_id) or {
 		return none
 	}
 	if flat.source_type_name(t.node_type(embedded)).starts_with('&') {

@@ -19,7 +19,7 @@ fn test_unsafe_block_argument_retains_mutability_after_lowering() {
 			} else if mode == 'typed' {
 				t.transform_block_expr_for_type(argument, a.nodes[int(argument)], 'voidptr')?
 			} else {
-				t.transform_call_arg_for_param(argument, '&voidptr')
+				t.transform_call_arg_for_param(argument, flat.source_type_id('&voidptr'))
 			}
 			assert a.nodes[int(lowered)].kind == .block
 			assert a.nodes[int(lowered)].is_mut == is_mut

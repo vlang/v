@@ -49,7 +49,8 @@ Transformer builders, expected-type coercion, and deferred AST type writes also 
 Numeric APIs retain identities across stages. Text APIs resolve spellings when parsing source,
 reporting diagnostics, or integrating with an emitter that consumes names.
 Sum candidates and variants, map component tuples, and alias-equivalence caches retain source IDs.
-Cached lists return independent numeric copies; module and file changes invalidate contextual caches.
+Cached lists return independent numeric copies. Module and file changes invalidate contextual
+caches.
 
 The builtin error constructors require a string message. To propagate an error from an
 `or` block, use `return err`. To add context, use `return error('context: ${err}')`.

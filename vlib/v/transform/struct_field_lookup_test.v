@@ -17,7 +17,7 @@ fn test_nested_generic_defaults_skip_pointer_aliases() {
 	}
 	for alias in ['BoxPointer', 'BoxPointerChain'] {
 		mut visited := map[string]bool{}
-		assert !t.nested_generic_defaults_need_lowering(alias, mut visited)
+		assert !t.nested_generic_defaults_need_lowering(flat.source_type_id(alias), mut visited)
 	}
 }
 

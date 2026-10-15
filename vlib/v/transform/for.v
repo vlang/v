@@ -566,7 +566,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 				snapshot_source = t.make_prefix(.mul, snapshot_source)
 				t.set_node_typ(int(snapshot_source), map_iter_type_source_id)
 			}
-			new_container = t.make_compiler_default_map_clone_value(snapshot_source, map_iter_type,
+			new_container = t.make_compiler_default_map_clone_value(snapshot_source, map_iter_type_source_id,
 				source_is_owned_temporary)
 			cleanup_owned_snapshot = true
 		}
@@ -927,7 +927,7 @@ fn (mut t Transformer) make_for_in_binding_clone(name string, typ string) []flat
 		return []flat.NodeId{}
 	}
 	pending_start := t.pending_stmts.len
-	cloned := t.make_compiler_default_clone_value(t.make_ident(name), typ, true)
+	cloned := t.make_compiler_default_clone_value(t.make_ident(name), flat.source_type_id(typ), true)
 	mut stmts := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	stmts << t.make_assign(t.make_ident(name), cloned)
@@ -945,7 +945,7 @@ fn (t &Transformer) ownership_for_in_type_needs_clone(typ string) bool {
 	if _ := t.tc.ownership_default_clone_missing_method(parsed) {
 		return false
 	}
-	return t.compiler_default_clone_type_needs_work(typ)
+	return t.compiler_default_clone_type_needs_work(flat.source_type_id(typ))
 }
 
 fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
@@ -1180,7 +1180,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	if node.op == .amp {
 		range_type := t.unaliased_value_type(container_id)
 		if range_type.starts_with('[]') {
-			if view := t.fixed_array_range_view(container_id, range_type) {
+			if view := t.fixed_array_range_view(container_id, flat.source_type_id(range_type)) {
 				tmp_name := t.new_temp('for_container')
 				t.pending_stmts << t.make_decl_assign_typed(tmp_name, view, flat.source_type_id(range_type))
 				fixed_range_container = t.make_ident(tmp_name)
@@ -1368,7 +1368,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	mut binding_clones := []flat.NodeId{}
 	if elem_name != '_' && !elem_needs_ref && t.ownership_for_in_type_needs_clone(elem_type) {
 		pending_start := t.pending_stmts.len
-		elem_expr = t.make_compiler_default_clone_value(elem_expr, elem_type, true)
+		elem_expr = t.make_compiler_default_clone_value(elem_expr, flat.source_type_id(elem_type), true)
 		binding_clones = t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	}

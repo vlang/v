@@ -69,14 +69,14 @@ fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant string, is_re
 		t.stringify_stack.delete_last()
 	}
 	payload_name_source_id := t.tc.type_name(payload_type)
-	payload_name := flat.source_type_name(payload_name_source_id)
+
 	mut value := expr
 	if is_ref {
 		value = t.make_prefix(.mul, expr)
 		t.set_node_typ(int(value), flat.source_type_id(variant))
 	}
 	payload := t.make_selector_op(value, flat.named_variant_payload_field, payload_name_source_id, .dot)
-	mut text := t.wrap_string_conversion(payload, payload_name)
+	mut text := t.wrap_string_conversion(payload, payload_name_source_id)
 	clean_payload_source_id := t.normalize_type_alias(payload_name_source_id)
 
 	if clean_payload_source_id == flat.source_type_string {

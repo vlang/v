@@ -1800,7 +1800,7 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 					}
 					args := t.transform_receiver_method_args(node, receiver_arg, method)
 					return t.make_receiver_method_call_typed(node, method, args,
-						t.receiver_method_return_type(method, node.typ_text()))
+						flat.source_type_id(t.receiver_method_return_type(method, node.typ_text())))
 				}
 			}
 		}

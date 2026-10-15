@@ -224,7 +224,7 @@ fn (mut t Transformer) make_owned_array_repeat_value(base_id flat.NodeId, count_
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	shallow_elem := t.array_get_value(t.make_ident(out_name), t.make_ident(idx_name), flat.source_type_id(elem_type))
 	pending_start := t.pending_stmts.len
-	cloned_elem := t.make_compiler_default_clone_value(shallow_elem, elem_type, true)
+	cloned_elem := t.make_compiler_default_clone_value(shallow_elem, flat.source_type_id(elem_type), true)
 	mut body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), flat.source_type_id(elem_type)), cloned_elem)
@@ -392,7 +392,7 @@ fn (mut t Transformer) make_array_clone_call(base_id flat.NodeId, base_type_id u
 			receiver = t.make_prefix(.mul, receiver)
 			t.set_node_typ(int(receiver), flat.source_type_id(clean_type))
 		}
-		return t.make_compiler_default_array_clone_value(receiver, clean_type, source_is_owned_temporary)
+		return t.make_compiler_default_array_clone_value(receiver, flat.source_type_id(clean_type), source_is_owned_temporary)
 	}
 	return t.make_array_clone_value(receiver, flat.source_type_id(effective_base_type))
 }
@@ -529,13 +529,13 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 				has_len = true
 				mut val := t.transform_expr_for_type(t.a.child(child, 0), flat.source_type_int)
 				if i < last_lencap_branch && t.operand_needs_ordering_snapshot(val) {
-					val = t.snapshot_transformed_expr_for_reuse(val, 'int', 'arr_len')
+					val = t.snapshot_transformed_expr_for_reuse(val, flat.source_type_int, 'arr_len')
 				}
 				len_expr = val
 			} else if child.value == 'cap' {
 				mut val := t.transform_expr_for_type(t.a.child(child, 0), flat.source_type_int)
 				if i < last_lencap_branch && t.operand_needs_ordering_snapshot(val) {
-					val = t.snapshot_transformed_expr_for_reuse(val, 'int', 'arr_cap')
+					val = t.snapshot_transformed_expr_for_reuse(val, flat.source_type_int, 'arr_cap')
 				}
 				cap_expr = val
 			} else if child.value == 'init' {
@@ -695,13 +695,13 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type_id 
 			continue
 		}
 		if int(field.default_expr) >= 0 {
-			default_id := t.specialize_struct_default_expr(normalized_type, field.default_expr)
+			default_id := t.specialize_struct_default_expr(normalized_type_source_id, field.default_expr)
 			default_node := t.a.nodes[int(default_id)]
 			if source_file := t.a.source_files[default_node.pos.id] {
 				t.cur_file = source_file.name
 			}
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
-			sum_field_type := t.struct_field_sum_type(field_type, info.module)
+			sum_field_type := t.struct_field_sum_type(field_type_source_id, info.module)
 			value = if default_node.kind == .enum_val && enum_field_type.len > 0 {
 				t.transform_enum_shorthand(default_id, default_node, enum_field_type)
 			} else if sum_field_type.len > 0 {
@@ -876,7 +876,7 @@ fn (mut t Transformer) transform_array_literal_element_isolated(elem_id flat.Nod
 // array will own and destroy its elements. Plain-data spreads keep the runtime bulk copy.
 fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id flat.NodeId, array_type_id u32, elem_type_id u32) {
 	array_type := flat.source_type_name(array_type_id)
-	elem_type := flat.source_type_name(elem_type_id)
+
 	source_is_owned_temporary := !t.expr_can_take_address(spread_id) && !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(array_type_id))
 	mut needs_element_clone := false
@@ -923,7 +923,7 @@ fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id fl
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	source_elem := t.array_get_value(stable_source, t.make_ident(idx_name), elem_type_id)
 	pending_start := t.pending_stmts.len
-	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
+	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type_id, true)
 	mut body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	body << t.make_decl_assign_typed(value_name, cloned_elem, elem_type_id)
@@ -1428,7 +1428,7 @@ fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.No
 		return none
 	}
 	rhs_id := t.a.child(&append, 1)
-	expr_type, value_type := t.or_expr_types(rhs_id, node.typ_text())
+	expr_type, value_type := t.or_expr_types(rhs_id, node.typ)
 	if !t.is_optional_type_name(flat.source_type_id(expr_type)) || value_type.len == 0 || value_type == 'void' {
 		return none
 	}
@@ -1635,7 +1635,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	lhs_addr := t.runtime_addr(lhs, flat.source_type_id(lhs_type))
 	if push_many {
 		if t.owned_array_slice_detach_needed(flat.source_type_id(elem_type)) {
-			rhs = t.snapshot_transformed_expr_for_reuse(rhs, rhs_type, 'append_source')
+			rhs = t.snapshot_transformed_expr_for_reuse(rhs, flat.source_type_id(rhs_type), 'append_source')
 			count := if t.is_fixed_array_type(flat.source_type_id(rhs_type)) {
 				t.make_fixed_array_len_expr(rhs_type)
 			} else {
@@ -1722,8 +1722,8 @@ fn (mut t Transformer) detach_owned_array_slice_for_mutation(array_value flat.No
 			'len', flat.source_type_int), t.make_int_literal(0)), t.make_block_skip_scope_drops([empty]),
 			t.make_block_skip_scope_drops([panic_stmt]))
 	} else {
-		t.mark_fixed_array_element_drops(elem_type, []string{})
-		cloned := t.request_default_clone_helper(array_value, array_type)
+		t.mark_fixed_array_element_drops(flat.source_type_id(elem_type), []string{})
+		cloned := t.request_default_clone_helper(array_value, array_type_id)
 		body << t.make_assign_without_ownership_drop(array_value, cloned)
 	}
 	t.pending_stmts << t.make_if_with_skip_ownership_drops(t.make_infix(.logical_and,
@@ -1844,7 +1844,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	if !t.optional_selector_lvalue_source(source_id) {
 		return none
 	}
-	expr_type, value_type := t.or_expr_types(source_id, lhs_node.typ_text())
+	expr_type, value_type := t.or_expr_types(source_id, lhs_node.typ)
 	if !t.is_optional_type_name(flat.source_type_id(expr_type)) {
 		return none
 	}
@@ -1999,7 +1999,6 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 }
 
 fn (mut t Transformer) clone_borrowed_array_append_value(source_id flat.NodeId, value flat.NodeId, elem_type_id u32) flat.NodeId {
-	elem_type := flat.source_type_name(elem_type_id)
 	if isnil(t.tc) || !t.expr_can_take_address(source_id) {
 		return value
 	}
@@ -2011,15 +2010,14 @@ fn (mut t Transformer) clone_borrowed_array_append_value(source_id flat.NodeId, 
 	if t.tc.ownership_expr_moves_storage(source_id, source_id) {
 		return value
 	}
-	if !t.compiler_default_clone_type_needs_work(elem_type) {
+	if !t.compiler_default_clone_type_needs_work(elem_type_id) {
 		return value
 	}
-	return t.make_compiler_default_borrowed_clone_value(value, elem_type, true)
+	return t.make_compiler_default_borrowed_clone_value(value, elem_type_id, true)
 }
 
 fn (mut t Transformer) clone_borrowed_array_append_many_value(source_id flat.NodeId, value flat.NodeId, array_type_id u32, elem_type_id u32) (flat.NodeId, bool) {
-	elem_type := flat.source_type_name(elem_type_id)
-	if !t.compiler_default_clone_type_needs_work(elem_type) {
+	if !t.compiler_default_clone_type_needs_work(elem_type_id) {
 		return value, false
 	}
 	cloned := t.clone_borrowed_projection(source_id, value, array_type_id)
@@ -2041,7 +2039,6 @@ fn (mut t Transformer) clone_borrowed_array_append_many_value(source_id flat.Nod
 // decision is made in the checker so its move/drop bookkeeping stays consistent with the
 // clone emitted here; this only materializes it.
 fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value flat.NodeId, typ_id u32) flat.NodeId {
-	typ := flat.source_type_name(typ_id)
 	if !t.borrowed_projection_clone_required(source_id, typ_id) {
 		return value
 	}
@@ -2050,7 +2047,7 @@ fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value fl
 			return cloned
 		}
 	}
-	return t.make_compiler_default_borrowed_clone_value(value, typ, true)
+	return t.make_compiler_default_borrowed_clone_value(value, typ_id, true)
 }
 
 // clone_borrowed_storage_projection also protects synthetic borrowed array headers,
@@ -2256,8 +2253,8 @@ fn (mut t Transformer) clone_owned_array_storage_value_with_pointer_borrow(value
 		]), t.make_empty())
 		owned_value = t.zero_value_for_type(flat.source_type_id(array_type))
 	} else {
-		t.mark_fixed_array_element_drops(array_type[2..], []string{})
-		owned_value = t.request_default_clone_helper(array_value, array_type)
+		t.mark_fixed_array_element_drops(flat.source_type_id(array_type[2..]), []string{})
+		owned_value = t.request_default_clone_helper(array_value, flat.source_type_id(array_type))
 	}
 	if resolved_type.starts_with('&') {
 		clone_name := t.new_temp('owned_array_escape_value')
@@ -2346,7 +2343,7 @@ fn (mut t Transformer) clone_owned_nonarray_sum_payload_for_storage(value flat.N
 			t.make_panic_stmt('cannot retain borrowed `${typ}`: `${bad_type}` requires ownership destruction but has no compatible `clone()` method'),
 		]), t.make_empty())
 	}
-	cloned := t.make_compiler_default_borrowed_clone_value(payload, typ, true)
+	cloned := t.make_compiler_default_borrowed_clone_value(payload, typ_id, true)
 	return t.mark_owned_array_storage_value(cloned, typ_id)
 }
 
@@ -2497,7 +2494,6 @@ fn (t &Transformer) owned_rvalue_slice_source(id flat.NodeId) ?flat.NodeId {
 // materialized base. The ordinary borrowed-clone path intentionally omits source cleanup because
 // named slice sources remain owned elsewhere; using it here abandons the rvalue's backing.
 fn (mut t Transformer) clone_owned_rvalue_slice_projection(value flat.NodeId, source_base_id flat.NodeId, typ_id u32) ?flat.NodeId {
-	typ := flat.source_type_name(typ_id)
 	mut slice_id := value
 	for int(slice_id) >= 0 && int(slice_id) < t.a.nodes.len {
 		node := t.a.nodes[int(slice_id)]
@@ -2524,28 +2520,26 @@ fn (mut t Transformer) clone_owned_rvalue_slice_projection(value flat.NodeId, so
 		children << t.a.child(&slice_node, i)
 	}
 	stable_slice := t.copy_node_with_children(slice_node, children)
-	cloned := t.make_compiler_default_borrowed_clone_value(stable_slice, typ, true)
+	cloned := t.make_compiler_default_borrowed_clone_value(stable_slice, typ_id, true)
 	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [stable_base], flat.source_type_void))
 	return cloned
 }
 
 fn (t &Transformer) borrowed_projection_clone_required(source_id flat.NodeId, typ_id u32) bool {
-	typ := flat.source_type_name(typ_id)
 	return !isnil(t.tc) && t.tc.ownership_expr_is_borrowed_projection(source_id)
-		&& t.compiler_default_clone_type_needs_work(typ)
+		&& t.compiler_default_clone_type_needs_work(typ_id)
 }
 
 // clone_borrowed_assignment_value also handles a local pointer alias that may refer to the
 // assignment target's indexed storage. Such replacements must be independent before the old
 // target is destroyed.
 fn (mut t Transformer) clone_borrowed_assignment_value(source_id flat.NodeId, value flat.NodeId, typ_id u32) flat.NodeId {
-	typ := flat.source_type_name(typ_id)
 	cloned := t.clone_borrowed_storage_projection(source_id, value, typ_id)
 	if cloned != value || isnil(t.tc) || !t.tc.ownership_expr_clones_borrowed_storage(source_id)
-		|| !t.compiler_default_clone_type_needs_work(typ) {
+		|| !t.compiler_default_clone_type_needs_work(typ_id) {
 		return cloned
 	}
-	return t.make_compiler_default_borrowed_clone_value(value, typ, true)
+	return t.make_compiler_default_borrowed_clone_value(value, typ_id, true)
 }
 
 // clean_array_append_lhs_type transforms clean array append lhs type data for transform.
@@ -2645,7 +2639,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	raw_value_id := t.a.child(&node, 1)
 	value_node := t.a.nodes[int(raw_value_id)]
 	short_struct_value := if value_node.kind == .field_init {
-		t.transform_trailing_field_init_struct_arg(node, 1, elem_type, elem_type)
+		t.transform_trailing_field_init_struct_arg(node, 1, elem_type_id, elem_type_id)
 	} else {
 		?flat.NodeId(none)
 	}
@@ -2694,7 +2688,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 		value = cloned_value
 		mut changes := t.make_bool_literal(true)
 		if t.owned_array_slice_detach_needed(elem_type_id) {
-			value = t.snapshot_transformed_expr_for_reuse(value, rhs_type, 'prepend_source')
+			value = t.snapshot_transformed_expr_for_reuse(value, flat.source_type_id(rhs_type), 'prepend_source')
 			count := if t.is_fixed_array_type(flat.source_type_id(rhs_type)) {
 				t.make_fixed_array_len_expr(rhs_type)
 			} else {
@@ -2751,7 +2745,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	raw_value_id := t.a.child(&node, 2)
 	value_node := t.a.nodes[int(raw_value_id)]
 	short_struct_value := if value_node.kind == .field_init {
-		t.transform_trailing_field_init_struct_arg(node, 2, elem_type, elem_type)
+		t.transform_trailing_field_init_struct_arg(node, 2, elem_type_id, elem_type_id)
 	} else {
 		?flat.NodeId(none)
 	}
@@ -2808,7 +2802,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 		value = cloned_value
 		mut changes := t.make_bool_literal(true)
 		if t.owned_array_slice_detach_needed(elem_type_id) {
-			value = t.snapshot_transformed_expr_for_reuse(value, rhs_type, 'insert_source')
+			value = t.snapshot_transformed_expr_for_reuse(value, flat.source_type_id(rhs_type), 'insert_source')
 			count := if t.is_fixed_array_type(flat.source_type_id(rhs_type)) {
 				t.make_fixed_array_len_expr(rhs_type)
 			} else {
@@ -3350,10 +3344,12 @@ fn (t &Transformer) array_append_elem_types_match(rhs_elem_type_id u32, lhs_elem
 		return true
 	}
 	rhs_clean_source_id := t.normalize_type_alias(rhs_elem_type_id)
-	rhs_clean := flat.source_type_name(rhs_clean_source_id)
+	rhs_clean_comparison_type_id := rhs_clean_source_id
+	rhs_clean := flat.source_type_name(rhs_clean_comparison_type_id)
 	lhs_clean_source_id := t.normalize_type_alias(lhs_elem_type_id)
-	lhs_clean := flat.source_type_name(lhs_clean_source_id)
-	if rhs_clean == lhs_clean {
+	lhs_clean_comparison_type_id := lhs_clean_source_id
+	lhs_clean := flat.source_type_name(lhs_clean_comparison_type_id)
+	if rhs_clean_comparison_type_id == lhs_clean_comparison_type_id {
 		return true
 	}
 	if array_append_type_is_container_shape(rhs_clean)
@@ -3807,7 +3803,7 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	mut pushed_name := elem_name
 	if elem_needs_clone {
 		pending_start := t.pending_stmts.len
-		cloned_elem := t.make_compiler_default_clone_value(t.make_ident(elem_name), elem_type, true)
+		cloned_elem := t.make_compiler_default_clone_value(t.make_ident(elem_name), flat.source_type_id(elem_type), true)
 		then_body = t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 		pushed_name = t.new_temp('filter_value')
@@ -4049,7 +4045,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	heap_backed_source := fixed && (map_result_retains_elem_address || map_side_effect_retains_elem_address)
 	source_type := if heap_backed_source { '[]${elem_type}' } else { base_type }
 	source_expr := if heap_backed_source {
-		t.fixed_array_value_to_array(base_id, base_type, source_type)
+		t.fixed_array_value_to_array(base_id, base_type_id, flat.source_type_id(source_type))
 	} else {
 		t.transform_expr(base_id)
 	}
@@ -4113,7 +4109,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		mapped_value := t.make_ident(value_name)
 		t.set_node_typ(int(mapped_value), flat.source_type_id(result_elem_type))
 		pending_start := t.pending_stmts.len
-		cloned_value := t.make_compiler_default_clone_value(mapped_value, result_elem_type, true)
+		cloned_value := t.make_compiler_default_clone_value(mapped_value, flat.source_type_id(result_elem_type), true)
 		for stmt in t.pending_stmts[pending_start..].clone() {
 			loop_body << stmt
 		}
@@ -6722,11 +6718,14 @@ fn (t &Transformer) bound_builtin_method_receiver_type(elem_type_id u32, method 
 		return none
 	}
 	clean_source_id := t.normalize_type_alias(elem_type_id)
-	clean := flat.source_type_name(clean_source_id)
+	clean_comparison_type_id_3 := clean_source_id
+	clean := flat.source_type_name(clean_comparison_type_id_3)
 	if clean.starts_with('&') {
 		return none
 	}
-	if clean in ['u8', 'i8', 'u16', 'i16', 'u32', 'int', 'u64', 'i64', 'rune'] {
+	if clean_comparison_type_id_3 in [flat.source_type_u8, flat.source_type_i8, flat.source_type_u16,
+		flat.source_type_i16, flat.source_type_u32, flat.source_type_int, flat.source_type_u64,
+		flat.source_type_i64, flat.source_type_rune] {
 		return clean_source_id
 	}
 	return none
@@ -7483,9 +7482,12 @@ fn (mut t Transformer) clamp_sort_index(name string, limit string) flat.NodeId {
 // which is not a consistent ordering: `qsort` left the other elements unsorted.
 // They take the merge sort, with the order of `array_sort_float_less_expr`.
 fn (t &Transformer) array_default_sort_runtime_helper(elem_type_id u32) ?string {
-	clean := flat.source_type_name(t.normalize_type_alias(elem_type_id))
-	if clean in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'rune',
-		'char'] {
+	clean_comparison_type_id_4 := t.normalize_type_alias(elem_type_id)
+	clean := flat.source_type_name(clean_comparison_type_id_4)
+	if clean_comparison_type_id_4 in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
+		flat.source_type_i64, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_u64, flat.source_type_isize, flat.source_type_usize, flat.source_type_rune,
+		flat.source_type_char] {
 		return 'v3_array_sort_${clean}'
 	}
 	return none
@@ -7563,13 +7565,15 @@ fn (mut t Transformer) array_sort_less_expr(cur flat.NodeId, prev flat.NodeId, e
 // array_sort_alias_less is the `<` that the alias `raw_elem_type` declares for the
 // elements of an array, which are lowered as `elem_type`.
 fn (t &Transformer) array_sort_alias_less(elem_type_id u32, raw_elem_type_id u32) ?StructOperatorCallInfo {
-	elem_type := flat.source_type_name(elem_type_id)
-	raw_elem_type := flat.source_type_name(raw_elem_type_id)
-	if raw_elem_type_id == 0 || raw_elem_type == elem_type
+	elem_type_comparison_type_id_17 := elem_type_id
+
+	raw_elem_type_comparison_type_id_2 := raw_elem_type_id
+
+	if raw_elem_type_id == 0 || raw_elem_type_comparison_type_id_2 == elem_type_comparison_type_id_17
 		|| !t.is_type_alias_name(t.trim_pointer_type(raw_elem_type_id)) {
 		return none
 	}
-	return t.struct_operator_call_info_any(flat.source_type_name(t.trim_pointer_type(raw_elem_type_id)), .lt)
+	return t.struct_operator_call_info_any(t.trim_pointer_type(raw_elem_type_id), .lt)
 }
 
 // struct_operator_call calls the operator `info` on `lhs` and `rhs`.
@@ -7584,15 +7588,14 @@ fn (mut t Transformer) struct_operator_call(info StructOperatorCallInfo, lhs fla
 }
 
 fn (mut t Transformer) array_sort_struct_less_expr(cur flat.NodeId, prev flat.NodeId, elem_type_id u32) ?flat.NodeId {
-	elem_type := flat.source_type_name(elem_type_id)
-	mut struct_type := t.struct_lookup_name(elem_type)
+	mut struct_type := t.struct_lookup_name(elem_type_id)
 	if struct_type.len == 0 {
-		struct_type = t.generic_struct_instance_name(elem_type)
+		struct_type = t.generic_struct_instance_name(elem_type_id)
 	}
 	if struct_type.len == 0 {
 		return none
 	}
-	call_info := t.struct_operator_call_info(struct_type, .lt) or { return none }
+	call_info := t.struct_operator_call_info(flat.source_type_id(struct_type), .lt) or { return none }
 	args := if call_info.reverse { [prev, cur] } else { [cur, prev] }
 	t.mark_fn_used_name(call_info.name)
 	call := t.make_call_typed(call_info.name, args, flat.source_type_bool)
@@ -7603,8 +7606,10 @@ fn (mut t Transformer) array_sort_struct_less_expr(cur flat.NodeId, prev flat.No
 }
 
 fn (mut t Transformer) array_sort_simple_operator_expr(node flat.Node, cur flat.NodeId, prev flat.NodeId, elem_type_id u32, raw_elem_type_id u32) ?flat.NodeId {
-	elem_type := flat.source_type_name(elem_type_id)
-	raw_elem_type := flat.source_type_name(raw_elem_type_id)
+	elem_type_comparison_type_id_18 := elem_type_id
+
+	raw_elem_type_comparison_type_id_3 := raw_elem_type_id
+
 	if node.kind != .infix || node.children_count < 2 {
 		return none
 	}
@@ -7616,13 +7621,13 @@ fn (mut t Transformer) array_sort_simple_operator_expr(node flat.Node, cur flat.
 	if lhs_node.value !in ['a', 'b'] || rhs_node.value !in ['a', 'b'] {
 		return none
 	}
-	struct_type := t.struct_lookup_name(elem_type)
+	struct_type := t.struct_lookup_name(elem_type_id)
 	call_info := if struct_type.len > 0 {
-		t.struct_operator_call_info(struct_type, node.op) or { return none }
-	} else if raw_elem_type_id != 0 && raw_elem_type != elem_type
+		t.struct_operator_call_info(flat.source_type_id(struct_type), node.op) or { return none }
+	} else if raw_elem_type_id != 0 && raw_elem_type_comparison_type_id_3 != elem_type_comparison_type_id_18
 		&& t.is_type_alias_name(t.trim_pointer_type(raw_elem_type_id)) {
 		// The elements are an alias, lowered as its base type: `UUID` as `[16]u8`.
-		t.struct_operator_call_info_any(flat.source_type_name(t.trim_pointer_type(raw_elem_type_id)), node.op) or {
+		t.struct_operator_call_info_any(t.trim_pointer_type(raw_elem_type_id), node.op) or {
 			return none
 		}
 	} else {
@@ -7635,12 +7640,23 @@ fn (mut t Transformer) array_sort_simple_operator_expr(node flat.Node, cur flat.
 
 // array_sort_compare_less_expr supports array sort compare less expr handling for Transformer.
 fn (mut t Transformer) array_sort_compare_less_expr(cur flat.NodeId, prev flat.NodeId, elem_type_id u32, cmp flat.NodeId) flat.NodeId {
-	elem_type := flat.source_type_name(elem_type_id)
+	elem_type_comparison_type_id_19 := elem_type_id
+
 	cmp_cur_type_source_id, cmp_prev_type_source_id := t.array_sort_compare_arg_types(cmp, elem_type_id)
-	cmp_cur_type := flat.source_type_name(cmp_cur_type_source_id)
-	cmp_prev_type := flat.source_type_name(cmp_prev_type_source_id)
-	cur_arg := if cmp_cur_type == elem_type { cur } else { t.make_prefix(.amp, cur) }
-	prev_arg := if cmp_prev_type == elem_type { prev } else { t.make_prefix(.amp, prev) }
+	cmp_cur_type_comparison_type_id := cmp_cur_type_source_id
+
+	cmp_prev_type_comparison_type_id := cmp_prev_type_source_id
+
+	cur_arg := if cmp_cur_type_comparison_type_id == elem_type_comparison_type_id_19 {
+		cur
+	} else {
+		t.make_prefix(.amp, cur)
+	}
+	prev_arg := if cmp_prev_type_comparison_type_id == elem_type_comparison_type_id_19 {
+		prev
+	} else {
+		t.make_prefix(.amp, prev)
+	}
 	if int(cmp) >= 0 {
 		cmp_node := t.a.nodes[int(cmp)]
 		if cmp_node.kind == .lambda_expr && cmp_node.children_count >= 3 {

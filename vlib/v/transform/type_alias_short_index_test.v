@@ -18,7 +18,7 @@ fn test_type_aliases_with_short_name_keeps_alias_order() {
 	assert aliases.map(it.name) == ['foo.Id', 'Id', 'bar.Id']
 	assert aliases.map(it.target_text()) == ['int', 'u64', 'shared Store']
 	assert t.type_aliases_with_short_name('Missing').len == 0
-	assert t.shared_alias_storage_type('Id') == '&Store'
+	assert t.shared_alias_storage_type(flat.source_type_id('Id')) == '&Store'
 }
 
 fn test_type_aliases_with_short_name_rescans_a_stale_index() {

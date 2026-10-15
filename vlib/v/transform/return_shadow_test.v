@@ -10,10 +10,10 @@ fn test_shadowed_err_in_value_block_is_result_payload() {
 	t.set_var_type_binding('err', flat.source_type_id('IError'), flat.source_type_id('IError'), true)
 	err_id := t.make_ident('err')
 	t.set_node_typ(int(err_id), flat.source_type_id('IError'))
-	assert t.return_expr_is_propagated_err(err_id, 'IError')
+	assert t.return_expr_is_propagated_err(err_id, flat.source_type_id('IError'))
 	decl := t.make_decl_assign('err', t.make_ident('payload'))
 	block := t.make_block([decl, t.make_expr_stmt(err_id)])
-	assert !t.return_expr_is_propagated_err(block, 'IError')
+	assert !t.return_expr_is_propagated_err(block, flat.source_type_id('IError'))
 }
 
 fn test_multi_return_shadowed_err_in_value_block_is_result_payload() {
@@ -26,7 +26,7 @@ fn test_multi_return_shadowed_err_in_value_block_is_result_payload() {
 	decl := t.make_multi_return_assign([t.make_ident('_'), err_id], t.make_ident('payload_pair'))
 	t.a.nodes[int(decl)].kind = .decl_assign
 	block := t.make_block([decl, t.make_expr_stmt(err_id)])
-	assert !t.return_expr_is_propagated_err(block, 'IError')
+	assert !t.return_expr_is_propagated_err(block, flat.source_type_id('IError'))
 }
 
 fn test_multi_value_rhs_err_does_not_shadow_implicit_error() {
@@ -42,5 +42,5 @@ fn test_multi_value_rhs_err_does_not_shadow_implicit_error() {
 	])
 	t.a.nodes[int(decl)].kind = .decl_assign
 	block := t.make_block([decl, t.make_expr_stmt(err_id)])
-	assert t.return_expr_is_propagated_err(block, 'IError')
+	assert t.return_expr_is_propagated_err(block, flat.source_type_id('IError'))
 }

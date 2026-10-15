@@ -40,7 +40,7 @@ fn test_fixed_array_reference_iteration_escape_uses_checked_backing_types() {
 				tc.register_synth_type(backing, fixed)
 			}
 			container := if sliced {
-				t.make_range_index(backing, t.make_int_literal(0), flat.empty_node, '[]int')
+				t.make_range_index(backing, t.make_int_literal(0), flat.empty_node, flat.source_type_id('[]int'))
 			} else {
 				backing
 			}
@@ -351,7 +351,7 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 		deref := t.make_prefix(.mul, pointer)
 		t.set_node_typ(int(deref), flat.source_type_id('[3]int'))
 		tc.register_synth_type(deref, fixed)
-		range := t.make_range_index(deref, t.make_int_literal(1), flat.empty_node, '[]int')
+		range := t.make_range_index(deref, t.make_int_literal(1), flat.empty_node, flat.source_type_id('[]int'))
 		tc.register_synth_type(range, types.Type(types.Array{ elem_type: types.Type(types.int_) }))
 		t.escaping_fixed_array_view_sources.clear()
 		t.mark_fixed_array_reference_argument_escape(range, array_ref, map[string]bool{}, map[string][]string{}, map[string]string{}, {
@@ -368,7 +368,7 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 		deref := t.make_prefix(.mul, cast)
 		t.set_node_typ(int(deref), flat.source_type_id('[3]int'))
 		tc.register_synth_type(deref, fixed)
-		range := t.make_range_index(deref, t.make_int_literal(1), flat.empty_node, '[]int')
+		range := t.make_range_index(deref, t.make_int_literal(1), flat.empty_node, flat.source_type_id('[]int'))
 		tc.register_synth_type(range, types.Type(types.Array{ elem_type: types.Type(types.int_) }))
 		t.escaping_fixed_array_view_sources.clear()
 		t.mark_fixed_array_reference_argument_escape(range, array_ref, map[string]bool{}, map[string][]string{}, map[string]string{}, {
@@ -589,11 +589,11 @@ fn test_fixed_array_range_reference_headers_are_allocated_before_wrapping() {
 		for explicit in [false, true] {
 			value := t.make_ident('fixed')
 			tc.register_synth_type(value, fixed)
-			range := t.make_range_index(value, t.make_int_literal(1), flat.empty_node, '[]int')
+			range := t.make_range_index(value, t.make_int_literal(1), flat.empty_node, flat.source_type_id('[]int'))
 			tc.register_synth_type(range, array)
 			arg := if explicit { t.make_prefix(.amp, range) } else { range }
-			assert t.fixed_array_reference_arg_needs_durable_header(arg, '[]int')
-			wrapped := t.transform_call_arg_for_param(arg, wrapper)
+			assert t.fixed_array_reference_arg_needs_durable_header(arg, flat.source_type_id('[]int'))
+			wrapped := t.transform_call_arg_for_param(arg, flat.source_type_id(wrapper))
 			wrapped_node := t.a.nodes[int(wrapped)]
 			assert wrapped_node.kind == .struct_init
 			assert wrapped_node.typ_text() == wrapper

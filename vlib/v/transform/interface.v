@@ -21,24 +21,28 @@ fn (t &Transformer) is_builtin_ierror_interface_name(name_id u32) bool {
 }
 
 fn (t &Transformer) interface_cast_matches_target(cast_type_id u32, iface_name_id u32) bool {
-	iface_name := flat.source_type_name(iface_name_id)
+	iface_name_comparison_type_id := iface_name_id
+
 	cast_iface_source_id := t.resolve_interface_type_name(cast_type_id)
-	cast_iface := flat.source_type_name(cast_iface_source_id)
+	cast_iface_comparison_type_id := cast_iface_source_id
+
 	if cast_iface_source_id != 0 {
-		return cast_iface == iface_name
+		return cast_iface_comparison_type_id == iface_name_comparison_type_id
 	}
-	clean_cast := flat.source_type_name(t.trim_pointer_type(t.normalize_type_alias(cast_type_id)))
-	clean_iface := flat.source_type_name(t.trim_pointer_type(t.normalize_type_alias(iface_name_id)))
-	if clean_cast == clean_iface {
+	clean_cast_comparison_type_id := t.trim_pointer_type(t.normalize_type_alias(cast_type_id))
+	clean_cast := flat.source_type_name(clean_cast_comparison_type_id)
+	clean_iface_comparison_type_id := t.trim_pointer_type(t.normalize_type_alias(iface_name_id))
+	clean_iface := flat.source_type_name(clean_iface_comparison_type_id)
+	if clean_cast_comparison_type_id == clean_iface_comparison_type_id {
 		return true
 	}
 	return !clean_cast.contains('.') && clean_cast == clean_iface.all_after_last('.')
 }
 
-fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name string, target_type string) flat.NodeId {
-	target_depth, _ := pointer_type_depth_and_base(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(target_type))))
+fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name string, target_type_id u32) flat.NodeId {
+	target_depth, _ := pointer_type_depth_and_base(flat.source_type_name(t.normalize_type_alias(target_type_id)))
 	if target_depth > 1 {
-		mut current := t.heap_copy_interface_expr(expr, iface_name, '&${iface_name}')
+		mut current := t.heap_copy_interface_expr(expr, iface_name, flat.source_type_id('&${iface_name}'))
 		mut current_type := '&${iface_name}'
 		for _ in 1 .. target_depth {
 			tmp_name := t.new_temp('iface_ref')
@@ -48,12 +52,12 @@ fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name str
 			current_type = '&${current_type}'
 			current = t.make_cast(flat.source_type_id(current_type), dup, flat.source_type_id(current_type))
 		}
-		return t.make_cast(flat.source_type_id(target_type), current, flat.source_type_id(target_type))
+		return t.make_cast(target_type_id, current, target_type_id)
 	}
 	if t.a.nodes[int(expr)].kind == .struct_init {
 		addr := t.make_prefix(.amp, expr)
-		cast := t.make_cast(flat.source_type_id(target_type), addr, flat.source_type_id(target_type))
-		t.set_node_typ(int(cast), flat.source_type_id(target_type))
+		cast := t.make_cast(target_type_id, addr, target_type_id)
+		t.set_node_typ(int(cast), target_type_id)
 		return cast
 	}
 	tmp_name := t.new_temp('iface_box')
@@ -61,8 +65,8 @@ fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name str
 	addr := t.make_prefix(.amp, t.make_ident(tmp_name))
 	size := t.make_sizeof_type(flat.source_type_id(iface_name))
 	dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], flat.source_type_voidptr)
-	cast := t.make_cast(flat.source_type_id(target_type), dup, flat.source_type_id(target_type))
-	t.set_node_typ(int(cast), flat.source_type_id(target_type))
+	cast := t.make_cast(target_type_id, dup, target_type_id)
+	t.set_node_typ(int(cast), target_type_id)
 	return cast
 }
 
@@ -124,11 +128,11 @@ fn (t &Transformer) interface_pointer_source_root_is_local(id flat.NodeId) bool 
 	}
 }
 
-fn (t &Transformer) interface_target_should_share_source(id flat.NodeId, target_type string) bool {
-	if int(id) < 0 || target_type == '' || isnil(t.tc) {
+fn (t &Transformer) interface_target_should_share_source(id flat.NodeId, target_type_id u32) bool {
+	if int(id) < 0 || target_type_id == u32(0) || isnil(t.tc) {
 		return false
 	}
-	iface_name_source_id := t.resolve_interface_type_name(flat.source_type_id(target_type))
+	iface_name_source_id := t.resolve_interface_type_name(target_type_id)
 	iface_name := flat.source_type_name(iface_name_source_id)
 	if iface_name_source_id == 0 {
 		return false
@@ -240,7 +244,8 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	}
 	target_is_ptr := flat.source_type_name(t.normalize_type_alias(target_type_id)).starts_with('&')
 	iface_name_source_id := t.resolve_interface_type_name(target_type_id)
-	iface_name := flat.source_type_name(iface_name_source_id)
+	iface_name_comparison_type_id_3 := iface_name_source_id
+	iface_name := flat.source_type_name(iface_name_comparison_type_id_3)
 	if iface_name_source_id == 0 {
 		return none
 	}
@@ -278,7 +283,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 				literal := t.make_interface_literal_from_expr(child_id, iface_name, false) or {
 					return none
 				}
-				return t.heap_copy_interface_expr(literal, iface_name, target_type)
+				return t.heap_copy_interface_expr(literal, iface_name, target_type_id)
 			}
 		}
 		return t.transform_expr(id)
@@ -452,7 +457,8 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return expr
 	}
 	source_iface_source_id := t.resolve_interface_type_name(flat.source_type_id(source_type))
-	source_iface := flat.source_type_name(source_iface_source_id)
+	source_iface_comparison_type_id := source_iface_source_id
+
 	if !target_is_ptr && source_iface_source_id == 0
 		&& t.borrowed_projection_clone_required(id, flat.source_type_id(source_type)) {
 		// Clone the concrete projection before boxing it. Interface boxing only copies the
@@ -462,7 +468,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		t.set_node_typ(int(cloned), flat.source_type_id(source_type))
 		return t.transform_interface_value_for_type(cloned, target_type_id, false)
 	}
-	if source_iface == iface_name {
+	if source_iface_comparison_type_id == iface_name_comparison_type_id_3 {
 		// The target needs the complete interface value, including its type tag,
 		// rather than the concrete payload selected by a smartcast.
 		expr := if source_is_smartcast_interface {
@@ -481,7 +487,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			t.set_node_typ(int(addr), target_type_id)
 			return addr
 		}
-		return t.heap_copy_interface_expr(expr, iface_name, target_type)
+		return t.heap_copy_interface_expr(expr, iface_name, target_type_id)
 	}
 	if source_iface_source_id != 0 {
 		expr := if source_is_smartcast_interface {
@@ -489,9 +495,9 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		} else {
 			t.transform_expr(id)
 		}
-		if converted := t.convert_interface_expr_to_interface(expr, source_type, iface_name) {
+		if converted := t.convert_interface_expr_to_interface(expr, flat.source_type_id(source_type), iface_name) {
 			if target_is_ptr {
-				return t.heap_copy_interface_expr(converted, iface_name, target_type)
+				return t.heap_copy_interface_expr(converted, iface_name, target_type_id)
 			}
 			return converted
 		}
@@ -505,11 +511,12 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	// or stored in a global, e.g. `default_rng = &PRNG(rng)`). Heap-allocate the
 	// interface box rather than taking the address of a local temporary, which
 	// would dangle.
-	return t.heap_copy_interface_expr(literal, iface_name, target_type)
+	return t.heap_copy_interface_expr(literal, iface_name, target_type_id)
 }
 
-fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.NodeId, source_type string, target_iface string) ?flat.NodeId {
-	source_iface_source_id_2 := t.resolve_interface_type_name(flat.source_type_id(source_type))
+fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.NodeId, source_type_id_2 u32, target_iface string) ?flat.NodeId {
+	source_type := flat.source_type_name(source_type_id_2)
+	source_iface_source_id_2 := t.resolve_interface_type_name(source_type_id_2)
 	source_iface := flat.source_type_name(source_iface_source_id_2)
 	if source_iface_source_id_2 == 0 || target_iface == '' || isnil(t.tc) {
 		return none
@@ -522,7 +529,7 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 		return none
 	}
 	source_carries_fields := t.source_interface_carries_target_fields(source_iface, target_iface)
-	base := t.stable_transformed_expr_for_reuse(source_expr, flat.source_type_id(source_type), 'iface_cast')
+	base := t.stable_transformed_expr_for_reuse(source_expr, source_type_id_2, 'iface_cast')
 	op := if source_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
 	object := t.make_selector_op(base, '_object', flat.source_type_voidptr, op)
 	init := if source_carries_fields {
@@ -558,9 +565,9 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 			]
 			for field in t.interface_runtime_field_list(target_iface) {
 				field_type_source_id_2 := t.normalize_type_alias(field.typ.source_type_id())
-				field_type := flat.source_type_name(field_type_source_id_2)
+
 				impl_field := t.make_selector_op(impl_ptr, field.name, field_type_source_id_2, .arrow)
-				field_value := t.null_safe_interface_pointer_field(object, impl_field, field_type)
+				field_value := t.null_safe_interface_pointer_field(object, impl_field, field_type_source_id_2)
 				fields << t.make_sum_literal_field(field.name, field_value, field_type_source_id_2)
 			}
 			mapping_init := t.make_interface_conversion_init(target_iface, fields)
@@ -649,7 +656,8 @@ fn (mut t Transformer) interface_conversion_impl_mappings(source_iface string, t
 	return result
 }
 
-fn (mut t Transformer) make_interface_target_is_check(source_expr flat.NodeId, source_type string, source_iface string, target_iface string) ?flat.NodeId {
+fn (mut t Transformer) make_interface_target_is_check(source_expr flat.NodeId, source_type_id u32, source_iface string, target_iface string) ?flat.NodeId {
+	source_type := flat.source_type_name(source_type_id)
 	mappings := t.interface_conversion_impl_mappings(source_iface, target_iface)
 	if mappings.len == 0 {
 		return none
@@ -694,7 +702,8 @@ fn (t &Transformer) resolve_interface_pattern_interface(pattern string) ?string 
 }
 
 // transform_global_amp_interface_cast supports transform_global_amp_interface_cast handling.
-fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, target_type string) ?flat.NodeId {
+fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, target_type_id u32) ?flat.NodeId {
+	target_type := flat.source_type_name(target_type_id)
 	mut cast := node
 	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
 		cast = t.a.nodes[int(t.a.child(&node, 0))]
@@ -721,7 +730,7 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 	}
 	start := t.a.children.len
 	t.a.children << literal
-	ptr_type := if target_type != '' { target_type } else { '&${iface_name}' }
+	ptr_type := if target_type_id != u32(0) { target_type } else { '&${iface_name}' }
 	return t.a.add_node(flat.Node{
 		kind:           .prefix
 		op:             .amp
@@ -782,10 +791,10 @@ fn (t &Transformer) heaped_amp_local_address_child(id flat.NodeId) ?flat.NodeId 
 	return none
 }
 
-fn (mut t Transformer) null_safe_interface_pointer_field(source flat.NodeId, value flat.NodeId, field_type string) flat.NodeId {
+fn (mut t Transformer) null_safe_interface_pointer_field(source flat.NodeId, value flat.NodeId, field_type_id u32) flat.NodeId {
 	cond := t.make_infix(.ne, source, t.a.add(.nil_literal))
 	then_block := t.make_block([t.make_expr_stmt(value)])
-	else_block := t.make_block([t.make_expr_stmt(t.zero_value_for_type(flat.source_type_id(field_type)))])
+	else_block := t.make_block([t.make_expr_stmt(t.zero_value_for_type(field_type_id))])
 	start := t.a.children.len
 	t.a.children << cond
 	t.a.children << then_block
@@ -794,7 +803,7 @@ fn (mut t Transformer) null_safe_interface_pointer_field(source flat.NodeId, val
 		kind:           .if_expr
 		children_start: start
 		children_count: 3
-		typ:            flat.source_type_id(field_type)
+		typ:            field_type_id
 	})
 }
 
@@ -941,7 +950,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		addr := t.make_prefix(.amp, source)
 		size := t.make_sizeof_type(flat.source_type_id(concrete_type))
 		dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], flat.source_type_voidptr)
-		if t.interface_box_object_cast_needs_raw_call(concrete_type) {
+		if t.interface_box_object_cast_needs_raw_call(flat.source_type_id(concrete_type)) {
 			t.set_node_typ(int(dup), flat.source_type_id('&${concrete_type}'))
 			dup
 		} else {
@@ -969,14 +978,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	field_ids << t.make_sum_literal_field('_object', object_expr, flat.source_type_id('&${concrete_type}'))
 	for field in fields {
 		field_type_source_id := t.normalize_type_alias(field.typ.source_type_id())
-		field_type := flat.source_type_name(field_type_source_id)
+
 		mut field_value := if concrete_type == 'voidptr' {
 			t.zero_value_for_type(field_type_source_id)
 		} else {
 			t.make_selector(field_base, field.name, field_type_source_id)
 		}
 		if source_has_pointer_storage && concrete_type != 'voidptr' {
-			field_value = t.null_safe_interface_pointer_field(source, field_value, field_type)
+			field_value = t.null_safe_interface_pointer_field(source, field_value, field_type_source_id)
 		}
 		field_ids << t.make_sum_literal_field(field.name, field_value, field_type_source_id)
 	}
@@ -993,7 +1002,8 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	})
 }
 
-fn (t &Transformer) interface_box_object_cast_needs_raw_call(concrete_type string) bool {
+fn (t &Transformer) interface_box_object_cast_needs_raw_call(concrete_type_id u32) bool {
+	concrete_type := flat.source_type_name(concrete_type_id)
 	if isnil(t.tc) {
 		return false
 	}
@@ -1154,7 +1164,7 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 					args := t.transform_receiver_method_args(node, base_id, method_name)
 					ret_type := t.receiver_method_return_type(method_name, node.typ_text())
 					t.mark_fn_used_name(method_name)
-					return t.make_receiver_method_call_typed(node, method_name, args, ret_type)
+					return t.make_receiver_method_call_typed(node, method_name, args, flat.source_type_id(ret_type))
 				}
 			}
 		}
@@ -1185,12 +1195,12 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 		|| (original_base.kind == .selector && original_base.children_count > 0
 			&& t.expr_or_selector_base_has_smartcast(t.a.child(&original_base, 0))) {
 		// Keep the containing object's projection when calling through an interface field.
-		t.retype_interface_receiver(base, interface_receiver_type)
+		t.retype_interface_receiver(base, flat.source_type_id(interface_receiver_type))
 	} else if t.selector_reads_interface_field(original_base) {
 		// A field read through an interface value was lowered to the field of the
 		// object that the value holds: the receiver is that field, not the copy of it
 		// in the interface value.
-		t.retype_interface_receiver(base, interface_receiver_type)
+		t.retype_interface_receiver(base, flat.source_type_id(interface_receiver_type))
 	} else if original_base.kind == .selector && original_base.children_count > 0
 		&& t.a.child_node(&original_base, 0).kind == .ident {
 		original_ident := t.a.child_node(&original_base, 0)
@@ -1285,13 +1295,13 @@ fn (t &Transformer) interface_receiver_has_variant_projection(id flat.NodeId) bo
 	return false
 }
 
-fn (mut t Transformer) retype_interface_receiver(id flat.NodeId, typ string) flat.NodeId {
+fn (mut t Transformer) retype_interface_receiver(id flat.NodeId, typ_id u32) flat.NodeId {
 	node := t.a.nodes[int(id)]
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		children << t.a.child(&node, i)
 	}
 	retyped := t.copy_node_with_children(node, children)
-	t.set_node_typ(int(retyped), flat.source_type_id(typ))
+	t.set_node_typ(int(retyped), typ_id)
 	return retyped
 }
