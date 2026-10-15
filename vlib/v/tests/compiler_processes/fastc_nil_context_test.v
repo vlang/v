@@ -50,6 +50,33 @@ fn main() { assert Tool.accept(nil); println("ok") }
 		FastcNilCase{'left_comparison', r'module main
 fn main() { p := voidptr(0); ready := true; assert nil == p; assert nil != voidptr(1); assert nil == p && ready; println("ok") }
 ', false},
+		FastcNilCase{'left_struct_comparison', r'module main
+struct Holder { p voidptr }
+fn main() {
+ assert nil == Holder{}.p
+ assert nil == Holder{p: voidptr(0)}.p
+ if nil == Holder{}.p { println("ok") } else { panic("unexpected pointer") }
+}
+', false},
+		FastcNilCase{'left_nested_struct_comparison', r'module main
+struct Holder { p voidptr }
+struct Wrapper { item Holder }
+struct Counter { mut: calls int }
+fn touched(mut counter Counter) bool { counter.calls++; return true }
+fn main() {
+ ready := true
+ assert nil == Wrapper{item: Holder{p: voidptr(0)}}.item.p && ready
+ mut counter := Counter{}
+ assert (nil != Wrapper{item: Holder{p: voidptr(0)}}.item.p && touched(mut counter)) || ready
+ assert counter.calls == 0
+ println("ok")
+}
+', false},
+		FastcNilCase{'left_alias_struct_comparison', r'module main
+type Handle = voidptr
+struct Holder { p Handle }
+fn main() { ready := true; assert nil == Holder{p: Handle(0)}.p && ready; println("ok") }
+', false},
 		FastcNilCase{'c_call', r'module main
 #include <stdlib.h>
 fn C.free(p voidptr)

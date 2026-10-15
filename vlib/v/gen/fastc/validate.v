@@ -109,12 +109,17 @@ fn (g &Parser) nil_starts_pointer_comparison(previous token.Token) bool {
 	mut depth := 0
 	for {
 		kind := look.scan()
-		if kind == .eof || (depth == 0 && kind in [.semicolon, .comma, .rpar, .rsbr, .rcbr, .lcbr,
-			.and, .logical_or]) {
+		if kind == .lcbr && depth == 0 {
+			last_kind := if tokens.len > 0 { tokens.last().tok } else { token.Token.unknown }
+			last_lit := if tokens.len > 0 { tokens.last().lit } else { '' }
+			if !g.condition_brace_opens_struct_literal(tokens, last_kind, last_lit) { break }
+		}
+		if kind == .eof || (depth == 0 && kind in [.semicolon, .comma, .rpar, .rsbr, .rcbr, .and,
+			.logical_or]) {
 			break
 		}
-		if kind in [.lpar, .lsbr] { depth++ }
-		if kind in [.rpar, .rsbr] { depth-- }
+		if kind in [.lpar, .lsbr, .lcbr] { depth++ }
+		if kind in [.rpar, .rsbr, .rcbr] { depth-- }
 		tokens << FastcExpressionToken{ tok: kind, lit: look.lit }
 	}
 	typ := g.infer_expression_type(tokens) or { return false }

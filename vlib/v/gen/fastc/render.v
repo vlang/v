@@ -2790,6 +2790,35 @@ fn (g &Parser) render_nil_comparison(tokens []FastcExpressionToken) ?FastcRender
 					return none
 				}
 				value_tokens := if left_is_nil { right_tokens } else { left_tokens }
+				if !fastc_tokens_have_top_level_boolean_or_membership(tokens)
+					&& fastc_expression_tokens_contain(value_tokens, .lcbr) {
+					typ := g.infer_expression_type(value_tokens) or { return none }
+					layout := g.underlying_alias_type(typ)
+					if layout == 'voidptr' || fastc_is_pointer_type(layout) {
+						// Lower the literal prefix once, then read its pointer-valued member chain.
+						mut literal_end := -1
+						for j, value in value_tokens {
+							if value.tok == .lcbr {
+								literal_end = fastc_matching_delimiter(value_tokens, j, .lcbr, .rcbr) or { return none }
+								break
+							}
+						}
+						if literal_end < 0 || literal_end + 1 >= value_tokens.len { return none }
+						literal := g.render_struct_literal_expression(value_tokens[..literal_end + 1]) or { return none }
+						mut member_tokens := [FastcExpressionToken{
+							tok:    .name
+							source: '(${literal.source})'
+							typ:    literal.typ
+						}]
+						member_tokens << value_tokens[literal_end + 1..]
+						pointer := g.render_member_receiver(member_tokens) or { return none }
+						operator := if item.tok == .eq { '==' } else { '!=' }
+						return FastcRenderedExpression{
+							source: '((${pointer}) ${operator} NULL)'
+							typ:    flat.source_type_bool
+						}
+					}
+				}
 				// Only a bare `mut T` reference parameter needs special handling: it is a C `T*`,
 				// but the raw renderer auto-dereferences it, so `node == nil` becomes an invalid
 				// `*node == NULL`. Every other operand (a member chain, an already-pointer local)
