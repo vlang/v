@@ -5309,9 +5309,9 @@ fn test_struct_lookup_name_prefers_selected_struct_over_imported_enum_short_name
 	t.enum_types['Lang'] = ['en']
 	t.enum_types['other.Lang'] = ['en']
 
-	assert t.struct_lookup_name(flat.source_type_id('Lang')) == 'shapes.Lang'
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('Lang'))) == 'shapes.Lang'
 	t.cur_file = 'without_selective_import.v'
-	assert t.struct_lookup_name(flat.source_type_id('Lang')) == ''
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('Lang'))) == ''
 }
 
 fn test_struct_lookup_name_resolves_alias_before_imported_enum_short_name() {
@@ -5329,8 +5329,8 @@ fn test_struct_lookup_name_resolves_alias_before_imported_enum_short_name() {
 	t.enum_types['Count'] = ['one']
 	t.enum_types['other.Count'] = ['one']
 
-	assert t.struct_lookup_name(flat.source_type_id('Lang')) == 'Record'
-	assert t.struct_lookup_name(flat.source_type_id('Count')) == ''
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('Lang'))) == 'Record'
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('Count'))) == ''
 }
 
 fn test_struct_lookup_name_preserves_builtin_struct_over_imported_enum_short_name() {
@@ -5348,14 +5348,14 @@ fn test_struct_lookup_name_preserves_builtin_struct_over_imported_enum_short_nam
 	t.enum_types['SliceIndex'] = ['value']
 	t.enum_types['other.SliceIndex'] = ['value']
 
-	assert t.struct_lookup_name(flat.source_type_id('SliceIndex')) == 'SliceIndex'
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('SliceIndex'))) == 'SliceIndex'
 	t.enum_types['sample.SliceIndex'] = ['local']
-	assert t.struct_lookup_name(flat.source_type_id('SliceIndex')) == ''
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('SliceIndex'))) == ''
 	t.enum_types.delete('sample.SliceIndex')
 	tc.file_selective_imports[file_import_key('sample.v', 'SliceIndex')] = [
 		'other.SliceIndex',
 	]
-	assert t.struct_lookup_name(flat.source_type_id('SliceIndex')) == ''
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('SliceIndex'))) == ''
 }
 
 fn test_merge_worker_relocates_allocation_warnings() {

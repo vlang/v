@@ -3,6 +3,7 @@ module fastc
 import os
 import strings
 import v.pref
+import v.flat
 
 // fastc_is_test_harness_function reports the functions of a test file its main calls.
 fn fastc_is_test_harness_function(name string) bool {
@@ -71,7 +72,7 @@ struct FastcTestFunction {
 	path         string
 	position     int
 	failure_line int
-	return_type  string
+	return_type  u32
 }
 
 // fastc_compare_test_functions orders test functions as their declarations are ordered.
@@ -124,7 +125,7 @@ fn fastc_synthesized_test_main(functions map[string]FastcFunctionSignature, func
 			path:         signature.path
 			position:     signature.position
 			failure_line: fastc_test_failure_line(texts[signature.path], signature.position)
-			return_type:  signature.return_type_text()
+			return_type:  signature.return_type
 		}
 	}
 	tests.sort_with_compare(fastc_compare_test_functions)
@@ -184,15 +185,16 @@ fn fastc_synthesized_test_main(functions map[string]FastcFunctionSignature, func
 			out.writeln('\t\t\t${before_each}();')
 		}
 		out.writeln('\t\t\tif (v_fastc_test_failures == before) {')
-		if test.return_type in ['__v_result', 'Option'] {
+		return_type := flat.source_type_name(test.return_type)
+		if return_type in ['__v_result', 'Option'] {
 			// A test returning an error reports it as the C harness does.
-			message := if test.return_type == '__v_result' {
+			message := if return_type == '__v_result' {
 				'builtin__IError_msg(v_fastc_test_result.err)'
 			} else {
 				'_S("none")'
 			}
 			path_literal := test.path.replace('\\', '\\\\').replace('"', '\\"')
-			out.writeln('\t\t\t\t${test.return_type} v_fastc_test_result = ${test.c_name}();')
+			out.writeln('\t\t\t\t${return_type} v_fastc_test_result = ${test.c_name}();')
 			out.writeln('\t\t\t\tif (v_fastc_test_result.state != 0) {')
 			out.writeln('\t\t\t\t\tstring v_fastc_test_error = ${message};')
 			out.writeln('\t\t\t\t\tfprintf(stderr, "%s:%d: fn %s failed propagation with error: %.*s\\n", "${path_literal}", ${test.failure_line}, "${test.name}", (int)v_fastc_test_error.len, (char *)v_fastc_test_error.str);')

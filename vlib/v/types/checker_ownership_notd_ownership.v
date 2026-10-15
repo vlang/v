@@ -52,14 +52,14 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_fn_exit(_ string) []Ownership
 	return []OwnershipDropEntry{}
 }
 
-// ownership_drop_type_names returns no drop receiver types when ownership checking is disabled.
-pub fn (tc &TypeChecker) ownership_drop_type_names() []string {
-	return []string{}
+// ownership_drop_type_names returns no drop receiver source IDs when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_drop_type_names() []u32 {
+	return []u32{}
 }
 
-// ownership_drop_value_type_names_by_fn returns no per-function drop types when ownership checking is disabled.
-pub fn (tc &TypeChecker) ownership_drop_value_type_names_by_fn() map[string][]string {
-	return map[string][]string{}
+// ownership_drop_value_type_names_by_fn returns no per-function drop source IDs when ownership checking is disabled.
+pub fn (tc &TypeChecker) ownership_drop_value_type_names_by_fn() map[string][]u32 {
+	return map[string][]u32{}
 }
 
 // ownership_has_return_node reports no recorded return-node cleanup when ownership checking is disabled.

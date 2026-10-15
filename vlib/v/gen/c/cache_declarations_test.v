@@ -138,7 +138,7 @@ fn test_cache_demand_keeps_shared_wrapper_payload_layouts() {
 	g.a = &a
 	g.tc = &tc
 	g.cache_decl_demand = true
-	g.register_shared_type_name('sample.Box', 'sample')
+	g.register_shared_type_name(flat.source_type_id('sample.Box'), 'sample')
 	g.finish_cache_declaration_demand('')
 	names := g.c_struct_decl_names()
 	assert 'sample.Box' in names, names.str()

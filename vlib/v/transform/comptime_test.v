@@ -39,11 +39,11 @@ fn test_comptime_field_function_type_keeps_declaring_module() {
 	t := Transformer{
 		a: &a
 	}
-	qualified := t.comptime_field_type_id_key('?fn (mut SSLListener, string) !&SSLCerts', 'mbedtls')
+	qualified := flat.source_type_name(t.comptime_field_type_id_key(flat.source_type_id('?fn (mut SSLListener, string) !&SSLCerts'), 'mbedtls'))
 	assert qualified == '?fn(mut mbedtls.SSLListener, string) !&mbedtls.SSLCerts'
-	assert t.comptime_field_type_id_key('Registry[string]', 'eventbus') == 'eventbus.Registry[string]'
-	assert t.comptime_field_type_id_key('Container[T]', 'eventbus') == 'eventbus.Container[T]'
-	assert t.comptime_field_type_id_key('!(Item, []u8)', 'main') == '!(Item, []u8)'
+	assert flat.source_type_name(t.comptime_field_type_id_key(flat.source_type_id('Registry[string]'), 'eventbus')) == 'eventbus.Registry[string]'
+	assert flat.source_type_name(t.comptime_field_type_id_key(flat.source_type_id('Container[T]'), 'eventbus')) == 'eventbus.Container[T]'
+	assert flat.source_type_name(t.comptime_field_type_id_key(flat.source_type_id('!(Item, []u8)'), 'main')) == '!(Item, []u8)'
 }
 
 fn test_comptime_field_type_id_keeps_custom_types_above_builtin_range() {
@@ -63,8 +63,8 @@ fn test_comptime_field_type_id_keeps_specialized_main_type_provenance() {
 	mut t := Transformer{
 		a: &a
 	}
-	t.active_specialization_main_types['MyParams'] = true
-	assert t.comptime_field_type_id_key('MyParams', 'reflection') == 'main.MyParams'
+	t.active_specialization_main_types[flat.source_type_id('MyParams')] = true
+	assert flat.source_type_name(t.comptime_field_type_id_key(flat.source_type_id('MyParams'), 'reflection')) == 'main.MyParams'
 	assert t.comptime_field_type_id(flat.source_type_id('MyParams'), 'reflection') == comptime_type_id_hash('main.MyParams') & ~(0xff << 16)
 }
 
@@ -78,8 +78,8 @@ fn test_comptime_for_base_type_unwraps_storage_indirections() {
 }
 
 fn test_comptime_method_receiver_name_normalizes_main_qualification() {
-	assert comptime_method_receiver_name('main.App', 'veb') == 'App'
-	assert comptime_method_receiver_matches('App', 'main.App', 'main.App', 'main', 'veb')
+	assert flat.source_type_name(comptime_method_receiver_name(flat.source_type_id('main.App'), 'veb')) == 'App'
+	assert comptime_method_receiver_matches(flat.source_type_id('App'), flat.source_type_id('main.App'), flat.source_type_id('main.App'), 'main', 'veb')
 }
 
 fn substitute_reflected_method_receiver(mut t Transformer, receiver flat.NodeId, method MethodMeta) flat.NodeId {
@@ -530,7 +530,7 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 			},
 		]
 	}
-	t.struct_field_decl_metas_cache['RequiredParams'] = {
+	t.struct_field_decl_metas_cache[flat.source_type_id('RequiredParams')] = {
 		'c': FieldDeclMeta{
 			attrs: ['required']
 		}
@@ -741,15 +741,15 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{
 		a:                             &a
-		comptime_field_metas_cache:    map[string][]FieldMeta{}
+		comptime_field_metas_cache:    map[u32][]FieldMeta{}
 		struct_field_decl_metas_cache: {
-			'first.Config':  {
+			flat.source_type_id('first.Config'):  {
 				'first': FieldDeclMeta{
 					is_pub: true
 					attrs:  ['first_attr']
 				}
 			}
-			'second.Config': {
+			flat.source_type_id('second.Config'): {
 				'second': FieldDeclMeta{
 					is_mut: true
 					attrs:  ['second_attr']
@@ -800,9 +800,9 @@ fn test_comptime_field_metadata_cache_normalizes_main_qualified_name() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{
 		a:                             &a
-		comptime_field_metas_cache:    map[string][]FieldMeta{}
+		comptime_field_metas_cache:    map[u32][]FieldMeta{}
 		struct_field_decl_metas_cache: {
-			'Config': {
+			flat.source_type_id('Config'): {
 				'skipped': FieldDeclMeta{
 					attrs: ['skip']
 				}
@@ -991,7 +991,7 @@ fn test_comptime_method_metadata_keeps_specialization_main_type_provenance() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'reflection'
 	for main_type in [false, true, false] {
-		t.active_specialization_main_types['App'] = main_type
+		t.active_specialization_main_types[flat.source_type_id('App')] = main_type
 		methods := t.comptime_method_metas(flat.source_type_id('App'))
 		assert methods.len == 1
 		assert methods[0].module_name == if main_type { 'main' } else { 'reflection' }

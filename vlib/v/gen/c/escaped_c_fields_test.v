@@ -56,14 +56,14 @@ fn test_escaped_c_initializer_field_names_resolve_aliases() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	assert g.init_field_c_name('C.EscapedFields', '@type') == 'type'
-	assert g.init_field_c_name('Fields', '@type') == 'type'
-	assert g.init_field_c_name('EscapedFields', '@type') == '_v_type'
-	assert g.init_field_c_name('EscapedFields', '@struct') == '_v_struct'
+	assert g.init_field_c_name(flat.source_type_id('C.EscapedFields'), '@type') == 'type'
+	assert g.init_field_c_name(flat.source_type_id('Fields'), '@type') == 'type'
+	assert g.init_field_c_name(flat.source_type_id('EscapedFields'), '@type') == '_v_type'
+	assert g.init_field_c_name(flat.source_type_id('EscapedFields'), '@struct') == '_v_struct'
 	for field in ['index', 'select', 'malloc', 'exit', 'byte', 'int_str', 'v_index', 'complex'] {
-		assert g.init_field_c_name('C.EscapedFields', field) == field
-		assert g.init_field_c_name('Fields', field) == field
-		assert g.init_field_c_name('EscapedFields', field) == c_name(field)
+		assert g.init_field_c_name(flat.source_type_id('C.EscapedFields'), field) == field
+		assert g.init_field_c_name(flat.source_type_id('Fields'), field) == field
+		assert g.init_field_c_name(flat.source_type_id('EscapedFields'), field) == c_name(field)
 	}
 }
 
@@ -104,7 +104,7 @@ fn test_escaped_c_callback_selector_assignment_keeps_c_abi_adapter() {
 		tc.type_aliases.set_id('CallbackPointerAlias', flat.source_type_id('&CallbackAlias'))
 		tc.type_alias_modules['CallbackAlias'] = 'main'
 		tc.type_alias_modules['CallbackPointerAlias'] = 'main'
-		tc.struct_field_c_abi_fns['C.CallbackHolder\ntype'] = 'fn_ptr:int|int'
+		tc.struct_field_c_abi_fns[flat.source_type_id('C.CallbackHolder')]['type'] = 'fn_ptr:int|int'
 		tc.fn_param_types['callback'] = [types.Type(types.int_)]
 		tc.fn_ret_types['callback'] = types.Type(types.int_)
 		tc.push_scope()
@@ -136,9 +136,9 @@ fn test_c_callback_metadata_fallback_keeps_v_field_identity() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['Holder'] = []types.StructField{}
 	tc.structs['C.Holder'] = []types.StructField{}
-	tc.struct_field_c_abi_fns['Holder\ntype'] = 'fn_ptr:int|int'
-	tc.struct_field_c_abi_fns['C.Holder\ntype'] = 'fn_ptr:int|int'
-	tc.struct_field_c_abi_fns['C.Holder\n@type'] = 'fn_ptr:int|void*'
+	tc.struct_field_c_abi_fns[flat.source_type_id('Holder')]['type'] = 'fn_ptr:int|int'
+	tc.struct_field_c_abi_fns[flat.source_type_id('C.Holder')]['type'] = 'fn_ptr:int|int'
+	tc.struct_field_c_abi_fns[flat.source_type_id('C.Holder')]['@type'] = 'fn_ptr:int|void*'
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc

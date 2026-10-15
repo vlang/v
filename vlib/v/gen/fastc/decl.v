@@ -729,8 +729,8 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			has_c_functions:              helper_has_c_functions
 			comparison_memo:              map[i64]FastcRenderedExpression{}
 			type_memo:                    map[i64]u32{}
-			method_key_memo:              map[string]map[string]string{}
-			field_memo:                   map[string]map[string]FastcStructField{}
+			method_key_memo:              map[u32]map[string]string{}
+			field_memo:                   map[u32]map[string]FastcStructField{}
 			spawn_typedefs:               map[string]string{}
 			spawn_helpers:                map[string]string{}
 			thread_value_types:           flat.TypeTextBindings{}
@@ -766,8 +766,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			composite_types[name] = true
 		}
 		for name, array_type_id in gen.fixed_array_types.ids {
-			array_type := flat.source_type_name(array_type_id)
-			fixed_array_types.set(name, array_type)
+			fixed_array_types.set_id(name, array_type_id)
 		}
 		if initializers.len > 0 {
 			previous := module_initializers[source_file.header.module_name] or { '' }
@@ -951,8 +950,8 @@ fn (mut g Parser) parse_one_global_declaration(attributes FastcDeclarationAttrib
 		g.next()
 		checkpoint := g
 		mut initializer := g.read_expression([token.Token.semicolon, .rpar])!
-		typ := fastc_normalize_inferred_type(g.last_expression_type_text())
-		if typ == '' {
+		typ := fastc_normalize_inferred_type(g.last_expression_type)
+		if typ == 0 {
 			return g.unsupported('unverifiable global `${name}` type')
 		}
 		mut static_initializer := attributes.is_cinit
@@ -962,7 +961,7 @@ fn (mut g Parser) parse_one_global_declaration(attributes FastcDeclarationAttrib
 				static_initializer = true
 			}
 		}
-		if declaration := fastc_fixed_array_field_declaration(typ, c_name) {
+		if declaration := fastc_fixed_array_field_declaration(flat.source_type_name(typ), c_name) {
 			if static_initializer {
 				out.writeln('${storage}${qualifier}${declaration}${decoration} = ${fastc_static_fixed_array_initializer(initializer)};')
 			} else {
@@ -970,47 +969,47 @@ fn (mut g Parser) parse_one_global_declaration(attributes FastcDeclarationAttrib
 				initializers.writeln('\tmemcpy(${c_name}, (${initializer}).data, sizeof(${c_name}));')
 			}
 		} else if static_initializer {
-			out.writeln('${storage}${qualifier}${fastc_output_c_type(typ)} ${c_name}${decoration} = ${initializer};')
+			out.writeln('${storage}${qualifier}${fastc_output_c_type(flat.source_type_name(typ))} ${c_name}${decoration} = ${initializer};')
 		} else {
-			out.writeln('${storage}${qualifier}${fastc_output_c_type(typ)} ${c_name}${decoration};')
+			out.writeln('${storage}${qualifier}${fastc_output_c_type(flat.source_type_name(typ))} ${c_name}${decoration};')
 		}
-		if !static_initializer && !typ.starts_with('FixedArray_')
+		if !static_initializer && !flat.source_type_name(typ).starts_with('FixedArray_')
 			&& !(g.selfhost && key in ['g_main_argc', 'g_main_argv']) {
 			initializers.writeln('\t${c_name} = ${initializer};')
 		}
-		g.global_types.set(key, typ)
+		g.global_types.set_id(key, typ)
 		g.skip_semicolons()
 		return
 	}
 	typ := g.parse_type()!
 	is_function_pointer := g.pending_fn_pointer
-	fn_return_type := g.pending_fn_return_type_text()
+	fn_return_type := g.pending_fn_return_type
 	fn_parameters := g.pending_fn_parameters
 	declaration_start := out.len
 	if is_function_pointer {
-		out.writeln('${storage}${fastc_output_c_type(fn_return_type)} (*${qualifier}${c_name})(${fn_parameters})${decoration};')
+		out.writeln('${storage}${fastc_output_c_type(flat.source_type_name(fn_return_type))} (*${qualifier}${c_name})(${fn_parameters})${decoration};')
 	} else if g.selfhost && name == 'g_memory_block' && fastc_prealloc_enabled(g.prefs) {
 		// The prealloc arena root must be per-thread; a shared global would be
 		// corrupted by the parallel per-file generator's concurrent bump-allocations.
-		fastc_write_prealloc_tls_global(mut out, typ, c_name, g.header_free)
+		fastc_write_prealloc_tls_global(mut out, flat.source_type_name(typ), c_name, g.header_free)
 		// TinyCC needs pthreads for the TLS slot even when the program never spawns.
 		g.uses_pthread_tls = g.prefs.target.os in ['macos', 'linux']
-	} else if declaration := fastc_fixed_array_field_declaration(typ, c_name) {
+	} else if declaration := fastc_fixed_array_field_declaration(flat.source_type_name(typ), c_name) {
 		// Global fixed arrays use the same raw storage as fixed-array fields.
 		out.writeln('${storage}${qualifier}${declaration}${decoration};')
 	} else {
-		out.writeln('${storage}${qualifier}${fastc_output_c_type(typ)} ${c_name}${decoration};')
+		out.writeln('${storage}${qualifier}${fastc_output_c_type(flat.source_type_name(typ))} ${c_name}${decoration};')
 	}
-	g.global_types.set(key, typ)
+	g.global_types.set_id(key, typ)
 	if g.tok != .assign && g.selfhost && !attributes.is_cinit {
 		// An array or map global starts empty, not as zeroed memory.
 		container := g.underlying_alias_type(typ)
-		if container.starts_with('Array_') {
+		if flat.source_type_name(container).starts_with('Array_') {
 			if element_type := g.array_element_type(container) {
-				initializers.writeln('\t${c_name} = ((${typ})builtin____new_array(0, 0, sizeof(${g.collection_storage_type(element_type)})));')
+				initializers.writeln('\t${c_name} = ((${flat.source_type_name(typ)})builtin____new_array(0, 0, sizeof(${g.collection_storage_type(element_type)})));')
 			}
-		} else if container.starts_with('Map_') {
-			map_default := fastc_map_field_default(container, g.prefs.target.pointer_bits, g.declared_kinds)
+		} else if flat.source_type_name(container).starts_with('Map_') {
+			map_default := fastc_map_field_default(flat.source_type_name(container), g.prefs.target.pointer_bits, g.declared_kinds)
 			if map_default != '' {
 				initializers.writeln('\t${c_name} = ${map_default};')
 			}
@@ -1024,7 +1023,7 @@ fn (mut g Parser) parse_one_global_declaration(attributes FastcDeclarationAttrib
 			&& g.last_expression[1].tok == .dot && g.last_expression[2].tok == .name {
 			// Native aggregate initializer macros expand to braces. A cast turns
 			// them into compound literals when initialization runs at startup.
-			initializer = '(${typ})${initializer}'
+			initializer = '(${flat.source_type_name(typ)})${initializer}'
 		}
 		mut static_initializer := attributes.is_cinit
 		if !static_initializer {
@@ -1036,13 +1035,13 @@ fn (mut g Parser) parse_one_global_declaration(attributes FastcDeclarationAttrib
 		if static_initializer {
 			out.go_back(out.len - declaration_start)
 			if is_function_pointer {
-				out.writeln('${storage}${fastc_output_c_type(fn_return_type)} (*${qualifier}${c_name})(${fn_parameters})${decoration} = ${initializer};')
-			} else if declaration := fastc_fixed_array_field_declaration(typ, c_name) {
+				out.writeln('${storage}${fastc_output_c_type(flat.source_type_name(fn_return_type))} (*${qualifier}${c_name})(${fn_parameters})${decoration} = ${initializer};')
+			} else if declaration := fastc_fixed_array_field_declaration(flat.source_type_name(typ), c_name) {
 				out.writeln('${storage}${qualifier}${declaration}${decoration} = ${fastc_static_fixed_array_initializer(initializer)};')
 			} else {
-				out.writeln('${storage}${qualifier}${fastc_output_c_type(typ)} ${c_name}${decoration} = ${initializer};')
+				out.writeln('${storage}${qualifier}${fastc_output_c_type(flat.source_type_name(typ))} ${c_name}${decoration} = ${initializer};')
 			}
-		} else if fastc_fixed_array_field_declaration(typ, c_name) != none {
+		} else if fastc_fixed_array_field_declaration(flat.source_type_name(typ), c_name) != none {
 			initializers.writeln('\tmemcpy(${c_name}, (${initializer}).data, sizeof(${c_name}));')
 		} else if !(g.selfhost && key in ['g_main_argc', 'g_main_argv']) {
 			initializers.writeln('\t${c_name} = ${initializer};')
@@ -1191,11 +1190,13 @@ fn fastc_static_fixed_array_initializer(initializer string) string {
 // resolvable map. Kept as a helper so the caller avoids a multi-return option in
 // an `if` guard, which the FastC self-host does not accept.
 fn fastc_map_field_default(typ string, pointer_bits int, declared_kinds map[string]FastcDeclaredTypeKind) string {
-	key_type, value_type := fastc_map_key_value_types(typ) or {
-		fastc_declared_map_key_value_types(typ, declared_kinds) or { return '' }
+	key_type_source_id, value_type_source_id := fastc_map_key_value_types(flat.source_type_id(typ)) or {
+		fastc_declared_map_key_value_types(flat.source_type_id(typ), declared_kinds) or { return '' }
 	}
-	hash_fn, eq_fn, clone_fn, free_fn := fastc_map_runtime_functions(fastc_output_c_type(key_type), pointer_bits)
-	return '(builtin__new_map(sizeof(${fastc_output_c_type(fastc_runtime_c_type(key_type))}), sizeof(${fastc_output_c_type(fastc_runtime_c_type(value_type))}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
+	key_type := key_type_source_id
+	value_type := value_type_source_id
+	hash_fn, eq_fn, clone_fn, free_fn := fastc_map_runtime_functions(flat.source_type_id(fastc_output_c_type(flat.source_type_name(key_type))), pointer_bits)
+	return '(builtin__new_map(sizeof(${fastc_output_c_type(fastc_runtime_c_type(flat.source_type_name(key_type)))}), sizeof(${fastc_output_c_type(fastc_runtime_c_type(flat.source_type_name(value_type)))}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
 }
 
 // FastcFieldDefaultsResult is the struct field table with its defaults
@@ -1239,19 +1240,21 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				continue
 			}
 			field_layout := field.typ_text().trim_right('*')
-			container_type := fastc_underlying_alias_type(field.typ_text(), alias_base_types)
-			container_layout := container_type.trim_right('*')
+			container_type := fastc_underlying_alias_type(field.typ, alias_base_types)
+			container_layout := flat.source_type_name(container_type).trim_right('*')
 			if prefs.building_v && container_layout.starts_with('Array_') {
-				if element_type := fastc_array_element_type(container_type) {
-					element_sizeof := if element_type.ends_with('_ptr') {
+				if element_type_source_id := fastc_array_element_type(container_type) {
+					element_type := element_type_source_id
+
+					element_sizeof := if flat.source_type_name(element_type).ends_with('_ptr') {
 						'voidptr'
 					} else {
-						element_type
+						flat.source_type_name(element_type)
 					}
 					field.default_value = '((${field_layout})builtin____new_array(0, 0, sizeof(${fastc_output_c_type(element_sizeof)})))'
 				}
 			} else if prefs.building_v && container_layout.starts_with('Map_') {
-				map_default := fastc_map_field_default(container_type, prefs.target.pointer_bits, declared_kinds)
+				map_default := fastc_map_field_default(flat.source_type_name(container_type), prefs.target.pointer_bits, declared_kinds)
 				if map_default != '' {
 					field.default_value = map_default
 				}
@@ -1287,8 +1290,8 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				has_c_functions:              helper_has_c_functions
 				comparison_memo:              map[i64]FastcRenderedExpression{}
 				type_memo:                    map[i64]u32{}
-				method_key_memo:              map[string]map[string]string{}
-				field_memo:                   map[string]map[string]FastcStructField{}
+				method_key_memo:              map[u32]map[string]string{}
+				field_memo:                   map[u32]map[string]FastcStructField{}
 				spawn_typedefs:               map[string]string{}
 				spawn_helpers:                map[string]string{}
 				thread_value_types:           flat.TypeTextBindings{}
@@ -1323,7 +1326,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 			// A flag-enum default mixing a value with a `.member` shorthand (`~Show.zero() ^
 			// .name`) can lose the field type mid-stream (the `Show.zero()` call clears it), so
 			// resolve any surviving value-position shorthands against the field's enum type here.
-			if prefs.building_v && declared_kinds[gen.semantic_type_key(field.typ_text())] == .enum_ {
+			if prefs.building_v && declared_kinds[flat.source_type_name(gen.semantic_type_key(field.typ))] == .enum_ {
 				enum_c := field.typ_text().trim_right('*')
 				if members := enum_field_names[enum_c] {
 					field.default_value = fastc_resolve_enum_shorthands_in_source(field.default_value, enum_c, members)
@@ -1335,14 +1338,14 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 			// interface field must be boxed into the field's representation, mirroring
 			// the assignment/argument paths; a bare `(Variant){}` is not assignable to a
 			// boxed `{_object,_typ}` field.
-			default_actual_type := gen.last_expression_type_text()
+			default_actual_type := gen.last_expression_type
 			if field.typ_text() == 'IError' && gen.last_expression.len == 1
 				&& gen.last_expression[0].tok == .key_none {
 				// `none` in an error interface is the None__ implementation, not an option.
-				field.default_value = gen.interface_value_expression(field.typ_text(), 'None__',
-					gen.render_empty_struct_initializer('None__'))
-			} else if gen.should_box_variant(field.typ_text(), default_actual_type) {
-				field.default_value = gen.interface_value_expression(field.typ_text(), default_actual_type, field.default_value)
+				field.default_value = gen.interface_value_expression(field.typ, flat.source_type_id('None__'),
+					gen.render_empty_struct_initializer(flat.source_type_id('None__')))
+			} else if gen.should_box_variant(field.typ, default_actual_type) {
+				field.default_value = gen.interface_value_expression(field.typ, default_actual_type, field.default_value)
 			}
 			if gen.tok == .semicolon {
 				gen.next()
@@ -1428,8 +1431,8 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 		has_c_functions:              ctx.has_c_functions
 		comparison_memo:              map[i64]FastcRenderedExpression{}
 		type_memo:                    map[i64]u32{}
-		method_key_memo:              map[string]map[string]string{}
-		field_memo:                   map[string]map[string]FastcStructField{}
+		method_key_memo:              map[u32]map[string]string{}
+		field_memo:                   map[u32]map[string]FastcStructField{}
 		spawn_typedefs:               map[string]string{}
 		spawn_helpers:                map[string]string{}
 		thread_value_types:           flat.TypeTextBindings{}
@@ -1542,7 +1545,7 @@ fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSou
 			if !result.failed && !result.used_field_defaults
 				&& fastc_constant_file_is_independent(result) {
 				for value in result.values {
-					constant_types.set(value.key, value.typ_text())
+					constant_types.set_id(value.key, value.typ)
 				}
 				continue
 			}
@@ -1687,15 +1690,14 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 			if !result.failed && !result.used_field_defaults
 				&& fastc_constant_file_is_independent(result) {
 				for value in result.values {
-					constant_types.set(value.key, value.typ_text())
+					constant_types.set_id(value.key, value.typ)
 				}
 				values << result.values
 				for name, _ in result.composite_types {
 					composite_types[name] = true
 				}
 				for name, array_type_id in result.fixed_array_types.ids {
-					array_type := flat.source_type_name(array_type_id)
-					fixed_array_types.set(name, array_type)
+					fixed_array_types.set_id(name, array_type_id)
 				}
 				continue
 			}
@@ -1711,8 +1713,7 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 			composite_types[name] = true
 		}
 		for name, array_type_id in serial.fixed_array_types.ids {
-			array_type := flat.source_type_name(array_type_id)
-			fixed_array_types.set(name, array_type)
+			fixed_array_types.set_id(name, array_type_id)
 		}
 	}
 	if os.getenv('FASTC_BENCH_PHASES') != '' {
@@ -1925,11 +1926,11 @@ fn (mut g Parser) parse_one_constant(mut values []FastcConstantValue, stops []to
 	}
 	key := fastc_constant_key(g.module_name, name)
 	c_name := g.constants[key] or { return g.unsupported('unregistered constant `${name}`') }
-	typ := fastc_normalize_inferred_type(g.last_expression_type_text())
+	typ := fastc_normalize_inferred_type(g.last_expression_type)
 	is_runtime := g.constant_expression_requires_runtime_storage(g.last_expression, value)
 	// An inserted EOF semicolon leaves pos at the final operand's start.
 	dependencies := g.constant_source_dependencies(g.s.src[expression_start..g.s.offset])
-	if typ == '' && is_runtime {
+	if typ == u32(0) && is_runtime {
 		return g.unsupported('unverifiable constant `${name}` type')
 	}
 	values << FastcConstantValue{
@@ -1937,11 +1938,11 @@ fn (mut g Parser) parse_one_constant(mut values []FastcConstantValue, stops []to
 		c_name:       c_name
 		module_name:  g.module_name
 		value:        value
-		typ:          flat.source_type_id(typ)
+		typ:          typ
 		dependencies: dependencies
 		is_runtime:   is_runtime
 	}
-	g.constant_types.set(key, typ)
+	g.constant_types.set_id(key, typ)
 }
 
 // constant_source_dependencies retains references inside lowered expressions,
@@ -2292,8 +2293,10 @@ fn fastc_by_value_composite_type(field_type string, by_value_composite_names map
 		return ''
 	}
 	mut candidate := field_type
-	if element_type := fastc_fixed_array_element_type(candidate) {
-		candidate = element_type
+	if element_type_source_id := fastc_fixed_array_element_type(flat.source_type_id(candidate)) {
+		element_type := element_type_source_id
+
+		candidate = flat.source_type_name(element_type)
 	}
 	// Most field types are not aliases; answer those without the cycle guard.
 	if !alias_base_types.contains(candidate) {
@@ -2790,11 +2793,11 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			is_shared_field = true
 			tok = scan.scan()
 		}
-		mut field_chan_element := ''
+		mut field_chan_element := u32(0)
 		if tok == .name && scan.lit == 'chan' {
 			field_chan_element = fastc_peek_chan_element(scan, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)
 		}
-		mut field_option_value := ''
+		mut field_option_value := u32(0)
 		if tok == .question {
 			field_option_value = fastc_peek_option_element(scan, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)
 		}
@@ -2810,11 +2813,13 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		if is_function_field {
 			function_type = fastc_peek_function_type(function_scan, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
 		}
-		field_type, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders) or {
+		field_type_source_id, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders) or {
 			return error('fastc struct `${name}` field `${field_names[0]}`: ${err.msg()}')
 		}
+		field_type := field_type_source_id
+
 		tok = next_token
-		fastc_register_composite_type(field_type, mut composite_types)
+		fastc_register_composite_type(flat.source_type_name(field_type), mut composite_types)
 		mut is_required := false
 		mut is_skip := false
 		for tok == .attribute {
@@ -2841,26 +2846,26 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			// parameters. json2's private linked list has a single concrete payload,
 			// `ValueInfo`; retain that layout so non-generic Decoder methods can access
 			// `current_node.value` as the declared struct.
-			if name == 'Node' && field_name == 'value' && field_type == 'voidptr' && source_file.path.ends_with('/vlib/json2/decode.v') {
+			if name == 'Node' && field_name == 'value' && field_type == flat.source_type_voidptr && source_file.path.ends_with('/vlib/json2/decode.v') {
 				value_info_key := fastc_type_key(source_file.header.module_name, 'ValueInfo')
 				if value_info_key in declared_types {
-					emitted_field_type = fastc_c_declared_type_name(value_info_key)
+					emitted_field_type = flat.source_type_id(fastc_c_declared_type_name(value_info_key))
 				}
 			}
-			is_shared_pointer := is_shared_field && emitted_field_type.starts_with('Map_')
+			is_shared_pointer := is_shared_field && flat.source_type_name(emitted_field_type).starts_with('Map_')
 			if !is_c_struct {
 				if is_shared_pointer {
-					out.writeln('\t${if is_volatile_field { 'volatile ' } else { '' }}${emitted_field_type}* ${c_field_name};')
-				} else if declaration := fastc_fixed_array_field_declaration(emitted_field_type, c_field_name) {
+					out.writeln('\t${if is_volatile_field { 'volatile ' } else { '' }}${flat.source_type_name(emitted_field_type)}* ${c_field_name};')
+				} else if declaration := fastc_fixed_array_field_declaration(flat.source_type_name(emitted_field_type), c_field_name) {
 					out.writeln('\t${if is_volatile_field { 'volatile ' } else { '' }}${declaration};')
 				} else {
-					out.writeln('\t${if is_volatile_field { 'volatile ' } else { '' }}${fastc_output_c_type(emitted_field_type)} ${c_field_name};')
+					out.writeln('\t${if is_volatile_field { 'volatile ' } else { '' }}${fastc_output_c_type(flat.source_type_name(emitted_field_type))} ${c_field_name};')
 				}
 			}
-			fields_by_name.set(field_name, emitted_field_type)
+			fields_by_name.set_id(field_name, emitted_field_type)
 			field_info << FastcStructField{
 				name:                  field_name
-				typ:                   flat.source_type_id(emitted_field_type)
+				typ:                   emitted_field_type
 				is_public:             fields_are_public
 				is_mutable:            fields_are_mutable
 				is_required:           is_required
@@ -2873,12 +2878,12 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 				path:                  source_file.path
 				imports:               source_file.header.imports.clone()
 				default_source:        default_source
-				chan_element_type:     flat.source_type_id(field_chan_element)
-				option_value_type:     flat.source_type_id(field_option_value)
+				chan_element_type:     field_chan_element
+				option_value_type:     field_option_value
 				fn_parameter_types:    function_type.parameter_types.clone()
 				fn_return_type:        function_type.return_type
 				fn_option_value_type:  function_type.option_value_type
-				generic_argument_type: flat.source_type_id(field_generic_argument)
+				generic_argument_type: field_generic_argument
 			}
 			fields++
 		}
@@ -2936,7 +2941,7 @@ fn fastc_fixed_array_field_declaration(field_type string, field_name string) ?st
 	for {
 		length := fastc_fixed_array_length(element_type) or { break }
 		dimensions << length
-		element_type = fastc_fixed_array_element_type(element_type) or { return none }
+		element_type = flat.source_type_name(fastc_fixed_array_element_type(flat.source_type_id(element_type)) or { return none })
 	}
 	if dimensions.len == 0 {
 		return none
@@ -3428,7 +3433,8 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		base_token = base_scan.scan()
 	}
 	is_c_type := base_token == .name && base_scan.lit == 'C'
-	base, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders) or { return error('fastc type `${name}`: ${err.msg()}') }
+	base_source_id, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders) or { return error('fastc type `${name}`: ${err.msg()}') }
+	base := base_source_id
 	tok = next_token
 	if tok == .semicolon {
 		tok = scan.scan()
@@ -3438,11 +3444,13 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		// tell push-many (`[]T << []T`) from boxing an array-valued variant of a
 		// recursive sum type (`type Value = []Value | int`) as one element. `base` is
 		// the first variant, already scanned above; the rest follow each `|`.
-		sum_type_variants['${c_name}|${base.trim_right('*')}'] = true
+		sum_type_variants['${c_name}|${flat.source_type_name(base).trim_right('*')}'] = true
 		for tok == .pipe {
 			tok = scan.scan()
-			variant, variant_next := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders) or { return error('fastc type `${name}`: ${err.msg()}') }
-			sum_type_variants['${c_name}|${variant.trim_right('*')}'] = true
+			variant_source_id, variant_next := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders) or { return error('fastc type `${name}`: ${err.msg()}') }
+			variant := variant_source_id
+
+			sum_type_variants['${c_name}|${flat.source_type_name(variant).trim_right('*')}'] = true
 			tok = variant_next
 			if tok == .semicolon {
 				tok = scan.scan()
@@ -3454,14 +3462,18 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		out.writeln('typedef struct { void *_object; uintptr_t _typ; } ${c_name};')
 		sum_types[c_name] = true
 	} else if fastc_primitive_c_type(name) == none && declared_kinds[key] == .alias_ {
-		out.writeln('typedef ${if is_c_type { base } else { fastc_output_c_type(base) }} ${c_name};')
+		out.writeln('typedef ${if is_c_type {
+			flat.source_type_name(base)
+		} else {
+			fastc_output_c_type(flat.source_type_name(base))
+		}} ${c_name};')
 		// C.int retains its native width instead of V's platform-width int.
-		alias_base_types.set(c_name, if is_c_type && base.trim_right('*') == 'int' {
-			'i32' + base['int'.len..]
+		alias_base_types.set_id(c_name, if is_c_type && flat.source_type_name(base).trim_right('*') == 'int' {
+			flat.source_type_id('i32' + flat.source_type_name(base)['int'.len..])
 		} else {
 			base
 		})
-		mut layout_type := base.trim_right('*')
+		mut layout_type := flat.source_type_name(base).trim_right('*')
 		if layout_type.starts_with('Array_') {
 			layout_type = 'array'
 		} else if layout_type.starts_with('Map_') {
@@ -3475,8 +3487,8 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		if layout_type in struct_field_info {
 			alias_field_info = struct_field_info[layout_type].clone()
 		}
-		if base.starts_with('Array_') {
-			alias_fields.set('__fastc_element_type', base['Array_'.len..])
+		if flat.source_type_name(base).starts_with('Array_') {
+			alias_fields.set('__fastc_element_type', flat.source_type_name(base)['Array_'.len..])
 		}
 		if alias_fields.ids.len > 0 {
 			struct_fields[c_name] = alias_fields.clone()
@@ -3494,7 +3506,7 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 		return error('fastc parser does not support function type `${c_name}` in ${source_file.path}')
 	}
 	tok = scan.scan()
-	mut parameter_types := []string{}
+	mut parameter_types := []u32{}
 	for tok != .rpar {
 		if tok in [.comma, .semicolon] {
 			tok = scan.scan()
@@ -3514,40 +3526,46 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 		}
 		if has_parameter_name {
 			tok = scan.scan()
-			parameter_type, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
-			parameter_types << if parameter_is_mut && !parameter_type.ends_with('*') {
-				parameter_type + '*'
+			parameter_type_source_id, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
+			parameter_type := parameter_type_source_id
+
+			parameter_types << flat.source_type_id(if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
+				flat.source_type_name(parameter_type) + '*'
 			} else {
-				parameter_type
-			}
+				flat.source_type_name(parameter_type)
+			})
 			tok = next_token
 		} else {
-			parameter_type, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
-			parameter_types << if parameter_is_mut && !parameter_type.ends_with('*') {
-				parameter_type + '*'
+			parameter_type_source_id_2, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
+			parameter_type := parameter_type_source_id_2
+
+			parameter_types << flat.source_type_id(if parameter_is_mut && !flat.source_type_name(parameter_type).ends_with('*') {
+				flat.source_type_name(parameter_type) + '*'
 			} else {
-				parameter_type
-			}
+				flat.source_type_name(parameter_type)
+			})
 			tok = next_token
 		}
 	}
 	tok = scan.scan()
-	mut return_type := 'void'
+	mut return_type := flat.source_type_void
 	if tok in [.not, .question] {
 		// A result/option return (`fn (...) !`, `fn (...) ?Type`) lowers to FastC's
 		// fixed `Option` value; consume any concrete value type after it.
-		return_type = if tok == .not { '__v_result' } else { 'Option' }
+		return_type = flat.source_type_id(if tok == .not { '__v_result' } else { 'Option' })
 		tok = scan.scan()
 		if tok in [.name, .amp, .and, .mul, .lsbr, .key_fn, .question, .not] {
 			_, tok = fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
 		}
 	} else if tok !in [.semicolon, .eof] {
-		return_type, tok = fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
+		return_type_source_id, tok_scan_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders)!
+		return_type = return_type_source_id
+		tok = tok_scan_token
 	}
-	out.writeln('typedef ${fastc_output_c_type(return_type)} (*${c_name})(${fastc_c_prototype_parameters(parameter_types)});')
+	out.writeln('typedef ${fastc_output_c_type(flat.source_type_name(return_type))} (*${c_name})(${fastc_c_prototype_parameters(parameter_types)});')
 	// Record the alias's return type so a call through a value of this fn type
 	// (`resolver(path)` where `resolver SomeFnAlias`) can infer its result type.
-	fn_alias_return_types.set(c_name, return_type)
+	fn_alias_return_types.set_id(c_name, return_type)
 	if tok == .semicolon {
 		tok = scan.scan()
 	}
