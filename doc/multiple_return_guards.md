@@ -18,3 +18,8 @@ An `else if` branch can introduce another guard; each binding belongs to its own
 Each branch also keeps the incoming smartcasts independently. Reassigning a narrowed value
 in one branch does not remove a valid narrowing from its sibling, and invalidations from
 either branch apply after the expression.
+
+A Result guard exposes its implicit `err` only inside a plain `else` block. An `else if`
+uses the surrounding bindings. When assigning existing variables, branch values are
+evaluated before the destinations, so an outer destination named `err` is updated after
+leaving the implicit error scope.

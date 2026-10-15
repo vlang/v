@@ -87,6 +87,9 @@ struct GuardReturnTail {
 	extra_return_vals []flat.NodeId
 	source_return_id  flat.NodeId
 	assign_lhs_ids    []flat.NodeId
+	// Staged assignments retain branch-specific moves of the original destinations.
+	assign_original_lhs_ids []flat.NodeId
+	assign_move_flags       []string
 }
 
 struct GuardSmartcastState {
@@ -125,10 +128,115 @@ fn (mut t Transformer) merge_guard_smartcasts(state GuardSmartcastState, then_in
 	t.smartcast_stack = t.non_invalidated_smartcasts(state.stack)
 }
 
+struct GuardAssignStaging {
+	tail  GuardReturnTail
+	decls []flat.NodeId
+}
+
+// Keep assignment destinations outside the lexical scope of the implicit error.
+fn (mut t Transformer) stage_guard_assignments(tail GuardReturnTail, has_error bool) GuardAssignStaging {
+	if !has_error || tail.assign_lhs_ids.len == 0 || tail.assign_original_lhs_ids.len > 0 {
+		return GuardAssignStaging{ tail: tail }
+	}
+	mut decls := []flat.NodeId{}
+	mut targets := []flat.NodeId{cap: tail.assign_lhs_ids.len}
+	mut move_flags := []string{len: tail.assign_lhs_ids.len}
+	for i, lhs_id in tail.assign_lhs_ids {
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind == .ident && lhs.value == '_' {
+			targets << lhs_id
+			continue
+		}
+		mut typ := t.lvalue_type(lhs_id)
+		if typ.len == 0 {
+			typ = t.original_expr_type(lhs_id)
+		}
+		if lhs.kind == .ident && t.heaped_amp_locals[lhs.value] && typ.starts_with('&') {
+			typ = typ[1..]
+		}
+		name := t.new_temp('guard_assign')
+		decls << t.make_staging_value_decl(name, typ)
+		targets << t.make_ident(name)
+		if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(typ)) {
+			move_flags[i] = t.new_temp('guard_moved')
+			decls << t.make_decl_assign_typed(move_flags[i], t.make_bool_literal(false), 'bool')
+		}
+	}
+	return GuardAssignStaging{
+		tail:  GuardReturnTail{
+			...tail
+			assign_lhs_ids:          targets
+			assign_original_lhs_ids: tail.assign_lhs_ids
+			assign_move_flags:       move_flags
+		}
+		decls: decls
+	}
+}
+
+fn (t &Transformer) multi_if_assign_target_was_moved(tail GuardReturnTail, index int, values []flat.NodeId) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	lhs_id := if tail.assign_original_lhs_ids.len > 0 {
+		tail.assign_original_lhs_ids[index]
+	} else {
+		tail.assign_lhs_ids[index]
+	}
+	if tail.assign_original_lhs_ids.len > 0 && t.expr_root_ident_name(lhs_id) == 'err' {
+		// RHS `err` names the implicit error, never the shadowed destination.
+		return false
+	}
+	for value_id in values {
+		if t.tc.ownership_expr_moves_storage(value_id, lhs_id) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) append_multi_if_assign_move_flag(tail GuardReturnTail, index int, moved bool, mut stmts []flat.NodeId) {
+	if moved && index < tail.assign_move_flags.len && tail.assign_move_flags[index].len > 0 {
+		stmts << t.make_assign(t.make_ident(tail.assign_move_flags[index]), t.make_bool_literal(true))
+	}
+}
+
+// Call after restoring the outer bindings; the nested block owns the implicit `err`.
+fn (mut t Transformer) finish_guard_assignments(children []flat.NodeId, tail GuardReturnTail, staging GuardAssignStaging) flat.NodeId {
+	if staging.decls.len == 0 {
+		return t.make_block(children)
+	}
+	mut stmts := staging.decls.clone()
+	stmts << t.make_block(children)
+	for i, lhs_id in tail.assign_lhs_ids {
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind == .ident && lhs.value == '_' {
+			continue
+		}
+		mut lvalue := if lhs.kind == .ident && t.heaped_amp_locals[lhs.value] {
+			t.make_prefix(.mul, t.make_ident(lhs.value))
+		} else {
+			t.transform_lvalue(lhs_id)
+		}
+		t.drain_pending(mut stmts)
+		move_flag := staging.tail.assign_move_flags[i]
+		if move_flag.len > 0 {
+			lvalue = t.stabilize_transformed_lvalue_for_reuse(lvalue)
+			t.drain_pending(mut stmts)
+			mut drops := []flat.NodeId{}
+			t.append_owned_lvalue_drop_before_assign(lvalue,
+				t.lvalue_type(staging.tail.assign_lhs_ids[i]), mut drops)
+			stmts << t.make_if_with_skip_ownership_drops(t.make_prefix(.not,
+				t.make_ident(move_flag)), t.make_block_skip_scope_drops(drops), t.make_empty())
+		}
+		stmts << t.make_assign_after_owned_drop(lvalue, staging.tail.assign_lhs_ids[i])
+	}
+	return t.make_block_skip_scope_drops(stmts)
+}
+
 // guard_branch_stmts lowers the body of a guard branch.
 fn (mut t Transformer) guard_branch_stmts(branch_id flat.NodeId, tail GuardReturnTail) []flat.NodeId {
 	if tail.assign_lhs_ids.len > 0 {
-		block_id := t.multi_if_assign_block(branch_id, tail.assign_lhs_ids)
+		block_id := t.multi_if_assign_block(branch_id, tail)
 		return t.a.children_of(&t.a.nodes[int(block_id)]).clone()
 	}
 	if tail.active {
@@ -148,7 +256,7 @@ fn (mut t Transformer) guard_else_stmts(else_id flat.NodeId, tail GuardReturnTai
 	else_node := t.a.nodes[int(else_id)]
 	if else_node.kind == .if_expr {
 		if tail.assign_lhs_ids.len > 0 {
-			return t.lower_multi_if_assign(else_node, tail.assign_lhs_ids)
+			return t.lower_multi_if_assign(else_node, tail)
 		}
 		if tail.active {
 			return [
@@ -389,6 +497,9 @@ fn (t &Transformer) optional_type_name_from_type(typ types.Type) ?string {
 
 // transform_if_guard_else_block transforms transform if guard else block data for transform.
 fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, err_source string, tail GuardReturnTail) flat.NodeId {
+	if t.a.nodes[int(else_id)].kind == .if_expr {
+		return t.guard_else_block(else_id, tail)
+	}
 	heaped_state := t.save_heaped_local_state()
 	defer {
 		t.restore_heaped_local_state(heaped_state)
@@ -399,11 +510,12 @@ fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, err_so
 	} else {
 		flat.empty_node
 	}
+	staging := t.stage_guard_assignments(tail, int(err_expr) >= 0)
 	err_scope := t.enter_implicit_err_scope(int(err_expr) >= 0)
 	t.append_implicit_err_decl(mut children, err_expr)
-	children << t.guard_else_stmts(else_id, tail)
+	children << t.guard_else_stmts(else_id, staging.tail)
 	t.leave_implicit_err_scope(err_scope)
-	return t.make_block(children)
+	return t.finish_guard_assignments(children, tail, staging)
 }
 
 // guard_else_block lowers the `else` of a guard that binds no error.
@@ -499,11 +611,15 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 }
 
 fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.NodeId, ptr_name string, value_type string, tail GuardReturnTail) flat.NodeId {
+	if t.a.nodes[int(else_id)].kind == .if_expr {
+		return t.guard_else_block(else_id, tail)
+	}
 	heaped_state := t.save_heaped_local_state()
 	defer {
 		t.restore_heaped_local_state(heaped_state)
 	}
 	is_result := t.normalize_type_alias(value_type).starts_with('!')
+	staging := t.stage_guard_assignments(tail, is_result)
 	err_scope := t.enter_implicit_err_scope(is_result)
 	mut children := []flat.NodeId{}
 	if is_result && t.has_ierror_interface() {
@@ -525,9 +641,9 @@ fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.Node
 		missing_branch := t.make_block([t.make_assign(err_target, missing)])
 		children << t.make_if(found, present_branch, missing_branch)
 	}
-	children << t.guard_else_stmts(else_id, tail)
+	children << t.guard_else_stmts(else_id, staging.tail)
 	t.leave_implicit_err_scope(err_scope)
-	return t.make_block(children)
+	return t.finish_guard_assignments(children, tail, staging)
 }
 
 // expand_array_index_if_guard builds expand array index if guard data for transform.
