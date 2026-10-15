@@ -3,6 +3,7 @@
 Run with: python cmd/tools/makev_test.py
 On Windows, also exercise the real batch subroutines with compiler calls and
 installation delays stubbed. File replacement uses real temporary files.
+When bundled TCC is available, also link and run a native bootstrap helper probe.
 """
 
 import os
@@ -51,6 +52,26 @@ class BootstrapConfigurationTests(unittest.TestCase):
         ]
         self.assertEqual(len(commands), 1)
         self.assertIn("%VC_BOOTSTRAP_DEFINE%", commands[0])
+
+    def test_all_bootstraps_link_the_external_windows_helpers(self):
+        native = next(
+            line for line in SOURCE.splitlines()
+            if line.startswith("set V_BOOTSTRAP_NATIVE=")
+        )
+        for path in (
+            r"vlib\time\ticks_windows.c",
+            r"vlib\v\winthread_helper_windows.c",
+            r"cmd\v\toolcache_windows_helpers.c",
+        ):
+            self.assertIn('"%~dp0' + path + '"', native)
+        for compiler in ("tcc", "clang", "gcc", "msvc"):
+            with self.subTest(compiler=compiler):
+                commands = [
+                    line for line in routine("build_bootstrap_with_" + compiler).splitlines()
+                    if '"%V_C_FILE%"' in line and not line.startswith("echo ")
+                ]
+                self.assertEqual(len(commands), 1)
+                self.assertIn("%V_BOOTSTRAP_NATIVE%", commands[0])
 
     def test_msvc_fallbacks_build_the_next_stage(self):
         attempts = re.findall(
@@ -148,6 +169,90 @@ class BootstrapConfigurationTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "requires the Windows cmd.exe interpreter")
 class BatchExecutionTests(unittest.TestCase):
+    def test_tcc_bootstrap_links_external_helpers_without_an_existing_compiler(self):
+        if not (ROOT / "thirdparty" / "tcc" / "tcc.exe").is_file():
+            self.skipTest("requires the bundled Windows TCC")
+        with tempfile.TemporaryDirectory(prefix="makev native helpers ") as directory:
+            workdir = Path(directory)
+            snapshot = workdir / "v_win.c"
+            # Model the declaration-only helpers in current vc snapshots. Older
+            # snapshots embedded static definitions and hid missing link inputs.
+            snapshot_source = r"""
+#include <stddef.h>
+void *v3_win_thread_create(size_t, void *(*)(void *), void *, unsigned int *);
+int v3_win_thread_is_current(unsigned int);
+int v3_win_thread_join(void *);
+unsigned long long v_time_ticks_ms(void);
+int v_toolcache_close_handle(void *);
+void *v_toolcache_create_file_w(const unsigned short *, unsigned int,
+    unsigned int, unsigned int, unsigned int);
+int v_toolcache_file_is_disk(void *);
+int v_toolcache_get_file_information(void *, void *);
+int v_toolcache_move_file_ex_w(const unsigned short *, const unsigned short *, unsigned int);
+int v_toolcache_read_file(void *, void *, unsigned int, unsigned int *);
+int v_toolcache_root_is_private(const unsigned short *);
+
+/* Relocations keep every helper referenced, even with an optimizing compiler. */
+void (*const helpers[])(void) = {
+    (void (*)(void))v3_win_thread_create,
+    (void (*)(void))v3_win_thread_is_current,
+    (void (*)(void))v3_win_thread_join,
+    (void (*)(void))v_time_ticks_ms,
+    (void (*)(void))v_toolcache_close_handle,
+    (void (*)(void))v_toolcache_create_file_w,
+    (void (*)(void))v_toolcache_file_is_disk,
+    (void (*)(void))v_toolcache_get_file_information,
+    (void (*)(void))v_toolcache_move_file_ex_w,
+    (void (*)(void))v_toolcache_read_file,
+    (void (*)(void))v_toolcache_root_is_private,
+};
+int main(void) {
+    for (size_t i = 0; i < sizeof(helpers) / sizeof(helpers[0]); ++i) {
+        if (helpers[i] == NULL) return 1;
+    }
+    return v_time_ticks_ms() == 0 || v3_win_thread_is_current(0);
+}
+"""
+            # Use the actual configuration and bootstrap routine, including its
+            # quoted native source paths, without invoking downloads or stages.
+            preamble = SOURCE[:SOURCE.index(":verifyopt\n")]
+            preamble = preamble.replace("%~dp0", str(ROOT) + "\\")
+            bootstrap = workdir / "v_win_bootstrap.exe"
+            script = "\n".join([
+                preamble,
+                'set "V_C_FILE=' + str(snapshot) + '"',
+                'set "V_BOOTSTRAP=' + str(bootstrap) + '"',
+                'set "V_EXE=' + str(workdir / "missing-v.exe") + '"',
+                "call :build_bootstrap_with_tcc",
+                "exit /b !ERRORLEVEL!",
+                routine("build_bootstrap_with_tcc"),
+            ])
+            harness = workdir / "bootstrap harness.bat"
+            harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+            for embedded in (False, True):
+                with self.subTest(embedded=embedded):
+                    headers = ""
+                    if embedded:
+                        # Older snapshots include static helper definitions.
+                        headers = "".join(
+                            '#include "' + (ROOT / path).as_posix() + '"\n'
+                            for path in (
+                                "vlib/time/ticks_windows.h",
+                                "vlib/v/winthread_helper.h",
+                                "cmd/v/toolcache_windows_helpers.h",
+                            )
+                        )
+                    snapshot.write_text(headers + snapshot_source, encoding="utf-8")
+                    result = subprocess.run(
+                        [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)],
+                        cwd=workdir, capture_output=True, text=True, errors="replace",
+                        timeout=60, check=False,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    result = subprocess.run([str(bootstrap)], cwd=workdir, timeout=15, check=False)
+                    self.assertEqual(result.returncode, 0)
+            self.assertFalse((workdir / "missing-v.exe").exists())
+
     def run_msvc_bootstrap(self, workdir, bootstrap_statuses=None, generate_statuses=None,
                            link_statuses=None, final_status=0):
         bootstrap_statuses = bootstrap_statuses or {}
