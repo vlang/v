@@ -150,18 +150,18 @@ fn (mut t Transformer) stage_guard_assignments(tail GuardReturnTail, has_binding
 			continue
 		}
 		mut typ := t.lvalue_type(lhs_id)
-		if typ.len == 0 {
+		if typ == 0 {
 			typ = t.original_expr_type(lhs_id)
 		}
-		if lhs.kind == .ident && t.heaped_amp_locals[lhs.value] && typ.starts_with('&') {
-			typ = typ[1..]
+		if lhs.kind == .ident && t.heaped_amp_locals[lhs.value] && flat.source_type_shape(typ).has(.pointer) {
+			typ = t.trim_pointer_type(typ)
 		}
 		name := t.new_temp('guard_assign')
 		decls << t.make_staging_value_decl(name, typ)
 		targets << t.make_ident(name)
-		if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(typ))) {
+		if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(typ)) {
 			move_flags[i] = t.new_temp('guard_moved')
-			decls << t.make_decl_assign_typed(move_flags[i], t.make_bool_literal(false), 'bool')
+			decls << t.make_decl_assign_typed(move_flags[i], t.make_bool_literal(false), flat.source_type_bool)
 		}
 	}
 	return GuardAssignStaging{

@@ -114,7 +114,7 @@ fn test_body_import_type_queries_keep_source_files_and_declaration_generations()
 		for file in ['first.v', 'second.v'] {
 			for typ in ['model.Item', '&model.Item', '[]model.Item', '?model.Item'] {
 				cached := g.canonical_import_alias_type_in_file(flat.source_type_id(typ), file)
-				assert cached == g.canonical_import_alias_type_in_file_uncached(typ, file)
+				assert cached == g.canonical_import_alias_type_in_file_uncached(flat.source_type_id(typ), file)
 				assert cached.name().contains(file.all_before('.') + '.model.Item')
 			}
 		}

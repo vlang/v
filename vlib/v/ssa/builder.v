@@ -9433,9 +9433,10 @@ fn (mut b Builder) build_array_literal(id flat.NodeId, node flat.Node) ValueID {
 	// i64 while `[]int` holds i32. Take the width from the array type when the
 	// checker knows it, or the header stride disagrees with every reader,
 	// which all use the element type, and elements read back shifted.
-	arr_type := b.checked_expr_type_name(id)
-	if arr_type.starts_with('[]') && arr_type.len > 2 {
-		elem_type = b.resolve_type(indexed_elem_type_name(arr_type))
+	arr_type_id := b.checked_expr_type_name(id)
+	arr_type := flat.source_type_name(arr_type_id)
+	if flat.source_type_shape(arr_type_id).has(.array_type) && arr_type.len > 2 {
+		elem_type = b.resolve_type(flat.source_type_id(indexed_elem_type_name(arr_type)))
 	}
 	elem_size := b.m.type_size(elem_type)
 	actual_elem_size := if elem_size > 0 { elem_size } else { 8 }
