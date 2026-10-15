@@ -183,6 +183,16 @@ pub fn (bindings &NodeTypeTextBindings) value_id(node int) u32 {
 	return bindings.ids[node] or { 0 }
 }
 
+// type_id returns the numeric source-spelling identity of a present node binding.
+pub fn (bindings &NodeTypeTextBindings) type_id(node int) ?u32 {
+	return bindings.ids[node] or { return none }
+}
+
+// set_id records an existing source identity without resolving its spelling.
+pub fn (mut bindings NodeTypeTextBindings) set_id(node int, id u32) {
+	bindings.ids[node] = id
+}
+
 // set interns a source spelling and records its identity for the binding.
 pub fn (mut bindings NodeTypeTextBindings) set(node int, text string) {
 	mut table := bindings.texts

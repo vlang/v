@@ -18,7 +18,7 @@ fn test_generic_batch_publishes_indirect_base_writes_and_new_nodes() {
 	batch.item_range_lo = 1
 	batch.item_range_hi = 1
 	batch.set_node_value(0, 'indirect_rewrite'.clone())
-	batch.set_node_typ(1, 'previous_batch_type'.clone())
+	batch.set_node_typ(1, flat.source_type_id('previous_batch_type'.clone()))
 	batch.set_node_generic_params(0, ['T'.clone()])
 	a.nodes[0].set_generic_params_and_constraints(['T'.clone()], ['retiring constraint'.clone()])
 	added := a.add_node(flat.Node{ kind: .ident, value: 'appended'.clone(), typ: flat.source_type_id('new_type'.clone()) })
@@ -143,12 +143,12 @@ fn test_generic_unresolved_cache_owns_scoped_module() {
 	scoped_module := 'cloud'.clone()
 	transform_worker_scope_leave(scope)
 	t.cur_module = scoped_module
-	assert !t.generic_arg_is_unresolved('int')
+	assert !t.generic_arg_is_unresolved(flat.source_type_int)
 	assert !transform_scope_owns(scope, t.generic_unresolved_cache.module.str)
 
 	t.cur_module = 'main'
 	transform_worker_scope_free(scope)
-	assert !t.generic_arg_is_unresolved('int')
+	assert !t.generic_arg_is_unresolved(flat.source_type_int)
 }
 
 fn test_transform_fork_reads_and_merges_source_fn_values() {
@@ -258,7 +258,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	t.scoped_monomorphize = true
 	t.defer_nested_generic_emissions = true
 	for arg in ['int', 'string'] {
-		t.request_generic_fn_specialization(decl, [arg])
+		t.request_generic_fn_specialization(decl, flat.TypeTextList.from_names([arg]).ids)
 	}
 	mut emitted := map[string]bool{}
 	mut generated := []string{}
@@ -266,7 +266,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	assert isnil(a.worker_pool)
 	assert t.pending_generic_fn_specs.len == 0
 	for arg in ['int', 'string'] {
-		spec_key := generic_fn_spec_key(decl.key, [arg])
+		spec_key := generic_fn_spec_key(decl.key, flat.TypeTextList.from_names([arg]).ids)
 		assert emitted[spec_key]
 		root := t.generic_fn_spec_nodes[spec_key] or { panic('missing ${spec_key}') }
 		name := transform_qualified_fn_name(decl.module, a.node(root).value)
@@ -284,7 +284,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 		lifted++
 		assert node.typ_text() in ['int', 'string']
 		for name in [node.value, transform_qualified_fn_name(decl.module, node.value)] {
-			assert t.fn_ret_types.value(name) == node.typ_text()
+			assert flat.source_type_name(t.fn_ret_types.value_id(name)) == node.typ_text()
 			assert (tc.fn_ret_types[name] or { panic('missing lifted return ${name}') }).name() == node.typ_text()
 			params := tc.fn_param_types[name] or { panic('missing lifted params ${name}') }
 			assert params.len == 1

@@ -1284,17 +1284,17 @@ fn monomorph_chunk_thread(arg voidptr) voidptr {
 		spec := claims.queues[queue_idx].pop()
 		claims.queue_costs[queue_idx] -= i64(w.generic_decl_source_cost(spec.decl))
 		claims.mu.unlock()
-		if !w.generic_specialization_registered(spec.decl, spec.args_text()) {
-			value := specialized_generic_fn_value(spec.decl.node.value, spec.args_text())
-			w.register_specialized_fn_signature_value(spec.decl, value, spec.args_text())
+		if !w.generic_specialization_registered(spec.decl, spec.args.ids) {
+			value := specialized_generic_fn_value(spec.decl.node.value, spec.args.ids)
+			w.register_specialized_fn_signature_value(spec.decl, value, spec.args.ids)
 		}
 		if !private_region && !w.monomorph_worker_has_headroom(spec) {
 			w.detach_monomorph_worker_region(a.base_nodes, a.base_children, a.node_start, a.child_start, spec)
 			private_region = true
 		}
 		spec_nodes_start := w.a.nodes.len
-		root := w.emit_generic_fn_specialization(spec.decl, spec.args_text())
-		generated << w.generated_fn_used_names(spec.decl, root, spec.args_text())
+		root := w.emit_generic_fn_specialization(spec.decl, spec.args.ids)
+		generated << w.generated_fn_used_names(spec.decl, root, spec.args.ids)
 		for i in spec_nodes_start .. w.a.nodes.len {
 			node := w.a.nodes[i]
 			w.collect_generic_struct_specs_from_node(node, spec.decl.module, spec.decl.file, true, a.struct_decls, mut struct_specs)
@@ -1639,7 +1639,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 	t.fn_ret_types = shared_fn_ret_types.move()
 	t.receiver_method_suffix_index = shared_receiver_index.move()
 	for name, ret_id in master_fn_ret_types.ids {
-		t.fn_ret_types.set(name, master_fn_ret_types.texts.text(ret_id))
+		t.fn_ret_types.set_id(name, ret_id)
 	}
 	for name, receiver in master_receiver_index {
 		t.receiver_method_suffix_index[name] = receiver
@@ -1665,12 +1665,12 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 				}
 			}
 			for name in w.generic_specialization_args_log {
-				spec_args := w.generic_specialization_args.get(name) or { continue }
+				spec_args := w.generic_specialization_args.type_ids(name) or { continue }
 				if !t.generic_specialization_args.contains(name) {
-					// Deep-copy the elements: the worker's copy of this array is
+					// Copy the numeric array: the worker's copy is
 					// backed by its scratch arena, which is released after the
 					// merge (a later pass re-seeds from these recorded args).
-					t.generic_specialization_args.set(name.clone(), clone_monomorph_specialization_args(spec_args))
+					t.generic_specialization_args.set_ids(name.clone(), spec_args)
 				}
 			}
 			// Every emitted worker specialization is registered by the master below.
@@ -1696,17 +1696,17 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			// the declaration it carries can live in that worker's scratch arena.
 			// Publish a copy the master arena owns instead (vlang/v#28489).
 			decl := clone_monomorph_worker_decl(spec.decl)
-			t.record_monomorph_cache_spec(spec.key.clone(), decl.key, decl.module, spec.args_text())
-			if !t.generic_specialization_registered(decl, spec.args_text()) {
-				value := specialized_generic_fn_value(decl.node.value, spec.args_text())
-				t.register_specialized_fn_signature_value(decl, value, spec.args_text())
+			t.record_monomorph_cache_spec(spec.key.clone(), decl.key, decl.module, spec.args.ids)
+			if !t.generic_specialization_registered(decl, spec.args.ids) {
+				value := specialized_generic_fn_value(decl.node.value, spec.args.ids)
+				t.register_specialized_fn_signature_value(decl, value, spec.args.ids)
 			}
 			t.generic_fn_spec_nodes[spec.key.clone()] = root
 			t.a.specialized_fn_nodes[int(root)] = true
 			t.a.specialized_fn_modules[int(root)] = decl.module
 			t.a.specialized_fn_files[int(root)] = decl.file
 			t.mark_node_context(root, decl.module, decl.file)
-			emitted[generic_fn_spec_key(decl.key, spec.args_text())] = true
+			emitted[generic_fn_spec_key(decl.key, spec.args.ids)] = true
 			t.pending_generic_fn_spec_keys.delete(spec.key)
 		}
 		for name in args[ci].generated {
@@ -1714,12 +1714,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		}
 		if ci > 0 {
 			for pending in w.pending_generic_fn_specs {
-				mut owned_args := []string{cap: pending.args.ids.len}
-				for item in pending.args_text() {
-					owned_args << item.clone()
-				}
 				t.request_generic_fn_specialization(clone_monomorph_worker_decl(pending.decl),
-					owned_args)
+					pending.args.ids)
 			}
 		}
 		t.monomorph_profile('mono merged worker ${ci}: ${time.ticks() - debug_started} ms')
@@ -1755,17 +1751,6 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 	return any_started
 }
 
-// run_scoped_monomorphize_specs emits a bounded number of specializations in a
-// private AST/checker view, merges their persistent output, and releases all
-// per-specialization scratch before continuing with the next batch.
-fn clone_monomorph_specialization_args(args []string) []string {
-	mut owned_args := []string{cap: args.len}
-	for arg in args {
-		owned_args << arg.clone()
-	}
-	return owned_args
-}
-
 // clone_monomorph_worker_decl copies the declaration text a monomorph worker
 // put together while it was running into the arena that is current here.
 // Workers resolve and lift specialization declarations inside their own scratch
@@ -1784,6 +1769,9 @@ fn clone_monomorph_worker_decl(decl GenericFnDecl) GenericFnDecl {
 	}
 }
 
+// run_scoped_monomorphize_specs emits a bounded number of specializations in a
+// private AST/checker view, merges their persistent output, and releases all
+// per-specialization scratch before continuing with the next batch.
 fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted map[string]bool, mut generated []string) bool {
 	if specs.len == 0 {
 		return false
@@ -1829,9 +1817,9 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			transform_stage_scope_resume(t.stage_scope, parent_state)
 		}
 		for spec in specs[start..end] {
-			if !t.generic_specialization_registered(spec.decl, spec.args_text()) {
-				value := specialized_generic_fn_value(spec.decl.node.value, spec.args_text())
-				t.register_specialized_fn_signature_value(spec.decl, value, spec.args_text())
+			if !t.generic_specialization_registered(spec.decl, spec.args.ids) {
+				value := specialized_generic_fn_value(spec.decl.node.value, spec.args.ids)
+				t.register_specialized_fn_signature_value(spec.decl, value, spec.args.ids)
 			}
 		}
 		scope := transform_worker_scope_begin(true)
@@ -1866,8 +1854,8 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			if spec.key in t.generic_fn_spec_nodes {
 				continue
 			}
-			root := w.emit_generic_fn_specialization(spec.decl, spec.args_text())
-			generated_names << w.generated_fn_used_names(spec.decl, root, spec.args_text())
+			root := w.emit_generic_fn_specialization(spec.decl, spec.args.ids)
+			generated_names << w.generated_fn_used_names(spec.decl, root, spec.args.ids)
 			roots << root
 			emitted_specs << spec
 		}
@@ -1906,31 +1894,27 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			}
 		}
 		for name in w.generic_specialization_args_log {
-			spec_args := w.generic_specialization_args.get(name) or { continue }
+			spec_args := w.generic_specialization_args.type_ids(name) or { continue }
 			if !t.generic_specialization_args.contains(name) {
-				t.generic_specialization_args.set(name.clone(), clone_monomorph_specialization_args(spec_args))
+				t.generic_specialization_args.set_ids(name.clone(), spec_args)
 			}
 		}
 		for pending in w.pending_generic_fn_specs {
-			mut owned_args := []string{cap: pending.args.ids.len}
-			for item in pending.args_text() {
-				owned_args << item.clone()
-			}
 			// The queue keeps this declaration past the batch, so publish a copy
 			// the master arena owns (vlang/v#28489).
 			t.request_generic_fn_specialization(clone_monomorph_worker_decl(pending.decl),
-				owned_args)
+				pending.args.ids)
 		}
 		for idx, spec in owned_emitted_specs {
 			root := flat.NodeId(int(roots[idx]) + node_shift)
 			// Re-record the spec from the master: `record_monomorph_cache_spec`
-			// deep-copies the argument strings into the arena that is current here
+			// copies the numeric argument array into the arena that is current here
 			// (the parent), while the worker's copies die with `scope`.
 			t.record_monomorph_cache_spec(spec.key.clone(), spec.decl.key, spec.decl.module,
-				spec.args_text())
-			if !t.generic_specialization_registered(spec.decl, spec.args_text()) {
-				value := specialized_generic_fn_value(spec.decl.node.value, spec.args_text())
-				t.register_specialized_fn_signature_value(spec.decl, value, spec.args_text())
+				spec.args.ids)
+			if !t.generic_specialization_registered(spec.decl, spec.args.ids) {
+				value := specialized_generic_fn_value(spec.decl.node.value, spec.args.ids)
+				t.register_specialized_fn_signature_value(spec.decl, value, spec.args.ids)
 			}
 			t.generic_fn_spec_nodes[spec.key.clone()] = root
 			t.a.specialized_fn_nodes[int(root)] = true
@@ -1940,7 +1924,7 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			t.add_call_param_types_decl_key(name, int(root), spec.decl.file, spec.decl.module)
 			t.add_call_param_types_decl_key(transform_qualified_fn_name(spec.decl.module, name),
 				int(root), spec.decl.file, spec.decl.module)
-			emitted[generic_fn_spec_key(spec.decl.key, spec.args_text())] = true
+			emitted[generic_fn_spec_key(spec.decl.key, spec.args.ids)] = true
 			t.pending_generic_fn_spec_keys.delete(spec.key)
 		}
 		for name in generated_names {
@@ -1949,15 +1933,16 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		if t.stage_scope != unsafe { nil } {
 			parent_state := transform_stage_scope_suspend(t.stage_scope)
 			// A batch leaves its texts in a few nodes. A node without a payload
-			// whose texts both lie outside the addresses of the batch arena owns
-			// nothing there, which two comparisons tell.
+			// whose value text lies outside the addresses of the batch arena owns
+			// nothing there. `node.typ` is an interned source-type ID, not a string,
+			// and its spelling lives in the process-wide table, so it never needs
+			// this check. (`node.typ.str` here would be a method value on the u32,
+			// which allocated a closure per node.)
 			scope_lo, scope_hi := transform_scope_address_range(scope)
 			for idx in 0 .. t.a.nodes.len {
 				node := unsafe { &t.a.nodes[idx] }
 				value_address := usize(node.value.str)
-				type_address := usize(node.typ.str)
-				if node.payload == 0 && (value_address < scope_lo || value_address >= scope_hi)
-					&& (type_address < scope_lo || type_address >= scope_hi) {
+				if node.payload == 0 && (value_address < scope_lo || value_address >= scope_hi) {
 					continue
 				}
 				t.clone_scoped_worker_node(idx, scope)
@@ -2681,7 +2666,10 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 	for i in start .. t.deferred_base_writes.len {
 		write := t.deferred_base_writes[i]
 		t.deferred_base_writes[i] = match write.kind {
-			0, 1 {
+			0 {
+				write
+			}
+			1 {
 				DeferredBaseWrite{
 					idx:  write.idx
 					kind: write.kind

@@ -27,15 +27,17 @@ fn fastc_match_multi_variant_value(subject string, access string, variants []str
 }
 
 fn (mut g Parser) read_match_expression() !string {
-	outer_expected_type := g.expected_expression_type_text()
+	outer_expected_type_source_id := g.expected_expression_type
+	outer_expected_type := flat.source_type_name(outer_expected_type_source_id)
 	g.expect(.key_match)!
-	g.expected_expression_type = flat.source_type_id('')
+	g.expected_expression_type = u32(0)
 	// `read_expression` consumes the `mut` modifier and keeps only the referenced
 	// name in `last_expression`, so remember it before parsing the subject.
 	subject_is_mut := g.tok == .key_mut
 	subject := g.read_expression([token.Token.lcbr])!
-	subject_type := g.last_expression_type_text()
-	if subject == '' || subject_type == '' {
+	subject_type_source_id := g.last_expression_type
+	subject_type := flat.source_type_name(subject_type_source_id)
+	if subject == '' || subject_type_source_id == u32(0) {
 		return g.unsupported('unverifiable match expression subject')
 	}
 	subject_tokens := g.last_expression.clone()
@@ -112,7 +114,7 @@ fn (mut g Parser) read_match_expression() !string {
 			}
 		} else {
 			for {
-				g.expected_expression_type = flat.source_type_id(subject_type)
+				g.expected_expression_type = subject_type_source_id
 				start := g.read_expression([token.Token.comma, token.Token.lcbr, token.Token.dotdot,
 					token.Token.ellipsis])!
 				start_tokens := g.last_expression.clone()
@@ -145,7 +147,7 @@ fn (mut g Parser) read_match_expression() !string {
 			}
 		}
 		g.expect(.lcbr)!
-		g.expected_expression_type = flat.source_type_id(outer_expected_type)
+		g.expected_expression_type = outer_expected_type_source_id
 		// A single-type branch smart-casts to that variant. A branch listing several
 		// array variants (`[]int, []string { value.len }`) cannot pick one concrete
 		// element type, but every V array shares the generic `array` layout, so casting
@@ -173,10 +175,10 @@ fn (mut g Parser) read_match_expression() !string {
 			g.locals[subject_local] = FastcLocal{
 				is_mut:       smartcast_saved.is_mut
 				is_reference: smartcast_is_reference
-				typ:          flat.source_type_id(if smartcast_is_reference {
-					smartcast_type + '*'
+				typ:          (if smartcast_is_reference {
+					flat.source_type_id(smartcast_type + '*')
 				} else {
-					smartcast_type
+					flat.source_type_id(smartcast_type)
 				})
 			}
 		}
@@ -232,7 +234,7 @@ fn (mut g Parser) read_match_expression() !string {
 			}
 			value = '({ ${declaration_type} ${fastc_c_identifier(subject_local)} = ${smartcast_value}; (${value}); })'
 		}
-		if g.selfhost && value_type != '' && outer_expected_type != '' && g.should_box_variant(outer_expected_type, value_type) {
+		if g.selfhost && value_type != '' && outer_expected_type_source_id != u32(0) && g.should_box_variant(outer_expected_type, value_type) {
 			// A branch value whose type is a variant of the match's (boxed) expected
 			// type must be boxed, so every branch shares the ternary's result type
 			// (e.g. a `[]Primitive` branch returning the smart-cast array as a `Primitive`).
@@ -299,7 +301,7 @@ fn (mut g Parser) read_match_expression() !string {
 		}
 	}
 	g.expect(.rcbr)!
-	g.expected_expression_type = flat.source_type_id(outer_expected_type)
+	g.expected_expression_type = outer_expected_type_source_id
 	if !has_else && !g.selfhost {
 		return g.unsupported('non-exhaustive match expression without `else`')
 	}
@@ -310,10 +312,10 @@ fn (mut g Parser) read_match_expression() !string {
 	for i := conditions.len - 1; i >= 0; i-- {
 		expression = '((${conditions[i]}) ? (${values[i]}) : (${expression}))'
 	}
-	g.last_expression_type = flat.source_type_id(if result_type == '' {
-		outer_expected_type
+	g.last_expression_type = (if result_type == '' {
+		outer_expected_type_source_id
 	} else {
-		result_type
+		flat.source_type_id(result_type)
 	})
 	g.last_expression = []FastcExpressionToken{}
 	subject_decl_type := g.declaration_c_type(subject_type, subject)
@@ -423,7 +425,7 @@ fn (mut g Parser) read_block_expression_value() !string {
 	}
 	statements := g.captured_defer_lines.clone()
 	if g.tok == .rcbr {
-		g.last_expression_type = flat.source_type_id('')
+		g.last_expression_type = u32(0)
 		g.last_expression = []FastcExpressionToken{}
 		return '({ ${statements.join(' ')} 0; })'
 	}

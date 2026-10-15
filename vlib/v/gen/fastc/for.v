@@ -267,7 +267,7 @@ fn (mut g Parser) parse_for() !bool {
 				} else if is_ordinary_string {
 					g.write_line('u8 ${c_value_name} = ((const unsigned char *)${collection_name})[${index_name}];')
 					g.locals[actual_value_name] = FastcLocal{
-						typ: flat.source_type_id('u8')
+						typ: flat.source_type_u8
 					}
 				} else if !is_fixed_array && collection_layout_type.ends_with('*') && collection_layout_type.trim_right('*') != 'string' {
 					g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_data})[${index_name}]);')
@@ -283,7 +283,7 @@ fn (mut g Parser) parse_for() !bool {
 			}
 			if value_name != '' && name != '_' {
 				g.locals[name] = FastcLocal{
-					typ: flat.source_type_id('int')
+					typ: flat.source_type_int
 				}
 			}
 			_ = g.parse_loop_block_body()!
@@ -493,7 +493,7 @@ fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string
 	}
 	if value_name != '' && name != '_' {
 		g.locals[name] = FastcLocal{
-			typ: flat.source_type_id('int')
+			typ: flat.source_type_int
 		}
 	}
 	_ = g.parse_loop_block_body()!

@@ -104,7 +104,7 @@ fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 	g.a = &a
 	g.tc = &tc
 	g.cache_decl_demand = true
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
 	g.cache_require_declaration_type(types.Struct{ name_id: flat.source_type_id('sample.Parent') }, mut seen)
 	names := g.c_struct_decl_names()
 	assert 'sample.Parent' in names
@@ -117,7 +117,7 @@ fn test_cache_demand_keeps_fixed_array_alias_element_layouts() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['sample.Box'] = []types.StructField{}
 	tc.structs['sample.Unused'] = []types.StructField{}
-	tc.type_aliases.set('sample.Boxes', '[2]sample.Box')
+	tc.type_aliases.set_id('sample.Boxes', flat.source_type_id('[2]sample.Box'))
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -152,7 +152,7 @@ fn test_cache_map_key_helpers_follow_their_builtin_prototypes() {
 	fn_id := a.add_node(flat.Node{
 		kind:   .fn_decl
 		value:  'fast_string_eq'
-		typ:    flat.source_type_id('bool')
+		typ:    flat.source_type_bool
 		is_mut: true
 	})
 	mut tc := types.TypeChecker.new(&a)

@@ -67,14 +67,14 @@ fn test_collection_alias_methods_keep_declared_and_inherited_precedence() {
 	tc.fn_ret_types['array.clear'] = types.Type(types.Void{})
 	tc.fn_ret_types['map.clear'] = types.Type(types.Void{})
 	collector := CallCollector{ a: &a, tc: &tc }
-	assert collector.typed_receiver_method_name('&strings.Builder', 'clear', 'strings')? == 'array.clear'
+	assert collector.typed_receiver_method_name(flat.source_type_id('&strings.Builder'), 'clear', 'strings')? == 'array.clear'
 	tc.fn_ret_types['strings.Builder.clear'] = types.Type(types.Void{})
-	assert collector.typed_receiver_method_name('strings.Builder', 'clear', 'strings')? == 'strings.Builder.clear'
+	assert collector.typed_receiver_method_name(flat.source_type_id('strings.Builder'), 'clear', 'strings')? == 'strings.Builder.clear'
 	tc.fn_ret_types.delete('strings.Builder.clear')
 	tc.type_aliases.set('strings.Outer', 'Builder')
 	tc.type_alias_modules['strings.Outer'] = 'strings'
 	tc.fn_ret_types['strings.Builder.clear'] = types.Type(types.Void{})
-	assert collector.typed_receiver_method_name('strings.Outer', 'clear', 'main')? == 'strings.Builder.clear'
+	assert collector.typed_receiver_method_name(flat.source_type_id('strings.Outer'), 'clear', 'main')? == 'strings.Builder.clear'
 }
 
 fn test_collection_alias_methods_use_owner_and_specialized_collections() {
@@ -92,9 +92,9 @@ fn test_collection_alias_methods_use_owner_and_specialized_collections() {
 		tc.fn_ret_types[name] = types.Type(types.Void{})
 	}
 	collector := CallCollector{ a: &a, tc: &tc }
-	assert collector.typed_receiver_method_name('dep.Outer', 'clear', 'main')? == 'array.clear'
-	assert collector.typed_receiver_method_name('dep.Outer', 'hex', 'main')? == '[]u8.hex'
-	assert collector.typed_receiver_method_name('dep.Values', 'keys', 'main')? == 'map[string]int.keys'
+	assert collector.typed_receiver_method_name(flat.source_type_id('dep.Outer'), 'clear', 'main')? == 'array.clear'
+	assert collector.typed_receiver_method_name(flat.source_type_id('dep.Outer'), 'hex', 'main')? == '[]u8.hex'
+	assert collector.typed_receiver_method_name(flat.source_type_id('dep.Values'), 'keys', 'main')? == 'map[string]int.keys'
 }
 
 fn test_collection_alias_methods_preserve_canonical_owner_over_current_imports() {
@@ -112,7 +112,7 @@ fn test_collection_alias_methods_preserve_canonical_owner_over_current_imports()
 	assert types.unalias_type(tc.parse_type(flat.source_type_id('dep.Bytes'))) is types.Map
 	assert types.unalias_type(tc.parse_canonical_type(flat.source_type_id('dep.Bytes'))) is types.Array
 	collector := CallCollector{ a: &a, tc: &tc }
-	assert collector.typed_receiver_method_name('dep.Bytes', 'clear', 'main')? == 'array.clear'
+	assert collector.typed_receiver_method_name(flat.source_type_id('dep.Bytes'), 'clear', 'main')? == 'array.clear'
 }
 
 fn test_collection_alias_methods_leave_cycles_generics_and_structs_conservative() {
@@ -129,7 +129,7 @@ fn test_collection_alias_methods_leave_cycles_generics_and_structs_conservative(
 	tc.fn_ret_types['Inner.clear'] = types.Type(types.Void{})
 	collector := CallCollector{ a: &a, tc: &tc }
 	for name in ['CycleA', 'CycleB', 'Generic', 'Outer', 'Missing'] {
-		assert collector.typed_receiver_method_name(name, 'clear', 'main') == none, name
+		assert collector.typed_receiver_method_name(flat.source_type_id(name), 'clear', 'main') == none, name
 	}
 }
 
@@ -154,13 +154,13 @@ fn test_explicit_generic_factory_return_type_retains_receiver_methods() {
 		imports := {
 			'g': 'gates'
 		}
-		assert collector.top_level_call_return_type_name(call, 'gates', imports, map[string]bool{},
-			flat.TypeTextBindings.from_names({}), false) == 'gates.Gate[T]'
+		assert flat.source_type_name(collector.top_level_call_return_type_name(call, 'gates', imports, map[string]bool{},
+			flat.TypeTextBindings.from_names({}), false)) == 'gates.Gate[T]'
 		shadowed := if imported { 'g' } else { 'make_gate' }
 		assert collector.top_level_call_return_type_name(call, 'gates', imports, {
 			shadowed: true
 		},
-			flat.TypeTextBindings.from_names({}), false) == ''
+			flat.TypeTextBindings.from_names({}), false) == u32(0)
 	}
 }
 
@@ -198,8 +198,8 @@ fn test_explicit_generic_factory_substitution_covers_nested_type_forms() {
 			name_id: flat.source_type_id('gates.Gate[${form[0]}]')
 		})
 		collector := CallCollector{ a: &a, tc: &tc }
-		assert collector.top_level_call_return_type_name(call, 'gates', map[string]string{},
-			map[string]bool{}, flat.TypeTextBindings.from_names({}), false) == 'gates.Gate[${form[1]}]'
+		assert flat.source_type_name(collector.top_level_call_return_type_name(call, 'gates', map[string]string{},
+			map[string]bool{}, flat.TypeTextBindings.from_names({}), false)) == 'gates.Gate[${form[1]}]'
 	}
 }
 
@@ -274,13 +274,13 @@ fn test_checker_selected_generic_selector_factory_return_type() {
 		})
 		tc.sparse_resolved_call_names[int(call)] = resolved
 		collector := CallCollector{ a: &a, tc: &tc }
-		assert collector.top_level_call_return_type_name(call, 'main', {
+		assert flat.source_type_name(collector.top_level_call_return_type_name(call, 'main', {
 			'alias': 'gates'
 		}, {
 			'builder': true
 		}, flat.TypeTextBindings.from_names({
 			'builder': 'gates.Builder'
-		}), false) == 'gates.Gate[T]'
+		}), false)) == 'gates.Gate[T]'
 	}
 }
 
@@ -463,14 +463,14 @@ fn test_omitted_parameter_defaults_skip_receiver_and_named_arguments() {
 	mut a := flat.FlatAst.new()
 	default_ident := a.add_node(flat.Node{ kind: .ident, value: 'default_level' })
 	default_call := call_helper_node(mut a, flat.Node{ kind: .call }, [default_ident])
-	field := call_helper_node(mut a, flat.Node{ kind: .field_decl, value: 'level', typ: flat.source_type_id('int') }, [
+	field := call_helper_node(mut a, flat.Node{ kind: .field_decl, value: 'level', typ: flat.source_type_int }, [
 		default_call,
 	])
 	config := call_helper_node(mut a, flat.Node{ kind: .struct_decl, value: 'Config' }, [
 		field,
 	])
 	receiver := a.add_node(flat.Node{ kind: .param, value: 'self', typ: flat.source_type_id('Receiver'), op: .dot })
-	data := a.add_node(flat.Node{ kind: .param, value: 'data', typ: flat.source_type_id('int') })
+	data := a.add_node(flat.Node{ kind: .param, value: 'data', typ: flat.source_type_int })
 	options := a.add_node(flat.Node{ kind: .param, value: 'options', typ: flat.source_type_id('Config') })
 	decl := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'consume' }, [
 		receiver,
@@ -555,8 +555,8 @@ fn test_explicit_generic_factory_resolves_nested_import_aliases() {
 		} else {
 			form.replace('alias.', 'actual.module.').replace('other.', 'other.module.')
 		}
-		assert collector.top_level_call_return_type_name(call, 'gates', imports,
-			map[string]bool{}, flat.TypeTextBindings.from_names({}), false) == 'gates.Gate[${expected}]'
+		assert flat.source_type_name(collector.top_level_call_return_type_name(call, 'gates', imports,
+			map[string]bool{}, flat.TypeTextBindings.from_names({}), false)) == 'gates.Gate[${expected}]'
 	}
 }
 
@@ -591,8 +591,8 @@ fn test_explicit_generic_factory_qualifies_caller_types_and_selective_imports() 
 		arg := a.add_node(flat.Node{ kind: .struct_decl, value: form, pos: token.Pos{ id: 3 } })
 		indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
 		collector := CallCollector{ a: &a, tc: &tc }
-		assert collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate',
-			'consumer', map[string]string{}, false, '') == 'gates.Gate[${expected}]'
+		assert flat.source_type_name(collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate',
+			'consumer', map[string]string{}, false, u32(0))) == 'gates.Gate[${expected}]'
 	}
 }
 
@@ -618,11 +618,11 @@ fn test_generic_factory_return_substitutes_receiver_and_method_arguments_togethe
 		call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
 		tc.sparse_resolved_call_names[int(call)] = method
 		collector := CallCollector{ a: &a, tc: &tc }
-		assert collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+		assert flat.source_type_name(collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 			'builder': true
 		}, flat.TypeTextBindings.from_names({
 			'builder': parts[1]
-		}), false) == parts[3]
+		}), false)) == parts[3]
 	}
 }
 
@@ -639,9 +639,10 @@ fn test_generic_factory_return_locks_main_module_type_arguments() {
 	arg := a.add_val(.ident, 'Payload')
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
 	collector := CallCollector{ a: &a, tc: &tc }
-	inferred := collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate', 'main', map[string]string{}, false, '')
+	inferred_source_id := collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate', 'main', map[string]string{}, false, u32(0))
+	inferred := flat.source_type_name(inferred_source_id)
 	assert inferred == 'gates.Gate[main.Payload]'
-	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[main.Payload].backward'
+	assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'main')? == 'gates.Gate[main.Payload].backward'
 }
 
 fn test_generic_factory_return_keeps_noncolliding_main_type_spelling() {
@@ -657,10 +658,11 @@ fn test_generic_factory_return_keeps_noncolliding_main_type_spelling() {
 	arg := a.add_val(.ident, 'Payload')
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
 	collector := CallCollector{ a: &a, tc: &tc }
-	inferred := collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate',
-		'main', map[string]string{}, false, '')
+	inferred_source_id := collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate',
+		'main', map[string]string{}, false, u32(0))
+	inferred := flat.source_type_name(inferred_source_id)
 	assert inferred == 'gates.Gate[Payload]'
-	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[Payload].backward'
+	assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'main')? == 'gates.Gate[Payload].backward'
 }
 
 fn test_generic_factory_return_locks_main_alias_when_target_collides() {
@@ -678,10 +680,11 @@ fn test_generic_factory_return_locks_main_alias_when_target_collides() {
 	arg := a.add_val(.ident, 'Payload')
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
 	collector := CallCollector{ a: &a, tc: &tc }
-	inferred := collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate',
-		'main', map[string]string{}, false, '')
+	inferred_source_id := collector.generic_factory_return_type_name(a.node(indexed), 'gates.make_gate',
+		'main', map[string]string{}, false, u32(0))
+	inferred := flat.source_type_name(inferred_source_id)
 	assert inferred == 'gates.Gate[main.Payload]'
-	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[main.Payload].backward'
+	assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'main')? == 'gates.Gate[main.Payload].backward'
 }
 
 fn test_promoted_generic_factory_return_substitutes_embedded_receiver() {
@@ -709,13 +712,14 @@ fn test_promoted_generic_factory_return_substitutes_embedded_receiver() {
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [indexed])
 	tc.sparse_resolved_call_names[int(call)] = method
 	collector := CallCollector{ a: &a, tc: &tc }
-	inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+	inferred_source_id := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 		'outer': true
 	}, flat.TypeTextBindings.from_names({
 		'outer': 'gates.Outer[int]'
 	}), false)
+	inferred := flat.source_type_name(inferred_source_id)
 	assert inferred == 'gates.Gate[int, string]'
-	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[int, string].backward'
+	assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'main')? == 'gates.Gate[int, string].backward'
 }
 
 fn test_receiver_only_generic_factory_return_substitutes_explicit_receiver_arg() {
@@ -733,23 +737,25 @@ fn test_receiver_only_generic_factory_return_substitutes_explicit_receiver_arg()
 	tc.sparse_resolved_call_names[int(call)] = method
 	collector := CallCollector{ a: &a, tc: &tc }
 	assert collector.generic_fn_name_is_known(method, 'main')
-	inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+	inferred_source_id := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 		'builder': true
 	}, flat.TypeTextBindings.from_names({
 		'builder': 'gates.Builder[int]'
 	}), false)
+	inferred := flat.source_type_name(inferred_source_id)
 	assert inferred == 'gates.Gate[int]'
-	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[int].backward'
+	assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'main')? == 'gates.Gate[int].backward'
 	plain_call := call_helper_node(mut a, flat.Node{ kind: .call }, [selector])
 	tc.sparse_resolved_call_names[int(plain_call)] = method
-	plain_inferred := collector.top_level_call_return_type_name(plain_call, 'main',
+	plain_inferred_source_id := collector.top_level_call_return_type_name(plain_call, 'main',
 		map[string]string{}, {
 			'builder': true
 		}, flat.TypeTextBindings.from_names({
 			'builder': 'gates.Builder[int]'
 		}), false)
+	plain_inferred := flat.source_type_name(plain_inferred_source_id)
 	assert plain_inferred == 'gates.Gate[int]'
-	assert collector.typed_receiver_method_name(plain_inferred, 'backward', 'main')? == 'gates.Gate[int].backward'
+	assert collector.typed_receiver_method_name(plain_inferred_source_id, 'backward', 'main')? == 'gates.Gate[int].backward'
 }
 
 fn test_generic_factory_return_uses_placeholder_signature_text() {
@@ -770,13 +776,14 @@ fn test_generic_factory_return_uses_placeholder_signature_text() {
 			else { unknown }
 		}
 		collector := CallCollector{ a: &a, tc: &tc }
-		inferred := collector.generic_factory_return_type_name(a.node(indexed), 'gates.identity',
-			'main', map[string]string{}, true, '')
+		inferred_source_id := collector.generic_factory_return_type_name(a.node(indexed), 'gates.identity',
+			'main', map[string]string{}, true, u32(0))
+		inferred := flat.source_type_name(inferred_source_id)
 		assert inferred == 'Payload'
-		assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'Payload.backward'
+		assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'main')? == 'Payload.backward'
 		if form[0] in [`?`, `!`] {
-			wrapped := collector.generic_factory_return_type_name(a.node(indexed), 'gates.identity',
-				'main', map[string]string{}, false, '')
+			wrapped := flat.source_type_name(collector.generic_factory_return_type_name(a.node(indexed), 'gates.identity',
+				'main', map[string]string{}, false, u32(0)))
 			assert wrapped == '${form[..1]}Payload'
 		}
 	}
@@ -800,14 +807,14 @@ fn test_generic_factory_return_uses_nested_placeholder_signature_text() {
 			else { array_unknown }
 		}
 		collector := CallCollector{ a: &a, tc: &tc }
-		assert collector.fn_return_type_name('gates.make', true) == '[]unknown'
-		assert collector.generic_factory_return_type_name(a.node(indexed), 'gates.make',
-			'main', map[string]string{}, true, '') == '[]ReceiverRequest'
-		assert collector.typed_receiver_method_name('[]ReceiverRequest', 'receiver_kind',
+		assert flat.source_type_name(collector.fn_return_type_name('gates.make', true)) == '[]unknown'
+		assert flat.source_type_name(collector.generic_factory_return_type_name(a.node(indexed), 'gates.make',
+			'main', map[string]string{}, true, u32(0))) == '[]ReceiverRequest'
+		assert collector.typed_receiver_method_name(flat.source_type_id('[]ReceiverRequest'), 'receiver_kind',
 			'main')? == '[]ReceiverRequest.receiver_kind'
 		if form[0] in [`?`, `!`] {
-			wrapped := collector.generic_factory_return_type_name(a.node(indexed), 'gates.make',
-				'main', map[string]string{}, false, '')
+			wrapped := flat.source_type_name(collector.generic_factory_return_type_name(a.node(indexed), 'gates.make',
+				'main', map[string]string{}, false, u32(0)))
 			assert wrapped == '${form[..1]}[]ReceiverRequest'
 		}
 	}
@@ -826,10 +833,11 @@ fn test_generic_factory_return_keeps_qualified_unknown_module_name() {
 	arg := a.add_val(.ident, 'int')
 	indexed := call_helper_node(mut a, flat.Node{ kind: .index }, [base, arg])
 	collector := CallCollector{ a: &a, tc: &tc }
-	inferred := collector.generic_factory_return_type_name(a.node(indexed), 'unknown_factory.make',
-		'main', map[string]string{}, false, '')
+	inferred_source_id := collector.generic_factory_return_type_name(a.node(indexed), 'unknown_factory.make',
+		'main', map[string]string{}, false, u32(0))
+	inferred := flat.source_type_name(inferred_source_id)
 	assert inferred == 'unknown_factory.Gate'
-	assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'unknown_factory.Gate.backward'
+	assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'main')? == 'unknown_factory.Gate.backward'
 }
 
 fn test_generic_factory_signature_text_uses_declaration_scope() {
@@ -849,15 +857,15 @@ fn test_generic_factory_signature_text_uses_declaration_scope() {
 		base_type: unknown
 	})
 	tc.fn_ret_type_texts.set('gates.make', 'Handler[U]')
-	assert collector.generic_factory_return_type_name(a.node(indexed), 'gates.make', 'consumer',
-		map[string]string{}, false, '') == 'gates.Handler[int]'
+	assert flat.source_type_name(collector.generic_factory_return_type_name(a.node(indexed), 'gates.make', 'consumer',
+		map[string]string{}, false, u32(0))) == 'gates.Handler[int]'
 	tc.fn_ret_types['gates.make'] = types.Type(types.Map{
 		key_type:   types.Type(types.Struct{ name_id: flat.source_type_id('gates.Key') })
 		value_type: unknown
 	})
 	tc.fn_ret_type_texts.set('gates.make', 'map[Key]U')
-	assert collector.generic_factory_return_type_name(a.node(indexed), 'gates.make', 'consumer',
-		map[string]string{}, false, '') == 'map[gates.Key]int'
+	assert flat.source_type_name(collector.generic_factory_return_type_name(a.node(indexed), 'gates.make', 'consumer',
+		map[string]string{}, false, u32(0))) == 'map[gates.Key]int'
 }
 
 fn test_generic_factory_signature_text_uses_declaration_imports() {
@@ -884,8 +892,8 @@ fn test_generic_factory_signature_text_uses_declaration_imports() {
 			'handler': 'external'
 		}]
 	}
-	assert collector.generic_factory_return_type_name(a.node(indexed), method, 'consumer',
-		map[string]string{}, false, '') == 'external.Handler[int]'
+	assert flat.source_type_name(collector.generic_factory_return_type_name(a.node(indexed), method, 'consumer',
+		map[string]string{}, false, u32(0))) == 'external.Handler[int]'
 }
 
 fn test_unindexed_generic_factory_return_infers_argument_type() {
@@ -902,13 +910,14 @@ fn test_unindexed_generic_factory_return_infers_argument_type() {
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
 	tc.sparse_resolved_call_names[int(call)] = method
 	collector := CallCollector{ a: &a, tc: &tc }
-	inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+	inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 		'value': true
 	}, flat.TypeTextBindings.from_names({
 		'value': 'T'
 	}), false)
+	inferred := flat.source_type_name(inferred_source_id)
 	assert inferred == 'gates.Gate[T]'
-	assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
+	assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'consumer')? == 'gates.Gate[T].backward'
 }
 
 fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
@@ -939,13 +948,14 @@ fn test_unindexed_generic_factory_return_infers_nested_argument_types() {
 		['...U', 'T'],
 	] {
 		tc.fn_param_type_texts.set(method, [forms[0]])
-		inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+		inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 			'value': true
 		}, flat.TypeTextBindings.from_names({
 			'value': forms[1]
 		}), false)
+		inferred := flat.source_type_name(inferred_source_id)
 		assert inferred == 'gates.Gate[T]'
-		assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
+		assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'consumer')? == 'gates.Gate[T].backward'
 	}
 }
 
@@ -997,13 +1007,14 @@ fn test_unindexed_factory_infers_aliased_channel_element_type() {
 	tc.sparse_resolved_call_names[int(call)] = method
 	collector := CallCollector{ a: &a, tc: &tc }
 	for actual in ['Mailbox', '&Mailbox', 'MailboxRef'] {
-		inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+		inferred_source_id := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 			'value': true
 		}, flat.TypeTextBindings.from_names({
 			'value': actual
 		}), false)
+		inferred := flat.source_type_name(inferred_source_id)
 		assert inferred == 'gates.Gate[Payload]', actual
-		assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == 'gates.Gate[Payload].backward'
+		assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'main')? == 'gates.Gate[Payload].backward'
 	}
 }
 
@@ -1013,7 +1024,7 @@ fn test_channel_generic_reachability_inference() {
 	actual := types.Type(types.Channel{ elem_type: types.Type(types.int_) })
 	inferred := tc.infer_generic_reachability_type_args('gates.make_gate', 'chan U', actual,
 		['U'])
-	assert inferred['U'] == 'int'
+	assert inferred['U'] == flat.source_type_int
 }
 
 fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {
@@ -1036,11 +1047,11 @@ fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {
 		tc.sparse_resolved_call_names[int(call)] = method
 		collector := CallCollector{ a: &a, tc: &tc }
 		actual := if pattern == '...U' { '[]T' } else { 'T' }
-		inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+		inferred := flat.source_type_name(collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 			'value': true
 		}, flat.TypeTextBindings.from_names({
 			'value': actual
-		}), false)
+		}), false))
 		assert inferred == 'gates.Gate[T]', pattern
 	}
 }
@@ -1512,14 +1523,14 @@ fn test_nested_local_type_does_not_replace_outer_binding() {
 		...collector
 		local_ident_types: ident_types
 	}
-	assert scoped.top_level_receiver_type_name(inner_use, 'main', map[string]string{},
-		local_values, local_types) == 'B'
-	assert scoped.top_level_receiver_type_name(outer_use, 'main', map[string]string{},
-		local_values, local_types) == 'A'
-	assert scoped.top_level_receiver_type_name(later_arm_use, 'main', map[string]string{},
-		local_values, local_types) == 'A'
-	assert scoped.top_level_receiver_type_name(later_select_use, 'main', map[string]string{},
-		local_values, local_types) == 'A'
+	assert flat.source_type_name(scoped.top_level_receiver_type_name(inner_use, 'main', map[string]string{},
+		local_values, local_types)) == 'B'
+	assert flat.source_type_name(scoped.top_level_receiver_type_name(outer_use, 'main', map[string]string{},
+		local_values, local_types)) == 'A'
+	assert flat.source_type_name(scoped.top_level_receiver_type_name(later_arm_use, 'main', map[string]string{},
+		local_values, local_types)) == 'A'
+	assert flat.source_type_name(scoped.top_level_receiver_type_name(later_select_use, 'main', map[string]string{},
+		local_values, local_types)) == 'A'
 	calls := collector.collect_body(a.node(fn_id), 'main', map[string]string{}).calls
 	assert 'A.method' in calls
 	assert 'B.method' in calls
@@ -1540,13 +1551,14 @@ fn test_unindexed_generic_factory_return_infers_callback_result() {
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, callback])
 	tc.sparse_resolved_call_names[int(call)] = method
 	collector := CallCollector{ a: &a, tc: &tc }
-	inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+	inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 		'callback': true
 	}, flat.TypeTextBindings.from_names({
 		'callback': 'fn () T'
 	}), false)
+	inferred := flat.source_type_name(inferred_source_id)
 	assert inferred == 'gates.Gate[T]'
-	assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
+	assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'consumer')? == 'gates.Gate[T].backward'
 }
 
 fn test_unindexed_generic_factory_return_infers_interface_implementer() {
@@ -1574,13 +1586,14 @@ fn test_unindexed_generic_factory_return_infers_interface_implementer() {
 	call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, source])
 	tc.sparse_resolved_call_names[int(call)] = method
 	collector := CallCollector{ a: &a, tc: &tc }
-	inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+	inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 		'source': true
 	}, flat.TypeTextBindings.from_names({
 		'source': 'List[int]'
 	}), false)
+	inferred := flat.source_type_name(inferred_source_id)
 	assert inferred == 'gates.Gate[int]'
-	assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[int].backward'
+	assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'consumer')? == 'gates.Gate[int].backward'
 }
 
 fn test_unindexed_generic_factory_infers_short_struct_fields_together() {
@@ -1596,7 +1609,7 @@ fn test_unindexed_generic_factory_infers_short_struct_fields_together() {
 		tc.fn_ret_types[method] = types.Type(types.Struct{ name_id: flat.source_type_id('gates.Gate[U]') })
 		tc.fn_ret_types['gates.Gate[T].backward'] = types.Type(types.int_)
 		tc.struct_generic_params['gates.Params'] = ['P']
-		count_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'count', typ: flat.source_type_id('int') })
+		count_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'count', typ: flat.source_type_int })
 		items_decl := a.add_node(flat.Node{ kind: .field_decl, value: 'items', typ: flat.source_type_id(pattern) })
 		struct_id := call_helper_node(mut a, flat.Node{ kind: .struct_decl, value: 'Params' }, [
 			count_decl,
@@ -1625,15 +1638,16 @@ fn test_unindexed_generic_factory_infers_short_struct_fields_together() {
 			}
 			import_contexts: [map[string]string{}]
 		}
-		inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+		inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 			'values': true
 		}, flat.TypeTextBindings.from_names({
 			'values': pattern.replace('P', 'T')
 		}), false)
+		inferred := flat.source_type_name(inferred_source_id)
 		if inferred != 'gates.Gate[T]' {
 			mismatches << '${pattern}: ${inferred}'
 		} else {
-			assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == 'gates.Gate[T].backward'
+			assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'consumer')? == 'gates.Gate[T].backward'
 		}
 	}
 	assert mismatches.len == 0, mismatches.str()
@@ -1657,15 +1671,16 @@ fn test_inferred_factory_callback_arguments_keep_caller_generic_names() {
 			call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
 			tc.sparse_resolved_call_names[int(call)] = method
 			collector := CallCollector{ a: &a, tc: &tc }
-			inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+			inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 				'value': true
 			}, flat.TypeTextBindings.from_names({
 				'value': pattern.replace('U', caller)
 			}), false)
+			inferred := flat.source_type_name(inferred_source_id)
 			if inferred != expected {
 				mismatches << '${pattern} / ${caller}: ${inferred}'
 			} else {
-				assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == '${expected}.backward'
+				assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'consumer')? == '${expected}.backward'
 			}
 		}
 	}
@@ -1708,16 +1723,17 @@ fn test_inferred_factory_interface_arguments_keep_caller_generic_names() {
 			call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
 			tc.sparse_resolved_call_names[int(call)] = method
 			collector := CallCollector{ a: &a, tc: &tc }
-			inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+			inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 				'value': true
 			}, flat.TypeTextBindings.from_names({
 				'value': 'consumer.List[${caller}]'
 			}), false)
+			inferred := flat.source_type_name(inferred_source_id)
 			assert tc.cur_module == 'consumer'
 			if inferred != expected {
 				mismatches << '${pattern} / ${caller}: ${inferred}'
 			} else {
-				assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == '${expected}.backward'
+				assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'consumer')? == '${expected}.backward'
 			}
 		}
 	}
@@ -1824,13 +1840,14 @@ fn test_unindexed_factory_infers_variadic_caller_types() {
 		call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, value])
 		tc.sparse_resolved_call_names[int(call)] = method
 		collector := CallCollector{ a: &a, tc: &tc }
-		inferred := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
+		inferred_source_id := collector.top_level_call_return_type_name(call, 'consumer', map[string]string{}, {
 			'value': true
 		}, flat.TypeTextBindings.from_names({
 			'value': actual
 		}), false)
+		inferred := flat.source_type_name(inferred_source_id)
 		assert inferred == expected, actual
-		assert collector.typed_receiver_method_name(inferred, 'backward', 'consumer')? == '${expected}.backward'
+		assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'consumer')? == '${expected}.backward'
 	}
 }
 
@@ -1885,15 +1902,16 @@ fn test_factory_argument_inference_handles_spreads_modifiers_and_container_alias
 		call := call_helper_node(mut a, flat.Node{ kind: .call }, [base, arg])
 		tc.sparse_resolved_call_names[int(call)] = method
 		collector := CallCollector{ a: &a, tc: &tc }
-		inferred := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
+		inferred_source_id := collector.top_level_call_return_type_name(call, 'main', map[string]string{}, {
 			'value': true
 		}, flat.TypeTextBindings.from_names({
 			'value': form[1]
 		}), false)
+		inferred := flat.source_type_name(inferred_source_id)
 		if inferred != expected {
 			failures << '${form}: got ${inferred}, wanted ${expected}'
 		} else {
-			assert collector.typed_receiver_method_name(inferred, 'backward', 'main')? == '${expected}.backward'
+			assert collector.typed_receiver_method_name(inferred_source_id, 'backward', 'main')? == '${expected}.backward'
 		}
 	}
 	assert failures.len == 0, failures.join('\n')
@@ -1932,11 +1950,11 @@ fn test_factory_calls_used_directly_as_receivers_keep_specialized_methods() {
 				body,
 			])
 			collector := CallCollector{ a: &a, tc: &tc, import_contexts: [map[string]string{}] }
-			assert collector.top_level_receiver_type_name(factory, 'main', map[string]string{}, {
+			assert flat.source_type_name(collector.top_level_receiver_type_name(factory, 'main', map[string]string{}, {
 				'value': true
 			}, flat.TypeTextBindings.from_names({
 				'value': 'T'
-			})) == 'gates.Gate[T]', 'explicit=${explicit}, cached_placeholder=${cached_placeholder}'
+			}))) == 'gates.Gate[T]', 'explicit=${explicit}, cached_placeholder=${cached_placeholder}'
 			assert 'gates.Gate[T].backward' in collector.collect_body(a.node(fn_id), 'main', map[string]string{}).calls, 'explicit=${explicit}, cached_placeholder=${cached_placeholder}'
 		}
 	}
@@ -2335,7 +2353,7 @@ fn test_reused_local_visibility_keeps_shadowed_callback_and_constant_edges() {
 	const_decl := call_helper_node(mut a, flat.Node{ kind: .decl_assign }, [const_lhs, const_rhs])
 	inner_const := a.add_val(.ident, 'answer')
 	block := call_helper_node(mut a, flat.Node{ kind: .block }, [decl, inner, const_decl, inner_const])
-	lambda_param := a.add_node(flat.Node{ kind: .ident, value: 'callback', typ: flat.source_type_id('int') })
+	lambda_param := a.add_node(flat.Node{ kind: .ident, value: 'callback', typ: flat.source_type_int })
 	lambda_use := a.add_val(.ident, 'callback')
 	lambda_body := call_helper_node(mut a, flat.Node{ kind: .block }, [lambda_use])
 	lambda := call_helper_node(mut a, flat.Node{ kind: .lambda_expr }, [lambda_param, lambda_body])
@@ -2391,4 +2409,26 @@ fn test_reused_local_visibility_keeps_shadowed_callback_and_constant_edges() {
 	mut refs := []string{}
 	collector.collect_initializer_refs(a.node(fn_id), 'main', map[string]string{}, mut refs)
 	assert refs == result.refs
+}
+
+fn test_receiver_cache_keeps_source_and_semantic_ids_separate() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	source := flat.source_type_id('main.CacheReceiver')
+	semantic := tc.semantic_type_id(types.Type(types.Struct{ name_id: source })) or {
+		panic('missing semantic interner')
+	}
+	collector := CallCollector{
+		a:                     &a
+		tc:                    &tc
+		receiver_method_cache: &MarkusedMethodCache{}
+	}
+	mut module_methods := collector.receiver_method_module('main')
+	method := module_methods.method_id('read')
+	source_key := u64(source) << 32 | u64(method)
+	semantic_key := u64(semantic) << 32 | u64(method)
+	module_methods.source_methods[source_key] = 'source.read'
+	module_methods.semantic_methods[semantic_key] = 'semantic.read'
+	assert collector.typed_receiver_method_name(source, 'read', 'main')? == 'source.read'
+	assert collector.typed_receiver_method_id(semantic, 'read', 'main')? == 'semantic.read'
 }

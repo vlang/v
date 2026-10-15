@@ -330,7 +330,7 @@ mut:
 	prepared            bool
 	ret_type            Type = builtin_void_type
 	ptypes              []Type
-	param_texts         []string
+	param_type_ids      []u32
 	shared_params       []bool
 	is_variadic         bool
 	is_c_variadic       bool
@@ -349,12 +349,12 @@ mut:
 fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 	is_open_generic := node.generic_params().len > 0 || node.value.contains('[')
 	ret_type := if is_open_generic {
-		tc.parse_scope_param_type(node.typ_text())
+		tc.parse_scope_param_type(node.typ)
 	} else {
-		tc.parse_resolution_type(node.typ_text())
+		tc.parse_resolution_type(node.typ)
 	}
 	mut ptypes := []Type{}
-	mut param_texts := []string{}
+	mut param_type_ids := []u32{}
 	mut shared_params := []bool{}
 	mut is_variadic := false
 	mut is_c_variadic := false
@@ -368,28 +368,28 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 			continue
 		}
 		if ptypes.len == 0 && node.value.contains('.') && child.is_mut
-			&& !param_type_text_is_shared(child.typ_text()) {
+			&& !param_source_type_is_shared(child.typ) {
 			has_mut_receiver = true
 		}
-		param_type := child.typ_text()
-		if param_type.starts_with('...') {
+		param_type_source_id := child.typ
+		if flat.source_type_shape(param_type_source_id).has(.variadic) {
 			is_variadic = true
-			if param_type == '...' {
+			if flat.source_type_name(param_type_source_id) == '...' {
 				is_c_variadic = true
 			}
 		}
 		raw_parsed_param_type := if is_open_generic {
-			tc.parse_scope_param_type(param_type)
+			tc.parse_scope_param_type(param_type_source_id)
 		} else {
-			tc.parse_resolution_type(param_type)
+			tc.parse_resolution_type(param_type_source_id)
 		}
 		ptypes << if child.is_mut {
 			mut_param_semantic_type(raw_parsed_param_type)
 		} else {
 			raw_parsed_param_type
 		}
-		param_texts << param_type
-		shared_params << param_type_text_is_shared(child.typ_text())
+		param_type_ids << param_type_source_id
+		shared_params << param_source_type_is_shared(child.typ)
 	}
 	has_forwardable_ctx := tc.fn_needs_implicit_veb_ctx(node)
 	ptypes = tc.fn_param_types_with_implicit_veb_ctx(node, ptypes)
@@ -398,7 +398,7 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 		prepared:            true
 		ret_type:            ret_type
 		ptypes:              ptypes
-		param_texts:         param_texts
+		param_type_ids:      param_type_ids
 		shared_params:       shared_params
 		is_variadic:         is_variadic
 		is_c_variadic:       is_c_variadic
@@ -2866,10 +2866,10 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 // `x.name` or `add(1)` adds a string to `a`. Every other error and warning of the
 // clone is dropped: checked before the clone is lowered, only these are reliable
 // outside checker fixtures, where many valid generic programs would fail. `args`
-// are the types of the instance: the clone spells an alias among them by its
-// base type, and a member of the alias is none of its base (see
+// are source-spelling IDs of the types of the instance: the clone spells an
+// alias among them by its base type, and a member of the alias is none of its base (see
 // member_of_an_alias_argument).
-pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string, args []string) {
+pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string, args []u32) {
 	errors_start := tc.errors.len
 	notices_start := tc.notices.len
 	// The clone was appended after the parent index was built; without its edges
@@ -2897,10 +2897,10 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 // base type of an alias among the types `args` of an instance, and a member
 // that the alias has: `el.val.pack()` of an `Elm[Octet]`, where the clone
 // spells `Octet` as `string` and `pack` is a method of `Octet`.
-fn (tc &TypeChecker) member_of_an_alias_argument(msg string, args []string) bool {
+fn (tc &TypeChecker) member_of_an_alias_argument(msg string, args []u32) bool {
 	type_name, member := concrete_member_error_parts(msg) or { return false }
 	for arg in args {
-		typ := unwrap_pointer(tc.parse_type(flat.source_type_id(arg)))
+		typ := unwrap_pointer(tc.parse_type(arg))
 		if typ is Alias && unalias_type(typ).name() == type_name
 			&& tc.alias_declares_method(typ, member) {
 			return true
@@ -3035,7 +3035,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 		}
 	}
 	tc.cur_scope = tc.file_scope
-	checked_return_type := if node.typ_text().ends_with('?') && !node.typ_text().starts_with('?') {
+	checked_return_type := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
 		node.typ_text().trim_right('?')
 	} else {
 		node.typ_text()
@@ -3086,13 +3086,13 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 					}
 				}
 				if param.is_mut {
-					implicit_mut_reference := param.op != .amp && param.typ_text().starts_with('&')
+					implicit_mut_reference := param.op != .amp && flat.source_type_shape(param.typ).has(.pointer)
 					diagnostic_type_text := if implicit_mut_reference {
 						param.typ_text()[1..]
 					} else {
 						param.typ_text()
 					}
-					raw_param_type := tc.parse_scope_param_type(diagnostic_type_text)
+					raw_param_type := tc.parse_scope_param_type(flat.source_type_id(diagnostic_type_text))
 					if tc.is_params_struct_type(raw_param_type) {
 						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
 					}
@@ -3219,8 +3219,8 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				Alias, Struct, Interface, Enum, SumType {
 					receiver_name := receiver_type.name()
 					!receiver_name.starts_with('C.') && !receiver_name.starts_with('JS.')
-						&& tc.type_name_known(receiver_name)
-						&& !tc.source_module_declares_type(receiver_name)
+						&& tc.type_name_known(flat.source_type_id(receiver_name))
+						&& !tc.source_module_declares_type(flat.source_type_id(receiver_name))
 				}
 				else {
 					false
@@ -3297,10 +3297,10 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	}
 	if raw_return_type.starts_with('!') {
 		alias_name := raw_return_type[1..]
-		alias_target := tc.type_aliases.get(alias_name) or {
-			tc.type_aliases.get(tc.qualify_name(alias_name)) or { '' }
-		}
-		if alias_target.starts_with('?') {
+		alias_target_shape := flat.source_type_shape(tc.type_aliases.type_id(alias_name) or {
+			tc.type_aliases.type_id(tc.qualify_name(alias_name)) or { u32(0) }
+		})
+		if alias_target_shape.has(.option_type) {
 			tc.record_error_at(.return_mismatch, 'the fn returns type `${raw_return_type}`, but type `${alias_name}` is an Option alias, you can not mix them', id, tc.fn_return_type_diagnostic_pos(node))
 		}
 	}
@@ -3368,19 +3368,19 @@ fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
 	clean := unwrap_pointer(typ)
 	return match clean {
 		Alias {
-			tc.source_module_declares_type(clean.name())
+			tc.source_module_declares_type(clean.source_type_id())
 		}
 		Struct {
-			tc.source_module_declares_type(clean.name())
+			tc.source_module_declares_type(clean.source_type_id())
 		}
 		Interface {
-			tc.source_module_declares_type(clean.name())
+			tc.source_module_declares_type(clean.source_type_id())
 		}
 		Enum {
-			tc.source_module_declares_type(clean.name())
+			tc.source_module_declares_type(clean.source_type_id())
 		}
 		SumType {
-			tc.source_module_declares_type(clean.name())
+			tc.source_module_declares_type(clean.source_type_id())
 		}
 		Array {
 			tc.receiver_collection_payload_is_local(clean.elem_type)
@@ -3403,7 +3403,8 @@ fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
 	}
 }
 
-fn (tc &TypeChecker) source_module_declares_type(type_name string) bool {
+fn (tc &TypeChecker) source_module_declares_type(type_name_id u32) bool {
+	type_name := flat.source_type_name(type_name_id)
 	qualified_base := type_name.all_before('[')
 	current_module := if tc.cur_module in ['', 'main'] { 'main' } else { tc.cur_module }
 	if qualified_base.contains('.') {
@@ -4020,7 +4021,7 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 		if tc.fn_body_uses_ident(node, param.value) {
 			continue
 		}
-		if tc.fn_body_reflects_param_type(node, param.typ_text()) {
+		if tc.fn_body_reflects_param_type(node, param.typ) {
 			continue
 		}
 		if tc.comptime_skipped_body_uses(node, param.value) {
@@ -4047,8 +4048,9 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 	}
 }
 
-fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type string) bool {
-	if param_type == '' || param_type !in node.generic_params() {
+fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type_id u32) bool {
+	param_type := flat.source_type_name(param_type_id)
+	if param_type_id == u32(0) || param_type !in node.generic_params() {
 		return false
 	}
 	mut stack := []flat.NodeId{}
@@ -4389,7 +4391,7 @@ fn (mut tc TypeChecker) prewarm_shared_type_cache() {
 	}
 	tc.prepare_tail_decl_ids()
 	_ = tc.local_fn_decl_exists('__v3_prewarm__')
-	_ = tc.unique_qualified_type_name('__V3Prewarm__') or { '' }
+	_ = flat.source_type_name(tc.unique_qualified_type_name('__V3Prewarm__') or { u32(0) })
 	_ = tc.source_struct_has_non_builtin_error_embed('__V3Prewarm__', '', '')
 }
 

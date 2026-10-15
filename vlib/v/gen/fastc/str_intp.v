@@ -468,7 +468,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 			g.next()
 		}
 	}
-	g.last_expression_type = flat.source_type_id('string')
+	g.last_expression_type = flat.source_type_string
 	g.last_expression = [FastcExpressionToken{
 		tok: .string
 		lit: first_literal

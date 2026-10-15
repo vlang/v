@@ -5570,7 +5570,7 @@ fn cached_declaration_attrs(a &flat.FlatAst) map[int]CachedDeclarationAttrs {
 		}
 		result[decl_id] = CachedDeclarationAttrs{
 			attrs: params.clone()
-			kinds: if node.typ_text().len > 0 {
+			kinds: if node.typ != 0 {
 				node.typ_text().split(',').map(it.int())
 			} else {
 				[]int{}
@@ -7002,7 +7002,7 @@ fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) 
 	import_path := import_paths[node.value] or { node.value }
 	mut text := 'import ${import_path}'
 	default_alias := import_path.all_after_last('.')
-	if node.typ_text().len > 0 && node.typ_text() != default_alias {
+	if node.typ != 0 && node.typ_text() != default_alias {
 		text += ' as ${node.typ_text()}'
 	}
 	if node.children_count > 0 {
@@ -7081,7 +7081,7 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		ptexts << '${prefix}${pname} ${ptype}'
 	}
 	head += '(${ptexts.join(', ')})'
-	if node.typ_text().len > 0 && node.typ_text() != 'void' {
+	if node.typ != 0 && node.typ != flat.source_type_void {
 		head += ' ${node.typ_text()}'
 	}
 	mut attr_lines := []string{}
@@ -7252,7 +7252,7 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 			out.writeln('\t@[${field_params[1..].join('; ')}]')
 		}
 		mut line := '\t${field.value}'
-		if field.typ_text().len > 0 && field.typ_text() != field.value {
+		if field.typ != 0 && field.typ_text() != field.value {
 			line += ' ${field.typ_text()}'
 		}
 		if field.children_count > 0 {
@@ -7322,7 +7322,7 @@ fn cached_global_type_name(tc &types.TypeChecker, module_name string, name strin
 }
 
 fn cached_type_source_text(tc &types.TypeChecker, type_text string) string {
-	typ := tc.parse_resolution_type(type_text)
+	typ := tc.parse_resolution_type(flat.source_type_id(type_text))
 	if typ is types.ArrayFixed {
 		len_text := if typ.len_expr.len > 0 { typ.len_expr } else { typ.len.str() }
 		return '[${len_text}]${cached_type_source_name(typ.elem_type)}'
@@ -7361,7 +7361,7 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 			} else {
 				line += ' int'
 			}
-		} else if field.typ_text().len > 0 {
+		} else if field.typ != 0 {
 			line += ' ${field.typ_text()}'
 		} else {
 			line += ' int'
@@ -7473,10 +7473,10 @@ fn interface_field_text(a &flat.FlatAst, field &flat.Node) string {
 			}
 			params << '${prefix}arg${pi} ${param_type}'
 		}
-		ret := if field.typ_text().len > 0 { ' ${field.typ_text()}' } else { '' }
+		ret := if field.typ != 0 { ' ${field.typ_text()}' } else { '' }
 		return '\t${field.value}(${params.join(', ')})${ret}'
 	}
-	if field.typ_text().len > 0 {
+	if field.typ != 0 {
 		return '\t${field.value} ${field.typ_text()}'
 	}
 	return '\t${field.value}'
@@ -7533,7 +7533,7 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 			call_expr_text(a, node)
 		}
 		.cast_expr, .as_expr {
-			target := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
+			target := if node.typ != 0 { node.typ_text() } else { node.value }
 			'${target}(${expr_text(a, a.child(&node, 0))})'
 		}
 		.sizeof_expr {
@@ -7603,7 +7603,7 @@ fn expr_can_serialize(a &flat.FlatAst, id flat.NodeId) bool {
 			expr_children_can_serialize(a, node)
 		}
 		.map_init {
-			(node.value.len > 0 || node.typ_text().len > 0) && node.children_count % 2 == 0
+			(node.value.len > 0 || node.typ != 0) && node.children_count % 2 == 0
 				&& expr_children_can_serialize(a, node)
 		}
 		.cast_expr, .as_expr {
@@ -7636,7 +7636,7 @@ fn array_init_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	typ := if node.typ_text().len > 0 { node.typ_text() } else { node.value }
+	typ := if node.typ != 0 { node.typ_text() } else { node.value }
 	return '${typ}{${values.join(', ')}}'
 }
 
@@ -7657,7 +7657,7 @@ fn list_expr_text(a &flat.FlatAst, node flat.Node, open string, close string) st
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	prefix := if node.typ_text().len > 0 { node.typ_text() } else { '' }
+	prefix := if node.typ != 0 { node.typ_text() } else { '' }
 	return '${prefix}${open}${values.join(', ')}${close}'
 }
 
@@ -7668,7 +7668,7 @@ fn map_expr_text(a &flat.FlatAst, node flat.Node) string {
 	}
 	prefix := if node.value.len > 0 {
 		node.value
-	} else if node.typ_text().len > 0 {
+	} else if node.typ != 0 {
 		node.typ_text()
 	} else {
 		'map[string]string'
