@@ -697,7 +697,10 @@ fn fastc_needs_space(last u8, next string) bool {
 	if next.len == 0 {
 		return false
 	}
-	return (last.is_alnum() || last == `_`) && (next[0].is_alnum() || next[0] == `_`)
+	// C's preprocessing number grammar absorbs a sign after e/p, including
+	// a hexadecimal integer such as `0xb5e` followed by a separate `+` token.
+	return ((last.is_alnum() || last == `_`) && (next[0].is_alnum() || next[0] == `_`))
+		|| (last in [`e`, `E`, `p`, `P`] && next in ['+', '-'])
 }
 
 fn fastc_c_string(literal string) !string {
@@ -757,6 +760,11 @@ fn fastc_c_string(literal string) !string {
 				result.write_u8(`0` + ((value >> 3) & 7))
 				result.write_u8(`0` + (value & 7))
 				i += 4
+				continue
+			}
+			if raw[i + 1] == `e` {
+				result.write_string('\\033')
+				i += 2
 				continue
 			}
 			if raw[i + 1] >= `0` && raw[i + 1] <= `7` && (i + 3 >= raw.len - 1 || raw[i + 2] < `0` || raw[i + 2] > `7` || raw[i + 3] < `0` || raw[i + 3] > `7`) {
@@ -820,6 +828,7 @@ fn fastc_c_rune(literal string) !string {
 				`v` { 11 }
 				`f` { 12 }
 				`r` { 13 }
+				`e` { 27 }
 				`\\` { 92 }
 				96 { 96 }
 				`'` { 39 }

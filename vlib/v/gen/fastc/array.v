@@ -2,20 +2,56 @@ module fastc
 
 import v.flat
 import strings
+import strconv
 import v.token
+
+// render_fixed_array_layout_argument bridges equal constant dimensions with different
+// spellings, keeping value copies and borrowed pointers in their declared representation.
+fn (g &Parser) render_fixed_array_layout_argument(tokens []FastcExpressionToken, expected_type string) ?string {
+	if !g.selfhost {
+		return none
+	}
+	expected_layout := g.underlying_alias_type(expected_type)
+	actual_type := g.infer_expression_type(tokens) or { return none }
+	actual_layout := g.underlying_alias_type(actual_type)
+	if expected_layout == actual_layout || !expected_layout.starts_with('FixedArray_')
+		|| !actual_layout.starts_with('FixedArray_')
+		|| expected_layout.count('*') != actual_layout.count('*') {
+		return none
+	}
+	mut expected_element := expected_layout.trim_right('*')
+	mut actual_element := actual_layout.trim_right('*')
+	mut checks := []string{}
+	for expected_element.starts_with('FixedArray_') && actual_element.starts_with('FixedArray_') {
+		checks << '_Static_assert(sizeof(${expected_element}) == sizeof(${actual_element}), "incompatible fixed-array dimensions");'
+		expected_element = g.underlying_alias_type(fastc_fixed_array_element_type(expected_element) or { return none })
+		actual_element = g.underlying_alias_type(fastc_fixed_array_element_type(actual_element) or { return none })
+	}
+	if expected_element != actual_element {
+		return none
+	}
+	value := g.render_call_argument_expression(tokens, actual_type) or { return none }
+	if expected_layout.ends_with('*') {
+		return '({ ${checks.join(' ')} (${expected_type})(${value}); })'
+	}
+	source_name := g.temporary_namespace('fixed_layout') + '_source'
+	target_name := g.temporary_namespace('fixed_layout') + '_target'
+	return '({ ${checks.join(' ')} ${actual_type} ${source_name} = (${value}); ${expected_type} ${target_name}; memcpy(${target_name}.data, ${source_name}.data, sizeof(${target_name}.data)); ${target_name}; })'
+}
 
 // dynamic_array_literal_source keeps complex element expressions out of
 // C aggregate initializers, which bundled TinyCC on Linux cannot nest safely.
 fn (g &Parser) dynamic_array_literal_source(array_type string, element_type string, items []string) string {
+	storage_type := g.collection_storage_type(element_type)
 	is_scalar := fastc_is_numeric_expression_type(element_type)
 		|| element_type in ['bool', 'char', 'voidptr', 'byteptr', 'charptr']
 		|| element_type.ends_with('*')
 	if is_scalar && !items.any(it.contains('{')) {
-		return '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${element_type}), (${element_type}[]){${items.join(',')}}))'
+		return '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${storage_type}), (${storage_type}[]){${items.join(',')}}))'
 	}
 	values_name := g.temporary_namespace('array') + '_literal'
-	return fastc_array_values_call_source(element_type, items, values_name,
-		'((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${element_type}), ${values_name}))')
+	return fastc_array_values_call_source(storage_type, items, values_name,
+		'((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${storage_type}), ${values_name}))')
 }
 
 // render_fixed_array_dynamic_argument copies a fixed-array value into the dynamic
@@ -199,21 +235,24 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 	elem := w.temporary_name('element')
 	mut lowered := ''
 	mut result_type := collection_type
+	element_storage_type := g.collection_storage_type(element_type)
+	closure_storage_type := g.collection_storage_type(closure_type)
+	index_type := fastc_output_c_type('int')
 	if method == 'map' {
 		result_type = fastc_array_c_type(closure_type)
 		fastc_register_composite_type(result_type, mut w.composite_types)
-		lowered = '({ ${collection_type} ${src} = (${collection_source}); ${result_type} ${dst} = (${result_type})builtin____new_array(0, ${src}.len, sizeof(${closure_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; ${closure_type} ${elem} = (${closure}); builtin__array_push((array *)&${dst}, &${elem}); } ${dst}; })'
+		lowered = '({ ${collection_type} ${src} = (${collection_source}); ${result_type} ${dst} = (${result_type})builtin____new_array(0, ${src}.len, sizeof(${closure_storage_type})); for (${index_type} ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_storage_type} ${it_c_name} = ((${element_storage_type} *)${src}.data)[${idx}]; ${closure_storage_type} ${elem} = (${closure}); builtin__array_push((array *)&${dst}, &${elem}); } ${dst}; })'
 	} else if method == 'filter' {
-		lowered = '({ ${collection_type} ${src} = (${collection_source}); ${collection_type} ${dst} = (${collection_type})builtin____new_array(0, ${src}.len, sizeof(${element_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { builtin__array_push((array *)&${dst}, &${it_c_name}); } } ${dst}; })'
+		lowered = '({ ${collection_type} ${src} = (${collection_source}); ${collection_type} ${dst} = (${collection_type})builtin____new_array(0, ${src}.len, sizeof(${element_storage_type})); for (${index_type} ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_storage_type} ${it_c_name} = ((${element_storage_type} *)${src}.data)[${idx}]; if (${closure}) { builtin__array_push((array *)&${dst}, &${it_c_name}); } } ${dst}; })'
 	} else if method == 'count' {
 		result_type = 'int'
-		lowered = '({ ${collection_type} ${src} = (${collection_source}); int ${dst} = 0; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { ${dst}++; } } ${dst}; })'
+		lowered = '({ ${collection_type} ${src} = (${collection_source}); ${index_type} ${dst} = 0; for (${index_type} ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_storage_type} ${it_c_name} = ((${element_storage_type} *)${src}.data)[${idx}]; if (${closure}) { ${dst}++; } } ${dst}; })'
 	} else {
 		result_type = 'bool'
 		initial := if method == 'all' { 'true' } else { 'false' }
 		condition := if method == 'all' { '!(${closure})' } else { closure }
 		matched := if method == 'all' { 'false' } else { 'true' }
-		lowered = '({ ${collection_type} ${src} = (${collection_source}); bool ${dst} = ${initial}; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} ${it_c_name} = ((${element_type} *)${src}.data)[${idx}]; if (${condition}) { ${dst} = ${matched}; break; } } ${dst}; })'
+		lowered = '({ ${collection_type} ${src} = (${collection_source}); bool ${dst} = ${initial}; for (${index_type} ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_storage_type} ${it_c_name} = ((${element_storage_type} *)${src}.data)[${idx}]; if (${condition}) { ${dst} = ${matched}; break; } } ${dst}; })'
 	}
 	return FastcRenderedExpression{
 		source: lowered
@@ -241,7 +280,10 @@ fn fastc_is_empty_fixed_array_literal(tokens []FastcExpressionToken) bool {
 
 fn (g &Parser) fixed_array_uses_raw_storage(tokens []FastcExpressionToken) bool {
 	if tokens.len == 1 {
-		return fastc_global_key(g.module_name, tokens[0].lit) in g.globals
+		if tokens[0].lit in g.locals {
+			return false
+		}
+		return g.unqualified_global_key(tokens[0].lit) != none
 	}
 	if tokens.len >= 3 && tokens[tokens.len - 2].tok == .dot && tokens.last().tok == .name {
 		// A module-qualified fixed array (`util.name_char_table`) mirrors the bare-name case: a
@@ -563,8 +605,8 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 					}
 				}
 			}
-			replaced := fastc_replace(rendered, needle, replacement.source)
-			if replaced.str != rendered.str {
+			replaced := fastc_replace_c_root_identifier(rendered, needle, replacement.source)
+			if replaced != rendered {
 				rendered = replaced
 				changed = true
 			}
@@ -706,8 +748,8 @@ fn (g &Parser) render_indexed_member_receiver(tokens []FastcExpressionToken) ?Fa
 }
 
 fn (g &Parser) resolved_root_expression_name(name string) string {
-	if global_name := g.globals[fastc_global_key(g.module_name, name)] {
-		return global_name
+	if name in g.locals {
+		return g.local_c_name(name)
 	}
 	if constant_name := g.constants[fastc_constant_key(g.module_name, name)] {
 		return constant_name
@@ -715,10 +757,8 @@ fn (g &Parser) resolved_root_expression_name(name string) string {
 	if constant_name := g.constants[name] {
 		return constant_name
 	}
-	if local := g.locals[name] {
-		if local.c_name != '' {
-			return local.c_name
-		}
+	if global_key := g.unqualified_global_key(name) {
+		return g.globals[global_key]
 	}
 	// A local/parameter whose name is a C keyword (`short`, `default`) is emitted as
 	// `__vf_keyword_<name>`; return that so an index base matches the render_raw buffer
@@ -895,6 +935,22 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 			piece = '>>'
 		}
 		module_separator := item.tok == .dot && g.expression_dot_is_module_separator(tokens, i)
+		if item.tok in [.amp, .and] && fastc_token_is_prefix_operator(tokens, i) {
+			mut cast_open_index := i + 1
+			for cast_open_index < tokens.len && tokens[cast_open_index].tok in [.amp, .and, .name,
+				.dot] {
+				cast_open_index++
+			}
+			if cast_open_index < tokens.len && tokens[cast_open_index].tok == .lpar {
+				if cast_end := fastc_matching_rpar(tokens, cast_open_index) {
+					if cast := g.render_cast_expression(tokens[i..cast_end + 1]) {
+						result.write_string(cast.source)
+						skip_until = cast_end
+						continue
+					}
+				}
+			}
+		}
 		is_direct_pointer_cast := item.tok in [.amp, .and] && fastc_token_is_prefix_operator(tokens, i) && i + 2 < tokens.len && tokens[i + 1].tok == .name && tokens[i + 2].tok == .lpar && (fastc_primitive_c_type(tokens[i + 1].lit) != none || g.resolve_declared_type_key(tokens[i + 1].lit) != none)
 		is_c_pointer_cast := item.tok in [.amp, .and] && fastc_token_is_prefix_operator(tokens, i) && i + 4 < tokens.len && tokens[i + 1].tok == .name && tokens[i + 1].lit == 'C' && tokens[i + 2].tok == .dot && tokens[i + 3].tok == .name && tokens[i + 4].tok == .lpar
 		if item.tok == .key_sizeof && i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
@@ -947,7 +1003,12 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 				} else {
 					0
 				})
-				piece = '((${cast_type}${pointer_suffix})('
+				physical_cast_type := if is_c_cast {
+					cast_type
+				} else {
+					fastc_output_c_type(cast_type)
+				}
+				piece = '((${physical_cast_type}${pointer_suffix})('
 				close := fastc_matching_rpar(tokens, i + 1) or { return none }
 				cast_open = i + 1
 				cast_closes << close
@@ -1107,16 +1168,9 @@ fn (g &Parser) array_initializer_type(tokens []FastcExpressionToken) ?string {
 		close := fastc_matching_delimiter(tokens, 0, .lsbr, .rsbr) or { -1 }
 		if close > 1 && close + 1 < tokens.len && tokens[close + 1].tok != .lcbr {
 			size := tokens[1..close]
-			if size.len == 3 && size[0].tok == .name && size[1].tok == .dot && size[2].tok == .name
-				&& size[0].lit in g.imports {
-				fixed_length = fastc_c_constant_name(g.imports[size[0].lit], size[2].lit)
-			} else {
-				value, position := g.constant_integer_sum(size, 0) or { return none }
-				if position != size.len {
-					return none
-				}
-				fixed_length = value.str()
-			}
+			length_source, position := fastc_fixed_length_expression(size, 0, 1, g.module_name, g.imports, g.declared_types) or { return none }
+			if position != size.len { return none }
+			fixed_length = length_source
 			dimensions = 1
 			index = close + 1
 		}
@@ -1128,7 +1182,10 @@ fn (g &Parser) array_initializer_type(tokens []FastcExpressionToken) ?string {
 	if dimensions == 0 || index >= tokens.len {
 		return none
 	}
-	mut element_type := g.type_from_expression_tokens(tokens[index..]) or { '' }
+	mut element_type := g.type_from_expression_tokens(tokens[index..]) or {
+		// Each fixed dimension is part of the initializer's element type.
+		g.array_initializer_type(tokens[index..]) or { '' }
+	}
 	if element_type == '' && tokens[index].tok == .name && tokens[index].lit == 'thread' {
 		// `[]thread` / `[]thread T` is an array of spawned-thread handles. All handles
 		// share one C layout; the void handle for a bare `thread`, or one keyed by the
@@ -1234,6 +1291,9 @@ fn (g &Parser) type_from_expression_tokens(tokens []FastcExpressionToken) ?strin
 			if '#Cstruct#${raw_type}' in g.declared_types {
 				return 'struct ${raw_type}' + '*'.repeat(pointers)
 			}
+			if '#Ctypedef#${raw_type}' in g.declared_types {
+				return raw_type + '*'.repeat(pointers)
+			}
 			if 'C.${raw_type}' in g.functions {
 				return none
 			}
@@ -1255,7 +1315,7 @@ fn (g &Parser) type_from_expression_tokens(tokens []FastcExpressionToken) ?strin
 fn fastc_array_initializer_c_type(array_type string) string {
 	length := fastc_fixed_array_length(array_type) or { return array_type }
 	element_type := fastc_fixed_array_element_type(array_type) or { return array_type }
-	return 'FixedArray_${fastc_composite_type_part(length)}_${fastc_composite_type_part(element_type)}'
+	return 'FixedArray_${fastc_fixed_array_length_part(length)}_${fastc_composite_type_part(element_type)}'
 }
 
 // fastc_collect_referenced_fixed_array_types finds every `FixedArray_<len>_FASTC_ARRAY_OF_<elem>`
@@ -1283,19 +1343,26 @@ fn fastc_collect_referenced_fixed_array_types(source string, mut fixed_array_typ
 			end++
 		}
 		name := source[i..end]
-		if name.starts_with('FixedArray_') && fastc_contains(name, '_FASTC_ARRAY_OF_') {
-			if _ := fastc_fixed_array_length(name) {
-				if _ := fastc_fixed_array_element_type(name) {
-					// Key on the same sanitized name the expression renderer uses, so a
-					// type reached both ways is registered once, not typedef'd twice.
-					key := fastc_array_initializer_c_type(name)
-					if !fixed_array_types.contains(key) {
-						fixed_array_types.set(key, name)
-					}
-				}
-			}
+		if name.starts_with('FixedArray_') && fastc_contains(name, '_FASTC_ARRAY_OF_')
+			&& !fixed_array_types.contains(name) {
+			// A registered nested initializer alias contains its element's marker;
+			// it already names a valid wrapper, rather than a new scanner type.
+			fastc_register_fixed_array_type(name, mut fixed_array_types)
 		}
 		i = end
+	}
+}
+
+// fastc_register_fixed_array_type includes the element wrappers of nested fixed arrays.
+fn fastc_register_fixed_array_type(array_type string, mut fixed_array_types flat.TypeTextBindings) {
+	if _ := fastc_fixed_array_length(array_type) {
+		element_type := fastc_fixed_array_element_type(array_type) or { return }
+		fastc_register_fixed_array_type(element_type.trim_right('*'), mut fixed_array_types)
+		// Use the expression renderer's key so declarations and literals share one typedef.
+		key := fastc_array_initializer_c_type(array_type)
+		if !fixed_array_types.contains(key) {
+			fixed_array_types.set(key, array_type)
+		}
 	}
 }
 
@@ -1303,24 +1370,37 @@ fn fastc_generate_fixed_array_declarations(fixed_array_types flat.TypeTextBindin
 	mut names := fixed_array_types.keys()
 	names.sort()
 	mut out := strings.new_builder(256)
+	mut emitted := map[string]bool{}
 	for name in names {
-		array_type := fixed_array_types.value(name)
-		length := fastc_fixed_array_length(array_type) or { continue }
-		element_type := fastc_fixed_array_element_type(array_type) or { continue }
-		declaration_name := if fastc_composite_type_part(array_type) == array_type {
-			array_type
-		} else {
-			name
-		}
-		out.writeln('typedef struct { ${element_type} data[${length}]; } ${declaration_name};')
-		if name != declaration_name {
-			out.writeln('typedef ${declaration_name} ${name};')
-		}
+		fastc_write_fixed_array_declaration(name, fixed_array_types, mut emitted, mut out)
 	}
 	if out.len > 0 {
 		out.writeln('')
 	}
 	return fastc_take_string(mut out)
+}
+
+fn fastc_write_fixed_array_declaration(name string, fixed_array_types flat.TypeTextBindings, mut emitted map[string]bool, mut out strings.Builder) {
+	if name in emitted {
+		return
+	}
+	array_type := fixed_array_types.value(name)
+	length := fastc_fixed_array_length(array_type) or { return }
+	element_type := fastc_fixed_array_element_type(array_type) or { return }
+	element_key := fastc_array_initializer_c_type(element_type.trim_right('*'))
+	if fixed_array_types.contains(element_key) {
+		fastc_write_fixed_array_declaration(element_key, fixed_array_types, mut emitted, mut out)
+	}
+	declaration_name := if fastc_composite_type_part(array_type) == array_type {
+		array_type
+	} else {
+		name
+	}
+	out.writeln('typedef struct { ${fastc_output_c_type(element_type)} data[${length}]; } ${declaration_name};')
+	if name != declaration_name {
+		out.writeln('typedef ${declaration_name} ${name};')
+	}
+	emitted[name] = true
 }
 
 fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int) ![][]FastcExpressionToken {
@@ -1385,7 +1465,7 @@ fn (g &Parser) constant_integer_sum(tokens []FastcExpressionToken, start int) ?(
 	for position < tokens.len && tokens[position].tok in [.plus, .minus] {
 		operator := tokens[position].tok
 		right, next := g.constant_integer_term(tokens, position + 1)?
-		value = if operator == .plus { value + right } else { value - right }
+		value = fastc_constant_integer_binary(value, right, operator)?
 		position = next
 	}
 	return value, position
@@ -1398,14 +1478,7 @@ fn (g &Parser) constant_integer_term(tokens []FastcExpressionToken, start int) ?
 	for position < tokens.len && tokens[position].tok in [.mul, .div, .mod] {
 		operator := tokens[position].tok
 		right, next := g.constant_integer_factor(tokens, position + 1)?
-		if operator != .mul && right == 0 {
-			return none
-		}
-		value = match operator {
-			.mul { value * right }
-			.div { value / right }
-			else { value % right }
-		}
+		value = fastc_constant_integer_binary(value, right, operator)?
 		position = next
 	}
 	return value, position
@@ -1416,6 +1489,13 @@ fn (g &Parser) constant_integer_factor(tokens []FastcExpressionToken, start int)
 		return none
 	}
 	item := tokens[start]
+	if item.tok in [.plus, .minus] {
+		value, next := g.constant_integer_factor(tokens, start + 1)?
+		if item.tok == .minus {
+			return fastc_constant_integer_binary(0, value, .minus)?, next
+		}
+		return value, next
+	}
 	if item.tok == .lpar {
 		value, close := g.constant_integer_sum(tokens, start + 1)?
 		if close >= tokens.len || tokens[close].tok != .rpar {
@@ -1424,11 +1504,41 @@ fn (g &Parser) constant_integer_factor(tokens []FastcExpressionToken, start int)
 		return value, close + 1
 	}
 	if item.tok == .number {
-		value := g.fixed_array_length_value(fastc_c_selfhost_number(item.lit))?
-		return value, start + 1
+		value := strconv.parse_int(item.lit.replace('_', ''), 0, 64) or { return none }
+		return int(value), start + 1
 	}
 	if item.tok != .name {
 		return none
+	}
+	if start + 1 < tokens.len && tokens[start + 1].tok == .lpar && item.lit in ['u8', 'u16', 'u32',
+		'u64', 'i8', 'i16', 'i32', 'i64', 'int', 'usize', 'isize'] && item.lit !in g.locals {
+		value, close := g.constant_integer_sum(tokens, start + 2)?
+		if close >= tokens.len || tokens[close].tok != .rpar { return none }
+		converted := match item.lit {
+			'u8' { int(u8(value)) }
+			'u16' { int(u16(value)) }
+			'u32' { int(u32(value)) }
+			'i8' { int(i8(value)) }
+			'i16' { int(i16(value)) }
+			'i32' { int(i32(value)) }
+			'usize' {
+				if g.prefs.target.pointer_bits == 32 { return int(u32(value)), close + 1 }
+				if g.prefs.target.pointer_bits != 64 { return none }
+				if value < 0 { return none }
+				value
+			}
+			'isize' {
+				if g.prefs.target.pointer_bits == 32 { return int(i32(value)), close + 1 }
+				if g.prefs.target.pointer_bits != 64 { return none }
+				value
+			}
+			'u64' {
+				if value < 0 { return none }
+				value
+			}
+			else { value }
+		}
+		return converted, close + 1
 	}
 	mut module_name := g.module_name
 	mut name := item.lit
@@ -1444,4 +1554,39 @@ fn (g &Parser) constant_integer_factor(tokens []FastcExpressionToken, start int)
 	}
 	value := g.fixed_array_length_value(c_name)?
 	return value, next
+}
+
+fn fastc_constant_integer_binary(left int, right int, operator token.Token) ?int {
+	maximum := int(9223372036854775807)
+	minimum := -maximum - 1
+	match operator {
+		.plus {
+			if (right > 0 && left > maximum - right) || (right < 0 && left < minimum - right) {
+				return none
+			}
+			return left + right
+		}
+		.minus {
+			if (right > 0 && left < minimum + right) || (right < 0 && left > maximum + right) {
+				return none
+			}
+			return left - right
+		}
+		.mul {
+			if left == 0 || right == 0 { return 0 }
+			if left > 0 {
+				if (right > 0 && left > maximum / right) || (right < 0 && right < minimum / left) {
+					return none
+				}
+			} else if (right > 0 && left < minimum / right) || (right < 0 && left < maximum / right) {
+				return none
+			}
+			return left * right
+		}
+		.div, .mod {
+			if right == 0 || (left == minimum && right == -1) { return none }
+			return if operator == .div { left / right } else { left % right }
+		}
+		else { return none }
+	}
 }

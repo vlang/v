@@ -3,6 +3,9 @@ module fastc
 import v.flat
 
 fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if callback_call := g.render_function_alias_call_expression(tokens) {
+		return callback_call
+	}
 	if tokens.len < 3 || tokens.last().tok != .rpar {
 		return none
 	}
@@ -31,7 +34,14 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	call_name := if function_key.starts_with('C.') {
 		function_key.all_after_last('.')
 	} else if name_index == 0 && tokens[0].lit in g.locals {
-		g.local_c_name(tokens[0].lit)
+		local := g.locals[tokens[0].lit]
+		local_name := g.local_c_name(tokens[0].lit)
+		if local.typ_text() == 'voidptr' && local.fn_return_type != 0 {
+			parameters := fastc_c_prototype_parameters(signature.parameter_types_text())
+			'((${fastc_output_c_type(signature.return_type_text())} (*)(${parameters}))(${local_name}))'
+		} else {
+			local_name
+		}
 	} else {
 		g.c_function_name_for_key(function_key)
 	}
@@ -149,14 +159,90 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		}
 		rendered_arguments << rendered_argument
 	}
-	if call_args.len > signature.parameter_types.ids.len {
+	if call_args.len > signature.parameter_types.ids.len
+		&& !(signature.is_variadic && function_key.starts_with('C.')) {
 		return none
 	}
-	for parameter_type in signature.parameter_types.names()[call_args.len..] {
-		rendered_arguments << g.render_empty_struct_initializer(parameter_type)
+	if call_args.len < signature.parameter_types.ids.len {
+		for parameter_type in signature.parameter_types.names()[call_args.len..] {
+			rendered_arguments << g.render_empty_struct_initializer(parameter_type)
+		}
 	}
 	return FastcRenderedExpression{
 		source: '${call_name}(${rendered_arguments.join(',')})'
+		typ:    signature.return_type
+	}
+}
+
+// function_alias_call_open recognizes a cast to a function alias followed by an
+// invocation, including a parenthesized cast and an imported alias.
+fn (g &Parser) function_alias_call_open(tokens []FastcExpressionToken) int {
+	if tokens.len < 5 || tokens.last().tok != .rpar {
+		return -1
+	}
+	for open in 1 .. tokens.len - 1 {
+		if tokens[open].tok != .lpar || tokens[open - 1].tok != .rpar
+			|| fastc_matching_rpar(tokens, open) or { -1 } != tokens.len - 1 {
+			continue
+		}
+		_ := g.function_alias_cast_type(tokens[..open]) or { continue }
+		return open
+	}
+	return -1
+}
+
+fn (g &Parser) function_alias_cast_type(tokens []FastcExpressionToken) ?string {
+	callee := fastc_strip_paren_tokens(tokens)
+	cast_open := if callee.len >= 4 && callee[0].tok == .name
+		&& callee[1].tok == .dot && callee[2].tok == .name {
+		3
+	} else {
+		1
+	}
+	if callee.len <= cast_open + 2 || callee[cast_open].tok != .lpar {
+		return none
+	}
+	alias_type := g.type_from_expression_tokens(callee[..cast_open]) or { return none }
+	if !g.fn_alias_return_types.contains(alias_type) || alias_type !in g.functions {
+		return none
+	}
+	if fastc_matching_rpar(callee, cast_open) or { -1 } != callee.len - 1
+		|| !fastc_call_has_one_argument(callee, cast_open) {
+		return none
+	}
+	return alias_type
+}
+
+fn (g &Parser) function_alias_call_signature(tokens []FastcExpressionToken) ?FastcFunctionSignature {
+	open := g.function_alias_call_open(tokens)
+	if open < 0 {
+		return none
+	}
+	alias_type := g.function_alias_cast_type(tokens[..open]) or { return none }
+	return g.functions[alias_type] or { return none }
+}
+
+fn (g &Parser) render_function_alias_call_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	open := g.function_alias_call_open(tokens)
+	if open < 0 {
+		return none
+	}
+	callee := g.render_cast_expression(fastc_strip_paren_tokens(tokens[..open])) or {
+		return none
+	}
+	signature := g.functions[callee.typ_text()] or { return none }
+	call_args := fastc_call_arguments(tokens, open, tokens.len - 1) or { return none }
+	if call_args.len != signature.parameter_types.ids.len {
+		return none
+	}
+	mut arguments := []string{cap: call_args.len}
+	for i, argument in call_args {
+		arguments << g.render_call_argument_expression(argument, signature.parameter_types.at(i)) or {
+			return none
+		}
+	}
+	return FastcRenderedExpression{
+		source: '(${callee.source})(${arguments.join(', ')})'
 		typ:    signature.return_type
 	}
 }
@@ -265,7 +351,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 		}
 		is_array_receiver := tokens[i].lit in ['contains', 'index', 'last_index']
-			&& fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)).starts_with('Array_')
+			&& fastc_trim_pointer_suffix(g.underlying_alias_type(fastc_normalize_inferred_type(receiver_type))).starts_with('Array_')
 		mut array_has_user_contains := false
 		if tokens[i].lit == 'contains' && is_array_receiver {
 			contains_method_key, _ := g.resolve_method(receiver_type, 'contains')
@@ -286,19 +372,20 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			if call_args.len != 1 {
 				continue
 			}
-			element_type := g.array_element_type(receiver_type) or { continue }
+			element_type := g.array_element_type(g.underlying_alias_type(receiver_type)) or { continue }
 			receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 			argument := g.render_call_argument_expression(call_args[0], element_type) or {
 				continue
 			}
+			element_storage_type := g.collection_storage_type(element_type)
 			access := if receiver_type.ends_with('*') { '->' } else { '.' }
 			comparison := if fastc_trim_pointer_suffix(g.underlying_alias_type(element_type)) == 'string' {
 				'builtin__string_eq(__vf_contains_item, ((${element_type} *)__vf_contains_collection${access}data)[__vf_contains_index])'
 			} else {
-				'(__vf_contains_item == ((${element_type} *)__vf_contains_collection${access}data)[__vf_contains_index])'
+				'(__vf_contains_item == ((${element_storage_type} *)__vf_contains_collection${access}data)[__vf_contains_index])'
 			}
 			receiver_decl_type := g.declaration_c_type(receiver_type, receiver.source)
-			call_source := '({ ${element_type} __vf_contains_item = (${argument}); ${receiver_decl_type} __vf_contains_collection = (${receiver.source}); bool __vf_contains_found = false; for (int __vf_contains_index = 0; __vf_contains_index < __vf_contains_collection${access}len; __vf_contains_index++) { if (${comparison}) { __vf_contains_found = true; break; } } __vf_contains_found; })'
+			call_source := '({ ${element_storage_type} __vf_contains_item = (${argument}); ${receiver_decl_type} __vf_contains_collection = (${receiver.source}); bool __vf_contains_found = false; for (${fastc_output_c_type('int')} __vf_contains_index = 0; __vf_contains_index < __vf_contains_collection${access}len; __vf_contains_index++) { if (${comparison}) { __vf_contains_found = true; break; } } __vf_contains_found; })'
 			if receiver_start == 0 && call_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: call_source
@@ -316,8 +403,9 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			continue
 		}
 		if tokens[i].lit in ['index', 'last_index'] && is_array_receiver {
-			element_type := g.array_element_type(receiver_type) or { '' }
-			if fastc_trim_pointer_suffix(g.underlying_alias_type(element_type)) == 'string' {
+			element_type := g.array_element_type(g.underlying_alias_type(receiver_type)) or { '' }
+			element_layout := g.underlying_alias_type(element_type)
+			if element_layout == 'string' || fastc_is_pointer_type(element_layout) {
 				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 				call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
 				if call_args.len != 1 {
@@ -344,7 +432,13 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					'__vf_index_cursor++'
 				}
 				receiver_decl_type := g.declaration_c_type(receiver_type, receiver.source)
-				call_source := '({ ${element_type} __vf_index_item = (${argument}); ${receiver_decl_type} __vf_index_collection = (${receiver.source}); int __vf_index_result = -1; for (int __vf_index_cursor = ${loop_init}; ${loop_condition}; ${loop_step}) { if (builtin__string_eq(__vf_index_item, ((${element_type} *)__vf_index_collection${access}data)[__vf_index_cursor])) { __vf_index_result = __vf_index_cursor; break; } } __vf_index_result; })'
+				element_storage_type := g.collection_storage_type(element_type)
+				comparison := if element_layout == 'string' {
+					'builtin__string_eq(__vf_index_item, ((${element_storage_type} *)__vf_index_collection${access}data)[__vf_index_cursor])'
+				} else {
+					'(__vf_index_item == ((${element_storage_type} *)__vf_index_collection${access}data)[__vf_index_cursor])'
+				}
+				call_source := '({ ${element_storage_type} __vf_index_item = (${argument}); ${receiver_decl_type} __vf_index_collection = (${receiver.source}); int __vf_index_result = -1; for (int __vf_index_cursor = ${loop_init}; ${loop_condition}; ${loop_step}) { if (${comparison}) { __vf_index_result = __vf_index_cursor; break; } } __vf_index_result; })'
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
@@ -369,6 +463,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 				value_type := g.fastc_thread_value_type(element) or { continue }
+				value_storage_type := g.collection_storage_type(value_type)
 				result_type := if value_type == '' {
 					'void'
 				} else {
@@ -386,7 +481,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				wait_all := if value_type == '' {
 					'({ ${receiver_decl_type} __vf_threads = (${recv_src}); for (int __vf_ti = 0; __vf_ti < __vf_threads.len; __vf_ti++) { ${wait_helper}(((${element} *)__vf_threads.data)[__vf_ti]); } })'
 				} else {
-					'({ ${receiver_decl_type} __vf_threads = (${recv_src}); ${result_type} __vf_results = (${result_type})builtin____new_array(0, __vf_threads.len, sizeof(${value_type})); for (int __vf_ti = 0; __vf_ti < __vf_threads.len; __vf_ti++) { ${value_type} __vf_tv = ${wait_helper}(((${element} *)__vf_threads.data)[__vf_ti]); builtin__array_push((array *)&__vf_results, &__vf_tv); } __vf_results; })'
+					'({ ${receiver_decl_type} __vf_threads = (${recv_src}); ${result_type} __vf_results = (${result_type})builtin____new_array(0, __vf_threads.len, sizeof(${value_storage_type})); for (int __vf_ti = 0; __vf_ti < __vf_threads.len; __vf_ti++) { ${value_storage_type} __vf_tv = ${wait_helper}(((${element} *)__vf_threads.data)[__vf_ti]); builtin__array_push((array *)&__vf_results, &__vf_tv); } __vf_results; })'
 				}
 				if receiver_start == 0 && wait_end == tokens.len - 1 {
 					return FastcRenderedExpression{
@@ -834,7 +929,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 						}
 						// The map ABI takes the address of the key's bytes, even when
 						// the key is itself a pointer (as in the closure live map).
-						direct_arguments << '((${key_type}[]){${key_source}})'
+						direct_arguments << '((${g.collection_storage_type(key_type)}[]){${key_source}})'
 						continue
 					}
 					expected_index := argument_index + 1
@@ -901,7 +996,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			mut direct_call := '${method_c_name}(${receiver_argument}${argument_suffix})'
 			if is_pointer_result_method {
 				element_type := g.array_element_type(receiver_type) or { continue }
-				direct_call = '(*(((${element_type} *)${direct_call})))'
+				direct_call = '(*(((${g.collection_storage_type(element_type)} *)${direct_call})))'
 			}
 			return FastcRenderedExpression{
 				source: direct_call
@@ -929,7 +1024,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		] {
 			element_type := g.array_element_type(receiver_type) or { continue }
 			call_needle = '${needle})'
-			call_replacement = '(*(((${element_type} *)${replacement}))))'
+			call_replacement = '(*(((${g.collection_storage_type(element_type)} *)${replacement}))))'
 		}
 		if fastc_contains(rendered, call_needle) {
 			// Boundary-aware replace: a receiver needle like `return_type.clear(` must NOT match

@@ -4,11 +4,11 @@ module fastc
 // the collection operations used by the shared expression lowerings.
 fn (g &Parser) collection_runtime_type(typ string) string {
 	runtime_type := fastc_runtime_c_type(typ)
-	return if g.selfhost { runtime_type } else { fastc_output_c_type(runtime_type) }
+	return fastc_output_c_type(runtime_type)
 }
 
 fn (g &Parser) collection_storage_type(typ string) string {
-	return if g.selfhost { typ } else { fastc_output_c_type(typ) }
+	return fastc_output_c_type(typ)
 }
 
 const c_collection_runtime = r'

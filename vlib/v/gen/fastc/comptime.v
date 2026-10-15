@@ -840,6 +840,11 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		g.expect(.rpar)!
 		return pref.comptime_pkgconfig_value(library)
 	}
+	mut subject_pointer_depth := 0
+	for g.tok in [.amp, .and] {
+		subject_pointer_depth += if g.tok == .and { 2 } else { 1 }
+		g.next()
+	}
 	if g.tok != .name {
 		return g.unsupported('compile-time condition `${g.token_source()}`')
 	}
@@ -873,7 +878,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		}
 		expected := g.lit.int()
 		g.next()
-		resolved := g.comptime_named_type(name)
+		resolved := g.comptime_named_type(name) + '*'.repeat(subject_pointer_depth)
 		actual := resolved.len - resolved.trim_right('*').len
 		return match operator {
 			.eq { actual == expected }
@@ -901,7 +906,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		} else {
 			target_type = g.parse_type()!
 		}
-		mut left_type := g.comptime_named_type(name)
+		mut left_type := g.comptime_named_type(name) + '*'.repeat(subject_pointer_depth)
 		if unaliased {
 			left_type = g.underlying_alias_type(left_type)
 		}
@@ -1037,7 +1042,10 @@ fn (mut g Parser) skip_comptime_if_chain() ! {
 	g.next()
 
 	g.expect(.key_if)!
-	_ = g.parse_comptime_or()!
+	// A previous branch was selected, so later conditions do not resolve types.
+	for g.tok !in [.lcbr, .eof] {
+		g.next()
+	}
 	g.expect(.lcbr)!
 	g.skip_open_block()!
 	if g.tok == .dollar && g.dollar_keyword_is('else') {

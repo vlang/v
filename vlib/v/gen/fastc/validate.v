@@ -387,6 +387,26 @@ fn (g &Parser) resolved_nonlocal_expression_name_cached(name string) string {
 	return resolved
 }
 
+// unqualified_global_key applies the same module precedence to global reads
+// and mutations, including globals declared outside the current module.
+fn (g &Parser) unqualified_global_key(name string) ?string {
+	key := fastc_global_key(g.module_name, name)
+	if key in g.globals {
+		return key
+	}
+	builtin_key := fastc_global_key('builtin', name)
+	if builtin_key in g.globals {
+		return builtin_key
+	}
+	suffix := '.${name}'
+	for global_key, _ in g.globals {
+		if global_key == name || global_key.ends_with(suffix) {
+			return global_key
+		}
+	}
+	return none
+}
+
 // resolved_nonlocal_expression_name renders a bare name that is not a local:
 // an import, function, type, primitive, constant, or global, else the plain
 // C identifier. Every table it consults is fixed for the file, so
@@ -396,7 +416,7 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 		return fastc_c_module_name(imported_module)
 	}
 	function_key := g.unqualified_function_key(name)
-	if function_key in g.functions {
+	if function_key in g.functions || function_key in g.mono_functions {
 		return g.c_function_name_for_key(function_key)
 	}
 	if type_key := g.resolve_declared_type_key(name) {
@@ -412,19 +432,8 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 	if c_name := g.constants[fastc_constant_key('builtin', name)] {
 		return c_name
 	}
-	global_key := fastc_global_key(g.module_name, name)
-	if c_name := g.globals[global_key] {
-		return c_name
-	}
-	if c_name := g.globals[fastc_global_key('builtin', name)] {
-		return c_name
-	}
-	// A `__global` is truly global, including from a different module than its declaration.
-	suffix := '.${name}'
-	for key, c_name in g.globals {
-		if key == name || key.ends_with(suffix) {
-			return c_name
-		}
+	if global_key := g.unqualified_global_key(name) {
+		return g.globals[global_key]
 	}
 	return fastc_c_identifier(name)
 }
@@ -508,7 +517,18 @@ fn (g &Parser) function_key_for_call(tokens []FastcExpressionToken, name_index i
 	if (name_index == 0 || tokens[name_index - 1].tok != .dot) && tokens[name_index].lit in g.locals {
 		return ''
 	}
-	return g.unqualified_function_key(tokens[name_index].lit)
+	function_key := g.unqualified_function_key(tokens[name_index].lit)
+	if function_key in g.functions {
+		return function_key
+	}
+	if global_key := g.unqualified_global_key(tokens[name_index].lit) {
+		if signature := g.functions[global_key] {
+			if signature.is_global {
+				return global_key
+			}
+		}
+	}
+	return function_key
 }
 
 // resolve_module_alias maps an import path that re-exports another module (via an
@@ -945,7 +965,8 @@ fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []Fas
 		for i in 0 .. interface_signature.parameter_types.ids.len {
 			interface_parameter_is_mut := i < interface_signature.parameter_mutability.len && interface_signature.parameter_mutability[i]
 			candidate_parameter_is_mut := i < candidate_signature.parameter_mutability.len && candidate_signature.parameter_mutability[i]
-			if candidate_parameter_is_mut != interface_parameter_is_mut {
+			if candidate_parameter_is_mut != interface_parameter_is_mut
+				&& !(i == 0 && interface_parameter_is_mut) {
 				return g.unsupported('type `${actual_type}` has incompatible mutability for interface `${interface_type}` method `${method_name}` parameter ${i + 1}')
 			}
 		}
@@ -1099,6 +1120,12 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 fn (g &Parser) struct_direct_member_type(receiver_type string, field_name string) string {
 	if field_name == 'len' && g.is_map_type(receiver_type) {
 		return 'int'
+	}
+	interface_key := g.semantic_type_key(receiver_type)
+	if g.declared_kinds[interface_key] == .interface_ {
+		if field := g.interface_fields['${interface_key}.${field_name}'] {
+			return field.typ_text()
+		}
 	}
 	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
 	if layout_type.starts_with('Array_') {
