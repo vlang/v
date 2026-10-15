@@ -100,3 +100,18 @@ Each `_test.v` file must contain at least one active `test_` function. A file wh
 are all excluded by conditional compilation reports a missing-test error. When the file
 has no active function declarations, this diagnostic points to the start of the file;
 a helper-only file points to its helper function.
+
+Generic struct initializers validate concrete values before coercing numeric fields, including
+captured values and handled fallible calls. Incompatible values report the field name and types
+at the initializer. Matching reference values keep the normal implicit dereference into a value
+field; references to a different value type remain incompatible.
+Compiler integrations can use `TypeChecker.expr_compatible(node, actual,
+expected)` to apply the same source-specific conversion rules, including translated C conversions.
+An invalid initializer expression keeps its primary diagnostic without a second field-type error.
+`TypeChecker.expr_subtree_has_node_error(node)` checks diagnostic node identities, so errors from
+another generic instantiation at the same source position do not suppress field validation.
+
+When a later struct field or call argument contains an `or` expression, earlier values are
+evaluated first. Specialized mutable method receivers keep their original storage, and indexed
+callbacks are selected before a later fallible argument can replace them.
+Declared function references remain inline so their expected callback adapter type is preserved.
