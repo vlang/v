@@ -329,10 +329,9 @@ fn (mut t Transformer) make_array_push_many_call(lhs_addr flat.NodeId, rhs flat.
 }
 
 fn (mut t Transformer) make_array_insert_many_call(lhs_addr flat.NodeId, index flat.NodeId, rhs flat.NodeId, rhs_type_id u32) flat.NodeId {
-	rhs_type := flat.source_type_name(rhs_type_id)
 	if t.is_fixed_array_type(rhs_type_id) {
 		return t.make_call_typed('array__insert_many', [lhs_addr, index, rhs,
-			t.make_fixed_array_len_expr(rhs_type)], flat.source_type_void)
+			t.make_fixed_array_len_expr(rhs_type_id)], flat.source_type_void)
 	}
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_type_id, 'insert_many')
 	return t.make_call_typed('array__insert_many', [lhs_addr, index,
@@ -653,7 +652,7 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type_id 
 	defer {
 		visited.delete(struct_type)
 	}
-	info := t.lookup_struct_info(struct_type) or { return none }
+	info := t.lookup_struct_info(struct_type_id) or { return none }
 	mut field_ids := []flat.NodeId{}
 	mut needs_literal := false
 	old_module := t.cur_module
@@ -1353,7 +1352,7 @@ fn (mut t Transformer) struct_type_needs_runtime_default(struct_type_id u32, mut
 	defer {
 		visited.delete(struct_type)
 	}
-	info := t.lookup_struct_info(struct_type) or { return false }
+	info := t.lookup_struct_info(struct_type_id) or { return false }
 	old_module := t.cur_module
 	if info.module.len > 0 {
 		t.cur_module = info.module
@@ -1510,7 +1509,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		return lowered
 	}
 	mut lhs_type := t.lvalue_type(lhs_id)
-	if !array_type_has_generic_placeholder(flat.source_type_name(lhs_type)) {
+	if !array_type_has_generic_placeholder(lhs_type) {
 		lhs_type = t.normalize_type_alias_chain(lhs_type)
 	}
 	mut array_type := t.clean_array_append_lhs_type(lhs_type)
@@ -1648,7 +1647,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		if t.owned_array_slice_detach_needed(elem_type) {
 			rhs = t.snapshot_transformed_expr_for_reuse(rhs, rhs_type, 'append_source')
 			count := if t.is_fixed_array_type(rhs_type) {
-				t.make_fixed_array_len_expr(flat.source_type_name(rhs_type))
+				t.make_fixed_array_len_expr(rhs_type)
 			} else {
 				t.make_selector(rhs, 'len', flat.source_type_int)
 			}
@@ -1658,7 +1657,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		}
 		call := if t.is_fixed_array_type(rhs_type) {
 			t.make_call_typed('array_push_many_ptr', [lhs_addr, rhs,
-				t.make_fixed_array_len_expr(flat.source_type_name(rhs_type))], flat.source_type_void)
+				t.make_fixed_array_len_expr(rhs_type)], flat.source_type_void)
 		} else {
 			t.make_array_push_many_call(lhs_addr, rhs, rhs_type)
 		}
@@ -1993,7 +1992,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	if push_many {
 		call := if t.is_fixed_array_type(flat.source_type_id(rhs_type)) {
 			t.make_call_typed('array_push_many_ptr', [lhs_addr, rhs,
-				t.make_fixed_array_len_expr(rhs_type)], flat.source_type_void)
+				t.make_fixed_array_len_expr(flat.source_type_id(rhs_type))], flat.source_type_void)
 		} else {
 			t.make_array_push_many_call(lhs_addr, rhs, flat.source_type_id(rhs_type))
 		}
@@ -2558,21 +2557,32 @@ fn (mut t Transformer) clone_borrowed_assignment_value(source_id flat.NodeId, va
 
 // clean_array_append_lhs_type transforms clean array append lhs type data for transform.
 fn (t &Transformer) clean_array_append_lhs_type(typ_id u32) u32 {
-	typ := flat.source_type_name(typ_id)
-	if array_type_has_generic_placeholder(typ) {
-		return flat.source_type_id(strip_array_append_lhs_prefixes(trimmed_transform_text(typ)))
+	text := flat.source_type_name(typ_id)
+	trimmed := trimmed_transform_text(text)
+	trimmed_id := if flat.source_type_shape(typ_id).has(.padded) {
+		flat.source_type_id(trimmed)
+	} else {
+		typ_id
+	}
+	if array_type_has_generic_placeholder(typ_id) {
+		return strip_array_append_lhs_prefixes(trimmed_id)
 	}
 	// An alias can name a pointer to an array (`type Ptrs = &[]&int`) or another such
 	// alias: expand and strip until the text no longer changes.
-	mut clean := trimmed_transform_text(typ)
+	mut clean := trimmed_id
 	for _ in 0 .. 16 {
-		next := strip_array_append_lhs_prefixes(trimmed_transform_text(flat.source_type_name(t.normalize_type_alias_chain(flat.source_type_id(clean)))))
-		if next == clean {
-			break
+		normalized := t.normalize_type_alias_chain(clean)
+		normalized_text := flat.source_type_name(normalized)
+		normalized_trimmed := if flat.source_type_shape(normalized).has(.padded) {
+			flat.source_type_id(trimmed_transform_text(normalized_text))
+		} else {
+			normalized
 		}
+		next := strip_array_append_lhs_prefixes(normalized_trimmed)
+		if next == clean { break }
 		clean = next
 	}
-	return flat.source_type_id(clean)
+	return clean
 }
 
 // normalize_type_alias_chain expands an alias of an alias (`type MorePtrs = Ptrs`,
@@ -2592,7 +2602,13 @@ fn (t &Transformer) normalize_type_alias_chain(typ_id u32) u32 {
 	return current
 }
 
-fn strip_array_append_lhs_prefixes(typ string) string {
+fn strip_array_append_lhs_prefixes(typ_id u32) u32 {
+	text := flat.source_type_name(typ_id)
+	clean := strip_array_append_lhs_prefixes_bytes(text)
+	return if clean == text { typ_id } else { flat.source_type_id(clean) }
+}
+
+fn strip_array_append_lhs_prefixes_bytes(typ string) string {
 	mut clean := typ
 	for {
 		if clean.starts_with('&') {
@@ -2616,7 +2632,11 @@ fn strip_array_append_lhs_prefixes(typ string) string {
 	return clean
 }
 
-fn array_type_has_generic_placeholder(typ string) bool {
+fn array_type_has_generic_placeholder(typ_id u32) bool {
+	return array_type_has_generic_placeholder_bytes(flat.source_type_name(typ_id))
+}
+
+fn array_type_has_generic_placeholder_bytes(typ string) bool {
 	clean := trimmed_transform_text(typ)
 	if clean.len == 0 {
 		return false
@@ -2625,19 +2645,19 @@ fn array_type_has_generic_placeholder(typ string) bool {
 		return true
 	}
 	if clean.starts_with('&') {
-		return array_type_has_generic_placeholder(clean[1..])
+		return array_type_has_generic_placeholder_bytes(clean[1..])
 	}
 	if clean.starts_with('[]') {
-		return array_type_has_generic_placeholder(clean[2..])
+		return array_type_has_generic_placeholder_bytes(clean[2..])
 	}
 	if clean.starts_with('map[') {
 		bracket_end := clean.index(']') or { return false }
-		return array_type_has_generic_placeholder(clean[4..bracket_end])
-			|| array_type_has_generic_placeholder(clean[bracket_end + 1..])
+		return array_type_has_generic_placeholder_bytes(clean[4..bracket_end])
+			|| array_type_has_generic_placeholder_bytes(clean[bracket_end + 1..])
 	}
 	if clean.starts_with('[') {
 		bracket_end := clean.index(']') or { return false }
-		return array_type_has_generic_placeholder(clean[bracket_end + 1..])
+		return array_type_has_generic_placeholder_bytes(clean[bracket_end + 1..])
 	}
 	return false
 }
@@ -2704,7 +2724,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 		if t.owned_array_slice_detach_needed(elem_type_id) {
 			value = t.snapshot_transformed_expr_for_reuse(value, flat.source_type_id(rhs_type), 'prepend_source')
 			count := if t.is_fixed_array_type(flat.source_type_id(rhs_type)) {
-				t.make_fixed_array_len_expr(rhs_type)
+				t.make_fixed_array_len_expr(flat.source_type_id(rhs_type))
 			} else {
 				t.make_selector(value, 'len', flat.source_type_int)
 			}
@@ -2818,7 +2838,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 		if t.owned_array_slice_detach_needed(elem_type_id) {
 			value = t.snapshot_transformed_expr_for_reuse(value, flat.source_type_id(rhs_type), 'insert_source')
 			count := if t.is_fixed_array_type(flat.source_type_id(rhs_type)) {
-				t.make_fixed_array_len_expr(rhs_type)
+				t.make_fixed_array_len_expr(flat.source_type_id(rhs_type))
 			} else {
 				t.make_selector(value, 'len', flat.source_type_int)
 			}
@@ -2964,6 +2984,11 @@ fn (t &Transformer) array_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeI
 		return false
 	}
 	clean_rhs_type := trimmed_transform_text(rhs_type)
+	clean_rhs_type_id := if flat.source_type_shape(rhs_type_id).has(.padded) {
+		flat.source_type_id(clean_rhs_type)
+	} else {
+		rhs_type_id
+	}
 	lhs_elem_is_interface := t.array_append_elem_is_interface(elem_type_id)
 	if t.array_append_literal_is_sum_array_variant(rhs_id, elem_type_id) {
 		return false
@@ -2971,7 +2996,7 @@ fn (t &Transformer) array_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeI
 	if clean_rhs_type.starts_with('...') {
 		return t.array_append_elem_types_match(flat.source_type_id(clean_rhs_type[3..]), elem_type_id)
 	}
-	if t.array_append_rhs_is_sum_array_variant(flat.source_type_id(clean_rhs_type), elem_type_id) {
+	if t.array_append_rhs_is_sum_array_variant(clean_rhs_type_id, elem_type_id) {
 		// An exact array result remains the bulk-append form. An array variable or
 		// literal can explicitly denote the recursive array variant instead.
 		if clean_rhs_type.starts_with('[]')
@@ -2996,7 +3021,7 @@ fn (t &Transformer) array_rhs_is_push_many(lhs_id flat.NodeId, rhs_id flat.NodeI
 		}
 		return false
 	}
-	if t.is_fixed_array_type(flat.source_type_id(clean_rhs_type)) {
+	if t.is_fixed_array_type(clean_rhs_type_id) {
 		return t.array_append_elem_types_match(flat.source_type_id(fixed_array_elem_type(clean_rhs_type)), elem_type_id)
 	}
 	if !isnil(t.tc) {
@@ -4078,7 +4103,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	out_name := t.new_temp('map')
 	idx_name := t.new_temp('map_idx')
 	length := if fixed {
-		t.make_fixed_array_len_expr(base_type)
+		t.make_fixed_array_len_expr(base_type_id)
 	} else {
 		t.make_selector(base, 'len', flat.source_type_int)
 	}

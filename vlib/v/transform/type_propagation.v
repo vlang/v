@@ -827,21 +827,25 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 		}
 	}
 	// Strip pointer prefix if present (e.g. "&MyStruct" -> "MyStruct")
-	lookup_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
-	if ftyp_source_id := t.lookup_sum_variant_field_type(flat.source_type_id(lookup_type), field_name) {
+	lookup_type := if flat.source_type_shape(base_type_source_id).has(.pointer) {
+		flat.source_type_id(base_type[1..])
+	} else {
+		base_type_source_id
+	}
+	if ftyp_source_id := t.lookup_sum_variant_field_type(lookup_type, field_name) {
 		return ftyp_source_id
 	}
-	if ftyp_source_id := t.lookup_struct_field_type(flat.source_type_id(lookup_type), field_name) {
+	if ftyp_source_id := t.lookup_struct_field_type(lookup_type, field_name) {
 		return ftyp_source_id
 	}
 	if _ := t.lookup_struct_info(lookup_type) {
 		// Follow the complete embedding path, including pointer embeddings.
-		if path := t.struct_field_path_for_field(flat.source_type_id(lookup_type), field_name) {
-			owner_type := if path.len > 0 {
+		if path := t.struct_field_path_for_field(lookup_type, field_name) {
+			owner_type := flat.source_type_id(if path.len > 0 {
 				flat.source_type_name(t.trim_pointer_type(path.last().typ))
 			} else {
-				lookup_type
-			}
+				flat.source_type_name(lookup_type)
+			})
 			if owner_info := t.lookup_struct_info(owner_type) {
 				if ftyp_source_id := t.struct_field_type(owner_info, field_name) {
 					ftyp_source_id_2 := ftyp_source_id
@@ -856,7 +860,7 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 		return u32(0)
 	}
 	// An interface declares the types of its fields: do not guess them from the name.
-	iface_name_source_id := t.resolve_interface_type_name(flat.source_type_id(lookup_type))
+	iface_name_source_id := t.resolve_interface_type_name(lookup_type)
 
 	if iface_name_source_id != 0 {
 		if ftyp_source_id := t.interface_field_type_name(iface_name_source_id, field_name) {

@@ -184,7 +184,9 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		|| sum_name in t.tc.interface_names || sum_name in t.tc.enum_names)) {
 		return ''
 	}
-	if resolved_c_name := t.resolve_sum_name_from_c_name(sum_name) {
+	if resolved_c_name_source_id := t.resolve_sum_name_from_c_name(sum_name) {
+		resolved_c_name := flat.source_type_name(resolved_c_name_source_id)
+
 		return resolved_c_name
 	}
 	// A container or function involving a sum type is not itself a sum type: `[]ast.Value` must
@@ -305,19 +307,19 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 	return sum_name
 }
 
-fn (t &Transformer) resolve_sum_name_from_c_name(sum_name string) ?string {
+fn (t &Transformer) resolve_sum_name_from_c_name(sum_name string) ?u32 {
 	if sum_name.contains('[') || !sum_name.contains('_') {
 		return none
 	}
 	for key, _ in t.sum_types.ids {
 		if key.contains('[') && c_name(key) == sum_name {
-			return key
+			return flat.source_type_id(key)
 		}
 	}
 	if !isnil(t.tc) {
 		for key, _ in t.tc.sum_types.ids {
 			if key.contains('[') && c_name(key) == sum_name {
-				return key
+				return flat.source_type_id(key)
 			}
 		}
 	}

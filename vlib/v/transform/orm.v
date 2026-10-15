@@ -652,7 +652,7 @@ fn (mut t Transformer) sql_record_table_generic_spec(table_name string) {
 	}
 	mut record_base := base
 	if !record_base.contains('.') {
-		if info := t.lookup_struct_info(table_name) {
+		if info := t.lookup_struct_info(flat.source_type_id(table_name)) {
 			if info.module.len > 0 && info.module !in ['main', 'builtin'] {
 				record_base = '${info.module}.${base}'
 			}
@@ -3452,7 +3452,7 @@ fn (t &Transformer) sql_table_info(table string) ?SqlTransformTableInfo {
 		}
 	}
 	if is_generic && !table_name.contains('.') {
-		if info := t.lookup_struct_info(table_name) {
+		if info := t.lookup_struct_info(flat.source_type_id(table_name)) {
 			if info.fields.len > 0 {
 				name := if info.module.len > 0 && info.module !in ['main', 'builtin'] {
 					'${info.module}.${table_name}'

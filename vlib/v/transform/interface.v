@@ -229,9 +229,11 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 	return u32(0)
 }
 
-fn interface_type_with_pointer_depth(source_type string, interface_name string) string {
+fn interface_type_with_pointer_depth(source_type_id u32, interface_name_id u32) u32 {
+	source_type := flat.source_type_name(source_type_id)
+	interface_name := flat.source_type_name(interface_name_id)
 	depth, _ := pointer_type_depth_and_base(source_type)
-	return '&'.repeat(depth) + interface_name
+	return flat.source_type_id('&'.repeat(depth) + interface_name)
 }
 
 // transform_interface_value_for_type supports transform_interface_value_for_type handling.
@@ -1167,7 +1169,7 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 				interface_name = '${receiver_base}[${receiver_args.join(', ')}]'
 			}
 			if interface_name != '' {
-				interface_receiver_type = interface_type_with_pointer_depth(receiver_source_type, interface_name)
+				interface_receiver_type = flat.source_type_name(interface_type_with_pointer_depth(flat.source_type_id(receiver_source_type), flat.source_type_id(interface_name)))
 			}
 			if _ := t.raw_const_type_name_for_expr(base_id) {
 				// A module-qualified interface constant (`net.err_foo.code()`) is

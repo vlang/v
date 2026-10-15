@@ -450,11 +450,10 @@ fn (t &Transformer) shared_map_base(id flat.NodeId) ?flat.NodeId {
 // promoted_field_raw_type returns the declared type of a field promoted from an embedded
 // struct of `struct_type`.
 fn (t &Transformer) promoted_field_raw_type(struct_type_id u32, field_name string, depth int) ?u32 {
-	struct_type := flat.source_type_name(struct_type_id)
 	if depth > 8 {
 		return none
 	}
-	info := t.lookup_struct_info(struct_type) or { return none }
+	info := t.lookup_struct_info(struct_type_id) or { return none }
 	if field := info.field(field_name) {
 		return flat.source_type_id(if field.raw_typ != 0 {
 			field.raw_typ_text()

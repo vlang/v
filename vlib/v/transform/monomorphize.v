@@ -115,7 +115,7 @@ fn (mut t Transformer) is_generic_struct(name string) bool {
 	if ok {
 		return base in t.structs
 	}
-	if info := t.lookup_struct_info(name) {
+	if info := t.lookup_struct_info(flat.source_type_id(name)) {
 		return flat.source_type_shape(info.name).has(.bracketed)
 	}
 	return false
@@ -664,7 +664,7 @@ fn (t &Transformer) generic_method_value_declaring_receiver(receiver_type_id u32
 		if t.generic_receiver_decl_matches_type(flat.source_type_id(current), decl, module_name) {
 			return GenericMethodValueReceiver{ typ: flat.source_type_id(current), path: path }
 		}
-		info := t.lookup_struct_info(current) or { continue }
+		info := t.lookup_struct_info(flat.source_type_id(current)) or { continue }
 		for field in info.fields.reverse() {
 			if t.is_embedded_field(field) {
 				field_type := if field.raw_typ != 0 {
@@ -2454,8 +2454,9 @@ fn (t &Transformer) interface_box_call_param_maybe_uncached(param types.Type) bo
 	struct_type_source_id := t.params_struct_type_name(param.source_type_id()) or {
 		t.struct_arg_type_name(param.source_type_id()) or { return false }
 	}
-	struct_type := flat.source_type_name(struct_type_source_id)
-	info := t.lookup_struct_info(struct_type) or { return false }
+	struct_type_source_id_4 := struct_type_source_id
+
+	info := t.lookup_struct_info(struct_type_source_id_4) or { return false }
 	for field in info.fields {
 		field_type_text_source_id := t.lookup_struct_field_type(struct_type_source_id, field.name) or { field.typ }
 
@@ -2467,8 +2468,7 @@ fn (t &Transformer) interface_box_call_param_maybe_uncached(param types.Type) bo
 }
 
 fn (mut t Transformer) collect_interface_struct_call_fields(node flat.Node, field_start int, struct_type_id u32) {
-	struct_type := flat.source_type_name(struct_type_id)
-	info := t.lookup_struct_info(struct_type) or { return }
+	info := t.lookup_struct_info(struct_type_id) or { return }
 	mut field_index := 0
 	mut provided := []string{}
 	for i in field_start .. node.children_count {
@@ -2504,8 +2504,7 @@ fn (mut t Transformer) collect_interface_struct_call_fields(node flat.Node, fiel
 }
 
 fn (mut t Transformer) collect_interface_struct_default_boxes(struct_type_id u32, provided []string) {
-	struct_type := flat.source_type_name(struct_type_id)
-	info := t.lookup_struct_info(struct_type) or { return }
+	info := t.lookup_struct_info(struct_type_id) or { return }
 	for field in info.fields {
 		if field.name in provided || int(field.default_expr) < 0 {
 			continue
@@ -2876,7 +2875,7 @@ fn (mut t Transformer) collect_interface_boxed_struct_value(node flat.Node, stru
 		return
 	}
 	literal_name := if node.value.len > 0 { node.value } else { struct_name }
-	info := t.lookup_struct_info(literal_name) or { return }
+	info := t.lookup_struct_info(flat.source_type_id(literal_name)) or { return }
 	for i in 0 .. node.children_count {
 		field := t.a.child_node(&node, i)
 		if field.kind != .field_init || field.children_count == 0 {
@@ -6585,7 +6584,7 @@ fn (mut t Transformer) infer_generic_field_init_type_arg(param_type_id u32, fiel
 	if !is_generic_struct || param_args.len == 0 {
 		return
 	}
-	info := t.lookup_struct_info(param_base) or { return }
+	info := t.lookup_struct_info(flat.source_type_id(param_base)) or { return }
 	mut field_type := ''
 	for struct_field in info.fields {
 		if struct_field.name == field.value {
@@ -9230,7 +9229,7 @@ fn (mut t Transformer) infer_generic_struct_init_args(param_type_id u32, arg_id 
 	if !is_generic_struct || param_args.len == 0 {
 		return
 	}
-	info := t.lookup_struct_info(param_base) or { return }
+	info := t.lookup_struct_info(flat.source_type_id(param_base)) or { return }
 	for i in 0 .. arg.children_count {
 		field := t.a.child_node(&arg, i)
 		if field.kind != .field_init || field.children_count == 0 {
@@ -9287,7 +9286,7 @@ fn (mut t Transformer) infer_generic_short_struct_init_args(param_type_id u32, a
 	if !is_generic_struct || param_args.len == 0 {
 		return
 	}
-	info := t.lookup_struct_info(param_base) or { return }
+	info := t.lookup_struct_info(flat.source_type_id(param_base)) or { return }
 	// The struct declares its fields in its own generic parameter names
 	// (`struct Params[A] { a []A }`) while the call must infer the function's
 	// parameters (`fn f[T](p Params[T])`). Rebase the field types onto the

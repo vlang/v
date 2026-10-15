@@ -217,7 +217,7 @@ fn (mut t Transformer) array_literal_index_base_type(base_id flat.NodeId) u32 {
 
 fn (mut t Transformer) array_index_len_expr(info ArrayIndexInfo, base_expr flat.NodeId) flat.NodeId {
 	if info.is_fixed_array {
-		return t.make_fixed_array_len_expr(info.base_type_text())
+		return t.make_fixed_array_len_expr(info.base_type)
 	}
 	return t.make_selector(base_expr, 'len', flat.source_type_int)
 }

@@ -174,8 +174,9 @@ fn (t &Transformer) comptime_for_var_source_type(name string) ?u32 {
 fn (t &Transformer) comptime_for_field_source_type(owner_type_id u32, field_name string) ?u32 {
 	owner_type := flat.source_type_name(owner_type_id)
 	base_source_id := t.comptime_normalize_type_alias_chain(flat.source_type_id(t.comptime_for_value_type_base(owner_type)))
-	base := flat.source_type_name(base_source_id)
-	info := t.lookup_struct_info(base) or {
+	base_source_id_2 := base_source_id
+
+	info := t.lookup_struct_info(base_source_id_2) or {
 		t.generic_struct_info_for_stringify(base_source_id) or { return none }
 	}
 	for field in info.fields {
@@ -3919,7 +3920,7 @@ fn (mut t Transformer) comptime_field_metas(base_type_id u32) []FieldMeta {
 	// A monomorphized generic struct instance (`Box[int]`) is stored in the struct table under
 	// its generic declaration name (`Box`), so a direct lookup misses; resolve it through the
 	// generic-struct field substitution path before giving up.
-	info := t.lookup_struct_info(base_type) or {
+	info := t.lookup_struct_info(base_type_id) or {
 		t.generic_struct_info_for_stringify(base_type_id) or { return []FieldMeta{} }
 	}
 	cache_key := comptime_struct_info_cache_key(info)

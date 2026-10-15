@@ -118,10 +118,12 @@ fn (mut t Transformer) transformed_direct_optional_forward_return(value_id flat.
 	if !t.is_optional_type_name(ret_typ_id) || !t.return_expr_is_optional_result(value_id) {
 		return none
 	}
-	expr_type := flat.source_type_name(t.qualify_optional_type(t.optional_result_expr_type_name(value_id)))
+	expr_type_source_id_2 := t.qualify_optional_type(t.optional_result_expr_type_name(value_id))
+
 	qualified_ret_source_id := t.qualify_optional_type(ret_typ_id)
-	qualified_ret := flat.source_type_name(qualified_ret_source_id)
-	if !t.optional_types_match(qualified_ret, expr_type) {
+	qualified_ret_source_id_2 := qualified_ret_source_id
+
+	if !t.optional_types_match(qualified_ret_source_id_2, expr_type_source_id_2) {
 		return none
 	}
 	value := t.clone_borrowed_storage_projection(value_id, t.transform_optional_wrapper_expr(value_id), qualified_ret_source_id)
@@ -353,9 +355,11 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 		skipped_propagation = true
 	}
 	ret_type_source_id := t.qualify_optional_type(t.cur_fn_ret_type)
-	ret_type := flat.source_type_name(ret_type_source_id)
-	expr_type := flat.source_type_name(t.qualify_optional_type(t.optional_result_expr_type_name(child_id)))
-	if !t.optional_types_match(ret_type, expr_type) {
+	ret_type_source_id_2 := ret_type_source_id
+
+	expr_type_source_id_3 := t.qualify_optional_type(t.optional_result_expr_type_name(child_id))
+
+	if !t.optional_types_match(ret_type_source_id_2, expr_type_source_id_3) {
 		return none
 	}
 	mut new_expr := t.clone_borrowed_storage_projection(child_id, t.transform_optional_wrapper_expr(child_id), ret_type_source_id)
@@ -372,14 +376,16 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 	return result
 }
 
-fn (mut t Transformer) optional_types_match(a string, b string) bool {
-	if !t.is_optional_type_name(flat.source_type_id(a)) || !t.is_optional_type_name(flat.source_type_id(b)) || a[0] != b[0] {
+fn (mut t Transformer) optional_types_match(a_id u32, b_id u32) bool {
+	a := flat.source_type_name(a_id)
+	b := flat.source_type_name(b_id)
+	if !t.is_optional_type_name(a_id) || !t.is_optional_type_name(b_id) || a[0] != b[0] {
 		return false
 	}
-	a_base_source_id := t.normalize_type_alias(t.optional_base_type(flat.source_type_id(a)))
+	a_base_source_id := t.normalize_type_alias(t.optional_base_type(a_id))
 	a_base_comparison_type_id := a_base_source_id
 
-	b_base_source_id := t.normalize_type_alias(t.optional_base_type(flat.source_type_id(b)))
+	b_base_source_id := t.normalize_type_alias(t.optional_base_type(b_id))
 	b_base_comparison_type_id := b_base_source_id
 
 	if a_base_comparison_type_id == b_base_comparison_type_id {
@@ -809,7 +815,7 @@ fn (mut t Transformer) convert_forwarded_array_to_dynamic_with_borrowed(value_id
 	out_name := t.new_temp('return_array')
 	idx_name := t.new_temp('return_array_idx')
 	len_expr := if actual_is_fixed {
-		t.make_fixed_array_len_expr(flat.source_type_name(t.semantic_type_name(forwarded_return_unalias_type(actual_type))))
+		t.make_fixed_array_len_expr(t.semantic_type_name(forwarded_return_unalias_type(actual_type)))
 	} else {
 		t.make_selector(base, 'len', flat.source_type_int)
 	}

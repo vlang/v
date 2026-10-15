@@ -2820,7 +2820,8 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 		rhs_type_source_id := t.node_type(rhs_id)
 
 		clean_rhs_type_source_id := t.membership_container_type(rhs_type_source_id)
-		clean_rhs_type := flat.source_type_name(clean_rhs_type_source_id)
+		clean_rhs_type_source_id_2 := clean_rhs_type_source_id
+		clean_rhs_type := flat.source_type_name(clean_rhs_type_source_id_2)
 		rhs_is_ptr_array := t.membership_container_is_pointer_array(rhs_type_source_id)
 		if clean_rhs_type.starts_with('[]') || clean_rhs_type == 'array' {
 			if lowered_const := t.lower_const_string_array_membership_expr(rhs_id, lhs_id) {
@@ -2877,7 +2878,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 				new_rhs := t.transform_value_operand(rhs_id)
 				elem := fixed_array_elem_type(clean_rhs_type)
 				fn_name := fixed_array_contains_fn_name(elem)
-				len_expr := t.make_fixed_array_len_expr(clean_rhs_type)
+				len_expr := t.make_fixed_array_len_expr(clean_rhs_type_source_id_2)
 				result = t.make_call_typed(fn_name, [new_rhs, len_expr, new_lhs], flat.source_type_bool)
 			}
 		} else if clean_rhs_type_source_id == flat.source_type_string {
@@ -3184,7 +3185,7 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 	prefix << t.make_decl_assign_typed(result_name, t.make_bool_literal(false), flat.source_type_bool)
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), flat.source_type_int)
 	len_expr := if base_is_fixed {
-		t.make_fixed_array_len_expr(clean_base_type)
+		t.make_fixed_array_len_expr(clean_base_type_source_id)
 	} else {
 		t.make_selector(base, 'len', flat.source_type_int)
 	}
@@ -3257,7 +3258,7 @@ fn (mut t Transformer) lower_array_index_expr(base_id flat.NodeId, needle_id fla
 	prefix << t.make_decl_assign_typed(result_name, t.make_int_literal(-1), flat.source_type_int)
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), flat.source_type_int)
 	len_expr := if base_is_fixed {
-		t.make_fixed_array_len_expr(clean_base_type)
+		t.make_fixed_array_len_expr(clean_base_type_source_id)
 	} else {
 		t.make_selector(base, 'len', flat.source_type_int)
 	}
@@ -3329,7 +3330,7 @@ fn (mut t Transformer) lower_array_last_index_expr(base_id flat.NodeId, needle_i
 	idx_name := t.new_temp('last_index_idx')
 	prefix << t.make_decl_assign_typed(result_name, t.make_int_literal(-1), flat.source_type_int)
 	len_expr := if base_is_fixed {
-		t.make_fixed_array_len_expr(clean_base_type)
+		t.make_fixed_array_len_expr(clean_base_type_source_id)
 	} else {
 		t.make_selector(base, 'len', flat.source_type_int)
 	}
@@ -4074,7 +4075,8 @@ fn (mut t Transformer) make_fixed_array_elementwise_eq_expr(lhs flat.NodeId, rhs
 
 fn (mut t Transformer) make_fixed_array_elementwise_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, fixed_type_id u32, seen []string) ?flat.NodeId {
 	clean_fixed_type_source_id := t.resolved_fixed_array_canonical_type(fixed_type_id)
-	clean_fixed_type := flat.source_type_name(clean_fixed_type_source_id)
+	clean_fixed_type_source_id_2 := clean_fixed_type_source_id
+	clean_fixed_type := flat.source_type_name(clean_fixed_type_source_id_2)
 	elem_type := fixed_array_elem_type(clean_fixed_type)
 	if elem_type.len == 0 {
 		return none
@@ -4085,7 +4087,7 @@ fn (mut t Transformer) make_fixed_array_elementwise_eq_expr_with_seen(lhs flat.N
 	idx_name := t.new_temp('fixed_eq_idx')
 	t.pending_stmts << t.make_decl_assign_typed(result_name, t.make_bool_literal(true), flat.source_type_bool)
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), flat.source_type_int)
-	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_fixed_array_len_expr(clean_fixed_type))
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_fixed_array_len_expr(clean_fixed_type_source_id_2))
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	lhs_elem := t.make_index(lhs_value, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	rhs_elem := t.make_index(rhs_value, t.make_ident(idx_name), flat.source_type_id(elem_type))
@@ -4211,7 +4213,7 @@ fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 
 fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, struct_type_id u32, seen []string) ?flat.NodeId {
 	struct_type := flat.source_type_name(struct_type_id)
-	info := t.lookup_struct_info(struct_type) or { return none }
+	info := t.lookup_struct_info(struct_type_id) or { return none }
 	lhs_value := t.struct_equality_operand(lhs, struct_type_id, 'struct_eq_lhs')
 	rhs_value := t.struct_equality_operand(rhs, struct_type_id, 'struct_eq_rhs')
 	mut next_seen := seen.clone()
@@ -4655,7 +4657,7 @@ fn (t &Transformer) is_stable_expr_for_reuse(id flat.NodeId) bool {
 		}
 		.struct_init {
 			mut stable := true
-			if info := t.lookup_struct_info(node.value) {
+			if info := t.lookup_struct_info(flat.source_type_id(node.value)) {
 				for field in info.fields {
 					if t.is_fixed_array_type(t.normalize_type_alias(field.typ)) {
 						// Fixed-array initialization can emit a C statement expression.
@@ -4731,11 +4733,12 @@ fn (mut t Transformer) transform_fixed_array_len(_id flat.NodeId, node flat.Node
 	}
 	base_id := t.a.children[node.children_start]
 	base_type_source_id := t.node_type(base_id)
-	base_type := flat.source_type_name(base_type_source_id)
+	base_type_source_id_2 := base_type_source_id
+
 	if !t.is_fixed_array_type(base_type_source_id) {
 		return none
 	}
-	return t.make_fixed_array_len_expr(base_type)
+	return t.make_fixed_array_len_expr(base_type_source_id_2)
 }
 
 // clean_map_type transforms clean map type data for transform.
@@ -5262,7 +5265,8 @@ fn is_decimal_text(s string) bool {
 }
 
 // make_fixed_array_len_expr builds make fixed array len expr data for transform.
-fn (mut t Transformer) make_fixed_array_len_expr(s string) flat.NodeId {
+fn (mut t Transformer) make_fixed_array_len_expr(s_id u32) flat.NodeId {
+	s := flat.source_type_name(s_id)
 	len_text := fixed_array_len_text(s)
 	if is_decimal_text(len_text) {
 		return t.make_int_literal(len_text.int())
