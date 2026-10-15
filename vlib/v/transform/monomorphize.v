@@ -2026,8 +2026,33 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 		t.tc.cur_file = old_tc_file
 		t.tc.cur_module = old_tc_module
 	}
-	t.collect_interface_boxed_types_range(0, t.a.nodes.len)
+	handed_over := t.tc.transform_boxed_node_count
+	if handed_over >= 0 && handed_over <= t.a.nodes.len && t.interface_boxed_types.len == 0 {
+		t.collect_interface_boxed_types_after_transform(handed_over)
+	} else {
+		t.collect_interface_boxed_types_range(0, t.a.nodes.len)
+	}
 	t.interface_boxed_types_frozen = true
+}
+
+// collect_interface_boxed_types_after_transform starts from the boxes the
+// transform stage collected from the first `scanned` nodes before lowering and
+// scans only what that scan did not see: the library bodies it skipped and the
+// nodes lowering appended. File and module markers are read for their context.
+fn (mut t Transformer) collect_interface_boxed_types_after_transform(scanned int) {
+	for i, key in t.tc.transform_boxed_types {
+		t.interface_boxed_types[key] = t.tc.transform_boxed_values[i]
+	}
+	skipped := t.tc.transform_boxed_skipped
+	mut skip := []bool{len: scanned}
+	for idx in 0 .. scanned {
+		kind := t.a.nodes[idx].kind
+		skip[idx] = kind != .file && kind != .module_decl && !(idx < skipped.len && skipped[idx])
+	}
+	old_skip := t.interface_boxed_skip_nodes
+	t.interface_boxed_skip_nodes = skip
+	t.collect_interface_boxed_types_range(0, t.a.nodes.len)
+	t.interface_boxed_skip_nodes = old_skip
 }
 
 // unchecked_library_box_nodes snapshots only unchecked concrete library body ranges.

@@ -4246,6 +4246,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 		t.interface_boxed_types_frozen = true
 	} else {
 		t.collect_interface_boxed_types_dispatch(want_parallel)
+		t.hand_over_interface_boxed_types()
 	}
 	t.refresh_interface_impl_indexes_for_boxed_types()
 	t.timing_profile('  [ttime]   dsp boxed+iface  ${f64(dpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -4300,6 +4301,27 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 		t.timing_profile('  [ttime] top_level_stmts    ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
 	return was_parallel
+}
+
+// hand_over_interface_boxed_types keeps the boxes this stage collected from the
+// tree before lowering in the checker, outside the stage arena, for the
+// monomorphization stage to start from (see collect_interface_boxed_types).
+fn (mut t Transformer) hand_over_interface_boxed_types() {
+	if isnil(t.tc) {
+		return
+	}
+	state := transform_stage_scope_suspend(t.stage_scope)
+	mut keys := []string{cap: t.interface_boxed_types.len}
+	mut values := []bool{cap: t.interface_boxed_types.len}
+	for key, value in t.interface_boxed_types {
+		keys << key.clone()
+		values << value
+	}
+	t.tc.transform_boxed_types = keys
+	t.tc.transform_boxed_values = values
+	t.tc.transform_boxed_skipped = t.interface_boxed_skip_nodes.clone()
+	t.tc.transform_boxed_node_count = t.a.nodes.len
+	transform_stage_scope_resume(t.stage_scope, state)
 }
 
 fn (mut t Transformer) collect_interface_boxed_types_dispatch(want_parallel bool) {

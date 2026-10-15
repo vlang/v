@@ -976,6 +976,14 @@ pub mut:
 	// Read-only post-check call graph for transform forks (see
 	// fork_for_parallel_transform); nil in the checker that owns the graph.
 	post_check_dependencies &DependencyGraphView = unsafe { nil }
+	// The interface boxes the transform stage collected from the tree before
+	// lowering, the node count it scanned and the library bodies it skipped, for
+	// the monomorphization stage to start from. transform_boxed_node_count is -1
+	// until the transform stage sets them.
+	transform_boxed_types      []string
+	transform_boxed_values     []bool
+	transform_boxed_skipped    []bool
+	transform_boxed_node_count int = -1
 	// Methods used as *values* (`recv.method` passed as a callback), recorded per enclosing
 	// function during semantic checking — which has full scope/type info, runs before
 	// markused, and (unlike a call) routes a value-context selector through check_selector.
