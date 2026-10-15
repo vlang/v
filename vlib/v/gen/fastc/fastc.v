@@ -2431,6 +2431,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		mut thread_type_names := spawn_typedefs.keys()
 		thread_type_names.sort()
 		for thread_type_name in thread_type_names {
+			if thread_type_name.starts_with('__vf_fn_type_') { continue }
 			pieces << spawn_typedefs[thread_type_name]
 			pieces << '\n'
 		}
@@ -2438,6 +2439,12 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	pieces << fastc_piece(constant_output.macros)
 	pieces << fastc_piece(type_output.declarations_head)
+	// Function signatures can refer to string and other forward-declared structs.
+	mut function_type_names := spawn_typedefs.keys().filter(it.starts_with('__vf_fn_type_'))
+	function_type_names.sort()
+	for function_type_name in function_type_names {
+		pieces << spawn_typedefs[function_type_name]
+	}
 	pieces << fastc_piece(composite_typedefs)
 	pieces << scalar_fixed_array_declarations
 	pieces << fastc_piece(type_declarations)

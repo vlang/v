@@ -77,6 +77,9 @@ Negated sum-type guards retain pointer identity and read mutable scalar variants
 in arithmetic, including numeric aliases.
 Fixed arrays and their aliases support checked indexing, including pointer elements.
 Pointer elements retain their identity when passed or copied. Omitted option fields are `none`.
+Arrays of anonymous functions retain their parameter and return types when indexed and called.
+Membership tests compare fixed-array elements by value. Single-file bootstrap programs apply
+struct field defaults to empty initializers.
 Sum-type and interface tests narrow later operands of a conjunction, preserving pointer values.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context

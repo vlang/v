@@ -5503,7 +5503,7 @@ fn (g &Parser) is_function_value_type(typ string) bool {
 	if typ.starts_with('fn ') || typ.starts_with('fn(') {
 		return true
 	}
-	return typ in g.functions || g.semantic_type_key(typ) in g.functions
+	return typ in g.functions || g.semantic_type_key(typ) in g.functions || typ in g.mono_functions
 }
 
 // render_fixed_array_value renders `[N]T{}` (zeroed) and `[N]T{init: value}` (every
