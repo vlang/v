@@ -320,3 +320,70 @@ fn test_import_and_load_reject_casefold_colliding_versions() {
 		assert_invalid_persisted_registry(registry)
 	}
 }
+
+fn assert_invalid_save_preserves_storage(registry Registry, expected string) ! {
+	reset_persisted_registry()
+	valid := persistence_registry_identity('retained', 'retained', 'retained', 'release+build.1')
+	valid.save()!
+	previous := os.read_file(registry_index_path())!
+	previous_entries := os.ls(registry_dir())!
+	invalid_before := registry.export_json()
+	mut rejected := false
+	registry.save() or {
+		assert err.msg().contains(expected), err.msg()
+		rejected = true
+	}
+	assert rejected, 'invalid in-memory registry was saved over the valid index'
+	assert os.read_file(registry_index_path())! == previous
+	assert os.ls(registry_dir())! == previous_entries
+	loaded := load_registry()!
+	assert loaded.export_json() == valid.export_json()
+	assert registry.export_json() == invalid_before
+
+	reset_persisted_registry()
+	mut rejected_without_directory := false
+	registry.save() or {
+		assert err.msg().contains(expected), err.msg()
+		rejected_without_directory = true
+	}
+	assert rejected_without_directory, 'invalid in-memory registry was saved into a new directory'
+	assert !os.exists(registry_dir())
+	assert !os.is_link(registry_dir())
+	assert registry.export_json() == invalid_before
+}
+
+fn test_save_rejects_duplicate_add_module_versions_without_touching_storage() {
+	mut registry := new_registry()
+	info := ModuleInfo{ name: 'alpha', version: '1.0.0' }
+	registry.add_module(info)
+	registry.add_module(info)
+	assert_invalid_save_preserves_storage(registry, 'duplicate registry version')!
+}
+
+fn test_save_rejects_direct_invalid_module_maps_without_touching_storage() {
+	for registry in [
+		persistence_registry_identity('invalid/name', 'invalid/name', 'invalid/name', '1.0.0'),
+		persistence_registry_identity('alpha', 'beta', 'alpha', '1.0.0'),
+		persistence_registry_identity('alpha', 'alpha', 'beta', '1.0.0'),
+		persistence_registry_identity('alpha', 'alpha', 'alpha', '1.0.0?query'),
+	] {
+		assert_invalid_save_preserves_storage(registry, 'registry')!
+	}
+	module_aliases := Registry{
+		modules: {
+			'Alpha': RegistryEntry{ name: 'Alpha', versions: [ModuleInfo{ name: 'Alpha', version: '1.0.0' }] }
+			'alpha': RegistryEntry{ name: 'alpha', versions: [ModuleInfo{ name: 'alpha', version: '1.0.0' }] }
+		}
+	}
+	assert_invalid_save_preserves_storage(module_aliases, 'case-insensitive registry module collision')!
+	version_aliases := Registry{
+		modules: {
+			'alpha': RegistryEntry{
+				name:     'alpha'
+				versions: [ModuleInfo{ name: 'alpha', version: 'Release+Build.1' },
+					ModuleInfo{ name: 'alpha', version: 'release+build.1' }]
+			}
+		}
+	}
+	assert_invalid_save_preserves_storage(version_aliases, 'case-insensitive registry version collision')!
+}

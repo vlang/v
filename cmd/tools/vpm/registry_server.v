@@ -110,6 +110,16 @@ fn parse_registry_port(value string) !int {
 	return port
 }
 
+// registry_listen_tcp binds every IPv4 interface before startup is announced.
+// Windows must opt out of net's address reuse and reserve the port exclusively.
+fn registry_listen_tcp(port int) !&net.TcpListener {
+	$if windows {
+		return registry_listen_tcp_exclusive(port)
+	} $else {
+		return net.listen_tcp(.ip, ':${port}')
+	}
+}
+
 // vpm_registry is the `v registry` entry point. It currently serves the registry
 // described by the protocol; publishing and yanking are methods on `Registry`
 // and are reached from a script or a future subcommand.
@@ -149,7 +159,7 @@ fn vpm_registry(query []string) {
 				vpm_error(err.msg())
 				exit(1)
 			}
-			listener := net.listen_tcp(.ip, ':${port}') or {
+			listener := registry_listen_tcp(port) or {
 				vpm_error('failed to listen on port ${port}: ${err.msg()}')
 				exit(1)
 			}

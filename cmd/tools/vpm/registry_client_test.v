@@ -146,6 +146,7 @@ fn test_an_empty_version_list_is_not_an_error() {
 // directions, which is the thing under test, and a value read back from a
 // response needs no lock against the thread that served it.
 struct TokenEchoHandler {
+	response_body   string
 	redirect_to     string
 	status_code     int = 200
 	record_requests bool
@@ -175,7 +176,7 @@ fn (mut h TokenEchoHandler) handle(req http.Request) http.Response {
 	return http.Response{
 		status_code: h.status_code
 		header:      header
-		body:        authorization
+		body:        if h.response_body == '' { authorization } else { h.response_body }
 	}
 }
 
@@ -564,4 +565,79 @@ fn test_http_dns_names_and_other_addresses_are_rejected_even_with_opt_in() {
 	os.setenv(registry_url_env, running.base, true)
 	assert authorization_on_the_wire(running.base)! == 'Bearer tok-global'
 	assert_token_wire_capture(requests, 'Bearer tok-global')
+}
+
+fn test_fetch_registry_info_rejects_mismatched_or_missing_identities_over_http() {
+	clear_wire_tokens()
+	defer { clear_wire_tokens() }
+	for body in [
+		'{"name":"beta","version":"1.0.0"}',
+		'{"name":"Alpha","version":"1.0.0"}',
+		'{"name":"alpha","version":"2.0.0"}',
+		'{"name":"alpha","version":"1.0"}',
+		'{"name":"alpha"}',
+		'{"version":"1.0.0"}',
+	] {
+		mut running := start_token_echo_handler(TokenEchoHandler{ response_body: body })!
+		defer { running.server.close() }
+		if info := fetch_registry_info(running.base, 'alpha', '1.0.0') {
+			assert false, 'accepted wrong identity: ' + info.str()
+		} else {
+			assert err.msg().contains('alpha'), err.msg()
+		}
+	}
+}
+
+fn test_fetch_registry_latest_rejects_another_module_or_an_empty_version_over_http() {
+	clear_wire_tokens()
+	defer { clear_wire_tokens() }
+	for body in [
+		'{"name":"beta","version":"1.0.0"}',
+		'{"name":"Alpha","version":"1.0.0"}',
+		'{"name":"alpha","version":""}',
+		'{"version":"1.0.0"}',
+	] {
+		mut running := start_token_echo_handler(TokenEchoHandler{ response_body: body })!
+		defer { running.server.close() }
+		if info := fetch_registry_latest(running.base, 'alpha') {
+			assert false, 'accepted wrong latest identity: ' + info.str()
+		} else {
+			assert err.msg().contains('alpha'), err.msg()
+		}
+	}
+}
+
+fn test_fetch_registry_info_preserves_exact_opaque_and_build_versions_over_http() {
+	clear_wire_tokens()
+	defer { clear_wire_tokens() }
+	for version in ['release_2026', '1.0.0+build.7'] {
+		body := json2.encode(RegistryModule{ name: 'alpha', version: version })
+		mut running := start_token_echo_handler(TokenEchoHandler{ response_body: body })!
+		defer { running.server.close() }
+		info := fetch_registry_info(running.base, 'alpha', version)!
+		assert info.name == 'alpha'
+		assert info.version == version
+		latest := fetch_registry_latest(running.base, 'alpha')!
+		assert latest.name == 'alpha'
+		assert latest.version == version
+		if unexpected := fetch_registry_info(running.base, 'alpha', version + '-different') {
+			assert false, 'accepted different version: ' + unexpected.str()
+		} else {
+			assert err.msg().contains(version), err.msg()
+		}
+	}
+}
+
+fn test_http_registry_requires_an_explicit_https_url_instead_of_an_upgrade_redirect() {
+	clear_wire_tokens()
+	defer { clear_wire_tokens() }
+	mut running := start_token_echo_handler(TokenEchoHandler{
+		redirect_to: 'https://127.0.0.1:1/capture'
+	})!
+	defer { running.server.close() }
+	registry_get(running.base, '/redirect') or {
+		assert err.msg().contains('configure an HTTPS registry URL directly'), err.msg()
+		return
+	}
+	assert false, 'registry accepted a scheme-changing redirect without selecting HTTPS trust roots'
 }

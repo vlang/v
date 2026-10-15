@@ -60,6 +60,21 @@ fn init_settings() VpmSettings {
 	args := os.args[1..]
 	opts := cmdline.only_options(args)
 	cmds := cmdline.only_non_options(args)
+	if parse_vpm_command(args) == 'registry' {
+		// Serving a working-directory registry needs no module store or home
+		// cache. This runs before main, including outside CI.
+		mut logger := &log.Log{}
+		logger.set_output_stream(os.stderr())
+		logger.set_level(.info)
+		if os.getenv('VPM_DEBUG') != '' {
+			logger.set_level(.debug)
+		}
+		return VpmSettings{
+			is_help:    '-h' in opts || '--help' in opts || 'help' in cmds
+			is_verbose: '-v' in opts || '--verbose' in opts
+			logger:     logger
+		}
+	}
 
 	global_vmodules_path := os.vmodules_dir()
 	mut vmodules_path := global_vmodules_path.clone()

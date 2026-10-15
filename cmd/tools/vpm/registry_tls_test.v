@@ -41,6 +41,10 @@ fn testsuite_end() {
 // client is built with -d use_openssl. Its owner joins the worker before checking
 // an empty capture channel, so rejected handshakes cannot hide a late HTTP request.
 fn start_registry_tls() !RunningRegistryTls {
+	return start_registry_tls_redirect('/capture')
+}
+
+fn start_registry_tls_redirect(redirect_target string) !RunningRegistryTls {
 	mut reservation := net.listen_tcp(.ip, '127.0.0.1:0')!
 	port := reservation.addr()!.port()!
 	reservation.close()!
@@ -51,7 +55,7 @@ fn start_registry_tls() !RunningRegistryTls {
 	})!
 	requests := chan string{cap: 8}
 	stop := chan bool{cap: 1}
-	worker := spawn serve_registry_tls(mut listener, requests, stop)
+	worker := spawn serve_registry_tls(mut listener, requests, stop, redirect_target)
 	return RunningRegistryTls{
 		base:     'https://localhost:${port}'
 		port:     port
@@ -61,7 +65,7 @@ fn start_registry_tls() !RunningRegistryTls {
 	}
 }
 
-fn serve_registry_tls(mut listener mbedtls.SSLListener, requests chan string, stop chan bool) {
+fn serve_registry_tls(mut listener mbedtls.SSLListener, requests chan string, stop chan bool, redirect_target string) {
 	defer { listener.shutdown() or {} }
 	for {
 		select {
@@ -74,12 +78,12 @@ fn serve_registry_tls(mut listener mbedtls.SSLListener, requests chan string, st
 		mut connection := listener.accept_with_timeouts(50 * time.millisecond, 10 * time.second) or {
 			continue
 		}
-		serve_registry_tls_connection(mut connection, requests)
+		serve_registry_tls_connection(mut connection, requests, redirect_target)
 		connection.shutdown() or {}
 	}
 }
 
-fn serve_registry_tls_connection(mut connection mbedtls.SSLConn, requests chan string) {
+fn serve_registry_tls_connection(mut connection mbedtls.SSLConn, requests chan string, redirect_target string) {
 	mut request := ''
 	mut buffer := []u8{len: 4096}
 	for !request.contains('\r\n\r\n') {
@@ -96,7 +100,7 @@ fn serve_registry_tls_connection(mut connection mbedtls.SSLConn, requests chan s
 	}
 	requests <- authorization
 	response := if request.all_before('\r\n').contains(' /redirect ') {
-		'HTTP/1.1 302 Found\r\nLocation: /capture\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
+		'HTTP/1.1 302 Found\r\nLocation: ${redirect_target}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
 	} else {
 		'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok'
 	}
@@ -145,7 +149,7 @@ fn registry_tls_no_http(requests chan string) {
 fn registry_tls_expect_rejection(base string) {
 	mut rejected := false
 	registry_http_get(base + '/capture') or { rejected = true }
-	assert rejected, 'registry credentials must not be sent over an unverified TLS connection'
+	assert rejected, 'registry HTTPS must reject an unverified TLS connection'
 }
 
 fn test_registry_default_system_bundle_is_loadable() {
@@ -283,4 +287,114 @@ fn test_registry_ca_setting_does_not_add_credentials_to_public_https() {
 	assert response.status_code == 200
 	running.close()
 	registry_tls_capture(running.requests, '')
+}
+
+fn test_tokenless_registry_https_rejects_untrusted_ca_and_wrong_hostname() {
+	for mode in ['untrusted', 'wrong-ca', 'wrong-hostname'] {
+		registry_tls_clear_env()
+		mut running := start_registry_tls()!
+		defer {
+			running.close()
+			registry_tls_clear_env()
+		}
+		mut base := running.base
+		if mode == 'wrong-ca' {
+			os.setenv(registry_ca_file_env,
+				@VMODROOT + '/vlib/net/websocket/tests/autobahn/fuzzing_server_wss/config/server.crt', true)
+		} else if mode == 'wrong-hostname' {
+			os.setenv(registry_ca_file_env, os.join_path(registry_tls_fixtures, 'ca.crt'), true)
+			base = 'https://127.0.0.1:${running.port}'
+		}
+		assert registry_token(base) == ''
+		registry_tls_expect_rejection(base)
+		running.close()
+		registry_tls_no_http(running.requests)
+	}
+}
+
+fn test_tokenless_registry_https_uses_the_trusted_ca_and_keeps_redirect_validation() {
+	registry_tls_clear_env()
+	mut running := start_registry_tls()!
+	defer {
+		running.close()
+		registry_tls_clear_env()
+	}
+	os.setenv(registry_ca_file_env, os.join_path(registry_tls_fixtures, 'ca.crt'), true)
+	assert registry_token(running.base) == ''
+	$if windows && !no_vschannel ? {
+		registry_tls_expect_rejection(running.base)
+		running.close()
+		registry_tls_no_http(running.requests)
+	} $else {
+		for path in ['/capture', '/redirect'] {
+			response := registry_http_get(running.base + path)!
+			assert response.status_code == 200
+			assert response.body == 'ok'
+		}
+		running.close()
+		for _ in 0 .. 3 {
+			registry_tls_capture(running.requests, '')
+		}
+	}
+}
+
+fn test_tokenless_registry_https_rejects_invalid_custom_ca_settings() {
+	registry_tls_clear_env()
+	mut running := start_registry_tls()!
+	defer {
+		running.close()
+		registry_tls_clear_env()
+	}
+	invalid := os.join_path(registry_tls_test_root, 'tokenless-invalid-ca.pem')
+	empty := os.join_path(registry_tls_test_root, 'tokenless-empty-ca.pem')
+	os.write_file(invalid, 'this is not a certificate')!
+	os.write_file(empty, '')!
+	for path in ['', os.join_path(registry_tls_test_root, 'tokenless-missing-ca.pem'), empty, invalid] {
+		os.setenv(registry_ca_file_env, path, true)
+		registry_tls_expect_rejection(running.base)
+	}
+	running.close()
+	registry_tls_no_http(running.requests)
+}
+
+fn test_tokenless_registry_https_redirect_rejects_an_unverified_target() {
+	$if windows && !no_vschannel ? {
+		return
+	}
+	registry_tls_clear_env()
+	mut target := start_registry_tls()!
+	mut source := start_registry_tls_redirect('https://127.0.0.1:${target.port}/capture')!
+	defer {
+		source.close()
+		target.close()
+		registry_tls_clear_env()
+	}
+	os.setenv(registry_ca_file_env, os.join_path(registry_tls_fixtures, 'ca.crt'), true)
+	mut rejected := false
+	registry_http_get(source.base + '/redirect') or { rejected = true }
+	assert rejected, 'a tokenless redirect accepted the wrong TLS hostname'
+	source.close()
+	target.close()
+	registry_tls_capture(source.requests, '')
+	registry_tls_no_http(target.requests)
+}
+
+fn test_tokenless_registry_https_redirect_refuses_plaintext_downgrade() {
+	$if windows && !no_vschannel ? {
+		return
+	}
+	registry_tls_clear_env()
+	mut running := start_registry_tls_redirect('http://127.0.0.1:1/capture')!
+	defer {
+		running.close()
+		registry_tls_clear_env()
+	}
+	os.setenv(registry_ca_file_env, os.join_path(registry_tls_fixtures, 'ca.crt'), true)
+	registry_http_get(running.base + '/redirect') or {
+		assert err.msg().contains('refusing to downgrade registry HTTPS'), err.msg()
+		running.close()
+		registry_tls_capture(running.requests, '')
+		return
+	}
+	assert false, 'a tokenless HTTPS request followed a plaintext redirect'
 }

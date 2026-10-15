@@ -61,11 +61,8 @@ fn stop_registry_process(mut process os.Process) {
 }
 
 fn test_registry_reports_an_occupied_port_without_claiming_startup() {
-	$if windows {
-		// net.listen_tcp enables SO_REUSEADDR, which can allow a second Windows
-		// listener on this port. Its public API cannot reserve an exclusive socket.
-		return
-	}
+	// The incumbent deliberately uses net's reusable socket. On Windows the
+	// registry must still refuse the bind rather than join or hijack this port.
 	mut listener := net.listen_tcp(.ip, ':0')!
 	defer { listener.close() or {} }
 	port := listener.addr()!.port()!
@@ -84,6 +81,39 @@ fn test_registry_reports_an_occupied_port_without_claiming_startup() {
 	assert output.contains('failed to listen on port ${port}'), output
 	assert !output.contains('Serving '), output
 	assert !output.contains('Listening on http://'), output
+}
+
+fn test_registry_listener_rejects_a_second_owner_and_releases_an_unused_port() {
+	mut listener := registry_listen_tcp(0)!
+	port := listener.addr()!.port()!
+	assert port > 0
+	assert listener.accept_timeout() == net.infinite_timeout
+	mut rejected := false
+	if mut contender := registry_listen_tcp(port) {
+		contender.close()!
+	} else {
+		rejected = true
+	}
+	assert rejected, 'a second registry listener acquired an occupied port'
+	// No connections were accepted, so Windows has no active connection whose
+	// lifetime could legitimately delay rebinding an exclusive socket.
+	listener.close()!
+	mut replacement := registry_listen_tcp(port)!
+	defer { replacement.close() or {} }
+	assert replacement.addr()!.port()! == port
+}
+
+fn test_registry_listener_blocks_a_reusable_contender() {
+	mut listener := registry_listen_tcp(0)!
+	defer { listener.close() or {} }
+	port := listener.addr()!.port()!
+	mut rejected := false
+	if mut contender := net.listen_tcp(.ip, ':${port}') {
+		contender.close()!
+	} else {
+		rejected = true
+	}
+	assert rejected, 'a reusable socket acquired the registry port'
 }
 
 fn test_registry_reports_startup_after_binding_and_serves_requests() {

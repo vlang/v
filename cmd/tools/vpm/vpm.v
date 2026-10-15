@@ -11,11 +11,11 @@ import v.vmod
 
 const value_option_names = ['-m', '--mirror', '-server-url', '--server-url', '--server-urls',
 	'--precise', '-p', '--package', '--pin', '--exclude-newer', '--minimum-release-age']
-const settings = init_settings()
 const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 const valid_vpm_commands = ['help', 'search', 'install', 'link', 'update', 'upgrade', 'outdated',
 	'list', 'remove', 'show', 'unlink', 'why', 'vendor', 'registry']
+const settings = init_settings()
 const excluded_dirs = ['.cache', 'vlib']
 
 fn main() {
@@ -40,6 +40,10 @@ fn main() {
 	}
 	mut query := parse_query_args(args, vpm_command)
 	vpm_log(@FILE_LINE, @FN, 'query: ${query}')
+	if vpm_command == 'registry' {
+		vpm_registry(query)
+		return
+	}
 	ensure_vmodules_dir_exist()
 	match vpm_command {
 		'help' {
@@ -84,9 +88,6 @@ fn main() {
 				exit(1)
 			}
 			vpm_vendor()
-		}
-		'registry' {
-			vpm_registry(query)
 		}
 		else {
 			// Unreachable in regular usage. V will catch unknown commands beforehand.

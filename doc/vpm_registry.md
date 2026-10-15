@@ -44,7 +44,9 @@ available through `./v run cmd/tools/vpm registry serve` or a compiled VPM binar
 The client helpers `fetch_registry_versions`, `fetch_registry_latest`, and
 `fetch_registry_info` read these routes and return version strings or `RegistryModule` metadata.
 An unknown module has an empty version list; absent metadata and unsuccessful HTTP responses
-return errors.
+return errors. Returned module names must match the request exactly; version-specific metadata
+must also match the requested version exactly.
+Every module metadata response must include a version.
 
 ### How a registry is consulted
 
@@ -150,6 +152,9 @@ by case within one module. Publication enforces the same rules before writing an
 `alpha@1.0.0-ALPHA` and `alpha@1.0.0-alpha` cannot overwrite each other on a case-insensitive
 filesystem. The same version remains valid in different, non-colliding modules.
 
+Registry serving does not initialize the VPM client's module directory, cache or home log.
+Its data stays in the working directory; serving does not require writable `HOME` or `VMODULES`.
+
 The default port is 9090 (`default_registry_port`). The server binds every IPv4 interface,
 reported as `0.0.0.0:9090`. It performs no authentication: other hosts that can reach this port
 can read the registry metadata and archives. The startup message states this exposure explicitly.
@@ -175,7 +180,9 @@ Listening on http://0.0.0.0:9099 (all IPv4 interfaces; no authentication)
 Ports must contain decimal digits and be from 1 to 65535. Invalid text, numeric suffixes and
 out-of-range values are rejected before the server binds a socket.
 Bind errors also exit nonzero and report their cause. The success messages are printed only after
-the listener has bound successfully.
+the listener has bound successfully. On Windows the registry disables address reuse and enables
+`SO_EXCLUSIVEADDRUSE` before binding, so an occupied port fails instead of starting a duplicate
+listener.
 
 ### Environment variables
 
@@ -204,9 +211,11 @@ the listener has bound successfully.
 - `VPM_REGISTRY_ALLOW_INSECURE_LOOPBACK` — set to exactly `1` to allow authenticated HTTP
   for local development, only at the literal address `127.0.0.1`. The exception
   does not accept DNS names, other addresses or HTTPS certificate failures.
-- `VPM_REGISTRY_CA_FILE` — a trusted PEM CA file for authenticated registry HTTPS requests.
-  These HTTPS requests always check certificate chains and hostnames. An empty setting or a
-  missing or invalid custom CA file fails closed. Without a custom file, mbedTLS searches common
+- `VPM_REGISTRY_CA_FILE` — a trusted PEM CA file for all registry HTTPS requests.
+  Certificate chains and hostnames are checked even without a bearer token. HTTPS registry
+  redirects preserve their scheme; configure HTTPS directly instead of relying on an HTTP upgrade.
+  An empty setting, missing file or invalid custom CA
+  file fails closed. Without a custom file, mbedTLS searches common
   Unix PEM bundles; OpenSSL and native Windows SChannel use their default roots. A custom
   file requires `-d no_vschannel` on Windows because the native HTTP backend cannot honor it.
 
@@ -233,6 +242,10 @@ What `publish` does:
 
 `publish` does not persist the index, and neither does anything else: `save()`
 has no caller in this branch, and the server reads `index.json` once at startup.
+`save()` first validates module identities, duplicate versions and case collisions using the same
+rules as loading. Invalid in-process state is rejected before any directory creation or file
+replacement, preserving a previous valid index. This also covers direct changes to `modules`
+and duplicate `add_module` calls.
 `save()` writes a unique temporary file beside `index.json`, flushes and syncs its contents,
 checks its close, and atomically replaces the index. Archive writes use the same replacement path.
 On Unix it syncs the containing directory after replacement, and newly created storage directories
@@ -358,6 +371,8 @@ Versions containing build metadata (`+`) also omit the CPE reference.
 - No checksum transparency log or Merkle tree is implemented. The ordinary change feed contains
   module, version, kind and time; it has no checksum, tree root, inclusion proof or tamper-evident
   history. It cannot audit published hashes.
+- `GET /api/modules/<module>/versions` is planned and currently returns 404. Use the implemented
+  `GET /<module>/@v/list` route instead.
 - `GET /<module>/@v/<version>.mod` is planned and currently returns 404; the server neither
   stores nor generates a separate `v.mod` response.
 - `/api/packages/<name>` and `/api/packages/<name>/incr_downloads`, the two

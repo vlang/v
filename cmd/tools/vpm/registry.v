@@ -397,9 +397,11 @@ fn (r &Registry) store_registry_artifact(name string, version string, content st
 }
 
 // save persists a complete registry through an atomic same-directory replacement.
+// Invalid in-memory identities are rejected before any filesystem changes.
 // A failed write, file synchronization, close, or rename leaves the previous
 // index intact. A later directory synchronization error reports uncertain durability.
 pub fn (r &Registry) save() ! {
+	r.validate_registry_entries()!
 	dir := registry_dir()
 	registry_mkdir_all(dir) or {
 		return error('failed to create registry directory: ${err.msg()}')

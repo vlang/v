@@ -19,7 +19,9 @@ Ports use decimal digits and must be from 1 to 65535; the default is 9090. The s
 `.vpm-registry/index.json` and artifacts from the working directory. It binds `0.0.0.0`, all IPv4
 interfaces, and its startup message states that it performs no authentication. Other hosts able
 to reach the port can read its metadata and archives.
-Publishing and yanking remain in-process `Registry` methods.
+Registry serving uses only working-directory storage; it does not initialize the VPM client
+module directory, cache or home-directory log. Publishing and yanking remain in-process
+`Registry` methods.
 Only a missing index starts an empty registry. An unreadable or invalid existing index aborts
 startup with an error instead of serving an empty module list. Repeated version strings within
 a module are rejected, including identical duplicates; the same version may occur in other modules.
@@ -27,7 +29,8 @@ Invalid configured signing keys also abort startup before binding. An empty or m
 `VPM_REGISTRY_KEY` does not fall back to `signing.key`. Unsigned operation requires an unset
 environment variable and a genuinely missing key file.
 The server binds its listener before printing the startup messages. A bind failure reports the
-underlying error and exits with a nonzero status.
+underlying error and exits with a nonzero status. Windows disables address reuse and requests
+an exclusive socket before binding, so an occupied port cannot be reported as ready.
 
 Unknown routes return HTTP 404, including conditional requests for missing metadata.
 Successful GET metadata supports ETag revalidation with case-insensitive HTTP header names.
@@ -99,7 +102,10 @@ HTTP operations. Save index changes and restart the server to expose updated met
 |----------|---------|
 | `GET /api/search?q=<query>` | Search modules |
 | `GET /api/modules/<module>` | Module metadata |
-| `GET /api/modules/<module>/versions` | List versions |
+| `GET /api/modules/<module>/versions` | Planned: version-list alias (currently 404) |
+
+The reference server does not implement `GET /api/modules/<module>/versions`; it returns 404.
+Use `GET /<module>/@v/list` for the implemented version-list route.
 
 ## Metadata Format
 
@@ -141,6 +147,9 @@ Per-version entry (JSON):
 - Republishing identical bytes replaces and syncs the verified archive, repairing missing or
   corrupt storage and retrying uncertain directory durability without changing existing version
   metadata, yank state, or change history
+- Saving validates the same identity, duplicate-version and case-collision rules as loading,
+  before creating storage directories or replacing the index. Invalid in-process state is
+  rejected and leaves any existing index unchanged.
 - Index and archive replacement sync the completed temporary file before renaming it.
   Unix also syncs the containing directory and newly created storage directory ancestry; macOS
   additionally requests `F_FULLFSYNC`. Windows uses `_commit` and
@@ -215,6 +224,10 @@ Per-version entry (JSON):
 - Enables incremental syncing for mirrors
 - Each change is a JSON object with module, version, and change type
 
+Metadata responses must match the requested module name exactly. Version-specific `.info`
+responses must also match the requested version string exactly; `@latest` must include a
+nonempty version. Mismatched or incomplete identities are errors.
+
 ## Authentication
 
 Authentication here is entirely a **client-side** concern. The VPM client attaches a bearer token to
@@ -228,7 +241,9 @@ authenticates nothing.
   For local development, `VPM_REGISTRY_ALLOW_INSECURE_LOOPBACK=1` permits authenticated HTTP
   only to the literal address `127.0.0.1`. DNS names and other addresses are excluded.
   This opt-in does not disable certificate validation for HTTPS.
-- Credential-bearing HTTPS requests validate the peer's certificate chain and hostname. Set
+- All registry HTTPS requests validate the peer's certificate chain and hostname, even without
+  a bearer token. Registry redirects preserve their scheme; configure HTTPS directly instead of
+  relying on an HTTP upgrade. Set
   `VPM_REGISTRY_CA_FILE` to a trusted PEM CA file for a private CA. An empty setting, missing file,
   or invalid certificate file fails the request; it never disables certificate validation.
 - Without that setting, mbedTLS uses an installed system PEM bundle from common Unix locations,

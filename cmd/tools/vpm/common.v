@@ -96,7 +96,7 @@ const vpm_token_env_prefix = 'VPM_REGISTRY_TOKEN_HOST_'
 const registry_ca_file_env = 'VPM_REGISTRY_CA_FILE'
 const registry_insecure_loopback_env = 'VPM_REGISTRY_ALLOW_INSECURE_LOOPBACK'
 
-// registry_http_get is the credential-bearing transport for registry protocol requests.
+// registry_http_get validates registry HTTPS independently of bearer credentials.
 fn registry_http_get(url string) !http.Response {
 	return vpm_http_request(.get, url, '', true)
 }
@@ -110,25 +110,28 @@ fn vpm_http_request(method http.Method, url string, data string, registry_reques
 	if token != '' {
 		header.add_custom('Authorization', 'Bearer ${token}') or {}
 	}
-	verify := if token != '' && url.to_lower().starts_with('https://') {
+	verify := if registry_request && url.to_lower().starts_with('https://') {
 		registry_tls_ca_file()!
 	} else {
 		''
 	}
-	resp := http.fetch(
+	mut request := http.FetchConfig{
 		method:                   method
 		url:                      url
 		data:                     data
 		header:                   header
-		validate:                 token != ''
+		validate:                 registry_request
 		verify:                   verify
 		read_timeout:             vpm_http_timeout
 		write_timeout:            vpm_http_timeout
 		max_retries:              1
 		enable_http2:             false
 		disable_connection_reuse: true
-		on_redirect:              vpm_registry_redirect
-	)!
+	}
+	if registry_request {
+		request.on_redirect = vpm_registry_redirect
+	}
+	resp := http.fetch(request)!
 	if registry_request {
 		require_registry_token(url, resp.status_code)!
 	}
@@ -152,7 +155,7 @@ fn require_registry_secure_transport(url string) ! {
 	return error('registry bearer tokens require HTTPS; development HTTP requires a literal 127.0.0.1 host and ${registry_insecure_loopback_env}=1')
 }
 
-// registry_tls_ca_file selects trust roots for credential-bearing HTTPS requests.
+// registry_tls_ca_file selects trust roots for all registry HTTPS requests.
 // Empty lets OpenSSL and SChannel use their native system trust stores. mbedTLS
 // needs an explicit bundle; failing to find one must never disable validation.
 fn registry_tls_ca_file() !string {
@@ -208,11 +211,17 @@ fn registry_http_port(url urllib.URL) string {
 	}
 }
 
-// vpm_registry_redirect keeps authenticated requests within their registry origin.
+// vpm_registry_redirect preserves HTTPS and keeps bearer tokens within their origin.
 fn vpm_registry_redirect(request &http.Request, _ int, next_url string) ! {
-	request.header.get(.authorization) or { return }
 	original := urllib.parse(request.url)!
 	target := urllib.parse(next_url)!
+	if original.scheme.to_lower() == 'https' && target.scheme.to_lower() != 'https' {
+		return error('refusing to downgrade registry HTTPS after a redirect')
+	}
+	if original.scheme.to_lower() != target.scheme.to_lower() {
+		return error('registry redirects must keep their URL scheme; configure an HTTPS registry URL directly')
+	}
+	request.header.get(.authorization) or { return }
 	if !registry_same_origin(original, target) {
 		return error('refusing to send a registry token to a different origin after a redirect')
 	}
