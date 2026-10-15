@@ -13031,6 +13031,7 @@ fn (tc &TypeChecker) resolve_selective_import_type_symbol_in_file(name string, f
 	return none
 }
 
+// resolve_imported_type_text_in_file resolves a source spelling ID through the writing file imports.
 pub fn (tc &TypeChecker) resolve_imported_type_text_in_file(typ_id u32, file string) u32 {
 	typ := flat.source_type_name(typ_id)
 	if !typ.contains('.') || typ.starts_with('C.') {
@@ -20373,15 +20374,16 @@ fn (tc &TypeChecker) generic_struct_method_base_candidates(base string) []string
 	return candidates
 }
 
+// resolve_generic_sum_method looks up a method for a sum identified by its source spelling ID.
 pub fn (tc &TypeChecker) resolve_generic_sum_method(type_name_id u32, method string) ?CallInfo {
 	type_name := flat.source_type_name(type_name_id)
 	mut base := type_name
-	mut concrete_args := []string{}
+	mut concrete_args := []u32{}
 	parsed_base, parsed_args, is_generic := generic_type_application_parts(type_name)
 	if is_generic {
 		base = parsed_base
 		for arg in parsed_args {
-			concrete_args << trimmed_space(arg)
+			concrete_args << flat.source_type_id(trimmed_space(arg))
 		}
 	}
 	params := tc.sum_params_for_base(base)
@@ -20389,7 +20391,7 @@ pub fn (tc &TypeChecker) resolve_generic_sum_method(type_name_id u32, method str
 		return none
 	}
 	if !is_generic {
-		concrete_args = params.clone()
+		concrete_args = flat.TypeTextList.from_names(params).ids
 	}
 	if params.len != concrete_args.len {
 		return none
@@ -20406,22 +20408,22 @@ pub fn (tc &TypeChecker) resolve_generic_sum_method(type_name_id u32, method str
 		return none
 	}
 	ret := tc.fn_ret_types[generic_key] or { return none }
-	mut sub_ret := tc.substitute_generic_type(ret, flat.TypeTextList.from_names(concrete_args).ids, params)
+	mut sub_ret := tc.substitute_generic_type(ret, concrete_args, params)
 	if ret_text_source_id := tc.fn_ret_type_texts.type_id(generic_key) {
 		ret_text := flat.source_type_name(ret_text_source_id)
 
-		sub_ret = tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_text(ret_text, flat.TypeTextList.from_names(concrete_args).ids, params)))
+		sub_ret = tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_text(ret_text, concrete_args, params)))
 	}
 	mut sub_params := []Type{}
 	if param_texts_source_ids := tc.fn_param_type_texts.type_ids(generic_key) {
 		for pt_source_id in param_texts_source_ids {
 			pt := flat.source_type_name(pt_source_id)
 
-			sub_params << tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_signature_param_text(pt, flat.TypeTextList.from_names(concrete_args).ids, params)))
+			sub_params << tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_signature_param_text(pt, concrete_args, params)))
 		}
 	} else if ptypes := tc.fn_param_types[generic_key] {
 		for pt in ptypes {
-			sub_params << tc.substitute_generic_type(pt, flat.TypeTextList.from_names(concrete_args).ids, params)
+			sub_params << tc.substitute_generic_type(pt, concrete_args, params)
 		}
 	}
 	return CallInfo{
