@@ -36,6 +36,7 @@ declaration context; identical spelling IDs can resolve to different semantic ty
 `Type.source_type_id()`, `TypeChecker.type_name(value)`, and `type_name_by_id(id)` return spelling
 IDs. Resolve bytes with `flat.source_type_name(id)` for diagnostics, spelling syntax, or emission.
 Builtin spelling constants in `v.flat` avoid repeated interning of scalar names.
+`generic_type_name_matches` accepts source IDs and retains recursive spelling grammar internally.
 `fn_signature_type(name, source_id)` resolves an interned annotation in its declaration context.
 Source qualification (`qualify_type_text` and `qualify_resolution_type_text`) and imported-type
 resolution also pass spelling IDs. Private recursive spelling parsers work with bytes inside
@@ -66,6 +67,7 @@ inferred generic arguments in maps of source IDs; private recursive spelling par
 when matching nested types, and emitted specialization names remain strings.
 Receiver pattern caches encode ordered source IDs with their file, module, and generic context;
 receiver promotion and factory substitution retain those IDs through recursive lookups.
+Sum-constraint traversal also stores source IDs in its visited and active recursion state.
 Constrained generic-body checks retain IDs through type choices, branch groups, combinations,
 and worker bindings. Allocation analysis also keeps parameter and local annotations as IDs.
 The driver's implicit-import type scan and WebAssembly fallback annotations use the same source

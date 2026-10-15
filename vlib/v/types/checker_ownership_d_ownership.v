@@ -1614,12 +1614,13 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 				return none
 			}
 			seen[name] = true
-			base := tc.sum_base_name(name)
+			base := tc.sum_base_name(flat.source_type_id(name))
 			for variant_source_id_2 in tc.sum_types.type_ids(base) or { return name } {
-				variant := flat.source_type_name(variant_source_id_2)
+				variant_source_id_5 := variant_source_id_2
 
-				concrete := tc.concrete_sum_variant_name(name, variant)
-				variant_type := tc.parse_type(flat.source_type_id(concrete))
+				concrete_source_id := tc.concrete_sum_variant_name(flat.source_type_id(name), variant_source_id_5)
+
+				variant_type := tc.parse_type(concrete_source_id)
 				if !tc.ownership_type_requires_destruction(variant_type) {
 					continue
 				}

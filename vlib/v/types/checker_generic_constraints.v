@@ -72,8 +72,8 @@ fn (tc &TypeChecker) generic_constraint(decl flat.Node, text string) ?GenericCon
 	}
 	if named is SumType {
 		mut types := []Type{}
-		mut seen := map[string]bool{}
-		mut active := map[string]string{}
+		mut seen := map[u32]bool{}
+		mut active := map[string]u32{}
 		mut path := []SumConstraintStep{}
 		expanding := tc.collect_sum_constraint_types(named, mut types, mut seen, mut active,
 			mut path)
@@ -145,22 +145,22 @@ fn (tc &TypeChecker) is_constraint_family(constraint GenericConstraint, member T
 // collect_sum_constraint_types adds to `types` the variants of the sum type
 // `sum`, bound to its type arguments, and in place of a variant that is a sum
 // type, its variants.
-fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type, mut seen map[string]bool, mut active map[string]string, mut path []SumConstraintStep) bool {
-	base := tc.sum_base_name(sum.name())
-	if seen[sum.name()] {
+fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type, mut seen map[u32]bool, mut active map[string]u32, mut path []SumConstraintStep) bool {
+	base := tc.sum_base_name(sum.source_type_id())
+	if seen[sum.source_type_id()] {
 		return false
 	}
-	previous := active[base] or { '' }
+	previous := active[base] or { u32(0) }
 	// A repeated base may peel a finite nested argument, such as Part[Part[int]].
 	// Report this bound to declaration checking rather than silently accepting a partial set.
-	if previous.len > 0 && !tc.sum_constraint_has_nested_instance(previous, sum.name())
+	if previous != 0 && !tc.sum_constraint_has_nested_instance(previous, sum.source_type_id())
 		&& tc.sum_constraint_cycle_expands(base, path) {
 		return true
 	}
-	seen[sum.name()] = true
-	active[base] = sum.name()
+	seen[sum.source_type_id()] = true
+	active[base] = sum.source_type_id()
 	defer {
-		if previous.len > 0 {
+		if previous != 0 {
 			active[base] = previous
 		} else {
 			active.delete(base)
@@ -168,9 +168,7 @@ fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type,
 	}
 	mut expanding := false
 	for variant_source_id in tc.sum_types.type_ids(base) or { []u32{} } {
-		variant := flat.source_type_name(variant_source_id)
-
-		concrete := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(sum.name(), variant)))
+		concrete := tc.parse_type(tc.concrete_sum_variant_name(sum.source_type_id(), variant_source_id))
 		inner := unalias_type(concrete)
 		if inner is SumType {
 			path << SumConstraintStep{ sum_name: sum.source_type_id(), variant: variant_source_id }
@@ -181,7 +179,7 @@ fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type,
 			path.pop()
 			continue
 		}
-		if !types.any(it.name() == concrete.name()) {
+		if !types.any(it.source_type_id() == concrete.source_type_id()) {
 			types << concrete
 		}
 	}
@@ -201,20 +199,20 @@ fn (tc &TypeChecker) sum_constraint_cycle_expands(base string, path []SumConstra
 		symbols << tc.qualify_name('__v_constraint_argument_${i}__')
 	}
 	for start, step in path {
-		if tc.sum_base_name(step.sum_name_text()) != base {
+		if tc.sum_base_name(step.sum_name) != base {
 			continue
 		}
-		mut instance := '${base}[${symbols.join(', ')}]'
+		mut instance := flat.source_type_id('${base}[${symbols.join(', ')}]')
 		mut complete := true
 		for next in path[start..] {
-			if tc.sum_base_name(instance) != tc.sum_base_name(next.sum_name_text()) {
+			if tc.sum_base_name(instance) != tc.sum_base_name(next.sum_name) {
 				complete = false
 				break
 			}
-			variant := unalias_type(tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(instance,
-				next.variant_text()))))
+			variant := unalias_type(tc.parse_type(tc.concrete_sum_variant_name(instance,
+				next.variant)))
 			if variant is SumType {
-				instance = variant.name()
+				instance = variant.source_type_id()
 			} else {
 				complete = false
 				break
@@ -223,8 +221,8 @@ fn (tc &TypeChecker) sum_constraint_cycle_expands(base string, path []SumConstra
 		if !complete {
 			continue
 		}
-		cycle_base, args, ok := generic_type_application_parts(instance)
-		if !ok || tc.sum_base_name(cycle_base) != base || args.len != symbols.len {
+		cycle_base, args, ok := generic_type_application_parts(flat.source_type_name(instance))
+		if !ok || tc.sum_base_name(flat.source_type_id(cycle_base)) != base || args.len != symbols.len {
 			continue
 		}
 		if sum_constraint_arguments_expand(args, symbols) {
@@ -272,29 +270,25 @@ fn sum_constraint_arguments_expand(args []string, symbols []string) bool {
 
 // sum_constraint_has_nested_instance permits descending into a finite type argument,
 // including an alias of a nested instance of the same generic sum.
-fn (tc &TypeChecker) sum_constraint_has_nested_instance(parent string, nested string) bool {
-	_, args, _ := generic_type_application_parts(parent)
-	mut seen := map[string]bool{}
+fn (tc &TypeChecker) sum_constraint_has_nested_instance(parent_id u32, nested_id u32) bool {
+	_, args, _ := generic_type_application_parts(flat.source_type_name(parent_id))
+	mut seen := map[u32]bool{}
 	for arg in args {
-		if tc.sum_constraint_argument_contains(arg, nested, mut seen) {
+		if tc.sum_constraint_argument_contains(flat.source_type_id(arg), nested_id, mut seen) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (tc &TypeChecker) sum_constraint_argument_contains(text string, nested string, mut seen map[string]bool) bool {
-	if seen[text] {
-		return false
-	}
-	seen[text] = true
-	typ := unalias_type(tc.parse_type(flat.source_type_id(text)))
-	if typ.name() == nested {
-		return true
-	}
+fn (tc &TypeChecker) sum_constraint_argument_contains(text_id u32, nested_id u32, mut seen map[u32]bool) bool {
+	if seen[text_id] { return false }
+	seen[text_id] = true
+	typ := unalias_type(tc.parse_type(text_id))
+	if typ.source_type_id() == nested_id { return true }
 	_, args, _ := generic_type_application_parts(typ.name())
 	for arg in args {
-		if tc.sum_constraint_argument_contains(arg, nested, mut seen) {
+		if tc.sum_constraint_argument_contains(flat.source_type_id(arg), nested_id, mut seen) {
 			return true
 		}
 	}

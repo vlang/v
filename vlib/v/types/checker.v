@@ -15388,8 +15388,8 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 			tc.record_error_at(.assignment_mismatch, 'sum type cannot hold a Result type', variant_id, tc.type_diagnostic_pos(variant_id, variant_name))
 			result_reported = true
 		}
-		sum_name := tc.sum_base_name(node.value)
-		variant_sum := tc.sum_base_name(variant_name)
+		sum_name := tc.sum_base_name(flat.source_type_id(node.value))
+		variant_sum := tc.sum_base_name(flat.source_type_id(variant_name))
 		if variant_sum == sum_name {
 			tc.record_error_at(.assignment_mismatch, 'sum type cannot hold itself', variant_id, tc.type_diagnostic_pos(variant_id, variant_name))
 		} else {
@@ -15454,8 +15454,8 @@ fn (tc &TypeChecker) sum_type_variant_source_pos(node flat.Node, variant string)
 }
 
 fn (tc &TypeChecker) sum_type_reaches_sum(current string, target string, mut seen map[string]bool) bool {
-	current_base := tc.sum_base_name(current)
-	target_base := tc.sum_base_name(target)
+	current_base := tc.sum_base_name(flat.source_type_id(current))
+	target_base := tc.sum_base_name(flat.source_type_id(target))
 	if current_base == target_base {
 		return true
 	}
@@ -15464,9 +15464,9 @@ fn (tc &TypeChecker) sum_type_reaches_sum(current string, target string, mut see
 	}
 	seen[current_base] = true
 	for variant_source_id in tc.sum_types.type_ids(current_base) or { []u32{} } {
-		variant := flat.source_type_name(variant_source_id)
+		variant_source_id_2 := variant_source_id
 
-		variant_base := tc.sum_base_name(variant)
+		variant_base := tc.sum_base_name(variant_source_id_2)
 		if tc.sum_types.contains(variant_base)
 			&& tc.sum_type_reaches_sum(variant_base, target_base, mut seen) {
 			return true
@@ -18787,7 +18787,7 @@ fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Nod
 	} else {
 		return false
 	}
-	base := tc.sum_base_name(sum_name)
+	base := tc.sum_base_name(flat.source_type_id(sum_name))
 	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return false } }.names()
 	if variants.len == 0 {
 		return false
@@ -18811,8 +18811,8 @@ fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Nod
 			qpattern := tc.qualify_name(pattern)
 			mut matched := false
 			for variant in variants {
-				if tc.generic_type_name_matches(variant, pattern)
-					|| tc.generic_type_name_matches(variant, qpattern) {
+				if tc.generic_type_name_matches(flat.source_type_id(variant), flat.source_type_id(pattern))
+					|| tc.generic_type_name_matches(flat.source_type_id(variant), flat.source_type_id(qpattern)) {
 					covered[variant] = true
 					matched = true
 				}

@@ -1582,10 +1582,10 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 				if pattern := tc.match_type_pattern(cond) {
 					if _ := tc.sum_variant_type_for_pattern(subject_type.name(), pattern) {
 					} else {
-						base := tc.sum_base_name(subject_type.name())
+						base := tc.sum_base_name(subject_type.source_type_id())
 						raw_variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { []u32{} } }.names()
 						diagnostic_variants :=
-							raw_variants.map(tc.sum_variant_diagnostic_name(tc.concrete_sum_variant_name(subject_type.name(), it)))
+							raw_variants.map(tc.sum_variant_diagnostic_name(flat.source_type_name(tc.concrete_sum_variant_name(subject_type.source_type_id(), flat.source_type_id(it)))))
 						mut variants := []string{cap: diagnostic_variants.len}
 						for variant in diagnostic_variants {
 							if variant.contains('.') {
@@ -1945,13 +1945,13 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 		return
 	}
 	sum_subject := clean_subject as SumType
-	raw_variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(tc.sum_base_name(sum_subject.name())) or { return } }.names()
+	raw_variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(tc.sum_base_name(sum_subject.source_type_id())) or { return } }.names()
 	if raw_variants.len == 0 {
 		return
 	}
 	mut variants := tc.sum_exhaustive_leaf_variants(sum_subject.name(), 0)
 	if variants.len == 0 {
-		variants = raw_variants.map(tc.concrete_sum_variant_name(sum_subject.name(), it))
+		variants = raw_variants.map(flat.source_type_name(tc.concrete_sum_variant_name(sum_subject.source_type_id(), flat.source_type_id(it))))
 	}
 	mut covered := map[string]bool{}
 	mut else_ids := []flat.NodeId{}
@@ -1999,8 +1999,8 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 				uses_type_arguments := variant.contains('[') || pattern.contains('[')
 					|| qpattern.contains('[')
 				if variant == pattern || variant == qpattern
-					|| (uses_type_arguments && (tc.generic_type_name_matches(variant, pattern)
-						|| tc.generic_type_name_matches(variant, qpattern))) {
+					|| (uses_type_arguments && (tc.generic_type_name_matches(flat.source_type_id(variant), flat.source_type_id(pattern))
+						|| tc.generic_type_name_matches(flat.source_type_id(variant), flat.source_type_id(qpattern)))) {
 					covered[variant] = true
 				}
 			}
@@ -2053,11 +2053,12 @@ fn (tc &TypeChecker) sum_exhaustive_leaf_variants(sum_name string, depth int) []
 	if depth >= 16 {
 		return []string{}
 	}
-	raw_variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(tc.sum_base_name(sum_name)) or { return []string{} } }.names()
+	raw_variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(tc.sum_base_name(flat.source_type_id(sum_name))) or { return []string{} } }.names()
 	mut leaves := []string{}
 	for raw_variant in raw_variants {
-		concrete := tc.concrete_sum_variant_name(sum_name, raw_variant)
-		typ := tc.parse_type(flat.source_type_id(concrete))
+		concrete_source_id := tc.concrete_sum_variant_name(flat.source_type_id(sum_name), flat.source_type_id(raw_variant))
+		concrete := flat.source_type_name(concrete_source_id)
+		typ := tc.parse_type(concrete_source_id)
 		nested_name := if typ is SumType {
 			typ.name()
 		} else if typ is Alias && typ.base_type is SumType {
@@ -2065,7 +2066,7 @@ fn (tc &TypeChecker) sum_exhaustive_leaf_variants(sum_name string, depth int) []
 		} else {
 			''
 		}
-		if nested_name.len > 0 && tc.sum_base_name(nested_name) != tc.sum_base_name(sum_name) {
+		if nested_name.len > 0 && tc.sum_base_name(flat.source_type_id(nested_name)) != tc.sum_base_name(flat.source_type_id(sum_name)) {
 			nested := tc.sum_exhaustive_leaf_variants(nested_name, depth + 1)
 			if nested.len > 0 {
 				for leaf in nested {
@@ -2374,7 +2375,7 @@ fn (tc &TypeChecker) match_branch_tail_diagnostic_type(subject_key string, subje
 
 fn (tc &TypeChecker) type_name_is_direct_sum_variant(actual Type, expected SumType) bool {
 	actual_name := actual.name()
-	base := tc.sum_base_name(expected.name())
+	base := tc.sum_base_name(expected.source_type_id())
 	for variant_source_id in tc.sum_types.type_ids(base) or { []u32{} } {
 		variant := flat.source_type_name(variant_source_id)
 
@@ -4651,11 +4652,12 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	if clean_init_type is SumType && node.children_count == 0
 		&& !tc.node_is_in_translated_file(id) {
-		base := tc.sum_base_name(clean_init_type.name())
+		base := tc.sum_base_name(clean_init_type.source_type_id())
 		variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { []u32{} } }.names()
 		if variants.len > 0 {
-			first_variant := tc.concrete_sum_variant_name(clean_init_type.name(), variants[0])
-			if first_struct := struct_type_from_type(unalias_type(tc.parse_type(flat.source_type_id(first_variant)))) {
+			first_variant_source_id := tc.concrete_sum_variant_name(clean_init_type.source_type_id(), flat.source_type_id(variants[0]))
+
+			if first_struct := struct_type_from_type(unalias_type(tc.parse_type(first_variant_source_id))) {
 				for diagnostic_index, missing in tc.missing_reference_struct_fields(first_struct.name(),
 					map[string]bool{}, []string{}) {
 					message := if missing.has_part {
@@ -7557,7 +7559,7 @@ fn (tc &TypeChecker) sum_shared_field_type(sum SumType, field string) ?Type {
 }
 
 fn (tc &TypeChecker) sum_shared_field_type_inner(sum_name string, field string, mut visited map[string]bool) ?Type {
-	base := tc.sum_base_name(sum_name)
+	base := tc.sum_base_name(flat.source_type_id(sum_name))
 	if visited[base] {
 		return none
 	}
@@ -7572,8 +7574,9 @@ fn (tc &TypeChecker) sum_shared_field_type_inner(sum_name string, field string, 
 	mut has_common := false
 	mut common_typ := builtin_void_type
 	for variant in variants {
-		concrete := tc.concrete_sum_variant_name(sum_name, variant)
-		variant_type := unalias_type(tc.parse_type(flat.source_type_id(concrete)))
+		concrete_source_id_2 := tc.concrete_sum_variant_name(flat.source_type_id(sum_name), flat.source_type_id(variant))
+
+		variant_type := unalias_type(tc.parse_type(concrete_source_id_2))
 		variant_field := if variant_type is SumType {
 			tc.sum_shared_field_type_inner(variant_type.name(), field, mut visited) or { return none }
 		} else if variant_type is Struct {
@@ -7599,7 +7602,7 @@ fn (tc &TypeChecker) sum_unique_variant_field_type(sum SumType, field string) ?T
 }
 
 fn (tc &TypeChecker) sum_unique_variant_field_type_inner(sum_name string, field string, mut visited map[string]bool) ?Type {
-	base := tc.sum_base_name(sum_name)
+	base := tc.sum_base_name(flat.source_type_id(sum_name))
 	if visited[base] {
 		return none
 	}
@@ -7611,8 +7614,9 @@ fn (tc &TypeChecker) sum_unique_variant_field_type_inner(sum_name string, field 
 	mut found := builtin_void_type
 	mut found_count := 0
 	for variant in variants {
-		concrete := tc.concrete_sum_variant_name(sum_name, variant)
-		variant_type := unalias_type(tc.parse_type(flat.source_type_id(concrete)))
+		concrete_source_id_3 := tc.concrete_sum_variant_name(flat.source_type_id(sum_name), flat.source_type_id(variant))
+
+		variant_type := unalias_type(tc.parse_type(concrete_source_id_3))
 		variant_field := if variant_type is SumType {
 			tc.sum_unique_variant_field_type_inner(variant_type.name(), field, mut visited) or {
 				continue
@@ -7640,15 +7644,15 @@ fn (tc &TypeChecker) sum_type_contains_variant(sum SumType, target Type) bool {
 }
 
 fn (tc &TypeChecker) sum_type_contains_variant_seen(sum SumType, target Type, mut visited map[string]bool) bool {
-	base := tc.sum_base_name(sum.name())
+	base := tc.sum_base_name(sum.source_type_id())
 	if visited[base] {
 		return false
 	}
 	visited[base] = true
 	for variant_source_id_2 in tc.sum_types.type_ids(base) or { []u32{} } {
-		variant := flat.source_type_name(variant_source_id_2)
+		variant_source_id_4 := variant_source_id_2
 
-		concrete := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(sum.name(), variant)))
+		concrete := tc.parse_type(tc.concrete_sum_variant_name(sum.source_type_id(), variant_source_id_4))
 		if concrete.name() == target.name()
 			|| (target is Alias && tc.type_compatible(concrete, target.base_type)) {
 			return true
@@ -10194,7 +10198,7 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		return tc.fn_value_signature_compatible(actual_raw, expected_raw)
 	}
 	if (actual_name.contains('[') || expected_name.contains('['))
-		&& tc.generic_type_name_matches(actual_name, expected_name) {
+		&& tc.generic_type_name_matches(actual_name_comparison_type_id, expected_name_comparison_type_id) {
 		return true
 	}
 	if tc.sum_variant_type_for_pattern(expected_name, actual_name) != none {
@@ -12047,11 +12051,11 @@ fn (tc &TypeChecker) collect_interfaces_in_type_structure(typ Type, mut seen map
 				return
 			}
 			seen[typ.name()] = true
-			base := tc.sum_base_name(typ.name())
+			base := tc.sum_base_name(typ.source_type_id())
 			for variant_source_id_3 in tc.sum_types.type_ids(base) or { []u32{} } {
-				variant := flat.source_type_name(variant_source_id_3)
+				variant_source_id_5 := variant_source_id_3
 
-				variant_type := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(typ.name(), variant)))
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(typ.source_type_id(), variant_source_id_5))
 				tc.collect_interfaces_in_type_structure(variant_type, mut seen, mut found)
 			}
 		}
@@ -14622,7 +14626,8 @@ fn method_type_name(t Type) string {
 	return ''
 }
 
-fn (tc &TypeChecker) sum_base_name(sum_name string) string {
+fn (tc &TypeChecker) sum_base_name(sum_name_id u32) string {
+	sum_name := flat.source_type_name(sum_name_id)
 	base, _, ok := generic_type_application_parts(sum_name)
 	if ok {
 		return base
@@ -14635,7 +14640,7 @@ fn (tc &TypeChecker) sum_base_name(sum_name string) string {
 		return qname
 	}
 	if sum_name.contains('.') {
-		resolved := flat.source_type_name(tc.resolve_imported_type_text(flat.source_type_id(sum_name)))
+		resolved := flat.source_type_name(tc.resolve_imported_type_text(sum_name_id))
 		if tc.sum_types.contains(resolved) {
 			return resolved
 		}
@@ -14659,23 +14664,25 @@ fn (tc &TypeChecker) sum_params_for_base(base string) []string {
 	return []string{}
 }
 
-fn (tc &TypeChecker) concrete_sum_variant_name(sum_name string, variant string) string {
-	base, args, ok := generic_type_application_parts(sum_name)
-	if !ok {
-		return variant
-	}
+fn (tc &TypeChecker) concrete_sum_variant_name(sum_name_id u32, variant_id u32) u32 {
+	base, args, ok := generic_type_application_parts(flat.source_type_name(sum_name_id))
+	if !ok { return variant_id }
 	params := tc.sum_params_for_base(base)
-	if params.len == 0 || params.len != args.len {
-		return variant
-	}
-	return subst_generic_text(variant, flat.TypeTextList.from_names(args).ids, params)
+	if params.len == 0 || params.len != args.len { return variant_id }
+	return flat.source_type_id(subst_generic_text(flat.source_type_name(variant_id), flat.TypeTextList.from_names(args).ids, params))
 }
 
-pub fn (tc &TypeChecker) generic_type_name_matches(a string, b string) bool {
+// generic_type_name_matches compares source spelling IDs inside the current resolution context.
+pub fn (tc &TypeChecker) generic_type_name_matches(a_id u32, b_id u32) bool {
+	if a_id == b_id { return true }
+	return tc.generic_type_name_matches_bytes(flat.source_type_name(a_id), flat.source_type_name(b_id))
+}
+
+fn (tc &TypeChecker) generic_type_name_matches_bytes(a string, b string) bool {
 	if a == b {
 		return true
 	}
-	if tc.fixed_array_type_name_matches(a, b) {
+	if tc.fixed_array_type_name_matches_bytes(a, b) {
 		return true
 	}
 	// Compare wrapper layers (`?`, `&`, `chan `, `[]`, ...) one at a time and keep their identity.
@@ -14685,7 +14692,7 @@ pub fn (tc &TypeChecker) generic_type_name_matches(a string, b string) bool {
 	b_wrap := type_wrapper_prefix_len(b)
 	if a_wrap > 0 || b_wrap > 0 {
 		return a_wrap == b_wrap && a[..a_wrap] == b[..b_wrap]
-			&& tc.generic_type_name_matches(trimmed_space(a[a_wrap..]), trimmed_space(b[b_wrap..]))
+			&& tc.generic_type_name_matches_bytes(trimmed_space(a[a_wrap..]), trimmed_space(b[b_wrap..]))
 	}
 	a_base, a_args, a_ok := generic_type_application_parts(a)
 	b_base, b_args, b_ok := generic_type_application_parts(b)
@@ -14697,7 +14704,7 @@ pub fn (tc &TypeChecker) generic_type_name_matches(a string, b string) bool {
 			return false
 		}
 		for i in 0 .. a_args.len {
-			if !tc.generic_type_arg_matches(a_args[i], b_args[i]) {
+			if !tc.generic_type_arg_matches_bytes(a_args[i], b_args[i]) {
 				return false
 			}
 		}
@@ -14706,7 +14713,11 @@ pub fn (tc &TypeChecker) generic_type_name_matches(a string, b string) bool {
 	return tc.generic_type_base_matches(a, b)
 }
 
-fn (tc &TypeChecker) fixed_array_type_name_matches(a string, b string) bool {
+fn (tc &TypeChecker) fixed_array_type_name_matches(a_id u32, b_id u32) bool {
+	return tc.fixed_array_type_name_matches_bytes(flat.source_type_name(a_id), flat.source_type_name(b_id))
+}
+
+fn (tc &TypeChecker) fixed_array_type_name_matches_bytes(a string, b string) bool {
 	if !fixed_array_type_name_may_be(a) || !fixed_array_type_name_may_be(b) {
 		return false
 	}
@@ -14714,7 +14725,7 @@ fn (tc &TypeChecker) fixed_array_type_name_matches(a string, b string) bool {
 	b_type := tc.parse_type(flat.source_type_id(b))
 	if a_type is ArrayFixed && b_type is ArrayFixed {
 		return tc.fixed_array_lengths_compatible(a_type, b_type)
-			&& tc.generic_type_name_matches(a_type.elem_type.name(), b_type.elem_type.name())
+			&& tc.generic_type_name_matches_bytes(a_type.elem_type.name(), b_type.elem_type.name())
 	}
 	return false
 }
@@ -14774,7 +14785,12 @@ fn (tc &TypeChecker) resolve_generic_match_base(base string) string {
 	return base
 }
 
-fn (tc &TypeChecker) generic_type_arg_matches(a string, b string) bool {
+fn (tc &TypeChecker) generic_type_arg_matches(a_id u32, b_id u32) bool {
+	if a_id == b_id { return true }
+	return tc.generic_type_arg_matches_bytes(flat.source_type_name(a_id), flat.source_type_name(b_id))
+}
+
+fn (tc &TypeChecker) generic_type_arg_matches_bytes(a string, b string) bool {
 	a_clean := trimmed_space(a)
 	b_clean := trimmed_space(b)
 	if a_clean == b_clean {
@@ -14787,7 +14803,7 @@ fn (tc &TypeChecker) generic_type_arg_matches(a string, b string) bool {
 	b_wrap := type_wrapper_prefix_len(b_clean)
 	if a_wrap > 0 || b_wrap > 0 {
 		return a_wrap == b_wrap && a_clean[..a_wrap] == b_clean[..b_wrap]
-			&& tc.generic_type_arg_matches(a_clean[a_wrap..], b_clean[b_wrap..])
+			&& tc.generic_type_arg_matches_bytes(a_clean[a_wrap..], b_clean[b_wrap..])
 	}
 	if a_clean.starts_with('map[') || b_clean.starts_with('map[') {
 		if !a_clean.starts_with('map[') || !b_clean.starts_with('map[') {
@@ -14798,8 +14814,8 @@ fn (tc &TypeChecker) generic_type_arg_matches(a string, b string) bool {
 		if a_bracket_end >= a_clean.len || b_bracket_end >= b_clean.len {
 			return false
 		}
-		return tc.generic_type_arg_matches(a_clean[4..a_bracket_end], b_clean[4..b_bracket_end])
-			&& tc.generic_type_arg_matches(a_clean[a_bracket_end + 1..], b_clean[b_bracket_end + 1..])
+		return tc.generic_type_arg_matches_bytes(a_clean[4..a_bracket_end], b_clean[4..b_bracket_end])
+			&& tc.generic_type_arg_matches_bytes(a_clean[a_bracket_end + 1..], b_clean[b_bracket_end + 1..])
 	}
 	if a_clean.starts_with('[') || b_clean.starts_with('[') {
 		if !a_clean.starts_with('[') || !b_clean.starts_with('[') {
@@ -14811,7 +14827,7 @@ fn (tc &TypeChecker) generic_type_arg_matches(a string, b string) bool {
 			|| a_clean[..a_bracket_end + 1] != b_clean[..b_bracket_end + 1] {
 			return false
 		}
-		return tc.generic_type_arg_matches(a_clean[a_bracket_end + 1..], b_clean[b_bracket_end + 1..])
+		return tc.generic_type_arg_matches_bytes(a_clean[a_bracket_end + 1..], b_clean[b_bracket_end + 1..])
 	}
 	a_base, a_args, a_ok := generic_type_application_parts(a_clean)
 	b_base, b_args, b_ok := generic_type_application_parts(b_clean)
@@ -14823,7 +14839,7 @@ fn (tc &TypeChecker) generic_type_arg_matches(a string, b string) bool {
 			return false
 		}
 		for i in 0 .. a_args.len {
-			if !tc.generic_type_arg_matches(a_args[i], b_args[i]) {
+			if !tc.generic_type_arg_matches_bytes(a_args[i], b_args[i]) {
 				return false
 			}
 		}
@@ -14885,11 +14901,12 @@ fn (tc &TypeChecker) type_matches_sum(actual Type, expected Type) bool {
 		if tc.sum_variant_type_for_pattern(expected.name(), actual_name) != none {
 			return true
 		}
-		base := tc.sum_base_name(expected.name())
+		base := tc.sum_base_name(expected.source_type_id())
 		variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return false } }.names()
 		for variant in variants {
-			concrete := tc.concrete_sum_variant_name(expected.name(), variant)
-			variant_type := tc.parse_type(flat.source_type_id(concrete))
+			concrete_source_id_4 := tc.concrete_sum_variant_name(expected.source_type_id(), flat.source_type_id(variant))
+
+			variant_type := tc.parse_type(concrete_source_id_4)
 			if flat.source_type_name(tc.type_name(variant_type)) == expected.name() {
 				continue
 			}
@@ -14932,7 +14949,7 @@ fn (tc &TypeChecker) sum_variant_type_for_pattern_depth(sum_name string, variant
 	if depth >= 16 {
 		return none
 	}
-	base := tc.sum_base_name(sum_name)
+	base := tc.sum_base_name(flat.source_type_id(sum_name))
 	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return none } }.names()
 	mut candidates := [variant_name]
 	qvariant := tc.qualify_name(variant_name)
@@ -14956,19 +14973,20 @@ fn (tc &TypeChecker) sum_variant_type_for_pattern_depth(sum_name string, variant
 		candidates << tc.alias_target_type_names(candidate)
 	}
 	for candidate in candidates {
-		if tc.generic_type_name_matches(candidate, sum_name)
-			|| tc.generic_type_name_matches(candidate, base) {
+		if tc.generic_type_name_matches(flat.source_type_id(candidate), flat.source_type_id(sum_name))
+			|| tc.generic_type_name_matches(flat.source_type_id(candidate), flat.source_type_id(base)) {
 			return sum_name
 		}
 	}
 	for variant in variants {
-		concrete := tc.concrete_sum_variant_name(sum_name, variant)
+		concrete_source_id_5 := tc.concrete_sum_variant_name(flat.source_type_id(sum_name), flat.source_type_id(variant))
+		concrete := flat.source_type_name(concrete_source_id_5)
 		for candidate in candidates {
-			if tc.generic_type_name_matches(candidate, concrete)
+			if tc.generic_type_name_matches(flat.source_type_id(candidate), concrete_source_id_5)
 				|| tc.bare_variant_name_matches(candidate, variant, concrete) {
 				return concrete
 			}
-			if is_bare_generic_param(concrete) && !tc.is_known_type_text(flat.source_type_id(concrete)) {
+			if is_bare_generic_param(concrete) && !tc.is_known_type_text(concrete_source_id_5) {
 				return candidate
 			}
 		}

@@ -844,19 +844,20 @@ fn (tc &TypeChecker) fn_storage_voidptr_mismatch(expr_id flat.NodeId, actual Typ
 
 fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected SumType) bool {
 	clean_actual := unalias_type(actual)
-	if tc.generic_type_name_matches(actual.name(), expected.name())
-		|| tc.generic_type_name_matches(clean_actual.name(), expected.name()) {
+	if tc.generic_type_name_matches(actual.source_type_id(), expected.source_type_id())
+		|| tc.generic_type_name_matches(clean_actual.source_type_id(), expected.source_type_id()) {
 		return true
 	}
-	base := tc.sum_base_name(expected.name())
+	base := tc.sum_base_name(expected.source_type_id())
 	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return false } }.names()
 	for variant in variants {
-		concrete := tc.concrete_sum_variant_name(expected.name(), variant)
-		if tc.generic_type_name_matches(actual.name(), concrete)
-			|| tc.generic_type_name_matches(clean_actual.name(), concrete) {
+		concrete_source_id := tc.concrete_sum_variant_name(expected.source_type_id(), flat.source_type_id(variant))
+
+		if tc.generic_type_name_matches(actual.source_type_id(), concrete_source_id)
+			|| tc.generic_type_name_matches(clean_actual.source_type_id(), concrete_source_id) {
 			return true
 		}
-		if tc.nested_sum_variant_assignment_matches(actual, tc.parse_type(flat.source_type_id(concrete)), false) {
+		if tc.nested_sum_variant_assignment_matches(actual, tc.parse_type(concrete_source_id), false) {
 			return true
 		}
 	}
@@ -7870,11 +7871,11 @@ fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op fl
 			}
 		}
 		SumType {
-			base := tc.sum_base_name(raw.name())
+			base := tc.sum_base_name(raw.source_type_id())
 			for variant_source_id in tc.sum_types.type_ids(base) or { []u32{} } {
-				variant := flat.source_type_name(variant_source_id)
+				variant_source_id_5 := variant_source_id
 
-				variant_type := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(raw.name(), variant)))
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(raw.source_type_id(), variant_source_id_5))
 				if tc.array_accessor_type_has_overloaded_operator(variant_type, semantic_op, mut seen) {
 					return true
 				}
@@ -7965,11 +7966,11 @@ fn (tc &TypeChecker) array_accessor_stringifier_can_run_user_code(typ Type, mut 
 			}
 		}
 		SumType {
-			base := tc.sum_base_name(clean.name())
+			base := tc.sum_base_name(clean.source_type_id())
 			for variant_source_id_2 in tc.sum_types.type_ids(base) or { return true } {
-				variant := flat.source_type_name(variant_source_id_2)
+				variant_source_id_6 := variant_source_id_2
 
-				variant_type := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(clean.name(), variant)))
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(clean.source_type_id(), variant_source_id_6))
 				if tc.array_accessor_stringifier_can_run_user_code(variant_type, mut seen) {
 					return true
 				}
@@ -8193,11 +8194,11 @@ fn (tc &TypeChecker) array_accessor_clone_can_run_user_code(typ Type, mut seen m
 				return false
 			}
 			seen[typ.name()] = true
-			base := tc.sum_base_name(typ.name())
+			base := tc.sum_base_name(typ.source_type_id())
 			for variant_source_id_3 in tc.sum_types.type_ids(base) or { return true } {
-				variant := flat.source_type_name(variant_source_id_3)
+				variant_source_id_7 := variant_source_id_3
 
-				variant_type := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(typ.name(), variant)))
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(typ.source_type_id(), variant_source_id_7))
 				if tc.array_accessor_clone_can_run_user_code(variant_type, mut seen) {
 					return true
 				}
@@ -8905,11 +8906,12 @@ fn (tc &TypeChecker) sum_fn_variant_for_arg_count(typ Type, arg_count int) ?FnTy
 		return none
 	}
 	clean_name := Type(clean).name()
-	base := tc.sum_base_name(clean_name)
+	base := tc.sum_base_name(flat.source_type_id(clean_name))
 	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return none } }.names()
 	for variant in variants {
-		concrete := tc.concrete_sum_variant_name(clean_name, variant)
-		variant_type := tc.parse_type(flat.source_type_id(concrete))
+		concrete_source_id_2 := tc.concrete_sum_variant_name(flat.source_type_id(clean_name), flat.source_type_id(variant))
+
+		variant_type := tc.parse_type(concrete_source_id_2)
 		if fn_type := fn_type_from_type(variant_type) {
 			if fn_type.params.len == arg_count {
 				return fn_type
@@ -14093,7 +14095,7 @@ fn (tc &TypeChecker) alias_struct_field_is_private_outside_module(alias Alias, f
 // is checked like a field of that variant, which the error names.
 fn (tc &TypeChecker) sum_type_private_field_owner(sum SumType, field_name string, is_indexed bool) ?Type {
 	if _ := tc.sum_shared_field_type(sum, field_name) {
-		visibility := tc.declaration_visibility[tc.sum_base_name(sum.name())] or { return none }
+		visibility := tc.declaration_visibility[tc.sum_base_name(sum.source_type_id())] or { return none }
 		sum_mod := visibility.module_name
 		if sum_mod == tc.cur_module || (sum_mod in ['', 'main'] && tc.cur_module in ['', 'main']) {
 			return none
@@ -14131,15 +14133,15 @@ fn (tc &TypeChecker) sum_variant_with_private_field(sum_name string, field_name 
 }
 
 fn (tc &TypeChecker) sum_variant_with_private_field_inner(sum_name string, field_name string, mut visited map[string]bool) ?Type {
-	base := tc.sum_base_name(sum_name)
+	base := tc.sum_base_name(flat.source_type_id(sum_name))
 	if visited[base] {
 		return none
 	}
 	visited[base] = true
 	for variant_source_id_4 in tc.sum_types.type_ids(base) or { []u32{} } {
-		variant := flat.source_type_name(variant_source_id_4)
+		variant_source_id_8 := variant_source_id_4
 
-		variant_type := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(sum_name, variant)))
+		variant_type := tc.parse_type(tc.concrete_sum_variant_name(flat.source_type_id(sum_name), variant_source_id_8))
 		target := unalias_type(variant_type)
 		if target is SumType {
 			if owner := tc.sum_variant_with_private_field_inner(target.name(), field_name, mut
