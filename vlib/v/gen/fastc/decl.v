@@ -1986,8 +1986,18 @@ fn fastc_c_composite_block_end(source string, start int) ?int {
 	for end < source.len && source[end] == `\n` {
 		end++
 	}
+	// A packed definition's `#pragma pack(pop)` belongs to its block.
+	if source[end..].starts_with(fastc_pack_pop_line) {
+		end += fastc_pack_pop_line.len
+		for end < source.len && source[end] == `\n` {
+			end++
+		}
+	}
 	return end
 }
+
+const fastc_pack_push_line = '#pragma pack(push, 1)\n'
+const fastc_pack_pop_line = '#pragma pack(pop)\n'
 
 // fastc_composite_definition_positions maps each C composite name to the start
 // offset of the first `struct NAME {` / `union NAME {` definition.
@@ -2015,7 +2025,13 @@ fn fastc_composite_definition_positions(source string) map[string]int {
 		if j > name_start && j + 1 < source.len && source[j] == ` ` && source[j + 1] == `{` {
 			name := source[name_start..j]
 			if name !in positions {
-				positions[name] = i
+				// A packed definition's `#pragma pack(push, 1)` line belongs to its block.
+				push_start := i - fastc_pack_push_line.len
+				positions[name] = if push_start >= 0 && source[push_start..i] == fastc_pack_push_line {
+					push_start
+				} else {
+					i
+				}
 			}
 		}
 		i = j
@@ -2061,13 +2077,29 @@ fn fastc_move_c_composite_before(source string, dependency_start int, dependent_
 	return source[..dependent_start] + block + source[dependent_start..dependency_start] + source[end..]
 }
 
+// fastc_c_composite_definition_end returns the offset just past the `};` that closes the
+// definition starting at `start`, matching braces so that a one-line definition
+// (`struct I { void *_object; uintptr_t _typ; };`) ends at its own `};`.
+@[direct_array_access]
 fn fastc_c_composite_definition_end(source string, start int) ?int {
-	tail := source[start..]
-	if relative_end := tail.index('\n};') {
-		return start + relative_end + 3
+	mut i := start
+	for i < source.len && source[i] != `{` {
+		i++
 	}
-	if relative_end := tail.index('};') {
-		return start + relative_end + 2
+	mut depth := 0
+	for i < source.len {
+		if source[i] == `{` {
+			depth++
+		} else if source[i] == `}` {
+			depth--
+			if depth == 0 {
+				if i + 1 < source.len && source[i + 1] == `;` {
+					return i + 2
+				}
+				return none
+			}
+		}
+		i++
 	}
 	return none
 }
@@ -2078,6 +2110,7 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 	scan.init(file, source_file.source)
 	mut depth := 0
 	mut next_enum_is_flag := false
+	mut next_struct_is_packed := false
 	mut next_type_is_enabled := true
 	mut tok := scan.scan()
 	for tok != .eof {
@@ -2103,6 +2136,7 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 				}
 				tok = selected.tok
 				next_enum_is_flag = false
+				next_struct_is_packed = false
 				continue
 			}
 		}
@@ -2110,11 +2144,13 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 			attribute := fastc_scan_declaration_attribute(mut scan, source_file.path, prefs)!
 			tok = attribute.tok
 			next_enum_is_flag = next_enum_is_flag || attribute.is_flag
+			next_struct_is_packed = next_struct_is_packed || attribute.is_packed
 			next_type_is_enabled = next_type_is_enabled && attribute.is_enabled
 			continue
 		}
 		if depth == 0 && tok in [.key_fn, .key_const, .key_global] {
 			next_enum_is_flag = false
+			next_struct_is_packed = false
 			next_type_is_enabled = true
 			if tok == .key_fn {
 				// A function or method whose name is itself a keyword
@@ -2129,12 +2165,14 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 			.key_interface, .key_type] {
 			tok = fastc_skip_type_declaration(mut scan, tok)!
 			next_enum_is_flag = false
+			next_struct_is_packed = false
 			next_type_is_enabled = true
 			continue
 		}
 		if depth == 0 && tok in [.key_struct, .key_union] {
-			tok = fastc_emit_struct_declaration(mut scan, tok == .key_union, source_file, declared_types, prefs.building_v, mut struct_fields, mut struct_field_info, mut composite_types, mut out)!
+			tok = fastc_emit_struct_declaration(mut scan, tok == .key_union, next_struct_is_packed, source_file, declared_types, prefs.building_v, mut struct_fields, mut struct_field_info, mut composite_types, mut out)!
 			next_type_is_enabled = true
+			next_struct_is_packed = false
 			continue
 		}
 		if depth == 0 && tok == .key_enum {
@@ -2202,6 +2240,7 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 	mut is_params := false
 	mut is_typedef := false
 	mut is_c_extern := false
+	mut is_packed := false
 	mut is_enabled := true
 	mut at_item_start := true
 	for depth > 0 {
@@ -2229,6 +2268,22 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 		if tok == .name && scan.lit == 'c_extern' {
 			is_c_extern = true
 		}
+		if depth == 1 && at_item_start && tok == .name && scan.lit in ['packed', '_packed'] {
+			is_packed = true
+		}
+		if depth == 1 && at_item_start && tok == .name && scan.lit == '_pack' {
+			// `@[_pack: N]`: only 1 has an attribute spelling that keeps its place when the
+			// definition is reordered; refuse any other rather than lay the struct out wrong.
+			mut value_scan := scan
+			if value_scan.scan() == .colon {
+				value_tok := value_scan.scan()
+				value := value_scan.lit.trim('\'"')
+				if value_tok !in [.number, .string] || value != '1' {
+					return error('fastc parser does not support `@[_pack: ${value}]` in ${path}')
+				}
+				is_packed = true
+			}
+		}
 		if depth == 1 && tok == .semicolon {
 			at_item_start = true
 		} else if depth == 1 {
@@ -2248,10 +2303,11 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 		is_params:   is_params
 		is_typedef:  is_typedef
 		is_c_extern: is_c_extern
+		is_packed:   is_packed
 	}
 }
 
-fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source_file FastcSourceFile, declared_types map[string]bool, allow_short_placeholders bool, mut struct_fields map[string]flat.TypeTextBindings, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut out strings.Builder) !token.Token {
+fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, is_packed bool, source_file FastcSourceFile, declared_types map[string]bool, allow_short_placeholders bool, mut struct_fields map[string]flat.TypeTextBindings, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut out strings.Builder) !token.Token {
 	mut tok := scan.scan()
 	if tok != .name {
 		return error('fastc parser does not support struct declaration in ${source_file.path}')
@@ -2302,6 +2358,11 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 		return error('fastc parser does not support struct `${name}` body in ${source_file.path}')
 	}
 	if !is_c_struct {
+		if is_packed {
+			// TinyCC ignores `__attribute__((packed))`; it honours `#pragma pack`, as the C
+			// backend emits it. The ordering pass moves these lines with the definition.
+			out.write_string(fastc_pack_push_line)
+		}
 		out.writeln('${if is_union { 'union' } else { 'struct' }} ${c_name} {')
 	}
 	tok = scan.scan()
@@ -2527,6 +2588,9 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 	}
 	if !is_c_struct {
 		out.writeln('};')
+		if is_packed {
+			out.write_string(fastc_pack_pop_line)
+		}
 		out.writeln('')
 	}
 	if c_name == 'Option' {
