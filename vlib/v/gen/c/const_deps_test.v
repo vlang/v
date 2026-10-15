@@ -207,3 +207,64 @@ fn test_enum_helper_prefers_exact_free_function_over_method_suffix() {
 		map[string]flat.NodeId{}, mut resolving) or { -1 }
 	assert value == 4
 }
+
+fn test_const_order_reuses_complete_recursive_helper_dependencies() {
+	mut a := flat.FlatAst.new()
+	left_read := const_deps_test_read(mut a, 'left_dep')
+	right_read := const_deps_test_read(mut a, 'right_dep')
+	left_nested := const_deps_test_call(mut a, 'left')
+	right_nested := const_deps_test_call(mut a, 'right')
+	left := const_deps_test_fn(mut a, 'left', [left_read, right_nested])
+	right := const_deps_test_fn(mut a, 'right', [right_read, left_nested])
+	first := const_deps_test_call(mut a, 'left')
+	second := const_deps_test_call(mut a, 'right')
+	third := const_deps_test_call(mut a, 'left')
+	value := add_const_deps_test_node(mut a, .int_literal, '1', [])
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.fn_decl_nodes_by_name['left'] = left
+	g.fn_decl_nodes_by_name['right'] = right
+	g.const_vals = {
+		'first':     first
+		'second':    second
+		'third':     third
+		'left_dep':  value
+		'right_dep': value
+	}
+	g.const_init_order = ['first', 'second', 'third', 'left_dep', 'right_dep']
+	for _ in 0 .. 2 {
+		assert g.const_emission_order() == ['left_dep', 'right_dep', 'first', 'second', 'third']
+		assert isnil(g.const_helper_dependencies)
+	}
+}
+
+fn test_const_helper_dependency_cache_keeps_initializer_module_context() {
+	mut a := flat.FlatAst.new()
+	read := const_deps_test_read(mut a, 'dep')
+	helper := const_deps_test_fn(mut a, 'make', [read])
+	first := const_deps_test_call(mut a, 'make')
+	second := const_deps_test_call(mut a, 'make')
+	value := add_const_deps_test_node(mut a, .int_literal, '1', [])
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.fn_decl_nodes_by_name['make'] = helper
+	g.const_vals = {
+		'first.value':  first
+		'second.value': second
+		'first.dep':    value
+		'second.dep':   value
+	}
+	g.const_modules = {
+		'first.value':  'first'
+		'second.value': 'second'
+		'first.dep':    'first'
+		'second.dep':   'second'
+	}
+	g.const_init_order = ['first.value', 'first.dep', 'second.value', 'second.dep']
+	assert g.const_emission_order() == ['first.dep', 'second.dep', 'first.value', 'second.value']
+}
