@@ -422,7 +422,7 @@ fn (s &NoAllocScan) custom_operator_storage(typ Type) bool {
 fn (s &NoAllocScan) owning_storage(typ Type, mut seen map[u32]bool) bool {
 	clean := unalias_type(typ)
 	return match clean {
-		String, Array, Map, Channel, Interface, SumType { true }
+		Array, Map, Channel, Interface, SumType { true }
 		OptionType, ResultType { s.owning_storage(clean.base_type, mut seen) }
 		ArrayFixed { s.owning_storage(clean.elem_type, mut seen) }
 		MultiReturn {
@@ -482,12 +482,24 @@ fn (s &NoAllocScan) executable_defaults(typ Type, mut seen map[u32]bool) bool {
 		return s.executable_defaults(clean.elem_type, mut seen)
 	}
 	if clean is Struct {
-		return s.struct_executable_defaults(clean, mut seen)
+		return s.struct_executable_defaults(clean, []string{}, mut seen)
 	}
 	return false
 }
 
-fn (s &NoAllocScan) struct_executable_defaults(typ Struct, mut seen map[u32]bool) bool {
+fn (s &NoAllocScan) literal_default(id flat.NodeId) bool {
+	node := s.tc.a.node(id)
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.nil_literal, .none_expr, .enum_val] {
+		return true
+	}
+	if node.kind in [.block, .expr_stmt, .paren] && node.children_count == 1 {
+		return s.literal_default(s.tc.a.child(node, 0))
+	}
+	return false
+}
+
+fn (s &NoAllocScan) struct_executable_defaults(typ Struct, initialized []string, mut seen map[u32]bool) bool {
 	if seen[typ.source_type_id()] {
 		return false
 	}
@@ -495,17 +507,15 @@ fn (s &NoAllocScan) struct_executable_defaults(typ Struct, mut seen map[u32]bool
 	if declaration := s.tc.source_struct_decl_for_name(typ.name()) {
 		for i in 0 .. declaration.children_count {
 			field := s.tc.a.child_node(&declaration, i)
-			if field.kind == .field_decl && field.children_count > 0 {
-				initial := s.tc.a.child_node(field, 0)
-				if initial.kind !in [.int_literal, .float_literal, .bool_literal, .char_literal,
-					.string_literal, .nil_literal, .none_expr, .enum_val] {
+			if field.kind == .field_decl && field.value !in initialized && field.children_count > 0 {
+				if !s.literal_default(s.tc.a.child(field, 0)) {
 					return true
 				}
 			}
 		}
 	}
 	for field in s.tc.struct_fields_for_type(typ.name()) {
-		if s.executable_defaults(field.typ, mut seen) {
+		if field.name !in initialized && s.executable_defaults(field.typ, mut seen) {
 			return true
 		}
 	}
@@ -655,8 +665,18 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 				reason = 'heap struct initialization allocates'
 			}
 			seen.clear()
-			if s.executable_defaults(typ, mut seen) {
-				reason = 'aggregate field default cannot be proven nonallocating'
+			if node.kind == .struct_init {
+				mut initialized := []string{}
+				for i in 0 .. node.children_count {
+					field := s.tc.a.child_node(node, i)
+					if field.kind == .field_init { initialized << field.value }
+				}
+				clean := unalias_type(typ)
+				if clean is Struct {
+					if s.struct_executable_defaults(clean, initialized, mut seen) {
+						reason = 'aggregate field default cannot be proven nonallocating'
+					}
+				}
 			}
 			if typ is Unknown {
 				reason = 'aggregate type cannot be proven nonallocating'
@@ -709,8 +729,9 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 					} else if s.strict || !s.array_parameter(lhs, mutable_arrays) {
 						reason = 'array append may grow its buffer'
 					}
-				} else if s.tc.comparison_calls_operator_method(typ, node.op)
-					|| s.custom_operator_storage(typ) {
+				} else if node.op !in [.logical_and, .logical_or]
+					&& (s.tc.comparison_calls_operator_method(typ, node.op)
+						|| s.custom_operator_storage(typ)) {
 					reason = 'operator on this type cannot be proven nonallocating'
 				} else if node.op in [.plus, .plus_assign] && (clean is String || clean is Array) {
 					reason = 'string or array concatenation allocates'

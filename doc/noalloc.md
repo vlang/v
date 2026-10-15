@@ -20,6 +20,11 @@ string construction, interface and sum-type boxing, escaping local storage, clos
 allocations inside called functions are rejected. An annotation on a V callee does not hide its
 body: the compiler still checks it. Recursion is checked without revisiting the same body.
 
+Boolean short-circuit operators, string header copies and returns, and zero-copy string views
+such as `unsafe { tos(ptr, len) }` do not allocate. Constructing strings by concatenation,
+interpolation, or cloning remains checked. Struct literals check only defaults for fields that
+are not explicitly initialized; literal defaults, including `unsafe { nil }`, are allowed.
+
 This check is conservative. Operations whose allocation behavior cannot be proved are rejected,
 even when a particular execution would allocate nothing. This includes indirect function calls,
 interface dispatch, bound method values, unexpanded compile-time code, custom operators, and

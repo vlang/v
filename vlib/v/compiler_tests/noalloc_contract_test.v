@@ -12,6 +12,46 @@ fn test_noalloc_contracts_in_build_and_check() {
 	defer { os.rmdir_all(root) or {} }
 	cases := [
 		NoallocCase{
+			name:     'boolean_comparisons'
+			accepted: true
+			source:   '@[noalloc]\nfn handler(x int) bool { return (x > 3 && x < 9) || x == 0 }\nfn main() { assert handler(5) }\n'
+		}
+		NoallocCase{
+			name:     'boolean_allocating_operand'
+			accepted: false
+			source:   'fn allocate() bool { return [1, 2].len > 0 }\n@[noalloc]\nfn handler(x bool) bool { return x && allocate() }\nfn main() { _ = handler(true) }\n'
+		}
+		NoallocCase{
+			name:     'overridden_default'
+			accepted: true
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Item { n int = allocating() }\n@[noalloc]\nfn handler() int { return Item{n: 3}.n }\nfn main() { assert handler() == 3 }\n'
+		}
+		NoallocCase{
+			name:     'nil_default'
+			accepted: true
+			source:   'struct Span { base &u8 = unsafe { nil }; len int }\n@[noalloc]\nfn handler() Span { return Span{} }\nfn main() { _ = handler() }\n'
+		}
+		NoallocCase{
+			name:     'nested_overridden_default'
+			accepted: true
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Inner { n int = allocating() }\nstruct Outer { inner Inner }\n@[noalloc]\nfn handler() int { return Outer{inner: Inner{n: 3}}.inner.n }\nfn main() { assert handler() == 3 }\n'
+		}
+		NoallocCase{
+			name:     'borrowed_string_view'
+			accepted: true
+			source:   "@[noalloc: strict]\nfn handler(s string, n int) string { view := unsafe { tos(s.str, n) }; return view }\nfn main() { assert handler('abc', 2) == 'ab' }\n"
+		}
+		NoallocCase{
+			name:     'string_header_aggregate'
+			accepted: true
+			source:   "struct Item { text string }\n@[noalloc: strict]\nfn handler(s string) Item { return Item{text: s} }\nfn main() { assert handler('abc').text == 'abc' }\n"
+		}
+		NoallocCase{
+			name:     'string_clone'
+			accepted: false
+			source:   "@[noalloc]\nfn handler(s string) string { return s.clone() }\nfn main() { _ = handler('abc') }\n"
+		}
+		NoallocCase{
 			name:     'recursive'
 			accepted: true
 			source:   '@[noalloc]
