@@ -1164,24 +1164,20 @@ fn parse_request_line(line string) !(Method, urllib.URL, Version) {
 pub fn parse_form(body string) map[string]string {
 	mut form := map[string]string{}
 
-	if body.match_glob('{*}') {
-		form['json'] = body
-	} else {
-		words := body.split('&')
+	words := body.split('&')
 
-		for word in words {
-			kv := word.split_nth('=', 2)
-			if kv.len != 2 {
-				continue
-			}
-			key := urllib.query_unescape(kv[0]) or { continue }
-			val := urllib.query_unescape(kv[1]) or { continue }
-			form[key] = val
+	for word in words {
+		kv := word.split_nth('=', 2)
+		if kv.len != 2 {
+			continue
 		}
+		key := urllib.query_unescape(kv[0]) or { continue }
+		val := urllib.query_unescape(kv[1]) or { continue }
+		form[key] = val
 	}
 	return form
 	// }
-	// todo: parse form-data and application/json
+	// todo: parse form-data by application type; a JSON body is a caller concern
 	// ...
 }
 
