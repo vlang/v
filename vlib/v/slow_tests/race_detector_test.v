@@ -639,8 +639,8 @@ fn test_race_is_still_reported_after_a_failed_assertion() {
 	if !thread_sanitizer_runs() {
 		return
 	}
-	source := 'fn test_first_fails() { assert false, "planted failure" }\n'
-		+ racy_source.replace('fn main()', 'fn test_second_races()')
+	source := 'fn test_first_fails() { assert false, "planted failure" }\n' +
+		racy_source.replace('fn main()', 'fn test_second_races()')
 	program := build_race_program('assertion_then_race_test', source, '-skip-running')
 	result := os.exec([program])
 	assert result.exit_code == 66, result.output
