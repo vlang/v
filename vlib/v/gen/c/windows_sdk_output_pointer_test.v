@@ -16,6 +16,15 @@ fn test_windows_file_and_console_outputs_match_sdk_pointer_types() ! {
 		'import term.ui\nfn main() { mut c := ui.init(ui.Config{}); c.run() or {} }',
 		'import os\nfn main() { mut f := os.fifo_client("unused")!; f.write([u8(1)])!; mut b := []u8{len:1}; f.read(mut b)!; f.close() }',
 	]
+	// vmcp also captures compiler output through ReadFile.
+	vmcp_c := os.join_path(root, 'vmcp.c')
+	vmcp := cmdexec.run(@VEXE, ['-gc', 'none', '-nocache', '-os', 'windows', '-arch', 'amd64',
+		'-o', vmcp_c, os.join_path(@VEXEROOT, 'cmd', 'tools', 'vmcp')])
+	assert vmcp.exit_code == 0, vmcp.output
+	vmcp_checked := os.exec([cc, '-std=gnu11', '-Werror=incompatible-pointer-types', '-fsyntax-only',
+		'-I', os.join_path(@VEXEROOT, 'thirdparty', 'mbedtls', 'include'), '-I',
+		os.join_path(@VEXEROOT, 'thirdparty', 'vschannel'), vmcp_c])
+	assert vmcp_checked.exit_code == 0, vmcp_checked.output
 	for index, program in programs {
 		source := os.join_path(root, 'probe_${index}.c.v')
 		generated := os.join_path(root, 'probe_${index}.c')
