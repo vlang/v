@@ -336,3 +336,5 @@ v -d ownership -o v_ownership vlib/v/v.v
 When compiling `cmd/v` with `-autofree`, the launcher first selects the ownership-enabled compiler.
 The regular compiler handles the initial `-d ownership cmd/v` support build directly.
 With `-prealloc`, automatic cleanup runs destructors and leaves boxed storage to its arena.
+A `break` or `continue` at the end of an `or`, `if`, or `match` value branch runs cleanup
+before the jump. Only locals whose declarations have been reached are cleaned up.
