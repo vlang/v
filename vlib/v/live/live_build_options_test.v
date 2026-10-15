@@ -10,14 +10,15 @@ fn test_live_rebuild_keeps_compile_configuration() {
 	root := os.join_path(os.vtmp_dir(), 'live build options_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'modules', 'liveconfig'))!
 	defer { os.rmdir_all(root) or {} }
-	os.write_file(os.join_path(root, 'modules', 'liveconfig', 'liveconfig.v'), 'module liveconfig\npub const value = 42\n')!
+	os.write_file(os.join_path(root, 'modules', 'liveconfig', 'liveconfig.v'), 'module liveconfig\npub const value = 42\n@[live]\npub fn main() int { return value }\n')!
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, r'module main
 import liveconfig
 @[live]
 fn value() int {
- $if live_build_option ? { return liveconfig.value } $else { return 0 }
+ $if live_build_option ? { return liveconfig.main() } $else { return 0 }
 }
+@[live]
 fn main() { assert value() == 42; println("ok") }
 ')!
 	program := os.join_path(root, 'program')

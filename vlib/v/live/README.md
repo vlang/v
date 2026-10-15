@@ -11,3 +11,5 @@ Source change detection uses whole-second modification times.
 
 Reloads reuse the original compiler options, including defines, optimization, memory management,
 module search paths, and C/linker flags. Executable output paths and program arguments are excluded.
+
+The entry point `main` runs once, including when it has `@[live]`; put reloadable code in helpers.

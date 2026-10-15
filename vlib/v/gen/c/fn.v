@@ -5406,7 +5406,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.write(g.fn_decl_c_attribute(node_id))
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
-		if g.is_live_function(node_id) {
+		if g.is_live_function(node_id, module_name) {
 			if 'sharedlive' in g.compile_defines { g.write(g.exported_symbol_attribute()) }
 			g.write(if 'livemain' in g.compile_defines { 'no_impl_' } else { 'impl_live_' })
 		}
@@ -5462,7 +5462,9 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	g.writeln('}')
 	g.writeln('')
 	g.end_fn_line_directives()
-	if g.is_live_function(node_id) { g.gen_live_wrapper(node, module_name, generated_fn_name) }
+	if g.is_live_function(node_id, module_name) {
+		g.gen_live_wrapper(node, module_name, generated_fn_name)
+	}
 	if should_print_fn {
 		println(g.sb.after(fn_start_pos))
 	}

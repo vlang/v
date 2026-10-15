@@ -88,11 +88,37 @@ fn (g &Parser) validate_nil(tokens []FastcExpressionToken, previous token.Token,
 	if g.selfhost && g.allows_nil_local_assignment && previous == .unknown && tokens.len == 0 && g.nil_ends_value(false) {
 		return
 	}
+	if g.selfhost && g.nil_starts_pointer_comparison(previous) {
+		return
+	}
 	if g.selfhost && g.nil_ends_value(previous in [.eq, .ne])
 		&& g.nil_target_is_voidptr(tokens, previous, paren_depth, bracket_depth, brace_depth, struct_types, struct_depths, struct_paren_depths) {
 		return
 	}
 	return g.unsupported('`nil` outside an `unsafe` block')
+}
+
+// nil_starts_pointer_comparison checks the concrete operand on the right of `nil ==`/`!=`.
+fn (g &Parser) nil_starts_pointer_comparison(previous token.Token) bool {
+	if previous !in [.unknown, .lpar, .lsbr, .lcbr, .comma, .colon, .and, .logical_or, .key_return] {
+		return false
+	}
+	mut look := g.s
+	if look.scan() !in [.eq, .ne] { return false }
+	mut tokens := []FastcExpressionToken{}
+	mut depth := 0
+	for {
+		kind := look.scan()
+		if kind == .eof || (depth == 0 && kind in [.semicolon, .comma, .rpar, .rsbr, .rcbr, .lcbr,
+			.and, .logical_or]) {
+			break
+		}
+		if kind in [.lpar, .lsbr] { depth++ }
+		if kind in [.rpar, .rsbr] { depth-- }
+		tokens << FastcExpressionToken{ tok: kind, lit: look.lit }
+	}
+	typ := g.infer_expression_type(tokens) or { return false }
+	return g.nil_type_is_allowed(typ)
 }
 
 // nil_target_is_voidptr reports whether the value starting at the current `nil` is assigned to
@@ -248,7 +274,9 @@ fn (g &Parser) nil_argument_is_voidptr(tokens []FastcExpressionToken) bool {
 	mut key := g.unqualified_function_key(name)
 	mut offset := 0
 	if open >= 2 && tokens[open - 2].tok == .dot {
-		if static_key := g.static_function_key_for_call(tokens, open - 1) {
+		if open >= 3 && tokens[open - 3].tok == .name && tokens[open - 3].lit == 'C' {
+			key = 'C.${name}'
+		} else if static_key := g.static_function_key_for_call(tokens, open - 1) {
 			key = static_key
 		} else if open >= 3 && tokens[open - 3].tok == .name
 			&& tokens[open - 3].lit !in g.locals && tokens[open - 3].lit in g.imports {

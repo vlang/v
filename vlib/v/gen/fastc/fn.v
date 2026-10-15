@@ -840,6 +840,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	params << g.parse_parameters()!
 	mut return_type := 'void'
 	mut return_types := []string{}
+	mut return_types_are_functions := []bool{}
 	mut option_return_type := ''
 	if g.tok != .lcbr && g.tok != .semicolon {
 		if g.tok in [.not, .question] {
@@ -848,13 +849,13 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			if g.tok in [.lcbr, .semicolon] {
 				option_return_type = 'void'
 			} else if g.tok == .lpar {
-				return_types = g.parse_multi_return_types()!
+				return_types, return_types_are_functions = g.parse_multi_return_types()!
 				option_return_type = 'MultiReturn'
 			} else {
 				option_return_type = g.parse_type()!
 			}
 		} else if g.tok == .lpar {
-			return_types = g.parse_multi_return_types()!
+			return_types, return_types_are_functions = g.parse_multi_return_types()!
 			return_type = 'MultiReturn'
 		} else {
 			return_type = g.parse_type()!
@@ -962,6 +963,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	previous_return_type_is_function := g.return_type_is_function
 	previous_return_type := g.return_type_text()
 	previous_return_types := g.return_types_text().clone()
+	previous_return_types_are_functions := g.return_types_are_functions
 	previous_option_return_type := g.option_return_type_text()
 	previous_function := g.current_function
 	previous_receiver := g.current_receiver
@@ -989,6 +991,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.return_type_is_function = return_type_is_function
 	g.return_type = flat.source_type_id(return_type)
 	g.return_types = flat.TypeTextList.from_names(return_types.clone())
+	g.return_types_are_functions = return_types_are_functions
 	g.option_return_type = flat.source_type_id(option_return_type)
 	g.current_function = name
 	g.current_receiver = flat.source_type_id(receiver_key)
@@ -1083,6 +1086,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.return_type_is_function = previous_return_type_is_function
 	g.return_type = flat.source_type_id(previous_return_type)
 	g.return_types = flat.TypeTextList.from_names(previous_return_types.clone())
+	g.return_types_are_functions = previous_return_types_are_functions
 	g.option_return_type = flat.source_type_id(previous_option_return_type)
 	g.current_function = previous_function
 	g.current_receiver = previous_receiver
@@ -1461,15 +1465,17 @@ fn fastc_c_prototype_parameters(parameter_types []string) string {
 	return c_types.join(', ')
 }
 
-fn (mut g Parser) parse_multi_return_types() ![]string {
+fn (mut g Parser) parse_multi_return_types() !([]string, []bool) {
 	g.expect(.lpar)!
 	mut types := []string{}
+	mut functions := []bool{}
 	for g.tok != .rpar {
 		g.skip_semicolons()
 		if g.tok == .rpar {
 			break
 		}
 		types << g.parse_type()!
+		functions << g.pending_fn_pointer
 		if g.tok == .comma {
 			g.next()
 		} else if g.tok != .rpar {
@@ -1477,7 +1483,7 @@ fn (mut g Parser) parse_multi_return_types() ![]string {
 		}
 	}
 	g.expect(.rpar)!
-	return types
+	return types, functions
 }
 
 // Primitive scalar spellings that may appear as sum-type variants and therefore
