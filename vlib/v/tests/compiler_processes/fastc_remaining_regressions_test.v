@@ -11,6 +11,10 @@ struct FastcRemainingCase {
 }
 
 fn test_fastc_remaining_pointer_array_and_default_regressions() {
+	$if !macos && !linux {
+		return
+	}
+
 	cases := [
 		FastcRemainingCase{'voidptr_variant', r'module main
 type Val = int | voidptr
