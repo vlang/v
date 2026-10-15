@@ -69,9 +69,10 @@ zero parameters. Failed assertions run the test's deferred statements before the
 Target-specific files and test files are filtered when loading a directory.
 Generic arguments infer the complete type of literal arithmetic, including float promotion.
 Other compound arguments require explicit type arguments.
-Bare `nil` can reset concrete `voidptr` locals, including aliases, and declared `voidptr`
-fields. It can initialize declared `voidptr` fields and serve as an argument to `voidptr`
-and function-typed parameters. Function fields and erased generic fields require `unsafe`.
+Bare `nil` uses concrete expected types for `voidptr` locals and aliases, fields and their
+defaults, returns, comparisons, and array elements. Calls accept parenthesized `nil` for
+`voidptr` parameters, including methods and variadic parameters. Typed pointer arguments also
+accept `nil` in `.c.v` files. Function storage and erased generic types still require `unsafe`.
 Channel type declarations accept ordinary V whitespace.
 Negated sum-type guards retain pointer identity and read mutable scalar variants as values
 in arithmetic, including numeric aliases.

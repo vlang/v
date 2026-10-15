@@ -1059,6 +1059,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 			gen.s.init(file, field.default_source)
 			gen.next()
 			gen.expected_expression_type = field.typ
+			gen.allows_nil_local_assignment = gen.nil_field_is_allowed(field)
 			field.default_value = gen.read_expression([token.Token.semicolon, token.Token.eof])!
 			// A flag-enum default mixing a value with a `.member` shorthand (`~Show.zero() ^
 			// .name`) can lose the field type mid-stream (the `Show.zero()` call clears it), so

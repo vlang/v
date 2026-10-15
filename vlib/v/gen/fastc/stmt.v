@@ -1088,6 +1088,10 @@ fn (mut g Parser) read_match_type_key() ?string {
 }
 
 fn (mut g Parser) parse_return() !bool {
+	previous_allows_nil := g.allows_nil_local_assignment
+	g.allows_nil_local_assignment = !g.return_type_is_function && g.nil_type_is_allowed(g.return_type_text())
+	defer { g.allows_nil_local_assignment = previous_allows_nil }
+
 	g.next()
 	if g.tok == .name && g.lit == 'sql' && 'sql' !in g.locals {
 		mut lookahead := g.s
@@ -1561,7 +1565,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				g.expected_expression_type = flat.source_type_id(expected_type)
 			}
 			previous_nil_assignment := g.allows_nil_local_assignment
-			g.allows_nil_local_assignment = !is_global && operator == .assign && g.underlying_alias_type(expected_type) == 'voidptr' && !g.fn_alias_return_types.contains(expected_type) && statement_local.fn_return_type == u32(0) && !g.in_generic_placeholder && g.tok == .key_nil && g.nil_ends_value()
+			g.allows_nil_local_assignment = !is_global && operator == .assign && g.underlying_alias_type(expected_type) == 'voidptr' && !g.fn_alias_return_types.contains(expected_type) && statement_local.fn_return_type == u32(0) && !g.in_generic_placeholder && g.tok == .key_nil && g.nil_ends_value(false)
 			value := g.read_expression([token.Token.semicolon, token.Token.rcbr]) or {
 				g.allows_nil_local_assignment = previous_nil_assignment
 				g.expected_expression_type = previous_expected_type_source_id_2

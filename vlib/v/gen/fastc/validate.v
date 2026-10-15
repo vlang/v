@@ -85,10 +85,10 @@ fn (g &Parser) validate_nil(tokens []FastcExpressionToken, previous token.Token,
 	if g.unsafe_depth > 0 || g.in_mono_drain {
 		return
 	}
-	if g.selfhost && g.allows_nil_local_assignment && previous == .unknown && tokens.len == 0 && g.nil_ends_value() {
+	if g.selfhost && g.allows_nil_local_assignment && previous == .unknown && tokens.len == 0 && g.nil_ends_value(false) {
 		return
 	}
-	if g.selfhost && g.nil_ends_value()
+	if g.selfhost && g.nil_ends_value(previous in [.eq, .ne])
 		&& g.nil_target_is_voidptr(tokens, previous, paren_depth, bracket_depth, brace_depth, struct_types, struct_depths, struct_paren_depths) {
 		return
 	}
@@ -98,6 +98,53 @@ fn (g &Parser) validate_nil(tokens []FastcExpressionToken, previous token.Token,
 // nil_target_is_voidptr reports whether the value starting at the current `nil` is assigned to
 // a field declared `voidptr`, initializes one in a struct literal, or is a `voidptr` argument.
 fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous token.Token, paren_depth int, bracket_depth int, brace_depth int, struct_types []string, struct_depths []int, struct_paren_depths []int) bool {
+	mut end := tokens.len
+	for end > 0 && tokens[end - 1].tok == .lpar
+		&& (end == 1 || tokens[end - 2].tok != .name) {
+		end--
+	}
+	if end < tokens.len {
+		before := if end > 0 { tokens[end - 1].tok } else { token.Token.unknown }
+		return g.nil_target_is_voidptr(tokens[..end], before, paren_depth - (tokens.len - end), bracket_depth, brace_depth, struct_types, struct_depths, struct_paren_depths)
+	}
+	if tokens.len == 0 && g.allows_nil_local_assignment {
+		return true
+	}
+	if previous in [.eq, .ne] && tokens.len > 1 {
+		mut start := 0
+		mut depth := 0
+		for i := tokens.len - 2; i >= 0; i-- {
+			if tokens[i].tok in [.rpar, .rsbr, .rcbr] {
+				depth++
+			} else if tokens[i].tok in [.lpar, .lsbr, .lcbr] {
+				if depth == 0 {
+					start = i + 1
+					break
+				}
+				depth--
+			} else if depth == 0 && (tokens[i].tok.is_assignment()
+				|| tokens[i].tok in [.colon, .comma, .and, .logical_or, .key_return]) {
+				start = i + 1
+				break
+			}
+		}
+		typ := g.infer_expression_type(tokens[start..tokens.len - 1]) or { return false }
+		return g.nil_type_is_allowed(typ)
+	}
+	open := fastc_innermost_open_index(tokens)
+	if open >= 0 && tokens[open].tok == .lsbr
+		&& (open == 0 || tokens[open - 1].tok !in [.name, .rpar, .rsbr, .rcbr]) {
+		mut depth := 0
+		for i in open + 1 .. tokens.len {
+			if tokens[i].tok in [.lpar, .lsbr, .lcbr] { depth++ }
+			if tokens[i].tok in [.rpar, .rsbr, .rcbr] { depth-- }
+			if depth == 0 && tokens[i].tok == .comma {
+				typ := g.infer_expression_type(tokens[open + 1..i]) or { return false }
+				return g.nil_type_is_allowed(typ)
+			}
+		}
+	}
+
 	if previous == .assign && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
 		// A concrete voidptr local keeps the existing safe reset support.
 		if tokens.len == 2 && tokens[0].tok == .name {
@@ -114,7 +161,7 @@ fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous tok
 		}
 		receiver_type := g.infer_expression_type(target[..target.len - 2]) or { return false }
 		field := g.struct_field_metadata(receiver_type, target.last().lit) or { return false }
-		return field.is_declared_voidptr
+		return g.nil_field_is_allowed(field)
 	}
 	if previous == .colon && struct_depths.len > 0 && brace_depth == struct_depths.last()
 		&& paren_depth == struct_paren_depths.last() && struct_types.len > 0 && tokens.len >= 2
@@ -123,7 +170,7 @@ fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous tok
 		field := g.struct_field_metadata(struct_types.last(), tokens[tokens.len - 2].lit) or {
 			return false
 		}
-		return field.is_declared_voidptr
+		return g.nil_field_is_allowed(field)
 	}
 	if previous in [.lcbr, .comma, .semicolon] && struct_depths.len > 0
 		&& brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last()
@@ -170,7 +217,21 @@ fn (g &Parser) nil_positional_field_is_voidptr(tokens []FastcExpressionToken, st
 		}
 	}
 	fields := g.struct_field_info[fastc_trim_pointer_suffix(struct_type)] or { return false }
-	return index < fields.len && fields[index].is_declared_voidptr
+	return index < fields.len && g.nil_field_is_allowed(fields[index])
+}
+
+fn (g &Parser) nil_type_is_allowed(typ string) bool {
+	if g.in_generic_placeholder || g.fn_alias_return_types.contains(typ) || g.is_function_value_type(typ) {
+		return false
+	}
+	underlying := g.underlying_alias_type(typ)
+	return underlying == 'voidptr'
+		|| ((g.path.ends_with('.c.v') || g.path.contains('.c.v:')) && fastc_is_pointer_type(underlying))
+}
+
+fn (g &Parser) nil_field_is_allowed(field FastcStructField) bool {
+	return !field.is_function && (field.is_declared_voidptr
+		|| (field.typ_text() != 'voidptr' && g.nil_type_is_allowed(field.typ_text())))
 }
 
 // nil_argument_is_voidptr reports whether the argument being read goes to a `voidptr` parameter
@@ -184,31 +245,37 @@ fn (g &Parser) nil_argument_is_voidptr(tokens []FastcExpressionToken) bool {
 		return false
 	}
 	name := tokens[open - 1].lit
-	if name in g.generic_method_names {
-		return false
-	}
+	mut key := g.unqualified_function_key(name)
+	mut offset := 0
 	if open >= 2 && tokens[open - 2].tok == .dot {
-		// `module.function(`: the qualifier must be an imported module, not a value.
-		if open < 3 || tokens[open - 3].tok != .name || tokens[open - 3].lit in g.locals
-			|| (open >= 4 && tokens[open - 4].tok == .dot) {
-			return false
+		if static_key := g.static_function_key_for_call(tokens, open - 1) {
+			key = static_key
+		} else if open >= 3 && tokens[open - 3].tok == .name
+			&& tokens[open - 3].lit !in g.locals && tokens[open - 3].lit in g.imports {
+			key = fastc_function_key(g.resolve_module_alias(g.imports[tokens[open - 3].lit]), name)
+		} else {
+			start := fastc_method_receiver_start(tokens, open - 2)
+			receiver := g.infer_expression_type(tokens[start..open - 2]) or { return false }
+			key, _ = g.resolve_method(receiver, name)
+			offset = 1
 		}
-		imported_module := g.imports[tokens[open - 3].lit] or { return false }
-		signature := g.functions[fastc_function_key(g.resolve_module_alias(imported_module), name)] or {
-			return false
-		}
-		index := fastc_call_argument_index(tokens, open)
-		return index < signature.parameter_types.ids.len && signature.parameter_types.at(index) == 'voidptr'
 	}
-	if name in g.locals {
+	if (offset == 0 && name in g.locals) || key in g.generic_method_sources {
 		return false
 	}
-	return g.streaming_call_argument_type(tokens) == 'voidptr'
+	signature := g.functions[key] or { return false }
+	mut index := fastc_call_argument_index(tokens, open) + offset
+	if signature.is_variadic && signature.parameter_types.ids.len > 0
+		&& index >= signature.parameter_types.ids.len - 1 {
+		index = signature.parameter_types.ids.len - 1
+		return g.nil_type_is_allowed(g.array_element_type(signature.parameter_types.at(index)) or { return false })
+	}
+	return index < signature.parameter_types.ids.len && g.nil_type_is_allowed(signature.parameter_types.at(index))
 }
 
 // nil_ends_value reports whether the current `nil` is a whole value: the next token closes it or
 // ends the statement, so no operator applies to it.
-fn (g &Parser) nil_ends_value() bool {
+fn (g &Parser) nil_ends_value(allow_boolean bool) bool {
 	mut lookahead := g.s
 	mut next := lookahead.scan()
 	if next == .semicolon && !g.semicolon_continues_expression() {
@@ -217,7 +284,8 @@ fn (g &Parser) nil_ends_value() bool {
 	for next == .semicolon {
 		next = lookahead.scan()
 	}
-	return next in [.comma, .rpar, .rcbr, .eof]
+	return next in [.comma, .rpar, .rsbr, .rcbr, .eof]
+		|| (allow_boolean && next in [.and, .logical_or])
 }
 
 fn (g &Parser) expression_name(previous token.Token, qualified_name_owner string) !string {
