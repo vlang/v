@@ -10052,7 +10052,8 @@ fn (mut tc TypeChecker) ownership_record_propagation_drops() {
 		st.drop_at_propagations['${st.cur_fn}\x01${index}'] = entries
 		tc.ownership_note_drop_types(st.cur_fn, entries)
 	}
-	if tc.fn_context.return_type is OptionType || tc.fn_context.return_type is ResultType {
+	return_type := unalias_type(tc.fn_context.return_type)
+	if return_type is OptionType || return_type is ResultType {
 		// The generated failure return runs defers before subsequent lexical scopes.
 		// Record their nested scopes in the same order as an explicit return does.
 		tc.ownership_check_return_defers()
