@@ -58,6 +58,8 @@ list storage directly; only ordinary declaration payloads require string promoti
 Transformer builders, expected-type coercion, and deferred AST type writes also carry spelling IDs.
 Callback, tuple-branch, iterator, and local type queries return source IDs, including optional and
 list results. Comptime sum variants retain those IDs when constructing reflection metadata.
+Signature preparation and deferred return registration retain source IDs across workers;
+parameter and variant lists use numeric binding accessors and copy IDs into owned storage.
 The driver's implicit-import type scan and WebAssembly fallback annotations use the same source
 IDs; their declaration indexes and dependency-recording keys retain names.
 Numeric APIs retain identities across stages. Text APIs resolve spellings when parsing source,

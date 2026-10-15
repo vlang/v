@@ -12680,7 +12680,7 @@ fn (mut g FlatGen) gen_sum_variant_pointer_cast(id flat.NodeId, target types.Poi
 	}
 
 	sum_name := g.resolve_sum_name(source_sum.name())
-	variants := g.tc.sum_types.get(sum_name) or { return false }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return false } }.names()
 	variant := g.resolve_variant(sum_name, target_base.name())
 	if variant !in variants {
 		return false
@@ -12722,7 +12722,7 @@ fn (mut g FlatGen) gen_sum_pointer_cast_expr(id flat.NodeId, target types.Pointe
 		return false
 	}
 	sum_name := g.resolve_sum_name(sum_type_name)
-	variants := g.tc.sum_types.get(sum_name) or { return false }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return false } }.names()
 	variant := g.resolve_variant(sum_name, actual_type.name())
 	if variant !in variants {
 		return false
@@ -13370,7 +13370,7 @@ fn (mut g FlatGen) gen_sum_pointer_value_expr(id flat.NodeId, expected types.Typ
 	}
 	sum_name := g.resolve_sum_name(sum_type_name)
 	variant := g.resolve_variant(sum_name, actual_type.name())
-	variants := g.tc.sum_types.get(sum_name) or { return false }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return false } }.names()
 	if variant !in variants {
 		return false
 	}
@@ -13545,7 +13545,7 @@ fn (g &FlatGen) sum_variant_for_actual(sum_name0 string, actual types.Type) ?str
 }
 
 fn (g &FlatGen) sum_variant_for_actual_uncached(sum_name string, actual types.Type, actual_name string) ?string {
-	variants := g.tc.sum_types.get(sum_name) or { return none }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return none } }.names()
 	mut variant := g.resolve_variant(sum_name, actual_name)
 	if variant in variants {
 		return variant
@@ -13961,7 +13961,7 @@ fn (g &FlatGen) sum_shared_field_type_inner(base_type0 types.Type, field string,
 	if sum_name in seen {
 		return none
 	}
-	variants := g.tc.sum_types.get(sum_name) or { return none }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return none } }.names()
 	if variants.len == 0 {
 		return none
 	}
@@ -14039,7 +14039,7 @@ fn (g &FlatGen) sum_unique_variant_field_info_inner(sum_name string, field strin
 	if sum_name in seen {
 		return none
 	}
-	variants := g.tc.sum_types.get(sum_name) or { return none }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return none } }.names()
 	mut found := SumUniqueFieldInfo{}
 	mut found_count := 0
 	for variant0 in variants {
@@ -14235,7 +14235,7 @@ fn (mut g FlatGen) gen_sum_shared_field_switch(sum_var string, sum_name string, 
 	if sum_name in seen {
 		return
 	}
-	variants := g.tc.sum_types.get(sum_name) or { return }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return } }.names()
 	mut next_seen := seen.clone()
 	next_seen << sum_name
 	g.writeln('switch (${sum_var}.typ) {')
@@ -15682,7 +15682,9 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 						} else if field.typ != 0 {
 							variant = field.typ_text()
 						} else {
-							for v in g.tc.sum_types.value(sum_name) {
+							for v_source_id in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+								v := flat.source_type_name(v_source_id)
+
 								if g.sum_field_name(v) == field.value {
 									variant = v
 									break
@@ -18185,7 +18187,7 @@ fn (mut g FlatGen) gen_typeof_name(node flat.Node) {
 		}
 		if expr_type is types.SumType {
 			sum_name := g.resolve_sum_name(expr_type.name())
-			variants := g.tc.sum_types.get(sum_name) or { []string{} }
+			variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { []u32{} } }.names()
 			if variants.len > 0 {
 				unknown_name := 'unknown ' + typeof_display_type_name(sum_name)
 				unknown_sid := g.intern_string(unknown_name)

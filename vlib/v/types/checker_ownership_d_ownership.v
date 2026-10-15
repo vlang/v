@@ -1615,7 +1615,9 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			}
 			seen[name] = true
 			base := tc.sum_base_name(name)
-			for variant in tc.sum_types.get(base) or { return name } {
+			for variant_source_id_2 in tc.sum_types.type_ids(base) or { return name } {
+				variant := flat.source_type_name(variant_source_id_2)
+
 				concrete := tc.concrete_sum_variant_name(name, variant)
 				variant_type := tc.parse_type(flat.source_type_id(concrete))
 				if !tc.ownership_type_requires_destruction(variant_type) {
@@ -1749,8 +1751,10 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []str
 				return
 			}
 			seen[typ.name()] = true
-			for variant in tc.sum_types.get(generic_base_name(typ.name())) or { []string{} } {
-				tc.ownership_collect_drop_type_names(tc.parse_type(flat.source_type_id(variant)), mut names, mut seen, first_only)
+			for variant_source_id_3 in tc.sum_types.type_ids(generic_base_name(typ.name())) or { []u32{} } {
+				variant_source_id_4 := variant_source_id_3
+
+				tc.ownership_collect_drop_type_names(tc.parse_type(variant_source_id_4), mut names, mut seen, first_only)
 			}
 		}
 		else {}
@@ -12924,7 +12928,7 @@ fn (tc &TypeChecker) ownership_match_covers_all_sum_variants(node flat.Node) boo
 	} else {
 		return false
 	}
-	variants := tc.sum_types.get(sum_name) or { return false }
+	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(sum_name) or { return false } }.names()
 	if variants.len == 0 {
 		return false
 	}

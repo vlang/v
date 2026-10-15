@@ -900,7 +900,7 @@ fn (t &Transformer) lookup_sum_variant_field_type_seen(sum_type_id u32, field_na
 	if resolved_source_id_2 == 0 || resolved in seen {
 		return none
 	}
-	variants := t.sum_types.get(resolved) or { return none }
+	variants := flat.TypeTextList{ ids: t.sum_types.type_ids(resolved) or { return none } }.names()
 	mut next_seen := seen.clone()
 	next_seen << resolved
 	mut found := ''

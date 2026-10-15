@@ -508,11 +508,13 @@ fn (t &Transformer) sum_target_accepts_variant_type(target_type_id u32, variant_
 	}
 	resolved_raw_target := flat.source_type_name(t.resolve_sum_name(t.trim_pointer_type(target_type_id)))
 	if t.sum_types.contains(resolved_raw_target) {
-		for variant in t.sum_types.value(resolved_raw_target) {
-			if t.variant_names_match(flat.source_type_id(variant), t.trim_pointer_type(variant_type_id)) {
+		for variant_source_id_3 in t.sum_types.type_ids(resolved_raw_target) or { []u32{} } {
+			variant_source_id_4 := variant_source_id_3
+
+			if t.variant_names_match(variant_source_id_4, t.trim_pointer_type(variant_type_id)) {
 				return true
 			}
-			if t.sum_variant_type_accepts_value_type(flat.source_type_id(variant), variant_type_id) {
+			if t.sum_variant_type_accepts_value_type(variant_source_id_4, variant_type_id) {
 				return true
 			}
 		}
@@ -1751,7 +1753,7 @@ fn (mut t Transformer) fixed_array_sum_literal_expr(expr_id flat.NodeId, expr fl
 	if literal.kind != .array_literal {
 		return none
 	}
-	variants := t.sum_types.get(resolved_sum) or { return none }
+	variants := flat.TypeTextList{ ids: t.sum_types.type_ids(resolved_sum) or { return none } }.names()
 	literal_len := int(literal.children_count)
 	literal_elem_source_id := t.array_literal_elem_type(literal)
 
@@ -2013,14 +2015,16 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		|| t.is_fixed_array_type(flat.source_type_id(clean_variant))
 	mut matches := false
 	mut matched_variant := clean_variant
-	for v in t.sum_types.value(resolved_sum) {
-		short_v_comparison_type_id := t.variant_short_name(flat.source_type_id(v))
+	for v_source_id in t.sum_types.type_ids(resolved_sum) or { []u32{} } {
+		v := flat.source_type_name(v_source_id)
 
-		v_is_container := v.starts_with('[]') || v.starts_with('map[') || t.is_fixed_array_type(flat.source_type_id(v))
+		short_v_comparison_type_id := t.variant_short_name(v_source_id)
+
+		v_is_container := v.starts_with('[]') || v.starts_with('map[') || t.is_fixed_array_type(v_source_id)
 		// Container element/value types are storage-significant. Do not make
 		// `[]json2.Any` match `[]toml.Any` (or analogous maps/fixed arrays) just
 		// because their nested types share the same short name.
-		if t.variant_names_match(flat.source_type_id(v), flat.source_type_id(clean_variant))
+		if t.variant_names_match(v_source_id, flat.source_type_id(clean_variant))
 			|| (!v_is_container && !container_variant && short_v_comparison_type_id == short_variant_comparison_type_id) {
 			matches = true
 			matched_variant = v
@@ -2028,8 +2032,10 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		}
 	}
 	if !matches {
-		for v in t.sum_types.value(resolved_sum) {
-			if t.sum_variant_type_accepts_value_type(flat.source_type_id(v), flat.source_type_id(clean_variant)) {
+		for v_source_id_2 in t.sum_types.type_ids(resolved_sum) or { []u32{} } {
+			v := flat.source_type_name(v_source_id_2)
+
+			if t.sum_variant_type_accepts_value_type(v_source_id_2, flat.source_type_id(clean_variant)) {
 				matches = true
 				matched_variant = v
 				break
@@ -2038,8 +2044,10 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 	}
 	if !matches && t.is_integer_type_name(flat.source_type_id(clean_variant)) {
 		mut enum_variant := ''
-		for v in t.sum_types.value(resolved_sum) {
-			if (t.enum_type_name_for_expected(flat.source_type_id(v), t.cur_module)) == 0 {
+		for v_source_id_3 in t.sum_types.type_ids(resolved_sum) or { []u32{} } {
+			v := flat.source_type_name(v_source_id_3)
+
+			if (t.enum_type_name_for_expected(v_source_id_3, t.cur_module)) == 0 {
 				continue
 			}
 			if enum_variant != '' {

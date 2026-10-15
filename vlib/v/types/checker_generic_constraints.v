@@ -167,11 +167,13 @@ fn (tc &TypeChecker) collect_sum_constraint_types(sum SumType, mut types []Type,
 		}
 	}
 	mut expanding := false
-	for variant in tc.sum_types.get(base) or { []string{} } {
+	for variant_source_id in tc.sum_types.type_ids(base) or { []u32{} } {
+		variant := flat.source_type_name(variant_source_id)
+
 		concrete := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(sum.name(), variant)))
 		inner := unalias_type(concrete)
 		if inner is SumType {
-			path << SumConstraintStep{ sum_name: sum.source_type_id(), variant: flat.source_type_id(variant) }
+			path << SumConstraintStep{ sum_name: sum.source_type_id(), variant: variant_source_id }
 			if tc.collect_sum_constraint_types(inner, mut types, mut seen, mut active,
 				mut path) {
 				expanding = true
@@ -1088,7 +1090,7 @@ fn (mut tc TypeChecker) constraint_walk_lambda_arg_types(id flat.NodeId, node fl
 		return result
 	}
 	binding := tc.constraint_walk_call_bindings(id, node) or { return result }
-	param_texts := tc.fn_param_type_texts.get(binding.info.name) or { return result }
+	param_texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(binding.info.name) or { return result } }.names()
 	first := if binding.info.has_receiver && param_texts.len > 0 { 1 } else { 0 }
 	mut args := []Type{cap: binding.names.len}
 	for name in binding.names {
@@ -1296,7 +1298,7 @@ fn (mut tc TypeChecker) constraint_walk_call_bindings(id flat.NodeId, node flat.
 	}
 	info := tc.constraint_walk_call_info(id, node) or { return none }
 	fn_params := tc.fn_generic_params[info.name] or { []string{} }
-	param_texts := tc.fn_param_type_texts.get(info.name) or { []string{} }
+	param_texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(info.name) or { []u32{} } }.names()
 	mut names := fn_params.clone()
 	callee := tc.a.child_node(&node, 0)
 	mut receiver_id := flat.NodeId(-1)
@@ -1722,7 +1724,7 @@ fn binding_text(binding CallBinding, name string) string {
 // parameter is of the type parameter `name`, `a` in `longest(a, b)`; the call
 // otherwise.
 fn (tc &TypeChecker) generic_param_arg_pos(node flat.Node, info CallInfo, name string) token.Pos {
-	texts := tc.fn_param_type_texts.get(info.name) or { []string{} }
+	texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(info.name) or { []u32{} } }.names()
 	first := if info.has_receiver { 1 } else { 0 }
 	for param_idx in first .. texts.len {
 		if trimmed_space(texts[param_idx]) != name {

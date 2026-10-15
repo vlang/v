@@ -3623,8 +3623,8 @@ fn (t &Transformer) sum_eq_variants(sum_name_id u32) ?[]u32 {
 	if sum_name_id == u32(0) {
 		return none
 	}
-	if variants := t.sum_types.get(sum_name) {
-		return flat.TypeTextList.from_names(variants).ids
+	if variants_source_ids := t.sum_types.type_ids(sum_name) {
+		return variants_source_ids.clone()
 	}
 	variants_source_ids := t.concrete_sum_variants_for_candidate(sum_name_id).clone()
 

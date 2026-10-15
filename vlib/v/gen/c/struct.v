@@ -1971,7 +1971,9 @@ fn (g &FlatGen) lowered_sum_field_variant(sum_name string, field &flat.Node) ?st
 			return resolved
 		}
 	}
-	for v in g.tc.sum_types.value(sum_name) {
+	for v_source_id in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+		v := flat.source_type_name(v_source_id)
+
 		if g.sum_field_name(v) == field.value || c_field_name(v) == field.value || v == field.value {
 			return v
 		}
@@ -2396,7 +2398,9 @@ fn (g &FlatGen) heap_copy_type_for_sum_pointer_field(type_name_id u32, field_nam
 	if !g.pointer_variant_arg_needs_heap_copy(value) {
 		return none
 	}
-	for variant in g.tc.sum_types.value(resolved_sum) {
+	for variant_source_id_2 in g.tc.sum_types.type_ids(resolved_sum) or { []u32{} } {
+		variant := flat.source_type_name(variant_source_id_2)
+
 		if g.sum_field_name(variant) != field_name
 			|| !g.variant_references_sum(variant, resolved_sum) {
 			continue
@@ -2528,14 +2532,14 @@ fn (g &FlatGen) struct_default_decl_source(type_name_id u32) ?StructDefaultDeclS
 		info:       info
 		owner_name: type_name_id
 		params:     params
-		args:       flat.TypeTextList.from_names(g.struct_default_canonical_generic_args(args))
+		args:       flat.TypeTextList{ ids: g.struct_default_canonical_generic_args(flat.TypeTextList.from_names(args).ids) }
 	}
 }
 
-fn (g &FlatGen) struct_default_canonical_generic_args(args []string) []string {
-	mut canonical := []string{cap: args.len}
-	for arg in args {
-		canonical << flat.source_type_name(g.struct_default_canonical_type_text(flat.source_type_id(arg), g.tc.cur_module, g.tc.cur_file))
+fn (g &FlatGen) struct_default_canonical_generic_args(args_ids []u32) []u32 {
+	mut canonical := []u32{cap: args_ids.len}
+	for arg in args_ids {
+		canonical << g.struct_default_canonical_type_text(arg, g.tc.cur_module, g.tc.cur_file)
 	}
 	return canonical
 }
@@ -2984,10 +2988,12 @@ fn (mut g FlatGen) gen_recursive_default_sum_value(sum_type types.SumType, mut s
 		g.write('(${ct}){0}')
 		return
 	}
-	variants := g.tc.sum_types.get(sum_name) or {
-		g.write('(${ct}){0}')
-		return
-	}
+	variants := flat.TypeTextList{
+		ids: g.tc.sum_types.type_ids(sum_name) or {
+			g.write('(${ct}){0}')
+			return
+		}
+	}.names()
 	if variants.len == 0 {
 		g.write('(${ct}){0}')
 		return
@@ -3059,7 +3065,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 			return
 		}
 		sum_name := g.resolve_sum_name(clean_typ.name())
-		variants := g.tc.sum_types.get(sum_name) or { []string{} }
+		variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { []u32{} } }.names()
 		if variants.len > 0 {
 			variant := variants[0]
 			variant_type := select_receive_unalias_type(g.tc.parse_type(flat.source_type_id(variant)))
@@ -4021,7 +4027,7 @@ fn (mut g FlatGen) collect_shared_type_names() {
 			g.collect_generic_shared_type_names(info)
 			continue
 		}
-		g.collect_shared_type_names_from_info(info, []string{})
+		g.collect_shared_type_names_from_info(info, []u32{})
 	}
 	g.collect_local_shared_type_names()
 	g.tc.cur_module = old_module
@@ -4115,7 +4121,7 @@ fn (mut g FlatGen) collect_generic_shared_type_names(info StructDeclInfo) {
 		if !ok || !shared_generic_base_matches_decl(base, info) {
 			continue
 		}
-		g.collect_shared_type_names_from_info(info, args)
+		g.collect_shared_type_names_from_info(info, flat.TypeTextList.from_names(args).ids)
 	}
 }
 
@@ -4135,7 +4141,8 @@ fn struct_decl_has_shared_fields(a &flat.FlatAst, node flat.Node) bool {
 	return false
 }
 
-fn (mut g FlatGen) collect_shared_type_names_from_info(info StructDeclInfo, args []string) {
+fn (mut g FlatGen) collect_shared_type_names_from_info(info StructDeclInfo, args_ids []u32) {
+	args := flat.TypeTextList{ ids: args_ids }.names()
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
 		if field.kind != .field_decl {
@@ -7138,11 +7145,13 @@ fn (mut g FlatGen) struct_decls() {
 			cn := g.cname(name)
 			mut can_emit_sum := true
 			if g.tc.sum_types.contains(name) {
-				for v in g.tc.sum_types.value(name) {
+				for v_source_id_2 in g.tc.sum_types.type_ids(name) or { []u32{} } {
+					v := flat.source_type_name(v_source_id_2)
+
 					if g.variant_references_sum(v, name) {
 						continue
 					}
-					vt := g.tc.parse_type(flat.source_type_id(v))
+					vt := g.tc.parse_type(v_source_id_2)
 					if vt is types.SumType {
 						if vt.name() in sum_remaining {
 							can_emit_sum = false
@@ -7163,7 +7172,7 @@ fn (mut g FlatGen) struct_decls() {
 				}
 			}
 			if can_emit_sum {
-				g.emit_sum_option_typedefs(g.tc.sum_types.value(name))
+				g.emit_sum_option_typedefs((g.tc.sum_types.type_ids(name) or { []u32{} }).clone())
 				g.emit_sum_type(name)
 				emitted[cn] = true
 				remaining_cnames.delete(cn)
@@ -7972,10 +7981,12 @@ fn (mut g FlatGen) emit_struct_option_typedefs(fields []types.StructField) {
 	}
 }
 
-fn (mut g FlatGen) emit_sum_option_typedefs(variants []string) {
+fn (mut g FlatGen) emit_sum_option_typedefs(variants_ids []u32) {
 	mut wrote := false
-	for variant in variants {
-		wrote = g.emit_option_typedefs_for_type(g.tc.parse_type(flat.source_type_id(variant))) || wrote
+	for variant_source_id in variants_ids {
+		variant_source_id_3 := variant_source_id
+
+		wrote = g.emit_option_typedefs_for_type(g.tc.parse_type(variant_source_id_3)) || wrote
 	}
 	if wrote {
 		g.writeln('')

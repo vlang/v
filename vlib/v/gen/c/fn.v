@@ -10014,10 +10014,12 @@ fn (g &FlatGen) specialized_interface_name_for_method_call(node flat.Node, iface
 		}
 	}
 	decl_key := g.interface_method_signature_key(base, method) or { return iface_name }
-	param_types := g.tc.fn_param_type_texts.get(decl_key) or {
-		semantic := g.tc.fn_param_types[decl_key] or { return iface_name }
-		semantic.map(it.name())
-	}
+	param_types := flat.TypeTextList{
+		ids: g.tc.fn_param_type_texts.type_ids(decl_key) or {
+			semantic := g.tc.fn_param_types[decl_key] or { return iface_name }
+			flat.TypeTextList.from_names(semantic.map(it.name())).ids
+		}
+	}.names()
 	arg_count := node.children_count - 1
 	param_offset := if param_types.len == arg_count { -1 } else { 0 }
 	for i in 1 .. node.children_count {
@@ -13150,7 +13152,7 @@ fn (mut g FlatGen) inferred_generic_plain_fn_name_for_call(id flat.NodeId, node 
 	if generic_params.len == 0 {
 		return none
 	}
-	param_texts := g.tc.fn_param_type_texts.get(base) or { return none }
+	param_texts := flat.TypeTextList{ ids: g.tc.fn_param_type_texts.type_ids(base) or { return none } }.names()
 	mut inferred := map[string]string{}
 	// Contextual return types must win over default-typed literal arguments. In
 	// `fn values() []Vec2[f64] { return [vec2(1.0, 1.0)] }`, a large combined
@@ -13632,7 +13634,7 @@ fn (g &FlatGen) generic_call_return_type_text_for_inference(id flat.NodeId, node
 	if params.len == 0 {
 		return none
 	}
-	param_texts := g.tc.fn_param_type_texts.get(base) or { return none }
+	param_texts := flat.TypeTextList{ ids: g.tc.fn_param_type_texts.type_ids(base) or { return none } }.names()
 	mut inferred := map[string]string{}
 	g.infer_codegen_generic_call_type_args(node, base, param_texts, mut inferred)
 	mut args := []string{cap: params.len}
@@ -14423,8 +14425,8 @@ fn (g &FlatGen) type_is_reftype(typ types.Type, mut seen map[string]bool) bool {
 		return g.type_is_reftype(typ.elem_type, mut seen)
 	}
 	if typ is types.SumType {
-		for variant in g.tc.sum_types.get(typ.name()) or { []string{} } {
-			if g.type_is_reftype(g.tc.parse_type(flat.source_type_id(variant)), mut seen) {
+		for variant_source_id in g.tc.sum_types.type_ids(typ.name()) or { []u32{} } {
+			if g.type_is_reftype(g.tc.parse_type(variant_source_id), mut seen) {
 				return true
 			}
 		}
@@ -16291,7 +16293,7 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 	sum_type := actual as types.SumType
 	sum_name := sum_type.name()
 	variant := g.resolve_variant(sum_name, expected_type.name())
-	variants := g.tc.sum_types.get(sum_name) or { return false }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return false } }.names()
 	if variant !in variants {
 		return false
 	}

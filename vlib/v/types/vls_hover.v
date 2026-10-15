@@ -1437,7 +1437,9 @@ fn (tc &TypeChecker) vls_type_declaration(name string) ?string {
 		if key in tc.interface_names {
 			return 'interface ${short}'
 		}
-		if variants := tc.sum_types.get(key) {
+		if variants_source_ids := tc.sum_types.type_ids(key) {
+			variants := flat.TypeTextList{ ids: variants_source_ids }.names()
+
 			texts := variants.map(tc.vls_named_type_text(it))
 			return 'type ${short} = ${texts.join(' | ')}'
 		}

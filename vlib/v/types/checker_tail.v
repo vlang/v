@@ -849,7 +849,7 @@ fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected
 		return true
 	}
 	base := tc.sum_base_name(expected.name())
-	variants := tc.sum_types.get(base) or { return false }
+	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return false } }.names()
 	for variant in variants {
 		concrete := tc.concrete_sum_variant_name(expected.name(), variant)
 		if tc.generic_type_name_matches(actual.name(), concrete)
@@ -5863,7 +5863,7 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 		return
 	}
 	generic_params := tc.fn_generic_params[info.name] or { return }
-	param_texts := tc.fn_param_type_texts.get(info.name) or { return }
+	param_texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(info.name) or { return } }.names()
 	if generic_params.len == 0 {
 		return
 	}
@@ -7867,7 +7867,9 @@ fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op fl
 		}
 		SumType {
 			base := tc.sum_base_name(raw.name())
-			for variant in tc.sum_types.get(base) or { []string{} } {
+			for variant_source_id in tc.sum_types.type_ids(base) or { []u32{} } {
+				variant := flat.source_type_name(variant_source_id)
+
 				variant_type := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(raw.name(), variant)))
 				if tc.array_accessor_type_has_overloaded_operator(variant_type, semantic_op, mut seen) {
 					return true
@@ -7960,7 +7962,9 @@ fn (tc &TypeChecker) array_accessor_stringifier_can_run_user_code(typ Type, mut 
 		}
 		SumType {
 			base := tc.sum_base_name(clean.name())
-			for variant in tc.sum_types.get(base) or { return true } {
+			for variant_source_id_2 in tc.sum_types.type_ids(base) or { return true } {
+				variant := flat.source_type_name(variant_source_id_2)
+
 				variant_type := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(clean.name(), variant)))
 				if tc.array_accessor_stringifier_can_run_user_code(variant_type, mut seen) {
 					return true
@@ -8186,7 +8190,9 @@ fn (tc &TypeChecker) array_accessor_clone_can_run_user_code(typ Type, mut seen m
 			}
 			seen[typ.name()] = true
 			base := tc.sum_base_name(typ.name())
-			for variant in tc.sum_types.get(base) or { return true } {
+			for variant_source_id_3 in tc.sum_types.type_ids(base) or { return true } {
+				variant := flat.source_type_name(variant_source_id_3)
+
 				variant_type := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(typ.name(), variant)))
 				if tc.array_accessor_clone_can_run_user_code(variant_type, mut seen) {
 					return true
@@ -8896,7 +8902,7 @@ fn (tc &TypeChecker) sum_fn_variant_for_arg_count(typ Type, arg_count int) ?FnTy
 	}
 	clean_name := Type(clean).name()
 	base := tc.sum_base_name(clean_name)
-	variants := tc.sum_types.get(base) or { return none }
+	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return none } }.names()
 	for variant in variants {
 		concrete := tc.concrete_sum_variant_name(clean_name, variant)
 		variant_type := tc.parse_type(flat.source_type_id(concrete))
@@ -10786,7 +10792,7 @@ fn (mut tc TypeChecker) explicit_receiver_type_args(info CallInfo, receiver Type
 	mut pattern := info.name.all_before_last('.')
 	_, _, pattern_is_generic := generic_type_application_parts(pattern)
 	if !pattern_is_generic {
-		texts := tc.fn_param_type_texts.get(info.name) or { return type_args }
+		texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(info.name) or { return type_args } }.names()
 		if texts.len == 0 {
 			return type_args
 		}
@@ -10975,7 +10981,7 @@ fn (tc &TypeChecker) explicit_generic_concrete_arg_text(type_arg string) string 
 
 fn (tc &TypeChecker) explicit_generic_call_info(name string, has_receiver bool, type_args []string) ?CallInfo {
 	generic_params := tc.fn_generic_params[name] or { return none }
-	param_texts := tc.fn_param_type_texts.get(name) or { return none }
+	param_texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(name) or { return none } }.names()
 	if generic_params.len == 0 || type_args.len != generic_params.len {
 		return none
 	}
@@ -14113,7 +14119,9 @@ fn (tc &TypeChecker) sum_variant_with_private_field_inner(sum_name string, field
 		return none
 	}
 	visited[base] = true
-	for variant in tc.sum_types.get(base) or { []string{} } {
+	for variant_source_id_4 in tc.sum_types.type_ids(base) or { []u32{} } {
+		variant := flat.source_type_name(variant_source_id_4)
+
 		variant_type := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(sum_name, variant)))
 		target := unalias_type(variant_type)
 		if target is SumType {
@@ -16219,9 +16227,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				.string_literal, .string_interp] {
 			mut reference_name := call_argument_type_name(expected)
 			if !info.has_receiver {
-				if raw_params := tc.fn_param_type_texts.get(info.name) {
-					if param_idx < raw_params.len && raw_params[param_idx].len > 0 {
-						reference_name = raw_params[param_idx]
+				if raw_params_source_ids := tc.fn_param_type_texts.type_ids(info.name) {
+					if param_idx < raw_params_source_ids.len && flat.source_type_name(raw_params_source_ids[param_idx]).len > 0 {
+						reference_name = flat.source_type_name(raw_params_source_ids[param_idx])
 					}
 				}
 			}
@@ -16635,7 +16643,7 @@ fn (tc &TypeChecker) diagnostic_fntype_alias_display(typ Type) ?string {
 }
 
 fn (tc &TypeChecker) bare_generic_fntype_call_param_display(fn_name string, param_idx int) ?string {
-	param_texts := tc.fn_param_type_texts.get(fn_name) or { return none }
+	param_texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(fn_name) or { return none } }.names()
 	if param_idx < 0 || param_idx >= param_texts.len {
 		return none
 	}
@@ -18337,7 +18345,7 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		return info
 	}
 	generic_params := tc.fn_generic_params[info.name] or { return info }
-	param_texts := tc.fn_param_type_texts.get(info.name) or { return info }
+	param_texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(info.name) or { return info } }.names()
 	if generic_params.len == 0 || node.children_count == 0
 		|| (node.children_count == 1 && !info.has_receiver)
 		|| tc.call_has_explicit_generic_args(node) {
@@ -19028,7 +19036,7 @@ fn (mut tc TypeChecker) generic_interface_implementation_type_args(iface_name st
 		expected_key := tc.interface_method_signature_key(iface_name, method) or { continue }
 		actual_info := tc.generic_interface_inference_method(actual_name, method) or { continue }
 		expected_params := tc.fn_param_types[expected_key] or { []Type{} }
-		expected_param_texts := tc.fn_param_type_texts.get(expected_key) or { []string{} }
+		expected_param_texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(expected_key) or { []u32{} } }.names()
 		for i in 1 .. actual_info.params.len {
 			if i >= expected_params.len {
 				break

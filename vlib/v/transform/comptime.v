@@ -3969,8 +3969,8 @@ fn (mut t Transformer) collect_comptime_interface_field_metas(iface_name_id u32,
 		return
 	}
 	seen_ifaces[iface_name] = true
-	for embedded in t.tc.interface_embeds.get(iface_name) or { []string{} } {
-		t.collect_comptime_interface_field_metas(flat.source_type_id(embedded), mut seen_ifaces, mut seen_fields, mut metas)
+	for embedded_source_id in t.tc.interface_embeds.type_ids(iface_name) or { []u32{} } {
+		t.collect_comptime_interface_field_metas(embedded_source_id, mut seen_ifaces, mut seen_fields, mut metas)
 	}
 	decl_module := iface_name.all_before_last('.')
 	for field in t.tc.interface_fields[iface_name] or { []types.StructField{} } {

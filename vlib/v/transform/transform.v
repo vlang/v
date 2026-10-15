@@ -15901,12 +15901,13 @@ fn (mut t Transformer) try_lower_sum_shared_field_assign(node flat.Node) ?[]flat
 	if resolved := t.resolve_sum_name_from_c_name(sum_candidate) {
 		sum_candidate = resolved
 	}
-	variants := flat.TypeTextList{ ids: t.concrete_sum_variants_for_candidate(flat.source_type_id(sum_candidate)) }.names()
+	variants_source_ids := t.concrete_sum_variants_for_candidate(flat.source_type_id(sum_candidate)).clone()
+	variants := flat.TypeTextList{ ids: variants_source_ids }.names()
 	if variants.len == 0 {
 		return none
 	}
 	resolved_sum = sum_candidate
-	stmt := t.build_sum_shared_field_assign_chain(base, flat.source_type_id(sum_type), resolved_sum, variants, lhs.value, flat.source_type_id(field_type), rhs, node.op, 0, node.skip_ownership_drops())
+	stmt := t.build_sum_shared_field_assign_chain(base, flat.source_type_id(sum_type), flat.source_type_id(resolved_sum), variants_source_ids.clone(), lhs.value, flat.source_type_id(field_type), rhs, node.op, 0, node.skip_ownership_drops())
 	return t.with_pending_before(stmt)
 }
 
@@ -15999,8 +16000,8 @@ fn (t &Transformer) interface_field_type_name_inner(iface_name_id u32, field_nam
 		return none
 	}
 	seen[iface_name] = true
-	for embed in t.tc.interface_embeds.get(iface_name) or { []string{} } {
-		if field_type_source_id := t.interface_field_type_name_inner(flat.source_type_id(embed), field_name, mut seen) {
+	for embed_source_id in t.tc.interface_embeds.type_ids(iface_name) or { []u32{} } {
+		if field_type_source_id := t.interface_field_type_name_inner(embed_source_id, field_name, mut seen) {
 			field_type_source_id_2 := field_type_source_id
 
 			return field_type_source_id_2
@@ -16245,29 +16246,31 @@ fn (t &Transformer) struct_field_path_for_field_inner(struct_type_id u32, field 
 }
 
 // build_sum_shared_field_assign_chain supports build_sum_shared_field_assign_chain handling.
-fn (mut t Transformer) build_sum_shared_field_assign_chain(base flat.NodeId, sum_type_id u32, resolved_sum string, variants []string, field string, field_type_id u32, rhs flat.NodeId, op flat.Op, idx int, skip_ownership_drops bool) flat.NodeId {
+fn (mut t Transformer) build_sum_shared_field_assign_chain(base flat.NodeId, sum_type_id u32, resolved_sum_id u32, variants_ids []u32, field string, field_type_id u32, rhs flat.NodeId, op flat.Op, idx int, skip_ownership_drops bool) flat.NodeId {
 	sum_type_shape := flat.source_type_shape(sum_type_id)
 
-	if idx >= variants.len {
+	if idx >= variants_ids.len {
 		return t.make_empty()
 	}
-	variant := variants[idx]
+	variant_source_id_9 := variants_ids[idx]
+
 	tag := t.make_sum_tag_selector(base, if sum_type_shape.has(.pointer) {
 		.arrow
 	} else {
 		.dot
 	})
-	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(flat.source_type_id(resolved_sum), flat.source_type_id(variant))))
-	qv_source_id := t.resolve_variant(flat.source_type_id(resolved_sum), flat.source_type_id(variant))
+	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(resolved_sum_id, variant_source_id_9)))
+	qv_source_id := t.resolve_variant(resolved_sum_id, variant_source_id_9)
 	qv_source_id_2 := qv_source_id
-	qv := flat.source_type_name(qv_source_id_2)
+
 	sum_field := t.sum_field_name(qv_source_id_2)
-	use_ptr := t.variant_references_sum(qv_source_id_2, flat.source_type_id(resolved_sum)) && !t.sum_variant_is_direct_pointer(qv_source_id_2)
-	variant_base := t.make_selector_op(base, sum_field, flat.source_type_id(if use_ptr {
-		'&${qv}'
+	use_ptr := t.variant_references_sum(qv_source_id_2, resolved_sum_id) && !t.sum_variant_is_direct_pointer(qv_source_id_2)
+	variant_type := if use_ptr {
+		flat.source_type_id('&' + flat.source_type_name(qv_source_id_2))
 	} else {
-		qv
-	}), if sum_type_shape.has(.pointer) {
+		qv_source_id_2
+	}
+	variant_base := t.make_selector_op(base, sum_field, variant_type, if sum_type_shape.has(.pointer) {
 		.arrow
 	} else {
 		.dot
@@ -16275,10 +16278,11 @@ fn (mut t Transformer) build_sum_shared_field_assign_chain(base flat.NodeId, sum
 	t.mark_generated_variant_access(variant_base, qv_source_id_2)
 	mut then_stmt := t.make_empty()
 	if nested_field_type_source_id := t.sum_shared_field_type_name(qv_source_id_2, field) {
-		nested_sum := flat.source_type_name(t.resolve_sum_name(qv_source_id))
-		if nested_variants := t.sum_types.get(nested_sum) {
-			nested_base_type := if use_ptr { '&${qv}' } else { qv }
-			then_stmt = t.build_sum_shared_field_assign_chain(variant_base, flat.source_type_id(nested_base_type), nested_sum, nested_variants, field, nested_field_type_source_id, rhs, op, 0, skip_ownership_drops)
+		nested_sum_source_id := t.resolve_sum_name(qv_source_id)
+		nested_sum := flat.source_type_name(nested_sum_source_id)
+		if nested_variants_source_ids := t.sum_types.type_ids(nested_sum) {
+			nested_base_type := variant_type
+			then_stmt = t.build_sum_shared_field_assign_chain(variant_base, nested_base_type, nested_sum_source_id, nested_variants_source_ids.clone(), field, nested_field_type_source_id, rhs, op, 0, skip_ownership_drops)
 		}
 	} else {
 		field_lhs := t.struct_field_selector_for_type(variant_base, qv_source_id_2, field, field_type_id, use_ptr) or {
@@ -16295,7 +16299,7 @@ fn (mut t Transformer) build_sum_shared_field_assign_chain(base flat.NodeId, sum
 		}
 	}
 	then_block := t.make_block([then_stmt])
-	else_stmt := t.build_sum_shared_field_assign_chain(base, sum_type_id, resolved_sum, variants, field, field_type_id, rhs, op, idx + 1, skip_ownership_drops)
+	else_stmt := t.build_sum_shared_field_assign_chain(base, sum_type_id, resolved_sum_id, variants_ids, field, field_type_id, rhs, op, idx + 1, skip_ownership_drops)
 	return t.make_if(cond, then_block, else_stmt)
 }
 
@@ -23987,10 +23991,12 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	if node.value == 'variant_types' {
 		if base_type_source_id := t.comptime_type_expr_type(base_id0) {
 			resolved := flat.source_type_name(t.resolve_sum_name(base_type_source_id))
-			if variants := t.sum_types.get(resolved) {
-				mut ids := []flat.NodeId{cap: variants.len}
-				for variant in variants {
-					ids << t.make_int_literal(t.comptime_field_type_id(flat.source_type_id(variant), t.cur_module))
+			if variants_source_ids := t.sum_types.type_ids(resolved) {
+				mut ids := []flat.NodeId{cap: variants_source_ids.len}
+				for variant_source_id in variants_source_ids {
+					variant_source_id_10 := variant_source_id
+
+					ids << t.make_int_literal(t.comptime_field_type_id(variant_source_id_10, t.cur_module))
 				}
 				return t.make_array_literal_typed(ids, flat.source_type_id('[]int'))
 			}
@@ -24513,45 +24519,48 @@ fn (mut t Transformer) lower_sum_shared_field_selector(base flat.NodeId, sum_typ
 	if resolved := t.resolve_sum_name_from_c_name(sum_candidate) {
 		sum_candidate = resolved
 	}
-	variants := flat.TypeTextList{ ids: t.concrete_sum_variants_for_candidate(flat.source_type_id(sum_candidate)) }.names()
+	variants_source_ids := t.concrete_sum_variants_for_candidate(flat.source_type_id(sum_candidate)).clone()
+	variants := flat.TypeTextList{ ids: variants_source_ids }.names()
 	if variants.len == 0 {
 		return base
 	}
 	resolved_sum = sum_candidate
-	return t.build_sum_shared_field_chain(base, sum_type_id, resolved_sum, variants, field, field_type_id, 0)
+	return t.build_sum_shared_field_chain(base, sum_type_id, flat.source_type_id(resolved_sum), variants_source_ids.clone(), field, field_type_id, 0)
 }
 
 // build_sum_shared_field_chain builds sum shared field chain data for transform.
-fn (mut t Transformer) build_sum_shared_field_chain(base flat.NodeId, sum_type_id u32, resolved_sum string, variants []string, field string, field_type_id u32, idx int) flat.NodeId {
+fn (mut t Transformer) build_sum_shared_field_chain(base flat.NodeId, sum_type_id u32, resolved_sum_id u32, variants_ids []u32, field string, field_type_id u32, idx int) flat.NodeId {
 	sum_type_shape_2 := flat.source_type_shape(sum_type_id)
 
-	if idx >= variants.len {
+	if idx >= variants_ids.len {
 		return t.zero_value_for_type(field_type_id)
 	}
-	variant := variants[idx]
+	variant_source_id_11 := variants_ids[idx]
+
 	tag := t.make_sum_tag_selector(base, if sum_type_shape_2.has(.pointer) {
 		.arrow
 	} else {
 		.dot
 	})
-	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(flat.source_type_id(resolved_sum), flat.source_type_id(variant))))
-	qv_source_id_3 := t.resolve_variant(flat.source_type_id(resolved_sum), flat.source_type_id(variant))
-	qv := flat.source_type_name(qv_source_id_3)
+	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(resolved_sum_id, variant_source_id_11)))
+	qv_source_id_3 := t.resolve_variant(resolved_sum_id, variant_source_id_11)
+
 	sum_field := t.sum_field_name(qv_source_id_3)
-	use_ptr := t.variant_references_sum(qv_source_id_3, flat.source_type_id(resolved_sum)) && !t.sum_variant_is_direct_pointer(qv_source_id_3)
-	variant_base := t.make_selector_op(base, sum_field, flat.source_type_id(if use_ptr {
-		'&${qv}'
+	use_ptr := t.variant_references_sum(qv_source_id_3, resolved_sum_id) && !t.sum_variant_is_direct_pointer(qv_source_id_3)
+	variant_type := if use_ptr {
+		flat.source_type_id('&' + flat.source_type_name(qv_source_id_3))
 	} else {
-		qv
-	}), if sum_type_shape_2.has(.pointer) {
+		qv_source_id_3
+	}
+	variant_base := t.make_selector_op(base, sum_field, variant_type, if sum_type_shape_2.has(.pointer) {
 		.arrow
 	} else {
 		.dot
 	})
 	t.mark_generated_variant_access(variant_base, qv_source_id_3)
 	value := if _ := t.sum_shared_field_type_name(qv_source_id_3, field) {
-		nested_base_type := if use_ptr { '&${qv}' } else { qv }
-		t.lower_sum_shared_field_selector(variant_base, flat.source_type_id(nested_base_type), field, field_type_id)
+		nested_base_type := variant_type
+		t.lower_sum_shared_field_selector(variant_base, nested_base_type, field, field_type_id)
 	} else {
 		t.struct_field_selector_for_type(variant_base, qv_source_id_3, field, field_type_id, use_ptr) or {
 			t.make_selector_op(variant_base, field, field_type_id, if use_ptr {
@@ -24562,7 +24571,7 @@ fn (mut t Transformer) build_sum_shared_field_chain(base flat.NodeId, sum_type_i
 		}
 	}
 	then_block := t.make_block([t.make_expr_stmt(value)])
-	else_expr := t.build_sum_shared_field_chain(base, sum_type_id, resolved_sum, variants, field, field_type_id, idx + 1)
+	else_expr := t.build_sum_shared_field_chain(base, sum_type_id, resolved_sum_id, variants_ids, field, field_type_id, idx + 1)
 	else_block := t.make_block([t.make_expr_stmt(else_expr)])
 	start := t.a.children.len
 	t.a.children << cond
@@ -25653,7 +25662,7 @@ fn (t &Transformer) sum_has_variant_field(sum_type_id u32, field string) bool {
 	sum_type := flat.source_type_name(sum_type_id)
 	clean_sum := if sum_type.starts_with('&') { sum_type[1..] } else { sum_type }
 	resolved_sum := flat.source_type_name(t.resolve_sum_name(flat.source_type_id(clean_sum)))
-	variants := t.sum_types.get(resolved_sum) or { return false }
+	variants := flat.TypeTextList{ ids: t.sum_types.type_ids(resolved_sum) or { return false } }.names()
 	for variant in variants {
 		if _ := t.sum_variant_field_type_name(flat.source_type_id(variant), field) {
 			return true
@@ -27317,7 +27326,7 @@ fn (t &Transformer) generated_variant_access_type(id flat.NodeId) ?u32 {
 				}
 				resolved_source_id_4 := t.resolve_variant(sum_type_source_id, flat.source_type_id(node.value))
 				resolved := flat.source_type_name(resolved_source_id_4)
-				variants := t.sum_types.get(sum_type) or { return none }
+				variants := flat.TypeTextList{ ids: t.sum_types.type_ids(sum_type) or { return none } }.names()
 				if resolved !in variants {
 					return none
 				}
@@ -27792,7 +27801,7 @@ fn (t &Transformer) sum_variant_name(sum_name_id u32, variant_id u32) ?u32 {
 		}
 	}
 	resolved_sum := flat.source_type_name(t.resolve_sum_name(sum_name_id))
-	variants := t.sum_types.get(resolved_sum) or { return none }
+	variants := flat.TypeTextList{ ids: t.sum_types.type_ids(resolved_sum) or { return none } }.names()
 	for v in variants {
 		if t.variant_names_match(flat.source_type_id(v), variant_id)
 			|| t.concrete_variant_matches_generic_pattern(flat.source_type_id(v), variant_id) {

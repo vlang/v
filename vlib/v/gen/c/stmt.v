@@ -1244,7 +1244,9 @@ fn (g &FlatGen) ownership_collect_drop_struct_names(typ types.Type, depth int, m
 		}
 		types.SumType {
 			sum_name := g.resolve_sum_name(typ.name())
-			for variant in g.tc.sum_types.get(sum_name) or { []string{} } {
+			for variant_source_id in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+				variant := flat.source_type_name(variant_source_id)
+
 				resolved_variant := g.resolve_variant(sum_name, variant)
 				variant_type := select_receive_unalias_type(g.tc.parse_type(flat.source_type_id(resolved_variant)))
 				if variant_type is types.Pointer {
@@ -1324,7 +1326,9 @@ fn (g &FlatGen) ownership_drop_type_reaches_recursive_struct(typ types.Type, tar
 		}
 		types.SumType {
 			sum_name := g.resolve_sum_name(typ.name())
-			for variant in g.tc.sum_types.get(sum_name) or { []string{} } {
+			for variant_source_id_2 in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+				variant := flat.source_type_name(variant_source_id_2)
+
 				resolved_variant := g.resolve_variant(sum_name, variant)
 				variant_type := select_receive_unalias_type(g.tc.parse_type(flat.source_type_id(resolved_variant)))
 				if variant_type is types.Pointer {
@@ -1614,7 +1618,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 		}
 		types.SumType {
 			sum_name := g.resolve_sum_name(typ.name())
-			variants := g.tc.sum_types.get(sum_name) or { []string{} }
+			variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { []u32{} } }.names()
 			g.writeln('switch ((${expr}).typ) {')
 			for variant in variants {
 				resolved_variant := g.resolve_variant(sum_name, variant)
@@ -1870,8 +1874,10 @@ fn (g &FlatGen) ownership_type_needs_drop(typ types.Type, depth int) bool {
 				|| g.ownership_type_needs_drop(typ.value_type, depth + 1)
 		}
 		types.SumType {
-			for variant in g.tc.sum_types.get(g.resolve_sum_name(typ.name())) or { []string{} } {
-				if g.ownership_type_needs_drop(g.tc.parse_type(flat.source_type_id(variant)), depth + 1) {
+			for variant_source_id_3 in g.tc.sum_types.type_ids(g.resolve_sum_name(typ.name())) or { []u32{} } {
+				variant_source_id_4 := variant_source_id_3
+
+				if g.ownership_type_needs_drop(g.tc.parse_type(variant_source_id_4), depth + 1) {
 					return true
 				}
 			}
@@ -2621,7 +2627,7 @@ fn (mut g FlatGen) gen_select_receive_sum_value(expr string, actual types.Type, 
 	}
 	sum_type := sum_type0 as types.SumType
 	sum_name := g.resolve_sum_name(sum_type.name())
-	variants := g.tc.sum_types.get(sum_name) or { return false }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return false } }.names()
 	mut actual_type := raw_actual
 	mut variant := g.resolve_variant(sum_name, actual_type.name())
 	if variant !in variants {
@@ -3874,7 +3880,7 @@ fn (g &FlatGen) consume_assert_value_type_budget(typ types.Type, mut budget Asse
 			if key in budget.stack {
 				return true
 			}
-			variants := g.tc.sum_types.get(name) or { return true }
+			variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(name) or { return true } }.names()
 			budget.remaining -= variants.len
 			if budget.remaining < 0 {
 				return false
@@ -7264,7 +7270,7 @@ fn (g &FlatGen) type_can_wrap_as_sum(actual types.Type, expected types.Type) boo
 	sum_type := expected0 as types.SumType
 	sum_name := g.resolve_sum_name(sum_type.name())
 	variant := g.resolve_variant(sum_name, actual0.name())
-	variants := g.tc.sum_types.get(sum_name) or { return false }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return false } }.names()
 	return variant in variants
 }
 

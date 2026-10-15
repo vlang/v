@@ -330,7 +330,7 @@ mut:
 	prepared            bool
 	ret_type            Type = builtin_void_type
 	ptypes              []Type
-	param_texts         []string
+	param_type_ids      []u32
 	shared_params       []bool
 	is_variadic         bool
 	is_c_variadic       bool
@@ -354,7 +354,7 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 		tc.parse_resolution_type(node.typ)
 	}
 	mut ptypes := []Type{}
-	mut param_texts := []string{}
+	mut param_type_ids := []u32{}
 	mut shared_params := []bool{}
 	mut is_variadic := false
 	mut is_c_variadic := false
@@ -368,14 +368,13 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 			continue
 		}
 		if ptypes.len == 0 && node.value.contains('.') && child.is_mut
-			&& !param_type_text_is_shared(child.typ_text()) {
+			&& !param_source_type_is_shared(child.typ) {
 			has_mut_receiver = true
 		}
 		param_type_source_id := child.typ
-		param_type := flat.source_type_name(param_type_source_id)
-		if param_type.starts_with('...') {
+		if flat.source_type_shape(param_type_source_id).has(.variadic) {
 			is_variadic = true
-			if param_type == '...' {
+			if flat.source_type_name(param_type_source_id) == '...' {
 				is_c_variadic = true
 			}
 		}
@@ -389,8 +388,8 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 		} else {
 			raw_parsed_param_type
 		}
-		param_texts << param_type
-		shared_params << param_type_text_is_shared(child.typ_text())
+		param_type_ids << param_type_source_id
+		shared_params << param_source_type_is_shared(child.typ)
 	}
 	has_forwardable_ctx := tc.fn_needs_implicit_veb_ctx(node)
 	ptypes = tc.fn_param_types_with_implicit_veb_ctx(node, ptypes)
@@ -399,7 +398,7 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 		prepared:            true
 		ret_type:            ret_type
 		ptypes:              ptypes
-		param_texts:         param_texts
+		param_type_ids:      param_type_ids
 		shared_params:       shared_params
 		is_variadic:         is_variadic
 		is_c_variadic:       is_c_variadic

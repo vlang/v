@@ -5445,7 +5445,9 @@ fn (tc &TypeChecker) interface_embedding_exceeds(iface_name string, depth int, m
 		return false
 	}
 	path[name] = true
-	for embed in tc.interface_embeds.get(name) or { []string{} } {
+	for embed_source_id in tc.interface_embeds.type_ids(name) or { []u32{} } {
+		embed := flat.source_type_name(embed_source_id)
+
 		if tc.interface_embedding_exceeds(embed, depth + 1, mut path) {
 			path.delete(name)
 			return true

@@ -388,13 +388,24 @@ fn test_struct_default_generic_args_preserve_caller_module() {
 		value: 'Local'
 	})
 
-	args := g.struct_default_canonical_generic_args(['Local', '&Local', 'fn (Local) Local'])
-	assert args == ['main.Local', '&main.Local', 'fn (main.Local) main.Local']
-	resolved := g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], flat.source_type_id(args[0]))
+	args := g.struct_default_canonical_generic_args(flat.TypeTextList.from_names([
+		'Local',
+		'&Local',
+		'fn (Local) Local',
+	]).ids)
+	assert args == flat.TypeTextList.from_names([
+		'main.Local',
+		'&main.Local',
+		'fn (main.Local) main.Local',
+	]).ids
+	resolved := g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], args[0])
 	assert resolved.name() == 'main.Local'
 	// Builtin types are never program types, even with a builtin struct entry.
 	tc.structs['string'] = []types.StructField{}
-	assert g.struct_default_canonical_generic_args(['string', '[]int']) == ['string', '[]int']
+	assert g.struct_default_canonical_generic_args(flat.TypeTextList.from_names([
+		'string',
+		'[]int',
+	]).ids) == flat.TypeTextList.from_names(['string', '[]int']).ids
 	// A bare field type of a `lib` struct still resolves in `lib` first, not to
 	// the program's same-named type.
 	lib_local := g.struct_default_field_type_text(g.struct_decl_infos['lib.Local'], flat.source_type_id('Local'))

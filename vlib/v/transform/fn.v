@@ -986,11 +986,11 @@ fn (t &Transformer) resolve_embedded_interface_declared_method_inner(iface_name_
 		return none
 	}
 	seen[name] = true
-	for embed in t.tc.interface_embeds.get(name) or { []string{} } {
-		if declared := t.declared_receiver_method(flat.source_type_id(embed), method) {
+	for embed_source_id in t.tc.interface_embeds.type_ids(name) or { []u32{} } {
+		if declared := t.declared_receiver_method(embed_source_id, method) {
 			return declared
 		}
-		if declared := t.resolve_embedded_interface_declared_method_inner(flat.source_type_id(embed), method,
+		if declared := t.resolve_embedded_interface_declared_method_inner(embed_source_id, method,
 			mut seen)
 		{
 			return declared
@@ -8320,9 +8320,11 @@ fn (mut t Transformer) stringify_expansion_estimate_at(typ_id u32, depth_left in
 	// suspenders against odd alias cycles).
 	t.str_expansion_memo[key] = 0
 	mut total := 6
-	if variants := t.sum_types.get(resolved_sum) {
-		for variant in variants {
-			total += 10 + t.stringify_expansion_estimate_at(flat.source_type_id(variant), depth_left - 1)
+	if variants_source_ids := t.sum_types.type_ids(resolved_sum) {
+		for variant_source_id in variants_source_ids {
+			variant_source_id_7 := variant_source_id
+
+			total += 10 + t.stringify_expansion_estimate_at(variant_source_id_7, depth_left - 1)
 		}
 	} else if info := t.lookup_struct_info(agg) {
 		for field in info.fields {
@@ -11291,7 +11293,7 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 fn (mut t Transformer) make_compiler_default_sum_clone_value(source flat.NodeId, sum_type_id u32) flat.NodeId {
 	resolved_sum_source_id := t.resolve_sum_name(sum_type_id)
 	resolved_sum := flat.source_type_name(resolved_sum_source_id)
-	variants := t.sum_types.get(resolved_sum) or { return source }
+	variants := flat.TypeTextList{ ids: t.sum_types.type_ids(resolved_sum) or { return source } }.names()
 	if variants.len == 0 {
 		return source
 	}
@@ -12382,8 +12384,10 @@ fn (mut t Transformer) mark_fixed_array_element_drops(typ_id u32, seen []string)
 	if t.is_sum_type_name(flat.source_type_id(clean)) {
 		resolved_source_id := t.resolve_sum_name(flat.source_type_id(clean))
 		resolved := flat.source_type_name(resolved_source_id)
-		for variant in t.sum_types.get(resolved) or { []string{} } {
-			t.mark_fixed_array_element_drops(t.resolve_variant(resolved_source_id, flat.source_type_id(variant)), visited)
+		for variant_source_id_6 in t.sum_types.type_ids(resolved) or { []u32{} } {
+			variant_source_id_8 := variant_source_id_6
+
+			t.mark_fixed_array_element_drops(t.resolve_variant(resolved_source_id, variant_source_id_8), visited)
 		}
 		return
 	}
@@ -18942,7 +18946,7 @@ fn (t &Transformer) generic_call_declared_return_type(id flat.NodeId, node flat.
 	if params.len == 0 {
 		return none
 	}
-	param_texts := t.tc.fn_param_type_texts.get(name) or { return none }
+	param_texts := flat.TypeTextList{ ids: t.tc.fn_param_type_texts.type_ids(name) or { return none } }.names()
 	if param_texts.len == 0 {
 		return none
 	}

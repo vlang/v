@@ -4372,7 +4372,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				}
 				ret_type := prep.ret_type
 				ptypes := prep.ptypes
-				param_texts := prep.param_texts
+				param_texts := prep.param_type_ids
 				shared_params := prep.shared_params
 				is_variadic := prep.is_variadic
 				is_c_variadic := prep.is_c_variadic
@@ -4395,8 +4395,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 					if has_mut_receiver {
 						tc.register_mut_receiver_method_with_lowered(qname, lowered_qname)
 					}
-					tc.register_fn_ret_type_text(qname, node.typ_text())
-					tc.register_fn_ret_type_text(lowered_qname, node.typ_text())
+					tc.register_fn_ret_type_text(qname, node.typ)
+					tc.register_fn_ret_type_text(lowered_qname, node.typ)
 					if tc.cur_module in ['', 'main', 'builtin'] && qname != node.value
 						&& node.value !in tc.fn_param_types {
 						tc.register_fn_signature_owned(node.value, lowered_source_name, ret_type, owned_ptypes, owned_shared_params, is_variadic, has_forwardable_ctx)
@@ -4406,8 +4406,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						if has_mut_receiver {
 							tc.register_mut_receiver_method_with_lowered(node.value, lowered_source_name)
 						}
-						tc.register_fn_ret_type_text(node.value, node.typ_text())
-						tc.register_fn_ret_type_text(lowered_source_name, node.typ_text())
+						tc.register_fn_ret_type_text(node.value, node.typ)
+						tc.register_fn_ret_type_text(lowered_source_name, node.typ)
 					}
 				} else {
 					tc.register_fn_signature(qname, ret_type, ptypes, shared_params, is_variadic, has_forwardable_ctx)
@@ -4417,8 +4417,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 					if has_mut_receiver {
 						tc.register_mut_receiver_method(qname)
 					}
-					tc.register_fn_ret_type_text(qname, node.typ_text())
-					tc.register_fn_ret_type_text(tc.cached_c_name(qname), node.typ_text())
+					tc.register_fn_ret_type_text(qname, node.typ)
+					tc.register_fn_ret_type_text(tc.cached_c_name(qname), node.typ)
 					if tc.cur_module in ['', 'main', 'builtin'] && qname != node.value
 						&& node.value !in tc.fn_param_types {
 						tc.register_fn_signature(node.value, ret_type, ptypes, shared_params, is_variadic, has_forwardable_ctx)
@@ -4428,8 +4428,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						if has_mut_receiver {
 							tc.register_mut_receiver_method(node.value)
 						}
-						tc.register_fn_ret_type_text(node.value, node.typ_text())
-						tc.register_fn_ret_type_text(tc.cached_c_name(node.value), node.typ_text())
+						tc.register_fn_ret_type_text(node.value, node.typ)
+						tc.register_fn_ret_type_text(tc.cached_c_name(node.value), node.typ)
 					}
 				}
 				// A generic struct method (`Box[T].clone`) keeps its original signature
@@ -4442,7 +4442,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						if name != qname && tc.cur_module !in ['', 'main', 'builtin'] {
 							continue
 						}
-						tc.fn_param_type_texts.set(name, param_texts.clone())
+						tc.fn_param_type_texts.set_ids(name, param_texts)
 						tc.fn_type_files[name] = tc.cur_file
 						tc.fn_type_modules[name] = tc.cur_module
 						if node.generic_params().len > 0
@@ -4586,6 +4586,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 			}
 			.interface_decl {
 				iface_name := tc.qualify_decl_name(node.value)
+				iface_type_id := flat.source_type_id(iface_name)
 				iface_generic_params := node.generic_params()
 				for i in 0 .. node.children_count {
 					f := a.child_node(node_ref, i)
@@ -4603,13 +4604,13 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 							tc.parse_type(f.typ)
 						}
 						mut ptypes := []Type{}
-						mut param_texts := []string{}
+						mut param_texts := []u32{}
 						mut shared_params := []bool{}
 						mut param_mutability := [f.is_mut]
 						mut is_variadic := false
 						ptypes << Type(Pointer{
 							base_type: Type(Interface{
-								name_id: flat.source_type_id(iface_name)
+								name_id: iface_type_id
 							})
 						})
 						shared_params << false
@@ -4634,8 +4635,8 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 							} else {
 								parsed_param_type
 							}
-							param_texts << child.typ_text()
-							shared_params << param_type_text_is_shared(child.typ_text())
+							param_texts << child.typ
+							shared_params << param_source_type_is_shared(child.typ)
 							param_mutability << child.is_mut
 						}
 						tc.register_fn_name_alias(mname, ret_type, ptypes, shared_params, is_variadic, false)
@@ -4644,9 +4645,9 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 							tc.register_mut_receiver_method(mname)
 						}
 						if iface_generic_params.len > 0 {
-							tc.register_fn_ret_type_text(mname, f.typ_text())
-							tc.fn_param_type_texts.set(mname, [iface_name])
-							tc.fn_param_type_texts.append(mname, param_texts)
+							tc.register_fn_ret_type_text(mname, f.typ)
+							tc.fn_param_type_texts.set_ids(mname, [iface_type_id])
+							tc.fn_param_type_texts.append_ids(mname, param_texts)
 						}
 					} else if f.typ != 0 {
 						mut fields := tc.interface_fields[iface_name] or { []StructField{} }
@@ -4657,9 +4658,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						}
 						tc.interface_fields[iface_name] = fields
 					} else if f.value.len > 0 {
-						mut embeds := tc.interface_embeds.get(iface_name) or { []string{} }
-						embeds << tc.qualify_name(f.value)
-						tc.interface_embeds.set(iface_name, embeds)
+						tc.interface_embeds.append_ids(iface_name, [flat.source_type_id(tc.qualify_name(f.value))])
 					}
 				}
 			}
@@ -7887,15 +7886,15 @@ pub fn (mut tc TypeChecker) rebuild_fn_param_suffix_index() {
 	}
 }
 
-fn (mut tc TypeChecker) register_fn_ret_type_text(name string, text string) {
+fn (mut tc TypeChecker) register_fn_ret_type_text(name string, text_id u32) {
 	if tc.defer_fn_ancillary {
 		tc.fn_ret_text_registrations << FnTextRegistration{
 			name: name
-			text: flat.source_type_id(text)
+			text: text_id
 		}
 		return
 	}
-	tc.fn_ret_type_texts.set_id(name, flat.source_type_id(text))
+	tc.fn_ret_type_texts.set_id(name, text_id)
 }
 
 fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
@@ -13390,6 +13389,15 @@ fn (tc &TypeChecker) fn_shared_params_with_implicit_veb_ctx(node flat.Node, flag
 	return result
 }
 
+// param_source_type_is_shared inspects a source annotation without decoding unpadded text.
+fn param_source_type_is_shared(source_id u32) bool {
+	shape := flat.source_type_shape(source_id)
+	if !shape.has(.padded) {
+		return shape.has(.shared_type)
+	}
+	return param_type_text_is_shared(flat.source_type_name(source_id))
+}
+
 fn param_type_text_is_shared(raw string) bool {
 	return trimmed_space(raw).starts_with('shared ')
 }
@@ -15454,7 +15462,9 @@ fn (tc &TypeChecker) sum_type_reaches_sum(current string, target string, mut see
 		return false
 	}
 	seen[current_base] = true
-	for variant in tc.sum_types.get(current_base) or { []string{} } {
+	for variant_source_id in tc.sum_types.type_ids(current_base) or { []u32{} } {
+		variant := flat.source_type_name(variant_source_id)
+
 		variant_base := tc.sum_base_name(variant)
 		if tc.sum_types.contains(variant_base)
 			&& tc.sum_type_reaches_sum(variant_base, target_base, mut seen) {
@@ -15762,10 +15772,10 @@ fn (tc &TypeChecker) contextual_generic_sum_type_candidates(node_id flat.NodeId)
 	params := tc.sum_generic_params[base] or {
 		tc.sum_generic_params[qualified] or { return []string{} }
 	}
-	variants := tc.sum_types.get(base) or { tc.sum_types.get(qualified) or { return []string{} } }
+	variants := tc.sum_types.type_ids(base) or { tc.sum_types.type_ids(qualified) or { return []string{} } }
 	mut candidates := []string{cap: variants.len}
 	for variant in variants {
-		substituted := tc.substitute_generic_type(tc.parse_type(flat.source_type_id(variant)), args, params).name()
+		substituted := tc.substitute_generic_type(tc.parse_type(variant), args, params).name()
 		if substituted.len > 0 && substituted !in candidates {
 			candidates << substituted
 		}
@@ -18775,7 +18785,7 @@ fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Nod
 		return false
 	}
 	base := tc.sum_base_name(sum_name)
-	variants := tc.sum_types.get(base) or { return false }
+	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return false } }.names()
 	if variants.len == 0 {
 		return false
 	}

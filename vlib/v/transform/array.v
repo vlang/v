@@ -3194,7 +3194,7 @@ fn (t &Transformer) array_append_rhs_is_sum_array_variant(rhs_type_id u32, elem_
 	rhs_type := flat.source_type_name(rhs_type_id)
 
 	resolved_sum := flat.source_type_name(t.resolve_sum_name(elem_type_id))
-	variants := t.sum_types.get(resolved_sum) or { return false }
+	variants := flat.TypeTextList{ ids: t.sum_types.type_ids(resolved_sum) or { return false } }.names()
 	mut clean_rhs := trimmed_transform_text(rhs_type)
 	if clean_rhs.starts_with('...') {
 		clean_rhs = trimmed_transform_text(clean_rhs[3..])
@@ -3230,7 +3230,7 @@ fn (t &Transformer) array_append_literal_sum_array_variant_type(rhs_id flat.Node
 		return none
 	}
 	resolved_sum := flat.source_type_name(t.resolve_sum_name(elem_type_id))
-	variants := t.sum_types.get(resolved_sum) or { return none }
+	variants := flat.TypeTextList{ ids: t.sum_types.type_ids(resolved_sum) or { return none } }.names()
 	first_id := t.a.child(&node, 0)
 	mut first_type := trimmed_transform_text(flat.source_type_name(t.original_expr_type(first_id)))
 	if first_type.len == 0 || first_type in ['unknown', 'void'] {
@@ -3397,8 +3397,8 @@ fn (t &Transformer) array_append_interface_has_requirements(iface_name_id u32) b
 	if (t.tc.interface_fields[iface_name] or { []types.StructField{} }).len > 0 {
 		return true
 	}
-	for embed in t.tc.interface_embeds.get(iface_name) or { []string{} } {
-		if t.array_append_interface_has_requirements(flat.source_type_id(embed)) {
+	for embed_source_id in t.tc.interface_embeds.type_ids(iface_name) or { []u32{} } {
+		if t.array_append_interface_has_requirements(embed_source_id) {
 			return true
 		}
 	}

@@ -27,7 +27,7 @@ fn (mut t Transformer) transform_return_with_sumtype_wrap(id flat.NodeId, node f
 	child_id := t.a.child(&node, 0)
 	child := t.a.nodes[int(child_id)]
 	if child.kind == .struct_init && child.value.len > 0 {
-		variants := t.sum_types.value(t.cur_fn_ret_type_text())
+		variants := flat.TypeTextList{ ids: t.sum_types.type_ids(t.cur_fn_ret_type_text()) or { []u32{} } }.names()
 		for v in variants {
 			if v == child.value {
 				// This is a variant being returned as a sum type.

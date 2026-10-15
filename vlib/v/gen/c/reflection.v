@@ -657,9 +657,11 @@ fn (mut g FlatGen) gen_reflection_data() {
 	sum_names.sort()
 	for name in sum_names {
 		module_name := g.reflection_decl_module(name, .type_decl)
-		g.gen_reflection_type(name, module_name, 31, reflection_sum_type_info(g.tc.sum_types.get(name) or {
-			[]string{}
-		}, module_name), g.reflection_methods(reflection_type_key(name, module_name)), mut seen_ids)
+		g.gen_reflection_type(name, module_name, 31, reflection_sum_type_info(flat.TypeTextList{
+			ids: g.tc.sum_types.type_ids(name) or {
+				[]u32{}
+			}
+		}.names(), module_name), g.reflection_methods(reflection_type_key(name, module_name)), mut seen_ids)
 	}
 
 	mut interface_names := g.tc.interface_names.keys()

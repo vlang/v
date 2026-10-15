@@ -34,6 +34,7 @@ Numeric copies preserve identities without cloning spelling storage. Generic con
 `NodePayload` also use this list; `Node.generic_constraints()` supplies text to syntax consumers.
 
 `TypeTextListBindings` stores ordered lists of source IDs. `set_ids` copies a caller's list;
+`append_ids` copies additional entries, preserving their order and empty spellings.
 `type_ids` provides its numeric values for read-only use. `set` and `get` are spelling boundaries.
 Cloning copies both the map and numeric lists, preserving independent mutation in workers.
 `clone_owned` on either binding container also copies declaration keys into the current arena,

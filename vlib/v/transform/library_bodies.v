@@ -45,15 +45,17 @@ mut:
 
 // library_instance_needs_body reports whether a check clones the body of an
 // instance of a library generic for the type arguments `args`.
-fn (mut t Transformer) library_instance_needs_body(args []string) bool {
+fn (mut t Transformer) library_instance_needs_body(args_ids []u32) bool {
 	if !t.library_bodies.ready {
 		t.prepare_library_bodies()
 	}
 	if t.library_bodies.keep_all != '' {
 		return true
 	}
-	for arg in args {
-		if t.library_type_reaches_program(flat.source_type_id(arg)) {
+	for arg_source_id in args_ids {
+		arg_source_id_2 := arg_source_id
+
+		if t.library_type_reaches_program(arg_source_id_2) {
 			return true
 		}
 	}
@@ -295,8 +297,10 @@ fn (mut t Transformer) library_type_parts(text string) ?[]string {
 			parts << library_type_text(substitute_generic_type_text_with_params(field.typ.name(),
 				flat.TypeTextList.from_names(args).ids, params))
 		}
-	} else if variants := t.tc.sum_types.get(name) {
-		for variant in variants {
+	} else if variants_source_ids := t.tc.sum_types.type_ids(name) {
+		for variant_source_id in variants_source_ids {
+			variant := flat.source_type_name(variant_source_id)
+
 			parts << library_type_text(variant)
 		}
 	} else if target_source_id := t.tc.type_aliases.type_id(name) {

@@ -91,7 +91,7 @@ fn (tc &TypeChecker) named_variant_diagnostic(msg string, node flat.NodeId) stri
 // named_sum_variant_names returns the variant names of a sum type declared with
 // named variants, or an empty list for any other type.
 fn (tc &TypeChecker) named_sum_variant_names(sum_name string) []string {
-	variants := tc.sum_types.get(sum_name) or { return []string{} }
+	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(sum_name) or { return []string{} } }.names()
 	mut names := []string{cap: variants.len}
 	for variant in variants {
 		_, name := flat.decode_named_variant_type_name(variant) or { return []string{} }

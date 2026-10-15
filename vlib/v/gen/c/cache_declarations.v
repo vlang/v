@@ -484,8 +484,8 @@ fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[s
 			}
 		}
 		types.SumType {
-			for variant in g.tc.sum_types.get(typ.name()) or { []string{} } {
-				g.cache_require_declaration_type(g.tc.parse_type(flat.source_type_id(variant)), mut seen)
+			for variant_source_id in g.tc.sum_types.type_ids(typ.name()) or { []u32{} } {
+				g.cache_require_declaration_type(g.tc.parse_type(variant_source_id), mut seen)
 			}
 		}
 		types.Pointer, types.OptionType, types.ResultType, types.Alias {

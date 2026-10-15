@@ -276,7 +276,7 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 	} else {
 		*callee
 	}
-	param_texts := tc.fn_param_type_texts.get(target) or { []string{} }
+	param_texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(target) or { []u32{} } }.names()
 	mut first := 0
 	if method.kind == .selector && method.children_count > 0 {
 		if receiver := tc.vls_unconstrained_type(tc.a.child(&method, 0)) {

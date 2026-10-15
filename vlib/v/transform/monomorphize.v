@@ -3000,7 +3000,9 @@ fn (mut t Transformer) mark_interface_boxed_type(iface_name_id u32, concrete_typ
 	for iface_index < iface_names.len {
 		iface := iface_names[iface_index]
 		iface_index++
-		for embed in t.tc.interface_embeds.get(iface) or { []string{} } {
+		for embed_source_id in t.tc.interface_embeds.type_ids(iface) or { []u32{} } {
+			embed := flat.source_type_name(embed_source_id)
+
 			if embed !in iface_names {
 				iface_names << embed
 			}
@@ -4121,12 +4123,12 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl Gener
 	if !ok || args.len == 0 {
 		return
 	}
-	if variants := t.tc.sum_types.get(spec_name) {
-		t.sum_types.set(spec_name, variants)
+	if variants_source_ids := t.tc.sum_types.type_ids(spec_name) {
+		t.sum_types.set_ids(spec_name, variants_source_ids)
 		return
 	}
-	if variants := t.sum_types.get(spec_name) {
-		t.tc.sum_types.set(spec_name, variants)
+	if variants_source_ids := t.sum_types.type_ids(spec_name) {
+		t.tc.sum_types.set_ids(spec_name, variants_source_ids)
 		t.tc.register_short_type_name(spec_name)
 		return
 	}
@@ -4140,22 +4142,26 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl Gener
 	t.cur_file = decl.file
 	t.tc.cur_module = decl.module
 	t.tc.cur_file = decl.file
-	mut variants := []string{}
+	mut variants := []u32{}
 	mut seen_fields := map[string]bool{}
 	for i in 0 .. decl.node.children_count {
 		variant := t.a.child_node(&decl.node, i)
-		variant_type := substitute_generic_type_text_with_params(variant.value, scoped_args_source_ids, decl.node.generic_params())
-		parsed := t.tc.parse_resolution_type(flat.source_type_id(variant_type))
-		resolved_variant := if parsed is types.Unknown { variant_type } else { parsed.name() }
-		field_name := t.sum_field_name(flat.source_type_id(resolved_variant))
+		variant_type := flat.source_type_id(substitute_generic_type_text_with_params(variant.value, scoped_args_source_ids, decl.node.generic_params()))
+		parsed := t.tc.parse_resolution_type(variant_type)
+		resolved_variant := if parsed is types.Unknown {
+			variant_type
+		} else {
+			parsed.source_type_id()
+		}
+		field_name := t.sum_field_name(resolved_variant)
 		if field_name in seen_fields {
 			continue
 		}
 		seen_fields[field_name] = true
 		variants << resolved_variant
 	}
-	t.tc.sum_types.set(spec_name, variants)
-	t.sum_types.set(spec_name, variants)
+	t.tc.sum_types.set_ids(spec_name, variants)
+	t.sum_types.set_ids(spec_name, variants)
 	t.tc.register_short_type_name(spec_name)
 	if !isnil(t.sum_cache) {
 		t.sum_cache.entries.clear()
@@ -4666,7 +4672,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args_i
 	// ask for an instance of the program (see LibraryBodies).
 	library_clone := !isnil(t.tc) && t.tc.check_concrete_generic_bodies
 		&& decl.file !in t.tc.diagnostic_files
-	header_only := library_clone && !t.library_instance_needs_body(concrete_args)
+	header_only := library_clone && !t.library_instance_needs_body(concrete_args_source_ids.clone())
 	if library_clone {
 		t.tc.library_instances++
 		if header_only {
@@ -9694,10 +9700,12 @@ fn (t &Transformer) collect_specialization_main_types(typ_id u32, mut types_in_s
 			return
 		}
 	}
-	if variants := t.sum_types.get(struct_name) {
+	if variants_source_ids := t.sum_types.type_ids(struct_name) {
 		types_in_scope[struct_name] = true
-		for variant in variants {
-			t.collect_specialization_main_types(flat.source_type_id(variant), mut types_in_scope, mut seen)
+		for variant_source_id in variants_source_ids {
+			variant_source_id_2 := variant_source_id
+
+			t.collect_specialization_main_types(variant_source_id_2, mut types_in_scope, mut seen)
 		}
 		return
 	}
@@ -11554,9 +11562,11 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 		if node.value == 'variant_types' && t.selector_base_is_comptime_type_value(base_id) {
 			if concrete_source_id := t.generic_comptime_type_expr(base_id, args_ids) {
 				resolved := flat.source_type_name(t.resolve_sum_name(concrete_source_id))
-				if variants := t.sum_types.get(resolved) {
-					mut ids := []flat.NodeId{cap: variants.len}
-					for variant in variants {
+				if variants_source_ids := t.sum_types.type_ids(resolved) {
+					mut ids := []flat.NodeId{cap: variants_source_ids.len}
+					for variant_source_id in variants_source_ids {
+						variant := flat.source_type_name(variant_source_id)
+
 						ids << t.make_int_literal(t.comptime_field_type_id(flat.source_type_id(variant), t.cur_module))
 					}
 					return t.make_array_literal_typed(ids, flat.source_type_id('[]int'))

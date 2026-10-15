@@ -1583,7 +1583,7 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 					if _ := tc.sum_variant_type_for_pattern(subject_type.name(), pattern) {
 					} else {
 						base := tc.sum_base_name(subject_type.name())
-						raw_variants := tc.sum_types.get(base) or { []string{} }
+						raw_variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { []u32{} } }.names()
 						diagnostic_variants :=
 							raw_variants.map(tc.sum_variant_diagnostic_name(tc.concrete_sum_variant_name(subject_type.name(), it)))
 						mut variants := []string{cap: diagnostic_variants.len}
@@ -1945,7 +1945,7 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 		return
 	}
 	sum_subject := clean_subject as SumType
-	raw_variants := tc.sum_types.get(tc.sum_base_name(sum_subject.name())) or { return }
+	raw_variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(tc.sum_base_name(sum_subject.name())) or { return } }.names()
 	if raw_variants.len == 0 {
 		return
 	}
@@ -2053,7 +2053,7 @@ fn (tc &TypeChecker) sum_exhaustive_leaf_variants(sum_name string, depth int) []
 	if depth >= 16 {
 		return []string{}
 	}
-	raw_variants := tc.sum_types.get(tc.sum_base_name(sum_name)) or { return []string{} }
+	raw_variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(tc.sum_base_name(sum_name)) or { return []string{} } }.names()
 	mut leaves := []string{}
 	for raw_variant in raw_variants {
 		concrete := tc.concrete_sum_variant_name(sum_name, raw_variant)
@@ -2375,7 +2375,9 @@ fn (tc &TypeChecker) match_branch_tail_diagnostic_type(subject_key string, subje
 fn (tc &TypeChecker) type_name_is_direct_sum_variant(actual Type, expected SumType) bool {
 	actual_name := actual.name()
 	base := tc.sum_base_name(expected.name())
-	for variant in tc.sum_types.get(base) or { []string{} } {
+	for variant_source_id in tc.sum_types.type_ids(base) or { []u32{} } {
+		variant := flat.source_type_name(variant_source_id)
+
 		if actual_name == variant || short_type_name(actual_name) == short_type_name(variant) {
 			return true
 		}
@@ -4650,7 +4652,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	if clean_init_type is SumType && node.children_count == 0
 		&& !tc.node_is_in_translated_file(id) {
 		base := tc.sum_base_name(clean_init_type.name())
-		variants := tc.sum_types.get(base) or { []string{} }
+		variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { []u32{} } }.names()
 		if variants.len > 0 {
 			first_variant := tc.concrete_sum_variant_name(clean_init_type.name(), variants[0])
 			if first_struct := struct_type_from_type(unalias_type(tc.parse_type(flat.source_type_id(first_variant)))) {
@@ -7210,9 +7212,11 @@ fn (tc &TypeChecker) unknown_import_selector(node flat.Node) bool {
 // struct, from the shared index built after collect. Structs registered later
 // (monomorphization) miss the index and use the field walk directly.
 fn (tc &TypeChecker) struct_embed_receiver_names(struct_name string) []string {
-	return tc.struct_embed_receivers.get(struct_name) or {
-		tc.compute_struct_embed_receivers(struct_name)
-	}
+	return flat.TypeTextList{
+		ids: tc.struct_embed_receivers.type_ids(struct_name) or {
+			flat.TypeTextList.from_names(tc.compute_struct_embed_receivers(struct_name)).ids
+		}
+	}.names()
 }
 
 fn (tc &TypeChecker) compute_struct_embed_receivers(struct_name string) []string {
@@ -7534,7 +7538,7 @@ fn (tc &TypeChecker) lowered_sum_selector_type(sum SumType, field string) ?Type 
 	if field == 'typ' {
 		return builtin_int_type
 	}
-	variants := tc.sum_types.get(sum.name()) or { return none }
+	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(sum.name()) or { return none } }.names()
 	for variant in variants {
 		short := if variant.contains('.') { variant.all_after_last('.') } else { variant }
 		if field == variant || field == short || field == tc.cached_c_name(variant) {
@@ -7559,7 +7563,7 @@ fn (tc &TypeChecker) sum_shared_field_type_inner(sum_name string, field string, 
 	defer {
 		visited.delete(base)
 	}
-	variants := tc.sum_types.get(base) or { return none }
+	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return none } }.names()
 	if variants.len == 0 {
 		return none
 	}
@@ -7601,7 +7605,7 @@ fn (tc &TypeChecker) sum_unique_variant_field_type_inner(sum_name string, field 
 	defer {
 		visited.delete(base)
 	}
-	variants := tc.sum_types.get(base) or { return none }
+	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return none } }.names()
 	mut found := builtin_void_type
 	mut found_count := 0
 	for variant in variants {
@@ -7639,7 +7643,9 @@ fn (tc &TypeChecker) sum_type_contains_variant_seen(sum SumType, target Type, mu
 		return false
 	}
 	visited[base] = true
-	for variant in tc.sum_types.get(base) or { []string{} } {
+	for variant_source_id_2 in tc.sum_types.type_ids(base) or { []u32{} } {
+		variant := flat.source_type_name(variant_source_id_2)
+
 		concrete := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(sum.name(), variant)))
 		if concrete.name() == target.name()
 			|| (target is Alias && tc.type_compatible(concrete, target.base_type)) {
@@ -11636,7 +11642,7 @@ pub fn (tc &TypeChecker) named_type_implements_marker(concrete_name string, targ
 		candidates << name['main.'.len..]
 	}
 	for candidate in candidates {
-		impls := tc.struct_implements.get(candidate) or { continue }
+		impls := flat.TypeTextList{ ids: tc.struct_implements.type_ids(candidate) or { continue } }.names()
 		for impl_name in impls {
 			if interface_marker_matches(impl_name, target) {
 				return true
@@ -12040,7 +12046,9 @@ fn (tc &TypeChecker) collect_interfaces_in_type_structure(typ Type, mut seen map
 			}
 			seen[typ.name()] = true
 			base := tc.sum_base_name(typ.name())
-			for variant in tc.sum_types.get(base) or { []string{} } {
+			for variant_source_id_3 in tc.sum_types.type_ids(base) or { []u32{} } {
+				variant := flat.source_type_name(variant_source_id_3)
+
 				variant_type := tc.parse_type(flat.source_type_id(tc.concrete_sum_variant_name(typ.name(), variant)))
 				tc.collect_interfaces_in_type_structure(variant_type, mut seen, mut found)
 			}
@@ -12932,8 +12940,10 @@ pub fn (tc &TypeChecker) specialize_generic_factory_return(return_type_id u32, n
 	mut receiver_pattern := name.all_before_last('.')
 	_, _, pattern_is_generic := generic_type_application_parts(receiver_pattern)
 	if !pattern_is_generic {
-		if texts := tc.fn_param_type_texts.get(name) {
-			if texts.len > 0 { receiver_pattern = comptime_static_unwrap_type_text(texts[0]) }
+		if texts_source_ids := tc.fn_param_type_texts.type_ids(name) {
+			if texts_source_ids.len > 0 {
+				receiver_pattern = comptime_static_unwrap_type_text(flat.source_type_name(texts_source_ids[0]))
+			}
 		}
 	}
 	pattern_base, _, is_generic := generic_type_application_parts(receiver_pattern)
@@ -13119,7 +13129,9 @@ fn (tc &TypeChecker) interface_method_names_indexed(iface_name string, direct_me
 	}
 	seen[name] = true
 	mut methods := []string{}
-	for embed in tc.interface_embeds.get(name) or { []string{} } {
+	for embed_source_id in tc.interface_embeds.type_ids(name) or { []u32{} } {
+		embed := flat.source_type_name(embed_source_id)
+
 		for method in tc.interface_method_names_indexed(embed, direct_methods, mut seen) {
 			if method !in methods {
 				methods << method
@@ -13199,7 +13211,9 @@ fn (tc &TypeChecker) interface_abstract_method_names_inner(iface_name string, mu
 	}
 	seen[name] = true
 	mut methods := []string{}
-	for embed in tc.interface_embeds.get(name) or { []string{} } {
+	for embed_source_id_2 in tc.interface_embeds.type_ids(name) or { []u32{} } {
+		embed := flat.source_type_name(embed_source_id_2)
+
 		for method in tc.interface_abstract_method_names_inner(embed, mut seen) {
 			if method !in methods {
 				methods << method
@@ -13222,7 +13236,9 @@ fn (tc &TypeChecker) interface_method_names_inner(iface_name string, mut seen ma
 	}
 	seen[name] = true
 	mut methods := []string{}
-	for embed in tc.interface_embeds.get(name) or { []string{} } {
+	for embed_source_id_3 in tc.interface_embeds.type_ids(name) or { []u32{} } {
+		embed := flat.source_type_name(embed_source_id_3)
+
 		for method in tc.interface_method_names_inner(embed, mut seen) {
 			if method !in methods {
 				methods << method
@@ -13260,7 +13276,9 @@ pub fn (tc &TypeChecker) interface_method_signature_key(iface_name string, metho
 			return open_key
 		}
 	}
-	for embed in tc.interface_embeds.get(name) or { []string{} } {
+	for embed_source_id_4 in tc.interface_embeds.type_ids(name) or { []u32{} } {
+		embed := flat.source_type_name(embed_source_id_4)
+
 		if found := tc.interface_method_signature_key(embed, method) {
 			return found
 		}
@@ -13320,7 +13338,9 @@ fn (tc &TypeChecker) interface_field_list_inner(iface_name string, mut seen map[
 	seen[name] = true
 	mut fields := []StructField{}
 	mut field_indexes := map[string]int{}
-	for embed in tc.interface_embeds.get(name) or { []string{} } {
+	for embed_source_id_5 in tc.interface_embeds.type_ids(name) or { []u32{} } {
+		embed := flat.source_type_name(embed_source_id_5)
+
 		for field in tc.interface_field_list_inner(embed, mut seen) {
 			if idx := field_indexes[field.name] {
 				fields[idx] = field
@@ -14865,7 +14885,7 @@ fn (tc &TypeChecker) type_matches_sum(actual Type, expected Type) bool {
 			return true
 		}
 		base := tc.sum_base_name(expected.name())
-		variants := tc.sum_types.get(base) or { return false }
+		variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return false } }.names()
 		for variant in variants {
 			concrete := tc.concrete_sum_variant_name(expected.name(), variant)
 			variant_type := tc.parse_type(flat.source_type_id(concrete))
@@ -14912,7 +14932,7 @@ fn (tc &TypeChecker) sum_variant_type_for_pattern_depth(sum_name string, variant
 		return none
 	}
 	base := tc.sum_base_name(sum_name)
-	variants := tc.sum_types.get(base) or { return none }
+	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return none } }.names()
 	mut candidates := [variant_name]
 	qvariant := tc.qualify_name(variant_name)
 	if qvariant != variant_name {
@@ -15026,7 +15046,7 @@ fn (tc &TypeChecker) nested_sum_variant_type_for_pattern(concrete string, candid
 
 fn (tc &TypeChecker) match_sum_variant_type(subject Type, pattern string) ?Type {
 	if subject is SumType {
-		variants := tc.sum_types.get(subject.name()) or { return none }
+		variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(subject.name()) or { return none } }.names()
 		variant_short := short_type_name(pattern)
 		for variant in variants {
 			if variant == pattern || short_type_name(variant) == variant_short {
@@ -20002,9 +20022,11 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name_id u32, method 
 		sub_ret = tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_text(ret_text, concrete_args, params)))
 	}
 	mut sub_params := []Type{}
-	if param_texts := tc.fn_param_type_texts.get(generic_key) {
+	if param_texts_source_ids := tc.fn_param_type_texts.type_ids(generic_key) {
 		param_types := tc.fn_param_types[generic_key] or { []Type{} }
-		for i, pt in param_texts {
+		for i, pt_source_id in param_texts_source_ids {
+			pt := flat.source_type_name(pt_source_id)
+
 			receiver_clean := trimmed_space(pt).trim_left('&').trim_space()
 			receiver_base := if receiver_clean.contains('[') {
 				receiver_clean.all_before('[')
@@ -20345,8 +20367,10 @@ pub fn (tc &TypeChecker) resolve_generic_sum_method(type_name_id u32, method str
 		sub_ret = tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_text(ret_text, concrete_args, params)))
 	}
 	mut sub_params := []Type{}
-	if param_texts := tc.fn_param_type_texts.get(generic_key) {
-		for pt in param_texts {
+	if param_texts_source_ids := tc.fn_param_type_texts.type_ids(generic_key) {
+		for pt_source_id in param_texts_source_ids {
+			pt := flat.source_type_name(pt_source_id)
+
 			sub_params << tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_signature_param_text(pt, concrete_args, params)))
 		}
 	} else if ptypes := tc.fn_param_types[generic_key] {

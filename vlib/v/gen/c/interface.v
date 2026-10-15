@@ -7,7 +7,7 @@ import v.flat
 
 // emit_sum_type emits emit sum type output for c.
 fn (mut g FlatGen) emit_sum_type(name string) {
-	variants := g.tc.sum_types.value(name)
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(name) or { []u32{} } }.names()
 	g.writeln('struct ${g.cname(name)} {')
 	g.writeln('\tint typ;')
 	g.writeln('\tu32 _pointer_variant_is_owned;')
@@ -30,7 +30,9 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 // sum_type_contains_struct reports whether sum type contains struct applies in c.
 fn (g &FlatGen) sum_type_contains_struct(sum_name string, struct_name string) bool {
 	if g.tc.sum_types.contains(sum_name) {
-		for v in g.tc.sum_types.value(sum_name) {
+		for v_source_id in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+			v := flat.source_type_name(v_source_id)
+
 			if v == struct_name {
 				return true
 			}
@@ -96,20 +98,26 @@ fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
 
 fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
 	if g.tc.sum_types.contains(sum_name) {
-		for i, v in g.tc.sum_types.value(sum_name) {
+		for i, v_source_id_2 in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+			v := flat.source_type_name(v_source_id_2)
+
 			if v == variant {
 				return i + 1
 			}
 		}
 		resolved_variant := g.tc.qualify_name(variant)
 		if resolved_variant != variant {
-			for i, v in g.tc.sum_types.value(sum_name) {
+			for i, v_source_id_3 in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+				v := flat.source_type_name(v_source_id_3)
+
 				if v == resolved_variant {
 					return i + 1
 				}
 			}
 		}
-		for i, v in g.tc.sum_types.value(sum_name) {
+		for i, v_source_id_4 in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+			v := flat.source_type_name(v_source_id_4)
+
 			if v.all_after_last('.') == variant {
 				return i + 1
 			}
@@ -119,7 +127,9 @@ fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
 		// module-stripped spelling only when that spelling is unambiguous.
 		if variant.contains('.') || variant.contains('[') {
 			mut short_match := 0
-			for i, v in g.tc.sum_types.value(sum_name) {
+			for i, v_source_id_5 in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+				v := flat.source_type_name(v_source_id_5)
+
 				if short_module_type_texts_equal(v, variant) {
 					if short_match != 0 {
 						return 0
@@ -2938,7 +2948,7 @@ fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, m
 	defer {
 		stack.delete_last()
 	}
-	variants := g.tc.sum_types.get(sum_name) or { return none }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return none } }.names()
 	ct := g.tc.c_type(sum_type)
 	tmp := g.interface_tmp('iface_str_sum')
 	out := g.interface_tmp('iface_str_out')
