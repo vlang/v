@@ -11201,6 +11201,8 @@ pub fn run(args []string) {
 	// one OS, architecture or C compiler, so that a single generated snapshot
 	// (`vc/v.c`) bootstraps V everywhere. Generate against the host target and
 	// leave every target-dependent `$if` to the C preprocessor.
+	explicit_windows_target := target_os_explicit
+		&& pref.normalized_os(target_os.trim_space().to_lower()) == 'windows'
 	mut output_cross_c := cross_output
 	if pref.normalized_os(target_os.trim_space().to_lower()) == 'cross' {
 		output_cross_c = true
@@ -11588,7 +11590,7 @@ pub fn run(args []string) {
 			'termux', 'ios'] {
 		// Windows snapshots embed SDK-backed helpers, including the ACL and atomic
 		// compatibility surface. Other hosted snapshots use V-owned declarations.
-		if target.os != 'windows' {
+		if !explicit_windows_target {
 			record_user_define(mut user_defines, mut compile_values, 'v3_headerless_bootstrap')
 		}
 		// Keep the signal-context ABI out of portable compiler snapshots.
