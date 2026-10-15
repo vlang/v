@@ -343,6 +343,7 @@ mut:
 	comptime_reflected_for_roles  map[string]u8
 	comptime_reflected_for_ready  bool
 	call_param_types_decl_cache   map[int][]types.Type
+	packed_variadic_tail_types    map[int]u32
 	call_param_types_decl_misses  map[string]bool
 	call_param_types_decl_shared  bool
 	call_param_types_decl_index   map[string]FnParamDeclRef

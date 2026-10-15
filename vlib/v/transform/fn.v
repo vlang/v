@@ -1632,7 +1632,9 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 					break
 				}
 				if t.call_arg_is_packed_variadic_tail(arg_id, variadic_type) {
-					new_children << t.transform_expr(arg_id)
+					packed_arg := t.transform_expr(arg_id)
+					t.packed_variadic_tail_types[int(packed_arg)] = flat.source_type_id(t.semantic_type_name(variadic_type))
+					new_children << packed_arg
 					variadic_tail_supplied = true
 					i++
 					break
@@ -1759,6 +1761,9 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 fn (t &Transformer) call_arg_is_packed_variadic_tail(arg_id flat.NodeId, variadic_type types.Array) bool {
 	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
 		return false
+	}
+	if packed_type := t.packed_variadic_tail_types[int(arg_id)] {
+		return packed_type == flat.source_type_id(t.semantic_type_name(variadic_type))
 	}
 	arg := t.a.nodes[int(arg_id)]
 	// Source identifiers can legally use this prefix in translated code. Only
@@ -2265,13 +2270,9 @@ fn (mut t Transformer) transform_variadic_spread_arg_for_param(spread_id flat.No
 	if int(value) < 0 {
 		value = t.transform_call_arg_for_param(spread_id, param_type)
 	}
-	if t.in_const_init || t.call_arg_is_packed_variadic_tail(value, variadic_type) {
-		return value
-	}
 	// Preserve the packed tail when interpolation transforms this call again.
-	name := t.new_temp('varargs')
-	t.pending_stmts << t.make_decl_assign_typed(name, value, t.semantic_type_name(variadic_type))
-	return t.make_ident(name)
+	t.packed_variadic_tail_types[int(value)] = flat.source_type_id(t.semantic_type_name(variadic_type))
+	return value
 }
 
 fn (mut t Transformer) make_range_index(base flat.NodeId, start_id flat.NodeId, end_id flat.NodeId, typ string) flat.NodeId {
