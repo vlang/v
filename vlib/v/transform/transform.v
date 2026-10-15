@@ -584,6 +584,9 @@ mut:
 	// lower_remaining_matches_in_used_fns skips: that walk still has matches to
 	// lower in the bodies of the transform stage.
 	lowered_fn_bodies []bool
+	// match_lowered_fns[i] is set once lower_remaining_matches_in_used_fns has
+	// walked the body of the fn_decl at node id i; a later call skips it.
+	match_lowered_fns []bool
 	// mono_pass_state lets the next monomorphize_pass continue the last one.
 	mono_pass_state MonomorphPassState
 	// Shared-base (clone-free) parallel transform: all threads operate on views
@@ -29820,8 +29823,12 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 		} else {
 			indexed_nodes + scan_idx - indexed_count
 		}
-		if t.a.nodes[i].kind != .fn_decl {
+		if t.a.nodes[i].kind != .fn_decl
+			|| (i < t.match_lowered_fns.len && t.match_lowered_fns[i]) {
 			continue
+		}
+		if i >= t.match_lowered_fns.len {
+			t.match_lowered_fns << []bool{len: t.a.nodes.len - t.match_lowered_fns.len}
 		}
 		// Only candidate nodes need copies before AST rewriting.
 		node := t.a.nodes[i]
@@ -29829,12 +29836,17 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 			|| (i < t.transformed_fns.len && t.transformed_fns[i])
 			|| t.a.specialized_fn_nodes[i]
 			|| t.fn_decl_has_unresolved_generics(node, t.node_module_or(i, '')) {
+			// None of these changes before a later call.
+			t.match_lowered_fns[i] = true
 			continue
 		}
 		t.cur_module = t.node_module_or(i, '')
 		if !t.should_transform_fn(node) {
 			continue
 		}
+		// A walked body has no match left, and nothing later puts one back into
+		// it: specialization and late lowering append new declarations.
+		t.match_lowered_fns[i] = true
 		epoch++
 		for child_id in t.a.children_of(&node) {
 			t.lower_remaining_match_subtree(child_id, mut visited, epoch)
