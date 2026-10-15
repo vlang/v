@@ -14,6 +14,8 @@ Source annotations and dynamically resolved call types remain separate.
 Markused retains declared sum receivers by this identity and keys checked receiver-method
 lookups by numeric type and method indexes. Unresolved source spellings use their own indexes,
 so a semantic ID must not be substituted for a source-spelling ID.
+Markused passes source IDs through local type queries and binding accessors. Its receiver cache
+keeps source and semantic IDs in separate maps; method names remain strings.
 
 Nominal `Struct`, `Interface`, `Enum`, `SumType`, and `Alias` descriptors store their source
 identity in `name_id`, a `u32` assigned by `flat.source_type_id`. Use `name()` to resolve a
