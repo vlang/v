@@ -26,15 +26,27 @@ struct BorrowParamRef {
 // only turn one into borrowing, so the iteration ends; a recursive call through a parameter not
 // yet known to borrow leaves it escaping. Plain pointer parameters (`data &u8`) are summarised
 // as well as fixed-array ones, because that is what an element address `&a[i]` is handed to.
+//
+// Monomorphization starts from the summaries the transform stage computed before lowering and
+// summarises only the declarations appended since; a call into an earlier declaration borrows
+// as its summary says.
 fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	if isnil(t.tc) {
 		return
 	}
 	t.ensure_call_param_types_decl_index()
+	mut summarised := 0
+	if t.borrow_params_after_transform && t.tc.transform_borrow_node_count <= t.a.nodes.len {
+		summarised = t.tc.transform_borrow_node_count
+		for decl, summary in t.tc.transform_borrow_params {
+			t.fixed_array_borrow_params[decl] = summary
+		}
+	}
+	t.fixed_array_borrow_node_count = t.a.nodes.len
 	mut candidates := []BorrowCandidate{}
 	mut seen_decls := map[int]bool{}
 	for name, decl in t.call_param_types_decl_index {
-		if seen_decls[decl.idx] {
+		if decl.idx < summarised || seen_decls[decl.idx] {
 			continue
 		}
 		seen_decls[decl.idx] = true
@@ -77,8 +89,15 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 		if !t.fixed_array_param_body_borrows(c, mut dependencies) {
 			continue
 		}
-		remaining[i] = dependencies.len
+		remaining[i] = 0
 		for dependency in dependencies {
+			if dependency.decl < summarised {
+				if !t.fixed_array_borrow_summary(dependency) {
+					remaining[i] = -1
+					break
+				}
+				continue
+			}
 			indexes := candidate_index[dependency.decl] or { []int{} }
 			if dependency.index < 0 || dependency.index >= indexes.len
 				|| indexes[dependency.index] < 0 {
@@ -86,6 +105,7 @@ fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 				break
 			}
 			dependents[indexes[dependency.index]] << i
+			remaining[i]++
 		}
 		if remaining[i] == 0 {
 			queue << i
@@ -128,8 +148,12 @@ fn (mut t Transformer) fixed_array_param_body_borrows(c BorrowCandidate, mut dep
 
 fn (t &Transformer) fixed_array_call_param_borrows(name string, call flat.Node, index int) bool {
 	param := t.fixed_array_call_param_ref(name, call, index) or { return false }
+	return t.fixed_array_borrow_summary(param)
+}
+
+fn (t &Transformer) fixed_array_borrow_summary(param BorrowParamRef) bool {
 	summary := t.fixed_array_borrow_params[param.decl] or { return false }
-	return index >= 0 && index < summary.len && summary[index]
+	return param.index >= 0 && param.index < summary.len && summary[param.index]
 }
 
 fn (t &Transformer) fixed_array_call_param_ref(name string, call flat.Node, index int) ?BorrowParamRef {

@@ -984,6 +984,11 @@ pub mut:
 	transform_boxed_values     []bool
 	transform_boxed_skipped    []bool
 	transform_boxed_node_count int = -1
+	// The fixed-array borrow summaries the transform stage computed before
+	// lowering, keyed by fn_decl node, and the node count they cover, for the
+	// monomorphization stage to start from.
+	transform_borrow_params     map[int][]bool
+	transform_borrow_node_count int
 	// Methods used as *values* (`recv.method` passed as a callback), recorded per enclosing
 	// function during semantic checking — which has full scope/type info, runs before
 	// markused, and (unlike a call) routes a value-context selector through check_selector.

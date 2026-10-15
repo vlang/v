@@ -217,6 +217,11 @@ mut:
 	defer_pre_scan_indexes bool
 	// Fixed-array summaries can reuse the completed parameter pre-scan cache.
 	defer_fixed_array_borrow_prep bool
+	// fixed_array_borrow_node_count is the node count the summaries cover.
+	fixed_array_borrow_node_count int
+	// borrow_params_after_transform starts the summaries from the transform
+	// stage's (see prepare_fixed_array_borrow_params).
+	borrow_params_after_transform bool
 	// merge_regions_relocated marks worker regions as already id-relocated in
 	// place (parallel pass), so merge_worker compacts with plain memmoves.
 	merge_regions_relocated bool
@@ -1995,6 +2000,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	$if prealloc {
 		t.scope_parallel_workers = true
 	}
+	t.borrow_params_after_transform = after_transform
 	t.prepare()
 	if after_transform {
 		t.mark_used_fn_bodies_lowered()
@@ -4248,6 +4254,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 		t.collect_interface_boxed_types_dispatch(want_parallel)
 		t.hand_over_interface_boxed_types()
 	}
+	t.hand_over_fixed_array_borrow_params()
 	t.refresh_interface_impl_indexes_for_boxed_types()
 	t.timing_profile('  [ttime]   dsp boxed+iface  ${f64(dpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	if !want_parallel {
@@ -4321,6 +4328,23 @@ fn (mut t Transformer) hand_over_interface_boxed_types() {
 	t.tc.transform_boxed_values = values
 	t.tc.transform_boxed_skipped = t.interface_boxed_skip_nodes.clone()
 	t.tc.transform_boxed_node_count = t.a.nodes.len
+	transform_stage_scope_resume(t.stage_scope, state)
+}
+
+// hand_over_fixed_array_borrow_params keeps the summaries this stage computed
+// before lowering in the checker, outside the stage arena, for the
+// monomorphization stage to start from (see prepare_fixed_array_borrow_params).
+fn (mut t Transformer) hand_over_fixed_array_borrow_params() {
+	if isnil(t.tc) {
+		return
+	}
+	state := transform_stage_scope_suspend(t.stage_scope)
+	mut summaries := map[int][]bool{}
+	for decl, summary in t.fixed_array_borrow_params {
+		summaries[decl] = summary.clone()
+	}
+	t.tc.transform_borrow_params = summaries
+	t.tc.transform_borrow_node_count = t.fixed_array_borrow_node_count
 	transform_stage_scope_resume(t.stage_scope, state)
 }
 
