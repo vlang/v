@@ -117,7 +117,10 @@ fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous tok
 			if tokens[i].tok in [.rpar, .rsbr, .rcbr] {
 				depth++
 			} else if tokens[i].tok in [.lpar, .lsbr, .lcbr] {
-				if depth == 0 { start = i + 1; break }
+				if depth == 0 {
+					start = i + 1
+					break
+				}
 				depth--
 			} else if depth == 0 && (tokens[i].tok.is_assignment()
 				|| tokens[i].tok in [.colon, .comma, .and, .logical_or, .key_return]) {
