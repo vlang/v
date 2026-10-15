@@ -26,6 +26,7 @@ fn (mut g FlatGen) headerless_compiler_runtime_helpers() {
 		'v_os_execute_capture_start', 'v_os_exec_capture_start', 'v_os_exec_capture_input_start',
 		'v_os_fd_write_all'])
 	g.headerless_compiler_platform_helpers()
+	g.bootstrap_windows_runtime_helpers()
 }
 
 const headerless_compiler_pthread_helpers = r'
