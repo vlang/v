@@ -1083,7 +1083,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 			net.socket_error(res)!
 			return error_with_code('net.mbedtls select, failed, res: ${res}', C.errno)
 		} else if res == 0 {
-			return net.err_timed_out
+			return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 		}
 
 		res = C.FD_ISSET(handle, &set)
@@ -1093,7 +1093,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		return res != 0
 	}
 
-	return net.err_timed_out
+	return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 }
 
 // wait_for wraps the common wait code
@@ -1103,7 +1103,7 @@ fn wait_for(handle int, what Select, timeout time.Duration) ! {
 		return
 	}
 
-	return net.err_timed_out
+	return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 }
 
 // wait_for_write waits for a write io operation to be available. Pure

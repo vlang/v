@@ -419,10 +419,10 @@ fn (mut s StreamSocket) set_option(level int, opt int, value int) ! {
 // set_option_bool sets a boolean option on the socket
 pub fn (mut s StreamSocket) set_option_bool(opt net.SocketOption, value bool) ! {
 	if opt !in net.opts_can_set {
-		return net.err_option_not_settable
+		return error_with_code(net.err_option_not_settable.msg(), net.err_option_not_settable.code())
 	}
 	if opt !in net.opts_bool {
-		return net.err_option_wrong_type
+		return error_with_code(net.err_option_wrong_type.msg(), net.err_option_wrong_type.code())
 	}
 	x := int(value)
 	s.set_option(C.SOL_SOCKET, int(opt), x)!
@@ -477,7 +477,7 @@ fn (mut s StreamSocket) connect(socket_path string) ! {
 					}
 					return
 				}
-				return net.err_timed_out
+				return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 			}
 		}
 		net.wrap_error(ecode)!
