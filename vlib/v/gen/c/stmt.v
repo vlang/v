@@ -6820,17 +6820,18 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 			if typ := g.current_param_type(node.value) {
 				return typ
 			}
-			if typ := g.tc.expr_type(id) {
-				if typ !is types.Unknown && typ !is types.Void
-					&& !g.type_contains_generic_placeholder(typ) {
-					return typ
-				}
-			}
 			// A global's C declaration follows its registered storage type. Its
 			// lowered annotation can name a different view (`&[3]int` for storage
 			// declared as `int*`), so indexing must not switch to that view.
+			// Reannotation can also retain the type of a same-named guard local.
 			if !g.ident_is_local_binding(node.value) {
 				if typ := g.global_type_for_ident(node.value) {
+					return typ
+				}
+			}
+			if typ := g.tc.expr_type(id) {
+				if typ !is types.Unknown && typ !is types.Void
+					&& !g.type_contains_generic_placeholder(typ) {
 					return typ
 				}
 			}

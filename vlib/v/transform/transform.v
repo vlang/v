@@ -18962,7 +18962,7 @@ fn (mut t Transformer) expand_multi_return_if_assign(rhs_id flat.NodeId, rhs fla
 	if !t.if_expr_has_tuple_tail_values(rhs_id, lhs_ids.len) {
 		return none
 	}
-	return t.lower_multi_if_assign(rhs, lhs_ids)
+	return t.lower_multi_if_assign(rhs, GuardReturnTail{ assign_lhs_ids: lhs_ids })
 }
 
 fn (mut t Transformer) expand_multi_return_match_decl(rhs_id flat.NodeId, rhs flat.Node, lhs_ids []flat.NodeId) ?[]flat.NodeId {
@@ -19200,13 +19200,29 @@ fn (t &Transformer) branch_has_tuple_tail_values(branch_id flat.NodeId, count in
 }
 
 // lower_multi_if_assign builds lower multi if assign data for transform.
-fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.NodeId) []flat.NodeId {
+fn (mut t Transformer) lower_multi_if_assign(node flat.Node, tail GuardReturnTail) []flat.NodeId {
 	heaped_state := t.save_heaped_local_state()
 	defer { t.restore_heaped_local_state(heaped_state) }
 	if node.children_count < 2 {
 		return []
 	}
 	cond_id := t.a.child(&node, 0)
+	if t.a.nodes[int(cond_id)].kind == .decl_assign {
+		outer_var_types := t.var_types.clone()
+		staging := t.stage_guard_assignments(tail, true)
+		staged_var_types := t.var_types.clone()
+		if expanded := t.try_expand_if_guard_with_tail(node, staging.tail) {
+			t.restore_var_types(staged_var_types)
+			t.restore_heaped_local_state(heaped_state)
+			if staging.decls.len == 0 {
+				return expanded
+			}
+			scope := t.make_block_skip_scope_drops(expanded)
+			return [t.finish_guard_assignments(scope, tail, staging)]
+		}
+		t.restore_var_types(outer_var_types)
+		t.restore_heaped_local_state(heaped_state)
+	}
 	then_id := t.a.child(&node, 1)
 	mut result := []flat.NodeId{}
 	all_is := t.extract_all_is_exprs(cond_id)
@@ -19219,7 +19235,7 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 	for info in all_is {
 		t.push_smartcast(info.expr_name, info.variant_name_text(), info.sum_type_name_text())
 	}
-	then_block := t.multi_if_assign_block(then_id, lhs_ids)
+	then_block := t.multi_if_assign_block(then_id, tail)
 	mut branch_invalidated := t.invalidated_smartcasts.clone()
 	t.clear_node_type_memo()
 	t.smartcast_stack = base_smartcasts.clone()
@@ -19235,10 +19251,10 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 		else_id := t.a.child(&node, 2)
 		else_node := t.a.nodes[int(else_id)]
 		if else_node.kind == .if_expr {
-			else_stmts := t.lower_multi_if_assign(else_node, lhs_ids)
+			else_stmts := t.lower_multi_if_assign(else_node, tail)
 			else_block = t.make_block(else_stmts)
 		} else {
-			else_block = t.multi_if_assign_block(else_id, lhs_ids)
+			else_block = t.multi_if_assign_block(else_id, tail)
 		}
 		for key, invalidated in t.invalidated_smartcasts {
 			if invalidated {
@@ -19247,26 +19263,27 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 		}
 	}
 	t.clear_node_type_memo()
-	t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
-	t.clear_node_type_memo()
 	t.invalidated_smartcasts = branch_invalidated.move()
+	t.clear_node_type_memo()
+	t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 	t.restore_var_types(saved_var_types)
 	result << t.make_if(new_cond, then_block, else_block)
 	return result
 }
 
 // multi_if_assign_block supports multi if assign block handling for Transformer.
-fn (mut t Transformer) multi_if_assign_block(block_id flat.NodeId, lhs_ids []flat.NodeId) flat.NodeId {
+fn (mut t Transformer) multi_if_assign_block(block_id flat.NodeId, tail GuardReturnTail) flat.NodeId {
+	lhs_ids := tail.assign_lhs_ids
 	parts := t.tuple_block_parts(block_id, lhs_ids.len) or {
-		if multi_block := t.multi_if_multi_return_assign_block(block_id, lhs_ids) {
+		if multi_block := t.multi_if_multi_return_assign_block(block_id, tail) {
 			return multi_block
 		}
-		if nested := t.nested_multi_tail_assign_block(block_id, lhs_ids) {
+		if nested := t.nested_multi_tail_assign_block(block_id, tail) {
 			return nested
 		}
 		return t.transform_expr(block_id)
 	}
-	stmts := t.multi_if_assign_stmts(parts, lhs_ids)
+	stmts := t.multi_if_assign_stmts(parts, tail)
 	return t.make_block(stmts)
 }
 
@@ -19288,7 +19305,8 @@ fn (t &Transformer) multi_if_branch_multi_return_expr(block_id flat.NodeId, coun
 	return expr_id
 }
 
-fn (mut t Transformer) multi_if_multi_return_assign_block(block_id flat.NodeId, lhs_ids []flat.NodeId) ?flat.NodeId {
+fn (mut t Transformer) multi_if_multi_return_assign_block(block_id flat.NodeId, tail GuardReturnTail) ?flat.NodeId {
+	lhs_ids := tail.assign_lhs_ids
 	expr_id := t.multi_if_branch_multi_return_expr(block_id, lhs_ids.len) or { return none }
 	items := t.multi_return_types_for_expr(expr_id, lhs_ids.len) or { return none }
 	block := t.a.nodes[int(block_id)]
@@ -19309,7 +19327,9 @@ fn (mut t Transformer) multi_if_multi_return_assign_block(block_id flat.NodeId, 
 		field := t.make_selector(t.make_ident(tmp_name), 'arg${i}', field_type)
 		mut lvalue := t.transform_lvalue(lhs_id)
 		t.drain_pending(mut stmts)
-		if !isnil(t.tc) && !t.tc.ownership_expr_moves_storage(expr_id, lhs_id)
+		moved := t.multi_if_assign_target_was_moved(tail, i, [expr_id])
+		t.append_multi_if_assign_move_flag(tail, i, moved, mut stmts)
+		if tail.assign_original_lhs_ids.len == 0 && !moved && !isnil(t.tc)
 			&& t.tc.ownership_type_requires_destruction(items[i]) {
 			lvalue = t.stabilize_transformed_lvalue_for_reuse(lvalue)
 			t.drain_pending(mut stmts)
@@ -19320,19 +19340,13 @@ fn (mut t Transformer) multi_if_multi_return_assign_block(block_id flat.NodeId, 
 	return t.make_block(stmts)
 }
 
-fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []flat.NodeId) []flat.NodeId {
+fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, tail GuardReturnTail) []flat.NodeId {
+	lhs_ids := tail.assign_lhs_ids
 	mut stmts := t.transform_stmts(parts.prefix)
 	mut tmp_names := []string{cap: parts.values.len}
 	mut lhs_was_moved := []bool{len: lhs_ids.len}
-	if !isnil(t.tc) {
-		for i, lhs_id in lhs_ids {
-			for value_id in parts.values {
-				if t.tc.ownership_expr_moves_storage(value_id, lhs_id) {
-					lhs_was_moved[i] = true
-					break
-				}
-			}
-		}
+	for i in 0 .. lhs_ids.len {
+		lhs_was_moved[i] = t.multi_if_assign_target_was_moved(tail, i, parts.values)
 	}
 	for i, value_id in parts.values {
 		is_blank := if i < lhs_ids.len {
@@ -19378,7 +19392,8 @@ fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []fl
 		if lhs_type.len == 0 {
 			lhs_type = t.original_expr_type(lhs_id)
 		}
-		if !lhs_was_moved[i] && !isnil(t.tc) && lhs_type.len > 0
+		t.append_multi_if_assign_move_flag(tail, i, lhs_was_moved[i], mut stmts)
+		if tail.assign_original_lhs_ids.len == 0 && !lhs_was_moved[i] && !isnil(t.tc) && lhs_type.len > 0
 			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(lhs_type))) {
 			lvalue = t.stabilize_transformed_lvalue_for_reuse(lvalue)
 			t.drain_pending(mut stmts)
@@ -19389,7 +19404,8 @@ fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []fl
 	return stmts
 }
 
-fn (mut t Transformer) nested_multi_tail_assign_block(block_id flat.NodeId, lhs_ids []flat.NodeId) ?flat.NodeId {
+fn (mut t Transformer) nested_multi_tail_assign_block(block_id flat.NodeId, tail GuardReturnTail) ?flat.NodeId {
+	lhs_ids := tail.assign_lhs_ids
 	if int(block_id) < 0 || lhs_ids.len == 0 {
 		return none
 	}
@@ -19405,7 +19421,7 @@ fn (mut t Transformer) nested_multi_tail_assign_block(block_id flat.NodeId, lhs_
 	last := t.a.nodes[int(last_id)]
 	mut stmts := t.transform_stmts(children[..children.len - 1])
 	if last.kind == .if_expr {
-		nested_stmts := t.lower_multi_if_assign(last, lhs_ids)
+		nested_stmts := t.lower_multi_if_assign(last, tail)
 		for stmt in nested_stmts {
 			stmts << stmt
 		}
@@ -19413,7 +19429,7 @@ fn (mut t Transformer) nested_multi_tail_assign_block(block_id flat.NodeId, lhs_
 	}
 	if last.kind == .block {
 		nested_parts := t.tuple_block_parts(last_id, lhs_ids.len) or { return none }
-		stmts << t.make_block(t.multi_if_assign_stmts(nested_parts, lhs_ids))
+		stmts << t.make_block(t.multi_if_assign_stmts(nested_parts, tail))
 		return t.make_block(stmts)
 	}
 	return none
