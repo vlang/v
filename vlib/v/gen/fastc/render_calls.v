@@ -79,7 +79,7 @@ fn (g &Parser) render_pointer_type_sizeof(tokens []FastcExpressionToken) ?FastcR
 	ctype := g.type_from_expression_tokens(tokens[2..tokens.len - 1]) or { return none }
 	return FastcRenderedExpression{
 		source: 'sizeof(${fastc_output_c_type(ctype)})'
-		typ:    flat.source_type_id('int')
+		typ:    flat.source_type_int
 	}
 }
 
@@ -104,13 +104,13 @@ fn (g &Parser) render_typeof_generic_expression(tokens []FastcExpressionToken) ?
 			idx := fastc_builtin_type_idx(type_name) or { return none }
 			return FastcRenderedExpression{
 				source: idx.str()
-				typ:    flat.source_type_id('int')
+				typ:    flat.source_type_int
 			}
 		}
 		'name' {
 			return FastcRenderedExpression{
 				source: '_S("${type_name}")'
-				typ:    flat.source_type_id('string')
+				typ:    flat.source_type_string
 			}
 		}
 		else {
@@ -141,7 +141,7 @@ fn (g &Parser) render_typeof_name_expression(tokens []FastcExpressionToken) ?Fas
 	}
 	return FastcRenderedExpression{
 		source: '_S("${type_name}")'
-		typ:    flat.source_type_id('string')
+		typ:    flat.source_type_string
 	}
 }
 
@@ -180,7 +180,7 @@ fn (g &Parser) render_typeof_generic_comparison_expression(tokens []FastcExpress
 		}
 		return FastcRenderedExpression{
 			source: '((${left})${item.tok.str()}(${right}))'
-			typ:    flat.source_type_id('bool')
+			typ:    flat.source_type_bool
 		}
 	}
 	return none
@@ -389,7 +389,7 @@ fn (g &Parser) render_c_struct_sizeof(tokens []FastcExpressionToken) ?FastcRende
 	}
 	return FastcRenderedExpression{
 		source: 'sizeof(struct ${c_name})'
-		typ:    flat.source_type_id('int')
+		typ:    flat.source_type_int
 	}
 }
 
@@ -470,7 +470,7 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 			// render_member_receiver spells it correctly.
 			return FastcRenderedExpression{
 				source: replacement
-				typ:    flat.source_type_id(if method == 'has' { 'bool' } else { 'void' })
+				typ:    (if method == 'has' { flat.source_type_bool } else { flat.source_type_void })
 			}
 		}
 		if !fastc_contains(rendered, needle) {

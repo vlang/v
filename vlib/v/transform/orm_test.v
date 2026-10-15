@@ -26,6 +26,6 @@ fn test_sql_dynamic_guard_infers_bound_callback_field_type() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.sql_array_it_name = '__elem'
 	t.set_var_type('__elem', flat.source_type_id('MapSqlOptionalKey'))
-	assert t.sql_dynamic_value_type(['it.optional_id']) == '?int'
+	assert flat.source_type_name(t.sql_dynamic_value_type(['it.optional_id'])) == '?int'
 	assert t.sql_bound_interpolation_text('key ' + '$' + '{it}') == 'key ' + '$' + '{__elem}'
 }

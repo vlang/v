@@ -6,8 +6,12 @@ nominal aliases, and parser metadata. They differ from a checker's semantic `typ
 Resolving an unqualified spelling still requires its module and import context.
 
 `source_type_id` and `source_type_name` cross the spelling boundary. Zero denotes empty text.
-`source_type_shape` reads syntax flags recorded when a spelling is interned, allowing
-type caches to inspect wrapper, container, qualified-name, and `typeof` syntax by ID.
+`source_type_shape` reads exact spelling syntax flags recorded once when a type is interned.
+These probes describe raw prefixes and punctuation; they do not resolve aliases or strip wrappers.
+Type caches can inspect wrappers, containers, qualification, endpoint whitespace,
+and `typeof` syntax by ID.
+Builtin `source_type_*` constants carry scalar spellings without repeated interning;
+the `builtin_alias` shape flag identifies spellings that need no alias normalization.
 `FlatAst.type_text_id` and `node_type_text_id` use this same `u32` namespace, independently
 of the AST table used for ordinary text payloads.
 The process owns immutable spellings in nonmoving chunks. Insertion is synchronized; readers
@@ -30,6 +34,7 @@ Numeric copies preserve identities without cloning spelling storage. Generic con
 `NodePayload` also use this list; `Node.generic_constraints()` supplies text to syntax consumers.
 
 `TypeTextListBindings` stores ordered lists of source IDs. `set_ids` copies a caller's list;
+`append_ids` copies additional entries, preserving their order and empty spellings.
 `type_ids` provides its numeric values for read-only use. `set` and `get` are spelling boundaries.
 Cloning copies both the map and numeric lists, preserving independent mutation in workers.
 `clone_owned` on either binding container also copies declaration keys into the current arena,

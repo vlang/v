@@ -379,7 +379,7 @@ fn (g &FlatGen) reflection_function(node_id int, node flat.Node) string {
 		if is_method && param_idx == 0 {
 			receiver_type = reflection_field_type_id(param.typ_text(), module_name)
 		}
-		if param.typ_text().starts_with('...') {
+		if flat.source_type_shape(param.typ).has(.variadic) {
 			is_variadic = true
 		}
 		param_idx++
@@ -649,7 +649,7 @@ fn (mut g FlatGen) gen_reflection_data() {
 			if name.contains('.') { name.all_before_last('.') } else { 'main' }
 		}
 		module_name := if raw_module_name.len > 0 { raw_module_name } else { 'main' }
-		g.gen_reflection_type(name, module_name, 32, reflection_alias_info(g.tc.type_aliases.value(name),
+		g.gen_reflection_type(name, module_name, 32, reflection_alias_info(flat.source_type_name(g.tc.type_aliases.value_id(name)),
 			module_name), g.reflection_methods(reflection_type_key(name, module_name)), mut seen_ids)
 	}
 
@@ -657,9 +657,11 @@ fn (mut g FlatGen) gen_reflection_data() {
 	sum_names.sort()
 	for name in sum_names {
 		module_name := g.reflection_decl_module(name, .type_decl)
-		g.gen_reflection_type(name, module_name, 31, reflection_sum_type_info(g.tc.sum_types.get(name) or {
-			[]string{}
-		}, module_name), g.reflection_methods(reflection_type_key(name, module_name)), mut seen_ids)
+		g.gen_reflection_type(name, module_name, 31, reflection_sum_type_info(flat.TypeTextList{
+			ids: g.tc.sum_types.type_ids(name) or {
+				[]u32{}
+			}
+		}.names(), module_name), g.reflection_methods(reflection_type_key(name, module_name)), mut seen_ids)
 	}
 
 	mut interface_names := g.tc.interface_names.keys()

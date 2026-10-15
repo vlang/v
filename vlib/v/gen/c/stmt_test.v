@@ -187,8 +187,8 @@ fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
 	g.tc = &tc
 	// Distinct logical ownership keys can refer to the same runtime struct after
 	// lifetime erasure. Only one C helper definition may be emitted for it.
-	g.recursive_drop_helpers.set('struct:pkg.Sink[^p,^s,Writer]', 'pkg.Sink[Writer]')
-	g.recursive_drop_helpers.set('struct:pkg.Sink[^s,^s,Writer]', 'pkg.Sink[Writer]')
+	g.recursive_drop_helpers.set_id('struct:pkg.Sink[^p,^s,Writer]', flat.source_type_id('pkg.Sink[Writer]'))
+	g.recursive_drop_helpers.set_id('struct:pkg.Sink[^s,^s,Writer]', flat.source_type_id('pkg.Sink[Writer]'))
 	g.gen_ownership_recursive_drop_helpers()
 	assert g.sb.str().count('static void __v3_ownership_drop_pkg__Sink_Writer(') == 1
 }
@@ -349,7 +349,7 @@ fn test_fn_decl_signature_registration_preserves_call_name_aliases() {
 	full_name := qualify_name_in_module(tc.cur_module, name)
 	params := [types.Type(types.int_)]
 	shared_flags := [true]
-	g.register_fn_decl_signature(name, full_name, params, shared_flags, true, true, 'int')
+	g.register_fn_decl_signature(name, full_name, params, shared_flags, true, true, flat.source_type_int)
 	aliases := [
 		fn_decl_module_key(tc.cur_module, name),
 		name,
@@ -789,7 +789,7 @@ fn test_lowered_ident_annotation_precedes_outer_checker_binding() {
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'err'
-		typ:   flat.source_type_id('int')
+		typ:   flat.source_type_int
 	})
 	assert g.usable_expr_type(value) == types.Type(types.int_)
 }

@@ -1487,7 +1487,7 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 	mut compile_time_values := map[string]string{}
 	for value in values {
 		if value.key in runtime_constants {
-			if value.typ_text() == '' {
+			if value.typ == u32(0) {
 				return error('fastc parser does not support unverifiable runtime constant `${value.key}` type')
 			}
 			declarations.writeln('static ${value.typ_text()} ${value.c_name};')
@@ -2518,7 +2518,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 		fields_by_name.set('data', 'voidptr')
 		field_info << FastcStructField{
 			name:        'data'
-			typ:         flat.source_type_id('voidptr')
+			typ:         flat.source_type_voidptr
 			is_public:   true
 			module_name: source_file.header.module_name
 			path:        source_file.path

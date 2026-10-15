@@ -177,7 +177,7 @@ fn test_lowered_string_join_keeps_source_identifiers_out_of_its_temporary_namesp
 	part := a.add_node(flat.Node{
 		kind:  .ident
 		value: name
-		typ:   flat.source_type_id('string')
+		typ:   flat.source_type_string
 	})
 	a.children << part
 	a.children << part
@@ -189,7 +189,7 @@ fn test_lowered_string_join_keeps_source_identifiers_out_of_its_temporary_namesp
 	g.gen_string_interp(flat.Node{
 		kind:           .string_interp
 		value:          '__v3_string_join'
-		typ:            flat.source_type_id('string')
+		typ:            flat.source_type_string
 		children_count: 2
 	})
 	output := g.sb.str()

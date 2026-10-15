@@ -10,6 +10,30 @@ const source_type_chunk_bits = 10
 const source_type_chunk_size = 1 << source_type_chunk_bits
 const source_type_chunk_count = 16384
 
+// Builtin spellings are interned once; hot paths carry their numeric identities.
+pub const source_type_void = source_type_id('void')
+pub const source_type_unknown = source_type_id('unknown')
+pub const source_type_nil = source_type_id('nil')
+pub const source_type_none = source_type_id('none')
+pub const source_type_string = source_type_id('string')
+pub const source_type_char = source_type_id('char')
+pub const source_type_rune = source_type_id('rune')
+pub const source_type_isize = source_type_id('isize')
+pub const source_type_usize = source_type_id('usize')
+pub const source_type_voidptr = source_type_id('voidptr')
+pub const source_type_bool = source_type_id('bool')
+pub const source_type_int = source_type_id('int')
+pub const source_type_i8 = source_type_id('i8')
+pub const source_type_i16 = source_type_id('i16')
+pub const source_type_i32 = source_type_id('i32')
+pub const source_type_i64 = source_type_id('i64')
+pub const source_type_u8 = source_type_id('u8')
+pub const source_type_u16 = source_type_id('u16')
+pub const source_type_u32 = source_type_id('u32')
+pub const source_type_u64 = source_type_id('u64')
+pub const source_type_f32 = source_type_id('f32')
+pub const source_type_f64 = source_type_id('f64')
+
 struct SourceTypeEntry {
 	text  string
 	hash  u64
@@ -24,6 +48,27 @@ pub enum SourceTypeShape {
 	wrapped
 	typeof_name
 	typeof_expr
+	builtin_alias
+	optional
+	pointer
+	shared_type
+	variadic
+	padded
+	array_type
+	map_type
+	leading_bracket
+	option_type
+	result_type
+	mutable_type
+	atomic_type
+	channel_type
+	thread_type
+	function_compact
+	function_spaced
+	pointer_array
+	pointer_map
+	pointer_option
+	pointer_chain
 }
 
 fn source_type_spelling_shape(text string) SourceTypeShape {
@@ -33,9 +78,39 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 	if text.starts_with('&') || text.starts_with('?') || text.starts_with('!') {
 		shape.set(.wrapped)
 	}
+	if text.starts_with('?') || text.starts_with('!') { shape.set(.optional) }
+	if text.starts_with('&') { shape.set(.pointer) }
+	if text.starts_with('shared ') { shape.set(.shared_type) }
+	if text.starts_with('...') { shape.set(.variadic) }
+	if text.starts_with('[]') { shape.set(.array_type) }
+	if text.starts_with('map[') { shape.set(.map_type) }
+	if text.starts_with('[') { shape.set(.leading_bracket) }
+	if text.starts_with('?') { shape.set(.option_type) }
+	if text.starts_with('!') { shape.set(.result_type) }
+	if text.starts_with('mut ') { shape.set(.mutable_type) }
+	if text.starts_with('atomic ') { shape.set(.atomic_type) }
+	if text.starts_with('chan ') { shape.set(.channel_type) }
+	if text.starts_with('thread ') { shape.set(.thread_type) }
+	if text.starts_with('fn(') { shape.set(.function_compact) }
+	if text.starts_with('fn (') { shape.set(.function_spaced) }
+	if text.starts_with('&[]') { shape.set(.pointer_array) }
+	if text.starts_with('&map[') { shape.set(.pointer_map) }
+	if text.starts_with('&?') { shape.set(.pointer_option) }
+	if text.starts_with('&&') { shape.set(.pointer_chain) }
+	if text.len > 0 && (source_type_space(text[0]) || source_type_space(text[text.len - 1])) {
+		shape.set(.padded)
+	}
 	if text.contains('typeof') { shape.set(.typeof_name) }
-	if text.contains('typeof(') { shape.set(.typeof_expr) }
+	if text.len >= 8 && text.contains('typeof(') { shape.set(.typeof_expr) }
+	if text in ['bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32',
+		'u64', 'f32', 'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr'] {
+		shape.set(.builtin_alias)
+	}
 	return shape
+}
+
+fn source_type_space(c u8) bool {
+	return c == ` ` || c == `\n` || c == `\t` || c == `\v` || c == `\f` || c == `\r`
 }
 
 struct SourceTypeTable {

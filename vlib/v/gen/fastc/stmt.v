@@ -108,7 +108,7 @@ fn (mut g Parser) skip_disabled_function_statement() !bool {
 		return false
 	}
 	signature := g.functions[function_key] or { return false }
-	if !signature.is_disabled || signature.return_type_text() != 'void' {
+	if !signature.is_disabled || signature.return_type != flat.source_type_void {
 		return false
 	}
 	mut depth := 1
@@ -1119,12 +1119,13 @@ fn (mut g Parser) parse_return() !bool {
 	] && g.option_return_type_text() == 'MultiReturn')) {
 		mut values := []string{}
 		mut value_types := []string{}
-		previous_expected_type := g.expected_expression_type_text()
+		previous_expected_type_source_id := g.expected_expression_type
+
 		for {
-			g.expected_expression_type = flat.source_type_id(if values.len < g.return_types.ids.len {
-				g.return_types.at(values.len)
+			g.expected_expression_type = (if values.len < g.return_types.ids.len {
+				flat.source_type_id(g.return_types.at(values.len))
 			} else {
-				''
+				u32(0)
 			})
 			value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 			if value == '' {
@@ -1137,7 +1138,7 @@ fn (mut g Parser) parse_return() !bool {
 			}
 			g.next()
 		}
-		g.expected_expression_type = flat.source_type_id(previous_expected_type)
+		g.expected_expression_type = previous_expected_type_source_id
 		g.consume_statement_end()
 		mut evaluated_values := []string{cap: values.len}
 		for i, value in values {
@@ -1175,26 +1176,27 @@ fn (mut g Parser) parse_return() !bool {
 		}
 		return true
 	}
-	previous_expected_type := g.expected_expression_type_text()
+	previous_expected_type_source_id_2 := g.expected_expression_type
+
 	if g.selfhost {
-		g.expected_expression_type = flat.source_type_id(if g.return_type_text() in [
+		g.expected_expression_type = (if g.return_type_text() in [
 			'Option',
 			'__v_result',
 		] && g.option_return_type_text() !in ['', 'MultiReturn'] {
-			g.option_return_type_text()
+			g.option_return_type
 		} else {
-			g.return_type_text()
+			g.return_type
 		})
 	}
 	mut expression := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
-	g.expected_expression_type = flat.source_type_id(previous_expected_type)
+	g.expected_expression_type = previous_expected_type_source_id_2
 	mut actual_type := g.last_expression_type_text()
-	if g.selfhost && g.return_type_text() == '' {
+	if g.selfhost && g.return_type == u32(0) {
 		g.consume_statement_end()
 		g.write_return_expression(expression, actual_type)
 		return true
 	}
-	contextual_return_type := if g.return_type_text() in ['Option', '__v_result'] && g.option_return_type_text() != '' {
+	contextual_return_type := if g.return_type_text() in ['Option', '__v_result'] && g.option_return_type != u32(0) {
 		g.option_return_type_text()
 	} else {
 		g.return_type_text()
@@ -1257,7 +1259,7 @@ fn (mut g Parser) parse_return() !bool {
 		'__v_result',
 	] {
 		mut payload_type := fastc_normalize_inferred_type(actual_type)
-		if g.option_return_type_text() != '' && (g.should_box_variant(g.option_return_type_text(), payload_type) || (g.declared_kinds[g.semantic_type_key(g.option_return_type_text())] == .interface_ && g.declared_kinds[g.semantic_type_key(payload_type)] != .interface_)) {
+		if g.option_return_type != u32(0) && (g.should_box_variant(g.option_return_type_text(), payload_type) || (g.declared_kinds[g.semantic_type_key(g.option_return_type_text())] == .interface_ && g.declared_kinds[g.semantic_type_key(payload_type)] != .interface_)) {
 			expression = g.interface_value_expression(g.option_return_type_text(), payload_type, expression)
 			payload_type = g.option_return_type_text()
 		}
@@ -1370,7 +1372,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 		c_target := if is_global {
 			g.globals[global_key]
 		} else if local := g.locals[name] {
-			if local.smartcast_origin_type_text() != '' {
+			if local.smartcast_origin_type != u32(0) {
 				if local.smartcast_origin_type_text().ends_with('*') {
 					'(*${local.smartcast_origin_source})'
 				} else {
@@ -1387,10 +1389,11 @@ fn (mut g Parser) parse_simple_statement() ! {
 		g.next()
 		if name == 'panic' && g.tok == .lpar {
 			g.next()
-			previous_expected_type := g.expected_expression_type_text()
-			g.expected_expression_type = flat.source_type_id('string')
+			previous_expected_type_source_id := g.expected_expression_type
+
+			g.expected_expression_type = flat.source_type_string
 			argument := g.read_expression([token.Token.rpar])!
-			g.expected_expression_type = flat.source_type_id(previous_expected_type)
+			g.expected_expression_type = previous_expected_type_source_id
 			if argument == '' {
 				return g.unsupported('empty panic argument')
 			}
@@ -1533,7 +1536,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				// Assigning to a smart-cast local widens it back to the boxed sum type (`c_target`
 				// is the raw C variable, not the narrowed shadow), so expect the origin type — else
 				// a variant value would be stored into the sum-type slot without the required box.
-				base := if local.smartcast_origin_type_text() != '' {
+				base := if local.smartcast_origin_type != u32(0) {
 					local.smartcast_origin_type_text()
 				} else {
 					local.typ_text()
@@ -1552,19 +1555,20 @@ fn (mut g Parser) parse_simple_statement() ! {
 					return
 				}
 			}
-			previous_expected_type := g.expected_expression_type_text()
+			previous_expected_type_source_id_2 := g.expected_expression_type
+
 			if g.selfhost && expected_type != '' {
 				g.expected_expression_type = flat.source_type_id(expected_type)
 			}
 			previous_nil_assignment := g.allows_nil_local_assignment
-			g.allows_nil_local_assignment = !is_global && operator == .assign && g.underlying_alias_type(expected_type) == 'voidptr' && !g.fn_alias_return_types.contains(expected_type) && statement_local.fn_return_type_text() == '' && !g.in_generic_placeholder && g.tok == .key_nil && g.nil_ends_value()
+			g.allows_nil_local_assignment = !is_global && operator == .assign && g.underlying_alias_type(expected_type) == 'voidptr' && !g.fn_alias_return_types.contains(expected_type) && statement_local.fn_return_type == u32(0) && !g.in_generic_placeholder && g.tok == .key_nil && g.nil_ends_value()
 			value := g.read_expression([token.Token.semicolon, token.Token.rcbr]) or {
 				g.allows_nil_local_assignment = previous_nil_assignment
-				g.expected_expression_type = flat.source_type_id(previous_expected_type)
+				g.expected_expression_type = previous_expected_type_source_id_2
 				return err
 			}
 			g.allows_nil_local_assignment = previous_nil_assignment
-			g.expected_expression_type = flat.source_type_id(previous_expected_type)
+			g.expected_expression_type = previous_expected_type_source_id_2
 			if value.len == 0 {
 				return g.unsupported('empty assignment to `${name}`')
 			}
@@ -1636,7 +1640,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				if actual_type.trim_right('*') == 'IError' {
 					assigned_value = '(__v_result){.err=${value}, .state=1}'
 				} else {
-					payload_type := if statement_local.option_value_type_text() != '' {
+					payload_type := if statement_local.option_value_type != u32(0) {
 						statement_local.option_value_type_text()
 					} else {
 						fastc_normalize_inferred_type(actual_type)
@@ -1668,7 +1672,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 				assigned_value = '*(${resolved_expected_type} *)(${value})'
 			}
 			g.write_line('${c_target}${operator.str()}${assigned_value};')
-			if operator == .assign && statement_local.smartcast_origin_type_text() != '' {
+			if operator == .assign && statement_local.smartcast_origin_type != u32(0) {
 				// Replacing the boxed value invalidates the old concrete-variant view.
 				g.locals[name] = FastcLocal{
 					is_mut:       statement_local.is_mut
@@ -1852,7 +1856,7 @@ fn (mut g Parser) capture_final_or_value(expression string) bool {
 // fallbacks (`or { .none }`, a variant literal, …) still type correctly.
 fn (mut g Parser) capture_or_value(expression string) {
 	mut value := expression
-	if g.or_value_expected_type_text() != '' && g.last_expression.len > 0 {
+	if g.or_value_expected_type != u32(0) && g.last_expression.len > 0 {
 		if contextual := g.render_call_argument_expression(g.last_expression, g.or_value_expected_type_text()) {
 			value = contextual
 		}
@@ -2265,10 +2269,10 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 				} else {
 					fastc_c_identifier(name)
 				}
-				typ:    flat.source_type_id(if local.is_reference {
-					local.typ_text().trim_right('*')
+				typ:    (if local.is_reference {
+					flat.source_type_id(local.typ_text().trim_right('*'))
 				} else {
-					local.typ_text()
+					local.typ
 				})
 			}
 		} else {
@@ -2497,7 +2501,7 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) s
 			field_name := tokens.last().lit
 			if fields := g.struct_field_info[receiver_layout] {
 				for field in fields {
-					if field.name == field_name && field.option_value_type_text() != '' {
+					if field.name == field_name && field.option_value_type != u32(0) {
 						return field.option_value_type_text()
 					}
 				}
@@ -2523,7 +2527,7 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) s
 				break
 			}
 			if field := g.struct_field_metadata(receiver_type, tokens[i].lit) {
-				if field.is_function && field.fn_option_value_type_text() != '' {
+				if field.is_function && field.fn_option_value_type != u32(0) {
 					return field.fn_option_value_type_text()
 				}
 			}
@@ -2554,7 +2558,7 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) s
 	if name_index == 0 {
 		// Calling an option-returning function-pointer parameter (`f(x) or {…}`).
 		if local := g.locals[tokens[0].lit] {
-			if local.fn_option_value_type_text() != '' {
+			if local.fn_option_value_type != u32(0) {
 				return local.fn_option_value_type_text()
 			}
 		}
@@ -2599,13 +2603,13 @@ fn (g &Parser) erased_generic_option_value_type_for_expression(tokens []FastcExp
 			return none
 		}
 		field := g.struct_field_metadata(owner_type, receiver_tokens.last().lit) or { return none }
-		if field.generic_argument_type_text() == '' {
+		if field.generic_argument_type == u32(0) {
 			return none
 		}
 		receiver_type := g.infer_expression_type(receiver_tokens) or { return none }
 		method_key, _ := g.resolve_method(receiver_type, tokens[i].lit)
 		signature := g.functions[method_key] or { return none }
-		if signature.return_type_text() in ['Option', '__v_result'] && signature.option_type_text() == 'voidptr' {
+		if signature.return_type_text() in ['Option', '__v_result'] && signature.option_type == flat.source_type_voidptr {
 			return field.generic_argument_type_text()
 		}
 		return none
@@ -2703,7 +2707,7 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 	function_key := g.function_key_for_call(tokens, name_index)
 	if name_index == 0 {
 		if local := g.locals[name] {
-			if local.fn_return_type_text() != '' {
+			if local.fn_return_type != u32(0) {
 				return true
 			}
 			// Calling a value whose type is a `type X = fn (...)` alias is a statement.
@@ -2775,7 +2779,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	// avoids duplicating large statement expressions in the generated source.
 	c_name := fastc_c_identifier(name)
 	normalized_type := fastc_normalize_inferred_type(g.last_expression_type_text())
-	local_type := if g.selfhost && g.last_expression_type_text() == '' {
+	local_type := if g.selfhost && g.last_expression_type == u32(0) {
 		'int'
 	} else {
 		normalized_type
@@ -2803,7 +2807,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 		declaration_type = fastc_platform_int_c_type
 	} else if expression.starts_with('({')
 		&& (expression.contains('for (') || expression.contains('switch (')
-			|| expression.contains('return ')) && g.last_expression_type_text() != '' && local_type != '' {
+			|| expression.contains('return ')) && g.last_expression_type != u32(0) && local_type != '' {
 		// TinyCC cannot take `__typeof__` of a statement expression that runs a `for` loop (as an
 		// array `{len:, init:}` initializer lowers to), a `switch` (as a sum-type common-field
 		// read lowers to), or a `return` (an `x or { return … }` propagation), so name the known

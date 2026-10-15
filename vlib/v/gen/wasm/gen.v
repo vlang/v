@@ -160,7 +160,7 @@ pub fn (mut g Gen) ssa_configuration() !SSAConfiguration {
 		} else if node.kind == .module_decl && node.value !in ['', 'main', 'builtin'] {
 			source_modules[file] = g.module_path_for_file(file)
 		} else if node.kind == .import_decl && node.value.len > 0 {
-			alias := if node.typ_text().len > 0 {
+			alias := if node.typ != 0 {
 				node.typ_text()
 			} else {
 				node.value.all_after_last('.')
@@ -634,7 +634,7 @@ fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file stri
 	}
 	mut ret := WType.void
 	mut hidden_sret := false
-	if node.typ_text().len > 0 && node.typ_text() != 'void' {
+	if node.typ != 0 && node.typ != flat.source_type_void {
 		rt := g.tc.parse_type(node.typ)
 		// A struct return is passed through a hidden pointer: the caller supplies
 		// the slot and the function's own result type is void. So the signature
@@ -877,9 +877,9 @@ fn (mut g Gen) gen_decl_assign(node flat.Node) {
 	}
 	lhs := g.a.child_node(&node, 0)
 	rhs_id := g.a.child(&node, 1)
-	w := g.expr_wtype(rhs_id, node.typ_text())
-	uns := g.decl_is_unsigned(rhs_id, node.typ_text())
-	width := g.decl_width(rhs_id, node.typ_text())
+	w := g.expr_wtype(rhs_id, node.typ)
+	uns := g.decl_is_unsigned(rhs_id, node.typ)
+	width := g.decl_width(rhs_id, node.typ)
 	if lhs.kind == .ident {
 		// Emit the initializer before binding the new name, so a shadowing
 		// `x := x + 1` reads the outer x rather than the fresh zero local.
@@ -902,15 +902,15 @@ fn (mut g Gen) gen_multi_decl(node flat.Node) {
 		lhs := g.a.child_node(&node, i)
 		rhs_id := g.a.child(&node, i + 1)
 		if lhs.kind == .ident {
-			w := g.expr_wtype(rhs_id, node.typ_text())
+			w := g.expr_wtype(rhs_id, node.typ)
 			g.gen_expr_as(rhs_id, w)
 			t := g.alloc_temp(w)
 			g.cur.local_set(t)
 			temps << t
 			names << lhs.value
 			ws << w
-			unss << g.decl_is_unsigned(rhs_id, node.typ_text())
-			widths << g.decl_width(rhs_id, node.typ_text())
+			unss << g.decl_is_unsigned(rhs_id, node.typ)
+			widths << g.decl_width(rhs_id, node.typ)
 		}
 		i += 2
 	}
@@ -1084,13 +1084,13 @@ fn (g &Gen) global_key(name string) string {
 }
 
 // decl_width resolves the declared sub-32-bit width (8/16) of an initializer.
-fn (mut g Gen) decl_width(rhs_id flat.NodeId, fallback_typ string) int {
+fn (mut g Gen) decl_width(rhs_id flat.NodeId, fallback_typ_id u32) int {
 	w := narrow_width(g.tc.resolve_type(rhs_id))
 	if w != 32 {
 		return w
 	}
-	if fallback_typ.len > 0 {
-		return narrow_width(g.tc.parse_type(flat.source_type_id(fallback_typ)))
+	if fallback_typ_id != 0 {
+		return narrow_width(g.tc.parse_type(fallback_typ_id))
 	}
 	return 32
 }
@@ -1253,7 +1253,7 @@ fn (mut g Gen) gen_expr(id flat.NodeId) WType {
 	match node.kind {
 		.int_literal {
 			val := parse_int_literal(node.value)
-			mut w := g.expr_wtype(id, '')
+			mut w := g.expr_wtype(id, u32(0))
 			// Promote to i64 when the literal does not fit in i32: the checker
 			// types untyped literals as plain `int`, which would truncate.
 			if w == .i32 && (val > 2147483647 || val < -2147483648) {
@@ -1276,7 +1276,7 @@ fn (mut g Gen) gen_expr(id flat.NodeId) WType {
 			return .i32
 		}
 		.float_literal {
-			w := g.expr_wtype(id, '')
+			w := g.expr_wtype(id, u32(0))
 			fv := node.value.replace('_', '').f64()
 			if w == .f32 {
 				g.cur.f32_const(f32(fv))
@@ -1383,7 +1383,7 @@ fn (g &Gen) const_value_node(name string) ?flat.NodeId {
 // gen_if_value emits an `if` used as an expression, leaving the selected
 // branch's value on the stack (e.g. `x := if c { 1 } else { 2 }`).
 fn (mut g Gen) gen_if_value(id flat.NodeId, node flat.Node) WType {
-	result_w := g.expr_wtype(id, '')
+	result_w := g.expr_wtype(id, u32(0))
 	g.gen_if_value_typed(node, result_w)
 	return result_w
 }
@@ -1498,7 +1498,7 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 	if op in [.left_shift, .right_shift, .right_shift_unsigned] {
 		// V keeps the result type/width from the left operand and permits a
 		// wider shift count, so the width comes from the lhs, not both operands.
-		mut value_w := g.expr_wtype(lhs_id, '')
+		mut value_w := g.expr_wtype(lhs_id, u32(0))
 		if value_w !in [WType.i32, WType.i64] {
 			value_w = .i32
 		}
@@ -1521,7 +1521,7 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 	// arithmetic / bitwise: in V both operands share the result type, so combine
 	// the node's own type with the operand-derived width (the latter recovers
 	// i64/float when the node type is missing).
-	ow := combine_wtype(g.expr_wtype(id, node.typ_text()), g.operand_wtype(lhs_id, rhs_id))
+	ow := combine_wtype(g.expr_wtype(id, node.typ), g.operand_wtype(lhs_id, rhs_id))
 	// div/rem opcode signedness must follow the promoted result, so an unsigned
 	// operand (e.g. `4000000000 / u32(2)`) selects div_u/rem_u, not the lhs.
 	signed := !g.is_unsigned(id) && !g.is_unsigned(lhs_id) && !g.is_unsigned(rhs_id)
@@ -1649,7 +1649,7 @@ fn (mut g Gen) gen_prefix(id flat.NodeId, node flat.Node) WType {
 				g.narrow_result(id)
 				return .i32
 			}
-			w := g.expr_wtype(child_id, '')
+			w := g.expr_wtype(child_id, u32(0))
 			match w {
 				.f64 {
 					g.gen_expr(child_id)
@@ -1816,7 +1816,7 @@ fn (mut g Gen) collect_imports() {
 			cur_file = node.value
 		} else if node.kind == .import_decl && node.value.len > 0 {
 			g.import_paths << node.value
-			if node.typ_text().len > 0 {
+			if node.typ != 0 {
 				if cur_file !in g.file_aliases {
 					g.file_aliases[cur_file] = map[string]string{}
 				}
@@ -1886,7 +1886,7 @@ fn (mut g Gen) collect_globals() {
 			}
 			// Type from the declaration, or inferred from the initializer.
 			mut t := types.Type(types.Void{})
-			if f.typ_text().len > 0 {
+			if f.typ != 0 {
 				t = g.tc.parse_type(f.typ)
 			} else if f.children_count > 0 {
 				t = g.tc.resolve_type(g.a.child(f, 0))
@@ -2007,7 +2007,11 @@ fn (g &Gen) fold_const_int(id flat.NodeId) i64 {
 				// Apply the cast target's own width/signedness so a nested narrow
 				// cast keeps its value even when the enclosing global is wider
 				// (e.g. `int(u8(300))` -> 44, not 300).
-				return if n.value.len > 0 { g.fold_cast_int(cv, n.value) } else { cv }
+				return if n.value.len > 0 {
+					g.fold_cast_int(cv, flat.source_type_id(n.value))
+				} else {
+					cv
+				}
 			}
 		}
 		else {}
@@ -2123,8 +2127,8 @@ fn bool_to_i64(b bool) i64 {
 
 // fold_cast_int wraps a folded constant to a numeric cast target's width and
 // signedness, the compile-time form of gen_cast's narrowing.
-fn (g &Gen) fold_cast_int(v i64, type_name string) i64 {
-	return narrow_to_type(v, g.tc.parse_type(flat.source_type_id(type_name)))
+fn (g &Gen) fold_cast_int(v i64, type_name_id u32) i64 {
+	return narrow_to_type(v, g.tc.parse_type(type_name_id))
 }
 
 // narrow_to_type wraps a folded constant to an integer type's width and
@@ -2222,7 +2226,7 @@ fn (g &Gen) fold_const_float(id flat.NodeId) f64 {
 				if tw !in [WType.f32, WType.f64] {
 					// Cast to an integer type inside a float context: fold and
 					// narrow as an int, then widen to float.
-					return f64(g.fold_cast_int(g.fold_const_int(cid), n.value))
+					return f64(g.fold_cast_int(g.fold_const_int(cid), flat.source_type_id(n.value)))
 				}
 				child := g.a.nodes[int(cid)]
 				mut fv := if child.kind == .int_literal {
@@ -2368,7 +2372,7 @@ fn (mut g Gen) gen_print_call(node flat.Node, name string) {
 		}
 	}
 	// integer expression passed directly (e.g. print(x))
-	w := g.expr_wtype(arg_id, '')
+	w := g.expr_wtype(arg_id, u32(0))
 	if w in [WType.i32, WType.i64] {
 		g.emit_print_int(arg_id, fd, newline, !g.is_unsigned(arg_id))
 		return
@@ -2545,7 +2549,7 @@ fn (mut g Gen) intern_data(bytes []u8) int {
 
 // ---- type helpers ----
 
-fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
+fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ_id u32) WType {
 	if int(id) >= 0 {
 		node := g.a.nodes[int(id)]
 		// Locals are authoritative: our own table is more reliable than the
@@ -2560,7 +2564,7 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 			}
 		}
 		if node.kind == .paren && node.children_count > 0 {
-			return g.expr_wtype(g.a.child(&node, 0), fallback_typ)
+			return g.expr_wtype(g.a.child(&node, 0), fallback_typ_id)
 		}
 		if node.kind == .cast_expr && node.value.len > 0 {
 			if w := prim_wtype(g.tc.parse_type(flat.source_type_id(node.value))) {
@@ -2573,16 +2577,16 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 			}
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
 				// Shift result width follows the lhs, not the (possibly wider) count.
-				return g.expr_wtype(g.a.child(&node, 0), '')
+				return g.expr_wtype(g.a.child(&node, 0), u32(0))
 			}
-			return combine_wtype(g.expr_wtype(g.a.child(&node, 0), ''), g.expr_wtype(g.a.child(&node,
-				1), ''))
+			return combine_wtype(g.expr_wtype(g.a.child(&node, 0), u32(0)), g.expr_wtype(g.a.child(&node,
+				1), u32(0)))
 		}
 		if node.kind == .prefix && node.children_count >= 1 {
 			if node.op == .not {
 				return .i32
 			}
-			return g.expr_wtype(g.a.child(&node, 0), fallback_typ)
+			return g.expr_wtype(g.a.child(&node, 0), fallback_typ_id)
 		}
 	}
 	t := g.tc.resolve_type(id)
@@ -2591,8 +2595,8 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 			return w
 		}
 	}
-	if fallback_typ.len > 0 && fallback_typ != 'void' {
-		if w := prim_wtype(g.tc.parse_type(flat.source_type_id(fallback_typ))) {
+	if fallback_typ_id != 0 && fallback_typ_id != flat.source_type_void {
+		if w := prim_wtype(g.tc.parse_type(fallback_typ_id)) {
 			return w
 		}
 	}
@@ -2600,7 +2604,7 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 }
 
 fn (mut g Gen) operand_wtype(lhs_id flat.NodeId, rhs_id flat.NodeId) WType {
-	return combine_wtype(g.expr_wtype(lhs_id, ''), g.expr_wtype(rhs_id, ''))
+	return combine_wtype(g.expr_wtype(lhs_id, u32(0)), g.expr_wtype(rhs_id, u32(0)))
 }
 
 // combine_wtype picks the widest of two value types (float beats int, 64 beats
@@ -2641,12 +2645,12 @@ fn (mut g Gen) is_unsigned(id flat.NodeId) bool {
 }
 
 // decl_is_unsigned resolves the signedness of a declared variable's initializer.
-fn (mut g Gen) decl_is_unsigned(rhs_id flat.NodeId, fallback_typ string) bool {
+fn (mut g Gen) decl_is_unsigned(rhs_id flat.NodeId, fallback_typ_id u32) bool {
 	if g.is_unsigned(rhs_id) {
 		return true
 	}
-	if fallback_typ.len > 0 {
-		return type_is_unsigned(g.tc.parse_type(flat.source_type_id(fallback_typ)))
+	if fallback_typ_id != 0 {
+		return type_is_unsigned(g.tc.parse_type(fallback_typ_id))
 	}
 	return false
 }
@@ -2729,7 +2733,7 @@ fn (mut g Gen) emit_arith(op flat.Op, w WType, signed bool) {
 // its natural width and emits the shift. The result keeps the value's width
 // while V permits a wider shift count, so value and count widths may differ.
 fn (mut g Gen) emit_shift_with_count(op flat.Op, value_w WType, rhs_id flat.NodeId, signed bool) {
-	count_w := if g.expr_wtype(rhs_id, '') == .i64 { WType.i64 } else { WType.i32 }
+	count_w := if g.expr_wtype(rhs_id, u32(0)) == .i64 { WType.i64 } else { WType.i32 }
 	g.gen_expr_as(rhs_id, count_w)
 	g.emit_shift_op(op, value_w, count_w, signed)
 }

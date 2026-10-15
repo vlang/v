@@ -50,7 +50,7 @@ fn test_escaped_c_initializer_field_names_resolve_aliases() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['C.EscapedFields'] = []types.StructField{}
 	tc.structs['EscapedFields'] = []types.StructField{}
-	tc.type_aliases.set('Fields', 'C.EscapedFields')
+	tc.type_aliases.set_id('Fields', flat.source_type_id('C.EscapedFields'))
 	tc.type_alias_modules['Fields'] = 'main'
 	tc.cur_module = 'main'
 	mut g := FlatGen.new()
@@ -72,8 +72,8 @@ fn test_sizeof_c_field_names_follow_alias_pointer_owners() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['C.Record'] = [types.StructField{ name: 'index', typ: types.Type(types.u64_) }]
 	tc.structs['Record'] = tc.structs['C.Record']
-	tc.type_aliases.set('RecordAlias', 'C.Record')
-	tc.type_aliases.set('RecordPointer', '&RecordAlias')
+	tc.type_aliases.set_id('RecordAlias', flat.source_type_id('C.Record'))
+	tc.type_aliases.set_id('RecordPointer', flat.source_type_id('&RecordAlias'))
 	tc.type_alias_modules['RecordAlias'] = 'main'
 	tc.type_alias_modules['RecordPointer'] = 'main'
 	tc.cur_module = 'main'
@@ -100,8 +100,8 @@ fn test_escaped_c_callback_selector_assignment_keeps_c_abi_adapter() {
 		})
 		tc.cur_module = 'main'
 		tc.structs['C.CallbackHolder'] = [types.StructField{ name: 'type', typ: callback_type, is_mut: true }]
-		tc.type_aliases.set('CallbackAlias', 'C.CallbackHolder')
-		tc.type_aliases.set('CallbackPointerAlias', '&CallbackAlias')
+		tc.type_aliases.set_id('CallbackAlias', flat.source_type_id('C.CallbackHolder'))
+		tc.type_aliases.set_id('CallbackPointerAlias', flat.source_type_id('&CallbackAlias'))
 		tc.type_alias_modules['CallbackAlias'] = 'main'
 		tc.type_alias_modules['CallbackPointerAlias'] = 'main'
 		tc.struct_field_c_abi_fns['C.CallbackHolder\ntype'] = 'fn_ptr:int|int'
@@ -142,6 +142,6 @@ fn test_c_callback_metadata_fallback_keeps_v_field_identity() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	assert g.struct_field_c_abi_fn_ptr_type('Holder', '@type') == none
-	assert g.struct_field_c_abi_fn_ptr_type('C.Holder', '@type') or { '' } == 'fn_ptr:int|void*'
+	assert g.struct_field_c_abi_fn_ptr_type(flat.source_type_id('Holder'), '@type') == none
+	assert g.struct_field_c_abi_fn_ptr_type(flat.source_type_id('C.Holder'), '@type') or { '' } == 'fn_ptr:int|void*'
 }

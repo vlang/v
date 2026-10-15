@@ -48,7 +48,7 @@ fn (b &Builder) native_const_requires_storage(id flat.NodeId, module_name string
 		required = callee !in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
 			'usize', 'rune', 'f32', 'f64', 'bool', 'voidptr', 'char']
 	}
-	if node.kind == .infix && b.checked_expr_type_name(id) == 'string' {
+	if node.kind == .infix && b.checked_expr_type_name(id) == flat.source_type_string {
 		required = true
 	}
 	if node.kind in [.ident, .selector] {
@@ -104,11 +104,12 @@ fn (mut b Builder) register_native_initializers() {
 					continue
 				}
 				b.cur_module = module_name
-				type_name := b.native_const_storage_type_name(*field, expr_id, module_name)
-				typ := b.resolve_struct_storage_type(type_name, module_name)
+				type_name_source_id := b.native_const_storage_type_name(*field, expr_id, module_name)
+
+				typ := b.resolve_struct_storage_type(type_name_source_id, module_name)
 				addr := b.m.add_global('__const_' + ssa_c_name(name), typ)
 				b.global_vars[name] = addr
-				b.global_type_names.set(name, type_name)
+				b.global_type_names.set_id(name, type_name_source_id)
 				b.global_aliases[module_name + '.' + field.value] = name
 			}
 			b.native_initializers[name] = NativeInitializer{
@@ -122,41 +123,42 @@ fn (mut b Builder) register_native_initializers() {
 	}
 }
 
-fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.NodeId, module_name string) string {
+fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.NodeId, module_name string) u32 {
 	if b.tc != unsafe { nil } {
 		if typ := b.tc.const_types[module_name + '.' + field.value] {
 			if typ !is types.Unknown && typ !is types.Void {
-				return types.unalias_type(typ).name()
+				return types.unalias_type(typ).source_type_id()
 			}
 		}
 	}
-	if field.typ_text().len > 0 && field.typ_text() != 'unknown' {
-		return field.typ_text()
+	if field.typ != 0 && field.typ != flat.source_type_unknown {
+		return field.typ
 	}
 	expr := b.a.node(expr_id)
 	if expr.kind == .array_literal {
-		if b.is_fixed_array_type_name(expr.typ_text()) {
-			return expr.typ_text()
+		if b.is_fixed_array_type_name(expr.typ) {
+			return expr.typ
 		}
 		element := if expr.children_count > 0 {
-			b.native_const_storage_type_name(flat.Node{}, b.a.child(expr, 0), module_name)
+			flat.source_type_name(b.native_const_storage_type_name(flat.Node{}, b.a.child(expr, 0), module_name))
 		} else {
 			'int'
 		}
-		return '[]' + element
+		return flat.source_type_id('[]' + element)
 	}
 	if expr.kind in [.array_init, .struct_init] {
-		return expr.value
+		return flat.source_type_id(expr.value)
 	}
-	checked := b.checked_expr_type_name(expr_id)
-	if checked.len > 0 {
-		return checked
+	checked_source_id := b.checked_expr_type_name(expr_id)
+
+	if checked_source_id != 0 {
+		return checked_source_id
 	}
 	if expr.kind == .call && expr.children_count > 0 {
 		callee := b.qualified_expr_name(b.a.child(expr, 0))
 		for node in b.a.nodes {
-			if node.kind == .fn_decl && node.value == callee && node.typ_text().len > 0 {
-				return qualify_type_ref_name(node.typ_text(), module_name)
+			if node.kind == .fn_decl && node.value == callee && node.typ != 0 {
+				return flat.source_type_id(qualify_type_ref_name(node.typ_text(), module_name))
 			}
 		}
 	}
@@ -221,7 +223,7 @@ fn (mut b Builder) build_native_initializer_functions() {
 		initializer.function = b.register_synthetic_function('__ssa_init_' + ssa_c_name(name),
 			b.void_type, [])
 		b.cur_func = initializer.function
-		b.cur_func_ret_type = flat.source_type_id('')
+		b.cur_func_ret_type = u32(0)
 		b.cur_module = initializer.module_name
 		b.reset_function_state()
 		b.cur_block = b.m.add_block(initializer.function, 'entry')

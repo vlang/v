@@ -70,7 +70,7 @@ fn test_map_callbacks_resolve_aliases_and_keep_fixed_array_helpers() {
 			'BlockKey':  '[2]u64'
 		}
 		for name, base in aliases {
-			tc.type_aliases.set(name, base)
+			tc.type_aliases.set_id(name, flat.source_type_id(base))
 			tc.type_alias_modules[name] = 'main'
 		}
 		t := Transformer{
@@ -79,7 +79,7 @@ fn test_map_callbacks_resolve_aliases_and_keep_fixed_array_helpers() {
 			cur_module: 'main'
 		}
 		for name, base in aliases {
-			hash_fn, eq_fn, clone_fn, free_fn := t.map_callback_names_for_type(name)
+			hash_fn, eq_fn, clone_fn, free_fn := t.map_callback_names_for_type(flat.source_type_id(name))
 			actual := [hash_fn, eq_fn, clone_fn, free_fn]
 			if name == 'BlockKey' {
 				prefix := '${tc.c_type(tc.parse_type(base))}_map_key'

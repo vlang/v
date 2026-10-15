@@ -14,7 +14,7 @@ fn test_guard_staging_ends_error_scope_before_pointer_backed_destination() {
 		assign_lhs_ids: [t.make_ident('err'), t.make_ident('_')]
 	}
 	staging := t.stage_guard_assignments(guard_assignment_tail(tail, ['err']), true)
-	assert t.lvalue_type(staging.tail.assign_lhs_ids[0]) == 'string'
+	assert t.lvalue_type(staging.tail.assign_lhs_ids[0]) == flat.source_type_string
 	assert staging.tail.assign_lhs_ids[1] == tail.assign_lhs_ids[1]
 	assert staging.tail.assign_original_lhs_ids == tail.assign_lhs_ids
 	// A nested guard writes the same staging storage, rather than adding another copy.
@@ -23,7 +23,7 @@ fn test_guard_staging_ends_error_scope_before_pointer_backed_destination() {
 	assert nested.tail.assign_lhs_ids == staging.tail.assign_lhs_ids
 	mut body := []flat.NodeId{}
 	err_scope := t.enter_implicit_err_scope(true)
-	t.append_implicit_err_decl(mut body, t.make_struct_init('IError'))
+	t.append_implicit_err_decl(mut body, t.make_struct_init(flat.source_type_id('IError')))
 	t.leave_implicit_err_scope(err_scope)
 	wrapper_id := t.finish_guard_assignments(t.make_block(body), tail, staging)
 	wrapper := a.nodes[int(wrapper_id)]
@@ -71,7 +71,7 @@ fn test_owned_guard_staging_preserves_moves_through_branch_tails() {
 			tc.fn_ret_types['pair'] = types.Type(types.MultiReturn{
 				types: [tc.parse_type(flat.source_type_id('IError')), types.Type(types.string_)]
 			})
-			call := t.make_call_typed('pair', values, '(IError, string)')
+			call := t.make_call_typed('pair', values, flat.source_type_id('(IError, string)'))
 			branch = t.make_block([t.make_expr_stmt(call)])
 		} else {
 			branch = t.make_block([t.make_expr_stmt(values[0]), t.make_expr_stmt(values[1])])

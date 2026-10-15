@@ -18,8 +18,8 @@ fn test_interface_fixed_array_callback_lengths_resolve_constants() {
 fn test_empty_interface_impl_names_deduplicate_builtin_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases.set('byte', 'u8')
-	tc.type_aliases.set('builtin.byte', 'u8')
+	tc.type_aliases.set_id('byte', flat.source_type_u8)
+	tc.type_aliases.set_id('builtin.byte', flat.source_type_u8)
 
 	impls := tc.interface_impl_names('Any')
 	assert impls.filter(it == 'byte').len == 1
@@ -140,7 +140,7 @@ fn test_generic_interface_signature_substitutes_named_return_types() {
 
 	interface_type := tc.substitute_generic_type(Type(Interface{
 		name_id: flat.source_type_id('BoxedValue[T]')
-	}), ['int'], ['T'])
+	}), flat.TypeTextList.from_names(['int']).ids, ['T'])
 	assert interface_type.name() == 'BoxedValue[int]'
 }
 

@@ -101,7 +101,7 @@ fn (mut tc TypeChecker) vls_definition_at(target VlsTarget) ?VlsPos {
 		}
 		.field_init {
 			owner := tc.vls_field_init_owner(id)?
-			return tc.vls_field_definition(tc.vls_member_owner(owner)?, node.value)
+			return tc.vls_field_definition(flat.source_type_id(tc.vls_member_owner(owner)?), node.value)
 		}
 		else {
 			return none
@@ -350,7 +350,7 @@ fn (tc &TypeChecker) vls_selector_definition(node flat.Node) ?VlsPos {
 	}
 	receiver_type := tc.vls_expr_type(receiver_id) or { return none }
 	type_name := tc.vls_member_owner(receiver_type) or { return none }
-	if at := tc.vls_field_definition(type_name, node.value) {
+	if at := tc.vls_field_definition(flat.source_type_id(type_name), node.value) {
 		return at
 	}
 	// A method named without a call, as a call of it.
@@ -373,7 +373,8 @@ fn (tc &TypeChecker) vls_module_member_definition(module_name string, member str
 // vls_field_definition is where the struct or interface `type_name` declares
 // the field `field`, or the struct it embeds that declares it: `u.id` for the
 // `id` of a `Base` that `u`'s struct embeds.
-fn (tc &TypeChecker) vls_field_definition(type_name string, field string) ?VlsPos {
+fn (tc &TypeChecker) vls_field_definition(type_name_id u32, field string) ?VlsPos {
+	type_name := flat.source_type_name(type_name_id)
 	index := tc.first_type_declaration_ids[type_name] or { return none }
 	decl := tc.a.nodes[index]
 	for i in 0 .. decl.children_count {
@@ -385,7 +386,7 @@ fn (tc &TypeChecker) vls_field_definition(type_name string, field string) ?VlsPo
 	// Two embedded structs that declare it make the name ambiguous: V rejects it.
 	owners := tc.embedded_field_candidates(type_name, field)
 	if owners.len == 1 {
-		return tc.vls_field_definition(owners[0], field)
+		return tc.vls_field_definition(flat.source_type_id(owners[0]), field)
 	}
 	return none
 }

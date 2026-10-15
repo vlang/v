@@ -7,7 +7,7 @@ import v.flat
 
 // emit_sum_type emits emit sum type output for c.
 fn (mut g FlatGen) emit_sum_type(name string) {
-	variants := g.tc.sum_types.value(name)
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(name) or { []u32{} } }.names()
 	g.writeln('struct ${g.cname(name)} {')
 	g.writeln('\tint typ;')
 	g.writeln('\tu32 _pointer_variant_is_owned;')
@@ -30,7 +30,9 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 // sum_type_contains_struct reports whether sum type contains struct applies in c.
 fn (g &FlatGen) sum_type_contains_struct(sum_name string, struct_name string) bool {
 	if g.tc.sum_types.contains(sum_name) {
-		for v in g.tc.sum_types.value(sum_name) {
+		for v_source_id in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+			v := flat.source_type_name(v_source_id)
+
 			if v == struct_name {
 				return true
 			}
@@ -96,20 +98,26 @@ fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
 
 fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
 	if g.tc.sum_types.contains(sum_name) {
-		for i, v in g.tc.sum_types.value(sum_name) {
+		for i, v_source_id_2 in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+			v := flat.source_type_name(v_source_id_2)
+
 			if v == variant {
 				return i + 1
 			}
 		}
 		resolved_variant := g.tc.qualify_name(variant)
 		if resolved_variant != variant {
-			for i, v in g.tc.sum_types.value(sum_name) {
+			for i, v_source_id_3 in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+				v := flat.source_type_name(v_source_id_3)
+
 				if v == resolved_variant {
 					return i + 1
 				}
 			}
 		}
-		for i, v in g.tc.sum_types.value(sum_name) {
+		for i, v_source_id_4 in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+			v := flat.source_type_name(v_source_id_4)
+
 			if v.all_after_last('.') == variant {
 				return i + 1
 			}
@@ -119,7 +127,9 @@ fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
 		// module-stripped spelling only when that spelling is unambiguous.
 		if variant.contains('.') || variant.contains('[') {
 			mut short_match := 0
-			for i, v in g.tc.sum_types.value(sum_name) {
+			for i, v_source_id_5 in g.tc.sum_types.type_ids(sum_name) or { []u32{} } {
+				v := flat.source_type_name(v_source_id_5)
+
 				if short_module_type_texts_equal(v, variant) {
 					if short_match != 0 {
 						return 0
@@ -760,7 +770,7 @@ fn (mut g FlatGen) register_specialized_interface_applications() {
 		}
 	}
 	for node in g.a.nodes {
-		if node.typ_text().contains('[') {
+		if flat.source_type_shape(node.typ).has(.bracketed) {
 			// Generic-interface storage intentionally parses to the shared base box.
 			// Preserve the concrete source application from specialized AST signatures
 			// before semantic parsing erases it, so its dispatch wrapper is emitted.
@@ -828,7 +838,7 @@ fn (g &FlatGen) collect_specialized_interface_application_text(type_text string,
 	}
 	for arg in args {
 		g.collect_specialized_interface_application_text(arg, mut applications)
-		if codegen_generic_arg_is_unresolved(arg) {
+		if codegen_generic_arg_is_unresolved(flat.source_type_id(arg)) {
 			return
 		}
 	}
@@ -1098,7 +1108,7 @@ fn (g &FlatGen) ierror_promoted_method_call(concrete string, method string, mut 
 		return none
 	}
 	seen[concrete] = true
-	for field in g.struct_embedded_fields(concrete) {
+	for field in g.struct_embedded_fields(flat.source_type_id(concrete)) {
 		embedded_name := g.embedded_field_type_name(field)
 		if embedded_name.len == 0 {
 			continue
@@ -1420,7 +1430,7 @@ fn (g &FlatGen) iface_type_id_for_concrete(iface string, concrete types.Type) in
 	mut alias_id := 0
 	mut matches := 0
 	for impl in g.iface_impls[iface] or { []string{} } {
-		target := g.tc.type_aliases.get(impl) or { continue }
+		target := flat.source_type_name(g.tc.type_aliases.type_id(impl) or { continue })
 		if target == concrete_name || g.tc.qualify_name(target) == g.tc.qualify_name(concrete_name) {
 			alias_id = g.iface_type_id(iface, impl)
 			matches++
@@ -2382,7 +2392,9 @@ fn (g &FlatGen) interface_boxed_type_collected_for_dispatch(iface_name string, c
 		return true
 	}
 	for candidate in [concrete, g.tc.qualify_name(concrete)] {
-		if target := g.tc.type_aliases.get(candidate) {
+		if target_source_id := g.tc.type_aliases.type_id(candidate) {
+			target := flat.source_type_name(target_source_id)
+
 			if g.interface_boxed_types['${iface_name}::${target}']
 				|| g.interface_boxed_types['${iface_name}::${c_name(target)}']
 				|| g.interface_boxed_types['${iface_name}::${target.all_after_last('.')}'] {
@@ -2418,7 +2430,7 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 			if field.kind != .field_init || field.value != '_object' || field.children_count == 0 {
 				continue
 			}
-			mut obj_type := if field.typ_text().len > 0 {
+			mut obj_type := if field.typ != 0 {
 				g.tc.parse_type(field.typ)
 			} else {
 				g.tc.resolve_type(g.a.child(field, 0))
@@ -2878,7 +2890,7 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 	if struct_name in stack {
 		return g.interface_str_lit(empty_struct)
 	}
-	fields := g.struct_fields_for_type(struct_name) or { return none }
+	fields := g.struct_fields_for_type(flat.source_type_id(struct_name)) or { return none }
 	if fields.len == 0 {
 		return g.interface_str_lit(empty_struct)
 	}
@@ -2936,7 +2948,7 @@ fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, m
 	defer {
 		stack.delete_last()
 	}
-	variants := g.tc.sum_types.get(sum_name) or { return none }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return none } }.names()
 	ct := g.tc.c_type(sum_type)
 	tmp := g.interface_tmp('iface_str_sum')
 	out := g.interface_tmp('iface_str_out')
