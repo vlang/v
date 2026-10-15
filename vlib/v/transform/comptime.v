@@ -152,7 +152,7 @@ fn (t &Transformer) comptime_for_value_source_type(raw string) ?string {
 	}
 	mut typ := t.comptime_for_var_source_type(parts[0]) or { return none }
 	for field in parts[1..] {
-		typ = t.comptime_for_field_source_type(typ, field) or { return none }
+		typ = flat.source_type_name(t.comptime_for_field_source_type(flat.source_type_id(typ), field) or { return none })
 	}
 	return typ
 }
@@ -169,15 +169,17 @@ fn (t &Transformer) comptime_for_var_source_type(name string) ?string {
 	return none
 }
 
-fn (t &Transformer) comptime_for_field_source_type(owner_type string, field_name string) ?string {
-	base := flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(t.comptime_for_value_type_base(owner_type))))
+fn (t &Transformer) comptime_for_field_source_type(owner_type_id u32, field_name string) ?u32 {
+	owner_type := flat.source_type_name(owner_type_id)
+	base_source_id := t.comptime_normalize_type_alias_chain(flat.source_type_id(t.comptime_for_value_type_base(owner_type)))
+	base := flat.source_type_name(base_source_id)
 	info := t.lookup_struct_info(base) or {
-		t.generic_struct_info_for_stringify(base) or { return none }
+		t.generic_struct_info_for_stringify(base_source_id) or { return none }
 	}
 	for field in info.fields {
 		if field.name == field_name {
 			ftyp := if field.typ != 0 { field.typ_text() } else { field.raw_typ_text() }
-			return t.comptime_for_value_type_base(ftyp)
+			return flat.source_type_id(t.comptime_for_value_type_base(ftyp))
 		}
 	}
 	return none
@@ -544,13 +546,13 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 	body := t.a.nodes[int(body_id)]
 	body_stmts := t.a.children_of(&body).clone()
 	if kind == 'values' {
-		return t.expand_comptime_for_values(var_name, base_type, body_stmts)
+		return t.expand_comptime_for_values(var_name, flat.source_type_id(base_type), body_stmts)
 	}
 	if kind == 'variants' {
-		return t.expand_comptime_for_variants(var_name, base_type, body_stmts)
+		return t.expand_comptime_for_variants(var_name, flat.source_type_id(base_type), body_stmts)
 	}
 	if kind == 'methods' {
-		return t.expand_comptime_for_methods(var_name, base_type, body_stmts)
+		return t.expand_comptime_for_methods(var_name, flat.source_type_id(base_type), body_stmts)
 	}
 	if kind == 'params' {
 		return t.expand_comptime_for_params(var_name, node.typ_text(), body_stmts, id)
@@ -565,7 +567,7 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 		return []flat.NodeId{}
 	}
 	mut out := []flat.NodeId{}
-	for fm in t.comptime_field_metas(base_type) {
+	for fm in t.comptime_field_metas(flat.source_type_id(base_type)) {
 		mut cloned := []flat.NodeId{cap: body_stmts.len}
 		for sid in body_stmts {
 			if cid := t.clone_field_subst(sid, var_name, fm) {
@@ -1015,10 +1017,10 @@ fn (mut t Transformer) clone_attribute_subst_children_with_value(node flat.Node,
 
 fn (mut t Transformer) make_attribute_literal(attr AttributeMeta) flat.NodeId {
 	fields := [
-		t.make_named_field_init('name', t.make_string_literal(attr.name), 'string'),
-		t.make_named_field_init('has_arg', t.make_bool_literal(attr.has_arg), 'bool'),
-		t.make_named_field_init('arg', t.make_string_literal(attr.arg), 'string'),
-		t.make_named_field_init('kind', t.make_int_literal_typed(attr.kind.str(), flat.source_type_id('AttributeKind')), 'AttributeKind'),
+		t.make_named_field_init('name', t.make_string_literal(attr.name), flat.source_type_string),
+		t.make_named_field_init('has_arg', t.make_bool_literal(attr.has_arg), flat.source_type_bool),
+		t.make_named_field_init('arg', t.make_string_literal(attr.arg), flat.source_type_string),
+		t.make_named_field_init('kind', t.make_int_literal_typed(attr.kind.str(), flat.source_type_id('AttributeKind')), flat.source_type_id('AttributeKind')),
 	]
 	start := t.a.children.len
 	for field in fields {
@@ -1155,7 +1157,7 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 					t.make_string_literal(param.name)
 				}
 				'typ' {
-					t.make_int_literal(t.comptime_field_type_id(param.typ_text(), param.module_name))
+					t.make_int_literal(t.comptime_field_type_id(param.typ, param.module_name))
 				}
 				else {
 					t.clone_param_subst_children(node, var_name, param, inner_vars)
@@ -1168,7 +1170,7 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 					t.make_string_literal(param.typ_text())
 				}
 				'idx' {
-					t.make_int_literal(t.comptime_field_type_id(param.typ_text(), param.module_name))
+					t.make_int_literal(t.comptime_field_type_id(param.typ, param.module_name))
 				}
 				else {
 					t.clone_param_subst_children(node, var_name, param, inner_vars)
@@ -1185,7 +1187,7 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 		} else {
 			t.comptime_field_type_id_key(param.typ_text(), param.module_name)
 		}
-		mut cond := comptime_cond_replace_int_compared(node.value, '${var_name}.typ', t.comptime_field_type_id(param.typ_text(), param.module_name).str())
+		mut cond := comptime_cond_replace_int_compared(node.value, '${var_name}.typ', t.comptime_field_type_id(param.typ, param.module_name).str())
 		cond = comptime_cond_replace_unquoted(cond, '${var_name}.typ', param_typ)
 		cond = comptime_cond_replace_unquoted(cond, '${var_name}.name', "'${param.name}'")
 		cond = comptime_cond_replace_unquoted(cond, ' is &void', ' is voidptr')
@@ -1275,8 +1277,8 @@ fn (mut t Transformer) make_param_data_literal(param ParamMeta) flat.NodeId {
 }
 
 fn (mut t Transformer) make_param_data_literal_in_module(param ParamMeta, module_name string) flat.NodeId {
-	name_field := t.make_named_field_init('name', t.make_string_literal(param.name), 'string')
-	typ_field := t.make_named_field_init('typ', t.make_int_literal(t.comptime_field_type_id(param.typ_text(), module_name)), 'int')
+	name_field := t.make_named_field_init('name', t.make_string_literal(param.name), flat.source_type_string)
+	typ_field := t.make_named_field_init('typ', t.make_int_literal(t.comptime_field_type_id(param.typ, module_name)), flat.source_type_int)
 	start := t.a.children.len
 	t.a.children << name_field
 	t.a.children << typ_field
@@ -1292,13 +1294,13 @@ fn (mut t Transformer) make_param_data_literal_in_module(param ParamMeta, module
 // make_method_data_literal builds a runtime `FunctionData` value for a bare methods loop variable.
 fn (mut t Transformer) make_method_data_literal(method MethodMeta) flat.NodeId {
 	fields := [
-		t.make_named_field_init('name', t.make_string_literal(method.name), 'string'),
-		t.make_named_field_init('location', t.make_string_literal(method.location), 'string'),
-		t.make_named_field_init('attrs', t.make_string_array_literal(method.attrs), '[]string'),
-		t.make_named_field_init('attributes', t.make_attribute_array_literal(method.attributes), '[]VAttribute'),
-		t.make_named_field_init('args', t.make_param_array_literal(method.params, method.module_name), '[]FunctionParam'),
-		t.make_named_field_init('return_type', t.make_int_literal(t.comptime_field_type_id(method.return_type_text(), method.module_name)), 'int'),
-		t.make_named_field_init('typ', t.make_int_literal(t.comptime_method_type_id(method)), 'int'),
+		t.make_named_field_init('name', t.make_string_literal(method.name), flat.source_type_string),
+		t.make_named_field_init('location', t.make_string_literal(method.location), flat.source_type_string),
+		t.make_named_field_init('attrs', t.make_string_array_literal(method.attrs), flat.source_type_id('[]string')),
+		t.make_named_field_init('attributes', t.make_attribute_array_literal(method.attributes), flat.source_type_id('[]VAttribute')),
+		t.make_named_field_init('args', t.make_param_array_literal(method.params, method.module_name), flat.source_type_id('[]FunctionParam')),
+		t.make_named_field_init('return_type', t.make_int_literal(t.comptime_field_type_id(method.return_type, method.module_name)), flat.source_type_int),
+		t.make_named_field_init('typ', t.make_int_literal(t.comptime_method_type_id(method)), flat.source_type_int),
 	]
 	start := t.a.children.len
 	for field in fields {
@@ -1313,9 +1315,9 @@ fn (mut t Transformer) make_method_data_literal(method MethodMeta) flat.NodeId {
 	})
 }
 
-fn (mut t Transformer) expand_comptime_for_methods(var_name string, base_type string, body_stmts []flat.NodeId) []flat.NodeId {
+fn (mut t Transformer) expand_comptime_for_methods(var_name string, base_type_id u32, body_stmts []flat.NodeId) []flat.NodeId {
 	mut out := []flat.NodeId{}
-	for method in t.comptime_method_metas(base_type) {
+	for method in t.comptime_method_metas(base_type_id) {
 		mut cloned := []flat.NodeId{cap: body_stmts.len}
 		for sid in body_stmts {
 			if cid := t.clone_method_subst(sid, var_name, method) {
@@ -1427,7 +1429,8 @@ fn (t &Transformer) comptime_method_source_type(raw string) string {
 	return raw
 }
 
-fn (mut t Transformer) comptime_method_metas(base_type string) []MethodMeta {
+fn (mut t Transformer) comptime_method_metas(base_type_id u32) []MethodMeta {
+	base_type := flat.source_type_name(base_type_id)
 	requested := t.comptime_method_source_type(base_type)
 	normalized := flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(requested)))
 	requested_module := t.comptime_method_requested_module(requested)
@@ -1693,7 +1696,7 @@ fn (t &Transformer) comptime_method_min_required_arg_count(method MethodMeta) in
 	mut count := method.params.len
 	for count > 0 {
 		param := method.params[count - 1]
-		if param.typ_text().starts_with('?') {
+		if flat.source_type_shape(param.typ).has(.option_type) {
 			count--
 			continue
 		}
@@ -1822,7 +1825,7 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 					t.make_bool_literal(method.is_pub)
 				}
 				'return_type' {
-					t.make_int_literal(t.comptime_field_type_id(method.return_type_text(), method.module_name))
+					t.make_int_literal(t.comptime_field_type_id(method.return_type, method.module_name))
 				}
 				'typ' {
 					t.make_int_literal(t.comptime_method_type_id(method))
@@ -2018,14 +2021,14 @@ fn (t &Transformer) comptime_method_receiver_names_type(receiver flat.NodeId) bo
 	// Decide on the source node while its lexical binding and checked type remain available.
 	namespace_spelling := t.comptime_resolve_selective_import_type(node.value)
 	if !node.value[0].is_capital() && !types.is_builtin_type_name(namespace_spelling)
-		&& !t.is_known_type_name(namespace_spelling) {
+		&& !t.is_known_type_name(flat.source_type_id(namespace_spelling)) {
 		return false
 	}
 	if _ := t.local_binding_before(node.value, receiver) {
 		return false
 	}
 	if !isnil(t.tc)
-		&& (types.is_builtin_type_name(namespace_spelling) || t.is_known_type_name(namespace_spelling)) {
+		&& (types.is_builtin_type_name(namespace_spelling) || t.is_known_type_name(flat.source_type_id(namespace_spelling))) {
 		mut checked_name := node.typ_text()
 		if typ := t.tc.expr_type(receiver) {
 			checked_name = flat.source_type_name(t.tc.type_name(typ))
@@ -2146,11 +2149,12 @@ fn (mut t Transformer) clone_method_subst_children(node flat.Node, var_name stri
 // struct expected by a reflected method. Comptime method calls are checked before
 // generic specialization, so their argument can still be `T` then and become a
 // concrete embedding struct only while the call is cloned.
-fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId, param_type string, param_module string) ?flat.NodeId {
-	if int(arg_id) < 0 || !param_type.starts_with('&') {
+fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId, param_type_id u32, param_module string) ?flat.NodeId {
+	param_type_shape := flat.source_type_shape(param_type_id)
+	if int(arg_id) < 0 || !param_type_shape.has(.pointer) {
 		return none
 	}
-	expected_type_source_id := t.trim_pointer_type(flat.source_type_id(param_type))
+	expected_type_source_id := t.trim_pointer_type(param_type_id)
 	expected_type := flat.source_type_name(expected_type_source_id)
 	mut actual_type := flat.source_type_name(t.raw_var_type_for_expr(arg_id) or { t.node_type(arg_id) })
 	if actual_type.len == 0 {
@@ -2178,15 +2182,15 @@ fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId
 	} else {
 		t.transform_expr(arg_id)
 	}
-	embedded := t.embedded_receiver_base_for_type(base, actual_type, expected_type_source_id) or {
+	embedded := t.embedded_receiver_base_for_type(base, flat.source_type_id(actual_type), expected_type_source_id) or {
 		return none
 	}
-	if flat.source_type_name(t.node_type(embedded)).starts_with('&') {
-		t.set_node_typ(int(embedded), flat.source_type_id(param_type))
+	if flat.source_type_shape(t.node_type(embedded)).has(.pointer) {
+		t.set_node_typ(int(embedded), param_type_id)
 		return embedded
 	}
 	address := t.make_prefix(.amp, embedded)
-	t.set_node_typ(int(address), flat.source_type_id(param_type))
+	t.set_node_typ(int(address), param_type_id)
 	return address
 }
 
@@ -2213,7 +2217,7 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 		callee := t.a.node(children[0])
 		if callee.kind == .selector && comptime_method_selector_marker in callee.generic_params() {
 			if embedded_ctx := t.transform_comptime_method_embedded_arg(children[1],
-				method.params[0].typ_text(), method.params[0].module_name)
+				method.params[0].typ, method.params[0].module_name)
 			{
 				children[1] = embedded_ctx
 				t.a.children[start + 1] = embedded_ctx
@@ -2266,7 +2270,7 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 	}
 	method_type := t.comptime_method_type_text(method)
 	result = comptime_cond_replace_unquoted(result, '${var_name}.location', comptime_cond_string_literal(method.location))
-	result = comptime_cond_replace_int_compared(result, '${var_name}.return_type', t.comptime_field_type_id(method.return_type_text(), method.module_name).str())
+	result = comptime_cond_replace_int_compared(result, '${var_name}.return_type', t.comptime_field_type_id(method.return_type, method.module_name).str())
 	result = comptime_cond_replace_unquoted(result, '${var_name}.return_type', t.comptime_field_type_id_key(method.return_type_text(), method.module_name))
 	result = comptime_cond_replace_int_compared(result, '${var_name}.typ', t.comptime_method_type_id(method).str())
 	result = comptime_cond_replace_unquoted(result, '${var_name}.typ', method_type)
@@ -2305,7 +2309,7 @@ fn (t &Transformer) comptime_method_type_text(method MethodMeta) string {
 }
 
 fn (t &Transformer) comptime_method_type_id(method MethodMeta) int {
-	return t.comptime_field_type_id(t.comptime_method_type_text(method), '')
+	return t.comptime_field_type_id(flat.source_type_id(t.comptime_method_type_text(method)), '')
 }
 
 // subst_method_attrs_access_cond materializes `method.attrs[i]` (the attribute, or '' past the
@@ -2450,7 +2454,7 @@ fn (t &Transformer) subst_method_param_cond(cond string, var_name string, method
 				if member == 'name' {
 					"'${method.params[index].name}'"
 				} else if comptime_cond_int_compared(result, start, member_end) {
-					t.comptime_field_type_id(method.params[index].typ_text(), method.module_name).str()
+					t.comptime_field_type_id(method.params[index].typ, method.module_name).str()
 				} else if method.params[index].typ_text() == '&void' {
 					'voidptr'
 				} else {
@@ -2471,8 +2475,8 @@ fn (t &Transformer) subst_method_param_cond(cond string, var_name string, method
 
 // expand_comptime_for_values unrolls `$for value in Enum.values { ... }`. The loop variable
 // exposes `value.name` / `value.value` and, used bare, materializes as `EnumData`.
-fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type string, body_stmts []flat.NodeId) []flat.NodeId {
-	values := t.comptime_enum_members(base_type)
+fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type_id u32, body_stmts []flat.NodeId) []flat.NodeId {
+	values := t.comptime_enum_members(base_type_id)
 	mut out := []flat.NodeId{}
 	for item in values {
 		mut cloned := []flat.NodeId{cap: body_stmts.len}
@@ -2489,9 +2493,9 @@ fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type str
 // expand_comptime_for_variants unrolls `$for variant in Sum.variants`. The loop variable is a
 // VariantData value at runtime, while its `.typ_text()` member also carries the concrete compile-time
 // type used by `is` checks and `typeof(variant.typ_text())`.
-fn (mut t Transformer) expand_comptime_for_variants(var_name string, base_type string, body_stmts []flat.NodeId) []flat.NodeId {
+fn (mut t Transformer) expand_comptime_for_variants(var_name string, base_type_id u32, body_stmts []flat.NodeId) []flat.NodeId {
 	mut out := []flat.NodeId{}
-	for item in t.comptime_sum_variants(base_type) {
+	for item in t.comptime_sum_variants(base_type_id) {
 		mut cloned := []flat.NodeId{cap: body_stmts.len}
 		for sid in body_stmts {
 			if cid := t.clone_variant_subst(sid, var_name, item) {
@@ -2503,8 +2507,9 @@ fn (mut t Transformer) expand_comptime_for_variants(var_name string, base_type s
 	return out
 }
 
-fn (t &Transformer) comptime_sum_variants(base_type string) []VariantMeta {
-	resolved := t.comptime_resolve_sum_type_name(base_type)
+fn (t &Transformer) comptime_sum_variants(base_type_id u32) []VariantMeta {
+	base_type := flat.source_type_name(base_type_id)
+	resolved := flat.source_type_name(t.comptime_resolve_sum_type_name(base_type_id))
 	mut variants := if !base_type.contains('.') {
 		t.comptime_local_sum_variants(trimmed_transform_text(base_type)) or { []string{} }
 	} else if isnil(t.tc) {
@@ -2522,16 +2527,17 @@ fn (t &Transformer) comptime_sum_variants(base_type string) []VariantMeta {
 	for variant in variants {
 		metas << VariantMeta{
 			typ:    flat.source_type_id(variant)
-			typ_id: t.comptime_field_type_id(variant, t.cur_module)
+			typ_id: t.comptime_field_type_id(flat.source_type_id(variant), t.cur_module)
 		}
 	}
 	return metas
 }
 
-fn (t &Transformer) comptime_resolve_sum_type_name(base_type string) string {
+fn (t &Transformer) comptime_resolve_sum_type_name(base_type_id u32) u32 {
+	base_type := flat.source_type_name(base_type_id)
 	base := trimmed_transform_text(base_type)
 	if base.len == 0 {
-		return base
+		return flat.source_type_id(base)
 	}
 	// Main-module declarations are stored under their bare names. Generic
 	// specialization locks can make that ownership explicit (`main.Sum`), so
@@ -2539,14 +2545,14 @@ fn (t &Transformer) comptime_resolve_sum_type_name(base_type string) string {
 	if base.starts_with('main.') {
 		storage_name := base['main.'.len..]
 		if t.sum_types.contains(storage_name) || (!isnil(t.tc) && t.tc.sum_types.contains(storage_name)) {
-			return storage_name
+			return flat.source_type_id(storage_name)
 		}
 	}
 	if isnil(t.tc) {
-		return base
+		return flat.source_type_id(base)
 	}
 	if base.contains('.') {
-		return t.resolve_imported_type_name(base) or { base }
+		return flat.source_type_id(t.resolve_imported_type_name(base) or { base })
 	}
 	local := if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		'${t.cur_module}.${base}'
@@ -2554,20 +2560,20 @@ fn (t &Transformer) comptime_resolve_sum_type_name(base_type string) string {
 		base
 	}
 	if t.tc.sum_types.contains(local) {
-		return local
+		return flat.source_type_id(local)
 	}
 	// A specialization declared in another module can carry an unqualified
 	// caller-owned sum type (notably a type from `main`). Prefer that exact
 	// registered type before qualifying it as if it belonged to the generic
 	// function's module.
 	if t.tc.sum_types.contains(base) {
-		return base
+		return flat.source_type_id(base)
 	}
 	imported := t.comptime_resolve_selective_import_type(base)
 	if imported != base {
-		return imported
+		return flat.source_type_id(imported)
 	}
-	return local
+	return flat.source_type_id(local)
 }
 
 // collect_types keeps legacy short-name entries for imported sums, so locate a bare sum's
@@ -2595,7 +2601,7 @@ fn (t &Transformer) comptime_local_sum_variants(name string) ?[]string {
 		mut variants := []string{cap: int(node.children_count)}
 		for i in 0 .. node.children_count {
 			variant := t.a.child_node(node, i)
-			variants << t.normalize_sum_variant_type(variant.value, module_name, node.generic_params())
+			variants << flat.source_type_name(t.normalize_sum_variant_type(flat.source_type_id(variant.value), module_name, node.generic_params()))
 		}
 		return variants
 	}
@@ -2604,7 +2610,8 @@ fn (t &Transformer) comptime_local_sum_variants(name string) ?[]string {
 
 // comptime_enum_members returns the member metadata for an enum (resolving an enum alias to its
 // underlying enum).
-fn (t &Transformer) comptime_enum_members(base_type string) []EnumValueMeta {
+fn (t &Transformer) comptime_enum_members(base_type_id u32) []EnumValueMeta {
+	base_type := flat.source_type_name(base_type_id)
 	mut names := []string{}
 	storage_name := if base_type.starts_with('main.') {
 		base_type['main.'.len..]
@@ -3219,7 +3226,7 @@ fn (mut t Transformer) comptime_field_generic_arg_type(arg_id flat.NodeId, fm Fi
 }
 
 fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.Node, fm FieldMeta) ?string {
-	if !fm.is_option || !fm.comptime_typ_text().starts_with('?') || name == '' || !call.pos.is_valid() {
+	if !fm.is_option || !flat.source_type_shape(fm.comptime_typ).has(.option_type) || name == '' || !call.pos.is_valid() {
 		return none
 	}
 	mut source_name := name
@@ -3430,9 +3437,9 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		if member := t.variant_type_member(t.a.child(&node, 0), var_name, true) {
 			target := t.variant_member_type(member, item)
 			return if node.value == '__v3_comptime_new' {
-				t.comptime_new_value(target)
+				t.comptime_new_value(flat.source_type_id(target))
 			} else {
-				t.comptime_zero_value(target)
+				t.comptime_zero_value(flat.source_type_id(target))
 			}
 		}
 	}
@@ -3447,7 +3454,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		if operand.kind == .ident && operand.value == var_name {
 			// `T(v)` wraps a zero value of the variant's type in the sum type
 			// (the VariantData literal is only the loop var's runtime carrier).
-			mut zero := t.comptime_zero_value(item.typ_text())
+			mut zero := t.comptime_zero_value(item.typ)
 			if t.comptime_typeof_unaliased_type(item.typ_text()) != item.typ_text() {
 				// An alias variant's zero value has its base type; keep the alias, so
 				// `Foo | Alias` selects `Alias` rather than `Foo`.
@@ -3688,9 +3695,9 @@ fn (t &Transformer) subst_variant_cond(cond string, var_name string, item Varian
 
 // make_enum_data_literal builds `EnumData{name: '<name>', value: <value>, attrs: [...]}`.
 fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
-	name_field := t.make_named_field_init('name', t.make_string_literal(item.name), 'string')
-	value_field := t.make_named_field_init('value', t.make_int_literal_typed(item.value.str(), flat.source_type_i64), 'i64')
-	attrs_field := t.make_named_field_init('attrs', t.make_string_array_literal(item.attrs), '[]string')
+	name_field := t.make_named_field_init('name', t.make_string_literal(item.name), flat.source_type_string)
+	value_field := t.make_named_field_init('value', t.make_int_literal_typed(item.value.str(), flat.source_type_i64), flat.source_type_i64)
+	attrs_field := t.make_named_field_init('attrs', t.make_string_array_literal(item.attrs), flat.source_type_id('[]string'))
 	start := t.a.children.len
 	t.a.children << name_field
 	t.a.children << value_field
@@ -3705,7 +3712,7 @@ fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 }
 
 fn (mut t Transformer) make_variant_data_literal(item VariantMeta) flat.NodeId {
-	typ_field := t.make_named_field_init('typ', t.make_int_literal(item.typ_id), 'int')
+	typ_field := t.make_named_field_init('typ', t.make_int_literal(item.typ_id), flat.source_type_int)
 	start := t.a.children.len
 	t.a.children << typ_field
 	return t.a.add_node(flat.Node{
@@ -3720,23 +3727,23 @@ fn (mut t Transformer) make_variant_data_literal(item VariantMeta) flat.NodeId {
 // make_field_data_literal builds a runtime `FieldData` value for a bare `$for field` variable.
 fn (mut t Transformer) make_field_data_literal(fm FieldMeta) flat.NodeId {
 	fields := [
-		t.make_named_field_init('name', t.make_string_literal(fm.name), 'string'),
-		t.make_named_field_init('typ', t.make_int_literal(fm.typ_id), 'int'),
-		t.make_named_field_init('unaliased_typ', t.make_int_literal(fm.unaliased_id), 'int'),
-		t.make_named_field_init('attrs', t.make_string_array_literal(fm.attrs), '[]string'),
-		t.make_named_field_init('is_pub', t.make_bool_literal(fm.is_pub), 'bool'),
-		t.make_named_field_init('is_mut', t.make_bool_literal(fm.is_mut), 'bool'),
-		t.make_named_field_init('is_embed', t.make_bool_literal(fm.is_embed), 'bool'),
-		t.make_named_field_init('is_shared', t.make_bool_literal(fm.is_shared), 'bool'),
-		t.make_named_field_init('is_atomic', t.make_bool_literal(fm.is_atomic), 'bool'),
-		t.make_named_field_init('is_option', t.make_bool_literal(fm.is_option), 'bool'),
-		t.make_named_field_init('is_array', t.make_bool_literal(fm.is_array), 'bool'),
-		t.make_named_field_init('is_map', t.make_bool_literal(fm.is_map), 'bool'),
-		t.make_named_field_init('is_chan', t.make_bool_literal(fm.is_chan), 'bool'),
-		t.make_named_field_init('is_enum', t.make_bool_literal(fm.is_enum), 'bool'),
-		t.make_named_field_init('is_struct', t.make_bool_literal(fm.is_struct), 'bool'),
-		t.make_named_field_init('is_alias', t.make_bool_literal(fm.is_alias), 'bool'),
-		t.make_named_field_init('indirections', t.make_int_literal(fm.indirections), 'u8'),
+		t.make_named_field_init('name', t.make_string_literal(fm.name), flat.source_type_string),
+		t.make_named_field_init('typ', t.make_int_literal(fm.typ_id), flat.source_type_int),
+		t.make_named_field_init('unaliased_typ', t.make_int_literal(fm.unaliased_id), flat.source_type_int),
+		t.make_named_field_init('attrs', t.make_string_array_literal(fm.attrs), flat.source_type_id('[]string')),
+		t.make_named_field_init('is_pub', t.make_bool_literal(fm.is_pub), flat.source_type_bool),
+		t.make_named_field_init('is_mut', t.make_bool_literal(fm.is_mut), flat.source_type_bool),
+		t.make_named_field_init('is_embed', t.make_bool_literal(fm.is_embed), flat.source_type_bool),
+		t.make_named_field_init('is_shared', t.make_bool_literal(fm.is_shared), flat.source_type_bool),
+		t.make_named_field_init('is_atomic', t.make_bool_literal(fm.is_atomic), flat.source_type_bool),
+		t.make_named_field_init('is_option', t.make_bool_literal(fm.is_option), flat.source_type_bool),
+		t.make_named_field_init('is_array', t.make_bool_literal(fm.is_array), flat.source_type_bool),
+		t.make_named_field_init('is_map', t.make_bool_literal(fm.is_map), flat.source_type_bool),
+		t.make_named_field_init('is_chan', t.make_bool_literal(fm.is_chan), flat.source_type_bool),
+		t.make_named_field_init('is_enum', t.make_bool_literal(fm.is_enum), flat.source_type_bool),
+		t.make_named_field_init('is_struct', t.make_bool_literal(fm.is_struct), flat.source_type_bool),
+		t.make_named_field_init('is_alias', t.make_bool_literal(fm.is_alias), flat.source_type_bool),
+		t.make_named_field_init('indirections', t.make_int_literal(fm.indirections), flat.source_type_u8),
 	]
 	start := t.a.children.len
 	for field in fields {
@@ -3751,13 +3758,14 @@ fn (mut t Transformer) make_field_data_literal(fm FieldMeta) flat.NodeId {
 	})
 }
 
-fn (mut t Transformer) make_named_field_init(field string, value flat.NodeId, typ string) flat.NodeId {
+fn (mut t Transformer) make_named_field_init(field string, value flat.NodeId, typ_id u32) flat.NodeId {
+	typ := flat.source_type_name(typ_id)
 	start := t.a.children.len
 	t.a.children << value
 	return t.a.add_node(flat.Node{
 		kind:           .field_init
 		value:          field
-		typ:            flat.source_type_id(typ)
+		typ:            typ_id
 		children_start: start
 		children_count: 1
 	})
@@ -3766,10 +3774,11 @@ fn (mut t Transformer) make_named_field_init(field string, value flat.NodeId, ty
 // The clones a comptime `$for` makes keep an assignment's `@[freed]`, which
 // -warn-about-allocs reads off the declaration it expanded.
 fn (mut t Transformer) clone_node_preserving_children(node flat.Node) flat.NodeId {
-	return t.clone_node_preserving_children_with_type(node, node.typ_text())
+	return t.clone_node_preserving_children_with_type(node, node.typ)
 }
 
-fn (mut t Transformer) clone_node_preserving_children_with_type(node flat.Node, typ string) flat.NodeId {
+fn (mut t Transformer) clone_node_preserving_children_with_type(node flat.Node, typ_id u32) flat.NodeId {
+	typ := flat.source_type_name(typ_id)
 	start := t.a.children.len
 	for i in 0 .. node.children_count {
 		t.a.children << t.a.child(&node, i)
@@ -3779,7 +3788,7 @@ fn (mut t Transformer) clone_node_preserving_children_with_type(node flat.Node, 
 		op:             node.op
 		pos:            node.pos
 		value:          node.value
-		typ:            flat.source_type_id(typ)
+		typ:            typ_id
 		is_mut:         node.is_mut
 		flags:          node.flags & comptime_clone_syntax_flags
 		children_start: start
@@ -3884,8 +3893,9 @@ struct FieldDeclMeta {
 }
 
 // comptime_field_metas derives FieldData for every field of the concrete struct type.
-fn (mut t Transformer) comptime_field_metas(base_type string) []FieldMeta {
-	if interface_metas := t.comptime_interface_field_metas(base_type) {
+fn (mut t Transformer) comptime_field_metas(base_type_id u32) []FieldMeta {
+	base_type := flat.source_type_name(base_type_id)
+	if interface_metas := t.comptime_interface_field_metas(base_type_id) {
 		return interface_metas
 	}
 	clean_base := trimmed_transform_text(base_type)
@@ -3901,13 +3911,13 @@ fn (mut t Transformer) comptime_field_metas(base_type string) []FieldMeta {
 	// its generic declaration name (`Box`), so a direct lookup misses; resolve it through the
 	// generic-struct field substitution path before giving up.
 	info := t.lookup_struct_info(base_type) or {
-		t.generic_struct_info_for_stringify(base_type) or { return []FieldMeta{} }
+		t.generic_struct_info_for_stringify(base_type_id) or { return []FieldMeta{} }
 	}
 	cache_key := comptime_struct_info_cache_key(info)
 	if cached := t.comptime_field_metas_cache[cache_key] {
 		return cached
 	}
-	decl_metas := t.struct_field_decl_metas_in_module(cache_key, info.module)
+	decl_metas := t.struct_field_decl_metas_in_module(flat.source_type_id(cache_key), info.module)
 	mut metas := []FieldMeta{cap: info.fields.len}
 	for f in info.fields {
 		// V's `field.typ_text()` is the type as written (`MyInt`, `?[]int`); `raw_typ` preserves that,
@@ -3923,13 +3933,14 @@ fn (mut t Transformer) comptime_field_metas(base_type string) []FieldMeta {
 			}
 		}
 		field_name := comptime_reflected_field_name(f.name, ftyp, f.is_embedded)
-		metas << t.field_meta_for(field_name, ftyp, f.typ_text(), info.module, f.is_embedded, extra)
+		metas << t.field_meta_for(field_name, ftyp, f.typ, info.module, f.is_embedded, extra)
 	}
 	t.comptime_field_metas_cache[cache_key] = metas
 	return metas
 }
 
-fn (mut t Transformer) comptime_interface_field_metas(base_type string) ?[]FieldMeta {
+fn (mut t Transformer) comptime_interface_field_metas(base_type_id u32) ?[]FieldMeta {
+	base_type := flat.source_type_name(base_type_id)
 	if isnil(t.tc) {
 		return none
 	}
@@ -3945,17 +3956,18 @@ fn (mut t Transformer) comptime_interface_field_metas(base_type string) ?[]Field
 	mut seen_ifaces := map[string]bool{}
 	mut seen_fields := map[string]bool{}
 	mut metas := []FieldMeta{}
-	t.collect_comptime_interface_field_metas(iface_name, mut seen_ifaces, mut seen_fields, mut metas)
+	t.collect_comptime_interface_field_metas(flat.source_type_id(iface_name), mut seen_ifaces, mut seen_fields, mut metas)
 	return metas
 }
 
-fn (mut t Transformer) collect_comptime_interface_field_metas(iface_name string, mut seen_ifaces map[string]bool, mut seen_fields map[string]bool, mut metas []FieldMeta) {
+fn (mut t Transformer) collect_comptime_interface_field_metas(iface_name_id u32, mut seen_ifaces map[string]bool, mut seen_fields map[string]bool, mut metas []FieldMeta) {
+	iface_name := flat.source_type_name(iface_name_id)
 	if iface_name in seen_ifaces {
 		return
 	}
 	seen_ifaces[iface_name] = true
 	for embedded in t.tc.interface_embeds.get(iface_name) or { []string{} } {
-		t.collect_comptime_interface_field_metas(embedded, mut seen_ifaces, mut seen_fields, mut metas)
+		t.collect_comptime_interface_field_metas(flat.source_type_id(embedded), mut seen_ifaces, mut seen_fields, mut metas)
 	}
 	decl_module := iface_name.all_before_last('.')
 	for field in t.tc.interface_fields[iface_name] or { []types.StructField{} } {
@@ -3964,7 +3976,7 @@ fn (mut t Transformer) collect_comptime_interface_field_metas(iface_name string,
 		}
 		seen_fields[field.name] = true
 		field_type := field.typ.name()
-		metas << t.field_meta_for(field.name, field_type, field_type, decl_module, false, FieldDeclMeta{
+		metas << t.field_meta_for(field.name, field_type, flat.source_type_id(field_type), decl_module, false, FieldDeclMeta{
 			is_mut: field.is_mut
 			is_pub: true
 		})
@@ -4040,11 +4052,12 @@ fn field_decl_meta(field flat.Node) FieldDeclMeta {
 
 // struct_field_decl_metas returns parser metadata for the declaration of `base_type`, resolving a
 // generic instance such as `Box[int]` to its base `Box`.
-fn (t &Transformer) struct_field_decl_metas(base_type string) map[string]FieldDeclMeta {
-	return t.struct_field_decl_metas_in_module(base_type, '')
+fn (t &Transformer) struct_field_decl_metas(base_type_id u32) map[string]FieldDeclMeta {
+	return t.struct_field_decl_metas_in_module(base_type_id, '')
 }
 
-fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_module string) map[string]FieldDeclMeta {
+fn (t &Transformer) struct_field_decl_metas_in_module(base_type_id u32, decl_module string) map[string]FieldDeclMeta {
+	base_type := flat.source_type_name(base_type_id)
 	mut decl_name := trimmed_transform_text(base_type)
 	if idx := decl_name.index('[') {
 		decl_name = decl_name[..idx]
@@ -4112,7 +4125,8 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 	return map[string]FieldDeclMeta{}
 }
 
-fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string, decl_module string, is_embed bool, extra FieldDeclMeta) FieldMeta {
+fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ_id u32, decl_module string, is_embed bool, extra FieldDeclMeta) FieldMeta {
+	resolved_typ := flat.source_type_name(resolved_typ_id)
 	is_option := ftyp.starts_with('?')
 	mut core := if is_option { trimmed_transform_text(ftyp[1..]) } else { ftyp }
 	mut indir := 0
@@ -4131,7 +4145,7 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		indir++
 		core = core[1..]
 	}
-	unaliased := if resolved_typ != '' {
+	unaliased := if resolved_typ_id != u32(0) {
 		trimmed_transform_text(resolved_typ)
 	} else {
 		flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(ftyp)))
@@ -4144,15 +4158,15 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		unaliased_typ:      flat.source_type_id(unaliased)
 		comptime_typ:       flat.source_type_id(t.comptime_field_type_id_key(ftyp, decl_module))
 		comptime_unaliased: flat.source_type_id(t.comptime_field_type_id_key(unaliased, decl_module))
-		typ_id:             t.comptime_field_type_id(ftyp, decl_module)
-		unaliased_id:       t.comptime_field_type_id(unaliased, decl_module)
+		typ_id:             t.comptime_field_type_id(flat.source_type_id(ftyp), decl_module)
+		unaliased_id:       t.comptime_field_type_id(flat.source_type_id(unaliased), decl_module)
 		is_option:          is_option
 		is_embed:           is_embed
 		is_array:           unaliased_core.starts_with('[]')
 			|| t.is_fixed_array_type(flat.source_type_id(unaliased_core))
 		is_map:             unaliased_core.starts_with('map[')
 		is_chan:            unaliased_core.starts_with('chan ')
-		is_struct:          t.comptime_field_type_is_struct(unaliased_core)
+		is_struct:          t.comptime_field_type_is_struct(flat.source_type_id(unaliased_core))
 		is_enum:            t.comptime_enum_type_known(unaliased_core)
 		is_alias:           is_alias
 		is_shared:          is_shared
@@ -4180,7 +4194,8 @@ fn (t &Transformer) comptime_enum_type_known(raw string) bool {
 	return false
 }
 
-fn (t &Transformer) comptime_field_type_is_struct(typ string) bool {
+fn (t &Transformer) comptime_field_type_is_struct(typ_id u32) bool {
+	typ := flat.source_type_name(typ_id)
 	clean := trimmed_transform_text(typ)
 	if clean.len == 0 || comptime_is_primitive_type(clean) {
 		return false
@@ -4201,7 +4216,8 @@ fn comptime_generic_type_base(typ string) string {
 	return trimmed_transform_text(clean[..bracket])
 }
 
-fn (t &Transformer) comptime_field_type_id(typ string, decl_module string) int {
+fn (t &Transformer) comptime_field_type_id(typ_id u32, decl_module string) int {
+	typ := flat.source_type_name(typ_id)
 	key := t.comptime_field_type_id_key(typ, decl_module)
 	if key.len == 0 {
 		return 0
@@ -4445,7 +4461,9 @@ fn (t &Transformer) field_type_is_alias(core string, decl_module string) bool {
 // `string`), so it is cast to `typ` whenever that differs: an `i32`, float, enum or
 // alias type must keep its identity, or `T(v)` wraps it as another sum variant, or
 // as none at all.
-fn (mut t Transformer) comptime_zero_value(typ string) flat.NodeId {
+fn (mut t Transformer) comptime_zero_value(typ_id u32) flat.NodeId {
+	typ_comparison_type_id_5 := typ_id
+	typ := flat.source_type_name(typ_comparison_type_id_5)
 	mut zero_type := typ
 	// In an imported specialization a program alias is locked as `main.Props`, but
 	// program aliases are registered bare. Resolve it through its bare name, or its
@@ -4460,10 +4478,11 @@ fn (mut t Transformer) comptime_zero_value(typ string) flat.NodeId {
 	zero_id := t.zero_value_for_type(flat.source_type_id(zero_type))
 	// `nil` is a `voidptr` on its own, so a pointer zero is cast too: a generic call
 	// then infers `&&int` from `$zero(E.pointee_type)`, not `voidptr`.
-	if typ !in ['', 'void', 'int', 'f64', 'string', 'bool']
+	if typ_comparison_type_id_5 !in [u32(0), flat.source_type_void, flat.source_type_int,
+		flat.source_type_f64, flat.source_type_string, flat.source_type_bool]
 		&& t.a.node(zero_id).kind in [.int_literal, .float_literal, .string_literal, .bool_literal,
 			.nil_literal] {
-		return t.make_cast(flat.source_type_id(typ), zero_id, flat.source_type_id(typ))
+		return t.make_cast(typ_id, zero_id, typ_id)
 	}
 	return zero_id
 }
@@ -4493,13 +4512,13 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 			return t.clone_field_subst_children(node, var_name, fm, inner_vars)
 		}
 		return if node.value == '__v3_comptime_new' {
-			t.comptime_new_value(target)
+			t.comptime_new_value(flat.source_type_id(target))
 		} else {
-			t.comptime_zero_value(target)
+			t.comptime_zero_value(flat.source_type_id(target))
 		}
 	}
 	if comptime_for_declares_var(node, var_name) {
-		return t.clone_node_preserving_children_with_type(node, t.clone_field_subst_type_text(node, var_name, fm))
+		return t.clone_node_preserving_children_with_type(node, flat.source_type_id(t.clone_field_subst_type_text(node, var_name, fm)))
 	}
 	if node.kind == .or_expr && node.value == '?' && node.children_count > 0 && !fm.is_option
 		&& t.direct_reflected_field_selector(t.a.child(&node, 0), var_name) {
@@ -4596,7 +4615,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		})
 	}
 	if node.kind == .for_in_stmt && node.children_count >= 3 && fm.is_option
-		&& fm.comptime_typ_text().starts_with('?')
+		&& flat.source_type_shape(fm.comptime_typ).has(.option_type)
 		&& t.direct_reflected_field_selector(t.a.child(&node, 2), var_name) {
 		mut children := []flat.NodeId{cap: int(node.children_count)}
 		for i in 0 .. node.children_count {
@@ -5059,7 +5078,7 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 		} else if rhs.kind == .ident {
 			flat.source_type_name(t.local_decl_type_before(rhs.value, children[1]) or { u32(0) })
 		} else if rhs.kind == .or_expr && rhs.value == '?' && fm.is_option
-			&& fm.comptime_typ_text().starts_with('?') {
+			&& flat.source_type_shape(fm.comptime_typ).has(.option_type) {
 			trimmed_transform_text(fm.comptime_typ_text()[1..])
 		} else {
 			''
@@ -5145,13 +5164,14 @@ fn (mut t Transformer) comptime_field_type_accessor(id flat.NodeId, var_name str
 	}
 }
 
-fn (mut t Transformer) comptime_new_value(typ string) flat.NodeId {
-	value := t.transform_expr(t.zero_value_for_type(flat.source_type_id(typ)))
+fn (mut t Transformer) comptime_new_value(typ_id u32) flat.NodeId {
+	typ := flat.source_type_name(typ_id)
+	value := t.transform_expr(t.zero_value_for_type(typ_id))
 	tmp_name := t.new_temp('new')
-	t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, flat.source_type_id(typ))
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, typ_id)
 	addr := t.make_prefix(.amp, t.make_ident(tmp_name))
 	t.set_node_typ(int(addr), flat.source_type_id('&${typ}'))
-	allocation := t.make_memdup_call_for_type(addr, flat.source_type_id(typ))
+	allocation := t.make_memdup_call_for_type(addr, typ_id)
 	return t.make_cast(flat.source_type_id('&${typ}'), allocation, flat.source_type_id('&${typ}'))
 }
 

@@ -360,7 +360,7 @@ fn test_flattened_generic_struct_types_materialize_from_recorded_args() {
 		}
 	}
 	mut specs := flat.TypeTextBindings{}
-	t.collect_generic_struct_spec_from_type('arc.Arc_ResourceSum', 'main', '', decls, mut specs)
+	t.collect_generic_struct_spec_from_type(flat.source_type_id('arc.Arc_ResourceSum'), 'main', '', decls, mut specs)
 	assert specs.value('arc.Arc[ResourceSum]') == 'arc.Arc'
 }
 
@@ -605,7 +605,7 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 		}, typ
 	}
 	for typ in ['[2]Any', 'map[string]Any', 'map[Any]int', '(int, [2]Any)'] {
-		assert t.substituted_type_belongs_to_main_generic(typ), typ
+		assert t.substituted_type_belongs_to_main_generic(flat.source_type_id(typ)), typ
 		assert flat.source_type_name(t.generic_inference_alias_target(flat.source_type_id(typ), 'callee')) == typ
 		assert flat.source_type_name(t.generic_arg_for_decl_module(flat.source_type_id(typ), 'callee')) == typ
 	}
@@ -622,7 +622,7 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 	for typ in ['[2]callee.Any', 'map[string]callee.Any', '(int, callee.Any)', 'other.Box[callee.Any]',
 		'map[string]int', '[2]int'] {
 		assert !t.current_specialization_has_generic_arg(typ), typ
-		assert !t.substituted_type_belongs_to_main_generic(typ), typ
+		assert !t.substituted_type_belongs_to_main_generic(flat.source_type_id(typ)), typ
 	}
 	for typ in ['?[]string', '?map[string]string', 'fn (?[]string) string'] {
 		t.active_specialization_args = flat.TypeTextList.from_names([typ])
@@ -759,7 +759,7 @@ fn test_imported_generic_alias_target_uses_declaration_module() {
 		}
 	}
 	mut specs := flat.TypeTextBindings{}
-	t.collect_generic_struct_spec_from_type('a.Box[int]', 'main', '', decls, mut specs)
+	t.collect_generic_struct_spec_from_type(flat.source_type_id('a.Box[int]'), 'main', '', decls, mut specs)
 	assert specs.value('a.Inner[int]') == 'a.Inner'
 }
 
@@ -792,7 +792,7 @@ fn test_generic_method_decl_matches_embedded_receiver() {
 		key:    'Collector[T].use'
 	}
 	mut seen := map[string]bool{}
-	assert t.generic_decl_matches_embedded_receiver('Outer', decl, 'main', mut seen)
+	assert t.generic_decl_matches_embedded_receiver(flat.source_type_id('Outer'), decl, 'main', mut seen)
 }
 
 fn test_escaped_generic_method_indexes_unescaped_call_spelling() {

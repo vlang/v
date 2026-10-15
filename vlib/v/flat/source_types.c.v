@@ -54,6 +54,21 @@ pub enum SourceTypeShape {
 	shared_type
 	variadic
 	padded
+	array_type
+	map_type
+	leading_bracket
+	option_type
+	result_type
+	mutable_type
+	atomic_type
+	channel_type
+	thread_type
+	function_compact
+	function_spaced
+	pointer_array
+	pointer_map
+	pointer_option
+	pointer_chain
 }
 
 fn source_type_spelling_shape(text string) SourceTypeShape {
@@ -67,6 +82,21 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 	if text.starts_with('&') { shape.set(.pointer) }
 	if text.starts_with('shared ') { shape.set(.shared_type) }
 	if text.starts_with('...') { shape.set(.variadic) }
+	if text.starts_with('[]') { shape.set(.array_type) }
+	if text.starts_with('map[') { shape.set(.map_type) }
+	if text.starts_with('[') { shape.set(.leading_bracket) }
+	if text.starts_with('?') { shape.set(.option_type) }
+	if text.starts_with('!') { shape.set(.result_type) }
+	if text.starts_with('mut ') { shape.set(.mutable_type) }
+	if text.starts_with('atomic ') { shape.set(.atomic_type) }
+	if text.starts_with('chan ') { shape.set(.channel_type) }
+	if text.starts_with('thread ') { shape.set(.thread_type) }
+	if text.starts_with('fn(') { shape.set(.function_compact) }
+	if text.starts_with('fn (') { shape.set(.function_spaced) }
+	if text.starts_with('&[]') { shape.set(.pointer_array) }
+	if text.starts_with('&map[') { shape.set(.pointer_map) }
+	if text.starts_with('&?') { shape.set(.pointer_option) }
+	if text.starts_with('&&') { shape.set(.pointer_chain) }
 	if text.len > 0 && (source_type_space(text[0]) || source_type_space(text[text.len - 1])) {
 		shape.set(.padded)
 	}

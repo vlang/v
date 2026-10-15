@@ -4689,7 +4689,7 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 		p.next()
 		local_layout := p.program.m.type_store.types[local.typ]
 		mut indexed_value_type_name := ''
-		if local_layout.kind == .ptr_t && local.typ_name_text().starts_with('&') {
+		if local_layout.kind == .ptr_t && flat.source_type_shape(local.typ_name).has(.pointer) {
 			indexed_value_type_name = local.typ_name_text()[1..]
 		} else if local_layout.kind == .array_t {
 			indexed_value_type_name = fastc_fixed_array_element_type(local.typ_name_text()) or { '' }

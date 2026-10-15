@@ -10528,7 +10528,7 @@ fn (tc &TypeChecker) receiver_expr_is_pointer(id flat.NodeId) bool {
 			return tc.type_is_pointer_receiver(typ)
 		}
 	}
-	if node.typ_text().starts_with('&') {
+	if flat.source_type_shape(node.typ).has(.pointer) {
 		return true
 	}
 	return tc.type_is_pointer_receiver(tc.resolve_type(id))
@@ -13477,7 +13477,7 @@ fn (tc &TypeChecker) visible_call_param(info CallInfo, param_idx int) ?flat.Node
 
 fn (tc &TypeChecker) call_param_requires_mut_pointer_slot(info CallInfo, param_idx int) bool {
 	param := tc.visible_call_param(info, param_idx) or { return false }
-	return param.is_mut && param.op == .amp && param.typ_text().starts_with('&')
+	return param.is_mut && param.op == .amp && flat.source_type_shape(param.typ).has(.pointer)
 }
 
 fn (tc &TypeChecker) explicit_generic_source_param_is_mut(call flat.Node, info CallInfo, param_idx int) bool {
@@ -16711,7 +16711,7 @@ fn (tc &TypeChecker) current_variadic_param_elem_name(id flat.NodeId) ?string {
 		if param.kind != .param {
 			break
 		}
-		if param.value == arg.value && param.typ_text().starts_with('...') {
+		if param.value == arg.value && flat.source_type_shape(param.typ).has(.variadic) {
 			return param.typ_text().trim_left('.')
 		}
 	}

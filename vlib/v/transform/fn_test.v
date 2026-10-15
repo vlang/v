@@ -114,7 +114,7 @@ fn test_nested_fn_literal_restores_outer_binding_containers_after_growth() {
 	t.mark_var_as_ref_param('outer_0')
 	t.var_types[0] = VarTypeBinding{
 		...t.var_types[0]
-		heap_value_typ: t.var_type_text_id('int')
+		heap_value_typ: flat.source_type_int
 	}
 	t.fn_value_locals['outer_callback'] = 'known_callback'
 	t.mut_param_values['outer_0'] = true
@@ -226,7 +226,7 @@ fn test_zeroed_staging_values_keep_heap_structs_on_the_stack() {
 	tc.type_declaration_ids['HeapValue'] = [int(decl)]
 	tc.declaration_attributes[int(decl)] = ['heap']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	assert t.heap_attr_struct_type('HeapValue')
+	assert t.heap_attr_struct_type(flat.source_type_id('HeapValue'))
 	staging := t.make_staging_value_decl('staging', flat.source_type_id('HeapValue'))
 	t.transform_decl_assign_stmt(staging, a.nodes[int(staging)])
 	assert 'staging' !in t.heaped_amp_locals
@@ -592,7 +592,7 @@ fn test_receiver_method_resolution_follows_main_locked_struct_alias() {
 	}
 	assert path.len == 1
 	assert path[0].name == 'Context'
-	promoted_path := t.struct_field_path_for_field('main.AliasContext', 'req') or {
+	promoted_path := t.struct_field_path_for_field(flat.source_type_id('main.AliasContext'), 'req') or {
 		assert false, 'expected the promoted req path through AliasContext'
 		return
 	}
@@ -630,7 +630,7 @@ fn test_embedded_field_path_specializes_each_owner() {
 	t.structs['Leaf'] = leaf
 	t.structs['Leaf[T]'] = leaf
 	t.structs['Leaf[Choice]'] = leaf
-	path := t.struct_field_path_for_field('Outer[Choice]', 'payload') or { panic('missing embed path') }
+	path := t.struct_field_path_for_field(flat.source_type_id('Outer[Choice]'), 'payload') or { panic('missing embed path') }
 	assert path.map(it.typ_text()) == ['Middle[Choice]', 'Leaf[Choice]']
 	assert flat.source_type_name(t.lookup_struct_field_type(path.last().typ, 'payload') or { u32(0) }) == 'Choice'
 }
@@ -659,7 +659,7 @@ fn test_embedded_field_path_uses_selected_struct_owner() {
 		module: 'pkg'
 		fields: [FieldInfo{ name: 'payload', typ: flat.source_type_id('T') }]
 	}
-	path := t.struct_field_path_for_field('Outer[Choice]', 'payload') or { panic('missing selected embed path') }
+	path := t.struct_field_path_for_field(flat.source_type_id('Outer[Choice]'), 'payload') or { panic('missing selected embed path') }
 	assert path.len == 1
 	assert path[0].typ_text() == 'pkg.Middle[Choice]'
 }
@@ -1462,14 +1462,14 @@ fn test_frozen_interface_boxed_types_are_read_only_in_skip_generics_workers() {
 	master.interface_boxed_types_frozen = true
 	mut worker := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
 
-	worker.mark_interface_boxed_type('main.Reader', 'main.Other')
+	worker.mark_interface_boxed_type(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))
 	assert 'main.Reader\nmain.Other' !in master.interface_boxed_types
 	assert 'main.Reader\nmain.Other' !in worker.interface_boxed_types
 	assert worker.interface_boxed_types_late['main.Reader\nmain.Other']
-	assert worker.interface_boxed_type_marked('main.Reader', 'main.Other')
+	assert worker.interface_boxed_type_marked(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))
 
 	master.interface_boxed_types_frozen = false
-	master.mark_interface_boxed_type('main.Reader', 'main.Other')
+	master.mark_interface_boxed_type(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))
 	assert master.interface_boxed_types['main.Reader\nmain.Other']
 }
 
@@ -1885,4 +1885,46 @@ fn test_scoped_workers_reuse_generic_declarations_with_private_indexes() {
 	assert 'sample.identity' in master.generic_fn_decls_cache
 	assert master.generic_receiver_methods_by_name['value'] == ['sample.Box.value']
 	assert master.generic_fn_call_names['identity']
+}
+
+fn test_enum_expected_cache_separates_type_and_both_module_contexts() {
+	mut cache := EnumExpectedCache{}
+	one := flat.source_type_id('First')
+	two := flat.source_type_id('Second')
+	key := cache.key(one, 'owner', 'caller')
+	assert key == cache.key(one, 'owner', 'caller')
+	assert key != cache.key(two, 'owner', 'caller')
+	assert key != cache.key(one, 'other', 'caller')
+	assert key != cache.key(one, 'owner', 'other')
+	assert key != cache.key(one, 'caller', 'owner')
+	cache.entries[key] = two
+	missing := cache.key(two, 'owner', 'caller')
+	cache.misses[missing] = true
+	assert cache.entries[key] == two
+	assert !cache.misses[key]
+	assert cache.misses[missing]
+	mut worker := EnumExpectedCache{}
+	worker_key := worker.key(one, 'owner', 'caller')
+	assert worker.entries.len == 0
+	assert !worker.misses[worker_key]
+	worker.entries[worker_key] = one
+	assert cache.entries[key] == two
+}
+
+fn test_sum_variant_parent_ids_preserve_order_deduplication_and_owned_results() {
+	mut t := Transformer{}
+	variant := flat.source_type_id('pkg.Child')
+	first := flat.source_type_id('pkg.FirstParent')
+	second := flat.source_type_id('pkg.SecondParent')
+	t.add_sum_variant_parent(variant, first)
+	t.add_sum_variant_parent(variant, second)
+	t.add_sum_variant_parent(variant, first)
+	assert t.is_sum_variant(variant)
+	assert t.is_sum_variant(flat.source_type_id('Child'))
+	assert !t.is_sum_variant(flat.source_type_id('Unrelated'))
+	mut parents := t.sum_type_parents_for_variant(variant)
+	assert parents == [first, second]
+	parents[0] = second
+	assert t.sum_type_parents_for_variant(variant) == [first, second]
+	assert t.sum_type_parents_for_variant(flat.source_type_id('Child')) == [first, second]
 }

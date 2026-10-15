@@ -5889,7 +5889,7 @@ fn (mut tc TypeChecker) check_deferred_generic_receiver_comparisons(node flat.No
 		param := tc.a.child_node(&node, i)
 		if param.kind == .param && param.value.len > 0 {
 			param_types[param.value] = if param.is_mut && param.op != .amp
-				&& param.typ_text().starts_with('&') {
+				&& flat.source_type_shape(param.typ).has(.pointer) {
 				param.typ_text()[1..]
 			} else {
 				param.typ_text()
@@ -10140,10 +10140,12 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	// composed fresh strings up to eight times per invocation (1.3M+ calls per
 	// self-host build), and equal compound types now compare via the shared
 	// memo instance's pointer fast path.
-	actual_name := flat.source_type_name(tc.type_name(actual))
+	actual_name_comparison_type_id := tc.type_name(actual)
+	actual_name := flat.source_type_name(actual_name_comparison_type_id)
 	expected_name_source_id := tc.type_name(expected)
-	expected_name := flat.source_type_name(expected_name_source_id)
-	if actual_name == expected_name {
+	expected_name_comparison_type_id := expected_name_source_id
+	expected_name := flat.source_type_name(expected_name_comparison_type_id)
+	if actual_name_comparison_type_id == expected_name_comparison_type_id {
 		return true
 	}
 	if actual_name.contains('.') && expected_name.contains('.')
@@ -15053,7 +15055,7 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 		if node.value.starts_with('?') || node.value.starts_with('!') {
 			return node.value
 		}
-		if node.typ_text().starts_with('?') || node.typ_text().starts_with('!') {
+		if flat.source_type_shape(node.typ).has(.option_type) || flat.source_type_shape(node.typ).has(.result_type) {
 			return node.typ_text()
 		}
 		if node.value.len > 0 && node.pos.offset > 0 {

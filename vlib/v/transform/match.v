@@ -39,7 +39,7 @@ fn (mut t Transformer) resolve_match_subject_type(node flat.Node) string {
 //   2. Transform the body statements under that context
 //   3. Pop the smartcast context
 //   4. Rebuild the block with the transformed statements
-fn (mut t Transformer) transform_match_branch_body(branch_id flat.NodeId, subject_name string, variant_name string) flat.NodeId {
+fn (mut t Transformer) transform_match_branch_body(branch_id flat.NodeId, subject_name string, variant_name_id u32) flat.NodeId {
 	if int(branch_id) < 0 {
 		return branch_id
 	}
@@ -58,12 +58,12 @@ fn (mut t Transformer) transform_match_branch_body(branch_id flat.NodeId, subjec
 		return branch_id
 	}
 	// Push smartcast if we have a sum type variant match
-	mut has_sc := subject_name != '' && variant_name != ''
+	mut has_sc := subject_name != '' && variant_name_id != u32(0)
 	if has_sc {
-		sum_type_name_source_id := t.find_sum_type_for_variant(flat.source_type_id(variant_name))
-		sum_type_name := flat.source_type_name(sum_type_name_source_id)
+		sum_type_name_source_id := t.find_sum_type_for_variant(variant_name_id)
+
 		if sum_type_name_source_id != 0 {
-			t.push_smartcast(subject_name, variant_name, sum_type_name)
+			t.push_smartcast(subject_name, variant_name_id, sum_type_name_source_id)
 		} else {
 			has_sc = false
 		}

@@ -3593,7 +3593,7 @@ fn (e &Eval) minimum_arg_count(params []flat.NodeId) int {
 		return 0
 	}
 	last_param := e.node(params[params.len - 1])
-	if last_param.typ_text().starts_with('...') {
+	if flat.source_type_shape(last_param.typ).has(.variadic) {
 		return params.len - 1
 	}
 	return params.len
@@ -3602,7 +3602,7 @@ fn (e &Eval) minimum_arg_count(params []flat.NodeId) int {
 fn (mut e Eval) bind_call_params(params []flat.NodeId, args []Value) ! {
 	for i, param_id in params {
 		param := e.node(param_id)
-		if param.typ_text().starts_with('...') {
+		if flat.source_type_shape(param.typ).has(.variadic) {
 			elem_type := param.typ_text()[3..]
 			mut values := []Value{cap: if args.len > i { args.len - i } else { 0 }}
 			for j := i; j < args.len; j++ {
@@ -3630,14 +3630,14 @@ fn (mut e Eval) collect_mutated_param_args(params []flat.NodeId, args []Value) m
 		if param.value.len == 0 {
 			continue
 		}
-		if param.typ_text().starts_with('...') {
+		if flat.source_type_shape(param.typ).has(.variadic) {
 			continue
 		}
 		found := e.lookup_var(param.value)
 		if !found.found {
 			continue
 		}
-		if param.typ_text().starts_with('&') {
+		if flat.source_type_shape(param.typ).has(.pointer) {
 			mutated_args[i] = found.value
 			continue
 		}
@@ -6185,7 +6185,7 @@ fn (e &Eval) type_name_matches(actual string, expected string) bool {
 }
 
 fn (e &Eval) type_value_module_name(value TypeValue) string {
-	if value.name_text().contains('.') {
+	if flat.source_type_shape(value.name).has(.dotted) {
 		return value.name_text().all_before_last('.')
 	}
 	return e.current_module_name()

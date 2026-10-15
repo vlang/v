@@ -154,9 +154,9 @@ fn check_optional_conversion(target string) ? {
 	t.set_var_type('source', flat.source_type_id(source_type))
 	source := t.make_ident('source')
 	converted := if target.contains('&') {
-		t.transform_optional_value_to_pointer(source, source_type, target, false)?
+		t.transform_optional_value_to_pointer(source, flat.source_type_id(source_type), flat.source_type_id(target), false)?
 	} else {
-		t.transform_optional_value_to_sum(source, source_type, target)?
+		t.transform_optional_value_to_sum(source, flat.source_type_id(source_type), flat.source_type_id(target))?
 	}
 	branch_id := if a.nodes[int(converted)].kind == .if_expr {
 		converted
@@ -195,7 +195,7 @@ fn test_optional_conversion_keeps_payload_statements_in_success_branch() {
 	t.pending_stmts << before
 	t.pending_stmts << convert
 	value := t.make_selector(source, 'value', flat.source_type_string)
-	converted := t.make_optional_conversion(source, value, '!string', 1)
+	converted := t.make_optional_conversion(source, value, flat.source_type_id('!string'), 1)
 	assert t.pending_stmts == [before]
 	branch := a.nodes[int(converted)]
 	success := a.child(&branch, 1)

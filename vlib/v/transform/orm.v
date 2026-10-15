@@ -414,7 +414,7 @@ fn (mut t Transformer) sql_stmt_call(stmt SqlTransformStmt, db_expr flat.NodeId)
 					t.sql_string_array(t.sql_initialized_fields(stmt.value_name)),
 				]
 			}
-			return t.sql_query_builder_method_call(qb, method, args, '!int')
+			return t.sql_query_builder_method_call(qb, method, args, flat.source_type_id('!int'))
 		}
 		.upsert {
 			value := t.sql_value_name_expr(stmt.value_name)
@@ -422,22 +422,22 @@ fn (mut t Transformer) sql_stmt_call(stmt SqlTransformStmt, db_expr flat.NodeId)
 			return t.sql_query_builder_method_call(qb, 'v_sql_upsert_and_last_id', [
 				value,
 				t.sql_string_array(t.sql_initialized_fields(stmt.value_name)),
-			], '!int')
+			], flat.source_type_id('!int'))
 		}
 		.select {
 			qb := t.sql_select_query_builder(stmt, db_expr)
-			return t.sql_query_builder_method_call(qb, 'query', [], '![]${stmt.table.name}')
+			return t.sql_query_builder_method_call(qb, 'query', [], flat.source_type_id('![]${stmt.table.name}'))
 		}
 		.count {
 			qb := t.sql_select_query_builder(stmt, db_expr)
-			return t.sql_query_builder_method_call(qb, 'count', [], '!int')
+			return t.sql_query_builder_method_call(qb, 'count', [], flat.source_type_id('!int'))
 		}
 		.aggregate {
 			qb := t.sql_select_query_builder(stmt, db_expr)
 			return t.sql_query_builder_method_call(qb, stmt.aggregate, [
 				t.make_string_literal(t.sql_transform_field_column_name(stmt.table,
 					stmt.aggregate_field)),
-			], '!orm.AggregateValue')
+			], flat.source_type_id('!orm.AggregateValue'))
 		}
 		.update {
 			if stmt.insert_many {
@@ -446,14 +446,14 @@ fn (mut t Transformer) sql_stmt_call(stmt SqlTransformStmt, db_expr flat.NodeId)
 					t.sql_value_name_expr(stmt.value_name),
 					t.make_string_literal(stmt.where.params[0].field),
 					t.sql_string_array(stmt.sets.map(it.field)),
-				], '!int')
+				], flat.source_type_id('!int'))
 			}
 			qb := t.sql_update_query_builder(stmt, db_expr)
-			return t.sql_query_builder_method_call(qb, 'v_sql_update_and_zero', [], '!int')
+			return t.sql_query_builder_method_call(qb, 'v_sql_update_and_zero', [], flat.source_type_id('!int'))
 		}
 		.delete {
 			qb := t.sql_select_query_builder(stmt, db_expr)
-			return t.sql_query_builder_method_call(qb, 'v_sql_delete_and_zero', [], '!int')
+			return t.sql_query_builder_method_call(qb, 'v_sql_delete_and_zero', [], flat.source_type_id('!int'))
 		}
 	}
 }
@@ -462,16 +462,16 @@ fn (mut t Transformer) sql_select_query_builder(stmt SqlTransformStmt, db_expr f
 	mut qb := t.sql_new_query_call(stmt.table.name, db_expr)
 	qb_type := t.sql_query_builder_type(stmt.table.name)
 	if stmt.distinct {
-		qb = t.sql_query_builder_method_call(qb, 'v_sql_distinct', [], qb_type)
+		qb = t.sql_query_builder_method_call(qb, 'v_sql_distinct', [], flat.source_type_id(qb_type))
 	}
 	if stmt.joins.len > 0 {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_select_qualified_fields', [
 			t.sql_string_array(stmt.fields),
-		], qb_type)
+		], flat.source_type_id(qb_type))
 	} else {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_select_fields', [
 			t.sql_string_array(stmt.fields),
-		], qb_type)
+		], flat.source_type_id(qb_type))
 	}
 	for join in stmt.joins {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_join_from', [
@@ -480,28 +480,28 @@ fn (mut t Transformer) sql_select_query_builder(stmt SqlTransformStmt, db_expr f
 			t.sql_table_literal(join.table),
 			t.make_string_literal(join.left_field),
 			t.make_string_literal(join.right_field),
-		], qb_type)
+		], flat.source_type_id(qb_type))
 	}
 	if stmt.where.error.len > 0 {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_error', [
 			t.make_string_literal(stmt.where.error),
-		], qb_type)
+		], flat.source_type_id(qb_type))
 	} else if stmt.where.condition.len > 0 {
 		if stmt.joins.len > 0 {
 			where_data := t.sql_static_where_query_data(stmt) or {
 				qb = t.sql_query_builder_method_call(qb, 'v_sql_error', [
 					t.make_string_literal('unsupported joined SQL WHERE field'),
-				], qb_type)
+				], flat.source_type_id(qb_type))
 				return qb
 			}
 			qb = t.sql_query_builder_method_call(qb, 'v_sql_where_mapped_query_data', [
 				where_data,
-			], qb_type)
+			], flat.source_type_id(qb_type))
 		} else {
 			qb = t.sql_query_builder_method_call(qb, 'v_sql_where_condition', [
 				t.make_string_literal(stmt.where.condition),
 				t.sql_where_params_array(stmt.table, stmt.where.params),
-			], qb_type)
+			], flat.source_type_id(qb_type))
 		}
 	} else if stmt.where.dynamic_data.name.len > 0 || stmt.where.dynamic_data.tokens.len > 0 {
 		if stmt.joins.len > 0 {
@@ -510,22 +510,22 @@ fn (mut t Transformer) sql_select_query_builder(stmt SqlTransformStmt, db_expr f
 					scope := sql_where_scope_for_stmt(stmt, true)
 					qb = t.sql_query_builder_method_call(qb, 'v_sql_where_mapped_query_data', [
 						t.sql_dynamic_data_arg_scoped(scope, stmt.where.dynamic_data, .where_),
-					], qb_type)
+					], flat.source_type_id(qb_type))
 				} else {
 					qb = t.sql_query_builder_method_call(qb, 'v_sql_qualified_where_query_data', [
 						t.sql_value_name_expr(stmt.where.dynamic_data.name),
-					], qb_type)
+					], flat.source_type_id(qb_type))
 				}
 			} else {
 				scope := sql_where_scope_for_stmt(stmt, true)
 				qb = t.sql_query_builder_method_call(qb, 'v_sql_where_mapped_query_data', [
 					t.sql_dynamic_data_arg_scoped(scope, stmt.where.dynamic_data, .where_),
-				], qb_type)
+				], flat.source_type_id(qb_type))
 			}
 		} else {
 			qb = t.sql_query_builder_method_call(qb, 'v_sql_where_query_data', [
 				t.sql_dynamic_data_arg(stmt.table, stmt.where.dynamic_data, .where_),
-			], qb_type)
+			], flat.source_type_id(qb_type))
 		}
 	}
 	if stmt.order_field.len > 0 {
@@ -534,35 +534,35 @@ fn (mut t Transformer) sql_select_query_builder(stmt SqlTransformStmt, db_expr f
 			resolved := t.sql_resolve_where_field(scope, stmt.order_field) or {
 				qb = t.sql_query_builder_method_call(qb, 'v_sql_error', [
 					t.make_string_literal('unsupported joined SQL ORDER BY field'),
-				], qb_type)
+				], flat.source_type_id(qb_type))
 				return qb
 			}
 			qb = t.sql_query_builder_method_call(qb, 'v_sql_order', [
 				t.make_string_literal(resolved.name),
 				t.make_bool_literal(stmt.order_desc),
-			], qb_type)
+			], flat.source_type_id(qb_type))
 		} else {
 			qb = t.sql_query_builder_method_call(qb, 'v_sql_order', [
 				t.make_string_literal(stmt.order_field),
 				t.make_bool_literal(stmt.order_desc),
-			], qb_type)
+			], flat.source_type_id(qb_type))
 		}
 	}
 	if stmt.limit.len > 0 {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_limit', [
 			t.sql_int_expr_from_token(stmt.limit),
-		], qb_type)
+		], flat.source_type_id(qb_type))
 	}
 	if stmt.offset.len > 0 && stmt.limit.len == 0 {
 		if stmt.where.error.len == 0 {
 			qb = t.sql_query_builder_method_call(qb, 'v_sql_error', [
 				t.make_string_literal('SQL OFFSET requires LIMIT'),
-			], qb_type)
+			], flat.source_type_id(qb_type))
 		}
 	} else if stmt.offset.len > 0 {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_offset', [
 			t.sql_int_expr_from_token(stmt.offset),
-		], qb_type)
+		], flat.source_type_id(qb_type))
 	}
 	return qb
 }
@@ -573,28 +573,28 @@ fn (mut t Transformer) sql_update_query_builder(stmt SqlTransformStmt, db_expr f
 	if stmt.dynamic_set.name.len > 0 || stmt.dynamic_set.tokens.len > 0 {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_set_query_data', [
 			t.sql_dynamic_data_arg(stmt.table, stmt.dynamic_set, .set_),
-		], qb_type)
+		], flat.source_type_id(qb_type))
 	} else {
 		for set in stmt.sets {
 			qb = t.sql_query_builder_method_call(qb, 'v_sql_set_primitive', [
 				t.make_string_literal(set.field),
 				t.sql_primitive_from_token_for_field(stmt.table, set.field, set.value),
-			], qb_type)
+			], flat.source_type_id(qb_type))
 		}
 	}
 	if stmt.where.error.len > 0 {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_error', [
 			t.make_string_literal(stmt.where.error),
-		], qb_type)
+		], flat.source_type_id(qb_type))
 	} else if stmt.where.condition.len > 0 {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_where_condition', [
 			t.make_string_literal(stmt.where.condition),
 			t.sql_where_params_array(stmt.table, stmt.where.params),
-		], qb_type)
+		], flat.source_type_id(qb_type))
 	} else if stmt.where.dynamic_data.name.len > 0 || stmt.where.dynamic_data.tokens.len > 0 {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_where_query_data', [
 			t.sql_dynamic_data_arg(stmt.table, stmt.where.dynamic_data, .where_),
-		], qb_type)
+		], flat.source_type_id(qb_type))
 	}
 	return qb
 }
@@ -602,7 +602,7 @@ fn (mut t Transformer) sql_update_query_builder(stmt SqlTransformStmt, db_expr f
 fn (mut t Transformer) sql_create_drop_table_call(stmt SqlTransformStmt, db_expr flat.NodeId, helper string) flat.NodeId {
 	spec_name := 'orm.${helper}_T_${sql_generic_type_suffix(stmt.table.name)}'
 	t.mark_fn_used_name(spec_name)
-	t.sql_record_generic_helper_specialization(spec_name, stmt.table.name)
+	t.sql_record_generic_helper_specialization(spec_name, flat.source_type_id(stmt.table.name))
 	t.sql_record_table_generic_spec(stmt.table.name)
 	call := t.make_call_typed(spec_name, [
 		t.sql_db_connection_arg(db_expr),
@@ -615,7 +615,7 @@ fn (mut t Transformer) sql_create_drop_table_call(stmt SqlTransformStmt, db_expr
 fn (mut t Transformer) sql_new_query_call(table_name string, db_expr flat.NodeId) flat.NodeId {
 	spec_name := 'orm.new_query_T_${sql_generic_type_suffix(table_name)}'
 	t.mark_fn_used_name(spec_name)
-	t.sql_record_generic_helper_specialization(spec_name, table_name)
+	t.sql_record_generic_helper_specialization(spec_name, flat.source_type_id(table_name))
 	t.sql_record_table_generic_spec(table_name)
 	qb_type := t.sql_query_builder_type(table_name)
 	mut qb := t.make_call_typed(spec_name, [t.sql_db_connection_arg(db_expr)], flat.source_type_id(qb_type))
@@ -624,12 +624,13 @@ fn (mut t Transformer) sql_new_query_call(table_name string, db_expr flat.NodeId
 	if attrs.len > 0 {
 		qb = t.sql_query_builder_method_call(qb, 'v_sql_table_attrs', [
 			t.make_attribute_array_literal(attrs),
-		], qb_type)
+		], flat.source_type_id(qb_type))
 	}
 	return qb
 }
 
-fn (mut t Transformer) sql_record_generic_helper_specialization(spec_name string, type_name string) {
+fn (mut t Transformer) sql_record_generic_helper_specialization(spec_name string, type_name_id u32) {
+	type_name := flat.source_type_name(type_name_id)
 	t.record_generic_specialization_args_for_names([spec_name], flat.TypeTextList.from_names([type_name]).ids)
 	if isnil(t.tc) {
 		return
@@ -678,7 +679,7 @@ fn (mut t Transformer) sql_db_connection_arg(db_expr flat.NodeId) flat.NodeId {
 	return addr
 }
 
-fn (mut t Transformer) sql_query_builder_method_call(qb flat.NodeId, method string, args []flat.NodeId, typ string) flat.NodeId {
+fn (mut t Transformer) sql_query_builder_method_call(qb flat.NodeId, method string, args []flat.NodeId, typ_id u32) flat.NodeId {
 	t.mark_fn_used_name('orm.QueryBuilder.${method}')
 	qb_type := flat.source_type_name(t.trim_pointer_type(t.node_type(qb)))
 	base, type_args, is_generic := generic_app_parts(qb_type)
@@ -688,10 +689,10 @@ fn (mut t Transformer) sql_query_builder_method_call(qb flat.NodeId, method stri
 		mut call_args := []flat.NodeId{cap: args.len + 1}
 		call_args << qb
 		call_args << args
-		return t.make_call_typed(method_name, call_args, flat.source_type_id(typ))
+		return t.make_call_typed(method_name, call_args, typ_id)
 	}
 	selector := t.make_selector(qb, method, u32(0))
-	return t.make_call_expr_typed(selector, args, flat.source_type_id(typ))
+	return t.make_call_expr_typed(selector, args, typ_id)
 }
 
 fn (t &Transformer) sql_query_builder_type(table_name string) string {
@@ -945,7 +946,7 @@ fn (mut t Transformer) sql_dynamic_query_data_item_stmts(data_name string, scope
 
 fn (mut t Transformer) sql_dynamic_guard_item_stmts(data_name string, scope SqlTransformWhereScope, guard SqlDynamicGuard, body []string, kind SqlDynamicDataKind, is_and bool) []flat.NodeId {
 	rhs_type := t.sql_dynamic_value_type(guard.expr)
-	rhs_expr := t.sql_dynamic_value_expr(guard.expr, rhs_type)
+	rhs_expr := t.sql_dynamic_value_expr(guard.expr, flat.source_type_id(rhs_type))
 	opt_type := if rhs_type.len > 0 {
 		rhs_type
 	} else {
@@ -1032,7 +1033,7 @@ fn (mut t Transformer) sql_dynamic_query_data_leaf_stmt(data_name string, scope 
 	value := if sql_operation_kind_is_unary_name(op_kind) {
 		t.make_struct_init(flat.source_type_id('orm.Null'))
 	} else {
-		t.sql_dynamic_value_primitive(resolved.table, resolved.field, value_tokens, field_type)
+		t.sql_dynamic_value_primitive(resolved.table, resolved.field, value_tokens, flat.source_type_id(field_type))
 	}
 	t.mark_fn_used_name('orm.v_sql_query_data_add')
 	call := t.make_call_typed('orm.v_sql_query_data_add', [
@@ -1047,45 +1048,45 @@ fn (mut t Transformer) sql_dynamic_query_data_leaf_stmt(data_name string, scope 
 	]
 }
 
-fn (mut t Transformer) sql_dynamic_value_primitive(_table SqlTransformTableInfo, _field string, tokens []string, field_type string) flat.NodeId {
-	if relation_type := t.sql_relation_struct_base_type(field_type) {
+fn (mut t Transformer) sql_dynamic_value_primitive(_table SqlTransformTableInfo, _field string, tokens []string, field_type_id u32) flat.NodeId {
+	if relation_type_source_id := t.sql_relation_struct_base_type(field_type_id) {
 		if sql_value_tokens_are_none_literal(tokens) {
 			return t.sql_null_primitive_expr()
 		}
-		expr := t.sql_dynamic_value_expr(tokens, relation_type)
-		return t.sql_relation_primary_primitive_expr(expr, relation_type)
+		expr := t.sql_dynamic_value_expr(tokens, relation_type_source_id)
+		return t.sql_relation_primary_primitive_expr(expr, relation_type_source_id)
 	}
-	mut expr := t.sql_dynamic_value_expr(tokens, field_type)
-	if t.sql_transform_type_is_enum(field_type) {
+	mut expr := t.sql_dynamic_value_expr(tokens, field_type_id)
+	if t.sql_transform_type_is_enum(field_type_id) {
 		expr = t.make_cast(flat.source_type_i64, expr, flat.source_type_i64)
 	}
 	return t.sql_primitive_from_expr(expr)
 }
 
-fn (mut t Transformer) sql_dynamic_value_expr(tokens []string, typ string) flat.NodeId {
+fn (mut t Transformer) sql_dynamic_value_expr(tokens []string, typ_id u32) flat.NodeId {
 	clean := sql_trim_outer_empty(tokens)
 	if clean.len == 0 {
 		return t.make_struct_init(flat.source_type_id('orm.Null'))
 	}
 	if inner := sql_wrapped_tokens(clean) {
-		return t.sql_dynamic_value_expr(inner, typ)
+		return t.sql_dynamic_value_expr(inner, typ_id)
 	}
 	if clean.len >= 3 && sql_token_is_plain_ident(clean[0]) && clean[1] == '('
 		&& clean[clean.len - 1] == ')' {
 		cast_type := clean[0]
-		return t.make_cast(flat.source_type_id(cast_type), t.sql_dynamic_value_expr(clean[2..clean.len - 1], cast_type),
+		return t.make_cast(flat.source_type_id(cast_type), t.sql_dynamic_value_expr(clean[2..clean.len - 1], flat.source_type_id(cast_type)),
 			flat.source_type_id(cast_type))
 	}
 	if clean[0] == 'if' {
-		return t.sql_dynamic_if_value_expr(clean, typ)
+		return t.sql_dynamic_if_value_expr(clean, typ_id)
 	}
-	if index_expr := t.sql_index_expr_from_tokens_for_type(clean, typ) {
+	if index_expr := t.sql_index_expr_from_tokens_for_type(clean, typ_id) {
 		return index_expr
 	}
 	if clean.len == 1 {
-		return t.sql_expr_from_token_for_type(clean[0], typ)
+		return t.sql_expr_from_token_for_type(clean[0], typ_id)
 	}
-	return t.sql_expr_from_token_for_type(sql_value_token_text(clean), typ)
+	return t.sql_expr_from_token_for_type(sql_value_token_text(clean), typ_id)
 }
 
 fn (t &Transformer) sql_dynamic_value_type(tokens []string) string {
@@ -1109,9 +1110,9 @@ fn (t &Transformer) sql_dynamic_value_type(tokens []string) string {
 	return flat.source_type_name(t.var_type(token))
 }
 
-fn (mut t Transformer) sql_dynamic_if_value_expr(tokens []string, typ string) flat.NodeId {
-	open_idx := sql_find_top_level_token(tokens, '{', 1) or { return t.zero_value_for_type(flat.source_type_id(typ)) }
-	close_idx := sql_matching_brace(tokens, open_idx) or { return t.zero_value_for_type(flat.source_type_id(typ)) }
+fn (mut t Transformer) sql_dynamic_if_value_expr(tokens []string, typ_id u32) flat.NodeId {
+	open_idx := sql_find_top_level_token(tokens, '{', 1) or { return t.zero_value_for_type(typ_id) }
+	close_idx := sql_matching_brace(tokens, open_idx) or { return t.zero_value_for_type(typ_id) }
 	mut else_idx := -1
 	for i in close_idx + 1 .. tokens.len {
 		if tokens[i] == 'else' {
@@ -1120,19 +1121,19 @@ fn (mut t Transformer) sql_dynamic_if_value_expr(tokens []string, typ string) fl
 		}
 	}
 	if else_idx < 0 || else_idx + 1 >= tokens.len || tokens[else_idx + 1] != '{' {
-		return t.zero_value_for_type(flat.source_type_id(typ))
+		return t.zero_value_for_type(typ_id)
 	}
 	else_close_idx := sql_matching_brace(tokens, else_idx + 1) or {
-		return t.zero_value_for_type(flat.source_type_id(typ))
+		return t.zero_value_for_type(typ_id)
 	}
 	cond := t.sql_dynamic_condition_expr(tokens[1..open_idx])
-	then_expr := t.sql_dynamic_value_expr(tokens[open_idx + 1..close_idx], typ)
-	else_expr := t.sql_dynamic_value_expr(tokens[else_idx + 2..else_close_idx], typ)
+	then_expr := t.sql_dynamic_value_expr(tokens[open_idx + 1..close_idx], typ_id)
+	else_expr := t.sql_dynamic_value_expr(tokens[else_idx + 2..else_close_idx], typ_id)
 	then_block := t.make_block([t.make_expr_stmt(then_expr)])
 	else_block := t.make_block([t.make_expr_stmt(else_expr)])
 	node := t.make_if(cond, then_block, else_block)
-	if typ != '' {
-		t.set_node_typ(int(node), flat.source_type_id(typ))
+	if typ_id != u32(0) {
+		t.set_node_typ(int(node), typ_id)
 	}
 	return node
 }
@@ -1144,7 +1145,7 @@ fn (mut t Transformer) sql_dynamic_condition_expr(tokens []string) flat.NodeId {
 	}
 	if assign_idx := sql_find_top_level_token(cond, ':=', 0) {
 		lhs := if assign_idx > 0 { cond[assign_idx - 1] } else { '_' }
-		rhs := t.sql_dynamic_value_expr(cond[assign_idx + 1..], '')
+		rhs := t.sql_dynamic_value_expr(cond[assign_idx + 1..], u32(0))
 		start := t.a.children.len
 		t.a.children << t.make_ident(lhs)
 		t.a.children << rhs
@@ -1156,14 +1157,14 @@ fn (mut t Transformer) sql_dynamic_condition_expr(tokens []string) flat.NodeId {
 		})
 	}
 	if operator := sql_dynamic_condition_operator(cond) {
-		lhs := t.sql_dynamic_value_expr(cond[..operator.idx], '')
-		rhs := t.sql_dynamic_value_expr(cond[operator.idx + 1..], '')
+		lhs := t.sql_dynamic_value_expr(cond[..operator.idx], u32(0))
+		rhs := t.sql_dynamic_value_expr(cond[operator.idx + 1..], u32(0))
 		return t.make_infix(sql_dynamic_flat_op(operator.op), lhs, rhs)
 	}
 	if cond.len == 1 {
 		return t.sql_expr_from_token(cond[0])
 	}
-	return t.sql_dynamic_value_expr(cond, 'bool')
+	return t.sql_dynamic_value_expr(cond, flat.source_type_bool)
 }
 
 fn sql_dynamic_split_items(tokens []string) [][]string {
@@ -1392,18 +1393,18 @@ fn (mut t Transformer) sql_primitive_from_token(token string) flat.NodeId {
 fn (mut t Transformer) sql_primitive_from_token_for_field(table SqlTransformTableInfo, field string, token string) flat.NodeId {
 	field_type := sql_transform_field_type(table, field)
 	column := t.sql_transform_field_column_name(table, field)
-	if infix := t.sql_infix_primitive_from_token_for_field(field, column, token, field_type) {
+	if infix := t.sql_infix_primitive_from_token_for_field(field, column, token, flat.source_type_id(field_type)) {
 		return infix
 	}
-	if relation_type := t.sql_relation_struct_base_type(field_type) {
+	if relation_type_source_id := t.sql_relation_struct_base_type(flat.source_type_id(field_type)) {
 		if sql_value_token_is_none_literal(token) {
 			return t.sql_null_primitive_expr()
 		}
-		expr := t.sql_expr_from_token_for_type(token, relation_type)
-		return t.sql_relation_primary_primitive_expr(expr, relation_type)
+		expr := t.sql_expr_from_token_for_type(token, relation_type_source_id)
+		return t.sql_relation_primary_primitive_expr(expr, relation_type_source_id)
 	}
-	mut expr := t.sql_expr_from_token_for_type(token, field_type)
-	if t.sql_transform_type_is_enum(field_type) {
+	mut expr := t.sql_expr_from_token_for_type(token, flat.source_type_id(field_type))
+	if t.sql_transform_type_is_enum(flat.source_type_id(field_type)) {
 		expr = t.make_cast(flat.source_type_i64, expr, flat.source_type_i64)
 	}
 	return t.sql_primitive_from_expr(expr)
@@ -1416,15 +1417,16 @@ fn sql_generic_type_suffix(typ string) string {
 	return c_name(generic_type_arg_short(trimmed_transform_text(typ)))
 }
 
-fn (mut t Transformer) sql_infix_primitive_from_token_for_field(field string, column string, token string, typ string) ?flat.NodeId {
+fn (mut t Transformer) sql_infix_primitive_from_token_for_field(field string, column string, token string, typ_id u32) ?flat.NodeId {
+	typ := flat.source_type_name(typ_id)
 	op_text, right_text := sql_split_leading_field_math_token(token, field) or { return none }
-	right_expr := t.sql_expr_from_token_for_type(right_text, typ)
+	right_expr := t.sql_expr_from_token_for_type(right_text, typ_id)
 	right_primitive := t.sql_primitive_from_expr(right_expr)
 	fields := [
-		t.make_named_field_init('name', t.make_string_literal(column), 'string'),
+		t.make_named_field_init('name', t.make_string_literal(column), flat.source_type_string),
 		t.make_named_field_init('operator', t.sql_math_operation_kind_expr(op_text),
-			'orm.MathOperationKind'),
-		t.make_named_field_init('right', right_primitive, 'orm.Primitive'),
+			flat.source_type_id('orm.MathOperationKind')),
+		t.make_named_field_init('right', right_primitive, flat.source_type_id('orm.Primitive')),
 	]
 	start := t.a.children.len
 	for item in fields {
@@ -1458,7 +1460,8 @@ fn sql_split_leading_field_math_token(token string, field string) ?(string, stri
 	return none
 }
 
-fn (t &Transformer) sql_transform_type_is_struct(field_type string) bool {
+fn (t &Transformer) sql_transform_type_is_struct(field_type_id u32) bool {
+	field_type := flat.source_type_name(field_type_id)
 	mut clean := trimmed_transform_text(field_type)
 	if clean.starts_with('?') {
 		clean = clean[1..]
@@ -1473,15 +1476,16 @@ fn (t &Transformer) sql_transform_type_is_struct(field_type string) bool {
 	return clean.len > 0 && clean in t.tc.structs
 }
 
-fn (t &Transformer) sql_relation_struct_base_type(field_type string) ?string {
+fn (t &Transformer) sql_relation_struct_base_type(field_type_id u32) ?u32 {
+	field_type := flat.source_type_name(field_type_id)
 	mut clean := trimmed_transform_text(field_type)
 	if t.is_optional_type_name(flat.source_type_id(clean)) {
 		clean = flat.source_type_name(t.optional_base_type(t.qualify_optional_type(flat.source_type_id(clean))))
 	}
-	if clean == 'time.Time' || !t.sql_transform_type_is_struct(clean) {
+	if clean == 'time.Time' || !t.sql_transform_type_is_struct(flat.source_type_id(clean)) {
 		return none
 	}
-	return clean
+	return flat.source_type_id(clean)
 }
 
 fn sql_value_token_is_none_literal(token string) bool {
@@ -1496,19 +1500,20 @@ fn sql_value_tokens_are_none_literal(tokens []string) bool {
 	return clean.len == 1 && clean[0] in ['none', 'nil']
 }
 
-fn (mut t Transformer) sql_relation_primary_primitive_expr(expr flat.NodeId, relation_type string) flat.NodeId {
+fn (mut t Transformer) sql_relation_primary_primitive_expr(expr flat.NodeId, relation_type_id u32) flat.NodeId {
+	relation_type := flat.source_type_name(relation_type_id)
 	expr_type := trimmed_transform_text(flat.source_type_name(t.node_type(expr)))
 	if t.is_optional_type_name(flat.source_type_id(expr_type)) {
 		spec_name := 'orm.v_sql_optional_struct_primary_primitive_T_${sql_generic_type_suffix(relation_type)}'
 		t.mark_fn_used_name(spec_name)
-		t.sql_record_generic_helper_specialization(spec_name, relation_type)
+		t.sql_record_generic_helper_specialization(spec_name, relation_type_id)
 		call := t.make_call_typed(spec_name, [expr], flat.source_type_id('orm.Primitive'))
 		t.set_node_value(int(call), relation_type)
 		return call
 	}
 	spec_name := 'orm.v_sql_struct_primary_primitive_T_${sql_generic_type_suffix(relation_type)}'
 	t.mark_fn_used_name(spec_name)
-	t.sql_record_generic_helper_specialization(spec_name, relation_type)
+	t.sql_record_generic_helper_specialization(spec_name, relation_type_id)
 	call := t.make_call_typed(spec_name, [expr], flat.source_type_id('orm.Primitive'))
 	t.set_node_value(int(call), relation_type)
 	return call
@@ -1551,18 +1556,19 @@ fn sql_option_primitive_helper(typ string) ?string {
 }
 
 fn (mut t Transformer) sql_expr_from_token(token string) flat.NodeId {
-	return t.sql_expr_from_token_for_type(token, '')
+	return t.sql_expr_from_token_for_type(token, u32(0))
 }
 
-fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) flat.NodeId {
+fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ_id u32) flat.NodeId {
+	typ := flat.source_type_name(typ_id)
 	if token.contains(' ') {
 		clean := sql_trim_outer_empty(sql_clean_tokens(token.split(' ')))
 		// `(names)[0]`, `(f()).g()`, `f((x))`: lower the parenthesised value itself.
 		if inner := sql_wrapped_tokens(clean) {
-			return t.sql_expr_from_token_for_type(sql_value_token_text(inner), typ)
+			return t.sql_expr_from_token_for_type(sql_value_token_text(inner), typ_id)
 		}
 		if literal := sql_signed_literal_text(clean) {
-			return t.sql_expr_from_token_for_type(literal, typ)
+			return t.sql_expr_from_token_for_type(literal, typ_id)
 		}
 	}
 	if sql_token_is_quoted_string(token) {
@@ -1572,17 +1578,17 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 		}
 		return t.make_string_literal(value)
 	}
-	if or_expr := t.sql_or_expr_from_token_for_type(token, typ) {
+	if or_expr := t.sql_or_expr_from_token_for_type(token, typ_id) {
 		return or_expr
 	}
-	if infix_expr := t.sql_infix_expr_from_token_for_type(token, typ) {
+	if infix_expr := t.sql_infix_expr_from_token_for_type(token, typ_id) {
 		return infix_expr
 	}
-	if index_expr := t.sql_index_expr_from_token_for_type(token, typ) {
+	if index_expr := t.sql_index_expr_from_token_for_type(token, typ_id) {
 		return index_expr
 	}
 	if fn_name, args := sql_value_call_parts(token) {
-		return t.sql_value_call_expr(fn_name, args, typ)
+		return t.sql_value_call_expr(fn_name, args, typ_id)
 	}
 	if token in ['none', 'nil'] {
 		return t.make_struct_init(flat.source_type_id('orm.Null'))
@@ -1601,13 +1607,13 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 	}
 	if sql_token_is_no_arg_call(token) {
 		fn_name := token[..token.len - 2]
-		return t.sql_value_call_expr(fn_name, []string{}, typ)
+		return t.sql_value_call_expr(fn_name, []string{}, typ_id)
 	}
-	if token.starts_with('.') && typ != '' {
+	if token.starts_with('.') && typ_id != u32(0) {
 		return t.a.add_node(flat.Node{
 			kind:  .enum_val
 			value: '${typ}${token}'
-			typ:   flat.source_type_id(typ)
+			typ:   typ_id
 		})
 	}
 	// Without an expected type (a call argument such as `.hhmm24`), keep the parser's
@@ -1619,29 +1625,29 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 			value: token[1..]
 		})
 	}
-	if typ != '' && t.sql_transform_type_is_enum(typ) && token.contains('.')
+	if typ_id != u32(0) && t.sql_transform_type_is_enum(typ_id) && token.contains('.')
 		&& t.sql_token_root_is_enum_type(token.all_before('.')) {
 		return t.a.add_node(flat.Node{
 			kind:  .enum_val
 			value: token
-			typ:   flat.source_type_id(typ)
+			typ:   typ_id
 		})
 	}
 	if chain := sql_value_member_chain_parts(token) {
-		return t.sql_value_member_chain_expr(chain, typ)
+		return t.sql_value_member_chain_expr(chain, typ_id)
 	}
 	return t.sql_value_name_expr(token)
 }
 
-fn (mut t Transformer) sql_value_member_chain_expr(chain SqlValueMemberChain, typ string) flat.NodeId {
-	mut value := t.sql_expr_from_token_for_type(chain.receiver, '')
+fn (mut t Transformer) sql_value_member_chain_expr(chain SqlValueMemberChain, typ_id u32) flat.NodeId {
+	mut value := t.sql_expr_from_token_for_type(chain.receiver, u32(0))
 	for i, member in chain.members {
 		if chain.is_call && i == chain.members.len - 1 {
 			mut arg_ids := []flat.NodeId{cap: chain.args.len}
 			for arg in chain.args {
 				arg_ids << t.sql_expr_from_token(arg)
 			}
-			call := t.make_call_expr_typed(t.make_selector(value, member, u32(0)), arg_ids, flat.source_type_id(typ))
+			call := t.make_call_expr_typed(t.make_selector(value, member, u32(0)), arg_ids, typ_id)
 			return t.sql_transform_value_call(call)
 		}
 		value_type_source_id := t.node_type(value)
@@ -1722,7 +1728,8 @@ fn sql_value_member_chain_parts(token string) ?SqlValueMemberChain {
 	}
 }
 
-fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, typ string) flat.NodeId {
+fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, typ_id u32) flat.NodeId {
+	typ := flat.source_type_name(typ_id)
 	mut arg_ids := []flat.NodeId{cap: args.len}
 	for arg in args {
 		arg_ids << t.sql_expr_from_token(arg)
@@ -1732,7 +1739,7 @@ fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, ty
 		target_type = imported
 	}
 	if args.len == 1
-		&& (is_plain_builtin_alias_type(target_type) || t.is_known_type_name(target_type)) {
+		&& (is_plain_builtin_alias_type(target_type) || t.is_known_type_name(flat.source_type_id(target_type))) {
 		converted := t.transform_expr(t.make_cast(flat.source_type_id(target_type), arg_ids[0], flat.source_type_id(target_type)))
 		if t.is_type_alias_name(flat.source_type_id(target_type)) {
 			// Cast lowering normalizes aliases to their representation. Retain the
@@ -1744,7 +1751,7 @@ fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, ty
 		return converted
 	}
 	callee := t.sql_value_call_callee(callee_name)
-	call := t.make_call_expr_typed(callee, arg_ids, flat.source_type_id(if typ != '' {
+	call := t.make_call_expr_typed(callee, arg_ids, flat.source_type_id(if typ_id != u32(0) {
 		typ
 	} else {
 		''
@@ -1897,20 +1904,21 @@ fn sql_value_call_args(tokens []string) ?[]string {
 	return args
 }
 
-fn (mut t Transformer) sql_index_expr_from_token_for_type(token string, typ string) ?flat.NodeId {
+fn (mut t Transformer) sql_index_expr_from_token_for_type(token string, typ_id u32) ?flat.NodeId {
 	tokens := sql_clean_tokens(sql_index_token_parts(token))
-	return t.sql_index_expr_from_tokens_for_type(tokens, typ)
+	return t.sql_index_expr_from_tokens_for_type(tokens, typ_id)
 }
 
-fn (mut t Transformer) sql_index_expr_from_tokens_for_type(tokens []string, typ string) ?flat.NodeId {
+fn (mut t Transformer) sql_index_expr_from_tokens_for_type(tokens []string, typ_id u32) ?flat.NodeId {
+	typ := flat.source_type_name(typ_id)
 	clean := sql_trim_outer_empty(tokens)
 	base_len := sql_value_index_base_len(clean) or { return none }
-	mut value := t.sql_expr_from_token_for_type(sql_value_token_text(clean[..base_len]), '')
+	mut value := t.sql_expr_from_token_for_type(sql_value_token_text(clean[..base_len]), u32(0))
 	mut i := base_len
 	for i < clean.len {
 		close_idx := sql_matching_pair(clean, i, '[', ']') or { return none }
 		index_expr := t.sql_expr_from_token_for_type(sql_value_token_text(clean[i + 1..close_idx]),
-			'int')
+			flat.source_type_int)
 		mut elem_type := ''
 		if close_idx + 1 == clean.len {
 			elem_type = typ
@@ -1954,7 +1962,8 @@ fn (t &Transformer) sql_index_elem_type(base flat.NodeId) string {
 	return ''
 }
 
-fn (mut t Transformer) sql_infix_expr_from_token_for_type(token string, typ string) ?flat.NodeId {
+fn (mut t Transformer) sql_infix_expr_from_token_for_type(token string, typ_id u32) ?flat.NodeId {
+	typ := flat.source_type_name(typ_id)
 	tokens := sql_clean_tokens(token.split(' '))
 	lhs_text, op_text, rhs_text := sql_split_infix_value_tokens(tokens) or { return none }
 	op := match op_text {
@@ -1972,12 +1981,12 @@ fn (mut t Transformer) sql_infix_expr_from_token_for_type(token string, typ stri
 		else { return none }
 	}
 
-	lhs := t.sql_expr_from_token_for_type(lhs_text, typ)
-	rhs := t.sql_expr_from_token_for_type(rhs_text, typ)
+	lhs := t.sql_expr_from_token_for_type(lhs_text, typ_id)
+	rhs := t.sql_expr_from_token_for_type(rhs_text, typ_id)
 	expr := t.make_infix(op, lhs, rhs)
 	result_type := if op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		'bool'
-	} else if typ != '' {
+	} else if typ_id != u32(0) {
 		typ
 	} else {
 		flat.source_type_name(t.node_type(lhs))
@@ -2036,13 +2045,14 @@ fn sql_infix_operator_index(text string, op string) ?int {
 	return none
 }
 
-fn (mut t Transformer) sql_or_expr_from_token_for_type(token string, typ string) ?flat.NodeId {
+fn (mut t Transformer) sql_or_expr_from_token_for_type(token string, typ_id u32) ?flat.NodeId {
+	typ := flat.source_type_name(typ_id)
 	if !token.contains(' or ') {
 		return none
 	}
 	tokens := sql_clean_tokens(token.split(' '))
 	source_tokens, fallback_tokens := sql_or_value_expr_parts(tokens) or { return none }
-	source := t.sql_expr_from_token_for_type(sql_value_token_text(source_tokens), '')
+	source := t.sql_expr_from_token_for_type(sql_value_token_text(source_tokens), u32(0))
 	source_type_source_id := t.raw_var_type_for_expr(source) or { t.node_type(source) }
 
 	// Method resolution needs the declared alias payload before ordinary or lowering
@@ -2053,7 +2063,7 @@ fn (mut t Transformer) sql_or_expr_from_token_for_type(token string, typ string)
 	} else {
 		typ
 	}
-	fallback := t.sql_expr_from_token_for_type(sql_value_token_text(fallback_tokens), value_type)
+	fallback := t.sql_expr_from_token_for_type(sql_value_token_text(fallback_tokens), flat.source_type_id(value_type))
 	body := t.make_block([t.make_expr_stmt(fallback)])
 	start := t.a.children.len
 	t.a.children << source
@@ -2129,12 +2139,12 @@ fn (mut t Transformer) sql_join_type_expr(kind string) flat.NodeId {
 fn (mut t Transformer) sql_table_literal(table SqlTransformTableInfo) flat.NodeId {
 	fields := [
 		t.make_named_field_init('name',
-			t.make_string_literal(t.sql_runtime_table_name(table.name)), 'string'),
+			t.make_string_literal(t.sql_runtime_table_name(table.name)), flat.source_type_string),
 		t.make_named_field_init('attrs',
-			t.make_attribute_array_literal(t.sql_table_attributes(table.name)), '[]VAttribute'),
-		t.make_named_field_init('fields', t.sql_string_array(table.fields.map(it.name)), '[]string'),
+			t.make_attribute_array_literal(t.sql_table_attributes(table.name)), flat.source_type_id('[]VAttribute')),
+		t.make_named_field_init('fields', t.sql_string_array(table.fields.map(it.name)), flat.source_type_id('[]string')),
 		t.make_named_field_init('columns', t.sql_string_array(t.sql_table_column_names(table)),
-			'[]string'),
+			flat.source_type_id('[]string')),
 	]
 	start := t.a.children.len
 	for item in fields {
@@ -2150,7 +2160,7 @@ fn (mut t Transformer) sql_table_literal(table SqlTransformTableInfo) flat.NodeI
 }
 
 fn (t &Transformer) sql_table_column_names(table SqlTransformTableInfo) []string {
-	metas := t.struct_field_decl_metas(table.name)
+	metas := t.struct_field_decl_metas(flat.source_type_id(table.name))
 	mut columns := []string{cap: table.fields.len}
 	for field in table.fields {
 		meta := metas[field.name] or {
@@ -2172,7 +2182,7 @@ fn (t &Transformer) sql_table_column_name(field_name string, meta FieldDeclMeta)
 }
 
 fn (t &Transformer) sql_transform_field_column_name(table SqlTransformTableInfo, field_name string) string {
-	metas := t.struct_field_decl_metas(table.name)
+	metas := t.struct_field_decl_metas(flat.source_type_id(table.name))
 	meta := metas[field_name] or { return field_name }
 	return t.sql_table_column_name(field_name, meta)
 }
@@ -3888,7 +3898,8 @@ fn sql_transform_field_type(table SqlTransformTableInfo, field_name string) stri
 	return ''
 }
 
-fn (t &Transformer) sql_transform_type_is_enum(typ string) bool {
+fn (t &Transformer) sql_transform_type_is_enum(typ_id u32) bool {
+	typ := flat.source_type_name(typ_id)
 	if typ in t.enum_types {
 		return true
 	}

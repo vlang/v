@@ -51,7 +51,7 @@ fn test_node_type_memo_follows_smartcasts_and_module_context() {
 	t.begin_node_type_memo(0, a.nodes.len - 1)
 	assert flat.source_type_name(t.node_type(value)) == 'Collection'
 	for variant in ['[]int', 'map[string]bool'] {
-		t.push_smartcast('value', variant, 'Collection')
+		t.push_smartcast('value', flat.source_type_id(variant), flat.source_type_id('Collection'))
 		assert flat.source_type_name(t.node_type(value)) == variant
 		t.pop_smartcast()
 		assert flat.source_type_name(t.node_type(value)) == 'Collection'

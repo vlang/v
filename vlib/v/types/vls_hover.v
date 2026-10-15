@@ -1571,7 +1571,7 @@ fn (tc &TypeChecker) vls_param_text(param &flat.Node, types []Type, idx int) str
 	mut type_text := param.typ_text()
 	if idx < types.len && !type_contains_unknown(types[idx]) {
 		typ := types[idx]
-		type_text = if param.typ_text().starts_with('...') && typ is Array {
+		type_text = if flat.source_type_shape(param.typ).has(.variadic) && typ is Array {
 			'...${tc.vls_type_text(typ.elem_type)}'
 		} else {
 			tc.vls_type_text(typ)

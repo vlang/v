@@ -54,7 +54,8 @@ fn named_variant_display_short(variant string) string {
 
 // named_variant_str stringifies a hidden variant struct value as
 // `Expr.Count(3)`, `Expr.Str('text')` or `Expr.Void`.
-fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant string, is_ref bool) flat.NodeId {
+fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant_id u32, is_ref bool) flat.NodeId {
+	variant := flat.source_type_name(variant_id)
 	display := named_variant_display_short(variant)
 	if isnil(t.tc) {
 		return t.make_string_literal(display)
@@ -64,7 +65,7 @@ fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant string, is_re
 	}
 	// Keep the payload's variant on the stack, as ordinary struct formatting
 	// does, so an array of the enclosing sum is not mistaken for a direct cycle.
-	t.stringify_stack << flat.source_type_id(variant)
+	t.stringify_stack << variant_id
 	defer {
 		t.stringify_stack.delete_last()
 	}
@@ -73,7 +74,7 @@ fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant string, is_re
 	mut value := expr
 	if is_ref {
 		value = t.make_prefix(.mul, expr)
-		t.set_node_typ(int(value), flat.source_type_id(variant))
+		t.set_node_typ(int(value), variant_id)
 	}
 	payload := t.make_selector_op(value, flat.named_variant_payload_field, payload_name_source_id, .dot)
 	mut text := t.wrap_string_conversion(payload, payload_name_source_id)

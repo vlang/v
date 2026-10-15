@@ -4641,7 +4641,7 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 			}
 			continue
 		}
-		if child.typ_text().starts_with('...') {
+		if flat.source_type_shape(child.typ).has(.variadic) {
 			decl_is_variadic = true
 		}
 		raw_pt := if param_idx < typed_params.len {
@@ -4686,7 +4686,7 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 		}
 		param_idx++
 		if !seen_param {
-			first_param_is_mut = child.is_mut || raw_pt is types.Pointer || pt is types.Pointer || child.typ_text().starts_with('&') || child.typ_text().starts_with('mut ')
+			first_param_is_mut = child.is_mut || raw_pt is types.Pointer || pt is types.Pointer || flat.source_type_shape(child.typ).has(.pointer) || flat.source_type_shape(child.typ).has(.mutable_type)
 			seen_param = true
 		}
 		ptypes << pt
@@ -12953,7 +12953,7 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		}
 	}
 	if node.kind == .selector {
-		if node.typ != 0 && (node.typ_text().starts_with('?') || node.typ_text().starts_with('!')) {
+		if node.typ != 0 && (flat.source_type_shape(node.typ).has(.option_type) || flat.source_type_shape(node.typ).has(.result_type)) {
 			actual = g.tc.parse_resolution_type(node.typ)
 		} else if declared_type := g.selector_declared_type(id) {
 			actual = declared_type
@@ -14564,7 +14564,7 @@ fn (mut g FlatGen) optional_none_type(id flat.NodeId) types.Type {
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		node_ref := g.a.node(id)
 		node := g.a.nodes[int(id)]
-		if node.typ_text().starts_with('?') || node.typ_text().starts_with('!') {
+		if flat.source_type_shape(node.typ).has(.option_type) || flat.source_type_shape(node.typ).has(.result_type) {
 			return g.parse_node_type(node_ref)
 		}
 	}
@@ -15669,7 +15669,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 						}
 					} else if is_sum_literal && field.value != 'typ' {
 						mut variant := ''
-						if field.typ_text().starts_with('&') {
+						if flat.source_type_shape(field.typ).has(.pointer) {
 							variant = field.typ_text()[1..]
 						} else if field.typ != 0 {
 							variant = field.typ_text()
@@ -16334,7 +16334,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(expr)
 					return
 				}
-				if !g.expected_enum_text().contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
+				if !flat.source_type_shape(g.expected_enum).has(.dotted) && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
 					qkey := '${g.tc.cur_module}.${g.expected_enum_text()}.${node.value}'
 					if expr := g.enum_value_expr_for_key(qkey) {
 						g.write(expr)
@@ -17520,7 +17520,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						if g.gen_shared_array_index_value_expr(base_id, g.a.child(node, 1)) {
 							return
 						}
-						index_type := if node.typ_text().starts_with('?') || node.typ_text().starts_with('!')
+						index_type := if flat.source_type_shape(node.typ).has(.option_type) || flat.source_type_shape(node.typ).has(.result_type)
 							|| (node.payload != 0
 								&& bound_method_array_index_marker in node.generic_params()) {
 							g.parse_node_type(node)
@@ -22736,8 +22736,8 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		}
 	}
 	for name, target_id in g.tc.type_aliases.ids {
-		target := flat.source_type_name(target_id)
-		if !target.contains('[') {
+		target_shape := flat.source_type_shape(target_id)
+		if !target_shape.has(.bracketed) {
 			continue
 		}
 		g.tc.cur_module = module_from_qualified_name(name)

@@ -6,8 +6,9 @@ nominal aliases, and parser metadata. They differ from a checker's semantic `typ
 Resolving an unqualified spelling still requires its module and import context.
 
 `source_type_id` and `source_type_name` cross the spelling boundary. Zero denotes empty text.
-`source_type_shape` reads syntax flags recorded when a spelling is interned, allowing
-type caches to inspect wrappers, containers, qualification, endpoint whitespace,
+`source_type_shape` reads exact spelling syntax flags recorded once when a type is interned.
+These probes describe raw prefixes and punctuation; they do not resolve aliases or strip wrappers.
+Type caches can inspect wrappers, containers, qualification, endpoint whitespace,
 and `typeof` syntax by ID.
 Builtin `source_type_*` constants carry scalar spellings without repeated interning;
 the `builtin_alias` shape flag identifies spellings that need no alias normalization.

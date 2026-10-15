@@ -351,7 +351,7 @@ fn (g &FlatGen) array_push_type_arg_name(id flat.NodeId) string {
 	node := g.a.nodes[int(id)]
 	match node.kind {
 		.ident {
-			if node.typ_text().starts_with('map[') {
+			if flat.source_type_shape(node.typ).has(.map_type) {
 				return node.typ_text()
 			}
 			return node.value
@@ -6691,7 +6691,7 @@ fn (g &FlatGen) generated_variant_access_type(id flat.NodeId) ?types.Type {
 		params := node.generic_params()
 		for i, param in params {
 			if param == '__v3_generated_variant_access' && i + 1 < params.len {
-				if node.typ_text().starts_with('&') {
+				if flat.source_type_shape(node.typ).has(.pointer) {
 					return g.parse_node_type(&node)
 				}
 				return g.tc.parse_type(flat.source_type_id(params[i + 1]))
@@ -7732,8 +7732,8 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				}
 			}
 			init_type = g.canonical_import_alias_type_for_node(init_type, &node)
-			is_dynamic_array_init := resolved_init_type is types.Array || rhs.typ_text().starts_with('[]')
-				|| node.typ_text().starts_with('[]') || lhs.typ_text().starts_with('[]')
+			is_dynamic_array_init := resolved_init_type is types.Array || flat.source_type_shape(rhs.typ).has(.array_type)
+				|| flat.source_type_shape(node.typ).has(.array_type) || flat.source_type_shape(lhs.typ).has(.array_type)
 			if init_type is types.ArrayFixed && !is_dynamic_array_init {
 				lhs_str := g.decl_lhs_str(lhs_id)
 				if node.value == 'static' && rhs.children_count == 0 {
@@ -8066,7 +8066,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					}
 				}
 			}
-			if node.typ != 0 && !node.typ_text().contains('.') && v_type is types.Struct {
+			if node.typ != 0 && !flat.source_type_shape(node.typ).has(.dotted) && v_type is types.Struct {
 				rhs_type := g.usable_expr_type(rhs_id)
 				if rhs_type is types.Struct && rhs_type.name().contains('.')
 					&& rhs_type.name().all_after_last('.') == v_type.name().all_after_last('.') {

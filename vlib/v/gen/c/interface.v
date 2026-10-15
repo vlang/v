@@ -760,7 +760,7 @@ fn (mut g FlatGen) register_specialized_interface_applications() {
 		}
 	}
 	for node in g.a.nodes {
-		if node.typ_text().contains('[') {
+		if flat.source_type_shape(node.typ).has(.bracketed) {
 			// Generic-interface storage intentionally parses to the shared base box.
 			// Preserve the concrete source application from specialized AST signatures
 			// before semantic parsing erases it, so its dispatch wrapper is emitted.

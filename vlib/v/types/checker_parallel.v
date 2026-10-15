@@ -3035,7 +3035,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 		}
 	}
 	tc.cur_scope = tc.file_scope
-	checked_return_type := if node.typ_text().ends_with('?') && !node.typ_text().starts_with('?') {
+	checked_return_type := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
 		node.typ_text().trim_right('?')
 	} else {
 		node.typ_text()
@@ -3086,7 +3086,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node fl
 					}
 				}
 				if param.is_mut {
-					implicit_mut_reference := param.op != .amp && param.typ_text().starts_with('&')
+					implicit_mut_reference := param.op != .amp && flat.source_type_shape(param.typ).has(.pointer)
 					diagnostic_type_text := if implicit_mut_reference {
 						param.typ_text()[1..]
 					} else {
@@ -3297,10 +3297,10 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	}
 	if raw_return_type.starts_with('!') {
 		alias_name := raw_return_type[1..]
-		alias_target := flat.source_type_name(tc.type_aliases.type_id(alias_name) or {
+		alias_target_shape := flat.source_type_shape(tc.type_aliases.type_id(alias_name) or {
 			tc.type_aliases.type_id(tc.qualify_name(alias_name)) or { u32(0) }
 		})
-		if alias_target.starts_with('?') {
+		if alias_target_shape.has(.option_type) {
 			tc.record_error_at(.return_mismatch, 'the fn returns type `${raw_return_type}`, but type `${alias_name}` is an Option alias, you can not mix them', id, tc.fn_return_type_diagnostic_pos(node))
 		}
 	}

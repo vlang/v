@@ -1624,7 +1624,7 @@ fn (tc &TypeChecker) constraint_unmet_reason(constraints map[string]GenericConst
 		if !need.is_interface {
 			return 'its constraint `${have.name_text()}` is not a set of types'
 		}
-		if have.name_text().contains('[') || display.contains('[') {
+		if flat.source_type_shape(have.name).has(.bracketed) || display.contains('[') {
 			// A generic interface, `Comparable[U]`, with its own type arguments.
 			if have.name_text().replace(' ', '') == display.replace(' ', '') {
 				return none

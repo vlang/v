@@ -111,7 +111,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				}
 			}
 			if field_type.len == 0 {
-				if path := t.struct_field_path_for_field(node.value, field_name) {
+				if path := t.struct_field_path_for_field(flat.source_type_id(node.value), field_name) {
 					if path.len > 0 {
 						promoted_key = promoted_field_path_key(path)
 						promoted_paths[promoted_key] = path
@@ -138,8 +138,10 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			}
 			value_type_source_id := t.node_type(val_id)
 
-			sum_field_type := t.struct_field_sum_type(flat.source_type_id(field_type), info.module)
-			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
+			sum_field_type_source_id := t.struct_field_sum_type(flat.source_type_id(field_type), info.module)
+
+			enum_field_type_source_id := t.enum_type_name_for_expected(flat.source_type_id(field_type), info.module)
+			enum_field_type := flat.source_type_name(enum_field_type_source_id)
 			fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type_source_id)
 			shared_interface_source := !isnil(t.tc) && t.is_interface_type(flat.source_type_id(field_type))
 				&& t.tc.struct_field_is_shared(node.value, target_field_name)
@@ -149,12 +151,12 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				// Keep the concrete shared source intact so cgen can make the interface
 				// wrapper borrow both its value and its synchronization guard.
 				t.transform_expr(val_id)
-			} else if val_node.kind == .enum_val && enum_field_type.len > 0 {
+			} else if val_node.kind == .enum_val && enum_field_type_source_id != 0 {
 				t.transform_enum_shorthand(val_id, val_node, enum_field_type)
 			} else if fixed_to_dynamic {
 				t.fixed_array_value_to_owned_array(val_id, value_type_source_id, flat.source_type_id(field_type))
-			} else if sum_field_type.len > 0 {
-				t.wrap_sum_value(val_id, flat.source_type_id(sum_field_type))
+			} else if sum_field_type_source_id != 0 {
+				t.wrap_sum_value(val_id, sum_field_type_source_id)
 			} else if inferred_sum := t.sum_type_for_field_variant(field_name, val_id, val_node) {
 				t.wrap_sum_value(val_id, flat.source_type_id(inferred_sum))
 			} else if field_type.starts_with('&') {
@@ -164,7 +166,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			} else {
 				t.transform_expr(val_id)
 			}
-			if !shared_interface_source && sum_field_type.len == 0 && field_type.len > 0 {
+			if !shared_interface_source && sum_field_type_source_id == 0 && field_type.len > 0 {
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, flat.source_type_id(field_type))
 			}
 			if !shared_interface_source && field_type.len > 0 && !fixed_to_dynamic {
@@ -360,8 +362,8 @@ fn (mut t Transformer) clone_promoted_default_in_decl_scope(id flat.NodeId, modu
 
 fn (mut t Transformer) promoted_struct_init_field_value(field FieldInfo, init flat.NodeId, materialized bool) flat.NodeId {
 	normalized_type_source_id := t.normalize_type_alias(field.typ)
-	normalized_type := flat.source_type_name(normalized_type_source_id)
-	if !normalized_type.starts_with('&') {
+	normalized_type_shape := flat.source_type_shape(normalized_type_source_id)
+	if !normalized_type_shape.has(.pointer) {
 		return init
 	}
 	value := t.make_prefix(.amp, init)
@@ -475,8 +477,9 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 			decl_value_id := t.clone_promoted_default_in_decl_scope(default_value_id, info.module,
 				t.cur_file)
 			default_value := t.a.nodes[int(decl_value_id)]
-			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
-			new_value := if default_value.kind == .enum_val && enum_field_type.len > 0 {
+			enum_field_type_source_id_2 := t.enum_type_name_for_expected(field_type_source_id_2, info.module)
+			enum_field_type := flat.source_type_name(enum_field_type_source_id_2)
+			new_value := if default_value.kind == .enum_val && enum_field_type_source_id_2 != 0 {
 				t.transform_enum_shorthand(decl_value_id, default_value, enum_field_type)
 			} else if t.is_sum_type_name(field_type_source_id_2) {
 				t.wrap_sum_value(decl_value_id, field_type_source_id_2)
@@ -928,7 +931,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		}
 		t.cur_file = old_file
 		field_type_source_id_2 := t.lookup_struct_field_type(flat.source_type_id(node.value), field.name) or { field.typ }
-		field_type := flat.source_type_name(field_type_source_id_2)
+
 		default_id := t.specialize_struct_default_expr(resolved_node_type_source_id, missing_defaults[field.name])
 		default_node := t.a.nodes[int(default_id)]
 		if source_file := t.a.source_files[default_node.pos.id] {
@@ -940,8 +943,9 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		] {
 			continue
 		}
-		enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
-		new_val := if default_node.kind == .enum_val && enum_field_type.len > 0 {
+		enum_field_type_source_id_3 := t.enum_type_name_for_expected(field_type_source_id_2, info.module)
+		enum_field_type := flat.source_type_name(enum_field_type_source_id_3)
+		new_val := if default_node.kind == .enum_val && enum_field_type_source_id_3 != 0 {
 			t.transform_enum_shorthand(default_id, default_node, enum_field_type)
 		} else if t.is_sum_type_name(field_type_source_id_2) {
 			// A sum-type field default (e.g. `typ_expr Expr = EmptyExpr{}`) must be
@@ -1469,10 +1473,10 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 
 	mut prelude := []flat.NodeId{}
 	transformed_base := t.transform_expr(base_id)
-	transformed_base_type := flat.source_type_name(t.node_type(transformed_base))
+	transformed_base_type_shape := flat.source_type_shape(t.node_type(transformed_base))
 	base_is_loaded_pointer_value := base_node.kind == .ident
 		&& t.pointer_value_rvalues[base_node.value]
-	base := if base_type.starts_with('&') && transformed_base_type.starts_with('&')
+	base := if base_type.starts_with('&') && transformed_base_type_shape.has(.pointer)
 		&& !base_is_loaded_pointer_value {
 		t.make_prefix(.mul, transformed_base)
 	} else {
@@ -1496,15 +1500,17 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		}
 		value_type_source_id := t.node_type(value_id)
 
-		enum_field_type := t.enum_type_name_for_expected(field_type, assoc_module)
-		sum_field_type := t.struct_field_sum_type(flat.source_type_id(field_type), assoc_module)
+		enum_field_type_source_id_4 := t.enum_type_name_for_expected(flat.source_type_id(field_type), assoc_module)
+		enum_field_type := flat.source_type_name(enum_field_type_source_id_4)
+		sum_field_type_source_id_2 := t.struct_field_sum_type(flat.source_type_id(field_type), assoc_module)
+
 		fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type_source_id)
-		mut value := if value_node.kind == .enum_val && enum_field_type.len > 0 {
+		mut value := if value_node.kind == .enum_val && enum_field_type_source_id_4 != 0 {
 			t.transform_enum_shorthand(value_id, value_node, enum_field_type)
 		} else if fixed_to_dynamic {
 			t.fixed_array_value_to_owned_array(value_id, value_type_source_id, flat.source_type_id(field_type))
-		} else if sum_field_type.len > 0 {
-			t.wrap_sum_value(value_id, flat.source_type_id(sum_field_type))
+		} else if sum_field_type_source_id_2 != 0 {
+			t.wrap_sum_value(value_id, sum_field_type_source_id_2)
 		} else if field_type.len > 0 {
 			t.transform_expr_for_type(value_id, flat.source_type_id(field_type))
 		} else {
@@ -1550,7 +1556,7 @@ fn (mut t Transformer) assoc_mapped_base_init(base flat.NodeId, base_type_id u32
 	for field in target_info.fields {
 		source_field := source_fields[field.name] or { continue }
 		target_type_source_id := t.lookup_struct_field_type(assoc_type_id, field.name) or { field.typ }
-		target_type := flat.source_type_name(target_type_source_id)
+
 		source_field_type_source_id := t.lookup_struct_field_type(source_type_source_id, source_field.name) or {
 			source_field.typ
 		}
@@ -1559,7 +1565,7 @@ fn (mut t Transformer) assoc_mapped_base_init(base flat.NodeId, base_type_id u32
 			continue
 		}
 		value := t.make_selector(t.make_ident(source_name), source_field.name, source_field_type_source_id)
-		field_ids << t.make_named_field_init(field.name, value, target_type)
+		field_ids << t.make_named_field_init(field.name, value, target_type_source_id)
 	}
 	if field_ids.len == 0 {
 		return none
@@ -1614,31 +1620,33 @@ fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node f
 }
 
 // struct_field_sum_type supports struct field sum type handling for Transformer.
-fn (t &Transformer) struct_field_sum_type(field_type_id u32, owner_module string) string {
+fn (t &Transformer) struct_field_sum_type(field_type_id u32, owner_module string) u32 {
 	field_type := flat.source_type_name(field_type_id)
 	if field_type.contains('|') {
-		if sum_name := t.sum_type_for_union_text(field_type_id, owner_module) {
-			return sum_name
+		if sum_name_source_id := t.sum_type_for_union_text(field_type_id, owner_module) {
+			sum_name := flat.source_type_name(sum_name_source_id)
+
+			return flat.source_type_id(sum_name)
 		}
 	}
 	if field_type.starts_with('[]') || field_type.starts_with('map[')
 		|| t.is_fixed_array_type(field_type_id) {
-		return ''
+		return u32(0)
 	}
 	if t.is_sum_type_name(field_type_id) {
-		return field_type
+		return field_type_id
 	}
 	if field_type_id == u32(0) || field_type.contains('.') || owner_module == '' {
-		return ''
+		return u32(0)
 	}
 	qname := '${owner_module}.${field_type}'
 	if t.sum_types.contains(qname) {
-		return qname
+		return flat.source_type_id(qname)
 	}
-	return ''
+	return u32(0)
 }
 
-fn (t &Transformer) sum_type_for_union_text(field_type_id u32, owner_module string) ?string {
+fn (t &Transformer) sum_type_for_union_text(field_type_id u32, owner_module string) ?u32 {
 	field_type := flat.source_type_name(field_type_id)
 	raw_variants := split_sum_union_text(field_type)
 	if raw_variants.len < 2 {
@@ -1646,7 +1654,7 @@ fn (t &Transformer) sum_type_for_union_text(field_type_id u32, owner_module stri
 	}
 	mut variants := []string{cap: raw_variants.len}
 	for raw in raw_variants {
-		variants << t.normalize_sum_variant_type(raw, owner_module, [])
+		variants << flat.source_type_name(t.normalize_sum_variant_type(flat.source_type_id(raw), owner_module, []))
 	}
 	for sum_name, sum_variants_id in t.sum_types.ids {
 		sum_variants := sum_variants_id.map(flat.source_type_name(it))
@@ -1672,7 +1680,7 @@ fn (t &Transformer) sum_type_for_union_text(field_type_id u32, owner_module stri
 			}
 		}
 		if matched {
-			return sum_name
+			return flat.source_type_id(sum_name)
 		}
 	}
 	return none
@@ -1879,8 +1887,8 @@ fn (mut t Transformer) transform_map_init_expr(id flat.NodeId, node flat.Node) f
 	map_type_source_id := t.normalize_type_alias(flat.source_type_id(raw_type))
 	map_type := flat.source_type_name(map_type_source_id)
 	if t.is_optional_type_name(map_type_source_id) && node.children_count == 0 {
-		payload_type := flat.source_type_name(t.optional_base_type(map_type_source_id))
-		if payload_type.starts_with('map[') {
+		payload_type_shape := flat.source_type_shape(t.optional_base_type(map_type_source_id))
+		if payload_type_shape.has(.map_type) {
 			return t.make_optional_none(t.qualify_optional_type(map_type_source_id))
 		}
 	}

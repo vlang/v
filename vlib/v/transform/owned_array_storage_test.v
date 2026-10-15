@@ -282,7 +282,7 @@ fn test_owned_sum_reassignment_keeps_declared_storage_under_smartcast() {
 	t.sum_types.set('Value', ['First', 'Second'])
 	t.set_var_type('value', flat.source_type_id('Value'))
 	t.set_var_type('replacement', flat.source_type_id('Value'))
-	t.push_smartcast('value', 'First', 'Value')
+	t.push_smartcast('value', flat.source_type_id('First'), flat.source_type_id('Value'))
 	assignment := t.make_assign(t.make_ident('value'), t.make_ident('replacement'))
 	statements := t.transform_stmt(assignment)
 	assert statements.len > 0

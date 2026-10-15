@@ -195,7 +195,7 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 		w.type_param_texts = flat.TypeTextBindings.from_names(texts)
 		w.type_cache.parse_enabled = false
 		w.fn_context.generic_params = []string{}
-		return_text := if node.typ_text().ends_with('?') && !node.typ_text().starts_with('?') {
+		return_text := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
 			node.typ_text().trim_right('?')
 		} else {
 			node.typ_text()

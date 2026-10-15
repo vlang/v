@@ -90,14 +90,15 @@ fn (mut t Transformer) propagate_decl_type(node flat.Node) {
 	}
 	if node.children_count >= 4 && node.children_count % 2 == 0 {
 		for i := 0; i < node.children_count; i += 2 {
-			t.propagate_decl_pair_type(node, i, i + 1, '')
+			t.propagate_decl_pair_type(node, i, i + 1, u32(0))
 		}
 		return
 	}
-	t.propagate_decl_pair_type(node, 0, 1, node.typ_text())
+	t.propagate_decl_pair_type(node, 0, 1, node.typ)
 }
 
-fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs_idx int, fallback_type string) {
+fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs_idx int, fallback_type_id u32) {
+	fallback_type := flat.source_type_name(fallback_type_id)
 	if lhs_idx >= node.children_count || rhs_idx >= node.children_count {
 		return
 	}
@@ -472,7 +473,7 @@ fn (t &Transformer) map_expr_decl_type(id flat.NodeId) ?u32 {
 		if map_type_source_id != 0 {
 			return map_type_source_id
 		}
-		if node.typ_text().starts_with('map[') {
+		if flat.source_type_shape(node.typ).has(.map_type) {
 			return node.typ
 		}
 	}
@@ -821,7 +822,7 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 	}
 	if _ := t.lookup_struct_info(lookup_type) {
 		// Follow the complete embedding path, including pointer embeddings.
-		if path := t.struct_field_path_for_field(lookup_type, field_name) {
+		if path := t.struct_field_path_for_field(flat.source_type_id(lookup_type), field_name) {
 			owner_type := if path.len > 0 {
 				flat.source_type_name(t.trim_pointer_type(path.last().typ))
 			} else {
@@ -840,10 +841,10 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 	}
 	// An interface declares the types of its fields: do not guess them from the name.
 	iface_name_source_id := t.resolve_interface_type_name(flat.source_type_id(lookup_type))
-	iface_name := flat.source_type_name(iface_name_source_id)
+
 	if iface_name_source_id != 0 {
-		if ftyp := t.interface_field_type_name(iface_name, field_name) {
-			return flat.source_type_id(ftyp)
+		if ftyp_source_id := t.interface_field_type_name(iface_name_source_id, field_name) {
+			return ftyp_source_id
 		}
 	}
 	if ftyp_source_id := t.lookup_unique_field_type(field_name) {
@@ -1058,7 +1059,7 @@ fn (t &Transformer) lookup_struct_field_type_uncached(type_name_id u32, field_na
 
 fn (t &Transformer) lookup_struct_field_type_spelling(lookup StructFieldLookup, field_name string) ?u32 {
 	f := lookup.info.field(field_name) or { return none }
-	if lookup.owner_type_text().contains('[') {
+	if flat.source_type_shape(lookup.owner_type).has(.bracketed) {
 		specialized_source_id := t.normalize_field_type(f.typ, lookup.owner_type)
 		specialized := flat.source_type_name(specialized_source_id)
 		if decl_type_is_usable(specialized) && !t.generic_arg_is_unresolved(specialized_source_id) {
@@ -1068,7 +1069,7 @@ fn (t &Transformer) lookup_struct_field_type_spelling(lookup StructFieldLookup, 
 	if checker_typ_source_id := t.checker_struct_field_type_name(lookup.owner_type, field_name) {
 		return checker_typ_source_id
 	}
-	if !lookup.owner_type_text().contains('[') {
+	if !flat.source_type_shape(lookup.owner_type).has(.bracketed) {
 		return f.typ
 	}
 	return t.normalize_field_type(f.typ, lookup.owner_type)
@@ -1482,7 +1483,7 @@ fn (t &Transformer) normalize_dotted_canonical_fast(typ string) ?string {
 
 // normalize_type_alias_uncached converts normalize type alias uncached data for transform.
 fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
-	if is_generic_placeholder_type_name(typ) && !t.is_known_type_name(typ) {
+	if is_generic_placeholder_type_name(typ) && !t.is_known_type_name(flat.source_type_id(typ)) {
 		return typ
 	}
 	if typ.starts_with('mut ') {
@@ -1518,8 +1519,8 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 	if typ.starts_with('!') {
 		return '!' + flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ[1..])))
 	}
-	if expanded := t.expand_generic_type_alias(typ) {
-		return flat.source_type_name(t.normalize_type_alias(flat.source_type_id(expanded)))
+	if expanded_source_id := t.expand_generic_type_alias(flat.source_type_id(typ)) {
+		return flat.source_type_name(t.normalize_type_alias(expanded_source_id))
 	}
 	// A fully qualified type is already canonical. Resolve its exact alias before
 	// consulting imports from the current file; otherwise an unrelated import with
@@ -1648,7 +1649,8 @@ fn (t &Transformer) type_aliases_with_short_name(short string) []TypeAliasEntry 
 	return entries
 }
 
-fn (t &Transformer) expand_generic_type_alias(typ string) ?string {
+fn (t &Transformer) expand_generic_type_alias(typ_id u32) ?u32 {
+	typ := flat.source_type_name(typ_id)
 	base, args, ok := generic_app_parts(typ)
 	if !ok || args.len == 0 {
 		return none
@@ -1677,9 +1679,9 @@ fn (t &Transformer) expand_generic_type_alias(typ string) ?string {
 			// Qualify a bare target there before the caller recursively
 			// normalizes it, otherwise `a.Box[T] = Inner[T]` can bind to a
 			// colliding `main.Inner[T]` at the use site.
-			return flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(expanded), candidate.all_before_last('.')))
+			return t.normalize_type_in_module(flat.source_type_id(expanded), candidate.all_before_last('.'))
 		}
-		return expanded
+		return flat.source_type_id(expanded)
 	}
 	return none
 }
@@ -1742,7 +1744,8 @@ fn strip_field_module_prefix_from_base(name string, module_name string) string {
 	return short
 }
 
-fn (t &Transformer) is_known_type_name(typ string) bool {
+fn (t &Transformer) is_known_type_name(typ_id u32) bool {
+	typ := flat.source_type_name(typ_id)
 	if typ in t.structs || t.sum_types.contains(typ) || typ in t.enum_types {
 		return true
 	}
@@ -1909,8 +1912,8 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 			clean
 		}
 		if !isnil(t.tc) {
-			if expanded := t.expand_generic_type_alias(alias_type) {
-				return flat.source_type_name(t.normalize_type_alias(flat.source_type_id(expanded)))
+			if expanded_source_id := t.expand_generic_type_alias(flat.source_type_id(alias_type)) {
+				return flat.source_type_name(t.normalize_type_alias(expanded_source_id))
 			}
 		}
 		mut normalized_args := []string{cap: args.len}
@@ -2415,9 +2418,9 @@ fn (t &Transformer) array_map_call_type_name(id flat.NodeId, node flat.Node) ?u3
 		return flat.source_type_id('[]${callback_ret}')
 	}
 	if checker_type_source_id := t.checker_expr_type_name(id) {
-		checker_type := flat.source_type_name(checker_type_source_id)
+		checker_type_shape := flat.source_type_shape(checker_type_source_id)
 
-		if checker_type.starts_with('[]') {
+		if checker_type_shape.has(.array_type) {
 			return checker_type_source_id
 		}
 	}
@@ -2485,11 +2488,11 @@ fn (t &Transformer) lvalue_type(id flat.NodeId) u32 {
 	node := t.a.nodes[int(id)]
 	if node.kind == .selector {
 		sel_type_source_id := t.resolve_selector_type(node)
-		sel_type := flat.source_type_name(sel_type_source_id)
+		sel_type_shape := flat.source_type_shape(sel_type_source_id)
 		if !isnil(t.tc) {
 			if checker_type := t.tc.expr_type(id) {
 				checker_name := checker_type.name()
-				if checker_name.starts_with('&') && !sel_type.starts_with('&') {
+				if checker_name.starts_with('&') && !sel_type_shape.has(.pointer) {
 					return flat.source_type_id(checker_name)
 				}
 			}
@@ -2564,13 +2567,15 @@ fn (t &Transformer) is_string_type(id flat.NodeId) bool {
 }
 
 // is_array_type checks if a type string represents an array type (starts with `[]`).
-fn (t &Transformer) is_array_type(type_str string) bool {
-	return type_str.starts_with('[]')
+fn (t &Transformer) is_array_type(type_str_id u32) bool {
+	type_str_shape := flat.source_type_shape(type_str_id)
+	return type_str_shape.has(.array_type)
 }
 
 // is_map_type checks if a type string represents a map type (starts with `map[`).
-fn (t &Transformer) is_map_type(type_str string) bool {
-	return type_str.starts_with('map[')
+fn (t &Transformer) is_map_type(type_str_id u32) bool {
+	type_str_shape_2 := flat.source_type_shape(type_str_id)
+	return type_str_shape_2.has(.map_type)
 }
 
 // array_elem_type extracts the element type from an array type string.

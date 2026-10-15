@@ -68,7 +68,7 @@ fn (g &FlatGen) struct_init_fields_key(type_name string, fallback string) string
 			// A main-module type is bare-keyed (`full_name == short`); keep the
 			// explicit `main.` qualifier so downstream field lookups resolve to it
 			// rather than a same-named imported struct.
-			if type_name.starts_with('main.') && !info.full_name_text().contains('.') {
+			if type_name.starts_with('main.') && !flat.source_type_shape(info.full_name).has(.dotted) {
 				return type_name
 			}
 			return info.full_name_text()
@@ -177,12 +177,12 @@ fn struct_init_has_main_type_lock(type_name string) bool {
 }
 
 fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) string {
-	if node.typ_text() == node.value && (node.typ_text().starts_with('?') || node.typ_text().starts_with('!')) {
+	if node.typ_text() == node.value && (flat.source_type_shape(node.typ).has(.option_type) || flat.source_type_shape(node.typ).has(.result_type)) {
 		// Lowered option/result literals carry their authoritative wrapper type on
 		// the synthetic node; they have no checker-side expression entry to refine it.
 		return node.typ_text()
 	}
-	if node.typ_text() == node.value && node.typ_text().contains('[') && node.typ_text().contains('.') {
+	if node.typ_text() == node.value && flat.source_type_shape(node.typ).has(.bracketed) && flat.source_type_shape(node.typ).has(.dotted) {
 		// A specialized clone's explicit type annotation is newer than the
 		// checker's expression cache and can retain nested main-module locks.
 		return node.typ_text()
@@ -1946,7 +1946,7 @@ fn (g &FlatGen) lowered_sum_field_variant(sum_name string, field &flat.Node) ?st
 	mut variant := ''
 	if field.typ_text().starts_with('sum_ref ') {
 		variant = field.typ_text()['sum_ref '.len..]
-	} else if field.typ_text().starts_with('&') {
+	} else if flat.source_type_shape(field.typ).has(.pointer) {
 		variant = field.typ_text()[1..]
 	} else if field.typ != 0 {
 		variant = field.typ_text()
@@ -2031,7 +2031,7 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node
 				return
 			}
 			child_type := g.tc.resolve_type(child_id)
-			if field.typ_text().starts_with('&') && child_type is types.Pointer
+			if flat.source_type_shape(field.typ).has(.pointer) && child_type is types.Pointer
 				&& g.type_names_match(child_type.base_type, inner_type) {
 				g.gen_expr(child_id)
 				return
@@ -3964,7 +3964,7 @@ fn shared_generic_base_matches_decl(base string, info StructDeclInfo) bool {
 	if base == info.full_name_text() {
 		return true
 	}
-	return !info.full_name_text().contains('.') && base == info.node.value
+	return !flat.source_type_shape(info.full_name).has(.dotted) && base == info.node.value
 }
 
 fn (mut g FlatGen) collect_shared_type_names() {

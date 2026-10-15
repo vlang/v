@@ -53,7 +53,7 @@ fn (mut t Transformer) library_instance_needs_body(args []string) bool {
 		return true
 	}
 	for arg in args {
-		if t.library_type_reaches_program(arg) {
+		if t.library_type_reaches_program(flat.source_type_id(arg)) {
 			return true
 		}
 	}
@@ -202,7 +202,8 @@ fn (t &Transformer) library_file_of_program_module() ?string {
 
 // library_type_reaches_program reports whether a library body given a value of
 // the type `typ` can reach, through it, what keeps the body (see LibraryBodies).
-fn (mut t Transformer) library_type_reaches_program(typ string) bool {
+fn (mut t Transformer) library_type_reaches_program(typ_id u32) bool {
+	typ := flat.source_type_name(typ_id)
 	root := library_type_text(typ)
 	if t.library_bodies.harmless[root] {
 		return false

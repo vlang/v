@@ -4551,7 +4551,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						}
 						continue
 					}
-					if child.typ_text().starts_with('...') {
+					if flat.source_type_shape(child.typ).has(.variadic) {
 						is_variadic = true
 					}
 					parsed_param_type := tc.parse_type(child.typ)
@@ -4621,7 +4621,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 								}
 								continue
 							}
-							if child.typ_text().starts_with('...') {
+							if flat.source_type_shape(child.typ).has(.variadic) {
 								is_variadic = true
 							}
 							parsed_param_type := if iface_generic_params.len > 0 {
@@ -5120,7 +5120,7 @@ fn (mut tc TypeChecker) check_c_fn_redeclarations_of(a &flat.FlatAst, entries []
 						}
 						continue
 					}
-					if child.typ_text().starts_with('...') {
+					if flat.source_type_shape(child.typ).has(.variadic) {
 						is_variadic = true
 					} else {
 						params << tc.c_extern_abi_type(tc.parse_type(child.typ))
@@ -14988,7 +14988,7 @@ fn (tc &TypeChecker) decl_receiver_may_carry_generic_params(node flat.Node) bool
 	if receiver.kind != .param {
 		return false
 	}
-	if receiver.typ_text().contains('[') {
+	if flat.source_type_shape(receiver.typ).has(.bracketed) {
 		return true
 	}
 	// A bare generic-parameter spelling is the only bracket-free candidate the
@@ -15657,13 +15657,13 @@ fn (tc &TypeChecker) unknown_type_message(name string, node_id flat.NodeId) stri
 	base := 'unknown type `${display_name}`'
 	if int(node_id) >= 0 && int(node_id) < tc.a.nodes.len {
 		node := tc.a.nodes[int(node_id)]
-		if node.kind == .type_decl && (node.typ_text().starts_with('fn(') || node.typ_text().starts_with('fn (')) {
+		if node.kind == .type_decl && (flat.source_type_shape(node.typ).has(.function_compact) || flat.source_type_shape(node.typ).has(.function_spaced)) {
 			return base
 		}
-		if node.kind == .type_decl && node.typ_text().starts_with('[') {
+		if node.kind == .type_decl && flat.source_type_shape(node.typ).has(.leading_bracket) {
 			return '${base}.\nDid you mean `${node.value}`?'
 		}
-		if node.kind == .field_decl && node.typ_text().starts_with('[') && node.typ_text().contains('fn') {
+		if node.kind == .field_decl && flat.source_type_shape(node.typ).has(.leading_bracket) && node.typ_text().contains('fn') {
 			suggestion := tc.parse_type(node.typ).name().replace_once('fn(', 'fn (')
 			return '${base}.\nDid you mean `${suggestion}`?'
 		}
@@ -15773,8 +15773,8 @@ fn (tc &TypeChecker) known_type_name_candidates() []string {
 		push_diagnostic_type_name(mut names, name)
 	}
 	for name, target_id in tc.type_aliases.ids {
-		target := flat.source_type_name(target_id)
-		if target.starts_with('fn(') || target.starts_with('fn (') {
+		target_shape := flat.source_type_shape(target_id)
+		if target_shape.has(.function_compact) || target_shape.has(.function_spaced) {
 			continue
 		}
 		push_diagnostic_type_name(mut names, name)
@@ -19538,7 +19538,7 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 						param_types << subst_generic_text(param.typ_text(), generic_args, generic_params)
 						param_is_mut << param.is_mut
 						param_is_mut_ref << (param.is_mut && param.op == .amp
-							&& param.typ_text().starts_with('&'))
+							&& flat.source_type_shape(param.typ).has(.pointer))
 					}
 				}
 				return_type := subst_generic_text(if candidate.typ != 0 {

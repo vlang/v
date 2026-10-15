@@ -8024,7 +8024,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 		}
 		'new_map' {
 			if g.is_runtime_new_map_call(node) {
-				if node.typ_text().starts_with('map[') {
+				if flat.source_type_shape(node.typ).has(.map_type) {
 					map_type := g.parse_node_type(node)
 					if map_type is types.Map {
 						g.write_new_map(map_type.key_type, map_type.value_type)
@@ -9476,7 +9476,7 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 			if base.typ != 0 {
 				declared := g.parse_node_type(base_ref)
 				if declared !is types.Unknown && declared !is types.Void
-					&& declared.name() != typ.name() && base.typ_text().contains('.') {
+					&& declared.name() != typ.name() && flat.source_type_shape(base.typ).has(.dotted) {
 					return declared
 				}
 			}
@@ -12778,7 +12778,7 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 	}
 	arg_node := g.a.nodes[int(arg_id)]
 	if arg_node.kind == .selector && arg_node.typ != 0
-		&& (arg_node.typ_text().starts_with('?') || arg_node.typ_text().starts_with('!')) {
+		&& (flat.source_type_shape(arg_node.typ).has(.option_type) || flat.source_type_shape(arg_node.typ).has(.result_type)) {
 		g.gen_expr(arg_id)
 		return true
 	}
@@ -12835,7 +12835,7 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 	}
 	mut arg_type := g.usable_expr_type(arg_id)
 	if arg_node.kind == .selector {
-		if arg_node.typ != 0 && (arg_node.typ_text().starts_with('?') || arg_node.typ_text().starts_with('!')) {
+		if arg_node.typ != 0 && (flat.source_type_shape(arg_node.typ).has(.option_type) || flat.source_type_shape(arg_node.typ).has(.result_type)) {
 			arg_type = g.tc.parse_resolution_type(arg_node.typ)
 		} else if declared_type := g.selector_declared_type(arg_id) {
 			arg_type = declared_type
@@ -15278,7 +15278,7 @@ fn (g &FlatGen) fn_value_candidate_type(id flat.NodeId, node flat.Node) types.Ty
 }
 
 fn (g &FlatGen) node_is_fn_value_for_voidptr(id flat.NodeId, node flat.Node) bool {
-	if node.typ_text().starts_with('fn(') || node.typ_text().starts_with('fn (') {
+	if flat.source_type_shape(node.typ).has(.function_compact) || flat.source_type_shape(node.typ).has(.function_spaced) {
 		return true
 	}
 	if type_is_fn_value(g.fn_value_candidate_type(id, node)) {
@@ -15306,7 +15306,7 @@ fn (g &FlatGen) fn_value_arg_passes_direct_to_voidptr(arg_id flat.NodeId, arg_no
 	if type_is_fn_value(actual) {
 		return true
 	}
-	if arg_node.typ_text().starts_with('fn(') || arg_node.typ_text().starts_with('fn (') {
+	if flat.source_type_shape(arg_node.typ).has(.function_compact) || flat.source_type_shape(arg_node.typ).has(.function_spaced) {
 		return true
 	}
 	if arg_node.kind == .ident {
@@ -15323,7 +15323,7 @@ fn (g &FlatGen) fn_value_arg_passes_direct_to_voidptr(arg_id flat.NodeId, arg_no
 	}
 	if int(arg_id) >= 0 && int(arg_id) < g.a.nodes.len {
 		node := g.a.nodes[int(arg_id)]
-		return node.typ_text().starts_with('fn(') || node.typ_text().starts_with('fn (')
+		return flat.source_type_shape(node.typ).has(.function_compact) || flat.source_type_shape(node.typ).has(.function_spaced)
 	}
 	return false
 }

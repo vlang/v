@@ -27,7 +27,7 @@ fn test_inner_pointer_declarations_shadow_and_restore_outer_storage_markers() {
 		} else if mode == 'expression' {
 			t.transform_block_expr(block, t.a.nodes[int(block)])
 		} else {
-			t.transform_block_expr_for_type(block, t.a.nodes[int(block)], '&[2]int') or {
+			t.transform_block_expr_for_type(block, t.a.nodes[int(block)], flat.source_type_id('&[2]int')) or {
 				panic('expected a typed block')
 			}
 		}
@@ -47,7 +47,7 @@ fn test_single_shadow_declaration_reads_incoming_heap_storage_before_rebinding()
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		_ = t.heap_escaping_value_decl('value', 'int', 'int', t.make_int_literal(1), false)
+		_ = t.heap_escaping_value_decl('value', flat.source_type_int, flat.source_type_int, t.make_int_literal(1), false)
 		value := t.make_ident('value')
 		tc.register_synth_type(value, types.Type(types.int_))
 		start := t.a.children.len
@@ -127,7 +127,7 @@ fn test_heap_moved_source_declaration_keeps_its_mutability() {
 			children_count: 2
 			pos:            token.new_span(1, 1, 10)
 		})
-		lowered := t.heap_escaping_source_decl(t.a.nodes[int(decl)], 'value', 'int', 'int')
+		lowered := t.heap_escaping_source_decl(t.a.nodes[int(decl)], 'value', flat.source_type_int, flat.source_type_int)
 		heap_decl := t.a.nodes[int(lowered.last())]
 		assert heap_decl.kind == .decl_assign
 		heap_lhs := t.a.child_node(&heap_decl, 0)

@@ -201,8 +201,8 @@ fn (mut p Parser) validate_named_sum_variants(name string, language_prefix strin
 			}
 		} else if !is_plain_capitalized_ident(variant.text_text()) {
 			first := if variant.text_text().len > 0 { variant.text_text()[0] } else { u8(0) }
-			if first >= `a` && first <= `z` && !variant.text_text().contains('.')
-				&& !variant.text_text().contains('[') {
+			if first >= `a` && first <= `z` && !flat.source_type_shape(variant.text).has(.dotted)
+				&& !flat.source_type_shape(variant.text).has(.bracketed) {
 				p.record_diagnostic_span('invalid sum type variant name `${variant.text_text()}`: variant names must start with a capital letter',
 					variant.start, variant.name_end)
 			} else {

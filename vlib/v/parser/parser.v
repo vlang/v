@@ -14066,7 +14066,7 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 	p.check(.lsbr)
 	if p.tok == .rsbr {
 		lhs_node := p.a.node(lhs)
-		if lhs_node.kind == .array_init && lhs_node.typ_text().starts_with('[]') {
+		if lhs_node.kind == .array_init && flat.source_type_shape(lhs_node.typ).has(.array_type) {
 			p.discard_generic_type_array_init_warnings(lhs_node.pos)
 			p.record_warning_span('use `x := []Type{}` instead of `x := []Type`', lhs_node.pos.offset, p.tok_pos)
 		}

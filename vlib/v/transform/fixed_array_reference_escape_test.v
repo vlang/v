@@ -402,7 +402,7 @@ fn test_generated_fixed_guard_bindings_receive_durable_storage() {
 			t.mut_fixed_array_capture_sources['values'] = true
 		}
 		value := t.make_ident('payload')
-		decls := t.make_guard_value_decls('values', value, '[2]int')
+		decls := t.make_guard_value_decls('values', value, flat.source_type_id('[2]int'))
 		assert decls.len == 2
 		assert flat.source_type_name(t.var_type('values')) == '&[2]int'
 		assert t.heaped_amp_locals['values']

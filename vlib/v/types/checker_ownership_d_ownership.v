@@ -2491,7 +2491,7 @@ fn (mut tc TypeChecker) ownership_collect_fn_signature(node flat.Node) {
 		return
 	}
 	recv := tc.a.child_node(&node, 0)
-	if recv.kind != .param || recv.typ == 0 || recv.typ_text().starts_with('&') || recv.op == .amp {
+	if recv.kind != .param || recv.typ == 0 || flat.source_type_shape(recv.typ).has(.pointer) || recv.op == .amp {
 		return
 	}
 	short_type := recv.typ_text().all_after_last('.')

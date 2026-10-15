@@ -379,7 +379,7 @@ fn (g &FlatGen) reflection_function(node_id int, node flat.Node) string {
 		if is_method && param_idx == 0 {
 			receiver_type = reflection_field_type_id(param.typ_text(), module_name)
 		}
-		if param.typ_text().starts_with('...') {
+		if flat.source_type_shape(param.typ).has(.variadic) {
 			is_variadic = true
 		}
 		param_idx++

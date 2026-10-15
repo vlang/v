@@ -11642,7 +11642,7 @@ fn type_is_option_or_result(typ Type) bool {
 }
 
 fn (mut tc TypeChecker) check_sql_expr(id flat.NodeId, node flat.Node) {
-	if node.typ_text().starts_with('!') && !tc.sql_expr_has_error_handler(id) {
+	if flat.source_type_shape(node.typ).has(.result_type) && !tc.sql_expr_has_error_handler(id) {
 		message := if tc.sql_expr_is_in_defer(id) {
 			'ORM returns a result, so it should have an `or {}` block at the end'
 		} else {

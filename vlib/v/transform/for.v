@@ -84,7 +84,7 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 		}
 	}
 	for info in cond_smartcasts {
-		t.push_smartcast(info.expr_name, info.variant_name_text(), info.sum_type_name_text())
+		t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 	}
 	mut new_body := t.transform_scope_stmts(body_ids)
 	mut synthetic_continue_label := ''
@@ -188,7 +188,7 @@ fn (mut t Transformer) unsigned_inclusive_for_post_body(cond_id flat.NodeId, pos
 	mut cond_prefix := []flat.NodeId{}
 	t.drain_pending(mut cond_prefix)
 	mut post_body := []flat.NodeId{}
-	done := t.unsigned_loop_post_would_overflow(loop_node.value, loop_type, post_expr.op)
+	done := t.unsigned_loop_post_would_overflow(loop_node.value, flat.source_type_id(loop_type), post_expr.op)
 	t.set_node_typ(int(done), flat.source_type_bool)
 	break_stmt := t.a.add(.break_stmt)
 	post_body << t.make_if(done, t.make_block([break_stmt]), t.make_empty())
@@ -216,11 +216,11 @@ fn (t &Transformer) for_loop_var_unsigned_type(name string) string {
 	return ''
 }
 
-fn (mut t Transformer) unsigned_loop_post_would_overflow(name string, typ string, op flat.Op) flat.NodeId {
+fn (mut t Transformer) unsigned_loop_post_would_overflow(name string, typ_id u32, op flat.Op) flat.NodeId {
 	limit := if op == .inc {
-		t.make_cast(flat.source_type_id(typ), t.make_int_literal(-1), flat.source_type_id(typ))
+		t.make_cast(typ_id, t.make_int_literal(-1), typ_id)
 	} else {
-		t.make_int_literal_typed('0', flat.source_type_id(typ))
+		t.make_int_literal_typed('0', typ_id)
 	}
 	done := t.make_infix(.eq, t.make_ident(name), limit)
 	t.set_node_typ(int(done), flat.source_type_bool)
@@ -381,17 +381,17 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 		return t.rebuild_for_in_stmt(id, node)
 	}
 	has_index := int(val_id) >= 0
-	if flat.source_type_name(t.clean_map_type(flat.source_type_id(iter_type))).starts_with('map[') {
+	if flat.source_type_shape(t.clean_map_type(flat.source_type_id(iter_type))).has(.map_type) {
 		return t.rebuild_for_in_stmt(id, node)
 	}
 	if pool_iter := t.pool_get_results_iter_type(container_id) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
-		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, pool_iter, has_index,
+		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, flat.source_type_id(pool_iter), has_index,
 			body_ids)
 	}
-	if iter_info := t.iterator_for_in_info(iter_type) {
+	if iter_info := t.iterator_for_in_info(flat.source_type_id(iter_type)) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
-		return t.lower_iterator_for_in(id, node, key_id, val_id, container_id, iter_type,
+		return t.lower_iterator_for_in(id, node, key_id, val_id, container_id, flat.source_type_id(iter_type),
 			iter_info, has_index, body_ids)
 	}
 	effective_iter := if iter_type.starts_with('...') {
@@ -408,7 +408,7 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 	if effective_iter.starts_with('[]') || effective_iter == 'string'
 		|| t.is_fixed_array_type(flat.source_type_id(effective_iter)) {
 		body_ids := t.a.children_of(&node)[header_count..].clone()
-		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, effective_iter,
+		return t.lower_indexed_for_in(id, node, key_id, val_id, container_id, flat.source_type_id(effective_iter),
 			has_index, body_ids)
 	}
 	return t.rebuild_for_in_stmt(id, node)
@@ -458,16 +458,17 @@ fn (t &Transformer) for_in_container_is_pointer_storage(container_id flat.NodeId
 	return false
 }
 
-fn (t &Transformer) for_in_binding_storage_type(binding_id flat.NodeId, elem_type string, is_mut bool, container_yields_ref bool) string {
+fn (t &Transformer) for_in_binding_storage_type(binding_id flat.NodeId, elem_type_id u32, is_mut bool, container_yields_ref bool) u32 {
+	elem_type := flat.source_type_name(elem_type_id)
 	// Pointer and optional entries of an explicit reference container are emitted by value.
-	clean_elem_source_id := t.normalize_type_alias(flat.source_type_id(elem_type))
-	clean_elem := flat.source_type_name(clean_elem_source_id)
-	keeps_value := clean_elem.starts_with('&') || t.is_optional_type_name(clean_elem_source_id)
+	clean_elem_source_id := t.normalize_type_alias(elem_type_id)
+	clean_elem_shape := flat.source_type_shape(clean_elem_source_id)
+	keeps_value := clean_elem_shape.has(.pointer) || t.is_optional_type_name(clean_elem_source_id)
 	if is_mut && !(container_yields_ref && keeps_value) {
-		return '&${elem_type}'
+		return flat.source_type_id('&${elem_type}')
 	}
-	if container_yields_ref { return t.for_in_declared_ref_type(binding_id, elem_type) }
-	return elem_type
+	if container_yields_ref { return t.for_in_declared_ref_type(binding_id, elem_type_id) }
+	return elem_type_id
 }
 
 fn (t &Transformer) for_in_container_needs_value_load(container_id flat.NodeId) bool {
@@ -630,11 +631,12 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			elem_type := if map_iter_type.starts_with('map[') {
 				flat.source_type_name(t.map_value_type(map_iter_type_source_id))
 			} else {
-				t.infer_for_in_elem_type(iter_type, node)
+				flat.source_type_name(t.infer_for_in_elem_type(iter_type_source_id, node))
 			}
 			if elem_type.len > 0 {
-				val_type := t.for_in_binding_storage_type(val_id, elem_type, node.op == .amp, container_yields_ref)
-				t.set_var_type(val_name, flat.source_type_id(val_type))
+				val_type_source_id := t.for_in_binding_storage_type(val_id, flat.source_type_id(elem_type), node.op == .amp, container_yields_ref)
+
+				t.set_var_type(val_name, val_type_source_id)
 			}
 		}
 	} else {
@@ -645,11 +647,12 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 				elem_type := if map_iter_type.starts_with('map[') {
 					flat.source_type_name(t.map_value_type(map_iter_type_source_id))
 				} else {
-					t.infer_for_in_elem_type(iter_type, node)
+					flat.source_type_name(t.infer_for_in_elem_type(iter_type_source_id, node))
 				}
 				if elem_type.len > 0 {
-					value_type := t.for_in_binding_storage_type(key_id, elem_type, node.op == .amp, container_yields_ref)
-					t.set_var_type(key_name, flat.source_type_id(value_type))
+					value_type_source_id_3 := t.for_in_binding_storage_type(key_id, flat.source_type_id(elem_type), node.op == .amp, container_yields_ref)
+
+					t.set_var_type(key_name, value_type_source_id_3)
 				}
 			}
 		}
@@ -665,7 +668,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		if binding.kind != .ident { continue }
 		binding_type_source_id := t.var_type(binding.value)
 		binding_type := flat.source_type_name(binding_type_source_id)
-		if !t.guard_value_needs_heap_storage(binding.value, binding_type) { continue }
+		if !t.guard_value_needs_heap_storage(binding.value, binding_type_source_id) { continue }
 		name := t.new_temp('for_value')
 		t.set_var_type(name, binding_type_source_id)
 		backend_binding := t.make_ident(name)
@@ -682,23 +685,24 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	mut binding_clones := []flat.NodeId{}
 	if map_iter_type.starts_with('map[') {
 		key_type_source_id_2, value_type_source_id_2 := t.map_type_parts(map_iter_type_source_id)
-		key_type := flat.source_type_name(key_type_source_id_2)
-		value_type := flat.source_type_name(value_type_source_id_2)
+
 		if has_index {
 			key_source_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 			key_name := binding_names[key_source_name] or { key_source_name }
 			if trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(key_type_source_id_2))) != 'string' {
-				binding_clones << t.make_for_in_binding_clone(key_name, key_type)
+				binding_clones << t.make_for_in_binding_clone(key_name, key_type_source_id_2)
 			}
 			value_source_name := if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
 			value_name := binding_names[value_source_name] or { value_source_name }
-			binding_type := t.for_in_binding_storage_type(val_id, value_type, node.op == .amp, container_yields_ref)
-			binding_clones << t.make_for_in_binding_clone(value_name, binding_type)
+			binding_type_source_id_2 := t.for_in_binding_storage_type(val_id, value_type_source_id_2, node.op == .amp, container_yields_ref)
+
+			binding_clones << t.make_for_in_binding_clone(value_name, binding_type_source_id_2)
 		} else {
 			source_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 			value_name := binding_names[source_name] or { source_name }
-			binding_type := t.for_in_binding_storage_type(key_id, value_type, node.op == .amp, container_yields_ref)
-			binding_clones << t.make_for_in_binding_clone(value_name, binding_type)
+			binding_type_source_id_3 := t.for_in_binding_storage_type(key_id, value_type_source_id_2, node.op == .amp, container_yields_ref)
+
+			binding_clones << t.make_for_in_binding_clone(value_name, binding_type_source_id_3)
 		}
 	} else if iter_value_type.starts_with('[]') || t.is_fixed_array_type(flat.source_type_id(iter_value_type)) {
 		source_name := if has_index {
@@ -707,10 +711,12 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 		}
 		value_name := binding_names[source_name] or { source_name }
-		elem_type := t.infer_for_in_elem_type(iter_type, node)
+		elem_type_source_id := t.infer_for_in_elem_type(iter_type_source_id, node)
+
 		bind_id := if has_index { val_id } else { key_id }
-		value_type := t.for_in_binding_storage_type(bind_id, elem_type, node.op == .amp, container_yields_ref)
-		binding_clones << t.make_for_in_binding_clone(value_name, value_type)
+		value_type_source_id_4 := t.for_in_binding_storage_type(bind_id, elem_type_source_id, node.op == .amp, container_yields_ref)
+
+		binding_clones << t.make_for_in_binding_clone(value_name, value_type_source_id_4)
 	}
 
 	mut binding_decls := []flat.NodeId{}
@@ -718,7 +724,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		if int(binding_id) < 0 { continue }
 		binding := t.a.nodes[int(binding_id)]
 		if backend_name := binding_names[binding.value] {
-			binding_decls << t.make_guard_value_decls(binding.value, t.make_ident(backend_name), binding_types[binding.value])
+			binding_decls << t.make_guard_value_decls(binding.value, t.make_ident(backend_name), flat.source_type_id(binding_types[binding.value]))
 		}
 	}
 	mut ids := []flat.NodeId{}
@@ -735,15 +741,15 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	if map_iter_type.starts_with('map[') {
 		element_type_text = flat.source_type_name(t.map_value_type(map_iter_type_source_id))
 	} else if iter_value_type.starts_with('[]') || t.is_fixed_array_type(flat.source_type_id(iter_value_type)) {
-		element_type_text = t.infer_for_in_elem_type(iter_type, node)
+		element_type_text = flat.source_type_name(t.infer_for_in_elem_type(iter_type_source_id, node))
 	}
 	normalized_element_type_source_id := t.normalize_type_alias(flat.source_type_id(element_type_text))
-	normalized_element_type := flat.source_type_name(normalized_element_type_source_id)
-	element_value_is_indirect := normalized_element_type.starts_with('&')
+	normalized_element_type_shape := flat.source_type_shape(normalized_element_type_source_id)
+	element_value_is_indirect := normalized_element_type_shape.has(.pointer)
 		|| t.is_optional_type_name(normalized_element_type_source_id)
 		|| (map_iter_type.starts_with('map[') && t.is_fixed_array_type(normalized_element_type_source_id))
 	if node.op == .amp && (!container_yields_ref
-		|| (element_value_is_indirect && !normalized_element_type.starts_with('&')
+		|| (element_value_is_indirect && !normalized_element_type_shape.has(.pointer)
 			&& !t.is_optional_type_name(normalized_element_type_source_id))) {
 		bind_id := if has_index { val_id } else { key_id }
 		if int(bind_id) >= 0 {
@@ -922,33 +928,34 @@ fn (t &Transformer) for_in_map_storage_key(id flat.NodeId) string {
 // make_for_in_binding_clone turns a shallow container iteration copy into an independent
 // owner before the user loop body runs. The ownership checker records that cloned binding
 // for the iteration-tail drop.
-fn (mut t Transformer) make_for_in_binding_clone(name string, typ string) []flat.NodeId {
-	if name == '' || name == '_' || !t.ownership_for_in_type_needs_clone(typ) {
+fn (mut t Transformer) make_for_in_binding_clone(name string, typ_id u32) []flat.NodeId {
+	if name == '' || name == '_' || !t.ownership_for_in_type_needs_clone(typ_id) {
 		return []flat.NodeId{}
 	}
 	pending_start := t.pending_stmts.len
-	cloned := t.make_compiler_default_clone_value(t.make_ident(name), flat.source_type_id(typ), true)
+	cloned := t.make_compiler_default_clone_value(t.make_ident(name), typ_id, true)
 	mut stmts := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	stmts << t.make_assign(t.make_ident(name), cloned)
 	return stmts
 }
 
-fn (t &Transformer) ownership_for_in_type_needs_clone(typ string) bool {
-	if isnil(t.tc) || typ == '' {
+fn (t &Transformer) ownership_for_in_type_needs_clone(typ_id u32) bool {
+	if isnil(t.tc) || typ_id == u32(0) {
 		return false
 	}
-	parsed := t.tc.parse_type(flat.source_type_id(typ))
+	parsed := t.tc.parse_type(typ_id)
 	if !t.tc.ownership_type_requires_destruction(parsed) {
 		return false
 	}
 	if _ := t.tc.ownership_default_clone_missing_method(parsed) {
 		return false
 	}
-	return t.compiler_default_clone_type_needs_work(flat.source_type_id(typ))
+	return t.compiler_default_clone_type_needs_work(typ_id)
 }
 
-fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
+fn (t &Transformer) iterator_for_in_info(iter_type_id u32) ?IteratorForInInfo {
+	iter_type := flat.source_type_name(iter_type_id)
 	mut clean := trimmed_transform_text(iter_type)
 	if clean.starts_with('&') {
 		clean = clean[1..]
@@ -1025,7 +1032,7 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	} else {
 		t.stable_expr_for_reuse(high_id)
 	}
-	escaping_value := t.guard_value_needs_heap_storage(key.value, range_type)
+	escaping_value := t.guard_value_needs_heap_storage(key.value, flat.source_type_id(range_type))
 	loop_name := if escaping_value {
 		t.new_temp('range_index')
 	} else if key.value == '_' {
@@ -1042,7 +1049,7 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(loop_name), .inc))
 	mut new_body := []flat.NodeId{}
 	if escaping_value {
-		new_body << t.make_guard_value_decls(key.value, t.make_ident(loop_name), range_type)
+		new_body << t.make_guard_value_decls(key.value, t.make_ident(loop_name), flat.source_type_id(range_type))
 	}
 	new_body << t.transform_scope_stmts(body_ids)
 	prefix << t.make_for_stmt(init, cond, post, new_body, node)
@@ -1063,7 +1070,8 @@ fn (t &Transformer) range_loop_var_type_name(low_id flat.NodeId) string {
 	return 'int'
 }
 
-fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type string, info IteratorForInInfo, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
+fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type_id u32, info IteratorForInInfo, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
+	iter_type := flat.source_type_name(iter_type_id)
 	if int(key_id) < 0 {
 		return [id]
 	}
@@ -1089,8 +1097,8 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	iter_expr := t.transform_value_operand(container_id)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
-	prefix << t.make_decl_assign_typed(iter_name, iter_expr, flat.source_type_id(iter_type))
-	escaping_index := has_index && t.guard_value_needs_heap_storage(key.value, 'int')
+	prefix << t.make_decl_assign_typed(iter_name, iter_expr, iter_type_id)
+	escaping_index := has_index && t.guard_value_needs_heap_storage(key.value, flat.source_type_int)
 	idx_name := if has_index && (key.value == '_' || escaping_index) {
 		t.new_temp('for_idx')
 	} else {
@@ -1118,12 +1126,12 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	no_value := t.make_prefix(.not, t.make_selector(t.make_ident(next_name), 'ok', flat.source_type_bool))
 	break_if_done := t.make_if(no_value, t.make_block([t.a.add(.break_stmt)]), t.make_empty())
 	elem_decls := t.make_guard_value_decls(elem_name, t.make_selector(t.make_ident(next_name),
-		'value', elem_type_source_id), elem_type)
+		'value', elem_type_source_id), elem_type_source_id)
 	mut loop_body := []flat.NodeId{}
 	loop_body << next_decl
 	loop_body << break_if_done
 	if escaping_index {
-		loop_body << t.make_guard_value_decls(key.value, t.make_ident(idx_name), 'int')
+		loop_body << t.make_guard_value_decls(key.value, t.make_ident(idx_name), flat.source_type_int)
 	}
 	loop_body << elem_decls
 	loop_body << t.transform_scope_stmts(body_ids)
@@ -1138,7 +1146,8 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 
 // lower_indexed_for_in builds lower indexed for in data for transform.
 @[direct_array_access]
-fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type string, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
+fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, iter_type_id u32, has_index bool, body_ids []flat.NodeId) []flat.NodeId {
+	iter_type := flat.source_type_name(iter_type_id)
 	if int(key_id) < 0 {
 		return [id]
 	}
@@ -1277,7 +1286,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		t.set_node_typ(int(container), flat.source_type_string)
 		actual_iter_type = 'string'
 	}
-	mut elem_type := t.infer_for_in_elem_type(actual_iter_type, node)
+	mut elem_type := flat.source_type_name(t.infer_for_in_elem_type(flat.source_type_id(actual_iter_type), node))
 	if elem_type.len == 0 {
 		return [id]
 	}
@@ -1287,7 +1296,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		}
 	}
 	mut idx_name := key.value
-	escaping_index := has_index && t.guard_value_needs_heap_storage(key.value, 'int')
+	escaping_index := has_index && t.guard_value_needs_heap_storage(key.value, flat.source_type_int)
 	if !has_index || key.value == '_' || escaping_index {
 		idx_name = t.new_temp('for_idx')
 	}
@@ -1312,8 +1321,8 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	interface_smartcast_ref := actual_iter_type.starts_with('[]')
 		&& t.for_in_container_is_interface_smartcast(container_id)
 	clean_elem_type_source_id := t.normalize_type_alias(flat.source_type_id(elem_type))
-	clean_elem_type := flat.source_type_name(clean_elem_type_source_id)
-	elem_keeps_value := clean_elem_type.starts_with('&')
+	clean_elem_type_shape := flat.source_type_shape(clean_elem_type_source_id)
+	elem_keeps_value := clean_elem_type_shape.has(.pointer)
 		|| t.is_optional_type_name(clean_elem_type_source_id)
 	elem_needs_ref := (elem_is_mut || interface_smartcast_ref)
 		&& !(container_is_explicit_reference && elem_keeps_value)
@@ -1325,7 +1334,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	mut retained_row_backing_stmts := []flat.NodeId{}
 	if retained_fixed_backing {
 		backing_name := t.new_temp('for_fixed_backing')
-		retained_backing_stmts = t.heap_escaping_value_decl(backing_name, actual_iter_type, actual_iter_type, container, false)
+		retained_backing_stmts = t.heap_escaping_value_decl(backing_name, flat.source_type_id(actual_iter_type), flat.source_type_id(actual_iter_type), container, false)
 		container = t.make_prefix(.mul, t.make_ident(backing_name))
 		t.set_node_typ(int(container), flat.source_type_id(actual_iter_type))
 	} else if elem_needs_ref && actual_iter_type.starts_with('[]') && !isnil(t.tc)
@@ -1366,7 +1375,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		t.make_index(container, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	}
 	mut binding_clones := []flat.NodeId{}
-	if elem_name != '_' && !elem_needs_ref && t.ownership_for_in_type_needs_clone(elem_type) {
+	if elem_name != '_' && !elem_needs_ref && t.ownership_for_in_type_needs_clone(flat.source_type_id(elem_type)) {
 		pending_start := t.pending_stmts.len
 		elem_expr = t.make_compiler_default_clone_value(elem_expr, flat.source_type_id(elem_type), true)
 		binding_clones = t.pending_stmts[pending_start..].clone()
@@ -1374,9 +1383,9 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	}
 	mut index_decls := []flat.NodeId{}
 	if escaping_index {
-		index_decls << t.make_guard_value_decls(key.value, t.make_ident(idx_name), 'int')
+		index_decls << t.make_guard_value_decls(key.value, t.make_ident(idx_name), flat.source_type_int)
 	}
-	elem_decls := t.make_guard_value_decls(elem_name, elem_expr, elem_var_type)
+	elem_decls := t.make_guard_value_decls(elem_name, elem_expr, flat.source_type_id(elem_var_type))
 	mut transformed_body := []flat.NodeId{}
 	if elem_is_mut && elem_needs_ref {
 		had_pointer_value_lvalue := t.pointer_value_lvalues[elem_name] or { false }
@@ -1535,7 +1544,7 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 			if t.pointer_value_rvalues[iter_node.value] && raw_local_type.starts_with('&') {
 				raw_local_type = raw_local_type[1..]
 			}
-			if raw_local_type.len > 0 && t.iterator_for_in_info(raw_local_type) != none {
+			if raw_local_type.len > 0 && t.iterator_for_in_info(flat.source_type_id(raw_local_type)) != none {
 				return raw_local_type
 			}
 			mut local_type := flat.source_type_name(t.comptime_normalize_type_alias_chain(t.var_type(iter_node.value)))
@@ -1593,7 +1602,7 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		if checker_type_source_id != 0 {
 			checker_payload := for_iter_payload_type(checker_type)
 			if for_iter_type_is_container(checker_payload)
-				|| t.iterator_for_in_info(checker_payload) != none {
+				|| t.iterator_for_in_info(flat.source_type_id(checker_payload)) != none {
 				if checker_payload == checker_type {
 					t.set_node_typ(int(iter_id), checker_type_source_id)
 				}
@@ -1712,45 +1721,46 @@ fn for_iter_type_has_generic_placeholder(iter_type string) bool {
 }
 
 // Infer the element type for the loop variable from the iterable type.
-fn (t &Transformer) infer_for_in_elem_type(iter_type string, node flat.Node) string {
+fn (t &Transformer) infer_for_in_elem_type(iter_type_id u32, node flat.Node) u32 {
+	iter_type := flat.source_type_name(iter_type_id)
 	if iter_type.starts_with('&[]') {
-		return iter_type[3..]
+		return flat.source_type_id(iter_type[3..])
 	}
 	if iter_type.starts_with('[]') {
-		return iter_type[2..]
+		return flat.source_type_id(iter_type[2..])
 	}
 	if iter_type.starts_with('&map[') {
-		return t.infer_for_in_elem_type(iter_type[1..], node)
+		return t.infer_for_in_elem_type(flat.source_type_id(iter_type[1..]), node)
 	}
 	if iter_type.starts_with('map[') {
 		// map[K]V -> value type is everything after the closing ']'
-		bracket_end := iter_type.index(']') or { return '' }
+		bracket_end := iter_type.index(']') or { return u32(0) }
 		if bracket_end + 1 < iter_type.len {
 			value_type := iter_type[bracket_end + 1..]
 			fixed_type_source_id := t.fixed_array_map_value_type_text(flat.source_type_id(value_type))
-			fixed_type := flat.source_type_name(fixed_type_source_id)
+
 			if fixed_type_source_id != 0 {
-				return fixed_type
+				return fixed_type_source_id
 			}
-			return value_type
+			return flat.source_type_id(value_type)
 		}
-		return ''
+		return u32(0)
 	}
-	if iter_type == 'string' {
-		return 'u8'
+	if iter_type_id == flat.source_type_string {
+		return flat.source_type_u8
 	}
-	if t.is_fixed_array_type(flat.source_type_id(iter_type)) {
-		return for_in_fixed_array_elem_type(iter_type)
+	if t.is_fixed_array_type(iter_type_id) {
+		return flat.source_type_id(for_in_fixed_array_elem_type(iter_type))
 	}
 	// Check if the iterable is a range expression
 	if node.children_count > 0 {
 		iter_id := t.a.child(&node, 0)
 		iter_node := t.a.nodes[int(iter_id)]
 		if iter_node.kind == .range {
-			return 'int'
+			return flat.source_type_int
 		}
 	}
-	return ''
+	return u32(0)
 }
 
 // declared_for_in_elem_type retains an array element's declared alias for the
@@ -1798,28 +1808,30 @@ fn (t &Transformer) declared_for_in_elem_type(container_id flat.NodeId, node fla
 		}
 		break
 	}
-	elem_type := t.infer_for_in_elem_type(container_type, node)
-	if elem_type.len > 0 {
+	elem_type_source_id_3 := t.infer_for_in_elem_type(flat.source_type_id(container_type), node)
+	elem_type := flat.source_type_name(elem_type_source_id_3)
+	if elem_type_source_id_3 != 0 {
 		return elem_type
 	}
 	return none
 }
 
-fn (t &Transformer) for_in_declared_ref_type(binding_id flat.NodeId, elem_type string) string {
+fn (t &Transformer) for_in_declared_ref_type(binding_id flat.NodeId, elem_type_id u32) u32 {
+	elem_type := flat.source_type_name(elem_type_id)
 	if int(binding_id) >= 0 {
 		checker_type := trimmed_transform_text(flat.source_type_name(t.raw_checker_node_type(binding_id)))
 		clean_checker_source_id := t.normalize_type_alias(flat.source_type_id(checker_type))
-		clean_checker := flat.source_type_name(clean_checker_source_id)
-		if clean_checker.starts_with('&') || t.is_optional_type_name(clean_checker_source_id) {
-			return checker_type
+		clean_checker_shape := flat.source_type_shape(clean_checker_source_id)
+		if clean_checker_shape.has(.pointer) || t.is_optional_type_name(clean_checker_source_id) {
+			return flat.source_type_id(checker_type)
 		}
 	}
-	clean_elem_source_id := t.normalize_type_alias(flat.source_type_id(elem_type))
-	clean_elem := flat.source_type_name(clean_elem_source_id)
-	if clean_elem.starts_with('&') || t.is_optional_type_name(clean_elem_source_id) {
-		return elem_type
+	clean_elem_source_id := t.normalize_type_alias(elem_type_id)
+	clean_elem_shape_2 := flat.source_type_shape(clean_elem_source_id)
+	if clean_elem_shape_2.has(.pointer) || t.is_optional_type_name(clean_elem_source_id) {
+		return elem_type_id
 	}
-	return '&${elem_type}'
+	return flat.source_type_id('&${elem_type}')
 }
 
 fn (mut t Transformer) make_for_in_fixed_array_len_expr(s string) flat.NodeId {

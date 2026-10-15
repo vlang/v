@@ -1564,7 +1564,7 @@ fn (mut b Builder) register_functions() {
 		for i in 0 .. node.children_count {
 			child := b.a.child_node(&node, i)
 			if child.kind == .param {
-				if child.typ_text().starts_with('...') {
+				if flat.source_type_shape(child.typ).has(.variadic) {
 					variadic_start = param_types.len
 					continue
 				}
@@ -7173,7 +7173,7 @@ fn (mut b Builder) register_type_aliases() {
 
 // source_param_type_name returns the ABI storage type for a parsed parameter.
 fn (b &Builder) source_param_type_name(param flat.Node, fn_name string, module_name string, idx int) string {
-	mut name := if param.typ_text().starts_with('&') {
+	mut name := if flat.source_type_shape(param.typ).has(.pointer) {
 		param.typ_text()
 	} else {
 		b.checker_param_type_name(fn_name, module_name, idx) or { param.typ_text() }
@@ -13660,7 +13660,7 @@ fn (mut b Builder) index_elem_type(id flat.NodeId, node flat.Node) TypeID {
 			return b.resolve_type(elem_type)
 		}
 	}
-	if node.typ != u32(0) && !node.typ_text().starts_with('[]') {
+	if node.typ != u32(0) && !flat.source_type_shape(node.typ).has(.array_type) {
 		return b.resolve_type(node.typ_text())
 	}
 	checked := b.checked_expr_type_name(id)
