@@ -584,6 +584,8 @@ mut:
 	// lower_remaining_matches_in_used_fns skips: that walk still has matches to
 	// lower in the bodies of the transform stage.
 	lowered_fn_bodies []bool
+	// mono_pass_state lets the next monomorphize_pass continue the last one.
+	mono_pass_state MonomorphPassState
 	// Shared-base (clone-free) parallel transform: all threads operate on views
 	// of the master arrays, appending into pre-partitioned capacity regions.
 	// While base_write_intercept is set, in-place writes to base-range node
