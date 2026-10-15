@@ -158,7 +158,9 @@ fn (mut tc TypeChecker) check_statement_sequence(node flat.Node, body_start int,
 		} else if sequence_exited && !tc.valid_node_id(unreachable_id) {
 			unreachable_id = child_id
 		}
-		is_value_tail := value_tail && i == last_idx
+		// A loop jump is a statement even at the tail of a value branch. Its
+		// ownership hook must record the snapshot consumed by code generation.
+		is_value_tail := value_tail && i == last_idx && child.kind !in [.break_stmt, .continue_stmt]
 		if is_value_tail {
 			if node.kind == .match_branch {
 				if expected := tc.match_branch_enum_context(child_id) {
