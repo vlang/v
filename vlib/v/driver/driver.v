@@ -9800,6 +9800,42 @@ fn v3_module_cache_refresh_args(args []string, compiler string, module_search_pa
 	return flags
 }
 
+// v3_live_rebuild_options keeps compile inputs while removing executable-only switches.
+fn v3_live_rebuild_options(args []string, compiler string, module_search_paths []string) []string {
+	mut options := []string{}
+	mut input_seen := false
+	mut running := false
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if running && input_seen { break }
+		if v3_driver_option_consumes_value(arg) {
+			if i + 1 < args.len && arg !in ['-o', '-output', '-cc', '-path', '-run-only', '-test-runner',
+				'-dump-c-flags', '-dump-files', '-generate-c-project'] {
+				options << [arg, args[i + 1]]
+			}
+			i += 2
+			continue
+		}
+		if arg in ['run', 'crun'] {
+			running = true
+		} else if arg.starts_with('-') {
+			if arg !in ['-live', '-sharedlive', '-shared', '--shared', '-check', '-check-syntax',
+				'-skip-running', '-o', '-output'] {
+				options << arg
+			}
+		} else if arg !in ['build', 'test'] {
+			input_seen = true
+		}
+		i++
+	}
+	if module_search_paths.len > 0 {
+		options << ['-path', module_search_paths.join('|')]
+	}
+	options << ['-cc', compiler]
+	return options
+}
+
 fn v3_cache_refresh_c_flag(flag string) string {
 	return '"' + flag.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
@@ -12313,6 +12349,10 @@ pub fn run(args []string) {
 	if is_prof {
 		user_files << os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'profiled_program.v')
 	}
+	if !no_preludes && (is_livemain || is_liveshared) {
+		live_prelude := if is_livemain { 'live_main.v' } else { 'live_shared.v' }
+		parse_files_dispatch_profiled(mut p, [os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', live_prelude)], false, mut parse_timing)
+	}
 	if is_trace_calls {
 		// Parse the runtime import before user files. Implicit imports such as
 		// $embed_file's runtime belong to the last user file, not this prelude.
@@ -14731,6 +14771,10 @@ pub fn run(args []string) {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)
 			g.set_compiler_vexe(prefs.vexe)
+			g.set_live_source_path(input_file)
+			if is_livemain {
+				g.set_live_rebuild_options(v3_live_rebuild_options(args, c_compiler, prefs.module_search_paths))
+			}
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_output_cross_c(prefs.output_cross_c)
@@ -14821,6 +14865,10 @@ pub fn run(args []string) {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)
 			g.set_compiler_vexe(prefs.vexe)
+			g.set_live_source_path(input_file)
+			if is_livemain {
+				g.set_live_rebuild_options(v3_live_rebuild_options(args, c_compiler, prefs.module_search_paths))
+			}
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_output_cross_c(prefs.output_cross_c)

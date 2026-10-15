@@ -782,6 +782,8 @@ mut:
 	runtime_init_modules          []string
 	compiler_vroot                string
 	compiler_vexe                 string
+	live_source_path              string
+	live_rebuild_options          string
 	compiler_vexe_env_setup       bool = true
 	ccompiler                     string
 	target                        pref.Target
@@ -4075,6 +4077,7 @@ fn (mut g FlatGen) write_parallel_cc_unit_marker() {
 }
 
 fn (mut g FlatGen) gen_pre_body_support_declarations() {
+	g.gen_live_declarations()
 	g.fixed_array_map_key_forward_decls()
 	support_start := g.sb.len
 	g.fixed_array_map_key_definitions()
@@ -19427,7 +19430,8 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 	if g.headerless_compiler_bootstrap() {
 		return false
 	}
-	if g.no_builtin || g.output_cross_c || g.object_file_mode {
+	if g.no_builtin || g.output_cross_c || g.object_file_mode
+		|| 'livemain' in g.compile_defines || 'sharedlive' in g.compile_defines {
 		return true
 	}
 	// These targets need SDK symbol renames, storage or constants that the
