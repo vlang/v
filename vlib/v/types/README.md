@@ -63,6 +63,8 @@ parameter and variant lists use numeric binding accessors and copy IDs into owne
 Generic substitution and explicit call arguments also use numeric lists. C generation retains
 inferred generic arguments in maps of source IDs; private recursive spelling parsers resolve bytes
 when matching nested types, and emitted specialization names remain strings.
+Constrained generic-body checks retain IDs through type choices, branch groups, combinations,
+and worker bindings. Allocation analysis also keeps parameter and local annotations as IDs.
 The driver's implicit-import type scan and WebAssembly fallback annotations use the same source
 IDs; their declaration indexes and dependency-recording keys retain names.
 Numeric APIs retain identities across stages. Text APIs resolve spellings when parsing source,

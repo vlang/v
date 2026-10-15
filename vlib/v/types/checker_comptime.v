@@ -20908,14 +20908,14 @@ fn (mut tc TypeChecker) check_instantiated_comptime_method_args(call_id flat.Nod
 	// Inferred type names are already canonical. Lock bare program-owned names
 	// before the callee's module context can rebase them onto a helper type.
 	mut argument_view := tc.fork_type_parse_view('', 'main')
-	concrete_args := instantiation.concrete_args_text().map(flat.source_type_name(argument_view.explicit_generic_concrete_arg_text(flat.source_type_id(it))))
-	key := '${int(instantiation.decl_id)}[${concrete_args.join(',')}]'
+	concrete_args := instantiation.concrete_args.ids.map(argument_view.explicit_generic_concrete_arg_text(it))
+	key := '${int(instantiation.decl_id)}[${concrete_args.map(flat.source_type_name(it)).join(',')}]'
 	if tc.checked_comptime_method_calls[key] {
 		return
 	}
 	tc.checked_comptime_method_calls[key] = true
 	fn_node := tc.a.node(instantiation.decl_id)
-	mut texts := map[string]string{}
+	mut texts := map[string]u32{}
 	for i, name in instantiation.generic_params {
 		if i >= concrete_args.len { return }
 		texts[name] = concrete_args[i]

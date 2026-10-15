@@ -69,7 +69,7 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 	}
 	tc.cur_fn_ret_type = tc.parse_type(flat.source_type_id(return_text))
 	tc.fn_context.return_type = tc.cur_fn_ret_type
-	w := tc.checked_generic_fn_body(node, int(fn_id), map[string]string{}, true)
+	w := tc.checked_generic_fn_body(node, int(fn_id), map[string]u32{}, true)
 	tc.fn_context = saved_context
 	tc.cur_fn_ret_type = saved_return
 	tc.cur_scope = saved_scope

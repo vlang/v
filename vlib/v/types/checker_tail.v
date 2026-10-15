@@ -6128,7 +6128,7 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 			// A forwarded explicit argument can name a type parameter of this
 			// instance, including inside a container such as `[]A`.
 			concrete := if tc.type_param_texts.ids.len > 0 {
-				subst_generic_text(type_arg, flat.TypeTextList.from_names(tc.type_param_texts.values()).ids,
+				subst_generic_text(type_arg, tc.type_param_texts.ids.values(),
 					tc.type_param_texts.keys())
 			} else {
 				type_arg
@@ -6137,11 +6137,11 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 		}
 	}
 	mut inferred := map[string]u32{}
-	mut symbol_types := map[string]string{}
+	mut symbol_types := map[string]u32{}
 	if concrete_args.len == generic_params.len {
 		for i, param in generic_params {
 			inferred[param] = concrete_args[i]
-			symbol_types[param] = flat.source_type_name(concrete_args[i])
+			symbol_types[param] = concrete_args[i]
 		}
 	}
 	mut arg_index := 1 + info.arg_offset
@@ -6156,7 +6156,7 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 				actual := tc.resolve_type(receiver_id)
 				tc.infer_generic_type_text_from_type(param.typ_text(), actual, generic_params, mut inferred)
 				if param.value.len > 0 {
-					symbol_types[param.value] = actual.name()
+					symbol_types[param.value] = actual.source_type_id()
 				}
 			}
 			source_param_index++
@@ -6169,7 +6169,7 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 		actual := tc.resolve_type(arg_id)
 		tc.infer_generic_type_text_from_type(param.typ_text(), actual, generic_params, mut inferred)
 		if param.value.len > 0 {
-			symbol_types[param.value] = actual.name()
+			symbol_types[param.value] = actual.source_type_id()
 		}
 		arg_index++
 		source_param_index++
@@ -6180,16 +6180,16 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 		tc.infer_type_params_from_constraints(*fn_node, mut inferred)
 		for param in generic_params {
 			arg_source_id := inferred[param] or { return none }
-			arg := flat.source_type_name(arg_source_id)
+
 			concrete_args << arg_source_id
-			symbol_types[param] = arg
+			symbol_types[param] = arg_source_id
 		}
 	}
 	return GenericCompileErrorInstantiation{
 		decl_id:        decl_id
 		generic_params: generic_params
 		concrete_args:  flat.TypeTextList{ ids: concrete_args.clone() }
-		symbol_types:   flat.TypeTextBindings.from_names(symbol_types)
+		symbol_types:   flat.TypeTextBindings{ ids: symbol_types }
 	}
 }
 
