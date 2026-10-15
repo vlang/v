@@ -13,7 +13,7 @@ fn test_guard_staging_ends_error_scope_before_pointer_backed_destination() {
 	tail := GuardReturnTail{
 		assign_lhs_ids: [t.make_ident('err'), t.make_ident('_')]
 	}
-	staging := t.stage_guard_assignments(tail, true)
+	staging := t.stage_guard_assignments(guard_assignment_tail(tail, ['err']), true)
 	assert t.lvalue_type(staging.tail.assign_lhs_ids[0]) == 'string'
 	assert staging.tail.assign_lhs_ids[1] == tail.assign_lhs_ids[1]
 	assert staging.tail.assign_original_lhs_ids == tail.assign_lhs_ids
@@ -25,7 +25,7 @@ fn test_guard_staging_ends_error_scope_before_pointer_backed_destination() {
 	err_scope := t.enter_implicit_err_scope(true)
 	t.append_implicit_err_decl(mut body, t.make_struct_init('IError'))
 	t.leave_implicit_err_scope(err_scope)
-	wrapper_id := t.finish_guard_assignments(body, tail, staging)
+	wrapper_id := t.finish_guard_assignments(t.make_block(body), tail, staging)
 	wrapper := a.nodes[int(wrapper_id)]
 	assert wrapper.value == skip_scope_drops_block_value
 	assert guard_staging_scope_count(&a, wrapper_id) == 1
@@ -54,7 +54,7 @@ fn test_owned_guard_staging_preserves_moves_through_branch_tails() {
 		tail := GuardReturnTail{
 			assign_lhs_ids: [t.make_ident('err'), t.make_ident('value')]
 		}
-		staging := t.stage_guard_assignments(tail, true)
+		staging := t.stage_guard_assignments(guard_assignment_tail(tail, ['err']), true)
 		assert staging.tail.assign_move_flags.len == 2
 		assert staging.tail.assign_move_flags[0] != ''
 		assert staging.tail.assign_move_flags[1] != ''
@@ -88,7 +88,7 @@ fn test_owned_guard_staging_preserves_moves_through_branch_tails() {
 		assert guard_staging_true_stores(&a, lowered, staging.tail.assign_move_flags[1]) == expected_moves
 		assert guard_staging_drop_count(&a, lowered) == 0
 		body := a.children_of(&a.nodes[int(lowered)]).clone()
-		finished := t.finish_guard_assignments(body, tail, staging)
+		finished := t.finish_guard_assignments(t.make_block(body), tail, staging)
 		// Only the existing source scopes consume cleanup metadata; staged copies do not.
 		assert guard_staging_scope_count(&a, finished) == guard_staging_scope_count(&a,
 			lowered)
@@ -108,10 +108,71 @@ fn test_owned_guard_staging_preserves_moves_through_branch_tails() {
 	}
 }
 
+fn test_owned_guard_staging_distinguishes_success_bindings() {
+	$if !ownership ? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(tc.a)
+	tc.interface_names['IError'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('err', flat.source_type_id('IError'))
+	t.set_var_type('value', flat.source_type_id('string'))
+	tail := GuardReturnTail{
+		assign_lhs_ids: [t.make_ident('err'), t.make_ident('value')]
+	}
+	staging := t.stage_guard_assignments(tail, true)
+	success := guard_assignment_tail(staging.tail, ['value'])
+	values := [t.make_ident('err'), t.make_ident('value')]
+	assert tc.ownership_expr_moves_storage(values[0], tail.assign_lhs_ids[0])
+	assert tc.ownership_expr_moves_storage(values[1], tail.assign_lhs_ids[1])
+	assert t.multi_if_assign_target_was_moved(success, 0, values)
+	assert !t.multi_if_assign_target_was_moved(success, 1, values)
+	branch := t.make_block([t.make_expr_stmt(values[0]), t.make_expr_stmt(values[1])])
+	lowered := t.multi_if_assign_block(branch, success)
+	assert guard_staging_true_stores(&a, lowered, staging.tail.assign_move_flags[0]) == 1
+	assert guard_staging_true_stores(&a, lowered, staging.tail.assign_move_flags[1]) == 0
+	// Nested guards add their bindings while sharing the original staging storage.
+	nested := t.stage_guard_assignments(guard_assignment_tail(success, ['err', 'value', '_', '']), true)
+	assert nested.decls.len == 0
+	assert nested.tail.assign_shadowed_names == ['value', 'err']
+	assert nested.tail.assign_lhs_ids == staging.tail.assign_lhs_ids
+	assert nested.tail.assign_original_lhs_ids == tail.assign_lhs_ids
+	assert nested.tail.assign_move_flags == staging.tail.assign_move_flags
+	assert !t.multi_if_assign_target_was_moved(nested.tail, 0, values)
+	assert !t.multi_if_assign_target_was_moved(nested.tail, 1, values)
+	assert staging.tail.assign_shadowed_names.len == 0
+}
+
+fn test_guard_staging_preserves_success_cleanup_marker() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('value', flat.source_type_id('string'))
+	tail := GuardReturnTail{
+		assign_lhs_ids: [t.make_ident('value'), t.make_ident('_')]
+	}
+	staging := t.stage_guard_assignments(tail, true)
+	success := t.make_block_prefix_scope_drops([
+		t.make_assign(staging.tail.assign_lhs_ids[0], t.make_string_literal('selected')),
+	])
+	failure := t.make_block([])
+	guard := t.make_if(t.make_bool_literal(true), success, failure)
+	expansion := t.make_block_skip_scope_drops([guard])
+	finished := t.finish_guard_assignments(expansion, tail, staging)
+	wrapper := a.nodes[int(finished)]
+	assert wrapper.value == skip_scope_drops_block_value
+	assert a.child(&wrapper, staging.decls.len) == expansion
+	assert a.child_node(&a.nodes[int(guard)], 1).value == prefix_scope_drops_block_value
+	assert guard_staging_scope_count(&a, finished) == guard_staging_scope_count(&a, expansion)
+	assert guard_staging_scope_count(&a, finished) == 3
+}
+
 fn guard_staging_scope_count(a &flat.FlatAst, id flat.NodeId) int {
 	node := a.nodes[int(id)]
 	mut count := if node.kind == .block && node.value != skip_scope_drops_block_value {
-		1
+		if node.value == prefix_scope_drops_block_value { 2 } else { 1 }
 	} else {
 		0
 	}

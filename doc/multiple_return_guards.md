@@ -23,3 +23,7 @@ A Result guard exposes its implicit `err` only inside a plain `else` block. An `
 uses the surrounding bindings. When assigning existing variables, branch values are
 evaluated before the destinations, so an outer destination named `err` is updated after
 leaving the implicit error scope.
+
+Assignment destinations remain outside every guard binding scope. A guard-local name
+can supply a branch value without intercepting a write to an existing destination
+with the same name.

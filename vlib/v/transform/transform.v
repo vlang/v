@@ -19206,10 +19206,23 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, tail GuardReturnTai
 	if node.children_count < 2 {
 		return []
 	}
-	if expanded := t.try_expand_if_guard_with_tail(node, tail) {
-		return expanded
-	}
 	cond_id := t.a.child(&node, 0)
+	if t.a.nodes[int(cond_id)].kind == .decl_assign {
+		outer_var_types := t.var_types.clone()
+		staging := t.stage_guard_assignments(tail, true)
+		staged_var_types := t.var_types.clone()
+		if expanded := t.try_expand_if_guard_with_tail(node, staging.tail) {
+			t.restore_var_types(staged_var_types)
+			t.restore_heaped_local_state(heaped_state)
+			if staging.decls.len == 0 {
+				return expanded
+			}
+			scope := t.make_block_skip_scope_drops(expanded)
+			return [t.finish_guard_assignments(scope, tail, staging)]
+		}
+		t.restore_var_types(outer_var_types)
+		t.restore_heaped_local_state(heaped_state)
+	}
 	then_id := t.a.child(&node, 1)
 	mut result := []flat.NodeId{}
 	all_is := t.extract_all_is_exprs(cond_id)

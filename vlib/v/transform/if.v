@@ -90,6 +90,7 @@ struct GuardReturnTail {
 	// Staged assignments retain branch-specific moves of the original destinations.
 	assign_original_lhs_ids []flat.NodeId
 	assign_move_flags       []string
+	assign_shadowed_names   []string
 }
 
 struct GuardSmartcastState {
@@ -133,9 +134,9 @@ struct GuardAssignStaging {
 	decls []flat.NodeId
 }
 
-// Keep assignment destinations outside the lexical scope of the implicit error.
-fn (mut t Transformer) stage_guard_assignments(tail GuardReturnTail, has_error bool) GuardAssignStaging {
-	if !has_error || tail.assign_lhs_ids.len == 0 || tail.assign_original_lhs_ids.len > 0 {
+// Keep assignment destinations outside the lexical scopes of generated bindings.
+fn (mut t Transformer) stage_guard_assignments(tail GuardReturnTail, has_binding_scope bool) GuardAssignStaging {
+	if !has_binding_scope || tail.assign_lhs_ids.len == 0 || tail.assign_original_lhs_ids.len > 0 {
 		return GuardAssignStaging{ tail: tail }
 	}
 	mut decls := []flat.NodeId{}
@@ -173,6 +174,22 @@ fn (mut t Transformer) stage_guard_assignments(tail GuardReturnTail, has_error b
 	}
 }
 
+fn guard_assignment_tail(tail GuardReturnTail, names []string) GuardReturnTail {
+	if tail.assign_lhs_ids.len == 0 {
+		return tail
+	}
+	mut shadowed := tail.assign_shadowed_names.clone()
+	for name in names {
+		if name.len > 0 && name != '_' && name !in shadowed {
+			shadowed << name
+		}
+	}
+	return GuardReturnTail{
+		...tail
+		assign_shadowed_names: shadowed
+	}
+}
+
 fn (t &Transformer) multi_if_assign_target_was_moved(tail GuardReturnTail, index int, values []flat.NodeId) bool {
 	if isnil(t.tc) {
 		return false
@@ -182,8 +199,9 @@ fn (t &Transformer) multi_if_assign_target_was_moved(tail GuardReturnTail, index
 	} else {
 		tail.assign_lhs_ids[index]
 	}
-	if tail.assign_original_lhs_ids.len > 0 && t.expr_root_ident_name(lhs_id) == 'err' {
-		// RHS `err` names the implicit error, never the shadowed destination.
+	if tail.assign_original_lhs_ids.len > 0
+		&& t.expr_root_ident_name(lhs_id) in tail.assign_shadowed_names {
+		// A read of a generated binding does not move the shadowed destination.
 		return false
 	}
 	for value_id in values {
@@ -200,13 +218,13 @@ fn (mut t Transformer) append_multi_if_assign_move_flag(tail GuardReturnTail, in
 	}
 }
 
-// Call after restoring the outer bindings; the nested block owns the implicit `err`.
-fn (mut t Transformer) finish_guard_assignments(children []flat.NodeId, tail GuardReturnTail, staging GuardAssignStaging) flat.NodeId {
+// Call after restoring the outer bindings, keeping the lowered scope's cleanup markers.
+fn (mut t Transformer) finish_guard_assignments(scope flat.NodeId, tail GuardReturnTail, staging GuardAssignStaging) flat.NodeId {
 	if staging.decls.len == 0 {
-		return t.make_block(children)
+		return scope
 	}
 	mut stmts := staging.decls.clone()
-	stmts << t.make_block(children)
+	stmts << scope
 	for i, lhs_id in tail.assign_lhs_ids {
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident && lhs.value == '_' {
@@ -229,6 +247,7 @@ fn (mut t Transformer) finish_guard_assignments(children []flat.NodeId, tail Gua
 				t.make_ident(move_flag)), t.make_block_skip_scope_drops(drops), t.make_empty())
 		}
 		stmts << t.make_assign_after_owned_drop(lvalue, staging.tail.assign_lhs_ids[i])
+		t.invalidate_smartcast_for_lvalue(lhs_id)
 	}
 	return t.make_block_skip_scope_drops(stmts)
 }
@@ -336,6 +355,7 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 		t.restore_heaped_local_state(heaped_state)
 	}
 	mut value_decls := []flat.NodeId{}
+	mut binding_names := []string{}
 	if lhs_ids.len > 1 {
 		if rhs_types := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) {
 			for i, lhs_item_id in lhs_ids {
@@ -347,11 +367,13 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 				payload := t.make_selector(t.make_ident(tmp_name), 'value', value_type)
 				field := t.make_selector(payload, 'arg${i}', field_type)
 				value_decls << t.make_guard_value_decls(lhs_item.value, field, field_type)
+				binding_names << lhs_item.value
 			}
 		}
 	}
 	if value_decls.len == 0 && lhs.value != '_' && value_type != 'void' {
 		value_decls << t.make_guard_value_decls(lhs.value, t.make_selector(t.make_ident(tmp_name), 'value', value_type), value_type)
+		binding_names << lhs.value
 	}
 
 	then_id := t.a.child(&node, 1)
@@ -359,7 +381,7 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 	for value_decl in value_decls {
 		then_children << value_decl
 	}
-	then_children << t.guard_branch_stmts(then_id, tail)
+	then_children << t.guard_branch_stmts(then_id, guard_assignment_tail(tail, binding_names))
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	then_invalidated := t.reset_guard_smartcasts(smartcasts)
 	// The saved bindings are restored again on return, and the `else` branch changes the
@@ -412,7 +434,7 @@ fn (mut t Transformer) expand_channel_receive_if_guard(node flat.Node, lhs_name 
 	if lhs_name != '_' {
 		then_children << t.make_guard_value_decls(lhs_name, t.make_ident(val_name), info.value_type_text())
 	}
-	then_children << t.guard_branch_stmts(then_id, tail)
+	then_children << t.guard_branch_stmts(then_id, guard_assignment_tail(tail, [lhs_name]))
 	then_invalidated := t.reset_guard_smartcasts(smartcasts)
 	t.restore_var_types(saved_var_types)
 	t.restore_heaped_local_state(saved_heaped_state)
@@ -510,12 +532,13 @@ fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, err_so
 	} else {
 		flat.empty_node
 	}
-	staging := t.stage_guard_assignments(tail, int(err_expr) >= 0)
+	error_tail := if int(err_expr) >= 0 { guard_assignment_tail(tail, ['err']) } else { tail }
+	staging := t.stage_guard_assignments(error_tail, int(err_expr) >= 0)
 	err_scope := t.enter_implicit_err_scope(int(err_expr) >= 0)
 	t.append_implicit_err_decl(mut children, err_expr)
 	children << t.guard_else_stmts(else_id, staging.tail)
 	t.leave_implicit_err_scope(err_scope)
-	return t.finish_guard_assignments(children, tail, staging)
+	return t.finish_guard_assignments(t.make_block(children), tail, staging)
 }
 
 // guard_else_block lowers the `else` of a guard that binds no error.
@@ -588,7 +611,7 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	if lhs_name != '_' {
 		then_children << t.make_guard_value_decls(lhs_name, value_expr, guard_value_type)
 	}
-	then_children << t.guard_branch_stmts(then_id, tail)
+	then_children << t.guard_branch_stmts(then_id, guard_assignment_tail(tail, [lhs_name]))
 	then_block := t.make_block_prefix_scope_drops(then_children)
 	then_invalidated := t.reset_guard_smartcasts(smartcasts)
 	t.restore_var_types(saved_var_types)
@@ -619,7 +642,8 @@ fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.Node
 		t.restore_heaped_local_state(heaped_state)
 	}
 	is_result := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(value_type))).starts_with('!')
-	staging := t.stage_guard_assignments(tail, is_result)
+	error_tail := if is_result { guard_assignment_tail(tail, ['err']) } else { tail }
+	staging := t.stage_guard_assignments(error_tail, is_result)
 	err_scope := t.enter_implicit_err_scope(is_result)
 	mut children := []flat.NodeId{}
 	if is_result && t.has_ierror_interface() {
@@ -643,7 +667,7 @@ fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.Node
 	}
 	children << t.guard_else_stmts(else_id, staging.tail)
 	t.leave_implicit_err_scope(err_scope)
-	return t.finish_guard_assignments(children, tail, staging)
+	return t.finish_guard_assignments(t.make_block(children), tail, staging)
 }
 
 // expand_array_index_if_guard builds expand array index if guard data for transform.
@@ -676,7 +700,7 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 		then_children << t.make_decl_assign_typed(opt_name, t.make_index(array_expr, t.make_ident(index_name), info.value_type_text()), info.value_type_text())
 	}
 	then_children << t.make_guard_value_decls(lhs_name, value_expr, guard_value_type)
-	then_children << t.guard_branch_stmts(then_id, tail)
+	then_children << t.guard_branch_stmts(then_id, guard_assignment_tail(tail, [lhs_name]))
 	then_invalidated := t.reset_guard_smartcasts(smartcasts)
 	t.restore_var_types(saved_var_types)
 	t.restore_heaped_local_state(saved_heaped_state)
