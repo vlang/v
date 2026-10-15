@@ -5908,17 +5908,18 @@ fn (mut tc TypeChecker) check_deferred_generic_receiver_comparisons(node flat.No
 	if comparisons.len == 0 {
 		return
 	}
-	concrete_args := tc.concrete_generic_receiver_args(receiver_base, receiver_params.len) or {
+	concrete_args_source_ids := (tc.concrete_generic_receiver_args(receiver_base, receiver_params.len) or {
 		return
-	}
+	}).clone()
+
 	for comparison_id in comparisons {
 		comparison := tc.a.node(comparison_id)
 		lhs_id := tc.a.child(comparison, 0)
 		rhs_id := tc.a.child(comparison, 1)
 		lhs_raw := tc.deferred_generic_expr_type_text(lhs_id, param_types)
 		rhs_raw := tc.deferred_generic_expr_type_text(rhs_id, param_types)
-		lhs := subst_generic_text(lhs_raw, flat.TypeTextList.from_names(concrete_args).ids, receiver_params)
-		rhs := subst_generic_text(rhs_raw, flat.TypeTextList.from_names(concrete_args).ids, receiver_params)
+		lhs := subst_generic_text(lhs_raw, concrete_args_source_ids, receiver_params)
+		rhs := subst_generic_text(rhs_raw, concrete_args_source_ids, receiver_params)
 		if !generic_pointer_value_mismatch(lhs, rhs) {
 			continue
 		}
@@ -6008,7 +6009,7 @@ fn (tc &TypeChecker) deferred_generic_expr_type_text(id flat.NodeId, param_types
 	return node.typ_text()
 }
 
-fn (tc &TypeChecker) concrete_generic_receiver_args(receiver_base string, arg_count int) ?[]string {
+fn (tc &TypeChecker) concrete_generic_receiver_args(receiver_base string, arg_count int) ?[]u32 {
 	for node in tc.a.nodes {
 		if node.kind != .call || node.children_count == 0 {
 			continue
@@ -6020,9 +6021,9 @@ fn (tc &TypeChecker) concrete_generic_receiver_args(receiver_base string, arg_co
 		base_node := tc.a.child_node(callee, 0)
 		fn_name := tc.generic_call_base_name(base_node) or { continue }
 		call_args_source_ids := tc.generic_call_type_arg_names(callee).clone()
-		call_args := flat.TypeTextList{ ids: call_args_source_ids }.names()
+
 		fn_params := tc.fn_generic_params[fn_name] or { continue }
-		if call_args.len == 0 || call_args.len != fn_params.len {
+		if call_args_source_ids.len == 0 || call_args_source_ids.len != fn_params.len {
 			continue
 		}
 		ret_text := flat.source_type_name(tc.fn_ret_type_texts.type_id(fn_name) or { continue })
@@ -6032,9 +6033,9 @@ fn (tc &TypeChecker) concrete_generic_receiver_args(receiver_base string, arg_co
 			|| ret_base.all_after_last('.') != receiver_base.all_after_last('.') {
 			continue
 		}
-		mut concrete := []string{cap: ret_args.len}
+		mut concrete := []u32{cap: ret_args.len}
 		for ret_arg in ret_args {
-			concrete << subst_generic_text(ret_arg, call_args_source_ids, fn_params)
+			concrete << flat.source_type_id(subst_generic_text(ret_arg, call_args_source_ids, fn_params))
 		}
 		return concrete
 	}
@@ -12934,17 +12935,14 @@ fn type_name_collides_with_main(candidate string, name string) bool {
 // specialize_generic_factory_return substitutes explicit method and receiver arguments
 // in one pass, preserving caller parameters that share a declaration parameter's name.
 pub fn (tc &TypeChecker) specialize_generic_factory_return(return_type_id u32, name string, receiver_type_id u32, explicit_args_ids []u32) u32 {
-	explicit_args := flat.TypeTextList{ ids: explicit_args_ids }.names()
-	return_type := flat.source_type_name(return_type_id)
-	receiver_type := flat.source_type_name(receiver_type_id)
 	method_params := tc.fn_generic_params[name] or { []string{} }
-	mut actual_receiver := flat.source_type_name(tc.generic_struct_method_alias_target(flat.source_type_id(comptime_static_unwrap_type_text(receiver_type))))
+	mut actual_receiver := tc.generic_struct_method_alias_target(flat.source_type_id(comptime_static_unwrap_type_text(flat.source_type_name(receiver_type_id))))
 	mut receiver_pattern := name.all_before_last('.')
 	_, _, pattern_is_generic := generic_type_application_parts(receiver_pattern)
 	if !pattern_is_generic {
-		if texts_source_ids := tc.fn_param_type_texts.type_ids(name) {
-			if texts_source_ids.len > 0 {
-				receiver_pattern = comptime_static_unwrap_type_text(flat.source_type_name(texts_source_ids[0]))
+		if texts := tc.fn_param_type_texts.type_ids(name) {
+			if texts.len > 0 {
+				receiver_pattern = comptime_static_unwrap_type_text(flat.source_type_name(texts[0]))
 			}
 		}
 	}
@@ -12955,9 +12953,9 @@ pub fn (tc &TypeChecker) specialize_generic_factory_return(return_type_id u32, n
 		}
 	}
 	method_args := if method_params.len > 0 {
-		flat.TypeTextList{ ids: tc.explicit_generic_receiver_method_args(flat.source_type_id(actual_receiver), name, explicit_args_ids) }.names()
+		tc.explicit_generic_receiver_method_args(actual_receiver, name, explicit_args_ids)
 	} else {
-		[]string{}
+		[]u32{}
 	}
 	if method_params.len > 0 && (method_args.len == 0 || method_args.len > method_params.len) {
 		return return_type_id
@@ -12965,16 +12963,15 @@ pub fn (tc &TypeChecker) specialize_generic_factory_return(return_type_id u32, n
 	mut params := method_params[method_params.len - method_args.len..].clone()
 	mut args := method_args.clone()
 	if is_generic {
-		actual_base, receiver_args, actual_is_generic := generic_type_application_parts(actual_receiver)
+		actual_base, receiver_args, actual_is_generic := generic_type_application_parts(flat.source_type_name(actual_receiver))
 		if actual_is_generic && tc.generic_type_base_matches(pattern_base, actual_base) {
 			concrete_receiver_args := if method_params.len == 0 && explicit_args_ids.len == receiver_args.len {
-				explicit_args
+				explicit_args_ids
 			} else {
-				receiver_args
+				flat.TypeTextList.from_names(receiver_args).ids
 			}
 			pattern_key := '${receiver_pattern}.${name.all_after_last('.')}'
-			if receiver_params, concrete_args := tc.generic_method_receiver_pattern_args(pattern_key,
-				concrete_receiver_args) {
+			if receiver_params, concrete_args := tc.generic_method_receiver_pattern_args(pattern_key, concrete_receiver_args) {
 				for i, param in receiver_params {
 					if param !in params {
 						params << param
@@ -12984,31 +12981,25 @@ pub fn (tc &TypeChecker) specialize_generic_factory_return(return_type_id u32, n
 			}
 		}
 	}
-	return flat.source_type_id(subst_generic_text(return_type, flat.TypeTextList.from_names(args).ids, params))
+	return flat.source_type_id(subst_generic_text(flat.source_type_name(return_type_id), args, params))
 }
 
-fn (tc &TypeChecker) promoted_generic_factory_receiver(receiver string, declaration_base string) ?string {
-	mut seen := map[string]bool{}
-	return tc.promoted_generic_factory_receiver_inner(receiver, declaration_base, mut seen)
+fn (tc &TypeChecker) promoted_generic_factory_receiver(receiver_id u32, declaration_base string) ?u32 {
+	mut seen := map[u32]bool{}
+	return tc.promoted_generic_factory_receiver_inner(receiver_id, declaration_base, mut seen)
 }
 
-fn (tc &TypeChecker) promoted_generic_factory_receiver_inner(receiver string, declaration_base string, mut seen map[string]bool) ?string {
+fn (tc &TypeChecker) promoted_generic_factory_receiver_inner(receiver_id u32, declaration_base string, mut seen map[u32]bool) ?u32 {
+	receiver := flat.source_type_name(receiver_id)
 	base, _, is_generic := generic_type_application_parts(receiver)
-	if is_generic && tc.generic_type_base_matches(base, declaration_base) {
-		return receiver
-	}
-	if seen[receiver] {
-		return none
-	}
-	seen[receiver] = true
+	if is_generic && tc.generic_type_base_matches(base, declaration_base) { return receiver_id }
+	if seen[receiver_id] { return none }
+	seen[receiver_id] = true
 	for field in tc.struct_fields_for_type(receiver) {
 		embedded := embedded_field_type(field) or { continue }
 		embedded_name := method_type_name(unwrap_pointer(unalias_type(embedded)))
-		if embedded_name.len == 0 {
-			continue
-		}
-		if found := tc.promoted_generic_factory_receiver_inner(embedded_name, declaration_base,
-			mut seen) {
+		if embedded_name.len == 0 { continue }
+		if found := tc.promoted_generic_factory_receiver_inner(flat.source_type_id(embedded_name), declaration_base, mut seen) {
 			return found
 		}
 	}
@@ -19334,8 +19325,8 @@ fn (tc &TypeChecker) explicit_generic_fn_value_type(node flat.Node) ?Type {
 	}
 	name := tc.generic_call_base_name(base_node) or { return none }
 	type_args_source_ids := tc.generic_call_type_arg_names(node).clone()
-	type_args := flat.TypeTextList{ ids: type_args_source_ids }.names()
-	if type_args.len == 0 {
+
+	if type_args_source_ids.len == 0 {
 		return none
 	}
 	info := tc.explicit_generic_call_info(name, false, type_args_source_ids) or { return none }
@@ -19908,7 +19899,7 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name_id u32, method 
 		return none
 	}
 	base := if has_type_args { lookup_type_name[..bracket] } else { lookup_type_name }
-	mut concrete_args := []string{}
+	mut concrete_args := []u32{}
 	if has_type_args {
 		args_str := lookup_type_name[bracket + 1..lookup_type_name.len - 1]
 		for a in split_generic_arg_list(args_str) {
@@ -19916,7 +19907,7 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name_id u32, method 
 			// signature text is parsed in the declaring module below, where a bare
 			// `Context` would otherwise become `veb.Context` instead of
 			// `main.Context` for an embedded `veb.Middleware[Context]`.
-			concrete_args << flat.source_type_name(tc.explicit_generic_concrete_arg_text(flat.source_type_id(a.trim_space())))
+			concrete_args << tc.explicit_generic_concrete_arg_text(flat.source_type_id(a.trim_space()))
 		}
 	}
 	mut generic_base := ''
@@ -19927,12 +19918,12 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name_id u32, method 
 			if matched.is_exact {
 				return tc.call_info(matched.key, true)
 			}
-			if matched.args_text().any(tc.generic_receiver_arg_is_voidptr(it)) {
+			if matched.args.ids.any(tc.generic_receiver_arg_is_voidptr(it)) {
 				return none
 			}
 			generic_base = base
 			params = matched.params.clone()
-			concrete_args = matched.args_text().clone()
+			concrete_args = matched.args.ids.clone()
 			generic_key = matched.key
 		}
 	}
@@ -19944,7 +19935,7 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name_id u32, method 
 			candidate_concrete_args := if has_type_args {
 				concrete_args.clone()
 			} else {
-				candidate_params.clone()
+				flat.TypeTextList.from_names(candidate_params).ids
 			}
 			if candidate_params.len == 0 || candidate_params.len != candidate_concrete_args.len {
 				continue
@@ -20018,19 +20009,19 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name_id u32, method 
 	// must not be reinterpreted as `gr.Pair` in the method's declaring module.
 	mut concrete_types := []Type{cap: concrete_args.len}
 	for arg in concrete_args {
-		concrete_types << tc.parse_type(flat.source_type_id(arg))
+		concrete_types << tc.parse_type(arg)
 	}
 	ret := tc.fn_ret_types[generic_key] or { return none }
 	// Prefer substituting the original signature TEXT: parsing `Box[T]` collapses the
 	// non-concrete application to the bare `Box`, so substituting the already-parsed type
 	// cannot recover `Box[int]`. Re-substituting the text and re-parsing does.
-	mut sub_ret := tc.substitute_generic_type(ret, flat.TypeTextList.from_names(concrete_args).ids, params)
+	mut sub_ret := tc.substitute_generic_type(ret, concrete_args, params)
 	if generic_semantic_type_has_placeholder(ret) {
 		sub_ret = tc.substitute_generic_type_values(ret, concrete_types, params)
 	} else if ret_text_source_id := tc.fn_ret_type_texts.type_id(generic_key) {
 		ret_text := flat.source_type_name(ret_text_source_id)
 
-		sub_ret = tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_text(ret_text, flat.TypeTextList.from_names(concrete_args).ids, params)))
+		sub_ret = tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_text(ret_text, concrete_args, params)))
 	}
 	mut sub_params := []Type{}
 	if param_texts_source_ids := tc.fn_param_type_texts.type_ids(generic_key) {
@@ -20055,11 +20046,11 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name_id u32, method 
 				sub_params << tc.substitute_generic_type_values(param_types[i], concrete_types, params)
 				continue
 			}
-			sub_params << tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_signature_param_text(pt, flat.TypeTextList.from_names(concrete_args).ids, params)))
+			sub_params << tc.parse_fn_signature_type(generic_key, flat.source_type_id(subst_generic_signature_param_text(pt, concrete_args, params)))
 		}
 	} else if ptypes := tc.fn_param_types[generic_key] {
 		for pt in ptypes {
-			sub_params << tc.substitute_generic_type(pt, flat.TypeTextList.from_names(concrete_args).ids, params)
+			sub_params << tc.substitute_generic_type(pt, concrete_args, params)
 		}
 	}
 	return CallInfo{
@@ -20103,8 +20094,30 @@ fn (tc &TypeChecker) generic_struct_method_alias_target(type_name_id u32) u32 {
 	return flat.source_type_id(current)
 }
 
-fn (tc &TypeChecker) generic_receiver_method_pattern_match(base string, actual_args []string, method string) ?GenericReceiverMethodPatternMatch {
-	cache_key := '${tc.cur_file}\x00${tc.cur_module}\x00${tc.fn_context.generic_params.join(',')}\x00${base}\x00${actual_args.join(',')}\x00${method}'
+@[inline]
+fn write_receiver_pattern_cache_u32(mut key strings.Builder, value u32) {
+	key.write_u8(u8(value >> 24))
+	key.write_u8(u8((value >> 16) & 0xff))
+	key.write_u8(u8((value >> 8) & 0xff))
+	key.write_u8(u8(value & 0xff))
+}
+
+// generic_receiver_pattern_cache_key retains context names and encodes ordered source IDs.
+fn (tc &TypeChecker) generic_receiver_pattern_cache_key(base string, actual_args []u32, method string) string {
+	prefix := '${tc.cur_file}\x00${tc.cur_module}\x00${tc.fn_context.generic_params.join(',')}\x00${base}\x00'
+	mut key := strings.new_builder(prefix.len + actual_args.len * 4 + method.len + 8)
+	key.write_string(prefix)
+	write_receiver_pattern_cache_u32(mut key, u32(actual_args.len))
+	for arg in actual_args {
+		write_receiver_pattern_cache_u32(mut key, arg)
+	}
+	key.write_u8(0)
+	key.write_string(method)
+	return key.str()
+}
+
+fn (tc &TypeChecker) generic_receiver_method_pattern_match(base string, actual_args_ids []u32, method string) ?GenericReceiverMethodPatternMatch {
+	cache_key := tc.generic_receiver_pattern_cache_key(base, actual_args_ids, method)
 	if !isnil(tc.type_cache) {
 		cache := tc.type_cache
 		if matched := cache.recv_pattern_entries[cache_key] {
@@ -20121,25 +20134,25 @@ fn (tc &TypeChecker) generic_receiver_method_pattern_match(base string, actual_a
 		for key in candidates {
 			receiver := key.all_before_last('.')
 			pattern_base, patterns, is_generic := generic_type_application_parts(receiver)
-			if !is_generic || patterns.len != actual_args.len
+			if !is_generic || patterns.len != actual_args_ids.len
 				|| !tc.generic_type_base_matches(pattern_base, base) {
 				continue
 			}
 			mut is_exact := true
 			for i, pattern in patterns {
-				if tc.parse_type(flat.source_type_id(trimmed_space(pattern))).name() != tc.parse_type(flat.source_type_id(trimmed_space(actual_args[i]))).name() {
+				if tc.parse_type(flat.source_type_id(trimmed_space(pattern))).source_type_id() != tc.parse_type(trimmed_source_type_id(actual_args_ids[i])).source_type_id() {
 					is_exact = false
 					break
 				}
 			}
 			mut params := []string{}
-			mut inferred_args := []string{}
+			mut inferred_args := []u32{}
 			mut specificity := 1_000_000
 			if !is_exact {
 				if patterns.all(is_bare_generic_param(trimmed_space(it))) {
 					continue
 				}
-				params, inferred_args = tc.generic_method_receiver_pattern_args(key, actual_args) or { continue }
+				params, inferred_args = tc.generic_method_receiver_pattern_args(key, actual_args_ids) or { continue }
 				specificity = 0
 				for pattern in patterns {
 					if !is_bare_generic_param(trimmed_space(pattern)) {
@@ -20152,7 +20165,7 @@ fn (tc &TypeChecker) generic_receiver_method_pattern_match(base string, actual_a
 				best = GenericReceiverMethodPatternMatch{
 					key:         key
 					params:      params
-					args:        flat.TypeTextList.from_names(inferred_args)
+					args:        flat.TypeTextList{ ids: inferred_args }
 					specificity: specificity
 					is_exact:    is_exact
 				}
@@ -20174,44 +20187,36 @@ fn (tc &TypeChecker) generic_receiver_method_pattern_match(base string, actual_a
 	return best
 }
 
-fn (tc &TypeChecker) generic_method_receiver_pattern_args(key string, actual_args []string) ?([]string, []string) {
+fn (tc &TypeChecker) generic_method_receiver_pattern_args(key string, actual_args_ids []u32) ?([]string, []u32) {
 	receiver := key.all_before_last('.')
 	_, patterns, is_generic := generic_type_application_parts(receiver)
-	if !is_generic || patterns.len != actual_args.len {
-		return none
-	}
+	if !is_generic || patterns.len != actual_args_ids.len { return none }
 	mut counts := map[string]int{}
 	for pattern in patterns {
 		tc.collect_generic_param_candidates(flat.source_type_id(pattern), mut counts)
 	}
-	if counts.len == 0 {
-		return none
-	}
+	if counts.len == 0 { return none }
 	mut params := counts.keys()
 	params.sort()
 	mut inferred := map[string]u32{}
 	for i, pattern in patterns {
-		tc.infer_generic_type_text_from_text(pattern, actual_args[i], params, mut inferred)
+		tc.infer_generic_type_text_from_text(pattern, flat.source_type_name(actual_args_ids[i]), params, mut inferred)
 	}
-	mut concrete_args := []string{cap: params.len}
-	for param in params {
-		concrete_args << flat.source_type_name(inferred[param] or { return none })
-	}
+	mut concrete_args := []u32{cap: params.len}
+	for param in params { concrete_args << inferred[param] or { return none } }
 	for i, pattern in patterns {
-		substituted := subst_generic_text(pattern, flat.TypeTextList.from_names(concrete_args).ids, params)
-		if tc.parse_type(flat.source_type_id(substituted)).name() != tc.parse_type(flat.source_type_id(actual_args[i])).name() {
+		substituted := subst_generic_text(pattern, concrete_args, params)
+		if tc.parse_type(flat.source_type_id(substituted)).source_type_id() != tc.parse_type(actual_args_ids[i]).source_type_id() {
 			return none
 		}
 	}
 	return params, concrete_args
 }
 
-fn (tc &TypeChecker) generic_receiver_arg_is_voidptr(arg string) bool {
-	clean := trimmed_space(arg)
-	if clean == 'voidptr' {
-		return true
-	}
-	return tc.parse_type(flat.source_type_id(clean)).name() in ['voidptr', '&void']
+fn (tc &TypeChecker) generic_receiver_arg_is_voidptr(arg_id u32) bool {
+	clean := trimmed_source_type_id(arg_id)
+	if clean == flat.source_type_voidptr { return true }
+	return tc.parse_type(clean).name() in ['voidptr', '&void']
 }
 
 fn (tc &TypeChecker) generic_receiver_has_structured_method_pattern(type_name_id u32, method string) bool {
@@ -20247,7 +20252,7 @@ fn (tc &TypeChecker) generic_receiver_method_rejects_voidptr(type_name_id u32, m
 		if !is_pattern || !tc.generic_type_base_matches(pattern_base, base) {
 			continue
 		}
-		_, inferred := tc.generic_method_receiver_pattern_args(key, actual_args) or { continue }
+		_, inferred := tc.generic_method_receiver_pattern_args(key, flat.TypeTextList.from_names(actual_args).ids) or { continue }
 		if inferred.any(tc.generic_receiver_arg_is_voidptr(it)) {
 			return true
 		}

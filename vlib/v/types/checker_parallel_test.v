@@ -757,7 +757,7 @@ fn test_generic_receiver_pattern_index_survives_rebuild_and_worker_fork() {
 		tc.fn_ret_types['irrelevant_${i}'] = Type(int_)
 	}
 
-	matched := tc.generic_receiver_method_pattern_match('Box', ['[]int'], 'flatten') or {
+	matched := tc.generic_receiver_method_pattern_match('Box', flat.TypeTextList.from_names(['[]int']).ids, 'flatten') or {
 		assert false
 		return
 	}

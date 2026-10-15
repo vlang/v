@@ -10559,7 +10559,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 	base_id := tc.a.child(&fn_node, 0)
 	type_args_source_ids := tc.generic_call_type_arg_names(fn_node).clone()
 	type_args := flat.TypeTextList{ ids: type_args_source_ids }.names()
-	if type_args.len == 0 {
+	if type_args_source_ids.len == 0 {
 		return none
 	}
 	tc.check_missing_concrete_generic_call_type_args(fn_node)
@@ -10667,7 +10667,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		return none
 	}
 	if is_decode_call_name(call_name) {
-		if type_args.len != 1 {
+		if type_args_source_ids.len != 1 {
 			if tc.should_diagnose(id) {
 				tc.record_error(.call_arg_mismatch, 'expected 1 generic parameter, got ${type_args.len}', id)
 			}
@@ -10678,7 +10678,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 			params:        tc.fn_param_types[call_name] or { []Type{} }
 			shared_params: tc.fn_shared_params[call_name] or { []bool{} }
 			return_type:   Type(ResultType{
-				base_type: tc.parse_type(flat.source_type_id(type_args[0]))
+				base_type: tc.parse_type(type_args_source_ids[0])
 			})
 			has_receiver:  false
 			is_variadic:   tc.fn_variadic[call_name] or { false }
@@ -10807,16 +10807,16 @@ fn (mut tc TypeChecker) explicit_receiver_type_args(info CallInfo, receiver Type
 		pattern = comptime_static_unwrap_type_text(texts[0]).trim_left('&').trim_space()
 	}
 	receiver_params, concrete_args := tc.generic_method_receiver_pattern_args('${pattern}.${method}',
-		receiver_args) or { return type_args_ids.clone() }
+		flat.TypeTextList.from_names(receiver_args).ids) or { return type_args_ids.clone() }
 	mut checked := type_args_ids.clone()
 	for i, param in method_params {
 		at := receiver_params.index(param)
 		if at < 0 {
 			continue
 		}
-		expected := tc.parse_type(tc.explicit_generic_concrete_arg_text(flat.source_type_id(concrete_args[at])))
+		expected := tc.parse_type(tc.explicit_generic_concrete_arg_text(concrete_args[at]))
 		given := tc.parse_type(tc.explicit_generic_concrete_arg_text(type_args_ids[i]))
-		checked[i] = flat.source_type_id(concrete_args[at])
+		checked[i] = concrete_args[at]
 		if expected.name() == given.name() || !tc.should_diagnose(id) {
 			continue
 		}
@@ -20661,13 +20661,13 @@ fn (tc &TypeChecker) direct_call_return_type(node flat.Node) ?Type {
 		base_node := tc.a.child_node(fn_node, 0)
 		name := tc.generic_call_base_name(base_node) or { return none }
 		type_args_source_ids := tc.generic_call_type_arg_names(fn_node).clone()
-		type_args := flat.TypeTextList{ ids: type_args_source_ids }.names()
-		if type_args.len == 0 {
+
+		if type_args_source_ids.len == 0 {
 			return none
 		}
-		if is_decode_call_name(name) && type_args.len == 1 {
+		if is_decode_call_name(name) && type_args_source_ids.len == 1 {
 			return Type(ResultType{
-				base_type: tc.parse_type(flat.source_type_id(type_args[0]))
+				base_type: tc.parse_type(type_args_source_ids[0])
 			})
 		}
 		if info := tc.explicit_generic_call_info(name, false, type_args_source_ids) {

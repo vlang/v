@@ -2,6 +2,39 @@ module types
 
 import v.flat
 
+fn test_receiver_pattern_cache_keys_keep_source_argument_order_and_context() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_file = 'caller.v'
+	tc.cur_module = 'main'
+	tc.fn_context.generic_params = ['T']
+	first := flat.source_type_id('Item[int]')
+	second := flat.source_type_id('Item[string]')
+	ordered := tc.generic_receiver_pattern_cache_key('Box', [first, second], 'take')
+	reversed := tc.generic_receiver_pattern_cache_key('Box', [second, first], 'take')
+	shorter := tc.generic_receiver_pattern_cache_key('Box', [first], 'take')
+	empty := tc.generic_receiver_pattern_cache_key('Box', []u32{}, 'take')
+	empty_arg := tc.generic_receiver_pattern_cache_key('Box', [u32(0)], 'take')
+	keys := {
+		ordered:   1
+		reversed:  2
+		shorter:   3
+		empty:     4
+		empty_arg: 5
+	}
+	assert keys.len == 5
+	assert keys[ordered] == 1
+	assert keys[reversed] == 2
+	tc.cur_file = 'other.v'
+	assert tc.generic_receiver_pattern_cache_key('Box', [first, second], 'take') != ordered
+	tc.cur_file = 'caller.v'
+	tc.cur_module = 'other'
+	assert tc.generic_receiver_pattern_cache_key('Box', [first, second], 'take') != ordered
+	tc.cur_module = 'main'
+	tc.fn_context.generic_params = ['U']
+	assert tc.generic_receiver_pattern_cache_key('Box', [first, second], 'take') != ordered
+}
+
 fn test_wrapped_single_letter_concrete_types_preserve_their_semantic_type() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
