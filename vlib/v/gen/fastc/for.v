@@ -155,13 +155,13 @@ fn (mut g Parser) parse_for() !bool {
 				g.write_line('for (int ${index_name} = 0; ${index_name} < ${keys_name}.len; ${index_name}++) {')
 				g.indent++
 				if name != '_' {
-					g.write_line('${key_type} ${fastc_c_identifier(name)} = ((${key_type} *)${keys_name}.data)[${index_name}];')
+					g.write_line('${g.collection_storage_type(key_type)} ${fastc_c_identifier(name)} = ((${g.collection_storage_type(key_type)} *)${keys_name}.data)[${index_name}];')
 					g.locals[name] = FastcLocal{
 						typ: flat.source_type_id(key_type)
 					}
 				}
 				if value_name != '' && value_name != '_' {
-					g.write_line('${map_value_type} ${fastc_c_identifier(value_name)} = ((${map_value_type} *)${values_name}.data)[${index_name}];')
+					g.write_line('${g.collection_storage_type(map_value_type)} ${fastc_c_identifier(value_name)} = ((${g.collection_storage_type(map_value_type)} *)${values_name}.data)[${index_name}];')
 					g.locals[value_name] = FastcLocal{
 						is_mut: value_is_mut
 						typ:    flat.source_type_id(map_value_type)
@@ -192,11 +192,12 @@ fn (mut g Parser) parse_for() !bool {
 					return g.unsupported('for-in collection `${start}` of type `${collection_type}`')
 				}
 			}
+			element_c_type := fastc_output_c_type(element_type)
 			fixed_length := fastc_fixed_array_length(collection_layout_type.trim_right('*')) or {
 				''
 			}
 			is_fixed_array := fixed_length != ''
-			is_raw_fixed_array := is_fixed_array && (start_expression.len > 1 || (start_expression.len == 1 && fastc_global_key(g.module_name, start_expression[0].lit) in g.globals))
+			is_raw_fixed_array := is_fixed_array && g.fixed_array_uses_raw_storage(fastc_strip_paren_tokens(start_expression))
 			g.next()
 			collection_name := g.temporary_name('collection')
 			is_ordinary_string := !g.selfhost && collection_layout_type == 'string'
@@ -220,7 +221,7 @@ fn (mut g Parser) parse_for() !bool {
 					fixed_access := if collection_layout_type.ends_with('*') { '->' } else { '.' }
 					'((${start})${fixed_access}data[0])'
 				}
-				g.write_line('${element_type} *${collection_name} = &${fixed_data};')
+				g.write_line('${element_c_type} *${collection_name} = &${fixed_data};')
 			} else if is_ordinary_string {
 				g.write_line('string ${collection_name} = (${start});')
 			} else {
@@ -251,13 +252,13 @@ fn (mut g Parser) parse_for() !bool {
 					if element_type.ends_with('*') {
 						// Pointer elements are already references to mutable values. Taking the
 						// array slot's address here would incorrectly bind `x` as `&&T`.
-						g.write_line('${element_type} ${c_value_name} = ((${element_type} *)${collection_data})[${index_name}];')
+						g.write_line('${element_c_type} ${c_value_name} = ((${element_c_type} *)${collection_data})[${index_name}];')
 						g.locals[actual_value_name] = FastcLocal{
 							is_mut: true
 							typ:    flat.source_type_id(element_type)
 						}
 					} else {
-						g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_data})[${index_name}]);')
+						g.write_line('${element_c_type} *${c_value_name} = &(((${element_c_type} *)${collection_data})[${index_name}]);')
 						g.locals[actual_value_name] = FastcLocal{
 							is_mut:       true
 							is_reference: true
@@ -270,12 +271,12 @@ fn (mut g Parser) parse_for() !bool {
 						typ: flat.source_type_id('u8')
 					}
 				} else if !is_fixed_array && collection_layout_type.ends_with('*') && collection_layout_type.trim_right('*') != 'string' {
-					g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_data})[${index_name}]);')
+					g.write_line('${element_c_type} *${c_value_name} = &(((${element_c_type} *)${collection_data})[${index_name}]);')
 					g.locals[actual_value_name] = FastcLocal{
 						typ: flat.source_type_id(element_type + '*')
 					}
 				} else {
-					g.write_line('${element_type} ${c_value_name} = ((${element_type} *)${collection_data})[${index_name}];')
+					g.write_line('${element_c_type} ${c_value_name} = ((${element_c_type} *)${collection_data})[${index_name}];')
 					g.locals[actual_value_name] = FastcLocal{
 						typ: flat.source_type_id(element_type)
 					}
@@ -304,7 +305,7 @@ fn (mut g Parser) parse_for() !bool {
 				local := g.locals[name] or {
 					return g.unsupported('assignment to undeclared loop variable `${name}`')
 				}
-				if !local.is_mut {
+				if !local.is_mut && g.unsafe_depth == 0 {
 					return g.unsupported('assignment to immutable loop variable `${name}`')
 				}
 			}
@@ -421,7 +422,7 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 }
 
 fn (g &Parser) mutable_collection_expression(tokens []FastcExpressionToken) bool {
-	for item in tokens {
+	for i, item in tokens {
 		if item.tok != .name {
 			continue
 		}
@@ -431,8 +432,18 @@ fn (g &Parser) mutable_collection_expression(tokens []FastcExpressionToken) bool
 			// array's data is shared regardless, so the mutation reaches the source.
 			return local.is_mut || item.unsafe_depth > 0
 		}
-		global_key := fastc_global_key(g.module_name, item.lit)
-		return item.unsafe_depth > 0 && global_key in g.globals
+		if imported_module := g.imports[item.lit] {
+			if i + 2 >= tokens.len || tokens[i + 1].tok != .dot
+				|| tokens[i + 2].tok != .name {
+				return false
+			}
+			global_key := fastc_global_key(g.resolve_module_alias(imported_module),
+				tokens[i + 2].lit)
+			return global_key in g.globals
+		}
+		// A global is mutable storage, including a member collection rooted
+		// in it. Local bindings above retain precedence over global names.
+		return g.unqualified_global_key(item.lit) != none
 	}
 	return false
 }
@@ -486,7 +497,12 @@ fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string
 	g.write_line('if (${option_name}.state != 0) break;')
 	value := if value_name == '' { name } else { value_name }
 	if value != '_' {
-		g.write_line('${iterator.element_type} ${fastc_c_identifier(value)} = *((${iterator.element_type} *)${option_name}.data);')
+		payload := if g.prefs.target_libc_headers {
+			g.option_value_expression(iterator.element_type, option_name)
+		} else {
+			'*((${iterator.element_type} *)${option_name}.data)'
+		}
+		g.write_line('${iterator.element_type} ${fastc_c_identifier(value)} = ${payload};')
 		g.locals[value] = FastcLocal{
 			typ: flat.source_type_id(iterator.element_type)
 		}

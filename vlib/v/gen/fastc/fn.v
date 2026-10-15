@@ -2,6 +2,7 @@ module fastc
 
 import v.flat
 import os
+import strings
 import v.cmdexec
 import v.gen.c.naming
 import v.pref
@@ -251,7 +252,7 @@ fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
 	mut args := cmdexec.split_args(expanded) or {
 		return error('fastc parser cannot split C build flag `${raw}`')
 	}
-	base_dir := if source_file.len > 0 { os.real_path(os.dir(source_file)) } else { os.getwd() }
+	base_dir := if source_file.len > 0 { os.dir(os.real_path(source_file)) } else { os.getwd() }
 	mut resolve_next_path := false
 	for i, arg in args {
 		if resolve_next_path {
@@ -836,8 +837,13 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.skip_c_function_declaration()!
 		return
 	}
+	function_key := if receiver_type == '' {
+		fastc_function_key(g.module_name, name)
+	} else {
+		'${receiver_key}.${name}'
+	}
 	g.expect(.lpar)!
-	params << g.parse_parameters()!
+	params << g.parse_parameters(function_key, params.len)!
 	mut return_type := 'void'
 	mut return_types := []string{}
 	mut option_return_type := ''
@@ -859,11 +865,6 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		} else {
 			return_type = g.parse_type()!
 		}
-	}
-	function_key := if receiver_type == '' {
-		fastc_function_key(g.module_name, name)
-	} else {
-		'${receiver_key}.${name}'
 	}
 	is_program_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main']
 		&& name == 'main'
@@ -944,7 +945,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	}
 	g.write_line('${c_return_type} ${c_name}(${c_params}) {')
 	g.indent++
-	if is_main {
+	g.promote_spawn_parameter_storage()
+	if is_main && !g.prefs.target_libc_headers {
 		g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
 		if g.selfhost {
 			g.write_line('g_main_argc = argc;')
@@ -1016,6 +1018,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		mut force_stub := false
 		mut prev_was_lsbr := false
 		mut prev_was_type_param := false
+		mut prev_was_sizeof := false
+		mut sizeof_depth := 0
 		if g.tok == .lcbr {
 			body_depth++
 		} else if g.tok == .rcbr {
@@ -1044,8 +1048,20 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			if prev_was_type_param && body_tok in [.lcbr, .dot, .lpar] {
 				force_stub = true
 			}
+			// An unbound type inside sizeof has no concrete layout. The real
+			// instance substitutes it before this pass; only its erased template
+			// must use the existing unsupported-generic diagnostic body.
+			if body_tok == .lpar && (prev_was_sizeof || sizeof_depth > 0) {
+				sizeof_depth++
+			} else if body_tok == .rpar && sizeof_depth > 0 {
+				sizeof_depth--
+			}
+			if sizeof_depth > 0 && body_tok == .name && body_end.lit in type_params {
+				force_stub = true
+			}
 			prev_was_lsbr = body_tok == .lsbr
 			prev_was_type_param = body_tok == .name && body_end.lit in type_params
+			prev_was_sizeof = body_tok == .key_sizeof
 		}
 		previous_placeholder := g.in_generic_placeholder
 		g.in_generic_placeholder = true
@@ -1097,6 +1113,99 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.indent--
 	g.write_line('}')
 	g.out.writeln('')
+	g.emit_native_pair_wrapper(function_key, c_name)
+	g.emit_export_wrapper(function_key, c_name, params)!
+}
+
+fn (mut g Parser) emit_native_pair_wrapper(function_key string, c_name string) {
+	signature := g.functions[function_key] or { return }
+	if !g.has_native_pair_return(signature) {
+		return
+	}
+	mut params := []string{cap: signature.parameter_types.ids.len}
+	mut arguments := []string{cap: signature.parameter_types.ids.len}
+	for i, parameter_type in signature.parameter_types_text() {
+		name := '__vf_native_arg_${i}'
+		params << '${fastc_output_c_type(parameter_type)} ${name}'
+		arguments << name
+	}
+	c_params := if params.len == 0 { 'void' } else { params.join(', ') }
+	wrapper_name := fastc_native_pair_wrapper_name(c_name)
+	g.protos.writeln('static v_fastc_native_pair_u64 ${wrapper_name}(${c_params});')
+	g.write_line('static v_fastc_native_pair_u64 ${wrapper_name}(${c_params}) {')
+	g.indent++
+	g.write_line('return v_fastc_native_pair_from_multi(${c_name}(${arguments.join(', ')}));')
+	g.indent--
+	g.write_line('}')
+	g.out.writeln('')
+}
+
+fn (mut g Parser) emit_export_wrapper(function_key string, c_name string, params []string) ! {
+	signature := g.functions[function_key] or { return }
+	if signature.export_name == '' || signature.is_disabled {
+		return
+	}
+	export_name := signature.export_name
+	if export_name == c_name {
+		return g.unsupported('export `${export_name}` has no distinct internal function name')
+	}
+	if signature.is_variadic {
+		return g.unsupported('variadic exported function `${export_name}`')
+	}
+	abi := g.functions['C.${export_name}'] or { signature }
+	parameter_types := abi.parameter_types_text()
+	if parameter_types.len != params.len {
+		return g.unsupported('export `${export_name}` does not match its C parameter count')
+	}
+	mut wrapper_params := []string{cap: params.len}
+	mut arguments := []string{cap: params.len}
+	for i, parameter_type in parameter_types {
+		name := '__vf_export_arg_${i}'
+		// Target libc headers describe the unqualified V export definition. Hosted
+		// exports instead match the declared C prototype, including pointee constness.
+		constness := if !g.prefs.target_libc_headers && i < abi.parameter_constness.len
+			&& abi.parameter_constness[i] {
+			'const '
+		} else {
+			''
+		}
+		wrapper_params << '${constness}${g.export_c_abi_type(parameter_type)} ${name}'
+		arguments << '(${fastc_output_c_type(signature.parameter_types.at(i))})${name}'
+	}
+	return_type := g.export_c_abi_type(abi.return_type_text())
+	c_params := if wrapper_params.len == 0 { 'void' } else { wrapper_params.join(', ') }
+	g.protos.writeln('${return_type} ${export_name}(${c_params});')
+	g.write_line('${return_type} ${export_name}(${c_params}) {')
+	g.indent++
+	call := '${c_name}(${arguments.join(', ')})'
+	g.write_line(if return_type == 'void' { '${call};' } else { 'return ${call};' })
+	g.indent--
+	g.write_line('}')
+	g.out.writeln('')
+}
+
+fn (g &Parser) export_c_abi_type(typ string) string {
+	base := g.underlying_alias_type(typ)
+	return match base {
+		'voidptr' { 'void*' }
+		'byteptr' { 'u8*' }
+		'charptr' { 'char*' }
+		else { base }
+	}
+}
+
+fn fastc_target_startup_definition(prefs &pref.Preferences, has_startup_inits bool) string {
+	if !prefs.target_libc_headers {
+		return ''
+	}
+	mut result := strings.new_builder(128)
+	result.writeln('void _vinit(int argc, void *argv) {')
+	result.writeln('\t(void)argc; (void)argv;')
+	if has_startup_inits {
+		result.writeln('\tv_fastc_init_globals();')
+	}
+	result.writeln('}')
+	return result.str()
 }
 
 // parse_generic_body_or_stub emits a generic (un-monomorphized) function body with
@@ -1257,12 +1366,14 @@ fn (mut g Parser) parse_script() ! {
 	g.protos.writeln('int main(void);')
 	g.write_line('int main(void) {')
 	g.indent++
-	g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
-	if g.has_startup_inits {
-		g.write_line('v_fastc_init_globals();')
-	}
-	if g.has_cleanup_hooks {
-		g.write_line('atexit(v_fastc_cleanup_modules);')
+	if !g.prefs.target_libc_headers {
+		g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
+		if g.has_startup_inits {
+			g.write_line('v_fastc_init_globals();')
+		}
+		if g.has_cleanup_hooks {
+			g.write_line('atexit(v_fastc_cleanup_modules);')
+		}
 	}
 	g.in_main = true
 	g.skip_semicolons()
@@ -1279,7 +1390,8 @@ fn (mut g Parser) parse_script() ! {
 	g.out.writeln('')
 }
 
-fn (mut g Parser) parse_parameters() ![]string {
+fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![]string {
+	mono_signature := g.mono_functions[function_key] or { FastcFunctionSignature{} }
 	mut params := []string{}
 	mut blank_index := 0
 	g.skip_semicolons()
@@ -1314,7 +1426,9 @@ fn (mut g Parser) parse_parameters() ![]string {
 		fn_return_type := g.pending_fn_return_type_text()
 		fn_option_value_type := g.pending_fn_option_value_type_text()
 		fn_parameters := g.pending_fn_parameters
-		is_reference := is_mut && !type_name.ends_with('*')
+		parameter_index := parameter_offset + params.len
+		is_generic_value := g.in_mono_drain && parameter_index < mono_signature.parameter_generic_values.len && mono_signature.parameter_generic_values[parameter_index]
+		is_reference := is_mut && (!type_name.ends_with('*') || is_generic_value)
 		if is_reference {
 			type_name += '*'
 		}
@@ -1428,10 +1542,12 @@ fn (mut g Parser) peek_fn_pointer_signature() {
 	if tok in [.not, .question] {
 		return_type = if tok == .not { '__v_result' } else { 'Option' }
 		value_tok := look.scan()
-		if value_tok !in [.lcbr, .semicolon, .comma, .rpar, .eof] {
+		if fastc_is_void_return_boundary(value_tok) {
+			g.pending_fn_option_value_type = flat.source_type_id('void')
+		} else {
 			g.pending_fn_option_value_type = flat.source_type_id(g.peek_option_value_type(mut look, value_tok))
 		}
-	} else if tok !in [.lcbr, .semicolon, .comma, .rpar, .eof] {
+	} else if !fastc_is_void_return_boundary(tok) {
 		scanned, _ := fastc_scan_type(mut look, tok, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return }
 		return_type = scanned
 	}

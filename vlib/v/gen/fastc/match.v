@@ -258,15 +258,15 @@ fn (mut g Parser) read_match_expression() !string {
 		}
 		if g.selfhost && result_type in ['Option', '__v_result'] && value_type !in ['', 'Option',
 			'__v_result'] {
-			value = fastc_option_success_expression(result_type, value_type, value)
+			value = g.option_success_expression(result_type, value_type, value)
 			value_type = result_type
 		} else if g.selfhost && value_type in ['Option', '__v_result'] && result_type !in ['',
 			'Option', '__v_result'] {
 			for i, previous_value in values {
-				values[i] = fastc_option_success_expression(value_type, result_type, previous_value)
+				values[i] = g.option_success_expression(value_type, result_type, previous_value)
 			}
 			if fallback != '' {
-				fallback = fastc_option_success_expression(value_type, result_type, fallback)
+				fallback = g.option_success_expression(value_type, result_type, fallback)
 			}
 			result_type = value_type
 		}

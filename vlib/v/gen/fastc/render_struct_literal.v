@@ -36,6 +36,10 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 				rendered_item := g.render_call_argument_expression(item, fixed_element_type) or {
 					return none
 				}
+				if g.c_global_static_initializer {
+					values << rendered_item
+					continue
+				}
 				temporary := '__vf_sf_${temporary_start + initializers.len}'
 				declaration_type := g.declaration_c_type(fixed_element_type, rendered_item)
 				initializers << '${declaration_type} ${temporary} = (${rendered_item});'
@@ -76,12 +80,18 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 	} else {
 		g.render_call_argument_expression(value_tokens, expected_type) or { return none }
 	}
+	if g.c_global_static_initializer && !is_shared_pointer {
+		return FastcStructLiteralFieldValue{
+			rendered_field: '.${c_field_name}=(${value})'
+			field_value:    value
+		}
+	}
 	temporary := '__vf_sf_${temporary_start}'
 	// Prefer the declared field type. Besides handling statement expressions that
 	// TinyCC cannot inspect with `__typeof__`, this avoids spelling a potentially
 	// large initializer twice in the generated C.
 	field_decl_type := if expected_type != '' {
-		fastc_normalize_inferred_type(expected_type)
+		fastc_output_c_type(fastc_normalize_inferred_type(expected_type))
 	} else {
 		'__typeof__((${value}))'
 	}
@@ -376,7 +386,12 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				continue
 			}
 			c_field_name := fastc_c_identifier(field.name)
-			rendered_field := '.${c_field_name}=(${field_default})'
+			rendered_field := if g.c_global_static_initializer
+				&& fastc_fixed_array_element_type(field.typ_text()) != none {
+				'.${c_field_name}=${fastc_static_fixed_array_initializer(field_default)}'
+			} else {
+				'.${c_field_name}=(${field_default})'
+			}
 			rendered_fields << rendered_field
 			rendered_fields_by_name[field.name] = rendered_field
 			field_values[field.name] = field_default
@@ -403,6 +418,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		&& c_type.trim_right('*').starts_with('Array_') {
 		array_type := c_type.trim_right('*')
 		element_type := g.array_element_type(array_type) or { return none }
+		storage_type := g.collection_storage_type(element_type)
 		length := field_values['len'] or { '0' }
 		capacity := field_values['cap'] or { '0' }
 		inner_array_element_type := if element_type.starts_with('Array_') {
@@ -410,7 +426,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		} else {
 			''
 		}
-		base := '((${array_type})builtin____new_array(${length},${capacity},sizeof(${element_type})))'
+		base := '((${array_type})builtin____new_array(${length},${capacity},sizeof(${storage_type})))'
 		mut value_source := base
 		if has_array_init {
 			inner := g.render_call_argument_expression(array_init_tokens, element_type) or {
@@ -418,13 +434,13 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			}
 			// `index` names the current element position inside an `init:` closure; bind it
 			// to the loop counter so an expression like `init: index` fills 0, 1, 2, ….
-			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __vf_array_init = ${base}; for (int __vf_array_index = 0; __vf_array_index < __vf_array_init.len; __vf_array_index++) { int index = __vf_array_index; (void)index; ((${element_type} *)__vf_array_init.data)[__vf_array_index] = (${inner}); } __vf_array_init; })'
+			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __vf_array_init = ${base}; for (int __vf_array_index = 0; __vf_array_index < __vf_array_init.len; __vf_array_index++) { int index = __vf_array_index; (void)index; ((${storage_type} *)__vf_array_init.data)[__vf_array_index] = (${inner}); } __vf_array_init; })'
 		} else if inner_array_element_type != '' {
 			// A zeroed inner dynamic array has element_size == 0, so appending to an
 			// element of `[][]T{len: n}` copies no data. Construct a valid empty inner
 			// array for every outer element, as the main C backend does.
-			inner_default := '((${element_type})builtin____new_array(0,0,sizeof(${inner_array_element_type})))'
-			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __vf_array_init = ${base}; for (int __vf_array_index = 0; __vf_array_index < __vf_array_init.len; __vf_array_index++) { ((${element_type} *)__vf_array_init.data)[__vf_array_index] = ${inner_default}; } __vf_array_init; })'
+			inner_default := '((${element_type})builtin____new_array(0,0,sizeof(${g.collection_storage_type(inner_array_element_type)})))'
+			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __vf_array_init = ${base}; for (int __vf_array_index = 0; __vf_array_index < __vf_array_init.len; __vf_array_index++) { ((${storage_type} *)__vf_array_init.data)[__vf_array_index] = ${inner_default}; } __vf_array_init; })'
 		} else if explicit_initializers.len > 0 {
 			value_source = '({ ${explicit_initializers.join(' ')} ${base}; })'
 		}
@@ -468,7 +484,11 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 	}
 	literal_source := if c_type.ends_with('*') {
-		'(${c_type})v_fastc_interface_box(&(${c_type.trim_right('*')}){${rendered_fields.join(',')}}, sizeof(${c_type.trim_right('*')}))'
+		if g.c_global_static_initializer {
+			'&(${c_type.trim_right('*')}){${rendered_fields.join(',')}}'
+		} else {
+			'(${c_type})v_fastc_interface_box(&(${c_type.trim_right('*')}){${rendered_fields.join(',')}}, sizeof(${c_type.trim_right('*')}))'
+		}
 	} else {
 		'(${c_type}){${rendered_fields.join(',')}}'
 	}

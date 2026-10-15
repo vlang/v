@@ -410,6 +410,10 @@ fn (g &Parser) nonlocal_name_type(name string) string {
 		global_type
 	} else if global_type := g.resolve_cross_module_global_type(name) {
 		global_type
+	} else if g.unqualified_function_key(name) in g.functions {
+		// A function name used as a value is already an address. Calls infer their
+		// return type separately; boxing this value as an integer breaks callbacks.
+		'voidptr'
 	} else if g.selfhost {
 		'int'
 	} else {
@@ -514,6 +518,9 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			}
 		}
 	}
+	if signature := g.function_alias_call_signature(tokens[start..end]) {
+		return signature.return_type_text()
+	}
 	// `X as T` yields the target type `T` (so `(x as T).field` resolves).
 	if as_index := fastc_bare_as_cast_index(tokens, start, end) {
 		if as_index + 1 < end {
@@ -533,6 +540,28 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	if end - start >= 9 && tokens[start].tok in [.amp, .and] {
 		if c_field_type := g.infer_c_pointer_cast_member_type(tokens, start, end) {
 			return c_field_type
+		}
+	}
+	if tokens[start].tok in [.amp, .and] {
+		if close := fastc_member_root_call_close(tokens, start, end) {
+			if tokens[close + 1].tok == .dot {
+				mut root_name := start
+				for root_name < close && tokens[root_name].tok in [.amp, .and] {
+					root_name++
+				}
+				mut open := root_name
+				for open < close && tokens[open].tok != .lpar {
+					open++
+				}
+				if g.type_from_expression_tokens(tokens[start..open]) != none {
+					// The pointer prefix belongs to the root's cast, while a following
+					// field (and any arithmetic on it) has the field's value type.
+					return g.infer_expression_type_range(tokens, root_name, end)!
+				}
+			}
+		}
+		if member_type := g.infer_member_access_type(tokens, start, end) {
+			return member_type
 		}
 	}
 	if tokens[start].tok == .not {
@@ -654,6 +683,14 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 	}
 	mut call_name_index := start
+	element_call_open := g.fastc_element_call_open(tokens[start..end])
+	if element_call_open > 0 {
+		if signature := g.callable_signature_for_expression(tokens[start..start + element_call_open]) {
+			if signature.callable_index_depth == 0 {
+				return signature.return_type_text()
+			}
+		}
+	}
 	mut call_open_index := start + 1
 	if start + 3 < end && tokens[start].tok == .name && tokens[start + 1].tok == .dot && tokens[start + 2].tok == .name && (tokens[start].lit in g.imports || tokens[start].lit == 'C') {
 		call_name_index = start + 2
@@ -817,6 +854,9 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 			return g.specialized_method_return_type(method_receiver_type, function_key, signature)
 		}
 		if field := g.struct_field_metadata(receiver_type, tokens[i].lit) {
+			if field.is_function && field.fn_return_type_text() != '' {
+				return field.fn_return_type_text()
+			}
 			if function_alias := g.functions[field.typ_text()] {
 				return function_alias.return_type_text()
 			}
@@ -1223,6 +1263,9 @@ fn (g &Parser) sumtype_common_field_type(sum_type string, field_name string) ?st
 // looked up by its bare name — `__global`s are truly global, so a reference from a different
 // module than the declaring one (`global_table` in v.ast, used from v.checker) still resolves.
 fn (g &Parser) resolve_cross_module_global_type(name string) ?string {
+	if key := g.unqualified_global_key(name) {
+		return g.global_types.get(key)
+	}
 	suffix := '.${name}'
 	for key, global_type_id in g.global_types.ids {
 		global_type := flat.source_type_name(global_type_id)
@@ -1234,11 +1277,30 @@ fn (g &Parser) resolve_cross_module_global_type(name string) ?string {
 }
 
 fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int, end int) ?string {
-	if end - start < 3 || tokens[start].tok != .name {
+	if end - start < 3 {
 		return none
 	}
 	mut current_type := ''
-	if local := g.locals[tokens[start].lit] {
+	mut index := start + 1
+	if call_close := fastc_member_root_call_close(tokens, start, end) {
+		if tokens[start].tok in [.amp, .and] {
+			mut cast_open := start + 1
+			for cast_open < call_close && tokens[cast_open].tok != .lpar {
+				cast_open++
+			}
+			if g.type_from_expression_tokens(tokens[start..cast_open]) == none {
+				// `&factory().field` takes the field's address; only a typed
+				// pointer cast makes the leading `&` part of the member's root.
+				return none
+			}
+		}
+		current_type = g.infer_expression_type_range(tokens, start, call_close + 1) or { return none }
+		index = call_close + 1
+	} else if tokens[start].tok != .name {
+		return none
+	} else if tokens[start].typ_text() != '' {
+		current_type = tokens[start].typ_text()
+	} else if local := g.locals[tokens[start].lit] {
 		current_type = local.typ_text()
 	} else if global_type := g.global_types.get(fastc_global_key(g.module_name, tokens[start].lit)) {
 		current_type = global_type
@@ -1251,14 +1313,13 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 	} else {
 		return none
 	}
-	mut member_path := tokens[start].lit
+	mut member_path := if index == start + 1 { tokens[start].lit } else { '()' }
 	// A smart-cast on the bare subject itself (`x is T`, or an option local narrowed by
 	// `x != none`) reshapes it before any field access, exactly as render_member_receiver
 	// does when producing the matching source.
 	if smartcast := g.member_smartcasts[member_path] {
 		current_type = smartcast.typ_text()
 	}
-	mut index := start + 1
 	for index < end {
 		if tokens[index].tok == .lsbr {
 			close := fastc_matching_delimiter_before(tokens, index, end, .lsbr, .rsbr) or {

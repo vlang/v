@@ -107,7 +107,7 @@ fn fastc_collect_generic_methods_in_file(source_file FastcSourceFile, prefs &pre
 // generic call, reading from a scanner positioned just after the opening `(`.
 // Collecting the complete expression lets ordinary FastC inference handle compound
 // numeric operands and indexed members as well as literals and bare locals.
-fn (g &Parser) mono_argument_type(mut look scanner.Scanner) string {
+fn (g &Parser) mono_argument_type(mut look scanner.Scanner, is_mut_generic_value bool) string {
 	mut tokens := []FastcExpressionToken{}
 	mut parens := 0
 	mut brackets := 0
@@ -137,7 +137,11 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner) string {
 	if tokens.len == 0 {
 		return ''
 	}
-	argument_tokens := if tokens[0].tok == .key_mut { tokens[1..] } else { tokens }
+	argument_tokens := fastc_mono_argument_value_tokens(if tokens[0].tok == .key_mut {
+		tokens[1..]
+	} else {
+		tokens
+	})
 	if argument_tokens.len == 1 {
 		literal := fastc_infer_literal_type(argument_tokens[0].tok, argument_tokens[0].lit)
 		if literal != '' {
@@ -145,13 +149,53 @@ fn (g &Parser) mono_argument_type(mut look scanner.Scanner) string {
 		}
 	}
 	inferred := g.infer_expression_type(argument_tokens) or { return '' }
-	return fastc_normalize_inferred_type(inferred).trim_right('*')
+	actual := fastc_normalize_inferred_type(inferred)
+	if is_mut_generic_value && tokens[0].tok == .key_mut {
+		value_tokens := fastc_strip_paren_tokens(argument_tokens)
+		if value_tokens.len > 0 && value_tokens[0].tok in [.amp, .and] {
+			return actual
+		}
+		if value_tokens.len == 1 && value_tokens[0].tok == .name {
+			if local := g.locals[value_tokens[0].lit] {
+				// A typed pointer can already refer to the mutable payload (`mut
+				// entry` with entry &u64), just like a forwarded mut parameter.
+				if local.is_reference || actual.ends_with('*') { return actual }
+			}
+		}
+		return actual + '*'
+	}
+	if tokens[0].tok != .key_mut {
+		value_tokens := fastc_strip_paren_tokens(argument_tokens)
+		if value_tokens.len == 1 && value_tokens[0].tok == .name {
+			if local := g.locals[value_tokens[0].lit] {
+				if local.is_reference && actual.ends_with('*') {
+					return actual[..actual.len - 1]
+				}
+			}
+		}
+	}
+	return actual
+}
+
+// A generic call is queued before the expression parser consumes transparent
+// unsafe blocks. Infer from their value without changing mutable slot rules.
+fn fastc_mono_argument_value_tokens(expression []FastcExpressionToken) []FastcExpressionToken {
+	mut tokens := fastc_strip_paren_tokens(expression)
+	for tokens.len >= 3 && tokens[0].tok == .key_unsafe && tokens[1].tok == .lcbr {
+		close := fastc_matching_delimiter(tokens, 1, .lcbr, .rcbr) or { break }
+		if close != tokens.len - 1 { break }
+		tokens = tokens[2..close]
+		for tokens.len > 0 && tokens[0].tok == .semicolon { tokens = tokens[1..] }
+		for tokens.len > 0 && tokens.last().tok == .semicolon { tokens = tokens[..tokens.len - 1] }
+		tokens = fastc_strip_paren_tokens(tokens)
+	}
+	return tokens
 }
 
 // mono_argument_type_at infers the concrete type from one positional call argument.
 // The scanner starts immediately after `(`; preceding arguments are skipped with their
 // nested delimiters intact before mono_argument_type examines the selected argument.
-fn (g &Parser) mono_argument_type_at(mut look scanner.Scanner, parameter_index int) string {
+fn (g &Parser) mono_argument_type_at(mut look scanner.Scanner, parameter_index int, is_mut_generic_value bool) string {
 	for _ in 0 .. parameter_index {
 		mut parens := 0
 		mut brackets := 0
@@ -175,7 +219,7 @@ fn (g &Parser) mono_argument_type_at(mut look scanner.Scanner, parameter_index i
 			}
 		}
 	}
-	return g.mono_argument_type(mut look)
+	return g.mono_argument_type(mut look, is_mut_generic_value)
 }
 
 // queue_mono_method records a needed generic-method instance (`<receiver>.<method>` with
@@ -204,16 +248,20 @@ fn (mut g Parser) queue_mono_method(receiver_type string, method string, concret
 		}
 		g.type_memo.clear()
 		g.mono_functions[key] = FastcFunctionSignature{
-			parameter_types:          flat.TypeTextList.from_names(parameter_types)
-			parameter_mutability:     base.parameter_mutability.clone()
-			return_type:              flat.source_type_id(return_type)
-			return_types:             flat.TypeTextList.from_names(return_types)
-			option_type:              flat.source_type_id(option_type)
-			is_variadic:              base.is_variadic
-			last_parameter_is_params: base.last_parameter_is_params
-			module_name:              source.module_name
-			path:                     source.path
-			is_public:                true
+			parameter_types:               flat.TypeTextList.from_names(parameter_types)
+			parameter_mutability:          base.parameter_mutability.clone()
+			parameter_generic_values:      base.parameter_generic_values.clone()
+			returned_fn_parameter_types:   base.returned_fn_parameter_types
+			returned_fn_return_type:       base.returned_fn_return_type
+			returned_fn_option_value_type: base.returned_fn_option_value_type
+			return_type:                   flat.source_type_id(return_type)
+			return_types:                  flat.TypeTextList.from_names(return_types)
+			option_type:                   flat.source_type_id(option_type)
+			is_variadic:                   base.is_variadic
+			last_parameter_is_params:      base.last_parameter_is_params
+			module_name:                   source.module_name
+			path:                          source.path
+			is_public:                     true
 		}
 		g.pending_mono << FastcMonoRequest{
 			source_key: source_key
@@ -297,7 +345,8 @@ fn (mut g Parser) queue_implicit_mono_method(tokens []FastcExpressionToken) ?str
 	base := g.functions[base_key] or { return none }
 	parameter_index := source.type_param_parameter_index
 	signature_index := parameter_index + 1
-	argument_type := g.mono_argument_type_at(mut look, parameter_index)
+	parameter_is_mut := signature_index < base.parameter_mutability.len && base.parameter_mutability[signature_index]
+	argument_type := g.mono_argument_type_at(mut look, parameter_index, parameter_is_mut)
 	concrete := if parameter_index >= 0 && signature_index < base.parameter_types.ids.len {
 		fastc_infer_generic_type_from_parameter(base.parameter_types.at(signature_index), argument_type)
 	} else {
@@ -353,7 +402,8 @@ fn (mut g Parser) queue_implicit_mono_function(tokens []FastcExpressionToken) ?s
 	if parameter_index >= base.parameter_types.ids.len {
 		return none
 	}
-	argument_type := g.mono_argument_type_at(mut look, parameter_index)
+	parameter_is_mut := parameter_index < base.parameter_mutability.len && base.parameter_mutability[parameter_index]
+	argument_type := g.mono_argument_type_at(mut look, parameter_index, parameter_is_mut)
 	concrete := fastc_infer_generic_type_from_parameter(base.parameter_types.at(parameter_index), argument_type)
 	if concrete == '' {
 		return none
@@ -379,17 +429,21 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete string) ?str
 		}
 		g.type_memo.clear()
 		g.mono_functions[mono_key] = FastcFunctionSignature{
-			parameter_types:          flat.TypeTextList.from_names(parameter_types)
-			parameter_mutability:     base.parameter_mutability.clone()
-			return_type:              flat.source_type_id(return_type)
-			return_types:             flat.TypeTextList.from_names(return_types)
-			option_type:              flat.source_type_id(option_type)
-			is_variadic:              base.is_variadic
-			last_parameter_is_params: base.last_parameter_is_params
-			is_public:                base.is_public
-			is_disabled:              base.is_disabled
-			module_name:              source.module_name
-			path:                     source.path
+			parameter_types:               flat.TypeTextList.from_names(parameter_types)
+			parameter_mutability:          base.parameter_mutability.clone()
+			parameter_generic_values:      base.parameter_generic_values.clone()
+			returned_fn_parameter_types:   base.returned_fn_parameter_types
+			returned_fn_return_type:       base.returned_fn_return_type
+			returned_fn_option_value_type: base.returned_fn_option_value_type
+			return_type:                   flat.source_type_id(return_type)
+			return_types:                  flat.TypeTextList.from_names(return_types)
+			option_type:                   flat.source_type_id(option_type)
+			is_variadic:                   base.is_variadic
+			last_parameter_is_params:      base.last_parameter_is_params
+			is_public:                     base.is_public
+			is_disabled:                   base.is_disabled
+			module_name:                   source.module_name
+			path:                          source.path
 		}
 		g.pending_mono << FastcMonoRequest{
 			source_key: function_key
@@ -419,7 +473,17 @@ fn (g &Parser) mono_parameter_types(source FastcGenericMethodSource, concrete st
 		}, g.prefs, []int{}, g.declared_types, g.declared_type_c_names, map[string]bool{},
 		mut signatures) or { return fallback }
 	for _, signature in signatures {
-		return signature.parameter_types_text().clone()
+		mut parameters := signature.parameter_types_text().clone()
+		for i, typ in parameters {
+			if i < base.parameter_generic_values.len && base.parameter_generic_values[i] && i < base.parameter_mutability.len && base.parameter_mutability[i] {
+				for concrete_type in concrete.split(',') {
+					if concrete_type.ends_with('*') && typ == concrete_type {
+						parameters[i] = typ + '*'
+					}
+				}
+			}
+		}
+		return parameters
 	}
 	return fallback
 }
@@ -434,7 +498,12 @@ fn fastc_infer_generic_type_from_parameter(erased string, actual string) string 
 	}
 	erased_base := erased.trim_right('*')
 	if erased_base == 'voidptr' {
-		return actual.trim_right('*')
+		pointers := erased.len - erased_base.len
+		if pointers > 0 {
+			if actual.len < pointers || !actual.ends_with('*'.repeat(pointers)) { return '' }
+			return actual[..actual.len - pointers]
+		}
+		return actual
 	}
 	marker := 'voidptr'
 	marker_index := erased.index(marker) or { return '' }
@@ -850,7 +919,7 @@ fn fastc_monomorphized_name(name string, concrete string) string {
 	// so a `Foo__mono_int` receiver would be read as type `mono_int` in module
 	// `Foo` and its methods would be mis-named. Multiple type arguments are joined
 	// with `,` internally; flatten to `_` for the C identifier.
-	return '${name}_mono_${concrete.replace(',', '_')}'
+	return '${name}_mono_${fastc_composite_type_part(concrete.replace(',', '_'))}'
 }
 
 // fastc_read_bracket_names reads a comma-separated list of `.name` tokens (the
@@ -879,7 +948,11 @@ fn fastc_type_param_substitutions(type_param string, concrete string) map[string
 	mut substitutions := map[string]string{}
 	for index, name in type_params {
 		if index < concretes.len {
-			substitutions[name] = concretes[index]
+			concrete_type := concretes[index]
+			// On-demand inference uses C type names. Reparse pointer arguments
+			// with V's prefix spelling instead of inserting a C `T*` token pair.
+			base := concrete_type.trim_right('*')
+			substitutions[name] = '&'.repeat(concrete_type.len - base.len) + base
 		}
 	}
 	return substitutions

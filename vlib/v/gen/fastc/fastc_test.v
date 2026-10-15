@@ -2915,7 +2915,7 @@ fn main() {
 	_ := missing_map_len(values)
 }
 ', 'map_value_lookup.v', prefs) or { panic(err) }
-	assert c_source.contains('__vf_ml.state ? (Map_string_int)builtin__new_map(sizeof(string), sizeof(int)'), c_source
+	assert c_source.contains('__vf_ml.state ? (Map_string_int)builtin__new_map(sizeof(string), sizeof(${fastc_output_c_type('int')})'), c_source
 	assert c_source.contains('return inner.data->count;'), c_source
 	assert !c_source.contains('Map_string_int){0}'), c_source
 	assert !c_source.contains('__vf_map_zero'), c_source
@@ -3948,21 +3948,6 @@ fn main() {
 	_ := Worker(Wrong{})
 }
 ',
-		'module main
-
-interface Worker {
-mut:
-	work()
-}
-
-struct Wrong {}
-
-fn (wrong Wrong) work() {}
-
-fn main() {
-	_ := Worker(Wrong{})
-}
-',
 	] {
 		mut message := ''
 		_ := generate(source, 'invalid_interface_receiver_mutability.v', prefs) or {
@@ -3971,6 +3956,23 @@ fn main() {
 		}
 		assert message.contains('incompatible mutability for interface `Worker` method `work`'), message
 	}
+	read_only_implementation := generate('module main
+
+interface Worker {
+mut:
+	work()
+}
+
+struct Good {}
+
+fn (good Good) work() {}
+
+fn main() {
+	mut worker := Worker(Good{})
+	worker.work()
+}
+', 'mutable_interface_read_only_implementation.v', prefs) or { panic(err) }
+	assert read_only_implementation.contains('case __v_typeid_Good: Good_work(*(Good *)value._object); return;'), read_only_implementation
 
 	mut immutable_message := ''
 	_ := generate('module main
@@ -5367,7 +5369,7 @@ fn main() {
 	values := [1, true]
 }
 ', 'inferred_array_element_types.v', prefs) or { panic(err) }
-	assert c_source.contains('builtin__new_array_from_c_array(2, 2, sizeof(int)'), c_source
+	assert c_source.contains('builtin__new_array_from_c_array(2, 2, sizeof(${fastc_output_c_type('int')})'), c_source
 }
 
 fn test_undeclared_function_signature_types_are_rejected() {
@@ -5816,9 +5818,9 @@ fn main() {
 	if 1 in [__vf_m_c0] {}
 }
 ', 'membership_temporary_collision.v', prefs) or { panic(err) }
-	assert c_source.contains('int __vf_m_1_x = (1);'), c_source
+	assert c_source.contains('${fastc_output_c_type('int')} __vf_m_1_x = (1);'), c_source
 	assert c_source.contains('__vf_m_1_a'), c_source
-	assert !c_source.contains('int __vf_m_x = (1);'), c_source
+	assert !c_source.contains('${fastc_output_c_type('int')} __vf_m_x = (1);'), c_source
 }
 
 fn test_selfhost_string_membership_uses_substring_semantics() {
@@ -6278,7 +6280,7 @@ fn main() {}
 		panic(err)
 	}
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	assert c_source.contains('change(&config.writable);'), c_source
+	assert c_source.contains('change(&(config->writable));'), c_source
 }
 
 fn test_match_expression_requires_else() {
@@ -7008,7 +7010,7 @@ fn main() {
 	}
 }
 ', 'mutable_iteration.v', prefs) or { panic(err) }
-	assert c_source.contains('int *item = &(((int *)'), c_source
+	assert c_source.contains('${fastc_output_c_type('int')} *item = &(((${fastc_output_c_type('int')} *)'), c_source
 	assert c_source.contains('println((*(item)));'), c_source
 	assert c_source.contains('(*item)=3;'), c_source
 	assert c_source.contains('change(item);'), c_source
@@ -7055,14 +7057,18 @@ fn main() {
 }
 '
 	c32 := generate(source, 'map_usize_32.v', prefs) or { panic(err) }
+	int32_type := fastc_output_c_type('int')
+	assert int32_type == 'i32'
 	for key_type in ['usize', 'voidptr'] {
-		assert c32.contains('sizeof(${key_type}), sizeof(int), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c32
+		assert c32.contains('sizeof(${key_type}), sizeof(${int32_type}), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c32
 	}
 
 	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
 	c64 := generate(source, 'map_usize_64.v', prefs) or { panic(err) }
+	int64_type := fastc_output_c_type('int')
+	assert int64_type == 'i64'
 	for key_type in ['usize', 'voidptr'] {
-		assert c64.contains('sizeof(${key_type}), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c64
+		assert c64.contains('sizeof(${key_type}), sizeof(${int64_type}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c64
 	}
 
 	hash_fn, eq_fn, clone_fn, _ := fastc_map_runtime_functions('int*', 32)
@@ -7106,13 +7112,13 @@ fn main() {
 	println(permissions.len)
 }
 ", 'map_alias_callbacks.v', prefs) or { panic(err) }
-	assert c_source.contains('sizeof(WideKey), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
+	assert c_source.contains('sizeof(WideKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
 
-	assert c_source.contains('sizeof(TextKey), sizeof(int), &builtin__map_hash_string, &builtin__map_eq_string, &builtin__map_clone_string'), c_source
+	assert c_source.contains('sizeof(TextKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_string, &builtin__map_eq_string, &builtin__map_clone_string'), c_source
 
-	assert c_source.contains('sizeof(KindKey), sizeof(int), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c_source
+	assert c_source.contains('sizeof(KindKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c_source
 
-	assert c_source.contains('sizeof(PermissionsKey), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
+	assert c_source.contains('sizeof(PermissionsKey), sizeof(${fastc_output_c_type('int')}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
 }
 
 fn test_array_pointer_iteration_preserves_element_references() {
@@ -7133,7 +7139,7 @@ fn main() {
 	}
 }
 ', 'array_pointer_iteration.v', prefs) or { panic(err) }
-	assert c_source.count('int *value = &(((int *)__v') == 2, c_source
+	assert c_source.count('${fastc_output_c_type('int')} *value = &(((${fastc_output_c_type('int')} *)__v') == 2, c_source
 	assert c_source.count('take(value);') == 2, c_source
 }
 

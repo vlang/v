@@ -11234,7 +11234,9 @@ pub fn run(args []string) {
 		eprintln('option `-target-libc-headers` does not support Windows targets')
 		exit(1)
 	}
-	if target_libc_headers && backend != 'c' {
+	if target_libc_headers && backend != 'c'
+		&& !(backend == 'fastc' && (output_file == '-' || output_file.ends_with('.c'))
+			&& (target.os != pref.host_target().os || target.arch != pref.host_target().arch)) {
 		eprintln('option `-target-libc-headers` requires the C backend')
 		exit(1)
 	}
@@ -11287,7 +11289,7 @@ pub fn run(args []string) {
 			}
 		}
 	}
-	if building_v || cmd_v_build {
+	if (building_v || cmd_v_build) && !target_libc_headers {
 		if no_parallel {
 			// This controls the current build only. Keep parallel support in the output
 			// compiler so its module graph does not depend on how it was bootstrapped.
@@ -11642,7 +11644,8 @@ pub fn run(args []string) {
 	if verbose {
 		eprintln('v.pref.lookup_path: ${os.join_path(prefs.vroot, 'vlib')}')
 	}
-	prefs.supports_inline_asm = is_checker_fixture
+	prefs.supports_inline_asm = is_checker_fixture || (backend == 'fastc' && c_only
+		&& target.arch in ['amd64', 'arm64'])
 	if backend == 'fastc' {
 		$if skip_fastc ? {
 			eprintln('fastc support is not compiled into this v3 executable')
@@ -11687,7 +11690,7 @@ pub fn run(args []string) {
 			if fastc_test_file {
 				prefs.is_test = true
 			}
-			if is_prod {
+			if is_prod && !(c_only && fastc_cross_target) {
 				unsupported_modes << '`-prod`'
 			}
 			if is_shared || is_livemain || is_liveshared {

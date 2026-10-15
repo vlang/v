@@ -461,24 +461,15 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	} else {
 		'\targs->result = ${target}(${forwards});'
 	}
-	g.spawn_helpers[start_name] = 'typedef struct {
-${fields}} ${args_struct};
-
-static void *${run_name}(void *raw) {
-	${args_struct} *args = (${args_struct} *)raw;
-${call}
-	return NULL;
-}
-
-static ${thread_type} ${start_name}(${parameters}) {
-	${args_struct} *args = (${args_struct} *)malloc(sizeof(${args_struct}));
-	if (args == NULL) {
-		fprintf(stderr, "spawn: out of memory\\n");
+	creation := if g.prefs.target_libc_headers {
+		'\tif (pthread_create(&t.handle, NULL, ${run_name}, args) != 0) {
+		free(args);
+		fprintf(stderr, "spawn: thread creation failed\\n");
 		exit(1);
 	}
-${fills}	${thread_type} t;
-	t.packed = args;
-	pthread_attr_t attributes;
+'
+	} else {
+		'\tpthread_attr_t attributes;
 	if (pthread_attr_init(&attributes) != 0) {
 		free(args);
 		fprintf(stderr, "spawn: thread attribute init failed\\n");
@@ -497,6 +488,25 @@ ${fills}	${thread_type} t;
 		exit(1);
 	}
 	pthread_attr_destroy(&attributes);
-	return t;
+'
+	}
+	g.spawn_helpers[start_name] = 'typedef struct {
+${fields}} ${args_struct};
+
+static void *${run_name}(void *raw) {
+	${args_struct} *args = (${args_struct} *)raw;
+${call}
+	return NULL;
+}
+
+static ${thread_type} ${start_name}(${parameters}) {
+	${args_struct} *args = (${args_struct} *)malloc(sizeof(${args_struct}));
+	if (args == NULL) {
+		fprintf(stderr, "spawn: out of memory\\n");
+		exit(1);
+	}
+${fills}	${thread_type} t;
+	t.packed = args;
+${creation}	return t;
 }'
 }

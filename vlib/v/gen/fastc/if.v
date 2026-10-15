@@ -641,9 +641,14 @@ fn (mut g Parser) parse_if() !bool {
 		} else if guard_erased_generic {
 			name := fastc_c_identifier(guard_name)
 			if guard_type.ends_with('*') {
-				g.write_line('${guard_type} ${name} = *((${guard_type} *)${guard_option}.data);')
+				g.write_line('${fastc_output_c_type(guard_type)} ${name} = ${g.option_value_expression(guard_type, guard_option)};')
 			} else {
-				g.write_line('${guard_type} ${name} = **((${guard_type} **)${guard_option}.data);')
+				value := if g.prefs.target_libc_headers {
+					'*(${g.option_value_expression(guard_type + '*', guard_option)})'
+				} else {
+					'**((${fastc_output_c_type(guard_type)} **)${guard_option}.data)'
+				}
+				g.write_line('${fastc_output_c_type(guard_type)} ${name} = ${value};')
 			}
 			g.locals[guard_name] = FastcLocal{
 				is_mut: guard_is_mut
@@ -651,7 +656,7 @@ fn (mut g Parser) parse_if() !bool {
 			}
 		} else {
 			function_alias := g.functions[guard_type] or { FastcFunctionSignature{} }
-			g.write_line('${guard_type} ${fastc_c_identifier(guard_name)} = *((${guard_type} *)${guard_option}.data);')
+			g.write_line('${fastc_output_c_type(guard_type)} ${fastc_c_identifier(guard_name)} = ${g.option_value_expression(guard_type, guard_option)};')
 			g.locals[guard_name] = FastcLocal{
 				is_mut:               guard_is_mut
 				typ:                  flat.source_type_id(guard_type)
@@ -754,7 +759,11 @@ fn (mut g Parser) parse_if() !bool {
 				}
 				g.member_smartcasts[opt_name] = FastcMemberSmartcast{
 					typ:    flat.source_type_id(base)
-					source: '(*((${base} *)${fastc_c_identifier(opt_name)}.data))'
+					source: if g.prefs.target_libc_headers {
+						'(*V_FASTC_OPTION_STORAGE(${fastc_output_c_type(base)}, (${fastc_c_identifier(opt_name)})))'
+					} else {
+						'(*((${fastc_output_c_type(base)} *)${fastc_c_identifier(opt_name)}.data))'
+					}
 				}
 			}
 		}
@@ -917,7 +926,7 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 	g.write_line('if (${guard_option}.state == 0) {')
 	g.indent++
 	multi_return := g.temporary_name('multi_return')
-	g.write_line('MultiReturn ${multi_return} = *((MultiReturn *)${guard_option}.data);')
+	g.write_line('MultiReturn ${multi_return} = ${g.option_value_expression('MultiReturn', guard_option)};')
 	mut previous_locals := []FastcLocal{cap: names.len}
 	mut had_locals := []bool{cap: names.len}
 	for i, name in names {
@@ -1427,8 +1436,24 @@ fn fastc_option_success_expression(wrapper string, value_type string, expression
 	return '(${wrapper}){.data=${fastc_box_expression(base, expression)}, .state=0}'
 }
 
+fn (g &Parser) option_success_expression(wrapper string, value_type string, expression string) string {
+	if g.prefs.target_libc_headers {
+		return 'V_FASTC_OPTION_SUCCESS(${wrapper}, ${fastc_output_c_type(fastc_normalize_inferred_type(value_type))}, (${expression}))'
+	}
+	return fastc_option_success_expression(wrapper, value_type, expression)
+}
+
+fn (g &Parser) option_value_expression(value_type string, option string) string {
+	storage_type := fastc_output_c_type(value_type)
+	if g.prefs.target_libc_headers {
+		return 'V_FASTC_OPTION_VALUE(${storage_type}, (${option}))'
+	}
+	return '*((${storage_type} *)${option}.data)'
+}
+
 fn fastc_box_expression(value_type string, expression string) string {
-	return '({ ${value_type} __vf_bv = (${expression}); v_fastc_interface_box(&__vf_bv, sizeof(${value_type})); })'
+	storage_type := fastc_output_c_type(value_type)
+	return '({ ${storage_type} __vf_bv = (${expression}); v_fastc_interface_box(&__vf_bv, sizeof(${storage_type})); })'
 }
 
 // read_if_expression_multi_return_guard lowers `if a, b := opt_multi() { x } else { y }`
@@ -1449,7 +1474,7 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 	g.expect(.lcbr)!
 	guard_option := g.temporary_name('if_guard')
 	multi_return := g.temporary_name('multi_return')
-	mut binds := 'MultiReturn ${multi_return} = *((MultiReturn *)${guard_option}.data); '
+	mut binds := 'MultiReturn ${multi_return} = ${g.option_value_expression('MultiReturn', guard_option)}; '
 	mut previous_locals := []FastcLocal{}
 	mut had_locals := []bool{}
 	for i, name in names {
@@ -1481,6 +1506,7 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 	}
 	g.skip_semicolons()
 	g.expect(.rcbr)!
+	g.skip_semicolons()
 	if g.tok != .key_else {
 		return g.unsupported('if expression without `else`')
 	}
@@ -1715,7 +1741,7 @@ fn (mut g Parser) read_if_expression() !string {
 	}
 	if guard_name != '' {
 		if guard_name != '_' {
-			then_expression = '({ ${guard_type} ${fastc_c_identifier(guard_name)} = *((${guard_type} *)${guard_option}.data); ${then_expression}; })'
+			then_expression = '({ ${fastc_output_c_type(guard_type)} ${fastc_c_identifier(guard_name)} = ${g.option_value_expression(guard_type, guard_option)}; ${then_expression}; })'
 		}
 		if had_guard {
 			g.locals[guard_name] = previous_guard
@@ -1739,6 +1765,7 @@ fn (mut g Parser) read_if_expression() !string {
 	}
 	g.skip_semicolons()
 	g.expect(.rcbr)!
+	g.skip_semicolons()
 	if g.tok != .key_else {
 		return g.unsupported('if expression without `else`')
 	}
@@ -1812,13 +1839,13 @@ fn (mut g Parser) read_if_expression() !string {
 		'__v_result'] {
 		else_option_value_type = fastc_normalize_inferred_type(else_type)
 		else_base := fastc_normalize_inferred_type(else_type)
-		else_expression = '(${then_type}){.data=${fastc_box_expression(else_base, else_expression)}, .state=0}'
+		else_expression = g.option_success_expression(then_type, else_base, else_expression)
 		else_type = then_type
 	} else if g.selfhost && else_type in ['Option', '__v_result'] && then_type !in ['', 'Option',
 		'__v_result'] {
 		then_option_value_type = fastc_normalize_inferred_type(then_type)
 		then_base := fastc_normalize_inferred_type(then_type)
-		then_expression = '(${else_type}){.data=${fastc_box_expression(then_base, then_expression)}, .state=0}'
+		then_expression = g.option_success_expression(else_type, then_base, then_expression)
 		then_type = else_type
 	}
 	if g.selfhost && then_type == '' && else_type != '' {
@@ -1932,7 +1959,7 @@ fn (g &Parser) option_branch_expression(wrapper string, value_type string, expre
 	if wrapper == '__v_result' && value_type == 'voidptr' && g.option_return_type_text() != 'voidptr' {
 		return '(__v_result){.err=(IError){._object=(voidptr)(${expression})}, .state=1}'
 	}
-	return fastc_option_success_expression(wrapper, value_type, expression)
+	return g.option_success_expression(wrapper, value_type, expression)
 }
 
 fn (mut g Parser) read_return_expression_branch() !string {
@@ -1941,7 +1968,7 @@ fn (mut g Parser) read_return_expression_branch() !string {
 		mut values := []string{}
 		for {
 			value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
-			values << 'V_FASTC_MULTI_VALUE((${value}))'
+			values << g.multi_return_component(value, values.len)
 			if g.tok != .comma {
 				break
 			}
@@ -1966,7 +1993,7 @@ fn (mut g Parser) read_return_expression_branch() !string {
 	} else if g.selfhost && g.return_type_text() in ['Option', '__v_result'] && value_type !in ['',
 		'Option', '__v_result'] {
 		value_base := fastc_normalize_inferred_type(value_type)
-		return_value = '(${g.return_type_text()}){.data=${fastc_box_expression(value_base, value)}, .state=0}'
+		return_value = g.option_success_expression(g.return_type_text(), value_base, value)
 	}
 	g.last_expression_type = flat.source_type_id('')
 	return '({ return ${return_value}; 0; })'
