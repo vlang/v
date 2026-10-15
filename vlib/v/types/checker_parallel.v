@@ -2866,10 +2866,10 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 // `x.name` or `add(1)` adds a string to `a`. Every other error and warning of the
 // clone is dropped: checked before the clone is lowered, only these are reliable
 // outside checker fixtures, where many valid generic programs would fail. `args`
-// are the types of the instance: the clone spells an alias among them by its
-// base type, and a member of the alias is none of its base (see
+// are source-spelling IDs of the types of the instance: the clone spells an
+// alias among them by its base type, and a member of the alias is none of its base (see
 // member_of_an_alias_argument).
-pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string, args []string) {
+pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string, args []u32) {
 	errors_start := tc.errors.len
 	notices_start := tc.notices.len
 	// The clone was appended after the parent index was built; without its edges
@@ -2897,10 +2897,10 @@ pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file str
 // base type of an alias among the types `args` of an instance, and a member
 // that the alias has: `el.val.pack()` of an `Elm[Octet]`, where the clone
 // spells `Octet` as `string` and `pack` is a method of `Octet`.
-fn (tc &TypeChecker) member_of_an_alias_argument(msg string, args []string) bool {
+fn (tc &TypeChecker) member_of_an_alias_argument(msg string, args []u32) bool {
 	type_name, member := concrete_member_error_parts(msg) or { return false }
 	for arg in args {
-		typ := unwrap_pointer(tc.parse_type(flat.source_type_id(arg)))
+		typ := unwrap_pointer(tc.parse_type(arg))
 		if typ is Alias && unalias_type(typ).name() == type_name
 			&& tc.alias_declares_method(typ, member) {
 			return true

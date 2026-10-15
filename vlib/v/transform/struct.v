@@ -1662,12 +1662,12 @@ fn (t &Transformer) sum_type_for_union_text(field_type_id u32, owner_module stri
 	if raw_variants.len < 2 {
 		return none
 	}
-	mut variants := []string{cap: raw_variants.len}
+	mut variants := []u32{cap: raw_variants.len}
 	for raw in raw_variants {
-		variants << flat.source_type_name(t.normalize_sum_variant_type(flat.source_type_id(raw), owner_module, []))
+		variants << t.normalize_sum_variant_type(flat.source_type_id(raw), owner_module, [])
 	}
 	for sum_name, sum_variants_id in t.sum_types.ids {
-		sum_variants := sum_variants_id.map(flat.source_type_name(it))
+		sum_variants := sum_variants_id
 		if owner_module != '' && sum_name.contains('.')
 			&& sum_name.all_before_last('.') != owner_module {
 			continue
@@ -1696,12 +1696,10 @@ fn (t &Transformer) sum_type_for_union_text(field_type_id u32, owner_module stri
 	return none
 }
 
-fn (t &Transformer) union_variant_text_matches(a string, b string) bool {
-	if t.variant_names_match(flat.source_type_id(a), flat.source_type_id(b)) {
-		return true
-	}
-	if t.is_fixed_array_type(flat.source_type_id(a)) && t.is_fixed_array_type(flat.source_type_id(b)) {
-		return t.resolved_fixed_array_canonical_type(flat.source_type_id(a)) == t.resolved_fixed_array_canonical_type(flat.source_type_id(b))
+fn (t &Transformer) union_variant_text_matches(a u32, b u32) bool {
+	if t.variant_names_match(a, b) { return true }
+	if t.is_fixed_array_type(a) && t.is_fixed_array_type(b) {
+		return t.resolved_fixed_array_canonical_type(a) == t.resolved_fixed_array_canonical_type(b)
 	}
 	return false
 }

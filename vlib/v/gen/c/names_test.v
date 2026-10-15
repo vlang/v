@@ -576,7 +576,7 @@ fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	tc.sum_types.set('b.tast.Value', ['b.tast.Target', 'b.tast.Second'])
 	mut g := FlatGen.new()
 	g.tc = &tc
-	assert g.sum_type_index('tast.Value', 'b.tast.Target') == 0
+	assert g.sum_type_index(flat.source_type_id('tast.Value'), flat.source_type_id('b.tast.Target')) == 0
 }
 
 fn test_sum_type_index_emission_override_is_limited_to_flatgen() {

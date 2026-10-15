@@ -2241,14 +2241,14 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 					if isnil(g.tc) {
 						left / right
 					} else {
-						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), false)
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).source_type_id(), false)
 					}
 				}
 				.mod {
 					if isnil(g.tc) {
 						left % right
 					} else {
-						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), true)
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).source_type_id(), true)
 					}
 				}
 				.amp { left & right }
@@ -2267,7 +2267,7 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 					if isnil(g.tc) {
 						i64(u64(left) >> u64(right))
 					} else {
-						types.comptime_enum_unsigned_right_shift(left, right, types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name())
+						types.comptime_enum_unsigned_right_shift(left, right, types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).source_type_id())
 					}
 				}
 				else { none }
@@ -2395,7 +2395,7 @@ fn (g &FlatGen) enum_comptime_integer_cast(value i64, typ_id u32) i64 {
 	} else {
 		types.unalias_type(g.tc.parse_type(typ_id)).name()
 	}
-	return types.comptime_enum_integer_cast(value, resolved)
+	return types.comptime_enum_integer_cast(value, flat.source_type_id(resolved))
 }
 
 fn (g &FlatGen) enum_comptime_update_locals(stmt flat.Node, mut locals map[string]i64, enum_module string) {
@@ -2468,12 +2468,17 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 			}
 			// C promotes narrow integer operands for unary arithmetic.
 			typ := types.unalias_type(g.usable_expr_type(id)).name()
-			return types.comptime_enum_integer_cast(result, if typ in ['i8', 'u8', 'byte', 'i16',
-				'u16'] {
+			return types.comptime_enum_integer_cast(result, flat.source_type_id(if typ in [
+				'i8',
+				'u8',
+				'byte',
+				'i16',
+				'u16',
+			] {
 				'int'
 			} else {
 				typ
-			})
+			}))
 		}
 		.infix {
 			if node.children_count < 2 {
@@ -2501,14 +2506,14 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 					if isnil(g.tc) {
 						left / right
 					} else {
-						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), false)
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).source_type_id(), false)
 					}
 				}
 				.mod {
 					if isnil(g.tc) {
 						left % right
 					} else {
-						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).name(), true)
+						types.comptime_enum_integer_division(left, right, types.unalias_type(g.usable_expr_type(id)).source_type_id(), true)
 					}
 				}
 				.amp { left & right }
@@ -2527,7 +2532,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 					if isnil(g.tc) {
 						i64(u64(left) >> u64(right))
 					} else {
-						types.comptime_enum_unsigned_right_shift(left, right, types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).name())
+						types.comptime_enum_unsigned_right_shift(left, right, types.unalias_type(g.usable_expr_type(g.a.child(&node, 0))).source_type_id())
 					}
 				}
 				else { return none }
@@ -2535,7 +2540,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, 
 			if isnil(g.tc) {
 				return result
 			}
-			return types.comptime_enum_integer_cast(result, types.unalias_type(g.usable_expr_type(id)).name())
+			return types.comptime_enum_integer_cast(result, types.unalias_type(g.usable_expr_type(id)).source_type_id())
 		}
 		else {
 			return none

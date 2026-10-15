@@ -419,7 +419,7 @@ fn (s &NoAllocScan) custom_operator_storage(typ Type) bool {
 	}
 }
 
-fn (s &NoAllocScan) owning_storage(typ Type, mut seen map[string]bool) bool {
+fn (s &NoAllocScan) owning_storage(typ Type, mut seen map[u32]bool) bool {
 	clean := unalias_type(typ)
 	return match clean {
 		String, Array, Map, Channel, Interface, SumType { true }
@@ -435,10 +435,10 @@ fn (s &NoAllocScan) owning_storage(typ Type, mut seen map[string]bool) bool {
 			owns
 		}
 		Struct {
-			if seen[clean.name()] {
+			if seen[clean.source_type_id()] {
 				false
 			} else {
-				seen[clean.name()] = true
+				seen[clean.source_type_id()] = true
 				mut owns := false
 				for field in s.tc.struct_fields_for_type(clean.name()) {
 					if s.owning_storage(field.typ, mut seen) {
@@ -453,15 +453,15 @@ fn (s &NoAllocScan) owning_storage(typ Type, mut seen map[string]bool) bool {
 	}
 }
 
-fn (s &NoAllocScan) inline_fixed_storage(typ Type, mut seen map[string]bool) bool {
+fn (s &NoAllocScan) inline_fixed_storage(typ Type, mut seen map[u32]bool) bool {
 	clean := unalias_type(unwrap_pointer(typ))
 	return match clean {
 		ArrayFixed { true }
 		Struct {
-			if seen[clean.name()] {
+			if seen[clean.source_type_id()] {
 				false
 			} else {
-				seen[clean.name()] = true
+				seen[clean.source_type_id()] = true
 				mut fixed := false
 				for field in s.tc.struct_fields_for_type(clean.name()) {
 					if s.inline_fixed_storage(field.typ, mut seen) {
@@ -476,7 +476,7 @@ fn (s &NoAllocScan) inline_fixed_storage(typ Type, mut seen map[string]bool) boo
 	}
 }
 
-fn (s &NoAllocScan) executable_defaults(typ Type, mut seen map[string]bool) bool {
+fn (s &NoAllocScan) executable_defaults(typ Type, mut seen map[u32]bool) bool {
 	clean := unalias_type(typ)
 	if clean is ArrayFixed {
 		return s.executable_defaults(clean.elem_type, mut seen)
@@ -487,11 +487,11 @@ fn (s &NoAllocScan) executable_defaults(typ Type, mut seen map[string]bool) bool
 	return false
 }
 
-fn (s &NoAllocScan) struct_executable_defaults(typ Struct, mut seen map[string]bool) bool {
-	if seen[typ.name()] {
+fn (s &NoAllocScan) struct_executable_defaults(typ Struct, mut seen map[u32]bool) bool {
+	if seen[typ.source_type_id()] {
 		return false
 	}
-	seen[typ.name()] = true
+	seen[typ.source_type_id()] = true
 	if declaration := s.tc.source_struct_decl_for_name(typ.name()) {
 		for i in 0 .. declaration.children_count {
 			field := s.tc.a.child_node(&declaration, i)
@@ -561,7 +561,7 @@ fn (mut s NoAllocScan) check_argument_storage(call flat.Node, target NoAllocFunc
 			if expected is Pointer && actual !is Pointer && unalias_type(actual) is Struct {
 				s.report(argument_id, chain, anchor, 'implicit reference to local aggregate may move it to the heap')
 			}
-			mut seen := map[string]bool{}
+			mut seen := map[u32]bool{}
 			if s.inline_fixed_storage(actual, mut seen) {
 				s.report(argument_id, chain, anchor, 'passing inline fixed-array storage by reference may move it to the heap')
 			}
@@ -594,7 +594,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			if unalias_type(array_type) !is ArrayFixed {
 				reason = 'dynamic array initialization allocates'
 			} else {
-				mut seen := map[string]bool{}
+				mut seen := map[u32]bool{}
 				if s.owning_storage(array_type, mut seen) {
 					reason = 'fixed array element initialization may allocate owning storage'
 				}
@@ -638,7 +638,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			} else {
 				node.typ
 			})
-			mut seen := map[string]bool{}
+			mut seen := map[u32]bool{}
 			if s.boxed_storage(target) {
 				reason = 'conversion to an interface or sum type may allocate a box'
 			} else if s.owning_storage(target, mut seen) {
@@ -647,7 +647,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 		}
 		.struct_init, .assoc {
 			typ := s.tc.parse_type(s.type_name(id, parameters))
-			mut seen := map[string]bool{}
+			mut seen := map[u32]bool{}
 			if s.owning_storage(typ, mut seen) {
 				reason = 'initializing aggregate owning storage may allocate or clone defaults'
 			}
@@ -699,7 +699,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 				clean := unalias_type(unwrap_pointer(typ))
 				if node.op == .left_shift && clean is Array {
 					rhs := unalias_type(s.tc.parse_type(s.type_name(s.tc.a.child(node, 1), parameters)))
-					mut seen := map[string]bool{}
+					mut seen := map[u32]bool{}
 					if s.boxed_storage(clean) {
 						reason = 'array element conversion may allocate interface or sum-type storage'
 					} else if s.owning_storage(clean.elem_type, mut seen) {
@@ -722,7 +722,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 				lhs := s.tc.a.child(node, i)
 				rhs := s.tc.a.child(node, i + 1)
 				typ := s.tc.parse_type(s.type_name(lhs, parameters))
-				mut seen := map[string]bool{}
+				mut seen := map[u32]bool{}
 				if s.boxed_storage(typ) {
 					reason = 'assignment conversion may allocate interface or sum-type storage'
 				} else if s.owning_storage(typ, mut seen)
@@ -762,7 +762,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 		.return_stmt {
 			fn_node := s.tc.a.node(decl.id)
 			result_type := s.tc.parse_type(fn_node.typ)
-			mut seen := map[string]bool{}
+			mut seen := map[u32]bool{}
 			if s.owning_storage(result_type, mut seen) {
 				if node.children_count != 1 || s.tc.a.child_node(node, 0).kind != .string_literal
 					|| fn_node.typ != flat.source_type_string {
@@ -848,7 +848,7 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 				if s.boxed_storage(buffer_type) {
 					reason = 'array element conversion may allocate interface or sum-type storage'
 				} else if buffer_type is Array {
-					mut seen := map[string]bool{}
+					mut seen := map[u32]bool{}
 					if s.owning_storage(buffer_type.elem_type, mut seen) {
 						reason = 'appending owning elements may allocate or clone their contents'
 					}

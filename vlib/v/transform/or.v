@@ -1245,10 +1245,10 @@ fn (mut t Transformer) thread_wait_or_expr_type(call flat.Node) ?u32 {
 	}
 	clean := base_type.trim_space().trim_left('&').trim_space()
 	if t.is_fixed_array_type(flat.source_type_id(clean)) {
-		return flat.source_type_id(thread_array_wait_return_type(fixed_array_elem_type(clean))?)
+		return thread_array_wait_return_type(flat.source_type_id(fixed_array_elem_type(clean)))
 	}
 	if clean.starts_with('[]') {
-		return flat.source_type_id(thread_array_wait_return_type(trimmed_transform_text(clean[2..]))?)
+		return thread_array_wait_return_type(flat.source_type_id(trimmed_transform_text(clean[2..])))
 	}
 	if !clean.starts_with('thread ') {
 		return none

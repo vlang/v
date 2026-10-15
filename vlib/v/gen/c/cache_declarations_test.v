@@ -104,7 +104,7 @@ fn test_cache_declarations_include_nested_payloads_and_recursive_fields() {
 	g.a = &a
 	g.tc = &tc
 	g.cache_decl_demand = true
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
 	g.cache_require_declaration_type(types.Struct{ name_id: flat.source_type_id('sample.Parent') }, mut seen)
 	names := g.c_struct_decl_names()
 	assert 'sample.Parent' in names

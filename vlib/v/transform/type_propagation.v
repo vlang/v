@@ -3,6 +3,9 @@ module transform
 import v.flat
 import v.types
 
+const transform_source_type_thread = flat.source_type_id('thread')
+const transform_source_type_chan = flat.source_type_id('chan')
+
 @[heap]
 struct NodeTypeMemo {
 mut:
@@ -98,91 +101,64 @@ fn (mut t Transformer) propagate_decl_type(node flat.Node) {
 }
 
 fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs_idx int, fallback_type_id u32) {
-	fallback_type := flat.source_type_name(fallback_type_id)
-	if lhs_idx >= node.children_count || rhs_idx >= node.children_count {
-		return
-	}
+	if lhs_idx >= node.children_count || rhs_idx >= node.children_count { return }
 	lhs_id := t.a.child(&node, lhs_idx)
 	lhs := t.a.nodes[int(lhs_id)]
-	if lhs.kind != .ident || lhs.value.len == 0 {
-		return
-	}
+	if lhs.kind != .ident || lhs.value.len == 0 { return }
 	mut typ := u32(0)
 	rhs_id := t.a.child(&node, rhs_idx)
 	rhs := t.a.nodes[int(rhs_id)]
-	rhs_authority_source_id := t.decl_rhs_type(rhs_id)
-	rhs_authority_source_id_2 := rhs_authority_source_id
-	rhs_authority_source_id_3 := rhs_authority_source_id_2
-	rhs_authority := flat.source_type_name(rhs_authority_source_id_3)
-	if t.is_fn_pointer_type_name(rhs_authority_source_id) {
-		typ = rhs_authority_source_id_3
-	} else if t.decl_type_should_override_fallback(rhs_authority, fallback_type, rhs) {
-		typ = rhs_authority_source_id_3
+	authority := t.decl_rhs_type(rhs_id)
+	if t.is_fn_pointer_type_name(authority) || t.decl_type_should_override_fallback(authority, fallback_type_id, rhs) {
+		typ = authority
 	} else if decl_type_is_usable(fallback_type_id) {
 		typ = fallback_type_id
-	} else {
-		if decl_type_is_usable(rhs_authority_source_id_2) {
-			typ = rhs_authority_source_id_3
-		} else if decl_type_is_usable(lhs.typ) {
-			typ = lhs.typ
-		}
+	} else if decl_type_is_usable(authority) {
+		typ = authority
+	} else if decl_type_is_usable(lhs.typ) {
+		typ = lhs.typ
 	}
-	if typ != 0 {
-		t.set_var_type_with_raw(lhs.value, t.normalize_type_alias(typ), typ)
-	}
+	if typ != 0 { t.set_var_type_with_raw(lhs.value, t.normalize_type_alias(typ), typ) }
 }
 
-fn (t &Transformer) decl_type_should_override_fallback(authority string, fallback string, rhs flat.Node) bool {
-	if !decl_type_is_usable(flat.source_type_id(authority)) {
-		return false
-	}
-	if !decl_type_is_usable(flat.source_type_id(fallback)) {
+fn (t &Transformer) decl_type_should_override_fallback(authority_id u32, fallback_id u32, rhs flat.Node) bool {
+	if !decl_type_is_usable(authority_id) { return false }
+	if !decl_type_is_usable(fallback_id) { return true }
+	if authority_id != fallback_id && rhs.kind in [.bool_literal, .char_literal, .float_literal,
+		.int_literal, .string_literal, .string_interp] {
 		return true
 	}
-	if authority != fallback
-		&& rhs.kind in [.bool_literal, .char_literal, .float_literal, .int_literal, .string_literal,
-			.string_interp] {
+	if t.local_struct_type_overrides_imported_alias(authority_id, fallback_id) { return true }
+	if rhs.kind == .as_expr { return true }
+	if rhs.kind == .ident && authority_id != fallback_id {
+		if t.has_smartcast(rhs.value) || t.var_type(rhs.value) == authority_id { return true }
+	}
+	authority_shape := flat.source_type_shape(authority_id)
+	fallback_shape := flat.source_type_shape(fallback_id)
+	if rhs.kind == .call && authority_id != fallback_id && authority_shape.has(.dotted)
+		&& flat.source_type_name(authority_id).all_after_last('.') == flat.source_type_name(fallback_id).all_after_last('.') {
 		return true
 	}
-	if t.local_struct_type_overrides_imported_alias(authority, fallback) {
+	if rhs.kind == .spawn_expr && fallback_id == transform_source_type_thread && authority_shape.has(.thread_type) {
 		return true
 	}
-	if rhs.kind == .as_expr {
-		return true
-	}
-	if rhs.kind == .ident && authority != fallback {
-		if t.has_smartcast(rhs.value) {
-			return true
-		}
-		if flat.source_type_name(t.var_type(rhs.value)) == authority {
-			return true
-		}
-	}
-	if rhs.kind == .call && authority != fallback && authority.contains('.')
-		&& authority.all_after_last('.') == fallback.all_after_last('.') {
-		return true
-	}
-	if rhs.kind == .spawn_expr && fallback == 'thread' && authority.starts_with('thread ') {
-		return true
-	}
-	if rhs.kind == .infix && rhs.op == .right_shift_unsigned {
-		return true
-	}
+	if rhs.kind == .infix && rhs.op == .right_shift_unsigned { return true }
 	// A mutable pointer parameter is represented by one extra C indirection. An
 	// explicit source dereference is lowered through that slot, and its transformed
 	// prefix is the reliable value type (`u64`), even if the original declaration
 	// annotation still carries the parameter's pointer type (`&u64`).
-	if t.decl_rhs_has_deref_tail(rhs) && authority != fallback
-		&& fallback.starts_with('&') && !authority.starts_with('&') {
+	if t.decl_rhs_has_deref_tail(rhs) && authority_id != fallback_id && fallback_shape.has(.pointer) && !authority_shape.has(.pointer) {
 		return true
 	}
-	if map_value_starts_with_fixed_array(authority) && fallback.starts_with('map[') {
+	if map_value_starts_with_fixed_array(flat.source_type_name(authority_id)) && fallback_shape.has(.map_type) {
 		return true
 	}
-	return authority.starts_with('&') && !fallback.starts_with('&')
+	return authority_shape.has(.pointer) && !fallback_shape.has(.pointer)
 }
 
-fn (t &Transformer) local_struct_type_overrides_imported_alias(authority string, fallback string) bool {
+fn (t &Transformer) local_struct_type_overrides_imported_alias(authority_id u32, fallback_id u32) bool {
+	authority := flat.source_type_name(authority_id)
+	fallback := flat.source_type_name(fallback_id)
 	mut local := trimmed_transform_text(authority)
 	mut imported := trimmed_transform_text(fallback)
 	for prefix in ['[]', '&', '?', '!'] {
@@ -908,40 +884,31 @@ fn (t &Transformer) builtin_selector_type(base_type_id u32, field_name string) ?
 }
 
 fn (t &Transformer) lookup_sum_variant_field_type(sum_type_id u32, field_name string) ?u32 {
-	return t.lookup_sum_variant_field_type_seen(sum_type_id, field_name, []string{})
+	return t.lookup_sum_variant_field_type_seen(sum_type_id, field_name, []u32{})
 }
 
-fn (t &Transformer) lookup_sum_variant_field_type_seen(sum_type_id u32, field_name string, seen []string) ?u32 {
-	resolved_source_id_2 := t.resolve_sum_name(t.trim_pointer_type(t.normalize_type_alias(sum_type_id)))
-	resolved := flat.source_type_name(resolved_source_id_2)
-	if resolved_source_id_2 == 0 || resolved in seen {
-		return none
-	}
-	variants := flat.TypeTextList{ ids: t.sum_types.type_ids(resolved) or { return none } }.names()
-	mut next_seen := seen.clone()
+fn (t &Transformer) lookup_sum_variant_field_type_seen(sum_type_id u32, field_name string, seen_ids []u32) ?u32 {
+	resolved := t.resolve_sum_name(t.trim_pointer_type(t.normalize_type_alias(sum_type_id)))
+	if resolved == 0 || resolved in seen_ids { return none }
+	variants := t.sum_types.type_ids(flat.source_type_name(resolved)) or { return none }
+	mut next_seen := seen_ids.clone()
 	next_seen << resolved
-	mut found := ''
+	mut found := u32(0)
 	for variant in variants {
-		mut ftyp := ''
-		if vt_source_id := t.lookup_struct_field_type(flat.source_type_id(variant), field_name) {
-			ftyp = flat.source_type_name(t.normalize_type_alias(vt_source_id))
-		} else if vt_source_id := t.checker_struct_field_type_name(flat.source_type_id(variant), field_name) {
-			ftyp = flat.source_type_name(t.normalize_type_alias(vt_source_id))
-		} else if nested_source_id := t.lookup_sum_variant_field_type_seen(flat.source_type_id(variant), field_name, next_seen) {
-			ftyp = flat.source_type_name(t.normalize_type_alias(nested_source_id))
+		mut ftyp := u32(0)
+		if vt := t.lookup_struct_field_type(variant, field_name) {
+			ftyp = t.normalize_type_alias(vt)
+		} else if vt := t.checker_struct_field_type_name(variant, field_name) {
+			ftyp = t.normalize_type_alias(vt)
+		} else if vt := t.lookup_sum_variant_field_type_seen(variant, field_name, next_seen) {
+			ftyp = t.normalize_type_alias(vt)
 		}
-		if ftyp.len == 0 {
-			continue
-		}
-		if found != '' && found != ftyp {
-			return none
-		}
+		if ftyp == 0 { continue }
+		if found != 0 && found != ftyp { return none }
 		found = ftyp
 	}
-	if found.len == 0 {
-		return none
-	}
-	return flat.source_type_id(found)
+	if found == 0 { return none }
+	return found
 }
 
 // is_c_int_selector reports whether is c int selector applies in transform.

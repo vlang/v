@@ -16269,13 +16269,13 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 	}
 	sum_type := actual as types.SumType
 	sum_name := sum_type.name()
-	variant := g.resolve_variant(sum_name, expected_type.name())
+	variant := flat.source_type_name(g.resolve_variant(flat.source_type_id(sum_name), flat.source_type_id(expected_type.name())))
 	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return false } }.names()
 	if variant !in variants {
 		return false
 	}
 	is_ptr_arg := g.tc.resolve_type(arg_id) is types.Pointer
-	is_ref_variant := g.variant_references_sum(variant, sum_name)
+	is_ref_variant := g.variant_references_sum(flat.source_type_id(variant), flat.source_type_id(sum_name))
 	if is_ref_variant {
 		g.write('(*')
 	}

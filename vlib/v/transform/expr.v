@@ -901,7 +901,7 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 				}
 				return err_eq
 			}
-			eq := t.make_interface_semantic_eq_expr(lhs, rhs, flat.source_type_id(iface), []string{})
+			eq := t.make_interface_semantic_eq_expr(lhs, rhs, flat.source_type_id(iface), []EqualityTypeVisit{})
 			if node.op == .ne {
 				return t.make_prefix(.not, eq)
 			}
@@ -2226,7 +2226,7 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 		rhs = t.make_prefix(.mul, rhs)
 		t.set_node_typ(int(rhs), flat.source_type_id(rhs_type))
 	}
-	eq := t.make_sum_semantic_eq_expr(lhs, rhs, sum_type_source_id, []string{})
+	eq := t.make_sum_semantic_eq_expr(lhs, rhs, sum_type_source_id, []EqualityTypeVisit{})
 	if node.op == .ne {
 		return t.make_prefix(.not, t.make_paren(eq))
 	}
@@ -2321,7 +2321,7 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		t.invalidate_smartcast_for_lvalue(rhs_id)
 		lhs_value := t.stable_optional_wrapper_expr_for_reuse(lhs_id, lhs_type, 'opt_eq_lhs')
 		rhs_value := t.stable_optional_wrapper_expr_for_reuse(rhs_id, rhs_type, 'opt_eq_rhs')
-		eq := t.make_optional_semantic_eq_expr(lhs_value, rhs_value, lhs_type, rhs_type, []string{})
+		eq := t.make_optional_semantic_eq_expr(lhs_value, rhs_value, lhs_type, rhs_type, []EqualityTypeVisit{})
 		if node.op == .ne {
 			return t.make_prefix(.not, t.make_paren(eq))
 		}
@@ -3426,12 +3426,22 @@ fn (t &Transformer) resolved_membership_element_type(base flat.NodeId, fallback_
 	return fallback_id
 }
 
-// make_membership_eq_expr builds make membership eq expr data for transform.
-fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId, elem_type_id u32) flat.NodeId {
-	return t.make_membership_eq_expr_with_seen(lhs, rhs, elem_type_id, []string{})
+enum EqualityTypeVisitKind {
+	struct_type
+	interface_type
 }
 
-fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, elem_type_id u32, seen []string) flat.NodeId {
+struct EqualityTypeVisit {
+	typ  u32
+	kind EqualityTypeVisitKind
+}
+
+// make_membership_eq_expr builds make membership eq expr data for transform.
+fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId, elem_type_id u32) flat.NodeId {
+	return t.make_membership_eq_expr_with_seen(lhs, rhs, elem_type_id, []EqualityTypeVisit{})
+}
+
+fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, elem_type_id u32, seen []EqualityTypeVisit) flat.NodeId {
 	if t.membership_type_is_pointer(elem_type_id) {
 		clean_ptr_source_id := t.membership_container_type(elem_type_id)
 
@@ -3524,18 +3534,19 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 	}
 	struct_type := t.struct_lookup_name(clean)
 	if struct_type.len > 0 {
-		if method_name := t.struct_operator_fn_name_any(flat.source_type_id(struct_type), '==') {
+		struct_type_id := flat.source_type_id(struct_type)
+		if method_name := t.struct_operator_fn_name_any(struct_type_id, '==') {
 			t.mark_fn_used_name(method_name)
 			return t.make_call_typed(method_name, [lhs, rhs], flat.source_type_bool)
 		}
-		if struct_type in seen {
-			return t.make_recursive_struct_eq_expr(lhs, rhs, flat.source_type_id(struct_type))
+		if EqualityTypeVisit{ typ: struct_type_id, kind: .struct_type } in seen {
+			return t.make_recursive_struct_eq_expr(lhs, rhs, struct_type_id)
 		}
-		if field_eq := t.make_struct_field_eq_expr_with_seen(lhs, rhs, flat.source_type_id(struct_type), seen) {
+		if field_eq := t.make_struct_field_eq_expr_with_seen(lhs, rhs, struct_type_id, seen) {
 			return field_eq
 		}
 		cmp := t.make_call_typed('C.memcmp', [t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
-			t.make_sizeof_type(flat.source_type_id(struct_type))], flat.source_type_int)
+			t.make_sizeof_type(struct_type_id)], flat.source_type_int)
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
 	return t.make_infix(.eq, lhs, rhs)
@@ -3588,7 +3599,7 @@ fn (mut t Transformer) box_membership_interface_eq_rhs(rhs flat.NodeId, interfac
 // allocations. The comparison is delegated to a synthesized helper fn
 // (__v3_sum_eq_<name>) so recursive types (an XML node tree, an AST) compare
 // correctly at any depth — the helper is generated after the transform pass.
-fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, sum_type_id u32, seen []string) flat.NodeId {
+fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, sum_type_id u32, seen []EqualityTypeVisit) flat.NodeId {
 	_ = seen
 	clean_sum_source_id, variants_source_ids_2 := t.sum_eq_type_and_variants(t.trim_pointer_type(sum_type_id)) or {
 		return t.make_memcmp_eq_expr(lhs, rhs, sum_type_id, 'eq')
@@ -3848,7 +3859,7 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string, helper string) {
 			// a variant that aliases back to this same sum: recurse via the helper
 			t.make_call_typed(helper, [lhs_payload, rhs_payload], flat.source_type_bool)
 		} else {
-			t.make_membership_eq_expr_with_seen(lhs_payload, rhs_payload, qv_source_id, []string{})
+			t.make_membership_eq_expr_with_seen(lhs_payload, rhs_payload, qv_source_id, []EqualityTypeVisit{})
 		}
 		mut body_stmts := t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
@@ -3924,7 +3935,7 @@ fn (mut t Transformer) fixed_array_memcmp_addr(expr flat.NodeId) flat.NodeId {
 	return t.make_prefix(.amp, expr)
 }
 
-fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, lhs_opt_type_id u32, rhs_opt_type_id u32, seen []string) flat.NodeId {
+fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, lhs_opt_type_id u32, rhs_opt_type_id u32, seen []EqualityTypeVisit) flat.NodeId {
 	lhs_value := t.stable_transformed_expr_for_reuse(lhs, lhs_opt_type_id, 'opt_eq_lhs')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_opt_type_id, 'opt_eq_rhs')
 	lhs_ok := t.make_selector(lhs_value, 'ok', flat.source_type_bool)
@@ -3974,7 +3985,7 @@ fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.
 	return result
 }
 
-fn (mut t Transformer) make_optional_pointer_payload_eq_expr(lhs flat.NodeId, rhs flat.NodeId, pointee_type_id u32, seen []string) flat.NodeId {
+fn (mut t Transformer) make_optional_pointer_payload_eq_expr(lhs flat.NodeId, rhs flat.NodeId, pointee_type_id u32, seen []EqualityTypeVisit) flat.NodeId {
 	ptr_same := t.make_infix(.eq, lhs, rhs)
 	result_name := t.new_temp('opt_ptr_eq')
 	t.pending_stmts << t.make_decl_assign_typed(result_name, ptr_same, flat.source_type_bool)
@@ -4059,10 +4070,10 @@ fn (t &Transformer) type_needs_semantic_eq(typ_id u32) bool {
 }
 
 fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, elem_type_id u32, lhs_type_id u32, rhs_type_id u32, src flat.Node) flat.NodeId {
-	return t.make_array_elementwise_eq_call_with_seen(lhs, rhs, elem_type_id, lhs_type_id, rhs_type_id, src, []string{})
+	return t.make_array_elementwise_eq_call_with_seen(lhs, rhs, elem_type_id, lhs_type_id, rhs_type_id, src, []EqualityTypeVisit{})
 }
 
-fn (mut t Transformer) make_array_elementwise_eq_call_with_seen(lhs flat.NodeId, rhs flat.NodeId, elem_type_id u32, lhs_type_id u32, rhs_type_id u32, src flat.Node, seen []string) flat.NodeId {
+fn (mut t Transformer) make_array_elementwise_eq_call_with_seen(lhs flat.NodeId, rhs flat.NodeId, elem_type_id u32, lhs_type_id u32, rhs_type_id u32, src flat.Node, seen []EqualityTypeVisit) flat.NodeId {
 	mut clean_elem := t.membership_container_type(elem_type_id)
 	if t.is_fixed_array_type(clean_elem) {
 		clean_elem = t.resolved_fixed_array_canonical_type(clean_elem)
@@ -4094,10 +4105,10 @@ fn (mut t Transformer) make_array_elementwise_eq_call_with_seen(lhs flat.NodeId,
 }
 
 fn (mut t Transformer) make_fixed_array_elementwise_eq_expr(lhs flat.NodeId, rhs flat.NodeId, fixed_type_id u32) ?flat.NodeId {
-	return t.make_fixed_array_elementwise_eq_expr_with_seen(lhs, rhs, fixed_type_id, []string{})
+	return t.make_fixed_array_elementwise_eq_expr_with_seen(lhs, rhs, fixed_type_id, []EqualityTypeVisit{})
 }
 
-fn (mut t Transformer) make_fixed_array_elementwise_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, fixed_type_id u32, seen []string) ?flat.NodeId {
+fn (mut t Transformer) make_fixed_array_elementwise_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, fixed_type_id u32, seen []EqualityTypeVisit) ?flat.NodeId {
 	clean_fixed_type_source_id := t.resolved_fixed_array_canonical_type(fixed_type_id)
 	clean_fixed_type_source_id_2 := clean_fixed_type_source_id
 	clean_fixed_type := flat.source_type_name(clean_fixed_type_source_id_2)
@@ -4130,10 +4141,10 @@ fn (mut t Transformer) make_fixed_array_elementwise_eq_expr_with_seen(lhs flat.N
 }
 
 fn (mut t Transformer) make_map_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, map_type_id u32, src flat.Node) flat.NodeId {
-	return t.make_map_elementwise_eq_call_with_seen(lhs, rhs, map_type_id, src, []string{})
+	return t.make_map_elementwise_eq_call_with_seen(lhs, rhs, map_type_id, src, []EqualityTypeVisit{})
 }
 
-fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, rhs flat.NodeId, map_type_id u32, src flat.Node, seen []string) flat.NodeId {
+fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, rhs flat.NodeId, map_type_id u32, src flat.Node, seen []EqualityTypeVisit) flat.NodeId {
 	key_type_source_id, raw_value_type_source_id := t.map_type_parts(map_type_id)
 
 	raw_value_type_source_id_2 := raw_value_type_source_id
@@ -4233,16 +4244,15 @@ fn (mut t Transformer) refine_contextual_map_ident_type(id flat.NodeId, map_type
 }
 
 fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeId, struct_type_id u32) ?flat.NodeId {
-	return t.make_struct_field_eq_expr_with_seen(lhs, rhs, struct_type_id, []string{})
+	return t.make_struct_field_eq_expr_with_seen(lhs, rhs, struct_type_id, []EqualityTypeVisit{})
 }
 
-fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, struct_type_id u32, seen []string) ?flat.NodeId {
-	struct_type := flat.source_type_name(struct_type_id)
+fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, struct_type_id u32, seen []EqualityTypeVisit) ?flat.NodeId {
 	info := t.lookup_struct_info(struct_type_id) or { return none }
 	lhs_value := t.struct_equality_operand(lhs, struct_type_id, 'struct_eq_lhs')
 	rhs_value := t.struct_equality_operand(rhs, struct_type_id, 'struct_eq_rhs')
 	mut next_seen := seen.clone()
-	next_seen << struct_type
+	next_seen << EqualityTypeVisit{ typ: struct_type_id, kind: .struct_type }
 	mut eq := flat.empty_node
 	for field in info.fields {
 		field_type_source_id := t.lookup_struct_field_type(struct_type_id, field.name) or {
@@ -4279,13 +4289,13 @@ fn (mut t Transformer) struct_equality_operand(expr flat.NodeId, typ_id u32, pre
 	return t.make_ident(tmp_name)
 }
 
-fn (mut t Transformer) make_interface_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, interface_type_id u32, seen []string) flat.NodeId {
+fn (mut t Transformer) make_interface_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, interface_type_id u32, seen []EqualityTypeVisit) flat.NodeId {
 	iface_source_id := t.resolve_interface_type_name(interface_type_id)
 	iface := flat.source_type_name(iface_source_id)
 	if iface_source_id == 0 || isnil(t.tc) {
 		return t.make_memcmp_eq_expr(lhs, rhs, interface_type_id, 'iface_eq')
 	}
-	seen_key := 'interface:${iface}'
+	seen_key := EqualityTypeVisit{ typ: iface_source_id, kind: .interface_type }
 	if seen_key in seen {
 		return t.make_memcmp_eq_expr(lhs, rhs, iface_source_id, 'iface_eq_cycle')
 	}
