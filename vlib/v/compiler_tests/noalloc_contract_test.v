@@ -27,6 +27,21 @@ fn test_noalloc_contracts_in_build_and_check() {
 			source:   'fn allocating() int { return [1, 2].len }\nstruct Item { n int = allocating() }\n@[noalloc]\nfn handler() int { return Item{n: 3}.n }\nfn main() { assert handler() == 3 }\n'
 		}
 		NoallocCase{
+			name:     'positional_overridden_default'
+			accepted: true
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Item { n int = allocating() }\n@[noalloc]\nfn handler() int { return Item{3}.n }\nfn main() { assert handler() == 3 }\n'
+		}
+		NoallocCase{
+			name:     'promoted_overridden_default'
+			accepted: true
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Inner { n int = allocating() }\nstruct Outer { Inner }\n@[noalloc]\nfn handler() int { return Outer{n: 3}.n }\nfn main() { assert handler() == 3 }\n'
+		}
+		NoallocCase{
+			name:     'promoted_uninitialized_default'
+			accepted: false
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Inner { n int = allocating() }\nstruct Outer { Inner; other int }\n@[noalloc]\nfn handler() int { return Outer{other: 3}.n }\nfn main() { _ = handler() }\n'
+		}
+		NoallocCase{
 			name:     'nil_default'
 			accepted: true
 			source:   'struct Span { base &u8 = unsafe { nil }; len int }\n@[noalloc]\nfn handler() Span { return Span{} }\nfn main() { _ = handler() }\n'

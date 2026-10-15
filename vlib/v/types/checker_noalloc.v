@@ -514,8 +514,15 @@ fn (s &NoAllocScan) struct_executable_defaults(typ Struct, initialized []string,
 			}
 		}
 	}
-	for field in s.tc.struct_fields_for_type(typ.name()) {
-		if field.name !in initialized && s.executable_defaults(field.typ, mut seen) {
+	fields := s.tc.struct_fields_for_type(typ.name())
+	direct_names := fields.filter(!it.is_embed).map(it.name)
+	promoted := initialized.filter(it !in direct_names)
+	for field in fields {
+		if field.name in initialized { continue }
+		clean := unalias_type(field.typ)
+		if field.is_embed && clean is Struct {
+			if s.struct_executable_defaults(clean, promoted, mut seen) { return true }
+		} else if s.executable_defaults(field.typ, mut seen) {
 			return true
 		}
 	}
@@ -667,9 +674,17 @@ fn (mut s NoAllocScan) walk(id flat.NodeId, decl NoAllocFunction, chain []string
 			seen.clear()
 			if node.kind == .struct_init {
 				mut initialized := []string{}
+				fields := s.tc.struct_fields_for_init(typ.name())
+				mut positional := 0
 				for i in 0 .. node.children_count {
 					field := s.tc.a.child_node(node, i)
-					if field.kind == .field_init { initialized << field.value }
+					if field.kind != .field_init { continue }
+					if field.value != '' {
+						initialized << field.value
+					} else if positional < fields.len {
+						initialized << fields[positional].name
+						positional++
+					}
 				}
 				clean := unalias_type(typ)
 				if clean is Struct {
