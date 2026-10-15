@@ -8,3 +8,6 @@ Live functions can call other live functions and retain their arguments and retu
 The executable keeps its existing state during reloads. Calls and library replacement share a
 recursive mutex, so a nested live call does not deadlock and a library is not unloaded mid-call.
 Source change detection uses whole-second modification times.
+
+Reloads reuse the original compiler options, including defines, optimization, memory management,
+module search paths, and C/linker flags. Executable output paths and program arguments are excluded.

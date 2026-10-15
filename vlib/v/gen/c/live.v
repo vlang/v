@@ -8,6 +8,11 @@ pub fn (mut g FlatGen) set_live_source_path(path string) {
 	g.live_source_path = os.real_path(path)
 }
 
+// set_live_rebuild_options records compiler arguments reused by the live shared-library build.
+pub fn (mut g FlatGen) set_live_rebuild_options(options []string) {
+	g.live_rebuild_options = options.map(os.quoted_path(it)).join(' ')
+}
+
 fn (g &FlatGen) is_live_function(id flat.NodeId) bool {
 	return ('livemain' in g.compile_defines || 'sharedlive' in g.compile_defines)
 		&& 'live' in g.fn_decl_attributes(id)
@@ -95,11 +100,15 @@ fn (mut g FlatGen) gen_live_initialization() {
 	if 'livemain' !in g.compile_defines { return }
 	functions := g.live_functions()
 	if functions.len == 0 { return }
-	options := '-cc ${os.quoted_path(g.ccompiler)} -sharedlive -shared ${if g.is_debug {
-		'-cg'
+	options := if g.live_rebuild_options != '' {
+		g.live_rebuild_options + ' -sharedlive -shared'
 	} else {
-		''
-	}}'
+		'-cc ${os.quoted_path(g.ccompiler)} -sharedlive -shared ${if g.is_debug {
+			'-cg'
+		} else {
+			''
+		}}'
+	}
 	g.writeln('{')
 	g.writeln('live__LiveReloadInfo* live_info = executable__new_live_reload_info(_S("${reflection_c_string(g.live_source_path)}"), _S("${reflection_c_string(g.compiler_vexe)}"), _S("${reflection_c_string(options)}"), v_live_fn_mutex_ptr(), v_bind_live_symbols);')
 	mut files := map[string]bool{}
