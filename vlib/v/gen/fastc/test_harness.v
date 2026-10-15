@@ -158,8 +158,7 @@ fn fastc_synthesized_test_main(functions map[string]FastcFunctionSignature, func
 	out.writeln('\tv_fastc_test_assert_report(where, message);')
 	out.writeln('\tv_fastc_test_fail_transfer();')
 	out.writeln('}')
-	parameters := if selfhost { 'int argc, char **argv' } else { 'void' }
-	out.writeln('int main(${parameters}) {')
+	out.writeln('int ${fastc_c_main_name(prefs)}(${fastc_c_main_parameters(prefs)}) {')
 	out.writeln('\tsetvbuf(stdout, NULL, _IONBF, 0);')
 	if selfhost {
 		out.writeln('\tg_main_argc = argc;')

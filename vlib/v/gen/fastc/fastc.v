@@ -2288,8 +2288,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		fastc_synthesized_test_main(functions, function_c_names, prefs, startup_initializers.len > 0,
 			module_cleanup_calls.len > 0)!
 	} else if has_entry_module && !entry_has_main {
-		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0, module_cleanup_calls.len > 0,
-			prefs.target_libc_headers)
+		fastc_synthesized_main(prefs, startup_initializers.len > 0, module_cleanup_calls.len > 0)
 	} else {
 		''
 	}
@@ -3619,10 +3618,32 @@ fn fastc_build_struct_field_lookup(struct_field_info map[string][]FastcStructFie
 	return struct_field_lookup
 }
 
-fn fastc_synthesized_main(selfhost bool, has_startup_inits bool, has_cleanup_hooks bool, target_libc_headers bool) string {
+// fastc_c_main_name returns the C entry point name for the target. Windows
+// executables link with `-municode` (v.driver's Windows linker flags), whose CRT
+// startup calls `wmain` instead of `main`; the C backend emits the same entry.
+fn fastc_c_main_name(prefs &pref.Preferences) string {
+	return if prefs.normalized_target_os() == 'windows' { 'wmain' } else { 'main' }
+}
+
+// fastc_c_main_parameters returns the entry point parameter list. Selfhost builds
+// store argv in g_main_argv, which builtin.arguments decodes as wide strings on
+// Windows, so the Windows entry receives `wchar_t **argv`.
+fn fastc_c_main_parameters(prefs &pref.Preferences) string {
+	if !prefs.building_v {
+		return 'void'
+	}
+	return if prefs.normalized_target_os() == 'windows' {
+		'int argc, wchar_t **argv'
+	} else {
+		'int argc, char **argv'
+	}
+}
+
+fn fastc_synthesized_main(prefs &pref.Preferences, has_startup_inits bool, has_cleanup_hooks bool) string {
 	mut result := strings.new_builder(256)
-	parameters := if selfhost { 'int argc, char **argv' } else { 'void' }
-	result.writeln('int main(${parameters}) {')
+	selfhost := prefs.building_v
+	target_libc_headers := prefs.target_libc_headers
+	result.writeln('int ${fastc_c_main_name(prefs)}(${fastc_c_main_parameters(prefs)}) {')
 	if !target_libc_headers {
 		result.writeln('\tsetvbuf(stdout, NULL, _IONBF, 0);')
 	}
