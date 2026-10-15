@@ -13,8 +13,8 @@ fn main() {
 	os.chdir(@VEXEROOT)!
 
 	// The amalgamation is pinned, not taken as the newest one from sqlite.org:
-	// SQLite 3.54.0 uses SRWLOCK in its Windows mutex code, and the tcc Windows
-	// headers do not declare it, so `v -cc tcc` cannot build that version.
+	// SQLite 3.54.0 uses SRWLOCK in its Windows mutex code, and tcc's windows.h
+	// does not declare it, so `v -cc tcc` cannot build that version.
 	// Move the pin forward only after tcc builds the new amalgamation.
 	version := '3.53.4'
 	zip_name := 'sqlite-amalgamation-3530400.zip'
