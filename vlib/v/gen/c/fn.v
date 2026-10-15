@@ -122,6 +122,11 @@ fn (mut g FlatGen) gen_fns() {
 	g.gen_fn_items(g.ensure_fn_gen_items())
 }
 
+fn (g &FlatGen) test_failure_jump_prefix() string {
+	// TSan's Linux longjmp interceptor cannot decode glibc 2.44's pointer guard.
+	return if g.race && g.target.os == 'linux' { '_' } else { '' }
+}
+
 fn (mut g FlatGen) gen_test_failure_global() {
 	if g.test_files.len > 0 {
 		if g.cache_split {
@@ -133,7 +138,7 @@ fn (mut g FlatGen) gen_test_failure_global() {
 		g.writeln('static int __v_test_jump_active = 0;')
 		g.writeln('void __v_test_fail_transfer(void) {')
 		g.writeln('\t__test_failures++;')
-		g.writeln('\tif (__v_test_jump_active) { longjmp(__v_test_jump_buffer, 1); }')
+		g.writeln('\tif (__v_test_jump_active) { ${g.test_failure_jump_prefix()}longjmp(__v_test_jump_buffer, 1); }')
 		g.writeln('\texit(1);')
 		g.writeln('}')
 		if g.show_test_stats {
@@ -5963,7 +5968,7 @@ fn (mut g FlatGen) gen_test_main() {
 		}
 		g.writeln('int __test_failures_before_${idx} = __test_failures;')
 		g.writeln('__v_test_jump_active = 1;')
-		g.writeln('if (setjmp(__v_test_jump_buffer) == 0) {')
+		g.writeln('if (${g.test_failure_jump_prefix()}setjmp(__v_test_jump_buffer) == 0) {')
 		g.indent++
 		if hooks.before_each.len > 0 {
 			g.writeln('${hooks.before_each}();')
@@ -5979,7 +5984,7 @@ fn (mut g FlatGen) gen_test_main() {
 		g.gen_test_panic_frames_reset()
 		if hooks.after_each.len > 0 {
 			g.writeln('__v_test_jump_active = 1;')
-			g.writeln('if (setjmp(__v_test_jump_buffer) == 0) {')
+			g.writeln('if (${g.test_failure_jump_prefix()}setjmp(__v_test_jump_buffer) == 0) {')
 			g.indent++
 			g.writeln('${hooks.after_each}();')
 			g.indent--

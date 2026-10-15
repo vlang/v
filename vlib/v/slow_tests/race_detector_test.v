@@ -613,6 +613,42 @@ fn test_race_detector() {
 	assert synchronized_run.output.contains('race: true'), synchronized_run.output
 }
 
+fn test_race_failed_assertions_continue_to_later_tests_and_hooks() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	program := build_race_program('assertion_continue_test', 'fn test_first_fails() {
+	assert false, "planted failure"
+}
+fn test_second_runs() {
+	println("second test ran")
+}
+fn after_each() {
+	assert false, "hook failure"
+}
+', '-skip-running')
+	result := os.exec([program])
+	assert result.exit_code == 1, result.output
+	assert result.output.contains('planted failure'), result.output
+	assert result.output.contains('second test ran'), result.output
+	assert result.output.count('Message: hook failure') == 2, result.output
+	assert !result.output.contains("can't find longjmp buf"), result.output
+}
+
+fn test_race_is_still_reported_after_a_failed_assertion() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	source := 'fn test_first_fails() { assert false, "planted failure" }\n'
+		+ racy_source.replace('fn main()', 'fn test_second_races()')
+	program := build_race_program('assertion_then_race_test', source, '-skip-running')
+	result := os.exec([program])
+	assert result.exit_code == 66, result.output
+	assert result.output.contains('planted failure'), result.output
+	assert result.output.contains('WARNING: ThreadSanitizer: data race'), result.output
+	assert result.output.contains('joined true'), result.output
+}
+
 fn test_race_rejects_a_garbage_collector() {
 	source_path := os.join_path(tdir, 'gc.v')
 	os.write_file(source_path, 'fn main() {}\n')!
