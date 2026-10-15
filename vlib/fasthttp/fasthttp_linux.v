@@ -5,6 +5,9 @@ import sync.stdatomic
 import time
 
 const epoll_wait_timeout_ms = 100
+
+// Pending readiness stays queued in epoll; a worker need not reserve one slot per connection.
+const epoll_event_batch_size = 256
 const status_408_response = 'HTTP/1.1 408 Request Timeout\r\nContent-Type: text/plain\r\nContent-Length: 19\r\nConnection: close\r\n\r\n408 Request Timeout'.bytes()
 
 // Per-connection buffer capacities. Both buffers are allocated once per connection
@@ -994,13 +997,13 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	if server.make_state != unsafe { nil } {
 		w.worker_state = server.make_state()
 	}
-	mut events := [max_connection_size]C.epoll_event{}
+	mut events := [epoll_event_batch_size]C.epoll_event{}
 	for {
 		if server.is_shutting_down() && server.active_request_count() == 0 {
 			close_worker_clients(mut w)
 			return
 		}
-		num_events := C.epoll_wait(epoll_fd, &events[0], max_connection_size, epoll_wait_timeout_ms)
+		num_events := C.epoll_wait(epoll_fd, &events[0], events.len, epoll_wait_timeout_ms)
 		if num_events < 0 {
 			if C.errno == C.EINTR {
 				continue
