@@ -1131,6 +1131,8 @@ fn (mut g Parser) parse_return() !bool {
 			} else {
 				u32(0)
 			})
+			g.allows_nil_local_assignment = g.nil_type_is_allowed(flat.source_type_name(g.expected_expression_type))
+				&& !(values.len < g.return_types_are_functions.len && g.return_types_are_functions[values.len])
 			value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 			if value == '' {
 				return g.unsupported('empty multi-return value')
@@ -1192,6 +1194,7 @@ fn (mut g Parser) parse_return() !bool {
 			g.return_type
 		})
 	}
+	g.allows_nil_local_assignment = !g.return_type_is_function && g.nil_type_is_allowed(flat.source_type_name(g.expected_expression_type))
 	mut expression := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 	g.expected_expression_type = previous_expected_type_source_id_2
 	mut actual_type := g.last_expression_type_text()

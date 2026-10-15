@@ -47,6 +47,53 @@ struct Tool {}
 fn Tool.accept(p voidptr) bool { return isnil(p) }
 fn main() { assert Tool.accept(nil); println("ok") }
 ', false},
+		FastcNilCase{'left_comparison', r'module main
+fn main() { p := voidptr(0); ready := true; assert nil == p; assert nil != voidptr(1); assert nil == p && ready; println("ok") }
+', false},
+		FastcNilCase{'left_struct_comparison', r'module main
+struct Holder { p voidptr }
+fn main() {
+ assert nil == Holder{}.p
+ assert nil == Holder{p: voidptr(0)}.p
+ if nil == Holder{}.p { println("ok") } else { panic("unexpected pointer") }
+}
+', false},
+		FastcNilCase{'left_nested_struct_comparison', r'module main
+struct Holder { p voidptr }
+struct Wrapper { item Holder }
+struct Counter { mut: calls int }
+fn touched(mut counter Counter) bool { counter.calls++; return true }
+fn main() {
+ ready := true
+ assert nil == Wrapper{item: Holder{p: voidptr(0)}}.item.p && ready
+ mut counter := Counter{}
+ assert (nil != Wrapper{item: Holder{p: voidptr(0)}}.item.p && touched(mut counter)) || ready
+ assert counter.calls == 0
+ println("ok")
+}
+', false},
+		FastcNilCase{'left_alias_struct_comparison', r'module main
+type Handle = voidptr
+struct Holder { p Handle }
+fn main() { ready := true; assert nil == Holder{p: Handle(0)}.p && ready; println("ok") }
+', false},
+		FastcNilCase{'c_call', r'module main
+#include <stdlib.h>
+fn C.free(p voidptr)
+fn main() { C.free(nil); println("ok") }
+', true},
+		FastcNilCase{'option_return', r'module main
+fn empty() ?voidptr { return nil }
+fn main() { p := empty() or { panic("unexpected none") }; assert isnil(p); println("ok") }
+', false},
+		FastcNilCase{'result_return', r'module main
+fn empty() !voidptr { return nil }
+fn main() { p := empty() or { panic(err) }; assert isnil(p); println("ok") }
+', false},
+		FastcNilCase{'multi_return', r'module main
+fn pair() (voidptr, bool) { return nil, true }
+fn main() { p, ok := pair(); assert isnil(p); assert ok; println("ok") }
+', false},
 		FastcNilCase{'default', r'module main
 struct Holder { p voidptr = nil }
 fn main() { holder := Holder{}; assert isnil(holder.p); println("ok") }
@@ -105,6 +152,9 @@ fn test_fastc_nil_still_rejects_erased_function_and_typed_pointer_storage() {
 	}
 
 	sources := [
+		'module main\nfn pair() (voidptr, bool) { return voidptr(0), nil }\nfn main() { _, _ = pair() }\n',
+		'module main\nfn main() { assert nil == 1 }\n',
+		'module main\nfn main() { p := voidptr(1); assert 1 + nil == p }\n',
 		'module main\nfn main() { mut callback := fn () {}; callback = nil }\n',
 		'module main\nstruct Holder { mut: callback fn () = unsafe { nil } }\nfn main() { mut h := Holder{}; h.callback = nil }\n',
 		'module main\ntype Callback = fn ()\nfn main() { mut callback := Callback(fn () {}); callback = nil }\n',

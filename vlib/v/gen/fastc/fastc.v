@@ -1390,25 +1390,26 @@ mut:
 	// Per-file memos for name lookups whose answers depend only on file-level
 	// tables (module, imports, functions, constants, globals, declared types)
 	// and are asked again for the same short name many times per file.
-	unqualified_key_memo     map[string]string
-	c_function_name_memo     map[string]string
-	nonlocal_name_type_memo  flat.TypeTextBindings
-	resolved_name_memo       map[string]string
-	declared_type_key_memo   map[u32]FastcMemoEntry
-	locals                   map[string]FastcLocal
-	local_scope_changes      []FastcLocalScopeChange
-	local_scope_depth        int
-	functions                map[string]FastcFunctionSignature
-	constant_types           flat.TypeTextBindings
-	global_types             flat.TypeTextBindings
-	return_type              u32
-	return_type_is_function  bool
-	return_types             flat.TypeTextList
-	option_return_type       u32
-	current_function         string
-	current_receiver         u32
-	current_method_is_static bool
-	expected_expression_type u32
+	unqualified_key_memo       map[string]string
+	c_function_name_memo       map[string]string
+	nonlocal_name_type_memo    flat.TypeTextBindings
+	resolved_name_memo         map[string]string
+	declared_type_key_memo     map[u32]FastcMemoEntry
+	locals                     map[string]FastcLocal
+	local_scope_changes        []FastcLocalScopeChange
+	local_scope_depth          int
+	functions                  map[string]FastcFunctionSignature
+	constant_types             flat.TypeTextBindings
+	global_types               flat.TypeTextBindings
+	return_type                u32
+	return_type_is_function    bool
+	return_types_are_functions []bool
+	return_types               flat.TypeTextList
+	option_return_type         u32
+	current_function           string
+	current_receiver           u32
+	current_method_is_static   bool
+	expected_expression_type   u32
 	// Scoped to a whole nil reset of a concrete local; erased function values are excluded.
 	allows_nil_local_assignment bool
 	capturing_defer             bool

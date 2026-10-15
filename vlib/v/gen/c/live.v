@@ -13,15 +13,16 @@ pub fn (mut g FlatGen) set_live_rebuild_options(options []string) {
 	g.live_rebuild_options = options.map(os.quoted_path(it)).join(' ')
 }
 
-fn (g &FlatGen) is_live_function(id flat.NodeId) bool {
-	return ('livemain' in g.compile_defines || 'sharedlive' in g.compile_defines)
+fn (g &FlatGen) is_live_function(id flat.NodeId, module_name string) bool {
+	return !is_main_fn_in_main_module(module_name, g.a.nodes[int(id)].value)
+		&& ('livemain' in g.compile_defines || 'sharedlive' in g.compile_defines)
 		&& 'live' in g.fn_decl_attributes(id)
 }
 
 fn (mut g FlatGen) live_functions() []FlatFnGenItem {
 	mut result := []FlatFnGenItem{}
 	for item in g.ensure_fn_gen_items() {
-		if g.is_live_function(item.node_id) { result << item }
+		if g.is_live_function(item.node_id, item.module) { result << item }
 	}
 	return result
 }

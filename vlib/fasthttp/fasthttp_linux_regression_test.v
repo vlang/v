@@ -693,14 +693,15 @@ fn test_timeout_sweep_is_throttled_across_ready_batches() ! {
 	mark_read_deadline(mut w, mut cs)
 	// Use an expired deadline to observe whether a scan happened without sleeps.
 	cs.read_start_ns = time.sys_mono_now() - 2 * time.second
-	w.last_timeout_sweep_ns = time.sys_mono_now()
+	// Stay throttled even if the scheduler delays the next call on a loaded runner.
+	w.last_timeout_sweep_ns = time.sys_mono_now() + time.hour
 	previous_sweep := w.last_timeout_sweep_ns
 	sweep_timeouts(mut w)
 	assert w.last_timeout_sweep_ns == previous_sweep
 	assert unsafe { w.conns[sockets[0]] != nil }
-	w.last_timeout_sweep_ns -= time.second
+	w.last_timeout_sweep_ns = 0
 	sweep_timeouts(mut w)
-	assert w.last_timeout_sweep_ns > previous_sweep - time.second
+	assert w.last_timeout_sweep_ns > 0
 	assert unsafe { w.conns[sockets[0]] == nil }
 	assert w.parked == 0
 }
