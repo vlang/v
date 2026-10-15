@@ -2241,7 +2241,7 @@ fn (mut tc TypeChecker) check_constraint_runtime_match(node flat.Node, constrain
 	if reason.len == 0 {
 		return
 	}
-	pattern := tc.match_type_pattern(tc.a.node(pattern_id)) or { return }
+	pattern := flat.source_type_name(tc.match_type_pattern(tc.a.node(pattern_id)) or { return })
 	subject := tc.a.node(subject_id)
 	tested := if subject.kind == .ident { subject.value } else { param }
 	tc.record_error_at(.condition_mismatch, 'matching by type can only be done on sum type or interface values, not `${param}`: ${reason}; test `${param}` with `\$if ${tested} is ${pattern}`',

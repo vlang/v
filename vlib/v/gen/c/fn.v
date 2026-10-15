@@ -3146,7 +3146,8 @@ fn (g &FlatGen) static_method_fn_name(type_ident string, method string) ?string 
 }
 
 fn (g &FlatGen) resolve_method_name(type_name_id u32, method string) string {
-	type_name := flat.source_type_name(type_name_id)
+	type_name_comparison_type_id_2 := type_name_id
+	type_name := flat.source_type_name(type_name_comparison_type_id_2)
 	direct := '${type_name}.${method}'
 	if direct in g.tc.fn_param_types || direct in g.tc.fn_ret_types {
 		return direct
@@ -3177,8 +3178,11 @@ fn (g &FlatGen) resolve_method_name(type_name_id u32, method string) string {
 	// Canonicalize via the unique short-name index so the C method name matches
 	// the emitted definition.
 	if type_name.contains('.') {
-		if full := g.tc.canonical_qualified_type_name(type_name) {
-			if full != type_name {
+		if full_source_id := g.tc.canonical_qualified_type_name(type_name_id) {
+			full_comparison_type_id := full_source_id
+			full := flat.source_type_name(full_comparison_type_id)
+
+			if full_comparison_type_id != type_name_comparison_type_id_2 {
 				canonical := '${full}.${method}'
 				if canonical in g.tc.fn_param_types || canonical in g.tc.fn_ret_types {
 					return canonical

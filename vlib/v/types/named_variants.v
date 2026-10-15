@@ -49,10 +49,12 @@ fn (mut tc TypeChecker) declare_named_variant_binding(subject_type Type, branch 
 	} else {
 		return
 	}
-	pattern := tc.match_type_pattern(cond) or { return }
-	variant_type := tc.sum_variant_type_for_pattern(sum_name, pattern) or { return }
+	pattern_source_id := tc.match_type_pattern(cond) or { return }
+
+	variant_type_source_id := tc.sum_variant_type_for_pattern(flat.source_type_id(sum_name), pattern_source_id) or { return }
+	variant_type := flat.source_type_name(variant_type_source_id)
 	display := flat.named_variant_display_name(variant_type)
-	payload_type := tc.named_variant_payload_type(flat.source_type_id(variant_type)) or {
+	payload_type := tc.named_variant_payload_type(variant_type_source_id) or {
 		tc.record_error_at(.condition_mismatch, '`${display}` has no payload to bind to `${binding.value}`',
 			binding_id, binding.pos)
 		tc.cur_scope.insert(binding.value, Type(Unknown{}))

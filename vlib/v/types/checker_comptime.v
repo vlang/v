@@ -765,7 +765,7 @@ fn (tc &TypeChecker) comptime_static_enum_name(raw string) ?string {
 				return candidate
 			}
 		}
-		next := tc.alias_target_type_text(cur) or { break }
+		next := flat.source_type_name(tc.alias_target_type_text(flat.source_type_id(cur)) or { break })
 		if next == cur {
 			break
 		}
@@ -1611,7 +1611,7 @@ fn (tc &TypeChecker) comptime_static_struct_name(raw string) ?string {
 				return candidate
 			}
 		}
-		next := tc.alias_target_type_text(cur) or { break }
+		next := flat.source_type_name(tc.alias_target_type_text(flat.source_type_id(cur)) or { break })
 		if next == cur {
 			break
 		}
@@ -6747,7 +6747,7 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 		target := target_type_name.all_before_last('.')
 		field := target_type_name.all_after_last('.')
 		if target.len > 0 && field.len > 0 {
-			resolved_target := tc.unique_qualified_type_name(target) or { target }
+			resolved_target := flat.source_type_name(tc.unique_qualified_type_name(target) or { flat.source_type_id(target) })
 			qualified_target := if resolved_target.contains('.') {
 				resolved_target
 			} else {
@@ -6975,14 +6975,15 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 			for i in 0 .. container.children_count {
 				variant_id := tc.a.child(container, i)
 				variant := tc.a.node(variant_id)
-				pattern := tc.match_type_pattern(variant) or {
+				pattern_source_id := tc.match_type_pattern(variant) or {
 					all_type_patterns = false
 					continue
 				}
-				if tc.sum_variant_type_for_pattern(value_sum_type.name(), pattern) != none {
+				pattern := flat.source_type_name(pattern_source_id)
+				if tc.sum_variant_type_for_pattern(value_sum_type.source_type_id(), pattern_source_id) != none {
 					continue
 				}
-				if should_check_named_type(pattern) && !tc.type_name_known(flat.source_type_id(pattern)) {
+				if should_check_named_type(pattern) && !tc.type_name_known(pattern_source_id) {
 					tc.record_error_at(.unknown_type, tc.unknown_type_message(pattern, variant_id), variant_id, tc.node_value_diagnostic_pos(variant_id))
 				} else {
 					tc.record_error_at(.condition_mismatch, '`${value_sum_type.name()}` has no variant `${tc.sum_variant_diagnostic_name(pattern)}`', variant_id, tc.node_value_diagnostic_pos(variant_id))
@@ -7187,8 +7188,9 @@ fn (tc &TypeChecker) interface_pointer_alias_cast_needs_heap_copy(id flat.NodeId
 	if cast.kind != .cast_expr || cast.children_count == 0 {
 		return false
 	}
-	alias_target := tc.alias_target_type_text(cast.value) or { return false }
-	if unalias_type(tc.parse_type(flat.source_type_id(alias_target))) !is Pointer {
+	alias_target_source_id := tc.alias_target_type_text(flat.source_type_id(cast.value)) or { return false }
+
+	if unalias_type(tc.parse_type(alias_target_source_id)) !is Pointer {
 		return false
 	}
 	arg_id := tc.first_parsed_child(id)
@@ -8241,7 +8243,7 @@ fn (tc &TypeChecker) comptime_type_text_is_shared(type_text string) bool {
 		if cur.starts_with('shared ') {
 			return true
 		}
-		target := tc.alias_target_type_text(cur) or { return false }
+		target := flat.source_type_name(tc.alias_target_type_text(flat.source_type_id(cur)) or { return false })
 		if target == cur {
 			return false
 		}
@@ -17060,12 +17062,14 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 				&& tc.match_branch_all_sum_type_patterns(subject_type, branch, n_conds) {
 				for j in 0 .. n_conds {
 					cond := tc.a.node(tc.a.child(branch, j))
-					pattern := tc.match_type_pattern(cond) or { continue }
-					smartcast_type := tc.sum_variant_type_for_pattern(subject_type.name(), pattern) or {
+					pattern_source_id := tc.match_type_pattern(cond) or { continue }
+
+					smartcast_type_source_id := tc.sum_variant_type_for_pattern(subject_type.source_type_id(), pattern_source_id) or {
 						continue
 					}
+
 					tc.smartcasts = clone_smartcasts(saved_smartcasts)
-					tc.smartcasts[subject_key] = tc.parse_type(flat.source_type_id(smartcast_type))
+					tc.smartcasts[subject_key] = tc.parse_type(smartcast_type_source_id)
 					tc.collect_returned_alias_sources_in_scope(branch_id, args_by_param,
 						mut visiting, mut sources)
 				}

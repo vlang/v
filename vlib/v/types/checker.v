@@ -18655,11 +18655,12 @@ fn (tc &TypeChecker) match_branch_definitely_returns_with_context(node flat.Node
 		return tc.match_branch_definitely_returns(branch)
 	}
 	cond := tc.a.node(tc.a.child(branch, 0))
-	pattern := tc.match_type_pattern(cond) or { return tc.match_branch_definitely_returns(branch) }
+	pattern_source_id := tc.match_type_pattern(cond) or { return tc.match_branch_definitely_returns(branch) }
+	pattern := flat.source_type_name(pattern_source_id)
 	smartcast_type := if subject_type is SumType {
-		tc.sum_variant_type_for_pattern(subject_type.name(), pattern) or {
+		flat.source_type_name(tc.sum_variant_type_for_pattern(subject_type.source_type_id(), pattern_source_id) or {
 			return tc.match_branch_definitely_returns(branch)
-		}
+		})
 	} else if is_ierror_type(subject_type) {
 		tc.resolve_ierror_match_pattern(pattern) or {
 			return tc.match_branch_definitely_returns(branch)
@@ -18808,11 +18809,12 @@ fn (tc &TypeChecker) match_without_else_exhaustive_sumtype_returns(node flat.Nod
 		}
 		for j in 0 .. n_conds {
 			cond := tc.a.child_node(branch, j)
-			pattern := tc.match_type_pattern(cond) or { return false }
+			pattern_source_id := tc.match_type_pattern(cond) or { return false }
+			pattern := flat.source_type_name(pattern_source_id)
 			qpattern := tc.qualify_name(pattern)
 			mut matched := false
 			for variant in variants {
-				if tc.generic_type_name_matches(flat.source_type_id(variant), flat.source_type_id(pattern))
+				if tc.generic_type_name_matches(flat.source_type_id(variant), pattern_source_id)
 					|| tc.generic_type_name_matches(flat.source_type_id(variant), flat.source_type_id(qpattern)) {
 					covered[variant] = true
 					matched = true

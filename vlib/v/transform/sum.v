@@ -82,8 +82,10 @@ fn (t &Transformer) resolve_variant(sum_name_id u32, variant_id u32) u32 {
 		}
 	}
 	if !isnil(t.tc) {
-		if resolved := t.tc.sum_variant_type_for_pattern(sum_name, variant) {
-			return flat.source_type_id(resolved)
+		if resolved_source_id := t.tc.sum_variant_type_for_pattern(sum_name_id, variant_id) {
+			resolved_source_id_2 := resolved_source_id
+
+			return resolved_source_id_2
 		}
 	}
 	if variant.contains('.') {

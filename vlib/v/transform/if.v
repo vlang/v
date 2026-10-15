@@ -2501,7 +2501,8 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type_id u32, variant_id u32) u32 {
 	clean_expr_type_source_id := t.trim_all_pointer_type(expr_type_id)
 
 	clean_variant_source_id := t.trim_pointer_type(variant_id)
-	clean_variant := flat.source_type_name(clean_variant_source_id)
+	clean_variant_source_id_2 := clean_variant_source_id
+
 	if t.is_interface_type_name(clean_expr_type_source_id) {
 		if _ := t.resolve_interface_pattern(clean_variant_source_id, clean_expr_type_source_id) {
 			return clean_expr_type_source_id
@@ -2517,13 +2518,13 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type_id u32, variant_id u32) u32 {
 	// A declaration in `client` can spell `maybe.Maybe[Local]`, while its union
 	// field is the qualified `client.Local` (or a selectively imported type).
 	for candidate_source_id in t.sum_subject_type_candidates(clean_expr_type_source_id) {
-		candidate := flat.source_type_name(candidate_source_id)
+		candidate_source_id_2 := candidate_source_id
 
 		if _ := t.sum_variant_name(candidate_source_id, clean_variant_source_id) {
 			return candidate_source_id
 		}
 		if !isnil(t.tc) {
-			if _ := t.tc.sum_variant_type_for_pattern(candidate, clean_variant) {
+			if _ := t.tc.sum_variant_type_for_pattern(candidate_source_id_2, clean_variant_source_id_2) {
 				return candidate_source_id
 			}
 		}

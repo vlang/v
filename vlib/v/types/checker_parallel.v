@@ -4391,7 +4391,7 @@ fn (mut tc TypeChecker) prewarm_shared_type_cache() {
 	}
 	tc.prepare_tail_decl_ids()
 	_ = tc.local_fn_decl_exists('__v3_prewarm__')
-	_ = tc.unique_qualified_type_name('__V3Prewarm__') or { '' }
+	_ = flat.source_type_name(tc.unique_qualified_type_name('__V3Prewarm__') or { u32(0) })
 	_ = tc.source_struct_has_non_builtin_error_embed('__V3Prewarm__', '', '')
 }
 

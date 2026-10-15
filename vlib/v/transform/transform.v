@@ -30400,12 +30400,11 @@ fn (t &Transformer) match_type_pattern_for_subject(match_expr_id flat.NodeId, co
 }
 
 fn (t &Transformer) resolve_sum_variant_pattern_for_subject(subject_type_id u32, pattern_id u32) ?u32 {
-	pattern := flat.source_type_name(pattern_id)
 	if pattern_id == u32(0) {
 		return none
 	}
 	for candidate_source_id_2 in t.sum_subject_type_candidates(subject_type_id) {
-		candidate := flat.source_type_name(candidate_source_id_2)
+		candidate_source_id_6 := candidate_source_id_2
 
 		// Keep the concrete generic application while resolving the pattern.
 		// Resolving `Tree[int]` to its declaration key `Tree` first would turn a
@@ -30414,8 +30413,10 @@ fn (t &Transformer) resolve_sum_variant_pattern_for_subject(subject_type_id u32,
 			return resolved_variant_source_id
 		}
 		if !isnil(t.tc) {
-			if resolved := t.tc.sum_variant_type_for_pattern(candidate, pattern) {
-				return flat.source_type_id(resolved)
+			if resolved_source_id := t.tc.sum_variant_type_for_pattern(candidate_source_id_6, pattern_id) {
+				resolved_source_id_6 := resolved_source_id
+
+				return resolved_source_id_6
 			}
 		}
 	}

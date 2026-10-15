@@ -1043,7 +1043,7 @@ fn (tc &TypeChecker) expr_is_in_option_none_branch(id flat.NodeId, key string) b
 }
 
 fn (tc &TypeChecker) assignment_rhs_mutates_same_smartcast_lhs(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type Type, smartcast Type) bool {
-	if tc.sum_variant_type_for_pattern(rhs_type.name(), smartcast.name()) == none {
+	if tc.sum_variant_type_for_pattern(rhs_type.source_type_id(), smartcast.source_type_id()) == none {
 		return false
 	}
 	if !tc.valid_node_id(rhs_id) {
@@ -3731,8 +3731,10 @@ fn (tc &TypeChecker) interface_smartcast_uses_value_pattern_for_key(id flat.Node
 			&& tc.expr_key(tc.a.child(parent, 0)) == key {
 			branch := tc.a.node(current)
 			if branch.kind == .match_branch && branch.value == '1' && branch.children_count > 0 {
-				if pattern := tc.match_type_pattern(tc.a.child_node(branch, 0)) {
-					return unalias_type(tc.parse_type(flat.source_type_id(pattern))) !is Pointer
+				if pattern_source_id := tc.match_type_pattern(tc.a.child_node(branch, 0)) {
+					pattern_source_id_2 := pattern_source_id
+
+					return unalias_type(tc.parse_type(pattern_source_id_2)) !is Pointer
 				}
 			}
 		}
@@ -4381,10 +4383,12 @@ fn (mut tc TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, exp
 				if subject_key.len > 0 && tc.expr_key(tail) == subject_key && branch.value != 'else'
 					&& branch.value.int() == 1 && subject_type is SumType {
 					cond := tc.a.node(tc.a.child(&branch, 0))
-					if pattern := tc.match_type_pattern(cond) {
-						variant := tc.sum_variant_type_for_pattern(subject_type.name(), pattern) or {
-							pattern
-						}
+					if pattern_source_id := tc.match_type_pattern(cond) {
+						pattern_source_id_3 := pattern_source_id
+
+						variant := flat.source_type_name(tc.sum_variant_type_for_pattern(subject_type.source_type_id(), pattern_source_id_3) or {
+							pattern_source_id_3
+						})
 						if tc.type_compatible(tc.parse_type(flat.source_type_id(variant)), expected.base_type) {
 							continue
 						}
@@ -6414,7 +6418,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_as_casts(info CallInfo, insta
 				source := unalias_type(tc.instantiated_generic_decl_expr_type(child_id, fn_node, info, instantiation))
 				target := unalias_type(tc.parse_type(flat.source_type_id(target_text)))
 				if source is SumType && target !is Unknown && target.name() != source.name()
-					&& tc.sum_variant_type_for_pattern(source.name(), target.name()) == none {
+					&& tc.sum_variant_type_for_pattern(source.source_type_id(), target.source_type_id()) == none {
 					message := 'cannot cast `${source.name()}` to `${target.name()}`'
 					if !tc.has_type_error(.assignment_mismatch, message, node_id) {
 						tc.record_error_at(.assignment_mismatch, message, node_id, tc.as_operator_pos(node_id, node, child_id))
@@ -7029,7 +7033,9 @@ fn (tc &TypeChecker) wrapped_receiver_payload_diagnostic_name(payload Type) stri
 			return import_path + name[alias.len..]
 		}
 	}
-	if qualified := tc.unique_qualified_type_name(name.all_after_last('.')) {
+	if qualified_source_id := tc.unique_qualified_type_name(name.all_after_last('.')) {
+		qualified := flat.source_type_name(qualified_source_id)
+
 		return qualified
 	}
 	if resolved := tc.resolve_import_alias_pattern(name) {
@@ -9450,8 +9456,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			// declaration-module parse. Reparse the recorded target text in the
 			// caller so `type Vec = vec.Vec3[f64]` retains its concrete argument
 			// when resolving inherited methods such as `Vec.cross()`.
-			alias_target_type := if target := tc.alias_target_type_text(clean.name()) {
-				tc.parse_type(flat.source_type_id(target))
+			alias_target_type := if target_source_id := tc.alias_target_type_text(clean.source_type_id()) {
+				target_source_id_2 := target_source_id
+
+				tc.parse_type(target_source_id_2)
 			} else {
 				clean.base_type
 			}
@@ -11407,8 +11415,9 @@ fn (tc &TypeChecker) map_type_from_alias_target(t Type) ?Map {
 	if name.len == 0 {
 		return none
 	}
-	target := tc.alias_target_type_text(name) or { return none }
-	return map_type_from_receiver(tc.parse_type(flat.source_type_id(target)))
+	target_source_id := tc.alias_target_type_text(flat.source_type_id(name)) or { return none }
+
+	return map_type_from_receiver(tc.parse_type(target_source_id))
 }
 
 fn (tc &TypeChecker) receiver_is_sum_type(t Type) bool {
@@ -20874,8 +20883,8 @@ fn (tc &TypeChecker) if_branch_types_compatible(a Type, b Type, a_is_array_lit b
 		return true
 	}
 	for sum_name, _ in tc.sum_types.ids {
-		if tc.sum_variant_type_for_pattern(sum_name, a.name()) != none
-			&& tc.sum_variant_type_for_pattern(sum_name, b.name()) != none {
+		if tc.sum_variant_type_for_pattern(flat.source_type_id(sum_name), a.source_type_id()) != none
+			&& tc.sum_variant_type_for_pattern(flat.source_type_id(sum_name), b.source_type_id()) != none {
 			return true
 		}
 	}

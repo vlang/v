@@ -12945,7 +12945,7 @@ fn (tc &TypeChecker) ownership_match_covers_all_sum_variants(node flat.Node) boo
 		n_conds := branch.value.int()
 		for j in 0 .. n_conds {
 			cond := tc.a.child_node(branch, j)
-			pattern := tc.match_type_pattern(cond) or { continue }
+			pattern := flat.source_type_name(tc.match_type_pattern(cond) or { continue })
 			pattern_short := short_type_name(pattern)
 			qpattern := tc.qualify_name(pattern)
 			for variant in variants {

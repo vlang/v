@@ -1579,8 +1579,10 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			for j in 0 .. n_conds {
 				cond_id := tc.a.child(branch, j)
 				cond := tc.a.node(cond_id)
-				if pattern := tc.match_type_pattern(cond) {
-					if _ := tc.sum_variant_type_for_pattern(subject_type.name(), pattern) {
+				if pattern_source_id := tc.match_type_pattern(cond) {
+					pattern := flat.source_type_name(pattern_source_id)
+
+					if _ := tc.sum_variant_type_for_pattern(subject_type.source_type_id(), flat.source_type_id(pattern)) {
 					} else {
 						base := tc.sum_base_name(subject_type.source_type_id())
 						raw_variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { []u32{} } }.names()
@@ -1613,7 +1615,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			for j in 0 .. n_conds {
 				cond_id := tc.a.child(branch, j)
 				cond := tc.a.node(cond_id)
-				if pattern := tc.match_type_pattern(cond) {
+				if pattern_source_id := tc.match_type_pattern(cond) {
+					pattern := flat.source_type_name(pattern_source_id)
+
 					if _ := tc.resolve_ierror_match_pattern(pattern) {
 					} else if tc.should_diagnose(cond_id) {
 						tc.record_error(.condition_mismatch, '`${pattern}` is not compatible with `IError`', cond_id)
@@ -1624,7 +1628,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			for j in 0 .. n_conds {
 				cond_id := tc.a.child(branch, j)
 				cond := tc.a.node(cond_id)
-				if pattern := tc.match_type_pattern(cond) {
+				if pattern_source_id := tc.match_type_pattern(cond) {
+					pattern := flat.source_type_name(pattern_source_id)
+
 					if interface_pattern_is_collapsed_container(pattern) {
 						container_type := tc.parse_type(flat.source_type_id(pattern))
 						if !tc.type_implements_interface(container_type, subject_type)
@@ -1674,12 +1680,13 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 				tc.fn_context.pointer_binding_value_keys =
 					clone_pointer_binding_value_keys(pointer_alias_base)
 				cond := tc.a.node(tc.a.child(branch, j))
-				pattern := tc.match_type_pattern(cond) or { continue }
-				smartcast_type := tc.sum_variant_type_for_pattern(subject_type.name(), pattern) or {
+				pattern := flat.source_type_name(tc.match_type_pattern(cond) or { continue })
+				smartcast_type_source_id := tc.sum_variant_type_for_pattern(subject_type.source_type_id(), flat.source_type_id(pattern)) or {
 					continue
 				}
+
 				tc.smartcasts = clone_smartcasts(saved_smartcasts)
-				tc.smartcasts[subject_key] = tc.parse_type(flat.source_type_id(smartcast_type))
+				tc.smartcasts[subject_key] = tc.parse_type(smartcast_type_source_id)
 				tc.push_scope()
 				tc.check_statement_sequence(branch, n_conds, value_context)
 				tc.pop_scope()
@@ -1699,9 +1706,11 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			|| subject_type is Interface) {
 			cond_id := tc.a.child(branch, 0)
 			cond := tc.a.node(cond_id)
-			if pattern := tc.match_type_pattern(cond) {
+			if pattern_source_id := tc.match_type_pattern(cond) {
+				pattern := flat.source_type_name(pattern_source_id)
+
 				smartcast_type := if subject_type is SumType {
-					tc.sum_variant_type_for_pattern(subject_type.name(), pattern) or { pattern }
+					flat.source_type_name(tc.sum_variant_type_for_pattern(subject_type.source_type_id(), flat.source_type_id(pattern)) or { flat.source_type_id(pattern) })
 				} else if is_ierror_type(subject_type) {
 					tc.resolve_ierror_match_pattern(pattern) or { pattern }
 				} else if subject_type is Interface {
@@ -1881,7 +1890,7 @@ fn (mut tc TypeChecker) check_match_alias_condition(subject_type Type, cond_id f
 	if unalias_type(subject_type) is SumType {
 		return
 	}
-	pattern := tc.match_type_pattern(*tc.a.node(cond_id)) or { return }
+	pattern := flat.source_type_name(tc.match_type_pattern(*tc.a.node(cond_id)) or { return })
 	tc.record_error_at(.condition_mismatch, 'cannot match alias type `${short_type_name(subject_type.name())}` with `${short_type_name(pattern)}`', cond_id, tc.match_condition_diagnostic_pos(cond_id))
 }
 
@@ -1949,7 +1958,7 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 	if raw_variants.len == 0 {
 		return
 	}
-	mut variants := tc.sum_exhaustive_leaf_variants(sum_subject.name(), 0)
+	mut variants := flat.TypeTextList{ ids: tc.sum_exhaustive_leaf_variants(sum_subject.source_type_id(), 0) }.names()
 	if variants.len == 0 {
 		variants = raw_variants.map(flat.source_type_name(tc.concrete_sum_variant_name(sum_subject.source_type_id(), flat.source_type_id(it))))
 	}
@@ -1967,10 +1976,13 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 		}
 		for j in 0 .. branch.value.int() {
 			cond := tc.a.child_node(branch, j)
-			pattern := tc.match_type_pattern(cond) or { continue }
+			pattern := flat.source_type_name(tc.match_type_pattern(cond) or { continue })
 			qpattern := tc.qualify_name(pattern)
-			if matched := tc.sum_variant_type_for_pattern(sum_subject.name(), pattern) {
-				matched_type := tc.parse_type(flat.source_type_id(matched))
+			if matched_source_id := tc.sum_variant_type_for_pattern(sum_subject.source_type_id(), flat.source_type_id(pattern)) {
+				matched_source_id_2 := matched_source_id
+				matched := flat.source_type_name(matched_source_id_2)
+
+				matched_type := tc.parse_type(matched_source_id_2)
 				matched_sum_name := if matched_type is SumType {
 					matched_type.name()
 				} else if matched_type is Alias && matched_type.base_type is SumType {
@@ -1979,7 +1991,7 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 					''
 				}
 				leaves := if matched_sum_name.len > 0 {
-					tc.sum_exhaustive_leaf_variants(matched_sum_name, 0)
+					flat.TypeTextList{ ids: tc.sum_exhaustive_leaf_variants(flat.source_type_id(matched_sum_name), 0) }.names()
 				} else {
 					[]string{}
 				}
@@ -2036,7 +2048,7 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 				continue
 			}
 			for j in 0 .. branch.value.int() {
-				pattern := tc.match_type_pattern(tc.a.child_node(branch, j)) or { continue }
+				pattern := flat.source_type_name(tc.match_type_pattern(tc.a.child_node(branch, j)) or { continue })
 				if tc.parse_type(flat.source_type_id(pattern)) is Alias {
 					return
 				}
@@ -2049,37 +2061,28 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 	}
 }
 
-fn (tc &TypeChecker) sum_exhaustive_leaf_variants(sum_name string, depth int) []string {
-	if depth >= 16 {
-		return []string{}
-	}
-	raw_variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(tc.sum_base_name(flat.source_type_id(sum_name))) or { return []string{} } }.names()
-	mut leaves := []string{}
+fn (tc &TypeChecker) sum_exhaustive_leaf_variants(sum_name_id u32, depth int) []u32 {
+	if depth >= 16 { return []u32{} }
+	raw_variants := tc.sum_types.type_ids(tc.sum_base_name(sum_name_id)) or { return []u32{} }
+	mut leaves := []u32{}
 	for raw_variant in raw_variants {
-		concrete_source_id := tc.concrete_sum_variant_name(flat.source_type_id(sum_name), flat.source_type_id(raw_variant))
-		concrete := flat.source_type_name(concrete_source_id)
-		typ := tc.parse_type(concrete_source_id)
+		concrete := tc.concrete_sum_variant_name(sum_name_id, raw_variant)
+		typ := tc.parse_type(concrete)
 		nested_name := if typ is SumType {
-			typ.name()
+			typ.source_type_id()
 		} else if typ is Alias && typ.base_type is SumType {
-			(typ.base_type as SumType).name()
+			(typ.base_type as SumType).source_type_id()
 		} else {
-			''
+			u32(0)
 		}
-		if nested_name.len > 0 && tc.sum_base_name(flat.source_type_id(nested_name)) != tc.sum_base_name(flat.source_type_id(sum_name)) {
+		if nested_name != 0 && tc.sum_base_name(nested_name) != tc.sum_base_name(sum_name_id) {
 			nested := tc.sum_exhaustive_leaf_variants(nested_name, depth + 1)
 			if nested.len > 0 {
-				for leaf in nested {
-					if leaf !in leaves {
-						leaves << leaf
-					}
-				}
+				for leaf in nested { if leaf !in leaves { leaves << leaf } }
 				continue
 			}
 		}
-		if concrete !in leaves {
-			leaves << concrete
-		}
+		if concrete !in leaves { leaves << concrete }
 	}
 	return leaves
 }
@@ -2342,9 +2345,12 @@ fn (tc &TypeChecker) match_branch_tail_diagnostic_type(subject_key string, subje
 	n_conds := if branch.value == 'else' { 0 } else { branch.value.int() }
 	if subject_key != '' && n_conds == 1 && branch.children_count > 0 {
 		cond := tc.a.child_node(&branch, 0)
-		if pattern := tc.match_type_pattern(cond) {
+		if pattern_source_id := tc.match_type_pattern(cond) {
+			pattern_source_id_2 := pattern_source_id
+			pattern := flat.source_type_name(pattern_source_id_2)
+
 			smartcast_name := if subject_type is SumType {
-				tc.sum_variant_type_for_pattern(subject_type.name(), pattern) or { '' }
+				flat.source_type_name(tc.sum_variant_type_for_pattern(subject_type.source_type_id(), pattern_source_id_2) or { u32(0) })
 			} else if subject_type is Interface {
 				tc.resolve_interface_match_pattern(pattern) or { '' }
 			} else {
@@ -2655,7 +2661,9 @@ fn (mut tc TypeChecker) record_match_duplicate(branch &flat.Node, branch_index i
 
 fn (tc &TypeChecker) match_condition_pattern_key(id flat.NodeId) (string, string) {
 	node := tc.a.node(id)
-	if pattern := tc.match_type_pattern(node) {
+	if pattern_source_id := tc.match_type_pattern(node) {
+		pattern := flat.source_type_name(pattern_source_id)
+
 		return 'type:${pattern}', pattern
 	}
 	if node.kind == .enum_val {
@@ -2813,8 +2821,8 @@ fn (tc &TypeChecker) match_condition_diagnostic_pos(id flat.NodeId) token.Pos {
 fn (tc &TypeChecker) match_branch_all_sum_type_patterns(subject SumType, branch &flat.Node, n_conds int) bool {
 	for i in 0 .. n_conds {
 		cond := tc.a.node(tc.a.child(branch, i))
-		pattern := tc.match_type_pattern(cond) or { return false }
-		if _ := tc.sum_variant_type_for_pattern(subject.name(), pattern) {
+		pattern := flat.source_type_name(tc.match_type_pattern(cond) or { return false })
+		if _ := tc.sum_variant_type_for_pattern(subject.source_type_id(), flat.source_type_id(pattern)) {
 			continue
 		}
 		return false
@@ -2832,9 +2840,10 @@ fn (mut tc TypeChecker) record_multi_pattern_return_mismatch(subject SumType, br
 	mut incompatible := false
 	for i in 0 .. n_conds {
 		cond := tc.a.node(tc.a.child(branch, i))
-		pattern := tc.match_type_pattern(cond) or { return }
-		variant_name := tc.sum_variant_type_for_pattern(subject.name(), pattern) or { return }
-		variant_type := tc.parse_type(flat.source_type_id(variant_name))
+		pattern := flat.source_type_name(tc.match_type_pattern(cond) or { return })
+		variant_name_source_id := tc.sum_variant_type_for_pattern(subject.source_type_id(), flat.source_type_id(pattern)) or { return }
+
+		variant_type := tc.parse_type(variant_name_source_id)
 		variants << short_type_name(variant_type.name())
 		if !tc.sum_type_contains_variant(expected_sum, variant_type) {
 			incompatible = true
@@ -2862,11 +2871,12 @@ fn (tc &TypeChecker) multi_match_common_field_smartcasts(subject SumType, branch
 	mut common := []LocalBinding{}
 	for i in 0 .. n_conds {
 		cond := tc.a.node(tc.a.child(branch, i))
-		pattern := tc.match_type_pattern(cond) or { return []LocalBinding{} }
-		variant_name := tc.sum_variant_type_for_pattern(subject.name(), pattern) or {
+		pattern := flat.source_type_name(tc.match_type_pattern(cond) or { return []LocalBinding{} })
+		variant_name_source_id := tc.sum_variant_type_for_pattern(subject.source_type_id(), flat.source_type_id(pattern)) or {
 			return []LocalBinding{}
 		}
-		variant_type := unalias_type(tc.parse_type(flat.source_type_id(variant_name)))
+
+		variant_type := unalias_type(tc.parse_type(variant_name_source_id))
 		if variant_type !is Struct {
 			return []LocalBinding{}
 		}
@@ -2901,7 +2911,7 @@ fn (tc &TypeChecker) multi_interface_match_common_interface(subject Interface, b
 	mut variants := []string{cap: n_conds}
 	for i in 0 .. n_conds {
 		cond := tc.a.node(tc.a.child(branch, i))
-		pattern := tc.match_type_pattern(cond) or { return none }
+		pattern := flat.source_type_name(tc.match_type_pattern(cond) or { return none })
 		variant_name := tc.resolve_interface_match_pattern(pattern) or { return none }
 		variants << variant_name
 	}
@@ -3191,10 +3201,10 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	if expr_type is SumType {
 		if node.value.len > 0 {
 			pointer_sum_variant := node.value.starts_with('&') && raw_expr_type is Pointer
-				&& tc.sum_variant_type_for_pattern(expr_type.name(), node.value[1..]) != none
+				&& tc.sum_variant_type_for_pattern(expr_type.source_type_id(), flat.source_type_id(node.value[1..])) != none
 			sum_base, _, concrete_sum := generic_type_application_parts(expr_type.name())
 			open_generic_pattern := concrete_sum && node.value in tc.sum_params_for_base(sum_base)
-			if (tc.sum_variant_type_for_pattern(expr_type.name(), node.value) == none
+			if (tc.sum_variant_type_for_pattern(expr_type.source_type_id(), flat.source_type_id(node.value)) == none
 				|| open_generic_pattern) && !pointer_sum_variant {
 				if tc.should_diagnose(id) {
 					diagnostic_pattern := if node.value.contains('.') {
@@ -3587,10 +3597,10 @@ fn (tc &TypeChecker) choose_if_tail_type(current Type, next Type) Type {
 	if inferred := inferred_contextual_if_type(current, next) {
 		return inferred
 	}
-	if current is SumType && tc.sum_variant_type_for_pattern(current.name(), next.name()) != none {
+	if current is SumType && tc.sum_variant_type_for_pattern(current.source_type_id(), next.source_type_id()) != none {
 		return current
 	}
-	if next is SumType && tc.sum_variant_type_for_pattern(next.name(), current.name()) != none {
+	if next is SumType && tc.sum_variant_type_for_pattern(next.source_type_id(), current.source_type_id()) != none {
 		return next
 	}
 	if current !is Primitive {
@@ -3742,9 +3752,9 @@ fn (mut tc TypeChecker) apply_match_branch_context_smartcasts(subject_key string
 		return
 	}
 	cond := tc.a.node(tc.a.child(&branch, 0))
-	pattern := tc.match_type_pattern(cond) or { return }
+	pattern := flat.source_type_name(tc.match_type_pattern(cond) or { return })
 	smartcast_type := if subject_type is SumType {
-		tc.sum_variant_type_for_pattern(subject_type.name(), pattern) or { pattern }
+		flat.source_type_name(tc.sum_variant_type_for_pattern(subject_type.source_type_id(), flat.source_type_id(pattern)) or { flat.source_type_id(pattern) })
 	} else if is_ierror_type(subject_type) {
 		tc.resolve_ierror_match_pattern(pattern) or { pattern }
 	} else if subject_type is Interface {
@@ -9658,7 +9668,9 @@ fn (tc &TypeChecker) add_static_assoc_type_candidate(mut candidates []string, na
 			candidates << short_qualified
 		}
 	}
-	if canonical := tc.canonical_qualified_type_name(clean) {
+	if canonical_source_id := tc.canonical_qualified_type_name(flat.source_type_id(clean)) {
+		canonical := flat.source_type_name(canonical_source_id)
+
 		if canonical !in candidates {
 			candidates << canonical
 		}
@@ -10089,7 +10101,7 @@ fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
 fn (tc &TypeChecker) resolve_enum_alias_target(name string) ?string {
 	mut cur := name
 	for _ in 0 .. 16 {
-		target := tc.alias_target_type_text(cur) or { return none }
+		target := flat.source_type_name(tc.alias_target_type_text(flat.source_type_id(cur)) or { return none })
 		if target == cur {
 			return none
 		}
@@ -10171,9 +10183,13 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		if actual_module == expected_module {
 			return true
 		}
-		if actual_canonical := tc.canonical_qualified_type_name(actual_name) {
-			if expected_canonical := tc.canonical_qualified_type_name(expected_name) {
-				if actual_canonical == expected_canonical {
+		if actual_canonical_source_id := tc.canonical_qualified_type_name(actual_name_comparison_type_id) {
+			actual_canonical_comparison_type_id := actual_canonical_source_id
+
+			if expected_canonical_source_id := tc.canonical_qualified_type_name(expected_name_comparison_type_id) {
+				expected_canonical_comparison_type_id := expected_canonical_source_id
+
+				if actual_canonical_comparison_type_id == expected_canonical_comparison_type_id {
 					return true
 				}
 			}
@@ -10201,7 +10217,7 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		&& tc.generic_type_name_matches(actual_name_comparison_type_id, expected_name_comparison_type_id) {
 		return true
 	}
-	if tc.sum_variant_type_for_pattern(expected_name, actual_name) != none {
+	if tc.sum_variant_type_for_pattern(expected_name_comparison_type_id, actual_name_comparison_type_id) != none {
 		return true
 	}
 	if actual is Alias && expected is Alias {
@@ -13404,7 +13420,9 @@ fn (tc &TypeChecker) struct_fields_for_init(struct_name string) []StructField {
 		raw_lookup_name
 	} else if raw_lookup_name.all_after_last('.') in tc.structs {
 		raw_lookup_name.all_after_last('.')
-	} else if canonical := tc.canonical_qualified_type_name(raw_lookup_name) {
+	} else if canonical_source_id := tc.canonical_qualified_type_name(flat.source_type_id(raw_lookup_name)) {
+		canonical := flat.source_type_name(canonical_source_id)
+
 		canonical
 	} else {
 		raw_lookup_name
@@ -13609,7 +13627,9 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name stri
 		raw_lookup_name
 	} else if raw_lookup_name.all_after_last('.') in tc.structs {
 		raw_lookup_name.all_after_last('.')
-	} else if canonical := tc.canonical_qualified_type_name(raw_lookup_name) {
+	} else if canonical_source_id := tc.canonical_qualified_type_name(flat.source_type_id(raw_lookup_name)) {
+		canonical := flat.source_type_name(canonical_source_id)
+
 		canonical
 	} else {
 		raw_lookup_name
@@ -14644,7 +14664,9 @@ fn (tc &TypeChecker) sum_base_name(sum_name_id u32) string {
 		if tc.sum_types.contains(resolved) {
 			return resolved
 		}
-		if unique := tc.unique_qualified_type_name(sum_name.all_after_last('.')) {
+		if unique_source_id := tc.unique_qualified_type_name(sum_name.all_after_last('.')) {
+			unique := flat.source_type_name(unique_source_id)
+
 			if tc.sum_types.contains(unique) {
 				return unique
 			}
@@ -14897,8 +14919,9 @@ fn (tc &TypeChecker) bare_variant_name_matches(candidate string, declared string
 // type_matches_sum returns type matches sum data for TypeChecker.
 fn (tc &TypeChecker) type_matches_sum(actual Type, expected Type) bool {
 	if expected is SumType {
-		actual_name := flat.source_type_name(tc.type_name(actual))
-		if tc.sum_variant_type_for_pattern(expected.name(), actual_name) != none {
+		actual_name_source_id := tc.type_name(actual)
+
+		if tc.sum_variant_type_for_pattern(expected.source_type_id(), actual_name_source_id) != none {
 			return true
 		}
 		base := tc.sum_base_name(expected.source_type_id())
@@ -14919,48 +14942,40 @@ fn (tc &TypeChecker) type_matches_sum(actual Type, expected Type) bool {
 }
 
 // sum_has_variant converts sum has variant data for types.
-fn (tc &TypeChecker) sum_has_variant(sum_name string, variant_name string) bool {
-	return tc.sum_variant_type_for_pattern(sum_name, variant_name) != none
+fn (tc &TypeChecker) sum_has_variant(sum_name_id u32, variant_name_id u32) bool {
+	return tc.sum_variant_type_for_pattern(sum_name_id, variant_name_id) != none
 }
 
-pub fn (tc &TypeChecker) sum_variant_type_for_pattern(sum_name string, variant_name string) ?string {
+// sum_variant_type_for_pattern resolves a sum pattern using source spelling IDs.
+pub fn (tc &TypeChecker) sum_variant_type_for_pattern(sum_name_id u32, variant_name_id u32) ?u32 {
 	if isnil(tc.type_cache) {
-		return tc.sum_variant_type_for_pattern_depth(sum_name, variant_name, 0)
+		return tc.sum_variant_type_for_pattern_depth(sum_name_id, variant_name_id, 0)
 	}
 	mut cache := tc.type_cache
-	key := '${tc.cur_file}\x01${tc.cur_module}\x01${sum_name}\x01${variant_name}'
-	if cached_source_id := cache.sum_variant_pattern_entries.type_id(key) {
-		cached := flat.source_type_name(cached_source_id)
-
-		if cached_source_id == 0 {
-			return none
-		}
+	key := '${tc.cur_file}\x01${tc.cur_module}\x01${sum_name_id}\x01${variant_name_id}'
+	if cached := cache.sum_variant_pattern_entries.type_id(key) {
+		if cached == 0 { return none }
 		return cached
 	}
-	result := tc.sum_variant_type_for_pattern_depth(sum_name, variant_name, 0) or {
+	result := tc.sum_variant_type_for_pattern_depth(sum_name_id, variant_name_id, 0) or {
 		cache.sum_variant_pattern_entries.set_id(key, u32(0))
 		return none
 	}
-	cache.sum_variant_pattern_entries.set_id(key, flat.source_type_id(result))
+	cache.sum_variant_pattern_entries.set_id(key, result)
 	return result
 }
 
-fn (tc &TypeChecker) sum_variant_type_for_pattern_depth(sum_name string, variant_name string, depth int) ?string {
-	if depth >= 16 {
-		return none
-	}
-	base := tc.sum_base_name(flat.source_type_id(sum_name))
-	variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(base) or { return none } }.names()
-	mut candidates := [variant_name]
-	qvariant := tc.qualify_name(variant_name)
-	if qvariant != variant_name {
-		candidates << qvariant
-	}
+fn (tc &TypeChecker) sum_variant_type_for_pattern_depth(sum_name_id u32, variant_name_id u32, depth int) ?u32 {
+	if depth >= 16 { return none }
+	base := tc.sum_base_name(sum_name_id)
+	variants := tc.sum_types.type_ids(base) or { return none }
+	variant_name := flat.source_type_name(variant_name_id)
+	mut candidates := [variant_name_id]
+	qvariant := flat.source_type_id(tc.qualify_name(variant_name))
+	if qvariant != variant_name_id { candidates << qvariant }
 	if variant_name.contains('.') {
-		resolved := flat.source_type_name(tc.resolve_imported_type_text(flat.source_type_id(variant_name)))
-		if resolved != variant_name {
-			candidates << resolved
-		}
+		resolved := tc.resolve_imported_type_text(variant_name_id)
+		if resolved != variant_name_id { candidates << resolved }
 		// `all_after_last('.')` on a container pattern (`map[string]ast.Value`)
 		// strips the container and would resolve to the sum type itself.
 		if !variant_name.contains('[') && !variant_name.contains(']') {
@@ -14969,24 +14984,22 @@ fn (tc &TypeChecker) sum_variant_type_for_pattern_depth(sum_name string, variant
 			}
 		}
 	}
-	for candidate in candidates.clone() {
-		candidates << tc.alias_target_type_names(candidate)
-	}
+	for candidate in candidates.clone() { candidates << tc.alias_target_type_names(candidate) }
 	for candidate in candidates {
-		if tc.generic_type_name_matches(flat.source_type_id(candidate), flat.source_type_id(sum_name))
-			|| tc.generic_type_name_matches(flat.source_type_id(candidate), flat.source_type_id(base)) {
-			return sum_name
+		if tc.generic_type_name_matches(candidate, sum_name_id)
+			|| tc.generic_type_name_matches(candidate, flat.source_type_id(base)) {
+			return sum_name_id
 		}
 	}
 	for variant in variants {
-		concrete_source_id_5 := tc.concrete_sum_variant_name(flat.source_type_id(sum_name), flat.source_type_id(variant))
-		concrete := flat.source_type_name(concrete_source_id_5)
+		concrete := tc.concrete_sum_variant_name(sum_name_id, variant)
+		concrete_text := flat.source_type_name(concrete)
 		for candidate in candidates {
-			if tc.generic_type_name_matches(flat.source_type_id(candidate), concrete_source_id_5)
-				|| tc.bare_variant_name_matches(candidate, variant, concrete) {
+			if tc.generic_type_name_matches(candidate, concrete)
+				|| tc.bare_variant_name_matches(flat.source_type_name(candidate), flat.source_type_name(variant), concrete_text) {
 				return concrete
 			}
-			if is_bare_generic_param(concrete) && !tc.is_known_type_text(concrete_source_id_5) {
+			if is_bare_generic_param(concrete_text) && !tc.is_known_type_text(concrete) {
 				return candidate
 			}
 		}
@@ -14997,65 +15010,55 @@ fn (tc &TypeChecker) sum_variant_type_for_pattern_depth(sum_name string, variant
 	return none
 }
 
-fn (tc &TypeChecker) alias_target_type_names(name string) []string {
-	mut result := []string{}
-	mut cur := name
+fn (tc &TypeChecker) alias_target_type_names(name_id u32) []u32 {
+	mut result := []u32{}
+	mut cur := name_id
 	for _ in 0 .. 16 {
 		target := tc.alias_target_type_text(cur) or { break }
-		typ := tc.parse_type(flat.source_type_id(target))
-		target_name := typ.name()
-		if target_name.len == 0 || target_name == cur || target_name in result {
-			break
-		}
+		target_name := tc.parse_type(target).source_type_id()
+		if target_name == 0 || target_name == cur || target_name in result { break }
 		result << target_name
 		cur = target_name
 	}
 	return result
 }
 
-fn (tc &TypeChecker) alias_target_type_text(name string) ?string {
+fn (tc &TypeChecker) alias_target_type_text(name_id u32) ?u32 {
+	name := flat.source_type_name(name_id)
 	if target_source_id := tc.type_aliases.type_id(name) {
-		target := flat.source_type_name(target_source_id)
-
-		return target
+		return target_source_id
 	}
 	qname := tc.qualify_name(name)
 	if target_source_id := tc.type_aliases.type_id(qname) {
-		target := flat.source_type_name(target_source_id)
-
-		return target
+		return target_source_id
 	}
 	if name.contains('.') {
-		resolved := flat.source_type_name(tc.resolve_imported_type_text(flat.source_type_id(name)))
+		resolved := flat.source_type_name(tc.resolve_imported_type_text(name_id))
 		if target_source_id := tc.type_aliases.type_id(resolved) {
-			target := flat.source_type_name(target_source_id)
-
-			return target
+			return target_source_id
 		}
-		if unique := tc.unique_qualified_type_name(name.all_after_last('.')) {
-			if target_source_id := tc.type_aliases.type_id(unique) {
-				target := flat.source_type_name(target_source_id)
+		if unique_source_id := tc.unique_qualified_type_name(name.all_after_last('.')) {
+			unique := flat.source_type_name(unique_source_id)
 
-				return target
+			if target_source_id := tc.type_aliases.type_id(unique) {
+				return target_source_id
 			}
 		}
 	}
 	return none
 }
 
-fn (tc &TypeChecker) nested_sum_variant_type_for_pattern(concrete string, candidates []string, depth int) ?string {
-	typ := tc.parse_type(flat.source_type_id(concrete))
+fn (tc &TypeChecker) nested_sum_variant_type_for_pattern(concrete_id u32, candidates_ids []u32, depth int) ?u32 {
+	typ := tc.parse_type(concrete_id)
 	nested_name := if typ is SumType {
-		typ.name()
+		typ.source_type_id()
 	} else if typ is Alias && typ.base_type is SumType {
-		(typ.base_type as SumType).name()
+		(typ.base_type as SumType).source_type_id()
 	} else {
-		''
+		u32(0)
 	}
-	if nested_name.len == 0 {
-		return none
-	}
-	for candidate in candidates {
+	if nested_name == 0 { return none }
+	for candidate in candidates_ids {
 		if nested := tc.sum_variant_type_for_pattern_depth(nested_name, candidate, depth + 1) {
 			return nested
 		}
@@ -15063,7 +15066,8 @@ fn (tc &TypeChecker) nested_sum_variant_type_for_pattern(concrete string, candid
 	return none
 }
 
-fn (tc &TypeChecker) match_sum_variant_type(subject Type, pattern string) ?Type {
+fn (tc &TypeChecker) match_sum_variant_type(subject Type, pattern_id u32) ?Type {
+	pattern := flat.source_type_name(pattern_id)
 	if subject is SumType {
 		variants := flat.TypeTextList{ ids: tc.sum_types.type_ids(subject.name()) or { return none } }.names()
 		variant_short := short_type_name(pattern)
@@ -15083,7 +15087,7 @@ fn (tc &TypeChecker) match_sum_variant_type(subject Type, pattern string) ?Type 
 		return none
 	}
 	if tc.type_symbol_known(pattern) {
-		return tc.parse_type(flat.source_type_id(pattern))
+		return tc.parse_type(pattern_id)
 	}
 	if is_builtin_type_name(pattern) {
 		return builtin_type_value(pattern)
@@ -15092,16 +15096,16 @@ fn (tc &TypeChecker) match_sum_variant_type(subject Type, pattern string) ?Type 
 }
 
 // match_type_pattern supports match type pattern handling for TypeChecker.
-fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
+fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?u32 {
 	if node.kind == .array_init && node.typ != 0 {
-		return node.typ_text()
+		return node.typ
 	}
 	if node.kind == .ident {
 		if node.value.starts_with('?') || node.value.starts_with('!') {
-			return node.value
+			return flat.source_type_id(node.value)
 		}
 		if flat.source_type_shape(node.typ).has(.option_type) || flat.source_type_shape(node.typ).has(.result_type) {
-			return node.typ_text()
+			return node.typ
 		}
 		if node.value.len > 0 && node.pos.offset > 0 {
 			if file := tc.a.source_files[node.pos.id] {
@@ -15110,26 +15114,26 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 						`?`,
 						`!`,
 					] {
-						return source[node.pos.offset..node.pos.offset + 1] + node.value
+						return flat.source_type_id(source[node.pos.offset..node.pos.offset + 1] + node.value)
 					}
 					if node.pos.offset <= source.len && source[node.pos.offset - 1] in [
 						`?`,
 						`!`,
 					] {
-						return source[node.pos.offset - 1..node.pos.offset] + node.value
+						return flat.source_type_id(source[node.pos.offset - 1..node.pos.offset] + node.value)
 					}
 				}
 			}
 		}
 		if node.value.starts_with('fn(') || node.value.starts_with('fn (') {
-			return flat.source_type_name(tc.qualify_type_text(flat.source_type_id(node.value)))
+			return tc.qualify_type_text(flat.source_type_id(node.value))
 		}
 		if is_builtin_type_name(node.value) || tc.type_symbol_known(node.value)
 			|| tc.pattern_type_known(node.value)
 			|| flat.is_named_variant_type_name(node.value)
 			|| (node.value.len > 0 && node.value[0].is_capital())
 			|| (tc.generated_files.len > 0 && tc.type_name_known_in_current_module(flat.source_type_id(node.value))) {
-			return node.value
+			return flat.source_type_id(node.value)
 		}
 		return none
 	}
@@ -15140,7 +15144,7 @@ fn (tc &TypeChecker) match_type_pattern(node &flat.Node) ?string {
 			if (base.value != 'C' && node.value.len > 0 && node.value[0].is_capital())
 				|| tc.type_symbol_known(pattern) || tc.pattern_type_known(pattern)
 				|| flat.is_named_variant_type_name(pattern) {
-				return pattern
+				return flat.source_type_id(pattern)
 			}
 		}
 	}
@@ -15634,9 +15638,9 @@ fn (tc &TypeChecker) lexical_match_branch_smartcast_type(parent &flat.Node, bran
 	}
 	subject_type := unalias_and_unwrap_pointer_type(tc.resolve_type(subject_id))
 	cond := tc.a.child_node(branch, 0)
-	pattern := tc.match_type_pattern(cond) or { return none }
+	pattern := flat.source_type_name(tc.match_type_pattern(cond) or { return none })
 	name := if subject_type is SumType {
-		tc.sum_variant_type_for_pattern(subject_type.name(), pattern) or { return none }
+		flat.source_type_name(tc.sum_variant_type_for_pattern(subject_type.source_type_id(), flat.source_type_id(pattern)) or { return none })
 	} else if is_ierror_type(subject_type) {
 		tc.resolve_ierror_match_pattern(pattern) or { return none }
 	} else if subject_type is Interface {
@@ -15656,7 +15660,9 @@ fn (tc &TypeChecker) smartcast_target_type_for_is_expr(expr_id flat.NodeId, patt
 	raw_subject := fn_param_unalias_type(tc.resolve_type(expr_id))
 	subject := unalias_and_unwrap_pointer_type(raw_subject)
 	if subject is SumType {
-		if variant := tc.sum_variant_type_for_pattern(subject.name(), pattern) {
+		if variant_source_id := tc.sum_variant_type_for_pattern(subject.source_type_id(), flat.source_type_id(pattern)) {
+			variant := flat.source_type_name(variant_source_id)
+
 			return tc.parse_type(flat.source_type_id(variant))
 		}
 	}
@@ -16845,37 +16851,39 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		}
 	}
 	if allow_bare_symbol && !typ.contains('.') {
-		if resolved := tc.unique_qualified_type_name(typ) {
+		if resolved_source_id := tc.unique_qualified_type_name(typ) {
+			resolved := flat.source_type_name(resolved_source_id)
+
 			if tc.type_aliases.contains(resolved) {
 				return Type(Alias{
-					name_id:   flat.source_type_id(resolved)
+					name_id:   resolved_source_id
 					base_type: tc.parse_type(tc.type_aliases.value_id(resolved))
 				})
 			}
 			if resolved in tc.structs {
 				return Type(Struct{
-					name_id: flat.source_type_id(resolved)
+					name_id: resolved_source_id
 				})
 			}
 			if resolved in tc.interface_names {
 				return Type(Interface{
-					name_id: flat.source_type_id(resolved)
+					name_id: resolved_source_id
 				})
 			}
 			if resolved in tc.flag_enums {
 				return Type(Enum{
-					name_id: flat.source_type_id(resolved)
+					name_id: resolved_source_id
 					is_flag: true
 				})
 			}
 			if resolved in tc.enum_names {
 				return Type(Enum{
-					name_id: flat.source_type_id(resolved)
+					name_id: resolved_source_id
 				})
 			}
 			if tc.sum_types.contains(resolved) {
 				return Type(SumType{
-					name_id: flat.source_type_id(resolved)
+					name_id: resolved_source_id
 				})
 			}
 		}
@@ -16921,7 +16929,9 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 				// lookup and c_type match `vec.Vec2[int]`, not a bogus bare `Vec2[int]`.
 				if resolved := tc.resolve_selective_import_type_symbol(resolved_base) {
 					sgp_base = resolved
-				} else if resolved := tc.unique_qualified_type_name(resolved_base) {
+				} else if resolved_source_id := tc.unique_qualified_type_name(resolved_base) {
+					resolved := flat.source_type_name(resolved_source_id)
+
 					sgp_base = resolved
 				}
 			}
@@ -17022,7 +17032,9 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			// the fixed-array handler — its bracket is a const/expression length.
 			mut full := qbase + generic_suffix
 			if allow_bare_generic_base && !resolved_base.contains('.') {
-				if resolved := tc.unique_qualified_type_name(resolved_base) {
+				if resolved_source_id := tc.unique_qualified_type_name(resolved_base) {
+					resolved := flat.source_type_name(resolved_source_id)
+
 					full = resolved + generic_suffix
 				}
 			}
@@ -17320,16 +17332,18 @@ fn (tc &TypeChecker) is_known_type_text(typ_id u32) bool {
 
 // canonical_qualified_type_name resolves a possibly bare or partially qualified
 // type name (e.g. `PoolProcessor` or `pool.PoolProcessor`) to its unique fully
-// qualified spelling (`sync.pool.PoolProcessor`). It returns none when the name
+// qualified spelling ID (`sync.pool.PoolProcessor`). The input is a source spelling ID.
+// It returns none when the name
 // is unknown or when the short name is ambiguous across modules. Backends use
 // this to rebuild method/type C names when a receiver type carries only the
 // import-local module qualifier instead of the full module path.
-pub fn (tc &TypeChecker) canonical_qualified_type_name(name string) ?string {
+pub fn (tc &TypeChecker) canonical_qualified_type_name(name_id u32) ?u32 {
+	name := flat.source_type_name(name_id)
 	return tc.unique_qualified_type_name(name.all_after_last('.'))
 }
 
 // unique_qualified_type_name supports unique qualified type name handling for TypeChecker.
-fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
+fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?u32 {
 	if short_name == '' {
 		return none
 	}
@@ -17347,11 +17361,11 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 		for !isnil(fallback) {
 			if fallback.short_type_name_index_built {
 				found_source_id := fallback.short_type_name_index.type_id(short_name) or { return none }
-				found := flat.source_type_name(found_source_id)
+
 				if found_source_id == 0 {
 					return none
 				}
-				return found
+				return found_source_id
 			}
 			fallback = fallback.base
 		}
@@ -17359,12 +17373,12 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 		tc.build_short_type_name_index(mut cache.short_type_name_index)
 	}
 	found_source_id_2 := cache.short_type_name_index.type_id(short_name) or { return none }
-	found := flat.source_type_name(found_source_id_2)
+
 	// An empty entry marks an ambiguous short name (several qualified types).
 	if found_source_id_2 == 0 {
 		return none
 	}
-	return found
+	return found_source_id_2
 }
 
 // invalidate_short_type_name_index drops memoized type-name-derived indexes;
@@ -17465,7 +17479,7 @@ fn index_short_type_name(name string, mut index flat.TypeTextBindings) {
 
 // unique_qualified_type_name_scan is the uncached fallback used when no
 // type_cache is attached to the checker.
-fn (tc &TypeChecker) unique_qualified_type_name_scan(short_name string) ?string {
+fn (tc &TypeChecker) unique_qualified_type_name_scan(short_name string) ?u32 {
 	mut found := ''
 	for name, _ in tc.type_aliases.ids {
 		if name.all_after_last('.') == short_name {
@@ -17510,7 +17524,7 @@ fn (tc &TypeChecker) unique_qualified_type_name_scan(short_name string) ?string 
 	if found.len == 0 {
 		return none
 	}
-	return found
+	return flat.source_type_id(found)
 }
 
 // is_generic_placeholder_type reports whether is generic placeholder type applies in types.
@@ -19682,7 +19696,9 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		if t.name().contains('.') && t.name() !in tc.structs && t.name() !in tc.type_aliases.ids {
 			// An import-alias prefix (`json.Any` for `import x.json2 as json`)
 			// can survive in recorded types; resolve by unique short name.
-			if resolved := tc.unique_qualified_type_name(t.name().all_after_last('.')) {
+			if resolved_source_id := tc.unique_qualified_type_name(t.name().all_after_last('.')) {
+				resolved := flat.source_type_name(resolved_source_id)
+
 				return tc.c_struct_type_name(resolved)
 			}
 		}
@@ -20978,8 +20994,10 @@ fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperat
 	mut receiver_types := [unwrap_pointer(lhs)]
 	if receiver_types[0] is Alias {
 		alias_type := receiver_types[0] as Alias
-		if target := tc.alias_target_type_text(alias_type.name()) {
-			receiver_types << tc.parse_type(flat.source_type_id(target))
+		if target_source_id := tc.alias_target_type_text(alias_type.source_type_id()) {
+			target_source_id_2 := target_source_id
+
+			receiver_types << tc.parse_type(target_source_id_2)
 		}
 		receiver_types << alias_type.base_type
 	}

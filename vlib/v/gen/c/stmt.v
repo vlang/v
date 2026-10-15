@@ -304,7 +304,7 @@ fn (g &FlatGen) array_push_rhs_is_sum_variant_value(rhs_id flat.NodeId, elem_typ
 	if candidate.len == 0 {
 		return false
 	}
-	if _ := g.tc.sum_variant_type_for_pattern(sum_name, candidate) {
+	if _ := g.tc.sum_variant_type_for_pattern(flat.source_type_id(sum_name), flat.source_type_id(candidate)) {
 		return true
 	}
 	return false
