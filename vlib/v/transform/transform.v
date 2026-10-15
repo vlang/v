@@ -10066,8 +10066,25 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
-	// Escape analysis updates bindings and type annotations, but never appends AST nodes.
-	node := t.a.node(id)
+	// Resolve reflected method bodies before borrowing a node header: cloning
+	// their analysis view can grow the AST. The source loop is lowered normally later.
+	if t.a.nodes[int(id)].kind == .comptime_for {
+		analysis_start := t.a.nodes.len
+		if expanded := t.comptime_method_escape_stmts(t.a.nodes[int(id)]) {
+			for child in expanded {
+				t.scan_escape_pass(child, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
+			}
+			// These clones are an analysis view, not additional executable calls.
+			// Clear only fresh IDs: some clone helpers preserve existing children.
+			for idx in analysis_start .. t.a.nodes.len {
+				t.clear_ignored_comptime_for_node(idx)
+			}
+			return
+		}
+	}
+	// A nested reflected loop can append nodes while an ancestor is being scanned.
+	node_storage := t.a.nodes[int(id)]
+	node := &node_storage
 	if node.kind in [.if_expr, .comptime_if, .match_stmt, .match_branch, .for_stmt, .select_stmt] {
 		for i in 0 .. node.children_count {
 			t.scan_escape_pass(t.a.child(node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)

@@ -1322,6 +1322,42 @@ fn (mut t Transformer) make_method_data_literal(method MethodMeta) flat.NodeId {
 	})
 }
 
+// comptime_method_escape_stmts gives the escape prepass the concrete calls that
+// method reflection will emit, without lowering statements or changing the source loop.
+fn (mut t Transformer) comptime_method_escape_stmts(node flat.Node) ?[]flat.NodeId {
+	var_name, kind := comptime_for_parts(node.value)
+	if kind != 'methods' || node.children_count == 0 || t.generic_arg_is_unresolved(node.typ) {
+		return none
+	}
+	base_type_id := if node.payload == flat.canonical_comptime_type_payload {
+		node.typ
+	} else {
+		source_id := t.comptime_for_value_source_type(node.typ_text()) or { node.typ }
+		source := flat.source_type_name(source_id)
+		if source != node.typ_text() && t.type_authority_has(t.comptime_for_value_type_base(source)) {
+			source_id
+		} else {
+			flat.source_type_id(t.comptime_resolve_selective_import_type(source))
+		}
+	}
+	if t.generic_arg_is_unresolved(base_type_id) {
+		return none
+	}
+	body := *t.a.child_node(&node, 0)
+	body_stmts := t.a.children_of(&body).clone()
+	mut result := []flat.NodeId{}
+	for method in t.comptime_method_metas(base_type_id) {
+		mut cloned := []flat.NodeId{cap: body_stmts.len}
+		for sid in body_stmts {
+			if cid := t.clone_method_subst(sid, var_name, method) {
+				cloned << cid
+			}
+		}
+		result << t.make_block(cloned)
+	}
+	return result
+}
+
 fn (mut t Transformer) expand_comptime_for_methods(var_name string, base_type_id u32, body_stmts []flat.NodeId) []flat.NodeId {
 	mut out := []flat.NodeId{}
 	for method in t.comptime_method_metas(base_type_id) {
