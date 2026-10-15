@@ -362,7 +362,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if node.kind == .call {
 		if fn_return_type := t.fn_value_call_return_type(node) {
 			resolved_return_type := if t.active_specialization_args_text().len > 0 {
-				t.subst_type(fn_return_type, t.active_specialization_args_text())
+				t.subst_type(fn_return_type, t.active_specialization_args.ids)
 			} else {
 				fn_return_type
 			}
@@ -1107,13 +1107,13 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 			interface_base = base_id
 			mut receiver_source_type := flat.source_type_name(t.original_expr_type(base_id))
 			if t.active_specialization_args_text().len > 0 {
-				receiver_source_type = t.subst_type(receiver_source_type, t.active_specialization_args_text())
+				receiver_source_type = t.subst_type(receiver_source_type, t.active_specialization_args.ids)
 			}
 			interface_name = t.resolve_interface_type_name(receiver_source_type)
 			if interface_name.len == 0 {
 				receiver_source_type = flat.source_type_name(t.node_type(base_id))
 				if t.active_specialization_args_text().len > 0 {
-					receiver_source_type = t.subst_type(receiver_source_type, t.active_specialization_args_text())
+					receiver_source_type = t.subst_type(receiver_source_type, t.active_specialization_args.ids)
 				}
 				interface_name = t.resolve_interface_type_name(receiver_source_type)
 			}
@@ -1217,7 +1217,7 @@ fn (t &Transformer) specialized_interface_method_call_return_type(_id flat.NodeI
 		base_type = flat.source_type_name(t.node_type(base_id))
 	}
 	if t.active_specialization_args_text().len > 0 {
-		base_type = t.subst_type(base_type, t.active_specialization_args_text())
+		base_type = t.subst_type(base_type, t.active_specialization_args.ids)
 	}
 	iface_name := t.resolve_interface_type_name(base_type)
 	if iface_name.len == 0 {

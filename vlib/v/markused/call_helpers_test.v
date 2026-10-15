@@ -1013,7 +1013,7 @@ fn test_channel_generic_reachability_inference() {
 	actual := types.Type(types.Channel{ elem_type: types.Type(types.int_) })
 	inferred := tc.infer_generic_reachability_type_args('gates.make_gate', 'chan U', actual,
 		['U'])
-	assert inferred['U'] == 'int'
+	assert inferred['U'] == flat.source_type_int
 }
 
 fn test_unindexed_generic_factory_infers_spread_and_shared_arguments() {

@@ -5769,10 +5769,10 @@ fn (mut tc TypeChecker) record_chained_bare_generic_struct_method_inference_erro
 	inferred := tc.infer_generic_struct_init_param_texts(*receiver, base, struct_params)
 	mut missing := ''
 	for param in struct_params {
-		arg := inferred[param] or {
+		arg := flat.source_type_name(inferred[param] or {
 			missing = param
 			break
-		}
+		})
 		if tc.type_text_has_generic_placeholder(arg) {
 			missing = param
 			break
@@ -5872,7 +5872,7 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 	defer {
 		tc.generic_decl_file = saved_generic_decl_file
 	}
-	mut inferred := map[string]string{}
+	mut inferred := map[string]u32{}
 	mut inferred_types := map[string]Type{}
 	mut first_param_idx := 0
 	mut receiver_unresolved := false
@@ -5951,14 +5951,14 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 	}
 	mut missing := ''
 	for param in generic_params {
-		arg := inferred[param] or {
+		arg := flat.source_type_name(inferred[param] or {
 			if param in tc.fn_context.generic_params && param_texts.len > 0
 				&& type_text_mentions_any_generic_param(param_texts[0], [param]) {
 				continue
 			}
 			missing = param
 			break
-		}
+		})
 		if tc.type_text_has_unbound_generic_placeholder(arg, bound) {
 			missing = param
 			break
@@ -6117,7 +6117,7 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 	defer {
 		tc.generic_decl_file = saved_generic_decl_file
 	}
-	mut concrete_args := []string{}
+	mut concrete_args := []u32{}
 	callee := tc.a.child_node(&call, 0)
 	if callee.kind == .index {
 		type_args := tc.generic_call_type_arg_names(callee)
@@ -6133,15 +6133,15 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 			} else {
 				type_arg
 			}
-			concrete_args << tc.explicit_generic_concrete_arg_text(concrete)
+			concrete_args << flat.source_type_id(tc.explicit_generic_concrete_arg_text(concrete))
 		}
 	}
-	mut inferred := map[string]string{}
+	mut inferred := map[string]u32{}
 	mut symbol_types := map[string]string{}
 	if concrete_args.len == generic_params.len {
 		for i, param in generic_params {
 			inferred[param] = concrete_args[i]
-			symbol_types[param] = concrete_args[i]
+			symbol_types[param] = flat.source_type_name(concrete_args[i])
 		}
 	}
 	mut arg_index := 1 + info.arg_offset
@@ -6179,15 +6179,16 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 		// `[C Container[T], T Named]`, from the type bound to that one.
 		tc.infer_type_params_from_constraints(*fn_node, mut inferred)
 		for param in generic_params {
-			arg := inferred[param] or { return none }
-			concrete_args << arg
+			arg_source_id__ := inferred[param] or { return none }
+			arg := flat.source_type_name(arg_source_id__)
+			concrete_args << arg_source_id__
 			symbol_types[param] = arg
 		}
 	}
 	return GenericCompileErrorInstantiation{
 		decl_id:        decl_id
 		generic_params: generic_params
-		concrete_args:  flat.TypeTextList.from_names(concrete_args)
+		concrete_args:  flat.TypeTextList{ ids: concrete_args.clone() }
 		symbol_types:   flat.TypeTextBindings.from_names(symbol_types)
 	}
 }
@@ -18344,7 +18345,7 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 	defer {
 		tc.generic_decl_file = saved_generic_decl_file
 	}
-	mut inferred := map[string]string{}
+	mut inferred := map[string]u32{}
 	mut inferred_types := map[string]Type{}
 	mut first_param_idx := 0
 	if info.has_receiver && param_texts.len > 0 {
@@ -18455,13 +18456,14 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 	mut concrete_args := []string{cap: generic_params.len}
 	mut concrete_types := []Type{cap: generic_params.len}
 	for param in generic_params {
-		arg := inferred[param] or { return info }
+		arg_source_id___ := inferred[param] or { return info }
+		arg := flat.source_type_name(arg_source_id___)
 		concrete_args << arg
 		// Retain the caller-side semantic type. Re-parsing a bare caller type such
 		// as `User` in the generic declaration's module would incorrectly turn it
 		// into `json2.User`.
 		concrete_types << inferred_types[param] or {
-			tc.type_from_known_symbol(arg) or { tc.parse_type(flat.source_type_id(arg)) }
+			tc.type_from_known_symbol(arg) or { tc.parse_type(arg_source_id___) }
 		}
 	}
 	// A generic receiver method can also have its own generic parameters, e.g.
@@ -18475,7 +18477,7 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		receiver_pattern := info.name.all_before_last('.')
 		_, receiver_params, receiver_is_generic := generic_type_application_parts(receiver_pattern)
 		if receiver_is_generic {
-			mut receiver_inferred := map[string]string{}
+			mut receiver_inferred := map[string]u32{}
 			actual_receiver := unwrap_pointer(info.params[0]).name()
 			tc.infer_generic_type_text_from_text(receiver_pattern, actual_receiver, receiver_params, mut receiver_inferred)
 			if receiver_inferred.len == 0 {
@@ -18485,7 +18487,8 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 				if receiver_param in signature_params {
 					continue
 				}
-				if receiver_arg := receiver_inferred[receiver_param] {
+				if receiver_arg_id := receiver_inferred[receiver_param] {
+					receiver_arg := flat.source_type_name(receiver_arg_id)
 					signature_params << receiver_param
 					signature_args << receiver_arg
 				}
@@ -18779,7 +18782,7 @@ fn (tc &TypeChecker) generic_param_type_text(text string) string {
 	return resolved
 }
 
-fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]string) {
+fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]u32) {
 	clean := trimmed_space(param_text)
 	if clean.len == 0 {
 		return
@@ -18881,7 +18884,7 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 			if actual_text == 'unknown' || actual_text == 'generic' {
 				actual_text = param
 			}
-			inferred[param] = actual_text
+			inferred[param] = flat.source_type_id(actual_text)
 			return
 		}
 	}
@@ -18889,8 +18892,8 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 
 // infer_generic_reachability_type_args infers generic arguments for a call whose checked type
 // cache is unavailable to reachability analysis. It uses the declaration's type context.
-pub fn (tc &TypeChecker) infer_generic_reachability_type_args(fn_name string, param_text string, actual Type, generic_params []string) map[string]string {
-	mut inferred := map[string]string{}
+pub fn (tc &TypeChecker) infer_generic_reachability_type_args(fn_name string, param_text string, actual Type, generic_params []string) map[string]u32 {
+	mut inferred := map[string]u32{}
 	clean := trimmed_space(param_text)
 	base, _, is_generic := generic_type_application_parts(clean)
 	is_callback := clean.contains('fn(') || clean.contains('fn (')
@@ -19009,7 +19012,7 @@ fn (mut tc TypeChecker) generic_interface_implementation_type_args(iface_name st
 	defer {
 		tc.generic_decl_file = saved_generic_decl_file
 	}
-	mut inferred_text := map[string]string{}
+	mut inferred_text := map[string]u32{}
 	mut inferred_types := map[string]Type{}
 	for field in tc.interface_field_list(iface_name) {
 		actual_field := tc.interface_actual_field(actual_name, field.name) or { continue }
@@ -19046,7 +19049,7 @@ fn (mut tc TypeChecker) generic_interface_implementation_type_args(iface_name st
 			continue
 		}
 		inferred := inferred_text[param] or { return none }
-		concrete_args << tc.parse_type(flat.source_type_id(inferred))
+		concrete_args << tc.parse_type(inferred)
 	}
 	return concrete_args
 }
@@ -19073,7 +19076,7 @@ fn (tc &TypeChecker) generic_infer_type_text(actual Type) string {
 	return actual.name()
 }
 
-fn (tc &TypeChecker) infer_generic_type_text_from_text(param_text string, actual_text string, generic_params []string, mut inferred map[string]string) {
+fn (tc &TypeChecker) infer_generic_type_text_from_text(param_text string, actual_text string, generic_params []string, mut inferred map[string]u32) {
 	clean := trimmed_space(param_text)
 	actual := trimmed_space(actual_text)
 	if clean.len == 0 || actual.len == 0 {
@@ -19081,11 +19084,11 @@ fn (tc &TypeChecker) infer_generic_type_text_from_text(param_text string, actual
 	}
 	for param in generic_params {
 		if clean == param && param !in inferred {
-			inferred[param] = if actual == 'unknown' || actual == 'generic' {
+			inferred[param] = flat.source_type_id(if actual == 'unknown' || actual == 'generic' {
 				param
 			} else {
 				actual
-			}
+			})
 			return
 		}
 	}
@@ -19163,7 +19166,7 @@ fn (tc &TypeChecker) infer_generic_type_text_from_text(param_text string, actual
 	}
 }
 
-fn (mut tc TypeChecker) infer_generic_fn_type_text_from_type(param_text string, actual FnType, generic_params []string, mut inferred map[string]string) {
+fn (mut tc TypeChecker) infer_generic_fn_type_text_from_type(param_text string, actual FnType, generic_params []string, mut inferred map[string]u32) {
 	params_start := param_text.index_u8(`(`) + 1
 	mut depth := 1
 	mut params_end := params_start

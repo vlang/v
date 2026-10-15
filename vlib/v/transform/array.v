@@ -2320,9 +2320,9 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 		if qvariant.len == 0 { continue }
 		clean_variant := flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(qvariant)))
 		mut variant_payload_type := clean_variant
-		mut wrappers := []string{}
+		mut wrappers := []u32{}
 		for t.is_optional_type_name(flat.source_type_id(variant_payload_type)) {
-			wrappers << variant_payload_type
+			wrappers << flat.source_type_id(variant_payload_type)
 			variant_payload_type = flat.source_type_name(t.comptime_normalize_type_alias_chain(t.optional_base_type(flat.source_type_id(variant_payload_type))))
 		}
 		array_type := variant_payload_type.trim_left('&')
@@ -2351,11 +2351,11 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 			branch_path << OwnedArraySumVariant{
 				sum_type: flat.source_type_id(sum_type)
 				variant:  flat.source_type_id(qvariant)
-				wrappers: flat.TypeTextList.from_names(wrappers)
+				wrappers: flat.TypeTextList{ ids: wrappers.clone() }
 			}
-			for wrapper in wrappers {
+			for wrapper_source_id in wrappers {
 				branch_guards << t.make_selector(payload, 'ok', flat.source_type_bool)
-				payload = t.make_selector(payload, 'value', t.optional_base_type(flat.source_type_id(wrapper)))
+				payload = t.make_selector(payload, 'value', t.optional_base_type(wrapper_source_id))
 			}
 			branches << t.owned_sum_array_storage_branches(payload, variant_payload_type, root, root_type, branch_guards, branch_path, next_seen, drop_old_root, clone_owned_value)
 			continue
@@ -2364,9 +2364,9 @@ fn (mut t Transformer) owned_sum_array_storage_branches(source flat.NodeId, sum_
 		force_owned_array := clone_owned_value && !variant_payload_type.starts_with('&')
 		if is_array && !force_owned_array && !(clone_owned_value && wrappers.len > 0) {
 			mut array_payload := payload
-			for wrapper in wrappers {
+			for wrapper_source_id_2 in wrappers {
 				branch_guards << t.make_selector(array_payload, 'ok', flat.source_type_bool)
-				array_payload = t.make_selector(array_payload, 'value', t.optional_base_type(flat.source_type_id(wrapper)))
+				array_payload = t.make_selector(array_payload, 'value', t.optional_base_type(wrapper_source_id_2))
 			}
 			array_value := t.array_lvalue_value(array_payload, variant_payload_type)
 			is_slice := t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
@@ -6872,7 +6872,7 @@ fn (mut t Transformer) map_init_entry_value_type(id flat.NodeId) string {
 			if spec := t.generic_call_spec_cache[int(id)] {
 				decls := t.cached_generic_fn_decls()
 				if decl := decls[spec.decl_key] {
-					display := t.specialized_fn_return_display_type_text(decl, spec.args_text())
+					display := t.specialized_fn_return_display_type_text(decl, spec.args.ids)
 					if display.len > 0 && !t.generic_arg_is_unresolved(flat.source_type_id(display)) {
 						return display
 					}

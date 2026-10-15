@@ -1389,7 +1389,7 @@ fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat
 	if !is_decode {
 		return none
 	}
-	args := t.explicit_generic_call_args(expr_node, t.cur_module) or { return none }
+	args := flat.TypeTextList{ ids: t.explicit_generic_call_args(expr_node, t.cur_module) or { return none } }.names()
 	if args.len == 1 && args[0].len > 0 {
 		return t.specialized_json_decode_result_type(args[0])
 	}
@@ -1400,7 +1400,7 @@ fn (t &Transformer) specialized_json_decode_result_type(type_arg string) string 
 	if t.active_specialization_args_text().len == 0 {
 		return '!${type_arg}'
 	}
-	concrete := t.subst_type(type_arg, t.active_specialization_args_text())
+	concrete := t.subst_type(type_arg, t.active_specialization_args.ids)
 	return '!${concrete}'
 }
 

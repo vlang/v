@@ -7541,8 +7541,9 @@ fn (c &CallCollector) infer_alias_generic_argument(fn_name string, pattern strin
 		if actual := c.alias_aware_expr_type(arg_id, cur_module, imports, local_values, local_types) {
 			for generic, concrete in c.tc.infer_generic_reachability_type_args(fn_name,
 				pattern, actual, generic_params) {
-				if !inferred.contains(generic) && concrete !in ['unknown', 'generic'] {
-					inferred.set(generic, concrete)
+				if !inferred.contains(generic) && concrete != flat.source_type_unknown
+					&& concrete != flat.source_type_id('generic') {
+					inferred.set_id(generic, concrete)
 				}
 			}
 		}

@@ -40,8 +40,8 @@ fn test_imported_generic_alias_return_keeps_the_caller_type_argument() {
 	}
 	assert flat.source_type_name(t.call_return_type_name_in_module(flat.source_type_id('Values[T]'), source_call, 'aliases')) == '[]main.Item'
 	decl := GenericFnDecl{ module: 'aliases' }
-	assert t.specialized_signature_type_text(decl, 'Values[T]', ['main.Item'], ['T']) == '[]main.Item'
-	assert t.specialized_signature_type_text(decl, 'Values[T]', ['Item'], ['T']) == '[]main.Item'
+	assert t.specialized_signature_type_text(decl, 'Values[T]', flat.TypeTextList.from_names(['main.Item']).ids, ['T']) == '[]main.Item'
+	assert t.specialized_signature_type_text(decl, 'Values[T]', flat.TypeTextList.from_names(['Item']).ids, ['T']) == '[]main.Item'
 	without_checker := Transformer{}
 	assert flat.source_type_name(without_checker.normalize_type_in_module(flat.source_type_id('Values[int]'), 'aliases')) == 'Values[int]'
 }
@@ -57,7 +57,7 @@ fn test_specialized_callback_alias_keeps_its_nominal_signature() {
 	decl := GenericFnDecl{ module: 'aliases' }
 	for prefix in ['', '&', '[]', '?'] {
 		for arg in ['Item', 'main.Item'] {
-			assert t.specialized_signature_type_text(decl, '${prefix}aliases.Mapper[T]', [arg], ['T']) == '${prefix}aliases.Mapper[main.Item]'
+			assert t.specialized_signature_type_text(decl, '${prefix}aliases.Mapper[T]', flat.TypeTextList.from_names([arg]).ids, ['T']) == '${prefix}aliases.Mapper[main.Item]'
 		}
 	}
 }

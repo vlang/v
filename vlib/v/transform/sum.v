@@ -106,7 +106,7 @@ fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name string, variant
 	}
 	params := t.sum_generic_params_for_base(base)
 	if params.len == args.len {
-		concrete_pattern := substitute_generic_type_text_with_params(variant, args, params)
+		concrete_pattern := substitute_generic_type_text_with_params(variant, flat.TypeTextList.from_names(args).ids, params)
 		for concrete_variant in t.concrete_sum_variants_for_candidate(sum_name) {
 			if t.variant_names_match(concrete_variant, concrete_pattern)
 				|| t.variant_names_match(concrete_variant, variant) {
@@ -120,7 +120,7 @@ fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name string, variant
 	_, variant_args, variant_is_generic := generic_app_parts(variant)
 	if variant_is_generic && variant_args.len == args.len
 		&& t.generic_variant_args_are_open(variant_args) {
-		concrete_pattern := substitute_generic_type_text_with_params(variant, args, variant_args)
+		concrete_pattern := substitute_generic_type_text_with_params(variant, flat.TypeTextList.from_names(args).ids, variant_args)
 		for concrete_variant in t.concrete_sum_variants_for_candidate(sum_name) {
 			if t.variant_names_match(concrete_variant, concrete_pattern)
 				|| t.concrete_variant_matches_generic_pattern(concrete_variant, concrete_pattern) {
@@ -622,7 +622,7 @@ fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 		return 0
 	}
 	concrete_variant := if t.active_specialization_args_text().len > 0 {
-		t.subst_type(variant, t.active_specialization_args_text())
+		t.subst_type(variant, t.active_specialization_args.ids)
 	} else {
 		variant
 	}
@@ -722,7 +722,7 @@ fn (t &Transformer) sum_generic_params_for_base(base string) []string {
 fn substitute_sum_variant_list(variants []string, args []string, params []string) []string {
 	mut concrete := []string{cap: variants.len}
 	for variant in variants {
-		concrete << substitute_generic_type_text_with_params(variant, args, params)
+		concrete << substitute_generic_type_text_with_params(variant, flat.TypeTextList.from_names(args).ids, params)
 	}
 	return concrete
 }

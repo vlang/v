@@ -630,7 +630,7 @@ fn (mut t Transformer) sql_new_query_call(table_name string, db_expr flat.NodeId
 }
 
 fn (mut t Transformer) sql_record_generic_helper_specialization(spec_name string, type_name string) {
-	t.record_generic_specialization_args_for_names([spec_name], [type_name])
+	t.record_generic_specialization_args_for_names([spec_name], flat.TypeTextList.from_names([type_name]).ids)
 	if isnil(t.tc) {
 		return
 	}
@@ -657,7 +657,7 @@ fn (mut t Transformer) sql_record_table_generic_spec(table_name string) {
 	} else {
 		t.cur_module
 	}
-	t.record_generic_specialization_args_in_module(record_base, module_name, args)
+	t.record_generic_specialization_args_in_module(record_base, module_name, flat.TypeTextList.from_names(args).ids)
 }
 
 fn (mut t Transformer) sql_db_connection_arg(db_expr flat.NodeId) flat.NodeId {
@@ -3383,7 +3383,7 @@ fn (t &Transformer) sql_table_fields(table string) ?[]types.StructField {
 
 fn (t &Transformer) sql_resolved_table_name(table string) string {
 	mut table_name := if t.active_specialization_args_text().len > 0 {
-		t.subst_type(table, t.active_specialization_args_text())
+		t.subst_type(table, t.active_specialization_args.ids)
 	} else {
 		table
 	}

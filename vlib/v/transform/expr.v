@@ -2026,7 +2026,7 @@ fn (t &Transformer) generic_struct_operator_return_type_by_name(struct_type stri
 	} else {
 		return none
 	}
-	substituted := substitute_generic_type_text_with_params(ret, args, params)
+	substituted := substitute_generic_type_text_with_params(ret, flat.TypeTextList.from_names(args).ids, params)
 	// Qualify a returned instance of the same struct family with the struct's module.
 	rbase, _, rok := generic_app_parts(substituted)
 	if rok && full_base.contains('.') && !rbase.contains('.')

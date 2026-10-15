@@ -2444,9 +2444,11 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_generic_specs(specs fl
 				ids:   map[string]int{}
 			}
 		}
-		mut impls := old_index.names_text().clone()
+		mut impls := flat.TypeTextList.from_names(old_index.names_text().clone()).ids
 		mut seen := map[string]bool{}
-		for name in impls {
+		for name_source_id_ in impls {
+			name := flat.source_type_name(name_source_id_)
+
 			seen[name] = true
 		}
 		mut added := []string{}
@@ -2461,10 +2463,10 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_generic_specs(specs fl
 			}
 		}
 		added.sort()
-		impls << added
+		impls << flat.TypeTextList.from_names(added).ids
 		refreshed[iface_name] = &types.InterfaceImplIndex{
-			names: flat.TypeTextList.from_names(impls)
-			ids:   types.stable_interface_type_ids_preserving_prefix(old_index.names_text(), impls)
+			names: flat.TypeTextList{ ids: impls.clone() }
+			ids:   types.stable_interface_type_ids_preserving_prefix(old_index.names_text(), flat.TypeTextList{ ids: impls }.names())
 		}
 	}
 	t.interface_impl_indexes = refreshed.move()
@@ -2525,16 +2527,18 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_types() {
 	iface_names.sort()
 	for iface_name in iface_names {
 		old_index := t.interface_impl_indexes[iface_name] or { continue }
-		mut impls := old_index.names_text().clone()
+		mut impls := flat.TypeTextList.from_names(old_index.names_text().clone()).ids
 		mut seen := map[string]bool{}
-		for name in impls {
+		for name_source_id__ in impls {
+			name := flat.source_type_name(name_source_id__)
+
 			seen[name] = true
 		}
 		mut concrete_types := boxed_types[iface_name] or { []string{} }
 		concrete_types.sort()
 		for concrete in concrete_types {
 			if !seen[concrete] {
-				impls << concrete
+				impls << flat.source_type_id(concrete)
 				seen[concrete] = true
 			}
 		}
@@ -2542,8 +2546,8 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_types() {
 			continue
 		}
 		refreshed[iface_name] = &types.InterfaceImplIndex{
-			names: flat.TypeTextList.from_names(impls)
-			ids:   types.stable_interface_type_ids_preserving_prefix(old_index.names_text(), impls)
+			names: flat.TypeTextList{ ids: impls.clone() }
+			ids:   types.stable_interface_type_ids_preserving_prefix(old_index.names_text(), flat.TypeTextList{ ids: impls }.names())
 		}
 	}
 	t.interface_impl_indexes = refreshed.move()
@@ -9549,7 +9553,7 @@ fn (t &Transformer) checker_method_value_type_name(id flat.NodeId) string {
 // with `b Box[int]`, when no call asks for it. It reports whether it asked.
 fn (mut t Transformer) request_instance_method_value(receiver string, method string) bool {
 	base, args, ok := generic_app_parts(flat.source_type_name(t.trim_pointer_type(flat.source_type_id(receiver))))
-	if !ok || args.len == 0 || t.generic_args_have_placeholders(args) {
+	if !ok || args.len == 0 || t.generic_args_have_placeholders(flat.TypeTextList.from_names(args).ids) {
 		return false
 	}
 	decls := t.cached_generic_fn_decls()
@@ -9559,10 +9563,11 @@ fn (mut t Transformer) request_instance_method_value(receiver string, method str
 	if t.generic_fn_param_names(decl.node, decl.module).len != args.len {
 		return false
 	}
-	concrete_args := t.canonical_generic_specialization_args(args)
-	if !t.generic_specialization_registered(decl, concrete_args)
-		&& !t.generic_specialization_in_progress(decl, concrete_args) {
-		t.request_generic_fn_specialization(decl, concrete_args)
+	concrete_args_source_ids := t.canonical_generic_specialization_args(flat.TypeTextList.from_names(args).ids)
+
+	if !t.generic_specialization_registered(decl, concrete_args_source_ids)
+		&& !t.generic_specialization_in_progress(decl, concrete_args_source_ids) {
+		t.request_generic_fn_specialization(decl, concrete_args_source_ids)
 	}
 	return true
 }
@@ -10534,7 +10539,7 @@ fn (t &Transformer) escape_concrete_inline_field_type(base string, field_name st
 				}
 				qualified += name
 			}
-			substituted := substitute_generic_type_text_with_params(qualified, args, params)
+			substituted := substitute_generic_type_text_with_params(qualified, flat.TypeTextList.from_names(args).ids, params)
 			// A semantic bare nominal belongs to main; do not apply the declaration's
 			// imports or module again after substitution.
 			return t.tc.parse_resolution_type_in_file(flat.source_type_id(substituted), '')
@@ -12282,7 +12287,7 @@ fn (mut t Transformer) selected_sizeof_value_type(name string) ?string {
 		t.cur_fn_is_generic = old_is_generic
 	}
 	for raw in conditions {
-		condition := t.subst_comptime_type_condition(raw, []string{})
+		condition := t.subst_comptime_type_condition(raw, []u32{})
 		if !(t.comptime_type_condition_value(condition) or { return none }) {
 			return none
 		}
@@ -12651,7 +12656,7 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 		raw := trimmed_transform_text(flat.source_type_name(t.raw_var_type(child_node.value)))
 		mut dump_generic_mut_param := t.cur_fn_is_generic
 		if !dump_generic_mut_param {
-			if _ := t.recorded_generic_specialization_args(t.cur_fn_name) {
+			if _ := t.recorded_generic_specialization_args(flat.source_type_id(t.cur_fn_name)) {
 				dump_generic_mut_param = true
 			}
 		}
@@ -15868,7 +15873,7 @@ fn (mut t Transformer) try_lower_sum_shared_field_assign(node flat.Node) ?[]flat
 	mut resolved_sum := t.resolve_sum_name(flat.source_type_name(t.trim_pointer_type(flat.source_type_id(sum_type))))
 	mut sum_candidate := flat.source_type_name(t.trim_pointer_type(flat.source_type_id(sum_type)))
 	if t.active_specialization_args_text().len > 0 {
-		sum_candidate = t.subst_type(sum_candidate, t.active_specialization_args_text())
+		sum_candidate = t.subst_type(sum_candidate, t.active_specialization_args.ids)
 	}
 	if resolved := t.resolve_sum_name_from_c_name(sum_candidate) {
 		sum_candidate = resolved
@@ -18310,7 +18315,7 @@ fn (t &Transformer) concrete_generic_type_refines(current string, refined string
 		return false
 	}
 	base, args, ok := generic_app_parts(refined)
-	if !ok || args.len == 0 || t.generic_args_have_placeholders(args) {
+	if !ok || args.len == 0 || t.generic_args_have_placeholders(flat.TypeTextList.from_names(args).ids) {
 		return false
 	}
 	clean_current := flat.source_type_name(t.trim_pointer_type(t.normalize_type_alias(flat.source_type_id(current))))
@@ -20980,7 +20985,7 @@ fn (mut t Transformer) transform_if_stmt(id flat.NodeId, node flat.Node) []flat.
 	// a specialization); the dead branch may not even typecheck for this
 	// instantiation.
 	if node.children_count >= 2 {
-		if take_then := t.generic_const_string_cond(t.a.child(&node, 0), []) {
+		if take_then := t.generic_const_string_cond(t.a.child(&node, 0), flat.TypeTextList.from_names([]).ids) {
 			branch_index := if take_then { 1 } else { 2 }
 			if branch_index >= int(node.children_count) {
 				return []flat.NodeId{}
@@ -22463,7 +22468,7 @@ fn (mut t Transformer) validate_specialized_plain_generic_call_target(id flat.No
 	if !t.validating_generic_spec || node.children_count == 0 {
 		return true
 	}
-	explicit := t.explicit_generic_call_args(node, t.cur_module) or { return true }
+	explicit := flat.TypeTextList{ ids: t.explicit_generic_call_args(node, t.cur_module) or { return true } }.names()
 	callee := t.a.child_node(&node, 0)
 	if callee.kind != .ident || callee.value.len == 0 || t.is_known_fn_name(callee.value)
 		|| t.is_known_type_name(callee.value) {
@@ -23323,9 +23328,9 @@ fn (mut t Transformer) ensure_stringify_generic_instances_for_type(typ string) {
 	mut fields := []FieldInfo{cap: base_info.fields.len}
 	for field in base_info.fields {
 		field_typ := if params.len > 0 {
-			substitute_generic_type_text_with_params(field.typ_text(), args, params)
+			substitute_generic_type_text_with_params(field.typ_text(), flat.TypeTextList.from_names(args).ids, params)
 		} else {
-			substitute_generic_type_text(field.typ_text(), args)
+			substitute_generic_type_text(field.typ_text(), flat.TypeTextList.from_names(args).ids)
 		}
 		fields << FieldInfo{
 			name:         field.name
@@ -23417,9 +23422,9 @@ fn (t &Transformer) generic_struct_info_for_stringify(typ string) ?StructInfo {
 	mut fields := []FieldInfo{cap: base_info.fields.len}
 	for field in base_info.fields {
 		field_typ := if params.len > 0 {
-			substitute_generic_type_text_with_params(field.typ_text(), args, params)
+			substitute_generic_type_text_with_params(field.typ_text(), flat.TypeTextList.from_names(args).ids, params)
 		} else {
-			substitute_generic_type_text(field.typ_text(), args)
+			substitute_generic_type_text(field.typ_text(), flat.TypeTextList.from_names(args).ids)
 		}
 		fields << FieldInfo{
 			name:         field.name
@@ -24294,7 +24299,7 @@ fn (t &Transformer) sum_shared_field_type_name_inner(sum_type string, field stri
 	}
 	mut sum_candidate := clean_sum
 	if t.active_specialization_args_text().len > 0 {
-		sum_candidate = t.subst_type(sum_candidate, t.active_specialization_args_text())
+		sum_candidate = t.subst_type(sum_candidate, t.active_specialization_args.ids)
 	}
 	if resolved := t.resolve_sum_name_from_c_name(sum_candidate) {
 		sum_candidate = resolved
@@ -24349,7 +24354,7 @@ fn (mut t Transformer) lower_sum_shared_field_selector(base flat.NodeId, sum_typ
 	mut resolved_sum := t.resolve_sum_name(clean_sum)
 	mut sum_candidate := clean_sum
 	if t.active_specialization_args_text().len > 0 {
-		sum_candidate = t.subst_type(sum_candidate, t.active_specialization_args_text())
+		sum_candidate = t.subst_type(sum_candidate, t.active_specialization_args.ids)
 	}
 	if resolved := t.resolve_sum_name_from_c_name(sum_candidate) {
 		sum_candidate = resolved
@@ -26338,7 +26343,8 @@ fn (t &Transformer) explicit_generic_call_return_type_for_typeof(id flat.NodeId,
 	if node.children_count == 0 || isnil(t.tc) {
 		return none
 	}
-	args := t.explicit_generic_call_args(node, t.cur_module) or { return none }
+	args_source_ids := t.explicit_generic_call_args(node, t.cur_module) or { return none }
+
 	mut names := []string{}
 	if resolved := t.tc.resolved_call_name(id) {
 		names << resolved
@@ -26358,11 +26364,11 @@ fn (t &Transformer) explicit_generic_call_return_type_for_typeof(id flat.NodeId,
 		if params.len == 0 {
 			continue
 		}
-		if args.len != params.len || t.generic_args_have_placeholders(args) {
+		if args_source_ids.len != params.len || t.generic_args_have_placeholders(args_source_ids) {
 			continue
 		}
 		ret := flat.source_type_name(t.tc.fn_ret_type_texts.type_id(name) or { t.fn_ret_types.type_id(name) or { continue } })
-		concrete := substitute_generic_type_text_with_params(ret, args, params)
+		concrete := substitute_generic_type_text_with_params(ret, args_source_ids, params)
 		if concrete.len > 0 && !t.generic_arg_is_unresolved(flat.source_type_id(concrete)) {
 			return concrete
 		}

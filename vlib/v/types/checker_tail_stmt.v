@@ -5752,20 +5752,20 @@ fn (mut tc TypeChecker) infer_generic_struct_init_type(node flat.Node) ?Type {
 	}
 	mut args := []string{cap: params.len}
 	for param in params {
-		arg := inferred[param] or { return none }
+		arg := flat.source_type_name(inferred[param] or { return none })
 		args << arg
 	}
 	return tc.parse_type(flat.source_type_id('${qualified_name}[${args.join(', ')}]'))
 }
 
-fn (mut tc TypeChecker) infer_generic_struct_init_param_texts(node flat.Node, base_name string, params []string) map[string]string {
+fn (mut tc TypeChecker) infer_generic_struct_init_param_texts(node flat.Node, base_name string, params []string) map[string]u32 {
 	init_name := tc.qualify_name(base_name)
-	fields := tc.structs[init_name] or { tc.structs[base_name] or { return map[string]string{} } }
+	fields := tc.structs[init_name] or { tc.structs[base_name] or { return map[string]u32{} } }
 	source_fields := tc.source_struct_field_decls(init_name)
-	mut inferred := map[string]string{}
+	mut inferred := map[string]u32{}
 	for param in params {
 		if param in tc.fn_context.generic_params {
-			inferred[param] = param
+			inferred[param] = flat.source_type_id(param)
 		}
 	}
 	for i in 0 .. node.children_count {
@@ -12233,18 +12233,18 @@ pub fn (tc &TypeChecker) ierror_impl_names() []string {
 		struct_names << name
 	}
 	struct_names.sort()
-	mut impls := []string{}
+	mut impls := []u32{}
 	for name in struct_names {
 		if tc.named_type_compatible_with_ierror(name) {
-			impls << name
+			impls << flat.source_type_id(name)
 		}
 	}
 	if tc.type_cache != unsafe { nil } {
 		mut cache := unsafe { tc.type_cache }
-		cache.ierror_impl_names = flat.TypeTextList.from_names(impls)
+		cache.ierror_impl_names = flat.TypeTextList{ ids: impls.clone() }
 		cache.ierror_impl_names_set = true
 	}
-	return impls
+	return flat.TypeTextList{ ids: impls }.names()
 }
 
 pub fn (tc &TypeChecker) concrete_method_signature_key(concrete_name string, method string) ?string {
@@ -20092,9 +20092,7 @@ fn (tc &TypeChecker) generic_receiver_method_pattern_match(base string, actual_a
 				if patterns.all(is_bare_generic_param(trimmed_space(it))) {
 					continue
 				}
-				params, inferred_args = tc.generic_method_receiver_pattern_args(key, actual_args) or {
-					continue
-				}
+				params, inferred_args = tc.generic_method_receiver_pattern_args(key, actual_args) or { continue }
 				specificity = 0
 				for pattern in patterns {
 					if !is_bare_generic_param(trimmed_space(pattern)) {
@@ -20144,13 +20142,13 @@ fn (tc &TypeChecker) generic_method_receiver_pattern_args(key string, actual_arg
 	}
 	mut params := counts.keys()
 	params.sort()
-	mut inferred := map[string]string{}
+	mut inferred := map[string]u32{}
 	for i, pattern in patterns {
 		tc.infer_generic_type_text_from_text(pattern, actual_args[i], params, mut inferred)
 	}
 	mut concrete_args := []string{cap: params.len}
 	for param in params {
-		concrete_args << inferred[param] or { return none }
+		concrete_args << flat.source_type_name(inferred[param] or { return none })
 	}
 	for i, pattern in patterns {
 		substituted := subst_generic_text(pattern, concrete_args, params)

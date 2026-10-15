@@ -709,7 +709,7 @@ fn (mut t Transformer) infer_bare_generic_struct_init_type(node flat.Node) ?stri
 		return none
 	}
 	info := t.lookup_struct_info(node.value) or { return none }
-	mut inferred := map[string]string{}
+	mut inferred := map[string]u32{}
 	for i in 0 .. node.children_count {
 		field := t.a.child_node(&node, i)
 		if field.kind != .field_init || field.children_count == 0 {
@@ -739,8 +739,9 @@ fn (mut t Transformer) infer_bare_generic_struct_init_type(node flat.Node) ?stri
 	}
 	mut args := []string{cap: params.len}
 	for param in params {
-		arg := inferred[param] or { return none }
-		if arg.len == 0 || t.generic_arg_is_unresolved(flat.source_type_id(arg)) {
+		arg_source_id := inferred[param] or { return none }
+		arg := flat.source_type_name(arg_source_id)
+		if arg.len == 0 || t.generic_arg_is_unresolved(arg_source_id) {
 			return none
 		}
 		args << arg
@@ -772,7 +773,7 @@ fn (mut t Transformer) specialize_struct_default_expr(struct_type string, defaul
 	old_params := t.active_generic_params.clone()
 	t.clear_node_type_memo()
 	t.active_generic_params = params
-	clone_id := t.clone_generic_node(default_id, args)
+	clone_id := t.clone_generic_node(default_id, flat.TypeTextList.from_names(args).ids)
 	t.clear_node_type_memo()
 	t.active_generic_params = old_params
 	return clone_id
@@ -1059,9 +1060,9 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 				for field in base_info.fields {
 					fields << FieldInfo{
 						name:         field.name
-						typ:          flat.source_type_id(substitute_generic_type_text_with_params(field.typ_text(), args,
+						typ:          flat.source_type_id(substitute_generic_type_text_with_params(field.typ_text(), flat.TypeTextList.from_names(args).ids,
 							params))
-						raw_typ:      flat.source_type_id(substitute_generic_type_text_with_params(field.raw_typ_text(), args,
+						raw_typ:      flat.source_type_id(substitute_generic_type_text_with_params(field.raw_typ_text(), flat.TypeTextList.from_names(args).ids,
 							params))
 						default_expr: field.default_expr
 						is_embedded:  field.is_embedded

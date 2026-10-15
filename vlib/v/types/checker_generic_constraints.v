@@ -1419,7 +1419,7 @@ fn (mut tc TypeChecker) constraint_walk_infer(param_text string, actual Type, na
 // constraint of a bound one that names it: `T` of `[C Container[T], T Named]`
 // is what `Container[T]` makes of the type of `C`, `User` for `Box[User]`,
 // whose `get()` returns a `User`.
-pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, mut inferred map[string]string) {
+pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, mut inferred map[string]u32) {
 	names := decl.generic_params().map(it.trim_space())
 	texts := decl.generic_constraints()
 	if texts.len != names.len {
@@ -1429,7 +1429,8 @@ pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, m
 	for _ in 0 .. names.len {
 		mut bound := false
 		for i, name in names {
-			actual_text := inferred[name] or { continue }
+			actual_text_source_id := inferred[name] or { continue }
+
 			text := texts[i].trim_space()
 			if text.len == 0 {
 				continue
@@ -1446,7 +1447,7 @@ pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, m
 				continue
 			}
 			before := inferred.len
-			tc.infer_from_constraint(text, tc.parse_type(flat.source_type_id(actual_text)), missing, mut inferred)
+			tc.infer_from_constraint(text, tc.parse_type(actual_text_source_id), missing, mut inferred)
 			bound = bound || inferred.len > before
 		}
 		if !bound {
@@ -1460,7 +1461,7 @@ pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, m
 // `Shelf[T]`, names and nothing bound yet, from `actual_text`, the type of what
 // a call passes there: the types of its methods and fields against those of
 // the members of the interface, `User` for a `get() User` against `get() T`.
-pub fn (mut tc TypeChecker) infer_type_params_from_interface(param_text string, actual_text string, names []string, mut inferred map[string]string) {
+pub fn (mut tc TypeChecker) infer_type_params_from_interface(param_text string, actual_text string, names []string, mut inferred map[string]u32) {
 	mut missing := []string{}
 	for name in names {
 		mut one := map[string]bool{}
@@ -1481,7 +1482,7 @@ pub fn (mut tc TypeChecker) infer_type_params_from_interface(param_text string, 
 // that it constrains: the type arguments of the same generic type, `Pair[T]`
 // against `Pair[int]`, or the types of the members of a generic interface,
 // `get() T` of `Container[T]` against the `get` of `actual`.
-fn (mut tc TypeChecker) infer_from_constraint(text string, actual Type, missing []string, mut inferred map[string]string) {
+fn (mut tc TypeChecker) infer_from_constraint(text string, actual Type, missing []string, mut inferred map[string]u32) {
 	base, args, is_generic := generic_type_application_parts(text)
 	if !is_generic {
 		return
@@ -1751,7 +1752,7 @@ fn (mut tc TypeChecker) check_inferred_struct_in_body(id flat.NodeId, node flat.
 	if texts.len != params.len {
 		return
 	}
-	args := params.map(texts[it] or { '' })
+	args := params.map(flat.source_type_name(texts[it] or { flat.source_type_id('') }))
 	if args.any(it.len == 0) {
 		return
 	}

@@ -292,7 +292,7 @@ fn (mut t Transformer) library_type_parts(text string) ?[]string {
 		params := t.tc.struct_generic_params[base] or { []string{} }
 		for field in fields {
 			parts << library_type_text(substitute_generic_type_text_with_params(field.typ.name(),
-				args, params))
+				flat.TypeTextList.from_names(args).ids, params))
 		}
 	} else if variants := t.tc.sum_types.get(name) {
 		for variant in variants {

@@ -1287,7 +1287,7 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ_id u32, own
 			owner_base, owner_args, owner_is_generic_app := generic_app_parts(owner_type)
 			if owner_is_generic_app && owner_base.len > 0 {
 				params := t.generic_struct_param_names_for_base(owner_base)
-				len_text = substitute_generic_expr_text_with_params(len_text, owner_args, params)
+				len_text = substitute_generic_expr_text_with_params(len_text, flat.TypeTextList.from_names(owner_args).ids, params)
 			}
 		}
 		return flat.source_type_id('[${len_text}]' + flat.source_type_name(t.normalize_field_type_with_owner_substitution(flat.source_type_id(typ[bracket_end + 1..]), owner_type_id, allow_owner_substitution)))
@@ -1298,9 +1298,9 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ_id u32, own
 			params := t.generic_struct_param_names_for_base(owner_base)
 			// Arguments belong to the instantiation site, rather than the module
 			// declaring the generic field. Qualify them before owner substitution.
-			mut qualified_args := []string{cap: owner_args.len}
+			mut qualified_args := []u32{cap: owner_args.len}
 			for arg in owner_args {
-				qualified_args << t.qualify_generic_arg_for_decl_module(arg, t.cur_module)
+				qualified_args << flat.source_type_id(t.qualify_generic_arg_for_decl_module(arg, t.cur_module))
 			}
 			substituted := if params.len > 0 {
 				substitute_generic_type_text_with_params(typ, qualified_args, params)
@@ -1667,7 +1667,7 @@ fn (t &Transformer) expand_generic_type_alias(typ string) ?string {
 		if params.len != args.len {
 			continue
 		}
-		expanded := substitute_generic_type_text_with_params(target, args, params)
+		expanded := substitute_generic_type_text_with_params(target, flat.TypeTextList.from_names(args).ids, params)
 		if candidate.contains('.') {
 			// Alias targets are written in the alias declaration's module.
 			// Qualify a bare target there before the caller recursively

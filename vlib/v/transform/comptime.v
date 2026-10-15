@@ -1412,8 +1412,10 @@ fn (t &Transformer) comptime_method_source_type(raw string) string {
 	if source := t.generic_specialized_source_type_name(clean) {
 		return source
 	}
-	if current_args := t.recorded_generic_specialization_args(t.cur_fn_name) {
-		for arg in current_args {
+	if current_args_source_ids := t.recorded_generic_specialization_args(flat.source_type_id(t.cur_fn_name)) {
+		for arg_source_id in current_args_source_ids {
+			arg := flat.source_type_name(arg_source_id)
+
 			base, args, ok := generic_app_parts(comptime_method_receiver_type(arg))
 			if ok && generic_specialized_type_matches_flat_name(clean, base, args) {
 				return arg
@@ -1469,7 +1471,7 @@ fn (mut t Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			}
 			params << ParamMeta{
 				name:        param.value
-				typ:         flat.source_type_id(substitute_generic_type_text_with_params(param.typ_text(), generic_args, generic_params))
+				typ:         flat.source_type_id(substitute_generic_type_text_with_params(param.typ_text(), flat.TypeTextList.from_names(generic_args).ids, generic_params))
 				module_name: decl.module_name
 			}
 		}
@@ -1477,7 +1479,7 @@ fn (mut t Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			node.typ_text()
 		} else {
 			'void'
-		}, generic_args, generic_params)
+		}, flat.TypeTextList.from_names(generic_args).ids, generic_params)
 		raw_attr_data := t.comptime_node_raw_attribute_data(decl.id)
 		if decl.file_name !in t.comptime_method_line_offsets {
 			t.comptime_method_line_offsets[decl.file_name] = comptime_source_line_offsets(decl.file_name)
@@ -1544,7 +1546,7 @@ fn (t &Transformer) comptime_method_receiver_generic_args(receiver string, reque
 	}
 	for candidate in candidates {
 		_, args, ok := generic_app_parts(comptime_method_receiver_type(candidate))
-		if ok && args.len == params.len && !t.generic_args_have_placeholders(args) {
+		if ok && args.len == params.len && !t.generic_args_have_placeholders(flat.TypeTextList.from_names(args).ids) {
 			return args, params
 		}
 	}
@@ -3098,7 +3100,7 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 	if param_names.len == 0 {
 		return comptime_unsupported_late_generic_call
 	}
-	mut inferred := map[string]string{}
+	mut inferred := map[string]u32{}
 	mut param_idx := 0
 	is_receiver := callee.kind == .selector && t.generic_decl_is_receiver_method(decl.node)
 	for i in 0 .. decl.node.children_count {
@@ -3140,17 +3142,20 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 		infer_generic_type_args(param.typ_text(), inference_type, mut inferred)
 		param_idx++
 	}
-	mut inferred_args := []string{cap: param_names.len}
+	mut inferred_args := []u32{cap: param_names.len}
 	for name in param_names {
 		inferred_args << inferred[name] or { return comptime_unsupported_late_generic_call }
 	}
-	args := t.canonical_generic_specialization_args(inferred_args)
-	if args.len != param_names.len || t.generic_args_have_placeholders(args) {
+	args_source_ids := t.canonical_generic_specialization_args(inferred_args)
+
+	if args_source_ids.len != param_names.len || t.generic_args_have_placeholders(args_source_ids) {
 		return comptime_unsupported_late_generic_call
 	}
-	mut symbol_args := []string{cap: args.len}
-	for arg in args {
-		symbol_args << generic_type_name_display(arg)
+	mut symbol_args := []u32{cap: args_source_ids.len}
+	for arg_source_id_ in args_source_ids {
+		arg := flat.source_type_name(arg_source_id_)
+
+		symbol_args << flat.source_type_id(generic_type_name_display(arg))
 	}
 	spec_value := specialized_generic_fn_value(decl.node.value, symbol_args)
 	spec_name := transform_qualified_fn_name(decl.module, spec_value)
@@ -3159,12 +3164,12 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 		spec_name,
 		c_name(spec_value),
 		c_name(spec_name),
-	], args)
+	], args_source_ids)
 	if t.defer_nested_generic_emissions || t.parallel_monomorph_worker {
-		t.request_generic_fn_specialization(decl, args)
+		t.request_generic_fn_specialization(decl, args_source_ids)
 	} else {
-		clone_id := t.emit_generic_fn_specialization(decl, args)
-		t.generated_fn_used_names(decl, clone_id, args)
+		clone_id := t.emit_generic_fn_specialization(decl, args_source_ids)
+		t.generated_fn_used_names(decl, clone_id, args_source_ids)
 	}
 	if is_receiver {
 		receiver := t.a.child(&callee, 0)
@@ -3505,7 +3510,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			}
 		}
 	}
-	argument_types := t.generic_clone_call_param_types(node, t.active_specialization_args_text(), return_context)
+	argument_types := flat.TypeTextList{ ids: t.generic_clone_call_param_types(node, t.active_specialization_args.ids, return_context) }.names()
 	child_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
@@ -3538,7 +3543,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		call_node.value = ''
 	}
 	retargeted_call_type := if node.kind == .call && smartcast_name != '' {
-		t.retarget_cloned_generic_call(call_node, mut children, t.active_specialization_args_text(), return_context)
+		t.retarget_cloned_generic_call(call_node, mut children, t.active_specialization_args.ids, return_context)
 	} else {
 		''
 	}

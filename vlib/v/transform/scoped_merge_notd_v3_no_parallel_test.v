@@ -258,7 +258,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	t.scoped_monomorphize = true
 	t.defer_nested_generic_emissions = true
 	for arg in ['int', 'string'] {
-		t.request_generic_fn_specialization(decl, [arg])
+		t.request_generic_fn_specialization(decl, flat.TypeTextList.from_names([arg]).ids)
 	}
 	mut emitted := map[string]bool{}
 	mut generated := []string{}
@@ -266,7 +266,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	assert isnil(a.worker_pool)
 	assert t.pending_generic_fn_specs.len == 0
 	for arg in ['int', 'string'] {
-		spec_key := generic_fn_spec_key(decl.key, [arg])
+		spec_key := generic_fn_spec_key(decl.key, flat.TypeTextList.from_names([arg]).ids)
 		assert emitted[spec_key]
 		root := t.generic_fn_spec_nodes[spec_key] or { panic('missing ${spec_key}') }
 		name := transform_qualified_fn_name(decl.module, a.node(root).value)
