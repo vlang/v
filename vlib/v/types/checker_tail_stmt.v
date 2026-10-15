@@ -12740,8 +12740,14 @@ fn source_error_embed_module_key(mod_name string) string {
 }
 
 fn source_field_decl_is_embed(field flat.Node, field_typ string) bool {
-	return field.typ_text().len == 0 || field.value.len == 0 || field.value == field_typ
-		|| (field_typ.contains('.') && field.value == field_typ.all_after_last('.'))
+	meta := field.generic_params()
+	if (meta.len > 0 && meta[0].contains('e')) || field.typ_text().len == 0
+		|| field.value.len == 0 {
+		return true
+	}
+	// Preserve the invalid-embed diagnostic for uppercase named fields.
+	return field.value[0].is_capital() && (field.value == field_typ
+		|| (field_typ.contains('.') && field.value == field_typ.all_after_last('.')))
 }
 
 fn (tc &TypeChecker) embedded_field_is_scoped_builtin_error(field StructField, embedded_name string, struct_file string, struct_module string) bool {
