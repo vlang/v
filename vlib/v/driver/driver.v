@@ -12313,6 +12313,10 @@ pub fn run(args []string) {
 	if is_prof {
 		user_files << os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'profiled_program.v')
 	}
+	if !no_preludes && (is_livemain || is_liveshared) {
+		live_prelude := if is_livemain { 'live_main.v' } else { 'live_shared.v' }
+		parse_files_dispatch_profiled(mut p, [os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', live_prelude)], false, mut parse_timing)
+	}
 	if is_trace_calls {
 		// Parse the runtime import before user files. Implicit imports such as
 		// $embed_file's runtime belong to the last user file, not this prelude.
