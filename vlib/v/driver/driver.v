@@ -8090,7 +8090,12 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	mut c_compiler := v3_select_implicit_c_compiler(options.c_compiler, options.c_compiler_explicit,
 		implicit_tcc)
 	if options.prefer_platform_cc && !options.c_compiler_explicit && options.c_compiler == 'cc' {
-		c_compiler = v3_platform_c_compiler(options.host_os)
+		// Only Windows needs the absolute path: a bare name does not respawn there.
+		c_compiler = if options.host_os == 'windows' {
+			v3_platform_c_compiler_command(options.host_os)
+		} else {
+			v3_platform_c_compiler(options.host_os)
+		}
 	}
 	if v3_windows_prod_needs_default_c_compiler(options) {
 		c_compiler = v3_windows_prod_default_c_compiler(options.target.arch, options.is_o)
@@ -22701,18 +22706,28 @@ fn rerun_as_one_shot_check_with(reason string, question string, extra_args []str
 		// Before the input, which the command line ends with.
 		args.insert(args.len - 1, ['-line-info', question])
 	}
-	mut envs := []string{}
-	for name, value in os.environ() {
-		if name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
-			continue
-		}
-		envs << '${name}=${value}'
-	}
 	flush_stdout()
 	flush_stderr()
-	os.execve(os.executable(), args, envs) or {
-		eprintln('v-diagnostics-server: cannot run the one-shot check: ${err}')
-		exit(2)
+	$if windows {
+		// Windows has no exec: os.execve would start the one-shot check and exit this
+		// process with status 0 before the check finishes. Forward its status instead,
+		// as restart_v3_with_args does. The child inherits this environment.
+		for name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
+			os.unsetenv(name)
+		}
+		exit(os.system_args([os.executable(), ...args]))
+	} $else {
+		mut envs := []string{}
+		for name, value in os.environ() {
+			if name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
+				continue
+			}
+			envs << '${name}=${value}'
+		}
+		os.execve(os.executable(), args, envs) or {
+			eprintln('v-diagnostics-server: cannot run the one-shot check: ${err}')
+			exit(2)
+		}
 	}
 }
 

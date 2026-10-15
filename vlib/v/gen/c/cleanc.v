@@ -19681,7 +19681,7 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('\t__v_windows_thread_context* context = (__v_windows_thread_context*)__v_thread_alloc(sizeof(__v_windows_thread_context));')
 	g.writeln('\tcontext->start = start; context->arg = arg; context->result = NULL;')
 	g.writeln('\tresult.context = context;')
-	g.writeln('\tresult.handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_thread_start, context, 0, NULL);')
+	g.writeln('\tresult.handle = ${g.windows_spawn_create_fn()}(NULL, __v_thread_stack_size, __v_windows_thread_start, context, 0, NULL);')
 	g.writeln('\tif (!result.handle) { DWORD error = GetLastError(); free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %lu\\n", (unsigned long)error); abort(); }')
 	g.writeln('\treturn result;')
 	g.writeln('}')
@@ -19717,10 +19717,46 @@ fn (mut g FlatGen) system_libc_preamble() {
 	g.writeln('#endif')
 }
 
+// windows_spawn_create_fn names the call that creates a Windows spawn thread. Under Boehm
+// it is GC_CreateThread, which registers the thread with the collector; a thread from plain
+// CreateThread is unknown to it and aborts the next collection. This unit does not include
+// gc.h, so gc.h's own CreateThread redirect never applies here.
+fn (g &FlatGen) windows_spawn_create_fn() string {
+	if 'gcboehm' in g.compile_defines && g.target.os == 'windows' {
+		return 'GC_CreateThread'
+	}
+	return 'CreateThread'
+}
+
 // thread_allocation_helpers emits allocator helpers for spawn argument/result
 // wrappers. Under Boehm these wrappers must be scanned GC roots until the worker
 // is joined; libc malloc memory is invisible to the collector.
 fn (mut g FlatGen) thread_allocation_helpers() {
+	// portable_native_runtime_helpers embeds the boehm helpers as `static` definitions in
+	// object-file and cross C output. Declare them here with that linkage, before the first
+	// call site, and mark them declared so the AST pass below cannot add a conflicting
+	// non-static prototype. That pass is skipped for cache-split objects, which left the
+	// calls below without any declaration.
+	if 'gcboehm' in g.compile_defines && (g.output_cross_c || g.object_file_mode)
+		&& !g.no_builtin && !g.target_libc_headers {
+		g.writeln('static void* v_gc_malloc_uncollectable(size_t size);')
+		g.writeln('static void v_gc_free(void* ptr);')
+		g.inlined_c_declared_fns['v_gc_malloc_uncollectable'] = true
+		g.inlined_c_declared_fns['v_gc_free'] = true
+	}
+	if g.windows_spawn_create_fn() == 'GC_CreateThread' {
+		g.writeln('#if defined(_WIN32) && !defined(GC_H)')
+		// gc.h renames GC_CreateThread under GC_UNDERSCORE_STDCALL. Mirror that rename so the
+		// declaration matches the libgc export.
+		g.writeln('#if defined(GC_UNDERSCORE_STDCALL)')
+		g.writeln('#define GC_CreateThread _GC_CreateThread')
+		g.writeln('#endif')
+		// Spelled with C types and names that both Windows preambles define. The preamble can
+		// reach this point before windows.h, and the headerless SDK types define neither
+		// LPDWORD, LPVOID, SIZE_T nor LPTHREAD_START_ROUTINE.
+		g.writeln('HANDLE WINAPI GC_CreateThread(SECURITY_ATTRIBUTES *, size_t, DWORD (WINAPI *)(void *), void *, DWORD, DWORD *);')
+		g.writeln('#endif')
+	}
 	g.emit_c_runtime_declarations(['GC_MALLOC_UNCOLLECTABLE', 'GC_FREE', 'GC_allow_register_threads'])
 	if 'gcboehm' in g.compile_defines && g.target.os != 'windows' {
 		g.emit_c_runtime_declarations(['v_gc_pthread_create', 'v_gc_pthread_join', 'v_gc_pthread_detach',
@@ -19823,7 +19859,7 @@ fn (mut g FlatGen) windows_detached_thread_runtime() {
 	g.writeln('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
 	g.writeln('\t__v_windows_thread_context* context = (__v_windows_thread_context*)__v_thread_alloc(sizeof(__v_windows_thread_context));')
 	g.writeln('\tcontext->start = start; context->arg = arg; context->result = NULL;')
-	g.writeln('\tHANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);')
+	g.writeln('\tHANDLE handle = ${g.windows_spawn_create_fn()}(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);')
 	g.writeln('\tif (!handle) { DWORD error = GetLastError(); __v_thread_free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %lu\\n", (unsigned long)error); abort(); }')
 	g.writeln('\tif (!CloseHandle(handle)) { fprintf(stderr, "V thread handle cleanup failed: %lu\\n", (unsigned long)GetLastError()); abort(); }')
 	g.writeln('\treturn (__v_thread){0};')
@@ -19831,7 +19867,7 @@ fn (mut g FlatGen) windows_detached_thread_runtime() {
 	g.writeln('static __v_thread __v_thread_spawn_comparable(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
 	g.writeln('\t__v_windows_thread_context* context = (__v_windows_thread_context*)__v_thread_alloc(sizeof(__v_windows_thread_context));')
 	g.writeln('\tcontext->start = start; context->arg = arg; context->result = NULL;')
-	g.writeln('\tHANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);')
+	g.writeln('\tHANDLE handle = ${g.windows_spawn_create_fn()}(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);')
 	g.writeln('\tif (!handle) { DWORD error = GetLastError(); __v_thread_free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %lu\\n", (unsigned long)error); abort(); }')
 	g.writeln('\treturn (__v_thread){.handle = handle, .context = NULL};')
 	g.writeln('}')
@@ -20241,7 +20277,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('\t__v_windows_thread_context* context = (__v_windows_thread_context*)__v_thread_alloc(sizeof(__v_windows_thread_context));')
 	g.writeln('\tcontext->start = start; context->arg = arg; context->result = NULL;')
 	g.writeln('\tresult.context = context;')
-	g.writeln('\tresult.handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_thread_start, context, 0, NULL);')
+	g.writeln('\tresult.handle = ${g.windows_spawn_create_fn()}(NULL, __v_thread_stack_size, __v_windows_thread_start, context, 0, NULL);')
 	g.writeln('\tif (!result.handle) { DWORD error = GetLastError(); free(context); if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %lu\\n", (unsigned long)error); abort(); }')
 	g.writeln('\treturn result;')
 	g.writeln('}')
