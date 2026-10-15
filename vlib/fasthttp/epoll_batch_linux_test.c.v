@@ -1,6 +1,7 @@
 // vtest build: linux
-// vtest vflags: -cc gcc
 module fasthttp
+
+#include <sys/eventfd.h>
 
 fn C.eventfd(initial u32, flags int) int
 

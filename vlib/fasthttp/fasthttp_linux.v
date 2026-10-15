@@ -143,13 +143,14 @@ mut:
 // table plus the free-list of retired ConnStates (each keeping its buffers).
 struct Worker {
 mut:
-	server       &Server = unsafe { nil }
-	epoll_fd     int
-	listen_fd    int
-	conns        []&ConnState
-	free_conns   []&ConnState
-	parked       int     // connections with an armed read/write deadline (gates the sweep)
-	worker_state voidptr // this worker thread's ServerConfig.make_state value (nil if unset)
+	server                &Server = unsafe { nil }
+	epoll_fd              int
+	listen_fd             int
+	conns                 []&ConnState
+	free_conns            []&ConnState
+	last_timeout_sweep_ns i64
+	parked                int     // connections with an armed read/write deadline (gates the sweep)
+	worker_state          voidptr // this worker thread's ServerConfig.make_state value (nil if unset)
 }
 
 fn close_socket(fd int) bool {
@@ -952,13 +953,17 @@ fn handle_accept_loop(mut w Worker) {
 }
 
 // sweep_timeouts closes connections whose read/write deadline elapsed. Only runs
-// when something is parked, so it costs nothing on an idle/fast server.
+// when something is parked, at most once per epoll wait timeout interval.
 @[direct_array_access]
 fn sweep_timeouts(mut w Worker) {
 	if w.server.timeout_in_seconds <= 0 || w.parked == 0 {
 		return
 	}
 	now := time.sys_mono_now()
+	if now - w.last_timeout_sweep_ns < i64(epoll_wait_timeout_ms) * time.millisecond {
+		return
+	}
+	w.last_timeout_sweep_ns = now
 	timeout_ns := i64(w.server.timeout_in_seconds) * 1_000_000_000
 	for fd in 0 .. w.conns.len {
 		cs := w.conns[fd]
