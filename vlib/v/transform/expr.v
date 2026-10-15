@@ -2315,7 +2315,7 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		// `unsafe { record(); nil } == opt`: the left operand is evaluated first.
 		t.lower_discarded_nil_operand_effects(nil_id)
 	}
-	mut opt_type := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.optional_result_expr_type_name(opt_id))))
+	mut opt_type := flat.source_type_name(t.normalize_type_alias(t.optional_result_expr_type_name(opt_id)))
 	if opt_type.len == 0 {
 		opt_type = flat.source_type_name(t.node_type(opt_id))
 	}
@@ -2471,7 +2471,7 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 	raw_source_type := flat.source_type_name(raw_source_type_source_id)
 	mut raw_type := raw_source_type
 	if !t.is_optional_type_name(flat.source_type_id(raw_type)) {
-		raw_type = t.optional_result_expr_type_name(source_id)
+		raw_type = flat.source_type_name(t.optional_result_expr_type_name(source_id))
 	}
 	if t.is_optional_type_name(flat.source_type_id(raw_type)) {
 		source := t.a.nodes[int(source_id)]

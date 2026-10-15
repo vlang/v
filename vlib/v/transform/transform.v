@@ -15900,7 +15900,7 @@ fn (mut t Transformer) try_lower_sum_shared_field_assign(node flat.Node) ?[]flat
 	rhs = t.stable_transformed_expr_for_reuse(rhs, flat.source_type_id(rhs_type), 'sum_assign')
 	mut resolved_sum := flat.source_type_name(t.resolve_sum_name(t.trim_pointer_type(flat.source_type_id(sum_type))))
 	mut sum_candidate := flat.source_type_name(t.trim_pointer_type(flat.source_type_id(sum_type)))
-	if t.active_specialization_args_text().len > 0 {
+	if t.active_specialization_args.ids.len > 0 {
 		sum_candidate = flat.source_type_name(t.subst_type(flat.source_type_id(sum_candidate), t.active_specialization_args.ids))
 	}
 	if resolved := t.resolve_sum_name_from_c_name(sum_candidate) {
@@ -22128,7 +22128,7 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 fn (t &Transformer) checked_numeric_infix_can_skip_handlers(node flat.Node) bool {
 	if t.no_checked_numeric_infix || t.building_v || t.validating_generic_spec
 		|| t.cur_fn_is_generic || t.active_generic_params.len > 0
-		|| t.active_specialization_args_text().len > 0 || t.smartcast_stack.len > 0 || isnil(t.tc)
+		|| t.active_specialization_args.ids.len > 0 || t.smartcast_stack.len > 0 || isnil(t.tc)
 		|| node.children_count != 2 || node.op !in [.plus, .minus, .mul, .div, .mod, .eq, .ne,
 		.lt, .gt, .le, .ge, .amp, .pipe, .xor, .right_shift, .right_shift_unsigned] {
 		return false
@@ -23861,13 +23861,14 @@ fn (mut t Transformer) comptime_type_expr_type(id flat.NodeId) ?u32 {
 		return none
 	}
 	base_id := t.comptime_type_expr_type(t.a.child(&node, 0)) or { return none }
-	base := flat.source_type_name(base_id)
+	base_source_id_2 := base_id
+	base := flat.source_type_name(base_source_id_2)
 	return match node.value {
 		'typ' {
 			base_id
 		}
 		'unaliased_typ' {
-			flat.source_type_id(t.comptime_typeof_unaliased_type(base))
+			t.comptime_typeof_unaliased_type(base_source_id_2)
 		}
 		'payload_type', 'pointee_type', 'element_type', 'key_type', 'value_type' {
 			flat.source_type_id(t.generic_comptime_type_member(base, node.value)?)
@@ -24041,8 +24042,9 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		}
 		if node.value == 'unaliased_typ' {
 			base_type := t.typeof_type_name(base_node0)
-			unaliased := t.comptime_typeof_unaliased_type(base_type)
-			return t.make_int_literal(t.comptime_field_type_id(flat.source_type_id(unaliased), t.cur_module))
+			unaliased_source_id := t.comptime_typeof_unaliased_type(flat.source_type_id(base_type))
+
+			return t.make_int_literal(t.comptime_field_type_id(unaliased_source_id, t.cur_module))
 		}
 		if node.value in ['key_type', 'value_type', 'element_type'] {
 			base_type := t.typeof_type_name(base_node0)
@@ -24462,7 +24464,7 @@ fn (t &Transformer) sum_shared_field_type_name_inner(sum_type_id u32, field stri
 		visited.delete(resolved_sum)
 	}
 	mut sum_candidate := clean_sum
-	if t.active_specialization_args_text().len > 0 {
+	if t.active_specialization_args.ids.len > 0 {
 		sum_candidate = flat.source_type_name(t.subst_type(flat.source_type_id(sum_candidate), t.active_specialization_args.ids))
 	}
 	if resolved := t.resolve_sum_name_from_c_name(sum_candidate) {
@@ -24516,7 +24518,7 @@ fn (mut t Transformer) lower_sum_shared_field_selector(base flat.NodeId, sum_typ
 	clean_sum := if sum_type.starts_with('&') { sum_type[1..] } else { sum_type }
 	mut resolved_sum := flat.source_type_name(t.resolve_sum_name(flat.source_type_id(clean_sum)))
 	mut sum_candidate := clean_sum
-	if t.active_specialization_args_text().len > 0 {
+	if t.active_specialization_args.ids.len > 0 {
 		sum_candidate = flat.source_type_name(t.subst_type(flat.source_type_id(sum_candidate), t.active_specialization_args.ids))
 	}
 	if resolved := t.resolve_sum_name_from_c_name(sum_candidate) {
@@ -25365,7 +25367,7 @@ fn (mut t Transformer) rewrite_signed_literal_str_call(op flat.Op, child_id flat
 fn (mut t Transformer) transform_amp_optional_unwrap(node flat.Node, child flat.Node) ?flat.NodeId {
 	source_id := t.a.child(&child, 0)
 	body_id := t.a.child(&child, 1)
-	mut source_type := t.optional_result_expr_type_name(source_id)
+	mut source_type := flat.source_type_name(t.optional_result_expr_type_name(source_id))
 	if !t.is_optional_type_name(flat.source_type_id(source_type)) {
 		source_type = flat.source_type_name(t.original_expr_type(source_id))
 	}
@@ -25864,7 +25866,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	checker_target := flat.source_type_name(checker_target_source_id)
 	// A specialized alias cast can carry explicit main. locks for caller types.
 	// The checker can rebind those types to names in the alias's module.
-	specialized_alias_cast := t.active_specialization_args_text().len > 0
+	specialized_alias_cast := t.active_specialization_args.ids.len > 0
 		&& strip_main_type_locks(node.value) != node.value
 		&& t.generic_type_text_contains_alias(node.value, t.cur_module)
 	// Expected-type propagation can replace an explicit alias cast's checker type

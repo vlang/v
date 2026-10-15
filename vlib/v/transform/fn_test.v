@@ -1046,8 +1046,8 @@ fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
 
 fn test_if_type_merge_ignores_unresolved_branch_fallbacks() {
 	t := Transformer{}
-	assert t.merge_if_expr_types('unknown', 'int') == 'int'
-	assert t.merge_if_expr_types('int', 'unknown') == 'int'
+	assert t.merge_if_expr_types(flat.source_type_unknown, flat.source_type_int) == flat.source_type_int
+	assert t.merge_if_expr_types(flat.source_type_int, flat.source_type_unknown) == flat.source_type_int
 }
 
 fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {

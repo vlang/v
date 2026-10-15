@@ -4985,8 +4985,8 @@ fn (mut p FastArm64Parser) parse_return() ! {
 		}
 		p.program.instr0(.ret, p.cur_block, p.program.void_type)
 	} else {
-		first_type_name := if p.return_names_text().len > 0 {
-			p.return_names_text()[0]
+		first_type_name := if p.return_names.ids.len > 0 {
+			flat.source_type_name(p.return_names.ids[0])
 		} else {
 			p.return_name_text()
 		}
@@ -4996,8 +4996,8 @@ fn (mut p FastArm64Parser) parse_return() ! {
 			for p.tok == .comma {
 				p.next()
 				value_index := values.len
-				value_type_name := if value_index < p.return_names_text().len {
-					p.return_names_text()[value_index]
+				value_type_name := if value_index < p.return_names.ids.len {
+					flat.source_type_name(p.return_names.ids[value_index])
 				} else {
 					''
 				}
@@ -5015,8 +5015,8 @@ fn (mut p FastArm64Parser) parse_return() ! {
 			for i, value in values {
 				mut stored_value := value
 				if stored_value.typ != layout.fields[i] {
-					type_name := if i < p.return_names_text().len {
-						p.return_names_text()[i]
+					type_name := if i < p.return_names.ids.len {
+						flat.source_type_name(p.return_names.ids[i])
 					} else {
 						''
 					}

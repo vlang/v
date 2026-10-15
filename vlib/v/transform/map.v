@@ -1240,14 +1240,17 @@ fn (mut t Transformer) if_expr_zero_value_expansion_estimate(id flat.NodeId, nod
 		return estimate
 	}
 	mut result_type := flat.source_type_name(t.if_expr_result_type(id, node))
-	if guard_result_type := t.if_expr_guard_result_type(node) {
+	if guard_result_type_source_id := t.if_expr_guard_result_type(node) {
+		guard_result_type := flat.source_type_name(guard_result_type_source_id)
+
 		result_type = guard_result_type
 	}
 	if result_type.len == 0 || result_type == 'void' {
 		return estimate
 	}
-	branch_type := t.if_expr_branch_result_type(node)
-	if t.if_expr_branch_overrides_sum_target(flat.source_type_id(branch_type), flat.source_type_id(result_type)) {
+	branch_type_source_id := t.if_expr_branch_result_type(node)
+	branch_type := flat.source_type_name(branch_type_source_id)
+	if t.if_expr_branch_overrides_sum_target(branch_type_source_id, flat.source_type_id(result_type)) {
 		result_type = branch_type
 	}
 	return estimate + t.zero_value_expansion_estimate(id, flat.source_type_id(result_type))

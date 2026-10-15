@@ -1608,9 +1608,9 @@ fn (g &FlatGen) selected_specialized_method_c_name(name string) ?string {
 	}
 	mut canonical_args := []string{cap: args_source_ids.len}
 	for arg_source_id in args_source_ids {
-		arg := flat.source_type_name(arg_source_id)
+		arg_source_id_2 := arg_source_id
 
-		resolved := g.tc.parse_type(flat.source_type_id(arg))
+		resolved := g.tc.parse_type(arg_source_id_2)
 		if resolved is types.Unknown { return none }
 		canonical_args << resolved.name()
 	}

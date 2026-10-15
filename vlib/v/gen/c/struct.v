@@ -2909,7 +2909,7 @@ fn (mut g FlatGen) struct_default_field_type_text(
 // specialization whose default is being emitted.
 fn (g &FlatGen) generic_default_type_text(type_text string) string {
 	if g.struct_default_generic_params.len > 0
-		&& g.struct_default_generic_params.len == g.struct_default_generic_args_text().len {
+		&& g.struct_default_generic_params.len == g.struct_default_generic_args.ids.len {
 		return substitute_shared_generic_type_text(type_text, g.struct_default_generic_params,
 			g.struct_default_generic_args.ids)
 	}
@@ -2931,12 +2931,12 @@ fn (g &FlatGen) generic_default_display_type_text(type_text string) string {
 // concrete argument bound to generic parameter `name` in a recovered default.
 fn (g &FlatGen) generic_default_param_type_name(name string) ?string {
 	if g.struct_default_generic_params.len == 0
-		|| g.struct_default_generic_params.len != g.struct_default_generic_args_text().len {
+		|| g.struct_default_generic_params.len != g.struct_default_generic_args.ids.len {
 		return none
 	}
 	for i, param in g.struct_default_generic_params {
 		if param == name {
-			return typeof_display_type_name(strip_main_module_qualifier(g.struct_default_generic_args_text()[i]))
+			return typeof_display_type_name(strip_main_module_qualifier(flat.source_type_name(g.struct_default_generic_args.ids[i])))
 		}
 	}
 	return none

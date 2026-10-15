@@ -8956,23 +8956,23 @@ fn (t &Transformer) fixed_array_source_type_from_c_name(typ_id u32) ?u32 {
 	}
 	payload := clean['Array_fixed_'.len..]
 	parts := t.split_fixed_array_c_name_payload(payload) or { return none }
-	elem_type := t.fixed_array_c_elem_source_type(parts.elem)
+	elem_type := flat.source_type_name(t.fixed_array_c_elem_source_type(parts.elem))
 	len_text := t.fixed_array_c_name_len_source(parts.len)
 	return flat.source_type_id('${elem_type}[${len_text}]')
 }
 
-fn (t &Transformer) fixed_array_c_elem_source_type(elem string) string {
+fn (t &Transformer) fixed_array_c_elem_source_type(elem string) u32 {
 	if fixed_source_id := t.fixed_array_source_type_from_c_name(flat.source_type_id(elem)) {
-		fixed := flat.source_type_name(fixed_source_id)
+		fixed_source_id_2 := fixed_source_id
 
-		return fixed
+		return fixed_source_id_2
 	}
 	if source_source_id := t.source_type_name_from_c_name(flat.source_type_id(elem)) {
-		source := flat.source_type_name(source_source_id)
+		source_source_id_2 := source_source_id
 
-		return source
+		return source_source_id_2
 	}
-	return elem
+	return flat.source_type_id(elem)
 }
 
 fn (t &Transformer) split_fixed_array_c_name_payload(payload string) ?FixedArrayCNameParts {
@@ -13458,7 +13458,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 						capture_heap_snapshots[child.value] = true
 					}
 				}
-				if t.active_specialization_args_text().len > 0 {
+				if t.active_specialization_args.ids.len > 0 {
 					specialized_capture_type_source_id := t.subst_type(flat.source_type_id(capture_type), t.active_specialization_args.ids)
 					specialized_capture_type := flat.source_type_name(specialized_capture_type_source_id)
 					if specialized_capture_type_source_id != 0
@@ -14075,11 +14075,12 @@ fn (mut t Transformer) validate_specialized_enum_from_call(call_id flat.NodeId, 
 		enum_node := t.a.child_node(callee, 0)
 		if enum_node.kind == .ident {
 			for i, param in t.active_generic_params {
-				if enum_node.value != param || i >= t.active_specialization_args_text().len {
+				if enum_node.value != param || i >= t.active_specialization_args.ids.len {
 					continue
 				}
-				concrete := t.active_specialization_args_text()[i]
-				if _ := t.enum_type_from_name(flat.source_type_id(concrete)) {
+				concrete_source_id := t.active_specialization_args.ids[i]
+				concrete := flat.source_type_name(concrete_source_id)
+				if _ := t.enum_type_from_name(concrete_source_id) {
 					break
 				}
 				t.record_monomorph_error('unknown function `${concrete}.from`')
@@ -15558,7 +15559,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			}
 		}
 	}
-	if t.active_specialization_args_text().len > 0 {
+	if t.active_specialization_args.ids.len > 0 {
 		specialized_source_id := t.subst_type(flat.source_type_id(base_type), t.active_specialization_args.ids)
 		specialized := flat.source_type_name(specialized_source_id)
 		if specialized_source_id != 0 && !t.generic_arg_is_unresolved(specialized_source_id) {
@@ -16394,12 +16395,13 @@ fn (t &Transformer) resolved_receiver_call_display_name(node flat.Node, base_id 
 	return '${base_name}.${method}'
 }
 
-fn (t &Transformer) callback_declared_type_text(raw string) string {
-	mut declared := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(raw)))
+fn (t &Transformer) callback_declared_type_text(raw_id u32) u32 {
+	mut declared := t.normalize_type_alias(raw_id)
 	for _ in 0 .. 16 {
-		next := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(declared)))
-		if next == declared { break }
-		declared = next
+		next_source_id_2 := t.normalize_type_alias(declared)
+
+		if next_source_id_2 == declared { break }
+		declared = next_source_id_2
 	}
 	return declared
 }
@@ -16416,12 +16418,13 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if expected_type.contains('unknown') {
 		return true
 	}
-	mut actual := t.callback_declared_type_text(actual_type)
+	mut actual := flat.source_type_name(t.callback_declared_type_text(actual_type_id))
 	mut actual_callconv_type := actual_type
 	if raw_source_id := t.raw_var_type_for_expr(arg_id) {
-		raw := flat.source_type_name(raw_source_id)
+		raw_source_id_2 := raw_source_id
+		raw := flat.source_type_name(raw_source_id_2)
 
-		declared := t.callback_declared_type_text(raw)
+		declared := flat.source_type_name(t.callback_declared_type_text(raw_source_id_2))
 		mut corresponds := declared == actual
 		if !corresponds && !isnil(t.tc) {
 			raw_type := types.unalias_type(t.tc.parse_type(raw_source_id))
@@ -16441,7 +16444,8 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		t.tc.parse_type(expected_type_id)) {
 		return false
 	}
-	expected := t.callback_declared_type_text(expected_type)
+	expected_comparison_type_id_3 := t.callback_declared_type_text(expected_type_id)
+	expected := flat.source_type_name(expected_comparison_type_id_3)
 	if t.is_integer_type_name(flat.source_type_id(expected)) {
 		if literal := t.specialized_int_literal(arg_id) {
 			return specialized_int_literal_fits_type(literal, expected)
@@ -16494,11 +16498,20 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	arg := t.a.nodes[int(arg_id)]
-	if arg.kind == .float_literal && expected in ['f32', 'f64'] {
+	if arg.kind == .float_literal && expected_comparison_type_id_3 in [
+		flat.source_type_f32,
+		flat.source_type_f64,
+	] {
 		return true
 	}
 	// A char literal (`\`x\``) types as rune but coerces to u8 params.
-	if arg.kind == .char_literal && expected in ['u8', 'rune', 'char', 'int', 'u32'] {
+	if arg.kind == .char_literal && expected_comparison_type_id_3 in [
+		flat.source_type_u8,
+		flat.source_type_rune,
+		flat.source_type_char,
+		flat.source_type_int,
+		flat.source_type_u32,
+	] {
 		return true
 	}
 	if actual == 'nil'
@@ -17292,7 +17305,7 @@ fn (mut t Transformer) embedded_receiver_base(base_id flat.NodeId, method_name s
 	if base_type.len == 0 {
 		base_type = flat.source_type_name(t.lvalue_type(base_id))
 	}
-	if t.active_specialization_args_text().len > 0 {
+	if t.active_specialization_args.ids.len > 0 {
 		specialized_source_id_2 := t.subst_type(flat.source_type_id(base_type), t.active_specialization_args.ids)
 		specialized := flat.source_type_name(specialized_source_id_2)
 		if specialized_source_id_2 != 0 && !t.generic_arg_is_unresolved(specialized_source_id_2) {

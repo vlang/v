@@ -118,7 +118,7 @@ fn (mut t Transformer) transformed_direct_optional_forward_return(value_id flat.
 	if !t.is_optional_type_name(ret_typ_id) || !t.return_expr_is_optional_result(value_id) {
 		return none
 	}
-	expr_type := flat.source_type_name(t.qualify_optional_type(flat.source_type_id(t.optional_result_expr_type_name(value_id))))
+	expr_type := flat.source_type_name(t.qualify_optional_type(t.optional_result_expr_type_name(value_id)))
 	qualified_ret_source_id := t.qualify_optional_type(ret_typ_id)
 	qualified_ret := flat.source_type_name(qualified_ret_source_id)
 	if !t.optional_types_match(qualified_ret, expr_type) {
@@ -354,7 +354,7 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 	}
 	ret_type_source_id := t.qualify_optional_type(t.cur_fn_ret_type)
 	ret_type := flat.source_type_name(ret_type_source_id)
-	expr_type := flat.source_type_name(t.qualify_optional_type(flat.source_type_id(t.optional_result_expr_type_name(child_id))))
+	expr_type := flat.source_type_name(t.qualify_optional_type(t.optional_result_expr_type_name(child_id)))
 	if !t.optional_types_match(ret_type, expr_type) {
 		return none
 	}
@@ -416,13 +416,14 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	if !t.return_expr_is_optional_result(child_id) {
 		return none
 	}
-	expr_type0 := t.optional_result_expr_type_name(child_id)
-	if !t.is_optional_type_name(flat.source_type_id(expr_type0)) {
+	expr_type0_source_id := t.optional_result_expr_type_name(child_id)
+
+	if !t.is_optional_type_name(expr_type0_source_id) {
 		return none
 	}
 	ret_type_source_id := t.qualify_optional_type(t.cur_fn_ret_type)
 	ret_type := flat.source_type_name(ret_type_source_id)
-	expr_type_source_id := t.qualify_optional_type(flat.source_type_id(expr_type0))
+	expr_type_source_id := t.qualify_optional_type(expr_type0_source_id)
 	expr_type := flat.source_type_name(expr_type_source_id)
 	new_expr := t.clone_borrowed_storage_projection(child_id, t.transform_optional_wrapper_expr(child_id), expr_type_source_id)
 	mut result := []flat.NodeId{}
@@ -1209,8 +1210,8 @@ fn (mut t Transformer) return_if_chain_needs_wrapper_recovery(if_id flat.NodeId)
 		if cond.kind == .decl_assign && cond.children_count >= 2 {
 			rhs_id := t.a.child(&cond, 1)
 			// Let the value guard path recover the wrapper when a prior check smartcast its source.
-			if !t.is_optional_type_name(flat.source_type_id(t.optional_result_expr_type_name(rhs_id)))
-				&& t.is_optional_type_name(flat.source_type_id(t.if_guard_optional_type_name(rhs_id))) {
+			if !t.is_optional_type_name(t.optional_result_expr_type_name(rhs_id))
+				&& t.is_optional_type_name(t.if_guard_optional_type_name(rhs_id)) {
 				return true
 			}
 		}

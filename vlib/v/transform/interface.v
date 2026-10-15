@@ -379,7 +379,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			fn_return_type_source_id_2 := fn_return_type_source_id
 			fn_return_type := flat.source_type_name(fn_return_type_source_id_2)
 
-			resolved_return_type := if t.active_specialization_args_text().len > 0 {
+			resolved_return_type := if t.active_specialization_args.ids.len > 0 {
 				flat.source_type_name(t.subst_type(fn_return_type_source_id_2, t.active_specialization_args.ids))
 			} else {
 				fn_return_type
@@ -1149,13 +1149,13 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 			base_id := t.a.child(callee, 0)
 			interface_base = base_id
 			mut receiver_source_type := flat.source_type_name(t.original_expr_type(base_id))
-			if t.active_specialization_args_text().len > 0 {
+			if t.active_specialization_args.ids.len > 0 {
 				receiver_source_type = flat.source_type_name(t.subst_type(flat.source_type_id(receiver_source_type), t.active_specialization_args.ids))
 			}
 			interface_name = flat.source_type_name(t.resolve_interface_type_name(flat.source_type_id(receiver_source_type)))
 			if interface_name.len == 0 {
 				receiver_source_type = flat.source_type_name(t.node_type(base_id))
-				if t.active_specialization_args_text().len > 0 {
+				if t.active_specialization_args.ids.len > 0 {
 					receiver_source_type = flat.source_type_name(t.subst_type(flat.source_type_id(receiver_source_type), t.active_specialization_args.ids))
 				}
 				interface_name = flat.source_type_name(t.resolve_interface_type_name(flat.source_type_id(receiver_source_type)))
@@ -1260,7 +1260,7 @@ fn (t &Transformer) specialized_interface_method_call_return_type(_id flat.NodeI
 	if base_type.len == 0 {
 		base_type = flat.source_type_name(t.node_type(base_id))
 	}
-	if t.active_specialization_args_text().len > 0 {
+	if t.active_specialization_args.ids.len > 0 {
 		base_type = flat.source_type_name(t.subst_type(flat.source_type_id(base_type), t.active_specialization_args.ids))
 	}
 	iface_name_source_id_2 := t.resolve_interface_type_name(flat.source_type_id(base_type))

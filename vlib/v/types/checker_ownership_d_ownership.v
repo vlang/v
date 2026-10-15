@@ -12660,7 +12660,9 @@ fn (mut tc TypeChecker) ownership_reject_global_move(name string, pos flat.NodeI
 		action := if is_call { 'move into function' } else { 'move to' }
 		tc.record_error(.assignment_mismatch, 'cannot move `${name}` because it borrows `${source}`; attempted ${action} `${target}`', pos)
 	}
-	if tname := tc.ownership_owned_global_type_name(name) {
+	if tname_source_id := tc.ownership_owned_global_type_name(name) {
+		tname := flat.source_type_name(tname_source_id)
+
 		action := if is_call { 'move into function' } else { 'move to' }
 		tc.record_error(.assignment_mismatch, 'cannot move owned global `${name}` of type `${tname}`; attempted ${action} `${target}`', pos)
 	}
@@ -12687,26 +12689,24 @@ fn (mut tc TypeChecker) ownership_borrowed_alias_source(name string, mutable_onl
 	return none
 }
 
-fn (mut tc TypeChecker) ownership_owned_global_type_name(name string) ?string {
+fn (mut tc TypeChecker) ownership_owned_global_type_name(name string) ?u32 {
 	st := tc.ownership_state()
-	if tname := st.owned_globals.get(name) {
+	if tname := st.owned_globals.type_id(name) {
 		return tname
 	}
 	for global_name, tname_id in st.owned_globals.ids {
-		tname := flat.source_type_name(tname_id)
 		if ownership_storage_key_is_descendant(global_name, name) {
-			return tname
+			return tname_id
 		}
 	}
 	qname := ownership_qualify_storage_key(tc.cur_module, name)
 	if qname != name {
-		if tname := st.owned_globals.get(qname) {
+		if tname := st.owned_globals.type_id(qname) {
 			return tname
 		}
 		for global_name, tname_id in st.owned_globals.ids {
-			tname := flat.source_type_name(tname_id)
 			if ownership_storage_key_is_descendant(global_name, qname) {
-				return tname
+				return tname_id
 			}
 		}
 	}

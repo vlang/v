@@ -742,9 +742,10 @@ fn (t &Transformer) enum_type_from_node(id flat.NodeId) ?u32 {
 	node := t.a.nodes[int(id)]
 	if node.kind == .ident {
 		for i, param in t.active_generic_params {
-			if node.value == param && i < t.active_specialization_args_text().len {
-				concrete := t.active_specialization_args_text()[i]
-				if enum_type_source_id := t.enum_type_from_name(flat.source_type_id(concrete)) {
+			if node.value == param && i < t.active_specialization_args.ids.len {
+				concrete_source_id := t.active_specialization_args.ids[i]
+
+				if enum_type_source_id := t.enum_type_from_name(concrete_source_id) {
 					return enum_type_source_id
 				}
 			}
@@ -1441,7 +1442,7 @@ fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat
 
 fn (t &Transformer) specialized_json_decode_result_type(type_arg_id u32) u32 {
 	type_arg := flat.source_type_name(type_arg_id)
-	if t.active_specialization_args_text().len == 0 {
+	if t.active_specialization_args.ids.len == 0 {
 		return flat.source_type_id('!${type_arg}')
 	}
 	concrete := flat.source_type_name(t.subst_type(type_arg_id, t.active_specialization_args.ids))

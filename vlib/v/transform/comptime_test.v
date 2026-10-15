@@ -73,8 +73,8 @@ fn test_comptime_for_base_type_unwraps_storage_indirections() {
 	t := Transformer{
 		a: &a
 	}
-	assert t.comptime_for_base_type('&websocket.Server') == 'websocket.Server'
-	assert t.comptime_for_base_type('shared websocket.ClientState') == 'websocket.ClientState'
+	assert flat.source_type_name(t.comptime_for_base_type('&websocket.Server')) == 'websocket.Server'
+	assert flat.source_type_name(t.comptime_for_base_type('shared websocket.ClientState')) == 'websocket.ClientState'
 }
 
 fn test_comptime_method_receiver_name_normalizes_main_qualification() {

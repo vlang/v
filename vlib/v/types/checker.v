@@ -17555,11 +17555,12 @@ fn (tc &TypeChecker) non_heap_pointer_param_struct(name string) ?string {
 		// retained in a handle returned by the method.
 		return none
 	}
-	type_text := tc.current_fn_param_type_text(name) or { return none }
+	type_text_source_id := tc.current_fn_param_type_text(name) or { return none }
+	type_text := flat.source_type_name(type_text_source_id)
 	if !type_text.trim_space().starts_with('&') {
 		return none
 	}
-	param_type := tc.parse_type(flat.source_type_id(type_text))
+	param_type := tc.parse_type(type_text_source_id)
 	clean := unalias_type(unwrap_pointer(param_type))
 	if clean !is Struct {
 		return none
@@ -19519,7 +19520,7 @@ fn (tc &TypeChecker) comptime_static_deferred_cases(source string, loop_kind str
 }
 
 fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticValueCases {
-	base_type := tc.instance_type_text(tc.comptime_static_for_base_type(source))
+	base_type := tc.instance_type_text(flat.source_type_name(tc.comptime_static_for_base_type(source)))
 	clean_type := comptime_static_unwrap_type_text(base_type)
 	generic_base, generic_args, is_generic := generic_type_application_parts(clean_type)
 	if is_generic && !tc.generic_args_are_concrete(flat.TypeTextList.from_names(generic_args).ids) {

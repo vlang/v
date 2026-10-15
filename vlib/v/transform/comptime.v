@@ -127,8 +127,10 @@ fn comptime_for_declares_var(node flat.Node, var_name string) bool {
 
 // comptime_for_base_type resolves the loop source type to a concrete name. Generic `T` was already
 // substituted to the concrete type in `node.typ_text()` during monomorphization.
-fn (t &Transformer) comptime_for_base_type(raw string) string {
-	source := if value_type := t.comptime_for_value_source_type(raw) {
+fn (t &Transformer) comptime_for_base_type(raw string) u32 {
+	source := if value_type_source_id := t.comptime_for_value_source_type(raw) {
+		value_type := flat.source_type_name(value_type_source_id)
+
 		value_type
 	} else {
 		raw
@@ -136,12 +138,12 @@ fn (t &Transformer) comptime_for_base_type(raw string) string {
 	base := t.comptime_for_value_type_base(source)
 	// Checked value types already identify their declaration, unlike source import aliases.
 	if source != raw && t.type_authority_has(base) {
-		return flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(base)))
+		return t.comptime_normalize_type_alias_chain(flat.source_type_id(base))
 	}
-	return flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(t.comptime_resolve_selective_import_type(base))))
+	return t.comptime_normalize_type_alias_chain(flat.source_type_id(t.comptime_resolve_selective_import_type(base)))
 }
 
-fn (t &Transformer) comptime_for_value_source_type(raw string) ?string {
+fn (t &Transformer) comptime_for_value_source_type(raw string) ?u32 {
 	clean := trimmed_transform_text(raw)
 	if clean.len == 0 {
 		return none
@@ -150,9 +152,9 @@ fn (t &Transformer) comptime_for_value_source_type(raw string) ?string {
 	if parts.len == 0 {
 		return none
 	}
-	mut typ := flat.source_type_name(t.comptime_for_var_source_type(parts[0]) or { return none })
+	mut typ := t.comptime_for_var_source_type(parts[0]) or { return none }
 	for field in parts[1..] {
-		typ = flat.source_type_name(t.comptime_for_field_source_type(flat.source_type_id(typ), field) or { return none })
+		typ = t.comptime_for_field_source_type(typ, field) or { return none }
 	}
 	return typ
 }
@@ -485,16 +487,17 @@ fn is_trim_space_byte(c u8) bool {
 
 // comptime_typeof_unaliased_type removes only aliases at the root of a reflected type.
 // Aliases nested inside arrays, maps, options, and other aggregate types retain their identity.
-fn (t &Transformer) comptime_typeof_unaliased_type(raw string) string {
+fn (t &Transformer) comptime_typeof_unaliased_type(raw_id u32) u32 {
+	raw := flat.source_type_name(raw_id)
 	clean := trimmed_transform_text(raw)
 	if clean.len == 0 || isnil(t.tc) {
-		return flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(clean)))
+		return t.comptime_normalize_type_alias_chain(flat.source_type_id(clean))
 	}
 	parsed := t.tc.parse_type(flat.source_type_id(clean))
 	if parsed is types.Unknown {
-		return flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(clean)))
+		return t.comptime_normalize_type_alias_chain(flat.source_type_id(clean))
 	}
-	return types.unalias_type(parsed).name()
+	return types.unalias_type(parsed).source_type_id()
 }
 
 // expand_comptime_for unrolls the supported compile-time reflection loops into concrete
@@ -526,14 +529,14 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 			flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(t.comptime_for_value_type_base(node.typ_text()))))
 		}
 	} else if kind == 'methods' {
-		source := t.comptime_for_value_source_type(node.typ_text()) or { node.typ_text() }
+		source := flat.source_type_name(t.comptime_for_value_source_type(node.typ_text()) or { node.typ })
 		if source != node.typ_text() && t.type_authority_has(t.comptime_for_value_type_base(source)) {
 			source
 		} else {
 			t.comptime_resolve_selective_import_type(source)
 		}
 	} else {
-		t.comptime_for_base_type(node.typ_text())
+		flat.source_type_name(t.comptime_for_base_type(node.typ_text()))
 	}
 	// An open generic template must survive the pre-monomorph transform pass.
 	// Its metadata and `$zero(field.typ_text())` children are needed when the concrete
@@ -1409,30 +1412,32 @@ fn comptime_method_receiver_matches(receiver string, requested string, normalize
 	return false
 }
 
-fn (t &Transformer) comptime_method_source_type(raw string) string {
+fn (t &Transformer) comptime_method_source_type(raw string) u32 {
 	clean := comptime_method_receiver_type(raw)
 	if source_source_id := t.generic_specialized_source_type_name(flat.source_type_id(clean)) {
-		source := flat.source_type_name(source_source_id)
+		source_source_id_2 := source_source_id
 
-		return source
+		return source_source_id_2
 	}
 	if current_args_source_ids := t.recorded_generic_specialization_args(t.cur_fn_name) {
 		for arg_source_id in current_args_source_ids {
-			arg := flat.source_type_name(arg_source_id)
+			arg_source_id_2 := arg_source_id
+			arg := flat.source_type_name(arg_source_id_2)
 
 			base, args, ok := generic_app_parts(comptime_method_receiver_type(arg))
 			if ok && generic_specialized_type_matches_flat_name(clean, base, args) {
-				return arg
+				return arg_source_id_2
 			}
 		}
 	}
-	return raw
+	return flat.source_type_id(raw)
 }
 
 fn (mut t Transformer) comptime_method_metas(base_type_id u32) []MethodMeta {
 	base_type := flat.source_type_name(base_type_id)
-	requested := t.comptime_method_source_type(base_type)
-	normalized := flat.source_type_name(t.comptime_normalize_type_alias_chain(flat.source_type_id(requested)))
+	requested_source_id := t.comptime_method_source_type(base_type)
+	requested := flat.source_type_name(requested_source_id)
+	normalized := flat.source_type_name(t.comptime_normalize_type_alias_chain(requested_source_id))
 	requested_module := t.comptime_method_requested_module(requested)
 	t.ensure_comptime_method_index()
 	cache_key := '${t.cur_module}|${requested_module}|${requested}|${normalized}'
@@ -3461,7 +3466,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			// `T(v)` wraps a zero value of the variant's type in the sum type
 			// (the VariantData literal is only the loop var's runtime carrier).
 			mut zero := t.comptime_zero_value(item.typ)
-			if t.comptime_typeof_unaliased_type(item.typ_text()) != item.typ_text() {
+			if flat.source_type_name(t.comptime_typeof_unaliased_type(item.typ)) != item.typ_text() {
 				// An alias variant's zero value has its base type; keep the alias, so
 				// `Foo | Alias` selects `Alias` rather than `Foo`.
 				zero = t.make_cast(item.typ, zero, item.typ)
@@ -3686,7 +3691,7 @@ fn (t &Transformer) variant_type_member(id flat.NodeId, var_name string, allow_p
 // `unaliased_typ`.
 fn (t &Transformer) variant_member_type(member string, item VariantMeta) u32 {
 	return flat.source_type_id(if member == 'unaliased_typ' {
-		t.comptime_typeof_unaliased_type(item.typ_text())
+		flat.source_type_name(t.comptime_typeof_unaliased_type(item.typ))
 	} else {
 		item.typ_text()
 	})

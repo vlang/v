@@ -722,7 +722,7 @@ fn (mut tc TypeChecker) check_comptime_static_call_args(node flat.Node, var_name
 
 fn (mut tc TypeChecker) comptime_static_enum_value_cases(base_type_id u32) ComptimeStaticValueCases {
 	base_type := flat.source_type_name(base_type_id)
-	source_type := tc.comptime_static_for_base_type(base_type)
+	source_type := flat.source_type_name(tc.comptime_static_for_base_type(base_type))
 	enum_name := tc.comptime_static_enum_name(source_type) or { return ComptimeStaticValueCases{} }
 	names := tc.enum_fields[enum_name] or {
 		return ComptimeStaticValueCases{
@@ -834,7 +834,7 @@ fn comptime_text_references_var(cond string, var_name string) bool {
 
 fn (mut tc TypeChecker) comptime_static_field_cases(base_type_id u32) ComptimeStaticFieldCases {
 	base_type := flat.source_type_name(base_type_id)
-	source_type := tc.comptime_static_for_base_type(base_type)
+	source_type := flat.source_type_name(tc.comptime_static_for_base_type(base_type))
 	struct_name := tc.comptime_static_struct_name(source_type) or {
 		return ComptimeStaticFieldCases{}
 	}
@@ -939,14 +939,16 @@ fn comptime_static_unwrap_type_text(name string) string {
 	return clean
 }
 
-fn (tc &TypeChecker) comptime_static_for_base_type(raw string) string {
-	if source := tc.comptime_static_for_value_source_type(raw) {
-		return source
+fn (tc &TypeChecker) comptime_static_for_base_type(raw string) u32 {
+	if source_source_id := tc.comptime_static_for_value_source_type(raw) {
+		source_source_id_2 := source_source_id
+
+		return source_source_id_2
 	}
-	return raw
+	return flat.source_type_id(raw)
 }
 
-fn (tc &TypeChecker) comptime_static_for_value_source_type(raw string) ?string {
+fn (tc &TypeChecker) comptime_static_for_value_source_type(raw string) ?u32 {
 	clean := trimmed_space(raw)
 	if clean.len == 0 {
 		return none
@@ -957,12 +959,12 @@ fn (tc &TypeChecker) comptime_static_for_value_source_type(raw string) ?string {
 	}
 	mut typ := tc.comptime_static_for_var_source_type(parts[0]) or { return none }
 	for field in parts[1..] {
-		typ = flat.source_type_name(tc.comptime_static_for_field_source_type(flat.source_type_id(typ), field) or { return none })
+		typ = tc.comptime_static_for_field_source_type(typ, field) or { return none }
 	}
 	return typ
 }
 
-fn (tc &TypeChecker) comptime_static_for_var_source_type(name string) ?string {
+fn (tc &TypeChecker) comptime_static_for_var_source_type(name string) ?u32 {
 	if tc.cur_scope != unsafe { nil } {
 		if typ := tc.cur_scope.lookup(name) {
 			return comptime_static_source_type_name(typ)
@@ -1572,10 +1574,10 @@ fn (tc &TypeChecker) comptime_static_for_field_source_type(owner_type_id u32, fi
 	owner_type := flat.source_type_name(owner_type_id)
 	struct_name := tc.comptime_static_struct_name(owner_type) or { return none }
 	typ := tc.struct_field_type(struct_name, field_name) or { return none }
-	return flat.source_type_id(comptime_static_source_type_name(typ))
+	return comptime_static_source_type_name(typ)
 }
 
-fn comptime_static_source_type_name(typ Type) string {
+fn comptime_static_source_type_name(typ Type) u32 {
 	mut cur := typ
 	for _ in 0 .. 16 {
 		if cur is Pointer {
@@ -1590,9 +1592,9 @@ fn comptime_static_source_type_name(typ Type) string {
 			cur = cur.base_type
 			continue
 		}
-		return cur.name()
+		return cur.source_type_id()
 	}
-	return cur.name()
+	return cur.source_type_id()
 }
 
 fn (tc &TypeChecker) comptime_static_struct_name(raw string) ?string {
@@ -13625,9 +13627,9 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 					capture_id := tc.a.child(&node, i)
 					tc.record_error_at(.assignment_mismatch, 'cannot capture @[nocopy] struct by value: use a reference instead', capture_id, tc.node_value_diagnostic_pos(capture_id))
 				}
-				capture_type_text := tc.current_fn_param_type_text(capture.value) or {
-					capture_type.name()
-				}
+				capture_type_text := flat.source_type_name(tc.current_fn_param_type_text(capture.value) or {
+					capture_type.source_type_id()
+				})
 				capture_dependency_text := fn_literal_capture_generic_dependency_text(capture_type,
 					capture_type_text, literal_generic_params)
 				for generic_name in tc.fn_context.generic_params {
@@ -13782,7 +13784,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	for i in 0 .. node.children_count {
 		capture_id := tc.a.child(&node, i)
 		capture := tc.a.node(capture_id)
-		capture_type_text := tc.current_fn_param_type_text(capture.value) or { '' }
+		capture_type_text := flat.source_type_name(tc.current_fn_param_type_text(capture.value) or { u32(0) })
 		capture_has_open_generic :=
 			saved_fn_context.generic_params.any(type_text_contains_symbol(capture_type_text, it))
 		if capture.kind == .ident && capture.value.len > 0 && !capture_has_open_generic
@@ -13911,9 +13913,9 @@ fn (mut tc TypeChecker) check_generic_fn_literal_capture_types(node flat.Node) {
 					continue
 				}
 				capture_type := tc.cur_scope.lookup(capture.value) or { continue }
-				capture_type_text := tc.current_fn_param_type_text(capture.value) or {
-					capture_type.name()
-				}
+				capture_type_text := flat.source_type_name(tc.current_fn_param_type_text(capture.value) or {
+					capture_type.source_type_id()
+				})
 				capture_dependency_text := fn_literal_capture_generic_dependency_text(capture_type,
 					capture_type_text, literal_generic_params)
 				for generic_name in tc.fn_context.generic_params {
@@ -13991,7 +13993,7 @@ fn (mut tc TypeChecker) record_invalid_comptime_for_type(decl VisibleMutationFnD
 	return false
 }
 
-fn (tc &TypeChecker) current_fn_param_type_text(name string) ?string {
+fn (tc &TypeChecker) current_fn_param_type_text(name string) ?u32 {
 	fn_id := flat.NodeId(tc.fn_context.node_id)
 	if !tc.valid_node_id(fn_id) {
 		return none
@@ -14000,7 +14002,7 @@ fn (tc &TypeChecker) current_fn_param_type_text(name string) ?string {
 	for i in 0 .. fn_node.children_count {
 		param := tc.a.child_node(fn_node, i)
 		if param.kind == .param && param.value == name {
-			return param.typ_text()
+			return param.typ
 		}
 	}
 	return none

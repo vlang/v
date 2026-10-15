@@ -4018,7 +4018,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	mapped_type_source_id_2 := mapped_type_source_id
 	mapped_type := flat.source_type_name(mapped_type_source_id_2)
 	if decl_type_is_usable(mapped_type_source_id_2) && mapped_type_source_id != flat.source_type_void
-		&& (!checker_result_elem_type_is_usable || t.active_specialization_args_text().len > 0) {
+		&& (!checker_result_elem_type_is_usable || t.active_specialization_args.ids.len > 0) {
 		result_elem_type = mapped_type
 	}
 	if direct_selector_type.len > 0 && map_fn_name.len == 0 {

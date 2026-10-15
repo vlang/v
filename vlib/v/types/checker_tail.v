@@ -5848,7 +5848,9 @@ fn (tc &TypeChecker) chained_bare_struct_call_uses_open_param(call flat.Node) bo
 		id := stack.pop()
 		child := tc.a.node(id)
 		if child.kind == .ident {
-			if type_text := tc.current_fn_param_type_text(child.value) {
+			if type_text_source_id := tc.current_fn_param_type_text(child.value) {
+				type_text := flat.source_type_name(type_text_source_id)
+
 				if tc.fn_context.generic_params.any(type_text_contains_symbol(type_text, it)) {
 					return true
 				}

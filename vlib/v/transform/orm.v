@@ -3400,7 +3400,7 @@ fn (t &Transformer) sql_table_fields(table string) ?[]types.StructField {
 }
 
 fn (t &Transformer) sql_resolved_table_name(table string) string {
-	mut table_name := if t.active_specialization_args_text().len > 0 {
+	mut table_name := if t.active_specialization_args.ids.len > 0 {
 		flat.source_type_name(t.subst_type(flat.source_type_id(table), t.active_specialization_args.ids))
 	} else {
 		table
