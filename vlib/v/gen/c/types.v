@@ -1443,7 +1443,8 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 }
 
 fn (g &FlatGen) struct_generic_params_for_name(name string) []string {
-	base, _, ok := g.shared_generic_app_parts(name)
+	base_source_id, _, ok := g.shared_generic_app_parts(flat.source_type_id(name))
+	base := flat.source_type_name(base_source_id)
 	if !ok {
 		return []string{}
 	}
@@ -1453,7 +1454,8 @@ fn (g &FlatGen) struct_generic_params_for_name(name string) []string {
 }
 
 fn (g &FlatGen) sum_generic_params_for_name(name string) []string {
-	base, _, ok := g.shared_generic_app_parts(name)
+	base_source_id, _, ok := g.shared_generic_app_parts(flat.source_type_id(name))
+	base := flat.source_type_name(base_source_id)
 	if !ok {
 		return []string{}
 	}

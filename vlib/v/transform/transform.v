@@ -12759,7 +12759,7 @@ fn (mut t Transformer) simple_nested_string_interpolation(value string) ?flat.No
 			return none
 		}
 		expr, typ := t.simple_nested_interp_expr(inner) or { return none }
-		parts << t.wrap_string_conversion(expr, flat.source_type_id(typ))
+		parts << t.wrap_string_conversion(expr, typ)
 		i = end + 1
 		start = i
 	}
@@ -12885,7 +12885,7 @@ fn string_has_newline_byte(value string) bool {
 	return false
 }
 
-fn (mut t Transformer) simple_nested_interp_expr(inner string) ?(flat.NodeId, string) {
+fn (mut t Transformer) simple_nested_interp_expr(inner string) ?(flat.NodeId, u32) {
 	if expr, typ := t.simple_nested_binary_expr(inner) {
 		return expr, typ
 	}
@@ -12897,13 +12897,13 @@ fn (mut t Transformer) simple_nested_interp_expr(inner string) ?(flat.NodeId, st
 
 fn (mut t Transformer) simple_nested_condition_expr(inner string) ?flat.NodeId {
 	expr, typ := t.simple_nested_interp_expr(inner) or { return none }
-	if typ == 'bool' {
+	if typ == flat.source_type_bool {
 		return expr
 	}
 	return none
 }
 
-fn (mut t Transformer) simple_nested_binary_expr(inner string) ?(flat.NodeId, string) {
+fn (mut t Transformer) simple_nested_binary_expr(inner string) ?(flat.NodeId, u32) {
 	clean := trimmed_transform_text(inner)
 	for op_text in ['==', '!=', '>=', '<=', '>', '<', '+', '-'] {
 		op_idx := simple_nested_operator_index(clean, op_text) or { continue }
@@ -12926,14 +12926,14 @@ fn (mut t Transformer) simple_nested_binary_expr(inner string) ?(flat.NodeId, st
 		}
 
 		typ := if op in [.eq, .ne, .ge, .le, .gt, .lt] {
-			'bool'
-		} else if lhs_typ == rhs_typ && lhs_typ.len > 0 {
+			flat.source_type_bool
+		} else if lhs_typ == rhs_typ && lhs_typ != 0 {
 			lhs_typ
 		} else {
-			'int'
+			flat.source_type_int
 		}
 		expr := t.make_infix(op, lhs, rhs)
-		t.set_node_typ(int(expr), flat.source_type_id(typ))
+		t.set_node_typ(int(expr), typ)
 		return expr, typ
 	}
 	return none
@@ -12948,41 +12948,41 @@ fn simple_nested_operator_index(text string, op string) ?int {
 	return none
 }
 
-fn (mut t Transformer) simple_nested_atom_expr(inner string) ?(flat.NodeId, string) {
+fn (mut t Transformer) simple_nested_atom_expr(inner string) ?(flat.NodeId, u32) {
 	if inner.starts_with('&') {
 		name := trimmed_transform_text(inner[1..])
 		if !is_simple_ident_name(name) {
 			return none
 		}
 		value := t.make_ident(name)
-		mut value_type := flat.source_type_name(t.raw_var_type(name))
-		if value_type.len == 0 {
-			value_type = flat.source_type_name(t.var_type(name))
+		mut value_type := t.raw_var_type(name)
+		if value_type == 0 {
+			value_type = t.var_type(name)
 		}
-		if value_type.len == 0 {
-			value_type = flat.source_type_name(t.node_type(value))
+		if value_type == 0 {
+			value_type = t.node_type(value)
 		}
-		if value_type.len == 0 {
+		if value_type == 0 {
 			return none
 		}
-		return t.make_prefix(.amp, value), '&' + value_type
+		return t.make_prefix(.amp, value), flat.source_type_id('&' + flat.source_type_name(value_type))
 	}
 	if inner == 'true' || inner == 'false' {
-		return t.make_bool_literal(inner == 'true'), 'bool'
+		return t.make_bool_literal(inner == 'true'), flat.source_type_bool
 	}
 	if is_decimal_text(inner) {
-		return t.make_int_literal_typed(inner, flat.source_type_int), 'int'
+		return t.make_int_literal_typed(inner, flat.source_type_int), flat.source_type_int
 	}
 	if is_simple_ident_name(inner) {
 		expr := t.make_ident(inner)
-		mut typ := flat.source_type_name(t.raw_var_type(inner))
-		if typ.len == 0 {
-			typ = flat.source_type_name(t.var_type(inner))
+		mut typ := t.raw_var_type(inner)
+		if typ == 0 {
+			typ = t.var_type(inner)
 		}
-		if typ.len == 0 {
-			typ = flat.source_type_name(t.node_type(expr))
+		if typ == 0 {
+			typ = t.node_type(expr)
 		}
-		if typ.len == 0 {
+		if typ == 0 {
 			return none
 		}
 		return expr, typ
@@ -13012,7 +13012,7 @@ fn (mut t Transformer) mark_detached_spawn_result_drop(spawn_node flat.Node) {
 		return
 	}
 	call_id := t.a.child(&spawn_node, 0)
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
 	mut result_type := t.tc.resolve_type(call_id)
 	if result_type.name() == 'thread[]' {
 		if call_name := t.tc.resolved_call_name(call_id) {
@@ -13024,12 +13024,12 @@ fn (mut t Transformer) mark_detached_spawn_result_drop(spawn_node flat.Node) {
 	t.mark_detached_spawn_drop_type(result_type, mut seen)
 }
 
-fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen map[string]bool) {
-	name := typ.name()
-	if seen[name] {
+fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen map[u32]bool) {
+	name_id := typ.source_type_id()
+	if seen[name_id] {
 		return
 	}
-	seen[name] = true
+	seen[name_id] = true
 	match typ {
 		types.Alias {
 			t.mark_detached_spawn_drop_type(typ.base_type, mut seen)
@@ -13051,21 +13051,21 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 			}
 		}
 		types.Interface {
-			mut iface_name := typ.name()
-			if iface_name !in t.tc.interface_names {
-				qualified := t.tc.qualify_name(iface_name)
+			mut iface_name := name_id
+			if flat.source_type_name(iface_name) !in t.tc.interface_names {
+				qualified := t.tc.qualify_name(flat.source_type_name(iface_name))
 				if qualified in t.tc.interface_names {
-					iface_name = qualified
+					iface_name = flat.source_type_id(qualified)
 				}
 			}
-			if iface_name != name && seen[iface_name] {
+			if iface_name != name_id && seen[iface_name] {
 				return
 			}
 			seen[iface_name] = true
-			implementers := if iface_name in ['IError', 'builtin.IError'] {
+			implementers := if iface_name == flat.source_type_id('IError') || iface_name == flat.source_type_id('builtin.IError') {
 				t.tc.ierror_impl_names()
 			} else {
-				t.tc.interface_impl_names(iface_name)
+				t.tc.interface_impl_names(flat.source_type_name(iface_name))
 			}
 			for concrete in implementers {
 				t.mark_detached_spawn_drop_type(t.tc.parse_type(flat.source_type_id(concrete)), mut seen)

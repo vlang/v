@@ -1397,15 +1397,19 @@ fn (g &FlatGen) stale_ambiguous_qualified_interface_c_type(short_ct string) bool
 }
 
 fn (g &FlatGen) generic_struct_init_context_matches(init_name string, expected_name string) bool {
-	init_base, init_args, init_ok := g.shared_generic_app_parts(init_name)
-	expected_base, expected_args, expected_ok := g.shared_generic_app_parts(expected_name)
-	if !init_ok || !expected_ok || init_args.len != expected_args.len
+	init_base_source_id, init_args_source_ids, init_ok := g.shared_generic_app_parts(flat.source_type_id(init_name))
+	init_base := flat.source_type_name(init_base_source_id)
+
+	expected_base_source_id, expected_args_source_ids, expected_ok := g.shared_generic_app_parts(flat.source_type_id(expected_name))
+	expected_base := flat.source_type_name(expected_base_source_id)
+
+	if !init_ok || !expected_ok || init_args_source_ids.len != expected_args_source_ids.len
 		|| init_base.all_after_last('.') != expected_base.all_after_last('.') {
 		return false
 	}
-	for i, init_arg in init_args {
-		actual := g.tc.parse_resolution_type(flat.source_type_id(init_arg))
-		expected := g.tc.parse_resolution_type(flat.source_type_id(expected_args[i]))
+	for i, init_arg_source_id in init_args_source_ids {
+		actual := g.tc.parse_resolution_type(init_arg_source_id)
+		expected := g.tc.parse_resolution_type(expected_args_source_ids[i])
 		if actual is types.Unknown || expected is types.Unknown
 			|| g.tc.c_type(actual) != g.tc.c_type(expected) {
 			return false
@@ -2514,27 +2518,29 @@ fn (mut g FlatGen) restore_struct_default_context(old StructDefaultContext) {
 // own, so it resolves to the generic source declaration, together with the
 // concrete arguments its default expressions are specialized with.
 fn (g &FlatGen) struct_default_decl_source(type_name_id u32) ?StructDefaultDeclSource {
-	type_name := flat.source_type_name(type_name_id)
 	if info := g.find_struct_decl(type_name_id) {
 		return StructDefaultDeclSource{
 			info:       info
 			owner_name: info.full_name
 		}
 	}
-	base, args, ok := g.shared_generic_app_parts(type_name)
-	if !ok || args.len == 0 {
+	base_source_id, args_source_ids, ok := g.shared_generic_app_parts(type_name_id)
+	base_source_id_2 := base_source_id
+
+	args := flat.TypeTextList{ ids: args_source_ids }.names()
+	if !ok || args_source_ids.len == 0 {
 		return none
 	}
-	info := g.find_struct_decl(flat.source_type_id(base)) or { return none }
+	info := g.find_struct_decl(base_source_id_2) or { return none }
 	params := info.node.generic_params()
-	if params.len == 0 || params.len != args.len {
+	if params.len == 0 || params.len != args_source_ids.len {
 		return none
 	}
 	return StructDefaultDeclSource{
 		info:       info
 		owner_name: type_name_id
 		params:     params
-		args:       flat.TypeTextList{ ids: g.struct_default_canonical_generic_args(flat.TypeTextList.from_names(args).ids) }
+		args:       flat.TypeTextList{ ids: g.struct_default_canonical_generic_args(args_source_ids.clone()) }
 	}
 }
 
@@ -2624,7 +2630,7 @@ fn (g &FlatGen) struct_default_canonical_type_text_uncached(
 		}
 		return '(' + parts.join(', ') + ')'
 	}
-	base, args, ok := g.shared_generic_app_parts(clean)
+	base, args, ok := parse_shared_generic_app_parts(clean)
 	if ok {
 		mut canonical_args := []string{cap: args.len}
 		for arg in args {
@@ -3577,43 +3583,39 @@ struct GenericAppInfo {
 @[heap]
 struct GenericAppCache {
 mut:
-	texts   flat.TypeTextTable
 	entries map[u32]GenericAppInfo
 	base    &GenericAppCache = unsafe { nil }
 }
 
-fn (g &FlatGen) shared_generic_app_parts(typ string) (string, []string, bool) {
-	if g.skip_generics {
-		return '', []string{}, false
+fn (g &FlatGen) shared_generic_app_parts(typ_id u32) (u32, []u32, bool) {
+	if g.skip_generics { return 0, []u32{}, false }
+	shape := flat.source_type_shape(typ_id)
+	if !shape.has(.bracketed) || shape.has(.leading_bracket)
+		|| shape.has(.function_compact) || shape.has(.function_spaced) {
+		return 0, []u32{}, false
 	}
-	// Most queried type names are not generic. Avoid hashing and retaining a
-	// negative cache entry when a single byte scan can reject them.
-	if typ.index_u8(`[`) <= 0 || typ.starts_with('fn(') || typ.starts_with('fn (') {
-		return '', []string{}, false
-	}
-	mut id := u32(0)
 	if !isnil(g.generic_app_cache) {
-		mut cache := g.generic_app_cache
-		id = cache.texts.intern(typ)
-		if cached := cache.entries[id] {
-			return cached.base_text(), cached.args_text(), cached.ok
+		if cached := g.generic_app_cache.entries[typ_id] {
+			return cached.base, cached.args.ids.clone(), cached.ok
 		}
-		if !isnil(cache.base) {
-			if cached := cache.base.entries[id] {
-				return cached.base_text(), cached.args_text(), cached.ok
+		if !isnil(g.generic_app_cache.base) {
+			if cached := g.generic_app_cache.base.entries[typ_id] {
+				return cached.base, cached.args.ids.clone(), cached.ok
 			}
 		}
 	}
-	base, args, ok := parse_shared_generic_app_parts(typ)
+	base, args, ok := parse_shared_generic_app_parts(flat.source_type_name(typ_id))
+	base_id := flat.source_type_id(base)
+	args_ids := flat.TypeTextList.from_names(args).ids
 	if !isnil(g.generic_app_cache) {
 		mut cache := g.generic_app_cache
-		cache.entries[id] = GenericAppInfo{
-			base: flat.source_type_id(base)
-			args: flat.TypeTextList.from_names(args)
+		cache.entries[typ_id] = GenericAppInfo{
+			base: base_id
+			args: flat.TypeTextList{ ids: args_ids.clone() }
 			ok:   ok
 		}
 	}
-	return base, args, ok
+	return base_id, args_ids, ok
 }
 
 fn parse_shared_generic_app_parts(typ string) (string, []string, bool) {
@@ -3963,7 +3965,7 @@ fn (g &FlatGen) shared_qualify_type_text_uncached(typ string, module_name string
 			return clean[..bracket_end + 1] + g.shared_qualify_type_text_uncached(clean[bracket_end + 1..], module_name)
 		}
 	}
-	base, args, ok := g.shared_generic_app_parts(clean)
+	base, args, ok := parse_shared_generic_app_parts(clean)
 	if ok {
 		mut qualified_args := []string{}
 		for arg in args {
@@ -4119,11 +4121,13 @@ fn (mut g FlatGen) collect_generic_shared_type_names(info StructDeclInfo) {
 		return
 	}
 	for type_name, _ in g.tc.structs {
-		base, args, ok := g.shared_generic_app_parts(type_name)
+		base_source_id, args_source_ids, ok := g.shared_generic_app_parts(flat.source_type_id(type_name))
+		base := flat.source_type_name(base_source_id)
+
 		if !ok || !shared_generic_base_matches_decl(base, info) {
 			continue
 		}
-		g.collect_shared_type_names_from_info(info, flat.TypeTextList.from_names(args).ids)
+		g.collect_shared_type_names_from_info(info, args_source_ids.clone())
 	}
 }
 
@@ -4376,12 +4380,13 @@ fn (mut g FlatGen) shared_interface_storage_expr(id flat.NodeId) ?string {
 }
 
 fn (mut g FlatGen) generic_shared_field_info(type_name_id u32, field_name string) ?SharedFieldInfo {
-	type_name := flat.source_type_name(type_name_id)
-	base, args, ok := g.shared_generic_app_parts(type_name)
+	base_source_id, args_source_ids, ok := g.shared_generic_app_parts(type_name_id)
+	base_source_id_3 := base_source_id
+
 	if !ok {
 		return none
 	}
-	info := g.find_struct_decl(flat.source_type_id(base)) or { return none }
+	info := g.find_struct_decl(base_source_id_3) or { return none }
 	old_module := g.tc.cur_module
 	g.tc.cur_module = info.module
 	defer {
@@ -4394,7 +4399,7 @@ fn (mut g FlatGen) generic_shared_field_info(type_name_id u32, field_name string
 		}
 		inner := shared_inner_type_text(field.typ_text()) or { return none }
 		concrete_inner :=
-			substitute_shared_generic_type_text(inner, info.node.generic_params(), flat.TypeTextList.from_names(args).ids)
+			substitute_shared_generic_type_text(inner, info.node.generic_params(), args_source_ids)
 		qualified_inner := flat.source_type_name(g.shared_qualify_type_text(flat.source_type_id(concrete_inner), info.module))
 		return SharedFieldInfo{
 			inner:   qualified_inner
@@ -4913,17 +4918,20 @@ fn (mut g FlatGen) struct_init_c_type_name(type_name_id u32) string {
 }
 
 fn (g &FlatGen) concrete_generic_struct_init_ct(type_name_id u32) ?string {
-	type_name := flat.source_type_name(type_name_id)
-	base, args, ok := g.shared_generic_app_parts(type_name)
-	if !ok || args.len == 0 {
+	base_source_id, args_source_ids, ok := g.shared_generic_app_parts(type_name_id)
+	base := flat.source_type_name(base_source_id)
+	args := flat.TypeTextList{ ids: args_source_ids }.names()
+	if !ok || args_source_ids.len == 0 {
 		return none
 	}
 	wanted_suffix := generic_receiver_type_suffixes(args)
 	mut matches := []string{}
 	mut base_matches := []string{}
 	for candidate in g.tc.structs.keys() {
-		candidate_base, candidate_args, candidate_ok := g.shared_generic_app_parts(candidate)
-		if !candidate_ok || candidate_args.len != args.len
+		candidate_base_source_id, candidate_args_source_ids, candidate_ok := g.shared_generic_app_parts(flat.source_type_id(candidate))
+		candidate_base := flat.source_type_name(candidate_base_source_id)
+		candidate_args := flat.TypeTextList{ ids: candidate_args_source_ids }.names()
+		if !candidate_ok || candidate_args_source_ids.len != args_source_ids.len
 			|| candidate_base.all_after_last('.') != base.all_after_last('.') {
 			continue
 		}
@@ -4949,8 +4957,10 @@ fn (g &FlatGen) concrete_generic_struct_init_ct(type_name_id u32) ?string {
 
 fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
 	type_name := flat.source_type_name(type_name_id)
-	base, args, is_generic := g.shared_generic_app_parts(type_name)
-	if is_generic && args.len > 0 && !base.contains('.') {
+	base_source_id, args_source_ids, is_generic := g.shared_generic_app_parts(type_name_id)
+	base := flat.source_type_name(base_source_id)
+	args := flat.TypeTextList{ ids: args_source_ids }.names()
+	if is_generic && args_source_ids.len > 0 && !base.contains('.') {
 		mut resolved := []string{}
 		if g.tc.cur_file.len > 0 {
 			if candidates := g.file_selective_import_candidates(g.tc.cur_file, base) {
@@ -5001,8 +5011,10 @@ fn (g &FlatGen) struct_init_import_alias_type_name(type_name_id u32) u32 {
 fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name_id u32) ?string {
 	type_name := flat.source_type_name(type_name_id)
 	clean := trimmed_space(type_name)
-	base, args, ok := g.shared_generic_app_parts(clean)
-	if !ok || args.len == 0 {
+	base_source_id, args_source_ids, ok := g.shared_generic_app_parts(flat.source_type_id(clean))
+	base := flat.source_type_name(base_source_id)
+	args := flat.TypeTextList{ ids: args_source_ids }.names()
+	if !ok || args_source_ids.len == 0 {
 		return none
 	}
 	base_short := base.all_after_last('.')
@@ -5020,8 +5032,10 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name_id u32) ?strin
 			continue
 		}
 		candidate_name := candidate_type.name()
-		candidate_base, candidate_args, candidate_ok := g.shared_generic_app_parts(candidate_name)
-		if !candidate_ok || candidate_args.len != args.len {
+		candidate_base_source_id, candidate_args_source_ids, candidate_ok := g.shared_generic_app_parts(flat.source_type_id(candidate_name))
+		candidate_base := flat.source_type_name(candidate_base_source_id)
+		candidate_args := flat.TypeTextList{ ids: candidate_args_source_ids }.names()
+		if !candidate_ok || candidate_args_source_ids.len != args_source_ids.len {
 			continue
 		}
 		if candidate_base.all_after_last('.') != base_short {
@@ -5087,8 +5101,10 @@ fn (g &FlatGen) flattened_generic_struct_init_ct(type_name_id u32) ?string {
 	}
 	mut matches := []string{}
 	for struct_name, _ in g.tc.structs {
-		base, args, ok := g.shared_generic_app_parts(struct_name)
-		if !ok || args.len == 0 {
+		base_source_id, args_source_ids, ok := g.shared_generic_app_parts(flat.source_type_id(struct_name))
+		base := flat.source_type_name(base_source_id)
+		args := flat.TypeTextList{ ids: args_source_ids }.names()
+		if !ok || args_source_ids.len == 0 {
 			continue
 		}
 		short_base := base.all_after_last('.')
@@ -8022,11 +8038,6 @@ fn (value &StructDefaultDeclSource) args_text() []string {
 	return value.args.names()
 }
 
-// args_text resolves concrete type arguments at a text integration boundary.
-fn (value &GenericAppInfo) args_text() []string {
-	return value.args.names()
-}
-
 // root_type_text resolves the indexed source type spelling.
 @[inline]
 fn (value &PromotedStructInitField) root_type_text() string {
@@ -8055,12 +8066,6 @@ fn (value &StructDeclInfo) full_name_text() string {
 @[inline]
 fn (value &StructDefaultDeclSource) owner_name_text() string {
 	return flat.source_type_name(value.owner_name)
-}
-
-// base_text resolves the indexed source type spelling.
-@[inline]
-fn (value &GenericAppInfo) base_text() string {
-	return flat.source_type_name(value.base)
 }
 
 // owner_text resolves the declaring struct source spelling.

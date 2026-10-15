@@ -1597,15 +1597,19 @@ fn (g &FlatGen) selected_specialized_method_c_name(name string) ?string {
 	}
 	receiver := name.all_before_last('.')
 	method := name.all_after_last('.')
-	base, args, ok := g.shared_generic_app_parts(receiver)
-	if !ok || args.len == 0 { return none }
+	base_source_id, args_source_ids, ok := g.shared_generic_app_parts(flat.source_type_id(receiver))
+	base := flat.source_type_name(base_source_id)
+
+	if !ok || args_source_ids.len == 0 { return none }
 	qualified_base := if !base.contains('.') && g.tc.cur_module !in ['', 'main', 'builtin'] {
 		'${g.tc.cur_module}.${base}'
 	} else {
 		base
 	}
-	mut canonical_args := []string{cap: args.len}
-	for arg in args {
+	mut canonical_args := []string{cap: args_source_ids.len}
+	for arg_source_id in args_source_ids {
+		arg := flat.source_type_name(arg_source_id)
+
 		resolved := g.tc.parse_type(flat.source_type_id(arg))
 		if resolved is types.Unknown { return none }
 		canonical_args << resolved.name()
@@ -2996,8 +3000,9 @@ fn (g &FlatGen) generic_method_candidate_type_arg_score(node flat.Node, candidat
 		return 0
 	}
 	receiver := candidate_name.all_before_last('.')
-	_, type_args, ok := g.shared_generic_app_parts(receiver)
-	if !ok || type_args.len == 0 {
+	_, type_args_source_ids, ok := g.shared_generic_app_parts(flat.source_type_id(receiver))
+
+	if !ok || type_args_source_ids.len == 0 {
 		return 0
 	}
 	mut score := 0
@@ -3007,7 +3012,9 @@ fn (g &FlatGen) generic_method_candidate_type_arg_score(node flat.Node, candidat
 		actual := types.unwrap_pointer(g.const_type_for_arg_node(arg_node) or {
 			g.usable_expr_type(arg_id)
 		})
-		for type_arg in type_args {
+		for type_arg_source_id in type_args_source_ids {
+			type_arg := flat.source_type_name(type_arg_source_id)
+
 			if g.generic_method_type_arg_matches_actual(type_arg, actual) {
 				score += 30
 			}
@@ -3183,9 +3190,10 @@ fn (g &FlatGen) resolve_method_name(type_name_id u32, method string) string {
 }
 
 fn (g &FlatGen) resolve_concrete_generic_method_name(type_name_id u32, method string) ?string {
-	type_name := flat.source_type_name(type_name_id)
-	base, args, ok := g.shared_generic_app_parts(type_name)
-	if !ok || args.len == 0 {
+	base_source_id, args_source_ids, ok := g.shared_generic_app_parts(type_name_id)
+	base := flat.source_type_name(base_source_id)
+	args := flat.TypeTextList{ ids: args_source_ids }.names()
+	if !ok || args_source_ids.len == 0 {
 		return none
 	}
 	for suffix in generic_receiver_type_suffix_variants(args) {
@@ -10819,7 +10827,8 @@ fn (g &FlatGen) interface_receiver_name(typ types.Type) string {
 	if name.len == 0 {
 		return ''
 	}
-	base, _, is_generic := g.shared_generic_app_parts(name)
+	base_source_id, _, is_generic := g.shared_generic_app_parts(flat.source_type_id(name))
+	base := flat.source_type_name(base_source_id)
 	if is_generic {
 		name = base
 	}
