@@ -1949,15 +1949,16 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		if t.stage_scope != unsafe { nil } {
 			parent_state := transform_stage_scope_suspend(t.stage_scope)
 			// A batch leaves its texts in a few nodes. A node without a payload
-			// whose texts both lie outside the addresses of the batch arena owns
-			// nothing there, which two comparisons tell.
+			// whose value text lies outside the addresses of the batch arena owns
+			// nothing there. `node.typ` is an interned source-type ID, not a string,
+			// and its spelling lives in the process-wide table, so it never needs
+			// this check. (`node.typ.str` here would be a method value on the u32,
+			// which allocated a closure per node.)
 			scope_lo, scope_hi := transform_scope_address_range(scope)
 			for idx in 0 .. t.a.nodes.len {
 				node := unsafe { &t.a.nodes[idx] }
 				value_address := usize(node.value.str)
-				type_address := usize(node.typ.str)
-				if node.payload == 0 && (value_address < scope_lo || value_address >= scope_hi)
-					&& (type_address < scope_lo || type_address >= scope_hi) {
+				if node.payload == 0 && (value_address < scope_lo || value_address >= scope_hi) {
 					continue
 				}
 				t.clone_scoped_worker_node(idx, scope)
