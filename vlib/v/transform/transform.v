@@ -551,6 +551,9 @@ mut:
 	node_context_text_ids  map[string]u16
 	node_module_map_nodes  int = -1
 	node_context_read_only bool
+	// node_context_lazy_end: the nodes below it take their context on demand
+	// (see node_context_owner).
+	node_context_lazy_end int
 	// The declaration nodes lowering appended behind the checker's top-level
 	// index, kept for the transformer of a monomorphization stage (see
 	// appended_declaration_scan).
@@ -4848,6 +4851,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		w.node_file_map_cache = t.node_file_map_cache
 		w.node_context_texts = t.node_context_texts
 		w.node_module_map_nodes = t.node_module_map_nodes
+		w.node_context_lazy_end = t.node_context_lazy_end
 		w.node_context_read_only = true
 	} else {
 		w.node_module_map_cache = []u16{}

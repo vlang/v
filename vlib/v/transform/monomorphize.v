@@ -61,6 +61,7 @@ fn (mut t Transformer) collect_generic_specs_range_scoped(struct_decls map[strin
 		w.node_file_map_cache = t.node_file_map_cache
 		w.node_context_texts = t.node_context_texts
 		w.node_module_map_nodes = t.node_module_map_nodes
+		w.node_context_lazy_end = t.node_context_lazy_end
 		mut batch_struct_specs := flat.TypeTextBindings{}
 		mut batch_sum_specs := map[string]GenericSpecContext{}
 		w.collect_generic_struct_specs_range(struct_decls, mut batch_struct_specs, start, end)
@@ -4562,6 +4563,12 @@ fn (mut t Transformer) ensure_node_module_map() {
 	} else {
 		t.ensure_node_context_map_capacity()
 	}
+	// The nodes the parent index covers take their context on demand, from their
+	// nearest marked ancestor (see node_context_owner): only files and
+	// declarations are marked here, not every node below them.
+	if t.node_module_map_nodes == 0 {
+		t.node_context_lazy_end = int_min(t.source_parent_ids.len, t.a.nodes.len)
+	}
 	mut cur_module := ''
 	mut cur_file := ''
 	for i := t.node_module_map_nodes; i < t.a.nodes.len; i++ {
@@ -4571,7 +4578,7 @@ fn (mut t Transformer) ensure_node_module_map() {
 			.file {
 				cur_file = node.value
 				cur_module = t.tc.file_modules[node.value] or { '' }
-				t.mark_node_context(flat.NodeId(i), cur_module, cur_file)
+				t.mark_node_context_root(i, cur_module, cur_file)
 			}
 			.module_decl {
 				cur_module = node.value
@@ -4583,12 +4590,49 @@ fn (mut t Transformer) ensure_node_module_map() {
 				// marker of its own.
 				context_module := t.node_module_or(i, cur_module)
 				context_file := t.node_file_or(i, cur_file)
-				t.mark_node_context(flat.NodeId(i), context_module, context_file)
+				t.mark_node_context_root(i, context_module, context_file)
 			}
 			else {}
 		}
 	}
 	t.node_module_map_nodes = t.a.nodes.len
+}
+
+// mark_node_context_root marks a file or declaration with its context: the node
+// alone where its subtree takes contexts on demand, else the whole subtree.
+@[direct_array_access]
+fn (mut t Transformer) mark_node_context_root(idx int, module_name string, file_name string) {
+	if idx >= t.node_context_lazy_end {
+		t.mark_node_context(flat.NodeId(idx), module_name, file_name)
+		return
+	}
+	t.node_module_map_cache[idx] = t.node_context_text_id(module_name)
+	t.node_file_map_cache[idx] = t.node_context_text_id(file_name)
+}
+
+// node_context_owner is the nearest ancestor of node `idx` with a recorded
+// context, or -1, for a node whose context is taken on demand.
+@[direct_array_access]
+fn (t &Transformer) node_context_owner(idx int) int {
+	if idx >= t.node_context_lazy_end {
+		return -1
+	}
+	mut cursor := idx
+	// The bound only guards against a cycle in a rewritten tree.
+	for _ in 0 .. 1 << 16 {
+		if cursor < 0 || cursor >= t.source_parent_ids.len {
+			return -1
+		}
+		cursor = int(t.source_parent_ids[cursor])
+		if cursor < 0 || cursor >= t.node_module_map_cache.len
+			|| cursor >= t.node_file_map_cache.len {
+			return -1
+		}
+		if t.node_module_map_cache[cursor] != 0 || t.node_file_map_cache[cursor] != 0 {
+			return cursor
+		}
+	}
+	return -1
 }
 
 fn (mut t Transformer) ensure_node_context_map_capacity() {
@@ -4657,6 +4701,12 @@ fn (t &Transformer) node_file_or(idx int, fallback string) string {
 		if file_id != 0 {
 			return t.node_context_text(file_id)
 		}
+		if t.node_module_map_cache[idx] == 0 {
+			owner := t.node_context_owner(idx)
+			if owner >= 0 {
+				return t.node_file_or(owner, fallback)
+			}
+		}
 	}
 	return fallback
 }
@@ -4667,6 +4717,12 @@ fn (t &Transformer) node_module_or(idx int, fallback string) string {
 		module_id := t.node_module_map_cache[idx]
 		if module_id != 0 {
 			return t.node_context_text(module_id)
+		}
+		if idx < t.node_file_map_cache.len && t.node_file_map_cache[idx] == 0 {
+			owner := t.node_context_owner(idx)
+			if owner >= 0 {
+				return t.node_module_or(owner, fallback)
+			}
 		}
 		if !isnil(t.tc) && idx < t.node_file_map_cache.len {
 			file_name := t.node_context_text(t.node_file_map_cache[idx])
