@@ -6084,6 +6084,9 @@ can introduce data races, if you are not careful.
 
 #### Channel Select
 
+Assertion messages inside a select branch can use values declared or received in that branch,
+including arrays and structs converted to strings.
+
 The `select` command allows monitoring several channels at the same time
 without noticeable CPU load. It consists of a list of possible transfers and associated branches
 of statements - similar to the [match](#match) command:
