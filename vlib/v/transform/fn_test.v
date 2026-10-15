@@ -1698,7 +1698,7 @@ fn test_numeric_sum_and_variant_caches_preserve_collisions_and_module_context() 
 	for _ in 0 .. 3 {
 		for id in [first, second] {
 			assert t.resolve_sum_name(id) == id
-			assert flat.source_type_name(t.variant_short_name(id)) == flat.source_type_name(id).all_after_last('.')
+			assert t.variant_short_name(id) == id.all_after_last('.')
 		}
 	}
 	t.sum_types.set('one.Value', ['int'])
@@ -1713,6 +1713,25 @@ fn test_numeric_sum_and_variant_caches_preserve_collisions_and_module_context() 
 			assert t.resolve_sum_name(exact) == 0
 		}
 		assert exact in t.sum_cache.entries
+	}
+}
+
+fn test_numeric_alias_equivalent_lists_preserve_ownership_and_module_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases.set_id('one.Alias', flat.source_type_int)
+	tc.type_aliases.set_id('two.Alias', flat.source_type_string)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	name := flat.source_type_id('Alias')
+	for module_name in ['one', 'two', 'one'] {
+		t.cur_module = module_name
+		mut names := t.interface_alias_equivalent_names(name)
+		assert names[0] == name
+		assert flat.source_type_id('${module_name}.Alias') in names
+		names[0] = flat.source_type_bool
+		cached := t.interface_alias_equivalent_names(name)
+		assert cached[0] == name
+		assert cached == t.interface_alias_equivalent_names_uncached(name)
 	}
 }
 

@@ -2824,7 +2824,7 @@ fn test_map_fixed_array_equality_reserves_missing_value_zeroing() {
 	mut tc := types.TypeChecker.new(&a)
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
-	assert t.equality_type_expands_from_metadata('map[string][4096][]int', 0)
+	assert t.equality_type_expands_from_metadata(flat.source_type_id('map[string][4096][]int'), 0)
 }
 
 fn test_external_map_expansion_estimate_includes_index_reconstruction() {

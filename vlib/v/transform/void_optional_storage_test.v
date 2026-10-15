@@ -12,8 +12,8 @@ fn test_void_optional_storage_does_not_clone_a_payload() {
 	for typ in ['!', '?', '!void', '?void', '!!', '??', 'VoidResult', 'VoidOption'] {
 		t.set_var_type('source', flat.source_type_id(typ))
 		source := t.make_ident('source')
-		assert t.clone_borrowed_storage_projection(source, source, typ) == source
-		assert t.clone_owned_array_value_for_capture(source, typ) == source
+		assert t.clone_borrowed_storage_projection(source, source, flat.source_type_id(typ)) == source
+		assert t.clone_owned_array_value_for_capture(source, flat.source_type_id(typ)) == source
 		assert t.pending_stmts.len == 0
 	}
 }

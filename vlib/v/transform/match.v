@@ -60,8 +60,9 @@ fn (mut t Transformer) transform_match_branch_body(branch_id flat.NodeId, subjec
 	// Push smartcast if we have a sum type variant match
 	mut has_sc := subject_name != '' && variant_name != ''
 	if has_sc {
-		sum_type_name := t.find_sum_type_for_variant(variant_name)
-		if sum_type_name.len > 0 {
+		sum_type_name_source_id := t.find_sum_type_for_variant(flat.source_type_id(variant_name))
+		sum_type_name := flat.source_type_name(sum_type_name_source_id)
+		if sum_type_name_source_id != 0 {
 			t.push_smartcast(subject_name, variant_name, sum_type_name)
 		} else {
 			has_sc = false

@@ -139,7 +139,7 @@ fn test_interface_array_spread_classification_and_box_scan() {
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.cur_module = 'main'
 
-		assert t.array_append_rhs_is_push_many(lhs, spread, actual.name(), 'Value') == (i >= 2)
+		assert t.array_append_rhs_is_push_many(lhs, spread, actual.source_type_id(), flat.source_type_id('Value')) == (i >= 2)
 		t.collect_interface_append_boxes(a.nodes[int(append)])
 
 		boxed_type := if actual is types.Primitive { 'int' } else { 'string' }

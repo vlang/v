@@ -462,7 +462,7 @@ fn (t &Transformer) map_expr_decl_type(id flat.NodeId) ?u32 {
 	if node.kind == .map_init {
 		for candidate in [node.value, node.typ_text(), flat.source_type_name(t.node_type(id))] {
 			if candidate.starts_with('map[') {
-				return flat.source_type_id(t.refine_map_init_fixed_array_value_type(node, candidate))
+				return t.refine_map_init_fixed_array_value_type(node, flat.source_type_id(candidate))
 			}
 		}
 	}
@@ -801,8 +801,9 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 	}
 	if base_key.len > 0 {
 		if sc := t.find_smartcast(base_key) {
-			variant_type := t.qualify_variant(sc.variant_name_text(), sc.sum_type_name_text())
-			if ftyp_source_id := t.lookup_struct_field_type(flat.source_type_id(variant_type), field_name) {
+			variant_type_source_id := t.qualify_variant(sc.variant_name, sc.sum_type_name)
+
+			if ftyp_source_id := t.lookup_struct_field_type(variant_type_source_id, field_name) {
 				return ftyp_source_id
 			}
 			if ftyp_source_id := t.lookup_struct_field_type(sc.variant_name, field_name) {
@@ -2019,14 +2020,14 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) u32 {
 
 fn (t &Transformer) index_expr_type(id flat.NodeId, node flat.Node) u32 {
 	resolved_elem_type_source_id := t.resolve_index_elem_type(node)
-	resolved_elem_type := flat.source_type_name(resolved_elem_type_source_id)
+
 	is_slice := node.value == 'range'
 		|| (node.children_count > 1 && t.a.child_node(&node, 1).kind == .range)
 	if resolved_elem_type_source_id == flat.source_type_u8 || (is_slice && resolved_elem_type_source_id != 0) {
 		return resolved_elem_type_source_id
 	}
 	if t.is_fixed_array_type(resolved_elem_type_source_id)
-		&& t.fixed_array_type_contains_map(resolved_elem_type) {
+		&& t.fixed_array_type_contains_map(resolved_elem_type_source_id) {
 		return resolved_elem_type_source_id
 	}
 	if !isnil(t.tc) {

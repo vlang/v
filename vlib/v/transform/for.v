@@ -553,12 +553,13 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		// C generation takes a structural snapshot for delete-capable map loops, but its
 		// values are shallow copies. First clone destructible entries here so deleting from
 		// the source map cannot invalidate an unvisited snapshot binding.
-		key_type, value_type := t.map_type_parts(map_iter_type)
-		key_needs_clone := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(key_type)))) != 'string'
-			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(key_type)))
-		value_needs_clone := t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(value_type)))
-		keys_are_cloneable := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(flat.source_type_id(key_type))) == none
-		values_are_cloneable := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(flat.source_type_id(value_type))) == none
+		key_type_source_id, value_type_source_id := t.map_type_parts(map_iter_type_source_id)
+
+		key_needs_clone := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(key_type_source_id))) != 'string'
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type_source_id))
+		value_needs_clone := t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type_source_id))
+		keys_are_cloneable := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(key_type_source_id)) == none
+		values_are_cloneable := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(value_type_source_id)) == none
 		if (key_needs_clone || value_needs_clone) && keys_are_cloneable && values_are_cloneable {
 			mut snapshot_source := new_container
 			if raw_iter_type.starts_with('&') {
@@ -680,11 +681,13 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 
 	mut binding_clones := []flat.NodeId{}
 	if map_iter_type.starts_with('map[') {
-		key_type, value_type := t.map_type_parts(map_iter_type)
+		key_type_source_id_2, value_type_source_id_2 := t.map_type_parts(map_iter_type_source_id)
+		key_type := flat.source_type_name(key_type_source_id_2)
+		value_type := flat.source_type_name(value_type_source_id_2)
 		if has_index {
 			key_source_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 			key_name := binding_names[key_source_name] or { key_source_name }
-			if trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(key_type)))) != 'string' {
+			if trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(key_type_source_id_2))) != 'string' {
 				binding_clones << t.make_for_in_binding_clone(key_name, key_type)
 			}
 			value_source_name := if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
@@ -1354,11 +1357,11 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	mut elem_expr := if elem_needs_ref && actual_iter_type.starts_with('[]') {
-		t.array_get_ptr(container, t.make_ident(idx_name), elem_type)
+		t.array_get_ptr(container, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	} else if elem_needs_ref {
 		t.make_prefix(.amp, t.make_index(container, t.make_ident(idx_name), flat.source_type_id(elem_type)))
 	} else if actual_iter_type.starts_with('[]') {
-		t.array_get_value(container, t.make_ident(idx_name), elem_type)
+		t.array_get_value(container, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	} else {
 		t.make_index(container, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	}
@@ -1450,8 +1453,9 @@ fn (t &Transformer) for_in_container_is_interface_smartcast(container_id flat.No
 	if key.len == 0 || t.find_smartcast(key) == none {
 		return false
 	}
-	source_type := flat.source_type_name(t.trim_pointer_type(t.original_expr_type(container_id)))
-	return t.is_interface_type_name(source_type)
+	source_type_source_id := t.trim_pointer_type(t.original_expr_type(container_id))
+
+	return t.is_interface_type_name(source_type_source_id)
 }
 
 fn (mut t Transformer) fixed_array_map_index_for_in_container(container_id flat.NodeId, mut prefix []flat.NodeId) ?flat.NodeId {
@@ -1468,7 +1472,7 @@ fn (mut t Transformer) fixed_array_map_index_for_in_container(container_id flat.
 	zero_name := t.new_temp('map_zero')
 	prefix << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(info.value_type),
 		info.value_type)
-	return t.make_map_get_expr(map_expr, info.base_type_text(), key_name, zero_name, info.value_type_text())
+	return t.make_map_get_expr(map_expr, info.base_type, key_name, zero_name, info.value_type)
 }
 
 fn (t &Transformer) for_in_container_is_shared_array_pointer(for_id flat.NodeId, container_id flat.NodeId) bool {
@@ -1665,16 +1669,16 @@ fn (mut t Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?st
 	if !isnil(t.tc) {
 		for candidate in candidates {
 			if typ := t.tc.const_types[candidate] {
-				normalized_source_id_ := t.normalize_type_alias(typ.source_type_id())
-				normalized := flat.source_type_name(normalized_source_id_)
-				if t.is_fixed_array_type(normalized_source_id_) {
+				normalized_source_id_2 := t.normalize_type_alias(typ.source_type_id())
+				normalized := flat.source_type_name(normalized_source_id_2)
+				if t.is_fixed_array_type(normalized_source_id_2) {
 					return normalized
 				}
 			}
 		}
-		checker_type_source_id_ := t.normalize_type_alias(t.tc.resolve_type(id).source_type_id())
-		checker_type := flat.source_type_name(checker_type_source_id_)
-		if t.is_fixed_array_type(checker_type_source_id_) {
+		checker_type_source_id := t.normalize_type_alias(t.tc.resolve_type(id).source_type_id())
+		checker_type := flat.source_type_name(checker_type_source_id)
+		if t.is_fixed_array_type(checker_type_source_id) {
 			return checker_type
 		}
 	}
@@ -1723,8 +1727,9 @@ fn (t &Transformer) infer_for_in_elem_type(iter_type string, node flat.Node) str
 		bracket_end := iter_type.index(']') or { return '' }
 		if bracket_end + 1 < iter_type.len {
 			value_type := iter_type[bracket_end + 1..]
-			fixed_type := t.fixed_array_map_value_type_text(value_type)
-			if fixed_type.len > 0 {
+			fixed_type_source_id := t.fixed_array_map_value_type_text(flat.source_type_id(value_type))
+			fixed_type := flat.source_type_name(fixed_type_source_id)
+			if fixed_type_source_id != 0 {
 				return fixed_type
 			}
 			return value_type

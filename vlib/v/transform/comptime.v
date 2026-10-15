@@ -3538,7 +3538,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		child_type_source_id := t.node_type(children[0])
 
 		if t.sum_types.contains(target_sum) && child.kind == .ident
-			&& t.sum_target_accepts_variant_type(target_sum, item.typ_text())
+			&& t.sum_target_accepts_variant_type(target_sum_source_id, item.typ)
 			&& (child_type_source_id == 0 || flat.source_type_name(t.resolve_sum_name(child_type_source_id)) == target_sum
 				|| t.normalize_type_alias(child_type_source_id) == t.normalize_type_alias(item.typ)) {
 			t.set_node_typ(int(children[0]), item.typ)

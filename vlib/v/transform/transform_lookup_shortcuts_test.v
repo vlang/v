@@ -193,7 +193,7 @@ fn test_append_element_interface_answers_follow_the_type_tables() {
 	tc.interface_names['geometry.Solid'] = true
 	assert !t.array_append_elem_is_interface(flat.source_type_id('Solid'))
 	t.cur_module = 'geometry'
-	assert t.array_append_elem_is_interface(flat.source_type_id('Solid')) == t.array_append_elem_is_interface_uncached('Solid')
+	assert t.array_append_elem_is_interface(flat.source_type_id('Solid')) == t.array_append_elem_is_interface_uncached(flat.source_type_id('Solid'))
 }
 
 fn test_alias_chain_stops_at_plain_types_and_cycles() {
@@ -205,10 +205,13 @@ fn test_alias_chain_stops_at_plain_types_and_cycles() {
 	tc.type_aliases.set_id('Pong', flat.source_type_id('Ping'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	assert t.normalize_type_alias_chain('int') == 'int'
-	assert t.normalize_type_alias_chain('[]string') == '[]string'
-	assert t.normalize_type_alias_chain('Names') == '[]string'
-	assert t.normalize_type_alias_chain('Ping') in ['Ping', 'Pong']
+	assert t.normalize_type_alias_chain(flat.source_type_int) == flat.source_type_int
+	assert flat.source_type_name(t.normalize_type_alias_chain(flat.source_type_id('[]string'))) == '[]string'
+	assert flat.source_type_name(t.normalize_type_alias_chain(flat.source_type_id('Names'))) == '[]string'
+	assert flat.source_type_name(t.normalize_type_alias_chain(flat.source_type_id('Ping'))) in [
+		'Ping',
+		'Pong',
+	]
 }
 
 fn shortcut_test_node(mut a flat.FlatAst, node flat.Node, children []flat.NodeId) flat.NodeId {

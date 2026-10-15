@@ -550,8 +550,9 @@ fn (t &Transformer) array_comparison_map_index_value_type(id flat.NodeId) ?strin
 	if base_type.len == 0 || base_type == 'unknown' {
 		base_type = flat.source_type_name(t.node_type(base_id))
 	}
-	_, value_type := t.map_type_parts(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type))))
-	if t.is_fixed_array_type(flat.source_type_id(value_type)) {
+	_, value_type_source_id := t.map_type_parts(t.normalize_type_alias(flat.source_type_id(base_type)))
+	value_type := flat.source_type_name(value_type_source_id)
+	if t.is_fixed_array_type(value_type_source_id) {
 		return value_type
 	}
 	return none
@@ -567,7 +568,7 @@ fn (t &Transformer) contextual_array_comparison_type(id flat.NodeId, own_type st
 	}
 	own_elem := own_type[2..]
 	other_elem := other_type[2..]
-	if t.is_sum_type_name(other_elem) && t.sum_target_accepts_variant_type(other_elem, own_elem) {
+	if t.is_sum_type_name(flat.source_type_id(other_elem)) && t.sum_target_accepts_variant_type(flat.source_type_id(other_elem), flat.source_type_id(own_elem)) {
 		return other_type
 	}
 	other_iface_source_id := t.resolve_interface_type_name(flat.source_type_id(other_elem))
@@ -631,15 +632,17 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	if !lhs_map_type.starts_with('map[') || !rhs_map_type.starts_with('map[') {
 		return none
 	}
-	_, lhs_value_type := t.map_type_parts(lhs_map_type)
-	_, rhs_value_type := t.map_type_parts(rhs_map_type)
+	_, lhs_value_type_source_id_2 := t.map_type_parts(flat.source_type_id(lhs_map_type))
+	lhs_value_type := flat.source_type_name(lhs_value_type_source_id_2)
+	_, rhs_value_type_source_id_2 := t.map_type_parts(flat.source_type_id(rhs_map_type))
+	rhs_value_type := flat.source_type_name(rhs_value_type_source_id_2)
 	// A result/option wrapper can retain the checker's partial `map[K]` spelling
 	// after its generic callee has been specialized to `map[K]V`. Prefer the
 	// complete peer type so equality still uses V's element semantics (not a raw
 	// byte comparison of string/array/map descriptors).
-	map_type := if (lhs_value_type in ['', 'void', 'unknown'] || t.generic_arg_is_unresolved(flat.source_type_id(lhs_value_type)))
+	map_type := if (lhs_value_type in ['', 'void', 'unknown'] || t.generic_arg_is_unresolved(lhs_value_type_source_id_2))
 		&& rhs_value_type !in ['', 'void', 'unknown']
-		&& !t.generic_arg_is_unresolved(flat.source_type_id(rhs_value_type)) {
+		&& !t.generic_arg_is_unresolved(rhs_value_type_source_id_2) {
 		rhs_map_type
 	} else {
 		lhs_map_type
@@ -652,8 +655,9 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	if t.transformed_map_equality_operand_needs_deref(new_rhs, rhs_type) {
 		new_rhs = t.make_prefix(.mul, new_rhs)
 	}
-	_, value_type := t.map_type_parts(map_type)
-	eq_call := if value_type.len > 0 && t.map_value_needs_element_eq(value_type) {
+	_, value_type_source_id_2 := t.map_type_parts(flat.source_type_id(map_type))
+	value_type := flat.source_type_name(value_type_source_id_2)
+	eq_call := if value_type_source_id_2 != 0 && t.map_value_needs_element_eq(value_type) {
 		t.make_map_elementwise_eq_call(new_lhs, new_rhs, map_type, node)
 	} else {
 		t.make_call_typed('map_map_eq', [new_lhs, new_rhs], flat.source_type_bool)
@@ -2112,15 +2116,17 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	}
 	lhs_type = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(lhs_type)))
 	rhs_type = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(rhs_type)))
-	if !t.is_sum_type_name(lhs_type) && t.generic_arg_is_unresolved(flat.source_type_id(lhs_type)) {
-		lhs_original := flat.source_type_name(t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(lhs_id))))
-		if t.is_sum_type_name(lhs_original) {
+	if !t.is_sum_type_name(flat.source_type_id(lhs_type)) && t.generic_arg_is_unresolved(flat.source_type_id(lhs_type)) {
+		lhs_original_source_id := t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(lhs_id)))
+		lhs_original := flat.source_type_name(lhs_original_source_id)
+		if t.is_sum_type_name(lhs_original_source_id) {
 			lhs_type = lhs_original
 		}
 	}
-	if !t.is_sum_type_name(rhs_type) && t.generic_arg_is_unresolved(flat.source_type_id(rhs_type)) {
-		rhs_original := flat.source_type_name(t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(rhs_id))))
-		if t.is_sum_type_name(rhs_original) {
+	if !t.is_sum_type_name(flat.source_type_id(rhs_type)) && t.generic_arg_is_unresolved(flat.source_type_id(rhs_type)) {
+		rhs_original_source_id := t.normalize_type_alias(t.trim_pointer_type(t.original_expr_type(rhs_id)))
+		rhs_original := flat.source_type_name(rhs_original_source_id)
+		if t.is_sum_type_name(rhs_original_source_id) {
 			rhs_type = rhs_original
 		}
 	}
@@ -2129,8 +2135,8 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	// the other operand to the concrete sum type.  The checker has validated
 	// the comparison, so one concrete sum operand is enough to provide the
 	// lowering type for both sides.
-	lhs_is_sum := t.is_sum_type_name(lhs_type)
-	rhs_is_sum := t.is_sum_type_name(rhs_type)
+	lhs_is_sum := t.is_sum_type_name(flat.source_type_id(lhs_type))
+	rhs_is_sum := t.is_sum_type_name(flat.source_type_id(rhs_type))
 	if !lhs_is_sum && !rhs_is_sum {
 		return none
 	}
@@ -2138,7 +2144,7 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 		unresolved_type := if lhs_is_sum { rhs_type } else { lhs_type }
 		sum_type := if lhs_is_sum { lhs_type } else { rhs_type }
 		if !t.generic_arg_is_unresolved(flat.source_type_id(unresolved_type))
-			&& !t.sum_target_accepts_variant_type(sum_type, unresolved_type) {
+			&& !t.sum_target_accepts_variant_type(flat.source_type_id(sum_type), flat.source_type_id(unresolved_type)) {
 			return none
 		}
 	}
@@ -2174,7 +2180,7 @@ fn (t &Transformer) sum_eq_type_for_operands(lhs_type string, rhs_type string) s
 		}
 	}
 	for candidate in [lhs_type, rhs_type] {
-		if t.is_sum_type_name(candidate) {
+		if t.is_sum_type_name(flat.source_type_id(candidate)) {
 			return flat.source_type_name(t.resolve_sum_name(flat.source_type_id(candidate)))
 		}
 	}
@@ -2837,7 +2843,7 @@ fn (mut t Transformer) transform_in_expr(id flat.NodeId, node flat.Node) flat.No
 			}
 			result = t.make_call_typed(fn_name, [new_rhs, new_lhs], flat.source_type_bool)
 		} else if clean_rhs_type.starts_with('map[') || clean_rhs_type == 'map' {
-			if lowered := t.lower_map_membership_expr(rhs_id, lhs_id, rhs_type) {
+			if lowered := t.lower_map_membership_expr(rhs_id, lhs_id, rhs_type_source_id) {
 				result = lowered
 			}
 		} else {
@@ -2965,7 +2971,7 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 	if sum_name.len == 0 {
 		sum_name = flat.source_type_name(t.trim_pointer_type(t.original_expr_type(lhs_id)))
 	}
-	if !t.is_sum_type_name(sum_name) {
+	if !t.is_sum_type_name(flat.source_type_id(sum_name)) {
 		sum_name = flat.source_type_name(t.trim_pointer_type(t.node_type(lhs_id)))
 	}
 	for i in 0 .. rhs.children_count {
@@ -2980,18 +2986,19 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 		if pattern.len == 0 {
 			return none
 		}
-		if !t.is_sum_type_name(sum_name) {
-			pattern_sum := t.find_sum_type_for_variant(pattern)
-			if pattern_sum.len == 0 {
+		if !t.is_sum_type_name(flat.source_type_id(sum_name)) {
+			pattern_sum_source_id := t.find_sum_type_for_variant(flat.source_type_id(pattern))
+			pattern_sum := flat.source_type_name(pattern_sum_source_id)
+			if pattern_sum_source_id == 0 {
 				return none
 			}
 			sum_name = pattern_sum
-		} else if t.sum_variant_path(sum_name, pattern).len == 0 {
+		} else if flat.TypeTextList{ ids: t.sum_variant_path(flat.source_type_id(sum_name), flat.source_type_id(pattern)) }.names().len == 0 {
 			return none
 		}
 		patterns << pattern
 	}
-	if !t.is_sum_type_name(sum_name) {
+	if !t.is_sum_type_name(flat.source_type_id(sum_name)) {
 		return none
 	}
 	// A value-branch subject (`(match node { First { make_foo(node)! } ... }) in [Foo1, Foo3]`)
@@ -3012,7 +3019,7 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 	}
 	mut chain := flat.empty_node
 	for pattern in patterns {
-		cmp := t.make_sum_type_pattern_check(base, lhs_type, sum_name, pattern) or { return none }
+		cmp := t.make_sum_type_pattern_check(base, flat.source_type_id(lhs_type), flat.source_type_id(sum_name), flat.source_type_id(pattern)) or { return none }
 		if int(chain) < 0 {
 			chain = cmp
 		} else {
@@ -3129,7 +3136,7 @@ fn (mut t Transformer) lower_array_membership_expr(base_id flat.NodeId, needle_i
 	elem_expr := if base_is_fixed {
 		t.make_index(base, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	} else {
-		t.array_get_value(base, t.make_ident(idx_name), elem_type)
+		t.array_get_value(base, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	}
 	pending_start := t.pending_stmts.len
 	eq_expr := t.make_membership_eq_expr(elem_expr, needle, elem_type)
@@ -3202,7 +3209,7 @@ fn (mut t Transformer) lower_array_index_expr(base_id flat.NodeId, needle_id fla
 	elem_expr := if base_is_fixed {
 		t.make_index(base, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	} else {
-		t.array_get_value(base, t.make_ident(idx_name), elem_type)
+		t.array_get_value(base, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	}
 	pending_start := t.pending_stmts.len
 	eq_expr := t.make_membership_eq_expr(elem_expr, needle, elem_type)
@@ -3275,7 +3282,7 @@ fn (mut t Transformer) lower_array_last_index_expr(base_id flat.NodeId, needle_i
 	elem_expr := if base_is_fixed {
 		t.make_index(base, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	} else {
-		t.array_get_value(base, t.make_ident(idx_name), elem_type)
+		t.array_get_value(base, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	}
 	pending_start := t.pending_stmts.len
 	eq_expr := t.make_membership_eq_expr(elem_expr, needle, elem_type)
@@ -3350,7 +3357,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 	if t.membership_type_is_pointer(elem_type) {
 		clean_ptr_source_id := t.membership_container_type(flat.source_type_id(elem_type))
 		clean_ptr := flat.source_type_name(clean_ptr_source_id)
-		if t.is_sum_type_name(clean_ptr) {
+		if t.is_sum_type_name(clean_ptr_source_id) {
 			lhs_value := t.make_prefix(.mul, lhs)
 			t.set_node_typ(int(lhs_value), clean_ptr_source_id)
 			rhs_value := t.make_prefix(.mul, rhs)
@@ -3377,10 +3384,12 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 	if clean == 'string' {
 		return t.make_call_typed('string__eq', [lhs, rhs], flat.source_type_bool)
 	}
-	map_type := flat.source_type_name(t.clean_map_type(flat.source_type_id(clean)))
+	map_type_source_id := t.clean_map_type(flat.source_type_id(clean))
+	map_type := flat.source_type_name(map_type_source_id)
 	if map_type.starts_with('map[') {
-		_, value_type := t.map_type_parts(map_type)
-		if value_type.len > 0 && t.map_value_needs_element_eq(value_type) {
+		_, value_type_source_id_3 := t.map_type_parts(map_type_source_id)
+		value_type := flat.source_type_name(value_type_source_id_3)
+		if value_type_source_id_3 != 0 && t.map_value_needs_element_eq(value_type) {
 			src := if int(lhs) >= 0 && int(lhs) < t.a.nodes.len {
 				t.a.nodes[int(lhs)]
 			} else {
@@ -3426,7 +3435,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 	if t.is_optional_type_name(flat.source_type_id(clean)) {
 		return t.make_optional_semantic_eq_expr(lhs, rhs, clean, clean, seen)
 	}
-	if t.is_sum_type_name(clean) {
+	if t.is_sum_type_name(flat.source_type_id(clean)) {
 		return t.make_sum_semantic_eq_expr(lhs, rhs, clean, seen)
 	}
 	if t.is_interface_type(flat.source_type_id(clean)) {
@@ -3557,7 +3566,7 @@ fn (t &Transformer) sum_eq_variants(sum_name string) ?[]string {
 	if variants := t.sum_types.get(sum_name) {
 		return variants
 	}
-	variants := t.concrete_sum_variants_for_candidate(sum_name)
+	variants := flat.TypeTextList{ ids: t.concrete_sum_variants_for_candidate(flat.source_type_id(sum_name)) }.names()
 	if variants.len > 0 {
 		return variants
 	}
@@ -3736,8 +3745,9 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string, helper string) {
 	result_name := t.new_temp('sum_eq_res')
 	stmts << t.make_decl_assign_typed(result_name, t.make_bool_literal(true), flat.source_type_bool)
 	for variant in variants {
-		qv := t.resolve_variant(clean_sum, variant)
-		if qv.len == 0 {
+		qv_source_id := t.resolve_variant(flat.source_type_id(clean_sum), flat.source_type_id(variant))
+		qv := flat.source_type_name(qv_source_id)
+		if qv_source_id == 0 {
 			continue
 		}
 		field := t.sum_field_name(qv)
@@ -3750,12 +3760,12 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string, helper string) {
 		mut rhs_payload := t.make_selector_op(rhs_value, field, flat.source_type_id(field_typ), .dot)
 		if use_ptr {
 			lhs_payload = t.make_prefix(.mul, lhs_payload)
-			t.set_node_typ(int(lhs_payload), flat.source_type_id(qv))
+			t.set_node_typ(int(lhs_payload), qv_source_id)
 			rhs_payload = t.make_prefix(.mul, rhs_payload)
-			t.set_node_typ(int(rhs_payload), flat.source_type_id(qv))
+			t.set_node_typ(int(rhs_payload), qv_source_id)
 		}
 		pending_start := t.pending_stmts.len
-		payload_eq := if t.is_sum_type_name(qv) && flat.source_type_name(t.resolve_sum_name(flat.source_type_id(qv))) == clean_sum {
+		payload_eq := if t.is_sum_type_name(qv_source_id) && flat.source_type_name(t.resolve_sum_name(qv_source_id)) == clean_sum {
 			// a variant that aliases back to this same sum: recurse via the helper
 			t.make_call_typed(helper, [lhs_payload, rhs_payload], flat.source_type_bool)
 		} else {
@@ -3767,7 +3777,7 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string, helper string) {
 		body_stmts << t.make_if(t.make_prefix(.not, t.make_paren(payload_eq)), t.make_block([
 			set_false,
 		]), t.make_empty())
-		guard := t.make_infix(.logical_and, t.make_ident(result_name), t.make_sum_is_check(lhs_value, clean_sum, clean_sum, variant))
+		guard := t.make_infix(.logical_and, t.make_ident(result_name), t.make_sum_is_check(lhs_value, flat.source_type_id(clean_sum), flat.source_type_id(clean_sum), flat.source_type_id(variant)))
 		stmts << t.make_if(guard, t.make_block(body_stmts), t.make_empty())
 	}
 	ret_result := t.make_ident(result_name)
@@ -3959,7 +3969,7 @@ fn (t &Transformer) type_needs_semantic_eq(typ string) bool {
 	if t.struct_lookup_name(clean).len > 0 {
 		return true
 	}
-	return t.is_sum_type_name(clean)
+	return t.is_sum_type_name(clean_source_id)
 }
 
 fn (mut t Transformer) make_array_elementwise_eq_call(lhs flat.NodeId, rhs flat.NodeId, elem_type string, lhs_type string, rhs_type string, src flat.Node) flat.NodeId {
@@ -3981,8 +3991,8 @@ fn (mut t Transformer) make_array_elementwise_eq_call_with_seen(lhs flat.NodeId,
 	in_bounds := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(lhs_value, 'len', flat.source_type_int))
 	cond := t.make_infix(.logical_and, t.make_ident(result_name), in_bounds)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	lhs_elem := t.array_get_value(lhs_value, t.make_ident(idx_name), clean_elem)
-	rhs_elem := t.array_get_value(rhs_value, t.make_ident(idx_name), clean_elem)
+	lhs_elem := t.array_get_value(lhs_value, t.make_ident(idx_name), flat.source_type_id(clean_elem))
+	rhs_elem := t.array_get_value(rhs_value, t.make_ident(idx_name), flat.source_type_id(clean_elem))
 	pending_start := t.pending_stmts.len
 	elem_eq := t.make_membership_eq_expr_with_seen(lhs_elem, rhs_elem, clean_elem, seen)
 	mut body_stmts := t.pending_stmts[pending_start..].clone()
@@ -4036,13 +4046,15 @@ fn (mut t Transformer) make_map_elementwise_eq_call(lhs flat.NodeId, rhs flat.No
 }
 
 fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, rhs flat.NodeId, map_type string, src flat.Node, seen []string) flat.NodeId {
-	key_type, raw_value_type := t.map_type_parts(map_type)
-	value_type := if t.is_fixed_array_type(flat.source_type_id(raw_value_type)) {
+	key_type_source_id, raw_value_type_source_id := t.map_type_parts(flat.source_type_id(map_type))
+
+	raw_value_type := flat.source_type_name(raw_value_type_source_id)
+	value_type := if t.is_fixed_array_type(raw_value_type_source_id) {
 		t.resolved_fixed_array_canonical_type(raw_value_type)
 	} else {
 		raw_value_type
 	}
-	if key_type.len == 0 || value_type.len == 0 {
+	if key_type_source_id == 0 || value_type.len == 0 {
 		return t.make_call_typed('v3_map_map_eq', [lhs, rhs], flat.source_type_bool)
 	}
 	t.refine_contextual_map_ident_type(lhs, map_type)
@@ -4054,13 +4066,13 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 	lhs_val_name := t.new_temp('map_eq_val')
 	len_eq := t.make_infix(.eq, t.make_selector(lhs_value, 'len', flat.source_type_int), t.make_selector(rhs_value, 'len', flat.source_type_int))
 	t.pending_stmts << t.make_decl_assign_typed(result_name, len_eq, flat.source_type_bool)
-	t.set_var_type(key_name, flat.source_type_id(t.map_key_storage_type(key_type)))
+	t.set_var_type(key_name, t.map_key_storage_type(key_type_source_id))
 	t.set_var_type(lhs_val_name, flat.source_type_id(value_type))
 	key_ident := t.make_ident(key_name)
 	val_ident := t.make_ident(lhs_val_name)
-	rhs_exists := t.make_map_exists_expr(rhs_value, map_type, key_name)
+	rhs_exists := t.make_map_exists_expr(rhs_value, flat.source_type_id(map_type), key_name)
 	mut body := []flat.NodeId{}
-	rhs_val := t.make_map_lookup_value(rhs_value, map_type, key_name, value_type, mut body)
+	rhs_val := t.make_map_lookup_value(rhs_value, flat.source_type_id(map_type), key_name, flat.source_type_id(value_type), mut body)
 	pending_start := t.pending_stmts.len
 	value_eq := t.make_membership_eq_expr_with_seen(t.make_ident(lhs_val_name), rhs_val, value_type, seen)
 	body << t.pending_stmts[pending_start..].clone()
@@ -4082,9 +4094,9 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 	// Aggregate equality can call user operators that delete the current map key.
 	// Keep its owned copy across those callbacks and the final existence lookup.
 	clean_value_type_source_id := t.membership_container_type(flat.source_type_id(value_type))
-	clean_value_type := flat.source_type_name(clean_value_type_source_id)
+
 	if (clean_value_type_source_id == flat.source_type_string || !t.type_needs_semantic_eq(value_type))
-		&& !(t.membership_type_is_pointer(value_type) && t.is_sum_type_name(clean_value_type)) {
+		&& !(t.membership_type_is_pointer(value_type) && t.is_sum_type_name(clean_value_type_source_id)) {
 		flags |= flat.node_flag_borrowed_map_key
 	}
 	t.pending_stmts << t.a.add_node(flat.Node{
@@ -4108,15 +4120,18 @@ fn (mut t Transformer) refine_contextual_map_ident_type(id flat.NodeId, map_type
 	if node.kind != .ident || node.value.len == 0 {
 		return
 	}
-	_, expected_value_type := t.map_type_parts(map_type)
+	_, expected_value_type_source_id := t.map_type_parts(flat.source_type_id(map_type))
+	expected_value_type := flat.source_type_name(expected_value_type_source_id)
 	if expected_value_type in ['', 'void', 'unknown']
-		|| t.generic_arg_is_unresolved(flat.source_type_id(expected_value_type)) {
+		|| t.generic_arg_is_unresolved(expected_value_type_source_id) {
 		return
 	}
-	actual_type := flat.source_type_name(t.clean_map_type(t.var_type(node.value)))
-	_, actual_value_type := t.map_type_parts(actual_type)
+	actual_type_source_id := t.clean_map_type(t.var_type(node.value))
+
+	_, actual_value_type_source_id := t.map_type_parts(actual_type_source_id)
+	actual_value_type := flat.source_type_name(actual_value_type_source_id)
 	if actual_value_type !in ['', 'void', 'unknown']
-		&& !t.generic_arg_is_unresolved(flat.source_type_id(actual_value_type)) {
+		&& !t.generic_arg_is_unresolved(actual_value_type_source_id) {
 		return
 	}
 	t.set_var_type(node.value, flat.source_type_id(map_type))
@@ -4214,7 +4229,7 @@ fn (mut t Transformer) make_interface_semantic_eq_expr(lhs flat.NodeId, rhs flat
 		if !t.interface_boxed_type_marked(iface, impl_name) {
 			continue
 		}
-		type_id := t.interface_impl_type_id(iface, impl_name) or { continue }
+		type_id := t.interface_impl_type_id(iface_source_id, flat.source_type_id(impl_name)) or { continue }
 		lhs_object := t.make_cast(flat.source_type_id('&${impl_name}'), t.make_selector(lhs_value, '_object', flat.source_type_voidptr), flat.source_type_id('&${impl_name}'))
 		rhs_object := t.make_cast(flat.source_type_id('&${impl_name}'), t.make_selector(rhs_value, '_object', flat.source_type_voidptr), flat.source_type_id('&${impl_name}'))
 		lhs_concrete := t.make_prefix(.mul, lhs_object)

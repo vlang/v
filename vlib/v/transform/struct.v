@@ -10,7 +10,7 @@ fn (mut t Transformer) transform_field_init_expr(id flat.NodeId, node flat.Node)
 	val_id := t.a.child(&node, 0)
 	val_node := t.a.nodes[int(val_id)]
 	new_val := if inferred_sum := t.sum_type_for_field_variant(node.value, val_id, val_node) {
-		t.wrap_sum_value(val_id, inferred_sum)
+		t.wrap_sum_value(val_id, flat.source_type_id(inferred_sum))
 	} else {
 		t.transform_expr(val_id)
 	}
@@ -154,9 +154,9 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			} else if fixed_to_dynamic {
 				t.fixed_array_value_to_owned_array(val_id, value_type, field_type)
 			} else if sum_field_type.len > 0 {
-				t.wrap_sum_value(val_id, sum_field_type)
+				t.wrap_sum_value(val_id, flat.source_type_id(sum_field_type))
 			} else if inferred_sum := t.sum_type_for_field_variant(field_name, val_id, val_node) {
-				t.wrap_sum_value(val_id, inferred_sum)
+				t.wrap_sum_value(val_id, flat.source_type_id(inferred_sum))
 			} else if field_type.starts_with('&') {
 				t.transform_expr_for_type(val_id, flat.source_type_id(field_type))
 			} else if field_type.len > 0 {
@@ -168,7 +168,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, flat.source_type_id(field_type))
 			}
 			if !shared_interface_source && field_type.len > 0 && !fixed_to_dynamic {
-				new_val = t.clone_borrowed_storage_projection(val_id, new_val, field_type)
+				new_val = t.clone_borrowed_storage_projection(val_id, new_val, flat.source_type_id(field_type))
 			}
 			// Snapshot a preceding field value before a later field hoists its branch prelude,
 			// so this value is read in source order rather than after that prelude.
@@ -476,8 +476,8 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 			new_value := if default_value.kind == .enum_val && enum_field_type.len > 0 {
 				t.transform_enum_shorthand(decl_value_id, default_value, enum_field_type)
-			} else if t.is_sum_type_name(field_type) {
-				t.wrap_sum_value(decl_value_id, field_type)
+			} else if t.is_sum_type_name(field_type_source_id_2) {
+				t.wrap_sum_value(decl_value_id, field_type_source_id_2)
 			} else {
 				t.transform_expr_for_type(decl_value_id, field_type_source_id_2)
 			}
@@ -934,11 +934,11 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 		new_val := if default_node.kind == .enum_val && enum_field_type.len > 0 {
 			t.transform_enum_shorthand(default_id, default_node, enum_field_type)
-		} else if t.is_sum_type_name(field_type) {
+		} else if t.is_sum_type_name(field_type_source_id_2) {
 			// A sum-type field default (e.g. `typ_expr Expr = EmptyExpr{}`) must be
 			// wrapped into the sum, not emitted as the bare variant. wrap_sum_value
 			// is a no-op when the value already is the sum type.
-			t.wrap_sum_value(default_id, field_type)
+			t.wrap_sum_value(default_id, field_type_source_id_2)
 		} else {
 			t.transform_expr_for_type(default_id, field_type_source_id_2)
 		}
@@ -1481,24 +1481,24 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		if value_node.kind == .array_literal && t.is_fixed_array_type(flat.source_type_id(field_type)) {
 			t.set_node_typ(int(value_id), flat.source_type_id(field_type))
 		}
-		value_type_source_id_ := t.node_type(value_id)
-		value_type := flat.source_type_name(value_type_source_id_)
+		value_type_source_id := t.node_type(value_id)
+		value_type := flat.source_type_name(value_type_source_id)
 		enum_field_type := t.enum_type_name_for_expected(field_type, assoc_module)
 		sum_field_type := t.struct_field_sum_type(field_type, assoc_module)
-		fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type_source_id_)
+		fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type_source_id)
 		mut value := if value_node.kind == .enum_val && enum_field_type.len > 0 {
 			t.transform_enum_shorthand(value_id, value_node, enum_field_type)
 		} else if fixed_to_dynamic {
 			t.fixed_array_value_to_owned_array(value_id, value_type, field_type)
 		} else if sum_field_type.len > 0 {
-			t.wrap_sum_value(value_id, sum_field_type)
+			t.wrap_sum_value(value_id, flat.source_type_id(sum_field_type))
 		} else if field_type.len > 0 {
 			t.transform_expr_for_type(value_id, flat.source_type_id(field_type))
 		} else {
 			t.transform_expr(value_id)
 		}
 		if field_type.len > 0 && !fixed_to_dynamic {
-			value = t.clone_borrowed_storage_projection(value_id, value, field_type)
+			value = t.clone_borrowed_storage_projection(value_id, value, flat.source_type_id(field_type))
 		}
 		t.drain_pending(mut prelude)
 		prelude << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.value, flat.source_type_id(field_type)),
@@ -1609,7 +1609,7 @@ fn (t &Transformer) struct_field_sum_type(field_type string, owner_module string
 		|| t.is_fixed_array_type(flat.source_type_id(field_type)) {
 		return ''
 	}
-	if t.is_sum_type_name(field_type) {
+	if t.is_sum_type_name(flat.source_type_id(field_type)) {
 		return field_type
 	}
 	if field_type == '' || field_type.contains('.') || owner_module == '' {
@@ -1662,7 +1662,7 @@ fn (t &Transformer) sum_type_for_union_text(field_type string, owner_module stri
 }
 
 fn (t &Transformer) union_variant_text_matches(a string, b string) bool {
-	if t.variant_names_match(a, b) {
+	if t.variant_names_match(flat.source_type_id(a), flat.source_type_id(b)) {
 		return true
 	}
 	if t.is_fixed_array_type(flat.source_type_id(a)) && t.is_fixed_array_type(flat.source_type_id(b)) {
@@ -1756,7 +1756,7 @@ fn (mut t Transformer) fixed_array_value_to_owned_array(value_id flat.NodeId, fi
 		'borrowed_fixed_array_source')
 	out_name := t.new_temp('borrowed_fixed_array')
 	idx_name := t.new_temp('borrowed_fixed_array_idx')
-	t.pending_stmts << t.make_decl_assign_typed(out_name, t.make_array_new_call(elem_type,
+	t.pending_stmts << t.make_decl_assign_typed(out_name, t.make_array_new_call(flat.source_type_id(elem_type),
 		t.make_int_literal(0), len_expr), flat.source_type_id(array_type))
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), flat.source_type_int)
 	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)

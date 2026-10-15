@@ -588,7 +588,7 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
 	prelude << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
-	prelude << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr, info.base_type_text(), key_name), flat.source_type_voidptr)
+	prelude << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr, info.base_type, key_name), flat.source_type_voidptr)
 
 	ptr_ident := t.make_ident(ptr_name)
 	ptr_found := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
@@ -890,12 +890,12 @@ fn (t &Transformer) if_expr_branch_overrides_sum_target(branch_type string, targ
 		return false
 	}
 	clean_branch_source_id := t.trim_pointer_type(flat.source_type_id(branch_type))
-	clean_branch := flat.source_type_name(clean_branch_source_id)
-	if t.sum_target_accepts_variant_type(resolved_target, clean_branch) {
+
+	if t.sum_target_accepts_variant_type(resolved_target_source_id, clean_branch_source_id) {
 		return false
 	}
 	branch_sum := flat.source_type_name(t.resolve_sum_name(clean_branch_source_id))
-	variant_sum := flat.source_type_name(t.resolve_sum_name(flat.source_type_id(t.find_sum_type_for_variant(clean_branch))))
+	variant_sum := flat.source_type_name(t.resolve_sum_name(t.find_sum_type_for_variant(clean_branch_source_id)))
 	return branch_sum != resolved_target && variant_sum != resolved_target
 }
 
@@ -1196,8 +1196,9 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			base_key := t.expr_key(base_id)
 			if base_key.len > 0 {
 				if sc := t.find_smartcast_in_context(base_key, contexts) {
-					variant_type := t.qualify_variant(flat.source_type_name(t.trim_pointer_type(sc.variant_name)), sc.sum_type_name_text())
-					if ftyp_source_id := t.lookup_struct_field_type(flat.source_type_id(variant_type), node.value) {
+					variant_type_source_id := t.qualify_variant(t.trim_pointer_type(sc.variant_name), sc.sum_type_name)
+
+					if ftyp_source_id := t.lookup_struct_field_type(variant_type_source_id, node.value) {
 						return ftyp_source_id
 					}
 					if ftyp_source_id := t.lookup_struct_field_type(t.trim_pointer_type(sc.variant_name), node.value) {
@@ -1500,7 +1501,7 @@ fn (mut t Transformer) build_map_index_if_value_guard_chain(if_node flat.Node, l
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	result << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
-	result << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr, info.base_type_text(), key_name), flat.source_type_voidptr)
+	result << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr, info.base_type, key_name), flat.source_type_voidptr)
 	ptr_ident := t.make_ident(ptr_name)
 	found_cond := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
 
@@ -1771,13 +1772,13 @@ fn (t &Transformer) if_value_branch_tail_has_no_value(id flat.NodeId) bool {
 
 // transform_if_branch_value transforms transform if branch value data for transform.
 fn (mut t Transformer) transform_if_branch_value(id flat.NodeId, target_type string) flat.NodeId {
-	if t.is_sum_type_name(target_type) {
-		return t.clone_borrowed_projection(id, t.wrap_sum_value_for_storage(id, target_type), target_type)
+	if t.is_sum_type_name(flat.source_type_id(target_type)) {
+		return t.clone_borrowed_projection(id, t.wrap_sum_value_for_storage(id, flat.source_type_id(target_type)), flat.source_type_id(target_type))
 	}
 	if converted := t.fixed_array_value_to_dynamic(id, target_type) {
 		return converted
 	}
-	return t.clone_borrowed_storage_projection(id, t.transform_expr_for_type(id, flat.source_type_id(target_type)), target_type)
+	return t.clone_borrowed_storage_projection(id, t.transform_expr_for_type(id, flat.source_type_id(target_type)), flat.source_type_id(target_type))
 }
 
 // transform_is_condition transforms an `x is Type` condition node into the
@@ -2280,7 +2281,8 @@ fn (t &Transformer) collect_is_exprs(cond_id flat.NodeId, mut result []IsExprInf
 		expr_id := t.a.child(&cond, 0)
 		ek := t.expr_key(expr_id)
 		if ek.len > 0 && cond.value.len > 0 {
-			expr_type := flat.source_type_name(t.original_expr_type(expr_id))
+			expr_type_source_id := t.original_expr_type(expr_id)
+			expr_type := flat.source_type_name(expr_type_source_id)
 			stn := t.sum_type_for_is_expr(expr_type, cond.value)
 			if stn.len > 0 {
 				result << IsExprInfo{
@@ -2290,7 +2292,7 @@ fn (t &Transformer) collect_is_exprs(cond_id flat.NodeId, mut result []IsExprInf
 					sum_type_name: t.var_type_text_id(stn)
 				}
 			} else {
-				if t.is_interface_type_name(expr_type) {
+				if t.is_interface_type_name(expr_type_source_id) {
 					result << IsExprInfo{
 						type_texts:    t.var_type_texts
 						expr_name:     ek
@@ -2455,8 +2457,9 @@ fn (t &Transformer) extract_is_expr(cond_id flat.NodeId) IsExprInfo {
 fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) string {
 	clean_expr_type_source_id := t.trim_all_pointer_type(flat.source_type_id(expr_type))
 	clean_expr_type := flat.source_type_name(clean_expr_type_source_id)
-	clean_variant := flat.source_type_name(t.trim_pointer_type(flat.source_type_id(variant)))
-	if t.is_interface_type_name(clean_expr_type) {
+	clean_variant_source_id := t.trim_pointer_type(flat.source_type_id(variant))
+	clean_variant := flat.source_type_name(clean_variant_source_id)
+	if t.is_interface_type_name(clean_expr_type_source_id) {
 		if _ := t.resolve_interface_pattern(clean_variant, clean_expr_type) {
 			return clean_expr_type
 		}
@@ -2470,8 +2473,10 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) strin
 	// Preserve the fully scoped concrete application selected for the pattern.
 	// A declaration in `client` can spell `maybe.Maybe[Local]`, while its union
 	// field is the qualified `client.Local` (or a selectively imported type).
-	for candidate in t.sum_subject_type_candidates(clean_expr_type) {
-		if _ := t.sum_variant_name(candidate, clean_variant) {
+	for candidate_source_id in t.sum_subject_type_candidates(clean_expr_type_source_id) {
+		candidate := flat.source_type_name(candidate_source_id)
+
+		if _ := t.sum_variant_name(candidate_source_id, clean_variant_source_id) {
 			return candidate
 		}
 		if !isnil(t.tc) {
@@ -2480,9 +2485,10 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) strin
 			}
 		}
 	}
-	resolved_expr_sum := flat.source_type_name(t.resolve_sum_name(clean_expr_type_source_id))
+	resolved_expr_sum_source_id := t.resolve_sum_name(clean_expr_type_source_id)
+	resolved_expr_sum := flat.source_type_name(resolved_expr_sum_source_id)
 	if t.sum_types.contains(resolved_expr_sum) {
-		if _ := t.sum_variant_name(resolved_expr_sum, clean_variant) {
+		if _ := t.sum_variant_name(resolved_expr_sum_source_id, clean_variant_source_id) {
 			return clean_expr_type
 		}
 		// `x is V` tests a variant of the sum type of `x`, also one that is
@@ -2490,12 +2496,13 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) strin
 		// another sum type with the same name, `int` of `strconv.Numeric`.
 		return clean_expr_type
 	}
-	return t.find_sum_type_for_variant(clean_variant)
+	return flat.source_type_name(t.find_sum_type_for_variant(clean_variant_source_id))
 }
 
 // find_sum_type_for_variant returns the sum type name that contains
 // the given variant, or '' if none is found.
-fn (t &Transformer) find_sum_type_for_variant(variant string) string {
+fn (t &Transformer) find_sum_type_for_variant(variant_id u32) u32 {
+	variant := flat.source_type_name(variant_id)
 	mut best := ''
 	if variant.contains('.') {
 		for sum_name, variants_id in t.sum_types.ids {
@@ -2503,7 +2510,7 @@ fn (t &Transformer) find_sum_type_for_variant(variant string) string {
 			for v in variants {
 				if v == variant {
 					if sum_name.contains('.') {
-						return sum_name
+						return flat.source_type_id(sum_name)
 					}
 					if best == '' {
 						best = sum_name
@@ -2512,15 +2519,15 @@ fn (t &Transformer) find_sum_type_for_variant(variant string) string {
 			}
 		}
 		if best.len > 0 {
-			return best
+			return flat.source_type_id(best)
 		}
 	}
 	for sum_name, variants_id in t.sum_types.ids {
 		variants := variants_id.map(flat.source_type_name(it))
 		for v in variants {
-			if t.variant_names_match(v, variant) {
+			if t.variant_names_match(flat.source_type_id(v), variant_id) {
 				if sum_name.contains('.') {
-					return sum_name
+					return flat.source_type_id(sum_name)
 				}
 				if best.len == 0 {
 					best = sum_name
@@ -2528,7 +2535,7 @@ fn (t &Transformer) find_sum_type_for_variant(variant string) string {
 			}
 		}
 	}
-	return best
+	return flat.source_type_id(best)
 }
 
 // ret_typ_text resolves the indexed source type spelling.

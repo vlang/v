@@ -1326,8 +1326,10 @@ fn (t &Transformer) normalize_or_expr_value_type(typ_id u32) u32 {
 		return flat.source_type_id('(${normalized_items.join(', ')})')
 	}
 	if typ.starts_with('map[') {
-		key_type, value_type := t.map_type_parts(typ)
-		if key_type.len > 0 && value_type.len > 0 {
+		key_type_source_id, value_type_source_id_5 := t.map_type_parts(typ_id)
+		key_type := flat.source_type_name(key_type_source_id)
+		value_type := flat.source_type_name(value_type_source_id_5)
+		if key_type_source_id != 0 && value_type_source_id_5 != 0 {
 			return flat.source_type_id('map[${flat.source_type_name(t.normalize_or_expr_value_type(flat.source_type_id(key_type)))}]${flat.source_type_name(t.normalize_or_expr_value_type(flat.source_type_id(value_type)))}')
 		}
 	}
@@ -1407,7 +1409,7 @@ fn (t &Transformer) specialized_json_decode_result_type(type_arg string) string 
 	if t.active_specialization_args_text().len == 0 {
 		return '!${type_arg}'
 	}
-	concrete := t.subst_type(type_arg, t.active_specialization_args.ids)
+	concrete := flat.source_type_name(t.subst_type(flat.source_type_id(type_arg), t.active_specialization_args.ids))
 	return '!${concrete}'
 }
 
@@ -1434,7 +1436,7 @@ fn (t &Transformer) qualify_optional_type(typ_id u32) u32 {
 	if base.contains('.') || base.len == 0 {
 		return typ_id
 	}
-	qualified := t.qualify_type(base)
+	qualified := flat.source_type_name(t.qualify_type(flat.source_type_id(base)))
 	if qualified != base {
 		return flat.source_type_id(typ[..1] + qualified)
 	}
@@ -1442,31 +1444,30 @@ fn (t &Transformer) qualify_optional_type(typ_id u32) u32 {
 }
 
 // qualify_type supports qualify type handling for Transformer.
-fn (t &Transformer) qualify_type(name string) string {
-	if name.contains('.') || name == '' {
-		return name
+fn (t &Transformer) qualify_type(name_id u32) u32 {
+	name := flat.source_type_name(name_id)
+	if name.contains('.') || name_id == u32(0) {
+		return name_id
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qname := '${t.cur_module}.${name}'
 		if t.sum_types.contains(qname) || qname in t.structs || qname in t.enum_types
 			|| (!isnil(t.tc) && (t.tc.type_aliases.contains(qname) || qname in t.tc.interface_names)) {
-			return qname
+			return flat.source_type_id(qname)
 		}
 	}
 	// A bare type declared by main wins over an imported homonym. The global
 	// short-name index is intentionally lossy and may point at the import.
 	if name in t.structs || t.sum_types.contains(name) || name in t.enum_types {
-		return name
+		return name_id
 	}
 	if !isnil(t.tc) && (t.tc.type_aliases.contains(name) || name in t.tc.interface_names) {
-		return name
+		return name_id
 	}
 	if qualified_source_id := t.qualified_types.type_id(name) {
-		qualified := flat.source_type_name(qualified_source_id)
-
-		return qualified
+		return qualified_source_id
 	}
-	return name
+	return name_id
 }
 
 // make_decl_assign_typed builds make decl assign typed data for transform.
@@ -1530,10 +1531,10 @@ fn (mut t Transformer) zero_value_for_type(typ_id u32) flat.NodeId {
 	if t.is_fixed_array_type(flat.source_type_id(clean)) {
 		fixed_type := t.resolved_fixed_array_canonical_type(clean)
 		elem_type := fixed_array_elem_type(fixed_type)
-		if !t.fixed_array_empty_init_needs_values(elem_type) {
+		if !t.fixed_array_empty_init_needs_values(flat.source_type_id(elem_type)) {
 			return t.make_fixed_array_init(flat.source_type_id(fixed_type))
 		}
-		if len := t.fixed_array_len_value(fixed_type) {
+		if len := t.fixed_array_len_value(flat.source_type_id(fixed_type)) {
 			return t.make_fixed_array_empty_literal(flat.source_type_id(fixed_type), len, flat.source_type_id(elem_type))
 		}
 		return t.make_fixed_array_init(flat.source_type_id(fixed_type))
@@ -1750,7 +1751,7 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	opt_ident := t.make_ident(opt_tmp)
 	ok_cond := t.make_selector(opt_ident, 'ok', flat.source_type_bool)
 	value_expr := t.make_selector(t.make_ident(opt_tmp), 'value', flat.source_type_id(storage_value_type))
-	then_value := t.clone_borrowed_storage_projection(expr_id, value_expr, storage_value_type)
+	then_value := t.clone_borrowed_storage_projection(expr_id, value_expr, flat.source_type_id(storage_value_type))
 	mut then_stmts := []flat.NodeId{}
 	t.drain_pending(mut then_stmts)
 	then_assign := t.make_assign(t.make_ident(val_tmp), then_value)
@@ -1783,8 +1784,10 @@ fn (t &Transformer) qualify_or_storage_type(typ string) string {
 		}
 	}
 	if clean.starts_with('map[') {
-		key_type, value_type := t.map_type_parts(clean)
-		if key_type.len > 0 && value_type.len > 0 {
+		key_type_source_id_2, value_type_source_id_6 := t.map_type_parts(flat.source_type_id(clean))
+		key_type := flat.source_type_name(key_type_source_id_2)
+		value_type := flat.source_type_name(value_type_source_id_6)
+		if key_type_source_id_2 != 0 && value_type_source_id_6 != 0 {
 			return 'map[${t.qualify_or_storage_type(key_type)}]${t.qualify_or_storage_type(value_type)}'
 		}
 	}
@@ -1795,7 +1798,7 @@ fn (t &Transformer) qualify_or_storage_type(typ string) string {
 			for arg_type in args {
 				qualified_args << t.qualify_or_storage_type(arg_type)
 			}
-			mut qualified_base := t.qualify_type(base)
+			mut qualified_base := flat.source_type_name(t.qualify_type(flat.source_type_id(base)))
 			if qualified_base == base && !t.bare_struct_name_is_local_to_current_module(base) {
 				if imported_base := t.unique_qualified_struct_for_short(base) {
 					qualified_base = imported_base
@@ -2130,7 +2133,7 @@ fn (t &Transformer) shared_alias_storage_type(typ string) string {
 	if clean.len == 0 || clean.starts_with('&') {
 		return typ
 	}
-	for candidate in [clean, t.qualify_type(clean)] {
+	for candidate in [clean, flat.source_type_name(t.qualify_type(flat.source_type_id(clean)))] {
 		if target_source_id := t.tc.type_aliases.type_id(candidate) {
 			target := flat.source_type_name(target_source_id)
 
