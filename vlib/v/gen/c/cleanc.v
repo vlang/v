@@ -34,6 +34,7 @@ const c_has_attribute_predicate = '__has_attribute'
 const c_has_attribute_override_key = '@function:__has_attribute'
 const usable_expr_type_memo_slots = 1024
 const usable_expr_type_memo_mask = usable_expr_type_memo_slots - 1
+const body_import_type_query_slots = 256
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -446,14 +447,31 @@ mut:
 	verdicts   [4096]bool
 }
 
+struct BodyImportTypeQuery {
+	type_id    u32
+	file       string
+	value      types.Type
+	generation u32
+}
+
+@[heap]
+struct ConstHelperDependencies {
+mut:
+	values     map[string][]string
+	collecting bool
+}
+
 @[heap]
 struct UsableExprTypeMemo {
 mut:
-	active     bool
-	generation u32
-	ids        []int
-	gens       []u32
-	values     []types.Type
+	active         bool
+	generation     u32
+	file           string
+	module         string
+	ids            []int
+	gens           []u32
+	values         []types.Type
+	import_queries []BodyImportTypeQuery
 }
 
 @[heap]
@@ -475,9 +493,10 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 	if isnil(g.usable_expr_type_memo) {
 		g.usable_expr_type_memo = &UsableExprTypeMemo{
 			// Generation zero marks unused slots, including the slot for node zero.
-			ids:    []int{len: usable_expr_type_memo_slots}
-			gens:   []u32{len: usable_expr_type_memo_slots}
-			values: unsafe { []types.Type{len: usable_expr_type_memo_slots} }
+			ids:            []int{len: usable_expr_type_memo_slots}
+			gens:           []u32{len: usable_expr_type_memo_slots}
+			values:         unsafe { []types.Type{len: usable_expr_type_memo_slots} }
+			import_queries: []BodyImportTypeQuery{len: body_import_type_query_slots}
 		}
 	}
 	mut memo := g.usable_expr_type_memo
@@ -486,7 +505,14 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 		for i in 0 .. memo.gens.len {
 			memo.gens[i] = 0
 		}
+		for i in 0 .. memo.import_queries.len {
+			memo.import_queries[i] = BodyImportTypeQuery{}
+		}
 		memo.generation = 1
+	}
+	if !isnil(g.tc) {
+		memo.file = g.tc.cur_file
+		memo.module = g.tc.cur_module
 	}
 	memo.active = true
 }
@@ -609,6 +635,7 @@ mut:
 	const_vals                     map[string]flat.NodeId
 	const_modules                  map[string]string
 	const_files                    map[string]string // const name -> declaring file (for import-alias type resolution)
+	const_helper_dependencies      &ConstHelperDependencies = unsafe { nil }
 	cache_const_modules            map[string]bool
 	cache_const_source_modules     map[string]bool
 	cache_const_definitions        map[string][]string
@@ -24907,7 +24934,28 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 			if target := g.const_fn_decl_node(callee_name, callee_module) {
 				// A callee starts a fresh lexical scope; bindings in the caller do not
 				// shadow const references inside the called helper.
-				g.const_collect_deps_inner(target, mut deps, mut visited_fns, map[string]bool{})
+				mut cache := g.const_helper_dependencies
+				if isnil(cache) || cache.collecting {
+					g.const_collect_deps_inner(target, mut deps, mut visited_fns, map[string]bool{})
+				} else {
+					key := '${g.tc.cur_module}\n${g.tc.cur_file}\n${int(target)}'
+					if helper_deps := cache.values[key] {
+						deps << helper_deps
+					} else {
+						// Build a complete transitive set with its own visited set.
+						// A traversal cut short by the caller's visited set would
+						// lose dependencies in mutually recursive helpers.
+						mut helper_deps := []string{}
+						mut helper_visited := {
+							visit_key: true
+						}
+						cache.collecting = true
+						g.const_collect_deps_inner(target, mut helper_deps, mut helper_visited, map[string]bool{})
+						cache.collecting = false
+						cache.values[key] = helper_deps
+						deps << helper_deps
+					}
+				}
 			}
 		}
 	}
@@ -25845,6 +25893,11 @@ fn (mut g FlatGen) const_emission_order_owned() []string {
 }
 
 fn (mut g FlatGen) const_emission_order() []string {
+	old_helper_dependencies := g.const_helper_dependencies
+	g.const_helper_dependencies = &ConstHelperDependencies{}
+	defer {
+		g.const_helper_dependencies = old_helper_dependencies
+	}
 	mut emitted := map[string]bool{}
 	mut deferred := []string{}
 	mut names := g.const_init_order.clone()

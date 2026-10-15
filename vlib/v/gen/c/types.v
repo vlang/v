@@ -611,10 +611,38 @@ fn (mut cache ImportTypeCache) for_file(file string) &ImportFileTypeCache {
 	return entry
 }
 
+@[direct_array_access]
 fn (g &FlatGen) canonical_import_alias_type_in_file(type_id u32, file string) types.Type {
 	mut cache := g.import_type_cache
-	if !g.skip_generics || isnil(cache) || flat.source_type_shape(type_id).has(.typeof_name) {
+	if isnil(cache) || flat.source_type_shape(type_id).has(.typeof_name) {
 		return g.canonical_import_alias_type_in_file_uncached(flat.source_type_name(type_id), file)
+	}
+	if !g.skip_generics {
+		// Concrete annotations recur in generic bodies, but their resolutions
+		// must not survive a specialization or a temporary declaration context.
+		mut memo := g.usable_expr_type_memo
+		if isnil(memo) || !memo.active || memo.file != g.tc.cur_file
+			|| memo.module != g.tc.cur_module || g.const_init_depth > 0
+			|| g.struct_default_module.len > 0 {
+			return g.canonical_import_alias_type_in_file_uncached(flat.source_type_name(type_id), file)
+		}
+		slot := int(type_id & u32(body_import_type_query_slots - 1))
+		// The masked slot is in bounds; borrow the entry without copying its type.
+		entry := unsafe { &memo.import_queries[slot] }
+		if entry.generation == memo.generation && entry.type_id == type_id && entry.file == file {
+			return entry.value
+		}
+		result := g.canonical_import_alias_type_in_file_uncached(flat.source_type_name(type_id), file)
+		if result !is types.Unknown && result !is types.Void
+			&& !g.type_contains_generic_placeholder(result) {
+			memo.import_queries[slot] = BodyImportTypeQuery{
+				type_id:    type_id
+				file:       file
+				value:      result
+				generation: memo.generation
+			}
+		}
+		return result
 	}
 	mut entry := cache.for_file(file)
 	if result := entry.parsed[type_id] { return result }
