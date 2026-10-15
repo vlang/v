@@ -496,6 +496,13 @@ fn (s &NoAllocScan) literal_default(id flat.NodeId) bool {
 	if node.kind in [.block, .expr_stmt, .paren] && node.children_count == 1 {
 		return s.literal_default(s.tc.a.child(node, 0))
 	}
+	if node.kind == .prefix && node.op in [.plus, .minus] && node.children_count == 1 {
+		mut value := s.tc.a.child_node(node, 0)
+		for value.kind in [.block, .expr_stmt, .paren] && value.children_count == 1 {
+			value = s.tc.a.child_node(value, 0)
+		}
+		return value.kind in [.int_literal, .float_literal]
+	}
 	return false
 }
 

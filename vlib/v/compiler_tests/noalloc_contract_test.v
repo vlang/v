@@ -42,6 +42,41 @@ fn test_noalloc_contracts_in_build_and_check() {
 			source:   'fn allocating() int { return [1, 2].len }\nstruct Inner { n int = allocating() }\nstruct Outer { Inner; other int }\n@[noalloc]\nfn handler() int { return Outer{other: 3}.n }\nfn main() { _ = handler() }\n'
 		}
 		NoallocCase{
+			name:     'negative_int_default'
+			accepted: true
+			source:   'struct Item { n int = -1 }\n@[noalloc]\nfn handler() int { return Item{}.n }\nfn main() { assert handler() == -1 }\n'
+		}
+		NoallocCase{
+			name:     'positive_int_default'
+			accepted: true
+			source:   'struct Item { n int = +1 }\n@[noalloc]\nfn handler() int { return Item{}.n }\nfn main() { assert handler() == +1 }\n'
+		}
+		NoallocCase{
+			name:     'negative_float_default'
+			accepted: true
+			source:   'struct Item { n f64 = -1.5 }\n@[noalloc]\nfn handler() f64 { return Item{}.n }\nfn main() { assert handler() == -1.5 }\n'
+		}
+		NoallocCase{
+			name:     'positive_float_default'
+			accepted: true
+			source:   'struct Item { n f64 = +1.5 }\n@[noalloc]\nfn handler() f64 { return Item{}.n }\nfn main() { assert handler() == +1.5 }\n'
+		}
+		NoallocCase{
+			name:     'parenthesized_signed_default'
+			accepted: true
+			source:   'struct Item { n int = -(1) }\n@[noalloc]\nfn handler() int { return Item{}.n }\nfn main() { assert handler() == -(1) }\n'
+		}
+		NoallocCase{
+			name:     'signed_allocating_default'
+			accepted: false
+			source:   'fn allocating() int { return [1, 2].len }\nstruct Item { n int = -allocating() }\n@[noalloc]\nfn handler() int { return Item{}.n }\nfn main() { _ = handler() }\n'
+		}
+		NoallocCase{
+			name:     'signed_overloaded_allocating_default'
+			accepted: false
+			source:   'struct Value { n int }\nfn (a Value) + (b Value) Value { _ = [a.n, b.n].str(); return Value{n: a.n + b.n} }\nstruct Item { n int = -(Value{n: 1} + Value{n: 2}).n }\n@[noalloc]\nfn handler() int { return Item{}.n }\nfn main() { _ = handler() }\n'
+		}
+		NoallocCase{
 			name:     'nil_default'
 			accepted: true
 			source:   'struct Span { base &u8 = unsafe { nil }; len int }\n@[noalloc]\nfn handler() Span { return Span{} }\nfn main() { _ = handler() }\n'
