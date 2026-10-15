@@ -1074,8 +1074,9 @@ fn (t &Transformer) map_const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 }
 
 fn (t &Transformer) sum_default_may_expand(typ string) bool {
-	resolved := t.resolve_sum_name(flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ))))
-	return resolved.len > 0
+	resolved_source_id := t.resolve_sum_name(t.normalize_type_alias(flat.source_type_id(typ)))
+	resolved := flat.source_type_name(resolved_source_id)
+	return resolved_source_id != 0
 		&& (t.sum_types.contains(resolved) || (!isnil(t.tc) && t.tc.sum_types.contains(resolved)))
 }
 
@@ -1123,9 +1124,9 @@ fn (t &Transformer) owned_array_index_zero_value_expansion_estimate(node flat.No
 		return 0
 	}
 	base_id := t.a.child(&node, 0)
-	base_type_source_id_ := t.normalize_type_alias(flat.source_type_id(flat.source_type_name(t.node_type(base_id)).trim_left('&')))
-	base_type := flat.source_type_name(base_type_source_id_)
-	if !base_type.starts_with('[]') && !t.is_fixed_array_type(base_type_source_id_) {
+	base_type_source_id := t.normalize_type_alias(flat.source_type_id(flat.source_type_name(t.node_type(base_id)).trim_left('&')))
+	base_type := flat.source_type_name(base_type_source_id)
+	if !base_type.starts_with('[]') && !t.is_fixed_array_type(base_type_source_id) {
 		return 0
 	}
 	return t.zero_value_expansion_estimate(base_id, node.typ_text())
@@ -2530,7 +2531,7 @@ fn (mut t Transformer) try_lower_map_index_assign(id flat.NodeId, node flat.Node
 		mut value := if info.value_type_text().starts_with('&') && t.is_sum_type_name(info.value_type_text()[1..]) {
 			t.transform_expr_for_type(rhs_id, info.value_type)
 		} else if t.sum_types.contains(info.value_type_text())
-			|| t.resolve_sum_name(info.value_type_text()) in t.sum_types.ids {
+			|| flat.source_type_name(t.resolve_sum_name(info.value_type)) in t.sum_types.ids {
 			t.wrap_sum_value(rhs_id, info.value_type_text())
 		} else {
 			t.transform_expr_for_type(rhs_id, info.value_type)
@@ -2773,7 +2774,7 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 			&& t.is_sum_type_name(inner_value_type[1..]) {
 			t.transform_expr_for_type(rhs_id, flat.source_type_id(inner_value_type))
 		} else if t.sum_types.contains(inner_value_type)
-			|| t.resolve_sum_name(inner_value_type) in t.sum_types.ids {
+			|| flat.source_type_name(t.resolve_sum_name(flat.source_type_id(inner_value_type))) in t.sum_types.ids {
 			t.wrap_sum_value(rhs_id, inner_value_type)
 		} else {
 			t.transform_expr_for_type(rhs_id, flat.source_type_id(inner_value_type))
@@ -3671,7 +3672,7 @@ fn (mut t Transformer) transform_map_entry_expr_for_type(id flat.NodeId, typ str
 	t.pending_stmts = []flat.NodeId{}
 	value := if typ.starts_with('&') && t.is_sum_type_name(typ[1..]) {
 		t.transform_expr_for_type(id, flat.source_type_id(typ))
-	} else if t.sum_types.contains(typ) || t.resolve_sum_name(typ) in t.sum_types.ids {
+	} else if t.sum_types.contains(typ) || flat.source_type_name(t.resolve_sum_name(flat.source_type_id(typ))) in t.sum_types.ids {
 		t.transform_sum_value_for_type(id, typ)
 	} else {
 		t.transform_expr_for_type(id, flat.source_type_id(typ))

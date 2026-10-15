@@ -307,7 +307,7 @@ fn (t &Transformer) return_ierror_type_candidate(typ string) ?string {
 	if t.is_ierror_type(typ) {
 		return typ
 	}
-	if !t.is_type_alias_name(flat.source_type_name(t.trim_pointer_type(flat.source_type_id(typ)))) {
+	if !t.is_type_alias_name(t.trim_pointer_type(flat.source_type_id(typ))) {
 		return none
 	}
 	resolved := t.alias_str_resolved_base_type(typ)
@@ -406,8 +406,8 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	if !t.is_optional_type_name(flat.source_type_id(expr_type0)) {
 		return none
 	}
-	ret_type_source_id_ := t.qualify_optional_type(t.cur_fn_ret_type)
-	ret_type := flat.source_type_name(ret_type_source_id_)
+	ret_type_source_id := t.qualify_optional_type(t.cur_fn_ret_type)
+	ret_type := flat.source_type_name(ret_type_source_id)
 	expr_type_source_id := t.qualify_optional_type(flat.source_type_id(expr_type0))
 	expr_type := flat.source_type_name(expr_type_source_id)
 	new_expr := t.clone_borrowed_storage_projection(child_id, t.transform_optional_wrapper_expr(child_id), expr_type)
@@ -419,7 +419,7 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	ok_cond := t.make_selector(tmp_ident, 'ok', flat.source_type_bool)
 	value := t.make_selector(t.make_ident(tmp_name), 'value', t.optional_base_type(expr_type_source_id))
 	then_block := t.try_convert_forwarded_wrapped_multi_return(value, expr_type, ret_type, source_return_id) or {
-		t.make_block([t.make_transformed_return(value, ret_type_source_id_, source_return_id)])
+		t.make_block([t.make_transformed_return(value, ret_type_source_id, source_return_id)])
 	}
 	err_expr := t.result_error_expr(t.make_ident(tmp_name))
 	err_return := t.make_none_return_stmt_with_err_expr(err_expr)

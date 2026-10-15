@@ -3532,16 +3532,17 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		}
 	}
 	if node.kind == .cast_expr && children.len == 1 {
-		target_sum := t.resolve_sum_name(node.value)
+		target_sum_source_id := t.resolve_sum_name(flat.source_type_id(node.value))
+		target_sum := flat.source_type_name(target_sum_source_id)
 		child := t.a.nodes[int(children[0])]
 		child_type_source_id := t.node_type(children[0])
-		child_type := flat.source_type_name(child_type_source_id)
+
 		if t.sum_types.contains(target_sum) && child.kind == .ident
 			&& t.sum_target_accepts_variant_type(target_sum, item.typ_text())
-			&& (child_type_source_id == 0 || t.resolve_sum_name(child_type) == target_sum
+			&& (child_type_source_id == 0 || flat.source_type_name(t.resolve_sum_name(child_type_source_id)) == target_sum
 				|| t.normalize_type_alias(child_type_source_id) == t.normalize_type_alias(item.typ)) {
 			t.set_node_typ(int(children[0]), item.typ)
-			return t.make_sum_literal(flat.source_type_id(target_sum), item.typ, children[0])
+			return t.make_sum_literal(target_sum_source_id, item.typ, children[0])
 		}
 	}
 	mut call_node := node
@@ -3615,7 +3616,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	if node.kind == .ident && smartcast_name != '' && node.value == smartcast_name {
 		// Keep the loop variant refinement separate from the function-scope type.
 		// Later generic-call inference runs after the smartcast stack has unwound.
-		t.record_refined_node_type(int(clone_id), item.typ_text())
+		t.record_refined_node_type(int(clone_id), item.typ)
 	}
 	if node.kind == .ident && t.mut_param_values[node.value] {
 		t.mut_value_ident_nodes[int(clone_id)] = true
@@ -5064,7 +5065,7 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 		}
 		if reflected_rhs_typ.len > 0 {
 			t.set_node_typ(int(children[1]), flat.source_type_id(reflected_rhs_typ))
-			t.record_refined_node_type(int(children[1]), reflected_rhs_typ)
+			t.record_refined_node_type(int(children[1]), flat.source_type_id(reflected_rhs_typ))
 		}
 		// A reflected selector carries the field's qualified type on the cloned
 		// node. Keep that spelling so a bare user type is not mistaken for an

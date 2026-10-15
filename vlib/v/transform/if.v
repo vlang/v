@@ -884,16 +884,18 @@ fn (t &Transformer) if_expr_branch_overrides_sum_target(branch_type string, targ
 			return true
 		}
 	}
-	resolved_target := t.resolve_sum_name(target_type)
-	if resolved_target.len == 0 || !t.sum_types.contains(resolved_target) {
+	resolved_target_source_id := t.resolve_sum_name(flat.source_type_id(target_type))
+	resolved_target := flat.source_type_name(resolved_target_source_id)
+	if resolved_target_source_id == 0 || !t.sum_types.contains(resolved_target) {
 		return false
 	}
-	clean_branch := flat.source_type_name(t.trim_pointer_type(flat.source_type_id(branch_type)))
+	clean_branch_source_id := t.trim_pointer_type(flat.source_type_id(branch_type))
+	clean_branch := flat.source_type_name(clean_branch_source_id)
 	if t.sum_target_accepts_variant_type(resolved_target, clean_branch) {
 		return false
 	}
-	branch_sum := t.resolve_sum_name(clean_branch)
-	variant_sum := t.resolve_sum_name(t.find_sum_type_for_variant(clean_branch))
+	branch_sum := flat.source_type_name(t.resolve_sum_name(clean_branch_source_id))
+	variant_sum := flat.source_type_name(t.resolve_sum_name(flat.source_type_id(t.find_sum_type_for_variant(clean_branch))))
 	return branch_sum != resolved_target && variant_sum != resolved_target
 }
 
@@ -2451,7 +2453,8 @@ fn (t &Transformer) extract_is_expr(cond_id flat.NodeId) IsExprInfo {
 
 // sum_type_for_is_expr supports sum type for is expr handling for Transformer.
 fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) string {
-	clean_expr_type := flat.source_type_name(t.trim_all_pointer_type(flat.source_type_id(expr_type)))
+	clean_expr_type_source_id := t.trim_all_pointer_type(flat.source_type_id(expr_type))
+	clean_expr_type := flat.source_type_name(clean_expr_type_source_id)
 	clean_variant := flat.source_type_name(t.trim_pointer_type(flat.source_type_id(variant)))
 	if t.is_interface_type_name(clean_expr_type) {
 		if _ := t.resolve_interface_pattern(clean_variant, clean_expr_type) {
@@ -2477,7 +2480,7 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) strin
 			}
 		}
 	}
-	resolved_expr_sum := t.resolve_sum_name(clean_expr_type)
+	resolved_expr_sum := flat.source_type_name(t.resolve_sum_name(clean_expr_type_source_id))
 	if t.sum_types.contains(resolved_expr_sum) {
 		if _ := t.sum_variant_name(resolved_expr_sum, clean_variant) {
 			return clean_expr_type

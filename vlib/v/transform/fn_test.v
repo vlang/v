@@ -249,23 +249,23 @@ fn test_selfhost_return_alias_cache_preserves_module_and_worker_context() {
 		t.cur_module = module_name
 		for typ in ['Value', '?Value', '[]Value', 'map[string]Value', ' int '] {
 			expected := t.raw_return_type_contains_alias_uncached(typ)
-			assert t.raw_return_type_contains_alias(typ) == expected
-			assert t.raw_return_type_contains_alias(typ.clone()) == expected
+			assert t.raw_return_type_contains_alias(flat.source_type_id(typ)) == expected
+			assert t.raw_return_type_contains_alias(flat.source_type_id(typ.clone())) == expected
 		}
-		assert t.raw_return_type_contains_alias('?Value') == (module_name == 'one')
+		assert t.raw_return_type_contains_alias(flat.source_type_id('?Value')) == (module_name == 'one')
 	}
 	assert t.raw_return_alias_cache.entries.len > 0
 	mut worker := t.fork_scoped_batch_worker(&a, &tc)
 	assert worker.raw_return_alias_cache != t.raw_return_alias_cache
 	worker.cur_module = 'one'
-	assert worker.raw_return_type_contains_alias('?Value')
-	assert !t.raw_return_type_contains_alias('?Value')
+	assert worker.raw_return_type_contains_alias(flat.source_type_id('?Value'))
+	assert !t.raw_return_type_contains_alias(flat.source_type_id('?Value'))
 	// General builds continue to observe declaration changes between queries.
 	t.building_v = false
 	t.cur_module = 'one'
-	assert !t.raw_return_type_contains_alias('Late')
+	assert !t.raw_return_type_contains_alias(flat.source_type_id('Late'))
 	tc.type_aliases.set_id('one.Late', flat.source_type_string)
-	assert t.raw_return_type_contains_alias('Late')
+	assert t.raw_return_type_contains_alias(flat.source_type_id('Late'))
 }
 
 fn test_enum_autostr_call_marks_synthesized_helper_used() {
@@ -1666,6 +1666,53 @@ fn test_alias_cache_distinguishes_collisions_and_owned_spellings() {
 			assert flat.source_type_name(t.normalize_type_alias(flat.source_type_id(name.clone()))) == name
 			assert flat.source_type_name(t.normalize_type_alias(flat.source_type_id(name.clone()))) == name
 		}
+	}
+}
+
+fn test_numeric_sum_and_variant_caches_preserve_collisions_and_module_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := Transformer{
+		tc:                       &tc
+		sum_cache:                &AliasCache{}
+		variant_short_name_cache: &AliasCache{}
+	}
+	// Intern real spellings until two IDs share the direct-cache slot.
+	mut slots := [1024]u32{}
+	mut first := u32(0)
+	mut second := u32(0)
+	for i in 0 .. 1025 {
+		id := flat.source_type_id('numeric_cache_${i}.Item${i}')
+		slot := int(id & 1023)
+		if slots[slot] != 0 {
+			first = slots[slot]
+			second = id
+			break
+		}
+		slots[slot] = id
+	}
+	assert first != 0 && second != 0 && first != second
+	for id in [first, second] {
+		t.sum_types.set(flat.source_type_name(id), ['int', 'string'])
+	}
+	for _ in 0 .. 3 {
+		for id in [first, second] {
+			assert t.resolve_sum_name(id) == id
+			assert flat.source_type_name(t.variant_short_name(id)) == flat.source_type_name(id).all_after_last('.')
+		}
+	}
+	t.sum_types.set('one.Value', ['int'])
+	t.sum_types.set('two.Value', ['string'])
+	t.structs['one.Exact'] = StructInfo{ name: flat.source_type_id('one.Exact'), module: 'one' }
+	value := flat.source_type_id('Value')
+	exact := flat.source_type_id('one.Exact')
+	for module_name in ['one', 'two', 'one'] {
+		t.cur_module = module_name
+		for _ in 0 .. 2 {
+			assert t.resolve_sum_name(value) == flat.source_type_id('${module_name}.Value')
+			assert t.resolve_sum_name(exact) == 0
+		}
+		assert exact in t.sum_cache.entries
 	}
 }
 

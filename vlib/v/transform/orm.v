@@ -1734,7 +1734,7 @@ fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, ty
 	if args.len == 1
 		&& (is_plain_builtin_alias_type(target_type) || t.is_known_type_name(target_type)) {
 		converted := t.transform_expr(t.make_cast(flat.source_type_id(target_type), arg_ids[0], flat.source_type_id(target_type)))
-		if t.is_type_alias_name(target_type) {
+		if t.is_type_alias_name(flat.source_type_id(target_type)) {
 			// Cast lowering normalizes aliases to their representation. Retain the
 			// named type on a wrapper for a following alias method's resolution.
 			value := t.make_paren(converted)
@@ -1761,8 +1761,9 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 	mut alias_return := t.raw_call_decl_return_type(call, node) or { '' }
 	if !isnil(t.tc) {
 		if ret := t.tc.fn_ret_types[t.resolve_call_name(node)] {
-			canonical_return := flat.source_type_name(t.raw_call_return_type_name(ret.source_type_id(), node))
-			if t.raw_return_type_contains_alias(canonical_return) {
+			canonical_return_source_id := t.raw_call_return_type_name(ret.source_type_id(), node)
+			canonical_return := flat.source_type_name(canonical_return_source_id)
+			if t.raw_return_type_contains_alias(canonical_return_source_id) {
 				alias_return = canonical_return
 			}
 		}
@@ -2043,11 +2044,11 @@ fn (mut t Transformer) sql_or_expr_from_token_for_type(token string, typ string)
 	source_tokens, fallback_tokens := sql_or_value_expr_parts(tokens) or { return none }
 	source := t.sql_expr_from_token_for_type(sql_value_token_text(source_tokens), '')
 	source_type_source_id := t.raw_var_type_for_expr(source) or { t.node_type(source) }
-	source_type := flat.source_type_name(source_type_source_id)
+
 	// Method resolution needs the declared alias payload before ordinary or lowering
 	// normalizes its Option/Result storage to the underlying collection.
 	value_type := if t.is_optional_type_name(source_type_source_id)
-		&& t.raw_return_type_contains_alias(source_type) {
+		&& t.raw_return_type_contains_alias(source_type_source_id) {
 		flat.source_type_name(t.optional_base_type(source_type_source_id))
 	} else {
 		typ

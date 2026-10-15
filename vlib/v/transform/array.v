@@ -540,12 +540,12 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 		return new_call
 	}
 	if int(init_expr_id) < 0 {
-		clean_elem_type_source_id_ := t.normalize_type_alias(flat.source_type_id(elem_type))
-		clean_elem_type := flat.source_type_name(clean_elem_type_source_id_)
+		clean_elem_type_source_id_2 := t.normalize_type_alias(flat.source_type_id(elem_type))
+		clean_elem_type := flat.source_type_name(clean_elem_type_source_id_2)
 		if clean_elem_type.starts_with('[]') {
 			init_expr = t.make_array_new_call(clean_elem_type[2..], t.make_int_literal(0), t.make_int_literal(0))
 		} else if clean_elem_type.starts_with('map[') {
-			init_expr = t.zero_value_for_type(clean_elem_type_source_id_)
+			init_expr = t.zero_value_for_type(clean_elem_type_source_id_2)
 		} else if default_value := t.make_struct_runtime_default_value(clean_elem_type) {
 			init_expr = default_value
 		} else {
@@ -629,7 +629,7 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 			typ:   normalized_type_source_id
 		})
 	}
-	if t.resolve_sum_name(struct_type) in t.sum_types.ids {
+	if flat.source_type_name(t.resolve_sum_name(flat.source_type_id(struct_type))) in t.sum_types.ids {
 		return none
 	}
 	// Name lookups can resolve cycles (e.g. same-named types across modules), so guard
@@ -663,8 +663,8 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 			})
 		}
 		field_type := flat.source_type_name(field_type_source_id)
-		clean_type_source_id_ := t.normalize_type_alias(field_type_source_id)
-		clean_type := flat.source_type_name(clean_type_source_id_)
+		clean_type_source_id := t.normalize_type_alias(field_type_source_id)
+		clean_type := flat.source_type_name(clean_type_source_id)
 		// An `?T`/`!T` field with no explicit default is `none`/the zero value,
 		// which the zeroed array element already provides. Never expand it into a
 		// runtime default of its base struct: cross-module `normalize_type_alias`
@@ -698,7 +698,7 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 				t.transform_expr_for_type(default_id, field_type_source_id)
 			}
 		} else if clean_type.starts_with('map[') || clean_type.starts_with('[]') {
-			value = t.zero_value_for_type(clean_type_source_id_)
+			value = t.zero_value_for_type(clean_type_source_id)
 		} else if t.fixed_array_needs_runtime_default(clean_type) {
 			// C generation initializes the elements of fixed-array fields that a
 			// struct literal leaves unset; the literal just has to exist.
@@ -751,7 +751,7 @@ fn (mut t Transformer) fixed_array_needs_runtime_default(field_type string) bool
 }
 
 fn (mut t Transformer) transform_owned_array_literal_element(elem_id flat.NodeId, elem_type string) flat.NodeId {
-	value := if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type) in t.sum_types.ids {
+	value := if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(flat.source_type_id(elem_type))) in t.sum_types.ids {
 		t.wrap_sum_value(elem_id, elem_type)
 	} else {
 		t.transform_expr_for_type(elem_id, flat.source_type_id(elem_type))
@@ -1263,9 +1263,9 @@ fn (mut t Transformer) make_fixed_array_empty_literal(fixed_type_id u32, len int
 }
 
 fn (mut t Transformer) fixed_array_empty_elem_value(elem_type_id u32) flat.NodeId {
-	clean_type_source_id__ := t.normalize_type_alias(elem_type_id)
-	clean_type := flat.source_type_name(clean_type_source_id__)
-	if t.is_fixed_array_type(clean_type_source_id__) {
+	clean_type_source_id := t.normalize_type_alias(elem_type_id)
+	clean_type := flat.source_type_name(clean_type_source_id)
+	if t.is_fixed_array_type(clean_type_source_id) {
 		fixed_type := t.resolved_fixed_array_canonical_type(clean_type)
 		if len := t.fixed_array_len_value(fixed_type) {
 			return t.make_fixed_array_empty_literal(flat.source_type_id(fixed_type), len, flat.source_type_id(fixed_array_elem_type(fixed_type)))
@@ -1276,12 +1276,12 @@ fn (mut t Transformer) fixed_array_empty_elem_value(elem_type_id u32) flat.NodeI
 		return t.make_array_init(flat.source_type_id(clean_type[2..]))
 	}
 	if clean_type.starts_with('map[') || clean_type.starts_with('chan ') {
-		return t.zero_value_for_type(clean_type_source_id__)
+		return t.zero_value_for_type(clean_type_source_id)
 	}
 	if default_value := t.make_struct_runtime_default_value(clean_type) {
 		return default_value
 	}
-	return t.zero_value_for_type(clean_type_source_id__)
+	return t.zero_value_for_type(clean_type_source_id)
 }
 
 fn (mut t Transformer) fixed_array_empty_init_needs_values(elem_type string) bool {
@@ -1290,13 +1290,13 @@ fn (mut t Transformer) fixed_array_empty_init_needs_values(elem_type string) boo
 }
 
 fn (mut t Transformer) fixed_array_empty_init_needs_values_guarded(elem_type string, mut visited map[string]bool) bool {
-	clean_type_source_id___ := t.normalize_type_alias(flat.source_type_id(elem_type))
-	clean_type := flat.source_type_name(clean_type_source_id___)
+	clean_type_source_id := t.normalize_type_alias(flat.source_type_id(elem_type))
+	clean_type := flat.source_type_name(clean_type_source_id)
 	if clean_type.starts_with('[]') || clean_type.starts_with('map[')
 		|| clean_type.starts_with('chan ') {
 		return true
 	}
-	if t.is_fixed_array_type(clean_type_source_id___) {
+	if t.is_fixed_array_type(clean_type_source_id) {
 		fixed_type := t.resolved_fixed_array_canonical_type(clean_type)
 		return t.fixed_array_empty_init_needs_values_guarded(fixed_array_elem_type(fixed_type), mut visited)
 	}
@@ -1304,7 +1304,7 @@ fn (mut t Transformer) fixed_array_empty_init_needs_values_guarded(elem_type str
 }
 
 fn (mut t Transformer) struct_type_needs_runtime_default(struct_type string, mut visited map[string]bool) bool {
-	if struct_type.starts_with('&') || t.resolve_sum_name(struct_type) in t.sum_types.ids {
+	if struct_type.starts_with('&') || flat.source_type_name(t.resolve_sum_name(flat.source_type_id(struct_type))) in t.sum_types.ids {
 		return false
 	}
 	if struct_type in visited {
@@ -1530,7 +1530,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 					converted_bulk_append = true
 				} else {
 					rhs = if t.sum_types.contains(elem_type)
-						|| t.resolve_sum_name(elem_type) in t.sum_types.ids {
+						|| flat.source_type_name(t.resolve_sum_name(flat.source_type_id(elem_type))) in t.sum_types.ids {
 						t.wrap_sum_value(rhs_id, elem_type)
 					} else {
 						t.transform_expr_for_type(rhs_id, flat.source_type_id(elem_type))
@@ -1538,7 +1538,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 				}
 			}
 		} else {
-			rhs = if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type) in t.sum_types.ids {
+			rhs = if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(flat.source_type_id(elem_type))) in t.sum_types.ids {
 				t.wrap_sum_value(rhs_id, elem_type)
 			} else {
 				t.transform_expr_for_type(rhs_id, flat.source_type_id(elem_type))
@@ -1872,7 +1872,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 					converted_bulk_append = true
 				} else {
 					rhs = if t.sum_types.contains(elem_type)
-						|| t.resolve_sum_name(elem_type) in t.sum_types.ids {
+						|| flat.source_type_name(t.resolve_sum_name(flat.source_type_id(elem_type))) in t.sum_types.ids {
 						t.wrap_sum_value(rhs_id, elem_type)
 					} else {
 						t.transform_expr_for_type(rhs_id, flat.source_type_id(elem_type))
@@ -1880,7 +1880,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 				}
 			}
 		} else {
-			rhs = if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type) in t.sum_types.ids {
+			rhs = if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(flat.source_type_id(elem_type))) in t.sum_types.ids {
 				t.wrap_sum_value(rhs_id, elem_type)
 			} else {
 				t.transform_expr_for_type(rhs_id, flat.source_type_id(elem_type))
@@ -2236,8 +2236,8 @@ fn (mut t Transformer) clone_owned_sum_literal_for_storage(value flat.NodeId, ty
 	node := t.a.node(t.unwrap_parens(value))
 	resolved_sum, variants := t.concrete_sum_name_and_variants(typ)
 	if node.kind != .struct_init || node.children_count != 2
-		|| t.resolve_sum_name(node.value) != resolved_sum
-		|| t.resolve_sum_name(node.typ_text()) != resolved_sum {
+		|| flat.source_type_name(t.resolve_sum_name(flat.source_type_id(node.value))) != resolved_sum
+		|| flat.source_type_name(t.resolve_sum_name(node.typ)) != resolved_sum {
 		return none
 	}
 	tag := t.a.child_node(node, 0)
@@ -2455,10 +2455,10 @@ fn (mut t Transformer) clone_owned_rvalue_slice_projection(value flat.NodeId, so
 	if slice_node.kind != .index || slice_node.value != 'range' || slice_node.children_count == 0 {
 		return none
 	}
-	base_type_source_id____ := t.node_type(source_base_id)
+	base_type_source_id := t.node_type(source_base_id)
 
 	transformed_base_id := t.a.child(&slice_node, 0)
-	stable_base := t.stable_transformed_expr_for_reuse(transformed_base_id, base_type_source_id____, 'owned_slice_source')
+	stable_base := t.stable_transformed_expr_for_reuse(transformed_base_id, base_type_source_id, 'owned_slice_source')
 	mut children := []flat.NodeId{cap: int(slice_node.children_count)}
 	children << stable_base
 	for i in 1 .. slice_node.children_count {
@@ -2657,7 +2657,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned,
 			converted_bulk_append)
 	}
-	mut value := if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type) in t.sum_types.ids {
+	mut value := if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(flat.source_type_id(elem_type))) in t.sum_types.ids {
 		t.wrap_sum_value(value_id, elem_type)
 	} else {
 		t.transform_expr_for_type(value_id, flat.source_type_id(elem_type))
@@ -2770,7 +2770,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 		return t.finish_borrowed_array_insert_many_call(call, value, rhs_type, cloned,
 			converted_bulk_append)
 	}
-	mut value := if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type) in t.sum_types.ids {
+	mut value := if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(flat.source_type_id(elem_type))) in t.sum_types.ids {
 		t.wrap_sum_value(value_id, elem_type)
 	} else {
 		t.transform_expr_for_type(value_id, flat.source_type_id(elem_type))
@@ -2809,7 +2809,7 @@ fn (mut t Transformer) lower_array_push_many_call(node flat.Node, fn_node flat.N
 	base_addr := t.runtime_addr(base, flat.source_type_id(base_type))
 	t.mark_fn_used('array__push_many')
 	if t.push_many_count_is_type_name(count_id) {
-		value := if t.sum_types.contains(elem_type) || t.resolve_sum_name(elem_type) in t.sum_types.ids {
+		value := if t.sum_types.contains(elem_type) || flat.source_type_name(t.resolve_sum_name(flat.source_type_id(elem_type))) in t.sum_types.ids {
 			t.wrap_sum_value(value_id, elem_type)
 		} else {
 			t.transform_expr_for_type(value_id, flat.source_type_id(elem_type))
@@ -2976,8 +2976,9 @@ fn (t &Transformer) array_append_rhs_is_sum_variant_value(rhs_id flat.NodeId, rh
 	if candidate.len == 0 {
 		return false
 	}
-	resolved_sum := t.resolve_sum_name(elem_type)
-	if resolved_sum.len == 0 {
+	resolved_sum_source_id := t.resolve_sum_name(flat.source_type_id(elem_type))
+	resolved_sum := flat.source_type_name(resolved_sum_source_id)
+	if resolved_sum_source_id == 0 {
 		return false
 	}
 	if _ := t.sum_variant_name(resolved_sum, candidate) {
@@ -3116,7 +3117,7 @@ fn (t &Transformer) array_append_literal_should_push_many(rhs_id flat.NodeId, el
 }
 
 fn (t &Transformer) array_append_rhs_is_sum_array_variant(rhs_type string, elem_type string) bool {
-	resolved_sum := t.resolve_sum_name(elem_type)
+	resolved_sum := flat.source_type_name(t.resolve_sum_name(flat.source_type_id(elem_type)))
 	variants := t.sum_types.get(resolved_sum) or { return false }
 	mut clean_rhs := trimmed_transform_text(rhs_type)
 	if clean_rhs.starts_with('...') {
@@ -3152,7 +3153,7 @@ fn (t &Transformer) array_append_literal_sum_array_variant_type(rhs_id flat.Node
 	if node.kind != .array_literal || node.children_count == 0 {
 		return none
 	}
-	resolved_sum := t.resolve_sum_name(elem_type)
+	resolved_sum := flat.source_type_name(t.resolve_sum_name(flat.source_type_id(elem_type)))
 	variants := t.sum_types.get(resolved_sum) or { return none }
 	first_id := t.a.child(&node, 0)
 	mut first_type := trimmed_transform_text(flat.source_type_name(t.original_expr_type(first_id)))
@@ -3527,7 +3528,7 @@ fn (t &Transformer) array_receiver_raw_elem_type(fn_node flat.Node, elem_type st
 	} else {
 		''
 	}
-	if raw_elem.len == 0 || raw_elem == elem_type || !t.is_type_alias_name(raw_elem)
+	if raw_elem.len == 0 || raw_elem == elem_type || !t.is_type_alias_name(flat.source_type_id(raw_elem))
 		|| t.normalize_type_alias(flat.source_type_id(raw_elem)) != t.normalize_type_alias(flat.source_type_id(elem_type)) {
 		return elem_type
 	}
@@ -7465,7 +7466,7 @@ fn (mut t Transformer) array_sort_less_expr(cur flat.NodeId, prev flat.NodeId, e
 // elements of an array, which are lowered as `elem_type`.
 fn (t &Transformer) array_sort_alias_less(elem_type string, raw_elem_type string) ?StructOperatorCallInfo {
 	if raw_elem_type.len == 0 || raw_elem_type == elem_type
-		|| !t.is_type_alias_name(flat.source_type_name(t.trim_pointer_type(flat.source_type_id(raw_elem_type)))) {
+		|| !t.is_type_alias_name(t.trim_pointer_type(flat.source_type_id(raw_elem_type))) {
 		return none
 	}
 	return t.struct_operator_call_info_any(flat.source_type_name(t.trim_pointer_type(flat.source_type_id(raw_elem_type))), .lt)
@@ -7516,7 +7517,7 @@ fn (mut t Transformer) array_sort_simple_operator_expr(node flat.Node, cur flat.
 	call_info := if struct_type.len > 0 {
 		t.struct_operator_call_info(struct_type, node.op) or { return none }
 	} else if raw_elem_type.len > 0 && raw_elem_type != elem_type
-		&& t.is_type_alias_name(flat.source_type_name(t.trim_pointer_type(flat.source_type_id(raw_elem_type)))) {
+		&& t.is_type_alias_name(t.trim_pointer_type(flat.source_type_id(raw_elem_type))) {
 		// The elements are an alias, lowered as its base type: `UUID` as `[16]u8`.
 		t.struct_operator_call_info_any(flat.source_type_name(t.trim_pointer_type(flat.source_type_id(raw_elem_type))), node.op) or {
 			return none

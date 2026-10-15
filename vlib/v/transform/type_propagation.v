@@ -885,8 +885,9 @@ fn (t &Transformer) lookup_sum_variant_field_type(sum_type_id u32, field_name st
 }
 
 fn (t &Transformer) lookup_sum_variant_field_type_seen(sum_type_id u32, field_name string, seen []string) ?u32 {
-	resolved := t.resolve_sum_name(flat.source_type_name(t.trim_pointer_type(t.normalize_type_alias(sum_type_id))))
-	if resolved.len == 0 || resolved in seen {
+	resolved_source_id_2 := t.resolve_sum_name(t.trim_pointer_type(t.normalize_type_alias(sum_type_id)))
+	resolved := flat.source_type_name(resolved_source_id_2)
+	if resolved_source_id_2 == 0 || resolved in seen {
 		return none
 	}
 	variants := t.sum_types.get(resolved) or { return none }
@@ -1228,7 +1229,7 @@ fn (t &Transformer) lookup_unique_field_type(field_name string) ?u32 {
 			return flat.source_type_id('[]u32')
 		}
 		'obj' {
-			return flat.source_type_id(t.resolve_sum_name('ScopeObject'))
+			return t.resolve_sum_name(flat.source_type_id('ScopeObject'))
 		}
 		else {}
 	}
@@ -2283,7 +2284,6 @@ fn type_text_may_name_struct(typ string) bool {
 }
 
 fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed_id u32) ?u32 {
-	guessed := flat.source_type_name(guessed_id)
 	if isnil(t.tc) || int(id) < 0 || guessed_id == u32(0) {
 		return none
 	}
@@ -2321,8 +2321,9 @@ fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed_id u3
 			cache.file = t.cur_file
 			cache.entries.clear()
 		}
-		if cached := cache.lookup_id(cache.text_id(guessed)) {
-			if cached.len == 0 {
+		if cached_id := cache.entries[guessed_id] {
+			cached := flat.source_type_name(cached_id)
+			if cached_id == 0 {
 				return none
 			}
 			guessed_c_type = cached
@@ -2331,11 +2332,11 @@ fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed_id u3
 			guessed_base := types.unwrap_all_pointers(guessed_type)
 			if guessed_base !is types.Struct && !(guessed_base is types.Alias
 				&& guessed_base.base_type is types.Struct) {
-				cache.remember_id(cache.text_id(guessed), '')
+				cache.entries[guessed_id] = u32(0)
 				return none
 			}
 			guessed_c_type = t.tc.c_type(guessed_type)
-			cache.remember_id(cache.text_id(guessed), guessed_c_type)
+			cache.entries[guessed_id] = flat.source_type_id(guessed_c_type)
 		}
 	}
 	checked_type := t.tc.expr_type(id) or { return none }
