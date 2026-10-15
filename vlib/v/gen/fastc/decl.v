@@ -3421,6 +3421,12 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 	if tok == .key_fn {
 		return fastc_emit_function_alias(mut scan, source_file, declared_types, allow_short_placeholders, c_name, mut fn_alias_return_types, mut out)
 	}
+	mut base_scan := scan
+	mut base_token := tok
+	for (base_token in [.amp, .and, .mul]) {
+		base_token = base_scan.scan()
+	}
+	is_c_type := base_token == .name && base_scan.lit == 'C'
 	base, next_token := fastc_scan_type(mut scan, tok, source_file.path, source_file.header.module_name, source_file.header.imports, declared_types, allow_short_placeholders) or { return error('fastc type `${name}`: ${err.msg()}') }
 	tok = next_token
 	if tok == .semicolon {
@@ -3447,8 +3453,13 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		out.writeln('typedef struct { void *_object; uintptr_t _typ; } ${c_name};')
 		sum_types[c_name] = true
 	} else if fastc_primitive_c_type(name) == none && declared_kinds[key] == .alias_ {
-		out.writeln('typedef ${base} ${c_name};')
-		alias_base_types.set(c_name, base)
+		out.writeln('typedef ${if is_c_type { base } else { fastc_output_c_type(base) }} ${c_name};')
+		// C.int retains its native width instead of V's platform-width int.
+		alias_base_types.set(c_name, if is_c_type && base.trim_right('*') == 'int' {
+			'i32' + base['int'.len..]
+		} else {
+			base
+		})
 		mut layout_type := base.trim_right('*')
 		if layout_type.starts_with('Array_') {
 			layout_type = 'array'

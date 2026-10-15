@@ -159,8 +159,11 @@ concrete object's storage, including chained mutations and mutable arguments.
 Mutable interfaces dispatch to compatible value-receiver and pointer-receiver implementations.
 Architecture-filtered source trees keep their selected siblings. An explicitly imported module
 missing from a staged tree can resolve beside the original source files.
-The target runtime emits native prototypes for referenced C symbols that its headers do not
-already declare, following local transitive includes and known conditional declarations.
+The target runtime emits native prototypes for referenced C declarations in V files without
+an active C include. Files that include C headers leave their native declarations to the C
+compiler. FastC does not read or parse C headers; their macros, transitive includes, and
+conditional declarations are handled by the target C compiler.
+An explicit `@[c_extern]` declaration still requests a prototype from its V signature.
 C variadic declarations retain their native calling convention. Exported and `@[markused]`
 functions retain their reachable private helpers. An explicit C binding to a uniquely matching
 marked V function can retain its native module-basename name and declared C ABI.
@@ -174,14 +177,18 @@ Copies retain their payload without allocating, allowing allocator helpers to re
 pointers without reentering the allocator. Larger payloads retain allocated storage.
 
 Translated code on this freestanding full-runtime path supports integer division and modulo,
-including compound assignments. Operands and assignment targets are evaluated once; zero divisors
-panic. Signed 32-bit and 64-bit minimum values divided or reduced modulo `-1` also panic.
+including compound assignments. Bare `int` and its aliases retain the target's integer width,
+while explicitly sized integer types retain their declared width.
+Operands and assignment targets are evaluated once; zero divisors panic.
+Signed 32-bit and 64-bit minimum values divided or reduced modulo `-1` also panic.
 Hosted translated code accepts proven positive constant divisors and keeps rejecting unproven
 divisors. The ordinary FastC subset retains its division and modulo restrictions.
 
 AMD64 and ARM64 C output supports GNU inline assembly, including named operands, read/write
-constraints, clobbers, local labels, raw templates, and `asm goto`. Compile and link that output
-with the target toolchain; FastC executable builds still use the host target and bundled TinyCC.
+constraints, clobbers, local labels, raw templates, and `asm goto`. Structured Intel assembly
+supports register, immediate, and memory operands, including memory read/write constraints.
+Compile and link that output with the target toolchain; FastC executable builds still use the host
+target and bundled TinyCC.
 
 Build the full V compiler, including its regular C backend, directly from `cmd/v`:
 

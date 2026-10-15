@@ -4,6 +4,107 @@ import os
 import v.cmdexec
 import v.pref
 
+fn test_fastc_checked_division_preserves_platform_int_width() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_checked_int_width_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.c.v'), r'@[translated]
+module main
+fn C.getenv(&char) &char
+type Count = int
+type NativeCount = C.int
+type NativePointer = &C.int
+type NativeDoublePointer = &&C.int
+fn half(value int) int { return value / 2 }
+fn divide(value int, divisor int) int { return value / divisor }
+fn remainder(value int, divisor int) int { return value % divisor }
+fn alias_divide(value Count, divisor Count) Count { return value / divisor }
+fn native_divide(value NativeCount, divisor NativeCount) NativeCount { return value / divisor }
+fn divide_mut(mut value int, divisor int) { value /= divisor }
+fn modulo_mut(mut value int, divisor int) { value %= divisor }
+fn main() {
+	mode := unsafe { C.getenv(c"FASTC_INT_DIVISION_MODE") }
+	if mode != unsafe { nil } {
+		letter := unsafe { mode[0] }
+		if letter == `d` { println(divide(7, 0)); return }
+		if letter == `m` { println(remainder(7, 0)); return }
+		minimum := int(i64(0x8000000000000000))
+		if letter == `o` { println(divide(minimum, -1)); return }
+		if letter == `r` { println(remainder(minimum, -1)); return }
+		if letter == `n` { println(native_divide(NativeCount(0x80000000), NativeCount(-1))); return }
+		mut value := minimum
+		if letter == `a` { divide_mut(mut value, -1); return }
+		if letter == `b` { modulo_mut(mut value, -1); return }
+	}
+	wide := int(1) << 40
+	divisor := int(1) << 32
+	assert sizeof(Count) == sizeof(int), "V int alias storage width"
+	assert sizeof(NativeCount) == sizeof(i32), "native C int alias storage width"
+	assert sizeof(NativePointer) == sizeof(voidptr), "native C pointer alias storage width"
+	assert sizeof(NativeDoublePointer) == sizeof(voidptr), "native C double pointer alias storage width"
+	assert native_divide(NativeCount(7), NativeCount(2)) == NativeCount(3), "native C int division"
+	assert i64(half(wide)) == i64(549755813888), "bare int division"
+	assert divide(wide, divisor) == 256, "wide divisor is nonzero"
+	assert remainder(wide + 123, divisor) == 123, "wide modulo"
+	assert i64(half(-wide)) == -i64(549755813888), "negative bare int division"
+	assert remainder(-wide - 123, divisor) == -123, "negative bare int modulo"
+	assert alias_divide(Count(wide), Count(divisor)) == Count(256), "int alias"
+	mut value := wide + 123
+	value /= divisor
+	assert value == 256, "bare int division assignment"
+	value = wide + 123
+	value %= divisor
+	assert value == 123, "bare int modulo assignment"
+	value = wide + 123
+	divide_mut(mut value, divisor)
+	assert value == 256, "mutable int division assignment"
+	value = wide + 123
+	modulo_mut(mut value, divisor)
+	assert value == 123, "mutable int modulo assignment"
+	println("platform int division works")
+}
+') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.vroot = @VEXEROOT
+	prefs.building_v = true
+	prefs.target_libc_headers = true
+	prefs.target = pref.target_from('vinix', pref.host_arch()) or { panic(err) }
+	prefs.backend = 'fastc'
+	prefs.ccompiler = 'clang'
+	prefs.user_defines = ['gc_none', 'no_backtrace', 'v3_backend']
+	prefs.exclude = ['@vlib/builtin/backtraces_nix.c.v']
+	c_path := os.join_path(root, 'main.c')
+	program := os.join_path(root, 'fastc')
+	generated := generate_files([root], prefs) or { panic(err) }
+	os.write_file(c_path, generated + '\n_Static_assert(__builtin_types_compatible_p(NativePointer, int *), "native pointer width");\n_Static_assert(__builtin_types_compatible_p(NativeDoublePointer, int **), "native double pointer width");\n') or { panic(err) }
+	build := cmdexec.run('cc', ['-std=gnu11', '-O2', '-fno-strict-aliasing', '-D__vinix__', '-o',
+		program, c_path])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run_in_merged_with_env(program, [], root, {
+		'FASTC_INT_DIVISION_MODE': ''
+	})
+	assert run.exit_code == 0, run.output
+	assert run.output == 'platform int division works\n', run.output
+	for mode, message in {
+		'd': 'division by zero'
+		'm': 'modulo by zero'
+		'o': 'integer overflow'
+		'r': 'integer overflow'
+		'n': 'integer overflow'
+		'a': 'integer overflow'
+		'b': 'integer overflow'
+	} {
+		failed := cmdexec.run_in_merged_with_env(program, [], root, {
+			'FASTC_INT_DIVISION_MODE': mode
+		})
+		assert failed.exit_code != 0, '${mode}: ${failed.output}'
+		assert failed.output.contains(message), '${mode}: ${failed.output}'
+	}
+}
+
 fn test_fastc_translated_target_checked_division_matches_ordinary_c() {
 	$if !macos && !linux {
 		return

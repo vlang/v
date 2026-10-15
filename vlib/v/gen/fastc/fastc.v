@@ -2566,9 +2566,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	pieces << fastc_piece(type_declarations)
 	pieces << late_composite_declarations.str()
 	pieces << fastc_piece(fixed_array_declarations)
-	pieces << fastc_c_extern_prototypes_for_inputs(functions, c_flags)
+	native_context := if prefs.target_libc_headers || c_flags.any(it.ends_with('.c') || it.ends_with('.o')) {
+		fastc_native_source_context(sources, prefs)
+	} else {
+		FastcNativeSourceContext{}
+	}
+	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context)
 	if prefs.target_libc_headers {
-		pieces << fastc_target_c_extern_prototypes(functions, sources, used_function_names, prefs)
+		pieces << fastc_target_c_extern_prototypes_for_context(functions, used_function_names, prefs, native_context)
 	}
 	extern_indexes << pieces.len
 	extern_texts << fastc_extern_declarations(constant_output.declarations, true)
@@ -2857,16 +2862,24 @@ fn fastc_c_declaration_has_native_input(path string, inputs []string) bool {
 }
 
 fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignature, inputs []string) string {
+	return fastc_c_extern_prototypes_for_source_inputs(functions, inputs, FastcNativeSourceContext{})
+}
+
+fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctionSignature, inputs []string, context FastcNativeSourceContext) string {
 	mut keys := functions.keys()
 	keys.sort()
 	mut out := strings.new_builder(128)
 	for key in keys {
 		signature := functions[key]
-		if !key.starts_with('C.') || signature.is_disabled
-			|| (!signature.is_c_extern && !fastc_c_declaration_has_native_input(signature.path, inputs)) {
+		if !key.starts_with('C.') || signature.is_disabled {
 			continue
 		}
 		name := key.all_after_first('C.')
+		paths := context.declaration_paths[name] or { [signature.path] }
+		if !signature.is_c_extern && !paths.any(!context.files_with_headers[it]
+			&& fastc_c_declaration_has_native_input(it, inputs)) {
+			continue
+		}
 		mut parameters := []string{cap: signature.parameter_types.ids.len + 1}
 		for i, parameter_type in signature.parameter_types_text() {
 			parameters << if i < signature.parameter_constness.len

@@ -36,8 +36,12 @@ __global (
 	native_snapshot u64 = C.native_runtime_value
 	later_counter = u64(5)
 )
+// These helpers are supplied by the native body, outside the included header.
+@[c_extern]
 fn C.dynamic_initialize() u64
+@[c_extern]
 fn C.allocator_ready() bool
+@[c_extern]
 fn C.dynamic_calls() int
 fn C._vinit(argc int, argv voidptr)
 fn init() {

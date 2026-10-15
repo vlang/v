@@ -1146,7 +1146,7 @@ fn (g &Parser) checked_target_division_enabled() bool {
 fn (g &Parser) checked_integer_operation_type(operand_type string) string {
 	resolved := g.underlying_alias_type(operand_type)
 	return match resolved {
-		'int', 'integer literal', 'negative integer literal' { 'i32' }
+		'int', 'integer literal', 'negative integer literal' { fastc_output_c_type('int') }
 		'char', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'isize', 'usize' {
 			fastc_output_c_type(resolved)
 		}

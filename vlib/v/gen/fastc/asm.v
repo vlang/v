@@ -12,8 +12,15 @@ struct FastcAsmOperand {
 }
 
 struct FastcAsmRenderedOperand {
-	source string
-	typ    string
+	source        string
+	typ           string
+	address_alias string
+}
+
+struct FastcAsmAlias {
+	typ           string
+	constraint    string
+	address_alias string
 }
 
 // parse_asm_statement keeps the line-sensitive assembly template separate from
@@ -78,38 +85,49 @@ fn (mut g Parser) parse_asm_statement() !bool {
 	if is_intel && normalized_arch != 'amd64' {
 		return g.unsupported('Intel assembly on `${arch}`')
 	}
-	mut aliases := map[string]string{}
+	mut reserved_aliases := []string{}
+	for operand in outputs { reserved_aliases << operand.alias }
+	for operand in inputs { reserved_aliases << operand.alias }
+	mut aliases := map[string]FastcAsmAlias{}
 	mut operands := []string{}
+	mut address_inputs := []string{}
 	for operand in outputs {
-		rendered := g.render_asm_operand(operand.expression)!
+		rendered := g.render_asm_operand_info(operand, is_intel && !is_raw, reserved_aliases)!
 		if operand.alias != '' {
 			if operand.alias in aliases {
 				return g.unsupported('duplicate assembly operand `${operand.alias}`')
 			}
-			aliases[operand.alias] = if operand.constraint.contains('m') {
-				''
-			} else {
-				rendered.typ
+			aliases[operand.alias] = FastcAsmAlias{
+				typ:           rendered.typ
+				constraint:    operand.constraint
+				address_alias: rendered.address_alias
 			}
 		}
-		operands << fastc_asm_operand_source(operand, rendered.source)
+		operands << fastc_asm_rendered_operand_source(operand, rendered)
+		if rendered.address_alias != '' {
+			address_inputs << '[${rendered.address_alias}] "r" (${rendered.address_alias})'
+		}
 	}
 	output_source := operands.join(', ')
 	operands.clear()
 	for operand in inputs {
-		rendered := g.render_asm_operand(operand.expression)!
+		rendered := g.render_asm_operand_info(operand, is_intel && !is_raw, reserved_aliases)!
 		if operand.alias != '' {
 			if operand.alias in aliases {
 				return g.unsupported('duplicate assembly operand `${operand.alias}`')
 			}
-			aliases[operand.alias] = if operand.constraint.contains('m') {
-				''
-			} else {
-				rendered.typ
+			aliases[operand.alias] = FastcAsmAlias{
+				typ:           rendered.typ
+				constraint:    operand.constraint
+				address_alias: rendered.address_alias
 			}
 		}
-		operands << fastc_asm_operand_source(operand, rendered.source)
+		operands << fastc_asm_rendered_operand_source(operand, rendered)
+		if rendered.address_alias != '' {
+			address_inputs << '[${rendered.address_alias}] "r" (${rendered.address_alias})'
+		}
 	}
+	operands << address_inputs
 	input_source := operands.join(', ')
 	is_extended := sections.len > 1 || is_goto
 	mut template := ''
@@ -154,6 +172,25 @@ fn (mut g Parser) parse_asm_statement() !bool {
 	return false
 }
 
+fn (mut g Parser) render_asm_operand_info(operand FastcAsmOperand, intel bool, reserved_aliases []string) !FastcAsmRenderedOperand {
+	rendered := g.render_asm_operand(operand.expression)!
+	typ := g.underlying_alias_type(rendered.typ)
+	if !intel || operand.alias == '' || !operand.constraint.contains('m') {
+		return FastcAsmRenderedOperand{ source: rendered.source, typ: typ }
+	}
+	// GNU memory placeholders use the compiler's AT&T address syntax even inside
+	// an Intel template. Keep the memory constraint and print its address through
+	// an extra register input. Capture the lvalue once for both operands.
+	mut address := g.temporary_name('asm_address')
+	for (address in reserved_aliases) { address = g.temporary_name('asm_address') }
+	g.write_line('__typeof__(&(${rendered.source})) ${address} = &(${rendered.source});')
+	return FastcAsmRenderedOperand{
+		source:        '(*${address})'
+		typ:           typ
+		address_alias: address
+	}
+}
+
 fn (mut g Parser) render_asm_operand(source string) !FastcAsmRenderedOperand {
 	previous_scanner := g.s
 	previous_tok := g.tok
@@ -189,6 +226,21 @@ fn (mut g Parser) render_asm_operand(source string) !FastcAsmRenderedOperand {
 fn fastc_asm_operand_source(operand FastcAsmOperand, expression string) string {
 	name := if operand.alias == '' { '' } else { '[${operand.alias}] ' }
 	return '${name}"${fastc_asm_c_escape(operand.constraint)}" (${expression})'
+}
+
+fn fastc_asm_rendered_operand_source(operand FastcAsmOperand, rendered FastcAsmRenderedOperand) string {
+	if rendered.address_alias == '' { return fastc_asm_operand_source(operand, rendered.source) }
+	// Once a mixed rm operand is printed as memory, do not let the compiler
+	// allocate a register and copy its unchanged value over the assembly result.
+	mut modifiers := ''
+	for c in operand.constraint {
+		if c !in [`=`, `+`, `&`, `%`, `!`, `*`, `?`, `#`] { break }
+		modifiers += c.ascii_str()
+	}
+	return fastc_asm_operand_source(FastcAsmOperand{
+		constraint: modifiers + 'm'
+		alias:      operand.alias
+	}, rendered.source)
 }
 
 fn fastc_asm_strip_comments(source string) string {
@@ -353,7 +405,7 @@ fn fastc_asm_raw_template(source string) !string {
 	return if templates.len > 0 { templates.join(' ') } else { '""' }
 }
 
-fn fastc_asm_lower_template(source string, arch string, aliases map[string]string, extended bool, intel bool, labels []string) string {
+fn fastc_asm_lower_template(source string, arch string, aliases map[string]FastcAsmAlias, extended bool, intel bool, labels []string) string {
 	if source.ends_with(':') { return source }
 	mut start := 0
 	// A label can precede an instruction on the same line.
@@ -387,8 +439,9 @@ fn fastc_asm_lower_template(source string, arch string, aliases map[string]strin
 		}
 		if arch == 'amd64' && instruction in ['in', 'inb', 'inw', 'inl', 'out', 'outb', 'outw',
 			'outl'] {
-			for alias, typ in aliases {
-				if typ in ['int', 'i64', 'u64', 'usize', 'isize'] {
+			for alias, info in aliases {
+				if !info.constraint.contains('m') && info.typ in ['int', 'i64', 'u64', 'usize',
+					'isize'] {
 					value = value.replace('%[${alias}]', '%k[${alias}]')
 				}
 			}
@@ -421,7 +474,7 @@ fn fastc_asm_split_operands(source string) []string {
 	return parts
 }
 
-fn fastc_asm_lower_operand(source string, arch string, aliases map[string]string, extended bool, intel bool, directive bool) string {
+fn fastc_asm_lower_operand(source string, arch string, aliases map[string]FastcAsmAlias, extended bool, intel bool, directive bool) string {
 	if source.len > 1 && source[0] in [`b`, `f`] && source[1..].bytes().all(it.is_digit()) {
 		return source[1..] + source[..1]
 	}
@@ -449,7 +502,7 @@ fn fastc_asm_lower_operand(source string, arch string, aliases map[string]string
 	return fastc_asm_atoms(source, arch, aliases, extended, intel)
 }
 
-fn fastc_asm_address(source string, aliases map[string]string, extended bool) string {
+fn fastc_asm_address(source string, aliases map[string]FastcAsmAlias, extended bool) string {
 	mut base := ''
 	mut index := ''
 	mut scale := '1'
@@ -480,7 +533,7 @@ fn fastc_asm_address(source string, aliases map[string]string, extended bool) st
 	}
 }
 
-fn fastc_asm_atoms(source string, arch string, aliases map[string]string, extended bool, intel bool) string {
+fn fastc_asm_atoms(source string, arch string, aliases map[string]FastcAsmAlias, extended bool, intel bool) string {
 	mut out := strings.new_builder(source.len + 8)
 	mut i := 0
 	for i < source.len {
@@ -491,10 +544,30 @@ fn fastc_asm_atoms(source string, arch string, aliases map[string]string, extend
 			for i < source.len && fastc_asm_ident_char(source[i]) { i++ }
 			word := source[start..i]
 			if word in aliases {
-				modifier := if intel {
+				info := aliases[word]
+				if intel && info.address_alias != '' {
+					size := if source[..start].trim_space().ends_with('ptr') {
+						''
+					} else {
+						fastc_asm_intel_memory_size(info.typ)
+					}
+					out.write_string('${size}[%V[${info.address_alias}]]')
+					continue
+				}
+				modifier := if intel && fastc_asm_immediate_constraint(info.constraint) {
+					'c'
+				} else if intel {
 					'V'
-				} else if arch == 'arm64' && aliases[word] in ['bool', 'i8', 'u8', 'i16', 'u16',
-					'i32', 'u32', 'rune'] {
+				} else if arch == 'arm64' && !info.constraint.contains('m') && info.typ in [
+					'bool',
+					'i8',
+					'u8',
+					'i16',
+					'u16',
+					'i32',
+					'u32',
+					'rune',
+				] {
 					'w'
 				} else {
 					''
@@ -512,6 +585,22 @@ fn fastc_asm_atoms(source string, arch string, aliases map[string]string, extend
 		i++
 	}
 	return out.str()
+}
+
+fn fastc_asm_immediate_constraint(constraint string) bool {
+	return constraint.len > 0 && constraint.bytes().all(it in [`i`, `n`, `I`, `J`, `K`, `L`, `M`,
+		`N`, `O`, `P`])
+}
+
+fn fastc_asm_intel_memory_size(typ string) string {
+	if fastc_is_pointer_type(typ) { return 'qword ptr ' }
+	return match typ {
+		'bool', 'char', 'i8', 'u8' { 'byte ptr ' }
+		'i16', 'u16' { 'word ptr ' }
+		'i32', 'u32', 'rune', 'f32' { 'dword ptr ' }
+		'int', 'i64', 'u64', 'isize', 'usize', 'f64' { 'qword ptr ' }
+		else { '' }
+	}
 }
 
 fn fastc_asm_x86_register(name string) bool {

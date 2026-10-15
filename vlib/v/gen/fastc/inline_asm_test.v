@@ -6,9 +6,11 @@ import v.pref
 
 fn test_fastc_inline_asm_operand_lowering() {
 	aliases := {
-		'value':   'u64'
-		'address': 'voidptr'
-		'narrow':  'u32'
+		'value':   FastcAsmAlias{ typ: 'u64', constraint: '+r' }
+		'address': FastcAsmAlias{ typ: 'voidptr', constraint: 'r' }
+		'narrow':  FastcAsmAlias{ typ: 'u32', constraint: '=r' }
+		'amount':  FastcAsmAlias{ typ: 'int', constraint: 'i' }
+		'memory':  FastcAsmAlias{ typ: 'u64', constraint: '+m', address_alias: '__v0' }
 	}
 	assert fastc_asm_lower_template('lock xadd value, rax', 'amd64', aliases, true, false, []) == 'lock xadd %%rax, %[value]'
 	assert fastc_asm_lower_template('mov value, gs:[0]', 'amd64', aliases, true, false, []) == 'mov %%gs:0, %[value]'
@@ -17,6 +19,11 @@ fn test_fastc_inline_asm_operand_lowering() {
 	assert fastc_asm_lower_template('ldr narrow, [address]', 'arm64', aliases, true, false, []) == 'ldr %w[narrow], [%[address]]'
 	assert fastc_asm_lower_template('add value, value, 2', 'arm64', aliases, true, false, []) == 'add %[value], %[value], #2'
 	assert fastc_asm_lower_template('jmp next', 'amd64', aliases, true, false, ['next']) == 'jmp %l[next]'
+	assert fastc_asm_lower_template('add value, amount', 'amd64', aliases, true, true, []) == 'add %V[value], %c[amount]'
+	assert fastc_asm_lower_template('add memory, amount', 'amd64', aliases, true, true, []) == 'add qword ptr [%V[__v0]], %c[amount]'
+	assert fastc_asm_lower_template('add qword ptr memory, amount', 'amd64', aliases, true, true, []) == 'add qword ptr [%V[__v0]], %c[amount]'
+	assert fastc_asm_lower_template('mov value, rax', 'amd64', aliases, true, true, []) == 'mov %V[value], rax'
+	assert fastc_asm_rendered_operand_source(FastcAsmOperand{ constraint: '+&rm', alias: 'memory' }, FastcAsmRenderedOperand{ source: '(*__v0)', address_alias: '__v0' }) == '[memory] "+&m" ((*__v0))'
 	operands := fastc_asm_operands('+m (*target) as address\n=@ccz (ok)\n+r (value)', true) or { panic(err) }
 	assert operands.len == 3
 	assert operands[0].constraint == '+m'
@@ -35,9 +42,11 @@ fn test_fastc_inline_asm_generated_code_runs_and_cross_compiles() {
 	defer { os.rmdir_all(root) or {} }
 	for arch in ['amd64', 'arm64'] {
 		mut prefs := pref.new_preferences()
+		prefs.building_v = true
 		prefs.target = pref.target_from($if macos { 'macos' } $else { 'linux' }, arch) or { panic(err) }
 		source := if arch == 'amd64' {
 			r'module main
+fn C.asm_target(value &u64, calls &u32) &u64
 fn asm_value() u64 {
 	mut value := u64(40)
 	mut added := u64(2)
@@ -65,6 +74,44 @@ fn asm_value() u64 {
 		add value, 0
 		; +r (value)
 		; ; cc
+	}
+	value = 40
+	asm volatile amd64 intel {
+		add value, amount
+		; +r (value)
+		; i (2) as amount
+		; cc
+	}
+	mut memory := u64(40)
+	mut calls := u32(0)
+	asm volatile amd64 intel {
+		add slot, amount
+		; +m (*C.asm_target(&memory, &calls)) as slot
+		; i (2) as amount
+		; cc
+	}
+	mut mixed := u32(40)
+	asm volatile amd64 intel {
+		add mixed, amount
+		; +rm (mixed)
+		; i (2) as amount
+		; cc
+	}
+	mut memory_input := u64(0)
+	asm volatile amd64 intel {
+		mov memory_input, slot
+		; =r (memory_input)
+		; m (memory) as slot
+	}
+	mut fixed := u64(0)
+	asm volatile amd64 intel {
+		mov rax, 42
+		mov fixed, rax
+		; =r (fixed)
+		; ; rax
+	}
+	if memory != 42 || calls != 1 || mixed != 42 || memory_input != 42 || fixed != 42 {
+		return 0
 	}
 	asm goto amd64 {
 		jmp done
@@ -111,8 +158,8 @@ fn main() { println(asm_value()) }
 		body := fastc_test_asm_function(generated, 'asm_value')
 		assert body.contains('__asm__ volatile'), body
 		c_path := os.join_path(root, '${arch}.c')
-		os.write_file(c_path, 'typedef unsigned long long u64;\ntypedef unsigned int u32;\ntypedef _Bool bool;\n#define false 0\n#define true 1\n${body}\nint main(void) { return asm_value() != 42; }\n') or { panic(err) }
-		mut flags := ['-x', 'c', '-ffreestanding', '-nostdinc']
+		os.write_file(c_path, 'typedef unsigned long long u64;\ntypedef unsigned int u32;\ntypedef _Bool bool;\n#define false 0\n#define true 1\nstatic u64 *asm_target(u64 *value, u32 *calls) { (*calls)++; return value; }\n${body}\nint main(void) { return asm_value() != 42; }\n') or { panic(err) }
+		mut flags := ['-O2', '-x', 'c', '-ffreestanding', '-nostdinc']
 		$if macos {
 			flags << ['-target',
 				if arch == 'amd64' { 'x86_64-apple-darwin' } else { 'arm64-apple-darwin' }]
@@ -143,7 +190,7 @@ fn main() { println(asm_value()) }
 		}
 		if !can_run { continue }
 		program := os.join_path(root, 'program')
-		mut link_args := [c_path, '-o', program]
+		mut link_args := ['-O2', c_path, '-o', program]
 		$if macos {
 			link_args << ['-target',
 				if arch == 'amd64' { 'x86_64-apple-darwin' } else { 'arm64-apple-darwin' }]
