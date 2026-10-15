@@ -98,7 +98,9 @@ and `-no-builtin` use compatibility headers when complete V bindings are unavail
 
 Portable compiler snapshots generated with `-cross cmd/v` or `-os cross cmd/v` supply
 their runtime declarations and helper definitions from V without include directives on
-the supported hosted targets.
+the supported hosted targets, except explicit Windows targets. Windows compiler snapshots
+use the Windows SDK and embed the native stream, clock, thread, tool-cache, and atomic helpers,
+so they can be compiled and linked without native objects from the generating checkout.
 They retain the complete compiler runtime and disable the platform signal handler.
 The text of includes inside compiler string literals is still present for other generated programs.
 
