@@ -11911,14 +11911,14 @@ fn (b &Builder) is_disabled_fn_name(name string) bool {
 }
 
 fn (mut b Builder) map_array_elem_size_arg(id flat.NodeId, node flat.Node) ?ValueID {
-	mut typ_name := flat.source_type_name(b.checked_expr_type_name(id))
-	if typ_name.len == 0 || typ_name == 'unknown' {
-		typ_name = node.typ_text()
+	mut typ_name := b.checked_expr_type_name(id)
+	if typ_name == 0 || typ_name == flat.source_type_unknown {
+		typ_name = node.typ
 	}
-	if !typ_name.starts_with('[]') {
+	if !flat.source_type_shape(typ_name).has(.array_type) {
 		return none
 	}
-	elem_type := b.resolve_type(flat.source_type_id(typ_name[2..]))
+	elem_type := b.resolve_type(flat.source_type_id(flat.source_type_name(typ_name)[2..]))
 	elem_size := b.m.type_size(elem_type)
 	actual_size := if elem_size > 0 { elem_size } else { 1 }
 	return b.m.get_or_add_const(b.i64_type, actual_size.str())
@@ -12056,16 +12056,16 @@ fn (b &Builder) is_flag_enum_expr(id flat.NodeId) bool {
 }
 
 fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) u32 {
-	mut name := flat.source_type_name(b.receiver_type_name(id)).trim_left('&')
+	mut name := flat.source_type_id(flat.source_type_name(b.receiver_type_name(id)).trim_left('&'))
 	for _ in 0 .. 32 {
-		if b.is_flag_enum_type_name(flat.source_type_id(name)) {
-			return flat.source_type_id(name)
+		if b.is_flag_enum_type_name(name) {
+			return name
 		}
-		if target_source_id := b.type_alias_target(flat.source_type_id(name)) {
+		if target_source_id := b.type_alias_target(name) {
 			target := flat.source_type_name(target_source_id)
 
-			if target != name {
-				name = target.trim_left('&')
+			if target != flat.source_type_name(name) {
+				name = flat.source_type_id(target.trim_left('&'))
 				continue
 			}
 		}
@@ -12079,8 +12079,8 @@ fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) u32 {
 		return node.typ
 	}
 	if node.kind == .selector && node.children_count > 0 {
-		mut base_type := flat.source_type_name(b.receiver_type_name(b.a.child(&node, 0))).trim_left('&')
-		field_type_source_id_2 := b.field_type_name(flat.source_type_id(base_type), node.value)
+		mut base_type := flat.source_type_id(flat.source_type_name(b.receiver_type_name(b.a.child(&node, 0))).trim_left('&'))
+		field_type_source_id_2 := b.field_type_name(base_type, node.value)
 		field_type := flat.source_type_name(field_type_source_id_2)
 		if field_type.len > 0 {
 			if b.is_flag_enum_type_name(field_type_source_id_2) {
@@ -12089,15 +12089,15 @@ fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) u32 {
 		}
 		if node.value == 'flags' {
 			for _ in 0 .. 32 {
-				if base_type == 'array' || base_type == 'builtin.array'
-					|| base_type.starts_with('[]') || b.type_aliases[base_type] == b.array_type {
+				if flat.source_type_name(base_type) == 'array' || flat.source_type_name(base_type) == 'builtin.array'
+					|| flat.source_type_shape(base_type).has(.array_type) || b.type_aliases[flat.source_type_name(base_type)] == b.array_type {
 					return flat.source_type_id('ArrayFlags')
 				}
-				if target_source_id := b.type_alias_target(flat.source_type_id(base_type)) {
+				if target_source_id := b.type_alias_target(base_type) {
 					target := flat.source_type_name(target_source_id)
 
-					if target != base_type {
-						base_type = target.trim_left('&')
+					if target != flat.source_type_name(base_type) {
+						base_type = flat.source_type_id(target.trim_left('&'))
 						continue
 					}
 				}
@@ -13681,12 +13681,12 @@ fn (mut b Builder) build_index_addr(id flat.NodeId, node flat.Node) ValueID {
 fn (b &Builder) fixed_array_expr_type_name(id flat.NodeId) ?u32 {
 	// Mutable fixed-array parameters have a reference type, while their storage
 	// still contains inline elements rather than pointers to those elements.
-	mut type_name := flat.source_type_name(b.checked_expr_type_name(id))
-	if type_name.starts_with('&') {
-		type_name = type_name[1..]
+	mut type_name := b.checked_expr_type_name(id)
+	if flat.source_type_shape(type_name).has(.pointer) {
+		type_name = flat.source_type_id(flat.source_type_name(type_name)[1..])
 	}
-	if b.is_fixed_array_type_name(flat.source_type_id(type_name)) {
-		return flat.source_type_id(type_name)
+	if b.is_fixed_array_type_name(type_name) {
+		return type_name
 	}
 	return none
 }

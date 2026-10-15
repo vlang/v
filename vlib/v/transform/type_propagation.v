@@ -225,18 +225,18 @@ fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?u32 {
 		return none
 	}
 	typ := t.tc.expr_type(id) or { t.tc.resolve_type(id) }
-	mut name := flat.source_type_name(t.checker_recorded_type_name(id, typ))
-	if t.tc.type_aliases.contains(name) {
-		name = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(name)))
+	mut name := t.checker_recorded_type_name(id, typ)
+	if t.tc.type_aliases.contains(flat.source_type_name(name)) {
+		name = t.normalize_type_alias(name)
 	}
-	if types.type_text_contains_typeof(name) {
-		name = flat.source_type_name(t.tc.type_name(t.tc.resolve_type(id)))
-		if t.tc.type_aliases.contains(name) {
-			name = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(name)))
+	if types.type_text_contains_typeof(flat.source_type_name(name)) {
+		name = t.tc.type_name(t.tc.resolve_type(id))
+		if t.tc.type_aliases.contains(flat.source_type_name(name)) {
+			name = t.normalize_type_alias(name)
 		}
 	}
-	if decl_type_is_usable(flat.source_type_id(name)) && name != 'void' {
-		return flat.source_type_id(name)
+	if decl_type_is_usable(name) && name != flat.source_type_void {
+		return name
 	}
 	return none
 }
@@ -438,8 +438,8 @@ fn (t &Transformer) spawn_expr_decl_type(node flat.Node) ?u32 {
 	if call.kind != .call || call.children_count == 0 {
 		return none
 	}
-	mut ret_type := flat.source_type_name(t.node_type(call_id))
-	if (ret_type.len == 0 || ret_type == 'unknown') && !isnil(t.tc) {
+	mut ret_type := t.node_type(call_id)
+	if (ret_type == 0 || ret_type == flat.source_type_unknown) && !isnil(t.tc) {
 		callee := t.a.child_node(call, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
 			base := t.a.child_node(callee, 0)
@@ -449,17 +449,17 @@ fn (t &Transformer) spawn_expr_decl_type(node flat.Node) ?u32 {
 				flat.source_type_name(t.node_type(t.a.child(callee, 0)))
 			}
 			if info := t.tc.resolve_generic_struct_method(flat.source_type_id(base_type), callee.value) {
-				ret_type = info.return_type.name()
+				ret_type = info.return_type.source_type_id()
 			}
 		}
 	}
-	if ret_type.len == 0 || ret_type == 'unknown' {
+	if ret_type == 0 || ret_type == flat.source_type_unknown {
 		return none
 	}
-	if ret_type == 'void' {
+	if ret_type == flat.source_type_void {
 		return flat.source_type_id('thread')
 	}
-	return flat.source_type_id('thread ${ret_type}')
+	return flat.source_type_id('thread ${flat.source_type_name(ret_type)}')
 }
 
 fn (t &Transformer) map_expr_decl_type(id flat.NodeId) ?u32 {
@@ -1982,60 +1982,61 @@ fn (t &Transformer) resolve_index_elem_type(node flat.Node) u32 {
 		return u32(0)
 	}
 	base_id := t.a.child(&node, 0)
-	mut base_type := flat.source_type_name(t.resolve_expr_type(base_id))
-	if base_type.len == 0 {
+	mut base_type := t.resolve_expr_type(base_id)
+	if base_type == 0 {
 		base_node := t.a.nodes[int(base_id)]
 		if base_node.kind == .selector {
 			// Selector nodes can share their compact child slice with an earlier
 			// speculative node. Re-resolve a cached miss from the actual slice
 			// receiver before trusting the checker's index fallback.
-			base_type = flat.source_type_name(t.resolve_selector_type_uncached(base_node))
+			base_type = t.resolve_selector_type_uncached(base_node)
 		}
 	}
-	if base_type.len == 0 {
+	if base_type == 0 {
 		return u32(0)
 	}
-	base_type = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type)))
-	if base_type.starts_with('&') {
-		ptr_elem_type_source_id := t.normalize_type_alias(flat.source_type_id(base_type[1..]))
-		ptr_elem_type := flat.source_type_name(ptr_elem_type_source_id)
+	base_type = t.normalize_type_alias(base_type)
+	if flat.source_type_shape(base_type).has(.pointer) {
+		ptr_elem_type_source_id := t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type)[1..]))
+		ptr_elem_type_source_id_2 := ptr_elem_type_source_id
+		ptr_elem_type_shape := flat.source_type_shape(ptr_elem_type_source_id_2)
 		// A `mut map`/`mut []T` param is a pointer to the container; indexing it must
 		// still yield the element/value type, so fall through to the container cases.
-		if !ptr_elem_type.starts_with('[]') && !ptr_elem_type.starts_with('map[')
+		if !ptr_elem_type_shape.has(.array_type) && !ptr_elem_type_shape.has(.map_type)
 			&& !t.is_fixed_array_type(ptr_elem_type_source_id) {
 			return ptr_elem_type_source_id
 		}
-		base_type = ptr_elem_type
+		base_type = ptr_elem_type_source_id_2
 	}
 	is_slice := node.value == 'range'
 		|| (node.children_count > 1 && t.a.child_node(&node, 1).kind == .range)
 	if is_slice {
-		if base_type == 'string' {
+		if base_type == flat.source_type_string {
 			return flat.source_type_string
 		}
-		if base_type.starts_with('[]') {
-			return flat.source_type_id(base_type)
+		if flat.source_type_shape(base_type).has(.array_type) {
+			return base_type
 		}
 		// A range/slice of a fixed array (`arr[..]`, `arr[a..b]`) yields a dynamic
 		// `[]T`, not the fixed array or a bogus `range` type.
-		if t.is_fixed_array_type(flat.source_type_id(base_type)) {
-			return flat.source_type_id('[]${flat.source_type_name(t.normalize_type_alias(flat.source_type_id(for_in_fixed_array_elem_type(base_type))))}')
+		if t.is_fixed_array_type(base_type) {
+			return flat.source_type_id('[]${flat.source_type_name(t.normalize_type_alias(flat.source_type_id(for_in_fixed_array_elem_type(flat.source_type_name(base_type)))))}')
 		}
 	}
-	if base_type.starts_with('[]') {
-		return t.normalize_type_alias(flat.source_type_id(base_type[2..]))
+	if flat.source_type_shape(base_type).has(.array_type) {
+		return t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type)[2..]))
 	}
-	if t.is_fixed_array_type(flat.source_type_id(base_type)) {
-		return t.normalize_type_alias(flat.source_type_id(for_in_fixed_array_elem_type(base_type)))
+	if t.is_fixed_array_type(base_type) {
+		return t.normalize_type_alias(flat.source_type_id(for_in_fixed_array_elem_type(flat.source_type_name(base_type))))
 	}
-	if base_type.starts_with('map[') {
-		bracket_end := base_type.index(']') or { return u32(0) }
-		if bracket_end + 1 < base_type.len {
-			return t.normalize_type_alias(flat.source_type_id(base_type[bracket_end + 1..]))
+	if flat.source_type_shape(base_type).has(.map_type) {
+		bracket_end := flat.source_type_name(base_type).index(']') or { return u32(0) }
+		if bracket_end + 1 < flat.source_type_name(base_type).len {
+			return t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type)[bracket_end + 1..]))
 		}
 		return u32(0)
 	}
-	if base_type == 'string' {
+	if base_type == flat.source_type_string {
 		return flat.source_type_u8
 	}
 	return u32(0)
@@ -2449,11 +2450,15 @@ fn (t &Transformer) array_map_call_type_name(id flat.NodeId, node flat.Node) ?u3
 		}
 	}
 	base_id := t.a.child(fn_node, 0)
-	mut base_type0 := flat.source_type_name(t.node_type(base_id))
-	if !base_type0.trim_string_left('&').starts_with('[]') {
-		base_type0 = flat.source_type_name(t.original_expr_type(base_id))
+	mut base_type0 := t.node_type(base_id)
+	if !flat.source_type_name(base_type0).trim_string_left('&').starts_with('[]') {
+		base_type0 = t.original_expr_type(base_id)
 	}
-	base_type := if base_type0.starts_with('&') { base_type0[1..] } else { base_type0 }
+	base_type := if flat.source_type_shape(base_type0).has(.pointer) {
+		flat.source_type_name(base_type0)[1..]
+	} else {
+		flat.source_type_name(base_type0)
+	}
 	if !base_type.starts_with('[]') {
 		return none
 	}

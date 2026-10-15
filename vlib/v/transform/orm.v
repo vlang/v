@@ -359,29 +359,29 @@ fn sql_aggregate_result_info(aggregate string, field_type string) SqlAggregateRe
 
 fn (mut t Transformer) make_stable_sql_db_expr(db_id flat.NodeId) flat.NodeId {
 	db_expr := t.transform_expr(db_id)
-	mut typ := flat.source_type_name(t.node_type(db_expr))
-	if typ.len == 0 {
-		typ = flat.source_type_name(t.raw_checker_node_type(db_id))
+	mut typ := t.node_type(db_expr)
+	if typ == 0 {
+		typ = t.raw_checker_node_type(db_id)
 	}
-	if typ.len == 0 {
-		typ = flat.source_type_name(t.node_type(db_id))
+	if typ == 0 {
+		typ = t.node_type(db_id)
 	}
 	name := t.new_temp('sql_db')
-	t.pending_stmts << t.make_decl_assign_typed(name, db_expr, flat.source_type_id(typ))
+	t.pending_stmts << t.make_decl_assign_typed(name, db_expr, typ)
 	return t.make_ident(name)
 }
 
 fn (mut t Transformer) mark_sql_db_methods(db_id flat.NodeId) {
-	mut typ := flat.source_type_name(t.raw_checker_node_type(db_id))
-	if typ.len == 0 {
-		typ = flat.source_type_name(t.node_type(db_id))
+	mut typ := t.raw_checker_node_type(db_id)
+	if typ == 0 {
+		typ = t.node_type(db_id)
 	}
-	typ = flat.source_type_name(t.trim_pointer_type(t.normalize_type_alias(flat.source_type_id(typ))))
-	if typ.len == 0 {
+	typ = t.trim_pointer_type(t.normalize_type_alias(typ))
+	if typ == 0 {
 		return
 	}
-	mut receiver_types := [typ]
-	if typ == 'orm.Connection' {
+	mut receiver_types := [flat.source_type_name(typ)]
+	if flat.source_type_name(typ) == 'orm.Connection' {
 		receiver_types << 'sqlite.DB'
 		receiver_types << 'db.sqlite.DB'
 	}
@@ -1770,13 +1770,14 @@ fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, ty
 // Select an alias's declared or inherited method before builtin collection lowering.
 fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 	node := t.a.nodes[int(call)]
-	mut alias_return := flat.source_type_name(t.raw_call_decl_return_type(call, node) or { u32(0) })
+	mut alias_return := t.raw_call_decl_return_type(call, node) or { u32(0) }
 	if !isnil(t.tc) {
 		if ret := t.tc.fn_ret_types[t.resolve_call_name(node)] {
 			canonical_return_source_id := t.raw_call_return_type_name(ret.source_type_id(), node)
-			canonical_return := flat.source_type_name(canonical_return_source_id)
+			canonical_return_source_id_2 := canonical_return_source_id
+
 			if t.raw_return_type_contains_alias(canonical_return_source_id) {
-				alias_return = canonical_return
+				alias_return = canonical_return_source_id_2
 			}
 		}
 		callee := t.a.child_node(&node, 0)
@@ -1794,10 +1795,10 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 						return t.make_int_literal(0)
 					}
 					mut receiver_arg := receiver
-					mut receiver_arg_type := flat.source_type_name(t.normalize_type_alias(receiver_type_source_id))
+					mut receiver_arg_type := t.normalize_type_alias(receiver_type_source_id)
 					params := t.call_param_types(method)
 					if params.len > 0 {
-						receiver_depth, _ := pointer_type_depth_and_base(receiver_arg_type)
+						receiver_depth, _ := pointer_type_depth_and_base(flat.source_type_name(receiver_arg_type))
 						param_depth, _ := pointer_type_depth_and_base(flat.source_type_name(t.normalize_type_alias(t.semantic_type_name(params[0]))))
 						// Ordinary receiver conversion handles the final value/reference layer.
 						// Remove any extra indirections first, retaining reference parameters.
@@ -1805,8 +1806,8 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 						if receiver_depth > remaining_depth {
 							for _ in remaining_depth .. receiver_depth {
 								receiver_arg = t.make_prefix(.mul, receiver_arg)
-								receiver_arg_type = receiver_arg_type[1..]
-								t.set_node_typ(int(receiver_arg), flat.source_type_id(receiver_arg_type))
+								receiver_arg_type = flat.source_type_id(flat.source_type_name(receiver_arg_type)[1..])
+								t.set_node_typ(int(receiver_arg), receiver_arg_type)
 							}
 						}
 					}
@@ -1818,8 +1819,8 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 		}
 	}
 	result := t.transform_expr(call)
-	if alias_return.len > 0 {
-		t.set_node_typ(int(result), flat.source_type_id(alias_return))
+	if alias_return != 0 {
+		t.set_node_typ(int(result), alias_return)
 	}
 	return result
 }
@@ -1830,21 +1831,22 @@ fn (mut t Transformer) sql_value_call_callee(callee_name string) flat.NodeId {
 	if parts.len < 2 {
 		return t.make_ident(bound_name)
 	}
-	mut receiver_type := flat.source_type_name(t.sql_root_value_type_name(parts[0]))
-	if receiver_type.len == 0 {
+	mut receiver_type := t.sql_root_value_type_name(parts[0])
+	if receiver_type == 0 {
 		callee := t.resolve_imported_type_name(bound_name) or { bound_name }
 		return t.sql_qualified_selector(callee)
 	}
 	mut receiver := t.make_ident(parts[0])
-	t.set_node_typ(int(receiver), flat.source_type_id(receiver_type))
+	t.set_node_typ(int(receiver), receiver_type)
 	for field in parts[1..parts.len - 1] {
-		field_type_source_id := t.lookup_struct_field_type(flat.source_type_id(receiver_type), field) or {
-			t.builtin_selector_type(flat.source_type_id(receiver_type), field) or { u32(0) }
+		field_type_source_id := t.lookup_struct_field_type(receiver_type, field) or {
+			t.builtin_selector_type(receiver_type, field) or { u32(0) }
 		}
-		field_type := flat.source_type_name(field_type_source_id)
+		field_type_source_id_2 := field_type_source_id
+
 		receiver = t.make_selector(receiver, field, field_type_source_id)
 		if field_type_source_id != 0 {
-			receiver_type = field_type
+			receiver_type = field_type_source_id_2
 		}
 	}
 	return t.make_selector(receiver, parts.last(), u32(0))
@@ -1941,27 +1943,27 @@ fn (mut t Transformer) sql_index_expr_from_tokens_for_type(tokens []string, typ_
 }
 
 fn (t &Transformer) sql_index_elem_type(base flat.NodeId) u32 {
-	mut base_type := flat.source_type_name(t.node_type(base))
-	if base_type.len == 0 {
+	mut base_type := t.node_type(base)
+	if base_type == 0 {
 		return u32(0)
 	}
-	base_type = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type)))
-	if base_type.starts_with('&') {
-		base_type = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type[1..])))
+	base_type = t.normalize_type_alias(base_type)
+	if flat.source_type_shape(base_type).has(.pointer) {
+		base_type = t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type)[1..]))
 	}
-	if base_type.starts_with('[]') {
-		return t.normalize_type_alias(flat.source_type_id(base_type[2..]))
+	if flat.source_type_shape(base_type).has(.array_type) {
+		return t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type)[2..]))
 	}
-	if t.is_fixed_array_type(flat.source_type_id(base_type)) {
-		return t.normalize_type_alias(flat.source_type_id(for_in_fixed_array_elem_type(base_type)))
+	if t.is_fixed_array_type(base_type) {
+		return t.normalize_type_alias(flat.source_type_id(for_in_fixed_array_elem_type(flat.source_type_name(base_type))))
 	}
-	if base_type.starts_with('map[') {
-		bracket_end := base_type.index(']') or { return u32(0) }
-		if bracket_end + 1 < base_type.len {
-			return t.normalize_type_alias(flat.source_type_id(base_type[bracket_end + 1..]))
+	if flat.source_type_shape(base_type).has(.map_type) {
+		bracket_end := flat.source_type_name(base_type).index(']') or { return u32(0) }
+		if bracket_end + 1 < flat.source_type_name(base_type).len {
+			return t.normalize_type_alias(flat.source_type_id(flat.source_type_name(base_type)[bracket_end + 1..]))
 		}
 	}
-	if base_type == 'string' {
+	if base_type == flat.source_type_string {
 		return flat.source_type_u8
 	}
 	return u32(0)
@@ -3648,18 +3650,18 @@ fn (t &Transformer) sql_insert_value_is_scalar_struct(value_name string, table_n
 	if !sql_token_is_plain_ident(value_name) {
 		return false
 	}
-	mut typ := flat.source_type_name(t.sql_insert_value_type_name(value_name))
-	for typ.starts_with('&') {
-		typ = typ[1..]
+	mut typ := t.sql_insert_value_type_name(value_name)
+	for flat.source_type_shape(typ).has(.pointer) {
+		typ = flat.source_type_id(flat.source_type_name(typ)[1..])
 	}
-	if typ.len == 0 || typ.starts_with('[]') {
+	if typ == 0 || flat.source_type_shape(typ).has(.array_type) {
 		return false
 	}
-	if typ == table_name {
+	if flat.source_type_name(typ) == table_name {
 		return true
 	}
 	table_info := t.sql_table_info(table_name) or { return false }
-	return t.sql_table_type_names_match(t.sql_resolved_table_name(typ), table_info.name)
+	return t.sql_table_type_names_match(t.sql_resolved_table_name(flat.source_type_name(typ)), table_info.name)
 }
 
 fn (t &Transformer) sql_insert_value_is_array_of_table(value_name string, table_name string) bool {
@@ -3721,14 +3723,14 @@ fn (t &Transformer) sql_selector_value_type_name(value_name string) u32 {
 	if parts.len < 2 {
 		return u32(0)
 	}
-	mut typ := flat.source_type_name(t.sql_root_value_type_name(parts[0]))
+	mut typ := t.sql_root_value_type_name(parts[0])
 	for field_name in parts[1..] {
-		if typ.len == 0 {
+		if typ == 0 {
 			return u32(0)
 		}
-		typ = flat.source_type_name(t.lookup_struct_field_type(flat.source_type_id(typ), field_name) or { return u32(0) })
+		typ = t.lookup_struct_field_type(typ, field_name) or { return u32(0) }
 	}
-	return flat.source_type_id(typ)
+	return typ
 }
 
 fn (t &Transformer) sql_root_value_type_name(value_name string) u32 {
@@ -3741,15 +3743,15 @@ fn (t &Transformer) sql_root_value_type_name(value_name string) u32 {
 			return narrowed_source_id_2
 		}
 	}
-	mut typ := flat.source_type_name(t.var_type(bound_name))
-	if typ.len == 0 && !isnil(t.tc) {
+	mut typ := t.var_type(bound_name)
+	if typ == 0 && !isnil(t.tc) {
 		if current := t.tc.cur_scope.lookup(bound_name) {
-			typ = current.name()
+			typ = current.source_type_id()
 		} else if file := t.tc.file_scope.lookup(bound_name) {
-			typ = file.name()
+			typ = file.source_type_id()
 		}
 	}
-	return flat.source_type_id(typ)
+	return typ
 }
 
 fn sql_clean_tokens(tokens []string) []string {

@@ -68,9 +68,9 @@ fn (mut t Transformer) try_autolock_shared_map_read(id flat.NodeId) ?flat.NodeId
 
 // shared_map_rlock_expr returns `rlock base { id }`.
 fn (mut t Transformer) shared_map_rlock_expr(id flat.NodeId, base_id flat.NodeId) flat.NodeId {
-	mut typ := flat.source_type_name(t.resolve_expr_type(id))
-	if !decl_type_is_usable(flat.source_type_id(typ)) {
-		typ = flat.source_type_name(t.checker_expr_type_name(id) or { u32(0) })
+	mut typ := t.resolve_expr_type(id)
+	if !decl_type_is_usable(typ) {
+		typ = t.checker_expr_type_name(id) or { u32(0) }
 	}
 	body := t.make_block([t.make_expr_stmt(id)])
 	start := t.a.children.len
@@ -79,7 +79,7 @@ fn (mut t Transformer) shared_map_rlock_expr(id flat.NodeId, base_id flat.NodeId
 	return t.a.add_node(flat.Node{
 		kind:           .lock_expr
 		value:          'rlock'
-		typ:            flat.source_type_id(typ)
+		typ:            typ
 		children_start: start
 		children_count: 2
 		pos:            t.a.nodes[int(id)].pos
@@ -411,14 +411,14 @@ fn (t &Transformer) shared_map_base(id flat.NodeId) ?flat.NodeId {
 		if node.value.len == 0 {
 			return none
 		}
-		mut typ := flat.source_type_name(t.raw_var_type(node.value))
-		if typ.len == 0 {
-			typ = flat.source_type_name(t.current_module_global_type(node.value) or { u32(0) })
+		mut typ := t.raw_var_type(node.value)
+		if typ == 0 {
+			typ = t.current_module_global_type(node.value) or { u32(0) }
 		}
-		if typ.len == 0 && t.local_decl_is_shared_before(node.value, id) {
-			typ = 'shared ' + (flat.source_type_name(t.checker_expr_type_name(id) or { u32(0) }))
+		if typ == 0 && t.local_decl_is_shared_before(node.value, id) {
+			typ = flat.source_type_id('shared ' + (flat.source_type_name(t.checker_expr_type_name(id) or { u32(0) })))
 		}
-		if t.is_shared_map_type_text(flat.source_type_id(typ)) {
+		if t.is_shared_map_type_text(typ) {
 			return id
 		}
 		return none
@@ -433,11 +433,11 @@ fn (t &Transformer) shared_map_base(id flat.NodeId) ?flat.NodeId {
 			return none
 		}
 		typ_source_id := t.raw_selector_field_type(id) or {
-			mut base_type := flat.source_type_name(t.original_expr_type(base_id))
-			if base_type.len == 0 {
-				base_type = flat.source_type_name(t.node_type(base_id))
+			mut base_type := t.original_expr_type(base_id)
+			if base_type == 0 {
+				base_type = t.node_type(base_id)
 			}
-			t.promoted_field_raw_type(flat.source_type_id(base_type.trim_left('&')), node.value, 0) or { return none }
+			t.promoted_field_raw_type(flat.source_type_id(flat.source_type_name(base_type).trim_left('&')), node.value, 0) or { return none }
 		}
 
 		if t.is_shared_map_type_text(typ_source_id) {

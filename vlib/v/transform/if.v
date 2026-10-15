@@ -327,26 +327,26 @@ fn (mut t Transformer) try_expand_if_guard_with_tail(node flat.Node, tail GuardR
 			return t.expand_channel_receive_if_guard(node, lhs.value, info, tail)
 		}
 	}
-	mut rhs_type := flat.source_type_name(t.if_guard_optional_type_name(rhs_id))
-	if !t.is_optional_type_name(flat.source_type_id(rhs_type)) {
+	mut rhs_type := t.if_guard_optional_type_name(rhs_id)
+	if !t.is_optional_type_name(rhs_type) {
 		return none
 	}
-	rhs_type = flat.source_type_name(t.qualify_optional_type(flat.source_type_id(rhs_type)))
-	value_type_source_id := t.optional_base_type(flat.source_type_id(rhs_type))
+	rhs_type = t.qualify_optional_type(rhs_type)
+	value_type_source_id := t.optional_base_type(rhs_type)
 
 	tmp_name := t.new_temp('if_guard')
-	mut rhs_expr, source_clear := t.transform_if_guard_wrapper_source(rhs_id, flat.source_type_id(rhs_type))
+	mut rhs_expr, source_clear := t.transform_if_guard_wrapper_source(rhs_id, rhs_type)
 	if !t.is_optional_type_name(t.node_type(rhs_expr)) {
 		rhs_node := t.a.nodes[int(rhs_expr)]
 		if rhs_node.kind == .selector && rhs_node.children_count > 0 {
-			rhs_expr = t.make_selector_op(t.a.child(&rhs_node, 0), rhs_node.value, flat.source_type_id(rhs_type), rhs_node.op)
+			rhs_expr = t.make_selector_op(t.a.child(&rhs_node, 0), rhs_node.value, rhs_type, rhs_node.op)
 		} else {
-			t.set_node_typ(int(rhs_expr), flat.source_type_id(rhs_type))
+			t.set_node_typ(int(rhs_expr), rhs_type)
 		}
 	}
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
-	tmp_decl := t.make_decl_assign_typed(tmp_name, rhs_expr, flat.source_type_id(rhs_type))
+	tmp_decl := t.make_decl_assign_typed(tmp_name, rhs_expr, rhs_type)
 	ok_cond := t.make_selector(t.make_ident(tmp_name), 'ok', flat.source_type_bool)
 	source_clear_stmts := t.if_guard_source_clear_stmts(source_clear)
 	saved_var_types := t.var_types.clone()
@@ -761,16 +761,16 @@ fn (mut t Transformer) try_expand_if_expr_value(id flat.NodeId, node flat.Node) 
 	if node.children_count < 3 {
 		return none
 	}
-	mut result_type := flat.source_type_name(t.if_expr_result_type(id, node))
+	mut result_type := t.if_expr_result_type(id, node)
 	if guard_result_type_source_id := t.if_expr_guard_result_type(node) {
-		guard_result_type := flat.source_type_name(guard_result_type_source_id)
+		guard_result_type_source_id_2 := guard_result_type_source_id
 
-		result_type = guard_result_type
+		result_type = guard_result_type_source_id_2
 	}
-	if result_type.len == 0 || result_type == 'void' {
+	if result_type == 0 || result_type == flat.source_type_void {
 		return none
 	}
-	return t.try_expand_if_expr_value_for_type(id, node, flat.source_type_id(result_type))
+	return t.try_expand_if_expr_value_for_type(id, node, result_type)
 }
 
 fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?u32 {
@@ -1199,13 +1199,13 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			// a call to a generic function. Resolve the call's return type instead
 			// so branch types (e.g. an if-expression whose branch is `math.min[T]`)
 			// keep the called function's real type.
-			mut call_ret := flat.source_type_name(t.get_call_return_type(id, node))
-			if call_ret.len == 0 || call_ret in ['unknown', 'void']
-				|| t.generic_arg_is_unresolved(flat.source_type_id(call_ret)) {
-				call_ret = flat.source_type_name(t.generic_call_declared_return_type(id, node) or { u32(0) })
+			mut call_ret := t.get_call_return_type(id, node)
+			if call_ret == 0 || flat.source_type_name(call_ret) in ['unknown', 'void']
+				|| t.generic_arg_is_unresolved(call_ret) {
+				call_ret = t.generic_call_declared_return_type(id, node) or { u32(0) }
 			}
-			if call_ret.len > 0 && call_ret !in ['unknown', 'void'] {
-				return flat.source_type_id(call_ret)
+			if call_ret != 0 && flat.source_type_name(call_ret) !in ['unknown', 'void'] {
+				return call_ret
 			}
 			return t.node_type(id)
 		}
@@ -1461,18 +1461,18 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	if info := t.array_index_info(rhs_id) {
 		return t.build_array_index_if_value_guard_chain(if_node, lhs.value, info, target_name, target_type_id)
 	}
-	mut rhs_type := flat.source_type_name(t.if_guard_optional_type_name(rhs_id))
-	if !t.is_optional_type_name(flat.source_type_id(rhs_type)) {
+	mut rhs_type := t.if_guard_optional_type_name(rhs_id)
+	if !t.is_optional_type_name(rhs_type) {
 		return none
 	}
-	rhs_type = flat.source_type_name(t.qualify_optional_type(flat.source_type_id(rhs_type)))
-	value_type_source_id := t.optional_base_type(flat.source_type_id(rhs_type))
+	rhs_type = t.qualify_optional_type(rhs_type)
+	value_type_source_id := t.optional_base_type(rhs_type)
 
 	tmp_name := t.new_temp('if_guard')
-	rhs_expr, source_clear := t.transform_if_guard_wrapper_source(rhs_id, flat.source_type_id(rhs_type))
+	rhs_expr, source_clear := t.transform_if_guard_wrapper_source(rhs_id, rhs_type)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
-	result << t.make_decl_assign_typed(tmp_name, rhs_expr, flat.source_type_id(rhs_type))
+	result << t.make_decl_assign_typed(tmp_name, rhs_expr, rhs_type)
 	result << t.if_guard_source_clear_stmts(source_clear)
 	ok_cond := t.make_selector(t.make_ident(tmp_name), 'ok', flat.source_type_bool)
 	// An if-guard condition stores the call at child 1 and any extra
@@ -2376,22 +2376,22 @@ fn (t &Transformer) option_none_cmp_info(cond flat.Node) ?IsExprInfo {
 	if ek.len == 0 {
 		return none
 	}
-	mut expr_type := flat.source_type_name(t.original_expr_type(opt_id))
-	if !t.is_optional_type_name(flat.source_type_id(expr_type)) {
+	mut expr_type := t.original_expr_type(opt_id)
+	if !t.is_optional_type_name(expr_type) {
 		if sc := t.find_smartcast(ek) {
-			expr_type = flat.source_type_name(t.smartcast_target_type(sc))
+			expr_type = t.smartcast_target_type(sc)
 		}
 	}
-	if !t.is_optional_type_name(flat.source_type_id(expr_type)) {
+	if !t.is_optional_type_name(expr_type) {
 		opt_node := t.a.node(opt_id)
 		if opt_node.kind == .ident {
-			expr_type = flat.source_type_name(t.raw_var_type(opt_node.value))
+			expr_type = t.raw_var_type(opt_node.value)
 		}
 	}
-	if !t.is_optional_type_name(flat.source_type_id(expr_type)) {
+	if !t.is_optional_type_name(expr_type) {
 		return none
 	}
-	base_source_id_2 := t.optional_base_type(flat.source_type_id(expr_type))
+	base_source_id_2 := t.optional_base_type(expr_type)
 	base := flat.source_type_name(base_source_id_2)
 	if base_source_id_2 == 0 || base_source_id_2 == flat.source_type_void {
 		return none

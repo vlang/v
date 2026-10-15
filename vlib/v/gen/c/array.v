@@ -114,15 +114,15 @@ fn (g &FlatGen) fixed_array_type_from_alias_text(type_name_id u32) ?types.ArrayF
 		if fixed := array_fixed_type(g.tc.parse_type(flat.source_type_id(cur))) {
 			return fixed
 		}
-		mut next := flat.source_type_name(g.tc.type_aliases.type_id(cur) or { u32(0) })
-		if next.len == 0 {
+		mut next := g.tc.type_aliases.type_id(cur) or { u32(0) }
+		if next == 0 {
 			qname := g.tc.qualify_name(cur)
-			next = flat.source_type_name(g.tc.type_aliases.type_id(qname) or { u32(0) })
+			next = g.tc.type_aliases.type_id(qname) or { u32(0) }
 		}
-		if next.len == 0 || next == cur {
+		if next == 0 || flat.source_type_name(next) == cur {
 			return none
 		}
-		cur = next
+		cur = flat.source_type_name(next)
 	}
 	return none
 }

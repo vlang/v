@@ -13315,14 +13315,14 @@ fn (g &FlatGen) cast_alias_matches_expected_storage(alias_name string, expected 
 	if alias_name.len == 0 {
 		return false
 	}
-	mut target_name := flat.source_type_name(g.tc.type_aliases.type_id(alias_name) or { u32(0) })
-	if target_name.len == 0 {
-		target_name = flat.source_type_name(g.tc.type_aliases.type_id(g.tc.qualify_name(alias_name)) or { u32(0) })
+	mut target_name := g.tc.type_aliases.type_id(alias_name) or { u32(0) }
+	if target_name == 0 {
+		target_name = g.tc.type_aliases.type_id(g.tc.qualify_name(alias_name)) or { u32(0) }
 	}
-	if target_name.len == 0 {
+	if target_name == 0 {
 		return false
 	}
-	target := select_receive_unalias_type(g.tc.parse_type(flat.source_type_id(target_name)))
+	target := select_receive_unalias_type(g.tc.parse_type(target_name))
 	expected_base := select_receive_unalias_type(expected)
 	return g.type_names_match(target, expected_base) || g.tc.c_type(target) == g.tc.c_type(expected_base)
 }
