@@ -1244,6 +1244,8 @@ struct FastcDeclarationAttribute {
 	is_params   bool
 	is_typedef  bool
 	is_c_extern bool
+	// is_packed is `@[packed]`, `@[_packed]` or `@[_pack: '1']`: no padding between fields.
+	is_packed bool
 }
 
 struct FastcEnumInfo {
@@ -2040,7 +2042,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 	}
 	timer.mark('wait_references')
-	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, used_function_names, prefs.building_v, prefs)
+	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, struct_field_info, used_function_names, prefs.building_v, prefs)
 	struct_field_lookup := constant_output.struct_field_lookup.move()
 	// The per-file prototype blocks are emitted as pieces too, so they are
 	// never concatenated into one buffer.
@@ -3494,6 +3496,14 @@ fn fastc_interface_method_signatures_match(interface_signature FastcFunctionSign
 		}
 		interface_parameter_is_mut := i < interface_signature.parameter_mutability.len && interface_signature.parameter_mutability[i]
 		candidate_parameter_is_mut := i < candidate_signature.parameter_mutability.len && candidate_signature.parameter_mutability[i]
+		if i == 0 {
+			// A method in the interface's `mut:` section may be implemented with an
+			// immutable receiver; only a `mut` receiver needs a `mut` interface method.
+			if candidate_parameter_is_mut && !interface_parameter_is_mut {
+				return false
+			}
+			continue
+		}
 		if candidate_parameter_is_mut != interface_parameter_is_mut {
 			return false
 		}
@@ -3548,7 +3558,7 @@ fn fastc_promote_embedded_interface_methods(embed_embedders []u32, embed_embedde
 	}
 }
 
-fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, function_c_names map[string]string, interface_methods map[string]bool, used_function_names map[string]bool, selfhost bool) string {
+fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, function_c_names map[string]string, interface_methods map[string]bool, struct_field_info map[string][]FastcStructField, used_function_names map[string]bool, selfhost bool) string {
 	mut out := strings.new_builder(1024)
 	mut function_keys := functions.keys()
 	function_keys.sort()
@@ -3558,6 +3568,21 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 	}
 	mut interface_method_keys := interface_methods.keys()
 	interface_method_keys.sort()
+	// Structs may implement an interface through an embedded struct's methods.
+	mut struct_keys_by_c_type := map[string]string{}
+	mut embedding_structs := []string{}
+	for key, kind in declared_kinds {
+		if kind != .struct_ {
+			continue
+		}
+		c_type := fastc_c_declared_type_name(key)
+		struct_keys_by_c_type[c_type] = key
+		fields := struct_field_info[c_type] or { []FastcStructField{} }
+		if fields.any(it.name.starts_with('__embedded_')) {
+			embedding_structs << key
+		}
+	}
+	embedding_structs.sort()
 	for interface_key, kind in declared_kinds {
 		if kind != .interface_ {
 			continue
@@ -3594,6 +3619,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			} else {
 				function_keys.len
 			}
+			mut implemented := map[string]bool{}
 			for candidate_index in 0 .. candidate_count {
 				candidate_key := function_keys[candidate_index]
 				if candidate_key == interface_method_key || function_method_names[candidate_index] != method_name {
@@ -3607,6 +3633,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				if !fastc_interface_method_signatures_match(interface_signature, candidate_signature) {
 					continue
 				}
+				implemented[receiver_key] = true
 				receiver_type := fastc_c_declared_type_name(receiver_key)
 				expected_receiver := candidate_signature.parameter_types.at(0)
 				receiver_argument := if expected_receiver.ends_with('*') {
@@ -3631,7 +3658,47 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 					'return ' + call + ';'
 				}}')
 			}
-			out.writeln('\tdefault: ${if interface_signature.return_type_text() == 'void' {
+			if candidate_count > 0 {
+				for struct_key in embedding_structs {
+					if struct_key in implemented {
+						continue
+					}
+					struct_type := fastc_c_declared_type_name(struct_key)
+					embedded := fastc_embedded_method(struct_type, method_name, interface_signature, functions, struct_field_info, struct_keys_by_c_type, 0) or {
+						continue
+					}
+					embedded_signature := functions[embedded.key]
+					field := '((${struct_type} *)value._object)->${embedded.path}'
+					receiver_argument := if embedded_signature.parameter_types.at(0).ends_with('*') {
+						'&(${field})'
+					} else {
+						field
+					}
+					call_arguments := if arguments.len > 0 {
+						',' + arguments.join(',')
+					} else {
+						''
+					}
+					embedded_c_name := if compact_name := function_c_names[embedded.key] {
+						compact_name
+					} else {
+						fastc_method_c_name(embedded_signature.module_name, fastc_c_declared_type_name(embedded.key.all_before_last('.')), method_name)
+					}
+					call := '${embedded_c_name}(${receiver_argument}${call_arguments})'
+					out.writeln('\tcase __v_typeid_${struct_type}: ${if interface_signature.return_type_text() == 'void' {
+						call + '; return;'
+					} else {
+						'return ' + call + ';'
+					}}')
+				}
+			}
+			out.writeln('\tdefault:')
+			if selfhost {
+				// No case matched: the value's type was not recognised as implementing
+				// the interface. Stop loudly rather than return a zero value.
+				out.writeln('\t\tbuiltin__panic(_S("fastc: no implementation of `${interface_key}.${method_name}` for this value"));')
+			}
+			out.writeln('\t\t${if interface_signature.return_type_text() == 'void' {
 				'return;'
 			} else {
 				'return (' + interface_signature.return_type_text() + '){0};'
@@ -3642,6 +3709,43 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 		}
 	}
 	return out.str()
+}
+
+struct FastcEmbeddedMethod {
+	key  string
+	path string
+}
+
+// fastc_embedded_method finds the method an interface call reaches through the embedded
+// struct fields of `c_type`: its key and the path of `__embedded_N` fields leading to it.
+fn fastc_embedded_method(c_type string, method_name string, interface_signature FastcFunctionSignature, functions map[string]FastcFunctionSignature, struct_field_info map[string][]FastcStructField, struct_keys_by_c_type map[string]string, depth int) ?FastcEmbeddedMethod {
+	if depth > 8 {
+		return none
+	}
+	fields := struct_field_info[c_type] or { return none }
+	for field in fields {
+		if !field.name.starts_with('__embedded_') {
+			continue
+		}
+		field_type := field.typ_text()
+		embedded_key := struct_keys_by_c_type[field_type] or { continue }
+		method_key := '${embedded_key}.${method_name}'
+		if signature := functions[method_key] {
+			if fastc_interface_method_signatures_match(interface_signature, signature) {
+				return FastcEmbeddedMethod{
+					key:  method_key
+					path: field.name
+				}
+			}
+		}
+		if nested := fastc_embedded_method(field_type, method_name, interface_signature, functions, struct_field_info, struct_keys_by_c_type, depth + 1) {
+			return FastcEmbeddedMethod{
+				key:  nested.key
+				path: '${field.name}.${nested.path}'
+			}
+		}
+	}
+	return none
 }
 
 fn fastc_hoist_c_directives(source string) FastcHoistedCSource {

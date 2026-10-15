@@ -1251,6 +1251,12 @@ fn (mut g Parser) parse_return() !bool {
 		&& !g.should_box_variant(g.option_return_type_text(), actual_type) {
 		return g.unsupported('an Option cannot carry an error as its failure state')
 	}
+	if g.selfhost && g.return_type_text() == '__v_result' && actual_type.trim_right('*') != 'IError'
+		&& g.returns_error_value(actual_type) {
+		// `return MyError{}` in a `!T` function returns that error, not a `T`.
+		expression = g.interface_value_expression('IError', actual_type, expression)
+		actual_type = 'IError'
+	}
 	if g.selfhost && g.return_type_text() == '__v_result' && actual_type.trim_right('*') == 'IError' {
 		expression = '(__v_result){.err=${expression}, .state=1}'
 		actual_type = g.return_type_text()
@@ -1269,6 +1275,22 @@ fn (mut g Parser) parse_return() !bool {
 	g.consume_statement_end()
 	g.write_return_expression(expression, actual_type)
 	return true
+}
+
+// returns_error_value reports whether a value of `actual_type`, returned from the current
+// `!T` function, is its error: a struct implementing IError (`msg` and `code`, its own or
+// through an embedded `Error`) that is not the success type `T` itself.
+fn (g &Parser) returns_error_value(actual_type string) bool {
+	value_type := fastc_trim_pointer_suffix(fastc_normalize_inferred_type(actual_type))
+	if value_type == '' || g.declared_kinds[g.semantic_type_key(value_type)] != .struct_ {
+		return false
+	}
+	if fastc_trim_pointer_suffix(fastc_normalize_inferred_type(g.option_return_type_text())) == value_type {
+		return false
+	}
+	msg_key, _ := g.resolve_method(value_type, 'msg')
+	code_key, _ := g.resolve_method(value_type, 'code')
+	return msg_key in g.functions && code_key in g.functions
 }
 
 fn (mut g Parser) write_return_expression(expression string, expression_type string) {

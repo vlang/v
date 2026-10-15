@@ -1175,6 +1175,13 @@ fn fastc_overloaded_binary_precedence(tok token.Token) int {
 	}
 }
 
+// fastc_token_ends_operand reports whether `tok` can end an operand, so that an operator
+// after it is binary (`a - b`) rather than unary (`a & -b`, `x + &y`).
+fn fastc_token_ends_operand(tok token.Token) bool {
+	return tok in [.name, .number, .string, .char, .rpar, .rsbr, .rcbr, .key_true, .key_false,
+		.key_nil, .key_none, .inc, .dec, .question, .not]
+}
+
 fn fastc_has_top_level_assignment(tokens []FastcExpressionToken) bool {
 	mut depth := 0
 	for item in tokens {
@@ -1481,13 +1488,22 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 	mut depth := 0
 	mut operator_index := -1
 	mut precedence := 100
+	mut binary_operators := 0
+	mut has_c_regrouped_operator := false
 	for i, item in tokens {
 		if item.tok in [.lpar, .lsbr, .lcbr] {
 			depth++
 		} else if item.tok in [.rpar, .rsbr, .rcbr] {
 			depth--
-		} else if depth == 0 && i > 0 && i + 1 < tokens.len {
+		} else if depth == 0 && i > 0 && i + 1 < tokens.len
+			&& fastc_token_ends_operand(tokens[i - 1].tok) {
 			candidate_precedence := fastc_overloaded_binary_precedence(item.tok)
+			if candidate_precedence > 0 {
+				binary_operators++
+				if item.tok in [.amp, .pipe, .xor, .left_shift, .right_shift, .right_shift_unsigned] {
+					has_c_regrouped_operator = true
+				}
+			}
 			if candidate_precedence > 0 && candidate_precedence <= precedence {
 				operator_index = i
 				precedence = candidate_precedence
@@ -1497,6 +1513,9 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 	if operator_index < 1 {
 		return none
 	}
+	// C binds `+ - * / %` tighter than `<< >> &` and `& ^ |` looser than V does, so an
+	// expression mixing them must be grouped explicitly (`a & b + c` is `(a & b) + c`).
+	v_grouping := has_c_regrouped_operator && binary_operators > 1
 	left_tokens := tokens[..operator_index]
 	right_tokens := tokens[operator_index + 1..]
 	left_type := g.infer_expression_type(left_tokens) or { return none }
@@ -1524,7 +1543,8 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		}
 		guarded_shift := g.translated && tokens[operator_index].tok in [.left_shift, .right_shift,
 			.right_shift_unsigned]
-		if left_special.source == '' && right_special.source == '' && !guarded_shift && !reference_arithmetic {
+		if left_special.source == '' && right_special.source == '' && !guarded_shift && !reference_arithmetic
+			&& !v_grouping {
 			return none
 		}
 		left := if left_special.source != '' {
@@ -3471,6 +3491,9 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 			}
 		}
 		inner_expected_type := expected_type.trim_right('*')
+		if view := g.render_fixed_array_mut_argument(tokens[1..], inner_expected_type) {
+			return view
+		}
 		inner := g.render_call_argument_expression(tokens[1..], inner_expected_type) or {
 			return none
 		}
