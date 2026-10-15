@@ -32,9 +32,9 @@ fn (mut g FlatGen) gen_live_declarations() {
  functions := g.live_functions()
  if functions.len == 0 { return }
  if g.target.os == 'windows' {
-  g.writeln('static HANDLE __v_live_mutex;\nstatic HANDLE* v_live_fn_mutex_ptr(void) {\n if (g_live_reload_info) { return (HANDLE*)((v__live__LiveReloadInfo*)g_live_reload_info)->live_fn_mutex; }\n if (!__v_live_mutex) { __v_live_mutex = CreateMutexA(0, 0, 0); }\n return &__v_live_mutex;\n}\nstatic void v_live_lock(void) { WaitForSingleObject(*v_live_fn_mutex_ptr(), INFINITE); }\nstatic void v_live_unlock(void) { ReleaseMutex(*v_live_fn_mutex_ptr()); }')
+  g.writeln('static HANDLE __v_live_mutex;\nstatic HANDLE* v_live_fn_mutex_ptr(void) {\n if (g_live_reload_info) { return (HANDLE*)((live__LiveReloadInfo*)g_live_reload_info)->live_fn_mutex; }\n if (!__v_live_mutex) { __v_live_mutex = CreateMutexA(0, 0, 0); }\n return &__v_live_mutex;\n}\nstatic void v_live_lock(void) { WaitForSingleObject(*v_live_fn_mutex_ptr(), INFINITE); }\nstatic void v_live_unlock(void) { ReleaseMutex(*v_live_fn_mutex_ptr()); }')
  } else {
-  g.writeln('#include <pthread.h>\n#include <dlfcn.h>\nstatic pthread_mutex_t __v_live_mutex;\nstatic pthread_once_t __v_live_mutex_once = PTHREAD_ONCE_INIT;\nstatic void v_live_init_mutex(void) {\n pthread_mutexattr_t attr;\n pthread_mutexattr_init(&attr);\n pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);\n pthread_mutex_init(&__v_live_mutex, &attr);\n pthread_mutexattr_destroy(&attr);\n}\nstatic pthread_mutex_t* v_live_fn_mutex_ptr(void) {\n if (g_live_reload_info) { return (pthread_mutex_t*)((v__live__LiveReloadInfo*)g_live_reload_info)->live_fn_mutex; }\n pthread_once(&__v_live_mutex_once, v_live_init_mutex);\n return &__v_live_mutex;\n}\nstatic void v_live_lock(void) { pthread_mutex_lock(v_live_fn_mutex_ptr()); }\nstatic void v_live_unlock(void) { pthread_mutex_unlock(v_live_fn_mutex_ptr()); }')
+  g.writeln('#include <pthread.h>\n#include <dlfcn.h>\nstatic pthread_mutex_t __v_live_mutex;\nstatic pthread_once_t __v_live_mutex_once = PTHREAD_ONCE_INIT;\nstatic void v_live_init_mutex(void) {\n pthread_mutexattr_t attr;\n pthread_mutexattr_init(&attr);\n pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);\n pthread_mutex_init(&__v_live_mutex, &attr);\n pthread_mutexattr_destroy(&attr);\n}\nstatic pthread_mutex_t* v_live_fn_mutex_ptr(void) {\n if (g_live_reload_info) { return (pthread_mutex_t*)((live__LiveReloadInfo*)g_live_reload_info)->live_fn_mutex; }\n pthread_once(&__v_live_mutex_once, v_live_init_mutex);\n return &__v_live_mutex;\n}\nstatic void v_live_lock(void) { pthread_mutex_lock(v_live_fn_mutex_ptr()); }\nstatic void v_live_unlock(void) { pthread_mutex_unlock(v_live_fn_mutex_ptr()); }')
  }
  old_module := g.tc.cur_module
  old_file := g.tc.cur_file
@@ -89,16 +89,16 @@ fn (mut g FlatGen) gen_live_initialization() {
  if functions.len == 0 { return }
  options := '-cc ${os.quoted_path(g.ccompiler)} -sharedlive -shared ${if g.is_debug { '-cg' } else { '' }}'
  g.writeln('{')
- g.writeln('v__live__LiveReloadInfo* live_info = v__live__executable__new_live_reload_info(builtin__tos2((u8*)"${reflection_c_string(g.live_source_path)}"), builtin__tos2((u8*)"${reflection_c_string(g.compiler_vexe)}"), builtin__tos2((u8*)"${reflection_c_string(options)}"), v_live_fn_mutex_ptr(), v_bind_live_symbols);')
+ g.writeln('live__LiveReloadInfo* live_info = executable__new_live_reload_info(builtin__tos2((u8*)"${reflection_c_string(g.live_source_path)}"), builtin__tos2((u8*)"${reflection_c_string(g.compiler_vexe)}"), builtin__tos2((u8*)"${reflection_c_string(options)}"), v_live_fn_mutex_ptr(), v_bind_live_symbols);')
  mut files := map[string]bool{}
  for item in functions {
   path := os.real_path(item.file)
   if path !in files {
-   g.writeln('v__live__executable__add_live_monitored_file(live_info, builtin__tos2((u8*)"${reflection_c_string(path)}"));')
+   g.writeln('executable__add_live_monitored_file(live_info, builtin__tos2((u8*)"${reflection_c_string(path)}"));')
    files[path] = true
   }
  }
  g.writeln('g_live_reload_info = live_info;')
- g.writeln('v__live__executable__start_reloader(live_info);')
+ g.writeln('executable__start_reloader(live_info);')
  g.writeln('}')
 }
