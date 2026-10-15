@@ -219,7 +219,8 @@ if !stage_error! NEQ 0 (
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
 REM V3 supplies the absolute bundled-TCC root itself. A relative -B here would
 REM override it after V3 changes into its isolated link directory.
-"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v
+set updated_vflags=-cc "!tcc_exe!"
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !updated_vflags! -o "%V_UPDATED%" cmd/v
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE%"
 exit /b !stage_error!
@@ -230,7 +231,8 @@ if not exist "%V_EXE%" (
 	exit /b 1
 )
 echo  ^> Compiling "%V_UPDATED%" from cmd/v with the self-hosted compiler "%V_EXE%"
-"%V_EXE%" %V_BOOTSTRAP_VFLAGS% -g -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v
+set updated_vflags=-cc "!tcc_exe!"
+"%V_EXE%" %V_BOOTSTRAP_VFLAGS% -g !updated_vflags! -o "%V_UPDATED%" cmd/v
 set self_hosted_error=!ERRORLEVEL!
 if !self_hosted_error! NEQ 0 call :try_delete "%V_UPDATED%"
 exit /b !self_hosted_error!
@@ -245,7 +247,8 @@ if !ERRORLEVEL! NEQ 0 (
 call :build_stage_with_clang
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
-"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!clang_exe!" -cflags "--target=!clang_target!" -o "%V_UPDATED%" cmd/v
+set updated_vflags=-cc "!clang_exe!" -cflags "--target=!clang_target!"
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !updated_vflags! -o "%V_UPDATED%" cmd/v
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE%"
 if !stage_error! NEQ 0 goto :compile_error
@@ -263,7 +266,8 @@ if !ERRORLEVEL! NEQ 0 (
 call :build_stage_with_gcc
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
-"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!gcc_exe!" -o "%V_UPDATED%" cmd/v
+set updated_vflags=-cc "!gcc_exe!"
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !updated_vflags! -o "%V_UPDATED%" cmd/v
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE%"
 if !stage_error! NEQ 0 goto :compile_error
@@ -321,7 +325,8 @@ if !ERRORLEVEL! NEQ 0 (
 )
 
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
-"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc msvc -o "%V_UPDATED%" cmd/v
+set updated_vflags=-cc msvc
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !updated_vflags! -o "%V_UPDATED%" cmd/v
 set msvc_error=!ERRORLEVEL!
 call :try_delete "%ObjFile%"
 call :try_delete "%V_STAGE%"
@@ -673,7 +678,10 @@ del "%~1" >nul 2>&1
 exit /b 0
 
 :smoke_test_updated
-REM Install only a compiler that builds and runs hello world with its default C compiler.
+REM Install only a compiler that builds and runs hello world with the toolchain that
+REM built it: updated_vflags, set beside every build of %V_UPDATED%. The driver's default
+REM C compiler is not usable on every machine that can build V (a -msvc --local clone has
+REM no bundled TCC and may have no gcc), and a working -msvc build must still install.
 REM A compiler that falls back to the V1 compiler still exits 0, so check its output too.
 echo  ^> Smoke testing "%V_UPDATED%"
 "%V_UPDATED%" version
@@ -681,7 +689,7 @@ if !ERRORLEVEL! NEQ 0 (
 	echo  ^> "%V_UPDATED%" version failed
 	exit /b 1
 )
-"%V_UPDATED%" -o "%V_UPDATED%.smoke.exe" examples/hello_world.v > "%V_UPDATED%.smoke.log" 2>&1
+"%V_UPDATED%" !updated_vflags! -o "%V_UPDATED%.smoke.exe" examples/hello_world.v > "%V_UPDATED%.smoke.log" 2>&1
 set smoke_error=!ERRORLEVEL!
 call :smoke_log_is_clean "%V_UPDATED%.smoke.log"
 if !ERRORLEVEL! NEQ 0 set smoke_error=1
