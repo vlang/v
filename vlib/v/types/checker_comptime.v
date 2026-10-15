@@ -18170,6 +18170,11 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 	if rhs.kind == .ident {
 		raw_type := tc.resolve_type(rhs_id)
 		if base := tc.mut_param_base_for_current_ident(rhs.value, raw_type) {
+			if !isnil(tc.fn_context.closure_scope)
+				&& tc.current_fn_param_is_mut_receiver(rhs.value)
+				&& tc.type_has_declaration_attribute(base, 'heap') {
+				return Type(Pointer{ base_type: base })
+			}
 			return base
 		}
 	}
