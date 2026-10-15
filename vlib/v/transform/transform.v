@@ -18526,7 +18526,7 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 		return none
 	}
 	mut lowered_rhs := []flat.NodeId{cap: lhs_count}
-	mut rhs_types := []string{cap: lhs_count}
+	mut rhs_types := []u32{cap: lhs_count}
 	mut rhs_preludes := [][]flat.NodeId{cap: lhs_count}
 	for i in 0 .. lhs_count {
 		lhs_id := t.multi_assign_lhs_id(node, i)
@@ -18534,9 +18534,9 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 		lhs := t.a.nodes[int(lhs_id)]
 		rhs_node := t.a.nodes[int(rhs_id)]
 		generic_rhs_typ := if rhs_node.kind == .call {
-			flat.source_type_name(t.concrete_generic_call_return_type(rhs_id, rhs_node))
+			t.concrete_generic_call_return_type(rhs_id, rhs_node)
 		} else {
-			''
+			u32(0)
 		}
 		rhs := t.transform_expr(rhs_id)
 		mut prelude := []flat.NodeId{}
@@ -18545,39 +18545,39 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 		lowered_rhs_node := t.a.nodes[int(rhs)]
 		rhs_authority := if rhs_node.kind == .ident && rhs_node.value in t.heaped_amp_locals
 			&& lowered_rhs_node.kind == .prefix && lowered_rhs_node.op == .mul {
-			flat.source_type_name(t.decl_rhs_type(rhs))
+			t.decl_rhs_type(rhs)
 		} else {
-			flat.source_type_name(t.decl_rhs_type(rhs_id))
+			t.decl_rhs_type(rhs_id)
 		}
-		mut typ := if t.is_fn_pointer_type_name(flat.source_type_id(rhs_authority)) {
+		mut typ := if t.is_fn_pointer_type_name(rhs_authority) {
 			rhs_authority
 		} else {
-			''
+			u32(0)
 		}
-		if typ.len == 0 && decl_type_is_usable(flat.source_type_id(rhs_authority))
-			&& !t.generic_arg_is_unresolved(flat.source_type_id(rhs_authority)) {
+		if typ == 0 && decl_type_is_usable(rhs_authority)
+			&& !t.generic_arg_is_unresolved(rhs_authority) {
 			typ = rhs_authority
 		}
-		if typ.len == 0 {
+		if typ == 0 {
 			typ = generic_rhs_typ
 		}
-		if typ.len == 0 {
-			typ = flat.source_type_name(t.node_type(rhs))
+		if typ == 0 {
+			typ = t.node_type(rhs)
 		}
-		if typ.len == 0 {
-			typ = flat.source_type_name(t.node_type(rhs_id))
+		if typ == 0 {
+			typ = t.node_type(rhs_id)
 		}
-		if typ.len == 0 {
+		if typ == 0 {
 			typ = rhs_authority
 		}
-		if typ.len == 0 && lhs.typ != 0 {
-			typ = lhs.typ_text()
+		if typ == 0 && lhs.typ != 0 {
+			typ = lhs.typ
 		}
 		lowered_rhs << rhs
-		rhs_types << if typ.len > 0 {
-			flat.source_type_name(t.normalize_type_alias(flat.source_type_id(typ)))
+		rhs_types << if typ != 0 {
+			t.normalize_type_alias(typ)
 		} else {
-			''
+			u32(0)
 		}
 		rhs_preludes << prelude
 	}
@@ -18611,8 +18611,8 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 				continue
 			}
 			tmp_name := t.new_temp('multi_decl')
-			result << if rhs_types[i].len > 0 {
-				t.make_decl_assign_typed(tmp_name, lowered_rhs[i], flat.source_type_id(rhs_types[i]))
+			result << if rhs_types[i] != 0 {
+				t.make_decl_assign_typed(tmp_name, lowered_rhs[i], rhs_types[i])
 			} else {
 				t.make_decl_assign(tmp_name, lowered_rhs[i])
 			}
@@ -18629,14 +18629,14 @@ fn (mut t Transformer) try_expand_plain_multi_decl(node flat.Node) ?[]flat.NodeI
 		if lhs.kind != .ident || lhs.value == '_' {
 			continue
 		}
-		if typ.len > 0 {
-			result << t.make_guard_value_decls(lhs.value, rhs, flat.source_type_id(typ))
+		if typ != 0 {
+			result << t.make_guard_value_decls(lhs.value, rhs, typ)
 		} else {
 			t.clear_heaped_local_binding(lhs.value)
 			result << t.make_decl_assign(lhs.value, rhs)
 		}
-		if typ.len > 0 {
-			t.append_local_closure_initializer_cleanups(lhs.value, rhs_id, flat.source_type_id(typ), mut result)
+		if typ != 0 {
+			t.append_local_closure_initializer_cleanups(lhs.value, rhs_id, typ, mut result)
 		}
 		if cleanup_name := t.local_closure_cleanup_values[int(rhs_id)] {
 			result << t.make_local_closure_cleanup_defer(cleanup_name)

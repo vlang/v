@@ -3080,7 +3080,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		w.local_implicit_deref_by_owner = map[string]bool{}
 		w.local_shared_storage_by_owner = map[string]bool{}
 		w.local_fn_value_c_name_by_owner = map[string]string{}
-		w.default_value_stack = map[string]bool{}
+		w.default_value_stack = map[u32]bool{}
 		w.loop_label_depths = map[string]int{}
 		w.loop_defer_starts = []int{}
 		w.loop_label_defer_starts = map[string]int{}

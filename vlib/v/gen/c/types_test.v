@@ -946,21 +946,21 @@ fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_su
 	g.tc = &tc
 	g.precompute_sum_name_lookup()
 
-	assert g.resolve_sum_name('sum_mod.Any') == 'sum_mod.Any'
+	assert flat.source_type_name(g.resolve_sum_name(flat.source_type_id('sum_mod.Any'))) == 'sum_mod.Any'
 	// The short name still reaches the only sum type that declares it.
-	assert g.resolve_sum_name('Any') == 'sum_mod.Any'
+	assert flat.source_type_name(g.resolve_sum_name(flat.source_type_id('Any'))) == 'sum_mod.Any'
 	// Namesakes resolve to their concrete declarations, so they are not boxed
 	// into `sum_mod.Any` when a value is converted to them.
-	assert g.resolve_source_sum_name('iface_mod.Any', 'main.v') == 'pkg.iface_mod.Any'
+	assert flat.source_type_name(g.resolve_source_sum_name(flat.source_type_id('iface_mod.Any'), 'main.v')) == 'pkg.iface_mod.Any'
 	// A canonical name is not expanded again when its first component also
 	// happens to be an import alias in the current file.
-	assert g.resolve_sum_name('pkg.iface_mod.Any') == 'pkg.iface_mod.Any'
-	assert g.resolve_sum_name('struct_mod.Any') == 'struct_mod.Any'
-	assert g.resolve_sum_name('enum_mod.Any') == 'enum_mod.Any'
-	assert g.resolve_sum_name('alias_mod.Any') == 'alias_mod.Any'
+	assert flat.source_type_name(g.resolve_sum_name(flat.source_type_id('pkg.iface_mod.Any'))) == 'pkg.iface_mod.Any'
+	assert flat.source_type_name(g.resolve_sum_name(flat.source_type_id('struct_mod.Any'))) == 'struct_mod.Any'
+	assert flat.source_type_name(g.resolve_sum_name(flat.source_type_id('enum_mod.Any'))) == 'enum_mod.Any'
+	assert flat.source_type_name(g.resolve_sum_name(flat.source_type_id('alias_mod.Any'))) == 'alias_mod.Any'
 	// An unknown qualified name keeps the short-name fallback, which is what
 	// resolves aliased module paths such as `x.json2.Any`.
-	assert g.resolve_sum_name('unknown_mod.Any') == 'sum_mod.Any'
+	assert flat.source_type_name(g.resolve_sum_name(flat.source_type_id('unknown_mod.Any'))) == 'sum_mod.Any'
 }
 
 fn test_sum_name_resolution_prefers_a_live_import_alias_over_an_exact_namesake_sum() {
@@ -975,11 +975,11 @@ fn test_sum_name_resolution_prefers_a_live_import_alias_over_an_exact_namesake_s
 	g.tc = &tc
 	g.precompute_sum_name_lookup()
 
-	assert g.resolve_source_sum_name('iface_mod.Any', 'main.v') == 'pkg.iface_mod.Any'
+	assert flat.source_type_name(g.resolve_source_sum_name(flat.source_type_id('iface_mod.Any'), 'main.v')) == 'pkg.iface_mod.Any'
 	// Resolved type metadata is canonical and must not be interpreted through the
 	// current source file's imports.
-	assert g.resolve_sum_name('iface_mod.Any') == 'iface_mod.Any'
-	assert g.resolve_source_sum_name('iface_mod.Any', 'dependency.v') == 'iface_mod.Any'
+	assert flat.source_type_name(g.resolve_sum_name(flat.source_type_id('iface_mod.Any'))) == 'iface_mod.Any'
+	assert flat.source_type_name(g.resolve_source_sum_name(flat.source_type_id('iface_mod.Any'), 'dependency.v')) == 'iface_mod.Any'
 	typ_field := ast.add_node(flat.Node{ kind: .field_init, value: 'typ' })
 	payload_field := ast.add_node(flat.Node{ kind: .field_init, value: '_string' })
 	children_start := ast.children.len

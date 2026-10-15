@@ -3959,7 +3959,7 @@ fn markused_auto_str_field_is_skipped(type_name string, field_name string, skipp
 
 struct StringifiedTypes {
 mut:
-	seen map[string]bool
+	seen map[u32]bool
 }
 
 // Every scan appends to one monotonically growing reachability queue. Once a
@@ -3986,18 +3986,19 @@ fn (mut scan RuntimeHelpersScan) enqueue_stringification(expr_id flat.NodeId, cu
 // automatic stringification. The checker supplies concretely substituted generic field types.
 fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string, tc &types.TypeChecker, skipped_fields map[string]bool, mut used map[string]bool, mut queue []string) {
 	typ := tc.expr_type(expr_id) or { tc.resolve_type(expr_id) }
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
 	enqueue_stringified_type_dependencies(typ, cur_module, tc, skipped_fields, mut used,
 		mut queue, mut seen)
 }
 
-fn enqueue_stringified_type_dependencies(typ types.Type, cur_module string, tc &types.TypeChecker, skipped_fields map[string]bool, mut used map[string]bool, mut queue []string, mut seen map[string]bool) {
-	type_name := typ.name()
-	if type_name.len > 0 {
-		if seen[type_name] {
+fn enqueue_stringified_type_dependencies(typ types.Type, cur_module string, tc &types.TypeChecker, skipped_fields map[string]bool, mut used map[string]bool, mut queue []string, mut seen map[u32]bool) {
+	type_name_id := typ.source_type_id()
+	type_name := flat.source_type_name(type_name_id)
+	if type_name_id != 0 {
+		if seen[type_name_id] {
 			return
 		}
-		seen[type_name] = true
+		seen[type_name_id] = true
 	}
 	match typ {
 		types.Alias {
@@ -4106,7 +4107,7 @@ fn enqueue_implicit_interface_str_helpers_for_impl(iface_name string, method str
 }
 
 fn enqueue_implicit_interface_str_helpers(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
 	enqueue_implicit_interface_str_helpers_inner(typ, tc, mut used, mut queue, mut seen)
 }
 
@@ -4120,13 +4121,14 @@ fn markused_interface_method_is_plain_str(iface_name string, tc &types.TypeCheck
 	return params.len == 1
 }
 
-fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut seen map[string]bool) {
+fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut seen map[u32]bool) {
 	enqueue('string__plus', mut used, mut queue)
-	typ_name := typ.name()
-	if typ_name in seen {
+	typ_name_id := typ.source_type_id()
+	typ_name := flat.source_type_name(typ_name_id)
+	if typ_name_id in seen {
 		return
 	}
-	seen[typ_name] = true
+	seen[typ_name_id] = true
 	match typ {
 		types.Unknown {
 			// Before monomorphization an implicit interface implementer can still
@@ -4202,18 +4204,19 @@ fn enqueue_implicit_interface_str_dispatch_helpers(iface_name string, tc &types.
 		if !tc.type_has_implicit_str_method(impl) {
 			continue
 		}
-		mut seen := map[string]bool{}
+		mut seen := map[u32]bool{}
 		enqueue_implicit_str_type_helpers(tc.parse_type(flat.source_type_id(impl)), tc, mut used, mut queue, mut seen)
 	}
 }
 
-fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut seen map[string]bool) {
-	key := typ.name()
-	if key.len > 0 {
-		if seen[key] {
+fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut seen map[u32]bool) {
+	key_id := typ.source_type_id()
+	key := flat.source_type_name(key_id)
+	if key_id != 0 {
+		if seen[key_id] {
 			return
 		}
-		seen[key] = true
+		seen[key_id] = true
 		enqueue_structlike_str_method(key, '', tc, mut used, mut queue)
 	}
 	match typ {
@@ -7316,7 +7319,7 @@ fn (c &CallCollector) collect_top_level_stringification_calls(id flat.NodeId, cu
 	}
 	typ := c.tc.parse_canonical_type(type_name_source_id_6)
 	mut used := map[string]bool{}
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
 	enqueue_stringified_type_dependencies(typ, cur_module, c.tc, c.auto_str_skipped_fields,
 		mut used, mut calls, mut seen)
 }
