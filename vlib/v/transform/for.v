@@ -1052,8 +1052,9 @@ fn (t &Transformer) range_loop_var_type_name(low_id flat.NodeId) string {
 	if typ_source_id == 0 {
 		return 'int'
 	}
-	clean := flat.source_type_name(t.normalize_type_alias(typ_source_id))
-	if t.is_integer_type_name(clean) {
+	clean_source_id := t.normalize_type_alias(typ_source_id)
+
+	if t.is_integer_type_name(clean_source_id) {
 		return typ
 	}
 	return 'int'
@@ -1154,7 +1155,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	} else {
 		checker_container_type
 	}
-	source_container_type_source_id := t.comptime_normalize_type_alias_chain(flat.source_type_id(if flat.source_type_name(t.node_type(container_id)).len > 0 {
+	source_container_type_source_id := t.comptime_normalize_type_alias_chain(flat.source_type_id(if (t.node_type(container_id)) != 0 {
 		flat.source_type_name(t.node_type(container_id))
 	} else if raw_container_type.len > 0 {
 		raw_container_type
@@ -1211,7 +1212,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	} else if t.expr_can_take_address(container_id) {
 		mut lvalue := t.transform_lvalue(container_id)
 		if !t.is_stable_expr_for_reuse(lvalue) {
-			lvalue_type := if flat.source_type_name(t.node_type(lvalue)).len > 0 && t.node_type(lvalue) != flat.source_type_unknown {
+			lvalue_type := if (t.node_type(lvalue)) != 0 && t.node_type(lvalue) != flat.source_type_unknown {
 				flat.source_type_name(t.node_type(lvalue))
 			} else if source_container_type_source_id != 0 && source_container_type_source_id != flat.source_type_unknown {
 				source_container_type
@@ -1562,8 +1563,8 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 			}
 		}
 		if iter_node.kind == .call {
-			concrete_call_type_source_id := t.normalize_type_alias(flat.source_type_id(t.concrete_generic_call_return_type(iter_id,
-				iter_node)))
+			concrete_call_type_source_id := t.normalize_type_alias(t.concrete_generic_call_return_type(iter_id,
+				iter_node))
 			concrete_call_type := flat.source_type_name(concrete_call_type_source_id)
 			concrete_payload := for_iter_payload_type(concrete_call_type)
 			if concrete_payload.len > 0 && !for_iter_type_has_generic_placeholder(concrete_payload)
@@ -1641,7 +1642,7 @@ fn (mut t Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?st
 	if node.kind != .ident || node.value.len == 0 {
 		return none
 	}
-	if flat.source_type_name(t.var_type(node.value)).len > 0 {
+	if (t.var_type(node.value)) != 0 {
 		return none
 	}
 	if fixed_storage_type := t.const_array_literal_storage_type_name_for_expr(id) {

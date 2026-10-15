@@ -576,7 +576,7 @@ fn (t &Transformer) is_interface_type_name(name string) bool {
 	if name == '' || isnil(t.tc) {
 		return false
 	}
-	return t.resolve_interface_type_name(name).len > 0
+	return (t.resolve_interface_type_name(flat.source_type_id(name))) != 0
 }
 
 // interface_variant_type supports interface variant type handling for Transformer.
@@ -765,7 +765,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	} else {
 		t.find_sum_type_for_variant(node.value)
 	}
-	if t.is_builtin_ierror_interface_name(clean_type0) && node.value == 'none' {
+	if t.is_builtin_ierror_interface_name(clean_type0_source_id) && node.value == 'none' {
 		new_expr0, value_type, op := t.pointer_sum_access_expr(expr_id, expr_type)
 		new_expr := t.stable_transformed_expr_for_reuse(new_expr0, value_type, 'ierror_is')
 		typ := t.make_selector_op(new_expr, '_typ', flat.source_type_int, op)
@@ -774,7 +774,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	if t.is_interface_type_name(clean_type0) {
 		new_expr0, value_type, op := t.pointer_sum_access_expr(expr_id, expr_type)
 		new_expr := t.stable_transformed_expr_for_reuse(new_expr0, value_type, 'iface_is')
-		pattern_name := if t.is_builtin_ierror_interface_name(clean_type0) && node.value == 'none' {
+		pattern_name := if t.is_builtin_ierror_interface_name(clean_type0_source_id) && node.value == 'none' {
 			'None__'
 		} else {
 			node.value
@@ -961,7 +961,7 @@ fn (mut t Transformer) validate_specialized_is_expr(subject_type string, resolve
 		if pattern == '' || t.type_text_has_generic_placeholder(pattern, t.cur_module) {
 			return true
 		}
-		if t.is_builtin_ierror_interface_name(subject_type) && pattern == 'none' {
+		if t.is_builtin_ierror_interface_name(flat.source_type_id(subject_type)) && pattern == 'none' {
 			return true
 		}
 		if _ := t.resolve_interface_pattern(pattern, subject_type) {
@@ -972,7 +972,7 @@ fn (mut t Transformer) validate_specialized_is_expr(subject_type string, resolve
 				return true
 			}
 		}
-		if t.is_builtin_ierror_interface_name(subject_type) {
+		if t.is_builtin_ierror_interface_name(flat.source_type_id(subject_type)) {
 			t.record_monomorph_error('`${pattern}` is not compatible with `IError`')
 		} else if t.specialized_is_pattern_known(pattern) {
 			t.record_monomorph_error('`${pattern}` is not compatible with interface `${subject_type}`')
@@ -1005,8 +1005,9 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	if iface_name == '' || concrete_name == '' || isnil(t.tc) {
 		return none
 	}
-	iface := t.resolve_interface_type_name(iface_name)
-	if iface.len == 0 {
+	iface_source_id := t.resolve_interface_type_name(flat.source_type_id(iface_name))
+	iface := flat.source_type_name(iface_source_id)
+	if iface_source_id == 0 {
 		return none
 	}
 	concrete := t.interface_concrete_impl_name(concrete_name) or { return none }
@@ -1033,12 +1034,12 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	// immutable transform indexes were prepared. Fall back to the live checker
 	// only for those late names.
 	for impl_iface in iface_candidates {
-		impl_names := if t.is_builtin_ierror_interface_name(impl_iface) {
+		impl_names := if t.is_builtin_ierror_interface_name(flat.source_type_id(impl_iface)) {
 			t.tc.ierror_impl_names()
 		} else {
 			t.tc.interface_impl_names(impl_iface)
 		}
-		type_ids := if t.is_builtin_ierror_interface_name(impl_iface) {
+		type_ids := if t.is_builtin_ierror_interface_name(flat.source_type_id(impl_iface)) {
 			types.stable_interface_type_ids(impl_names)
 		} else {
 			t.tc.interface_type_ids(impl_iface)
@@ -1051,12 +1052,12 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	}
 	if !requested_qualified {
 		for impl_iface in iface_candidates {
-			impl_names := if t.is_builtin_ierror_interface_name(impl_iface) {
+			impl_names := if t.is_builtin_ierror_interface_name(flat.source_type_id(impl_iface)) {
 				t.tc.ierror_impl_names()
 			} else {
 				t.tc.interface_impl_names(impl_iface)
 			}
-			type_ids := if t.is_builtin_ierror_interface_name(impl_iface) {
+			type_ids := if t.is_builtin_ierror_interface_name(flat.source_type_id(impl_iface)) {
 				types.stable_interface_type_ids(impl_names)
 			} else {
 				t.tc.interface_type_ids(impl_iface)
@@ -1075,8 +1076,9 @@ fn (t &Transformer) interface_container_cast_type_id(iface_name string, target_n
 	if type_id := t.interface_impl_type_id(iface_name, target_name) {
 		return type_id
 	}
-	iface := t.resolve_interface_type_name(iface_name)
-	if iface.len == 0 {
+	iface_source_id_2 := t.resolve_interface_type_name(flat.source_type_id(iface_name))
+	iface := flat.source_type_name(iface_source_id_2)
+	if iface_source_id_2 == 0 {
 		return none
 	}
 	concrete := t.interface_concrete_impl_name(target_name) or { return none }
@@ -1117,7 +1119,7 @@ fn (t &Transformer) interface_impl_type_id_iface_candidates(iface string) []stri
 		if candidate.len == 0 || candidate in result {
 			continue
 		}
-		if t.is_builtin_ierror_interface_name(candidate) || candidate in t.tc.interface_names {
+		if t.is_builtin_ierror_interface_name(flat.source_type_id(candidate)) || candidate in t.tc.interface_names {
 			result << candidate
 		}
 	}
@@ -1516,7 +1518,7 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 				return converted
 			}
 		}
-		if t.is_builtin_ierror_interface_name(clean_type0) && target_is_pointer {
+		if t.is_builtin_ierror_interface_name(clean_type0_source_id) && target_is_pointer {
 			if concrete := t.resolve_interface_pattern(target_pattern, clean_type0) {
 				// IError stores the concrete object directly. Read the original interface
 				// box before applying an active smartcast to its payload.
@@ -1980,7 +1982,7 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 			}
 		}
 	}
-	if !matches && t.is_integer_type_name(clean_variant) {
+	if !matches && t.is_integer_type_name(flat.source_type_id(clean_variant)) {
 		mut enum_variant := ''
 		for v in t.sum_types.value(resolved_sum) {
 			if t.enum_type_name_for_expected(v, t.cur_module).len == 0 {

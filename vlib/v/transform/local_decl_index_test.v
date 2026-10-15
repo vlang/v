@@ -64,7 +64,7 @@ fn test_local_decl_type_before_pos_uses_indexed_same_file_function() {
 	assert t.fn_decl_offsets_by_file[2] == [10]
 	assert t.local_decl_type_before_pos('value', flat.Node{
 		pos: token.new_pos(1, 90)
-	})? == 'int'
+	})? == flat.source_type_int
 }
 
 fn test_comptime_option_unwrap_uses_indexed_alias_and_if_body() {

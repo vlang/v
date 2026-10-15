@@ -973,8 +973,10 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 		}
 	}
 	if expr_node.kind == .selector {
-		if raw_type := t.raw_selector_field_type(expr_id) {
-			if t.is_optional_type_name(flat.source_type_id(raw_type)) && !t.generic_arg_is_unresolved(flat.source_type_id(raw_type)) {
+		if raw_type_source_id := t.raw_selector_field_type(expr_id) {
+			raw_type := flat.source_type_name(raw_type_source_id)
+
+			if t.is_optional_type_name(raw_type_source_id) && !t.generic_arg_is_unresolved(raw_type_source_id) {
 				return t.canonical_or_expr_types(raw_type)
 			}
 			if raw_type.starts_with('&') && t.is_optional_type_name(flat.source_type_id(raw_type[1..]))
@@ -995,11 +997,13 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
 				return t.canonical_or_expr_types(decode_ret)
 			}
-			if specialized_ret := t.specialized_interface_method_call_return_type(expr_id,
+			if specialized_ret_source_id := t.specialized_interface_method_call_return_type(expr_id,
 				expr_node)
 			{
-				if t.is_optional_type_name(flat.source_type_id(specialized_ret))
-					&& !t.generic_arg_is_unresolved(flat.source_type_id(specialized_ret)) {
+				specialized_ret := flat.source_type_name(specialized_ret_source_id)
+
+				if t.is_optional_type_name(specialized_ret_source_id)
+					&& !t.generic_arg_is_unresolved(specialized_ret_source_id) {
 					return t.canonical_or_expr_types(specialized_ret)
 				}
 			}
@@ -1011,13 +1015,16 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 				&& !t.generic_arg_is_unresolved(expr_node.typ) {
 				return t.specialized_or_expr_types(expr_node.typ_text())
 			}
-			if current_ret := t.current_generic_receiver_call_return_type(expr_node) {
-				if t.is_optional_type_name(flat.source_type_id(current_ret)) && !t.generic_arg_is_unresolved(flat.source_type_id(current_ret)) {
+			if current_ret_source_id := t.current_generic_receiver_call_return_type(expr_node) {
+				current_ret := flat.source_type_name(current_ret_source_id)
+
+				if t.is_optional_type_name(current_ret_source_id) && !t.generic_arg_is_unresolved(current_ret_source_id) {
 					return t.canonical_or_expr_types(current_ret)
 				}
 			}
-			concrete_ret := t.concrete_generic_call_return_type(expr_id, expr_node)
-			if t.is_optional_type_name(flat.source_type_id(concrete_ret)) && !t.generic_arg_is_unresolved(flat.source_type_id(concrete_ret)) {
+			concrete_ret_source_id := t.concrete_generic_call_return_type(expr_id, expr_node)
+			concrete_ret := flat.source_type_name(concrete_ret_source_id)
+			if t.is_optional_type_name(concrete_ret_source_id) && !t.generic_arg_is_unresolved(concrete_ret_source_id) {
 				return t.specialized_or_expr_types(concrete_ret)
 			}
 			if declared_ret := t.call_declared_return_type_text(expr_id) {
@@ -2240,7 +2247,7 @@ fn (mut t Transformer) optional_source_value_expr(source_id flat.NodeId, expr fl
 			flat.source_type_name(t.raw_var_type(source.value))
 		}
 		.selector {
-			t.raw_selector_field_type(source_id) or { return expr }
+			flat.source_type_name(t.raw_selector_field_type(source_id) or { return expr })
 		}
 		else {
 			return expr
@@ -2693,7 +2700,7 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 	}
 	callee := t.a.child_node(&node, 0)
 	if callee.kind == .ident && callee.value in ['panic', 'exit', 'v_panic'] {
-		return flat.source_type_name(t.var_type(callee.value)).len == 0
+		return (t.var_type(callee.value)) == 0
 			&& !t.tc.module_declares_fn(t.cur_module, callee.value)
 	}
 	name := t.resolve_call_name(node)

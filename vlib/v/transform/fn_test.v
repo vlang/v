@@ -1058,7 +1058,7 @@ fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
 			'value': true
 		}
 	}
-	assert t.generic_call_arg_type_for_inference(ident_id) == 'Concrete'
+	assert flat.source_type_name(t.generic_call_arg_type_for_inference(ident_id)) == 'Concrete'
 }
 
 fn test_lowered_generic_operator_call_records_operator_use() {

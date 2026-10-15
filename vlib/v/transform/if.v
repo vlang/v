@@ -466,13 +466,16 @@ fn (mut t Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 			if decode_ret := t.json_decode_or_expr_type(id, node) {
 				return decode_ret
 			}
-			if specialized_ret := t.specialized_interface_method_call_return_type(id, node) {
-				if t.is_optional_type_name(flat.source_type_id(specialized_ret)) {
+			if specialized_ret_source_id := t.specialized_interface_method_call_return_type(id, node) {
+				specialized_ret := flat.source_type_name(specialized_ret_source_id)
+
+				if t.is_optional_type_name(specialized_ret_source_id) {
 					return specialized_ret
 				}
 			}
-			concrete_ret := t.concrete_generic_call_return_type(id, node)
-			if t.is_optional_type_name(flat.source_type_id(concrete_ret)) {
+			concrete_ret_source_id := t.concrete_generic_call_return_type(id, node)
+			concrete_ret := flat.source_type_name(concrete_ret_source_id)
+			if t.is_optional_type_name(concrete_ret_source_id) {
 				return concrete_ret
 			}
 			if name := t.tc.resolved_call_name(id) {
@@ -1163,7 +1166,7 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			mut call_ret := flat.source_type_name(t.get_call_return_type(id, node))
 			if call_ret.len == 0 || call_ret in ['unknown', 'void']
 				|| t.generic_arg_is_unresolved(flat.source_type_id(call_ret)) {
-				call_ret = t.generic_call_declared_return_type(id, node) or { '' }
+				call_ret = flat.source_type_name(t.generic_call_declared_return_type(id, node) or { u32(0) })
 			}
 			if call_ret.len > 0 && call_ret !in ['unknown', 'void'] {
 				return flat.source_type_id(call_ret)
@@ -1672,7 +1675,7 @@ fn (mut t Transformer) if_value_branch_block(branch_id flat.NodeId, target_name 
 		result << t.make_assign(t.make_ident(target_name), value)
 		return t.make_block(result)
 	}
-	if tail.kind == .block && flat.source_type_name(t.stmt_value_type(tail_id)).len > 0 {
+	if tail.kind == .block && (t.stmt_value_type(tail_id)) != 0 {
 		value := t.transform_if_branch_value(tail_id, target_type)
 		t.drain_pending(mut result)
 		result << t.make_assign(t.make_ident(target_name), value)

@@ -109,8 +109,9 @@ fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs
 	mut typ := ''
 	rhs_id := t.a.child(&node, rhs_idx)
 	rhs := t.a.nodes[int(rhs_id)]
-	rhs_authority := flat.source_type_name(t.decl_rhs_type(rhs_id))
-	if t.is_fn_pointer_type_name(rhs_authority) {
+	rhs_authority_source_id := t.decl_rhs_type(rhs_id)
+	rhs_authority := flat.source_type_name(rhs_authority_source_id)
+	if t.is_fn_pointer_type_name(rhs_authority_source_id) {
 		typ = rhs_authority
 	} else if t.decl_type_should_override_fallback(rhs_authority, fallback_type, rhs) {
 		typ = rhs_authority
@@ -491,9 +492,9 @@ fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?u32 {
 	// specialization has seeded authoritative parameter bindings here.
 	if node.kind == .ident && (!t.in_monomorphize_scan || t.cloning_generic_fn_depth > 0) {
 		local_type_source_id := t.var_type(node.value)
-		local_type := flat.source_type_name(local_type_source_id)
+
 		if local_type_source_id != 0 {
-			if t.is_fn_pointer_type_name(local_type) {
+			if t.is_fn_pointer_type_name(local_type_source_id) {
 				return t.normalize_type_alias(local_type_source_id)
 			}
 			// Generic parameters keep their concrete type in the local scope. A
@@ -837,8 +838,9 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 		return u32(0)
 	}
 	// An interface declares the types of its fields: do not guess them from the name.
-	iface_name := t.resolve_interface_type_name(lookup_type)
-	if iface_name.len > 0 {
+	iface_name_source_id := t.resolve_interface_type_name(flat.source_type_id(lookup_type))
+	iface_name := flat.source_type_name(iface_name_source_id)
+	if iface_name_source_id != 0 {
 		if ftyp := t.interface_field_type_name(iface_name, field_name) {
 			return flat.source_type_id(ftyp)
 		}
@@ -1300,7 +1302,7 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ_id u32, own
 			// declaring the generic field. Qualify them before owner substitution.
 			mut qualified_args := []u32{cap: owner_args.len}
 			for arg in owner_args {
-				qualified_args << flat.source_type_id(t.qualify_generic_arg_for_decl_module(arg, t.cur_module))
+				qualified_args << t.qualify_generic_arg_for_decl_module(flat.source_type_id(arg), t.cur_module)
 			}
 			substituted := if params.len > 0 {
 				substitute_generic_type_text_with_params(typ, qualified_args, params)

@@ -1769,8 +1769,9 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 		callee := t.a.child_node(&node, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
 			receiver := t.a.child(callee, 0)
-			receiver_type := t.raw_var_type_for_expr(receiver) or { flat.source_type_name(t.node_type(receiver)) }
-			if method := t.tc.concrete_method_signature_key(flat.source_type_name(t.trim_all_pointer_type(flat.source_type_id(receiver_type))),
+			receiver_type_source_id := t.raw_var_type_for_expr(receiver) or { t.node_type(receiver) }
+			receiver_type := flat.source_type_name(receiver_type_source_id)
+			if method := t.tc.concrete_method_signature_key(flat.source_type_name(t.trim_all_pointer_type(receiver_type_source_id)),
 				callee.value) {
 				if method.all_before_last('.') in t.tc.type_aliases.ids
 					&& !t.receiver_method_name_is_open_generic(method)
@@ -1780,7 +1781,7 @@ fn (mut t Transformer) sql_transform_value_call(call flat.NodeId) flat.NodeId {
 						return t.make_int_literal(0)
 					}
 					mut receiver_arg := receiver
-					mut receiver_arg_type := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(receiver_type)))
+					mut receiver_arg_type := flat.source_type_name(t.normalize_type_alias(receiver_type_source_id))
 					params := t.call_param_types(method)
 					if params.len > 0 {
 						receiver_depth, _ := pointer_type_depth_and_base(receiver_arg_type)
@@ -2041,12 +2042,13 @@ fn (mut t Transformer) sql_or_expr_from_token_for_type(token string, typ string)
 	tokens := sql_clean_tokens(token.split(' '))
 	source_tokens, fallback_tokens := sql_or_value_expr_parts(tokens) or { return none }
 	source := t.sql_expr_from_token_for_type(sql_value_token_text(source_tokens), '')
-	source_type := t.raw_var_type_for_expr(source) or { flat.source_type_name(t.node_type(source)) }
+	source_type_source_id := t.raw_var_type_for_expr(source) or { t.node_type(source) }
+	source_type := flat.source_type_name(source_type_source_id)
 	// Method resolution needs the declared alias payload before ordinary or lowering
 	// normalizes its Option/Result storage to the underlying collection.
-	value_type := if t.is_optional_type_name(flat.source_type_id(source_type))
+	value_type := if t.is_optional_type_name(source_type_source_id)
 		&& t.raw_return_type_contains_alias(source_type) {
-		flat.source_type_name(t.optional_base_type(flat.source_type_id(source_type)))
+		flat.source_type_name(t.optional_base_type(source_type_source_id))
 	} else {
 		typ
 	}

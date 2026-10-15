@@ -140,7 +140,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			sum_field_type := t.struct_field_sum_type(field_type, info.module)
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 			fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type)
-			shared_interface_source := !isnil(t.tc) && t.is_interface_type(field_type)
+			shared_interface_source := !isnil(t.tc) && t.is_interface_type(flat.source_type_id(field_type))
 				&& t.tc.struct_field_is_shared(node.value, target_field_name)
 				&& t.expr_is_shared_value(val_id)
 			// Check if the value is an enum shorthand and the field type is an enum
@@ -741,7 +741,7 @@ fn (mut t Transformer) infer_bare_generic_struct_init_type(node flat.Node) ?stri
 	for param in params {
 		arg_source_id := inferred[param] or { return none }
 		arg := flat.source_type_name(arg_source_id)
-		if arg.len == 0 || t.generic_arg_is_unresolved(arg_source_id) {
+		if arg_source_id == 0 || t.generic_arg_is_unresolved(arg_source_id) {
 			return none
 		}
 		args << arg
@@ -750,7 +750,7 @@ fn (mut t Transformer) infer_bare_generic_struct_init_type(node flat.Node) ?stri
 }
 
 fn (mut t Transformer) generic_struct_init_value_type(id flat.NodeId) string {
-	mut typ := t.generic_call_arg_type_for_inference(id)
+	mut typ := flat.source_type_name(t.generic_call_arg_type_for_inference(id))
 	if typ.len == 0 {
 		typ = flat.source_type_name(t.node_type(id))
 	}

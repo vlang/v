@@ -1312,7 +1312,7 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 	}
 	mut ret_val := t.transform_return_child(actual_tail, 0, 1)
 	direct_fn_value := tail_expr_node.kind == .ident && t.is_optional_type_name(flat.source_type_id(ret_typ))
-		&& t.is_fn_pointer_type_name(flat.source_type_name(t.normalize_type_alias(t.optional_base_type(flat.source_type_id(ret_typ)))))
+		&& t.is_fn_pointer_type_name(t.normalize_type_alias(t.optional_base_type(flat.source_type_id(ret_typ))))
 		&& t.resolved_ident_fn_value(tail_expr, tail_expr_node.value) != none
 	if t.is_optional_type_name(flat.source_type_id(ret_typ)) && tail_expr_node.kind != .none_expr
 		&& !t.is_error_call(tail_expr_node) && direct_fn_value {

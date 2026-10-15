@@ -432,13 +432,13 @@ fn (t &Transformer) shared_map_base(id flat.NodeId) ?flat.NodeId {
 		if base.kind != .ident {
 			return none
 		}
-		typ := t.raw_selector_field_type(id) or {
+		typ := flat.source_type_name(t.raw_selector_field_type(id) or {
 			mut base_type := flat.source_type_name(t.original_expr_type(base_id))
 			if base_type.len == 0 {
 				base_type = flat.source_type_name(t.node_type(base_id))
 			}
-			t.promoted_field_raw_type(base_type.trim_left('&'), node.value, 0) or { return none }
-		}
+			flat.source_type_id(t.promoted_field_raw_type(base_type.trim_left('&'), node.value, 0) or { return none })
+		})
 		if t.is_shared_map_type_text(typ) {
 			return id
 		}

@@ -875,7 +875,7 @@ fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id fl
 	outer_pending := t.begin_isolated_pending()
 	mut spread := t.transform_expr_for_type(spread_id, flat.source_type_id(array_type))
 	t.end_isolated_pending(outer_pending)
-	spread_type := if flat.source_type_name(t.node_type(spread_id)).len > 0 {
+	spread_type := if (t.node_type(spread_id)) != 0 {
 		flat.source_type_name(t.node_type(spread_id))
 	} else {
 		array_type
@@ -3189,7 +3189,7 @@ fn (t &Transformer) array_append_elem_is_interface(elem_type_id u32) bool {
 }
 
 fn (t &Transformer) array_append_elem_is_interface_uncached(elem_type string) bool {
-	if t.is_builtin_ierror_interface_name(elem_type) {
+	if t.is_builtin_ierror_interface_name(flat.source_type_id(elem_type)) {
 		return true
 	}
 	if isnil(t.tc) {
@@ -3210,7 +3210,7 @@ fn (t &Transformer) array_append_elem_is_interface_uncached(elem_type string) bo
 			return true
 		}
 	}
-	return t.is_interface_type(elem_type)
+	return t.is_interface_type(flat.source_type_id(elem_type))
 }
 
 fn (t &Transformer) array_append_literal_children_match_elem(rhs_id flat.NodeId, elem_type string) bool {
@@ -3267,7 +3267,8 @@ fn (t &Transformer) array_append_elem_types_match(rhs_elem_type string, lhs_elem
 	}
 	rhs_clean_source_id := t.normalize_type_alias(flat.source_type_id(rhs_elem_type))
 	rhs_clean := flat.source_type_name(rhs_clean_source_id)
-	lhs_clean := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(lhs_elem_type)))
+	lhs_clean_source_id := t.normalize_type_alias(flat.source_type_id(lhs_elem_type))
+	lhs_clean := flat.source_type_name(lhs_clean_source_id)
 	if rhs_clean == lhs_clean {
 		return true
 	}
@@ -3278,8 +3279,9 @@ fn (t &Transformer) array_append_elem_types_match(rhs_elem_type string, lhs_elem
 	if isnil(t.tc) {
 		return false
 	}
-	lhs_iface := t.resolve_interface_type_name(lhs_clean)
-	if lhs_iface.len > 0 {
+	lhs_iface_source_id := t.resolve_interface_type_name(lhs_clean_source_id)
+	lhs_iface := flat.source_type_name(lhs_iface_source_id)
+	if lhs_iface_source_id != 0 {
 		if t.array_append_interface_has_requirements(lhs_iface) {
 			rhs_concrete := flat.source_type_name(t.trim_pointer_type(rhs_clean_source_id))
 			if t.tc.named_type_implements_interface(rhs_concrete, lhs_iface) {
@@ -3387,7 +3389,7 @@ fn (mut t Transformer) array_get_ptr(base flat.NodeId, index flat.NodeId, elem_t
 
 fn (t &Transformer) array_get_base_is_fixed_array(base flat.NodeId) bool {
 	node := t.a.node(base)
-	mut base_type := if node.kind == .ident && flat.source_type_name(t.var_type(node.value)).len > 0 {
+	mut base_type := if node.kind == .ident && (t.var_type(node.value)) != 0 {
 		trimmed_transform_text(flat.source_type_name(t.var_type(node.value)))
 	} else {
 		trimmed_transform_text(flat.source_type_name(t.node_type(base)))
@@ -3492,7 +3494,7 @@ fn (t &Transformer) array_receiver_raw_elem_type(fn_node flat.Node, elem_type st
 		return elem_type
 	}
 	receiver := t.a.child(&fn_node, 0)
-	mut raw := t.raw_var_type_for_expr(receiver) or { '' }
+	mut raw := flat.source_type_name(t.raw_var_type_for_expr(receiver) or { u32(0) })
 	source_id := t.array_literal_alias_expr_id(receiver)
 	source := t.a.nodes[int(source_id)]
 	if source.kind == .array_literal {
@@ -6530,7 +6532,7 @@ fn (t &Transformer) resolve_fn_value_selector(node flat.Node) ?string {
 	}
 	base := t.a.child_node(&node, 0)
 	if base.kind == .ident {
-		if flat.source_type_name(t.var_type(base.value)).len > 0 {
+		if (t.var_type(base.value)) != 0 {
 			return none
 		}
 		if resolved := t.resolve_static_fn_value_for_type(base.value, node.value) {
@@ -6867,13 +6869,15 @@ fn (mut t Transformer) map_init_entry_value_type(id flat.NodeId) string {
 		}
 	}
 	if node.kind == .call {
-		concrete := t.concrete_generic_call_return_type(id, node)
-		if concrete.len > 0 && !t.generic_arg_is_unresolved(flat.source_type_id(concrete)) {
+		concrete_source_id := t.concrete_generic_call_return_type(id, node)
+		concrete := flat.source_type_name(concrete_source_id)
+		if concrete_source_id != 0 && !t.generic_arg_is_unresolved(concrete_source_id) {
 			if spec := t.generic_call_spec_cache[int(id)] {
 				decls := t.cached_generic_fn_decls()
 				if decl := decls[spec.decl_key] {
-					display := t.specialized_fn_return_display_type_text(decl, spec.args.ids)
-					if display.len > 0 && !t.generic_arg_is_unresolved(flat.source_type_id(display)) {
+					display_source_id := t.specialized_fn_return_display_type_text(decl, spec.args.ids)
+					display := flat.source_type_name(display_source_id)
+					if display_source_id != 0 && !t.generic_arg_is_unresolved(display_source_id) {
 						return display
 					}
 				}

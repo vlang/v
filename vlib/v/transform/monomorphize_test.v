@@ -232,7 +232,7 @@ fn test_specialized_signature_qualifies_selective_import_in_wrappers() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	decl := GenericFnDecl{ file: file_name }
 	for prefix in ['atomic ', 'chan ', 'thread ', '?[]'] {
-		assert t.qualify_specialized_signature_type_text('${prefix}Payload', decl) == '${prefix}payloads.Payload'
+		assert flat.source_type_name(t.qualify_specialized_signature_type_text(flat.source_type_id('${prefix}Payload'), decl)) == '${prefix}payloads.Payload'
 	}
 }
 
@@ -372,23 +372,23 @@ fn test_flattened_generic_struct_arg_canonicalizes_to_source_application() {
 	t.record_generic_specialization_args_in_module('StructType', 'main', flat.TypeTextList.from_names(['int']).ids)
 
 	assert t.tc.struct_generic_params['StructType'] == ['T']
-	assert flat.TypeTextList{ ids: t.recorded_generic_specialization_args(flat.source_type_id('StructType_int')) or { []u32{} } }.names() == [
+	assert flat.TypeTextList{ ids: t.recorded_type_specialization_args(flat.source_type_id('StructType_int')) or { []u32{} } }.names() == [
 		'int',
 	]
 	assert generic_specialized_type_matches_flat_name('StructType_int', 'StructType', [
 		'int',
 	])
-	assert t.generic_specialized_source_type_name('StructType_int') or { '' } == 'StructType[int]'
+	assert flat.source_type_name(t.generic_specialized_source_type_name(flat.source_type_id('StructType_int')) or { u32(0) }) == 'StructType[int]'
 	assert flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id('StructType_int'))) == 'StructType[int]'
-	assert t.generic_specialized_source_type_name('&StructType_int') or { '' } == '&StructType[int]'
+	assert flat.source_type_name(t.generic_specialized_source_type_name(flat.source_type_id('&StructType_int')) or { u32(0) }) == '&StructType[int]'
 	assert flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id('&StructType[int]'))) == '&StructType[int]'
 
 	t.record_generic_specialization_args_in_module('StructType', 'main', flat.TypeTextList.from_names(['time.Time']).ids)
 	assert c_name('StructType[time.Time]') == 'StructType_time__Time'
-	assert flat.TypeTextList{ ids: t.recorded_generic_specialization_args(flat.source_type_id('StructType_time.Time')) or { []u32{} } }.names() == [
+	assert flat.TypeTextList{ ids: t.recorded_type_specialization_args(flat.source_type_id('StructType_time.Time')) or { []u32{} } }.names() == [
 		'time.Time',
 	]
-	assert t.generic_specialized_source_type_name('StructType_time.Time') or { '' } == 'StructType[time.Time]'
+	assert flat.source_type_name(t.generic_specialized_source_type_name(flat.source_type_id('StructType_time.Time')) or { u32(0) }) == 'StructType[time.Time]'
 	assert flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id('StructType_time.Time'))) == 'StructType[time.Time]'
 }
 
@@ -410,7 +410,7 @@ fn test_composite_generic_inference_preserves_nested_alias() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.build_generic_alias_name_index()
 
-	assert t.generic_composite_inference_alias_type('datatypes.LinkedList[Distance]', 'datatypes') == 'datatypes.LinkedList[Distance]'
+	assert flat.source_type_name(t.generic_composite_inference_alias_type(flat.source_type_id('datatypes.LinkedList[Distance]'), 'datatypes')) == 'datatypes.LinkedList[Distance]'
 }
 
 fn test_composite_generic_inference_still_expands_direct_alias() {
@@ -420,7 +420,7 @@ fn test_composite_generic_inference_still_expands_direct_alias() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.build_generic_alias_name_index()
 
-	assert t.generic_composite_inference_alias_type('Distances', 'main') == '[]int'
+	assert flat.source_type_name(t.generic_composite_inference_alias_type(flat.source_type_id('Distances'), 'main')) == '[]int'
 }
 
 fn test_concrete_generic_fn_alias_call_expands_multi_return_signature() {
@@ -447,10 +447,10 @@ fn test_concrete_generic_fn_alias_call_expands_multi_return_signature() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 
-	concrete := t.concrete_fn_alias_call_return_type(int(call_id), a.nodes[int(call_id)]) or {
+	concrete := flat.source_type_name(t.concrete_fn_alias_call_return_type(int(call_id), a.nodes[int(call_id)]) or {
 		assert false, 'generic function type alias was not expanded'
 		return
-	}
+	})
 	assert concrete == 'fn(string) (string, string)'
 }
 
@@ -478,10 +478,10 @@ fn test_concrete_generic_fn_alias_call_expands_result_signature() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 
-	concrete := t.concrete_fn_alias_call_return_type(int(call_id), a.nodes[int(call_id)]) or {
+	concrete := flat.source_type_name(t.concrete_fn_alias_call_return_type(int(call_id), a.nodes[int(call_id)]) or {
 		assert false, 'generic result function type alias was not expanded'
 		return
-	}
+	})
 	assert concrete == 'fn(string) !ParseResult[string]'
 }
 
@@ -606,19 +606,19 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 	}
 	for typ in ['[2]Any', 'map[string]Any', 'map[Any]int', '(int, [2]Any)'] {
 		assert t.substituted_type_belongs_to_main_generic(typ), typ
-		assert t.generic_inference_alias_target(typ, 'callee') == typ
-		assert t.generic_arg_for_decl_module(typ, 'callee') == typ
+		assert flat.source_type_name(t.generic_inference_alias_target(flat.source_type_id(typ), 'callee')) == typ
+		assert flat.source_type_name(t.generic_arg_for_decl_module(flat.source_type_id(typ), 'callee')) == typ
 	}
-	assert t.generic_inference_alias_target('other.Box[map[string]Any]', 'callee') == 'other.Box[map[string]Any]'
-	assert t.generic_arg_for_decl_module('other.Box[[2]Any]', 'callee') == 'other.Box[[2]Any]'
+	assert flat.source_type_name(t.generic_inference_alias_target(flat.source_type_id('other.Box[map[string]Any]'), 'callee')) == 'other.Box[map[string]Any]'
+	assert flat.source_type_name(t.generic_arg_for_decl_module(flat.source_type_id('other.Box[[2]Any]'), 'callee')) == 'other.Box[[2]Any]'
 	tc.type_aliases.set_id('other.Items', flat.source_type_id('other.Box[T]'))
 	tc.type_alias_generic_params['other.Items'] = ['T']
-	assert t.generic_inference_alias_target('other.Items[Any]', 'callee') == 'other.Items[Any]'
+	assert flat.source_type_name(t.generic_inference_alias_target(flat.source_type_id('other.Items[Any]'), 'callee')) == 'other.Items[Any]'
 	t.structs['callee.Box'] = StructInfo{ module: 'callee' }
 	tc.struct_generic_params['callee.Box'] = ['T']
-	assert t.generic_inference_alias_target('Box[[2]Any]', 'callee') == 'callee.Box[[2]Any]'
-	assert t.generic_arg_for_decl_module('Box[map[string]Any]', 'callee') == 'callee.Box[map[string]Any]'
-	assert t.generic_arg_for_call_and_decl_module('Box[[2]Any]', 'callee', 'other') == 'callee.Box[[2]Any]'
+	assert flat.source_type_name(t.generic_inference_alias_target(flat.source_type_id('Box[[2]Any]'), 'callee')) == 'callee.Box[[2]Any]'
+	assert flat.source_type_name(t.generic_arg_for_decl_module(flat.source_type_id('Box[map[string]Any]'), 'callee')) == 'callee.Box[map[string]Any]'
+	assert flat.source_type_name(t.generic_arg_for_call_and_decl_module(flat.source_type_id('Box[[2]Any]'), 'callee', 'other')) == 'callee.Box[[2]Any]'
 	for typ in ['[2]callee.Any', 'map[string]callee.Any', '(int, callee.Any)', 'other.Box[callee.Any]',
 		'map[string]int', '[2]int'] {
 		assert !t.current_specialization_has_generic_arg(typ), typ
@@ -626,9 +626,9 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 	}
 	for typ in ['?[]string', '?map[string]string', 'fn (?[]string) string'] {
 		t.active_specialization_args = flat.TypeTextList.from_names([typ])
-		assert t.generic_inference_alias_target(typ, 'callee') == typ
-		assert t.generic_arg_for_decl_module(typ, 'callee') == typ
-		assert t.generic_arg_for_call_and_decl_module(typ, 'callee', 'other') == typ
+		assert flat.source_type_name(t.generic_inference_alias_target(flat.source_type_id(typ), 'callee')) == typ
+		assert flat.source_type_name(t.generic_arg_for_decl_module(flat.source_type_id(typ), 'callee')) == typ
+		assert flat.source_type_name(t.generic_arg_for_call_and_decl_module(flat.source_type_id(typ), 'callee', 'other')) == typ
 	}
 }
 
@@ -676,10 +676,10 @@ fn test_collision_locked_signature_keeps_interface_and_alias_declaration_modules
 	decl := GenericFnDecl{ module: 'callee' }
 	for base in ['Reader', 'Mapper'] {
 		for prefix in ['', '&', '[]', '?'] {
-			assert t.specialized_signature_type_text(decl, '${prefix}${base}[T]', flat.TypeTextList.from_names(['Item']).ids, ['T']) == '${prefix}callee.${base}[main.Item]'
+			assert flat.source_type_name(t.specialized_signature_type_text(decl, flat.source_type_id('${prefix}${base}[T]'), flat.TypeTextList.from_names(['Item']).ids, ['T'])) == '${prefix}callee.${base}[main.Item]'
 		}
-		assert t.specialized_signature_type_text(decl, 'other.${base}[T]', flat.TypeTextList.from_names(['Item']).ids, ['T']) == 'other.${base}[main.Item]'
-		assert t.specialized_signature_type_text(decl, '${base}[T]', flat.TypeTextList.from_names(['int']).ids, ['T']).contains('main.') == false
+		assert flat.source_type_name(t.specialized_signature_type_text(decl, flat.source_type_id('other.${base}[T]'), flat.TypeTextList.from_names(['Item']).ids, ['T'])) == 'other.${base}[main.Item]'
+		assert flat.source_type_name(t.specialized_signature_type_text(decl, flat.source_type_id('${base}[T]'), flat.TypeTextList.from_names(['int']).ids, ['T'])).contains('main.') == false
 	}
 }
 
@@ -694,7 +694,7 @@ fn test_generic_fn_type_param_mode_payload_preserves_mutability() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	assert t.qualify_specialized_signature_type_text('fn(mut &Dog)', GenericFnDecl{}) == 'fn (mut &Dog)'
+	assert flat.source_type_name(t.qualify_specialized_signature_type_text(flat.source_type_id('fn(mut &Dog)'), GenericFnDecl{})) == 'fn (mut &Dog)'
 
 	assert t.lock_colliding_main_substitution_type_text('fn(mut it T)', 'fn(mut it &Dog)', 'arc', [
 		'T',
@@ -1279,23 +1279,26 @@ fn test_recorded_generic_arg_ids_preserve_ownership_and_invalidate_misses() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	key := flat.source_type_id('Record_int')
-	assert t.recorded_generic_specialization_args(key) == none
+	assert t.recorded_type_specialization_args(key) == none
 	assert t.spec_args_misses.misses[key]
 	t.generic_specialization_args.set_ids('Record_int', [flat.source_type_int])
-	mut args := t.recorded_generic_specialization_args(key) or { panic('missing local arguments') }
+	mut args := t.recorded_type_specialization_args(key) or { panic('missing local arguments') }
 	assert args == [flat.source_type_int]
 	args[0] = flat.source_type_string
-	assert t.recorded_generic_specialization_args(key) or { []u32{} } == [flat.source_type_int]
+	assert t.recorded_type_specialization_args(key) or { []u32{} } == [flat.source_type_int]
 
 	mut first_parent := flat.TypeTextListBindings{}
 	first_parent.set_ids('First_int', [flat.source_type_int])
 	t.generic_specialization_args_parent = &first_parent
 	parent_key := flat.source_type_id('Second_string')
-	assert t.recorded_generic_specialization_args(parent_key) == none
+	assert t.recorded_type_specialization_args(parent_key) == none
+	assert t.recorded_generic_specialization_args('Second_string') == none
+	assert t.spec_args_misses.name_misses['Second_string']
 	assert t.spec_args_misses.misses[parent_key]
 	mut second_parent := flat.TypeTextListBindings{}
 	second_parent.set_ids('Second_string', [flat.source_type_string])
 	assert first_parent.ids.len == second_parent.ids.len
 	t.generic_specialization_args_parent = &second_parent
-	assert t.recorded_generic_specialization_args(parent_key) or { []u32{} } == [flat.source_type_string]
+	assert t.recorded_type_specialization_args(parent_key) or { []u32{} } == [flat.source_type_string]
+	assert t.recorded_generic_specialization_args('Second_string') or { []u32{} } == [flat.source_type_string]
 }

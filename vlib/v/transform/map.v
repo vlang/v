@@ -731,7 +731,7 @@ fn (t &Transformer) equality_type_expands_from_metadata(typ string, depth int) b
 		}
 		return value_type.len > 0 && t.equality_type_expands_from_metadata(value_type, depth + 1)
 	}
-	return t.resolve_interface_type_name(clean).len > 0 || t.struct_lookup_name(clean).len > 0
+	return (t.resolve_interface_type_name(flat.source_type_id(clean))) != 0 || t.struct_lookup_name(clean).len > 0
 }
 
 fn (t &Transformer) external_selector_expands_from_type_metadata(node flat.Node) bool {
@@ -758,8 +758,9 @@ fn (t &Transformer) external_selector_expands_from_type_metadata(node flat.Node)
 		return false
 	}
 	base_type = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(base_type)))
-	iface_name := t.resolve_interface_type_name(base_type)
-	if iface_name.len > 0 && node.value !in ['_typ', '_object'] {
+	iface_name_source_id := t.resolve_interface_type_name(flat.source_type_id(base_type))
+	iface_name := flat.source_type_name(iface_name_source_id)
+	if iface_name_source_id != 0 && node.value !in ['_typ', '_object'] {
 		if _ := t.interface_field_type_name(iface_name, node.value) {
 			return true
 		}
@@ -768,7 +769,7 @@ fn (t &Transformer) external_selector_expands_from_type_metadata(node flat.Node)
 }
 
 fn (t &Transformer) interface_cast_expands_from_type_metadata(node flat.Node) bool {
-	return node.kind == .cast_expr && t.is_interface_type(node.value)
+	return node.kind == .cast_expr && t.is_interface_type(flat.source_type_id(node.value))
 }
 
 fn (mut t Transformer) compiler_call_expands_from_type_metadata(id flat.NodeId, node flat.Node) bool {
@@ -2048,7 +2049,7 @@ fn (t &Transformer) const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 	if node.kind != .ident || node.value.len == 0 {
 		return none
 	}
-	if flat.source_type_name(t.var_type(node.value)).len > 0 {
+	if (t.var_type(node.value)) != 0 {
 		return none
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {

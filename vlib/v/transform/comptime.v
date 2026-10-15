@@ -1409,10 +1409,12 @@ fn comptime_method_receiver_matches(receiver string, requested string, normalize
 
 fn (t &Transformer) comptime_method_source_type(raw string) string {
 	clean := comptime_method_receiver_type(raw)
-	if source := t.generic_specialized_source_type_name(clean) {
+	if source_source_id := t.generic_specialized_source_type_name(flat.source_type_id(clean)) {
+		source := flat.source_type_name(source_source_id)
+
 		return source
 	}
-	if current_args_source_ids := t.recorded_generic_specialization_args(flat.source_type_id(t.cur_fn_name)) {
+	if current_args_source_ids := t.recorded_generic_specialization_args(t.cur_fn_name) {
 		for arg_source_id in current_args_source_ids {
 			arg := flat.source_type_name(arg_source_id)
 
@@ -1540,7 +1542,9 @@ fn (t &Transformer) comptime_method_receiver_generic_args(receiver string, reque
 	}
 	mut candidates := [requested, normalized]
 	for candidate in [requested, normalized] {
-		if source := t.generic_specialized_source_type_name(comptime_method_receiver_type(candidate)) {
+		if source_source_id := t.generic_specialized_source_type_name(flat.source_type_id(comptime_method_receiver_type(candidate))) {
+			source := flat.source_type_name(source_source_id)
+
 			candidates << source
 		}
 	}
@@ -1626,7 +1630,7 @@ fn (mut t Transformer) comptime_method_call_args_match_with_ctx(node flat.Node, 
 		if is_variadic && param_idx == method.params.len - 1 && expected.starts_with('...') {
 			expected = expected[3..]
 		}
-		expected = t.qualify_generic_arg_for_decl_module(expected, decl_module)
+		expected = flat.source_type_name(t.qualify_generic_arg_for_decl_module(flat.source_type_id(expected), decl_module))
 		arg_id := args[route_start + route_idx]
 		if t.a.node(arg_id).kind == .field_init {
 			if !t.comptime_method_field_group_matches(node, arg_id, expected) {
@@ -1650,9 +1654,9 @@ fn (mut t Transformer) comptime_method_call_args_match_with_ctx(node flat.Node, 
 }
 
 fn (mut t Transformer) comptime_method_field_group_matches(node flat.Node, first_field_id flat.NodeId, expected string) bool {
-	struct_type := t.params_struct_type_name(expected) or {
-		t.struct_arg_type_name(expected) or { return false }
-	}
+	struct_type := flat.source_type_name(t.params_struct_type_name(flat.source_type_id(expected)) or {
+		t.struct_arg_type_name(flat.source_type_id(expected)) or { return false }
+	})
 	mut field_start := -1
 	for i in 1 .. node.children_count {
 		if t.a.child(&node, i) == first_field_id {
@@ -1692,13 +1696,14 @@ fn (t &Transformer) comptime_method_min_required_arg_count(method MethodMeta) in
 			count--
 			continue
 		}
-		if _ := t.params_struct_type_name(param.typ_text()) {
+		if _ := t.params_struct_type_name(param.typ) {
 			count--
 			continue
 		}
-		qualified := t.qualify_generic_arg_for_decl_module(param.typ_text(), param.module_name)
+		qualified_source_id := t.qualify_generic_arg_for_decl_module(param.typ, param.module_name)
+		qualified := flat.source_type_name(qualified_source_id)
 		if qualified != param.typ_text() {
-			if _ := t.params_struct_type_name(qualified) {
+			if _ := t.params_struct_type_name(qualified_source_id) {
 				count--
 				continue
 			}
@@ -2146,7 +2151,7 @@ fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId
 	}
 	expected_type_source_id := t.trim_pointer_type(flat.source_type_id(param_type))
 	expected_type := flat.source_type_name(expected_type_source_id)
-	mut actual_type := t.raw_var_type_for_expr(arg_id) or { flat.source_type_name(t.node_type(arg_id)) }
+	mut actual_type := flat.source_type_name(t.raw_var_type_for_expr(arg_id) or { t.node_type(arg_id) })
 	if actual_type.len == 0 {
 		return none
 	}
@@ -3187,17 +3192,19 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 fn (mut t Transformer) comptime_field_generic_arg_type(arg_id flat.NodeId, fm FieldMeta) string {
 	arg := t.a.nodes[int(arg_id)]
 	if arg.kind == .ident {
-		return t.local_decl_type_before(arg.value, arg_id) or {
-			t.comptime_reflected_for_in_local_type(arg.value, fm) or {
-				t.generic_call_arg_type_for_inference(arg_id)
-			}
-		}
+		return flat.source_type_name(t.local_decl_type_before(arg.value, arg_id) or {
+			flat.source_type_id(t.comptime_reflected_for_in_local_type(arg.value, fm) or {
+				flat.source_type_name(t.generic_call_arg_type_for_inference(arg_id))
+			})
+		})
 	}
 	if arg.kind == .prefix && arg.children_count > 0 {
 		child_id := t.a.child(&arg, 0)
 		child := t.a.nodes[int(child_id)]
 		if child.kind == .ident {
-			if local_type := t.local_decl_type_before(child.value, child_id) {
+			if local_type_source_id := t.local_decl_type_before(child.value, child_id) {
+				local_type := flat.source_type_name(local_type_source_id)
+
 				if arg.op == .amp {
 					return '&${local_type}'
 				}
@@ -3207,7 +3214,7 @@ fn (mut t Transformer) comptime_field_generic_arg_type(arg_id flat.NodeId, fm Fi
 			}
 		}
 	}
-	return t.generic_call_arg_type_for_inference(arg_id)
+	return flat.source_type_name(t.generic_call_arg_type_for_inference(arg_id))
 }
 
 fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.Node, fm FieldMeta) ?string {
@@ -3543,7 +3550,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		call_node.value = ''
 	}
 	retargeted_call_type := if node.kind == .call && smartcast_name != '' {
-		t.retarget_cloned_generic_call(call_node, mut children, t.active_specialization_args.ids, return_context)
+		flat.source_type_name(t.retarget_cloned_generic_call(call_node, mut children, t.active_specialization_args.ids, flat.source_type_id(return_context)))
 	} else {
 		''
 	}
@@ -5047,7 +5054,7 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 		reflected_rhs_typ := if unwrapped_rhs_typ.len > 0 {
 			unwrapped_rhs_typ
 		} else if rhs.kind == .ident {
-			t.local_decl_type_before(rhs.value, children[1]) or { '' }
+			flat.source_type_name(t.local_decl_type_before(rhs.value, children[1]) or { u32(0) })
 		} else if rhs.kind == .or_expr && rhs.value == '?' && fm.is_option
 			&& fm.comptime_typ_text().starts_with('?') {
 			trimmed_transform_text(fm.comptime_typ_text()[1..])
