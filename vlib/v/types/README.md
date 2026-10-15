@@ -114,3 +114,9 @@ Each `_test.v` file must contain at least one active `test_` function. A file wh
 are all excluded by conditional compilation reports a missing-test error. When the file
 has no active function declarations, this diagnostic points to the start of the file;
 a helper-only file points to its helper function.
+
+Generic specialization requests, signature argument lists, and inferred type bindings carry source
+IDs. Generic parameter names remain declaration strings. Numeric list queries preserve caller-owned
+array storage; the specialization miss cache invalidates when local or parent bindings grow or its
+parent changes. Substitution and generated-name rendering resolve spelling bytes at those
+boundaries.

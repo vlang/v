@@ -1273,3 +1273,29 @@ fn test_scoped_late_fn_bodies_pass_records_lowered_bodies() {
 		assert t.a.nodes[idx].children_start == children_start
 	}
 }
+
+fn test_recorded_generic_arg_ids_preserve_ownership_and_invalidate_misses() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	key := flat.source_type_id('Record_int')
+	assert t.recorded_generic_specialization_args(key) == none
+	assert t.spec_args_misses.misses[key]
+	t.generic_specialization_args.set_ids('Record_int', [flat.source_type_int])
+	mut args := t.recorded_generic_specialization_args(key) or { panic('missing local arguments') }
+	assert args == [flat.source_type_int]
+	args[0] = flat.source_type_string
+	assert t.recorded_generic_specialization_args(key) or { []u32{} } == [flat.source_type_int]
+
+	mut first_parent := flat.TypeTextListBindings{}
+	first_parent.set_ids('First_int', [flat.source_type_int])
+	t.generic_specialization_args_parent = &first_parent
+	parent_key := flat.source_type_id('Second_string')
+	assert t.recorded_generic_specialization_args(parent_key) == none
+	assert t.spec_args_misses.misses[parent_key]
+	mut second_parent := flat.TypeTextListBindings{}
+	second_parent.set_ids('Second_string', [flat.source_type_string])
+	assert first_parent.ids.len == second_parent.ids.len
+	t.generic_specialization_args_parent = &second_parent
+	assert t.recorded_generic_specialization_args(parent_key) or { []u32{} } == [flat.source_type_string]
+}

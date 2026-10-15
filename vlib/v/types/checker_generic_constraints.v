@@ -1415,7 +1415,7 @@ fn (mut tc TypeChecker) constraint_walk_infer(param_text string, actual Type, na
 }
 
 // infer_type_params_from_constraints binds in `inferred` each type parameter
-// of the generic function `decl` that no argument of a call decides, from the
+// of the generic function `decl` to a source-spelling ID when no call argument decides it, from the
 // constraint of a bound one that names it: `T` of `[C Container[T], T Named]`
 // is what `Container[T]` makes of the type of `C`, `User` for `Box[User]`,
 // whose `get()` returns a `User`.
@@ -1457,7 +1457,7 @@ pub fn (mut tc TypeChecker) infer_type_params_from_constraints(decl flat.Node, m
 }
 
 // infer_type_params_from_interface binds in `inferred` the type parameters
-// `names` that `param_text`, a generic interface as the type of a parameter,
+// `names` to source-spelling IDs, as named by the generic interface `param_text`,
 // `Shelf[T]`, names and nothing bound yet, from `actual_text`, the type of what
 // a call passes there: the types of its methods and fields against those of
 // the members of the interface, `User` for a `get() User` against `get() T`.

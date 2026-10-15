@@ -3152,8 +3152,8 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 		return comptime_unsupported_late_generic_call
 	}
 	mut symbol_args := []u32{cap: args_source_ids.len}
-	for arg_source_id_ in args_source_ids {
-		arg := flat.source_type_name(arg_source_id_)
+	for arg_source_id in args_source_ids {
+		arg := flat.source_type_name(arg_source_id)
 
 		symbol_args << flat.source_type_id(generic_type_name_display(arg))
 	}

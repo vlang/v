@@ -2446,8 +2446,8 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_generic_specs(specs fl
 		}
 		mut impls := flat.TypeTextList.from_names(old_index.names_text().clone()).ids
 		mut seen := map[string]bool{}
-		for name_source_id_ in impls {
-			name := flat.source_type_name(name_source_id_)
+		for name_source_id in impls {
+			name := flat.source_type_name(name_source_id)
 
 			seen[name] = true
 		}
@@ -2529,8 +2529,8 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_types() {
 		old_index := t.interface_impl_indexes[iface_name] or { continue }
 		mut impls := flat.TypeTextList.from_names(old_index.names_text().clone()).ids
 		mut seen := map[string]bool{}
-		for name_source_id__ in impls {
-			name := flat.source_type_name(name_source_id__)
+		for name_source_id in impls {
+			name := flat.source_type_name(name_source_id)
 
 			seen[name] = true
 		}

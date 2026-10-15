@@ -6179,9 +6179,9 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 		// `[C Container[T], T Named]`, from the type bound to that one.
 		tc.infer_type_params_from_constraints(*fn_node, mut inferred)
 		for param in generic_params {
-			arg_source_id__ := inferred[param] or { return none }
-			arg := flat.source_type_name(arg_source_id__)
-			concrete_args << arg_source_id__
+			arg_source_id := inferred[param] or { return none }
+			arg := flat.source_type_name(arg_source_id)
+			concrete_args << arg_source_id
 			symbol_types[param] = arg
 		}
 	}
@@ -18456,14 +18456,14 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 	mut concrete_args := []string{cap: generic_params.len}
 	mut concrete_types := []Type{cap: generic_params.len}
 	for param in generic_params {
-		arg_source_id___ := inferred[param] or { return info }
-		arg := flat.source_type_name(arg_source_id___)
+		arg_source_id := inferred[param] or { return info }
+		arg := flat.source_type_name(arg_source_id)
 		concrete_args << arg
 		// Retain the caller-side semantic type. Re-parsing a bare caller type such
 		// as `User` in the generic declaration's module would incorrectly turn it
 		// into `json2.User`.
 		concrete_types << inferred_types[param] or {
-			tc.type_from_known_symbol(arg) or { tc.parse_type(arg_source_id___) }
+			tc.type_from_known_symbol(arg) or { tc.parse_type(arg_source_id) }
 		}
 	}
 	// A generic receiver method can also have its own generic parameters, e.g.
@@ -18891,7 +18891,8 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 }
 
 // infer_generic_reachability_type_args infers generic arguments for a call whose checked type
-// cache is unavailable to reachability analysis. It uses the declaration's type context.
+// cache is unavailable to reachability analysis. Values are source-spelling IDs resolved
+// in the declaration's type context.
 pub fn (tc &TypeChecker) infer_generic_reachability_type_args(fn_name string, param_text string, actual Type, generic_params []string) map[string]u32 {
 	mut inferred := map[string]u32{}
 	clean := trimmed_space(param_text)
