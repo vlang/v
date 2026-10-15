@@ -596,6 +596,15 @@ fn handle_route[A, X](mut app A, mut user_context X, url urllib.URL, host string
 			}
 		}
 	}
+	// no route matched this method. A route that matches the path but not the
+	// verb is a 405 with an `Allow` header, which is what a client needs to
+	// discover the right method; a path nothing claims stays a 404.
+	// `not_found` is deliberately left false, so after-middleware such as
+	// compression still runs over the response this function sends.
+	if mismatch := select_route_ignoring_method(routes, url.path, host) {
+		user_context.method_not_allowed(mismatch.route.methods)
+		return
+	}
 	// return 404
 	user_context.not_found()
 	not_found = true
@@ -648,6 +657,55 @@ fn select_route(routes &map[string]Route, path string, host string, method http.
 
 fn route_is_variadic(route_words []string) bool {
 	return route_words.len > 0 && route_words[route_words.len - 1].ends_with('...')
+}
+
+// route_path_matches reports whether a route's path matches the request path,
+// ignoring the HTTP method. Method-insensitive matching is what separates a
+// 405 ("right path, wrong verb") from a 404 ("no such path").
+fn route_path_matches(url_words []string, route_words []string) bool {
+	if route_words.len == 0 && url_words.len == 0 {
+		return true
+	}
+	if _ := route_matches(url_words, route_words) {
+		return true
+	}
+	return false
+}
+
+// select_route_ignoring_method finds a route by path and host alone. It runs
+// only on the path where select_route already failed, so it costs nothing on a
+// request that a handler answers, and it prefers an exact route over a variadic
+// one so the `Allow` header names the route the caller most likely meant.
+fn select_route_ignoring_method(routes &map[string]Route, path string, host string) ?RouteMatch {
+	is_root := path.len == 0 || path == '/'
+	if is_root {
+		if index_route := (*routes)['index'] {
+			if (index_route.host == '' || index_route.host == host)
+				&& index_route.path in ['/', '/index'] {
+				return RouteMatch{ name: 'index', route: index_route, from_data: true }
+			}
+		}
+	}
+	url_words := route_path_words(path)
+	mut variadic_match := RouteMatch{}
+	for name, route in *routes {
+		if route.host != '' && route.host != host {
+			continue
+		}
+		if !route_path_matches(url_words, route.words) {
+			continue
+		}
+		if !route_is_variadic(route.words) {
+			return RouteMatch{ name: name, route: route, from_data: !route.path.contains('/:') }
+		}
+		if should_prefer_variadic_route(route.words, variadic_match.route.words) {
+			variadic_match = RouteMatch{ name: name, route: route }
+		}
+	}
+	if variadic_match.name != '' {
+		return variadic_match
+	}
+	return none
 }
 
 fn should_prefer_variadic_route(candidate []string, current []string) bool {
