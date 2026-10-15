@@ -615,7 +615,7 @@ fn (mut cache ImportTypeCache) for_file(file string) &ImportFileTypeCache {
 fn (g &FlatGen) canonical_import_alias_type_in_file(type_id u32, file string) types.Type {
 	mut cache := g.import_type_cache
 	if isnil(cache) || flat.source_type_shape(type_id).has(.typeof_name) {
-		return g.canonical_import_alias_type_in_file_uncached(flat.source_type_name(type_id), file)
+		return g.canonical_import_alias_type_in_file_uncached(type_id, file)
 	}
 	if !g.skip_generics {
 		// Concrete annotations recur in generic bodies, but their resolutions
@@ -624,7 +624,7 @@ fn (g &FlatGen) canonical_import_alias_type_in_file(type_id u32, file string) ty
 		if isnil(memo) || !memo.active || memo.file != g.tc.cur_file
 			|| memo.module != g.tc.cur_module || g.const_init_depth > 0
 			|| g.struct_default_module.len > 0 {
-			return g.canonical_import_alias_type_in_file_uncached(flat.source_type_name(type_id), file)
+			return g.canonical_import_alias_type_in_file_uncached(type_id, file)
 		}
 		slot := int(type_id & u32(body_import_type_query_slots - 1))
 		// The masked slot is in bounds; borrow the entry without copying its type.
@@ -632,7 +632,7 @@ fn (g &FlatGen) canonical_import_alias_type_in_file(type_id u32, file string) ty
 		if entry.generation == memo.generation && entry.type_id == type_id && entry.file == file {
 			return entry.value
 		}
-		result := g.canonical_import_alias_type_in_file_uncached(flat.source_type_name(type_id), file)
+		result := g.canonical_import_alias_type_in_file_uncached(type_id, file)
 		if result !is types.Unknown && result !is types.Void
 			&& !g.type_contains_generic_placeholder(result) {
 			memo.import_queries[slot] = BodyImportTypeQuery{
@@ -646,19 +646,19 @@ fn (g &FlatGen) canonical_import_alias_type_in_file(type_id u32, file string) ty
 	}
 	mut entry := cache.for_file(file)
 	if result := entry.parsed[type_id] { return result }
-	result := g.canonical_import_alias_type_in_file_uncached(flat.source_type_name(type_id), file)
+	result := g.canonical_import_alias_type_in_file_uncached(type_id, file)
 	entry.parsed[type_id] = result
 	return result
 }
 
-fn (g &FlatGen) canonical_import_alias_type_in_file_uncached(typ string, file string) types.Type {
-	canonical := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(typ), file))
-	if canonical != typ {
-		if exact := g.exact_known_import_type_text(canonical) {
+fn (g &FlatGen) canonical_import_alias_type_in_file_uncached(type_id u32, file string) types.Type {
+	canonical := g.canonical_import_alias_type_text_in_file(type_id, file)
+	if canonical != type_id {
+		if exact := g.exact_known_import_type_text(flat.source_type_name(canonical)) {
 			return exact
 		}
 	}
-	return g.tc.parse_resolution_type_in_file(flat.source_type_id(typ), file)
+	return g.tc.parse_resolution_type_in_file(type_id, file)
 }
 
 fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.Node) types.Type {
@@ -791,11 +791,16 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 }
 
 fn (g &FlatGen) canonical_import_alias_type_text_in_file(type_id u32, file string) u32 {
+	shape := flat.source_type_shape(type_id)
+	// Bare, unpadded spellings have no import prefix or nested type to rewrite.
+	// Padding must still reach the parser: trimming can expose wrapper syntax.
+	if !shape.has(.dotted) && !shape.has(.bracketed) && !shape.has(.wrapped) && !shape.has(.padded) {
+		return type_id
+	}
 	mut cache := g.import_type_cache
 	if isnil(cache) {
 		return flat.source_type_id(g.canonical_import_alias_type_text_in_file_uncached(flat.source_type_name(type_id), file))
 	}
-	shape := flat.source_type_shape(type_id)
 	if !shape.has(.dotted) {
 		if !shape.has(.bracketed) && !shape.has(.wrapped) {
 			return flat.source_type_id(g.canonical_import_alias_type_text_in_file_uncached(flat.source_type_name(type_id), file))

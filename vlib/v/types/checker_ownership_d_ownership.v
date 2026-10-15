@@ -2341,7 +2341,8 @@ fn (mut tc TypeChecker) ownership_collect_global_assoc_named_base_descendants(na
 	mut marked := false
 	st := tc.ownership_state()
 	for source_name, type_name_id in st.owned_globals.ids {
-		type_name := flat.source_type_name(type_name_id)
+		type_name_source_id := type_name_id
+
 		if source_name != base_key && !ownership_storage_key_is_descendant(source_name, base_key) {
 			continue
 		}
@@ -2354,7 +2355,7 @@ fn (mut tc TypeChecker) ownership_collect_global_assoc_named_base_descendants(na
 		} else {
 			suffix + source_name[base_key.len..]
 		}
-		tc.ownership_mark_owned_global(name, qname, target_suffix, flat.source_type_id(type_name))
+		tc.ownership_mark_owned_global(name, qname, target_suffix, type_name_source_id)
 		marked = true
 	}
 	return marked

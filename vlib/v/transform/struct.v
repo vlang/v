@@ -1624,9 +1624,9 @@ fn (t &Transformer) struct_field_sum_type(field_type_id u32, owner_module string
 	field_type := flat.source_type_name(field_type_id)
 	if field_type.contains('|') {
 		if sum_name_source_id := t.sum_type_for_union_text(field_type_id, owner_module) {
-			sum_name := flat.source_type_name(sum_name_source_id)
+			sum_name_source_id_2 := sum_name_source_id
 
-			return flat.source_type_id(sum_name)
+			return sum_name_source_id_2
 		}
 	}
 	if field_type.starts_with('[]') || field_type.starts_with('map[')

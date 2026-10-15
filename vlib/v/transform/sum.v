@@ -1829,9 +1829,10 @@ fn (t &Transformer) single_pointer_sum_nil_variant(expr_id flat.NodeId, sum_name
 
 	mut pointer_variant := ''
 	for variant_source_id in variants_source_ids_2 {
-		variant := flat.source_type_name(variant_source_id)
+		variant_source_id_2 := variant_source_id
+		variant := flat.source_type_name(variant_source_id_2)
 
-		if !t.sum_variant_is_direct_pointer(flat.source_type_id(variant)) {
+		if !t.sum_variant_is_direct_pointer(variant_source_id_2) {
 			continue
 		}
 		if pointer_variant.len > 0 {

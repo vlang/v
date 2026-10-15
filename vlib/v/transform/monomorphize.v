@@ -584,7 +584,8 @@ fn (mut t Transformer) explicit_generic_method_value_specialization(id flat.Node
 		return none
 	}
 	receiver_type_source_id := t.generic_call_arg_type_for_inference(t.a.child(selector, 0))
-	receiver_type := flat.source_type_name(receiver_type_source_id)
+	receiver_type_source_id_2 := receiver_type_source_id
+	receiver_type := flat.source_type_name(receiver_type_source_id_2)
 	if receiver_type_source_id == 0 || t.generic_arg_is_unresolved(receiver_type_source_id)
 		|| t.type_arg_text_has_enclosing_generic_param(id, receiver_type) {
 		return none
@@ -604,7 +605,7 @@ fn (mut t Transformer) explicit_generic_method_value_specialization(id flat.Node
 	decl := decls[decl_key] or { return none }
 	param_names := t.generic_fn_param_names(decl.node, decl.module)
 	receiver_params := t.generic_receiver_param_names(decl)
-	declaring_receiver := t.generic_method_value_declaring_receiver(flat.source_type_id(receiver_type), decl,
+	declaring_receiver := t.generic_method_value_declaring_receiver(receiver_type_source_id_2, decl,
 		module_name) or { GenericMethodValueReceiver{ typ: receiver_type_source_id } }
 	mut fixed := t.receiver_fixed_type_args(decl, declaring_receiver.typ)
 	if decl.node.children_count > 0 {
@@ -1891,14 +1892,15 @@ fn (mut t Transformer) interface_boxed_type_used(iface_name_id u32, concrete_typ
 
 fn (t &Transformer) interface_boxed_type_marked(iface_name_id u32, concrete_type_id u32) bool {
 	iface_name_comparison_type_id_4 := iface_name_id
-	iface_name := flat.source_type_name(iface_name_comparison_type_id_4)
+	iface_name_source_id_3 := iface_name_comparison_type_id_4
+	iface_name := flat.source_type_name(iface_name_source_id_3)
 	concrete_type := flat.source_type_name(concrete_type_id)
 	mut iface_names := [iface_name]
 	short_name := iface_name.all_after_last('.')
 	if short_name != iface_name {
 		iface_names << short_name
 	}
-	resolved_source_id := t.resolve_interface_type_name(flat.source_type_id(iface_name))
+	resolved_source_id := t.resolve_interface_type_name(iface_name_source_id_3)
 	resolved_comparison_type_id := resolved_source_id
 	resolved := flat.source_type_name(resolved_comparison_type_id)
 	if resolved_source_id != 0 && resolved_comparison_type_id != iface_name_comparison_type_id_4 {
@@ -2622,10 +2624,11 @@ fn (mut t Transformer) collect_interface_boxed_type(actual types.Type, expected 
 		}
 		types.Interface {
 			iface_name_source_id := t.resolve_interface_type_name(expected.source_type_id())
-			iface_name := flat.source_type_name(iface_name_source_id)
+			iface_name_source_id_4 := iface_name_source_id
+
 			actual_name := actual.name()
 			if iface_name_source_id != 0 && actual_name !in ['', 'unknown', 'void'] && (t.resolve_interface_type_name(flat.source_type_id(actual_name))) == 0 {
-				t.mark_interface_boxed_type(flat.source_type_id(iface_name), t.trim_pointer_type(flat.source_type_id(actual_name)))
+				t.mark_interface_boxed_type(iface_name_source_id_4, t.trim_pointer_type(flat.source_type_id(actual_name)))
 			}
 		}
 		types.Array {
@@ -2838,9 +2841,10 @@ fn (mut t Transformer) collect_interface_boxed_value(id flat.NodeId, expected ty
 		}
 		types.Interface {
 			iface_name_source_id_2 := t.resolve_interface_type_name(expected.source_type_id())
-			iface_name := flat.source_type_name(iface_name_source_id_2)
+			iface_name_source_id_5 := iface_name_source_id_2
+
 			if iface_name_source_id_2 != 0 {
-				t.collect_interface_boxed_interface_value(id, flat.source_type_id(iface_name))
+				t.collect_interface_boxed_interface_value(id, iface_name_source_id_5)
 			}
 		}
 		types.Array {
@@ -2977,13 +2981,14 @@ fn (t &Transformer) interface_literal_name(name_id u32) ?u32 {
 
 fn (mut t Transformer) mark_interface_boxed_type(iface_name_id u32, concrete_type_id u32) {
 	iface_name_comparison_type_id_9 := iface_name_id
-	iface_name := flat.source_type_name(iface_name_comparison_type_id_9)
+	iface_name_source_id_6 := iface_name_comparison_type_id_9
+	iface_name := flat.source_type_name(iface_name_source_id_6)
 	concrete_type := flat.source_type_name(concrete_type_id)
 	if iface_name_comparison_type_id_9 == u32(0) || concrete_type_id == u32(0) {
 		return
 	}
 	mut iface_names := [iface_name]
-	resolved_source_id_3 := t.resolve_interface_type_name(flat.source_type_id(iface_name))
+	resolved_source_id_3 := t.resolve_interface_type_name(iface_name_source_id_6)
 	resolved_comparison_type_id_3 := resolved_source_id_3
 	resolved := flat.source_type_name(resolved_comparison_type_id_3)
 	if resolved_source_id_3 != 0 && resolved_comparison_type_id_3 != iface_name_comparison_type_id_9 {
@@ -3714,9 +3719,9 @@ fn (mut t Transformer) collect_generic_struct_spec_from_type(typ_id u32, module_
 	args_source_ids_2 := t.canonical_generic_specialization_args(flat.TypeTextList.from_names(raw_args).ids)
 
 	for arg_source_id in args_source_ids_2 {
-		arg := flat.source_type_name(arg_source_id)
+		arg_source_id_3 := arg_source_id
 
-		t.collect_generic_struct_spec_from_type(flat.source_type_id(arg), module_name, file_name, decls, mut specs)
+		t.collect_generic_struct_spec_from_type(arg_source_id_3, module_name, file_name, decls, mut specs)
 	}
 	if t.generic_args_have_placeholders(args_source_ids_2) {
 		return
@@ -3988,14 +3993,15 @@ fn (mut t Transformer) generic_struct_args_in_scope(args_ids []u32, module_name 
 	t.tc.cur_file = file_name
 	mut scoped := []u32{cap: args_ids.len}
 	for arg_source_id in args_ids {
-		arg := flat.source_type_name(arg_source_id)
+		arg_source_id_4 := arg_source_id
+		arg := flat.source_type_name(arg_source_id_4)
 
 		parsed := t.tc.parse_resolution_type(arg_source_id)
 		result := if parsed is types.Unknown {
 			if resolved := t.selective_import_type_name_for_file(file_name, arg) {
 				resolved
 			} else {
-				flat.source_type_name(t.normalize_sum_variant_type(flat.source_type_id(arg), module_name, []))
+				flat.source_type_name(t.normalize_sum_variant_type(arg_source_id_4, module_name, []))
 			}
 		} else if parsed is types.Alias && parsed.base_type is types.ArrayFixed {
 			types.Type(parsed.base_type).name()
@@ -4053,14 +4059,15 @@ fn (mut t Transformer) generic_sum_args_in_scope(args_ids []u32, module_name str
 	t.tc.cur_file = file_name
 	mut scoped := []u32{cap: args_ids.len}
 	for arg_source_id in args_ids {
-		arg := flat.source_type_name(arg_source_id)
+		arg_source_id_5 := arg_source_id
+		arg := flat.source_type_name(arg_source_id_5)
 
 		parsed := t.tc.parse_resolution_type(arg_source_id)
 		result := if parsed is types.Unknown {
 			if resolved := t.selective_import_type_name_for_file(file_name, arg) {
 				resolved
 			} else {
-				flat.source_type_name(t.normalize_sum_variant_type(flat.source_type_id(arg), module_name, []))
+				flat.source_type_name(t.normalize_sum_variant_type(arg_source_id_5, module_name, []))
 			}
 		} else {
 			// A bare spelling that resolves inside the declaring module still has to
@@ -5399,9 +5406,9 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	mut caller_main_types := t.specialization_main_type_closure(concrete_args_source_ids)
 	if old_module in ['', 'main'] {
 		for arg_source_id in concrete_args_source_ids {
-			arg := flat.source_type_name(arg_source_id)
+			arg_source_id_6 := arg_source_id
 
-			t.collect_caller_main_type_names(flat.source_type_id(arg), mut caller_main_types)
+			t.collect_caller_main_type_names(arg_source_id_6, mut caller_main_types)
 		}
 	}
 	t.active_specialization_main_types = caller_main_types.move()
@@ -7591,9 +7598,10 @@ fn (t &Transformer) generic_args_name_specialized_functions(args_ids []u32) bool
 fn (t &Transformer) resolved_live_generic_call_args(raw_ids []u32, call_module string, decl_module string) []u32 {
 	mut resolved := []u32{cap: raw_ids.len}
 	for arg_source_id in raw_ids {
-		arg := flat.source_type_name(arg_source_id)
+		arg_source_id_7 := arg_source_id
+		arg := flat.source_type_name(arg_source_id_7)
 
-		resolved << flat.source_type_id(if t.substituted_type_belongs_to_main_generic(flat.source_type_id(arg)) {
+		resolved << flat.source_type_id(if t.substituted_type_belongs_to_main_generic(arg_source_id_7) {
 			arg
 		} else {
 			flat.source_type_name(t.generic_arg_for_call_and_decl_module(arg_source_id, call_module, decl_module))
@@ -9431,7 +9439,8 @@ fn (mut t Transformer) infer_generic_sum_literal_args(param_type_id u32, arg_id 
 
 fn (t &Transformer) generic_arg_for_call_and_decl_module(arg_id u32, call_module string, decl_module string) u32 {
 	arg_comparison_type_id_10 := arg_id
-	arg := flat.source_type_name(arg_comparison_type_id_10)
+	arg_source_id_8 := arg_comparison_type_id_10
+	arg := flat.source_type_name(arg_source_id_8)
 	if call_module in ['', 'main'] && !arg.contains('.') {
 		if info := t.structs[trimmed_transform_text(arg)] {
 			if info.module in ['', 'main'] {
@@ -9439,7 +9448,7 @@ fn (t &Transformer) generic_arg_for_call_and_decl_module(arg_id u32, call_module
 			}
 		}
 	}
-	if t.substituted_type_belongs_to_main_generic(flat.source_type_id(arg))
+	if t.substituted_type_belongs_to_main_generic(arg_source_id_8)
 		&& (call_module in ['', 'main'] || t.current_specialization_has_generic_arg(arg)) {
 		return arg_id
 	}
@@ -9579,9 +9588,9 @@ fn (mut t Transformer) specialization_main_type_closure(args_ids []u32) map[stri
 	mut types_in_scope := map[string]bool{}
 	mut seen := map[string]bool{}
 	for arg_source_id in args_ids {
-		arg := flat.source_type_name(arg_source_id)
+		arg_source_id_9 := arg_source_id
 
-		t.collect_specialization_main_types(flat.source_type_id(arg), mut types_in_scope, mut seen)
+		t.collect_specialization_main_types(arg_source_id_9, mut types_in_scope, mut seen)
 	}
 	t.specialization_main_type_closures[key] = types_in_scope.clone()
 	return types_in_scope
@@ -9718,7 +9727,7 @@ fn (t &Transformer) collect_specialization_main_types(typ_id u32, mut types_in_s
 
 fn (t &Transformer) generic_arg_for_decl_module(arg_id u32, module_name string) u32 {
 	arg := flat.source_type_name(arg_id)
-	if t.substituted_type_belongs_to_main_generic(flat.source_type_id(arg))
+	if t.substituted_type_belongs_to_main_generic(arg_id)
 		&& t.current_specialization_has_generic_arg(arg) {
 		return arg_id
 	}

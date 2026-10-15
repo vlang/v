@@ -699,9 +699,9 @@ fn (t &Transformer) interface_impl_satisfies_target(impl_id u32, target_iface_id
 
 fn (t &Transformer) resolve_interface_pattern_interface(pattern_id u32) ?u32 {
 	for candidate_source_id in t.interface_pattern_candidates(pattern_id) {
-		candidate := flat.source_type_name(candidate_source_id)
+		candidate_source_id_2 := candidate_source_id
 
-		iface_source_id := t.resolve_interface_type_name(flat.source_type_id(candidate))
+		iface_source_id := t.resolve_interface_type_name(candidate_source_id_2)
 
 		if iface_source_id != 0 {
 			return iface_source_id

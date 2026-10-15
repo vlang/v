@@ -1114,10 +1114,11 @@ fn (mut t Transformer) normalize_implicit_receiver_generic_call(id flat.NodeId, 
 		return id
 	}
 	decls := t.cached_generic_fn_decls()
-	receiver_type := flat.source_type_name(t.var_type(t.cur_fn_receiver_name_text()))
+	receiver_type_source_id := t.var_type(t.cur_fn_receiver_name_text())
+
 	for key in t.generic_receiver_methods_by_name[callee.value] {
 		decl := decls[key] or { continue }
-		if !t.generic_receiver_decl_matches_type(flat.source_type_id(receiver_type), decl, t.cur_module)
+		if !t.generic_receiver_decl_matches_type(receiver_type_source_id, decl, t.cur_module)
 			|| !t.generic_call_arg_count_matches_decl_with_implicit_receiver(node, decl) {
 			continue
 		}
@@ -9127,18 +9128,19 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 		return t.make_string_literal('unknown sum type value')
 	}
 	variant_comparison_type_id := variants_ids[idx]
-	variant := flat.source_type_name(variant_comparison_type_id)
-	field := t.sum_field_name(flat.source_type_id(variant))
-	variant_base_source_id := t.normalize_type_alias(flat.source_type_id(variant))
+	variant_source_id_3 := variant_comparison_type_id
+	variant := flat.source_type_name(variant_source_id_3)
+	field := t.sum_field_name(variant_source_id_3)
+	variant_base_source_id := t.normalize_type_alias(variant_source_id_3)
 	variant_base_comparison_type_id := variant_base_source_id
 	variant_base := flat.source_type_name(variant_base_comparison_type_id)
-	direct_pointer := t.sum_variant_is_direct_pointer(flat.source_type_id(variant))
+	direct_pointer := t.sum_variant_is_direct_pointer(variant_source_id_3)
 	field_sel := t.make_selector_op(base, field, flat.source_type_id(if direct_pointer {
 		variant
 	} else {
 		'&${variant}'
 	}), .dot)
-	t.mark_generated_variant_access(field_sel, flat.source_type_id(variant))
+	t.mark_generated_variant_access(field_sel, variant_source_id_3)
 	// Only statements created for THIS branch's payload conversion belong inside
 	// the branch; earlier pending statements (e.g. the base temp decl from
 	// lower_sum_str) must stay with the caller so they precede the whole if-chain.
@@ -9203,7 +9205,7 @@ fn (mut t Transformer) build_sum_str_chain(base flat.NodeId, tag flat.NodeId, su
 	mut then_stmts := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	then_stmts << t.make_expr_stmt(value_text)
-	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(sum_name_id, flat.source_type_id(variant))))
+	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(sum_name_id, variant_source_id_3)))
 	then_block := t.make_block(then_stmts)
 	else_expr := t.build_sum_str_chain(base, tag, sum_name_id, sum_display, variants_ids.clone(), idx + 1)
 	else_block := t.make_block([t.make_expr_stmt(else_expr)])
@@ -15290,7 +15292,8 @@ fn (mut t Transformer) build_sum_type_name_chain(tag flat.NodeId, sum_name_id u3
 	if idx >= variants_ids.len {
 		return t.make_string_literal('')
 	}
-	variant := flat.source_type_name(variants_ids[idx])
+	variant_source_id_4 := variants_ids[idx]
+	variant := flat.source_type_name(variant_source_id_4)
 	display := if flat.is_named_variant_type_name(variant) {
 		named_variant_display_short(variant)
 	} else if variant.contains('.') {
@@ -15298,7 +15301,7 @@ fn (mut t Transformer) build_sum_type_name_chain(tag flat.NodeId, sum_name_id u3
 	} else {
 		variant
 	}
-	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(sum_name_id, flat.source_type_id(variant))))
+	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(sum_name_id, variant_source_id_4)))
 	then_block := t.make_block([t.make_expr_stmt(t.make_string_literal(display))])
 	else_expr := t.build_sum_type_name_chain(tag, sum_name_id, variants_ids.clone(), idx + 1)
 	else_block := t.make_block([t.make_expr_stmt(else_expr)])
@@ -15318,10 +15321,11 @@ fn (mut t Transformer) build_sum_type_idx_chain(tag flat.NodeId, sum_name_id u32
 	if idx >= variants_ids.len {
 		return t.make_int_literal(0)
 	}
-	variant := flat.source_type_name(variants_ids[idx])
-	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(sum_name_id, flat.source_type_id(variant))))
+	variant_source_id_5 := variants_ids[idx]
+
+	cond := t.make_infix(.eq, tag, t.make_int_literal(t.sum_type_index(sum_name_id, variant_source_id_5)))
 	then_block := t.make_block([
-		t.make_expr_stmt(t.make_int_literal(t.type_index_for_type_name(flat.source_type_id(variant)))),
+		t.make_expr_stmt(t.make_int_literal(t.type_index_for_type_name(variant_source_id_5))),
 	])
 	else_expr := t.build_sum_type_idx_chain(tag, sum_name_id, variants_ids.clone(), idx + 1)
 	else_block := t.make_block([t.make_expr_stmt(else_expr)])

@@ -690,7 +690,7 @@ fn test_import_type_cache_keeps_file_contexts_separate() {
 		for file in ['first.v', 'second.v'] {
 			for typ in ['model.Item', '&model.Item', '[]model.Item', '?model.Item'] {
 				cached := g.canonical_import_alias_type_in_file(flat.source_type_id(typ.clone()), file.clone())
-				uncached := g.canonical_import_alias_type_in_file_uncached(typ, file)
+				uncached := g.canonical_import_alias_type_in_file_uncached(flat.source_type_id(typ), file)
 				assert cached == uncached
 				assert cached.name().contains(file.all_before('.') + '.model.Item')
 			}
@@ -1212,4 +1212,20 @@ fn test_import_alias_canonicalization_is_idempotent_for_module_path_prefix() {
 		assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(canonical_source_id, 'other.v')) == canonical
 		assert g.canonical_import_alias_type_text_in_file_uncached(canonical, 'other.v') == canonical
 	}
+}
+
+fn test_import_type_ids_preserve_padded_wrapper_normalization() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for source in ['Foo', 'fn () int', 'shared Foo', ' Foo ', ' & ? Foo ', ' & ! Foo '] {
+		id := flat.source_type_id(source)
+		numeric := g.canonical_import_alias_type_text_in_file(id, 'clean.v')
+		parsed := g.canonical_import_alias_type_text_in_file_uncached(source, 'clean.v')
+		assert flat.source_type_name(numeric) == parsed
+	}
+	assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(' & ? Foo '), 'clean.v')) == '&?Foo'
+	assert flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(' & ! Foo '), 'clean.v')) == '&!Foo'
 }

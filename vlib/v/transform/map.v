@@ -3647,7 +3647,8 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	}
 	key_type_source_id_10, value_type_source_id_12 := t.map_type_parts(flat.source_type_id(map_type))
 
-	value_type := flat.source_type_name(value_type_source_id_12)
+	value_type_source_id_14 := value_type_source_id_12
+
 	mut start_i := 0
 	mut has_spread := false
 	first_id := t.a.child(&node, 0)
@@ -3694,7 +3695,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 			mut drop_stmts := []flat.NodeId{}
 			key_is_owned := t.map_literal_key_expr_creates_owned_value(key_id, key_type_source_id_10)
 			cleanup_key, existing_key_name = t.prepare_owned_map_set_key_cleanup(key_is_owned, key_type_source_id_10, t.make_ident(tmp_name), flat.source_type_id(map_type), key_name, mut drop_stmts)
-			t.append_map_value_drop_before_set(t.make_ident(tmp_name), flat.source_type_id(map_type), key_name, flat.source_type_id(value_type), mut drop_stmts)
+			t.append_map_value_drop_before_set(t.make_ident(tmp_name), flat.source_type_id(map_type), key_name, value_type_source_id_14, mut drop_stmts)
 			for stmt in drop_stmts {
 				t.pending_stmts << stmt
 			}
