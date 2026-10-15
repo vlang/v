@@ -162,3 +162,55 @@ fn test_empty_operand_does_not_need_an_ordering_snapshot() {
 	assert t.snapshot_expr_for_reuse(empty) == empty
 	assert ordering_snapshot_decl_count(&t) == 0
 }
+
+// A declaration's address cannot change during a later prelude. Keeping the reference inline
+// also preserves the expected function type needed for a voidptr callback adapter.
+fn test_declared_function_references_are_not_snapshotted_but_shadowing_values_are() {
+	for name in ['callback', 'other.callback'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.fn_ret_types[name] = types.Type(types.Void{})
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		callback := t.a.add_val(.ident, name)
+		t.set_node_typ(int(callback), 'fn ()')
+		assert t.is_pure_constant_expr(callback)
+		assert !t.operand_needs_ordering_snapshot(callback)
+		assert t.snapshot_expr_for_reuse(callback) == callback
+		assert ordering_snapshot_decl_count(&t) == 0
+
+		// A same-named binding holds a runtime function value and may be replaced.
+		t.set_var_type(name, flat.source_type_id('fn ()'))
+		assert !t.is_pure_constant_expr(callback)
+		assert t.operand_needs_ordering_snapshot(callback)
+		assert t.snapshot_expr_for_reuse(callback) != callback
+		assert ordering_snapshot_decl_count(&t) == 1
+	}
+}
+
+fn test_global_function_values_are_snapshotted_before_later_preludes() {
+	for context in ['main', 'current', 'imported'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		// A builtin or other module may contribute a same-named declaration.
+		tc.fn_ret_types['callback'] = types.Type(types.Void{})
+		global_name := match context {
+			'main' { 'callback' }
+			'current' { 'consumer.callback' }
+			else { 'producer.callback' }
+		}
+		if context == 'imported' {
+			tc.file_selective_imports[file_import_key('consumer.v', 'callback')] = [global_name]
+		}
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = if context == 'main' { 'main' } else { 'consumer' }
+		t.cur_file = 'consumer.v'
+		t.globals.set(global_name, 'fn ()')
+		callback := t.a.add_val(.ident, 'callback')
+		t.set_node_typ(int(callback), 'fn ()')
+		assert !t.is_pure_constant_expr(callback)
+		assert t.operand_needs_ordering_snapshot(callback)
+		assert t.snapshot_expr_for_reuse(callback) != callback
+		assert ordering_snapshot_decl_count(&t) == 1
+	}
+}

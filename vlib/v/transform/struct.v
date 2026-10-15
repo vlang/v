@@ -182,10 +182,18 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				t.transform_expr(val_id)
 			}
 			if numeric_field {
-				actual := if numeric_payload.len > 0 && !t.generic_arg_is_unresolved(numeric_payload) {
+				mut actual := if numeric_payload.len > 0 && !t.generic_arg_is_unresolved(numeric_payload) {
 					numeric_payload
 				} else {
 					t.specialized_expr_type_name(new_val)
+				}
+				// A matching reference value is implicitly dereferenced in a value field.
+				// Apply that existing conversion before validation, without allowing a
+				// pointer to another numeric (or nonnumeric) type to bypass the check.
+				if actual.starts_with('&')
+					&& flat.source_type_name(t.normalize_type_alias(flat.source_type_id(actual[1..]))) == flat.source_type_name(t.normalize_type_alias(flat.source_type_id(field_type))) {
+					new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)
+					actual = t.specialized_expr_type_name(new_val)
 				}
 				if actual.len > 0 && actual != 'unknown' && !t.generic_arg_is_unresolved(actual)
 					&& !t.tc.expr_subtree_has_node_error(val_id)
