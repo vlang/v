@@ -567,7 +567,7 @@ fn (mut t Transformer) try_expand_forwarded_multi_return(source_return_id flat.N
 	value := t.transform_expr(value_id)
 	t.drain_pending(mut result)
 	tmp_name := t.new_temp('return_multi')
-	result << t.make_decl_assign_typed(tmp_name, value, flat.source_type_id(t.multi_return_type_name(actual_types)))
+	result << t.make_decl_assign_typed(tmp_name, value, t.multi_return_type_name(actual_types))
 	mut return_values := []flat.NodeId{cap: expected_types.len}
 	for i, actual_type in actual_types {
 		field := t.make_selector(t.make_ident(tmp_name), 'arg${i}', t.semantic_type_name(actual_type))

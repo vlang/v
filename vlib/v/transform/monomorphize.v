@@ -1353,7 +1353,7 @@ fn (t &Transformer) type_erased_generic_template_candidate_key(candidate string,
 fn (mut t Transformer) generic_fn_decl_needs_erasure_scan(node flat.Node, module_name string) bool {
 	if generic_params_have_runtime_type_param(node.generic_params())
 		|| t.type_text_has_generic_placeholder(node.typ, module_name)
-		|| t.type_text_has_generic_placeholder(flat.source_type_id(node.value), module_name) {
+		|| t.type_text_has_generic_placeholder_bytes(node.value, module_name) {
 		return true
 	}
 	for i in 0 .. node.children_count {
@@ -2163,18 +2163,18 @@ fn (mut t Transformer) collect_interface_boxed_types_range(start int, end int) {
 			continue
 		}
 		t.collect_interface_boxed_value(flat.NodeId(idx), t.tc.parse_type(flat.source_type_id(node.value)))
-		iface_name := flat.source_type_name(t.interface_literal_name(flat.source_type_id(node.value)) or { continue })
+		iface_name := t.interface_literal_name(flat.source_type_id(node.value)) or { continue }
 		for i in 0 .. node.children_count {
 			field := t.a.child_node(&node, i)
 			if field.kind != .field_init || field.value != '_object' {
 				continue
 			}
 			concrete_type := if flat.source_type_shape(field.typ).has(.pointer) {
-				field.typ_text()[1..]
+				flat.source_type_id(field.typ_text()[1..])
 			} else {
-				field.typ_text()
+				field.typ
 			}
-			t.mark_interface_boxed_type(flat.source_type_id(iface_name), flat.source_type_id(concrete_type))
+			t.mark_interface_boxed_type(iface_name, concrete_type)
 		}
 	}
 }
@@ -2186,18 +2186,18 @@ fn (mut t Transformer) collect_lowered_interface_boxed_types_range(start int, en
 		if node.kind != .struct_init {
 			continue
 		}
-		iface_name := flat.source_type_name(t.interface_literal_name(flat.source_type_id(node.value)) or { continue })
+		iface_name := t.interface_literal_name(flat.source_type_id(node.value)) or { continue }
 		for i in 0 .. node.children_count {
 			field := t.a.child_node(&node, i)
 			if field.kind != .field_init || field.value != '_object' {
 				continue
 			}
 			concrete_type := if flat.source_type_shape(field.typ).has(.pointer) {
-				field.typ_text()[1..]
+				flat.source_type_id(field.typ_text()[1..])
 			} else {
-				field.typ_text()
+				field.typ
 			}
-			t.mark_interface_boxed_type(flat.source_type_id(iface_name), flat.source_type_id(concrete_type))
+			t.mark_interface_boxed_type(iface_name, concrete_type)
 		}
 	}
 }
@@ -13370,7 +13370,7 @@ fn (mut t Transformer) fn_decl_has_unresolved_generics(node flat.Node, module_na
 		return false
 	}
 	if t.type_text_has_generic_placeholder(node.typ, module_name)
-		|| t.type_text_has_generic_placeholder(flat.source_type_id(node.value), module_name) {
+		|| t.type_text_has_generic_placeholder_bytes(node.value, module_name) {
 		return true
 	}
 	for i in 0 .. node.children_count {
@@ -13431,7 +13431,7 @@ fn (mut t Transformer) node_subtree_has_generic_placeholder(id flat.NodeId, modu
 	}
 	node := t.a.nodes[int(id)]
 	if t.type_text_has_generic_placeholder(node.typ, module_name)
-		|| t.type_text_has_generic_placeholder(flat.source_type_id(node.value), module_name) {
+		|| t.type_text_has_generic_placeholder_bytes(node.value, module_name) {
 		return true
 	}
 	for i in 0 .. node.children_count {
@@ -13473,7 +13473,11 @@ fn is_placeholder_ident_char(c u8) bool {
 }
 
 fn (mut t Transformer) type_text_has_generic_placeholder(typ_id u32, module_name string) bool {
-	typ := flat.source_type_name(typ_id)
+	return t.type_text_has_generic_placeholder_bytes(flat.source_type_name(typ_id), module_name)
+}
+
+// type_text_has_generic_placeholder_bytes parses source syntax and declaration payloads.
+fn (mut t Transformer) type_text_has_generic_placeholder_bytes(typ string, module_name string) bool {
 	if t.skip_generics {
 		return false
 	}
@@ -13491,37 +13495,37 @@ fn (mut t Transformer) type_text_has_generic_placeholder(typ_id u32, module_name
 		return true
 	}
 	if clean.starts_with('&') {
-		return t.type_text_has_generic_placeholder(flat.source_type_id(clean[1..]), module_name)
+		return t.type_text_has_generic_placeholder_bytes(clean[1..], module_name)
 	}
 	if clean.starts_with('mut ') {
-		return t.type_text_has_generic_placeholder(flat.source_type_id(clean[4..]), module_name)
+		return t.type_text_has_generic_placeholder_bytes(clean[4..], module_name)
 	}
 	if clean.starts_with('?') || clean.starts_with('!') {
-		return t.type_text_has_generic_placeholder(flat.source_type_id(clean[1..]), module_name)
+		return t.type_text_has_generic_placeholder_bytes(clean[1..], module_name)
 	}
 	if clean.starts_with('...') {
-		return t.type_text_has_generic_placeholder(flat.source_type_id(clean[3..]), module_name)
+		return t.type_text_has_generic_placeholder_bytes(clean[3..], module_name)
 	}
 	if clean.starts_with('[]') {
-		return t.type_text_has_generic_placeholder(flat.source_type_id(clean[2..]), module_name)
+		return t.type_text_has_generic_placeholder_bytes(clean[2..], module_name)
 	}
 	if clean.starts_with('map[') {
 		bracket_end := generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			return t.type_text_has_generic_placeholder(flat.source_type_id(clean[4..bracket_end]), module_name)
-				|| t.type_text_has_generic_placeholder(flat.source_type_id(clean[bracket_end + 1..]), module_name)
+			return t.type_text_has_generic_placeholder_bytes(clean[4..bracket_end], module_name)
+				|| t.type_text_has_generic_placeholder_bytes(clean[bracket_end + 1..], module_name)
 		}
 	}
 	if clean.starts_with('[') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
-			return t.type_text_has_generic_placeholder(flat.source_type_id(clean[bracket_end + 1..]), module_name)
+			return t.type_text_has_generic_placeholder_bytes(clean[bracket_end + 1..], module_name)
 		}
 	}
 	_, args, ok := generic_app_parts(clean)
 	if ok {
 		for arg in args {
-			if t.type_text_has_generic_placeholder(flat.source_type_id(arg), module_name) {
+			if t.type_text_has_generic_placeholder_bytes(arg, module_name) {
 				return true
 			}
 		}

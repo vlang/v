@@ -1060,7 +1060,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type_id u32) 
 				}
 				if prefix != '' {
 					if multi_types := multi_return_types_from_type(typ, 0) {
-						return t.canonical_or_expr_types(flat.source_type_id('${prefix}${t.multi_return_type_name(multi_types)}'))
+						return t.canonical_or_expr_types(flat.source_type_id('${prefix}${flat.source_type_name(t.multi_return_type_name(multi_types))}'))
 					}
 				}
 			}

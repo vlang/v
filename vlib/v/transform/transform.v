@@ -7754,7 +7754,7 @@ fn (t &Transformer) fresh_runtime_closure_expr_captures_name(id flat.NodeId, nam
 	}
 }
 
-fn (t &Transformer) fresh_runtime_closure_type(id flat.NodeId) ?string {
+fn (t &Transformer) fresh_runtime_closure_type(id flat.NodeId) ?u32 {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
@@ -7784,18 +7784,16 @@ fn (t &Transformer) fresh_runtime_closure_type(id flat.NodeId) ?string {
 	}
 	if node.kind == .selector && t.bound_method_value_allocates_runtime_closure(id) {
 		if fn_type := fn_value_type_name_from_type(t.tc.resolve_type(id)) {
-			return flat.source_type_name(t.normalize_type_alias(flat.source_type_id(fn_type)))
+			return t.normalize_type_alias(flat.source_type_id(fn_type))
 		}
 		method_name := t.resolve_receiver_method_name(t.a.child(&node, 0), node.value)
 		params := t.tc.fn_param_types[method_name] or { []types.Type{} }
 		ret := t.tc.fn_ret_types[method_name] or { types.Type(types.void_) }
 		bound_params := if params.len > 1 { params[1..].clone() } else { []types.Type{} }
-		return fn_literal_value_type_text(bound_params, ret.name())
+		return flat.source_type_id(fn_literal_value_type_text(bound_params, ret.name()))
 	}
 	if fn_type_source_id := t.fn_value_type_name(id) {
-		fn_type := flat.source_type_name(fn_type_source_id)
-
-		return fn_type
+		return fn_type_source_id
 	}
 	return none
 }
@@ -12581,7 +12579,9 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 		}
 	}
 	child_node := t.a.nodes[int(child_id)]
-	if closure_type := t.fresh_runtime_closure_type(child_id) {
+	if closure_type_source_id := t.fresh_runtime_closure_type(child_id) {
+		closure_type := flat.source_type_name(closure_type_source_id)
+
 		typ = closure_type
 		t.mark_fn_used_name('closure.closure_create_with_data')
 		t.mark_fresh_runtime_closure_methods_used(child_id)
@@ -16288,8 +16288,10 @@ fn (t &Transformer) assignment_sum_target(lhs_id flat.NodeId, rhs_id flat.NodeId
 		}
 	}
 	rhs := t.a.nodes[int(rhs_id)]
-	if inferred_sum := t.sum_type_for_field_variant(lhs.value, rhs_id, rhs) {
-		return flat.source_type_id(inferred_sum)
+	if inferred_sum_source_id := t.sum_type_for_field_variant(lhs.value, rhs_id, rhs) {
+		inferred_sum_source_id_2 := inferred_sum_source_id
+
+		return inferred_sum_source_id_2
 	}
 	if lhs.value == 'info' {
 		if type_info_sum := t.type_info_sum_name() {
@@ -18579,7 +18581,7 @@ fn (mut t Transformer) try_expand_multi_return_decl(node flat.Node) ?[]flat.Node
 		mut result := []flat.NodeId{}
 		new_rhs := t.transform_expr(rhs_id)
 		t.drain_pending(mut result)
-		result << t.make_decl_assign_typed(tmp_name, new_rhs, flat.source_type_id(t.multi_return_type_name(rhs_types)))
+		result << t.make_decl_assign_typed(tmp_name, new_rhs, t.multi_return_type_name(rhs_types))
 		for j, field_type in rhs_types {
 			if j >= lhs_ids.len {
 				continue
@@ -18625,7 +18627,7 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 		mut result := []flat.NodeId{}
 		new_rhs := t.transform_expr(rhs_id)
 		t.drain_pending(mut result)
-		result << t.make_decl_assign_typed(tmp_name, new_rhs, flat.source_type_id(t.multi_return_type_name(rhs_types)))
+		result << t.make_decl_assign_typed(tmp_name, new_rhs, t.multi_return_type_name(rhs_types))
 		for j, field_type in rhs_types {
 			if j >= lhs_ids.len {
 				continue
@@ -19053,12 +19055,12 @@ fn (t &Transformer) find_multi_return_call_types(node flat.Node, expected_count 
 }
 
 // multi_return_type_name supports multi return type name handling for Transformer.
-fn (t &Transformer) multi_return_type_name(items []types.Type) string {
+fn (t &Transformer) multi_return_type_name(items []types.Type) u32 {
 	mut names := []string{cap: items.len}
 	for item in items {
 		names << item.name()
 	}
-	return '(${names.join(', ')})'
+	return flat.source_type_id('(${names.join(', ')})')
 }
 
 // expand_multi_return_if_decl builds expand multi return if decl data for transform.
@@ -19465,7 +19467,7 @@ fn (mut t Transformer) multi_if_multi_return_assign_block(block_id flat.NodeId, 
 	value := t.transform_expr(expr_id)
 	t.drain_pending(mut stmts)
 	tmp_name := t.new_temp('multi_if_ret')
-	stmts << t.make_decl_assign_typed(tmp_name, value, flat.source_type_id(t.multi_return_type_name(items)))
+	stmts << t.make_decl_assign_typed(tmp_name, value, t.multi_return_type_name(items))
 	for i, lhs_id in lhs_ids {
 		if i >= items.len {
 			break

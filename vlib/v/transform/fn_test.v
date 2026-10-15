@@ -95,8 +95,8 @@ fn test_call_param_type_name_memo_preserves_composites_and_module_locks() {
 		assert t.call_param_type_names(params) == expected
 		assert t.call_param_type_names(params) == expected
 		if module_name == 'dep' {
-			assert expected[3] == 'map[string][]&main.Cell'
-			assert expected[4].contains('main.Cell')
+			assert expected[3] == flat.source_type_id('map[string][]&main.Cell')
+			assert flat.source_type_name(expected[4]).contains('main.Cell')
 		}
 	}
 }

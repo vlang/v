@@ -1511,9 +1511,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		params = concrete_params.clone()
 		is_generic_variadic = t.concrete_generic_call_is_variadic(id, node)
 		if concrete_names_source_ids := t.concrete_generic_call_param_type_names(id, node) {
-			concrete_names := flat.TypeTextList{ ids: concrete_names_source_ids }.names()
-
-			param_type_names = concrete_names.clone()
+			param_type_names = concrete_names_source_ids.clone()
 		} else {
 			param_type_names = t.call_param_type_names(params)
 		}
@@ -1548,16 +1546,16 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	immediate_bound_method := t.immediate_bound_method_value_allocates_runtime_closure(callee_id)
 	immediate_factory_closure := t.call_returns_exclusive_closure(callee_id)
 	immediate_fresh_closure := immediate_bound_method || immediate_factory_closure
-	mut immediate_closure_type := ''
+	mut immediate_closure_type := u32(0)
 	mut immediate_closure_cleanup := ''
 	immediate_closure_capture_may_escape := immediate_bound_method || immediate_factory_closure
 		|| t.immediate_fn_literal_capture_may_escape(callee_id)
 	if immediate_fresh_closure {
-		immediate_closure_type = t.fresh_runtime_closure_type(callee_id) or { '' }
-		if immediate_closure_type.len > 0 {
+		immediate_closure_type = t.fresh_runtime_closure_type(callee_id) or { u32(0) }
+		if immediate_closure_type != 0 {
 			// If/match callback branches otherwise retain the callee's return
 			// type on their value temporary instead of the callback type.
-			t.set_fresh_runtime_closure_expr_type(callee_id, flat.source_type_id(immediate_closure_type))
+			t.set_fresh_runtime_closure_expr_type(callee_id, immediate_closure_type)
 		}
 	}
 	ordered_callee_id := if ordered_fixed_args {
@@ -1579,20 +1577,20 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	}
 	t.in_call_callee = saved_in_call_callee
 	if t.fn_literal_has_runtime_captures(callee_id) || immediate_fresh_closure {
-		closure_type := if immediate_closure_type.len > 0 {
+		closure_type := if immediate_closure_type != 0 {
 			immediate_closure_type
 		} else {
-			t.fresh_runtime_closure_type(callee_id) or { flat.source_type_name(t.node_type(transformed_callee)) }
+			t.fresh_runtime_closure_type(callee_id) or { t.node_type(transformed_callee) }
 		}
-		if closure_type.len > 0 {
-			t.set_node_typ(int(transformed_callee), flat.source_type_id(closure_type))
+		if closure_type != 0 {
+			t.set_node_typ(int(transformed_callee), closure_type)
 			if immediate_bound_method {
 				t.mark_fn_used_name('closure.closure_create_with_data')
 				t.mark_fresh_runtime_closure_methods_used(callee_id)
 			}
 			closure_name := t.new_temp('immediate_closure')
-			t.set_var_type(closure_name, flat.source_type_id(closure_type))
-			t.pending_stmts << t.make_decl_assign_typed(closure_name, transformed_callee, flat.source_type_id(closure_type))
+			t.set_var_type(closure_name, closure_type)
+			t.pending_stmts << t.make_decl_assign_typed(closure_name, transformed_callee, closure_type)
 			if t.in_spawn_expr {
 				// The spawn argument packet owns this runtime closure until the worker
 				// has invoked it.
@@ -1601,7 +1599,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 				immediate_closure_cleanup = closure_name
 			}
 			transformed_callee = t.make_ident(closure_name)
-			t.set_node_typ(int(transformed_callee), flat.source_type_id(closure_type))
+			t.set_node_typ(int(transformed_callee), closure_type)
 		}
 	}
 	new_children << transformed_callee
@@ -1619,7 +1617,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		param_type := if param_idx < param_type_names.len {
 			param_type_names[param_idx]
 		} else {
-			''
+			u32(0)
 		}
 		if spread_args := t.transform_spread_arg_over_fixed_variadic_tail(arg_node, param_idx, variadic_idx, params) {
 			variadic_type := params[variadic_idx]
@@ -1649,17 +1647,17 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			// (surfacing as `[]Struct`) desugar to one element of the elem
 			// struct type; a non-variadic `[]Struct` param must not collapse.
 			struct_param_type := if variadic_idx >= 0 && param_idx == variadic_idx
-				&& param_type.starts_with('[]') {
-				param_type[2..]
+				&& flat.source_type_shape(param_type).has(.array_type) {
+				flat.source_type_id(flat.source_type_name(param_type)[2..])
 			} else {
 				param_type
 			}
-			if packed_arg := t.transform_params_struct_call_arg(node, i, flat.source_type_id(struct_param_type)) {
+			if packed_arg := t.transform_params_struct_call_arg(node, i, struct_param_type) {
 				new_children << packed_arg
 				i = t.next_non_field_init_arg(node, i)
 				continue
 			}
-			if packed_arg := t.transform_struct_call_arg(node, i, flat.source_type_id(struct_param_type)) {
+			if packed_arg := t.transform_struct_call_arg(node, i, struct_param_type) {
 				new_children << packed_arg
 				i = t.next_non_field_init_arg(node, i)
 				continue
@@ -1684,7 +1682,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 				if arg_node.kind == .prefix && arg_node.value == '...'
 					&& arg_node.children_count > 0 {
 					spread_id := t.a.child(&arg_node, 0)
-					new_children << t.transform_variadic_spread_arg_for_param(spread_id, variadic_type, flat.source_type_id(param_type))
+					new_children << t.transform_variadic_spread_arg_for_param(spread_id, variadic_type, param_type)
 					i++
 					break
 				}
@@ -1711,8 +1709,9 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			arg_type := t.tc.resolve_type(arg_id)
 			if arg_type is types.MultiReturn && arg_type.types.len == params.len - param_idx {
 				items := arg_type.types
-				multi_type := t.multi_return_type_name(items)
-				value := t.stable_transformed_expr_for_reuse(t.transform_expr(arg_id), flat.source_type_id(multi_type), 'multi_arg')
+				multi_type_source_id := t.multi_return_type_name(items)
+
+				value := t.stable_transformed_expr_for_reuse(t.transform_expr(arg_id), multi_type_source_id, 'multi_arg')
 				for multi_idx, item_type in items {
 					expected_idx := param_idx + multi_idx
 					if expected_idx >= params.len {
@@ -1726,19 +1725,19 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 					if !clean_field_type_shape.has(.pointer) && t.is_fixed_array_type(clean_field_type_source_id) {
 						t.set_node_generic_params(int(field), [multi_return_fixed_array_arg_marker])
 					}
-					new_children << t.transform_call_arg_for_named_param(field, flat.source_type_id(param_type_names[expected_idx]), call_name)
+					new_children << t.transform_call_arg_for_named_param(field, param_type_names[expected_idx], call_name)
 				}
 				i++
 				continue
 			}
 		}
-		if converted := t.transform_mut_optional_pointer_address_call_arg(arg_id, flat.source_type_id(param_type)) {
+		if converted := t.transform_mut_optional_pointer_address_call_arg(arg_id, param_type) {
 			new_children << converted
-		} else if converted := t.transform_mut_optional_value_call_arg(arg_id, flat.source_type_id(param_type)) {
+		} else if converted := t.transform_mut_optional_value_call_arg(arg_id, param_type) {
 			new_children << converted.value
 			mut_optional_value_writebacks << converted.writeback
 		} else {
-			new_children << t.transform_call_arg_for_named_param(arg_id, flat.source_type_id(param_type), call_name)
+			new_children << t.transform_call_arg_for_named_param(arg_id, param_type, call_name)
 		}
 		i++
 	}
@@ -1752,20 +1751,19 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	if ordered_fixed_args {
 		t.snapshot_fixed_array_call_args(mut new_children, snapshotted_args)
 	}
-	mut typ := node.typ_text()
+	mut typ := node.typ
 	concrete_ret_source_id := t.concrete_generic_call_return_type(id, node)
-	concrete_ret := flat.source_type_name(concrete_ret_source_id)
 	if concrete_ret_source_id != 0 {
-		typ = concrete_ret
-	} else if typ.len == 0 && immediate_closure_type.len > 0 {
-		typ = fn_type_return_type_text(immediate_closure_type) or { '' }
+		typ = concrete_ret_source_id
+	} else if typ == 0 && immediate_closure_type != 0 {
+		typ = flat.source_type_id(fn_type_return_type_text(flat.source_type_name(immediate_closure_type)) or { '' })
 	}
 	if t.rewrite_children_in_place(id, new_children) {
-		if typ != t.a.nodes[int(id)].typ_text() {
-			t.set_node_typ(int(id), flat.source_type_id(typ))
+		if typ != t.a.nodes[int(id)].typ {
+			t.set_node_typ(int(id), typ)
 		}
-		call := t.finish_immediate_closure_call(id, immediate_closure_cleanup, flat.source_type_id(typ), immediate_closure_capture_may_escape)
-		return t.finish_mut_optional_value_call(call, flat.source_type_id(typ), mut_optional_value_writebacks)
+		call := t.finish_immediate_closure_call(id, immediate_closure_cleanup, typ, immediate_closure_capture_may_escape)
+		return t.finish_mut_optional_value_call(call, typ, mut_optional_value_writebacks)
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -1782,7 +1780,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		} else {
 			node.value
 		}
-		typ:            flat.source_type_id(typ)
+		typ:            typ
 	})
 	t.copy_cloned_resolution(id, new_id)
 	if spec := t.generic_call_spec_cache[int(id)] {
@@ -1791,9 +1789,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			callee := t.a.nodes[int(new_children[0])]
 			if callee.kind == .ident {
 				if exact_source_ids := t.recorded_generic_specialization_args(callee.value) {
-					exact := flat.TypeTextList{ ids: exact_source_ids }.names()
-
-					cached_args = flat.TypeTextList.from_names(exact.clone()).ids
+					cached_args = exact_source_ids.clone()
 				}
 			}
 		}
@@ -1802,8 +1798,8 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			args:     flat.TypeTextList{ ids: cached_args.clone() }
 		}
 	}
-	call := t.finish_immediate_closure_call(new_id, immediate_closure_cleanup, flat.source_type_id(typ), immediate_closure_capture_may_escape)
-	return t.finish_mut_optional_value_call(call, flat.source_type_id(typ), mut_optional_value_writebacks)
+	call := t.finish_immediate_closure_call(new_id, immediate_closure_cleanup, typ, immediate_closure_capture_may_escape)
+	return t.finish_mut_optional_value_call(call, typ, mut_optional_value_writebacks)
 }
 
 fn (t &Transformer) call_arg_is_packed_variadic_tail(arg_id flat.NodeId, variadic_type types.Array) bool {
@@ -2226,22 +2222,24 @@ fn (t &Transformer) closure_result_type_may_alias_capture(typ types.Type, mut se
 	}
 }
 
-fn (t &Transformer) call_param_type_names(params []types.Type) []string {
+fn (t &Transformer) call_param_type_names(params []types.Type) []u32 {
 	// A type name renders main-module types bare. These names are parsed again in
 	// the current module, so inside an imported generic specialization a main `Cell`
 	// must be locked to `main.Cell`, or it rebinds to the module's own `Cell`.
 	lock_main := t.cur_module !in ['', 'main', 'builtin']
-	mut names := []string{cap: params.len}
+	mut names := []u32{cap: params.len}
 	for param in params {
 		name := if t.memo_call_param_type_names && !isnil(t.tc) {
-			flat.source_type_name(t.tc.type_name(param))
+			t.tc.type_name(param)
 		} else {
-			param.name()
+			param.source_type_id()
 		}
-		names << if lock_main {
-			t.lock_colliding_main_generic_type_text(name, t.cur_module)
+		if lock_main {
+			source := flat.source_type_name(name)
+			locked := t.lock_colliding_main_generic_type_text(source, t.cur_module)
+			names << if locked == source { name } else { flat.source_type_id(locked) }
 		} else {
-			name
+			names << name
 		}
 	}
 	return names
@@ -6444,7 +6442,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ_id u32) flat
 				return t.make_string_literal(typeof_display_type_text(clean_typ))
 			}
 			if parsed is types.MultiReturn {
-				return t.lower_multi_return_str(expr, parsed, flat.source_type_id(t.multi_return_type_name(parsed.types)))
+				return t.lower_multi_return_str(expr, parsed, t.multi_return_type_name(parsed.types))
 			}
 			if parsed is types.Enum {
 				if method := t.enum_str_method_name(clean_type_id) {
@@ -8216,7 +8214,7 @@ fn (mut t Transformer) lower_multi_return_str(expr flat.NodeId, multi types.Mult
 	if int(expr) >= 0 && int(expr) < t.a.nodes.len {
 		if concrete_items := t.find_multi_return_call_types(t.a.nodes[int(expr)], multi.types.len) {
 			item_types = concrete_items.clone()
-			concrete_type = t.multi_return_type_name(concrete_items)
+			concrete_type = flat.source_type_name(t.multi_return_type_name(concrete_items))
 		}
 	}
 	base := t.stable_transformed_expr_for_reuse(expr, flat.source_type_id(concrete_type), 'multi_ret_str')
@@ -17425,15 +17423,16 @@ fn (mut t Transformer) make_receiver_method_call_typed(node flat.Node, method_na
 		&& closure_lifetime_borrowed_callback_method(method_name) {
 		source_arg := t.a.child(&node, 1)
 		if t.expr_allocates_fresh_runtime_closure(source_arg) {
-			closure_type := t.fresh_runtime_closure_type(source_arg) or { flat.source_type_name(t.node_type(args[1])) }
-			if closure_type.len > 0 {
+			closure_type_source_id := t.fresh_runtime_closure_type(source_arg) or { t.node_type(args[1]) }
+
+			if closure_type_source_id != 0 {
 				borrowed_closure_cleanup = t.new_temp('borrowed_closure')
-				t.set_var_type(borrowed_closure_cleanup, flat.source_type_id(closure_type))
+				t.set_var_type(borrowed_closure_cleanup, closure_type_source_id)
 				t.pending_stmts << t.make_decl_assign_typed(borrowed_closure_cleanup, args[1],
-					flat.source_type_id(closure_type))
+					closure_type_source_id)
 				call_args = args.clone()
 				call_args[1] = t.make_ident(borrowed_closure_cleanup)
-				t.set_node_typ(int(call_args[1]), flat.source_type_id(closure_type))
+				t.set_node_typ(int(call_args[1]), closure_type_source_id)
 			}
 		}
 	}
@@ -18356,8 +18355,9 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 			arg_type := t.tc.resolve_type(arg_id)
 			if arg_type is types.MultiReturn && arg_type.types.len == params.len - param_idx {
 				items := arg_type.types
-				multi_type := t.multi_return_type_name(items)
-				value := t.stable_transformed_expr_for_reuse(t.transform_expr(arg_id), flat.source_type_id(multi_type), 'multi_arg')
+				multi_type_source_id_2 := t.multi_return_type_name(items)
+
+				value := t.stable_transformed_expr_for_reuse(t.transform_expr(arg_id), multi_type_source_id_2, 'multi_arg')
 				for multi_idx, item_type in items {
 					expected_idx := param_idx + multi_idx
 					if expected_idx >= params.len {
