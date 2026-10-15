@@ -1402,6 +1402,7 @@ mut:
 	constant_types           flat.TypeTextBindings
 	global_types             flat.TypeTextBindings
 	return_type              u32
+	return_type_is_function bool
 	return_types             flat.TypeTextList
 	option_return_type       u32
 	current_function         string

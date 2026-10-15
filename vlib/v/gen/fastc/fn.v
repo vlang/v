@@ -860,6 +860,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return_type = g.parse_type()!
 		}
 	}
+	return_type_is_function := g.pending_fn_pointer
 	function_key := if receiver_type == '' {
 		fastc_function_key(g.module_name, name)
 	} else {
@@ -958,6 +959,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		}
 	}
 	previous_in_main := g.in_main
+	previous_return_type_is_function := g.return_type_is_function
 	previous_return_type := g.return_type_text()
 	previous_return_types := g.return_types_text().clone()
 	previous_option_return_type := g.option_return_type_text()
@@ -984,6 +986,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.unsafe_depth = 1
 	}
 	g.in_main = is_main
+	g.return_type_is_function = return_type_is_function
 	g.return_type = flat.source_type_id(return_type)
 	g.return_types = flat.TypeTextList.from_names(return_types.clone())
 	g.option_return_type = flat.source_type_id(option_return_type)
@@ -1077,6 +1080,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.out.write_string(function_body)
 	}
 	g.in_main = previous_in_main
+	g.return_type_is_function = previous_return_type_is_function
 	g.return_type = flat.source_type_id(previous_return_type)
 	g.return_types = flat.TypeTextList.from_names(previous_return_types.clone())
 	g.option_return_type = flat.source_type_id(previous_option_return_type)

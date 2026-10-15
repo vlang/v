@@ -1088,6 +1088,10 @@ fn (mut g Parser) read_match_type_key() ?string {
 }
 
 fn (mut g Parser) parse_return() !bool {
+	previous_allows_nil := g.allows_nil_local_assignment
+	g.allows_nil_local_assignment = !g.return_type_is_function && g.nil_type_is_allowed(g.return_type_text())
+	defer { g.allows_nil_local_assignment = previous_allows_nil }
+
 	g.next()
 	if g.tok == .name && g.lit == 'sql' && 'sql' !in g.locals {
 		mut lookahead := g.s
