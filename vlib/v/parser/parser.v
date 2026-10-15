@@ -8075,7 +8075,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:  .defer_result
 			value: if defer_index < 0 { '' } else { defer_index.str() }
-			typ:   flat.source_type_id(if invalid_context { 'invalid' } else { '' })
+			typ:   (if invalid_context { flat.source_type_id('invalid') } else { u32(0) })
 			pos:   res_pos
 		})
 	}
@@ -14618,12 +14618,12 @@ fn (mut p Parser) string_literal() flat.NodeId {
 			kind:  .string_literal
 			value: val
 			flags: string_literal_flags(val)
-			typ:   flat.source_type_id(if lit.len > 2 && lit.starts_with('js') {
-				'js:${lit[2].ascii_str()}'
+			typ:   (if lit.len > 2 && lit.starts_with('js') {
+				flat.source_type_id('js:${lit[2].ascii_str()}')
 			} else if lit.len > 1 && lit[0] == `r` {
-				'raw:${lit[1].ascii_str()}'
+				flat.source_type_id('raw:${lit[1].ascii_str()}')
 			} else {
-				''
+				u32(0)
 			})
 			pos:   start_pos
 		})
@@ -14796,10 +14796,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:  .array_init
 			value: elem_type
-			typ:   flat.source_type_id(if elem_type.starts_with('typeof(') {
-				''
+			typ:   (if elem_type.starts_with('typeof(') {
+				u32(0)
 			} else {
-				'[]${elem_type}'
+				flat.source_type_id('[]${elem_type}')
 			})
 			pos:   p.span_to(bracket_start)
 		})
@@ -15233,10 +15233,10 @@ fn (mut p Parser) array_init_after_element_type(elem_type string, start int) fla
 	return p.a.add_node(flat.Node{
 		kind:           .array_init
 		value:          elem_type
-		typ:            flat.source_type_id(if elem_type.starts_with('typeof(') {
-			''
+		typ:            (if elem_type.starts_with('typeof(') {
+			u32(0)
 		} else {
-			'[]${elem_type}'
+			flat.source_type_id('[]${elem_type}')
 		})
 		children_start: p.add_children(ids)
 		children_count: flat.child_count(ids.len)
@@ -17942,12 +17942,16 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 	decl_id := p.add_node(flat.Node{
 		kind:           .struct_decl
 		value:          name
-		typ:            flat.source_type_id(if p.parsing_c_struct_fields {
-			if is_union { 'union,c_anon' } else { 'c_anon' }
+		typ:            (if p.parsing_c_struct_fields {
+			if is_union {
+				flat.source_type_id('union,c_anon')
+			} else {
+				flat.source_type_id('c_anon')
+			}
 		} else if is_union {
-			'union'
+			flat.source_type_id('union')
 		} else {
-			''
+			u32(0)
 		})
 		pos:            if aggregate_start >= 0 {
 			p.span_to(aggregate_start)

@@ -916,19 +916,20 @@ fn (t &Transformer) if_expr_branch_overrides_sum_target(branch_type_id u32, targ
 
 // if_expr_result_type supports if expr result type handling for Transformer.
 fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) u32 {
-	mut node_typ := ''
+	mut node_typ := u32(0)
 	if node.typ != 0 {
-		typ := flat.source_type_name(t.normalize_type_alias(node.typ))
+		typ_source_id := t.normalize_type_alias(node.typ)
+		typ := flat.source_type_name(typ_source_id)
 		if typ !in ['array', 'map'] {
-			node_typ = typ
+			node_typ = typ_source_id
 		}
 	}
-	mut checked_typ := ''
+	mut checked_typ := u32(0)
 	if !isnil(t.tc) {
 		if typ := t.tc.expr_type(id) {
 			name := typ.name()
 			if name.len > 0 {
-				checked_typ = flat.source_type_name(t.normalize_type_alias(flat.source_type_id(name)))
+				checked_typ = t.normalize_type_alias(flat.source_type_id(name))
 			}
 		}
 	}
@@ -948,33 +949,33 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) u32 {
 			}
 		}
 	}
-	if branch_typ_comparison_type_id_2 in [u32(0), flat.source_type_unknown] && checked_typ in ['',
+	if branch_typ_comparison_type_id_2 in [u32(0), flat.source_type_unknown] && flat.source_type_name(checked_typ) in ['',
 		'unknown']
-		&& node_typ in ['', 'unknown'] && t.if_expr_has_c_macro_values(node) {
+		&& flat.source_type_name(node_typ) in ['', 'unknown'] && t.if_expr_has_c_macro_values(node) {
 		return flat.source_type_int
 	}
-	if branch_typ.starts_with('[]') && t.is_fixed_array_type(flat.source_type_id(checked_typ))
-		&& fixed_array_elem_type(checked_typ) == branch_typ[2..] {
+	if branch_typ.starts_with('[]') && t.is_fixed_array_type(checked_typ)
+		&& fixed_array_elem_type(flat.source_type_name(checked_typ)) == branch_typ[2..] {
 		return branch_typ_source_id
 	}
-	if branch_typ.starts_with('[]') && t.is_fixed_array_type(flat.source_type_id(node_typ))
-		&& fixed_array_elem_type(node_typ) == branch_typ[2..] {
+	if branch_typ.starts_with('[]') && t.is_fixed_array_type(node_typ)
+		&& fixed_array_elem_type(flat.source_type_name(node_typ)) == branch_typ[2..] {
 		return branch_typ_source_id
 	}
-	if branch_typ.starts_with('[]') && !checked_typ.starts_with('[]') && !node_typ.starts_with('[]') {
+	if branch_typ.starts_with('[]') && !flat.source_type_shape(checked_typ).has(.array_type) && !flat.source_type_shape(node_typ).has(.array_type) {
 		return branch_typ_source_id
 	}
-	if t.if_expr_branch_type_overrides(branch_typ_source_id, flat.source_type_id(checked_typ)) {
+	if t.if_expr_branch_type_overrides(branch_typ_source_id, checked_typ) {
 		return branch_typ_source_id
 	}
-	if t.if_expr_branch_type_overrides(branch_typ_source_id, flat.source_type_id(node_typ)) {
+	if t.if_expr_branch_type_overrides(branch_typ_source_id, node_typ) {
 		return branch_typ_source_id
 	}
-	if checked_typ.len > 0 && checked_typ !in ['array', 'map'] {
-		return flat.source_type_id(checked_typ)
+	if checked_typ != 0 && flat.source_type_name(checked_typ) !in ['array', 'map'] {
+		return checked_typ
 	}
-	if node_typ.len > 0 {
-		return flat.source_type_id(node_typ)
+	if node_typ != 0 {
+		return node_typ
 	}
 	if branch_typ_source_id != 0 {
 		return branch_typ_source_id

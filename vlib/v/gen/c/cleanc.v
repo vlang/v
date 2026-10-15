@@ -18900,10 +18900,10 @@ fn (g &FlatGen) array_equality_literal_elem_type(id flat.NodeId) ?types.Type {
 				return types.Type(types.Rune{})
 			}
 			.float_literal {
-				return g.tc.parse_type(flat.source_type_id(if child.typ == flat.source_type_f32 {
-					'f32'
+				return g.tc.parse_type((if child.typ == flat.source_type_f32 {
+					flat.source_type_f32
 				} else {
-					'f64'
+					flat.source_type_f64
 				}))
 			}
 			.bool_literal {

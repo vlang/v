@@ -217,10 +217,10 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			if receiver_start == 0 && call_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: call_source
-					typ:    flat.source_type_id(if tokens[i].lit == 'close' {
-						'void'
+					typ:    (if tokens[i].lit == 'close' {
+						flat.source_type_void
 					} else {
-						'ChanState'
+						flat.source_type_id('ChanState')
 					})
 				}
 			}
@@ -420,7 +420,11 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			if receiver_start == 0 && wait_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: wait_call
-					typ:    flat.source_type_id(if value_type == '' { 'void' } else { value_type })
+					typ:    (if value_type == '' {
+						flat.source_type_void
+					} else {
+						flat.source_type_id(value_type)
+					})
 				}
 			}
 			// A wait nested in a larger expression replaces its raw call form,

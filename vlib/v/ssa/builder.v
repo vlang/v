@@ -991,34 +991,35 @@ fn (mut b Builder) register_globals() {
 						b.initialize_global(b.m.values[addr].index, b.a.child(f, 0))
 					}
 				} else {
-					type_name := if f.typ != 0 {
-						f.typ_text()
+					type_name := (if f.typ != 0 {
+						f.typ
 					} else if f.children_count > 0 {
 						expr_id := b.a.child(f, 0)
 						checked_source_id := b.checked_expr_type_name(expr_id)
-						checked := flat.source_type_name(checked_source_id)
+						checked_source_id_7 := checked_source_id
+
 						expr := b.a.node(expr_id)
 						if checked_source_id != 0 {
-							checked
+							checked_source_id_7
 						} else if expr.kind == .struct_init || expr.kind == .array_init {
-							expr.value
+							flat.source_type_id(expr.value)
 						} else if expr.kind == .array_literal {
-							'[]int'
+							flat.source_type_id('[]int')
 						} else if expr.kind == .map_init {
-							'map[string]int'
+							flat.source_type_id('map[string]int')
 						} else {
-							flat.source_type_name(b.infer_v_type(expr_id))
+							b.infer_v_type(expr_id)
 						}
 					} else {
-						'int'
-					}
+						flat.source_type_int
+					})
 					b.cur_module = cur_module
 					name := native_global_name(cur_module, f.value)
 					typ := match name {
 						'g_main_argc' { b.i64_type }
 						'g_main_argv' { b.m.type_store.get_ptr(b.m.type_store.get_ptr(b.i8_type)) }
 						else {
-							b.resolve_struct_storage_type(flat.source_type_id(type_name), cur_module)
+							b.resolve_struct_storage_type(type_name, cur_module)
 						}
 					}
 					if f.value.starts_with('C.') {
@@ -1032,11 +1033,11 @@ fn (mut b Builder) register_globals() {
 							else { f.value.all_after('C.') }
 						}
 						b.vars[f.value] = b.m.add_external_global(symbol, typ)
-						b.global_type_names.set(f.value, type_name)
+						b.global_type_names.set(f.value, flat.source_type_name(type_name))
 						continue
 					}
 					b.vars[name] = b.m.add_global(ssa_c_name(name), typ)
-					b.global_type_names.set(name, type_name)
+					b.global_type_names.set(name, flat.source_type_name(type_name))
 					b.global_aliases[cur_module + '.' + f.value] = name
 				}
 			}
@@ -7895,14 +7896,14 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 // the bare literal as `int` and the member lookup is ambiguous. Mirrors struct-init field
 // value resolution (`build_field_value`).
 fn (mut b Builder) build_assign_rhs(lhs flat.Node, rhs_id flat.NodeId) ValueID {
-	mut type_name := ''
+	mut type_name := u32(0)
 	if lhs.kind == .ident {
-		type_name = flat.source_type_name(b.var_type_names.type_id(lhs.value) or { u32(0) })
+		type_name = b.var_type_names.type_id(lhs.value) or { u32(0) }
 	} else if lhs.kind == .selector {
-		type_name = flat.source_type_name(b.selector_type_name(lhs) or { u32(0) })
+		type_name = b.selector_type_name(lhs) or { u32(0) }
 	}
-	if type_name.len > 0 {
-		return b.build_field_value(rhs_id, flat.source_type_id(type_name))
+	if type_name != 0 {
+		return b.build_field_value(rhs_id, type_name)
 	}
 	return b.build_expr(rhs_id)
 }

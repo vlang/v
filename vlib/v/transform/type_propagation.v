@@ -107,27 +107,28 @@ fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs
 	if lhs.kind != .ident || lhs.value.len == 0 {
 		return
 	}
-	mut typ := ''
+	mut typ := u32(0)
 	rhs_id := t.a.child(&node, rhs_idx)
 	rhs := t.a.nodes[int(rhs_id)]
 	rhs_authority_source_id := t.decl_rhs_type(rhs_id)
 	rhs_authority_source_id_2 := rhs_authority_source_id
-	rhs_authority := flat.source_type_name(rhs_authority_source_id_2)
+	rhs_authority_source_id_3 := rhs_authority_source_id_2
+	rhs_authority := flat.source_type_name(rhs_authority_source_id_3)
 	if t.is_fn_pointer_type_name(rhs_authority_source_id) {
-		typ = rhs_authority
+		typ = rhs_authority_source_id_3
 	} else if t.decl_type_should_override_fallback(rhs_authority, fallback_type, rhs) {
-		typ = rhs_authority
+		typ = rhs_authority_source_id_3
 	} else if decl_type_is_usable(fallback_type_id) {
-		typ = fallback_type
+		typ = fallback_type_id
 	} else {
 		if decl_type_is_usable(rhs_authority_source_id_2) {
-			typ = rhs_authority
+			typ = rhs_authority_source_id_3
 		} else if decl_type_is_usable(lhs.typ) {
-			typ = lhs.typ_text()
+			typ = lhs.typ
 		}
 	}
-	if typ.len > 0 {
-		t.set_var_type_with_raw(lhs.value, t.normalize_type_alias(flat.source_type_id(typ)), flat.source_type_id(typ))
+	if typ != 0 {
+		t.set_var_type_with_raw(lhs.value, t.normalize_type_alias(typ), typ)
 	}
 }
 
@@ -312,7 +313,11 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) u32 {
 				return flat.source_type_bool
 			}
 			.char_literal {
-				return flat.source_type_id(if node.value.starts_with('c:') { '&u8' } else { 'rune' })
+				return if node.value.starts_with('c:') {
+					flat.source_type_id('&u8')
+				} else {
+					flat.source_type_rune
+				}
 			}
 			.float_literal {
 				return flat.source_type_f64
@@ -409,22 +414,22 @@ fn (t &Transformer) decl_rhs_deref_type(id flat.NodeId) ?u32 {
 	if derefs == 0 {
 		return none
 	}
-	mut typ := if node.kind == .ident {
-		flat.source_type_name(t.var_type(node.value))
+	mut typ := (if node.kind == .ident {
+		t.var_type(node.value)
 	} else {
-		flat.source_type_name(t.node_type(current))
-	}
-	if node.kind == .ident && t.pointer_value_rvalues[node.value] && typ.starts_with('&') {
-		typ = typ[1..]
+		t.node_type(current)
+	})
+	if node.kind == .ident && t.pointer_value_rvalues[node.value] && flat.source_type_shape(typ).has(.pointer) {
+		typ = flat.source_type_id(flat.source_type_name(typ)[1..])
 	}
 	for _ in 0 .. derefs {
-		if !typ.starts_with('&') {
+		if !flat.source_type_shape(typ).has(.pointer) {
 			return none
 		}
-		typ = typ[1..]
+		typ = flat.source_type_id(flat.source_type_name(typ)[1..])
 	}
-	if decl_type_is_usable(flat.source_type_id(typ)) {
-		return flat.source_type_id(typ)
+	if decl_type_is_usable(typ) {
+		return typ
 	}
 	return none
 }
@@ -443,12 +448,12 @@ fn (t &Transformer) spawn_expr_decl_type(node flat.Node) ?u32 {
 		callee := t.a.child_node(call, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
 			base := t.a.child_node(callee, 0)
-			base_type := if base.kind == .ident {
-				flat.source_type_name(t.var_type(base.value))
+			base_type := (if base.kind == .ident {
+				t.var_type(base.value)
 			} else {
-				flat.source_type_name(t.node_type(t.a.child(callee, 0)))
-			}
-			if info := t.tc.resolve_generic_struct_method(flat.source_type_id(base_type), callee.value) {
+				t.node_type(t.a.child(callee, 0))
+			})
+			if info := t.tc.resolve_generic_struct_method(base_type, callee.value) {
 				ret_type = info.return_type.source_type_id()
 			}
 		}
@@ -841,10 +846,10 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 	if _ := t.lookup_struct_info(lookup_type) {
 		// Follow the complete embedding path, including pointer embeddings.
 		if path := t.struct_field_path_for_field(lookup_type, field_name) {
-			owner_type := flat.source_type_id(if path.len > 0 {
-				flat.source_type_name(t.trim_pointer_type(path.last().typ))
+			owner_type := (if path.len > 0 {
+				t.trim_pointer_type(path.last().typ)
 			} else {
-				flat.source_type_name(lookup_type)
+				lookup_type
 			})
 			if owner_info := t.lookup_struct_info(owner_type) {
 				if ftyp_source_id := t.struct_field_type(owner_info, field_name) {
@@ -1137,24 +1142,28 @@ fn (t &Transformer) checker_struct_field_type_name(type_name_id u32, field_name 
 	if isnil(t.tc) {
 		return none
 	}
-	mut lookup_type := if type_name.starts_with('&') { type_name[1..] } else { type_name }
-	if checker_typ_source_id := t.tc.struct_field_type_name(flat.source_type_id(lookup_type), field_name) {
+	mut lookup_type := (if type_name.starts_with('&') {
+		flat.source_type_id(type_name[1..])
+	} else {
+		type_name_id
+	})
+	if checker_typ_source_id := t.tc.struct_field_type_name(lookup_type, field_name) {
 		return checker_typ_source_id
 	}
-	if is_qualified_type_name_text(lookup_type) {
-		short := lookup_type.all_after_last('.')
+	if is_qualified_type_name_text(flat.source_type_name(lookup_type)) {
+		short := flat.source_type_name(lookup_type).all_after_last('.')
 		if checker_typ_source_id := t.tc.struct_field_type_name(flat.source_type_id(short), field_name) {
 			return checker_typ_source_id
 		}
 	} else if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		qtype := '${t.cur_module}.${lookup_type}'
-		if checker_typ_source_id := t.tc.struct_field_type_name(flat.source_type_id(qtype), field_name) {
+		qtype := flat.source_type_id('${t.cur_module}.${flat.source_type_name(lookup_type)}')
+		if checker_typ_source_id := t.tc.struct_field_type_name(qtype, field_name) {
 			return checker_typ_source_id
 		}
 	}
-	normalized_source_id := t.normalize_type_alias(flat.source_type_id(lookup_type))
+	normalized_source_id := t.normalize_type_alias(lookup_type)
 	normalized := flat.source_type_name(normalized_source_id)
-	if normalized != lookup_type {
+	if normalized != flat.source_type_name(lookup_type) {
 		if checker_typ_source_id := t.tc.struct_field_type_name(normalized_source_id, field_name) {
 			return checker_typ_source_id
 		}
@@ -1183,42 +1192,47 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name_id u32, field_name st
 	if type_name_id == u32(0) || field_name == '' {
 		return none
 	}
-	mut lookup_type := if type_name.starts_with('&') { type_name[1..] } else { type_name }
+	mut lookup_type := (if type_name.starts_with('&') {
+		flat.source_type_id(type_name[1..])
+	} else {
+		type_name_id
+	})
 	owner_type_id := if type_name.starts_with('&') {
-		flat.source_type_id(lookup_type)
+		lookup_type
 	} else {
 		type_name_id
 	}
-	base, _, is_generic_app := generic_app_parts(lookup_type)
+	base, _, is_generic_app := generic_app_parts(flat.source_type_name(lookup_type))
 	if is_generic_app {
-		lookup_type = base
+		lookup_type = flat.source_type_id(base)
 	}
-	if lookup_type !in t.structs && is_qualified_type_name_text(lookup_type) {
-		short_type := lookup_type.all_after_last('.')
+	if flat.source_type_name(lookup_type) !in t.structs && is_qualified_type_name_text(flat.source_type_name(lookup_type)) {
+		short_type := flat.source_type_name(lookup_type).all_after_last('.')
 		if short_type in t.structs {
-			lookup_type = short_type
+			lookup_type = flat.source_type_id(short_type)
 		}
 	}
-	if !lookup_type.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+	if !flat.source_type_shape(lookup_type).has(.dotted) && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
-		qtype := '${t.cur_module}.${lookup_type}'
+		qtype := '${t.cur_module}.${flat.source_type_name(lookup_type)}'
 		if qtype in t.structs {
-			lookup_type = qtype
+			lookup_type = flat.source_type_id(qtype)
 		} else if !isnil(t.tc) {
 			if target_source_id := t.tc.type_aliases.type_id(qtype) {
-				target := flat.source_type_name(target_source_id)
+				target_source_id_3 := target_source_id
 
-				lookup_type = target
+				lookup_type = target_source_id_3
 			}
 		}
 	}
-	if lookup_type !in t.structs {
-		normalized := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(lookup_type)))
-		if normalized != lookup_type {
-			lookup_type = normalized
+	if flat.source_type_name(lookup_type) !in t.structs {
+		normalized_source_id_2 := t.normalize_type_alias(lookup_type)
+		normalized := flat.source_type_name(normalized_source_id_2)
+		if normalized != flat.source_type_name(lookup_type) {
+			lookup_type = normalized_source_id_2
 		}
 	}
-	info := t.structs[lookup_type] or { return none }
+	info := t.structs[flat.source_type_name(lookup_type)] or { return none }
 	return StructFieldLookup{
 		info:       info
 		owner_type: owner_type_id
@@ -1294,12 +1308,22 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ_id u32, own
 	}
 	// `?T` of an option `T` is that option, as the checker substitutes it.
 	if typ.starts_with('?') {
-		inner := flat.source_type_name(t.normalize_field_type_with_owner_substitution(flat.source_type_id(typ[1..]), owner_type_id, allow_owner_substitution))
-		return flat.source_type_id(if inner.starts_with('?') { inner } else { '?' + inner })
+		inner_source_id := t.normalize_field_type_with_owner_substitution(flat.source_type_id(typ[1..]), owner_type_id, allow_owner_substitution)
+		inner := flat.source_type_name(inner_source_id)
+		return if inner.starts_with('?') {
+			inner_source_id
+		} else {
+			flat.source_type_id('?' + inner)
+		}
 	}
 	if typ.starts_with('!') {
-		inner := flat.source_type_name(t.normalize_field_type_with_owner_substitution(flat.source_type_id(typ[1..]), owner_type_id, allow_owner_substitution))
-		return flat.source_type_id(if inner.starts_with('!') { inner } else { '!' + inner })
+		inner_source_id_2 := t.normalize_field_type_with_owner_substitution(flat.source_type_id(typ[1..]), owner_type_id, allow_owner_substitution)
+		inner := flat.source_type_name(inner_source_id_2)
+		return if inner.starts_with('!') {
+			inner_source_id_2
+		} else {
+			flat.source_type_id('!' + inner)
+		}
 	}
 	if typ.starts_with('map[') {
 		bracket_end := typ.index(']') or { return t.normalize_type_alias(typ_id) }
@@ -1359,13 +1383,13 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ_id u32, own
 		return t.normalize_type_alias(typ_id)
 	}
 	owner_mod := field_owner_module(owner_type)
-	qtyp := '${owner_mod}.${typ}'
-	if t.type_authority_has(qtyp) {
-		return t.normalize_type_alias(flat.source_type_id(qtyp))
+	qtyp := flat.source_type_id('${owner_mod}.${typ}')
+	if t.type_authority_has(flat.source_type_name(qtyp)) {
+		return t.normalize_type_alias(qtyp)
 	}
 	if !isnil(t.tc) {
-		if t.tc.type_aliases.contains(qtyp) {
-			return t.normalize_type_alias(flat.source_type_id(qtyp))
+		if t.tc.type_aliases.contains(flat.source_type_name(qtyp)) {
+			return t.normalize_type_alias(qtyp)
 		}
 	}
 	return t.normalize_type_alias(typ_id)
@@ -2406,18 +2430,23 @@ fn (t &Transformer) array_call_type_name(id flat.NodeId, node flat.Node) ?u32 {
 	if fn_node.kind != .selector || fn_node.children_count == 0 {
 		return none
 	}
-	base_type0 := flat.source_type_name(t.node_type(t.a.child(fn_node, 0)))
-	base_type := if base_type0.starts_with('&') { base_type0[1..] } else { base_type0 }
-	if !base_type.starts_with('[]') {
+	base_type0_source_id := t.node_type(t.a.child(fn_node, 0))
+	base_type0 := flat.source_type_name(base_type0_source_id)
+	base_type := (if base_type0.starts_with('&') {
+		flat.source_type_id(base_type0[1..])
+	} else {
+		base_type0_source_id
+	})
+	if !flat.source_type_shape(base_type).has(.array_type) {
 		return none
 	}
-	elem_type := base_type[2..]
+	elem_type := flat.source_type_name(base_type)[2..]
 	if elem_type.len == 0 {
 		return none
 	}
 	match fn_node.value {
 		'filter', 'clone', 'reverse', 'sorted', 'repeat', 'repeat_to_depth' {
-			return flat.source_type_id(base_type)
+			return base_type
 		}
 		'first', 'last', 'pop', 'pop_left' {
 			return flat.source_type_id(elem_type)
@@ -2582,17 +2611,17 @@ fn (t &Transformer) is_string_type(id flat.NodeId) bool {
 	if raw_const_type_source_id := t.raw_const_type_name_for_expr(id) {
 		return t.normalize_type_alias(raw_const_type_source_id) == flat.source_type_string
 	}
-	mut typ := ''
+	mut typ := u32(0)
 	if sc := t.find_smartcast(t.expr_key(id)) {
-		typ = flat.source_type_name(t.smartcast_target_type(sc))
+		typ = t.smartcast_target_type(sc)
 	}
-	if typ.len == 0 {
-		typ = flat.source_type_name(t.node_type(id))
+	if typ == 0 {
+		typ = t.node_type(id)
 	}
-	if typ.len == 0 {
-		typ = flat.source_type_name(t.raw_checker_node_type(id))
+	if typ == 0 {
+		typ = t.raw_checker_node_type(id)
 	}
-	return t.normalize_type_alias(flat.source_type_id(typ)) == flat.source_type_string
+	return t.normalize_type_alias(typ) == flat.source_type_string
 }
 
 // is_array_type checks if a type string represents an array type (starts with `[]`).

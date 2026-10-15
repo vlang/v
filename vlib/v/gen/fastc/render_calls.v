@@ -470,7 +470,7 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 			// render_member_receiver spells it correctly.
 			return FastcRenderedExpression{
 				source: replacement
-				typ:    flat.source_type_id(if method == 'has' { 'bool' } else { 'void' })
+				typ:    (if method == 'has' { flat.source_type_bool } else { flat.source_type_void })
 			}
 		}
 		if !fastc_contains(rendered, needle) {

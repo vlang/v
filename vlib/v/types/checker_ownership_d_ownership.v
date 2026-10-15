@@ -3824,7 +3824,8 @@ fn (mut tc TypeChecker) ownership_add_fn_return_slot(fn_name string, slot_idx in
 
 fn (mut tc TypeChecker) ownership_add_fn_return_descendant(fn_name string, slot_idx int, suffix string, type_name_id u32) {
 	type_name_comparison_type_id_8 := type_name_id
-	type_name := flat.source_type_name(type_name_comparison_type_id_8)
+	type_name_source_id_2 := type_name_comparison_type_id_8
+	type_name := flat.source_type_name(type_name_source_id_2)
 	if fn_name == '' || slot_idx < 0 || suffix == '' {
 		return
 	}
@@ -3838,10 +3839,10 @@ fn (mut tc TypeChecker) ownership_add_fn_return_descendant(fn_name string, slot_
 	descs << OwnershipReturnDescendant{
 		slot_idx:  slot_idx
 		suffix:    suffix
-		type_name: flat.source_type_id(if type_name_comparison_type_id_8 != u32(0) {
-			type_name
+		type_name: (if type_name_comparison_type_id_8 != u32(0) {
+			type_name_source_id_2
 		} else {
-			'string'
+			flat.source_type_string
 		})
 	}
 	st.ownership_fn_return_descs[fn_name] = descs
@@ -3875,7 +3876,8 @@ fn (mut tc TypeChecker) ownership_add_fn_return_param_descendant(fn_name string,
 
 fn (mut tc TypeChecker) ownership_add_fn_param_descendant(fn_name string, param_idx int, suffix string, type_name_id u32) {
 	type_name_comparison_type_id_9 := type_name_id
-	type_name := flat.source_type_name(type_name_comparison_type_id_9)
+	type_name_source_id_3 := type_name_comparison_type_id_9
+	type_name := flat.source_type_name(type_name_source_id_3)
 	if fn_name == '' || param_idx < 0 || suffix == '' {
 		return
 	}
@@ -3889,10 +3891,10 @@ fn (mut tc TypeChecker) ownership_add_fn_param_descendant(fn_name string, param_
 	descs << OwnershipParamDescendant{
 		param_idx: param_idx
 		suffix:    suffix
-		type_name: flat.source_type_id(if type_name_comparison_type_id_9 != u32(0) {
-			type_name
+		type_name: (if type_name_comparison_type_id_9 != u32(0) {
+			type_name_source_id_3
 		} else {
-			'string'
+			flat.source_type_string
 		})
 	}
 	st.ownership_fn_param_descs[fn_name] = descs

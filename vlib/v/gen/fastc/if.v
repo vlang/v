@@ -747,13 +747,14 @@ fn (mut g Parser) parse_if() !bool {
 				continue
 			}
 			if local := g.locals[opt_name] {
-				base := local.option_value_type_text()
+				base_source_id := local.option_value_type
+				base := flat.source_type_name(base_source_id)
 				had_member_smartcasts[opt_name] = opt_name in g.member_smartcasts
 				previous_member_smartcasts[opt_name] = g.member_smartcasts[opt_name] or {
 					FastcMemberSmartcast{}
 				}
 				g.member_smartcasts[opt_name] = FastcMemberSmartcast{
-					typ:    flat.source_type_id(base)
+					typ:    base_source_id
 					source: '(*((${base} *)${fastc_c_identifier(opt_name)}.data))'
 				}
 			}
@@ -1471,7 +1472,8 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 	} else {
 		g.read_block_expression_value()!
 	}
-	then_type := g.last_expression_type_text()
+	then_type_source_id := g.last_expression_type
+	then_type := flat.source_type_name(then_type_source_id)
 	for i, name in names {
 		if had_locals[i] {
 			g.locals[name] = previous_locals[i]
@@ -1499,10 +1501,11 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 		g.skip_semicolons()
 		g.expect(.rcbr)!
 	}
-	else_type := g.last_expression_type_text()
-	result_type := if then_type != '' {
+	else_type_source_id := g.last_expression_type
+	else_type := flat.source_type_name(else_type_source_id)
+	result_type := if then_type_source_id != u32(0) {
 		fastc_normalize_inferred_type(then_type)
-	} else if else_type != '' {
+	} else if else_type_source_id != u32(0) {
 		fastc_normalize_inferred_type(else_type)
 	} else if outer_expected_type != '' {
 		outer_expected_type
@@ -1548,8 +1551,9 @@ fn (g &Parser) fastc_common_sum_type(a string, b string) ?string {
 }
 
 fn (mut g Parser) read_if_expression() !string {
-	outer_expected_type := g.expected_expression_type_text()
-	branch_expected_type := if outer_expected_type != '' {
+	outer_expected_type_source_id := g.expected_expression_type
+	outer_expected_type := flat.source_type_name(outer_expected_type_source_id)
+	branch_expected_type := if outer_expected_type_source_id != u32(0) {
 		outer_expected_type
 	} else if g.declared_kinds[g.semantic_type_key(g.return_type_text())] == .enum_ {
 		g.return_type_text()
@@ -1849,27 +1853,31 @@ fn (mut g Parser) read_if_expression() !string {
 	} else if g.selfhost && else_type == '' {
 		g.last_expression_type = flat.source_type_id(then_type)
 	} else if g.selfhost && fastc_is_integer_expression_type(then_type) && fastc_is_integer_expression_type(else_type) {
-		g.last_expression_type = flat.source_type_id(if then_type == 'integer literal' {
-			else_type
+		g.last_expression_type = (if then_type == 'integer literal' {
+			flat.source_type_id(else_type)
 		} else {
-			then_type
+			flat.source_type_id(then_type)
 		})
 	} else {
-		g.last_expression_type = flat.source_type_id(if outer_expected_type != '' {
-			outer_expected_type
+		g.last_expression_type = (if outer_expected_type_source_id != u32(0) {
+			outer_expected_type_source_id
 		} else if then_type != '' {
-			then_type
+			flat.source_type_id(then_type)
 		} else {
-			else_type
+			flat.source_type_id(else_type)
 		})
 	}
-	g.last_option_value_type = flat.source_type_id(if g.last_expression_type_text() in [
+	g.last_option_value_type = (if g.last_expression_type_text() in [
 		'Option',
 		'__v_result',
 	] && (then_option_value_type == else_option_value_type || then_option_value_type == '' || else_option_value_type == '') {
-		if then_option_value_type != '' { then_option_value_type } else { else_option_value_type }
+		if then_option_value_type != '' {
+			flat.source_type_id(then_option_value_type)
+		} else {
+			flat.source_type_id(else_option_value_type)
+		}
 	} else {
-		''
+		u32(0)
 	})
 	// When the if-expression's value is a boxed sum type / interface, its branches may be
 	// DIFFERENT variants (`if x is T { x } else { empty }`), which C cannot select between in one
@@ -1882,7 +1890,7 @@ fn (mut g Parser) read_if_expression() !string {
 		then_norm := fastc_normalize_inferred_type(then_type)
 		else_norm := fastc_normalize_inferred_type(else_type)
 		mut expected_box := ''
-		if outer_expected_type != '' && g.is_boxed_type(fastc_normalize_inferred_type(outer_expected_type)) {
+		if outer_expected_type_source_id != u32(0) && g.is_boxed_type(fastc_normalize_inferred_type(outer_expected_type)) {
 			expected_box = fastc_normalize_inferred_type(outer_expected_type)
 		} else if then_norm != else_norm {
 			// One branch may already BE the sum type (`ast.empty_expr` is an `Expr`) while the
@@ -1910,7 +1918,7 @@ fn (mut g Parser) read_if_expression() !string {
 			}
 		}
 	}
-	g.expected_expression_type = flat.source_type_id(outer_expected_type)
+	g.expected_expression_type = outer_expected_type_source_id
 	g.last_expression = []FastcExpressionToken{}
 	conditional := '((${condition}) ? (${then_expression}) : (${else_expression}))'
 	wrapped := if smartcast_decls != '' {

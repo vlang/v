@@ -537,10 +537,10 @@ fn (mut e Eval) register_files() ! {
 					e.enum_types[enum_name] = TypeAliasInfo{
 						module_name: module_name
 						file_name:   file_name
-						target:      flat.source_type_id(if backing.len > 0 && backing[0].len > 0 {
-							backing[0]
+						target:      (if backing.len > 0 && backing[0].len > 0 {
+							flat.source_type_id(backing[0])
 						} else {
-							'i32'
+							flat.source_type_i32
 						})
 					}
 					e.enum_fields[enum_name] = enum_fields

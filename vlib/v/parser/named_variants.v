@@ -146,7 +146,11 @@ fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix 
 			kind:           .struct_decl
 			op:             if is_pub { .arrow } else { .none }
 			value:          hidden
-			typ:            flat.source_type_id(if used_params.len > 0 { 'generic' } else { '' })
+			typ:            (if used_params.len > 0 {
+				flat.source_type_id('generic')
+			} else {
+				u32(0)
+			})
 			payload:        flat.node_payload(used_params)
 			children_start: fields_start
 			children_count: flat.child_count(fields.len)
@@ -200,7 +204,7 @@ fn (mut p Parser) validate_named_sum_variants(name string, language_prefix strin
 				continue
 			}
 		} else if !is_plain_capitalized_ident(variant.text_text()) {
-			first := if variant.text_text().len > 0 { variant.text_text()[0] } else { u8(0) }
+			first := if variant.text != 0 { variant.text_text()[0] } else { u8(0) }
 			if first >= `a` && first <= `z` && !flat.source_type_shape(variant.text).has(.dotted)
 				&& !flat.source_type_shape(variant.text).has(.bracketed) {
 				p.record_diagnostic_span('invalid sum type variant name `${variant.text_text()}`: variant names must start with a capital letter',

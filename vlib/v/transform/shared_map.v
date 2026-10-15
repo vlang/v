@@ -455,11 +455,11 @@ fn (t &Transformer) promoted_field_raw_type(struct_type_id u32, field_name strin
 	}
 	info := t.lookup_struct_info(struct_type_id) or { return none }
 	if field := info.field(field_name) {
-		return flat.source_type_id(if field.raw_typ != 0 {
-			field.raw_typ_text()
+		return if field.raw_typ != 0 {
+			field.raw_typ
 		} else {
-			field.typ_text()
-		})
+			field.typ
+		}
 	}
 	for field in info.fields {
 		if field.is_embedded {

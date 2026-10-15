@@ -447,7 +447,7 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 					field_type_source_id := t.lookup_struct_field_type(struct_type_id, field_name) or {
 						field.typ
 					}
-					field_type := flat.source_type_name(field_type_source_id)
+
 					child_type_source_id := t.trim_pointer_type(t.normalize_type_alias(field_type_source_id))
 
 					merged_child := t.merge_promoted_struct_default(provided_value_id,
@@ -461,10 +461,10 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 						children_count: 1
 						pos:            provided_field.pos
 						value:          field_name
-						typ:            flat.source_type_id(if provided_field.typ != 0 {
-							provided_field.typ_text()
+						typ:            (if provided_field.typ != 0 {
+							provided_field.typ
 						} else {
-							field_type
+							field_type_source_id
 						})
 					})
 				}
@@ -474,7 +474,7 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 		mut missing_id := field_id
 		if field.kind == .field_init && field.children_count > 0 {
 			field_type_source_id_2 := t.lookup_struct_field_type(struct_type_id, field_name) or { field.typ }
-			field_type := flat.source_type_name(field_type_source_id_2)
+
 			default_value_id := t.a.child(&field, 0)
 			if source_file := t.a.source_files[field.pos.id] {
 				t.cur_file = source_file.name
@@ -500,10 +500,10 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 				children_count: 1
 				pos:            field.pos
 				value:          field_name
-				typ:            flat.source_type_id(if field.typ != 0 {
-					field.typ_text()
+				typ:            (if field.typ != 0 {
+					field.typ
 				} else {
-					field_type
+					field_type_source_id_2
 				})
 			})
 		}
@@ -687,9 +687,9 @@ fn (mut t Transformer) transform_struct_children(id flat.NodeId, node flat.Node)
 		}
 	}
 	if t.inplace_struct_fields && t.rewrite_children_in_place(id, field_ids) {
-		output_typ := if node.typ != 0 { node.typ_text() } else { node.value }
-		if output_typ != node.typ_text() {
-			t.set_node_typ(int(id), flat.source_type_id(output_typ))
+		output_typ := (if node.typ != 0 { node.typ } else { flat.source_type_id(node.value) })
+		if flat.source_type_name(output_typ) != node.typ_text() {
+			t.set_node_typ(int(id), output_typ)
 		}
 		return id
 	}
@@ -704,10 +704,10 @@ fn (mut t Transformer) transform_struct_children(id flat.NodeId, node flat.Node)
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            flat.source_type_id(if node.typ != 0 {
-			node.typ_text()
+		typ:            (if node.typ != 0 {
+			node.typ
 		} else {
-			node.value
+			flat.source_type_id(node.value)
 		})
 	})
 }
@@ -1006,10 +1006,10 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            flat.source_type_id(if node.typ != 0 {
-			node.typ_text()
+		typ:            (if node.typ != 0 {
+			node.typ
 		} else {
-			node.value
+			flat.source_type_id(node.value)
 		})
 	})
 	for stmt in prelude {
@@ -1892,14 +1892,14 @@ fn (mut t Transformer) transform_array_init_expr(id flat.NodeId, node flat.Node)
 // transform_map_init_expr transforms .map_init nodes.
 // Recursively transforms all child key/value expressions.
 fn (mut t Transformer) transform_map_init_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	raw_type := if node.value.len > 0 {
-		node.value
+	raw_type := (if node.value.len > 0 {
+		flat.source_type_id(node.value)
 	} else if node.typ != 0 {
-		node.typ_text()
+		node.typ
 	} else {
-		flat.source_type_name(t.node_type(id))
-	}
-	map_type_source_id := t.normalize_type_alias(flat.source_type_id(raw_type))
+		t.node_type(id)
+	})
+	map_type_source_id := t.normalize_type_alias(raw_type)
 	map_type := flat.source_type_name(map_type_source_id)
 	if t.is_optional_type_name(map_type_source_id) && node.children_count == 0 {
 		payload_type_shape := flat.source_type_shape(t.optional_base_type(map_type_source_id))

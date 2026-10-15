@@ -19130,10 +19130,10 @@ fn (tc &TypeChecker) infer_generic_type_text_from_text(param_text string, actual
 	}
 	for param in generic_params {
 		if clean == param && param !in inferred {
-			inferred[param] = flat.source_type_id(if actual == 'unknown' || actual == 'generic' {
-				param
+			inferred[param] = (if actual == 'unknown' || actual == 'generic' {
+				flat.source_type_id(param)
 			} else {
-				actual
+				flat.source_type_id(actual)
 			})
 			return
 		}

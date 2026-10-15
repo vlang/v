@@ -23,10 +23,10 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 			return ComptimeStringScalar{flat.source_type_string, node.value}
 		}
 		.int_literal, .bool_literal {
-			return ComptimeStringScalar{flat.source_type_id(if node.kind == .bool_literal {
-				'bool'
+			return ComptimeStringScalar{(if node.kind == .bool_literal {
+				flat.source_type_bool
 			} else {
-				'int'
+				flat.source_type_int
 			}), node.value}
 		}
 		.ident {
@@ -35,7 +35,7 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 					return value
 				}
 			}
-			if allow_locals && flat.source_type_name(t.var_type(node.value)).len > 0 {
+			if allow_locals && (t.var_type(node.value)) != 0 {
 				return none
 			}
 			return t.comptime_scalar_named_const(node.value, depth, module_name, file)
@@ -54,7 +54,7 @@ fn (t &Transformer) comptime_scalar_expr_in_context(id flat.NodeId, depth int, m
 			}
 			if node.children_count == 1 {
 				base := t.a.child_node(&node, 0)
-				if base.kind == .ident && (!allow_locals || flat.source_type_name(t.var_type(base.value)).len == 0) {
+				if base.kind == .ident && (!allow_locals || (t.var_type(base.value)) == 0) {
 					return t.comptime_scalar_named_const('${base.value}.${node.value}', depth, module_name, file)
 				}
 			}
@@ -316,7 +316,7 @@ fn (t &Transformer) subst_comptime_scalar_locals(cond string) string {
 					})
 					continue
 				}
-				if flat.source_type_name(t.var_type(name)).len == 0 {
+				if (t.var_type(name)) == 0 {
 					mut candidate_end := i
 					for candidate_end + 1 < cond.len && cond[candidate_end] == `.`
 						&& comptime_cond_name_char(cond[candidate_end + 1]) {

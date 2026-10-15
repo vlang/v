@@ -4298,10 +4298,10 @@ fn (mut p FastArm64Parser) parse_function() ! {
 	}
 	p.func_id = func_id
 	p.current_function = name
-	p.current_receiver = flat.source_type_id(if static_owner != '' {
-		static_owner
+	p.current_receiver = (if static_owner != '' {
+		flat.source_type_id(static_owner)
 	} else {
-		receiver_type.trim_right('*')
+		flat.source_type_id(receiver_type.trim_right('*'))
 	})
 	p.current_method_is_static = static_owner != ''
 	p.return_typ = p.program.fn_returns[key]
@@ -6685,7 +6685,7 @@ fn (mut p FastArm64Parser) parse_atom() !FastArm64Value {
 			return FastArm64Value{
 				id:       p.program.m.get_or_add_const(typ, literal)
 				typ:      typ
-				typ_name: flat.source_type_id(if is_float { 'f64' } else { 'int' })
+				typ_name: (if is_float { flat.source_type_f64 } else { flat.source_type_int })
 			}
 		}
 		.string {
@@ -9778,13 +9778,13 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 		result_error_type:    result_error_type
 		result_error_message: result_error_message
 		result_error_code:    result_error_code
-		typ_name:             flat.source_type_id(if signature.return_type_text() in [
+		typ_name:             (if signature.return_type_text() in [
 			'Option',
 			'__v_result',
 		] {
-			signature.option_type_text()
+			signature.option_type
 		} else {
-			signature.return_type_text()
+			signature.return_type
 		})
 		tuple_types:          signature.return_types.clone()
 	}
@@ -10535,13 +10535,13 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 		result_error_type:    result_error_type
 		result_error_message: result_error_message
 		result_error_code:    result_error_code
-		typ_name:             flat.source_type_id(if signature.return_type_text() in [
+		typ_name:             (if signature.return_type_text() in [
 			'Option',
 			'__v_result',
 		] {
-			signature.option_type_text()
+			signature.option_type
 		} else {
-			signature.return_type_text()
+			signature.return_type
 		})
 		tuple_types:          signature.return_types.clone()
 	}
@@ -11316,10 +11316,10 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 	return FastArm64Value{
 		id:       p.program.instr2(opcode, p.cur_block, result_type, converted_left.id, converted_right.id)
 		typ:      result_type
-		typ_name: flat.source_type_id(if result_type == p.program.i1_type {
-			'bool'
+		typ_name: (if result_type == p.program.i1_type {
+			flat.source_type_bool
 		} else {
-			converted_left.typ_name_text()
+			converted_left.typ_name
 		})
 	}
 }

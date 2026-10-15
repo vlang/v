@@ -86,7 +86,7 @@ fn (tc &TypeChecker) generic_constraint(decl flat.Node, text string) ?GenericCon
 	return GenericConstraint{
 		name:          flat.source_type_id(text)
 		types:         [typ]
-		family_struct: flat.source_type_id(if typ is Struct { typ.name() } else { '' })
+		family_struct: (if typ is Struct { typ.source_type_id() } else { u32(0) })
 	}
 }
 

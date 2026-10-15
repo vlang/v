@@ -1119,12 +1119,13 @@ fn (mut g Parser) parse_return() !bool {
 	] && g.option_return_type_text() == 'MultiReturn')) {
 		mut values := []string{}
 		mut value_types := []string{}
-		previous_expected_type := g.expected_expression_type_text()
+		previous_expected_type_source_id := g.expected_expression_type
+
 		for {
-			g.expected_expression_type = flat.source_type_id(if values.len < g.return_types.ids.len {
-				g.return_types.at(values.len)
+			g.expected_expression_type = (if values.len < g.return_types.ids.len {
+				flat.source_type_id(g.return_types.at(values.len))
 			} else {
-				''
+				u32(0)
 			})
 			value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 			if value == '' {
@@ -1137,7 +1138,7 @@ fn (mut g Parser) parse_return() !bool {
 			}
 			g.next()
 		}
-		g.expected_expression_type = flat.source_type_id(previous_expected_type)
+		g.expected_expression_type = previous_expected_type_source_id
 		g.consume_statement_end()
 		mut evaluated_values := []string{cap: values.len}
 		for i, value in values {
@@ -1175,19 +1176,20 @@ fn (mut g Parser) parse_return() !bool {
 		}
 		return true
 	}
-	previous_expected_type := g.expected_expression_type_text()
+	previous_expected_type_source_id_2 := g.expected_expression_type
+
 	if g.selfhost {
-		g.expected_expression_type = flat.source_type_id(if g.return_type_text() in [
+		g.expected_expression_type = (if g.return_type_text() in [
 			'Option',
 			'__v_result',
 		] && g.option_return_type_text() !in ['', 'MultiReturn'] {
-			g.option_return_type_text()
+			g.option_return_type
 		} else {
-			g.return_type_text()
+			g.return_type
 		})
 	}
 	mut expression := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
-	g.expected_expression_type = flat.source_type_id(previous_expected_type)
+	g.expected_expression_type = previous_expected_type_source_id_2
 	mut actual_type := g.last_expression_type_text()
 	if g.selfhost && g.return_type == u32(0) {
 		g.consume_statement_end()
@@ -1387,10 +1389,11 @@ fn (mut g Parser) parse_simple_statement() ! {
 		g.next()
 		if name == 'panic' && g.tok == .lpar {
 			g.next()
-			previous_expected_type := g.expected_expression_type_text()
+			previous_expected_type_source_id := g.expected_expression_type
+
 			g.expected_expression_type = flat.source_type_string
 			argument := g.read_expression([token.Token.rpar])!
-			g.expected_expression_type = flat.source_type_id(previous_expected_type)
+			g.expected_expression_type = previous_expected_type_source_id
 			if argument == '' {
 				return g.unsupported('empty panic argument')
 			}
@@ -1552,7 +1555,8 @@ fn (mut g Parser) parse_simple_statement() ! {
 					return
 				}
 			}
-			previous_expected_type := g.expected_expression_type_text()
+			previous_expected_type_source_id_2 := g.expected_expression_type
+
 			if g.selfhost && expected_type != '' {
 				g.expected_expression_type = flat.source_type_id(expected_type)
 			}
@@ -1560,11 +1564,11 @@ fn (mut g Parser) parse_simple_statement() ! {
 			g.allows_nil_local_assignment = !is_global && operator == .assign && g.underlying_alias_type(expected_type) == 'voidptr' && !g.fn_alias_return_types.contains(expected_type) && statement_local.fn_return_type == u32(0) && !g.in_generic_placeholder && g.tok == .key_nil && g.nil_ends_value()
 			value := g.read_expression([token.Token.semicolon, token.Token.rcbr]) or {
 				g.allows_nil_local_assignment = previous_nil_assignment
-				g.expected_expression_type = flat.source_type_id(previous_expected_type)
+				g.expected_expression_type = previous_expected_type_source_id_2
 				return err
 			}
 			g.allows_nil_local_assignment = previous_nil_assignment
-			g.expected_expression_type = flat.source_type_id(previous_expected_type)
+			g.expected_expression_type = previous_expected_type_source_id_2
 			if value.len == 0 {
 				return g.unsupported('empty assignment to `${name}`')
 			}
@@ -2265,10 +2269,10 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 				} else {
 					fastc_c_identifier(name)
 				}
-				typ:    flat.source_type_id(if local.is_reference {
-					local.typ_text().trim_right('*')
+				typ:    (if local.is_reference {
+					flat.source_type_id(local.typ_text().trim_right('*'))
 				} else {
-					local.typ_text()
+					local.typ
 				})
 			}
 		} else {

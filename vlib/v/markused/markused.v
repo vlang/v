@@ -8828,19 +8828,20 @@ fn (c &CallCollector) generic_factory_type_arg(id flat.NodeId) u32 {
 			return flat.source_type_id('${base}[${args.join(', ')}]')
 		}
 		.array_init {
-			return flat.source_type_id(if node.typ != 0 {
-				node.typ_text()
+			return if node.typ != 0 {
+				node.typ
 			} else if node.value.starts_with('[') {
-				node.value
+				flat.source_type_id(node.value)
 			} else {
-				'[]${node.value}'
-			})
+				flat.source_type_id('[]${node.value}')
+			}
 		}
 		.map_init, .struct_init, .struct_decl { return flat.source_type_id(node.value) }
 		.prefix {
 			if node.children_count == 0 { return u32(0) }
-			inner := flat.source_type_name(c.generic_factory_type_arg(c.a.child(node, 0)))
-			return flat.source_type_id(if node.op == .amp { '&${inner}' } else { inner })
+			inner_source_id := c.generic_factory_type_arg(c.a.child(node, 0))
+			inner := flat.source_type_name(inner_source_id)
+			return if node.op == .amp { flat.source_type_id('&${inner}') } else { inner_source_id }
 		}
 		else { return u32(0) }
 	}

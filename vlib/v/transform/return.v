@@ -196,7 +196,7 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 	mut expression_id := id
 	mut node := t.a.nodes[int(expression_id)]
 	mut shadows_implicit_err := false
-	mut shadowed_err_type := ''
+	mut shadowed_err_type := u32(0)
 	for node.children_count > 0 {
 		if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
 			expression_id = t.a.child(&node, 0)
@@ -210,7 +210,7 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 					binding := t.a.node(t.multi_assign_lhs_id(statement, j))
 					if binding.kind == .ident && binding.value == 'err' {
 						shadows_implicit_err = true
-						shadowed_err_type = flat.source_type_name(t.return_decl_binding_type(*statement, j))
+						shadowed_err_type = t.return_decl_binding_type(*statement, j)
 						break
 					}
 				}
@@ -221,12 +221,12 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 		}
 		node = t.a.nodes[int(expression_id)]
 	}
-	actual_type := if node.kind == .ident && node.value == 'err' && shadows_implicit_err {
-		flat.source_type_name(t.return_ierror_type_candidate(flat.source_type_id(shadowed_err_type)) or { u32(0) })
+	actual_type := (if node.kind == .ident && node.value == 'err' && shadows_implicit_err {
+		(t.return_ierror_type_candidate(shadowed_err_type) or { u32(0) })
 	} else {
-		flat.source_type_name(t.return_ierror_expr_type(expression_id))
-	}
-	if actual_type.len == 0 {
+		t.return_ierror_expr_type(expression_id)
+	})
+	if actual_type == 0 {
 		return false
 	}
 	// Explicit error construction and the active implicit `err` binding denote
@@ -240,7 +240,7 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 	if payload_type_id == u32(0) || payload_type_id == flat.source_type_unknown || payload_type.contains('unknown') {
 		return true
 	}
-	return !t.resolved_receiver_arg_compatible(expression_id, flat.source_type_id(actual_type), payload_type_id)
+	return !t.resolved_receiver_arg_compatible(expression_id, actual_type, payload_type_id)
 }
 
 fn (t &Transformer) return_decl_binding_type(decl flat.Node, index int) u32 {
@@ -894,12 +894,12 @@ fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type t
 	key_name := t.new_temp('return_map_key')
 	source_value_name := t.new_temp('return_map_source_value')
 	value_name := t.new_temp('return_map_value')
-	keys_type := '[]${actual_key_storage}'
+	keys_type := flat.source_type_id('[]${actual_key_storage}')
 	prefix << t.make_decl_assign_typed(out_name, t.make_new_map_call(expected_map_type_source_id), t.semantic_type_name(expected_type))
 	keys_call := t.make_call_typed('map__keys', [
 		t.runtime_addr(base, actual_map_type_source_id),
-	], flat.source_type_id(keys_type))
-	prefix << t.make_decl_assign_typed(keys_name, keys_call, flat.source_type_id(keys_type))
+	], keys_type)
+	prefix << t.make_decl_assign_typed(keys_name, keys_call, keys_type)
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), flat.source_type_int)
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(t.make_ident(keys_name), 'len', flat.source_type_int))
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
@@ -1197,13 +1197,13 @@ fn (mut t Transformer) try_expand_return_if(source_return_id flat.NodeId, node f
 	for i in 1 .. node.children_count {
 		extra_return_vals << t.a.child(&node, i)
 	}
-	ret_typ := if t.cur_fn_ret_type != 0 {
-		t.cur_fn_ret_type_text()
+	ret_typ := (if t.cur_fn_ret_type != 0 {
+		t.cur_fn_ret_type
 	} else {
-		node.typ_text()
-	}
+		node.typ
+	})
 	return [
-		t.build_return_if_chain(val_id, flat.source_type_id(ret_typ), extra_return_vals, source_return_id),
+		t.build_return_if_chain(val_id, ret_typ, extra_return_vals, source_return_id),
 	]
 }
 
@@ -1531,11 +1531,11 @@ fn (mut t Transformer) try_expand_return_match(source_return_id flat.NodeId, nod
 	for i in 1 .. val.children_count {
 		branches << t.a.child(&val, i)
 	}
-	ret_typ := if t.cur_fn_ret_type != 0 {
-		t.cur_fn_ret_type_text()
+	ret_typ := (if t.cur_fn_ret_type != 0 {
+		t.cur_fn_ret_type
 	} else {
-		node.typ_text()
-	}
-	result << t.build_return_match_chain(actual_expr_id, match_expr_id, branches, 0, flat.source_type_id(ret_typ), source_return_id)
+		node.typ
+	})
+	result << t.build_return_match_chain(actual_expr_id, match_expr_id, branches, 0, ret_typ, source_return_id)
 	return result
 }
