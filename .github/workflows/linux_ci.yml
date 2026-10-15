@@ -46,10 +46,14 @@ jobs:
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        id: uses_cache_apt_packages_action
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
       - name: Build V
+        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         id: build
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
@@ -59,11 +63,11 @@ jobs:
       # cost the whole compile matrix below, and this ordering costs no extra runner.
       - name: All code is formatted
         id: format
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: v run ci/linux_ci.vsh all_code_is_formatted_tcc
       - name: Assert V is the default compiler (fail if V1 is silently used)
         id: canary
-        if: ${{ !cancelled() && steps.format.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.format.outcome == 'success' }}
         run: |
           set -uo pipefail
           # A monumental default-compiler change should be provable, not assumed:
@@ -78,90 +82,90 @@ jobs:
           echo 'OK: V compiled and ran this program in-process on Linux, with the fallback disabled'
       - name: Install dependencies for examples and tools
         id: install_dependencies
-        if: ${{ !cancelled() && steps.canary.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.canary.outcome == 'success' }}
         run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_tcc
       - name: Test v->c
         id: test_v_to_c
-        if: ${{ !cancelled() && steps.install_dependencies.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_v_to_c_tcc
       - name: v self compilation
         id: v_self_compilation
-        if: ${{ !cancelled() && steps.test_v_to_c.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_v_to_c.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_self_compilation_tcc
       - name: v doctor
         id: v_doctor
-        if: ${{ !cancelled() && steps.v_self_compilation.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_self_compilation.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_doctor_tcc
       - name: Verify `v test` works
         id: verify_v_test_works
-        if: ${{ !cancelled() && steps.v_doctor.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_doctor.outcome == 'success' }}
         run: v run ci/linux_ci.vsh verify_v_test_works_tcc
       - name: Test pure V math module
         id: test_pure_v_math_module
-        if: ${{ !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_pure_v_math_module_tcc
       - name: Test inline assembly on linux
         id: test_inline_assembly
-        if: ${{ !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_inline_assembly
       - name: Self tests
         id: self_tests
-        if: ${{ !cancelled() && steps.test_inline_assembly.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_inline_assembly.outcome == 'success' }}
         run: v run ci/linux_ci.vsh self_tests_tcc
       - name: Build examples
         # Keep the full examples corpus on V3 too.
         id: build_examples
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        if: ${{ !cancelled() && steps.self_tests.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_examples_tcc
       - name: Run the submodule example, using a relative path
         id: run_submodule_example
-        if: ${{ !cancelled() && steps.build_examples.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_examples.outcome == 'success' }}
         run: v run ci/linux_ci.vsh run_submodule_example_tcc
       - name: Build v tools
         id: build_v_tools
-        if: ${{ !cancelled() && steps.run_submodule_example.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.run_submodule_example.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_tools_tcc
       - name: Build v binaries
         id: build_v_binaries
-        if: ${{ !cancelled() && steps.build_v_tools.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_v_tools.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_vbinaries_tcc
       - name: Build benches
         id: build_benches
-        if: ${{ !cancelled() && steps.build_v_binaries.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_v_binaries.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_benches_tcc
       - name: Run a VSH script
         id: run_vsh_script
-        if: ${{ !cancelled() && steps.build_benches.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_benches.outcome == 'success' }}
         run: v run ci/linux_ci.vsh run_vsh_script_tcc
       - name: Test v tutorials
         id: test_v_tutorials
-        if: ${{ !cancelled() && steps.run_vsh_script.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.run_vsh_script.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_v_tutorials_tcc
       - name: Build cmd/tools/fast
         id: build_fast
-        if: ${{ !cancelled() && steps.test_v_tutorials.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_v_tutorials.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_fast_tcc
       - name: V self compilation with default caching
         id: v_self_compilation_usecache
-        if: ${{ !cancelled() && steps.build_fast.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_fast.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_tcc
       - name: Test password input
         id: test_password_input
-        if: ${{ !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_password_input_tcc
       - name: Test readline
         id: test_readline
-        if: ${{ !cancelled() && steps.test_password_input.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_password_input.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_readline_tcc
       - name: Test leak detector
         id: test_leak_detector
-        if: ${{ !cancelled() && steps.test_readline.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_readline.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_leak_detector_tcc
       - name: Test leak detector not being active for normal compile
         id: test_leak_detector_not_active
-        if: ${{ !cancelled() && steps.test_leak_detector.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_leak_detector.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_leak_detector_not_active_tcc
       # Last on purpose: this task alone is five full compiler builds, and a checkout
       # that cannot build the compiler is already red from `test_v_to_c` by now.
@@ -169,7 +173,7 @@ jobs:
         id: build_v_with_prealloc
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        if: ${{ !cancelled() && steps.test_leak_detector_not_active.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_leak_detector_not_active.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_v_with_prealloc
 
   gcc-linux:
@@ -186,10 +190,14 @@ jobs:
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        id: uses_cache_apt_packages_action
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
       - name: Build V
+        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         id: build
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
@@ -197,7 +205,7 @@ jobs:
         run: make -j4 && ./v symlink
       - name: Assert V is the default compiler (fail if V1 is silently used)
         id: canary
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           set -uo pipefail
           printf 'fn main() { println(6 * 7) }\n' > "$RUNNER_TEMP/v3_canary.v"
@@ -209,61 +217,61 @@ jobs:
           echo 'OK: V compiled and ran this program in-process on Linux, with the fallback disabled'
       - name: All code is formatted
         id: format
-        if: ${{ !cancelled() && steps.canary.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.canary.outcome == 'success' }}
         run: v run ci/linux_ci.vsh all_code_is_formatted_gcc
       - name: Install dependencies for examples and tools
         id: install_dependencies
-        if: ${{ !cancelled() && steps.format.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.format.outcome == 'success' }}
         run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
       - name: Multiwindow regressions (temporarily disabled)
         if: ${{ false }}
         run: echo 'multiwindow CI is temporarily disabled on Linux'
       - name: Recompile V with -cstrict and gcc
         id: recompile_v_with_cstrict
-        if: ${{ !cancelled() && steps.install_dependencies.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: v run ci/linux_ci.vsh recompile_v_with_cstrict_gcc
       - name: Valgrind v.c
         id: valgrind_v_c
-        if: ${{ !cancelled() && steps.recompile_v_with_cstrict.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.recompile_v_with_cstrict.outcome == 'success' }}
         run: v run ci/linux_ci.vsh valgrind_v_c_gcc
       - name: Run sanitizers
         id: run_sanitizers
-        if: ${{ !cancelled() && steps.valgrind_v_c.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.valgrind_v_c.outcome == 'success' }}
         run: v run ci/linux_ci.vsh run_sanitizers_gcc
       - name: v self compilation
         id: v_self_compilation
-        if: ${{ !cancelled() && steps.run_sanitizers.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.run_sanitizers.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_self_compilation_gcc
       - name: v self compilation with default caching
         id: v_self_compilation_usecache
-        if: ${{ !cancelled() && steps.v_self_compilation.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_self_compilation.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_gcc
       - name: Verify `v test` works
         id: verify_v_test_works
-        if: ${{ !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
         run: v run ci/linux_ci.vsh verify_v_test_works_gcc
       - name: Test pure V math module
         id: test_pure_v_math_module
-        if: ${{ !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_pure_v_math_module_gcc
       - name: Self tests
         id: self_tests
-        if: ${{ !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
         run: v run ci/linux_ci.vsh self_tests_gcc
       - name: Self tests (-prod)
         id: self_tests_prod
-        if: ${{ !cancelled() && steps.self_tests.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
         run: v run ci/linux_ci.vsh self_tests_prod_gcc
       - name: Self tests (-cstrict)
         id: self_tests_cstrict
-        if: ${{ !cancelled() && steps.self_tests_prod.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.self_tests_prod.outcome == 'success' }}
         run: v run ci/linux_ci.vsh self_tests_cstrict_gcc
       - name: Build examples
         # Keep the full examples corpus on V3 too.
         id: build_examples
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        if: ${{ !cancelled() && steps.self_tests_cstrict.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.self_tests_cstrict.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_examples_gcc
       - name: Build tetris with -autofree
         if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
@@ -276,19 +284,19 @@ jobs:
         run: v run ci/linux_ci.vsh build_option_test_autofree_gcc
       - name: V self compilation with -parallel-cc
         id: v_self_compilation_parallel_cc
-        if: ${{ !cancelled() && steps.build_examples.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_examples.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_self_compilation_parallel_cc_gcc
       - name: Build modules
         id: build_modules
-        if: ${{ !cancelled() && steps.v_self_compilation_parallel_cc.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_self_compilation_parallel_cc.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_modules_gcc
       - name: compile vdoctor.v with -prod
         id: compile_vdoctor_prod
-        if: ${{ !cancelled() && steps.build_modules.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_modules.outcome == 'success' }}
         run: v run ci/linux_ci.vsh compile_vdoctor_prod_gcc
       - name: compile vup.v with -prod
         id: compile_vup_prod
-        if: ${{ !cancelled() && steps.compile_vdoctor_prod.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.compile_vdoctor_prod.outcome == 'success' }}
         run: v run ci/linux_ci.vsh compile_vup_prod_gcc
 
   clang-linux:
@@ -306,10 +314,14 @@ jobs:
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        id: uses_cache_apt_packages_action
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
       - name: Build V
+        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         id: build
         # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
@@ -317,7 +329,7 @@ jobs:
         run: make -j4 && ./v symlink
       - name: Assert V is the default compiler (fail if V1 is silently used)
         id: canary
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           set -uo pipefail
           printf 'fn main() { println(6 * 7) }\n' > "$RUNNER_TEMP/v3_canary.v"
@@ -329,65 +341,65 @@ jobs:
           echo 'OK: V compiled and ran this program in-process on Linux, with the fallback disabled'
       - name: All code is formatted
         id: format
-        if: ${{ !cancelled() && steps.canary.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.canary.outcome == 'success' }}
         run: v run ci/linux_ci.vsh all_code_is_formatted_clang
       - name: Install dependencies for examples and tools
         id: install_dependencies
-        if: ${{ !cancelled() && steps.format.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.format.outcome == 'success' }}
         run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_clang
       - name: Recompile V with -cstrict and clang
         id: recompile_v_with_cstrict
-        if: ${{ !cancelled() && steps.install_dependencies.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: v run ci/linux_ci.vsh recompile_v_with_cstrict_clang
       - name: Valgrind
         id: valgrind
-        if: ${{ !cancelled() && steps.recompile_v_with_cstrict.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.recompile_v_with_cstrict.outcome == 'success' }}
         run: v run ci/linux_ci.vsh valgrind_clang
       - name: Run sanitizers
         id: run_sanitizers
-        if: ${{ !cancelled() && steps.valgrind.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.valgrind.outcome == 'success' }}
         run: v run ci/linux_ci.vsh run_sanitizers_clang
       - name: v self compilation
         id: v_self_compilation
-        if: ${{ !cancelled() && steps.run_sanitizers.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.run_sanitizers.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_self_compilation_clang
       - name: v self compilation with default caching
         id: v_self_compilation_usecache
-        if: ${{ !cancelled() && steps.v_self_compilation.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_self_compilation.outcome == 'success' }}
         run: v run ci/linux_ci.vsh v_self_compilation_usecache_clang
       - name: Verify `v test` works
         id: verify_v_test_works
-        if: ${{ !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.v_self_compilation_usecache.outcome == 'success' }}
         run: v run ci/linux_ci.vsh verify_v_test_works_clang
       - name: Test pure V math module
         id: test_pure_v_math_module
-        if: ${{ !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: v run ci/linux_ci.vsh test_pure_v_math_module_clang
       - name: Self tests
         id: self_tests
-        if: ${{ !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
         run: v run ci/linux_ci.vsh self_tests_clang
       - name: Self tests (vprod)
         id: self_tests_vprod
-        if: ${{ !cancelled() && steps.self_tests.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
         run: v run ci/linux_ci.vsh self_tests_vprod_clang
       - name: Self tests (-cstrict)
         id: self_tests_cstrict
-        if: ${{ !cancelled() && steps.self_tests_vprod.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.self_tests_vprod.outcome == 'success' }}
         run: v run ci/linux_ci.vsh self_tests_cstrict_clang
       - name: Build examples
         # Keep the full examples corpus on V3 too.
         id: build_examples
         env:
           V_MACOS_V3_NO_FALLBACK: 1
-        if: ${{ !cancelled() && steps.self_tests_cstrict.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.self_tests_cstrict.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_examples_clang
       - name: Build examples with -autofree
         if: ${{ false }} # Ownership/autofree coverage is temporarily disabled on GitHub CI.
         run: v run ci/linux_ci.vsh build_examples_autofree_clang
       - name: Build modules
         id: build_modules
-        if: ${{ !cancelled() && steps.build_examples.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.build_examples.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_modules_clang
 
   package2-linux:
