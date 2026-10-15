@@ -464,7 +464,9 @@ fn (mut t Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 	if !isnil(t.tc) {
 		node := t.a.nodes[int(id)]
 		if node.kind == .call {
-			if decode_ret := t.json_decode_or_expr_type(id, node) {
+			if decode_ret_source_id := t.json_decode_or_expr_type(id, node) {
+				decode_ret := flat.source_type_name(decode_ret_source_id)
+
 				return decode_ret
 			}
 			if specialized_ret_source_id := t.specialized_interface_method_call_return_type(id, node) {
@@ -503,14 +505,14 @@ fn (mut t Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 
 fn (t &Transformer) optional_type_name_from_type(typ types.Type) ?string {
 	if typ is types.OptionType {
-		base_name := t.value_type_name(typ.base_type)
+		base_name := flat.source_type_name(t.value_type_name(typ.base_type))
 		if typ.base_type is types.Void || base_name == '__v_option' {
 			return '?void'
 		}
 		return '?${base_name}'
 	}
 	if typ is types.ResultType {
-		base_name := t.value_type_name(typ.base_type)
+		base_name := flat.source_type_name(t.value_type_name(typ.base_type))
 		if typ.base_type is types.Void || base_name == '__v_option' {
 			return '!void'
 		}
@@ -1141,11 +1143,12 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			if node.children_count > 0 {
 				source_id := t.a.child(&node, 0)
 				source_node := t.a.nodes[int(source_id)]
-				source_type := t.json_decode_or_expr_type(source_id, source_node) or {
-					flat.source_type_name(t.node_type_with_smartcasts(source_id, contexts))
+				source_type_source_id := t.json_decode_or_expr_type(source_id, source_node) or {
+					t.node_type_with_smartcasts(source_id, contexts)
 				}
-				if t.is_optional_type_name(flat.source_type_id(source_type)) {
-					value_type_source_id := t.optional_base_type(flat.source_type_id(source_type))
+
+				if t.is_optional_type_name(source_type_source_id) {
+					value_type_source_id := t.optional_base_type(source_type_source_id)
 					value_type_comparison_type_id_2 := value_type_source_id
 
 					if value_type_source_id != 0 && value_type_comparison_type_id_2 !in [

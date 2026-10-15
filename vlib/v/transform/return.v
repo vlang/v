@@ -208,7 +208,7 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 					binding := t.a.node(t.multi_assign_lhs_id(statement, j))
 					if binding.kind == .ident && binding.value == 'err' {
 						shadows_implicit_err = true
-						shadowed_err_type = t.return_decl_binding_type(*statement, j)
+						shadowed_err_type = flat.source_type_name(t.return_decl_binding_type(*statement, j))
 						break
 					}
 				}
@@ -222,7 +222,7 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 	actual_type := if node.kind == .ident && node.value == 'err' && shadows_implicit_err {
 		flat.source_type_name(t.return_ierror_type_candidate(flat.source_type_id(shadowed_err_type)) or { u32(0) })
 	} else {
-		t.return_ierror_expr_type(expression_id)
+		flat.source_type_name(t.return_ierror_expr_type(expression_id))
 	}
 	if actual_type.len == 0 {
 		return false
@@ -241,39 +241,40 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 	return !t.resolved_receiver_arg_compatible(expression_id, flat.source_type_id(actual_type), payload_type_id)
 }
 
-fn (t &Transformer) return_decl_binding_type(decl flat.Node, index int) string {
+fn (t &Transformer) return_decl_binding_type(decl flat.Node, index int) u32 {
 	lhs_count := t.multi_assign_lhs_count(decl)
 	if lhs_count == 1 {
-		return flat.source_type_name(t.infer_decl_type(&decl))
+		return t.infer_decl_type(&decl)
 	}
 	lhs_id := t.multi_assign_lhs_id(decl, index)
 	if !isnil(t.tc) {
 		if typ := t.tc.expr_type(lhs_id) {
-			name := flat.source_type_name(t.tc.type_name(typ))
+			name_source_id := t.tc.type_name(typ)
+			name := flat.source_type_name(name_source_id)
 			if decl_type_is_usable(name) {
-				return name
+				return name_source_id
 			}
 		}
 	}
 	lhs := t.a.node(lhs_id)
 	if decl_type_is_usable(lhs.typ_text()) {
-		return lhs.typ_text()
+		return lhs.typ
 	}
 	if t.multi_assign_rhs_count(decl) == lhs_count {
-		return flat.source_type_name(t.decl_rhs_type(t.multi_assign_rhs_id(decl, index)))
+		return t.decl_rhs_type(t.multi_assign_rhs_id(decl, index))
 	}
 	if items := t.multi_return_types_for_expr(t.a.child(&decl, 1), lhs_count) {
-		return flat.source_type_name(t.semantic_type_name(items[index]))
+		return t.semantic_type_name(items[index])
 	}
-	return ''
+	return u32(0)
 }
 
-fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) string {
+fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) u32 {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
-		return ''
+		return u32(0)
 	}
 	if sc := t.find_smartcast(t.expr_key(id)) {
-		return flat.source_type_name(t.return_ierror_type_candidate(t.smartcast_target_type(sc)) or { u32(0) })
+		return t.return_ierror_type_candidate(t.smartcast_target_type(sc)) or { u32(0) }
 	}
 	node := t.a.nodes[int(id)]
 	primary_type := match node.kind {
@@ -293,17 +294,17 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) string {
 	if typ_source_id := t.return_ierror_type_candidate(flat.source_type_id(primary_type)) {
 		typ := flat.source_type_name(typ_source_id)
 
-		return typ
+		return flat.source_type_id(typ)
 	}
 	for typ in [node.typ_text(), flat.source_type_name(t.raw_checker_node_type(id)),
 		flat.source_type_name(t.original_expr_type(id)), flat.source_type_name(t.node_type(id))] {
 		if candidate_source_id := t.return_ierror_type_candidate(flat.source_type_id(typ)) {
-			candidate := flat.source_type_name(candidate_source_id)
+			candidate_source_id_2 := candidate_source_id
 
-			return candidate
+			return candidate_source_id_2
 		}
 	}
-	return ''
+	return u32(0)
 }
 
 fn (t &Transformer) return_ierror_type_candidate(typ_id u32) ?u32 {
@@ -489,8 +490,10 @@ fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 		// use that same return type before deciding this is a direct Option/Result
 		// forward. Otherwise a scalar variant method with the same name as an
 		// optional sum method is emitted as a bare scalar return.
-		if smartcast_ret := t.smartcast_receiver_call_return_type(node) {
-			return t.is_optional_type_name(flat.source_type_id(smartcast_ret))
+		if smartcast_ret_source_id := t.smartcast_receiver_call_return_type(node) {
+			smartcast_ret_source_id_2 := smartcast_ret_source_id
+
+			return t.is_optional_type_name(smartcast_ret_source_id_2)
 		}
 		if typ := t.tc.expr_type(id) {
 			if typ !is types.Unknown && typ !is types.Void {
@@ -528,7 +531,7 @@ fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 	return t.is_optional_type_name(node.typ)
 }
 
-fn (t &Transformer) smartcast_receiver_call_return_type(node flat.Node) ?string {
+fn (t &Transformer) smartcast_receiver_call_return_type(node flat.Node) ?u32 {
 	if node.children_count == 0 {
 		return none
 	}
@@ -540,7 +543,7 @@ fn (t &Transformer) smartcast_receiver_call_return_type(node flat.Node) ?string 
 	method_name := t.resolve_smartcast_target_receiver_method(base_id, callee.value) or {
 		return none
 	}
-	return t.receiver_method_return_type(method_name, node.typ_text())
+	return t.receiver_method_return_type(method_name, node.typ)
 }
 
 fn (mut t Transformer) try_expand_forwarded_multi_return(source_return_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
@@ -1429,9 +1432,9 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 		}
 	}
 	cond_val_id := t.a.child(&branch, cond_idx)
-	variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
+	variant_name := flat.source_type_name(t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
 		return t.build_return_match_chain(match_expr_id, orig_expr_id, branches, idx + 1, ret_typ_id, source_return_id)
-	}
+	})
 	is_start := t.a.children.len
 	t.a.children << match_expr_id
 	is_id := t.a.add_node(flat.Node{

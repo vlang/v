@@ -21,12 +21,12 @@ fn (mut t Transformer) match_has_sum_type_subject(node flat.Node) bool {
 
 // resolve_match_subject_type determines the type of a match subject expression.
 // Uses resolve_expr_type on child 0 (the match expression).
-fn (mut t Transformer) resolve_match_subject_type(node flat.Node) string {
+fn (mut t Transformer) resolve_match_subject_type(node flat.Node) u32 {
 	if node.children_count == 0 {
-		return ''
+		return u32(0)
 	}
 	subject_id := t.a.child(&node, 0)
-	return flat.source_type_name(t.resolve_expr_type(subject_id))
+	return t.resolve_expr_type(subject_id)
 }
 
 // transform_match_branch_body transforms a match branch body with smartcast

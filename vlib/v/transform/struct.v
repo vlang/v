@@ -713,7 +713,7 @@ fn (mut t Transformer) transform_struct_children(id flat.NodeId, node flat.Node)
 	})
 }
 
-fn (mut t Transformer) infer_bare_generic_struct_init_type(node flat.Node) ?string {
+fn (mut t Transformer) infer_bare_generic_struct_init_type(node flat.Node) ?u32 {
 	if node.value.len == 0 || node.value.contains('[') {
 		return none
 	}
@@ -760,7 +760,7 @@ fn (mut t Transformer) infer_bare_generic_struct_init_type(node flat.Node) ?stri
 		}
 		args << arg
 	}
-	return '${node.value}[${args.join(', ')}]'
+	return flat.source_type_id('${node.value}[${args.join(', ')}]')
 }
 
 fn (mut t Transformer) generic_struct_init_value_type(id flat.NodeId) u32 {
@@ -1360,9 +1360,9 @@ fn (t &Transformer) lookup_struct_info_direct(name string) ?StructInfo {
 }
 
 // struct_field_type supports struct field type handling for Transformer.
-fn (t &Transformer) struct_field_type(info StructInfo, field_name string) ?string {
+fn (t &Transformer) struct_field_type(info StructInfo, field_name string) ?u32 {
 	field := info.field(field_name) or { return none }
-	return field.typ_text()
+	return field.typ
 }
 
 // embedded_field_for_promoted_field
@@ -1697,7 +1697,7 @@ fn (t &Transformer) union_variant_text_matches(a string, b string) bool {
 		return true
 	}
 	if t.is_fixed_array_type(flat.source_type_id(a)) && t.is_fixed_array_type(flat.source_type_id(b)) {
-		return t.resolved_fixed_array_canonical_type(a) == t.resolved_fixed_array_canonical_type(b)
+		return t.resolved_fixed_array_canonical_type(flat.source_type_id(a)) == t.resolved_fixed_array_canonical_type(flat.source_type_id(b))
 	}
 	return false
 }

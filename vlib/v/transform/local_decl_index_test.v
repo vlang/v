@@ -124,7 +124,7 @@ fn test_comptime_option_unwrap_uses_indexed_alias_and_if_body() {
 	}, FieldMeta{
 		is_option:    true
 		comptime_typ: flat.source_type_id('?int')
-	})? == 'int'
+	})? == flat.source_type_int
 }
 
 fn test_monomorph_job_limit_keeps_four_workers_for_large_programs() {

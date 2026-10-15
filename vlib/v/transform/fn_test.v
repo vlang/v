@@ -309,12 +309,12 @@ fn test_enum_autostr_keeps_checked_types_and_resolves_declaration_spellings() {
 
 	assert flat.source_type_name(t.enum_autostr_type_name(flat.source_type_id('a.Kind'))) == 'a.Kind'
 	assert flat.source_type_name(t.enum_autostr_type_name(flat.source_type_id('b.Kind'))) == 'b.Kind'
-	assert (t.source_enum_type_name(file, 'a.Kind') or { '' }) == 'b.Kind'
-	assert (t.source_enum_type_name(file, 'real_a.Kind') or { '' }) == 'a.Kind'
-	assert (t.source_enum_type_name(file, 'token.Kind') or { '' }) == 'toml.token.Kind'
-	assert (t.source_enum_type_name(file, 'Kind') or { '' }) == 'b.Kind'
-	assert t.source_enum_elem_type(file, '[]token.Kind') == '[]toml.token.Kind'
-	assert t.source_enum_elem_type(file, 'string') == 'string'
+	assert (flat.source_type_name(t.source_enum_type_name(file, flat.source_type_id('a.Kind')) or { u32(0) })) == 'b.Kind'
+	assert (flat.source_type_name(t.source_enum_type_name(file, flat.source_type_id('real_a.Kind')) or { u32(0) })) == 'a.Kind'
+	assert (flat.source_type_name(t.source_enum_type_name(file, flat.source_type_id('token.Kind')) or { u32(0) })) == 'toml.token.Kind'
+	assert (flat.source_type_name(t.source_enum_type_name(file, flat.source_type_id('Kind')) or { u32(0) })) == 'b.Kind'
+	assert flat.source_type_name(t.source_enum_elem_type(file, flat.source_type_id('[]token.Kind'))) == '[]toml.token.Kind'
+	assert t.source_enum_elem_type(file, flat.source_type_string) == flat.source_type_string
 
 	t.set_var_type_with_raw('declared', flat.source_type_id('[]b.Kind'), flat.source_type_id('[]a.Kind'))
 	t.set_var_type('inferred', flat.source_type_id('[]a.Kind'))
@@ -1543,8 +1543,8 @@ fn test_qualify_or_storage_type_resolves_imported_generic_base_only() {
 	tc.struct_modules['orm.QueryBuilder'] = 'orm'
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
-	assert t.qualify_or_storage_type(flat.source_type_id('&QueryBuilder[main.User]')) == '&orm.QueryBuilder[main.User]'
-	assert t.qualify_or_storage_type(flat.source_type_id('(string, []string)')) == '(string, []string)'
+	assert flat.source_type_name(t.qualify_or_storage_type(flat.source_type_id('&QueryBuilder[main.User]'))) == '&orm.QueryBuilder[main.User]'
+	assert flat.source_type_name(t.qualify_or_storage_type(flat.source_type_id('(string, []string)'))) == '(string, []string)'
 }
 
 fn test_immediate_closure_generic_sum_pointer_result_may_alias_capture() {

@@ -594,7 +594,7 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 	t.active_specialization_main_types = t.specialization_main_type_closure(t.active_specialization_args.ids)
 	for typ in ['[][2]Any', '[][]Any', '[]map[string]Any'] {
 		id := a.add_node(flat.Node{ kind: .array_init, value: typ[2..], typ: flat.source_type_id(typ) })
-		assert t.generic_call_type_arg_name(id) == typ
+		assert flat.source_type_name(t.generic_call_type_arg_name(id)) == typ
 		assert flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id(typ))) == typ
 	}
 	for typ in ['[2]Any', 'map[string]Any', 'map[Any]int', '(int, [2]Any)',

@@ -100,7 +100,7 @@ fn (t &Transformer) interface_pointer_source_root_is_local(id flat.NodeId) bool 
 				return false
 			}
 			base_id := t.a.child(&node, 0)
-			if address_expr_base_is_indirect_storage(t.address_expr_type_name(base_id)) {
+			if address_expr_base_is_indirect_storage(flat.source_type_name(t.address_expr_type_name(base_id))) {
 				return false
 			}
 			return t.interface_pointer_source_root_is_local(base_id)
@@ -110,7 +110,7 @@ fn (t &Transformer) interface_pointer_source_root_is_local(id flat.NodeId) bool 
 				return false
 			}
 			base_id := t.a.child(&node, 0)
-			base_type_source_id := t.normalize_type_alias(flat.source_type_id(t.address_expr_type_name(base_id)))
+			base_type_source_id := t.normalize_type_alias(t.address_expr_type_name(base_id))
 
 			if !t.is_fixed_array_type(base_type_source_id) {
 				return false
@@ -375,9 +375,12 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		}
 	}
 	if node.kind == .call {
-		if fn_return_type := t.fn_value_call_return_type(node) {
+		if fn_return_type_source_id := t.fn_value_call_return_type(node) {
+			fn_return_type_source_id_2 := fn_return_type_source_id
+			fn_return_type := flat.source_type_name(fn_return_type_source_id_2)
+
 			resolved_return_type := if t.active_specialization_args_text().len > 0 {
-				flat.source_type_name(t.subst_type(flat.source_type_id(fn_return_type), t.active_specialization_args.ids))
+				flat.source_type_name(t.subst_type(fn_return_type_source_id_2, t.active_specialization_args.ids))
 			} else {
 				fn_return_type
 			}
@@ -1174,9 +1177,10 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 				method_name := t.tc.resolved_call_name(id) or { '' }
 				if method_name.len > 0 && t.is_known_fn_name(method_name) {
 					args := t.transform_receiver_method_args(node, base_id, method_name)
-					ret_type := t.receiver_method_return_type(method_name, node.typ_text())
+					ret_type_source_id := t.receiver_method_return_type(method_name, node.typ)
+
 					t.mark_fn_used_name(method_name)
-					return t.make_receiver_method_call_typed(node, method_name, args, flat.source_type_id(ret_type))
+					return t.make_receiver_method_call_typed(node, method_name, args, ret_type_source_id)
 				}
 			}
 		}

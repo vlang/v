@@ -278,7 +278,7 @@ fn test_checked_numeric_infix_recovers_index_alias_overrides_from_raw_element_ty
 	t.fn_ret_types.set_id('Count.<', flat.source_type_bool)
 	for op in [flat.Op.plus, .eq, .ne, .lt, .gt, .le, .ge] {
 		a.nodes[int(id)].op = op
-		assert t.operator_alias_type_for_operand(lhs, op) or { '' } == 'Count'
+		assert flat.source_type_name(t.operator_alias_type_for_operand(lhs, op) or { u32(0) }) == 'Count'
 		assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	}
 	// The existing struct path dispatches on LHS, but the conservative shortcut
@@ -308,14 +308,14 @@ fn test_checked_numeric_infix_keeps_named_annotations_and_casts_on_operator_path
 	// Both textual candidates used by the original alias lookup must survive
 	// a primitive sidecar; only builtin annotations are free of nominal lookup.
 	a.nodes[int(lhs)].typ = flat.source_type_id('Count')
-	assert t.operator_alias_type_for_operand(lhs, .plus) or { '' } == 'Count'
+	assert flat.source_type_name(t.operator_alias_type_for_operand(lhs, .plus) or { u32(0) }) == 'Count'
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	a.nodes[int(lhs)].typ = flat.source_type_int
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	a.nodes[int(lhs)].typ = u32(0)
 	a.nodes[int(lhs)].kind = .cast_expr
 	a.nodes[int(lhs)].value = 'Count'
-	assert t.operator_alias_type_for_operand(lhs, .plus) or { '' } == 'Count'
+	assert flat.source_type_name(t.operator_alias_type_for_operand(lhs, .plus) or { u32(0) }) == 'Count'
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	a.nodes[int(lhs)].value = 'int'
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])

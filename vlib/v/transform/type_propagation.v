@@ -504,12 +504,16 @@ fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?u32 {
 		}
 	}
 	if typ := t.tc.expr_type(id) {
-		if name := fn_value_type_name_from_type(typ) {
+		if name_source_id := fn_value_type_name_from_type(typ) {
+			name := flat.source_type_name(name_source_id)
+
 			return t.normalize_type_alias(flat.source_type_id(name))
 		}
 	}
 	if node.kind == .ident {
-		if name := fn_value_type_name_from_type(t.tc.resolve_type(id)) {
+		if name_source_id := fn_value_type_name_from_type(t.tc.resolve_type(id)) {
+			name := flat.source_type_name(name_source_id)
+
 			return t.normalize_type_alias(flat.source_type_id(name))
 		}
 		fn_name := t.tc.resolved_fn_value_name(id) or { node.value }
@@ -519,7 +523,9 @@ fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?u32 {
 	}
 	if node.kind == .lambda_expr {
 		typ := t.tc.resolve_type(id)
-		if name := fn_value_type_name_from_type(typ) {
+		if name_source_id := fn_value_type_name_from_type(typ) {
+			name := flat.source_type_name(name_source_id)
+
 			return t.normalize_type_alias(flat.source_type_id(name))
 		}
 	}
@@ -564,27 +570,21 @@ fn fn_literal_param_type_text(raw string) string {
 	return text
 }
 
-fn fn_value_type_name_from_type(typ types.Type) ?string {
-	name := typ.name()
-	if name.len == 0 {
-		return none
-	}
+fn fn_value_type_name_from_type(typ types.Type) ?u32 {
 	if typ is types.FnType {
-		return name
+		return types.Type(typ).source_type_id()
 	}
-	if typ is types.Alias {
-		if typ.base_type is types.FnType {
-			return name
-		}
+	if typ is types.Alias && typ.base_type is types.FnType && typ.name_id != 0 {
+		return typ.name_id
 	}
 	return none
 }
 
-fn fn_call_value_type_name_from_type(typ types.Type) ?string {
+fn fn_call_value_type_name_from_type(typ types.Type) ?u32 {
 	if typ is types.FnType {
 		for i, param in typ.params {
 			if i < typ.params_mut.len && typ.params_mut[i] && param is types.Pointer {
-				return fn_literal_value_type_text(typ.params, typ.return_type.name())
+				return flat.source_type_id(fn_literal_value_type_text(typ.params, typ.return_type.name()))
 			}
 		}
 	}
@@ -597,11 +597,12 @@ fn (t &Transformer) checker_call_fn_value_return_type(id flat.NodeId) ?u32 {
 	}
 	name := t.tc.resolved_call_name(id) or { return none }
 	ret_type := t.tc.fn_ret_types[name] or { return none }
-	fn_value_type := fn_call_value_type_name_from_type(ret_type) or { return none }
-	if t.generic_arg_is_unresolved(flat.source_type_id(fn_value_type)) {
+	fn_value_type_source_id := fn_call_value_type_name_from_type(ret_type) or { return none }
+
+	if t.generic_arg_is_unresolved(fn_value_type_source_id) {
 		return none
 	}
-	return t.normalize_type_alias(flat.source_type_id(fn_value_type))
+	return t.normalize_type_alias(fn_value_type_source_id)
 }
 
 fn (t &Transformer) concrete_node_type_name(node flat.Node) u32 {
@@ -753,15 +754,20 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 	}
 	base_selector_name := t.selector_expr_name(base_id)
 	if base_selector_name.len > 0 {
-		if enum_type := t.enum_type_name_from_selector_name(base_selector_name) {
+		if enum_type_source_id := t.enum_type_name_from_selector_name(base_selector_name) {
+			enum_type_source_id_2 := enum_type_source_id
+			enum_type := flat.source_type_name(enum_type_source_id_2)
+
 			if fields := t.enum_types[enum_type] {
 				if field_name in fields {
-					return flat.source_type_id(enum_type)
+					return enum_type_source_id_2
 				}
 			}
 		}
-		if type_name := t.qualified_enum_type_selector_name_from_selector_name(base_selector_name, field_name) {
-			return flat.source_type_id(type_name)
+		if type_name_source_id := t.qualified_enum_type_selector_name_from_selector_name(base_selector_name, field_name) {
+			type_name_source_id_2 := type_name_source_id
+
+			return type_name_source_id_2
 		}
 	}
 	if base_node.kind == .ident {
@@ -829,8 +835,10 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 				lookup_type
 			}
 			if owner_info := t.lookup_struct_info(owner_type) {
-				if ftyp := t.struct_field_type(owner_info, field_name) {
-					return flat.source_type_id(ftyp)
+				if ftyp_source_id := t.struct_field_type(owner_info, field_name) {
+					ftyp_source_id_2 := ftyp_source_id
+
+					return ftyp_source_id_2
 				}
 			}
 		}
@@ -943,27 +951,28 @@ fn (t &Transformer) selector_expr_name(id flat.NodeId) string {
 }
 
 // enum_type_name_from_expr converts enum type name from expr data for transform.
-fn (t &Transformer) enum_type_name_from_expr(id flat.NodeId) ?string {
+fn (t &Transformer) enum_type_name_from_expr(id flat.NodeId) ?u32 {
 	name := t.selector_expr_name(id)
 	return t.enum_type_name_from_selector_name(name)
 }
 
-fn (t &Transformer) enum_type_name_from_selector_name(name string) ?string {
+fn (t &Transformer) enum_type_name_from_selector_name(name string) ?u32 {
 	if name == '' {
 		return none
 	}
 	if name in t.enum_types {
-		return name
+		return flat.source_type_id(name)
 	}
-	resolved := flat.source_type_name(t.normalize_type_in_module(flat.source_type_id(name), t.cur_module))
+	resolved_source_id_3 := t.normalize_type_in_module(flat.source_type_id(name), t.cur_module)
+	resolved := flat.source_type_name(resolved_source_id_3)
 	if resolved in t.enum_types {
-		return resolved
+		return resolved_source_id_3
 	}
 	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qname := '${t.cur_module}.${name}'
 		if qname in t.enum_types {
-			return qname
+			return flat.source_type_id(qname)
 		}
 	}
 	return none
@@ -971,24 +980,24 @@ fn (t &Transformer) enum_type_name_from_selector_name(name string) ?string {
 
 // qualified_enum_type_selector_name
 // supports helper handling in transform.
-fn (t &Transformer) qualified_enum_type_selector_name(base_id flat.NodeId, field_name string) ?string {
+fn (t &Transformer) qualified_enum_type_selector_name(base_id flat.NodeId, field_name string) ?u32 {
 	base := t.selector_expr_name(base_id)
 	return t.qualified_enum_type_selector_name_from_selector_name(base, field_name)
 }
 
-fn (t &Transformer) qualified_enum_type_selector_name_from_selector_name(base string, field_name string) ?string {
+fn (t &Transformer) qualified_enum_type_selector_name_from_selector_name(base string, field_name string) ?u32 {
 	if base == '' || field_name == '' {
 		return none
 	}
 	name := '${base}.${field_name}'
 	if name in t.enum_types {
-		return name
+		return flat.source_type_id(name)
 	}
 	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qname := '${t.cur_module}.${name}'
 		if qname in t.enum_types {
-			return qname
+			return flat.source_type_id(qname)
 		}
 	}
 	return none
@@ -2445,7 +2454,7 @@ fn (t &Transformer) array_map_call_type_name(id flat.NodeId, node flat.Node) ?u3
 		flat.source_type_name(t.node_type(map_expr_id))
 	}
 	if elem_type.len == 0 || elem_type in ['array', 'map', 'unknown'] {
-		elem_type = t.reliable_stringify_type(map_expr_id)
+		elem_type = flat.source_type_name(t.reliable_stringify_type(map_expr_id))
 	}
 	if elem_type.len == 0 || elem_type in ['array', 'map', 'unknown', 'void'] {
 		return none
