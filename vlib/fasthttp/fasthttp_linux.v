@@ -1008,7 +1008,17 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 			close_worker_clients(mut w)
 			return
 		}
-		num_events := C.epoll_wait(epoll_fd, &events[0], events.len, epoll_wait_timeout_ms)
+		mut wait_ms := epoll_wait_timeout_ms
+		if server.timeout_in_seconds > 0 && w.parked > 0 {
+			// A skipped batch must not postpone the next sweep by another full wait.
+			elapsed_ms := (time.sys_mono_now() - w.last_timeout_sweep_ns) / time.millisecond
+			wait_ms = if elapsed_ms >= epoll_wait_timeout_ms {
+				0
+			} else {
+				epoll_wait_timeout_ms - int(elapsed_ms)
+			}
+		}
+		num_events := C.epoll_wait(epoll_fd, &events[0], events.len, wait_ms)
 		if num_events < 0 {
 			if C.errno == C.EINTR {
 				continue
