@@ -615,10 +615,21 @@ fn test_postfix_fixed_array_of_generic_struct_parses_before_generic_application(
 }
 
 fn test_generic_text_substitution_recurses_through_wrappers() {
-	assert subst_generic_text('chan T', ['int'], ['T']) == 'chan int'
-	assert subst_generic_text('thread T', ['string'], ['T']) == 'thread string'
-	assert subst_generic_text('atomic T', ['u64'], ['T']) == 'atomic u64'
-	assert subst_generic_text('chan ?[]T', ['i16'], ['T']) == 'chan ?[]i16'
+	assert subst_generic_text('chan T', flat.TypeTextList.from_names(['int']).ids, ['T']) == 'chan int'
+	assert subst_generic_text('thread T', flat.TypeTextList.from_names(['string']).ids, ['T']) == 'thread string'
+	assert subst_generic_text('atomic T', flat.TypeTextList.from_names(['u64']).ids, ['T']) == 'atomic u64'
+	assert subst_generic_text('chan ?[]T', flat.TypeTextList.from_names(['i16']).ids, ['T']) == 'chan ?[]i16'
+}
+
+fn test_generic_type_substitution_preserves_padded_source_argument_semantics() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	typ := tc.parse_type(flat.source_type_id('fn (T) ?[]T'))
+	args := [flat.source_type_id(' \tint\n')]
+	substituted := tc.substitute_generic_type(typ, args, ['T'])
+	expected := tc.parse_type(flat.source_type_id('fn (int) ?[]int'))
+	assert substituted.name() == expected.name()
+	assert flat.source_type_name(args[0]) == ' \tint\n'
 }
 
 fn test_generic_type_substitution_updates_fixed_array_length_expr() {
@@ -627,19 +638,19 @@ fn test_generic_type_substitution_updates_fixed_array_length_expr() {
 	typ := tc.parse_type(flat.source_type_id('[cache_line_size - sizeof(T)]u8'))
 	assert typ is ArrayFixed
 
-	text_substituted := tc.substitute_generic_type(typ, ['int'], ['T'])
+	text_substituted := tc.substitute_generic_type(typ, flat.TypeTextList.from_names(['int']).ids, ['T'])
 	assert text_substituted is ArrayFixed
 	assert (text_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
 
 	value_substituted := tc.substitute_generic_type_values(typ, [Type(int_)], ['T'])
 	assert value_substituted is ArrayFixed
 	assert (value_substituted as ArrayFixed).len_expr == 'cache_line_size - sizeof(int)'
-	assert subst_generic_const_expr('sizeof(T) + T_SIZE', ['u64'], ['T']) ==
+	assert subst_generic_const_expr('sizeof(T) + T_SIZE', flat.TypeTextList.from_names(['u64']).ids, ['T']) ==
 		'sizeof(u64) + T_SIZE'
 }
 
 fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
-	substituted := subst_generic_text('fn (mut T) string', ['&Dog'], ['T'])
+	substituted := subst_generic_text('fn (mut T) string', flat.TypeTextList.from_names(['&Dog']).ids, ['T'])
 	assert substituted == 'fn(mut &Dog) string'
 
 	a := flat.FlatAst.new()
@@ -650,7 +661,7 @@ fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
 	assert fn_type.params_mut == [true]
 	assert fn_compatible_param_type(fn_type, 0).name() == '&&Dog'
 	assert tc.c_type(callback_type) == 'fn_ptr:string|Dog**'
-	assert subst_generic_signature_param_text('f fn (mut it T) string', ['&Dog'], ['T']) == 'fn(mut &Dog) string'
+	assert subst_generic_signature_param_text('f fn (mut it T) string', flat.TypeTextList.from_names(['&Dog']).ids, ['T']) == 'fn(mut &Dog) string'
 }
 
 fn test_mut_callback_param_keeps_declared_and_slot_pointers_apart() {

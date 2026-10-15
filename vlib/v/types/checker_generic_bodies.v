@@ -261,7 +261,7 @@ fn (tc &TypeChecker) parse_type_as_instance(typ_id u32) Type {
 			expanding << name
 		}
 	}
-	_, result := tc.intern_type(tc.parse_type_uncached(subst_generic_text(typ, args, names)))
+	_, result := tc.intern_type(tc.parse_type_uncached(subst_generic_text(typ, flat.TypeTextList.from_names(args).ids, names)))
 	for name in expanding {
 		fork.type_params_expanding.delete(name)
 	}
@@ -853,7 +853,7 @@ fn close_type_param_text(text string, combination map[string]string, mut path ma
 	if names.len == 0 {
 		return text
 	}
-	return subst_generic_text(text, args, names)
+	return subst_generic_text(text, flat.TypeTextList.from_names(args).ids, names)
 }
 
 // type_param_occurrence_reason says why an error that the checks found, with

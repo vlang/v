@@ -4726,7 +4726,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args_i
 	// An instance whose types its constraints reject is reported at the call
 	// that asks for it: the errors of its body would only repeat that one.
 	instance_satisfies := isnil(t.tc)
-		|| t.tc.generic_instance_satisfies_constraints(decl.node, generic_params, concrete_args)
+		|| t.tc.generic_instance_satisfies_constraints(decl.node, generic_params, concrete_args_source_ids)
 	check_fixture_semantics := !isnil(t.tc) && t.tc.checker_fixture_mode && instance_satisfies
 	if check_fixture_semantics {
 		concrete_error_count = t.tc.errors.len

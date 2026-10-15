@@ -7853,7 +7853,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				decl_type := g.parse_node_type(&lhs)
 				if decl_type is types.Unknown || decl_annotation_is_unusable(decl_type, lhs.typ_text())
 					|| g.type_contains_generic_placeholder(decl_type)
-					|| codegen_generic_arg_is_unresolved(lhs.typ_text()) {
+					|| codegen_generic_arg_is_unresolved(lhs.typ) {
 					rhs_type := g.decl_rhs_fallback_type(rhs_id, rhs)
 					if rhs_type is types.Unknown {
 						types.Type(decl_type)
@@ -7872,7 +7872,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				} else if decl_type is types.Unknown
 					|| decl_annotation_is_unusable(decl_type, node.typ_text())
 					|| g.type_contains_generic_placeholder(decl_type)
-					|| codegen_generic_arg_is_unresolved(node.typ_text()) {
+					|| codegen_generic_arg_is_unresolved(node.typ) {
 					// An unresolvable annotation (e.g. a leftover generic type parameter such
 					// as `T` inlined verbatim from a generic function body) parses to Unknown,
 					// whose C type would degrade to `int`. Recover the concrete type from the
@@ -8525,7 +8525,7 @@ fn (g &FlatGen) decl_rhs_fallback_type(rhs_id flat.NodeId, rhs flat.Node) types.
 	if rhs.typ != 0 {
 		rhs_type := g.parse_node_type(&rhs)
 		if !decl_annotation_is_unusable(rhs_type, rhs.typ_text())
-			&& !codegen_generic_arg_is_unresolved(rhs.typ_text()) {
+			&& !codegen_generic_arg_is_unresolved(rhs.typ) {
 			return rhs_type
 		}
 	}

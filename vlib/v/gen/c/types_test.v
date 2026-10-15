@@ -6,6 +6,21 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_codegen_generic_inference_retains_source_ids_and_first_binding() {
+	mut inferred := map[string]u32{}
+	infer_codegen_generic_type_args(flat.source_type_id('fn (map[string][]T) ?U'),
+		flat.source_type_id('fn (map[string][]int) ?string'), mut inferred)
+	assert inferred['T'] == flat.source_type_int
+	assert inferred['U'] == flat.source_type_string
+	infer_codegen_generic_type_args(flat.source_type_id('T'), flat.source_type_f64, mut inferred)
+	assert inferred['T'] == flat.source_type_int
+	infer_codegen_generic_type_args(flat.source_type_id('V'), flat.source_type_id('unknown'), mut inferred)
+	assert 'V' !in inferred
+	assert codegen_variadic_elem_param_text(flat.source_type_id('... int ')) == flat.source_type_int
+	assert codegen_generic_arg_is_unresolved(flat.source_type_id('map[string][]T'))
+	assert !codegen_generic_arg_is_unresolved(flat.source_type_id('map[string][]int'))
+}
+
 fn test_fixed_array_alias_chains_and_pointer_sizes_use_array_typedefs() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)

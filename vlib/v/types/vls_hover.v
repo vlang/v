@@ -697,7 +697,7 @@ fn (tc &TypeChecker) vls_generic_value_text(id flat.NodeId, name string, type_te
 		}
 	}
 	mut text := if names.len > 0 {
-		'${name} ${subst_generic_text(type_text, args, names)}'
+		'${name} ${subst_generic_text(type_text, flat.TypeTextList.from_names(args).ids, names)}'
 	} else {
 		'${name} ${type_text}'
 	}
@@ -1608,7 +1608,7 @@ fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignatu
 			if param.kind != .param {
 				continue
 			}
-			text := tc.vls_written_type_text(subst_generic_text(param.typ_text(), type_args,
+			text := tc.vls_written_type_text(subst_generic_text(param.typ_text(), flat.TypeTextList.from_names(type_args).ids,
 				type_params))
 			params << '${param.value} ${text.replace('fn(', 'fn (')}'
 			names << param.value
@@ -1617,7 +1617,7 @@ fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignatu
 		ret_text := if member.typ == 0 || member.typ == flat.source_type_void {
 			''
 		} else {
-			' ${tc.vls_written_type_text(subst_generic_text(member.typ_text(), type_args, type_params))}'
+			' ${tc.vls_written_type_text(subst_generic_text(member.typ_text(), flat.TypeTextList.from_names(type_args).ids, type_params))}'
 		}
 		return VlsSignature{
 			name:   method

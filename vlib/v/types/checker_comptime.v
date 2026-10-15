@@ -20898,7 +20898,7 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 // an unconstrained generic receiver is known at its call site.
 fn (mut tc TypeChecker) check_instantiated_comptime_method_args(call_id flat.NodeId, call flat.Node, info CallInfo) {
 	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
-	if !tc.generic_args_are_concrete(instantiation.concrete_args_text()) {
+	if !tc.generic_args_are_concrete(instantiation.concrete_args.ids) {
 		return
 	}
 	method_calls := tc.reachable_comptime_method_calls(instantiation.decl_id)
@@ -20908,7 +20908,7 @@ fn (mut tc TypeChecker) check_instantiated_comptime_method_args(call_id flat.Nod
 	// Inferred type names are already canonical. Lock bare program-owned names
 	// before the callee's module context can rebase them onto a helper type.
 	mut argument_view := tc.fork_type_parse_view('', 'main')
-	concrete_args := instantiation.concrete_args_text().map(argument_view.explicit_generic_concrete_arg_text(it))
+	concrete_args := instantiation.concrete_args_text().map(flat.source_type_name(argument_view.explicit_generic_concrete_arg_text(flat.source_type_id(it))))
 	key := '${int(instantiation.decl_id)}[${concrete_args.join(',')}]'
 	if tc.checked_comptime_method_calls[key] {
 		return

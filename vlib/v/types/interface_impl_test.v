@@ -140,7 +140,7 @@ fn test_generic_interface_signature_substitutes_named_return_types() {
 
 	interface_type := tc.substitute_generic_type(Type(Interface{
 		name_id: flat.source_type_id('BoxedValue[T]')
-	}), ['int'], ['T'])
+	}), flat.TypeTextList.from_names(['int']).ids, ['T'])
 	assert interface_type.name() == 'BoxedValue[int]'
 }
 

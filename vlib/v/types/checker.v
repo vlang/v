@@ -9190,7 +9190,7 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 		// The transformed receiver has the C ABI type, but its V alias selected this method.
 		info0 = if node.value.len > 0 {
 			tc.explicit_generic_call_info(previous_call_name, true,
-				split_generic_arg_list(node.value)) or { tc.call_info(previous_call_name, true) }
+				flat.TypeTextList.from_names(split_generic_arg_list(node.value)).ids) or { tc.call_info(previous_call_name, true) }
 		} else {
 			tc.call_info(previous_call_name, true)
 		}
@@ -15775,7 +15775,7 @@ fn (tc &TypeChecker) contextual_generic_sum_type_candidates(node_id flat.NodeId)
 	variants := tc.sum_types.type_ids(base) or { tc.sum_types.type_ids(qualified) or { return []string{} } }
 	mut candidates := []string{cap: variants.len}
 	for variant in variants {
-		substituted := tc.substitute_generic_type(tc.parse_type(variant), args, params).name()
+		substituted := tc.substitute_generic_type(tc.parse_type(variant), flat.TypeTextList.from_names(args).ids, params).name()
 		if substituted.len > 0 && substituted !in candidates {
 			candidates << substituted
 		}
@@ -16026,9 +16026,11 @@ fn generic_type_application(typ string) bool {
 	return ok
 }
 
-fn (tc &TypeChecker) generic_args_are_concrete(args []string) bool {
-	for arg in args {
-		if tc.type_text_has_generic_placeholder(flat.source_type_id(arg)) {
+fn (tc &TypeChecker) generic_args_are_concrete(args_ids []u32) bool {
+	for arg_source_id in args_ids {
+		arg_source_id_2 := arg_source_id
+
+		if tc.type_text_has_generic_placeholder(arg_source_id_2) {
 			return false
 		}
 	}
@@ -19519,7 +19521,7 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 	base_type := tc.instance_type_text(tc.comptime_static_for_base_type(source))
 	clean_type := comptime_static_unwrap_type_text(base_type)
 	generic_base, generic_args, is_generic := generic_type_application_parts(clean_type)
-	if is_generic && !tc.generic_args_are_concrete(generic_args) {
+	if is_generic && !tc.generic_args_are_concrete(flat.TypeTextList.from_names(generic_args).ids) {
 		return ComptimeStaticValueCases{}
 	}
 	lookup_type := if is_generic { generic_base } else { clean_type }
@@ -19595,7 +19597,7 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 					param := tc.a.child_node(&candidate, i)
 					if param.kind == .param {
 						param_names << param.value
-						param_types << subst_generic_text(param.typ_text(), generic_args, generic_params)
+						param_types << subst_generic_text(param.typ_text(), flat.TypeTextList.from_names(generic_args).ids, generic_params)
 						param_is_mut << param.is_mut
 						param_is_mut_ref << (param.is_mut && param.op == .amp
 							&& flat.source_type_shape(param.typ).has(.pointer))
@@ -19605,7 +19607,7 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 					candidate.typ_text()
 				} else {
 					'void'
-				}, generic_args, generic_params)
+				}, flat.TypeTextList.from_names(generic_args).ids, generic_params)
 				cases << ComptimeStaticValueCase{
 					name:             name
 					location:         comptime_static_source_location(file_name, candidate.pos.offset, line_offsets_by_file[file_name],

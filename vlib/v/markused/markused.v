@@ -7644,7 +7644,7 @@ fn (c &CallCollector) generic_factory_short_struct_field_type_text(fn_name strin
 		params := c.tc.struct_generic_params[candidate] or {
 			c.tc.struct_generic_params[base] or { []string{} }
 		}
-		return flat.source_type_id(types.subst_generic_text(field_type, args, params))
+		return flat.source_type_id(types.subst_generic_text(field_type, flat.TypeTextList.from_names(args).ids, params))
 	}
 	return u32(0)
 }
@@ -8471,7 +8471,7 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 		return_text_source_id := c.generic_factory_return_type_text(info.name, cur_module, false)
 
 		specialized := flat.source_type_name(c.tc.specialize_generic_factory_return(return_text_source_id, info.name,
-			container_type_source_id, []string{}))
+			container_type_source_id, []u32{}))
 		if specialized.starts_with('?') {
 			local_types.set(value_var, specialized[1..])
 			return
@@ -8671,7 +8671,7 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 			if arg_source_id == 0 { return return_type_source_id_2 }
 			args << flat.source_type_name(c.generic_factory_qualified_type_text(arg_source_id, arg_id, cur_module, imports))
 		}
-		return c.tc.specialize_generic_factory_return(return_type_source_id_2, candidate, receiver_type_id, args)
+		return c.tc.specialize_generic_factory_return(return_type_source_id_2, candidate, receiver_type_id, flat.TypeTextList.from_names(args).ids)
 	}
 	return u32(0)
 }
@@ -8696,7 +8696,7 @@ fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.Nod
 
 				if return_type_source_id_3 != 0 {
 					return c.tc.specialize_generic_factory_return(return_type_source_id_3, candidate,
-						flat.source_type_id(receiver_type), []string{})
+						flat.source_type_id(receiver_type), []u32{})
 				}
 			}
 			continue
@@ -8733,7 +8733,7 @@ fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.Nod
 			continue
 		}
 		return c.tc.specialize_generic_factory_return(return_type_source_id_4, candidate, flat.source_type_id(receiver_type),
-			args)
+			flat.TypeTextList.from_names(args).ids)
 	}
 	return none
 }
@@ -10718,13 +10718,12 @@ fn (c &CallCollector) collect_struct_default_calls_from_info_guarded(info Struct
 
 // specialized_struct_default_type substitutes arguments without rebasing their module ownership.
 fn (c &CallCollector) specialized_struct_default_type(type_text_id u32, id flat.NodeId, cur_module string, imports map[string]string, generic_args_ids []u32, generic_params []string) types.Type {
-	generic_args := flat.TypeTextList{ ids: generic_args_ids }.names()
 	if generic_args_ids.len == 0 || generic_args_ids.len != generic_params.len {
 		return c.value_type_in_source(type_text_id, c.a.node(id), imports)
 	}
 	// Qualify declaration-owned types before inserting semantic arguments from the caller.
 	declared_type := flat.source_type_name(c.qualified_type_text_preserving_params(type_text_id, id, cur_module, imports, generic_params))
-	substituted_type := types.subst_generic_text(declared_type, generic_args, generic_params)
+	substituted_type := types.subst_generic_text(declared_type, generic_args_ids.clone(), generic_params)
 	// Canonical bare argument names belong to main; protect them from an imported declaration's scope.
 	qualified_type_source_id := c.generic_factory_qualified_type_text(flat.source_type_id(substituted_type), id, 'main', map[string]string{})
 

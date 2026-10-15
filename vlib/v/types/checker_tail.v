@@ -6128,12 +6128,12 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 			// A forwarded explicit argument can name a type parameter of this
 			// instance, including inside a container such as `[]A`.
 			concrete := if tc.type_param_texts.ids.len > 0 {
-				subst_generic_text(type_arg, tc.type_param_texts.values(),
+				subst_generic_text(type_arg, flat.TypeTextList.from_names(tc.type_param_texts.values()).ids,
 					tc.type_param_texts.keys())
 			} else {
 				type_arg
 			}
-			concrete_args << flat.source_type_id(tc.explicit_generic_concrete_arg_text(concrete))
+			concrete_args << tc.explicit_generic_concrete_arg_text(flat.source_type_id(concrete))
 		}
 	}
 	mut inferred := map[string]u32{}
@@ -6383,12 +6383,12 @@ fn (tc &TypeChecker) instantiated_generic_decl_expr_type(id flat.NodeId, decl fl
 		for i in 0 .. decl.children_count {
 			param := tc.a.child_node(&decl, i)
 			if param.kind == .param && param.value == node.value {
-				type_text := subst_generic_text(param.typ_text(), instantiation.concrete_args_text(), instantiation.generic_params)
+				type_text := subst_generic_text(param.typ_text(), instantiation.concrete_args.ids, instantiation.generic_params)
 				return tc.parse_fn_signature_type(info.name, flat.source_type_id(type_text))
 			}
 		}
 	}
-	return tc.substitute_generic_type(tc.resolve_type(id), instantiation.concrete_args_text(), instantiation.generic_params)
+	return tc.substitute_generic_type(tc.resolve_type(id), instantiation.concrete_args.ids, instantiation.generic_params)
 }
 
 fn (mut tc TypeChecker) check_instantiated_generic_as_casts(info CallInfo, instantiation GenericCompileErrorInstantiation) {
@@ -6401,7 +6401,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_as_casts(info CallInfo, insta
 		node_id := stack.pop()
 		node := tc.a.node(node_id)
 		if node.kind == .as_expr && node.children_count > 0 {
-			target_text := subst_generic_text(node.value, instantiation.concrete_args_text(), instantiation.generic_params)
+			target_text := subst_generic_text(node.value, instantiation.concrete_args.ids, instantiation.generic_params)
 			if target_text != node.value {
 				child_id := tc.a.child(node, 0)
 				source := unalias_type(tc.instantiated_generic_decl_expr_type(child_id, fn_node, info, instantiation))
@@ -6443,7 +6443,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call_id flat.N
 			continue
 		}
 		if node.kind == .struct_init {
-			type_text := subst_generic_text(node.value, instantiation.concrete_args_text(), instantiation.generic_params)
+			type_text := subst_generic_text(node.value, instantiation.concrete_args.ids, instantiation.generic_params)
 			if type_text == node.value {
 				continue
 			}
@@ -10575,10 +10575,10 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 				return none
 			}
 			if method_name.len > 0 {
-				if tc.explicit_generic_arg_count_mismatch(method_name, type_args, id) {
+				if tc.explicit_generic_arg_count_mismatch(method_name, flat.TypeTextList.from_names(type_args).ids, id) {
 					return tc.call_info(method_name, true)
 				}
-				if info := tc.explicit_generic_call_info(method_name, true, type_args) {
+				if info := tc.explicit_generic_call_info(method_name, true, flat.TypeTextList.from_names(type_args).ids) {
 					return info
 				}
 				return tc.call_info(method_name, true)
@@ -10592,43 +10592,45 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 			call_name := '${type_name}.${base_node.value}'
 			if call_name in tc.fn_ret_types
 				&& tc.method_can_be_called_on_receiver(base_type, base_node.value, call_name) {
-				if tc.explicit_generic_arg_count_mismatch(call_name, type_args, id) {
+				if tc.explicit_generic_arg_count_mismatch(call_name, flat.TypeTextList.from_names(type_args).ids, id) {
 					return tc.call_info(call_name, true)
 				}
-				if info := tc.explicit_generic_call_info(call_name, true, type_args) {
+				if info := tc.explicit_generic_call_info(call_name, true, flat.TypeTextList.from_names(type_args).ids) {
 					return info
 				}
 				return tc.call_info(call_name, true)
 			}
 			if receiver_info := tc.resolve_generic_struct_method(flat.source_type_id(type_name), base_node.value) {
-				method_type_args := flat.TypeTextList{ ids: tc.explicit_generic_receiver_method_args(flat.source_type_id(type_name), receiver_info.name, type_args) }.names()
-				if tc.explicit_generic_arg_count_mismatch(receiver_info.name, method_type_args, id) {
+				method_type_args_source_ids := tc.explicit_generic_receiver_method_args(flat.source_type_id(type_name), receiver_info.name, flat.TypeTextList.from_names(type_args).ids).clone()
+
+				if tc.explicit_generic_arg_count_mismatch(receiver_info.name, method_type_args_source_ids, id) {
 					return receiver_info
 				}
 				return tc.specialize_explicit_generic_receiver_call(receiver_info, tc.explicit_receiver_type_args(receiver_info,
-					base_type, method_type_args, id))
+					base_type, method_type_args_source_ids, id))
 			}
 			// Generic methods promoted from an embedded non-generic receiver keep
 			// the declaring receiver in the function table. Resolve that promoted
 			// method before rejecting `outer.method[T](...)`.
 			if embedded_info := tc.embedded_method_call_info(type_name, base_node.value) {
-				if tc.explicit_generic_arg_count_mismatch(embedded_info.name, type_args, id) {
+				if tc.explicit_generic_arg_count_mismatch(embedded_info.name, flat.TypeTextList.from_names(type_args).ids, id) {
 					return embedded_info
 				}
 				// The embedded receiver fixes the type parameters the method repeats
 				// from it.
-				checked_args := tc.explicit_receiver_type_args(embedded_info, base_type, type_args, id)
-				if info := tc.explicit_generic_call_info(embedded_info.name, true, checked_args) {
+				checked_args_source_ids := tc.explicit_receiver_type_args(embedded_info, base_type, flat.TypeTextList.from_names(type_args).ids, id).clone()
+
+				if info := tc.explicit_generic_call_info(embedded_info.name, true, checked_args_source_ids) {
 					return info
 				}
 				return embedded_info
 			}
 		}
 		if static_name := tc.explicit_generic_static_selector_key(base_node) {
-			if tc.explicit_generic_arg_count_mismatch(static_name, type_args, id) {
+			if tc.explicit_generic_arg_count_mismatch(static_name, flat.TypeTextList.from_names(type_args).ids, id) {
 				return tc.call_info(static_name, false)
 			}
-			if info := tc.explicit_generic_call_info(static_name, false, type_args) {
+			if info := tc.explicit_generic_call_info(static_name, false, flat.TypeTextList.from_names(type_args).ids) {
 				return info
 			}
 			return tc.call_info(static_name, false)
@@ -10678,10 +10680,10 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 			params_known:  call_name in tc.fn_param_types
 		}
 	}
-	if tc.explicit_generic_arg_count_mismatch(call_name, type_args, id) {
+	if tc.explicit_generic_arg_count_mismatch(call_name, flat.TypeTextList.from_names(type_args).ids, id) {
 		return tc.call_info(call_name, false)
 	}
-	if info := tc.explicit_generic_call_info(call_name, false, type_args) {
+	if info := tc.explicit_generic_call_info(call_name, false, flat.TypeTextList.from_names(type_args).ids) {
 		return info
 	}
 	return tc.call_info(call_name, false)
@@ -10748,14 +10750,14 @@ fn (tc &TypeChecker) module_declares_plain_struct(module_name string, name strin
 	return false
 }
 
-fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo, type_args []string) CallInfo {
+fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo, type_args_ids []u32) CallInfo {
 	generic_params := tc.fn_generic_params[info.name] or { return info }
-	if generic_params.len == 0 || generic_params.len != type_args.len {
+	if generic_params.len == 0 || generic_params.len != type_args_ids.len {
 		return info
 	}
-	mut concrete_types := []Type{cap: type_args.len}
-	for arg in type_args {
-		concrete_types << tc.parse_type(tc.qualify_resolution_type_text(flat.source_type_id(arg)))
+	mut concrete_types := []Type{cap: type_args_ids.len}
+	for arg_source_id in type_args_ids {
+		concrete_types << tc.parse_type(tc.qualify_resolution_type_text(arg_source_id))
 	}
 	mut params := []Type{cap: info.params.len}
 	for param in info.params {
@@ -10775,10 +10777,10 @@ fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo,
 // `b.own[string]()` for a `Box[int]`. `info` is the method as its receiver
 // specializes it, and `receiver` the type the call calls it on, which embeds
 // that receiver when the method is promoted.
-fn (mut tc TypeChecker) explicit_receiver_type_args(info CallInfo, receiver Type, type_args []string, id flat.NodeId) []string {
-	method_params := tc.fn_generic_params[info.name] or { return type_args }
-	if method_params.len != type_args.len || !info.has_receiver || info.params.len == 0 {
-		return type_args
+fn (mut tc TypeChecker) explicit_receiver_type_args(info CallInfo, receiver Type, type_args_ids []u32, id flat.NodeId) []u32 {
+	method_params := tc.fn_generic_params[info.name] or { return type_args_ids.clone() }
+	if method_params.len != type_args_ids.len || !info.has_receiver || info.params.len == 0 {
+		return type_args_ids.clone()
 	}
 	// The receiver as the call spells it (an alias like `IntBox` included), and
 	// the generic struct it is.
@@ -10786,29 +10788,29 @@ fn (mut tc TypeChecker) explicit_receiver_type_args(info CallInfo, receiver Type
 	receiver_struct := unalias_type(method_receiver)
 	_, receiver_args, receiver_is_generic := generic_type_application_parts(receiver_struct.name())
 	if !receiver_is_generic {
-		return type_args
+		return type_args_ids.clone()
 	}
 	method := info.name.all_after_last('.')
 	mut pattern := info.name.all_before_last('.')
 	_, _, pattern_is_generic := generic_type_application_parts(pattern)
 	if !pattern_is_generic {
-		texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(info.name) or { return type_args } }.names()
+		texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(info.name) or { return type_args_ids.clone() } }.names()
 		if texts.len == 0 {
-			return type_args
+			return type_args_ids.clone()
 		}
 		pattern = comptime_static_unwrap_type_text(texts[0]).trim_left('&').trim_space()
 	}
 	receiver_params, concrete_args := tc.generic_method_receiver_pattern_args('${pattern}.${method}',
-		receiver_args) or { return type_args }
-	mut checked := type_args.clone()
+		receiver_args) or { return type_args_ids.clone() }
+	mut checked := type_args_ids.clone()
 	for i, param in method_params {
 		at := receiver_params.index(param)
 		if at < 0 {
 			continue
 		}
-		expected := tc.parse_type(flat.source_type_id(tc.explicit_generic_concrete_arg_text(concrete_args[at])))
-		given := tc.parse_type(flat.source_type_id(tc.explicit_generic_concrete_arg_text(type_args[i])))
-		checked[i] = concrete_args[at]
+		expected := tc.parse_type(tc.explicit_generic_concrete_arg_text(flat.source_type_id(concrete_args[at])))
+		given := tc.parse_type(tc.explicit_generic_concrete_arg_text(type_args_ids[i]))
+		checked[i] = flat.source_type_id(concrete_args[at])
 		if expected.name() == given.name() || !tc.should_diagnose(id) {
 			continue
 		}
@@ -10864,22 +10866,22 @@ pub fn (mut tc TypeChecker) report_receiver_type_arg_mismatch(file string, call_
 // explicit_generic_receiver_method_args accepts both `value.method[U]()` and
 // the legacy full spelling `value.method[T, U]()`, where `T` repeats the
 // receiver application's already-known concrete type arguments.
-fn (tc &TypeChecker) explicit_generic_receiver_method_args(receiver_type_id u32, method_name string, type_args []string) []u32 {
+fn (tc &TypeChecker) explicit_generic_receiver_method_args(receiver_type_id u32, method_name string, type_args_ids []u32) []u32 {
 	receiver_type := flat.source_type_name(receiver_type_id)
-	method_params := tc.fn_generic_params[method_name] or { return flat.TypeTextList.from_names(type_args).ids }
+	method_params := tc.fn_generic_params[method_name] or { return type_args_ids.clone() }
 	_, receiver_args, receiver_is_generic := generic_type_application_parts(receiver_type)
 	if !receiver_is_generic || receiver_args.len == 0
-		|| type_args.len != receiver_args.len + method_params.len {
-		return flat.TypeTextList.from_names(type_args).ids
+		|| type_args_ids.len != receiver_args.len + method_params.len {
+		return type_args_ids.clone()
 	}
 	for i, receiver_arg in receiver_args {
-		expected := tc.parse_type(flat.source_type_id(tc.explicit_generic_concrete_arg_text(receiver_arg)))
-		actual := tc.parse_type(flat.source_type_id(tc.explicit_generic_concrete_arg_text(type_args[i])))
+		expected := tc.parse_type(tc.explicit_generic_concrete_arg_text(flat.source_type_id(receiver_arg)))
+		actual := tc.parse_type(tc.explicit_generic_concrete_arg_text(type_args_ids[i]))
 		if expected.name() != actual.name() {
-			return flat.TypeTextList.from_names(type_args).ids
+			return type_args_ids.clone()
 		}
 	}
-	return flat.TypeTextList.from_names(type_args[receiver_args.len..]).ids
+	return type_args_ids[receiver_args.len..].clone()
 }
 
 fn (tc &TypeChecker) explicit_generic_static_selector_key(selector flat.Node) ?string {
@@ -10903,9 +10905,10 @@ fn (tc &TypeChecker) explicit_generic_static_selector_key(selector flat.Node) ?s
 	return none
 }
 
-fn (mut tc TypeChecker) explicit_generic_arg_count_mismatch(name string, type_args []string, id flat.NodeId) bool {
+fn (mut tc TypeChecker) explicit_generic_arg_count_mismatch(name string, type_args_ids []u32, id flat.NodeId) bool {
+	type_args := flat.TypeTextList{ ids: type_args_ids }.names()
 	generic_params := tc.fn_generic_params[name] or { return false }
-	if type_args.len == generic_params.len {
+	if type_args_ids.len == generic_params.len {
 		return false
 	}
 	if tc.should_diagnose(id) {
@@ -10929,29 +10932,35 @@ fn (tc &TypeChecker) failed_explicit_generic_call_info(name string) CallInfo {
 
 // explicit_generic_concrete_arg_text qualifies an explicit generic type argument
 // spelled at a call site so it survives being re-parsed in the callee module.
-fn (tc &TypeChecker) explicit_generic_concrete_arg_text(type_arg string) string {
+fn (tc &TypeChecker) explicit_generic_concrete_arg_text(type_arg_id u32) u32 {
+	text := flat.source_type_name(type_arg_id)
+	qualified := tc.explicit_generic_concrete_arg_text_bytes(text)
+	return if qualified == text { type_arg_id } else { flat.source_type_id(qualified) }
+}
+
+fn (tc &TypeChecker) explicit_generic_concrete_arg_text_bytes(type_arg string) string {
 	clean := trimmed_space(type_arg)
 	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
-		return clean[..1] + tc.explicit_generic_concrete_arg_text(clean[1..])
+		return clean[..1] + tc.explicit_generic_concrete_arg_text_bytes(clean[1..])
 	}
 	if clean.starts_with('...') {
-		return '...' + tc.explicit_generic_concrete_arg_text(clean[3..])
+		return '...' + tc.explicit_generic_concrete_arg_text_bytes(clean[3..])
 	}
 	if clean.starts_with('[]') {
-		return '[]' + tc.explicit_generic_concrete_arg_text(clean[2..])
+		return '[]' + tc.explicit_generic_concrete_arg_text_bytes(clean[2..])
 	}
 	if clean.starts_with('map[') {
 		close := find_matching_bracket(clean, 3)
 		if close > 3 && close + 1 < clean.len {
-			key := tc.explicit_generic_concrete_arg_text(clean[4..close])
-			value := tc.explicit_generic_concrete_arg_text(clean[close + 1..])
+			key := tc.explicit_generic_concrete_arg_text_bytes(clean[4..close])
+			value := tc.explicit_generic_concrete_arg_text_bytes(clean[close + 1..])
 			return 'map[${key}]${value}'
 		}
 	}
 	if clean.starts_with('[') {
 		close := find_matching_bracket(clean, 0)
 		if close > 0 && close + 1 < clean.len {
-			return clean[..close + 1] + tc.explicit_generic_concrete_arg_text(clean[close + 1..])
+			return clean[..close + 1] + tc.explicit_generic_concrete_arg_text_bytes(clean[close + 1..])
 		}
 	}
 	if !clean.contains('.') {
@@ -10979,15 +10988,15 @@ fn (tc &TypeChecker) explicit_generic_concrete_arg_text(type_arg string) string 
 	return qualified
 }
 
-fn (tc &TypeChecker) explicit_generic_call_info(name string, has_receiver bool, type_args []string) ?CallInfo {
+fn (tc &TypeChecker) explicit_generic_call_info(name string, has_receiver bool, type_args_ids []u32) ?CallInfo {
 	generic_params := tc.fn_generic_params[name] or { return none }
 	param_texts := flat.TypeTextList{ ids: tc.fn_param_type_texts.type_ids(name) or { return none } }.names()
-	if generic_params.len == 0 || type_args.len != generic_params.len {
+	if generic_params.len == 0 || type_args_ids.len != generic_params.len {
 		return none
 	}
-	mut concrete_args := []string{cap: generic_params.len}
+	mut concrete_args := []u32{cap: generic_params.len}
 	for i in 0 .. generic_params.len {
-		concrete_args << tc.explicit_generic_concrete_arg_text(type_args[i])
+		concrete_args << tc.explicit_generic_concrete_arg_text(type_args_ids[i])
 	}
 	mut sub_params := []Type{}
 	for param_text in param_texts {
@@ -16228,7 +16237,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			mut reference_name := call_argument_type_name(expected)
 			if !info.has_receiver {
 				if raw_params_source_ids := tc.fn_param_type_texts.type_ids(info.name) {
-					if param_idx < raw_params_source_ids.len && flat.source_type_name(raw_params_source_ids[param_idx]).len > 0 {
+					if param_idx < raw_params_source_ids.len && (raw_params_source_ids[param_idx]) != 0 {
 						reference_name = flat.source_type_name(raw_params_source_ids[param_idx])
 					}
 				}
@@ -16639,7 +16648,7 @@ fn (tc &TypeChecker) diagnostic_fntype_alias_display(typ Type) ?string {
 	if params.len != args.len {
 		return tc.diagnostic_fn_type_text(raw)
 	}
-	return tc.diagnostic_fn_type_text(subst_generic_text(raw, args, params))
+	return tc.diagnostic_fn_type_text(subst_generic_text(raw, flat.TypeTextList.from_names(args).ids, params))
 }
 
 fn (tc &TypeChecker) bare_generic_fntype_call_param_display(fn_name string, param_idx int) ?string {
@@ -18334,7 +18343,7 @@ fn (tc &TypeChecker) field_init_struct_field_type(struct_name string, param_text
 	}
 	for field in tc.source_struct_field_decls(struct_name) {
 		if field.name == field_name {
-			return subst_generic_text(field.typ_text(), args, params)
+			return subst_generic_text(field.typ_text(), flat.TypeTextList.from_names(args).ids, params)
 		}
 	}
 	return none
@@ -18511,18 +18520,18 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		if generic_type_application(param_text) {
 			// Named applications such as `Box[T]` lose their arguments in the
 			// open parsed type, so retain the textual reconstruction for them.
-			sub_params << tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_signature_param_text(param_text, signature_args, signature_params)))
+			sub_params << tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_signature_param_text(param_text, flat.TypeTextList.from_names(signature_args).ids, signature_params)))
 		} else if i < info.params.len {
 			sub_params << tc.substitute_generic_type_values(info.params[i], concrete_types, generic_params)
 		} else {
-			sub_params << tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_signature_param_text(param_text, concrete_args, generic_params)))
+			sub_params << tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_signature_param_text(param_text, flat.TypeTextList.from_names(concrete_args).ids, generic_params)))
 		}
 	}
 	ret_text_source_id_3 := tc.fn_ret_type_texts.type_id(info.name) or { u32(0) }
 	ret_text := flat.source_type_name(ret_text_source_id_3)
 	sub_ret := if ret_text_source_id_3 != 0 {
 		if generic_type_application(ret_text) || ret_text.starts_with('(') {
-			tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_text(ret_text, signature_args, signature_params)))
+			tc.parse_fn_signature_type(info.name, flat.source_type_id(subst_generic_text(ret_text, flat.TypeTextList.from_names(signature_args).ids, signature_params)))
 		} else {
 			tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
 		}
@@ -20008,7 +20017,7 @@ fn (tc &TypeChecker) is_concrete_generic_instance(name string) bool {
 	if !ok {
 		return false
 	}
-	return tc.generic_args_are_concrete(args)
+	return tc.generic_args_are_concrete(flat.TypeTextList.from_names(args).ids)
 }
 
 // bare_generic_literal_adopts reports whether a struct literal written as the bare
@@ -20122,7 +20131,7 @@ fn (mut tc TypeChecker) generic_literal_fields_compatible(node flat.Node, expect
 		if !found {
 			continue
 		}
-		sub := tc.substitute_generic_type(decl_typ, e_args, params)
+		sub := tc.substitute_generic_type(decl_typ, flat.TypeTextList.from_names(e_args).ids, params)
 		if sub is Unknown || sub is Void {
 			continue
 		}
@@ -20651,7 +20660,7 @@ fn (tc &TypeChecker) direct_call_return_type(node flat.Node) ?Type {
 				base_type: tc.parse_type(flat.source_type_id(type_args[0]))
 			})
 		}
-		if info := tc.explicit_generic_call_info(name, false, type_args) {
+		if info := tc.explicit_generic_call_info(name, false, flat.TypeTextList.from_names(type_args).ids) {
 			return info.return_type
 		}
 		return none

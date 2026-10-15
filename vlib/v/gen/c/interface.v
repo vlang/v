@@ -838,7 +838,7 @@ fn (g &FlatGen) collect_specialized_interface_application_text(type_text string,
 	}
 	for arg in args {
 		g.collect_specialized_interface_application_text(arg, mut applications)
-		if codegen_generic_arg_is_unresolved(arg) {
+		if codegen_generic_arg_is_unresolved(flat.source_type_id(arg)) {
 			return
 		}
 	}

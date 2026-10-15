@@ -60,6 +60,9 @@ Callback, tuple-branch, iterator, and local type queries return source IDs, incl
 list results. Comptime sum variants retain those IDs when constructing reflection metadata.
 Signature preparation and deferred return registration retain source IDs across workers;
 parameter and variant lists use numeric binding accessors and copy IDs into owned storage.
+Generic substitution and explicit call arguments also use numeric lists. C generation retains
+inferred generic arguments in maps of source IDs; private recursive spelling parsers resolve bytes
+when matching nested types, and emitted specialization names remain strings.
 The driver's implicit-import type scan and WebAssembly fallback annotations use the same source
 IDs; their declaration indexes and dependency-recording keys retain names.
 Numeric APIs retain identities across stages. Text APIs resolve spellings when parsing source,

@@ -9211,8 +9211,9 @@ fn (mut g FlatGen) gen_c_va_macro_call(node flat.Node, target_name string, resol
 			g.write('0')
 			return true
 		}
-		type_arg_name := g.generic_call_type_arg_name(g.a.child(&node, 1))
-		target_type := g.tc.parse_type(flat.source_type_id(type_arg_name))
+		type_arg_name_source_id := g.generic_call_type_arg_name(g.a.child(&node, 1))
+
+		target_type := g.tc.parse_type(type_arg_name_source_id)
 		mut target_ct := g.tc.c_type(target_type)
 		if target_ct.starts_with('fn_ptr:') {
 			target_ct = g.resolve_fn_ptr_type(target_ct)
@@ -9986,7 +9987,7 @@ fn (g &FlatGen) interface_receiver_application_name(id flat.NodeId, fallback str
 		return fallback
 	}
 	for arg in args {
-		if codegen_generic_arg_is_unresolved(arg) { return fallback }
+		if codegen_generic_arg_is_unresolved(flat.source_type_id(arg)) { return fallback }
 	}
 	return text
 }
@@ -9999,27 +10000,25 @@ fn (g &FlatGen) specialized_interface_name_for_method_call(node flat.Node, iface
 	if params.len == 0 {
 		return iface_name
 	}
-	mut inferred := map[string]string{}
+	mut inferred := map[string]u32{}
 	if is_generic && iface_args.len == params.len {
 		mut all_concrete := true
 		for i, arg in iface_args {
-			if codegen_generic_arg_is_unresolved(arg) {
+			if codegen_generic_arg_is_unresolved(flat.source_type_id(arg)) {
 				all_concrete = false
 				continue
 			}
-			inferred[params[i]] = arg
+			inferred[params[i]] = flat.source_type_id(arg)
 		}
 		if all_concrete {
 			return iface_name
 		}
 	}
 	decl_key := g.interface_method_signature_key(base, method) or { return iface_name }
-	param_types := flat.TypeTextList{
-		ids: g.tc.fn_param_type_texts.type_ids(decl_key) or {
-			semantic := g.tc.fn_param_types[decl_key] or { return iface_name }
-			flat.TypeTextList.from_names(semantic.map(it.name())).ids
-		}
-	}.names()
+	param_types := g.tc.fn_param_type_texts.type_ids(decl_key) or {
+		semantic := g.tc.fn_param_types[decl_key] or { return iface_name }
+		semantic.map(it.source_type_id())
+	}
 	arg_count := node.children_count - 1
 	param_offset := if param_types.len == arg_count { -1 } else { 0 }
 	for i in 1 .. node.children_count {
@@ -10029,27 +10028,25 @@ fn (g &FlatGen) specialized_interface_name_for_method_call(node flat.Node, iface
 		}
 		arg_id := g.a.child(&node, i)
 		arg_node := g.a.nodes[int(arg_id)]
-		mut arg_type := arg_node.typ_text()
-		if arg_type.len == 0 || codegen_generic_placeholder_name(arg_type) {
+		mut arg_type := arg_node.typ
+		if arg_type == 0 || codegen_generic_placeholder_name(flat.source_type_name(arg_type)) {
 			arg_type = g.generic_call_arg_type_text(arg_id)
 		}
-		if codegen_generic_placeholder_name(arg_type) {
-			resolved_arg := g.usable_expr_type(arg_id).name()
-			if resolved_arg.len > 0 {
-				arg_type = resolved_arg
-			}
+		if codegen_generic_placeholder_name(flat.source_type_name(arg_type)) {
+			resolved_arg := g.usable_expr_type(arg_id).source_type_id()
+			if resolved_arg != 0 { arg_type = resolved_arg }
 		}
-		if arg_type.len > 0 {
+		if arg_type != 0 {
 			infer_codegen_generic_type_args(param_types[param_idx], arg_type, mut inferred)
 		}
 	}
 	mut args := []string{cap: params.len}
 	for param in params {
 		arg := inferred[param] or { return iface_name }
-		if arg.len == 0 || codegen_generic_placeholder_name(arg) {
+		if arg == 0 || codegen_generic_placeholder_name(flat.source_type_name(arg)) {
 			return iface_name
 		}
-		args << arg.replace('main.', '')
+		args << flat.source_type_name(arg).replace('main.', '')
 	}
 	application_base := if raw_base in g.interfaces { raw_base } else { base }
 	return '${application_base}[${args.join(', ')}]'
@@ -13132,64 +13129,42 @@ fn (mut g FlatGen) specialized_generic_plain_fn_name_for_call(id flat.NodeId, no
 }
 
 fn (mut g FlatGen) inferred_generic_plain_fn_name_for_call(id flat.NodeId, node flat.Node, name string) ?string {
-	if g.skip_generics {
-		return none
-	}
-	if name.len == 0 || name.contains('[') || node.children_count == 0 {
-		return none
-	}
+	if g.skip_generics { return none }
+	if name.len == 0 || name.contains('[') || node.children_count == 0 { return none }
 	// A transformed receiver call is an already-resolved qualified concrete
 	// function. Do not reinterpret its short method name as an unrelated plain
 	// generic (for example `sync.WaitGroup.add` versus a user `add[T]`).
-	if name.contains('.') && g.concrete_fn_return_known(name) {
-		return none
-	}
-	if g.plain_concrete_fn_name_shadows_generic(name) {
-		return none
-	}
+	if name.contains('.') && g.concrete_fn_return_known(name) { return none }
+	if g.plain_concrete_fn_name_shadows_generic(name) { return none }
 	base := g.generic_plain_fn_base_for_call(id, name) or { return none }
 	generic_params := g.tc.fn_generic_params[base] or { return none }
-	if generic_params.len == 0 {
-		return none
-	}
-	param_texts := flat.TypeTextList{ ids: g.tc.fn_param_type_texts.type_ids(base) or { return none } }.names()
-	mut inferred := map[string]string{}
+	if generic_params.len == 0 { return none }
+	param_types := g.tc.fn_param_type_texts.type_ids(base) or { return none }
+	mut inferred := map[string]u32{}
 	// Contextual return types must win over default-typed literal arguments. In
 	// `fn values() []Vec2[f64] { return [vec2(1.0, 1.0)] }`, a large combined
 	// test program can retain the literal arguments as untyped floats even though
 	// the array element has already fixed `T` to `f64`.
-	if ret_text_source_id := g.tc.fn_ret_type_texts.type_id(base) {
-		ret_text := flat.source_type_name(ret_text_source_id)
-
-		expected_ret := g.expected_expr_type.name()
+	if ret_type := g.tc.fn_ret_type_texts.type_id(base) {
+		expected_ret := g.expected_expr_type.source_type_id()
 		if codegen_type_text_is_usable_for_generic_inference(expected_ret) {
-			infer_codegen_generic_type_args(ret_text, expected_ret, mut inferred)
+			infer_codegen_generic_type_args(ret_type, expected_ret, mut inferred)
 		}
 	}
-	g.infer_codegen_generic_call_type_args(node, base, param_texts, mut inferred)
-	if ret_text_source_id := g.tc.fn_ret_type_texts.type_id(base) {
-		ret_text := flat.source_type_name(ret_text_source_id)
-
-		ret_type := g.call_default_return_type(id).name()
-		if ret_type.len > 0 {
-			infer_codegen_generic_type_args(ret_text, ret_type, mut inferred)
-		}
+	g.infer_codegen_generic_call_type_args(node, base, param_types, mut inferred)
+	if ret_type := g.tc.fn_ret_type_texts.type_id(base) {
+		default_ret := g.call_default_return_type(id).source_type_id()
+		if default_ret != 0 { infer_codegen_generic_type_args(ret_type, default_ret, mut inferred) }
 	}
-	mut args := []string{cap: generic_params.len}
+	mut args := []u32{cap: generic_params.len}
 	for param in generic_params {
 		arg := inferred[param] or { return none }
-		if codegen_generic_arg_is_unresolved(arg) {
-			return none
-		}
+		if codegen_generic_arg_is_unresolved(arg) { return none }
 		args << arg
 	}
-	if args.len == 0 {
-		return none
-	}
+	if args.len == 0 { return none }
 	for candidate in g.specialized_generic_plain_fn_candidates(base, args) {
-		if candidate in g.tc.fn_param_types || candidate in g.tc.fn_ret_types {
-			return candidate
-		}
+		if candidate in g.tc.fn_param_types || candidate in g.tc.fn_ret_types { return candidate }
 	}
 	return none
 }
@@ -13253,104 +13228,101 @@ fn (mut g FlatGen) specialized_generic_plain_fn_name_for_explicit_call(id flat.N
 	return none
 }
 
-fn (g &FlatGen) explicit_generic_call_type_arg_names(fn_node flat.Node) []string {
+fn (g &FlatGen) explicit_generic_call_type_arg_names(fn_node flat.Node) []u32 {
 	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value == 'range' {
-		return []string{}
+		return []u32{}
 	}
-	mut args := []string{}
+	mut args := []u32{}
 	for i in 1 .. fn_node.children_count {
 		arg := g.generic_call_type_arg_name(g.a.child(&fn_node, i))
-		if arg.len == 0 {
-			return []string{}
-		}
+		if arg == 0 { return []u32{} }
 		args << arg
 	}
 	return args
 }
 
-fn (g &FlatGen) generic_call_type_arg_name(id flat.NodeId) string {
+fn (g &FlatGen) generic_call_type_arg_name(id flat.NodeId) u32 {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return ''
+		return u32(0)
 	}
 	node := g.a.nodes[int(id)]
 	match node.kind {
 		.ident {
-			return node.value
+			return flat.source_type_id(node.value)
 		}
 		.selector {
 			if node.children_count == 0 {
-				return node.value
+				return flat.source_type_id(node.value)
 			}
-			base := g.generic_call_type_arg_name(g.a.child(&node, 0))
-			if base.len == 0 {
-				return node.value
+			base_source_id := g.generic_call_type_arg_name(g.a.child(&node, 0))
+			base := flat.source_type_name(base_source_id)
+			if base_source_id == 0 {
+				return flat.source_type_id(node.value)
 			}
-			return '${base}.${node.value}'
+			return flat.source_type_id('${base}.${node.value}')
 		}
 		.prefix {
 			if node.op == .amp && node.children_count > 0 {
-				inner := g.generic_call_type_arg_name(g.a.child(&node, 0))
-				if inner.len > 0 {
-					return '&${inner}'
+				inner_source_id_2 := g.generic_call_type_arg_name(g.a.child(&node, 0))
+				inner := flat.source_type_name(inner_source_id_2)
+				if inner_source_id_2 != 0 {
+					return flat.source_type_id('&${inner}')
 				}
 			}
 		}
 		.index {
 			if node.value != 'range' && node.children_count > 0 {
-				base := g.generic_call_type_arg_name(g.a.child(&node, 0))
-				if base.len == 0 {
-					return ''
+				base_source_id_2 := g.generic_call_type_arg_name(g.a.child(&node, 0))
+				base := flat.source_type_name(base_source_id_2)
+				if base_source_id_2 == 0 {
+					return u32(0)
 				}
 				mut args := []string{}
 				for i in 1 .. node.children_count {
-					arg := g.generic_call_type_arg_name(g.a.child(&node, i))
+					arg := flat.source_type_name(g.generic_call_type_arg_name(g.a.child(&node, i)))
 					if arg.len == 0 {
-						return ''
+						return u32(0)
 					}
 					args << arg
 				}
-				return '${base}[${args.join(',')}]'
+				return flat.source_type_id('${base}[${args.join(',')}]')
 			}
 		}
 		else {}
 	}
 
 	if node.typ != 0 {
-		return node.typ_text()
+		return node.typ
 	}
-	return node.value
+	return flat.source_type_id(node.value)
 }
 
-fn (g &FlatGen) infer_codegen_generic_call_type_args(node flat.Node, base string, param_texts []string, mut inferred map[string]string) {
+fn (g &FlatGen) infer_codegen_generic_call_type_args(node flat.Node, base string, param_texts_ids []u32, mut inferred map[string]u32) {
 	is_variadic := g.codegen_generic_fn_is_variadic(base)
-	for i, param_text in param_texts {
+	for i, param_type in param_texts_ids {
 		arg_idx := i + 1
-		if arg_idx >= int(node.children_count) {
-			break
-		}
-		if is_variadic && i == param_texts.len - 1 {
-			elem_param := codegen_variadic_elem_param_text(param_text)
+		if arg_idx >= int(node.children_count) { break }
+		if is_variadic && i == param_texts_ids.len - 1 {
+			elem_param := codegen_variadic_elem_param_text(param_type)
 			for call_arg_idx in arg_idx .. node.children_count {
 				arg_id := g.a.child(&node, call_arg_idx)
 				arg_node := g.a.nodes[int(arg_id)]
 				if spread_id := g.spread_arg_child(arg_node) {
 					arg_type := g.generic_call_arg_type_text(spread_id)
-					if arg_type.len > 0 {
-						infer_codegen_generic_type_args(param_text, arg_type, mut inferred)
+					if arg_type != 0 {
+						infer_codegen_generic_type_args(param_type, arg_type, mut inferred)
 					}
 					continue
 				}
 				arg_type := g.generic_call_arg_type_text(arg_id)
-				if arg_type.len > 0 {
+				if arg_type != 0 {
 					infer_codegen_generic_type_args(elem_param, arg_type, mut inferred)
 				}
 			}
 			break
 		}
 		arg_type := g.generic_call_arg_type_text(g.a.child(&node, arg_idx))
-		if arg_type.len > 0 {
-			infer_codegen_generic_type_args(param_text, arg_type, mut inferred)
-		}
+		if arg_type != 0 { infer_codegen_generic_type_args(param_type, arg_type, mut inferred) }
 	}
 }
 
@@ -13359,7 +13331,11 @@ fn (g &FlatGen) codegen_generic_fn_is_variadic(base string) bool {
 		|| g.fn_decl_is_variadic(base, base.all_after_last('.'))
 }
 
-fn codegen_variadic_elem_param_text(param_text string) string {
+fn codegen_variadic_elem_param_text(param_type u32) u32 {
+	return flat.source_type_id(codegen_variadic_elem_param_text_bytes(flat.source_type_name(param_type)))
+}
+
+fn codegen_variadic_elem_param_text_bytes(param_text string) string {
 	clean := trimmed_space(param_text)
 	if clean.starts_with('...') {
 		return trimmed_space(clean[3..])
@@ -13578,111 +13554,77 @@ fn (g &FlatGen) known_generic_plain_fn_base(name string) ?string {
 	return none
 }
 
-fn (g &FlatGen) generic_call_arg_type_text(id flat.NodeId) string {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return ''
-	}
+fn (g &FlatGen) generic_call_arg_type_text(id flat.NodeId) u32 {
+	if int(id) < 0 || int(id) >= g.a.nodes.len { return 0 }
 	node := g.a.nodes[int(id)]
 	if node.kind == .ident {
 		if raw_type := g.local_storage_raw_type(node.value) {
-			if codegen_type_text_is_usable_for_generic_inference(raw_type) {
-				return raw_type
-			}
+			raw_id := flat.source_type_id(raw_type)
+			if codegen_type_text_is_usable_for_generic_inference(raw_id) { return raw_id }
 		}
-		typ := g.usable_expr_type(id)
-		name := typ.name()
-		if codegen_type_text_is_usable_for_generic_inference(name) {
-			return name
-		}
+		typ := g.usable_expr_type(id).source_type_id()
+		if codegen_type_text_is_usable_for_generic_inference(typ) { return typ }
 	}
 	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
 		child := g.a.child_node(&node, 0)
 		if child.kind == .ident {
 			if raw_type := g.local_storage_raw_type(child.value) {
-				if codegen_type_text_is_usable_for_generic_inference(raw_type) {
-					return '&${raw_type}'
+				if codegen_type_text_is_usable_for_generic_inference(flat.source_type_id(raw_type)) {
+					return flat.source_type_id('&${raw_type}')
 				}
 			}
 		}
 	}
 	if node.kind == .call {
-		if ret_type := g.generic_call_return_type_text_for_inference(id, node) {
-			return ret_type
-		}
-		if ret_type := g.registered_call_return_type_text(node) {
-			return ret_type
-		}
+		if ret_type := g.generic_call_return_type_text_for_inference(id, node) { return ret_type }
+		if ret_type := g.registered_call_return_type_text(node) { return ret_type }
 	}
-	if codegen_type_text_is_usable_for_generic_inference(node.typ_text()) {
-		return node.typ_text()
-	}
-	typ := g.usable_expr_type(id)
-	name := typ.name()
-	if codegen_type_text_is_usable_for_generic_inference(name) {
-		return name
-	}
-	return ''
+	if codegen_type_text_is_usable_for_generic_inference(node.typ) { return node.typ }
+	typ := g.usable_expr_type(id).source_type_id()
+	if codegen_type_text_is_usable_for_generic_inference(typ) { return typ }
+	return 0
 }
 
-fn (g &FlatGen) generic_call_return_type_text_for_inference(id flat.NodeId, node flat.Node) ?string {
-	if node.kind != .call || node.children_count == 0 {
-		return none
-	}
+fn (g &FlatGen) generic_call_return_type_text_for_inference(id flat.NodeId, node flat.Node) ?u32 {
+	if node.kind != .call || node.children_count == 0 { return none }
 	target := g.call_target_name(g.a.child(&node, 0))
 	base := g.generic_plain_fn_base_for_call(id, target) or { return none }
 	params := g.tc.fn_generic_params[base] or { return none }
-	if params.len == 0 {
-		return none
-	}
-	param_texts := flat.TypeTextList{ ids: g.tc.fn_param_type_texts.type_ids(base) or { return none } }.names()
-	mut inferred := map[string]string{}
-	g.infer_codegen_generic_call_type_args(node, base, param_texts, mut inferred)
-	mut args := []string{cap: params.len}
+	if params.len == 0 { return none }
+	param_types := g.tc.fn_param_type_texts.type_ids(base) or { return none }
+	mut inferred := map[string]u32{}
+	g.infer_codegen_generic_call_type_args(node, base, param_types, mut inferred)
+	mut args := []u32{cap: params.len}
 	for param in params {
 		arg := inferred[param] or { return none }
-		if codegen_generic_arg_is_unresolved(arg) {
-			return none
-		}
+		if codegen_generic_arg_is_unresolved(arg) { return none }
 		args << arg
 	}
-	ret_text_source_id_2 := g.tc.fn_ret_type_texts.type_id(base) or { node.typ }
-	ret_text := flat.source_type_name(ret_text_source_id_2)
-	if ret_text_source_id_2 == 0 {
-		return none
-	}
-	ret := substitute_shared_generic_type_text(ret_text, params, args)
-	if codegen_type_text_is_usable_for_generic_inference(ret) {
-		return ret
-	}
+	ret_type := g.tc.fn_ret_type_texts.type_id(base) or { node.typ }
+	if ret_type == 0 { return none }
+	ret := flat.source_type_id(substitute_shared_generic_type_text(flat.source_type_name(ret_type), params, flat.TypeTextList{ ids: args }.names()))
+	if codegen_type_text_is_usable_for_generic_inference(ret) { return ret }
 	return none
 }
 
-fn (g &FlatGen) registered_call_return_type_text(node flat.Node) ?string {
-	if node.kind != .call || node.children_count == 0 {
-		return none
-	}
-	if typ := g.specialized_receiver_call_return_type_text(node) {
-		return typ
-	}
+fn (g &FlatGen) registered_call_return_type_text(node flat.Node) ?u32 {
+	if node.kind != .call || node.children_count == 0 { return none }
+	if typ := g.specialized_receiver_call_return_type_text(node) { return typ }
 	target := g.call_target_name(g.a.child(&node, 0))
 	for candidate in [target, g.normalize_call_key(target), g.cname(target)] {
 		if ret := g.fn_decl_ret_types[candidate] {
-			name := ret.name()
-			if codegen_type_text_is_usable_for_generic_inference(name) {
-				return name
-			}
+			source_id := ret.source_type_id()
+			if codegen_type_text_is_usable_for_generic_inference(source_id) { return source_id }
 		}
 		if ret := g.tc.fn_ret_types[candidate] {
-			name := ret.name()
-			if codegen_type_text_is_usable_for_generic_inference(name) {
-				return name
-			}
+			source_id := ret.source_type_id()
+			if codegen_type_text_is_usable_for_generic_inference(source_id) { return source_id }
 		}
 	}
 	return none
 }
 
-fn (g &FlatGen) specialized_receiver_call_return_type_text(node flat.Node) ?string {
+fn (g &FlatGen) specialized_receiver_call_return_type_text(node flat.Node) ?u32 {
 	target := g.call_target_name(g.a.child(&node, 0))
 	if !target.contains('.') {
 		return none
@@ -13708,7 +13650,7 @@ fn (g &FlatGen) specialized_receiver_call_return_type_text(node flat.Node) ?stri
 		if arg.len == 0 {
 			continue
 		}
-		return '${base}[${arg}]'
+		return flat.source_type_id('${base}[${arg}]')
 	}
 	return none
 }
@@ -13733,15 +13675,20 @@ fn codegen_generic_type_arg_from_suffix(suffix string) string {
 	}
 }
 
-fn codegen_type_text_is_usable_for_generic_inference(typ string) bool {
+fn codegen_type_text_is_usable_for_generic_inference(typ u32) bool {
+	return codegen_type_text_is_usable_for_generic_inference_bytes(flat.source_type_name(typ))
+}
+
+fn codegen_type_text_is_usable_for_generic_inference_bytes(typ string) bool {
 	clean := trimmed_space(typ)
 	if clean.len == 0 || clean in ['void', 'unknown', 'generic'] {
 		return false
 	}
-	return !codegen_generic_arg_is_unresolved(clean)
+	return !codegen_generic_arg_is_unresolved_bytes(clean)
 }
 
-fn (mut g FlatGen) specialized_generic_plain_fn_candidates(base string, args []string) []string {
+fn (mut g FlatGen) specialized_generic_plain_fn_candidates(base string, args_ids []u32) []string {
+	args := flat.TypeTextList{ ids: args_ids }.names()
 	mut suffixes := codegen_generic_type_suffix_variants(args)
 	mut bases := []string{}
 	bases << base
@@ -13820,7 +13767,11 @@ fn codegen_push_unique(mut values []string, value string) {
 	}
 }
 
-fn infer_codegen_generic_type_args(param_type string, arg_type string, mut inferred map[string]string) {
+fn infer_codegen_generic_type_args(param_type u32, arg_type u32, mut inferred map[string]u32) {
+	infer_codegen_generic_type_args_bytes(flat.source_type_name(param_type), flat.source_type_name(arg_type), mut inferred)
+}
+
+fn infer_codegen_generic_type_args_bytes(param_type string, arg_type string, mut inferred map[string]u32) {
 	param := trimmed_space(param_type)
 	arg := trimmed_space(arg_type)
 	if param.len == 0 || arg.len == 0 || arg in ['unknown', 'generic'] {
@@ -13828,29 +13779,29 @@ fn infer_codegen_generic_type_args(param_type string, arg_type string, mut infer
 	}
 	if codegen_generic_placeholder_name(param) {
 		if param !in inferred {
-			inferred[param] = arg
+			inferred[param] = flat.source_type_id(arg)
 		}
 		return
 	}
 	if param.starts_with('&') {
-		infer_codegen_generic_type_args(param[1..], arg.trim_left('&'), mut inferred)
+		infer_codegen_generic_type_args_bytes(param[1..], arg.trim_left('&'), mut inferred)
 		return
 	}
 	if param.starts_with('mut ') {
-		infer_codegen_generic_type_args(param[4..], arg.trim_left('&'), mut inferred)
+		infer_codegen_generic_type_args_bytes(param[4..], arg.trim_left('&'), mut inferred)
 		return
 	}
 	if param.starts_with('...') {
-		infer_codegen_generic_type_args(param[3..], arg.trim_left('[]'), mut inferred)
+		infer_codegen_generic_type_args_bytes(param[3..], arg.trim_left('[]'), mut inferred)
 		return
 	}
 	if param.starts_with('[]') && arg.starts_with('[]') {
-		infer_codegen_generic_type_args(param[2..], arg[2..], mut inferred)
+		infer_codegen_generic_type_args_bytes(param[2..], arg[2..], mut inferred)
 		return
 	}
 	if (param.starts_with('?') && arg.starts_with('?'))
 		|| (param.starts_with('!') && arg.starts_with('!')) {
-		infer_codegen_generic_type_args(param[1..], arg[1..], mut inferred)
+		infer_codegen_generic_type_args_bytes(param[1..], arg[1..], mut inferred)
 		return
 	}
 	if param.starts_with('fn') && arg.starts_with('fn') {
@@ -13859,10 +13810,10 @@ fn infer_codegen_generic_type_args(param_type string, arg_type string, mut infer
 		if p_ok && a_ok {
 			for i, p_param in p_params {
 				if i < a_params.len {
-					infer_codegen_generic_type_args(p_param, a_params[i], mut inferred)
+					infer_codegen_generic_type_args_bytes(p_param, a_params[i], mut inferred)
 				}
 			}
-			infer_codegen_generic_type_args(p_ret, a_ret, mut inferred)
+			infer_codegen_generic_type_args_bytes(p_ret, a_ret, mut inferred)
 		}
 		return
 	}
@@ -13870,8 +13821,8 @@ fn infer_codegen_generic_type_args(param_type string, arg_type string, mut infer
 		p_end := shared_generic_matching_bracket(param, 3)
 		a_end := shared_generic_matching_bracket(arg, 3)
 		if p_end < param.len && a_end < arg.len {
-			infer_codegen_generic_type_args(param[4..p_end], arg[4..a_end], mut inferred)
-			infer_codegen_generic_type_args(param[p_end + 1..], arg[a_end + 1..], mut inferred)
+			infer_codegen_generic_type_args_bytes(param[4..p_end], arg[4..a_end], mut inferred)
+			infer_codegen_generic_type_args_bytes(param[p_end + 1..], arg[a_end + 1..], mut inferred)
 		}
 		return
 	}
@@ -13881,7 +13832,7 @@ fn infer_codegen_generic_type_args(param_type string, arg_type string, mut infer
 		if a_ok && p_base.all_after_last('.') == a_base.all_after_last('.') {
 			for i, p_arg in p_args {
 				if i < a_args.len {
-					infer_codegen_generic_type_args(p_arg, a_args[i], mut inferred)
+					infer_codegen_generic_type_args_bytes(p_arg, a_args[i], mut inferred)
 				}
 			}
 		}
@@ -13959,7 +13910,11 @@ fn codegen_generic_placeholder_name(name string) bool {
 	return clean[0] >= `A` && clean[0] <= `Z` && clean[1] >= `0` && clean[1] <= `9`
 }
 
-fn codegen_generic_arg_is_unresolved(arg string) bool {
+fn codegen_generic_arg_is_unresolved(arg u32) bool {
+	return codegen_generic_arg_is_unresolved_bytes(flat.source_type_name(arg))
+}
+
+fn codegen_generic_arg_is_unresolved_bytes(arg string) bool {
 	clean := trimmed_space(arg)
 	if clean.len == 0 {
 		return true
@@ -13968,28 +13923,28 @@ fn codegen_generic_arg_is_unresolved(arg string) bool {
 		return true
 	}
 	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
-		return codegen_generic_arg_is_unresolved(clean[1..])
+		return codegen_generic_arg_is_unresolved_bytes(clean[1..])
 	}
 	if clean.starts_with('mut ') {
-		return codegen_generic_arg_is_unresolved(clean[4..])
+		return codegen_generic_arg_is_unresolved_bytes(clean[4..])
 	}
 	if clean.starts_with('...') {
-		return codegen_generic_arg_is_unresolved(clean[3..])
+		return codegen_generic_arg_is_unresolved_bytes(clean[3..])
 	}
 	if clean.starts_with('[]') {
-		return codegen_generic_arg_is_unresolved(clean[2..])
+		return codegen_generic_arg_is_unresolved_bytes(clean[2..])
 	}
 	if clean.starts_with('map[') {
 		bracket_end := shared_generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			return codegen_generic_arg_is_unresolved(clean[4..bracket_end])
-				|| codegen_generic_arg_is_unresolved(clean[bracket_end + 1..])
+			return codegen_generic_arg_is_unresolved_bytes(clean[4..bracket_end])
+				|| codegen_generic_arg_is_unresolved_bytes(clean[bracket_end + 1..])
 		}
 	}
 	_, nested_args, ok := parse_shared_generic_app_parts(clean)
 	if ok {
 		for nested in nested_args {
-			if codegen_generic_arg_is_unresolved(nested) {
+			if codegen_generic_arg_is_unresolved_bytes(nested) {
 				return true
 			}
 		}
