@@ -542,6 +542,15 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 	if operator_index := fastc_lowest_precedence_operator_index(tokens, start, end) {
 		return g.infer_boolean_binary_expression_type(tokens, start, end, operator_index)!
 	}
+	if tokens[end - 1].tok == .rpar {
+		open := g.fastc_element_call_open(tokens[start..end])
+		if open > 0 {
+			element_type := g.infer_expression_type_range(tokens, start, start + open)!
+			if signature := g.mono_functions[element_type] {
+				return signature.return_type_text()
+			}
+		}
+	}
 	if end - start == 2 && tokens[start].tok == .dot && tokens[start + 1].typ_text() != '' {
 		return tokens[start + 1].typ_text()
 	}

@@ -1643,11 +1643,15 @@ fn (mut g Parser) read_compound_expression_atom(expression_tokens []FastcExpress
 		}
 	}
 	anon, anon_name, is_capturing := g.parse_anonymous_function()!
+	signature := g.mono_functions[anon_name] or { return g.unsupported('anonymous function signature') }
+	function_type := '__vf_fn_type_${anon_name}'
+	g.spawn_typedefs[function_type] = 'typedef ${fastc_output_c_type(signature.return_type_text())} (*${function_type})(${fastc_c_prototype_parameters(signature.parameter_types_text())});\n'
+	g.mono_functions[function_type] = signature
 	return FastcExpressionToken{
 		tok:                  .name
 		lit:                  anon_name
 		source:               anon
-		typ:                  flat.source_type_id('fn ()')
+		typ:                  flat.source_type_id(function_type)
 		is_capturing_closure: is_capturing
 	}
 }
@@ -4343,6 +4347,8 @@ fn (g &Parser) render_membership_expression(tokens []FastcExpressionToken, rende
 						// Array elements (`types in [][]Type`) cannot be compared with C `==`;
 						// compare the two arrays element-wise inline.
 						comparison = g.fastc_inline_array_element_equality(element_type, item_name, right_element) or { return none }
+					} else if g.underlying_alias_type(element_type).starts_with('FixedArray_') {
+						comparison = g.stored_equality_source(item_name, right_element, element_type, [], 0)
 					} else if g.struct_equality_is_supported(element_type, []) {
 						// Struct elements (`typ in []StrType`) cannot be compared with C `==`; compare them
 						// field-wise, like `struct == struct`.
@@ -5353,6 +5359,11 @@ fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, ren
 			return cast_expression
 		}
 	}
+	if !g.selfhost && flags.has_lcbr {
+		if literal := g.render_struct_literal_expression(tokens) {
+			return literal
+		}
+	}
 	if selfhost := g.render_selfhost_special_expression(tokens, rendered_expression, flags) {
 		return selfhost
 	}
@@ -5574,7 +5585,7 @@ fn (g &Parser) render_element_function_call(tokens []FastcExpressionToken) ?Fast
 		return none
 	})
 	signature := g.functions[element_type] or {
-		g.functions[g.semantic_type_key(element_type)] or { return none }
+		g.functions[g.semantic_type_key(element_type)] or { g.mono_functions[element_type] or { return none } }
 	}
 	element := if member := g.render_member_receiver(element_tokens) {
 		member
