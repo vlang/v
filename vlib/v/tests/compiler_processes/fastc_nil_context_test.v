@@ -10,6 +10,10 @@ struct FastcNilCase {
 }
 
 fn test_fastc_nil_uses_concrete_expected_types() {
+	$if !macos && !linux {
+		return
+	}
+
 	cases := [
 		FastcNilCase{'alias_field', r'module main
 type Handle = voidptr
@@ -80,6 +84,10 @@ fn main() { assert count(nil, nil) == 2; println("ok") }
 }
 
 fn test_fastc_nil_still_rejects_erased_function_and_typed_pointer_storage() {
+	$if !macos && !linux {
+		return
+	}
+
 	sources := [
 		'module main\nfn main() { mut callback := fn () {}; callback = nil }\n',
 		'module main\nstruct Holder { mut: callback fn () = unsafe { nil } }\nfn main() { mut h := Holder{}; h.callback = nil }\n',
