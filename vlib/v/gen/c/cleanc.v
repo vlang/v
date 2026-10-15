@@ -19429,7 +19429,8 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 	if g.headerless_compiler_bootstrap() {
 		return false
 	}
-	if g.no_builtin || g.output_cross_c || g.object_file_mode {
+	if g.no_builtin || g.output_cross_c || g.object_file_mode
+		|| 'livemain' in g.compile_defines || 'sharedlive' in g.compile_defines {
 		return true
 	}
 	// These targets need SDK symbol renames, storage or constants that the
