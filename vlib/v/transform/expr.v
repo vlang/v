@@ -1002,7 +1002,7 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	if struct_type.len == 0 {
 		// Generic-struct instance operand (e.g. `Vec4[f32]`): keep the instance type
 		// so the operator lowers to the monomorphized method (`vec__Vec4_f32__plus`).
-		struct_type = t.generic_struct_instance_name(flat.source_type_id(lhs_type))
+		struct_type = flat.source_type_name(t.generic_struct_instance_name(flat.source_type_id(lhs_type)))
 	}
 	if struct_type.len == 0 {
 		return none
@@ -1028,11 +1028,12 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	if !generic_ne_uses_structural_eq {
 		if call_info := t.struct_operator_call_info_for_operand(flat.source_type_id(struct_type), node.op, is_alias_operator) {
 			if t.is_disabled_fn_name(call_info.name) {
-				ret_type := t.struct_operator_return_type(call_info.name)
-				if ret_type.len == 0 || ret_type == 'void' {
+				ret_type_source_id_3 := t.struct_operator_return_type(call_info.name)
+
+				if ret_type_source_id_3 == 0 || ret_type_source_id_3 == flat.source_type_void {
 					return t.make_empty()
 				}
-				return t.zero_value_for_type(flat.source_type_id(ret_type))
+				return t.zero_value_for_type(ret_type_source_id_3)
 			}
 			mut lhs := t.transform_expr(lhs_id)
 			if lhs_is_pointer {
@@ -1322,11 +1323,12 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 	}
 	if call_info := t.struct_operator_call_info(flat.source_type_id(struct_type), node.op) {
 		if t.is_disabled_fn_name(call_info.name) {
-			ret_type := t.struct_operator_return_type(call_info.name)
-			if ret_type.len == 0 || ret_type == 'void' {
+			ret_type_source_id_4 := t.struct_operator_return_type(call_info.name)
+
+			if ret_type_source_id_4 == 0 || ret_type_source_id_4 == flat.source_type_void {
 				return t.make_empty()
 			}
-			return t.zero_value_for_type(flat.source_type_id(ret_type))
+			return t.zero_value_for_type(ret_type_source_id_4)
 		}
 		call_lhs := t.stable_transformed_expr_for_reuse(lhs, flat.source_type_id(lhs_type), 'op_lhs')
 		call_rhs := t.stable_transformed_expr_for_reuse(rhs, flat.source_type_id(rhs_type), 'op_rhs')
@@ -1875,14 +1877,15 @@ fn (t &Transformer) operator_receiver_candidates(struct_type_id u32) []string {
 // for `type_name` (its base is a known generic struct), else ''. A type alias to a
 // generic instance (`SimdFloat4` -> `vec.Vec4[f32]`) is normalized first, so an
 // operand typed by its alias still lowers to the monomorphized operator.
-fn (t &Transformer) generic_struct_instance_name(type_name_id u32) string {
+fn (t &Transformer) generic_struct_instance_name(type_name_id u32) u32 {
 	if isnil(t.tc) {
-		return ''
+		return u32(0)
 	}
-	normalized := flat.source_type_name(t.normalize_type_alias(type_name_id))
+	normalized_source_id := t.normalize_type_alias(type_name_id)
+	normalized := flat.source_type_name(normalized_source_id)
 	base, _, ok := generic_app_parts(normalized)
 	if !ok {
-		return ''
+		return u32(0)
 	}
 	if _ := t.generic_struct_params_for_base(base) {
 		// Qualify a bare imported generic base to its canonical struct name so the
@@ -1890,11 +1893,11 @@ fn (t &Transformer) generic_struct_instance_name(type_name_id u32) string {
 		// bogus bare `Vec2_int__minus`.
 		resolved_base := t.struct_lookup_name(flat.source_type_id(base))
 		if resolved_base.len > 0 && resolved_base != base {
-			return resolved_base + normalized[base.len..]
+			return flat.source_type_id(resolved_base + normalized[base.len..])
 		}
-		return normalized
+		return normalized_source_id
 	}
-	return ''
+	return u32(0)
 }
 
 // generic_struct_operator_fn_name handles operator overloads on a generic-struct
@@ -1981,54 +1984,52 @@ fn (t &Transformer) has_struct_operator_fn(struct_type_id u32, op_name string) b
 }
 
 // struct_operator_return_type supports struct operator return type handling for Transformer.
-fn (t &Transformer) struct_operator_return_type(fn_name string) string {
+fn (t &Transformer) struct_operator_return_type(fn_name string) u32 {
 	if ret_source_id := t.fn_ret_types.type_id(fn_name) {
-		return flat.source_type_name(t.normalize_type_alias(ret_source_id))
+		return t.normalize_type_alias(ret_source_id)
 	}
 	if !isnil(t.tc) {
 		if ret := t.tc.fn_ret_types[fn_name] {
-			return flat.source_type_name(t.normalize_type_alias(ret.source_type_id()))
+			return t.normalize_type_alias(ret.source_type_id())
 		}
 	}
 	if fn_name.contains('.') {
 		receiver := fn_name.all_before_last('.')
 		op_name := fn_name.all_after_last('.')
 		if _ := struct_operator_name_to_op(op_name) {
-			if ret := t.generic_struct_operator_return_type_by_name(flat.source_type_id(receiver), op_name) {
-				return ret
+			if ret_source_id := t.generic_struct_operator_return_type_by_name(flat.source_type_id(receiver), op_name) {
+				ret := flat.source_type_name(ret_source_id)
+
+				return flat.source_type_id(ret)
 			}
 		}
 	}
-	return ''
+	return u32(0)
 }
 
 // infix_struct_operator_result_type
 // supports helper handling in transform.
 fn (t &Transformer) infix_struct_operator_result_type(node flat.Node, lhs_type_in_id u32) u32 {
-	lhs_type_in := flat.source_type_name(lhs_type_in_id)
-	if node.children_count < 2 {
-		return u32(0)
+	if node.children_count < 2 { return 0 }
+	// `lhs_type_in_id` is the already-resolved source spelling of the left operand.
+	// Reuse it so operator-overload checks do not resolve the operand again.
+	lhs_type := if flat.source_type_shape(lhs_type_in_id).has(.pointer) {
+		flat.source_type_id(flat.source_type_name(lhs_type_in_id)[1..])
+	} else {
+		lhs_type_in_id
 	}
-	// `lhs_type_in` is the already-resolved type of the left operand; the caller passes
-	// it so we don't re-resolve the operand (operator-overload checks run on every infix).
-	lhs_type := if lhs_type_in.starts_with('&') { lhs_type_in[1..] } else { lhs_type_in }
-	struct_type := t.struct_lookup_name(flat.source_type_id(lhs_type))
+	struct_type := t.struct_lookup_name(lhs_type)
 	if struct_type.len == 0 {
 		// Generic-struct instance (`Vec4[f32]`): the specialized operator method is
 		// not registered until monomorphization, so derive the result from the
 		// generic operator's (substituted) return type.
-		if rt := t.generic_struct_operator_return_type(flat.source_type_id(t.generic_struct_instance_name(flat.source_type_id(lhs_type))), node.op) {
-			return flat.source_type_id(rt)
-		}
-		return u32(0)
+		instance := t.generic_struct_instance_name(lhs_type)
+		return t.generic_struct_operator_return_type(instance, node.op) or { u32(0) }
 	}
 	if call_info := t.struct_operator_call_info(flat.source_type_id(struct_type), node.op) {
-		ret_type := t.struct_operator_return_type(call_info.name)
-		if ret_type.len > 0 {
-			return flat.source_type_id(ret_type)
-		}
+		return t.struct_operator_return_type(call_info.name)
 	}
-	return u32(0)
+	return 0
 }
 
 // generic_struct_operator_return_type returns the result type of an operator on a
@@ -2036,7 +2037,7 @@ fn (t &Transformer) infix_struct_operator_result_type(node flat.Node, lhs_type_i
 // declared return type (`Vec4[T].- -> Vec4[T]`) with the instance's type arguments
 // substituted (`-> Vec4[f32]`), qualified with the struct's module so the outer
 // expression resolves to the monomorphized operator.
-fn (t &Transformer) generic_struct_operator_return_type(struct_type_id u32, op flat.Op) ?string {
+fn (t &Transformer) generic_struct_operator_return_type(struct_type_id u32, op flat.Op) ?u32 {
 	if struct_type_id == u32(0) || isnil(t.tc) {
 		return none
 	}
@@ -2044,7 +2045,7 @@ fn (t &Transformer) generic_struct_operator_return_type(struct_type_id u32, op f
 	return t.generic_struct_operator_return_type_by_name(struct_type_id, op_name)
 }
 
-fn (t &Transformer) generic_struct_operator_return_type_by_name(struct_type_id u32, op_name string) ?string {
+fn (t &Transformer) generic_struct_operator_return_type_by_name(struct_type_id u32, op_name string) ?u32 {
 	struct_type := flat.source_type_name(struct_type_id)
 	if struct_type_id == u32(0) || isnil(t.tc) {
 		return none
@@ -2070,9 +2071,9 @@ fn (t &Transformer) generic_struct_operator_return_type_by_name(struct_type_id u
 	rbase, _, rok := generic_app_parts(substituted)
 	if rok && full_base.contains('.') && !rbase.contains('.')
 		&& rbase == full_base.all_after_last('.') {
-		return '${full_base.all_before_last('.')}.${substituted}'
+		return flat.source_type_id('${full_base.all_before_last('.')}.${substituted}')
 	}
-	return substituted
+	return flat.source_type_id(substituted)
 }
 
 fn struct_operator_name_to_op(op_name string) ?flat.Op {
@@ -3603,8 +3604,8 @@ fn (t &Transformer) sum_eq_variants(sum_name_id u32) ?[]u32 {
 		return flat.TypeTextList.from_names(variants).ids
 	}
 	variants_source_ids := t.concrete_sum_variants_for_candidate(sum_name_id).clone()
-	variants := flat.TypeTextList{ ids: variants_source_ids }.names()
-	if variants.len > 0 {
+
+	if variants_source_ids.len > 0 {
 		return variants_source_ids.clone()
 	}
 	return none

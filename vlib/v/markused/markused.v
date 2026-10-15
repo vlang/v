@@ -4359,7 +4359,7 @@ fn enqueue_structlike_str_method(type_name string, cur_module string, tc &types.
 	for candidate in generic_stringification_type_candidates(type_name, cur_module, tc) {
 		found = enqueue_structlike_str_candidate(candidate, tc, mut used, mut queue) || found
 	}
-	if info := tc.resolve_generic_struct_method(type_name, 'str') {
+	if info := tc.resolve_generic_struct_method(flat.source_type_id(type_name), 'str') {
 		found = true
 		enqueue(info.name, mut used, mut queue)
 		lowered := markused_c_name(info.name)
@@ -5318,7 +5318,7 @@ fn (c &CallCollector) add_interface_boxed_methods(iface_name string, actual_name
 	}
 	for method in c.tc.interface_abstract_method_names(iface_name) {
 		calls << '${iface_name}.${method}'
-		if info := c.tc.resolve_generic_struct_method(actual_name, method) {
+		if info := c.tc.resolve_generic_struct_method(flat.source_type_id(actual_name), method) {
 			c.add_typed_receiver_method_name(info.name, mut calls)
 		}
 		if concrete_method := c.tc.concrete_method_signature_key(actual_name, method) {
@@ -8394,8 +8394,8 @@ fn (c &CallCollector) register_top_level_for_in_vars(node &flat.Node, cur_module
 	}
 	if info := c.tc.iterator_for_in_next_call_info_text(container_type) {
 		return_text := c.generic_factory_return_type_text(info.name, cur_module, false)
-		specialized := c.tc.specialize_generic_factory_return(return_text, info.name,
-			container_type, []string{})
+		specialized := flat.source_type_name(c.tc.specialize_generic_factory_return(flat.source_type_id(return_text), info.name,
+			flat.source_type_id(container_type), []string{}))
 		if specialized.starts_with('?') {
 			local_types.set(value_var, specialized[1..])
 			return
@@ -8588,7 +8588,7 @@ fn (c &CallCollector) generic_factory_return_type_name(index &flat.Node, name st
 			if arg.len == 0 { return return_type }
 			args << c.generic_factory_qualified_type_text(arg, arg_id, cur_module, imports)
 		}
-		return c.tc.specialize_generic_factory_return(return_type, candidate, receiver_type, args)
+		return flat.source_type_name(c.tc.specialize_generic_factory_return(flat.source_type_id(return_type), candidate, flat.source_type_id(receiver_type), args))
 	}
 	return ''
 }
@@ -8610,8 +8610,8 @@ fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.Nod
 				return_type := c.generic_factory_return_type_text(candidate, cur_module,
 					unwrap_optional_result)
 				if return_type.len > 0 {
-					return c.tc.specialize_generic_factory_return(return_type, candidate,
-						receiver_type, []string{})
+					return flat.source_type_name(c.tc.specialize_generic_factory_return(flat.source_type_id(return_type), candidate,
+						flat.source_type_id(receiver_type), []string{}))
 				}
 			}
 			continue
@@ -8646,8 +8646,8 @@ fn (c &CallCollector) inferred_generic_factory_return_type_name(call_id flat.Nod
 		if return_type.len == 0 {
 			continue
 		}
-		return c.tc.specialize_generic_factory_return(return_type, candidate, receiver_type,
-			args)
+		return flat.source_type_name(c.tc.specialize_generic_factory_return(flat.source_type_id(return_type), candidate, flat.source_type_id(receiver_type),
+			args))
 	}
 	return none
 }

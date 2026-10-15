@@ -96,7 +96,7 @@ fn test_parallel_fn_prep_recognizes_source_embedded_veb_context() {
 	tc.build_type_declaration_index(&a)
 	tc.cur_file = 'context.v'
 	tc.cur_module = 'veb'
-	assert tc.source_type_embeds_veb_context('RegressionContext')
+	assert tc.source_type_embeds_veb_context(flat.source_type_id('RegressionContext'))
 
 	a.add_node(flat.Node{
 		kind:  .type_decl
@@ -105,7 +105,7 @@ fn test_parallel_fn_prep_recognizes_source_embedded_veb_context() {
 	})
 	tc.top_level_idx << a.nodes.len - 1
 	tc.build_type_declaration_index(&a)
-	assert tc.source_type_embeds_veb_context('AliasContext')
+	assert tc.source_type_embeds_veb_context(flat.source_type_id('AliasContext'))
 }
 
 fn test_first_type_declaration_index_preserves_conflict_context_and_order() {

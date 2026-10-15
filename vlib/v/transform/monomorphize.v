@@ -1470,11 +1470,12 @@ fn (mut t Transformer) record_index_operator_fn_name(node flat.Node, method stri
 	base_id := t.a.child(&node, 0)
 	base_type_source_id := t.node_type(base_id)
 
-	struct_type := t.generic_struct_instance_name(base_type_source_id)
-	if struct_type.len == 0 {
+	struct_type_source_id_2 := t.generic_struct_instance_name(base_type_source_id)
+	struct_type := flat.source_type_name(struct_type_source_id_2)
+	if struct_type_source_id_2 == 0 {
 		return
 	}
-	if name := t.generic_struct_operator_fn_name(flat.source_type_id(struct_type), method) {
+	if name := t.generic_struct_operator_fn_name(struct_type_source_id_2, method) {
 		t.used_struct_operator_fns[name] = true
 		t.used_struct_operator_fns[c_name('${struct_type}.${method}')] = true
 	}
@@ -11788,9 +11789,10 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 	if node.kind == .infix && children.len >= 2 {
 		lhs_type_source_id := t.trim_pointer_type(t.node_type(children[0]))
 
-		struct_type := t.generic_struct_instance_name(lhs_type_source_id)
-		if struct_type.len > 0 {
-			if call_info := t.struct_operator_call_info(flat.source_type_id(struct_type), node.op) {
+		struct_type_source_id_3 := t.generic_struct_instance_name(lhs_type_source_id)
+
+		if struct_type_source_id_3 != 0 {
+			if call_info := t.struct_operator_call_info(struct_type_source_id_3, node.op) {
 				t.mark_struct_operator_used_name(call_info.name)
 			}
 		}

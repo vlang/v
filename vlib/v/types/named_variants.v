@@ -20,7 +20,8 @@ pub fn named_variant_pattern_binding(a &flat.FlatAst, cond &flat.Node) ?flat.Nod
 
 // named_variant_payload_type returns the payload type of a concrete hidden
 // variant struct, or none for a payload-less variant.
-pub fn (tc &TypeChecker) named_variant_payload_type(variant_type string) ?Type {
+pub fn (tc &TypeChecker) named_variant_payload_type(variant_type_id u32) ?Type {
+	variant_type := flat.source_type_name(variant_type_id)
 	if !flat.is_named_variant_type_name(variant_type) {
 		return none
 	}
@@ -51,7 +52,7 @@ fn (mut tc TypeChecker) declare_named_variant_binding(subject_type Type, branch 
 	pattern := tc.match_type_pattern(cond) or { return }
 	variant_type := tc.sum_variant_type_for_pattern(sum_name, pattern) or { return }
 	display := flat.named_variant_display_name(variant_type)
-	payload_type := tc.named_variant_payload_type(variant_type) or {
+	payload_type := tc.named_variant_payload_type(flat.source_type_id(variant_type)) or {
 		tc.record_error_at(.condition_mismatch, '`${display}` has no payload to bind to `${binding.value}`',
 			binding_id, binding.pos)
 		tc.cur_scope.insert(binding.value, Type(Unknown{}))
@@ -127,7 +128,7 @@ fn (mut tc TypeChecker) check_named_variant_init(id flat.NodeId, node flat.Node)
 		tc.register_synth_type(id, Type(Unknown{}))
 		return false
 	}
-	if payload_type := tc.named_variant_payload_type(node.value) {
+	if payload_type := tc.named_variant_payload_type(flat.source_type_id(node.value)) {
 		if node.children_count == 0 {
 			tc.record_error_at(.assignment_mismatch, '`${display}` needs a payload of type `${flat.source_type_name(tc.type_name(payload_type))}`, e.g. `${display}(value)`',
 				id, node.pos)

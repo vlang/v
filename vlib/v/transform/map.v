@@ -859,7 +859,7 @@ fn (mut t Transformer) disabled_struct_operator_zero_value_expansion_estimate(id
 		struct_type = t.struct_lookup_name(flat.source_type_id(lhs_type))
 	}
 	if struct_type.len == 0 {
-		struct_type = t.generic_struct_instance_name(flat.source_type_id(lhs_type))
+		struct_type = flat.source_type_name(t.generic_struct_instance_name(flat.source_type_id(lhs_type)))
 	}
 	if struct_type.len == 0 {
 		return 0
@@ -870,15 +870,16 @@ fn (mut t Transformer) disabled_struct_operator_zero_value_expansion_estimate(id
 	if !t.is_disabled_fn_name(call_info.name) {
 		return 0
 	}
-	result_type := t.struct_operator_return_type(call_info.name)
-	if result_type == 'void' {
+	result_type_source_id := t.struct_operator_return_type(call_info.name)
+	result_type := flat.source_type_name(result_type_source_id)
+	if result_type_source_id == flat.source_type_void {
 		return 0
 	}
-	if result_type.len == 0 || result_type in ['array', 'map', 'unknown']
-		|| t.generic_arg_is_unresolved(flat.source_type_id(result_type)) {
+	if result_type_source_id == 0 || result_type in ['array', 'map', 'unknown']
+		|| t.generic_arg_is_unresolved(result_type_source_id) {
 		return deferred_map_expansion_threshold + 1
 	}
-	return t.zero_value_expansion_estimate(id, flat.source_type_id(result_type))
+	return t.zero_value_expansion_estimate(id, result_type_source_id)
 }
 
 fn (mut t Transformer) ownership_nested_map_delete_key_clone_expands(node flat.Node) bool {
@@ -3616,7 +3617,7 @@ fn (t &Transformer) resolve_type_text_import_aliases(typ_id u32) u32 {
 			return flat.source_type_id(typ[..idx + 1] + flat.source_type_name(t.resolve_type_text_import_aliases(flat.source_type_id(typ[idx + 1..]))))
 		}
 	}
-	return flat.source_type_id(t.tc.resolve_imported_type_text_in_file(typ, t.cur_file))
+	return t.tc.resolve_imported_type_text_in_file(typ_id, t.cur_file)
 }
 
 fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {

@@ -13049,7 +13049,7 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 			method := if t.tc.autofree_mode { 'free' } else { 'drop' }
 			module_name := t.tc.struct_module_for_type(typ.name())
 			if typ.name().contains('[') {
-				if _ := t.tc.resolve_generic_struct_method(typ.name(), method) {
+				if _ := t.tc.resolve_generic_struct_method(typ.source_type_id(), method) {
 					t.mark_fn_used_name('${typ.name()}.${method}')
 					if module_name.len > 0 && !typ.name().starts_with('${module_name}.') {
 						t.mark_fn_used_name('${module_name}.${typ.name()}.${method}')
@@ -13104,7 +13104,7 @@ fn (mut t Transformer) transform_spawn_expr(id flat.NodeId, node flat.Node) flat
 					} else {
 						flat.source_type_name(t.node_type(t.a.child(callee, 0)))
 					}
-					if info := t.tc.resolve_generic_struct_method(base_type, callee.value) {
+					if info := t.tc.resolve_generic_struct_method(flat.source_type_id(base_type), callee.value) {
 						call_type = info.return_type.name()
 					}
 				}
@@ -26833,7 +26833,7 @@ fn (t &Transformer) typeof_type_name(node flat.Node) string {
 		// recorded under the narrower operand's type, so `typeof` would name `u64`
 		// for a value that is 128 bits wide. The promotion always goes to the wider
 		// operand, and the operands still carry their own types here.
-		typ = t.stringify_wide_integer_operand(expr_id)
+		typ = flat.source_type_name(t.stringify_wide_integer_operand(expr_id))
 	}
 	if typ.len == 0 {
 		typ = flat.source_type_name(t.node_type(expr_id))

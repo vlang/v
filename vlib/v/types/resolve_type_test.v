@@ -189,7 +189,7 @@ fn test_infix_primitive_keeps_generic_owner_metadata_candidates() {
 		key := '${owner}[T].+'
 		tc.fn_ret_types[key] = Type(u64_)
 		tc.fn_param_types[key] = [Type(u64_), Type(u64_)]
-		expected := tc.resolve_generic_struct_method('u64', '+') or { panic('missing baseline candidate ${owner}') }
+		expected := tc.resolve_generic_struct_method(flat.source_type_u64, '+') or { panic('missing baseline candidate ${owner}') }
 		signature := tc.infix_operator_signature(.plus, Type(u64_)) or { panic('missing generic fallback ${owner}') }
 		assert signature.param_count == expected.params.len
 		assert signature.return_type == expected.return_type
@@ -208,10 +208,10 @@ fn test_infix_primitive_keeps_generic_alias_redirect_metadata() {
 		tc.fn_param_types['Box[T].+'] = [Type(u64_), Type(u64_)]
 		if alias_key == 'dep.u64' {
 			// Builtin names are never module-qualified by this resolver.
-			assert tc.resolve_generic_struct_method('u64', '+') == none
+			assert tc.resolve_generic_struct_method(flat.source_type_u64, '+') == none
 			assert tc.infix_operator_signature(.plus, Type(u64_)) == none
 		} else {
-			expected := tc.resolve_generic_struct_method('u64', '+') or { panic('missing redirected operator') }
+			expected := tc.resolve_generic_struct_method(flat.source_type_u64, '+') or { panic('missing redirected operator') }
 			signature := tc.infix_operator_signature(.plus, Type(u64_)) or { panic('missing alias redirect fallback') }
 			assert signature.return_type == expected.return_type
 			assert signature.param_count == expected.params.len

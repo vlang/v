@@ -441,7 +441,7 @@ fn (t &Transformer) spawn_expr_decl_type(node flat.Node) ?u32 {
 			} else {
 				flat.source_type_name(t.node_type(t.a.child(callee, 0)))
 			}
-			if info := t.tc.resolve_generic_struct_method(base_type, callee.value) {
+			if info := t.tc.resolve_generic_struct_method(flat.source_type_id(base_type), callee.value) {
 				ret_type = info.return_type.name()
 			}
 		}

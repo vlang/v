@@ -1295,7 +1295,7 @@ fn (mut tc TypeChecker) ownership_live_drop_entry(name string) ?OwnershipDropEnt
 		return none
 	}
 	type_name := st.owned_var_types.get(name) or { return none }
-	target := tc.ownership_drop_target_for_type_name(type_name) or { return none }
+	target := tc.ownership_drop_target_for_type_name(flat.source_type_id(type_name)) or { return none }
 	return OwnershipDropEntry{
 		name:             name
 		type_name:        target.type_name
@@ -1303,15 +1303,17 @@ fn (mut tc TypeChecker) ownership_live_drop_entry(name string) ?OwnershipDropEnt
 	}
 }
 
-fn (tc &TypeChecker) ownership_type_name_has_drop(type_name string) bool {
-	if _ := tc.ownership_drop_target_for_type_name(type_name) {
+fn (tc &TypeChecker) ownership_type_name_has_drop(type_name_id u32) bool {
+	if _ := tc.ownership_drop_target_for_type_name(type_name_id) {
 		return true
 	}
 	return false
 }
 
-fn (tc &TypeChecker) ownership_drop_target_for_type_name(type_name string) ?OwnershipDropTarget {
-	if tc.ownership == unsafe { nil } || type_name == '' {
+fn (tc &TypeChecker) ownership_drop_target_for_type_name(type_name_id u32) ?OwnershipDropTarget {
+	type_name_comparison_type_id_2 := type_name_id
+	type_name := flat.source_type_name(type_name_comparison_type_id_2)
+	if tc.ownership == unsafe { nil } || type_name_comparison_type_id_2 == u32(0) {
 		return none
 	}
 	clean := type_name.trim_left('&')
@@ -1327,20 +1329,21 @@ fn (tc &TypeChecker) ownership_drop_target_for_type_name(type_name string) ?Owne
 			type_name: flat.source_type_id(clean)
 		}
 	}
-	if target := tc.ownership_drop_target_for_direct_type_name(clean, false) {
+	if target := tc.ownership_drop_target_for_direct_type_name(flat.source_type_id(clean), false) {
 		return target
 	}
 	return none
 }
 
-fn (tc &TypeChecker) ownership_drop_target_for_direct_type_name(type_name string, optional_wrapper bool) ?OwnershipDropTarget {
-	if tc.ownership_type_name_has_direct_drop(type_name) {
+fn (tc &TypeChecker) ownership_drop_target_for_direct_type_name(type_name_id u32, optional_wrapper bool) ?OwnershipDropTarget {
+	type_name := flat.source_type_name(type_name_id)
+	if tc.ownership_type_name_has_direct_drop(type_name_id) {
 		return OwnershipDropTarget{
-			type_name:        flat.source_type_id(type_name)
+			type_name:        type_name_id
 			optional_wrapper: optional_wrapper
 		}
 	}
-	return tc.ownership_drop_target_for_resolved_type(tc.parse_type(flat.source_type_id(type_name)), optional_wrapper)
+	return tc.ownership_drop_target_for_resolved_type(tc.parse_type(type_name_id), optional_wrapper)
 }
 
 fn (tc &TypeChecker) ownership_drop_target_for_resolved_type(typ Type, optional_wrapper bool) ?OwnershipDropTarget {
@@ -1366,7 +1369,7 @@ fn (tc &TypeChecker) ownership_drop_target_for_resolved_type(typ Type, optional_
 		}
 	}
 	type_name := typ.name()
-	if tc.ownership_type_name_has_direct_drop(type_name) {
+	if tc.ownership_type_name_has_direct_drop(flat.source_type_id(type_name)) {
 		return OwnershipDropTarget{
 			type_name:        flat.source_type_id(type_name)
 			optional_wrapper: optional_wrapper
@@ -1375,11 +1378,13 @@ fn (tc &TypeChecker) ownership_drop_target_for_resolved_type(typ Type, optional_
 	return none
 }
 
-fn (tc &TypeChecker) ownership_type_name_has_direct_drop(type_name string) bool {
-	if tc.ownership == unsafe { nil } || type_name == '' {
+fn (tc &TypeChecker) ownership_type_name_has_direct_drop(type_name_id u32) bool {
+	type_name_comparison_type_id_4 := type_name_id
+
+	if tc.ownership == unsafe { nil } || type_name_comparison_type_id_4 == u32(0) {
 		return false
 	}
-	return tc.ownership_type_requires_drop(tc.parse_type(flat.source_type_id(type_name)))
+	return tc.ownership_type_requires_drop(tc.parse_type(type_name_id))
 }
 
 // ownership_type_requires_drop reports whether `typ` has an explicit Drop
@@ -1392,7 +1397,7 @@ pub fn (tc &TypeChecker) ownership_type_requires_drop(typ Type) bool {
 	// implementations behind an ancestor already present in its visited set.
 	name := typ.name()
 	cacheable := typ !is Unknown && tc.fn_context.generic_params.len == 0
-		&& !tc.type_text_has_generic_placeholder(name)
+		&& !tc.type_text_has_generic_placeholder(flat.source_type_id(name))
 	key := tc.cur_module + '\x01' + typ.type_name() + '\x01' + name
 	if cacheable {
 		if cached := tc.ownership.drop_requirements[key] {
@@ -1515,7 +1520,7 @@ fn (tc &TypeChecker) ownership_type_requires_destruction_inner(typ Type, depth i
 			return tc.ownership_type_requires_destruction_inner(typ.elem_type, depth + 1, mut seen)
 		}
 		Struct {
-			if tc.ownership_type_has_explicit_drop(typ.name()) {
+			if tc.ownership_type_has_explicit_drop(typ.source_type_id()) {
 				return true
 			}
 			if seen[typ.name()] {
@@ -1583,7 +1588,7 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			// V's ordinary value-copy semantics; requiring `IClone` for it would reject code
 			// that only ever copies such values.
 			if !tc.autofree_mode && !tc.named_type_implements_marker(name, 'IClone')
-				&& tc.ownership_type_has_explicit_drop(name) {
+				&& tc.ownership_type_has_explicit_drop(flat.source_type_id(name)) {
 				return name
 			}
 			if seen[name] {
@@ -1663,7 +1668,8 @@ fn (tc &TypeChecker) ownership_ierror_has_compatible_clone_method(typ Type) bool
 	return actual == expected || actual.all_after_last('.') == expected.all_after_last('.')
 }
 
-fn (tc &TypeChecker) ownership_type_has_explicit_drop(type_name string) bool {
+fn (tc &TypeChecker) ownership_type_has_explicit_drop(type_name_id u32) bool {
+	type_name := flat.source_type_name(type_name_id)
 	clean := type_name.trim_left('&?')
 	base := generic_base_name(clean)
 	return clean in tc.ownership.drop_structs || base in tc.ownership.drop_structs
@@ -1718,7 +1724,7 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []str
 		}
 		Struct {
 			name := typ.name()
-			if tc.ownership_type_has_explicit_drop(name) {
+			if tc.ownership_type_has_explicit_drop(flat.source_type_id(name)) {
 				if name !in names {
 					names << name
 				}
@@ -2167,11 +2173,12 @@ fn (mut tc TypeChecker) ownership_collect_global_init_descendant(name string, qn
 		return marked_call_descendants
 	}
 	type_name := tc.resolve_type(id).name()
-	tc.ownership_mark_owned_global(name, qname, suffix, type_name)
+	tc.ownership_mark_owned_global(name, qname, suffix, flat.source_type_id(type_name))
 	return true
 }
 
-fn (mut tc TypeChecker) ownership_mark_owned_global(name string, qname string, suffix string, type_name string) {
+fn (mut tc TypeChecker) ownership_mark_owned_global(name string, qname string, suffix string, type_name_id u32) {
+	type_name := flat.source_type_name(type_name_id)
 	mut st := tc.ownership_state()
 	st.owned_globals.set(qname + suffix, type_name)
 	if qname == name {
@@ -2323,7 +2330,7 @@ fn (mut tc TypeChecker) ownership_collect_global_call_return_descendants(name st
 		if desc.slot_idx != 0 {
 			continue
 		}
-		tc.ownership_mark_owned_global(name, qname, suffix + desc.suffix, desc.type_name_text())
+		tc.ownership_mark_owned_global(name, qname, suffix + desc.suffix, desc.type_name)
 		marked = true
 	}
 	return marked
@@ -2347,7 +2354,7 @@ fn (mut tc TypeChecker) ownership_collect_global_assoc_named_base_descendants(na
 		} else {
 			suffix + source_name[base_key.len..]
 		}
-		tc.ownership_mark_owned_global(name, qname, target_suffix, type_name)
+		tc.ownership_mark_owned_global(name, qname, target_suffix, flat.source_type_id(type_name))
 		marked = true
 	}
 	return marked
@@ -3270,7 +3277,7 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_owned_descendants_from_expr
 	for source in ownership_prescan_owned_descendant_names(source_name, owned_locals) {
 		source_suffix := source[source_name.len..]
 		type_name := (local_types[source] or { tc.resolve_type(expr_id) }).name()
-		tc.ownership_add_fn_return_descendant(fn_name, slot_idx, source_suffix, type_name)
+		tc.ownership_add_fn_return_descendant(fn_name, slot_idx, source_suffix, flat.source_type_id(type_name))
 		owned_locals.delete(source)
 		marked = true
 	}
@@ -3361,7 +3368,7 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_descendant_from_expr(fn_nam
 		for source in ownership_prescan_owned_descendant_names(source_name, owned_locals) {
 			source_suffix := source[source_name.len..]
 			type_name := (local_types[source] or { tc.resolve_type(expr_id) }).name()
-			tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix + source_suffix, type_name)
+			tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix + source_suffix, flat.source_type_id(type_name))
 			owned_locals.delete(source)
 			marked = true
 		}
@@ -3373,7 +3380,7 @@ fn (mut tc TypeChecker) ownership_prescan_add_return_descendant_from_expr(fn_nam
 			tc.resolve_type(expr_id).name()
 		}
 		tc.ownership_prescan_consume_local(expr_id, mut owned_locals)
-		tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix, type_name)
+		tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix, flat.source_type_id(type_name))
 		marked = true
 	}
 	return marked
@@ -3526,7 +3533,7 @@ fn (mut tc TypeChecker) ownership_prescan_add_param_descendant_from_expr(fn_name
 		for source in ownership_prescan_owned_descendant_names(source_name, owned_locals) {
 			source_suffix := source[source_name.len..]
 			type_name := (local_types[source] or { tc.resolve_type(expr_id) }).name()
-			tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix + source_suffix, type_name)
+			tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix + source_suffix, flat.source_type_id(type_name))
 			owned_locals.delete(source)
 			marked = true
 		}
@@ -3538,7 +3545,7 @@ fn (mut tc TypeChecker) ownership_prescan_add_param_descendant_from_expr(fn_name
 			tc.resolve_type(expr_id).name()
 		}
 		tc.ownership_prescan_consume_local(expr_id, mut owned_locals)
-		tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, type_name)
+		tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, flat.source_type_id(type_name))
 		marked = true
 	}
 	return marked
@@ -3809,7 +3816,9 @@ fn (mut tc TypeChecker) ownership_add_fn_return_slot(fn_name string, slot_idx in
 	}
 }
 
-fn (mut tc TypeChecker) ownership_add_fn_return_descendant(fn_name string, slot_idx int, suffix string, type_name string) {
+fn (mut tc TypeChecker) ownership_add_fn_return_descendant(fn_name string, slot_idx int, suffix string, type_name_id u32) {
+	type_name_comparison_type_id_8 := type_name_id
+	type_name := flat.source_type_name(type_name_comparison_type_id_8)
 	if fn_name == '' || slot_idx < 0 || suffix == '' {
 		return
 	}
@@ -3823,7 +3832,11 @@ fn (mut tc TypeChecker) ownership_add_fn_return_descendant(fn_name string, slot_
 	descs << OwnershipReturnDescendant{
 		slot_idx:  slot_idx
 		suffix:    suffix
-		type_name: flat.source_type_id(if type_name != '' { type_name } else { 'string' })
+		type_name: flat.source_type_id(if type_name_comparison_type_id_8 != u32(0) {
+			type_name
+		} else {
+			'string'
+		})
 	}
 	st.ownership_fn_return_descs[fn_name] = descs
 }
@@ -3854,7 +3867,9 @@ fn (mut tc TypeChecker) ownership_add_fn_return_param_descendant(fn_name string,
 	st.ownership_fn_return_param_descs[fn_name] = descs
 }
 
-fn (mut tc TypeChecker) ownership_add_fn_param_descendant(fn_name string, param_idx int, suffix string, type_name string) {
+fn (mut tc TypeChecker) ownership_add_fn_param_descendant(fn_name string, param_idx int, suffix string, type_name_id u32) {
+	type_name_comparison_type_id_9 := type_name_id
+	type_name := flat.source_type_name(type_name_comparison_type_id_9)
 	if fn_name == '' || param_idx < 0 || suffix == '' {
 		return
 	}
@@ -3868,7 +3883,11 @@ fn (mut tc TypeChecker) ownership_add_fn_param_descendant(fn_name string, param_
 	descs << OwnershipParamDescendant{
 		param_idx: param_idx
 		suffix:    suffix
-		type_name: flat.source_type_id(if type_name != '' { type_name } else { 'string' })
+		type_name: flat.source_type_id(if type_name_comparison_type_id_9 != u32(0) {
+			type_name
+		} else {
+			'string'
+		})
 	}
 	st.ownership_fn_param_descs[fn_name] = descs
 	st.ownership_fn_param_desc_count++
@@ -4674,7 +4693,7 @@ fn (mut tc TypeChecker) ownership_prescan_collapsed_field_arg(node flat.Node, in
 		} else {
 			tc.resolve_type(arg_id)
 		}
-		tc.ownership_add_fn_param_descendant(info.name, param_idx, suffix, arg_type.name())
+		tc.ownership_add_fn_param_descendant(info.name, param_idx, suffix, arg_type.source_type_id())
 		tc.ownership_prescan_consume_local(arg_id, mut owned_locals)
 	}
 	arg_name := tc.ownership_expr_ident_name(arg_id)
@@ -4802,7 +4821,7 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 				} else {
 					tc.resolve_type(arg_id)
 				}
-				tc.ownership_add_fn_param_descendant(info.name, target_param_idx, target_suffix, arg_type.name())
+				tc.ownership_add_fn_param_descendant(info.name, target_param_idx, target_suffix, arg_type.source_type_id())
 			} else {
 				tc.ownership_mark_fn_param_owned(info.name, param_idx)
 			}
@@ -5112,7 +5131,7 @@ fn (mut tc TypeChecker) ownership_prescan_transfer_owned_descendants_to_param_wi
 	for source_name in ownership_prescan_owned_descendant_names(source_prefix, owned_locals) {
 		suffix := source_name[source_prefix.len..]
 		type_name := (local_types[source_name] or { Type(String{}) }).name()
-		tc.ownership_add_fn_param_descendant(fn_name, param_idx, target_suffix + suffix, type_name)
+		tc.ownership_add_fn_param_descendant(fn_name, param_idx, target_suffix + suffix, flat.source_type_id(type_name))
 		owned_locals.delete(source_name)
 		moved_any = true
 	}
@@ -5205,7 +5224,7 @@ fn (mut tc TypeChecker) ownership_begin_fn(node flat.Node) {
 		if child.kind != .param || child.value.len == 0 {
 			continue
 		}
-		tc.ownership_mark_owned_name(child.value + desc.suffix, desc.type_name_text(), child_id)
+		tc.ownership_mark_owned_name(child.value + desc.suffix, desc.type_name, child_id)
 	}
 }
 
@@ -5244,7 +5263,7 @@ fn (mut tc TypeChecker) ownership_begin_fn_literal(id flat.NodeId, node flat.Nod
 	st.pointer_index_aliases = captured_pointer_aliases.clone()
 	st.path_active = true
 	for capture in captures {
-		tc.ownership_mark_owned_name(capture.name, capture.type_name_text(), capture.pos)
+		tc.ownership_mark_owned_name(capture.name, capture.type_name, capture.pos)
 	}
 	mut param_idx := 0
 	for i in 0 .. node.children_count {
@@ -5374,7 +5393,7 @@ fn (mut tc TypeChecker) ownership_begin_lambda_expr(id flat.NodeId, node flat.No
 	st.pointer_index_aliases = captured_pointer_aliases.clone()
 	st.path_active = true
 	for capture in captures {
-		tc.ownership_mark_owned_name(capture.name, capture.type_name_text(), capture.pos)
+		tc.ownership_mark_owned_name(capture.name, capture.type_name, capture.pos)
 	}
 }
 
@@ -6033,7 +6052,7 @@ fn (mut tc TypeChecker) ownership_drop_entries_for_loop_base_scope(base Ownershi
 			continue
 		}
 		type_name := snapshot.owned_var_types.get(name) or { continue }
-		if target := tc.ownership_drop_target_for_type_name(type_name) {
+		if target := tc.ownership_drop_target_for_type_name(flat.source_type_id(type_name)) {
 			entries << OwnershipDropEntry{
 				name:             name
 				type_name:        target.type_name
@@ -6060,7 +6079,7 @@ fn (mut tc TypeChecker) ownership_drop_entries_since_frame(base OwnershipFrame, 
 	mut entries := []OwnershipDropEntry{}
 	for candidate in candidates {
 		type_name := snapshot.owned_var_types.get(candidate.name) or { continue }
-		if target := tc.ownership_drop_target_for_type_name(type_name) {
+		if target := tc.ownership_drop_target_for_type_name(flat.source_type_id(type_name)) {
 			entries << OwnershipDropEntry{
 				name:             candidate.name
 				type_name:        target.type_name
@@ -6618,7 +6637,7 @@ fn (mut tc TypeChecker) ownership_bind_for_in_var_from_storage(target_name strin
 	if moved_types.len == 0 {
 		return false
 	}
-	tc.ownership_mark_owned_name(target_name, moved_types[0], target_id)
+	tc.ownership_mark_owned_name(target_name, flat.source_type_id(moved_types[0]), target_id)
 	return true
 }
 
@@ -6939,7 +6958,7 @@ fn (mut tc TypeChecker) ownership_merge_branch_owned(group OwnershipBranchGroup)
 				continue
 			}
 			type_name := branch.owned_var_types.get(name) or { 'string' }
-			tc.ownership_mark_owned_name(name, type_name, pos)
+			tc.ownership_mark_owned_name(name, flat.source_type_id(type_name), pos)
 		}
 	}
 }
@@ -7307,12 +7326,12 @@ fn (mut tc TypeChecker) ownership_commit_multi_assign_temp(temp_name string, lhs
 	mut marked := false
 	if temp_name in st.owned_vars {
 		type_name := tc.ownership_type_name_for_var(temp_name)
-		tc.ownership_mark_owned_name(lhs_name, type_name, assign_id)
+		tc.ownership_mark_owned_name(lhs_name, flat.source_type_id(type_name), assign_id)
 		marked = true
 	}
 	for owned_name in tc.ownership_owned_descendant_names(temp_name) {
 		suffix := owned_name[temp_name.len..]
-		tc.ownership_mark_owned_name(lhs_name + suffix, tc.ownership_type_name_for_var(owned_name), assign_id)
+		tc.ownership_mark_owned_name(lhs_name + suffix, flat.source_type_id(tc.ownership_type_name_for_var(owned_name)), assign_id)
 		marked = true
 	}
 	if !marked {
@@ -7424,7 +7443,7 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 				tc.ownership_mark_owned(lhs_name, source_type, assign_id)
 				for source_name in descendants {
 					suffix := source_name[rhs_name.len..]
-					tc.ownership_mark_owned_name(lhs_name + suffix, tc.ownership_type_name_for_var(source_name), assign_id)
+					tc.ownership_mark_owned_name(lhs_name + suffix, flat.source_type_id(tc.ownership_type_name_for_var(source_name)), assign_id)
 					st.owned_vars.delete(source_name)
 					st.owned_var_types.delete(source_name)
 					st.moved_vars.delete(source_name)
@@ -7435,7 +7454,7 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		tc.ownership_transfer_owned_descendants(rhs_name, lhs_name, assign_id)
 		moved_types := tc.ownership_move_overlapping_dynamic_storage(rhs_name, lhs_name, assign_id, false, '', true)
 		if moved_types.len > 0 {
-			tc.ownership_mark_owned_name(lhs_name, moved_types[0], assign_id)
+			tc.ownership_mark_owned_name(lhs_name, flat.source_type_id(moved_types[0]), assign_id)
 			return
 		}
 		rhs_type := tc.resolve_type(rhs_id)
@@ -7505,7 +7524,7 @@ fn (mut tc TypeChecker) ownership_assign_shadowing_same_name(lhs_name string, rh
 	if moved_descendants.len > 0 {
 		tc.ownership_refresh_scope_snapshot(lhs_name)
 		for source_name, type_name in moved_descendants {
-			tc.ownership_mark_owned_name(source_name, type_name, assign_id)
+			tc.ownership_mark_owned_name(source_name, flat.source_type_id(type_name), assign_id)
 		}
 		return true
 	}
@@ -7739,7 +7758,7 @@ fn (mut tc TypeChecker) ownership_transfer_owned_descendants(source_prefix strin
 		target_name := target_prefix + suffix
 		type_name := tc.ownership_type_name_for_var(source_name)
 		if tc.ownership_move_var_result(source_name, target_name, pos, false, '', true) {
-			tc.ownership_mark_owned_name(target_name, type_name, pos)
+			tc.ownership_mark_owned_name(target_name, flat.source_type_id(type_name), pos)
 			moved_any = true
 		}
 	}
@@ -7772,7 +7791,7 @@ fn (mut tc TypeChecker) ownership_transfer_owned_descendants_to_param_with_suffi
 		suffix := source_name[source_prefix.len..]
 		type_name := tc.ownership_type_name_for_var(source_name)
 		if tc.ownership_move_var_result(source_name, fn_name, pos, true, fn_name, true) {
-			tc.ownership_add_fn_param_descendant(fn_name, param_idx, target_suffix + suffix, type_name)
+			tc.ownership_add_fn_param_descendant(fn_name, param_idx, target_suffix + suffix, flat.source_type_id(type_name))
 			moved_any = true
 		}
 	}
@@ -8189,7 +8208,7 @@ fn (mut tc TypeChecker) ownership_mark_array_append_array(array_name string, rhs
 			ownership_array_append_target_key_from_segment(array_name, dst_len, source_index) + rest
 		type_name := tc.ownership_type_name_for_var(source)
 		if tc.ownership_move_var_result(source, target_key, pos, false, '', true) {
-			tc.ownership_mark_owned_name(target_key, type_name, pos)
+			tc.ownership_mark_owned_name(target_key, flat.source_type_id(type_name), pos)
 			marked = true
 		}
 	}
@@ -8509,7 +8528,7 @@ fn (mut tc TypeChecker) ownership_transfer_assoc_base_descendants(source_prefix 
 		target_name := target_prefix + suffix
 		type_name := tc.ownership_type_name_for_var(source_name)
 		if tc.ownership_move_var_result(source_name, target_name, pos, false, '', true) {
-			tc.ownership_mark_owned_name(target_name, type_name, pos)
+			tc.ownership_mark_owned_name(target_name, flat.source_type_id(type_name), pos)
 			moved_any = true
 		}
 	}
@@ -8646,7 +8665,7 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 			for descendant in descendants {
 				suffix := descendant[source_name.len..]
 				type_name := tc.ownership_type_name_for_var(descendant)
-				tc.ownership_mark_owned_name(target_name + suffix, type_name, pos)
+				tc.ownership_mark_owned_name(target_name + suffix, flat.source_type_id(type_name), pos)
 				st.owned_vars.delete(descendant)
 				st.owned_var_types.delete(descendant)
 				st.moved_vars.delete(descendant)
@@ -8657,7 +8676,7 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 	if source_name.len > 0 {
 		moved_types := tc.ownership_move_overlapping_dynamic_storage(source_name, target_name, pos, false, '', true)
 		if moved_types.len > 0 {
-			tc.ownership_mark_owned_name(target_name, moved_types[0], pos)
+			tc.ownership_mark_owned_name(target_name, flat.source_type_id(moved_types[0]), pos)
 			return true
 		}
 	}
@@ -8939,17 +8958,17 @@ fn (mut tc TypeChecker) ownership_consume_conditional_call_arg(fn_name string, p
 	for move in moved_sources {
 		tc.ownership_reject_global_move(move.source, pos, fn_name, true)
 		if tc.ownership_move_var_result(move.source, fn_name, pos, true, fn_name, true) {
-			tc.ownership_mark_call_param_owned(fn_name, param_idx, suffix + move.target_suffix, tc.ownership_type_name_for_var(move.source))
+			tc.ownership_mark_call_param_owned(fn_name, param_idx, suffix + move.target_suffix, flat.source_type_id(tc.ownership_type_name_for_var(move.source)))
 			marked = true
 		}
 	}
 	if tmp_name in tc.ownership_state().owned_vars {
-		tc.ownership_mark_call_param_owned(fn_name, param_idx, suffix, tc.ownership_type_name_for_var(tmp_name))
+		tc.ownership_mark_call_param_owned(fn_name, param_idx, suffix, flat.source_type_id(tc.ownership_type_name_for_var(tmp_name)))
 		marked = true
 	}
 	for owned_name in tc.ownership_owned_descendant_names(tmp_name) {
 		source_suffix := owned_name[tmp_name.len..]
-		tc.ownership_mark_call_param_owned(fn_name, param_idx, suffix + source_suffix, tc.ownership_type_name_for_var(owned_name))
+		tc.ownership_mark_call_param_owned(fn_name, param_idx, suffix + source_suffix, flat.source_type_id(tc.ownership_type_name_for_var(owned_name)))
 		marked = true
 	}
 	tc.ownership_clear_temp_storage(tmp_name)
@@ -8957,9 +8976,9 @@ fn (mut tc TypeChecker) ownership_consume_conditional_call_arg(fn_name string, p
 	return marked
 }
 
-fn (mut tc TypeChecker) ownership_mark_call_param_owned(fn_name string, param_idx int, suffix string, type_name string) {
+fn (mut tc TypeChecker) ownership_mark_call_param_owned(fn_name string, param_idx int, suffix string, type_name_id u32) {
 	if suffix != '' {
-		tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, type_name)
+		tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, type_name_id)
 		return
 	}
 	mut st := tc.ownership_state()
@@ -9147,7 +9166,7 @@ fn (mut tc TypeChecker) ownership_mark_fn_param_assoc_base_descendants(fn_name s
 		tc.ownership_reject_global_move(base_name, pos, fn_name, true)
 		type_name := tc.ownership_type_name_for_var(base_name)
 		if tc.ownership_move_var_result(base_name, fn_name, pos, true, fn_name, true) {
-			tc.ownership_mark_call_param_owned(fn_name, param_idx, base_suffix, type_name)
+			tc.ownership_mark_call_param_owned(fn_name, param_idx, base_suffix, flat.source_type_id(type_name))
 			marked = true
 		}
 	}
@@ -9158,7 +9177,7 @@ fn (mut tc TypeChecker) ownership_mark_fn_param_assoc_base_descendants(fn_name s
 		suffix := base_suffix + source_name[base_name.len..]
 		type_name := tc.ownership_type_name_for_var(source_name)
 		if tc.ownership_move_var_result(source_name, fn_name, pos, true, fn_name, true) {
-			tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, type_name)
+			tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, flat.source_type_id(type_name))
 			marked = true
 		}
 	}
@@ -9181,7 +9200,7 @@ fn (mut tc TypeChecker) ownership_mark_fn_param_descendant_from_expr(fn_name str
 			return false
 		}
 		tc.ownership_move_var(source_name, fn_name, pos, true, fn_name, true)
-		tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, tc.ownership_type_name_for_var(source_name))
+		tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, flat.source_type_id(tc.ownership_type_name_for_var(source_name)))
 		return true
 	}
 	if source_name.len > 0
@@ -9191,7 +9210,7 @@ fn (mut tc TypeChecker) ownership_mark_fn_param_descendant_from_expr(fn_name str
 	if tc.ownership_expr_is_to_owned_call(id) || tc.ownership_expr_is_owned_clone_call(id)
 		|| tc.ownership_expr_is_ownership_call(id)
 		|| tc.ownership_type_is_owned(tc.resolve_type(id)) {
-		tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, tc.resolve_type(id).name())
+		tc.ownership_add_fn_param_descendant(fn_name, param_idx, suffix, tc.resolve_type(id).source_type_id())
 		return true
 	}
 	return false
@@ -9390,7 +9409,7 @@ fn (mut tc TypeChecker) ownership_mark_return_assoc_base_descendants(fn_name str
 				st.mark_fn_return_owned(fn_name)
 				tc.ownership_add_fn_return_slot(fn_name, slot_idx)
 			} else {
-				tc.ownership_add_fn_return_descendant(fn_name, slot_idx, base_suffix, type_name)
+				tc.ownership_add_fn_return_descendant(fn_name, slot_idx, base_suffix, flat.source_type_id(type_name))
 			}
 			marked = true
 		}
@@ -9402,7 +9421,7 @@ fn (mut tc TypeChecker) ownership_mark_return_assoc_base_descendants(fn_name str
 		suffix := base_suffix + source_name[base_name.len..]
 		type_name := tc.ownership_type_name_for_var(source_name)
 		if tc.ownership_move_var_result(source_name, fn_name, pos, true, fn_name, false) {
-			tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix, type_name)
+			tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix, flat.source_type_id(type_name))
 			marked = true
 		}
 	}
@@ -9424,7 +9443,7 @@ fn (mut tc TypeChecker) ownership_add_return_descendant_from_expr(fn_name string
 		st.owned_var_types.delete(tmp_name)
 		st.moved_vars.delete(tmp_name)
 	}
-	tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix, type_name)
+	tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix, flat.source_type_id(type_name))
 	return true
 }
 
@@ -9474,7 +9493,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 								st.ownership_fn_params['${call_name}__param_0'] = true
 								for source_name in descendants {
 									suffix := source_name[recv_name.len..]
-									tc.ownership_add_fn_param_descendant(call_name, 0, suffix, tc.ownership_type_name_for_var(source_name))
+									tc.ownership_add_fn_param_descendant(call_name, 0, suffix, flat.source_type_id(tc.ownership_type_name_for_var(source_name)))
 									st.owned_vars.delete(source_name)
 									st.owned_var_types.delete(source_name)
 									st.moved_vars.delete(source_name)
@@ -9602,7 +9621,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 			if tc.ownership_move_var_result(arg_name, call_name, arg_id, true, call_name, true) {
 				moved_base = true
 				if variadic_elem_idx >= 0 {
-					tc.ownership_add_fn_param_descendant(call_name, target_param_idx, target_suffix, type_name)
+					tc.ownership_add_fn_param_descendant(call_name, target_param_idx, target_suffix, flat.source_type_id(type_name))
 				} else {
 					key := '${call_name}__param_${param_idx}'
 					st.ownership_fn_params[key] = true
@@ -9611,7 +9630,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 					suffix := source_name[arg_name.len..]
 					target_name := target_suffix + suffix
 					descendant_type_name := tc.ownership_type_name_for_var(source_name)
-					tc.ownership_add_fn_param_descendant(call_name, target_param_idx, target_name, descendant_type_name)
+					tc.ownership_add_fn_param_descendant(call_name, target_param_idx, target_name, flat.source_type_id(descendant_type_name))
 					st.owned_vars.delete(source_name)
 					st.owned_var_types.delete(source_name)
 					// Keep the exact transferred element available to return summaries.
@@ -9625,7 +9644,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 			moved_types := tc.ownership_move_overlapping_dynamic_storage(arg_name, call_name, arg_id, true, call_name, true)
 			if moved_types.len > 0 {
 				if variadic_elem_idx >= 0 {
-					tc.ownership_add_fn_param_descendant(call_name, target_param_idx, target_suffix, moved_types[0])
+					tc.ownership_add_fn_param_descendant(call_name, target_param_idx, target_suffix, flat.source_type_id(moved_types[0]))
 				} else {
 					key := '${call_name}__param_${param_idx}'
 					st.ownership_fn_params[key] = true
@@ -9842,7 +9861,7 @@ fn (mut tc TypeChecker) ownership_method_value_call_info(node flat.Node, recv_id
 		return tc.call_info(method_name, true)
 	}
 	if clean := struct_type_from_type(unwrap_pointer(recv_type)) {
-		if info := tc.resolve_generic_struct_method(clean.name(), node.value) {
+		if info := tc.resolve_generic_struct_method(clean.source_type_id(), node.value) {
 			return info
 		}
 	}
@@ -9963,7 +9982,7 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 						suffix := source_name[name.len..]
 						type_name := tc.ownership_type_name_for_var(source_name)
 						for slot_idx in return_slots {
-							tc.ownership_add_fn_return_descendant(st.cur_fn, slot_idx, suffix, type_name)
+							tc.ownership_add_fn_return_descendant(st.cur_fn, slot_idx, suffix, flat.source_type_id(type_name))
 						}
 						st.owned_vars.delete(source_name)
 						st.owned_var_types.delete(source_name)
@@ -10074,7 +10093,7 @@ fn (mut tc TypeChecker) ownership_mark_return_from_array_element_method(fn_name 
 			suffix := source_name[source_key.len..]
 			type_name := tc.ownership_type_name_for_var(source_name)
 			if tc.ownership_move_var_result(source_name, fn_name, pos, true, fn_name, false) {
-				tc.ownership_add_fn_return_descendant(fn_name, return_slot, suffix, type_name)
+				tc.ownership_add_fn_return_descendant(fn_name, return_slot, suffix, flat.source_type_id(type_name))
 				marked = true
 			}
 		}
@@ -10126,7 +10145,7 @@ fn (mut tc TypeChecker) ownership_move_conditional_return_sources(fn_name string
 				if move.target_suffix.len == 0 {
 					tc.ownership_add_fn_return_slot(fn_name, return_slot)
 				} else {
-					tc.ownership_add_fn_return_descendant(fn_name, return_slot, move.target_suffix, type_name)
+					tc.ownership_add_fn_return_descendant(fn_name, return_slot, move.target_suffix, flat.source_type_id(type_name))
 				}
 			}
 			marked = true
@@ -10143,7 +10162,7 @@ fn (mut tc TypeChecker) ownership_move_conditional_return_sources(fn_name string
 		suffix := owned_name[tmp_name.len..]
 		type_name := tc.ownership_type_name_for_var(owned_name)
 		for return_slot in tc.ownership_return_slot_indices(expr_id, slot_idx, '') {
-			tc.ownership_add_fn_return_descendant(fn_name, return_slot, suffix, type_name)
+			tc.ownership_add_fn_return_descendant(fn_name, return_slot, suffix, flat.source_type_id(type_name))
 		}
 		marked = true
 	}
@@ -10161,7 +10180,7 @@ fn (mut tc TypeChecker) ownership_mark_return_owned_descendants(fn_name string, 
 		suffix := source_name[source_prefix.len..]
 		type_name := tc.ownership_type_name_for_var(source_name)
 		if tc.ownership_move_var_result(source_name, fn_name, pos, true, fn_name, false) {
-			tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix, type_name)
+			tc.ownership_add_fn_return_descendant(fn_name, slot_idx, suffix, flat.source_type_id(type_name))
 			moved_any = true
 		}
 	}
@@ -10296,7 +10315,7 @@ fn (mut tc TypeChecker) ownership_mark_return_descendants_from_call(lhs_name str
 		if desc.slot_idx != slot_idx {
 			continue
 		}
-		tc.ownership_mark_owned_name(lhs_name + desc.suffix, desc.type_name_text(), pos)
+		tc.ownership_mark_owned_name(lhs_name + desc.suffix, desc.type_name, pos)
 		marked = true
 	}
 	return marked
@@ -10348,7 +10367,7 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_descendant(target_name 
 		}
 		if info := tc.ownership_state().moved_vars[arg_name] {
 			if info.is_fn_call && info.fn_name == fn_name {
-				tc.ownership_mark_owned_name(target_name, info.type_name_text(), pos)
+				tc.ownership_mark_owned_name(target_name, info.type_name, pos)
 				return true
 			}
 		}
@@ -10359,12 +10378,12 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_descendant(target_name 
 	}
 	source_name := arg_name + source_suffix
 	if source_name in tc.ownership_state().owned_vars {
-		tc.ownership_mark_owned_name(target_name, tc.ownership_type_name_for_var(source_name), pos)
+		tc.ownership_mark_owned_name(target_name, flat.source_type_id(tc.ownership_type_name_for_var(source_name)), pos)
 		return true
 	}
 	if info := tc.ownership_state().moved_vars[source_name] {
 		if info.is_fn_call && info.fn_name == fn_name {
-			tc.ownership_mark_owned_name(target_name, info.type_name_text(), pos)
+			tc.ownership_mark_owned_name(target_name, info.type_name, pos)
 			return true
 		}
 	}
@@ -10427,7 +10446,7 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_source_expr(target_name
 	if source_name.len > 0 {
 		if info := tc.ownership_state().moved_vars[source_name] {
 			if (info.is_fn_call && info.fn_name == fn_name) || info.move_pos == id {
-				tc.ownership_mark_owned_name(target_name, info.type_name_text(), pos)
+				tc.ownership_mark_owned_name(target_name, info.type_name, pos)
 				return true
 			}
 			tc.ownership_report_moved(source_name, info, id)
@@ -10437,13 +10456,13 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_source_expr(target_name
 			tc.ownership_reject_global_move(source_name, pos, target_name, false)
 			type_name := tc.ownership_type_name_for_var(source_name)
 			if tc.ownership_move_var_result(source_name, target_name, pos, false, '', true) {
-				tc.ownership_mark_owned_name(target_name, type_name, pos)
+				tc.ownership_mark_owned_name(target_name, flat.source_type_id(type_name), pos)
 				return true
 			}
 		}
 		moved_types := tc.ownership_move_overlapping_dynamic_storage(source_name, target_name, pos, false, '', true)
 		if moved_types.len > 0 {
-			tc.ownership_mark_owned_name(target_name, moved_types[0], pos)
+			tc.ownership_mark_owned_name(target_name, flat.source_type_id(moved_types[0]), pos)
 			return true
 		}
 	}
@@ -10644,12 +10663,12 @@ fn (mut tc TypeChecker) ownership_mark_return_projection_from_call_suffix(lhs_na
 		if desc.suffix == projection_suffix
 			|| ownership_storage_keys_dynamic_overlap(desc.suffix, projection_suffix)
 			|| ownership_storage_keys_dynamic_overlap(projection_suffix, desc.suffix) {
-			tc.ownership_mark_owned_name(lhs_name, desc.type_name_text(), pos)
+			tc.ownership_mark_owned_name(lhs_name, desc.type_name, pos)
 			marked = true
 			continue
 		}
 		if ownership_storage_key_is_descendant(desc.suffix, projection_suffix) {
-			tc.ownership_mark_owned_name(lhs_name + desc.suffix[projection_suffix.len..], desc.type_name_text(), pos)
+			tc.ownership_mark_owned_name(lhs_name + desc.suffix[projection_suffix.len..], desc.type_name, pos)
 			marked = true
 		}
 	}
@@ -10800,13 +10819,13 @@ fn (mut tc TypeChecker) ownership_mark_from_array_element_method(lhs_name string
 	if source_key in st.owned_vars {
 		type_name := tc.ownership_type_name_for_var(source_key)
 		if tc.ownership_move_var_result(source_key, lhs_name, pos, false, '', true) {
-			tc.ownership_mark_owned_name(lhs_name, type_name, pos)
+			tc.ownership_mark_owned_name(lhs_name, flat.source_type_id(type_name), pos)
 			marked = true
 		}
 	} else {
 		moved_types := tc.ownership_move_overlapping_dynamic_storage(source_key, lhs_name, pos, false, '', true)
 		if moved_types.len > 0 {
-			tc.ownership_mark_owned_name(lhs_name, moved_types[0], pos)
+			tc.ownership_mark_owned_name(lhs_name, flat.source_type_id(moved_types[0]), pos)
 			marked = true
 		}
 	}
@@ -10950,7 +10969,7 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param(lhs_name string, call_i
 	}
 	if info := tc.ownership_state().moved_vars[arg_name] {
 		if info.is_fn_call && info.fn_name == fn_name {
-			tc.ownership_mark_owned_name(lhs_name, info.type_name_text(), pos)
+			tc.ownership_mark_owned_name(lhs_name, info.type_name, pos)
 			return true
 		}
 	}
@@ -11760,16 +11779,22 @@ fn (tc &TypeChecker) ownership_call_name(id flat.NodeId) string {
 }
 
 fn (mut tc TypeChecker) ownership_mark_owned(name string, typ Type, pos flat.NodeId) {
-	tc.ownership_mark_owned_name(name, typ.name(), pos)
+	tc.ownership_mark_owned_name(name, typ.source_type_id(), pos)
 }
 
-fn (mut tc TypeChecker) ownership_mark_owned_name(name string, type_name string, pos flat.NodeId) {
+fn (mut tc TypeChecker) ownership_mark_owned_name(name string, type_name_id u32, pos flat.NodeId) {
+	type_name_comparison_type_id_11 := type_name_id
+	type_name := flat.source_type_name(type_name_comparison_type_id_11)
 	if name == '' || name == '_' {
 		return
 	}
 	mut st := tc.ownership_state()
 	st.owned_vars[name] = pos
-	st.owned_var_types.set(name, if type_name != '' { type_name } else { 'string' })
+	st.owned_var_types.set(name, if type_name_comparison_type_id_11 != u32(0) {
+		type_name
+	} else {
+		'string'
+	})
 	st.moved_vars.delete(name)
 }
 
@@ -12718,7 +12743,7 @@ fn (tc &TypeChecker) ownership_type_is_owned(typ Type) bool {
 			|| (base != typ.name() && base in tc.ownership.owned_structs) {
 			return true
 		}
-		if tc.ownership_type_name_has_drop(typ.name()) {
+		if tc.ownership_type_name_has_drop(typ.source_type_id()) {
 			return true
 		}
 		mut seen := map[string]bool{}

@@ -30,6 +30,9 @@ declaration context; identical spelling IDs can resolve to different semantic ty
 IDs. Resolve bytes with `flat.source_type_name(id)` for diagnostics, spelling syntax, or emission.
 Builtin spelling constants in `v.flat` avoid repeated interning of scalar names.
 `fn_signature_type(name, source_id)` resolves an interned annotation in its declaration context.
+Source qualification (`qualify_type_text` and `qualify_resolution_type_text`) and imported-type
+resolution also pass spelling IDs. Private recursive spelling parsers work with bytes inside
+these boundaries. C ABI encodings and emitted declaration names remain strings.
 
 Alias targets, generic binding values, and original return annotations use `flat.TypeTextBindings`.
 Parameter annotations, sum variants, implemented interfaces, and interface embeddings use

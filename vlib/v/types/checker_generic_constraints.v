@@ -1535,7 +1535,7 @@ fn (mut tc TypeChecker) infer_from_constraint(text string, actual Type, missing 
 // concrete_method_types is what the method `method` of the type `concrete`
 // returns, and the types of its parameters after its receiver.
 fn (tc &TypeChecker) concrete_method_types(concrete string, method string) ?(Type, []Type) {
-	if info := tc.resolve_generic_struct_method(concrete, method) {
+	if info := tc.resolve_generic_struct_method(flat.source_type_id(concrete), method) {
 		if info.has_receiver && info.params.len > 0 {
 			return info.return_type, info.params[1..]
 		}
@@ -1752,7 +1752,7 @@ fn (mut tc TypeChecker) check_inferred_struct_in_body(id flat.NodeId, node flat.
 	if texts.len != params.len {
 		return
 	}
-	args := params.map(flat.source_type_name(texts[it] or { flat.source_type_id('') }))
+	args := params.map(flat.source_type_name(texts[it] or { u32(0) }))
 	if args.any(it.len == 0) {
 		return
 	}

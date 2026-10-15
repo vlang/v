@@ -28,7 +28,7 @@ fn (mut t Transformer) named_variant_binding_decls(match_expr_id flat.NodeId, br
 	}
 	subject := t.expr_key(match_expr_id)
 	sc := t.match_type_smartcast_context(match_expr_id, cond_id) or { return []flat.NodeId{} }
-	payload_type := t.tc.named_variant_payload_type(sc.variant_name_text()) or {
+	payload_type := t.tc.named_variant_payload_type(sc.variant_name) or {
 		return []flat.NodeId{}
 	}
 	if subject.len == 0 {
@@ -60,7 +60,7 @@ fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant_id u32, is_re
 	if isnil(t.tc) {
 		return t.make_string_literal(display)
 	}
-	payload_type := t.tc.named_variant_payload_type(variant) or {
+	payload_type := t.tc.named_variant_payload_type(variant_id) or {
 		return t.make_string_literal(display)
 	}
 	// Keep the payload's variant on the stack, as ordinary struct formatting

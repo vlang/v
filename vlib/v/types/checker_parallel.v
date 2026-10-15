@@ -371,7 +371,8 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 			&& !param_type_text_is_shared(child.typ_text()) {
 			has_mut_receiver = true
 		}
-		param_type := child.typ_text()
+		param_type_source_id := child.typ
+		param_type := flat.source_type_name(param_type_source_id)
 		if param_type.starts_with('...') {
 			is_variadic = true
 			if param_type == '...' {
@@ -379,9 +380,9 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 			}
 		}
 		raw_parsed_param_type := if is_open_generic {
-			tc.parse_scope_param_type(flat.source_type_id(param_type))
+			tc.parse_scope_param_type(param_type_source_id)
 		} else {
-			tc.parse_resolution_type(flat.source_type_id(param_type))
+			tc.parse_resolution_type(param_type_source_id)
 		}
 		ptypes << if child.is_mut {
 			mut_param_semantic_type(raw_parsed_param_type)
@@ -3219,8 +3220,8 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				Alias, Struct, Interface, Enum, SumType {
 					receiver_name := receiver_type.name()
 					!receiver_name.starts_with('C.') && !receiver_name.starts_with('JS.')
-						&& tc.type_name_known(receiver_name)
-						&& !tc.source_module_declares_type(receiver_name)
+						&& tc.type_name_known(flat.source_type_id(receiver_name))
+						&& !tc.source_module_declares_type(flat.source_type_id(receiver_name))
 				}
 				else {
 					false
@@ -3368,19 +3369,19 @@ fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
 	clean := unwrap_pointer(typ)
 	return match clean {
 		Alias {
-			tc.source_module_declares_type(clean.name())
+			tc.source_module_declares_type(clean.source_type_id())
 		}
 		Struct {
-			tc.source_module_declares_type(clean.name())
+			tc.source_module_declares_type(clean.source_type_id())
 		}
 		Interface {
-			tc.source_module_declares_type(clean.name())
+			tc.source_module_declares_type(clean.source_type_id())
 		}
 		Enum {
-			tc.source_module_declares_type(clean.name())
+			tc.source_module_declares_type(clean.source_type_id())
 		}
 		SumType {
-			tc.source_module_declares_type(clean.name())
+			tc.source_module_declares_type(clean.source_type_id())
 		}
 		Array {
 			tc.receiver_collection_payload_is_local(clean.elem_type)
@@ -3403,7 +3404,8 @@ fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
 	}
 }
 
-fn (tc &TypeChecker) source_module_declares_type(type_name string) bool {
+fn (tc &TypeChecker) source_module_declares_type(type_name_id u32) bool {
+	type_name := flat.source_type_name(type_name_id)
 	qualified_base := type_name.all_before('[')
 	current_module := if tc.cur_module in ['', 'main'] { 'main' } else { tc.cur_module }
 	if qualified_base.contains('.') {
@@ -4020,7 +4022,7 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 		if tc.fn_body_uses_ident(node, param.value) {
 			continue
 		}
-		if tc.fn_body_reflects_param_type(node, param.typ_text()) {
+		if tc.fn_body_reflects_param_type(node, param.typ) {
 			continue
 		}
 		if tc.comptime_skipped_body_uses(node, param.value) {
@@ -4047,8 +4049,9 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 	}
 }
 
-fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type string) bool {
-	if param_type == '' || param_type !in node.generic_params() {
+fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type_id u32) bool {
+	param_type := flat.source_type_name(param_type_id)
+	if param_type_id == u32(0) || param_type !in node.generic_params() {
 		return false
 	}
 	mut stack := []flat.NodeId{}

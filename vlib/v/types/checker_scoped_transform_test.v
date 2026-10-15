@@ -221,9 +221,9 @@ fn test_type_qualification_preserves_channel_and_thread_wrappers() {
 	mut tc := TypeChecker.new(&a)
 	tc.cur_module = 'worker'
 
-	assert tc.qualify_type_text('chan bool') == 'chan bool'
-	assert tc.qualify_type_text('[]chan bool') == '[]chan bool'
-	assert tc.qualify_type_text('thread int') == 'thread int'
+	assert flat.source_type_name(tc.qualify_type_text(flat.source_type_id('chan bool'))) == 'chan bool'
+	assert flat.source_type_name(tc.qualify_type_text(flat.source_type_id('[]chan bool'))) == '[]chan bool'
+	assert flat.source_type_name(tc.qualify_type_text(flat.source_type_id('thread int'))) == 'thread int'
 
 	channel_type := tc.parse_resolution_type(flat.source_type_id('chan bool'))
 	if channel_type is Channel {

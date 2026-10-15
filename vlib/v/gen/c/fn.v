@@ -11821,7 +11821,7 @@ fn (g &FlatGen) generic_receiver_method_param_types(name string) ?[]types.Type {
 	}
 	receiver := name.all_before_last('.')
 	method := name.all_after_last('.')
-	info := g.tc.resolve_generic_struct_method(receiver, method) or { return none }
+	info := g.tc.resolve_generic_struct_method(flat.source_type_id(receiver), method) or { return none }
 	return info.params.clone()
 }
 
@@ -14750,7 +14750,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 							// Retained ABI qualifiers give the thunk its typed C signature.
 							// Otherwise the header may add qualifiers absent from `fn C.`;
 							// preserve the existing conversion through void* for that case.
-							if _ := g.tc.c_abi_fn_ptr_type_for_type_text(param_types[arg_idx].name()) {
+							if _ := g.tc.c_abi_fn_ptr_type_for_type_text(param_types[arg_idx].source_type_id()) {
 								g.write(thunk)
 							} else {
 								g.write('(void*)${thunk}')
@@ -17602,7 +17602,7 @@ fn (mut g FlatGen) c_extern_interop_type_name(t types.Type) ?string {
 	if t is types.Alias {
 		// A `type Cb = fn (int)` alias over a function type must still keep C `int`
 		// inside the C ABI; alias-over-`int` likewise. Non-interop bases return none.
-		if _ := g.tc.c_abi_fn_ptr_type_for_type_text(t.name()) {
+		if _ := g.tc.c_abi_fn_ptr_type_for_type_text(t.source_type_id()) {
 			if fn_type := fn_type_from(t) {
 				return g.resolve_fn_ptr_type(g.c_extern_fn_ptr_encoded_for_type(t, fn_type))
 			}
@@ -17647,7 +17647,7 @@ fn (mut g FlatGen) c_extern_fn_ptr_encoded(t types.FnType) string {
 // have no retained override keep the extern lowering, notably V `int` as C `int`.
 fn (mut g FlatGen) c_extern_fn_ptr_encoded_for_type(t types.Type, fn_type types.FnType) string {
 	extern_encoded := g.c_extern_fn_ptr_encoded(fn_type)
-	retained_encoded := g.tc.c_abi_fn_ptr_type_for_type_text(t.name()) or {
+	retained_encoded := g.tc.c_abi_fn_ptr_type_for_type_text(t.source_type_id()) or {
 		return extern_encoded
 	}
 	ordinary_encoded := g.fn_ptr_type_key(fn_type)
@@ -18666,7 +18666,7 @@ fn (g &FlatGen) generic_receiver_method_call_info(name string) ?types.CallInfo {
 	if !receiver.contains('[') || !receiver.contains(']') {
 		return none
 	}
-	return g.tc.resolve_generic_struct_method(receiver, name.all_after_last('.'))
+	return g.tc.resolve_generic_struct_method(flat.source_type_id(receiver), name.all_after_last('.'))
 }
 
 fn (mut g FlatGen) fn_node_signature_names(node flat.Node, module_name string) []string {

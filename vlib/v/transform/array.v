@@ -7593,7 +7593,7 @@ fn (mut t Transformer) struct_operator_call(info StructOperatorCallInfo, lhs fla
 fn (mut t Transformer) array_sort_struct_less_expr(cur flat.NodeId, prev flat.NodeId, elem_type_id u32) ?flat.NodeId {
 	mut struct_type := t.struct_lookup_name(elem_type_id)
 	if struct_type.len == 0 {
-		struct_type = t.generic_struct_instance_name(elem_type_id)
+		struct_type = flat.source_type_name(t.generic_struct_instance_name(elem_type_id))
 	}
 	if struct_type.len == 0 {
 		return none

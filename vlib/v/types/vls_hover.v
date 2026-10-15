@@ -188,7 +188,7 @@ fn (tc &TypeChecker) vls_method_target(receiver_id flat.NodeId, method string) ?
 	if name in tc.fn_type_files || tc.vls_builtin_method_decl(name) != none {
 		return name
 	}
-	if info := tc.resolve_generic_struct_method(owner, method) {
+	if info := tc.resolve_generic_struct_method(flat.source_type_id(owner), method) {
 		return info.name
 	}
 	owners := tc.embedded_method_candidates(owner, method)
@@ -1233,7 +1233,7 @@ fn (tc &TypeChecker) vls_module_receiver_member(id flat.NodeId) ?string {
 // behind `typ`, through pointers and aliases.
 fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 	type_name := tc.vls_member_owner(typ) or { return none }
-	if declared := tc.vls_declared_field_type(type_name, name) {
+	if declared := tc.vls_declared_field_type(flat.source_type_id(type_name), name) {
 		return declared
 	}
 	// A generic type applied to type arguments, `Box[T]` or `Box[User]`: the
@@ -1243,7 +1243,7 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 	if !is_generic {
 		return none
 	}
-	declared := tc.vls_declared_field_type(base, name)?
+	declared := tc.vls_declared_field_type(flat.source_type_id(base), name)?
 	decl := tc.generic_type_decl(base) or { return declared }
 	params := decl.generic_params().map(it.trim_space())
 	if params.len != args.len {
@@ -1262,7 +1262,8 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 
 // vls_declared_field_type is the type of the field `name` as the struct or the
 // interface `type_name` declares it.
-fn (tc &TypeChecker) vls_declared_field_type(type_name string, name string) ?Type {
+fn (tc &TypeChecker) vls_declared_field_type(type_name_id u32, name string) ?Type {
+	type_name := flat.source_type_name(type_name_id)
 	fields := tc.structs[type_name] or { tc.interface_fields[type_name] or { return none } }
 	for field in fields {
 		if field.name == name {
