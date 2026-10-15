@@ -25,6 +25,7 @@ fn (mut g FlatGen) headerless_compiler_runtime_helpers() {
 		'v_sync_thread_create_detached', 'v_sync_thread_create_detached_with_stack',
 		'v_os_execute_capture_start', 'v_os_exec_capture_start', 'v_os_exec_capture_input_start',
 		'v_os_fd_write_all'])
+	g.portable_run_signal_helpers(true)
 	g.headerless_compiler_platform_helpers()
 }
 
@@ -151,3 +152,25 @@ static inline short v_cmdexec_poll_revents(int fd, short events) {
 }
 #endif
 '
+
+// portable_run_signal_helpers keeps compiler snapshots independent of the native object.
+fn (mut g FlatGen) portable_run_signal_helpers(headerless bool) {
+	mut source := $embed_file('@VEXEROOT/vlib/v/driver/run_signals_nix.c').to_string()
+	if headerless {
+		g.writeln('#ifndef _WIN32')
+		g.emit_c_runtime_declarations(['signal', 'kill', 'getpid', '_exit'])
+		g.writeln('#endif')
+		mut lines := []string{}
+		for line in source.split_into_lines() {
+			if !line.starts_with('#include ') {
+				lines << line
+			}
+		}
+		source = lines.join('\n').replace('sig_atomic_t', 'i32')
+	}
+	g.write(source.replace('int v3_run_signals_begin(', 'static int v3_run_signals_begin(')
+		.replace('void v3_run_signals_set_pid(', 'static void v3_run_signals_set_pid(')
+		.replace('int v3_run_signals_finish(', 'static int v3_run_signals_finish('))
+	g.writeln('')
+	g.collect_preserved_c_fns(['v3_run_signals_begin', 'v3_run_signals_set_pid', 'v3_run_signals_finish'])
+}
