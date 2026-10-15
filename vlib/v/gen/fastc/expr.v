@@ -1875,7 +1875,7 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 		// (a mut parameter's deref form) that happens to share its name.
 		if selfhost_bare_name {
 			if local := g.locals[g.lit] {
-				piece = g.reference_local_value_piece_for_local(local, piece, previous_token, expression_tokens, stops)
+				piece = g.reference_local_value_piece_for_local(local.c_name, local.is_reference, piece, previous_token, expression_tokens, stops)
 			} else if !monomorphized_name {
 				piece = if g.lit == 'C' {
 					''
@@ -2678,11 +2678,12 @@ fn (mut g Parser) finish_read_expression(mut result strings.Builder, mut express
 
 fn (g &Parser) reference_local_value_piece(name string, piece string, previous_token token.Token, expression_tokens []FastcExpressionToken, stops []token.Token) string {
 	local := g.locals[name] or { return piece }
-	return g.reference_local_value_piece_for_local(local, piece, previous_token, expression_tokens, stops)
+	return g.reference_local_value_piece_for_local(local.c_name, local.is_reference, piece, previous_token, expression_tokens, stops)
 }
 
-fn (g &Parser) reference_local_value_piece_for_local(local FastcLocal, piece string, previous_token token.Token, expression_tokens []FastcExpressionToken, stops []token.Token) string {
-	local_piece := if local.c_name != '' { local.c_name } else { piece }
+fn (g &Parser) reference_local_value_piece_for_local(c_name string, is_reference bool, piece string, previous_token token.Token, expression_tokens []FastcExpressionToken, stops []token.Token) string {
+	local_piece := if c_name != '' { c_name } else { piece }
+	if !is_reference { return local_piece }
 	mut lookahead := g.s
 	next_token := lookahead.scan()
 	is_single_value := expression_tokens.len == 1 && (next_token in stops || next_token == .eof)
@@ -2697,7 +2698,7 @@ fn (g &Parser) reference_local_value_piece_for_local(local FastcLocal, piece str
 		''
 	}
 	is_pointer_cast_operand := cast_type != '' && fastc_is_pointer_type(cast_type)
-	if local.is_reference && !expression_tokens.last().is_mut_argument && next_token !in [
+	if is_reference && !expression_tokens.last().is_mut_argument && next_token !in [
 		.dot,
 		.lsbr,
 	] && !is_single_value && !is_deref_prefix && !is_pointer_cast_operand {

@@ -2747,20 +2747,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			}
 			native_symbol_ids[key['C.'.len..]] = native_module_ids[signature.module_name]
 		}
-		mut native_refs := []int{}
-		mut live_texts := [startup_initializers, constant_output.macros, constant_output.declarations,
-			global_output.declarations, interface_dispatches]
-		fastc_collect_c_piece_ranges(mut live_texts, body_pieces, kept_body_ranges)
-		for _, helper in spawn_helpers {
-			live_texts << helper
-		}
-		for text in live_texts {
-			fastc_collect_native_name_ids(text, native_symbol_ids, mut native_refs)
-		}
 		mut live_modules := []bool{len: native_module_ids.len}
-		for id in native_refs {
-			live_modules[id] = true
-		}
 		for source in generation_sources {
 			for imported_module in source.header.blank_imports {
 				if module_id := native_module_ids[imported_module] {
@@ -2784,6 +2771,46 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			if module_name in global_output.module_initializers
 				|| module_name in constant_output.module_initializers {
 				live_modules[module_id] = true
+			}
+		}
+		// Only unresolved owners of C source inputs need a symbol-use scan.
+		// V bodies, blank imports and initializers already retain the other
+		// modules, and binary inputs are retained independently below.
+		mut pending_native_modules := []bool{len: native_module_ids.len}
+		mut has_pending_native_modules := false
+		for i, output in outputs {
+			module_name := generation_sources[i].header.module_name
+			module_id := native_module_ids[module_name] or { continue }
+			if live_modules[module_id] {
+				continue
+			}
+			for flag in output.c_flags {
+				if fastc_flag_is_native_input(flag) && flag.ends_with('.c') {
+					pending_native_modules[module_id] = true
+					has_pending_native_modules = true
+					break
+				}
+			}
+		}
+		if has_pending_native_modules {
+			mut pending_native_symbol_ids := map[string]int{}
+			for name, id in native_symbol_ids {
+				if pending_native_modules[id] {
+					pending_native_symbol_ids[name] = id
+				}
+			}
+			mut native_refs := []int{}
+			mut live_texts := [startup_initializers, constant_output.macros,
+				constant_output.declarations, global_output.declarations, interface_dispatches]
+			fastc_collect_c_piece_ranges(mut live_texts, body_pieces, kept_body_ranges)
+			for _, helper in spawn_helpers {
+				live_texts << helper
+			}
+			for text in live_texts {
+				fastc_collect_native_name_ids(text, pending_native_symbol_ids, mut native_refs)
+			}
+			for id in native_refs {
+				live_modules[id] = true
 			}
 		}
 		mut required_native_inputs := map[string]bool{}
