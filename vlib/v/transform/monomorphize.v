@@ -6178,6 +6178,12 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 				specialized_call_or = callee.kind == .ident
 					&& t.generic_callee_is_specialization(callee.value)
 			}
+			// Unless the callee is a specialization, a usable annotation stays as it
+			// is (see below); do not resolve the result type of the call for it.
+			if !specialized_call_or && decl_type_is_usable(node.typ)
+				&& !t.generic_arg_is_unresolved(node.typ) {
+				continue
+			}
 			_, concrete_rhs_type_source_id := t.or_expr_types(call_id, rhs.typ)
 			concrete_rhs_type = concrete_rhs_type_source_id
 		} else if rhs.kind != .call {
