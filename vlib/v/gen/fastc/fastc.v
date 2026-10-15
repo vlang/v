@@ -2219,10 +2219,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	mut scalar_fixed_array_types := flat.TypeTextBindings{}
 	mut aggregate_fixed_array_types := flat.TypeTextBindings{}
+	mut callback_fixed_array_types := flat.TypeTextBindings{}
 	for name, typ_id in fixed_array_types.ids {
 		typ := flat.source_type_name(typ_id)
 		element_type := fastc_fixed_array_element_type(typ) or { continue }
-		if fastc_primitive_c_type(element_type) != none
+		if element_type.contains('__vf_fn_type_') {
+			callback_fixed_array_types.set_id(name, typ_id)
+		} else if fastc_primitive_c_type(element_type) != none
 			&& element_type !in ['string', 'array', 'map', 'Option', '__v_result'] {
 			scalar_fixed_array_types.set_id(name, typ_id)
 		} else {
@@ -2233,6 +2236,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// Wrappers containing V aggregates wait for those aggregate definitions.
 	scalar_fixed_array_declarations := fastc_generate_fixed_array_declarations(scalar_fixed_array_types)
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(aggregate_fixed_array_types)
+	callback_fixed_array_declarations := fastc_generate_fixed_array_declarations(callback_fixed_array_types)
 	preamble := if header_free {
 		c_selfhost_preamble.replace(c_selfhost_preamble_includes, fastc_c_abi_prelude(prefs.target.os, prefs.target.arch, ''))
 	} else if prefs.building_v {
@@ -2439,17 +2443,18 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	pieces << fastc_piece(constant_output.macros)
 	pieces << fastc_piece(type_output.declarations_head)
-	// Function signatures can refer to string and other forward-declared structs.
-	mut function_type_names := spawn_typedefs.keys().filter(it.starts_with('__vf_fn_type_'))
-	function_type_names.sort()
-	for function_type_name in function_type_names {
-		pieces << spawn_typedefs[function_type_name]
-	}
 	pieces << fastc_piece(composite_typedefs)
 	pieces << scalar_fixed_array_declarations
 	pieces << fastc_piece(type_declarations)
 	pieces << late_composite_declarations.str()
 	pieces << fastc_piece(fixed_array_declarations)
+	// Function signatures can refer to aliases, composite types, and fixed arrays.
+	mut function_type_names := spawn_typedefs.keys().filter(it.starts_with('__vf_fn_type_'))
+	function_type_names.sort()
+	for function_type_name in function_type_names {
+		pieces << spawn_typedefs[function_type_name]
+	}
+	pieces << fastc_piece(callback_fixed_array_declarations)
 	pieces << fastc_c_extern_prototypes_for_inputs(functions, c_flags)
 	extern_indexes << pieces.len
 	extern_texts << fastc_extern_declarations(constant_output.declarations, true)

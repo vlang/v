@@ -71,6 +71,37 @@ fn main() {
  println("functions work")
 }
 ', 'functions work', false},
+		FastcRemainingCase{'fixed_function_array', r'module main
+fn main() {
+ fs := [fn (x int) int { return x + 1 }]!
+ assert fs[0](41) == 42
+ println("fixed functions work")
+}
+', 'fixed functions work', false},
+		FastcRemainingCase{'function_alias_signature', r'module main
+type MyInt = int
+fn main() {
+ fs := [fn (x MyInt) MyInt { return x + 1 }]
+ assert fs[0](MyInt(41)) == MyInt(42)
+ println("alias works")
+}
+', 'alias works', false},
+		FastcRemainingCase{'function_array_signature', r'module main
+fn main() {
+ fs := [fn (x []int) []int { return x }]
+ assert fs[0]([1, 2]) == [1, 2]
+ println("array works")
+}
+', 'array works', false},
+		FastcRemainingCase{'function_fixed_array_signature', r'module main
+fn main() {
+ fs := [fn (x [2]int) [2]int { return x }]
+ result := fs[0]([1, 2]!)
+ assert result[0] == 1
+ assert result[1] == 2
+ println("fixed array works")
+}
+', 'fixed array works', false},
 		FastcRemainingCase{'fixed_array_membership', r'module main
 fn main() {
  assert [3, 4]! in [[1, 2]!, [3, 4]!]
