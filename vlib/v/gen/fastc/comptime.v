@@ -1122,7 +1122,7 @@ fn (mut g Parser) read_comptime_embed_file() !string {
 	g.expect(.rpar)!
 	match accessor {
 		'to_string', 'str' {
-			g.last_expression_type = flat.source_type_id('string')
+			g.last_expression_type = flat.source_type_string
 			g.last_expression = []FastcExpressionToken{}
 			return '_S(${fastc_c_string_value(content)})'
 		}

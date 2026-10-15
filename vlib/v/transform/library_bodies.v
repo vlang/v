@@ -45,15 +45,17 @@ mut:
 
 // library_instance_needs_body reports whether a check clones the body of an
 // instance of a library generic for the type arguments `args`.
-fn (mut t Transformer) library_instance_needs_body(args []string) bool {
+fn (mut t Transformer) library_instance_needs_body(args_ids []u32) bool {
 	if !t.library_bodies.ready {
 		t.prepare_library_bodies()
 	}
 	if t.library_bodies.keep_all != '' {
 		return true
 	}
-	for arg in args {
-		if t.library_type_reaches_program(arg) {
+	for arg_source_id in args_ids {
+		arg_source_id_2 := arg_source_id
+
+		if t.library_type_reaches_program(arg_source_id_2) {
 			return true
 		}
 	}
@@ -202,7 +204,8 @@ fn (t &Transformer) library_file_of_program_module() ?string {
 
 // library_type_reaches_program reports whether a library body given a value of
 // the type `typ` can reach, through it, what keeps the body (see LibraryBodies).
-fn (mut t Transformer) library_type_reaches_program(typ string) bool {
+fn (mut t Transformer) library_type_reaches_program(typ_id u32) bool {
+	typ := flat.source_type_name(typ_id)
 	root := library_type_text(typ)
 	if t.library_bodies.harmless[root] {
 		return false
@@ -292,13 +295,17 @@ fn (mut t Transformer) library_type_parts(text string) ?[]string {
 		params := t.tc.struct_generic_params[base] or { []string{} }
 		for field in fields {
 			parts << library_type_text(substitute_generic_type_text_with_params(field.typ.name(),
-				args, params))
+				flat.TypeTextList.from_names(args).ids, params))
 		}
-	} else if variants := t.tc.sum_types.get(name) {
-		for variant in variants {
+	} else if variants_source_ids := t.tc.sum_types.type_ids(name) {
+		for variant_source_id in variants_source_ids {
+			variant := flat.source_type_name(variant_source_id)
+
 			parts << library_type_text(variant)
 		}
-	} else if target := t.tc.type_aliases.get(name) {
+	} else if target_source_id := t.tc.type_aliases.type_id(name) {
+		target := flat.source_type_name(target_source_id)
+
 		parts << library_type_text(target)
 	} else if name !in t.tc.enum_names {
 		return none

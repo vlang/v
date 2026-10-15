@@ -558,10 +558,17 @@ fn test_retained_selection_scope_does_not_own_scope_list() {
 
 fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
 	mut g, _ := parallel_worker_test_gen(true)
-	base, args, ok := g.shared_generic_app_parts('Frozen[int]')
+	base, mut args, ok := g.shared_generic_app_parts(flat.source_type_id('Frozen[int]'))
 	assert ok
-	assert base == 'Frozen'
-	assert args == ['int']
+	assert base == flat.source_type_id('Frozen')
+	assert args == [flat.source_type_int]
+	args[0] = flat.source_type_string
+	cached_base, mut cached_args, cached_ok := g.shared_generic_app_parts(flat.source_type_id('Frozen[int]'))
+	assert cached_ok && cached_base == base
+	assert cached_args == [flat.source_type_int]
+	cached_args[0] = flat.source_type_string
+	_, unchanged_args, _ := g.shared_generic_app_parts(flat.source_type_id('Frozen[int]'))
+	assert unchanged_args == [flat.source_type_int]
 	frozen := g.generic_app_cache
 
 	g.freeze_parallel_lookup_caches()
@@ -575,9 +582,9 @@ fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
 	assert voidptr(batch.generic_app_cache) != voidptr(dispatcher.generic_app_cache)
 	assert voidptr(batch.generic_app_cache.base) == voidptr(frozen)
 
-	g.shared_generic_app_parts('Shared[string]')
-	dispatcher.shared_generic_app_parts('Shared[string]')
-	batch.shared_generic_app_parts('Shared[string]')
+	g.shared_generic_app_parts(flat.source_type_id('Shared[string]'))
+	dispatcher.shared_generic_app_parts(flat.source_type_id('Shared[string]'))
+	batch.shared_generic_app_parts(flat.source_type_id('Shared[string]'))
 	assert flat.source_type_id('Shared[string]') in g.generic_app_cache.entries
 	assert flat.source_type_id('Shared[string]') in dispatcher.generic_app_cache.entries
 	assert flat.source_type_id('Shared[string]') in batch.generic_app_cache.entries
@@ -613,7 +620,7 @@ fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
 
 fn test_parallel_type_declarations_preseed_function_type_aliases() {
 	mut g, mut tc := parallel_worker_test_gen(true)
-	tc.type_aliases.set('Callback', 'fn (int)')
+	tc.type_aliases.set_id('Callback', flat.source_type_id('fn (int)'))
 	callback_type := tc.parse_type(tc.type_aliases.value_id('Callback'))
 	encoded := tc.c_type(callback_type)
 	assert encoded.starts_with('fn_ptr:')

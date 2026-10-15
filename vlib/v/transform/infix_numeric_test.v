@@ -265,7 +265,7 @@ fn test_checked_numeric_infix_recovers_index_alias_overrides_from_raw_element_ty
 	a.children << [lhs, rhs]
 	id := a.add_node(flat.Node{ kind: .infix, op: .plus, children_start: start, children_count: 2 })
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('Count', 'int')
+	tc.type_aliases.set_id('Count', flat.source_type_int)
 	// A flattened index sidecar alone must not hide a declared alias operator.
 	tc.register_synth_type(lhs, types.Type(types.int_))
 	tc.register_synth_type(rhs, types.Type(types.int_))
@@ -273,12 +273,12 @@ fn test_checked_numeric_infix_recovers_index_alias_overrides_from_raw_element_ty
 	t.skip_generics = true
 	t.cur_module = 'main'
 	t.set_var_type_with_raw('values', flat.source_type_id('[]int'), flat.source_type_id('[]Count'))
-	t.fn_ret_types.set('Count.+', 'Count')
-	t.fn_ret_types.set('Count.==', 'bool')
-	t.fn_ret_types.set('Count.<', 'bool')
+	t.fn_ret_types.set_id('Count.+', flat.source_type_id('Count'))
+	t.fn_ret_types.set_id('Count.==', flat.source_type_bool)
+	t.fn_ret_types.set_id('Count.<', flat.source_type_bool)
 	for op in [flat.Op.plus, .eq, .ne, .lt, .gt, .le, .ge] {
 		a.nodes[int(id)].op = op
-		assert t.operator_alias_type_for_operand(lhs, op) or { '' } == 'Count'
+		assert flat.source_type_name(t.operator_alias_type_for_operand(lhs, op) or { u32(0) }) == 'Count'
 		assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	}
 	// The existing struct path dispatches on LHS, but the conservative shortcut
@@ -297,25 +297,25 @@ fn test_checked_numeric_infix_keeps_named_annotations_and_casts_on_operator_path
 	a.children << [lhs, rhs]
 	id := a.add_node(flat.Node{ kind: .infix, op: .plus, children_start: start, children_count: 2 })
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set('Count', 'int')
+	tc.type_aliases.set_id('Count', flat.source_type_int)
 	tc.register_synth_type(lhs, types.Type(types.int_))
 	tc.register_synth_type(rhs, types.Type(types.int_))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.skip_generics = true
 	t.cur_module = 'main'
-	t.fn_ret_types.set('Count.+', 'Count')
+	t.fn_ret_types.set_id('Count.+', flat.source_type_id('Count'))
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	// Both textual candidates used by the original alias lookup must survive
 	// a primitive sidecar; only builtin annotations are free of nominal lookup.
 	a.nodes[int(lhs)].typ = flat.source_type_id('Count')
-	assert t.operator_alias_type_for_operand(lhs, .plus) or { '' } == 'Count'
+	assert flat.source_type_name(t.operator_alias_type_for_operand(lhs, .plus) or { u32(0) }) == 'Count'
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
-	a.nodes[int(lhs)].typ = flat.source_type_id('int')
+	a.nodes[int(lhs)].typ = flat.source_type_int
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
-	a.nodes[int(lhs)].typ = flat.source_type_id('')
+	a.nodes[int(lhs)].typ = u32(0)
 	a.nodes[int(lhs)].kind = .cast_expr
 	a.nodes[int(lhs)].value = 'Count'
-	assert t.operator_alias_type_for_operand(lhs, .plus) or { '' } == 'Count'
+	assert flat.source_type_name(t.operator_alias_type_for_operand(lhs, .plus) or { u32(0) }) == 'Count'
 	assert !t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])
 	a.nodes[int(lhs)].value = 'int'
 	assert t.checked_numeric_infix_can_skip_handlers(a.nodes[int(id)])

@@ -524,8 +524,7 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 		// Preserve the serial precedence: source specializations, selected
 		// signatures, then checker metadata. Tuple emission deduplicates names.
 		for name, payload_id in metadata.needed_optional_types.ids {
-			payload := flat.source_type_name(payload_id)
-			w.needed_optional_types.set(name, payload)
+			w.needed_optional_types.set_id(name, payload_id)
 		}
 		for name, payload in metadata.optional_pointer_struct_tags {
 			w.optional_pointer_struct_tags[name] = payload
@@ -1389,7 +1388,7 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 	for opt_name, val_type_id in batch.needed_optional_types.ids {
 		val_type := flat.source_type_name(val_type_id)
 		if !g.needed_optional_types.contains(opt_name) {
-			g.needed_optional_types.set(opt_name.clone(), val_type.clone())
+			g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
 		}
 	}
 	for opt_name, val_type in batch.optional_pointer_struct_tags {
@@ -1642,7 +1641,7 @@ fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[stri
 fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	for opt_name, val_type_id in fs_worker.needed_optional_types.ids {
 		val_type := flat.source_type_name(val_type_id)
-		g.needed_optional_types.set(opt_name.clone(), val_type.clone())
+		g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
 	}
 	for opt_name, val_type in fs_worker.optional_pointer_struct_tags {
 		g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()
@@ -1728,7 +1727,7 @@ fn (mut g FlatGen) publish_unresolved_call_optional_types(mut worker FlatGen) {
 		payload := flat.source_type_name(payload_id)
 		// This scan follows declarations in the serial pipeline, including when
 		// two payload spellings map to the same optional typedef name.
-		g.needed_optional_types.set(name.clone(), payload.clone())
+		g.needed_optional_types.set_id(name.clone(), flat.source_type_id(payload.clone()))
 	}
 	for name, payload in worker.optional_pointer_struct_tags {
 		g.optional_pointer_struct_tags[name.clone()] = payload.clone()
@@ -2204,7 +2203,7 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		// prepare_pre_dispatch_master, and C-extern refs are re-collected by the
 		// parallel exact-cost pass that always follows this prep (with a serial
 		// fallback, see refine_fn_item_costs). Keep this walk preseed-only.
-		if node.typ_text().len > 0
+		if node.typ != 0
 			&& g.should_preseed_parallel_type_id_recent_cached(node.typ, mut type_text_cache) {
 			g.preseed_parallel_fn_ptr_type(g.parse_node_type(node))
 		}
@@ -2297,7 +2296,7 @@ fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId, mut stack []flat.NodeId
 			g.intern_string(node.value)
 		}
 		g.collect_c_extern_ref_from_node(node)
-		if node.typ_text().len > 0
+		if node.typ != 0
 			&& g.should_preseed_parallel_type_id_cached(node.typ, mut type_text_cache) {
 			g.preseed_parallel_fn_ptr_type(g.parse_node_type(node))
 		}
@@ -2570,17 +2569,17 @@ fn (g &FlatGen) should_preseed_parallel_type_id_cached(id u32, mut cache map[u32
 	if cached := cache[id] {
 		return cached
 	}
-	verdict := g.should_preseed_parallel_type_text(flat.source_type_name(id))
+	verdict := g.should_preseed_parallel_type_text(id)
 	cache[id] = verdict
 	return verdict
 }
 
 // should_preseed_parallel_type_text reports whether should preseed parallel type text applies in c.
-fn (g &FlatGen) should_preseed_parallel_type_text(typ string) bool {
-	if typ.len == 0 {
+fn (g &FlatGen) should_preseed_parallel_type_text(typ_id u32) bool {
+	if typ_id == 0 {
 		return false
 	}
-	clean := g.parallel_base_type_text(typ)
+	clean := flat.source_type_name(g.parallel_base_type_text(typ_id))
 	if clean.contains('fn(') || clean.contains('fn (') {
 		return true
 	}
@@ -2592,7 +2591,8 @@ fn (g &FlatGen) should_preseed_parallel_type_text(typ string) bool {
 }
 
 // parallel_base_type_text supports parallel base type text handling for FlatGen.
-fn (g &FlatGen) parallel_base_type_text(typ string) string {
+fn (g &FlatGen) parallel_base_type_text(typ_id u32) u32 {
+	typ := flat.source_type_name(typ_id)
 	mut clean := trimmed_space(typ)
 	for clean.len > 0 {
 		if clean.starts_with('shared ') {
@@ -2607,7 +2607,7 @@ fn (g &FlatGen) parallel_base_type_text(typ string) string {
 			break
 		}
 	}
-	return clean
+	return flat.source_type_id(clean)
 }
 
 // preseed_parallel_fn_ptr_type supports preseed parallel fn ptr type handling for FlatGen.
@@ -2721,7 +2721,7 @@ fn (mut g FlatGen) publish_c_extern_type_discoveries(worker &FlatGen) {
 	for opt_name, val_type_id in worker.needed_optional_types.ids {
 		val_type := flat.source_type_name(val_type_id)
 		if !g.needed_optional_types.contains(opt_name) {
-			g.needed_optional_types.set(opt_name.clone(), val_type.clone())
+			g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
 		}
 	}
 	for opt_name, val_type in worker.optional_pointer_struct_tags {
@@ -2937,6 +2937,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		compiler_vroot:                     g.compiler_vroot
 		compiler_vexe:                      g.compiler_vexe
+		live_source_path:                   g.live_source_path
+		live_rebuild_options:               g.live_rebuild_options
 		compiler_vexe_env_setup:            g.compiler_vexe_env_setup
 		ccompiler:                          g.ccompiler
 		is_shared:                          g.is_shared
@@ -3080,7 +3082,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		w.local_implicit_deref_by_owner = map[string]bool{}
 		w.local_shared_storage_by_owner = map[string]bool{}
 		w.local_fn_value_c_name_by_owner = map[string]string{}
-		w.default_value_stack = map[string]bool{}
+		w.default_value_stack = map[u32]bool{}
 		w.loop_label_depths = map[string]int{}
 		w.loop_defer_starts = []int{}
 		w.loop_label_defer_starts = map[string]int{}
@@ -3365,7 +3367,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 	for opt_name, val_type_id in w.needed_optional_types.ids {
 		val_type := flat.source_type_name(val_type_id)
-		g.needed_optional_types.set(opt_name.clone(), val_type.clone())
+		g.needed_optional_types.set_id(opt_name.clone(), flat.source_type_id(val_type.clone()))
 	}
 	for opt_name, val_type in w.optional_pointer_struct_tags {
 		g.optional_pointer_struct_tags[opt_name.clone()] = val_type.clone()

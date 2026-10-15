@@ -1629,6 +1629,9 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	mut has_globals := false
 	mut translated := false
 	mut brace_depth := 0
+	// Imports can follow declarations. A byte bound keeps ordinary files from
+	// tokenizing function bodies once their final possible import is behind us.
+	last_import_offset := source.last_index('import') or { -1 }
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
@@ -1681,8 +1684,9 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 				continue
 			}
 		}
-		if brace_depth == 0 && tok in [.key_fn, .key_struct, .key_enum, .key_interface, .key_type,
-			.key_const, .key_global] {
+		if brace_depth == 0 && scan.pos > last_import_offset
+			&& tok in [.key_fn, .key_struct, .key_enum, .key_interface, .key_type, .key_const,
+				.key_global] {
 			break
 		}
 		if tok != .key_import || brace_depth > 0 {

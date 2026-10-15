@@ -42,7 +42,7 @@ fn (mut g Parser) drain_pending_mono() ! {
 		definition := g.out.after(start)
 		if definition != '' {
 			mono_name := fastc_monomorphized_name(src.name, req.concrete_text())
-			c_name := if src.receiver_type_text() == '' {
+			c_name := if src.receiver_type == u32(0) {
 				g.c_function_name_for_key(fastc_function_key(src.module_name, mono_name))
 			} else {
 				fastc_method_c_name(src.module_name, src.receiver_type_text(), mono_name)
@@ -58,7 +58,7 @@ fn (mut g Parser) drain_pending_mono() ! {
 // retain its specialized body.
 fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMethodSource) bool {
 	normalized_path := src.path.replace('\\', '/')
-	return req.concrete_text() == 'voidptr' && src.name == 'check_element_type_valid' && (src.receiver_type_text() == 'json2__Decoder' || src.receiver_type_text().ends_with('__json2__Decoder')) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
+	return req.concrete == flat.source_type_voidptr && src.name == 'check_element_type_valid' && (src.receiver_type_text() == 'json2__Decoder' || src.receiver_type_text().ends_with('__json2__Decoder')) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
 }
 
 // reset_lookup_memos discards the per-file name lookup memos. They are keyed
@@ -866,6 +866,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return_type = g.parse_type()!
 		}
 	}
+	return_type_is_function := g.pending_fn_pointer
 	is_program_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main']
 		&& name == 'main'
 	// A test build runs its tests from a main of its own; the program's is an ordinary function.
@@ -960,6 +961,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		}
 	}
 	previous_in_main := g.in_main
+	previous_return_type_is_function := g.return_type_is_function
 	previous_return_type := g.return_type_text()
 	previous_return_types := g.return_types_text().clone()
 	previous_option_return_type := g.option_return_type_text()
@@ -986,6 +988,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.unsafe_depth = 1
 	}
 	g.in_main = is_main
+	g.return_type_is_function = return_type_is_function
 	g.return_type = flat.source_type_id(return_type)
 	g.return_types = flat.TypeTextList.from_names(return_types.clone())
 	g.option_return_type = flat.source_type_id(option_return_type)
@@ -1093,6 +1096,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.out.write_string(function_body)
 	}
 	g.in_main = previous_in_main
+	g.return_type_is_function = previous_return_type_is_function
 	g.return_type = flat.source_type_id(previous_return_type)
 	g.return_types = flat.TypeTextList.from_names(previous_return_types.clone())
 	g.option_return_type = flat.source_type_id(previous_option_return_type)
@@ -1481,10 +1485,10 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 
 fn (mut g Parser) parse_type() !string {
 	first_lit := g.lit
-	g.pending_option_value_type = flat.source_type_id('')
+	g.pending_option_value_type = u32(0)
 	g.pending_fn_pointer = false
-	g.pending_fn_return_type = flat.source_type_id('')
-	g.pending_fn_option_value_type = flat.source_type_id('')
+	g.pending_fn_return_type = u32(0)
+	g.pending_fn_option_value_type = u32(0)
 	g.pending_fn_parameters = ''
 	if g.tok == .question {
 		// Peek the wrapped value type of an option type `?T` before the main scan

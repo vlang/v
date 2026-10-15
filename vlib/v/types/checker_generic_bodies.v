@@ -43,7 +43,7 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 	}
 	// With its type parameters open, the checker says of a statement that does
 	// not depend on them what it says in every instance.
-	open := tc.check_generic_fn_body_as(node, fn_idx, map[string]string{})
+	open := tc.check_generic_fn_body_as(node, fn_idx, map[string]u32{})
 	dependent := tc.type_param_dependent_names(node, params)
 	mut statements := map[int]bool{}
 	for notice in open.notices {
@@ -121,7 +121,7 @@ fn (mut tc TypeChecker) check_generic_fn_body(node flat.Node, fn_idx int, params
 // without type parameters. A member reached through a type parameter has no
 // type in that check, and is left to the instances with the rest of the body.
 fn (mut tc TypeChecker) check_generic_fn_body_visibility(node flat.Node, fn_idx int) {
-	open := tc.check_generic_fn_body_as(node, fn_idx, map[string]string{})
+	open := tc.check_generic_fn_body_as(node, fn_idx, map[string]u32{})
 	for err in open.errors {
 		if is_visibility_error(err.msg) {
 			tc.errors << err
@@ -151,10 +151,9 @@ mut:
 }
 
 // add_types notes the types of `combination`, a check that found the error.
-fn (mut e GenericBodyError) add_types(combination map[string]string) {
-	for name, text in combination {
-		id := flat.source_type_id(text)
-		mut taken := e.types.type_ids(name) or { []u32{} }
+fn (mut e GenericBodyError) add_types(combination map[string]u32) {
+	for name, id in combination {
+		mut taken := (e.types.type_ids(name) or { []u32{} }).clone()
 		if id !in taken {
 			taken << id
 			e.types.set_ids(name, taken)
@@ -171,7 +170,7 @@ struct GenericBodyDiagnostics {
 // check_generic_fn_body_as checks the body of the generic function `node` in a
 // fork of the checker, with each type parameter that `texts` names as the type
 // written there, or with its type parameters open when it names none.
-fn (tc &TypeChecker) check_generic_fn_body_as(node flat.Node, fn_idx int, texts map[string]string) GenericBodyDiagnostics {
+fn (tc &TypeChecker) check_generic_fn_body_as(node flat.Node, fn_idx int, texts map[string]u32) GenericBodyDiagnostics {
 	w := tc.checked_generic_fn_body(node, fn_idx, texts, false)
 	return GenericBodyDiagnostics{
 		errors:  w.errors
@@ -183,7 +182,7 @@ fn (tc &TypeChecker) check_generic_fn_body_as(node flat.Node, fn_idx int, texts 
 // of the generic function `node` (see check_generic_fn_body_as); with
 // `keep_placeholders`, it keeps the types that are a type parameter itself too
 // (see placeholder_types).
-fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts map[string]string, keep_placeholders bool) &TypeChecker {
+fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts map[string]u32, keep_placeholders bool) &TypeChecker {
 	mut w := tc.fork_for_parallel_check()
 	w.keep_placeholder_types = keep_placeholders
 	w.fn_context.node_id = fn_idx
@@ -192,10 +191,10 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 	w.cur_fn_node_id = fn_idx
 	if texts.len > 0 {
 		// A function without type parameters, whose types name the ones given.
-		w.type_param_texts = flat.TypeTextBindings.from_names(texts)
+		w.type_param_texts = flat.TypeTextBindings{ ids: texts.clone() }
 		w.type_cache.parse_enabled = false
 		w.fn_context.generic_params = []string{}
-		return_text := if node.typ_text().ends_with('?') && !node.typ_text().starts_with('?') {
+		return_text := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
 			node.typ_text().trim_right('?')
 		} else {
 			node.typ_text()
@@ -229,17 +228,17 @@ fn (tc &TypeChecker) checked_generic_fn_body(node flat.Node, fn_idx int, texts m
 // its type parameters as types that their constraints admit (see
 // check_generic_fn_body_as): each of them is its type there, and no parse comes
 // from the cache or goes to it, which holds the types of other functions.
-fn (tc &TypeChecker) parse_type_as_instance(typ string) Type {
+fn (tc &TypeChecker) parse_type_as_instance(typ_id u32) Type {
+	typ := flat.source_type_name(typ_id)
 	mut names := []string{cap: tc.type_param_texts.ids.len}
-	mut args := []string{cap: tc.type_param_texts.ids.len}
+	mut args := []u32{cap: tc.type_param_texts.ids.len}
 	mut name_set := map[string]bool{}
 	for name, text_id in tc.type_param_texts.ids {
-		text := flat.source_type_name(text_id)
 		if tc.type_params_expanding[name] {
 			continue
 		}
 		names << name
-		args << text
+		args << text_id
 		name_set[name] = true
 	}
 	if names.len == 0 || !type_text_names_any(typ, name_set) {
@@ -255,7 +254,7 @@ fn (tc &TypeChecker) parse_type_as_instance(typ string) Type {
 	for name, _ in tc.type_param_texts.ids {
 		mut one := map[string]bool{}
 		one[name] = true
-		if !tc.type_params_expanding[name] && args.any(type_text_names_any(it, one)) {
+		if !tc.type_params_expanding[name] && args.any(type_text_names_any(flat.source_type_name(it), one)) {
 			fork.type_params_expanding[name] = true
 			expanding << name
 		}
@@ -276,13 +275,15 @@ fn (tc &TypeChecker) instance_type_text(text string) string {
 	if tc.type_param_texts.ids.len == 0 {
 		return text
 	}
-	if instance := tc.type_param_texts.get(text) {
+	if instance_source_id := tc.type_param_texts.type_id(text) {
+		instance := flat.source_type_name(instance_source_id)
+
 		return instance
 	}
 	fn_id := flat.NodeId(tc.fn_context.node_id)
 	if tc.valid_node_id(fn_id) {
 		if param := tc.fn_param_type_param(tc.a.node(fn_id), text, tc.type_param_texts.keys()) {
-			return tc.type_param_texts.get(param) or { text }
+			return flat.source_type_name(tc.type_param_texts.type_id(param) or { flat.source_type_id(text) })
 		}
 	}
 	if typ := tc.cur_scope.lookup(text) {
@@ -355,29 +356,29 @@ fn (tc &TypeChecker) instance_comptime_in_value(term ComptimeInTerm) ?bool {
 // parameter against, `$if x is User`, whose branch the interface does not take.
 // A type may name a type parameter, its own, `[T Comparable[T]]`, or another,
 // `[C Container[T], T Named]` (see closed_type_param_texts).
-fn (tc &TypeChecker) type_param_instance_texts(node flat.Node, params map[string]bool, constraints map[string]GenericConstraint) ?map[string][]string {
+fn (tc &TypeChecker) type_param_instance_texts(node flat.Node, params map[string]bool, constraints map[string]GenericConstraint) ?map[string][]u32 {
 	mut names := []string{}
 	for name, _ in params {
 		names << name
 	}
-	mut texts := map[string][]string{}
+	mut texts := map[string][]u32{}
 	for name, _ in params {
 		constraint := constraints[name] or { return none }
-		mut options := []string{}
+		mut options := []u32{}
 		if constraint.is_interface {
-			options << constraint.iface.name()
+			options << constraint.iface.source_type_id()
 			for tested in tc.comptime_tested_types(node, name, names) {
 				if tested !in options
-					&& tc.generic_constraint_accepts(constraint, tc.parse_type(flat.source_type_id(tested))) {
+					&& tc.generic_constraint_accepts(constraint, tc.parse_type(tested)) {
 					options << tested
 				}
 			}
 		} else {
 			for typ in constraint.types {
-				options << typ.name()
+				options << typ.source_type_id()
 			}
 		}
-		if options.len == 0 || options.any(it.len == 0) {
+		if options.len == 0 || options.any(it == 0) {
 			return none
 		}
 		texts[name] = options
@@ -391,8 +392,8 @@ fn (tc &TypeChecker) type_param_instance_texts(node flat.Node, params map[string
 // `$if x in [User, Admin]`, or through a local whose value comes from any type
 // parameter, `y := x` and `$if y is User`; `!is` and `!in` too, whose `$else`
 // is those types. `names` are the type parameters of `node`.
-fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names []string) []string {
-	mut found := []string{}
+fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names []string) []u32 {
+	mut found := []u32{}
 	for cond in tc.comptime_conditions_on(node, param, names) {
 		for alternative in cond.split('||') {
 			for part in alternative.split('&&') {
@@ -403,8 +404,8 @@ fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names [
 				if in_term := comptime_in_term(term) {
 					if in_term.left == param {
 						for item in in_term.items {
-							if !item.starts_with('$') && item !in found {
-								found << item
+							if !item.starts_with('$') && flat.source_type_id(item) !in found {
+								found << flat.source_type_id(item)
 							}
 						}
 					}
@@ -415,8 +416,8 @@ fn (tc &TypeChecker) comptime_tested_types(node flat.Node, param string, names [
 					left := term[..idx].trim_space()
 					right := term[idx + op.len..].trim_space()
 					if left == param && right.len > 0 && !right.starts_with('$')
-						&& right !in found {
-						found << right
+						&& flat.source_type_id(right) !in found {
+						found << flat.source_type_id(right)
 					}
 					break
 				}
@@ -511,17 +512,17 @@ fn comptime_condition_terms(cond string, name string) []string {
 // it: the terms of their conditions on it, `T is f64`, `x in [f32, f64]` or
 // `T !is $float`, split its types into groups that no term tells apart. A group
 // for each type parameter takes a way through every `$if`, its `$else` too.
-fn (tc &TypeChecker) type_param_branch_classes(node flat.Node, texts map[string][]string, constraints map[string]GenericConstraint) map[string][][]string {
+fn (tc &TypeChecker) type_param_branch_classes(node flat.Node, texts map[string][]u32, constraints map[string]GenericConstraint) map[string][][]u32 {
 	names := texts.keys()
-	mut classes := map[string][][]string{}
+	mut classes := map[string][][]u32{}
 	for name, options in texts {
 		constraint := constraints[name] or {
 			classes[name] = [options.clone()]
 			continue
 		}
-		mut option_names := []string{cap: options.len}
+		mut option_names := []u32{cap: options.len}
 		for option in options {
-			option_names << tc.parse_type(flat.source_type_id(option)).name()
+			option_names << tc.parse_type(option).source_type_id()
 		}
 		// The terms that each type meets, a mark for each term.
 		mut marks := []string{len: options.len}
@@ -529,12 +530,12 @@ fn (tc &TypeChecker) type_param_branch_classes(node flat.Node, texts map[string]
 			for term in comptime_condition_terms(cond, name) {
 				met := tc.constraint_condition_term_types(term, name, constraint) or { continue }
 				for i, option_name in option_names {
-					marks[i] += if met.any(it.name() == option_name) { '1' } else { '0' }
+					marks[i] += if met.any(it.source_type_id() == option_name) { '1' } else { '0' }
 				}
 			}
 		}
 		mut group_of := map[string]int{}
-		mut groups := [][]string{}
+		mut groups := [][]u32{}
 		for i, option in options {
 			if at := group_of[marks[i]] {
 				groups[at] << option
@@ -566,7 +567,7 @@ const generic_body_branch_budget = 4 * generic_body_instance_budget
 // parameters lead to needs three types at once, which the combinations of every
 // two of them may not give; and in it, the other type parameters need their
 // types as well.
-fn (tc &TypeChecker) generic_body_combinations(node flat.Node, texts map[string][]string, constraints map[string]GenericConstraint) []map[string]string {
+fn (tc &TypeChecker) generic_body_combinations(node flat.Node, texts map[string][]u32, constraints map[string]GenericConstraint) []map[string]u32 {
 	mut combinations := type_param_combinations(texts, generic_body_instance_budget)
 	mut count := 1
 	for _, options in texts {
@@ -597,10 +598,10 @@ fn (tc &TypeChecker) generic_body_combinations(node flat.Node, texts map[string]
 
 // type_param_combination_key is `combination` as a text, with its types in the
 // order of `names`.
-fn type_param_combination_key(names []string, combination map[string]string) string {
+fn type_param_combination_key(names []string, combination map[string]u32) string {
 	mut key := []string{cap: names.len}
 	for name in names {
-		key << combination[name]
+		key << flat.source_type_name(combination[name])
 	}
 	return key.join('\n')
 }
@@ -611,7 +612,7 @@ fn type_param_combination_key(names []string, combination map[string]string) str
 // they come to at most `branch_budget` all together; else each type of each
 // group one at a time, in each way. Past `budget` ways, the first type of each
 // group stands for it, which takes every way but checks no other type.
-fn type_param_way_combinations(names []string, classes map[string][][]string, budget int, branch_budget int) []map[string]string {
+fn type_param_way_combinations(names []string, classes map[string][][]u32, budget int, branch_budget int) []map[string]u32 {
 	mut sizes := []int{cap: names.len}
 	mut ways := 1
 	for name in names {
@@ -621,9 +622,9 @@ fn type_param_way_combinations(names []string, classes map[string][][]string, bu
 		}
 	}
 	if ways > budget {
-		mut firsts := map[string][]string{}
+		mut firsts := map[string][]u32{}
 		for name in names {
-			mut first := []string{cap: classes[name].len}
+			mut first := []u32{cap: classes[name].len}
 			for group in classes[name] {
 				first << group[0]
 			}
@@ -631,15 +632,15 @@ fn type_param_way_combinations(names []string, classes map[string][][]string, bu
 		}
 		return type_param_combinations(firsts, budget)
 	}
-	mut way_texts := []map[string][]string{}
+	mut way_texts := []map[string][]u32{}
 	for way in all_index_rows(sizes) {
-		mut texts := map[string][]string{}
+		mut texts := map[string][]u32{}
 		for i, name in names {
 			texts[name] = classes[name][way[i]]
 		}
 		way_texts << texts
 	}
-	mut combinations := []map[string]string{}
+	mut combinations := []map[string]u32{}
 	for texts in way_texts {
 		combinations << type_param_combinations(texts, budget)
 		if combinations.len > branch_budget {
@@ -649,7 +650,7 @@ fn type_param_way_combinations(names []string, classes map[string][][]string, bu
 	if combinations.len <= branch_budget {
 		return combinations
 	}
-	combinations = []map[string]string{}
+	combinations = []map[string]u32{}
 	for texts in way_texts {
 		mut way_sizes := []int{cap: names.len}
 		for name in names {
@@ -666,7 +667,7 @@ fn type_param_way_combinations(names []string, classes map[string][][]string, bu
 // types (see pairwise_index_rows), what an operation between two of them
 // needs; and when even those are past it, one type parameter at a time through
 // all of its types while the others keep their first.
-fn type_param_combinations(texts map[string][]string, budget int) []map[string]string {
+fn type_param_combinations(texts map[string][]u32, budget int) []map[string]u32 {
 	mut names := []string{cap: texts.len}
 	mut sizes := []int{cap: texts.len}
 	mut count := 1
@@ -691,10 +692,10 @@ fn type_param_combinations(texts map[string][]string, budget int) []map[string]s
 
 // index_rows_combinations turns each row of `rows`, an index into the types of
 // each type parameter of `names` in `texts`, into a combination.
-fn index_rows_combinations(names []string, texts map[string][]string, rows [][]int) []map[string]string {
-	mut combinations := []map[string]string{cap: rows.len}
+fn index_rows_combinations(names []string, texts map[string][]u32, rows [][]int) []map[string]u32 {
+	mut combinations := []map[string]u32{cap: rows.len}
 	for row in rows {
-		mut combination := map[string]string{}
+		mut combination := map[string]u32{}
 		for i, name in names {
 			combination[name] = texts[name][row[i]]
 		}
@@ -821,8 +822,8 @@ fn one_at_a_time_index_rows(sizes []int) [][]int {
 // `[C Container[T], T Named]` is `Container[Named]`. A type parameter that its
 // own type reaches again, `T` of `[T Comparable[T]]`, stays in it, open (see
 // parse_type_as_instance).
-fn closed_type_param_texts(combination map[string]string) map[string]string {
-	mut closed := map[string]string{}
+fn closed_type_param_texts(combination map[string]u32) map[string]u32 {
+	mut closed := map[string]u32{}
 	for name, text in combination {
 		mut path := map[string]bool{}
 		path[name] = true
@@ -833,24 +834,21 @@ fn closed_type_param_texts(combination map[string]string) map[string]string {
 
 // close_type_param_text puts into `text` the types of the type parameters of
 // `combination` that it names, but those on `path`, the ones being put in.
-fn close_type_param_text(text string, combination map[string]string, mut path map[string]bool) string {
+fn close_type_param_text(text_id u32, combination map[string]u32, mut path map[string]bool) u32 {
+	text := flat.source_type_name(text_id)
 	mut names := []string{}
-	mut args := []string{}
+	mut args := []u32{}
 	for name, other in combination {
 		mut one := map[string]bool{}
 		one[name] = true
-		if name in path || !type_text_names_any(text, one) {
-			continue
-		}
+		if name in path || !type_text_names_any(text, one) { continue }
 		path[name] = true
 		names << name
 		args << close_type_param_text(other, combination, mut path)
 		path.delete(name)
 	}
-	if names.len == 0 {
-		return text
-	}
-	return subst_generic_text(text, args, names)
+	if names.len == 0 { return text_id }
+	return flat.source_type_id(subst_generic_text(text, args, names))
 }
 
 // type_param_occurrence_reason says why an error that the checks found, with
@@ -858,16 +856,16 @@ fn close_type_param_text(text string, combination map[string]string, mut path ma
 // function: what the type parameters that decide it were. One that had every
 // type of `texts`, more than one, does not decide it, and is left out; one that
 // has only its interface is any type that implements it.
-fn type_param_occurrence_reason(types flat.TypeTextListBindings, texts map[string][]string, constraints map[string]GenericConstraint) string {
+fn type_param_occurrence_reason(types flat.TypeTextListBindings, texts map[string][]u32, constraints map[string]GenericConstraint) string {
 	mut parts := []string{}
 	for name, options in texts {
-		taken := types.get(name) or { continue }
+		taken := types.type_ids(name) or { continue }
 		constraint := constraints[name] or { continue }
 		if options.len > 1 && taken.len >= options.len {
 			continue
 		}
 		if constraint.is_interface {
-			implementers := taken.filter(it != constraint.iface.name())
+			implementers := taken.filter(it != constraint.iface.source_type_id())
 			if implementers.len == 0 || implementers.len < taken.len {
 				parts << '`${name}` is any type that implements `${constraint.name_text()}`'
 			} else {
@@ -880,7 +878,7 @@ fn type_param_occurrence_reason(types flat.TypeTextListBindings, texts map[strin
 		missing := options.filter(it !in taken)
 		what := if missing.len > 0 && missing.len < taken.len {
 			if missing.len == 1 {
-				'not `${missing[0].all_after_last('.')}`'
+				'not `${flat.source_type_name(missing[0]).all_after_last('.')}`'
 			} else {
 				'none of ${type_names_text(missing, 'and')}'
 			}
@@ -894,10 +892,10 @@ fn type_param_occurrence_reason(types flat.TypeTextListBindings, texts map[strin
 
 // type_names_text writes `names`, types, as a list joined with `word` before
 // the last one, `f32` or `f64`: past three, the first three and how many more.
-fn type_names_text(names []string, word string) string {
+fn type_names_text(names []u32, word string) string {
 	mut shown := []string{}
 	for name in names#[..3] {
-		shown << '`${name.all_after_last('.')}`'
+		shown << '`${flat.source_type_name(name).all_after_last('.')}`'
 	}
 	if names.len > 3 {
 		return '${shown.join(', ')} ${word} ${names.len - 3} more'

@@ -52,7 +52,7 @@ fn test_comptime_field_type_id_keeps_custom_types_above_builtin_range() {
 		a: &a
 	}
 	assert comptime_type_id_hash('T207') & ~(0xff << 16) < 65536
-	type_id := t.comptime_field_type_id('T207', '')
+	type_id := t.comptime_field_type_id(flat.source_type_id('T207'), '')
 	assert type_id > 65535
 	assert type_id != comptime_builtin_type_idx('isize')
 	assert type_id & (0xff << 16) == 0
@@ -65,7 +65,7 @@ fn test_comptime_field_type_id_keeps_specialized_main_type_provenance() {
 	}
 	t.active_specialization_main_types['MyParams'] = true
 	assert t.comptime_field_type_id_key('MyParams', 'reflection') == 'main.MyParams'
-	assert t.comptime_field_type_id('MyParams', 'reflection') == comptime_type_id_hash('main.MyParams') & ~(0xff << 16)
+	assert t.comptime_field_type_id(flat.source_type_id('MyParams'), 'reflection') == comptime_type_id_hash('main.MyParams') & ~(0xff << 16)
 }
 
 fn test_comptime_for_base_type_unwraps_storage_indirections() {
@@ -73,8 +73,8 @@ fn test_comptime_for_base_type_unwraps_storage_indirections() {
 	t := Transformer{
 		a: &a
 	}
-	assert t.comptime_for_base_type('&websocket.Server') == 'websocket.Server'
-	assert t.comptime_for_base_type('shared websocket.ClientState') == 'websocket.ClientState'
+	assert flat.source_type_name(t.comptime_for_base_type('&websocket.Server')) == 'websocket.Server'
+	assert flat.source_type_name(t.comptime_for_base_type('shared websocket.ClientState')) == 'websocket.ClientState'
 }
 
 fn test_comptime_method_receiver_name_normalizes_main_qualification() {
@@ -127,8 +127,8 @@ fn test_comptime_method_selector_keeps_unregistered_local_receivers() {
 			name:        'sample'
 			receiver:    flat.source_type_id('Dummy')
 			module_name: 'main'
-			return_type: flat.source_type_id('int')
-			params:      [ParamMeta{ name: 'value', typ: flat.source_type_id('string') }]
+			return_type: flat.source_type_int
+			params:      [ParamMeta{ name: 'value', typ: flat.source_type_string }]
 		})
 		node := a.node(selector)
 		assert node.kind == .selector, binding
@@ -145,7 +145,7 @@ fn test_comptime_method_selector_preserves_type_namespace_function_values() {
 		tc.structs['generated'] = []types.StructField{}
 		tc.structs['dep.Dummy'] = []types.StructField{}
 		tc.structs['dep.receiver'] = []types.StructField{}
-		tc.type_aliases.set('Alias', 'Dummy')
+		tc.type_aliases.set_id('Alias', flat.source_type_id('Dummy'))
 		tc.generated_files['generated.v'] = true
 		tc.file_selective_imports[file_import_key('generated.v', 'receiver')] = ['dep.receiver']
 		receiver_type := match name {
@@ -172,8 +172,8 @@ fn test_comptime_method_selector_preserves_type_namespace_function_values() {
 			name:        'sample'
 			receiver:    flat.source_type_id(receiver_type)
 			module_name: 'main'
-			return_type: flat.source_type_id('int')
-			params:      [ParamMeta{ name: 'value', typ: flat.source_type_id('string') }]
+			return_type: flat.source_type_int
+			params:      [ParamMeta{ name: 'value', typ: flat.source_type_string }]
 		})
 		node := a.node(value)
 		assert node.kind == .ident, name
@@ -208,7 +208,7 @@ fn test_comptime_generated_type_namespace_respects_unlowered_same_type_local() {
 		name:        'sample'
 		receiver:    flat.source_type_id('receiver')
 		module_name: 'main'
-		return_type: flat.source_type_id('int')
+		return_type: flat.source_type_int
 	})
 	node := a.node(selector)
 	assert node.kind == .selector
@@ -230,7 +230,7 @@ fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 	route_arg := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'item'
-		typ:   flat.source_type_id('string')
+		typ:   flat.source_type_string
 	})
 	children_start := a.children.len
 	a.children << callee
@@ -294,17 +294,17 @@ fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 	assert t.comptime_method_call_matches(call, variadic_method)
 	assert !t.comptime_method_call_arity_matches(call_without_ctx, MethodMeta{
 		...base_method
-		params: [ParamMeta{ typ: flat.source_type_id('string') }]
+		params: [ParamMeta{ typ: flat.source_type_string }]
 	})
 	string_method := MethodMeta{
 		...base_method
-		params: [ParamMeta{ typ: flat.source_type_id('string') }]
+		params: [ParamMeta{ typ: flat.source_type_string }]
 	}
 	assert t.comptime_method_call_arity_matches(call, string_method)
 	assert !t.comptime_method_call_matches(call, string_method)
 	route_method := MethodMeta{
 		...base_method
-		params: [ParamMeta{ typ: flat.source_type_id('string') }]
+		params: [ParamMeta{ typ: flat.source_type_string }]
 	}
 	assert t.comptime_method_call_arity_matches(call_with_route_arg, route_method)
 	assert t.comptime_method_call_matches(call_with_route_arg, route_method)
@@ -447,29 +447,29 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 	tc.structs['RouteParams'] = [
 		types.StructField{
 			name: 'a'
-			typ:  tc.parse_type(flat.source_type_id('int'))
+			typ:  tc.parse_type(flat.source_type_int)
 		},
 		types.StructField{
 			name: 'b'
-			typ:  tc.parse_type(flat.source_type_id('int'))
+			typ:  tc.parse_type(flat.source_type_int)
 		},
 	]
 	tc.structs['OtherParams'] = [types.StructField{
 		name: 'a'
-		typ:  tc.parse_type(flat.source_type_id('int'))
+		typ:  tc.parse_type(flat.source_type_int)
 	}]
 	tc.structs['RequiredParams'] = [
 		types.StructField{
 			name: 'a'
-			typ:  tc.parse_type(flat.source_type_id('int'))
+			typ:  tc.parse_type(flat.source_type_int)
 		},
 		types.StructField{
 			name: 'b'
-			typ:  tc.parse_type(flat.source_type_id('int'))
+			typ:  tc.parse_type(flat.source_type_int)
 		},
 		types.StructField{
 			name: 'c'
-			typ:  tc.parse_type(flat.source_type_id('int'))
+			typ:  tc.parse_type(flat.source_type_int)
 		},
 	]
 	tc.fn_implicit_veb_ctx['App.configure'] = true
@@ -488,13 +488,13 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 		fields:    [
 			FieldInfo{
 				name:    'a'
-				typ:     flat.source_type_id('int')
-				raw_typ: flat.source_type_id('int')
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 			FieldInfo{
 				name:    'b'
-				typ:     flat.source_type_id('int')
-				raw_typ: flat.source_type_id('int')
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 		]
 	}
@@ -504,8 +504,8 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 		fields:    [
 			FieldInfo{
 				name:    'a'
-				typ:     flat.source_type_id('int')
-				raw_typ: flat.source_type_id('int')
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 		]
 	}
@@ -515,18 +515,18 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 		fields:    [
 			FieldInfo{
 				name:    'a'
-				typ:     flat.source_type_id('int')
-				raw_typ: flat.source_type_id('int')
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 			FieldInfo{
 				name:    'b'
-				typ:     flat.source_type_id('int')
-				raw_typ: flat.source_type_id('int')
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 			FieldInfo{
 				name:    'c'
-				typ:     flat.source_type_id('int')
-				raw_typ: flat.source_type_id('int')
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 		]
 	}
@@ -545,7 +545,7 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 	assert t.comptime_method_call_matches(call, method)
 	assert !t.comptime_method_call_matches(call, MethodMeta{
 		...method
-		params: [ParamMeta{ typ: flat.source_type_id('int') }]
+		params: [ParamMeta{ typ: flat.source_type_int }]
 	})
 	assert !t.comptime_method_call_matches(call, MethodMeta{
 		...method
@@ -577,7 +577,7 @@ fn test_comptime_sum_variants_normalize_main_specialization_lock() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{ a: &a }
 	t.sum_types.set('Sum', ['int', 'string'])
-	variants := t.comptime_sum_variants('main.Sum')
+	variants := t.comptime_sum_variants(flat.source_type_id('main.Sum'))
 	assert variants.len == 2
 	assert variants[0].typ_text() == 'int'
 	assert variants[1].typ_text() == 'string'
@@ -726,7 +726,7 @@ fn test_mangled_generic_struct_field_metadata_resolves_declaration() {
 	}
 	t.build_struct_field_decl_metas_cache()
 	for name in ['Box_int', 'sample.Box_int', 'sample__Box_int'] {
-		metas := t.struct_field_decl_metas(name)
+		metas := t.struct_field_decl_metas(flat.source_type_id(name))
 		meta := metas['value'] or {
 			assert false, 'missing field metadata for `${name}`'
 			continue
@@ -763,8 +763,8 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 				fields: [
 					FieldInfo{
 						name:    'first'
-						typ:     flat.source_type_id('int')
-						raw_typ: flat.source_type_id('int')
+						typ:     flat.source_type_int
+						raw_typ: flat.source_type_int
 					},
 				]
 			}
@@ -774,22 +774,22 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 				fields: [
 					FieldInfo{
 						name:    'second'
-						typ:     flat.source_type_id('string')
-						raw_typ: flat.source_type_id('string')
+						typ:     flat.source_type_string
+						raw_typ: flat.source_type_string
 					},
 				]
 			}
 		}
 	}
 	t.cur_module = 'first'
-	first := t.comptime_field_metas('Config')
+	first := t.comptime_field_metas(flat.source_type_id('Config'))
 	assert first.len == 1
 	assert first[0].name == 'first'
 	assert first[0].attrs == ['first_attr']
 	assert first[0].is_pub
 
 	t.cur_module = 'second'
-	second := t.comptime_field_metas('Config')
+	second := t.comptime_field_metas(flat.source_type_id('Config'))
 	assert second.len == 1
 	assert second[0].name == 'second'
 	assert second[0].attrs == ['second_attr']
@@ -822,7 +822,7 @@ fn test_comptime_field_metadata_cache_normalizes_main_qualified_name() {
 			}
 		}
 	}
-	metas := t.comptime_field_metas('main.Config')
+	metas := t.comptime_field_metas(flat.source_type_id('main.Config'))
 	assert metas.len == 1
 	assert metas[0].attrs == ['skip']
 }
@@ -833,7 +833,7 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 	mut builtin_field := flat.Node{
 		kind:  .field_decl
 		value: 'builtin_value'
-		typ:   flat.source_type_id('int')
+		typ:   flat.source_type_int
 	}
 	builtin_field.set_generic_params(['p', 'builtin_attr'])
 	builtin_field_id := a.add_node(builtin_field)
@@ -850,7 +850,7 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 	mut main_field := flat.Node{
 		kind:  .field_decl
 		value: 'main_value'
-		typ:   flat.source_type_id('string')
+		typ:   flat.source_type_string
 	}
 	main_field.set_generic_params(['mp', 'main_attr'])
 	main_field_id := a.add_node(main_field)
@@ -867,7 +867,7 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 		a: &a
 	}
 	t.build_struct_field_decl_metas_cache()
-	main_metas := t.struct_field_decl_metas_in_module('FieldData', 'main')
+	main_metas := t.struct_field_decl_metas_in_module(flat.source_type_id('FieldData'), 'main')
 	main_meta := main_metas['main_value'] or {
 		assert false, 'missing main FieldData metadata'
 		return
@@ -877,7 +877,7 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 	assert main_meta.attrs == ['main_attr']
 	assert 'builtin_value' !in main_metas
 
-	builtin_metas := t.struct_field_decl_metas_in_module('FieldData', 'builtin')
+	builtin_metas := t.struct_field_decl_metas_in_module(flat.source_type_id('FieldData'), 'builtin')
 	builtin_meta := builtin_metas['builtin_value'] or {
 		assert false, 'missing builtin FieldData metadata'
 		return
@@ -887,7 +887,7 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 	assert builtin_meta.attrs == ['builtin_attr']
 	assert 'main_value' !in builtin_metas
 
-	bare_metas := t.struct_field_decl_metas('FieldData')
+	bare_metas := t.struct_field_decl_metas(flat.source_type_id('FieldData'))
 	assert 'main_value' in bare_metas
 	assert 'builtin_value' !in bare_metas
 }
@@ -929,15 +929,15 @@ fn test_comptime_method_metadata_keeps_resolved_module_and_file_context() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['first.App'] = []types.StructField{}
 	tc.structs['second.App'] = []types.StructField{}
-	tc.type_aliases.set('first.Alias', 'first.App')
-	tc.type_aliases.set('second.Alias', 'second.App')
+	tc.type_aliases.set_id('first.Alias', flat.source_type_id('first.App'))
+	tc.type_aliases.set_id('second.Alias', flat.source_type_id('second.App'))
 	tc.file_imports[file_import_key('first.v', 'dep')] = 'first'
 	tc.file_imports[file_import_key('second.v', 'dep')] = 'second'
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for module_name in ['first', 'second', 'first'] {
 		t.cur_module = module_name
 		for name in ['App', 'Alias', '${module_name}.App'] {
-			methods := t.comptime_method_metas(name)
+			methods := t.comptime_method_metas(flat.source_type_id(name))
 			assert methods.len == if name == 'Alias' { 2 } else { 1 }
 			assert methods[0].module_name == module_name
 			assert methods[0].return_type_text() == if module_name == 'first' {
@@ -954,7 +954,7 @@ fn test_comptime_method_metadata_keeps_resolved_module_and_file_context() {
 	t.cur_module = 'main'
 	for module_name in ['first', 'second', 'first'] {
 		t.cur_file = '${module_name}.v'
-		methods := t.comptime_method_metas('dep.App')
+		methods := t.comptime_method_metas(flat.source_type_id('dep.App'))
 		assert methods.len == 1
 		assert methods[0].module_name == module_name
 	}
@@ -970,7 +970,7 @@ fn test_comptime_method_metadata_keeps_generic_receiver_specializations() {
 	t.cur_module = 'main'
 	for typ in ['int', 'string', 'int'] {
 		for name in ['Box[${typ}]', 'Box_${typ}'] {
-			methods := t.comptime_method_metas(name)
+			methods := t.comptime_method_metas(flat.source_type_id(name))
 			assert methods.len == 1
 			assert methods[0].return_type_text() == typ
 			assert methods[0].params.len == 1
@@ -992,7 +992,7 @@ fn test_comptime_method_metadata_keeps_specialization_main_type_provenance() {
 	t.cur_module = 'reflection'
 	for main_type in [false, true, false] {
 		t.active_specialization_main_types['App'] = main_type
-		methods := t.comptime_method_metas('App')
+		methods := t.comptime_method_metas(flat.source_type_id('App'))
 		assert methods.len == 1
 		assert methods[0].module_name == if main_type { 'main' } else { 'reflection' }
 		assert methods[0].return_type_text() == if main_type { 'int' } else { 'string' }
@@ -1008,7 +1008,7 @@ fn test_comptime_method_metadata_keeps_module_sensitive_generic_arguments() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for module_name in ['first', 'second', 'first'] {
 		t.cur_module = module_name
-		methods := t.comptime_method_metas('main.Box[A]')
+		methods := t.comptime_method_metas(flat.source_type_id('main.Box[A]'))
 		assert methods.len == 1
 		assert methods[0].return_type_text() == if module_name == 'first' { 'A' } else { 'T' }
 		assert methods[0].params[0].typ_text() == methods[0].return_type_text()
@@ -1022,7 +1022,7 @@ fn test_comptime_method_metadata_observes_appended_methods_and_attributes() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	initial := t.comptime_method_metas('App')
+	initial := t.comptime_method_metas(flat.source_type_id('App'))
 	assert initial.len == 1
 	assert initial[0].attrs.len == 0
 	a.add_node(flat.Node{
@@ -1031,7 +1031,7 @@ fn test_comptime_method_metadata_observes_appended_methods_and_attributes() {
 		typ:     flat.source_type_id('1,2,3,0')
 		payload: flat.node_payload(["route: '/first'", 'priority: 2', 'enabled: true', 'inline'])
 	})
-	attributed := t.comptime_method_metas('App')
+	attributed := t.comptime_method_metas(flat.source_type_id('App'))
 	assert attributed.len == 1
 	assert attributed[0].attrs == ["route: '/first'", 'priority: 2', 'enabled: true', 'inline']
 	assert attributed[0].attributes == [
@@ -1041,7 +1041,7 @@ fn test_comptime_method_metadata_observes_appended_methods_and_attributes() {
 		AttributeMeta{ name: 'inline', kind: 0 },
 	]
 	add_comptime_test_method(mut a, 'App', 'second', 'string', '')
-	expanded := t.comptime_method_metas('App')
+	expanded := t.comptime_method_metas(flat.source_type_id('App'))
 	assert expanded.len == 2
 	assert expanded[0].name == 'first'
 	assert expanded[0].attrs == attributed[0].attrs
@@ -1070,7 +1070,7 @@ fn test_comptime_method_metadata_observes_erased_generic_methods() {
 	tc.struct_generic_params['Box'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	initial := t.comptime_method_metas('Box[int]')
+	initial := t.comptime_method_metas(flat.source_type_id('Box[int]'))
 	assert initial.map(it.name) == ['replace', 'keep']
 	assert flat.source_type_name(initial[0].receiver) == 'Box[T]'
 	assert initial[0].attrs == ['generic']
@@ -1087,7 +1087,7 @@ fn test_comptime_method_metadata_observes_erased_generic_methods() {
 	})
 	assert a.nodes.len == node_count
 	assert a.node(template_id).kind == .empty
-	after := t.comptime_method_metas('Box[int]')
+	after := t.comptime_method_metas(flat.source_type_id('Box[int]'))
 	assert after.map(it.name) == ['keep', 'replace']
 	assert flat.source_type_name(after[1].receiver) == 'Box[int]'
 	assert after[1].return_type_text() == 'int'
@@ -1102,7 +1102,7 @@ fn test_comptime_method_scan_does_not_allocate_per_ast_node() {
 		a.add_val(.module_decl, 'main')
 		method_id := add_comptime_test_method(mut a, 'App', 'show', 'int', 'string')
 		for _ in 0 .. 8192 {
-			a.add_node(flat.Node{ kind: .int_literal, value: '0', typ: flat.source_type_id('int') })
+			a.add_node(flat.Node{ kind: .int_literal, value: '0', typ: flat.source_type_int })
 		}
 		a.add_node(flat.Node{
 			kind:    .directive
@@ -1115,8 +1115,8 @@ fn test_comptime_method_scan_does_not_allocate_per_ast_node() {
 		t.cur_module = 'main'
 		before := gc_heap_usage().total_bytes
 		for _ in 0 .. 16 {
-			assert t.comptime_method_metas('int').len == 0
-			methods := t.comptime_method_metas('App')
+			assert t.comptime_method_metas(flat.source_type_int).len == 0
+			methods := t.comptime_method_metas(flat.source_type_id('App'))
 			assert methods.len == 1
 			assert methods[0].attrs == ["route: '/show'"]
 			assert methods[0].attributes[0].arg == '/show'
@@ -1143,10 +1143,10 @@ fn test_comptime_method_metadata_reuses_repeated_receiver_lookups() {
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.cur_module = 'main'
-		assert t.comptime_method_metas('App').len == 128
+		assert t.comptime_method_metas(flat.source_type_id('App')).len == 128
 		before := gc_heap_usage().total_bytes
 		for _ in 0 .. 64 {
-			methods := t.comptime_method_metas('App')
+			methods := t.comptime_method_metas(flat.source_type_id('App'))
 			assert methods.len == 128
 			assert methods[127].params[0].typ_text() == 'int'
 			assert methods[127].attributes[0].arg == '/show'
@@ -1207,14 +1207,67 @@ fn test_scalar_constant_lookup_respects_global_owners_and_import_namespaces() {
 	tc.file_imports[file_import_key('main.v', 'registry')] = 'registry'
 	tc.file_imports[file_import_key('main.v', 'r')] = 'registry'
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.globals.set('registry', 'registry.Record')
-	t.globals.set('registry.registry', 'registry.Record')
-	t.globals.set('route', 'api.Record')
-	t.globals.set('api.route', 'api.Record')
+	t.globals.set_id('registry', flat.source_type_id('registry.Record'))
+	t.globals.set_id('registry.registry', flat.source_type_id('registry.Record'))
+	t.globals.set_id('route', flat.source_type_id('api.Record'))
+	t.globals.set_id('api.route', flat.source_type_id('api.Record'))
 	assert t.comptime_scalar_named_const('registry.value', 0, 'registry', 'registry.v') == none
 	assert (t.comptime_scalar_named_const('registry.route', 0, 'main', 'main.v') or { panic('import') }).value == 'a b'
 	assert (t.comptime_scalar_named_const('r.route', 0, 'main', 'main.v') or { panic('alias') }).value == 'a b'
 	assert (t.comptime_scalar_named_const('route', 0, 'main', 'main.v') or { panic('owner') }).value == 'a b'
 	assert (t.comptime_scalar_named_const('route', 0, '', 'main.v') or { panic('implicit main owner') }).value == 'a b'
 	assert t.subst_comptime_scalar_locals('registry.value == 7') == 'registry.value == 7'
+}
+
+fn test_reflected_method_escape_analysis_restores_ast_buffers() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	add_comptime_test_method(mut a, 'App', 'first', 'int', '')
+	add_comptime_test_method(mut a, 'App', 'second', 'int', '')
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['App'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	body := t.make_block([t.make_int_literal(7)])
+	start := a.children.len
+	a.children << body
+	loop := a.add_node(flat.Node{
+		kind:           .comptime_for
+		value:          'method|methods'
+		typ:            flat.source_type_id('App')
+		children_start: start
+		children_count: 1
+	})
+	a.nodes.ensure_cap(a.nodes.len + 1024)
+	a.children.ensure_cap(a.children.len + 1024)
+	a.nodes.flags.set(.nogrow)
+	a.children.flags.set(.nogrow)
+	initial_nodes := a.nodes.len
+	initial_children := a.children.len
+	initial_nodes_cap := a.nodes.cap
+	initial_children_cap := a.children.cap
+	initial_nodes_data := a.nodes.data
+	initial_children_data := a.children.data
+	for _ in 0 .. 3 {
+		mut amp_ptrs := map[string]bool{}
+		mut amp_sources := map[string][]string{}
+		mut ptr_aliases := map[string]string{}
+		mut method_receivers := map[string]string{}
+		mut capture_aliases := map[string][]string{}
+		mut interface_boxes := map[string]bool{}
+		mut returned := map[string]bool{}
+		mut local_names := map[string]bool{}
+		mut local_added := []string{}
+		mut backing_sources := map[string][]string{}
+		t.scan_escape_pass(loop, mut amp_ptrs, mut amp_sources, mut ptr_aliases,
+			mut method_receivers, mut capture_aliases, mut interface_boxes, mut returned,
+			mut local_names, mut local_added, mut backing_sources, false)
+		assert a.nodes.len == initial_nodes
+		assert a.children.len == initial_children
+		assert a.nodes.cap == initial_nodes_cap
+		assert a.children.cap == initial_children_cap
+		assert a.nodes.data == initial_nodes_data
+		assert a.children.data == initial_children_data
+		assert a.node(loop).kind == .comptime_for
+	}
 }

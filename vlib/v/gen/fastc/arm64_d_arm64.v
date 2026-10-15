@@ -1066,7 +1066,7 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 
 fn (mut p FastArm64Program) register_declared_types() {
 	for name, declaration in p.type_decls {
-		if declaration.alias_of_text() != '' {
+		if declaration.alias_of != u32(0) {
 			p.type_aliases.set(name, declaration.alias_of_text())
 			p.type_aliases.set(declaration.key.all_after_last('.'), declaration.alias_of_text())
 			continue
@@ -1087,7 +1087,7 @@ fn (mut p FastArm64Program) register_declared_types() {
 		}
 	}
 	for name, declaration in p.type_decls {
-		if declaration.alias_of_text() != '' || declaration.c_name != name {
+		if declaration.alias_of != u32(0) || declaration.c_name != name {
 			continue
 		}
 		id := p.type_ids[name] or { continue }
@@ -4298,10 +4298,10 @@ fn (mut p FastArm64Parser) parse_function() ! {
 	}
 	p.func_id = func_id
 	p.current_function = name
-	p.current_receiver = flat.source_type_id(if static_owner != '' {
-		static_owner
+	p.current_receiver = (if static_owner != '' {
+		flat.source_type_id(static_owner)
 	} else {
-		receiver_type.trim_right('*')
+		flat.source_type_id(receiver_type.trim_right('*'))
 	})
 	p.current_method_is_static = static_owner != ''
 	p.return_typ = p.program.fn_returns[key]
@@ -4689,7 +4689,7 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 		p.next()
 		local_layout := p.program.m.type_store.types[local.typ]
 		mut indexed_value_type_name := ''
-		if local_layout.kind == .ptr_t && local.typ_name_text().starts_with('&') {
+		if local_layout.kind == .ptr_t && flat.source_type_shape(local.typ_name).has(.pointer) {
 			indexed_value_type_name = local.typ_name_text()[1..]
 		} else if local_layout.kind == .array_t {
 			indexed_value_type_name = fastc_fixed_array_element_type(local.typ_name_text()) or { '' }
@@ -4985,8 +4985,8 @@ fn (mut p FastArm64Parser) parse_return() ! {
 		}
 		p.program.instr0(.ret, p.cur_block, p.program.void_type)
 	} else {
-		first_type_name := if p.return_names_text().len > 0 {
-			p.return_names_text()[0]
+		first_type_name := if p.return_names.ids.len > 0 {
+			flat.source_type_name(p.return_names.ids[0])
 		} else {
 			p.return_name_text()
 		}
@@ -4996,8 +4996,8 @@ fn (mut p FastArm64Parser) parse_return() ! {
 			for p.tok == .comma {
 				p.next()
 				value_index := values.len
-				value_type_name := if value_index < p.return_names_text().len {
-					p.return_names_text()[value_index]
+				value_type_name := if value_index < p.return_names.ids.len {
+					flat.source_type_name(p.return_names.ids[value_index])
 				} else {
 					''
 				}
@@ -5015,8 +5015,8 @@ fn (mut p FastArm64Parser) parse_return() ! {
 			for i, value in values {
 				mut stored_value := value
 				if stored_value.typ != layout.fields[i] {
-					type_name := if i < p.return_names_text().len {
-						p.return_names_text()[i]
+					type_name := if i < p.return_names.ids.len {
+						flat.source_type_name(p.return_names.ids[i])
 					} else {
 						''
 					}
@@ -5299,7 +5299,7 @@ fn (mut p FastArm64Parser) parse_if() ! {
 				FastArm64Value{
 					id:       p.last_map_found
 					typ:      p.program.i1_type
-					typ_name: flat.source_type_id('bool')
+					typ_name: flat.source_type_bool
 				}
 			} else {
 				p.truthy_value(value)
@@ -5359,7 +5359,7 @@ fn (mut p FastArm64Parser) truthy_value(value FastArm64Value) FastArm64Value {
 		return FastArm64Value{
 			id:       value.map_found
 			typ:      p.program.i1_type
-			typ_name: flat.source_type_id('bool')
+			typ_name: flat.source_type_bool
 		}
 	}
 	if value.option_failed != ssa.ValueID(0) {
@@ -5367,7 +5367,7 @@ fn (mut p FastArm64Parser) truthy_value(value FastArm64Value) FastArm64Value {
 		return FastArm64Value{
 			id:       p.program.instr2(.eq, p.cur_block, p.program.i1_type, value.option_failed, zero)
 			typ:      p.program.i1_type
-			typ_name: flat.source_type_id('bool')
+			typ_name: flat.source_type_bool
 		}
 	}
 	mut scalar := value
@@ -5377,7 +5377,7 @@ fn (mut p FastArm64Parser) truthy_value(value FastArm64Value) FastArm64Value {
 		scalar = FastArm64Value{
 			id:       p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.string_field_ptr(p.cur_block, slot, 1))
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 	} else if value.typ == p.program.array_type {
 		slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value.typ))
@@ -5385,20 +5385,20 @@ fn (mut p FastArm64Parser) truthy_value(value FastArm64Value) FastArm64Value {
 		scalar = FastArm64Value{
 			id:       p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, slot, value.typ, 2))
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 	} else if p.program.m.type_store.types[value.typ].kind == .struct_t {
 		return FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i1_type, '1')
 			typ:      p.program.i1_type
-			typ_name: flat.source_type_id('bool')
+			typ_name: flat.source_type_bool
 		}
 	}
 	zero := p.program.m.get_or_add_const(scalar.typ, '0')
 	return FastArm64Value{
 		id:       p.program.instr2(.ne, p.cur_block, p.program.i1_type, scalar.id, zero)
 		typ:      p.program.i1_type
-		typ_name: flat.source_type_id('bool')
+		typ_name: flat.source_type_bool
 	}
 }
 
@@ -5450,7 +5450,7 @@ fn (mut p FastArm64Parser) parse_for_inner() ! {
 		FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i1_type, '1')
 			typ:      p.program.i1_type
-			typ_name: flat.source_type_id('bool')
+			typ_name: flat.source_type_bool
 		}
 	} else {
 		p.parse_expression(0)!
@@ -5513,7 +5513,7 @@ fn (mut p FastArm64Parser) parse_match_statement() ! {
 				condition = FastArm64Value{
 					id:       p.program.instr2(.or_, p.cur_block, p.program.i1_type, condition.id, case_condition.id)
 					typ:      p.program.i1_type
-					typ_name: flat.source_type_id('bool')
+					typ_name: flat.source_type_bool
 				}
 			} else {
 				condition = case_condition
@@ -5684,7 +5684,7 @@ fn (mut p FastArm64Parser) parse_collection_for(index_name string, name string, 
 		p.declare_local(index_name, FastArm64Local{
 			addr:     index_slot
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		})
 	}
 	p.push_loop(done_block, increment_block)
@@ -6180,7 +6180,7 @@ fn (mut p FastArm64Parser) parse_expression(min_precedence int) !FastArm64Value 
 			left = FastArm64Value{
 				id:       condition
 				typ:      p.program.i1_type
-				typ_name: flat.source_type_id('bool')
+				typ_name: flat.source_type_bool
 			}
 			continue
 		}
@@ -6210,7 +6210,7 @@ fn (mut p FastArm64Parser) parse_expression(min_precedence int) !FastArm64Value 
 			left = FastArm64Value{
 				id:       p.program.instr1(.load, done_block, p.program.i1_type, result_slot)
 				typ:      p.program.i1_type
-				typ_name: flat.source_type_id('bool')
+				typ_name: flat.source_type_bool
 				address:  result_slot
 			}
 			continue
@@ -6385,7 +6385,7 @@ fn (mut p FastArm64Parser) parse_prefix() !FastArm64Value {
 			return FastArm64Value{
 				id:       p.program.instr2(.eq, p.cur_block, p.program.i1_type, value.id, zero)
 				typ:      p.program.i1_type
-				typ_name: flat.source_type_id('bool')
+				typ_name: flat.source_type_bool
 			}
 		}
 		minus_one := p.program.m.get_or_add_const(value.typ, '-1')
@@ -6685,7 +6685,7 @@ fn (mut p FastArm64Parser) parse_atom() !FastArm64Value {
 			return FastArm64Value{
 				id:       p.program.m.get_or_add_const(typ, literal)
 				typ:      typ
-				typ_name: flat.source_type_id(if is_float { 'f64' } else { 'int' })
+				typ_name: (if is_float { flat.source_type_f64 } else { flat.source_type_int })
 			}
 		}
 		.string {
@@ -6701,7 +6701,7 @@ fn (mut p FastArm64Parser) parse_atom() !FastArm64Value {
 			return FastArm64Value{
 				id:       p.program.m.add_value(.string_literal, p.program.str_type, literal, 0)
 				typ:      p.program.str_type
-				typ_name: flat.source_type_id('string')
+				typ_name: flat.source_type_string
 			}
 		}
 		.char {
@@ -6716,7 +6716,7 @@ fn (mut p FastArm64Parser) parse_atom() !FastArm64Value {
 			return FastArm64Value{
 				id:       p.program.m.get_or_add_const(p.program.i32_type, literal)
 				typ:      p.program.i32_type
-				typ_name: flat.source_type_id('rune')
+				typ_name: flat.source_type_rune
 			}
 		}
 		.key_true, .key_false {
@@ -6725,7 +6725,7 @@ fn (mut p FastArm64Parser) parse_atom() !FastArm64Value {
 			return FastArm64Value{
 				id:       p.program.m.get_or_add_const(p.program.i1_type, literal)
 				typ:      p.program.i1_type
-				typ_name: flat.source_type_id('bool')
+				typ_name: flat.source_type_bool
 			}
 		}
 		.key_none {
@@ -6855,7 +6855,7 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 					condition = FastArm64Value{
 						id:       p.program.instr2(.or_, p.cur_block, p.program.i1_type, condition.id, case_condition.id)
 						typ:      p.program.i1_type
-						typ_name: flat.source_type_id('bool')
+						typ_name: flat.source_type_bool
 					}
 				} else {
 					condition = case_condition
@@ -6999,7 +6999,7 @@ fn (mut p FastArm64Parser) parse_sizeof_expression() !FastArm64Value {
 			return FastArm64Value{
 				id:       p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(typ).str())
 				typ:      p.program.i64_type
-				typ_name: flat.source_type_id('usize')
+				typ_name: flat.source_type_usize
 			}
 		}
 	}
@@ -7017,7 +7017,7 @@ fn (mut p FastArm64Parser) parse_sizeof_expression() !FastArm64Value {
 	return FastArm64Value{
 		id:       p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value.typ).str())
 		typ:      p.program.i64_type
-		typ_name: flat.source_type_id('usize')
+		typ_name: flat.source_type_usize
 	}
 }
 
@@ -7174,7 +7174,7 @@ fn (mut p FastArm64Parser) parse_interpolated_string(first_literal string, quote
 	mut result := FastArm64Value{
 		id:       p.program.m.add_value(.string_literal, p.program.str_type, first_part, 0)
 		typ:      p.program.str_type
-		typ_name: flat.source_type_id('string')
+		typ_name: flat.source_type_string
 	}
 	for p.tok == .str_dollar {
 		p.next()
@@ -7208,7 +7208,7 @@ fn (mut p FastArm64Parser) parse_interpolated_string(first_literal string, quote
 				part_value := FastArm64Value{
 					id:       p.program.m.add_value(.string_literal, p.program.str_type, part, 0)
 					typ:      p.program.str_type
-					typ_name: flat.source_type_id('string')
+					typ_name: flat.source_type_string
 				}
 				result = p.emit_string_binary(.plus, result, part_value)!
 			}
@@ -7288,7 +7288,7 @@ fn (mut p FastArm64Parser) format_interpolation(value FastArm64Value, source str
 				uppercase_float,
 			])
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	} else if is_float && format.specifier in [`e`, `E`] {
 		precision := if format.precision >= 0 { format.precision } else { 6 }
@@ -7302,7 +7302,7 @@ fn (mut p FastArm64Parser) format_interpolation(value FastArm64Value, source str
 				uppercase_float,
 			])
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	} else if is_float && format.specifier in [`g`, `G`] {
 		precision := if format.precision > 0 { format.precision } else { 1 }
@@ -7318,7 +7318,7 @@ fn (mut p FastArm64Parser) format_interpolation(value FastArm64Value, source str
 				uppercase_float,
 			])
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	} else if is_float && (format.specifier in [
 		u8(0),
@@ -7350,7 +7350,7 @@ fn (mut p FastArm64Parser) format_interpolation(value FastArm64Value, source str
 				precision_value,
 			])
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 		if precision > scale_precision {
 			extra := p.program.m.get_or_add_const(p.program.i32_type, (precision - scale_precision).str())
@@ -7362,7 +7362,7 @@ fn (mut p FastArm64Parser) format_interpolation(value FastArm64Value, source str
 					extra,
 				])
 				typ:      p.program.str_type
-				typ_name: flat.source_type_id('string')
+				typ_name: flat.source_type_string
 			}
 		}
 	} else if p.program.m.type_store.types[value.typ].kind == .int_t && format.specifier == `c` {
@@ -7373,7 +7373,7 @@ fn (mut p FastArm64Parser) format_interpolation(value FastArm64Value, source str
 				p.integer_to_i64(value),
 			])
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	} else if p.program.m.type_store.types[value.typ].kind == .int_t && format.specifier in [
 		`d`,
@@ -7409,7 +7409,7 @@ fn (mut p FastArm64Parser) format_interpolation(value FastArm64Value, source str
 				is_signed,
 			])
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	} else {
 		formatted = p.stringify(value)!
@@ -7434,7 +7434,7 @@ fn (mut p FastArm64Parser) format_interpolation(value FastArm64Value, source str
 			zero_pad,
 		])
 		typ:      p.program.str_type
-		typ_name: flat.source_type_id('string')
+		typ_name: flat.source_type_string
 	}
 }
 
@@ -7450,7 +7450,7 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 				value.id,
 			])
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	}
 	if value.typ in [p.program.f32_type, p.program.f64_type] {
@@ -7476,7 +7476,7 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 				uppercase,
 			])
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	}
 	value_layout := p.program.m.type_store.types[value.typ]
@@ -7493,7 +7493,7 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 				flag,
 			])
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	}
 	mut integer := value.id
@@ -7513,7 +7513,7 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 			integer,
 		])
 		typ:      p.program.str_type
-		typ_name: flat.source_type_id('string')
+		typ_name: flat.source_type_string
 	}
 }
 
@@ -7544,7 +7544,7 @@ fn (mut p FastArm64Parser) parse_if_expression(expected_type_name string) !FastA
 				FastArm64Value{
 					id:       p.last_map_found
 					typ:      p.program.i1_type
-					typ_name: flat.source_type_id('bool')
+					typ_name: flat.source_type_bool
 				}
 			} else {
 				p.truthy_value(value)
@@ -7780,7 +7780,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 		return FastArm64Value{
 			id:       p.program.m.add_value(.string_literal, p.program.str_type, literal, 0)
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	}
 	if first_name == 'map' && p.tok == .lsbr {
@@ -7794,14 +7794,14 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 		return FastArm64Value{
 			id:       p.program.m.add_value(.string_literal, p.program.str_type, 'i64', 0)
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	}
 	if first_name == 'fastc_compact_v3_type_names' {
 		return FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i1_type, '0')
 			typ:      p.program.i1_type
-			typ_name: flat.source_type_id('bool')
+			typ_name: flat.source_type_bool
 		}
 	}
 	if local := p.locals[first_name] {
@@ -7948,7 +7948,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 		return FastArm64Value{
 			id:       p.program.instr1(.load, p.cur_block, p.program.i32_type, address)
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 			address:  address
 		}
 	}
@@ -7965,7 +7965,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 		return FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i32_type, literal)
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 	}
 	if display_name in ['C.O_RDONLY', 'C.O_WRONLY', 'C.O_RDWR', 'C.O_NONBLOCK', 'C.O_APPEND', 'C.O_SYNC',
@@ -7985,7 +7985,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 		return FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i32_type, literal)
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 	}
 	if display_name in ['C.S_IRUSR', 'C.S_IWUSR', 'C.S_IXUSR', 'C.S_IRGRP', 'C.S_IWGRP', 'C.S_IXGRP',
@@ -8013,7 +8013,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 		return FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i32_type, literal)
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 	}
 	if display_name in ['C.SEEK_SET', 'C.SEEK_CUR', 'C.SEEK_END'] {
@@ -8025,7 +8025,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 		return FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i64_type, literal)
 			typ:      p.program.i64_type
-			typ_name: flat.source_type_id('i64')
+			typ_name: flat.source_type_i64
 		}
 	}
 	if display_name in ['C._SC_PAGESIZE', 'C._SC_NPROCESSORS_ONLN'] {
@@ -8033,7 +8033,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 		return FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i32_type, literal)
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 	}
 	if display_name != first_name {
@@ -8339,7 +8339,7 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 	if p.tok != .rsbr {
 		mut initial := []FastArm64Value{}
 		for p.tok != .rsbr {
-			mut item := if p.tok == .dot && (initial.len > 0 || p.array_element_text() != '') {
+			mut item := if p.tok == .dot && (initial.len > 0 || p.array_element != u32(0)) {
 				p.parse_enum_shorthand(if initial.len > 0 {
 					initial[0].typ_name_text()
 				} else {
@@ -8371,7 +8371,7 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 		length := FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i32_type, initial.len.str())
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 		element_type_name := if expected_element_type_name == '' {
 			initial[0].typ_name_text()
@@ -8387,7 +8387,7 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 		zero := FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i32_type, '0')
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 		return p.make_array(element_type_name, []FastArm64Value{}, zero, zero)
 	}
@@ -8398,7 +8398,7 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 	mut length := FastArm64Value{
 		id:       p.program.m.get_or_add_const(p.program.i32_type, '0')
 		typ:      p.program.i32_type
-		typ_name: flat.source_type_id('int')
+		typ_name: flat.source_type_int
 	}
 	mut capacity := length
 	mut explicit_length := false
@@ -8445,7 +8445,7 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 		length = FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i32_type, initial.len.str())
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 	}
 	if !explicit_capacity {
@@ -8563,7 +8563,7 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 				FastArm64Value{
 					id:       p.program.m.get_or_add_const(p.program.i32_type, '0')
 					typ:      p.program.i32_type
-					typ_name: flat.source_type_id('int')
+					typ_name: flat.source_type_int
 				}
 			} else {
 				p.parse_expression(0)!
@@ -8643,7 +8643,7 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 			return FastArm64Value{
 				id:       p.program.instr2(.ne, p.cur_block, p.program.i1_type, masked, zero)
 				typ:      p.program.i1_type
-				typ_name: flat.source_type_id('bool')
+				typ_name: flat.source_type_bool
 			}
 		}
 		if value.typ in [p.program.array_type, p.program.map_type] && member == 'clone' {
@@ -8694,7 +8694,7 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 			p.program.m.add_instr(.call, p.cur_block, p.program.void_type, [sort_ref, value.id])
 			return FastArm64Value{
 				typ:      p.program.void_type
-				typ_name: flat.source_type_id('void')
+				typ_name: flat.source_type_void
 			}
 		}
 		if value.typ == p.program.array_type && member in ['prepend', 'insert'] {
@@ -8746,7 +8746,7 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 			])
 			return FastArm64Value{
 				typ:      p.program.void_type
-				typ_name: flat.source_type_id('void')
+				typ_name: flat.source_type_void
 			}
 		}
 		if value.typ in [p.program.i32_type, p.program.u32_type, p.program.i64_type,
@@ -8806,7 +8806,7 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 		return FastArm64Value{
 			id:       p.program.instr1(.load, done_block, p.program.i32_type, result_slot)
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 	}
 	mut field := -1
@@ -9242,7 +9242,7 @@ fn (mut p FastArm64Parser) emit_array_tail_method(array FastArm64Value, remove b
 	index64 := p.checked_array_index(FastArm64Value{
 		id:       last_index
 		typ:      p.program.i32_type
-		typ_name: flat.source_type_id('int')
+		typ_name: flat.source_type_int
 	}, length, 'array_tail')
 	data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
 	element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
@@ -9257,7 +9257,7 @@ fn (mut p FastArm64Parser) emit_array_tail_method(array FastArm64Value, remove b
 	if !return_value {
 		return FastArm64Value{
 			typ:      p.program.void_type
-			typ_name: flat.source_type_id('void')
+			typ_name: flat.source_type_void
 		}
 	}
 	return FastArm64Value{
@@ -9276,7 +9276,7 @@ fn (mut p FastArm64Parser) emit_array_delete(array FastArm64Value, index FastArm
 	p.emit_array_delete_storage(array_slot, index64, length32)
 	return FastArm64Value{
 		typ:      p.program.void_type
-		typ_name: flat.source_type_id('void')
+		typ_name: flat.source_type_void
 	}
 }
 
@@ -9623,7 +9623,7 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 			return FastArm64Value{
 				id:       code
 				typ:      p.program.i32_type
-				typ_name: flat.source_type_id('int')
+				typ_name: flat.source_type_int
 			}
 		}
 		message := if value.result_error_message == ssa.ValueID(0) {
@@ -9634,7 +9634,7 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 		message_value := FastArm64Value{
 			id:       message
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 		if method == 'msg' {
 			return message_value
@@ -9651,13 +9651,13 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 		separator := FastArm64Value{
 			id:       p.program.m.add_value(.string_literal, p.program.str_type, '; code: ', 0)
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 		prefix := p.emit_string_binary(.plus, message_value, separator)!
 		code_string := p.stringify(FastArm64Value{
 			id:       code
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		})!
 		formatted := p.emit_string_binary(.plus, prefix, code_string)!
 		p.program.instr2(.store, p.cur_block, p.program.void_type, formatted.id, result_slot)
@@ -9667,7 +9667,7 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 		return FastArm64Value{
 			id:       p.program.instr1(.load, done_block, p.program.str_type, result_slot)
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	}
 	resolved := p.resolve_method_key(value, method) or {
@@ -9778,13 +9778,13 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 		result_error_type:    result_error_type
 		result_error_message: result_error_message
 		result_error_code:    result_error_code
-		typ_name:             flat.source_type_id(if signature.return_type_text() in [
+		typ_name:             (if signature.return_type_text() in [
 			'Option',
 			'__v_result',
 		] {
-			signature.option_type_text()
+			signature.option_type
 		} else {
-			signature.return_type_text()
+			signature.return_type
 		})
 		tuple_types:          signature.return_types.clone()
 	}
@@ -9903,7 +9903,7 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 		mut start := FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i32_type, '0')
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 		if p.tok != .dotdot {
 			start = p.parse_expression(0)!
@@ -9919,7 +9919,7 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 			return FastArm64Value{
 				id:       p.program.instr1(.load, p.cur_block, p.program.u8_type, start_data)
 				typ:      p.program.u8_type
-				typ_name: flat.source_type_id('u8')
+				typ_name: flat.source_type_u8
 				address:  start_data
 			}
 		}
@@ -9929,7 +9929,7 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 			FastArm64Value{
 				id:       original_len
 				typ:      p.program.i32_type
-				typ_name: flat.source_type_id('int')
+				typ_name: flat.source_type_int
 			}
 		} else {
 			p.parse_expression(0)!
@@ -9960,7 +9960,7 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 		return FastArm64Value{
 			id:       p.program.instr1(.load, p.cur_block, p.program.str_type, result_slot)
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	}
 	if value.typ != p.program.array_type {
@@ -9970,7 +9970,7 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 	mut start := FastArm64Value{
 		id:       p.program.m.get_or_add_const(p.program.i32_type, '0')
 		typ:      p.program.i32_type
-		typ_name: flat.source_type_id('int')
+		typ_name: flat.source_type_int
 	}
 	if p.tok != .dotdot {
 		start = p.parse_expression(0)!
@@ -10024,7 +10024,7 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 		FastArm64Value{
 			id:       length
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 	}
 	start64, end64 := p.checked_array_slice_bounds(start, effective_end, length, 'array_slice')
@@ -10391,7 +10391,7 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 		p.mark_terminated(p.cur_block)
 		return FastArm64Value{
 			typ:      p.program.void_type
-			typ_name: flat.source_type_id('void')
+			typ_name: flat.source_type_void
 		}
 	}
 	if display_name in ['C.FD_ZERO', 'C.FD_SET', 'C.FD_ISSET'] {
@@ -10402,7 +10402,7 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 			p.skip_group(.lpar, .rpar)!
 			return FastArm64Value{
 				typ:      p.program.void_type
-				typ_name: flat.source_type_id('void')
+				typ_name: flat.source_type_void
 			}
 		}
 	}
@@ -10535,13 +10535,13 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 		result_error_type:    result_error_type
 		result_error_message: result_error_message
 		result_error_code:    result_error_code
-		typ_name:             flat.source_type_id(if signature.return_type_text() in [
+		typ_name:             (if signature.return_type_text() in [
 			'Option',
 			'__v_result',
 		] {
-			signature.option_type_text()
+			signature.option_type
 		} else {
-			signature.return_type_text()
+			signature.return_type
 		})
 		tuple_types:          signature.return_types.clone()
 	}
@@ -10566,7 +10566,7 @@ fn (mut p FastArm64Parser) pack_v_variadic_arguments(signature FastcFunctionSign
 	length := FastArm64Value{
 		id:       p.program.m.get_or_add_const(p.program.i32_type, variadic_items.len.str())
 		typ:      p.program.i32_type
-		typ_name: flat.source_type_id('int')
+		typ_name: flat.source_type_int
 	}
 	packed << p.make_array(element_type_name, variadic_items, length, length)
 	return packed
@@ -10635,7 +10635,7 @@ fn (mut p FastArm64Parser) parse_fd_set_macro(display_name string) !FastArm64Val
 			fd_set_size])
 		return FastArm64Value{
 			typ:      p.program.void_type
-			typ_name: flat.source_type_id('void')
+			typ_name: flat.source_type_void
 		}
 	}
 	descriptor64 := p.integer_to_i64(descriptor)
@@ -10655,14 +10655,14 @@ fn (mut p FastArm64Parser) parse_fd_set_macro(display_name string) !FastArm64Val
 		return FastArm64Value{
 			id:       p.program.instr1(.zext, p.cur_block, p.program.i32_type, is_set)
 			typ:      p.program.i32_type
-			typ_name: flat.source_type_id('int')
+			typ_name: flat.source_type_int
 		}
 	}
 	updated := p.program.instr2(.or_, p.cur_block, p.program.u8_type, current, mask)
 	p.program.instr2(.store, p.cur_block, p.program.void_type, updated, byte_address)
 	return FastArm64Value{
 		typ:      p.program.void_type
-		typ_name: flat.source_type_id('void')
+		typ_name: flat.source_type_void
 	}
 }
 
@@ -10977,7 +10977,7 @@ fn (mut p FastArm64Parser) emit_value_equality(left FastArm64Value, right FastAr
 	return FastArm64Value{
 		id:       p.program.instr2(.eq, p.cur_block, p.program.i1_type, left.id, right.id)
 		typ:      p.program.i1_type
-		typ_name: flat.source_type_id('bool')
+		typ_name: flat.source_type_bool
 	}
 }
 
@@ -11006,7 +11006,7 @@ fn (mut p FastArm64Parser) emit_struct_equality(left FastArm64Value, right FastA
 	return FastArm64Value{
 		id:       result
 		typ:      p.program.i1_type
-		typ_name: flat.source_type_id('bool')
+		typ_name: flat.source_type_bool
 	}
 }
 
@@ -11072,7 +11072,7 @@ fn (mut p FastArm64Parser) emit_fixed_array_equality(left FastArm64Value, right 
 	return FastArm64Value{
 		id:       p.program.instr1(.load, done, p.program.i1_type, result_slot)
 		typ:      p.program.i1_type
-		typ_name: flat.source_type_id('bool')
+		typ_name: flat.source_type_bool
 	}
 }
 
@@ -11140,7 +11140,7 @@ fn (mut p FastArm64Parser) emit_dynamic_array_equality(left FastArm64Value, righ
 	return FastArm64Value{
 		id:       p.program.instr1(.load, done, p.program.i1_type, result_slot)
 		typ:      p.program.i1_type
-		typ_name: flat.source_type_id('bool')
+		typ_name: flat.source_type_bool
 	}
 }
 
@@ -11153,7 +11153,7 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 		return FastArm64Value{
 			id:       p.program.m.get_or_add_const(p.program.i1_type, result)
 			typ:      p.program.i1_type
-			typ_name: flat.source_type_id('bool')
+			typ_name: flat.source_type_bool
 		}
 	}
 	if left.is_none || right.is_none {
@@ -11167,7 +11167,7 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 			return FastArm64Value{
 				id:       p.program.m.get_or_add_const(p.program.i1_type, result)
 				typ:      p.program.i1_type
-				typ_name: flat.source_type_id('bool')
+				typ_name: flat.source_type_bool
 			}
 		}
 		mut result := failed
@@ -11178,7 +11178,7 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 		return FastArm64Value{
 			id:       result
 			typ:      p.program.i1_type
-			typ_name: flat.source_type_id('bool')
+			typ_name: flat.source_type_bool
 		}
 	}
 	if op == .left_shift && left.typ == p.program.array_type {
@@ -11211,7 +11211,7 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 		return FastArm64Value{
 			id:       result
 			typ:      p.program.i1_type
-			typ_name: flat.source_type_id('bool')
+			typ_name: flat.source_type_bool
 		}
 	}
 	if op in [.key_in, .not_in] && right.typ == p.program.array_type {
@@ -11236,7 +11236,7 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 			return FastArm64Value{
 				id:       result
 				typ:      p.program.i1_type
-				typ_name: flat.source_type_id('bool')
+				typ_name: flat.source_type_bool
 			}
 		}
 	}
@@ -11316,10 +11316,10 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 	return FastArm64Value{
 		id:       p.program.instr2(opcode, p.cur_block, result_type, converted_left.id, converted_right.id)
 		typ:      result_type
-		typ_name: flat.source_type_id(if result_type == p.program.i1_type {
-			'bool'
+		typ_name: (if result_type == p.program.i1_type {
+			flat.source_type_bool
 		} else {
-			converted_left.typ_name_text()
+			converted_left.typ_name
 		})
 	}
 }
@@ -11759,7 +11759,7 @@ fn (mut p FastArm64Parser) emit_array_membership(op token.Token, needle FastArm6
 	return FastArm64Value{
 		id:       result
 		typ:      p.program.i1_type
-		typ_name: flat.source_type_id('bool')
+		typ_name: flat.source_type_bool
 	}
 }
 
@@ -11802,7 +11802,7 @@ fn (mut p FastArm64Parser) emit_string_binary(op token.Token, left FastArm64Valu
 		return FastArm64Value{
 			id:       p.program.instr1(.load, p.cur_block, p.program.str_type, result_slot)
 			typ:      p.program.str_type
-			typ_name: flat.source_type_id('string')
+			typ_name: flat.source_type_string
 		}
 	}
 	if op !in [.eq, .ne, .lt, .le, .gt, .ge] {
@@ -11857,7 +11857,7 @@ fn (mut p FastArm64Parser) emit_string_binary(op token.Token, left FastArm64Valu
 	return FastArm64Value{
 		id:       result
 		typ:      p.program.i1_type
-		typ_name: flat.source_type_id('bool')
+		typ_name: flat.source_type_bool
 	}
 }
 

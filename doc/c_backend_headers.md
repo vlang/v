@@ -66,6 +66,8 @@ new program literals and cleanup hooks after source edits.
 Warm builds using `os` also retain system-header ownership, so platform stat macros do not
 conflict with compatibility declarations. Windows standalone and custom-libc builds keep
 their required native layouts.
+Windows file and console APIs preserve `C.DWORD` output pointer types at SDK call sites.
+This preserves the SDK's pointer types when a C compiler checks calls against Windows headers.
 Core file mappings retain standalone declarations on verified 64-bit targets, including native
 mapping flags and the synchronization function signature. Other targets and programs using
 explicit C headers or custom libc headers keep platform-header ownership.
@@ -98,7 +100,9 @@ and `-no-builtin` use compatibility headers when complete V bindings are unavail
 
 Portable compiler snapshots generated with `-cross cmd/v` or `-os cross cmd/v` supply
 their runtime declarations and helper definitions from V without include directives on
-the supported hosted targets.
+the supported hosted targets, except explicit Windows targets. Windows compiler snapshots
+use the Windows SDK and embed the native stream, clock, thread, tool-cache, and atomic helpers,
+so they can be compiled and linked without native objects from the generating checkout.
 They retain the complete compiler runtime and disable the platform signal handler.
 The text of includes inside compiler string literals is still present for other generated programs.
 

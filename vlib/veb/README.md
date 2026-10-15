@@ -1013,6 +1013,14 @@ app.route_use('/admin/auth', handler: auth_middleware, methods: [.get, .delete])
 
 If `methods` is omitted, route middleware applies to all HTTP methods on that route.
 
+### CORS header allow-lists
+
+`veb.CorsOptions.allowed_headers` names the CORS request headers that the application accepts,
+such as `X-Token` and `Content-Type`. Validation compares these names case-insensitively with
+the comma-separated `Access-Control-Request-Headers` value. The `origins` option validates
+the browser's `Origin` header separately. Normal browser headers such as `User-Agent` can
+therefore accompany a request when an application header allow-list is configured.
+
 ### Evaluation moment
 
 By default, the registered middleware functions are executed *before* a method on your

@@ -1463,6 +1463,7 @@ mut:
 	constant_types           flat.TypeTextBindings
 	global_types             flat.TypeTextBindings
 	return_type              u32
+	return_type_is_function  bool
 	return_types             flat.TypeTextList
 	option_return_type       u32
 	current_function         string
@@ -2332,10 +2333,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	mut scalar_fixed_array_types := flat.TypeTextBindings{}
 	mut aggregate_fixed_array_types := flat.TypeTextBindings{}
+	mut callback_fixed_array_types := flat.TypeTextBindings{}
 	for name, typ_id in fixed_array_types.ids {
 		typ := flat.source_type_name(typ_id)
 		element_type := fastc_fixed_array_element_type(typ) or { continue }
-		if fastc_primitive_c_type(element_type) != none
+		if element_type.contains('__vf_fn_type_') {
+			callback_fixed_array_types.set_id(name, typ_id)
+		} else if fastc_primitive_c_type(element_type) != none
 			&& element_type !in ['string', 'array', 'map', 'Option', '__v_result'] {
 			scalar_fixed_array_types.set_id(name, typ_id)
 		} else {
@@ -2346,6 +2350,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// Wrappers containing V aggregates wait for those aggregate definitions.
 	scalar_fixed_array_declarations := fastc_generate_fixed_array_declarations(scalar_fixed_array_types)
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(aggregate_fixed_array_types)
+	callback_fixed_array_declarations := fastc_generate_fixed_array_declarations(callback_fixed_array_types)
 	preamble := if prefs.target_libc_headers {
 		fastc_target_libc_preamble() + c_target_option_runtime
 	} else if header_free {
@@ -2554,6 +2559,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		mut thread_type_names := spawn_typedefs.keys()
 		thread_type_names.sort()
 		for thread_type_name in thread_type_names {
+			if thread_type_name.starts_with('__vf_fn_type_') { continue }
 			pieces << spawn_typedefs[thread_type_name]
 			pieces << '\n'
 		}
@@ -2566,6 +2572,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	pieces << fastc_piece(type_declarations)
 	pieces << late_composite_declarations.str()
 	pieces << fastc_piece(fixed_array_declarations)
+	// Function signatures can refer to aliases, composite types, and fixed arrays.
+	mut function_type_names := spawn_typedefs.keys().filter(it.starts_with('__vf_fn_type_'))
+	function_type_names.sort()
+	for function_type_name in function_type_names {
+		pieces << spawn_typedefs[function_type_name]
+	}
+	pieces << fastc_piece(callback_fixed_array_declarations)
 	native_context := if prefs.target_libc_headers || c_flags.any(it.ends_with('.c') || it.ends_with('.o')) {
 		fastc_native_source_context(sources, prefs)
 	} else {

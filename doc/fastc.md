@@ -68,11 +68,13 @@ it, and builds as a program that runs its tests in source order between `testsui
 fails that test, and the program exits with status 1 when any test failed. Tests and hooks require
 zero parameters. Failed assertions run the test's deferred statements before the harness continues.
 Target-specific files and test files are filtered when loading a directory.
+Dependency files retain imports after declarations, including qualified type names.
 Generic arguments infer the complete type of literal arithmetic, including float promotion.
 Other compound arguments require explicit type arguments.
-Bare `nil` can reset concrete `voidptr` locals, including aliases, and declared `voidptr`
-fields. It can initialize declared `voidptr` fields and serve as an argument to `voidptr`
-and function-typed parameters. Function fields and erased generic fields require `unsafe`.
+Bare `nil` uses concrete expected types for `voidptr` locals and aliases, fields and their
+defaults, returns, comparisons, and array elements. Calls accept parenthesized `nil` for
+`voidptr` parameters, including methods and variadic parameters. Typed pointer arguments also
+accept `nil` in `.c.v` files. Function storage and erased generic types still require `unsafe`.
 Channel type declarations accept ordinary V whitespace.
 Negated sum-type guards retain pointer identity and read mutable scalar variants as values
 in arithmetic, including numeric aliases.
@@ -85,6 +87,9 @@ Fixed-array dimensions accept integer constant arithmetic. Globals and native ar
 their original storage when indexed, assigned, or passed to memory functions.
 Nested fixed-array initializers retain their dimensions and element layout. Iteration over fixed
 array literals uses their element storage; integer arrays and pointers retain FastC's target width.
+Arrays of anonymous functions retain their parameter and return types when indexed and called.
+Membership tests compare fixed-array elements by value. Single-file bootstrap programs apply
+struct field defaults to empty initializers.
 Sum-type and interface tests narrow later operands of a conjunction, preserving pointer values.
 Generic pointer instances retain pointer depth and mutable storage, including forwarded references.
 `sizeof(int)` uses FastC's target integer width. Returned, global, and struct-field callbacks retain

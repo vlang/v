@@ -109,7 +109,7 @@ fn test_static_c_receiver_metadata_keeps_canonical_declaration_in_both_orders() 
 				} else {
 					'Counter.read'
 				}
-				typ:            flat.source_type_id('int')
+				typ:            flat.source_type_int
 				children_start: start
 				children_count: 1
 			}))

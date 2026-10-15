@@ -202,14 +202,14 @@ fn test_struct_init_main_alias_target_keeps_declaration_scope() {
 	tc.struct_modules['Context'] = 'main'
 	tc.structs['veb.Context'] = []types.StructField{}
 	tc.struct_modules['veb.Context'] = 'veb'
-	tc.type_aliases.set('AliasContext', 'Context')
+	tc.type_aliases.set_id('AliasContext', flat.source_type_id('Context'))
 	tc.type_alias_modules['AliasContext'] = 'main'
 	tc.cur_module = 'veb'
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
 
-	assert g.struct_type_alias_target('main.AliasContext') or { '' } == 'main.Context'
+	assert flat.source_type_name(g.struct_type_alias_target(flat.source_type_id('main.AliasContext')) or { u32(0) }) == 'main.Context'
 }
 
 fn test_c_name_generated_string_symbol_collision() {
@@ -576,7 +576,7 @@ fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	tc.sum_types.set('b.tast.Value', ['b.tast.Target', 'b.tast.Second'])
 	mut g := FlatGen.new()
 	g.tc = &tc
-	assert g.sum_type_index('tast.Value', 'b.tast.Target') == 0
+	assert g.sum_type_index(flat.source_type_id('tast.Value'), flat.source_type_id('b.tast.Target')) == 0
 }
 
 fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
@@ -606,10 +606,10 @@ fn test_typeof_type_index_fallback_uses_matching_sum_variant() {
 	tc.sum_types.set('main.Other', ['main.Baz', 'main.Qux'])
 	mut g := FlatGen.new()
 	g.tc = &tc
-	assert g.type_index_for_type_name('Foo') == 1
-	assert g.type_index_for_type_name('Bar') == 2
-	assert g.type_index_for_type_name('Qux') == 2
-	assert g.type_index_for_type_name('NotVariant') == 0
+	assert g.type_index_for_type_name(flat.source_type_id('Foo')) == 1
+	assert g.type_index_for_type_name(flat.source_type_id('Bar')) == 2
+	assert g.type_index_for_type_name(flat.source_type_id('Qux')) == 2
+	assert g.type_index_for_type_name(flat.source_type_id('NotVariant')) == 0
 }
 
 fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {

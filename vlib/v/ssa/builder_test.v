@@ -70,9 +70,9 @@ fn test_native_field_type_lookup_preserves_containers_through_pointer_receivers(
 	mut b := Builder{}
 	b.struct_field_types.set('Checker.ids', 'map[string][]int')
 	for receiver in ['Checker', '&Checker', '&&Checker', 'types.Checker', '&types.Checker'] {
-		assert b.field_type_name(receiver, 'ids') == 'map[string][]int'
+		assert flat.source_type_name(b.field_type_name(flat.source_type_id(receiver), 'ids')) == 'map[string][]int'
 	}
-	assert b.field_type_name('&Checker', 'missing') == ''
+	assert b.field_type_name(flat.source_type_id('&Checker'), 'missing') == u32(0)
 }
 
 // test_bench_runtime_stubs_include_macos_rss_helper validates this v3 regression case.
@@ -763,11 +763,11 @@ fn test_enum_lookup_keeps_exact_keyword_members_before_fallback() {
 		}
 	}
 	for member in ['none', '@none', 'Keyword.none', 'Keyword.@none'] {
-		assert b.enum_value_for_type('Keyword', member) or { 0 } == -10
+		assert b.enum_value_for_type(flat.source_type_id('Keyword'), member) or { 0 } == -10
 	}
-	assert b.enum_value_for_type('Plain', '@struct') or { 0 } == 7
-	assert b.enum_value_for_type('Distinct', 'none') or { 0 } == 2
-	assert b.enum_value_for_type('Distinct', '@none') or { 0 } == 4
+	assert b.enum_value_for_type(flat.source_type_id('Plain'), '@struct') or { 0 } == 7
+	assert b.enum_value_for_type(flat.source_type_id('Distinct'), 'none') or { 0 } == 2
+	assert b.enum_value_for_type(flat.source_type_id('Distinct'), '@none') or { 0 } == 4
 }
 
 fn test_native_enum_registration_evaluates_escaped_initializer_references() {
@@ -789,7 +789,7 @@ fn test_native_enum_registration_evaluates_escaped_initializer_references() {
 		'plain_exact':   20
 		'escaped_exact': 26
 	} {
-		assert b.enum_value_for_type('models.Kind', field) or { -1 } == expected, field
+		assert b.enum_value_for_type(flat.source_type_id('models.Kind'), field) or { -1 } == expected, field
 	}
 }
 

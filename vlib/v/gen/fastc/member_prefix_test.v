@@ -23,6 +23,13 @@ pub struct Thread {
 pub mut:
 	process &Process
 }
+pub struct Ids {
+pub:
+	ids []u32
+}
+pub fn Ids.from_names(names []string) Ids {
+	return Ids{ids: [u32(names.len)]}
+}
 pub fn current_thread(thread &Thread, mut calls int) &Thread {
 	calls++
 	return thread
@@ -51,9 +58,11 @@ mut:
 	children []&Child
 }
 fn (value Handle) value() u64 { return value.flags }
+fn (value Handle) normalize(text string) string { return text }
 fn (mut value Handle) address() u64 { return unsafe { u64(value) } }
 fn (mut value Handle) erased() voidptr { return unsafe { voidptr(value) } }
 fn scalar_value(mut value u64) u64 { return u64(value) }
+fn describe(ids []u32) string { return if ids[0] == 2 { "fn(int)" } else { "bad" } }
 fn next(mut calls int, value &Readable) &Readable {
 	calls++
 	return value
@@ -105,6 +114,8 @@ fn main() {
 	assert copy.flags == 17 && copy.child == handle.child
 	assert unsafe { &Handle(next(mut calls, &readable)).children[0].value } == 15
 	assert calls == 4
+	text := handle.normalize(describe(procdata.Ids.from_names(["left", "right"]).ids))
+	assert "${text.replace("fn(", "fn (")}" == "fn (int)"
 }
 ') or { panic(err) }
 	mut prefs := pref.new_preferences()

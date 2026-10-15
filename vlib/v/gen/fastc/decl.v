@@ -1318,6 +1318,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 			gen.s.init(file, field.default_source)
 			gen.next()
 			gen.expected_expression_type = field.typ
+			gen.allows_nil_local_assignment = gen.nil_field_is_allowed(field)
 			field.default_value = gen.read_expression([token.Token.semicolon, token.Token.eof])!
 			// A flag-enum default mixing a value with a `.member` shorthand (`~Show.zero() ^
 			// .name`) can lose the field type mid-stream (the `Show.zero()` call clears it), so
@@ -1746,7 +1747,7 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 	mut compile_time_values := map[string]string{}
 	for value in values {
 		if value.key in runtime_constants {
-			if value.typ_text() == '' {
+			if value.typ == u32(0) {
 				return error('fastc parser does not support unverifiable runtime constant `${value.key}` type')
 			}
 			declarations.writeln('static ${value.typ_text()} ${value.c_name};')
@@ -2900,7 +2901,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		fields_by_name.set('data', 'voidptr')
 		field_info << FastcStructField{
 			name:        'data'
-			typ:         flat.source_type_id('voidptr')
+			typ:         flat.source_type_voidptr
 			is_public:   true
 			module_name: source_file.header.module_name
 			path:        source_file.path

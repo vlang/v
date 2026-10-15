@@ -7,7 +7,7 @@ import v.flat
 
 // emit_sum_type emits emit sum type output for c.
 fn (mut g FlatGen) emit_sum_type(name string) {
-	variants := g.tc.sum_types.value(name)
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(name) or { []u32{} } }.names()
 	g.writeln('struct ${g.cname(name)} {')
 	g.writeln('\tint typ;')
 	g.writeln('\tu32 _pointer_variant_is_owned;')
@@ -28,37 +28,33 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 }
 
 // sum_type_contains_struct reports whether sum type contains struct applies in c.
-fn (g &FlatGen) sum_type_contains_struct(sum_name string, struct_name string) bool {
-	if g.tc.sum_types.contains(sum_name) {
-		for v in g.tc.sum_types.value(sum_name) {
-			if v == struct_name {
-				return true
-			}
-		}
+fn (g &FlatGen) sum_type_contains_struct(sum_name_id u32, struct_name_id u32) bool {
+	for variant in g.tc.sum_types.type_ids(flat.source_type_name(sum_name_id)) or { return false } {
+		if variant == struct_name_id { return true }
 	}
 	return false
 }
 
 // sum_type_index supports sum type index handling for FlatGen.
-fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
-	mut resolved_sum := sum_name
-	if !g.tc.sum_types.contains(resolved_sum) && !resolved_sum.contains('.') {
+fn (g &FlatGen) sum_type_index(sum_name_id u32, variant_id u32) int {
+	mut resolved_sum := sum_name_id
+	if !g.tc.sum_types.contains(flat.source_type_name(resolved_sum)) && !flat.source_type_shape(resolved_sum).has(.dotted) {
 		// A bare sum name from a foreign-module lowering (auto-stringify
 		// expansions keep the declaring module's spelling): the precomputed
 		// short-name table maps it to the declared qualified sum.
 		short_resolved := g.resolve_sum_name(resolved_sum)
-		if g.tc.sum_types.contains(short_resolved) {
+		if g.tc.sum_types.contains(flat.source_type_name(short_resolved)) {
 			resolved_sum = short_resolved
 		}
 	}
-	if !g.tc.sum_types.contains(resolved_sum) && resolved_sum.contains('.') {
+	if !g.tc.sum_types.contains(flat.source_type_name(resolved_sum)) && flat.source_type_shape(resolved_sum).has(.dotted) {
 		// Resolve an import-aliased sum name (`tast.Value` for module `sub.tast`)
 		// exactly first. Use suffix and bare-name fallbacks only when unique.
-		aliased_sum := g.tc.qualify_name(resolved_sum)
-		if g.tc.sum_types.contains(aliased_sum) {
+		aliased_sum := flat.source_type_id(g.tc.qualify_name(flat.source_type_name(resolved_sum)))
+		if g.tc.sum_types.contains(flat.source_type_name(aliased_sum)) {
 			resolved_sum = aliased_sum
 		} else {
-			suffix := '.' + resolved_sum
+			suffix := '.' + flat.source_type_name(resolved_sum)
 			mut suffix_match := ''
 			mut suffix_ambiguous := false
 			for key, _ in g.tc.sum_types.ids {
@@ -71,9 +67,9 @@ fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
 				}
 			}
 			if !suffix_ambiguous && suffix_match.len > 0 {
-				resolved_sum = suffix_match
+				resolved_sum = flat.source_type_id(suffix_match)
 			} else if suffix_match.len == 0 {
-				short_sum := resolved_sum.all_after_last('.')
+				short_sum := flat.source_type_name(resolved_sum).all_after_last('.')
 				mut short_match := ''
 				mut ambiguous := false
 				for key, _ in g.tc.sum_types.ids {
@@ -86,49 +82,38 @@ fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
 					}
 				}
 				if !ambiguous && short_match.len > 0 {
-					resolved_sum = short_match
+					resolved_sum = flat.source_type_id(short_match)
 				}
 			}
 		}
 	}
-	return g.sum_type_index_resolved(resolved_sum, variant)
+	return g.sum_type_index_resolved(resolved_sum, variant_id)
 }
 
-fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
-	if g.tc.sum_types.contains(sum_name) {
-		for i, v in g.tc.sum_types.value(sum_name) {
-			if v == variant {
-				return i + 1
+fn (g &FlatGen) sum_type_index_resolved(sum_name_id u32, variant_id u32) int {
+	variants := g.tc.sum_types.type_ids(flat.source_type_name(sum_name_id)) or { return 0 }
+	for i, v in variants { if v == variant_id { return i + 1 } }
+	variant := flat.source_type_name(variant_id)
+	resolved_variant := flat.source_type_id(g.tc.qualify_name(variant))
+	if resolved_variant != variant_id {
+		for i, v in variants { if v == resolved_variant { return i + 1 } }
+	}
+	for i, v in variants {
+		if flat.source_type_name(v).all_after_last('.') == variant { return i + 1 }
+	}
+	// Container variants written through an import alias (`map[string]ast.Value`
+	// vs the registered `map[string]toml.ast.Value`) match on the
+	// module-stripped spelling only when that spelling is unambiguous.
+	shape := flat.source_type_shape(variant_id)
+	if shape.has(.dotted) || shape.has(.bracketed) {
+		mut short_match := 0
+		for i, v in variants {
+			if short_module_type_texts_equal(flat.source_type_name(v), variant) {
+				if short_match != 0 { return 0 }
+				short_match = i + 1
 			}
 		}
-		resolved_variant := g.tc.qualify_name(variant)
-		if resolved_variant != variant {
-			for i, v in g.tc.sum_types.value(sum_name) {
-				if v == resolved_variant {
-					return i + 1
-				}
-			}
-		}
-		for i, v in g.tc.sum_types.value(sum_name) {
-			if v.all_after_last('.') == variant {
-				return i + 1
-			}
-		}
-		// Container variants written through an import alias (`map[string]ast.Value`
-		// vs the registered `map[string]toml.ast.Value`) match on the
-		// module-stripped spelling only when that spelling is unambiguous.
-		if variant.contains('.') || variant.contains('[') {
-			mut short_match := 0
-			for i, v in g.tc.sum_types.value(sum_name) {
-				if short_module_type_texts_equal(v, variant) {
-					if short_match != 0 {
-						return 0
-					}
-					short_match = i + 1
-				}
-			}
-			return short_match
-		}
+		return short_match
 	}
 	return 0
 }
@@ -337,29 +322,26 @@ fn (g &FlatGen) interface_dispatch_target_short_name_is_unambiguous(short_name s
 }
 
 // variant_references_sum supports variant references sum handling for FlatGen.
-fn (g &FlatGen) variant_references_sum(variant string, sum_name string) bool {
-	_ = variant
-	_ = sum_name
+fn (g &FlatGen) variant_references_sum(variant_id u32, sum_name_id u32) bool {
+	_ = variant_id
+	_ = sum_name_id
 	return true
 }
 
 // variant_refs_sum_inner supports variant refs sum inner handling for FlatGen.
-fn (g &FlatGen) variant_refs_sum_inner(variant string, sum_name string, mut visited map[string]bool) bool {
-	normalized_variant := g.normalize_variant_name(variant)
-	if normalized_variant == sum_name
-		|| normalized_variant.all_after_last('.') == sum_name.all_after_last('.') {
+fn (g &FlatGen) variant_refs_sum_inner(variant_id u32, sum_name_id u32, mut visited map[u32]bool) bool {
+	normalized_id := g.normalize_variant_type_id(variant_id)
+	normalized := flat.source_type_name(normalized_id)
+	sum_name := flat.source_type_name(sum_name_id)
+	if normalized_id == sum_name_id || normalized.all_after_last('.') == sum_name.all_after_last('.') {
 		return true
 	}
-	if normalized_variant in visited {
-		return false
-	}
-	visited[normalized_variant] = true
-	mut lookup := normalized_variant
+	if normalized_id in visited { return false }
+	visited[normalized_id] = true
+	mut lookup := normalized
 	if lookup !in g.tc.structs && !lookup.contains('.') && sum_name.contains('.') {
 		qualified := '${sum_name.all_before_last('.')}.${lookup}'
-		if qualified in g.tc.structs {
-			lookup = qualified
-		}
+		if qualified in g.tc.structs { lookup = qualified }
 	}
 	if lookup !in g.tc.structs && !lookup.contains('.') {
 		for struct_name, _ in g.tc.structs {
@@ -371,9 +353,7 @@ fn (g &FlatGen) variant_refs_sum_inner(variant string, sum_name string, mut visi
 	}
 	if lookup in g.tc.structs {
 		for f in g.tc.structs[lookup] {
-			if g.type_references_sum(f.typ, sum_name, mut visited) {
-				return true
-			}
+			if g.type_references_sum(f.typ, sum_name_id, mut visited) { return true }
 		}
 	}
 	return false
@@ -396,20 +376,18 @@ fn (g &FlatGen) normalize_variant_name(name string) string {
 }
 
 // type_references_sum returns type references sum data for FlatGen.
-fn (g &FlatGen) type_references_sum(typ types.Type, sum_name string, mut visited map[string]bool) bool {
-	resolved_sum := g.resolve_sum_name(sum_name)
+fn (g &FlatGen) type_references_sum(typ types.Type, sum_name_id u32, mut visited map[u32]bool) bool {
+	resolved_sum := g.resolve_sum_name(sum_name_id)
 	clean := types.unwrap_pointer(typ)
-	if clean is types.Struct && g.resolve_sum_name(clean.name()) == resolved_sum {
+	if clean is types.Struct && g.resolve_sum_name(clean.source_type_id()) == resolved_sum {
 		return true
 	}
-	if clean is types.SumType && g.resolve_sum_name(clean.name()) == resolved_sum {
+	if clean is types.SumType && g.resolve_sum_name(clean.source_type_id()) == resolved_sum {
 		return true
 	}
-	if clean is types.SumType {
-		return true
-	}
+	if clean is types.SumType { return true }
 	if clean is types.Struct {
-		if g.variant_refs_sum_inner(clean.name(), resolved_sum, mut visited) {
+		if g.variant_refs_sum_inner(clean.source_type_id(), resolved_sum, mut visited) {
 			return true
 		}
 	}
@@ -421,77 +399,78 @@ fn (g &FlatGen) type_references_sum(typ types.Type, sum_name string, mut visited
 
 // resolve_sum_name resolves a canonical or unqualified sum name without
 // interpreting its first component as a source-file import alias.
-fn (g &FlatGen) resolve_sum_name(sum_name string) string {
-	if resolved := g.sum_name_lookup[sum_name] {
-		return flat.source_type_name(resolved)
-	}
-	if sum_name.contains('.') {
+fn (g &FlatGen) resolve_sum_name(sum_name_id u32) u32 {
+	if resolved := g.sum_name_lookup[sum_name_id] { return resolved }
+	if flat.source_type_shape(sum_name_id).has(.dotted) {
+		sum_name := flat.source_type_name(sum_name_id)
 		// A qualified name that already names a concrete type is that type. The
 		// short-name fallback below would otherwise hand `one.Any` the unrelated
 		// `two.Any` sum type and box the value into the wrong C struct.
-		if sum_name in g.tc.structs || sum_name in g.tc.interface_names
-			|| sum_name in g.tc.enum_names || g.tc.type_aliases.contains(sum_name) {
-			return sum_name
+		if sum_name in g.tc.structs || sum_name in g.tc.interface_names || sum_name in g.tc.enum_names || g.tc.type_aliases.contains(sum_name) {
+			return sum_name_id
 		}
-		if resolved := g.sum_name_lookup[c_short_name_view(sum_name)] {
-			return flat.source_type_name(resolved)
+		if resolved := g.sum_name_lookup[flat.source_type_id(c_short_name_view(sum_name))] {
+			return resolved
 		}
 	}
-	return sum_name
+	return sum_name_id
 }
 
 // resolve_source_sum_name resolves a type name written in `file`, where its
 // first component can be an import alias rather than part of a canonical name.
-fn (g &FlatGen) resolve_source_sum_name(sum_name string, file string) string {
-	if sum_name.contains('.') {
-		canonical_name := flat.source_type_name(g.canonical_import_alias_type_text_in_file(flat.source_type_id(sum_name), file))
-		if canonical_name != sum_name {
-			if resolved := g.sum_name_lookup[canonical_name] {
-				return flat.source_type_name(resolved)
-			}
-			if canonical_name in g.tc.structs || canonical_name in g.tc.interface_names
-				|| canonical_name in g.tc.enum_names || g.tc.type_aliases.contains(canonical_name) {
-				return canonical_name
+fn (g &FlatGen) resolve_source_sum_name(sum_name_id u32, file string) u32 {
+	if flat.source_type_shape(sum_name_id).has(.dotted) {
+		canonical := g.canonical_import_alias_type_text_in_file(sum_name_id, file)
+		if canonical != sum_name_id {
+			if resolved := g.sum_name_lookup[canonical] { return resolved }
+			name := flat.source_type_name(canonical)
+			if name in g.tc.structs || name in g.tc.interface_names || name in g.tc.enum_names || g.tc.type_aliases.contains(name) {
+				return canonical
 			}
 		}
 	}
-	return g.resolve_sum_name(sum_name)
+	return g.resolve_sum_name(sum_name_id)
 }
 
 fn (mut g FlatGen) precompute_sum_name_lookup() {
-	g.sum_name_lookup = map[string]u32{}
-	g.sum_variant_lookup = map[string]map[string]u32{}
-	for name, variants_id in g.tc.sum_types.ids {
-		variants := variants_id.map(flat.source_type_name(it))
-		g.sum_name_lookup[name] = flat.source_type_id(name)
+	g.sum_name_lookup = map[u32]u32{}
+	g.sum_variant_lookup = map[u32]map[u32]u32{}
+	for name, variants in g.tc.sum_types.ids {
+		name_id := flat.source_type_id(name)
+		g.sum_name_lookup[name_id] = name_id
 		short := c_short_name_view(name)
-		if short.len > 0 && short !in g.sum_name_lookup {
-			g.sum_name_lookup[short] = flat.source_type_id(name)
+		if short.len > 0 {
+			short_id := flat.source_type_id(short)
+			if short_id !in g.sum_name_lookup { g.sum_name_lookup[short_id] = name_id }
 		}
-		mut lookup := map[string]u32{}
+		mut lookup := map[u32]u32{}
+		for variant in variants { lookup[variant] = variant }
 		for variant in variants {
-			lookup[variant] = flat.source_type_id(variant)
-		}
-		for variant in variants {
-			variant_short := c_short_name_view(variant)
-			if variant_short.len > 0 && variant_short !in lookup {
-				lookup[variant_short] = flat.source_type_id(variant)
+			short_variant := c_short_name_view(flat.source_type_name(variant))
+			if short_variant.len > 0 {
+				short_id := flat.source_type_id(short_variant)
+				if short_id !in lookup { lookup[short_id] = variant }
 			}
 		}
-		g.sum_variant_lookup[name] = lookup.move()
+		g.sum_variant_lookup[name_id] = lookup.move()
 	}
 }
 
 // resolve_variant resolves resolve variant information for c.
-fn (g &FlatGen) resolve_variant(sum_name string, variant string) string {
-	resolved_sum := g.resolve_sum_name(sum_name)
-	normalized_variant := g.normalize_variant_name(variant)
+fn (g &FlatGen) resolve_variant(sum_name_id u32, variant_id u32) u32 {
+	resolved_sum := g.resolve_sum_name(sum_name_id)
+	normalized := g.normalize_variant_type_id(variant_id)
 	if lookup := g.sum_variant_lookup[resolved_sum] {
-		if resolved := lookup[normalized_variant] {
-			return flat.source_type_name(resolved)
-		}
+		if resolved := lookup[normalized] { return resolved }
 	}
-	return normalized_variant
+	return normalized
+}
+
+// normalize_variant_type_id renders encoded variants only at the spelling boundary.
+fn (g &FlatGen) normalize_variant_type_id(variant_id u32) u32 {
+	name := flat.source_type_name(variant_id)
+	normalized := g.normalize_variant_name(name)
+	return if normalized == name { variant_id } else { flat.source_type_id(normalized) }
 }
 
 // sum_field_name supports sum field name handling for FlatGen.
@@ -760,7 +739,7 @@ fn (mut g FlatGen) register_specialized_interface_applications() {
 		}
 	}
 	for node in g.a.nodes {
-		if node.typ_text().contains('[') {
+		if flat.source_type_shape(node.typ).has(.bracketed) {
 			// Generic-interface storage intentionally parses to the shared base box.
 			// Preserve the concrete source application from specialized AST signatures
 			// before semantic parsing erases it, so its dispatch wrapper is emitted.
@@ -828,7 +807,7 @@ fn (g &FlatGen) collect_specialized_interface_application_text(type_text string,
 	}
 	for arg in args {
 		g.collect_specialized_interface_application_text(arg, mut applications)
-		if codegen_generic_arg_is_unresolved(arg) {
+		if codegen_generic_arg_is_unresolved(flat.source_type_id(arg)) {
 			return
 		}
 	}
@@ -1098,7 +1077,7 @@ fn (g &FlatGen) ierror_promoted_method_call(concrete string, method string, mut 
 		return none
 	}
 	seen[concrete] = true
-	for field in g.struct_embedded_fields(concrete) {
+	for field in g.struct_embedded_fields(flat.source_type_id(concrete)) {
 		embedded_name := g.embedded_field_type_name(field)
 		if embedded_name.len == 0 {
 			continue
@@ -1420,7 +1399,7 @@ fn (g &FlatGen) iface_type_id_for_concrete(iface string, concrete types.Type) in
 	mut alias_id := 0
 	mut matches := 0
 	for impl in g.iface_impls[iface] or { []string{} } {
-		target := g.tc.type_aliases.get(impl) or { continue }
+		target := flat.source_type_name(g.tc.type_aliases.type_id(impl) or { continue })
 		if target == concrete_name || g.tc.qualify_name(target) == g.tc.qualify_name(concrete_name) {
 			alias_id = g.iface_type_id(iface, impl)
 			matches++
@@ -2382,7 +2361,9 @@ fn (g &FlatGen) interface_boxed_type_collected_for_dispatch(iface_name string, c
 		return true
 	}
 	for candidate in [concrete, g.tc.qualify_name(concrete)] {
-		if target := g.tc.type_aliases.get(candidate) {
+		if target_source_id := g.tc.type_aliases.type_id(candidate) {
+			target := flat.source_type_name(target_source_id)
+
 			if g.interface_boxed_types['${iface_name}::${target}']
 				|| g.interface_boxed_types['${iface_name}::${c_name(target)}']
 				|| g.interface_boxed_types['${iface_name}::${target.all_after_last('.')}'] {
@@ -2418,7 +2399,7 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 			if field.kind != .field_init || field.value != '_object' || field.children_count == 0 {
 				continue
 			}
-			mut obj_type := if field.typ_text().len > 0 {
+			mut obj_type := if field.typ != 0 {
 				g.tc.parse_type(field.typ)
 			} else {
 				g.tc.resolve_type(g.a.child(field, 0))
@@ -2878,7 +2859,7 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 	if struct_name in stack {
 		return g.interface_str_lit(empty_struct)
 	}
-	fields := g.struct_fields_for_type(struct_name) or { return none }
+	fields := g.struct_fields_for_type(flat.source_type_id(struct_name)) or { return none }
 	if fields.len == 0 {
 		return g.interface_str_lit(empty_struct)
 	}
@@ -2927,7 +2908,7 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 }
 
 fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, mut stack []string) ?string {
-	sum_name := g.resolve_sum_name(sum_type.name())
+	sum_name := flat.source_type_name(g.resolve_sum_name(flat.source_type_id(sum_type.name())))
 	stack_key := 'sum:${sum_name}'
 	if stack_key in stack {
 		return none
@@ -2936,7 +2917,7 @@ fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, m
 	defer {
 		stack.delete_last()
 	}
-	variants := g.tc.sum_types.get(sum_name) or { return none }
+	variants := flat.TypeTextList{ ids: g.tc.sum_types.type_ids(sum_name) or { return none } }.names()
 	ct := g.tc.c_type(sum_type)
 	tmp := g.interface_tmp('iface_str_sum')
 	out := g.interface_tmp('iface_str_out')
@@ -2944,9 +2925,9 @@ fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, m
 	fallback := g.interface_str_lit('${display_name}(<unknown>)')
 	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${fallback}; switch (${tmp}.typ) {'
 	for variant in variants {
-		resolved := g.resolve_variant(sum_name, variant)
+		resolved := flat.source_type_name(g.resolve_variant(flat.source_type_id(sum_name), flat.source_type_id(variant)))
 		variant_type := g.tc.parse_type(flat.source_type_id(resolved))
-		idx := g.sum_type_index(sum_name, resolved)
+		idx := g.sum_type_index(flat.source_type_id(sum_name), flat.source_type_id(resolved))
 		field := g.sum_field_name(resolved)
 		value_expr := if variant_type is types.Pointer {
 			'${tmp}.${field}'

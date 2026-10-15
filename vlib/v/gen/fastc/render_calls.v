@@ -130,7 +130,7 @@ fn (g &Parser) render_pointer_type_sizeof(tokens []FastcExpressionToken) ?FastcR
 	ctype := g.type_from_expression_tokens(operand) or { return none }
 	return FastcRenderedExpression{
 		source: 'sizeof(${fastc_output_c_type(ctype)})'
-		typ:    flat.source_type_id('int')
+		typ:    flat.source_type_int
 	}
 }
 
@@ -155,13 +155,13 @@ fn (g &Parser) render_typeof_generic_expression(tokens []FastcExpressionToken) ?
 			idx := fastc_builtin_type_idx(type_name) or { return none }
 			return FastcRenderedExpression{
 				source: idx.str()
-				typ:    flat.source_type_id('int')
+				typ:    flat.source_type_int
 			}
 		}
 		'name' {
 			return FastcRenderedExpression{
 				source: '_S("${type_name}")'
-				typ:    flat.source_type_id('string')
+				typ:    flat.source_type_string
 			}
 		}
 		else {
@@ -192,7 +192,7 @@ fn (g &Parser) render_typeof_name_expression(tokens []FastcExpressionToken) ?Fas
 	}
 	return FastcRenderedExpression{
 		source: '_S("${type_name}")'
-		typ:    flat.source_type_id('string')
+		typ:    flat.source_type_string
 	}
 }
 
@@ -231,7 +231,7 @@ fn (g &Parser) render_typeof_generic_comparison_expression(tokens []FastcExpress
 		}
 		return FastcRenderedExpression{
 			source: '((${left})${item.tok.str()}(${right}))'
-			typ:    flat.source_type_id('bool')
+			typ:    flat.source_type_bool
 		}
 	}
 	return none
@@ -491,7 +491,7 @@ fn (g &Parser) render_c_struct_sizeof(tokens []FastcExpressionToken) ?FastcRende
 	}
 	return FastcRenderedExpression{
 		source: 'sizeof(struct ${c_name})'
-		typ:    flat.source_type_id('int')
+		typ:    flat.source_type_int
 	}
 }
 
@@ -572,7 +572,7 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 			// render_member_receiver spells it correctly.
 			return FastcRenderedExpression{
 				source: replacement
-				typ:    flat.source_type_id(if method == 'has' { 'bool' } else { 'void' })
+				typ:    (if method == 'has' { flat.source_type_bool } else { flat.source_type_void })
 			}
 		}
 		if !fastc_contains(rendered, needle) {
@@ -596,7 +596,6 @@ fn (g &Parser) render_flag_method_expression(tokens []FastcExpressionToken, rend
 
 fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
 	mut rendered := rendered_expression
-	mut result_type := ''
 	mut changed := false
 	for i := 2; i + 1 < tokens.len; i++ {
 		if tokens[i].tok != .name || tokens[i + 1].tok != .lpar {
@@ -620,7 +619,6 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 			replaced := fastc_replace(rendered, raw_call, disabled_call)
 			if replaced.str != rendered.str {
 				rendered = replaced
-				result_type = signature.return_type_text()
 				changed = true
 			}
 			continue
@@ -668,7 +666,6 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 					replaced := fastc_replace(rendered, raw_call, call_source)
 					if replaced.str != rendered.str {
 						rendered = replaced
-						result_type = signature.return_type_text()
 						changed = true
 						continue
 					}
@@ -699,7 +696,6 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 				replaced := fastc_replace(rendered, raw_call, call_source)
 				if replaced.str != rendered.str {
 					rendered = replaced
-					result_type = signature.return_type_text()
 					changed = true
 					continue
 				}
@@ -713,16 +709,21 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 			continue
 		}
 		rendered = fastc_replace(rendered, needle, '${method_c_name}(')
-		result_type = signature.return_type_text()
 		changed = true
 	}
-	return if changed {
-		FastcRenderedExpression{
-			source: rendered
-			typ:    flat.source_type_id(result_type)
-		}
-	} else {
-		none
+	if !changed {
+		return none
+	}
+	// Rewriting an embedded static call must still lower its enclosing call.
+	if method := g.render_method_call_expression(tokens, rendered) {
+		return method
+	}
+	if call := g.render_missing_call_arguments(tokens) {
+		return call
+	}
+	return FastcRenderedExpression{
+		source: rendered
+		typ:    flat.source_type_id(g.infer_expression_type(tokens) or { '' })
 	}
 }
 

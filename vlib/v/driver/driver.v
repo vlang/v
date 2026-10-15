@@ -8090,7 +8090,12 @@ fn v3_select_c_compiler(vroot string, requested V3BundledTccProbeOptions) V3CCom
 	mut c_compiler := v3_select_implicit_c_compiler(options.c_compiler, options.c_compiler_explicit,
 		implicit_tcc)
 	if options.prefer_platform_cc && !options.c_compiler_explicit && options.c_compiler == 'cc' {
-		c_compiler = v3_platform_c_compiler(options.host_os)
+		// Only Windows needs the absolute path: a bare name does not respawn there.
+		c_compiler = if options.host_os == 'windows' {
+			v3_platform_c_compiler_command(options.host_os)
+		} else {
+			v3_platform_c_compiler(options.host_os)
+		}
 	}
 	if v3_windows_prod_needs_default_c_compiler(options) {
 		c_compiler = v3_windows_prod_default_c_compiler(options.target.arch, options.is_o)
@@ -9795,6 +9800,42 @@ fn v3_module_cache_refresh_args(args []string, compiler string, module_search_pa
 	return flags
 }
 
+// v3_live_rebuild_options keeps compile inputs while removing executable-only switches.
+fn v3_live_rebuild_options(args []string, compiler string, module_search_paths []string) []string {
+	mut options := []string{}
+	mut input_seen := false
+	mut running := false
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if running && input_seen { break }
+		if v3_driver_option_consumes_value(arg) {
+			if i + 1 < args.len && arg !in ['-o', '-output', '-cc', '-path', '-run-only', '-test-runner',
+				'-dump-c-flags', '-dump-files', '-generate-c-project'] {
+				options << [arg, args[i + 1]]
+			}
+			i += 2
+			continue
+		}
+		if arg in ['run', 'crun'] {
+			running = true
+		} else if arg.starts_with('-') {
+			if arg !in ['-live', '-sharedlive', '-shared', '--shared', '-check', '-check-syntax',
+				'-skip-running', '-o', '-output'] {
+				options << arg
+			}
+		} else if arg !in ['build', 'test'] {
+			input_seen = true
+		}
+		i++
+	}
+	if module_search_paths.len > 0 {
+		options << ['-path', module_search_paths.join('|')]
+	}
+	options << ['-cc', compiler]
+	return options
+}
+
 fn v3_cache_refresh_c_flag(flag string) string {
 	return '"' + flag.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
@@ -11201,6 +11242,8 @@ pub fn run(args []string) {
 	// one OS, architecture or C compiler, so that a single generated snapshot
 	// (`vc/v.c`) bootstraps V everywhere. Generate against the host target and
 	// leave every target-dependent `$if` to the C preprocessor.
+	explicit_windows_target := target_os_explicit
+		&& pref.normalized_os(target_os.trim_space().to_lower()) == 'windows'
 	mut output_cross_c := cross_output
 	if pref.normalized_os(target_os.trim_space().to_lower()) == 'cross' {
 		output_cross_c = true
@@ -11588,9 +11631,12 @@ pub fn run(args []string) {
 		&& !target_libc_headers
 		&& target.os in ['macos', 'linux', 'freebsd', 'openbsd', 'dragonfly', 'windows', 'android',
 			'termux', 'ios'] {
-		// vc/v.c must bootstrap without platform headers or checkout-local objects.
-		// Keep the signal-context ABI out of this portable compiler snapshot.
-		record_user_define(mut user_defines, mut compile_values, 'v3_headerless_bootstrap')
+		// Windows snapshots embed SDK-backed helpers, including the ACL and atomic
+		// compatibility surface. Other hosted snapshots use V-owned declarations.
+		if !explicit_windows_target {
+			record_user_define(mut user_defines, mut compile_values, 'v3_headerless_bootstrap')
+		}
+		// Keep the signal-context ABI out of portable compiler snapshots.
 		record_user_define(mut user_defines, mut compile_values, 'no_segfault_handler')
 	}
 	prefs.user_defines = user_defines
@@ -12310,6 +12356,10 @@ pub fn run(args []string) {
 	}
 	if is_prof {
 		user_files << os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'profiled_program.v')
+	}
+	if !no_preludes && (is_livemain || is_liveshared) {
+		live_prelude := if is_livemain { 'live_main.v' } else { 'live_shared.v' }
+		parse_files_dispatch_profiled(mut p, [os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', live_prelude)], false, mut parse_timing)
 	}
 	if is_trace_calls {
 		// Parse the runtime import before user files. Implicit imports such as
@@ -13455,6 +13505,11 @@ pub fn run(args []string) {
 				fatal_errors, message_limit, skip_notices)
 		}
 		if pre_tc.has_noalloc_contracts() {
+			if cache_state.manager.enabled && !cache_state.force_source {
+				// Allocation contracts inspect V callee bodies, which cache headers omit.
+				trace_v3_cache_fallback('allocation contracts need the original function bodies')
+				restart_v3_with_args([v3_internal_force_cache_source_flag])
+			}
 			pre_tc.check_noalloc_contracts(false, noalloc_unsupported_modes)
 			if pre_tc.errors.len > 0 {
 				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
@@ -14044,7 +14099,7 @@ pub fn run(args []string) {
 						if node.value.len > 0 && scoped_value_owned(transform_scope, node.value.str) {
 							leaked_nv++
 						}
-						if node.typ_text().len > 0 && scoped_value_owned(transform_scope, node.typ_text().str) {
+						if node.typ != 0 && scoped_value_owned(transform_scope, node.typ_text().str) {
 							leaked_nt++
 						}
 					}
@@ -14729,6 +14784,10 @@ pub fn run(args []string) {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)
 			g.set_compiler_vexe(prefs.vexe)
+			g.set_live_source_path(input_file)
+			if is_livemain {
+				g.set_live_rebuild_options(v3_live_rebuild_options(args, c_compiler, prefs.module_search_paths))
+			}
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_output_cross_c(prefs.output_cross_c)
@@ -14819,6 +14878,10 @@ pub fn run(args []string) {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)
 			g.set_compiler_vexe(prefs.vexe)
+			g.set_live_source_path(input_file)
+			if is_livemain {
+				g.set_live_rebuild_options(v3_live_rebuild_options(args, c_compiler, prefs.module_search_paths))
+			}
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_output_cross_c(prefs.output_cross_c)
@@ -21251,12 +21314,12 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		}
 		if !scan.needs_sync {
 			if node.kind == .lock_expr
-				|| (node.kind in [.field_decl, .param] && type_text_is_shared(node.typ_text()))
+				|| (node.kind in [.field_decl, .param] && type_text_is_shared(node.typ))
 				|| (node.kind == .decl_assign && decl_assign_value_is_shared(node.value))
 				|| (node.kind == .struct_init && node.value.starts_with('chan '))
 				|| (node.kind == .infix && node.op == .arrow)
 				|| (node.kind == .prefix && node.op == .arrow)
-				|| (node.typ_text().len > 0 && type_text_is_channel(node.typ_text())) {
+				|| (node.typ != 0 && type_text_is_channel(node.typ)) {
 				scan.needs_sync = true
 			}
 		}
@@ -21720,7 +21783,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 	mut candidates := []flat.NodeId{}
 	mut declarations := []flat.NodeId{}
 	mut untyped := []string{}
-	mut shared_types := []string{}
+	mut shared_types := []u32{}
 	mut stack := []flat.NodeId{}
 	for fn_idx in start .. end {
 		fn_node := a.nodes[fn_idx]
@@ -21741,8 +21804,8 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				local_names[child.value] = true
 				if bindings.contains(child.value) {
 					ambiguous[child.value] = true
-				} else if child.typ_text().len > 0 {
-					bindings.set(child.value, implicit_normalize_type(child.typ_text(), index))
+				} else if child.typ != 0 {
+					bindings.set_id(child.value, implicit_normalize_type(child.typ, index))
 				}
 			} else {
 				stack << child_id
@@ -21813,24 +21876,28 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 							continue
 						}
 						typ := if one_value {
-							if shared_types.len == names { shared_types[name_idx] } else { '' }
+							if shared_types.len == names { shared_types[name_idx] } else { u32(0) }
 						} else if name_idx < values {
 							implicit_expr_type(a, a.child(declaration, name_idx * 2 + 1), bindings, index, 0)
 						} else {
-							''
+							u32(0)
 						}
-						if typ == '' {
+						if typ == 0 {
 							untyped << lhs.value
 							continue
 						}
-						normalized := implicit_normalize_type(typ, index)
-						if old := bindings.get(lhs.value) {
-							if old != normalized {
+						normalized_source_id := implicit_normalize_type(typ, index)
+						normalized_comparison_type_id := normalized_source_id
+
+						if old_source_id := bindings.type_id(lhs.value) {
+							old_comparison_type_id := old_source_id
+
+							if old_comparison_type_id != normalized_comparison_type_id {
 								ambiguous[lhs.value] = true
 								dropped = true
 							}
 						} else {
-							bindings.set(lhs.value, normalized)
+							bindings.set_id(lhs.value, normalized_source_id)
 							changed = true
 						}
 					}
@@ -21853,8 +21920,8 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 			bindings.clear()
 			for child_idx in 0 .. fn_node.children_count {
 				child := a.child_node(&fn_node, child_idx)
-				if child.kind == .param && child.typ_text().len > 0 && !bindings.contains(child.value) {
-					bindings.set(child.value, implicit_normalize_type(child.typ_text(), index))
+				if child.kind == .param && child.typ != 0 && !bindings.contains(child.value) {
+					bindings.set_id(child.value, implicit_normalize_type(child.typ, index))
 				}
 			}
 		}
@@ -21865,8 +21932,9 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 			if base.kind == .ident && base.value in ambiguous {
 				continue
 			}
-			base_type := implicit_expr_type(a, base_id, bindings, index, 0)
-			if implicit_type_has_field(base_type, selector.value, index) {
+			base_type_source_id := implicit_expr_type(a, base_id, bindings, index, 0)
+
+			if implicit_type_has_field(base_type_source_id, selector.value, index) {
 				selectors[int(selector_id)] = true
 				continue
 			}
@@ -21917,10 +21985,10 @@ fn implicit_declared_child(name_idx int, values int) int {
 // implicit_multi_value_types returns the types of the values of `typ`, the
 // return type of a function that returns several, `(string, []int)`; none when
 // it is not one.
-fn implicit_multi_value_types(raw string, index ImplicitFieldScanIndex) []string {
-	typ := implicit_normalize_type(raw, index)
+fn implicit_multi_value_types(raw_id u32, index ImplicitFieldScanIndex) []u32 {
+	typ := flat.source_type_name(implicit_normalize_type(raw_id, index))
 	if typ.len < 2 || typ[0] != `(` || typ[typ.len - 1] != `)` {
-		return []string{}
+		return flat.TypeTextList.from_names([]string{}).ids
 	}
 	mut parts := []string{}
 	mut depth := 0
@@ -21944,9 +22012,9 @@ fn implicit_multi_value_types(raw string, index ImplicitFieldScanIndex) []string
 	}
 	parts << implicit_trim_space(typ[start..typ.len - 1])
 	if depth != 0 || parts.any(it == '') {
-		return []string{}
+		return flat.TypeTextList.from_names([]string{}).ids
 	}
-	return parts
+	return flat.TypeTextList.from_names(parts).ids
 }
 
 fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut index ImplicitFieldScanIndex) {
@@ -21955,7 +22023,7 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 		node_ref := a.node(flat.NodeId(idx))
 		match node.kind {
 			.import_decl {
-				alias := if node.typ_text().len > 0 {
+				alias := if node.typ != 0 {
 					node.typ_text()
 				} else {
 					node.value.all_after_last('.')
@@ -21970,7 +22038,7 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				}
 			}
 			.type_decl {
-				if node.value.len > 0 && node.typ_text().len > 0 {
+				if node.value.len > 0 && node.typ != 0 {
 					index.write(ImplicitIndexOp{
 						kind:  .alias
 						key:   node.value
@@ -22014,7 +22082,7 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 				}
 			}
 			.fn_decl, .c_fn_decl {
-				if node.value.len == 0 || node.typ_text().len == 0 {
+				if node.value.len == 0 || node.typ == 0 {
 					continue
 				}
 				index.write(ImplicitIndexOp{
@@ -22044,84 +22112,86 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 			if field.kind != .const_field || field.children_count == 0 {
 				continue
 			}
-			typ := if field.typ_text().len > 0 {
-				field.typ_text()
+			typ := if field.typ != 0 {
+				field.typ
 			} else {
 				implicit_expr_type(a, a.child(field, 0), index.globals, ImplicitFieldScanIndex{
 					...index
 					bindings_are_globals: true
 				}, 0)
 			}
-			if typ.len > 0 {
-				global_type := implicit_normalize_type(typ, index)
+			if typ != 0 {
+				global_type_source_id := implicit_normalize_type(typ, index)
+
 				index.write(ImplicitIndexOp{
 					kind:  .global
 					key:   field.value
-					value: flat.source_type_id(global_type)
+					value: global_type_source_id
 				})
-				index.globals.set(field.value, global_type)
+				index.globals.set_id(field.value, global_type_source_id)
 			}
 		}
 	}
 }
 
-fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) string {
+fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) u32 {
 	if int(id) < 0 || depth > 12 {
-		return ''
+		return u32(0)
 	}
 	node := a.node(id)
-	if node.typ_text().len > 0 {
-		return implicit_normalize_type(node.typ_text(), index)
+	if node.typ != 0 {
+		return implicit_normalize_type(node.typ, index)
 	}
 	match node.kind {
 		.ident {
 			if index.bindings_are_globals {
 				index.read('g:', node.value)
 			}
-			if typ := bindings.get(node.value) {
-				return typ
+			if typ_source_id := bindings.type_id(node.value) {
+				return typ_source_id
 			}
 			index.read('g:', node.value)
-			if typ := index.globals.get(node.value) {
-				return typ
+			if typ_source_id := index.globals.type_id(node.value) {
+				return typ_source_id
 			}
 			index.read('f:', node.value)
 			index.read('e:', node.value)
 			if node.value in index.fields || node.value in index.enum_fields {
-				return node.value
+				return flat.source_type_id(node.value)
 			}
-			return ''
+			return u32(0)
 		}
 		.string_literal {
-			return 'string'
+			return flat.source_type_string
 		}
 		.int_literal {
-			return 'int'
+			return flat.source_type_int
 		}
 		.float_literal {
-			return 'f64'
+			return flat.source_type_f64
 		}
 		.bool_literal {
-			return 'bool'
+			return flat.source_type_bool
 		}
 		.char_literal {
-			return 'u8'
+			return flat.source_type_u8
 		}
 		.array_literal, .array_init {
 			if node.children_count == 0 {
-				return '[]void'
+				return flat.source_type_id('[]void')
 			}
-			elem_type := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
-			if elem_type.len > 0 {
-				return '[]${elem_type}'
+			elem_type_source_id := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
+			elem_type := flat.source_type_name(elem_type_source_id)
+			if elem_type_source_id != 0 {
+				return flat.source_type_id('[]${elem_type}')
 			}
-			return '[]void'
+			return flat.source_type_id('[]void')
 		}
 		.map_init {
-			return if node.typ_text().len > 0 { node.typ_text() } else { 'map[void]void' }
+			return if node.typ != 0 { node.typ } else { flat.source_type_id('map[void]void') }
 		}
 		.struct_init {
-			return implicit_normalize_type(node.value, index)
+			return implicit_normalize_type(flat.source_type_id(node.value), index)
 		}
 		.paren, .expr_stmt, .postfix {
 			if node.children_count == 1 {
@@ -22141,19 +22211,19 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 		}
 		.if_expr {
 			if node.children_count < 3 {
-				return ''
+				return u32(0)
 			}
-			mut typ := ''
+			mut typ := u32(0)
 			for child_idx in 1 .. node.children_count {
 				branch_id := a.child(node, child_idx)
-				branch_type := implicit_expr_type(a, branch_id, bindings, index, depth + 1)
-				if branch_type == '' {
-					return ''
+				branch_type_source_id := implicit_expr_type(a, branch_id, bindings, index, depth + 1)
+				if branch_type_source_id == u32(0) {
+					return u32(0)
 				}
-				if typ == '' {
-					typ = branch_type
-				} else if implicit_normalize_type(typ, index) != implicit_normalize_type(branch_type, index) {
-					return ''
+				if typ == 0 {
+					typ = branch_type_source_id
+				} else if implicit_normalize_type(typ, index) != implicit_normalize_type(branch_type_source_id, index) {
+					return u32(0)
 				}
 			}
 			return typ
@@ -22168,101 +22238,103 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings flat.TypeTextBin
 			// Only string concatenation: `+` on strings is never overloaded.
 			if node.op == .plus && node.children_count == 2 {
 				for child_idx in 0 .. 2 {
-					if implicit_expr_type(a, a.child(node, child_idx), bindings, index, depth + 1) == 'string' {
-						return 'string'
+					if implicit_expr_type(a, a.child(node, child_idx), bindings, index, depth + 1) == flat.source_type_string {
+						return flat.source_type_string
 					}
 				}
 			}
 			// And arithmetic on two numbers of one type, which is a number of that
 			// type: an alias of it that overloads the operator has to return itself.
 			if node.op in [.plus, .minus, .mul, .div, .mod] && node.children_count == 2 {
-				left := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
-				if left in implicit_number_types
-					&& implicit_expr_type(a, a.child(node, 1), bindings, index, depth + 1) == left {
-					return left
+				left_source_id := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
+				if left_source_id in implicit_number_types
+					&& implicit_expr_type(a, a.child(node, 1), bindings, index, depth + 1) == left_source_id {
+					return left_source_id
 				}
 			}
 		}
 		.prefix {
 			// `-n` is a number of the type of `n`.
 			if node.op == .minus && node.children_count == 1 {
-				typ := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
-				if typ in implicit_number_types {
-					return typ
+				typ_source_id_2 := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
+				if typ_source_id_2 in implicit_number_types {
+					return typ_source_id_2
 				}
 			}
 		}
 		.selector {
 			if node.children_count > 0 {
-				base_type := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
-				return implicit_field_type(base_type, node.value, index)
+				base_type_source_id := implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1)
+
+				return implicit_field_type(base_type_source_id, node.value, index)
 			}
 		}
 		.index {
 			if node.children_count > 0 {
-				base_type := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1), index)
+				base_type_source_id_3 := implicit_normalize_type(implicit_expr_type(a, a.child(node, 0), bindings, index, depth + 1), index)
+				base_type := flat.source_type_name(base_type_source_id_3)
 				if node.value == 'range' {
 					// A slice keeps its base type: `s[..n]` is a string, and slicing a
 					// fixed array yields a dynamic one.
-					if base_type == 'string' || base_type.starts_with('[]') {
-						return base_type
+					if base_type_source_id_3 == flat.source_type_string || base_type.starts_with('[]') {
+						return base_type_source_id_3
 					}
 					if base_type.starts_with('[') {
-						close := base_type.index(']') or { return '' }
+						close := base_type.index(']') or { return u32(0) }
 						if close + 1 < base_type.len {
-							return '[]' + base_type[close + 1..]
+							return flat.source_type_id('[]' + base_type[close + 1..])
 						}
 					}
-					return ''
+					return u32(0)
 				}
 				if base_type.starts_with('[]') {
-					return base_type[2..]
+					return flat.source_type_id(base_type[2..])
 				}
 				if base_type.starts_with('[') {
-					close := base_type.index(']') or { return '' }
+					close := base_type.index(']') or { return u32(0) }
 					if close + 1 < base_type.len {
-						return base_type[close + 1..]
+						return flat.source_type_id(base_type[close + 1..])
 					}
 				}
-				if base_type == 'string' {
-					return 'u8'
+				if base_type_source_id_3 == flat.source_type_string {
+					return flat.source_type_u8
 				}
 			}
 		}
 		.cast_expr, .as_expr {
-			if node.typ_text().len > 0 {
-				return implicit_normalize_type(node.typ_text(), index)
+			if node.typ != 0 {
+				return implicit_normalize_type(node.typ, index)
 			}
 			if node.value.len > 0 {
-				return implicit_normalize_type(node.value, index)
+				return implicit_normalize_type(flat.source_type_id(node.value), index)
 			}
 		}
 		else {}
 	}
 
-	return ''
+	return u32(0)
 }
 
 // implicit_match_type types a `match` used as a value like an `if`: every branch value
 // must have the same type. A branch that yields the matched variable under a single
 // struct type pattern yields it smartcast to that type.
-fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) string {
+fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) u32 {
 	if node.children_count < 2 {
-		return ''
+		return u32(0)
 	}
 	subject := a.child_node(node, 0)
-	mut typ := ''
+	mut typ := u32(0)
 	for child_idx in 1 .. node.children_count {
 		branch := a.child_node(node, child_idx)
 		if branch.kind != .match_branch {
-			return ''
+			return u32(0)
 		}
 		n_conds := if branch.value == 'else' { 0 } else { branch.value.int() }
 		if branch.children_count <= n_conds {
-			return ''
+			return u32(0)
 		}
 		value_id := a.child(branch, branch.children_count - 1)
-		mut branch_type := ''
+		mut branch_type := u32(0)
 		if n_conds == 1 && subject.kind == .ident {
 			mut value := a.node(value_id)
 			for value.kind in [.expr_stmt, .paren] && value.children_count == 1 {
@@ -22272,127 +22344,139 @@ fn implicit_match_type(a &flat.FlatAst, node &flat.Node, bindings flat.TypeTextB
 			if value.kind == .ident && value.value == subject.value && cond.kind == .ident {
 				index.read('f:', cond.value)
 				if cond.value in index.fields {
-					branch_type = cond.value
+					branch_type = flat.source_type_id(cond.value)
 				}
 			}
 		}
-		if branch_type == '' {
+		if branch_type == 0 {
 			branch_type = implicit_expr_type(a, value_id, bindings, index, depth + 1)
 		}
-		if branch_type == '' {
-			return ''
+		if branch_type == 0 {
+			return u32(0)
 		}
-		if typ == '' {
+		if typ == 0 {
 			typ = branch_type
 		} else if implicit_normalize_type(typ, index) != implicit_normalize_type(branch_type, index) {
-			return ''
+			return u32(0)
 		}
 	}
 	return typ
 }
 
-fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) string {
+fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings flat.TypeTextBindings, index ImplicitFieldScanIndex, depth int) u32 {
 	if call.children_count == 0 {
-		return ''
+		return u32(0)
 	}
 	callee := a.child_node(call, 0)
 	if callee.kind == .ident {
 		index.read('r:', callee.value)
-		if typ := index.fn_returns.get(callee.value) {
-			return implicit_normalize_type(typ, index)
+		if typ_source_id := index.fn_returns.type_id(callee.value) {
+			return implicit_normalize_type(typ_source_id, index)
 		}
-		return ''
+		return u32(0)
 	}
 	if callee.kind != .selector || callee.children_count == 0 {
-		return ''
+		return u32(0)
 	}
 	base_id := a.child(callee, 0)
-	base_type := implicit_normalize_type(implicit_expr_type(a, base_id, bindings, index, depth + 1), index)
-	if base_type == 'string' {
+	base_type_source_id_4 := implicit_normalize_type(implicit_expr_type(a, base_id, bindings, index, depth + 1), index)
+	base_type := flat.source_type_name(base_type_source_id_4)
+	if base_type_source_id_4 == flat.source_type_string {
 		if callee.value == 'runes' {
-			return '[]rune'
+			return flat.source_type_id('[]rune')
 		}
 		if callee.value == 'bytes' {
-			return '[]u8'
+			return flat.source_type_id('[]u8')
 		}
 	}
-	if base_type.len > 0 {
+	if base_type_source_id_4 != 0 {
 		for key in ['${base_type}.${callee.value}', '${base_type.all_after_last('.')}.${callee.value}'] {
 			index.read('r:', key)
-			if typ := index.fn_returns.get(key) {
-				return implicit_normalize_type(typ, index)
+			if typ_source_id := index.fn_returns.type_id(key) {
+				return implicit_normalize_type(typ_source_id, index)
 			}
 		}
 	}
-	return ''
+	return u32(0)
 }
 
-fn implicit_type_has_field(raw_type string, field string, index ImplicitFieldScanIndex) bool {
-	return implicit_field_type(raw_type, field, index) != ''
+fn implicit_type_has_field(raw_type_id u32, field string, index ImplicitFieldScanIndex) bool {
+	return implicit_field_type(raw_type_id, field, index) != u32(0)
 }
 
-fn implicit_field_type(raw_type string, field string, index ImplicitFieldScanIndex) string {
-	typ := implicit_normalize_type(raw_type, index)
-	if typ == '' {
-		return ''
+fn implicit_field_type(raw_type_id u32, field string, index ImplicitFieldScanIndex) u32 {
+	typ := implicit_normalize_type(raw_type_id, index)
+	if typ == 0 {
+		return 0
 	}
-	if typ == 'string' {
+	if typ == flat.source_type_string {
 		return match field {
-			'len', 'flags', 'is_lit' { 'int' }
-			'str' { '&u8' }
-			else { '' }
+			'len', 'flags', 'is_lit' { flat.source_type_int }
+			'str' { flat.source_type_id('&u8') }
+			else { u32(0) }
 		}
 	}
-	if typ.starts_with('[]') || typ.starts_with('...')
-		|| (typ.starts_with('[') && typ.contains(']')) {
+	shape := flat.source_type_shape(typ)
+	if shape.has(.array_type) || shape.has(.variadic)
+		|| (shape.has(.leading_bracket) && flat.source_type_name(typ).contains(']')) {
 		return match field {
-			'len', 'cap', 'offset', 'flags', 'element_size' { 'int' }
-			'data' { 'voidptr' }
-			else { '' }
+			'len', 'cap', 'offset', 'flags', 'element_size' { flat.source_type_int }
+			'data' { flat.source_type_voidptr }
+			else { u32(0) }
 		}
 	}
-	if typ.starts_with('map[') {
+	if shape.has(.map_type) {
 		return match field {
-			'len', 'cap' { 'int' }
-			else { '' }
+			'len', 'cap' { flat.source_type_int }
+			else { u32(0) }
 		}
 	}
-	index.read('f:', typ)
-	if declared := index.fields[typ] {
-		if field_type := declared.get(field) {
+	name := flat.source_type_name(typ)
+	index.read('f:', name)
+	if declared := index.fields[name] {
+		if field_type := declared.type_id(field) {
 			return implicit_normalize_type(field_type, index)
 		}
 	}
-	return ''
+	return 0
 }
 
 const implicit_type_prefixes = ['mut ', 'shared ', '&', '?', '!']
 
 // implicit_number_types are the types of numbers, as implicit_normalize_type
 // leaves them.
-const implicit_number_types = ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-	'usize', 'f32', 'f64']
+const implicit_number_types = [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
+	flat.source_type_i32, flat.source_type_i64, flat.source_type_isize, flat.source_type_u8,
+	flat.source_type_u16, flat.source_type_u32, flat.source_type_u64, flat.source_type_usize,
+	flat.source_type_f32, flat.source_type_f64]
 
-fn implicit_normalize_type(raw string, index ImplicitFieldScanIndex) string {
+fn implicit_normalize_type(raw_id u32, index ImplicitFieldScanIndex) u32 {
+	raw := flat.source_type_name(raw_id)
 	mut typ := implicit_trim_space(raw)
+	mut normalized_id := raw_id
+	mut has_normalized_id := typ == raw
 	for _ in 0 .. 12 {
 		mut changed := false
 		for prefix in implicit_type_prefixes {
 			if typ.starts_with(prefix) {
 				typ = implicit_trim_space(typ[prefix.len..])
+				has_normalized_id = false
 				changed = true
 			}
 		}
 		index.read('a:', typ)
-		if target := index.aliases.get(typ) {
+		if target_id := index.aliases.type_id(typ) {
+			target := flat.source_type_name(target_id)
 			typ = implicit_trim_space(target)
+			normalized_id = target_id
+			has_normalized_id = typ == target
 			changed = true
 		}
 		if !changed {
 			break
 		}
 	}
-	return typ
+	return if has_normalized_id { normalized_id } else { flat.source_type_id(typ) }
 }
 
 // implicit_trim_space is `text.trim_space()` without the copy of a text that
@@ -22405,7 +22489,12 @@ fn implicit_trim_space(text string) string {
 	return text.trim_space()
 }
 
-fn type_text_is_channel(typ string) bool {
+fn type_text_is_channel(typ_id u32) bool {
+	return type_text_is_channel_bytes(flat.source_type_name(typ_id))
+}
+
+// type_text_is_channel_bytes inspects spelling syntax within the numeric predicate boundary.
+fn type_text_is_channel_bytes(typ string) bool {
 	mut clean := implicit_trim_space(typ)
 	for {
 		if clean.starts_with('&') {
@@ -22421,7 +22510,12 @@ fn type_text_is_channel(typ string) bool {
 	return clean.starts_with('chan ') || clean == 'chan'
 }
 
-fn type_text_is_shared(raw string) bool {
+fn type_text_is_shared(raw_id u32) bool {
+	return type_text_is_shared_bytes(flat.source_type_name(raw_id))
+}
+
+// type_text_is_shared_bytes inspects spelling syntax within the numeric predicate boundary.
+fn type_text_is_shared_bytes(raw string) bool {
 	return implicit_trim_space(raw).starts_with('shared ')
 }
 
@@ -22704,18 +22798,28 @@ fn rerun_as_one_shot_check_with(reason string, question string, extra_args []str
 		// Before the input, which the command line ends with.
 		args.insert(args.len - 1, ['-line-info', question])
 	}
-	mut envs := []string{}
-	for name, value in os.environ() {
-		if name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
-			continue
-		}
-		envs << '${name}=${value}'
-	}
 	flush_stdout()
 	flush_stderr()
-	os.execve(os.executable(), args, envs) or {
-		eprintln('v-diagnostics-server: cannot run the one-shot check: ${err}')
-		exit(2)
+	$if windows {
+		// Windows has no exec: os.execve would start the one-shot check and exit this
+		// process with status 0 before the check finishes. Forward its status instead,
+		// as restart_v3_with_args does. The child inherits this environment.
+		for name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
+			os.unsetenv(name)
+		}
+		exit(os.system_args([os.executable(), ...args]))
+	} $else {
+		mut envs := []string{}
+		for name, value in os.environ() {
+			if name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
+				continue
+			}
+			envs << '${name}=${value}'
+		}
+		os.execve(os.executable(), args, envs) or {
+			eprintln('v-diagnostics-server: cannot run the one-shot check: ${err}')
+			exit(2)
+		}
 	}
 }
 
