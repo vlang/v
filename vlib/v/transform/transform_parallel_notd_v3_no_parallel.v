@@ -61,6 +61,23 @@ const scoped_monomorph_specs_threshold = 1
 // peak from 19.4 GB to 7.4 GB at a slightly better wall time. Raising
 // scoped_monomorph_specs_threshold re-admits that unbounded retention for the batches
 // below it, so the cutoff stays at one specialization.
+// direct_monomorph_spec_budget is how many specializations the master emits
+// itself before every further batch takes the scoped path. A few
+// specializations leave little in the stage arena, while forking a worker,
+// preparing its read-only indexes and publishing its arena cost a fixed share of
+// the whole tree.
+const direct_monomorph_spec_budget = 32
+
+// emits_directly reports whether the master emits `specs` itself, and counts
+// them against direct_monomorph_spec_budget when it does.
+fn (mut t Transformer) emits_directly(specs []PendingGenericFnSpec) bool {
+	if t.direct_monomorph_specs + specs.len > direct_monomorph_spec_budget {
+		return false
+	}
+	t.direct_monomorph_specs += specs.len
+	return true
+}
+
 fn should_use_scoped_monomorphize(node_count int, spec_count int) bool {
 	if spec_count <= 0 {
 		return false
@@ -1418,7 +1435,7 @@ fn (mut t Transformer) run_serial_scoped_monomorphize_specs(specs []PendingGener
 		return false
 	}
 	if !t.scope_parallel_workers || !t.scoped_monomorphize || isnil(t.tc)
-		|| t.tc.checker_fixture_mode || specs.len == 0 {
+		|| t.tc.checker_fixture_mode || specs.len == 0 || t.emits_directly(specs) {
 		return false
 	}
 	return t.run_scoped_monomorphize_specs(specs, mut emitted, mut generated)
@@ -1431,7 +1448,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		// retaining the other parallel compiler stages.
 		return false
 	}
-	if specs.len == 0 {
+	if specs.len == 0 || t.emits_directly(specs) {
 		return false
 	}
 	if t.scope_parallel_workers && t.scoped_monomorphize
