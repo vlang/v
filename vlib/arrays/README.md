@@ -27,3 +27,7 @@ single-element arrays are sorted. The element type must support ordering compari
 `bisect_left(array, value)` and `bisect_right(array, value)` return insertion positions in an
 ascending sorted array, before or after existing equal values. `insort_left` and `insort_right`
 insert at those positions. Empty arrays return position zero; unsorted input is unsupported.
+
+`group` zips its input arrays into rows. A single array is one input: `arrays.group([1, 2])`
+returns `[[1], [2]]`. To supply an array of inputs, spread it with `arrays.group(...inputs)`.
+Generic element types can be inferred from the input arrays, including inside interpolation.

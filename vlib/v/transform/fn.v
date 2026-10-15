@@ -2249,6 +2249,7 @@ fn (mut t Transformer) transform_call_arg_for_named_param(arg_id flat.NodeId, pa
 }
 
 fn (mut t Transformer) transform_variadic_spread_arg_for_param(spread_id flat.NodeId, variadic_type types.Array, param_type string) flat.NodeId {
+	mut value := flat.NodeId(-1)
 	if !isnil(t.tc) && int(spread_id) >= 0 {
 		actual := types.unwrap_pointer(t.tc.resolve_type(spread_id))
 		if actual is types.Array {
@@ -2257,11 +2258,20 @@ fn (mut t Transformer) transform_variadic_spread_arg_for_param(spread_id flat.No
 			expected_elem := t.normalize_type_alias(t.semantic_type_name(variadic_type.elem_type))
 			if actual_elem != expected_elem
 				&& t.sum_target_accepts_variant_type(expected_elem, actual_elem) {
-				return t.convert_forwarded_array_to_dynamic(spread_id, actual, actual.elem_type, expected, variadic_type.elem_type, false)
+				value = t.convert_forwarded_array_to_dynamic(spread_id, actual, actual.elem_type, expected, variadic_type.elem_type, false)
 			}
 		}
 	}
-	return t.transform_call_arg_for_param(spread_id, param_type)
+	if int(value) < 0 {
+		value = t.transform_call_arg_for_param(spread_id, param_type)
+	}
+	if t.in_const_init || t.call_arg_is_packed_variadic_tail(value, variadic_type) {
+		return value
+	}
+	// Preserve the packed tail when interpolation transforms this call again.
+	name := t.new_temp('varargs')
+	t.pending_stmts << t.make_decl_assign_typed(name, value, t.semantic_type_name(variadic_type))
+	return t.make_ident(name)
 }
 
 fn (mut t Transformer) make_range_index(base flat.NodeId, start_id flat.NodeId, end_id flat.NodeId, typ string) flat.NodeId {
