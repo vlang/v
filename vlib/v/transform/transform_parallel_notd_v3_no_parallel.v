@@ -2682,7 +2682,10 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 	for i in start .. t.deferred_base_writes.len {
 		write := t.deferred_base_writes[i]
 		t.deferred_base_writes[i] = match write.kind {
-			0, 1 {
+			0 {
+				write
+			}
+			1 {
 				DeferredBaseWrite{
 					idx:  write.idx
 					kind: write.kind

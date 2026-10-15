@@ -35,11 +35,11 @@ fn (mut t Transformer) named_variant_binding_decls(match_expr_id flat.NodeId, br
 		return []flat.NodeId{}
 	}
 	payload_name_source_id := t.tc.type_name(payload_type)
-	payload_name := flat.source_type_name(payload_name_source_id)
+
 	base := t.make_ident(subject)
-	t.set_node_typ(int(base), sc.variant_name_text())
+	t.set_node_typ(int(base), sc.variant_name)
 	payload := t.make_selector_op(base, flat.named_variant_payload_field, payload_name_source_id, .dot)
-	return [t.make_decl_assign_typed(binding, payload, payload_name)]
+	return [t.make_decl_assign_typed(binding, payload, payload_name_source_id)]
 }
 
 // named_variant_display_short returns the source spelling of a hidden variant
@@ -73,7 +73,7 @@ fn (mut t Transformer) named_variant_str(expr flat.NodeId, variant string, is_re
 	mut value := expr
 	if is_ref {
 		value = t.make_prefix(.mul, expr)
-		t.set_node_typ(int(value), variant)
+		t.set_node_typ(int(value), flat.source_type_id(variant))
 	}
 	payload := t.make_selector_op(value, flat.named_variant_payload_field, payload_name_source_id, .dot)
 	mut text := t.wrap_string_conversion(payload, payload_name)

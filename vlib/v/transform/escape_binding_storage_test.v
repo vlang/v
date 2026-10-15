@@ -17,7 +17,7 @@ fn test_inner_pointer_declarations_shadow_and_restore_outer_storage_markers() {
 		t.pointer_value_rvalues['values'] = true
 		pointer := t.make_ident('pointer')
 		tc.register_synth_type(pointer, pointer_type)
-		decl := t.make_decl_assign_typed('values', pointer, '&[2]int')
+		decl := t.make_decl_assign_typed('values', pointer, flat.source_type_id('&[2]int'))
 		t.a.nodes[int(decl)].pos = token.new_span(1, 1, 10)
 		value := t.make_ident('values')
 		tc.register_synth_type(value, pointer_type)

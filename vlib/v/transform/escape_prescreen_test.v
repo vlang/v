@@ -28,7 +28,7 @@ fn ordinary_escape_fixture_c(mode string, prescreen bool) string {
 	param := a.add_node(flat.Node{ kind: .param, value: 'input', typ: flat.source_type_int })
 	value := t.make_ident('input')
 	tc.register_synth_type(value, types.Type(types.int_))
-	decl := t.make_decl_assign_typed('value', value, 'int')
+	decl := t.make_decl_assign_typed('value', value, flat.source_type_int)
 	mut stmts := [decl]
 	if mode == 'call' {
 		call := t.make_call_typed('identity', [t.make_ident('value')], flat.source_type_int)
@@ -38,7 +38,7 @@ fn ordinary_escape_fixture_c(mode string, prescreen bool) string {
 			t.make_ident('value'),
 			t.make_int_literal(2),
 		])
-		stmts << t.make_decl_assign_typed('values', array, '[]int')
+		stmts << t.make_decl_assign_typed('values', array, flat.source_type_id('[]int'))
 	} else if mode == 'branch' {
 		cond := a.add_val(.bool_literal, 'true')
 		then_block := t.make_block([t.make_return(t.make_int_literal(3), 'int')])
@@ -290,7 +290,7 @@ fn test_ordinary_escape_proof_keeps_closure_cleanup_fallback_metadata() {
 				])
 			}
 		}
-		decl := t.make_decl_assign_typed('callback', creator, 'fn () int')
+		decl := t.make_decl_assign_typed('callback', creator, flat.source_type_id('fn () int'))
 		body := t.make_block([decl])
 		assert !t.mark_escaping_amp_ptrs([body]), mode
 		// Direct calls retain the full walk, with a real nonescaping creator.

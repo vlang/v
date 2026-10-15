@@ -335,8 +335,8 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) u32 {
 			}
 		}
 		if node.kind == .call {
-			if ret := t.checker_resolved_non_builtin_return_type(id, node) {
-				return flat.source_type_id(ret)
+			if ret_source_id := t.checker_resolved_non_builtin_return_type(id, node) {
+				return ret_source_id
 			}
 		}
 		if node.kind == .ident {
@@ -351,8 +351,8 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) u32 {
 			child := t.a.nodes[int(child_id)]
 			child_type_source_id := t.lvalue_type(child_id)
 			child_type := flat.source_type_name(child_type_source_id)
-			if child.kind == .struct_init && t.is_optional_type_name(child_type) {
-				return flat.source_type_id('${child_type[..1]}&${t.optional_base_type(child_type)}')
+			if child.kind == .struct_init && t.is_optional_type_name(child_type_source_id) {
+				return flat.source_type_id('${child_type[..1]}&${flat.source_type_name(t.optional_base_type(child_type_source_id))}')
 			}
 			prefix_type_source_id := t.node_type(id)
 			prefix_type := flat.source_type_name(prefix_type_source_id)
@@ -735,8 +735,8 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 				return t.normalize_type_alias(gt_source_id)
 			}
 		}
-		if typ := t.const_type_name(cname) {
-			return flat.source_type_id(typ)
+		if typ_source_id := t.const_type_name(cname) {
+			return typ_source_id
 		}
 		return u32(0)
 	}
@@ -763,8 +763,8 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 		}
 	}
 	if base_node.kind == .ident {
-		if typ := t.const_type_name('${base_node.value}.${field_name}') {
-			return flat.source_type_id(typ)
+		if typ_source_id := t.const_type_name('${base_node.value}.${field_name}') {
+			return typ_source_id
 		}
 		if fields := t.enum_types[base_node.value] {
 			if field_name in fields {
@@ -821,7 +821,7 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 		// Follow the complete embedding path, including pointer embeddings.
 		if path := t.struct_field_path_for_field(lookup_type, field_name) {
 			owner_type := if path.len > 0 {
-				t.trim_pointer_type(path.last().typ_text())
+				flat.source_type_name(t.trim_pointer_type(path.last().typ))
 			} else {
 				lookup_type
 			}
@@ -850,7 +850,8 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) u32 {
 }
 
 fn (t &Transformer) builtin_selector_type(base_type_id u32, field_name string) ?u32 {
-	clean := t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(base_type_id)))
+	clean_source_id := t.trim_pointer_type(t.normalize_type_alias(base_type_id))
+	clean := flat.source_type_name(clean_source_id)
 	if clean == 'array' || clean.starts_with('[]') {
 		// Array header fields have builtin types. Inferring them from a same-named
 		// field on an unrelated struct can turn a pointer value into an implicit
@@ -862,7 +863,7 @@ fn (t &Transformer) builtin_selector_type(base_type_id u32, field_name string) ?
 			else { none }
 		}
 	}
-	if field_name == 'len' && (clean == 'string' || clean.starts_with('map[') || t.is_fixed_array_type(clean)
+	if field_name == 'len' && (clean_source_id == flat.source_type_string || clean.starts_with('map[') || t.is_fixed_array_type(clean)
 		|| clean == 'chan' || clean.starts_with('chan ')) {
 		return flat.source_type_int
 	}
@@ -882,7 +883,7 @@ fn (t &Transformer) lookup_sum_variant_field_type(sum_type_id u32, field_name st
 }
 
 fn (t &Transformer) lookup_sum_variant_field_type_seen(sum_type_id u32, field_name string, seen []string) ?u32 {
-	resolved := t.resolve_sum_name(t.trim_pointer_type(flat.source_type_name(t.normalize_type_alias(sum_type_id))))
+	resolved := t.resolve_sum_name(flat.source_type_name(t.trim_pointer_type(t.normalize_type_alias(sum_type_id))))
 	if resolved.len == 0 || resolved in seen {
 		return none
 	}
@@ -1046,8 +1047,7 @@ fn (t &Transformer) struct_field_type_cache_key(type_name_id u32, field_name str
 }
 
 fn (t &Transformer) lookup_struct_field_type_uncached(type_name_id u32, field_name string) ?u32 {
-	type_name := flat.source_type_name(type_name_id)
-	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
+	lookup := t.lookup_struct_info_for_field(type_name_id, field_name) or { return none }
 	return t.struct_field_type_in_cur_module(lookup, t.lookup_struct_field_type_spelling(lookup,
 		field_name)?)
 }
@@ -1084,8 +1084,7 @@ fn (t &Transformer) struct_field_type_in_cur_module(lookup StructFieldLookup, fi
 
 // lookup_struct_field_raw_type resolves lookup struct field raw type information for transform.
 fn (t &Transformer) lookup_struct_field_raw_type(type_name_id u32, field_name string) ?u32 {
-	type_name := flat.source_type_name(type_name_id)
-	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
+	lookup := t.lookup_struct_info_for_field(type_name_id, field_name) or { return none }
 	f := lookup.info.field(field_name) or { return none }
 	if f.raw_typ != 0 {
 		return f.raw_typ
@@ -1093,17 +1092,17 @@ fn (t &Transformer) lookup_struct_field_raw_type(type_name_id u32, field_name st
 	return f.typ
 }
 
-fn (t &Transformer) lookup_struct_field_raw_type_with_owner(type_name string, field_name string) ?(string, string) {
-	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
+fn (t &Transformer) lookup_struct_field_raw_type_with_owner(type_name_id u32, field_name string) ?(u32, u32) {
+	lookup := t.lookup_struct_info_for_field(type_name_id, field_name) or { return none }
 	f := lookup.info.field(field_name) or { return none }
-	raw := if f.raw_typ != 0 { f.raw_typ_text() } else { f.typ_text() }
-	owner_type := if lookup.owner_type_text().contains('.') || lookup.info.module.len == 0
+	raw_id := if f.raw_typ != 0 { f.raw_typ } else { f.typ }
+	owner_id := if flat.source_type_shape(lookup.owner_type).has(.dotted) || lookup.info.module.len == 0
 		|| lookup.info.module == 'main' || lookup.info.module == 'builtin' {
-		lookup.owner_type_text()
+		lookup.owner_type
 	} else {
-		'${lookup.info.module}.${lookup.owner_type_text()}'
+		flat.source_type_id('${lookup.info.module}.${lookup.owner_type_text()}')
 	}
-	return raw, owner_type
+	return raw_id, owner_id
 }
 
 fn (t &Transformer) checker_struct_field_type_name(type_name_id u32, field_name string) ?u32 {
@@ -1152,12 +1151,17 @@ fn is_qualified_type_name_text(text string) bool {
 }
 
 // lookup_struct_info_for_field resolves lookup struct info for field information for transform.
-fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name string) ?StructFieldLookup {
-	if type_name == '' || field_name == '' {
+fn (t &Transformer) lookup_struct_info_for_field(type_name_id u32, field_name string) ?StructFieldLookup {
+	type_name := flat.source_type_name(type_name_id)
+	if type_name_id == u32(0) || field_name == '' {
 		return none
 	}
 	mut lookup_type := if type_name.starts_with('&') { type_name[1..] } else { type_name }
-	owner_type := lookup_type
+	owner_type_id := if type_name.starts_with('&') {
+		flat.source_type_id(lookup_type)
+	} else {
+		type_name_id
+	}
 	base, _, is_generic_app := generic_app_parts(lookup_type)
 	if is_generic_app {
 		lookup_type = base
@@ -1190,7 +1194,7 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name st
 	info := t.structs[lookup_type] or { return none }
 	return StructFieldLookup{
 		info:       info
-		owner_type: flat.source_type_id(owner_type)
+		owner_type: owner_type_id
 	}
 }
 
@@ -2175,18 +2179,18 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 		child_type_source_id_2 := t.node_type(t.a.child(&node, 0))
 		child_type := flat.source_type_name(child_type_source_id_2)
 		if child_type_source_id_2 != 0 {
-			if t.is_optional_type_name(child_type) {
-				return flat.source_type_id('${child_type[..1]}&${t.optional_base_type(child_type)}')
+			if t.is_optional_type_name(child_type_source_id_2) {
+				return flat.source_type_id('${child_type[..1]}&${flat.source_type_name(t.optional_base_type(child_type_source_id_2))}')
 			}
 			return flat.source_type_id('&${child_type}')
 		}
 	}
-	mut deferred_call_typ := ''
+	mut deferred_call_typ := u32(0)
 	if node.typ != 0 {
 		node_typ_source_id_2 := t.normalize_type_alias(node.typ)
 		node_typ := flat.source_type_name(node_typ_source_id_2)
 		if node.kind == .call && node_typ in ['int', 'array', 'map', 'unknown'] {
-			deferred_call_typ = node_typ
+			deferred_call_typ = node_typ_source_id_2
 		} else {
 			return node_typ_source_id_2
 		}
@@ -2235,24 +2239,24 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) u32 {
 		return flat.source_type_id(node.value)
 	}
 	if !isnil(t.tc) {
-		mut name := ''
+		mut name_id := u32(0)
 		if typ := t.tc.expr_type(id) {
-			name = typ.name()
+			name_id = t.tc.type_name(typ)
 		}
-		if types.type_text_contains_typeof(name) {
-			name = t.tc.resolve_type(id).name()
+		if flat.source_type_shape(name_id).has(.typeof_expr) {
+			name_id = t.tc.type_name(t.tc.resolve_type(id))
 		}
-		if name.len == 0 || name == 'unknown' {
-			name = t.tc.resolve_type(id).name()
+		if name_id == 0 || name_id == flat.source_type_unknown {
+			name_id = t.tc.type_name(t.tc.resolve_type(id))
 		}
-		if name.len > 0 && name != 'void' && (name != 'int'
+		if name_id != 0 && name_id != flat.source_type_void && (name_id != flat.source_type_int
 			|| node.kind in [.ident, .int_literal, .infix, .prefix, .postfix, .paren, .selector,
 				.index, .call]) {
-			return t.normalize_type_alias(flat.source_type_id(name))
+			return t.normalize_type_alias(name_id)
 		}
 	}
-	if deferred_call_typ.len > 0 {
-		return flat.source_type_id(deferred_call_typ)
+	if deferred_call_typ != 0 {
+		return deferred_call_typ
 	}
 	return u32(0)
 }
@@ -2539,8 +2543,8 @@ fn (t &Transformer) is_string_type(id flat.NodeId) bool {
 			}
 		}
 	}
-	if raw_const_type := t.raw_const_type_name_for_expr(id) {
-		return t.normalize_type_alias(flat.source_type_id(raw_const_type)) == flat.source_type_string
+	if raw_const_type_source_id := t.raw_const_type_name_for_expr(id) {
+		return t.normalize_type_alias(raw_const_type_source_id) == flat.source_type_string
 	}
 	mut typ := ''
 	if sc := t.find_smartcast(t.expr_key(id)) {

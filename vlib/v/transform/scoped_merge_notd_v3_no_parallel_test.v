@@ -18,7 +18,7 @@ fn test_generic_batch_publishes_indirect_base_writes_and_new_nodes() {
 	batch.item_range_lo = 1
 	batch.item_range_hi = 1
 	batch.set_node_value(0, 'indirect_rewrite'.clone())
-	batch.set_node_typ(1, 'previous_batch_type'.clone())
+	batch.set_node_typ(1, flat.source_type_id('previous_batch_type'.clone()))
 	batch.set_node_generic_params(0, ['T'.clone()])
 	a.nodes[0].set_generic_params_and_constraints(['T'.clone()], ['retiring constraint'.clone()])
 	added := a.add_node(flat.Node{ kind: .ident, value: 'appended'.clone(), typ: flat.source_type_id('new_type'.clone()) })

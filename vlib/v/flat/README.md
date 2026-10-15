@@ -7,7 +7,8 @@ Resolving an unqualified spelling still requires its module and import context.
 
 `source_type_id` and `source_type_name` cross the spelling boundary. Zero denotes empty text.
 `source_type_shape` reads syntax flags recorded when a spelling is interned, allowing
-type caches to inspect wrapper, container, qualified-name, and `typeof` syntax by ID.
+type caches to inspect wrappers, containers, qualification, endpoint whitespace,
+and `typeof` syntax by ID.
 Builtin `source_type_*` constants carry scalar spellings without repeated interning;
 the `builtin_alias` shape flag identifies spellings that need no alias normalization.
 `FlatAst.type_text_id` and `node_type_text_id` use this same `u32` namespace, independently

@@ -5403,3 +5403,28 @@ fn test_merge_worker_relocates_allocation_warnings() {
 	assert master.a.nodes[int(master.alloc_warnings[0].node)].value == 'expanded_local'
 	assert master.alloc_warnings[1].node == base_id
 }
+
+fn test_deferred_worker_type_write_keeps_identity_through_clone_and_flush() {
+	$if !v3_no_parallel ? {
+		mut a := flat.FlatAst.new()
+		node_id := a.add_node(flat.Node{
+			kind:  .ident
+			value: 'value'
+			typ:   flat.source_type_int
+		})
+		type_id := flat.source_type_id('[]pkg.Item[T]')
+		mut t := Transformer{
+			a:                    &a
+			deferred_base_writes: [DeferredBaseWrite{
+				idx:  int(node_id)
+				kind: 0
+				typ:  type_id
+			}]
+		}
+		t.clone_deferred_worker_writes_from(0)
+		t.flush_deferred_base_writes()
+		assert a.nodes[int(node_id)].typ == type_id
+		assert a.nodes[int(node_id)].typ_text() == '[]pkg.Item[T]'
+		assert t.deferred_base_writes.len == 0
+	}
+}

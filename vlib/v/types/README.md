@@ -45,6 +45,7 @@ Generic constraints, frozen interface implementation lists, and cached C type re
 also retain numeric spelling identities. AST and worker publication copy these indexes and their
 list storage directly; only ordinary declaration payloads require string promotion.
 
+Transformer builders, expected-type coercion, and deferred AST type writes also carry spelling IDs.
 Numeric APIs retain identities across stages. Text APIs resolve spellings when parsing source,
 reporting diagnostics, or integrating with an emitter that consumes names.
 

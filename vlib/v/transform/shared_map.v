@@ -413,7 +413,7 @@ fn (t &Transformer) shared_map_base(id flat.NodeId) ?flat.NodeId {
 		}
 		mut typ := flat.source_type_name(t.raw_var_type(node.value))
 		if typ.len == 0 {
-			typ = t.current_module_global_type(node.value) or { '' }
+			typ = flat.source_type_name(t.current_module_global_type(node.value) or { u32(0) })
 		}
 		if typ.len == 0 && t.local_decl_is_shared_before(node.value, id) {
 			typ = 'shared ' + (flat.source_type_name(t.checker_expr_type_name(id) or { u32(0) }))

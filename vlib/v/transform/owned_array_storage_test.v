@@ -8,10 +8,10 @@ fn test_owned_array_storage_void_wrappers_preserve_the_source() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	assert t.optional_base_type('!') == 'void'
-	assert t.optional_base_type('?') == 'void'
-	assert t.optional_base_type('![]int') == '[]int'
-	assert t.optional_base_type('?[]int') == '[]int'
+	assert t.optional_base_type(flat.source_type_id('!')) == flat.source_type_void
+	assert t.optional_base_type(flat.source_type_id('?')) == flat.source_type_void
+	assert flat.source_type_name(t.optional_base_type(flat.source_type_id('![]int'))) == '[]int'
+	assert flat.source_type_name(t.optional_base_type(flat.source_type_id('?[]int'))) == '[]int'
 	for wrapper in ['!', '?', '!void', '?void'] {
 		t.set_var_type('source', flat.source_type_id(wrapper))
 		source := t.make_ident('source')

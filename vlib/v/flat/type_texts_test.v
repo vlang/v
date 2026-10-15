@@ -90,6 +90,14 @@ fn test_source_type_shapes_and_builtin_ids_share_the_spelling_table() {
 	assert !shape.has(.typeof_expr)
 	assert source_type_shape(source_type_id('typeof(value)')).has(.typeof_expr)
 	assert !source_type_shape(0).has(.builtin_alias)
+	assert source_type_shape(source_type_id('?')).has(.optional)
+	assert source_type_shape(source_type_id('!pkg.Item')).has(.optional)
+	assert !source_type_shape(source_type_id('&pkg.Item')).has(.optional)
+	assert source_type_shape(source_type_id('&pkg.Item')).has(.pointer)
+	assert source_type_shape(source_type_id('shared pkg.Item')).has(.shared_type)
+	assert source_type_shape(source_type_id('...pkg.Item')).has(.variadic)
+	assert source_type_shape(source_type_id(' pkg.Item\t')).has(.padded)
+	assert !source_type_shape(source_type_id('pkg.Item')).has(.padded)
 }
 
 fn test_binding_value_ids_preserve_present_empty_bindings() {
@@ -104,4 +112,8 @@ fn test_binding_value_ids_preserve_present_empty_bindings() {
 	nodes.set_id(12, source_type_string)
 	assert nodes.value_id(12) == source_type_string
 	assert nodes.value_id(13) == 0
+	assert nodes.type_id(12) or { panic('missing node type identity') } == source_type_string
+	assert nodes.type_id(13) == none
+	nodes.set_id(13, 0)
+	assert nodes.type_id(13) or { panic('empty node identity was lost') } == 0
 }

@@ -8,7 +8,7 @@ import v.types
 // call-operand ordering guards look at the preceding operand — here the callee base.
 fn build_namespace_call(mut t Transformer, base_name string, base_type string, method string) (flat.NodeId, flat.Node) {
 	base := t.a.add_val(.ident, base_name)
-	t.set_node_typ(int(base), base_type)
+	t.set_node_typ(int(base), flat.source_type_id(base_type))
 	callee := t.make_selector_op(base, method, flat.source_type_string, .dot)
 
 	cond := t.a.add_val(.bool_literal, 'true')
@@ -124,19 +124,19 @@ fn test_callee_base_runtime_value_classification() {
 
 	// A module identifier: unresolved and not a binding.
 	module_base := t.a.add_val(.ident, 'os')
-	t.set_node_typ(int(module_base), 'unknown')
+	t.set_node_typ(int(module_base), flat.source_type_unknown)
 	assert t.callee_base_is_not_a_runtime_value(module_base)
 
 	// A type name reads back as `void` whatever its spelling.
 	type_base := t.a.add_val(.ident, 'Box')
-	t.set_node_typ(int(type_base), 'void')
+	t.set_node_typ(int(type_base), flat.source_type_void)
 	assert t.callee_base_is_not_a_runtime_value(type_base)
 
 	// A runtime receiver whose type the checker lost — the case a generic clone produces. Its
 	// binding survives, so it must stay snapshotted.
 	t.set_var_type('cloned', flat.source_type_id('Holder'))
 	cloned_base := t.a.add_val(.ident, 'cloned')
-	t.set_node_typ(int(cloned_base), 'unknown')
+	t.set_node_typ(int(cloned_base), flat.source_type_unknown)
 	assert !t.callee_base_is_not_a_runtime_value(cloned_base)
 
 	// An unresolved operand that is not a bare identifier stays snapshotted too.
@@ -145,7 +145,7 @@ fn test_callee_base_runtime_value_classification() {
 	assert !t.callee_base_is_not_a_runtime_value(field_base)
 
 	typed_base := t.a.add_val(.ident, 'builder')
-	t.set_node_typ(int(typed_base), 'strings.Builder')
+	t.set_node_typ(int(typed_base), flat.source_type_id('strings.Builder'))
 	assert !t.callee_base_is_not_a_runtime_value(typed_base)
 }
 

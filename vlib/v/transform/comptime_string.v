@@ -463,7 +463,7 @@ fn (mut t Transformer) expand_comptime_for_strings(id flat.NodeId, node flat.Nod
 	mut result := []flat.NodeId{}
 	for value in values {
 		// The literal binding and the entire iteration have their own lexical scope.
-		binding := t.make_decl_assign_typed(var_name, t.make_string_literal(value), 'string')
+		binding := t.make_decl_assign_typed(var_name, t.make_string_literal(value), flat.source_type_string)
 		// This generated binding is immutable and belongs to the source iteration.
 		t.a.nodes[int(binding)].pos = node.pos
 		mut stmts := [binding]

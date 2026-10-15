@@ -49,6 +49,11 @@ pub enum SourceTypeShape {
 	typeof_name
 	typeof_expr
 	builtin_alias
+	optional
+	pointer
+	shared_type
+	variadic
+	padded
 }
 
 fn source_type_spelling_shape(text string) SourceTypeShape {
@@ -58,6 +63,13 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 	if text.starts_with('&') || text.starts_with('?') || text.starts_with('!') {
 		shape.set(.wrapped)
 	}
+	if text.starts_with('?') || text.starts_with('!') { shape.set(.optional) }
+	if text.starts_with('&') { shape.set(.pointer) }
+	if text.starts_with('shared ') { shape.set(.shared_type) }
+	if text.starts_with('...') { shape.set(.variadic) }
+	if text.len > 0 && (source_type_space(text[0]) || source_type_space(text[text.len - 1])) {
+		shape.set(.padded)
+	}
 	if text.contains('typeof') { shape.set(.typeof_name) }
 	if text.len >= 8 && text.contains('typeof(') { shape.set(.typeof_expr) }
 	if text in ['bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32',
@@ -65,6 +77,10 @@ fn source_type_spelling_shape(text string) SourceTypeShape {
 		shape.set(.builtin_alias)
 	}
 	return shape
+}
+
+fn source_type_space(c u8) bool {
+	return c == ` ` || c == `\n` || c == `\t` || c == `\v` || c == `\f` || c == `\r`
 }
 
 struct SourceTypeTable {

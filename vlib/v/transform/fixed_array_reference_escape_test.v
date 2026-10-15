@@ -305,7 +305,7 @@ fn test_fixed_array_reference_stack_pointer_projections_keep_original_root() {
 	t.set_var_type('p', flat.source_type_id('&Holder'))
 	ptr := t.make_ident('p')
 	deref := t.make_prefix(.mul, ptr)
-	t.set_node_typ(int(deref), 'Holder')
+	t.set_node_typ(int(deref), flat.source_type_id('Holder'))
 	field := t.make_selector(deref, 'values', flat.source_type_id('[2]int'))
 	tc.register_synth_type(field, fixed)
 	array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
@@ -346,10 +346,10 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 		value := t.make_ident('fixed')
 		tc.register_synth_type(value, fixed)
 		addr := t.make_prefix(.amp, value)
-		t.set_node_typ(int(addr), '&[3]int')
+		t.set_node_typ(int(addr), flat.source_type_id('&[3]int'))
 		pointer := if parenthesized { t.make_paren(addr) } else { addr }
 		deref := t.make_prefix(.mul, pointer)
-		t.set_node_typ(int(deref), '[3]int')
+		t.set_node_typ(int(deref), flat.source_type_id('[3]int'))
 		tc.register_synth_type(deref, fixed)
 		range := t.make_range_index(deref, t.make_int_literal(1), flat.empty_node, '[]int')
 		tc.register_synth_type(range, types.Type(types.Array{ elem_type: types.Type(types.int_) }))
@@ -363,10 +363,10 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 		value := t.make_ident('fixed')
 		tc.register_synth_type(value, fixed)
 		addr := t.make_prefix(.amp, value)
-		t.set_node_typ(int(addr), '&[3]int')
+		t.set_node_typ(int(addr), flat.source_type_id('&[3]int'))
 		cast := t.make_cast(flat.source_type_id(cast_type), t.make_paren(addr), flat.source_type_id(cast_type))
 		deref := t.make_prefix(.mul, cast)
-		t.set_node_typ(int(deref), '[3]int')
+		t.set_node_typ(int(deref), flat.source_type_id('[3]int'))
 		tc.register_synth_type(deref, fixed)
 		range := t.make_range_index(deref, t.make_int_literal(1), flat.empty_node, '[]int')
 		tc.register_synth_type(range, types.Type(types.Array{ elem_type: types.Type(types.int_) }))
@@ -381,7 +381,7 @@ fn test_fixed_array_direct_address_dereference_marks_the_original_local() {
 	t.set_var_type('heap', flat.source_type_id('&[3]int'))
 	pointer := t.make_ident('heap')
 	deref := t.make_prefix(.mul, pointer)
-	t.set_node_typ(int(deref), '[3]int')
+	t.set_node_typ(int(deref), flat.source_type_id('[3]int'))
 	tc.register_synth_type(deref, fixed)
 	t.mark_fixed_array_reference_argument_escape(deref, array_ref, map[string]bool{}, map[string][]string{}, map[string]string{}, {
 		'heap': true
@@ -569,7 +569,7 @@ fn test_fixed_array_optional_reference_arguments_promote_successful_payload_sour
 		assert 'fixed' in t.escaping_fixed_array_view_sources
 	}
 	t.escaping_fixed_array_view_sources.clear()
-	no_value := t.make_optional_none('?&[]int')
+	no_value := t.make_optional_none(flat.source_type_id('?&[]int'))
 	tc.register_synth_type(no_value, option_ref)
 	no_value_call := t.make_call_typed('retain_optional', [no_value], flat.source_type_id('?&[]int'))
 	t.set_resolved_call_entry(int(no_value_call), 'retain_optional')

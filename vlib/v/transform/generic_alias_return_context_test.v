@@ -124,7 +124,7 @@ fn test_multiple_generic_call_arguments_use_the_concrete_checker_result() {
 	for payload in ['', 'Item, string'] {
 		mut node := a.nodes[int(call)]
 		node.value = payload
-		resolved := t.checker_resolved_non_builtin_return_type(call, node) or { '' }
+		resolved := flat.source_type_name(t.checker_resolved_non_builtin_return_type(call, node) or { u32(0) })
 		assert resolved == 'main.Item'
 	}
 }

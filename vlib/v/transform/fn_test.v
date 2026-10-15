@@ -133,26 +133,26 @@ fn test_nested_fn_literal_restores_outer_binding_containers_after_growth() {
 		value := a.add_node(flat.Node{ kind: .int_literal, value: '${i}', typ: flat.source_type_int })
 		lhs := a.add_node(flat.Node{ kind: .ident, value: 'inner_${i}', typ: flat.source_type_int })
 		decl := literal_binding_test_node(mut a, .decl_assign, [lhs, value])
-		t.set_node_typ(int(decl), 'int')
+		t.set_node_typ(int(decl), flat.source_type_int)
 		body << decl
 	}
 	inner_value := a.add_node(flat.Node{ kind: .int_literal, value: '7', typ: flat.source_type_int })
 	nested_return := literal_binding_test_node(mut a, .return_stmt, [inner_value])
 	nested := literal_binding_test_node(mut a, .fn_literal, [nested_return])
-	t.set_node_typ(int(nested), 'int')
+	t.set_node_typ(int(nested), flat.source_type_int)
 	nested_lhs := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'nested_callback'
 		typ:   flat.source_type_id('fn () int')
 	})
 	nested_decl := literal_binding_test_node(mut a, .decl_assign, [nested_lhs, nested])
-	t.set_node_typ(int(nested_decl), 'fn () int')
+	t.set_node_typ(int(nested_decl), flat.source_type_id('fn () int'))
 	body << nested_decl
 	value := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: flat.source_type_int })
 	body << literal_binding_test_node(mut a, .return_stmt, [value])
 	block := literal_binding_test_node(mut a, .block, body)
 	literal := literal_binding_test_node(mut a, .fn_literal, [param, block])
-	t.set_node_typ(int(literal), 'int')
+	t.set_node_typ(int(literal), flat.source_type_int)
 	result := t.lift_fn_literal(literal, a.nodes[int(literal)])
 	assert a.node(result).kind == .ident
 	assert t.global_temp_counter == 2
@@ -230,7 +230,7 @@ fn test_zeroed_staging_values_keep_heap_structs_on_the_stack() {
 	staging := t.make_staging_value_decl('staging', 'HeapValue')
 	t.transform_decl_assign_stmt(staging, a.nodes[int(staging)])
 	assert 'staging' !in t.heaped_amp_locals
-	ordinary := t.make_decl_assign_typed('ordinary', t.zero_value_for_type('HeapValue'), 'HeapValue')
+	ordinary := t.make_decl_assign_typed('ordinary', t.zero_value_for_type('HeapValue'), flat.source_type_id('HeapValue'))
 	t.transform_decl_assign_stmt(ordinary, a.nodes[int(ordinary)])
 	assert 'ordinary' in t.heaped_amp_locals
 }
@@ -717,10 +717,10 @@ fn test_module_qualified_generic_callee_is_not_treated_as_value_index() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	module_id := t.a.add_val(.ident, 'json2')
-	t.set_node_typ(int(module_id), 'unknown')
+	t.set_node_typ(int(module_id), flat.source_type_unknown)
 	callee_id := t.make_selector_op(module_id, 'decode', flat.source_type_string, .dot)
 	type_id := t.a.add_val(.ident, 'Payload')
-	t.set_node_typ(int(type_id), 'void')
+	t.set_node_typ(int(type_id), flat.source_type_void)
 	children_start := t.a.children.len
 	t.a.children << callee_id
 	t.a.children << type_id
@@ -931,8 +931,8 @@ fn test_program_sum_equality_helper_does_not_collide_with_cached_module_helper()
 	t.cur_file = 'orm.v'
 	lhs := t.make_ident('lhs')
 	rhs := t.make_ident('rhs')
-	t.set_node_typ(int(lhs), 'orm.Primitive')
-	t.set_node_typ(int(rhs), 'orm.Primitive')
+	t.set_node_typ(int(lhs), flat.source_type_id('orm.Primitive'))
+	t.set_node_typ(int(rhs), flat.source_type_id('orm.Primitive'))
 	t.make_sum_semantic_eq_expr(lhs, rhs, 'orm.Primitive', []string{})
 
 	t.sum_eq_helper_module = 'main'
@@ -1698,7 +1698,7 @@ fn test_unchanged_node_text_still_invalidates_semantic_memos() {
 		tc.expr_type_set[idx] = true
 		t.node_type_memo.filled[0] = t.node_type_memo.generation
 		if change_type {
-			t.set_node_typ(idx, 'int'.clone())
+			t.set_node_typ(idx, flat.source_type_id('int'.clone()))
 		} else {
 			t.set_node_value(idx, 'value'.clone())
 		}
