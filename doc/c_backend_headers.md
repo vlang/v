@@ -66,6 +66,8 @@ new program literals and cleanup hooks after source edits.
 Warm builds using `os` also retain system-header ownership, so platform stat macros do not
 conflict with compatibility declarations. Windows standalone and custom-libc builds keep
 their required native layouts.
+Windows file and console APIs preserve `C.DWORD` output pointer types at SDK call sites.
+This preserves the SDK's pointer types when a C compiler checks calls against Windows headers.
 Core file mappings retain standalone declarations on verified 64-bit targets, including native
 mapping flags and the synchronization function signature. Other targets and programs using
 explicit C headers or custom libc headers keep platform-header ownership.
