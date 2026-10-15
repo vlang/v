@@ -103,7 +103,7 @@ Escaped keyword fields and locals, and the ESC escape `\e` in runes and strings,
 Multiline values can continue with leading binary operators or a following `else` branch.
 Postfix updates used as values return the old value, and trailing variable attributes preserve
 the following statement. Option/Result tuple fallbacks can return an enclosing function's tuple.
-Integer tuple returns store each component at its declared width, including literal values.
+Direct integer tuple returns store each component at its declared width, including literal values.
 Assertions preserve the following fallback statement when it begins with a unary operator.
 Standalone `unsafe` blocks preserve local scopes. Forward labels remain reachable after a return
 in translated code.
