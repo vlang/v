@@ -18,7 +18,8 @@ fn factorial(n int) int {
 Checks cover source operations and the compiler's lowered code. Dynamic array and map creation,
 string construction, interface and sum-type boxing, escaping local storage, closures, and
 allocations inside called functions are rejected. An annotation on a V callee does not hide its
-body: the compiler still checks it. Recursion is checked without revisiting the same body.
+body: the compiler still checks it. Cached imports are read from source when their bodies are
+needed for allocation checks. Recursion is checked without revisiting the same body.
 
 Boolean short-circuit operators, string header copies and returns, and zero-copy string views
 such as `unsafe { tos(ptr, len) }` do not allocate. Constructing strings by concatenation,

@@ -13457,6 +13457,11 @@ pub fn run(args []string) {
 				fatal_errors, message_limit, skip_notices)
 		}
 		if pre_tc.has_noalloc_contracts() {
+			if cache_state.manager.enabled && !cache_state.force_source {
+				// Allocation contracts inspect V callee bodies, which cache headers omit.
+				trace_v3_cache_fallback('allocation contracts need the original function bodies')
+				restart_v3_with_args([v3_internal_force_cache_source_flag])
+			}
 			pre_tc.check_noalloc_contracts(false, noalloc_unsupported_modes)
 			if pre_tc.errors.len > 0 {
 				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,

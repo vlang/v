@@ -562,3 +562,23 @@ fn test_noalloc_rejects_opaque_codegen_instrumentation() {
 		assert result.exit_code != 0 && result.output.contains('noalloc'), result.output
 	}
 }
+
+fn test_noalloc_string_views_with_warm_builtin_cache() {
+	root := os.join_path(os.vtmp_dir(), 'noalloc_warm_views_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	program := 'fn handler(s string) string { return unsafe { tos(s.str, 2) } }\nfn main() { assert handler("abc") == "ab" }\n'
+	os.write_file(source, program)!
+	executable := os.join_path(root, 'program')
+	command := [@VEXE, '-gc', 'none', '-o', executable, source]
+	warmup := os.exec(command)
+	assert warmup.exit_code == 0, warmup.output
+	os.write_file(source, program.replace('fn handler(', '@[noalloc: strict]\nfn handler('))!
+	for _ in 0 .. 2 {
+		compiled := os.exec(command)
+		assert compiled.exit_code == 0, compiled.output
+		ran := os.exec([executable])
+		assert ran.exit_code == 0, ran.output
+	}
+}
