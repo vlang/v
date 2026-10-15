@@ -19390,6 +19390,7 @@ fn (mut g FlatGen) portable_native_runtime_helpers() {
 		g.headerless_compiler_runtime_helpers()
 		return
 	}
+	g.portable_windows_runtime_helpers()
 	if 'gcboehm' in g.compile_defines {
 		gc_source := $embed_file('@VEXEROOT/vlib/builtin/gc_boehm_helpers.c').to_string()
 		gc_header := $embed_file('@VEXEROOT/vlib/builtin/gc_debugger_linux.h').to_string()
