@@ -11685,21 +11685,11 @@ fn c_flag_target_enabled(target string, platform pref.Target) bool {
 }
 
 fn c_flag_target_os(target string) ?string {
-	normalized := pref.normalized_os(target)
-	if normalized in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
-		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
-		return normalized
-	}
-	return none
+	return pref.directive_target_os(target)
 }
 
 fn c_flag_target_arch(target string) ?string {
-	normalized := pref.normalized_arch(target)
-	if normalized in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
-		's390x', 'loongarch64', 'sparc64', 'wasm32'] {
-		return normalized
-	}
-	return none
+	return pref.directive_target_arch(target)
 }
 
 // fn_decl_module_key returns the collision-proof per-module key for a declared

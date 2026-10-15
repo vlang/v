@@ -29,6 +29,19 @@ fn fastc_preferences_for_entry_paths(paths []string, prefs &pref.Preferences) pr
 	return scoped
 }
 
+// fastc_builtin_file_excluded reports whether a `builtin` source file is left out of
+// FastC builds, whether it is reached as the runtime or as a sibling of a test entry.
+fn fastc_builtin_file_excluded(path string, prefs &pref.Preferences) bool {
+	name := os.file_name(path)
+	// V3 uses the pointer-sized map implementation selected by `v3_backend`.
+	// The legacy layout in map.v belongs to the compatibility compiler.
+	if name == 'map.v' && 'v3_backend' in prefs.user_defines {
+		return true
+	}
+	// FastC has no 128-bit integer lowering yet.
+	return name in ['int_d_v3_backend.v', 'string_d_v3_backend.v']
+}
+
 fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]string {
 	mut entries := []string{}
 	for path in paths {
@@ -194,13 +207,7 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 	mut queue := []FastcQueuedSource{}
 	if prefs.building_v {
 		for builtin_file in fastc_module_source_files(builtin_dir, prefs, mut module_dir_files) {
-			// V3 uses the pointer-sized map implementation selected by `v3_backend`.
-			// The legacy layout in map.v belongs to the compatibility compiler.
-			if os.file_name(builtin_file) == 'map.v' && 'v3_backend' in prefs.user_defines {
-				continue
-			}
-			// FastC has no 128-bit integer lowering yet.
-			if os.file_name(builtin_file) in ['int_d_v3_backend.v', 'string_d_v3_backend.v'] {
+			if fastc_builtin_file_excluded(builtin_file, prefs) {
 				continue
 			}
 			queue << FastcQueuedSource{
@@ -232,7 +239,12 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 				fastc_entry_module_files(entry_path, prefs)
 			}
 			entry_files[entry_path] = entry_module_files
+			// Both are canonical here, so a test in vlib/builtin compares as a string.
+			entry_in_builtin := os.dir(entry_path) == builtin_dir
 			for module_file in entry_module_files {
+				if entry_in_builtin && fastc_builtin_file_excluded(module_file, prefs) {
+					continue
+				}
 				if fastc_source_file_matches_backend(module_file) {
 					queue << FastcQueuedSource{
 						path:         module_file

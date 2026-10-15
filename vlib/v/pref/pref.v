@@ -1221,6 +1221,28 @@ pub fn normalized_arch(target_arch string) string {
 	}
 }
 
+// directive_target_os returns the operating system a `#flag` or `#include` target
+// prefix (`#flag linux -lm`) names, or none when the word is not such a prefix.
+pub fn directive_target_os(prefix string) ?string {
+	normalized := normalized_os(prefix)
+	if normalized in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
+		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
+		return normalized
+	}
+	return none
+}
+
+// directive_target_arch returns the architecture a `#flag` or `#include` target
+// prefix (`#flag amd64 -msse2`) names, or none when the word is not such a prefix.
+pub fn directive_target_arch(prefix string) ?string {
+	normalized := normalized_arch(prefix)
+	if normalized in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'sparc64', 'wasm32'] {
+		return normalized
+	}
+	return none
+}
+
 // normalized_target_os supports normalized target os handling for Preferences.
 // ccompiler_can_assemble reports whether `ccompiler` is a GCC or Clang compatible
 // driver, one that preprocesses and assembles a `.S` file with `-c`. tcc and MSVC

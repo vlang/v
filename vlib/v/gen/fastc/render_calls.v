@@ -5,6 +5,18 @@ import strings
 
 fn (g &Parser) render_call_result_member_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	if tokens.len < 5 || tokens[0].tok != .name { return none }
+	// `f(a).m()!` / `f(a).m()!.field` propagate the member call's result: the propagation
+	// lowerings render `f(a).m()` through here and handle the `!` themselves.
+	mut propagation_depth := 0
+	for item in tokens {
+		if item.tok in [.lpar, .lsbr, .lcbr] {
+			propagation_depth++
+		} else if item.tok in [.rpar, .rsbr, .rcbr] {
+			propagation_depth--
+		} else if propagation_depth == 0 && item.tok in [.not, .question] {
+			return none
+		}
+	}
 	mut open := -1
 	for i := 1; i < tokens.len; i++ {
 		if tokens[i].tok == .lpar {
