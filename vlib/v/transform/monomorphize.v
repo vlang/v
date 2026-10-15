@@ -5878,7 +5878,7 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 		}
 		// A specialized generic result can replace an otherwise usable stale annotation.
 		if !(specialized_call_or && node.typ_text() != concrete_rhs_type)
-			&& decl_type_is_usable(node.typ_text())
+			&& decl_type_is_usable(node.typ)
 			&& !t.generic_arg_is_unresolved(node.typ) {
 			continue
 		}
@@ -10439,7 +10439,7 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) u32 {
 
 fn generic_inference_arg_type_usable(typ string) bool {
 	clean := trimmed_transform_text(typ)
-	return decl_type_is_usable(clean) && clean != 'void'
+	return decl_type_is_usable(flat.source_type_id(clean)) && clean != 'void'
 }
 
 fn (t &Transformer) generic_inference_argument_type(typ_id u32, module_name string) u32 {
@@ -10679,14 +10679,15 @@ fn (t &Transformer) local_decl_type_at(name string, idx int) ?u32 {
 		} else {
 			flat.source_type_name(t.normalize_type_alias(flat.source_type_id(candidate)))
 		}
-		if typ.len > 0 && !t.generic_arg_is_unresolved(flat.source_type_id(typ)) && decl_type_is_usable(typ) {
+		if typ.len > 0 && !t.generic_arg_is_unresolved(flat.source_type_id(typ)) && decl_type_is_usable(flat.source_type_id(typ)) {
 			best = typ
 		}
 	}
 	if best.len == 0 {
 		rhs_typ_source_id := t.node_type(rhs_id)
-		rhs_typ := flat.source_type_name(rhs_typ_source_id)
-		if rhs_typ_source_id != 0 && !t.generic_arg_is_unresolved(rhs_typ_source_id) && decl_type_is_usable(rhs_typ) {
+		rhs_typ_source_id_2 := rhs_typ_source_id
+		rhs_typ := flat.source_type_name(rhs_typ_source_id_2)
+		if rhs_typ_source_id != 0 && !t.generic_arg_is_unresolved(rhs_typ_source_id) && decl_type_is_usable(rhs_typ_source_id_2) {
 			best = rhs_typ
 		}
 	}
@@ -10745,7 +10746,7 @@ fn (t &Transformer) local_decl_type_before_by_pos(name string, before flat.NodeI
 			} else {
 				flat.source_type_name(t.normalize_type_alias(flat.source_type_id(candidate)))
 			}
-			if typ.len == 0 || t.generic_arg_is_unresolved(flat.source_type_id(typ)) || !decl_type_is_usable(typ) {
+			if typ.len == 0 || t.generic_arg_is_unresolved(flat.source_type_id(typ)) || !decl_type_is_usable(flat.source_type_id(typ)) {
 				continue
 			}
 			best = typ
@@ -10819,7 +10820,7 @@ fn (t &Transformer) local_decl_type_before_pos(name string, before flat.Node) ?u
 			} else {
 				flat.source_type_name(t.normalize_type_alias(flat.source_type_id(candidate)))
 			}
-			if typ.len > 0 && !t.generic_arg_is_unresolved(flat.source_type_id(typ)) && decl_type_is_usable(typ) {
+			if typ.len > 0 && !t.generic_arg_is_unresolved(flat.source_type_id(typ)) && decl_type_is_usable(flat.source_type_id(typ)) {
 				best = typ
 				best_offset = node.pos.offset
 			}
@@ -10829,8 +10830,9 @@ fn (t &Transformer) local_decl_type_before_pos(name string, before flat.Node) ?u
 		}
 		rhs_id := t.a.child(node, 1)
 		rhs_typ_source_id := t.node_type(rhs_id)
-		rhs_typ := flat.source_type_name(rhs_typ_source_id)
-		if rhs_typ_source_id != 0 && !t.generic_arg_is_unresolved(rhs_typ_source_id) && decl_type_is_usable(rhs_typ) {
+		rhs_typ_source_id_3 := rhs_typ_source_id
+		rhs_typ := flat.source_type_name(rhs_typ_source_id_3)
+		if rhs_typ_source_id != 0 && !t.generic_arg_is_unresolved(rhs_typ_source_id) && decl_type_is_usable(rhs_typ_source_id_3) {
 			best = rhs_typ
 			best_offset = node.pos.offset
 		}
@@ -11381,7 +11383,7 @@ fn (mut t Transformer) generic_clone_call_type_args(node flat.Node, decl Generic
 			continue
 		}
 		mut arg_type := flat.source_type_name(t.generic_clone_argument_type(arg_id, args_ids))
-		if decl_type_is_usable(arg_type) && !t.generic_arg_is_unresolved(flat.source_type_id(arg_type)) {
+		if decl_type_is_usable(flat.source_type_id(arg_type)) && !t.generic_arg_is_unresolved(flat.source_type_id(arg_type)) {
 			param_type := generic_inference_param_type(param)
 			if (param.is_mut || (is_receiver && param_idx == 0 && !param_type.starts_with('&')))
 				&& arg_type.starts_with('&') {
@@ -11855,7 +11857,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 			// carry their intended type on the declaration itself. Once substituted,
 			// that concrete type is more precise than a helper call's broad checker type.
 			has_concrete_substituted_type := substituted_node_type != node.typ_text()
-				&& decl_type_is_usable(cloned_typ) && !t.generic_arg_is_unresolved(flat.source_type_id(cloned_typ))
+				&& decl_type_is_usable(flat.source_type_id(cloned_typ)) && !t.generic_arg_is_unresolved(flat.source_type_id(cloned_typ))
 			rhs_node := t.a.nodes[int(children[1])]
 			call_alias_type_source_id := t.generic_clone_decl_alias_type(children[1])
 			call_alias_type := flat.source_type_name(call_alias_type_source_id)
@@ -11868,7 +11870,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 			}
 			mut rhs_typ := if rhs_raw_typ.len > 0 {
 				rhs_raw_typ
-			} else if decl_type_is_usable(rhs_node.typ_text())
+			} else if decl_type_is_usable(rhs_node.typ)
 				&& !t.generic_arg_is_unresolved(rhs_node.typ) {
 				rhs_node.typ_text()
 			} else {
@@ -13092,8 +13094,9 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 			clone_arg := t.a.nodes[int(clone_arg_id)]
 			if clone_arg.kind == .ident {
 				scoped_type_source_id := t.raw_var_type(clone_arg.value)
-				scoped_type := flat.source_type_name(scoped_type_source_id)
-				if decl_type_is_usable(scoped_type) && !t.generic_arg_is_unresolved(scoped_type_source_id) {
+				scoped_type_source_id_2 := scoped_type_source_id
+				scoped_type := flat.source_type_name(scoped_type_source_id_2)
+				if decl_type_is_usable(scoped_type_source_id_2) && !t.generic_arg_is_unresolved(scoped_type_source_id) {
 					arg_type = scoped_type
 				}
 			}
@@ -13108,8 +13111,8 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 				t.resolve_substituted_type_text(source_substituted)
 			}
 			if active_args_ids.len > 0 && ((source_has_alias && source_depends_on_active)
-				|| !decl_type_is_usable(arg_type)
-				|| t.generic_arg_is_unresolved(flat.source_type_id(arg_type))) && decl_type_is_usable(source_arg_type)
+				|| !decl_type_is_usable(flat.source_type_id(arg_type))
+				|| t.generic_arg_is_unresolved(flat.source_type_id(arg_type))) && decl_type_is_usable(flat.source_type_id(source_arg_type))
 				&& !t.generic_arg_is_unresolved(flat.source_type_id(source_arg_type)) {
 				arg_type = source_arg_type
 			}

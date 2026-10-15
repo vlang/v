@@ -2033,12 +2033,13 @@ fn (t &Transformer) comptime_method_receiver_names_type(receiver flat.NodeId) bo
 		if typ := t.tc.expr_type(receiver) {
 			checked_name = flat.source_type_name(t.tc.type_name(typ))
 		}
-		if decl_type_is_usable(checked_name) && checked_name != 'void' {
+		if decl_type_is_usable(flat.source_type_id(checked_name)) && checked_name != 'void' {
 			raw_namespace_source_id := t.normalize_type_in_module(flat.source_type_id(namespace_spelling), t.cur_module)
 			raw_namespace := flat.source_type_name(raw_namespace_source_id)
 			parsed_namespace_source_id := t.tc.type_name(t.tc.parse_resolution_type(raw_namespace_source_id))
-			parsed_namespace := flat.source_type_name(parsed_namespace_source_id)
-			namespace_name := if decl_type_is_usable(parsed_namespace) && parsed_namespace_source_id != flat.source_type_void {
+			parsed_namespace_source_id_2 := parsed_namespace_source_id
+			parsed_namespace := flat.source_type_name(parsed_namespace_source_id_2)
+			namespace_name := if decl_type_is_usable(parsed_namespace_source_id_2) && parsed_namespace_source_id != flat.source_type_void {
 				parsed_namespace
 			} else {
 				raw_namespace

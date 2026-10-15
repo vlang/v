@@ -69,7 +69,7 @@ fn (mut t Transformer) try_autolock_shared_map_read(id flat.NodeId) ?flat.NodeId
 // shared_map_rlock_expr returns `rlock base { id }`.
 fn (mut t Transformer) shared_map_rlock_expr(id flat.NodeId, base_id flat.NodeId) flat.NodeId {
 	mut typ := flat.source_type_name(t.resolve_expr_type(id))
-	if !decl_type_is_usable(typ) {
+	if !decl_type_is_usable(flat.source_type_id(typ)) {
 		typ = flat.source_type_name(t.checker_expr_type_name(id) or { u32(0) })
 	}
 	body := t.make_block([t.make_expr_stmt(id)])

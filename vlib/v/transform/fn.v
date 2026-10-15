@@ -4010,15 +4010,15 @@ fn (t &Transformer) overloaded_index_result_type(id flat.NodeId) ?u32 {
 			if method_name.len > 0 {
 				if ret_source_id := t.fn_ret_types.type_id(method_name) {
 					typ_source_id := t.normalize_type_alias(ret_source_id)
-					typ := flat.source_type_name(typ_source_id)
-					if decl_type_is_usable(typ) {
+
+					if decl_type_is_usable(typ_source_id) {
 						return typ_source_id
 					}
 				}
 				if ret := t.tc.fn_ret_types[method_name] {
 					typ_source_id_2 := t.normalize_type_alias(t.semantic_type_name(ret))
-					typ := flat.source_type_name(typ_source_id_2)
-					if decl_type_is_usable(typ) {
+
+					if decl_type_is_usable(typ_source_id_2) {
 						return typ_source_id_2
 					}
 				}
@@ -4026,8 +4026,8 @@ fn (t &Transformer) overloaded_index_result_type(id flat.NodeId) ?u32 {
 			base_type := t.tc.expr_type(base_id) or { t.tc.resolve_type(base_id) }
 			if info := t.tc.index_overload_call_info(base_type, false) {
 				typ_source_id_3 := t.normalize_type_alias(t.semantic_type_name(info.return_type))
-				typ := flat.source_type_name(typ_source_id_3)
-				if decl_type_is_usable(typ) {
+
+				if decl_type_is_usable(typ_source_id_3) {
 					return typ_source_id_3
 				}
 			}
@@ -11752,10 +11752,11 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return smartcast_str
 		}
 		decoded_value_type_source_id := t.or_expr_receiver_unwrapped_type(base_id) or { u32(0) }
-		decoded_value_type := flat.source_type_name(decoded_value_type_source_id)
-		decoded_value_is_concrete := decl_type_is_usable(decoded_value_type)
+		decoded_value_type_source_id_2 := decoded_value_type_source_id
+		decoded_value_type_shape := flat.source_type_shape(decoded_value_type_source_id_2)
+		decoded_value_is_concrete := decl_type_is_usable(decoded_value_type_source_id_2)
 			&& !t.generic_arg_is_unresolved(decoded_value_type_source_id)
-			&& !decoded_value_type.starts_with('&')
+			&& !decoded_value_type_shape.has(.pointer)
 		if !decoded_value_is_concrete {
 			if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id, 'str') {
 				return exact_call
@@ -14252,10 +14253,11 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 		return smartcast_str
 	}
 	if unwrapped_type_source_id := t.or_expr_receiver_unwrapped_type(base_id) {
-		unwrapped_type := flat.source_type_name(unwrapped_type_source_id)
+		unwrapped_type_source_id_2 := unwrapped_type_source_id
+		unwrapped_type_shape := flat.source_type_shape(unwrapped_type_source_id_2)
 
-		if decl_type_is_usable(unwrapped_type) && !t.generic_arg_is_unresolved(unwrapped_type_source_id)
-			&& !unwrapped_type.starts_with('&') {
+		if decl_type_is_usable(unwrapped_type_source_id_2) && !t.generic_arg_is_unresolved(unwrapped_type_source_id)
+			&& !unwrapped_type_shape.has(.pointer) {
 			return none
 		}
 	}
@@ -15542,9 +15544,10 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			base_type = specialized_ret
 		}
 		if unwrapped_type_source_id := t.or_expr_receiver_unwrapped_type(base_id) {
-			unwrapped_type := flat.source_type_name(unwrapped_type_source_id)
+			unwrapped_type_source_id_3 := unwrapped_type_source_id
+			unwrapped_type := flat.source_type_name(unwrapped_type_source_id_3)
 
-			if decl_type_is_usable(unwrapped_type) && !t.generic_arg_is_unresolved(unwrapped_type_source_id) {
+			if decl_type_is_usable(unwrapped_type_source_id_3) && !t.generic_arg_is_unresolved(unwrapped_type_source_id) {
 				base_type = unwrapped_type
 				recovered_or_value_type = true
 			}
@@ -19073,7 +19076,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 			if ret_source_id := t.local_fn_decl_return_type(fn_node.value) {
 				candidate_source_id := t.call_return_type_name(ret_source_id, node)
 				candidate := flat.source_type_name(candidate_source_id)
-				if decl_type_is_usable(candidate) || candidate_source_id == flat.source_type_void {
+				if decl_type_is_usable(flat.source_type_id(candidate)) || candidate_source_id == flat.source_type_void {
 					return candidate_source_id
 				}
 			}
@@ -19087,7 +19090,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 			if ret := t.tc.fn_ret_types[qname] {
 				candidate_source_id_2 := t.call_return_type_name(t.semantic_type_name(ret), node)
 				candidate := flat.source_type_name(candidate_source_id_2)
-				if decl_type_is_usable(candidate) || candidate_source_id_2 == flat.source_type_void {
+				if decl_type_is_usable(flat.source_type_id(candidate)) || candidate_source_id_2 == flat.source_type_void {
 					return candidate_source_id_2
 				}
 			}
@@ -19095,7 +19098,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 			if ret := t.tc.fn_ret_types[lowered_qname] {
 				candidate_source_id_3 := t.call_return_type_name(t.semantic_type_name(ret), node)
 				candidate := flat.source_type_name(candidate_source_id_3)
-				if decl_type_is_usable(candidate) || candidate_source_id_3 == flat.source_type_void {
+				if decl_type_is_usable(flat.source_type_id(candidate)) || candidate_source_id_3 == flat.source_type_void {
 					return candidate_source_id_3
 				}
 			}
@@ -19116,7 +19119,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 						if args_source_ids.len == params.len {
 							candidate_source_id_4 := t.call_return_type_name_in_module(ret_text_source_id, node, decl_module)
 							candidate := flat.source_type_name(candidate_source_id_4)
-							if decl_type_is_usable(candidate)
+							if decl_type_is_usable(flat.source_type_id(candidate))
 								&& !generic_text_contains_param(candidate, params) {
 								return candidate_source_id_4
 							}
@@ -19130,7 +19133,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 		if ret !is types.Unknown && ret !is types.Void {
 			candidate_source_id_5 := t.call_return_type_name_in_module(t.semantic_type_name(ret), node, decl_module)
 			candidate := flat.source_type_name(candidate_source_id_5)
-			if decl_type_is_usable(candidate) {
+			if decl_type_is_usable(flat.source_type_id(candidate)) {
 				return candidate_source_id_5
 			}
 		}
@@ -19139,7 +19142,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 		if ret_text_source_id != 0 {
 			candidate_source_id_6 := t.call_return_type_name_in_module(ret_text_source_id, node, decl_module)
 			candidate := flat.source_type_name(candidate_source_id_6)
-			if decl_type_is_usable(candidate) || candidate_source_id_6 == flat.source_type_void {
+			if decl_type_is_usable(flat.source_type_id(candidate)) || candidate_source_id_6 == flat.source_type_void {
 				return candidate_source_id_6
 			}
 		}
@@ -19148,7 +19151,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 		if typ !is types.Unknown && typ !is types.Void {
 			candidate_source_id_7 := t.call_return_type_name(t.semantic_type_name(typ), node)
 			candidate := flat.source_type_name(candidate_source_id_7)
-			if decl_type_is_usable(candidate) {
+			if decl_type_is_usable(flat.source_type_id(candidate)) {
 				return candidate_source_id_7
 			}
 		}

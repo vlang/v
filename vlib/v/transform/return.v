@@ -250,14 +250,15 @@ fn (t &Transformer) return_decl_binding_type(decl flat.Node, index int) u32 {
 	if !isnil(t.tc) {
 		if typ := t.tc.expr_type(lhs_id) {
 			name_source_id := t.tc.type_name(typ)
-			name := flat.source_type_name(name_source_id)
-			if decl_type_is_usable(name) {
+			name_source_id_2 := name_source_id
+
+			if decl_type_is_usable(name_source_id_2) {
 				return name_source_id
 			}
 		}
 	}
 	lhs := t.a.node(lhs_id)
-	if decl_type_is_usable(lhs.typ_text()) {
+	if decl_type_is_usable(lhs.typ) {
 		return lhs.typ
 	}
 	if t.multi_assign_rhs_count(decl) == lhs_count {

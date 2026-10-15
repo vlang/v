@@ -1260,7 +1260,7 @@ fn (mut t Transformer) match_expr_zero_value_expansion_estimate(id flat.NodeId, 
 	mut estimate := t.multi_return_match_zero_value_expansion_estimate(id, node)
 	mut result_type := flat.source_type_name(t.match_expr_type(node))
 	if (result_type.len == 0 || result_type == 'void' || t.generic_arg_is_unresolved(flat.source_type_id(result_type)))
-		&& decl_type_is_usable(node.typ_text()) && !t.generic_arg_is_unresolved(node.typ) {
+		&& decl_type_is_usable(node.typ) && !t.generic_arg_is_unresolved(node.typ) {
 		result_type = node.typ_text()
 	}
 	estimate += t.zero_value_expansion_estimate(id, flat.source_type_id(result_type))
@@ -1272,7 +1272,7 @@ fn (mut t Transformer) or_expr_zero_value_expansion_estimate(id flat.NodeId, nod
 		return 0
 	}
 	expr_id := t.a.child(&node, 0)
-	fallback_type := if decl_type_is_usable(node.typ_text()) && !t.generic_arg_is_unresolved(node.typ) {
+	fallback_type := if decl_type_is_usable(node.typ) && !t.generic_arg_is_unresolved(node.typ) {
 		node.typ_text()
 	} else {
 		flat.source_type_name(t.stmt_value_type(t.a.child(&node, 1)))
@@ -1386,14 +1386,15 @@ fn (mut t Transformer) forwarded_fixed_array_return_expansion_estimate(node flat
 	if node.kind != .return_stmt || node.children_count != 1 || isnil(t.tc) {
 		return 0
 	}
-	expected_name := if decl_type_is_usable(fn_return_type) {
+	expected_name := if decl_type_is_usable(fn_return_type_id) {
 		fn_return_type
 	} else {
 		node.typ_text()
 	}
 	actual_name_source_id := t.node_type(t.a.child(&node, 0))
-	actual_name := flat.source_type_name(actual_name_source_id)
-	if !decl_type_is_usable(actual_name) || !decl_type_is_usable(expected_name) {
+	actual_name_source_id_2 := actual_name_source_id
+
+	if !decl_type_is_usable(actual_name_source_id_2) || !decl_type_is_usable(flat.source_type_id(expected_name)) {
 		return 0
 	}
 	actual_type := t.tc.parse_type(actual_name_source_id)

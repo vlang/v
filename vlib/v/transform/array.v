@@ -1186,7 +1186,7 @@ fn (mut t Transformer) transform_fixed_array_literal_for_type(_id flat.NodeId, n
 	if t.generic_arg_is_unresolved(flat.source_type_id(fixed_type)) {
 		elem_type_source_id := t.array_literal_elem_type(node)
 		elem_type := flat.source_type_name(elem_type_source_id)
-		if decl_type_is_usable(elem_type) && !t.generic_arg_is_unresolved(elem_type_source_id) {
+		if decl_type_is_usable(elem_type_source_id) && !t.generic_arg_is_unresolved(elem_type_source_id) {
 			fixed_type = '[${fixed_array_len_text(fixed_type)}]${elem_type}'
 		}
 	}
@@ -3894,8 +3894,9 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	// the lambda does.
 	mapped_value_id := if map_expr.kind == .lambda_expr { map_source_id } else { map_expr_id }
 	checker_result_elem_type_source_id := t.checker_expr_type_name(mapped_value_id) or { u32(0) }
-	checker_result_elem_type := flat.source_type_name(checker_result_elem_type_source_id)
-	checker_result_elem_type_is_usable := decl_type_is_usable(checker_result_elem_type)
+	checker_result_elem_type_source_id_2 := checker_result_elem_type_source_id
+	checker_result_elem_type := flat.source_type_name(checker_result_elem_type_source_id_2)
+	checker_result_elem_type_is_usable := decl_type_is_usable(checker_result_elem_type_source_id_2)
 		&& checker_result_elem_type_source_id != flat.source_type_void
 	mut result_elem_type := if checker_result_elem_type_is_usable {
 		checker_result_elem_type
@@ -3984,7 +3985,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.make_cast(flat.source_type_id(result_elem_type), t.make_cast(flat.source_type_usize, t.make_ident(elem_name), flat.source_type_usize), flat.source_type_id(result_elem_type))
 	} else if mapped_source_node.kind == .map_init && result_elem_type.starts_with('map[') {
 		t.transform_expr_for_type(mapped_source, flat.source_type_id(result_elem_type))
-	} else if decl_type_is_usable(result_elem_type) && result_elem_type != 'void' {
+	} else if decl_type_is_usable(flat.source_type_id(result_elem_type)) && result_elem_type != 'void' {
 		// `it` substitution clones the mapper expression after checking. The cloned
 		// node IDs have no checker cache entries, so keep the original map result
 		// type as context for value expressions such as `if it.m() { ... } else { it }`.
@@ -4013,8 +4014,9 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.unset_var_type(elem_name)
 	}
 	mapped_type_source_id := t.node_type(mapped_expr)
-	mapped_type := flat.source_type_name(mapped_type_source_id)
-	if decl_type_is_usable(mapped_type) && mapped_type_source_id != flat.source_type_void
+	mapped_type_source_id_2 := mapped_type_source_id
+	mapped_type := flat.source_type_name(mapped_type_source_id_2)
+	if decl_type_is_usable(mapped_type_source_id_2) && mapped_type_source_id != flat.source_type_void
 		&& (!checker_result_elem_type_is_usable || t.active_specialization_args_text().len > 0) {
 		result_elem_type = mapped_type
 	}

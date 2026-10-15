@@ -1090,7 +1090,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type_id u32) 
 			if typ is types.OptionType {
 				base_name_source_id := t.value_type_name(typ.base_type)
 				base_name := flat.source_type_name(base_name_source_id)
-				if t.generic_arg_is_unresolved(base_name_source_id) && decl_type_is_usable(fallback_type)
+				if t.generic_arg_is_unresolved(base_name_source_id) && decl_type_is_usable(fallback_type_id)
 					&& !t.generic_arg_is_unresolved(fallback_type_id) {
 					return t.canonical_or_expr_types(flat.source_type_id('?${fallback_type}'))
 				}
@@ -1104,7 +1104,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type_id u32) 
 			if typ is types.ResultType {
 				base_name_source_id_2 := t.value_type_name(typ.base_type)
 				base_name := flat.source_type_name(base_name_source_id_2)
-				if t.generic_arg_is_unresolved(base_name_source_id_2) && decl_type_is_usable(fallback_type)
+				if t.generic_arg_is_unresolved(base_name_source_id_2) && decl_type_is_usable(fallback_type_id)
 					&& !t.generic_arg_is_unresolved(fallback_type_id) {
 					return t.canonical_or_expr_types(flat.source_type_id('!${fallback_type}'))
 				}
@@ -1118,7 +1118,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type_id u32) 
 		}
 	}
 	mut expr_type := flat.source_type_name(t.node_type(expr_id))
-	if t.generic_arg_is_unresolved(flat.source_type_id(expr_type)) && decl_type_is_usable(fallback_type)
+	if t.generic_arg_is_unresolved(flat.source_type_id(expr_type)) && decl_type_is_usable(fallback_type_id)
 		&& !t.generic_arg_is_unresolved(fallback_type_id) {
 		prefix := if expr_type.starts_with('!') { '!' } else { '?' }
 		expr_type = '${prefix}${fallback_type}'
@@ -1666,7 +1666,7 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	} else {
 		flat.Node{}
 	}
-	fallback_type := if decl_type_is_usable(node.typ_text()) && !t.generic_arg_is_unresolved(node.typ) {
+	fallback_type := if decl_type_is_usable(node.typ) && !t.generic_arg_is_unresolved(node.typ) {
 		node.typ_text()
 	} else {
 		flat.source_type_name(t.stmt_value_type(body_id))
