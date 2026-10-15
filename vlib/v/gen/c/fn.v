@@ -9263,8 +9263,10 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 			return c_type in ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'isize', 'u8', 'u16',
 				'u32', 'u64', 'usize', 'f32', 'f64', 'rune']
 		}
-		if raw_type := g.local_storage_raw_type(node.value) {
-			clean := cgen_unalias_type(g.tc.parse_type(flat.source_type_id(raw_type)))
+		if raw_type_source_id := g.local_storage_raw_type(node.value) {
+			raw_type_source_id_2 := raw_type_source_id
+
+			clean := cgen_unalias_type(g.tc.parse_type(raw_type_source_id_2))
 			if clean is types.String || clean.name() == 'string' {
 				return false
 			}
@@ -13558,9 +13560,10 @@ fn (g &FlatGen) generic_call_arg_type_text(id flat.NodeId) u32 {
 	if int(id) < 0 || int(id) >= g.a.nodes.len { return 0 }
 	node := g.a.nodes[int(id)]
 	if node.kind == .ident {
-		if raw_type := g.local_storage_raw_type(node.value) {
-			raw_id := flat.source_type_id(raw_type)
-			if codegen_type_text_is_usable_for_generic_inference(raw_id) { return raw_id }
+		if raw_type_source_id := g.local_storage_raw_type(node.value) {
+			if codegen_type_text_is_usable_for_generic_inference(raw_type_source_id) {
+				return raw_type_source_id
+			}
 		}
 		typ := g.usable_expr_type(id).source_type_id()
 		if codegen_type_text_is_usable_for_generic_inference(typ) { return typ }
@@ -13568,8 +13571,10 @@ fn (g &FlatGen) generic_call_arg_type_text(id flat.NodeId) u32 {
 	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
 		child := g.a.child_node(&node, 0)
 		if child.kind == .ident {
-			if raw_type := g.local_storage_raw_type(child.value) {
-				if codegen_type_text_is_usable_for_generic_inference(flat.source_type_id(raw_type)) {
+			if raw_type_source_id := g.local_storage_raw_type(child.value) {
+				raw_type := flat.source_type_name(raw_type_source_id)
+
+				if codegen_type_text_is_usable_for_generic_inference(raw_type_source_id) {
 					return flat.source_type_id('&${raw_type}')
 				}
 			}
@@ -15247,8 +15252,10 @@ fn (g &FlatGen) node_is_fn_value_for_voidptr(id flat.NodeId, node flat.Node) boo
 		return true
 	}
 	if node.kind == .ident {
-		if raw := g.local_storage_raw_type(node.value) {
-			if raw.starts_with('fn(') || raw.starts_with('fn (') {
+		if raw_source_id := g.local_storage_raw_type(node.value) {
+			raw_shape := flat.source_type_shape(raw_source_id)
+
+			if raw_shape.has(.function_compact) || raw_shape.has(.function_spaced) {
 				return true
 			}
 		}
@@ -15272,8 +15279,10 @@ fn (g &FlatGen) fn_value_arg_passes_direct_to_voidptr(arg_id flat.NodeId, arg_no
 		return true
 	}
 	if arg_node.kind == .ident {
-		if raw := g.local_storage_raw_type(arg_node.value) {
-			if raw.starts_with('fn(') || raw.starts_with('fn (') {
+		if raw_source_id := g.local_storage_raw_type(arg_node.value) {
+			raw_shape_2 := flat.source_type_shape(raw_source_id)
+
+			if raw_shape_2.has(.function_compact) || raw_shape_2.has(.function_spaced) {
 				return true
 			}
 		}

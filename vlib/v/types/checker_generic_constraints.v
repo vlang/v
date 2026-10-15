@@ -678,7 +678,9 @@ fn (mut tc TypeChecker) check_written_generic_types(top_id flat.NodeId) {
 		if node.kind == .call && tc.call_has_explicit_generic_type_args(*node) {
 			// `make[Box[int]]()`: the types in the brackets of what it calls.
 			callee_id := tc.a.child(node, 0)
-			for text in tc.generic_call_type_arg_names(tc.a.node(callee_id)) {
+			for text_source_id in tc.generic_call_type_arg_names(tc.a.node(callee_id)) {
+				text := flat.source_type_name(text_source_id)
+
 				if text.contains('[') {
 					tc.check_written_type_constraints(callee_id, text, none, scope)
 				}
@@ -854,7 +856,7 @@ fn (mut tc TypeChecker) drop_repeated_errors(start int) {
 // constraint of its type parameter.
 fn (mut tc TypeChecker) check_generic_fn_value_constraints(id flat.NodeId, node flat.Node) {
 	name := tc.generic_call_base_name(tc.a.child_node(&node, 0)) or { return }
-	type_args := tc.generic_call_type_arg_names(node)
+	type_args := flat.TypeTextList{ ids: tc.generic_call_type_arg_names(node) }.names()
 	decl_module := tc.fn_type_modules[name] or { tc.cur_module }
 	found := tc.visible_mutation_fn_decl(name, decl_module) or { return }
 	decl := tc.a.node(flat.NodeId(found.idx))
@@ -1324,7 +1326,9 @@ fn (mut tc TypeChecker) constraint_walk_call_bindings(id flat.NodeId, node flat.
 	}
 	mut inferred := map[string]Type{}
 	if tc.call_has_explicit_generic_type_args(node) {
-		for k, name in tc.generic_call_type_arg_names(*callee) {
+		for k, name_source_id in tc.generic_call_type_arg_names(*callee) {
+			name := flat.source_type_name(name_source_id)
+
 			if k < fn_params.len {
 				inferred[fn_params[k]] = tc.constraint_walk_named_type(name)
 			}
@@ -1403,7 +1407,7 @@ fn (mut tc TypeChecker) constraint_walk_infer(param_text string, actual Type, na
 	}
 	if generic_type_application(clean) {
 		param_base, param_args, _ := generic_type_application_parts(clean)
-		actual_base, actual_args, actual_is_generic := generic_type_application_parts(tc.generic_infer_type_text(unwrap_pointer(actual)))
+		actual_base, actual_args, actual_is_generic := generic_type_application_parts(flat.source_type_name(tc.generic_infer_type_text(unwrap_pointer(actual))))
 		if actual_is_generic && param_args.len == actual_args.len
 			&& tc.generic_type_base_matches(tc.generic_param_type_text(param_base), actual_base) {
 			for i in 0 .. param_args.len {

@@ -4276,7 +4276,7 @@ fn (mut g FlatGen) shared_array_info_for_expr(id flat.NodeId) ?SharedArrayInfo {
 		}
 	}
 	if node.kind == .ident {
-		raw := g.local_storage_raw_type(node.value) or { node.typ_text() }
+		raw := flat.source_type_name(g.local_storage_raw_type(node.value) or { node.typ })
 		if info := g.shared_array_info_from_raw(raw, g.tc.cur_module, shared_array_raw_is_ptr(raw)) {
 			return info
 		}

@@ -6019,7 +6019,8 @@ fn (tc &TypeChecker) concrete_generic_receiver_args(receiver_base string, arg_co
 		}
 		base_node := tc.a.child_node(callee, 0)
 		fn_name := tc.generic_call_base_name(base_node) or { continue }
-		call_args := tc.generic_call_type_arg_names(callee)
+		call_args_source_ids := tc.generic_call_type_arg_names(callee).clone()
+		call_args := flat.TypeTextList{ ids: call_args_source_ids }.names()
 		fn_params := tc.fn_generic_params[fn_name] or { continue }
 		if call_args.len == 0 || call_args.len != fn_params.len {
 			continue
@@ -6033,7 +6034,7 @@ fn (tc &TypeChecker) concrete_generic_receiver_args(receiver_base string, arg_co
 		}
 		mut concrete := []string{cap: ret_args.len}
 		for ret_arg in ret_args {
-			concrete << subst_generic_text(ret_arg, flat.TypeTextList.from_names(call_args).ids, fn_params)
+			concrete << subst_generic_text(ret_arg, call_args_source_ids, fn_params)
 		}
 		return concrete
 	}
@@ -7825,7 +7826,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		}
 	}
 	if name := tc.generic_call_base_name(generic_base_node) {
-		type_args := tc.generic_call_type_arg_names(node)
+		type_args := flat.TypeTextList{ ids: tc.generic_call_type_arg_names(node) }.names()
 		mut has_unresolved_generic := false
 		for type_arg in type_args {
 			if is_bare_generic_param(type_arg) && !tc.active_generic_param(type_arg) {
@@ -19256,7 +19257,7 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 // their count, those its receiver fixes, and their constraints.
 fn (mut tc TypeChecker) check_generic_method_value(id flat.NodeId, node flat.Node) ?Type {
 	selector := tc.a.child_node(&node, 0)
-	if selector.children_count == 0 || tc.generic_call_type_arg_names(node).len == 0 {
+	if selector.children_count == 0 || flat.TypeTextList{ ids: tc.generic_call_type_arg_names(node) }.names().len == 0 {
 		return none
 	}
 	// Before the dot, a module or a type names a function, not a value: a local,
@@ -19289,7 +19290,7 @@ fn (mut tc TypeChecker) check_generic_method_value_constraints(id flat.NodeId, n
 	decl := tc.top_level_fn_decl(name) or { return }
 	params := decl.generic_params()
 	constraints := decl.generic_constraints()
-	type_args := tc.generic_call_type_arg_names(node)
+	type_args := flat.TypeTextList{ ids: tc.generic_call_type_arg_names(node) }.names()
 	if constraints.len != params.len || type_args.len != params.len {
 		return
 	}
@@ -19332,11 +19333,12 @@ fn (tc &TypeChecker) explicit_generic_fn_value_type(node flat.Node) ?Type {
 		return none
 	}
 	name := tc.generic_call_base_name(base_node) or { return none }
-	type_args := tc.generic_call_type_arg_names(node)
+	type_args_source_ids := tc.generic_call_type_arg_names(node).clone()
+	type_args := flat.TypeTextList{ ids: type_args_source_ids }.names()
 	if type_args.len == 0 {
 		return none
 	}
-	info := tc.explicit_generic_call_info(name, false, flat.TypeTextList.from_names(type_args).ids) or { return none }
+	info := tc.explicit_generic_call_info(name, false, type_args_source_ids) or { return none }
 	return Type(FnType{
 		params:      info.params.clone()
 		is_variadic: info.is_variadic

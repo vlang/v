@@ -1417,12 +1417,10 @@ fn (mut g FlatGen) declare_local_raw_type(owner types.ScopeBindingOwner, raw_typ
 	}
 }
 
-fn (g &FlatGen) local_storage_raw_type(name string) ?string {
-	if name.len == 0 || g.local_raw_type_by_owner.ids.len == 0 {
-		return none
-	}
+fn (g &FlatGen) local_storage_raw_type(name string) ?u32 {
+	if name.len == 0 || g.local_raw_type_by_owner.ids.len == 0 { return none }
 	owner := g.local_storage_owner(name) or { return none }
-	return flat.source_type_name(g.local_raw_type_by_owner.type_id(owner.storage_key())?)
+	return g.local_raw_type_by_owner.type_id(owner.storage_key())
 }
 
 fn (mut g FlatGen) declare_local_indirect_value_type(owner types.ScopeBindingOwner, typ types.Type) {

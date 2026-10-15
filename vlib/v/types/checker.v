@@ -9914,9 +9914,10 @@ fn (tc &TypeChecker) resolved_call_type(id flat.NodeId) ?Type {
 	}
 	if node.children_count == 3 && tc.call_display_name(node) == 'C.va_arg' {
 		type_arg_id := tc.call_arg_value(tc.a.child(&node, 1))
-		type_name := tc.generic_call_type_arg_name(type_arg_id)
+		type_name_source_id := tc.generic_call_type_arg_name(type_arg_id)
+		type_name := flat.source_type_name(type_name_source_id)
 		if type_name.len > 0 {
-			target_type := tc.parse_type(flat.source_type_id(type_name))
+			target_type := tc.parse_type(type_name_source_id)
 			if target_type !is Unknown && !type_contains_unknown(target_type) {
 				return target_type
 			}

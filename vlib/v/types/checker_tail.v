@@ -4760,7 +4760,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 					tc.record_error_at(.call_arg_mismatch, 'cannot use Option type name as concrete type', type_arg_id, token.new_span(type_arg.pos.id, type_arg.pos.offset, type_arg.pos.offset + 1))
 					return
 				}
-				type_name := tc.generic_call_type_arg_name(type_arg_id)
+				type_name := flat.source_type_name(tc.generic_call_type_arg_name(type_arg_id))
 				if is_bare_generic_param(type_name) && !tc.type_name_known(flat.source_type_id(type_name))
 					&& type_name !in tc.fn_context.generic_params
 					&& !tc.active_generic_param(type_name)
@@ -5287,8 +5287,9 @@ fn (mut tc TypeChecker) check_c_va_macro_call(id flat.NodeId, node flat.Node) bo
 	}
 	if name == 'C.va_arg' {
 		type_arg_id := tc.call_arg_value(tc.a.child(&node, 1))
-		type_name := tc.generic_call_type_arg_name(type_arg_id)
-		target_type := tc.parse_type(flat.source_type_id(type_name))
+		type_name_source_id := tc.generic_call_type_arg_name(type_arg_id)
+		type_name := flat.source_type_name(type_name_source_id)
+		target_type := tc.parse_type(type_name_source_id)
 		if type_name.len == 0 || target_type is Unknown || type_contains_unknown(target_type) {
 			tc.record_error_at(.unknown_type, 'unknown type `${type_name}`', type_arg_id, tc.a.node(type_arg_id).pos)
 			tc.register_synth_type(id, unknown_type('unknown C.va_arg target'))
@@ -5485,9 +5486,10 @@ fn (mut tc TypeChecker) check_os_file_raw_io_call(id flat.NodeId, node flat.Node
 	callee := tc.a.child_node(&node, 0)
 	if callee.kind == .index && callee.children_count > 1 {
 		explicit_type_arg_id = tc.a.child(callee, callee.children_count - 1)
-		type_name := tc.generic_call_type_arg_name(explicit_type_arg_id)
+		type_name_source_id_2 := tc.generic_call_type_arg_name(explicit_type_arg_id)
+		type_name := flat.source_type_name(type_name_source_id_2)
 		if type_name.len > 0 {
-			raw_type = tc.parse_type(flat.source_type_id(type_name))
+			raw_type = tc.parse_type(type_name_source_id_2)
 		}
 	}
 	if method.starts_with('read_raw') {
@@ -5920,7 +5922,9 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 		if raw_arg.kind == .field_init {
 			base, _, is_generic := generic_type_application_parts(param_texts[param_idx])
 			if is_generic {
-				if field_text := tc.field_init_struct_field_type(base, param_texts[param_idx], raw_arg.value) {
+				if field_text_source_id := tc.field_init_struct_field_type(base, flat.source_type_id(param_texts[param_idx]), raw_arg.value) {
+					field_text := flat.source_type_name(field_text_source_id)
+
 					tc.infer_generic_type_text_from_type(field_text, actual, generic_params, mut inferred)
 					tc.infer_generic_type_value_from_type(field_text, actual, generic_params, mut inferred_types)
 				}
@@ -6120,7 +6124,7 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 	mut concrete_args := []u32{}
 	callee := tc.a.child_node(&call, 0)
 	if callee.kind == .index {
-		type_args := tc.generic_call_type_arg_names(callee)
+		type_args := flat.TypeTextList{ ids: tc.generic_call_type_arg_names(callee) }.names()
 		if type_args.len != generic_params.len {
 			return none
 		}
@@ -8935,8 +8939,9 @@ fn (tc &TypeChecker) imported_fn_key(module_name string, fn_name string) ?string
 fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallInfo {
 	if tc.call_display_name(node) == 'C.va_arg' && node.children_count == 3 {
 		type_arg_id := tc.call_arg_value(tc.a.child(&node, 1))
-		type_name := tc.generic_call_type_arg_name(type_arg_id)
-		target_type := tc.parse_type(flat.source_type_id(type_name))
+		type_name_source_id_3 := tc.generic_call_type_arg_name(type_arg_id)
+		type_name := flat.source_type_name(type_name_source_id_3)
+		target_type := tc.parse_type(type_name_source_id_3)
 		if type_name.len > 0 && target_type !is Unknown && !type_contains_unknown(target_type) {
 			return CallInfo{
 				name:         'C.va_arg'
@@ -10552,7 +10557,8 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		return none
 	}
 	base_id := tc.a.child(&fn_node, 0)
-	type_args := tc.generic_call_type_arg_names(fn_node)
+	type_args_source_ids := tc.generic_call_type_arg_names(fn_node).clone()
+	type_args := flat.TypeTextList{ ids: type_args_source_ids }.names()
 	if type_args.len == 0 {
 		return none
 	}
@@ -10575,10 +10581,10 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 				return none
 			}
 			if method_name.len > 0 {
-				if tc.explicit_generic_arg_count_mismatch(method_name, flat.TypeTextList.from_names(type_args).ids, id) {
+				if tc.explicit_generic_arg_count_mismatch(method_name, type_args_source_ids, id) {
 					return tc.call_info(method_name, true)
 				}
-				if info := tc.explicit_generic_call_info(method_name, true, flat.TypeTextList.from_names(type_args).ids) {
+				if info := tc.explicit_generic_call_info(method_name, true, type_args_source_ids) {
 					return info
 				}
 				return tc.call_info(method_name, true)
@@ -10592,16 +10598,16 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 			call_name := '${type_name}.${base_node.value}'
 			if call_name in tc.fn_ret_types
 				&& tc.method_can_be_called_on_receiver(base_type, base_node.value, call_name) {
-				if tc.explicit_generic_arg_count_mismatch(call_name, flat.TypeTextList.from_names(type_args).ids, id) {
+				if tc.explicit_generic_arg_count_mismatch(call_name, type_args_source_ids, id) {
 					return tc.call_info(call_name, true)
 				}
-				if info := tc.explicit_generic_call_info(call_name, true, flat.TypeTextList.from_names(type_args).ids) {
+				if info := tc.explicit_generic_call_info(call_name, true, type_args_source_ids) {
 					return info
 				}
 				return tc.call_info(call_name, true)
 			}
 			if receiver_info := tc.resolve_generic_struct_method(flat.source_type_id(type_name), base_node.value) {
-				method_type_args_source_ids := tc.explicit_generic_receiver_method_args(flat.source_type_id(type_name), receiver_info.name, flat.TypeTextList.from_names(type_args).ids).clone()
+				method_type_args_source_ids := tc.explicit_generic_receiver_method_args(flat.source_type_id(type_name), receiver_info.name, type_args_source_ids).clone()
 
 				if tc.explicit_generic_arg_count_mismatch(receiver_info.name, method_type_args_source_ids, id) {
 					return receiver_info
@@ -10613,12 +10619,12 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 			// the declaring receiver in the function table. Resolve that promoted
 			// method before rejecting `outer.method[T](...)`.
 			if embedded_info := tc.embedded_method_call_info(type_name, base_node.value) {
-				if tc.explicit_generic_arg_count_mismatch(embedded_info.name, flat.TypeTextList.from_names(type_args).ids, id) {
+				if tc.explicit_generic_arg_count_mismatch(embedded_info.name, type_args_source_ids, id) {
 					return embedded_info
 				}
 				// The embedded receiver fixes the type parameters the method repeats
 				// from it.
-				checked_args_source_ids := tc.explicit_receiver_type_args(embedded_info, base_type, flat.TypeTextList.from_names(type_args).ids, id).clone()
+				checked_args_source_ids := tc.explicit_receiver_type_args(embedded_info, base_type, type_args_source_ids, id).clone()
 
 				if info := tc.explicit_generic_call_info(embedded_info.name, true, checked_args_source_ids) {
 					return info
@@ -10627,10 +10633,10 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 			}
 		}
 		if static_name := tc.explicit_generic_static_selector_key(base_node) {
-			if tc.explicit_generic_arg_count_mismatch(static_name, flat.TypeTextList.from_names(type_args).ids, id) {
+			if tc.explicit_generic_arg_count_mismatch(static_name, type_args_source_ids, id) {
 				return tc.call_info(static_name, false)
 			}
-			if info := tc.explicit_generic_call_info(static_name, false, flat.TypeTextList.from_names(type_args).ids) {
+			if info := tc.explicit_generic_call_info(static_name, false, type_args_source_ids) {
 				return info
 			}
 			return tc.call_info(static_name, false)
@@ -10680,10 +10686,10 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 			params_known:  call_name in tc.fn_param_types
 		}
 	}
-	if tc.explicit_generic_arg_count_mismatch(call_name, flat.TypeTextList.from_names(type_args).ids, id) {
+	if tc.explicit_generic_arg_count_mismatch(call_name, type_args_source_ids, id) {
 		return tc.call_info(call_name, false)
 	}
-	if info := tc.explicit_generic_call_info(call_name, false, flat.TypeTextList.from_names(type_args).ids) {
+	if info := tc.explicit_generic_call_info(call_name, false, type_args_source_ids) {
 		return info
 	}
 	return tc.call_info(call_name, false)
@@ -10696,7 +10702,7 @@ fn (mut tc TypeChecker) check_missing_concrete_generic_call_type_args(index_node
 		if arg.kind == .index {
 			continue
 		}
-		name := tc.generic_call_type_arg_name(arg_id)
+		name := flat.source_type_name(tc.generic_call_type_arg_name(arg_id))
 		if name.len == 0 || name in tc.fn_context.generic_params {
 			continue
 		}
@@ -11060,7 +11066,8 @@ fn (tc &TypeChecker) decode_call_info_from_type_arg(node flat.Node, name string,
 		return none
 	}
 	type_arg_id := tc.a.child(&node, 1)
-	type_arg := tc.generic_call_type_arg_name(type_arg_id)
+	type_arg_source_id := tc.generic_call_type_arg_name(type_arg_id)
+	type_arg := flat.source_type_name(type_arg_source_id)
 	if type_arg.len == 0 {
 		return none
 	}
@@ -11070,7 +11077,7 @@ fn (tc &TypeChecker) decode_call_info_from_type_arg(node flat.Node, name string,
 		name:                 info.name
 		params:               params
 		return_type:          Type(ResultType{
-			base_type: tc.parse_type(flat.source_type_id(type_arg))
+			base_type: tc.parse_type(type_arg_source_id)
 		})
 		has_receiver:         info.has_receiver
 		is_variadic:          info.is_variadic
@@ -11117,94 +11124,95 @@ fn (tc &TypeChecker) generic_call_base_name(base_node flat.Node) ?string {
 	return none
 }
 
-fn (tc &TypeChecker) generic_call_type_arg_names(index_node flat.Node) []string {
+fn (tc &TypeChecker) generic_call_type_arg_names(index_node flat.Node) []u32 {
 	if index_node.kind != .index || index_node.children_count < 2 || index_node.value == 'range' {
-		return []string{}
+		return []u32{}
 	}
-	mut args := []string{}
+	mut args := []u32{}
 	for i in 1 .. index_node.children_count {
 		arg := tc.generic_call_type_arg_name(tc.a.child(&index_node, i))
-		if arg.len == 0 {
-			return []string{}
-		}
+		if arg == 0 { return []u32{} }
 		args << arg
 	}
 	return args
 }
 
-fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) string {
+fn (tc &TypeChecker) generic_call_type_arg_name(id flat.NodeId) u32 {
 	if int(id) < 0 {
-		return ''
+		return u32(0)
 	}
 	node := tc.a.nodes[int(id)]
 	match node.kind {
 		.ident {
-			return node.value
+			return flat.source_type_id(node.value)
 		}
 		.selector {
 			if node.children_count == 0 {
-				return node.value
+				return flat.source_type_id(node.value)
 			}
-			base := tc.generic_call_type_arg_name(tc.a.child(&node, 0))
-			if base.len == 0 {
-				return node.value
+			base_source_id := tc.generic_call_type_arg_name(tc.a.child(&node, 0))
+			base := flat.source_type_name(base_source_id)
+			if base_source_id == 0 {
+				return flat.source_type_id(node.value)
 			}
-			return '${base}.${node.value}'
+			return flat.source_type_id('${base}.${node.value}')
 		}
 		.index {
 			if node.children_count < 2 || node.value == 'range' {
-				return ''
+				return u32(0)
 			}
-			base := tc.generic_call_type_arg_name(tc.a.child(&node, 0))
-			if base.len == 0 {
-				return ''
+			base_source_id_2 := tc.generic_call_type_arg_name(tc.a.child(&node, 0))
+			base := flat.source_type_name(base_source_id_2)
+			if base_source_id_2 == 0 {
+				return u32(0)
 			}
 			mut args := []string{}
 			for i in 1 .. node.children_count {
-				arg := tc.generic_call_type_arg_name(tc.a.child(&node, i))
+				arg := flat.source_type_name(tc.generic_call_type_arg_name(tc.a.child(&node, i)))
 				if arg.len == 0 {
-					return ''
+					return u32(0)
 				}
 				args << arg
 			}
-			return '${base}[${args.join(', ')}]'
+			return flat.source_type_id('${base}[${args.join(', ')}]')
 		}
 		.array_init {
 			if node.typ != 0 {
-				return node.typ_text()
+				return node.typ
 			}
 			if node.value.len > 0 {
 				if node.value.starts_with('[') {
-					return node.value
+					return flat.source_type_id(node.value)
 				}
-				return '[]${node.value}'
+				return flat.source_type_id('[]${node.value}')
 			}
-			return ''
+			return u32(0)
 		}
 		.map_init {
-			return node.value
+			return flat.source_type_id(node.value)
 		}
 		.struct_init {
-			return node.value
+			return flat.source_type_id(node.value)
 		}
 		.struct_decl {
-			return node.value
+			return flat.source_type_id(node.value)
 		}
 		.prefix {
 			if node.children_count == 0 {
-				return ''
+				return u32(0)
 			}
-			child := tc.generic_call_type_arg_name(tc.a.child(&node, 0))
-			if child.len == 0 {
-				return ''
+			child_source_id := tc.generic_call_type_arg_name(tc.a.child(&node, 0))
+			child := flat.source_type_name(child_source_id)
+			if child_source_id == 0 {
+				return u32(0)
 			}
 			if node.op == .amp {
-				return '&${child}'
+				return flat.source_type_id('&${child}')
 			}
-			return child
+			return child_source_id
 		}
 		else {
-			return ''
+			return u32(0)
 		}
 	}
 }
@@ -15782,9 +15790,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 						tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `${call_argument_type_name(elem_type)}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 					} else {
 						arg_text := tc.source_text_for_node(arg_id)
-						actual_display_name := tc.current_variadic_param_elem_name(arg_id) or {
-							actual_name
-						}
+						actual_display_name := flat.source_type_name(tc.current_variadic_param_elem_name(arg_id) or {
+							flat.source_type_id(actual_name)
+						})
 						mut target_name := info.name
 						mut diagnostic_pos := node.pos
 						mut callee := tc.a.child_node(&node, 0)
@@ -16717,7 +16725,7 @@ fn (tc &TypeChecker) call_arg_is_lowered_method_receiver(node flat.Node, info Ca
 		|| receiver_name.ends_with('.${owner}')
 }
 
-fn (tc &TypeChecker) current_variadic_param_elem_name(id flat.NodeId) ?string {
+fn (tc &TypeChecker) current_variadic_param_elem_name(id flat.NodeId) ?u32 {
 	if !tc.valid_node_id(id) || tc.fn_context.node_id < 0 || tc.fn_context.node_id >= tc.a.nodes.len {
 		return none
 	}
@@ -16732,7 +16740,7 @@ fn (tc &TypeChecker) current_variadic_param_elem_name(id flat.NodeId) ?string {
 			break
 		}
 		if param.value == arg.value && flat.source_type_shape(param.typ).has(.variadic) {
-			return param.typ_text().trim_left('.')
+			return flat.source_type_id(param.typ_text().trim_left('.'))
 		}
 	}
 	return none
@@ -18332,7 +18340,8 @@ fn call_arg_has_multiple_pointer_layers(target Type) bool {
 
 // field_init_struct_field_type substitutes the struct declaration's parameters
 // with the arguments in the function parameter before inferring from a field.
-fn (tc &TypeChecker) field_init_struct_field_type(struct_name string, param_text string, field_name string) ?string {
+fn (tc &TypeChecker) field_init_struct_field_type(struct_name string, param_text_id u32, field_name string) ?u32 {
+	param_text := flat.source_type_name(param_text_id)
 	base, args, is_generic := generic_type_application_parts(comptime_static_unwrap_type_text(param_text))
 	params := if is_generic {
 		tc.struct_generic_params[base] or {
@@ -18343,7 +18352,7 @@ fn (tc &TypeChecker) field_init_struct_field_type(struct_name string, param_text
 	}
 	for field in tc.source_struct_field_decls(struct_name) {
 		if field.name == field_name {
-			return subst_generic_text(field.typ_text(), flat.TypeTextList.from_names(args).ids, params)
+			return flat.source_type_id(subst_generic_text(field.typ_text(), flat.TypeTextList.from_names(args).ids, params))
 		}
 	}
 	return none
@@ -18430,7 +18439,9 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 			}
 			mut field_text := ''
 			if struct_name.len > 0 {
-				if field_type := tc.field_init_struct_field_type(struct_name, param_text, raw_arg.value) {
+				if field_type_source_id := tc.field_init_struct_field_type(struct_name, flat.source_type_id(param_text), raw_arg.value) {
+					field_type := flat.source_type_name(field_type_source_id)
+
 					if generic_params.any(type_text_contains_symbol(field_type, it)) {
 						field_text = trimmed_space(field_type)
 					}
@@ -18726,7 +18737,7 @@ fn (tc &TypeChecker) call_has_explicit_generic_args(node flat.Node) bool {
 	}
 	fn_node := tc.a.child_node(&node, 0)
 	return fn_node.kind == .index && !tc.call_callee_index_is_value(fn_node)
-		&& tc.generic_call_type_arg_names(fn_node).len > 0
+		&& flat.TypeTextList{ ids: tc.generic_call_type_arg_names(fn_node) }.names().len > 0
 }
 
 fn (tc &TypeChecker) call_has_explicit_generic_type_args(node flat.Node) bool {
@@ -18736,7 +18747,7 @@ fn (tc &TypeChecker) call_has_explicit_generic_type_args(node flat.Node) bool {
 	fn_node := tc.a.child_node(&node, 0)
 	return fn_node.kind == .index && fn_node.value != 'range'
 		&& !tc.call_callee_index_is_value(fn_node)
-		&& tc.generic_call_type_arg_names(fn_node).len > 0
+		&& flat.TypeTextList{ ids: tc.generic_call_type_arg_names(fn_node) }.names().len > 0
 }
 
 fn (tc &TypeChecker) call_callee_index_is_value(index flat.Node) bool {
@@ -18870,7 +18881,7 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 		return
 	}
 	if generic_type_application(clean) {
-		actual_text := tc.generic_infer_type_text(actual)
+		actual_text := flat.source_type_name(tc.generic_infer_type_text(actual))
 		param_base, param_args, _ := generic_type_application_parts(clean)
 		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
 		// `param_base` is declared source text, so an import alias (`import io as csv`)
@@ -18900,11 +18911,11 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 	}
 	for param in generic_params {
 		if clean == param && param !in inferred {
-			mut actual_text := tc.generic_infer_type_text(actual)
-			if actual_text == 'unknown' || actual_text == 'generic' {
-				actual_text = param
+			mut actual_id := tc.generic_infer_type_text(actual)
+			if actual_id == flat.source_type_unknown || flat.source_type_name(actual_id) == 'generic' {
+				actual_id = flat.source_type_id(param)
 			}
-			inferred[param] = flat.source_type_id(actual_text)
+			inferred[param] = actual_id
 			return
 		}
 	}
@@ -18982,7 +18993,7 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_text string, ac
 	}
 	if generic_type_application(clean) {
 		param_base, param_args, _ := generic_type_application_parts(clean)
-		actual_text := tc.generic_infer_type_text(actual)
+		actual_text := flat.source_type_name(tc.generic_infer_type_text(actual))
 		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
 		decl_base := tc.generic_param_type_text(param_base)
 		iface_name := tc.interface_metadata_name(decl_base)
@@ -19088,13 +19099,11 @@ fn (tc &TypeChecker) generic_interface_inference_method(actual_name string, meth
 	return none
 }
 
-fn (tc &TypeChecker) generic_infer_type_text(actual Type) string {
+fn (tc &TypeChecker) generic_infer_type_text(actual Type) u32 {
 	if actual is Unknown {
-		if name := generic_placeholder_from_unknown(actual) {
-			return name
-		}
+		if name := generic_placeholder_from_unknown(actual) { return flat.source_type_id(name) }
 	}
-	return actual.name()
+	return actual.source_type_id()
 }
 
 fn (tc &TypeChecker) infer_generic_type_text_from_text(param_text string, actual_text string, generic_params []string, mut inferred map[string]u32) {
@@ -20651,7 +20660,8 @@ fn (tc &TypeChecker) direct_call_return_type(node flat.Node) ?Type {
 	if fn_node.kind == .index && fn_node.children_count >= 2 && fn_node.value != 'range' {
 		base_node := tc.a.child_node(fn_node, 0)
 		name := tc.generic_call_base_name(base_node) or { return none }
-		type_args := tc.generic_call_type_arg_names(fn_node)
+		type_args_source_ids := tc.generic_call_type_arg_names(fn_node).clone()
+		type_args := flat.TypeTextList{ ids: type_args_source_ids }.names()
 		if type_args.len == 0 {
 			return none
 		}
@@ -20660,7 +20670,7 @@ fn (tc &TypeChecker) direct_call_return_type(node flat.Node) ?Type {
 				base_type: tc.parse_type(flat.source_type_id(type_args[0]))
 			})
 		}
-		if info := tc.explicit_generic_call_info(name, false, flat.TypeTextList.from_names(type_args).ids) {
+		if info := tc.explicit_generic_call_info(name, false, type_args_source_ids) {
 			return info.return_type
 		}
 		return none
