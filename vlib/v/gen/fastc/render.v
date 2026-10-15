@@ -1543,8 +1543,13 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 		}
 		guarded_shift := g.translated && tokens[operator_index].tok in [.left_shift, .right_shift,
 			.right_shift_unsigned]
+		// An operand that propagates a result (`a.m()! + 1`) is lowered on its own.
+		operand_propagates := (left_tokens.len > 1 && left_tokens.last().tok in [.not, .question]
+			&& !fastc_trailing_not_marks_fixed_array_literal(left_tokens))
+			|| (right_tokens.len > 1 && right_tokens.last().tok in [.not, .question]
+				&& !fastc_trailing_not_marks_fixed_array_literal(right_tokens))
 		if left_special.source == '' && right_special.source == '' && !guarded_shift && !reference_arithmetic
-			&& !v_grouping {
+			&& !v_grouping && !operand_propagates {
 			return none
 		}
 		left := if left_special.source != '' {
@@ -3438,6 +3443,28 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 		}
 		return g.render_call_argument_expression(normalized, expected_type)
 	}
+	if g.selfhost && tokens.len > 1 && tokens.last().tok == .not
+		&& !fastc_trailing_not_marks_fixed_array_literal(tokens) {
+		// `x.m()!` as an operand (`assert a.b().m()! == 0`): lower the propagation here, as
+		// render_comparison_operand does, rather than leave a raw `!` in the C. A value the
+		// parameter boxes (a sum-type variant, an interface) is left to the paths below.
+		value_type := fastc_normalize_inferred_type(g.option_value_type_for_expression(tokens[..tokens.len - 1]))
+		expected_key := g.semantic_type_key(expected_type.trim_right('*'))
+		boxes := value_type != '' && expected_type != ''
+			&& (g.should_box_variant(expected_type, value_type)
+				|| g.declared_kinds[expected_key] == .interface_
+				|| fastc_trim_pointer_suffix(expected_type) in g.sum_types)
+		if !boxes {
+			if propagation := g.render_option_propagation(tokens[..tokens.len - 1]) {
+				if value_type != '' && expected_type.ends_with('*') && !value_type.ends_with('*') {
+					// A `&T` parameter given the propagated value: pass the address of
+					// stable storage holding it.
+					return g.value_address_expression(value_type, propagation.source, tokens)
+				}
+				return propagation.source
+			}
+		}
+	}
 	if tokens.len == 1 && tokens[0].source != '' {
 		// A pre-rendered value (e.g. an interpolation) passed where a `voidptr` is expected (a
 		// map `.delete(key)` / generic argument) must still be boxed to a pointer, exactly as the
@@ -4734,7 +4761,9 @@ fn (g &Parser) render_option_propagation(inner_tokens []FastcExpressionToken) ?F
 	}
 	inner_raw := g.render_raw_expression_tokens(inner_tokens) or { return none }
 	mut inner_source := inner_raw
-	if defaulted_call := g.render_missing_call_arguments(inner_tokens) {
+	if call_member := g.render_call_result_member_expression(inner_tokens) {
+		inner_source = call_member.source
+	} else if defaulted_call := g.render_missing_call_arguments(inner_tokens) {
 		// A plain `f(a, b)` call renders each argument through render_call_argument_expression,
 		// which lowers nested propagation (`f(x.m()?, y.m()?)?`) and fills defaults. The raw
 		// method-call rewrite below only rewrites method-call arguments in place, leaving a

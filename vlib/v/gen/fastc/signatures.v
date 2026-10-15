@@ -1152,6 +1152,12 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 		pointers += if tok == .and { 2 } else { 1 }
 		tok = scan.scan()
 	}
+	// `&?T` / `&!T`: a pointer to an option or result value.
+	if !optional && pointers > 0 && tok in [.question, .not] {
+		inner_type, next_token := fastc_scan_type(mut scan, tok, path, module_name, imports,
+			declared_types, allow_short_placeholders)!
+		return inner_type + '*'.repeat(pointers), next_token
+	}
 	if optional && tok == .lcbr {
 		return wrapper + '*'.repeat(pointers), tok
 	}
