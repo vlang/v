@@ -1804,8 +1804,10 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		}
 		base_nodes := t.a.nodes.len
 		base_children := t.a.children.len
-		node_headroom := (end - start) * 8192 + 262144
-		child_headroom := (end - start) * 10240 + 393216
+		node_headroom := (end - start) * scoped_monomorph_spec_node_headroom +
+			scoped_monomorph_base_node_headroom
+		child_headroom := (end - start) * scoped_monomorph_spec_child_headroom +
+			scoped_monomorph_base_child_headroom
 		if t.a.nodes.cap < base_nodes + node_headroom
 			|| t.a.children.cap < base_children + child_headroom {
 			// The tree outlives this stage, so its storage grows in the arena that
@@ -3043,8 +3045,9 @@ fn (mut t Transformer) bound_shared_expansion(items []FnWorkItem, node_pool int,
 // start plays the role the clone base played).
 fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_nodes int, base_children int, n_jobs int) bool {
 	mut ttsw := time.new_stopwatch()
-	node_pool := t.a.nodes.cap - base_nodes
-	child_pool := t.a.children.cap - base_children
+	// The tail reserved for monomorphization is not this pool's.
+	node_pool := t.a.nodes.cap - t.a.monomorph_tail_nodes - base_nodes
+	child_pool := t.a.children.cap - t.a.monomorph_tail_children - base_children
 	// Bounding may append to t.deferred_expansion_items, which outlives this
 	// call, so it must run before the disposable setup arena becomes current.
 	bounded_items := t.bound_shared_expansion(items, node_pool, child_pool)

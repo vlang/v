@@ -1520,16 +1520,35 @@ fn (mut t Transformer) retain_current_worker_scope_all() {
 // reserve_parallel_transform_ast reserves persistent append regions before a
 // disposable transform arena is entered.
 pub fn reserve_parallel_transform_ast(mut a flat.FlatAst, skip_generics bool) {
-	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, false)
+	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, false, false)
+}
+
+// reserve_parallel_transform_ast_before_monomorph is reserve_parallel_transform_ast
+// for a build that monomorphizes after the transform stage. It also reserves the
+// specializer's headroom past the lowered tree; grown later, the whole lowered
+// tree would be copied again.
+pub fn reserve_parallel_transform_ast_before_monomorph(mut a flat.FlatAst, skip_generics bool) {
+	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, false, true)
 }
 
 // reserve_parallel_transform_cache_ast adds overflow headroom for cache population,
 // which transforms every module body rather than just the program-reachable subset.
 pub fn reserve_parallel_transform_cache_ast(mut a flat.FlatAst, skip_generics bool) {
-	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, true)
+	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, true, false)
 }
 
-fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_generics bool, cache_mode bool) {
+// The append headroom a scoped specialization batch needs: a base cushion and
+// a share per specialization (see run_scoped_monomorphize_specs).
+const scoped_monomorph_base_node_headroom = 262144
+const scoped_monomorph_spec_node_headroom = 8192
+const scoped_monomorph_base_child_headroom = 393216
+const scoped_monomorph_spec_child_headroom = 10240
+
+// monomorph_tail_specs is how many specializations the capacity reserved for
+// monomorphization before the transform stage covers without growing the tree.
+const monomorph_tail_specs = 16
+
+fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_generics bool, cache_mode bool, monomorph_tail bool) {
 	// The shared-base parallel path partitions this headroom between workers.
 	// Generic lowering needs more headroom than self-host transform because worker
 	// regions cannot grow while their disposable arenas are active. The shared path
@@ -1547,8 +1566,22 @@ fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_gener
 	} else {
 		3, 1
 	}
-	nodes_cap := a.nodes.len * nodes_factor_num / nodes_factor_den
-	children_cap := a.children.len * children_factor_num / children_factor_den
+	mut nodes_cap := a.nodes.len * nodes_factor_num / nodes_factor_den
+	mut children_cap := a.children.len * children_factor_num / children_factor_den
+	// Reserve the specializer's headroom past the lowered tree as well. The
+	// transform stage's own append regions leave this tail alone, so they are
+	// partitioned as they would be without it.
+	if monomorph_tail {
+		transform_nodes_cap := int_max(nodes_cap, a.nodes.cap)
+		transform_children_cap := int_max(children_cap, a.children.cap)
+		nodes_cap = int_max(transform_nodes_cap, nodes_cap + scoped_monomorph_base_node_headroom +
+			monomorph_tail_specs * scoped_monomorph_spec_node_headroom)
+		children_cap = int_max(transform_children_cap, children_cap +
+			scoped_monomorph_base_child_headroom +
+			monomorph_tail_specs * scoped_monomorph_spec_child_headroom)
+		a.monomorph_tail_nodes = nodes_cap - transform_nodes_cap
+		a.monomorph_tail_children = children_cap - transform_children_cap
+	}
 	grow_nodes := nodes_cap > a.nodes.cap
 	grow_children := children_cap > a.children.cap
 	// The two grown arrays copy ~150MB of stable payload; shard the copies
