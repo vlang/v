@@ -31,6 +31,22 @@ fn main() { assert take(nil); println("ok") }
 		FastcNilCase{'comparison', r'module main
 fn main() { p := voidptr(0); assert p == nil; assert !(p != nil); println("ok") }
 ', false},
+		FastcNilCase{'comparison_chain', r'module main
+fn main() { p := voidptr(0); ready := true; assert p == nil && ready; assert p != nil || ready; println("ok") }
+', false},
+		FastcNilCase{'array_return', r'module main
+fn pointers() []voidptr { return [voidptr(0), nil] }
+fn main() { values := pointers(); assert values.len == 2; assert isnil(values[1]); println("ok") }
+', false},
+		FastcNilCase{'array_field', r'module main
+struct Holder { values []voidptr }
+fn main() { h := Holder{values: [voidptr(0), nil]}; assert isnil(h.values[1]); println("ok") }
+', false},
+		FastcNilCase{'static_method', r'module main
+struct Tool {}
+fn Tool.accept(p voidptr) bool { return isnil(p) }
+fn main() { assert Tool.accept(nil); println("ok") }
+', false},
 		FastcNilCase{'default', r'module main
 struct Holder { p voidptr = nil }
 fn main() { holder := Holder{}; assert isnil(holder.p); println("ok") }

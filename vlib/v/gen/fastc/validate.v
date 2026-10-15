@@ -85,10 +85,10 @@ fn (g &Parser) validate_nil(tokens []FastcExpressionToken, previous token.Token,
 	if g.unsafe_depth > 0 || g.in_mono_drain {
 		return
 	}
-	if g.selfhost && g.allows_nil_local_assignment && previous == .unknown && tokens.len == 0 && g.nil_ends_value() {
+	if g.selfhost && g.allows_nil_local_assignment && previous == .unknown && tokens.len == 0 && g.nil_ends_value(false) {
 		return
 	}
-	if g.selfhost && g.nil_ends_value()
+	if g.selfhost && g.nil_ends_value(previous in [.eq, .ne])
 		&& g.nil_target_is_voidptr(tokens, previous, paren_depth, bracket_depth, brace_depth, struct_types, struct_depths, struct_paren_depths) {
 		return
 	}
@@ -133,7 +133,7 @@ fn (g &Parser) nil_target_is_voidptr(tokens []FastcExpressionToken, previous tok
 	}
 	open := fastc_innermost_open_index(tokens)
 	if open >= 0 && tokens[open].tok == .lsbr
-		&& (open == 0 || tokens[open - 1].tok in [.assign, .decl_assign, .comma, .lpar]) {
+		&& (open == 0 || tokens[open - 1].tok !in [.name, .rpar, .rsbr, .rcbr]) {
 		mut depth := 0
 		for i in open + 1 .. tokens.len {
 			if tokens[i].tok in [.lpar, .lsbr, .lcbr] { depth++ }
@@ -248,7 +248,9 @@ fn (g &Parser) nil_argument_is_voidptr(tokens []FastcExpressionToken) bool {
 	mut key := g.unqualified_function_key(name)
 	mut offset := 0
 	if open >= 2 && tokens[open - 2].tok == .dot {
-		if open >= 3 && tokens[open - 3].tok == .name
+		if static_key := g.static_function_key_for_call(tokens, open - 1) {
+			key = static_key
+		} else if open >= 3 && tokens[open - 3].tok == .name
 			&& tokens[open - 3].lit !in g.locals && tokens[open - 3].lit in g.imports {
 			key = fastc_function_key(g.resolve_module_alias(g.imports[tokens[open - 3].lit]), name)
 		} else {
@@ -273,7 +275,7 @@ fn (g &Parser) nil_argument_is_voidptr(tokens []FastcExpressionToken) bool {
 
 // nil_ends_value reports whether the current `nil` is a whole value: the next token closes it or
 // ends the statement, so no operator applies to it.
-fn (g &Parser) nil_ends_value() bool {
+fn (g &Parser) nil_ends_value(allow_boolean bool) bool {
 	mut lookahead := g.s
 	mut next := lookahead.scan()
 	if next == .semicolon && !g.semicolon_continues_expression() {
@@ -283,6 +285,7 @@ fn (g &Parser) nil_ends_value() bool {
 		next = lookahead.scan()
 	}
 	return next in [.comma, .rpar, .rsbr, .rcbr, .eof]
+		|| (allow_boolean && next in [.and, .logical_or])
 }
 
 fn (g &Parser) expression_name(previous token.Token, qualified_name_owner string) !string {
