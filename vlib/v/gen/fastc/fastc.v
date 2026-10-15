@@ -1591,7 +1591,8 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	mut pending_memo_store := FastcPendingMemoStore{}
 	scoped_prefs := fastc_preferences_for_entry_paths(paths, prefs)
 	entries := fastc_expand_entry_paths(paths, &scoped_prefs)!
-	sources, module_aliases := fastc_resolve_source_files_deferring_memo(entries, &scoped_prefs, mut pending_memo_store)!
+	lone_entries := fastc_lone_entry_files(paths, &scoped_prefs)
+	sources, module_aliases := fastc_resolve_source_files_deferring_memo(entries, lone_entries, &scoped_prefs, mut pending_memo_store)!
 	timer.mark('resolve')
 	mut source_paths := []string{cap: sources.len}
 	for source_file in sources {
