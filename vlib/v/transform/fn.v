@@ -4145,7 +4145,8 @@ fn (t &Transformer) call_arg_is_undeclared_c_identifier(arg_node &flat.Node) boo
 @[direct_array_access]
 fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId, param_type_id u32) flat.NodeId {
 	param_type_comparison_type_id_7 := param_type_id
-	param_type := flat.source_type_name(param_type_comparison_type_id_7)
+	param_type_source_id_3 := param_type_comparison_type_id_7
+	param_type := flat.source_type_name(param_type_source_id_3)
 	if int(arg_id) < 0 {
 		return arg_id
 	}
@@ -4550,7 +4551,7 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		}
 	}
 	if param_type_id != u32(0) && (param_type.contains('unknown')
-		|| t.type_text_has_generic_placeholder(flat.source_type_id(param_type), t.cur_module)) {
+		|| t.type_text_has_generic_placeholder(param_type_source_id_3, t.cur_module)) {
 		return t.transform_expr(arg_id)
 	}
 	if param_type.starts_with('&') && t.is_interface_type(param_type_id) {
@@ -11551,19 +11552,19 @@ fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeI
 // replaces each owning element with an independent clone. The initial element copies
 // are non-owning and are overwritten without being dropped.
 fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat.NodeId, raw_fixed_type_id u32) flat.NodeId {
-	fixed_type :=
-		t.receiver_type_text_source_fixed_spelling(flat.source_type_name(t.resolved_fixed_array_canonical_type(raw_fixed_type_id)))
+	fixed_type_source_id_2 := t.receiver_type_text_source_fixed_spelling(t.resolved_fixed_array_canonical_type(raw_fixed_type_id))
+	fixed_type := flat.source_type_name(fixed_type_source_id_2)
 	elem_type := fixed_array_elem_type(fixed_type)
 	if !t.compiler_default_clone_type_needs_work(flat.source_type_id(elem_type)) {
 		return source
 	}
 	source_is_owned_temporary := !t.expr_can_take_address(source)
-	stable_source := t.stable_transformed_expr_for_reuse(source, flat.source_type_id(fixed_type), 'derived_clone_fixed_array_source')
+	stable_source := t.stable_transformed_expr_for_reuse(source, fixed_type_source_id_2, 'derived_clone_fixed_array_source')
 	out_name := t.new_temp('derived_clone_fixed_array')
 	idx_name := t.new_temp('derived_clone_fixed_array_idx')
-	t.pending_stmts << t.make_decl_assign_typed(out_name, stable_source, flat.source_type_id(fixed_type))
+	t.pending_stmts << t.make_decl_assign_typed(out_name, stable_source, fixed_type_source_id_2)
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), flat.source_type_int)
-	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_fixed_array_len_expr(flat.source_type_id(fixed_type)))
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_fixed_array_len_expr(fixed_type_source_id_2))
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	source_elem := t.make_index(stable_source, t.make_ident(idx_name), flat.source_type_id(elem_type))
 	pending_start := t.pending_stmts.len
@@ -11580,7 +11581,7 @@ fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat
 		], flat.source_type_void))
 	}
 	result := t.make_ident(out_name)
-	t.set_node_typ(int(result), flat.source_type_id(fixed_type))
+	t.set_node_typ(int(result), fixed_type_source_id_2)
 	return result
 }
 
@@ -16454,13 +16455,14 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return false
 	}
 	expected_comparison_type_id_3 := t.callback_declared_type_text(expected_type_id)
-	expected := flat.source_type_name(expected_comparison_type_id_3)
-	if t.is_integer_type_name(flat.source_type_id(expected)) {
+	expected_source_id_3 := expected_comparison_type_id_3
+	expected := flat.source_type_name(expected_source_id_3)
+	if t.is_integer_type_name(expected_source_id_3) {
 		if literal := t.specialized_int_literal(arg_id) {
 			return specialized_int_literal_fits_type(literal, expected)
 		}
 	}
-	if t.is_integer_type_name(flat.source_type_id(actual)) && t.is_integer_type_name(flat.source_type_id(expected)) {
+	if t.is_integer_type_name(flat.source_type_id(actual)) && t.is_integer_type_name(expected_source_id_3) {
 		return true
 	}
 	if actual == expected {
@@ -16471,7 +16473,7 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 			return false
 		}
 		actual_fn := transform_fn_type(t.tc.parse_type(flat.source_type_id(actual))) or { return false }
-		expected_fn := transform_fn_type(t.tc.parse_type(flat.source_type_id(expected))) or { return false }
+		expected_fn := transform_fn_type(t.tc.parse_type(expected_source_id_3)) or { return false }
 		if !t.callback_fn_type_payloads_compatible(actual_fn, expected_fn, false) {
 			return false
 		}
@@ -16537,17 +16539,17 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 			return true
 		}
 	}
-	if t.is_sum_type_name(flat.source_type_id(expected)) && t.sum_target_accepts_variant_type(flat.source_type_id(expected), flat.source_type_id(actual)) {
+	if t.is_sum_type_name(expected_source_id_3) && t.sum_target_accepts_variant_type(expected_source_id_3, flat.source_type_id(actual)) {
 		return true
 	}
 	// The reverse also passes validation: a sum-typed value flows into a
 	// variant-typed parameter under an `is`-guard (smartcast) that a not-yet
 	// unrolled `$for v in T.variants` body cannot expose to this check.
-	if t.is_sum_type_name(flat.source_type_id(actual)) && t.sum_target_accepts_variant_type(flat.source_type_id(actual), flat.source_type_id(expected)) {
+	if t.is_sum_type_name(flat.source_type_id(actual)) && t.sum_target_accepts_variant_type(flat.source_type_id(actual), expected_source_id_3) {
 		return true
 	}
 	if !isnil(t.tc) {
-		expected_interface := flat.source_type_name(t.trim_all_pointer_type(flat.source_type_id(expected)))
+		expected_interface := flat.source_type_name(t.trim_all_pointer_type(expected_source_id_3))
 		actual_interface := flat.source_type_name(t.trim_all_pointer_type(flat.source_type_id(actual)))
 		if expected_interface in t.tc.interface_names
 			&& t.tc.type_text_implements_interface(actual_interface, expected_interface) {
@@ -18113,33 +18115,34 @@ fn (t &Transformer) receiver_type_text_variants(type_text string) []string {
 	transform_push_receiver_candidate(mut names, clean)
 	transform_push_receiver_candidate(mut names, receiver_type_text_short_spelling(clean))
 	if t.is_fixed_array_type(flat.source_type_id(clean)) {
-		source := t.receiver_type_text_source_fixed_spelling(clean)
+		source := flat.source_type_name(t.receiver_type_text_source_fixed_spelling(flat.source_type_id(clean)))
 		transform_push_receiver_candidate(mut names, source)
 		transform_push_receiver_candidate(mut names, receiver_type_text_short_spelling(source))
 	}
 	return names
 }
 
-fn (t &Transformer) receiver_type_text_source_fixed_spelling(type_text string) string {
+fn (t &Transformer) receiver_type_text_source_fixed_spelling(type_text_id u32) u32 {
+	type_text := flat.source_type_name(type_text_id)
 	clean := trimmed_transform_text(type_text)
 	if clean.len == 0 || clean.starts_with('[') || !t.is_fixed_array_type(flat.source_type_id(clean)) {
-		return clean
+		return flat.source_type_id(clean)
 	}
 	if !isnil(t.tc) {
 		parsed := t.tc.parse_type(flat.source_type_id(clean))
 		if parsed is types.ArrayFixed {
-			return flat.source_type_name(t.semantic_type_name(parsed))
+			return t.semantic_type_name(parsed)
 		}
 	}
 	elem, dims := transform_postfix_fixed_array_parts(clean)
 	if elem.len == 0 || dims.len == 0 {
-		return clean
+		return flat.source_type_id(clean)
 	}
 	mut source := elem
 	for i := dims.len; i > 0; i-- {
 		source = '[${dims[i - 1]}]${source}'
 	}
-	return source
+	return flat.source_type_id(source)
 }
 
 fn transform_postfix_fixed_array_parts(type_text string) (string, []string) {
@@ -19102,8 +19105,9 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 		if fn_node.kind == .ident && (t.var_type(fn_node.value)) == 0 {
 			if ret_source_id := t.local_fn_decl_return_type(fn_node.value) {
 				candidate_source_id := t.call_return_type_name(ret_source_id, node)
-				candidate := flat.source_type_name(candidate_source_id)
-				if decl_type_is_usable(flat.source_type_id(candidate)) || candidate_source_id == flat.source_type_void {
+				candidate_source_id_8 := candidate_source_id
+
+				if decl_type_is_usable(candidate_source_id_8) || candidate_source_id == flat.source_type_void {
 					return candidate_source_id
 				}
 			}
@@ -19116,16 +19120,18 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 			qname := '${t.cur_module}.${short_name}'
 			if ret := t.tc.fn_ret_types[qname] {
 				candidate_source_id_2 := t.call_return_type_name(t.semantic_type_name(ret), node)
-				candidate := flat.source_type_name(candidate_source_id_2)
-				if decl_type_is_usable(flat.source_type_id(candidate)) || candidate_source_id_2 == flat.source_type_void {
+				candidate_source_id_9 := candidate_source_id_2
+
+				if decl_type_is_usable(candidate_source_id_9) || candidate_source_id_2 == flat.source_type_void {
 					return candidate_source_id_2
 				}
 			}
 			lowered_qname := c_name(qname)
 			if ret := t.tc.fn_ret_types[lowered_qname] {
 				candidate_source_id_3 := t.call_return_type_name(t.semantic_type_name(ret), node)
-				candidate := flat.source_type_name(candidate_source_id_3)
-				if decl_type_is_usable(flat.source_type_id(candidate)) || candidate_source_id_3 == flat.source_type_void {
+				candidate_source_id_10 := candidate_source_id_3
+
+				if decl_type_is_usable(candidate_source_id_10) || candidate_source_id_3 == flat.source_type_void {
 					return candidate_source_id_3
 				}
 			}
@@ -19145,8 +19151,9 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 					if args_source_ids := t.explicit_generic_call_args(node, t.cur_module) {
 						if args_source_ids.len == params.len {
 							candidate_source_id_4 := t.call_return_type_name_in_module(ret_text_source_id, node, decl_module)
-							candidate := flat.source_type_name(candidate_source_id_4)
-							if decl_type_is_usable(flat.source_type_id(candidate))
+							candidate_source_id_11 := candidate_source_id_4
+							candidate := flat.source_type_name(candidate_source_id_11)
+							if decl_type_is_usable(candidate_source_id_11)
 								&& !generic_text_contains_param(candidate, params) {
 								return candidate_source_id_4
 							}
@@ -19159,8 +19166,9 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	if ret := t.tc.fn_ret_types[name] {
 		if ret !is types.Unknown && ret !is types.Void {
 			candidate_source_id_5 := t.call_return_type_name_in_module(t.semantic_type_name(ret), node, decl_module)
-			candidate := flat.source_type_name(candidate_source_id_5)
-			if decl_type_is_usable(flat.source_type_id(candidate)) {
+			candidate_source_id_12 := candidate_source_id_5
+
+			if decl_type_is_usable(candidate_source_id_12) {
 				return candidate_source_id_5
 			}
 		}
@@ -19168,8 +19176,9 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	if ret_text_source_id := t.tc.fn_ret_type_texts.type_id(name) {
 		if ret_text_source_id != 0 {
 			candidate_source_id_6 := t.call_return_type_name_in_module(ret_text_source_id, node, decl_module)
-			candidate := flat.source_type_name(candidate_source_id_6)
-			if decl_type_is_usable(flat.source_type_id(candidate)) || candidate_source_id_6 == flat.source_type_void {
+			candidate_source_id_13 := candidate_source_id_6
+
+			if decl_type_is_usable(candidate_source_id_13) || candidate_source_id_6 == flat.source_type_void {
 				return candidate_source_id_6
 			}
 		}
@@ -19177,8 +19186,9 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	if typ := t.tc.expr_type(id) {
 		if typ !is types.Unknown && typ !is types.Void {
 			candidate_source_id_7 := t.call_return_type_name(t.semantic_type_name(typ), node)
-			candidate := flat.source_type_name(candidate_source_id_7)
-			if decl_type_is_usable(flat.source_type_id(candidate)) {
+			candidate_source_id_14 := candidate_source_id_7
+
+			if decl_type_is_usable(candidate_source_id_14) {
 				return candidate_source_id_7
 			}
 		}

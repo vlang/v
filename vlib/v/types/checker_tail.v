@@ -4386,10 +4386,11 @@ fn (mut tc TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, exp
 					if pattern_source_id := tc.match_type_pattern(cond) {
 						pattern_source_id_3 := pattern_source_id
 
-						variant := flat.source_type_name(tc.sum_variant_type_for_pattern(subject_type.source_type_id(), pattern_source_id_3) or {
+						variant_source_id_9 := tc.sum_variant_type_for_pattern(subject_type.source_type_id(), pattern_source_id_3) or {
 							pattern_source_id_3
-						})
-						if tc.type_compatible(tc.parse_type(flat.source_type_id(variant)), expected.base_type) {
+						}
+
+						if tc.type_compatible(tc.parse_type(variant_source_id_9), expected.base_type) {
 							continue
 						}
 					}
@@ -5776,11 +5777,12 @@ fn (mut tc TypeChecker) record_chained_bare_generic_struct_method_inference_erro
 	inferred := tc.infer_generic_struct_init_param_texts(*receiver, base, struct_params)
 	mut missing := ''
 	for param in struct_params {
-		arg := flat.source_type_name(inferred[param] or {
+		arg_source_id_2 := inferred[param] or {
 			missing = param
 			break
-		})
-		if tc.type_text_has_generic_placeholder(flat.source_type_id(arg)) {
+		}
+
+		if tc.type_text_has_generic_placeholder(arg_source_id_2) {
 			missing = param
 			break
 		}
@@ -5962,15 +5964,16 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 	}
 	mut missing := ''
 	for param in generic_params {
-		arg := flat.source_type_name(inferred[param] or {
+		arg_source_id_3 := inferred[param] or {
 			if param in tc.fn_context.generic_params && param_texts.len > 0
 				&& type_text_mentions_any_generic_param(param_texts[0], [param]) {
 				continue
 			}
 			missing = param
 			break
-		})
-		if tc.type_text_has_unbound_generic_placeholder(flat.source_type_id(arg), bound) {
+		}
+
+		if tc.type_text_has_unbound_generic_placeholder(arg_source_id_3, bound) {
 			missing = param
 			break
 		}

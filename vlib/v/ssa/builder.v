@@ -9560,10 +9560,11 @@ fn (mut b Builder) build_as_expr(node flat.Node) ValueID {
 	child_id := b.a.child(&node, 0)
 	child_type_name_source_id := b.checked_expr_type_name(child_id)
 
-	sum_name := flat.source_type_name(b.canonical_sum_type_name(child_type_name_source_id) or { return b.build_expr(child_id) })
+	sum_name_source_id_2 := b.canonical_sum_type_name(child_type_name_source_id) or { return b.build_expr(child_id) }
+
 	field_name := sum_variant_field_name(node.value)
 	sum_val := b.build_expr(child_id)
-	sum_type := b.resolve_type(flat.source_type_id(sum_name))
+	sum_type := b.resolve_type(sum_name_source_id_2)
 	alloca := b.emit0(.alloca, b.m.type_store.get_ptr(sum_type))
 	b.emit2(.store, b.void_type, sum_val, alloca)
 	field_ptr := b.get_field_ptr(alloca, field_name)
@@ -9577,15 +9578,16 @@ fn (mut b Builder) build_is_expr(node flat.Node) ValueID {
 	child_id := b.a.child(&node, 0)
 	child_type_name_source_id := b.checked_expr_type_name(child_id)
 
-	sum_name := flat.source_type_name(b.canonical_sum_type_name(child_type_name_source_id) or {
+	sum_name_source_id_3 := b.canonical_sum_type_name(child_type_name_source_id) or {
 		return b.m.get_or_add_const(b.i1_type, '1')
-	})
-	tag := b.sum_variant_index(flat.source_type_id(sum_name), flat.source_type_id(node.value))
+	}
+
+	tag := b.sum_variant_index(sum_name_source_id_3, flat.source_type_id(node.value))
 	if tag <= 0 {
 		return b.m.get_or_add_const(b.i1_type, '0')
 	}
 	sum_val := b.build_expr(child_id)
-	sum_type := b.resolve_type(flat.source_type_id(sum_name))
+	sum_type := b.resolve_type(sum_name_source_id_3)
 	alloca := b.emit0(.alloca, b.m.type_store.get_ptr(sum_type))
 	b.emit2(.store, b.void_type, sum_val, alloca)
 	tag_ptr := b.get_field_ptr(alloca, 'typ')
@@ -10546,18 +10548,20 @@ fn (mut b Builder) build_cast_expr(node flat.Node) ValueID {
 }
 
 fn (mut b Builder) build_sum_type_cast(target_name_id u32, value_expr flat.NodeId) ?ValueID {
-	sum_name := flat.source_type_name(b.canonical_sum_type_name(target_name_id) or { return none })
-	sum_type := b.resolve_type(flat.source_type_id(sum_name))
+	sum_name_source_id_4 := b.canonical_sum_type_name(target_name_id) or { return none }
+
+	sum_type := b.resolve_type(sum_name_source_id_4)
 	if sum_type <= 0 {
 		return none
 	}
 	value := b.build_expr(value_expr)
-	variant := flat.source_type_name(b.sum_variant_for_expr(flat.source_type_id(sum_name), value_expr, value) or { return none })
-	tag := b.sum_variant_index(flat.source_type_id(sum_name), flat.source_type_id(variant))
+	variant_source_id_2 := b.sum_variant_for_expr(sum_name_source_id_4, value_expr, value) or { return none }
+
+	tag := b.sum_variant_index(sum_name_source_id_4, variant_source_id_2)
 	if tag <= 0 {
 		return none
 	}
-	return b.wrap_sum_value(sum_type, flat.source_type_id(variant), tag, value)
+	return b.wrap_sum_value(sum_type, variant_source_id_2, tag, value)
 }
 
 fn (mut b Builder) wrap_sum_value(sum_type TypeID, variant_id u32, tag int, value ValueID) ValueID {
@@ -12781,16 +12785,16 @@ fn (b &Builder) expr_type_name_for_map(id flat.NodeId) u32 {
 		base_type := flat.source_type_name(b.expr_type_name_for_map(b.a.child(&node, 0))).trim_left('&')
 		field_key := base_type + '.' + node.value
 		if field_type_source_id := b.struct_field_types.type_id(field_key) {
-			field_type := flat.source_type_name(field_type_source_id)
+			field_type_source_id_10 := field_type_source_id
 
-			return flat.source_type_id(field_type)
+			return field_type_source_id_10
 		}
 		short_type := base_type.all_after('.')
 		short_key := short_type + '.' + node.value
 		if field_type_source_id := b.struct_field_types.type_id(short_key) {
-			field_type := flat.source_type_name(field_type_source_id)
+			field_type_source_id_11 := field_type_source_id
 
-			return flat.source_type_id(field_type)
+			return field_type_source_id_11
 		}
 	}
 	return u32(0)
@@ -13243,9 +13247,11 @@ fn (mut b Builder) load_smartcast_sum_value(sum_addr ValueID, expr_id flat.NodeI
 	if checked_name_source_id_2 == 0 || b.resolve_type(checked_name_source_id_2) == sum_type {
 		return none
 	}
-	sum_name := flat.source_type_name(b.sum_name_for_type_id(sum_type) or { return none })
-	variant := flat.source_type_name(b.find_sum_variant(flat.source_type_id(sum_name), checked_name_source_id_2) or { return none })
-	variant_type := b.resolve_type(flat.source_type_id(variant))
+	sum_name_source_id_6 := b.sum_name_for_type_id(sum_type) or { return none }
+
+	variant_source_id_4 := b.find_sum_variant(sum_name_source_id_6, checked_name_source_id_2) or { return none }
+	variant := flat.source_type_name(variant_source_id_4)
+	variant_type := b.resolve_type(variant_source_id_4)
 	if variant_type <= 0 || variant_type >= b.m.type_store.types.len {
 		return none
 	}
@@ -13279,9 +13285,11 @@ fn (mut b Builder) smartcast_sum_selector_addr(sum_addr ValueID, base_id flat.No
 	if b.resolve_type(base_type_name_source_id) == sum_type {
 		return none
 	}
-	sum_name := flat.source_type_name(b.sum_name_for_type_id(sum_type) or { return none })
-	variant := flat.source_type_name(b.find_sum_variant(flat.source_type_id(sum_name), base_type_name_source_id) or { return none })
-	variant_type := b.resolve_type(flat.source_type_id(variant))
+	sum_name_source_id_7 := b.sum_name_for_type_id(sum_type) or { return none }
+
+	variant_source_id_5 := b.find_sum_variant(sum_name_source_id_7, base_type_name_source_id) or { return none }
+	variant := flat.source_type_name(variant_source_id_5)
+	variant_type := b.resolve_type(variant_source_id_5)
 	if variant_type <= 0 || variant_type >= b.m.type_store.types.len {
 		return none
 	}

@@ -933,7 +933,8 @@ fn (mut t Transformer) ownership_for_in_binding_clone_expands(node flat.Node) bo
 	if map_iter_type_shape.has(.map_type) {
 		key_type_source_id_5, value_type_source_id_6 := t.map_type_parts(map_iter_type_source_id)
 
-		value_type := flat.source_type_name(value_type_source_id_6)
+		value_type_source_id_20 := value_type_source_id_6
+
 		if has_index {
 			key_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 			if key_name !in ['', '_'] && trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(key_type_source_id_5))) != 'string'
@@ -941,10 +942,10 @@ fn (mut t Transformer) ownership_for_in_binding_clone_expands(node flat.Node) bo
 				return true
 			}
 			value_name := t.a.nodes[int(value_id)].value
-			return value_name !in ['', '_'] && t.ownership_for_in_type_needs_clone(flat.source_type_id(value_type))
+			return value_name !in ['', '_'] && t.ownership_for_in_type_needs_clone(value_type_source_id_20)
 		}
 		value_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
-		return value_name !in ['', '_'] && t.ownership_for_in_type_needs_clone(flat.source_type_id(value_type))
+		return value_name !in ['', '_'] && t.ownership_for_in_type_needs_clone(value_type_source_id_20)
 	}
 	if !iter_type_shape.has(.array_type) && !t.is_fixed_array_type(iter_type_source_id) {
 		return false
@@ -3834,9 +3835,10 @@ fn (t &Transformer) refine_fixed_array_map_init_scalar_value_type(node flat.Node
 }
 
 fn (t &Transformer) fixed_array_literal_type_containing_map(id flat.NodeId) ?u32 {
-	value_type := flat.source_type_name(t.fixed_array_literal_type_from_syntax(id) or { return none })
-	if t.is_fixed_array_type(flat.source_type_id(value_type)) && t.fixed_array_type_contains_map(flat.source_type_id(value_type)) {
-		return flat.source_type_id(value_type)
+	value_type_source_id_23 := t.fixed_array_literal_type_from_syntax(id) or { return none }
+
+	if t.is_fixed_array_type(value_type_source_id_23) && t.fixed_array_type_contains_map(value_type_source_id_23) {
+		return value_type_source_id_23
 	}
 	return none
 }

@@ -4825,16 +4825,16 @@ fn (c &CallCollector) generic_type_base_is_known(base_id u32, cur_module string,
 fn (c &CallCollector) generic_alias_target(name_id u32, cur_module string, imports map[string]string) ?u32 {
 	name := flat.source_type_name(name_id)
 	if target_source_id := c.tc.type_aliases.type_id(name) {
-		target := flat.source_type_name(target_source_id)
+		target_source_id_8 := target_source_id
 
-		return flat.source_type_id(target)
+		return target_source_id_8
 	}
 	if !name.contains('.') {
 		qname := qualify_fn(cur_module, name)
 		if target_source_id := c.tc.type_aliases.type_id(qname) {
-			target := flat.source_type_name(target_source_id)
+			target_source_id_9 := target_source_id
 
-			return flat.source_type_id(target)
+			return target_source_id_9
 		}
 		return none
 	}
@@ -4842,9 +4842,9 @@ fn (c &CallCollector) generic_alias_target(name_id u32, cur_module string, impor
 	if module_name := imports[alias] {
 		resolved := module_name + name[alias.len..]
 		if target_source_id := c.tc.type_aliases.type_id(resolved) {
-			target := flat.source_type_name(target_source_id)
+			target_source_id_10 := target_source_id
 
-			return flat.source_type_id(target)
+			return target_source_id_10
 		}
 	}
 	return none
@@ -8207,9 +8207,9 @@ fn (c &CallCollector) top_level_receiver_type_name(base_id flat.NodeId, cur_modu
 			return scoped_type_source_id
 		}
 		if type_name_source_id := c.checked_local_type_name(base_id) {
-			type_name := flat.source_type_name(type_name_source_id)
+			type_name_source_id_23 := type_name_source_id
 
-			return flat.source_type_id(type_name)
+			return type_name_source_id_23
 		}
 	}
 	type_name := if base.kind == .call {
@@ -8280,9 +8280,9 @@ fn (c &CallCollector) top_level_expr_type_name(id flat.NodeId, cur_module string
 			return scoped_type_source_id
 		}
 		if type_name_source_id := c.checked_local_type_name(id) {
-			type_name := flat.source_type_name(type_name_source_id)
+			type_name_source_id_24 := type_name_source_id
 
-			return flat.source_type_id(type_name)
+			return type_name_source_id_24
 		}
 		if local_type_source_id := local_types.type_id(node.value) {
 			return local_type_source_id
@@ -8310,9 +8310,9 @@ fn (c &CallCollector) top_level_expr_type_name(id flat.NodeId, cur_module string
 	}
 	typ := c.node_type(id)
 	if type_name_source_id := markused_type_name(typ, unwrap_optional_result) {
-		type_name := flat.source_type_name(type_name_source_id)
+		type_name_source_id_25 := type_name_source_id
 
-		return flat.source_type_id(type_name)
+		return type_name_source_id_25
 	}
 	match node.kind {
 		.call {
@@ -8630,9 +8630,10 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 	if callee.kind == .selector && callee.value.len > 0 && callee.children_count > 0 {
 		base_id := c.a.child(callee, 0)
 		base := c.a.node(base_id)
-		type_name := flat.source_type_name(c.top_level_receiver_type_name(base_id, cur_module, imports, local_values, local_types))
+		type_name_source_id_26 := c.top_level_receiver_type_name(base_id, cur_module, imports, local_values, local_types)
+		type_name := flat.source_type_name(type_name_source_id_26)
 		if type_name.len > 0 {
-			if method_name := c.typed_receiver_method_name(flat.source_type_id(type_name), callee.value, cur_module) {
+			if method_name := c.typed_receiver_method_name(type_name_source_id_26, callee.value, cur_module) {
 				return c.fn_return_type_name(method_name, unwrap_optional_result)
 			}
 		}
@@ -8642,9 +8643,10 @@ fn (c &CallCollector) top_level_call_return_type_name(call_id flat.NodeId, cur_m
 	}
 	if callee.kind == .ident && callee.value.len > 0 {
 		name := qualify_fn(cur_module, callee.value)
-		type_name := flat.source_type_name(c.fn_return_type_name(name, unwrap_optional_result))
+		type_name_source_id_27 := c.fn_return_type_name(name, unwrap_optional_result)
+		type_name := flat.source_type_name(type_name_source_id_27)
 		if type_name.len > 0 {
-			return flat.source_type_id(type_name)
+			return type_name_source_id_27
 		}
 		return c.fn_return_type_name(callee.value, unwrap_optional_result)
 	}
@@ -9827,18 +9829,19 @@ fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string,
 			return scoped_type_source_id
 		}
 		if type_name_source_id := c.checked_local_type_name(base_id) {
-			type_name := flat.source_type_name(type_name_source_id)
+			type_name_source_id_29 := type_name_source_id
 
-			return flat.source_type_id(type_name)
+			return type_name_source_id_29
 		}
 	}
 	if base.kind == .struct_init && base.value.len > 0 {
 		return flat.source_type_id(markused_resolve_imported_type_name(base.value, imports))
 	}
 	if base.kind == .call {
-		type_name := flat.source_type_name(c.top_level_call_return_type_name(base_id, cur_module, imports, local_values, local_types, false))
+		type_name_source_id_30 := c.top_level_call_return_type_name(base_id, cur_module, imports, local_values, local_types, false)
+		type_name := flat.source_type_name(type_name_source_id_30)
 		if type_name.len > 0 {
-			return flat.source_type_id(type_name)
+			return type_name_source_id_30
 		}
 	}
 	// Resolve a method receiver reached through a field selector (`a.flags.set()`)
@@ -9862,9 +9865,10 @@ fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string,
 		}
 	}
 	base_type := c.node_type(base_id)
-	type_name := flat.source_type_name(resolve_type_name(base_type))
+	type_name_source_id_31 := resolve_type_name(base_type)
+	type_name := flat.source_type_name(type_name_source_id_31)
 	if type_name.len > 0 {
-		return flat.source_type_id(type_name)
+		return type_name_source_id_31
 	}
 	if base.kind == .index {
 		if elem_type_source_id := c.top_level_index_elem_type_name(base_id, cur_module, imports, local_values, local_types) {
@@ -10392,21 +10396,24 @@ fn (c &CallCollector) add_typed_receiver_method_name(method_name string, mut cal
 fn (c &CallCollector) value_type_name(name string, cur_module string, imports map[string]string) u32 {
 	for candidate in c.value_name_candidates(name, cur_module, imports) {
 		if typ := c.tc.file_scope.lookup(candidate) {
-			type_name := flat.source_type_name(resolve_type_name(typ))
+			type_name_source_id_32 := resolve_type_name(typ)
+			type_name := flat.source_type_name(type_name_source_id_32)
 			if type_name.len > 0 {
-				return flat.source_type_id(type_name)
+				return type_name_source_id_32
 			}
 		}
 		if typ := c.tc.const_types[candidate] {
-			type_name := flat.source_type_name(resolve_type_name(typ))
+			type_name_source_id_33 := resolve_type_name(typ)
+			type_name := flat.source_type_name(type_name_source_id_33)
 			if type_name.len > 0 {
-				return flat.source_type_id(type_name)
+				return type_name_source_id_33
 			}
 		}
 		if info := c.const_decls[candidate] {
-			type_name := flat.source_type_name(c.const_initializer_type_name(info))
+			type_name_source_id_34 := c.const_initializer_type_name(info)
+			type_name := flat.source_type_name(type_name_source_id_34)
 			if type_name.len > 0 {
-				return flat.source_type_id(type_name)
+				return type_name_source_id_34
 			}
 		}
 	}
@@ -10990,23 +10997,26 @@ fn markused_nested_type_name(t types.Type) string {
 fn markused_type_name(t types.Type, unwrap_optional_result bool) ?u32 {
 	if unwrap_optional_result {
 		if t is types.OptionType {
-			name := flat.source_type_name(resolve_type_name(t.base_type))
+			name_source_id_4 := resolve_type_name(t.base_type)
+			name := flat.source_type_name(name_source_id_4)
 			if name.len > 0 {
-				return flat.source_type_id(name)
+				return name_source_id_4
 			}
 		}
 		if t is types.ResultType {
-			name := flat.source_type_name(resolve_type_name(t.base_type))
+			name_source_id_5 := resolve_type_name(t.base_type)
+			name := flat.source_type_name(name_source_id_5)
 			if name.len > 0 {
-				return flat.source_type_id(name)
+				return name_source_id_5
 			}
 		}
 	}
-	name := flat.source_type_name(resolve_type_name(t))
+	name_source_id_6 := resolve_type_name(t)
+	name := flat.source_type_name(name_source_id_6)
 	if name.len == 0 {
 		return none
 	}
-	return flat.source_type_id(name)
+	return name_source_id_6
 }
 
 fn markused_type_name_or_empty(t types.Type, unwrap_optional_result bool) u32 {

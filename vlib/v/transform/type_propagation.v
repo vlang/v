@@ -512,16 +512,16 @@ fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?u32 {
 	}
 	if typ := t.tc.expr_type(id) {
 		if name_source_id := fn_value_type_name_from_type(typ) {
-			name := flat.source_type_name(name_source_id)
+			name_source_id_3 := name_source_id
 
-			return t.normalize_type_alias(flat.source_type_id(name))
+			return t.normalize_type_alias(name_source_id_3)
 		}
 	}
 	if node.kind == .ident {
 		if name_source_id := fn_value_type_name_from_type(t.tc.resolve_type(id)) {
-			name := flat.source_type_name(name_source_id)
+			name_source_id_4 := name_source_id
 
-			return t.normalize_type_alias(flat.source_type_id(name))
+			return t.normalize_type_alias(name_source_id_4)
 		}
 		fn_name := t.tc.resolved_fn_value_name(id) or { node.value }
 		params := t.tc.fn_param_types[fn_name] or { return none }
@@ -531,9 +531,9 @@ fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?u32 {
 	if node.kind == .lambda_expr {
 		typ := t.tc.resolve_type(id)
 		if name_source_id := fn_value_type_name_from_type(typ) {
-			name := flat.source_type_name(name_source_id)
+			name_source_id_5 := name_source_id
 
-			return t.normalize_type_alias(flat.source_type_id(name))
+			return t.normalize_type_alias(name_source_id_5)
 		}
 	}
 	return none

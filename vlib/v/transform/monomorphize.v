@@ -11567,9 +11567,9 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args_ids []u32, i
 				if variants_source_ids := t.sum_types.type_ids(resolved) {
 					mut ids := []flat.NodeId{cap: variants_source_ids.len}
 					for variant_source_id in variants_source_ids {
-						variant := flat.source_type_name(variant_source_id)
+						variant_source_id_3 := variant_source_id
 
-						ids << t.make_int_literal(t.comptime_field_type_id(flat.source_type_id(variant), t.cur_module))
+						ids << t.make_int_literal(t.comptime_field_type_id(variant_source_id_3, t.cur_module))
 					}
 					return t.make_array_literal_typed(ids, flat.source_type_id('[]int'))
 				}
