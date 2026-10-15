@@ -327,7 +327,7 @@ fn (mut g Parser) parse_comptime_match_statement() !bool {
 			branch_matches = !selected
 		} else {
 			for {
-				target_type := g.parse_type()!
+				target_type := (g.parse_type()!)
 				branch_matches = branch_matches || g.underlying_alias_type(subject_type) == g.underlying_alias_type(target_type)
 				if g.tok != .comma {
 					break
@@ -609,7 +609,7 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 							matches := if type_c.starts_with('?') {
 								field.option_value_type_text() == type_c[1..]
 							} else if type_c.starts_with('@') {
-								g.comptime_type_matches(field.typ_text(), type_c[1..], true)
+								g.comptime_type_matches(field.typ, flat.source_type_id(type_c[1..]), true)
 							} else {
 								field.typ_text().trim_right('*') == type_c
 							}
@@ -878,8 +878,8 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		}
 		expected := g.lit.int()
 		g.next()
-		resolved := g.comptime_named_type(name) + '*'.repeat(subject_pointer_depth)
-		actual := resolved.len - resolved.trim_right('*').len
+		resolved := g.comptime_named_type(name)
+		actual := flat.source_type_name(resolved).len - flat.source_type_name(resolved).trim_right('*').len + subject_pointer_depth
 		return match operator {
 			.eq { actual == expected }
 			.ne { actual != expected }
@@ -894,28 +894,31 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		operator := g.tok
 		g.next()
 		mut target_is_group := false
-		mut target_type := ''
+		mut target_type := u32(0)
 		if g.tok == .dollar {
 			target_is_group = true
 			g.next()
 			if g.tok != .name && !g.tok.is_keyword() {
 				return g.unsupported('compile-time type group `${g.token_source()}`')
 			}
-			target_type = g.lit
+			target_type = flat.source_type_id(g.lit)
 			g.next()
 		} else {
-			target_type = g.parse_type()!
+			target_type = (g.parse_type()!)
 		}
-		mut left_type := g.comptime_named_type(name) + '*'.repeat(subject_pointer_depth)
+		mut left_type := g.comptime_named_type(name)
+		if subject_pointer_depth > 0 {
+			left_type = flat.source_type_id(flat.source_type_name(left_type) + '*'.repeat(subject_pointer_depth))
+		}
 		if unaliased {
 			left_type = g.underlying_alias_type(left_type)
 		}
 		if pointee_type {
-			left_type = if left_type.ends_with('*') {
-				left_type[..left_type.len - 1]
+			left_type = (if flat.source_type_name(left_type).ends_with('*') {
+				flat.source_type_id(flat.source_type_name(left_type)[..flat.source_type_name(left_type).len - 1])
 			} else {
-				'void'
-			}
+				flat.source_type_void
+			})
 		}
 		matches := g.comptime_type_matches(left_type, target_type, target_is_group)
 		return if operator == .key_is { matches } else { !matches }
@@ -958,60 +961,54 @@ fn (g &Parser) comptime_pseudo_string(name string) ?string {
 	}
 }
 
-fn (g &Parser) comptime_named_type(name string) string {
-	if local := g.locals[name] {
-		return local.typ_text()
-	}
-	if primitive := fastc_primitive_c_type(name) {
-		return primitive
-	}
+fn (g &Parser) comptime_named_type(name string) u32 {
+	if local := g.locals[name] { return local.typ }
+	if primitive := fastc_primitive_c_type(name) { return flat.source_type_id(primitive) }
 	if key := g.resolve_declared_type_key(name) {
-		return fastc_c_declared_type_name(key)
+		return flat.source_type_id(fastc_c_declared_type_name(key))
 	}
-	if name.len <= 3 && name[0].is_capital() {
-		return 'voidptr'
-	}
-	return name
+	if name.len <= 3 && name[0].is_capital() { return flat.source_type_voidptr }
+	return flat.source_type_id(name)
 }
 
-fn (g &Parser) comptime_type_matches(left_type string, target_type string, target_is_group bool) bool {
+fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_group bool) bool {
 	left := g.underlying_alias_type(left_type)
 	if !target_is_group {
 		return left == g.underlying_alias_type(target_type)
 	}
 	left_key := g.semantic_type_key(left)
 	original_key := g.semantic_type_key(left_type)
-	return match target_type {
+	return match flat.source_type_name(target_type) {
 		'array' {
-			left.starts_with('Array_') || left == 'array'
+			flat.source_type_name(left).starts_with('Array_') || flat.source_type_name(left) == 'array'
 		}
 		'array_fixed' {
-			left.starts_with('FixedArray_')
+			flat.source_type_name(left).starts_with('FixedArray_')
 		}
 		'map' {
-			left.starts_with('Map_') || left == 'map'
+			flat.source_type_name(left).starts_with('Map_') || flat.source_type_name(left) == 'map'
 		}
 		'string' {
-			left == 'string'
+			left == flat.source_type_string
 		}
 		'int' {
-			left in ['i8', 'i16', 'i32', 'i64', 'int', 'isize', 'u8', 'u16', 'u32', 'u64', 'uint',
-				'usize']
+			flat.source_type_name(left) in ['i8', 'i16', 'i32', 'i64', 'int', 'isize', 'u8', 'u16',
+				'u32', 'u64', 'uint', 'usize']
 		}
 		'float' {
-			left in ['f32', 'f64']
+			left in [flat.source_type_f32, flat.source_type_f64]
 		}
 		'struct' {
-			left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_
+			flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .struct_
 		}
 		'enum' {
-			left_key in g.declared_kinds && g.declared_kinds[left_key] == .enum_
+			flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .enum_
 		}
 		'interface' {
-			left_key in g.declared_kinds && g.declared_kinds[left_key] == .interface_
+			flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .interface_
 		}
 		'alias' {
-			original_key in g.declared_kinds && g.declared_kinds[original_key] == .alias_
+			flat.source_type_name(original_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(original_key)] == .alias_
 		}
 		else {
 			false
@@ -1072,9 +1069,9 @@ fn (mut g Parser) read_comptime_d_expression() !string {
 	g.next() // the define name (only meaningful with `-d name=value`, not transported)
 	g.expect(.comma)!
 	default_value := g.read_expression([token.Token.rpar])!
-	value_type := g.last_expression_type_text()
+	value_type := g.last_expression_type
 	g.expect(.rpar)!
-	g.last_expression_type = flat.source_type_id(value_type)
+	g.last_expression_type = value_type
 	g.last_expression = []FastcExpressionToken{}
 	return default_value
 }
@@ -1267,15 +1264,15 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	g.expect(.lcbr)!
 	if condition {
 		value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
-		value_type := g.last_expression_type_text()
-		option_value_type := if value_type in ['Option', '__v_result'] {
+		value_type := g.last_expression_type
+		option_value_type := if flat.source_type_name(value_type) in ['Option', '__v_result'] {
 			if g.last_expression.len > 0 {
 				g.option_value_type_for_expression(g.last_expression)
 			} else {
-				g.last_option_value_type_text()
+				g.last_option_value_type
 			}
 		} else {
-			''
+			u32(0)
 		}
 		g.skip_semicolons()
 		g.expect(.rcbr)!
@@ -1289,8 +1286,8 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 				g.skip_open_block()!
 			}
 		}
-		g.last_expression_type = flat.source_type_id(value_type)
-		g.last_option_value_type = flat.source_type_id(option_value_type)
+		g.last_expression_type = value_type
+		g.last_option_value_type = option_value_type
 		g.last_expression = []FastcExpressionToken{}
 		return value
 	}
@@ -1305,20 +1302,20 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	}
 	g.expect(.lcbr)!
 	value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
-	value_type := g.last_expression_type_text()
-	option_value_type := if value_type in ['Option', '__v_result'] {
+	value_type := g.last_expression_type
+	option_value_type := if flat.source_type_name(value_type) in ['Option', '__v_result'] {
 		if g.last_expression.len > 0 {
 			g.option_value_type_for_expression(g.last_expression)
 		} else {
-			g.last_option_value_type_text()
+			g.last_option_value_type
 		}
 	} else {
-		''
+		u32(0)
 	}
 	g.skip_semicolons()
 	g.expect(.rcbr)!
-	g.last_expression_type = flat.source_type_id(value_type)
-	g.last_option_value_type = flat.source_type_id(option_value_type)
+	g.last_expression_type = value_type
+	g.last_option_value_type = option_value_type
 	g.last_expression = []FastcExpressionToken{}
 	return value
 }

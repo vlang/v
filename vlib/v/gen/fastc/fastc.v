@@ -910,15 +910,15 @@ fn fastc_multi_return_literal(packed_values []string) string {
 fn (g &Parser) multi_return_component(value string, index int) string {
 	mut expression := value
 	if index < g.return_types.ids.len {
-		declared_type := g.return_types.at(index)
+		declared_type := g.return_types.ids[index]
 		if fastc_is_integer_type(g.underlying_alias_type(declared_type)) {
-			expression = '((${fastc_output_c_type(declared_type)})(${value}))'
+			expression = '((${fastc_output_c_type(flat.source_type_name(declared_type))})(${value}))'
 		}
 	}
 	return 'V_FASTC_MULTI_VALUE((${expression}))'
 }
 
-fn fastc_string_types_equal(left []string, right []string) bool {
+fn fastc_type_ids_equal(left []u32, right []u32) bool {
 	if left.len != right.len {
 		return false
 	}
@@ -1532,10 +1532,10 @@ mut:
 	type_memo map[i64]u32
 	// Method keys memoized per receiver type and method name; the key only
 	// depends on the file-level tables, so it is reset with the other memos.
-	method_key_memo map[string]map[string]string
+	method_key_memo map[u32]map[string]string
 	// Struct field lookups memoized per receiver type and field name (a field
 	// with an empty name records a miss); reset with the other memos.
-	field_memo map[string]map[string]FastcStructField
+	field_memo map[u32]map[string]FastcStructField
 	// The render and inference passes commonly ask for the same field several
 	// times in succession. Keep that entry outside the nested maps.
 	last_field_receiver u32
@@ -1745,8 +1745,7 @@ fn fastc_file_gen_result(outputs []FastcFileGenOutput) FastcFileGenResult {
 			composite_types[name] = true
 		}
 		for name, array_type_id in output.fixed_array_types.ids {
-			array_type := flat.source_type_name(array_type_id)
-			fixed_array_types.set(name, array_type)
+			fixed_array_types.set_id(name, array_type_id)
 		}
 	}
 	return FastcFileGenResult{
@@ -1807,8 +1806,8 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		has_c_functions:           ctx.has_c_functions
 		comparison_memo:           map[i64]FastcRenderedExpression{}
 		type_memo:                 map[i64]u32{}
-		method_key_memo:           map[string]map[string]string{}
-		field_memo:                map[string]map[string]FastcStructField{}
+		method_key_memo:           map[u32]map[string]string{}
+		field_memo:                map[u32]map[string]FastcStructField{}
 		member_smartcasts:         map[string]FastcMemberSmartcast{}
 		spawn_typedefs:            map[string]string{}
 		spawn_helpers:             map[string]string{}
@@ -2163,8 +2162,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut body_directive_lines := []FastcCDirectiveLine{}
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
 	for name, array_type_id in global_output.fixed_array_types.ids {
-		array_type := flat.source_type_name(array_type_id)
-		fixed_array_types.set(name, array_type)
+		fixed_array_types.set_id(name, array_type_id)
 	}
 	mut entry_has_main := false
 	// Self-host builds drop the functions that nothing reachable refers to:
@@ -2265,8 +2263,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		c_flags << output.c_flags
 	}
 	for name, array_type_id in generation.fixed_array_types.ids {
-		array_type := flat.source_type_name(array_type_id)
-		fixed_array_types.set(name, array_type)
+		fixed_array_types.set_id(name, array_type_id)
 	}
 	for name, _ in generation.composite_types {
 		composite_types[name] = true
@@ -2329,19 +2326,18 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		fastc_collect_referenced_fixed_array_types(body_piece, mut fixed_array_types)
 	}
 	for array_name in fixed_array_types.keys() {
-		array_type := fixed_array_types.value(array_name)
+		array_type := fixed_array_types.value_id(array_name)
 		fastc_register_fixed_array_type(array_type, mut fixed_array_types)
 	}
 	mut scalar_fixed_array_types := flat.TypeTextBindings{}
 	mut aggregate_fixed_array_types := flat.TypeTextBindings{}
 	mut callback_fixed_array_types := flat.TypeTextBindings{}
 	for name, typ_id in fixed_array_types.ids {
-		typ := flat.source_type_name(typ_id)
-		element_type := fastc_fixed_array_element_type(typ) or { continue }
-		if element_type.contains('__vf_fn_type_') {
+		element_type := fastc_fixed_array_element_type(typ_id) or { continue }
+		if flat.source_type_name(element_type).contains('__vf_fn_type_') {
 			callback_fixed_array_types.set_id(name, typ_id)
-		} else if fastc_primitive_c_type(element_type) != none
-			&& element_type !in ['string', 'array', 'map', 'Option', '__v_result'] {
+		} else if fastc_primitive_c_type(flat.source_type_name(element_type)) != none
+			&& flat.source_type_name(element_type) !in ['string', 'array', 'map', 'Option', '__v_result'] {
 			scalar_fixed_array_types.set_id(name, typ_id)
 		} else {
 			aggregate_fixed_array_types.set_id(name, typ_id)
@@ -3643,11 +3639,11 @@ fn fastc_synthesized_main(selfhost bool, has_startup_inits bool, has_cleanup_hoo
 }
 
 fn fastc_interface_method_signatures_match(interface_signature FastcFunctionSignature, candidate_signature FastcFunctionSignature) bool {
-	if candidate_signature.return_type_text() != interface_signature.return_type_text() || !fastc_string_types_equal(candidate_signature.return_types_text(), interface_signature.return_types_text()) || candidate_signature.option_type_text() != interface_signature.option_type_text() || candidate_signature.parameter_types.ids.len != interface_signature.parameter_types.ids.len {
+	if candidate_signature.return_type != interface_signature.return_type || !fastc_type_ids_equal(candidate_signature.return_types.ids.clone(), interface_signature.return_types.ids.clone()) || candidate_signature.option_type != interface_signature.option_type || candidate_signature.parameter_types.ids.len != interface_signature.parameter_types.ids.len {
 		return false
 	}
 	for i in 0 .. interface_signature.parameter_types.ids.len {
-		if i > 0 && candidate_signature.parameter_types.at(i) != interface_signature.parameter_types.at(i) {
+		if i > 0 && candidate_signature.parameter_types.ids[i] != interface_signature.parameter_types.ids[i] {
 			return false
 		}
 		interface_parameter_is_mut := i < interface_signature.parameter_mutability.len && interface_signature.parameter_mutability[i]
@@ -3684,12 +3680,12 @@ fn fastc_promote_embedded_interface_methods(embed_embedders []u32, embed_embedde
 					continue
 				}
 				source := functions[method_key]
-				mut promoted_params := source.parameter_types_text().clone()
+				mut promoted_params := source.parameter_types.ids.clone()
 				if promoted_params.len > 0 {
-					promoted_params[0] = embedder_type
+					promoted_params[0] = flat.source_type_id(embedder_type)
 				}
 				functions[promoted_key] = FastcFunctionSignature{
-					parameter_types:          flat.TypeTextList.from_names(promoted_params)
+					parameter_types:          flat.TypeTextList{ ids: promoted_params.clone() }
 					parameter_mutability:     source.parameter_mutability.clone()
 					return_type:              source.return_type
 					return_types:             source.return_types.clone()

@@ -2,6 +2,7 @@ module fastc
 
 import os
 import v.cmdexec
+import v.flat
 import v.pref
 import v.scanner
 import v.token
@@ -132,12 +133,13 @@ fn test_fastc_compound_fixed_array_dimension_scanner_keeps_type_boundaries() {
 		mut scan := scanner.new_scanner(prefs, .normal)
 		scan.init(file, source)
 		first := scan.scan()
-		typ, next := fastc_scan_type(mut scan, first, 'dimension', 'main', map[string]string{},
+		type_id, next := fastc_scan_type(mut scan, first, 'dimension', 'main', map[string]string{},
 			map[string]bool{}, false) or { panic(err) }
 		assert next in [.eof, .semicolon]
 		if source == '[]u64' {
-			assert typ == 'Array_u64'
+			assert type_id == flat.source_type_id('Array_u64')
 		} else {
+			typ := flat.source_type_name(type_id)
 			assert typ.starts_with('FixedArray_')
 			assert typ.bytes().all(fastc_identifier_byte(it))
 		}

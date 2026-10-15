@@ -1066,7 +1066,7 @@ fn (mut tc TypeChecker) recursive_str_eval_struct_init(id flat.NodeId, node flat
 		}
 		return aggregate
 	}
-	fields := tc.struct_fields_for_init(target_struct.name())
+	fields := tc.struct_fields_for_init(target_struct.source_type_id())
 	for i in 0 .. node.children_count {
 		field := tc.a.child_node(&node, i)
 		mut field_binding := RecursiveStrBinding{}
@@ -2130,13 +2130,12 @@ fn (tc &TypeChecker) recursive_str_apply_match_branch_progress(subject_id flat.N
 	for i in 0 .. condition_count {
 		condition := tc.a.child_node(&branch, i)
 		pattern_source_id := tc.match_type_pattern(*condition) or { return }
-		pattern := flat.source_type_name(pattern_source_id)
 		smartcast_text := if subject_type is SumType {
 			flat.source_type_name(tc.sum_variant_type_for_pattern(subject_type.source_type_id(), pattern_source_id) or { return })
 		} else if is_ierror_type(subject_type) {
-			tc.resolve_ierror_match_pattern(pattern) or { return }
+			flat.source_type_name(tc.resolve_ierror_match_pattern(pattern_source_id) or { return })
 		} else if subject_type is Interface {
-			tc.resolve_interface_match_pattern(pattern) or { return }
+			flat.source_type_name(tc.resolve_interface_match_pattern(pattern_source_id) or { return })
 		} else {
 			return
 		}
@@ -3243,7 +3242,7 @@ fn (tc &TypeChecker) recursive_str_struct_binding_for_expr(id flat.NodeId, node 
 		typ_name: target_type.source_type_id()
 	}
 	target_struct := struct_type_from_type(target_type) or { return aggregate }
-	fields := tc.struct_fields_for_init(target_struct.name())
+	fields := tc.struct_fields_for_init(target_struct.source_type_id())
 	for i in 0 .. node.children_count {
 		field := tc.a.child_node(&node, i)
 		if field.kind != .field_init || field.children_count != 1 {

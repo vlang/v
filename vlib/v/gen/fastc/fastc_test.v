@@ -7071,11 +7071,11 @@ fn main() {
 		assert c64.contains('sizeof(${key_type}), sizeof(${int64_type}), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c64
 	}
 
-	hash_fn, eq_fn, clone_fn, _ := fastc_map_runtime_functions('int*', 32)
+	hash_fn, eq_fn, clone_fn, _ := fastc_map_runtime_functions(flat.source_type_id('int*'), 32)
 	assert hash_fn == 'builtin__map_hash_int_4'
 	assert eq_fn == 'builtin__map_eq_int_4'
 	assert clone_fn == 'builtin__map_clone_int_4'
-	i64_hash_fn, _, _, _ := fastc_map_runtime_functions('i64', 32)
+	i64_hash_fn, _, _, _ := fastc_map_runtime_functions(flat.source_type_id('i64'), 32)
 	assert i64_hash_fn == 'builtin__map_hash_int_8'
 }
 
@@ -12522,7 +12522,7 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 				body_depth--
 			}
 		}
-		assert g.parse_generic_body_or_stub('voidptr', out_checkpoint, 0, body_end, false)
+		assert g.parse_generic_body_or_stub(flat.source_type_id('voidptr'), out_checkpoint, 0, body_end, false)
 		assert g.local_scope_depth == 0
 		assert g.local_scope_changes.len == 0
 		assert 'local' !in g.locals
@@ -13690,8 +13690,8 @@ fn main() {
 	assert c_source.contains('Array_int util__Wrapper_wrap_method_mono_int('), c_source
 	assert c_source.contains('__typeof__((util__wrap_mono_int(1))) values'), c_source
 	assert !c_source.contains('Array_voidptr values'), c_source
-	assert fastc_specialized_generic_result_type('Map_string_Array_voidptr', 'int') == 'Map_string_Array_int'
-	assert fastc_specialized_generic_result_type('voidptr*', 'int') == 'int*'
+	assert fastc_specialized_generic_result_type(flat.source_type_id('Map_string_Array_voidptr'), flat.source_type_int) == flat.source_type_id('Map_string_Array_int')
+	assert fastc_specialized_generic_result_type(flat.source_type_id('voidptr*'), flat.source_type_int) == flat.source_type_id('int*')
 }
 
 fn test_selfhost_on_demand_generic_infers_composite_parameter_type() {
@@ -13735,8 +13735,8 @@ fn main() {
 	assert c_source.contains('int util__lookup_mono_int(Map_string_int items)'), c_source
 	assert c_source.contains('util__head_mono_int(items)'), c_source
 	assert c_source.contains('util__lookup_mono_int(mapped)'), c_source
-	assert fastc_infer_generic_type_from_parameter('Array_voidptr', 'Array_int') == 'int'
-	assert fastc_infer_generic_type_from_parameter('Map_string_Array_voidptr', 'Map_string_Array_example__Item_ptr') == 'example__Item*'
+	assert fastc_infer_generic_type_from_parameter(flat.source_type_id('Array_voidptr'), flat.source_type_id('Array_int')) == flat.source_type_int
+	assert fastc_infer_generic_type_from_parameter(flat.source_type_id('Map_string_Array_voidptr'), flat.source_type_id('Map_string_Array_example__Item_ptr')) == flat.source_type_id('example__Item*')
 }
 
 fn test_selfhost_on_demand_generic_does_not_partially_infer_multiple_type_parameters() {

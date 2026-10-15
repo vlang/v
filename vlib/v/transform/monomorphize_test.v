@@ -286,7 +286,7 @@ fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
 	tc.type_alias_generic_params['Values'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	t.materialize_generic_struct_spec('Box[UserId]', GenericStructDecl{
+	t.materialize_generic_struct_spec(flat.source_type_id('Box[UserId]'), GenericStructDecl{
 		id:     box_id
 		node:   box_decl
 		module: 'main'
@@ -325,7 +325,7 @@ fn test_materialized_imported_generic_struct_preserves_locked_main_generic_argum
 	mut tc := types.TypeChecker.new(&a)
 	tc.struct_generic_params['StructType'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.materialize_generic_struct_spec('json2.StructKeyDecodeResult[main.StructType[main.string]]', GenericStructDecl{
+	t.materialize_generic_struct_spec(flat.source_type_id('json2.StructKeyDecodeResult[main.StructType[main.string]]'), GenericStructDecl{
 		id:     result_id
 		node:   result_decl
 		module: 'json2'
@@ -359,9 +359,9 @@ fn test_flattened_generic_struct_types_materialize_from_recorded_args() {
 			key:    'arc.Arc'
 		}
 	}
-	mut specs := flat.TypeTextBindings{}
+	mut specs := map[u32]u32{}
 	t.collect_generic_struct_spec_from_type(flat.source_type_id('arc.Arc_ResourceSum'), 'main', '', decls, mut specs)
-	assert specs.value('arc.Arc[ResourceSum]') == 'arc.Arc'
+	assert specs[flat.source_type_id('arc.Arc[ResourceSum]')] == flat.source_type_id('arc.Arc')
 }
 
 fn test_flattened_generic_struct_arg_canonicalizes_to_source_application() {
@@ -499,31 +499,31 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	tc.struct_generic_params['callee.MiddlewareOptions'] = ['T']
 
 	// A bare program type substituted into a specialization is locked to `main.`.
-	assert t.lock_colliding_main_generic_type_text('Context', 'callee') == 'main.Context'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('Context'), 'callee')) == 'main.Context'
 	// A qualified generic base with a bare program argument (`other.Box[Context]`) must
 	// still lock the nested `Context`, not return early on the qualified spelling.
-	assert t.lock_colliding_main_generic_type_text('other.Box[Context]', 'callee') == 'other.Box[main.Context]'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('other.Box[Context]'), 'callee')) == 'other.Box[main.Context]'
 	// The same nested program type behind a map / fixed array is locked too.
-	assert t.lock_colliding_main_generic_type_text('map[string]Context', 'callee') == 'map[string]main.Context'
-	assert t.lock_colliding_main_generic_type_text('[3]Context', 'callee') == '[3]main.Context'
-	assert t.lock_colliding_main_generic_type_text('(Context, []Context)', 'callee') == '(main.Context, []main.Context)'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('map[string]Context'), 'callee')) == 'map[string]main.Context'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('[3]Context'), 'callee')) == '[3]main.Context'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('(Context, []Context)'), 'callee')) == '(main.Context, []main.Context)'
 	// A simple qualified type has no lockable bare component and is returned verbatim.
-	assert t.lock_colliding_main_generic_type_text('veb.Context', 'callee') == 'veb.Context'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('veb.Context'), 'callee')) == 'veb.Context'
 	// An already-qualified argument keeps its exact spelling (no rewrite / name desync).
-	assert t.lock_colliding_main_generic_type_text('other.Box[user.LocalWriter]', 'callee') == 'other.Box[user.LocalWriter]'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('other.Box[user.LocalWriter]'), 'callee')) == 'other.Box[user.LocalWriter]'
 	// No lock target: the callee module does not declare `Other`, so nothing changes.
-	assert t.lock_colliding_main_generic_type_text('other.Box[Other]', 'callee') == 'other.Box[Other]'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('other.Box[Other]'), 'callee')) == 'other.Box[Other]'
 	// A module-local generic base must stay local even when one of its concrete arguments
 	// is a colliding main type. `callee.MiddlewareOptions` is not `main.MiddlewareOptions`.
-	assert t.lock_colliding_main_generic_type_text('MiddlewareOptions[Context]', 'callee') == 'MiddlewareOptions[main.Context]'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('MiddlewareOptions[Context]'), 'callee')) == 'MiddlewareOptions[main.Context]'
 	// When the generic base itself is an active caller type, caller provenance wins over the
 	// otherwise ambiguous pair of main/callee generic declarations.
 	t.structs['Box'] = StructInfo{}
 	t.structs['callee.Box'] = StructInfo{}
 	tc.struct_generic_params['Box'] = ['T']
 	tc.struct_generic_params['callee.Box'] = ['T']
-	t.active_specialization_main_types['Box'] = true
-	assert t.lock_colliding_main_generic_type_text('Box[string]', 'callee') == 'main.Box[string]'
+	t.active_specialization_main_types[flat.source_type_id('Box')] = true
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('Box[string]'), 'callee')) == 'main.Box[string]'
 	// A main type that is active in the specialization is locked even without a
 	// callee homonym, since a different imported module can own the same short name.
 	t.structs['Event'] = StructInfo{}
@@ -531,29 +531,29 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	t.structs['string'] = StructInfo{
 		module: 'builtin'
 	}
-	t.active_specialization_main_types['Event'] = true
-	assert t.lock_colliding_main_generic_type_text('Event', 'callee') == 'main.Event'
-	t.active_specialization_main_types['Context'] = true
-	assert t.lock_colliding_main_substitution_type_text('fn (mut T) bool', 'fn (mut Context) bool', 'callee', [
+	t.active_specialization_main_types[flat.source_type_id('Event')] = true
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('Event'), 'callee')) == 'main.Event'
+	t.active_specialization_main_types[flat.source_type_id('Context')] = true
+	assert flat.source_type_name(t.lock_colliding_main_substitution_type_text(flat.source_type_id('fn (mut T) bool'), flat.source_type_id('fn (mut Context) bool'), 'callee', [
 		'T',
-	]) == 'fn (mut main.Context) bool'
+	])) == 'fn (mut main.Context) bool'
 	t.structs['Unique'] = StructInfo{}
-	assert t.lock_colliding_main_generic_type_text('Unique', 'callee') == 'Unique'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('Unique'), 'callee')) == 'Unique'
 	assert flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id('[]main.Event'))) == '[]Event'
 	assert flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id('main.Box[main.Event]'))) == 'Box[Event]'
 	assert flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id('[main.string]Box'))) == 'Box[string]'
 	assert flat.source_type_name(t.canonical_generic_specialization_arg(flat.source_type_id('u8_3'))) == '[3]u8'
 	assert strip_main_type_locks('domain.Type[main.Event]') == 'domain.Type[Event]'
 	assert t.specialization_main_type_closure(flat.TypeTextList.from_names(['map[string]Event']).ids) == {
-		'Event': true
+		flat.source_type_id('Event'): true
 	}
 	tc.type_aliases.set_id('AliasContext', flat.source_type_id('Context'))
 	assert t.specialization_main_type_closure(flat.TypeTextList.from_names(['AliasContext']).ids) == {
-		'AliasContext': true
-		'Context':      true
+		flat.source_type_id('AliasContext'): true
+		flat.source_type_id('Context'):      true
 	}
-	t.active_specialization_main_types['AliasContext'] = true
-	assert t.lock_colliding_main_generic_type_text('AliasContext', 'callee') == 'main.AliasContext'
+	t.active_specialization_main_types[flat.source_type_id('AliasContext')] = true
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('AliasContext'), 'callee')) == 'main.AliasContext'
 }
 
 fn test_lock_colliding_main_generic_type_text_locks_program_aliases() {
@@ -570,17 +570,17 @@ fn test_lock_colliding_main_generic_type_text_locks_program_aliases() {
 	tc.type_alias_modules['Ids'] = 'main'
 	// A program alias target is resolved where the alias is parsed, so an alias of a
 	// colliding program type is locked even when it is not an active specialization type.
-	assert t.lock_colliding_main_generic_type_text('Cells', 'callee') == 'main.Cells'
-	assert t.lock_colliding_main_generic_type_text('map[string]Cells', 'callee') == 'map[string]main.Cells'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('Cells'), 'callee')) == 'main.Cells'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('map[string]Cells'), 'callee')) == 'map[string]main.Cells'
 	// Without a colliding name or target the alias keeps its bare spelling.
-	assert t.lock_colliding_main_generic_type_text('Ids', 'callee') == 'Ids'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('Ids'), 'callee')) == 'Ids'
 	tc.type_aliases.set_id('callee.Ids', flat.source_type_id('[]u8'))
 	tc.type_alias_modules['callee.Ids'] = 'callee'
-	assert t.lock_colliding_main_generic_type_text('Ids', 'callee') == 'main.Ids'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('Ids'), 'callee')) == 'main.Ids'
 	// Module aliases are already qualified.
 	tc.type_aliases.set_id('other.Cells', flat.source_type_id('[]other.Cell'))
 	tc.type_alias_modules['other.Cells'] = 'other'
-	assert t.lock_colliding_main_generic_type_text('other.Cells', 'callee') == 'other.Cells'
+	assert flat.source_type_name(t.lock_colliding_main_generic_type_text(flat.source_type_id('other.Cells'), 'callee')) == 'other.Cells'
 }
 
 fn test_nested_generic_components_keep_caller_type_provenance() {
@@ -599,9 +599,9 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 	}
 	for typ in ['[2]Any', 'map[string]Any', 'map[Any]int', '(int, [2]Any)',
 		'other.Box[map[string][2]Any]', 'fn (map[string]Any) [2]Any', 'thread [2]Any'] {
-		assert t.current_specialization_has_generic_arg(typ), typ
+		assert t.current_specialization_has_generic_arg(flat.source_type_id(typ)), typ
 		assert t.specialization_main_type_closure(flat.TypeTextList.from_names([typ]).ids) == {
-			'Any': true
+			flat.source_type_id('Any'): true
 		}, typ
 	}
 	for typ in ['[2]Any', 'map[string]Any', 'map[Any]int', '(int, [2]Any)'] {
@@ -621,7 +621,7 @@ fn test_nested_generic_components_keep_caller_type_provenance() {
 	assert flat.source_type_name(t.generic_arg_for_call_and_decl_module(flat.source_type_id('Box[[2]Any]'), 'callee', 'other')) == 'callee.Box[[2]Any]'
 	for typ in ['[2]callee.Any', 'map[string]callee.Any', '(int, callee.Any)', 'other.Box[callee.Any]',
 		'map[string]int', '[2]int'] {
-		assert !t.current_specialization_has_generic_arg(typ), typ
+		assert !t.current_specialization_has_generic_arg(flat.source_type_id(typ)), typ
 		assert !t.substituted_type_belongs_to_main_generic(flat.source_type_id(typ)), typ
 	}
 	for typ in ['?[]string', '?map[string]string', 'fn (?[]string) string'] {
@@ -644,22 +644,22 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 		name:   flat.source_type_id('Arc')
 		module: 'arc'
 	}
-	assert t.lock_colliding_main_substitution_type_text('Arc[T]', 'Arc[Resource]', 'arc', [
+	assert flat.source_type_name(t.lock_colliding_main_substitution_type_text(flat.source_type_id('Arc[T]'), flat.source_type_id('Arc[Resource]'), 'arc', [
 		'T',
-	]) == 'Arc[Resource]'
-	assert t.lock_colliding_main_substitution_type_text('([]T, []T)', '([]int, []int)', 'arrays', [
+	])) == 'Arc[Resource]'
+	assert flat.source_type_name(t.lock_colliding_main_substitution_type_text(flat.source_type_id('([]T, []T)'), flat.source_type_id('([]int, []int)'), 'arrays', [
 		'T',
-	]) == '([]int, []int)'
+	])) == '([]int, []int)'
 	t.structs['Context'] = StructInfo{}
 	t.structs['arc.Context'] = StructInfo{}
-	t.active_specialization_main_types['Context'] = true
-	assert t.lock_colliding_main_substitution_type_text('other.Box[map[other.Key]T]', 'other.Box[map[other.Key]Context]', 'arc', [
+	t.active_specialization_main_types[flat.source_type_id('Context')] = true
+	assert flat.source_type_name(t.lock_colliding_main_substitution_type_text(flat.source_type_id('other.Box[map[other.Key]T]'), flat.source_type_id('other.Box[map[other.Key]Context]'), 'arc', [
 		'T',
-	]) == 'other.Box[map[other.Key]main.Context]'
+	])) == 'other.Box[map[other.Key]main.Context]'
 	// A locked argument makes the spelling qualified, so the decl-module base must be too.
-	assert t.lock_colliding_main_substitution_type_text('&Arc[T]', '&Arc[Context]', 'arc', [
+	assert flat.source_type_name(t.lock_colliding_main_substitution_type_text(flat.source_type_id('&Arc[T]'), flat.source_type_id('&Arc[Context]'), 'arc', [
 		'T',
-	]) == '&arc.Arc[main.Context]'
+	])) == '&arc.Arc[main.Context]'
 }
 
 fn test_collision_locked_signature_keeps_interface_and_alias_declaration_modules() {
@@ -668,7 +668,7 @@ fn test_collision_locked_signature_keeps_interface_and_alias_declaration_modules
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.structs['Item'] = StructInfo{}
 	t.structs['callee.Item'] = StructInfo{}
-	t.active_specialization_main_types['Item'] = true
+	t.active_specialization_main_types[flat.source_type_id('Item')] = true
 	tc.interface_names['callee.Reader'] = true
 	tc.interface_generic_params['callee.Reader'] = ['T']
 	tc.type_aliases.set_id('callee.Mapper', flat.source_type_id('fn (T) int'))
@@ -689,19 +689,19 @@ fn test_generic_fn_type_param_mode_payload_preserves_mutability() {
 	assert generic_fn_type_param_mode_payload('mut &Dog') == 'mut &Dog'
 	assert generic_fn_type_param_mode_payload('item Item') == 'Item'
 	assert subst_generic_fn_type_param_text('mut it T', flat.TypeTextList.from_names(['&Dog']).ids, ['T']) == 'mut it &Dog'
-	assert substitute_generic_type_text_with_params('fn (mut it T)', flat.TypeTextList.from_names(['&Dog']).ids, ['T']) == 'fn(mut it &Dog)'
+	assert flat.source_type_name(substitute_generic_type_text_with_params(flat.source_type_id('fn (mut it T)'), flat.TypeTextList.from_names(['&Dog']).ids, ['T'])) == 'fn(mut it &Dog)'
 
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	assert flat.source_type_name(t.qualify_specialized_signature_type_text(flat.source_type_id('fn(mut &Dog)'), GenericFnDecl{})) == 'fn (mut &Dog)'
 
-	assert t.lock_colliding_main_substitution_type_text('fn(mut it T)', 'fn(mut it &Dog)', 'arc', [
+	assert flat.source_type_name(t.lock_colliding_main_substitution_type_text(flat.source_type_id('fn(mut it T)'), flat.source_type_id('fn(mut it &Dog)'), 'arc', [
 		'T',
-	]) == 'fn (mut &Dog)'
-	assert t.lock_colliding_main_substitution_type_text('fn(mut it T)', 'fn(mut it Dog)', 'arc', [
+	])) == 'fn (mut &Dog)'
+	assert flat.source_type_name(t.lock_colliding_main_substitution_type_text(flat.source_type_id('fn(mut it T)'), flat.source_type_id('fn(mut it Dog)'), 'arc', [
 		'T',
-	]) == 'fn (mut Dog)'
+	])) == 'fn (mut Dog)'
 }
 
 fn test_resolve_substituted_type_text_qualifies_local_generic_base() {
@@ -720,11 +720,11 @@ fn test_resolve_substituted_type_text_qualifies_local_generic_base() {
 		module: 'json2'
 	}
 
-	assert t.resolve_substituted_type_text('Node[json2.ValueInfo]') == 'json2.Node[json2.ValueInfo]'
-	assert t.resolve_substituted_type_text('&Node[json2.ValueInfo]') == '&json2.Node[json2.ValueInfo]'
-	t.active_specialization_main_types['Node'] = true
-	assert t.resolve_substituted_type_text('Node[int]') == 'Node[int]'
-	assert t.resolve_substituted_type_text('main.Node') == 'main.Node'
+	assert flat.source_type_name(t.resolve_substituted_type_text(flat.source_type_id('Node[json2.ValueInfo]'))) == 'json2.Node[json2.ValueInfo]'
+	assert flat.source_type_name(t.resolve_substituted_type_text(flat.source_type_id('&Node[json2.ValueInfo]'))) == '&json2.Node[json2.ValueInfo]'
+	t.active_specialization_main_types[flat.source_type_id('Node')] = true
+	assert flat.source_type_name(t.resolve_substituted_type_text(flat.source_type_id('Node[int]'))) == 'Node[int]'
+	assert flat.source_type_name(t.resolve_substituted_type_text(flat.source_type_id('main.Node'))) == 'main.Node'
 }
 
 fn test_imported_generic_alias_target_uses_declaration_module() {
@@ -758,16 +758,16 @@ fn test_imported_generic_alias_target_uses_declaration_module() {
 			key:    'a.Inner'
 		}
 	}
-	mut specs := flat.TypeTextBindings{}
+	mut specs := map[u32]u32{}
 	t.collect_generic_struct_spec_from_type(flat.source_type_id('a.Box[int]'), 'main', '', decls, mut specs)
-	assert specs.value('a.Inner[int]') == 'a.Inner'
+	assert specs[flat.source_type_id('a.Inner[int]')] == flat.source_type_id('a.Inner')
 }
 
 fn test_generic_method_decl_matches_embedded_receiver() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.embedded_fields['Outer'] = [
+	t.embedded_fields[flat.source_type_id('Outer')] = [
 		FieldInfo{
 			name:        'Middle'
 			typ:         flat.source_type_id('Middle')
@@ -775,7 +775,7 @@ fn test_generic_method_decl_matches_embedded_receiver() {
 			is_embedded: true
 		},
 	]
-	t.embedded_fields['Middle'] = [
+	t.embedded_fields[flat.source_type_id('Middle')] = [
 		FieldInfo{
 			name:        'Collector'
 			typ:         flat.source_type_id('Collector[int]')
@@ -791,7 +791,7 @@ fn test_generic_method_decl_matches_embedded_receiver() {
 		module: 'main'
 		key:    'Collector[T].use'
 	}
-	mut seen := map[string]bool{}
+	mut seen := map[u32]bool{}
 	assert t.generic_decl_matches_embedded_receiver(flat.source_type_id('Outer'), decl, 'main', mut seen)
 }
 
@@ -940,28 +940,28 @@ fn test_contextless_generic_struct_spec_spelling_is_skipped() {
 			key:    'veb.Middleware'
 		}
 	}
-	mut specs := flat.TypeTextBindings{}
+	mut specs := map[u32]u32{}
 	t.collect_generic_struct_specs_range(decls, mut specs, 0, a.nodes.len)
 
-	assert specs.contains('veb.Middleware[Ctx]')
-	assert specs.contains('veb.Middleware[model.Context]')
-	assert !specs.contains('veb.Middleware[Context]')
-	assert !specs.contains('veb.Middleware[Scope]')
+	assert flat.source_type_id('veb.Middleware[Ctx]') in specs
+	assert flat.source_type_id('veb.Middleware[model.Context]') in specs
+	assert !(flat.source_type_id('veb.Middleware[Context]') in specs)
+	assert !(flat.source_type_id('veb.Middleware[Scope]') in specs)
 
-	assert type_text_has_unqualified_generic_arg('veb.Middleware[Context]')
-	assert type_text_has_unqualified_generic_arg('Map[string, Context]')
-	assert type_text_has_unqualified_generic_arg('Map[string, []Context]')
-	assert type_text_has_unqualified_generic_arg('Box[Array[Context]]')
-	assert type_text_has_unqualified_generic_arg('outer.Cell[Box[Pair[int]]]')
-	assert type_text_has_unqualified_generic_arg('outer.Cell[inner.Box[Pair[int]]]')
-	assert !type_text_has_unqualified_generic_arg('outer.Cell[inner.Box[inner.Pair[int]]]')
-	assert type_text_has_unqualified_generic_arg('Box[...Context]')
-	assert type_text_has_unqualified_generic_arg('Box[[2]Context]')
-	assert !type_text_has_unqualified_generic_arg('veb.Middleware[model.Context]')
-	assert !type_text_has_unqualified_generic_arg('Map[string, []int]')
-	assert !type_text_has_unqualified_generic_arg('Box[map[string]int]')
-	assert !type_text_has_unqualified_generic_arg('map[string]int')
-	assert !type_text_has_unqualified_generic_arg('Middleware')
+	assert type_text_has_unqualified_generic_arg(flat.source_type_id('veb.Middleware[Context]'))
+	assert type_text_has_unqualified_generic_arg(flat.source_type_id('Map[string, Context]'))
+	assert type_text_has_unqualified_generic_arg(flat.source_type_id('Map[string, []Context]'))
+	assert type_text_has_unqualified_generic_arg(flat.source_type_id('Box[Array[Context]]'))
+	assert type_text_has_unqualified_generic_arg(flat.source_type_id('outer.Cell[Box[Pair[int]]]'))
+	assert type_text_has_unqualified_generic_arg(flat.source_type_id('outer.Cell[inner.Box[Pair[int]]]'))
+	assert !type_text_has_unqualified_generic_arg(flat.source_type_id('outer.Cell[inner.Box[inner.Pair[int]]]'))
+	assert type_text_has_unqualified_generic_arg(flat.source_type_id('Box[...Context]'))
+	assert type_text_has_unqualified_generic_arg(flat.source_type_id('Box[[2]Context]'))
+	assert !type_text_has_unqualified_generic_arg(flat.source_type_id('veb.Middleware[model.Context]'))
+	assert !type_text_has_unqualified_generic_arg(flat.source_type_id('Map[string, []int]'))
+	assert !type_text_has_unqualified_generic_arg(flat.source_type_id('Box[map[string]int]'))
+	assert !type_text_has_unqualified_generic_arg(flat.source_type_id('map[string]int'))
+	assert !type_text_has_unqualified_generic_arg(flat.source_type_id('Middleware'))
 }
 
 // The scoped (memory-bounded) monomorphize path is selected for every non-empty

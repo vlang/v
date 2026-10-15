@@ -25,7 +25,7 @@ fn (mut g Parser) drain_pending_mono() ! {
 		req := g.pending_mono[0]
 		g.pending_mono = g.pending_mono[1..].clone()
 		src := g.generic_method_sources[req.source_key] or { continue }
-		mut instance := g.render_mono_method(src, req.concrete_text())
+		mut instance := g.render_mono_method(src, req.concrete)
 		if instance == '' {
 			continue
 		}
@@ -70,8 +70,8 @@ fn (mut g Parser) reset_lookup_memos() {
 	g.resolved_name_memo = map[string]string{}
 	g.declared_type_key_memo = map[u32]FastcMemoEntry{}
 	g.type_memo = map[i64]u32{}
-	g.method_key_memo = map[string]map[string]string{}
-	g.field_memo = map[string]map[string]FastcStructField{}
+	g.method_key_memo = map[u32]map[string]string{}
+	g.field_memo = map[u32]map[string]FastcStructField{}
 	g.last_field_known = false
 }
 
@@ -713,7 +713,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.direct_array_access = g.pending_direct_array_access
 	g.pending_direct_array_access = false
 	g.next()
-	mut receiver_type := ''
+	mut receiver_type := u32(0)
 	mut receiver_key := ''
 	mut receiver_name := ''
 	mut receiver_is_mut := false
@@ -770,16 +770,16 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		} else if g.tok == .key_none {
 			receiver_key = 'none'
 		}
-		receiver_type = g.parse_type()!
+		receiver_type = (g.parse_type()!)
 		if receiver_key == '' {
-			receiver_key = g.semantic_type_key(receiver_type)
+			receiver_key = flat.source_type_name(g.semantic_type_key(receiver_type))
 		}
 		g.expect(.rpar)!
-		receiver_is_reference := receiver_is_mut && !receiver_type.ends_with('*')
+		receiver_is_reference := receiver_is_mut && !flat.source_type_name(receiver_type).ends_with('*')
 		receiver_parameter_type := if receiver_is_reference {
-			receiver_type + '*'
+			flat.source_type_name(receiver_type) + '*'
 		} else {
-			receiver_type
+			flat.source_type_name(receiver_type)
 		}
 		params << '${fastc_output_c_type(receiver_parameter_type)} ${fastc_c_identifier(receiver_name)}'
 		g.type_memo.clear()
@@ -796,7 +796,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.next()
 	mut is_c_function := false
 	mut is_static_method := false
-	if receiver_type == '' && name == 'C' && g.tok == .dot {
+	if flat.source_type_name(receiver_type) == '' && name == 'C' && g.tok == .dot {
 		is_c_function = true
 		g.next()
 		if g.tok != .name && !g.tok.is_keyword() {
@@ -804,12 +804,12 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		}
 		name = g.lit
 		g.next()
-	} else if receiver_type == '' && g.tok == .dot {
+	} else if flat.source_type_name(receiver_type) == '' && g.tok == .dot {
 		type_key := fastc_type_key(g.module_name, name)
 		if type_key !in g.declared_types {
 			return g.unsupported('static method owner `${name}`')
 		}
-		receiver_type = fastc_c_declared_type_name(type_key)
+		receiver_type = flat.source_type_id(fastc_c_declared_type_name(type_key))
 		receiver_key = type_key
 		is_static_method = true
 		g.next()
@@ -837,43 +837,43 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.skip_c_function_declaration()!
 		return
 	}
-	function_key := if receiver_type == '' {
+	function_key := if receiver_type == 0 {
 		fastc_function_key(g.module_name, name)
 	} else {
 		'${receiver_key}.${name}'
 	}
 	g.expect(.lpar)!
 	params << g.parse_parameters(function_key, params.len)!
-	mut return_type := 'void'
-	mut return_types := []string{}
+	mut return_type := flat.source_type_void
+	mut return_types := []u32{}
 	mut return_types_are_functions := []bool{}
-	mut option_return_type := ''
+	mut option_return_type := u32(0)
 	if g.tok != .lcbr && g.tok != .semicolon {
 		if g.tok in [.not, .question] {
-			return_type = if g.tok == .not { '__v_result' } else { 'Option' }
+			return_type = flat.source_type_id(if g.tok == .not { '__v_result' } else { 'Option' })
 			g.next()
 			if g.tok in [.lcbr, .semicolon] {
-				option_return_type = 'void'
+				option_return_type = flat.source_type_void
 			} else if g.tok == .lpar {
 				return_types, return_types_are_functions = g.parse_multi_return_types()!
-				option_return_type = 'MultiReturn'
+				option_return_type = flat.source_type_id('MultiReturn')
 			} else {
-				option_return_type = g.parse_type()!
+				option_return_type = (g.parse_type()!)
 			}
 		} else if g.tok == .lpar {
 			return_types, return_types_are_functions = g.parse_multi_return_types()!
-			return_type = 'MultiReturn'
+			return_type = flat.source_type_id('MultiReturn')
 		} else {
-			return_type = g.parse_type()!
+			return_type = (g.parse_type()!)
 		}
 	}
 	return_type_is_function := g.pending_fn_pointer
-	is_program_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main']
+	is_program_main := !is_static_method && receiver_type == 0 && g.module_name in ['', 'main']
 		&& name == 'main'
 	// A test build runs its tests from a main of its own; the program's is an ordinary function.
 	is_main := is_program_main && !g.prefs.is_test
-	is_module_init := !is_static_method && receiver_type == '' && name == 'init'
-	is_module_cleanup := !is_static_method && receiver_type == '' && name == 'cleanup'
+	is_module_init := !is_static_method && flat.source_type_name(receiver_type) == '' && name == 'init'
+	is_module_cleanup := !is_static_method && flat.source_type_name(receiver_type) == '' && name == 'cleanup'
 	if is_main {
 		if params.len > 0 {
 			return g.unsupported('main function with parameters')
@@ -904,7 +904,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return
 		}
 	}
-	if g.selfhost && !is_fastc_source && receiver_type != '' && g.method_uses_undefined_receiver() {
+	if g.selfhost && !is_fastc_source && flat.source_type_name(receiver_type) != '' && g.method_uses_undefined_receiver() {
 		// A method reaching an undefined identifier as a method-call receiver is broken
 		// dead code, kept only because its name collides with a genuinely-used method on
 		// another type (name-grouped reachability). The mainline compiler drops it via
@@ -912,14 +912,18 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.skip_balanced(.lcbr, .rcbr)!
 		return
 	}
-	conventional_c_name := if receiver_type == '' {
+	conventional_c_name := if receiver_type == u32(0) {
 		fastc_c_function_name(g.module_name, name)
 	} else {
 		fastc_method_c_name(g.module_name, fastc_c_declared_type_name(receiver_key), name)
 	}
 	c_name := g.c_function_name_or(function_key, conventional_c_name)
 	g.last_function_c_name = c_name
-	c_return_type := if is_main { 'int' } else { fastc_output_c_type(return_type) }
+	c_return_type := if is_main {
+		'int'
+	} else {
+		fastc_output_c_type(flat.source_type_name(return_type))
+	}
 	c_params := if is_main && g.selfhost {
 		'int argc, char **argv'
 	} else if params.len == 0 {
@@ -932,8 +936,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	if !enabled {
 		g.write_line('${c_return_type} ${c_name}(${c_params}) {')
 		g.indent++
-		if return_type != 'void' {
-			g.write_line('return (${fastc_output_c_type(return_type)}){0};')
+		if return_type != flat.source_type_void {
+			g.write_line('return (${fastc_output_c_type(flat.source_type_name(return_type))}){0};')
 		}
 		g.indent--
 		g.write_line('}')
@@ -963,10 +967,10 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	}
 	previous_in_main := g.in_main
 	previous_return_type_is_function := g.return_type_is_function
-	previous_return_type := g.return_type_text()
-	previous_return_types := g.return_types_text().clone()
+	previous_return_type := g.return_type
+	previous_return_types := g.return_types.ids.clone()
+	previous_option_return_type := g.option_return_type
 	previous_return_types_are_functions := g.return_types_are_functions
-	previous_option_return_type := g.option_return_type_text()
 	previous_function := g.current_function
 	previous_receiver := g.current_receiver
 	previous_method_is_static := g.current_method_is_static
@@ -991,10 +995,10 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	}
 	g.in_main = is_main
 	g.return_type_is_function = return_type_is_function
-	g.return_type = flat.source_type_id(return_type)
-	g.return_types = flat.TypeTextList.from_names(return_types.clone())
+	g.return_type = return_type
+	g.return_types = flat.TypeTextList{ ids: return_types.clone() }
+	g.option_return_type = option_return_type
 	g.return_types_are_functions = return_types_are_functions
-	g.option_return_type = flat.source_type_id(option_return_type)
 	g.current_function = name
 	g.current_receiver = flat.source_type_id(receiver_key)
 	g.current_method_is_static = is_static_method
@@ -1079,14 +1083,14 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	if !terminates {
 		g.write_function_deferred_blocks()
 	}
-	if return_type != 'void' && !terminates {
+	if return_type != flat.source_type_void && !terminates {
 		if !g.selfhost {
 			return g.unsupported('non-void function `${name}` that can fall through')
 		}
 		// Self-host input was already accepted by the bootstrap compiler. Keep C's
 		// control-flow rules satisfied when the streaming parser cannot prove that
 		// every nested source branch terminates.
-		g.write_line('return (${fastc_output_c_type(return_type)}){0};')
+		g.write_line('return (${fastc_output_c_type(flat.source_type_name(return_type))}){0};')
 	}
 	if is_main {
 		g.write_line('return 0;')
@@ -1100,10 +1104,10 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	}
 	g.in_main = previous_in_main
 	g.return_type_is_function = previous_return_type_is_function
-	g.return_type = flat.source_type_id(previous_return_type)
-	g.return_types = flat.TypeTextList.from_names(previous_return_types.clone())
+	g.return_type = previous_return_type
+	g.return_types = flat.TypeTextList{ ids: previous_return_types.clone() }
+	g.option_return_type = previous_option_return_type
 	g.return_types_are_functions = previous_return_types_are_functions
-	g.option_return_type = flat.source_type_id(previous_option_return_type)
 	g.current_function = previous_function
 	g.current_receiver = previous_receiver
 	g.current_method_is_static = previous_method_is_static
@@ -1132,9 +1136,9 @@ fn (mut g Parser) emit_native_pair_wrapper(function_key string, c_name string) {
 	}
 	mut params := []string{cap: signature.parameter_types.ids.len}
 	mut arguments := []string{cap: signature.parameter_types.ids.len}
-	for i, parameter_type in signature.parameter_types_text() {
+	for i, parameter_type in signature.parameter_types.ids {
 		name := '__vf_native_arg_${i}'
-		params << '${fastc_output_c_type(parameter_type)} ${name}'
+		params << '${fastc_output_c_type(flat.source_type_name(parameter_type))} ${name}'
 		arguments << name
 	}
 	c_params := if params.len == 0 { 'void' } else { params.join(', ') }
@@ -1161,7 +1165,7 @@ fn (mut g Parser) emit_export_wrapper(function_key string, c_name string, params
 		return g.unsupported('variadic exported function `${export_name}`')
 	}
 	abi := g.functions['C.${export_name}'] or { signature }
-	parameter_types := abi.parameter_types_text()
+	parameter_types := abi.parameter_types.ids
 	if parameter_types.len != params.len {
 		return g.unsupported('export `${export_name}` does not match its C parameter count')
 	}
@@ -1178,9 +1182,9 @@ fn (mut g Parser) emit_export_wrapper(function_key string, c_name string, params
 			''
 		}
 		wrapper_params << '${constness}${g.export_c_abi_type(parameter_type)} ${name}'
-		arguments << '(${fastc_output_c_type(signature.parameter_types.at(i))})${name}'
+		arguments << '(${fastc_output_c_type(flat.source_type_name(signature.parameter_types.ids[i]))})${name}'
 	}
-	return_type := g.export_c_abi_type(abi.return_type_text())
+	return_type := g.export_c_abi_type(abi.return_type)
 	c_params := if wrapper_params.len == 0 { 'void' } else { wrapper_params.join(', ') }
 	g.protos.writeln('${return_type} ${export_name}(${c_params});')
 	g.write_line('${return_type} ${export_name}(${c_params}) {')
@@ -1192,13 +1196,13 @@ fn (mut g Parser) emit_export_wrapper(function_key string, c_name string, params
 	g.out.writeln('')
 }
 
-fn (g &Parser) export_c_abi_type(typ string) string {
+fn (g &Parser) export_c_abi_type(typ u32) string {
 	base := g.underlying_alias_type(typ)
 	return match base {
-		'voidptr' { 'void*' }
-		'byteptr' { 'u8*' }
-		'charptr' { 'char*' }
-		else { base }
+		flat.source_type_voidptr { 'void*' }
+		fastc_type_byteptr { 'u8*' }
+		fastc_type_charptr { 'char*' }
+		else { flat.source_type_name(base) }
 	}
 }
 
@@ -1225,9 +1229,9 @@ fn fastc_target_startup_definition(prefs &pref.Preferences, has_startup_inits bo
 // and exits rather than return a zero value as if the body had run.
 // `body_end` is a scanner positioned just past the body's closing `}`, used to
 // resume after a discarded body. Returns whether the emitted body terminates.
-fn (mut g Parser) parse_generic_body_or_stub(return_type string, out_checkpoint int, saved_indent int, body_end scanner.Scanner, force_stub bool) bool {
+fn (mut g Parser) parse_generic_body_or_stub(return_type_source_id u32, out_checkpoint int, saved_indent int, body_end scanner.Scanner, force_stub bool) bool {
 	if force_stub {
-		g.emit_generic_body_stub(out_checkpoint, saved_indent, body_end, return_type)
+		g.emit_generic_body_stub(out_checkpoint, saved_indent, body_end, return_type_source_id)
 		return true
 	}
 	local_scope_start := g.local_scope_changes.len
@@ -1237,7 +1241,7 @@ fn (mut g Parser) parse_generic_body_or_stub(return_type string, out_checkpoint 
 		g.restore_local_scope(local_scope_start)
 		g.local_scope_depth = local_scope_depth
 		g.statement_reachable = statement_reachable
-		g.emit_generic_body_stub(out_checkpoint, saved_indent, body_end, return_type)
+		g.emit_generic_body_stub(out_checkpoint, saved_indent, body_end, return_type_source_id)
 		return true
 	}
 	return terminates
@@ -1245,7 +1249,8 @@ fn (mut g Parser) parse_generic_body_or_stub(return_type string, out_checkpoint 
 
 // emit_generic_body_stub discards any partially-generated body, repositions the
 // scanner just past the body, and emits a trivial `return (T){0};` stub.
-fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, body_end scanner.Scanner, return_type string) {
+fn (mut g Parser) emit_generic_body_stub(out_checkpoint int, saved_indent int, body_end scanner.Scanner, return_type_source_id u32) {
+	return_type := flat.source_type_name(return_type_source_id)
 	discard := g.out.len - out_checkpoint
 	if discard > 0 {
 		g.out.go_back(discard)
@@ -1426,19 +1431,19 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 		channel_element := if g.tok == .name && g.lit == 'chan' {
 			fastc_peek_chan_element(g.s, g.path, g.module_name, g.imports, g.declared_types, g.selfhost)
 		} else {
-			''
+			u32(0)
 		}
-		mut type_name := g.parse_type()!
-		option_value_type := g.pending_option_value_type_text()
+		mut type_name := (g.parse_type()!)
+		option_value_type := g.pending_option_value_type
 		is_fn_pointer := g.pending_fn_pointer
-		fn_return_type := g.pending_fn_return_type_text()
-		fn_option_value_type := g.pending_fn_option_value_type_text()
+		fn_return_type := g.pending_fn_return_type
+		fn_option_value_type := g.pending_fn_option_value_type
 		fn_parameters := g.pending_fn_parameters
 		parameter_index := parameter_offset + params.len
 		is_generic_value := g.in_mono_drain && parameter_index < mono_signature.parameter_generic_values.len && mono_signature.parameter_generic_values[parameter_index]
-		is_reference := is_mut && (!type_name.ends_with('*') || is_generic_value)
+		is_reference := is_mut && (!flat.source_type_name(type_name).ends_with('*') || is_generic_value)
 		if is_reference {
-			type_name += '*'
+			type_name = flat.source_type_id(flat.source_type_name(type_name) + '*')
 		}
 		for parameter_name in names {
 			// Two blank `_` parameters (`fn f(_ A, _ B)`) would both render as the C name
@@ -1453,23 +1458,23 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 			if is_fn_pointer {
 				// Declare a real function pointer with the type's prototype, so `f(x)`
 				// converts its arguments and result as a direct call does.
-				params << '${fastc_output_c_type(fn_return_type)} (*${c_name})(${fn_parameters})'
+				params << '${fastc_output_c_type(flat.source_type_name(fn_return_type))} (*${c_name})(${fn_parameters})'
 				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut:               is_mut
-					typ:                  flat.source_type_id(type_name)
-					fn_return_type:       flat.source_type_id(fn_return_type)
-					fn_option_value_type: flat.source_type_id(fn_option_value_type)
+					typ:                  type_name
+					fn_return_type:       fn_return_type
+					fn_option_value_type: fn_option_value_type
 				}
 			} else {
-				params << '${fastc_output_c_type(type_name)} ${c_name}'
+				params << '${fastc_output_c_type(flat.source_type_name(type_name))} ${c_name}'
 				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut:            is_mut
 					is_reference:      is_reference
-					typ:               flat.source_type_id(type_name)
-					option_value_type: flat.source_type_id(option_value_type)
-					chan_element_type: flat.source_type_id(channel_element)
+					typ:               type_name
+					option_value_type: option_value_type
+					chan_element_type: channel_element
 				}
 			}
 		}
@@ -1487,7 +1492,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 	return params
 }
 
-fn (mut g Parser) parse_type() !string {
+fn (mut g Parser) parse_type() !u32 {
 	first_lit := g.lit
 	g.pending_option_value_type = u32(0)
 	g.pending_fn_pointer = false
@@ -1500,7 +1505,7 @@ fn (mut g Parser) parse_type() !string {
 		mut look := g.s
 		value_tok := look.scan()
 		if value_tok !in [.lcbr, .eof] {
-			g.pending_option_value_type = flat.source_type_id(g.peek_option_value_type(mut look, value_tok))
+			g.pending_option_value_type = g.peek_option_value_type(mut look, value_tok)
 		}
 	}
 	if g.tok == .key_fn {
@@ -1509,10 +1514,12 @@ fn (mut g Parser) parse_type() !string {
 		// pointer and its call results inferred.
 		g.peek_fn_pointer_signature()
 	}
-	type_name, next_token := fastc_scan_type(mut g.s, g.tok, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return g.unsupported(err.msg()) }
+	type_name_source_id, next_token := fastc_scan_type(mut g.s, g.tok, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return g.unsupported(err.msg()) }
+	type_name := type_name_source_id
+
 	g.tok = next_token
 	g.lit = g.s.lit
-	if !g.selfhost && (first_lit in ['charptr', 'rune'] || type_name == 'char*') {
+	if !g.selfhost && (first_lit in ['charptr', 'rune'] || flat.source_type_name(type_name) == 'char*') {
 		return g.unsupported('type `${first_lit}`')
 	}
 	return type_name
@@ -1520,8 +1527,10 @@ fn (mut g Parser) parse_type() !string {
 
 // peek_option_value_type scans an option type's wrapped value type from a lookahead
 // scanner, returning '' if it cannot be determined.
-fn (g &Parser) peek_option_value_type(mut look scanner.Scanner, first token.Token) string {
-	value_type, _ := fastc_scan_type(mut look, first, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return '' }
+fn (g &Parser) peek_option_value_type(mut look scanner.Scanner, first token.Token) u32 {
+	value_type_source_id, _ := fastc_scan_type(mut look, first, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return u32(0) }
+	value_type := value_type_source_id
+
 	return value_type
 }
 
@@ -1546,44 +1555,46 @@ fn (mut g Parser) peek_fn_pointer_signature() {
 		}
 	}
 	tok = look.scan()
-	mut return_type := 'void'
+	mut return_type := flat.source_type_void
 	if tok in [.not, .question] {
-		return_type = if tok == .not { '__v_result' } else { 'Option' }
+		return_type = flat.source_type_id(if tok == .not { '__v_result' } else { 'Option' })
 		value_tok := look.scan()
 		if fastc_is_void_return_boundary(value_tok) {
-			g.pending_fn_option_value_type = flat.source_type_id('void')
+			g.pending_fn_option_value_type = flat.source_type_void
 		} else {
-			g.pending_fn_option_value_type = flat.source_type_id(g.peek_option_value_type(mut look, value_tok))
+			g.pending_fn_option_value_type = g.peek_option_value_type(mut look, value_tok)
 		}
 	} else if !fastc_is_void_return_boundary(tok) {
-		scanned, _ := fastc_scan_type(mut look, tok, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return }
+		scanned_source_id, _ := fastc_scan_type(mut look, tok, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return }
+		scanned := scanned_source_id
+
 		return_type = scanned
 	}
 	g.pending_fn_pointer = true
-	g.pending_fn_return_type = flat.source_type_id(return_type)
+	g.pending_fn_return_type = return_type
 	if signature := fastc_peek_function_type(g.s, g.path, g.module_name, g.imports, g.declared_types,
 		g.selfhost)
 	{
-		g.pending_fn_parameters = fastc_c_prototype_parameters(signature.parameter_types_text())
+		g.pending_fn_parameters = fastc_c_prototype_parameters(signature.parameter_types.ids.clone())
 	}
 }
 
 // fastc_c_prototype_parameters spells a function type's parameter types as a C prototype's
 // parameter list: `void` for none, V `int` as its C type.
-fn fastc_c_prototype_parameters(parameter_types []string) string {
+fn fastc_c_prototype_parameters(parameter_types []u32) string {
 	if parameter_types.len == 0 {
 		return 'void'
 	}
 	mut c_types := []string{cap: parameter_types.len}
 	for parameter_type in parameter_types {
-		c_types << fastc_output_c_type(parameter_type)
+		c_types << fastc_output_c_type(flat.source_type_name(parameter_type))
 	}
 	return c_types.join(', ')
 }
 
-fn (mut g Parser) parse_multi_return_types() !([]string, []bool) {
+fn (mut g Parser) parse_multi_return_types() !([]u32, []bool) {
 	g.expect(.lpar)!
-	mut types := []string{}
+	mut types := []u32{}
 	mut functions := []bool{}
 	for g.tok != .rpar {
 		g.skip_semicolons()

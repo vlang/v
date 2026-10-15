@@ -1,6 +1,7 @@
 module fastc
 
 import strings
+import v.flat
 import v.pref
 import v.scanner
 import v.token
@@ -13,12 +14,12 @@ struct FastcAsmOperand {
 
 struct FastcAsmRenderedOperand {
 	source        string
-	typ           string
+	typ           u32
 	address_alias string
 }
 
 struct FastcAsmAlias {
-	typ           string
+	typ           u32
 	constraint    string
 	address_alias string
 }
@@ -211,12 +212,14 @@ fn (mut g Parser) render_asm_operand(source string) !FastcAsmRenderedOperand {
 	mut expression := g.read_expression([token.Token.semicolon, token.Token.eof])!
 	g.skip_semicolons()
 	if g.tok != .eof { return g.unsupported('assembly operand `${source}`') }
-	mut typ := g.last_expression_type_text()
+	mut typ := g.last_expression_type
 	if fastc_asm_is_ident(source) {
 		if local := g.locals[source] {
 			if local.is_reference {
 				expression = '(*(${expression}))'
-				if typ.ends_with('*') { typ = typ[..typ.len - 1] }
+				if flat.source_type_name(typ).ends_with('*') {
+					typ = flat.source_type_id(flat.source_type_name(typ)[..flat.source_type_name(typ).len - 1])
+				}
 			}
 		}
 	}
@@ -440,8 +443,13 @@ fn fastc_asm_lower_template(source string, arch string, aliases map[string]Fastc
 		if arch == 'amd64' && instruction in ['in', 'inb', 'inw', 'inl', 'out', 'outb', 'outw',
 			'outl'] {
 			for alias, info in aliases {
-				if !info.constraint.contains('m') && info.typ in ['int', 'i64', 'u64', 'usize',
-					'isize'] {
+				if !info.constraint.contains('m') && info.typ in [
+					flat.source_type_int,
+					flat.source_type_i64,
+					flat.source_type_u64,
+					flat.source_type_usize,
+					flat.source_type_isize,
+				] {
 					value = value.replace('%[${alias}]', '%k[${alias}]')
 				}
 			}
@@ -559,14 +567,14 @@ fn fastc_asm_atoms(source string, arch string, aliases map[string]FastcAsmAlias,
 				} else if intel {
 					'V'
 				} else if arch == 'arm64' && !info.constraint.contains('m') && info.typ in [
-					'bool',
-					'i8',
-					'u8',
-					'i16',
-					'u16',
-					'i32',
-					'u32',
-					'rune',
+					flat.source_type_bool,
+					flat.source_type_i8,
+					flat.source_type_u8,
+					flat.source_type_i16,
+					flat.source_type_u16,
+					flat.source_type_i32,
+					flat.source_type_u32,
+					flat.source_type_rune,
 				] {
 					'w'
 				} else {
@@ -592,13 +600,20 @@ fn fastc_asm_immediate_constraint(constraint string) bool {
 		`N`, `O`, `P`])
 }
 
-fn fastc_asm_intel_memory_size(typ string) string {
+fn fastc_asm_intel_memory_size(typ u32) string {
 	if fastc_is_pointer_type(typ) { return 'qword ptr ' }
 	return match typ {
-		'bool', 'char', 'i8', 'u8' { 'byte ptr ' }
-		'i16', 'u16' { 'word ptr ' }
-		'i32', 'u32', 'rune', 'f32' { 'dword ptr ' }
-		'int', 'i64', 'u64', 'isize', 'usize', 'f64' { 'qword ptr ' }
+		flat.source_type_bool, flat.source_type_char, flat.source_type_i8, flat.source_type_u8 {
+			'byte ptr '
+		}
+		flat.source_type_i16, flat.source_type_u16 { 'word ptr ' }
+		flat.source_type_i32, flat.source_type_u32, flat.source_type_rune, flat.source_type_f32 {
+			'dword ptr '
+		}
+		flat.source_type_int, flat.source_type_i64, flat.source_type_u64, flat.source_type_isize,
+		flat.source_type_usize, flat.source_type_f64 {
+			'qword ptr '
+		}
 		else { '' }
 	}
 }

@@ -10,11 +10,17 @@ fn test_receiver_pattern_cache_keys_keep_source_argument_order_and_context() {
 	tc.fn_context.generic_params = ['T']
 	first := flat.source_type_id('Item[int]')
 	second := flat.source_type_id('Item[string]')
-	ordered := tc.generic_receiver_pattern_cache_key('Box', [first, second], 'take')
-	reversed := tc.generic_receiver_pattern_cache_key('Box', [second, first], 'take')
-	shorter := tc.generic_receiver_pattern_cache_key('Box', [first], 'take')
-	empty := tc.generic_receiver_pattern_cache_key('Box', []u32{}, 'take')
-	empty_arg := tc.generic_receiver_pattern_cache_key('Box', [u32(0)], 'take')
+	ordered := tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [
+		first,
+		second,
+	], 'take')
+	reversed := tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [
+		second,
+		first,
+	], 'take')
+	shorter := tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [first], 'take')
+	empty := tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), []u32{}, 'take')
+	empty_arg := tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [u32(0)], 'take')
 	keys := {
 		ordered:   1
 		reversed:  2
@@ -26,13 +32,13 @@ fn test_receiver_pattern_cache_keys_keep_source_argument_order_and_context() {
 	assert keys[ordered] == 1
 	assert keys[reversed] == 2
 	tc.cur_file = 'other.v'
-	assert tc.generic_receiver_pattern_cache_key('Box', [first, second], 'take') != ordered
+	assert tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [first, second], 'take') != ordered
 	tc.cur_file = 'caller.v'
 	tc.cur_module = 'other'
-	assert tc.generic_receiver_pattern_cache_key('Box', [first, second], 'take') != ordered
+	assert tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [first, second], 'take') != ordered
 	tc.cur_module = 'main'
 	tc.fn_context.generic_params = ['U']
-	assert tc.generic_receiver_pattern_cache_key('Box', [first, second], 'take') != ordered
+	assert tc.generic_receiver_pattern_cache_key(flat.source_type_id('Box'), [first, second], 'take') != ordered
 }
 
 fn test_wrapped_single_letter_concrete_types_preserve_their_semantic_type() {
@@ -97,21 +103,21 @@ fn test_seeded_field_types_preserve_direct_precedence_and_generic_substitution()
 	mut worker := tc.fork_for_parallel_check()
 	assert worker.type_cache.struct_field_shared.len == tc.type_cache.struct_field_shared.len
 	assert worker.type_cache.struct_field_shared.len > 0
-	assert worker.type_cache.struct_field_complete['Inner']
-	assert !worker.type_cache.struct_field_complete['Outer']
-	assert !worker.type_cache.struct_field_complete['Promoted']
-	assert worker.struct_field_type('Inner', 'missing') == none
-	assert worker.struct_field_type('Promoted', 'value')? == Type(bool_)
+	assert worker.type_cache.struct_field_complete[flat.source_type_id('Inner')]
+	assert !worker.type_cache.struct_field_complete[flat.source_type_id('Outer')]
+	assert !worker.type_cache.struct_field_complete[flat.source_type_id('Promoted')]
+	assert worker.struct_field_type(flat.source_type_id('Inner'), 'missing') == none
+	assert worker.struct_field_type(flat.source_type_id('Promoted'), 'value')? == Type(bool_)
 	for i, owner in ['Outer', 'Box[int]', 'Box[string]'] {
 		field := if owner == 'Outer' { 'value' } else { 'item' }
 		assert flat.source_type_name(worker.struct_field_type_name(flat.source_type_id(owner), field)?) == expected[i]
 	}
 	worker.clear_field_lookup_cache()
 	assert tc.type_cache.struct_field_shared.len > 0
-	assert tc.type_cache.struct_field_complete['Inner']
+	assert tc.type_cache.struct_field_complete[flat.source_type_id('Inner')]
 	tc.structs['Inner'] << StructField{ name: 'missing', typ: Type(string_) }
 	tc.clear_field_lookup_cache()
-	assert tc.struct_field_type('Inner', 'missing')? == Type(string_)
+	assert tc.struct_field_type(flat.source_type_id('Inner'), 'missing')? == Type(string_)
 }
 
 fn test_field_cache_handles_collisions_missing_fields_and_invalidation() {
@@ -122,14 +128,14 @@ fn test_field_cache_handles_collisions_missing_fields_and_invalidation() {
 		StructField{ name: 'acca', typ: Type(string_) },
 	]
 	for _ in 0 .. 3 {
-		assert tc.struct_field_type('Box'.clone(), 'abba'.clone())? == Type(int_)
-		assert tc.struct_field_type('Box', 'acca')? == Type(string_)
-		assert tc.struct_field_type('Box', 'adda') == none
+		assert tc.struct_field_type(flat.source_type_id('Box'.clone()), 'abba'.clone())? == Type(int_)
+		assert tc.struct_field_type(flat.source_type_id('Box'), 'acca')? == Type(string_)
+		assert tc.struct_field_type(flat.source_type_id('Box'), 'adda') == none
 	}
 	tc.structs['Box'] = [StructField{ name: 'adda', typ: Type(bool_) }]
 	tc.clear_field_lookup_cache()
-	assert tc.struct_field_type('Box', 'adda')? == Type(bool_)
-	assert tc.struct_field_type('Box', 'acca') == none
+	assert tc.struct_field_type(flat.source_type_id('Box'), 'adda')? == Type(bool_)
+	assert tc.struct_field_type(flat.source_type_id('Box'), 'acca') == none
 }
 
 fn test_type_text_id_cache_keeps_colliding_ids_and_file_context_distinct() {
@@ -648,10 +654,10 @@ fn test_postfix_fixed_array_of_generic_struct_parses_before_generic_application(
 }
 
 fn test_generic_text_substitution_recurses_through_wrappers() {
-	assert subst_generic_text('chan T', flat.TypeTextList.from_names(['int']).ids, ['T']) == 'chan int'
-	assert subst_generic_text('thread T', flat.TypeTextList.from_names(['string']).ids, ['T']) == 'thread string'
-	assert subst_generic_text('atomic T', flat.TypeTextList.from_names(['u64']).ids, ['T']) == 'atomic u64'
-	assert subst_generic_text('chan ?[]T', flat.TypeTextList.from_names(['i16']).ids, ['T']) == 'chan ?[]i16'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('chan T'), flat.TypeTextList.from_names(['int']).ids, ['T'])) == 'chan int'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('thread T'), flat.TypeTextList.from_names(['string']).ids, ['T'])) == 'thread string'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('atomic T'), flat.TypeTextList.from_names(['u64']).ids, ['T'])) == 'atomic u64'
+	assert flat.source_type_name(subst_generic_text(flat.source_type_id('chan ?[]T'), flat.TypeTextList.from_names(['i16']).ids, ['T'])) == 'chan ?[]i16'
 }
 
 fn test_generic_type_substitution_preserves_padded_source_argument_semantics() {
@@ -683,7 +689,7 @@ fn test_generic_type_substitution_updates_fixed_array_length_expr() {
 }
 
 fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
-	substituted := subst_generic_text('fn (mut T) string', flat.TypeTextList.from_names(['&Dog']).ids, ['T'])
+	substituted := flat.source_type_name(subst_generic_text(flat.source_type_id('fn (mut T) string'), flat.TypeTextList.from_names(['&Dog']).ids, ['T']))
 	assert substituted == 'fn(mut &Dog) string'
 
 	a := flat.FlatAst.new()
@@ -721,7 +727,7 @@ fn test_mut_callback_param_keeps_declared_and_slot_pointers_apart() {
 fn test_concrete_generic_method_signature_candidates_flatten_nested_pointer_args() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
-	candidates := tc.concrete_generic_method_signature_candidates('SimpleCache[string, &CacheItem[string, int]]', 'set')
+	candidates := tc.concrete_generic_method_signature_candidates(flat.source_type_id('SimpleCache[string, &CacheItem[string, int]]'), 'set')
 	assert 'SimpleCache[string, ptr_CacheItem_string_int].set' in candidates
 }
 
@@ -755,9 +761,9 @@ fn test_caller_type_name_qualification_preserves_enclosing_generic_parameters() 
 	tc.structs['consumer.Payload'] = []StructField{}
 	tc.cur_module = 'unrelated'
 	tc.enclosing_generic_param_masks = []u32{len: a.nodes.len, init: u32(1) << u32(`T` - `A`)}
-	assert tc.qualify_type_name_at('T', id, 'consumer') == 'T'
-	assert tc.qualify_type_name_at('Payload', id, 'consumer') == 'consumer.Payload'
-	assert tc.qualify_type_name_at('int', id, 'consumer') == 'int'
-	assert tc.qualify_type_name_at('UnknownName', id, 'consumer') == 'UnknownName'
+	assert flat.source_type_name(tc.qualify_type_name_at(flat.source_type_id('T'), id, 'consumer')) == 'T'
+	assert flat.source_type_name(tc.qualify_type_name_at(flat.source_type_id('Payload'), id, 'consumer')) == 'consumer.Payload'
+	assert flat.source_type_name(tc.qualify_type_name_at(flat.source_type_id('int'), id, 'consumer')) == 'int'
+	assert flat.source_type_name(tc.qualify_type_name_at(flat.source_type_id('UnknownName'), id, 'consumer')) == 'UnknownName'
 	assert tc.cur_module == 'unrelated'
 }
