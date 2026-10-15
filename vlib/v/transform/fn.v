@@ -1633,7 +1633,9 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 					break
 				}
 				if t.call_arg_is_packed_variadic_tail(arg_id, variadic_type) {
-					new_children << t.transform_expr(arg_id)
+					packed_arg := t.transform_expr(arg_id)
+					t.packed_variadic_tail_types[int(packed_arg)] = flat.source_type_id(t.semantic_type_name(variadic_type))
+					new_children << packed_arg
 					variadic_tail_supplied = true
 					i++
 					break
@@ -1760,6 +1762,9 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 fn (t &Transformer) call_arg_is_packed_variadic_tail(arg_id flat.NodeId, variadic_type types.Array) bool {
 	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
 		return false
+	}
+	if packed_type := t.packed_variadic_tail_types[int(arg_id)] {
+		return packed_type == flat.source_type_id(t.semantic_type_name(variadic_type))
 	}
 	arg := t.a.nodes[int(arg_id)]
 	// Source identifiers can legally use this prefix in translated code. Only
@@ -2254,6 +2259,7 @@ fn (mut t Transformer) transform_call_arg_for_named_param(arg_id flat.NodeId, pa
 }
 
 fn (mut t Transformer) transform_variadic_spread_arg_for_param(spread_id flat.NodeId, variadic_type types.Array, param_type string) flat.NodeId {
+	mut value := flat.NodeId(-1)
 	if !isnil(t.tc) && int(spread_id) >= 0 {
 		actual := types.unwrap_pointer(t.tc.resolve_type(spread_id))
 		if actual is types.Array {
@@ -2262,11 +2268,16 @@ fn (mut t Transformer) transform_variadic_spread_arg_for_param(spread_id flat.No
 			expected_elem := flat.source_type_name(t.normalize_type_alias(flat.source_type_id(t.semantic_type_name(variadic_type.elem_type))))
 			if actual_elem != expected_elem
 				&& t.sum_target_accepts_variant_type(expected_elem, actual_elem) {
-				return t.convert_forwarded_array_to_dynamic(spread_id, actual, actual.elem_type, expected, variadic_type.elem_type, false)
+				value = t.convert_forwarded_array_to_dynamic(spread_id, actual, actual.elem_type, expected, variadic_type.elem_type, false)
 			}
 		}
 	}
-	return t.transform_call_arg_for_param(spread_id, param_type)
+	if int(value) < 0 {
+		value = t.transform_call_arg_for_param(spread_id, param_type)
+	}
+	// Preserve the packed tail when interpolation transforms this call again.
+	t.packed_variadic_tail_types[int(value)] = flat.source_type_id(t.semantic_type_name(variadic_type))
+	return value
 }
 
 fn (mut t Transformer) make_range_index(base flat.NodeId, start_id flat.NodeId, end_id flat.NodeId, typ string) flat.NodeId {

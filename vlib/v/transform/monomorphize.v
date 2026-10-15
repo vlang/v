@@ -10696,7 +10696,17 @@ fn infer_generic_type_args(param_type string, arg_type string, mut inferred map[
 		return
 	}
 	if param.starts_with('...') {
-		infer_generic_type_args(param[3..], arg.trim_left('[]'), mut inferred)
+		element_param := param[3..]
+		if arg.starts_with('[]') {
+			inferred_count := inferred.len
+			infer_generic_type_args(element_param, arg[2..], mut inferred)
+			if inferred.len == inferred_count && element_param.starts_with('[]') {
+				// A single array can be one variadic array element, rather than a spread.
+				infer_generic_type_args(element_param, arg, mut inferred)
+			}
+		} else {
+			infer_generic_type_args(element_param, arg, mut inferred)
+		}
 		return
 	}
 	if is_generic_fn_placeholder_name(param) {
