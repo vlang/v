@@ -4365,8 +4365,32 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 	return decls
 }
 
+// IgnoredFn is a function monomorphize_ignored_nodes flagged as unused, with the
+// module it is declared in.
+struct IgnoredFn {
+	id     int
+	module string
+}
+
+// IgnoredNodesState is what the last monomorphize_ignored_nodes call flagged.
+// The used set only grows, so a function it flagged stays unused until the used
+// set gains one of the spellings should_transform_fn_in_module tests for it.
+struct IgnoredNodesState {
+mut:
+	ready       bool
+	nodes       []bool
+	node_count  int
+	log_start   int
+	scan_module string
+	// by_spelling lists the flagged functions under each of those spellings.
+	by_spelling map[string][]IgnoredFn
+}
+
 @[direct_array_access]
 fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl) []bool {
+	if t.ignored_state.ready && t.used_fns_log_active && t.has_used_fn_filter() {
+		return t.monomorphize_ignored_nodes_since(decls)
+	}
 	mut nodes := []bool{len: t.a.nodes.len}
 	mut stack := []flat.NodeId{cap: 256}
 	for _, decl in decls {
@@ -4374,6 +4398,12 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 	}
 	if !t.has_used_fn_filter() {
 		return nodes
+	}
+	// Later calls start from this result while every growth of the used set is
+	// logged (see monomorphize_ignored_nodes_since).
+	keep := t.used_fns_log_active
+	mut state := IgnoredNodesState{
+		log_start: t.used_fns_log.len
 	}
 	old_module := t.cur_module
 	t.cur_module = ''
@@ -4404,13 +4434,117 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 				t.cur_module = t.node_module_or(i, t.cur_module)
 				if !t.should_transform_fn(*node) {
 					t.collect_node_subtree_flags(flat.NodeId(i), mut nodes, mut stack)
+					if keep {
+						state.add(node.value, i, t.cur_module)
+					}
 				}
 			}
 			else {}
 		}
 	}
+	if keep {
+		state.ready = true
+		state.nodes = nodes
+		state.node_count = t.a.nodes.len
+		state.scan_module = t.cur_module
+		t.ignored_state = state
+	}
 	t.cur_module = old_module
 	return nodes
+}
+
+// monomorphize_ignored_nodes_since updates the last result: it clears the
+// subtrees of the flagged functions that the used set named since, and flags the
+// generic and unused declarations appended since. The previous result is left
+// as it was; callers compare the two.
+fn (mut t Transformer) monomorphize_ignored_nodes_since(decls map[string]GenericFnDecl) []bool {
+	mut state := t.ignored_state
+	mut nodes := state.nodes.clone()
+	if nodes.len < t.a.nodes.len {
+		nodes << []bool{len: t.a.nodes.len - nodes.len}
+	}
+	mut stack := []flat.NodeId{cap: 256}
+	old_module := t.cur_module
+	for li in state.log_start .. t.used_fns_log.len {
+		named := state.by_spelling[t.used_fns_log[li]] or { continue }
+		for entry in named {
+			if entry.id >= nodes.len || !nodes[entry.id] {
+				continue
+			}
+			node := t.a.nodes[entry.id]
+			if t.should_transform_fn_in_module(node, entry.module) {
+				t.clear_node_subtree_flags(flat.NodeId(entry.id), mut nodes, mut stack)
+			}
+		}
+	}
+	for _, decl in decls {
+		if int(decl.id) >= state.node_count {
+			t.collect_node_subtree_flags(decl.id, mut nodes, mut stack)
+		}
+	}
+	t.cur_module = state.scan_module
+	for i in state.node_count .. t.a.nodes.len {
+		kind := t.a.nodes[i].kind
+		if kind == .module_decl {
+			t.cur_module = t.a.nodes[i].value
+			continue
+		}
+		if kind != .fn_decl {
+			continue
+		}
+		node := unsafe { &t.a.nodes[i] }
+		if node.value.starts_with('test_') {
+			continue
+		}
+		t.cur_module = t.node_module_or(i, t.cur_module)
+		if !t.should_transform_fn(*node) {
+			t.collect_node_subtree_flags(flat.NodeId(i), mut nodes, mut stack)
+			state.add(node.value, i, t.cur_module)
+		}
+	}
+	state.scan_module = t.cur_module
+	t.cur_module = old_module
+	state.nodes = nodes
+	state.node_count = t.a.nodes.len
+	state.log_start = t.used_fns_log.len
+	t.ignored_state = state
+	return nodes
+}
+
+// add records an unused function under each spelling of `value` declared in
+// `module_name` that should_transform_fn_in_module tests.
+fn (mut s IgnoredNodesState) add(value string, id int, module_name string) {
+	entry := IgnoredFn{
+		id:     id
+		module: module_name
+	}
+	s.add_spellings(value, entry)
+	if value.contains('[') {
+		base := generic_fn_decl_base_value(value)
+		if base != value {
+			s.add_spellings(base, entry)
+		}
+	}
+}
+
+// add_spellings mirrors the lookups of used_fn_contains_in_module.
+fn (mut s IgnoredNodesState) add_spellings(name string, entry IgnoredFn) {
+	module_name := entry.module
+	plain_module := module_name == '' || module_name == 'main' || module_name == 'builtin'
+	if !plain_module && name.len > module_name.len && name[module_name.len] == `.`
+		&& name.starts_with(module_name) {
+		s.add_spelling(name, entry)
+		s.add_spelling(c_name(name), entry)
+	}
+	dfn := transform_dotted_fn_name(module_name, name)
+	s.add_spelling(dfn, entry)
+	s.add_spelling(c_name(dfn), entry)
+}
+
+fn (mut s IgnoredNodesState) add_spelling(spelling string, entry IgnoredFn) {
+	mut entries := s.by_spelling[spelling] or { []IgnoredFn{} }
+	entries << entry
+	s.by_spelling[spelling] = entries
 }
 
 @[direct_array_access]
@@ -4607,6 +4741,34 @@ fn (mut t Transformer) collect_node_subtree_ids(id flat.NodeId, mut nodes map[in
 	node := t.a.node(id)
 	for i in 0 .. node.children_count {
 		t.collect_node_subtree_ids(t.a.child(node, i), mut nodes)
+	}
+}
+
+// clear_node_subtree_flags clears the flags collect_node_subtree_flags set for
+// the subtree of `id`.
+@[direct_array_access]
+fn (mut t Transformer) clear_node_subtree_flags(id flat.NodeId, mut nodes []bool, mut stack []flat.NodeId) {
+	limit := if nodes.len < t.a.nodes.len { nodes.len } else { t.a.nodes.len }
+	stack.clear()
+	stack << id
+	for stack.len > 0 {
+		idx := int(stack.pop())
+		if idx < 0 || idx >= limit || !nodes[idx] {
+			continue
+		}
+		nodes[idx] = false
+		node := &t.a.nodes[idx]
+		start := int(node.children_start)
+		end := start + int(node.children_count)
+		if start < 0 || end > t.a.children.len {
+			continue
+		}
+		for i in start .. end {
+			child_id := t.a.children[i]
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
 	}
 }
 

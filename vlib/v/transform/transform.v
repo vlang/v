@@ -589,6 +589,8 @@ mut:
 	match_lowered_fns []bool
 	// mono_pass_state lets the next monomorphize_pass continue the last one.
 	mono_pass_state MonomorphPassState
+	// ignored_state lets the next monomorphize_ignored_nodes update the last one.
+	ignored_state IgnoredNodesState
 	// Shared-base (clone-free) parallel transform: all threads operate on views
 	// of the master arrays, appending into pre-partitioned capacity regions.
 	// While base_write_intercept is set, in-place writes to base-range node
