@@ -782,6 +782,7 @@ mut:
 	runtime_init_modules          []string
 	compiler_vroot                string
 	compiler_vexe                 string
+	live_source_path               string
 	compiler_vexe_env_setup       bool = true
 	ccompiler                     string
 	target                        pref.Target
@@ -4075,6 +4076,7 @@ fn (mut g FlatGen) write_parallel_cc_unit_marker() {
 }
 
 fn (mut g FlatGen) gen_pre_body_support_declarations() {
+	g.gen_live_declarations()
 	g.fixed_array_map_key_forward_decls()
 	support_start := g.sb.len
 	g.fixed_array_map_key_definitions()
