@@ -14,9 +14,12 @@ Builtin `source_type_*` constants carry scalar spellings without repeated intern
 the `builtin_alias` shape flag identifies spellings that need no alias normalization.
 `FlatAst.type_text_id` and `node_type_text_id` use this same `u32` namespace, independently
 of the AST table used for ordinary text payloads.
-The process owns immutable spellings in nonmoving chunks. Insertion is synchronized; readers
-observe published entries without taking the insertion lock. IDs remain valid across workers
-and disposable arenas, so copying a node requires no type-string promotion or ID remapping.
+The process owns immutable spellings in nonmoving chunks. Insertion is synchronized; lookups of
+existing spellings and IDs observe published entries without taking the insertion lock. Index
+growth publishes a new generation and retains earlier generations until process exit so readers
+can finish their probes safely. Geometric growth retains less than twice the latest slot allocation.
+IDs remain valid across workers and disposable arenas, so copying a node requires no type-string
+promotion or ID remapping.
 The table retains unique spellings until process exit; IDs are not serialized across processes.
 
 `TypeTextTable` provides a private lookup cache over these shared identities. `TypeTextBindings`
