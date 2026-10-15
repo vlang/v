@@ -10070,6 +10070,12 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	// their analysis view can grow the AST. The source loop is lowered normally later.
 	if t.a.nodes[int(id)].kind == .comptime_for {
 		analysis_start := t.a.nodes.len
+		analysis_children_start := t.a.children.len
+		analysis_pending_start := t.pending_stmts.len
+		analysis_temp_counter := t.temp_counter
+		analysis_var_scope := t.mark_var_type_scope()
+		previous_var_undo := t.var_type_undo_active
+		t.var_type_undo_active = true
 		if expanded := t.comptime_method_escape_stmts(t.a.nodes[int(id)]) {
 			for child in expanded {
 				t.scan_escape_pass(child, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut method_value_receivers, mut closure_capture_aliases, mut interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, mut reference_backing_sources, false)
@@ -10077,10 +10083,34 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 			// These clones are an analysis view, not additional executable calls.
 			// Clear only fresh IDs: some clone helpers preserve existing children.
 			for idx in analysis_start .. t.a.nodes.len {
-				t.clear_ignored_comptime_for_node(idx)
+				if !isnil(t.tc) { t.tc.invalidate_checked_expr_type(idx) }
+				t.clear_typechecker_node_cache(idx)
+				t.refined_node_types.delete(idx)
+				t.mut_value_ident_nodes.delete(idx)
+				t.generic_call_spec_cache.delete(idx)
+				t.generic_call_spec_misses.delete(idx)
+				if !isnil(t.tc) && !isnil(t.tc.fork_overlay) {
+					t.tc.fork_overlay.resolved_call_names.delete(idx)
+					t.tc.fork_overlay.resolved_fn_values.delete(idx)
+				}
+			}
+			t.restore_var_type_scope(analysis_var_scope)
+			t.var_type_undo_active = previous_var_undo
+			t.pending_stmts.trim(analysis_pending_start)
+			t.temp_counter = analysis_temp_counter
+			t.clear_node_type_memo()
+			// The discarded view has no surviving AST slices. Reset only these private
+			// lengths: array.trim may detach sliced storage and lose a shared region's cap.
+			unsafe {
+				t.a.nodes.len = analysis_start
+				t.a.children.len = analysis_children_start
+			}
+			if t.ignored_comptime_for_nodes.len > analysis_start {
+				t.ignored_comptime_for_nodes.trim(analysis_start)
 			}
 			return
 		}
+		t.var_type_undo_active = previous_var_undo
 	}
 	// A nested reflected loop can append nodes while an ancestor is being scanned.
 	node_storage := t.a.nodes[int(id)]
