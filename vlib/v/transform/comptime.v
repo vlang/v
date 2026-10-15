@@ -4014,12 +4014,19 @@ fn (mut t Transformer) build_struct_field_decl_metas_cache() {
 	mut cache := map[string]map[string]FieldDeclMeta{}
 	mut cur_mod := ''
 	mut cur_file_id := 0
-	use_idx := !isnil(t.tc) && t.tc.top_level_idx.len > 0
-		&& t.tc.top_level_idx_nodes_len == t.a.nodes.len
-	count := if use_idx { t.tc.top_level_idx.len } else { t.a.nodes.len }
+	// The checker's top-level index lists the declarations of the nodes it
+	// covers, with their file markers; the nodes appended behind it, by lowering,
+	// are read one by one, their module following their position.
+	indexed_count, indexed_nodes := t.top_level_scan_prefix()
+	count := indexed_count + t.a.nodes.len - indexed_nodes
 	for ii in 0 .. count {
-		node_idx := if use_idx { t.tc.top_level_idx[ii] } else { ii }
-		// Without the index this visits every node; read one in place, and copy
+		use_idx := ii < indexed_count
+		node_idx := if use_idx {
+			int(t.tc.top_level_idx[ii])
+		} else {
+			indexed_nodes + ii - indexed_count
+		}
+		// The appended nodes are visited one by one; read one in place, and copy
 		// only a struct declaration.
 		scanned := unsafe { &t.a.nodes[node_idx] }
 		if use_idx && scanned.kind == .file {
