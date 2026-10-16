@@ -14,6 +14,13 @@ This downloads the SQLite amalgamation source and places it in
 `v/thirdparty/sqlite`. V will then compile it automatically
 during your build.
 
+The installer pins one amalgamation version (currently 3.53.4) instead of
+taking the newest. SQLite 3.54.0 uses the `SRWLOCK` type in its Windows mutex
+code, which tcc's `windows.h` does not declare, so `v -cc tcc` on Windows
+cannot build 3.54.0. The pin moves only when someone updates it by hand, after
+checking that tcc builds the new amalgamation. SQLite fixes released after
+3.53.4 are not picked up automatically.
+
 If you need to install SQLite manually, use the SQLite
 **amalgamation** package. `v/thirdparty/sqlite` must contain
 `sqlite3.c` and `sqlite3.h` directly.
