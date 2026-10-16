@@ -4131,7 +4131,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|native|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -10511,7 +10511,16 @@ pub fn run(args []string) {
 			}
 			i += 2
 		} else if args[i] in ['-b', '-backend'] && i + 1 < args.len {
-			backend = if args[i + 1] in ['js_browser', 'js_node'] { 'js' } else { args[i + 1] }
+			backend = if args[i + 1] in ['js_browser', 'js_node'] {
+				'js'
+			} else if args[i + 1] == 'native' {
+				// `native` is the documented name of this backend; `arm64` is the
+				// spelling every check downstream uses, so normalize here rather
+				// than teaching each of them both names.
+				'arm64'
+			} else {
+				args[i + 1]
+			}
 			backend_explicit = true
 			i += 2
 		} else if args[i] == '-cross' {
@@ -11259,7 +11268,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
-	disable_gc := v3_gc_is_disabled(building_v, cross_output, target_os, target_arch)
+	disable_gc := v3_gc_is_disabled(building_v, cross_output, target_os, target_arch, backend)
 	apply_v3_gc_mode(gc_mode, disable_gc, mut user_defines, mut compile_values) or {
 		eprintln(err.msg())
 		exit(1)
@@ -11273,7 +11282,7 @@ pub fn run(args []string) {
 	}
 	if backend !in ['c', 'fastc', 'arm64', 'wasm', 'eval']
 		&& !(backend == 'js' && is_checker_fixture) {
-		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, wasm, or eval')
+		eprintln('unknown backend `${backend}`; expected c, fastc, native, wasm, or eval')
 		exit(1)
 	}
 	if backend == 'arm64' && target_os != 'macos' && 'no_gettid' !in user_defines {
@@ -11282,8 +11291,13 @@ pub fn run(args []string) {
 	}
 	for requested in compile_backends {
 		for name in requested.split(',') {
-			if name.trim_space() !in ['c', 'fastc', 'arm64', 'aarch64', 'wasm', 'wasm32', 'eval'] {
-				eprintln('unknown compile backend `${name.trim_space()}`')
+			backend_name := name.trim_space()
+			if backend_name == 'native' {
+				// `native` is the documented alias of the ARM64 backend.
+				continue
+			}
+			if backend_name !in ['c', 'fastc', 'arm64', 'aarch64', 'wasm', 'wasm32', 'eval'] {
+				eprintln('unknown compile backend `${backend_name}`')
 				exit(1)
 			}
 		}
@@ -11488,7 +11502,7 @@ pub fn run(args []string) {
 				'fastc' {
 					include_fastc = true
 				}
-				'arm64', 'aarch64' {
+				'arm64', 'aarch64', 'native' {
 					include_arm64 = true
 				}
 				'wasm', 'wasm32' {
@@ -20442,6 +20456,22 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 			fallback_location
 		}
 		return '${location}error: `\$res()` is not supported by the V3 ${backend} backend'
+	}
+	if node.kind == .call && node.children_count > 0 {
+		callee := a.child_node(&node, 0)
+		if callee.kind == .ident && callee.value == '__v3_closure_current_data' {
+			// The transform puts this call at the head of every closure body that
+			// captures a variable, and the C backend lowers it to a reference to the
+			// running closure's environment. The native backend has no such register
+			// convention, so the body cannot be built at all; saying so here beats
+			// failing later on a callee that was never declared.
+			location := if source_pos := a.source_position(node.pos) {
+				'${source_pos}: '
+			} else {
+				fallback_location
+			}
+			return '${location}error: closures that capture variables are not supported by the V3 ${backend} backend'
+		}
 	}
 	for i in 0 .. node.children_count {
 		if msg := unsupported_backend_node_error(a, tc, a.child(&node, i), backend, diagnose_aggregates, fallback_location, mut visited) {

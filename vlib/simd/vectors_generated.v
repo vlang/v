@@ -2738,59 +2738,51 @@ pub fn (v F32x4) store_at(mut dst []f32, offset int) {
 }
 
 // + adds corresponding lanes.
-@[direct_array_access]
+@[direct_array_access; noinline]
 pub fn (a F32x4) + (b F32x4) F32x4 {
-	mut r := F32x4{}
 	$if @BACKEND == 'c' {
+		mut r := F32x4{}
 		native_add_f32(&a.values[0], &b.values[0], &r.values[0], 4)
+		return r
 	} $else {
-		for i in 0 .. 4 {
-			r.values[i] = a.values[i] + b.values[i]
-		}
+		return add_native(a, b)
 	}
-	return r
 }
 
 // - subtracts corresponding lanes.
-@[direct_array_access]
+@[direct_array_access; noinline]
 pub fn (a F32x4) - (b F32x4) F32x4 {
-	mut r := F32x4{}
 	$if @BACKEND == 'c' {
+		mut r := F32x4{}
 		native_sub_f32(&a.values[0], &b.values[0], &r.values[0], 4)
+		return r
 	} $else {
-		for i in 0 .. 4 {
-			r.values[i] = a.values[i] - b.values[i]
-		}
+		return sub_native(a, b)
 	}
-	return r
 }
 
 // * multiplies corresponding lanes.
-@[direct_array_access]
+@[direct_array_access; noinline]
 pub fn (a F32x4) * (b F32x4) F32x4 {
-	mut r := F32x4{}
 	$if @BACKEND == 'c' {
+		mut r := F32x4{}
 		native_mul_f32(&a.values[0], &b.values[0], &r.values[0], 4)
+		return r
 	} $else {
-		for i in 0 .. 4 {
-			r.values[i] = a.values[i] * b.values[i]
-		}
+		return mul_native(a, b)
 	}
-	return r
 }
 
 // / divides corresponding lanes.
-@[direct_array_access]
+@[direct_array_access; noinline]
 pub fn (a F32x4) / (b F32x4) F32x4 {
-	mut r := F32x4{}
 	$if @BACKEND == 'c' {
+		mut r := F32x4{}
 		native_div_f32(&a.values[0], &b.values[0], &r.values[0], 4)
+		return r
 	} $else {
-		for i in 0 .. 4 {
-			r.values[i] = a.values[i] / b.values[i]
-		}
+		return div_native(a, b)
 	}
-	return r
 }
 
 // add returns a + b.
@@ -2878,17 +2870,15 @@ pub fn (a F32x4) maximum(b F32x4) F32x4 {
 }
 
 // sqrt returns the square root of each lane.
-@[direct_array_access]
+@[direct_array_access; noinline]
 pub fn (a F32x4) sqrt() F32x4 {
-	mut r := F32x4{}
 	$if @BACKEND == 'c' {
+		mut r := F32x4{}
 		native_sqrt_f32(&a.values[0], &r.values[0], 4)
+		return r
 	} $else {
-		for i in 0 .. 4 {
-			r.values[i] = f32(math.sqrt(a.values[i]))
-		}
+		return sqrt_native(a)
 	}
-	return r
 }
 
 // mul_add returns v * multiplier + addend for each lane.
