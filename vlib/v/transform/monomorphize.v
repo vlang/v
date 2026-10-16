@@ -2173,6 +2173,18 @@ fn interface_box_scan_reads_kind(kind flat.NodeKind) bool {
 @[direct_array_access]
 fn (mut t Transformer) collect_interface_boxed_types_range(start int, end int) {
 	limit := if end < t.a.nodes.len { end } else { t.a.nodes.len }
+	own_cache := isnil(t.box_type_text_cache)
+	if own_cache {
+		t.box_type_text_cache = &BoxTypeTextCache{
+			ids:     []u32{len: 4096}
+			results: []bool{len: 4096}
+		}
+	}
+	defer {
+		if own_cache {
+			t.box_type_text_cache = unsafe { nil }
+		}
+	}
 	for idx in start .. limit {
 		if idx < t.interface_boxed_skip_nodes.len && t.interface_boxed_skip_nodes[idx] {
 			continue
@@ -2797,10 +2809,34 @@ fn interface_box_unalias_type(typ types.Type) types.Type {
 	return typ
 }
 
+// BoxTypeTextCache remembers interface_box_type_text_maybe by type id while a
+// box scan runs, which registers no type or alias the test reads.
+@[heap]
+struct BoxTypeTextCache {
+mut:
+	ids     []u32
+	results []bool
+}
+
 fn (t &Transformer) interface_box_type_text_maybe(raw_type_id u32) bool {
 	if raw_type_id == 0 {
 		return false
 	}
+	if isnil(t.box_type_text_cache) {
+		return t.interface_box_type_text_maybe_uncached(raw_type_id)
+	}
+	mut cache := t.box_type_text_cache
+	slot := int(raw_type_id & 4095)
+	if cache.ids[slot] == raw_type_id {
+		return cache.results[slot]
+	}
+	result := t.interface_box_type_text_maybe_uncached(raw_type_id)
+	cache.ids[slot] = raw_type_id
+	cache.results[slot] = result
+	return result
+}
+
+fn (t &Transformer) interface_box_type_text_maybe_uncached(raw_type_id u32) bool {
 	clean_id := t.trimmed_type_id(t.normalize_type_alias(raw_type_id))
 	clean := flat.source_type_name(clean_id)
 	if flat.source_type_shape(clean_id).has(.optional) {
