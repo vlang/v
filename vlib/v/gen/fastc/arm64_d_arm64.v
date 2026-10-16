@@ -244,10 +244,10 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	// rely on, and indexes the declarations. The generic-method sources and
 	// the per-file declaration texts and spans are not used here: the native
 	// path collects its type and constant declarations itself below.
-	mut index_type_sources := map[string]string{}
-	mut index_constant_sources := map[string]string{}
+	mut index_type_sources := map[string]FastcDeclarationSource{}
+	mut index_constant_sources := map[string]FastcDeclarationSource{}
 	mut index_constant_spans := map[string][]int{}
-	mut index_global_sources := map[string]string{}
+	mut index_global_sources := map[string]FastcDeclarationSource{}
 	_ = fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut index_type_sources, mut constants, mut public_constants, mut index_constant_sources, mut index_constant_spans, mut index_global_sources, mut globals, mut public_globals)!
 	timer.mark('arm64.declaration_indexes')
 	// Non-selfhost programs do not resolve builtin source files, but imported module
@@ -5312,7 +5312,7 @@ fn (mut p FastArm64Parser) pop_loop() {
 }
 
 fn (p &FastArm64Parser) validate_if_condition() ! {
-	fastc_validate_if_condition(p.tok, p.s, p.source_file.header.translated, p.source_offset, p.source_file.path)!
+	fastc_validate_if_condition(p.tok, p.s, p.source_file.header.translated, p.source_offset, p.source_file.source_origins, p.source_file.path)!
 }
 
 fn (mut p FastArm64Parser) parse_if() ! {

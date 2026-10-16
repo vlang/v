@@ -1035,11 +1035,13 @@ struct FastcStructField {
 	is_declared_voidptr bool
 	// Shared map fields keep pointer identity even though FastC currently erases locking.
 	// Without this, copying their containing struct detaches subsequent map header updates.
-	is_shared_pointer bool
-	module_name       string
-	path              string
-	imports           map[string]string
-	default_source    string
+	is_shared_pointer     bool
+	module_name           string
+	path                  string
+	imports               map[string]string
+	default_source        string
+	default_source_offset int
+	translated            bool
 mut:
 	default_value string
 	storage_path  []string
@@ -1088,10 +1090,22 @@ struct FastcSourceHeader {
 	body_spans []int
 }
 
+// FastcSourceOrigin maps a copied span in a filtered declaration buffer to its source file.
+struct FastcSourceOrigin {
+	filtered_offset int
+	source_offset   int
+}
+
+struct FastcDeclarationSource {
+	source  string
+	origins []FastcSourceOrigin
+}
+
 struct FastcSourceFile {
 	path                 string
 	source               string
 	source_offset        int
+	source_origins       []FastcSourceOrigin
 	source_line_offset   int
 	source_column_offset int
 	header               FastcSourceHeader
@@ -1423,6 +1437,7 @@ mut:
 	uses_pthread_tls     bool
 	path                 string
 	source_offset        int
+	source_origins       []FastcSourceOrigin
 	source_line_offset   int
 	source_column_offset int
 	module_name          string
@@ -1795,6 +1810,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		declared_type_key_memo:    map[u32]FastcMemoEntry{}
 		path:                      source_file.path
 		source_offset:             source_file.source_offset
+		source_origins:            source_file.source_origins
 		source_line_offset:        source_file.source_line_offset
 		source_column_offset:      source_file.source_column_offset
 		module_name:               source_file.header.module_name
@@ -1959,10 +1975,10 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
 	mut type_source_paths := map[string]bool{}
-	mut type_sources := map[string]string{}
-	mut constant_sources := map[string]string{}
+	mut type_sources := map[string]FastcDeclarationSource{}
+	mut constant_sources := map[string]FastcDeclarationSource{}
 	mut constant_spans := map[string][]int{}
-	mut global_sources := map[string]string{}
+	mut global_sources := map[string]FastcDeclarationSource{}
 	generic_method_sources := fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
 	timer.mark('declaration_indexes')
 	// builtin declares IError as `pub struct C.IError`, which the index does not record, so

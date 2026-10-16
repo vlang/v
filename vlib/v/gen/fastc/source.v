@@ -44,9 +44,10 @@ fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &p
 			continue
 		}
 		mut declarations := strings.new_builder(64)
+		mut declaration_origins := []FastcSourceOrigin{}
 		collect_global_names(source.source, source.path, source.header, prefs,
 			source.header.body_spans, mut globals, mut public_globals, mut global_paths,
-			mut declarations)!
+			mut declarations, mut declaration_origins)!
 		declarations.free()
 	}
 	mut result := []FastcSourceFile{cap: sources.len}
