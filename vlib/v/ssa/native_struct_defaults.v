@@ -32,8 +32,7 @@ fn (mut b Builder) register_struct_field_defaults() {
 }
 
 fn (mut b Builder) declared_field_default_value(struct_name_id u32, field_name string) ?ValueID {
-	struct_name := flat.source_type_name(struct_name_id)
-	typ, _ := b.struct_literal_type(struct_name)
+	typ, _ := b.struct_literal_type(struct_name_id)
 	initializer := b.struct_field_defaults['${typ}.${field_name}'] or { return none }
 	old_module := b.cur_module
 	old_vars := b.vars
@@ -75,8 +74,7 @@ fn (mut b Builder) declared_field_default_value(struct_name_id u32, field_name s
 }
 
 fn (b &Builder) struct_field_storage_type(struct_name_id u32, field_name string) ?TypeID {
-	struct_name := flat.source_type_name(struct_name_id)
-	typ, _ := b.struct_literal_type(struct_name)
+	typ, _ := b.struct_literal_type(struct_name_id)
 	if typ <= 0 || typ >= b.m.type_store.types.len {
 		return none
 	}

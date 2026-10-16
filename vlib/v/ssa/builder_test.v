@@ -191,7 +191,7 @@ fn test_runtime_helpers_remain_used_when_module_qualified() {
 
 // test_native_c_tm_uses_the_platform_abi_layout validates this v3 regression case.
 fn test_native_c_tm_uses_the_platform_abi_layout() {
-	assert native_c_struct_field_type('C.tm', 'tm_gmtoff') or { '' } == 'i64'
+	assert native_c_struct_field_type('C.tm', 'tm_gmtoff') or { u32(0) } == flat.source_type_i64
 	assert native_c_struct_field_type('C.tm', 'tm_sec') == none
 }
 

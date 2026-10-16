@@ -158,7 +158,7 @@ fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.Nod
 		callee := b.qualified_expr_name(b.a.child(expr, 0))
 		for node in b.a.nodes {
 			if node.kind == .fn_decl && node.value == callee && node.typ != 0 {
-				return flat.source_type_id(qualify_type_ref_name(node.typ_text(), module_name))
+				return qualify_type_ref_name(node.typ, module_name)
 			}
 		}
 	}

@@ -595,6 +595,8 @@ fn node_has_scoped_text(node &flat.Node, scope voidptr) bool {
 	if transform_scope_owns(scope, node.payload_ptr()) {
 		return true
 	}
+	debugger_types := node.debugger_value_type_ids()
+	if debugger_types.len > 0 && transform_scope_owns(scope, debugger_types.data) { return true }
 	constraints := node.payload_ptr().generic_constraints.ids
 	if constraints.len > 0 && transform_scope_owns(scope, constraints.data) {
 		return true
@@ -959,10 +961,17 @@ fn scoped_text_promote_thread(arg voidptr) voidptr {
 		}
 		params := node.generic_params()
 		if params.len == 0 {
+			debugger_types := node.debugger_value_type_ids()
+			if debugger_types.len > 0 && (transform_scope_owns(a.scope, node.payload_ptr()) || transform_scope_owns(a.scope, debugger_types.data)) {
+				node.set_debugger_value_type_ids(debugger_types)
+			} else if node.enum_backing_type_id() != 0 && transform_scope_owns(a.scope, node.payload_ptr()) {
+				node.set_enum_backing_type_id(node.enum_backing_type_id())
+			}
 			continue
 		}
 		constraints := node.payload_ptr().generic_constraints.ids
-		mut needs := transform_scope_owns(a.scope, node.payload_ptr())
+		debugger_types := node.debugger_value_type_ids()
+		mut needs := (debugger_types.len > 0 && transform_scope_owns(a.scope, debugger_types.data)) || transform_scope_owns(a.scope, node.payload_ptr())
 			|| transform_scope_owns(a.scope, params.data)
 			|| (constraints.len > 0 && transform_scope_owns(a.scope, constraints.data))
 		if !needs {
@@ -1215,8 +1224,8 @@ mut:
 	emitted_specs []PendingGenericFnSpec
 	generated     []string
 	scan_nodes    []int
-	struct_specs  flat.TypeTextBindings
-	sum_specs     map[string]GenericSpecContext
+	struct_specs  map[u32]u32
+	sum_specs     map[u32]GenericSpecContext
 	scope         voidptr
 }
 
@@ -1269,8 +1278,8 @@ fn monomorph_chunk_thread(arg voidptr) voidptr {
 	mut roots := []flat.NodeId{cap: 64}
 	mut emitted_specs := []PendingGenericFnSpec{cap: 64}
 	mut generated := []string{}
-	mut struct_specs := flat.TypeTextBindings{}
-	mut sum_specs := map[string]GenericSpecContext{}
+	mut struct_specs := map[u32]u32{}
+	mut sum_specs := map[u32]GenericSpecContext{}
 	mut private_region := false
 	mut claims := a.claims
 	for {
@@ -1587,8 +1596,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 	mut shared_fn_ret_types := t.fn_ret_types.move()
 	mut shared_receiver_index := t.receiver_method_suffix_index.move()
 	t.parallel_monomorph_scan_nodes = []int{}
-	t.parallel_monomorph_struct_specs = flat.TypeTextBindings{}
-	t.parallel_monomorph_sum_specs = map[string]GenericSpecContext{}
+	t.parallel_monomorph_struct_specs = map[u32]u32{}
+	t.parallel_monomorph_sum_specs = map[u32]GenericSpecContext{}
 	t.parallel_monomorph_scan_start = base_nodes
 	t.fn_ret_types = shared_fn_ret_types.clone()
 	t.receiver_method_suffix_index = shared_receiver_index.clone()
@@ -1678,7 +1687,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			t.merge_worker(w, []FnWorkItem{}, node_starts[ci], child_starts[ci], false)
 			for key, boxed in w.interface_boxed_types {
 				if boxed && key !in t.interface_boxed_types {
-					t.interface_boxed_types[key.clone()] = true
+					t.interface_boxed_types[key] = true
 				}
 			}
 			for name in w.generic_specialization_args_log {
@@ -1696,11 +1705,11 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		for idx in args[ci].scan_nodes {
 			t.parallel_monomorph_scan_nodes << idx + node_shift
 		}
-		for spec, base in args[ci].struct_specs.ids {
-			t.parallel_monomorph_struct_specs.set_id(spec.clone(), base)
+		for spec, base in args[ci].struct_specs {
+			t.parallel_monomorph_struct_specs[spec] = base
 		}
 		for spec, context in args[ci].sum_specs {
-			t.parallel_monomorph_sum_specs[spec.clone()] = GenericSpecContext{
+			t.parallel_monomorph_sum_specs[spec] = GenericSpecContext{
 				base:   context.base
 				file:   context.file.clone()
 				module: context.module.clone()
@@ -1748,15 +1757,14 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 	t.parallel_monomorph_scan_end = t.a.nodes.len
 	t.tc.unfreeze_type_cache_after_forks()
 	t.parallel_monomorph_scan_nodes = t.parallel_monomorph_scan_nodes.clone()
-	mut owned_struct_specs := flat.TypeTextBindings{}
-	for spec, base_id in t.parallel_monomorph_struct_specs.ids {
-		base := flat.source_type_name(base_id)
-		owned_struct_specs.set(spec.clone(), base.clone())
+	mut owned_struct_specs := map[u32]u32{}
+	for spec, base_id in t.parallel_monomorph_struct_specs {
+		owned_struct_specs[spec] = base_id
 	}
 	t.parallel_monomorph_struct_specs = owned_struct_specs.move()
-	mut owned_sum_specs := map[string]GenericSpecContext{}
+	mut owned_sum_specs := map[u32]GenericSpecContext{}
 	for spec, context in t.parallel_monomorph_sum_specs {
-		owned_sum_specs[spec.clone()] = GenericSpecContext{
+		owned_sum_specs[spec] = GenericSpecContext{
 			base:   context.base
 			file:   context.file.clone()
 			module: context.module.clone()
@@ -1906,10 +1914,10 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		t.merge_worker_used_fns(w)
 		t.merge_worker(w, []FnWorkItem{}, base_nodes, base_children, false)
 		// Interface conversions discovered in this batch drive method specialization
-		// in later rounds. Own their keys before releasing the worker's arena.
+		// in later rounds. Source spelling pair IDs outlive the worker's arena.
 		for key, boxed in w.interface_boxed_types {
 			if boxed && key !in t.interface_boxed_types {
-				t.interface_boxed_types[key.clone()] = true
+				t.interface_boxed_types[key] = true
 			}
 		}
 		for name in w.generic_specialization_args_log {
@@ -2198,12 +2206,12 @@ fn (mut t Transformer) collect_interface_boxed_types_parallel() bool {
 	}
 	t.a.worker_pool.run(tasks)
 	t.tc.unfreeze_type_cache_after_forks()
-	mut boxed_types := map[string]bool{}
+	mut boxed_types := map[u64]bool{}
 	for arg in args {
 		scan := unsafe { &Transformer(arg.worker) }
 		for key, value in scan.interface_boxed_types {
 			if value {
-				boxed_types[key.clone()] = true
+				boxed_types[key] = true
 			}
 		}
 		transform_worker_scope_free(arg.scope)
@@ -2231,10 +2239,21 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
+		debugger_types := node.debugger_value_type_ids()
+		if (debugger_types.len > 0 && (transform_scope_owns(scope, node.payload_ptr()) || transform_scope_owns(scope, debugger_types.data))) || (node.enum_backing_type_id() != 0 && transform_scope_owns(scope, node.payload_ptr())) {
+			publication_state := transform_stage_scope_suspend(t.merge_scratch_scope)
+			if debugger_types.len > 0 {
+				node.set_debugger_value_type_ids(debugger_types)
+			} else {
+				node.set_enum_backing_type_id(node.enum_backing_type_id())
+			}
+			transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
+		}
 		return
 	}
 	old_constraints := node.payload_ptr().generic_constraints.ids
-	mut needs_owned_params := transform_scope_owns(scope, node.payload_ptr())
+	debugger_types := node.debugger_value_type_ids()
+	mut needs_owned_params := (debugger_types.len > 0 && transform_scope_owns(scope, debugger_types.data)) || transform_scope_owns(scope, node.payload_ptr())
 		|| transform_scope_owns(scope, old_params.data)
 		|| (old_constraints.len > 0 && transform_scope_owns(scope, old_constraints.data))
 	if !needs_owned_params {
@@ -2410,7 +2429,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	}
 	for name, req in batch.auto_str_types {
 		if name !in t.auto_str_types {
-			t.auto_str_types[t.promote_scoped_result_text(name)] = AutoStrRequest{
+			t.auto_str_types[name] = AutoStrRequest{
 				module:        t.promote_scoped_result_text(req.module)
 				file:          t.promote_scoped_result_text(req.file)
 				helper_module: t.promote_scoped_result_text(req.helper_module)
@@ -2419,7 +2438,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	}
 	for name, req in batch.default_clone_types {
 		if name !in t.default_clone_types {
-			t.default_clone_types[t.promote_scoped_result_text(name)] = DefaultCloneRequest{
+			t.default_clone_types[name] = DefaultCloneRequest{
 				module: t.promote_scoped_result_text(req.module)
 				file:   t.promote_scoped_result_text(req.file)
 			}
@@ -2706,7 +2725,7 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 					node: flat.Node{
 						value:          t.promote_scoped_result_text(write.node.value)
 						typ:            write.node.typ
-						payload:        flat.node_payload(params)
+						payload:        flat.node_payload_with_type_metadata(params, write.node.enum_backing_type_id(), write.node.debugger_value_type_ids())
 						pos:            write.node.pos
 						children_start: write.node.children_start
 						children_count: write.node.children_count

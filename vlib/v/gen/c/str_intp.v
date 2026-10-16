@@ -35,7 +35,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 			g.write('_str_${sid}')
 		} else {
 			typ := g.string_interp_child_type(expr_id, child)
-			typ_name := types.Type(typ).name()
+			typ_name_id := types.Type(typ).source_type_id()
 			if child.typ_text() == 'string' || typ is types.String {
 				if format.len > 0 {
 					g.gen_formatted_string_interp_child_expr(expr_id, typ, format)
@@ -47,7 +47,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				// emitted by gen_formatted_string_interp_child_expr
 			} else if g.gen_map_str_expr(expr_id, typ) {
 				// emitted by gen_map_str_expr
-			} else if g.is_ierror_type_name(typ_name) {
+			} else if g.is_ierror_type_name(typ_name_id) {
 				// IError may resolve as Interface/Alias/Struct depending on context. Dispatch
 				// through msg() so boxed MessageError values do not depend on the legacy cache.
 				g.gen_ierror_dynamic_method_expr(expr_id, typ, 'msg')
@@ -61,7 +61,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Enum {
-				g.write('${g.enum_autostr_c_name(typ.name())}__autostr(')
+				g.write('${g.enum_autostr_c_name(typ.source_type_id())}__autostr(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.Interface {
@@ -268,7 +268,7 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		} else if f.width > 0 {
 			g.write('v3_string_pad(')
 		}
-		g.write('${g.enum_autostr_c_name(typ.name())}__autostr(')
+		g.write('${g.enum_autostr_c_name(typ.source_type_id())}__autostr(')
 		g.gen_string_interp_child_expr(child_id)
 		g.write(')')
 		if f.zero && f.width > 0 {

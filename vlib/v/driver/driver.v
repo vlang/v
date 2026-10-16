@@ -6539,10 +6539,7 @@ fn c_hash_monomorph_node(initial u64, a &flat.FlatAst, id flat.NodeId, cacheable
 		hash = c_hash_bytes(hash, attribute_signature.bytes())
 		hash = c_hash_bytes(hash, [u8(0xfd)])
 	}
-	for param in node.generic_params() {
-		hash = c_hash_bytes(hash, param.bytes())
-		hash = c_hash_bytes(hash, [u8(0xfe)])
-	}
+	hash = c_hash_node_params(hash, node)
 	for child_idx in 0 .. node.children_count {
 		hash = c_hash_monomorph_node(hash, a, a.child(&node, child_idx), cacheable_strings, declaration_attributes)
 	}
@@ -6635,6 +6632,28 @@ fn incremental_qualified_fn_name(module_name string, name string) string {
 	return '${module_name}.${name}'
 }
 
+// c_hash_node_params hashes the legacy spelling-byte metadata layout for cache stability.
+// Enum storage types live in their own numeric slot and precede attribute markers only here.
+fn c_hash_node_params(initial u64, node &flat.Node) u64 {
+	mut hash := initial
+	params := node.generic_params()
+	if node.kind == .enum_decl && (node.enum_backing_type_id() != 0 || params.len > 0) {
+		hash = c_hash_bytes(hash, flat.source_type_name(node.enum_backing_type_id()).bytes())
+		hash = c_hash_bytes(hash, [u8(0xfe)])
+	}
+	debugger_types := node.debugger_value_type_ids()
+	debugger_layout := debugger_types.len == int(node.children_count) && params.len == 1 + debugger_types.len * 2
+	for i, param in params {
+		hash = c_hash_bytes(hash, param.bytes())
+		hash = c_hash_bytes(hash, [u8(0xfe)])
+		if debugger_layout && i > 0 && i % 2 == 1 {
+			hash = c_hash_bytes(hash, flat.source_type_name(debugger_types[(i - 1) / 2]).bytes())
+			hash = c_hash_bytes(hash, [u8(0xfe)])
+		}
+	}
+	return hash
+}
+
 fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool) u64 {
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
 		u8(node.skip_ownership_drops()), u8(node.is_static_type_method())])
@@ -6645,10 +6664,7 @@ fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool
 		hash = c_hash_bytes(hash, node.value.bytes())
 	}
 	hash = c_hash_bytes(hash, [u8(0xff)])
-	for param in node.generic_params() {
-		hash = c_hash_bytes(hash, param.bytes())
-		hash = c_hash_bytes(hash, [u8(0xfe)])
-	}
+	hash = c_hash_node_params(hash, node)
 	return hash
 }
 
@@ -6659,10 +6675,7 @@ fn incremental_hash_fn_declaration(initial u64, node &flat.Node) u64 {
 	hash = c_hash_bytes(hash, [u8(0)])
 	hash = c_hash_bytes(hash, node.value.bytes())
 	hash = c_hash_bytes(hash, [u8(0xff)])
-	for param in node.generic_params() {
-		hash = c_hash_bytes(hash, param.bytes())
-		hash = c_hash_bytes(hash, [u8(0xfe)])
-	}
+	hash = c_hash_node_params(hash, node)
 	return hash
 }
 
@@ -7307,6 +7320,12 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
+		debugger_types := node.debugger_value_type_ids()
+		if debugger_types.len > 0 && (scoped_value_owned(scope, node.payload_ptr()) || scoped_value_owned(scope, debugger_types.data)) {
+			node.set_debugger_value_type_ids(debugger_types)
+		} else if node.enum_backing_type_id() != 0 && scoped_value_owned(scope, node.payload_ptr()) {
+			node.set_enum_backing_type_id(node.enum_backing_type_id())
+		}
 		return
 	}
 	old_constraints := node.generic_constraints()
@@ -7437,6 +7456,12 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
+		debugger_types := node.debugger_value_type_ids()
+		if debugger_types.len > 0 && (scoped_value_owned(scope, node.payload_ptr()) || scoped_value_owned(scope, debugger_types.data)) {
+			node.set_debugger_value_type_ids(debugger_types)
+		} else if node.enum_backing_type_id() != 0 && scoped_value_owned(scope, node.payload_ptr()) {
+			node.set_enum_backing_type_id(node.enum_backing_type_id())
+		}
 		return
 	}
 	old_constraints := node.generic_constraints()
@@ -7472,6 +7497,12 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
+		debugger_types := node.debugger_value_type_ids()
+		if debugger_types.len > 0 && (scoped_value_owned(scope, node.payload_ptr()) || scoped_value_owned(scope, debugger_types.data)) {
+			node.set_debugger_value_type_ids(debugger_types)
+		} else if node.enum_backing_type_id() != 0 && scoped_value_owned(scope, node.payload_ptr()) {
+			node.set_enum_backing_type_id(node.enum_backing_type_id())
+		}
 		return
 	}
 	old_constraints := node.generic_constraints()
@@ -7503,7 +7534,8 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 // the constraints they name, live in the scope's memory: its payload, their
 // arrays or their strings.
 fn scoped_generic_payload_owned(node &flat.Node, params []string, constraints []string, scope voidptr) bool {
-	if scoped_value_owned(scope, node.payload_ptr()) || scoped_value_owned(scope, params.data)
+	debugger_types := node.debugger_value_type_ids()
+	if (debugger_types.len > 0 && scoped_value_owned(scope, debugger_types.data)) || scoped_value_owned(scope, node.payload_ptr()) || scoped_value_owned(scope, params.data)
 		|| (constraints.len > 0 && scoped_value_owned(scope, constraints.data)) {
 		return true
 	}
@@ -7659,6 +7691,22 @@ fn clone_string_list_map(values map[string][]string) map[string][]string {
 	return cloned
 }
 
+fn clone_type_owner_field_flags(values map[u32]map[string]bool) map[u32]map[string]bool {
+	mut cloned := map[u32]map[string]bool{}
+	for owner_id, fields in values {
+		cloned[owner_id] = clone_string_bool_map(fields)
+	}
+	return cloned
+}
+
+fn clone_type_owner_c_abi_fields(values map[u32]map[string]string) map[u32]map[string]string {
+	mut cloned := map[u32]map[string]string{}
+	for owner_id, fields in values {
+		cloned[owner_id] = clone_string_string_map(fields)
+	}
+	return cloned
+}
+
 fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 	// Transform and specialization can grow these maps inside a disposable arena,
 	// so move both their storage and string payloads before releasing that arena.
@@ -7680,8 +7728,9 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 		clone_string_bool_map(tc.struct_error_embeds_shadow_builtin)
 	tc.struct_generic_params = clone_string_list_map(tc.struct_generic_params)
 	tc.struct_implements = tc.struct_implements.clone_owned()
-	tc.struct_shared_fields = clone_string_bool_map(tc.struct_shared_fields)
-	tc.struct_field_c_abi_fns = clone_string_string_map(tc.struct_field_c_abi_fns)
+	tc.struct_shared_fields = clone_type_owner_field_flags(tc.struct_shared_fields)
+	tc.struct_shared_element_fields = clone_type_owner_field_flags(tc.struct_shared_element_fields)
+	tc.struct_field_c_abi_fns = clone_type_owner_c_abi_fields(tc.struct_field_c_abi_fns)
 	tc.unions = clone_string_bool_map(tc.unions)
 	tc.params_structs = clone_string_bool_map(tc.params_structs)
 	tc.c_typedef_structs = clone_string_bool_map(tc.c_typedef_structs)
@@ -8784,8 +8833,24 @@ fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, r
 			}
 		}
 		mut type_names := [node.typ_text(), node.value]
-		if node.generic_params().len > 0 && node.value.len > 0 {
-			type_names << '${node.value}[${node.generic_params().join(', ')}]'
+		mut params := node.generic_params()
+		debugger_types := node.debugger_value_type_ids()
+		if node.value.len > 0 && debugger_types.len == int(node.children_count) && params.len == 1 + debugger_types.len * 2 {
+			mut rendered := []string{cap: params.len + debugger_types.len}
+			for i, param in params {
+				rendered << param
+				if i > 0 && i % 2 == 1 {
+					rendered << flat.source_type_name(debugger_types[(i - 1) / 2])
+				}
+			}
+			params = rendered.clone()
+		}
+		if node.kind == .enum_decl && node.value.len > 0 && (node.enum_backing_type_id() != 0 || params.len > 0) {
+			// This cache probe retains the legacy source signature projection.
+			suffix := if params.len > 0 { ', ' + params.join(', ') } else { '' }
+			type_names << '${node.value}[${flat.source_type_name(node.enum_backing_type_id())}${suffix}]'
+		} else if params.len > 0 && node.value.len > 0 {
+			type_names << '${node.value}[${params.join(', ')}]'
 		}
 		for type_name in type_names {
 			if incremental_type_is_generic_named_application(type_name, module_name, tc) {
@@ -9798,6 +9863,42 @@ fn v3_module_cache_refresh_args(args []string, compiler string, module_search_pa
 	resolved_compiler := os.find_abs_path_of_executable(compiler) or { os.abs_path(compiler) }
 	flags << ['-cc', resolved_compiler]
 	return flags
+}
+
+// v3_live_rebuild_options keeps compile inputs while removing executable-only switches.
+fn v3_live_rebuild_options(args []string, compiler string, module_search_paths []string) []string {
+	mut options := []string{}
+	mut input_seen := false
+	mut running := false
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if running && input_seen { break }
+		if v3_driver_option_consumes_value(arg) {
+			if i + 1 < args.len && arg !in ['-o', '-output', '-cc', '-path', '-run-only', '-test-runner',
+				'-dump-c-flags', '-dump-files', '-generate-c-project'] {
+				options << [arg, args[i + 1]]
+			}
+			i += 2
+			continue
+		}
+		if arg in ['run', 'crun'] {
+			running = true
+		} else if arg.starts_with('-') {
+			if arg !in ['-live', '-sharedlive', '-shared', '--shared', '-check', '-check-syntax',
+				'-skip-running', '-o', '-output'] {
+				options << arg
+			}
+		} else if arg !in ['build', 'test'] {
+			input_seen = true
+		}
+		i++
+	}
+	if module_search_paths.len > 0 {
+		options << ['-path', module_search_paths.join('|')]
+	}
+	options << ['-cc', compiler]
+	return options
 }
 
 fn v3_cache_refresh_c_flag(flag string) string {
@@ -11206,6 +11307,8 @@ pub fn run(args []string) {
 	// one OS, architecture or C compiler, so that a single generated snapshot
 	// (`vc/v.c`) bootstraps V everywhere. Generate against the host target and
 	// leave every target-dependent `$if` to the C preprocessor.
+	explicit_windows_target := target_os_explicit
+		&& pref.normalized_os(target_os.trim_space().to_lower()) == 'windows'
 	mut output_cross_c := cross_output
 	if pref.normalized_os(target_os.trim_space().to_lower()) == 'cross' {
 		output_cross_c = true
@@ -11239,7 +11342,9 @@ pub fn run(args []string) {
 		eprintln('option `-target-libc-headers` does not support Windows targets')
 		exit(1)
 	}
-	if target_libc_headers && backend != 'c' {
+	if target_libc_headers && backend != 'c'
+		&& !(backend == 'fastc' && (output_file == '-' || output_file.ends_with('.c'))
+			&& (target.os != pref.host_target().os || target.arch != pref.host_target().arch)) {
 		eprintln('option `-target-libc-headers` requires the C backend')
 		exit(1)
 	}
@@ -11292,7 +11397,7 @@ pub fn run(args []string) {
 			}
 		}
 	}
-	if building_v || cmd_v_build {
+	if (building_v || cmd_v_build) && !target_libc_headers {
 		if no_parallel {
 			// This controls the current build only. Keep parallel support in the output
 			// compiler so its module graph does not depend on how it was bootstrapped.
@@ -11591,9 +11696,12 @@ pub fn run(args []string) {
 		&& !target_libc_headers
 		&& target.os in ['macos', 'linux', 'freebsd', 'openbsd', 'dragonfly', 'windows', 'android',
 			'termux', 'ios'] {
-		// vc/v.c must bootstrap without platform headers or checkout-local objects.
-		// Keep the signal-context ABI out of this portable compiler snapshot.
-		record_user_define(mut user_defines, mut compile_values, 'v3_headerless_bootstrap')
+		// Windows snapshots embed SDK-backed helpers, including the ACL and atomic
+		// compatibility surface. Other hosted snapshots use V-owned declarations.
+		if !explicit_windows_target {
+			record_user_define(mut user_defines, mut compile_values, 'v3_headerless_bootstrap')
+		}
+		// Keep the signal-context ABI out of portable compiler snapshots.
 		record_user_define(mut user_defines, mut compile_values, 'no_segfault_handler')
 	}
 	prefs.user_defines = user_defines
@@ -11647,7 +11755,8 @@ pub fn run(args []string) {
 	if verbose {
 		eprintln('v.pref.lookup_path: ${os.join_path(prefs.vroot, 'vlib')}')
 	}
-	prefs.supports_inline_asm = is_checker_fixture
+	prefs.supports_inline_asm = is_checker_fixture || (backend == 'fastc' && c_only
+		&& target.arch in ['amd64', 'arm64'])
 	if backend == 'fastc' {
 		$if skip_fastc ? {
 			eprintln('fastc support is not compiled into this v3 executable')
@@ -11692,7 +11801,7 @@ pub fn run(args []string) {
 			if fastc_test_file {
 				prefs.is_test = true
 			}
-			if is_prod {
+			if is_prod && !(c_only && fastc_cross_target) {
 				unsupported_modes << '`-prod`'
 			}
 			if is_shared || is_livemain || is_liveshared {
@@ -12312,6 +12421,10 @@ pub fn run(args []string) {
 	}
 	if is_prof {
 		user_files << os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'profiled_program.v')
+	}
+	if !no_preludes && (is_livemain || is_liveshared) {
+		live_prelude := if is_livemain { 'live_main.v' } else { 'live_shared.v' }
+		parse_files_dispatch_profiled(mut p, [os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', live_prelude)], false, mut parse_timing)
 	}
 	if is_trace_calls {
 		// Parse the runtime import before user files. Implicit imports such as
@@ -13457,6 +13570,11 @@ pub fn run(args []string) {
 				fatal_errors, message_limit, skip_notices)
 		}
 		if pre_tc.has_noalloc_contracts() {
+			if cache_state.manager.enabled && !cache_state.force_source {
+				// Allocation contracts inspect V callee bodies, which cache headers omit.
+				trace_v3_cache_fallback('allocation contracts need the original function bodies')
+				restart_v3_with_args([v3_internal_force_cache_source_flag])
+			}
 			pre_tc.check_noalloc_contracts(false, noalloc_unsupported_modes)
 			if pre_tc.errors.len > 0 {
 				restart_v3_for_checker_errors_of_pruned_build(&cache_state.manager, pre_tc.errors,
@@ -13553,7 +13671,7 @@ pub fn run(args []string) {
 				return
 			}
 		}
-		_ = pre_tc.ierror_impl_names()
+		_ = flat.TypeTextList{ ids: pre_tc.ierror_impl_names() }.names()
 		// Self-host markused is dominated by serial reachability/index work. Build
 		// transform's read-only indexes beside it so the otherwise-idle cores do
 		// useful work without delaying either stage's mutable AST operations.
@@ -14733,6 +14851,10 @@ pub fn run(args []string) {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)
 			g.set_compiler_vexe(prefs.vexe)
+			g.set_live_source_path(input_file)
+			if is_livemain {
+				g.set_live_rebuild_options(v3_live_rebuild_options(args, c_compiler, prefs.module_search_paths))
+			}
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_output_cross_c(prefs.output_cross_c)
@@ -14823,6 +14945,10 @@ pub fn run(args []string) {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_skip_enum_autostr(trivial_literal_output)
 			g.set_compiler_vexe(prefs.vexe)
+			g.set_live_source_path(input_file)
+			if is_livemain {
+				g.set_live_rebuild_options(v3_live_rebuild_options(args, c_compiler, prefs.module_search_paths))
+			}
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_output_cross_c(prefs.output_cross_c)
@@ -18356,13 +18482,13 @@ fn v3_cached_object_compile_signature(compiler V3CachedObjectCompiler, c_standar
 struct V3InterfaceScopes {
 mut:
 	signature string
-	names     []string            // the interfaces, in the order of the signature
-	owners    []string            // the module that declares each of them
-	lines     map[string]string   // interface -> `name=impl,impl`
-	impls     map[string][]string // interface -> its implementers
-	modules   map[string]string   // name without a module prefix -> declaring module
-	outside   map[string]string   // implementer -> declaring module, `` for a generic one
-	reach     map[string][]string // implementer -> the interfaces among its fields
+	names     []u32             // interface spelling IDs, in signature order
+	owners    []string          // the module that declares each of them
+	lines     map[u32]string    // interface spelling ID -> raw `name=impl,impl`
+	impls     map[u32][]u32     // interface spelling ID -> implementer spelling IDs
+	modules   map[string]string // name without a module prefix -> declaring module
+	outside   map[u32]string    // implementer spelling ID -> declaring module, `` for a generic one
+	reach     map[u32][]u32     // implementer spelling ID -> interfaces among its fields
 }
 
 fn parse_v3_interface_scopes(signature string) V3InterfaceScopes {
@@ -18377,11 +18503,11 @@ fn parse_v3_interface_scopes(signature string) V3InterfaceScopes {
 		}
 		if line.starts_with('#reach ') {
 			fact := line['#reach '.len..]
-			scopes.reach[fact.all_before_last('=')] = v3_split_type_names(fact.all_after_last('='))
+			scopes.reach[flat.source_type_id(fact.all_before_last('='))] = v3_split_type_names(fact.all_after_last('='))
 			continue
 		}
 		name := v3_interface_line_name(line)
-		if name.len == 0 {
+		if name == 0 {
 			continue
 		}
 		scopes.names << name
@@ -18390,13 +18516,13 @@ fn parse_v3_interface_scopes(signature string) V3InterfaceScopes {
 	for name in scopes.names {
 		scopes.owners << scopes.declaring_module(name)
 		line := scopes.lines[name]
-		impls := v3_split_type_names(line[name.len + 1..])
+		impls := v3_split_type_names(line[flat.source_type_name(name).len + 1..])
 		scopes.impls[name] = impls
 		for impl in impls {
 			if impl !in scopes.outside {
 				// The fields of a generic implementer have the types of its arguments,
 				// which no module name stands for.
-				scopes.outside[impl] = if impl.contains('[') {
+				scopes.outside[impl] = if flat.source_type_name(impl).contains('[') {
 					''
 				} else {
 					scopes.declaring_module(impl)
@@ -18412,7 +18538,7 @@ fn v3_cache_refresh_needs_entry(signature string, state &V3ModuleCacheState, vro
 	vlib := os.real_path(os.join_path(vroot, 'vlib')) + os.path_separator
 	for name in scopes.names {
 		if scopes.declaring_module(name) == 'main' { continue }
-		for impl in scopes.impls[name] or { []string{} } {
+		for impl in scopes.impls[name] or { []u32{} } {
 			owner := scopes.declaring_module(impl)
 			if owner == 'main' { return true }
 			if owner == 'builtin' { continue }
@@ -18424,9 +18550,9 @@ fn v3_cache_refresh_needs_entry(signature string, state &V3ModuleCacheState, vro
 	return false
 }
 
-// v3_interface_line_name returns the interface of a `name=impl,impl` line. The
+// v3_interface_line_name returns the interface spelling ID of a `name=impl,impl` line. The
 // name of a generic interface holds its type arguments, and those hold no `=`.
-fn v3_interface_line_name(line string) string {
+fn v3_interface_line_name(line string) u32 {
 	mut depth := 0
 	for i, ch in line {
 		if ch == `[` {
@@ -18434,16 +18560,16 @@ fn v3_interface_line_name(line string) string {
 		} else if ch == `]` {
 			depth--
 		} else if ch == `=` && depth == 0 {
-			return line[..i]
+			return flat.source_type_id(line[..i])
 		}
 	}
-	return ''
+	return u32(0)
 }
 
-// v3_split_type_names splits `a,b[c, d],e` at the commas that are not inside the
-// type arguments of a name.
-fn v3_split_type_names(list string) []string {
-	mut names := []string{}
+// v3_split_type_names returns spelling IDs split at commas outside the type arguments
+// of a name, as in `a,b[c, d],e`.
+fn v3_split_type_names(list string) []u32 {
+	mut names := []u32{}
 	mut depth := 0
 	mut start := 0
 	for i, ch in list {
@@ -18453,20 +18579,21 @@ fn v3_split_type_names(list string) []string {
 			depth--
 		} else if ch == `,` && depth == 0 {
 			if i > start {
-				names << list[start..i]
+				names << flat.source_type_id(list[start..i])
 			}
 			start = i + 1
 		}
 	}
 	if start < list.len {
-		names << list[start..]
+		names << flat.source_type_id(list[start..])
 	}
 	return names
 }
 
 // declaring_module returns the module that declares the type `name`, as the type
 // checker names modules (`json2` for `x.json2`), or `?` when nothing says so.
-fn (scopes &V3InterfaceScopes) declaring_module(name string) string {
+fn (scopes &V3InterfaceScopes) declaring_module(name_id u32) string {
+	name := flat.source_type_name(name_id)
 	base := name.all_before('[')
 	if base.contains('.') {
 		return base.all_before_last('.')
@@ -18490,8 +18617,8 @@ fn (scopes &V3InterfaceScopes) declaring_module(name string) string {
 // An interface or an implementer that the signature says too little about makes
 // the module depend on every list, as all of them did before.
 fn (scopes &V3InterfaceScopes) module_signature(visible map[string]bool) string {
-	mut in_scope := map[string]bool{}
-	mut pending := []string{cap: scopes.names.len}
+	mut in_scope := map[u32]bool{}
+	mut pending := []u32{cap: scopes.names.len}
 	for i, name in scopes.names {
 		owner := scopes.owners[i]
 		// The code of a module cannot name an interface of the program.
@@ -18521,7 +18648,7 @@ fn (scopes &V3InterfaceScopes) module_signature(visible map[string]bool) string 
 				// Its fields have the types of modules that are visible as well.
 				continue
 			}
-			for reached in scopes.reach[impl] or { []string{} } {
+			for reached in scopes.reach[impl] or { []u32{} } {
 				if reached !in scopes.lines {
 					return scopes.signature
 				}
@@ -20052,12 +20179,12 @@ fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, i
 	if node.kind == .infix && node.children_count >= 2 && node.op in [.eq, .ne] {
 		lhs_type := tc.resolve_type(a.child(&node, 0))
 		rhs_type := tc.resolve_type(a.child(&node, 1))
-		lhs_name := lhs_type.name().trim_string_left('main.')
-		rhs_name := rhs_type.name().trim_string_left('main.')
-		if lhs_name == rhs_name && lhs_name.len > 0 && lhs_name in tc.structs
+		lhs_name := wasm_type_without_main_prefix(lhs_type.source_type_id())
+		rhs_name := wasm_type_without_main_prefix(rhs_type.source_type_id())
+		if lhs_name == rhs_name && lhs_name != 0 && flat.source_type_name(lhs_name) in tc.structs
 			&& !wasm_supported_struct(tc, lhs_name) {
 			operator := if node.op == .eq { '==' } else { '!=' }
-			return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${lhs_name}` yet'
+			return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${flat.source_type_name(lhs_name)}` yet'
 		}
 		// Struct equality is lowered before backend validation into field-wise
 		// comparisons. Recover the aggregate type from selector operands so the
@@ -20065,10 +20192,10 @@ fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, i
 		// first lowered struct literal.
 		lhs_origin := wasm_struct_origin_type(a, a.child(&node, 0))
 		rhs_origin := wasm_struct_origin_type(a, a.child(&node, 1))
-		if lhs_origin.len > 0 && lhs_origin == rhs_origin
+		if lhs_origin != 0 && lhs_origin == rhs_origin
 			&& !wasm_supported_struct(tc, lhs_origin) {
 			operator := if node.op == .eq { '==' } else { '!=' }
-			return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${lhs_origin}` yet'
+			return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${flat.source_type_name(lhs_origin)}` yet'
 		}
 	}
 	for i in 0 .. node.children_count {
@@ -20079,19 +20206,25 @@ fn unsupported_wasm_struct_infix_error(a &flat.FlatAst, tc &types.TypeChecker, i
 	return none
 }
 
-fn wasm_struct_origin_type(a &flat.FlatAst, id flat.NodeId) string {
+fn wasm_type_without_main_prefix(type_id u32) u32 {
+	type_name := flat.source_type_name(type_id)
+	name := type_name.trim_string_left('main.')
+	return if name == type_name { type_id } else { flat.source_type_id(name) }
+}
+
+fn wasm_struct_origin_type(a &flat.FlatAst, id flat.NodeId) u32 {
 	idx := int(id)
 	if idx < 0 || idx >= a.nodes.len {
-		return ''
+		return 0
 	}
 	node := a.nodes[idx]
 	if node.kind == .struct_init {
-		return node.typ_text().trim_string_left('main.')
+		return wasm_type_without_main_prefix(node.typ)
 	}
 	if node.kind in [.selector, .cast_expr, .paren] && node.children_count > 0 {
 		return wasm_struct_origin_type(a, a.child(&node, 0))
 	}
-	return ''
+	return 0
 }
 
 fn backend_node_location(a &flat.FlatAst, node flat.Node) string {
@@ -20179,7 +20312,11 @@ fn msvc_inline_asm_node_error(a &flat.FlatAst, id flat.NodeId, top_level bool, m
 // wasm_supported_array_elem reports whether a resolved array type name has
 // primitive elements the wasm backend lowers today. Single dimension only:
 // nested arrays need inner-header handling that does not exist yet.
-fn wasm_supported_array_elem(type_name string) bool {
+fn wasm_supported_array_elem(type_id u32) bool {
+	return wasm_supported_array_elem_bytes(flat.source_type_name(type_id))
+}
+
+fn wasm_supported_array_elem_bytes(type_name string) bool {
 	if !type_name.starts_with('[]') || type_name.len <= 2 {
 		return false
 	}
@@ -20193,15 +20330,15 @@ fn wasm_supported_array_elem(type_name string) bool {
 // another struct that satisfies the same rule. Structs are walked recursively
 // with a depth bound, because a self-referential type through a pointer field
 // would otherwise loop the walk for ever.
-fn wasm_supported_struct(tc &types.TypeChecker, type_name string) bool {
-	return wasm_struct_fields_supported(tc, type_name, 0)
+fn wasm_supported_struct(tc &types.TypeChecker, type_id u32) bool {
+	return wasm_struct_fields_supported(tc, type_id, 0)
 }
 
-fn wasm_struct_fields_supported(tc &types.TypeChecker, type_name string, depth int) bool {
+fn wasm_struct_fields_supported(tc &types.TypeChecker, type_id u32, depth int) bool {
 	if depth > 8 {
 		return false
 	}
-	name := type_name.trim_string_left('main.@')
+	name := flat.source_type_name(type_id).trim_string_left('main.@')
 	if name == '' {
 		return false
 	}
@@ -20224,7 +20361,7 @@ fn wasm_struct_field_supported(tc &types.TypeChecker, typ types.Type, depth int)
 			return true
 		}
 		types.Struct {
-			return wasm_struct_fields_supported(tc, typ.name(), depth + 1)
+			return wasm_struct_fields_supported(tc, typ.source_type_id(), depth + 1)
 		}
 		types.Pointer {
 			// A pointer is only an i32 on this target, but the pointee still
@@ -20246,9 +20383,9 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 	visited[idx] = true
 	node := a.nodes[idx]
 	if backend == 'wasm' && diagnose_aggregates {
-		mut unsupported_type := ''
+		mut unsupported_type := u32(0)
 		if node.kind in [.array_literal, .array_init, .map_init, .struct_init] {
-			unsupported_type = tc.resolve_type(id).name()
+			unsupported_type = tc.resolve_type(id).source_type_id()
 			// Dynamic arrays of primitive elements lower in the wasm backend
 			// (literals, init, index, push, slices, for-in). Anything else
 			// stays gated: maps, fixed arrays, and nested arrays have no wasm
@@ -20256,7 +20393,7 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 			// error.
 			if (node.kind == .array_literal || node.kind == .array_init)
 				&& wasm_supported_array_elem(unsupported_type) {
-				unsupported_type = ''
+				unsupported_type = 0
 			}
 			// Struct literals lower too, when every field has a lowering: the
 			// backend already copies aggregates through pointers and returns
@@ -20264,25 +20401,25 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 			// are accepted; arrays, maps, options and results as fields are
 			// not, so a struct holding one stays rejected.
 			if node.kind == .struct_init && wasm_supported_struct(tc, unsupported_type) {
-				unsupported_type = ''
+				unsupported_type = 0
 			}
 		} else if node.kind == .call && node.children_count > 0 {
 			callee := a.child_node(&node, 0)
 			if callee.kind == .ident && callee.value == 'new_map' {
-				unsupported_type = tc.resolve_type(id).name()
+				unsupported_type = tc.resolve_type(id).source_type_id()
 			}
 		}
-		if unsupported_type.len > 0 {
-			return '${fallback_location}error: the V wasm backend does not support type `${unsupported_type}` yet'
+		if unsupported_type != 0 {
+			return '${fallback_location}error: the V wasm backend does not support type `${flat.source_type_name(unsupported_type)}` yet'
 		}
 		if node.kind == .infix && node.children_count >= 2 && node.op in [.eq, .ne] {
 			lhs_type := tc.resolve_type(a.child(&node, 0))
 			rhs_type := tc.resolve_type(a.child(&node, 1))
-			lhs_name := lhs_type.name().trim_string_left('main.')
-			rhs_name := rhs_type.name().trim_string_left('main.')
-			if lhs_name == rhs_name && lhs_name.len > 0 && lhs_name in tc.structs {
+			lhs_name := wasm_type_without_main_prefix(lhs_type.source_type_id())
+			rhs_name := wasm_type_without_main_prefix(rhs_type.source_type_id())
+			if lhs_name == rhs_name && lhs_name != 0 && flat.source_type_name(lhs_name) in tc.structs {
 				operator := if node.op == .eq { '==' } else { '!=' }
-				return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${lhs_name}` yet'
+				return '${fallback_location}error: the V wasm backend does not support `${operator}` for type `${flat.source_type_name(lhs_name)}` yet'
 			}
 		}
 	}

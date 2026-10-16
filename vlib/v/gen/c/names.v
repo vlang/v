@@ -198,26 +198,28 @@ fn (mut c ContextNameFactCache) select_context(file string, module_name string) 
 	c.last_value = 0
 }
 
-// StringLookupCache memoizes context-qualified string lookups whose empty
-// result is meaningful. Keeping the cache behind a pointer lets read-only
-// FlatGen query methods populate a worker-local cache.
+// AliasMethodLookupCache memoizes alias-target lookups, including empty misses.
+// Source identities and method declaration names occupy separate key slots.
+// The pointer lets read-only FlatGen queries populate a worker-local cache.
 @[heap]
-struct StringLookupCache {
+struct AliasMethodLookupCache {
 mut:
-	entries    map[string]string
-	last_name  string
-	last_value string
-	last_valid bool
+	entries     map[u32]map[string]string
+	last_target u32
+	last_method string
+	last_value  string
+	last_valid  bool
 }
 
 @[inline]
-fn (mut c StringLookupCache) get(name string) ?string {
-	if c.last_valid && c.last_name.len == name.len
-		&& (unsafe { c.last_name.str == name.str } || c.last_name == name) {
+fn (mut c AliasMethodLookupCache) get(target_id u32, method string) ?string {
+	if c.last_valid && c.last_target == target_id && c.last_method.len == method.len
+		&& (unsafe { c.last_method.str == method.str } || c.last_method == method) {
 		return c.last_value
 	}
-	if cached := c.entries[name] {
-		c.last_name = name
+	if cached := c.entries[target_id][method] {
+		c.last_target = target_id
+		c.last_method = method
 		c.last_value = cached
 		c.last_valid = true
 		return cached
@@ -226,9 +228,10 @@ fn (mut c StringLookupCache) get(name string) ?string {
 }
 
 @[inline]
-fn (mut c StringLookupCache) put(name string, value string) {
-	c.entries[name] = value
-	c.last_name = name
+fn (mut c AliasMethodLookupCache) put(target_id u32, method string, value string) {
+	c.entries[target_id][method] = value
+	c.last_target = target_id
+	c.last_method = method
 	c.last_value = value
 	c.last_valid = true
 }
@@ -286,12 +289,60 @@ fn (mut c ContextStringLookupCache) select_context(file string, module_name stri
 	c.last_valid = false
 }
 
+// ContextSourceTypeLookupCache memoizes source-spelling lookups within one file and module.
+// Zero values record misses; last_valid distinguishes an empty cache from a cached miss.
+@[heap]
+struct ContextSourceTypeLookupCache {
+mut:
+	file       string = '\x00'
+	module     string
+	entries    map[u32]u32
+	last_name  u32
+	last_value u32
+	last_valid bool
+}
+
+@[inline]
+fn (mut c ContextSourceTypeLookupCache) get(name u32) ?u32 {
+	if c.last_valid && c.last_name == name { return c.last_value }
+	if cached := c.entries[name] {
+		c.last_name = name
+		c.last_value = cached
+		c.last_valid = true
+		return cached
+	}
+	return none
+}
+
+@[inline]
+fn (mut c ContextSourceTypeLookupCache) put(name u32, value u32) {
+	c.entries[name] = value
+	c.last_name = name
+	c.last_value = value
+	c.last_valid = true
+}
+
+@[inline]
+fn (mut c ContextSourceTypeLookupCache) select_context(file string, module_name string) {
+	if c.file.len == file.len && c.module.len == module_name.len
+		&& (unsafe { c.file.str == file.str } || c.file == file)
+		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
+		return
+	}
+	c.file = file
+	c.module = module_name
+	c.entries = map[u32]u32{}
+	c.last_name = 0
+	c.last_value = 0
+	c.last_valid = false
+}
+
 fn (mut g FlatGen) reset_context_lookup_caches() {
 	g.normalize_call_cache = &ContextStringLookupCache{}
 	g.import_key_cache = &util.KeyRecentCache{}
 	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
-	g.enum_selector_cache = &ContextStringLookupCache{}
+	g.enum_selector_cache = &ContextSourceTypeLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
 	g.import_type_cache = &ImportTypeCache{}
@@ -311,9 +362,9 @@ struct ScratchLookupCaches {
 	generic_struct_context_ct_cache &TypeNameLookupCache
 	struct_cname_cache              &TypeNameLookupCache
 	unique_struct_ct_cache          &TypeNameLookupCache
-	alias_method_cache              &StringLookupCache
+	alias_method_cache              &AliasMethodLookupCache
 	import_alias_cache              &ContextStringLookupCache
-	enum_selector_cache             &ContextStringLookupCache
+	enum_selector_cache             &ContextSourceTypeLookupCache
 	enum_method_cache               &ContextStringLookupCache
 	qualified_enum_method_cache     &ContextStringLookupCache
 	import_type_cache               &ImportTypeCache
@@ -324,6 +375,7 @@ struct ScratchLookupCaches {
 	struct_decl_pref_cache          &StructDeclPrefCache
 	sum_variant_actual_cache        &SumVariantActualCache
 	array_method_cache              map[string]string
+	array_method_receiver_cache     map[u64]map[string]string
 	param_types_cache               map[string][]types.Type
 }
 
@@ -352,6 +404,7 @@ fn (mut g FlatGen) begin_scratch_lookup_caches() ScratchLookupCaches {
 		struct_decl_pref_cache:          g.struct_decl_pref_cache
 		sum_variant_actual_cache:        g.sum_variant_actual_cache
 		array_method_cache:              g.array_method_cache
+		array_method_receiver_cache:     g.array_method_receiver_cache
 		param_types_cache:               g.param_types_cache
 	}
 	// A cache the generator has disabled stays disabled, so this only changes
@@ -362,9 +415,9 @@ fn (mut g FlatGen) begin_scratch_lookup_caches() ScratchLookupCaches {
 	g.generic_struct_context_ct_cache = scratch_type_name_lookup_cache(saved.generic_struct_context_ct_cache)
 	g.struct_cname_cache = scratch_type_name_lookup_cache(saved.struct_cname_cache)
 	g.unique_struct_ct_cache = scratch_type_name_lookup_cache(saved.unique_struct_ct_cache)
-	g.alias_method_cache = scratch_string_lookup_cache(saved.alias_method_cache)
+	g.alias_method_cache = scratch_alias_method_lookup_cache(saved.alias_method_cache)
 	g.import_alias_cache = scratch_context_string_lookup_cache(saved.import_alias_cache)
-	g.enum_selector_cache = scratch_context_string_lookup_cache(saved.enum_selector_cache)
+	g.enum_selector_cache = scratch_context_source_type_lookup_cache(saved.enum_selector_cache)
 	g.enum_method_cache = scratch_context_string_lookup_cache(saved.enum_method_cache)
 	g.qualified_enum_method_cache = scratch_context_string_lookup_cache(saved.qualified_enum_method_cache)
 	g.import_type_cache = scratch_import_type_cache(saved.import_type_cache)
@@ -375,6 +428,7 @@ fn (mut g FlatGen) begin_scratch_lookup_caches() ScratchLookupCaches {
 	g.struct_decl_pref_cache = scratch_struct_decl_pref_cache(saved.struct_decl_pref_cache)
 	g.sum_variant_actual_cache = scratch_sum_variant_actual_cache(saved.sum_variant_actual_cache)
 	g.array_method_cache = map[string]string{}
+	g.array_method_receiver_cache = map[u64]map[string]string{}
 	g.param_types_cache = map[string][]types.Type{}
 	return saved
 }
@@ -400,22 +454,28 @@ fn (mut g FlatGen) restore_scratch_lookup_caches(saved ScratchLookupCaches) {
 	g.generic_app_cache = saved.generic_app_cache
 	g.struct_decl_pref_cache = saved.struct_decl_pref_cache
 	g.sum_variant_actual_cache = saved.sum_variant_actual_cache
-	// These two are plain maps rather than pointers, so putting the generator's
+	// These three are plain maps rather than pointers, so putting the generator's
 	// own map back is an aliasing copy the checker rejects outside `unsafe`.
 	// Cloning would deep-copy a cache we are only restoring, and `saved` is a
 	// by-value parameter that dies with this call, so nothing else can observe
 	// the alias.
 	unsafe {
 		g.array_method_cache = saved.array_method_cache
+		g.array_method_receiver_cache = saved.array_method_receiver_cache
 		g.param_types_cache = saved.param_types_cache
 	}
 }
 
-fn scratch_string_lookup_cache(cache &StringLookupCache) &StringLookupCache {
+fn scratch_alias_method_lookup_cache(cache &AliasMethodLookupCache) &AliasMethodLookupCache {
 	if isnil(cache) {
 		return unsafe { nil }
 	}
-	return &StringLookupCache{}
+	return &AliasMethodLookupCache{}
+}
+
+fn scratch_context_source_type_lookup_cache(cache &ContextSourceTypeLookupCache) &ContextSourceTypeLookupCache {
+	if isnil(cache) { return unsafe { nil } }
+	return &ContextSourceTypeLookupCache{}
 }
 
 fn scratch_context_string_lookup_cache(cache &ContextStringLookupCache) &ContextStringLookupCache {

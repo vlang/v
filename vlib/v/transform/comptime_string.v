@@ -223,7 +223,7 @@ fn (mut t Transformer) transform_comptime_scalar_decl(id flat.NodeId, node flat.
 
 // later_stmts_assign_local reports whether a statement that follows the declaration
 // `decl_id` in its statement list assigns to the declared local `name`, increments it, or
-// passes it as a mutable argument. Only those statements can see the binding: the same name
+// passes it as a mutable argument or exposes its address. Only those statements can see the binding: the same name
 // in an earlier statement belongs to another one. Reading it, as on the right of an
 // assignment, does not count: a compile-time construct may still need its value.
 fn (t &Transformer) later_stmts_assign_local(decl_id flat.NodeId, name string) bool {
@@ -254,6 +254,12 @@ fn (t &Transformer) node_assigns_local(id flat.NodeId, name string) bool {
 		return false
 	}
 	if node.kind == .ident && node.is_mut && node.value == name {
+		return true
+	}
+	// A pointer can write the binding, including C ABI out-parameter shims whose
+	// source argument is not marked mutable by the checker.
+	if node.kind == .prefix && node.op == .amp && node.children_count > 0
+		&& t.node_is_local_ident(t.a.child(&node, 0), name) {
 		return true
 	}
 	if node.kind == .assign {

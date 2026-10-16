@@ -955,11 +955,11 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) u32 {
 		return flat.source_type_int
 	}
 	if branch_typ.starts_with('[]') && t.is_fixed_array_type(checked_typ)
-		&& fixed_array_elem_type(flat.source_type_name(checked_typ)) == branch_typ[2..] {
+		&& fixed_array_elem_type(checked_typ) == t.array_elem_type(branch_typ_comparison_type_id_2) {
 		return branch_typ_source_id
 	}
 	if branch_typ.starts_with('[]') && t.is_fixed_array_type(node_typ)
-		&& fixed_array_elem_type(flat.source_type_name(node_typ)) == branch_typ[2..] {
+		&& fixed_array_elem_type(node_typ) == t.array_elem_type(branch_typ_comparison_type_id_2) {
 		return branch_typ_source_id
 	}
 	if branch_typ.starts_with('[]') && !flat.source_type_shape(checked_typ).has(.array_type) && !flat.source_type_shape(node_typ).has(.array_type) {
@@ -1202,11 +1202,11 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			// so branch types (e.g. an if-expression whose branch is `math.min[T]`)
 			// keep the called function's real type.
 			mut call_ret := t.get_call_return_type(id, node)
-			if call_ret == 0 || flat.source_type_name(call_ret) in ['unknown', 'void']
+			if call_ret == 0 || call_ret in [flat.source_type_unknown, flat.source_type_void]
 				|| t.generic_arg_is_unresolved(call_ret) {
 				call_ret = t.generic_call_declared_return_type(id, node) or { u32(0) }
 			}
-			if call_ret != 0 && flat.source_type_name(call_ret) !in ['unknown', 'void'] {
+			if call_ret != 0 && call_ret !in [flat.source_type_unknown, flat.source_type_void] {
 				return call_ret
 			}
 			return t.node_type(id)
@@ -1356,11 +1356,11 @@ fn (t &Transformer) merge_if_expr_types(current_id u32, next_id u32) u32 {
 		return current_id
 	}
 	if current.starts_with('[]') && t.is_fixed_array_type(next_id)
-		&& current[2..] == fixed_array_elem_type(next) {
+		&& t.array_elem_type(current_comparison_type_id_2) == fixed_array_elem_type(next_comparison_type_id_2) {
 		return current_id
 	}
 	if next.starts_with('[]') && t.is_fixed_array_type(current_id)
-		&& next[2..] == fixed_array_elem_type(current) {
+		&& t.array_elem_type(next_comparison_type_id_2) == fixed_array_elem_type(current_comparison_type_id_2) {
 		return next_id
 	}
 	if current.starts_with('[]') && !next.starts_with('[]') && current[2..] == next {

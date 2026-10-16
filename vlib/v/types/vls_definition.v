@@ -384,7 +384,7 @@ fn (tc &TypeChecker) vls_field_definition(type_name_id u32, field string) ?VlsPo
 		}
 	}
 	// Two embedded structs that declare it make the name ambiguous: V rejects it.
-	owners := tc.embedded_field_candidates(type_name, field)
+	owners := flat.TypeTextList{ ids: tc.embedded_field_candidates(type_name_id, field) }.names()
 	if owners.len == 1 {
 		return tc.vls_field_definition(flat.source_type_id(owners[0]), field)
 	}

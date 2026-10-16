@@ -51,6 +51,7 @@ v -b fastc -enable-globals -o program path/to/project
 
 Directory entries select the full builtin runtime, including V strings, maps, errors, and
 garbage collection. Generic calls infer their concrete type from a mutable variable argument.
+Mutable field arguments also retain their type when inferring a generic instance.
 On glibc Linux, thread IDs use the system call without requiring glibc 2.30. Generic
 parameter shadowing ends with its function and does not affect later constants.
 Function-pointer fields and parameters support mixed named and unnamed parameter types.
@@ -67,17 +68,51 @@ it, and builds as a program that runs its tests in source order between `testsui
 fails that test, and the program exits with status 1 when any test failed. Tests and hooks require
 zero parameters. Failed assertions run the test's deferred statements before the harness continues.
 Target-specific files and test files are filtered when loading a directory.
+Dependency files retain imports after declarations, including qualified type names.
 Generic arguments infer the complete type of literal arithmetic, including float promotion.
 Other compound arguments require explicit type arguments.
-Bare `nil` can reset concrete `voidptr` locals, including aliases, and declared `voidptr`
-fields. It can initialize declared `voidptr` fields and serve as an argument to `voidptr`
-and function-typed parameters. Function fields and erased generic fields require `unsafe`.
+Bare `nil` uses concrete expected types for `voidptr` locals and aliases, fields and their
+defaults, wrapped and multi-value returns, both sides of comparisons, and array elements.
+Calls accept parenthesized `nil` for
+`voidptr` parameters, including methods and variadic parameters. Typed pointer arguments also
+accept `nil` in `.c.v` files. Function storage and erased generic types still require `unsafe`.
 Channel type declarations accept ordinary V whitespace.
 Negated sum-type guards retain pointer identity and read mutable scalar variants as values
 in arithmetic, including numeric aliases.
 Fixed arrays and their aliases support checked indexing, including pointer elements.
 Pointer elements retain their identity when passed or copied. Omitted option fields are `none`.
+Dynamic pointer arrays use pointer identity for `.index()` and `.last_index()` searches.
+Explicit integer and pointer casts preserve pointer values, including through pointer aliases.
+Implicit `voidptr` conversions to typed pointers also retain the address when assigned or passed.
+Fixed-array dimensions accept integer constant arithmetic. Globals and native array fields retain
+their original storage when indexed, assigned, or passed to memory functions.
+Nested fixed-array initializers retain their dimensions and element layout. Iteration over fixed
+array literals uses their element storage; integer arrays and pointers retain FastC's target width.
+Arrays of anonymous functions retain their parameter and return types when indexed and called.
+Membership tests compare fixed-array elements by value. Single-file bootstrap programs apply
+struct field defaults to empty initializers.
 Sum-type and interface tests narrow later operands of a conjunction, preserving pointer values.
+Generic pointer instances retain pointer depth and mutable storage, including forwarded references.
+`sizeof(int)` uses FastC's target integer width. Returned, global, and struct-field callbacks retain
+their argument and Option/Result signatures through inferred and copied locals.
+Calls through function-alias casts retain the callback's argument and return signatures.
+Fixed and dynamic arrays of callbacks retain those signatures when indexed, including
+Option/Result returns. Generic pointer arguments accept transparent `unsafe` expressions.
+Global arrays support appends, indexing, and mutable
+iteration across modules while retaining their original storage.
+Appending a borrowed string variable, field, or element copies its bytes so the array keeps
+its value after the source is freed. Call results and bulk appends retain their existing storage.
+Module cycles retain every source and run each initialization and cleanup hook once in stable order.
+By-value parameters whose addresses escape to spawned workers retain shared storage after the
+function returns. Later writes and workers from the same invocation use that storage.
+Escaped keyword fields and locals, and the ESC escape `\e` in runes and strings, are supported.
+Multiline values can continue with leading binary operators or a following `else` branch.
+Postfix updates used as values return the old value, and trailing variable attributes preserve
+the following statement. Option/Result tuple fallbacks can return an enclosing function's tuple.
+Direct integer tuple returns store each component at its declared width, including literal values.
+Assertions preserve the following fallback statement when it begins with a unary operator.
+Standalone `unsafe` blocks preserve local scopes. Forward labels remain reachable after a return
+in translated code.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context
 when the block exits, including through `return`, `break`, and `continue`. Callbacks that escape
@@ -109,6 +144,57 @@ require an `unsafe` block.
 
 The full-runtime path remains experimental. Mutable and expression closure captures and
 128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.
+
+Cross-target builds can emit C for an external compiler with `-o program.c`. This mode accepts
+`-prod`; the external compiler chooses the C optimization level. For freestanding targets,
+`-target-libc-headers` uses the target's core C headers and allocator. It avoids hosted startup
+and thread-local allocation setup. The target calls `C._vinit(0, unsafe { nil })` after its
+allocator is ready to initialize V constants, globals, and module hooks.
+Numeric, null, and constant aggregate global initializers use static storage, so early native
+code can read and change them before `_vinit`; runtime initialization preserves those changes.
+Dynamic initializers and references to other globals or functions remain deferred until the
+target calls `_vinit`, unless explicitly marked `@[cinit]`.
+
+This path preserves module-qualified entry names and `@[export: 'name']` native symbols.
+Exports with a corresponding C declaration use its integer ABI while internal V calls retain
+V's integer width. Grouped globals support typed callbacks and `volatile` storage. `@[cinit]`
+globals have static initializers, including fixed-array struct defaults; linker sections,
+packed structs, aligned structs, and volatile fields retain their C layout and qualifiers.
+Local volatile declarations retain their storage qualifiers. Interface fields refer to the
+concrete object's storage, including chained mutations and mutable arguments.
+Mutable interfaces dispatch to compatible value-receiver and pointer-receiver implementations.
+Architecture-filtered source trees keep their selected siblings. An explicitly imported module
+missing from a staged tree can resolve beside the original source files.
+The target runtime emits native prototypes for referenced C declarations in V files without
+an active C include. Files that include C headers leave their native declarations to the C
+compiler. FastC does not read or parse C headers; their macros, transitive includes, and
+conditional declarations are handled by the target C compiler.
+An explicit `@[c_extern]` declaration still requests a prototype from its V signature.
+C variadic declarations retain their native calling convention. Exported and `@[markused]`
+functions retain their reachable private helpers. An explicit C binding to a uniquely matching
+marked V function can retain its native module-basename name and declared C ABI.
+Functions returning two `u64` values use a native pair-return adapter in explicit casts to
+`voidptr` on this target path, including syscall tables called by assembly. Direct V calls and
+typed V callbacks retain their internal tuple representation.
+The runtime omits hosted compatibility headers,
+signal-handler setup, and inactive preallocation support.
+Small Option and Result payloads use storage inside the returned value on this target path.
+Copies retain their payload without allocating, allowing allocator helpers to return optional
+pointers without reentering the allocator. Larger payloads retain allocated storage.
+
+Translated code on this freestanding full-runtime path supports integer division and modulo,
+including compound assignments. Bare `int` and its aliases retain the target's integer width,
+while explicitly sized integer types retain their declared width.
+Operands and assignment targets are evaluated once; zero divisors panic.
+Signed 32-bit and 64-bit minimum values divided or reduced modulo `-1` also panic.
+Hosted translated code accepts proven positive constant divisors and keeps rejecting unproven
+divisors. The ordinary FastC subset retains its division and modulo restrictions.
+
+AMD64 and ARM64 C output supports GNU inline assembly, including named operands, read/write
+constraints, clobbers, local labels, raw templates, and `asm goto`. Structured Intel assembly
+supports register, immediate, and memory operands, including memory read/write constraints.
+Compile and link that output with the target toolchain; FastC executable builds still use the host
+target and bundled TinyCC.
 
 Build the full V compiler, including its regular C backend, directly from `cmd/v`:
 

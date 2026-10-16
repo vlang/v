@@ -372,7 +372,7 @@ fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttribu
 	bInheritHandles bool, dwCreationFlags u32, lpEnvironment voidptr, lpCurrentDirectory &u16, lpStartupInfo voidptr,
 	lpProcessInformation voidptr) bool
 
-fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead &u32, lpOverlapped voidptr) bool
+fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead C.DWORD, lpNumberOfBytesRead &C.DWORD, lpOverlapped voidptr) bool
 
 fn C.GetFileAttributesW(const_lpFileName &u16) u32
 
@@ -398,7 +398,7 @@ fn C.GetStdHandle(u32) voidptr
 
 fn C.SetConsoleMode(voidptr, u32) bool
 
-fn C.GetConsoleMode(voidptr, &u32) bool
+fn C.GetConsoleMode(voidptr, &C.DWORD) bool
 
 // fn C.setbuf()
 fn C.setbuf(voidptr, &char)
@@ -439,7 +439,7 @@ fn C.ReadConsole(in_input_handle voidptr, out_buffer voidptr, in_chars_to_read u
 
 fn C.WriteConsole() voidptr
 
-fn C.WriteFile(hFile voidptr, lpBuffer &u8, nNumberOfBytesToWrite u32, lpNumberOfBytesWritten &u32, lpOverlapped voidptr) bool
+fn C.WriteFile(hFile voidptr, lpBuffer &u8, nNumberOfBytesToWrite C.DWORD, lpNumberOfBytesWritten &C.DWORD, lpOverlapped voidptr) bool
 
 fn C._wchdir(dirname &u16) i32
 
