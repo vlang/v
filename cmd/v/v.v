@@ -345,6 +345,7 @@ fn launch_ownership_compiler(args []string) {
 	}
 	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ownership_compiler_build_args) or {
 		eprintln('cannot find a writable cache for the V3 ownership compiler')
+		eprintln(err.msg())
 		exit(1)
 	}
 	reason := tool_cache_stale_reason(entry)
@@ -590,8 +591,10 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 				exit(1)
 			}
 			exec_cached_tool(entry.binary, tool_args)
-		} else if tool_cache_is_verbose() {
-			eprintln('> no usable tool cache directory, running `${tool_name}` from source')
+		} else {
+			if tool_cache_is_verbose() {
+				eprintln('> running `${tool_name}` from source, because ${err.msg()}')
+			}
 		}
 	}
 	install_external_tool_modules(tool_name, tool_source, compile_args)
