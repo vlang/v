@@ -61,6 +61,8 @@ fn (mut t Transformer) collect_generic_specs_range_scoped(struct_decls map[strin
 		w.node_file_map_cache = t.node_file_map_cache
 		w.node_context_texts = t.node_context_texts
 		w.node_module_map_nodes = t.node_module_map_nodes
+		w.node_context_lazy_end = t.node_context_lazy_end
+		w.node_context_read_only = true
 		mut batch_struct_specs := map[u32]u32{}
 		mut batch_sum_specs := map[u32]GenericSpecContext{}
 		w.collect_generic_struct_specs_range(struct_decls, mut batch_struct_specs, start, end)
@@ -4372,8 +4374,32 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 	return decls
 }
 
+// IgnoredFn is a function monomorphize_ignored_nodes flagged as unused, with the
+// module it is declared in.
+struct IgnoredFn {
+	id     int
+	module string
+}
+
+// IgnoredNodesState is what the last monomorphize_ignored_nodes call flagged.
+// The used set only grows, so a function it flagged stays unused until the used
+// set gains one of the spellings should_transform_fn_in_module tests for it.
+struct IgnoredNodesState {
+mut:
+	ready       bool
+	nodes       []bool
+	node_count  int
+	log_start   int
+	scan_module string
+	// by_spelling lists the flagged functions under each of those spellings.
+	by_spelling map[string][]IgnoredFn
+}
+
 @[direct_array_access]
 fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl) []bool {
+	if t.ignored_state.ready && t.used_fns_log_active && t.has_used_fn_filter() {
+		return t.monomorphize_ignored_nodes_since(decls)
+	}
 	mut nodes := []bool{len: t.a.nodes.len}
 	mut stack := []flat.NodeId{cap: 256}
 	for _, decl in decls {
@@ -4381,6 +4407,12 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 	}
 	if !t.has_used_fn_filter() {
 		return nodes
+	}
+	// Later calls start from this result while every growth of the used set is
+	// logged (see monomorphize_ignored_nodes_since).
+	keep := t.used_fns_log_active
+	mut state := IgnoredNodesState{
+		log_start: t.used_fns_log.len
 	}
 	old_module := t.cur_module
 	t.cur_module = ''
@@ -4411,13 +4443,117 @@ fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl
 				t.cur_module = t.node_module_or(i, t.cur_module)
 				if !t.should_transform_fn(*node) {
 					t.collect_node_subtree_flags(flat.NodeId(i), mut nodes, mut stack)
+					if keep {
+						state.add(node.value, i, t.cur_module)
+					}
 				}
 			}
 			else {}
 		}
 	}
+	if keep {
+		state.ready = true
+		state.nodes = nodes
+		state.node_count = t.a.nodes.len
+		state.scan_module = t.cur_module
+		t.ignored_state = state
+	}
 	t.cur_module = old_module
 	return nodes
+}
+
+// monomorphize_ignored_nodes_since updates the last result: it clears the
+// subtrees of the flagged functions that the used set named since, and flags the
+// generic and unused declarations appended since. The previous result is left
+// as it was; callers compare the two.
+fn (mut t Transformer) monomorphize_ignored_nodes_since(decls map[string]GenericFnDecl) []bool {
+	mut state := t.ignored_state
+	mut nodes := state.nodes.clone()
+	if nodes.len < t.a.nodes.len {
+		nodes << []bool{len: t.a.nodes.len - nodes.len}
+	}
+	mut stack := []flat.NodeId{cap: 256}
+	old_module := t.cur_module
+	for li in state.log_start .. t.used_fns_log.len {
+		named := state.by_spelling[t.used_fns_log[li]] or { continue }
+		for entry in named {
+			if entry.id >= nodes.len || !nodes[entry.id] {
+				continue
+			}
+			node := t.a.nodes[entry.id]
+			if t.should_transform_fn_in_module(node, entry.module) {
+				t.clear_node_subtree_flags(flat.NodeId(entry.id), mut nodes, mut stack)
+			}
+		}
+	}
+	for _, decl in decls {
+		if int(decl.id) >= state.node_count {
+			t.collect_node_subtree_flags(decl.id, mut nodes, mut stack)
+		}
+	}
+	t.cur_module = state.scan_module
+	for i in state.node_count .. t.a.nodes.len {
+		kind := t.a.nodes[i].kind
+		if kind == .module_decl {
+			t.cur_module = t.a.nodes[i].value
+			continue
+		}
+		if kind != .fn_decl {
+			continue
+		}
+		node := unsafe { &t.a.nodes[i] }
+		if node.value.starts_with('test_') {
+			continue
+		}
+		t.cur_module = t.node_module_or(i, t.cur_module)
+		if !t.should_transform_fn(*node) {
+			t.collect_node_subtree_flags(flat.NodeId(i), mut nodes, mut stack)
+			state.add(node.value, i, t.cur_module)
+		}
+	}
+	state.scan_module = t.cur_module
+	t.cur_module = old_module
+	state.nodes = nodes
+	state.node_count = t.a.nodes.len
+	state.log_start = t.used_fns_log.len
+	t.ignored_state = state
+	return nodes
+}
+
+// add records an unused function under each spelling of `value` declared in
+// `module_name` that should_transform_fn_in_module tests.
+fn (mut s IgnoredNodesState) add(value string, id int, module_name string) {
+	entry := IgnoredFn{
+		id:     id
+		module: module_name
+	}
+	s.add_spellings(value, entry)
+	if value.contains('[') {
+		base := generic_fn_decl_base_value(value)
+		if base != value {
+			s.add_spellings(base, entry)
+		}
+	}
+}
+
+// add_spellings mirrors the lookups of used_fn_contains_in_module.
+fn (mut s IgnoredNodesState) add_spellings(name string, entry IgnoredFn) {
+	module_name := entry.module
+	plain_module := module_name == '' || module_name == 'main' || module_name == 'builtin'
+	if !plain_module && name.len > module_name.len && name[module_name.len] == `.`
+		&& name.starts_with(module_name) {
+		s.add_spelling(name, entry)
+		s.add_spelling(c_name(name), entry)
+	}
+	dfn := transform_dotted_fn_name(module_name, name)
+	s.add_spelling(dfn, entry)
+	s.add_spelling(c_name(dfn), entry)
+}
+
+fn (mut s IgnoredNodesState) add_spelling(spelling string, entry IgnoredFn) {
+	mut entries := s.by_spelling[spelling] or { []IgnoredFn{} }
+	entries << entry
+	s.by_spelling[spelling] = entries
 }
 
 @[direct_array_access]
@@ -4435,6 +4571,12 @@ fn (mut t Transformer) ensure_node_module_map() {
 	} else {
 		t.ensure_node_context_map_capacity()
 	}
+	// The nodes the parent index covers take their context on demand, from their
+	// nearest marked ancestor (see node_context_owner): only files and
+	// declarations are marked here, not every node below them.
+	if t.node_module_map_nodes == 0 {
+		t.node_context_lazy_end = int_min(t.source_parent_ids.len, t.a.nodes.len)
+	}
 	mut cur_module := ''
 	mut cur_file := ''
 	for i := t.node_module_map_nodes; i < t.a.nodes.len; i++ {
@@ -4444,7 +4586,7 @@ fn (mut t Transformer) ensure_node_module_map() {
 			.file {
 				cur_file = node.value
 				cur_module = t.tc.file_modules[node.value] or { '' }
-				t.mark_node_context(flat.NodeId(i), cur_module, cur_file)
+				t.mark_node_context_root(i, cur_module, cur_file)
 			}
 			.module_decl {
 				cur_module = node.value
@@ -4456,12 +4598,68 @@ fn (mut t Transformer) ensure_node_module_map() {
 				// marker of its own.
 				context_module := t.node_module_or(i, cur_module)
 				context_file := t.node_file_or(i, cur_file)
-				t.mark_node_context(flat.NodeId(i), context_module, context_file)
+				t.mark_node_context_root(i, context_module, context_file)
 			}
 			else {}
 		}
 	}
 	t.node_module_map_nodes = t.a.nodes.len
+}
+
+// mark_node_context_root marks a file or declaration with its context: the node
+// alone where its subtree takes contexts on demand, else the whole subtree.
+@[direct_array_access]
+fn (mut t Transformer) mark_node_context_root(idx int, module_name string, file_name string) {
+	if idx >= t.node_context_lazy_end {
+		t.mark_node_context(flat.NodeId(idx), module_name, file_name)
+		return
+	}
+	t.node_module_map_cache[idx] = t.node_context_text_id(module_name)
+	t.node_file_map_cache[idx] = t.node_context_text_id(file_name)
+}
+
+// node_context_owner is the nearest ancestor of node `idx` with a recorded
+// context, or -1, for a node whose context is taken on demand. The transformer
+// that owns the context arrays records the context it finds on the nodes it
+// walked through, so asking again, or for a node below them, is short.
+@[direct_array_access]
+fn (t &Transformer) node_context_owner(idx int) int {
+	if idx >= t.node_context_lazy_end {
+		return -1
+	}
+	mut owner := -1
+	mut cursor := idx
+	// The bound only guards against a cycle in a rewritten tree.
+	for _ in 0 .. 1 << 16 {
+		if cursor < 0 || cursor >= t.source_parent_ids.len {
+			break
+		}
+		cursor = int(t.source_parent_ids[cursor])
+		if cursor < 0 || cursor >= t.node_module_map_cache.len
+			|| cursor >= t.node_file_map_cache.len {
+			break
+		}
+		if t.node_module_map_cache[cursor] != 0 || t.node_file_map_cache[cursor] != 0 {
+			owner = cursor
+			break
+		}
+	}
+	if owner < 0 || t.node_context_read_only {
+		return owner
+	}
+	module_id := t.node_module_map_cache[owner]
+	file_id := t.node_file_map_cache[owner]
+	unsafe {
+		mut modules := &u16(t.node_module_map_cache.data)
+		mut files := &u16(t.node_file_map_cache.data)
+		cursor = idx
+		for cursor != owner {
+			modules[cursor] = module_id
+			files[cursor] = file_id
+			cursor = int(t.source_parent_ids[cursor])
+		}
+	}
+	return owner
 }
 
 fn (mut t Transformer) ensure_node_context_map_capacity() {
@@ -4530,6 +4728,12 @@ fn (t &Transformer) node_file_or(idx int, fallback string) string {
 		if file_id != 0 {
 			return t.node_context_text(file_id)
 		}
+		if t.node_module_map_cache[idx] == 0 {
+			owner := t.node_context_owner(idx)
+			if owner >= 0 {
+				return t.node_file_or(owner, fallback)
+			}
+		}
 	}
 	return fallback
 }
@@ -4540,6 +4744,12 @@ fn (t &Transformer) node_module_or(idx int, fallback string) string {
 		module_id := t.node_module_map_cache[idx]
 		if module_id != 0 {
 			return t.node_context_text(module_id)
+		}
+		if idx < t.node_file_map_cache.len && t.node_file_map_cache[idx] == 0 {
+			owner := t.node_context_owner(idx)
+			if owner >= 0 {
+				return t.node_module_or(owner, fallback)
+			}
 		}
 		if !isnil(t.tc) && idx < t.node_file_map_cache.len {
 			file_name := t.node_context_text(t.node_file_map_cache[idx])
@@ -4614,6 +4824,34 @@ fn (mut t Transformer) collect_node_subtree_ids(id flat.NodeId, mut nodes map[in
 	node := t.a.node(id)
 	for i in 0 .. node.children_count {
 		t.collect_node_subtree_ids(t.a.child(node, i), mut nodes)
+	}
+}
+
+// clear_node_subtree_flags clears the flags collect_node_subtree_flags set for
+// the subtree of `id`.
+@[direct_array_access]
+fn (mut t Transformer) clear_node_subtree_flags(id flat.NodeId, mut nodes []bool, mut stack []flat.NodeId) {
+	limit := if nodes.len < t.a.nodes.len { nodes.len } else { t.a.nodes.len }
+	stack.clear()
+	stack << id
+	for stack.len > 0 {
+		idx := int(stack.pop())
+		if idx < 0 || idx >= limit || !nodes[idx] {
+			continue
+		}
+		nodes[idx] = false
+		node := &t.a.nodes[idx]
+		start := int(node.children_start)
+		end := start + int(node.children_count)
+		if start < 0 || end > t.a.children.len {
+			continue
+		}
+		for i in start .. end {
+			child_id := t.a.children[i]
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
 	}
 }
 
@@ -5926,6 +6164,12 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 				callee := t.a.child_node(&call, 0)
 				specialized_call_or = callee.kind == .ident
 					&& t.generic_callee_is_specialization(callee.value)
+			}
+			// Unless the callee is a specialization, a usable annotation stays as it
+			// is (see below); do not resolve the result type of the call for it.
+			if !specialized_call_or && decl_type_is_usable(node.typ)
+				&& !t.generic_arg_is_unresolved(node.typ) {
+				continue
 			}
 			_, concrete_rhs_type_source_id := t.or_expr_types(call_id, rhs.typ)
 			concrete_rhs_type = concrete_rhs_type_source_id

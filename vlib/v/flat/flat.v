@@ -663,6 +663,12 @@ pub mut:
 	// formatter_local_sels records selectors whose direct receiver is a lexical binding.
 	formatter_local_sels    map[int]bool
 	formatter_migrate_json2 bool
+	// monomorph_tail_nodes and monomorph_tail_children are the capacity at the end
+	// of nodes and children that the transform stage reserves for the specializer
+	// of the monomorphization stage; the transform stage's own append regions
+	// leave it alone.
+	monomorph_tail_nodes    int
+	monomorph_tail_children int
 	// Template-generated nodes keep their original template source location while
 	// retaining the comptime call site used for v1-compatible diagnostic stacks.
 	template_call_sites map[int]token.Pos

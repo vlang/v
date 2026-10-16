@@ -61,6 +61,23 @@ const scoped_monomorph_specs_threshold = 1
 // peak from 19.4 GB to 7.4 GB at a slightly better wall time. Raising
 // scoped_monomorph_specs_threshold re-admits that unbounded retention for the batches
 // below it, so the cutoff stays at one specialization.
+// direct_monomorph_spec_budget is how many specializations the master emits
+// itself before every further batch takes the scoped path. A few
+// specializations leave little in the stage arena, while forking a worker,
+// preparing its read-only indexes and publishing its arena cost a fixed share of
+// the whole tree.
+const direct_monomorph_spec_budget = 32
+
+// emits_directly reports whether the master emits `specs` itself, and counts
+// them against direct_monomorph_spec_budget when it does.
+fn (mut t Transformer) emits_directly(specs []PendingGenericFnSpec) bool {
+	if t.direct_monomorph_specs + specs.len > direct_monomorph_spec_budget {
+		return false
+	}
+	t.direct_monomorph_specs += specs.len
+	return true
+}
+
 fn should_use_scoped_monomorphize(node_count int, spec_count int) bool {
 	if spec_count <= 0 {
 		return false
@@ -1427,7 +1444,7 @@ fn (mut t Transformer) run_serial_scoped_monomorphize_specs(specs []PendingGener
 		return false
 	}
 	if !t.scope_parallel_workers || !t.scoped_monomorphize || isnil(t.tc)
-		|| t.tc.checker_fixture_mode || specs.len == 0 {
+		|| t.tc.checker_fixture_mode || specs.len == 0 || t.emits_directly(specs) {
 		return false
 	}
 	return t.run_scoped_monomorphize_specs(specs, mut emitted, mut generated)
@@ -1440,7 +1457,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		// retaining the other parallel compiler stages.
 		return false
 	}
-	if specs.len == 0 {
+	if specs.len == 0 || t.emits_directly(specs) {
 		return false
 	}
 	if t.scope_parallel_workers && t.scoped_monomorphize
@@ -1812,8 +1829,10 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		}
 		base_nodes := t.a.nodes.len
 		base_children := t.a.children.len
-		node_headroom := (end - start) * 8192 + 262144
-		child_headroom := (end - start) * 10240 + 393216
+		node_headroom := (end - start) * scoped_monomorph_spec_node_headroom +
+			scoped_monomorph_base_node_headroom
+		child_headroom := (end - start) * scoped_monomorph_spec_child_headroom +
+			scoped_monomorph_base_child_headroom
 		if t.a.nodes.cap < base_nodes + node_headroom
 			|| t.a.children.cap < base_children + child_headroom {
 			// The tree outlives this stage, so its storage grows in the arena that
@@ -3062,8 +3081,9 @@ fn (mut t Transformer) bound_shared_expansion(items []FnWorkItem, node_pool int,
 // start plays the role the clone base played).
 fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_nodes int, base_children int, n_jobs int) bool {
 	mut ttsw := time.new_stopwatch()
-	node_pool := t.a.nodes.cap - base_nodes
-	child_pool := t.a.children.cap - base_children
+	// The tail reserved for monomorphization is not this pool's.
+	node_pool := t.a.nodes.cap - t.a.monomorph_tail_nodes - base_nodes
+	child_pool := t.a.children.cap - t.a.monomorph_tail_children - base_children
 	// Bounding may append to t.deferred_expansion_items, which outlives this
 	// call, so it must run before the disposable setup arena becomes current.
 	bounded_items := t.bound_shared_expansion(items, node_pool, child_pool)
