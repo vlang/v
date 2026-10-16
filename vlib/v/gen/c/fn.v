@@ -10970,11 +10970,34 @@ fn (g &FlatGen) current_param_type(name string) ?types.Type {
 	if g.cur_param_name_bits != 0 && g.cur_param_name_bits & current_param_name_bit(name) == 0 {
 		return none
 	}
-	typ := g.cur_param_types[name] or { return none }
+	typ := g.current_param_type_value(name)?
 	if g.cur_mut_params.len > 0 && g.current_mut_param_binding_is_shadowed(name) {
 		return none
 	}
 	return typ
+}
+
+// current_param_type_value reads cur_param_types[name]. A body has a few
+// parameters, kept in order in cur_param_names/cur_param_type_values, and a
+// short scan is cheaper than hashing the name; a repeated name (`_`) and an
+// out-of-sync list fall back to the map, whose latest assignment wins.
+@[direct_array_access]
+fn (g &FlatGen) current_param_type_value(name string) ?types.Type {
+	names := g.cur_param_names
+	if names.len != g.cur_param_type_values.len || names.len != g.cur_param_types.len {
+		return g.cur_param_types[name] or { return none }
+	}
+	for i := names.len - 1; i >= 0; i-- {
+		if names[i].len == name.len && names[i] == name {
+			for j := i - 1; j >= 0; j-- {
+				if names[j].len == name.len && names[j] == name {
+					return g.cur_param_types[name] or { return none }
+				}
+			}
+			return g.cur_param_type_values[i]
+		}
+	}
+	return none
 }
 
 @[direct_array_access; inline]
