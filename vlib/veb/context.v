@@ -58,6 +58,11 @@ mut:
 	// already_compressed indicates that the response body is already compressed (zstd/gzip)
 	// and the compression middlewares should skip it
 	already_compressed bool
+	// throttle_leases are the handler slots throttle middleware took for this
+	// request. `handle_route` frees them however the request ends: 404s and
+	// requests a middleware refuses skip the after-middleware, so an
+	// after-middleware could not free them reliably.
+	throttle_leases []ThrottleLease
 pub:
 	// TODO: move this to `handle_request`
 	// time.ticks() from start of veb connection handle.

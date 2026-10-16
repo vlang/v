@@ -112,12 +112,39 @@ fn ensure_tool_cache_lock_file(path string) ! {
 }
 
 fn tool_cache_root_can_stage(path string) bool {
+	return tool_cache_root_problem(path) == ''
+}
+
+// tool_cache_root_problem explains why `path` cannot hold the tool cache, or be a folder above
+// it, and returns an empty string when it can. Such a folder has to belong to the current user
+// or to root, and nobody else may write to it unless it has the sticky bit, which stops them from
+// renaming what they do not own.
+fn tool_cache_root_problem(path string) string {
 	root := os.real_path(path)
-	information := os.stat(root) or { return false }
-	if information.uid !in [os.getuid(), u32(0)] {
-		return false
+	information := os.stat(root) or { return '`${path}` cannot be inspected: ${err.msg()}' }
+	label := if root == path { '`${path}`' } else { '`${path}` (`${root}`)' }
+	return tool_cache_folder_problem(label, information.mode, information.uid, u32(os.getuid()))
+}
+
+// tool_cache_folder_problem describes what is wrong with the folder `label`, given its mode and
+// owner, for the user `uid`, or returns an empty string when nothing is.
+fn tool_cache_folder_problem(label string, mode u32, owner u32, uid u32) string {
+	mut problems := []string{}
+	if owner !in [uid, u32(0)] {
+		problems << 'is owned by user id ${owner}, not by the current user (id ${uid}) or root'
 	}
-	return information.mode & 0o022 == 0 || information.mode & 0o1000 != 0
+	if mode & 0o022 != 0 && mode & 0o1000 == 0 {
+		writers := match mode & 0o022 {
+			0o020 { 'its group' }
+			0o002 { 'others' }
+			else { 'its group and others' }
+		}
+		problems << 'is writable by ${writers} without the sticky bit'
+	}
+	if problems.len == 0 {
+		return ''
+	}
+	return '${label} (mode 0${mode & 0o7777:o}) ${problems.join(', and ')}'
 }
 
 // tool_cache_parents_are_trusted reports whether `path` and every folder above it pass
@@ -235,8 +262,9 @@ fn make_tool_cache_root_private(path string) {
 // filesystem and inaccessible to other accounts.
 fn (entry ToolCacheEntryDir) stage_parent(path string) !string {
 	parent := os.real_path(os.dir(path))
-	if !tool_cache_root_can_stage(parent) {
-		return error('the tool cache directory `${parent}` cannot safely hold staged files')
+	problem := tool_cache_root_problem(parent)
+	if problem != '' {
+		return error('the tool cache directory `${parent}` cannot safely hold staged files: ${problem}')
 	}
 	return path
 }
