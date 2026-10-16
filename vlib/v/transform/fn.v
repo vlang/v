@@ -11222,6 +11222,12 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		t.mark_fn_used('string__clone')
 		return t.make_call_typed('string__clone', [source], flat.source_type_string)
 	}
+	// A borrowed error, such as a module-level `IError` constant, is copied with the
+	// dynamic error clone: whoever receives the copy may free it, never the shared original.
+	if clean in ['IError', 'builtin.IError'] && !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(clean))) {
+		return t.clone_owned_ierror(source)
+	}
 	if clean.starts_with('[]') {
 		return t.make_compiler_default_array_clone_value(source, flat.source_type_id(clean), !t.expr_can_take_address(source))
 	}
@@ -19312,6 +19318,11 @@ fn (mut t Transformer) clone_result_error(source flat.NodeId) flat.NodeId {
 	if int(err) < 0 {
 		return flat.empty_node
 	}
+	return t.clone_owned_ierror(err)
+}
+
+// clone_owned_ierror gives `err` an independent error object, preserving its concrete type.
+fn (mut t Transformer) clone_owned_ierror(err flat.NodeId) flat.NodeId {
 	t.mark_fn_used('string__clone')
 	cloned := t.make_call_typed('__v3_clone_owned_ierror', [err], flat.source_type_id('IError'))
 	if isnil(t.tc) {

@@ -13674,8 +13674,7 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 		payload_type_source_id := t.optional_base_type(t.qualify_optional_type(t.cur_fn_ret_type))
 
 		if t.return_expr_is_propagated_err(child_id, payload_type_source_id) {
-			err_expr := t.transform_expr(child_id)
-			ret := t.make_none_return_stmt_with_err_expr(err_expr)
+			ret := t.make_none_return_stmt_with_err_expr(t.transform_returned_error(child_id))
 			t.mark_transformed_return(ret, source_return_id)
 			return t.with_pending_before(ret)
 		}
