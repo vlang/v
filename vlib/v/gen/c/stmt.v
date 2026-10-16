@@ -6869,7 +6869,7 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 			// longer follows the lexical scope of this identifier. A `shared T`
 			// annotation parses as `T`, without the pointer the local is stored as,
 			// so `&local` would be taken once more.
-			if node.typ != 0 && !node.typ_text().trim_space().starts_with('shared ') {
+			if node.typ != 0 && !trimmed_space(node.typ_text()).starts_with('shared ') {
 				annotated := g.parse_node_type(node)
 				if !decl_annotation_is_unusable(annotated, node.typ)
 					&& !g.type_contains_generic_placeholder(annotated) {
@@ -8687,7 +8687,8 @@ fn (g &FlatGen) checker_struct_field_type(type_name_id u32, field_name string) ?
 }
 
 fn field_type_needs_checker_authority(raw string) bool {
-	clean_raw := raw.replace(' ', '')
+	// Most spellings have no spaces; check them in place instead of copying.
+	clean_raw := if raw.index_u8(` `) >= 0 { raw.replace(' ', '') } else { raw }
 	return clean_raw in ['Option', '__v_option', '__v_result'] || clean_raw.starts_with('Option_')
 		|| clean_raw.starts_with('__v_option_') || clean_raw.starts_with('__v_result_')
 }
@@ -8705,12 +8706,13 @@ fn decl_annotation_is_unusable(typ types.Type, raw_id u32) bool {
 }
 
 fn decl_annotation_text_is_unusable(raw string) bool {
-	clean_raw := raw.replace(' ', '')
+	// Most spellings have no spaces; check them in place instead of copying.
+	clean_raw := if raw.index_u8(` `) >= 0 { raw.replace(' ', '') } else { raw }
 	if field_type_needs_checker_authority(clean_raw) {
 		return true
 	}
 	return clean_raw == 'void' || clean_raw.starts_with('void[') || clean_raw.ends_with(']void')
-		|| clean_raw.contains(']void[')
+		|| (clean_raw.index_u8(`]`) >= 0 && clean_raw.contains(']void['))
 }
 
 fn fixed_array_contains_void(typ types.Type) bool {
