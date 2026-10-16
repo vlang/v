@@ -130,10 +130,14 @@ fn tool_cache_parents_are_trusted(path string) bool {
 		&& tool_cache_ancestors_can_stage(os.abs_path(path))
 }
 
+// tool_cache_ancestors_can_stage walks up from `path`. A folder that does not pass
+// `tool_cache_root_can_stage` rejects it, unless the folder is above everything that `path`
+// and the V executable have in common, see `tool_cache_folder_common_with_compiler`.
 fn tool_cache_ancestors_can_stage(path string) bool {
+	common := tool_cache_folder_common_with_compiler(path)
 	mut current := path
 	for {
-		if !tool_cache_root_can_stage(current) {
+		if !tool_cache_root_can_stage(current) && !tool_cache_folder_is_above(current, common) {
 			return false
 		}
 		parent := os.dir(current)
@@ -143,6 +147,57 @@ fn tool_cache_ancestors_can_stage(path string) bool {
 		current = parent
 	}
 	return true
+}
+
+// tool_cache_folder_common_with_compiler returns the deepest folder that holds both `path` and
+// the V executable that the user runs, or an empty string when that executable is unknown.
+//
+// Someone who can write to a folder above that common folder, or who owns it, can rename the
+// entry in it that leads to the common folder, and put their own tree in its place. But that
+// entry leads to the V executable as well: they could replace V itself in the same way, and the
+// user runs V all the time. So such a folder does not make a cache below it any less safe than
+// V already is, and it is tolerated. This keeps the cache working when, say, `/` is writable by
+// everybody, while V and the cache are both in the home folder. The common folder itself, and
+// any folder below it, is still checked: there, the cache and V are reached through different
+// entries, so a change there could swap the cache alone.
+fn tool_cache_folder_common_with_compiler(path string) string {
+	executable := tool_cache_compiler_executable()
+	if executable == '' {
+		return ''
+	}
+	mut common := path
+	for !tool_cache_path_is_inside(executable, common) {
+		parent := os.dir(common)
+		if parent == common {
+			return ''
+		}
+		common = parent
+	}
+	return common
+}
+
+// tool_cache_compiler_executable returns the real path of the V executable that the user ran.
+// For the ownership compiler, which runs from the tool cache, that is the one that started it.
+fn tool_cache_compiler_executable() string {
+	primary := os.getenv('V3_PRIMARY_VEXE')
+	executable := os.real_path(if primary != '' { primary } else { os.executable() })
+	if !os.is_abs_path(executable) || !os.is_file(executable) {
+		return ''
+	}
+	return executable
+}
+
+// tool_cache_path_is_inside reports whether `path` is `folder`, or is somewhere below it.
+fn tool_cache_path_is_inside(path string, folder string) bool {
+	if path == folder {
+		return true
+	}
+	return path.starts_with(if folder.ends_with('/') { folder } else { folder + '/' })
+}
+
+// tool_cache_folder_is_above reports whether `folder` is above `common`, and is not `common`.
+fn tool_cache_folder_is_above(folder string, common string) bool {
+	return common != '' && folder != common && tool_cache_path_is_inside(common, folder)
 }
 
 // make_tool_cache_root_private makes sure that only the current user can write to a cache

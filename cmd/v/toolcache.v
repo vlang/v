@@ -91,8 +91,12 @@ fn tool_cache_dir() ?string {
 			candidates << custom.trim_space()
 		}
 	}
-	default_candidates := [os.join_path(os.cache_dir(), 'v', 'tools'),
+	mut default_candidates := [os.join_path(os.cache_dir(), 'v', 'tools'),
 		os.join_path(os.vtmp_dir(), 'tools')]
+	home_candidate := tool_cache_home_candidate()
+	if home_candidate != '' {
+		default_candidates << home_candidate
+	}
 	candidates << default_candidates
 	for candidate in candidates {
 		if candidate in default_candidates && !prepare_default_tool_cache_root(candidate) {
@@ -121,10 +125,11 @@ fn tool_cache_dir() ?string {
 // prepare_default_tool_cache_root makes sure that nobody else can change a default cache
 // folder, or what is inside it. It reports whether the folder can be used.
 //
-// The parent is V's own folder (`~/.cache/v`) or the `VTMP` folder (`/tmp/v_<uid>` by default).
-// It has to be private, along with every folder above it, or someone else could swap the cache
-// folder for their own one at any time. V tightens `~/.cache/v` itself, when the current user
-// owns it.
+// The parent is V's own folder (`~/.cache/v`), the `VTMP` folder (`/tmp/v_<uid>` by default), or
+// the home folder, for `~/.vtools`. It has to be private, along with every folder above it, or
+// someone else could swap the cache folder for their own one at any time; the one exception is
+// described at `tool_cache_folder_common_with_compiler`. V tightens `~/.cache/v` itself, when
+// the current user owns it.
 //
 // A cache folder that others could write to earlier may hold entries that someone else put
 // there, and fixing its permissions afterwards does not make those entries trustworthy. So
@@ -168,6 +173,19 @@ fn directory_is_writable(directory string) bool {
 	os.write_file(probe, '') or { return false }
 	os.rm(probe) or {}
 	return true
+}
+
+// tool_cache_home_candidate returns the last default tool cache folder, `~/.vtools`, or an empty
+// string without a home folder. It is for the hosts where the folders above both other defaults
+// can be changed by someone else: with a umask of 002, `~/.cache` is writable by its group, and
+// in some containers `/tmp` belongs to another user. The home folder itself normally is private.
+// V creates the folder with mode 0700, and never changes the permissions of the home folder.
+fn tool_cache_home_candidate() string {
+	home := os.home_dir()
+	if home == '' {
+		return ''
+	}
+	return os.join_path(home, '.vtools')
 }
 
 // tool_key_sources returns the files that make up the tool itself, in a stable order.
