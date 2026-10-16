@@ -191,6 +191,12 @@ fn tool_cache_parents_are_trusted(_ string) bool {
 // ACLs (per-user permission lists), not by Unix permission bits.
 fn make_tool_cache_root_private(_ string) {}
 
+// tool_cache_first_untrusted_ancestor is always empty on Windows: parents are
+// trusted unconditionally there, so there is no ancestor to name.
+fn tool_cache_first_untrusted_ancestor(_ string) string {
+	return ''
+}
+
 fn (entry ToolCacheEntryDir) stage_parent(_ string) !string {
 	// The entry handle was opened without FILE_SHARE_DELETE, so a staging child created
 	// underneath this path cannot be redirected by replacing the entry directory.

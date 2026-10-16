@@ -1946,3 +1946,48 @@ fn test_windows_entry_pin_blocks_rename_until_handle_is_closed() {
 	assert os.is_dir(moved_dir)
 	assert !os.exists(entry_dir)
 }
+
+// When no cache candidate can be used, the rejection reasons must name each
+// candidate, so the ownership bootstrap failure tells the user what to fix
+// instead of printing a bare message. A file where a folder should be breaks
+// every candidate on every platform, without touching permission bits.
+fn test_unusable_tool_cache_names_every_rejected_candidate() {
+	directory := trusted_toolcache_test_dir('unusable_names_candidates') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_default_tool_cache_roots(directory, fn [directory] (v_dir string) ! {
+		mut reasons := []string{}
+		chosen := tool_cache_dir_with_reasons(mut reasons) or { '' }
+		assert chosen != '', 'the redirected defaults should be usable'
+		assert reasons == [], 'a usable setup must report no reasons, got ${reasons}'
+		first_default := os.join_path(v_dir, 'tools')
+		second_default := os.join_path(os.vtmp_dir(), 'tools')
+		custom := os.join_path(directory, 'custom_blocker')
+		// The usable-setup check above created the first default folder; remove the
+		// default folders (if present) so a file can take their place.
+		os.rmdir_all(first_default) or {}
+		os.rmdir_all(second_default) or {}
+		for blocker in [first_default, second_default, custom] {
+			os.mkdir_all(os.dir(blocker))!
+			os.write_file(blocker, '')!
+		}
+		os.setenv(tool_cache_dir_env, custom, true)
+		mut rejected := []string{}
+		again := tool_cache_dir_with_reasons(mut rejected) or { '' }
+		assert again == '', 'every candidate is blocked by a file, got `${again}`'
+		assert rejected.len == 3, 'expected one reason per candidate, got ${rejected}'
+		assert rejected[0].contains(custom), 'the custom candidate must be named first'
+		assert rejected[1].contains(first_default)
+		assert rejected[2].contains(second_default)
+		message := tool_cache_unusable_message('cannot find a writable cache for the V3 ownership compiler')
+		assert message.contains('cannot find a writable cache for the V3 ownership compiler')
+		for candidate in [custom, first_default, second_default] {
+			assert message.contains(candidate), 'the message must name `${candidate}`'
+		}
+		assert message.contains('VTOOLS_CACHE_DIR'), 'the message must say how to recover'
+	})!
+}

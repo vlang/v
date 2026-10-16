@@ -145,6 +145,27 @@ fn tool_cache_ancestors_can_stage(path string) bool {
 	return true
 }
 
+// tool_cache_first_untrusted_ancestor names the lowest folder on the way to
+// `path` that fails `tool_cache_root_can_stage`, or '' when every folder passes.
+// It mirrors `tool_cache_parents_are_trusted`, including the resolved and
+// unresolved spellings, so a diagnostic can point at the folder to fix.
+fn tool_cache_first_untrusted_ancestor(path string) string {
+	for _, candidate in [os.real_path(path), os.abs_path(path)] {
+		mut current := candidate
+		for {
+			if !tool_cache_root_can_stage(current) {
+				return current
+			}
+			parent := os.dir(current)
+			if parent == current {
+				break
+			}
+			current = parent
+		}
+	}
+	return ''
+}
+
 // make_tool_cache_root_private makes sure that only the current user can write to a cache
 // folder, so that `tool_cache_root_can_stage` accepts it. It only changes folders that the
 // current user owns, and skips shared folders like `/tmp` that use the sticky bit.
