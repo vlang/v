@@ -5573,11 +5573,11 @@ fn (g &FlatGen) local_ident_type(name string) ?types.Type {
 	if typ := g.current_param_type(name) {
 		return typ
 	}
-	if g.cur_scope_has_local_name(name) {
-		if typ := g.tc.cur_scope.lookup(name) {
-			if typ !is types.Void {
-				return typ
-			}
+	// The nearest binding below the file scope is the one a full lookup finds
+	// once such a local exists; search that part of the chain only once.
+	if typ := g.tc.cur_scope.lookup_before(name, g.tc.file_scope) {
+		if typ !is types.Void {
+			return typ
 		}
 	}
 	return none
