@@ -7,6 +7,8 @@
 // server, no request — which is what makes it fully testable here.
 module veb
 
+import net.urllib
+
 struct UrlApp {}
 
 struct UrlContext {
@@ -35,6 +37,12 @@ fn (app &UrlApp) files(mut ctx UrlContext, path string) Result {
 
 fn (app &UrlApp) auto_mapped(mut ctx UrlContext) Result {
 	return ctx.text('auto')
+}
+
+// cache_key is an app helper, not a handler: it returns `string`, so the
+// dispatcher never registers a route for it and `url_for` must not either.
+fn (app &UrlApp) cache_key() string {
+	return 'k'
 }
 
 fn test_url_for_builds_a_static_route() {
@@ -76,5 +84,33 @@ fn test_url_for_rejects_an_extra_parameter() {
 	// caller that drifted from the route.
 	if _ := url_for[UrlApp]('user', '42', 'spare') {
 		assert false, 'surplus parameters must be none, not a longer path'
+	}
+}
+
+fn test_url_for_escapes_reserved_characters_in_a_segment() {
+	assert url_for[UrlApp]('user', 'a?b') or { '' } == '/user/a%3Fb'
+	assert url_for[UrlApp]('user', 'a#b') or { '' } == '/user/a%23b'
+	assert url_for[UrlApp]('user', 'a b') or { '' } == '/user/a%20b'
+	assert url_for[UrlApp]('user', 'a/b') or { '' } == '/user/a%2Fb'
+}
+
+fn test_url_for_round_trips_reserved_characters() {
+	for value in ['a?b', 'a#b', 'a b', 'a/b', 'a%20b'] {
+		built := url_for[UrlApp]('user', value) or { '' }
+		segment := built.all_after_last('/')
+		assert urllib.path_unescape(segment)! == value
+	}
+}
+
+fn test_url_for_escapes_each_variadic_component() {
+	// Separators stay `/`; reserved characters inside a component are escaped.
+	assert url_for[UrlApp]('files', 'a?b/c#d') or { '' } == '/files/a%3Fb/c%23d'
+	assert url_for[UrlApp]('files', 'a b', 'c/d') or { '' } == '/files/a%20b/c/d'
+}
+
+fn test_url_for_rejects_a_non_handler_helper() {
+	// `cache_key` returns `string`, so the dispatcher has no such route.
+	if _ := url_for[UrlApp]('cache_key') {
+		assert false, 'a non-handler helper must be none, not a path'
 	}
 }
