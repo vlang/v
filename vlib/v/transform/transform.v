@@ -217,6 +217,11 @@ mut:
 	defer_pre_scan_indexes bool
 	// Fixed-array summaries can reuse the completed parameter pre-scan cache.
 	defer_fixed_array_borrow_prep bool
+	// fixed_array_borrow_node_count is the node count the summaries cover.
+	fixed_array_borrow_node_count int
+	// borrow_params_after_transform starts the summaries from the transform
+	// stage's (see prepare_fixed_array_borrow_params).
+	borrow_params_after_transform bool
 	// merge_regions_relocated marks worker regions as already id-relocated in
 	// place (parallel pass), so merge_worker compacts with plain memmoves.
 	merge_regions_relocated bool
@@ -579,6 +584,11 @@ mut:
 	// lower_remaining_matches_in_used_fns skips: that walk still has matches to
 	// lower in the bodies of the transform stage.
 	lowered_fn_bodies []bool
+	// match_lowered_fns[i] is set once lower_remaining_matches_in_used_fns has
+	// walked the body of the fn_decl at node id i; a later call skips it.
+	match_lowered_fns []bool
+	// mono_pass_state lets the next monomorphize_pass continue the last one.
+	mono_pass_state MonomorphPassState
 	// Shared-base (clone-free) parallel transform: all threads operate on views
 	// of the master arrays, appending into pre-partitioned capacity regions.
 	// While base_write_intercept is set, in-place writes to base-range node
@@ -2082,6 +2092,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	$if prealloc {
 		t.scope_parallel_workers = true
 	}
+	t.borrow_params_after_transform = after_transform
 	t.prepare()
 	if after_transform {
 		t.mark_used_fn_bodies_lowered()
@@ -4324,7 +4335,9 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 		t.interface_boxed_types_frozen = true
 	} else {
 		t.collect_interface_boxed_types_dispatch(want_parallel)
+		t.hand_over_interface_boxed_types()
 	}
+	t.hand_over_fixed_array_borrow_params()
 	t.refresh_interface_impl_indexes_for_boxed_types()
 	t.timing_profile('  [ttime]   dsp boxed+iface  ${f64(dpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	if !want_parallel {
@@ -4378,6 +4391,44 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 		t.timing_profile('  [ttime] top_level_stmts    ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
 	return was_parallel
+}
+
+// hand_over_interface_boxed_types keeps the boxes this stage collected from the
+// tree before lowering in the checker, outside the stage arena, for the
+// monomorphization stage to start from (see collect_interface_boxed_types).
+fn (mut t Transformer) hand_over_interface_boxed_types() {
+	if isnil(t.tc) {
+		return
+	}
+	state := transform_stage_scope_suspend(t.stage_scope)
+	mut keys := []u64{cap: t.interface_boxed_types.len}
+	mut values := []bool{cap: t.interface_boxed_types.len}
+	for key, value in t.interface_boxed_types {
+		keys << key
+		values << value
+	}
+	t.tc.transform_boxed_types = keys
+	t.tc.transform_boxed_values = values
+	t.tc.transform_boxed_skipped = t.interface_boxed_skip_nodes.clone()
+	t.tc.transform_boxed_node_count = t.a.nodes.len
+	transform_stage_scope_resume(t.stage_scope, state)
+}
+
+// hand_over_fixed_array_borrow_params keeps the summaries this stage computed
+// before lowering in the checker, outside the stage arena, for the
+// monomorphization stage to start from (see prepare_fixed_array_borrow_params).
+fn (mut t Transformer) hand_over_fixed_array_borrow_params() {
+	if isnil(t.tc) {
+		return
+	}
+	state := transform_stage_scope_suspend(t.stage_scope)
+	mut summaries := map[int][]bool{}
+	for decl, summary in t.fixed_array_borrow_params {
+		summaries[decl] = summary.clone()
+	}
+	t.tc.transform_borrow_params = summaries
+	t.tc.transform_borrow_node_count = t.fixed_array_borrow_node_count
+	transform_stage_scope_resume(t.stage_scope, state)
 }
 
 fn (mut t Transformer) collect_interface_boxed_types_dispatch(want_parallel bool) {
@@ -29907,8 +29958,12 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 		} else {
 			indexed_nodes + scan_idx - indexed_count
 		}
-		if t.a.nodes[i].kind != .fn_decl {
+		if t.a.nodes[i].kind != .fn_decl
+			|| (i < t.match_lowered_fns.len && t.match_lowered_fns[i]) {
 			continue
+		}
+		if i >= t.match_lowered_fns.len {
+			t.match_lowered_fns << []bool{len: t.a.nodes.len - t.match_lowered_fns.len}
 		}
 		// Only candidate nodes need copies before AST rewriting.
 		node := t.a.nodes[i]
@@ -29916,12 +29971,17 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 			|| (i < t.transformed_fns.len && t.transformed_fns[i])
 			|| t.a.specialized_fn_nodes[i]
 			|| t.fn_decl_has_unresolved_generics(node, t.node_module_or(i, '')) {
+			// None of these changes before a later call.
+			t.match_lowered_fns[i] = true
 			continue
 		}
 		t.cur_module = t.node_module_or(i, '')
 		if !t.should_transform_fn(node) {
 			continue
 		}
+		// A walked body has no match left, and nothing later puts one back into
+		// it: specialization and late lowering append new declarations.
+		t.match_lowered_fns[i] = true
 		epoch++
 		for child_id in t.a.children_of(&node) {
 			t.lower_remaining_match_subtree(child_id, mut visited, epoch)

@@ -92,6 +92,21 @@ struct GenericCallSite {
 	module string
 }
 
+// MonomorphPassState is what a monomorphize_pass has scanned. The next pass of
+// the wrapper loop continues from it instead of scanning the whole tree again.
+struct MonomorphPassState {
+mut:
+	ready                       bool
+	ignored_nodes               []bool
+	emitted                     map[string]bool
+	generic_call_sites          []GenericCallSite
+	recorded_call_sites         map[int]bool
+	scan_start                  int
+	generic_fn_value_scan_start int
+	interface_box_scan_start    int
+	used_fns_at_scan            int
+}
+
 struct PendingGenericFnSpec {
 	decl GenericFnDecl
 	args flat.TypeTextList
@@ -158,24 +173,41 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	// program; let exceptional deep trees grow it instead of reserving millions
 	// of entries up front.
 	t.generic_clone_children.ensure_cap(65536)
+	// A later pass continues the previous one: it scans the nodes appended since
+	// and the bodies that became reachable, not the whole tree again. Nodes the
+	// previous pass scanned keep their specializations and recorded call sites;
+	// the type refresh below still covers the whole tree.
+	resume := t.mono_pass_state.ready
 	struct_decls := t.collect_generic_struct_decls()
 	t.monomorph_profile('mono driver struct decls: ${time.ticks() - debug_started} ms')
-	t.materialize_generic_sum_types(false)
+	if !resume {
+		t.materialize_generic_sum_types(false)
+	}
 	t.monomorph_profile('mono driver sum materialize: ${time.ticks() - debug_started} ms')
 	t.seed_generic_specialization_args(struct_decls)
 	sum_decls := t.collect_generic_sum_decls()
 	t.materialize_generic_struct_specs(t.generic_struct_specs_cache, struct_decls)
 	t.monomorph_profile('mono driver struct materialize: ${time.ticks() - debug_started} ms')
-	mut ignored_nodes := t.monomorphize_ignored_nodes(decls)
-	mut emitted := map[string]bool{}
+	state := if resume {
+		t.mono_pass_state
+	} else {
+		MonomorphPassState{
+			ignored_nodes:            t.monomorphize_ignored_nodes(decls)
+			interface_box_scan_start: t.a.nodes.len
+			used_fns_at_scan:         t.used_fn_count()
+		}
+	}
+	t.mono_pass_state = MonomorphPassState{}
+	mut ignored_nodes := unsafe { state.ignored_nodes }
+	mut emitted := state.emitted
 	mut generated := []string{}
-	mut generic_call_sites := []GenericCallSite{}
-	mut recorded_call_sites := map[int]bool{}
+	mut generic_call_sites := unsafe { state.generic_call_sites }
+	mut recorded_call_sites := state.recorded_call_sites
 	mut changed := true
-	mut scan_start := 0
-	mut generic_fn_value_scan_start := 0
-	mut interface_box_scan_start := t.a.nodes.len
-	mut used_fns_at_scan := t.used_fn_count()
+	mut scan_start := state.scan_start
+	mut generic_fn_value_scan_start := state.generic_fn_value_scan_start
+	mut interface_box_scan_start := state.interface_box_scan_start
+	mut used_fns_at_scan := state.used_fns_at_scan
 	mut generic_struct_specs := if t.generic_materialization_ready {
 		t.generic_struct_specs_cache.clone()
 	} else {
@@ -186,9 +218,13 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	} else {
 		map[u32]GenericSpecContext{}
 	}
-	mut generic_struct_specs_scan_start := t.a.nodes.len
+	mut generic_struct_specs_scan_start := if resume {
+		t.generic_materialization_scan_from
+	} else {
+		t.a.nodes.len
+	}
 	mut lowered_operator_uses := t.lowered_generic_struct_operator_uses_for_specs(generic_struct_specs, decls)
-	if t.parallel_monomorphize {
+	if t.parallel_monomorphize && !resume {
 		t.prepare_parallel_monomorph_scan(0, t.a.nodes.len)
 	}
 	t.monomorph_profile('mono driver setup: ${time.ticks() - debug_started} ms')
@@ -501,6 +537,17 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	t.generic_sum_specs_cache = generic_sum_specs.move()
 	t.generic_materialization_scan_from = t.a.nodes.len
 	t.generic_materialization_ready = true
+	t.mono_pass_state = MonomorphPassState{
+		ready:                       true
+		ignored_nodes:               ignored_nodes
+		emitted:                     emitted
+		generic_call_sites:          generic_call_sites
+		recorded_call_sites:         recorded_call_sites
+		scan_start:                  scan_start
+		generic_fn_value_scan_start: generic_fn_value_scan_start
+		interface_box_scan_start:    interface_box_scan_start
+		used_fns_at_scan:            used_fns_at_scan
+	}
 	t.monomorph_profile('mono driver finish: ${time.ticks() - debug_started} ms')
 	return generated
 }
@@ -2028,8 +2075,33 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 		t.tc.cur_file = old_tc_file
 		t.tc.cur_module = old_tc_module
 	}
-	t.collect_interface_boxed_types_range(0, t.a.nodes.len)
+	handed_over := t.tc.transform_boxed_node_count
+	if handed_over >= 0 && handed_over <= t.a.nodes.len && t.interface_boxed_types.len == 0 {
+		t.collect_interface_boxed_types_after_transform(handed_over)
+	} else {
+		t.collect_interface_boxed_types_range(0, t.a.nodes.len)
+	}
 	t.interface_boxed_types_frozen = true
+}
+
+// collect_interface_boxed_types_after_transform starts from the boxes the
+// transform stage collected from the first `scanned` nodes before lowering and
+// scans only what that scan did not see: the library bodies it skipped and the
+// nodes lowering appended. File and module markers are read for their context.
+fn (mut t Transformer) collect_interface_boxed_types_after_transform(scanned int) {
+	for i, key in t.tc.transform_boxed_types {
+		t.interface_boxed_types[key] = t.tc.transform_boxed_values[i]
+	}
+	skipped := t.tc.transform_boxed_skipped
+	mut skip := []bool{len: scanned}
+	for idx in 0 .. scanned {
+		kind := t.a.nodes[idx].kind
+		skip[idx] = kind != .file && kind != .module_decl && !(idx < skipped.len && skipped[idx])
+	}
+	old_skip := t.interface_boxed_skip_nodes
+	t.interface_boxed_skip_nodes = skip
+	t.collect_interface_boxed_types_range(0, t.a.nodes.len)
+	t.interface_boxed_skip_nodes = old_skip
 }
 
 // unchecked_library_box_nodes snapshots only unchecked concrete library body ranges.
