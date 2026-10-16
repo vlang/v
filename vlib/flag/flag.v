@@ -1,5 +1,7 @@
 module flag
 
+import strconv
+
 // data object storing information about a defined flag
 pub struct Flag {
 pub:
@@ -19,6 +21,17 @@ struct UnknownFlagError {
 
 fn (err UnknownFlagError) msg() string {
 	return 'Unknown flag `${err.flag}`'
+}
+
+struct InvalidFlagValueError {
+	Error
+	flag   string
+	value  string
+	reason string
+}
+
+fn (err InvalidFlagValueError) msg() string {
+	return 'Invalid value `${err.value}` for flag `${err.flag}`: ${err.reason}'
 }
 
 struct ArgsCountError {
@@ -81,6 +94,8 @@ pub fn (af []Flag) str() string {
 // call `rest := parser.finalize()!` to get the rest of the non optional arguments
 // (if there are any left).
 pub struct FlagParser {
+mut:
+	value_errors []&InvalidFlagValueError // invalid flag values, like `--n abc` for an int flag; reported by finalize()
 pub:
 	original_args      []string // the original arguments to be parsed
 	idx_dashdash       int      // the index of a `--`, -1 if there is not any
@@ -266,6 +281,9 @@ fn (mut fs FlagParser) bool_flag(name string, abbr u8, usage string, c FlagConfi
 	parsed := fs.parse_bool_value(name, abbr) or {
 		return error("parameter '${name}' not provided")
 	}
+	if parsed !in ['true', 'false'] {
+		return fs.invalid_value(name, abbr, parsed, 'expected `true` or `false`')
+	}
 	return parsed == 'true'
 }
 
@@ -276,7 +294,7 @@ fn (mut fs FlagParser) int_flag(name string, abbr u8, usage string, c FlagConfig
 	if parsed.len == 0 {
 		return error("parameter '${name}' not provided")
 	}
-	return parsed[0].int()
+	return fs.int_value(name, abbr, parsed[0])
 }
 
 fn (mut fs FlagParser) float_flag(name string, abbr u8, usage string, c FlagConfig, default_value ?string) !f64 {
@@ -286,7 +304,104 @@ fn (mut fs FlagParser) float_flag(name string, abbr u8, usage string, c FlagConf
 	if parsed.len == 0 {
 		return error("parameter '${name}' not provided")
 	}
-	return parsed[0].f64()
+	return fs.float_value(name, abbr, parsed[0])
+}
+
+// invalid_value records an error for the invalid value `value` of the flag `name`,
+// so that finalize() fails, and returns that error.
+fn (mut fs FlagParser) invalid_value(name string, abbr u8, value string, reason string) IError {
+	err := &InvalidFlagValueError{
+		flag:   if name != '' { '--${name}' } else { '-${abbr.ascii_str()}' }
+		value:  value
+		reason: reason
+	}
+	fs.value_errors << err
+	return err
+}
+
+// int_value_base returns the base for parsing the integer flag value `value`, chosen like
+// `string.int()` does: 0 (detect) for an explicit 0b, 0o or 0x prefix, and 10 otherwise,
+// so that leading zeros stay decimal.
+fn int_value_base(value string) int {
+	start := if value != '' && value[0] in [`+`, `-`] { 1 } else { 0 }
+	if value.len - start >= 2 && value[start] == `0`
+		&& value[start + 1] in [`b`, `B`, `o`, `O`, `x`, `X`] {
+		return 0
+	}
+	return 10
+}
+
+const value_out_of_range = 'out of range'
+
+// parse_int_value parses the integer flag value `value` like `string.int()` does: decimal,
+// or with an explicit 0b, 0o or 0x prefix, and with optional `_` separators. Unlike
+// `string.int()`, it returns an error for a value that is not an integer, or that does not
+// fit in `bit_size` bits (0 is the size of `int`), instead of 0 or a saturated value.
+fn parse_int_value(value string, bit_size int) !i64 {
+	return strconv.common_parse_int(value, int_value_base(value), bit_size, true, true) or {
+		error(if err.msg().contains('overflow') { value_out_of_range } else { 'not an integer' })
+	}
+}
+
+// parse_uint_value is like parse_int_value, for an unsigned value of `bit_size` bits.
+fn parse_uint_value(value string, bit_size int) !u64 {
+	if value.starts_with('-') {
+		// of the negative integers, only zero is in range
+		if parse_int_value(value, 64)! != 0 {
+			return error(value_out_of_range)
+		}
+		return 0
+	}
+	digits := value.trim_string_left('+')
+	return strconv.common_parse_uint(digits, int_value_base(digits), bit_size, true, true) or {
+		error(if err.msg().contains('overflow') { value_out_of_range } else { 'not an integer' })
+	}
+}
+
+// parse_float_value parses the flag value `value` as an `f64`, or, for `bit_size` 32, as an
+// `f32`. It returns an error for a value that is not a number, or that is too large,
+// instead of 0 or an infinity.
+fn parse_float_value(value string, bit_size int) !f64 {
+	f := strconv.atof64(value) or {
+		return error(if err.msg().contains('out of range') {
+			value_out_of_range
+		} else {
+			'not a number'
+		})
+	}
+	// `x - x` is 0 only for a finite `x`: a finite value that becomes infinite as an `f32`
+	// is too large for it
+	if bit_size == 32 && f - f == 0 && f32(f) - f32(f) != 0 {
+		return error(value_out_of_range)
+	}
+	return f
+}
+
+// int_value converts the value `value` of the int flag `name`. For a value that is not an
+// integer, or that does not fit in an `int`, it records an error for finalize(), and returns it.
+fn (mut fs FlagParser) int_value(name string, abbr u8, value string) !int {
+	n := parse_int_value(value, 0) or {
+		reason := if err.msg() == value_out_of_range {
+			'out of range for int'
+		} else {
+			'expected an integer'
+		}
+		return fs.invalid_value(name, abbr, value, reason)
+	}
+	return int(n)
+}
+
+// float_value converts the value `value` of the float flag `name`. For a value that is not
+// a number, or that is too large for an `f64`, it records an error for finalize(), and returns it.
+fn (mut fs FlagParser) float_value(name string, abbr u8, value string) !f64 {
+	return parse_float_value(value, 64) or {
+		reason := if err.msg() == value_out_of_range {
+			'out of range for f64'
+		} else {
+			'expected a number'
+		}
+		return fs.invalid_value(name, abbr, value, reason)
+	}
 }
 
 fn (mut fs FlagParser) string_flag(name string, abbr u8, usage string, c FlagConfig, default_value ?string) !string {
@@ -420,7 +535,8 @@ pub:
 }
 
 // bool_opt returns an option with the bool value of the given command line flag, named `name`.
-// It returns an error, when the flag is not given by the user.
+// It returns an error, when the flag is not given by the user, or when its value is not
+// `true` or `false`; finalize() then fails too.
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) bool_opt(name string, abbr u8, usage string, c FlagConfig) !bool {
@@ -430,6 +546,7 @@ pub fn (mut fs FlagParser) bool_opt(name string, abbr u8, usage string, c FlagCo
 // bool defines and parses a bool flag/option named `name`.
 // If that flag is given by the user, then it returns its parsed bool value.
 // When it is not, it returns the default value in `bdefault`.
+// When the given value is not `true` or `false`, it returns `bdefault`, and finalize() fails.
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) bool(name string, abbr u8, bdefault bool, usage string, c FlagConfig) bool {
@@ -448,6 +565,7 @@ pub fn (mut fs FlagParser) bool_val[T](name string, abbr u8, bdefault T, usage s
 
 // int_multi returns all values associated with the provided flag in `name`.
 // When that flag has no values, it returns an empty array.
+// Values that are not integers, or do not fit in an `int`, are left out, and finalize() fails.
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) int_multi(name string, abbr u8, usage string, c FlagConfig) []int {
@@ -457,13 +575,15 @@ pub fn (mut fs FlagParser) int_multi(name string, abbr u8, usage string, c FlagC
 	parsed := fs.parse_value(name, abbr)
 	mut value := []int{}
 	for val in parsed {
-		value << val.int()
+		value << fs.int_value(name, abbr, val) or { continue }
 	}
 	return value
 }
 
 // int_opt returns an option with the integer value, associated with the flag in `name`.
 // When the flag is not given by the user, it returns an error.
+// When its value is not an integer, or does not fit in an `int`, it returns an error too,
+// and finalize() fails.
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) int_opt(name string, abbr u8, usage string, c FlagConfig) !int {
@@ -473,6 +593,8 @@ pub fn (mut fs FlagParser) int_opt(name string, abbr u8, usage string, c FlagCon
 // int defines and parses an integer flag, named `name`.
 // When the flag is given by the user, it returns its parsed integer value.
 // When it is not, it returns the integer value in `idefault`.
+// When the given value is not an integer, or does not fit in an `int`, it returns `idefault`,
+// and finalize() fails.
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) int(name string, abbr u8, idefault int, usage string, c FlagConfig) int {
@@ -491,6 +613,7 @@ pub fn (mut fs FlagParser) int_val[T](name string, abbr u8, idefault T, usage st
 
 // float_multi returns all floating point values, associated with the flag named `name`.
 // When no values for that flag are found, it returns an empty array.
+// Values that are not numbers, or are too large for an `f64`, are left out, and finalize() fails.
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) float_multi(name string, abbr u8, usage string, c FlagConfig) []f64 {
@@ -500,13 +623,15 @@ pub fn (mut fs FlagParser) float_multi(name string, abbr u8, usage string, c Fla
 	parsed := fs.parse_value(name, abbr)
 	mut value := []f64{}
 	for val in parsed {
-		value << val.f64()
+		value << fs.float_value(name, abbr, val) or { continue }
 	}
 	return value
 }
 
 // float_opt returns an option with the floating point value, associated with the flag in `name`.
 // When the flag is not given by the user, it returns an error.
+// When its value is not a number, or is too large for an `f64`, it returns an error too,
+// and finalize() fails.
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string, c FlagConfig) !f64 {
@@ -516,6 +641,8 @@ pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string, c FlagC
 // float defines and parses a floating point flag, named `name`.
 // When the flag is given by the user, it returns its parsed floating point value.
 // When it is not, it returns the value in `fdefault`.
+// When the given value is not a number, or is too large for an `f64`, it returns `fdefault`,
+// and finalize() fails.
 // This version supports abbreviations.
 // This version supports a custom value description.
 pub fn (mut fs FlagParser) float(name string, abbr u8, fdefault f64, usage string, c FlagConfig) f64 {
@@ -743,8 +870,13 @@ fn (mut fs FlagParser) handle_builtin_options() {
 // The remaining arguments are returned in the same order they are
 // defined on the command line. If additional flags are found, i.e.
 // (things starting with '--' or '-'), it returns an error.
+// It also returns an error, when a defined flag was given an invalid value,
+// like `--n abc` for an int flag.
 pub fn (mut fs FlagParser) finalize() ![]string {
 	fs.handle_builtin_options()
+	if fs.value_errors.len > 0 {
+		return fs.value_errors[0]
+	}
 	mut remaining := fs.args.clone()
 	if !fs.allow_unknown_args {
 		for a in remaining {
