@@ -181,10 +181,18 @@ fn tool_cache_root_can_stage(path string) bool {
 	return C.v_toolcache_root_is_private(w_path) != 0
 }
 
+fn tool_cache_root_stage_rejection_reason(path string) string {
+	return '`${os.real_path(path)}` does not have a user-private ACL'
+}
+
 // tool_cache_parents_are_trusted always accepts on Windows. Folders like `C:\Users` are not
 // owned by the current user, so the ACL check used for the cache folder would reject them.
 fn tool_cache_parents_are_trusted(_ string) bool {
 	return true
+}
+
+fn tool_cache_untrusted_parent_reason(_ string) ?string {
+	return none
 }
 
 // make_tool_cache_root_private does nothing on Windows. There, folder access is controlled by

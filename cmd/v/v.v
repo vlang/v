@@ -203,6 +203,10 @@ fn main() {
 		eprintln('The eval backend has been removed.')
 		exit(1)
 	}
+	if command == 'wipe-cache' {
+		run_wipe_cache(args, command_index)
+		return
+	}
 	if command in external_commands
 		|| command in ['new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'registry',
 			'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
@@ -336,9 +340,15 @@ fn launch_ownership_compiler(args []string) {
 		driver.run(args)
 		exit(0)
 	}
-	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ['-d', 'ownership',
-		'-gc', 'none', '-prealloc']) or {
+	entry := tool_cache_entry_or_error(vexe, vroot, 'v3_ownership', compiler_source, [
+		'-d',
+		'ownership',
+		'-gc',
+		'none',
+		'-prealloc',
+	]) or {
 		eprintln('cannot find a writable cache for the V3 ownership compiler')
+		eprintln(err.msg())
 		exit(1)
 	}
 	reason := tool_cache_stale_reason(entry)
@@ -518,7 +528,7 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 	if !tool_cache_is_disabled() {
 		vexe := os.real_path(os.executable())
 		build_args := external_tool_build_args(tool_name, prefix_args)
-		if entry := tool_cache_entry(vexe, vroot, tool_name, tool_source, build_args) {
+		if entry := tool_cache_entry_or_error(vexe, vroot, tool_name, tool_source, build_args) {
 			reason := tool_cache_stale_reason(entry)
 			if reason == '' {
 				if tool_cache_is_verbose() {
@@ -543,8 +553,11 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 				exit(1)
 			}
 			exec_cached_tool(entry.binary, tool_args)
-		} else if tool_cache_is_verbose() {
-			eprintln('> no usable tool cache directory, running `${tool_name}` from source')
+		} else {
+			if tool_cache_is_verbose() {
+				eprintln('> no usable tool cache directory, running `${tool_name}` from source')
+				eprintln(err.msg())
+			}
 		}
 	}
 	install_external_tool_modules(tool_name, tool_source, compile_args)
