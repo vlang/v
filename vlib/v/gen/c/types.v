@@ -786,7 +786,7 @@ fn (g &FlatGen) exact_known_import_type_text(typ_id u32) ?types.Type {
 		})
 	}
 	if g.tc.type_aliases.contains(clean) {
-		return g.tc.parse_canonical_type(known_type_id(unpadded_id, clean))
+		return g.tc.parse_canonical_type_cached(known_type_id(unpadded_id, clean))
 	}
 	if clean in g.tc.structs {
 		return types.Type(types.Struct{

@@ -8868,6 +8868,11 @@ fn decl_annotation_is_unusable(typ types.Type, raw_id u32) bool {
 fn decl_annotation_text_is_unusable(raw string) bool {
 	// Most spellings have no spaces; check them in place instead of copying.
 	clean_raw := if raw.index_u8(` `) >= 0 { raw.replace(' ', '') } else { raw }
+	// Without `]`, only an `Option`, `__v_` or `void` prefix can match below.
+	if clean_raw.len == 0 || (clean_raw[0] != `O` && clean_raw[0] != `_` && clean_raw[0] != `v`
+		&& clean_raw.index_u8(`]`) < 0) {
+		return false
+	}
 	if field_type_needs_checker_authority(clean_raw) {
 		return true
 	}
