@@ -1438,8 +1438,17 @@ fn fastc_underlying_alias_type(c_type string, alias_base_types flat.TypeTextBind
 	base0 := fastc_trim_pointer_suffix(c_type)
 	first := alias_base_types.get(base0) or { return c_type }
 	mut resolved := first + c_type[base0.len..]
+	// A single alias hop needs no cycle-guard map. Preserve the first
+	// repeated-base result before checking whether another hop exists.
+	base1 := fastc_trim_pointer_suffix(resolved)
+	if base1 == base0 {
+		return resolved
+	}
+	second := alias_base_types.get(base1) or { return resolved }
 	mut seen := map[string]bool{}
 	seen[base0] = true
+	seen[base1] = true
+	resolved = second + resolved[base1.len..]
 	for {
 		base := fastc_trim_pointer_suffix(resolved)
 		if base in seen {

@@ -251,6 +251,15 @@ fn (mut g Parser) read_expression_with_continuation_mode(prefix string, stops []
 	}
 	// `ok && x.field` where `ok := x is Variant && …`: pre-register the bool's implied member
 	// smart-casts so the streamed `x.field` reads the narrowed variant, then drop them after.
+	defer {
+		g.expression_depth--
+	}
+	if g.selfhost && prefix == '' {
+		atom := g.try_read_atomic_expression(stops, allow_mutation_statement, allow_newline_value_continuation)
+		if atom.found {
+			return atom.source
+		}
+	}
 	mut bool_implied := []string{}
 	if g.selfhost && g.expression_depth == 1 && prefix == '' {
 		bool_implied = g.apply_bool_implication_smartcasts(stops)
@@ -259,9 +268,119 @@ fn (mut g Parser) read_expression_with_continuation_mode(prefix string, stops []
 		for implied_name in bool_implied {
 			g.member_smartcasts.delete(implied_name)
 		}
-		g.expression_depth--
 	}
 	return g.read_expression_with_prefix_mode_impl(prefix, stops, allow_mutation_statement, allow_declaration_guard, allow_newline_value_continuation)
+}
+
+struct FastcAtomicExpression {
+	found  bool
+	source string
+}
+
+// try_read_atomic_expression recognizes a complete scalar value before allocating
+// the streaming reader's buffers. A rejected candidate leaves the parser unchanged.
+fn (mut g Parser) try_read_atomic_expression(stops []token.Token, allow_mutation_statement bool, allow_newline_value_continuation bool) FastcAtomicExpression {
+	if g.tok in stops || g.tok !in [.name, .number, .string, .char, .key_true, .key_false] {
+		return FastcAtomicExpression{}
+	}
+	mut offset := g.s.offset
+	for offset < g.s.src.len && g.s.src[offset] in [` `, `\t`, `\r`] {
+		offset++
+	}
+	if offset < g.s.src.len && g.s.src[offset] !in [`,`, `)`, `]`, `}`, `:`, `;`, `\n`, `{`]
+		&& !(g.s.src[offset] == `/` && offset + 1 < g.s.src.len
+			&& g.s.src[offset + 1] in [`/`, `*`]) {
+		return FastcAtomicExpression{}
+	}
+	mut typ := u32(0)
+	mut local_c_name := ''
+	if g.tok == .name {
+		local := g.locals[g.lit] or { return FastcAtomicExpression{} }
+		if local.is_reference || local.option_value_type != 0 || local.smartcast_origin_type != 0
+			|| g.lit in g.member_smartcasts || g.lit in g.generic_method_names
+			|| g.lit.starts_with('@') {
+			return FastcAtomicExpression{}
+		}
+		typ = local.typ
+		if typ !in [flat.source_type_bool, flat.source_type_string, flat.source_type_int,
+			flat.source_type_i8, flat.source_type_i16, flat.source_type_i32, flat.source_type_i64,
+			flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
+			flat.source_type_isize, flat.source_type_usize, flat.source_type_f32, flat.source_type_f64,
+			flat.source_type_rune, flat.source_type_char] {
+			return FastcAtomicExpression{}
+		}
+		local_c_name = local.c_name
+	} else if g.tok == .string && fastc_string_literal_is_incomplete(g.lit) {
+		return FastcAtomicExpression{}
+	}
+	mut probe := g.s
+	following := probe.scan()
+	if following != .eof && following !in stops {
+		return FastcAtomicExpression{}
+	}
+	atom := FastcExpressionToken{ tok: g.tok, lit: g.lit, unsafe_depth: g.unsafe_depth }
+	if following == .lcbr && g.condition_brace_opens_struct_literal([atom], g.tok, g.lit) {
+		return FastcAtomicExpression{}
+	}
+	original_scan := g.s
+	original_tok := g.tok
+	original_lit := g.lit
+	g.s = probe
+	g.tok = following
+	g.lit = probe.lit
+	if following == .semicolon && (g.semicolon_continues_expression()
+		|| (allow_newline_value_continuation && !allow_mutation_statement
+			&& g.semicolon_continues_value_expression())) {
+		g.s = original_scan
+		g.tok = original_tok
+		g.lit = original_lit
+		return FastcAtomicExpression{}
+	}
+	// Format only after confirming the boundary: a failed candidate must not
+	// escape a long string or normalize a number that the reader will render again.
+	mut source := ''
+	match original_tok {
+		.name {
+			source = if local_c_name != '' {
+				local_c_name
+			} else {
+				fastc_c_identifier(original_lit)
+			}
+		}
+		.number {
+			source = fastc_c_selfhost_number(original_lit)
+			typ = flat.source_type_id(fastc_number_expression_type(original_lit))
+		}
+		.string {
+			literal := fastc_c_string(original_lit) or { '' }
+			if literal != '' { source = '_S(${literal})' }
+			typ = flat.source_type_string
+		}
+		.char {
+			if original_lit.starts_with('c:') {
+				source = fastc_c_string("'" + original_lit['c:'.len..] + "'") or { '' }
+				typ = flat.source_type_id('charptr')
+			} else {
+				source = fastc_c_rune(original_lit) or { '' }
+				typ = flat.source_type_rune
+			}
+		}
+		.key_true, .key_false {
+			source = if original_tok == .key_true { '((bool)true)' } else { '((bool)false)' }
+			typ = flat.source_type_bool
+		}
+		else {}
+	}
+	if source == '' {
+		// Let the ordinary path retain its literal diagnostics and positions.
+		g.s = original_scan
+		g.tok = original_tok
+		g.lit = original_lit
+		return FastcAtomicExpression{}
+	}
+	g.last_expression = [atom]
+	g.last_expression_type = typ
+	return FastcAtomicExpression{ found: true, source: source }
 }
 
 struct FastcHigherOrderExpression {

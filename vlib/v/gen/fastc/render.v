@@ -1868,10 +1868,6 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 		if item.tok != .name || (start > 0 && tokens[start - 1].tok == .dot) {
 			continue
 		}
-		root_type := g.infer_expression_type(tokens[start..start + 1]) or { continue }
-		root_is_reference := if local := g.locals[item.lit] { local.is_reference } else { false }
-		root_is_pointer := fastc_is_pointer_type(g.underlying_alias_type(root_type))
-			|| root_is_reference
 		mut end := start + 1
 		for end + 1 < tokens.len && tokens[end].tok == .dot && tokens[end + 1].tok == .name {
 			if end + 2 < tokens.len && tokens[end + 2].tok == .lpar {
@@ -1882,6 +1878,10 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 		if end <= start + 1 || (end < tokens.len && tokens[end].tok == .lsbr) {
 			continue
 		}
+		root_type := g.infer_expression_type(tokens[start..start + 1]) or { continue }
+		root_is_reference := if local := g.locals[item.lit] { local.is_reference } else { false }
+		root_is_pointer := fastc_is_pointer_type(g.underlying_alias_type(root_type))
+			|| root_is_reference
 		chain_tokens := tokens[start..end]
 		raw_chain := g.render_raw_expression_tokens(chain_tokens) or { continue }
 		promoted_chain := g.render_member_receiver(chain_tokens) or { continue }

@@ -12,9 +12,12 @@ fn (g &Parser) render_fixed_array_layout_argument(tokens []FastcExpressionToken,
 		return none
 	}
 	expected_layout := g.underlying_alias_type(expected_type)
+	if !expected_layout.starts_with('FixedArray_') {
+		return none
+	}
 	actual_type := g.infer_expression_type(tokens) or { return none }
 	actual_layout := g.underlying_alias_type(actual_type)
-	if expected_layout == actual_layout || !expected_layout.starts_with('FixedArray_')
+	if expected_layout == actual_layout
 		|| !actual_layout.starts_with('FixedArray_')
 		|| expected_layout.count('*') != actual_layout.count('*') {
 		return none
