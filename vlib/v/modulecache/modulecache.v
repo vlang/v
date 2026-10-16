@@ -6845,6 +6845,17 @@ fn cached_directive_text(node flat.Node, vroot string, source_file string) strin
 }
 
 fn cached_directive_value(directive string, value string, vroot string, source_file string) string {
+	if directive == 'flag' {
+		return cached_resolve_flag_value(value, vroot, source_file)
+	}
+	result := cached_expand_pseudo_paths(value, vroot, source_file)
+	if directive in ['include', 'insert'] {
+		return cached_resolve_relative_include_path(result, source_file)
+	}
+	return result
+}
+
+fn cached_expand_pseudo_paths(value string, vroot string, source_file string) string {
 	mut result := value.replace('@VEXEROOT', vroot)
 	result = result.replace('@VROOT', '@VMODROOT')
 	if result.contains('@VMODROOT') {
@@ -6852,12 +6863,6 @@ fn cached_directive_value(directive string, value string, vroot string, source_f
 	}
 	if result.contains('@DIR') {
 		result = result.replace('@DIR', os.real_path(os.dir(source_file)))
-	}
-	if directive in ['include', 'insert'] {
-		return cached_resolve_relative_include_path(result, source_file)
-	}
-	if directive == 'flag' {
-		return cached_resolve_relative_flag_paths(result, source_file)
 	}
 	return result
 }
@@ -6888,23 +6893,60 @@ fn cached_resolve_relative_include_path(value string, source_file string) string
 	return value[..quote_start + 1] + resolved + value[quote_end..]
 }
 
-fn cached_resolve_relative_flag_paths(value string, source_file string) string {
-	if source_file.len == 0 || !value.contains('/') {
-		return value
-	}
-	base_dir := os.dir(source_file)
-	if base_dir.len == 0 {
-		return value
-	}
+// cached_resolve_flag_value resolves the pseudo variables and the relative paths of
+// a `#flag` value for a cached header, one argument at a time. The header is parsed
+// again later, so a path that has white space or quotes in it (a V root such as
+// `/Volumes/Data 4TB/v`) is quoted where it replaces plain text. Unquoted, it split
+// `@VEXEROOT/vlib/builtin/gc_boehm_helpers.o` into two arguments, and the second one
+// was then resolved as a path relative to the directory of the header.
+fn cached_resolve_flag_value(value string, vroot string, source_file string) string {
 	tokens, valid := cached_split_flag_tokens(value)
 	if !valid {
-		return value
+		return cached_expand_pseudo_paths(value, vroot, source_file)
 	}
-	mut resolved := []string{}
+	base_dir := if source_file.len > 0 { os.dir(source_file) } else { '' }
+	mut changed := false
+	mut resolved := []string{cap: tokens.len}
 	for token in tokens {
-		resolved << cached_resolve_relative_flag_path_token(token, base_dir)
+		mut arg := cached_expand_pseudo_paths(token, vroot, source_file)
+		if base_dir.len > 0 {
+			arg = cached_resolve_relative_flag_path_token(arg, base_dir)
+		}
+		if arg != token {
+			// Without quotes or escapes, the token is plain text, and so is the path
+			// that it became. A token with them keeps its own quoting.
+			if !token.contains_any('\'"\\') {
+				arg = cached_quote_flag_arg(arg)
+			}
+			changed = true
+		}
+		resolved << arg
 	}
-	return resolved.join(' ')
+	return if changed { resolved.join(' ') } else { value }
+}
+
+// cached_quote_flag_arg quotes a plain `#flag` argument that has white space or quotes
+// in it. A joined `-I` or `-L` stays outside of the quotes, so that the argument still
+// starts with it. Path-selection expressions are evaluated from their text when the
+// header is read, and are kept as they are.
+fn cached_quote_flag_arg(arg string) string {
+	if !arg.contains_any(' \t\r\n\'"') || arg.contains(r'$first_existing')
+		|| arg.contains(r'$when_first_existing') {
+		return arg
+	}
+	for prefix in ['-I', '-L'] {
+		if arg.starts_with(prefix) && arg.len > prefix.len {
+			return prefix + cached_single_quoted(arg[prefix.len..])
+		}
+	}
+	return cached_single_quoted(arg)
+}
+
+// cached_single_quoted quotes `text` for the flag parsers that read cached headers.
+// Single quotes have no escapes in them, so the backslashes of a Windows path stay as
+// they are on every platform.
+fn cached_single_quoted(text string) string {
+	return "'" + text.replace("'", "'\\''") + "'"
 }
 
 fn cached_split_flag_tokens(value string) ([]string, bool) {
