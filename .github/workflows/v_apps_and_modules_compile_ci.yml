@@ -43,7 +43,6 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
 
@@ -62,13 +61,10 @@ jobs:
             brew-${{ matrix.os }}-
 
       - name: Build V
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         id: build
         run: make && sudo ./v symlink
 
       - name: Install dependencies
-        id: install_dependencies
-        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
             .github/workflows/disable_azure_mirror.sh
@@ -276,16 +272,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make && ./v symlink
       - name: Build vpm
-        id: build_vpm
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           v retry -- v install markdown
           v retry -- git clone --depth 1 https://github.com/vlang/vpm
@@ -309,39 +300,26 @@ jobs:
       GITLY_TEST_SKIP_REMOTE_REPO: '1'
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           .\makev.bat -gcc
           .\v.exe symlink
       - name: Install sqlite (gitly is built with -d sqlite)
-        id: install_sqlite_gitly_is_built_with_d_sqlite
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: .\.github\workflows\windows-install-sqlite.bat
       - name: Install gitly module dependencies
-        id: install_gitly_module_dependencies
-        if: ${{ success() && !cancelled() && steps.install_sqlite_gitly_is_built_with_d_sqlite.outcome == 'success' }}
         run: |
           v retry -- v install markdown
           v retry -- v install pcre
       - name: Clone gitly
-        id: clone_gitly
-        if: ${{ success() && !cancelled() && steps.install_gitly_module_dependencies.outcome == 'success' }}
         run: v retry -- git clone --depth 1 -b $env:GITLY_BRANCH $env:GITLY_REPO gitly
       - name: Compile gitly CSS
-        id: compile_gitly_css
-        if: ${{ success() && !cancelled() && steps.clone_gitly.outcome == 'success' }}
         uses: gha-utilities/sass-build@c15aba209f1cfe51f43e319f2724558112cd9336 # v0.6.1
         with:
           source: gitly/static/css/gitly.scss
           destination: gitly/static/css/gitly.css
       - name: Compile and run gitly, then check that it serves the expected HTML
-        id: compile_and_run_gitly_then_check_that_it_serves_the_expected_html
-        if: ${{ success() && !cancelled() && steps.compile_gitly_css.outcome == 'success' }}
         run: |
           cd gitly
           v -g run tests/first_run.v

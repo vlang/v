@@ -59,11 +59,9 @@ jobs:
     name: Build on ubuntu-24.04 riscv64
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: uraimo/run-on-arch-action@1e2c619f81e6d8609845ea1d2f443a778df1ac68 # v3
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         name: Run commands
         id: runcmd
         with:

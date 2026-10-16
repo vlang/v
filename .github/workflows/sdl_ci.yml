@@ -40,20 +40,13 @@ jobs:
       VFLAGS: -cc tcc
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
-        id: uses_cache_apt_packages_action
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         run: make && sudo ./v symlink
 
       - name: Install dependencies
-        id: install_dependencies
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           .github/workflows/disable_azure_mirror.sh		
           v retry 'sudo apt update'
@@ -61,8 +54,6 @@ jobs:
           v retry 'sudo apt install -y libsdl2-mixer-dev libsdl2-image-dev'
 
       - name: Clone sdl into .vmodules
-        id: clone_sdl_into_vmodules
-        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: |
           v retry 'git clone --filter=blob:none https://github.com/vlang/sdl'
           cd sdl
@@ -70,31 +61,21 @@ jobs:
           ln -s "$(pwd)" ~/.vmodules/sdl
 
       - name: Ensure SDL setup works
-        id: ensure_sdl_setup_works
-        if: ${{ success() && !cancelled() && steps.clone_sdl_into_vmodules.outcome == 'success' }}
         run: ./v ~/.vmodules/sdl/setup.vsh
 
       - name: Run tests
-        id: run_tests
-        if: ${{ success() && !cancelled() && steps.ensure_sdl_setup_works.outcome == 'success' }}
         run: ./v test sdl
 
       - name: Build sdl shared
-        id: build_sdl_shared
-        if: ${{ success() && !cancelled() && steps.run_tests.outcome == 'success' }}
         run: ./v -shared -g sdl
 
       - name: Build sdl examples
-        id: build_sdl_examples
-        if: ${{ success() && !cancelled() && steps.build_sdl_shared.outcome == 'success' }}
         run: |
           v shader sdl/examples/sdl_opengl_and_sokol
           v should-compile-all sdl/examples/
           ~/.vmodules/sdl/examples/versions/main
 
       - name: Check SDL works, when installed through vpm
-        id: check_sdl_works_when_installed_through_vpm
-        if: ${{ success() && !cancelled() && steps.build_sdl_examples.outcome == 'success' }}
         run: |
           rm -rf sdl/
           rm -rf ~/.vmodules/sdl

@@ -44,7 +44,6 @@ jobs:
       V_CI_PERIODIC: 1
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build
@@ -71,6 +70,4 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
           Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib') -Force
       - name: Test
-        id: test
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: ./v -d network -silent test-self vlib/net

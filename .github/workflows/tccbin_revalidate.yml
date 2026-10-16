@@ -58,13 +58,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout the trusted workflow revision
-        id: checkout_the_trusted_workflow_revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Build the local compiler
-        id: build_the_local_compiler
-        if: ${{ success() && !cancelled() && steps.checkout_the_trusted_workflow_revision.outcome == 'success' }}
         run: |
           make
           ./v -o ./vnew cmd/v

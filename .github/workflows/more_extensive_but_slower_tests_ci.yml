@@ -39,7 +39,6 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
 
@@ -51,8 +50,6 @@ jobs:
         run: ./makev.bat && ./v symlink
 
       - name: Run additional crypto tests
-        id: run_additional_crypto_tests
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           v retry -- git clone --depth 1 https://github.com/vlang/slower_tests
           v test slower_tests/

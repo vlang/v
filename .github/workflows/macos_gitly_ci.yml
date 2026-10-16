@@ -42,13 +42,10 @@ jobs:
       GITLY_CI_URL: http://localhost:8081
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
 
       - name: Check gitly_ci is up
-        id: check_gitly_ci_is_up
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           if ! curl -fsS -m 5 "$GITLY_CI_URL/" >/dev/null; then
             echo "::error::gitly_ci is not reachable at $GITLY_CI_URL on this runner"
@@ -56,8 +53,6 @@ jobs:
           fi
 
       - name: Run gitly_ci and stream logs live
-        id: run_gitly_ci_and_stream_logs_live
-        if: ${{ success() && !cancelled() && steps.check_gitly_ci_is_up.outcome == 'success' }}
         run: |
           set -uo pipefail
           CONFIG_FILE="$GITHUB_WORKSPACE/.gitly-ci.yml"

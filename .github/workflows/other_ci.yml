@@ -32,33 +32,20 @@ jobs:
     timeout-minutes: 80
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
           fetch-depth: 0
       - name: Environment info
-        id: environment_info
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
       - name: Name the local git branch
-        id: name_the_local_git_branch
-        if: ${{ success() && !cancelled() && steps.environment_info.outcome == 'success' }}
         run: git checkout -b the_v_pr_branch
       - name: Build local v
-        id: build_local_v
-        if: ${{ success() && !cancelled() && steps.name_the_local_git_branch.outcome == 'success' }}
         run: make && ./v symlink
       - name: V version
-        id: v_version
-        if: ${{ success() && !cancelled() && steps.build_local_v.outcome == 'success' }}
         run: ./v version
       - name: Build the repeat tool
-        id: build_the_repeat_tool
-        if: ${{ success() && !cancelled() && steps.v_version.outcome == 'success' }}
         run: ./v cmd/tools/vrepeat.v
       - name: Run compare_pr_to_master.v
-        id: run_compare_pr_to_master_v
-        if: ${{ success() && !cancelled() && steps.build_the_repeat_tool.outcome == 'success' }}
         run: VREPEAT_SILENT=1 ./v run .github/workflows/compare_pr_to_master.v
 
   prevent-gpl-licenses:
@@ -66,22 +53,17 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout V ${{ github.head_ref }}
-        id: checkout_v_github_head_ref
         uses: actions/checkout@v7
         with:
           persist-credentials: false
           path: v
       - name: Checkout V master
-        id: checkout_v_master
-        if: ${{ success() && !cancelled() && steps.checkout_v_github_head_ref.outcome == 'success' }}
         uses: actions/checkout@v7
         with:
           persist-credentials: false
           repository: vlang/v
           path: vmaster
       - name: Detect potentially added GPL licensed code
-        id: detect_potentially_added_gpl_licensed_code
-        if: ${{ success() && !cancelled() && steps.checkout_v_master.outcome == 'success' }}
         run: |
           gpl_search_cmd="grep 'GPL' -r --exclude-dir=.git --exclude=*.yml --exclude=*.md --exclude=*.vv --exclude=*_test.v ."
           cd vmaster
@@ -98,24 +80,15 @@ jobs:
       VFLAGS: -cc gcc
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Environment info
-        id: environment_info
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
       - name: Build local v
-        id: build_local_v
-        if: ${{ success() && !cancelled() && steps.environment_info.outcome == 'success' }}
         run: make -j4 && ./v symlink
       - name: v test-cleancode
-        id: v_test_cleancode
-        if: ${{ success() && !cancelled() && steps.build_local_v.outcome == 'success' }}
         run: ./v -silent test-cleancode
       - name: v test-fmt
-        id: v_test_fmt
-        if: ${{ success() && !cancelled() && steps.v_test_cleancode.outcome == 'success' }}
         run: ./v -silent test-fmt
 
   performance-regressions:
@@ -125,38 +98,23 @@ jobs:
       VFLAGS: -cc gcc
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Environment info
-        id: environment_info
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
       - name: Build local v
-        id: build_local_v
-        if: ${{ success() && !cancelled() && steps.environment_info.outcome == 'success' }}
         run: make -j4 && ./v symlink
       - name: Clone & Build previous vmaster/v
-        id: clone_build_previous_vmaster_v
-        if: ${{ success() && !cancelled() && steps.build_local_v.outcome == 'success' }}
         run: |
           ./v retry -- git clone --depth=1 https://github.com/vlang/v vmaster/
           (cd vmaster; make -j4)
       - name: V versions
-        id: v_versions
-        if: ${{ success() && !cancelled() && steps.clone_build_previous_vmaster_v.outcome == 'success' }}
         run: ./v version && ./vmaster/v version
       - name: Build the repeat tool
-        id: build_the_repeat_tool
-        if: ${{ success() && !cancelled() && steps.v_versions.outcome == 'success' }}
         run: ./v cmd/tools/vrepeat.v
       - name: Repeat -o hw.c examples/hello_world.v
-        id: repeat_o_hw_c_examples_hello_world_v
-        if: ${{ success() && !cancelled() && steps.build_the_repeat_tool.outcome == 'success' }}
         run: ./v repeat --max_time 400 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o hw.c examples/hello_world.v' . ./vmaster
       - name: Repeat -o v.c cmd/v
-        id: repeat_o_v_c_cmd_v
-        if: ${{ success() && !cancelled() && steps.repeat_o_hw_c_examples_hello_world_v.outcome == 'success' }}
         run: ./v repeat --max_time 12000 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o v.c cmd/v' . ./vmaster
 
   misc-tooling:
@@ -166,21 +124,14 @@ jobs:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
           fetch-depth: 10
       - uses: ./.github/actions/cache-apt-packages-action
-        id: uses_cache_apt_packages_action
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
       - name: Build v
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         run: make -j4 && ./v symlink
 
       - name: Install dependencies
-        id: install_dependencies
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
@@ -189,21 +140,13 @@ jobs:
           ./v retry -- sudo apt install --quiet -y g++-9 g++-10
 
       - name: g++-9 version
-        id: g_9_version
-        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: g++-9 --version
       - name: V self compilation with g++ and -std=c++11
-        id: v_self_compilation_with_g_and_std_c_11
-        if: ${{ success() && !cancelled() && steps.g_9_version.outcome == 'success' }}
         run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
 
       - name: g++-10 version
-        id: g_10_version
-        if: ${{ success() && !cancelled() && steps.v_self_compilation_with_g_and_std_c_11.outcome == 'success' }}
         run: g++-10 --version
       - name: V self compilation with g++ and -std=c++20
-        id: v_self_compilation_with_g_and_std_c_20
-        if: ${{ success() && !cancelled() && steps.g_10_version.outcome == 'success' }}
         run: ./v -cc g++-10 -no-std -cflags -std=c++20 -o v2 cmd/v && ./v2 -cc g++-10 -no-std -cflags -std=c++20 -o v3 cmd/v
 
       # TODO: re-enable once autofree is fixed; see https://github.com/vlang/v/issues/27116
@@ -211,13 +154,9 @@ jobs:
       #   run: ./v -autofree cmd/v
 
       - name: Ensure V can be compiled with -no-closures
-        id: ensure_v_can_be_compiled_with_no_closures
-        if: ${{ success() && !cancelled() && steps.v_self_compilation_with_g_and_std_c_20.outcome == 'success' }}
         run: ./v -no-closures cmd/v
 
       - name: Shader examples can be built
-        id: shader_examples_can_be_built
-        if: ${{ success() && !cancelled() && steps.ensure_v_can_be_compiled_with_no_closures.outcome == 'success' }}
         run: |
           .github/workflows/compile_shaders_in_examples.sh
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
@@ -232,22 +171,15 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build local v
-        id: build_local_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           make -j4 && ./v symlink
           ./v -g -d trace_parse_stmt cmd/tools/vtest-parser.v
       - name: Install zzuf
-        id: install_zzuf
-        if: ${{ success() && !cancelled() && steps.build_local_v.outcome == 'success' }}
         run: ./v retry -- sudo apt install -qq zzuf
       - name: Run test-parser
-        id: run_test_parser
-        if: ${{ success() && !cancelled() && steps.install_zzuf.outcome == 'success' }}
         run: |
           ./v test-parser --show_source --linear examples/hello_world.v
           ./v test-parser --show_source --linear examples/hanoi.v
@@ -259,8 +191,6 @@ jobs:
           ./v test-parser --show_source --linear examples/2048/2048.v
 
       - name: Run test-parser over fuzzed files
-        id: run_test_parser_over_fuzzed_files
-        if: ${{ success() && !cancelled() && steps.run_test_parser.outcome == 'success' }}
         run: |
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hello_world.v > examples/hello_world_fuzz.v
           zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hanoi.v > examples/hanoi_fuzz.v

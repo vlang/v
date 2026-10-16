@@ -30,35 +30,24 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make -j4 && ./v symlink
 
       - name: Install dependencies
-        id: install_dependencies
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           .github/workflows/disable_azure_mirror.sh
           v retry -- sudo apt update
           v retry -- sudo apt install build-essential -y
 
       - name: Clone current Vinix
-        id: clone_current_vinix
-        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: v retry -- git clone --depth=1 --branch master https://github.com/vlang/vinix.git
 
       - name: Download Vinix kernel dependencies
-        id: download_vinix_kernel_dependencies
-        if: ${{ success() && !cancelled() && steps.clone_current_vinix.outcome == 'success' }}
         run: cd vinix/kernel && v retry -- ./get-deps
 
       - name: Attempt to build the Vinix kernel (debug)
-        id: attempt_to_build_the_vinix_kernel_debug
-        if: ${{ success() && !cancelled() && steps.download_vinix_kernel_dependencies.outcome == 'success' }}
         run: |
           set -e
           cd vinix/kernel
@@ -68,8 +57,6 @@ jobs:
           make clean
 
       - name: Attempt to build the Vinix kernel (prod)
-        id: attempt_to_build_the_vinix_kernel_prod
-        if: ${{ success() && !cancelled() && steps.attempt_to_build_the_vinix_kernel_debug.outcome == 'success' }}
         run: |
           set -e
           cd vinix/kernel
@@ -79,8 +66,6 @@ jobs:
           make clean
 
       - name: Attempt to build the util-vinix (debug)
-        id: attempt_to_build_the_util_vinix_debug
-        if: ${{ success() && !cancelled() && steps.attempt_to_build_the_vinix_kernel_prod.outcome == 'success' }}
         run: |
           set -e
           cd vinix/util-vinix
@@ -91,8 +76,6 @@ jobs:
           make clean
 
       - name: Attempt to build the util-vinix (prod)
-        id: attempt_to_build_the_util_vinix_prod
-        if: ${{ success() && !cancelled() && steps.attempt_to_build_the_util_vinix_debug.outcome == 'success' }}
         run: |
           set -e
           cd vinix/util-vinix

@@ -29,12 +29,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Verify formatting
-        id: verify_formatting
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         uses: creyD/prettier_action@8c18391fdc98ed0d884c6345f03975edac71b8f0 # v4.6
         with:
           prettier_options: --check **.yml

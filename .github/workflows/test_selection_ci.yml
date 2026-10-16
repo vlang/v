@@ -55,14 +55,9 @@ jobs:
       V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: ${{ matrix.build }}
       - name: Check explicit and recursive test selection
-        id: check_explicit_and_recursive_test_selection
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler -gc none cmd/tools/vtest_selection_test.v

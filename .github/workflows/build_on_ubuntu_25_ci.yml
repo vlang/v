@@ -32,12 +32,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build and test in Ubuntu 25.04 with GCC 14.2
-        id: build_and_test_in_ubuntu_25_04_with_gcc_14_2
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           set -o xtrace
           echo "$PWD"

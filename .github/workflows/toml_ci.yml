@@ -34,11 +34,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Cache V toolchain
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         id: cache-v
         uses: actions/cache@v6
         with:
@@ -54,28 +52,18 @@ jobs:
         if: steps.cache-v.outputs.cache-hit == 'true'
         run: ./v run .github/problem-matchers/register_all.vsh
       - name: Symlink V
-        id: symlink_v
-        if: ${{ success() && !cancelled() && steps.cache-v.outcome == 'success' }}
         run: ./v symlink
       - name: Install dependencies
-        id: install_dependencies
-        if: ${{ success() && !cancelled() && steps.symlink_v.outcome == 'success' }}
         run: |
           v retry -- v download https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64
           sudo chmod 755 jq-linux64
           sudo mv jq-linux64 /usr/bin/jq
 
       - name: Show JQ Version
-        id: show_jq_version
-        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: jq --version
 
       - name: Download more TOML testsuits
-        id: download_more_toml_testsuits
-        if: ${{ success() && !cancelled() && steps.show_jq_version.outcome == 'success' }}
         run: .github/workflows/download_full_toml_test_suites.sh
 
       - name: Run TOML tests
-        id: run_toml_tests
-        if: ${{ success() && !cancelled() && steps.download_more_toml_testsuits.outcome == 'success' }}
         run: VTEST_TOML_DO_YAML_CONVERSION=1 VTEST_TOML_DO_LARGE_FILES=1 ./v test vlib/toml

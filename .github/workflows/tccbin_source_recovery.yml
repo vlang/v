@@ -73,13 +73,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout the trusted workflow revision
-        id: checkout_the_trusted_workflow_revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Build the local compiler
-        id: build_the_local_compiler
-        if: ${{ success() && !cancelled() && steps.checkout_the_trusted_workflow_revision.outcome == 'success' }}
         run: |
           make
           ./v -o ./vnew cmd/v
@@ -110,7 +107,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Confirm that Phase A cannot dispatch
-        id: confirm_that_phase_a_cannot_dispatch
         run: test -z "${TCCBIN_RECOVERY_DISPATCH_TOKEN:-}"
 
   state-ack-dark-mode:
@@ -120,5 +116,4 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Confirm that Phase A cannot mutate state
-        id: confirm_that_phase_a_cannot_mutate_state
         run: test -z "${TCCBIN_STATE_WRITE_TOKEN:-}"

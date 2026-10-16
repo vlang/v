@@ -65,12 +65,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Test bootstrap configuration and batch error handling
-        id: test_bootstrap_configuration_and_batch_error_handling
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: python cmd/tools/makev_test.py
       - name: Test Windows CI build failures and W3 integrity pins
         if: ${{ !cancelled() }}

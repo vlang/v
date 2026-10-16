@@ -28,38 +28,28 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
           repository: 'vlang/docker'
 
       - name: Set up QEMU
-        id: set_up_qemu
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
-        id: set_up_docker_buildx
-        if: ${{ success() && !cancelled() && steps.set_up_qemu.outcome == 'success' }}
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Login to hub.docker.com
-        id: login_to_hub_docker_com
-        if: ${{ success() && !cancelled() && steps.set_up_docker_buildx.outcome == 'success' }}
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Create & bootstrap persistent builder
-        id: create_bootstrap_persistent_builder
-        if: ${{ success() && !cancelled() && steps.login_to_hub_docker_com.outcome == 'success' }}
         run: |
           docker buildx create --name gh-builder --driver docker-container --use
           docker buildx inspect --bootstrap
 
       - name: generate tags conditionally
-        if: ${{ success() && !cancelled() && steps.create_bootstrap_persistent_builder.outcome == 'success' }}
         id: gen_tags
         run: |
           if [[ "${{ matrix.os }}" == 'debian' ]]; then
@@ -69,8 +59,6 @@ jobs:
           fi
 
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        id: build_and_deploy_v_image
-        if: ${{ success() && !cancelled() && steps.gen_tags.outcome == 'success' }}
         name: Build and deploy v image
         with:
           builder: gh-builder
@@ -84,8 +72,6 @@ jobs:
           ## cache-to: type=registry,ref=thevlang/vlang:${{ matrix.os }}-buildcache,mode=max
 
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        id: build_and_deploy_developer_build
-        if: ${{ success() && !cancelled() && steps.build_and_deploy_v_image.outcome == 'success' }}
         name: Build and deploy developer build
         with:
           builder: gh-builder

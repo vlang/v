@@ -18,14 +18,11 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout the tested revision
-        id: checkout_the_tested_revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: Checkout the immutable VC bootstrap snapshot
-        id: checkout_the_immutable_vc_bootstrap_snapshot
-        if: ${{ success() && !cancelled() && steps.checkout_the_tested_revision.outcome == 'success' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: vlang/vc
@@ -35,12 +32,8 @@ jobs:
           filter: blob:none
           persist-credentials: false
       - name: Configure the immutable VC bootstrap snapshot
-        id: configure_the_immutable_vc_bootstrap_snapshot
-        if: ${{ success() && !cancelled() && steps.checkout_the_immutable_vc_bootstrap_snapshot.outcome == 'success' }}
         run: git -C vc config --local core.autocrlf false
       - name: Checkout the immutable TCC bootstrap bundle
-        id: checkout_the_immutable_tcc_bootstrap_bundle
-        if: ${{ success() && !cancelled() && steps.configure_the_immutable_vc_bootstrap_snapshot.outcome == 'success' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: vlang/tccbin
@@ -50,8 +43,6 @@ jobs:
           filter: blob:none
           persist-credentials: false
       - name: Configure and verify the immutable TCC bootstrap bundle
-        id: configure_and_verify_the_immutable_tcc_bootstrap_bundle
-        if: ${{ success() && !cancelled() && steps.checkout_the_immutable_tcc_bootstrap_bundle.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -67,14 +58,10 @@ jobs:
           test -f thirdparty/tcc/lib/libgc.a
           thirdparty/tcc/tcc.exe --version
       - name: Build the local compiler
-        id: build_the_local_compiler
-        if: ${{ success() && !cancelled() && steps.configure_and_verify_the_immutable_tcc_bootstrap_bundle.outcome == 'success' }}
         run: |
           make local=1
           ./v -o ./vnew cmd/v
       - name: Validate schemas, fixtures, and pure control-plane models
-        id: validate_schemas_fixtures_and_pure_control_plane_models
-        if: ${{ success() && !cancelled() && steps.build_the_local_compiler.outcome == 'success' }}
         run: |
           ./vnew -silent test thirdparty/tccbin_automation/tests/
           ./vnew run thirdparty/tccbin_automation/bin/cmd contract
@@ -87,7 +74,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Require an exact successful worker result
-        id: require_an_exact_successful_worker_result
         env:
           WORKER_RESULT: ${{ needs.contract-worker.result }}
         run: test "$WORKER_RESULT" = success
@@ -98,19 +84,14 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout the tested revision
-        id: checkout_the_tested_revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Build the local compiler
-        id: build_the_local_compiler
-        if: ${{ success() && !cancelled() && steps.checkout_the_tested_revision.outcome == 'success' }}
         run: |
           make
           ./v -o ./vnew cmd/v
       - name: Exercise the no-write execution path
-        id: exercise_the_no_write_execution_path
-        if: ${{ success() && !cancelled() && steps.build_the_local_compiler.outcome == 'success' }}
         run: ./vnew run thirdparty/tccbin_automation/bin/cmd dry-run
 
   dry-run:
@@ -121,7 +102,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Require an exact successful worker result
-        id: require_an_exact_successful_worker_result
         env:
           WORKER_RESULT: ${{ needs.dry-run-worker.result }}
         run: test "$WORKER_RESULT" = success

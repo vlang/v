@@ -39,16 +39,12 @@ jobs:
       V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V for the shell regression tests
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         id: build
         run: make
       - name: Check BSD tool job failure propagation
-        id: check_bsd_tool_job_failure_propagation
-        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: ./v -new-compiler cmd/tools/tools_ci_test.v
       - name: Check shell regression test formatting
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -69,24 +65,15 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Code in cmd/ is formatted
-        id: code_in_cmd_is_formatted
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: ./v fmt -verify cmd/
       - name: Check build-tools
-        id: check_build_tools
-        if: ${{ success() && !cancelled() && steps.code_in_cmd_is_formatted.outcome == 'success' }}
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
-        id: test_tools
-        if: ${{ success() && !cancelled() && steps.check_build_tools.outcome == 'success' }}
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
         if: ${{ matrix.cc != 'tcc' }}
@@ -124,24 +111,15 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Check build-tools
-        id: check_build_tools
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
-        id: test_tools
-        if: ${{ success() && !cancelled() && steps.check_build_tools.outcome == 'success' }}
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
-        id: test_tools_cstrict
-        if: ${{ success() && !cancelled() && steps.test_tools.outcome == 'success' }}
         run: ./v -silent -W -cstrict test-self cmd
 
   tools-windows:
@@ -159,12 +137,9 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: ./makev.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
       - name: Install OpenSSL for MSVC
         if: ${{ matrix.cc == 'msvc' }}
@@ -184,16 +159,10 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
           Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib') -Force
       - name: Install SQLite (needed by vsqlite tool)
-        id: install_sqlite_needed_by_vsqlite_tool
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: .\.github\workflows\windows-install-sqlite.bat
       - name: Check build tools
-        id: check_build_tools
-        if: ${{ success() && !cancelled() && steps.install_sqlite_needed_by_vsqlite_tool.outcome == 'success' }}
         run: ./v build-tools
       - name: Test tools
-        id: test_tools
-        if: ${{ success() && !cancelled() && steps.check_build_tools.outcome == 'success' }}
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
         if: ${{ matrix.cc == 'msvc' }}
@@ -217,27 +186,18 @@ jobs:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
-        id: checkout
         uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.checkout.outcome == 'success' }}
         run: make && ./v -cg -o v cmd/v && ./v symlink
       - name: Ensure git commands can be used with no prompts on modern Git versions
-        id: ensure_git_commands_can_be_used_with_no_prompts_on_modern_git_versions
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: git config --global --add safe.directory /__w/v/v
       - name: Verify `v test` works
-        id: verify_v_test_works
-        if: ${{ success() && !cancelled() && steps.ensure_git_commands_can_be_used_with_no_prompts_on_modern_git_versions.outcome == 'success' }}
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Build musl-native OpenSSL
-        id: build_musl_native_openssl
-        if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: |
           wget -q https://github.com/openssl/openssl/releases/download/openssl-3.5.4/openssl-3.5.4.tar.gz -O /tmp/openssl-3.5.4.tar.gz
           echo '967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99  /tmp/openssl-3.5.4.tar.gz' | sha256sum --check --strict
@@ -247,16 +207,10 @@ jobs:
           make -j"$(nproc)"
           make install_sw
       - name: Check build tools
-        id: check_build_tools
-        if: ${{ success() && !cancelled() && steps.build_musl_native_openssl.outcome == 'success' }}
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
-        id: test_tools
-        if: ${{ success() && !cancelled() && steps.check_build_tools.outcome == 'success' }}
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
-        id: test_tools_cstrict
-        if: ${{ success() && !cancelled() && steps.test_tools.outcome == 'success' }}
         run: ./v -silent -W -cstrict test-self cmd
 
   tools-freebsd:
@@ -270,13 +224,10 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
 
       - name: Start FreeBSD VM with ${{ matrix.cc }}
-        id: start_freebsd_vm_with_matrix_cc
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
         with:
           operating_system: freebsd
@@ -288,8 +239,6 @@ jobs:
           environment_variables: VFLAGS
 
       - name: Tests tools on FreeBSD with ${{ matrix.cc }}
-        id: tests_tools_on_freebsd_with_matrix_cc
-        if: ${{ success() && !cancelled() && steps.start_freebsd_vm_with_matrix_cc.outcome == 'success' }}
         shell: cpa.sh {0}
         run: |
           # A custom VM shell does not imply GitHub's usual fail-fast options.
@@ -345,13 +294,10 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
 
       - name: Start OpenBSD VM with ${{ matrix.cc }}
-        id: start_openbsd_vm_with_matrix_cc
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
         with:
           operating_system: openbsd
@@ -362,8 +308,6 @@ jobs:
           environment_variables: VFLAGS
 
       - name: Tests tools on OpenBSD with ${{ matrix.cc }}
-        id: tests_tools_on_openbsd_with_matrix_cc
-        if: ${{ success() && !cancelled() && steps.start_openbsd_vm_with_matrix_cc.outcome == 'success' }}
         shell: cpa.sh {0}
         run: |
           # A custom VM shell does not imply GitHub's usual fail-fast options.

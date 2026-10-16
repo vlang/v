@@ -34,32 +34,19 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make
       - name: Test time functions in a timezone UTC-12
-        id: test_time_functions_in_a_timezone_utc_12
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
-        id: test_time_functions_in_a_timezone_utc_3
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_12.outcome == 'success' }}
         run: TZ=Etc/GMT+3 ./v test vlib/time/
       - name: Test time functions in a timezone UTC+3
-        id: test_time_functions_in_a_timezone_utc_3_2
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_3.outcome == 'success' }}
         run: TZ=Etc/GMT-3 ./v test vlib/time/
       - name: Test time functions in a timezone UTC+12
-        id: test_time_functions_in_a_timezone_utc_12_2
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_3_2.outcome == 'success' }}
         run: TZ=Etc/GMT-12 ./v test vlib/time/
       - name: Test in a timezone using daylight saving (Europe/Paris)
-        id: test_in_a_timezone_using_daylight_saving_europe_paris
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_12_2.outcome == 'success' }}
         run: TZ=Europe/Paris ./v test vlib/time/
 
   time-macos:
@@ -72,32 +59,19 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make
       - name: Test time functions in a timezone UTC-12
-        id: test_time_functions_in_a_timezone_utc_12
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
-        id: test_time_functions_in_a_timezone_utc_3
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_12.outcome == 'success' }}
         run: TZ=Etc/GMT+3 ./v test vlib/time/
       - name: Test time functions in a timezone UTC+3
-        id: test_time_functions_in_a_timezone_utc_3_2
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_3.outcome == 'success' }}
         run: TZ=Etc/GMT-3 ./v test vlib/time/
       - name: Test time functions in a timezone UTC+12
-        id: test_time_functions_in_a_timezone_utc_12_2
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_3_2.outcome == 'success' }}
         run: TZ=Etc/GMT-12 ./v test vlib/time/
       - name: Test in a timezone using daylight saving (Europe/Paris)
-        id: test_in_a_timezone_using_daylight_saving_europe_paris
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_12_2.outcome == 'success' }}
         run: TZ=Europe/Paris ./v test vlib/time/
 
   time-windows:
@@ -110,30 +84,17 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: .\makev.bat
       - name: Test time functions in a timezone UTC-12
-        id: test_time_functions_in_a_timezone_utc_12
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: tzutil /s "Dateline Standard Time" && ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
-        id: test_time_functions_in_a_timezone_utc_3
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_12.outcome == 'success' }}
         run: tzutil /s "Greenland Standard Time" && ./v test vlib/time/
       - name: Test time functions in a timezone UTC+3
-        id: test_time_functions_in_a_timezone_utc_3_2
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_3.outcome == 'success' }}
         run: tzutil /s "Russian Standard Time" && ./v test vlib/time/
       - name: Test time functions in a timezone UTC+12
-        id: test_time_functions_in_a_timezone_utc_12_2
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_3_2.outcome == 'success' }}
         run: tzutil /s "New Zealand Standard Time" && ./v test vlib/time/
       - name: Test in a timezone using daylight saving (Europe/Paris)
-        id: test_in_a_timezone_using_daylight_saving_europe_paris
-        if: ${{ success() && !cancelled() && steps.test_time_functions_in_a_timezone_utc_12_2.outcome == 'success' }}
         run: tzutil /s "W. Europe Standard Time" && ./v test vlib/time/

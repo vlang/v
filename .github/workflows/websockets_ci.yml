@@ -33,119 +33,76 @@ jobs:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
-        id: uses_cache_apt_packages_action
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
       - name: Build v
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         run: |
           echo "$VFLAGS"
           sudo ln -s "$PWD/thirdparty/tcc/tcc.exe" /usr/local/bin/tcc ## TODO: remove
           make -j4 && ./v symlink
           ./v -g -o v cmd/v
       - name: Install dependencies
-        id: install_dependencies
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: v retry -- sudo apt install --quiet -y libssl-dev
       - name: v doctor
-        id: v_doctor
-        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: ./v doctor
       - name: Run websockets tests
-        id: run_websockets_tests
-        if: ${{ success() && !cancelled() && steps.v_doctor.outcome == 'success' }}
         run: ./v -g test vlib/net/websocket/
 
       ## Autobahn integrations tests
       - name: Run autobahn services
-        id: run_autobahn_services
-        if: ${{ success() && !cancelled() && steps.run_websockets_tests.outcome == 'success' }}
         run: docker compose -f ${{github.workspace}}/vlib/net/websocket/tests/autobahn/docker-compose.yml up -d
 
       - name: Wait for the service to start
-        id: wait_for_the_service_to_start
-        if: ${{ success() && !cancelled() && steps.run_autobahn_services.outcome == 'success' }}
         run: sleep 10s
 
       - name: Build client test
-        id: build_client_test
-        if: ${{ success() && !cancelled() && steps.wait_for_the_service_to_start.outcome == 'success' }}
         run: docker exec autobahn_client "/src/v" "/src/vlib/net/websocket/tests/autobahn/autobahn_client.v"
       - name: Run client test
-        id: run_client_test
-        if: ${{ success() && !cancelled() && steps.build_client_test.outcome == 'success' }}
         run: docker exec autobahn_client "/src/vlib/net/websocket/tests/autobahn/autobahn_client"
 
       - name: Build client wss test
-        id: build_client_wss_test
-        if: ${{ success() && !cancelled() && steps.run_client_test.outcome == 'success' }}
         run: docker exec autobahn_client "/src/v" "/src/vlib/net/websocket/tests/autobahn/autobahn_client_wss.v"
 
       - name: Run client wss test
-        id: run_client_wss_test
-        if: ${{ success() && !cancelled() && steps.build_client_wss_test.outcome == 'success' }}
         run: docker exec autobahn_client "/src/vlib/net/websocket/tests/autobahn/autobahn_client_wss"
       - name: Run server test
-        id: run_server_test
-        if: ${{ success() && !cancelled() && steps.run_client_wss_test.outcome == 'success' }}
         run: docker exec autobahn_server "wstest" "-m" "fuzzingclient" "-s" "/config/fuzzingclient.json"
 
       - name: Copy reports
-        id: copy_reports
-        if: ${{ success() && !cancelled() && steps.run_server_test.outcome == 'success' }}
         run: docker cp autobahn_server:/reports ${{github.workspace}}/reports
       - name: Copy reports wss
-        id: copy_reports_wss
-        if: ${{ success() && !cancelled() && steps.copy_reports.outcome == 'success' }}
         run: docker cp autobahn_server_wss:/reports ${{github.workspace}}/reports_wss
       - name: Test success
-        id: test_success
-        if: ${{ success() && !cancelled() && steps.copy_reports_wss.outcome == 'success' }}
         run: docker exec autobahn_server "python" "/check_results.py"
       - name: Test success WSS
-        id: test_success_wss
-        if: ${{ success() && !cancelled() && steps.test_success.outcome == 'success' }}
         run: docker exec autobahn_server_wss "python" "/check_results.py"
 
       - name: Publish all reports
-        id: publish_all_reports
-        if: ${{ success() && !cancelled() && steps.test_success_wss.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: full report
           path: ${{github.workspace}}/reports
 
       - name: Publish report client
-        id: publish_report_client
-        if: ${{ success() && !cancelled() && steps.publish_all_reports.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: client
           path: ${{github.workspace}}/reports/clients/index.html
 
       - name: Publish report server
-        id: publish_report_server
-        if: ${{ success() && !cancelled() && steps.publish_report_client.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: server
           path: ${{github.workspace}}/reports/servers/index.html
 
       - name: Publish all reports WSS
-        id: publish_all_reports_wss
-        if: ${{ success() && !cancelled() && steps.publish_report_server.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: full report wss
           path: ${{github.workspace}}/reports_wss
 
       - name: Publish report client wss
-        id: publish_report_client_wss
-        if: ${{ success() && !cancelled() && steps.publish_all_reports_wss.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: client wss

@@ -46,17 +46,12 @@ jobs:
       B_LFLAGS: -lm -lpthread
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
           fetch-depth: 0
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make -j4
       - name: Test bootstrapping (v.c can be compiled and run with -os cross)
-        id: test_bootstrapping_v_c_can_be_compiled_and_run_with_os_cross
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           ls -la v vc/v.c
           ./v -os cross -o vc/v.c cmd/v
@@ -87,8 +82,6 @@ jobs:
         if: github.ref_name != 'master'
         run: git branch master remotes/origin/master
       - name: Test `v up`
-        id: test_v_up
-        if: ${{ success() && !cancelled() && steps.test_bootstrapping_v_c_can_be_compiled_and_run_with_os_cross.outcome == 'success' }}
         run: |
           tested_sha=$(git rev-parse 'HEAD^{commit}')
           if [ "$tested_sha" != "$GITHUB_SHA" ]; then

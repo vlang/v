@@ -21,19 +21,14 @@ jobs:
         if: github.event_name == 'schedule' && github.ref != 'refs/heads/master'
         run: exit 1
       - name: Checkout the trusted workflow revision
-        id: checkout_the_trusted_workflow_revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Project the persisted issue ledger and validate aggregation without issue access
-        id: project_the_persisted_issue_ledger_and_validate_aggregation_without_issue_access
-        if: ${{ success() && !cancelled() && steps.checkout_the_trusted_workflow_revision.outcome == 'success' }}
         run: |
           make
           ./v -o ./vnew cmd/v
           ./vnew run thirdparty/tccbin_automation/bin/cmd issue-dry-run thirdparty/tccbin_automation/tests/fixtures/issue-ledger.dark.json
           ./vnew -silent test thirdparty/tccbin_automation/tests/reporter_hygiene_test.v
       - name: Confirm that Phase A cannot write issues
-        id: confirm_that_phase_a_cannot_write_issues
-        if: ${{ success() && !cancelled() && steps.project_the_persisted_issue_ledger_and_validate_aggregation_without_issue_access.outcome == 'success' }}
         run: test -z "${TCCBIN_ISSUE_WRITE_TOKEN:-}"

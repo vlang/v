@@ -49,11 +49,8 @@ jobs:
           persist-credentials: false
           ref: master
       - name: Build V
-        id: build_v
         run: make -j4
       - name: Regenerate v.c and v_win.c
-        id: regenerate_v_c_and_v_win_c
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           git config --global user.email "vlang-bot@users.noreply.github.com"
           git config --global user.name "vlang-bot"

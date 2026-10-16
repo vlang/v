@@ -43,27 +43,18 @@ jobs:
       VTMP: /tmp
     steps:
       - name: Checkout V
-        id: checkout_v
         uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
-        id: uses_cache_apt_packages_action
-        if: ${{ success() && !cancelled() && steps.checkout_v.outcome == 'success' }}
 
       - name: Build local v
-        id: build_local_v
-        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         run: make -j4 && ./v symlink
 
       - name: Clear module cache
-        id: clear_module_cache
-        if: ${{ success() && !cancelled() && steps.build_local_v.outcome == 'success' }}
         run: ./v wipe-cache
 
       - name: Setup dependencies
-        id: setup_dependencies
-        if: ${{ success() && !cancelled() && steps.clear_module_cache.outcome == 'success' }}
         run: |
           # imagemagick              : convert, mogrify
           # xvfb                     : xvfb
@@ -82,18 +73,12 @@ jobs:
           chmod +x ./imgur.sh
 
       - name: Check Wayland pipe descriptor ABI
-        id: check_wayland_pipe_descriptor_abi
-        if: ${{ success() && !cancelled() && steps.setup_dependencies.outcome == 'success' }}
         run: env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE timeout --signal=TERM --kill-after=5s 120s ./v -new-compiler -no-retry-compilation -d gg_multiwindow -d sokol_wayland vlib/gg/wayland_pipe_abi_test.c.v
 
       - name: Legacy gg import multiwindow isolation
-        id: legacy_gg_import_multiwindow_isolation
-        if: ${{ success() && !cancelled() && steps.check_wayland_pipe_descriptor_abi.outcome == 'success' }}
         run: env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE ./v test vlib/gg/legacy_import_multiwindow_isolation_test.v
 
       - name: Multiwindow Linux checks
-        id: multiwindow_linux_checks
-        if: ${{ success() && !cancelled() && steps.legacy_gg_import_multiwindow_isolation.outcome == 'success' }}
         run: |
           set -euo pipefail
           env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE timeout --kill-after=5s 120s ./v -new-compiler -d sokol_wayland vlib/sokol/sapp/sapp_wayland_pipe_linux_test.c.v
@@ -165,7 +150,6 @@ jobs:
           run_x11_example "gg multiwindow Xvfb/X11" /tmp/gg_multiwindow_x11
 
       - name: Sample and compare
-        if: ${{ success() && !cancelled() && steps.multiwindow_linux_checks.outcome == 'success' }}
         id: compare
         continue-on-error: true
         run: |

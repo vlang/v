@@ -42,21 +42,14 @@ jobs:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
-        id: checkout
         uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Add Alpine build dependencies
-        id: add_alpine_build_dependencies
-        if: ${{ success() && !cancelled() && steps.checkout.outcome == 'success' }}
         run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.add_alpine_build_dependencies.outcome == 'success' }}
         run: CC=gcc make
       - name: Verify candidate-owned tests are skipped under musl
-        id: verify_candidate_owned_tests_are_skipped_under_musl
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           set -eu
           grep -F "'vlib/gg/multiwindow_services_contract_test.v'" cmd/tools/vtest-self.v

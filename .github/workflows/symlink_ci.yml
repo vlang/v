@@ -30,16 +30,11 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make -j4
       - name: Symlink
-        id: symlink
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           ./v symlink
           cd /tmp/ && v version
@@ -47,14 +42,10 @@ jobs:
           echo 'println(123)' > hi.v
           v run hi.v
       - name: Unlink
-        id: unlink
-        if: ${{ success() && !cancelled() && steps.symlink.outcome == 'success' }}
         run: |
           rm "$(which v)"
           v --version && exit 1 || exit 0
       - name: Symlink (sudo)
-        id: symlink_sudo
-        if: ${{ success() && !cancelled() && steps.unlink.outcome == 'success' }}
         run: |
           sudo ./v symlink
           cd /tmp/ && v version
@@ -62,18 +53,12 @@ jobs:
           echo 'println(123)' > hi.v
           v run hi.v
       - name: Unlink
-        id: unlink_2
-        if: ${{ success() && !cancelled() && steps.symlink_sudo.outcome == 'success' }}
         run: |
           rm "$(which v)"
           v --version && exit 1 || exit 0
       - name: Symlink (-githubci)
-        id: symlink_githubci
-        if: ${{ success() && !cancelled() && steps.unlink_2.outcome == 'success' }}
         run: ./v symlink -githubci
       - name: Test after symlink with -githubci (in a separate script)
-        id: test_after_symlink_with_githubci_in_a_separate_script
-        if: ${{ success() && !cancelled() && steps.symlink_githubci.outcome == 'success' }}
         run: |
           cd /tmp/ && v version
           cd ~ && v version
@@ -89,20 +74,13 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v7
-        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
-        id: build_v
-        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: ./makev.bat
       - name: Symlink
-        id: symlink
-        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: ./v symlink ${{ matrix.flags }}
       - name: Check if V is usable
-        id: check_if_v_is_usable
-        if: ${{ success() && !cancelled() && steps.symlink.outcome == 'success' }}
         run: |
           cd $RUNNER_TEMP && pwd && v version
           cd ~ && pwd && v version
