@@ -4401,10 +4401,10 @@ fn (mut t Transformer) hand_over_interface_boxed_types() {
 		return
 	}
 	state := transform_stage_scope_suspend(t.stage_scope)
-	mut keys := []string{cap: t.interface_boxed_types.len}
+	mut keys := []u64{cap: t.interface_boxed_types.len}
 	mut values := []bool{cap: t.interface_boxed_types.len}
 	for key, value in t.interface_boxed_types {
-		keys << key.clone()
+		keys << key
 		values << value
 	}
 	t.tc.transform_boxed_types = keys

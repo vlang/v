@@ -1010,7 +1010,7 @@ pub mut:
 	// lowering, the node count it scanned and the library bodies it skipped, for
 	// the monomorphization stage to start from. transform_boxed_node_count is -1
 	// until the transform stage sets them.
-	transform_boxed_types      []string
+	transform_boxed_types      []u64
 	transform_boxed_values     []bool
 	transform_boxed_skipped    []bool
 	transform_boxed_node_count int = -1
