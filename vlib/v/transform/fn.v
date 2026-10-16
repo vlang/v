@@ -8012,6 +8012,11 @@ fn (mut t Transformer) rebuild_struct_autostr_recurse_index() {
 		}
 	}
 	mut recurse_types := map[u32]bool{}
+	if allow_nodes.len == 0 {
+		// No struct allows recursion; there is nothing to look up below.
+		t.struct_autostr_recurse_types = recurse_types.move()
+		return
+	}
 	mut cur_module := ''
 	for idx in 0 .. t.a.nodes.len {
 		// This scan does not modify the AST arena.
