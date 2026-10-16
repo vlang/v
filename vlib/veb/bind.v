@@ -65,7 +65,8 @@ fn (ctx &Context) bind_json[T]() !T {
 	}
 	$for field in T.fields {
 		if bind_has_attr(field.attrs, 'required') {
-			if field.name !in keys {
+			key := bind_json_key(field.name, field.attrs)
+			if key !in keys {
 				return error('missing required field "${field.name}"')
 			}
 		}
@@ -90,13 +91,13 @@ fn (ctx &Context) bind_map[T]() !T {
 				res.$(field.name) = value
 			}
 		} $else $if field.typ is int {
-			if value != '' {
+			if present {
 				res.$(field.name) = strconv.atoi(value) or {
 					return error('invalid integer value "${value}" for field "${field.name}"')
 				}
 			}
 		} $else $if field.typ is bool {
-			if value != '' {
+			if present {
 				if value != 'true' && value != 'false' {
 					return error('invalid boolean value "${value}" for field "${field.name}": expected true or false')
 				}
@@ -107,23 +108,21 @@ fn (ctx &Context) bind_map[T]() !T {
 			if !present {
 				return error('missing required field "${field.name}"')
 			}
-			$if field.typ is string {
-				if res.$(field.name) == '' {
-					return error('required field "${field.name}" must not be empty')
-				}
-			}
 		}
 	}
 	validate_bound_value[T](res)!
 	return res
 }
 
-// validate_bound_value checks the value rules (`min`, `max`, `email`) of
-// every field against its attributes.
+// validate_bound_value checks the value rules (`required`, `min`, `max`,
+// `email`) of every field against its attributes.
 fn validate_bound_value[T](res T) ! {
 	$for field in T.fields {
 		$if field.typ is string {
 			value := res.$(field.name)
+			if bind_has_attr(field.attrs, 'required') && value == '' {
+				return error('required field "${field.name}" must not be empty')
+			}
 			if min := bind_int_attr(field.attrs, 'min') {
 				if value.len < min {
 					return error('field "${field.name}" is shorter than ${min} characters')
@@ -167,6 +166,32 @@ fn is_email_like(s string) bool {
 	}
 	dot := parts[1].last_index('.') or { return false }
 	return dot > 0 && dot < parts[1].len - 1
+}
+
+// bind_json_key resolves the serialized JSON key for a struct field, using
+// the same first `json:` attribute the json2 decoder uses. A missing
+// attribute, an empty value, or a `skip` marker (`json: '-'`) keeps the V
+// field name, so `required` is checked against the key the decoder fills.
+fn bind_json_key(field_name string, attrs []string) string {
+	for attr in attrs {
+		if attr.starts_with('json:') {
+			mut val := attr[5..].trim_space()
+			if val.len > 1 {
+				if (val[0] == `'` && val[val.len - 1] == `'`)
+					|| (val[0] == `"` && val[val.len - 1] == `"`) {
+					val = val[1..val.len - 1]
+				}
+			}
+			if val == '' {
+				continue
+			}
+			if val == '-' {
+				return field_name
+			}
+			return val
+		}
+	}
+	return field_name
 }
 
 // bind_has_attr reports whether an attribute list holds `name`, either bare

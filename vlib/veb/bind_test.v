@@ -134,3 +134,55 @@ fn test_bind_prefers_the_form_over_the_query() {
 	assert ctx.res.status_code == int(http.Status.ok)
 	assert ctx.res.body == 'zed:21'
 }
+
+fn test_bind_rejects_an_empty_required_string_without_a_min() {
+	// `name` carries no `min`, so only the shared required-string check
+	// rejects the empty value on the JSON path as it does on the form path.
+	ctx := bind_request(.post, '/signup',
+		'{"name":"","email":"amy@example.com","password":"twelve-chars-here","age":20}',
+		'application/json')
+	assert ctx.res.status_code == int(http.Status.bad_request)
+	assert ctx.res.body.contains('name')
+}
+
+fn test_bind_rejects_empty_required_strings_on_the_json_path() {
+	ctx := bind_request(.post, '/signup',
+		'{"name":"","email":"","password":"twelve-chars-here","age":20}', 'application/json')
+	assert ctx.res.status_code == int(http.Status.bad_request)
+	assert ctx.res.body.contains('name') || ctx.res.body.contains('email')
+}
+
+fn test_bind_rejects_a_present_but_empty_query_int() {
+	ctx := bind_request(.get, '/search?name=amy&age=', '', '')
+	assert ctx.res.status_code == int(http.Status.bad_request)
+	assert ctx.res.body.contains('age')
+}
+
+fn test_bind_rejects_a_present_but_empty_query_bool() {
+	ctx := bind_request(.get, '/search?name=amy&age=20&active=', '', '')
+	assert ctx.res.status_code == int(http.Status.bad_request)
+	assert ctx.res.body.contains('active')
+}
+
+fn test_bind_rejects_a_present_but_empty_form_int() {
+	ctx := bind_request(.post, '/search', 'name=amy&age=',
+		'application/x-www-form-urlencoded')
+	assert ctx.res.status_code == int(http.Status.bad_request)
+	assert ctx.res.body.contains('age')
+}
+
+fn test_bind_rejects_an_empty_form_value_over_a_valid_query_value() {
+	// The form wins on conflict, so its empty value must fail even though
+	// the query holds a parsable one.
+	ctx := bind_request(.post, '/search?name=amy&age=20', 'age=',
+		'application/x-www-form-urlencoded')
+	assert ctx.res.status_code == int(http.Status.bad_request)
+	assert ctx.res.body.contains('age')
+}
+
+fn test_bind_accepts_a_valid_form_value_over_an_empty_query_value() {
+	ctx := bind_request(.post, '/search?name=amy&age=', 'age=21',
+		'application/x-www-form-urlencoded')
+	assert ctx.res.status_code == int(http.Status.ok)
+	assert ctx.res.body == 'amy:21'
+}
