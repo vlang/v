@@ -9,8 +9,9 @@ As in the default C backend, an `if` condition cannot start with another `if` ex
 even behind opening parentheses. Assign the inner expression to a variable first.
 Both the C emitter and the native ARM64 parser enforce this rule.
 Diagnostics retain source-file byte offsets through generic rewrites, selected compile-time
-branches, and declaration initializers. Files marked `@[translated]` retain support for these
-conditions, including constant, global, and struct-field initializers.
+branches, and declaration initializers, including errors for unsupported expressions and invalid
+tokens in struct-field defaults. Files marked `@[translated]` retain support for these conditions,
+including constant, global, and struct-field initializers.
 
 Ordinary programs support the following constructs:
 

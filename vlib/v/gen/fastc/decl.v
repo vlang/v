@@ -1436,7 +1436,8 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 			}
 			if gen.s.diagnostics.len > 0 {
 				diagnostic := gen.s.diagnostics[0]
-				return error('fastc scanner error at byte ${diagnostic.offset} in ${field.path}: ${diagnostic.message}')
+				offset := fastc_original_source_offset(gen.source_origins, gen.source_offset + diagnostic.offset)
+				return error('fastc scanner error at byte ${offset} in ${field.path}: ${diagnostic.message}')
 			}
 		}
 		struct_field_info[type_name] = fields

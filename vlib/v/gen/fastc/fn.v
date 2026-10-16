@@ -641,7 +641,8 @@ fn (mut g Parser) skip_semicolons() {
 }
 
 fn (g &Parser) unsupported(feature string) IError {
-	return error('fastc parser does not support ${feature} at byte ${g.s.pos + g.source_offset} in ${g.path}')
+	offset := fastc_original_source_offset(g.source_origins, g.s.pos + g.source_offset)
+	return error('fastc parser does not support ${feature} at byte ${offset} in ${g.path}')
 }
 
 fn (mut g Parser) expect(expected token.Token) ! {
