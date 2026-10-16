@@ -62,6 +62,7 @@ fn (mut t Transformer) collect_generic_specs_range_scoped(struct_decls map[strin
 		w.node_context_texts = t.node_context_texts
 		w.node_module_map_nodes = t.node_module_map_nodes
 		w.node_context_lazy_end = t.node_context_lazy_end
+		w.node_context_read_only = true
 		mut batch_struct_specs := flat.TypeTextBindings{}
 		mut batch_sum_specs := map[string]GenericSpecContext{}
 		w.collect_generic_struct_specs_range(struct_decls, mut batch_struct_specs, start, end)
@@ -4611,28 +4612,47 @@ fn (mut t Transformer) mark_node_context_root(idx int, module_name string, file_
 }
 
 // node_context_owner is the nearest ancestor of node `idx` with a recorded
-// context, or -1, for a node whose context is taken on demand.
+// context, or -1, for a node whose context is taken on demand. The transformer
+// that owns the context arrays records the context it finds on the nodes it
+// walked through, so asking again, or for a node below them, is short.
 @[direct_array_access]
 fn (t &Transformer) node_context_owner(idx int) int {
 	if idx >= t.node_context_lazy_end {
 		return -1
 	}
+	mut owner := -1
 	mut cursor := idx
 	// The bound only guards against a cycle in a rewritten tree.
 	for _ in 0 .. 1 << 16 {
 		if cursor < 0 || cursor >= t.source_parent_ids.len {
-			return -1
+			break
 		}
 		cursor = int(t.source_parent_ids[cursor])
 		if cursor < 0 || cursor >= t.node_module_map_cache.len
 			|| cursor >= t.node_file_map_cache.len {
-			return -1
+			break
 		}
 		if t.node_module_map_cache[cursor] != 0 || t.node_file_map_cache[cursor] != 0 {
-			return cursor
+			owner = cursor
+			break
 		}
 	}
-	return -1
+	if owner < 0 || t.node_context_read_only {
+		return owner
+	}
+	module_id := t.node_module_map_cache[owner]
+	file_id := t.node_file_map_cache[owner]
+	unsafe {
+		mut modules := &u16(t.node_module_map_cache.data)
+		mut files := &u16(t.node_file_map_cache.data)
+		cursor = idx
+		for cursor != owner {
+			modules[cursor] = module_id
+			files[cursor] = file_id
+			cursor = int(t.source_parent_ids[cursor])
+		}
+	}
+	return owner
 }
 
 fn (mut t Transformer) ensure_node_context_map_capacity() {
@@ -6157,6 +6177,12 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 				callee := t.a.child_node(&call, 0)
 				specialized_call_or = callee.kind == .ident
 					&& t.generic_callee_is_specialization(callee.value)
+			}
+			// Unless the callee is a specialization, a usable annotation stays as it
+			// is (see below); do not resolve the result type of the call for it.
+			if !specialized_call_or && decl_type_is_usable(node.typ)
+				&& !t.generic_arg_is_unresolved(node.typ) {
+				continue
 			}
 			_, concrete_rhs_type_source_id := t.or_expr_types(call_id, rhs.typ)
 			concrete_rhs_type = concrete_rhs_type_source_id
