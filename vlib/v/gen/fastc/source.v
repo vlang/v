@@ -463,10 +463,8 @@ fn fastc_resolve_source_files_deferring_memo(paths []string, prefs &pref.Prefere
 	if module_aliases.len > 0 {
 		for index in 0 .. sources.len {
 			sources[index] = FastcSourceFile{
-				path:          sources[index].path
-				source:        sources[index].source
-				source_offset: sources[index].source_offset
-				header:        fastc_canonicalize_header_imports(sources[index].header, module_aliases)
+				...sources[index]
+				header: fastc_canonicalize_header_imports(sources[index].header, module_aliases)
 			}
 		}
 	}
@@ -1791,10 +1789,8 @@ fn fastc_apply_scan_flags(mut sources []FastcSourceFile, flags []FastcSourceScan
 	for i, file_flags in flags {
 		source_file := sources[start + i]
 		sources[start + i] = FastcSourceFile{
-			path:          source_file.path
-			source:        source_file.source
-			source_offset: source_file.source_offset
-			header:        fastc_header_with_scan_flags(source_file.header, file_flags)
+			...source_file
+			header: fastc_header_with_scan_flags(source_file.header, file_flags)
 		}
 	}
 }

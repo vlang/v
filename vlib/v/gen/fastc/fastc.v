@@ -1035,13 +1035,14 @@ struct FastcStructField {
 	is_declared_voidptr bool
 	// Shared map fields keep pointer identity even though FastC currently erases locking.
 	// Without this, copying their containing struct detaches subsequent map header updates.
-	is_shared_pointer     bool
-	module_name           string
-	path                  string
-	imports               map[string]string
-	default_source        string
-	default_source_offset int
-	translated            bool
+	is_shared_pointer      bool
+	module_name            string
+	path                   string
+	imports                map[string]string
+	default_source         string
+	default_source_offset  int
+	default_source_origins []FastcSourceOrigin
+	translated             bool
 mut:
 	default_value string
 	storage_path  []string
@@ -1090,7 +1091,7 @@ struct FastcSourceHeader {
 	body_spans []int
 }
 
-// FastcSourceOrigin maps a copied span in a filtered declaration buffer to its source file.
+// FastcSourceOrigin maps a copied span in a rewritten or filtered buffer to its source file.
 struct FastcSourceOrigin {
 	filtered_offset int
 	source_offset   int

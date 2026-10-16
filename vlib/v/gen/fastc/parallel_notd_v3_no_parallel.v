@@ -501,10 +501,8 @@ fn fastc_collect_index_worker(sources []FastcSourceFile, prefs &pref.Preferences
 		}
 		flagged := [
 			FastcSourceFile{
-				path:          source_file.path
-				source:        source_file.source
-				source_offset: source_file.source_offset
-				header:        fastc_header_with_scan_flags(source_file.header, file_flags)
+				...source_file
+				header: fastc_header_with_scan_flags(source_file.header, file_flags)
 			},
 		]
 		partial := fastc_collect_declaration_chunk(flagged, prefs, 0, 1)
@@ -555,10 +553,8 @@ fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, 
 	for index, indexed in partials {
 		source_file := sources[index]
 		sources[index] = FastcSourceFile{
-			path:          source_file.path
-			source:        source_file.source
-			source_offset: source_file.source_offset
-			header:        fastc_header_with_body_spans(fastc_header_with_scan_flags(source_file.header, indexed.flags), indexed.body_spans)
+			...source_file
+			header: fastc_header_with_body_spans(fastc_header_with_scan_flags(source_file.header, indexed.flags), indexed.body_spans)
 		}
 		for key, generic in indexed.generics {
 			generic_method_sources[key] = generic
@@ -753,6 +749,7 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 			// its bytes instead of copying every fragment before the parallel pass.
 			source:               unsafe { source_file.source[start..cuts[i + 1]] }
 			source_offset:        source_file.source_offset + start
+			source_origins:       source_file.source_origins
 			source_line_offset:   source_file.source_line_offset + position_lines
 			source_column_offset: if position_lines == 0 {
 				source_file.source_column_offset + position_column

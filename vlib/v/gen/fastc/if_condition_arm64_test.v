@@ -158,3 +158,45 @@ fn main() { settings := Settings{}; if settings.enabled { println("ok") } }',
 		}
 	}
 }
+
+fn test_fastc_arm64_if_condition_positions_after_monomorphization() {
+	$if arm64 ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_arm64_if_condition_mono_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		path := os.join_path(root, 'main.v')
+		output := os.join_path(root, 'program')
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		for template in [
+			'fn id[T](x T) T { return x }\nconst bad = if CONDITION { 1 } else { 0 }\nfn main() { if id(1) == bad { println("ok") } }',
+			'const first = id(1)\nconst bad = if CONDITION { 1 } else { 0 }\nfn id[T](x T) T { return x }\nfn main() { if first == 1 && bad == 1 { println("ok") } }',
+			'fn id[T](x T) T { return x }\nfn wrap[T](x T) T { return id(x) }\nconst bad = if CONDITION { 1 } else { 0 }\nfn main() { if wrap(1) == bad { println("ok") } }',
+			'fn id[T](x T) T { return x }\nstruct Settings {\n bad int = if CONDITION { 1 } else { 0 }\n}\nfn main() { settings := Settings{}; if id(1) == settings.bad { println("ok") } }',
+			'fn id[T](x T) T { return x }\nstruct Settings {\n bad int = if id(1) == 1 { if CONDITION { 1 } else { 0 } } else { 0 }\n}\nfn main() { settings := Settings{}; if settings.bad == 1 { println("ok") } }',
+			'fn choose[T](x T) int { if CONDITION { return 1 }; return 0 }\nfn main() { if choose(1) == 1 { println("ok") } }',
+			'struct Box[T] {\n value T\n bad int = if CONDITION { 1 } else { 0 }\n}\nfn main() { box := Box[int]{}; if box.bad == 1 { println("ok") } }',
+			'struct Box[T] {\n value T\n}\nfn (box Box[T]) choose() int { if CONDITION { return 1 }; return 0 }\nfn main() { box := Box[int]{}; if box.choose() == 1 { println("ok") } }',
+		] {
+			for condition in ['((if true { true } else { false }))', 'true'] {
+				source := 'module main\n// Original source positions survive generic rewrites.\n' +
+					template.replace('CONDITION', condition) + '\n'
+				os.write_file(path, source)!
+				if condition != 'true' {
+					generate_arm64_files([path], prefs, output) or {
+						offset := source.index('if true { true }') or { panic('missing nested if') }
+						assert err.msg().contains('assign it to a variable first'), err.msg()
+						assert err.msg().contains('at byte ${offset} in ${os.real_path(path)}'), '${source}: ${err}'
+						continue
+					}
+					assert false, 'ARM64 should reject: ${source}'
+				}
+				generate_arm64_files([path], prefs, output)!
+				result := os.exec([output])
+				assert result.exit_code == 0, '${source}: ${result.output}'
+				assert result.output == 'ok\n', '${source}: ${result.output}'
+			}
+		}
+	}
+}

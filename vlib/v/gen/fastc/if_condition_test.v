@@ -128,3 +128,38 @@ fn test_fastc_split_constant_if_condition_source_position() {
 	assert message.contains('assign it to a variable first'), message
 	assert message.contains('at byte ${offset} in split_constant_if.v'), message
 }
+
+fn test_fastc_if_condition_positions_after_monomorphization() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.enable_globals = true
+	for template in [
+		'fn id[T](x T) T { return x }\nconst bad = if CONDITION { 1 } else { 0 }\nfn main() { println(id(1) + bad) }',
+		'const first = id(1)\nconst bad = if CONDITION { 1 } else { 0 }\nfn id[T](x T) T { return x }\nfn main() { println(bad) }',
+		'fn id[T](x T) T { return x }\nconst (\n first = id(1)\n bad = if CONDITION { 1 } else { 0 }\n)\nfn main() { println(bad) }',
+		'fn id[T](x T) T { return x }\nfn wrap[T](x T) T { return id(x) }\nconst bad = if CONDITION { 1 } else { 0 }\nfn main() { println(wrap(1) + bad) }',
+		'fn id[T](x T) T { return x }\n__global bad = if CONDITION { 1 } else { 0 }\nfn main() { println(id(1) + bad) }',
+		'fn id[T](x T) T { return x }\nstruct Settings {\n bad int = if CONDITION { 1 } else { 0 }\n}\nfn main() { settings := Settings{}; println(id(1) + settings.bad) }',
+		'fn id[T](x T) T { return x }\nstruct Settings {\n bad int = if id(1) == 1 { if CONDITION { 1 } else { 0 } } else { 0 }\n}\nfn main() { settings := Settings{}; println(settings.bad) }',
+		'fn choose[T](x T) int { if CONDITION { return 1 }; return 0 }\nfn main() { println(choose(1)) }',
+		'struct Box[T] {\n value T\n bad int = if CONDITION { 1 } else { 0 }\n}\nfn main() { box := Box[int]{}; println(box.bad) }',
+		'struct Box[T] {\n value T\n}\nfn (box Box[T]) choose() int { if CONDITION { return 1 }; return 0 }\nfn main() { box := Box[int]{}; println(box.choose()) }',
+	] {
+		for condition in ['((if true { true } else { false }))', 'true'] {
+			source := 'module main\n// Original source positions survive generic rewrites.\n' +
+				template.replace('CONDITION', condition) + '\n'
+			if condition == 'true' {
+				_ := generate(source, 'generic_if_position.v', prefs) or { panic('${source}: ${err}') }
+				continue
+			}
+			mut message := ''
+			_ := generate(source, 'generic_if_position.v', prefs) or {
+				message = err.msg()
+				''
+			}
+			offset := source.index('if true { true }') or { panic('missing nested if') }
+			assert message.contains('assign it to a variable first'), '${source}: ${message}'
+			assert message.contains('at byte ${offset} in generic_if_position.v'), '${source}: ${message}'
+		}
+	}
+}

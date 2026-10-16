@@ -364,7 +364,7 @@ fn fastc_append_filtered_source_span(source string, previous_end int, start int,
 	out.write_string(source[start..end])
 }
 
-fn fastc_original_source_offset(origins []FastcSourceOrigin, offset int) int {
+fn fastc_source_origin_index(origins []FastcSourceOrigin, offset int) int {
 	mut low := 0
 	mut high := origins.len
 	for low < high {
@@ -375,11 +375,39 @@ fn fastc_original_source_offset(origins []FastcSourceOrigin, offset int) int {
 			high = mid
 		}
 	}
-	if low == 0 {
+	return low - 1
+}
+
+fn fastc_original_source_offset(origins []FastcSourceOrigin, offset int) int {
+	index := fastc_source_origin_index(origins, offset)
+	if index < 0 {
 		return offset
 	}
-	origin := origins[low - 1]
+	origin := origins[index]
 	return origin.source_offset + offset - origin.filtered_offset
+}
+
+// fastc_source_range_origins preserves every mapping transition inside a copied range.
+fn fastc_source_range_origins(source_file FastcSourceFile, start int, end int, destination int) []FastcSourceOrigin {
+	if start >= end {
+		return []FastcSourceOrigin{}
+	}
+	base := source_file.source_offset + start
+	mut mapped := [FastcSourceOrigin{
+		filtered_offset: destination
+		source_offset:   fastc_original_source_offset(source_file.source_origins, base)
+	}]
+	for i := fastc_source_origin_index(source_file.source_origins, base) + 1; i < source_file.source_origins.len; i++ {
+		origin := source_file.source_origins[i]
+		if origin.filtered_offset >= source_file.source_offset + end {
+			break
+		}
+		mapped << FastcSourceOrigin{
+			filtered_offset: destination + origin.filtered_offset - base
+			source_offset:   origin.source_offset
+		}
+	}
+	return mapped
 }
 
 fn fastc_declaration_source(source_file FastcSourceFile, source string, origins []FastcSourceOrigin) FastcDeclarationSource {
@@ -387,11 +415,10 @@ fn fastc_declaration_source(source_file FastcSourceFile, source string, origins 
 		return FastcDeclarationSource{ source: source, origins: origins }
 	}
 	mut mapped := []FastcSourceOrigin{cap: origins.len}
-	for origin in origins {
-		mapped << FastcSourceOrigin{
-			...origin
-			source_offset: fastc_original_source_offset(source_file.source_origins, source_file.source_offset + origin.source_offset)
-		}
+	for i, origin in origins {
+		end := if i + 1 < origins.len { origins[i + 1].filtered_offset } else { source.len }
+		mapped << fastc_source_range_origins(source_file, origin.source_offset,
+			origin.source_offset + end - origin.filtered_offset, origin.filtered_offset)
 	}
 	return FastcDeclarationSource{ source: source, origins: mapped }
 }
@@ -1330,6 +1357,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				declared_type_key_memo:       map[u32]FastcMemoEntry{}
 				path:                         field.path
 				source_offset:                field.default_source_offset
+				source_origins:               field.default_source_origins
 				translated:                   field.translated
 				module_name:                  field.module_name
 				imports:                      source_imports[field.path] or {
@@ -2896,7 +2924,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		if tok == .assign {
 			first_default_token := scan.scan()
 			default_start := scan.pos
-			default_source_offset = fastc_original_source_offset(source_file.source_origins, source_file.source_offset + default_start)
+			default_source_offset = source_file.source_offset + default_start
 			tok = fastc_skip_field_default_from_token(mut scan, first_default_token)!
 			default_source = source_file.source[default_start..scan.pos].trim_space().trim_right(';').trim_space()
 			if default_source == '' {
@@ -2928,28 +2956,29 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			}
 			fields_by_name.set_id(field_name, emitted_field_type)
 			field_info << FastcStructField{
-				name:                  field_name
-				typ:                   emitted_field_type
-				is_public:             fields_are_public
-				is_mutable:            fields_are_mutable
-				is_required:           is_required
-				is_skip:               is_skip
-				is_function:           is_function_field
-				is_optional_function:  is_optional_function
-				is_declared_voidptr:   is_declared_voidptr
-				is_shared_pointer:     is_shared_pointer
-				module_name:           source_file.header.module_name
-				path:                  source_file.path
-				imports:               source_file.header.imports.clone()
-				default_source:        default_source
-				default_source_offset: default_source_offset
-				translated:            source_file.header.translated
-				chan_element_type:     field_chan_element
-				option_value_type:     field_option_value
-				fn_parameter_types:    function_type.parameter_types.clone()
-				fn_return_type:        function_type.return_type
-				fn_option_value_type:  function_type.option_value_type
-				generic_argument_type: field_generic_argument
+				name:                   field_name
+				typ:                    emitted_field_type
+				is_public:              fields_are_public
+				is_mutable:             fields_are_mutable
+				is_required:            is_required
+				is_skip:                is_skip
+				is_function:            is_function_field
+				is_optional_function:   is_optional_function
+				is_declared_voidptr:    is_declared_voidptr
+				is_shared_pointer:      is_shared_pointer
+				module_name:            source_file.header.module_name
+				path:                   source_file.path
+				imports:                source_file.header.imports.clone()
+				default_source:         default_source
+				default_source_offset:  default_source_offset
+				default_source_origins: source_file.source_origins
+				translated:             source_file.header.translated
+				chan_element_type:      field_chan_element
+				option_value_type:      field_option_value
+				fn_parameter_types:     function_type.parameter_types.clone()
+				fn_return_type:         function_type.return_type
+				fn_option_value_type:   function_type.option_value_type
+				generic_argument_type:  field_generic_argument
 			}
 			fields++
 		}
