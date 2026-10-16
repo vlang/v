@@ -16095,8 +16095,16 @@ pub fn run(args []string) {
 			if cached_program_main_object.len > 0 {
 				compiler_inputs << cached_program_main_object
 			} else if fallback_source == os.base(tcc_main_file) {
-				compiler_inputs << ['-D__TINYC__', '-Wno-implicit-function-declaration',
-					fallback_source]
+				// The program unit is linked with the dev dylib, whose prelude and module
+				// objects `c_compiler` built for itself. The prelude lays some types out
+				// by the compiler (an empty struct such as `Error` gets a padding byte
+				// for TinyCC only), so the unit must not be compiled as if it were for
+				// TinyCC: `-D__TINYC__` moved the fields of every struct that embeds
+				// `Error`, and the dylib read them at other offsets.
+				// The unit leaves out the Objective-C framework headers that TinyCC
+				// cannot read, so what it calls from them has no prototype here.
+				compiler_inputs << '-Wno-implicit-function-declaration'
+				compiler_inputs << v3_c_source_inputs(fallback_source, needs_objective_c)
 			} else {
 				if pruned_declarations.count > 0
 					&& '-Werror=implicit-function-declaration' !in c_flag_plan.before_inputs {
