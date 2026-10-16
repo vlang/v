@@ -66,12 +66,14 @@ fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMe
 // context and must be reset whenever the parser switches to another one.
 fn (mut g Parser) reset_lookup_memos() {
 	g.unqualified_key_memo = map[string]string{}
+	g.global_key_memo = map[string]string{}
 	g.nonlocal_name_type_memo = flat.TypeTextBindings{}
 	g.resolved_name_memo = map[string]string{}
-	g.declared_type_key_memo = map[u32]FastcMemoEntry{}
+	g.declared_type_key_memo = map[string]FastcMemoEntry{}
 	g.type_memo = map[i64]u32{}
 	g.method_key_memo = map[u32]map[string]string{}
-	g.field_memo = map[u32]map[string]FastcStructField{}
+	g.field_memo = map[u32]map[string]&FastcStructField{}
+	g.last_field = unsafe { nil }
 	g.last_field_known = false
 }
 
@@ -85,6 +87,9 @@ fn (mut g Parser) parse_mono_instance(instance string, source FastcGenericMethod
 	// The lookup memos are keyed by bare name and answer for the current
 	// module and imports, so they must not carry over into another module.
 	g.reset_lookup_memos()
+	g.source_offset = 0
+	g.source_line_offset = 0
+	g.source_column_offset = 0
 	g.s = scanner.new_scanner(g.prefs, .normal)
 	g.s.init(file, instance)
 	g.next()

@@ -30,7 +30,7 @@ fn (g &Parser) optional_function_field_for_expression(tokens []FastcExpressionTo
 	if !field.is_optional_function {
 		return none
 	}
-	return field
+	return *field
 }
 
 fn (g &Parser) or_block_has_statements() bool {
@@ -210,10 +210,12 @@ fn (mut g Parser) prescan_register_is_conjunct(toks []token.Token, lits []string
 // smart-cast; a bare bool-local conjunct inherits its own recorded implications.
 fn (g &Parser) compute_bool_is_implications(tokens []FastcExpressionToken) []FastcBoolImplication {
 	mut depth := 0
+	mut may_have_implications := tokens.len == 1
 	for t in tokens {
 		match t.tok {
 			.lpar, .lsbr, .lcbr { depth++ }
 			.rpar, .rsbr, .rcbr { depth-- }
+			.key_is, .and { may_have_implications = true }
 			.logical_or {
 				if depth == 0 {
 					return []
@@ -222,6 +224,7 @@ fn (g &Parser) compute_bool_is_implications(tokens []FastcExpressionToken) []Fas
 			else {}
 		}
 	}
+	if !may_have_implications { return []FastcBoolImplication{} }
 	mut implications := []FastcBoolImplication{}
 	for conjunct in fastc_split_top_level_and(tokens) {
 		if imp := g.bool_conjunct_implication(conjunct) {
@@ -1225,12 +1228,25 @@ fn (g &Parser) render_guard_boolean_expression(tokens []FastcExpressionToken) ?s
 	return none
 }
 
+// can_skip_member_smartcast_detection proves the ignored no-plan path has no
+// renderer side effects: both old conjunction splits have exactly one part.
+fn (g &Parser) can_skip_member_smartcast_detection(tokens []FastcExpressionToken, rendered_condition string) bool {
+	if !g.selfhost || g.member_smartcasts.len != 0 { return false }
+	for item in tokens {
+		if item.tok in [.key_is, .not_is, .and] { return false }
+	}
+	return !fastc_contains(rendered_condition, '&&')
+}
+
 // detect_member_smartcasts finds every `member.path is Type` test in a (possibly
 // `&&`-conjoined) condition, records a plan per test, and rewrites `condition` to
 // the conjunction of the runtime type checks plus any boolean guards. Returns an
 // empty list (leaving `condition` untouched) when the condition is not a member
 // smartcast, so simple-local smartcasts and ordinary conditions are unaffected.
 fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, rendered_condition string) ([]FastcMemberSmartcastPlan, string) {
+	if g.can_skip_member_smartcast_detection(cond_tokens, rendered_condition) {
+		return []FastcMemberSmartcastPlan{}, ''
+	}
 	conjuncts := fastc_split_top_level_and(cond_tokens)
 	rendered_conjuncts := fastc_split_top_level_c_and(fastc_strip_outer_parens(rendered_condition))
 	aligned := rendered_conjuncts.len == conjuncts.len

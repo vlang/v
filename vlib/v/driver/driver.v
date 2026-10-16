@@ -344,7 +344,14 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 	os.mkdir_all(cache_dir) or { return atomic_s }
 	build_path := '${object_path}.tmp.${os.getpid()}'
 	args << ['-c', atomic_s, '-o', build_path]
-	result := cmdexec.run(tcc_path, args)
+	mut result := os.Result{}
+	$if !skip_fastc ?&& !windows {
+		// This runs after generation: use posix_spawn instead of forking the
+		// compiler's large address space just to assemble the atomic helpers.
+		result = fastc.fastc_run_command(tcc_path, args)
+	} $else {
+		result = cmdexec.run(tcc_path, args)
+	}
 	if result.exit_code != 0 || !os.is_file(build_path) {
 		os.rm(build_path) or {}
 		return atomic_s
@@ -10002,6 +10009,93 @@ $if !skip_fastc ? {
 		return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 	}
 
+	fn v3_fastc_aggregate_host_support_args(vroot string, build_dir string, compile_args []string, final_args []string, macos_sdk_root string, tcc_base_arg string, tcc_include_arg string) []string {
+		// These owned helpers use compatible SDK declarations and distinct C
+		// namespaces. Unknown inputs or preprocessing options keep their TUs.
+		if vroot.contains_any('"\\\r\n') {
+			return final_args
+		}
+		mut include_paths := [tcc_include_arg[2..], '/usr/local/include',
+			os.join_path(vroot, 'thirdparty/legacy/include/LegacySupport'),
+			os.join_path(vroot, 'thirdparty/tcc/include'),
+			os.join_path(vroot, 'thirdparty/stdatomic/nix')]
+		if macos_sdk_root != '' {
+			include_paths << os.join_path(macos_sdk_root, 'usr/include')
+		}
+		mut path_option := ''
+		for arg in compile_args {
+			if path_option != '' {
+				if (path_option == '-I' && arg !in include_paths)
+					|| (path_option == '-B' && arg != tcc_base_arg[2..]) {
+					return final_args
+				}
+				path_option = ''
+				continue
+			}
+			if arg in ['-I', '-B'] {
+				path_option = arg
+				continue
+			}
+			if (arg.starts_with('-I') && arg[2..] in include_paths)
+				|| (arg.starts_with('-B') && arg == tcc_base_arg)
+				|| arg in ['-std=gnu11', '-DCUSTOM_DEFINE_no_backtrace',
+					'-Werror=implicit-function-declaration'] {
+				continue
+			}
+			return final_args
+		}
+		if path_option != '' {
+			return final_args
+		}
+		native_paths := [
+			'vlib/builtin/segfault_handler_nix.c',
+			'vlib/os/execute_capture_nix.c',
+			'vlib/v/modulecache/file_metadata.c',
+			'vlib/runtime/free_memory_darwin.c',
+			'vlib/v/bench/peak_rss.c',
+			'vlib/v/pthread_helper.c',
+			'vlib/sync/thread_helper.c',
+		]
+		if final_args.len < native_paths.len {
+			return final_args
+		}
+		for i, path in native_paths {
+			if final_args[i] != os.join_path(vroot, path) {
+				return final_args
+			}
+		}
+		for arg in final_args[native_paths.len..] {
+			if c_flag_is_c_source_file(arg) {
+				return final_args
+			}
+		}
+		mut source := strings.new_builder(1024)
+		source.writeln('// Owned macOS compiler helpers, in original native-input order.')
+		cleanup_macros := [
+			['V_PARALLEL_CC', 'V_PARALLEL_CC_OUT_0', 'V_PARALLEL_CC_STATIC_STORAGE_HANDLED',
+				'V_SEGFAULT_HANDLER_ACTIVE', 'V_SEGFAULT_HANDLER_SYMBOLS',
+				'V_SEGFAULT_HANDLER_SANITIZED', 'V_SIGNAL_STACK_MAGIC', 'V_STACK_OVERFLOW_SLACK',
+				'V_STACK_OVERFLOW_MAX_LINES'],
+			['V_OS_EXECUTE_SCOPE'],
+			[]string{},
+			[]string{},
+			['V_PEAK_RSS_SCOPE', 'V_PEAK_RSS_INT'],
+			['V_PTHREAD_SCOPE'],
+			['V_SYNC_THREAD_SCOPE', 'V_THREAD_STACK_SIZE'],
+		]
+		for i, path in native_paths {
+			source.writeln('#include "${os.join_path(vroot, path)}"')
+			for macro_name in cleanup_macros[i] {
+				source.writeln('#undef ${macro_name}')
+			}
+		}
+		wrapper := os.join_path(build_dir, 'host_support_darwin.c')
+		os.write_file(wrapper, source.str()) or { return final_args }
+		mut aggregate_args := [wrapper]
+		aggregate_args << final_args[native_paths.len..]
+		return aggregate_args
+	}
+
 	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, link_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
 		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 		cc_sw := time.new_stopwatch()
@@ -10098,6 +10192,11 @@ $if !skip_fastc ? {
 			final_args << atomic_arg
 		}
 		final_args << link_ld_flags
+		if prefs.building_v && prefs.normalized_target_os() == 'macos'
+			&& prefs.normalized_target_arch() == 'arm64' && !is_debug
+			&& environment_c_flags.len == 0 && user_c_flags.len == 0 && link_ld_flags.len == 0 {
+			final_args = v3_fastc_aggregate_host_support_args(prefs.vroot, build_dir, compile_args, final_args, macos_sdk_root, tcc_resources.base_arg, tcc_resources.include_arg)
+		}
 		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled && !final_args.any(fastc.fastc_flag_is_native_input(it)))
 		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
 			if bench_phases {

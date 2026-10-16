@@ -166,7 +166,11 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 }
 
 fn fastc_header_with_channel_runtime(header FastcSourceHeader, source string, prefs &pref.Preferences) FastcSourceHeader {
-	if !prefs.building_v || header.module_name in ['sync', 'builtin'] || !source.contains('chan') {
+	if !prefs.building_v || header.module_name in ['sync', 'builtin'] {
+		return header
+	}
+	last_channel_offset := fastc_source_last_word_index(source, 'chan')
+	if last_channel_offset < 0 {
 		return header
 	}
 	mut scan := scanner.new_scanner(prefs, .normal)
@@ -174,7 +178,8 @@ fn fastc_header_with_channel_runtime(header FastcSourceHeader, source string, pr
 	scan.init(file, source)
 	mut has_channel := false
 	mut tok := scan.scan()
-	for tok != .eof {
+	// A real chan token cannot begin after the final raw-word candidate.
+	for tok != .eof && scan.pos <= last_channel_offset {
 		if tok == .name && scan.lit == 'chan' {
 			has_channel = true
 			break
@@ -1240,7 +1245,7 @@ fn fastc_memo_body(text string) string {
 
 // fastc_source_load_chunk_size is the number of files one loader thread reads;
 // reads are short syscalls, so a few per spawn amortize the thread start.
-const fastc_source_load_chunk_size = 4
+const fastc_source_load_chunk_size = 12
 
 // fastc_resolve_module_dir resolves and memoizes the directory of an imported
 // module. A directory below the canonical vlib root is canonical already.
@@ -1596,8 +1601,24 @@ fn fastc_source_file_matches_backend(path string) bool {
 	return !path.ends_with('.arm64.v') && !path.ends_with('.amd64.v') && !path.ends_with('.native.v') && !path.ends_with('.wasm.v') && !path.ends_with('.rv64.v') && !path.ends_with('.js.v')
 }
 
+// fastc_source_has_capture_syntax is a byte-level superset of a `fn` token
+// followed by `[`. Comments and string literals remain scanner candidates.
+fn fastc_source_has_capture_syntax(source string) bool {
+	mut start := 0
+	for {
+		index := source.index_after_('fn', start)
+		if index < 0 { return false }
+		if fastc_source_word_at(source, index, 'fn') {
+			after := fastc_source_skip_blank(source, index + 2)
+			if after < source.len && source[after] == `[` { return true }
+		}
+		start = index + 2
+	}
+	return false
+}
+
 fn fastc_source_uses_captures(source string, prefs &pref.Preferences) bool {
-	if !source.contains('fn') || !source.contains('[') {
+	if !fastc_source_has_capture_syntax(source) {
 		return false
 	}
 	mut scan := scanner.new_scanner(prefs, .normal)
@@ -1617,6 +1638,50 @@ fn fastc_source_uses_captures(source string, prefs &pref.Preferences) bool {
 	return false
 }
 
+// fastc_skip_header_block skips tokens that cannot affect a brace block's end.
+// Header discovery ignores the block's contents. Existing scanner routines
+// still own comments, numbers, strings, interpolation and punctuation.
+// A matching closing token leaves the scanner ready to resume. At unmatched
+// EOF, header discovery discards this scanner and its unreported diagnostics.
+@[direct_array_access]
+fn fastc_skip_header_block(mut scan scanner.Scanner) token.Token {
+	mut depth := 1
+	for scan.offset < scan.src.len {
+		mut tok := token.Token.unknown
+		if scan.in_str_incomplete {
+			tok = scan.scan()
+		} else {
+			c := scan.src[scan.offset]
+			if fastc_source_space_byte(c) {
+				scan.offset++
+				continue
+			}
+			if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` {
+				start := scan.offset
+				mut end := start + 1
+				for end < scan.src.len && fastc_identifier_byte(scan.src[end]) { end++ }
+				quoted := end < scan.src.len && scan.src[end] in [`'`, `"`]
+				prefix := (end == start + 1 && c in [`c`, `r`])
+					|| (end == start + 2 && c == `j` && scan.src[start + 1] == `s`)
+				if !quoted || !prefix {
+					scan.offset = end
+					continue
+				}
+			}
+			tok = scan.scan()
+		}
+		if tok == .lcbr {
+			depth++
+		} else if tok == .rcbr {
+			depth--
+			if depth == 0 { return tok }
+		} else if tok == .eof {
+			return tok
+		}
+	}
+	return .eof
+}
+
 fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences) !FastcSourceHeader {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
@@ -1630,7 +1695,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	mut brace_depth := 0
 	// Imports can follow declarations. A byte bound keeps ordinary files from
 	// tokenizing function bodies once their final possible import is behind us.
-	last_import_offset := source.last_index('import') or { -1 }
+	last_import_offset := fastc_source_last_word_index(source, 'import')
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && fastc_keyword_is_qualifier(tok, scan) {
@@ -1691,6 +1756,10 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		if tok != .key_import || brace_depth > 0 {
 			if tok == .lcbr {
 				brace_depth++
+				if module_name != '' {
+					tok = fastc_skip_header_block(mut scan)
+					continue
+				}
 			} else if tok == .rcbr && brace_depth > 0 {
 				brace_depth--
 			}
@@ -1868,6 +1937,31 @@ mut:
 	has_select              bool
 }
 
+// fastc_source_contains_word is a byte-level superset check: words in comments
+// and strings remain candidates for the scanner to disambiguate.
+fn fastc_source_contains_word(source string, word string) bool {
+	if word.len == 0 { return false }
+	mut start := 0
+	for {
+		index := source.index_after_(word, start)
+		if index < 0 { return false }
+		if fastc_source_word_at(source, index, word) { return true }
+		start = index + word.len
+	}
+	return false
+}
+
+// fastc_source_last_word_index bounds keyword scans without treating longer
+// identifiers, such as `imports`, as possible keyword occurrences.
+@[direct_array_access]
+fn fastc_source_last_word_index(source string, word string) int {
+	if word.len == 0 { return -1 }
+	for i := source.len - word.len; i >= 0; i-- {
+		if source[i] == word[0] && fastc_source_word_at(source, i, word) { return i }
+	}
+	return -1
+}
+
 @[direct_array_access]
 fn fastc_source_word_at(source string, i int, word string) bool {
 	if i + word.len > source.len {
@@ -1905,11 +1999,12 @@ fn fastc_source_skip_blank(source string, start int) int {
 				j++
 			}
 		} else if c == `/` && j + 1 < source.len && source[j + 1] == `*` {
-			// Block comments nest, as in the scanner.
+			// Match Scanner.comment, including its `/*/` and `//*/` closing idioms.
 			mut depth := 1
 			j += 2
 			for j < source.len && depth > 0 {
-				if source[j] == `/` && j + 1 < source.len && source[j + 1] == `*` {
+				if source[j] == `/` && j + 1 < source.len && source[j + 1] == `*`
+					&& (j + 2 >= source.len || source[j + 2] != `/`) {
 					depth++
 					j += 2
 				} else if source[j] == `*` && j + 1 < source.len && source[j + 1] == `/` {
@@ -2053,7 +2148,7 @@ fn fastc_identifier_byte(value u8) bool {
 // block (statement or expression form). `sql` is not a keyword, so it is matched as a
 // name not preceded by `.` and followed by a connection expression and then `{`.
 fn fastc_source_uses_sql(source string, prefs &pref.Preferences) bool {
-	if !source.contains('sql') {
+	if !fastc_source_contains_word(source, 'sql') {
 		return false
 	}
 	file := token.File.unindexed('orm_sql_probe', source.len)

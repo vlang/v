@@ -537,7 +537,8 @@ fn (g &Parser) method_uses_undefined_receiver() bool {
 			// (not a bare `R.f` / `R.f < x`) avoids flagging `.sort(a.x < b.x)` comparison
 			// closures. Only the base of an `a.b.c` chain is flagged (inner members have
 			// `previous == .dot`).
-			if previous != .dot && next == .dot {
+			if previous != .dot && next == .dot
+				&& lit !in bound && lit !in g.locals && lit !in g.imports {
 				mut ahead2 := ahead
 				if ahead2.scan() == .name {
 					after := ahead2.scan()
@@ -546,6 +547,11 @@ fn (g &Parser) method_uses_undefined_receiver() bool {
 					}
 				}
 			}
+			previous = tok
+			lookahead = ahead
+			tok = next
+			lit = lookahead.lit
+			continue
 		}
 		previous = tok
 		tok = lookahead.scan()
@@ -2560,6 +2566,17 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) u
 			}
 		}
 	}
+	// A bare option variable carries its wrapped value type on the token or local.
+	if tokens.len == 1 && tokens[0].tok == .name {
+		if tokens[0].option_value_type != 0 {
+			return tokens[0].option_value_type
+		}
+		local := g.locals[tokens[0].lit] or { return u32(0) }
+		return local.option_value_type
+	}
+	if tokens.len <= 1 {
+		return u32(0)
+	}
 	if signature := g.function_alias_call_signature(tokens) {
 		return signature.option_type
 	}
@@ -2616,15 +2633,6 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) u
 		mut normalized := tokens[..open].clone()
 		normalized << tokens[close + 1..]
 		return g.option_value_type_for_expression(normalized)
-	}
-	// A bare option variable (`if x := opt`): recover the wrapped value type recorded
-	// when the variable was declared, since its C type is the type-erased `Option`.
-	if tokens.len == 1 && tokens[0].tok == .name {
-		if tokens[0].option_value_type != 0 {
-			return tokens[0].option_value_type
-		}
-		local := g.locals[tokens[0].lit] or { return u32(0) }
-		return local.option_value_type
 	}
 	// A member access to an option FIELD (`if mut v := x.f {` where `f ?T`): the field's
 	// erased C type is `Option`, so recover the wrapped value type recorded on the field.

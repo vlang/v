@@ -148,6 +148,21 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			continue
 		}
 		if tok == .lcbr {
+			if brace_depth == 0 && pending_fn && declaration_start < 0 {
+				// Only this function body's bounds are needed by the declaration
+				// index. The scanner still owns strings, comments and punctuation.
+				fn_body_start = scan.pos
+				tok = fastc_skip_header_block(mut scan)
+				if tok == .rcbr {
+					body_spans << fn_body_start
+					body_spans << scan.offset
+					fn_body_start = -1
+					pending_fn = false
+					previous_tok = .rcbr
+					tok = scan.scan()
+				}
+				continue
+			}
 			if brace_depth == 0 && pending_fn && fn_body_start < 0 {
 				fn_body_start = scan.pos
 			}
@@ -645,6 +660,18 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 	return partial
 }
 
+// fastc_apply_declaration_body_spans preserves the body bounds collected by
+// the declaration pass for the signature and interface passes that follow.
+fn fastc_apply_declaration_body_spans(mut sources []FastcSourceFile, body_spans map[string][]int, start int, end int) {
+	for index in start .. end {
+		source_file := sources[index]
+		sources[index] = FastcSourceFile{
+			...source_file
+			header: fastc_header_with_body_spans(source_file.header, body_spans[source_file.path] or { []int{} })
+		}
+	}
+}
+
 fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut constant_spans map[string][]int, mut global_sources map[string]string, mut globals map[string]string, mut public_globals map[string]bool) ! {
 	if partial.failed {
 		return error(partial.error_message)
@@ -714,10 +741,11 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 		mut gen := Parser{
 			prefs:                        unsafe { prefs }
 			unqualified_key_memo:         map[string]string{}
+			global_key_memo:              map[string]string{}
 			c_function_name_memo:         map[string]string{}
 			nonlocal_name_type_memo:      flat.TypeTextBindings{}
 			resolved_name_memo:           map[string]string{}
-			declared_type_key_memo:       map[u32]FastcMemoEntry{}
+			declared_type_key_memo:       map[string]FastcMemoEntry{}
 			path:                         source_file.path
 			module_name:                  source_file.header.module_name
 			imports:                      source_file.header.imports
@@ -730,7 +758,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			comparison_memo:              map[i64]FastcRenderedExpression{}
 			type_memo:                    map[i64]u32{}
 			method_key_memo:              map[u32]map[string]string{}
-			field_memo:                   map[u32]map[string]FastcStructField{}
+			field_memo:                   map[u32]map[string]&FastcStructField{}
 			spawn_typedefs:               map[string]string{}
 			spawn_helpers:                map[string]string{}
 			thread_value_types:           flat.TypeTextBindings{}
@@ -1203,7 +1231,7 @@ fn fastc_map_field_default(typ string, pointer_bits int, declared_kinds map[stri
 // rendered and its by-name index, or the first error rendering them.
 struct FastcFieldDefaultsResult {
 	struct_field_info map[string][]FastcStructField
-	lookup            map[string]map[string]FastcStructField
+	lookup            map[string]map[string]&FastcStructField
 	failed            bool
 	error_message     string
 }
@@ -1273,10 +1301,11 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 			mut gen := Parser{
 				prefs:                        unsafe { prefs }
 				unqualified_key_memo:         map[string]string{}
+				global_key_memo:              map[string]string{}
 				c_function_name_memo:         map[string]string{}
 				nonlocal_name_type_memo:      flat.TypeTextBindings{}
 				resolved_name_memo:           map[string]string{}
-				declared_type_key_memo:       map[u32]FastcMemoEntry{}
+				declared_type_key_memo:       map[string]FastcMemoEntry{}
 				path:                         default_path
 				module_name:                  field.module_name
 				imports:                      source_imports[field.path] or {
@@ -1291,7 +1320,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				comparison_memo:              map[i64]FastcRenderedExpression{}
 				type_memo:                    map[i64]u32{}
 				method_key_memo:              map[u32]map[string]string{}
-				field_memo:                   map[u32]map[string]FastcStructField{}
+				field_memo:                   map[u32]map[string]&FastcStructField{}
 				spawn_typedefs:               map[string]string{}
 				spawn_helpers:                map[string]string{}
 				thread_value_types:           flat.TypeTextBindings{}
@@ -1416,10 +1445,11 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 	mut gen := Parser{
 		prefs:                        unsafe { prefs }
 		unqualified_key_memo:         map[string]string{}
+		global_key_memo:              map[string]string{}
 		c_function_name_memo:         map[string]string{}
 		nonlocal_name_type_memo:      flat.TypeTextBindings{}
 		resolved_name_memo:           map[string]string{}
-		declared_type_key_memo:       map[u32]FastcMemoEntry{}
+		declared_type_key_memo:       map[string]FastcMemoEntry{}
 		path:                         source_file.path
 		module_name:                  source_file.header.module_name
 		imports:                      source_file.header.imports
@@ -1432,7 +1462,7 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 		comparison_memo:              map[i64]FastcRenderedExpression{}
 		type_memo:                    map[i64]u32{}
 		method_key_memo:              map[u32]map[string]string{}
-		field_memo:                   map[u32]map[string]FastcStructField{}
+		field_memo:                   map[u32]map[string]&FastcStructField{}
 		spawn_typedefs:               map[string]string{}
 		spawn_helpers:                map[string]string{}
 		thread_value_types:           flat.TypeTextBindings{}
@@ -2379,7 +2409,12 @@ fn fastc_c_type_attributes_end(source string, start int) ?int {
 		for i < source.len && source[i].is_space() {
 			i++
 		}
-		if i >= source.len || !source[i..].starts_with('__attribute__') {
+		attribute_end := i + '__attribute__'.len
+		if attribute_end > source.len {
+			return i
+		}
+		// This temporary prefix view avoids copying the whole declaration tail.
+		if !(unsafe { source[i..attribute_end] }).starts_with('__attribute__') {
 			return i
 		}
 		i += '__attribute__'.len
@@ -2973,8 +3008,7 @@ fn fastc_resolve_declared_type_key(module_name string, raw_type string, imports 
 }
 
 fn (g &Parser) resolve_declared_type_key(raw_type string) ?string {
-	id := flat.source_type_id(raw_type)
-	if entry := g.declared_type_key_memo[id] {
+	if entry := g.declared_type_key_memo[raw_type] {
 		if entry.found {
 			return flat.source_type_name(entry.value)
 		}
@@ -2982,13 +3016,13 @@ fn (g &Parser) resolve_declared_type_key(raw_type string) ?string {
 	}
 	mut w := unsafe { &Parser(g) }
 	if key := g.resolve_declared_type_key_uncached(raw_type) {
-		w.declared_type_key_memo[id] = FastcMemoEntry{
+		w.declared_type_key_memo[raw_type] = FastcMemoEntry{
 			found: true
 			value: flat.source_type_id(key)
 		}
 		return key
 	}
-	w.declared_type_key_memo[id] = FastcMemoEntry{}
+	w.declared_type_key_memo[raw_type] = FastcMemoEntry{}
 	return none
 }
 

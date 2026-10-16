@@ -261,7 +261,7 @@ fn (g &Parser) nil_type_is_allowed(typ u32) bool {
 		|| ((g.path.ends_with('.c.v') || g.path.contains('.c.v:')) && fastc_is_pointer_type(underlying))
 }
 
-fn (g &Parser) nil_field_is_allowed(field FastcStructField) bool {
+fn (g &Parser) nil_field_is_allowed(field &FastcStructField) bool {
 	return !field.is_function && (field.is_declared_voidptr
 		|| (field.typ != flat.source_type_voidptr && g.nil_type_is_allowed(field.typ)))
 }
@@ -391,6 +391,22 @@ fn (g &Parser) resolved_nonlocal_expression_name_cached(name string) string {
 // unqualified_global_key applies the same module precedence to global reads
 // and mutations, including globals declared outside the current module.
 fn (g &Parser) unqualified_global_key(name string) ?string {
+	if cached := g.global_key_memo[name] {
+		if cached == '' {
+			return none
+		}
+		return cached
+	}
+	key := g.unqualified_global_key_impl(name) or { '' }
+	mut w := unsafe { &Parser(g) }
+	w.global_key_memo[name] = key
+	if key == '' {
+		return none
+	}
+	return key
+}
+
+fn (g &Parser) unqualified_global_key_impl(name string) ?string {
 	key := fastc_global_key(g.module_name, name)
 	if key in g.globals {
 		return key
@@ -398,6 +414,9 @@ fn (g &Parser) unqualified_global_key(name string) ?string {
 	builtin_key := fastc_global_key('builtin', name)
 	if builtin_key in g.globals {
 		return builtin_key
+	}
+	if g.global_suffix_index.ready && !g.declaration_initializer_mode {
+		return g.global_suffix_index.keys[name] or { return none }
 	}
 	suffix := '.${name}'
 	for global_key, _ in g.globals {
@@ -1159,9 +1178,9 @@ fn (g &Parser) struct_member_type(receiver_type_id u32, field_name string) u32 {
 	return field.typ
 }
 
-fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?FastcStructField {
+fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?&FastcStructField {
 	if g.last_field_known && receiver_type == g.last_field_receiver && field_name == g.last_field_name {
-		if g.last_field.name == '' {
+		if g.last_field == unsafe { nil } {
 			return none
 		}
 		return g.last_field
@@ -1183,24 +1202,25 @@ fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?Fast
 			w.last_field_name = field_name
 			w.last_field = cached
 			w.last_field_known = true
-			if cached.name == '' {
+			if cached == unsafe { nil } {
 				return none
 			}
 			return cached
 		}
 	}
 	if receiver_type !in w.field_memo {
-		w.field_memo[receiver_type] = map[string]FastcStructField{}
+		w.field_memo[receiver_type] = map[string]&FastcStructField{}
 	}
 	if field := g.struct_field_metadata_impl(receiver_type, field_name) {
-		w.field_memo[receiver_type][field_name] = field
+		stored := &FastcStructField{ ...field }
+		w.field_memo[receiver_type][field_name] = stored
 		w.last_field_receiver = receiver_type
 		w.last_field_name = field_name
-		w.last_field = field
+		w.last_field = stored
 		w.last_field_known = true
-		return field
+		return stored
 	}
-	miss := FastcStructField{}
+	miss := unsafe { &FastcStructField(nil) }
 	w.field_memo[receiver_type][field_name] = miss
 	w.last_field_receiver = receiver_type
 	w.last_field_name = field_name
@@ -1209,7 +1229,7 @@ fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?Fast
 	return none
 }
 
-fn (g &Parser) direct_struct_field_metadata(receiver_type u32, field_name string) ?FastcStructField {
+fn (g &Parser) direct_struct_field_metadata(receiver_type u32, field_name string) ?&FastcStructField {
 	mut layout_type := fastc_trim_pointer_suffix(flat.source_type_name(receiver_type))
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
@@ -1240,7 +1260,9 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type u32, field_name string) 
 			is_mutable: true
 		}
 	}
-	for field in g.struct_field_info[layout_type] {
+	fields := g.struct_field_info[layout_type] or { return none }
+	for index in 0 .. fields.len {
+		field := &fields[index]
 		if !field.name.starts_with('__embedded_') {
 			continue
 		}
@@ -1249,10 +1271,12 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type u32, field_name string) 
 		if field.typ_text() == field_name || field.typ_text().all_after_last('__') == field_name {
 			// The `__embedded_N` field IS the target; its name already renders the
 			// access, so return it as-is (no extra storage path).
-			return field
+			return *field
 		}
 		if embedded := g.struct_field_metadata(field.typ, field_name) {
-			mut promoted := embedded
+			// A direct field belongs to the shared index, and a promoted field
+			// may already be cached for another receiver. Never change either.
+			mut promoted := *embedded
 			mut storage_path := [field.name]
 			storage_path << embedded.storage_path
 			promoted.storage_path = storage_path
@@ -1316,7 +1340,7 @@ fn (g &Parser) embedded_field_dot_piece_for_type(receiver_type u32, field_name s
 	return piece
 }
 
-fn (g &Parser) struct_field_is_visible(field FastcStructField) bool {
+fn (g &Parser) struct_field_is_visible(field &FastcStructField) bool {
 	// A compiler-generated generic specialization keeps V's reflection privileges:
 	// json2's `$for field in T.fields` may access private fields of the concrete caller type.
 	return g.in_mono_drain || field.is_public || field.module_name in ['', g.module_name]
@@ -1457,7 +1481,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 	}
 }
 
-fn (g &Parser) validate_fixed_array_struct_field_length(c_type_source_id u32, field FastcStructField, value_tokens []FastcExpressionToken) ! {
+fn (g &Parser) validate_fixed_array_struct_field_length(c_type_source_id u32, field &FastcStructField, value_tokens []FastcExpressionToken) ! {
 	element_type := (fastc_fixed_array_element_type(field.typ) or {
 		return g.unsupported('unverifiable fixed-array type for struct field `${field.name}`')
 	})
