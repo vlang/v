@@ -125,7 +125,7 @@ pub fn (mut app App) login(mut ctx Context, name string) veb.Result {
 		ctx.res.set_status(.bad_request)
 		return ctx.text('name is required')
 	}
-	app.sessions.save(mut ctx, User{
+	app.sessions.resave(mut ctx, User{
 		name: name
 	}) or {
 		return ctx.server_error('cannot save session')
