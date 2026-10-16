@@ -2313,7 +2313,7 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 				if node.value in ['include', 'insert', 'preinclude', 'postinclude'] {
 					relevant << node_idx
 				} else if node.value == 'define' {
-					name := node.typ_text().trim_space().all_before(' ').all_before('\t').all_before('(')
+					name := flat.source_type_name(node.typ).trim_space().all_before(' ').all_before('\t').all_before('(')
 					if result.implementation_define.len == 0
 						&& c_define_selects_native_implementation(name) {
 						result.implementation_define = name
@@ -2321,10 +2321,10 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 				} else if node.value == 'pkgconfig' && !cur_file_is_shipped {
 					// A package's search paths lie outside V. Their resolution is
 					// left to pkg-config and the C compiler.
-					result.user_supplied = '#pkgconfig ${node.typ_text()}'
+					result.user_supplied = '#pkgconfig ${flat.source_type_name(node.typ)}'
 					return result
 				} else if node.value == 'flag' {
-					flags := c_flag_args_with_values(node.typ_text(), vroot, cur_file, target,
+					flags := c_flag_args_with_values(flat.source_type_name(node.typ), vroot, cur_file, target,
 						compile_values)
 					if !cur_file_is_shipped {
 						if input := c_flags_user_native_input(flags, shipped_roots) {
@@ -2393,7 +2393,7 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 		if node.kind != .directive {
 			continue
 		}
-		include_arg := c_include_arg_for_target_with_values(node.typ_text(), vroot, cur_file, target,
+		include_arg := c_include_arg_for_target_with_values(flat.source_type_name(node.typ), vroot, cur_file, target,
 			compile_values)
 		if include_arg.len == 0 || c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
 			continue
@@ -5608,10 +5608,10 @@ fn cache_directive_flag_groups(a &flat.FlatAst, vroot string, target pref.Target
 		mut flags := []string{}
 		mut at_start := false
 		if node.value == 'flag' {
-			flags, at_start = c_flag_args_with_start_marker(node.typ_text(), vroot, cur_file, target,
+			flags, at_start = c_flag_args_with_start_marker(flat.source_type_name(node.typ), vroot, cur_file, target,
 				compile_values)
 		} else if node.value == 'pkgconfig' {
-			flags = c_pkgconfig_flags(node.typ_text())
+			flags = c_pkgconfig_flags(flat.source_type_name(node.typ))
 		} else {
 			continue
 		}
