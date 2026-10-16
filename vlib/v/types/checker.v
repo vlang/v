@@ -2838,6 +2838,11 @@ pub fn (mut tc TypeChecker) begin_sparse_transform_node_caches(base_nodes int) {
 		tc.pre_transform_type_cache = tc.type_cache
 		tc.type_cache = new_type_cache_with_base(tc.pre_transform_type_cache.parse_enabled,
 			tc.pre_transform_type_cache)
+		if !isnil(tc.resolution_type_views) {
+			// The cached parse views still memoize into the cache that is now the frozen
+			// base. They would grow its maps in the transform's disposable arena.
+			tc.reset_resolution_type_view_cache()
+		}
 	}
 }
 
