@@ -66,6 +66,7 @@ concurrency:
 jobs:
   control:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     outputs:
       target: ${{ steps.control.outputs.target }}
       publish: ${{ steps.control.outputs.publish }}
@@ -267,14 +268,19 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout the trusted workflow revision
+        id: checkout_the_trusted_workflow_revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Build the local compiler
+        id: build_the_local_compiler
+        if: ${{ success() && !cancelled() && steps.checkout_the_trusted_workflow_revision.outcome == 'success' }}
         run: |
           make
           ./v -o ./vnew cmd/v
       - name: Validate the persisted-consumer receiver without any write capability
+        id: validate_the_persisted_consumer_receiver_without_any_write_capability
+        if: ${{ success() && !cancelled() && steps.build_the_local_compiler.outcome == 'success' }}
         env:
           RECEIVER_ID: ${{ needs.control.outputs.phase_a_receiver_id }}
         run: |
@@ -289,6 +295,7 @@ jobs:
     needs: control
     if: needs.control.outputs.has_hosted == 'true' || needs.control.outputs.has_bsd == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     outputs:
       tinycc_hash: ${{ steps.tinycc.outputs.hash }}
       libgc_hash: ${{ steps.bdwgc.outputs.libgc_hash }}
@@ -356,6 +363,7 @@ jobs:
           echo "libatomic_ops $LIBATOMIC_OPS_COMMIT resolves to $libatomic_ops_hash"
 
   update-tccbin-hosted:
+    timeout-minutes: 120
     needs:
       - control
       - resolve-sources
@@ -386,12 +394,15 @@ jobs:
       MACOSX_DEPLOYMENT_TARGET: '10.13'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        id: uses_checkout_3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Checkout the immutable VC bootstrap snapshot
+        id: checkout_the_immutable_vc_bootstrap_snapshot
+        if: ${{ success() && !cancelled() && steps.uses_checkout_3d3c42e5aac5ba805825da76410c181273ba90b1.outcome == 'success' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: vlang/vc
@@ -401,6 +412,8 @@ jobs:
           persist-credentials: false
 
       - name: Bootstrap the contract-bound Phase A validator before staging
+        id: bootstrap_the_contract_bound_phase_a_validator_before_staging
+        if: ${{ success() && !cancelled() && steps.checkout_the_immutable_vc_bootstrap_snapshot.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -579,6 +592,8 @@ jobs:
           expect_rejected "$fixture_dir/build-version-cmd-malformed.txt"
 
       - name: Clone resolved TinyCC source
+        id: clone_resolved_tinycc_source
+        if: ${{ success() && !cancelled() && steps.bootstrap_the_contract_bound_phase_a_validator_before_staging.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -596,6 +611,7 @@ jobs:
           test "$(git -C /tmp/tinycc-ref rev-parse HEAD)" = "$TCC_COMMIT"
 
       - name: Clone tccbin branch
+        if: ${{ success() && !cancelled() && steps.clone_resolved_tinycc_source.outcome == 'success' }}
         id: tccbin
         shell: bash
         run: |
@@ -607,6 +623,8 @@ jobs:
           echo "workflow_tree=$(git -C thirdparty/tcc rev-parse HEAD:.github/workflows)" >> "$GITHUB_OUTPUT"
 
       - name: Verify expected tccbin branch HEAD
+        id: verify_expected_tccbin_branch_head
+        if: ${{ success() && !cancelled() && steps.tccbin.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -618,6 +636,7 @@ jobs:
           echo "tccbin/${{ matrix.branch }} base HEAD: $actual_head"
 
       - name: Check whether rebuild is needed
+        if: ${{ success() && !cancelled() && steps.verify_expected_tccbin_branch_head.outcome == 'success' }}
         id: rebuild
         shell: bash
         run: |
@@ -1680,6 +1699,7 @@ jobs:
             git -C thirdparty/tcc push origin "HEAD:${{ matrix.branch }}"
 
   update-tccbin-bsd:
+    timeout-minutes: 120
     needs:
       - control
       - resolve-sources
@@ -1697,12 +1717,15 @@ jobs:
       FORCE_REBUILD: ${{ needs.control.outputs.force_rebuild }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        id: uses_checkout_3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Checkout the immutable VC bootstrap snapshot
+        id: checkout_the_immutable_vc_bootstrap_snapshot
+        if: ${{ success() && !cancelled() && steps.uses_checkout_3d3c42e5aac5ba805825da76410c181273ba90b1.outcome == 'success' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: vlang/vc
@@ -1712,6 +1735,8 @@ jobs:
           persist-credentials: false
 
       - name: Bootstrap the contract-bound Phase A validator before BSD staging
+        id: bootstrap_the_contract_bound_phase_a_validator_before_bsd_staging
+        if: ${{ success() && !cancelled() && steps.checkout_the_immutable_vc_bootstrap_snapshot.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1743,6 +1768,8 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Start ${{ matrix.id }} VM
+        id: start_matrix_id_vm
+        if: ${{ success() && !cancelled() && steps.bootstrap_the_contract_bound_phase_a_validator_before_bsd_staging.outcome == 'success' }}
         uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641
         with:
           operating_system: ${{ matrix.operating_system }}
@@ -1753,6 +1780,8 @@ jobs:
           environment_variables: TARGET TCC_COMMIT TCCBIN_REPO FORCE_REBUILD EXPECTED_TCCBIN_HEAD
 
       - name: Build ${{ matrix.id }} TCC bundle
+        id: build_matrix_id_tcc_bundle
+        if: ${{ success() && !cancelled() && steps.start_matrix_id_vm.outcome == 'success' }}
         shell: cpa.sh {0} --sync-files both
         run: |
           set -eu
@@ -1836,6 +1865,7 @@ jobs:
           touch "$rebuild_marker"
 
       - name: Record BSD rebuild result
+        if: ${{ success() && !cancelled() && steps.build_matrix_id_tcc_bundle.outcome == 'success' }}
         id: bsd_rebuild
         shell: bash
         run: |
