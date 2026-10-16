@@ -1,0 +1,15 @@
+Remove V cache folders (VCACHE, VTMP, V3CACHE, and compiled tool caches).
+
+Usage:
+  v wipe-cache [options]
+
+Options:
+  -n, --dry-run   Show what would be wiped without deleting any files.
+  -v, --verbose   Show detailed output, skipped paths, and tool cache diagnostics.
+      --tools     Wipe only compiled tool caches (VTOOLS_CACHE_DIR, ~/.cache/v/tools,
+                  <VTMP>/tools, ~/.v/tools, and moved-aside .untrusted-* folders).
+      --vcache    Wipe only the V module/object cache (VCACHE or ~/.vmodules/.cache).
+      --vtmp      Wipe only the V temporary folder (VTMP).
+      --v3cache   Wipe only the V3 module and object caches (V3CACHE).
+  -h, --help      Display this help message.
+

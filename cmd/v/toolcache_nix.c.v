@@ -120,6 +120,19 @@ fn tool_cache_root_can_stage(path string) bool {
 	return information.mode & 0o022 == 0 || information.mode & 0o1000 != 0
 }
 
+fn tool_cache_root_stage_rejection_reason(path string) string {
+	root := os.real_path(path)
+	information := os.stat(root) or { return 'cannot inspect `${path}` (${err.msg()})' }
+	mode := information.mode & 0o7777
+	if information.uid !in [os.getuid(), u32(0)] {
+		return '`${root}` (mode 0${mode:o}) is owned by user id ${information.uid}, not by the current user or root'
+	}
+	if information.mode & 0o022 != 0 && information.mode & 0o1000 == 0 {
+		return '`${root}` (mode 0${mode:o}) is writable by group/others without the sticky bit'
+	}
+	return '`${root}` is not a private or sticky cache folder'
+}
+
 // tool_cache_parents_are_trusted reports whether `path` and every folder above it pass
 // `tool_cache_root_can_stage`. If any of them is writable by others (without the sticky bit),
 // someone else could rename the folder below it and put their own one in its place.
@@ -133,16 +146,42 @@ fn tool_cache_parents_are_trusted(path string) bool {
 fn tool_cache_ancestors_can_stage(path string) bool {
 	mut current := path
 	for {
-		if !tool_cache_root_can_stage(current) {
-			return false
-		}
 		parent := os.dir(current)
 		if parent == current {
+			// The filesystem root `/` itself cannot be renamed or swapped out, and top-level
+			// system mountpoints such as `/home` or `/tmp` cannot be unlinked while non-empty
+			// or mounted. Checking `/` would reject every default candidate on overlay/container
+			// roots where `/` has mode 0777 or is owned by `nobody`.
 			return true
+		}
+		if !tool_cache_root_can_stage(current) {
+			return false
 		}
 		current = parent
 	}
 	return true
+}
+
+fn tool_cache_untrusted_parent_reason(path string) ?string {
+	if reason := tool_cache_untrusted_ancestor_reason(os.real_path(path)) {
+		return reason
+	}
+	return tool_cache_untrusted_ancestor_reason(os.abs_path(path))
+}
+
+fn tool_cache_untrusted_ancestor_reason(path string) ?string {
+	mut current := path
+	for {
+		parent := os.dir(current)
+		if parent == current {
+			return none
+		}
+		if !tool_cache_root_can_stage(current) {
+			return 'the parent ${tool_cache_root_stage_rejection_reason(current)}'
+		}
+		current = parent
+	}
+	return none
 }
 
 // make_tool_cache_root_private makes sure that only the current user can write to a cache

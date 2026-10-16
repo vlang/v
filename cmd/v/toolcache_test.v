@@ -44,6 +44,14 @@ fn tool_cache_is_fresh(entry ToolCacheEntry) bool {
 	return tool_cache_stale_reason(entry) == ''
 }
 
+fn tool_cache_dir() ?string {
+	directory, _ := tool_cache_dir_or_error()
+	if directory != '' {
+		return directory
+	}
+	return none
+}
+
 // record_unbuildable_tool writes a failed build and its inputs for cache test fixtures.
 fn record_unbuildable_tool(entry ToolCacheEntry, dumped string, started i64, details string) {
 	manifest := encode_unbuildable_tool_manifest(entry, dumped, started, details)
@@ -1743,10 +1751,11 @@ fn trusted_toolcache_test_dir(name string) ?string {
 	return directory
 }
 
-// with_default_tool_cache_roots points both default cache folders into `directory`, by way of
-// `XDG_CACHE_HOME` and `VTMP`, while `body` runs. `body` gets V`s own folder, `<directory>/xdg/v`.
+// with_default_tool_cache_roots points all default cache folders into `directory`, by way of
+// `XDG_CACHE_HOME`, `VTMP`, and `HOME`, while `body` runs. `body` gets V`s own folder, `<directory>/xdg/v`.
 fn with_default_tool_cache_roots(directory string, body fn (string) !) ! {
-	names := ['XDG_CACHE_HOME', 'VTMP', tool_cache_dir_env, tool_cache_disable_env]
+	names := ['XDG_CACHE_HOME', 'VTMP', 'HOME', 'USERPROFILE', tool_cache_dir_env,
+		tool_cache_disable_env]
 	mut previous := map[string]?string{}
 	for name in names {
 		previous[name] = os.getenv_opt(name)
@@ -1762,10 +1771,14 @@ fn with_default_tool_cache_roots(directory string, body fn (string) !) ! {
 	}
 	xdg := os.join_path(directory, 'xdg')
 	vtmp := os.join_path(directory, 'vtmp')
+	home := os.join_path(directory, 'home')
 	os.mkdir(xdg, mode: 0o700)!
 	os.mkdir(vtmp, mode: 0o700)!
+	os.mkdir(home, mode: 0o700)!
 	os.setenv('XDG_CACHE_HOME', xdg, true)
 	os.setenv('VTMP', vtmp, true)
+	os.setenv('HOME', home, true)
+	os.setenv('USERPROFILE', home, true)
 	os.unsetenv(tool_cache_dir_env)
 	os.unsetenv(tool_cache_disable_env)
 	body(os.join_path(xdg, 'v'))!
@@ -1874,6 +1887,82 @@ fn test_a_symlinked_v_folder_inside_a_writable_cache_folder_is_not_used() {
 	})!
 }
 
+// When both `~/.cache` and `VTMP` live under untrusted parents, `~/.v/tools` directly under a
+// private `$HOME` provides a usable default cache without modifying `~/.cache`.
+fn test_home_dot_v_tools_is_used_when_cache_and_vtmp_are_untrusted() {
+	candidates := tool_cache_default_candidates()
+	assert candidates.len == 3
+	assert candidates[2].ends_with(os.join_path('.v', 'tools'))
+	$if windows {
+		return
+	}
+	directory := trusted_toolcache_test_dir('home_dot_v_fallback') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_default_tool_cache_roots(directory, fn [directory] (v_dir string) ! {
+		cache := os.dir(v_dir)
+		vtmp := os.join_path(directory, 'vtmp')
+		home := os.join_path(directory, 'home')
+		os.chmod(cache, 0o775)!
+		os.chmod(vtmp, 0o775)!
+		dot_v := os.join_path(home, '.v')
+		os.mkdir_all(dot_v)!
+		os.chmod(dot_v, 0o775)!
+		chosen := tool_cache_dir() or { panic('no usable tool cache directory') }
+		expected := os.real_path(os.join_path(dot_v, 'tools'))
+		assert chosen == expected, 'expected `${expected}`, got `${chosen}`'
+		assert os.stat(dot_v)!.mode & 0o777 == 0o755, '`~/.v` is V`s own folder and must be tightened'
+		assert os.stat(chosen)!.mode & 0o777 == 0o700
+		assert os.stat(cache)!.mode & 0o777 == 0o775, '`~/.cache` must be left as it is'
+	})!
+}
+
+// When every candidate fails, `tool_cache_entry_or_error` lists each rejected candidate and
+// shows how to configure a private `VTOOLS_CACHE_DIR`.
+fn test_tool_cache_unavailable_error_lists_rejected_candidates_and_workaround() {
+	formatted := tool_cache_unavailable_message([
+		'  - `/home/user/.cache/v/tools`: an ancestor `/home/user/.cache` (mode 0775) is writable by group/others without the sticky bit',
+		'  - `/tmp/v_1000/tools`: the parent `/tmp` (mode 01777) is owned by user id 65534, not by the current user or root',
+	])
+	assert formatted.contains('no usable tool cache folder was found:')
+	assert formatted.contains('is writable by group/others without the sticky bit')
+	assert formatted.contains('is owned by user id 65534, not by the current user or root')
+	assert formatted.contains('export VTOOLS_CACHE_DIR=\$HOME/.cache/vtools')
+	$if windows {
+		return
+	}
+	directory := trusted_toolcache_test_dir('unavailable_diagnostics') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_default_tool_cache_roots(directory, fn [directory] (v_dir string) ! {
+		cache := os.dir(v_dir)
+		vtmp := os.join_path(directory, 'vtmp')
+		home := os.join_path(directory, 'home')
+		os.chmod(cache, 0o775)!
+		os.chmod(vtmp, 0o775)!
+		os.chmod(home, 0o775)!
+		if entry := tool_cache_entry_or_error('v', directory, 'v3_ownership', directory, []) {
+			assert false, 'expected no usable cache, got `${entry.dir}`'
+		} else {
+			message := err.msg()
+			assert message.contains('no usable tool cache folder was found:'), message
+			assert message.contains(os.join_path(v_dir, 'tools')), message
+			assert message.contains(os.join_path(vtmp, 'tools')), message
+			assert message.contains(os.join_path(home, '.v', 'tools')), message
+			assert message.contains('is writable by group/others without the sticky bit'), message
+			assert message.contains('export VTOOLS_CACHE_DIR=\$HOME/.cache/vtools'), message
+		}
+	})!
+}
+
 // An entry planted in a formerly writable cache folder, under the exact name and with a manifest
 // that looks fresh, must never be executed. The real tool must be built and reused instead.
 fn test_an_entry_planted_in_a_formerly_writable_root_is_never_executed() {
@@ -1945,4 +2034,112 @@ fn test_windows_entry_pin_blocks_rename_until_handle_is_closed() {
 	os.rename(entry_dir, moved_dir)!
 	assert os.is_dir(moved_dir)
 	assert !os.exists(entry_dir)
+}
+
+fn test_wipe_cache_options_and_selective_cleanup() {
+	default_opts := parse_wipe_cache_options([], [])!
+	assert default_opts.vcache && default_opts.vtmp && default_opts.v3cache && default_opts.tools
+	assert !default_opts.dry_run && !default_opts.verbose && !default_opts.show_help
+
+	selective_opts := parse_wipe_cache_options(['-v'], ['--tools', '-n'])!
+	assert selective_opts.tools && !selective_opts.vcache && !selective_opts.vtmp
+		&& !selective_opts.v3cache
+	assert selective_opts.dry_run && selective_opts.verbose
+
+	if _ := parse_wipe_cache_options([], ['--unknown-flag']) {
+		assert false, 'expected unknown option error'
+	} else {
+		assert err.msg().contains('unknown option `--unknown-flag`')
+	}
+
+	directory := toolcache_test_dir('wipe_cache')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	vcache_dir := os.join_path(directory, 'vcache')
+	v3cache_dir := os.join_path(directory, 'v3cache')
+	previous_vcache := os.getenv_opt('VCACHE')
+	previous_v3cache := os.getenv_opt('V3CACHE')
+	defer {
+		if v := previous_vcache {
+			os.setenv('VCACHE', v, true)
+		} else {
+			os.unsetenv('VCACHE')
+		}
+		if v := previous_v3cache {
+			os.setenv('V3CACHE', v, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+	}
+	os.setenv('VCACHE', vcache_dir, true)
+	os.setenv('V3CACHE', v3cache_dir, true)
+
+	with_default_tool_cache_roots(directory, fn [directory, vcache_dir, v3cache_dir] (_ string) ! {
+		cache_v_dir := os.join_path(os.cache_dir(), 'v')
+		vtmp_dir := os.join_path(directory, 'vtmp')
+		home_dir := os.join_path(directory, 'home')
+		cache_tools := os.join_path(cache_v_dir, 'tools')
+		home_tools := os.join_path(home_dir, '.v', 'tools')
+		untrusted_tools := os.join_path(cache_v_dir, 'tools.untrusted-12345')
+
+		os.mkdir_all(vcache_dir)!
+		os.write_file(os.join_path(vcache_dir, 'obj.o'), 'x')!
+		os.mkdir_all(v3cache_dir)!
+		os.write_file(os.join_path(v3cache_dir, 'mod.o'), 'x')!
+		os.mkdir_all(os.join_path(vtmp_dir, 'v3_module_cache_deadbeef'))!
+		os.write_file(os.join_path(vtmp_dir, 'keep.txt'), 'keep')!
+		os.mkdir_all(cache_tools)!
+		os.write_file(os.join_path(cache_tools, 'vfmt'), 'bin')!
+		os.mkdir_all(home_tools)!
+		os.write_file(os.join_path(home_tools, 'vvet'), 'bin')!
+		os.mkdir_all(untrusted_tools)!
+		os.write_file(os.join_path(untrusted_tools, 'old'), 'bin')!
+
+		// 1. `--dry-run --verbose` reports targets and candidates without deleting anything.
+		dry_opts := parse_wipe_cache_options([], ['--dry-run', '--verbose'])!
+		dry_output := wipe_caches(dry_opts).join('\n')
+		assert dry_output.contains('Tool cache candidates:'), dry_output
+		assert dry_output.contains('Would wipe V cache folder ${vcache_dir}.'), dry_output
+		assert dry_output.contains('Would wipe V tool cache folder ${cache_tools}.'), dry_output
+		assert dry_output.contains('Would wipe Moved-aside V tool cache folder ${untrusted_tools}.'), dry_output
+		assert os.is_file(os.join_path(cache_tools, 'vfmt'))
+		assert os.is_file(os.join_path(home_tools, 'vvet'))
+		assert os.is_file(os.join_path(untrusted_tools, 'old'))
+
+		// 2. `--tools` wipes only tool caches and `.untrusted-*` folders.
+		tools_opts := parse_wipe_cache_options([], ['--tools'])!
+		tools_output := wipe_caches(tools_opts).join('\n')
+		assert tools_output.contains('V tool cache folder ${cache_tools} was wiped.'), tools_output
+		assert tools_output.contains('V tool cache folder ${home_tools} was wiped.'), tools_output
+		assert tools_output.contains('Moved-aside V tool cache folder ${untrusted_tools} was wiped.'), tools_output
+		assert !os.exists(cache_tools)
+		assert !os.exists(home_tools)
+		assert !os.exists(untrusted_tools)
+		assert os.is_file(os.join_path(vcache_dir, 'obj.o'))
+		assert os.is_file(os.join_path(v3cache_dir, 'mod.o'))
+		assert os.is_file(os.join_path(vtmp_dir, 'keep.txt'))
+
+		// 3. `--v3cache` with `V3CACHE` unset wipes only `v3_*` directories inside `VTMP`.
+		os.unsetenv('V3CACHE')
+		v3_opts := parse_wipe_cache_options([], ['--v3cache'])!
+		v3_output := wipe_caches(v3_opts).join('\n')
+		assert v3_output.contains('V3 cache folder ${os.join_path(vtmp_dir, 'v3_module_cache_deadbeef')} was wiped.'), v3_output
+		assert !os.exists(os.join_path(vtmp_dir, 'v3_module_cache_deadbeef'))
+		assert os.is_file(os.join_path(vtmp_dir, 'keep.txt'))
+
+		// 4. Default `wipe-cache` wipes all remaining caches.
+		os.setenv('V3CACHE', v3cache_dir, true)
+		os.mkdir_all(cache_tools)!
+		all_opts := parse_wipe_cache_options([], [])!
+		all_output := wipe_caches(all_opts).join('\n')
+		assert all_output.contains('V cache folder ${vcache_dir} was wiped.'), all_output
+		assert all_output.contains('V tmp.c and tests folder ${vtmp_dir} was wiped.'), all_output
+		assert all_output.contains('V3 cache folder ${v3cache_dir} was wiped.'), all_output
+		assert all_output.contains('V tool cache folder ${cache_tools} was wiped.'), all_output
+		assert !os.exists(os.join_path(vcache_dir, 'obj.o'))
+		assert !os.exists(os.join_path(vtmp_dir, 'keep.txt'))
+		assert !os.exists(os.join_path(v3cache_dir, 'mod.o'))
+		assert !os.exists(cache_tools)
+	})!
 }
