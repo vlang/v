@@ -38,6 +38,10 @@ jobs:
       # running the whole suite to completion; the remaining files
       # add no signal.
       VTEST_FAIL_FAST: '1'
+      # Four test workers fit comfortably: a worker peaks near 0.25 GB and
+      # the runner has 4 CPUs and 16 GB, so this is CPU-bound, not
+      # memory-bound.
+      VJOBS: '4'
       VFLAGS: -cc tcc -no-retry-compilation
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
@@ -271,6 +275,10 @@ jobs:
       # running the whole suite to completion; the remaining files
       # add no signal.
       VTEST_FAIL_FAST: '1'
+      # Four test workers fit comfortably: a worker peaks near 0.25 GB and
+      # the runner has 4 CPUs and 16 GB, so this is CPU-bound, not
+      # memory-bound.
+      VJOBS: '4'
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
