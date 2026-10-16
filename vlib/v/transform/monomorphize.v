@@ -296,12 +296,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		mut rescan := []int{}
 		if scan_start > 0 && t.used_fn_count() != used_fns_at_scan {
 			new_ignored := t.monomorphize_ignored_nodes(decls)
-			for i in 0 .. scan_start {
-				if i < ignored_nodes.len && ignored_nodes[i] && !(i < new_ignored.len
-					&& new_ignored[i]) {
-					rescan << i
-				}
-			}
+			rescan = unignored_nodes(ignored_nodes, new_ignored, scan_start)
 			ignored_nodes = unsafe { new_ignored }
 		}
 		used_fns_at_scan = t.used_fn_count()
@@ -1534,6 +1529,39 @@ fn (mut t Transformer) has_generic_index_operators() bool {
 		}
 	}
 	return t.generic_index_operators_known > 0
+}
+
+// unignored_nodes lists in order the nodes below `end` that `old` flags and
+// `new` does not, testing eight flags at a time: they are bytes of 0 or 1.
+@[direct_array_access]
+fn unignored_nodes(old []bool, new []bool, end int) []int {
+	mut result := []int{}
+	limit := int_min(int_min(end, old.len), new.len)
+	words := limit / 8
+	old_words := unsafe { &u64(old.data) }
+	new_words := unsafe { &u64(new.data) }
+	for w in 0 .. words {
+		if unsafe { old_words[w] & ~new_words[w] } == 0 {
+			continue
+		}
+		for i in w * 8 .. w * 8 + 8 {
+			if old[i] && !new[i] {
+				result << i
+			}
+		}
+	}
+	for i in words * 8 .. limit {
+		if old[i] && !new[i] {
+			result << i
+		}
+	}
+	// Past the new flags' end every old flag counts as cleared.
+	for i in limit .. int_min(end, old.len) {
+		if old[i] {
+			result << i
+		}
+	}
+	return result
 }
 
 fn (mut t Transformer) record_index_operator_fn_name(node flat.Node, method string) {
