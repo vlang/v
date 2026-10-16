@@ -79,6 +79,7 @@ pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, pref
 	g.output_cross_c = prefs.output_cross_c
 	g.no_builtin = prefs.no_builtin
 	g.object_file_mode = object_file_mode
+	g.set_ccompiler(prefs.ccompiler)
 	g.set_compile_defines(prefs.user_defines)
 	g.compiler_vroot = prefs.vroot
 	g.compile_values = prefs.compile_values
@@ -19403,6 +19404,13 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 	if g.headerless_compiler_bootstrap() {
 		return false
 	}
+	// The generator's own include of the WinAPI atomic header for Windows TCC and
+	// MSVC is a local header that includes <windows.h>, so it gets the same
+	// treatment as a program's quoted local header below: the system preamble,
+	// with the SDK's declarations first.
+	if g.uses_windows_sdk_atomic_header() {
+		return true
+	}
 	if g.no_builtin || g.output_cross_c || g.object_file_mode
 		|| 'livemain' in g.compile_defines || 'sharedlive' in g.compile_defines {
 		return true
@@ -22190,13 +22198,33 @@ fn (mut g FlatGen) tinyc_atomic_libcall_decls() {
 	g.writeln('#endif')
 }
 
+// uses_windows_tcc_atomic_header reports whether the generated C includes V's WinAPI
+// atomic compatibility header unconditionally, because it is generated for Windows
+// TCC. That header includes <windows.h> itself, so such a translation unit needs the
+// system libc preamble: the standalone preamble's SDK types (`typedef u32 DWORD;`,
+// OVERLAPPED, CONDITION_VARIABLE, ...) are not compatible redeclarations of the
+// SDK's own, and TCC rejects them when <windows.h> follows them.
+fn (g &FlatGen) uses_windows_tcc_atomic_header() bool {
+	return g.target.os == 'windows' && !g.output_cross_c
+		&& (g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc'))
+}
+
+// uses_windows_sdk_atomic_header reports whether the generated C takes its atomics
+// from the Windows SDK: Windows TCC through the WinAPI atomic compatibility header
+// (see uses_windows_tcc_atomic_header), and MSVC through the same header behind a
+// preprocessor choice plus the Interlocked prealloc helpers, which name `LONG` and
+// `InterlockedExchangeAdd` before any header of the program's own. Both need the
+// system libc preamble, so that <windows.h> precedes every use.
+fn (g &FlatGen) uses_windows_sdk_atomic_header() bool {
+	return g.uses_windows_tcc_atomic_header()
+		|| (g.target.os == 'windows' && !g.output_cross_c && g.ccompiler == 'msvc')
+}
+
 fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	// Windows TCC takes its atomics from V's WinAPI compatibility header, which
 	// defines these helpers as function-like macros of its own.
-	windows_tcc := g.target.os == 'windows'
-		&& (g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc'))
 	header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
-	if windows_tcc && !g.output_cross_c {
+	if g.uses_windows_tcc_atomic_header() {
 		g.writeln(g.c_local_header_directive(header))
 		return
 	}
