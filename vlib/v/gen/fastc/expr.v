@@ -277,7 +277,7 @@ struct FastcAtomicExpression {
 	source string
 }
 
-// try_read_atomic_expression recognizes a complete scalar value before allocating
+// try_read_atomic_expression recognizes a complete plain value before allocating
 // the streaming reader's buffers. A rejected candidate leaves the parser unchanged.
 fn (mut g Parser) try_read_atomic_expression(stops []token.Token, allow_mutation_statement bool, allow_newline_value_continuation bool) FastcAtomicExpression {
 	if g.tok in stops || g.tok !in [.name, .number, .string, .char, .key_true, .key_false] {
@@ -298,7 +298,7 @@ fn (mut g Parser) try_read_atomic_expression(stops []token.Token, allow_mutation
 		local := g.locals[g.lit] or { return FastcAtomicExpression{} }
 		if local.is_reference || local.option_value_type != 0 || local.smartcast_origin_type != 0
 			|| g.lit in g.member_smartcasts || g.lit in g.generic_method_names
-			|| g.lit.starts_with('@') {
+			|| g.lit.starts_with('@') || g.lit == 'C' {
 			return FastcAtomicExpression{}
 		}
 		typ = local.typ
@@ -306,7 +306,7 @@ fn (mut g Parser) try_read_atomic_expression(stops []token.Token, allow_mutation
 			flat.source_type_i8, flat.source_type_i16, flat.source_type_i32, flat.source_type_i64,
 			flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
 			flat.source_type_isize, flat.source_type_usize, flat.source_type_f32, flat.source_type_f64,
-			flat.source_type_rune, flat.source_type_char] {
+			flat.source_type_rune, flat.source_type_char] && !g.is_plain_aggregate_value_type(typ) {
 			return FastcAtomicExpression{}
 		}
 		local_c_name = local.c_name
@@ -5366,7 +5366,54 @@ fn (g &Parser) render_special_expression_with_flags(tokens []FastcExpressionToke
 	return special
 }
 
+// is_plain_local_direct_member identifies reads whose ordinary C spelling
+// already needs no special-expression lowering. Returning none keeps the
+// caller's existing raw source and type inference unchanged.
+fn (g &Parser) is_plain_local_direct_member(tokens []FastcExpressionToken) bool {
+	if !g.selfhost || tokens.len != 3 || tokens[0].tok != .name
+		|| tokens[1].tok != .dot || tokens[2].tok != .name
+		|| g.member_smartcasts.len > 0 || g.in_mono_drain || g.in_generic_placeholder {
+		return false
+	}
+	for item in tokens {
+		if item.source != '' || item.is_mut_argument { return false }
+	}
+	root := tokens[0]
+	member := tokens[2]
+	if root.lit == 'C' || root.lit.starts_with('@') || member.lit.starts_with('@')
+		|| root.lit in g.imports || root.lit in g.generic_method_names
+		|| member.lit in g.generic_method_names || tokens[1].typ != 0 || member.typ != 0 {
+		return false
+	}
+	local := g.locals[root.lit] or { return false }
+	if local.typ == 0 || local.is_mut || local.is_reference || local.option_value_type != 0
+		|| local.smartcast_origin_type != 0 || local.smartcast_origin_source != ''
+		|| (root.typ != 0 && root.typ != local.typ) {
+		return false
+	}
+	type_name := flat.source_type_name(local.typ)
+	if fastc_is_pointer_type(local.typ) || type_name in ['Option', '__v_result']
+		|| type_name.starts_with('Array_') || type_name.starts_with('Map_')
+		|| type_name.starts_with('FixedArray_') || type_name in g.sum_types
+		|| g.alias_base_types.type_id(type_name) != none {
+		return false
+	}
+	kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(local.typ))] or {
+		return false
+	}
+	if kind != .struct_ { return false }
+	field := g.direct_struct_field_metadata(local.typ, member.lit) or { return false }
+	if field.name != member.lit || field.typ == 0 || field.storage_path.len > 0
+		|| field.is_shared_pointer || field.is_function || field.is_optional_function
+		|| field.option_value_type != 0 || field.generic_argument_type != 0
+		|| field.chan_element_type != 0 {
+		return false
+	}
+	return g.struct_direct_member_type(local.typ, member.lit) == field.typ
+}
+
 fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, rendered_expression string, flags FastcTokenFlags) ?FastcRenderedExpression {
+	if g.is_plain_local_direct_member(tokens) { return none }
 	if g.selfhost && (flags.has_not || flags.has_question) && tokens.len > 3
 		&& tokens[0].tok == .lpar && tokens.last().tok == .rpar {
 		inner := fastc_strip_paren_tokens(tokens)

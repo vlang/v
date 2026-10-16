@@ -415,6 +415,9 @@ fn (g &Parser) unqualified_global_key_impl(name string) ?string {
 	if builtin_key in g.globals {
 		return builtin_key
 	}
+	if g.global_suffix_index.ready && !g.declaration_initializer_mode {
+		return g.global_suffix_index.keys[name] or { return none }
+	}
 	suffix := '.${name}'
 	for global_key, _ in g.globals {
 		if global_key == name || global_key.ends_with(suffix) {

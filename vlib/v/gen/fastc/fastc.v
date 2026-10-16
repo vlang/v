@@ -1405,6 +1405,7 @@ struct Parser {
 	constant_values     map[string]string
 	public_constants    map[string]bool
 	globals             map[string]string
+	global_suffix_index FastcGlobalSuffixIndex
 	public_globals      map[string]bool
 	used_function_names map[string]bool
 	// function_c_names overrides the conventional C spelling for selected
@@ -1713,6 +1714,7 @@ struct FastcFileGenContext {
 	constant_values           map[string]string
 	public_constants          map[string]bool
 	globals                   map[string]string
+	global_suffix_index       FastcGlobalSuffixIndex
 	public_globals            map[string]bool
 	used_function_names       map[string]bool
 	has_startup_inits         bool
@@ -1845,6 +1847,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		constant_values:           ctx.constant_values
 		public_constants:          ctx.public_constants
 		globals:                   ctx.globals
+		global_suffix_index:       ctx.global_suffix_index
 		public_globals:            ctx.public_globals
 		used_function_names:       ctx.used_function_names
 		function_c_names:          ctx.function_c_names
@@ -2213,6 +2216,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		constant_values:           constant_output.compile_time_values
 		public_constants:          public_constants
 		globals:                   globals
+		global_suffix_index:       fastc_global_suffix_index(globals, global_types)
 		public_globals:            public_globals
 		used_function_names:       used_function_names
 		has_startup_inits:         startup_initializers.len > 0

@@ -1319,6 +1319,10 @@ fn (g &Parser) resolve_cross_module_global_type(name string) ?u32 {
 	if key := g.unqualified_global_key(name) {
 		return g.global_types.type_id(key)
 	}
+	if g.global_suffix_index.ready && !g.declaration_initializer_mode {
+		key := g.global_suffix_index.type_keys[name] or { return none }
+		return g.global_types.type_id(key)
+	}
 	suffix := '.${name}'
 	for key, global_type_id in g.global_types.ids {
 		if key == name || key.ends_with(suffix) {

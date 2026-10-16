@@ -3885,19 +3885,35 @@ fn (g &Parser) render_enum_flag_shorthand_combination(tokens []FastcExpressionTo
 	return '(${out})'
 }
 
+// is_plain_aggregate_value_type identifies the nonboxed aggregate layouts
+// whose local values already have their ordinary by-value C representation.
+fn (g &Parser) is_plain_aggregate_value_type(typ u32) bool {
+	type_name := flat.source_type_name(typ)
+	if type_name == '' || fastc_is_pointer_type(typ)
+		|| type_name in ['Option', '__v_result'] || type_name.starts_with('FixedArray_')
+		|| type_name in g.sum_types || g.alias_base_types.type_id(type_name) != none {
+		return false
+	}
+	if kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(typ))] {
+		return kind == .struct_
+	}
+	return type_name.starts_with('Array_') || type_name.starts_with('Map_')
+}
+
 // render_selfhost_scalar_call_argument skips collection and coercion dispatch
-// when a single scalar token already has the parameter's representation.
+// for primitive literals and exact-type local values with ordinary by-value storage.
 fn (g &Parser) render_selfhost_scalar_call_argument(tokens []FastcExpressionToken, expected_type u32) ?string {
-	if !g.selfhost || tokens.len != 1 || tokens[0].source != ''
-		|| expected_type !in [flat.source_type_bool, flat.source_type_char, flat.source_type_f32,
-			flat.source_type_f64, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
-			flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune,
-			flat.source_type_string, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
-			flat.source_type_u64, flat.source_type_usize] {
+	if !g.selfhost || expected_type == 0 || tokens.len != 1 || tokens[0].source != '' {
 		return none
 	}
+	is_scalar := expected_type in [flat.source_type_bool, flat.source_type_char, flat.source_type_f32,
+		flat.source_type_f64, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+		flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune,
+		flat.source_type_string, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_u64, flat.source_type_usize]
+	if !is_scalar && fastc_is_pointer_type(expected_type) { return none }
 	item := tokens[0]
-	if item.typ == 0 && !item.is_mut_argument
+	if is_scalar && item.typ == 0 && !item.is_mut_argument
 		&& item.tok in [.number, .string, .char, .key_true, .key_false] {
 		if literal := g.render_selfhost_simple_array_literal_item(tokens, expected_type) {
 			return literal
@@ -3912,6 +3928,7 @@ fn (g &Parser) render_selfhost_scalar_call_argument(tokens []FastcExpressionToke
 		|| (item.typ != 0 && item.typ != local.typ) || local.typ != expected_type {
 		return none
 	}
+	if !is_scalar && !g.is_plain_aggregate_value_type(expected_type) { return none }
 	return if local.c_name != '' { local.c_name } else { fastc_c_identifier(item.lit) }
 }
 

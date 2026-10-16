@@ -1638,6 +1638,50 @@ fn fastc_source_uses_captures(source string, prefs &pref.Preferences) bool {
 	return false
 }
 
+// fastc_skip_header_block skips tokens that cannot affect a brace block's end.
+// Header discovery ignores the block's contents. Existing scanner routines
+// still own comments, numbers, strings, interpolation and punctuation.
+// A matching closing token leaves the scanner ready to resume. At unmatched
+// EOF, header discovery discards this scanner and its unreported diagnostics.
+@[direct_array_access]
+fn fastc_skip_header_block(mut scan scanner.Scanner) token.Token {
+	mut depth := 1
+	for scan.offset < scan.src.len {
+		mut tok := token.Token.unknown
+		if scan.in_str_incomplete {
+			tok = scan.scan()
+		} else {
+			c := scan.src[scan.offset]
+			if fastc_source_space_byte(c) {
+				scan.offset++
+				continue
+			}
+			if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` {
+				start := scan.offset
+				mut end := start + 1
+				for end < scan.src.len && fastc_identifier_byte(scan.src[end]) { end++ }
+				quoted := end < scan.src.len && scan.src[end] in [`'`, `"`]
+				prefix := (end == start + 1 && c in [`c`, `r`])
+					|| (end == start + 2 && c == `j` && scan.src[start + 1] == `s`)
+				if !quoted || !prefix {
+					scan.offset = end
+					continue
+				}
+			}
+			tok = scan.scan()
+		}
+		if tok == .lcbr {
+			depth++
+		} else if tok == .rcbr {
+			depth--
+			if depth == 0 { return tok }
+		} else if tok == .eof {
+			return tok
+		}
+	}
+	return .eof
+}
+
 fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences) !FastcSourceHeader {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
@@ -1712,6 +1756,10 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		if tok != .key_import || brace_depth > 0 {
 			if tok == .lcbr {
 				brace_depth++
+				if module_name != '' {
+					tok = fastc_skip_header_block(mut scan)
+					continue
+				}
 			} else if tok == .rcbr && brace_depth > 0 {
 				brace_depth--
 			}

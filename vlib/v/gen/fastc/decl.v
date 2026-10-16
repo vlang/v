@@ -148,6 +148,21 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			continue
 		}
 		if tok == .lcbr {
+			if brace_depth == 0 && pending_fn && declaration_start < 0 {
+				// Only this function body's bounds are needed by the declaration
+				// index. The scanner still owns strings, comments and punctuation.
+				fn_body_start = scan.pos
+				tok = fastc_skip_header_block(mut scan)
+				if tok == .rcbr {
+					body_spans << fn_body_start
+					body_spans << scan.offset
+					fn_body_start = -1
+					pending_fn = false
+					previous_tok = .rcbr
+					tok = scan.scan()
+				}
+				continue
+			}
 			if brace_depth == 0 && pending_fn && fn_body_start < 0 {
 				fn_body_start = scan.pos
 			}
@@ -643,6 +658,18 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 		}
 	}
 	return partial
+}
+
+// fastc_apply_declaration_body_spans preserves the body bounds collected by
+// the declaration pass for the signature and interface passes that follow.
+fn fastc_apply_declaration_body_spans(mut sources []FastcSourceFile, body_spans map[string][]int, start int, end int) {
+	for index in start .. end {
+		source_file := sources[index]
+		sources[index] = FastcSourceFile{
+			...source_file
+			header: fastc_header_with_body_spans(source_file.header, body_spans[source_file.path] or { []int{} })
+		}
+	}
 }
 
 fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut constant_spans map[string][]int, mut global_sources map[string]string, mut globals map[string]string, mut public_globals map[string]bool) ! {
