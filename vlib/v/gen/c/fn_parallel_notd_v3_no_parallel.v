@@ -867,7 +867,7 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(parallel bool
 	mut worker := g.new_parallel_worker(3)
 	worker.fixed_array_ret_wrappers = map[string]bool{}
 	mut support_worker := g.new_parallel_worker(5)
-	support_worker.recursive_drop_helpers = flat.TypeTextBindings{}
+	support_worker.recursive_drop_helpers = map[u64]u32{}
 	support_worker.fixed_array_map_key_types = map[string]types.ArrayFixed{}
 	wrapper_thread := spawn fixed_array_ret_wrappers_thread(voidptr(worker))
 	support_thread := spawn cgen_support_precompute_thread(voidptr(support_worker))
@@ -1235,6 +1235,14 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 	// Force the lazily-built const short-name index now: workers share it
 	// read-only, so it must be complete before any fork starts.
 	_ = g.unique_const_ref_name('__v3_prewarm__') or { '' }
+}
+
+fn clone_array_method_receiver_cache(values map[u64]map[string]string) map[u64]map[string]string {
+	mut cloned := map[u64]map[string]string{}
+	for key, methods in values {
+		cloned[key] = methods.clone()
+	}
+	return cloned
 }
 
 fn clone_cgen_string_map(values map[string]string) map[string]string {
@@ -1619,8 +1627,8 @@ fn (mut g FlatGen) gen_fn_items_scoped_master_batches(items []FlatFnGenItem) {
 	}
 }
 
-fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[string][]types.StructField {
-	mut cloned := map[string][]types.StructField{}
+fn clone_embedded_fields_by_type(values map[u32][]types.StructField) map[u32][]types.StructField {
+	mut cloned := map[u32][]types.StructField{}
 	for name, fields in values {
 		mut owned_fields := []types.StructField{cap: fields.len}
 		for field in fields {
@@ -1633,7 +1641,7 @@ fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[stri
 				is_volatile: field.is_volatile
 			}
 		}
-		cloned[name.clone()] = owned_fields
+		cloned[name] = owned_fields
 	}
 	return cloned
 }
@@ -1661,6 +1669,14 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	g.fixed_storage_consts = fs_worker.fixed_storage_consts.move()
 	g.param_types_by_short = fs_worker.param_types_by_short.move()
 	g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
+}
+
+fn clone_shared_alias_pointer_cache(values map[u32]map[string][]types.Type) map[u32]map[string][]types.Type {
+	mut result := map[u32]map[string][]types.Type{}
+	for source_id, entries in values {
+		result[source_id] = clone_cgen_param_types_map(entries)
+	}
+	return result
 }
 
 fn clone_cgen_param_types_map(values map[string][]types.Type) map[string][]types.Type {
@@ -1747,9 +1763,9 @@ fn (mut g FlatGen) publish_interface_impl_scan(mut worker FlatGen) {
 	if worker.worker_scope != unsafe { nil } {
 		// Same trade as the other scan publishers: copy the small result tables
 		// and free the scan arena now.
-		g.interface_boxed_types = clone_cgen_string_bool_map(worker.interface_boxed_types)
-		g.iface_impls = clone_cgen_string_list_map(worker.iface_impls)
-		g.iface_type_ids = clone_cgen_string_int_map(worker.iface_type_ids)
+		g.interface_boxed_types = worker.interface_boxed_types.clone()
+		g.iface_impls = clone_cgen_source_type_list_map(worker.iface_impls)
+		g.iface_type_ids = worker.iface_type_ids.clone()
 		g.ierror_method_emit_names = clone_cgen_string_bool_map(worker.ierror_method_emit_names)
 		cgen_worker_scope_free(worker.worker_scope)
 		worker.worker_scope = unsafe { nil }
@@ -1761,10 +1777,10 @@ fn (mut g FlatGen) publish_interface_impl_scan(mut worker FlatGen) {
 	g.ierror_method_emit_names = worker.ierror_method_emit_names.move()
 }
 
-fn clone_cgen_string_list_map(values map[string][]string) map[string][]string {
-	mut cloned := map[string][]string{}
+fn clone_cgen_source_type_list_map(values map[string][]u32) map[string][]u32 {
+	mut cloned := map[string][]u32{}
 	for key, list in values {
-		cloned[key.clone()] = clone_cgen_string_list(list)
+		cloned[key.clone()] = list.clone()
 	}
 	return cloned
 }
@@ -2407,7 +2423,7 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 			if text_cache.gens[slot] != text_cache.generation || text_cache.ids[slot] != node.typ {
 				text_cache.ids[slot] = node.typ
 				text_cache.gens[slot] = text_cache.generation
-				text_cache.verdicts[slot] = parallel_type_text_may_preseed(g, node.typ_text())
+				text_cache.verdicts[slot] = parallel_type_text_may_preseed(g, node.typ)
 				if text_cache.verdicts[slot] {
 					cands << FlatCgenPrepCandidate{ text: node.typ, item_idx: item_idx }
 				}
@@ -2476,10 +2492,11 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 // before the exact-cost workers retain it for the ordered alias/fn-type replay.
 // V alias declarations are capitalized; literal callback types are the only
 // lowercase text that can require a function-pointer preseed.
-fn parallel_type_text_may_preseed(g &FlatGen, typ string) bool {
-	if typ.len == 0 {
+fn parallel_type_text_may_preseed(g &FlatGen, typ_id u32) bool {
+	if typ_id == 0 {
 		return false
 	}
+	typ := flat.source_type_name(typ_id)
 	mut start := 0
 	for start < typ.len {
 		for start < typ.len && typ[start] in [` `, `\t`, `\n`, `\r`] {
@@ -2648,7 +2665,7 @@ fn (mut g FlatGen) preseed_parallel_fn_ptr_type(typ types.Type) {
 // concurrent readers are safe. Only the state a worker actually mutates while emitting is
 // kept private: the output builder; the string-literal table (interned during gen); the
 // fn_ptr_types / needed_optional_types / emitted_* sets and the param_types_cache /
-// array_method_cache memoization caches (all written during gen); the per-function
+// array method memoization caches (all written during gen); the per-function
 // cur_param_* scratch; and runtime_inits (kept private out of caution). This drops the
 // bulk of each worker's clone cost — previously the whole table set was duplicated per
 // worker and, under -gc none, never freed.
@@ -2921,6 +2938,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		decl_attrs_by_source_position:      g.decl_attrs_by_source_position
 		shared_type_names:                  g.shared_type_names
 		shared_alias_pointer_shorts:        g.shared_alias_pointer_shorts
+		shared_alias_pointer_cache:         if result_only {
+			g.shared_alias_pointer_cache
+		} else {
+			clone_shared_alias_pointer_cache(g.shared_alias_pointer_cache)
+		}
 		shared_alias_index_ready:           g.shared_alias_index_ready
 		needs_pthread_header:               g.needs_pthread_header
 		needs_thread_type:                  g.needs_thread_type
@@ -2937,6 +2959,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		compiler_vroot:                     g.compiler_vroot
 		compiler_vexe:                      g.compiler_vexe
+		live_source_path:                   g.live_source_path
+		live_rebuild_options:               g.live_rebuild_options
 		compiler_vexe_env_setup:            g.compiler_vexe_env_setup
 		ccompiler:                          g.ccompiler
 		is_shared:                          g.is_shared
@@ -3017,6 +3041,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		} else {
 			g.array_method_cache.clone()
 		}
+		array_method_receiver_cache:        if result_only {
+			g.array_method_receiver_cache
+		} else {
+			clone_array_method_receiver_cache(g.array_method_receiver_cache)
+		}
 		param_types_cache:                  if result_only {
 			g.param_types_cache
 		} else {
@@ -3028,9 +3057,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		generic_struct_context_ct_cache:    &TypeNameLookupCache{}
 		struct_cname_cache:                 &TypeNameLookupCache{}
 		unique_struct_ct_cache:             &TypeNameLookupCache{}
-		alias_method_cache:                 &StringLookupCache{}
+		alias_method_cache:                 &AliasMethodLookupCache{}
 		import_alias_cache:                 &ContextStringLookupCache{}
-		enum_selector_cache:                &ContextStringLookupCache{}
+		enum_selector_cache:                &ContextSourceTypeLookupCache{}
 		enum_method_cache:                  &ContextStringLookupCache{}
 		qualified_enum_method_cache:        &ContextStringLookupCache{}
 		import_type_cache:                  &ImportTypeCache{}

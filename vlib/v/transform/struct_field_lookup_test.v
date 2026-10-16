@@ -16,7 +16,7 @@ fn test_nested_generic_defaults_skip_pointer_aliases() {
 		fields: [FieldInfo{ name: 'value', typ: flat.source_type_int, default_expr: 0 }]
 	}
 	for alias in ['BoxPointer', 'BoxPointerChain'] {
-		mut visited := map[string]bool{}
+		mut visited := map[u32]bool{}
 		assert !t.nested_generic_defaults_need_lowering(flat.source_type_id(alias), mut visited)
 	}
 }

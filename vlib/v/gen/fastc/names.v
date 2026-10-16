@@ -122,7 +122,7 @@ fn (g &Parser) unqualified_function_key(name string) string {
 	}
 	local_key := fastc_function_key(g.module_name, name)
 	mut key := local_key
-	if local_key !in g.functions {
+	if local_key !in g.functions && local_key !in g.mono_functions {
 		builtin_key := fastc_function_key('builtin', name)
 		if builtin_key in g.functions {
 			key = builtin_key

@@ -4638,9 +4638,9 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 		g.write('pub ')
 	}
 	g.write('enum ${n.value}')
-	gp := n.generic_params()
-	if gp.len > 0 && gp[0].len > 0 {
-		g.write(' as ${gp[0]}')
+	backing := n.enum_backing_type_id()
+	if backing != 0 {
+		g.write(' as ${flat.source_type_name(backing)}')
 	}
 	end := g.a.formatter_node_ends[int(id)] or { n.pos.end }
 	// The parser can leave a nameless member behind, e.g. when the `{` sits on its own line

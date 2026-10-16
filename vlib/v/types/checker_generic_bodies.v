@@ -259,7 +259,7 @@ fn (tc &TypeChecker) parse_type_as_instance(typ_id u32) Type {
 			expanding << name
 		}
 	}
-	_, result := tc.intern_type(tc.parse_type_uncached(subst_generic_text(typ, args, names)))
+	_, result := tc.intern_type(tc.parse_type_uncached(flat.source_type_name(subst_generic_text(flat.source_type_id(typ), args, names))))
 	for name in expanding {
 		fork.type_params_expanding.delete(name)
 	}
@@ -271,27 +271,20 @@ fn (tc &TypeChecker) parse_type_as_instance(typ_id u32) Type {
 // the type of a type parameter, and the type of a value that the `$if` tests,
 // `x` in `$if x is f64`, a parameter declared with a type parameter or a local.
 // Anything else is `text`.
-fn (tc &TypeChecker) instance_type_text(text string) string {
-	if tc.type_param_texts.ids.len == 0 {
-		return text
-	}
-	if instance_source_id := tc.type_param_texts.type_id(text) {
-		instance := flat.source_type_name(instance_source_id)
-
-		return instance
-	}
+fn (tc &TypeChecker) instance_type_text(text_id u32) u32 {
+	if tc.type_param_texts.ids.len == 0 { return text_id }
+	text := flat.source_type_name(text_id)
+	if instance_id := tc.type_param_texts.type_id(text) { return instance_id }
 	fn_id := flat.NodeId(tc.fn_context.node_id)
 	if tc.valid_node_id(fn_id) {
 		if param := tc.fn_param_type_param(tc.a.node(fn_id), text, tc.type_param_texts.keys()) {
-			return flat.source_type_name(tc.type_param_texts.type_id(param) or { flat.source_type_id(text) })
+			return tc.type_param_texts.type_id(param) or { text_id }
 		}
 	}
 	if typ := tc.cur_scope.lookup(text) {
-		if typ !is Unknown {
-			return typ.name()
-		}
+		if typ !is Unknown { return typ.source_type_id() }
 	}
-	return text
+	return text_id
 }
 
 // ComptimeInTerm is a term `x in [int, $float]` or `T !in [f64]` of a `$if`.
@@ -848,7 +841,7 @@ fn close_type_param_text(text_id u32, combination map[string]u32, mut path map[s
 		path.delete(name)
 	}
 	if names.len == 0 { return text_id }
-	return flat.source_type_id(subst_generic_text(text, args, names))
+	return subst_generic_text(flat.source_type_id(text), args, names)
 }
 
 // type_param_occurrence_reason says why an error that the checks found, with
