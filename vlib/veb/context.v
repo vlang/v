@@ -63,6 +63,10 @@ mut:
 	// requests a middleware refuses skip the after-middleware, so an
 	// after-middleware could not free them reliably.
 	throttle_leases []ThrottleLease
+	// access_log_start_ns is the monotonic clock reading (`time.sys_mono_now()`)
+	// the access-log middleware stamped when the request arrived, so its finish
+	// half can log the latency. Zero means unstamped.
+	access_log_start_ns i64
 pub:
 	// TODO: move this to `handle_request`
 	// time.ticks() from start of veb connection handle.
