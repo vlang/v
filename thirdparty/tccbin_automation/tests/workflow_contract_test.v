@@ -91,6 +91,7 @@ fn test_pr_contract_workflow_always_exposes_both_required_checks() {
 	assert source.count('make local=1') == 1
 	assert !source.contains('make latest_tcc')
 	tested_checkout := '      - name: Checkout the tested revision\n' +
+		'        id: checkout_the_tested_revision\n' +
 		'        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n' +
 		'        with:\n' + '          fetch-depth: 0\n' + '          persist-credentials: false\n'
 	assert source.count(tested_checkout) == 1
