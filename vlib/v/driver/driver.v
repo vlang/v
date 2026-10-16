@@ -14841,6 +14841,13 @@ pub fn run(args []string) {
 			// Rebuild fork-shared lookup indexes in Cgen's parent arena. Scoped serial
 			// batches otherwise can inherit map storage populated by an earlier arena.
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
+			// The transform helper arenas were kept only for the transform-stage type
+			// cache, whose keys can name their texts; that cache is gone now. Their node
+			// texts were published, so release them before Cgen's peak.
+			for scope in transform_helper_scopes {
+				prealloc_scope_free_for_v3(scope)
+			}
+			transform_helper_scopes = []voidptr{}
 			pre_tc.freeze_type_cache_for_forks()
 			pre_tc.discard_type_cache_overlay_after_forks()
 			mut scoped_generated_c_flags := []string{}
