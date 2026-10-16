@@ -10,8 +10,9 @@ even behind opening parentheses. Assign the inner expression to a variable first
 Both the C emitter and the native ARM64 parser enforce this rule.
 The condition diagnostic preserves original source-file byte offsets through generic rewrites,
 selected compile-time branches, and declaration initializers. The C emitter also preserves these
-positions when it reparses function literals or substituted compile-time loop bodies, including
-nested rewrites. The common diagnostics for unsupported constructs do the same in both parsers.
+positions when it reparses function literals, substituted compile-time loop bodies, or
+inline-assembly operands, including comment removal and nested rewrites. The common diagnostics
+for unsupported constructs do the same in both parsers.
 The C emitter also maps scanner errors in struct-field defaults.
 
 Files marked `@[translated]` retain support for these conditions, including constant, global, and
