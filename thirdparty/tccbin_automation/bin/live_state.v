@@ -54,10 +54,10 @@ const durable_git_history_max_bytes = (100_001 * 41) + 1
 const durable_git_inventory_max_bytes = 16 * 1024 * 1024
 const durable_git_target_blob_max_bytes = 2 * 1024 * 1024
 const durable_git_evidence_blob_max_bytes = 256 * 1024
-const durable_git_capability_deadline_ns = u64(5 * 1_000_000_000)
-const durable_git_regular_deadline_ns = u64(30 * 1_000_000_000)
-const durable_git_large_deadline_ns = u64(120 * 1_000_000_000)
-const durable_git_abort_grace_ns = u64(5 * 1_000_000_000)
+const durable_git_capability_deadline_ns = u64(5) * u64(1_000_000_000)
+const durable_git_regular_deadline_ns = u64(30) * u64(1_000_000_000)
+const durable_git_large_deadline_ns = u64(120) * u64(1_000_000_000)
+const durable_git_abort_grace_ns = u64(5) * u64(1_000_000_000)
 const durable_git_runner_poll_backoff_ms = [1, 2, 4, 8, 16, 20]
 const durable_git_sigchld_drift_message = 'durable Git runner SIGCHLD ownership changed during execution'
 const durable_git_reaping_exclusivity_message = 'durable Git runner lost exclusive child-reaping ownership'
@@ -1752,6 +1752,17 @@ fn durable_git_deadline(class DurableGitReadClass) u64 {
 	}
 }
 
+// durable_git_pipe creates a pipe into `fds`. C's pipe writes two 32-bit
+// descriptors, but V's `int` is 64-bit on 64-bit targets, so the C call must
+// use `i32` storage and copy the results into the `int` array.
+fn durable_git_pipe(mut fds [2]int) i32 {
+	mut raw := [2]i32{}
+	rc := C.pipe(&raw[0])
+	fds[0] = int(raw[0])
+	fds[1] = int(raw[1])
+	return rc
+}
+
 fn durable_git_set_cloexec(fd int) bool {
 	$if linux || macos || freebsd || openbsd {
 		flags := C.fcntl(fd, C.F_GETFD, 0)
@@ -2316,7 +2327,7 @@ fn durable_git_capture_inner(mut session DurableGitRunnerSession, command []stri
 			durable_git_close_acquired(mut acquired_fds)
 			return error('durable Git runner pipe or descriptor setup failed closed')
 		}
-		if C.pipe(&stdout_pipe[0]) != 0 {
+		if durable_git_pipe(mut stdout_pipe) != 0 {
 			durable_git_close_acquired(mut acquired_fds)
 			return error('durable Git runner pipe or descriptor setup failed closed')
 		}
@@ -2327,7 +2338,7 @@ fn durable_git_capture_inner(mut session DurableGitRunnerSession, command []stri
 				return error('durable Git runner pipe or descriptor setup failed closed')
 			}
 		}
-		if C.pipe(&stderr_pipe[0]) != 0 {
+		if durable_git_pipe(mut stderr_pipe) != 0 {
 			durable_git_close_acquired(mut acquired_fds)
 			return error('durable Git runner pipe or descriptor setup failed closed')
 		}
@@ -2338,7 +2349,7 @@ fn durable_git_capture_inner(mut session DurableGitRunnerSession, command []stri
 				return error('durable Git runner pipe or descriptor setup failed closed')
 			}
 		}
-		if C.pipe(&gate_pipe[0]) != 0 {
+		if durable_git_pipe(mut gate_pipe) != 0 {
 			durable_git_close_acquired(mut acquired_fds)
 			return error('durable Git runner pipe or descriptor setup failed closed')
 		}
