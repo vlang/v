@@ -360,8 +360,24 @@ fn (g &Parser) detect_option_none_narrowings(cond_tokens []FastcExpressionToken)
 	return names
 }
 
+fn (g &Parser) validate_if_condition() ! {
+	if g.translated {
+		return
+	}
+	// Match the regular parser, including conditions hidden behind opening parentheses.
+	mut lookahead := g.s
+	mut next := g.tok
+	for next == .lpar {
+		next = lookahead.scan()
+	}
+	if next == .key_if {
+		return error('the condition of an `if` cannot start with another `if` expression; assign it to a variable first at byte ${lookahead.pos + g.source_offset} in ${g.path}')
+	}
+}
+
 fn (mut g Parser) parse_if() !bool {
 	g.next()
+	g.validate_if_condition()!
 	// `if a, b := opt_fn() { ... }` unwraps an option whose value is a multi-return
 	// tuple and binds each component. The comma would otherwise trip the condition
 	// reader as a parallel assignment, so detect the `name (, name)+ :=` prefix here.
@@ -1608,6 +1624,7 @@ fn (mut g Parser) read_if_expression() !string {
 		u32(0)
 	}
 	g.expect(.key_if)!
+	g.validate_if_condition()!
 	// `pos := if a, _, _ := opt_multi() { … } else { … }`: a multi-return option guard
 	// used as an if-expression value.
 	if g.tok == .name {

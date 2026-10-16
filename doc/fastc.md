@@ -5,6 +5,10 @@ without the regular parser, checker, or AST pipeline, then compiles with bundled
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
+As in the default C backend, an `if` condition cannot start with another `if` expression,
+even behind opening parentheses. Assign the inner expression to a variable first.
+Files marked `@[translated]` retain support for these conditions.
+
 Ordinary programs support the following constructs:
 
 - Functions, primitive parameters and return values, local variables, constants, and explicit
