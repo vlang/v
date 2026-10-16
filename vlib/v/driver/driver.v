@@ -4268,6 +4268,13 @@ fn release_cgen_scopes(worker_scopes []voidptr, cgen_scope voidptr) {
 	prealloc_scope_free_for_v3(cgen_scope)
 }
 
+// free_prealloc_scopes releases detached prealloc scopes; any thread can do it.
+fn free_prealloc_scopes(scopes []voidptr) {
+	for scope in scopes {
+		prealloc_scope_free_for_v3(scope)
+	}
+}
+
 // join_stopped_worker_pool waits for the threads of a stopped worker pool.
 fn join_stopped_worker_pool(pool &workers.Pool) {
 	mut p := unsafe { pool }
@@ -14843,9 +14850,10 @@ pub fn run(args []string) {
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
 			// The transform helper arenas were kept only for the transform-stage type
 			// cache, whose keys can name their texts; that cache is gone now. Their node
-			// texts were published, so release them before Cgen's peak.
-			for scope in transform_helper_scopes {
-				prealloc_scope_free_for_v3(scope)
+			// texts were published, so release them before Cgen's peak. Unmapping them
+			// takes a few milliseconds; a helper thread does it while cgen starts.
+			if transform_helper_scopes.len > 0 {
+				cgen_release_threads << spawn free_prealloc_scopes(transform_helper_scopes)
 			}
 			transform_helper_scopes = []voidptr{}
 			pre_tc.freeze_type_cache_for_forks()
