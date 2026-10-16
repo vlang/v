@@ -564,6 +564,9 @@ fn optional_support_selection_thread(arg voidptr) voidptr {
 		metadata_thread := spawn checker_signature_support_thread(voidptr(metadata))
 		w.fn_gen_items = <-a.items
 		w.collect_selected_declaration_signature_types()
+		// The items are the final selection: the declaration task does not have
+		// to walk their signatures again.
+		w.selected_decl_types_ready = true
 		metadata_thread.wait()
 		// Preserve the serial precedence: source specializations, selected
 		// signatures, then checker metadata. Tuple emission deduplicates names.
@@ -1763,6 +1766,7 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 	g.optional_types_ready = worker.optional_types_ready
 	g.multi_return_types_ready = worker.multi_return_types_ready
 	g.decl_types_ready = worker.decl_types_ready
+	g.selected_decl_types_ready = worker.selected_decl_types_ready
 	g.parallel_worker_scopes << worker.parallel_worker_scopes
 	worker.parallel_worker_scopes = []voidptr{}
 	if worker.worker_scope != unsafe { nil } {
