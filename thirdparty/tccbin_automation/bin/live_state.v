@@ -1754,13 +1754,20 @@ fn durable_git_deadline(class DurableGitReadClass) u64 {
 
 // durable_git_pipe creates a pipe into `fds`. C's pipe writes two 32-bit
 // descriptors, but V's `int` is 64-bit on 64-bit targets, so the C call must
-// use `i32` storage and copy the results into the `int` array.
+// use `i32` storage and copy the results into the `int` array. `fds` is written
+// only when C.pipe succeeds, so a failed call leaves the caller's sentinels intact.
 fn durable_git_pipe(mut fds [2]int) i32 {
-	mut raw := [2]i32{}
-	rc := C.pipe(&raw[0])
-	fds[0] = int(raw[0])
-	fds[1] = int(raw[1])
-	return rc
+	$if linux || macos || freebsd || openbsd {
+		mut raw := [2]i32{}
+		rc := C.pipe(&raw[0])
+		if rc == 0 {
+			fds[0] = int(raw[0])
+			fds[1] = int(raw[1])
+		}
+		return rc
+	} $else {
+		return -1
+	}
 }
 
 fn durable_git_set_cloexec(fd int) bool {
@@ -3845,6 +3852,7 @@ fn validate_live_state_inventory_blobs(automation_root string,
 		value := parse_strict_json(record.source)!
 		if path.starts_with('targets/') {
 			target_paths << path
+			validate_durable_target_int_ranges(value)!
 			issues := validate_json_value(os.join_path(automation_root, 'schemas',
 				'target-state.schema.json'), value)!
 			if issues.len > 0 || require_integer_member(value, 'schema_version')! != 1
@@ -4216,5 +4224,41 @@ $if test {
 			return error('durable Git authority adapter accepted noncanonical arguments')
 		}
 		return result.output
+	}
+
+	// durable_git_pipe_round_trip_for_test drives the production pipe helper once and proves the two
+	// returned descriptors are the ends of one pipe. It closes both descriptors before returning.
+	pub fn durable_git_pipe_round_trip_for_test() ![2]int {
+		$if linux || macos || freebsd || openbsd {
+			mut fds := [2]int{}
+			if durable_git_pipe(mut fds) != 0 {
+				return error('durable Git pipe helper failed')
+			}
+			defer {
+				durable_git_close_fd(fds[0])
+				durable_git_close_fd(fds[1])
+			}
+			mut payload := [1]u8{}
+			payload[0] = `p`
+			if C.write(fds[1], voidptr(&payload[0]), 1) != 1 {
+				return error('durable Git pipe write end is not a live descriptor')
+			}
+			mut received := [1]u8{}
+			if C.read(fds[0], voidptr(&received[0]), 1) != 1 || received[0] != `p` {
+				return error('durable Git pipe read end is not the peer of the write end')
+			}
+			return fds
+		} $else {
+			return error('durable Git pipe test is unavailable on this platform')
+		}
+	}
+
+	pub fn durable_git_deadline_constants_for_test() []u64 {
+		return [
+			durable_git_capability_deadline_ns,
+			durable_git_regular_deadline_ns,
+			durable_git_large_deadline_ns,
+			durable_git_abort_grace_ns,
+		]
 	}
 }
