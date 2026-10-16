@@ -51,8 +51,7 @@ jobs:
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: ./v -new-compiler cmd/tools/tools_ci_test.v
       - name: Check shell regression test formatting
-        id: check_shell_regression_test_formatting
-        if: ${{ success() && !cancelled() && steps.check_bsd_tool_job_failure_propagation.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ./v fmt -verify cmd/tools/tools_ci_test.v
 
   tools-linux:

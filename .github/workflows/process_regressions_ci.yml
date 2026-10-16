@@ -56,39 +56,30 @@ jobs:
         id: build
         run: ${{ matrix.build }}
       - name: Check executable resolution
-        id: check_executable_resolution
-        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_resolve_program_test.v
       - name: Check capture-only commands receive stdin EOF
-        id: check_capture_only_commands_receive_stdin_eof
-        if: ${{ success() && !cancelled() && steps.check_executable_resolution.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 3
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_stdin_test.v
       - name: Test the compiler launcher
-        id: test_the_compiler_launcher
-        if: ${{ success() && !cancelled() && steps.check_capture_only_commands_receive_stdin_eof.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler -silent test cmd/v/
       - name: Check deadlines and inherited output pipes
-        id: check_deadlines_and_inherited_output_pipes
-        if: ${{ success() && !cancelled() && steps.test_the_compiler_launcher.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_timeout_test.v
       - name: Check unbounded commands with inherited output pipes
-        id: check_unbounded_commands_with_inherited_output_pipes
-        if: ${{ success() && !cancelled() && steps.check_deadlines_and_inherited_output_pipes.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_unbounded_test.v
       - name: Check existing compiler flag tokenization
-        id: check_existing_compiler_flag_tokenization
-        if: ${{ success() && !cancelled() && steps.check_unbounded_commands_with_inherited_output_pipes.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_test.v
       - name: Check UTF-8 compiler flag tokenization
-        id: check_utf_8_compiler_flag_tokenization
-        if: ${{ success() && !cancelled() && steps.check_existing_compiler_flag_tokenization.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_utf8_test.v
       - name: Check adjacent quoted compiler flag fragments
-        id: check_adjacent_quoted_compiler_flag_fragments
-        if: ${{ success() && !cancelled() && steps.check_utf_8_compiler_flag_tokenization.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_quoted_parts_test.v
       - name: Check implicit output preserves source files
-        id: check_implicit_output_preserves_source_files
-        if: ${{ success() && !cancelled() && steps.check_adjacent_quoted_compiler_flag_fragments.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/driver/implicit_output_test.v

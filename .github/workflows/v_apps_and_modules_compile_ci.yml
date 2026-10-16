@@ -116,8 +116,7 @@ jobs:
         if: ${{ false && !cancelled() && steps.build.outcome == 'success' }}
         run: .github/workflows/compile_herolib.sh
       - name: Build vlang/vab
-        id: build_vlang_vab
-        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install VAB"
           v retry -- v install vab
@@ -162,8 +161,7 @@ jobs:
           cd /tmp/coreutils; make
 
       - name: Build vlang/gitly
-        id: build_vlang_gitly
-        if: ${{ success() && !cancelled() && steps.build_vlang_vab.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install markdown"
           v retry -- v install markdown
@@ -190,8 +188,7 @@ jobs:
           # v run ~/.vmodules/ui/examples/build_examples.vsh
 
       - name: Build vlang/v-analyzer
-        id: build_vlang_v_analyzer
-        if: ${{ success() && !cancelled() && steps.build_vlang_gitly.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone v-analyzer"
           v retry -- git clone --depth=1 --branch=master --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
@@ -204,8 +201,7 @@ jobs:
           VFLAGS=-w v build.vsh release
 
       - name: Format vlang/v-analyzer
-        id: format_vlang_v_analyzer
-        if: ${{ success() && !cancelled() && steps.build_vlang_v_analyzer.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           cd /tmp/v-analyzer
           fmt_files=($(git ls-files '*.v' '*.vsh' ':!:metadata/stubs/*.v' ':!:src/metadata/stubs/*.v'))
@@ -247,8 +243,7 @@ jobs:
           cd /tmp/adventofcode && v run verify.v
 
       - name: Build vlang/msgpack
-        id: build_vlang_msgpack
-        if: ${{ success() && !cancelled() && steps.format_vlang_v_analyzer.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install msgpack"
           v retry -- v install msgpack
