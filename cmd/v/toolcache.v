@@ -94,7 +94,9 @@ fn tool_cache_dir() ?string {
 	mut default_candidates := [os.join_path(os.cache_dir(), 'v', 'tools'),
 		os.join_path(os.vtmp_dir(), 'tools')]
 	home_candidate := tool_cache_home_candidate()
-	if home_candidate != '' {
+	// A VTOOLS_CACHE_DIR that names `~/.vtools` stays the user's own choice, like any other
+	// folder set there: the folders above it are not checked, and it is never moved aside.
+	if home_candidate != '' && !candidates.any(os.abs_path(it) == os.abs_path(home_candidate)) {
 		default_candidates << home_candidate
 	}
 	candidates << default_candidates

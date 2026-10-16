@@ -122,7 +122,9 @@ fn tool_cache_root_can_stage(path string) bool {
 
 // tool_cache_parents_are_trusted reports whether `path` and every folder above it pass
 // `tool_cache_root_can_stage`. If any of them is writable by others (without the sticky bit),
-// someone else could rename the folder below it and put their own one in its place.
+// someone else could rename the folder below it and put their own one in its place. Folders
+// above everything that `path` shares with the V executable are the one exception, see
+// `tool_cache_folder_common_with_compiler`.
 // The folders are checked both as written and with symlinks resolved: when `~/.cache/v` is a
 // symlink, someone who can write to `~/.cache` could point it somewhere else at any time.
 fn tool_cache_parents_are_trusted(path string) bool {

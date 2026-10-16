@@ -178,3 +178,54 @@ fn test_the_home_folder_candidate_is_used_when_the_other_defaults_are_not_safe()
 		})!
 	}
 }
+
+fn test_an_explicit_home_folder_cache_is_not_treated_as_a_default_one() {
+	$if !windows {
+		tree := new_host_like_tree('explicit_home')
+		defer {
+			tree.remove()
+		}
+		if !tool_cache_parents_are_trusted(tree.root) {
+			eprintln('> skipping, the folders above `${tree.root}` are not private')
+			return
+		}
+		home_cache := os.join_path(tree.home, '.vtools')
+		// With V installed outside the home folder, `world` is checked for the default candidates,
+		// but VTOOLS_CACHE_DIR is the user's own choice, and the folders above it are not checked.
+		other := os.join_path(tree.root, 'opt', 'v')
+		os.mkdir_all(os.dir(other))!
+		os.write_file(other, '')!
+		with_tool_cache_variables({
+			'V3_PRIMARY_VEXE':      other
+			'HOME':                 tree.home
+			'XDG_CACHE_HOME':       tree.cache
+			'VTMP':                 tree.tmp
+			tool_cache_dir_env:     home_cache
+			tool_cache_disable_env: ''
+			tool_cache_verbose_env: ''
+		}, fn [home_cache] () ! {
+			chosen := tool_cache_dir() or { panic('the explicit `${home_cache}` was not used') }
+			assert chosen == home_cache
+		})!
+		os.rmdir(home_cache)!
+		// A `~/.vtools` set there that is a symlink to a private folder is used, not moved aside.
+		os.chmod(tree.world, 0o755)!
+		elsewhere := os.join_path(tree.root, 'elsewhere')
+		os.mkdir(elsewhere, mode: 0o700)!
+		os.symlink(elsewhere, home_cache)!
+		with_tool_cache_variables({
+			'V3_PRIMARY_VEXE':      tree.compiler
+			'HOME':                 tree.home
+			'XDG_CACHE_HOME':       tree.cache
+			'VTMP':                 tree.tmp
+			tool_cache_dir_env:     home_cache
+			tool_cache_disable_env: ''
+			tool_cache_verbose_env: ''
+		}, fn [tree, home_cache, elsewhere] () ! {
+			chosen := tool_cache_dir() or { panic('the explicit `${home_cache}` was not used') }
+			assert chosen == elsewhere
+			assert os.is_link(home_cache)
+			assert os.ls(tree.home)!.filter(it.starts_with('.vtools.')) == []
+		})!
+	}
+}
