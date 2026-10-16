@@ -917,11 +917,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		fastc_method_c_name(g.module_name, fastc_c_declared_type_name(receiver_key), name)
 	}
-	c_name := if is_main {
-		fastc_c_main_name(g.prefs)
-	} else {
-		g.c_function_name_or(function_key, conventional_c_name)
-	}
+	// The entry's target-specific name (`wmain` on Windows) is resolved here too,
+	// so its definition and every reference to it share one symbol.
+	c_name := g.c_function_name_or(function_key, conventional_c_name)
 	g.last_function_c_name = c_name
 	c_return_type := if is_main { 'int' } else { fastc_output_c_type(return_type) }
 	c_params := if is_main && g.selfhost {
