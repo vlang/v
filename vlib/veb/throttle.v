@@ -10,14 +10,19 @@ import time
 // `Retry-After` header instead of letting the pileup reach the handlers.
 //
 // A rate limiter caps how often clients may arrive; a throttle caps how many
-// may be inside at once. Slow handlers and slow clients need the second one:
-// without it every worker thread can end up parked on one batch of requests.
+// may be inside at once.
 //
-// A slot held past `lease_timeout` is reclaimed, so a request that takes one
-// and never releases it — a path nothing claims, which answers 404 before any
-// after-middleware runs — degrades instead of leaking forever. Set the lease
-// above your slowest handler: a handler still running past it over-admits
-// rather than fails.
+// A queued request waits by sleeping on the thread that serves it. veb's
+// fasthttp backend serves each connection inline on a fixed set of worker
+// threads, so a waiting request also stalls the other connections of its
+// thread, and no more requests than there are worker threads run handlers at
+// once. Keep `max_concurrent` below the worker count for the cap to bind, and
+// set `max_waiting: 0` to refuse at once instead of queueing.
+//
+// veb frees a slot when its request finishes, however it finishes.
+// `lease_timeout` is only a backstop: a slot held longer is reclaimed, so a
+// handler still running past it over-admits rather than blocks everyone. Set
+// it above your slowest handler, or to 0 to never reclaim a slot early.
 @[params]
 pub struct ThrottleOptions {
 pub:
@@ -30,8 +35,8 @@ pub:
 
 // ThrottleStore counts handler slots behind a mutex: veb serves on worker
 // threads, so two requests race here on every arrival. Slots are ids mapped
-// to expiry timestamps; sweeping the expired ones bounds what vanished
-// requests can hold.
+// to expiry timestamps; sweeping the expired ones bounds what a stuck
+// handler can hold.
 struct ThrottleStore {
 	max_concurrent int
 	max_waiting    int
@@ -45,16 +50,24 @@ mut:
 
 fn new_throttle_store(max_concurrent int, max_waiting int, lease time.Duration) &ThrottleStore {
 	return &ThrottleStore{
-		max_concurrent: max_concurrent
+		// A cap below one would refuse every request.
+		max_concurrent: if max_concurrent < 1 { 1 } else { max_concurrent }
 		max_waiting:    max_waiting
 		lease_ms:       i64(lease) / i64(time.millisecond)
 		mu:             sync.new_mutex()
 	}
 }
 
+// throttle_now_ms reads a monotonic clock in milliseconds, so stepping the
+// wall clock neither stretches nor cuts short a lease or a wait.
+fn throttle_now_ms() i64 {
+	return i64(time.sys_mono_now() / 1_000_000)
+}
+
 // acquire takes a handler slot, waiting up to `wait_ms` for one, and returns
 // the slot id with it. It returns 0 when no slot can start promptly: the
-// waiting queue is full, or nothing frees before the timeout.
+// waiting queue is full, or nothing frees before the timeout. `now_ms` is a
+// `throttle_now_ms` reading.
 fn (mut s ThrottleStore) acquire(now_ms i64, wait_ms i64) u64 {
 	deadline := now_ms + wait_ms
 	s.mu.lock()
@@ -70,12 +83,13 @@ fn (mut s ThrottleStore) acquire(now_ms i64, wait_ms i64) u64 {
 	}
 	s.wait++
 	s.mu.unlock()
-	for time.now().unix_milli() < deadline {
+	for throttle_now_ms() < deadline {
 		time.sleep(5 * time.millisecond)
 		s.mu.lock()
-		s.sweep_expired(time.now().unix_milli())
+		now := throttle_now_ms()
+		s.sweep_expired(now)
 		if s.live_slots() < s.max_concurrent {
-			id := s.take_slot(time.now().unix_milli())
+			id := s.take_slot(now)
 			s.wait--
 			s.mu.unlock()
 			return id
@@ -112,8 +126,12 @@ fn (mut s ThrottleStore) take_slot(now_ms i64) u64 {
 	return s.next
 }
 
-// sweep_expired drops slots whose lease passed. The caller holds the mutex.
+// sweep_expired drops slots whose lease passed. A lease of 0 or less never
+// expires. The caller holds the mutex.
 fn (mut s ThrottleStore) sweep_expired(now_ms i64) {
+	if s.lease_ms <= 0 {
+		return
+	}
 	for id, expiry in s.slots {
 		if expiry <= now_ms {
 			s.slots.delete(id)
@@ -121,10 +139,36 @@ fn (mut s ThrottleStore) sweep_expired(now_ms i64) {
 	}
 }
 
-// Throttle is the acquire half and the release half of one throttle sharing
-// one store. veb middleware runs before a handler or after it, never around
-// it, so the two halves register separately: the slot id travels on the
-// request context between them.
+// ThrottleLease is one handler slot a throttle took for a request. The
+// request context keeps its leases, so veb can free each slot in the store it
+// came from, even when several throttles apply to one request.
+struct ThrottleLease {
+	store &ThrottleStore
+	slot  u64
+}
+
+// release_throttle_leases frees every slot a throttle took for this request.
+// `handle_route` defers it, so it runs however the request ends: after the
+// handler and the after-middleware, but also on a 404, or when a later
+// middleware refuses the request, where no after-middleware runs.
+fn (mut ctx Context) release_throttle_leases() {
+	for lease in ctx.throttle_leases {
+		mut store := lease.store
+		store.release(lease.slot)
+	}
+	ctx.throttle_leases = []
+}
+
+// retry_after_seconds turns a wait timeout into a `Retry-After` value, which
+// RFC 9110 counts in whole seconds: rounded up, and never 0.
+fn retry_after_seconds(wait_ms i64) i64 {
+	secs := (wait_ms + 999) / 1000
+	return if secs < 1 { 1 } else { secs }
+}
+
+// Throttle is one cap on concurrent handlers: a slot store and the middleware
+// that takes slots from it. Every registration of the same throttle's
+// middleware shares the one cap.
 pub struct Throttle[T] {
 mut:
 	store   &ThrottleStore
@@ -132,13 +176,15 @@ mut:
 	wait_ms i64
 }
 
-// throttle builds the pair. Register both halves, globally or on the same
-// route:
+// throttle builds a throttle. Register its middleware globally or on routes,
+// after any middleware that refuses requests cheaply, such as authentication,
+// so refused requests never wait for a slot:
 // ```v
-// th := veb.throttle[Context]()
+// th := veb.throttle[Context](max_concurrent: 8)
 // app.use(th.acquire())
-// app.use(th.release())
 // ```
+// There is no release half to register: veb frees the slot when the request
+// finishes, whichever way it finishes.
 pub fn throttle[T](options ThrottleOptions) Throttle[T] {
 	return Throttle[T]{
 		store:   new_throttle_store(options.max_concurrent, options.max_waiting,
@@ -148,34 +194,27 @@ pub fn throttle[T](options ThrottleOptions) Throttle[T] {
 	}
 }
 
-// acquire takes a handler slot before the handler runs and records it on the
-// request context. A request that cannot start promptly is refused with 503
-// and `Retry-After` instead.
-pub fn (t &Throttle[T]) acquire() MiddlewareOptions[T] {
+// acquire returns the middleware that takes a handler slot before the
+// handler runs. A request that cannot start promptly is refused with 503 and
+// `Retry-After` instead. The middleware keeps its own copy of the throttle,
+// so the `Throttle` may be a local of a setup function that returns before
+// the first request arrives.
+pub fn (t Throttle[T]) acquire() MiddlewareOptions[T] {
+	retry_after := retry_after_seconds(t.wait_ms).str()
 	return MiddlewareOptions[T]{
-		handler: fn [t] [T](mut ctx T) bool {
-			slot := t.store.acquire(time.now().unix_milli(), t.wait_ms)
+		handler: fn [t, retry_after] [T](mut ctx T) bool {
+			slot := t.store.acquire(throttle_now_ms(), t.wait_ms)
 			if slot != 0 {
-				ctx.Context.throttle_slot = slot
+				ctx.Context.throttle_leases << ThrottleLease{
+					store: t.store
+					slot:  slot
+				}
 				return true
 			}
 			ctx.res.set_status(.service_unavailable)
-			ctx.res.header.set_custom('Retry-After', t.wait_ms.str()) or {}
+			ctx.res.header.set(.retry_after, retry_after)
 			ctx.text(t.options.message)
 			return false
-		}
-	}
-}
-
-// release frees the slot `acquire` took, after the handler ran. Requests the
-// acquire half refused, and paths nothing claimed, never reach it.
-pub fn (t &Throttle[T]) release() MiddlewareOptions[T] {
-	return MiddlewareOptions[T]{
-		after:   true
-		handler: fn [t] [T](mut ctx T) bool {
-			t.store.release(ctx.Context.throttle_slot)
-			ctx.Context.throttle_slot = 0
-			return true
 		}
 	}
 }
