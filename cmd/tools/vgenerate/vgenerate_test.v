@@ -1,0 +1,105 @@
+module main
+
+import os
+
+const gen_test_path = os.join_path(os.vtmp_dir(), 'test_vgenerate')
+
+fn gen_setup() string {
+	os.rmdir_all(gen_test_path) or {}
+	os.mkdir_all(gen_test_path) or { panic(err) }
+	old_wd := os.getwd()
+	os.chdir(gen_test_path) or { panic(err) }
+	return old_wd
+}
+
+fn gen_teardown(old_wd string) {
+	os.chdir(old_wd) or {}
+	os.rmdir_all(gen_test_path) or {}
+}
+
+fn test_generate_model_writes_an_orm_struct() {
+	old_wd := gen_setup()
+	defer {
+		gen_teardown(old_wd)
+	}
+	generate_model(['User', 'name:string', 'age:int', 'active:bool']) or {
+		assert false, 'generate_model failed: ${err}'
+		return
+	}
+	content := os.read_file(os.join_path('models', 'user.v')) or {
+		assert false, 'models/user.v was not created'
+		return
+	}
+	assert content.contains('module models')
+	assert content.contains("@[table: 'users']")
+	assert content.contains('pub struct User {')
+	assert content.contains('id     int @[primary; sql: serial]')
+	assert content.contains('name   string')
+	assert content.contains('age    int')
+	assert content.contains('active bool')
+}
+
+fn test_generate_model_rejects_an_unknown_field_type() {
+	old_wd := gen_setup()
+	defer {
+		gen_teardown(old_wd)
+	}
+	generate_model(['User', 'nick:symbol']) or {
+		assert err.msg().contains('unknown field type'), 'wrong error: ${err.msg()}'
+		return
+	}
+	assert false, 'a symbol field must be rejected'
+}
+
+fn test_generate_model_rejects_a_non_camel_name() {
+	old_wd := gen_setup()
+	defer {
+		gen_teardown(old_wd)
+	}
+	generate_model(['user']) or {
+		assert err.msg().contains('CamelCase'), 'wrong error: ${err.msg()}'
+		return
+	}
+	assert false, 'a lowercase name must be rejected'
+}
+
+fn test_generate_model_never_overwrites() {
+	old_wd := gen_setup()
+	defer {
+		gen_teardown(old_wd)
+	}
+	os.mkdir_all('models') or { panic(err) }
+	os.write_file(os.join_path('models', 'user.v'), 'hand-written') or { panic(err) }
+	generate_model(['User', 'name:string']) or {
+		assert err.msg().contains('already exists'), 'wrong error: ${err.msg()}'
+		return
+	}
+	assert false, 'an existing file must be refused'
+	assert os.read_file(os.join_path('models', 'user.v')) or { '' } == 'hand-written'
+}
+
+fn test_generate_controller_writes_a_veb_controller_stub() {
+	old_wd := gen_setup()
+	defer {
+		gen_teardown(old_wd)
+	}
+	generate_controller(['Users']) or {
+		assert false, 'generate_controller failed: ${err}'
+		return
+	}
+	content := os.read_file('users_controller.v') or {
+		assert false, 'users_controller.v was not created'
+		return
+	}
+	assert content.contains('pub struct UsersController {')
+	assert content.contains('veb.Controller')
+	assert content.contains("@['/'; get]")
+	assert content.contains("@['/:id'; get]")
+	assert content.contains("register_controller[UsersController, Context]('/users'")
+}
+
+fn test_snake_case_converts_camel_names() {
+	assert snake_case('User') == 'user'
+	assert snake_case('UserProfile') == 'user_profile'
+	assert snake_case('API') == 'a_p_i'
+}
