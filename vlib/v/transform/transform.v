@@ -5025,6 +5025,16 @@ fn (t &Transformer) copy_generic_decl_indexes(mut w Transformer) {
 	w.generic_fn_decls_ready = true
 }
 
+// fork_prepared_type_bindings shares the prepared, read-only binding map while
+// keeping the spelling lookup cache private. Writable signature maps detach in
+// ensure_private_signature_maps before their first insertion.
+fn fork_prepared_type_bindings(bindings &flat.TypeTextBindings) flat.TypeTextBindings {
+	return flat.TypeTextBindings{
+		texts: bindings.texts.fork()
+		ids:   bindings.ids
+	}
+}
+
 // fork_program_view constructs a worker from explicit compilation-wide state.
 // All fields omitted here come from new_transformer_view as fresh worker-local
 // state, so adding a mutable Transformer field cannot silently share its backing
@@ -5037,26 +5047,26 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		tc:                                  wtc
 		structs:                             t.structs
 		embedded_fields:                     t.embedded_fields
-		struct_short_name_index:             t.struct_short_name_index.fork()
+		struct_short_name_index:             fork_prepared_type_bindings(t.struct_short_name_index)
 		struct_short_name_index_ready:       t.struct_short_name_index_ready
 		non_main_type_short_names:           t.non_main_type_short_names
 		non_main_type_index_ready:           t.non_main_type_index_ready
-		unique_fields:                       t.unique_fields.fork()
+		unique_fields:                       fork_prepared_type_bindings(t.unique_fields)
 		alias_methods:                       t.alias_methods
 		alias_method_candidates:             t.alias_method_candidates
 		alias_method_candidates_ready:       t.alias_method_candidates_ready
 		alias_receiver_fns:                  t.alias_receiver_fns
 		alias_receiver_fns_signatures:       t.alias_receiver_fns_signatures
 		alias_receiver_fns_aliases:          t.alias_receiver_fns_aliases
-		globals:                             t.globals.fork()
+		globals:                             fork_prepared_type_bindings(t.globals)
 		global_qualified_names:              t.global_qualified_names
 		sum_types:                           t.sum_types
 		sum_variant_parents:                 t.sum_variant_parents
 		sum_variant_names:                   t.sum_variant_names
-		sum_variant_fields:                  t.sum_variant_fields.fork()
-		qualified_types:                     t.qualified_types.fork()
-		fn_ret_types:                        t.fn_ret_types.fork()
-		fn_ret_types_by_module:              t.fn_ret_types_by_module.fork()
+		sum_variant_fields:                  fork_prepared_type_bindings(t.sum_variant_fields)
+		qualified_types:                     fork_prepared_type_bindings(t.qualified_types)
+		fn_ret_types:                        fork_prepared_type_bindings(t.fn_ret_types)
+		fn_ret_types_by_module:              fork_prepared_type_bindings(t.fn_ret_types_by_module)
 		multi_return_fn_ret_types:           t.multi_return_fn_ret_types
 		receiver_method_suffix_index:        t.receiver_method_suffix_index
 		declared_fn_name_counts:             t.declared_fn_name_counts
@@ -5076,7 +5086,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 			map[string]i8{}
 		}
 		enum_types:                          t.enum_types
-		enum_backing_types:                  t.enum_backing_types.fork()
+		enum_backing_types:                  fork_prepared_type_bindings(t.enum_backing_types)
 		runtime_type_indexes:                t.runtime_type_indexes
 		generic_alias_names:                 t.generic_alias_names
 		type_alias_suffixes:                 t.type_alias_suffixes
