@@ -6106,12 +6106,32 @@ fn (mut t Transformer) rewrite_generic_call_sites(decls map[string]GenericFnDecl
 
 fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 	mut changed := false
+	// Whether a callee returns a generic application depends on its name alone,
+	// and the same names are called over and over: remember, by the address of
+	// the name, those that do not.
+	mut plain_callee_ptrs := []voidptr{len: 4096}
+	mut plain_callee_lens := []int{len: 4096}
 	for i in 0 .. t.a.nodes.len {
 		if t.a.nodes[i].kind !in [.call, .or_expr, .decl_assign] {
 			continue
 		}
 		// Only candidate nodes need copies before AST rewriting.
 		node := t.a.nodes[i]
+		if node.kind == .call && node.children_count > 0 && !isnil(t.tc) {
+			callee := t.a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value.len > 0 {
+				slot := int((usize(callee.value.str) >> 3) & 4095)
+				if plain_callee_ptrs[slot] == voidptr(callee.value.str)
+					&& plain_callee_lens[slot] == callee.value.len {
+					continue
+				}
+				if !t.fn_ret_type_is_generic_app(callee.value) {
+					plain_callee_ptrs[slot] = voidptr(callee.value.str)
+					plain_callee_lens[slot] = callee.value.len
+					continue
+				}
+			}
+		}
 		if node.kind == .call {
 			if concrete_type_source_id := t.concrete_fn_alias_call_return_type(i, node) {
 				concrete_type := flat.source_type_name(concrete_type_source_id)
@@ -6196,6 +6216,15 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 		}
 	}
 	return changed
+}
+
+// fn_ret_type_is_generic_app tells whether the checker's return type of the
+// function `name` is a generic application, the first test of
+// concrete_fn_alias_call_return_type.
+fn (t &Transformer) fn_ret_type_is_generic_app(name string) bool {
+	ret := t.tc.fn_ret_types[name] or { return false }
+	_, _, is_generic_alias := generic_app_parts(ret.name())
+	return is_generic_alias
 }
 
 fn (mut t Transformer) concrete_fn_alias_call_return_type(id int, node flat.Node) ?u32 {
