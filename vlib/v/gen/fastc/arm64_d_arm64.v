@@ -5285,9 +5285,14 @@ fn (mut p FastArm64Parser) pop_loop() {
 	p.map_loop_writebacks.delete_last()
 }
 
+fn (p &FastArm64Parser) validate_if_condition() ! {
+	fastc_validate_if_condition(p.tok, p.s, p.source_file.header.translated, 0, p.source_file.path)!
+}
+
 fn (mut p FastArm64Parser) parse_if() ! {
 	p.push_local_scope()
 	p.next()
+	p.validate_if_condition()!
 	mut condition := FastArm64Value{}
 	if p.tok == .name {
 		mut look := p.s
@@ -7547,6 +7552,7 @@ fn (mut p FastArm64Parser) parse_if_expression(expected_type_name_source_id u32)
 	expected_type_name := flat.source_type_name(expected_type_name_source_id)
 	p.push_local_scope()
 	p.expect(.key_if)!
+	p.validate_if_condition()!
 	mut condition := FastArm64Value{}
 	if p.tok == .name {
 		mut look := p.s

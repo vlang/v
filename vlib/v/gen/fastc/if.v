@@ -361,17 +361,21 @@ fn (g &Parser) detect_option_none_narrowings(cond_tokens []FastcExpressionToken)
 }
 
 fn (g &Parser) validate_if_condition() ! {
-	if g.translated {
+	fastc_validate_if_condition(g.tok, g.s, g.translated, g.source_offset, g.path)!
+}
+
+fn fastc_validate_if_condition(tok token.Token, scan &scanner.Scanner, translated bool, source_offset int, path string) ! {
+	if translated || tok !in [.key_if, .lpar] {
 		return
 	}
 	// Match the regular parser, including conditions hidden behind opening parentheses.
-	mut lookahead := g.s
-	mut next := g.tok
+	mut lookahead := *scan
+	mut next := tok
 	for next == .lpar {
 		next = lookahead.scan()
 	}
 	if next == .key_if {
-		return error('the condition of an `if` cannot start with another `if` expression; assign it to a variable first at byte ${lookahead.pos + g.source_offset} in ${g.path}')
+		return error('the condition of an `if` cannot start with another `if` expression; assign it to a variable first at byte ${lookahead.pos + source_offset} in ${path}')
 	}
 }
 

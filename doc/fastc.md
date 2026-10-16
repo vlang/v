@@ -7,6 +7,7 @@ with its source byte offset; FastC does not silently switch to the C backend.
 
 As in the default C backend, an `if` condition cannot start with another `if` expression,
 even behind opening parentheses. Assign the inner expression to a variable first.
+Both the C emitter and the native ARM64 parser enforce this rule.
 Files marked `@[translated]` retain support for these conditions.
 
 Ordinary programs support the following constructs:
