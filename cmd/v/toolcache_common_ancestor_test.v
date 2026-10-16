@@ -229,3 +229,71 @@ fn test_an_explicit_home_folder_cache_is_not_treated_as_a_default_one() {
 		})!
 	}
 }
+
+// rejected_tool_cache_problems maps each folder that the error of `tool_cache_dir` lists to the
+// problems listed for it.
+fn rejected_tool_cache_problems(message string) map[string][]string {
+	mut problems := map[string][]string{}
+	mut candidate := ''
+	for line in message.split_into_lines() {
+		if line.starts_with('  - `') && line.ends_with('`:') {
+			candidate = line.all_after('`').all_before_last('`')
+			problems[candidate] = []string{}
+		} else if candidate != '' && line.starts_with('      ') {
+			problems[candidate] << line.trim_space()
+		} else {
+			candidate = ''
+		}
+	}
+	return problems
+}
+
+fn test_a_tolerated_folder_is_not_reported_as_a_problem() {
+	$if !windows {
+		tree := new_host_like_tree('problems')
+		defer {
+			tree.remove()
+		}
+		if !tool_cache_parents_are_trusted(tree.root) {
+			eprintln('> skipping, the folders above `${tree.root}` are not private')
+			return
+		}
+		os.chmod(tree.home, 0o775) or { panic(err) }
+		with_tool_cache_variables({
+			'V3_PRIMARY_VEXE':      tree.compiler
+			'HOME':                 tree.home
+			'XDG_CACHE_HOME':       tree.cache
+			'VTMP':                 tree.tmp
+			tool_cache_dir_env:     ''
+			tool_cache_disable_env: ''
+			tool_cache_verbose_env: ''
+		}, fn [tree] () ! {
+			home_problem := '`${tree.home}` (mode 0775) is writable by its group without the sticky bit'
+			world_problem := '`${tree.world}` (mode 0777) is writable by its group and others without the sticky bit'
+			cache_problem := '`${tree.cache}` (mode 0775) is writable by its group without the sticky bit'
+			// Only the home folder has to be fixed for a cache in it: `world` leads to V too.
+			assert tool_cache_parent_problems(tree.home).filter(it.starts_with('`${tree.root}')) == [
+				home_problem,
+			]
+			// The temporary folder and V are reached through different entries of `world`, so
+			// there `world` has to be fixed.
+			assert tool_cache_parent_problems(tree.tmp).filter(it.starts_with('`${tree.root}')) == [
+				world_problem,
+			]
+			if chosen := tool_cache_dir() {
+				assert false, 'the cache `${chosen}` is below a folder that others can change'
+			} else {
+				problems := rejected_tool_cache_problems(err.msg())
+				assert problems == {
+					os.join_path(tree.cache, 'v', 'tools'): [cache_problem, home_problem]
+					os.join_path(tree.tmp, 'tools'):        [world_problem]
+					os.join_path(tree.home, '.vtools'):     [home_problem]
+				}, err.msg()
+			}
+			// Fixing the home folder alone is enough, while `world` stays writable by everybody.
+			os.chmod(tree.home, 0o700)!
+			chosen := tool_cache_dir() or { panic(err) }
+			assert chosen == os.join_path(tree.home, '.vtools')
+		})!
+	}
+}

@@ -241,11 +241,13 @@ fn prepare_default_tool_cache_root(candidate string) []string {
 // walks up from `path`, both as written and with symlinks resolved, like the check does, and
 // lists every folder that does not pass `tool_cache_root_can_stage`, nearest first, for as long
 // as the check still rejects the folders from there upwards. So all of them can be fixed at once.
+// The walk stops at the folders that the check tolerates for `path`, see
+// `tool_cache_parent_is_tolerated`: they do not need to be fixed.
 fn tool_cache_parent_problems(path string) []string {
 	mut problems := []string{}
 	for start in [os.real_path(path), os.abs_path(path)] {
 		mut current := start
-		for !tool_cache_parents_are_trusted(current) {
+		for !tool_cache_parents_are_trusted(current) && !tool_cache_parent_is_tolerated(start, current) {
 			problem := tool_cache_root_problem(current)
 			if problem != '' && problem !in problems {
 				problems << problem

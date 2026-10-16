@@ -224,6 +224,14 @@ fn tool_cache_path_is_inside(path string, folder string) bool {
 	return path.starts_with(if folder.ends_with('/') { folder } else { folder + '/' })
 }
 
+// tool_cache_parent_is_tolerated reports whether `tool_cache_ancestors_can_stage` accepts
+// `folder`, a folder above `path`, whatever its permissions are, because it is above everything
+// that `path` shares with the V executable. Checked on its own, `folder` is not tolerated: then
+// it is itself the folder that it shares with the V executable.
+fn tool_cache_parent_is_tolerated(path string, folder string) bool {
+	return tool_cache_folder_is_above(folder, tool_cache_folder_common_with_compiler(path))
+}
+
 // tool_cache_folder_is_above reports whether `folder` is above `common`, and is not `common`.
 fn tool_cache_folder_is_above(folder string, common string) bool {
 	return common != '' && folder != common && tool_cache_path_is_inside(common, folder)
