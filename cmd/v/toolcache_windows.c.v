@@ -196,6 +196,12 @@ fn tool_cache_parents_are_trusted(_ string) bool {
 	return true
 }
 
+// tool_cache_parent_is_tolerated is never needed on Windows, where the folders above the cache
+// are not checked.
+fn tool_cache_parent_is_tolerated(_ string, _ string) bool {
+	return false
+}
+
 // make_tool_cache_root_private does nothing on Windows. There, folder access is controlled by
 // ACLs (per-user permission lists), not by Unix permission bits.
 fn make_tool_cache_root_private(_ string) {}

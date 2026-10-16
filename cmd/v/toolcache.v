@@ -98,8 +98,14 @@ fn tool_cache_dir() !string {
 			candidates << custom.trim_space()
 		}
 	}
-	default_candidates := [os.join_path(os.cache_dir(), 'v', 'tools'),
+	mut default_candidates := [os.join_path(os.cache_dir(), 'v', 'tools'),
 		os.join_path(os.vtmp_dir(), 'tools')]
+	home_candidate := tool_cache_home_candidate()
+	// A VTOOLS_CACHE_DIR that names `~/.vtools` stays the user's own choice, like any other
+	// folder set there: the folders above it are not checked, and it is never moved aside.
+	if home_candidate != '' && !candidates.any(os.abs_path(it) == os.abs_path(home_candidate)) {
+		default_candidates << home_candidate
+	}
 	candidates << default_candidates
 	mut rejected := []ToolCacheRejection{}
 	for candidate in candidates {
@@ -168,9 +174,9 @@ fn tool_cache_unavailable_message(rejected []ToolCacheRejection) string {
 		lines << 'The tool cache folder has to belong to you, and no other account may be allowed to change it.'
 		lines << 'Fix its permissions, or set ${tool_cache_dir_env} to a folder that only you can change.'
 	} $else {
-		lines << 'The tool cache folder, and every folder above it, has to belong to you or to root, and nobody'
-		lines << 'else may write to it unless it has the sticky bit. Otherwise someone else could replace the'
-		lines << 'tools that V runs.'
+		lines << 'The tool cache folder, and every folder above it up to the first one that also holds the V'
+		lines << 'executable, has to belong to you or to root, and nobody else may write to it unless it has the'
+		lines << 'sticky bit. Otherwise someone else could replace the tools that V runs.'
 		lines << 'Fix the permissions listed above, or set ${tool_cache_dir_env} to a folder that only you can'
 		lines << 'write to (V does not check the folders above that one), for example:'
 		lines << '  mkdir -p -m 700 "\$HOME/.vtools" && export ${tool_cache_dir_env}="\$HOME/.vtools"'
@@ -182,10 +188,11 @@ fn tool_cache_unavailable_message(rejected []ToolCacheRejection) string {
 // folder, or what is inside it. It returns why the folder cannot be used, or nothing when it
 // can.
 //
-// The parent is V's own folder (`~/.cache/v`) or the `VTMP` folder (`/tmp/v_<uid>` by default).
-// It has to be private, along with every folder above it, or someone else could swap the cache
-// folder for their own one at any time. V tightens `~/.cache/v` itself, when the current user
-// owns it.
+// The parent is V's own folder (`~/.cache/v`), the `VTMP` folder (`/tmp/v_<uid>` by default), or
+// the home folder, for `~/.vtools`. It has to be private, along with every folder above it, or
+// someone else could swap the cache folder for their own one at any time; the one exception is
+// described at `tool_cache_folder_common_with_compiler`. V tightens `~/.cache/v` itself, when
+// the current user owns it.
 //
 // A cache folder that others could write to earlier may hold entries that someone else put
 // there, and fixing its permissions afterwards does not make those entries trustworthy. So
@@ -234,11 +241,13 @@ fn prepare_default_tool_cache_root(candidate string) []string {
 // walks up from `path`, both as written and with symlinks resolved, like the check does, and
 // lists every folder that does not pass `tool_cache_root_can_stage`, nearest first, for as long
 // as the check still rejects the folders from there upwards. So all of them can be fixed at once.
+// The walk stops at the folders that the check tolerates for `path`, see
+// `tool_cache_parent_is_tolerated`: they do not need to be fixed.
 fn tool_cache_parent_problems(path string) []string {
 	mut problems := []string{}
 	for start in [os.real_path(path), os.abs_path(path)] {
 		mut current := start
-		for !tool_cache_parents_are_trusted(current) {
+		for !tool_cache_parents_are_trusted(current) && !tool_cache_parent_is_tolerated(start, current) {
 			problem := tool_cache_root_problem(current)
 			if problem != '' && problem !in problems {
 				problems << problem
@@ -264,6 +273,19 @@ fn directory_is_writable(directory string) bool {
 	os.write_file(probe, '') or { return false }
 	os.rm(probe) or {}
 	return true
+}
+
+// tool_cache_home_candidate returns the last default tool cache folder, `~/.vtools`, or an empty
+// string without a home folder. It is for the hosts where the folders above both other defaults
+// can be changed by someone else: with a umask of 002, `~/.cache` is writable by its group, and
+// in some containers `/tmp` belongs to another user. The home folder itself normally is private.
+// V creates the folder with mode 0700, and never changes the permissions of the home folder.
+fn tool_cache_home_candidate() string {
+	home := os.home_dir()
+	if home == '' {
+		return ''
+	}
+	return os.join_path(home, '.vtools')
 }
 
 // tool_key_sources returns the files that make up the tool itself, in a stable order.
