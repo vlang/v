@@ -464,7 +464,8 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
 			should_skip_one = true
 			continue
 		}
-		if arg.len > full.len + 1 && arg[..full.len + 1] == '${full}=' {
+		// `--name=value`; an explicitly empty value, `--name=`, is a value too
+		if arg.len > full.len && arg[..full.len + 1] == '${full}=' {
 			found_entries << arg[full.len + 1..]
 			to_delete << i
 			continue
@@ -503,8 +504,8 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) !string {
 				return 'true'
 			}
 		}
-		if arg.len > full.len + 1 && arg[..full.len + 1] == '${full}=' {
-			// Flag abc=true
+		if arg.len > full.len && arg[..full.len + 1] == '${full}=' {
+			// Flag abc=true; an empty value, `--abc=`, is rejected by bool_flag
 			val := arg[full.len + 1..]
 			fs.args.delete(i)
 			return val
