@@ -1978,8 +1978,17 @@ fn (mut tc TypeChecker) ownership_note_binding(name string, typ Type, pos flat.N
 		st.pointer_index_aliases.delete(name)
 	}
 	source_participates := source_name.len > 0 && tc.ownership_storage_participates(source_name)
-	mutable_owned_source := source_name.len > 0 && tc.expr_root_is_mutable_lvalue(source_id)
-		&& tc.ownership_type_requires_destruction(typ)
+	// A `mut` root owns the slot it indexes only when the root is not itself a borrow. Reading
+	// through a borrowed alias (`mut t := &table; if val := t[k]`) leaves the slot owned by the
+	// borrowed storage, so the binding is a view, as it already is for an immutable alias.
+	mut reads_borrowed_alias := false
+	if source_name.len > 0 && !source_participates {
+		if _ := tc.ownership_borrowed_alias_source(source_name, false) {
+			reads_borrowed_alias = true
+		}
+	}
+	mutable_owned_source := source_name.len > 0 && !reads_borrowed_alias
+		&& tc.expr_root_is_mutable_lvalue(source_id) && tc.ownership_type_requires_destruction(typ)
 	if tc.ownership_type_is_owned(typ) || source_participates || mutable_owned_source {
 		mut moved_source := false
 		if source_name.len > 0 {
@@ -12032,7 +12041,7 @@ fn (mut tc TypeChecker) ownership_borrowed_projection_action(id flat.NodeId, pos
 	mut action := OwnershipBorrowedProjectionAction.clone_value
 	if is_string_view {
 		action = .string_view
-	} else if bad_type := tc.ownership_default_clone_missing_method(typ) {
+	} else if bad_type := tc.ownership_borrowed_copy_missing_clone(clean_id, typ) {
 		tc.record_error(.assignment_mismatch, 'cannot copy borrowed `${typ.name()}` value: `${bad_type}` requires ownership destruction but has no compatible `clone()` method; implement `IClone` or use a pointer', pos)
 		action = .reject_copy
 	}
@@ -12041,6 +12050,23 @@ fn (mut tc TypeChecker) ownership_borrowed_projection_action(id flat.NodeId, pos
 		st.borrowed_projection_actions[int(clean_id)] = action
 	}
 	return action
+}
+
+// ownership_borrowed_copy_missing_clone returns the type that prevents an independent copy of
+// the borrowed value at `id`. A borrowed `IError` is copied with the dynamic error clone that
+// failed results already use, and the copy owns its error object, so the receiver can never
+// free a shared constant. A constant created by builtin `error()` or `error_with_code()` holds
+// a `MessageError`, which that clone always supports. Any other borrowed error can hold any
+// error type, so each destructible one needs a compatible `clone()` method.
+fn (tc &TypeChecker) ownership_borrowed_copy_missing_clone(id flat.NodeId, typ Type) ?string {
+	clean := unalias_type(typ)
+	if clean is Interface && is_builtin_ierror_name(clean.name()) {
+		if tc.ownership_expr_reads_message_error_const(id) {
+			return none
+		}
+		return tc.ownership_default_clone_missing_ierror_method()
+	}
+	return tc.ownership_default_clone_missing_method(typ)
 }
 
 // Ordinary string slices allocate through string.substr; unlike aggregate slices, they do
@@ -12330,67 +12356,118 @@ fn (tc &TypeChecker) ownership_ident_names_const(name string) bool {
 }
 
 fn (tc &TypeChecker) ownership_expr_reads_error_sentinel(id flat.NodeId) bool {
-	clean_id := tc.ownership_unwrap_expr(id)
-	if !tc.valid_node_id(clean_id) {
-		return false
-	}
-	node := tc.a.nodes[int(clean_id)]
-	mut key := ''
-	if node.kind == .ident {
-		key = tc.const_key_for_name(node.value) or { return false }
-	} else if node.kind == .selector && node.children_count > 0 {
-		base := tc.a.child_node(&node, 0)
-		if base.kind != .ident || tc.ident_resolves_to_value(base.value) {
-			return false
+	key := tc.ownership_expr_const_key(id) or { return false }
+	for const_key in tc.ownership_const_alias_chain(key) {
+		if const_key.all_after_last('.') == 'error_sentinel'
+			&& (tc.const_modules[const_key] or { '' }) == 'builtin' {
+			return true
 		}
-		module_name := tc.resolve_import_alias(base.value) or { base.value }
-		key = '${module_name}.${node.value}'
-		if key !in tc.const_types {
-			return false
-		}
-	} else {
-		return false
 	}
-	mut seen := map[string]bool{}
-	return tc.ownership_const_is_error_sentinel(key, mut seen)
+	return false
 }
 
-fn (tc &TypeChecker) ownership_const_is_error_sentinel(key string, mut seen map[string]bool) bool {
-	if key == '' || seen[key] {
+// ownership_expr_reads_message_error_const reports whether `id` names a module-level error
+// constant whose value comes from builtin `error()` or `error_with_code()`, directly or
+// through other constants. Such a constant always holds a `MessageError`.
+fn (tc &TypeChecker) ownership_expr_reads_message_error_const(id flat.NodeId) bool {
+	key := tc.ownership_expr_const_key(id) or { return false }
+	chain := tc.ownership_const_alias_chain(key)
+	if chain.len == 0 {
 		return false
 	}
-	seen[key] = true
-	owner := tc.const_modules[key] or { '' }
-	if key.all_after_last('.') == 'error_sentinel' && owner == 'builtin' {
-		return true
+	root := chain.last()
+	expr_id := tc.const_exprs[root] or { return false }
+	return tc.ownership_call_is_builtin_error_ctor(tc.ownership_unwrap_expr(expr_id),
+		tc.const_modules[root] or { '' })
+}
+
+// ownership_call_is_builtin_error_ctor reports whether the call `id`, written in module
+// `module_name`, is builtin `error()` or `error_with_code()`. Both create a `MessageError`.
+fn (tc &TypeChecker) ownership_call_is_builtin_error_ctor(id flat.NodeId, module_name string) bool {
+	if !tc.valid_node_id(id) {
+		return false
 	}
-	expr_id := tc.const_exprs[key] or { return false }
+	node := tc.a.nodes[int(id)]
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	fn_node := tc.a.child_node(&node, 0)
+	if fn_node.kind != .ident || fn_node.value !in ['error', 'error_with_code'] {
+		return false
+	}
+	// A function of the same name in the constant's own module shadows the builtin one.
+	if module_name !in ['', 'main', 'builtin']
+		&& '${module_name}.${fn_node.value}' in tc.fn_ret_types {
+		return false
+	}
+	return (tc.fn_type_modules[fn_node.value] or { '' }) == 'builtin'
+}
+
+// ownership_expr_const_key returns the constant table key of the constant that `id` names.
+fn (tc &TypeChecker) ownership_expr_const_key(id flat.NodeId) ?string {
+	clean_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(clean_id) {
+		return none
+	}
+	node := tc.a.nodes[int(clean_id)]
+	if node.kind == .ident {
+		return tc.const_key_for_name(node.value)
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := tc.a.child_node(&node, 0)
+		if base.kind != .ident || tc.ident_resolves_to_value(base.value) {
+			return none
+		}
+		module_name := tc.resolve_import_alias(base.value) or { base.value }
+		key := '${module_name}.${node.value}'
+		if key in tc.const_types {
+			return key
+		}
+	}
+	return none
+}
+
+// ownership_const_alias_chain lists `key` followed by the constants it is initialized from
+// through plain aliases (`const my_err = net.err_timed_out`), ending at the defining constant.
+fn (tc &TypeChecker) ownership_const_alias_chain(key string) []string {
+	mut chain := []string{}
+	mut current := key
+	for current != '' && current !in chain {
+		chain << current
+		current = tc.ownership_const_alias_target(current)
+	}
+	return chain
+}
+
+// ownership_const_alias_target returns the key of the constant that directly initializes the
+// constant `key`, or an empty string when its initializer is not another constant.
+fn (tc &TypeChecker) ownership_const_alias_target(key string) string {
+	owner := tc.const_modules[key] or { '' }
+	expr_id := tc.const_exprs[key] or { return '' }
 	clean_id := tc.ownership_unwrap_expr(expr_id)
 	if !tc.valid_node_id(clean_id) {
-		return false
+		return ''
 	}
 	node := tc.a.nodes[int(clean_id)]
 	if node.kind == .ident {
 		module_key := if owner.len > 0 { '${owner}.${node.value}' } else { node.value }
-		next_key := if module_key in tc.const_types {
-			module_key
-		} else {
-			tc.const_key_for_name(node.value) or { return false }
+		if module_key in tc.const_types {
+			return module_key
 		}
-		return tc.ownership_const_is_error_sentinel(next_key, mut seen)
+		return tc.const_key_for_name(node.value) or { '' }
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.a.child_node(&node, 0)
 		if base.kind != .ident {
-			return false
+			return ''
 		}
 		module_name := tc.resolve_import_alias(base.value) or { base.value }
 		next_key := '${module_name}.${node.value}'
 		if next_key in tc.const_types {
-			return tc.ownership_const_is_error_sentinel(next_key, mut seen)
+			return next_key
 		}
 	}
-	return false
+	return ''
 }
 
 // ownership_projection_reads_through_pointer reports whether the field read at `id` projects
