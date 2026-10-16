@@ -13200,9 +13200,9 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 		types.Interface {
 			mut iface_name := name_id
 			if flat.source_type_name(iface_name) !in t.tc.interface_names {
-				qualified := t.tc.qualify_name(flat.source_type_name(iface_name))
-				if qualified in t.tc.interface_names {
-					iface_name = flat.source_type_id(qualified)
+				qualified := t.tc.qualify_type_name(iface_name)
+				if flat.source_type_name(qualified) in t.tc.interface_names {
+					iface_name = qualified
 				}
 			}
 			if iface_name != name_id && seen[iface_name] {
@@ -26604,11 +26604,10 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 			if expr.value == t.cur_fn_variadic_param && flat.source_type_shape(typ).has(.array_type) {
 				typ = flat.source_type_id('...' + flat.source_type_name(typ)[2..])
 			}
-			if types.type_text_contains_typeof(flat.source_type_name(typ)) {
+			if flat.source_type_shape(typ).has(.typeof_expr) {
 				resolved_local_source_id := t.var_type(expr.value)
 				resolved_local_source_id_3 := resolved_local_source_id
-				resolved_local := flat.source_type_name(resolved_local_source_id_3)
-				if resolved_local_source_id != 0 && !types.type_text_contains_typeof(resolved_local) {
+				if resolved_local_source_id != 0 && !flat.source_type_shape(resolved_local_source_id_3).has(.typeof_expr) {
 					typ = resolved_local_source_id_3
 				}
 			}
@@ -26678,7 +26677,7 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 	if typ == 0 {
 		typ = flat.source_type_unknown
 	}
-	if types.type_text_contains_typeof(flat.source_type_name(typ)) {
+	if flat.source_type_shape(typ).has(.typeof_expr) {
 		typ = t.resolve_typeof_type_text(typ)
 	}
 	parsed_type := if !isnil(t.tc) {
@@ -27105,15 +27104,15 @@ fn (t &Transformer) typeof_type_name(node flat.Node) u32 {
 	if expr.kind == .ident {
 		if typ == 0 {
 			typ = t.typeof_var_type(expr.value)
-			if t.pointer_value_rvalues[expr.value] && flat.source_type_name(typ).starts_with('&&') {
+			if t.pointer_value_rvalues[expr.value] && flat.source_type_shape(typ).has(.pointer_chain) {
 				typ = t.trim_pointer_type(typ)
 			}
 			if expr.value == t.cur_fn_variadic_param && flat.source_type_shape(typ).has(.array_type) {
 				typ = flat.source_type_id('...' + flat.source_type_name(typ)[2..])
 			}
-			if types.type_text_contains_typeof(flat.source_type_name(typ)) {
+			if flat.source_type_shape(typ).has(.typeof_expr) {
 				resolved_local := t.var_type(expr.value)
-				if resolved_local != 0 && !types.type_text_contains_typeof(flat.source_type_name(resolved_local)) {
+				if resolved_local != 0 && !flat.source_type_shape(resolved_local).has(.typeof_expr) {
 					typ = resolved_local
 				}
 			}
@@ -27138,7 +27137,7 @@ fn (t &Transformer) typeof_type_name(node flat.Node) u32 {
 	if typ == 0 {
 		typ = t.resolve_expr_type(expr_id)
 	}
-	if types.type_text_contains_typeof(flat.source_type_name(typ)) {
+	if flat.source_type_shape(typ).has(.typeof_expr) {
 		typ = t.resolve_typeof_type_text(typ)
 	}
 	return typ
@@ -30705,7 +30704,7 @@ fn (t &Transformer) interface_pattern_candidates(pattern_id u32) []u32 {
 	} else {
 		candidates << pattern_id
 	}
-	qpattern := flat.source_type_id(t.tc.qualify_name(pattern))
+	qpattern := t.tc.qualify_type_name(pattern_id)
 	if qpattern != pattern_id {
 		candidates << qpattern
 	}

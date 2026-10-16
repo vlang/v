@@ -259,75 +259,60 @@ fn (t &Transformer) resolve_receiver_method_name(base_id flat.NodeId, method str
 			return embedded_method
 		}
 	}
-	mut base_type := flat.source_type_name(t.lvalue_type(base_id))
-	if base_type.starts_with('&') {
-		base_type = base_type[1..]
-	}
-	if base_type.len == 0 {
+	base_type := t.trim_pointer_type(t.lvalue_type(base_id))
+	if base_type == 0 {
 		return ''
 	}
-	mut raw_var_clean := ''
+	mut raw_var_clean := u32(0)
 	if raw_var_type_source_id := t.raw_var_type_for_expr(base_id) {
-		raw_var_type := flat.source_type_name(raw_var_type_source_id)
-
-		raw_clean := if raw_var_type.starts_with('&') {
-			raw_var_type[1..]
-		} else {
-			raw_var_type
-		}
+		raw_clean := t.trim_pointer_type(raw_var_type_source_id)
 		raw_var_clean = raw_clean
-		if raw_clean.len > 0 && raw_clean != base_type {
-			if alias_method := t.resolve_alias_receiver_method(flat.source_type_id(raw_clean), method) {
-				if t.receiver_method_matches_type_name(alias_method, flat.source_type_id(raw_clean)) {
+		if raw_clean != 0 && raw_clean != base_type {
+			if alias_method := t.resolve_alias_receiver_method(raw_clean, method) {
+				if t.receiver_method_matches_type_name(alias_method, raw_clean) {
 					return alias_method
 				}
 			}
-			if method_name := t.resolve_receiver_method_for_type(flat.source_type_id(raw_clean), method) {
-				if t.receiver_method_matches_type_name(method_name, flat.source_type_id(raw_clean)) {
+			if method_name := t.resolve_receiver_method_for_type(raw_clean, method) {
+				if t.receiver_method_matches_type_name(method_name, raw_clean) {
 					return method_name
 				}
 			}
 		}
 	}
 	if raw_const_type_source_id := t.raw_const_type_name_for_expr(base_id) {
-		raw_const_type := flat.source_type_name(raw_const_type_source_id)
-
-		raw_clean := if raw_const_type.starts_with('&') {
-			raw_const_type[1..]
-		} else {
-			raw_const_type
-		}
-		if raw_clean.len > 0 && raw_clean != base_type && raw_clean != raw_var_clean {
-			if alias_method := t.resolve_alias_receiver_method(flat.source_type_id(raw_clean), method) {
-				if t.receiver_method_matches_type_name(alias_method, flat.source_type_id(raw_clean)) {
+		raw_clean := t.trim_pointer_type(raw_const_type_source_id)
+		if raw_clean != 0 && raw_clean != base_type && raw_clean != raw_var_clean {
+			if alias_method := t.resolve_alias_receiver_method(raw_clean, method) {
+				if t.receiver_method_matches_type_name(alias_method, raw_clean) {
 					return alias_method
 				}
 			}
-			if method_name := t.resolve_receiver_method_for_type(flat.source_type_id(raw_clean), method) {
-				if t.receiver_method_matches_type_name(method_name, flat.source_type_id(raw_clean)) {
+			if method_name := t.resolve_receiver_method_for_type(raw_clean, method) {
+				if t.receiver_method_matches_type_name(method_name, raw_clean) {
 					return method_name
 				}
 			}
 		}
 	}
-	if alias_method := t.resolve_alias_receiver_method(flat.source_type_id(base_type), method) {
+	if alias_method := t.resolve_alias_receiver_method(base_type, method) {
 		if t.receiver_method_matches_base_type(alias_method, base_id) {
 			return alias_method
 		}
 	}
-	if method_name := t.resolve_receiver_method_for_type(flat.source_type_id(base_type), method) {
+	if method_name := t.resolve_receiver_method_for_type(base_type, method) {
 		if t.receiver_method_matches_base_type(method_name, base_id) {
 			return method_name
 		}
-		if t.is_interface_type_name(flat.source_type_id(base_type)) {
-			if embedded_method := t.resolve_embedded_interface_declared_method(flat.source_type_id(base_type), method) {
+		if t.is_interface_type_name(base_type) {
+			if embedded_method := t.resolve_embedded_interface_declared_method(base_type, method) {
 				if embedded_method == method_name {
 					return method_name
 				}
 			}
 		}
 	}
-	if embedded_method := t.resolve_embedded_receiver_method(flat.source_type_id(base_type), method) {
+	if embedded_method := t.resolve_embedded_receiver_method(base_type, method) {
 		// resolve_embedded_receiver_method already walked the embedding chain from
 		// base_type, so the method is reachable by promotion. Its receiver is the
 		// embedded type and legitimately differs from base_type (they can even share
@@ -973,12 +958,12 @@ fn (t &Transformer) resolve_embedded_interface_declared_method(iface_name_id u32
 }
 
 fn (t &Transformer) resolve_embedded_interface_declared_method_inner(iface_name_id u32, method string, mut seen map[u32]bool) ?string {
-	name := flat.source_type_name(t.tc.interface_metadata_name(iface_name_id))
-	if name == '' || seen[flat.source_type_id(name)] {
+	name := t.tc.interface_metadata_name(iface_name_id)
+	if name == 0 || seen[name] {
 		return none
 	}
-	seen[flat.source_type_id(name)] = true
-	for embed_source_id in t.tc.interface_embeds.type_ids(name) or { []u32{} } {
+	seen[name] = true
+	for embed_source_id in t.tc.interface_embeds.type_ids(flat.source_type_name(name)) or { []u32{} } {
 		if declared := t.declared_receiver_method(embed_source_id, method) {
 			return declared
 		}
@@ -3967,18 +3952,18 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		// through a temporary.
 		force_materialize = true
 	}
-	mut current_type := flat.source_type_name(arg_type)
+	mut current_type := arg_type
 	mut current_depth := actual_depth
 	for current_depth < expected_depth {
 		if force_materialize {
 			tmp_name := t.new_temp('ref_arg')
-			t.pending_stmts << t.make_decl_assign_typed(tmp_name, current, flat.source_type_id(current_type))
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name, current, current_type)
 			current = t.make_ident(tmp_name)
 			force_materialize = false
 		} else if !t.expr_can_take_address(current) {
-			current = t.stable_transformed_expr_for_reuse(current, flat.source_type_id(current_type), 'ref_arg')
+			current = t.stable_transformed_expr_for_reuse(current, current_type, 'ref_arg')
 		}
-		addr_type := flat.source_type_id('&${current_type}')
+		addr_type := flat.source_type_id('&${flat.source_type_name(current_type)}')
 		addr := t.make_prefix(.amp, current)
 		t.set_node_typ(int(addr), addr_type)
 		current_depth++
@@ -3988,7 +3973,7 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		tmp_name := t.new_temp('ref_arg')
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, addr, addr_type)
 		current = t.make_ident(tmp_name)
-		current_type = flat.source_type_name(addr_type)
+		current_type = addr_type
 	}
 	return none
 }
@@ -10448,8 +10433,8 @@ fn (t &Transformer) array_elem_str_is_direct_circular(elem_type_id u32) bool {
 		return false
 	}
 	aggregate_source_id := t.stringify_aggregate_type_name(elem_type_id) or { return false }
-	current := flat.source_type_name(t.stringify_stack.last())
-	if !t.stringify_types_match(aggregate_source_id, flat.source_type_id(current)) {
+	current := t.stringify_stack.last()
+	if !t.stringify_types_match(aggregate_source_id, current) {
 		return false
 	}
 	return !t.struct_autostr_allows_recurse(aggregate_source_id)

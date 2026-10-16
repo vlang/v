@@ -3494,7 +3494,14 @@ struct SharedTypeInfo {
 }
 
 fn shared_inner_type_text(raw_id u32) ?u32 {
-	clean := trimmed_space(flat.source_type_name(raw_id))
+	shape := flat.source_type_shape(raw_id)
+	if !shape.has(.padded) && !shape.has(.shared_type) {
+		return none
+	}
+	return shared_inner_type_text_bytes(trimmed_space(flat.source_type_name(raw_id)))
+}
+
+fn shared_inner_type_text_bytes(clean string) ?u32 {
 	if clean.starts_with('shared ') {
 		return flat.source_type_id(trimmed_space(clean[7..]))
 	}
@@ -3502,6 +3509,10 @@ fn shared_inner_type_text(raw_id u32) ?u32 {
 }
 
 fn shared_array_inner_type_text(raw_id u32) ?u32 {
+	shape := flat.source_type_shape(raw_id)
+	if !shape.has(.padded) && !shape.has(.array_type) && !shape.has(.pointer) {
+		return none
+	}
 	mut clean := trimmed_space(flat.source_type_name(raw_id))
 	for clean.starts_with('&') {
 		clean = trimmed_space(clean[1..])
@@ -3509,14 +3520,23 @@ fn shared_array_inner_type_text(raw_id u32) ?u32 {
 	if !clean.starts_with('[]') {
 		return none
 	}
-	return shared_inner_type_text(flat.source_type_id(trimmed_space(clean[2..])))
+	return shared_inner_type_text_bytes(trimmed_space(clean[2..]))
 }
 
 fn shared_array_raw_is_ptr(raw_id u32) bool {
+	shape := flat.source_type_shape(raw_id)
+	if !shape.has(.padded) {
+		return shape.has(.pointer)
+	}
 	return trimmed_space(flat.source_type_name(raw_id)).starts_with('&')
 }
 
 fn (g &FlatGen) shared_alias_pointer_type_from_text(raw_id u32) ?types.Type {
+	shape := flat.source_type_shape(raw_id)
+	if g.shared_alias_index_ready && g.shared_alias_pointer_shorts.len == 0
+		&& !shape.has(.padded) && !shape.has(.pointer) && !shape.has(.shared_type) {
+		return none
+	}
 	clean := trimmed_space(flat.source_type_name(raw_id))
 	if clean.len == 0 || clean.starts_with('?') || clean.starts_with('!') {
 		return none
@@ -3527,7 +3547,7 @@ fn (g &FlatGen) shared_alias_pointer_type_from_text(raw_id u32) ?types.Type {
 			base_type: inner
 		})
 	}
-	if inner := shared_inner_type_text(flat.source_type_id(clean)) {
+	if inner := shared_inner_type_text_bytes(clean) {
 		return types.Type(types.Pointer{
 			base_type: g.tc.parse_type(inner)
 		})
@@ -5942,22 +5962,22 @@ fn (g &FlatGen) promoted_struct_init_field(type_name_id u32, field_name string) 
 }
 
 fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_name string) ?types.StructField {
-	type_name := flat.source_type_name(g.type_lookup_name(base_type))
-	if type_name.len == 0 {
+	type_name := g.type_lookup_name(base_type)
+	if type_name == 0 {
 		return none
 	}
 	// A direct (non-embed) field with this exact name shadows the embedded
 	// struct itself: in `struct Outer { aa.Inner; Inner int }`, `o.Inner` is
 	// the int field - matching the checker's resolution.
-	if fields := g.struct_fields_for_type(flat.source_type_id(type_name)) {
+	if fields := g.struct_fields_for_type(type_name) {
 		for field in fields {
-			if field.name == field_name && flat.source_type_name(g.embedded_field_type_name(field)).len == 0 {
+			if field.name == field_name && g.embedded_field_type_name(field) == 0 {
 				return none
 			}
 		}
 	}
 	// Only the embedded fields (precomputed) can match — no need to scan every field.
-	for field in g.struct_embedded_fields(flat.source_type_id(type_name)) {
+	for field in g.struct_embedded_fields(type_name) {
 		embedded_type_name := flat.source_type_name(g.embedded_field_type_name(field))
 		if embedded_type_name.len == 0 {
 			continue
@@ -5979,9 +5999,9 @@ fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_n
 	// short name, which then resolves the embed lists of a same-named imported
 	// struct. Resolve against the declaration using the qualified type name so
 	// `ctx.Context` (accessing the embedded `veb.Context`) finds the right field.
-	qualified := types.unwrap_pointer(base_type).name()
-	if qualified.len > 0 && qualified != type_name {
-		if emb := g.embedded_field_for_embed_key(flat.source_type_id(qualified), field_name) {
+	qualified := types.unwrap_pointer(base_type).source_type_id()
+	if qualified != 0 && qualified != type_name {
+		if emb := g.embedded_field_for_embed_key(qualified, field_name) {
 			return emb
 		}
 	}
@@ -6000,15 +6020,15 @@ fn (g &FlatGen) embedded_field_path_for_promoted_field(type_name_id u32, field_n
 
 fn (g &FlatGen) embedded_field_path_for_promoted_field_inner(type_name_id u32, field_name string, c_owner_only bool) ?[]types.StructField {
 	for field in g.struct_embedded_fields(type_name_id) {
-		embedded_type_name := flat.source_type_name(g.embedded_field_type_name(field))
-		if embedded_type_name.len == 0 {
+		embedded_type_name := g.embedded_field_type_name(field)
+		if embedded_type_name == 0 {
 			continue
 		}
-		if (!c_owner_only || embedded_type_name.starts_with('C.'))
-			&& g.direct_struct_field_exists(flat.source_type_id(embedded_type_name), field_name) {
+		if (!c_owner_only || flat.source_type_name(embedded_type_name).starts_with('C.'))
+			&& g.direct_struct_field_exists(embedded_type_name, field_name) {
 			return [field]
 		}
-		if nested := g.embedded_field_path_for_promoted_field_inner(flat.source_type_id(embedded_type_name), field_name, c_owner_only) {
+		if nested := g.embedded_field_path_for_promoted_field_inner(embedded_type_name, field_name, c_owner_only) {
 			mut path := [field]
 			path << nested
 			return path
@@ -6064,11 +6084,11 @@ fn (g &FlatGen) concrete_bare_struct_selector_name(typ types.Type) ?u32 {
 }
 
 fn (g &FlatGen) embedded_field_for_promoted_selector(base_type types.Type, field_name string) ?types.StructField {
-	type_name := flat.source_type_name(g.type_lookup_name(base_type))
-	if type_name.len == 0 {
+	type_name := g.type_lookup_name(base_type)
+	if type_name == 0 {
 		return none
 	}
-	return g.embedded_field_for_promoted_field(flat.source_type_id(type_name), field_name)
+	return g.embedded_field_for_promoted_field(type_name, field_name)
 }
 
 fn (g &FlatGen) type_lookup_name(typ types.Type) u32 {
