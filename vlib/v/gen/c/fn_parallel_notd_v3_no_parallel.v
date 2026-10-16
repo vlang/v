@@ -3465,8 +3465,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 		g.windows_gui_entry_point = w.windows_gui_entry_point
 	}
 	string_id_remap := g.publish_worker_string_literals(w)
-	borrow_worker_segments := os.getenv('V3_RETAIN_CGEN_RESULT_SCOPES') != ''
-		&& w.worker_scope != unsafe { nil } && !g.cache_stable_symbols && string_id_remap.len == 0
+	borrow_worker_segments := retain_cgen_result_scopes() && w.worker_scope != unsafe { nil } && !g.cache_stable_symbols && string_id_remap.len == 0
 	user_c_symbols := if string_id_remap.len > 0 {
 		g.cache_user_c_string_symbols()
 	} else {
@@ -3620,6 +3619,15 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 }
 
+// retain_cgen_result_scopes reports whether joined worker result arenas stay
+// alive until the output is written, so that the merge can move their function
+// segments instead of copying the whole generated C. The arenas are released
+// after cgen, off its critical path; V3_FREE_CGEN_RESULT_SCOPES frees them at
+// the merge instead.
+fn retain_cgen_result_scopes() bool {
+	return os.getenv('V3_FREE_CGEN_RESULT_SCOPES') == ''
+}
+
 // finish_parallel_worker_scope either releases a joined result arena
 // immediately (oracle fallback) or retains it until FlatGen has written every
 // borrowed function segment.
@@ -3627,7 +3635,7 @@ fn (mut g FlatGen) finish_parallel_worker_scope(mut w FlatGen) {
 	if w.worker_scope == unsafe { nil } {
 		return
 	}
-	if os.getenv('V3_RETAIN_CGEN_RESULT_SCOPES') != '' {
+	if retain_cgen_result_scopes() {
 		g.parallel_worker_scopes << w.worker_scope
 	} else {
 		cgen_worker_scope_free(w.worker_scope)
