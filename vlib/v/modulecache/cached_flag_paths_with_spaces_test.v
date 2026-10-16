@@ -76,12 +76,14 @@ fn test_relative_and_module_root_paths_with_spaces_stay_one_argument() {
 	assert header_flag_args(cached_directive_value('flag', './lib/helper.o', '', source_file)) == [
 		os.real_path(object),
 	]
+	// The pseudo variables are replaced as text, so the rest of the path keeps the `/`
+	// of the flag, also on Windows.
 	assert header_flag_args(cached_directive_value('flag', '-I @VMODROOT/include', '', source_file)) == [
 		'-I',
-		os.join_path(os.real_path(project), 'include'),
+		'${os.real_path(project)}/include',
 	]
 	assert header_flag_args(cached_directive_value('flag', '@DIR/lib/helper.o', '', source_file)) == [
-		os.join_path(os.real_path(source_dir), 'lib', 'helper.o'),
+		'${os.real_path(source_dir)}/lib/helper.o',
 	]
 }
 
