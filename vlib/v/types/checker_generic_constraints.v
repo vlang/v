@@ -608,6 +608,17 @@ fn (tc &TypeChecker) explicit_type_arg_pos(call flat.Node, k int) ?token.Pos {
 // parameter: written in a struct literal, inferred from one, or written in a
 // declaration. `pos` is where the type is written.
 fn (mut tc TypeChecker) check_generic_type_constraints(id flat.NodeId, pos token.Pos, base_id u32, args_ids []u32, scope TypeParamScope) {
+	// An attribute schema is inert metadata, so it cannot be passed as a
+	// generic type argument (vlang/rfcs#35, slice 1).
+	for arg_id in args_ids {
+		clean := unalias_type(unwrap_pointer(tc.parse_type(arg_id)))
+		if clean is Struct {
+			if tc.type_has_declaration_attribute(Type(clean as Struct), 'attribute') {
+				arg_name := flat.source_type_name(arg_id).trim_space()
+				tc.record_error_at(.assignment_mismatch, 'attribute `${arg_name}` cannot be used as a type argument', id, pos)
+			}
+		}
+	}
 	decl := tc.generic_type_decl(base_id) or { return }
 	params := decl.generic_params()
 	constraints := decl.generic_constraint_ids()
