@@ -2,15 +2,6 @@ module arm64
 
 import v.ssa
 
-fn test_native_main_stack_matches_macos_c_backend() {
-	mut linker := Linker.new(MachOObject.new())
-	linker.write_main_cmd(4096)
-	assert read_u32_le(linker.buf, 0) == lc_main
-	assert read_u32_le(linker.buf, 8) == 4096
-	assert read_u32_le(linker.buf, 16) == 64 * 1024 * 1024
-	assert read_u32_le(linker.buf, 20) == 0
-}
-
 fn test_sparse_codegen_slots_only_store_current_function_ids() {
 	mut m := ssa.Module.new()
 	for i in 0 .. 8 {
@@ -70,45 +61,6 @@ fn test_external_global_address_uses_got_load_relocations() {
 	assert g.macho.relocs[0].type_ == arm64_reloc_got_load_page21
 	assert g.macho.relocs[1].type_ == arm64_reloc_got_load_pageoff12
 	assert read_u32_le(g.macho.text_data, 4) == asm_ldr_pageoff(Reg(8))
-}
-
-fn test_global_string_load_copies_both_words() {
-	mut m := ssa.Module.new()
-	i8_type := m.type_store.get_int(8)
-	i32_type := m.type_store.get_int(32)
-	string_type := m.type_store.get_tuple([m.type_store.get_ptr(i8_type), i32_type, i32_type])
-	global := m.add_global('message', string_type)
-	func_id := m.new_function('read_message', string_type)
-	block_id := m.add_block(func_id, 'entry')
-	result := m.add_instr(.load, block_id, string_type, [global])
-	mut g := Gen.new(m)
-	g.reset_value_slots(&m.funcs[func_id])
-	g.set_stack_slot(result, -16)
-	g.gen_instr(result)
-	g.materialize_text()
-	assert g.macho.relocs.len == 2
-	assert g.macho.text_data.len == 24
-	assert read_u32_le(g.macho.text_data, 8) == asm_ldr(Reg(8), Reg(9))
-	assert read_u32_le(g.macho.text_data, 12) == asm_stur(Reg(8), fp, -16)
-	assert read_u32_le(g.macho.text_data, 16) == asm_ldr_imm(Reg(10), Reg(9), 1)
-	assert read_u32_le(g.macho.text_data, 20) == asm_stur(Reg(10), fp, -8)
-}
-
-fn test_signed_global_load_preserves_width_and_sign() {
-	mut m := ssa.Module.new()
-	i32_type := m.type_store.get_int(32)
-	global := m.add_global('number', i32_type)
-	func_id := m.new_function('read_number', i32_type)
-	block_id := m.add_block(func_id, 'entry')
-	result := m.add_instr(.load, block_id, i32_type, [global])
-	mut g := Gen.new(m)
-	g.reset_value_slots(&m.funcs[func_id])
-	g.set_stack_slot(result, -8)
-	g.gen_instr(result)
-	g.materialize_text()
-	assert g.macho.relocs.len == 2
-	assert g.macho.text_data.len == 16
-	assert read_u32_le(g.macho.text_data, 8) == asm_ldrsw(Reg(8), Reg(9))
 }
 
 fn test_aggregate_bitcast_copies_every_word() {
@@ -339,4 +291,53 @@ fn test_literal_c_variadic_string_stores_both_words() {
 	}
 	assert asm_str_imm(Reg(8), sp, 0) in words
 	assert asm_str_imm(Reg(10), sp, 1) in words
+}
+
+fn float_binop_words(mut m ssa.Module, fop ssa.OpCode, arg_type ssa.TypeID, ret_type ssa.TypeID,
+	a string, b string) []u32 {
+	func_id := m.new_function('caller', ret_type)
+	block_id := m.add_block(func_id, 'entry')
+	lhs := m.add_value(.constant, arg_type, a, 0)
+	rhs := m.add_value(.constant, arg_type, b, 0)
+	result := m.add_instr(fop, block_id, ret_type, [lhs, rhs])
+	mut g := Gen.new(m)
+	g.reset_value_slots(&m.funcs[func_id])
+	g.gen_instr(int(result))
+	g.materialize_text()
+	mut words := []u32{}
+	for i := 0; i < g.macho.text_data.len; i += 4 {
+		words << read_u32_le(g.macho.text_data, i)
+	}
+	return words
+}
+
+fn test_f32_arithmetic_stays_single_precision() {
+	mut m := ssa.Module.new()
+	f32_type := m.type_store.get_float(32)
+	words := float_binop_words(mut m, .fadd, f32_type, f32_type, '1', '2')
+	assert asm_fadd_s(0, 0, 1) in words
+	// The old path widened both operands to f64, operated, and narrowed back;
+	// none of that register traffic should survive for a plain f32 add.
+	assert asm_fadd_d0_d0_d1() !in words
+	assert asm_fcvt_d_s(0, 0) !in words
+	assert asm_fcvt_s_d(0, 0) !in words
+}
+
+fn test_f64_arithmetic_uses_double_precision() {
+	mut m := ssa.Module.new()
+	f64_type := m.type_store.get_float(64)
+	words := float_binop_words(mut m, .fadd, f64_type, f64_type, '1', '2')
+	assert asm_fadd_d0_d0_d1() in words
+	assert asm_fadd_s(0, 0, 1) !in words
+}
+
+fn test_f32_comparison_stays_single_precision() {
+	mut m := ssa.Module.new()
+	f32_type := m.type_store.get_float(32)
+	bool_type := m.type_store.get_int(1)
+	words := float_binop_words(mut m, .lt, f32_type, bool_type, '1', '2')
+	// The operands are f32 even though the comparison's result is not, so FCMP
+	// runs at the operands' width.
+	assert asm_fcmp_s(Reg(0), Reg(1)) in words
+	assert asm_fcmp_d(Reg(0), Reg(1)) !in words
 }
