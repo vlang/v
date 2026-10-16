@@ -174,9 +174,9 @@ fn tool_cache_unavailable_message(rejected []ToolCacheRejection) string {
 		lines << 'The tool cache folder has to belong to you, and no other account may be allowed to change it.'
 		lines << 'Fix its permissions, or set ${tool_cache_dir_env} to a folder that only you can change.'
 	} $else {
-		lines << 'The tool cache folder, and every folder above it, has to belong to you or to root, and nobody'
-		lines << 'else may write to it unless it has the sticky bit. Otherwise someone else could replace the'
-		lines << 'tools that V runs.'
+		lines << 'The tool cache folder, and every folder above it up to the first one that also holds the V'
+		lines << 'executable, has to belong to you or to root, and nobody else may write to it unless it has the'
+		lines << 'sticky bit. Otherwise someone else could replace the tools that V runs.'
 		lines << 'Fix the permissions listed above, or set ${tool_cache_dir_env} to a folder that only you can'
 		lines << 'write to (V does not check the folders above that one), for example:'
 		lines << '  mkdir -p -m 700 "\$HOME/.vtools" && export ${tool_cache_dir_env}="\$HOME/.vtools"'
