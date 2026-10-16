@@ -3445,7 +3445,18 @@ fn (mut t Transformer) ensure_call_param_types_decl_index() {
 		t.call_param_types_index_ready = true
 		return
 	}
-	for i in 0 .. t.a.nodes.len {
+	// The nodes the top-level index covers are read through it; the declarations
+	// appended behind it, as collect_types reads them.
+	indexed_count, indexed_nodes := t.top_level_scan_prefix()
+	appended, streamed := t.appended_declaration_scan(indexed_nodes)
+	for scan_idx in 0 .. indexed_count + appended.len + streamed {
+		i := if scan_idx < indexed_count {
+			int(t.tc.top_level_idx[scan_idx])
+		} else if scan_idx - indexed_count < appended.len {
+			appended[scan_idx - indexed_count]
+		} else {
+			indexed_nodes + scan_idx - indexed_count - appended.len
+		}
 		// This scan does not modify the AST arena.
 		node := unsafe { &t.a.nodes[i] }
 		if node.kind == .file {
@@ -3502,7 +3513,6 @@ fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file s
 			module: module_name
 		}
 	}
-	t.call_param_types_decl_misses.delete(key)
 	cname := c_name(key)
 	if cname != key && cname !in t.call_param_types_decl_index {
 		t.call_param_types_decl_index[cname] = FnParamDeclRef{
@@ -3511,7 +3521,11 @@ fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file s
 			module: module_name
 		}
 	}
-	t.call_param_types_decl_misses.delete(cname)
+	// The index is mostly built before the first miss is recorded.
+	if t.call_param_types_decl_misses.len > 0 {
+		t.call_param_types_decl_misses.delete(key)
+		t.call_param_types_decl_misses.delete(cname)
+	}
 }
 
 fn (mut t Transformer) parse_decl_param_type(typ_id u32, module_name string, file_name string) types.Type {
