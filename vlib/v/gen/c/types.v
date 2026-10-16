@@ -1397,7 +1397,7 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			if t.name().contains('_T_') && !g.type_name_known(t.name()) {
 				return true
 			}
-			if !g.skip_generics && t.name().contains('[') && type_name_is_unbound_generic_decl(t.source_type_id(), g.struct_generic_params_for_name(t.source_type_id()), t.name() in g.tc.structs || g.tc.qualify_name(t.name()) in g.tc.structs) {
+			if !g.skip_generics && flat.source_type_shape(t.source_type_id()).has(.bracketed) && g.type_name_is_unbound_generic_decl(t.source_type_id(), g.struct_generic_params_for_name(t.source_type_id()), t.name() in g.tc.structs || g.tc.qualify_name(t.name()) in g.tc.structs) {
 				return true
 			}
 			return g.type_name_contains_generic_placeholder(t.source_type_id())
@@ -1409,7 +1409,7 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return g.type_name_contains_generic_placeholder(t.source_type_id())
 		}
 		types.SumType {
-			if !g.skip_generics && t.name().contains('[') && type_name_is_unbound_generic_decl(t.source_type_id(), g.sum_generic_params_for_name(t.source_type_id()), t.name() in g.tc.sum_types.ids || g.tc.qualify_name(t.name()) in g.tc.sum_types.ids) {
+			if !g.skip_generics && flat.source_type_shape(t.source_type_id()).has(.bracketed) && g.type_name_is_unbound_generic_decl(t.source_type_id(), g.sum_generic_params_for_name(t.source_type_id()), t.name() in g.tc.sum_types.ids || g.tc.qualify_name(t.name()) in g.tc.sum_types.ids) {
 				return true
 			}
 			return g.type_name_contains_generic_placeholder(t.source_type_id())
@@ -1457,13 +1457,16 @@ fn (g &FlatGen) sum_generic_params_for_name(name_id u32) []string {
 }
 
 // type_name_is_unbound_generic_decl checks whether a source spelling retains declaration parameters.
-fn type_name_is_unbound_generic_decl(name_id u32, params []string, materialized bool) bool {
-	_, args, ok := parse_shared_generic_app_parts(flat.source_type_name(name_id))
-	if !ok || materialized || params.len == 0 {
+fn (g &FlatGen) type_name_is_unbound_generic_decl(name_id u32, params []string, materialized bool) bool {
+	if materialized || params.len == 0 {
+		return false
+	}
+	_, args, ok := g.shared_generic_app_parts(name_id)
+	if !ok {
 		return false
 	}
 	for arg in args {
-		if shared_type_text_uses_generic_params(flat.source_type_id(arg), params) {
+		if shared_type_text_uses_generic_params(arg, params) {
 			return true
 		}
 	}

@@ -3876,7 +3876,7 @@ fn (tc &TypeChecker) bare_value_pointer_return_compatible(expr_id flat.NodeId, a
 	if clean_actual is Pointer || clean_expected is Interface || clean_expected is SumType {
 		return false
 	}
-	return flat.source_type_name(fn_return_canonical_type_name(clean_actual)) == flat.source_type_name(fn_return_canonical_type_name(clean_expected))
+	return fn_return_canonical_type_name(clean_actual) == fn_return_canonical_type_name(clean_expected)
 		|| tc.c_type(clean_actual) == tc.c_type(clean_expected)
 }
 

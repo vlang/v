@@ -1638,7 +1638,7 @@ fn (tc &TypeChecker) constraint_unmet_reason(constraints map[string]GenericConst
 			if have.name_text().replace(' ', '') == display.replace(' ', '') {
 				return none
 			}
-		} else if flat.source_type_name(tc.interface_metadata_name(have.iface.source_type_id())) == flat.source_type_name(tc.interface_metadata_name(need.iface.source_type_id()))
+		} else if tc.interface_metadata_name(have.iface.source_type_id()) == tc.interface_metadata_name(need.iface.source_type_id())
 			|| tc.type_implements_interface(Type(have.iface), need.iface) {
 			return none
 		}

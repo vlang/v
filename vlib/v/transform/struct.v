@@ -1433,14 +1433,14 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		assoc_type = base_type
 	}
 	if flat.source_type_shape(assoc_type).has(.pointer) {
-		assoc_type = flat.source_type_id(flat.source_type_name(assoc_type)[1..])
+		assoc_type = t.trim_pointer_type(assoc_type)
 	}
 	if _ := t.lookup_struct_info(assoc_type) {
 		// use the explicit assoc type
 	} else {
 		mut clean_base_type := base_type
 		if flat.source_type_shape(clean_base_type).has(.pointer) {
-			clean_base_type = flat.source_type_id(flat.source_type_name(clean_base_type)[1..])
+			clean_base_type = t.trim_pointer_type(clean_base_type)
 		}
 		if _ := t.lookup_struct_info(clean_base_type) {
 			assoc_type = clean_base_type
@@ -1589,7 +1589,7 @@ fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node f
 		value_type = t.node_type(child_id)
 	}
 	if flat.source_type_shape(value_type).has(.pointer) {
-		value_type = flat.source_type_id(flat.source_type_name(value_type)[1..])
+		value_type = t.trim_pointer_type(value_type)
 	}
 	if value_type == 0 {
 		return none
@@ -1729,7 +1729,7 @@ fn (t &Transformer) sum_type_for_field_variant(field_name string, val_id flat.No
 		t.node_type(val_id)
 	}
 	if flat.source_type_shape(variant).has(.pointer) {
-		variant = flat.source_type_id(flat.source_type_name(variant)[1..])
+		variant = t.trim_pointer_type(variant)
 	}
 	if variant == 0 {
 		return none

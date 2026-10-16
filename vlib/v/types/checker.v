@@ -417,6 +417,13 @@ mut:
 	values map[string]int
 }
 
+// SumVariantPatternEntry retains the resolution context for one source-type pair.
+struct SumVariantPatternEntry {
+	file        string
+	module_name string
+	result      u32
+}
+
 // TypeCache represents type cache data used by types.
 struct TypeCache {
 mut:
@@ -496,7 +503,7 @@ mut:
 	struct_field_recent_values   [256]Type
 	struct_field_recent_states   [256]i8
 	struct_field_fn_diagnostics  map[string]string
-	sum_variant_pattern_entries  flat.TypeTextBindings
+	sum_variant_pattern_entries  map[u64][]SumVariantPatternEntry
 	recv_pattern_entries         map[string]GenericReceiverMethodPatternMatch
 	recv_pattern_misses          map[string]bool
 	lexical_smartcast_entries    map[int]Type
@@ -550,7 +557,7 @@ fn new_type_cache(parse_enabled bool) &TypeCache {
 	cache.struct_field_shared = map[u32]&StructFieldTypeEntries{}
 	cache.struct_field_complete = map[u32]bool{}
 	cache.struct_field_fn_diagnostics = map[string]string{}
-	cache.sum_variant_pattern_entries = flat.TypeTextBindings{}
+	cache.sum_variant_pattern_entries = map[u64][]SumVariantPatternEntry{}
 	cache.recv_pattern_entries = map[string]GenericReceiverMethodPatternMatch{}
 	cache.recv_pattern_misses = map[string]bool{}
 	cache.lexical_smartcast_entries = map[int]Type{}
@@ -6159,12 +6166,14 @@ fn (tc &TypeChecker) qualify_sum_variant_name(name string, generic_params []stri
 // get the current module prefix (order-independent during collect).
 fn (tc &TypeChecker) qualify_type_text(typ_id u32) u32 {
 	typ := flat.source_type_name(typ_id)
-	return flat.source_type_id(tc.qualify_type_text_impl(typ, false, []string{}))
+	qualified := tc.qualify_type_text_impl(typ, false, []string{})
+	return if qualified == typ { typ_id } else { flat.source_type_id(qualified) }
 }
 
 fn (tc &TypeChecker) qualify_type_text_with_generic_params(typ_id u32, generic_params []string) u32 {
 	typ := flat.source_type_name(typ_id)
-	return flat.source_type_id(tc.qualify_type_text_impl(typ, false, generic_params))
+	qualified := tc.qualify_type_text_impl(typ, false, generic_params)
+	return if qualified == typ { typ_id } else { flat.source_type_id(qualified) }
 }
 
 // qualify_resolution_type_text qualifies a type text in a resolution-only
@@ -6173,7 +6182,8 @@ fn (tc &TypeChecker) qualify_type_text_with_generic_params(typ_id u32, generic_p
 // exist. Never use for registration.
 fn (tc &TypeChecker) qualify_resolution_type_text(typ_id u32) u32 {
 	typ := flat.source_type_name(typ_id)
-	return flat.source_type_id(tc.qualify_type_text_impl(typ, true, []string{}))
+	qualified := tc.qualify_type_text_impl(typ, true, []string{})
+	return if qualified == typ { typ_id } else { flat.source_type_id(qualified) }
 }
 
 // parse_resolution_type parses type text that can mix declaration-local names with concrete
@@ -13858,7 +13868,7 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 		if node.kind == .interface_decl && child.kind == .interface_field && child.op != .dot {
 			field_type := unalias_type(tc.parse_type(child.typ))
 			if field_type is Interface
-				&& flat.source_type_name(tc.interface_metadata_name(field_type.source_type_id())) == flat.source_type_name(tc.interface_metadata_name(flat.source_type_id(node.value))) {
+				&& tc.interface_metadata_name(field_type.source_type_id()) == tc.interface_metadata_name(flat.source_type_id(node.value)) {
 				tc.record_error_at(.assignment_mismatch, 'recursive interface fields are not allowed because they cannot be initialised', child_id, tc.type_diagnostic_pos(child_id, child.typ_text()))
 			}
 		}
@@ -15506,7 +15516,7 @@ fn (tc &TypeChecker) sum_type_variant_source_pos(node flat.Node, variant string)
 fn (tc &TypeChecker) sum_type_reaches_sum(current_id u32, target_id u32, mut seen map[u32]bool) bool {
 	current_base := tc.sum_base_name(current_id)
 	target_base := tc.sum_base_name(target_id)
-	if flat.source_type_name(current_base) == flat.source_type_name(target_base) {
+	if current_base == target_base {
 		return true
 	}
 	if seen[current_base] {
