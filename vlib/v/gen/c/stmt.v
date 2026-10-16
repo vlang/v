@@ -6268,7 +6268,40 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 // becomes `?int`), which makes the optional C type name appear to differ from
 // the callee's signature. The declared type read from `fn_ret_types`/the fn decl
 // keeps the alias, so propagating `return call()` is recognised as valid.
+@[direct_array_access]
 fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
+	idx := int(call_id)
+	if idx >= 0 {
+		mut memo := g.body_context_type_memo()
+		if !isnil(memo) && memo.call_ret_gens.len > 0 {
+			slot := idx & usable_expr_type_memo_mask
+			if memo.call_ret_gens[slot] == memo.generation && memo.call_ret_ids[slot] == idx {
+				return memo.call_ret_values[slot]
+			}
+			result := g.declared_call_return_type_uncached(call_id)
+			memo.call_ret_ids[slot] = idx
+			memo.call_ret_gens[slot] = memo.generation
+			memo.call_ret_values[slot] = result
+			return result
+		}
+	}
+	return g.declared_call_return_type_uncached(call_id)
+}
+
+// body_context_type_memo returns the active body memo while the generator is in
+// that body's own declaration context, or nil (const initializers and struct
+// defaults resolve names in another context).
+@[inline]
+fn (g &FlatGen) body_context_type_memo() &UsableExprTypeMemo {
+	memo := g.usable_expr_type_memo
+	if isnil(memo) || !memo.active || g.const_init_depth > 0 || g.struct_default_module.len > 0
+		|| memo.module != g.tc.cur_module || memo.file != g.tc.cur_file {
+		return unsafe { nil }
+	}
+	return memo
+}
+
+fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) types.Type {
 	if int(call_id) < 0 {
 		return types.Type(types.void_)
 	}
@@ -6952,11 +6985,10 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 					return typ
 				}
 			}
+			// usable_struct_field_type consults checker_struct_field_type first, so a
+			// miss there is a miss of the checker's field table as well.
 			if base_type is types.Struct {
 				if typ := g.usable_struct_field_type(base_type.source_type_id(), node.value) {
-					return typ
-				}
-				if typ := g.checker_struct_field_type(base_type.source_type_id(), node.value) {
 					return typ
 				}
 			}
@@ -6965,16 +6997,10 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 					if typ := g.usable_struct_field_type(base_type.base_type.source_type_id(), node.value) {
 						return typ
 					}
-					if typ := g.checker_struct_field_type(base_type.base_type.source_type_id(), node.value) {
-						return typ
-					}
 				}
 			}
 			if base_type is types.String {
 				if typ := g.usable_struct_field_type(flat.source_type_string, node.value) {
-					return typ
-				}
-				if typ := g.checker_struct_field_type(flat.source_type_string, node.value) {
 					return typ
 				}
 			}
@@ -8669,7 +8695,46 @@ fn (g &FlatGen) alias_base_matches_type(alias_type types.Alias, typ types.Type) 
 	return g.tc.c_type(base) == g.tc.c_type(clean)
 }
 
+@[direct_array_access]
 fn (g &FlatGen) usable_struct_field_type(type_name_id u32, field_name string) ?types.Type {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.field_queries.len == 0 {
+		return g.usable_struct_field_type_uncached(type_name_id, field_name)
+	}
+	mut hash := type_name_id * 16777619 ^ u32(field_name.len)
+	if field_name.len > 0 {
+		hash = hash * 16777619 ^ u32(field_name[0])
+		hash = hash * 16777619 ^ u32(field_name[field_name.len - 1])
+	}
+	slot := int((hash ^ (hash >> 15)) & u32(body_field_type_query_slots - 1))
+	// The masked slot is in bounds; borrow the entry without copying its type.
+	entry := unsafe { &memo.field_queries[slot] }
+	if entry.generation == memo.generation && entry.type_id == type_name_id
+		&& entry.field == field_name {
+		if entry.found {
+			return entry.value
+		}
+		return none
+	}
+	if typ := g.usable_struct_field_type_uncached(type_name_id, field_name) {
+		memo.field_queries[slot] = BodyFieldTypeQuery{
+			type_id:    type_name_id
+			generation: memo.generation
+			found:      true
+			field:      field_name
+			value:      typ
+		}
+		return typ
+	}
+	memo.field_queries[slot] = BodyFieldTypeQuery{
+		type_id:    type_name_id
+		generation: memo.generation
+		field:      field_name
+	}
+	return none
+}
+
+fn (g &FlatGen) usable_struct_field_type_uncached(type_name_id u32, field_name string) ?types.Type {
 	if checker_typ := g.checker_struct_field_type(type_name_id, field_name) {
 		return g.usable_resolved_sum_type(checker_typ)
 	}

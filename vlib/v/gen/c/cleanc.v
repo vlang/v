@@ -35,6 +35,7 @@ const c_has_attribute_override_key = '@function:__has_attribute'
 const usable_expr_type_memo_slots = 1024
 const usable_expr_type_memo_mask = usable_expr_type_memo_slots - 1
 const body_import_type_query_slots = 256
+const body_field_type_query_slots = 512
 
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
@@ -454,6 +455,15 @@ struct BodyImportTypeQuery {
 	generation u32
 }
 
+// BodyFieldTypeQuery memoizes one owner/field type query of the current body.
+struct BodyFieldTypeQuery {
+	type_id    u32
+	generation u32
+	found      bool
+	field      string
+	value      types.Type
+}
+
 @[heap]
 struct ConstHelperDependencies {
 mut:
@@ -472,6 +482,11 @@ mut:
 	gens           []u32
 	values         []types.Type
 	import_queries []BodyImportTypeQuery
+	// Declared callee return types of call nodes, tagged like `ids`/`gens`.
+	call_ret_ids    []int
+	call_ret_gens   []u32
+	call_ret_values []types.Type
+	field_queries   []BodyFieldTypeQuery
 }
 
 @[heap]
@@ -493,10 +508,14 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 	if isnil(g.usable_expr_type_memo) {
 		g.usable_expr_type_memo = &UsableExprTypeMemo{
 			// Generation zero marks unused slots, including the slot for node zero.
-			ids:            []int{len: usable_expr_type_memo_slots}
-			gens:           []u32{len: usable_expr_type_memo_slots}
-			values:         unsafe { []types.Type{len: usable_expr_type_memo_slots} }
-			import_queries: []BodyImportTypeQuery{len: body_import_type_query_slots}
+			ids:             []int{len: usable_expr_type_memo_slots}
+			gens:            []u32{len: usable_expr_type_memo_slots}
+			values:          unsafe { []types.Type{len: usable_expr_type_memo_slots} }
+			import_queries:  []BodyImportTypeQuery{len: body_import_type_query_slots}
+			call_ret_ids:    []int{len: usable_expr_type_memo_slots}
+			call_ret_gens:   []u32{len: usable_expr_type_memo_slots}
+			call_ret_values: unsafe { []types.Type{len: usable_expr_type_memo_slots} }
+			field_queries:   []BodyFieldTypeQuery{len: body_field_type_query_slots}
 		}
 	}
 	mut memo := g.usable_expr_type_memo
@@ -507,6 +526,12 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 		}
 		for i in 0 .. memo.import_queries.len {
 			memo.import_queries[i] = BodyImportTypeQuery{}
+		}
+		for i in 0 .. memo.call_ret_gens.len {
+			memo.call_ret_gens[i] = 0
+		}
+		for i in 0 .. memo.field_queries.len {
+			memo.field_queries[i] = BodyFieldTypeQuery{}
 		}
 		memo.generation = 1
 	}
