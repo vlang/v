@@ -9533,9 +9533,20 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 }
 
 fn (g &FlatGen) global_type_for_ident(name string) ?types.Type {
-	qname := qualify_name_in_module(g.tc.cur_module, name)
-	if qname != name {
-		if typ := g.global_types[qname] {
+	if g.global_types.len == 0 {
+		return none
+	}
+	// qualify_name_in_module(cur_module, name), joined on the stack for the read.
+	module_name := g.tc.cur_module
+	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin'
+		&& !name.contains('.') {
+		if module_name.len + 1 + name.len <= module_key_view_cap {
+			mut buf := [module_key_view_cap]u8{}
+			qname := unsafe { joined_key_view(&buf[0], module_name, `.`, name, 0, '') }
+			if typ := g.global_types[qname] {
+				return typ
+			}
+		} else if typ := g.global_types['${module_name}.${name}'] {
 			return typ
 		}
 	}
@@ -11747,6 +11758,26 @@ fn (g &FlatGen) unique_short_fn_decl_variadic(name string) ?bool {
 }
 
 fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
+	// The cache key is `module\x01name[\x01fallback]`. Join it on the stack: the
+	// lookup does not keep it and an insert clones it.
+	has_fallback := name != fallback
+	key_len := g.tc.cur_module.len + 1 + name.len + if has_fallback { 1 + fallback.len } else { 0 }
+	if key_len <= module_key_view_cap {
+		mut buf := [module_key_view_cap]u8{}
+		view_key := unsafe {
+			joined_key_view(&buf[0], g.tc.cur_module, 1, name, if has_fallback {
+				u8(1)
+			} else {
+				u8(0)
+			}, if has_fallback { fallback } else { '' })
+		}
+		if cached := g.param_types_cache[view_key] {
+			return cached
+		}
+		result := g.param_types_for_uncached(name, fallback)
+		g.param_types_cache[view_key] = result
+		return result
+	}
 	call_key := if name == fallback { name } else { '${name}\x01${fallback}' }
 	// Unqualified V declarations are resolved in the current module. The same
 	// short name can therefore have different signatures in builtin, main, and

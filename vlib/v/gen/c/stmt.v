@@ -6455,21 +6455,37 @@ fn module_keyed_type(table map[string]types.Type, module_name string, prefix str
 		return table['${module_name}\x01${prefix}${name}'] or { none }
 	}
 	mut buf := [module_key_view_cap]u8{}
-	key := unsafe {
-		p := &u8(&buf[0])
-		if module_name.len > 0 {
-			vmemcpy(p, module_name.str, module_name.len)
-		}
-		p[module_name.len] = 1
-		if prefix.len > 0 {
-			vmemcpy(p + module_name.len + 1, prefix.str, prefix.len)
-		}
-		if name.len > 0 {
-			vmemcpy(p + module_name.len + 1 + prefix.len, name.str, name.len)
-		}
-		tos(p, key_len)
-	}
+	key := unsafe { joined_key_view(&buf[0], module_name, 1, prefix, 0, name) }
 	return table[key] or { none }
+}
+
+// joined_key_view writes `a`, the `sep` byte, `b`, the `sep2` byte (unless it is
+// zero) and `c` to `buf`, and returns a string over those bytes. The caller checks
+// that they fit. Map reads do not keep the view, and map inserts clone it.
+@[unsafe]
+fn joined_key_view(buf &u8, a string, sep u8, b string, sep2 u8, c string) string {
+	unsafe {
+		mut n := 0
+		if a.len > 0 {
+			vmemcpy(buf, a.str, a.len)
+			n = a.len
+		}
+		buf[n] = sep
+		n++
+		if b.len > 0 {
+			vmemcpy(buf + n, b.str, b.len)
+			n += b.len
+		}
+		if sep2 != 0 {
+			buf[n] = sep2
+			n++
+		}
+		if c.len > 0 {
+			vmemcpy(buf + n, c.str, c.len)
+			n += c.len
+		}
+		return tos(buf, n)
+	}
 }
 
 fn (g &FlatGen) selector_fn_field_return_type(fn_node flat.Node) ?types.Type {
