@@ -162,7 +162,7 @@ jobs:
           wine examples/hello_world.exe
 
       - name: 2048.v can be cross compiled to 2048.exe
-        id: 2048_v_can_be_cross_compiled_to_2048_exe
+        id: cross_compile_2048_exe
         if: ${{ success() && !cancelled() && steps.hello_world_v_can_be_cross_compiled_to_hello_world_exe.outcome == 'success' }}
         run: |
           ./v -os windows examples/2048/2048.v
