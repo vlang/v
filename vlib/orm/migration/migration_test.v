@@ -170,3 +170,88 @@ fn test_status_reports_each_listed_migration() {
 		},
 	]
 }
+
+// MysqlStrictFakeDB is FakeDB with MySQL's key restriction enforced: a TEXT
+// (or BLOB) column cannot be part of an index without a key length (MySQL
+// error 1170). The permissive FakeDB above accepts any CREATE statement, so
+// it cannot catch a journal definition MySQL rejects; this one can.
+struct MysqlStrictFakeDB {
+mut:
+	log     []string
+	applied map[string]bool
+}
+
+fn (mut db MysqlStrictFakeDB) execute(query string) ![]orm.Row {
+	db.log << query
+	if query.contains('TEXT PRIMARY KEY') {
+		return error("BLOB/TEXT column 'version' used in key spec without a key length")
+	}
+	if query.starts_with('SELECT') {
+		mut rows := []orm.Row{}
+		mut versions := db.applied.keys()
+		versions.sort()
+		for v in versions {
+			rows << orm.Row{
+				names: ['version']
+				vals:  [v]
+			}
+		}
+		return rows
+	}
+	if query.starts_with('INSERT') {
+		version := quoted_value(query) or { return []orm.Row{} }
+		db.applied[version] = true
+		return []orm.Row{}
+	}
+	return []orm.Row{}
+}
+
+fn noop_migration(version string) Migration[MysqlStrictFakeDB] {
+	return Migration[MysqlStrictFakeDB]{
+		version: version
+		up:      fn (mut db MysqlStrictFakeDB) ! {}
+		down:    fn (mut db MysqlStrictFakeDB) ! {}
+	}
+}
+
+fn test_journal_creation_is_mysql_compatible() {
+	mut db := MysqlStrictFakeDB{}
+	// A fresh database hits `ensure_journal` first; the old
+	// `version TEXT PRIMARY KEY` journal definition fails here under MySQL's
+	// rules, which broke `up`, `down` and `status` alike.
+	ran := up(mut db, [noop_migration('20241015120000_create_users')])!
+	assert ran == 1
+	creates := db.log.filter(it.starts_with('CREATE TABLE IF NOT EXISTS ${journal_table}'))
+	assert creates.len == 1
+	// Pinned bounds, mirroring `journal_version_len` in migration.v: the
+	// journal key must stay a bounded type MySQL accepts as a primary key.
+	assert creates[0].contains('VARCHAR(255)')
+	assert !creates[0].contains('TEXT PRIMARY KEY')
+	assert db.applied['20241015120000_create_users'] == true
+}
+
+fn test_versions_longer_than_the_journal_key_are_refused() {
+	mut db := FakeDB{}
+	bad := Migration[FakeDB]{
+		version: 'a'.repeat(256)
+		up:      fn (mut db FakeDB) ! {}
+		down:    fn (mut db FakeDB) ! {}
+	}
+	up(mut db, [bad]) or {
+		assert err.msg().contains('exceeds')
+		return
+	}
+	assert false, 'a version longer than the journal key must fail'
+}
+
+fn test_version_at_the_journal_key_limit_is_accepted() {
+	mut db := FakeDB{}
+	at_limit := 'a'.repeat(255)
+	ok := Migration[FakeDB]{
+		version: at_limit
+		up:      fn (mut db FakeDB) ! {}
+		down:    fn (mut db FakeDB) ! {}
+	}
+	assert up(mut db, [ok])! == 1
+	assert db.applied[at_limit] == true
+}

@@ -5,6 +5,12 @@ module migration
 // migrations.
 const journal_table = 'schema_migrations'
 
+// journal_version_len bounds the journal key. MySQL rejects a TEXT primary
+// key without a prefix length, so the key is VARCHAR(255) instead: a bounded
+// key type MySQL, PostgreSQL and SQLite all accept. Versions longer than this
+// are refused upfront rather than failing at the database.
+const journal_version_len = 255
+
 // Migration is one versioned schema change: `up` applies it, `down` reverts
 // it, and `version` orders it. Versions sort as strings, so stamp them
 // `YYYYMMDDHHMMSS_name`, e.g. `20241015120000_create_users`; anything outside
@@ -35,6 +41,7 @@ const journal_table = 'schema_migrations'
 // }
 // ```
 pub struct Migration[T] {
+pub:
 	version string          @[required]
 	up      fn (mut db T) ! @[required]
 	down    fn (mut db T) ! @[required]
@@ -42,6 +49,7 @@ pub struct Migration[T] {
 
 // MigrationStatus pairs one listed migration with whether the journal holds it.
 pub struct MigrationStatus {
+pub:
 	version string
 	applied bool
 }
@@ -64,7 +72,7 @@ fn valid_version(version string) bool {
 
 // ensure_journal creates the journal table when it does not exist yet.
 fn ensure_journal[T](mut db T) ! {
-	db.execute('CREATE TABLE IF NOT EXISTS ${journal_table} (version TEXT PRIMARY KEY)')!
+	db.execute('CREATE TABLE IF NOT EXISTS ${journal_table} (version VARCHAR(${journal_version_len}) PRIMARY KEY)')!
 }
 
 // applied_versions returns the versions the journal holds, oldest first.
@@ -103,6 +111,9 @@ fn sorted_migrations[T](migrations []Migration[T]) ![]Migration[T] {
 	for m in ordered {
 		if !valid_version(m.version) {
 			return error('invalid migration version "${m.version}": use letters, digits and underscore')
+		}
+		if m.version.len > journal_version_len {
+			return error('invalid migration version "${m.version}": exceeds ${journal_version_len} characters')
 		}
 	}
 	return ordered
