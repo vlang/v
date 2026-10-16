@@ -21,12 +21,11 @@ pub fn decode_only(data string) ?Block {
 @[direct_array_access; inline]
 pub fn decode(data string) ?(Block, string) {
 	block, rest := decode_internal(data)?
-	return block, rest[rest.index(pem_end)? + pem_end.len..].all_after_first(pem_eol)
+	return block, rest.all_after_first(pem_eol)
 }
 
 // decode_internal allows `decode` variations to deal with the rest of the data as
-// they want to. for example Block.decode could have hindered performance with the final
-// indexing into `rest` that `decode_partial` does.
+// they want to. The returned rest starts right after the '-----END ' of the block.
 @[direct_array_access]
 fn decode_internal(data string) ?(Block, string) {
 	// direct_array_access safety: since we use the string.index method here,
@@ -36,14 +35,19 @@ fn decode_internal(data string) ?(Block, string) {
 	block.headers, rest =
 		parse_headers(rest[pem_begin.len..].all_after(pem_eol).trim_left(' \n\t\v\f\r'))?
 
-	block_end_index := rest.index(pem_end)?
+	// index of the '-----END ' line: with an empty body it is the first line left,
+	// without the newline in front of it that `pem_end` starts with
+	mut block_end_index := 0
+	if !rest.starts_with(pem_end[1..]) {
+		block_end_index = rest.index(pem_end)? + 1
+	}
 	b64_data := rest[..block_end_index].replace_each(['\r', '', '\n', '', '\t', '', ' ', ''])
 	block_data_len := block_end_index / 4 * 3
 	block.data = []u8{len: block_data_len, cap: block_data_len + 3, init: 0}
 	decoded_len := base64.decode_in_buffer(&b64_data, &block.data[0])
 	block.data = block.data[..decoded_len]
 
-	return block, rest
+	return block, rest[block_end_index + pem_end.len - 1..]
 }
 
 @[direct_array_access]
