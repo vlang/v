@@ -185,10 +185,13 @@ fn test_fastc_simple_call_signature_and_parser_guards() {
 		FastcFunctionSignature{ return_type: flat.source_type_int, is_global: true },
 		FastcFunctionSignature{ return_type: flat.source_type_int, callable_index_depth: 1 },
 		FastcFunctionSignature{ return_type: fastc_type_option, option_type: flat.source_type_int },
-		FastcFunctionSignature{ return_type: flat.source_type_id('MultiReturn'), return_types: flat.TypeTextList.from_names([
-			'int',
-			'bool',
-		]) },
+		FastcFunctionSignature{
+			return_type:  flat.source_type_id('MultiReturn')
+			return_types: flat.TypeTextList.from_names([
+				'int',
+				'bool',
+			])
+		},
 		FastcFunctionSignature{ return_type: flat.source_type_int, returned_fn_return_type: flat.source_type_int },
 		FastcFunctionSignature{ return_type: flat.source_type_id('Record') },
 		FastcFunctionSignature{ return_type: flat.source_type_id('FixedArray_2_int') },
@@ -216,9 +219,12 @@ fn test_fastc_simple_call_signature_and_parser_guards() {
 	narrowed.member_smartcasts['count'] = FastcMemberSmartcast{}
 	assert !narrowed.try_read_simple_call_expression(stops, false, true).found
 	type_base := fastc_simple_call_test_parser('value();', true, false)
-	mut type_call := Parser{ ...type_base, declared_types: {
-		'fixture.value': true
-	} }
+	mut type_call := Parser{
+		...type_base
+		declared_types: {
+			'fixture.value': true
+		}
+	}
 	assert !type_call.try_read_simple_call_expression(stops, false, true).found
 	mut line_directives := fastc_simple_call_test_parser('value();', true, false)
 	line_directives.s.line_directives = true

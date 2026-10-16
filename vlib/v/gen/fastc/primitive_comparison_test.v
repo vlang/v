@@ -177,9 +177,12 @@ fn test_fastc_primitive_comparison_metadata_disables_custom_or_ambiguous_layouts
 	g.member_smartcasts['unrelated'] = FastcMemberSmartcast{}
 	assert !g.plain_primitive_comparison_expression(tokens)
 	g.member_smartcasts.clear()
-	generic := Parser{ ...g, generic_method_names: {
-		'a': true
-	} }
+	generic := Parser{
+		...g
+		generic_method_names: {
+			'a': true
+		}
+	}
 	assert !generic.plain_primitive_comparison_expression(tokens)
 	translated := Parser{ ...g, translated: true }
 	assert !translated.plain_primitive_comparison_expression(tokens)
