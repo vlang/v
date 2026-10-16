@@ -6854,6 +6854,47 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 	tc.cur_module = final_module
 }
 
+// node_uses_qualified_attribute reports whether the attributes of `id`, or of
+// its struct fields, name a schema of `qualifier` or `module_path`, as the
+// dotted form `@[mod.Skip]` of a custom attribute does (vlang/rfcs#35).
+fn (tc &TypeChecker) node_uses_qualified_attribute(id flat.NodeId, qualifier string, module_path string) bool {
+	if qualifier.len == 0 && module_path.len == 0 {
+		return false
+	}
+	if attribute_pieces_name_module(tc.declaration_attributes[int(id)], qualifier, module_path) {
+		return true
+	}
+	node := tc.a.node(id)
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(node, i)
+		mut meta := child.generic_params()
+		if meta.len == 0 {
+			continue
+		}
+		if child.kind == .field_decl {
+			meta = meta[1..]
+		}
+		if attribute_pieces_name_module(meta, qualifier, module_path) {
+			return true
+		}
+	}
+	return false
+}
+
+// attribute_pieces_name_module reports whether an attribute piece is qualified
+// with `qualifier` or `module_path`.
+fn attribute_pieces_name_module(pieces []string, qualifier string, module_path string) bool {
+	for raw in pieces {
+		name := raw.all_before(':').trim_space()
+		if idx := name.last_index('.') {
+			if name[..idx] == qualifier || name[..idx] == module_path {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // nodes_of_files lists, in order, the indices of the nodes in each of `file_ids`.
 fn (tc &TypeChecker) nodes_of_files(file_ids []int) map[int][]int {
 	mut max_id := -1
@@ -7090,6 +7131,11 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			|| type_text_contains_qualified_import(node.value, import_node.typ_text())
 			|| type_text_contains_qualified_import(node.typ_text(), module_path)
 			|| type_text_contains_qualified_import(node.value, module_path)) {
+			return true
+		}
+		// A module-qualified attribute name (`@[mod.Skip]`) is a use of the
+		// module even though no selector expression names it (vlang/rfcs#35).
+		if tc.node_uses_qualified_attribute(flat.NodeId(idx), import_node.typ_text(), module_path) {
 			return true
 		}
 		for constraint in node.generic_constraints() {
@@ -16755,7 +16801,8 @@ fn (mut tc TypeChecker) check_attribute_schema_decl(node_id flat.NodeId, node fl
 		}
 		target := attribute_string_unquote(raw.all_after(':').trim_space())
 		if target.len > 0 && !is_attribute_target_name(target) {
-			tc.record_error_at(.assignment_mismatch, 'unknown attribute target `${target}`', node_id, tc.attribute_use_pos(node, 'attribute'))
+			lo, hi := attribute_use_window(node)
+			tc.record_error_at(.assignment_mismatch, 'unknown attribute target `${target}`', node_id, tc.attribute_use_pos(node, 'attribute', lo, hi))
 		}
 	}
 }
@@ -16775,6 +16822,13 @@ mut:
 	module  string
 	fields  []AttributeSchemaField
 	targets []string
+}
+
+// AttributeUse is one schema applied through an attribute, with the piece name
+// that applied it (`Route` or `mod.Route`), which is what diagnostics quote.
+struct AttributeUse {
+	schema AttributeSchema
+	base   string
 }
 
 // AttributeFieldKind classifies schema field types and attribute argument
@@ -17021,20 +17075,53 @@ fn (mut tc TypeChecker) collect_attribute_schemas() {
 	}
 }
 
-// attribute_use_pos finds the attribute named `base` nearest to the
-// declaration or field at `node`, so use-site errors point at the attribute
-// rather than the declaration. Only whole-word matches followed by `:`,
-// `(`, `;`, `]`, or `,` count, so `Route_method` pieces and string contents
+// attribute_use_window returns the source range that holds the attributes of a
+// declaration: the groups written just before its keyword.
+fn attribute_use_window(node flat.Node) (int, int) {
+	anchor := int(node.pos.offset)
+	return int_max(0, anchor - 400), anchor
+}
+
+// attribute_child_window returns the source range that holds the attributes of
+// one struct field or enum value: from the end of the previous sibling to the
+// start of the next one, so a neighbouring sibling's attribute can never be
+// mistaken for this one's.
+fn attribute_child_window(prev_end int, own_start int, next_start int, own_end int) (int, int) {
+	lo := if prev_end > own_start { prev_end } else { own_start }
+	hi := if next_start > own_start { next_start } else { own_end }
+	return lo, hi
+}
+
+// attribute_use_pos locates the attribute named `base` inside the source
+// range [lo, hi), so use-site errors point at the attribute rather than the
+// declaration. Only whole-word matches followed by `:`, `(`, `;`, `]`, `,`, or
+// the end of the group count, so `Route_method` pieces and string contents
 // cannot match `Route`. Falls back to the node position.
-fn (tc &TypeChecker) attribute_use_pos(node flat.Node, base string) token.Pos {
+fn (tc &TypeChecker) attribute_use_pos(node flat.Node, base string, lo int, hi int) token.Pos {
 	file := tc.a.source_files[node.pos.id] or { return node.pos }
 	source := tc.source_texts_by_file[file.name] or { return node.pos }
-	anchor := int_min(int_max(node.pos.offset, 0), source.len)
-	lo := int_max(0, anchor - 400)
-	hi := int_min(source.len, anchor + 400)
-	window := source[lo..hi]
-	mut best := -1
-	mut best_dist := -1
+	// A field or enum value owns exactly the groups inside its span, so the
+	// first match is its own. A declaration's groups precede its keyword, so
+	// the match closest to the keyword is its own: an earlier declaration
+	// using the same schema must not capture the position.
+	nearest_to_end := node.kind !in [.field_decl, .enum_field]
+	idx := attribute_find_in_range(source, lo, hi, base, nearest_to_end) or {
+		return node.pos
+	}
+	return token.new_span(node.pos.id, idx, idx + base.len)
+}
+
+// attribute_find_in_range returns the offset of a `@[...]` group in
+// source[lo..hi) that uses `base` as an attribute name: the first one, or the
+// last one (closest to `hi`) when `nearest_to_end`.
+fn attribute_find_in_range(source string, lo int, hi int, base string, nearest_to_end bool) ?int {
+	start := int_max(0, lo)
+	end := int_min(hi, source.len)
+	if start >= end {
+		return none
+	}
+	window := source[start..end]
+	mut found := ?int(none)
 	mut search_from := 0
 	for search_from < window.len {
 		rel := window[search_from..].index('@[') or { break }
@@ -17042,30 +17129,20 @@ fn (tc &TypeChecker) attribute_use_pos(node flat.Node, base string) token.Pos {
 		group_end_rel := window[group_at..].index(']') or { break }
 		group := window[group_at..group_at + group_end_rel]
 		if idx := attribute_whole_word_index(group, base) {
-			after := idx + base.len
-			mut k := after
+			mut k := idx + base.len
 			for k < group.len && group[k] in [` `, `\t`, `\n`, `\r`] {
 				k++
 			}
 			if k >= group.len || group[k] in [`:`, `(`, `;`, `]`, `,`] {
-				dist := if group_at + idx >= anchor - lo {
-					group_at + idx - (anchor - lo)
-				} else {
-					(anchor - lo) - (group_at + idx)
-				}
-				if best < 0 || dist < best_dist {
-					best = group_at + idx
-					best_dist = dist
+				found = start + group_at + idx
+				if !nearest_to_end {
+					return found
 				}
 			}
 		}
 		search_from = group_at + 2
 	}
-	if best >= 0 {
-		start := lo + best
-		return token.new_span(node.pos.id, start, start + base.len)
-	}
-	return node.pos
+	return found
 }
 
 // attribute_whole_word_index finds `word` in `s` at a non-identifier
@@ -17118,7 +17195,8 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 				if !tc.should_check_source_name(node_id) {
 					continue
 				}
-				tc.check_attribute_use_pieces(node_id, node, cur_module, tc.declaration_attributes[int(node_id)])
+				lo, hi := attribute_use_window(node)
+				tc.check_attribute_use_pieces(node_id, node, cur_module, tc.declaration_attributes[int(node_id)], lo, hi)
 			}
 			else {}
 		}
@@ -17133,7 +17211,21 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 				if meta.len < 2 || !tc.should_check_source_name(field_id) {
 					continue
 				}
-				tc.check_attribute_use_pieces(field_id, field, cur_module, meta[1..].clone())
+				lo, hi := attribute_child_window(
+					if j > 0 {
+						int(tc.a.child_node(&node, j - 1).pos.end)
+					} else {
+						int(node.pos.offset)
+					},
+					int(field.pos.offset),
+					if j + 1 < node.children_count {
+						int(tc.a.child_node(&node, j + 1).pos.offset)
+					} else {
+						int(node.pos.end)
+					},
+					int(field.pos.end),
+				)
+				tc.check_attribute_use_pieces(field_id, field, cur_module, meta[1..].clone(), lo, hi)
 			}
 		}
 		if node.kind == .enum_decl {
@@ -17147,57 +17239,79 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 				if meta.len == 0 || !tc.should_check_source_name(value_id) {
 					continue
 				}
-				tc.check_attribute_use_pieces(value_id, value, cur_module, meta.clone())
+				lo, hi := attribute_child_window(
+					if j > 0 {
+						int(tc.a.child_node(&node, j - 1).pos.end)
+					} else {
+						int(node.pos.offset)
+					},
+					int(value.pos.offset),
+					if j + 1 < node.children_count {
+						int(tc.a.child_node(&node, j + 1).pos.offset)
+					} else {
+						int(node.pos.end)
+					},
+					int(value.pos.end),
+				)
+				tc.check_attribute_use_pieces(value_id, value, cur_module, meta.clone(), lo, hi)
 			}
 		}
 	}
 }
 
 // check_attribute_use_pieces validates the attribute `pieces` on one
-// declaration, field, or enum value against the registered schemas.
-fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string) {
-	for base in attribute_schema_bases(pieces) {
-		// Every schema call emits its base piece (`Name` or `Name: value),
-		// so a bare `Name_key` without it is an unrelated attribute, not a
-		// schema use. This keeps e.g. `@[my_attr]` silent when a schema
-		// named `my` is registered.
-		if !pieces.any(it.all_before(':').trim_space() == base) {
+// declaration, field, or enum value against the registered schemas. `lo` and
+// `hi` bound the source range the attributes of this node occupy.
+fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int) {
+	for use in tc.attribute_use_schemas(pieces, module) {
+		pos := tc.attribute_use_pos(node, use.base, lo, hi)
+		if use.schema.targets.len > 0
+			&& attribute_target_kind_word(node.kind) !in use.schema.targets {
+			tc.record_error_at(.assignment_mismatch, 'attribute `${use.base}` cannot be applied to `${attribute_target_kind_word(node.kind)}`', node_id, pos)
 			continue
 		}
-		schema := tc.attribute_schema_for_use(base, module) or { continue }
-		pos := tc.attribute_use_pos(node, base)
-		if schema.targets.len > 0
-			&& attribute_target_kind_word(node.kind) !in schema.targets {
-			tc.record_error_at(.assignment_mismatch, 'attribute `${base}` cannot be applied to `${attribute_target_kind_word(node.kind)}`', node_id, pos)
-			continue
-		}
-		tc.check_attribute_use_args(node_id, schema, base, pieces, pos, module)
+		tc.check_attribute_use_args(node_id, use.schema, use.base, pieces, pos, module)
 	}
 }
 
-// attribute_schema_bases lists the distinct attribute base names in `pieces`:
-// `Name` and `Name: value` contribute `Name`; `Name_key` and `Name_N`
-// contribute `Name` as well, so schema calls are found by their schema name.
-fn attribute_schema_bases(pieces []string) []string {
-	mut bases := []string{}
+// attribute_use_schemas finds the schemas `pieces` uses, V-strict (RFC
+// vlang/rfcs#35, "Name resolution across modules"): a bare `Name` sees the
+// current module only, and a dotted `mod.Name` sees the schema `Name` of the
+// module `mod`. Resolution is registry-driven rather than a name heuristic,
+// so `Name_key` pieces attach to `Name` and a schema whose own name contains
+// `_` resolves like any other.
+fn (tc &TypeChecker) attribute_use_schemas(pieces []string, module string) []AttributeUse {
+	mut names := []string{}
 	for raw in pieces {
 		name := raw.all_before(':').trim_space()
-		base := name.all_before('_')
-		if base.len > 0 && base !in bases {
-			bases << base
+		if name.len > 0 && name !in names {
+			names << name
 		}
 	}
-	return bases
-}
-
-// attribute_schema_for_use resolves `base` to a schema visible from `module`.
-fn (tc &TypeChecker) attribute_schema_for_use(base string, module string) ?AttributeSchema {
-	for schema in tc.attribute_schemas[base] or { return none } {
-		if attribute_modules_compatible(schema.module, module) {
-			return schema
+	mut uses := []AttributeUse{}
+	for name in names {
+		mut qualifier := ''
+		mut short := name
+		if idx := name.last_index('.') {
+			qualifier = name[..idx]
+			short = name[idx + 1..]
+		}
+		for schema in tc.attribute_schemas[short] or { []AttributeSchema{} } {
+			resolved := if qualifier.len > 0 {
+				schema.module == qualifier
+			} else {
+				attribute_modules_compatible(schema.module, module)
+			}
+			if resolved {
+				uses << AttributeUse{
+					schema: schema
+					base:   name
+				}
+				break
+			}
 		}
 	}
-	return none
+	return uses
 }
 
 // check_attribute_use_args reconstructs one schema call from its flattened

@@ -704,6 +704,16 @@ fn test_formatter_preserves_declaration_attribute_groups() {
 	assert vfmt('declaration_attribute_groups_twice', out) == out
 }
 
+fn test_formatter_keeps_module_qualified_attribute_names() {
+	// A module-qualified custom attribute name (`@[mod.Tag]`, vlang/rfcs#35)
+	// is one name, so the formatter must not split it back into `mod` and
+	// `Tag` at declaration, field, or enum-value level.
+	source := "module main\n\n@[mod.Skip]\nstruct Dotted {\n\tfield string @[mod.Other; mod.Tag: 'x']\n\tplain string @[mod.Third]\n}\n\nenum Level {\n\tone  @[mod.Fourth: 'y']\n\ttwo  @[mod.Fifth]\n}\n\nfn main() {}\n"
+	out := vfmt('module_qualified_attribute_names', source)
+	assert out == source, out
+	assert vfmt('module_qualified_attribute_names_twice', out) == out
+}
+
 fn test_formatter_keeps_comptime_branch_and_selective_import_comments_inside() {
 	source := "import sample {\n\tOne,\n\tTwo,\n\t// trailing import\n}\n\n\$if linux {\n\tprintln('first')\n\t// trailing first\n} \$else \$if windows {\n\t// comment-only second\n} \$else {\n\tprintln('last')\n\t// trailing last\n}\n"
 	out := vfmt('comptime_branch_selective_import_comments', source)

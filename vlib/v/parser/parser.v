@@ -4400,6 +4400,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 			// escape is no longer valid syntax. Reflection keeps the legacy unquoted form.
 			piece_start := p.tok_pos
 			piece_end := p.tok_end
+			is_name_piece := p.tok == .name || p.tok == .key_pub
 			piece_name := attr_unquote(p.lit).all_before(':').trim_space()
 			if !p.prefs.is_fmt && piece_name.len > 0
 				&& (attrs.any(it.all_before(':').trim_space() == piece_name)
@@ -4409,6 +4410,25 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 			}
 			mut piece := if p.prefs.is_fmt { p.lit } else { attr_unquote(p.lit) }
 			p.next()
+			// A module-qualified attribute name is one attribute: `@[mod.Name]`
+			// and `@[mod.Name(args)]` must reach the checker as a single
+			// `mod.Name` name, not as `mod` plus `Name` split on the dot
+			// (vlang/rfcs#35). Only a name followed by `.` and another name
+			// merges; every other token sequence keeps the legacy pieces.
+			if is_name_piece && p.tok == .dot && (p.peek() == .name || p.peek() == .key_pub) {
+				p.next()
+				piece += '.' + p.lit
+				p.next()
+				if !p.prefs.is_fmt {
+					merged_name := piece.trim_space()
+					if attrs.any(it.all_before(':').trim_space() == merged_name)
+						|| (check_pending_decl_attrs
+							&& p.pending_decl_attrs.any(it.all_before(':').trim_space() == merged_name)) {
+						p.record_diagnostic_span('duplicate attribute `${merged_name}`',
+							piece_start, p.prev_tok_end)
+					}
+				}
+			}
 			if p.tok == .lpar {
 				attr_name := piece
 				call_attrs_start := attrs.len
