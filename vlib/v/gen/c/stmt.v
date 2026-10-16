@@ -6394,14 +6394,49 @@ fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
 }
 
 fn (g &FlatGen) module_c_fn_return_type(name string) ?types.Type {
-	if !name.starts_with('C.') {
+	is_c := name.starts_with('C.')
+	// Most calls do not name a module C function; probe that table first.
+	ret := module_keyed_type(g.tc.c_fn_module_ret_types, g.tc.cur_module, if is_c {
+		''
+	} else {
+		'C.'
+	}, name) or { return none }
+	if !is_c {
 		// A bare `getenv()` inside `os` calls os.getenv, not the same-named C.getenv.
 		if _ := g.fn_decl_return_type_in_current_module(name) {
 			return none
 		}
 	}
-	raw_name := if name.starts_with('C.') { name } else { 'C.${name}' }
-	return g.tc.c_fn_module_ret_types['${g.tc.cur_module}\x01${raw_name}'] or { none }
+	return ret
+}
+
+const module_key_view_cap = 256
+
+// module_keyed_type reads `module\x01prefix+name` from a module-keyed table. Map
+// reads do not keep their key, so a short key is joined in a stack buffer instead
+// of a fresh allocation per lookup.
+@[direct_array_access]
+fn module_keyed_type(table map[string]types.Type, module_name string, prefix string, name string) ?types.Type {
+	key_len := module_name.len + 1 + prefix.len + name.len
+	if key_len > module_key_view_cap {
+		return table['${module_name}\x01${prefix}${name}'] or { none }
+	}
+	mut buf := [module_key_view_cap]u8{}
+	key := unsafe {
+		p := &u8(&buf[0])
+		if module_name.len > 0 {
+			vmemcpy(p, module_name.str, module_name.len)
+		}
+		p[module_name.len] = 1
+		if prefix.len > 0 {
+			vmemcpy(p + module_name.len + 1, prefix.str, prefix.len)
+		}
+		if name.len > 0 {
+			vmemcpy(p + module_name.len + 1 + prefix.len, name.str, name.len)
+		}
+		tos(p, key_len)
+	}
+	return table[key] or { none }
 }
 
 fn (g &FlatGen) selector_fn_field_return_type(fn_node flat.Node) ?types.Type {
@@ -6454,15 +6489,15 @@ fn (g &FlatGen) fn_decl_return_type_for_call_name(name string) ?types.Type {
 }
 
 fn (g &FlatGen) fn_decl_return_type_in_current_module(name string) ?types.Type {
-	if rt := g.fn_decl_ret_types[fn_decl_module_key(g.tc.cur_module, name)] {
+	if rt := module_keyed_type(g.fn_decl_ret_types, g.tc.cur_module, '', name) {
 		return rt
 	}
 	// Empty and `main` are equivalent source-module spellings.
 	if g.tc.cur_module == '' {
-		return g.fn_decl_ret_types[fn_decl_module_key('main', name)] or { none }
+		return module_keyed_type(g.fn_decl_ret_types, 'main', '', name)
 	}
 	if g.tc.cur_module == 'main' {
-		return g.fn_decl_ret_types[fn_decl_module_key('', name)] or { none }
+		return module_keyed_type(g.fn_decl_ret_types, '', '', name)
 	}
 	return none
 }
