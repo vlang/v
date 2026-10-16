@@ -593,6 +593,15 @@ mut:
 	match_lowered_fns []bool
 	// mono_pass_state lets the next monomorphize_pass continue the last one.
 	mono_pass_state MonomorphPassState
+	// generic_index_operators_known caches has_generic_index_operators: 0 not yet
+	// tested, 1 yes, -1 no.
+	generic_index_operators_known int
+	// box_type_text_cache is set while a box scan runs.
+	box_type_text_cache &BoxTypeTextCache = unsafe { nil }
+	// match_holders is the last match_holding_fns result, for the nodes below
+	// match_holders_scanned.
+	match_holders         []bool
+	match_holders_scanned int
 	// ignored_state lets the next monomorphize_ignored_nodes update the last one.
 	ignored_state IgnoredNodesState
 	// direct_monomorph_specs counts the specializations the master emitted itself.
@@ -30058,10 +30067,18 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 // The result is empty, for a walk of every function, when a match node was
 // appended after the index was built.
 @[direct_array_access]
-fn (t &Transformer) match_holding_fns() []bool {
+fn (mut t Transformer) match_holding_fns() []bool {
 	covered := int_min(t.source_parent_ids.len, t.a.nodes.len)
-	mut holders := []bool{len: covered}
-	for idx in 0 .. t.a.nodes.len {
+	// A later call finds the match nodes appended since; the holders of the
+	// others stay, a lowered match leaving behind only a body without one.
+	first := if t.match_holders.len == covered && t.match_holders_scanned <= t.a.nodes.len {
+		t.match_holders_scanned
+	} else {
+		0
+	}
+	mut holders := if first > 0 { t.match_holders } else { []bool{len: covered} }
+	t.match_holders = []bool{}
+	for idx in first .. t.a.nodes.len {
 		if t.a.nodes[idx].kind != .match_stmt {
 			continue
 		}
@@ -30080,6 +30097,8 @@ fn (t &Transformer) match_holding_fns() []bool {
 			}
 		}
 	}
+	t.match_holders = holders
+	t.match_holders_scanned = t.a.nodes.len
 	return holders
 }
 

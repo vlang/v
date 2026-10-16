@@ -296,12 +296,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		mut rescan := []int{}
 		if scan_start > 0 && t.used_fn_count() != used_fns_at_scan {
 			new_ignored := t.monomorphize_ignored_nodes(decls)
-			for i in 0 .. scan_start {
-				if i < ignored_nodes.len && ignored_nodes[i] && !(i < new_ignored.len
-					&& new_ignored[i]) {
-					rescan << i
-				}
-			}
+			rescan = unignored_nodes(ignored_nodes, new_ignored, scan_start)
 			ignored_nodes = unsafe { new_ignored }
 		}
 		used_fns_at_scan = t.used_fn_count()
@@ -1510,8 +1505,72 @@ fn add_lowered_generic_struct_operator_use(mut uses map[string][]string, call_na
 	}
 }
 
+// has_generic_index_operators tells whether the checker registered a generic
+// `[]` or `[]=` method, the only signatures generic_struct_operator_fn_name finds
+// for an index.
+fn (mut t Transformer) has_generic_index_operators() bool {
+	if t.generic_index_operators_known == 0 {
+		t.generic_index_operators_known = -1
+		if !isnil(t.tc) {
+			for name, _ in t.tc.fn_ret_types {
+				if name.ends_with('].[]') || name.ends_with('].[]=') {
+					t.generic_index_operators_known = 1
+					break
+				}
+			}
+			if t.generic_index_operators_known < 0 {
+				for name, _ in t.tc.fn_param_types {
+					if name.ends_with('].[]') || name.ends_with('].[]=') {
+						t.generic_index_operators_known = 1
+						break
+					}
+				}
+			}
+		}
+	}
+	return t.generic_index_operators_known > 0
+}
+
+// unignored_nodes lists in order the nodes below `end` that `old` flags and
+// `new` does not, testing eight flags at a time: they are bytes of 0 or 1.
+@[direct_array_access]
+fn unignored_nodes(old []bool, new []bool, end int) []int {
+	mut result := []int{}
+	limit := int_min(int_min(end, old.len), new.len)
+	words := limit / 8
+	old_words := unsafe { &u64(old.data) }
+	new_words := unsafe { &u64(new.data) }
+	for w in 0 .. words {
+		if unsafe { old_words[w] & ~new_words[w] } == 0 {
+			continue
+		}
+		for i in w * 8 .. w * 8 + 8 {
+			if old[i] && !new[i] {
+				result << i
+			}
+		}
+	}
+	for i in words * 8 .. limit {
+		if old[i] && !new[i] {
+			result << i
+		}
+	}
+	// Past the new flags' end every old flag counts as cleared.
+	for i in limit .. int_min(end, old.len) {
+		if old[i] {
+			result << i
+		}
+	}
+	return result
+}
+
 fn (mut t Transformer) record_index_operator_fn_name(node flat.Node, method string) {
 	if node.kind != .index || node.value == 'range' || node.children_count < 2 {
+		return
+	}
+	// The operator is found only as a generic method signature such as
+	// `Box[T].[]`, which the checker registered before this stage.
+	if !t.has_generic_index_operators() {
 		return
 	}
 	base_id := t.a.child(&node, 0)
@@ -2173,6 +2232,18 @@ fn interface_box_scan_reads_kind(kind flat.NodeKind) bool {
 @[direct_array_access]
 fn (mut t Transformer) collect_interface_boxed_types_range(start int, end int) {
 	limit := if end < t.a.nodes.len { end } else { t.a.nodes.len }
+	own_cache := isnil(t.box_type_text_cache)
+	if own_cache {
+		t.box_type_text_cache = &BoxTypeTextCache{
+			ids:     []u32{len: 4096}
+			results: []bool{len: 4096}
+		}
+	}
+	defer {
+		if own_cache {
+			t.box_type_text_cache = unsafe { nil }
+		}
+	}
 	for idx in start .. limit {
 		if idx < t.interface_boxed_skip_nodes.len && t.interface_boxed_skip_nodes[idx] {
 			continue
@@ -2797,10 +2868,34 @@ fn interface_box_unalias_type(typ types.Type) types.Type {
 	return typ
 }
 
+// BoxTypeTextCache remembers interface_box_type_text_maybe by type id while a
+// box scan runs, which registers no type or alias the test reads.
+@[heap]
+struct BoxTypeTextCache {
+mut:
+	ids     []u32
+	results []bool
+}
+
 fn (t &Transformer) interface_box_type_text_maybe(raw_type_id u32) bool {
 	if raw_type_id == 0 {
 		return false
 	}
+	if isnil(t.box_type_text_cache) {
+		return t.interface_box_type_text_maybe_uncached(raw_type_id)
+	}
+	mut cache := t.box_type_text_cache
+	slot := int(raw_type_id & 4095)
+	if cache.ids[slot] == raw_type_id {
+		return cache.results[slot]
+	}
+	result := t.interface_box_type_text_maybe_uncached(raw_type_id)
+	cache.ids[slot] = raw_type_id
+	cache.results[slot] = result
+	return result
+}
+
+fn (t &Transformer) interface_box_type_text_maybe_uncached(raw_type_id u32) bool {
 	clean_id := t.trimmed_type_id(t.normalize_type_alias(raw_type_id))
 	clean := flat.source_type_name(clean_id)
 	if flat.source_type_shape(clean_id).has(.optional) {
@@ -6106,12 +6201,32 @@ fn (mut t Transformer) rewrite_generic_call_sites(decls map[string]GenericFnDecl
 
 fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 	mut changed := false
+	// Whether a callee returns a generic application depends on its name alone,
+	// and the same names are called over and over: remember, by the address of
+	// the name, those that do not.
+	mut plain_callee_ptrs := []voidptr{len: 4096}
+	mut plain_callee_lens := []int{len: 4096}
 	for i in 0 .. t.a.nodes.len {
 		if t.a.nodes[i].kind !in [.call, .or_expr, .decl_assign] {
 			continue
 		}
 		// Only candidate nodes need copies before AST rewriting.
 		node := t.a.nodes[i]
+		if node.kind == .call && node.children_count > 0 && !isnil(t.tc) {
+			callee := t.a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value.len > 0 {
+				slot := int((usize(callee.value.str) >> 3) & 4095)
+				if plain_callee_ptrs[slot] == voidptr(callee.value.str)
+					&& plain_callee_lens[slot] == callee.value.len {
+					continue
+				}
+				if !t.fn_ret_type_is_generic_app(callee.value) {
+					plain_callee_ptrs[slot] = voidptr(callee.value.str)
+					plain_callee_lens[slot] = callee.value.len
+					continue
+				}
+			}
+		}
 		if node.kind == .call {
 			if concrete_type_source_id := t.concrete_fn_alias_call_return_type(i, node) {
 				concrete_type := flat.source_type_name(concrete_type_source_id)
@@ -6196,6 +6311,15 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 		}
 	}
 	return changed
+}
+
+// fn_ret_type_is_generic_app tells whether the checker's return type of the
+// function `name` is a generic application, the first test of
+// concrete_fn_alias_call_return_type.
+fn (t &Transformer) fn_ret_type_is_generic_app(name string) bool {
+	ret := t.tc.fn_ret_types[name] or { return false }
+	_, _, is_generic_alias := generic_app_parts(ret.name())
+	return is_generic_alias
 }
 
 fn (mut t Transformer) concrete_fn_alias_call_return_type(id int, node flat.Node) ?u32 {
