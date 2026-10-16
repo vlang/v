@@ -47,15 +47,24 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        id: uses_cache_apt_packages_action
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         run: make -j4 && ./v symlink
       - name: Install dependencies (the docs generator uses the markdown module)
+        id: install_dependencies_the_docs_generator_uses_the_markdown_module
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: ./v retry -- ./v install markdown
 
       - name: Checkout the docs generator
+        id: checkout_the_docs_generator
+        if: ${{ success() && !cancelled() && steps.install_dependencies_the_docs_generator_uses_the_markdown_module.outcome == 'success' }}
         uses: actions/checkout@v7
         with:
           repository: vlang/docs
@@ -65,6 +74,8 @@ jobs:
           persist-credentials: false
 
       - name: Generate the HTML pages from doc/docs.md
+        id: generate_the_html_pages_from_doc_docs_md
+        if: ${{ success() && !cancelled() && steps.checkout_the_docs_generator.outcome == 'success' }}
         run: |
           set -e
           # Adapt the external generator to current V APIs and use this checkout's

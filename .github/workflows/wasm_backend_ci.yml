@@ -62,9 +62,14 @@ jobs:
       fail-fast: false
     timeout-minutes: 20
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VTEST_ONLY: wasm
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
 
@@ -80,15 +85,23 @@ jobs:
         run: ./v retry -- sudo apt install wabt
 
       - name: Setup Wasmer
+        id: setup_wasmer
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         uses: wasmerio/setup-wasmer@24b15c95293d23f89c68bd40dac76338f773e924 # v3.1
         with:
           version: v4.4.0
 
       - name: Prebuild the WASM backend
+        id: prebuild_the_wasm_backend
+        if: ${{ success() && !cancelled() && steps.setup_wasmer.outcome == 'success' }}
         run: ./v cmd/tools/builders/wasm_builder.v
 
       - name: Test the WASM backend
+        id: test_the_wasm_backend
+        if: ${{ success() && !cancelled() && steps.prebuild_the_wasm_backend.outcome == 'success' }}
         run: ./v test vlib/v/gen/wasm/
 
       - name: Build examples
+        id: build_examples
+        if: ${{ success() && !cancelled() && steps.test_the_wasm_backend.outcome == 'success' }}
         run: ./v build-examples

@@ -36,10 +36,13 @@ jobs:
       VFLAGS: -cc clang
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
           fetch-depth: 10
       - name: Cache Homebrew downloads
+        id: cache_homebrew_downloads
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         uses: actions/cache@v6
         with:
           path: ~/Library/Caches/Homebrew
@@ -47,17 +50,25 @@ jobs:
           restore-keys: |
             brew-cross-macos-
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.cache_homebrew_downloads.outcome == 'success' }}
         run: make -j4 && ./v symlink
 
       - name: Install dependencies
+        id: install_dependencies
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           ./v retry -- brew install mingw-w64
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
 
       - name: Test symlink
+        id: test_symlink
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: ./v symlink
 
       - name: Cross-compilation to Linux
+        id: cross_compilation_to_linux
+        if: ${{ success() && !cancelled() && steps.test_symlink.outcome == 'success' }}
         run: |
           ./v -os linux cmd/v
           ./v -os linux -o /tmp/v_linux.c cmd/v
@@ -65,9 +76,13 @@ jobs:
           # TODO: fix this: ./v -os linux examples/2048/2048.v
 
       - name: Cross-compilation of veb app to Linux with -d use_openssl
+        id: cross_compilation_of_veb_app_to_linux_with_d_use_openssl
+        if: ${{ success() && !cancelled() && steps.cross_compilation_to_linux.outcome == 'success' }}
         run: ./v -d use_openssl -os linux -o /tmp/veb_linux.c examples/veb/veb_example.v
 
       - name: Cross-compilation of vlang/gitly to Linux with -d use_openssl
+        id: cross_compilation_of_vlang_gitly_to_linux_with_d_use_openssl
+        if: ${{ success() && !cancelled() && steps.cross_compilation_of_veb_app_to_linux_with_d_use_openssl.outcome == 'success' }}
         run: |
           ./v retry -- ./v install markdown
           ./v retry -- ./v install pcre
@@ -76,6 +91,8 @@ jobs:
           test -s /tmp/gitly_linux.c
 
       - name: Cross-compilation to Windows
+        id: cross_compilation_to_windows
+        if: ${{ success() && !cancelled() && steps.cross_compilation_of_vlang_gitly_to_linux_with_d_use_openssl.outcome == 'success' }}
         run: |
           mkdir -p /tmp/v-cross-windows
           ./v -os windows -b c -o /tmp/v-cross-windows/v.c cmd/v
@@ -90,26 +107,37 @@ jobs:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
           fetch-depth: 10
       - uses: ./.github/actions/cache-apt-packages-action
+        id: uses_cache_apt_packages_action
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
       - name: Build v
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         run: make -j4 && ./v symlink
 
       - name: Install dependencies
+        id: install_dependencies
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update -y -qq
           ./v retry -- sudo apt install --quiet -y mingw-w64 wine wine64 winetricks libssl-dev sqlite3 libsqlite3-dev
 
       - name: Show diagnostics for wine
+        id: show_diagnostics_for_wine
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: |
           which wine
           # shellcheck disable=SC2046
           ls -la $(realpath $(which wine))
 
       - name: v.c can be compiled and run with -os cross
+        id: v_c_can_be_compiled_and_run_with_os_cross
+        if: ${{ success() && !cancelled() && steps.show_diagnostics_for_wine.outcome == 'success' }}
         run: |
           ./v -os cross -o /tmp/v.c cmd/v
           gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
@@ -117,6 +145,8 @@ jobs:
           ./v_from_vc version
 
       - name: v_win.c can be compiled and run with -os windows
+        id: v_win_c_can_be_compiled_and_run_with_os_windows
+        if: ${{ success() && !cancelled() && steps.v_c_can_be_compiled_and_run_with_os_cross.outcome == 'success' }}
         run: |
           ./v -cc msvc -os windows -o /tmp/v_win.c cmd/v
           x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe -lws2_32 -lbcrypt -ldbghelp -Wl,-stack=33554432
@@ -124,12 +154,16 @@ jobs:
           wine ./v_from_vc.exe version
 
       - name: hello_world.v can be cross compiled to hello_world.exe
+        id: hello_world_v_can_be_cross_compiled_to_hello_world_exe
+        if: ${{ success() && !cancelled() && steps.v_win_c_can_be_compiled_and_run_with_os_windows.outcome == 'success' }}
         run: |
           ./v -os windows examples/hello_world.v
           ls -lart examples/hello_world.exe
           wine examples/hello_world.exe
 
       - name: 2048.v can be cross compiled to 2048.exe
+        id: 2048_v_can_be_cross_compiled_to_2048_exe
+        if: ${{ success() && !cancelled() && steps.hello_world_v_can_be_cross_compiled_to_hello_world_exe.outcome == 'success' }}
         run: |
           ./v -os windows examples/2048/2048.v
           ls -lart examples/2048/2048.exe
@@ -139,14 +173,19 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build
+        id: build
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
       - name: TODO v_win.c can be compiled and run with -os windows
+        id: todo_v_win_c_can_be_compiled_and_run_with_os_windows
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           .\v.exe -os windows -cc msvc -showcc -o v2.exe cmd\v
           .\v.exe -os windows -cc msvc -o v_win.c cmd\v

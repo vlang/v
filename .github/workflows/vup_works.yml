@@ -47,12 +47,17 @@ jobs:
       VDIR: /tmp/v_from_release_zip
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build v
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make && ./v symlink && ./v version
 
       - name: Download latest release ZIP
+        id: download_latest_release_zip
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           curl --fail --location --silent --show-error \
             --connect-timeout 15 \
@@ -66,6 +71,8 @@ jobs:
           shasum -a 256 "${{ matrix.zip }}"
 
       - name: Extract ZIP 1, no changes
+        id: extract_zip_1_no_changes
+        if: ${{ success() && !cancelled() && steps.download_latest_release_zip.outcome == 'success' }}
         run: |
           rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
           cd "$VDIR/v"
@@ -74,6 +81,8 @@ jobs:
           echo "Updated ./v version: $(./v version) | Current   v version: $(v version)"
 
       - name: Extract ZIP 2, with local changes
+        id: extract_zip_2_with_local_changes
+        if: ${{ success() && !cancelled() && steps.extract_zip_1_no_changes.outcome == 'success' }}
         run: |
           rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
           touch "$VDIR/v/vlib/v/pref/local_file_not_present_in_master.c.v" && rm "$VDIR/v/examples/hello_world.v"
@@ -83,6 +92,8 @@ jobs:
           echo "Updated ./v version: $(./v version) | Current   v version: $(v version)"
 
       - name: Extract ZIP 3, with current vup.v in the extract
+        id: extract_zip_3_with_current_vup_v_in_the_extract
+        if: ${{ success() && !cancelled() && steps.extract_zip_2_with_local_changes.outcome == 'success' }}
         run: |
           rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
           rm -rf "$VDIR/v/cmd/tools/vup" && cp cmd/tools/vup.v "$VDIR/v/cmd/tools/vup.v"
@@ -92,6 +103,8 @@ jobs:
           echo "Updated ./v version: $(./v version) | Current   v version: $(v version)"
 
       - name: Extract ZIP 4, with local changes, and with current vup.v
+        id: extract_zip_4_with_local_changes_and_with_current_vup_v
+        if: ${{ success() && !cancelled() && steps.extract_zip_3_with_current_vup_v_in_the_extract.outcome == 'success' }}
         run: |
           rm -rf "$VDIR" && unzip -q -d v_from_release/ ${{ matrix.zip }} && mv v_from_release "$VDIR"
           rm -rf "$VDIR/v/cmd/tools/vup" && cp cmd/tools/vup.v "$VDIR/v/cmd/tools/vup.v"

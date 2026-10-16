@@ -14,12 +14,15 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Download V
+        id: download_v
         run: |
           .github/workflows/retry.sh wget https://github.com/vlang/v/releases/latest/download/v_linux.zip
           unzip v_linux.zip
           cd v
           ./v -version
       - name: Test V
+        id: test_v
+        if: ${{ success() && !cancelled() && steps.download_v.outcome == 'success' }}
         run: |
           cd v
           ./v run examples/hello_world.v
@@ -31,12 +34,15 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Download V
+        id: download_v
         run: |
           .github/workflows/retry.sh wget https://github.com/vlang/v/releases/latest/download/v_macos_arm64.zip
           unzip v_macos_arm64.zip
           cd v
           ./v -version
       - name: Test V
+        id: test_v
+        if: ${{ success() && !cancelled() && steps.download_v.outcome == 'success' }}
         run: |
           cd v
           ./v run examples/hello_world.v
@@ -47,12 +53,15 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Download V
+        id: download_v
         run: |
           .github/workflows/retry.sh wget https://github.com/vlang/v/releases/latest/download/v_macos_x86_64.zip
           unzip v_macos_x86_64.zip
           cd v
           ./v -version
       - name: Test V
+        id: test_v
+        if: ${{ success() && !cancelled() && steps.download_v.outcome == 'success' }}
         run: |
           cd v
           ./v run examples/hello_world.v
@@ -62,12 +71,15 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Download V
+        id: download_v
         run: |
           curl -L https://github.com/vlang/v/releases/latest/download/v_windows.zip -o v_windows.zip
           unzip .\v_windows.zip
           cd v
           .\v.exe -version
       - name: Test V
+        id: test_v
+        if: ${{ success() && !cancelled() && steps.download_v.outcome == 'success' }}
         run: |
           cd v
           .\v.exe run .\examples\hello_world.v

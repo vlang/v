@@ -37,13 +37,20 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        id: uses_cache_apt_packages_action
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         run: make && ./v symlink
 
       - name: Set 8.8.8.8 as dns server
+        id: set_8_8_8_8_as_dns_server
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           sudo sed -i 's/#DNS=/DNS=8.8.8.8 8.8.4.4/g' /etc/systemd/resolved.conf
           sudo systemctl daemon-reload
@@ -52,10 +59,14 @@ jobs:
           dig distro.ibiblio.org
 
       - name: Install C2V
+        id: install_c2v
+        if: ${{ success() && !cancelled() && steps.set_8_8_8_8_as_dns_server.outcome == 'success' }}
         run: |
           v retry -- v install --git https://github.com/vlang/c2v
           v -g ~/.vmodules/c2v/ || true
       - name: Install dependencies
+        id: install_dependencies
+        if: ${{ success() && !cancelled() && steps.install_c2v.outcome == 'success' }}
         run: |
           if [ "${{ runner.os }}" == "Linux" ]; then
             .github/workflows/disable_azure_mirror.sh
@@ -65,12 +76,16 @@ jobs:
             v retry -- brew install sdl2 sdl2_mixer sdl2_net libpng libsamplerate
           fi
       - name: Build original Chocolate Doom
+        id: build_original_chocolate_doom
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: |
           v retry -- git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
       - name: Translate the whole game in project/folder mode and compile it
+        id: translate_the_whole_game_in_project_folder_mode_and_compile_it
+        if: ${{ success() && !cancelled() && steps.build_original_chocolate_doom.outcome == 'success' }}
         run: |
           touch ~/DOOM1.WAD
           WAD_FILE=~/DOOM1.WAD ~/code/doom/build_whole_project.sh
@@ -85,13 +100,20 @@ jobs:
       VTMP: /tmp
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        id: uses_cache_apt_packages_action
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         run: make && ./v symlink
 
       - name: Set 8.8.8.8 as dns server
+        id: set_8_8_8_8_as_dns_server
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           sudo sed -i 's/#DNS=/DNS=8.8.8.8 8.8.4.4/g' /etc/systemd/resolved.conf
           sudo systemctl daemon-reload
@@ -100,10 +122,14 @@ jobs:
           dig distro.ibiblio.org
 
       - name: Install C2V
+        id: install_c2v
+        if: ${{ success() && !cancelled() && steps.set_8_8_8_8_as_dns_server.outcome == 'success' }}
         run: |
           v retry -- v install --git https://github.com/vlang/c2v
           v -g ~/.vmodules/c2v/ || true
       - name: Install dependencies
+        id: install_dependencies
+        if: ${{ success() && !cancelled() && steps.install_c2v.outcome == 'success' }}
         run: |
           .github/workflows/disable_azure_mirror.sh		  
           v retry -- sudo apt update -y -qq
@@ -117,6 +143,8 @@ jobs:
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
           v retry -- sudo apt install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
       - name: Setup test tools
+        id: setup_test_tools
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: |
           # Fetch the free shareware DOOM1.WAD from NetBSD's pkgsrc distfile mirror
           v retry -- v download https://cdn.NetBSD.org/pub/pkgsrc/distfiles/doom1-1.9/shareware_doom_iwad.zip
@@ -129,14 +157,19 @@ jobs:
           # Get regression images to test against
           v retry -- git clone https://github.com/Larpon/doom-regression-images
       - name: Build original Chocolate Doom
+        id: build_original_chocolate_doom
+        if: ${{ success() && !cancelled() && steps.setup_test_tools.outcome == 'success' }}
         run: |
           v retry -- git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
       - name: Translate the whole game in project/folder mode
+        id: translate_the_whole_game_in_project_folder_mode
+        if: ${{ success() && !cancelled() && steps.build_original_chocolate_doom.outcome == 'success' }}
         run: WAD_FILE=~/doom1.wad ~/code/doom/build_whole_project.sh
       - name: Sample and compare with vgret
+        if: ${{ success() && !cancelled() && steps.translate_the_whole_game_in_project_folder_mode.outcome == 'success' }}
         id: compare
         continue-on-error: true
         run: |

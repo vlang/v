@@ -31,16 +31,25 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        id: uses_cache_apt_packages_action
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         with:
           profile: docs
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         run: make
       - name: Install dependencies (some examples show how to use sqlite and the x11 clipboard)
+        id: install_dependencies_some_examples_show_how_to_use_sqlite_and_the_x11_clipboard
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: ./v retry -- sudo apt install --quiet -y libx11-dev libpq-dev libssl-dev sqlite3 libsqlite3-dev
       - name: Check markdown line length & code examples
+        id: check_markdown_line_length_code_examples
+        if: ${{ success() && !cancelled() && steps.install_dependencies_some_examples_show_how_to_use_sqlite_and_the_x11_clipboard.outcome == 'success' }}
         run: ./v check-md -hide-warnings .
         ## NB: -hide-warnings is used here, so that the output is less noisy,
         ## thus real errors are easier to spot.
@@ -52,12 +61,17 @@ jobs:
       MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/ --exclude /vlib/sokol/ --exclude /vlib/x/
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make
 
       - name: Checkout previous v
+        id: checkout_previous_v
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -66,6 +80,8 @@ jobs:
           path: pv
 
       - name: Check against parent commit
+        id: check_against_parent_commit
+        if: ${{ success() && !cancelled() && steps.checkout_previous_v.outcome == 'success' }}
         run: |
           # shellcheck disable=SC2086
           ./v missdoc $MOPTIONS pv/vlib vlib
@@ -75,11 +91,16 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make
       - name: Check doc comment dots for some key modules
+        id: check_doc_comment_dots_for_some_key_modules
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: ./v run cmd/tools/find_doc_comments_with_no_dots.v \
           vlib/builtin/ vlib/arrays/ vlib/flag/ \
           vlib/bitfield/ vlib/term/ vlib/strings/ \
@@ -92,11 +113,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: make
       - name: Install markdown dependency
+        id: install_markdown_dependency
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: ./v retry -- ./v install markdown
       - name: Check examples in the doc comments for all vlib modules
+        id: check_examples_in_the_doc_comments_for_all_vlib_modules
+        if: ${{ success() && !cancelled() && steps.install_markdown_dependency.outcome == 'success' }}
         run: VJOBS=1 ./v doc -check-examples -f none vlib/

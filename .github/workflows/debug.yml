@@ -10,36 +10,61 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 121
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc msvc
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build
+        id: build
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
           .\v.exe -cflags /WX self
       - name: Install dependencies
+        id: install_dependencies
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           .\v.exe setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
       - name: v doctor
+        id: v_doctor
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: ./v doctor
       - name: Verify `v test` works
+        id: verify_v_test_works
+        if: ${{ success() && !cancelled() && steps.v_doctor.outcome == 'success' }}
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: All code is formatted
+        id: all_code_is_formatted
+        if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: ./v -silent test-cleancode
       - name: Self tests
+        id: self_tests
+        if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
         run: ./v -silent test-self
       - name: Test v->js
+        id: test_v_js
+        if: ${{ success() && !cancelled() && steps.self_tests.outcome == 'success' }}
         run: ./v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Test v binaries
+        id: test_v_binaries
+        if: ${{ success() && !cancelled() && steps.test_v_js.outcome == 'success' }}
         run: ./v build-vbinaries
       - name: Build examples
+        id: build_examples
+        if: ${{ success() && !cancelled() && steps.test_v_binaries.outcome == 'success' }}
         run: ./v -silent build-examples
       - name: v2 self compilation
+        id: v2_self_compilation
+        if: ${{ success() && !cancelled() && steps.build_examples.outcome == 'success' }}
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v

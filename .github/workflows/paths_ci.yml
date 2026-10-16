@@ -32,13 +32,21 @@ permissions:
 jobs:
   space-paths-linux:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
           path: '你好 my $path, @с интервали'
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           # shellcheck disable=SC2016
           echo '你好 my $path, @с интервали'
@@ -48,11 +56,15 @@ jobs:
           ls -la
           make
       - name: v doctor
+        id: v_doctor
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           # shellcheck disable=SC2016
           cd '你好 my $path, @с интервали'
           ./v doctor
       - name: v tests
+        id: v_tests
+        if: ${{ success() && !cancelled() && steps.v_doctor.outcome == 'success' }}
         run: |
           # shellcheck disable=SC2016
           cd '你好 my $path, @с интервали'
@@ -60,13 +72,21 @@ jobs:
 
   space-paths-macos:
     runs-on: macos-14
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           path: '你好 my $path, @с интервали'
           persist-credentials: false
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           # shellcheck disable=SC2016
           echo '你好 my $path, @с интервали'
@@ -79,11 +99,15 @@ jobs:
           ## chances of a sporadic "Killed" when running the tests later
           ./v -b js run examples/hello_world.v
       - name: v doctor
+        id: v_doctor
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           # shellcheck disable=SC2016
           cd '你好 my $path, @с интервали'
           ./v doctor
       - name: v tests
+        id: v_tests
+        if: ${{ success() && !cancelled() && steps.v_doctor.outcome == 'success' }}
         run: |
           # shellcheck disable=SC2016
           cd '你好 my $path, @с интервали'
@@ -91,6 +115,11 @@ jobs:
 
   space-paths-windows:
     runs-on: windows-2022
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 30
     ## NB: the following paths do not work for now:
     ##### MY_V_PATH: '你好 my $path, @с интервали'
@@ -103,10 +132,13 @@ jobs:
     ## and that happens even for gcc builds, not just tcc ones
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           path: 'path with some $punctuation, and some spaces'
           persist-credentials: false
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           echo 'path with some $punctuation, and some spaces'
           dir
@@ -114,10 +146,14 @@ jobs:
           dir
           .\makev.bat -tcc
       - name: v doctor
+        id: v_doctor
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           cd 'path with some $punctuation, and some spaces'
           ./v doctor
       - name: v tests
+        id: v_tests
+        if: ${{ success() && !cancelled() && steps.v_doctor.outcome == 'success' }}
         run: |
           cd 'path with some $punctuation, and some spaces'
           ./v test vlib/builtin vlib/os

@@ -24,31 +24,45 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build V
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         id: build
         run: make -j4
       - name: Check native compiler flag routing
+        id: check_native_compiler_flag_routing
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: ./v -new-compiler vlib/v/driver/c_link_input_flags_test.v
       - name: Check cached header declaration semantics
+        id: check_cached_header_declaration_semantics
+        if: ${{ success() && !cancelled() && steps.check_native_compiler_flag_routing.outcome == 'success' }}
         run: ./v -new-compiler vlib/v/types/cached_header_semantics_test.v
       - name: Check transformed map key callbacks
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        id: check_transformed_map_key_callbacks
+        if: ${{ success() && !cancelled() && steps.check_cached_header_declaration_semantics.outcome == 'success' }}
         run: ./v -new-compiler vlib/v/transform/map_key_callbacks_test.v
       - name: Check generated map key callbacks
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        id: check_generated_map_key_callbacks
+        if: ${{ success() && !cancelled() && steps.check_transformed_map_key_callbacks.outcome == 'success' }}
         run: ./v -new-compiler vlib/v/gen/c/map_test.v
       - name: Check map key runtime behavior
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        id: check_map_key_runtime_behavior
+        if: ${{ success() && !cancelled() && steps.check_generated_map_key_callbacks.outcome == 'success' }}
         run: ./v -new-compiler vlib/v/tests/maps/map_key_callback_width_test.v
       - name: Check pkg-config flag query selection
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        id: check_pkg_config_flag_query_selection
+        if: ${{ success() && !cancelled() && steps.check_map_key_runtime_behavior.outcome == 'success' }}
         run: ./v -new-compiler vlib/v/pref/pkgconfig_test.v
       - name: Install Objective-C compiler
+        id: install_objective_c_compiler
+        if: ${{ success() && !cancelled() && steps.check_pkg_config_flag_query_selection.outcome == 'success' }}
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
           ./v retry -- sudo apt install --quiet -y gobjc
       - name: Test compiler
+        id: test_compiler
+        if: ${{ success() && !cancelled() && steps.install_objective_c_compiler.outcome == 'success' }}
         run: ./v run vlib/v/test_all.vsh

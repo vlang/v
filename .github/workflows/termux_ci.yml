@@ -51,9 +51,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build and test in Termux
+        id: build_and_test_in_termux
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           set -o xtrace
           echo "$PWD"
@@ -94,9 +97,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build in Termux (arm64, default tcc)
+        id: build_in_termux_arm64_default_tcc
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           set -o xtrace
           uname -a

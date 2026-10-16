@@ -36,17 +36,31 @@ permissions:
 jobs:
   build-module-docs:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        id: uses_cache_apt_packages_action
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         run: make -j4 && ./v symlink
       - name: Update packages, before running apt install
+        id: update_packages_before_running_apt_install
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: .github/workflows/disable_azure_mirror.sh && v retry -- sudo apt update -y -qq
       - name: Install dependencies (some modules wrap C libs)
+        id: install_dependencies_some_modules_wrap_c_libs
+        if: ${{ success() && !cancelled() && steps.update_packages_before_running_apt_install.outcome == 'success' }}
         run: |
           v retry -- sudo apt install --quiet -y libpq-dev \
             libsodium-dev libasound2-dev libssl-dev \
@@ -54,10 +68,16 @@ jobs:
             libx11-dev libxi-dev freeglut3-dev \
             libgl1-mesa-dri libxcursor-dev libgl-dev libxrandr-dev libegl-dev
       - name: Install markdown from vpm
+        id: install_markdown_from_vpm
+        if: ${{ success() && !cancelled() && steps.install_dependencies_some_modules_wrap_c_libs.outcome == 'success' }}
         run: v retry -- v install markdown
       - name: Test v doc
+        id: test_v_doc
+        if: ${{ success() && !cancelled() && steps.install_markdown_from_vpm.outcome == 'success' }}
         run: VJOBS=1 ./v test cmd/tools/vdoc/
       - name: Build module documentation and check the examples in the comments
+        id: build_module_documentation_and_check_the_examples_in_the_comments
+        if: ${{ success() && !cancelled() && steps.test_v_doc.outcome == 'success' }}
         run: VJOBS=1 ./v doc -m -f html -unsafe-run-examples -time vlib/
       - name: Deploy docs to vercel
         if: github.event_name == 'push' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master'

@@ -26,12 +26,16 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
           path: vlang
       - name: Show git version
+        id: show_git_version
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: git version
       - name: Build V
         if: runner.os != 'Windows'
@@ -40,6 +44,8 @@ jobs:
         if: runner.os == 'Windows'
         run: cd vlang && ./makev.bat && ./v doctor
       - name: Cache V
+        id: cache_v
+        if: ${{ success() && !cancelled() && steps.show_git_version.outcome == 'success' }}
         uses: actions/cache/save@v6
         with:
           path: vlang
@@ -66,15 +72,21 @@ jobs:
             cc: msvc
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - name: Restore V cache
+        id: restore_v_cache
         uses: actions/cache/restore@v6
         with:
           path: vlang
           key: ${{ runner.os }}-${{ github.sha }}
       - name: Show git version
+        id: show_git_version
+        if: ${{ success() && !cancelled() && steps.restore_v_cache.outcome == 'success' }}
         run: git version
       - name: Build and test VPM
+        id: build_and_test_vpm
+        if: ${{ success() && !cancelled() && steps.show_git_version.outcome == 'success' }}
         run: |
           cd vlang
           ./v -W -N cmd/tools/vpm

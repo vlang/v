@@ -36,10 +36,15 @@ jobs:
     if: github.event_name != 'schedule' || (github.ref == 'refs/heads/master' && github.repository == 'vlang/v')
     timeout-minutes: 30
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc ${{ matrix.cc }}
       V_CI_PERIODIC: 1
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build
@@ -66,4 +71,6 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
           Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib') -Force
       - name: Test
+        id: test
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: ./v -d network -silent test-self vlib/net

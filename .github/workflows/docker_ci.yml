@@ -31,6 +31,11 @@ permissions:
 jobs:
   docker-alpine-musl-gcc:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 241
     container:
       image: thevlang/vlang:alpine-build
@@ -40,10 +45,13 @@ jobs:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Show Environment
+        id: show_environment
+        if: ${{ success() && !cancelled() && steps.checkout.outcome == 'success' }}
         run: |
           echo "PWD:"
           pwd
@@ -52,16 +60,29 @@ jobs:
           echo "C Compiler:"
           gcc --version
       - name: Add dependencies
+        id: add_dependencies
+        if: ${{ success() && !cancelled() && steps.show_environment.outcome == 'success' }}
         run: apk add libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.add_dependencies.outcome == 'success' }}
         run: CC=gcc make
       - name: All code is formatted
+        id: all_code_is_formatted
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: ./v -silent test-cleancode
       - name: Run only essential tests
+        id: run_only_essential_tests
+        if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
         run: VTEST_JUST_ESSENTIAL=1 ./v -silent test-self
 
   docker-alpine-musl-tcc:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 241
     container:
       image: thevlang/vlang:alpine-build
@@ -69,20 +90,34 @@ jobs:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Add dependencies
+        id: add_dependencies
+        if: ${{ success() && !cancelled() && steps.checkout.outcome == 'success' }}
         run: apk add musl-dev libatomic_ops-dev libatomic openssl libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.add_dependencies.outcome == 'success' }}
         run: make
       - name: Check if vpm compiles with tcc
+        id: check_if_vpm_compiles_with_tcc
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: ./v -show-c-output -showcc -no-retry-compilation -cc tcc cmd/tools/vpm
       - name: Run only builtin and math tests
+        id: run_only_builtin_and_math_tests
+        if: ${{ success() && !cancelled() && steps.check_if_vpm_compiles_with_tcc.outcome == 'success' }}
         run: ./v test vlib/builtin
 
   docker-ubuntu-musl:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 150
     container:
       image: thevlang/vlang:ubuntu-build
@@ -93,19 +128,28 @@ jobs:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.checkout.outcome == 'success' }}
         run: echo "$VFLAGS" && make -j4 && ./v -cg -o v cmd/v
       - name: Verify `v test` works
+        id: verify_v_test_works
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           echo "$VFLAGS"
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Add dependencies
+        id: add_dependencies
+        if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
         run: apt install libsqlite3-dev
       - name: Build musl-native OpenSSL
+        id: build_musl_native_openssl
+        if: ${{ success() && !cancelled() && steps.add_dependencies.outcome == 'success' }}
         run: |
           wget -q https://github.com/openssl/openssl/releases/download/openssl-3.5.4/openssl-3.5.4.tar.gz -O /tmp/openssl-3.5.4.tar.gz
           echo '967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99  /tmp/openssl-3.5.4.tar.gz' | sha256sum --check --strict
@@ -115,6 +159,10 @@ jobs:
           make -j"$(nproc)"
           make install_sw
       - name: All code is formatted
+        id: all_code_is_formatted
+        if: ${{ success() && !cancelled() && steps.build_musl_native_openssl.outcome == 'success' }}
         run: ./v -silent test-cleancode
       - name: Test V fixed tests
+        id: test_v_fixed_tests
+        if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
         run: ./v -silent test-self vlib

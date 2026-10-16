@@ -29,20 +29,26 @@ permissions:
 jobs:
   h2spec:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       H2SPEC_VERSION: v2.6.0
       H2SPEC_SHA256: 157ee0de702e01ad40e752dbf074b366027e550c8e7504f9450da2809e279318
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
 
       - name: Build the V compiler
+        id: build_the_v_compiler
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           make
           ./v -o vnew cmd/v
 
       - name: Fetch pinned h2spec release
+        id: fetch_pinned_h2spec_release
+        if: ${{ success() && !cancelled() && steps.build_the_v_compiler.outcome == 'success' }}
         run: |
           url="https://github.com/summerwind/h2spec/releases/download/${H2SPEC_VERSION}/h2spec_linux_amd64.tar.gz"
           curl -fsSL "$url" -o h2spec.tar.gz
@@ -52,6 +58,8 @@ jobs:
           h2spec --version
 
       - name: Run h2spec conformance gate
+        id: run_h2spec_conformance_gate
+        if: ${{ success() && !cancelled() && steps.fetch_pinned_h2spec_release.outcome == 'success' }}
         env:
           # VEXE: ./vnew
           VFLAGS_CC: -cc gcc # mbedtls needs a real C compiler, not tcc

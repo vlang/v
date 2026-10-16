@@ -144,6 +144,10 @@ jobs:
             lsan_options: detect_leaks=0
     name: sanitize-${{ matrix.name }}
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       SANITIZER_GITHUB_JOB: sanitize-${{ matrix.name }}
       VFLAGS: ${{ matrix.vflags }}
       VJOBS: 1
@@ -156,12 +160,17 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        id: uses_cache_apt_packages_action
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         with:
           profile: sanitizers
       - uses: ./.github/actions/setup-v
+        id: uses_setup_v
+        if: ${{ success() && !cancelled() && steps.uses_cache_apt_packages_action.outcome == 'success' }}
         with:
           symlink: true
       - name: V doctor
@@ -171,6 +180,8 @@ jobs:
         if: ${{ matrix.name != 'memory-clang-compiler' }}
         run: GITHUB_JOB="$SANITIZER_GITHUB_JOB" ./v -silent test-cleancode
       - name: Install dependencies
+        id: install_dependencies
+        if: ${{ success() && !cancelled() && steps.uses_setup_v.outcome == 'success' }}
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           .github/workflows/disable_azure_mirror.sh
@@ -179,6 +190,8 @@ jobs:
           ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
           ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with -cstrict
+        id: recompile_v_with_cstrict
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
           if [ "${{ matrix.sanitizer }}" = "memory" ]; then
@@ -236,6 +249,10 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 30
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc msvc
       VJOBS: 1
       VNATIVE_SKIP_LIBC_VV: 1
@@ -244,17 +261,24 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Build
+        id: build
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         run: |
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
           .\v.exe self
       - name: V doctor
+        id: v_doctor
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: .\v.exe doctor
       - name: Ensure code is well formatted
+        id: ensure_code_is_well_formatted
+        if: ${{ success() && !cancelled() && steps.v_doctor.outcome == 'success' }}
         run: .\v.exe -silent test-cleancode
         # - name: Install dependencies
         #   run: |

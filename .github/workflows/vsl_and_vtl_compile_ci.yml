@@ -37,6 +37,7 @@ jobs:
       VFLAGS: -no-parallel
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Cache apt packages
@@ -52,9 +53,12 @@ jobs:
             brew-${{ matrix.os }}-vsl-
             brew-${{ matrix.os }}-
       - name: Build V
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         id: build
         run: make && sudo ./v symlink
       - name: Install dependencies
+        id: install_dependencies
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
           .github/workflows/disable_azure_mirror.sh
@@ -67,6 +71,8 @@ jobs:
             v retry brew install coreutils hdf5 open-mpi openblas lapack opencl-headers
           fi
       - name: Install vsl
+        id: install_vsl
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: v retry -- v install vsl
       - name: Skip optional Vulkan examples on macOS
         if: runner.os == 'macOS'
@@ -76,8 +82,12 @@ jobs:
             mv "$file" "${file%.v}_not_ci.v"
           done
       - name: Test with Pure V Backend
+        id: test_with_pure_v_backend
+        if: ${{ success() && !cancelled() && steps.install_vsl.outcome == 'success' }}
         run: ~/.vmodules/vsl/bin/test
       - name: Test with Pure V Backend and Pure V Math
+        id: test_with_pure_v_backend_and_pure_v_math
+        if: ${{ success() && !cancelled() && steps.test_with_pure_v_backend.outcome == 'success' }}
         run: ~/.vmodules/vsl/bin/test --use-cblas --skip-examples
 
   vtl-compiles:
@@ -95,6 +105,7 @@ jobs:
       TERM: xterm
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - name: Cache apt packages
@@ -110,9 +121,12 @@ jobs:
             brew-${{ matrix.os }}-vtl-
             brew-${{ matrix.os }}-
       - name: Build V
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         id: build
         run: make && sudo ./v symlink
       - name: Install dependencies
+        id: install_dependencies
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           if [ "$RUNNER_OS" == 'Linux' ]; then
             .github/workflows/disable_azure_mirror.sh
@@ -124,6 +138,8 @@ jobs:
           fi
           v retry v install vsl
       - name: Install vtl
+        id: install_vtl
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: v retry v install vtl
       - name: Skip optional Vulkan examples on macOS
         if: runner.os == 'macOS'
@@ -133,6 +149,10 @@ jobs:
             mv "$file" "${file%.v}_not_ci.v"
           done
       - name: Test with Pure V Backend
+        id: test_with_pure_v_backend
+        if: ${{ success() && !cancelled() && steps.install_vtl.outcome == 'success' }}
         run: ~/.vmodules/vtl/bin/test
       - name: Test with Pure V Backend and Pure V Math
+        id: test_with_pure_v_backend_and_pure_v_math
+        if: ${{ success() && !cancelled() && steps.test_with_pure_v_backend.outcome == 'success' }}
         run: ~/.vmodules/vtl/bin/test --use-cblas

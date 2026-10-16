@@ -28,6 +28,7 @@ permissions:
 jobs:
   release-build:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       matrix:
         os:
@@ -62,6 +63,7 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
           ref: ${{ inputs.release_tag || github.ref }}
@@ -95,6 +97,8 @@ jobs:
           del ./*.tmp.obj
           move cmd/vprod.exe v.exe
       - name: Prepare artifact
+        id: prepare_artifact
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         shell: bash
         run: |
           if [[ ${{ matrix.os }} == 'macos-14' ]]; then
@@ -111,6 +115,8 @@ jobs:
           rm -rf v_old
           rm -rf vlib/v/tests/bench/gcboehm/*.svg.xz
       - name: Create ZIP archive
+        id: create_zip_archive
+        if: ${{ success() && !cancelled() && steps.prepare_artifact.outcome == 'success' }}
         shell: bash
         run: |
           cd ..
@@ -123,6 +129,8 @@ jobs:
           mv ${{ matrix.artifact }} v/
           cd v/
       - name: Create artifact
+        id: create_artifact
+        if: ${{ success() && !cancelled() && steps.create_zip_archive.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
@@ -132,9 +140,13 @@ jobs:
     if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: release-build
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/download-artifact@v8
+        id: uses_download_artifact_v8
       - name: Create release
+        id: create_release
+        if: ${{ success() && !cancelled() && steps.uses_download_artifact_v8.outcome == 'success' }}
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:
           artifacts: |

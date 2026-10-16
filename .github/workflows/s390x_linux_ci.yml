@@ -54,14 +54,21 @@ jobs:
   s390x_linux:
     # The host should always be Linux
     runs-on: ubuntu-22.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     # Embedding the Linux-default V3 compiler makes both bootstrap stages slow under QEMU.
     timeout-minutes: 120
     name: Build on ubuntu-22.04 s390x
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
       - uses: uraimo/run-on-arch-action@1e2c619f81e6d8609845ea1d2f443a778df1ac68 # v3
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         name: Run commands
         id: runcmd
         with:

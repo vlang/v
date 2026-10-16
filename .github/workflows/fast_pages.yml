@@ -17,11 +17,13 @@ concurrency:
 jobs:
   deploy:
     runs-on: [self-hosted, macOS, gitly-ci]
+    timeout-minutes: 60
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Check out generated site
+        id: check_out_generated_site
         uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -29,15 +31,23 @@ jobs:
           ref: gh-pages
           path: site
       - name: Assemble site
+        id: assemble_site
+        if: ${{ success() && !cancelled() && steps.check_out_generated_site.outcome == 'success' }}
         run: |
           mkdir -p _site
           rsync -aL --exclude='.git' --exclude='.github' site/ _site/
       - uses: actions/configure-pages@v6
+        id: uses_configure_pages_v6
+        if: ${{ success() && !cancelled() && steps.assemble_site.outcome == 'success' }}
       - name: Archive Pages artifact
+        id: archive_pages_artifact
+        if: ${{ success() && !cancelled() && steps.uses_configure_pages_v6.outcome == 'success' }}
         run: |
           chmod -R a+rX _site
           /usr/bin/tar -C _site -cvf "$RUNNER_TEMP/artifact.tar" .
       - name: Upload Pages artifact
+        id: upload_pages_artifact
+        if: ${{ success() && !cancelled() && steps.archive_pages_artifact.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: github-pages
@@ -45,4 +55,5 @@ jobs:
           retention-days: 1
           if-no-files-found: error
       - id: deployment
+        if: ${{ success() && !cancelled() && steps.upload_pages_artifact.outcome == 'success' }}
         uses: actions/deploy-pages@v5

@@ -11,13 +11,17 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        id: uses_checkout_v7
         with:
           persist-credentials: false
           ref: fix-master-ci-batch-2-current
           fetch-depth: 0
       - name: Show exact merge conflicts
+        id: show_exact_merge_conflicts
+        if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
         shell: bash
         run: |
           set -uo pipefail
