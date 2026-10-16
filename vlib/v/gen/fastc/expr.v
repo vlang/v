@@ -289,6 +289,9 @@ fn (mut g Parser) try_read_atomic_expression(stops []token.Token, allow_mutation
 	for offset < g.s.src.len && g.s.src[offset] in [` `, `\t`, `\r`] {
 		offset++
 	}
+	if g.tok == .name && offset < g.s.src.len && g.s.src[offset] == `.` {
+		return g.try_read_atomic_member_expression(stops, allow_mutation_statement, allow_newline_value_continuation)
+	}
 	if offset < g.s.src.len && g.s.src[offset] !in [`,`, `)`, `]`, `}`, `:`, `;`, `\n`, `{`]
 		&& !(g.s.src[offset] == `/` && offset + 1 < g.s.src.len
 			&& g.s.src[offset + 1] in [`/`, `*`]) {
@@ -385,14 +388,113 @@ fn (mut g Parser) try_read_atomic_expression(stops []token.Token, allow_mutation
 	return FastcAtomicExpression{ found: true, source: source }
 }
 
+// try_read_atomic_member_expression recognizes a complete ordinary direct field
+// while retaining the scanner checkpoint and expression metadata of the full reader.
+fn (mut g Parser) try_read_atomic_member_expression(stops []token.Token, allow_mutation_statement bool, allow_newline_value_continuation bool) FastcAtomicExpression {
+	if !g.selfhost || g.translated || g.tok != .name || g.tok in stops
+		|| token.Token.dot in stops || g.member_smartcasts.len > 0
+		|| g.in_mono_drain || g.in_generic_placeholder || g.s.line_directives
+		|| g.s.in_str_incomplete || g.s.in_str_inter || g.s.str_parent_quotes.len != 0
+		|| g.lit in ['C', 'chan', 'typeof'] || g.lit.starts_with('@')
+		|| g.lit in g.imports || g.lit in g.generic_method_names {
+		return FastcAtomicExpression{}
+	}
+	local := g.locals[g.lit] or { return FastcAtomicExpression{} }
+	if local.typ == 0 || local.option_value_type != 0 || local.smartcast_origin_type != 0
+		|| local.smartcast_origin_source != '' {
+		return FastcAtomicExpression{}
+	}
+	type_name := flat.source_type_name(local.typ)
+	base_name := fastc_trim_pointer_suffix(type_name)
+	is_pointer := type_name.ends_with('*')
+	if type_name.len - base_name.len > 1 || (local.is_reference && !is_pointer)
+		|| base_name in ['Option', '__v_result'] || base_name.starts_with('FixedArray_')
+		|| base_name.starts_with('Map_') || base_name in g.sum_types
+		|| g.alias_base_types.type_id(base_name) != none {
+		return FastcAtomicExpression{}
+	}
+	mut probe := g.s
+	if probe.scan() != .dot { return FastcAtomicExpression{} }
+	dot_lit := probe.lit
+	if probe.scan() != .name { return FastcAtomicExpression{} }
+	field_name := probe.lit
+	if field_name.starts_with('@') || field_name in g.generic_method_names {
+		return FastcAtomicExpression{}
+	}
+	if fastc_source_range_has_newline(g.s.src, g.s.offset, probe.offset) {
+		return FastcAtomicExpression{}
+	}
+	following := probe.scan()
+	if (following != .eof && following !in stops)
+		|| probe.diagnostics.len != g.s.diagnostics.len || probe.in_str_incomplete
+		|| probe.in_str_inter || probe.str_parent_quotes.len != 0 {
+		return FastcAtomicExpression{}
+	}
+	// Inference treats an enum source name as its type before inspecting locals.
+	if g.is_enum_type_name(g.lit) { return FastcAtomicExpression{} }
+	if base_name.starts_with('Array_') {
+		if field_name !in ['len', 'cap'] { return FastcAtomicExpression{} }
+	} else {
+		kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(local.typ))] or {
+			return FastcAtomicExpression{}
+		}
+		if kind != .struct_ { return FastcAtomicExpression{} }
+	}
+	field := g.direct_struct_field_metadata(local.typ, field_name) or { return FastcAtomicExpression{} }
+	if field.name != field_name || field.typ == 0 || field.storage_path.len != 0
+		|| field.is_shared_pointer || field.is_function || field.is_optional_function
+		|| field.option_value_type != 0 || field.generic_argument_type != 0
+		|| field.chan_element_type != 0
+		|| g.struct_direct_member_type(local.typ, field_name) != field.typ
+		|| !g.atomic_member_value_type_is_plain(field.typ) {
+		return FastcAtomicExpression{}
+	}
+	original_scan := g.s
+	original_tok := g.tok
+	original_lit := g.lit
+	g.s = probe
+	g.tok = following
+	g.lit = probe.lit
+	if following == .semicolon && (g.semicolon_continues_expression()
+		|| (allow_newline_value_continuation && !allow_mutation_statement
+			&& g.semicolon_continues_value_expression())) {
+		g.s = original_scan
+		g.tok = original_tok
+		g.lit = original_lit
+		return FastcAtomicExpression{}
+	}
+	separator := if is_pointer { '->' } else { '.' }
+	root_source := if local.c_name != '' { local.c_name } else { fastc_c_identifier(original_lit) }
+	g.last_expression = [
+		FastcExpressionToken{ tok: .name, lit: original_lit, unsafe_depth: g.unsafe_depth },
+		FastcExpressionToken{ tok: .dot, lit: dot_lit, unsafe_depth: g.unsafe_depth },
+		FastcExpressionToken{ tok: .name, lit: field_name, unsafe_depth: g.unsafe_depth },
+	]
+	g.last_expression_type = field.typ
+	return FastcAtomicExpression{
+		found:  true
+		source: g.render_enum_alias_member_references(g.last_expression, '${root_source}${separator}${fastc_c_identifier(field_name)}')
+	}
+}
+
+fn (g &Parser) atomic_member_value_type_is_plain(typ u32) bool {
+	if fastc_simple_call_scalar_type(typ) || g.is_plain_aggregate_value_type(typ) {
+		return true
+	}
+	type_name := flat.source_type_name(typ)
+	base_name := fastc_trim_pointer_suffix(type_name)
+	if type_name.len - base_name.len != 1 { return false }
+	base := flat.source_type_id(base_name)
+	return fastc_simple_call_scalar_type(base) || g.is_plain_aggregate_value_type(base)
+}
+
 // try_read_simple_call_expression reads a complete known scalar free call without
 // formatting its tokens once for streaming and again for its parameter types.
 fn (mut g Parser) try_read_simple_call_expression(stops []token.Token, allow_mutation_statement bool, allow_newline_value_continuation bool) FastcAtomicExpression {
 	if !g.selfhost || g.translated || g.tok != .name || g.tok in stops
 		|| g.s.line_directives || g.s.in_str_incomplete || g.s.in_str_inter
 		|| g.s.str_parent_quotes.len != 0 || g.lit.starts_with('@')
-		|| g.lit in ['C', 'print', 'println', 'typeof', 'dump', 'sql']
-		|| g.lit in g.locals || g.lit in g.generic_method_names {
+		|| g.lit in ['C', 'print', 'println', 'typeof', 'dump', 'sql'] {
 		return FastcAtomicExpression{}
 	}
 	mut offset := g.s.offset
@@ -400,6 +502,9 @@ fn (mut g Parser) try_read_simple_call_expression(stops []token.Token, allow_mut
 		offset++
 	}
 	if offset >= g.s.src.len || g.s.src[offset] != `(` {
+		return FastcAtomicExpression{}
+	}
+	if g.lit in g.locals || g.lit in g.generic_method_names {
 		return FastcAtomicExpression{}
 	}
 	// Match unqualified_function_key's current-module/monomorph/builtin priority
@@ -2098,6 +2203,21 @@ struct FastcStreamedExpressionToken {
 	source_token_count         int
 }
 
+// next_source_byte_may_be keeps scanner lookahead for comments and line breaks,
+// but excludes punctuation that cannot start the requested one-byte token.
+@[inline]
+fn (g &Parser) next_source_byte_may_be(expected u8) bool {
+	mut offset := g.s.offset
+	for offset < g.s.src.len && g.s.src[offset] in [` `, `\t`, `\r`] {
+		offset++
+	}
+	if offset >= g.s.src.len { return false }
+	b := g.s.src[offset]
+	if b == expected { return true }
+	return b !in [`,`, `)`, `]`, `}`, `+`, `-`, `*`, `%`, `&`, `|`, `^`, `=`, `!`, `<`, `>`, `:`,
+		`.`, `;`, `[`, `(`]
+}
+
 @[inline]
 fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcExpressionToken, stops []token.Token, previous_token token.Token, previous_lit string, previous_module_separator bool, shared_is_struct_field bool, spawn_is_field_name bool, keyword_is_field_name bool, brace_depth int, previous_was_pointer_cast bool, input_next_token_is_mut_argument bool, input_source_token_count int) !FastcStreamedExpressionToken {
 	mut next_token_is_mut_argument := input_next_token_is_mut_argument
@@ -2177,7 +2297,7 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 		// (`TokenKind.float` -> `TokenKind__float`).
 		piece = g.lit
 	}
-	if g.tok == .name && previous_token == .dot {
+	if g.tok == .name && previous_token == .dot && g.next_source_byte_may_be(`(`) {
 		mut method_lookahead := g.s
 		if method_lookahead.scan() == .lpar {
 			piece = expression_tokens.last().lit
@@ -2191,7 +2311,8 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 		// nested in a condition and bypasses the whole-expression renderer.
 		piece = fastc_output_c_type('int')
 	}
-	if g.selfhost && brace_depth > 0 && (g.tok == .name || keyword_is_field_name) {
+	if g.selfhost && brace_depth > 0 && (g.tok == .name || keyword_is_field_name)
+		&& g.next_source_byte_may_be(`:`) {
 		mut field_lookahead := g.s
 		if field_lookahead.scan() == .colon {
 			piece = g.lit
@@ -5565,6 +5686,9 @@ fn (g &Parser) plain_local_direct_member_field(tokens []FastcExpressionToken) ?&
 
 fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, rendered_expression string, flags FastcTokenFlags) ?FastcRenderedExpression {
 	if g.plain_primitive_comparison_expression(tokens) { return none }
+	if flags.has_comparison && flags.has_dot && g.plain_primitive_member_comparison_expression(tokens) {
+		return g.render_pointer_member_access_expression(tokens, rendered_expression)
+	}
 	if flags.has_binary && !flags.has_dot && !flags.has_lpar && !flags.has_lsbr
 		&& !flags.has_lcbr && !flags.has_comparison && !flags.has_logical
 		&& !flags.has_assignment && !flags.has_as && !flags.has_membership

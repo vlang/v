@@ -1778,6 +1778,120 @@ fn (g &Parser) plain_primitive_comparison_expression(tokens []FastcExpressionTok
 	return fastc_common_arithmetic_type(left_type, right_type) != 0
 }
 
+// plain_primitive_member_comparison_expression leaves only pointer-member
+// spelling to lower for a flat primitive comparison with a direct local field.
+fn (g &Parser) plain_primitive_member_comparison_expression(tokens []FastcExpressionToken) bool {
+	if tokens.len !in [5, 7] || !g.primitive_cmps_builtin || !g.selfhost || g.translated
+		|| g.member_smartcasts.len != 0 || g.in_mono_drain || g.in_generic_placeholder {
+		return false
+	}
+	mut operator := 3
+	if tokens.len == 5 && tokens[1].tok in [.eq, .ne, .lt, .le, .gt, .ge] {
+		operator = 1
+	}
+	if tokens[operator].tok !in [.eq, .ne, .lt, .le, .gt, .ge]
+		|| tokens[operator].typ != 0 {
+		return false
+	}
+	for item in tokens {
+		if item.source != '' || item.is_mut_argument || item.is_statement
+			|| item.is_capturing_closure || item.is_storage || item.chan_element_type != 0
+			|| item.option_value_type != 0 {
+			return false
+		}
+	}
+	left_type := g.primitive_member_comparison_operand_type(tokens[..operator])
+	right_type := g.primitive_member_comparison_operand_type(tokens[operator + 1..])
+	if left_type == 0 || right_type == 0 { return false }
+	if left_type == flat.source_type_bool || right_type == flat.source_type_bool {
+		return left_type == right_type && tokens[operator].tok in [.eq, .ne]
+	}
+	if (fastc_is_unsigned_integer_type(left_type) && fastc_is_signed_integer_type(right_type))
+		|| (fastc_is_unsigned_integer_type(right_type) && fastc_is_signed_integer_type(left_type)) {
+		return false
+	}
+	return fastc_common_arithmetic_type(left_type, right_type) != 0
+}
+
+fn fastc_primitive_member_comparison_value_type(typ u32) bool {
+	return typ in [flat.source_type_bool, flat.source_type_int, flat.source_type_i8,
+		flat.source_type_i16, flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
+		flat.source_type_u8, flat.source_type_u16, flat.source_type_u32, flat.source_type_u64,
+		flat.source_type_usize, flat.source_type_f32, flat.source_type_f64]
+}
+
+fn (g &Parser) primitive_member_comparison_operand_type(tokens []FastcExpressionToken) u32 {
+	if tokens.len == 1 {
+		item := tokens[0]
+		if item.tok == .number {
+			typ := fastc_number_expression_type(item.lit)
+			return if item.typ == 0 || item.typ == typ { typ } else { u32(0) }
+		}
+		if item.tok in [.key_true, .key_false] {
+			return if item.typ == 0 || item.typ == flat.source_type_bool {
+				flat.source_type_bool
+			} else {
+				u32(0)
+			}
+		}
+		if item.tok != .name || item.lit in ['C', 'chan', 'typeof']
+			|| item.lit.starts_with('@') || item.lit in g.generic_method_names {
+			return u32(0)
+		}
+		local := g.locals[item.lit] or { return u32(0) }
+		if local.is_reference || local.option_value_type != 0 || local.smartcast_origin_type != 0
+			|| local.smartcast_origin_source != '' || (item.typ != 0 && item.typ != local.typ)
+			|| !fastc_primitive_member_comparison_value_type(local.typ) {
+			return u32(0)
+		}
+		return local.typ
+	}
+	if tokens.len != 3 || tokens[0].tok != .name || tokens[1].tok != .dot
+		|| tokens[2].tok != .name || tokens[1].typ != 0 || tokens[2].typ != 0 {
+		return u32(0)
+	}
+	root := tokens[0]
+	member := tokens[2]
+	if root.lit in ['C', 'chan', 'typeof'] || root.lit.starts_with('@')
+		|| member.lit.starts_with('@') || root.lit in g.imports
+		|| root.lit in g.generic_method_names || member.lit in g.generic_method_names {
+		return u32(0)
+	}
+	local := g.locals[root.lit] or { return u32(0) }
+	// Legacy inference recognizes enum type spellings before the local's
+	// concrete field metadata, including a local that shadows an enum alias.
+	if g.is_enum_type_name(root.lit) { return u32(0) }
+	if local.typ == 0 || local.option_value_type != 0 || local.smartcast_origin_type != 0
+		|| local.smartcast_origin_source != '' || (root.typ != 0 && root.typ != local.typ) {
+		return u32(0)
+	}
+	type_name := flat.source_type_name(local.typ)
+	base_name := fastc_trim_pointer_suffix(type_name)
+	if type_name.len - base_name.len > 1 || (local.is_reference && !type_name.ends_with('*'))
+		|| base_name in ['Option', '__v_result'] || base_name.starts_with('FixedArray_')
+		|| base_name.starts_with('Map_') || base_name in g.sum_types
+		|| g.alias_base_types.type_id(base_name) != none {
+		return u32(0)
+	}
+	if base_name.starts_with('Array_') {
+		if member.lit !in ['len', 'cap'] { return u32(0) }
+	} else {
+		kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(local.typ))] or {
+			return u32(0)
+		}
+		if kind != .struct_ { return u32(0) }
+	}
+	field := g.direct_struct_field_metadata(local.typ, member.lit) or { return u32(0) }
+	if field.name != member.lit || !fastc_primitive_member_comparison_value_type(field.typ)
+		|| field.storage_path.len != 0 || field.is_shared_pointer || field.is_function
+		|| field.is_optional_function || field.option_value_type != 0
+		|| field.generic_argument_type != 0 || field.chan_element_type != 0
+		|| g.struct_direct_member_type(local.typ, member.lit) != field.typ {
+		return u32(0)
+	}
+	return field.typ
+}
+
 fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	if tokens.len < 2 { return none }
 	if g.plain_primitive_comparison_expression(tokens) || g.plain_numeric_arithmetic_expression(tokens) {
