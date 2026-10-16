@@ -3125,14 +3125,27 @@ pub fn (mut g FlatGen) set_scope_parallel_workers(enabled bool) {
 // free_parallel_worker_scopes releases scratch arenas retained by joined cgen
 // helper threads.
 pub fn (mut g FlatGen) free_parallel_worker_scopes() {
+	free_cgen_worker_scopes(g.take_parallel_worker_scopes())
+}
+
+// take_parallel_worker_scopes hands the arenas retained for cgen's output over to
+// the caller, which releases them with free_cgen_worker_scopes.
+pub fn (mut g FlatGen) take_parallel_worker_scopes() []voidptr {
+	scopes := g.parallel_worker_scopes
+	g.parallel_worker_scopes = []voidptr{}
+	return scopes
+}
+
+// free_cgen_worker_scopes releases arenas taken with take_parallel_worker_scopes.
+// They are detached from every thread, so any thread can release them.
+pub fn free_cgen_worker_scopes(scopes []voidptr) {
 	$if prealloc {
-		for scope in g.parallel_worker_scopes {
+		for scope in scopes {
 			if scope != unsafe { nil } {
 				unsafe { prealloc_scope_free_after(scope) }
 			}
 		}
 	}
-	g.parallel_worker_scopes = []voidptr{}
 }
 
 // gen supports gen handling for FlatGen.
