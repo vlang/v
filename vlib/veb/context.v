@@ -63,6 +63,11 @@ mut:
 	// requests a middleware refuses skip the after-middleware, so an
 	// after-middleware could not free them reliably.
 	throttle_leases []ThrottleLease
+	// trusted_proxies are the socket peer addresses whose forwarding headers
+	// `ip()` may believe. The framework copies this from a `trusted_proxies`
+	// field on the app struct into every request context; an app that does not
+	// declare one gets the empty list, so `ip()` answers the socket peer.
+	trusted_proxies []string
 pub:
 	// TODO: move this to `handle_request`
 	// time.ticks() from start of veb connection handle.
@@ -615,28 +620,61 @@ fn peer_ip_from_socket_handle(handle int) string {
 	return address.all_before(':')
 }
 
-// Returns the ip address from the current user
+
+// resolved_client_ip picks the client address from a socket peer, the
+// `X-Forwarded-For` value that peer sent, and the peers `ip()` may believe.
+// When the peer is not trusted the header is ignored and the peer wins. When
+// it is trusted the answer is the left-most entry that is not itself a proxy
+// we trust; when every entry is trusted the left-most one is the best answer
+// there is.
+fn resolved_client_ip(peer string, forwarded_for string, trusted_proxies []string) string {
+	if peer == '' || peer !in trusted_proxies {
+		return peer
+	}
+	mut entries := forwarded_for.split(',').map(it.trim_space()).filter(it != '')
+	for entry in entries {
+		if entry !in trusted_proxies {
+			return entry
+		}
+	}
+	return entries[0] or { peer }
+}
+
+// Returns the ip address of the client.
+// By default this is the address of the socket peer, which a client cannot
+// spoof. Forwarding headers (`CF-Connecting-IP`, `X-Forwarded-For`,
+// `X-Real-Ip`) are honoured only when that peer is trusted: the application
+// declares the peers veb may believe from with a `trusted_proxies` field on
+// its app struct, which the framework copies into every request context.
+// Anything built on `ip()` — rate limiting, audit logs, geo — is only as
+// truthful as that list.
 pub fn (ctx &Context) ip() string {
-	mut ip := ctx.req.header.get_custom('CF-Connecting-IP') or { '' }
-	if ip == '' {
-		ip = ctx.req.header.get(.x_forwarded_for) or { '' }
+	mut peer := ''
+	if ctx.conn != unsafe { nil } {
+		peer = ctx.conn.peer_ip() or { '' }
 	}
-	if ip == '' {
-		ip = ctx.req.header.get_custom('X-Forwarded-For') or { '' }
+	if peer == '' && ctx.client_fd >= 0 {
+		peer = peer_ip_from_socket_handle(ctx.client_fd)
 	}
-	if ip == '' {
-		ip = ctx.req.header.get_custom('X-Real-Ip') or { '' }
+	if peer != '' && peer in ctx.trusted_proxies {
+		if cf := ctx.req.header.get_custom('CF-Connecting-IP') {
+			if cf != '' {
+				return cf
+			}
+		}
+		xff := ctx.req.header.get(.x_forwarded_for) or {
+			ctx.req.header.get_custom('X-Forwarded-For') or { '' }
+		}
+		if xff != '' {
+			return resolved_client_ip(peer, xff, ctx.trusted_proxies)
+		}
+		if real_ip := ctx.req.header.get_custom('X-Real-Ip') {
+			if real_ip != '' {
+				return real_ip
+			}
+		}
 	}
-	if ip.contains(',') {
-		ip = ip.all_before(',')
-	}
-	if ip == '' && ctx.conn != unsafe { nil } {
-		ip = ctx.conn.peer_ip() or { '' }
-	}
-	if ip == '' && ctx.client_fd >= 0 {
-		ip = peer_ip_from_socket_handle(ctx.client_fd)
-	}
-	return ip
+	return peer
 }
 
 // time_to_render returns the time in milliseconds that it took to render the page
