@@ -8339,14 +8339,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 							}
 						}
 					}
-				} else if base.kind == .ident
-					&& (base.value in g.tc.structs || base.value in g.tc.enum_names || g.tc.qualify_name(base.value) in g.tc.structs
-						|| g.tc.qualify_name(base.value) in g.tc.enum_names) {
-					qname := if base.value in g.tc.structs || base.value in g.tc.enum_names {
-						base.value
-					} else {
-						g.tc.qualify_name(base.value)
-					}
+				} else if qname := g.static_call_base_type_name(base) {
 					static_name := '${qname}.${fn_node.value}'
 					g.write(g.cname(static_name))
 					g.write('(')
@@ -14038,6 +14031,22 @@ fn codegen_generic_arg_is_unresolved_bytes(arg string) bool {
 	return false
 }
 
+// static_call_base_type_name returns the struct or enum an ident call base names
+// (`Type.make()`), as spelled or qualified with the current module.
+fn (g &FlatGen) static_call_base_type_name(base &flat.Node) ?string {
+	if base.kind != .ident {
+		return none
+	}
+	if base.value in g.tc.structs || base.value in g.tc.enum_names {
+		return base.value
+	}
+	qname := g.tc.qualify_name(base.value)
+	if qname in g.tc.structs || qname in g.tc.enum_names {
+		return qname
+	}
+	return none
+}
+
 fn (g &FlatGen) fn_value_call_param_types(callee_id flat.NodeId) ?[]types.Type {
 	if int(callee_id) < 0 {
 		return none
@@ -14049,16 +14058,21 @@ fn (g &FlatGen) fn_value_call_param_types(callee_id flat.NodeId) ?[]types.Type {
 				return fn_type_effective_params(ft)
 			}
 		}
-		if typ := g.local_ident_type(node.value) {
+		// local_ident_type, then a global only when no parameter or body local has
+		// the name; each lookup runs once.
+		if typ := g.current_param_type(node.value) {
 			if ft := fn_type_from(typ) {
 				return fn_type_effective_params(ft)
 			}
-		}
-		if g.current_param_type(node.value) == none && !g.cur_scope_has_local_name(node.value) {
-			if typ := g.global_type_for_ident(node.value) {
-				if ft := fn_type_from(typ) {
+		} else if local := g.tc.cur_scope.lookup_before(node.value, g.tc.file_scope) {
+			if local !is types.Void {
+				if ft := fn_type_from(local) {
 					return fn_type_effective_params(ft)
 				}
+			}
+		} else if typ := g.global_type_for_ident(node.value) {
+			if ft := fn_type_from(typ) {
+				return fn_type_effective_params(ft)
 			}
 		}
 	}
