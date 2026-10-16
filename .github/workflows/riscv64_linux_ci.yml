@@ -54,11 +54,6 @@ jobs:
   riscv64_linux:
     # The host should always be Linux
     runs-on: ubuntu-24.04
-    env:
-      # Stop a failing test session at its first failure instead of
-      # running the whole suite to completion; the remaining files
-      # add no signal.
-      VTEST_FAIL_FAST: '1'
     # Embedding the Linux-default V3 compiler makes both bootstrap stages slow under QEMU.
     timeout-minutes: 120
     name: Build on ubuntu-24.04 riscv64

@@ -95,10 +95,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      # Stop a failing test session at its first failure instead of
-      # running the whole suite to completion; the remaining files
-      # add no signal.
-      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc gcc
     steps:
       - uses: actions/checkout@v7
