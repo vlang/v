@@ -1,6 +1,5 @@
 module fastc
 
-import v.flat
 import os
 import strings
 import time

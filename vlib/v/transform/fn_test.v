@@ -588,7 +588,7 @@ fn test_receiver_method_resolution_follows_main_locked_struct_alias() {
 			},
 		]
 	}
-	t.embedded_fields['Context'] = [
+	t.embedded_fields[flat.source_type_id('Context')] = [
 		FieldInfo{
 			name:    'Context'
 			typ:     flat.source_type_id('veb.Context')
@@ -621,8 +621,8 @@ fn test_sql_table_name_substitutes_active_generic_parameter() {
 		active_generic_params:      ['T']
 		active_specialization_args: flat.TypeTextList.from_names(['User'])
 	}
-	assert t.sql_resolved_table_name('T') == 'User'
-	assert t.sql_table_type_names_match('main.User', 'User')
+	assert t.sql_resolved_table_name(flat.source_type_id('T')) == flat.source_type_id('User')
+	assert t.sql_table_type_names_match(flat.source_type_id('main.User'), flat.source_type_id('User'))
 }
 
 fn test_embedded_field_path_specializes_each_owner() {
@@ -684,7 +684,7 @@ fn test_sql_table_name_keeps_main_lock_outside_main_module() {
 	t := Transformer{
 		cur_module: 'orm'
 	}
-	assert !t.sql_table_type_names_match('main.User', 'User')
+	assert !t.sql_table_type_names_match(flat.source_type_id('main.User'), flat.source_type_id('User'))
 }
 
 fn test_normalize_type_in_module_cache_tracks_current_file() {
@@ -832,11 +832,11 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 	}
 	value := t.make_ident('pos')
 	t.stringify_stack << flat.source_type_id('Wrapper')
-	call := t.request_auto_str_helper(value, 'v.token.Pos')
+	call := t.request_auto_str_helper(value, flat.source_type_id('v.token.Pos'))
 	callee := a.child_node(a.node(call), 0)
 
 	assert callee.value == '__v3_autostr_v__token__Pos'
-	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
+	assert t.auto_str_types[flat.source_type_id('v.token.Pos')].helper_module == 'token'
 	t.synthesize_auto_str_helpers()
 	mut helper_idx := -1
 	for i, node in a.nodes {
@@ -888,8 +888,8 @@ fn test_auto_str_helper_uses_interface_declaration_module() {
 		t.stringify_stack << flat.source_type_id('Wrapper')
 		for suffix in ['', '[int]', '[pkg.Item]'] {
 			application := name + suffix
-			t.request_auto_str_helper(value, application)
-			assert t.auto_str_types[application].helper_module == owner, application
+			t.request_auto_str_helper(value, flat.source_type_id(application))
+			assert t.auto_str_types[flat.source_type_id(application)].helper_module == owner, application
 		}
 	}
 }
@@ -971,7 +971,7 @@ fn test_sum_equality_helper_keeps_requesting_file_context() {
 	t.cur_file = 'parser_test.v'
 	t.sum_eq_helper_module = 'xml'
 	helper := sum_eq_helper_name('xml.Contents')
-	t.build_sum_eq_helper_fn('xml.Contents', helper)
+	t.build_sum_eq_helper_fn(flat.source_type_id('xml.Contents'), helper)
 
 	mut helper_id := flat.empty_node
 	for i, node in a.nodes {
@@ -1088,9 +1088,9 @@ fn test_lowered_generic_operator_call_records_operator_use() {
 			key:    'Box.+'
 		}
 	}
-	specs := flat.TypeTextBindings.from_names({
-		'Box[int]': 'Box'
-	})
+	specs := {
+		flat.source_type_id('Box[int]'): flat.source_type_id('Box')
+	}
 	mut indexer := Transformer{}
 	lowered_operator_uses := indexer.lowered_generic_struct_operator_uses_for_specs(specs, decls)
 	assert 'Box_int__plus' in lowered_operator_uses
@@ -1473,20 +1473,20 @@ fn test_frozen_interface_boxed_types_are_read_only_in_skip_generics_workers() {
 	mut tc := types.TypeChecker.new(&a)
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
 	master.skip_generics = true
-	master.interface_boxed_types['main.Reader\nmain.Source'] = true
+	master.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('main.Reader'), flat.source_type_id('main.Source'))] = true
 	master.interface_boxed_types_done = true
 	master.interface_boxed_types_frozen = true
 	mut worker := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
 
 	worker.mark_interface_boxed_type(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))
-	assert 'main.Reader\nmain.Other' !in master.interface_boxed_types
-	assert 'main.Reader\nmain.Other' !in worker.interface_boxed_types
-	assert worker.interface_boxed_types_late['main.Reader\nmain.Other']
+	assert interface_boxed_type_key(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other')) !in master.interface_boxed_types
+	assert interface_boxed_type_key(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other')) !in worker.interface_boxed_types
+	assert worker.interface_boxed_types_late[interface_boxed_type_key(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))]
 	assert worker.interface_boxed_type_marked(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))
 
 	master.interface_boxed_types_frozen = false
 	master.mark_interface_boxed_type(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))
-	assert master.interface_boxed_types['main.Reader\nmain.Other']
+	assert master.interface_boxed_types[interface_boxed_type_key(flat.source_type_id('main.Reader'), flat.source_type_id('main.Other'))]
 }
 
 fn test_multi_return_selector_suffix_does_not_match_free_fn() {
@@ -1868,13 +1868,13 @@ fn test_thread_handle_array_append_does_not_clone_result_fields() {
 }
 
 fn test_builder_receiver_identity_includes_its_declaring_module() {
-	assert is_builder_type_name('strings.Builder', 'main')
-	assert is_builder_type_name('&strings.Builder', 'custom')
-	assert is_builder_type_name('Builder', 'strings')
-	assert is_builder_type_name('&Builder', 'strings')
-	assert !is_builder_type_name('Builder', 'main')
-	assert !is_builder_type_name('&Builder', 'custom')
-	assert !is_builder_type_name('custom.Builder', 'strings')
+	assert is_builder_type_name(flat.source_type_id('strings.Builder'), 'main')
+	assert is_builder_type_name(flat.source_type_id('&strings.Builder'), 'custom')
+	assert is_builder_type_name(flat.source_type_id('Builder'), 'strings')
+	assert is_builder_type_name(flat.source_type_id('&Builder'), 'strings')
+	assert !is_builder_type_name(flat.source_type_id('Builder'), 'main')
+	assert !is_builder_type_name(flat.source_type_id('&Builder'), 'custom')
+	assert !is_builder_type_name(flat.source_type_id('custom.Builder'), 'strings')
 }
 
 fn test_scoped_workers_reuse_generic_declarations_with_private_indexes() {

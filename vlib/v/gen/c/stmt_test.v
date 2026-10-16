@@ -187,8 +187,12 @@ fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
 	g.tc = &tc
 	// Distinct logical ownership keys can refer to the same runtime struct after
 	// lifetime erasure. Only one C helper definition may be emitted for it.
-	g.recursive_drop_helpers.set_id('struct:pkg.Sink[^p,^s,Writer]', flat.source_type_id('pkg.Sink[Writer]'))
-	g.recursive_drop_helpers.set_id('struct:pkg.Sink[^s,^s,Writer]', flat.source_type_id('pkg.Sink[Writer]'))
+	g.recursive_drop_helpers[ownership_drop_expansion_key(types.Type(types.Struct{
+		name_id: flat.source_type_id('pkg.Sink[^p,^s,Writer]')
+	}))] = flat.source_type_id('pkg.Sink[Writer]')
+	g.recursive_drop_helpers[ownership_drop_expansion_key(types.Type(types.Struct{
+		name_id: flat.source_type_id('pkg.Sink[^s,^s,Writer]')
+	}))] = flat.source_type_id('pkg.Sink[Writer]')
 	g.gen_ownership_recursive_drop_helpers()
 	assert g.sb.str().count('static void __v3_ownership_drop_pkg__Sink_Writer(') == 1
 }
@@ -792,4 +796,20 @@ fn test_lowered_ident_annotation_precedes_outer_checker_binding() {
 		typ:   flat.source_type_int
 	})
 	assert g.usable_expr_type(value) == types.Type(types.int_)
+}
+
+fn test_ownership_drop_expansion_keys_keep_kind_and_spelling_order() {
+	late_id := flat.source_type_id('pkg.ZOwnershipKey')
+	early_id := flat.source_type_id('pkg.AOwnershipKey')
+	struct_key := ownership_drop_expansion_key(types.Type(types.Struct{ name_id: early_id }))
+	interface_key := ownership_drop_expansion_key(types.Type(types.Interface{ name_id: early_id }))
+	sum_key := ownership_drop_expansion_key(types.Type(types.SumType{ name_id: early_id }))
+	assert struct_key != interface_key && struct_key != sum_key && interface_key != sum_key
+	assert ownership_drop_expansion_key(types.Type(types.int_)) == 0
+	mut keys := [sum_key, ownership_drop_expansion_key(types.Type(types.Struct{ name_id: late_id })),
+		struct_key, interface_key]
+	keys.sort_with_compare(compare_ownership_drop_expansion_keys)
+	assert keys[0] == interface_key
+	assert keys[1] == struct_key
+	assert keys[3] == sum_key
 }

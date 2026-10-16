@@ -49,7 +49,7 @@ fn (g &Parser) spawn_escaping_parameters() []string {
 				call_tok = call.scan()
 				if call_tok == .dot {
 					if local := g.locals[callee] {
-						if !local.is_reference && !g.underlying_alias_type(local.typ_text()).ends_with('*') && callee !in names {
+						if !local.is_reference && !flat.source_type_name(g.underlying_alias_type(local.typ)).ends_with('*') && callee !in names {
 							names << callee
 						}
 					}

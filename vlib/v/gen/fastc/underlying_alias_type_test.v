@@ -17,7 +17,7 @@ fn test_fastc_alias_resolution_keeps_single_hops_and_undefined_bases() {
 		'Dangling':   'External*'
 		'Dangling**': 'External***'
 	} {
-		assert fastc_underlying_alias_type(source, aliases) == expected, source
+		assert fastc_underlying_alias_type(flat.source_type_id(source), aliases) == flat.source_type_id(expected), source
 	}
 	assert aliases.get('Word') or { panic('missing alias') } == 'u64'
 	assert aliases.get('Dangling') or { panic('missing alias') } == 'External*'
@@ -48,7 +48,7 @@ fn test_fastc_alias_resolution_keeps_pointer_depth_and_cycle_endpoints() {
 		'PointerRight':  'PointerRight***'
 		'CycleEntry**':  'Left***'
 	} {
-		assert fastc_underlying_alias_type(source, aliases) == expected, source
+		assert fastc_underlying_alias_type(flat.source_type_id(source), aliases) == flat.source_type_id(expected), source
 	}
 	assert aliases.get('Outer') or { panic('missing alias') } == 'Middle*'
 	assert aliases.get('PointerRight') or { panic('missing alias') } == 'PointerLeft**'

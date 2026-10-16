@@ -7393,8 +7393,9 @@ fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, source
 	}
 	visibility := if source_is_public { 'pub ' } else { '' }
 	mut head := '${visibility}enum ${node.value}'
-	if params.len > 0 && params[0].len > 0 {
-		head += ' as ${params[0]}'
+	backing := node.enum_backing_type_id()
+	if backing != 0 {
+		head += ' as ${flat.source_type_name(backing)}'
 	}
 	out.writeln('${head} {')
 	for i in 0 .. node.children_count {

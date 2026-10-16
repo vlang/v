@@ -191,7 +191,7 @@ fn (tc &TypeChecker) vls_method_target(receiver_id flat.NodeId, method string) ?
 	if info := tc.resolve_generic_struct_method(flat.source_type_id(owner), method) {
 		return info.name
 	}
-	owners := tc.embedded_method_candidates(owner, method)
+	owners := flat.TypeTextList{ ids: tc.embedded_method_candidates(flat.source_type_id(owner), method) }.names()
 	if owners.len == 1 {
 		return '${owners[0]}.${method}'
 	}
@@ -697,7 +697,7 @@ fn (tc &TypeChecker) vls_generic_value_text(id flat.NodeId, name string, type_te
 		}
 	}
 	mut text := if names.len > 0 {
-		'${name} ${subst_generic_text(type_text, flat.TypeTextList.from_names(args).ids, names)}'
+		'${name} ${flat.source_type_name(subst_generic_text(flat.source_type_id(type_text), flat.TypeTextList.from_names(args).ids, names))}'
 	} else {
 		'${name} ${type_text}'
 	}
@@ -1244,7 +1244,7 @@ fn (tc &TypeChecker) vls_field_type(typ Type, name string) ?Type {
 		return none
 	}
 	declared := tc.vls_declared_field_type(flat.source_type_id(base), name)?
-	decl := tc.generic_type_decl(base) or { return declared }
+	decl := tc.generic_type_decl(flat.source_type_id(base)) or { return declared }
 	params := decl.generic_params().map(it.trim_space())
 	if params.len != args.len {
 		return declared
@@ -1386,7 +1386,7 @@ fn (tc &TypeChecker) vls_enum_values(decl flat.Node) map[string]string {
 				value = expr.value.i64()
 				known = true
 			} else if computed := tc.comptime_static_enum_field_value(expr_id, module_name,
-				decl.value, mut values, field_exprs, mut resolving)
+				flat.source_type_id(decl.value), mut values, field_exprs, mut resolving)
 			{
 				value = computed
 				known = true
@@ -1444,9 +1444,7 @@ fn (tc &TypeChecker) vls_type_declaration(name string) ?string {
 			return 'type ${short} = ${texts.join(' | ')}'
 		}
 		if parent_source_id := tc.type_aliases.type_id(key) {
-			parent := flat.source_type_name(parent_source_id)
-
-			return 'type ${short} = ${tc.vls_type_text(tc.parse_type(flat.source_type_id(parent)))}'
+			return 'type ${short} = ${tc.vls_type_text(tc.parse_type(parent_source_id))}'
 		}
 	}
 	return none
@@ -1608,8 +1606,8 @@ fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignatu
 			if param.kind != .param {
 				continue
 			}
-			text := tc.vls_written_type_text(subst_generic_text(param.typ_text(), flat.TypeTextList.from_names(type_args).ids,
-				type_params))
+			text := tc.vls_written_type_text(flat.source_type_name(subst_generic_text(param.typ, flat.TypeTextList.from_names(type_args).ids,
+				type_params)))
 			params << '${param.value} ${text.replace('fn(', 'fn (')}'
 			names << param.value
 			types << Type(void_)
@@ -1617,7 +1615,7 @@ fn (tc &TypeChecker) vls_interface_method_signature(resolved string) ?VlsSignatu
 		ret_text := if member.typ == 0 || member.typ == flat.source_type_void {
 			''
 		} else {
-			' ${tc.vls_written_type_text(subst_generic_text(member.typ_text(), flat.TypeTextList.from_names(type_args).ids, type_params))}'
+			' ${tc.vls_written_type_text(flat.source_type_name(subst_generic_text(member.typ, flat.TypeTextList.from_names(type_args).ids, type_params)))}'
 		}
 		return VlsSignature{
 			name:   method

@@ -42,8 +42,12 @@ fn test_fastc_numeric_narrowing_keeps_reference_and_origin_requirements() {
 			}
 			for source in ['value', '((value))'] {
 				tokens := fastc_render_borrow_test_tokens(source)
-				result := g.narrowed_numeric_operand_type(tokens, 'int')
-				assert result == if is_reference && has_origin { 'u64' } else { 'int' }
+				result := g.narrowed_numeric_operand_type(tokens, flat.source_type_int)
+				assert result == if is_reference && has_origin {
+					flat.source_type_u64
+				} else {
+					flat.source_type_int
+				}
 			}
 		}
 	}

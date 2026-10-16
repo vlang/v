@@ -48,8 +48,8 @@ fn test_fixed_array_alias_chains_and_pointer_sizes_use_array_typedefs() {
 	assert g.value_c_type(types.Type(types.Pointer{
 		base_type: pointer
 	})) == 'Array_fixed_u8_3**'
-	assert g.sizeof_target('&[3]u8') == 'void*'
-	assert g.sizeof_target('&u8[3]') == 'u8*[3]'
+	assert g.sizeof_target(flat.source_type_id('&[3]u8')) == 'void*'
+	assert g.sizeof_target(flat.source_type_id('&u8[3]')) == 'u8*[3]'
 }
 
 fn test_type_references_thread_through_containers() {
@@ -375,12 +375,12 @@ fn test_specialized_generic_struct_default_value_preserves_field_defaults() {
 }
 
 fn test_generic_text_substitution_preserves_fn_field_type_params() {
-	assert substitute_shared_generic_type_text('fn (T) u32', ['T'], flat.TypeTextList.from_names(['int']).ids) == 'fn (int) u32'
-	mut_fn := substitute_shared_generic_type_text('fn (mut T, []T) ?T', ['T'], flat.TypeTextList.from_names(['string']).ids)
+	assert flat.source_type_name(substitute_shared_generic_type_text(flat.source_type_id('fn (T) u32'), ['T'], flat.TypeTextList.from_names(['int']).ids)) == 'fn (int) u32'
+	mut_fn := flat.source_type_name(substitute_shared_generic_type_text(flat.source_type_id('fn (mut T, []T) ?T'), ['T'], flat.TypeTextList.from_names(['string']).ids))
 	assert mut_fn == 'fn (mut string, []string) ?string'
-	nested_fn := substitute_shared_generic_type_text('fn (next fn (T) T) T', ['T'], flat.TypeTextList.from_names(['int']).ids)
+	nested_fn := flat.source_type_name(substitute_shared_generic_type_text(flat.source_type_id('fn (next fn (T) T) T'), ['T'], flat.TypeTextList.from_names(['int']).ids))
 	assert nested_fn == 'fn (next fn (int) int) int'
-	assert shared_type_text_uses_generic_params('fn (mut it T) T', ['T'])
+	assert shared_type_text_uses_generic_params(flat.source_type_id('fn (mut it T) T'), ['T'])
 	assert shared_fn_param_type_text('mut it &Dog') == '&Dog'
 }
 
@@ -531,10 +531,10 @@ fn test_enum_autostr_c_name_ignores_current_file_imports() {
 	g.a = &ast
 	g.tc = &tc
 
-	assert g.enum_autostr_c_name('a.Kind') == 'a__Kind'
-	assert g.enum_autostr_c_name('b.Kind') == 'b__Kind'
-	assert g.enum_autostr_c_name('Kind') == 'Kind'
-	assert g.enum_autostr_c_name('main.Kind') == 'Kind'
+	assert g.enum_autostr_c_name(flat.source_type_id('a.Kind')) == 'a__Kind'
+	assert g.enum_autostr_c_name(flat.source_type_id('b.Kind')) == 'b__Kind'
+	assert g.enum_autostr_c_name(flat.source_type_id('Kind')) == 'Kind'
+	assert g.enum_autostr_c_name(flat.source_type_id('main.Kind')) == 'Kind'
 }
 
 fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
@@ -992,7 +992,7 @@ fn test_sum_name_resolution_prefers_a_live_import_alias_over_an_exact_namesake_s
 		value:          'iface_mod.Any'
 		typ:            flat.source_type_id('iface_mod.Any')
 	}
-	assert g.lowered_struct_init_sum_name(generated) == 'iface_mod.Any'
+	assert flat.source_type_name(g.lowered_struct_init_sum_name(generated)) == 'iface_mod.Any'
 }
 
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {

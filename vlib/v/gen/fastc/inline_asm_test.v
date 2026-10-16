@@ -2,15 +2,16 @@ module fastc
 
 import os
 import v.cmdexec
+import v.flat
 import v.pref
 
 fn test_fastc_inline_asm_operand_lowering() {
 	aliases := {
-		'value':   FastcAsmAlias{ typ: 'u64', constraint: '+r' }
-		'address': FastcAsmAlias{ typ: 'voidptr', constraint: 'r' }
-		'narrow':  FastcAsmAlias{ typ: 'u32', constraint: '=r' }
-		'amount':  FastcAsmAlias{ typ: 'int', constraint: 'i' }
-		'memory':  FastcAsmAlias{ typ: 'u64', constraint: '+m', address_alias: '__v0' }
+		'value':   FastcAsmAlias{ typ: flat.source_type_u64, constraint: '+r' }
+		'address': FastcAsmAlias{ typ: flat.source_type_voidptr, constraint: 'r' }
+		'narrow':  FastcAsmAlias{ typ: flat.source_type_u32, constraint: '=r' }
+		'amount':  FastcAsmAlias{ typ: flat.source_type_int, constraint: 'i' }
+		'memory':  FastcAsmAlias{ typ: flat.source_type_u64, constraint: '+m', address_alias: '__v0' }
 	}
 	assert fastc_asm_lower_template('lock xadd value, rax', 'amd64', aliases, true, false, []) == 'lock xadd %%rax, %[value]'
 	assert fastc_asm_lower_template('mov value, gs:[0]', 'amd64', aliases, true, false, []) == 'mov %%gs:0, %[value]'

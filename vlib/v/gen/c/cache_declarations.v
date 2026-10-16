@@ -418,7 +418,7 @@ fn (mut g FlatGen) finish_cache_declaration_demand(const_code string) {
 	old_module := g.tc.cur_module
 	for _, info in g.shared_type_names {
 		g.tc.cur_module = info.module
-		g.cache_require_declaration_type(g.tc.parse_type(flat.source_type_id(info.inner)), mut seen)
+		g.cache_require_declaration_type(g.tc.parse_type(info.inner), mut seen)
 	}
 	g.tc.cur_module = old_module
 	for typ in g.multi_return_types {
@@ -479,7 +479,7 @@ fn (mut g FlatGen) cache_require_declaration_type(typ types.Type, mut seen map[u
 			}
 		}
 		types.Interface {
-			for field in g.tc.interface_field_list(typ.name()) {
+			for field in g.tc.interface_field_list(typ.source_type_id()) {
 				g.cache_require_declaration_type(field.typ, mut seen)
 			}
 		}

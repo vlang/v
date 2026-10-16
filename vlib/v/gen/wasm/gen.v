@@ -232,7 +232,7 @@ fn (mut g Gen) wasm_import(namespace string, decl flat.Node) !WasmImport {
 		params << g.import_valtype(imp, p.value, p.typ)!
 	}
 	mut results := []u8{}
-	if decl.typ_text().len > 0 && decl.typ_text() != 'void' {
+	if decl.typ != 0 && decl.typ != flat.source_type_void {
 		results << g.import_valtype(imp, '', decl.typ)!
 	}
 	return WasmImport{

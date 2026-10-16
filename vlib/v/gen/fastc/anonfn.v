@@ -19,7 +19,7 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	// just past the closing `}`.
 	g.next() // consume `fn`
 	mut capture_names := []string{}
-	mut capture_types := []string{}
+	mut capture_types := []u32{}
 	mut capture_params := []string{}
 	mut capture_values := []string{}
 	if g.tok == .lsbr {
@@ -35,17 +35,17 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 			local := g.locals[capture_name] or {
 				return g.unsupported('closure capture `${capture_name}` without a local value')
 			}
-			capture_type := fastc_normalize_inferred_type(local.typ_text())
+			capture_type := fastc_normalize_inferred_type(local.typ)
 			capture_source_type := g.capture_type_source(capture_type) or {
-				return g.unsupported('closure capture `${capture_name}` of type `${capture_type}`')
+				return g.unsupported('closure capture `${capture_name}` of type `${flat.source_type_name(capture_type)}`')
 			}
 			capture_names << capture_name
 			capture_types << capture_type
 			capture_params << '${capture_name} ${capture_source_type}'
 			capture_value := g.local_c_name(capture_name)
-			capture_values << if capture_type.starts_with('Map_') {
+			capture_values << if flat.source_type_name(capture_type).starts_with('Map_') {
 				'builtin__map_clone(&(${capture_value}))'
-			} else if capture_type.starts_with('Array_') {
+			} else if flat.source_type_name(capture_type).starts_with('Array_') {
 				'builtin__array_clone_to_depth(&(${capture_value}), 1)'
 			} else {
 				capture_value
@@ -190,7 +190,7 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	mut call_args := []string{}
 	for i, capture_name in capture_names {
 		field_name := fastc_c_identifier(capture_name)
-		fields << '${capture_types[i]} ${field_name};'
+		fields << '${flat.source_type_name(capture_types[i])} ${field_name};'
 		initializers << '.${field_name}=(${capture_values[i]})'
 		call_args << '__vf_ctx->${field_name}'
 	}
@@ -284,27 +284,34 @@ fn (mut g Parser) add_local_closure_cleanup(name string) {
 	g.deferred_lines << '\t'.repeat(g.indent) + line
 }
 
-fn (g &Parser) capture_type_source(typ string) ?string {
+fn (g &Parser) capture_type_source(typ u32) ?string {
+	return g.capture_type_source_bytes(flat.source_type_name(typ))
+}
+
+fn (g &Parser) capture_type_source_bytes(typ string) ?string {
 	if typ.ends_with('*') {
-		return '&' + g.capture_type_source(typ[..typ.len - 1])?
+		return '&' + g.capture_type_source_bytes(typ[..typ.len - 1])?
 	}
 	if typ.starts_with('Array_') {
-		element := g.array_element_type(typ)?
-		return '[]' + g.capture_type_source(element)?
+		element := (g.array_element_type(flat.source_type_id(typ))?)
+		return '[]' + g.capture_type_source_bytes(flat.source_type_name(element))?
 	}
 	if typ.starts_with('Map_') {
-		key, value := g.map_key_value_types(typ)?
-		return 'map[' + g.capture_type_source(key)? + ']' + g.capture_type_source(value)?
+		key_source_id, value_source_id := g.map_key_value_types(flat.source_type_id(typ))?
+		key := key_source_id
+		value := value_source_id
+
+		return 'map[' + g.capture_type_source_bytes(flat.source_type_name(key))? + ']' + g.capture_type_source_bytes(flat.source_type_name(value))?
 	}
 	if fastc_primitive_c_type(typ) != none {
 		return typ
 	}
-	key := g.semantic_type_key(typ)
-	if key !in g.declared_types {
+	key := g.semantic_type_key(flat.source_type_id(typ))
+	if flat.source_type_name(key) !in g.declared_types {
 		return none
 	}
-	module_name := key.all_before_last('.')
-	name := key.all_after_last('.')
+	module_name := flat.source_type_name(key).all_before_last('.')
+	name := flat.source_type_name(key).all_after_last('.')
 	if module_name == g.module_name || module_name == 'builtin' {
 		return name
 	}
