@@ -30,6 +30,10 @@ fn test_web_template_uses_veb() {
 	main_v := os.read_file(os.join_path(project_path, 'main.v'))!
 	assert main_v.contains('import veb')
 	assert main_v.contains('\$veb.html()')
+	assert main_v.contains('x.sessions'), 'the web template must wire sessions'
+	assert main_v.contains('SESSION_SECRET'), 'the web template must read its session secret from the environment'
+	assert main_v.contains('/login')
+	assert main_v.contains('/me')
 	template_html := os.read_file(os.join_path(project_path, 'templates', 'index.html'))!
 	assert template_html.contains('veb starter')
 	os.chdir(project_path)!

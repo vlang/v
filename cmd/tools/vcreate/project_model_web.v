@@ -76,7 +76,7 @@ code {
 		<p class='eyebrow'>veb starter</p>
 		<h1>@title</h1>
 		<p>@message</p>
-		<p class='hint'>Try <code>GET /health</code> for a plain-text response.</p>
+		<p class='hint'>Try <code>GET /health</code>, then <code>POST /login</code> with a <code>name</code> field and <code>GET /me</code>.</p>
 	</main>
 </body>
 </html>
@@ -88,13 +88,24 @@ code {
 
 import os
 import veb
+import x.sessions
+import x.sessions.veb_middleware
+
+pub struct User {
+pub mut:
+	name string
+}
 
 pub struct Context {
 	veb.Context
+	sessions.CurrentSession[User]
 }
 
 pub struct App {
+	veb.Middleware[Context]
 	veb.StaticHandler
+mut:
+	sessions sessions.Sessions[User]
 }
 
 pub fn (app &App) index() veb.Result {
@@ -108,10 +119,45 @@ pub fn (app &App) health(mut ctx Context) veb.Result {
 	return ctx.text('ok')
 }
 
+@['/login'; post]
+pub fn (mut app App) login(mut ctx Context, name string) veb.Result {
+	if name == '' {
+		ctx.res.set_status(.bad_request)
+		return ctx.text('name is required')
+	}
+	app.sessions.save(mut ctx, User{
+		name: name
+	}) or {
+		return ctx.server_error('cannot save session')
+	}
+	return ctx.text('hello \${name}')
+}
+
+@['/me'; get]
+pub fn (app &App) me(mut ctx Context) veb.Result {
+	user := ctx.session_data or {
+		ctx.res.set_status(.unauthorized)
+		return ctx.text('not signed in: POST your name to /login first')
+	}
+	return ctx.text('hello \${user.name}')
+}
+
 fn main() {
 	// Keep asset and template paths stable for `v run .`.
 	os.chdir(os.dir(@FILE))!
-	mut app := &App{}
+	// Sessions are signed with this secret. Generate a real one with
+	// `openssl rand -hex 32` and never deploy the fallback below.
+	secret := os.getenv_opt('SESSION_SECRET') or {
+		eprintln('warning: SESSION_SECRET is not set, using an insecure dev secret')
+		'dev-only-insecure-secret-change-me'
+	}
+	mut app := &App{
+		sessions: sessions.Sessions[User]{
+			store:  sessions.MemoryStore[User]{}
+			secret: secret.bytes()
+		}
+	}
+	app.use(veb_middleware.create[User, Context](mut app.sessions))
 	app.handle_static('assets', false)!
 	veb.run[App, Context](mut app, 8080)
 }
