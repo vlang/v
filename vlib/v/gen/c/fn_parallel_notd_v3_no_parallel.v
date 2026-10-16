@@ -351,6 +351,45 @@ fn (mut g FlatGen) precompute_consts_scoped() {
 	cgen_worker_scope_free(scope)
 }
 
+// ForwardDeclLaneArgs is one contiguous range of function prototypes that a
+// private generator emits beside the type declaration task.
+struct ForwardDeclLaneArgs {
+	worker    voidptr
+	items_ptr voidptr
+	start     int
+	end       int
+mut:
+	output string
+}
+
+fn forward_decl_lane_thread(arg voidptr) voidptr {
+	mut a := unsafe { &ForwardDeclLaneArgs(arg) }
+	mut w := unsafe { &FlatGen(a.worker) }
+	items := unsafe { &[]FlatFnGenItem(a.items_ptr) }
+	fdsw := time.new_stopwatch()
+	w.sb = strings.new_builder((a.end - a.start) * 96)
+	w.line_start = true
+	w.forward_decl_batches(*items, a.start, a.end)
+	a.output = w.sb.str()
+	unsafe { w.sb.free() }
+	w.sb = strings.new_builder(0)
+	w.timing_profile('  [ttime]     cg fwd decls   ${f64(fdsw.elapsed().microseconds()) / 1000.0:7.2f} ms (task, items: ${a.end - a.start})')
+	return unsafe { nil }
+}
+
+// forward_decl_lane_bounds splits the prototypes of `n_items` functions into
+// ranges of whole 1024-item forward declaration batches, one per lane.
+fn forward_decl_lane_bounds(n_items int) []int {
+	n_batches := (n_items + 1023) / 1024
+	n_lanes := if n_batches >= 4 { 2 } else { 1 }
+	mut bounds := []int{cap: n_lanes + 1}
+	for lane in 0 .. n_lanes {
+		bounds << (n_batches * lane / n_lanes) * 1024
+	}
+	bounds << n_items
+	return bounds
+}
+
 fn parallel_type_decls_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
 	// Body dispatchers fork from the master's checker while this task resolves
@@ -388,7 +427,12 @@ fn parallel_type_decls_thread(arg voidptr) voidptr {
 	w.sb = strings.new_builder(4096)
 	w.timing_profile('  [ttime]       td globals    ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	tdpsw.restart()
-	w.forward_decls()
+	if w.parallel_forward_decl_lanes {
+		// The function prototypes are generated on their own pool lanes.
+		w.forward_decls_tail()
+	} else {
+		w.forward_decls()
+	}
 	w.timing_profile('  [ttime]       td fwd decls ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	w.parallel_forward_decls = w.sb.str()
 	unsafe { w.sb.free() }
@@ -1917,11 +1961,35 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				total_cost += item.cost
 			}
 			reserve_cost := total_cost / i64(worker_count) + 1
+			// Function prototypes only read the frozen selection and declaration
+			// tables, like the body workers. Generate them on private generators
+			// beside the type declaration task, which is otherwise the longest lane.
+			fwd_bounds := forward_decl_lane_bounds(items.len)
+			mut fwd_args := []ForwardDeclLaneArgs{cap: fwd_bounds.len - 1}
+			fwd_scope := cgen_worker_scope_begin(true)
+			for lane in 0 .. fwd_bounds.len - 1 {
+				mut fwd_worker := g.new_parallel_worker(max_flat_cgen_jobs + 3 + lane)
+				fwd_worker.tc.verbose = g.tc.verbose
+				fwd_args << ForwardDeclLaneArgs{
+					worker:    voidptr(fwd_worker)
+					items_ptr: unsafe { voidptr(&items) }
+					start:     fwd_bounds[lane]
+					end:       fwd_bounds[lane + 1]
+				}
+			}
+			cgen_worker_scope_leave(fwd_scope)
+			g.parallel_forward_decl_lanes = true
 			mut args := []FlatCgenDynamicArgs{cap: worker_count}
-			mut tasks := []workers.Task{cap: worker_count + 1}
+			mut tasks := []workers.Task{cap: worker_count + 1 + fwd_args.len}
 			tasks << workers.Task{
 				run: parallel_type_decls_thread
 				arg: voidptr(g)
+			}
+			for lane in 0 .. fwd_args.len {
+				tasks << workers.Task{
+					run: forward_decl_lane_thread
+					arg: unsafe { voidptr(&fwd_args[lane]) }
+				}
 			}
 			for ci in 0 .. worker_count {
 				args << FlatCgenDynamicArgs{
@@ -1938,6 +2006,10 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			}
 			g.parallel_used = g.a.worker_pool.run(tasks)
 			g.timing_profile('  [ttime]   cg pool.run      ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, workers: ${worker_count})')
+			for fwd_arg in fwd_args {
+				g.parallel_forward_decl_parts << fwd_arg.output
+			}
+			cgen_worker_scope_free(fwd_scope)
 		}
 		// The declaration thread disables the master's caches while body
 		// workers use their private copies. Restore them for synthetic output.
