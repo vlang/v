@@ -1866,7 +1866,7 @@ fn (t &Transformer) interface_alias_names(iface_name_id u32) []u32 {
 	mut aliases := []u32{}
 	for alias, target_id in t.tc.type_aliases.ids {
 		if target_id == iface_name_id
-			|| flat.source_type_id(t.tc.qualify_name(flat.source_type_name(target_id))) == iface_name_id {
+			|| t.tc.qualify_type_name(target_id) == iface_name_id {
 			aliases << flat.source_type_id(alias)
 		}
 	}

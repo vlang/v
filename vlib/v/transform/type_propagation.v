@@ -2542,11 +2542,11 @@ fn (t &Transformer) lvalue_type(id flat.NodeId) u32 {
 	if node.kind == .selector {
 		sel_type_source_id := t.resolve_selector_type(node)
 		sel_type_shape := flat.source_type_shape(sel_type_source_id)
-		if !isnil(t.tc) {
+		if !isnil(t.tc) && !sel_type_shape.has(.pointer) {
 			if checker_type := t.tc.expr_type(id) {
-				checker_name := checker_type.name()
-				if checker_name.starts_with('&') && !sel_type_shape.has(.pointer) {
-					return flat.source_type_id(checker_name)
+				checker_name := t.tc.type_name(checker_type)
+				if flat.source_type_shape(checker_name).has(.pointer) {
+					return checker_name
 				}
 			}
 		}

@@ -1987,8 +1987,7 @@ fn (mut tc TypeChecker) check_match_sumtype_exhaustiveness(id flat.NodeId, node 
 			cond := tc.a.child_node(branch, j)
 			pattern_source_id_9 := tc.match_type_pattern(cond) or { continue }
 			pattern := flat.source_type_name(pattern_source_id_9)
-			qpattern := tc.qualify_name(pattern)
-			qpattern_id := flat.source_type_id(qpattern)
+			qpattern_id := tc.qualify_type_name(pattern_source_id_9)
 			if matched_source_id := tc.sum_variant_type_for_pattern(sum_subject.source_type_id(), pattern_source_id_9) {
 				matched_source_id_2 := matched_source_id
 
@@ -3096,7 +3095,7 @@ fn (tc &TypeChecker) interface_match_pattern_candidates(pattern_id u32) []u32 {
 	} else {
 		candidates << pattern_id
 	}
-	qpattern_id := flat.source_type_id(tc.qualify_name(pattern))
+	qpattern_id := tc.qualify_type_name(pattern_id)
 	if qpattern_id != pattern_id {
 		candidates << qpattern_id
 	}
@@ -9612,7 +9611,7 @@ fn (tc &TypeChecker) static_assoc_fn_key_for_base(type_ident_id u32, method stri
 	mut direct_candidates := []u32{}
 	tc.add_static_assoc_type_candidate(mut direct_candidates, type_ident_id)
 	tc.add_static_assoc_type_candidate(mut direct_candidates,
-		flat.source_type_id(tc.qualify_name(flat.source_type_name(type_ident_id))))
+		tc.qualify_type_name(type_ident_id))
 	for type_id in direct_candidates {
 		key := flat.encode_static_type_method_name(flat.source_type_name(type_id), method)
 		if tc.fn_signature_known(key) {
@@ -9673,7 +9672,7 @@ fn (tc &TypeChecker) static_assoc_type_candidates(type_ident_id u32) []u32 {
 	if resolved := tc.resolve_import_alias(type_ident) {
 		tc.add_static_assoc_type_candidate(mut candidates, flat.source_type_id(resolved))
 	}
-	tc.add_static_assoc_type_candidate(mut candidates, flat.source_type_id(tc.qualify_name(type_ident)))
+	tc.add_static_assoc_type_candidate(mut candidates, tc.qualify_type_name(type_ident_id))
 	mut result := []u32{}
 	for candidate_id in candidates {
 		if tc.static_assoc_type_known(candidate_id) && candidate_id !in result {
@@ -11426,12 +11425,13 @@ pub fn (tc &TypeChecker) interface_metadata_name(name_id u32) u32 {
 		return lookup_id
 	}
 	if !lookup.contains('.') {
-		qname := tc.qualify_name(lookup)
+		qname_id := tc.qualify_type_name(lookup_id)
+		qname := flat.source_type_name(qname_id)
 		if qname in tc.interface_names || qname in tc.interface_abstract_methods
 			|| tc.interface_embeds.contains(qname) || qname in tc.interface_fields {
-			return flat.source_type_id(qname)
+			return qname_id
 		}
-		if qname != lookup && tc.non_interface_type_known(qname) {
+		if qname_id != lookup_id && tc.non_interface_type_known(qname) {
 			return lookup_id
 		}
 	}
@@ -14819,9 +14819,9 @@ fn (tc &TypeChecker) sum_base_name(sum_name_id u32) u32 {
 	if tc.sum_types.contains(sum_name) {
 		return sum_name_id
 	}
-	qname := tc.qualify_name(sum_name)
-	if tc.sum_types.contains(qname) {
-		return flat.source_type_id(qname)
+	qname_id := tc.qualify_type_name(sum_name_id)
+	if tc.sum_types.contains(flat.source_type_name(qname_id)) {
+		return qname_id
 	}
 	if sum_name.contains('.') {
 		resolved := flat.source_type_name(tc.resolve_imported_type_text(sum_name_id))
@@ -14973,9 +14973,9 @@ fn (tc &TypeChecker) resolve_generic_match_base(base_id u32) u32 {
 	if resolved := tc.resolve_selective_import_type_symbol(base) {
 		return flat.source_type_id(resolved)
 	}
-	qbase := tc.qualify_name(base)
-	if qbase != base && tc.type_symbol_known(qbase) {
-		return flat.source_type_id(qbase)
+	qbase := tc.qualify_type_name(base_id)
+	if qbase != base_id && tc.type_symbol_known(flat.source_type_name(qbase)) {
+		return qbase
 	}
 	return base_id
 }
@@ -15198,7 +15198,7 @@ fn (tc &TypeChecker) sum_variant_type_for_pattern_depth(sum_name_id u32, variant
 	variants := tc.sum_types.type_ids(base) or { return none }
 	variant_name := flat.source_type_name(variant_name_id)
 	mut candidates := [variant_name_id]
-	qvariant := flat.source_type_id(tc.qualify_name(variant_name))
+	qvariant := tc.qualify_type_name(variant_name_id)
 	if qvariant != variant_name_id { candidates << qvariant }
 	if variant_name.contains('.') {
 		resolved := tc.resolve_imported_type_text(variant_name_id)
@@ -20337,8 +20337,10 @@ fn (tc &TypeChecker) generic_struct_method_alias_target(type_name_id u32) u32 {
 		seen[seen_len] = current
 		seen_len++
 		name := flat.source_type_name(current)
-		qualified := tc.qualify_name(name)
-		target := tc.type_aliases.type_id(name) or { tc.type_aliases.type_id(qualified) or { break } }
+		qualified := tc.qualify_type_name(current)
+		target := tc.type_aliases.type_id(name) or {
+			tc.type_aliases.type_id(flat.source_type_name(qualified)) or { break }
+		}
 		if target == current {
 			break
 		}

@@ -13200,9 +13200,9 @@ fn (mut t Transformer) mark_detached_spawn_drop_type(typ types.Type, mut seen ma
 		types.Interface {
 			mut iface_name := name_id
 			if flat.source_type_name(iface_name) !in t.tc.interface_names {
-				qualified := t.tc.qualify_name(flat.source_type_name(iface_name))
-				if qualified in t.tc.interface_names {
-					iface_name = flat.source_type_id(qualified)
+				qualified := t.tc.qualify_type_name(iface_name)
+				if flat.source_type_name(qualified) in t.tc.interface_names {
+					iface_name = qualified
 				}
 			}
 			if iface_name != name_id && seen[iface_name] {
@@ -30704,7 +30704,7 @@ fn (t &Transformer) interface_pattern_candidates(pattern_id u32) []u32 {
 	} else {
 		candidates << pattern_id
 	}
-	qpattern := flat.source_type_id(t.tc.qualify_name(pattern))
+	qpattern := t.tc.qualify_type_name(pattern_id)
 	if qpattern != pattern_id {
 		candidates << qpattern
 	}
