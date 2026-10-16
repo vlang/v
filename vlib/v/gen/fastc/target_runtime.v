@@ -40,6 +40,11 @@ static inline v_fastc_native_pair_u64 v_fastc_native_pair_from_multi(MultiReturn
 // ownership in V source, following only selected compile-time branches. C headers
 // belong to the C compiler and are never opened or parsed by FastC.
 fn fastc_target_collect_native_context(source string, path string, prefs &pref.Preferences, mut references map[string]bool, mut declarations map[string]bool) bool {
+	// Only these V-source lexemes can produce a native reference,
+	// declaration or header directive. Comments and strings stay candidates.
+	if !source.contains('#') && !fastc_source_contains_word(source, 'C') {
+		return false
+	}
 	mut scan := scanner.new_scanner(prefs, .normal)
 	file := token.File.unindexed(path, source.len)
 	scan.init(file, source)

@@ -210,6 +210,9 @@ v -b fastc -nocache -o v_fastc1 cmd/v
 
 Each generation retains the full command-line entry and can compile programs with either
 the C or FastC backend. `-nocache` forces each generation to rebuild its generated C units.
+On macOS ARM64, standard full-compiler builds compile the owned native support files together
+so TinyCC processes shared SDK declarations once. Debug builds, custom preprocessing flags,
+and other native source sets retain separate compilation. FastC does not read their C headers.
 
 `v -b fastc self` builds a smaller standalone FastC compiler from `vlib/v/v.v`.
 Its `self` command keeps FastC for subsequent generations; use `v -b fastc self x2` to

@@ -1608,7 +1608,106 @@ fn (g &Parser) narrowed_numeric_operand_type(tokens []FastcExpressionToken, infe
 	return inferred
 }
 
+// fastc_numeric_arithmetic_has_no_overloads is shared by every file generator.
+// Ambiguous primitive metadata disables the shortcut conservatively.
+fn fastc_numeric_arithmetic_has_no_overloads(functions map[string]FastcFunctionSignature, declared_type_c_names flat.TypeTextBindings, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings) bool {
+	for type_name in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64', 'usize',
+		'f32', 'f64'] {
+		if declared_type_c_names.contains(type_name) || alias_base_types.contains(type_name)
+			|| type_name in struct_fields {
+			return false
+		}
+		for operator in ['+', '-', '*', '/', '%'] {
+			if '${type_name}.${operator}' in functions {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// plain_numeric_arithmetic_expression needs no special overloaded lowering.
+// Keep mixed-type validation and later raw precedence handling in their usual paths.
+fn (g &Parser) plain_numeric_arithmetic_expression(tokens []FastcExpressionToken) bool {
+	if !g.numeric_ops_are_builtin || !g.selfhost || g.translated || tokens.len < 3 {
+		return false
+	}
+	mut expect_operand := true
+	mut depth := 0
+	mut has_binary := false
+	for i, item in tokens {
+		if item.source != '' || item.is_mut_argument {
+			return false
+		}
+		match item.tok {
+			.name {
+				if !expect_operand || item.lit == 'C' || item.lit in g.member_smartcasts {
+					return false
+				}
+				// Calls, indexes and member chains cannot be plain numeric atoms.
+				if i + 1 < tokens.len && tokens[i + 1].tok !in [.plus, .minus, .mul, .div, .mod,
+					.rpar] {
+					return false
+				}
+				local := g.locals[item.lit] or { return false }
+				if local.is_reference || local.option_value_type != 0 || local.smartcast_origin_type != 0
+					|| (item.typ != 0 && item.typ != local.typ)
+					|| local.typ !in [flat.source_type_int, flat.source_type_i8, flat.source_type_i16,
+						flat.source_type_i32, flat.source_type_i64, flat.source_type_isize,
+						flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+						flat.source_type_u64, flat.source_type_usize, flat.source_type_f32,
+						flat.source_type_f64] {
+					return false
+				}
+				expect_operand = false
+			}
+			.number {
+				if !expect_operand || (item.typ != 0 && item.typ !in [
+					fastc_type_integer_literal,
+					fastc_type_negative_integer_literal,
+					fastc_type_float_literal,
+				]) {
+					return false
+				}
+				expect_operand = false
+			}
+			.lpar {
+				if !expect_operand {
+					return false
+				}
+				depth++
+			}
+			.rpar {
+				if expect_operand || depth == 0 {
+					return false
+				}
+				depth--
+			}
+			.plus, .minus {
+				if !expect_operand {
+					expect_operand = true
+					has_binary = true
+				}
+			}
+			.mul, .div, .mod {
+				if expect_operand {
+					return false
+				}
+				expect_operand = true
+				has_binary = true
+			}
+			else {
+				return false
+			}
+		}
+	}
+	return has_binary && !expect_operand && depth == 0
+}
+
 fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if tokens.len < 2 || g.plain_numeric_arithmetic_expression(tokens) {
+		return none
+	}
 	if g.selfhost {
 		if callback_call := g.render_element_function_call(tokens) {
 			return callback_call
@@ -3786,7 +3885,40 @@ fn (g &Parser) render_enum_flag_shorthand_combination(tokens []FastcExpressionTo
 	return '(${out})'
 }
 
+// render_selfhost_scalar_call_argument skips collection and coercion dispatch
+// when a single scalar token already has the parameter's representation.
+fn (g &Parser) render_selfhost_scalar_call_argument(tokens []FastcExpressionToken, expected_type u32) ?string {
+	if !g.selfhost || tokens.len != 1 || tokens[0].source != ''
+		|| expected_type !in [flat.source_type_bool, flat.source_type_char, flat.source_type_f32,
+			flat.source_type_f64, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+			flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune,
+			flat.source_type_string, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+			flat.source_type_u64, flat.source_type_usize] {
+		return none
+	}
+	item := tokens[0]
+	if item.typ == 0 && !item.is_mut_argument
+		&& item.tok in [.number, .string, .char, .key_true, .key_false] {
+		if literal := g.render_selfhost_simple_array_literal_item(tokens, expected_type) {
+			return literal
+		}
+	}
+	if item.tok != .name || item.is_mut_argument || item.lit == 'C'
+		|| item.lit in g.member_smartcasts {
+		return none
+	}
+	local := g.locals[item.lit] or { return none }
+	if local.is_reference || local.option_value_type != 0 || local.smartcast_origin_type != 0
+		|| (item.typ != 0 && item.typ != local.typ) || local.typ != expected_type {
+		return none
+	}
+	return if local.c_name != '' { local.c_name } else { fastc_c_identifier(item.lit) }
+}
+
 fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, expected_type_source_id u32) ?string {
+	if scalar := g.render_selfhost_scalar_call_argument(tokens, expected_type_source_id) {
+		return scalar
+	}
 	expected_type := flat.source_type_name(expected_type_source_id)
 	if fixed_array := g.render_fixed_array_layout_argument(tokens, expected_type_source_id) {
 		return fixed_array

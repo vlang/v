@@ -166,8 +166,11 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 }
 
 fn fastc_header_with_channel_runtime(header FastcSourceHeader, source string, prefs &pref.Preferences) FastcSourceHeader {
-	if !prefs.building_v || header.module_name in ['sync', 'builtin']
-		|| !fastc_source_contains_word(source, 'chan') {
+	if !prefs.building_v || header.module_name in ['sync', 'builtin'] {
+		return header
+	}
+	last_channel_offset := fastc_source_last_word_index(source, 'chan')
+	if last_channel_offset < 0 {
 		return header
 	}
 	mut scan := scanner.new_scanner(prefs, .normal)
@@ -175,7 +178,8 @@ fn fastc_header_with_channel_runtime(header FastcSourceHeader, source string, pr
 	scan.init(file, source)
 	mut has_channel := false
 	mut tok := scan.scan()
-	for tok != .eof {
+	// A real chan token cannot begin after the final raw-word candidate.
+	for tok != .eof && scan.pos <= last_channel_offset {
 		if tok == .name && scan.lit == 'chan' {
 			has_channel = true
 			break

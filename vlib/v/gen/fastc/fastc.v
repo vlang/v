@@ -1417,8 +1417,10 @@ struct Parser {
 	// word (see fastc_source_scan_flags), so block pre-scans for channel
 	// select statements can be skipped.
 	source_has_select bool = true
-	has_startup_inits bool
-	has_cleanup_hooks bool
+	// Every builtin numeric receiver lacks a source-defined arithmetic method.
+	numeric_ops_are_builtin bool
+	has_startup_inits       bool
+	has_cleanup_hooks       bool
 mut:
 	uses_pthread_tls     bool
 	path                 string
@@ -1456,7 +1458,7 @@ mut:
 	c_function_name_memo       map[string]string
 	nonlocal_name_type_memo    flat.TypeTextBindings
 	resolved_name_memo         map[string]string
-	declared_type_key_memo     map[u32]FastcMemoEntry
+	declared_type_key_memo     map[string]FastcMemoEntry
 	locals                     map[string]FastcLocal
 	local_scope_changes        []FastcLocalScopeChange
 	local_scope_depth          int
@@ -1694,6 +1696,7 @@ struct FastcFileGenContext {
 	declared_type_key_by_name flat.TypeTextBindings
 	fastc_prefixed_c_names    []string
 	has_c_functions           bool
+	numeric_ops_are_builtin   bool
 	declared_kinds            map[string]FastcDeclaredTypeKind
 	enum_flags                map[string]bool
 	enum_field_types          flat.TypeTextBindings
@@ -1799,7 +1802,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		c_function_name_memo:      map[string]string{}
 		nonlocal_name_type_memo:   flat.TypeTextBindings{}
 		resolved_name_memo:        map[string]string{}
-		declared_type_key_memo:    map[u32]FastcMemoEntry{}
+		declared_type_key_memo:    map[string]FastcMemoEntry{}
 		path:                      source_file.path
 		source_offset:             source_file.source_offset
 		source_line_offset:        source_file.source_line_offset
@@ -1811,6 +1814,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		declared_type_key_by_name: ctx.declared_type_key_by_name
 		fastc_prefixed_c_names:    ctx.fastc_prefixed_c_names
 		has_c_functions:           ctx.has_c_functions
+		numeric_ops_are_builtin:   ctx.numeric_ops_are_builtin
 		comparison_memo:           map[i64]FastcRenderedExpression{}
 		type_memo:                 map[i64]u32{}
 		method_key_memo:           map[u32]map[string]string{}
@@ -2189,6 +2193,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		declared_type_key_by_name: declared_type_key_by_name
 		fastc_prefixed_c_names:    fastc_prefixed_c_names
 		has_c_functions:           has_c_functions
+		numeric_ops_are_builtin:   prefs.building_v && fastc_numeric_arithmetic_has_no_overloads(functions, declared_type_c_names, type_output.alias_base_types, struct_fields)
 		declared_kinds:            declared_kinds
 		enum_flags:                enum_flags
 		enum_field_types:          enum_field_types
@@ -2505,7 +2510,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		unit_ref_starts = []int{cap: outputs.len + 1}
 		for oi, output in outputs {
 			unit_ref_starts << unit_ref_ids.len
-			unit_ref_ids << output.refs
 			tail_prototype_ids << output.root_refs
 			mut proto_cursor := 0
 			for fi, id in output.function_ids {
@@ -2519,8 +2523,15 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 				if proto_end > proto_cursor {
 					proto_cursor = proto_end
 				}
-				if proto_start >= proto_end
-					|| !fastc_range_is_kept(kept_proto_ranges, output_proto_offsets[oi] + proto_start, output_proto_offsets[oi] + proto_end) {
+				kept_prototype := proto_start < proto_end
+					&& fastc_range_is_kept(kept_proto_ranges, output_proto_offsets[oi] + proto_start, output_proto_offsets[oi] + proto_end)
+				if proto_start >= proto_end || kept_prototype {
+					// A removed function cannot require declarations in this unit.
+					// Keep definitions without an indexed prototype conservative;
+					// retained spans also contain their own definition's reference.
+					unit_ref_ids << output.refs[output.ref_starts[fi]..output.ref_starts[fi + 1]]
+				}
+				if !kept_prototype {
 					continue
 				}
 				prototype := output.prototypes[proto_start..proto_end]

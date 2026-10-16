@@ -718,7 +718,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			c_function_name_memo:         map[string]string{}
 			nonlocal_name_type_memo:      flat.TypeTextBindings{}
 			resolved_name_memo:           map[string]string{}
-			declared_type_key_memo:       map[u32]FastcMemoEntry{}
+			declared_type_key_memo:       map[string]FastcMemoEntry{}
 			path:                         source_file.path
 			module_name:                  source_file.header.module_name
 			imports:                      source_file.header.imports
@@ -1278,7 +1278,7 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				c_function_name_memo:         map[string]string{}
 				nonlocal_name_type_memo:      flat.TypeTextBindings{}
 				resolved_name_memo:           map[string]string{}
-				declared_type_key_memo:       map[u32]FastcMemoEntry{}
+				declared_type_key_memo:       map[string]FastcMemoEntry{}
 				path:                         default_path
 				module_name:                  field.module_name
 				imports:                      source_imports[field.path] or {
@@ -1422,7 +1422,7 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 		c_function_name_memo:         map[string]string{}
 		nonlocal_name_type_memo:      flat.TypeTextBindings{}
 		resolved_name_memo:           map[string]string{}
-		declared_type_key_memo:       map[u32]FastcMemoEntry{}
+		declared_type_key_memo:       map[string]FastcMemoEntry{}
 		path:                         source_file.path
 		module_name:                  source_file.header.module_name
 		imports:                      source_file.header.imports
@@ -2981,8 +2981,7 @@ fn fastc_resolve_declared_type_key(module_name string, raw_type string, imports 
 }
 
 fn (g &Parser) resolve_declared_type_key(raw_type string) ?string {
-	id := flat.source_type_id(raw_type)
-	if entry := g.declared_type_key_memo[id] {
+	if entry := g.declared_type_key_memo[raw_type] {
 		if entry.found {
 			return flat.source_type_name(entry.value)
 		}
@@ -2990,13 +2989,13 @@ fn (g &Parser) resolve_declared_type_key(raw_type string) ?string {
 	}
 	mut w := unsafe { &Parser(g) }
 	if key := g.resolve_declared_type_key_uncached(raw_type) {
-		w.declared_type_key_memo[id] = FastcMemoEntry{
+		w.declared_type_key_memo[raw_type] = FastcMemoEntry{
 			found: true
 			value: flat.source_type_id(key)
 		}
 		return key
 	}
-	w.declared_type_key_memo[id] = FastcMemoEntry{}
+	w.declared_type_key_memo[raw_type] = FastcMemoEntry{}
 	return none
 }
 

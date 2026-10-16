@@ -69,7 +69,7 @@ fn (mut g Parser) reset_lookup_memos() {
 	g.global_key_memo = map[string]string{}
 	g.nonlocal_name_type_memo = flat.TypeTextBindings{}
 	g.resolved_name_memo = map[string]string{}
-	g.declared_type_key_memo = map[u32]FastcMemoEntry{}
+	g.declared_type_key_memo = map[string]FastcMemoEntry{}
 	g.type_memo = map[i64]u32{}
 	g.method_key_memo = map[u32]map[string]string{}
 	g.field_memo = map[u32]map[string]&FastcStructField{}
