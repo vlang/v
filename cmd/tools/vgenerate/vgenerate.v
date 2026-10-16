@@ -92,6 +92,25 @@ fn valid_name(name string) bool {
 	return true
 }
 
+// valid_field_name reports whether `name` is a usable struct field name:
+// a non-empty V identifier. Callers check duplicates separately.
+fn valid_field_name(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	first := name[0]
+	if !(first == `_` || (first >= `a` && first <= `z`) || (first >= `A` && first <= `Z`)) {
+		return false
+	}
+	for c in name.bytes()[1..] {
+		if !(c == `_` || (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+			|| (c >= `0` && c <= `9`)) {
+			return false
+		}
+	}
+	return true
+}
+
 // write_new_file writes `content` to `path`, refusing when the file exists:
 // generated code must never silently eat hand-written code.
 fn write_new_file(path string, content string) ! {
@@ -125,7 +144,14 @@ fn generate_model(args []string) ! {
 		vtype := field_types[parts[1]] or {
 			return error('unknown field type `${parts[1]}`; types: string, int, i64, bool, f64')
 		}
-		names << parts[0]
+		fname := parts[0]
+		if !valid_field_name(fname) {
+			return error('invalid field name `${fname}`; use snake_case identifiers')
+		}
+		if fname in names {
+			return error('duplicate field name `${fname}`')
+		}
+		names << fname
 		types << vtype
 		attrs << ''
 	}
@@ -185,7 +211,7 @@ fn generate_controller(args []string) ! {
 		'',
 		"@['/:id'; get]",
 		'pub fn (app &${struct_name}) show(mut ctx Context, id int) veb.Result {',
-		'	return ctx.text(\'${snake} \${id}\')',
+		"	return ctx.text('${snake} \${id}')",
 		'}',
 		'',
 		'// Register in main.v, adjusting the Context type name if yours differs:',
