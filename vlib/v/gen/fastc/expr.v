@@ -259,6 +259,8 @@ fn (mut g Parser) read_expression_with_continuation_mode(prefix string, stops []
 		if atom.found {
 			return atom.source
 		}
+		call := g.try_read_simple_call_expression(stops, allow_mutation_statement, allow_newline_value_continuation)
+		if call.found { return call.source }
 	}
 	mut bool_implied := []string{}
 	if g.selfhost && g.expression_depth == 1 && prefix == '' {
@@ -381,6 +383,148 @@ fn (mut g Parser) try_read_atomic_expression(stops []token.Token, allow_mutation
 	g.last_expression = [atom]
 	g.last_expression_type = typ
 	return FastcAtomicExpression{ found: true, source: source }
+}
+
+// try_read_simple_call_expression reads a complete known scalar free call without
+// formatting its tokens once for streaming and again for its parameter types.
+fn (mut g Parser) try_read_simple_call_expression(stops []token.Token, allow_mutation_statement bool, allow_newline_value_continuation bool) FastcAtomicExpression {
+	if !g.selfhost || g.translated || g.tok != .name || g.tok in stops
+		|| g.s.line_directives || g.s.in_str_incomplete || g.s.in_str_inter
+		|| g.s.str_parent_quotes.len != 0 || g.lit.starts_with('@')
+		|| g.lit in ['C', 'print', 'println', 'typeof', 'dump', 'sql']
+		|| g.lit in g.locals || g.lit in g.generic_method_names {
+		return FastcAtomicExpression{}
+	}
+	mut offset := g.s.offset
+	for offset < g.s.src.len && g.s.src[offset] in [` `, `\t`, `\r`] {
+		offset++
+	}
+	if offset >= g.s.src.len || g.s.src[offset] != `(` {
+		return FastcAtomicExpression{}
+	}
+	// Match unqualified_function_key's current-module/monomorph/builtin priority
+	// without populating parser memos for a rejected scanner checkpoint.
+	local_key := fastc_function_key(g.module_name, g.lit)
+	function_key := if local_key in g.functions {
+		local_key
+	} else if local_key in g.mono_functions {
+		return FastcAtomicExpression{}
+	} else {
+		fastc_function_key('builtin', g.lit)
+	}
+	signature := g.functions[function_key] or { return FastcAtomicExpression{} }
+	if signature.is_variadic || signature.last_parameter_is_params || signature.is_disabled
+		|| signature.is_c_extern || signature.is_global || signature.callable_index_depth != 0
+		|| signature.option_type != 0 || signature.return_types.ids.len != 0
+		|| signature.returned_fn_return_type != 0 || signature.returned_fn_parameter_types.ids.len != 0
+		|| signature.returned_fn_option_value_type != 0
+		|| (signature.return_type != flat.source_type_void && !fastc_simple_call_scalar_type(signature.return_type)) {
+		return FastcAtomicExpression{}
+	}
+	for i, typ in signature.parameter_types.ids {
+		if !fastc_simple_call_scalar_type(typ)
+			|| (i < signature.parameter_mutability.len && signature.parameter_mutability[i])
+			|| (i < signature.parameter_generic_values.len && signature.parameter_generic_values[i]) {
+			return FastcAtomicExpression{}
+		}
+	}
+	if fastc_primitive_c_type(g.lit) != none
+		|| g.resolve_declared_type_key_uncached(g.lit) != none {
+		return FastcAtomicExpression{}
+	}
+	mut probe := g.s
+	if probe.scan() != .lpar {
+		return FastcAtomicExpression{}
+	}
+	mut tokens := []FastcExpressionToken{cap: signature.parameter_types.ids.len * 2 + 3}
+	tokens << FastcExpressionToken{ tok: .name, lit: g.lit, unsafe_depth: g.unsafe_depth }
+	tokens << FastcExpressionToken{ tok: .lpar, lit: probe.lit, unsafe_depth: g.unsafe_depth }
+	for i, expected in signature.parameter_types.ids {
+		arg_tok := probe.scan()
+		arg_lit := probe.lit
+		if !g.simple_call_argument_is_scalar(arg_tok, arg_lit, expected) {
+			return FastcAtomicExpression{}
+		}
+		tokens << FastcExpressionToken{ tok: arg_tok, lit: arg_lit, unsafe_depth: g.unsafe_depth }
+		if i + 1 < signature.parameter_types.ids.len {
+			if probe.scan() != .comma {
+				return FastcAtomicExpression{}
+			}
+			tokens << FastcExpressionToken{ tok: .comma, lit: probe.lit, unsafe_depth: g.unsafe_depth }
+		}
+	}
+	if probe.scan() != .rpar {
+		return FastcAtomicExpression{}
+	}
+	tokens << FastcExpressionToken{ tok: .rpar, lit: probe.lit, unsafe_depth: g.unsafe_depth }
+	if fastc_source_range_has_newline(g.s.src, g.s.offset, probe.offset) {
+		return FastcAtomicExpression{}
+	}
+	following := probe.scan()
+	if (following != .eof && following !in stops)
+		|| probe.diagnostics.len != g.s.diagnostics.len
+		|| probe.in_str_incomplete || probe.in_str_inter || probe.str_parent_quotes.len != 0 {
+		return FastcAtomicExpression{}
+	}
+	original_scan := g.s
+	original_tok := g.tok
+	original_lit := g.lit
+	g.s = probe
+	g.tok = following
+	g.lit = probe.lit
+	if following == .semicolon && (g.semicolon_continues_expression()
+		|| (allow_newline_value_continuation && !allow_mutation_statement
+			&& g.semicolon_continues_value_expression())) {
+		g.s = original_scan
+		g.tok = original_tok
+		g.lit = original_lit
+		return FastcAtomicExpression{}
+	}
+	call := g.render_missing_call_arguments(tokens) or {
+		g.s = original_scan
+		g.tok = original_tok
+		g.lit = original_lit
+		return FastcAtomicExpression{}
+	}
+	// A normal single-return signature has no return_types list. Keep the old
+	// reader's last_multi_return_types rather than clearing stale tuple metadata.
+	g.last_expression = tokens
+	g.last_expression_type = call.typ
+	return FastcAtomicExpression{
+		found:  true
+		source: g.render_constant_references(tokens, call.source)
+	}
+}
+
+fn fastc_simple_call_scalar_type(typ u32) bool {
+	return typ in [flat.source_type_bool, flat.source_type_char, flat.source_type_f32,
+		flat.source_type_f64, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+		flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune,
+		flat.source_type_string, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_u64, flat.source_type_usize]
+}
+
+fn (g &Parser) simple_call_argument_is_scalar(tok token.Token, lit string, expected u32) bool {
+	if tok == .name {
+		if lit in ['C', 'chan'] || lit.starts_with('@') || lit in g.member_smartcasts
+			|| lit in g.generic_method_names {
+			return false
+		}
+		local := g.locals[lit] or { return false }
+		return local.typ == expected && !local.is_reference && !local.is_mut
+			&& local.option_value_type == 0 && local.smartcast_origin_type == 0
+	}
+	if tok == .number { return true }
+	if tok == .string {
+		if fastc_string_literal_is_incomplete(lit) { return false }
+		// Keep the accepted formatter total: escaped/NUL strings can have valid
+		// scanner tokens yet require diagnostics from the full FastC reader.
+		for b in lit {
+			if b == 0 || b == `\\` { return false }
+		}
+		return true
+	}
+	return tok in [.key_true, .key_false]
 }
 
 struct FastcHigherOrderExpression {
@@ -5367,52 +5511,67 @@ fn (g &Parser) render_special_expression_with_flags(tokens []FastcExpressionToke
 }
 
 // is_plain_local_direct_member identifies reads whose ordinary C spelling
-// already needs no special-expression lowering. Returning none keeps the
-// caller's existing raw source and type inference unchanged.
+// already needs no special-expression lowering.
 fn (g &Parser) is_plain_local_direct_member(tokens []FastcExpressionToken) bool {
+	_ := g.plain_local_direct_member_field(tokens) or { return false }
+	return true
+}
+
+// plain_local_direct_member_field returns immutable metadata for a direct field
+// read that needs no special-expression lowering.
+fn (g &Parser) plain_local_direct_member_field(tokens []FastcExpressionToken) ?&FastcStructField {
 	if !g.selfhost || tokens.len != 3 || tokens[0].tok != .name
 		|| tokens[1].tok != .dot || tokens[2].tok != .name
 		|| g.member_smartcasts.len > 0 || g.in_mono_drain || g.in_generic_placeholder {
-		return false
+		return none
 	}
 	for item in tokens {
-		if item.source != '' || item.is_mut_argument { return false }
+		if item.source != '' || item.is_mut_argument { return none }
 	}
 	root := tokens[0]
 	member := tokens[2]
 	if root.lit == 'C' || root.lit.starts_with('@') || member.lit.starts_with('@')
 		|| root.lit in g.imports || root.lit in g.generic_method_names
 		|| member.lit in g.generic_method_names || tokens[1].typ != 0 || member.typ != 0 {
-		return false
+		return none
 	}
-	local := g.locals[root.lit] or { return false }
+	local := g.locals[root.lit] or { return none }
 	if local.typ == 0 || local.is_mut || local.is_reference || local.option_value_type != 0
 		|| local.smartcast_origin_type != 0 || local.smartcast_origin_source != ''
 		|| (root.typ != 0 && root.typ != local.typ) {
-		return false
+		return none
 	}
 	type_name := flat.source_type_name(local.typ)
 	if fastc_is_pointer_type(local.typ) || type_name in ['Option', '__v_result']
 		|| type_name.starts_with('Array_') || type_name.starts_with('Map_')
 		|| type_name.starts_with('FixedArray_') || type_name in g.sum_types
 		|| g.alias_base_types.type_id(type_name) != none {
-		return false
+		return none
 	}
 	kind := g.declared_kinds[flat.source_type_name(g.semantic_type_key(local.typ))] or {
-		return false
+		return none
 	}
-	if kind != .struct_ { return false }
-	field := g.direct_struct_field_metadata(local.typ, member.lit) or { return false }
+	if kind != .struct_ { return none }
+	field := g.direct_struct_field_metadata(local.typ, member.lit) or { return none }
 	if field.name != member.lit || field.typ == 0 || field.storage_path.len > 0
 		|| field.is_shared_pointer || field.is_function || field.is_optional_function
 		|| field.option_value_type != 0 || field.generic_argument_type != 0
 		|| field.chan_element_type != 0 {
-		return false
+		return none
 	}
-	return g.struct_direct_member_type(local.typ, member.lit) == field.typ
+	if g.struct_direct_member_type(local.typ, member.lit) != field.typ { return none }
+	return field
 }
 
 fn (g &Parser) render_special_expression_impl(tokens []FastcExpressionToken, rendered_expression string, flags FastcTokenFlags) ?FastcRenderedExpression {
+	if g.plain_primitive_comparison_expression(tokens) { return none }
+	if flags.has_binary && !flags.has_dot && !flags.has_lpar && !flags.has_lsbr
+		&& !flags.has_lcbr && !flags.has_comparison && !flags.has_logical
+		&& !flags.has_assignment && !flags.has_as && !flags.has_membership
+		&& !flags.has_not && !flags.has_question && !flags.has_typeof
+		&& g.plain_numeric_arithmetic_expression(tokens) {
+		return none
+	}
 	if g.is_plain_local_direct_member(tokens) { return none }
 	if g.selfhost && (flags.has_not || flags.has_question) && tokens.len > 3
 		&& tokens[0].tok == .lpar && tokens.last().tok == .rpar {

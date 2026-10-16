@@ -159,15 +159,18 @@ struct Record {
 	next &Leaf
 	items []int
 }
+fn read_int(value int) int { return value }
+fn read_text(value string) string { return value }
+fn read_items(value []int) int { return value[0] }
 fn read(value Record) int {
 	count := &Leaf{count: 17}
 	assert count.count == 17
 	next := &Leaf{count: 99}
 	assert next.count == 99
-	assert value.text == "value"
+	assert read_text(value.text) == "value"
 	assert value.next.count == 5
-	assert value.items[0] == 7
-	return value.count + value.short
+	assert read_items(value.items) == 7
+	return read_int(value.count) + read_int(value.short)
 }
 fn main() {
 	value := Record{count: 2, short: 3, text: "value", next: &Leaf{count: 5}, items: [7]}
@@ -190,4 +193,109 @@ fn main() {
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
+}
+
+fn test_fastc_plain_member_arguments_match_complete_legacy_dispatch() {
+	g := fastc_plain_member_parser(true)
+	for root in ['value', 'renamed'] {
+		for name in ['count', 'short', 'text', 'items'] {
+			tokens := fastc_plain_member_tokens(root, name)
+			expected := g.struct_direct_member_type(flat.source_type_id('Record'), name)
+			direct := g.render_selfhost_plain_member_call_argument(tokens, expected) or { panic(name) }
+			mut legacy := tokens.clone()
+			legacy[0] = FastcExpressionToken{ ...legacy[0], is_mut_argument: true }
+			assert g.render_selfhost_plain_member_call_argument(legacy, expected) == none
+			legacy_argument := g.render_call_argument_expression(legacy, expected) or { panic(name) }
+			assert direct == legacy_argument, name
+			actual_argument := g.render_call_argument_expression(tokens, expected) or { panic(name) }
+			assert actual_argument == direct, name
+			assert direct == '${g.local_c_name(root)}.${fastc_c_identifier(name)}'
+			for other in [u32(0), flat.source_type_voidptr, fastc_type_option,
+				flat.source_type_id('Choice'), flat.source_type_id('Iface'),
+				flat.source_type_id('FixedArray_2_int'), flat.source_type_id('int*')] {
+				assert g.render_selfhost_plain_member_call_argument(tokens, other) == none, name
+			}
+		}
+	}
+	for name in ['next', 'shared', 'optional', 'callback', 'generic', 'channel', 'promoted', 'absent'] {
+		tokens := fastc_plain_member_tokens('value', name)
+		expected := g.struct_direct_member_type(flat.source_type_id('Record'), name)
+		assert g.render_selfhost_plain_member_call_argument(tokens, expected) == none, name
+	}
+	assert g.temp_id == 0
+	assert g.composite_types.len == 0 && g.fixed_array_types.ids.len == 0
+}
+
+fn test_fastc_plain_member_arguments_limit_field_representations() {
+	for type_name in ['Leaf', 'Array_Leaf', 'Map_string_Leaf', 'AliasField', 'Choice', 'Iface',
+		'Enum', 'Option', '__v_result', 'FixedArray_2_int', 'Leaf*', 'voidptr', 'fn (int) int'] {
+		prefs := pref.new_preferences()
+		typ := flat.source_type_id(type_name)
+		mut types := flat.TypeTextBindings{}
+		types.set('payload', type_name)
+		fields := {
+			'Holder': [FastcStructField{ name: 'payload', typ: typ }]
+		}
+		mut aliases := flat.TypeTextBindings{}
+		aliases.set('AliasField', 'Leaf')
+		g := Parser{
+			prefs:               prefs
+			s:                   scanner.new_scanner(prefs, .normal)
+			selfhost:            true
+			locals:              {
+				'holder': FastcLocal{ typ: flat.source_type_id('Holder'), c_name: '__holder' }
+			}
+			declared_kinds:      {
+				'Holder':           .struct_
+				'Leaf':             .struct_
+				'AliasField':       .alias_
+				'Choice':           .alias_
+				'Iface':            .interface_
+				'Enum':             .enum_
+				'Option':           .struct_
+				'__v_result':       .struct_
+				'FixedArray_2_int': .struct_
+			}
+			alias_base_types:    aliases
+			sum_types:           {
+				'Choice': true
+			}
+			struct_fields:       {
+				'Holder': types
+			}
+			struct_field_info:   fields
+			struct_field_lookup: fastc_build_struct_field_lookup(fields)
+		}
+		tokens := fastc_plain_member_tokens('holder', 'payload')
+		if type_name in ['Leaf', 'Array_Leaf', 'Map_string_Leaf'] {
+			direct := g.render_selfhost_plain_member_call_argument(tokens, typ) or { panic(type_name) }
+			mut legacy := tokens.clone()
+			legacy[0] = FastcExpressionToken{ ...legacy[0], is_mut_argument: true }
+			legacy_argument := g.render_call_argument_expression(legacy, typ) or { panic(type_name) }
+			assert direct == legacy_argument, type_name
+			assert direct == '__holder.payload'
+		} else {
+			assert g.render_selfhost_plain_member_call_argument(tokens, typ) == none, type_name
+		}
+	}
+}
+
+fn test_fastc_plain_member_argument_uses_legacy_canonical_keyword_field_spelling() {
+	base := fastc_plain_member_parser(true)
+	// The local shadows an enum type name. Raw expression rendering preserves
+	// an enum member spelling, while the legacy membership path resolves this
+	// as a local struct read and sanitizes its C keyword field.
+	g := Parser{
+		...base
+		locals: {
+			'Number': FastcLocal{ typ: flat.source_type_id('Record'), c_name: '__number' }
+		}
+	}
+	tokens := fastc_plain_member_tokens('Number', 'short')
+	mut legacy := tokens.clone()
+	legacy[0] = FastcExpressionToken{ ...legacy[0], is_mut_argument: true }
+	direct := g.render_selfhost_plain_member_call_argument(tokens, flat.source_type_int) or { panic('shortcut') }
+	legacy_argument := g.render_call_argument_expression(legacy, flat.source_type_int) or { panic('legacy') }
+	assert direct == legacy_argument
+	assert direct == '__number.__vf_keyword_short'
 }

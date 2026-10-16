@@ -1420,6 +1420,7 @@ struct Parser {
 	source_has_select bool = true
 	// Every builtin numeric receiver lacks a source-defined arithmetic method.
 	numeric_ops_are_builtin bool
+	primitive_cmps_builtin  bool
 	has_startup_inits       bool
 	has_cleanup_hooks       bool
 mut:
@@ -1698,6 +1699,7 @@ struct FastcFileGenContext {
 	fastc_prefixed_c_names    []string
 	has_c_functions           bool
 	numeric_ops_are_builtin   bool
+	primitive_cmps_builtin    bool
 	declared_kinds            map[string]FastcDeclaredTypeKind
 	enum_flags                map[string]bool
 	enum_field_types          flat.TypeTextBindings
@@ -1817,6 +1819,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		fastc_prefixed_c_names:    ctx.fastc_prefixed_c_names
 		has_c_functions:           ctx.has_c_functions
 		numeric_ops_are_builtin:   ctx.numeric_ops_are_builtin
+		primitive_cmps_builtin:    ctx.primitive_cmps_builtin
 		comparison_memo:           map[i64]FastcRenderedExpression{}
 		type_memo:                 map[i64]u32{}
 		method_key_memo:           map[u32]map[string]string{}
@@ -2197,6 +2200,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		fastc_prefixed_c_names:    fastc_prefixed_c_names
 		has_c_functions:           has_c_functions
 		numeric_ops_are_builtin:   prefs.building_v && fastc_numeric_arithmetic_has_no_overloads(functions, declared_type_c_names, type_output.alias_base_types, struct_fields)
+		primitive_cmps_builtin:    prefs.building_v && fastc_primitive_comparisons_have_no_overloads(functions, declared_type_c_names, type_output.alias_base_types, struct_fields)
 		declared_kinds:            declared_kinds
 		enum_flags:                enum_flags
 		enum_field_types:          enum_field_types
