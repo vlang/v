@@ -67,7 +67,7 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 	mut headers := map[string][]string{}
 	mut index := 0
 
-	for index < headers_separated.len - 1 {
+	for index < headers_separated.len {
 		line := headers_separated[index]
 		if line.len == 0 {
 			break
@@ -76,8 +76,13 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 		key := line[..colon_index].trim_space()
 		mut val := line[colon_index + 1..].trim_space()
 
-		for colon_index = 0; index < headers_separated.len - 1 && colon_index == 0; {
+		// append the following lines without a colon to the value,
+		// stopping at the next header or after the last line
+		for colon_index = 0; colon_index == 0; {
 			index++
+			if index == headers_separated.len {
+				break
+			}
 			colon_index = headers_separated[index].index(colon) or {
 				val += headers_separated[index].trim_space()
 				0
