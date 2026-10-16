@@ -2387,6 +2387,13 @@ fn (mut tc TypeChecker) build_declaration_param_mutability_index(a &flat.FlatAst
 	tc.index_declaration_param_mutability(a, tc.top_level_idx, '')
 }
 
+// declaration_param_mutability_for returns which parameters of the declaration `key`
+// are `mut`, with the receiver first for a method, or an empty array when unknown.
+// The returned array is shared with the index; clone it before changing it.
+pub fn (tc &TypeChecker) declaration_param_mutability_for(key string) []bool {
+	return tc.declaration_param_mutability[key] or { []bool{} }
+}
+
 fn (mut tc TypeChecker) index_declaration_param_mutability(a &flat.FlatAst, entries []i32, start_module string) {
 	mut module_name := start_module
 	for index in entries {
