@@ -48,10 +48,30 @@ fn decode_internal(data string) ?(Block, string) {
 
 @[direct_array_access]
 fn parse_headers(block string) ?(map[string][]string, string) {
-	headers_str := block.all_before(pem_end).all_before('\n\n')
+	section := block.all_before(pem_end)
+	mut headers_str := section.all_before('\n\n')
+	mut body := block.all_after('\n\n')
 
-	// check that something was split or if it's empty
-	if headers_str.len == block.all_before(pem_end).len || headers_str.len == 0 {
+	if headers_str.len == section.len {
+		// no blank line: the headers are the leading lines that contain a colon
+		// (base64 never does), and the body starts at the first line without one
+		mut header_end := 0
+		for header_end < section.len {
+			line_end := section.index_after('\n', header_end) or { section.len }
+			if !section[header_end..line_end].contains(colon) {
+				break
+			}
+			header_end = line_end + 1
+		}
+		if header_end > section.len {
+			header_end = section.len
+		}
+		headers_str = section[..header_end]
+		body = block[header_end..]
+	}
+
+	// check if there are any headers
+	if headers_str.len == 0 {
 		return map[string][]string{}, block
 	}
 
@@ -95,5 +115,5 @@ fn parse_headers(block string) ?(map[string][]string, string) {
 		headers[key] << val
 	}
 
-	return headers, block.all_after('\n\n')
+	return headers, body
 }
