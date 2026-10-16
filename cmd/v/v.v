@@ -317,6 +317,10 @@ fn ownership_bootstrap_can_use_current_compiler(args []string, vroot string) boo
 	return ownership_compiler_bootstrap_input(args, vroot)
 }
 
+// ownership_compiler_build_args turn `cmd/v` into the V3 executable that contains the optional
+// ownership checker.
+const ownership_compiler_build_args = ['-d', 'ownership', '-gc', 'none', '-prealloc']
+
 // launch_ownership_compiler builds and starts a V3 executable that contains the optional
 // ownership checker. The regular compiler stays small and preserves normal value semantics;
 // only explicit ownership/autofree compilations pay for the additional checker.
@@ -336,9 +340,12 @@ fn launch_ownership_compiler(args []string) {
 		driver.run(args)
 		exit(0)
 	}
-	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ['-d', 'ownership',
-		'-gc', 'none', '-prealloc']) or {
+	if tool_cache_is_disabled() {
+		run_uncached_ownership_compiler(vexe, compiler_source, args)
+	}
+	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ownership_compiler_build_args) or {
 		eprintln('cannot find a writable cache for the V3 ownership compiler')
+		eprintln(err.msg())
 		exit(1)
 	}
 	reason := tool_cache_stale_reason(entry)
@@ -352,6 +359,47 @@ fn launch_ownership_compiler(args []string) {
 		}
 	}
 	exec_cached_tool(entry.binary, args)
+}
+
+// run_uncached_ownership_compiler honours `VTOOLS_NO_CACHE` for the ownership compiler, the way
+// `launch_external_tool` does for the other tools: nothing is read from or written to the tool
+// cache. The compiler is built into a new private folder in `VTMP`, where every compilation
+// already keeps its generated C, run once with `args`, and removed again.
+@[noreturn]
+fn run_uncached_ownership_compiler(vexe string, compiler_source string, args []string) {
+	stage_dir := create_tool_cache_stage_dir(os.vtmp_dir()) or {
+		eprintln('cannot build the V3 ownership compiler: ${err.msg()}')
+		exit(1)
+	}
+	binary := os.join_path(stage_dir, 'v3_ownership${tool_exe_suffix()}')
+	if tool_cache_is_verbose() {
+		eprintln('> ${tool_cache_disable_env} is set, building `v3_ownership` in `${stage_dir}`')
+	}
+	mut build_args := ownership_compiler_build_args.clone()
+	build_args << ['-o', binary, compiler_source]
+	mut environment := os.environ()
+	// As in `build_tool_binary`: the build has to fail loudly rather than retry with the
+	// compatibility compiler, and `VFLAGS` belongs to the compilation that follows, not to it.
+	environment[v3_no_fallback_env] = '1'
+	environment['VFLAGS'] = ''
+	mut build := os.new_process(vexe)
+	build.set_args(build_args)
+	build.set_environment(environment)
+	build.wait()
+	build_code := build.code
+	build.close()
+	if build_code != 0 || !os.is_file(binary) {
+		os.rmdir_all(stage_dir) or {}
+		eprintln('cannot build the V3 ownership compiler')
+		exit(1)
+	}
+	mut compiler := os.new_process(binary)
+	compiler.set_args(args)
+	compiler.wait()
+	code := compiler.code
+	compiler.close()
+	os.rmdir_all(stage_dir) or {}
+	exit(code)
 }
 
 // fallback_is_disabled reports whether retrying with the compatibility compiler was turned off.
@@ -543,8 +591,10 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 				exit(1)
 			}
 			exec_cached_tool(entry.binary, tool_args)
-		} else if tool_cache_is_verbose() {
-			eprintln('> no usable tool cache directory, running `${tool_name}` from source')
+		} else {
+			if tool_cache_is_verbose() {
+				eprintln('> running `${tool_name}` from source, because ${err.msg()}')
+			}
 		}
 	}
 	install_external_tool_modules(tool_name, tool_source, compile_args)

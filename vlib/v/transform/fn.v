@@ -3445,7 +3445,18 @@ fn (mut t Transformer) ensure_call_param_types_decl_index() {
 		t.call_param_types_index_ready = true
 		return
 	}
-	for i in 0 .. t.a.nodes.len {
+	// The nodes the top-level index covers are read through it; the declarations
+	// appended behind it, as collect_types reads them.
+	indexed_count, indexed_nodes := t.top_level_scan_prefix()
+	appended, streamed := t.appended_declaration_scan(indexed_nodes)
+	for scan_idx in 0 .. indexed_count + appended.len + streamed {
+		i := if scan_idx < indexed_count {
+			int(t.tc.top_level_idx[scan_idx])
+		} else if scan_idx - indexed_count < appended.len {
+			appended[scan_idx - indexed_count]
+		} else {
+			indexed_nodes + scan_idx - indexed_count - appended.len
+		}
 		// This scan does not modify the AST arena.
 		node := unsafe { &t.a.nodes[i] }
 		if node.kind == .file {
@@ -3502,7 +3513,6 @@ fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file s
 			module: module_name
 		}
 	}
-	t.call_param_types_decl_misses.delete(key)
 	cname := c_name(key)
 	if cname != key && cname !in t.call_param_types_decl_index {
 		t.call_param_types_decl_index[cname] = FnParamDeclRef{
@@ -3511,7 +3521,11 @@ fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file s
 			module: module_name
 		}
 	}
-	t.call_param_types_decl_misses.delete(cname)
+	// The index is mostly built before the first miss is recorded.
+	if t.call_param_types_decl_misses.len > 0 {
+		t.call_param_types_decl_misses.delete(key)
+		t.call_param_types_decl_misses.delete(cname)
+	}
 }
 
 fn (mut t Transformer) parse_decl_param_type(typ_id u32, module_name string, file_name string) types.Type {
@@ -7998,6 +8012,11 @@ fn (mut t Transformer) rebuild_struct_autostr_recurse_index() {
 		}
 	}
 	mut recurse_types := map[u32]bool{}
+	if allow_nodes.len == 0 {
+		// No struct allows recursion; there is nothing to look up below.
+		t.struct_autostr_recurse_types = recurse_types.move()
+		return
+	}
 	mut cur_module := ''
 	for idx in 0 .. t.a.nodes.len {
 		// This scan does not modify the AST arena.
@@ -11222,6 +11241,12 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		t.mark_fn_used('string__clone')
 		return t.make_call_typed('string__clone', [source], flat.source_type_string)
 	}
+	// A borrowed error, such as a module-level `IError` constant, is copied with the
+	// dynamic error clone: whoever receives the copy may free it, never the shared original.
+	if clean in ['IError', 'builtin.IError'] && !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_id(clean))) {
+		return t.clone_owned_ierror(source)
+	}
 	if clean.starts_with('[]') {
 		return t.make_compiler_default_array_clone_value(source, flat.source_type_id(clean), !t.expr_can_take_address(source))
 	}
@@ -12470,6 +12495,11 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 	if method !in ['delete', 'delete_many', 'clear', 'free', 'trim', 'drop', 'delete_last'] || isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type_id)) {
 		return none
 	}
+	// A body with V's value semantics shares the elements it removes. Only `free` keeps
+	// its header reset below, without destroying the elements.
+	if t.cur_fn_value_semantics && method != 'free' {
+		return none
+	}
 	// V1 autofree treats clear() after a bulk append as an ownership transfer:
 	// the destination retains the element storage while clear() only resets the
 	// source header. Explicit ownership mode instead destroys removed elements.
@@ -12522,7 +12552,9 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 				t.make_infix(.ne, size, t.make_int_literal(0)), t.make_prefix(.not, valid_bounds))
 		}
 		'clear', 'free' {
-			t.append_owned_array_drop_range(array_value, elem_type_id, t.make_int_literal(0), t.make_selector(array_value, 'len', flat.source_type_int), mut drop_stmts)
+			if !t.cur_fn_value_semantics {
+				t.append_owned_array_drop_range(array_value, elem_type_id, t.make_int_literal(0), t.make_selector(array_value, 'len', flat.source_type_int), mut drop_stmts)
+			}
 		}
 		'trim' {
 			if node.children_count < 2 {
@@ -12635,7 +12667,7 @@ fn (mut t Transformer) append_owned_array_drop_range(array_value flat.NodeId, el
 // while slices and arrays with live slice views still alias shared backing storage.
 // First/last produce the independent clone supplied by lower_owned_array_accessor_call.
 fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
-	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
+	if node.kind != .call || node.children_count == 0 || isnil(t.tc) || t.cur_fn_value_semantics {
 		return none
 	}
 	fn_node := t.a.child_node(&node, 0)
@@ -13085,7 +13117,7 @@ fn (mut t Transformer) make_owned_map_items_value(source flat.NodeId, map_type_i
 fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.NodeId, map_type_id u32, key_type_name_id u32, value_type_name_id u32, method string) {
 	key_type_name := flat.source_type_name(key_type_name_id)
 
-	if isnil(t.tc) {
+	if isnil(t.tc) || t.cur_fn_value_semantics {
 		return
 	}
 	clean_key_type := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(key_type_name_id)))
@@ -13147,7 +13179,7 @@ fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.
 fn (mut t Transformer) append_owned_map_entry_delete_with_drops(map_expr flat.NodeId, map_type_id u32, key_name string, key_type_name_id u32, value_type_name_id u32) bool {
 	key_type_name := flat.source_type_name(key_type_name_id)
 	value_type_name := flat.source_type_name(value_type_name_id)
-	if isnil(t.tc) {
+	if isnil(t.tc) || t.cur_fn_value_semantics {
 		return false
 	}
 	clean_key_type := trimmed_transform_text(flat.source_type_name(t.normalize_type_alias(key_type_name_id)))
@@ -19305,6 +19337,11 @@ fn (mut t Transformer) clone_result_error(source flat.NodeId) flat.NodeId {
 	if int(err) < 0 {
 		return flat.empty_node
 	}
+	return t.clone_owned_ierror(err)
+}
+
+// clone_owned_ierror gives `err` an independent error object, preserving its concrete type.
+fn (mut t Transformer) clone_owned_ierror(err flat.NodeId) flat.NodeId {
 	t.mark_fn_used('string__clone')
 	cloned := t.make_call_typed('__v3_clone_owned_ierror', [err], flat.source_type_id('IError'))
 	if isnil(t.tc) {

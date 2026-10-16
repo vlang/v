@@ -217,6 +217,11 @@ mut:
 	defer_pre_scan_indexes bool
 	// Fixed-array summaries can reuse the completed parameter pre-scan cache.
 	defer_fixed_array_borrow_prep bool
+	// fixed_array_borrow_node_count is the node count the summaries cover.
+	fixed_array_borrow_node_count int
+	// borrow_params_after_transform starts the summaries from the transform
+	// stage's (see prepare_fixed_array_borrow_params).
+	borrow_params_after_transform bool
 	// merge_regions_relocated marks worker regions as already id-relocated in
 	// place (parallel pass), so merge_worker compacts with plain memmoves.
 	merge_regions_relocated bool
@@ -245,6 +250,7 @@ mut:
 	cur_fn_ret_type                     u32
 	cur_fn_is_generic                   bool
 	cur_fn_manualfree                   bool
+	cur_fn_value_semantics              bool // standard library body that keeps V's value semantics under -ownership
 	literal_free_fn_body                bool // work item is proven to contain no closure literals
 	cur_fn_variadic_param               string
 	skip_generics                       bool
@@ -546,6 +552,9 @@ mut:
 	node_context_text_ids  map[string]u16
 	node_module_map_nodes  int = -1
 	node_context_read_only bool
+	// node_context_lazy_end: the nodes below it take their context on demand
+	// (see node_context_owner).
+	node_context_lazy_end int
 	// The declaration nodes lowering appended behind the checker's top-level
 	// index, kept for the transformer of a monomorphization stage (see
 	// appended_declaration_scan).
@@ -579,6 +588,24 @@ mut:
 	// lower_remaining_matches_in_used_fns skips: that walk still has matches to
 	// lower in the bodies of the transform stage.
 	lowered_fn_bodies []bool
+	// match_lowered_fns[i] is set once lower_remaining_matches_in_used_fns has
+	// walked the body of the fn_decl at node id i; a later call skips it.
+	match_lowered_fns []bool
+	// mono_pass_state lets the next monomorphize_pass continue the last one.
+	mono_pass_state MonomorphPassState
+	// generic_index_operators_known caches has_generic_index_operators: 0 not yet
+	// tested, 1 yes, -1 no.
+	generic_index_operators_known int
+	// box_type_text_cache is set while a box scan runs.
+	box_type_text_cache &BoxTypeTextCache = unsafe { nil }
+	// match_holders is the last match_holding_fns result, for the nodes below
+	// match_holders_scanned.
+	match_holders         []bool
+	match_holders_scanned int
+	// ignored_state lets the next monomorphize_ignored_nodes update the last one.
+	ignored_state IgnoredNodesState
+	// direct_monomorph_specs counts the specializations the master emitted itself.
+	direct_monomorph_specs int
 	// Shared-base (clone-free) parallel transform: all threads operate on views
 	// of the master arrays, appending into pre-partitioned capacity regions.
 	// While base_write_intercept is set, in-place writes to base-range node
@@ -1595,16 +1622,35 @@ fn (mut t Transformer) retain_current_worker_scope_all() {
 // reserve_parallel_transform_ast reserves persistent append regions before a
 // disposable transform arena is entered.
 pub fn reserve_parallel_transform_ast(mut a flat.FlatAst, skip_generics bool) {
-	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, false)
+	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, false, false)
+}
+
+// reserve_parallel_transform_ast_before_monomorph is reserve_parallel_transform_ast
+// for a build that monomorphizes after the transform stage. It also reserves the
+// specializer's headroom past the lowered tree; grown later, the whole lowered
+// tree would be copied again.
+pub fn reserve_parallel_transform_ast_before_monomorph(mut a flat.FlatAst, skip_generics bool) {
+	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, false, true)
 }
 
 // reserve_parallel_transform_cache_ast adds overflow headroom for cache population,
 // which transforms every module body rather than just the program-reachable subset.
 pub fn reserve_parallel_transform_cache_ast(mut a flat.FlatAst, skip_generics bool) {
-	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, true)
+	reserve_parallel_transform_ast_with_cache_mode(mut a, skip_generics, true, false)
 }
 
-fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_generics bool, cache_mode bool) {
+// The append headroom a scoped specialization batch needs: a base cushion and
+// a share per specialization (see run_scoped_monomorphize_specs).
+const scoped_monomorph_base_node_headroom = 262144
+const scoped_monomorph_spec_node_headroom = 8192
+const scoped_monomorph_base_child_headroom = 393216
+const scoped_monomorph_spec_child_headroom = 10240
+
+// monomorph_tail_specs is how many specializations the capacity reserved for
+// monomorphization before the transform stage covers without growing the tree.
+const monomorph_tail_specs = 16
+
+fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_generics bool, cache_mode bool, monomorph_tail bool) {
 	// The shared-base parallel path partitions this headroom between workers.
 	// Generic lowering needs more headroom than self-host transform because worker
 	// regions cannot grow while their disposable arenas are active. The shared path
@@ -1622,8 +1668,22 @@ fn reserve_parallel_transform_ast_with_cache_mode(mut a flat.FlatAst, skip_gener
 	} else {
 		3, 1
 	}
-	nodes_cap := a.nodes.len * nodes_factor_num / nodes_factor_den
-	children_cap := a.children.len * children_factor_num / children_factor_den
+	mut nodes_cap := a.nodes.len * nodes_factor_num / nodes_factor_den
+	mut children_cap := a.children.len * children_factor_num / children_factor_den
+	// Reserve the specializer's headroom past the lowered tree as well. The
+	// transform stage's own append regions leave this tail alone, so they are
+	// partitioned as they would be without it.
+	if monomorph_tail {
+		transform_nodes_cap := int_max(nodes_cap, a.nodes.cap)
+		transform_children_cap := int_max(children_cap, a.children.cap)
+		nodes_cap = int_max(transform_nodes_cap, nodes_cap + scoped_monomorph_base_node_headroom +
+			monomorph_tail_specs * scoped_monomorph_spec_node_headroom)
+		children_cap = int_max(transform_children_cap, children_cap +
+			scoped_monomorph_base_child_headroom +
+			monomorph_tail_specs * scoped_monomorph_spec_child_headroom)
+		a.monomorph_tail_nodes = nodes_cap - transform_nodes_cap
+		a.monomorph_tail_children = children_cap - transform_children_cap
+	}
 	grow_nodes := nodes_cap > a.nodes.cap
 	grow_children := children_cap > a.children.cap
 	// The two grown arrays copy ~150MB of stable payload; shard the copies
@@ -2082,6 +2142,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	$if prealloc {
 		t.scope_parallel_workers = true
 	}
+	t.borrow_params_after_transform = after_transform
 	t.prepare()
 	if after_transform {
 		t.mark_used_fn_bodies_lowered()
@@ -4324,7 +4385,9 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 		t.interface_boxed_types_frozen = true
 	} else {
 		t.collect_interface_boxed_types_dispatch(want_parallel)
+		t.hand_over_interface_boxed_types()
 	}
+	t.hand_over_fixed_array_borrow_params()
 	t.refresh_interface_impl_indexes_for_boxed_types()
 	t.timing_profile('  [ttime]   dsp boxed+iface  ${f64(dpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	if !want_parallel {
@@ -4378,6 +4441,44 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 		t.timing_profile('  [ttime] top_level_stmts    ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
 	return was_parallel
+}
+
+// hand_over_interface_boxed_types keeps the boxes this stage collected from the
+// tree before lowering in the checker, outside the stage arena, for the
+// monomorphization stage to start from (see collect_interface_boxed_types).
+fn (mut t Transformer) hand_over_interface_boxed_types() {
+	if isnil(t.tc) {
+		return
+	}
+	state := transform_stage_scope_suspend(t.stage_scope)
+	mut keys := []u64{cap: t.interface_boxed_types.len}
+	mut values := []bool{cap: t.interface_boxed_types.len}
+	for key, value in t.interface_boxed_types {
+		keys << key
+		values << value
+	}
+	t.tc.transform_boxed_types = keys
+	t.tc.transform_boxed_values = values
+	t.tc.transform_boxed_skipped = t.interface_boxed_skip_nodes.clone()
+	t.tc.transform_boxed_node_count = t.a.nodes.len
+	transform_stage_scope_resume(t.stage_scope, state)
+}
+
+// hand_over_fixed_array_borrow_params keeps the summaries this stage computed
+// before lowering in the checker, outside the stage arena, for the
+// monomorphization stage to start from (see prepare_fixed_array_borrow_params).
+fn (mut t Transformer) hand_over_fixed_array_borrow_params() {
+	if isnil(t.tc) {
+		return
+	}
+	state := transform_stage_scope_suspend(t.stage_scope)
+	mut summaries := map[int][]bool{}
+	for decl, summary in t.fixed_array_borrow_params {
+		summaries[decl] = summary.clone()
+	}
+	t.tc.transform_borrow_params = summaries
+	t.tc.transform_borrow_node_count = t.fixed_array_borrow_node_count
+	transform_stage_scope_resume(t.stage_scope, state)
 }
 
 fn (mut t Transformer) collect_interface_boxed_types_dispatch(want_parallel bool) {
@@ -4836,6 +4937,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		w.node_file_map_cache = t.node_file_map_cache
 		w.node_context_texts = t.node_context_texts
 		w.node_module_map_nodes = t.node_module_map_nodes
+		w.node_context_lazy_end = t.node_context_lazy_end
 		w.node_context_read_only = true
 	} else {
 		w.node_module_map_cache = []u16{}
@@ -5025,6 +5127,16 @@ fn (t &Transformer) copy_generic_decl_indexes(mut w Transformer) {
 	w.generic_fn_decls_ready = true
 }
 
+// fork_prepared_type_bindings shares the prepared, read-only binding map while
+// keeping the spelling lookup cache private. Writable signature maps detach in
+// ensure_private_signature_maps before their first insertion.
+fn fork_prepared_type_bindings(bindings &flat.TypeTextBindings) flat.TypeTextBindings {
+	return flat.TypeTextBindings{
+		texts: bindings.texts.fork()
+		ids:   bindings.ids
+	}
+}
+
 // fork_program_view constructs a worker from explicit compilation-wide state.
 // All fields omitted here come from new_transformer_view as fresh worker-local
 // state, so adding a mutable Transformer field cannot silently share its backing
@@ -5037,26 +5149,26 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		tc:                                  wtc
 		structs:                             t.structs
 		embedded_fields:                     t.embedded_fields
-		struct_short_name_index:             t.struct_short_name_index.fork()
+		struct_short_name_index:             fork_prepared_type_bindings(t.struct_short_name_index)
 		struct_short_name_index_ready:       t.struct_short_name_index_ready
 		non_main_type_short_names:           t.non_main_type_short_names
 		non_main_type_index_ready:           t.non_main_type_index_ready
-		unique_fields:                       t.unique_fields.fork()
+		unique_fields:                       fork_prepared_type_bindings(t.unique_fields)
 		alias_methods:                       t.alias_methods
 		alias_method_candidates:             t.alias_method_candidates
 		alias_method_candidates_ready:       t.alias_method_candidates_ready
 		alias_receiver_fns:                  t.alias_receiver_fns
 		alias_receiver_fns_signatures:       t.alias_receiver_fns_signatures
 		alias_receiver_fns_aliases:          t.alias_receiver_fns_aliases
-		globals:                             t.globals.fork()
+		globals:                             fork_prepared_type_bindings(t.globals)
 		global_qualified_names:              t.global_qualified_names
 		sum_types:                           t.sum_types
 		sum_variant_parents:                 t.sum_variant_parents
 		sum_variant_names:                   t.sum_variant_names
-		sum_variant_fields:                  t.sum_variant_fields.fork()
-		qualified_types:                     t.qualified_types.fork()
-		fn_ret_types:                        t.fn_ret_types.fork()
-		fn_ret_types_by_module:              t.fn_ret_types_by_module.fork()
+		sum_variant_fields:                  fork_prepared_type_bindings(t.sum_variant_fields)
+		qualified_types:                     fork_prepared_type_bindings(t.qualified_types)
+		fn_ret_types:                        fork_prepared_type_bindings(t.fn_ret_types)
+		fn_ret_types_by_module:              fork_prepared_type_bindings(t.fn_ret_types_by_module)
 		multi_return_fn_ret_types:           t.multi_return_fn_ret_types
 		receiver_method_suffix_index:        t.receiver_method_suffix_index
 		declared_fn_name_counts:             t.declared_fn_name_counts
@@ -5076,7 +5188,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 			map[string]i8{}
 		}
 		enum_types:                          t.enum_types
-		enum_backing_types:                  t.enum_backing_types.fork()
+		enum_backing_types:                  fork_prepared_type_bindings(t.enum_backing_types)
 		runtime_type_indexes:                t.runtime_type_indexes
 		generic_alias_names:                 t.generic_alias_names
 		type_alias_suffixes:                 t.type_alias_suffixes
@@ -11535,6 +11647,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.cur_fn_receiver_name = u32(0)
 	old_is_generic := t.cur_fn_is_generic
 	old_manualfree := t.cur_fn_manualfree
+	old_value_semantics := t.cur_fn_value_semantics
 	t.cur_fn_is_generic = if t.skip_generics {
 		false
 	} else {
@@ -11542,9 +11655,13 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	}
 	// Generic specializations carry a template's `manualfree` attribute in the
 	// function node because the checker's declaration-attribute index only
-	// contains parsed declarations.
+	// contains parsed declarations. A standard library body that keeps V's value
+	// semantics in ownership mode receives no ownership cleanup either, and does not
+	// destroy the values it overwrites or removes from arrays and maps.
+	t.cur_fn_value_semantics = t.tc.ownership_fn_keeps_value_semantics(fn_node)
 	t.cur_fn_manualfree = fn_node.skip_ownership_drops()
 		|| t.tc.declaration_has_attribute(flat.NodeId(fn_idx), 'manualfree')
+		|| t.cur_fn_value_semantics
 	param_count := t.fn_body_param_count(fn_node)
 	param_types := t.fn_body_param_types(fn_node, param_count)
 	// A generic clone uses `main.` to pin a caller-owned return type that collides
@@ -11754,6 +11871,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.smartcast_reestablishment_event_ids.clear()
 	t.cur_fn_is_generic = old_is_generic
 	t.cur_fn_manualfree = old_manualfree
+	t.cur_fn_value_semantics = old_value_semantics
 	t.cur_fn_receiver_name = old_receiver_name_source_id
 	t.cur_fn_source_file = old_source_file
 	t.cur_fn_source_module = old_source_module
@@ -13667,8 +13785,7 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 		payload_type_source_id := t.optional_base_type(t.qualify_optional_type(t.cur_fn_ret_type))
 
 		if t.return_expr_is_propagated_err(child_id, payload_type_source_id) {
-			err_expr := t.transform_expr(child_id)
-			ret := t.make_none_return_stmt_with_err_expr(err_expr)
+			ret := t.make_none_return_stmt_with_err_expr(t.transform_returned_error(child_id))
 			t.mark_transformed_return(ret, source_return_id)
 			return t.with_pending_before(ret)
 		}
@@ -14180,6 +14297,16 @@ fn (t &Transformer) const_array_literal_storage_elem_excluded(raw_type types.Typ
 fn (mut t Transformer) const_array_literal_requires_fixed_storage(key string) bool {
 	if cached := t.const_array_fixed_storage_cache[key] {
 		return cached > 0
+	}
+	// The monomorphization stage classifies every array constant on its first
+	// question instead of up front: most specializations never ask, and asking
+	// per constant would scan the whole tree each time.
+	if t.scoped_monomorphize && !t.parallel_monomorph_worker
+		&& !t.const_array_fixed_storage_ready {
+		t.precompute_const_array_fixed_storage()
+		if cached := t.const_array_fixed_storage_cache[key] {
+			return cached > 0
+		}
 	}
 	result := t.const_array_literal_requires_fixed_storage_uncached(key)
 	// A populated cache can be shared with running workers; never grow it.
@@ -29890,6 +30017,7 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 	// Each function gets its own visitation epoch without allocating another map.
 	mut visited := []u32{len: limit}
 	mut epoch := u32(0)
+	holders := t.match_holding_fns()
 	// Read after `limit` is taken: lowering appends nodes while this loop runs.
 	indexed_count, indexed_nodes := t.top_level_scan_prefix()
 	for scan_idx in 0 .. indexed_count + limit - indexed_nodes {
@@ -29898,8 +30026,13 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 		} else {
 			indexed_nodes + scan_idx - indexed_count
 		}
-		if t.a.nodes[i].kind != .fn_decl {
+		if t.a.nodes[i].kind != .fn_decl
+			|| (i < t.match_lowered_fns.len && t.match_lowered_fns[i])
+			|| (holders.len > 0 && (i >= holders.len || !holders[i])) {
 			continue
+		}
+		if i >= t.match_lowered_fns.len {
+			t.match_lowered_fns << []bool{len: t.a.nodes.len - t.match_lowered_fns.len}
 		}
 		// Only candidate nodes need copies before AST rewriting.
 		node := t.a.nodes[i]
@@ -29907,12 +30040,17 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 			|| (i < t.transformed_fns.len && t.transformed_fns[i])
 			|| t.a.specialized_fn_nodes[i]
 			|| t.fn_decl_has_unresolved_generics(node, t.node_module_or(i, '')) {
+			// None of these changes before a later call.
+			t.match_lowered_fns[i] = true
 			continue
 		}
 		t.cur_module = t.node_module_or(i, '')
 		if !t.should_transform_fn(node) {
 			continue
 		}
+		// A walked body has no match left, and nothing later puts one back into
+		// it: specialization and late lowering append new declarations.
+		t.match_lowered_fns[i] = true
 		epoch++
 		for child_id in t.a.children_of(&node) {
 			t.lower_remaining_match_subtree(child_id, mut visited, epoch)
@@ -29920,6 +30058,48 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
+}
+
+// match_holding_fns flags every function declaration above a match node, the
+// only bodies lower_remaining_matches_in_used_fns can find a match in. The walk
+// reads the bodies the transform stage lowered, which keep the shape the parent
+// index records, so a match node under no function there is in none of them.
+// The result is empty, for a walk of every function, when a match node was
+// appended after the index was built.
+@[direct_array_access]
+fn (mut t Transformer) match_holding_fns() []bool {
+	covered := int_min(t.source_parent_ids.len, t.a.nodes.len)
+	// A later call finds the match nodes appended since; the holders of the
+	// others stay, a lowered match leaving behind only a body without one.
+	first := if t.match_holders.len == covered && t.match_holders_scanned <= t.a.nodes.len {
+		t.match_holders_scanned
+	} else {
+		0
+	}
+	mut holders := if first > 0 { t.match_holders } else { []bool{len: covered} }
+	t.match_holders = []bool{}
+	for idx in first .. t.a.nodes.len {
+		if t.a.nodes[idx].kind != .match_stmt {
+			continue
+		}
+		if idx >= covered {
+			return []bool{}
+		}
+		mut cursor := idx
+		// The bound only guards against a cycle in a rewritten tree.
+		for _ in 0 .. 1 << 16 {
+			cursor = int(t.source_parent_ids[cursor])
+			if cursor < 0 || cursor >= covered {
+				break
+			}
+			if t.a.nodes[cursor].kind == .fn_decl {
+				holders[cursor] = true
+			}
+		}
+	}
+	t.match_holders = holders
+	t.match_holders_scanned = t.a.nodes.len
+	return holders
 }
 
 @[direct_array_access]
