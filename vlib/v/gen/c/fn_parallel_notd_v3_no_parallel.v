@@ -87,6 +87,9 @@ mut:
 	strings_ptr       voidptr
 	type_metadata_ptr voidptr
 	embed_ptr         voidptr
+	// metadata_bits records the count pass's is_type_metadata_node results, one
+	// bit per node, so the fill pass does not classify every node again.
+	metadata_bits_ptr voidptr
 	type_text_cache   &TypeMetadataTextCache = unsafe { nil }
 }
 
@@ -173,10 +176,14 @@ fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CollectGenInfoScanArgs(arg) }
 	g := unsafe { &FlatGen(a.g) }
 	incremental := g.incremental_fn_names.len > 0
+	mut metadata_bits := unsafe { &[]u64(a.metadata_bits_ptr) }
 	for node_idx in a.start .. a.end {
 		node := g.a.nodes[node_idx]
 		if is_type_metadata_node(&node, mut a.type_text_cache) {
 			a.type_metadata_pos++
+			unsafe {
+				metadata_bits[node_idx >> 6] |= u64(1) << (node_idx & 63)
+			}
 		}
 		if node.kind == .string_literal {
 			if node.is_embed_payload() {
@@ -231,9 +238,10 @@ fn collect_gen_info_scan_fill_thread(arg voidptr) voidptr {
 	mut string_pos := a.string_pos
 	mut type_metadata_pos := a.type_metadata_pos
 	mut embed_pos := a.embed_pos
+	metadata_bits := unsafe { &[]u64(a.metadata_bits_ptr) }
 	for node_idx in a.start .. a.end {
 		node := g.a.nodes[node_idx]
-		if is_type_metadata_node(&node, mut a.type_text_cache) {
+		if unsafe { metadata_bits[node_idx >> 6] } & (u64(1) << (node_idx & 63)) != 0 {
 			unsafe {
 				type_metadata[type_metadata_pos] = node_idx
 			}
@@ -802,12 +810,22 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 		g.flat_cgen_job_limit())
 	mut args := []CollectGenInfoScanArgs{cap: n_jobs}
 	mut tasks := []workers.Task{cap: n_jobs}
+	mut metadata_bits := []u64{len: (g.a.nodes.len + 63) / 64}
 	for job in 0 .. n_jobs {
+		// Ranges start on a 64-node boundary, so that no two jobs write the same
+		// word of metadata_bits.
+		start := if job == 0 { 0 } else { (g.a.nodes.len * job / n_jobs) & ~63 }
+		end := if job == n_jobs - 1 {
+			g.a.nodes.len
+		} else {
+			(g.a.nodes.len * (job + 1) / n_jobs) & ~63
+		}
 		args << CollectGenInfoScanArgs{
-			g:               voidptr(g)
-			start:           g.a.nodes.len * job / n_jobs
-			end:             g.a.nodes.len * (job + 1) / n_jobs
-			type_text_cache: &TypeMetadataTextCache{}
+			g:                 voidptr(g)
+			start:             start
+			end:               end
+			metadata_bits_ptr: unsafe { voidptr(&metadata_bits) }
+			type_text_cache:   &TypeMetadataTextCache{}
 		}
 	}
 	for job in 0 .. n_jobs {
@@ -863,6 +881,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 		}
 	}
 	g.a.worker_pool.run(tasks)
+	unsafe { metadata_bits.free() }
 	g.type_metadata_nodes_ready = true
 	g.embed_payload_nodes_ready = true
 	return counts
