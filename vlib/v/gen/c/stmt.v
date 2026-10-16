@@ -6778,20 +6778,21 @@ fn (g &FlatGen) generated_variant_access_type(id flat.NodeId) ?types.Type {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return none
 	}
-	node := g.a.nodes[int(id)]
+	// Called for most expression nodes; borrow the node instead of copying it.
+	node := unsafe { &g.a.nodes[int(id)] }
 	if node.kind == .selector {
 		params := node.generic_params()
 		for i, param in params {
 			if param == '__v3_generated_variant_access' && i + 1 < params.len {
 				if flat.source_type_shape(node.typ).has(.pointer) {
-					return g.parse_node_type(&node)
+					return g.parse_node_type(node)
 				}
 				return g.tc.parse_type(flat.source_type_id(params[i + 1]))
 			}
 		}
 	}
 	if node.kind in [.prefix, .paren] && node.children_count > 0 {
-		if typ := g.generated_variant_access_type(g.a.child(&node, 0)) {
+		if typ := g.generated_variant_access_type(g.a.child(node, 0)) {
 			if node.kind == .prefix && node.op == .mul && typ is types.Pointer {
 				return typ.base_type
 			}
@@ -8811,27 +8812,36 @@ fn (g &FlatGen) usable_resolved_sum_type(typ types.Type) types.Type {
 }
 
 fn (g &FlatGen) checker_struct_field_type(type_name_id u32, field_name string) ?types.Type {
-	mut names := []u32{}
+	// Candidate owners are tried in order; most fields resolve on the first one,
+	// so the declaration and qualified-name lookups run only when it misses.
 	if type_name_id != 0 {
-		names << type_name_id
-	}
-	if info := g.find_struct_decl(type_name_id) {
-		names << info.full_name
-	}
-	if flat.source_type_shape(type_name_id).has(.dotted) {
-		names << flat.source_type_id(flat.source_type_name(type_name_id).all_after_last('.'))
-	} else {
-		qname := flat.source_type_id(g.tc.qualify_name(flat.source_type_name(type_name_id)))
-		if qname != type_name_id {
-			names << qname
-		}
-	}
-	for name in names {
-		raw_source_id := g.tc.struct_field_type_name(name, field_name) or { continue }
-		typ := g.tc.parse_type(raw_source_id)
-		if typ !is types.Unknown && typ !is types.Void {
+		if typ := g.checker_owner_field_type(type_name_id, field_name) {
 			return typ
 		}
+	}
+	if info := g.find_struct_decl(type_name_id) {
+		if info.full_name != type_name_id || type_name_id == 0 {
+			if typ := g.checker_owner_field_type(info.full_name, field_name) {
+				return typ
+			}
+		}
+	}
+	if flat.source_type_shape(type_name_id).has(.dotted) {
+		short_id := flat.source_type_id(c_short_name_view(flat.source_type_name(type_name_id)))
+		return g.checker_owner_field_type(short_id, field_name)
+	}
+	qname := flat.source_type_id(g.tc.qualify_name(flat.source_type_name(type_name_id)))
+	if qname != type_name_id {
+		return g.checker_owner_field_type(qname, field_name)
+	}
+	return none
+}
+
+fn (g &FlatGen) checker_owner_field_type(owner_id u32, field_name string) ?types.Type {
+	raw_source_id := g.tc.struct_field_type_name(owner_id, field_name) or { return none }
+	typ := g.tc.parse_type(raw_source_id)
+	if typ !is types.Unknown && typ !is types.Void {
+		return typ
 	}
 	return none
 }
