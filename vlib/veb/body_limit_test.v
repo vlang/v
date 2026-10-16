@@ -29,8 +29,14 @@ fn (app &LimitBodyApp) ping(mut ctx LimitBodyContext) Result {
 // limited_request posts one body through an app whose `/upload` route allows
 // ten bytes.
 fn limited_request(url string, body string) &Context {
+	return request_with_limit(10, url, body)
+}
+
+// request_with_limit posts one body through an app whose `/upload` route allows
+// `max_bytes` bytes.
+fn request_with_limit(max_bytes int, url string, body string) &Context {
 	mut app := LimitBodyApp{}
-	app.route_use('/upload', body_limit[LimitBodyContext](10))
+	app.route_use('/upload', body_limit[LimitBodyContext](max_bytes))
 	return render_request[LimitBodyApp, LimitBodyContext](mut app, http.Request{
 		method: .post
 		url:    url
@@ -66,4 +72,13 @@ fn test_a_route_without_the_limit_is_unaffected() {
 	ctx := limited_request('/ping', '12345678901')
 	assert ctx.res.status_code == int(http.Status.ok)
 	assert ctx.res.body == 'pong'
+}
+
+fn test_a_limit_of_zero_refuses_any_non_empty_body() {
+	empty := request_with_limit(0, '/upload', '')
+	assert empty.res.status_code == int(http.Status.ok)
+	assert empty.res.body == 'stored 0 bytes'
+	one_byte := request_with_limit(0, '/upload', '1')
+	assert one_byte.res.status_code == int(http.Status.request_entity_too_large)
+	assert one_byte.res.body == 'request body of 1 bytes exceeds the limit of 0 bytes'
 }
